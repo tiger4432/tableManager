@@ -39,7 +39,6 @@ def _shipped_declaration(monkeypatch, tmp_path_factory):
 
 
 OLD = datetime.now(timezone.utc) - timedelta(seconds=100_000)
-NOW = datetime.now(timezone.utc)
 
 
 def claimed_row(db, *, table="dt_map", filename="a.csv", updated_at=OLD):
@@ -120,7 +119,7 @@ def test_a_live_job_is_left_alone_however_long_it_has_run(db_session):
     """🔴 THE ANTI-DUPLICATION ARM. The claim is ancient; the chunks are recent. Judging on
     runtime instead of progress would reclaim this and run it twice."""
     row = claimed_row(db_session, filename="e.csv")
-    checkpoint(db_session, filename="e.csv", updated_at=NOW)
+    checkpoint(db_session, filename="e.csv", updated_at=datetime.now(timezone.utc))
     assert run_watcher.reclaim_stranded_claims(db_session) == (0, 0)
     db_session.refresh(row)
     assert row.status == "PENDING"
@@ -136,7 +135,7 @@ def test_a_row_with_no_checkpoint_is_skipped_and_counted(db_session):
 
 
 def test_a_recent_claim_is_not_a_candidate_at_all(db_session):
-    claimed_row(db_session, filename="g.csv", updated_at=NOW)
+    claimed_row(db_session, filename="g.csv", updated_at=datetime.now(timezone.utc))
     checkpoint(db_session, filename="g.csv")
     assert run_watcher.reclaim_stranded_claims(db_session) == (0, 0)
 

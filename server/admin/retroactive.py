@@ -802,6 +802,7 @@ def _rescope_in_slices(db, params, control):
     # the slices find the world made - none of them races another to make it
     schema.ensure_world(engine, schema.world_names(world))
     backfill.say_what_every_page_pays(engine, plan, world, True)
+    backfill.analyze_stale_partitions(engine, world)
     control.own_beat = False
     try:
         s = _summed(_run_slices(control, bounds, total))
@@ -840,6 +841,7 @@ def _run_slices(control, bounds, total):
             threading.Thread(target=relay_lines, args=(
                 proc.stderr, "[slice %d/%d pid %d]" % (index, count, proc.pid), "Retroactive"),
                 daemon=True, name="slice-%d-log" % index).start()
+        control.say("%d slice processes started - waiting for their first pages" % count)
         while len(ended) < count:
             try:
                 index, answer = said.get(timeout=LOOK_SECONDS)
@@ -2435,9 +2437,6 @@ def queue_view(db, now=None):
 
     now = now or datetime.now(timezone.utc)
 
-    def _utc(dt):
-        return None if dt is None else (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc))
-
     def _age(dt):
         d = _utc(dt)
         return None if d is None else round(max(0.0, (now - d).total_seconds()), 1)
@@ -2563,11 +2562,6 @@ def in_flight(db, now=None, stall_after=None):
            .first())
     if row is None:
         return None
-
-    def _utc(dt):
-        if dt is None:
-            return None
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
     started, progressed = _utc(row.started_at), _utc(row.last_progress_at)
     since = None if progressed is None else max(0.0, (now - progressed).total_seconds())
@@ -2727,8 +2721,9 @@ def _beating(control, engine):
     try:
         yield
     finally:
+        keyset_scan.RUN_CONTROL.reset(token)  # first - whatever below raises, this thread's run control is not left set
         stop.set()
-        keyset_scan.RUN_CONTROL.reset(token)
+        control.stop_telling()            # before the run's ending notice - no RUNNING after its DONE (QA 10-14 ④)
         if beat is not None:
             event.remove(engine, "checkout", taken)
             event.remove(engine, "checkin", given_back)
@@ -2795,6 +2790,7 @@ def _beat(control, stop, url, held):
             if now - last >= BEAT_SECONDS:
                 if control.own_beat:
                     control._log(_beat_said(control, rows, now))
+                control.tell()
                 slow, last = slow_statement_seconds(), now
     except Exception as exc:                               # noqa: BLE001 - the beat's own failure, said below
         control._log("[%s] beat stopped - %s: %s; no more beat or slow-statement lines for this run, the run goes on"
@@ -2852,6 +2848,11 @@ class RunControl:
         self.stages = []
         #: The stage lines on or off - `retroactive_debug`, read again at every page boundary.
         self.debug = retroactive_debug()
+        #: The run's last line before its pages and since when - what `tell` says while no stage is open.
+        self._phase = ("Starting", self._began)
+        #: False once telling failed - said once, the run goes on - or the run's beat ended (`tell`, `stop_telling`).
+        self.telling = True
+        self._told = threading.Lock()
 
     def _session(self):
         if self._session_factory is not None:
@@ -2891,6 +2892,7 @@ class RunControl:
     def progress(self, processed=None, total=None, note=None) -> None:
         """Record how far this run has got. `total=None` stays NULL - unknown, not zero. `note` ends the page line."""
         self._page_line(processed, total, note)
+        self._phase = (note or "Page %d done" % self._pages, time.monotonic())      # the stage until the next (`tell`)
         self.debug = retroactive_debug()
         if self.report is not None:
             if processed is not None:                  # a step that only asks to go on moves no slice's count
@@ -2928,7 +2930,7 @@ class RunControl:
         rate = rows / seconds if seconds > 0 else 0
         self._pages += 1
         done = ("%d done" % processed if not total else "%d / %d · ~%s left" % (
-            processed, total, _clock(max(total - processed, 0) * (now - self._began) / processed)))
+            processed, total, _clock(pace(processed, total, now - self._began)[1] or 0)))
         self._log("[%s] page %d: %d rows · %.1f s · %d rows/s · %s%s" % (
             self.op, self._pages, rows, seconds, rate, done, " · %s" % note if note else ""))
         self._said, self._boundary = processed, now
@@ -2951,8 +2953,58 @@ class RunControl:
             self.op, page, name, rows, seconds, " · %s" % note if note else ""))
 
     def say(self, sentence) -> None:
-        """One line of this run's own - `[<op>] <sentence>` - on or off, whatever `debug` says."""
+        """One line of this run's own - `[<op>] <sentence>` - on or off, whatever `debug` says. It is the run's stage
+        (`tell`) until the next line or a stage of a page."""
         self._log("[%s] %s" % (self.op, sentence))
+        self._phase = (sentence, time.monotonic())
+
+    def tell(self) -> None:
+        """THE RUN'S STAGE, TOLD (총괄 10-14, 소유자 «러닝은 뜨는데 토스트 진행 상황이 안 나옴»), every beat: the stage of the
+        page in progress, or the run's last line before its pages, and its seconds - on the run record (phase · phase_at,
+        not the progress time: a stage that does not end must still read as stalled) and in the progress notice with
+        rows a second and the time left (`pace`). 🔴 Silent only about itself: a failure is said once, the run goes on."""
+        if not self.run_id or self.report is not None:
+            return                                    # a slice: the run's process tells the run's stage
+        with self._told:                              # one at a time, and none once `stop_telling` returned
+            if not self.telling:
+                return
+            now = time.monotonic()
+            if self.stages:
+                name, since, _rows = self.stages[-1]
+                phase = "Page %d: %s" % (self._pages + 1, name)
+            else:
+                phase, since = self._phase
+            from datetime import datetime, timedelta, timezone
+
+            from sqlalchemy import text
+
+            from database import models
+
+            session = self._session()
+            try:
+                models.ensure_run_phase_columns(session.get_bind())
+                session.execute(text("UPDATE retroactive_runs SET phase = :phase, phase_at = :at WHERE run_id = :run"),
+                                {"phase": phase[:200], "run": self.run_id,
+                                 "at": datetime.now(timezone.utc) - timedelta(seconds=now - since)})
+                session.commit()
+            except Exception as exc:                                    # noqa: BLE001 - said once below
+                session.rollback()
+                self.telling = False
+                logger.warning("[Retroactive] run_id=%s: its stage could not be written - none more for this run: %s",
+                               self.run_id, exc)
+                return
+            finally:
+                session.close()
+            rate, left = pace(self._said, self._total, now - self._began)
+            import event_constants
+            self.announce(event_constants.PROGRESS_STATUS_RUNNING, processed=self._said, total=self._total,
+                          phase=phase, phase_seconds=round(now - since), rows_per_second=rate and round(rate, 1),
+                          seconds_left=left and round(left))
+
+    def stop_telling(self) -> None:
+        """No stage told after this returns - one in flight finishes first (its notice before the run's ending one)."""
+        with self._told:
+            self.telling = False
 
     @contextlib.contextmanager
     def stage(self, name, rows=None):
@@ -2992,15 +3044,32 @@ class RunControl:
         finally:
             session.close()
 
-    def announce(self, status, processed=None, total=None) -> None:
+    def announce(self, status, processed=None, total=None, **told) -> None:
         """`announce_progress` for this run, until one is not heard (총괄 10-11 ④: with the server down each notice
-        waited ~2 s on this box - a page's worth of work, every page). One line then; the run record still says it."""
+        waited ~2 s on this box - a page's worth of work, every page). One line then; the run record still says it.
+        `told`: the stage and its pace (`tell`)."""
         if not self.run_id or not self.announcing:
             return
-        if not announce_progress(self.run_id, self.op, status, processed=processed, total=total):
+        if not announce_progress(self.run_id, self.op, status, processed=processed, total=total, **told):
             self.announcing = False
             logger.warning("[Retroactive] run_id=%s op=%s: a progress notice was not heard - none more for this "
                            "run; the Retroactive tab reads the run record", self.run_id, self.op)
+
+
+def _utc(dt):
+    """A time the database gave - an aware one as it is, a naive one (SQLite) as UTC; None stays None."""
+    from datetime import timezone
+
+    return None if dt is None else (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc))
+
+
+def pace(processed, total, seconds):
+    """-> `(rows a second, seconds left)` of a run `seconds` in that has done `processed` of `total` - None where it is
+    not known. The page line's time left and the stage notice's and runs list's two values: one calculation."""
+    if not processed or not seconds or seconds <= 0:
+        return None, None
+    rate = processed / seconds
+    return rate, (max(total - processed, 0) / rate if total else None)
 
 
 def _clock(seconds):
@@ -3008,7 +3077,7 @@ def _clock(seconds):
     return "%d s" % seconds if seconds < 120 else "%d min" % (seconds / 60) if seconds < 7200 else "%.1f h" % (seconds / 3600)
 
 
-def announce_progress(run_id, op, status, processed=None, total=None):
+def announce_progress(run_id, op, status, processed=None, total=None, **told):
     """소급 실행의 진행을 «인제션과 같은 봉투·같은 길»로 낸다 (S-37, 판정 98).
 
     🔴 왜 있나: 진행은 오늘 `retroactive_runs` 에 «DB 로만» 적히고, 그리드 화면은 발신이
@@ -3024,8 +3093,8 @@ def announce_progress(run_id, op, status, processed=None, total=None):
         import internal_event_client
         payload = event_constants.progress_event(
             status, processed_rows=processed, total_rows=total,
-            progress=(None if not total else int(processed * 100 / total)),
-            run_id=run_id, op=op)
+            progress=(None if not total or processed is None else int(processed * 100 / total)),
+            run_id=run_id, op=op, **told)
         # 길·헤더·판별자는 `internal_event_client` 가 짓는다 — 이 프로세스가 «셋째 철자»를
         # 만들지 않는 것이 판정 98 의 요지다.
         _url, res, note = internal_event_client.send_internal_event(
@@ -3118,6 +3187,26 @@ def request_cancel(db, run_id: str) -> dict:
     return {"run_id": run_id, "op": op, "state": row.state, "released": False}
 
 
+def _stages_of(db, run_ids):
+    """-> {run_id: (phase, phase_at)} of these runs (`RunControl.tell`), read once on a connection of its own; {} on a
+    database the columns are not on yet (QA 10-14 ②: the list never adds them - their writer does - nor waits)."""
+    if not run_ids:
+        return {}
+    from sqlalchemy import bindparam, text
+
+    try:
+        with db.get_bind().connect() as conn:
+            found = conn.execute(text("SELECT run_id, phase, phase_at FROM retroactive_runs WHERE run_id IN :ids")
+                                 .bindparams(bindparam("ids", expanding=True)), {"ids": list(run_ids)}).all()
+    except Exception as exc:                                            # noqa: BLE001 - the list goes on, stageless
+        logger.debug("[Retroactive] run stages not read: %s", exc)
+        return {}
+    from datetime import datetime
+
+    # a raw read on SQLite hands the time back as text
+    return {run_id: (phase, datetime.fromisoformat(at) if isinstance(at, str) else at) for run_id, phase, at in found}
+
+
 def runs(db, limit: int = 50) -> list:
     """The recent runs, newest first. One list for every request-type operation.
 
@@ -3125,11 +3214,26 @@ def runs(db, limit: int = 50) -> list:
     in `file_ingestion_checkpoints` with total/processed/chunk already on it. A screen reads
     that table directly.
     """
+    from datetime import datetime, timezone
+
     from database import models
 
     rows = (db.query(models.RetroactiveRun)
             .order_by(models.RetroactiveRun.queued_at.desc())
             .limit(max(1, min(int(limit or 50), 500))).all())
+    now = datetime.now(timezone.utc)
+    stages = _stages_of(db, [row.run_id for row in rows if row.state in IN_FLIGHT_STATES])
+
+    def told(row):
+        """A run in flight's stage and pace (`RunControl.tell`, `pace`) - null otherwise, and null where unknown."""
+        if row.state not in IN_FLIGHT_STATES:
+            return {"phase": None, "phase_seconds": None, "rows_per_second": None, "seconds_left": None}
+        rate, left = pace(row.processed_rows, row.total_rows,
+                          row.started_at and (now - _utc(row.started_at)).total_seconds())
+        phase, phase_at = stages.get(row.run_id, (None, None))
+        return {"phase": phase,
+                "phase_seconds": phase_at and round((now - _utc(phase_at)).total_seconds()),
+                "rows_per_second": rate and round(rate, 1), "seconds_left": left and round(left)}
     listed = [{
         "run_id": row.run_id,
         # 🔴 화면이 `result` 를 «해석하지 않습니다». 연산마다 키가 다르고
@@ -3152,6 +3256,7 @@ def runs(db, limit: int = 50) -> list:
         "last_progress_at": (row.last_progress_at.isoformat()
                              if row.last_progress_at else None),
         "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+        **told(row),
     } for row in rows]
     # Where a run picks up next, from the operation that knows (총괄 3a1446982) - null for an
     # operation with no such idea, and for a run still going.

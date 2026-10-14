@@ -77,9 +77,12 @@ def test_a_rules_own_write_carries_the_run_its_envelope_is_given(db):
 def test_every_run_ends_inside_its_run(db):
     out = retroactive._run_to_the_end(
         "r-ends-here", "probe", {"run": lambda db, params, log, control: request_run_id.get()},
-        {}, lambda m: None, types.SimpleNamespace(stopped=False, run_id="r-ends-here", announce=lambda status: None))
-    assert out["result"] == "r-ends-here"
+        {}, lambda m: None, types.SimpleNamespace(stopped=False, run_id="r-ends-here", announce=lambda status: None,
+                                                stop_telling=lambda: None))
+    assert (out["status"], out["result"]) == ("ok", "r-ends-here"), out
     assert request_run_id.get() is None, "the run leaked past its end"
+    from chain import keyset_scan
+    assert keyset_scan.RUN_CONTROL.get() is None, "the run control leaked past its end"
 
 
 def test_two_runs_groups_are_never_folded_into_one(db):
