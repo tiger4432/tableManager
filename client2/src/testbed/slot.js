@@ -239,6 +239,9 @@ export function foldRows(slot, raws, marked = null) {
   return fold((slot && slot.reduce) || 'Count', raws.flatMap((r) => r || [])).value;
 }
 
+/** The record a read came from - its edge (claim, else id, else the triple), else its node: what pairs two slots' values. */
+export const recordOf = (r) => (r.edge ? (r.edge.claim_id ?? r.edge.id ?? `${r.edge.source} ${r.edge.predicate} ${r.edge.target}`) : r.node);
+
 /** A category slot's members for one row: each of its values (the cross table counts a row with two in both cells - lead
  *  aca803a7a, as the server's group_by puts a plural node in every group it names), [] when it says none. */
 export function categoriesOf(read) {
@@ -253,8 +256,9 @@ export function readsAt(index, inside, x, slot, records = false) {
   const got = readsOf(index, inside, x, slot, Infinity);
   if (got.missing) return { missing: true, reads: [] };
   // records - each read spread into its records (reach_table.recordsOf: an edge's every atom), `read` the read it is of
-  const reads = records ? got.reads.flatMap((r, read) => recordsOf(index, slot, r).map((rec) => ({ value: plainValue(rec.value), t: timeOf(rec.when), read, ...timeOfRead(index, slot, { ...r, value: rec.value }) })))
-    : got.reads.map((r) => ({ value: plainValue(r.value), t: timeOf(r.when), ...timeOfRead(index, slot, r) }));
+  // each read's record - the way's last edge, else its node (recordOf): what pairs two slots' values of one row
+  const reads = records ? got.reads.flatMap((r, read) => recordsOf(index, slot, r).map((rec) => ({ value: plainValue(rec.value), t: timeOf(rec.when), read, record: recordOf(r), ...timeOfRead(index, slot, { ...r, value: rec.value }) })))
+    : got.reads.map((r) => ({ value: plainValue(r.value), t: timeOf(r.when), record: recordOf(r), ...timeOfRead(index, slot, r) }));
   return { missing: false, reads: slot.of === 'time' ? reads.filter((r) => r.t !== null).map((r) => ({ ...r, value: new Date(r.t).toISOString(), time: true })) : reads };
 }
 
@@ -317,13 +321,15 @@ export function combosOf(rows, keys) {
     }
     for (const values of combos) {
       const at = JSON.stringify(values);
-      if (!out.has(at)) out.set(at, { values, ids: [], seen: new Set() });
-      // a mark gathers its row (units.js marksOf): two marks of one row in one cell are the row once
+      if (!out.has(at)) out.set(at, { values, ids: [], seen: new Set(), marks: [] });
+      // a mark gathers its row (units.js marksOf): two marks of one row in one cell are the row once; the marks kept -
+      // what a cell folds (each mark its own values)
       const cell = out.get(at);
+      cell.marks.push(row);
       for (const id of row.ids || [row.id]) if (!cell.seen.has(id)) { cell.seen.add(id); cell.ids.push(id); }
     }
   }
-  return [...out.values()].map(({ values, ids }) => ({ values, ids }));
+  return [...out.values()].map(({ values, ids, marks }) => ({ values, ids, marks }));
 }
 
 /** A slot's columns - THE one place an older one-column slot reads as a list of one (owner 10-14: a pill of several

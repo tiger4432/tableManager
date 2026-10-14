@@ -42,21 +42,27 @@ export const PAIR_WORDS = (a, b) => `${a} and ${b} come from different records �
  * @param {(key: string) => string} words  a slot in words
  * @returns {{marks: Array, dropped: Array<{id, why}>}}
  */
-export function marksOf(rows, keys, recordsOf, words) {
+export function marksOf(rows, keys, recordsOf, words, folds = []) {
   const marks = [];
   const dropped = [];
   for (const row of rows) {
     const many = keys.filter((k) => row.reads[k] && row.reads[k].state === 'several');
     if (!many.length) { marks.push({ ...row, ids: [row.id], row: row.id }); continue; }
     let picks;
-    if (many.length === 1) picks = (row.reads[many[0]].values || []).map((value) => [value]);
-    else {
+    // each pick's records - a folded slot's values (`folds`: a cross table's cells) go with the mark of their record
+    let recsOf = () => null;
+    if (many.length === 1) {
+      picks = (row.reads[many[0]].values || []).map((value) => [value]);
+      const listed = folds.length ? recordsOf(row.id, many[0]) : null;
+      if (listed) recsOf = (k) => listed.filter((r) => JSON.stringify(r.value) === JSON.stringify(picks[k][0])).map((r) => r.record);
+    } else {
       const lists = many.map((k) => recordsOf(row.id, k));
       const recs = lists.map((l) => (l ? [...new Set(l.map((r) => r.record))] : null));
       const one = (l) => l && l.length === new Set(l.map((r) => r.record)).size;
       const same = lists.every(one) && recs.every((r) => r && r.length === recs[0].length && r.every((x) => recs[0].includes(x)));
       if (!same) { dropped.push({ id: row.id, why: PAIR_WORDS(words(many[0]), words(many[1])) }); continue; }
       picks = recs[0].map((rec) => lists.map((l) => l.find((r) => r.record === rec).value));
+      recsOf = (k) => [recs[0][k]];
     }
     if (!picks.length) { dropped.push({ id: row.id, why: MANY_WORDS(0) }); continue; }
     picks.forEach((values, k) => {
@@ -65,7 +71,15 @@ export function marksOf(rows, keys, recordsOf, words) {
         const base = row.reads[key];
         reads[key] = { state: 'one', value: values[i], n: 1, ...(base.time ? { time: true } : {}), ...(base.declared ? { declared: base.declared } : {}) };
       });
-      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads });
+      // a folded slot's values of this mark's record - none of them its: the row's all (its values are no column's)
+      const raw = row.raw && folds.length ? { ...row.raw } : row.raw;
+      for (const f of folds) {
+        const recs = recsOf(k);
+        const all = row.raw && row.raw[f];
+        const mine = recs && Array.isArray(all) ? all.filter((r) => r && recs.includes(r.record)) : null;
+        if (mine && mine.length) raw[f] = mine;
+      }
+      marks.push({ ...row, id: `${row.id}#${k}`, ids: [row.id], row: row.id, reads, raw });
     });
   }
   return { marks, dropped };
@@ -84,14 +98,15 @@ export const HUB_MANY_WORDS = 'several values - pick a reduce (Avg · Count · L
  * one look only, so several is «(Multiple)» (color_by paintCategoryOf).
  * @returns {{units: Array, dropped: Array<{id, why}>}}
  */
-export function spreadUnits(rows, decl, keys, { cells = false, record = null, recordsOf = () => null, words = (k) => k, marked = null, drawn = keys } = {}) {
+export function spreadUnits(rows, decl, keys, { cells = false, record = null, recordsOf = () => null, words = (k) => k, marked = null, drawn = keys, folds = [] } = {}) {
   if (cells) return { units: refuseMany(rows), dropped: [] };
   if (record && unitOf(decl) !== 'node') {
     const all = unitsOf(rows, decl, keys, record, marked);
     const one = all.filter((u) => !drawn.some((k) => u.reads[k] && u.reads[k].state === 'several'));
     return { units: one, dropped: all.filter((u) => !one.includes(u)).map((u) => ({ id: u.id, why: HUB_MANY_WORDS })) };
   }
-  const got = marksOf(rows, drawn, recordsOf, words);
+  // `folds` - the slots a kind folds a cell over (the cross table's cells): a mark keeps its own record's values of them
+  const got = marksOf(rows, drawn, recordsOf, words, folds);
   return { units: got.marks, dropped: got.dropped };
 }
 
