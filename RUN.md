@@ -6,7 +6,7 @@
 > 전엔     whole-source 다시 번역 끝의 «선언이 더는 안 읽는 표»의 원자 거두기가 그 수를 행처럼 세어 «page 66: … 98046 / 50000» (분자가 분모를 넘음)
 > 이제     [ledger_rescope] page k: 2000 rows · … · 50000 / 50000 · ~0 s left              <- 번역한 행 / 전체 행
 >          [ledger_rescope] page k: withdraw atoms of a table it no longer reads · 2000 rows · 0.10 s · withdrew 98046   <- 거둔 원자, 따로
-> 되돌리기  git revert <착지 커밋> -> 런처 재기동
+> 되돌리기  git revert 559048e58 -> 런처 재기동
 > ```
 >
 > ---
