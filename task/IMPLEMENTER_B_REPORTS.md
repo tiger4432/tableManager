@@ -1074,3 +1074,14 @@ RUN      되돌리기 줄 git revert bbfa4d11b (이 보고 커밋에서 채움)
 안 한 것  진짜 프로세스 · 창 열기 — 클라 막대가 이 문을 부르는 병합 때(토큰 있는 박스)
 RUN      되돌리기 줄 git revert 8471773f6 (이 보고 커밋에서 채움)
 ```
+
+> **[구현자 B -> 총괄] 10-14 — group_by 소스(dt_job) 선언만 옮기기 (나): 잰 것 · RUN 착지 bb9463943**
+
+```
+판       B 스크래치 assy_impl_b_rollup — A 응용 판에서 dt_job 5 만 개 분량 읽기 복사(dt_log 58,599 · 원자 99,996 · 행 색인 58,578), 런처 없음, public 변화 0
+옮김     decide 규칙(count · unique_concat · min) -> rollup 50,000 행 51.6 s · 짧은 소스 · whole-source 다시 번역 54 s
+결과     새 원자 100,000(행 × 문장 2) · 옛 원자 99,996 거둠 -> 0 · 행 색인 58,578 지움 · 원자 id 전부 새로(시각 = rollup 행 저장 시각)
+환산     잡 100 만 개 약 17 분 + 18 분(이 박스 · fast · 비례 가정, 5 만 넘어선 안 잼)
+dt_eqp   한 잡에 여럿: 5 만 판 0 · 응용 판 전체 0 -> 값 차이 0(이 박스 데이터)
+착지     RUN group_by Next 세 단계 + 둘 중 하나만 + 잰 수 · «python server/ledger/backfill.py» 9 곳 -> «cd server && python -m ledger.backfill»(상대 import 로 멈추던 꼴)
+```
