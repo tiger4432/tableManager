@@ -22,4 +22,15 @@ button.addEventListener('click', () => {
 if (!root.dataset.theme) root.dataset.theme = 'light';
 draw();
 const declMount = document.getElementById('sample-decl-bar');
-if (declMount) declMount.replaceChildren(renderDeclarationBar(document, SAMPLE_RAW, SAMPLE_VIEW));
+// A chip pressed opens its list (the explorer's decl-open, here on the sample's own data); the page opens shut.
+let declOpen = null;
+const drawDecl = () => declMount.replaceChildren(renderDeclarationBar(document, SAMPLE_RAW, { ...SAMPLE_VIEW, open: declOpen }));
+if (declMount) {
+  drawDecl();
+  declMount.addEventListener('click', (event) => {
+    const chip = event.target.closest('[data-action="decl-open"]');
+    if (!chip) return;
+    declOpen = declOpen === chip.dataset.path ? null : chip.dataset.path;
+    drawDecl();
+  });
+}

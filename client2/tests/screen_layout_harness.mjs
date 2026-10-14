@@ -1199,8 +1199,12 @@ const DRIVE = {
       const s = document.querySelector('.sample-sf'); if (s) s.scrollIntoView({ block: 'start' }); return Boolean(s); })()`).then(() => sleep(300))],
     ['Spotfire standard, dark', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'dark'); true").then(() => sleep(300))],
     // The ledger declaration window (owner 10-14), one chip's list open as the mockup draws it, in each theme.
+    // The Spotfire section is set aside: its floating tools are its own scenes' to measure, and off the screen here.
     ['Ledger declaration, list open, dark', (c) => evaluate(c, `(() => { const s = document.getElementById('sample-decl-bar');
-      if (s) s.scrollIntoView({ block: 'start' }); return Boolean(s && s.querySelector('.ldb-pop')); })()`).then(() => sleep(300))],
+      const sf = document.querySelector('.sample-sf'); const box = sf && sf.closest('section'); if (box) box.hidden = true;
+      const chip = s && s.querySelector('[data-path="sentences.0.subject.keys.wafer"]'); if (chip) chip.click();
+      const open = document.getElementById('sample-decl-bar');
+      if (open) open.scrollIntoView({ block: 'start' }); return Boolean(open && open.querySelector('.ldb-pop')); })()`).then(() => sleep(300))],
     ['Ledger declaration, list open, light', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'light'); true").then(() => sleep(300))],
   ],
   'index.html': [

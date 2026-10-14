@@ -178,8 +178,9 @@ function chip(el, view, c) {
   b.dataset.chip = c.kind;
   if (c.parts) b.append(...c.parts); else b.append(c.text);
   b.append(' ', el('span', 'ldb-caret', '▾'));
-  if (!open) return b;
+  // the chip sits in its wrapper open or shut, so opening adds the list and moves nothing
   const wrap = el('div', 'ldb-at');
+  if (!open) { wrap.append(b); return wrap; }
   const pop = el('div', 'ldb-pop');
   pop.setAttribute('role', 'listbox');
   for (const o of c.options || []) {
@@ -323,8 +324,9 @@ function sentenceBar(el, view, raw, at, from = null) {
         text: isConst(s[q]) ? `${q} = ${JSON.stringify(s[q].const)}` : `${q} ← ${words(s[q])}`, options: columnOptions(view, raw.table, s[q]),
         parts: isConst(s[q]) ? undefined : [q, ' ', el('span', 'ldb-arrow', '←'), ' ', words(s[q])] }));
     }
+    // + Qualifier closes the with group, as the mockup draws it
+    bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));
   }
-  bar.append(addChip(el, `sentences.${at}`, BAR_WORDS.addQualifier));
   if (s.when !== undefined) {
     const wc = whenColumn(s.when);
     bar.append(el('span', 'ldb-word', BAR_WORDS.when), chip(el, view, { kind: 'when', path: `sentences.${at}.when`, cls: 'is-col', constant: true, text: whenWords(s.when),

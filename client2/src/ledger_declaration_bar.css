@@ -4,7 +4,9 @@
    the mockup first. */
 
 .ldb { box-sizing: border-box; max-width: 1920px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 16px;
-  background: var(--bg-app); font-family: var(--font-decl-sans); color: var(--text); font-size: 14px; }
+  background: var(--bg-app); font-family: var(--font-decl-sans); color: var(--text); font-size: 14px; line-height: normal; }
+/* the host page's own h1 · th · button rules (the admin's and the sample's faces) stop at this window's edge */
+.ldb :where(h1, th, button, input) { font-family: inherit; letter-spacing: normal; text-transform: none; line-height: normal; }
 .ldb a { color: var(--accent); }
 .ldb a:hover { color: var(--decl-accent-ink); }
 .ldb-mono { font-family: var(--font-decl-mono); }
@@ -20,7 +22,7 @@
 .ldb-chip.is-big { height: 36px; padding: 0 16px; }
 .ldb-caret { font-size: 10px; color: var(--text-dim); }
 .ldb-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 16px; border-radius: 6px; border: 1px solid var(--border-strong);
-  background: var(--bg-surface); font: inherit; font-size: 14px; color: var(--text); cursor: pointer; letter-spacing: normal; }
+  background: var(--bg-surface); font: inherit; font-size: 14px; color: var(--text); cursor: pointer; letter-spacing: normal; height: auto; gap: normal; }
 .ldb-btn.is-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .ldb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 16px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; }
 .ldb-bar.is-picked { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
@@ -32,13 +34,13 @@
 .ldb-pop { position: absolute; top: 34px; left: 0; z-index: 5; width: 300px; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-strong);
   border-radius: 8px; box-shadow: var(--decl-pop-shadow); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
 .ldb-opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; padding: 0 10px; border-radius: 6px; font-size: 13px;
-  border: 0; background: transparent; color: inherit; font-family: inherit; text-align: left; cursor: pointer; letter-spacing: normal; }
+  border: 0; background: transparent; color: inherit; font-family: inherit; font-weight: 400; text-align: left; cursor: pointer; letter-spacing: normal; height: auto; }
 .ldb-opt.is-on { background: var(--accent-weak); color: var(--decl-accent-ink); }
 .ldb-opt-input { min-height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg-surface); color: var(--text);
   font-family: var(--font-decl-mono); font-size: 13px; box-sizing: border-box; }
 .ldb-hr { height: 1px; background: var(--border); margin: 4px 0; }
-.ldb-type { font-size: 11px; color: var(--text-dim); font-family: var(--font-decl-mono); }
-.ldb-x { width: 28px; height: 28px; border: 0; background: transparent; color: var(--text-dim); font-size: 16px; border-radius: 6px; cursor: pointer; padding: 0; min-height: 0; }
+.ldb-type { font-size: 11px; color: var(--text-dim); font-family: var(--font-decl-mono); font-weight: 400; }
+.ldb-x { width: 28px; height: 28px; border: 0; background: transparent; color: var(--text-dim); font: inherit; font-size: 16px; border-radius: 6px; cursor: pointer; padding: 0; min-height: 0; }
 .ldb-grow { flex-grow: 1; }
 .ldb-gap { width: 12px; }
 .ldb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
@@ -60,3 +62,9 @@
 .ldb-table td { padding: 8px 10px; border-bottom: 1px solid var(--bg-app); white-space: nowrap; }
 .ldb-table td.is-none { color: var(--text-dim); }
 .ldb-json { display: flex; flex-direction: column; gap: 8px; }
+/* A phone (no mockup at this width): the open chip takes its row and its list sits under it, inside the screen. */
+@media (max-width: 600px) {
+  .ldb { padding: 16px; }
+  .ldb-at:has(> .ldb-pop) { flex-basis: 100%; }
+  .ldb-pop { position: static; width: 100%; margin-top: 6px; }
+}
