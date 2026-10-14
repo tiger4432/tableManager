@@ -1839,7 +1839,7 @@ const MUTANTS = [
   { id: 'M52', what: 'a category not declared given no shape', catches: 'SP1 ', file: 'testbed/shape_by.js', key: 'shape',
     mutate: (t) => swap(t, 'const assigned = assignLooks(seen, own, SHAPES);', 'const assigned = {};') },
   { id: 'M53', what: 'the scatter draws every point a circle', catches: 'SP2 ', file: 'testbed/kinds/scatter.js', key: 'scatter',
-    mutate: (t) => swap(t, '...(p.shape ? { symbol: p.shape } : {}),', '') },
+    mutate: (t) => swap(t, "    if (typeof p.shape !== 'object') return { symbol: p.shape };", "    if (typeof p.shape !== 'object') return {};") },
   { id: 'M10', what: 'the status counts a limit-dropped row as hidden by the filters', catches: 'L4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    const shown = new Set(afterPart.kept);', '    const shown = new Set(limited);') },
 ];

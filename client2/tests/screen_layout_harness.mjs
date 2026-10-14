@@ -144,6 +144,22 @@ const KINDS_SAVED = (() => {
     marks: { 'marking:start': [[CX_WAFER, 1]] },
   };
 })();
+// The pictures (lead-board-14): a map filled by its Label by of images, a table's column of them, a scatter's Shape by and
+// its tooltip - a die's two pictures turned in place.
+const IMAGES_SAVED = (() => {
+  const key = (name) => ({ steps: [], value: { on: 'key', name }, words: [name] });
+  const photo = { steps: [], value: { on: 'node', name: 'photo' }, words: ['photo'] };
+  const visual = { part: 'visual', row: 'die', start: { marking: 'marking:start' }, system: 'filter:1', filter: [], writes: 'marking:pick' };
+  return {
+    root: { split: 'row', children: [{ id: 'map-1', size: 1 }, { id: 'table-1', size: 1 }, { id: 'scatter-1', size: 1 }] },
+    visuals: [
+      { ...visual, id: 'map-1', kind: 'map', title: 'Die pictures', encode: { x: key('x'), y: key('y'), label: photo } },
+      { ...visual, id: 'table-1', kind: 'table', title: 'Dies', encode: { col1: key('x'), col2: key('y'), col3: photo } },
+      { ...visual, id: 'scatter-1', kind: 'scatter', encode: { x: key('x'), y: key('y'), shape: photo, tip1: photo } },
+    ],
+    marks: { 'marking:start': [[CX_WAFER, 1]] },
+  };
+})();
 const BOARD_EVENT = '2026-11-23T18:49:00Z';
 for (const [key, a] of Object.entries(ANSWERS)) {
   if (!a || a.same_as || !a.body || !key.startsWith('/api/ledger/subgraph?') || !key.includes(`positive=${encodeURIComponent(CX_WAFER)}`) || !key.includes('hops=')) continue;
@@ -153,10 +169,22 @@ for (const [key, a] of Object.entries(ANSWERS)) {
     step: Number(n.keys.x) % 2 ? 'STEP-A' : 'STEP-B', eventtime: { $datetime: BOARD_EVENT },
     meas_id: `fake-SYN-CX-BW-001-core_cmp_nonuniform-${n.keys.x}-${n.keys.y}` } })) };
 }
+// Pictures on the dies (lead-board-14) while the «images» state is on - a column the walk declares image, which the box's
+// dies carry none of: an odd x two pictures, an even one; /api/image answers one 32 x 16 picture (its ratio not the cell's).
+const PHOTOS = { on: false };
+const PHOTO_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAACAAAAAQCAIAAAD4YuoOAAAAIklEQVR4nGO4kOBAEnJouEASYhi1YNSCUQtGLRi1YChYAACOSwAumyb+zAAAAABJRU5ErkJggg==', 'base64');
+const withPhotos = (a) => {
+  const b = bodyOf(a);
+  if (!Array.isArray(b.nodes)) return a;
+  return { ...a, body: { ...b, nodes: b.nodes.map((n) => (n.type !== 'die' ? n : { ...n,
+    attributes: { ...(n.attributes || {}), photo: Number(n.keys.x) % 2 ? [`d${n.keys.x}-${n.keys.y}-a`, `d${n.keys.x}-${n.keys.y}-b`] : `d${n.keys.x}-${n.keys.y}-a` },
+    records: { ...(n.records || {}), photo: [{ column_type: 'image' }] } })) } };
+};
 const answerOf = (u) => {
   for (const [p, body] of Object.entries(QUEUE)) if (u.pathname === p) return { status: 200, type: 'application/json', body };
   const a = ANSWERS[u.pathname + u.search];
-  return a && a.same_as ? ANSWERS[a.same_as] : a || null;
+  const got = a && a.same_as ? ANSWERS[a.same_as] : a || null;
+  return got && PHOTOS.on && u.pathname === '/api/ledger/subgraph' ? withPhotos(got) : got;
 };
 // Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
 const CELLS = [
@@ -313,6 +341,21 @@ CELLS.push({ entry: 'testbed.html', after: 'tooltip over a cell', rule: 'time as
   const line = [...tip.children].map((x) => x.textContent).find((s) => s.startsWith('eventtime'));
   if (!line) return 'the tooltip says no eventtime: ' + tip.textContent.slice(0, 60);
   return /^eventtime: \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(line) ? null : 'the tooltip says «' + line + '»';
+})()` });
+// A picture inside its place with its ratio kept, a table's line one height, the map's cells filled (lead-board-14).
+CELLS.push({ entry: 'testbed.html', after: 'images', rule: 'picture in its place', at: 'sf-thumb', expr: `(() => {
+  const imgs = [...document.querySelectorAll('.sf-thumb__img')].filter((i) => i.getClientRects().length && i.naturalWidth > 0);
+  if (!imgs.length) return 'no picture drawn in a table cell';
+  for (const i of imgs) {
+    const r = i.getBoundingClientRect();
+    const box = i.closest('td').getBoundingClientRect();
+    if (r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1) return 'a picture out of its cell';
+    if (Math.abs(r.width / r.height - i.naturalWidth / i.naturalHeight) > 0.1) return 'a picture ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' of a ' + i.naturalWidth + 'x' + i.naturalHeight + ' one';
+  }
+  const lines = [...document.querySelectorAll('.sf-table--images tr')].filter((tr) => tr.querySelector('td'));
+  if (lines.some((tr) => Math.abs(tr.getBoundingClientRect().height - 48) > 2)) return 'a line of the table of pictures not 48 px';
+  const cells = document.querySelectorAll('.tb-map__svg image').length;
+  return cells ? null : 'the map drew no picture in a cell';
 })()` });
 // Every picture fills its div after the window shrank and grew (lead 10-14: 40 x 44 left in a 280 x 179 panel).
 CELLS.push({ entry: 'testbed.html', after: 'shrunk and grown', rule: 'picture fills its div', at: 'tb-plot', expr: `(() => {
@@ -810,6 +853,7 @@ async function servePage(chrome, dist) {
     const file = path.join(dist, decodeURIComponent(u.pathname));
     if (path.extname(u.pathname) && existsSync(file)) { reply(200, MIME[path.extname(file)] || 'application/octet-stream', readFileSync(file)); return; }
     if (resourceType === 'Other' && u.pathname === '/favicon.ico') { reply(404, 'text/plain', ''); return; }
+    if (u.pathname === '/api/image') { reply(200, 'image/png', PHOTO_PNG); return; }
     const a = answerOf(u);
     if (!a) { log.missing.add(u.pathname + u.search); reply(404, 'application/json', JSON.stringify({ detail: 'no answer in screens_answers.json.gz' })); return; }
     // An answer captured with no body (a 204) is an empty one - not a crash of the whole run.
@@ -1221,6 +1265,7 @@ const DRIVE = {
   'testbed.html': [
     // a board saved by a state before (the dies below, or Save pressed while panels were opened) - the page's own layout
     ['Add start opened', async (c, log) => {
+      PHOTOS.on = false;
       const had = await evaluate(c, "(() => { const had = localStorage.getItem('testbed:visuals') !== null; localStorage.removeItem('testbed:visuals'); return had; })()");
       if (had) await openAgain(c, log);
       await openStartPicker(c);
@@ -1287,8 +1332,17 @@ const DRIVE = {
       await c.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
       await sleep(800);
     }],
+    // The pictures (IMAGES_SAVED, lead-board-14): the photos on, the board opened; the table's pictures in
+    ['images', async (c, log) => {
+      PHOTOS.on = true;
+      await evaluate(c, `localStorage.setItem('testbed:visuals', ${JSON.stringify(JSON.stringify(IMAGES_SAVED))}); true`);
+      await openAgain(c, log);
+      await until(c, "document.querySelectorAll('.sf-part').length >= 3 && [...document.querySelectorAll('.sf-thumb__img')].some((i) => i.complete && i.naturalWidth > 0)", 15000);
+      await sleep(600);
+    }],
     // Every kind in one board (KINDS_SAVED): the part frame the same round each kind's area (lead 10-14)
     ['every kind', async (c, log) => {
+      PHOTOS.on = false;
       await evaluate(c, `localStorage.setItem('testbed:visuals', ${JSON.stringify(JSON.stringify(KINDS_SAVED))}); true`);
       await openAgain(c, log);
       await until(c, "document.querySelectorAll('.sf-part').length >= 6 && document.querySelectorAll('[data-panel=\"table-1\"] td').length > 0", 15000);
