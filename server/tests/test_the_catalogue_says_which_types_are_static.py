@@ -81,6 +81,8 @@ def test_the_value_follows_the_declaration(monkeypatch):
     monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["w"], "class": "static"}},
         "vocabulary": {}})
+    from ledger import worker
+    worker._COMPILED.clear()                     # a changed declaration is a changed file - the held one goes
     assert catalogue()["entities"][0]["class"] == ["static"]
 
 
@@ -185,6 +187,8 @@ def test_the_declared_keys_come_from_the_declaration(monkeypatch):
     assert trace_router._declared_keys("wafer") == {"a", "b"}
     monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["a"]}}, "vocabulary": {}})
+    from ledger import worker
+    worker._COMPILED.clear()                     # a changed declaration is a changed file - the held one goes
     assert trace_router._declared_keys("wafer") == {"a"}
 
 

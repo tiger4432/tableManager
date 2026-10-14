@@ -124,6 +124,19 @@ def _the_loaded_chain_rules_are_forgotten():
 # ===========================================================================
 
 @pytest.fixture(autouse=True)
+def _the_held_declarations_are_forgotten():
+    """A declaration one test read (`ledger.worker._stamped` holds it until its file changes) must not answer for the
+    next, whose fake `config.load` would otherwise never be asked. Only when the module is already imported."""
+    worker = sys.modules.get("ledger.worker")
+    if worker is not None:
+        worker._COMPILED.clear()
+    yield
+    worker = sys.modules.get("ledger.worker")
+    if worker is not None:
+        worker._COMPILED.clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_chain_slot_process_unless_asked(request):
     """The chain loop sizes its slot pool every turn: a test running the real loop started real
     `python -m chain.slots` processes, which died on the test's database and slowed the loop the
