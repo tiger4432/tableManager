@@ -42,6 +42,7 @@ import copy
 import logging
 import os
 import re
+import time
 
 logger = logging.getLogger("EnrichmentConfig")
 
@@ -1639,6 +1640,7 @@ def execute_reference_view(db, view: dict, bind_params: dict = None,
 
     exec_params = _probe_params(view, supplied, needed, caps)
     stmt = text(REFERENCE_LIMIT_WRAP_SQL.format(query=view["query"]))
+    started = time.monotonic()
     try:
         columns, raw_rows = _isolated_execute(db, stmt, exec_params)
     except Exception as e:
@@ -1652,6 +1654,14 @@ def execute_reference_view(db, view: dict, bind_params: dict = None,
         # person is usually mid-repair. See `_reference_view_failure`.
         raise _reference_view_failure(SITE_REFERENCE_VIEW, e,
                                       follow_up=follow_up) from e
+    # a slow view asks for the indexes its whole-table filters want - its plan read after, on its own thread, through
+    # the grid's door and threshold (`runtime.index_wants`, 소유자 10-14 «넓혀»)
+    seconds = time.monotonic() - started
+    from parsers.directory_watcher import grid_auto_index_after
+    slow = grid_auto_index_after()
+    if slow and seconds > slow:
+        from runtime import index_wants
+        index_wants.want_plan(view.get("label") or "(unnamed)", stmt.text, exec_params, seconds, db.get_bind())
     return columns, [list(r) for r in raw_rows]
 
 

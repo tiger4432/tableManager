@@ -1705,13 +1705,22 @@ INDEX_INVALID = "invalid"
 INDEX_BUILDING = "building"
 INDEX_UNKNOWN = "unknown"
 
+#: The columns a trigram index reads, or none - from pg_depend: a key is a column (a varchar's `search_text` folds to
+#: it) or an expression (indkey 0). `{x}` is the pg_index row's alias; both catalogue reads below carry it.
+_TRIGRAM_READS = (
+    "ARRAY(SELECT a.attname FROM pg_depend d JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid"
+    "      WHERE d.classid = 'pg_class'::regclass AND d.objid = {x}.indexrelid AND d.refobjsubid > 0"
+    "        AND EXISTS (SELECT 1 FROM unnest({x}.indclass::oid[]) AS k(o) JOIN pg_opclass p ON p.oid = k.o"
+    "                    WHERE p.opcname = 'gin_trgm_ops') ORDER BY a.attnum)")
+
 _HELD = (
     "SELECT c.relname AS name, t.relname AS table_name, i.indisvalid AS valid,"
     "       i.indisprimary AS is_primary, pg_relation_size(c.oid) AS size_bytes, s.idx_scan AS scans,"
     "       obj_description(c.oid, 'pg_class') AS said,"
     "       ARRAY(SELECT a.attname FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, n)"
     "             LEFT JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum"
-    "             WHERE k.n <= i.indnkeyatts ORDER BY k.n) AS columns"
+    "             WHERE k.n <= i.indnkeyatts ORDER BY k.n) AS columns,"
+    "       " + _TRIGRAM_READS.format(x="i") + " AS search"
     "  FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_class t ON t.oid = i.indrelid"
     "  LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.indexrelid"
     " WHERE t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
@@ -1732,6 +1741,11 @@ def model_tables():
 
 #: Why a search index is not built where the trigram operator class is missing - said in its state.
 PG_TRGM_MISSING = ("the pg_trgm extension is missing - run CREATE EXTENSION pg_trgm once as a superuser, then reload")
+
+
+def has_trigram(connection) -> bool:
+    """Is the pg_trgm extension in this database - a search index's and a slow search's one answer."""
+    return connection.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")).first() is not None
 
 
 def search_text(column):
@@ -1925,19 +1939,19 @@ _CATALOGUE_INDEXES = (
     "SELECT i.relname, am.amname, x.indpred IS NOT NULL,"
     "       ARRAY(SELECT a.attname FROM unnest(x.indkey::int2[]) WITH ORDINALITY AS k(attnum, n)"
     "             LEFT JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = k.attnum"
-    "             WHERE k.n <= x.indnkeyatts ORDER BY k.n)"
+    "             WHERE k.n <= x.indnkeyatts ORDER BY k.n), " + _TRIGRAM_READS.format(x="x") +
     "  FROM pg_index x JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_am am ON am.oid = i.relam"
     " WHERE x.indrelid = to_regclass(%s) AND x.indisvalid ORDER BY i.relname")
 
 
 def catalogue_indexes(dbapi_conn, relation) -> list:
     """`relation`'s valid indexes as the catalogue has them, in `orders_rows_by`'s shape: {name, columns (an expression
-    is None), using, where ("partial" or None)}."""
+    is None), using, where ("partial" or None)}, and `search` - the columns a trigram index reads."""
     with dbapi_conn.cursor() as cursor:
         cursor.execute(_CATALOGUE_INDEXES, (".".join('"%s"' % part for part in str(relation).split(".")),))
         rows = cursor.fetchall()
-    return [{"name": name, "columns": list(columns), "using": using, "where": "partial" if partial else None}
-            for name, using, partial, columns in rows]
+    return [{"name": name, "columns": list(columns), "using": using, "where": "partial" if partial else None,
+             "search": list(search)} for name, using, partial, columns, search in rows]
 
 
 def _building(connection):
@@ -1978,7 +1992,7 @@ def index_states(engine, tables=None, static=True):
         held = {row.name: row for row in connection.execute(
             text(_HELD), {"tables": models_tables + sorted({row["table"] for row in declared} | set(tables or {}))})}
         building = _building(connection)
-        trigram = connection.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")).first() is not None
+        trigram = has_trigram(connection)
     for row in declared:
         found = held.pop(row["name"], None)
         row["building"] = building.get(row["name"])
@@ -1990,8 +2004,8 @@ def index_states(engine, tables=None, static=True):
                 row["failure"] = found.said[len(INDEX_FAILED_SAID):]
         elif row.get("search") and (row.get("refused") or not trigram):
             row.update(failure=row.get("refused") or PG_TRGM_MISSING, unbuildable=True)
-    auto = [dict(name=name, table=row.table_name, columns=list(row.columns or ()), where=None, include=[], using=None,
-                 search=False, unique=False, constraint=False, purpose="auto (%s)" % auto_index_why(row.said),
+    auto = [dict(name=name, table=row.table_name, columns=list(row.search or row.columns or ()), where=None, include=[],
+                 using="gin" if row.search else None, search=bool(row.search), unique=False, constraint=False, purpose="auto (%s)" % auto_index_why(row.said),
                  serves=None, source="auto", building=building.get(name),
                  state=INDEX_BUILDING if building.get(name) else INDEX_PRESENT if row.valid else INDEX_INVALID,
                  failure=(row.said or "")[len(INDEX_FAILED_SAID):] if (row.said or "").startswith(INDEX_FAILED_SAID)
@@ -2085,35 +2099,45 @@ BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
 
 # --------------------------------------------------------------- the product's automatic indexes
 # 🔴 THE COLUMNS IN USE, AND ONLY THEM (총괄 ff7890892, 소유자 「쓰이는 칸만」 - every column cost +14~17 % a chain write
-#    and 5.7 times the table's disk): a decide rule's judgment key, and a grid sort or equal/range filter that was slow.
-#    (columns, row_id), named `ix_auto_<table>_<columns>` and built by the chain worker's index line through
+#    and 5.7 times the table's disk): a decide rule's judgment key, a grid sort or equal/range filter that was slow, and
+#    a slow reference view's whole-table filter (소유자 10-14 «넓혀»: equal/IN as a filter, LIKE/ILIKE as a search).
+#    (columns, row_id) - a search: the declared search index's trigram (`table_index_ddl`), `..._search` -, named
+#    `ix_auto_<table>_<columns>` and built by the chain worker's index line through
 #    `_build_one`, as a declared one is. No table records them: the database's list is the state - the prefix says the
 #    product built it, the comment says why («auto: decide key»).
 AUTO_INDEX_PREFIX = "ix_auto_"
 AUTO_SAID = "auto: "
 AUTO_DECIDE_KEY, AUTO_SLOW_SORT, AUTO_SLOW_FILTER = "decide key", "slow sort", "slow filter"
+AUTO_SLOW_SEARCH = "slow search"
 
 
-def auto_index_name(table, columns):
-    return table_index_name(table, columns, AUTO_INDEX_PREFIX)
+def auto_index_name(table, columns, why=None):
+    return table_index_name(table, [*columns, "search"] if why == AUTO_SLOW_SEARCH else list(columns),
+                            AUTO_INDEX_PREFIX)
 
 
-def auto_index_ddl(table, columns):
-    """The automatic index over `columns` then `row_id`, CONCURRENTLY and IF NOT EXISTS."""
+def auto_index_ddl(table, columns, why=None):
+    """The automatic index over `columns` then `row_id` - a search's the trigram one - CONCURRENTLY and IF NOT EXISTS."""
+    name = auto_index_name(table, columns, why)
+    if why == AUTO_SLOW_SEARCH:
+        return table_index_ddl({"search": True, "name": name, "table": table, "columns": list(columns)})
     quoted = ['"%s"' % str(column).replace('"', '""') for column in [*columns, "row_id"]]
     return 'CREATE INDEX CONCURRENTLY IF NOT EXISTS "%s" ON "%s" (%s)' % (
-        auto_index_name(table, columns), str(table).replace('"', '""'), ", ".join(quoted))
+        name, str(table).replace('"', '""'), ", ".join(quoted))
 
 
 def auto_index_why(said):
-    """What an automatic index's comment says it is for - «decide key» · «slow sort» · «slow filter», or «unknown»."""
+    """What an automatic index's comment says it is for - «decide key» · «slow sort» · «slow filter» · «slow search»,
+    or «unknown»."""
     return said[len(AUTO_SAID):] if (said or "").startswith(AUTO_SAID) else "unknown"
 
 
 def auto_index_serves(index, columns, why):
     """Does `index` (a catalogue row) already serve what an automatic index over `columns` is wanted for: a sort needs
     the rows in (columns, row_id) order (1M 판: the column alone 724 ms · with row_id 3.3 ms), an equal or range
-    lookup the columns leading."""
+    lookup the columns leading, a search a trigram index reading them."""
+    if why == AUTO_SLOW_SEARCH:
+        return set(columns) <= set(index.get("search") or ())
     return orders_rows_by(index, [*columns, "row_id"] if why == AUTO_SLOW_SORT else list(columns))
 
 
@@ -2147,7 +2171,7 @@ def ensure_auto_indexes(engine, wanted, say=print, say_every=INDEX_WAIT_SAY_SECO
     done = {}
     for table, columns, why in list(wanted) + list(decide_keys or ()):
         entry = crud.TABLE_CONFIG.get(table) or {}
-        name = auto_index_name(table, columns)
+        name = auto_index_name(table, columns, why)
         if name in done or entry.get("kind") == "view":
             continue
         with engine.connect() as connection:
@@ -2162,7 +2186,8 @@ def ensure_auto_indexes(engine, wanted, say=print, say_every=INDEX_WAIT_SAY_SECO
             say("[Indexes] %s on %s is not built: %s already holds %d automatic indexes (auto_index_per_table %d) - "
                 "%s on %s" % (name, table, table, made, cap, why, ", ".join(columns)))
             continue
-        done[name] = _build_one(engine, auto_index_ddl(table, columns), {"name": name, "table": table}, say, say_every)
+        done[name] = _build_one(engine, auto_index_ddl(table, columns, why), {"name": name, "table": table}, say,
+                                say_every)
         if done[name] == INDEX_BUILT:
             with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
                 connection.execute(text('COMMENT ON INDEX "%s" IS :why' % name.replace('"', '""')),
