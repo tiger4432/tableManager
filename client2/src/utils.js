@@ -319,7 +319,8 @@ export function retroactiveKey(runId) {
   return `retroactive-${String(runId ?? '').replace(/[^a-zA-Z0-9]/g, '_')}`;
 }
 
-export function showRetroactiveProgress(runId, op, progress, processedRows, totalRows, phase = null, phaseSeconds = null) {
+export function showRetroactiveProgress(runId, op, progress, processedRows, totalRows, beat = null) {
+  const b = beat || {};
   showProgressCard({
     key: retroactiveKey(runId),
     title: '♻️ Retroactive apply running',
@@ -332,7 +333,10 @@ export function showRetroactiveProgress(runId, op, progress, processedRows, tota
     total: totalRows,
     statsSuffix: ' rows processed',
     // before its pages: the step the server is in, the same words as the run's queue line
-    stats: runProgressWords({ phase, phaseSeconds, processed: processedRows }),
+    stats: runProgressWords({ phase: b.phase, phaseSeconds: b.phase_seconds, processed: processedRows, total: totalRows,
+      rowsPerSecond: b.rows_per_second, secondsLeft: b.seconds_left }),
+    // a page's event carries no beat (implementer A): the card keeps the last beat's line until the next (5 s)
+    keepStats: !beat,
     doneTitle: '✅ Retroactive apply done',
     doneStats: '',
   });
