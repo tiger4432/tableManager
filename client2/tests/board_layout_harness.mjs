@@ -336,6 +336,8 @@ async function chains(M) {
   p.active.set('active', a);
   await settle();
   const said = walk(p.shell.partOf('properties').host).filter((n) => String(n.className).includes('sf-props__refused')).map((n) => n._text);
+  // the panel's Data lines: no Route (owner 10-14 - the part walks every route; a saved route is read, not walked)
+  out.panel = walk(p.shell.partOf('properties').host).filter((n) => String(n.className) === 'sf-props__lab').map((n) => n._text);
   out.loop = { refused, kept: JSON.stringify(part(a).declaration()) === aWas, loop: part(a).loop, said,
     self: M.visual.chainLoop([{ id: 'S', start: { marking: m3 }, writes: m3 }]), limitIsNoStep: M.visual.chainLoop([{ id: 'T', start: { marking: 'marking:start' }, limit: { markings: [m3] }, writes: m3 }]) };
   // K5: Save, then a new page from it - the markings and the chain's declarations
@@ -1466,6 +1468,7 @@ async function suite(M) {
       k.chain, { walks: [], b: ['W1', 'W2'], c: ['W2', 'W3'], held: [['W1'], ['W2'], ['W3']] }),
     judge('K2b the same chain seated alone: B and C walk once each, in turn; each marking keeps what its part\'s new data holds',
       sc, { walked: ['B:W1', 'C:W2'], held: [['W1'], ['W2'], ['W3']] }),
+    judge('W10 the panel names no Route - Start from and Rows only', [k.panel.includes('Route'), k.panel.includes('Start from'), k.panel.includes('Rows')], [false, true, true]),
     judge('K3 a loop of markings refused and named, the declaration kept; a part walking from what it writes is one; a limit is not a step',
       k.loop, { refused: false, kept: true, loop: ['marking:3', 'table-2', 'marking:4', 'table-3', 'marking:5', 'table-1', 'marking:3'],
         said: ['Refused - a loop: Marking (3) → wafer → Marking (4) → wafer → Marking (5) → wafer → Marking (3)'],
@@ -1794,6 +1797,8 @@ const MUTANTS = [
     mutate: (t) => swap(t, 'const coming = walks.find(', 'const coming = false && walks.find(') },
   { id: 'PWM19', what: 'the page\'s row walk in hand not taken by another part', catches: 'PW13 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'const held = walks.find(', 'const held = false && walks.find(') },
+  { id: 'PWM20', what: 'a part that writes a marking walks no relations - the edges its marking spreads along not on the page', catches: 'W9 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'return this.writes && columns.length ? columns : null;', 'return null;') },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
