@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WS = join(HERE, '..', 'src', 'websocket.js');
 const UTILS = join(HERE, '..', 'src', 'utils.js');
+const RV = join(HERE, '..', 'src', 'retroactive_view.js');
 
 let pass = 0;
 const failures = [];
@@ -39,7 +40,7 @@ function installDom() {
   globalThis.WebSocket = function () {};
 }
 
-async function score(mutate) {
+async function score(mutate, target = 'ws') {
   pass = 0; failures.length = 0;
   installDom();
   const calls = [];
@@ -57,7 +58,7 @@ async function score(mutate) {
         getLocalTimeString: () => '',
       },
     },
-    mutate,
+    ...(mutate && target === 'ws' ? { mutate } : {}),
     tag: 'retroprog',
   });
 
@@ -74,13 +75,17 @@ async function score(mutate) {
                      progress: 25, processed_rows: 5, total_rows: 20, status: 'PROCESSING' });
   eq('A3 소급 이벤트는 소급 독자로', ['retro'], run.map(c => c.name));
   eq('A4 ...run_id 와 op 를 주어로, 서버 값 그대로',
-     ['R1', 'enrichment_confirm', 25, 5, 20], run[0].args);
+     ['R1', 'enrichment_confirm', 25, 5, 20, undefined, undefined], run[0].args);
+  // implementer A 10-14: the beat before the pages carries the step and its seconds
+  const beat = send({ event: 'file_ingestion_progress', run_id: 'R4', op: 'ledger_rescope', progress: null,
+                      processed_rows: null, total_rows: null, status: 'PROCESSING', phase: 'Starting 4 slices', phase_seconds: 12 });
+  eq('A12 a beat before the pages hands its step and seconds on', ['R4', 'ledger_rescope', null, null, null, 'Starting 4 slices', 12], beat[0].args);
 
   // 🔴 총계를 «모르는» 것은 0 이 아닙니다 — 그대로 넘어가야 카드가 「0 중 5」를 안 말합니다.
   const unknown = send({ event: 'file_ingestion_progress', run_id: 'R2', op: 'backfill',
                          progress: null, processed_rows: 5, total_rows: null, status: 'PROCESSING' });
   eq('A5 모르는 총계는 null 그대로, 0 으로 접히지 않는다',
-     ['R2', 'backfill', null, 5, null], unknown[0].args);
+     ['R2', 'backfill', null, 5, null, undefined, undefined], unknown[0].args);
 
   // ══ 끝 — 이 이벤트 «하나»로 들어옵니다. 끝난 이유는 status 가 말합니다 ══════════
   const done = send({ event: 'file_ingestion_progress', run_id: 'R1', op: 'x',
@@ -105,6 +110,20 @@ async function score(mutate) {
   ok('A11 ...그리고 run_id 가 키에 «실제로» 들어간다', u.retroactiveKey('R1').includes('R1'),
      u.retroactiveKey('R1'));
 
+  // ══ the step before the pages - one seat for the card and the queue line ═════════════
+  const { module: rv } = await loadWithProbe(RV, { stubs: {}, tag: 'retrophase', ...(mutate && target === 'rv' ? { mutate } : {}) });
+  eq('A13 before the pages: the step and its seconds', 'Starting 4 slices · 12 s', rv.runProgressWords({ phase: 'Starting 4 slices', phaseSeconds: 12, processed: null }));
+  eq('A14 ...the step alone when the server sends no seconds', 'Counting rows', rv.runProgressWords({ phase: 'Counting rows', phaseSeconds: null, processed: 0 }));
+  eq('A15 once rows are processed the counts say it', '', rv.runProgressWords({ phase: 'Writing', phaseSeconds: 3, processed: 1000 }));
+  const line = rv.buildRunsView({ runs: [{ run_id: 'R4', op: 'ledger_rescope', state: 'running', processed_rows: null, total_rows: null,
+    phase: 'Starting 4 slices', phase_seconds: 12, queued_at: '2026-10-14T01:00:00Z', started_at: '2026-10-14T01:00:00Z' }], state_names: {} },
+    Date.parse('2026-10-14T01:00:30Z'), {}, {}).runs[0];
+  eq('A16 the queue line draws the same words', 'Starting 4 slices · 12 s', line && line.progress && line.progress.text);
+  const paged = rv.buildRunsView({ runs: [{ run_id: 'R5', op: 'ledger_rescope', state: 'running', processed_rows: 500, total_rows: 2000,
+    phase: 'Writing', phase_seconds: 40, queued_at: '2026-10-14T01:00:00Z', started_at: '2026-10-14T01:00:00Z' }], state_names: {} },
+    Date.parse('2026-10-14T01:01:00Z'), {}, {}).runs[0];
+  eq('A17 ...and the counts once pages come, as today', '500 / 2,000', paged && paged.progress && paged.progress.text);
+
   return { pass, failures: failures.slice() };
 }
 
@@ -123,8 +142,17 @@ const MUTATIONS = [
    s => s.replace("      if (msg.status === 'FINISHED' || msg.status === 'CANCELLED') {\n        finishRetroactiveProgress(msg.run_id, msg.status);",
                   "      if (msg.status === 'FINISHED' || msg.status === 'CANCELLED') {\n        finishRetroactiveProgress(msg.run_id, 'FINISHED');")],
   ['M4 an unknown total is sent as zero',
-   s => s.replace('          msg.processed_rows, msg.total_rows);',
-                  '          msg.processed_rows, msg.total_rows || 0);')],
+   s => s.replace('          msg.processed_rows, msg.total_rows, msg.phase, msg.phase_seconds);',
+                  '          msg.processed_rows, msg.total_rows || 0, msg.phase, msg.phase_seconds);')],
+  ['M6 the beat\'s step is not handed on',
+   s => s.replace('          msg.processed_rows, msg.total_rows, msg.phase, msg.phase_seconds);',
+                  '          msg.processed_rows, msg.total_rows);')],
+  ['M7 the step drawn over the counts',
+   s => s.replace('  if (Number.isFinite(r.processed) && r.processed > 0) return \'\';', ''), 'rv'],
+  ['M8 the seconds dropped',
+   s => s.replace('`${phase} · ${Math.round(r.phaseSeconds)} s`', 'phase'), 'rv'],
+  ['M9 the queue line asks nothing of the step',
+   s => s.replace("  if (words) return { mode: 'text'", "  if (false) return { mode: 'text'"), 'rv'],
   ['M5 the ingestion branch starts taking the retroactive subject',
    s => s.replace('      msg.table_name,\n      msg.filename,', '      msg.run_id,\n      msg.op,')],
 ];
@@ -132,9 +160,9 @@ const MUTATIONS = [
 if (process.argv.includes('--mutate')) {
   console.log('\n── MUTATIONS (each must turn the harness RED) ──');
   let caught = 0; const green = [];
-  for (const [name, apply] of MUTATIONS) {
+  for (const [name, apply, target] of MUTATIONS) {
     let r;
-    try { r = await score(apply); }
+    try { r = await score(apply, target || 'ws'); }
     catch (e) { console.log(`  ~ ${name} -> harness THREW (${e && e.message})`); caught++; continue; }
     if (r.failures.length === 0) { console.log(`  ✗ ${name} -> STILL GREEN`); green.push(name); continue; }
     caught++;

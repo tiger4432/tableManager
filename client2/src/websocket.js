@@ -355,7 +355,7 @@ export function handleWebSocketMessage(msg) {
         finishRetroactiveProgress(msg.run_id, msg.status);
       } else {
         showRetroactiveProgress(msg.run_id, msg.op, msg.progress,
-          msg.processed_rows, msg.total_rows);
+          msg.processed_rows, msg.total_rows, msg.phase, msg.phase_seconds);
       }
       return;
     }

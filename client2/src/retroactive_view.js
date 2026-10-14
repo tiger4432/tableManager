@@ -418,10 +418,26 @@ export function elapsedMinutes(startedAt, now) {
 }
 
 /** 진행 칸 하나. 막대는 «전체를 아는 때만»이고, 모르면 수와 경과를 글자로. */
-export function buildProgressCell(processed, total, minutes) {
+/**
+ * A running run's words before its pages come (owner 10-14 «러닝은 뜨는데 진행 상황이 안 나옴»): the server's step and its
+ * seconds - «Counting rows · 12 s» (implementer A: `phase` · `phase_seconds`, on the run record and on the progress event,
+ * from one server function). Once rows are processed the counts say it and this is ''. The one seat both the progress
+ * card and the run's queue line ask; it computes no rate and no time left (the server sends none as a value).
+ */
+export function runProgressWords(run) {
+  const r = run || {};
+  if (Number.isFinite(r.processed) && r.processed > 0) return '';
+  const phase = typeof r.phase === 'string' ? r.phase.trim() : '';
+  if (!phase) return '';
+  return Number.isFinite(r.phaseSeconds) ? `${phase} · ${Math.round(r.phaseSeconds)} s` : phase;
+}
+
+export function buildProgressCell(processed, total, minutes, words = '') {
   const done = Number.isFinite(processed) ? Number(processed) : null;
   const all = Number.isFinite(total) && Number(total) > 0 ? Number(total) : null;
   const elapsed = Number.isFinite(minutes) ? `${minutes}m` : null;
+  // before its pages: the step the server says it is in
+  if (words) return { mode: 'text', percent: null, processed: done, total: all, elapsedMinutes: minutes, text: words, elapsed };
   if (all !== null && done !== null) {
     const percent = Math.max(0, Math.min(100, Math.round((done / all) * 100)));
     return { mode: 'bar', percent, processed: done, total: all, elapsedMinutes: minutes,
@@ -499,7 +515,8 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       //    「아무도 안 걸었다」가 아니라 「이 행이 그 말을 안 한다」입니다. 여기서 '모름' 같은
       //    낱말을 «지어 넣지 않습니다**: 그리는 쪽이 그 null 을 보고 정합니다.
       who: text(run.requested_by),
-      progress: buildProgressCell(run.processed_rows, run.total_rows, minutes),
+      progress: buildProgressCell(run.processed_rows, run.total_rows, minutes,
+        runProgressWords({ phase: run.phase, phaseSeconds: run.phase_seconds, processed: run.processed_rows })),
       // 🔴 멈출 수 없는 연산에는 × 를 안 그립니다 — 누르면 아무 일도 안 일어나는
       //    버튼은 화면이 하는 거짓말입니다. 선언이 모르는 연산도 그리지 않습니다.
       // 끝난 작업에는 «절대» 안 답니다. 눌러도 아무 일이 안 나거나 더 나쁜 일이 납니다.

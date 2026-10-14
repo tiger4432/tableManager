@@ -78,6 +78,7 @@ const isDone = (card) => DONE_CLASSES.some(c => card.classList.contains(c));
  * @param {*} [decl.processed]     처리한 수. 모르면 «—»
  * @param {*} [decl.total]         전체 수. 모르면 «—»
  * @param {string} [decl.statsSuffix]  두 수 뒤에 붙는 말 (예: 「행 처리됨」)
+ * @param {string} [decl.stats]        the line under the bar in its place, as text - a step before any count exists
  * @param {string} [decl.doneTitle]    완료로 판정됐을 때의 제목
  * @param {string} [decl.doneStats]    완료로 판정됐을 때의 아래 줄
  */
@@ -124,6 +125,7 @@ export function showProgressCard(decl) {
     </div>` : ''}
     <div class="progress-stats">${localeCountText(pr)} / ${localeCountText(tr)}${statsSuffix}</div>
   `;
+  if (decl.stats) { const line = card.querySelector('.progress-stats'); if (line) line.textContent = String(decl.stats); }
 
   // 모르는 진행률로는 «완료 판정»도 못 합니다 — 0 을 100 과 견주는 셈이 됩니다.
   const complete = (known && p >= 100)
