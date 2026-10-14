@@ -2,7 +2,7 @@
 // the cell values folded over the rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its
 // rows, given back whole; its paint (marked, Color by) is the root's.
 
-import { combosOf, slotWords, foldRows, EMPTY, PART_SEP } from '../slot.js';
+import { combosOf, slotWords, foldRows, EMPTY, PART_SEP, categoryCompare } from '../slot.js';
 
 /** What a cell holds with no cell slot: its rows, each once (owner 10-14 «ㅇㅇ 행수») - said as the fold it is. */
 export const ROWS_COUNT = 'UniqueCount(rows)';
@@ -55,11 +55,14 @@ export function crossModel(rows, ctx) {
     }
   }
   const parts = (k) => partsOf.get(k) || [k];
-  const level = (a, b) => (a === EMPTY) - (b === EMPTY) || (a < b ? -1 : a > b ? 1 : 0);
-  const sort = (keys) => [...keys].sort((a, b) => { const [p, q] = [parts(a), parts(b)]; for (let i = 0; i < Math.max(p.length, q.length); i += 1) { const d = level(p[i] || '', q[i] || ''); if (d) return d; } return 0; });
+  // each level in the one order of categories (slot.js categoryCompare - the axis's time from its scale)
+  const sort = (keys, key) => {
+    const level = categoryCompare(Boolean(ctx.scale && ctx.scale(key).time));
+    return [...keys].sort((a, b) => { const [p, q] = [parts(a), parts(b)]; for (let i = 0; i < Math.max(p.length, q.length); i += 1) { const d = level(p[i] || '', q[i] || ''); if (d) return d; } return 0; });
+  };
   const enc = (ctx.declaration && ctx.declaration.encode) || {};
-  const R = sort(rowKeys);
-  const C = sort(colKeys);
+  const R = sort(rowKeys, 'rows');
+  const C = sort(colKeys, 'columns');
   const grid = R.map((r) => C.map((c) => {
     const cell = cells.get(keyOf(r, c));
     if (!cell) return { value: null, ids: [], marked: false };

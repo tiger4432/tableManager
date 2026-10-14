@@ -4,7 +4,7 @@
 
 import { numberOf } from '../../walk/reach_table.js';
 import { MARKER_PX, MARKER_PCT } from '../palette.js';
-import { slotWords, scaleOf } from '../slot.js';
+import { slotWords, scaleOf, categoryOrder } from '../slot.js';
 
 /** Its slots: the axes on the template's trays - Y on the left, X under. */
 export const SLOTS = Object.freeze([
@@ -51,15 +51,6 @@ export function scatterModel(units, ctx) {
     // a trellis panel's axes: the extents over every panel (the root's)
     range: ctx.extent ? { x: ctx.extent('x'), y: ctx.extent('y') } : null,
     size: MARKER_PX * (((ctx.declaration && ctx.declaration.markerPct) || MARKER_PCT) / MARKER_PCT) };
-}
-
-/** A category axis's values in order: times by their instant (a datetime picked categorical - owner 10-14), numbers by
- *  their value, the rest as text. */
-export function categoryOrder(values, time = false) {
-  const distinct = [...new Set(values.map(String))];
-  if (time) return distinct.sort((a, b) => Date.parse(a) - Date.parse(b));
-  if (distinct.length && distinct.every((v) => numberOf(v) !== null)) return distinct.sort((a, b) => numberOf(a) - numberOf(b));
-  return distinct.sort();
 }
 
 /** A number as an axis says it - no unit added (mockup fix ③: «1.0 %» on a ratio was a wrong sentence). */

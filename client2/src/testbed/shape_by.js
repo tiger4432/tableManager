@@ -4,7 +4,8 @@
 // declaration as Color by keeps its colours (color_by.js assignLooks, the one rule for both). The kind draws the shape
 // it is handed; the legend draws the same names.
 
-import { assignLooks, paintCategoryOf, categoryNames } from './color_by.js';
+import { assignLooks, paintCategoryOf } from './color_by.js';
+import { categoryOrder } from './slot.js';
 
 /** The Shape by slot a points kind holds. */
 export const SHAPE_SLOT = Object.freeze({ key: 'shape', label: 'Shape by', category: true, many: true });
@@ -32,7 +33,7 @@ export function shapesOf(rows, decl) {
   const categoryOf = (row) => paintCategoryOf(row.reads.shape);
   const seen = [...new Set(rows.map(categoryOf).filter((c) => c !== null))];
   const assigned = assignLooks(seen, own, SHAPES);
-  const categories = categoryNames(seen).map((name) => ({ name, shape: own[name] || assigned[name], ids: rows.filter((r) => categoryOf(r) === name).map((r) => r.id) }));
+  const categories = categoryOrder(seen).map((name) => ({ name, shape: own[name] || assigned[name], ids: rows.filter((r) => categoryOf(r) === name).map((r) => r.id) }));
   const byName = new Map(categories.map((c) => [c.name, c]));
   const of = new Map(rows.map((r) => { const c = byName.get(categoryOf(r)); return [r.id, c ? { shape: c.shape, category: c.name } : { shape: ONE, category: null }]; }));
   return { any: Boolean(decl && decl.encode && decl.encode.shape), of, categories, assigned };
