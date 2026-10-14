@@ -20,7 +20,7 @@ body{margin:0;background:#232323}
 .tool{flex:none;width:14px;height:21px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:#7C7C7C;padding:0;cursor:pointer}
 .pd{padding:0 4px 4px 8px;color:#C8C8C8}
 /* body: left tray · area · legend column / top tray · area · bottom tray */
-.pb{display:grid;grid-template-columns:auto minmax(0,1fr) 160px;grid-template-rows:auto minmax(0,1fr) auto;column-gap:8px;row-gap:4px;min-height:0;min-width:0}
+.pb{display:grid;grid-template-columns:auto minmax(0,1fr) 160px;grid-template-rows:auto minmax(0,1fr) auto;column-gap:12px;row-gap:4px;min-height:0;min-width:0}
 .pb.nolegend{grid-template-columns:auto minmax(0,1fr) 0}
 .tt{grid-row:1;grid-column:2;display:flex;justify-content:center;align-items:center;gap:6px;min-height:21px}
 .tl{grid-row:2;grid-column:1;display:flex;align-items:center;justify-content:center}
@@ -36,9 +36,9 @@ body{margin:0;background:#232323}
 .pill .c{font-size:10px;color:#C8C8C8}
 .pill.v{writing-mode:vertical-rl;transform:rotate(180deg);height:auto;width:21px;padding:8px 0}
 .say{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#C8C8C8}
-/* tables: a cell 18 high + its 1 line · inset 2 8 1 1 · numbers right */
+/* tables: a cell 18 high + its 1 line · inset 2 8 1 6 · numbers right */
 .xt{border-collapse:separate;border-spacing:0;font:inherit;color:#FFFFFF}
-.xt th,.xt td{height:18px;padding:2px 8px 1px 1px;border-right:1px solid #404040;border-bottom:1px solid #404040;white-space:nowrap;text-align:left;font-weight:400}
+.xt th,.xt td{height:18px;padding:2px 8px 1px 6px;border-right:1px solid #404040;border-bottom:1px solid #404040;white-space:nowrap;text-align:left;font-weight:400}
 .xt thead th{position:sticky;top:0;background:#333333;color:#C8C8C8}
 .xt th.rh{position:sticky;left:0;background:#333333;color:#FFFFFF}
 .xt td.n{text-align:right;font-variant-numeric:tabular-nums}
