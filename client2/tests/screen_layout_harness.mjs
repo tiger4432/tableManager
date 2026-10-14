@@ -135,7 +135,7 @@ const KINDS_SAVED = (() => {
       { ...visual, id: 'map-1', kind: 'map', title: 'Die map', encode: { x: key('x'), y: key('y') } },
       // its row axis two columns - a hierarchy (lead 10-14)
       { ...visual, id: 'cross-1', kind: 'crossTable', title: 'Dies per row', description: 'Rows: type › y of the dies the start reached', encode: { rows: [key('mat_type'), key('y')] } },
-      { ...visual, id: 'cross-2', kind: 'crossTable', title: 'Picked dies', start: { marking: 'marking:pick' }, encode: { rows: key('x') } },
+      { ...visual, id: 'cross-2', kind: 'crossTable', title: 'Picked dies', start: { marking: 'marking:pick' }, writes: null, encode: { rows: key('x') } },
       { ...visual, id: 'table-1', kind: 'table', title: 'Dies', encode: { col1: { steps: [], value: { on: 'label', name: 'name' }, words: ['name'] }, col2: key('x'), col3: key('y') } },
       { ...visual, id: 'scatter-1', kind: 'scatter', encode: { x: key('x'), y: key('y'), color: [key('mat_type'), key('x')] } },
       { ...visual, id: 'sheet-1', kind: 'sheet', title: 'Wafer summary', row: null, key: 'A1', start: { node: 'wafer("SYN-CX-BW-001")' },
@@ -336,13 +336,21 @@ CELLS.push({ entry: 'testbed.html', after: 'parts swapped by a drop', rule: 'dro
   const want = s.before.split(',').map((id) => (id === 'scatter-1' ? 'table-1' : id === 'table-1' ? 'scatter-1' : id)).join(',');
   return s.after === want ? null : 'after the drop ' + s.after + ', not ' + want;
 })()` });
+// A column chip dragged onto another reorders the pill's columns - the hierarchy's levels follow (lead 10-14).
+CELLS.push({ entry: 'testbed.html', after: 'columns reordered by a drag', rule: 'chips reorder columns', at: 'sf-pop__cols', expr: `(() => {
+  const s = window.__chipOrder;
+  if (!s) return 'no drag made';
+  if (s.why) return s.why;
+  return s.before === 'mat_type › y' && s.after === 'y › mat_type' && s.chips.join() === 'y,mat_type' ? null
+    : 'before «' + s.before + '», after «' + s.after + '», chips ' + (s.chips || []).join(',');
+})()` });
 // The picker under its pill each time (lead 10-14): its left at the pill's, its top 4 under it - or flipped, its foot 4 above.
 CELLS.push({ entry: 'testbed.html', after: 'pickers under their pills', rule: 'picker under its pill', at: 'sf-pop-host', expr: `(() => {
   const all = window.__pickPlaced || [];
   if (!all.length) return 'no pill picker opened';
   // its left at the pill's - or held 8 in from the right edge (fitUnder's shift); 4 under it - or flipped, 4 above
-  const offs = all.filter((x) => x.why || !(Math.abs(x.dx) <= 1 || Math.abs(x.atRight - 8) <= 1) || !(Math.abs(x.below - 4) <= 1 || Math.abs(x.above - 4) <= 1));
-  return offs.length ? offs.slice(0, 6).map((off) => (off.why ? off.when + ': ' + off.why
+  const offs = all.filter((x) => x.why || (x.closed ? !x.slotGone : (!(Math.abs(x.dx) <= 1 || Math.abs(x.atRight - 8) <= 1) || !(Math.abs(x.below - 4) <= 1 || Math.abs(x.above - 4) <= 1))));
+  return offs.length ? offs.slice(0, 6).map((off) => (off.why ? off.when + ': ' + off.why : off.closed ? off.kind + ' ' + off.when + ': closed though its pill stayed'
     : off.kind + ' ' + off.when + ': ' + off.dx + ' px from the pill\\'s left, ' + off.below + ' below it')).join(' | ') : null;
 })()` });
 // A table shows each cell's whole words - its columns as wide as their words, the table scrolling when wider than its
@@ -1272,13 +1280,40 @@ const DRIVE = {
       await openAgain(c, log);
       await until(c, "document.querySelectorAll('.sf-part').length >= 6 && document.querySelectorAll('[data-panel=\"table-1\"] td').length > 0", 15000);
     }],
+    // A pill of two columns: its second column's chip dragged onto the first in the picker - the hierarchy's levels change
+    // places (lead 10-14).
+    ['columns reordered by a drag', async (c) => {
+      const got = await evaluate(c, `(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const corner = () => (document.querySelector('[data-panel="cross-1"] .sf-table__corner') || {}).textContent || null;
+        const before = corner();
+        const pill = document.querySelector('[data-panel="cross-1"] .sf-frame__left .sf-pill');
+        if (!pill) return { why: 'no row axis pill' };
+        pill.click();
+        await wait(300);
+        const chip = (k) => document.querySelector('.sf-pop-host [data-column="' + k + '"]');
+        if (!chip(0) || !chip(1)) return { why: 'no column chips', before };
+        const data = new DataTransfer();
+        chip(1).dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: data }));
+        chip(0).dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }));
+        chip(0).dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
+        await wait(600);
+        const chips = [...document.querySelectorAll('.sf-pop-host [data-column]')].map((x) => x.textContent.replace('×', '').trim());
+        document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        await wait(200);
+        return { before, after: corner(), chips };
+      })()`);
+      await evaluate(c, `window.__chipOrder = ${JSON.stringify(got)}; true`);
+    }],
     // A pill's picker stays under its pill (owner 10-14 «알약 선언창 자꾸 화면 좌상단으로 날아가는데»): opened, after a
     // value picked (the part drawn again), after the window resized - each kind's tray pills; where it stood each time.
     ['pickers under their pills', async (c) => {
       const placed = async (when) => evaluate(c, `(() => {
         const host = document.querySelector('.sf-pop-host');
         const pill = window.__pickPill && window.__pickPill();
-        if (!host || host.style.display === 'none' || !pill) return { when: ${JSON.stringify(when)}, why: 'no picker or no pill' };
+        if (!pill) return { when: ${JSON.stringify(when)}, why: 'no pill' };
+        // closed - right only when its pill's slot is gone from there (a table's + Column became a column)
+        if (!host || host.style.display === 'none') return { when: ${JSON.stringify(when)}, kind: window.__pickKind, closed: true, slotGone: pill.getAttribute('data-slot') !== window.__pickSlot };
         const h = host.getBoundingClientRect(), r = pill.getBoundingClientRect();
         return { when: ${JSON.stringify(when)}, kind: window.__pickKind, dx: Math.round(h.left - r.left), atRight: Math.round(document.documentElement.clientWidth - h.right), below: Math.round(h.top - r.bottom), above: Math.round(r.top - h.bottom) };
       })()`);
@@ -1292,7 +1327,7 @@ const DRIVE = {
       for (const [label, findExpr] of [...trays, ...props]) {
         const opened = await evaluate(c, `(() => {
           const find = () => ${findExpr};
-          window.__pickPill = find; window.__pickKind = ${JSON.stringify(label)};
+          window.__pickPill = find; window.__pickKind = ${JSON.stringify(label)}; window.__pickSlot = find() && find().getAttribute('data-slot');
           if (!find()) return false; find().click(); return true; })()`);
         if (!opened) continue;
         await sleep(300);

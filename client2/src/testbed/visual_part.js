@@ -551,7 +551,11 @@ export class VisualPart extends Panel {
     const title = el('div', 'sf-part__title');
     // The handle a page moves the part by (grid_shell: drag the title bar onto another part's edge).
     title.setAttribute('data-part-title', '');
-    title.append(el('span', 'sf-part__t', this.titleWords()));
+    // one line, cut with its words in its tooltip (the frame standard 2)
+    const name = el('span', 'sf-part__t', this.titleWords());
+    name.title = this.titleWords();
+    name.setAttribute('data-clip-ok', '');
+    title.append(name);
     // its description - one line under the title (base set 1)
     const said = (this.decl.description || '').trim();
     const body = el('div', 'sf-part__body');

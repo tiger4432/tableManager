@@ -3,7 +3,7 @@
 // value record, a row spread into its Y's records (owner 10-13 «기록 하나가 점 하나»). The root makes the units and reads
 // every slot of each once; a kind that draws a mark a unit (`units: true`) only draws them.
 
-import { combosOf, foldRows, isExpression, slotWords } from './slot.js';
+import { combosOf, foldRows, isExpression, slotWords, columnsOf } from './slot.js';
 import { hubId } from './hubs.js';
 
 const MARKER = /^marker(\d+)$/;
@@ -55,8 +55,11 @@ export function unitsOf(rows, decl, keys, recordKey, marked = null) {
 
 /** A hub's rows read as one on a slot: with a reduce or an expression, every value of theirs folded (slot.foldRows - the
  *  cross table's rule); without, the value when they all say one and the same, several when not, empty when none says one. */
-function foldedRead(rows, key, slot, marked) {
-  if (!slot) return undefined;
+function foldedRead(rows, key, slots, marked) {
+  if (!slots) return undefined;
+  // a list of one is that column; one of several is read as its rows read it (their combinations)
+  const cols = columnsOf(slots);
+  const slot = cols.length === 1 ? cols[0] : {};
   if (slot.reduce || isExpression(slot)) {
     const value = foldRows(slot, rows.map((r) => r.raw && r.raw[key]), marked);
     const time = rows.some((r) => ((r.raw && r.raw[key]) || []).some((x) => x.time)) ? { time: true } : {};
@@ -81,8 +84,10 @@ function recordPicks(row, recordKey, recordSlot) {
 
 /** A value record's read on a slot: the records it takes when the slot reads as many as the record slot (itself; its
  *  time) - folded by the slot's reduce, else their one value (several when they differ); else the row's one value. */
-function recordRead(row, key, picks, slot, recordKey, marked) {
-  if (!slot) return undefined;
+function recordRead(row, key, picks, slots, recordKey, marked) {
+  if (!slots) return undefined;
+  const cols = columnsOf(slots);
+  const slot = cols.length === 1 ? cols[0] : {};
   const raw = row.raw && row.raw[key];
   const records = row.raw && row.raw[recordKey];
   if (!raw || !records || raw.length !== records.length) return row.reads[key];

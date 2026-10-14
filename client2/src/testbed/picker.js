@@ -88,17 +88,23 @@ export class SlotPicker {
     // left, placed under the pill drawn away) - the same part's same slot's pill nearest where the old one was.
     let at = anchor;
     let was = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+    // in the same panel it was opened in (a tray's pill, the properties panel's); a slot gone from there (a table's
+    // «+ Column» became a column) - its picker closes
+    const panelOf = (n) => { const box = n && typeof n.closest === 'function' ? n.closest('[data-panel]') : null; return box ? box.getAttribute('data-panel') : null; };
+    const home = panelOf(anchor);
     const live = () => {
       if (!at || at.isConnected !== false) return at;
       const id = (part.decl && part.decl.id) || '';
-      const same = doc && doc.querySelectorAll ? [...doc.querySelectorAll('.sf-pill')].filter((p) => p.getAttribute('data-slot') === key && p.getAttribute('data-part') === id) : [];
+      const same = doc && doc.querySelectorAll ? [...doc.querySelectorAll('.sf-pill')].filter((p) => p.getAttribute('data-slot') === key && p.getAttribute('data-part') === id
+        && (home === null || panelOf(p) === home)) : [];
       const gap = (p) => { const r = p.getBoundingClientRect ? p.getBoundingClientRect() : null; return r && was ? Math.abs(r.left - was.left) + Math.abs(r.top - was.top) : 0; };
-      if (same.length) at = same.sort((a, b) => gap(a) - gap(b))[0];
+      at = same.length ? same.sort((a, b) => gap(a) - gap(b))[0] : null;
       return at;
     };
     const place = () => {
       const pill = live();
-      if (!pill || !pill.getBoundingClientRect) return;
+      if (!pill) { if (anchor) this.close(); return; }
+      if (!pill.getBoundingClientRect) return;
       fitUnder(this.host, pill, { align: 'left', gap: 4 });
       if (pill.isConnected !== false) was = pill.getBoundingClientRect();
     };

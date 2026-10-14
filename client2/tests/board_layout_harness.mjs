@@ -38,6 +38,7 @@ const REAL = {
   shape: await import('../src/testbed/shape_by.js'),
   picker: await import('../src/testbed/picker.js'),
   cross: await import('../src/testbed/kinds/cross_table.js'),
+  hubs: await import('../src/testbed/hubs.js'),
 };
 const { localStamp } = await import('../src/server_time.js');
 const { MarkingStore, SIGN } = await import('../src/rnd_board/marking_store.js');
@@ -677,7 +678,18 @@ async function routed(M) {
   pressed.part.markHub([['name', g.colKeys[0]]], g.grid[0][0].ids, {});
   await settle();
   press.push(held(pressed));
-  return { press, named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
+  // a pill of two columns, its inner one with steps (lead 10-14, 18766: the inner core wafer read (Empty)): the walk
+  // carries its steps as the one-column pill's does, and its value is read
+  const single = await seat({ ...base, row: 'die', encode: { rows: CORE } });
+  const pair = await seat({ ...base, row: 'die', encode: { rows: [NAMED, CORE] } });
+  const R = { hops: 0, follow: [], chain: ['die'] };
+  const twoColumns = [pair.asked, single.asked, pair.rows, JSON.stringify(M.route.walkOfRoute(R, { rows: [NAMED, CORE] })) === JSON.stringify(M.route.walkOfRoute(R, { rows: CORE }))];
+  // a list of one column is that column to a press: the core wafer node (hubs.js conditionsOf)
+  const listed = await seat({ ...base, row: 'die', writes: 'marking:core', encode: { rows: [CORE] } }, true, false, 'marking:core');
+  listed.part.markHub([['core wafer', listed.part.model.rowKeys[0]], ['(None)', '']], listed.part.model.grid[0][0].ids, {});
+  await settle();
+  const listPress = [held(listed), M.hubs.whyHub({ rows: [CORE], columns: NAMED }, [['core wafer', 'CW1'], ['name', 'd1']])];
+  return { twoColumns, listPress, press, named: [named.state, named.refusal, named.asked.length, named.rows], mixed: [mixed.rows, mixed.asked, mixed.said], dies: [dies.rows, dies.total, dies.asked, dies.routes], all: [all.rows, all.total], wafers: [wafers.routes, wafers.labels], core: [core.labels, core.asked] };
 }
 
 /** Color by the root's (owner 10-13 «모든 근원부품이 공유»): the same Color by on a scatter, a table, a cross table and a map
@@ -1122,7 +1134,15 @@ async function manyColumns(M) {
   if (value) value.listeners.click[0]({});
   await settle();
   const written = (one.declaration().encode.rows || []).map ? one.declaration().encode.rows.map((c) => c.value.name) : null;
-  return { pure, heads, rowKeys: cross.model.rowKeys, colours, written };
+  // the second column's chip dragged onto the first - the declaration's columns change places, the hierarchy's outer head
+  // the other column now
+  const chip = (k) => walk(pickerHost).find((n) => n.attrs && n.attrs['data-column'] === String(k));
+  const [second, first] = [chip(1), chip(0)];
+  if (second && first) { second.listeners.dragstart[0]({}); first.listeners.drop[0]({}); }
+  await settle();
+  const reordered = M.slot.columnsOf(one.declaration().encode.rows).map((c) => c.value.name);
+  const outer = walk(one.root).filter((n) => n.tagName === 'TH' && String(n.className) === 'sf-table__row').map((n) => n._text).filter((w) => w !== 'Total');
+  return { pure, heads, rowKeys: cross.model.rowKeys, colours, written, reordered, outer };
 }
 
 const names = [];
@@ -1257,6 +1277,9 @@ async function suite(M) {
       [[['W9#0', 't1', '1'], ['W9#1', 't2', '2'], ['W9#2', 't3', '3'], ['W9#3', 't4', '7']], [['W9#0', 't3', '3'], ['W9#1', 't4', '7']]]),
     judge('W1 a start of the row type is its own row: d1 alone - its one core wafer, the walk asking the slot\'s predicates and steps; the route die to die the seed alone (a simple path stops at two types)',
       rt.dies, [['CW1'], 1, [[['bonded_from', 'in_container'], 2, ['d1']]], ['die']]),
+    judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
+      [rt.twoColumns[0], rt.twoColumns[2], rt.twoColumns[3]], [rt.twoColumns[1], ['d1, CW1'], true]),
+    judge('W8 a pill holding a list of one column presses as that column: the core wafer node', rt.listPress, [['CW1'], ['core wafer', 'name']]),
     judge('W5 a route named that does not start from the start\'s type is said and nothing is walked - not the shortest route instead',
       rt.named, ['refused', 'Route wafer → measurement · has_measurement does not start from die, the start', 0, null]),
     judge('W6 a cell whose one condition is read off another node marks that node (the core wafer), drawn marked; with a second axis the hub of its rows, its row head the node again; on the row\'s own value - the hub',
@@ -1296,6 +1319,7 @@ async function suite(M) {
     judge('MC2 a cross table axis of two columns is a hierarchy: an outer value once along its run (rowspan), the inner each row', [mc.rowKeys, mc.heads],
       [['A, 1', 'A, 3', 'B, 3'], [['A', 2], ['1', 1], ['3', 1], ['B', 1], ['3', 1]]]),
     judge('MC3 Color by of two columns: a category a combination', mc.colours, ['A, 1', 'A, 3', 'B, 3']),
+    judge('MC5 a column chip dragged onto another: the declaration\'s columns change places, the hierarchy\'s outer head the other column', [mc.reordered, mc.outer], [['x', 'p'], ['1', '3']]),
     judge('MC4 the picker\'s «+ Column» then a value writes the slot as its list of columns', mc.written, ['p', 'x']),
     judge('SP1 Shape by: a declared shape kept, a category not declared the next shape no category holds (the colours\' one rule), a mark of rows of one category its shape, of two the one shape',
       shp.pure, [[['A', 'circle', ['r1', 'r3']], ['B', 'diamond', ['r2']]], { A: 'circle' }, 'circle', 'circle', { x: 'p2', z: 'p1' }]),
@@ -1476,6 +1500,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    if (last && last.at === at) last.n += 1; else', '    if (false) last.n += 1; else') },
   { id: 'M69', what: 'the picker writes one column over the slot - «+ Column» adds none', catches: 'MC4 ', file: 'testbed/picker.js', key: 'picker',
     mutate: (t) => swap(t, '      if (!many) { part.setSlot(key, col); return; }', '      { part.setSlot(key, col); return; }') },
+  { id: 'M70', what: 'a chip dropped on another moves nothing', catches: 'MC5 ', file: 'testbed/picker.js', key: 'picker',
+    mutate: (t) => swap(t, '          moved.splice(k, 0, it);', '          moved.splice(from, 0, it);') },
+  { id: 'M71', what: 'the walk reads a slot of several columns as one slot - its columns\' steps not asked', catches: 'W7 ', file: 'testbed/route.js', key: 'route',
+    mutate: (t) => swap(t, 'const slots = Object.values(encode || {}).flatMap(columnsOf).flatMap(', 'const slots = Object.values(encode || {}).filter(Boolean).flatMap(') },
+  { id: 'M72', what: 'a press reads a slot of a list as one slot - a list of one never a node', catches: 'W8 ', file: 'testbed/hubs.js', key: 'hubs',
+    mutate: (t) => swap(t, 'const slots = Object.values(encode || {}).flatMap(columnsOf).filter((s) => !isExpression(s));', 'const slots = Object.values(encode || {}).filter((s) => s && !isExpression(s));') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '      this.watch(at, one);', '') },
   { id: 'M58', what: 'a tooltip line a slot - the same column twice', catches: 'TT2 ', file: 'testbed/tooltip.js', key: 'tooltip',

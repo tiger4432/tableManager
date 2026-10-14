@@ -8,7 +8,7 @@
 import { walkableRoutes } from '../walk/derive.js';
 import { entityOfId } from '../rnd_board/api.js';
 import { hubOf } from './hubs.js';
-import { isExpression, wayOf } from './slot.js';
+import { isExpression, wayOf, columnsOf } from './slot.js';
 import { compile } from '../expression.js';
 
 /** The route of a start of the row type itself: no step, the start its own row. */
@@ -48,7 +48,9 @@ export function routeOf(decl, routes) {
 export function walkOfRoute(route, encode) {
   // An expression's ways ([measures.value] · [in_container~.x]) are its steps (slot.js wayOf), as a value slot's are.
   const ways = (s) => { const c = compile(s.expr); return c.ok ? c.names.map(wayOf).filter(Boolean).map((w) => ({ steps: w.steps })) : []; };
-  const slots = Object.values(encode || {}).flatMap((s) => (s && isExpression(s) ? ways(s) : [s]))
+  // every column of every slot - a slot of several columns walks each column's steps (lead 10-14: a pill of two lost its
+  // steps and its inner column read (Empty))
+  const slots = Object.values(encode || {}).flatMap(columnsOf).flatMap((s) => (isExpression(s) ? ways(s) : [s]))
     .filter((s) => s && Array.isArray(s.steps));
   const follow = [...new Set([...route.follow, ...slots.flatMap((s) => s.steps.map((st) => st.predicate))])];
   const hops = route.hops + Math.max(0, ...slots.map((s) => s.steps.length));
