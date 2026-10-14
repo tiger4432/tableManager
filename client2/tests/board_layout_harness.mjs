@@ -118,6 +118,11 @@ async function measure(M) {
   // S6: the edge a drop is nearest, by the box's own proportions
   const box = { left: 0, top: 0, width: 1000, height: 100 };
   out.edges = [T.edgeAt(box, 50, 50), T.edgeAt(box, 950, 50), T.edgeAt(box, 500, 10), T.edgeAt(box, 500, 90)];
+  // S7: a drop on a part's middle (owner 10-14, Spotfire's): the two swap places - shares and the tree's shape kept;
+  // near a side (a quarter of the side across) that edge as before; onto itself or a part not there - nothing moves
+  const tree3 = { split: 'row', children: [leaf('A', 2), { split: 'column', size: 1, children: [leaf('B'), leaf('C', 3)] }] };
+  out.swap = [json(T.swapLeaves(tree3, 'A', 'C')), json(T.swapLeaves(tree3, 'A', 'A')) === json(tree3), json(T.swapLeaves(tree3, 'A', 'Z')) === json(tree3),
+    T.edgeAt(box, 500, 50, T.DROP_EDGE), T.edgeAt(box, 200, 50, T.DROP_EDGE), T.edgeAt(box, 500, 20, T.DROP_EDGE)];
   // L1-L2: the markings' limit
   const book = new HubBook();
   const hub = book.put(hubId('wafer', [['lot', 'L1']]), ['W1', 'W3']);
@@ -189,6 +194,14 @@ async function shells(M) {
   shell.maximize(null);
   out.redraw = { mounts: seen.mounts, same: ['A', 'B', 'C'].every((id, k) => shell.partOf(id) === parts[k]), maxed, cells: cells(),
     root: json(shell.root), docked: walk(host).some((n) => n.attrs && n.attrs['data-dock'] === 'right' && n.children.some((c) => c.attrs['data-panel'] === 'D')) };
+  // G3s: a drop on a middle - A and B swap places, nothing seated again
+  const order = M.tree.leafIds(shell.root);
+  const mountsNow = seen.mounts;
+  const [one, , last] = order;
+  const shape = (r) => json(r).replace(/"id":"[A-C]"/g, 'id');
+  const shapeBefore = shape(shell.root);
+  shell.dock(one, last, 'center');
+  out.swapShell = [M.tree.leafIds(shell.root).join() + (shape(shell.root) === shapeBefore ? ' same shape' : ' other shape'), [last, order[1], one].join() + ' same shape', seen.mounts === mountsNow, cells().length];
   // G4: the last area part closed - the area says so; one added is the tree; a docked panel is not closed
   for (const id of ['A', 'B', 'C']) shell.remove(id);
   shell.remove('D');
@@ -222,6 +235,13 @@ async function pages(M) {
   const visuals = (p) => json(p.declarations().map((d) => [d.id, d.kind, d.sort || null]).sort());
   out.save = { tree: json(second.shell.root) === json(kept.root), visuals: visuals(second) === visuals(first), sortKept: (second.shell.partOf('marked').decl.sort || {}).desc };
   const old = memoryStorage();
+  // G2c: a part dropped on another's middle - the two swap; Save keeps it, a reopen draws it so
+  const swapped = await page(M, memoryStorage());
+  const was = swapped.shell.root;
+  swapped.shell.dock('scatter-1', 'marked', 'center');
+  const keptSwap = swapped.save();
+  out.swapSaved = [M.tree.leafIds(was).join(), M.tree.leafIds(swapped.shell.root).join(), json(keptSwap.root) === json(swapped.shell.root),
+    json(was).replace(/"scatter-1"|"marked"/g, '"_"') === json(swapped.shell.root).replace(/"scatter-1"|"marked"/g, '"_"')];
   old.setItem('testbed:visuals', json([{ ...first.shell.partOf('scatter-1').declaration(), encode: { x: TEMP } }]));
   const third = await page(M, old);
   out.older = { tree: json(third.shell.root) === json(M.main.LAYOUT.root), x: Boolean(third.shell.partOf('scatter-1').decl.encode.x), docks: ['banner', 'start', 'status', 'properties', 'filters'].every((id) => third.shell.partOf(id)) };
@@ -1114,6 +1134,8 @@ async function suite(M) {
       [json({ split: 'row', children: [leaf('A'), { split: 'column', children: [leaf('N'), leaf('B')], size: 1 }] }),
         json({ split: 'row', children: [{ split: 'row', children: [leaf('A'), leaf('N')], size: 1 }, leaf('B')] })]),
     judge('S6 a drop\'s edge is the nearest by the box\'s own proportions', m.edges, ['left', 'right', 'top', 'bottom']),
+    judge('S7 a drop on a part\'s middle: the two swap places, shares and shape kept; near a side that edge; onto itself or a part not there nothing moves', m.swap,
+      ['{"split":"row","children":[{"id":"C","size":2},{"split":"column","size":1,"children":[{"id":"B","size":1},{"id":"A","size":3}]}]}', true, true, 'center', 'left', 'top']),
     judge('L1 the limit: in all of the markings, in any; all empty - every row or none; one empty of two under all - none (not the empty branch); no limit - every row',
       m.limit, [['W2'], ['W1', 'W2', 'W3'], ['W1', 'W2', 'W3', 'W4'], [], [], ['W1', 'W2', 'W3', 'W4']]),
     judge('L2 a hub in a limiting marking counts as its members', m.hub, [['W1', 'W3'], ['W1']]),
@@ -1128,6 +1150,9 @@ async function suite(M) {
     judge('G1 two Boards side by side: one\'s dock and pick leave the other\'s tree and table alone', p.two,
       { otherTree: true, mine: ['W1'], other: [], trees: true }),
     judge('G2 Save keeps the tree and each visual (a table\'s sort too); a reopen draws them', p.save, { tree: true, visuals: true, sortKept: true }),
+    judge('G3s a drop on a part\'s middle swaps the two in the shell, nothing seated again', [s.swapShell[0], s.swapShell[2], s.swapShell[3]], [s.swapShell[1], true, 3]),
+    judge('G2c a part dropped on another\'s middle swaps with it - the tree\'s shape the same, Save keeps it', p.swapSaved,
+      ['scatter-1,cross-1,marked', 'marked,cross-1,scatter-1', true, true]),
     judge('G2b an older save (visuals by id) opens on the layout\'s tree, its visuals laid over, the chrome docked', p.older, { tree: true, x: true, docks: true }),
     judge('G5 each kind added: its id and kind, the largest split (the scatter, stacked: new on top), the new one active and walked; the add window lists them in order',
       p.add, { ids: ['table-1', 'crossTable-1', 'scatter-2', 'map-1', 'sheet-1'], kinds: ['table', 'crossTable', 'scatter', 'map', 'sheet'], active: 'sheet-1', firstPath: '[0,0]',
@@ -1296,8 +1321,12 @@ const MUTANTS = [
   { id: 'M7', what: 'blank cells follow the sort\'s direction (first when descending)', catches: 'T1 ', file: 'testbed/kinds/table.js', key: 'table',
     mutate: (t) => swap(t, '      if (blank) return blank;\n', '') },
   { id: 'M8', what: 'a dock seats every part again (the page drawn anew)', catches: 'G3 ', file: 'rnd_board/grid_shell.js', key: 'shell',
-    mutate: (t) => swap(t, '    this.root = dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
+    mutate: (t) => swap(t, '    this.root = edge === \'center\' ? swapLeaves(this.root, id, targetId) : dockLeaf(this.root, id, targetId, edge);\n    this.drawArea();',
       '    this.render({ ...this.layoutNow(), root: dockLeaf(this.root, id, targetId, edge) });') },
+  { id: 'M65', what: 'a drop on a middle docks on an edge - no swap', catches: 'G3s ', file: 'rnd_board/grid_shell.js', key: 'shell',
+    mutate: (t) => swap(t, "this.root = edge === 'center' ? swapLeaves(this.root, id, targetId) : dockLeaf(this.root, id, targetId, edge);", "this.root = dockLeaf(this.root, id, targetId, edge === 'center' ? 'right' : edge);") },
+  { id: 'M66', what: 'a box has no middle - every drop an edge', catches: 'S7 ', file: 'rnd_board/split_tree.js', key: 'tree',
+    mutate: (t) => swap(t, "return middle > 0 && best[1] >= middle ? 'center' : best[0];", 'return best[0];') },
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',

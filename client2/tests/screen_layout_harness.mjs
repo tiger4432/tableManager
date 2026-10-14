@@ -326,6 +326,15 @@ CELLS.push({ entry: 'testbed.html', after: 'shrunk and grown', rule: 'picture fi
   }
   return null;
 })()` });
+// A drop on a part's middle swaps the two (lead 10-14): Escape - nothing moves; the mark covers the whole part over its middle.
+CELLS.push({ entry: 'testbed.html', after: 'parts swapped by a drop', rule: 'drop on a middle swaps', at: 'sf-drop', expr: `(() => {
+  const s = window.__swapped;
+  if (!s) return 'no drag made';
+  if (s.afterEscape !== s.before) return 'Escape moved the parts: ' + s.before + ' -> ' + s.afterEscape;
+  if (!s.escCovers || !s.covers) return 'the drop mark did not cover the part under the pointer';
+  const want = s.before.split(',').map((id) => (id === 'scatter-1' ? 'table-1' : id === 'table-1' ? 'scatter-1' : id)).join(',');
+  return s.after === want ? null : 'after the drop ' + s.after + ', not ' + want;
+})()` });
 // The picker under its pill each time (lead 10-14): its left at the pill's, its top 4 under it - or flipped, its foot 4 above.
 CELLS.push({ entry: 'testbed.html', after: 'pickers under their pills', rule: 'picker under its pill', at: 'sf-pop-host', expr: `(() => {
   const all = window.__pickPlaced || [];
@@ -1306,6 +1315,39 @@ const DRIVE = {
         await sleep(200);
       }
       await evaluate(c, `window.__pickPlaced = ${JSON.stringify(out)}; true`);
+    }],
+    // A part's title dropped on another's middle - the two swap (owner 10-14, Spotfire's); dragged there and Escape - nothing
+    // moves; while over the middle the drop mark covers the whole part.
+    ['parts swapped by a drop', async (c) => {
+      const got = await evaluate(c, `(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const fire = (type, target, x, y) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y,
+          button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        const cells = () => [...document.querySelectorAll('[data-cell]')].map((x) => x.getAttribute('data-cell')).join(',');
+        const drag = async (from, to, end) => {
+          const title = document.querySelector('[data-cell="' + from + '"] [data-part-title]');
+          const box = document.querySelector('[data-cell="' + to + '"]').getBoundingClientRect();
+          const t0 = title.getBoundingClientRect();
+          const [x, y] = [(box.left + box.right) / 2, (box.top + box.bottom) / 2];
+          fire('pointerdown', title, t0.left + 30, t0.top + 10);
+          fire('pointermove', document, t0.left + 60, t0.top + 30);
+          fire('pointermove', document, x, y);
+          await wait(100);
+          const mark = document.querySelector('.sf-drop');
+          const m = mark ? mark.getBoundingClientRect() : null;
+          const covers = Boolean(m) && Math.abs(m.width - box.width) <= 2 && Math.abs(m.height - box.height) <= 2;
+          if (end === 'escape') document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          else fire('pointerup', document, x, y);
+          await wait(300);
+          return covers;
+        };
+        const before = cells();
+        const escCovers = await drag('scatter-1', 'table-1', 'escape');
+        const afterEscape = cells();
+        const covers = await drag('scatter-1', 'table-1', 'drop');
+        return { before, afterEscape, escCovers, covers, after: cells() };
+      })()`);
+      await evaluate(c, `window.__swapped = ${JSON.stringify(got)}; true`);
     }],
     // the next size opens the page's own layout
     ['saved cleared', (c) => evaluate(c, "localStorage.removeItem('testbed:visuals'); true")],
