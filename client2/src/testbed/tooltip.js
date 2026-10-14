@@ -51,6 +51,9 @@ export function tipLines(mark, ctx) {
   const lines = new Map();
   for (const k of keys) {
     const words = slotWords(ctx.encode[k]);
+    // a slot of images (the root's `images`): its words and what to draw - {words, spec}
+    const refs = ctx.images ? ctx.images(k, reads[k]) : null;
+    if (refs) { if (refs.length && !lines.has(words)) lines.set(words, { words, spec: { id: mark.id || (mark.ids || []).join(','), key: k, refs } }); continue; }
     const said = readWords(reads[k], k, ctx);
     if (said !== null && !lines.has(words)) lines.set(words, `${words}: ${said}`);
   }
@@ -59,9 +62,12 @@ export function tipLines(mark, ctx) {
 
 /** A mark's label: none, or for the marked marks only, or all - the Label by value, else the mark's name. */
 export function labelOf(mark, ctx) {
-  const shows = (ctx.decl && ctx.decl.labels) || 'none';
+  const shows = ctx.shows || (ctx.decl && ctx.decl.labels) || 'none';
   if (shows === 'none' || (shows === 'marked' && !ctx.marked(mark.ids || []))) return null;
   const rows = (mark.ids || []).map((id) => ctx.rowsById.get(id)).filter(Boolean);
   const read = mark.reads ? mark.reads.label : rows.length === 1 ? rows[0].reads.label : sharedReads(rows, ['label']).label;
+  // a Label by of images: what to draw - {id, key, refs} (the root's picture at the mark's turn)
+  const refs = ctx.images ? ctx.images('label', read) : null;
+  if (refs) return refs.length ? { id: mark.id || (mark.ids || []).join(','), key: 'label', refs } : null;
   return readWords(read) || mark.label || (rows.length === 1 ? rows[0].label : null);
 }

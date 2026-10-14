@@ -9,8 +9,8 @@ import { dragMarks } from '../drag_mark.js';
 export const ROWS_COUNT = 'UniqueCount(rows)';
 
 export const SLOTS = Object.freeze([
-  { key: 'rows', label: 'Row axis', category: true, tray: 'left', many: true, names: true },
-  { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true, many: true, names: true },
+  { key: 'rows', label: 'Row axis', category: true, tray: 'left', many: true, names: true, noImages: true },
+  { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true, many: true, names: true, noImages: true },
   { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true, many: true, empty: ROWS_COUNT },
 ]);
 export { EMPTY };

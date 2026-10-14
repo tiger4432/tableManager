@@ -5,6 +5,7 @@
 import { numberOf } from '../../walk/reach_table.js';
 import { MARKER_PX, MARKER_PCT } from '../palette.js';
 import { slotWords, scaleOf, categoryOrder } from '../slot.js';
+import { IMAGE_MARKER_PX, LABEL_IMAGE_PX } from '../../image_thumb.js';
 
 /** Its slots: the axes on the template's trays - Y on the left, X under. */
 export const SLOTS = Object.freeze([
@@ -39,7 +40,7 @@ export function scatterModel(units, ctx) {
     // its label - the root's (none, marked, all)
     const tag = ctx.label ? ctx.label(u) : null;
     // its shape - the root's (Shape by)
-    const shape = ctx.shape ? ctx.shape(ids) : null;
+    const shape = ctx.shape ? ctx.shape(ids, u) : null;
     points.push({ id: u.id, ids, where: u.where || null, label: u.label, tag, shape, x: x.value, y: y.value, marked: p.marked, fill: p.fill, border: p.line });
   }
   const ax = axisOf(ctx, 'x', points.map((p) => p.x));
@@ -57,7 +58,7 @@ export function scatterModel(units, ctx) {
 export const tickWords = (v) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6)))) : String(v));
 
 /** The ECharts option for a model - pure, so the picture is scored without a canvas. */
-export function scatterOption(model, palette, width = null) {
+export function scatterOption(model, palette, width = null, picture = null) {
   const t = palette;
   const axis = (kind, values, range = null, time = false, text = null) => ({
     type: kind, scale: kind === 'value', data: kind === 'category' ? categoryOrder(values, time) : undefined,
@@ -84,6 +85,21 @@ export function scatterOption(model, palette, width = null) {
   const fraction = (p) => (span[1] > span[0] ? (along(p.x) - span[0]) / (span[1] - span[0]) : 0.5);
   const room = (p) => Math.max(0, Math.floor((side(p) === 'right' ? 1 - fraction(p) : fraction(p)) * plotW - model.size));
   const fit = (p) => (plotW === null ? {} : { width: room(p), overflow: 'truncate', ellipsis: '…' });
+  // a picture (a Shape by or a Label by of images - {id, key, refs}): the root's, at the mark's turn, once it is here
+  const pictured = (spec, px) => (spec && typeof spec === 'object' && picture ? picture(spec, px) : null);
+  const imagePx = IMAGE_MARKER_PX * (model.size / MARKER_PX);
+  const symbolOf = (p) => {
+    if (!p.shape) return {};
+    if (typeof p.shape !== 'object') return { symbol: p.shape };
+    const url = pictured(p.shape, imagePx);
+    return url ? { symbol: `image://${url}`, symbolSize: imagePx } : {};
+  };
+  const labelOf = (p) => {
+    const url = pictured(p.tag, LABEL_IMAGE_PX);
+    if (url) return { show: true, formatter: '{img|}', position: side(p), rich: { img: { backgroundColor: { image: url }, width: LABEL_IMAGE_PX, height: LABEL_IMAGE_PX } } };
+    const said = p.tag !== null && p.tag !== undefined && typeof p.tag !== 'object';
+    return { show: said, formatter: String(p.tag), position: side(p), ...fit(p), color: t.text, fontFamily: 'Roboto', fontSize: 12 };
+  };
   return {
     animation: false,
     grid: { left: GRID.left, right: GRID.right, top: 16, bottom: 28, containLabel: false },
@@ -94,8 +110,8 @@ export function scatterOption(model, palette, width = null) {
     series: [{
       type: 'scatter', symbolSize: model.size, cursor: 'pointer',
       data: ordered.map((p) => ({ value: [model.xKind === 'category' ? String(p.x) : p.x, model.yKind === 'category' ? String(p.y) : p.y],
-        id: p.id, name: p.label, ...(p.shape ? { symbol: p.shape } : {}), itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 },
-        label: { show: p.tag !== null && p.tag !== undefined, formatter: String(p.tag), position: side(p), ...fit(p), color: t.text, fontFamily: 'Roboto', fontSize: 12 } })),
+        id: p.id, name: p.label, ...symbolOf(p), itemStyle: { color: p.fill, borderColor: p.border, borderWidth: 1, opacity: 1 },
+        label: labelOf(p) })),
       emphasis: { scale: false },
     }],
   };
@@ -132,7 +148,7 @@ export function render(area, model, ctx) {
     if (pts.some((p) => p.where)) ctx.markHubs(pts.map((p) => [p.where, p.ids]), event, drag); else ctx.mark([...new Set(pts.flatMap((p) => p.ids))], event, drag);
   };
   const chart = ctx.charts.init(plot);
-  option = scatterOption(model, ctx.palette, widthOf());
+  option = scatterOption(model, ctx.palette, widthOf(), ctx.picture || null);
   chart.setOption(option, true);
   // The brush is always on: a drag draws a rectangle (Spotfire's), no toolbox button to arm it.
   chart.dispatchAction({ type: 'takeGlobalCursor', key: 'brush', brushOption: { brushType: 'rect', brushMode: 'single' } });
@@ -153,7 +169,7 @@ export function render(area, model, ctx) {
     zr.on('click', (e) => { if (!e.target) ctx.clear(); });
   }
   // a new width: the labels' room and the tick count again
-  const resize = () => { chart.resize(); option = scatterOption(model, ctx.palette, widthOf()); chart.setOption({ xAxis: option.xAxis, series: option.series }); };
+  const resize = () => { chart.resize(); option = scatterOption(model, ctx.palette, widthOf(), ctx.picture || null); chart.setOption({ xAxis: option.xAxis, series: option.series }); };
   return { resize, dispose: () => chart.dispose() };
 }
 

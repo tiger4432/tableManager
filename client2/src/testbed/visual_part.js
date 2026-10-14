@@ -36,6 +36,8 @@ import { seedsOf } from '../rnd_board/marking_store.js';
 import { entitySeedId } from '../rnd_board/api.js';
 import { compile, run } from '../expression.js';
 import { paletteOf } from './palette.js';
+import { ImageLoader, Thumb, imagesOf, drawsImage, IMAGES_REFUSED, TIP_IMAGE_PX } from '../image_thumb.js';
+import { ImagePreview } from '../image_preview.js';
 
 /** The row walk's key among its walks in flight. */
 const ROW_WALK = Symbol('row walk');
@@ -88,6 +90,10 @@ export class VisualPart extends Panel {
     this.drawn = null;
     this.event = null;
     this.walking = 0;
+    // its pictures (lead-board-14): the page's one loader, a preview of its own, a mark's turn of its images (not saved)
+    this.images = d.images || new ImageLoader({ base: d.apiBase || '' });
+    this.turns = new Map();
+    this.previewer = null;
   }
 
   get kind() { return this.kinds[this.decl.kind] || null; }
@@ -549,6 +555,14 @@ export class VisualPart extends Panel {
     // else the values; the kind draws by it and so does Color by
     const scales = Object.fromEntries(listed.filter((s) => held[s.key]).map((s) => [s.key, scaleOf(rows.map((r) => r.reads[s.key]), (this.decl.scale || {})[s.key])]));
     this.scales = scales;
+    // images (lead-board-14) - THE one seat: a slot the walk declares image draws pictures, a mark's own (not spread into
+    // marks, turned in place); a slot that paints or places by category (`noImages`: Color by, a cross table's axes) reads
+    // nothing and the note says so
+    const pictures = Object.keys(scales).filter((k) => scales[k].scale === 'image');
+    const refused = listed.filter((s) => s.noImages && pictures.includes(s.key)).map((s) => s.key);
+    for (const r of rows) for (const k of refused) r.reads[k] = { state: 'empty', n: 0 };
+    this.imageRefusal = refused.length ? IMAGES_REFUSED : null;
+    const images = (key, read) => (pictures.includes(key) ? imagesOf(read) : null);
     const { colors, colored, paint: painted } = paintRows(rows, { palette: this.palette(), declaration: this.decl, marked, markColor: this.markColor(), anyHeld, scale: scales.color || null });
     // a mark is painted by its rows (a press marks them - hubs.js nodesOfPress)
     const paint = (ids) => painted(ids);
@@ -557,10 +571,12 @@ export class VisualPart extends Panel {
     // later leave them where they are (a declaration field, no walk)
     if (colors.any && Object.keys(colors.assigned).length) this.decl = { ...this.decl, colors: { ...(this.decl.colors || {}), ...colors.assigned } };
     // each row's shape (shape_by.js) - a points kind's; the shapes given kept in the declaration as the colours are
-    const shapes = this.kind.points ? shapesOf(rows, this.decl) : null;
+    const shapes = this.kind.points ? shapesOf(pictures.includes('shape') ? rows.map((r) => ({ ...r, reads: { ...r.reads, shape: undefined } })) : rows, this.decl) : null;
     this.shapes = shapes;
     if (shapes && shapes.any && Object.keys(shapes.assigned).length) this.decl = { ...this.decl, shapes: { ...(this.decl.shapes || {}), ...shapes.assigned } };
-    const shape = shapes && shapes.any ? (ids) => shapeOfIds(shapes, ids) : null;
+    // a Shape by of images: the mark's picture (ctx.picture), else the shapes
+    const shape = pictures.includes('shape') ? (ids, unit) => this.pictureSpec(unit, 'shape', images)
+      : shapes && shapes.any ? (ids) => shapeOfIds(shapes, ids) : null;
     // THE MARKS (units.js marksOf, lead-board-13 ②): the root spreads the rows into what a kind draws - a node unit's marks,
     // a hub's or a value record's units (Marker by), the sheet one value a cell (several - the root's refusal); a hub or a
     // row that cannot be drawn as one value a slot is left out with why, said in the note
@@ -574,7 +590,7 @@ export class VisualPart extends Panel {
     const own = typeof this.kind.slots === 'function' ? this.kind.slots(encode) : (this.kind.slots || []);
     const drawn = own.map((s) => s.key).filter((k) => keysRead.includes(k));
     const spread = (some) => spreadUnits(some, this.decl, keysRead, { cells: Boolean(this.kind.cells), record: this.kind.units ? this.kind.units.record : null,
-      recordsOf: recorded, words: (key) => slotWords(encode[key]), marked: askMarked, drawn,
+      recordsOf: recorded, words: (key) => slotWords(encode[key]), marked: askMarked, drawn, pictures,
       folds: listed.filter((s) => s.folds && held[s.key]).flatMap((s) => columnsOf(held[s.key]).map((_, i) => foldKey(s.key, i))) });
     const spreadAll = spread(rows);
     const units = spreadAll.units;
@@ -582,7 +598,9 @@ export class VisualPart extends Panel {
     // what a tooltip and a label read: the marks the kind draws (units) and the rows (a mark a kind groups itself)
     this.rowsById = new Map(rows.map((r) => [r.id, r]));
     this.unitsById = new Map(units.map((u) => [u.id, u]));
-    const label = (mark) => labelOf(mark, { decl: this.decl, rowsById: this.rowsById, marked: (ids) => ids.some(marked) });
+    // labels shown: the declaration's; none written and Label by of images - All (lead 10-15: a picture put in shows)
+    const shows = this.decl.labels || (pictures.includes('label') ? 'all' : 'none');
+    const label = (mark) => labelOf(mark, { decl: this.decl, shows, rowsById: this.rowsById, marked: (ids) => ids.some(marked), images });
     // the top or bottom N marks by the Top/Bottom by slot (show_items.js) - the rest not drawn, said in the status
     // the base set slots its kind takes (a kind's `without` - the sheet takes no Top/Bottom by, no Panel by)
     const takes = new Set(this.slotList().map((s) => s.key));
@@ -590,7 +608,8 @@ export class VisualPart extends Panel {
     // A written start as the kind may show it (the sheet's key cell): its text and the node it names, or why not.
     const start = this.start && this.start.node ? { text: this.start.node, ...(this.startNode() || {}) } : null;
     const modelCtx = { paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start,
-      scale: (key) => scales[key] || scaleOf([], (this.decl.scale || {})[key]), text: (key, v, time) => this.text(key, v, time) };
+      scale: (key) => scales[key] || scaleOf([], (this.decl.scale || {})[key]), text: (key, v, time) => this.text(key, v, time), images };
+    this.imagesOf = images;
     this.model = this.kind.model(showing.kept, modelCtx);
     // Trellis (trellis.js): a panel a Panel by value - its rows' marks, the shown ones only, every panel on one extent
     const split = takes.has('panel') ? panelsOf(rows, this.decl) : null;
@@ -743,6 +762,17 @@ export class VisualPart extends Panel {
     root.append(title, ...(said ? [el('div', 'sf-part__desc', said)] : []), body);
     this.host.replaceChildren(root);
     this.root = root;
+    // a mark's images turned by the wheel or the arrow keys while its tooltip is up (lead 10-15 ②: that mark only)
+    root.addEventListener('wheel', (event) => { if (this.turnTip(event.deltaY > 0 ? 1 : -1) && event.preventDefault) event.preventDefault(); });
+    if (!this.keysHeard && doc.addEventListener) {
+      this.keysHeard = true;
+      doc.addEventListener('keydown', (event) => {
+        const d = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+        if (d && this.turnTip(d) && event.preventDefault) event.preventDefault();
+      });
+    }
+    if (this.previewer) root.append(this.previewer.mount);
+    if (this.tip && this.tipMark) root.appendChild(this.tip);
     this.paintActive();
     if (!this.kind) { body.append(el('div', 'sf-say', `Unknown kind: ${this.decl.kind}`)); return; }
     // THE TEMPLATE (ROOT_PART_BASE_SET: the root is the template, a kind the visible area - the part frame standard,
@@ -759,7 +789,7 @@ export class VisualPart extends Panel {
     const trays = Object.fromEntries(['top', 'left', 'bottom'].map((side) => [side, el('div', `sf-frame__tray sf-frame__${side}`)]));
     // the rows (or hubs) the root drew no mark for, and why - the first reason said (units.js marksOf)
     const dropped = ready && (this.dropped || []).length ? `${this.dropped.length} not drawn: ${this.dropped[0].why}` : '';
-    const note = [ready ? this.model.note : '', dropped].filter(Boolean).join(' - ');
+    const note = [ready ? this.model.note : '', dropped, ready ? this.imageRefusal : ''].filter(Boolean).join(' - ');
     if (note) {
       // one line, cut - its words in its tooltip (the frame standard 8)
       const n = el('span', 'sf-note', note);
@@ -804,6 +834,9 @@ export class VisualPart extends Panel {
       tray: (side) => trays[side] || null,
       words: (key) => slotWords((this.decl.encode || {})[key]),
       text: (key, v, time) => this.text(key, v, time),
+      // pictures (image_thumb.js): a place's own turn-by-hand thumbnail; a mark's picture at its turn, asked when drawable
+      thumb: (mount, refs, px) => new Thumb(mount, { doc, loader: this.images, preview: this.preview() }).show(refs, px),
+      picture: (spec, px) => this.picture(spec, px),
       plus: (key) => this.plus(key),
       // what is under the pointer - {id} a mark it was handed, {ids} rows it grouped; null nothing (tooltip.js)
       hover: (mark, event) => this.showTip(mark, event),
@@ -875,14 +908,79 @@ export class VisualPart extends Panel {
     return valueText(value, Boolean(time || s.time), Boolean(s.day));
   }
 
+  /** The part's own preview of a picture (image_preview.js) - one box, its own div. */
+  preview() {
+    if (!this.previewer && this.doc) {
+      const mount = this.doc.createElement('div');
+      this.previewer = new ImagePreview(mount, { doc: this.doc, base: this.images.base });
+      if (this.root) this.root.append(mount);
+    }
+    return this.previewer;
+  }
+
+  /** What a mark shows of a slot of images: {id, key, refs} - its picture at its turn, ctx.picture. */
+  pictureSpec(mark, key, images) {
+    const refs = images ? images(key, mark && mark.reads ? mark.reads[key] : null) : null;
+    return refs && refs.length ? { id: mark.id || (mark.ids || []).join(','), key, refs } : null;
+  }
+
+  /** A mark's picture at its turn, drawn at `px`: its address once the page's loader has it; drawable and not here - asked,
+   *  the part drawn again when it comes; too small - none asked (image_thumb.js THUMB_MIN_PX). */
+  picture(spec, px) {
+    if (!spec || !spec.refs || !spec.refs.length || !drawsImage(px)) return null;
+    const url = this.images.url(spec.refs[(this.turns.get(`${spec.id}|${spec.key}`) || 0) % spec.refs.length], px);
+    if (this.images.has(url)) return url;
+    this.images.want(url, (ok) => { if (ok) this.refoldSoon(); });
+    return null;
+  }
+
+  /** Drawn again once, after the pictures that came this turn. */
+  refoldSoon() {
+    if (this.soon) return;
+    this.soon = true;
+    Promise.resolve().then(() => { this.soon = false; this.refold(); });
+  }
+
+  /** The tooltip's mark turns its images by one - true when it holds some to turn. */
+  turnTip(d) {
+    const specs = (this.tipSpecs || []).filter((s) => s.refs.length > 1);
+    if (!this.tipMark || !specs.length) return false;
+    for (const s of specs) {
+      const k = `${s.id}|${s.key}`;
+      this.turns.set(k, ((this.turns.get(k) || 0) + d + s.refs.length) % s.refs.length);
+    }
+    this.showTip(this.tipMark, this.tipEvent);
+    if (specs.some((s) => s.key === 'shape' || s.key === 'label')) this.refoldSoon();
+    return true;
+  }
+
   showTip(mark, event) {
     if (!this.root || !this.doc) return;
     if (!this.tip) { this.tip = this.doc.createElement('div'); this.tip.className = 'sf-tip'; }
-    if (!mark || !event) { this.tip.remove ? this.tip.remove() : null; return; }
+    if (!mark || !event) { this.tipMark = null; this.tipSpecs = null; this.tip.remove ? this.tip.remove() : null; return; }
+    this.tipMark = mark;
+    this.tipEvent = event;
     const unit = (mark.id !== undefined && this.unitsById && this.unitsById.get(mark.id)) || mark;
     const lines = tipLines({ ...unit, ids: unit.ids || mark.ids || [] }, { rowsById: this.rowsById || new Map(), slots: this.slotList(), encode: this.decl.encode || {},
-      text: (key, v, time) => this.text(key, v, time) });
-    this.tip.replaceChildren(...lines.map((line, k) => { const n = this.doc.createElement('div'); if (!k) n.className = 'sf-tip__h'; n.textContent = line; return n; }));
+      text: (key, v, time) => this.text(key, v, time), images: this.imagesOf || null });
+    this.tipSpecs = lines.filter((line) => line && typeof line === 'object').map((line) => line.spec);
+    this.tip.replaceChildren(...lines.map((line, k) => {
+      const n = this.doc.createElement('div');
+      if (!k) n.className = 'sf-tip__h';
+      if (line && typeof line === 'object') {
+        // a slot of images: its words, its picture at the mark's turn and «k/n»
+        n.className = 'sf-tip__img';
+        const at = (this.turns.get(`${line.spec.id}|${line.spec.key}`) || 0) % line.spec.refs.length;
+        const holder = this.doc.createElement('span');
+        holder.className = 'sf-thumb__at';
+        if (holder.style) { holder.style.width = `${TIP_IMAGE_PX}px`; holder.style.height = `${TIP_IMAGE_PX}px`; }
+        const words = this.doc.createElement('span');
+        words.textContent = `${line.words}: `;
+        n.append(words, holder);
+        new Thumb(holder, { doc: this.doc, loader: this.images, at }).show(line.spec.refs, TIP_IMAGE_PX);
+      } else n.textContent = line;
+      return n;
+    }));
     const box = this.root.getBoundingClientRect ? this.root.getBoundingClientRect() : { left: 0, top: 0 };
     this.tip.style.left = `${(event.clientX || 0) - box.left + 12}px`;
     this.tip.style.top = `${(event.clientY || 0) - box.top + 12}px`;

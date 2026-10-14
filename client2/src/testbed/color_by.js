@@ -9,7 +9,7 @@ import { numberOf } from '../walk/reach_table.js';
 import { MULTIPLE, categoryOrder } from './slot.js';
 
 /** The Color by slot every kind of the root holds. */
-export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true, many: true, scalable: true });
+export const COLOR_SLOT = Object.freeze({ key: 'color', label: 'Color by', category: true, many: true, scalable: true, noImages: true });
 /** A continuous Color by's ramp (lead-board-13 ①): the palette's first category colour, from mixed 20 % toward the
  *  background (low) to itself (high) - no colour of its own. */
 export const RAMP_LOW_SHARE = 0.2;

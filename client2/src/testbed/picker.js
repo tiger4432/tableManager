@@ -307,7 +307,7 @@ export class SlotPicker {
       const desc = part.slotList().find((s) => s.key === key) || {};
       // Categorical / Continuous (lead-board-13 ①): a slot the kind draws either way - whatever its type declares; the one
       // lit is the scale the root draws it on now (slot.js scaleOf), a pick the declaration's `scale`
-      if (desc.scalable) {
+      if (desc.scalable && ((part.scales || {})[key] || {}).scale !== 'image') {
         folds.append(el('div', 'sf-pop__lab', 'Scale'));
         const scales = el('div', 'sf-pop__reds');
         const now = ((part.scales || {})[key] || {}).scale || null;

@@ -31,6 +31,8 @@ const REAL = {
   picker: await import('../src/testbed/picker.js'),
   main: await import('../src/testbed/main.js'),
   palette: await import('../src/testbed/palette.js'),
+  thumb: await import('../src/image_thumb.js'),
+  preview: await import('../src/image_preview.js'),
 };
 REAL.store = await import('../src/rnd_board/marking_store.js');
 REAL.cond = await import('../src/testbed/condition_editor.js');
@@ -92,13 +94,20 @@ function chartsRecorder() {
 const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 
 /** A visual seated on a stub document, its walk answered by `answer` (a function of the params, or one answer). */
+const MADE = [];
+class FakeImage {
+  constructor(made = MADE, hold = false) { this.made = made; this.hold = hold; made.push(this); }
+  set src(v) { this._src = v; if (!this.hold) Promise.resolve().then(() => this.onload && this.onload()); }
+  get src() { return this._src; }
+}
+const loaderOf = (M, made = MADE) => new M.thumb.ImageLoader({ base: 'http://box', make: () => new FakeImage(made) });
 function seat(M, decl, { answer = ANSWER, markings = new MarkingStore(), filters = new KeyedStore({ 'filter:1': [] }), charts = chartsRecorder(),
-  stats = new KeyedStore(), hubs = new M.hubs.HubBook(), asked = [], kinds = {} } = {}) {
+  stats = new KeyedStore(), hubs = new M.hubs.HubBook(), asked = [], kinds = {}, images = loaderOf(M) } = {}) {
   const doc = makeDoc('dark');
   const host = doc.createElement('div');
   const fetchWalk = async (params) => { asked.push(params); return { ok: true, body: typeof answer === 'function' ? answer(params) : JSON.parse(JSON.stringify(answer)) }; };
   const part = new M.visual.VisualPart(host, { doc, markings, reads: decl.reads, writes: decl.writes, start: decl.start, declaration: decl,
-    kinds: { scatter: M.scatter.kind, crossTable: M.cross.kind, ...kinds }, fetchWalk, filters, stats, active: new KeyedStore(), hubs, names: new Map(), charts, palette: () => DARK });
+    kinds: { scatter: M.scatter.kind, crossTable: M.cross.kind, ...kinds }, fetchWalk, filters, stats, active: new KeyedStore(), hubs, names: new Map(), charts, palette: () => DARK, images });
   part.mount();
   return { part, host, doc, markings, filters, charts, stats, hubs, asked };
 }
@@ -478,6 +487,116 @@ async function parts(M) {
       () => [{ value: 'a', record: 'e1' }, { value: 'b', record: 'e2' }], (k) => k, ['v']).marks.map((mk) => mk.raw.v.map((r) => r.value));
     out.lens = [mdl.colKeys, mdl.grid[0].map((c) => c.value), mdl.rowTotals, lens.part.model ? lens.part.model.colKeys : null, spread];
   }
+  {
+  // T46-T53: images (lead-board-14) - a column the walk declares image: P1 two pictures, P2 one, P3 none
+  const imgEdge = (w, v, at) => ({ source: w, target: 'QI', predicate: 'shows', qualifiers: { value: v }, column_types: { value: 'image' }, occurred_at: at });
+  const picAnswer = { nodes: [wafer('P1'), wafer('P2'), wafer('P3'), { id: 'QI', type: 'quantity', label: 'pic', keys: { quantity: 'pic' }, attributes: {} },
+    ...ANSWER.nodes.filter((n) => n.id === 'QT' || n.id === 'QP')],
+    edges: [imgEdge('P1', 'p1.png', T0), imgEdge('P1', 'p2.png', T1), imgEdge('P2', 'p3.png', T0),
+      ...[['P1', '10', '1'], ['P2', '20', '2'], ['P3', '30', '3']].flatMap(([w, a, b]) => [
+        { source: w, target: 'QT', predicate: 'measures', qualifiers: { value: a }, occurred_at: T0 },
+        { source: w, target: 'QP', predicate: 'measures', qualifiers: { value: b }, occurred_at: T0 }])], truncated: ANSWER.truncated };
+  const pic = { steps: [{ predicate: 'shows', direction: 'outgoing' }], end: 'QI', value: { on: 'edge', name: 'value' }, words: ['pic'] };
+  const url = (ref) => `http://box/api/image?ref=${ref}`;
+  const lastChart = (k) => k.charts.made[k.charts.made.length - 1];
+  const dataOf = (k) => { const c = lastChart(k); return c ? Object.fromEntries(c.option.series[0].data.map((d) => [d.id, d])) : {}; };
+  const made = [];
+  const sc = seat(M, scatterDecl({ id: 'IS', encode: { x: temp, y: press, shape: pic } }), { answer: picAnswer, images: loaderOf(M, made) });
+  await settle(); await settle();
+  const d1 = dataOf(sc);
+  const askedFirst = made.map((m) => m.src).sort();
+  sc.part.showTip({ id: 'P1' }, { clientX: 0, clientY: 0 });
+  const tipCount = () => { const n = walk(sc.part.tip).find((x) => String(x.className) === 'sf-thumb__n'); return n ? n.textContent : null; };
+  const tipBefore = tipCount();
+  for (const fn of (sc.part.root.listeners.wheel || [])) fn({ deltaY: 1, preventDefault() {} });
+  await settle(); await settle();
+  const d2 = dataOf(sc);
+  out.pictured = [sc.part.scales.shape && sc.part.scales.shape.scale, sc.part.model.points.length,
+    d1.P1 && d1.P1.symbol, d1.P2 && d1.P2.symbol, Boolean(d1.P3 && d1.P3.symbol), d1.P1 && d1.P1.symbolSize > sc.part.model.size,
+    askedFirst, tipBefore, tipCount(), d2.P1 && d2.P1.symbol,
+    M.slot.scaleOf([{ state: 'one', value: 'x.png', declared: 'image' }], 'categorical').scale];
+  // refused where a category paints or places: Color by, a cross table's axis - the note says so, nothing read
+  const noteOf = (k) => { const n = walk(k.host).find((x) => String(x.className) === 'sf-note'); return n ? n.textContent : ''; };
+  const sr = seat(M, scatterDecl({ id: 'IR', encode: { x: temp, y: press, color: pic } }), { answer: picAnswer });
+  const cr = seat(M, crossDecl({ id: 'IC', encode: { rows: pic, columns: product } }), { answer: picAnswer });
+  // a Label by of images: shown with no «Show labels for» written; None written - not
+  const sl = seat(M, scatterDecl({ id: 'IL', encode: { x: temp, y: press, label: pic } }), { answer: picAnswer });
+  const sn = seat(M, scatterDecl({ id: 'IN', encode: { x: temp, y: press, label: pic }, labels: 'none' }), { answer: picAnswer });
+  // the table: a column of images - its line one height, a cell its thumbnail, «1/2» and ‹ › on P1's
+  const tb = seat(M, scatterDecl({ id: 'IT', kind: 'table', encode: { col1: temp, col2: pic } }), { answer: picAnswer, kinds: { table: M.table.kind } });
+  // the map: a Label by of images fills a cell big enough; a small one asks for none
+  const mapMade = [];
+  const smallMade = [];
+  const sized = (k, px) => { const make = k.doc.createElement; k.doc.createElement = (tag) => { const n = make(tag); n.getBoundingClientRect = () => ({ left: 0, top: 0, width: px, height: px }); return n; }; };
+  const mp = seat(M, scatterDecl({ id: 'IM', kind: 'map', encode: { x: temp, y: press, label: pic } }), { answer: picAnswer, kinds: { map: M.map.kind }, images: loaderOf(M, mapMade) });
+  sized(mp, 440);
+  const ms = seat(M, scatterDecl({ id: 'IMS', kind: 'map', encode: { x: temp, y: press, label: pic } }), { answer: picAnswer, kinds: { map: M.map.kind }, images: loaderOf(M, smallMade) });
+  sized(ms, 40);
+  await settle(); await settle(); await settle();
+  const lab = dataOf(sl);
+  const labNone = dataOf(sn);
+  const p1Line = walk(tb.host).filter((n) => n.tagName === 'TR').find((tr) => walk(tr).some((x) => x.tagName === 'IMG'));
+  const svgImages = (k) => walk(k.host).filter((n) => n.tagName === 'IMAGE').map((n) => n.attrs.href);
+  out.placed = [noteOf(sr).includes(M.thumb.IMAGES_REFUSED), sr.part.colors.categories.length, noteOf(cr).includes(M.thumb.IMAGES_REFUSED),
+    lab.P2 && lab.P2.label.show, lab.P2 && lab.P2.label.rich && lab.P2.label.rich.img.backgroundColor.image, labNone.P2 && labNone.P2.label.show,
+    String((walk(tb.host).find((n) => n.tagName === 'TABLE') || {}).className).includes('sf-table--images'),
+    p1Line ? walk(p1Line).filter((n) => n.tagName === 'BUTTON').map((n) => n.textContent) : null,
+    p1Line ? (walk(p1Line).find((n) => String(n.className) === 'sf-thumb__n') || {}).textContent : null,
+    svgImages(mp).sort(), svgImages(ms).length, smallMade.length];
+  // the thumbnail itself (image_thumb.js Thumb): turned by ‹ › (marking nothing), the wheel, the arrow keys while hovered
+  const tdoc = makeDoc('dark');
+  const shown = [];
+  const preview = { hover: (anchor, ref) => shown.push(ref), leave() {} };
+  const tMade = [];
+  const tLoader = loaderOf(M, tMade);
+  const holder = tdoc.createElement('span');
+  const th = new M.thumb.Thumb(holder, { doc: tdoc, loader: tLoader, preview }).show(['a', 'b', 'c'], 48);
+  await settle();
+  const countOf = () => (walk(holder).find((n) => String(n.className) === 'sf-thumb__n') || {}).textContent;
+  const imgOf = () => (walk(holder).find((n) => n.tagName === 'IMG') || { attrs: {} }).attrs.src;
+  const navs = walk(holder).filter((n) => n.tagName === 'BUTTON');
+  let stopped = 0;
+  const pressNav = (b) => { const ev = { preventDefault() {}, stopPropagation() { stopped += 1; } }; for (const fn of b.listeners.mousedown || []) fn(ev); for (const fn of b.listeners.click || []) fn(ev); };
+  const turns = [countOf(), imgOf()];
+  pressNav(navs[1]); await settle(); turns.push(countOf(), imgOf(), stopped);
+  pressNav(navs[0]); pressNav(navs[0]); turns.push(countOf());
+  for (const fn of walk(holder)[1].listeners.wheel || []) fn({ deltaY: 1, preventDefault() {} });
+  turns.push(countOf());
+  for (const fn of walk(holder)[1].listeners.mouseenter || []) fn({});
+  th.key({ key: 'ArrowRight', preventDefault() {} });
+  turns.push(countOf(), shown.slice());
+  for (const fn of walk(holder)[1].listeners.mouseleave || []) fn({});
+  th.key({ key: 'ArrowRight', preventDefault() {} });
+  turns.push(countOf());
+  out.turned = turns;
+  // a place too small: no picture asked - its mark, or «1/2»; the preview turned by the keys
+  const sMade = [];
+  const one = tdoc.createElement('span');
+  new M.thumb.Thumb(one, { doc: tdoc, loader: loaderOf(M, sMade), preview }).show(['a'], 10);
+  const two = tdoc.createElement('span');
+  shown.length = 0;
+  const small = new M.thumb.Thumb(two, { doc: tdoc, loader: loaderOf(M, sMade), preview }).show(['a', 'b'], 10);
+  for (const fn of walk(two)[1].listeners.mouseenter || []) fn({});
+  small.key({ key: 'ArrowRight', preventDefault() {} });
+  out.small = [walk(one).some((n) => n.tagName === 'IMG'), walk(one).map((n) => n.textContent).pop(), walk(two).some((n) => n.tagName === 'IMG'),
+    (walk(two).find((n) => String(n.className) === 'sf-thumb__n') || {}).textContent, shown.slice(), sMade.length];
+  // the loader: a few at once, one ask a picture; out of view - asked when it comes in
+  const lMade = [];
+  const held = new M.thumb.ImageLoader({ base: 'http://box', make: () => new FakeImage(lMade, true), atOnce: 4 });
+  for (const r of ['a', 'b', 'c', 'd', 'e', 'f']) held.want(held.url(r));
+  held.want(held.url('a'));
+  const atOnce = lMade.length;
+  lMade[0].onload();
+  const vdoc = makeDoc('dark');
+  const watchers = [];
+  vdoc.defaultView = { IntersectionObserver: class { constructor(cb) { this.cb = cb; watchers.push(this); } observe() {} disconnect() {} } };
+  const vMade = [];
+  new M.thumb.Thumb(vdoc.createElement('span'), { doc: vdoc, loader: loaderOf(M, vMade) }).show(['z'], 48);
+  const unseen = vMade.length;
+  watchers[0].cb([{ isIntersecting: true }]);
+  out.loads = [atOnce, lMade.length, unseen, vMade.length,
+    M.preview.imageRefUrl('B', 'a', 64), M.preview.imageRefUrl('B', 'a'), held.url('a', 64)];
+  }
   // T45: one order of categories (lead 10-15) - numbers by their value before text, (Empty) and (Multiple) last; the cross
   // table's row heads, a category axis, the legend and the panels all in it
   const numAnswer = { nodes: ['1', '2', '10', '11'].map((v) => wafer(`N${v}`, { n: v, product: 'A' })), edges: [], truncated: ANSWER.truncated };
@@ -744,6 +863,18 @@ function suite(out, page, saved, counted) {
     page.multiple, [['A', 'B', '(Multiple)'], 2, true, 1, ['W3'], ['W3'], ['A', 'B', '(Multiple)'], [['A', true], ['B', true], ['(Empty)', false]], ['A', 'B'], '(Multiple)', ['A', 'B', '(Multiple)']]);
   eq('T51 a cross table\'s cell folds its own marks - a wafer\'s two quantities each their median (not the row\'s six mixed), the row\'s total over all six once',
     page.lens, [['void_area', 'warpage'], [9.914, 10.0695], [9.99], ['void_area', 'warpage'], [['1'], ['2']]]);
+  eq('T46 a column the walk declares image is a slot of images - no Scale pick over it; a Shape by of images: a mark a point (P1\'s two pictures one point), its picture at its size once loaded, only the pictures drawn asked; the tooltip\'s «1/2» turned by the wheel, the point with it',
+    page.pictured, ['image', 3, 'image://http://box/api/image?ref=p1.png', 'image://http://box/api/image?ref=p3.png', false, true,
+      ['http://box/api/image?ref=p1.png', 'http://box/api/image?ref=p3.png'], '1/2', '2/2', 'image://http://box/api/image?ref=p2.png', 'image']);
+  eq('T47 images refused where a category paints or places (Color by, a cross axis) - said, nothing read; a Label by of images shown with no «Show labels for» written, None written not; a table\'s column of images - the line one height, the cell its thumbnail with ‹ › and «1/2»; a map\'s Label by of images fills a cell big enough, a small one asks for none',
+    page.placed, [true, 0, true, true, 'http://box/api/image?ref=p3.png', false, true, ['‹', '›'], '1/2',
+      ['http://box/api/image?ref=p1.png', 'http://box/api/image?ref=p3.png'], 0, 0]);
+  eq('T48 a thumbnail turned by hand - ‹ › (marking nothing), the wheel, the arrow keys while hovered (not after), the preview with it; the first at the start',
+    page.turned, ['1/3', 'http://box/api/image?ref=a', '2/3', 'http://box/api/image?ref=b', 2, '3/3', '1/3', '2/3', ['a', 'b'], '2/3']);
+  eq('T49 a place too small asks for no picture - its mark (one) or «1/2» (several), the preview turned by the keys',
+    page.small, [false, '▣', false, '2/2', ['a', 'b'], 0]);
+  eq('T50 the loader: a few at once (4), a picture asked once, the next when one is in; a place out of view asks when it comes in; the size sent only when given (the server\'s px - not yet)',
+    page.loads, [4, 5, 0, 1, 'B/api/image?ref=a&px=64', 'B/api/image?ref=a', 'http://box/api/image?ref=a']);
   eq('T45 one order of categories - numbers by their value before text, (Empty) and (Multiple) last; the cross table\'s row heads, a category axis, the legend and the panels in it',
     page.order, [['1', '2', '10', '11', 'A', 'B', '(Empty)', '(Multiple)'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11'], ['1', '2', '10', '11']]);
   eq('T43 a slot of days says its days - every time the page zone\'s midnight: «YYYY-MM-DD» on the cross row heads, the category ticks, the legend, the tooltip, the hub\'s value the time itself; one not midnight - every time as the grid says it',
@@ -871,6 +1002,26 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    return foldRows(measures[m], [...new Set(marks.map((x) => x.raw[k]))], ctx.askMarked);', '    return foldRows(measures[m], [...new Map(marks.map((x) => [x.row || x.id, x.raw[k]])).values()], ctx.askMarked);') },
   { id: 'M72', what: 'several on a paint slot the one look, no category', catches: 'T44', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, "read.state === 'several' ? MULTIPLE : null);", 'null);') },
+  { id: 'M76', what: 'a column declared image read by its values', catches: 'T46', file: 'testbed/slot.js',
+    mutate: (t) => swap(t, "  if (one === 'image') return { scale: 'image', time: false, day: false };\n", '') },
+  { id: 'M77', what: 'a slot of images spreads marks - the table P1 two lines of one picture each', catches: 'T47', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, 'marked: askMarked, drawn, pictures });', 'marked: askMarked, drawn, pictures: [] });') },
+  { id: 'M78', what: 'images taken where a category paints', catches: 'T47', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    const refused = listed.filter((s) => s.noImages && pictures.includes(s.key)).map((s) => s.key);', '    const refused = [];') },
+  { id: 'M79', what: 'a Label by of images hidden until «Show labels for» is written', catches: 'T47', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, "    const shows = this.decl.labels || (pictures.includes('label') ? 'all' : 'none');", "    const shows = this.decl.labels || 'none';") },
+  { id: 'M80', what: 'a picture asked at any size', catches: 'T47', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '    if (!spec || !spec.refs || !spec.refs.length || !drawsImage(px)) return null;', '    if (!spec || !spec.refs || !spec.refs.length) return null;') },
+  { id: 'M81', what: 'the tooltip\'s wheel turns nothing', catches: 'T46', file: 'testbed/visual_part.js',
+    mutate: (t) => swap(t, '      this.turns.set(k, ((this.turns.get(k) || 0) + d + s.refs.length) % s.refs.length);\n', '') },
+  { id: 'M82', what: 'a small place still asks for its picture', catches: 'T49', file: 'image_thumb.js',
+    mutate: (t) => swap(t, '    if (drawsImage(px)) {\n      this.img', '    if (true) {\n      this.img') },
+  { id: 'M83', what: 'a press on ‹ › marks too', catches: 'T48', file: 'image_thumb.js',
+    mutate: (t) => swap(t, "b.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); this.turn(d); });", "b.addEventListener('click', (event) => { event.preventDefault(); this.turn(d); });") },
+  { id: 'M84', what: 'every picture asked at once', catches: 'T50', file: 'image_thumb.js',
+    mutate: (t) => swap(t, '    while (this.out.size < this.atOnce && this.waiting.length) {', '    while (this.waiting.length) {') },
+  { id: 'M85', what: 'the size never sent', catches: 'T50', file: 'image_preview.js',
+    mutate: (t) => swap(t, "${px ? `&px=${Math.round(px)}` : ''}", '') },
   { id: 'M73', what: '«(Multiple)» sorted as text - first', catches: 'T44', file: 'testbed/slot.js',
     mutate: (t) => swap(t, '    if (tail(a) || tail(b)) return tail(a) - tail(b);\n', '') },
   { id: 'M74', what: 'numbers sorted as text', catches: 'T45', file: 'testbed/slot.js',
@@ -1007,7 +1158,7 @@ MUTANTS.push(
   { id: 'M56', what: 'the scatter ignores the root\'s scale', catches: 'T37', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '  const s = ctx.scale ? ctx.scale(key) : scaleOf(', '  const s = false ? ctx.scale(key) : scaleOf(') },
   { id: 'M57', what: 'the Scale chips shown on every slot', catches: 'T37', file: 'testbed/picker.js',
-    mutate: (t) => swap(t, '      if (desc.scalable) {', '      if (true) {') },
+    mutate: (t) => swap(t, "      if (desc.scalable && ((part.scales || {})[key] || {}).scale !== 'image') {", '      if (true) {') },
   { id: 'M58', what: 'a continuous Color by still paints categories', catches: 'T38', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, "  if (ctx.scale && ctx.scale.scale === 'continuous' && decl.encode && decl.encode.color) return rampOf(rows, palette, ctx.scale.time);\n", '') },
   { id: 'M59', what: 'the rows not a time are not said', catches: 'T39', file: 'testbed/status_part.js',
@@ -1020,7 +1171,7 @@ MUTANTS.push(
 const KEY = { 'testbed/aggregate.js': 'aggregate', 'testbed/slot.js': 'slot', 'testbed/filter.js': 'filter', 'testbed/hubs.js': 'hubs',
   'testbed/kinds/scatter.js': 'scatter', 'testbed/kinds/cross_table.js': 'cross', 'testbed/visual_part.js': 'visual', 'testbed/status_part.js': 'status',
   'testbed/main.js': 'main', 'rnd_board/marking_store.js': 'store', 'testbed/palette.js': 'palette', 'testbed/picker.js': 'picker', 'testbed/condition_editor.js': 'cond',
-  'testbed/color_by.js': 'color', 'testbed/units.js': 'units' };
+  'testbed/color_by.js': 'color', 'testbed/units.js': 'units', 'image_thumb.js': 'thumb', 'image_preview.js': 'preview' };
 const scored = await scoreMutants(MUTANTS, async (m) => {
   // A stylesheet is no module: its mutant is the census's text alone.
   if (m.file.endsWith('.css')) return run(REAL, { [m.file]: m.mutate(readFileSync(join(SRC, m.file), 'utf8')) });
