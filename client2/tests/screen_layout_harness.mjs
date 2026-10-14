@@ -336,12 +336,12 @@ CELLS.push({ entry: 'testbed.html', after: 'parts swapped by a drop', rule: 'dro
   const want = s.before.split(',').map((id) => (id === 'scatter-1' ? 'table-1' : id === 'table-1' ? 'scatter-1' : id)).join(',');
   return s.after === want ? null : 'after the drop ' + s.after + ', not ' + want;
 })()` });
-// Each part's walks on the status line (owner 10-14 «행 걷기 + 값 걷기»): every part that walked says its rows'
-// walk, and a part with a value walk says its slot's - none refused, none expired.
+// Each part's walks on the status line (owner 10-14 «행 걷기 + 값 걷기»): every part says its rows'
+// walk (complete, or cached - the page's, lead-board-10c), and a part with a value walk says its slot's - none refused, none expired.
 CELLS.push({ entry: 'testbed.html', after: 'walks on the status line', rule: 'walks said', at: 'sf-status', expr: `(() => {
   const all = window.__walkLine || [];
   if (!all.length) return 'no part activated';
-  const rows = all.filter((p) => p.words.some((w) => /^Rows [0-9,]+ · complete$/.test(w)));
+  const rows = all.filter((p) => p.words.some((w) => /^Rows [0-9,]+ · (complete|cached)$/.test(w)));
   const values = all.filter((p) => p.words.some((w) => !w.startsWith('Rows ') && / · (complete|cached)$/.test(w)));
   const bad = all.flatMap((p) => p.words.filter((w) => /expired|refused/i.test(w)).map((w) => p.id + ': ' + w));
   if (bad.length) return bad.join('; ');
