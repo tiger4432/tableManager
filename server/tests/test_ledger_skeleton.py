@@ -92,7 +92,7 @@ ANCHORS = {
 #: grammar this round, and the short form's window is its own round (소유자 «창도 이대로 만들어»,
 #: 총괄 4c7b42b0a). Named here so the day it is drawn these move to ANCHORS, and asserted to be
 #: exactly these so no other site hides behind them.
-SHORT_FORM_SITES = {("_short_form_errors", "path"), ("_short_value_errors", "path"),
+SHORT_FORM_SITES = {("short_form_errors", "path"), ("_short_value_errors", "path"),
                     ("_short_value_errors", "f'{path}.node'")}
 
 

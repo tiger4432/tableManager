@@ -114,3 +114,69 @@ def test_the_schema_carries_what_the_window_draws_from(tmp_path):
     assert schema["vocabulary"]["register"]["object"] == {"kind": "none", "types": []}
     assert schema["vocabulary"]["measures"]["object"] == {"kind": "entity_ref", "types": ["quantity"]}
     assert "value" in schema["vocabulary"]["measures"]["qualifiers"]
+
+
+@pytest.mark.parametrize("change, code, path", [
+    (lambda body: body["sentences"].append(copy.deepcopy(body["sentences"][0])),
+     "duplicate_sentence", "bundle.sources.transfer_event.sentences[1].sentence"),
+    (lambda body: body.update(atributes={}), "unknown_field", "bundle.sources.transfer_event.atributes"),
+])
+def test_a_short_body_is_judged_in_its_own_shape_before_it_is_read_long(tmp_path, change, code, path):
+    """검수 1: what the long reading would drop without a word is refused, by the short path."""
+    from ledger.config_explorer import ConfigExplorerError
+
+    service, short = _service(tmp_path)
+    draft = _open(service, "transfer_event")
+    body = copy.deepcopy(short["sources"]["transfer_event"])
+    change(body)
+    with pytest.raises(ConfigExplorerError) as refused:
+        service.save_draft(draft["draft_id"], expected_revision=draft["revision"], raw=json.dumps(body))
+    assert (refused.value.code, refused.value.path) == (code, path)
+
+
+def test_a_body_with_a_cell_only_the_long_form_holds_is_shown_long(tmp_path):
+    """검수 2: an identity the short form would drop is shown, not hidden and lost on the next save."""
+    service, _short = _service(tmp_path)
+    draft = _open(service, "transfer_event")
+    with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        body = json.load(fh)["sources"]["transfer_event"]
+    body["read"].update({"identity": ["row_id"], "order_by": ["row_id"]})
+    saved = service.save_draft(draft["draft_id"], expected_revision=draft["revision"], raw=json.dumps(body))
+    assert saved["raw"]["read"]["identity"] == ["row_id"]
+
+
+def test_a_refusal_is_said_where_the_short_body_writes_it(tmp_path):
+    """검수 3: a column the table does not have, on the sentence's own path."""
+    service, short = _service(tmp_path)
+    draft = _open(service, "transfer_event")
+    body = copy.deepcopy(short["sources"]["transfer_event"])
+    body["sentences"][0]["when"] = {"no_such_column": "x"}
+    saved = service.save_draft(draft["draft_id"], expected_revision=draft["revision"], raw=json.dumps(body))
+    assert [e["path"] for e in saved["validation_errors"]] == [
+        "bundle.sources.transfer_event.sentences[0].when.no_such_column"]
+    assert saved["validation_errors"][0]["json_pointer"] == "/sources/transfer_event/sentences/0/when/no_such_column"
+
+
+def test_a_draft_runs_only_for_its_own_source(tmp_path):
+    """검수 4."""
+    from ledger.config_explorer import ConfigExplorerError
+
+    service, _short = _service(tmp_path)
+    draft = _open(service, "transfer_event")
+    with pytest.raises(ConfigExplorerError) as refused:
+        service.test_run(None, source_id="die_inspection", draft_id=draft["draft_id"])
+    assert refused.value.code == "draft_not_this_source"
+
+
+def test_a_catalog_that_cannot_be_read_empties_the_tables_only(tmp_path):
+    """검수 5: the lists answer without it, and say why the tables are empty."""
+    service, _short = _service(tmp_path)
+    service.active()
+
+    def unreadable():
+        raise OSError("table_config.json is gone")
+
+    service._catalog_loader = unreadable
+    schema = service.authoring_schema()
+    assert schema["tables"] == {} and "table_config.json is gone" in schema["tables_unavailable"]
+    assert schema["entities"] and schema["vocabulary"]

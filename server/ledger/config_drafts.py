@@ -42,6 +42,8 @@ from .setup_bundle import (
     LedgerSetupValidationError,
     expand_source,
     is_long_source,
+    short_form_errors,
+    short_path,
     require_ready_bundle,
     short_form_moves,
     shorten_source,
@@ -364,7 +366,7 @@ def draft_target(record: Mapping[str, Any], index: ExplorerIndex) -> Any:
     )
 
 
-def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
+def parse_draft_raw(raw_text: Any, name: str | None = None) -> Mapping[str, Any]:
     """The editor's text as a declaration body - the save and the unsaved plan read refuse
     the same text by the same names."""
     try:
@@ -375,6 +377,13 @@ def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
     if not isinstance(raw, Mapping):
         raise ConfigExplorerError(
             "invalid_json_type", "raw", "definition must be a JSON object")
+    if not is_long_source(raw) and {"table", "sentences"} & set(raw):
+        # 총괄 10-14 창 문 검수 1: a short body is judged in its own shape - a sentence named twice,
+        # a misspelt key - before it is read long, or the long reading drops it without a word
+        issues = short_form_errors({"setup_version": SHORT_FORM_VERSION, "sources": {name or "draft": raw}})
+        if issues:
+            raise ConfigExplorerError(issues[0].code, issues[0].path, issues[0].message,
+                                      details=[issue.to_mapping() for issue in issues])
     return expand_source(raw)            # a source written short is held long (총괄 10-14 창 문)
 
 
@@ -388,7 +397,7 @@ def with_unsaved_body(document: Mapping[str, Any], active_setup: Any,
     The fill is the save's own `_filled_declaration`, over the active setup the save fills
     against - not `document`, which is the authoring file (총괄 d4a949a8c ⑦)."""
     node = draft_target(record, index)
-    body, dropped = _filled_declaration(active_setup, node, parse_draft_raw(raw_text))
+    body, dropped = _filled_declaration(active_setup, node, parse_draft_raw(raw_text, node.canonical_id))
     out = json.loads(json.dumps(document, ensure_ascii=False))
     try:
         _set_path(out, node.bundle_path, body)
@@ -511,6 +520,7 @@ class OntologyDraftStore:
             "created_at": now,
             "updated_at": now,
         }
+        self._show_short(record, getattr(active_setup, "catalog", None))
         with self._lock:
             self._write_record(record)
         return self.public(record)
@@ -570,6 +580,7 @@ class OntologyDraftStore:
             "created_at": now,
             "updated_at": now,
         }
+        self._show_short(record, getattr(active_setup, "catalog", None))
         with self._lock:
             self._write_record(record)
         return self.public(record)
@@ -587,7 +598,7 @@ class OntologyDraftStore:
         active_setup: Any,
         active_index: ExplorerIndex,
     ) -> tuple[dict[str, Any], DraftPreview]:
-        raw = parse_draft_raw(raw_text)
+        raw = parse_draft_raw(raw_text, self.get(draft_id).get("target_id"))
 
         with self._lock:
             record = self._read_record(draft_id)
@@ -626,6 +637,7 @@ class OntologyDraftStore:
             record["lifecycle_status"] = "saved" if preview.valid else "invalid"
             record["review_revision"] = None
             record["updated_at"] = _now()
+            self._show_short(record, getattr(active_setup, "catalog", None))
             self._write_record(record)
             return {**self.public(record), "dropped_fields": dropped}, preview
 
@@ -898,12 +910,28 @@ class OntologyDraftStore:
         )}
         # 총괄 10-14 창 문: a source of a short file is shown short - held long, so every reader
         # of the record (preview, fill, activation) reads the grammar it always read
-        if (record.get("short_file") and record.get("target_kind") == SOURCE_NODE_KIND
-                and is_long_source(out["raw"])):
+        if record.get("shows_short"):
             written, _why = shorten_source(out["raw"])
-            if written is not None:
-                out["raw"] = written
+            out["raw"] = written
+            # 검수 3: a refusal said where the short body writes it
+            out["validation_errors"] = [
+                {**issue, "path": short_path(str(issue.get("path", "")), written),
+                 "json_pointer": _error_pointer(short_path(str(issue.get("path", "")), written))}
+                for issue in (out.get("validation_errors") or [])]
         return out
+
+    @staticmethod
+    def _show_short(record: dict[str, Any], catalog: Mapping[str, Any] | None) -> None:
+        """Shown short when the file is and the body says nothing the short form drops - else long,
+        so a cell only the long form holds (an identity) is not hidden and then lost on the next save
+        (검수 2; the same comparer the activation refuses on)."""
+        raw = record.get("raw")
+        shows = bool(record.get("short_file") and record.get("target_kind") == SOURCE_NODE_KIND
+                     and is_long_source(raw))
+        if shows:
+            written, _why = shorten_source(raw)
+            shows = written is not None and not short_form_moves(raw, written, catalog or {})
+        record["shows_short"] = shows
 
     @classmethod
     def activation_blockers(cls, record: Mapping[str, Any],

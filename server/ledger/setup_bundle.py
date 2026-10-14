@@ -1085,7 +1085,7 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
     `compile_setup_snapshot`: the caller states which world it is judging against.  Production resolves it once, in `ledger.setup`.
     """
     if isinstance(value, Mapping) and value.get("setup_version") == SHORT_FORM_VERSION:
-        short = _short_form_errors(value)
+        short = short_form_errors(value)
         if short:
             return short
     value = fold_versions(upgrade_setup(value))
@@ -1291,7 +1291,7 @@ _V7_SAID: set = set()
 
 def _long_binding(value: Any) -> Any:
     """A short value as the binding it stands for. A shape that is none of the four comes back as
-    it came, and `_short_form_errors` has already named it."""
+    it came, and `short_form_errors` has already named it."""
     if isinstance(value, str):
         return {"kind": "column", "column": value}
     if not isinstance(value, Mapping):
@@ -1397,7 +1397,38 @@ def expand_source(source: Any) -> Any:
     return long
 
 
-def _short_form_errors(document: Mapping[str, Any]) -> tuple[LedgerSetupValidationError, ...]:
+def short_path(path: str, short: Mapping[str, Any]) -> str:
+    """A refusal's path in the long grammar, said where the short body writes it - `expand_source`
+    read backwards for paths (총괄 10-14 창 문 검수 3): a sentence's mapping is its place in
+    `sentences`, a binding's `column`/`kind` cell is the value itself, `entity_type` is `node`,
+    an entity's attributes are the source's, the read's cells are the table's (its key and time).
+    A path this does not know comes back as it came."""
+    match = re.match(r"^(bundle\.sources\.[^.]+)\.(.*)$", path or "")
+    if not match or not isinstance(short, Mapping):
+        return path
+    head, rest = match.groups()
+    sentences = short.get("sentences") if isinstance(short.get("sentences"), list) else []
+    names = [item.get("sentence") if isinstance(item, Mapping) else None for item in sentences]
+    said = re.match(r"^bind\.mappings\.([^.]+)(?:\.(bind|when|predicate)(?:\.(.*))?)?$", rest)
+    if said and said.group(1) in names:
+        spot = f"{head}.sentences[{names.index(said.group(1))}]"
+        part, tail = said.group(2), said.group(3)
+        if part == "bind" and tail:
+            tail = re.sub(r"\.(column|kind|value)$", "", tail).replace("entity_type", "node")
+            return f"{spot}.{tail}"
+        return f"{spot}.{part}{'.' + tail if tail else ''}" if part and part != "bind" else spot
+    owned = re.match(r"^bind\.entities\.([^.]+)\.attributes\.([^.]+)", rest)
+    if owned:
+        return f"{head}.attributes.{owned.group(1)}.{owned.group(2)}"
+    if rest.startswith("read.occurred_at"):
+        timed = [i for i, item in enumerate(sentences) if isinstance(item, Mapping) and OCCURRED_AT_ROLE in item]
+        return f"{head}.sentences[{timed[0]}].occurred_at" if timed else f"{head}.sentences"
+    if rest.startswith(("relation", "read", "map")):
+        return f"{head}.table"
+    return path
+
+
+def short_form_errors(document: Mapping[str, Any]) -> tuple[LedgerSetupValidationError, ...]:
     """A v7 file's SHORT shape, on its own paths - before `expand_short_form` reads it. What a
     sentence says (a declared predicate, a column the table has, a `when`) is the long
     validator's after the expansion, in the same words."""

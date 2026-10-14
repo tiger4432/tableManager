@@ -716,7 +716,12 @@ class OntologyExplorerService:
         if draft_id is not None:
             # 총괄 10-14 창 문 (소유자 «초안 따로 둬 테스트런 결과 보고 수정하고 다시 활성화»): the
             # draft's compiled setup, the one its preview shows - nothing recorded
-            drafted = self.draft_store.preview(self.draft_store.get(draft_id), setup, index)
+            record = self.draft_store.get(draft_id)
+            if record.get("target_id") != source_id:
+                raise ConfigExplorerError(
+                    "draft_not_this_source", "draft_id",
+                    f"draft {draft_id!r} is a draft of {record.get('target_id')!r}, not of {source_id!r}")
+            drafted = self.draft_store.preview(record, setup, index)
             setup, draft_errors = (drafted.setup, ()) if drafted.valid else (setup, drafted.errors)
         key = f"source_plan|{source_id}"
         node = index.nodes.get(key)
@@ -1031,8 +1036,9 @@ class OntologyExplorerService:
         # attributes, each predicate's qualifiers (the validator's own derivation)
         try:
             catalog = self._catalog_loader()
-        except LedgerSetupValidationError:
+        except Exception as exc:                       # noqa: BLE001 - the lists answer without it
             catalog = {}
+            payload["tables_unavailable"] = f"{type(exc).__name__}: {exc}"[:300]
         payload["tables"] = {name: {"columns": dict(table.get("columns") or {}),
                                     "key": list(default_ordering_key(catalog, name))}
                              for name, table in catalog.items()}
