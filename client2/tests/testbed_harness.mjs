@@ -245,6 +245,14 @@ async function measure(M) {
   out.walkSeeds = M.store.seedsOf([['A', SIGN.CASE], ['B', SIGN.CONTROL], ['C', SIGN.CASE], ['D', SIGN.ABSENT]]);
   // T16: the picker's routes are the walk table's
   out.routes = JSON.stringify(M.picker.routeChoices(index, WAFERS).slice(1)) === JSON.stringify(routesFrom(index, WAFERS));
+  // T52 (owner 10-15): the declaration's routes from the row type beyond the walk in hand - a PM event names its equipment
+  {
+    const vocab = { entities: [{ type: 'equipment' }, { type: 'recipe' }, { type: 'pm_event' }],
+      predicates: [{ name: 'runs', subjects: ['equipment'], object: { types: ['recipe'] } },
+        { name: 'on_equipment', subjects: ['pm_event'], object: { types: ['equipment'] } }] };
+    const held = [{ steps: [{ predicate: 'runs', direction: 'outgoing' }] }];
+    out.declared = M.picker.declaredChoices(vocab, 'equipment', held).map((r) => `${r.steps.map((s) => `${s.predicate}:${s.direction}`).join('>')}|${r.to}|${r.unloaded}`);
+  }
   // T26: the palette a canvas draws with is what the document's root computes - each token by its name, trimmed
   const said = { '--sf-bg': '#111111', '--sf-text': '#222222', '--sf-axis': '#333333', '--sf-active': '#444444', '--sf-brush': 'rgba(1, 2, 3, 0.5)',
     '--sf-one': '#555555', '--sf-one-line': '#666666', ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7].flatMap((k) => [[`--sf-cat-${k}`, `#00000${k}`], [`--sf-cat-${k}-line`, `#11111${k}`]])) };
@@ -734,6 +742,8 @@ function suite(out, page, saved, counted) {
     page.custom, ['The expression ends too soon', true, 'No value named nope on wafer',
       [{ expr: 'If([product] = "A", "is A", "not A")', words: ['If([product] = "A", "is A", "not A")'] }], ['is A', 'not A']]);
   eq('T16 the picker\'s routes are the walk table\'s «+ Column» routes (reach_table routesFrom) - no second list', out.routes, true);
+  eq('T52 the declaration offers what hangs off the row type, each way its direction, the walk in hand\'s route not twice',
+    out.declared, ['on_equipment:incoming|pm_event|true']);
   // the row walk, then one value walk for x and y together (both measures, one step - the second waits for the first);
   // W3's two temps two points (x and y the scatter's own slots; its two products the one look of Color by) - W6 none
   eq('T9a All walks the row type described; the rows and counts; every drawable point drawn - a several x a point each',
@@ -929,6 +939,12 @@ MUTANTS.push(
     mutate: (t) => swap(t, 'isExpression(current) ? current.expr : startingExpression(chosen)', "isExpression(current) ? current.expr : ''") },
   { id: 'M47', what: 'the check reads a way as the row\'s own name, so a way the row reads is refused', catches: 'T31', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name).value))', '      if (!rows.some((id) => nameValue(part.index, part.inside, id, name.split(\'.\').pop()).value))') },
+  { id: 'M89', what: 'a declared way is read forward only, so a PM event is walked from its equipment the wrong way', catches: 'T52', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, "direction: joins(name, chain[i], chain[i + 1]) ? 'outgoing' : 'incoming'", "direction: 'outgoing'") },
+  { id: 'M91', what: 'a declared route that walks back down to the row type siblings is offered', catches: 'T52', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '      if (steps.length !== route.hops || back || seen.has(key)) continue;', '      if (steps.length !== route.hops || seen.has(key)) continue;') },
+  { id: 'M90', what: 'the walk in hand\'s routes offered again from the declaration', catches: 'T52', file: 'testbed/picker.js',
+    mutate: (t) => swap(t, '      if (steps.length !== route.hops || back || seen.has(key)) continue;', '      if (steps.length !== route.hops || back) continue;') },
   { id: 'M50', what: 'the time pick reads the value, not its time', catches: 'T34', file: 'testbed/picker.js',
     mutate: (t) => swap(t, "const next = { steps: chosen.steps || [], end: chosen.end, value, of: 'time',", 'const next = { steps: chosen.steps || [], end: chosen.end, value,') },
   { id: 'M51', what: 'the time pick is on for «(row)»', catches: 'T34', file: 'testbed/picker.js',

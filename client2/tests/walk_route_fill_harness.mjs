@@ -56,6 +56,8 @@ const ROUTES = [
   { hops: 1, follow: ['measures'], chain: ['quantity', 'die'] },
   // hand-held: a static start whose SECOND step leaves the static types (S8)
   { hops: 2, follow: ['leads_to', 'measures'], chain: ['defect_kind', 'quantity', 'die'] },
+  // ... and one step past the dynamic type that name reached (S9)
+  { hops: 3, follow: ['leads_to', 'measures', 'inspected'], chain: ['defect_kind', 'quantity', 'die', 'wafer'] },
 ];
 
 function suite(M) {
@@ -139,8 +141,10 @@ function suite(M) {
     'S5 static -> static stays — the mechanism chain is what defect_kind exists to answer');
   ok(names.includes('quantity>die'),
     'S6 a static START type\'s first step to a type with no class is kept — the seed\'s first step is open');
-  ok(!names.includes('defect_kind>quantity>die'),
-    'S8 ... and a static -> not-static step after the first is still dropped');
+  ok(names.includes('defect_kind>quantity>die'),
+    'S8 a static type the seed reached through static types steps into the world once (owner 10-15)');
+  ok(!names.includes('defect_kind>quantity>die>wafer'),
+    'S9 ... and stops there: a step past that dynamic type is dropped');
   // 🔴 The control for S3/S6: with nothing declared static, nothing may be dropped. Without it,
   //    a filter that returned [] would satisfy every "is dropped" assertion above.
   ok(M.keepWalkableRoutes([], ROUTES).length === ROUTES.length,
@@ -410,9 +414,11 @@ const DEFECTS = [
   // 🔴 c24ba7d82. ONE MUTANT, BOTH LISTS: closing the first step again must redden the follow list
   //    (O6) AND the route list (S6) — that is what 「one seat」 means here.
   ['the seed\'s first step is closed again',
-    (s) => s.replace('  return step === 0 || !statics.has(from)', '  return !statics.has(from)')],
+    (s) => s.replace("(mode === 'seed' ? 'open' : 'stop')", "(mode === 'seed' ? null : 'stop')")],
   ['every step of a route counts as the first, so a later static step is let through',
-    (s) => s.replace('walkTakesStep(statics, chain[i], chain[i + 1], i)', 'walkTakesStep(statics, chain[i], chain[i + 1], 0)')],
+    (s) => s.replace('mode = nameStep(statics, chain[i], mode, chain[i + 1]);', "mode = nameStep(statics, chain[i], 'seed', chain[i + 1]);")],
+  ['the world a named name reaches walks on (owner 10-15: it stops)',
+    (s) => s.replace("(mode === 'seed' ? 'open' : 'stop')", "'open'")],
   ['the follow list asks a later step, so a static type loses its first step',
     (s) => s.replace('walkTakesStep(statics, type, to, 0)', 'walkTakesStep(statics, type, to, 1)')],
   ['the later-hop predicate stops being shown',
@@ -481,13 +487,12 @@ const DEFECTS = [
       '  const extra = (declaredNames || []);')],
   // Gate ④ of the 22:00 ruling: deleting the filtering line must turn the first assertion red.
   ['the refused routes are offered again',
-    (s) => s.replace('      if (!walkTakesStep(statics, chain[i], chain[i + 1], i)) return false;', '')],
+    (s) => s.replace('      if (!mode) return false;', '')],
   ['a type with no class counts as static, so the corrected rule is undone',
     (s) => s.replace(".filter((e) => e && Array.isArray(e.class) && e.class.includes('static'))",
       ".filter((e) => !e || !(Array.isArray(e.class) && e.class.includes('dynamic')))")],
   ['the filter drops any route that TOUCHES a static type, killing the mechanism chain',
-    (s) => s.replace('  return step === 0 || !statics.has(from) || statics.has(to);',
-      '  return !statics.has(from) && !statics.has(to);')],
+    (s) => s.replace("  if (mode === 'stop') return null;", "  if (mode === 'stop' || statics.has(from) || statics.has(to)) return null;")],
 ];
 const CONTROLS = [
   ['a local rename', (s) => s.replace('  const wanted = new Set(routeFollow || []);',

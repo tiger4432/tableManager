@@ -350,8 +350,10 @@ export function keepWalkableRoutes(entities, routes) {
   const statics = staticTypes(entities);
   return (routes || []).filter((route) => {
     const chain = (route && route.chain) || [];
+    let mode = 'seed';
     for (let i = 0; i + 1 < chain.length; i += 1) {
-      if (!walkTakesStep(statics, chain[i], chain[i + 1], i)) return false;
+      mode = nameStep(statics, chain[i], mode, chain[i + 1]);
+      if (!mode) return false;
     }
     return true;
   });
@@ -374,5 +376,17 @@ export function walkableRoutes(declaration, from, to) {
  *    list at every step, so the day the rule moves both lists move with it.
  */
 export function walkTakesStep(statics, from, to, step) {
-  return step === 0 || !statics.has(from) || statics.has(to);
+  return nameStep(statics, from, step === 0 ? 'seed' : 'open', to) !== null;
+}
+
+/**
+ * The far type's mode after a step from `from` in `mode` - null when the walk refuses it. THE SERVER'S `_name_step`,
+ * one seat here: a static seed's world walks on (owner 10-02); a static type the seed reached through static types
+ * alone ('named') steps into the world once and stops there ('stop', owner 10-15 «정적 -> 동적은 동적 1홉 닿고 멈춰»).
+ */
+export function nameStep(statics, from, mode, to) {
+  if (mode === 'stop') return null;
+  if (!statics.has(from)) return 'open';
+  if (mode === 'seed' || mode === 'named') return statics.has(to) ? 'named' : (mode === 'seed' ? 'open' : 'stop');
+  return statics.has(to) ? 'open' : null;
 }

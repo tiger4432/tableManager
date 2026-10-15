@@ -1282,16 +1282,41 @@ def _entity_facts(paths):
     return order, plural_by_type, confirmers, inverses, labels, steps
 
 
-def _held_to_names(kind, starts_here, static_types):
+#: How a node stands under the static hub rule (`_name_step`): a seed; a static node reached from a static seed through
+#: static nodes alone; any other node; a dynamic node such a static node reached - drawn, not walked on.
+SEED, NAMED, OPEN, STOP = "seed", "named", "open", "stop"
+_MODE_RANK = {STOP: 0, OPEN: 1, NAMED: 2, SEED: 3}
+
+
+def _held_to_names(kind, mode, static_types):
     """Does a node of `kind` step only to static types? THE ONE SEAT of the static hub rule.
 
     A static type is a name: one step from it back into the world drags in every thing that
     carries it. 🔴 [총괄 c24ba7d82, 소유자 10-02 「첫걸음은 열어」] EXCEPT WHERE THE WALK STARTS -
-    a static seed's first step goes to dynamic nodes, so a type named only as an object can be
-    walked from. A static node met on the way is held as before. The fetch split and `_step`
-    ask it with 「is this node a seed」, `_reach` with 「is this the seed this reach started from」.
+    a static seed steps to dynamic nodes, so a type named only as an object can be walked from -
+    and (소유자 10-15) a static node the seed reached through static nodes alone (NAMED). Any other
+    static node is held as before. `mode` - the node's (`_name_step`).
     """
-    return kind in static_types and not starts_here
+    return kind in static_types and mode not in (SEED, NAMED)
+
+
+def _name_step(near_kind, near_mode, far_kind, static_types):
+    """The far node's mode after one step from a node of `near_kind` in `near_mode` - None when the static hub rule
+    refuses the step. THE ONE SEAT the walk's step, the ranking's reach and the reach of what a walk left ask.
+    A static seed's dynamic node walks on (10-02); a NAMED node's is reached and stops (소유자 10-15 «정적 -> 동적은
+    동적 1홉 닿고 멈춰»)."""
+    if near_mode == STOP:
+        return None
+    if near_kind not in static_types:
+        return OPEN
+    if near_mode in (SEED, NAMED):
+        return NAMED if far_kind in static_types else (OPEN if near_mode == SEED else STOP)
+    return OPEN if far_kind in static_types else None
+
+
+def _wider(mode, other):
+    """The more open of two modes a node was reached in - a node reached twice walks as its most open route allows."""
+    return other if mode is None or _MODE_RANK[other] > _MODE_RANK[mode] else mode
 
 
 def _group_follow(held, follow, static_follow):
@@ -1304,7 +1329,7 @@ def _group_follow(held, follow, static_follow):
 
 
 def _still_reaches(kinds, wanted, follow, static_follow, static_types, direction):
-    """{wanted type: how many of `kinds` ((bare type, is a seed) of the nodes a walk left unexpanded) can still reach it} -
+    """{wanted type: how many of `kinds` ((bare type, its mode) of the nodes a walk left unexpanded) can still reach it} -
     over the declaration's road between types (`_read_entity_declaration` - which types a predicate joins), each
     step read as the walk reads it (`_group_follow`, the static hub rule, the direction). Hops are not counted: a
     node that could only reach a type past the walk's hops is counted - the safe side, since the dangerous answer is
@@ -1314,14 +1339,14 @@ def _still_reaches(kinds, wanted, follow, static_follow, static_types, direction
         return {kind: len(kinds) for kind in wanted}
     reach = {}
     for start in set(kinds):
-        # a seed's own step is not held to names (`_held_to_names`) - its first step only, as the walk reads it
-        seen, frontier, seeded = set(), {start[0]}, start[1]
+        # each step read as the walk reads it (`_name_step`): a type in the mode it is reached in
+        seen, frontier, walked = set(), {start}, {start}
         while frontier:
             here, frontier = frontier, set()
-            for kind in here:
-                held = _held_to_names(kind, seeded, static_types)
+            for kind, mode in here:
+                held = _held_to_names(kind, mode, static_types)
                 read = _group_follow(held, follow, static_follow)
-                if held and not read:
+                if mode == STOP or (held and not read):
                     continue
                 for predicate, (subjects, objects) in steps.items():
                     if read is not None and predicate not in {_bare_name(p) for p in read}:
@@ -1329,12 +1354,13 @@ def _still_reaches(kinds, wanted, follow, static_follow, static_types, direction
                     far = ((objects if kind in subjects and direction in ("outgoing", "both") else frozenset())
                            | (subjects if kind in objects and direction in ("incoming", "both") else frozenset()))
                     for other in far:
-                        if held and other not in static_types:
+                        nxt = _name_step(kind, mode, other, static_types)
+                        if nxt is None:
                             continue
-                        if other not in seen:
-                            seen.add(other)
-                            frontier.add(other)
-            seeded = False
+                        seen.add(other)
+                        if (other, nxt) not in walked:
+                            walked.add((other, nxt))
+                            frontier.add((other, nxt))
         reach[start] = seen
     return {kind: sum(1 for each in kinds if kind in reach[each]) for kind in wanted}
 
@@ -1838,20 +1864,21 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, f
         earlier = before.get("arrived") or {}
         arrived = {seed: set(), **{node: {tuple(step) for step in steps}
                                    for node, steps in earlier.items() if node in adjacency}}
+        modes = {**(before.get("modes") or {}), seed: SEED}
         seen = {seed} | set(earlier)
         for node in earlier:
             reach.setdefault(node, [0, 0])[slot] += 1
         level = list(arrived)
         while level:
-            reached = defaultdict(set)
+            reached, reached_modes = defaultdict(set), {}
             for node in level:
                 for nxt, predicate, direction in adjacency.get(node) or ():
                     if nxt in seen:
                         continue
-                    there_is_name = _kind(nxt) in static
-                    # a name may lead to another name and never back out into the world -
-                    # unless this reach starts at it
-                    if _held_to_names(_kind(node), node == seed, static) and not there_is_name:
+                    # a name may lead to another name and back out into the world only from the seed or a name the seed
+                    # reached through names alone - and from such a name the world is reached and not walked on
+                    mode = _name_step(_kind(node), modes.get(node, OPEN), _kind(nxt), static)
+                    if mode is None:
                         continue
                     # and no step goes back down what reached this node -- between two
                     # names there is no container and so no siblings, so that pair is exempt
@@ -1864,19 +1891,22 @@ def _reach(nodes, edges, seed_signs, static_types=(), carried=None, keep=None, f
                         trail[nxt] = (node, predicate, sorted(
                             {str(p) for other, p, _d in adjacency.get(node) or () if other == nxt and p}))
                     reached[nxt].add((predicate, direction, _kind(node)))
+                    reached_modes[nxt] = _wider(reached_modes.get(nxt), mode)
             for nxt, steps in reached.items():
+                modes[nxt] = reached_modes[nxt]
                 seen.add(nxt)
                 if fresh is not None:
                     fresh.add(nxt)                      # a seed reached it on this page
                 arrived[nxt] = steps
                 reached_kinds.add(_kind(nxt))
                 reach.setdefault(nxt, [0, 0])[slot] += 1
-            level = list(reached)
+            level = [nxt for nxt in reached if modes[nxt] != STOP]
         if keep is not None:
             keep[seed] = {"parents": {node: list(step) for node, step in trail.items()},
                           "arrived": {**earlier, **{node: sorted((list(step) for step in steps), key=str)
                                                     for node, steps in arrived.items() if node != seed}},
-                          "kinds": sorted(kind for kind in reached_kinds if kind)}
+                          "kinds": sorted(kind for kind in reached_kinds if kind),
+                          "modes": {node: mode for node, mode in modes.items() if mode != OPEN and node != seed}}
     return reach, parents, kinds
 
 
@@ -2875,6 +2905,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: REACHED it - what `_goes_back_down` reads.
     #: Seeds keep an empty set, which is why they need no exemption below.
     arrivals = defaultdict(set)
+    #: node -> its mode under the static hub rule (`_name_step`) - a node never stepped to is OPEN
+    modes = {}
     edges = {}
     #: edge id -> {claim id: (its instant, claim id, record)} - an atom reached from both ends is one record; ordered
     #: and cut where the answer is assembled (`_newest_records`), not in the order fetched
@@ -3054,8 +3086,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         elif target_near and not subject_near:
             near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
             near_id, far_id, step_dir = target["id"], subject_id, "incoming"
-        if (_held_to_names(near_kind, near_id in seed_signs, static_types)
-                and far_kind and far_kind not in static_types):
+        if far_kind and _name_step(near_kind, modes.get(near_id, OPEN), far_kind, static_types) is None:
             return None
         # 🔴 THE KEY CONSTRAINT, ON THE FAR NODE ONLY. An edge whose predicate was named
         # with keys may only land on a node matching the SEED on those keys - so a hop out
@@ -3113,7 +3144,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 "subject_near": subject_near, "target_near": target_near,
                 "subject_depth": subject_depth, "target_depth": target_depth,
                 "near_kind": near_kind, "far_kind": far_kind,
-                "far_id": far_id, "step_dir": step_dir,
+                "far_id": far_id, "step_dir": step_dir, "near_id": near_id,
                 "fan_key": ((near_id, atom.predicate, step_dir, far_kind)
                             if far_id is not None and step_dir is not None else None)}
 
@@ -3128,6 +3159,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         far_id, step_dir = step["far_id"], step["step_dir"]
         if far_id is not None and step_dir is not None:
             arrivals[far_id].add((atom.predicate, step_dir, near_kind))
+            if far_kind:
+                modes[far_id] = _wider(modes.get(far_id), _name_step(
+                    near_kind, modes.get(step["near_id"], OPEN), far_kind, static_types))
         # 🔴 A STEP BETWEEN TWO HAPPENINGS IS NOT A DEPARTURE - policy 1 of
         # `ONTOLOGY_GRAPH_SPEC` §7.5c, and the same machine `continues` was, keyed on the
         # ENTITY CLASS instead of on a per-predicate flag. Following one wafer through its
@@ -3191,6 +3225,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             nodes[node_id] = dict(node)
             depths[node_id], dep_cost[node_id] = int(item["depth"]), int(item["cost"])
             arrivals[node_id] = {tuple(step) for step in item.get("arrivals") or ()}
+            modes[node_id] = item.get("mode", OPEN)
         cursor = resume.get("cursor")
         for node_id in (cursor or {}).get("frontier") or ():
             refs.setdefault(node_id, decode_node_id(node_id))
@@ -3198,6 +3233,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     for item, ref in seed_refs.items():
         add_node(_seed_node(item, ref, action_lookup), ref, 0)
         dep_cost[item] = 0
+        modes[item] = SEED
 
     #: nodes this page read whole; `paused` - the walk's state where its first cap stopped it, what `more` says
     read_whole, paused = set(), None
@@ -3211,9 +3247,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         whole = set(whole_now) | done
         open_ids = [node_id for node_id in nodes if node_id not in whole]
         paused = {"left": [node_id for node_id in open_ids
-                           if depths[node_id] < budget_hops and dep_cost.get(node_id, 0) < hops],
+                           if depths[node_id] < budget_hops and dep_cost.get(node_id, 0) < hops
+                           and modes.get(node_id) != STOP],
                   "resume": {"as_of": _instant(as_of),
                              "frontier": [{"id": node_id, "depth": depths[node_id], "cost": dep_cost.get(node_id, 0),
+                                           "mode": modes.get(node_id, OPEN),
                                            "arrivals": sorted((list(step) for step in arrivals.get(node_id, ())),
                                                               key=str)}
                                           for node_id in open_ids],
@@ -3267,7 +3305,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         at_cursor = bool(cursor and cursor.get("frontier") is not None and cursor["depth"] == depth)
         frontier_ids = list(cursor["frontier"]) if at_cursor else [
             node_id for node_id, seen in depths.items()
-            if seen == depth and dep_cost.get(node_id, 0) < hops and node_id not in done]
+            if seen == depth and dep_cost.get(node_id, 0) < hops and node_id not in done
+            and modes.get(node_id) != STOP]
         if not frontier_ids:
             break
         remaining = claim_limit - claims_scanned
@@ -3304,8 +3343,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         #
         # The two groups differ ONLY in the `follow` they are fetched with, so `s -> s`
         # survives: `leads_to` is in `static_follow` and the mechanism chain still walks.
-        # A static SEED is not held (`_held_to_names`): it is fetched with the full `follow`.
-        held = [_held_to_names(_bare(item["type"]), item["id"] in seed_signs, static_types)
+        # A static SEED is not held (`_held_to_names`), nor a name it reached through names alone: the full `follow`.
+        held = [_held_to_names(_bare(item["type"]), modes.get(item["id"], OPEN), static_types)
                 for item in full_entity_refs]
         dynamic_refs = [item for item, h in zip(full_entity_refs, held) if not h]
         static_refs = [item for item, h in zip(full_entity_refs, held) if h]
@@ -3429,7 +3468,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     wanted = sorted(collected_types) if collected_types is not None else sorted(
         {_bare(node.get("type")) for node in nodes.values() if node.get("type")}
         | {kind for ends in _read_entity_declaration()[5].values() for side in ends for kind in side})
-    still = _still_reaches([(_bare(nodes[node_id].get("type")), node_id in seed_signs) for node_id in left], wanted,
+    still = _still_reaches([(_bare(nodes[node_id].get("type")), modes.get(node_id, OPEN)) for node_id in left], wanted,
                            follow, static_follow,
                            static_types, direction)
     #: each seed's reach after this page - the ranking's (`_propagation`), handed on in `resume` (MORE)

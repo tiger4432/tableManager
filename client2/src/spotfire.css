@@ -241,6 +241,8 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
   color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .sf-pop__it.is-on { background: var(--sf-panel-pick); }
 .sf-pop__it:disabled { color: var(--sf-panel-muted); cursor: default; }
+/* a route the declaration offers that the walk in hand has not drawn - walked when picked (owner 10-15) */
+.sf-pop__it.is-unloaded { color: var(--sf-panel-muted); }
 .sf-pop__n { margin-left: auto; color: var(--sf-panel-muted); }
 .sf-pop__hr { border: 0; border-top: 1px solid var(--sf-panel-line-2); margin: 6px 0; }
 .sf-pop__reds { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 16px 6px 16px; }

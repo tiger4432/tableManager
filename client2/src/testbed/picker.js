@@ -2,7 +2,8 @@
 // valuesAt, the same functions - no second list), then how the values fold, or a Custom expression (src/expression.js,
 // lead 10-13). One open at a time, made by the page.
 
-import { routesFrom, valuesAt, waysOf, WAYS_A_CELL } from '../walk/reach_table.js';
+import { routesFrom, valuesAt, waysOf, WAYS_A_CELL, stepWords } from '../walk/reach_table.js';
+import { routesFor } from './route.js';
 import { REDUCES } from './aggregate.js';
 import { readSlot, isExpression, nameValue, wayWords, columnsOf, slotWords } from './slot.js';
 import { compile, ExpressionError } from '../expression.js';
@@ -12,6 +13,39 @@ import { fitUnder } from '../dropdown.js';
 /** The routes a part's rows take, its own values first (no step). */
 export function routeChoices(index, rows) {
   return [{ steps: [], words: ['(row)'], to: [] }, ...routesFrom(index, rows)];
+}
+
+/** The routes the declaration offers from the row type that `held` (the walk in hand's) does not - each `unloaded`, its
+ *  steps walked by the slot's value walk once picked (owner 10-15: rows of a type, and what hangs off it was not
+ *  offered - the list read only the walk in hand, which ends at the rows). Up to `limit` steps, as `routesFrom`. */
+export function declaredChoices(vocabulary, rowType, held, limit = 4) {
+  if (!vocabulary || !rowType) return [];
+  const predicates = new Map(((vocabulary.predicates) || []).map((p) => [p.name, p]));
+  const joins = (name, a, b) => {
+    const p = predicates.get(name);
+    return p && (p.subjects || []).includes(a) && ((p.object && p.object.types) || []).includes(b);
+  };
+  const seen = new Set((held || []).map((r) => JSON.stringify(r.steps)));
+  const out = [];
+  for (const entity of vocabulary.entities || []) {
+    for (const route of routesFor(vocabulary, rowType, entity.type)) {
+      const chain = route.chain || [];
+      if (!route.hops || route.hops > limit || chain.length !== route.hops + 1) continue;
+      const steps = [];
+      for (let i = 0; i + 1 < chain.length; i += 1) {
+        const name = (route.follow || []).find((n) => joins(n, chain[i], chain[i + 1]) || joins(n, chain[i + 1], chain[i]));
+        if (!name) break;
+        steps.push({ predicate: name, direction: joins(name, chain[i], chain[i + 1]) ? 'outgoing' : 'incoming' });
+      }
+      // a step back down the predicate the one before climbed reaches siblings - the walk refuses it (`_goes_back_down`)
+      const back = steps.some((s, i) => i > 0 && s.predicate === steps[i - 1].predicate && s.direction !== steps[i - 1].direction);
+      const key = JSON.stringify(steps);
+      if (steps.length !== route.hops || back || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ steps, words: steps.map((s, i) => stepWords(s, chain[i + 1])), to: [chain[chain.length - 1]], unloaded: true });
+    }
+  }
+  return out.sort((a, b) => a.steps.length - b.steps.length);
 }
 
 /** The nodes a route ends at from the rows, each once with its label - a slot may end at one (the walk table's column
@@ -179,10 +213,21 @@ export class SlotPicker {
       const [routes, at, folds] = [el('div', 'sf-pop__col'), el('div', 'sf-pop__col'), el('div', 'sf-pop__col')];
       box.append(routes, at, folds);
       routes.append(el('div', 'sf-pop__lab', 'Route'));
-      for (const route of routeChoices(part.index, rows)) {
-        const it = el('button', `sf-pop__it${sameSteps(route.steps, chosen.steps) ? ' is-on' : ''}`, route.words.join(' · '));
+      const held = routeChoices(part.index, rows);
+      const declared = declaredChoices(part.vocabulary && part.vocabulary(), part.rowType && part.rowType(), held);
+      for (const route of [...held, ...declared]) {
+        const it = el('button', `sf-pop__it${sameSteps(route.steps, chosen.steps) ? ' is-on' : ''}${route.unloaded ? ' is-unloaded' : ''}`,
+          route.words.join(' · '));
         it.type = 'button';
-        it.addEventListener('click', () => draw({ ...chosen, steps: route.steps, end: undefined, value: null }));
+        it.addEventListener('click', () => {
+          const next = { ...chosen, steps: route.steps, end: undefined, value: null };
+          draw(next);
+          if (!route.unloaded || !part.walkValues) return;
+          // not in the walk in hand: the slot's value walk brings it, and the list is drawn again with its values
+          const open = this.host.firstChild;
+          part.walkValues(key, { steps: route.steps, value: null })
+            .then(() => { if (open && open.isConnected && this.host.firstChild === open) draw(next); });
+        });
         routes.append(it);
       }
       const ends = endChoices(part.index, rows, chosen.steps);

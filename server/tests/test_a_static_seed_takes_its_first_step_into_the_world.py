@@ -108,3 +108,36 @@ def test_reach_opens_only_the_seed_it_starts_from():
     reach, _, _ = ledger_subgraph._reach(nodes, edges, {"R": 1, "W9": -1}, static_types={"recipe"})
     assert reach["W2"] == [1, 0] and reach["W3"] == [1, 0], "W9 went on through the name it met"
     assert reach["R"] == [0, 1], "a seed does not count itself; W9 reaches the name"
+
+
+# Owner 10-15: a static node the seed reached through static nodes alone steps to dynamic too - one hop, and stops.
+CHAIN = [_atom(400, "quantity", "Q1", "leads_to", "quantity", "Q2"),
+         _atom(401, "measurement", "M1", "measures", "quantity", "Q2"),
+         _atom(402, "wafer", "W1", "has_measurement", "measurement", "M1")]
+
+
+def test_a_name_reached_through_names_reaches_the_world_one_hop_and_stops():
+    body = ledger_subgraph.subgraph(_id("quantity", "Q1"), ledger_subgraph.InMemoryEvidenceLookup(CHAIN), hops=4,
+                                    direction="both", static_types={"quantity"}, static_follow={"leads_to"})
+    assert _labels(body, "quantity") == ["Q1", "Q2"]
+    assert _labels(body, "measurement") == ["M1"], "the name the seed reached through names did not step out"
+    assert _labels(body, "wafer") == [], "the dynamic node a name reached was walked on"
+
+
+def test_reach_steps_out_of_a_named_name_once_and_stops():
+    nodes = {n: {"id": n, "type": t} for n, t in
+             (("Q1", "quantity"), ("Q2", "quantity"), ("M1", "measurement"), ("W1", "wafer"))}
+    edges = [{"source": "Q1", "target": "Q2", "predicate": "leads_to"},
+             {"source": "M1", "target": "Q2", "predicate": "measures"},
+             {"source": "W1", "target": "M1", "predicate": "has_measurement"}]
+    reach, _, _ = ledger_subgraph._reach(nodes, edges, {"Q1": 1}, static_types={"quantity"})
+    assert reach.get("M1") == [1, 0] and "W1" not in reach, reach
+
+
+def test_the_one_seat_answers_each_step():
+    step, names = ledger_subgraph._name_step, {"quantity"}
+    assert step("quantity", "seed", "measurement", names) == "open"        # 10-02: the seed's world walks on
+    assert step("quantity", "seed", "quantity", names) == "named"
+    assert step("quantity", "named", "measurement", names) == "stop"       # 10-15: reached, not walked on
+    assert step("quantity", "open", "measurement", names) is None          # a name met in the world is held
+    assert step("measurement", "stop", "wafer", names) is None
