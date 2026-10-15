@@ -9,7 +9,7 @@
 >          스케줄러: «[Indexes] start work done in N s» (인덱스 · ANALYZE 가 끝난 때 — 길어도 체인과 무관)
 > 뜻       «[Indexes] … failed» 는 그 인덱스 하나가 안 지어졌다는 뜻 · 체인은 그대로 돈다
 >          스케줄러가 꺼져 있으면 인덱스 · INDEX_WANTED 가 안 지어진다(체인은 돈다)
-> 되돌리기  git revert <이 커밋> -> 체인 워커 · 스케줄러 재기동
+> 되돌리기  git revert 0f27a7944 -> 체인 워커 · 스케줄러 재기동
 > ```
 >
 > ---
