@@ -7,7 +7,7 @@
 >          볼 것: 걷기 화면에서 quantity 씨앗 · follow 에 leads_to 와 measures -> 원인 quantity 의 measurement 가 나오고 그 웨이퍼는 안 나옴
 > 시험대   알약 Route 목록 아래 흐린 줄 = 선언에서 갈 수 있지만 아직 안 받아 온 길 · 고르면 값 걷기 뒤 값 목록이 채워짐
 > 뜻       흐린 줄을 골라도 값이 비면 -> 그 길로 닿는 원자가 없거나 걷기가 잘림(파트 아래 사유 줄)
-> 되돌리기  git revert <HASH> -> API 서버 재기동
+> 되돌리기  git revert 4a976e45f -> API 서버 재기동
 > ```
 >
 > ---
