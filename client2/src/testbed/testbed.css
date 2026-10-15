@@ -8,6 +8,25 @@
 .tb-page .rb-board { min-height: 0; background: var(--sf-page); }
 .tb-page .rb-panel { overflow: hidden; }
 
+/* the properties and filters panels dark on the dark page (owner 10-15 «필터랑 속성 영역도 다크») - the testbed alone:
+   the panel tokens, which every panel control reads; native controls (a select's list, a checkbox) follow too */
+:root[data-tb-theme="dark"] {
+  --sf-panel-bg: #2A2A2A;
+  --sf-panel-head: #333333;
+  --sf-panel-text: #E6E6E6;
+  --sf-panel-muted: #A0A3AA;
+  --sf-panel-accent: #8FA2FA;
+  --sf-panel-accent-text: #FFFFFF;
+  --sf-panel-line: #4A4A4A;
+  --sf-panel-line-2: #3A3A3A;
+  --sf-panel-pill: #6A6A6A;
+  --sf-panel-pick: rgba(113, 136, 248, 0.35);
+  --sf-panel-name-bg: #343A52;
+  --sf-panel-name-text: #FFFFFF;
+}
+:root[data-tb-theme="dark"] .sf-panel, :root[data-tb-theme="dark"] .sf-pop, :root[data-tb-theme="dark"] .sf-banner,
+:root[data-tb-theme="dark"] .sf-flyout { color-scheme: dark; }
+
 /* the kinds' visible areas - each in the root's template (spotfire.css .sf-frame: the trays and the legend round it) */
 .tb-plot { min-height: 0; min-width: 0; }
 .tb-cross__wrap, .tb-table__wrap { overflow: auto; min-height: 0; min-width: 0; }
