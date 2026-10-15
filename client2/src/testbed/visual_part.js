@@ -18,7 +18,8 @@
 
 import { Panel, markingIntent } from '../rnd_board/panel.js';
 import { indexGraph, valuesAt } from '../walk/reach_table.js';
-import { readSlot, readSlots, slotWords, rawOf, isTimeRead, columnsOf, scaleOf, valueText, readsAt, isExpression } from './slot.js';
+import { readSlot, readSlots, slotWords, rawOf, isTimeRead, columnsOf, scaleOf, valueText, readsAt, isExpression, foldKey } from './slot.js';
+import { walkingDino } from './walking_dino.js';
 import { keepNodes } from './filter.js';
 import { hubId, nodesOfPress } from './hubs.js';
 import { MarkingLayers } from './marking_layer.js';
@@ -162,9 +163,19 @@ export class VisualPart extends Panel {
     if (walkAgain) { this.load(); return true; }
     // THE SLOT SEAT (owner 10-14 «값 받는 것 바뀔 때마다 다»): each slot whose declaration changed walks its values
     // again - any slot of any kind, the kind not asked
-    for (const key of changedSlots(slotsBefore, this.slotsHeld())) this.walkValues(key);
-    this.refold();
+    const changed = changedSlots(slotsBefore, this.slotsHeld());
+    for (const key of changed) this.walkValues(key);
+    // a slot changed - its walk is on its way: the fold on the next task (refoldSoon); anything else folds now
+    if (changed.length) this.refoldSoon(); else this.refold();
     return true;
+  }
+
+  /** The fold again on the next task, once however many ask - a pick returns at once and the page paints before the
+   *  fold (owner 10-15 «축 선언 누르고 걸어올 때까지 정지 - 비동기로»); a part taken off by then folds nothing. */
+  refoldSoon() {
+    if (this.refoldQueued) return;
+    this.refoldQueued = true;
+    setTimeout(() => { this.refoldQueued = false; if (this.host) this.refold(); }, 0);
   }
 
   /** The markings it hears follow its declaration: the one it writes (and shows), the one it starts from. */
@@ -235,20 +246,17 @@ export class VisualPart extends Panel {
   }
 
   /** The seeds: a written start - that node; «All» - the row type described; else the start marking's entries, a hub
-   *  its members. */
+   *  its members - the pressed nodes only (owner 10-15: the marking's spread layer paints, limits and answers Marked();
+   *  it starts nothing - a part laid between is the bridge to spread a start). */
   seeds() {
     if (this.start && this.start.node) { const s = this.startNode(); return s && s.id ? { positive: [s.id] } : null; }
     const name = this.start && this.start.marking;
     if (!name) return this.rowType() ? { all: true } : null;
     const got = seedsOf(this.markings.entries(name), (id) => this.hubs.open(id));
-    if (!got.positive.length) return null;
-    // its spread layer (owner 10-14): the members and the nodes the page's relations take them to (marking_layer.js)
-    const negative = new Set(got.negative);
-    const spread = [...this.layers.layer(name).set].filter((id) => !negative.has(id));
-    return { positive: [...new Set([...got.positive, ...spread])], negative: got.negative };
+    return got.positive.length ? { positive: got.positive, negative: got.negative } : null;
   }
 
-  /** Its start's node types - its seeds' (a spread layer of two types or more starts from them together). */
+  /** Its start's node types - its seeds' (a marking of two types or more starts from them together). */
   startTypes() {
     const s = this.seeds();
     return s && s.positive ? [...new Set(s.positive.map(typeOfStart).filter(Boolean))].sort() : [];
@@ -437,7 +445,7 @@ export class VisualPart extends Panel {
     this.abortWalk(key);
     const asked = slot && this.rowIds0 ? valueAsk(slot, this.rowType(), this.vocabulary()) : null;
     if (!asked || !this.rowIds0.length) {
-      if (this.values.delete(key)) { this.answerAgain(); this.refold(); }
+      if (this.values.delete(key)) { this.answerAgain(); this.refoldSoon(); }
       return;
     }
     const ask = { ...asked, seeds: [...this.rowIds0].sort() };
@@ -453,7 +461,7 @@ export class VisualPart extends Panel {
     if (holder) {
       this.values.set(key, { ...ask, answers: holder.answers, complete: true, cached: true });
       this.answerAgain();
-      this.refold();
+      this.refoldSoon();
       return;
     }
     const control = new AbortController();
@@ -527,7 +535,10 @@ export class VisualPart extends Panel {
       const node = index.nodes.get(id) || {};
       const reads = readSlots(index, inside, id, Object.entries(held), this.oneValued, askMarked, Boolean(this.kind.cells));
       const raw = {};
-      for (const s of listed) if (held[s.key] && s.folds) raw[s.key] = rawOf(index, inside, id, held[s.key], Boolean(s.records));
+      // a folded slot of several values (a cross table's cells, owner 10-15): a raw each (slot.js foldKey)
+      for (const s of listed) {
+        if (held[s.key] && s.folds) columnsOf(held[s.key]).forEach((col, i) => { raw[foldKey(s.key, i)] = rawOf(index, inside, id, col, Boolean(s.records)); });
+      }
       return { id, label: node.label || id, reads, raw };
     });
     const marked = (id) => this.layers.marked(this.reads, id) === true;
@@ -564,7 +575,7 @@ export class VisualPart extends Panel {
     const drawn = own.map((s) => s.key).filter((k) => keysRead.includes(k));
     const spread = (some) => spreadUnits(some, this.decl, keysRead, { cells: Boolean(this.kind.cells), record: this.kind.units ? this.kind.units.record : null,
       recordsOf: recorded, words: (key) => slotWords(encode[key]), marked: askMarked, drawn,
-      folds: listed.filter((s) => s.folds && held[s.key]).map((s) => s.key) });
+      folds: listed.filter((s) => s.folds && held[s.key]).flatMap((s) => columnsOf(held[s.key]).map((_, i) => foldKey(s.key, i))) });
     const spreadAll = spread(rows);
     const units = spreadAll.units;
     this.dropped = spreadAll.dropped;
@@ -756,7 +767,10 @@ export class VisualPart extends Panel {
     if (!ready) {
       const from = this.start && this.start.marking;
       const words = { 'no-start': from ? `Mark ${this.markingLabel(from)}` : 'Mark a start', walking: 'Walking…', refused: this.refusal || 'Walk refused', idle: '' }[this.state] || '';
-      area.append(el('div', 'sf-say', words));
+      const said = el('div', 'sf-say', words);
+      said.setAttribute('aria-live', 'polite');
+      if (this.state === 'walking') said.insertBefore(walkingDino(this.doc), said.firstChild);
+      area.append(said);
       body.append(trays.top, trays.left, area, trays.bottom, ...(legendHeld ? [legend] : []));
       return;
     }
@@ -820,7 +834,7 @@ export class VisualPart extends Panel {
     p.textContent = '+';
     p.type = 'button';
     p.title = 'Add one more column';
-    p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p }));
+    p.addEventListener('click', () => this.openPicker({ part: this, key, anchor: p, add: true }));
     return p;
   }
 

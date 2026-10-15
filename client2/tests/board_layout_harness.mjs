@@ -690,8 +690,8 @@ async function routed(M) {
   const all = await seat({ ...base, start: { marking: null }, row: 'die', encode: { rows: CORE } }, withD1());
   // W3 die to wafer: every route's predicates together - its own wafer and its core wafer, the longest route's steps
   const wafers = await seat({ ...base, row: 'wafer', encode: {} }, withD1());
-  // W4 the start's spread layer, of two types together: d1 marked, the relation die -in_container-> wafer on the page -
-  // the start d1 and BW; rows of die: d1 itself and the dies BW holds
+  // W4 the start is the pressed nodes alone (owner 10-15): d1 marked, the relation die -in_container-> wafer on the page -
+  // the start d1 alone, not BW; rows of die: d1 itself, none of BW's other dies
   const spreadPage = withD1([{ from: 'die', predicate: 'in_container', to: 'wafer', both: false }]);
   spreadPage.layers.graph.add({ nodes: [node(d1), node(BW)], edges: [EDGES[0]] });
   const spread = await seat({ ...base, row: 'die', encode: {} }, spreadPage);
@@ -1543,13 +1543,13 @@ async function suite(M) {
     judge('W2 from All every die of the type', rt.all, [['CW1', 'CW2', '(Empty)'], ['c1', 'c2', 'd1', 'd2']]),
     judge('W3 die to wafer: every route\'s predicates together, the longest route\'s steps - every wafer the walk reached is a row',
       rt.wafers, [['BW', 'CW1'], [[['bonded_from', 'in_container'], 2, ['d1']]]]),
-    judge('W4 the start is the marking\'s spread layer - d1 and the wafer the page\'s relation takes it to, two types together: d1 its own row, the rest walked from BW',
-      rt.spread, [['die', 'wafer'], ['d1', 'd2'], [[['in_container'], 1, ['BW']]]]),
+    judge('W4 the start is the pressed nodes alone - d1, not the wafer the page\'s relation takes it to (owner 10-15): d1 its own row, nothing walked from BW',
+      [rt.spread[0], rt.spread[1]], [['die'], ['d1']]),
     judge('W5 no route from the start\'s type to the rows: said, nothing walked', rt.none, ['refused', 'No route from die to lot', 0]),
     judge('W6 a press: one row - its node (d1, not the core wafer it reads), drawn marked; several rows - their hub; a part whose rows are wafers narrows - the wafer',
       [rt.pure, rt.press], [[['a'], null], [['d1'], true, '0 marked rows - marking holds die; no relation to wafer', ['hub'], ['CW1']]]),
-    judge('W9 a part that writes a marking walks the page\'s relations from its rows (said on its walk line); a part starting from that marking starts from its spread layer',
-      rt.relationWalk, [[[['bonded_from'], 1, ['d1']]], ['Relations · complete'], ['c1', 'd1']]),
+    judge('W9 a part that writes a marking walks the page\'s relations from its rows (said on its walk line); a part starting from that marking starts from the pressed d1 alone',
+      rt.relationWalk, [[[['bonded_from'], 1, ['d1']]], ['Relations · complete'], ['d1']]),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
       [rt.twoColumns[0], rt.twoColumns[2], rt.twoColumns[3]], [rt.twoColumns[1], ['d1, CW1'], true]),
     judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
@@ -1708,8 +1708,9 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    const said = entityOfId(id);', '    const said = null;') },
   { id: 'M30', what: 'the colours given are not kept in the declaration - more categories deal them again', catches: 'C2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (colors.any && Object.keys(colors.assigned).length) this.decl =', '    if (false) this.decl =') },
-  { id: 'M31', what: 'the start is the marking\'s members only - its spread layer not taken', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'const spread = [...this.layers.layer(name).set].filter((id) => !negative.has(id));', 'const spread = [];') },
+  { id: 'M31', what: 'the start takes the marking\'s spread layer again', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'return got.positive.length ? { positive: got.positive, negative: got.negative } : null;',
+      'return got.positive.length ? { positive: [...new Set([...got.positive, ...this.layers.layer(name).set])], negative: got.negative } : null;') },
   { id: 'M32', what: 'no route from the start\'s type walked anyway, not said', catches: 'W5 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'if (away.length && !this.routes().length && this.vocabulary()) {', 'if (false) {') },
   { id: 'M33', what: 'the tooltip never put on the part', catches: 'TT1 ', file: 'testbed/visual_part.js', key: 'visual',
@@ -1757,7 +1758,7 @@ const MUTANTS = [
   { id: 'M68', what: 'a hierarchy\'s outer value told every row', catches: 'MC2 ', file: 'testbed/kinds/cross_table.js', key: 'cross',
     mutate: (t) => swap(t, '    if (last && last.at === at) last.n += 1; else', '    if (false) last.n += 1; else') },
   { id: 'M69', what: 'the picker writes one column over the slot - «+ Column» adds none', catches: 'MC4 ', file: 'testbed/picker.js', key: 'picker',
-    mutate: (t) => swap(t, '      if (!many) { part.setSlot(key, col); return; }', '      { part.setSlot(key, col); return; }') },
+    mutate: (t) => swap(t, '      if (!many) { part.setSlot(key, col); again(); return; }', '      { part.setSlot(key, col); again(); return; }') },
   { id: 'M70', what: 'a chip dropped on another moves nothing', catches: 'MC5 ', file: 'testbed/picker.js', key: 'picker',
     mutate: (t) => swap(t, '          moved.splice(k, 0, it);', '          moved.splice(from, 0, it);') },
   { id: 'PWM1', what: 'a walk asks its first page only - the resume not followed', catches: 'PW1 ', file: 'testbed/part_walks.js', key: 'walks',
@@ -1771,9 +1772,9 @@ const MUTANTS = [
   { id: 'PWM5', what: 'a slot of several columns asks one column\'s way', catches: 'W7 ', file: 'testbed/part_walks.js', key: 'walks',
     mutate: (t) => swap(t, 'for (const col of columnsOf(slot)) {', 'for (const col of [slot]) {') },
   { id: 'PWM6', what: 'a slot changed walks nothing - folded again only', catches: 'PW4 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'for (const key of changedSlots(slotsBefore, this.slotsHeld())) this.walkValues(key);', '') },
+    mutate: (t) => swap(t, 'for (const key of changed) this.walkValues(key);', '') },
   { id: 'PWM7', what: 'a slot changed walks every slot again', catches: 'PW4 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'for (const key of changedSlots(slotsBefore, this.slotsHeld())) this.walkValues(key);', 'this.values = new Map(); this.valueWalks = []; for (const key of Object.keys(this.slotsHeld())) this.walkValues(key);') },
+    mutate: (t) => swap(t, 'for (const key of changed) this.walkValues(key);', 'this.values = new Map(); this.valueWalks = []; for (const key of Object.keys(this.slotsHeld())) this.walkValues(key);') },
   { id: 'PWM8', what: 'the walks in hand not looked at - every slot change asks', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '[...this.values.values(), ...this.valueWalks].find((h) => covers(h, ask))', 'null') },
   { id: 'PWM9', what: 'the rows asked in one request past the seed cap', catches: 'PW5 ', file: 'testbed/visual_part.js', key: 'visual',

@@ -2,15 +2,15 @@
 // the cell values folded over the rows each cell holds, grand totals. A cell - and a row or column head - is a hub of its
 // rows, given back whole; its paint (marked, Color by) is the root's.
 
-import { combosOf, slotWords, foldRows, EMPTY, PART_SEP, categoryCompare } from '../slot.js';
+import { combosOf, slotWords, foldRows, EMPTY, PART_SEP, categoryCompare, columnsOf, foldKey, COLUMN_NAMES } from '../slot.js';
 
 /** What a cell holds with no cell slot: its rows, each once (owner 10-14 «ㅇㅇ 행수») - said as the fold it is. */
 export const ROWS_COUNT = 'UniqueCount(rows)';
 
 export const SLOTS = Object.freeze([
-  { key: 'rows', label: 'Row axis', category: true, tray: 'left', many: true },
-  { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true, many: true },
-  { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true, empty: ROWS_COUNT },
+  { key: 'rows', label: 'Row axis', category: true, tray: 'left', many: true, names: true },
+  { key: 'columns', label: 'Column axis', category: true, tray: 'top', plus: true, many: true, names: true },
+  { key: 'cells', label: 'Cell values', folds: true, tray: 'bottom', plus: true, many: true, empty: ROWS_COUNT },
 ]);
 export { EMPTY };
 const TOTAL = 'Total';
@@ -24,23 +24,35 @@ export const cellWords = (v) => (v === null || v === undefined ? '-'
  * @param {{marked: (id) => boolean, declaration?: object}} ctx  the declaration's cell slot: its reduce (none - Count) or its expression
  */
 export function crossModel(rows, ctx) {
-  const cellSlot = ((ctx.declaration && ctx.declaration.encode) || {}).cells;
+  const enc = (ctx.declaration && ctx.declaration.encode) || {};
+  // the cell values (owner 10-15 «Cell values 여러 개»): each folded on its own (slot.js foldKey); none - the rows counted
+  const measures = columnsOf(enc.cells);
+  const M = Math.max(1, measures.length);
+  const own = (key) => columnsOf(enc[key]).filter((c) => !c.names).length > 0;
+  // where the values stand - «(Column Names)» on an axis, at its level; two values or more put nowhere: the column axis,
+  // innermost (Spotfire's)
+  const namesAt = (key) => columnsOf(enc[key]).findIndex((c) => c.names);
+  const placed = ['rows', 'columns'].find((key) => namesAt(key) >= 0);
+  const place = placed ? { key: placed, at: namesAt(placed) }
+    : measures.length > 1 ? { key: 'columns', at: columnsOf(enc.columns).length } : null;
   const cells = new Map();
   const keyOf = (r, c) => `${r}\u0000${c}`;
   const rowKeys = new Set();
   const colKeys = new Set();
-  // A row with two values on an axis stands in both (lead aca803a7a «counts twice»); none - (Empty).
-  for (const { values: [r, c], ids, marks } of combosOf(rows, ['rows', 'columns'])) {
+  // A row with two values on an axis stands in both (lead aca803a7a «counts twice»); none - (Empty); an axis of the
+  // values' names alone reads no row
+  for (const { values: [r0, c0], ids, marks } of combosOf(rows, ['rows', 'columns'])) {
+    const [r, c] = [own('rows') ? r0 : '', own('columns') ? c0 : ''];
     rowKeys.add(r);
     colKeys.add(c);
     cells.set(keyOf(r, c), { ids, marks });
   }
-  /** A set of marks folded (lead 10-15 ②: in the cell, not in the row): each mark's own values of the cell slot - its record's
-   *  (units.js marksOf), a row's once when its marks share them (a row in two columns counts once in its row's total);
-   *  no cell slot - the rows. */
-  const folded = (marks) => {
-    if (!rows.some((row) => row.raw && row.raw.cells)) return new Set(marks.map((m) => m.row || m.id)).size;
-    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);
+  /** A set of marks folded on value `m` (lead 10-15 ②: in the cell, not in the row): each mark's own values of it - its
+   *  record's (units.js marksOf), a row's once when its marks share them; no cell value - the rows. */
+  const folded = (marks, m = 0) => {
+    const k = foldKey('cells', m);
+    if (!measures.length || !rows.some((row) => row.raw && row.raw[k])) return new Set(marks.map((x) => x.row || x.id)).size;
+    return foldRows(measures[m], [...new Set(marks.map((x) => x.raw[k]))], ctx.askMarked);
   };
   // An axis of several columns - its keys' values column by column (slot.js readSlot `parts`), sorted level by level,
   // (Empty) last in each; one column - each key itself.
@@ -59,24 +71,40 @@ export function crossModel(rows, ctx) {
     const level = categoryCompare(Boolean(ctx.scale && ctx.scale(key).time));
     return [...keys].sort((a, b) => { const [p, q] = [parts(a), parts(b)]; for (let i = 0; i < Math.max(p.length, q.length); i += 1) { const d = level(p[i] || '', q[i] || ''); if (d) return d; } return 0; });
   };
-  const enc = (ctx.declaration && ctx.declaration.encode) || {};
-  const R = sort(rowKeys, 'rows');
-  const C = sort(colKeys, 'columns');
+  const said = (m) => (measures[m] ? slotWords(measures[m]) : ROWS_COUNT);
+  // an axis's lines: a key each - and on the values' axis a key a value, the values' level at its place in the hierarchy
+  // (the levels outside it first, then the values, then the levels inside)
+  const linesOf = (key, keys) => {
+    const base = sort(keys, key).map((k) => ({ k, m: null, parts: own(key) ? parts(k) : (place && place.key === key ? [] : [k]) }));
+    if (!place || place.key !== key) return base;
+    const outer = (l) => l.parts.slice(0, place.at).join(PART_SEP);
+    const groups = [];
+    for (const l of base) { const g = groups[groups.length - 1]; if (g && g.at === outer(l)) g.lines.push(l); else groups.push({ at: outer(l), lines: [l] }); }
+    return groups.flatMap((g) => Array.from({ length: M }, (_, m) => g.lines.map((l) => ({ k: l.k, m,
+      parts: [...l.parts.slice(0, place.at), said(m), ...l.parts.slice(place.at)] }))).flat());
+  };
+  const R = linesOf('rows', rowKeys);
+  const C = linesOf('columns', colKeys);
   const grid = R.map((r) => C.map((c) => {
-    const cell = cells.get(keyOf(r, c));
+    const cell = cells.get(keyOf(r.k, c.k));
     if (!cell) return { value: null, ids: [], marks: [], marked: false };
     // its paint is the root's: marked, and its rows' Color by colour when one is declared
-    const p = ctx.paint(cell.ids, [[slotWords(enc.rows), r], [slotWords(enc.columns), c]]);
-    return { value: folded(cell.marks), ids: cell.ids, marks: cell.marks, marked: p.marked, color: ctx.colored ? p.color : null };
+    const p = ctx.paint(cell.ids, [[slotWords(enc.rows), r.k], [slotWords(enc.columns), c.k]]);
+    return { value: folded(cell.marks, r.m ?? c.m ?? 0), ids: cell.ids, marks: cell.marks, marked: p.marked, color: ctx.colored ? p.color : null };
   }));
-  const rowIds = R.map((_, i) => grid[i].flatMap((cell) => cell.ids));
-  const colIds = C.map((_, j) => grid.flatMap((line) => line[j].ids));
-  const rowMarks = R.map((_, i) => grid[i].flatMap((cell) => cell.marks));
-  const colMarks = C.map((_, j) => grid.flatMap((line) => line[j].marks));
+  // a total a value where the values stand across it (Spotfire's): a Total column a value when they are on the columns,
+  // a Total row a value when on the rows; else one, on the line's own value
+  const across = (key) => (place && place.key === key ? M : 0);
+  const marksOfKey = (k, axis) => [...(axis === 'rows' ? colKeys : rowKeys)].flatMap((o) => (cells.get(axis === 'rows' ? keyOf(k, o) : keyOf(o, k)) || { marks: [] }).marks);
+  const totalsOf = (line, axis, other) => (across(other)
+    ? Array.from({ length: M }, (_, m) => folded(marksOfKey(line.k, axis), m)) : folded(marksOfKey(line.k, axis), line.m ?? 0));
   return {
-    rowKeys: R, colKeys: C, rowParts: R.map(parts), colParts: C.map(parts), grid,
-    rowTotals: rowMarks.map(folded), colTotals: colMarks.map(folded), total: folded(rows),
-    rowIds, colIds,
+    rowKeys: R.map((l) => l.k), colKeys: C.map((l) => l.k), rowParts: R.map((l) => l.parts), colParts: C.map((l) => l.parts), grid,
+    rowMeasures: R.map((l) => l.m), colMeasures: C.map((l) => l.m), measures: Array.from({ length: M }, (_, m) => said(m)),
+    valuesOn: place ? place.key : null,
+    rowTotals: R.map((l) => totalsOf(l, 'rows', 'columns')), colTotals: C.map((l) => totalsOf(l, 'columns', 'rows')),
+    total: place ? Array.from({ length: M }, (_, m) => folded(rows, m)) : folded(rows),
+    rowIds: R.map((_, i) => grid[i].flatMap((cell) => cell.ids)), colIds: C.map((_, j) => grid.flatMap((line) => line[j].ids)),
   };
 }
 
@@ -114,7 +142,14 @@ export function render(area, model, ctx) {
       th.addEventListener('click', (event) => ctx.markHub([[words.columns, run.at]], ids, event));
       head.append(th);
     }
-    if (lv === 0) { const total = el('th', 'sf-table__col sf-table__total', TOTAL); total.rowSpan = colLevels; head.append(total); }
+    if (lv === 0) {
+      // a Total column a value when the values stand on the columns (owner 10-15)
+      for (const word of model.valuesOn === 'columns' ? model.measures.map((m) => `${TOTAL} · ${m}`) : [TOTAL]) {
+        const total = el('th', 'sf-table__col sf-table__total', word);
+        total.rowSpan = colLevels;
+        head.append(total);
+      }
+    }
     table.append(head);
   }
   const rowRuns = Array.from({ length: rowLevels }, (_, lv) => new Map(runs(rowParts, lv).map((run) => [run.from, run])));
@@ -139,23 +174,27 @@ export function render(area, model, ctx) {
       }
       tr.append(td);
     });
-    tr.append(el('td', 'sf-table__total', cellSaid(model.rowTotals[i])));
+    for (const v of [].concat(model.rowTotals[i])) tr.append(el('td', 'sf-table__total', cellSaid(v)));
     table.append(tr);
   });
-  const foot = el('tr', 'sf-table__totals');
-  const totalHead = el('th', 'sf-table__row', TOTAL);
-  totalHead.colSpan = rowLevels;
-  foot.append(totalHead);
-  model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellSaid(v))));
-  foot.append(el('td', 'sf-table__total', cellSaid(model.total)));
-  table.append(foot);
+  // a Total row a value when the values stand on the rows (owner 10-15), else one
+  const onRows = model.valuesOn === 'rows';
+  (onRows ? model.measures : [null]).forEach((m, k) => {
+    const foot = el('tr', 'sf-table__totals');
+    const totalHead = el('th', 'sf-table__row', m === null ? TOTAL : `${TOTAL} · ${m}`);
+    totalHead.colSpan = rowLevels;
+    foot.append(totalHead);
+    model.colTotals.forEach((v) => foot.append(el('td', 'sf-table__total', cellSaid(onRows ? v[k] : v))));
+    for (const v of onRows ? [[].concat(model.total)[k]] : [].concat(model.total)) foot.append(el('td', 'sf-table__total', cellSaid(v)));
+    table.append(foot);
+  });
   wrap.append(table);
   area.replaceChildren(wrap);
   return { resize: () => {}, dispose: () => {} };
 }
 
 /** The title when the declaration names none - «Avg(press) per lot and product», no cell slot «UniqueCount(rows)». */
-export const title = (encode) => `${encode.cells ? slotWords(encode.cells) : ROWS_COUNT} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
+export const title = (encode) => `${columnsOf(encode.cells).length ? columnsOf(encode.cells).map(slotWords).join(' · ') : ROWS_COUNT} per ${slotWords(encode.rows)} and ${slotWords(encode.columns)}`;
 
 /** The add window's picture of it: a head, a row head, cells. */
 export const icon = { tone: 'cat-7', paths: [['M4 3h16v4H4zM4 9h4v12H4z', 1], ['M10 9h4v5h-4zM16 9h4v5h-4zM10 16h4v5h-4zM16 16h4v5h-4z', 0.6]] };

@@ -5,7 +5,7 @@
 import { routesFrom, valuesAt, waysOf, WAYS_A_CELL, stepWords } from '../walk/reach_table.js';
 import { routesFor } from './route.js';
 import { REDUCES } from './aggregate.js';
-import { readSlot, isExpression, nameValue, wayWords, columnsOf, slotWords } from './slot.js';
+import { readSlot, isExpression, nameValue, wayWords, columnsOf, slotWords, COLUMN_NAMES } from './slot.js';
 import { compile, ExpressionError } from '../expression.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { fitUnder } from '../dropdown.js';
@@ -112,8 +112,8 @@ export class SlotPicker {
   }
 
   /** Open under `anchor` for `part`'s slot `key`. A pick sets the slot at once (Spotfire applies as you choose). */
-  open({ part, key, anchor }) {
-    if (this.openFor && this.openFor.part === part && this.openFor.key === key) { this.close(); return; }
+  open({ part, key, anchor, add = false }) {
+    if (!add && this.openFor && this.openFor.part === part && this.openFor.key === key) { this.close(); return; }
     this.openFor = { part, key };
     const doc = this.doc;
     const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
@@ -162,11 +162,14 @@ export class SlotPicker {
     const many = Boolean((part.slotList().find((s) => s.key === key) || {}).many);
     let index = 0;
     const columns = () => columnsOf((part.decl.encode || {})[key]);
+    // a pick redraws its part on the next task (visual_part refoldSoon) - under its pill again after it
+    const again = () => setTimeout(() => { if (this.openFor && this.openFor.part === part && this.openFor.key === key) place(); }, 0);
     const put = (col) => {
-      if (!many) { part.setSlot(key, col); return; }
+      if (!many) { part.setSlot(key, col); again(); return; }
       const list = columns();
       const next = col ? [...list.slice(0, index), col, ...list.slice(index + 1)] : list.filter((_, k) => k !== index);
       part.setSlot(key, next.length ? next : null);
+      again();
     };
     const columnsRow = () => {
       const row = el('div', 'sf-pop__cols');
@@ -213,6 +216,14 @@ export class SlotPicker {
       const [routes, at, folds] = [el('div', 'sf-pop__col'), el('div', 'sf-pop__col'), el('div', 'sf-pop__col')];
       box.append(routes, at, folds);
       routes.append(el('div', 'sf-pop__lab', 'Route'));
+      // «(Column Names)» (owner 10-15, Spotfire's): on an axis that takes it, the level the cell values stand on
+      if ((part.slotList().find((s) => s.key === key) || {}).names) {
+        const it = el('button', `sf-pop__it${chosen.names ? ' is-on' : ''}`, COLUMN_NAMES);
+        it.type = 'button';
+        it.addEventListener('click', () => { const next = { names: true }; put(next); draw(next); });
+        routes.append(it);
+      }
+      if (chosen.names) { show(box); return; }
       const held = routeChoices(part.index, rows);
       const declared = declaredChoices(part.vocabulary && part.vocabulary(), part.rowType && part.rowType(), held);
       for (const route of [...held, ...declared]) {
@@ -350,6 +361,7 @@ export class SlotPicker {
       return row;
     };
     this.host.style.display = '';
-    draw((many ? columns()[0] : slot) || { steps: [], value: null });
+    // «+» (owner 10-15): a new column of a slot of several, not the first again
+    if (add && many) { index = columns().length; draw({ steps: [], value: null }); } else draw((many ? columns()[0] : slot) || { steps: [], value: null });
   }
 }

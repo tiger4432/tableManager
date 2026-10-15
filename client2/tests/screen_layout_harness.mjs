@@ -1043,7 +1043,8 @@ function screensLib(TOL) {
 
   // Every button in a <header>, and every [aria-haspopup], pressed in turn: what appears positioned is its panel.
   const keyOf = (b) => `${pathOf(b)}|${label(b)}`;
-  const openers = () => [...document.querySelectorAll('header button, header [role="button"], [aria-haspopup]')].filter((b) => shown(b) && !b.disabled);
+  // the worlds' chips (a shared part, the branch picker) toggle a world - they open nothing; a pick walks again and redraws
+  const openers = () => [...document.querySelectorAll('header button, header [role="button"], [aria-haspopup]')].filter((b) => shown(b) && !b.disabled && !b.closest('.branch-picker'));
   const floating = () => [...document.querySelectorAll('body *')].filter((e) => /absolute|fixed/.test(css(e).position) && shown(e));
   const pressed = new Set();
   let open = null;
@@ -1327,7 +1328,7 @@ const DRIVE = {
         chip(0).dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
         await wait(600);
         const chips = [...document.querySelectorAll('.sf-pop-host [data-column]')].map((x) => x.textContent.replace('×', '').trim());
-        document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
         await wait(200);
         return { before, after: corner(), chips };
       })()`);
@@ -1377,7 +1378,7 @@ const DRIVE = {
         out.push(await placed('window narrowed'));
         await c.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
         await sleep(400);
-        await evaluate(c, "(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return true; })()");
+        await evaluate(c, "(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return true; })()");
         await sleep(200);
       }
       await evaluate(c, `window.__pickPlaced = ${JSON.stringify(out)}; true`);

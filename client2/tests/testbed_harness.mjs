@@ -208,6 +208,26 @@ async function measure(M) {
     const m = M.cross.crossModel(xs, { ...M.color.paintRows(xs, { palette: DARK, declaration: decl }), declaration: decl });
     return JSON.stringify([m.grid.map((line) => line.map((c) => c.value)), m.rowTotals, m.colTotals, m.total]);
   };
+  // T54 (owner 10-15): several cell values - each folded on its own; their names a level innermost on the column axis by
+  //   default (Spotfire's), on the row axis where «(Column Names)» is put; a total a value across them
+  {
+    const c0 = exprSlot('Count()');
+    const c1 = { ...product, reduce: 'Count' };
+    const twoCross = (rowsSlot, colsSlot) => {
+      const decl = crossDecl({ encode: { rows: rowsSlot, columns: colsSlot, cells: [c0, c1] } });
+      const xs = WAFERS.map((id) => ({ id, reads: { rows: readSlot(index, inside, id, rowsSlot), columns: readSlot(index, inside, id, colsSlot) },
+        raw: { cells: M.slot.rawOf(index, inside, id, c0), 'cells@1': M.slot.rawOf(index, inside, id, c1) } }));
+      return M.cross.crossModel(xs, { ...M.color.paintRows(xs, { palette: DARK, declaration: decl }), declaration: decl });
+    };
+    const onCols = twoCross(lot, product);
+    const onRows = twoCross([lot, { names: true }], product);
+    const each = (m, k) => JSON.stringify(m.grid.map((line) => line.filter((_, j) => j % 2 === k).map((c) => c.value)));
+    out.measures = [[onCols.valuesOn, onRows.valuesOn],
+      each(onCols, 0) === JSON.stringify(JSON.parse(exprCross(c0))[0]), each(onCols, 1) === JSON.stringify(JSON.parse(exprCross(c1))[0]),
+      onCols.colParts.slice(0, 2).map((p) => p[p.length - 1]).join(' | ') === [M.slot.slotWords(c0), M.slot.slotWords(c1)].join(' | '),
+      onRows.rowParts.slice(0, 2).map((p) => p[p.length - 1]).join(' | ') === [M.slot.slotWords(c0), M.slot.slotWords(c1)].join(' | '),
+      [[].concat(onCols.rowTotals[0]).length, [].concat(onRows.colTotals[0]).length], M.slot.slotWords({ names: true })];
+  }
   out.exprCross = [exprCross(exprSlot('Count()')) === exprCross(null), exprCross(exprSlot('Count([product])')) === exprCross({ ...product, reduce: 'Count' }),
     M.cross.title({ rows: lot, columns: product, cells: exprSlot('Avg([wafer])') })];
   // T31: a way in the brackets - its end node's own value, a fold over its ends; a row the way does not reach empty
@@ -797,6 +817,8 @@ function suite(out, page, saved, counted) {
   eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 6 });
   eq('T18 the site\'s theme is the page\'s - the walk page\'s parts on it (the start picker) wear the same tokens', saved.siteTheme, ['dark', 'light']);
   eq('T34 the page\'s start gives the declaration\'s zone to the calculator - a day cut in New York, not Seoul', saved.zoned, '2026-10-13T00:00:00-04:00');
+  eq('T54 several cell values: each folded on its own, as one alone; their names innermost on the columns by default, on the rows where (Column Names) stands; a total a value',
+    out.measures, [['columns', 'rows'], true, true, true, true, [2, 2], '(Column Names)']);
   eq('T53 the page walks the worlds it is given, merged in their order; a pick reads the declaration on the new ones and walks again',
     saved.worlds, { before: ['world=b&world=a'], after: ['world=c'], declarationAgain: true });
   eq('T14 census: the visual part is the one caller of the filter; no kind imports it', [counted.callers, counted.kindsFilter], [['visual_part.js'], []]);
@@ -844,9 +866,9 @@ const MUTANTS = [
   { id: 'M86', what: 'a mark keeps its row\'s all values of a folded slot - the cell folds the row', catches: 'T51', file: 'testbed/units.js',
     mutate: (t) => swap(t, '        if (mine && mine.length) raw[f] = mine;\n', '') },
   { id: 'M87', what: 'the root names no folded slot', catches: 'T51', file: 'testbed/visual_part.js',
-    mutate: (t) => swap(t, '      folds: listed.filter((s) => s.folds && held[s.key]).map((s) => s.key) });', '      folds: [] });') },
+    mutate: (t) => swap(t, '      folds: listed.filter((s) => s.folds && held[s.key]).flatMap((s) => columnsOf(held[s.key]).map((_, i) => foldKey(s.key, i))) });', '      folds: [] });') },
   { id: 'M88', what: 'a total folds one mark a row - the first', catches: 'T51', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, '    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);', '    return foldRows(cellSlot, [...new Map(marks.map((m) => [m.row || m.id, m.raw.cells])).values()], ctx.askMarked);') },
+    mutate: (t) => swap(t, '    return foldRows(measures[m], [...new Set(marks.map((x) => x.raw[k]))], ctx.askMarked);', '    return foldRows(measures[m], [...new Map(marks.map((x) => [x.row || x.id, x.raw[k]])).values()], ctx.askMarked);') },
   { id: 'M72', what: 'several on a paint slot the one look, no category', catches: 'T44', file: 'testbed/color_by.js',
     mutate: (t) => swap(t, "read.state === 'several' ? MULTIPLE : null);", 'null);') },
   { id: 'M73', what: '«(Multiple)» sorted as text - first', catches: 'T44', file: 'testbed/slot.js',
@@ -879,7 +901,7 @@ const MUTANTS = [
   { id: 'M12', what: 'a row with two values counted in its first only', catches: 'T3', file: 'testbed/slot.js',
     mutate: (t) => swap(t, "  if (read.state === 'several') return read.values;", "  if (read.state === 'several') return read.values.slice(0, 1);") },
   { id: 'M13', what: 'a total folded over its cells\' rows twice (a row in two cells)', catches: 'T7', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, '    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);', '    return foldRows(cellSlot, marks.map((m) => m.raw.cells), ctx.askMarked);') },
+    mutate: (t) => swap(t, '    return foldRows(measures[m], [...new Set(marks.map((x) => x.raw[k]))], ctx.askMarked);', '    return foldRows(measures[m], marks.map((x) => x.raw[k]), ctx.askMarked);') },
   { id: 'M14', what: 'a - beats a + for a node in two hubs', catches: 'T8', file: 'rnd_board/marking_store.js',
     mutate: (t) => swap(t, '    for (const node of open(id)) if (sign.get(node) !== SIGN.CASE) sign.set(node, s);', '    for (const node of open(id)) sign.set(node, s);') },
   { id: 'M14b', what: 'the walk page\'s reading keeps an absent sign as a control (the - list every not-+)', catches: 'T20', file: 'rnd_board/marking_store.js',
@@ -920,12 +942,12 @@ const MUTANTS = [
     mutate: (t) => swap(t, '{ paint, colored, askMarked, label, shape, palette: this.palette(), declaration: this.decl, start,', '{ paint, colored, askMarked, label, shape, palette: this.palette(), reduce: encode.cells && encode.cells.reduce, markerPct: this.decl.markerPct, start,') },
   // M31 (a words-only pill opens the picker) retired 10-14: the template draws a pill only for a slot it holds.
   { id: 'M32', what: 'the cross table folds a cell without its slot\'s reduce - every cell Count', catches: 'T7', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, '    return foldRows(cellSlot, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);', '    return foldRows(cellSlot && { ...cellSlot, reduce: undefined }, [...new Set(marks.map((m) => m.raw.cells))], ctx.askMarked);') },
+    mutate: (t) => swap(t, '    return foldRows(measures[m], [...new Set(marks.map((x) => x.raw[k]))], ctx.askMarked);', '    return foldRows({ ...measures[m], reduce: undefined }, [...new Set(marks.map((x) => x.raw[k]))], ctx.askMarked);') },
 
   { id: 'M33', what: 'the scatter\'s title y and x swapped', catches: 'T23', file: 'testbed/kinds/scatter.js',
     mutate: (t) => swap(t, '`${slotWords(encode.y)} vs. ${slotWords(encode.x)}`', '`${slotWords(encode.x)} vs. ${slotWords(encode.y)}`') },
   { id: 'M34', what: 'the cross table\'s title without a cell slot says (None), not UniqueCount(rows)', catches: 'T23', file: 'testbed/kinds/cross_table.js',
-    mutate: (t) => swap(t, "${encode.cells ? slotWords(encode.cells) : ROWS_COUNT}", '${slotWords(encode.cells)}') },
+    mutate: (t) => swap(t, "${columnsOf(encode.cells).length ? columnsOf(encode.cells).map(slotWords).join(' · ') : ROWS_COUNT}", '${slotWords(encode.cells)}') },
   { id: 'M52', what: 'an empty Cell values pill says (None) though the cells count their rows', catches: 'T35', file: 'testbed/visual_part.js',
     mutate: (t) => swap(t, '    p.textContent = opts.words || empty || slotWords(slot);', '    p.textContent = opts.words || slotWords(slot);') },
   { id: 'M23', what: 'a saved page reopens on the layout, not on what was saved', catches: 'T12', file: 'testbed/main.js',
@@ -964,6 +986,10 @@ MUTANTS.push(
     mutate: (t) => swap(t, '      if (steps.length !== route.hops || back || seen.has(key)) continue;', '      if (steps.length !== route.hops || seen.has(key)) continue;') },
   { id: 'M90', what: 'the walk in hand\'s routes offered again from the declaration', catches: 'T52', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '      if (steps.length !== route.hops || back || seen.has(key)) continue;', '      if (steps.length !== route.hops || back) continue;') },
+  { id: 'M94', what: 'several cell values put nowhere stand nowhere - no level for their names', catches: 'T54', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, ": measures.length > 1 ? { key: 'columns', at: columnsOf(enc.columns).length } : null;", ': null;') },
+  { id: 'M95', what: 'every cell value folds the first', catches: 'T54', file: 'testbed/kinds/cross_table.js',
+    mutate: (t) => swap(t, "    const k = foldKey('cells', m);", "    const k = foldKey('cells', 0);") },
   { id: 'M92', what: 'the page walks the operating world whatever it was given', catches: 'T53', file: 'testbed/main.js',
     mutate: (t) => swap(t, '((url, init) => globalThis.fetch(url, init)), () => worlds);', '((url, init) => globalThis.fetch(url, init)), () => []);') },
   { id: 'M93', what: 'a pick keeps the declaration of the worlds before', catches: 'T53', file: 'testbed/main.js',

@@ -27,7 +27,7 @@ export function readSlot(index, inside, x, slot, oneValued = false, marked = nul
   // A slot of several columns (owner 10-14 «알약 여러 컬럼»): each column read, their values' combination one category
   // («A, B» - Spotfire's), `parts` its values column by column (a cross table's levels); one column - that column.
   if (Array.isArray(slot)) {
-    const cols = columnsOf(slot);
+    const cols = columnsOf(slot).filter((c) => !c.names);
     if (cols.length === 1) return readSlot(index, inside, x, cols[0], oneValued, marked, cell);
     if (!cols.length) return { state: 'empty', n: 0 };
     const reads = cols.map((c) => readSlot(index, inside, x, c, false, marked, cell));
@@ -335,6 +335,11 @@ export function combosOf(rows, keys) {
 /** A slot's columns - THE one place an older one-column slot reads as a list of one (owner 10-14: a pill of several
  *  columns; the declaration's slot value [column …]). */
 export const columnsOf = (slot) => (Array.isArray(slot) ? slot.filter(Boolean) : slot ? [slot] : []);
+/** Spotfire's «(Column Names)» (owner 10-15): an axis column `{names: true}` - the level a cross table's several cell values
+ *  stand on; it reads no value of a row. */
+export const COLUMN_NAMES = '(Column Names)';
+/** The raw key of a folded slot's `i`-th value - the first its slot's own key, the next `key@1`, `key@2` … */
+export const foldKey = (key, i) => (i ? `${key}@${i}` : key);
 /** A combination of several columns' values, as one category says it (Spotfire's «A, B»). */
 export const PART_SEP = ', ';
 
@@ -343,6 +348,7 @@ export const PART_SEP = ', ';
 export function slotWords(slot) {
   if (Array.isArray(slot)) { const cols = columnsOf(slot); return cols.length ? cols.map(slotWords).join(' › ') : '(None)'; }
   if (!slot) return '(None)';
+  if (slot.names) return COLUMN_NAMES;
   if (isExpression(slot)) return slot.expr;
   const said = slot.words && slot.words.length ? slot.words[0] : slot.value.on === 'label' ? 'name' : slot.value.name;
   const name = slot.of === 'time' ? `time · ${said}` : said;

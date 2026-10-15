@@ -5,25 +5,23 @@
 .tb-head { display: flex; align-items: center; gap: 10px; padding: 0 var(--sf-pad); background: var(--sf-bg); color: var(--sf-text-2); }
 .tb-head__title { font-weight: 500; color: var(--sf-text); }
 .tb-head__sp { flex: 1; }
+/* «Walking…»'s dinosaur (owner 10-15): the notice's colour, its legs take turns and it bobs a pixel; still when motion is off */
+.sf-frame__area > .sf-say .tb-dino { width: 28px; height: 25px; margin-right: 8px; fill: currentColor; animation: tb-dino-bob 0.4s infinite; }
+.tb-dino .tb-dino__eye { fill: var(--sf-bg); }
+.tb-dino .tb-dino__a { animation: tb-dino-a 0.4s infinite; }
+.tb-dino .tb-dino__b { animation: tb-dino-b 0.4s infinite; }
+@keyframes tb-dino-a { 0%, 49% { visibility: visible; } 50%, 100% { visibility: hidden; } }
+@keyframes tb-dino-b { 0%, 49% { visibility: hidden; } 50%, 100% { visibility: visible; } }
+@keyframes tb-dino-bob { 0%, 49% { transform: translateY(0); } 50%, 100% { transform: translateY(-1px); } }
+@media (prefers-reduced-motion: reduce) {
+  .tb-dino, .tb-dino .tb-dino__a, .tb-dino .tb-dino__b { animation: none; }
+  .tb-dino .tb-dino__b { visibility: hidden; }
+}
+/* the worlds' chips the header's height, as its buttons (the shared picker's 36 px is the walk page's bar) */
+.tb-head .branch-picker__chip { min-height: 0; height: var(--sf-pill-h); }
 .tb-page .rb-board { min-height: 0; background: var(--sf-page); }
 .tb-page .rb-panel { overflow: hidden; }
 
-/* the properties and filters panels dark on the dark page (owner 10-15 «필터랑 속성 영역도 다크») - the testbed alone:
-   the panel tokens, which every panel control reads; native controls (a select's list, a checkbox) follow too */
-:root[data-tb-theme="dark"] {
-  --sf-panel-bg: #2A2A2A;
-  --sf-panel-head: #333333;
-  --sf-panel-text: #E6E6E6;
-  --sf-panel-muted: #A0A3AA;
-  --sf-panel-accent: #8FA2FA;
-  --sf-panel-accent-text: #FFFFFF;
-  --sf-panel-line: #4A4A4A;
-  --sf-panel-line-2: #3A3A3A;
-  --sf-panel-pill: #6A6A6A;
-  --sf-panel-pick: rgba(113, 136, 248, 0.35);
-  --sf-panel-name-bg: #343A52;
-  --sf-panel-name-text: #FFFFFF;
-}
 :root[data-tb-theme="dark"] .sf-panel, :root[data-tb-theme="dark"] .sf-pop, :root[data-tb-theme="dark"] .sf-banner,
 :root[data-tb-theme="dark"] .sf-flyout { color-scheme: dark; }
 

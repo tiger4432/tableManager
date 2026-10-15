@@ -224,11 +224,13 @@ export async function boot(deps) {
     return kept;
   };
   if (typeof doc.addEventListener === 'function') {
-    doc.addEventListener('mousedown', (event) => {
+    // a press anywhere else closes the picker - in the capture phase, so a chart or a part that keeps its press to itself
+    // still closes it (owner 10-15 «화면 다른 영역 아무데나 클릭하면 꺼지게»)
+    doc.addEventListener('pointerdown', (event) => {
       if (pickerHost.style.display === 'none') return;
       const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
       if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.sf-pill, .sf-plus'))) picker.close();
-    });
+    }, true);
   }
   // A pick reads the declaration on the new worlds and every visual walks again; the page stays.
   const worldPicker = deps.branchMount
