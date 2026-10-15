@@ -11,7 +11,7 @@
 >          판단 키가 버린 것: «[Indexes] ix_auto_… - no decide rule keys on it any more; a person drops it: DROP INDEX CONCURRENTLY …»
 > 뜻       요청 줄 0 이고 사유 줄도 0 -> 그 읽기가 1 초 안이었거나 세상(world) 읽기
 >          «pg_trgm» 사유 -> 글자 일부 필터 인덱스는 그 확장이 있어야 지어짐
-> 되돌리기  git revert <HASH> -> API 서버 · 스케줄러 재기동
+> 되돌리기  git revert 6d28d9881 -> API 서버 · 스케줄러 재기동
 > ```
 >
 > ---
