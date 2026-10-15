@@ -1954,6 +1954,31 @@ def catalogue_indexes(dbapi_conn, relation) -> list:
              "search": list(search)} for name, using, partial, columns, search in rows]
 
 
+#: What a column's index serves on the grid's header (소유자 10-15): an equal value, a part of a word.
+INDEX_SERVES_EQUAL, INDEX_SERVES_SEARCH = "equal", "search"
+
+
+def column_index_kinds(engine, relation) -> dict:
+    """{column: ["equal", "search"] - what of it} the database's valid indexes on `relation` serve: an equal value (a
+    btree or hash index that leads with the column, not partial) and a part of a word (a trigram index that reads it).
+    Whoever built the index - declared, automatic or by hand. PostgreSQL only; elsewhere {}."""
+    if engine is None or engine.dialect.name != "postgresql":
+        return {}
+    raw = engine.raw_connection()
+    try:
+        held = catalogue_indexes(raw, relation)
+    finally:
+        raw.close()
+    kinds = {}
+    for index in held:
+        if index["columns"] and index["columns"][0] and index["using"] in ("btree", "hash") and not index["where"]:
+            kinds.setdefault(index["columns"][0], set()).add(INDEX_SERVES_EQUAL)
+        for column in index["search"] or ():
+            kinds.setdefault(column, set()).add(INDEX_SERVES_SEARCH)
+    return {column: [kind for kind in (INDEX_SERVES_EQUAL, INDEX_SERVES_SEARCH) if kind in served]
+            for column, served in kinds.items()}
+
+
 def _building(connection):
     """-> {index name: what its build is doing} in this schema (`db_waits.index_builds`)."""
     import db_waits

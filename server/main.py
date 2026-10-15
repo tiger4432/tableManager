@@ -3604,7 +3604,9 @@ def get_table_schema(table_name: str, world: str = None, db: Session = Depends(g
         # An absent key would force a client to tell "no joins on this table" apart from
         # "this server predates the key" - a version check wearing a data field, and the
         # seed of a fallback that outlives the server it was written for.
-        "join_resolved_columns": join_resolved_columns
+        "join_resolved_columns": join_resolved_columns,
+        # each column's built index - an equal value, a part of a word - for the header's mark (소유자 10-15)
+        "column_indexes": {} if world else models.column_index_kinds(db.get_bind(), table_name),
     }
 
 

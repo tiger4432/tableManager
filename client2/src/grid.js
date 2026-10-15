@@ -841,6 +841,9 @@ export function buildColumnDefs() {
     // mapping in their head, which is the thing this screen exists to stop.
     const fillOrdinal = fillTargets.get(col);
     if (fillOrdinal) headerLabel = `${headerLabel} ${fillOrdinal}`;
+    // its built index (owner 10-15): a small mark on the header, and an equal index alone makes the filter equals
+    const indexed = (state.currentColumnIndexes || {})[col] || [];
+    const indexWords = indexed.map((kind) => (kind === 'search' ? 'partial' : kind));
 
     // [Virtual join] A STORED column can still be join-resolved — `kind: 'collide'`, where
     // the same name exists on both sides and the server fills it from the right table
@@ -852,7 +855,7 @@ export function buildColumnDefs() {
 
     const colDef = {
       headerName: headerLabel,
-      headerTooltip: headerLabel,
+      headerTooltip: indexWords.length ? `${headerLabel} · index: ${indexWords.join(', ')}` : headerLabel,
       field: col,
       // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
       editable: !isSystem && !viewTable,
@@ -861,8 +864,11 @@ export function buildColumnDefs() {
       // `filter: false` is what AG-Grid reads to skip the floating row, and
       // `floatingFilter: false` says the same thing where a reader looks for it.
       filter: filterable ? (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter') : false,
+      ...(filterable && colType !== 'number' && indexed.includes('equal') && !indexed.includes('search')
+        ? { filterParams: { defaultOption: 'equals' } } : {}),
       floatingFilter: filterable,
-      headerClass: fillOrdinal ? 'fill-target-header' : undefined,
+      headerClass: [fillOrdinal ? 'fill-target-header' : '', ...indexed.map((kind) => `idx-${kind}`)]
+        .filter(Boolean).join(' ') || undefined,
       resizable: true,
       checkboxSelection: index === 0,
       headerCheckboxSelection: index === 0,

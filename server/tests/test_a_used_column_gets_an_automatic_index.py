@@ -229,3 +229,12 @@ def test_the_worker_s_line_given_asks_builds_the_automatic_ones_alone(monkeypatc
     maintenance_line.poll_once(_Db, 0)
     maintenance_line._each(maintenance_line._declared_work(None))
     assert ran == [("auto", [(TABLE, ["s"], "slow sort")], False), "declared", "models", ("auto", None, True)]
+
+
+@pytest.mark.pg
+def test_the_header_s_index_kinds_are_the_database_s_valid_indexes(table):
+    """Owner 10-15: a column an index leads with serves an equal value; a trigram one a part of a word."""
+    models.ensure_auto_indexes(table, [(TABLE, ["s"], models.AUTO_SLOW_SORT)], say=lambda line: None)
+    kinds = models.column_index_kinds(table, TABLE)
+    assert kinds.get("s") == [models.INDEX_SERVES_EQUAL], kinds
+    assert "n" not in kinds, kinds
