@@ -582,8 +582,25 @@ async function reopen(M) {
     EXPR.useZone(null);
     return day;
   };
+  // T53 (owner 10-15): the page walks the worlds it is given, merged in their order - every request names them; a pick
+  //   reads the declaration on the new worlds and the visuals walk again on them
+  const worlded = async () => {
+    const asked = [];
+    const worldFetch = async (url) => { asked.push(String(url)); return fetchImpl(url); };
+    const doc = makeDoc('dark');
+    const page = await M.main.boot({ doc, host: doc.createElement('div'), apiBase: '', fetchImpl: worldFetch, charts: chartsRecorder(),
+      storage: null, theme: 'dark', world: ['b', 'a'] });
+    await settle();
+    const tail = (u) => (u.match(/world=[^&]*/g) || []).join('&');
+    const kinds = (list) => [...new Set(list.filter((u) => /\/api\/ledger\/(declaration|subgraph)/.test(u)).map(tail))];
+    const before = kinds(asked);
+    asked.length = 0;
+    await page.pickWorlds(['c']);
+    await settle();
+    return { before, after: kinds(asked), declarationAgain: asked.some((u) => u.includes('/api/ledger/declaration')) };
+  };
   return { same: picture(s) === picture(t), points: t.model ? t.model.points.length : -1,
-    siteTheme: [await themed('light', 'dark'), await themed('dark', 'light')], zoned: await zoned() };
+    siteTheme: [await themed('light', 'dark'), await themed('dark', 'light')], zoned: await zoned(), worlds: await worlded() };
 }
 
 /** What the root names of the kinds it is handed: a kind's name or a slot key as a string, a `.kind` compared, a slot
@@ -780,6 +797,8 @@ function suite(out, page, saved, counted) {
   eq('T12 Save, then a new page from it: the same declaration, the same points', { same: saved.same, points: saved.points }, { same: true, points: 6 });
   eq('T18 the site\'s theme is the page\'s - the walk page\'s parts on it (the start picker) wear the same tokens', saved.siteTheme, ['dark', 'light']);
   eq('T34 the page\'s start gives the declaration\'s zone to the calculator - a day cut in New York, not Seoul', saved.zoned, '2026-10-13T00:00:00-04:00');
+  eq('T53 the page walks the worlds it is given, merged in their order; a pick reads the declaration on the new ones and walks again',
+    saved.worlds, { before: ['world=b&world=a'], after: ['world=c'], declarationAgain: true });
   eq('T14 census: the visual part is the one caller of the filter; no kind imports it', [counted.callers, counted.kindsFilter], [['visual_part.js'], []]);
   if (counted.bundle) eq('T15 the bundle: the testbed chunk under 700 kB, ECharts in no other page\'s chunk', counted.bundle, { testbedUnder700k: true, chartsElsewhere: 0 });
   return { ran: names.length, names, failures };
@@ -945,6 +964,10 @@ MUTANTS.push(
     mutate: (t) => swap(t, '      if (steps.length !== route.hops || back || seen.has(key)) continue;', '      if (steps.length !== route.hops || seen.has(key)) continue;') },
   { id: 'M90', what: 'the walk in hand\'s routes offered again from the declaration', catches: 'T52', file: 'testbed/picker.js',
     mutate: (t) => swap(t, '      if (steps.length !== route.hops || back || seen.has(key)) continue;', '      if (steps.length !== route.hops || back) continue;') },
+  { id: 'M92', what: 'the page walks the operating world whatever it was given', catches: 'T53', file: 'testbed/main.js',
+    mutate: (t) => swap(t, '((url, init) => globalThis.fetch(url, init)), () => worlds);', '((url, init) => globalThis.fetch(url, init)), () => []);') },
+  { id: 'M93', what: 'a pick keeps the declaration of the worlds before', catches: 'T53', file: 'testbed/main.js',
+    mutate: (t) => swap(t, '    declaration = await fetchDeclaration({ apiBase, fetchImpl });', '    void 0;') },
   { id: 'M50', what: 'the time pick reads the value, not its time', catches: 'T34', file: 'testbed/picker.js',
     mutate: (t) => swap(t, "const next = { steps: chosen.steps || [], end: chosen.end, value, of: 'time',", 'const next = { steps: chosen.steps || [], end: chosen.end, value,') },
   { id: 'M51', what: 'the time pick is on for «(row)»', catches: 'T34', file: 'testbed/picker.js',

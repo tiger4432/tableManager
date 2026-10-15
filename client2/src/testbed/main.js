@@ -9,6 +9,8 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { GridShell } from '../rnd_board/grid_shell.js';
 import { MarkingStore } from '../rnd_board/marking_store.js';
 import { fetchSubgraph, fetchDeclaration, fetchKeyValues } from '../rnd_board/api.js';
+import { withWorld, worldList, addressFor } from '../world.js';
+import { BranchPicker } from '../branch_picker.js';
 import { VisualPart, markingsOf, withoutMarking } from './visual_part.js';
 import { StartPart } from './start_part.js';
 import { BannerPart } from './banner_part.js';
@@ -99,11 +101,17 @@ export function bound(layout, shared) {
 }
 
 /**
- * Boot the page. `deps` - doc, host, apiBase, fetchImpl, charts ({init}), storage (localStorage or null), theme.
+ * Boot the page. `deps` - doc, host, apiBase, fetchImpl, charts ({init}), storage (localStorage or null), theme;
+ * `world` - the worlds it walks, merged in the order picked (none: the operating one), `branchMount` - where their
+ * picker sits, `pickWorld(names)` - the address follows a pick.
  * @returns {{shell, markings, filters, stats, active, hubs, save: Function}}
  */
 export async function boot(deps) {
-  const { doc, host, apiBase = '', fetchImpl, storage = null } = deps;
+  const { doc, host, apiBase = '', storage = null } = deps;
+  // the worlds the page walks (owner 10-15 «시험대 다른 세상 합쳐 걷기»): every request through one seat - several
+  // merged by the server in the order picked, the earlier pick winning a vocabulary tie (world.js)
+  let worlds = worldList(deps.world);
+  const fetchImpl = withWorld(deps.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);
   const theme = deps.theme === 'light' ? 'light' : 'dark';
   // On the page's root: the Spotfire tokens (tokens.css) follow it, the header and the picker (on the body) too.
   const root = (doc.documentElement && doc.documentElement.style) ? doc.documentElement : host;
@@ -117,8 +125,9 @@ export async function boot(deps) {
   const active = new KeyedStore();
   const hubs = new HubBook();
   const names = new Map();
-  const declaration = await fetchDeclaration({ apiBase, fetchImpl });
+  let declaration = await fetchDeclaration({ apiBase, fetchImpl });
   useZone(declaration.ok ? declaration.zone : null);              // the calculators cut dates in the server's zone
+  let oneValued = oneValuedBy(declaration.ok ? declaration.predicates : []);
   const entities = () => (declaration.ok ? declaration.entities : []);
   const pickerHost = doc.createElement('div');
   pickerHost.className = 'sf-pop-host';
@@ -174,7 +183,7 @@ export async function boot(deps) {
     kinds: KINDS, filters, stats, active, hubs, names, charts: deps.charts,
     fetchWalk: (params) => fetchSubgraph({ apiBase, fetchImpl, ...params }),
     walkParams: {},
-    oneValued: oneValuedBy(declaration.ok ? declaration.predicates : []),
+    oneValued: (slots) => oneValued(slots),
     openPicker: (at) => picker.open(at),
     partOf: (id) => shell.partOf(id),
     entities, markingList, markingBook, relations, layers, filterNames: FILTERS,
@@ -221,7 +230,24 @@ export async function boot(deps) {
       if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.sf-pill, .sf-plus'))) picker.close();
     });
   }
-  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add, markingBook, relations, layers };
+  // A pick reads the declaration on the new worlds and every visual walks again; the page stays.
+  const worldPicker = deps.branchMount
+    ? new BranchPicker(deps.branchMount, { doc, onPickSet: (picked) => { void pickWorlds(picked); } }) : null;
+  const showWorlds = () => {
+    if (worldPicker) worldPicker.show({ worlds: declaration.worlds || [], current: worlds, operating: declaration.operating });
+  };
+  async function pickWorlds(picked) {
+    worlds = worldList(picked);
+    if (deps.pickWorld) deps.pickWorld(worlds);
+    declaration = await fetchDeclaration({ apiBase, fetchImpl });
+    useZone(declaration.ok ? declaration.zone : null);
+    oneValued = oneValuedBy(declaration.ok ? declaration.predicates : []);
+    showWorlds();
+    for (const p of declarations()) shell.partOf(p.id).load();
+  }
+  showWorlds();
+  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add, markingBook, relations, layers,
+    pickWorlds };
 }
 
 // ── the browser ──
@@ -231,7 +257,10 @@ if (typeof document !== 'undefined' && document.getElementById('tb-board')) {
   let storage = null;
   try { storage = window.localStorage; } catch (e) { storage = null; }
   import('../config.js').then(({ API_BASE }) => boot({ doc: document, host: document.getElementById('tb-board'), apiBase: API_BASE,
-    charts: { init: (el) => echarts.init(el, null, { renderer: 'canvas' }) }, storage, theme: params.get('theme') })).then((page) => {
+    charts: { init: (el) => echarts.init(el, null, { renderer: 'canvas' }) }, storage, theme: params.get('theme'),
+    // the worlds from the address; a pick walks again on the page and the address follows, so a reload opens the same
+    world: params.getAll('world'), branchMount: document.getElementById('tb-branch'),
+    pickWorld: (picked) => { history.replaceState(history.state, '', addressFor(window.location.href, picked)); } })).then((page) => {
     const save = document.getElementById('tb-save');
     save.addEventListener('click', () => { page.save(); save.textContent = 'Saved'; setTimeout(() => { save.textContent = 'Save'; }, 1200); });
     // Reset - back to what was saved (Spotfire's «Reset to saved»); Clear saved - forget it, the page's own layout next.
