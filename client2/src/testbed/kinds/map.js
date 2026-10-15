@@ -57,7 +57,9 @@ export function render(area, model, ctx) {
     rect.setAttribute('fill', c.fill);
     rect.setAttribute('stroke', c.line);
     rect.setAttribute('stroke-width', '0.04');
-    rect.setAttribute('data-cell', `${c.x},${c.y}`);
+    // its own name: `data-cell` is a part's seat in the page (grid_shell) - a die under a dropped part read as one, and
+    // the drop landed nowhere (owner 10-15 «부품 드래그드랍 작동 안 함»)
+    rect.setAttribute('data-die', `${c.x},${c.y}`);
     rect.addEventListener('mousemove', (event) => ctx.hover({ ids: c.ids, label: c.ids.length > 1 ? `${c.x}, ${c.y}` : undefined }, event));
     rect.addEventListener('mouseleave', () => ctx.hover(null));
     rect.addEventListener('click', (event) => {

@@ -600,10 +600,12 @@ async function mapPress(M) {
   part.mount();
   await settle();
   const cells = part.model.cells.map((c) => [c.x, c.y, c.ids]);
-  walk(part.host).find((n) => n.attrs && n.attrs['data-cell'] === '0,0').dispatch('click', { stopPropagation() {} });
+  walk(part.host).find((n) => n.attrs && n.attrs['data-die'] === '0,0').dispatch('click', { stopPropagation() {} });
   await settle();
   const marked = markings.entries('marking:pick').flatMap(([id]) => hubs.open(id)).sort();
-  return { cells, marked, drawnMarked: part.model.cells.filter((c) => c.marked).map((c) => `${c.x},${c.y}`) };
+  return { cells, marked, drawnMarked: part.model.cells.filter((c) => c.marked).map((c) => `${c.x},${c.y}`),
+    // a die is no seat: `data-cell` names a part's seat alone, or a part dropped on a die lands nowhere (owner 10-15)
+    seats: walk(part.host).filter((n) => n.attrs && n.attrs['data-cell']).length };
 }
 
 /** A value record a point (owner 10-13 «선 하나에 기록 넷이면 점 넷»): W1's measure edge with three records, W2's with one -
@@ -951,7 +953,7 @@ async function colourEverywhere(M) {
     if (k === 'crossTable') return walk(part.host).find((n) => n.tagName === 'TH' && n._text === '0').parentNode.children[1].style.background;
     // the sheet's key cell, its row D1 (the first the walk brought)
     if (k === 'sheet') return walk(part.host).find((n) => n.tagName === 'TD' && n.attrs && n.attrs['data-at'] === 'A1').attrs['data-color'];
-    return walk(part.host).find((n) => n.attrs && n.attrs['data-cell'] === '0,0').attrs.fill;
+    return walk(part.host).find((n) => n.attrs && n.attrs['data-die'] === '0,0').attrs.fill;
   });
   const first = drawn();
   for (const part of parts) part.setDeclaration({ ...part.declaration(), colors: { A: '#123456' } });
@@ -1505,7 +1507,7 @@ async function suite(M) {
     judge('Y5 no relation: every point other, none unknown', cNone,
       { colours: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' }, unknown: 0, moved: { BW: 'other', CW1: 'other', CW2: 'other', CW3: 'other' } }),
     judge('Y6 the map: a cell a coordinate - two dies at one x, y one cell; pressed, both marked and the cell drawn marked', mpp,
-      { cells: [[0, 0, ['a1', 'b1']], [1, 0, ['a2']], [0, 2, ['a3']]], marked: ['a1', 'b1'], drawnMarked: ['0,0'] }),
+      { cells: [[0, 0, ['a1', 'b1']], [1, 0, ['a2']], [0, 2, ['a3']]], marked: ['a1', 'b1'], drawnMarked: ['0,0'], seats: 0 }),
     judge('R2 a value record a point: an edge of three records three points, of one one; Latest on X and Y - a point an edge, its newest record',
       rp, { all: [['W1', '2026-02-01', '1'], ['W1', '2026-02-02', '2'], ['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']],
         latest: [['W1', '2026-02-03', '3'], ['W2', '2026-02-05', '9']] }),
