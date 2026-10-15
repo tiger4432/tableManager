@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-15] **자동 인덱스 — 잘린 읽기도 요청 · 글자 일부 필터는 검색 인덱스 · 자동 삭제 없음 (소유자 10-15)** — git pull · API 서버 재기동 · 이주 «없음»
+>
+> ```
+> 무엇     그리드 읽기가 1 초를 넘으면(10 초에서 잘려도) 정렬 · 같음/범위 필터 · 글자 일부 필터 칸의 인덱스를 요청
+>          짓는 것은 스케줄러의 인덱스 줄(5 초마다) · 판단 키가 버린 자동 인덱스는 지우지 않고 로그로만
+> 볼 로그  API 서버: «[Indexes] asked for an automatic index on <표> (<칸>) - slow search, the read took N s»
+>          안 한 사유: «… already serves it» · «… holds auto_index_per_table (N) automatic indexes» · «… already waiting»
+>          스케줄러: «[Indexes] building ix_auto_<표>_<칸>_search on <표>» -> «… built in N s»
+>          판단 키가 버린 것: «[Indexes] ix_auto_… - no decide rule keys on it any more; a person drops it: DROP INDEX CONCURRENTLY …»
+> 뜻       요청 줄 0 이고 사유 줄도 0 -> 그 읽기가 1 초 안이었거나 세상(world) 읽기
+>          «pg_trgm» 사유 -> 글자 일부 필터 인덱스는 그 확장이 있어야 지어짐
+> 되돌리기  git revert <HASH> -> API 서버 · 스케줄러 재기동
+> ```
+>
+> ---
+>
 > ## [10-15] **체인 워커 즉시 기동 · 소급이 체인을 안 막음 (소유자 10-15 특별 지시)** — git pull · 체인 워커와 스케줄러 재기동 · 이주 «없음»
 >
 > ```

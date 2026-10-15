@@ -57,14 +57,14 @@ def test_a_decide_key_is_built_and_says_why(table):
 
 
 @pytest.mark.pg
-def test_a_decide_key_no_rule_wants_goes_and_a_slow_column_s_stays(table):
+def test_a_decide_key_no_rule_wants_is_said_and_stays_for_a_person_to_drop(table):
     models.ensure_auto_indexes(table, [(TABLE, ["s"], models.AUTO_SLOW_SORT)], say=lambda line: None,
                                decide_keys=[(TABLE, ["n"], models.AUTO_DECIDE_KEY)])
     assert set(_autos(table)) == {models.auto_index_name(TABLE, ["s"]), models.auto_index_name(TABLE, ["n"])}
     said = []
     models.ensure_auto_indexes(table, [], say=said.append, decide_keys=[])
-    assert set(_autos(table)) == {models.auto_index_name(TABLE, ["s"])}
-    assert any("dropped - no decide rule keys on it any more" in line for line in said), said
+    assert set(_autos(table)) == {models.auto_index_name(TABLE, ["s"]), models.auto_index_name(TABLE, ["n"])}
+    assert any("no decide rule keys on it any more; a person drops it: DROP INDEX" in line for line in said), said
 
 
 @pytest.mark.pg
@@ -164,7 +164,41 @@ def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeyp
                           "LOT_ID": {"filterType": "text", "type": "contains", "filter": "Y"}})
     assert client.get("/tables/raw_table_1/data", params={"order_by": "EQP_ID", "filters": filters}).status_code == 200
     client.get("/tables/raw_table_1/data", params={"order_by": "updated_at"})
-    assert wanted == [("raw_table_1", ["EQP_ID"], "slow sort"), ("raw_table_1", ["EQP_ID"], "slow filter")], wanted
+    assert wanted == [("raw_table_1", ["EQP_ID"], "slow sort"), ("raw_table_1", ["EQP_ID"], "slow filter"),
+                      ("raw_table_1", ["LOT_ID"], models.AUTO_SLOW_SEARCH)], wanted
+
+
+def test_a_read_cancelled_at_its_limit_asks_too(monkeypatch):
+    """소유자 10-15: a read past grid_read_timeout_seconds was cancelled before the ask - it asks, and its text-pattern
+    filter column asks for a search index."""
+    import main
+    from parsers import directory_watcher
+    from runtime import index_wants
+    from sqlalchemy.exc import OperationalError
+
+    class _Orig:
+        pgcode = main.QUERY_CANCELED
+
+    class _Db:
+        def get_bind(self):
+            return None
+
+    wanted = []
+    monkeypatch.setattr(directory_watcher, "grid_auto_index_after", lambda settings=None: 1e-9)
+    monkeypatch.setattr(index_wants, "want", lambda table, columns, why, seconds, bind: wanted.append((table, columns, why)))
+    monkeypatch.setattr(main, "grid_read_stopped", lambda *a, **k: "stopped")
+    monkeypatch.setattr(main, "grid_model", lambda table, world: None)
+    ticks = iter(range(100))
+    monkeypatch.setattr(main, "time", type("_Clock", (), {"time": staticmethod(lambda: float(next(ticks)))})())  # each read a second later
+
+    @main.grid_read
+    def route(table_name, filters=None, db=None):
+        raise OperationalError("SELECT", {}, _Orig())
+
+    filters = json.dumps({"LOT_ID": {"filterType": "text", "type": "contains", "filter": "Y"}})
+    with pytest.raises(main.HTTPException):
+        route("raw_table_1", filters=filters, db=_Db())
+    assert wanted == [("raw_table_1", ["LOT_ID"], models.AUTO_SLOW_SEARCH)], wanted
 
 
 def test_the_worker_s_line_given_asks_builds_the_automatic_ones_alone(monkeypatch):

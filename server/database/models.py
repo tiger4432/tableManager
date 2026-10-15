@@ -2160,7 +2160,7 @@ def ensure_auto_indexes(engine, wanted, say=print, say_every=INDEX_WAIT_SAY_SECO
     """Each of `wanted` [(table, columns, why)] built as an automatic index, one at a time - unless an index already
     serves it, its table is a view or has no row_id, or the table holds `cap` automatic indexes (one line). With
     `decide_keys` (the whole set the rules want now) an automatic index made for a decide key no rule wants any more
-    is dropped; one made for a slow column stays - it is its own record (RUN.md says how to drop it).
+    is SAID with the statement that drops it - a person drops it (소유자 10-15), as one made for a slow column.
     -> {name: INDEX_BUILT | INDEX_PRESENT | INDEX_FAILED} of what was built."""
     from database import crud
     from parsers.directory_watcher import auto_index_per_table
@@ -2199,9 +2199,8 @@ def ensure_auto_indexes(engine, wanted, say=print, say_every=INDEX_WAIT_SAY_SECO
                      if row.name.startswith(AUTO_INDEX_PREFIX) and auto_index_why(row.said) == AUTO_DECIDE_KEY
                      and row.name not in wanted_names]
         for name in stale:
-            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
-                connection.execute(text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name.replace('"', '""')))
-            say("[Indexes] %s dropped - no decide rule keys on it any more" % name)
+            say('[Indexes] %s - no decide rule keys on it any more; a person drops it: DROP INDEX CONCURRENTLY "%s";'
+                % (name, name.replace('"', '""')))
     return done
 
 

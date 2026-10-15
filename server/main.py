@@ -2702,17 +2702,44 @@ def grid_read(route):
         q = asked.get("q") if isinstance(asked.get("q"), str) else None     # a direct call leaves Query sentinels
         filters = asked.get("filters")
         seconds = grid_read_timeout() if q or pattern_filtered_columns(filters) else None
+        started = time.time()
         try:
             with read_limit(seconds):
-                return route(*args, **kwargs)
+                answer = route(*args, **kwargs)
         except OperationalError as exc:
             if getattr(getattr(exc, "orig", None), "pgcode", None) != QUERY_CANCELED:
                 raise
+            ask_read_indexes(asked, time.time() - started)
             db = asked.get("db")
             raise HTTPException(status_code=503, detail=grid_read_stopped(
                 asked.get("table_name"), q, asked.get("cols"), seconds, filters,
                 db.get_bind() if db is not None else None)) from None
+        ask_read_indexes(asked, time.time() - started)
+        return answer
     return read
+
+
+def ask_read_indexes(asked, took):
+    """A grid read that took longer than `grid_auto_index_after_seconds` - finished or cancelled at its limit (소유자
+    10-15: a 10 s read was cancelled before it could ask) - asks for an automatic index (총괄 ff7890892) of its sort, its
+    equal/range filter columns and its text-pattern filter columns (a search index). Only queued here
+    (`runtime.index_wants`); a world's read asks nothing."""
+    from parsers.directory_watcher import grid_auto_index_after
+    from runtime import index_wants
+
+    table_name, db, filters = asked.get("table_name"), asked.get("db"), asked.get("filters")
+    slow = None if asked.get("world") or db is None or not isinstance(table_name, str) else grid_auto_index_after()
+    if not slow or took <= slow:
+        return
+    bind = db.get_bind()
+    order_by, table_model = asked.get("order_by", "row_id"), grid_model(table_name, None)
+    if isinstance(order_by, str) and table_model is not None and _named_sort(
+            table_model, table_name, order_by, bool(asked.get("order_desc"))) is None:
+        index_wants.want(table_name, [order_by], models.AUTO_SLOW_SORT, took, bind)
+    for column in ordered_filtered_columns(filters):
+        index_wants.want(table_name, [column], models.AUTO_SLOW_FILTER, took, bind)
+    for column in pattern_filtered_columns(filters):
+        index_wants.want(table_name, [column], models.AUTO_SLOW_SEARCH, took, bind)
 
 
 def text_looked_columns(searched, filters):
@@ -2979,16 +3006,6 @@ def grid_page(
         id_results = query.with_entities(*page_keys).order_by(*final_sort).offset(skip).limit(limit).all()
     id_list = [row[0] if len(page_keys) == 1 else tuple(row) for row in id_results]
     t_id_scan = time.time() - t_id_start
-    # a slow id scan asks for an automatic index of its sort and its equal/range filter columns (총괄 ff7890892) - only
-    # queued here; checked and written after, on its own thread (`runtime.index_wants`)
-    from parsers.directory_watcher import grid_auto_index_after
-    slow = None if world else grid_auto_index_after()
-    if slow and t_id_scan > slow:
-        from runtime import index_wants
-        if _named_sort(table_model, table_name, order_by, order_desc) is None:
-            index_wants.want(table_name, [order_by], models.AUTO_SLOW_SORT, t_id_scan, db.get_bind())
-        for column in ordered_filtered_columns(filters):
-            index_wants.want(table_name, [column], models.AUTO_SLOW_FILTER, t_id_scan, db.get_bind())
     
     t_row_start = time.time()
     
