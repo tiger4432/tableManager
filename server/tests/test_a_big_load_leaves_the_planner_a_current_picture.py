@@ -110,8 +110,11 @@ def test_the_boot_sequence_calls_it():
 
     from chain import ingestion_worker as worker
 
-    body = inspect.getsource(worker.start_chain_ingestion_worker)
+    from runtime import maintenance_line
+
+    body = inspect.getsource(maintenance_line._start_work)
     assert "_ensure_dynamic_table_indexes_sync" in body, body[:400]
+    assert "_ensure_dynamic_table_indexes_sync" not in inspect.getsource(worker.start_chain_ingestion_worker)
     assert hasattr(worker, "_ensure_dynamic_table_indexes_sync")
 
 
@@ -385,8 +388,11 @@ def test_the_boot_sequence_calls_it_too():
 
     from chain import ingestion_worker as worker
 
-    body = inspect.getsource(worker.start_chain_ingestion_worker)
+    from runtime import maintenance_line
+
+    body = inspect.getsource(maintenance_line._start_work)
     assert "_analyze_stale_tables_sync" in body, body[:600]
+    assert "ANALYZE" not in inspect.getsource(worker.start_chain_ingestion_worker).replace("NO ANALYZE HERE", "")
 
 
 def test_the_load_path_and_the_boot_path_share_one_function_and_one_threshold():

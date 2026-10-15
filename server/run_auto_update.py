@@ -1190,6 +1190,13 @@ def main():
     except Exception as e:
         logger.error(f"Failed to start config watcher: {e}")
     try:
+        # the index and statistics line - the chain worker builds and analyzes nothing (소유자 10-15)
+        from database.database import SessionLocal
+        from runtime import maintenance_line
+        maintenance_line.start(SessionLocal)
+    except Exception as e:
+        logger.error(f"Failed to start the index and statistics line: {e}")
+    try:
         MultiDiscoveryScheduler(check_interval=5).run()
     finally:
         if config_watcher:

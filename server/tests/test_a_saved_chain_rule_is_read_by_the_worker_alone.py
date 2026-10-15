@@ -214,8 +214,6 @@ def fixture_loop(monkeypatch):
                         lambda: seen.__setitem__("evict", seen["evict"] + 1))
     monkeypatch.setattr(worker, "warmup_worker",
                         lambda *a, **k: seen.__setitem__("warmup", seen["warmup"] + 1))
-    monkeypatch.setattr(worker, "_start_index_work",
-                        lambda rules, *a, **k: seen["index_rules"].append(rules))
     monkeypatch.setattr(models, "refresh_dynamic_models",
                         lambda *a, **k: seen.__setitem__("refresh", seen["refresh"] + 1))
     monkeypatch.setattr(worker, "sweep_undelivered_broadcasts", no_sweep)
@@ -251,7 +249,6 @@ def test_ten_saves_reread_the_rules_and_never_the_heavy_path(loop):
 
     assert seen["refresh"] == 0 and seen["evict"] == 0 and seen["warmup"] == 1
     assert seen["load"] == 1 + 3, "boot, then once per check that found saves"
-    assert seen["index_rules"][-1] == [{"name": "loaded_4"}], "the loop runs the new rules"
 
 
 def test_the_button_is_the_heavy_path_as_before(loop):

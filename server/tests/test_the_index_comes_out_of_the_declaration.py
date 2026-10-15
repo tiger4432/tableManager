@@ -85,7 +85,9 @@ def test_the_boot_sequence_calls_the_ensure_and_not_only_the_reload_path():
 
     from chain import ingestion_worker as worker
 
-    body = inspect.getsource(worker.start_chain_ingestion_worker)
+    from runtime import maintenance_line
+
+    body = inspect.getsource(maintenance_line._start_work)
     assert "_ensure_alignment_decision_key_indexes_sync" in body, body[:400]
     assert hasattr(worker, "_ensure_alignment_decision_key_indexes_sync")
 

@@ -119,7 +119,8 @@ def lines_to_give(lines, rules, behind=(), skip=(), limit=None):
             break
         line["touches"] = _group_target_tables(line["events"], rules) | _group_read_tables(line["events"], rules)
         waits = bool(line["touches"] & behind)
-        if line["per_row"]:
+        # a retroactive run's line never holds a live one back (소유자 10-15: a backfill does not block the chain)
+        if line["per_row"] and not line["run"]:
             behind |= line["touches"]
         if not (waits or line["line"] in skip):
             given.append(line)
@@ -200,7 +201,7 @@ def _spawn(index):
 def _held(line):
     """What the dispatcher keeps of a line it gave: key, run, and - row by row - its tables."""
     return {"line": line["line"], "run": line["run"],
-            "behind": sorted(line["touches"]) if line["per_row"] else []}
+            "behind": sorted(line["touches"]) if line["per_row"] and not line["run"] else []}
 
 
 class SlotPool:
@@ -242,14 +243,15 @@ class SlotPool:
         held = {slot.line["line"] for slot in self.slots.values() if slot.line is not None}
         if notified or now - self._read_at >= READ_EVERY_SECONDS:
             self._read_at, self._waiting = now, self._givable(db, rules, held, len(open_slots))
+        # live lines before a retroactive run's, then the longest unrun first (소유자 10-15)
+        rank = lambda line: (bool(line["run"]), self._ran.get(line["line"], 0.0))   # noqa: E731
         waiting = sorted((line for line in self._waiting
-                          if line["line"] not in held and line["line"] not in self._resting),
-                         key=lambda line: self._ran.get(line["line"], 0.0))       # longest unrun first
+                          if line["line"] not in held and line["line"] not in self._resting), key=rank)
         asked = 0
         for slot in open_slots:
             mine = slot.line
             if mine is not None and mine["line"] not in self._resting and not (
-                    waiting and self._ran.get(waiting[0]["line"], 0.0) < self._ran.get(mine["line"], 0.0)):
+                    waiting and rank(waiting[0]) < rank(mine)):
                 nxt = mine                                   # it keeps its line
             elif waiting:
                 nxt = _held(waiting.pop(0))

@@ -35,10 +35,11 @@ def waiting_lines(db, cap):
                      _f.min(outbox.id).label("first_id"), _f.min(outbox.created_at).label("created_at"),
                      _f.max(outbox.retry_count).label("max_retry"))
              .where(waiting_only).group_by(line_key, outbox.table_name, outbox.event_type).subquery())
-    by_line = _select(pairs, _f.min(pairs.c.first_id).over(partition_by=pairs.c.key)
-                      .label("line_first")).subquery()
-    numbered = _select(by_line, _f.dense_rank().over(order_by=(by_line.c.line_first, by_line.c.key))
-                       .label("line_no")).subquery()
+    by_line = _select(pairs, _f.min(pairs.c.first_id).over(partition_by=pairs.c.key).label("line_first"),
+                      _f.max(pairs.c.run).over(partition_by=pairs.c.key).label("line_run")).subquery()
+    # live lines first: a retroactive run's thousands of lines never push a live one past the cap (소유자 10-15)
+    numbered = _select(by_line, _f.dense_rank().over(order_by=(by_line.c.line_run.isnot(None), by_line.c.line_first,
+                                                               by_line.c.key)).label("line_no")).subquery()
     counted = _select(numbered, _f.max(numbered.c.line_no).over().label("lines_total")).subquery()
     folded = {}
     for pair in db.execute(_select(counted).where(counted.c.line_no <= cap)

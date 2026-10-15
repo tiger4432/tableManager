@@ -3,7 +3,7 @@
 The read only remembers and queues (`want`) - each (table, columns, why) once a process. After it has answered, one
 thread here asks the database whether an index already serves it, whether the table already holds
 `auto_index_per_table` automatic indexes, and whether the same ask is already waiting; if none, it writes one
-INDEX_WANTED row - the outbox control event the chain worker's index line takes and builds
+INDEX_WANTED row - the outbox control event the scheduler's index line (`runtime.maintenance_line`) takes and builds
 (`models.ensure_auto_indexes`). Nothing is written in the read's own path.
 
 A slow reference view (소유자 10-14 «넓혀») - its display read or a candidate probe - asks through the same `want`: its
@@ -226,7 +226,7 @@ def ask(table, columns, why, seconds, bind):
 
 
 def taken(db):
-    """The INDEX_WANTED rows the chain worker has not taken: [(row, (table, columns, why))] - a row it cannot read is
+    """The INDEX_WANTED rows not taken yet (`processed_chain` false - the scheduler's index line takes them): [(row, (table, columns, why))] - a row it cannot read is
     taken with nothing (its line says so)."""
     import event_constants
     from database import models

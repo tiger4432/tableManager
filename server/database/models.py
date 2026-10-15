@@ -2102,7 +2102,7 @@ BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
 #    and 5.7 times the table's disk): a decide rule's judgment key, a grid sort or equal/range filter that was slow, and
 #    a slow reference view's whole-table filter (소유자 10-14 «넓혀»: equal/IN as a filter, LIKE/ILIKE as a search).
 #    (columns, row_id) - a search: the declared search index's trigram (`table_index_ddl`), `..._search` -, named
-#    `ix_auto_<table>_<columns>` and built by the chain worker's index line through
+#    `ix_auto_<table>_<columns>` and built by the scheduler's index line (`runtime.maintenance_line`) through
 #    `_build_one`, as a declared one is. No table records them: the database's list is the state - the prefix says the
 #    product built it, the comment says why («auto: decide key»).
 AUTO_INDEX_PREFIX = "ix_auto_"
@@ -2206,7 +2206,7 @@ def ensure_auto_indexes(engine, wanted, say=print, say_every=INDEX_WAIT_SAY_SECO
 
 
 def ensure_auto_indexes_sync(db_session_factory, wanted, say, decide=True):
-    """The automatic indexes (`ensure_auto_indexes`) on the chain worker's index line: `wanted` (a slow grid column's
+    """The automatic indexes (`ensure_auto_indexes`) on the scheduler's index line (`runtime.maintenance_line`): `wanted` (a slow grid column's
     INDEX_WANTED), and with `decide` every decide rule's key as the rules stand. Contained, as the declared ones' work."""
     try:
         db = db_session_factory()

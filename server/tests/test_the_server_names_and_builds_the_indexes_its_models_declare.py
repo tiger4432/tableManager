@@ -49,10 +49,11 @@ def test_the_index_work_builds_the_model_indexes_after_the_declared_keys(monkeyp
     monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda rules, factory: ran.append("keys"))
     monkeypatch.setattr(models, "ensure_model_indexes_sync", lambda factory, sources, say: ran.append(sources))
 
-    async def start():
-        await worker._start_index_work([], None)
+    from runtime import maintenance_line
 
-    asyncio.run(start())
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
+    monkeypatch.setattr(models, "ensure_auto_indexes_sync", lambda *a: None)
+    maintenance_line._each(maintenance_line._declared_work(None))
     assert ran == ["keys", ("model", "table")]
 
 

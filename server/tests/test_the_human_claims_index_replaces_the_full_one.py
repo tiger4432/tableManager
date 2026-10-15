@@ -112,7 +112,9 @@ def test_the_boot_sequence_calls_the_ensure():
     without the index, and the reader then scans without anything saying so."""
     from chain import ingestion_worker as worker
 
-    body = inspect.getsource(worker.start_chain_ingestion_worker)
+    from runtime import maintenance_line
+
+    body = inspect.getsource(maintenance_line._start_work)
     assert "_ensure_human_claims_index_sync" in body, body[:400]
     assert hasattr(worker, "_ensure_human_claims_index_sync")
 

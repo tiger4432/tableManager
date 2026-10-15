@@ -804,3 +804,17 @@ def test_a_held_lock_is_said_on_the_beat_at_once(pg_engine, box, monkeypatch):
         db.rollback()
         db.close()
     assert said == ["waiting for %s" % SA, "waiting for %s" % SB, "holding %s, %s" % (SA, SB)], said
+
+
+def test_a_retroactive_row_by_row_line_never_holds_a_live_line_on_its_tables(monkeypatch):
+    """Owner 10-15: a backfill does not block the chain - a live line on a run's tables is given, and ranks first."""
+    from chain import ingestion_worker
+
+    monkeypatch.setattr(ingestion_worker, "_group_target_tables", lambda events, rules: {"t"})
+    monkeypatch.setattr(ingestion_worker, "_group_read_tables", lambda events, rules: set())
+    run = {"line": "run:1", "run": True, "per_row": True, "events": []}
+    live = {"line": "tx:2", "run": False, "per_row": True, "events": []}
+    after_live = {"line": "tx:3", "run": False, "per_row": True, "events": []}
+    given = [line["line"] for line in slots.lines_to_give([run, live, after_live], [])]
+    assert given == ["run:1", "tx:2"], given            # a live row-by-row line still holds the live line after it
+    assert slots._held(run)["behind"] == [] and slots._held(live)["behind"] == ["t"]

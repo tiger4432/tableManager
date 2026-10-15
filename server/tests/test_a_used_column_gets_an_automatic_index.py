@@ -178,8 +178,20 @@ def test_the_worker_s_line_given_asks_builds_the_automatic_ones_alone(monkeypatc
     monkeypatch.setattr(models, "ensure_auto_indexes_sync", lambda factory, wanted, say, decide: ran.append(
         ("auto", wanted, decide)))
 
-    async def both():
-        await ingestion_worker._start_index_work([], None, wanted=[(TABLE, ["s"], "slow sort")])
-        await ingestion_worker._start_index_work([], None)
-    asyncio.run(both())
+    from runtime import index_wants, maintenance_line, system_reload
+
+    class _Db:
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(ingestion_worker, "load_chain_rules", lambda: [])
+    monkeypatch.setattr(system_reload, "reloads_after", lambda db, mark: [])
+    import event_constants
+    monkeypatch.setattr(event_constants, "mark_processed", lambda row, status: None)
+    monkeypatch.setattr(index_wants, "taken", lambda db: [(object(), (TABLE, ["s"], "slow sort"))])
+    maintenance_line.poll_once(_Db, 0)
+    maintenance_line._each(maintenance_line._declared_work(None))
     assert ran == [("auto", [(TABLE, ["s"], "slow sort")], False), "declared", "models", ("auto", None, True)]

@@ -40,7 +40,7 @@ EVENT_RETROACTIVE_RUN = "RETROACTIVE_RUN"
 EVENT_BROADCAST_RECOVERY = "BROADCAST_RECOVERY"
 
 #: Published after a slow grid read (`runtime.index_wants`, 총괄 ff7890892) - {table, columns, why, seconds}; consumed
-#: by the chain worker's index line, which builds the automatic index (`models.ensure_auto_indexes`).
+#: by the scheduler's index line (`runtime.maintenance_line`), which builds the automatic index (`models.ensure_auto_indexes`).
 EVENT_INDEX_WANTED = "INDEX_WANTED"
 
 #: Every control type. The chain worker filters on membership, not on a literal.

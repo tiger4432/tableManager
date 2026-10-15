@@ -2838,29 +2838,6 @@ async def _say_if_no_ledger_beats(after=heartbeat.DEFAULT_STALE_AFTER_SEC):
             "last beat %.0f s ago" % entry["age_seconds"] if entry.get("age_seconds") is not None else "no beat")
 
 
-def _start_index_work(rules, db_session_factory, after=None, wanted=None):
-    """The index work as a task beside the loop - after `after` (the previous start's or
-    reload's), so two never build the same index at once. On a thread: the loop - its slot
-    dispatcher too - goes on while an index builds. The ledger's partitions are the ledger process's line
-    (`ledger.worker`, 총괄 7763dd6d0) - their build waits on the database's older transactions, and a join key a
-    reload saves must not wait behind it (총괄 bdc08ec39 ②). -> the task of the declared keys' and models' line."""
-    from database import models
-
-    async def line(previous, *works):
-        if previous is not None and not previous.done():
-            await asyncio.wait({previous})
-        for work in works:
-            await asyncio.to_thread(*work)
-    # `wanted` (INDEX_WANTED asks, 총괄 ff7890892): the automatic indexes alone; none - a start or a reload - the
-    # declared keys', the models', and every decide rule's key as the rules stand
-    works = [] if wanted is not None else [
-        (_ensure_declared_indexes_sync, rules, db_session_factory),
-        (models.ensure_model_indexes_sync, db_session_factory,
-         tuple(source for source in models.INDEX_SOURCES if source != "ledger"), logger.warning)]
-    works.append((models.ensure_auto_indexes_sync, db_session_factory, wanted, logger.warning, wanted is None))
-    return asyncio.create_task(line(after, *works))
-
-
 def _rules_for_group(events_in_tx, rules):
     """The enabled rules this transaction group would wake, as a stable signature - asked of `wakes`, the seat that
     picks rules (a deletion is a rule's only through its cell)."""
@@ -3952,19 +3929,6 @@ def _build_unique_index_waiting(bind, uq, table, name):
         unique_key._close_ddl_connection(conn)
 
 
-def _start_business_key_indexes(db_session_factory):
-    """The build beside the starting worker, never waited on (총괄 49792d3f6 A). -> the thread."""
-    def beside():
-        try:
-            _ensure_business_key_unique_indexes_sync(db_session_factory)
-        except Exception as exc:
-            logger.error("[Ledger] the business-key unique indexes could not be ensured, "
-                         "so that column may not be an enforced identity here: %s", exc)
-    thread = threading.Thread(target=beside, name="business-key-indexes", daemon=True)
-    thread.start()
-    return thread
-
-
 def _ensure_business_key_unique_indexes_sync(db_session_factory):
     """Build the UNIQUE index that makes `business_key_val` an enforced identity.
 
@@ -4354,7 +4318,6 @@ def _starting(steps, step):
 
 async def start_chain_ingestion_worker(db_session_factory):
     from runtime import system_reload
-    from runtime import index_wants
 
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
@@ -4389,45 +4352,8 @@ async def start_chain_ingestion_worker(db_session_factory):
     except Exception as exc:
         logger.error(f"Failed to sync dynamic tables schema: {exc}")
 
-    # \U0001f534 판정 189. Separate from the ensure above because it STRENGTHENS: it can
-    # refuse, and a refusal is a number an operator has to see rather than an error.
-    # 총괄 49792d3f6 A: NOT AWAITED - a build waits for every open transaction on its table, so the worker starts
-    # without it and the build runs beside it, its wait capped by the DDL door (db_safety.DDL_LOCK_TIMEOUT).
-    _start_business_key_indexes(db_session_factory)
-    # 🔴 판정 239. The same seat, because "at boot" is where an index a query
-    # depends on has to appear - the reload path alone leaves a restarted deployment
-    # scanning.
-    try:
-        await asyncio.to_thread(_starting(steps, _ensure_alignment_decision_key_indexes_sync),
-                                db_session_factory)
-    except Exception as exc:
-        logger.error("[Chain] the alignment decision-key indexes could not be ensured, "
-                     "so every alignment view build may still scan its source: %s", exc)
-    # 🔴 판정 245-b. Same seat, opposite direction: this one exists so a btree can come OFF
-    # the cell write, which is the ingestion path's largest cost.
-    try:
-        await asyncio.to_thread(_starting(steps, _ensure_human_claims_index_sync), db_session_factory)
-    except Exception as exc:
-        logger.error("[Chain] the human-claims index could not be ensured, so an "
-                     "interactive withdraw may scan instead: %s", exc)
-    # 🔴 S-124 ①. Same seat, same builder: what a model declares and an existing table
-    # lacks is invisible until a query is slow, and the grid's page query is the one that
-    # goes slow.
-    try:
-        await asyncio.to_thread(_starting(steps, _ensure_dynamic_table_indexes_sync), db_session_factory)
-    except Exception as exc:
-        logger.error("[Chain] the dynamic-table indexes could not be ensured, so a table "
-                     "older than the declaration may still sort instead of scanning: %s",
-                     exc)
-
-    # 🔴 AND THE INDEX IS NOT ENOUGH IF THE PLANNER WILL NOT COST IT (S-130). A table
-    # loaded before any of this landed still plans against statistics from before those
-    # rows, which is what the owner is looking at.
-    try:
-        await asyncio.to_thread(_starting(steps, _analyze_stale_tables_sync), db_session_factory)
-    except Exception as exc:
-        logger.error("[Chain] stale table statistics could not be refreshed, so a page "
-                     "query may sort instead of walking its index: %s", exc)
+    # 🔴 NO INDEX BUILD AND NO ANALYZE HERE (소유자 10-15): a backfill's stale statistics and long transactions held
+    #    this start for an hour. They are the scheduler's index and statistics line (`runtime.maintenance_line`).
 
     # 🔴 THIS PROCESS RUNS THE LOOP, AND THE QUEUE VIEW HAS TO KNOW THAT. Without it an
     # empty "running" list means both "no mapper is in flight" and "the loop is in
@@ -4508,7 +4434,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     logger.info("[Chain] startup %.1f s - %s", sum(s for _n, s in steps),
                 " · ".join("%s %.1f s" % step for step in steps))
 
-    index_work = None
+    first_beat = True
 
     pool = slots.SlotPool()
 
@@ -4532,10 +4458,9 @@ async def start_chain_ingestion_worker(db_session_factory):
         held = chain_control.paused()
         # the first (no index work yet) is not throttled: it ends the startup's last `starting`
         heartbeat.beat("chain", note=_worker_note(), state="paused" if held else None,
-                       force=index_work is None)
-        if index_work is None:
-            # ⑤ The index work starts only once the first beat is out, beside the loop.
-            index_work = _start_index_work(rules, db_session_factory)
+                       force=first_beat)
+        if first_beat:
+            first_beat = False
             asyncio.create_task(_say_if_no_ledger_beats())
         if held is not None:
             # 🔴 THE EMERGENCY STOP (총괄 3840af307): take nothing, and wait like an idle tick
@@ -4551,18 +4476,10 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                 # Check for SYSTEM_RELOAD outbox event to reload configs and code on-demand (throttled)
                 now_ts = time.monotonic()
-                new_reloads, index_asks = [], []
+                new_reloads = []
                 if now_ts - last_reload_check_ts >= RELOAD_CHECK_INTERVAL:
                     last_reload_check_ts = now_ts
                     new_reloads = system_reload.reloads_after(db, last_reload_event_id)
-                    index_asks = index_wants.taken(db)
-                if index_asks:                              # a slow grid read's automatic index (총괄 ff7890892)
-                    asked = [each for _row, each in index_asks if each is not None]
-                    if asked:
-                        index_work = _start_index_work(rules, db_session_factory, after=index_work, wanted=asked)
-                    for row, _each in index_asks:
-                        mark_processed(row, "SUCCESS")
-                    db.commit()
                 latest_reload = new_reloads[-1] if new_reloads else None
                 if latest_reload is not None:
                     last_reload_event_id = latest_reload.id
@@ -4578,10 +4495,6 @@ async def start_chain_ingestion_worker(db_session_factory):
                 if reload_work:
                     rules = reload_rules(reload_work)
                     say_the_declaration()
-                    # 4. ⑤ The index work again - the comment on its seat promises 「every reload」,
-                    #    the rules-only one too: a join saved with `key.unique` gets its index now,
-                    #    not at the next restart (총괄 76aa4b6ed ②).
-                    index_work = _start_index_work(rules, db_session_factory, after=index_work)
                     # Mark the trigger event as SUCCESS in this tx if it is not processed yet
                     # (This event only serves as IPC notify signal, does not execute mappers)
                     if latest_reload.processed_chain == False:

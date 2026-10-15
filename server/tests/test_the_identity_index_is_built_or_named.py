@@ -130,28 +130,12 @@ def test_a_valid_index_is_left_alone_an_invalid_leftover_is_rebuilt_and_another_
     assert out["invalid"] == [("other", "custom")]
 
 
-def test_the_startup_calls_it_and_survives_it(monkeypatch):
-    """A daemon that also does chain work must not fail to start because an index could not
-    be built — the same shape S-88 landed for the ledger schema."""
+def test_the_scheduler_s_line_builds_it_and_the_chain_start_does_not():
+    """소유자 10-15: the chain worker builds no index; the scheduler's line does, a failure a line."""
     import inspect
 
-    body = inspect.getsource(worker.start_chain_ingestion_worker)
-    assert "_start_business_key_indexes(db_session_factory)" in body
-    assert "_ensure_business_key_unique_indexes_sync" not in body, "the startup does not run the build itself"
-    assert "logger.error" in inspect.getsource(worker._start_business_key_indexes), "a failure is named, not fatal"
+    from runtime import maintenance_line
 
-
-def test_the_build_runs_beside_the_start_and_is_not_waited_on(monkeypatch):
-    """총괄 49792d3f6 A: a build held by an open transaction must not hold the worker's start."""
-    import threading
-    import time
-
-    release = threading.Event()
-    monkeypatch.setattr(worker, "_ensure_business_key_unique_indexes_sync", lambda factory: release.wait(30))
-    started = time.monotonic()
-    thread = worker._start_business_key_indexes(None)
-    try:
-        assert time.monotonic() - started < 1 and thread.is_alive() and thread.daemon
-    finally:
-        release.set()
-        thread.join(5)
+    assert "_ensure_business_key_unique_indexes_sync" in inspect.getsource(maintenance_line._start_work)
+    assert "business_key" not in inspect.getsource(worker.start_chain_ingestion_worker)
+    assert "logger.error" in inspect.getsource(maintenance_line._each), "a failure is named, not fatal"

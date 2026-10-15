@@ -921,7 +921,7 @@ def say_what_every_page_pays(engine, plan, world, withdraw):
     if not keyed and _table_rows(engine, plan, count=False):        # a view has no index of its own (총괄 bdc08ec39 ⑥)
         keyset_scan.say('page key %s of %s has no index - each page sorts the table and the run goes in one slice '
                         '(`slice_bounds`); declare one on ["%s"] in that table\'s "indexes" (table_config.json) and '
-                        'the chain worker builds it'
+                        'the scheduler\'s index line builds it'
                         % (_page_key(plan), plan.relation, _page_key(plan)))
 
 
