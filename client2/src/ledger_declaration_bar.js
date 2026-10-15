@@ -113,6 +113,10 @@ export function editDeclaration(raw, op, ctx = {}) {
         delete box.target;
         delete box.value;
       }
+    } else if (last === 'kind' && at[at.length - 1] === 'object' && box && typeof box === 'object') {
+      // a predicate's object turned entity_ref starts with an empty list of types - «+ Type» adds to it (owner 10-15: the bar froze)
+      box.kind = op.value;
+      if (op.value === 'entity_ref' && !Array.isArray(box.types)) box.types = [];
     } else if (last === 'node' && box && typeof box === 'object') {
       box.node = op.value;
       const e = entity(op.value);

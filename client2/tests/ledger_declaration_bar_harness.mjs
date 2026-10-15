@@ -117,6 +117,9 @@ async function suite(d) {
   ok('A12 a predicate with no object: neither end', noObject.target === undefined && noObject.value === undefined, JSON.stringify(noObject));
   const unsaid = bar.editDeclaration(RAW, { op: 'set', path: 'sentences.0.predicate', value: 'unsaid' }, OBJ).sentences[0];
   ok('A13 a predicate whose kind is not said leaves the end as it is', same(unsaid.target, RAW.sentences[0].target) && unsaid.predicate === 'unsaid');
+  const turned = bar.editDeclaration({ subjects: ['wafer'], object: { kind: 'value', qualifiers: { optional: [] } } }, { op: 'set', path: 'object.kind', value: 'entity_ref' }, CTX);
+  const typed = bar.editDeclaration(turned, { op: 'add', path: 'object.types' }, CTX);
+  ok('A14 a value predicate turned entity_ref: its types are a list and + Type adds one', Array.isArray(turned.object.types) && Array.isArray(typed.object.types) && typed.object.types.length === 1, JSON.stringify(typed.object));
   const removed = bar.editDeclaration(RAW, { op: 'remove', path: 'sentences.0' }, CTX);
   ok('A8 × takes that sentence out', removed.sentences.length === 1 && removed.sentences[0].sentence === 's2');
 
@@ -400,6 +403,7 @@ const MUTANTS = [
   { name: 'a node predicate gets no target', catches: ['A10'], file: 'bar', mutate: swap('        if (!box.target || (types.length && !types.includes(node))) box.target = endOf(types[0] || \'\');', '') },
   { name: 'an allowed target is replaced', catches: ['A11'], file: 'bar', mutate: swap('(types.length && !types.includes(node))', 'types.length') },
   { name: 'a no-object predicate keeps its ends', catches: ['A12'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else if (false) {") },
+  { name: 'entity_ref leaves no list of types', catches: ['A14'], file: 'bar', mutate: swap("if (op.value === 'entity_ref' && !Array.isArray(box.types)) box.types = [];", '') },
   { name: 'an unsaid kind is read as none', catches: ['A13'], file: 'bar', mutate: swap("      } else if (object.kind === 'none') {", "      } else {") },
   { name: 'the schema\'s object kind is dropped', catches: ['D6'], file: 'view', mutate: swap(', object: (p && p.object) || null }))', ' }))') },
   { name: 'the table key read off another field', catches: ['H1', 'D4'], file: 'view', mutate: swap('Array.isArray(v.key)).map(([t, v]) => [t, v.key])', 'Array.isArray(v.keys)).map(([t, v]) => [t, v.keys])') },
