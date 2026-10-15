@@ -9,6 +9,9 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { GridShell } from '../rnd_board/grid_shell.js';
 import { MarkingStore } from '../rnd_board/marking_store.js';
 import { fetchSubgraph, fetchDeclaration, fetchKeyValues } from '../rnd_board/api.js';
+// The worlds the test bed reads (owner «다른 세상도»): one seat, every request through it - as the walk page (walk/main.js).
+import { withWorld, worldList, addressFor } from '../world.js';
+import { BranchPicker } from '../branch_picker.js';
 import { VisualPart, markingsOf, withoutMarking } from './visual_part.js';
 import { StartPart } from './start_part.js';
 import { BannerPart } from './banner_part.js';
@@ -99,11 +102,18 @@ export function bound(layout, shared) {
 }
 
 /**
- * Boot the page. `deps` - doc, host, apiBase, fetchImpl, charts ({init}), storage (localStorage or null), theme.
+ * Boot the page. `deps` - doc, host, apiBase, fetchImpl, charts ({init}), storage (localStorage or null), theme;
+ * `world` - the worlds it reads, in the order picked (none: the operating one, or the ones the save names);
+ * `branchMount` - the worlds picker's element; `pickWorld(names)` - the page's address follows a pick.
  * @returns {{shell, markings, filters, stats, active, hubs, save: Function}}
  */
 export async function boot(deps) {
-  const { doc, host, apiBase = '', fetchImpl, storage = null } = deps;
+  const { doc, host, apiBase = '', storage = null } = deps;
+  let saved = null;
+  try { saved = storage ? JSON.parse(storage.getItem(SAVED) || 'null') : null; } catch (e) { saved = null; }
+  // the worlds: the address's, else the save's - every request carries them (world.js withWorld, the one seat)
+  let worlds = worldList(deps.world && deps.world.length ? deps.world : (saved && !Array.isArray(saved) && saved.worlds) || []);
+  const fetchImpl = withWorld(deps.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);
   const theme = deps.theme === 'light' ? 'light' : 'dark';
   // On the page's root: the Spotfire tokens (tokens.css) follow it, the header and the picker (on the body) too.
   const root = (doc.documentElement && doc.documentElement.style) ? doc.documentElement : host;
@@ -117,7 +127,7 @@ export async function boot(deps) {
   const active = new KeyedStore();
   const hubs = new HubBook();
   const names = new Map();
-  const declaration = await fetchDeclaration({ apiBase, fetchImpl });
+  let declaration = await fetchDeclaration({ apiBase, fetchImpl });
   useZone(declaration.ok ? declaration.zone : null);              // the calculators cut dates in the server's zone
   const entities = () => (declaration.ok ? declaration.entities : []);
   const pickerHost = doc.createElement('div');
@@ -125,14 +135,13 @@ export async function boot(deps) {
   pickerHost.style.display = 'none';
   (doc.body || host).appendChild(pickerHost);
   const picker = new SlotPicker(pickerHost, { doc });
-  let saved = null;
-  try { saved = storage ? JSON.parse(storage.getItem(SAVED) || 'null') : null; } catch (e) { saved = null; }
   const shell = new GridShell(host, { doc, markings, parts: PARTS });
   const markingList = new KeyedStore({ list: ((saved && !Array.isArray(saved) && saved.markings) || MARKINGS).map((m) => ({ ...m })) });
   // The page's relations (Spotfire's Relations: a node type, a predicate, a node type, one way or both) - what a marking
   // spreads along; the graph its parts walked; the layers every part asks «is this marked» (marking_layer.js).
   const relations = new KeyedStore({ list: ((saved && !Array.isArray(saved) && saved.relations) || []).map((r) => ({ ...r })) });
-  const layers = new MarkingLayers({ markings, hubs, graph: new GraphBook(), relations });
+  const graph = new GraphBook();
+  const layers = new MarkingLayers({ markings, hubs, graph, relations });
   /** The panels that name a marking - received or emitted (visual_part.markingsOf). */
   const usersOf = (name) => shell.layoutNow().panels.filter((p) => {
     const { start, limit, emits } = markingsOf(p);
@@ -174,7 +183,8 @@ export async function boot(deps) {
     kinds: KINDS, filters, stats, active, hubs, names, charts: deps.charts,
     fetchWalk: (params) => fetchSubgraph({ apiBase, fetchImpl, ...params }),
     walkParams: {},
-    oneValued: oneValuedBy(declaration.ok ? declaration.predicates : []),
+    oneValued: (slot) => oneValuedBy(declaration.ok ? declaration.predicates : [])(slot),
+    worlds: () => worlds,
     openPicker: (at) => picker.open(at),
     partOf: (id) => shell.partOf(id),
     entities, markingList, markingBook, relations, layers, filterNames: FILTERS,
@@ -210,7 +220,7 @@ export async function boot(deps) {
     const names = markingList.get('list').map((m) => m.name);
     const marks = Object.fromEntries(names.map((name) => [name, markings.entries(name)]).filter(([, entries]) => entries.length));
     const held = Object.fromEntries([...new Set(Object.values(marks).flat().map(([id]) => id))].filter(isHubId).map((id) => [id, hubs.membersOf(id)]));
-    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };
+    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held, worlds };
     try { if (storage) storage.setItem(SAVED, JSON.stringify(kept)); } catch (e) { /* not kept */ }
     return kept;
   };
@@ -221,7 +231,24 @@ export async function boot(deps) {
       if (!path.includes(pickerHost) && !(event.target && event.target.closest && event.target.closest('.sf-pill, .sf-plus'))) picker.close();
     });
   }
-  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add, markingBook, relations, layers };
+  /** Worlds picked (the walk page's way, walk/main.js): the address follows, the declaration is read on them, the page's
+   *  graph and every walk in hand dropped, every visual walked again. */
+  const pickWorlds = async (names) => {
+    worlds = worldList(names);
+    if (deps.pickWorld) deps.pickWorld(worlds);
+    declaration = await fetchDeclaration({ apiBase, fetchImpl });
+    useZone(declaration.ok ? declaration.zone : null);
+    showWorlds();
+    graph.nodes.clear();
+    graph.edges.clear();
+    graph.walks.length = 0;
+    graph.version += 1;
+    for (const p of declarations()) { const part = shell.partOf(p.id); if (part && part.walkAnew) part.walkAnew(); }
+  };
+  const branch = deps.branchMount ? new BranchPicker(deps.branchMount, { doc, onPickSet: (names) => { void pickWorlds(names); } }) : null;
+  const showWorlds = () => { if (branch) branch.show({ worlds: (declaration && declaration.worlds) || [], current: worlds, operating: declaration && declaration.operating }); };
+  showWorlds();
+  return { shell, markings, filters, stats, active, hubs, names, save, declarations, picker, add, markingBook, relations, layers, pickWorlds, worlds: () => worlds };
 }
 
 // ── the browser ──
@@ -231,7 +258,10 @@ if (typeof document !== 'undefined' && document.getElementById('tb-board')) {
   let storage = null;
   try { storage = window.localStorage; } catch (e) { storage = null; }
   import('../config.js').then(({ API_BASE }) => boot({ doc: document, host: document.getElementById('tb-board'), apiBase: API_BASE,
-    charts: { init: (el) => echarts.init(el, null, { renderer: 'canvas' }) }, storage, theme: params.get('theme') })).then((page) => {
+    charts: { init: (el) => echarts.init(el, null, { renderer: 'canvas' }) }, storage, theme: params.get('theme'),
+    // the worlds: the address's; a pick walks again on the page and the address follows (a reload opens the same)
+    world: params.getAll('world'), branchMount: document.getElementById('tb-branch'),
+    pickWorld: (names) => { history.replaceState(history.state, '', addressFor(location.href, names)); } })).then((page) => {
     const save = document.getElementById('tb-save');
     save.addEventListener('click', () => { page.save(); save.textContent = 'Saved'; setTimeout(() => { save.textContent = 'Save'; }, 1200); });
     // Reset - back to what was saved (Spotfire's «Reset to saved»); Clear saved - forget it, the page's own layout next.

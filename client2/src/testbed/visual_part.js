@@ -72,6 +72,7 @@ export class VisualPart extends Panel {
     this.palette = d.palette || (() => paletteOf(this.doc));
     this.openPicker = d.openPicker || (() => {});
     this.oneValued = d.oneValued || (() => false);
+    this.worlds = d.worlds || (() => []);
     this.walkParams = d.walkParams || {};
     // its walks (part_walks.js): a value walk a slot (and the value walks in hand, the last few) - its row walks are the
     // page's (GraphBook.walks); a request each may drop (the next of its kind); how many rows a value walk starts from at once
@@ -330,6 +331,9 @@ export class VisualPart extends Panel {
     this.walkedSeeds = positive;
     this.rowWalk = rows;
     const rowAnswer = readable(rows.answers);
+    // its start's nodes this world does not have (a marking saved on another one) - said
+    const found = new Set(rowAnswer.nodes.filter((n) => n.carried !== false).map((n) => n.id));
+    this.startAbsent = seeds.all ? 0 : positive.filter((id) => !found.has(id)).length;
     // its rows: every node of its row type the row walk reached (owner 10-14 - collect), its start's own among them
     this.rowIds0 = rowAnswer.nodes.filter((n) => n.type === this.rowType() && n.carried !== false).map((n) => n.id);
     this.values = new Map();
@@ -364,6 +368,13 @@ export class VisualPart extends Panel {
     const { hops: _steps, ...own } = this.decl.walk || {};
     // a part reads nodes and edges - no ranking asked (propagation)
     return { ...this.walkParams, ...own, propagation: false };
+  }
+
+  /** Its walks in hand dropped and walked again - the page reads other worlds (main.js pickWorlds). */
+  walkAnew() {
+    this.valueWalks = [];
+    this.values = new Map();
+    this.load();
   }
 
   /** Drop a walk in flight (`key`: the row walk or a slot's), or every one. */
@@ -630,6 +641,7 @@ export class VisualPart extends Panel {
     // M - the rows the walk brought; a, b and c - what each layer took from them (lead 5835e6714). The start side's drops
     // are not among M: they were never walked from.
     this.counts = { rows: limited.length, of: received.length, system: afterSystem.dropped, startDropped: this.startDropped || 0,
+      startAbsent: this.startAbsent ? { n: this.startAbsent, worlds: this.worlds() } : null,
       part: afterPart.dropped, limit: afterPart.kept.length - limited.length, marked: received.filter(marked).length, hidden, heldOnly,
       shown: showing.rule ? { rule: showing.rule, n: showing.n, by: slotWords(encode.show), hidden: showing.hidden } : null,
       columns: Object.keys(encode).length, source: this.rowType(),

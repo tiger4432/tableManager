@@ -20,6 +20,7 @@ export function statusWords(s) {
     words.push([s.startDropped ? `start −${n(s.startDropped)}` : null, `system −${n(s.system)}`, `part −${n(s.part)}`,
       s.limit ? `marking −${n(s.limit)}` : null].filter(Boolean).join(' · '));
   }
+  if (s.startAbsent) words.push(`${unitText(n(s.startAbsent.n), 'start node')} not in ${s.startAbsent.worlds.length ? s.startAbsent.worlds.join(' + ') : 'the operating world'}`);
   if (s.cut) words.push('filter over a cut walk');
   if (s.shown) words.push(`${s.shown.rule === 'top' ? 'Top' : 'Bottom'} ${n(s.shown.n)} by ${s.shown.by} · ${n(s.shown.hidden)} not shown`);
   if (s.notNumber) words.push(`${unitText(n(s.notNumber), 'row')} not a number`);

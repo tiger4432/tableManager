@@ -628,6 +628,58 @@ async function recordPoints(M) {
     latest: await seatWith({ x: { ...TEMP, of: 'time', reduce: 'Latest' }, y: { ...TEMP, reduce: 'Latest' } }) };
 }
 
+/** Other worlds (owner «시험대는 디폴트 세상만 되는데 다른 세상도»): the test bed reads the worlds picked - every request
+ *  through world.js withWorld, the walk page's way; a pick reads the declaration again and walks every visual again;
+ *  Save keeps the worlds; a start node the world does not have is said. The stub server: worlds default · b1 · b2, W1
+ *  not in b2. */
+async function worldCases(M) {
+  const urls = [];
+  const fetchImpl = async (url) => {
+    const u = String(url);
+    urls.push(u);
+    const ws = new URL(u, 'http://x').searchParams.getAll('world');
+    const body = u.includes('/api/ledger/declaration') ? { entities: [{ type: 'wafer' }], predicates: [], worlds: ['default', 'b1', 'b2'], operating: 'default' }
+      : u.includes('/api/ledger/subgraph') ? (ws[0] === 'b2' ? { nodes: [], edges: [], truncated: ANSWER.truncated } : JSON.parse(JSON.stringify(ANSWER))) : { nodes: [] };
+    return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)) };
+  };
+  const worldsOf = (u) => new URL(u, 'http://x').searchParams.getAll('world').join('+');
+  const storage = memoryStorage();
+  const addressed = [];
+  const boot = async (world) => {
+    const doc = makeDoc('dark');
+    const host = doc.createElement('div');
+    doc.body.appendChild(host);
+    const mount = doc.createElement('div');
+    const p = await M.main.boot({ doc, host, apiBase: '', fetchImpl, charts: charts(), storage, theme: 'dark', world, branchMount: mount, pickWorld: (names) => addressed.push(names.join('+')) });
+    p.markings.set('marking:start', 'W1', SIGN.CASE);
+    await settle();
+    return { ...p, mount };
+  };
+  const out = {};
+  // WD1 one world picked by the address: every request carries it
+  const one = await boot(['b1']);
+  out.one = [...new Set(urls.map(worldsOf))];
+  // WD2 two worlds picked, in pressed order: the address follows, the declaration read again, every visual walked again
+  const n0 = urls.length;
+  const tickets = () => one.declarations().map((d) => one.shell.partOf(d.id).walking);
+  const before = tickets();
+  await one.pickWorlds(['b2', 'b1']);
+  await settle();
+  const after = urls.slice(n0);
+  out.pick = [addressed.slice(-1)[0], [...new Set(after.map(worldsOf))], after.some((u) => u.includes('/api/ledger/declaration')),
+    after.some((u) => u.includes('/api/ledger/subgraph')) && tickets().every((n, i) => n > before[i])];
+  // WD3 Save keeps the worlds; a page opened from it with no world in its address reads them
+  const kept = one.save();
+  urls.length = 0;
+  const reopened = await boot([]);
+  out.saved = [kept.worlds, [...new Set(urls.map(worldsOf))]];
+  // WD4 a start node the world does not have: said on the status line (b2 has no W1)
+  const sid = reopened.declarations()[0].id;
+  reopened.active.set('active', sid);
+  out.absent = (statusWords(reopened.stats.get(sid)) || []).filter((w) => w.includes('not in'));
+  return out;
+}
+
 /** The marking walk (owner 10-14 «마킹 걷기는 아까대로»): a bonding die d1 of BW (its sibling d2), bonded from c1 on CW1
  *  (d2 from c2 on CW2). The stub walks as the server does - from the seeds along `follow` (none - every predicate) both
  *  ways, `hops` steps, carrying the `collect` types, every edge it took. */
@@ -1427,6 +1479,7 @@ async function suite(M) {
   const mp = await markerPress(M);
   const ts = await trendAsScatter(M);
   const rt = await routed(M);
+  const wd = await worldCases(M);
   const pw = await partWalks(M);
   const ce = await colourEverywhere(M);
   const sh = await sheetRoot(M);
@@ -1581,6 +1634,11 @@ async function suite(M) {
     judge('RC2 two nodes Reached in one expression - a row walk each, the same node once', rt.reach[3], ['CW1', 'CW2']),
     judge('RC3 a column that Reaches a node added: the rows walked again judged against it; another column after - no row walk', rt.reach[4],
       [1, 0, ['✓', '✗'], false]),
+    judge('WD1 the worlds the address names - every request carries them', wd.one, ['b1']),
+    judge('WD2 two worlds picked in pressed order: the address follows, every request carries both in that order, the declaration read again, every visual walked again',
+      wd.pick, ['b2+b1', ['b2+b1'], true, true]),
+    judge('WD3 Save keeps the worlds; a page opened from it with none in its address reads them', wd.saved, [['b2', 'b1'], ['b2+b1']]),
+    judge('WD4 a start node the world does not have is said', wd.absent, ['1 start node not in b2 + b1']),
     judge('W7 a pill of two columns, its inner one with steps: the walk asks its steps as the one-column pill does, and its value is read - not (Empty)',
       [rt.twoColumns[0], rt.twoColumns[2], rt.twoColumns[3]], [rt.twoColumns[1], ['d1, CW1'], true]),
     judge('C1 the same Color by on five kinds: a row one colour in all five (the value gives it); a category colour declared - all five draw it - the sheet\'s key cell too',
@@ -1839,6 +1897,16 @@ const MUTANTS = [
     mutate: (t) => swap(t, '(targets.length ? targets : [null]).map((to) => ({ side, aux: to ? [to] : [] }))', '[{ side, aux: targets }]') },
   { id: 'HM1', what: 'the start own records walked a step - every predicate, its neighbours carried', catches: 'W1 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'hops: seeds.all || own ? 0 : Math.max(', 'hops: seeds.all || own ? 1 : Math.max(') },
+  { id: 'WDM1', what: 'the test bed\'s requests not through the worlds seat - the operating world always', catches: 'WD1 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, 'const fetchImpl = withWorld(deps.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);', 'const fetchImpl = deps.fetchImpl || ((url, init) => globalThis.fetch(url, init));') },
+  { id: 'WDM2', what: 'a pick walks no visual again - the old world\'s rows stay', catches: 'WD2 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, 'for (const p of declarations()) { const part = shell.partOf(p.id); if (part && part.walkAnew) part.walkAnew(); }', '') },
+  { id: 'WDM3', what: 'a pick keeps the page\'s row walks - the other world\'s answers taken as this one\'s', catches: 'WD2 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, '    graph.walks.length = 0;\n', '') },
+  { id: 'WDM4', what: 'Save forgets the worlds - a reopen reads the operating world', catches: 'WD3 ', file: 'testbed/main.js', key: 'main',
+    mutate: (t) => swap(t, 'relations: relations.get(\'list\'), marks, hubs: held, worlds };', 'relations: relations.get(\'list\'), marks, hubs: held };') },
+  { id: 'WDM5', what: 'a start node the world does not have not said', catches: 'WD4 ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, 'this.startAbsent = seeds.all ? 0 : positive.filter((id) => !found.has(id)).length;', 'this.startAbsent = 0;') },
   { id: 'PWM11', what: 'the walks not said on the status line', catches: 'PW3 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'walks: this.walkWords() };', 'walks: null };') },
   { id: 'M57', what: 'a panel\'s div not watched - its chart keeps the size it was drawn at', catches: 'RS1 ', file: 'testbed/visual_part.js', key: 'visual',
