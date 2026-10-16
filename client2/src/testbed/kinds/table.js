@@ -4,6 +4,7 @@
 // pressed sorts by it, again the other way. Its columns and its sort are its declaration's: encode.col1 … and `sort`.
 
 import { numberOf, valueWords } from '../../walk/reach_table.js';
+import { dragMarks } from '../drag_mark.js';
 import { slotWords, isTimeRead } from '../slot.js';
 
 const COLUMN = /^col(\d+)$/;
@@ -79,11 +80,14 @@ export function render(area, model, ctx) {
     head.append(th);
   });
   table.append(head);
+  // a drag over lines marks the lines between (owner 10-16) - drag_mark.js, the cross table's one helper
+  const drag = dragMarks((spanned, event) => ctx.mark([...new Set(spanned.flatMap((c) => c.data.ids || [c.data.id]))], event, true));
   for (const line of model.lines) {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
     line.cells.forEach((cell, k) => tr.append(el('td', model.numeric[k] ? 'is-num' : '', cell.text)));
-    tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark(line.ids || [line.id], event); });
+    tr.addEventListener('click', (event) => { event.stopPropagation(); if (!drag.ended()) ctx.mark(line.ids || [line.id], event); });
+    drag.add(tr, model.lines.indexOf(line), 0, line);
     tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));
     tr.addEventListener('mouseleave', () => ctx.hover(null));
     table.append(tr);

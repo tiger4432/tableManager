@@ -5130,6 +5130,28 @@ def _fold_written_notation(db, table_name: str, batch, notation_report=None):
         notation_report.update(left)
 
 
+#: A batch's flush past this many seconds is said with its table's indexes (owner 10-16: 1,000 rows, 20 s).
+SLOW_FLUSH_SECONDS = 5.0
+
+
+def _say_a_slow_flush(db, table_model, table_name, rows, seconds):
+    """One line for a slow flush: its table, its rows, its indexes and how many are GIN - a GIN pending list merged by
+    this write is one cause (`runtime.maintenance_line.clean_gin_pending` merges them ahead). Contained: a line."""
+    if seconds < SLOW_FLUSH_SECONDS:
+        return
+    from sqlalchemy import text as sql_text
+
+    try:
+        relation = getattr(getattr(table_model, '__table__', None), 'name', None) or table_name
+        kinds = db.execute(sql_text(
+            "SELECT am.amname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_am am ON am.oid = c.relam"
+            " WHERE x.indrelid = to_regclass(:relation)"), {"relation": '"%s"' % relation}).scalars().all()
+        said = "%d index(es), %d GIN" % (len(kinds), sum(1 for k in kinds if k == 'gin'))
+    except Exception as exc:  # noqa: BLE001 - the line is said without its indexes
+        said = "indexes unread: %s" % type(exc).__name__
+    logger.warning("[Batch] slow flush: %s %d row(s) in %.1f s - %s", table_name, rows, seconds, said)
+
+
 def _apply_batch_updates_once(db: Session, table_name: str,
                               batch: schemas.GeneralUpdateBatch,
                               replace_report: Optional[dict] = None,
@@ -5627,8 +5649,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"Removed: {len(removed_row_ids)}"
             )
 
+        from time import monotonic
+        flushed = monotonic()
         with alignment_batch_counts.write_step("flush"):
             db.flush()
+        _say_a_slow_flush(db, table_model, table_name, len(unique_results), monotonic() - flushed)
 
         serialized_logs = []
         for l in logs_to_cache:

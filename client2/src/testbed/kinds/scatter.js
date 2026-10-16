@@ -126,9 +126,10 @@ export function render(area, model, ctx) {
   let option = null;
   // A point pressed or in a rectangle: a node or a value record marks its node; a Marker by marker marks its hub whole.
   const byId = new Map(model.points.map((p) => [p.id, p]));
-  const markPoints = (ids, event) => {
+  // a rectangle is a drag (it marks what it holds); a point pressed is a press (pressed again, it is taken out)
+  const markPoints = (ids, event, drag = false) => {
     const pts = ids.map((id) => byId.get(id)).filter(Boolean);
-    if (pts.some((p) => p.where)) ctx.markHubs(pts.map((p) => [p.where, p.ids]), event); else ctx.mark([...new Set(pts.flatMap((p) => p.ids))], event);
+    if (pts.some((p) => p.where)) ctx.markHubs(pts.map((p) => [p.where, p.ids]), event, drag); else ctx.mark([...new Set(pts.flatMap((p) => p.ids))], event, drag);
   };
   const chart = ctx.charts.init(plot);
   option = scatterOption(model, ctx.palette, widthOf());
@@ -140,7 +141,7 @@ export function render(area, model, ctx) {
     const drawn = params && params.areas && params.areas[0];
     if (!drawn) return;
     chart.dispatchAction({ type: 'brush', areas: [] });
-    markPoints(idsInRange(model, option, drawn.coordRange), ctx.lastEvent());
+    markPoints(idsInRange(model, option, drawn.coordRange), ctx.lastEvent(), true);
   });
   chart.on('click', (params) => { if (params && params.data && params.data.id) markPoints([params.data.id], params.event && params.event.event); });
   // the point under the pointer - the root says its tooltip

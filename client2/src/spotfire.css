@@ -206,6 +206,8 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-splitter::before { content: ''; position: absolute; }
 .sf-splitter[data-dir="row"]::before { top: 0; bottom: 0; left: calc(var(--sf-splitter) / -2); width: var(--sf-splitter); cursor: col-resize; }
 .sf-splitter[data-dir="column"]::before { left: 0; right: 0; top: calc(var(--sf-splitter) / -2); height: var(--sf-splitter); cursor: row-resize; }
+/* the lines or cells a drag over a table spans, before it lets go (owner 10-16) */
+.sf-table .is-dragged, .sf-table .is-dragged td { background: var(--sf-brush); }
 .sf-drop { position: absolute; z-index: 3; box-sizing: border-box; background: var(--sf-brush); border: var(--sf-active-w) solid var(--sf-active); pointer-events: none; }
 .sf-banner { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; padding-top: 8px; background: var(--sf-panel-bg); }
 .sf-banner__b { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-height: 0; padding: 0; letter-spacing: normal; border: 0;

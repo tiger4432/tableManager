@@ -176,7 +176,22 @@ async function seated(M) {
   press('W4', true);
   const added = picked();
   press('W1', false);
-  return { before, after, added, replaced: picked(), filterable };
+  const replaced = picked();
+  // T2b (owner 10-16): a press on what is marked takes it out - alone or with Ctrl; a drag over lines marks the lines
+  //   between, and the click it ends with marks nothing again
+  press('W1', false);
+  const again = picked();
+  press('W4', true);
+  press('W4', true);
+  const ctrlOff = picked();
+  const rowOf = (id) => walk(part.host).filter((n) => n.tagName === 'TR' && n.children.length > 0).find((tr) => tr.children[0]._text === id);
+  const [a, b] = [rowOf('W1'), rowOf('W4')];
+  a.dispatch('pointerdown', {});
+  b.dispatch('pointerenter', {});
+  b.dispatch('pointerup', {});
+  const dragged = picked();
+  b.dispatch('click', { stopPropagation() {} });
+  return { before, after, added, replaced, filterable, again, ctrlOff, dragged, afterDragClick: picked() };
 }
 
 async function shells(M) {
@@ -1461,6 +1476,8 @@ async function suite(M) {
     judge('L4 a limited part counts the limit\'s drop apart: a marked row it leaves out is not hidden; a limiting marking changed, it folds again',
       { before: one.before, after: one.after }, { before: { rows: 1, of: 4, limit: 3, hidden: 0, marked: 1 }, after: ['W1', 'W4'] }),
     judge('T2 a table line pressed with Ctrl joins the pick; pressed alone it is the pick', [one.added, one.replaced], [['W2', 'W4'], ['W1']]),
+    judge('T2b a line pressed again is taken out - alone or with Ctrl; a drag over lines marks the lines between, its closing click nothing again',
+      [one.again, one.ctrlOff, one.dragged, one.afterDragClick], [[], [], ['W1', 'W4'], ['W1', 'W4']]),
     judge('F1 a filter can take a slot or a row\'s own value - its keys and attributes, not only the axes', one.filterable, [['col1', 'name'], ['own:key:wafer', 'wafer']]),
     judge('K1 markings added: the next free names, «Marking (n)», each its own colour', k.added,
       { names: ['marking:3', 'marking:4', 'marking:5'], labels: ['Start', 'Pick', 'Marking (3)', 'Marking (4)', 'Marking (5)'], colours: true }),
@@ -1667,8 +1684,8 @@ const MUTANTS = [
   { id: 'M9', what: 'Save writes the visuals only (the code before) - the tree is lost', catches: 'G2 ', file: 'testbed/main.js', key: 'main',
     mutate: (t) => swap(t, "    const kept = { root: shell.layoutNow().root, visuals: declarations(), markings: markingList.get('list'), relations: relations.get('list'), marks, hubs: held };", '    const kept = declarations();') },
   { id: 'M11', what: 'a table line marks without the press\'s keys - Ctrl replaces too', catches: 'T2 ', file: 'testbed/kinds/table.js', key: 'table',
-    mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark(line.ids || [line.id], event); });",
-      "tr.addEventListener('click', (event) => { event.stopPropagation(); ctx.mark(line.ids || [line.id], {}); });") },
+    mutate: (t) => swap(t, "tr.addEventListener('click', (event) => { event.stopPropagation(); if (!drag.ended()) ctx.mark(line.ids || [line.id], event); });",
+      "tr.addEventListener('click', (event) => { event.stopPropagation(); if (!drag.ended()) ctx.mark(line.ids || [line.id], {}); });") },
   { id: 'M12', what: 'a part walked anew leaves its marking alone - the chain does not follow', catches: 'K2b ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (kept.length !== entries.length) this.markings.replace(this.writes, kept);', '') },
   { id: 'M13', what: 'a limit counted as a step of the chain - the Marked table a loop', catches: 'K3 ', file: 'testbed/visual_part.js', key: 'visual',
@@ -1708,6 +1725,10 @@ const MUTANTS = [
     mutate: (t) => swap(t, '    const said = entityOfId(id);', '    const said = null;') },
   { id: 'M30', what: 'the colours given are not kept in the declaration - more categories deal them again', catches: 'C2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (colors.any && Object.keys(colors.assigned).length) this.decl =', '    if (false) this.decl =') },
+  { id: 'MK1', what: 'a press on what is marked marks it again - never taken out', catches: 'T2b ', file: 'testbed/visual_part.js', key: 'visual',
+    mutate: (t) => swap(t, '    if (!drag && ids.length && ids.every((id) => on.has(id))) {', '    if (false) {') },
+  { id: 'MK2', what: 'the table lends its lines to no drag - a drag marks nothing', catches: 'T2b ', file: 'testbed/kinds/table.js', key: 'table',
+    mutate: (t) => swap(t, '    drag.add(tr, model.lines.indexOf(line), 0, line);', '') },
   { id: 'M31', what: 'the start takes the marking\'s spread layer again', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'return got.positive.length ? { positive: got.positive, negative: got.negative } : null;',
       'return got.positive.length ? { positive: [...new Set([...got.positive, ...this.layers.layer(name).set])], negative: got.negative } : null;') },
@@ -1740,7 +1761,7 @@ const MUTANTS = [
   { id: 'M46', what: 'no panels - Panel by drawn as one picture', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, "const split = takes.has('panel') ? panelsOf(rows, this.decl) : null;", 'const split = null;') },
   { id: 'M47', what: 'a press in a panel marks without the panel - a cross table cell of the same x in another panel the same hub', catches: 'TR3 ', file: 'testbed/visual_part.js', key: 'visual',
-    mutate: (t) => swap(t, 'markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),', 'markHub: (where, ids, event) => this.markHub(where, ids, event),') },
+    mutate: (t) => swap(t, 'markHub: (where, ids, event, drag) => this.markHub(withPanel(where, panel), ids, event, drag),', 'markHub: (where, ids, event, drag) => this.markHub(where, ids, event, drag),') },
   { id: 'M48', what: 'each panel its own extent', catches: 'TR2 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'this.kind.model(marks[i], { ...modelCtx, extent })', 'this.kind.model(marks[i], { ...modelCtx })') },
   { id: 'M55', what: 'a kind\'s without not read - the sheet offered Top/Bottom by and Panel by', catches: 'WO1 ', file: 'testbed/visual_part.js', key: 'visual',

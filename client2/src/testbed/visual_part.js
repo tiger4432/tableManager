@@ -692,19 +692,29 @@ export class VisualPart extends Panel {
   remember(event) { this.event = event || null; }
   lastEvent() { return this.event; }
 
-  mark(ids, event) {
+  /** A press marks what it stands for: with Ctrl added, else in place of what was marked; a press on what is marked
+   *  takes it out - with Ctrl or without (owner 10-16 «ctrl 마킹 추가 제거 · 재클릭은 마킹 리스트 빼기»). A drag
+   *  (`drag`: a rectangle, a span of lines or cells) marks what it holds: Ctrl adds, else replaces - never takes out. */
+  mark(ids, event, drag = false) {
     if (!this.writes) return;
     const { mode, sign } = markingIntent(event || this.event);
+    const held = this.markings.entries(this.writes);
+    const on = new Set(held.filter(([, s]) => s === sign).map(([id]) => id));
+    if (!drag && ids.length && ids.every((id) => on.has(id))) {
+      const out = new Set(ids);
+      this.markings.replace(this.writes, held.filter(([id]) => !out.has(id)));
+      return;
+    }
     if (mode === 'add') { for (const id of ids) this.markings.set(this.writes, id, sign); return; }
     this.markings.replace(this.writes, ids.map((id) => [id, sign]));
   }
 
-  markHub(where, ids, event) { this.markHubs([[where, ids]], event); }
+  markHub(where, ids, event, drag = false) { this.markHubs([[where, ids]], event, drag); }
 
-  /** Hubs marked whole - each [where, its members], in one press. */
-  markHubs(list, event) {
+  /** Hubs marked whole - each [where, its members], in one press (or one drag). */
+  markHubs(list, event, drag = false) {
     const press = ([where, ids]) => nodesOfPress(ids) || [this.hubs.put(hubId(this.rowType(), where), ids)];
-    this.mark([...new Set(list.flatMap(press))], event);
+    this.mark([...new Set(list.flatMap(press))], event, drag);
   }
 
   clear() { if (this.writes) this.markings.clear(this.writes); }
@@ -783,7 +793,7 @@ export class VisualPart extends Panel {
       legend.append(el('div', 'sf-legend__ttl', 'Marker by:'), line);
     }
     const legendCtx = { doc, text: (key, v, time) => this.text(key, v, time), pill: (key, opts) => this.pill(key, opts), plus: (key) => this.plus(key),
-      words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event) => this.markHub(where, ids, event),
+      words: (key) => slotWords((this.decl.encode || {})[key]), markHub: (where, ids, event, drag) => this.markHub(where, ids, event, drag),
       openPalette: (category, anchor) => this.openPalette(category, anchor) };
     legend.append(legendBlock(this.colors, legendCtx));
     if (this.shapes) legend.append(legendBlock(this.shapes, legendCtx, SHAPE_LEGEND));
@@ -797,9 +807,9 @@ export class VisualPart extends Panel {
       plus: (key) => this.plus(key),
       // what is under the pointer - {id} a mark it was handed, {ids} rows it grouped; null nothing (tooltip.js)
       hover: (mark, event) => this.showTip(mark, event),
-      mark: (ids, event) => this.mark(ids, event),
-      markHub: (where, ids, event) => this.markHub(where, ids, event),
-      markHubs: (list, event) => this.markHubs(list, event),
+      mark: (ids, event, drag) => this.mark(ids, event, drag),
+      markHub: (where, ids, event, drag) => this.markHub(where, ids, event, drag),
+      markHubs: (list, event, drag) => this.markHubs(list, event, drag),
       clear: () => this.clear(),
       // A field of the kind's own (a table's sort), written into the declaration - Save keeps it.
       declare: (patch) => this.setDeclaration({ ...this.decl, ...patch }),
@@ -819,8 +829,8 @@ export class VisualPart extends Panel {
       box.append(head, at);
       area.append(box);
       const one = this.kind.render(at, panel.model, { ...drawCtx,
-        markHub: (where, ids, event) => this.markHub(withPanel(where, panel), ids, event),
-        markHubs: (list, event) => this.markHubs(list.map(([where, ids]) => [withPanel(where, panel), ids]), event) });
+        markHub: (where, ids, event, drag) => this.markHub(withPanel(where, panel), ids, event, drag),
+        markHubs: (list, event, drag) => this.markHubs(list.map(([where, ids]) => [withPanel(where, panel), ids]), event, drag) });
       this.watch(at, one);
       return one;
     });

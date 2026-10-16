@@ -8,6 +8,7 @@ does all of it beside the scheduler's 5 s loop, on a thread of its own:
             models' and the automatic indexes
   reload    any SYSTEM_RELOAD past its mark - the chain rules read again, the declared work again
   ask       INDEX_WANTED rows (`index_wants.taken`) - the automatic index each names
+  merge     every GIN_CLEAN_SECONDS the GIN indexes' pending lists (`clean_gin_pending`) - not a file's flush
 """
 import logging
 import threading
@@ -17,6 +18,44 @@ logger = logging.getLogger("Server")
 
 #: How often the line reads the outbox for reloads and index asks.
 POLL_SECONDS = 5.0
+#: How often it merges the GIN indexes' pending lists (owner 10-16: a file's flush of 1,000 rows took 20 s). A list past
+#: gin_pending_list_limit is merged by the session that writes the row - a file's flush; merged here first, it is not.
+GIN_CLEAN_SECONDS = 120.0
+
+_GIN_INDEXES = ("SELECT c.relname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_am am ON am.oid = c.relam"
+                " JOIN pg_namespace n ON n.oid = c.relnamespace WHERE am.amname = 'gin' AND n.nspname = current_schema()"
+                " ORDER BY c.relname")
+
+
+def clean_gin_pending(db_session_factory):
+    """Merge each GIN index's pending list in this schema, one at a time, each its own transaction. -> [(index, pages
+    merged)] for those that had any. PostgreSQL only; elsewhere []."""
+    from sqlalchemy import text
+
+    db = db_session_factory()
+    try:
+        if db.get_bind().dialect.name != "postgresql":
+            return []
+        names = [row[0] for row in db.execute(text(_GIN_INDEXES))]
+        db.commit()
+        merged = []
+        for name in names:
+            pages = db.execute(text("SELECT gin_clean_pending_list(CAST(:name AS regclass))"),
+                               {"name": '"%s"' % name.replace('"', '""')}).scalar()
+            db.commit()
+            if pages:
+                merged.append((name, int(pages)))
+        return merged
+    finally:
+        db.close()
+
+
+def _clean_and_say(db_session_factory):
+    started = time.time()
+    merged = clean_gin_pending(db_session_factory)
+    if merged:
+        logger.info("[Indexes] merged GIN pending lists in %.1f s: %s", time.time() - started,
+                    ", ".join("%s %d page(s)" % each for each in merged))
 
 
 def _each(works):
@@ -96,11 +135,15 @@ def run(db_session_factory, stop=None):
     started = time.time()
     _each(_start_work(db_session_factory))
     logger.info("[Indexes] start work done in %.1f s", time.time() - started)
+    cleaned = time.monotonic()
     while not stop.wait(POLL_SECONDS):
         try:
             mark = poll_once(db_session_factory, mark)
         except Exception as exc:                                    # noqa: BLE001
             logger.error("[Indexes] poll failed: %s", exc)
+        if time.monotonic() - cleaned >= GIN_CLEAN_SECONDS:
+            cleaned = time.monotonic()
+            _each([(_clean_and_say, db_session_factory)])
 
 
 def start(db_session_factory):

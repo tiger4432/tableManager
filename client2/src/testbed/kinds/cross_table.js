@@ -3,6 +3,7 @@
 // rows, given back whole; its paint (marked, Color by) is the root's.
 
 import { combosOf, slotWords, foldRows, EMPTY, PART_SEP, categoryCompare, columnsOf, foldKey, COLUMN_NAMES } from '../slot.js';
+import { dragMarks } from '../drag_mark.js';
 
 /** What a cell holds with no cell slot: its rows, each once (owner 10-14 «ㅇㅇ 행수») - said as the fold it is. */
 export const ROWS_COUNT = 'UniqueCount(rows)';
@@ -153,6 +154,11 @@ export function render(area, model, ctx) {
     table.append(head);
   }
   const rowRuns = Array.from({ length: rowLevels }, (_, lv) => new Map(runs(rowParts, lv).map((run) => [run.from, run])));
+  // a drag over cells marks every cell of the rectangle (owner 10-16) - drag_mark.js, the table's one helper
+  const drag = dragMarks((spanned, event) => {
+    const held = spanned.filter((c) => c.data.ids.length);
+    if (held.length) ctx.markHubs(held.map((c) => [c.data.where, c.data.ids]), event, true);
+  });
   model.rowKeys.forEach((r, i) => {
     const tr = el('tr');
     for (let lv = 0; lv < rowLevels; lv += 1) {
@@ -167,8 +173,9 @@ export function render(area, model, ctx) {
     model.grid[i].forEach((cell, j) => {
       const td = el('td', cell.marked ? 'is-marked' : '', cellSaid(cell.value));
       if (cell.color && !cell.marked) td.style.background = cell.color;
+      drag.add(td, i, j, { where: [[words.rows, r], [words.columns, model.colKeys[j]]], ids: cell.ids });
       if (cell.ids.length) {
-        td.addEventListener('click', (event) => ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event));
+        td.addEventListener('click', (event) => { if (!drag.ended()) ctx.markHub([[words.rows, r], [words.columns, model.colKeys[j]]], cell.ids, event); });
         td.addEventListener('mousemove', (event) => ctx.hover({ ids: cell.ids, label: model.colKeys[j] ? `${r} · ${model.colKeys[j]}` : r }, event));
         td.addEventListener('mouseleave', () => ctx.hover(null));
       }

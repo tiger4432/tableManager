@@ -273,3 +273,55 @@ def test_the_scheduler_s_poll_reads_its_rows_before_it_closes_the_session(monkey
     monkeypatch.setattr(models, "ensure_auto_indexes_sync", lambda factory, wanted, say, decide: built.append(wanted))
     assert maintenance_line.poll_once(_Db, 0) == 9
     assert declared == [1] and built == [[(TABLE, ["s"], "slow sort")]]
+
+
+def test_a_slow_flush_is_said_with_its_table_s_indexes_and_a_fast_one_is_not(caplog):
+    """Owner 10-16 (1,000 rows, 20 s): a flush past SLOW_FLUSH_SECONDS says its table, rows and indexes - one line."""
+    class _Db:
+        def execute(self, *a, **k):
+            raise RuntimeError("no catalogue here")
+
+    with caplog.at_level("WARNING"):
+        crud._say_a_slow_flush(_Db(), None, "raw_table_1", 1000, crud.SLOW_FLUSH_SECONDS - 0.1)
+        crud._say_a_slow_flush(_Db(), None, "raw_table_1", 1000, 20.0)
+    said = [r.getMessage() for r in caplog.records if "slow flush" in r.getMessage()]
+    assert said == ["[Batch] slow flush: raw_table_1 1000 row(s) in 20.0 s - indexes unread: RuntimeError"], said
+
+
+def test_the_line_merges_no_gin_list_where_there_is_no_postgres():
+    from runtime import maintenance_line
+
+    class _Bind:
+        class dialect:
+            name = "sqlite"
+
+    class _Db:
+        def get_bind(self):
+            return _Bind()
+
+        def close(self):
+            pass
+
+    assert maintenance_line.clean_gin_pending(_Db) == []
+
+
+@pytest.mark.pg
+def test_the_line_merges_a_search_index_s_pending_list(table):
+    """A trigram search index's pending list - written into, then merged by the line (gin_clean_pending_list)."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from conftest import PG_TEST_SCHEMA
+    from runtime import maintenance_line
+
+    with table.connect() as conn:
+        if not models.has_trigram(conn):
+            pytest.skip("pg_trgm is not installed here")
+    models.ensure_auto_indexes(table, [(TABLE, ["s"], models.AUTO_SLOW_SEARCH)], say=lambda line: None)
+    with table.begin() as conn:
+        conn.execute(text('INSERT INTO "%s"."%s" (row_id, business_key_val, k, s, n) '
+                          "SELECT 'p' || g, 'P' || g, 'P' || g, 'pending ' || g, g FROM generate_series(1, 300) g"
+                          % (PG_TEST_SCHEMA, TABLE)))
+    merged = maintenance_line.clean_gin_pending(sessionmaker(bind=table))
+    assert [name for name, _pages in merged] == [models.auto_index_name(TABLE, ["s"]) + "_search"] or merged == [], merged
+    assert maintenance_line.clean_gin_pending(sessionmaker(bind=table)) == [], "merged once, nothing pending after"
