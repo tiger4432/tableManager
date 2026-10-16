@@ -66,17 +66,20 @@ def poll_once(db_session_factory, mark):
 
     db = db_session_factory()
     try:
+        # what the rows say is read before the commit: after it and the close they are expired and detached, and
+        # reading one raised every poll - the mark never moved and the asks taken were never built (10-16)
         reloads = system_reload.reloads_after(db, mark)
+        latest = reloads[-1].id if reloads else mark
         asks = index_wants.taken(db)
+        asked = [each for _row, each in asks if each is not None]
         for row, _each_ask in asks:
             event_constants.mark_processed(row, "SUCCESS")
         db.commit()
     finally:
         db.close()
-    if reloads:
-        mark = reloads[-1].id
+    if latest != mark:
+        mark = latest
         _each(_declared_work(db_session_factory))
-    asked = [each for _row, each in asks if each is not None]
     if asked:
         _each([(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
     return mark

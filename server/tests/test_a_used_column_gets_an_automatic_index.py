@@ -238,3 +238,38 @@ def test_the_header_s_index_kinds_are_the_database_s_valid_indexes(table):
     kinds = models.column_index_kinds(table, TABLE)
     assert kinds.get("s") == [models.INDEX_SERVES_EQUAL], kinds
     assert "n" not in kinds, kinds
+
+
+def test_the_scheduler_s_poll_reads_its_rows_before_it_closes_the_session(monkeypatch):
+    """10-16: after the commit and the close a row is detached - reading one raised every poll, so the mark never moved
+    and the asks taken were never built."""
+    import event_constants
+    from runtime import index_wants, maintenance_line, system_reload
+
+    closed = []
+
+    class _Row:
+        def __init__(self, number):
+            self._id = number
+
+        @property
+        def id(self):
+            if closed:
+                raise RuntimeError("Instance <DatabaseOutbox> is not bound to a Session")
+            return self._id
+
+    class _Db:
+        def commit(self):
+            pass
+
+        def close(self):
+            closed.append(True)
+
+    built, declared = [], []
+    monkeypatch.setattr(system_reload, "reloads_after", lambda db, mark: [_Row(7), _Row(9)])
+    monkeypatch.setattr(index_wants, "taken", lambda db: [(_Row(11), (TABLE, ["s"], "slow sort"))])
+    monkeypatch.setattr(event_constants, "mark_processed", lambda row, status: None)
+    monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: [(lambda: declared.append(1),)])
+    monkeypatch.setattr(models, "ensure_auto_indexes_sync", lambda factory, wanted, say, decide: built.append(wanted))
+    assert maintenance_line.poll_once(_Db, 0) == 9
+    assert declared == [1] and built == [[(TABLE, ["s"], "slow sort")]]
