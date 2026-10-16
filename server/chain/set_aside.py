@@ -139,8 +139,8 @@ def set_aside_line(db, key, by, run=False, reason=None):
     """One chain queue line's waiting chain events set aside - a stop's second step, and again
     where a stopped run lands (총괄 e2b5b6f35). One audit line per table says who and how many it
     MARKED - none for a table it marked none of (총괄 10-09: a × that waited for a group's commit
-    and found its row ended said 「1 skipped」). Events the chain does not own wait on for their
-    worker. -> `{"waited", "marked", "kept", "ids"}`"""
+    and found its row ended said 「1 skipped」). An index ask is set aside too; other events the chain
+    does not own wait on for their worker. -> `{"waited", "marked", "kept", "ids"}`"""
     reason = reason or "skipped from the chain queue by %s" % by
     from database import crud
     from database.models import DatabaseOutbox as outbox
@@ -153,9 +153,13 @@ def set_aside_line(db, key, by, run=False, reason=None):
             if chain_ids else {"marked": 0, "marked_by_table": {}})
     for table, events in sorted(done["marked_by_table"].items()):
         crud.create_audit_log(db, table, "*", "*", key, events, QUEUE_SKIP_SOURCE, by)
+    # 🔴 AN INDEX ASK LEAVES TOO (owner 10-16: «60 min waiting, × does nothing»): the queue drew a × on it and kept
+    #    it. Marked as a chain event is, so the index line never takes it; a slow read asks again.
+    asks = [row.id for row in waiting if row.event_type == event_constants.EVENT_INDEX_WANTED]
+    marked_asks = sum(_mark(db, asks, reason).values()) if asks else 0
     db.commit()
-    return {"waited": len(waiting), "marked": done["marked"], "kept": len(waiting) - len(chain_ids),
-            "ids": chain_ids}
+    return {"waited": len(waiting), "marked": done["marked"] + marked_asks,
+            "kept": len(waiting) - len(chain_ids) - len(asks), "ids": chain_ids + asks}
 
 
 def by_operator(outbox):

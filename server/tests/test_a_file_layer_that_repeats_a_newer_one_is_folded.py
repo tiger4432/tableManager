@@ -1,7 +1,8 @@
 """Same-valued file layers fold (총괄 225b2c658 · f224477c1 · a7d2e90ec).
 
 Write path: a file layer equal to the newest layer of its priority class writes nothing; one that
-differs is written and the older file layers of the class holding its value go. Stacked layers:
+differs re-stamps, in place, an older file layer of the class holding its value (owner 10-16 - a delete and an
+insert left a dead tuple per cell per return), or is written; the other file layers of its value go. Stacked layers:
 `replay.fold_file_layers` keeps, per class and value, the newest (and a pinned one). In every case
 the shown value is the one `compute_priority_value` picked before - asserted cell by cell.
 """
@@ -62,12 +63,37 @@ def test_an_hourly_refetch_of_an_unchanged_row_writes_no_layer(env):
     assert _layers(env, "K1") == {"day_0100.csv": "A"}
 
 
-def test_a_differing_file_is_written_and_older_file_layers_of_its_value_go(env):
+def test_a_value_coming_back_re_stamps_the_older_layer_in_place_and_deletes_nothing(env):
+    """Owner 10-16: the backfill and the hourly run took a cell A -> B -> A; each return deleted f03 and inserted
+    f10 - a dead tuple per cell per run. Now f03 is updated in place: no DELETE, no new layer."""
+    from sqlalchemy import event
+
     _write(env, "f03.csv", [{"k": "K1", "v": "A"}])
     _write(env, "f07.csv", [{"k": "K1", "v": "B"}])
-    counts = _write(env, "f10.csv", [{"k": "K1", "v": "A"}])
-    assert counts["folded layers"] == [1, "rows"]
-    assert _layers(env, "K1") == {"f07.csv": "B", "f10.csv": "A"}
+    seen = []
+    listen = lambda conn, cursor, statement, *rest: seen.append(statement.strip().split()[0].upper())  # noqa: E731
+    event.listen(env.get_bind(), "before_cursor_execute", listen)
+    try:
+        counts = _write(env, "f10.csv", [{"k": "K1", "v": "A"}])
+    finally:
+        event.remove(env.get_bind(), "before_cursor_execute", listen)
+    layers = {s.source_name: s for s in env.query(models.CellSource).filter(
+        models.CellSource.table_name == TABLE, models.CellSource.column_name == "v")}
+    assert counts["folded layers"] == [0, "rows"] and "DELETE" not in seen, seen
+    assert {name: s.value for name, s in layers.items()} == {"f03.csv": "A", "f07.csv": "B"}
+    assert layers["f03.csv"].ingested_at > layers["f07.csv"].ingested_at
+    assert _row(env, "K1").v == "A"
+
+
+def test_a_value_coming_back_keeps_one_layer_and_folds_the_rest(env):
+    """Two older layers already say A (stacked before the fold): one is re-stamped, the other goes."""
+    _write(env, "f03.csv", [{"k": "K1", "v": "A"}])
+    _write(env, "f05.csv", [{"k": "K1", "v": "B"}])
+    _write(env, "f06.csv", [{"k": "K1", "v": "A"}])
+    _write(env, "f07.csv", [{"k": "K1", "v": "B"}])
+    assert sorted(_layers(env, "K1").values()) == ["A", "B"]
+    _write(env, "f10.csv", [{"k": "K1", "v": "A"}])
+    assert sorted(_layers(env, "K1").values()) == ["A", "B"] and "f10.csv" not in _layers(env, "K1")
     assert _row(env, "K1").v == "A"
 
 
@@ -87,8 +113,8 @@ def test_person_chain_and_auto_confirm_layers_are_never_folded(env):
     _write(env, AUTO, [{"k": "K1", "v": "A"}])
     _write(env, "f02.csv", [{"k": "K1", "v": "A"}])
     assert _layers(env, "K1") == {"user": "A", crud.CHAIN_SOURCE: "A", AUTO: "A",
-                                  "f02.csv": "A"}, \
-        "the newest of the class was auto-confirm, so f02 is written and only f01 goes"
+                                  "f01.csv": "A"}, \
+        "the newest of the class was auto-confirm, so f02 re-stamps f01 in place; nothing else is touched"
 
 
 def test_a_pinned_file_layer_is_kept(env):

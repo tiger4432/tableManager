@@ -3970,6 +3970,15 @@ def apply_row_update_internal(
                 ow.manual_priority_source if ow else None)
         source_unchanged = source_unchanged or repeat
 
+        # 🔴 A VALUE COMING BACK RE-STAMPS THE OLDER FILE LAYER THAT SAYS IT, IN PLACE (owner 10-16 «1»): the
+        #    collector backfill and the hourly run took a cell A -> B -> A, and each return deleted that layer and
+        #    inserted the new file's - a dead tuple per cell per run, 1.2M on production. Updated in place, only
+        #    unindexed columns change: no delete, no new index entries, and where the page has room (a fillfactor
+        #    under 100 - measured: 0 HOT at 100, nearly all at 70) the old version is pruned without vacuum. The
+        #    layer keeps the older file's name; its time and writer are the new file's.
+        if not src_obj and folded:
+            src_obj, folded = folded[0], folded[1:]
+
         if not src_obj and not repeat:
             if cell_sources_to_upsert is None:
                 # No bulk accumulator: this object IS the write, so it has to be the
@@ -4012,12 +4021,12 @@ def apply_row_update_internal(
                     cell_sources_to_delete.add(gone_key)
 
             if cell_sources_to_upsert is not None:
-                upsert_key = (table_name, row.row_id, col_name, update_item.source_name)
+                upsert_key = (table_name, row.row_id, col_name, src_obj.source_name)
                 cell_sources_to_upsert[upsert_key] = {
                     "table_name": table_name,
                     "row_id": row.row_id,
                     "column_name": col_name,
-                    "source_name": update_item.source_name,
+                    "source_name": src_obj.source_name,
                     "value": clean_val,
                     "updated_by": update_item.updated_by,
                     # Unconditionally, never omitted when absent: `_is_executemany_safe`

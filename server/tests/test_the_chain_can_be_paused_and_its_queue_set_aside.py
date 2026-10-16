@@ -1060,3 +1060,24 @@ def test_a_group_slower_than_the_norm_says_where_its_time_went(caplog, seconds, 
     lines = [r.getMessage() for r in caplog.records if "[Chain] group tx-norm" in r.getMessage()]
     assert bool(lines) is said, lines
     assert not said or ("mapper" in lines[0] and "write:t" in lines[0] and "%d row(s)" % rows in lines[0])
+
+
+def test_a_cross_on_an_index_ask_sets_it_aside_and_the_index_line_never_takes_it(db_q, queue):
+    """Owner 10-16: an index ask waited 60 min and its × kept it - 「not chain events」."""
+    import json
+    from runtime import index_wants
+
+    db = db_q
+    import uuid
+    ask = models.DatabaseOutbox(event_uuid=str(uuid.uuid4()), event_type=event_constants.EVENT_INDEX_WANTED, table_name=PA,
+                                payload=json.dumps({"table": PA, "columns": ["n"], "why": "sort"}),
+                                processed_chain=False)
+    db.add(ask)
+    db.commit()
+    key = event_constants.QUEUE_ROW_KEY_PREFIX + str(ask.id)
+
+    answer = _cross(queue, key, **{"X-User": "kim"})
+
+    assert answer.status_code == 200 and answer.json()["skipped_events"] == 1 and "kept" not in answer.json()
+    assert _rows(db, PA) == [SET_ASIDE]
+    assert index_wants.taken(db) == []

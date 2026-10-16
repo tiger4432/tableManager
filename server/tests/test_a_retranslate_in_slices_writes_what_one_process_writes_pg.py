@@ -199,3 +199,17 @@ def test_the_run_door_in_four_slices_answers_as_one_process(world, monkeypatch, 
     assert any(line.startswith("[ledger_rescope] 2 rows of ") and " have no row_id (the page key) - " in line
                for line in lines), [line for line in lines if "page key" in line]
     assert _written(world) == written
+
+
+def test_a_retranslation_with_nothing_changed_rewrites_no_row_index_line(world):
+    """Owner 10-16: every re-translation deleted the source's lines and inserted them again - a dead tuple per row
+    each time, with nothing changed. A kept line is not touched: its row version (xmin) is the same."""
+    _whole(world)
+    def versions():
+        with world["engine"].connect() as conn:
+            return sorted(tuple(map(str, r)) for r in conn.execute(text(
+                "SELECT row_id, source_raw_ref, xmin::text FROM ledger_source_row_ref WHERE source_who = :w"),
+                {"w": hw.SOURCE}))
+    before = versions()
+    _whole(world)
+    assert before and versions() == before

@@ -708,11 +708,17 @@ class LedgerStore:
             # corrected `order_by` value moves it, which is what a rescope exists for --
             # and the old line would then point at an atom the same transaction just
             # withdrew. Same commit, so the index cannot be seen mid-replacement.
+            # 🔴 ONLY THE LINES THAT LEFT GO (owner 10-16): deleting every line and inserting it again left
+            #    a dead tuple per row per re-translation with nothing changed; a line kept is not touched.
             for relation, row_ids in sorted(touched.items()):
+                kept = [(row_id, ref) for rel, row_id, _source, ref in rows if rel == relation]
                 cursor.execute(
-                    f"DELETE FROM {self.names.row_ref} "
-                    "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
-                    (relation, source, sorted(row_ids)))
+                    f"DELETE FROM {self.names.row_ref} r "
+                    "WHERE r.relation = %s AND r.source_who = %s AND r.row_id = ANY(%s) "
+                    "AND NOT EXISTS (SELECT 1 FROM unnest(%s::text[], %s::text[]) AS k(row_id, ref) "
+                    "WHERE k.row_id = r.row_id AND k.ref = r.source_raw_ref)",
+                    (relation, source, sorted(row_ids),
+                     [row_id for row_id, _ref in kept], [ref for _row_id, ref in kept]))
             try:
                 execute_values(
                     cursor,
@@ -730,7 +736,8 @@ class LedgerStore:
                         f"UPDATE {self.names.row_ref} r SET {ROW_FINGERPRINT_COLUMN} = "
                         f"{row_fingerprint_sql(columns, 't')} FROM {_relation_sql(relation)} t "
                         "WHERE r.relation = %s AND r.source_who = %s AND r.row_id = ANY(%s) "
-                        "AND t.row_id = r.row_id", (relation, source, sorted(row_ids)))
+                        f"AND t.row_id = r.row_id AND r.{ROW_FINGERPRINT_COLUMN} IS DISTINCT FROM "
+                        f"{row_fingerprint_sql(columns, 't')}", (relation, source, sorted(row_ids)))
             # ⚠️ ONLY WHERE THE SOURCE HAS ALREADY BEEN COUNTED. `NULL` means 「never
             # planted」, and `NULL + 3` is NULL in SQL - which would be the right answer by
             # accident. It is written explicitly so nobody later "fixes" it with COALESCE
