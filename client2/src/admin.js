@@ -56,7 +56,7 @@ import { FailureSummary, failureRecordCells, failureSummaryView } from './failur
 import { ruleOutcomeView } from './rule_outcome.js';
 // 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
 import { ageText } from './pickup_state.js';
-import { countOf } from './match_count.js';
+import { countNumberText, countOf } from './match_count.js';
 // [V1 effort instrument] The ONE collector (effort_meter.js). Admin is an operations
 // surface, not a correction surface, so nothing here carries an `effort` payload. What it
 // must do is count LEAVING: grid -> admin was already counted while admin -> grid was not,
@@ -217,6 +217,7 @@ let fileLimit = 10;
 let fileData = [];
 let activeIngestionData = []; // [Heavy Lane P1] 진행 중 인제션 스냅샷
 let fileTotal = 0;
+let fileCapped = false;   // the server stops counting past 10,000 (owner 10-16)
 
 let workspaceData = [];
 let chainData = [];
@@ -923,7 +924,7 @@ async function fetchData(options = {}) {
       const active = (activeRes && activeRes.ok) ? await activeRes.json().catch(() => null) : null;
       if (isStale()) return false;
       seatFolderRetry();
-      if (logs) { fileData = logs.data || []; fileTotal = logs.total || 0; renderFileTable(); }
+      if (logs) { fileData = logs.data || []; fileTotal = logs.total || 0; fileCapped = logs.capped === true; renderFileTable(); }
       else { markSectionUnread('file-log-count'); allRead = false; }
       if (ws) { workspaceData = ws.data || []; renderWorkspaceTable(); markSectionAbsent('workspace-count', absentPath(ws)); }
       else { markSectionUnread('workspace-count'); allRead = false; }
@@ -1689,7 +1690,7 @@ function renderFileTable() {
   let tone = null;
   if (statusFilterVal === 'SUCCESS') tone = 'ok';
   else if (statusFilterVal === 'FAILED') tone = fileTotal > 0 ? 'danger' : 'ok';
-  setSectionCount('file-log-count', fileTotal, tone);
+  setSectionCount('file-log-count', countNumberText({ total: fileTotal, capped: fileCapped }), tone);
 
   if (fileData.length === 0) {
     fileEmptyState.style.display = 'flex';
@@ -1730,7 +1731,7 @@ function renderFileTable() {
   }
 
   const maxPage = Math.ceil(fileTotal / fileLimit) || 1;
-  updatePaginationFooter(fileTotal, filePage, maxPage);
+  updatePaginationFooter(fileTotal, filePage, maxPage, fileCapped);
 }
 
 // 파일 로그 행 빌더 — File 탭 로그와 Auto Update 탭 산출물 실패 목록이 공용
@@ -4178,12 +4179,12 @@ function clearDiagnostics() {
 }
 
 // Update Pagination Footer controls
-function updatePaginationFooter(total, currentPage, maxPage) {
+function updatePaginationFooter(total, currentPage, maxPage, capped = false) {
   const limit = currentTab === 'file' ? fileLimit : outboxLimit;
   const start = total === 0 ? 0 : (currentPage - 1) * limit + 1;
   const end = Math.min(currentPage * limit, total);
 
-  paginationInfo.textContent = `Showing ${start}-${end} of ${total} items`;
+  paginationInfo.textContent = `Showing ${start}-${end} of ${total}${capped ? '+' : ''} items`;
   pageIndicator.textContent = `${currentPage} / ${maxPage}`;
 
   prevPageBtn.disabled = currentPage <= 1;

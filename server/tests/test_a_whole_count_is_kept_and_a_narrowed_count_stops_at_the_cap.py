@@ -80,6 +80,17 @@ def test_the_whole_count_is_counted_by_the_worker_and_never_in_the_request(clien
     assert grid["total"] == 10 and grid["count"] == {k: body[k] for k in grid["count"]}
 
 
+def test_the_whole_count_stops_past_the_cap_too(client, monkeypatch):
+    """Owner 10-16: a whole count of a bloated table held its connection for the whole read."""
+    monkeypatch.setattr(main_mod, "COUNT_CAP", 3)
+    seen = _counts_by_thread(monkeypatch)
+
+    body = _count(client)
+
+    assert body["total"] == 3 and body["capped"] is True and body["counting"] is False
+    assert [name for name, _ in seen] == [WORKER] and "LIMIT 4" in seen[0][1], seen
+
+
 def test_right_after_a_restart_it_says_counting_then_the_count(client, monkeypatch):
     monkeypatch.setattr(main_mod, "COUNT_WAIT_SECONDS", 0)
 
@@ -247,3 +258,22 @@ def test_the_export_past_its_cap_says_more_than_the_cap(client, monkeypatch):
     r = client.get(f"/tables/{TABLE}/export")
 
     assert r.status_code == 413 and "More than 4 rows" in r.json()["detail"], r.text
+
+
+# ── the file ingestion list ─────────────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("failed, cap, said", [(3, 2, (2, True)), (3, 3, (3, False)), (0, 2, (0, False))])
+def test_the_file_ingestion_list_counts_its_state_up_to_the_cap(db_session, monkeypatch, failed, cap, said):
+    """Owner 10-16: the failed list took 10 s - the log table only grows and every failed row was counted."""
+    monkeypatch.setattr(main_mod, "COUNT_CAP", cap)
+    for i in range(failed):
+        db_session.add(models.FileIngestionLog(filename="f%d.csv" % i, table_name=TABLE, status="FAILED"))
+    db_session.add(models.FileIngestionLog(filename="ok.csv", table_name=TABLE, status="SUCCESS"))
+    db_session.commit()
+    seen = _counts_by_thread(monkeypatch)
+
+    body = main_mod.get_failed_file_ingestion_logs(page=1, limit=10, db=db_session)
+
+    assert (body["total"], body["capped"]) == said
+    assert [statement.count("LIMIT %d" % (cap + 1)) for _, statement in seen] == [1], seen
+    assert [row["filename"] for row in body["data"]] == ["f%d.csv" % i for i in reversed(range(failed))]

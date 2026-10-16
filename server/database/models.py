@@ -367,6 +367,9 @@ class FileIngestionLog(Base):
         Index("ix_file_ingestion_logs_status", "status",
               info={"purpose": "ingestion log rows in one state",
                     "serves": "watcher retries (PENDING, PENDING_RETRY), ingestion log filter"}),
+        Index("ix_file_ingestion_logs_status_id", "status", "id",
+              info={"purpose": "the newest ingestion log rows in one state, without sorting the state's rows",
+                    "serves": "admin file ingestion list and its failed list (owner 10-16: 10 s)"}),
     )
 
 

@@ -48,7 +48,8 @@ export function fileRow({ failed, active } = {}) {
   if (failed === undefined) return pending('file', 'File Ingestion');
   const total = failed ? count(failed.total) : null;
   const ingesting = active && Array.isArray(active.data) ? active.data.length : null;
-  const facts = [`failed ${countText(total)}`, `ingesting ${countText(ingesting)}`];
+  const failedText = total === null ? countText(null) : countNumberText({ total, capped: Boolean(failed && failed.capped === true) });
+  const facts = [`failed ${failedText}`, `ingesting ${countText(ingesting)}`];
   const tone = total === null ? TONE.UNKNOWN : total > 0 ? TONE.DANGER
     : ingesting > 0 ? TONE.WARN : TONE.OK;
   return row('file', 'File Ingestion', facts, tone);

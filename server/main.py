@@ -970,8 +970,8 @@ def store_table_count(cache_key: str, count: int, seconds=None) -> None:
 #: 🔴 A TABLE'S WHOLE COUNT IS COUNTED OUTSIDE THE REQUEST (소유자 ㄱ · 총괄 67e5e9ccd ㄱ-1): one worker counts the
 #:    tables `invalidate_table_cache` says changed, one at a time and each at most once per `count_recount_seconds`; a
 #:    request reads what it last counted and when. A count asked older than `count_max_age_seconds`, or one that
-#:    failed, is due again too - the writes that do not pass that seat (총괄 0fd18ae19 1 · 2). Narrowed (a search, a
-#:    filter), a count stops past COUNT_CAP and its statement runs under the grid read limit.
+#:    failed, is due again too - the writes that do not pass that seat (총괄 0fd18ae19 1 · 2). Whole or narrowed, a
+#:    count stops past COUNT_CAP (owner 10-16); a narrowed one's statement runs under the grid read limit.
 COUNT_CAP = 10_000
 #: How long a request waits for a count due now (never counted, or changed and past its pacing) - a small table's then
 #: comes back counted; a large one's is said `counting`, or its last count with its time.
@@ -1019,7 +1019,10 @@ def _whole_counter():
         db = Session(bind=bind)
         try:
             model = grid_model(table_name, world)
-            total = narrowed_table_query(db, table_name, model)[0].count() if model is not None else 0
+            # 🔴 STOPS PAST COUNT_CAP TOO (owner 10-16): a whole count of a bloated table held a connection for its
+            #    whole read; the grid says «10,000+» past it, as it does a narrowed count
+            total = (narrowed_table_query(db, table_name, model)[0].order_by(None).limit(COUNT_CAP + 1).count()
+                     if model is not None else 0)
         except Exception as exc:                                    # noqa: BLE001 - one line, the next count goes on
             logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, exc)
             failed = {"reason": ("%s: %s" % (type(exc).__name__, str(exc).strip().split("\n")[0]))[:200],
@@ -1028,9 +1031,10 @@ def _whole_counter():
             db.close()
         with _COUNT_COND:
             # a failed count keeps the last one and is paced as a count (총괄 0fd18ae19 2) - asked again, it is due again
-            kept = _WHOLE.get(key) or {"total": None, "counted_at": None, "count_seconds": None}
+            kept = _WHOLE.get(key) or {"total": None, "capped": False, "counted_at": None, "count_seconds": None}
             if failed is None:
-                kept = {"total": total, "count_seconds": round(time.monotonic() - began, 3),
+                kept = {"total": min(total, COUNT_CAP), "capped": total > COUNT_CAP,
+                        "count_seconds": round(time.monotonic() - began, 3),
                         "counted_at": datetime.now(timezone.utc).isoformat()}
             _WHOLE[key] = dict(kept, began=began, asked=asked, failed=failed)
             _NOW[0] = None
@@ -1093,7 +1097,7 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
     if held is None:
         return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True,
                 "failed": None}
-    return {"total": held["total"], "capped": False, "counted_at": held["counted_at"],
+    return {"total": held["total"], "capped": held["capped"], "counted_at": held["counted_at"],
             "count_seconds": held["count_seconds"], "counting": False, "failed": held["failed"]}
 
 
@@ -5613,8 +5617,11 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         query = query.filter(models.FileIngestionLog.status == status)
     
     query = query.order_by(models.FileIngestionLog.id.desc())
-    
-    total = query.count()
+
+    # 🔴 STOPS PAST COUNT_CAP (owner 10-16: the failed list took 10 s) - the log table only grows, and a count of all
+    #    its failed rows held a connection the other admin routes waited on. Past it the screen says «10,000+».
+    counted = query.order_by(None).limit(COUNT_CAP + 1).count()
+    total, capped = min(counted, COUNT_CAP), counted > COUNT_CAP
     start = (page - 1) * limit
     logs = query.offset(start).limit(limit).all()
     
@@ -5635,6 +5642,7 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     return {
         "status": "success",
         "total": total,
+        "capped": capped,
         "page": page,
         "limit": limit,
         "data": result_list
