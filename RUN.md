@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> ## [10-20] **같은 새 키를 두 쓰기가 동시에 넣을 때 — 행을 먼저 · 새 행은 업무 키 순 · 서버의 관리자 재시도도 표 잠금 (총괄 5c0a86cec, 소유자 10-20)** — git pull · watcher · 체인 워커 · API 서버 재기동
+> ## [10-20] **같은 새 키를 두 쓰기가 동시에 넣을 때 — 행을 먼저 · 새 행은 업무 키 순 · 서버의 관리자 재시도도 표 잠금 · 한 칸짜리 updated_at 인덱스는 선언에서 뺌 (총괄 5c0a86cec, 소유자 10-20)** — git pull · watcher · 체인 워커 · API 서버 재기동
 >
 > ```
 > 무엇     한 묶음 쓰기가 행을 «먼저» 넣고(이력 · 층보다 앞), 새 행은 업무 키 순으로 넣는다
@@ -11,7 +11,14 @@
 > 박스 판  두 세션 · 1,000 행 × 5 칸 · 같은 새 키 동시 (운영 주장 아님)
 >          전  진 쪽 죽은 행 6002~6787 (26 판) · 반대 순서 교착 2 / 13 판
 >          후  진 쪽 죽은 행 2 (26 판) · 반대 순서 교착 0 / 13 판
-> 되돌리기  git revert <착지> -> 같은 재기동
+> 인덱스   동적 표의 한 칸짜리 ix_<표>_updated_at 을 «선언에서» 뺐다 — 두 칸짜리 idx_<표>_updated(updated_at, row_id)가 같은 읽기를 받는다
+>          시작 일이 그것을 다시 만들지도, 없다고 말하지도 않는다. DB 에는 그대로 있다 — 지우는 것은 사람이:
+>          세기 (읽기만)
+>            psql -d <운영 DB> -Atc "SELECT count(*) FROM pg_indexes i WHERE i.schemaname = current_schema() AND i.indexname = left('ix_' || i.tablename || '_updated_at', 63) AND EXISTS (SELECT 1 FROM pg_indexes j WHERE j.schemaname = i.schemaname AND j.tablename = i.tablename AND j.indexname = left('idx_' || i.tablename || '_updated', 63))"
+>          지울 문장 출력 (출력만 — 보고 한 줄씩 돌린다 · CONCURRENTLY 라 트랜잭션 밖 · 표를 막지 않음)
+>            psql -d <운영 DB> -Atc "SELECT format('DROP INDEX CONCURRENTLY IF EXISTS %I.%I;', i.schemaname, i.indexname) FROM pg_indexes i WHERE i.schemaname = current_schema() AND i.indexname = left('ix_' || i.tablename || '_updated_at', 63) AND EXISTS (SELECT 1 FROM pg_indexes j WHERE j.schemaname = i.schemaname AND j.tablename = i.tablename AND j.indexname = left('idx_' || i.tablename || '_updated', 63)) ORDER BY 1"
+>          뜻  세기 0 -> 지울 것 없음. 두 칸짜리가 있는 표의 것만 센다 — 그게 없는 표의 한 칸짜리는 남긴다
+> 되돌리기  git revert <착지> -> 같은 재기동 (지운 인덱스는 되돌리기로 안 돌아온다: CREATE INDEX CONCURRENTLY "ix_<표>_updated_at" ON "<표>" ("updated_at"))
 > ```
 >
 > ---
