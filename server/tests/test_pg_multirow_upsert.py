@@ -574,8 +574,10 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
     only a real database can tell them apart.
 
     THE RACE, made deterministic. The competing writer commits the colliding
-    business key from inside `bulk_upsert_cell_sources` on attempt 1 - that is,
-    after the prefetch has proved the key absent and before `db.commit()`,
+    business key from inside `batch_write_instant` on attempt 1 - that is,
+    after the prefetch has proved the key absent and before the rows' flush
+    (which goes first since 총괄 5c0a86cec - a competitor committing later
+    would wait on this attempt's own uncommitted key),
     which is precisely the window `ProbedIdentity` cannot cover because there
     is no cross-process lock (`grep -rn "pg_advisory" server/` = 0).
 
@@ -598,13 +600,13 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
 
     winner_row_id = "THEIR-ROW-ID"
     fired = []
-    real_bulk = crud.bulk_upsert_cell_sources
+    real_instant = crud.batch_write_instant
 
-    def racing_bulk(db, mappings, *a, **kw):
+    def racing_instant(db, *a, **kw):
         if not fired:
             fired.append(True)
             _competing_writer(url, "PN-2", winner_row_id)
-        return real_bulk(db, mappings, *a, **kw)
+        return real_instant(db, *a, **kw)
 
     attempts = []
     real_once = crud._apply_batch_updates_once
@@ -618,14 +620,14 @@ def test_business_key_recovery_merges_onto_the_winners_row(pg_session, caplog):
         updates={"part_no": f"PN-{i}", "qty": i, "note": "mine"},
         source_name="probe.csv", updated_by="watcher") for i in range(5)]
 
-    crud.bulk_upsert_cell_sources = racing_bulk
+    crud.batch_write_instant = racing_instant
     crud._apply_batch_updates_once = counting_once
     try:
         with caplog.at_level(logging.WARNING, logger="Server"):
             results, changed, _logs, _deleted = crud.apply_batch_updates(
                 pg_session, TABLE, schemas.GeneralUpdateBatch(updates=items))
     finally:
-        crud.bulk_upsert_cell_sources = real_bulk
+        crud.batch_write_instant = real_instant
         crud._apply_batch_updates_once = real_once
 
     assert fired == [True], "the race never happened - this asserted nothing"
@@ -664,28 +666,29 @@ def test_a_persistent_business_key_conflict_is_refused_not_replayed(pg_session, 
     recovered from on attempt 2 - that is the test above. To keep losing, the
     competitor has to be gone when the replay's prefetch looks (so identity is
     still resolved as absent) and back before the commit. So it withdraws at
-    the top of every attempt and re-commits inside every `bulk_upsert`.
+    the top of every attempt and re-commits inside every `batch_write_instant`
+    (after the prefetch, before the rows' flush).
     """
     url, _ = _resolve_pg_test_url()
     seen = []
-    real_bulk = crud.bulk_upsert_cell_sources
+    real_instant = crud.batch_write_instant
     real_once = crud._apply_batch_updates_once
 
     def withdrawing_once(*a, **kw):
         _competitor_withdraws(url, "PN-9")
         return real_once(*a, **kw)
 
-    def racing_bulk(db, mappings, *a, **kw):
+    def racing_instant(db, *a, **kw):
         seen.append(len(seen))
         _competing_writer(url, "PN-9", f"THEIRS-{len(seen)}",
                           withdraw_first=True)
-        return real_bulk(db, mappings, *a, **kw)
+        return real_instant(db, *a, **kw)
 
     item = schemas.GeneralUpdateItem(
         business_key_val="PN-9", updates={"part_no": "PN-9", "qty": 1},
         source_name="probe.csv", updated_by="watcher")
 
-    crud.bulk_upsert_cell_sources = racing_bulk
+    crud.batch_write_instant = racing_instant
     crud._apply_batch_updates_once = withdrawing_once
     try:
         with caplog.at_level(logging.ERROR, logger="Server"):
@@ -694,7 +697,7 @@ def test_a_persistent_business_key_conflict_is_refused_not_replayed(pg_session, 
                     pg_session, TABLE,
                     schemas.GeneralUpdateBatch(updates=[item]))
     finally:
-        crud.bulk_upsert_cell_sources = real_bulk
+        crud.batch_write_instant = real_instant
         crud._apply_batch_updates_once = real_once
 
     assert len(seen) == crud.BK_CONFLICT_MAX_RETRIES + 1
