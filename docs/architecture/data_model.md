@@ -429,7 +429,9 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - **거절은 시끄럽다**: `(table, column)`별 프로세스 누적 카운터 + 체인 워커 하트비트 note(`crud.undeclared_column_drops()`가 이미 쓰는 그 채널) + 규칙·테이블·컬럼·건수를 적은 로그. 배치 전체가 거절되면 `replace_map`은 **실행되지 않는다** — 거절이 삭제가 되면 안 되기 때문이다.
 - 회귀 그물: `server/tests/test_chain_key_gate.py`(변이 10건 전부 사살).
 
-### 3.1-quater `composite_key_source` 없는 표는 **이미 있는 행을 못 찾는다** — 두 번째 인제션이 하드 실패 · 2026-08-14 `50a21c7`
+### 3.1-quater `composite_key_source` 없는 표는 **이미 있는 행을 못 찾았다** — 두 번째 인제션이 하드 실패 · 2026-08-14 `50a21c7` · ✅ 10-20 `640076283` 닫힘
+
+🆕 ✅ **[10-20 `640076283` · 총괄 5c0a86cec · 소유자 10-20] 닫힘** — 아래 기전 문단은 그 전의 모습이다. 지금: `assemble_composite_business_key` 가 일반 키 표도 조립한다(`_key_from_the_key_column` — 항목이 보낸 키, 안 보냈을 때만 키 칸 값). 일반 키는 칸이 저장하는 철자(`compose_business_key` → `key_part`, 숫자 `"1.0"` · `1.0` → `'1'`), 복합 표의 키 칸 값은 조립된 글이라 그대로. 들어온 철자가 다르면 `_supplied_business_key_val` 로 비켜(판정 191) 그 철자로 저장된 행도 찾아 다시 키를 단다. 조회 네 자리(프리페치 · 프로브 · 복합 표의 보낸 키 · 표기 접기의 날 키)는 저장 철자 `clean_str_value`. `unfilled_key_columns` 는 키 칸이 찬 복합 표 항목을 «키 있음»으로 답한다(체인 키 문이 쓰기가 키를 달 것을 거절하던 것). 그물 `server/tests/test_a_key_handed_back_in_another_shape_names_its_row.py`.
 
 3.1은 「업무 키 하나에 행 하나」를 **DB가 강제**하게 만들었고, 3.1-bis·3.1-ter는 **키가 없는** 행을 다뤘다. 남은 구멍은 **키가 «있는데도» 신원 해석이 그것을 안 읽는** 자리다.
 
@@ -453,7 +455,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 - **오늘의 우회는 「자기 소유 행만 지우고 다시 넣기」**이고, 그것을 쓴 곳은 코드에 **우회라고 명시**돼 있다(`server/scripts/seed_syn_world.py`). ⚠️ **우회를 새 표준으로 읽지 마라** — 범위를 좁힌 사전 DELETE는 그 스크립트가 자기가 심은 행만 알고 있어서 안전한 것이고, 인제션 경로에는 그런 지식이 없다.
 - ⚠️ **이것은 3.1이 만든 결함이 아니다.** 3.1 이전에는 같은 원인이 **조용한 중복 행**으로 나타났을 뿐이고, 유니크 인덱스는 그 조용함을 **시끄러움**으로 바꿨다. 인덱스를 걷는 것은 처방이 아니다.
-- ⏳ **수리는 아직 없다.** 고치는 자리는 `_get_or_create_row`가 **선언된 업무 키 컬럼의 값으로도** 조회하게 하는 것으로 보이지만, 그 변경은 모든 표의 신원 해석을 건드리므로 **판정 대상**이다(총괄).
+- ✅ **수리는 10-20 `640076283`** — 조회(`_get_or_create_row`)가 아니라 **조립**(`assemble_composite_business_key`) 자리에서 했다: 키 칸 값이 `business_key_val` 이 되니 조회는 그대로 두 필드만 본다. ⏳ **안 닫힘**: 옛 철자(`'1.0'` · `'001'`)로 저장된 행에 그 철자가 다시 안 오면 다른 철자로는 못 찾는다 — RUN.md 가 그런 쌍을 센다. 이미 생긴 중복 행은 안 지웠다.
 
 ### 3.2 PK 컬럼에 `index=True`를 붙이지 않는다 · 2026-08-07 D3
 
@@ -485,7 +487,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 | `wafer_process` **재등재** | 2026-07-28~08-04 사이 이 파일에서 **이탈**했고 행은 PostgreSQL에 그대로 살아 있었다 → 모든 소비자가 **부재로** 읽었다(`transfer_plan_config`의 `process_history` 역할이 `not_declared`, enrichment 참조 뷰에 질의할 동적 모델 없음) | ✅ 선언 복구. 실측 **3,022행 / 랏 28** |
 
 - 🔴 **`wafer_process`의 신원은 `(lot, slot)`이지 `wafer_id`가 아니다.** 2026-07-30 실측: `core_wafer_map.wafer_id` ↔ `wafer_process.wafer_id`가 **80중 8** 일치인데 `(core_lot, core_slot)` ↔ `(lot, slot)`은 **80중 80**이고, `wafer_id` 값 일부는 깨진 문자(mojibake)다. `wafer_id`는 **강등된 속성**이다.
-- ⚠️ **`wafer_process`는 `composite_key_source`가 없다** — 즉 위 **3.1-quater의 실패 케이스 그 표**다. 재인제션 시 두 번째 파일이 거절된다.
+- ⚠️ **`wafer_process`는 `composite_key_source`가 없다** — 위 **3.1-quater의 실패 케이스 그 표**였다. 10-20 `640076283` 부터 재인제션은 키 칸 값으로 기존 행을 찾는다.
 
 ---
 

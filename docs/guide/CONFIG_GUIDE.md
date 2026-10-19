@@ -244,6 +244,8 @@ preset routing을 선언한다. 물리 정렬은 map metadata가 소유한다.
 
 실제 이름은 `table_config`와 각 역할 config에서 정한다.
 
+`composite_key_source` 없이 `business_key` 만 선언한 표도 재인제션이 기존 행을 찾는다(10-20 `640076283` — 그 전엔 두 번째 파일이 거절됐다. [data_model §3.1-quater](../architecture/data_model.md)).
+
 ### 5.9 `maps.json`
 
 [maps 키 사전](./config/maps.md). 가능하면 UI/API로 관리하고 운영 값을 sample에 덮어쓰지 않는다.
