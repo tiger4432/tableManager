@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **GIN 합치기 오류 · 셀 소스 페이지 70 % · 되돌아온 값 접기 원복 · 검수 넷 (소유자 10-20)** — git pull · 스케줄러 · watcher · 체인 워커 · API 서버 재기동 · 브라우저 새로 고침
+>
+> ```
+> 볼 로그  스케줄러: «is not a GIN index» 가 더 안 나옴
+>          스케줄러: «[Indexes] cell_sources storage set as declared» 한 번 — 또는 «... not set - its lock was busy ...» 면 2 분마다 다시 시도
+> 뜻       busy 가 계속 -> 배큠이 그 표를 오래 잡고 있음. 끝나면 저절로 걸림. 급하면 ALTER TABLE cell_sources SET (fillfactor = 70) 을 손으로
+> 되돌리기  git revert 1244e54d4 -> 같은 재기동 (fillfactor 는 남아도 무해, 지우려면 ALTER TABLE cell_sources RESET (fillfactor))
+> ```
+>
+> ---
+>
 > ## [10-16] **죽은 행 줄이기 — 셀 소스 되돌아온 값 제자리 갱신 · 원장 ref 바뀐 줄만 · 인덱스 요청 × (소유자 10-16)** — git pull · watcher · 체인 워커 · 원장 일꾼 · API 서버 재기동
 >
 > ```
