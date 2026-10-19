@@ -27,11 +27,11 @@ def _seed_map(client, table, map_key, count):
 def test_replace_map_clean_purge(client):
     unique_eqp = "EQP_UNIQUE_999"
     # 1. Insert initial map data (3 cells for EQP_ID = EQP_UNIQUE_999)
+    # each cell its own key - one key is one row since 총괄 5c0a86cec; the purge scope is EQP_ID
     payload1 = {
         "updates": [
-            {"updates": {"EQP_ID": unique_eqp}},
-            {"updates": {"EQP_ID": unique_eqp}},
-            {"updates": {"EQP_ID": unique_eqp}}
+            {"business_key_val": f"{unique_eqp}_{i}", "updates": {"EQP_ID": unique_eqp}}
+            for i in range(3)
         ],
         "replace_map": False
     }
@@ -98,8 +98,9 @@ def test_replace_map_fallback_scope_reported(client):
     """Table WITHOUT map_key_columns: the legacy fallback derivation still works
     and the response now says which filters it actually used."""
     eqp = "EQP_SCOPE_FB"
+    # each cell its own key - one key is one row since 총괄 5c0a86cec; the purge scope is EQP_ID
     client.put("/tables/raw_table_1/data/updates", json={
-        "updates": [{"updates": {"EQP_ID": eqp}}, {"updates": {"EQP_ID": eqp}}],
+        "updates": [{"business_key_val": f"{eqp}_{i}", "updates": {"EQP_ID": eqp}} for i in range(2)],
         "replace_map": False,
     })
     res = client.put("/tables/raw_table_1/data/updates", json={

@@ -2771,13 +2771,9 @@ def _get_or_create_row(db: Session, table_model: Any, update_item: schemas.Gener
         for candidate in bk_candidates:
             if row:
                 break
-            # STRIPPED, because that is the only spelling the proof is about:
-            # `get_row_by_business_key` strips before comparing and the prefetch filter
-            # was built from stripped values. Testing the RAW value here would leave a
-            # padded key permanently unproven - slower, never wrong - while testing the
-            # stripped one is exactly the question the prefetch answered.
-            probe_bk = str(candidate).strip()
-            if not _absence_is_proven(probe_bk, probed_bks):
+            # `clean_str_value`: the spelling the prefetch asked and `get_row_by_business_key`
+            # compares - a 1.0 asked as '1.0' was «proven absent» beside a row stored as '1'
+            if not _absence_is_proven(clean_str_value(candidate), probed_bks):
                 row = get_row_by_business_key(db, table_name, candidate)
 
         if row and row_cache is not None:
@@ -2966,10 +2962,8 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     config = TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     composite_src = config.get("composite_key_source")
-    if not composite_src:
-        return False
-    if _unfilled_composite_parts(composite_src, update_item.updates):
-        return False
+    if not composite_src or _unfilled_composite_parts(composite_src, update_item.updates):
+        return _key_from_the_key_column(table_name, update_item, key_col, composite_src)
 
     # The blank check above is THIS caller's policy; the join below is everyone's.
     computed_key = compose_business_key(
@@ -2988,13 +2982,35 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     # because they are ORDERED: `_get_or_create_row` asks the assembled key first and
     # reaches this one only when the assembled key names nothing.
     supplied = update_item.business_key_val
-    if supplied is not None and str(supplied).strip() not in ("", computed_key):
-        # Stripped, because that is the one spelling this seam uses: the prefetch filter
-        # is built from stripped values and `get_row_by_business_key` strips to compare.
-        update_item._supplied_business_key_val = str(supplied).strip()
+    if clean_str_value(supplied) not in ("", computed_key):
+        # `clean_str_value`, the spelling a key is stored under and the prefetch asks
+        update_item._supplied_business_key_val = clean_str_value(supplied)
     update_item.business_key_val = computed_key
     if key_col and key_col not in update_item.updates:
         update_item.updates[key_col] = computed_key
+    return True
+
+
+def _key_from_the_key_column(table_name: str, update_item, key_col, composite_src) -> bool:
+    """The key of an item whose table does not assemble it from parts here (총괄 5c0a86cec): the key it
+    sent, or - only when it sent none - its key column's value. A plain key is spelled as its column
+    stores it (`key_part`, the composite parts' spelling - owner 10-14 «접어, 정수변환»): a mapper's
+    1.0 and a file's «1.0» on a number key are '1'. The arrived spelling, if it differs, moves aside
+    (판정 191), so a row stored under it is found and re-keyed. A key sent beside a different key
+    column value wins as it did (총괄: not changed without the owner). A composite key column is
+    an assembled text, kept as it came. Without these a key in `updates` only and a 1.0 named no
+    row and every write made another."""
+    supplied = update_item.business_key_val
+    raw = supplied
+    if is_blank_key_part(raw) and key_col:
+        raw = (update_item.updates or {}).get(key_col)
+    if is_blank_key_part(raw):
+        return False
+    arrived = clean_str_value(raw)
+    key = arrived if composite_src or not key_col else compose_business_key(table_name, [raw], [key_col])
+    if arrived != key and not update_item._supplied_business_key_val:
+        update_item._supplied_business_key_val = arrived
+    update_item.business_key_val = key
     return True
 
 
@@ -3180,11 +3196,8 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
       * the table declares neither a plain `business_key` nor a
         `composite_key_source` - nothing to judge, so judging it would be inventing a
         policy;
-      * the table declares a plain (non-composite) business key and the payload supplies
-        that column with a value. The row still fails to MATCH an existing one on a later
-        push (`_get_or_create_row` reads only `row_id`/`business_key_val`, a pre-existing
-        defect recorded at the `[scope diff]` comment in `_apply_batch_updates_once`), but
-        it does land addressable, which is what this predicate is about.
+      * the table declares a business key column and the payload supplies it with a
+        value - the assembler keys the item by it (`_key_from_the_key_column`).
 
     A NON-EMPTY list names the columns, so a refusal can say WHICH column was blank
     instead of "some key is missing".
@@ -3206,8 +3219,12 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
     if composite_src:
         # A physical business-key column is optional here: the assembler can keep the
         # joined identity in the framework-owned `business_key_val` without adding a
-        # synthetic column to a source-owned schema.
-        return _unfilled_composite_parts(composite_src, update_item.updates)
+        # synthetic column to a source-owned schema. Its value keys the item when parts
+        # are missing (`_key_from_the_key_column`).
+        unfilled = _unfilled_composite_parts(composite_src, update_item.updates)
+        if unfilled and declared and not is_blank_key_part((update_item.updates or {}).get(key_col)):
+            return []
+        return unfilled
 
     if declared:
         updates = update_item.updates or {}
@@ -5122,7 +5139,7 @@ def _fold_written_notation(db, table_name: str, batch, notation_report=None):
         elif raw_key == item.business_key_val:
             raw_key = None
         if raw_key and not item._supplied_business_key_val:
-            item._supplied_business_key_val = str(raw_key).strip()
+            item._supplied_business_key_val = clean_str_value(raw_key)
     if batch.scope:
         batch.scope = notation_norm.fold_item_for_write(table_name, batch.scope, None,
                                                         aliases)[0]
@@ -5227,19 +5244,10 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # from an absence of improvement.
             # [scope diff] The SECOND requirement, and it is not cosmetic: the diff must
             # be able to RESOLVE an incoming cell onto the row it already has. That
-            # resolution is `assemble_composite_business_key`, which needs
-            # `composite_key_source`. A table whose business key arrives as a plain value
-            # in the payload is not matched at all today - `_get_or_create_row` looks at
-            # `row_id` and `business_key_val` only, and neither is set for it - so every
-            # push creates a fresh row. Measured: two identical pushes of one business
-            # key produce TWO rows carrying the same `business_key_val`.
-            #
-            # That duplicate is a PRE-EXISTING defect of the shared write path, not
-            # something the diff introduces, and it is deliberately not fixed here. But
-            # it does decide this gate: diffing a table whose rows cannot be matched
-            # would mark every existing cell unclaimed and delete the entire map on every
-            # push. All seven shipped map tables declare a composite key, so this
-            # excludes no real map.
+            # resolution is `assemble_composite_business_key`. A plain key in the payload
+            # was not matched at all until 총괄 5c0a86cec (every push a fresh row); it is
+            # now, but the diff stays on composite-keyed maps - all seven shipped map
+            # tables declare one, so this excludes no real map.
             _cfg = TABLE_CONFIG.get(table_name, {})
             use_diff = bool(_cfg.get("map_key_columns")) and bool(_cfg.get("composite_key_source"))
 
@@ -5353,8 +5361,9 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             target_bks = []
             for u in batch.updates:
                 for value in (u.business_key_val, u._supplied_business_key_val):
+                    value = clean_str_value(value)      # the stored spelling (총괄 5c0a86cec)
                     if value:
-                        target_bks.append(str(value).strip())
+                        target_bks.append(value)
 
             from sqlalchemy import or_
             existing_rows_list = db.query(table_model).filter(

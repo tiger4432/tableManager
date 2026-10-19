@@ -164,12 +164,9 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
             change now reaches every mapper instead of drifting in one.
 
         non-composite target, key left to the framework
-            nothing lifts `updates[business_key]` into `business_key_val` -
-            `_get_or_create_row` resolves identity from `row_id`/`business_key_val`
-            alone - so the write has NO identity. The row lands, the upsert can never
-            find it again, and every run inserts another copy. `unfilled_key_columns`
-            answers `[]` for such an item, so the pre-write gate does not catch it
-            either.
+            ⚰️ until 총괄 5c0a86cec nothing lifted `updates[business_key]` into
+            `business_key_val`, so every run inserted another copy. The write's assembler
+            does now (`crud._key_from_the_key_column`); this function still names it.
 
     Both were measured on 2026-09-02, and both are the kind that is found much later by
     someone counting rows. So the author emits columns and this function reads
@@ -249,9 +246,8 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
         item = {"updates": values,
                 "source_name": source_name, "updated_by": updated_by}
         if not composite_src and key_col:
-            # The plain case, and the ONLY one where this function names the key: the
-            # framework does not lift it out of `updates`, so somebody has to, and it is
-            # not the author's job to remember which tables those are.
+            # The plain case, and the ONLY one where this function names the key (the write
+            # would lift it from `updates` too since 총괄 5c0a86cec; the blank refusal is this one's).
             identity = values.get(key_col)
             if crud.is_blank_value(identity):
                 raise MapperContractError(

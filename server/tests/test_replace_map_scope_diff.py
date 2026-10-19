@@ -242,9 +242,10 @@ def test_a_large_removal_is_capped_and_says_so(client):
 
 def test_a_table_without_map_key_columns_keeps_the_purge_and_says_so(client):
     """No silent downgrade: the table that does not improve says which strategy ran."""
+    # each cell its own key - one key is one row since 총괄 5c0a86cec; the purge scope is EQP_ID
     client.put("/tables/raw_table_1/data/updates", json={
-        "updates": [{"updates": {"EQP_ID": "DIFF_LEGACY"}},
-                    {"updates": {"EQP_ID": "DIFF_LEGACY"}}],
+        "updates": [{"business_key_val": "DIFF_LEGACY_%d" % i, "updates": {"EQP_ID": "DIFF_LEGACY"}}
+                    for i in range(2)],
         "replace_map": False,
     })
     body = client.put("/tables/raw_table_1/data/updates", json={
@@ -264,12 +265,10 @@ def test_the_declared_branch_reports_the_diff_strategy(client):
 
 
 def test_a_map_whose_rows_cannot_be_matched_keeps_the_purge_and_says_which(client):
-    """`rmscope_test_map` declares `map_key_columns` but has no `composite_key_source`,
-    so its business key arrives as a plain payload value that the write path never
-    resolves onto an existing row. Diffing it would find every stored cell unclaimed and
-    delete the whole map on every push, so it takes the purge - under its own reason,
-    which is a different fact from "this table declares no map key" and must not be
-    collapsed into it.
+    """`rmscope_test_map` declares `map_key_columns` but has no `composite_key_source`, so
+    it takes the purge - under its own reason, a different fact from "this table declares
+    no map key". (Its plain key was never resolved onto an existing row until 총괄 5c0a86cec;
+    it is now, and the diff still stays on composite-keyed maps - the reason's word is open.)
     """
     body = client.put("/tables/rmscope_test_map/data/updates", json={
         "updates": [{"updates": {"die_key": "UNRES_1", "ref_table": "bonding_map",
