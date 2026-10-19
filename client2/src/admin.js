@@ -1730,7 +1730,9 @@ function renderFileTable() {
     }
   }
 
-  const maxPage = Math.ceil(fileTotal / fileLimit) || 1;
+  // past the count's cap the pages go on: one more page while a full page came back (QA 10-20)
+  const maxPage = Math.max(Math.ceil(fileTotal / fileLimit) || 1,
+    fileCapped && fileData.length >= fileLimit ? filePage + 1 : 0);
   updatePaginationFooter(fileTotal, filePage, maxPage, fileCapped);
 }
 
@@ -4182,7 +4184,7 @@ function clearDiagnostics() {
 function updatePaginationFooter(total, currentPage, maxPage, capped = false) {
   const limit = currentTab === 'file' ? fileLimit : outboxLimit;
   const start = total === 0 ? 0 : (currentPage - 1) * limit + 1;
-  const end = Math.min(currentPage * limit, total);
+  const end = capped ? start + fileData.length - 1 : Math.min(currentPage * limit, total);
 
   paginationInfo.textContent = `Showing ${start}-${end} of ${total}${capped ? '+' : ''} items`;
   pageIndicator.textContent = `${currentPage} / ${maxPage}`;

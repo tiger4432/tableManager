@@ -19,6 +19,19 @@ export function dragMarks(done) {
     const on = new Set(moved && from ? span() : []);
     for (const c of cells) c.el.classList.toggle('is-dragged', on.has(c));
   };
+  // let go anywhere else (outside the table, or the pointer taken away): the drag ends marking nothing - it stayed
+  // held, and the next pass over the cells painted and the next press marked the stale rectangle (QA 10-20)
+  const drop = () => {
+    if (!from) return;
+    from = null;
+    to = null;
+    moved = false;
+    paint();
+  };
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('pointerup', drop);
+    document.addEventListener('pointercancel', drop);
+  }
   return {
     add(el, row, col = 0, data = null) {
       const c = { el, row, col, data };
@@ -38,10 +51,7 @@ export function dragMarks(done) {
       el.addEventListener('pointerup', (event) => {
         if (!from) return;
         const got = moved ? span() : null;
-        from = null;
-        to = null;
-        moved = false;
-        paint();
+        drop();
         if (got) { swallow = true; done(got, event); }
       });
     },

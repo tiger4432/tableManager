@@ -3170,7 +3170,7 @@ def get_table_data_count(
     db: Session = Depends(get_db)
 ):
     """`GET .../data?defer_total=true`가 미룬 그 수 - `table_total` 하나: 표 전체는 일꾼이 마지막으로 센 수와 그 시각
-    (한 번도 안 셌으면 counting), 좁히면 COUNT_CAP 까지 (넘으면 capped).
+    (한 번도 안 셌으면 counting), 표 전체도 좁혀도 COUNT_CAP 까지 (넘으면 capped, 소유자 10-16).
 
     🔴 이 라우트는 필터를 **두 번째로 해석하지 않는다.** `narrowed_table_query`가 그리드
     요청에도 이 요청에도 같은 질의를 만든다. 두 벌이 되는 순간 두 수가 갈리고, 그것은

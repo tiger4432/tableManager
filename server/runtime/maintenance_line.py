@@ -9,6 +9,7 @@ does all of it beside the scheduler's 5 s loop, on a thread of its own:
   reload    any SYSTEM_RELOAD past its mark - the chain rules read again, the declared work again
   ask       INDEX_WANTED rows (`index_wants.taken`) - the automatic index each names
   merge     every GIN_CLEAN_SECONDS the GIN indexes' pending lists (`clean_gin_pending`) - not a file's flush
+  storage   the tables' declared storage (`apply_table_storage`) - at the start, then each merge until it holds
 """
 import logging
 import threading
@@ -22,9 +23,14 @@ POLL_SECONDS = 5.0
 #: gin_pending_list_limit is merged by the session that writes the row - a file's flush; merged here first, it is not.
 GIN_CLEAN_SECONDS = 120.0
 
-_GIN_INDEXES = ("SELECT c.relname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_am am ON am.oid = c.relam"
-                " JOIN pg_namespace n ON n.oid = c.relnamespace WHERE am.amname = 'gin' AND n.nspname = current_schema()"
-                " ORDER BY c.relname")
+#: Plain GIN indexes only (relkind 'i'): a partitioned table's index (relkind 'I', the ledger's) is refused by
+#: gin_clean_pending_list - 「is not a GIN index」 every merge (owner 10-20); its partitions' indexes are listed themselves.
+_GIN_INDEXES = ("SELECT c.oid, c.relname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid"
+                " JOIN pg_am am ON am.oid = c.relam JOIN pg_namespace n ON n.oid = c.relnamespace"
+                " WHERE am.amname = 'gin' AND c.relkind = 'i' AND n.nspname = current_schema() ORDER BY c.relname")
+
+
+_SAID_GIN_FAILURES = set()
 
 
 def clean_gin_pending(db_session_factory):
@@ -36,13 +42,22 @@ def clean_gin_pending(db_session_factory):
     try:
         if db.get_bind().dialect.name != "postgresql":
             return []
-        names = [row[0] for row in db.execute(text(_GIN_INDEXES))]
+        indexes = [(row[0], row[1]) for row in db.execute(text(_GIN_INDEXES))]
         db.commit()
         merged = []
-        for name in names:
-            pages = db.execute(text("SELECT gin_clean_pending_list(CAST(:name AS regclass))"),
-                               {"name": '"%s"' % name.replace('"', '""')}).scalar()
-            db.commit()
+        for oid, name in indexes:
+            # by oid, not by name - a name resolves through search_path and can reach another schema's index
+            try:
+                pages = db.execute(text("SELECT gin_clean_pending_list(CAST(CAST(:oid AS oid) AS regclass))"),
+                                   {"oid": int(oid)}).scalar()
+                db.commit()
+            except Exception as exc:                                # noqa: BLE001 - one index, the others go on
+                db.rollback()
+                if name not in _SAID_GIN_FAILURES:                  # said once a process, not every merge
+                    _SAID_GIN_FAILURES.add(name)
+                    logger.warning("[Indexes] GIN pending list of %s not merged: %s", name,
+                                   str(exc).strip().split("\n")[0][:200])
+                continue
             if pages:
                 merged.append((name, int(pages)))
         return merged
@@ -56,6 +71,65 @@ def _clean_and_say(db_session_factory):
     if merged:
         logger.info("[Indexes] merged GIN pending lists in %.1f s: %s", time.time() - started,
                     ", ".join("%s %d page(s)" % each for each in merged))
+
+
+#: How long ALTER TABLE ... SET waits for its lock. Under deadlock_timeout (1 s by default): a waiter past it makes
+#: PostgreSQL cancel a running autovacuum of that table, and the one cleaning cell_sources may have run for hours.
+STORAGE_LOCK_TIMEOUT = "500ms"
+
+
+def apply_table_storage(db_session_factory):
+    """Each model table's declared storage (`info["storage"]`, e.g. cell_sources' fillfactor - owner 10-20: an updated
+    layer's old version is pruned on its page only where the page has room) that the table does not hold yet, set by
+    ALTER TABLE ... SET. A table whose lock is not had within STORAGE_LOCK_TIMEOUT is left for the next try.
+    -> {table: "set" | "busy"}. PostgreSQL only; elsewhere {}."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    from database.database import Base
+
+    db = db_session_factory()
+    try:
+        if db.get_bind().dialect.name != "postgresql":
+            return {}
+        done = {}
+        for table in Base.metadata.sorted_tables:
+            wanted = {str(k): str(v) for k, v in (table.info.get("storage") or {}).items()}
+            if not wanted:
+                continue
+            held = db.execute(text("SELECT c.reloptions FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                                   " WHERE c.relname = :t AND n.nspname = current_schema() AND c.relkind = 'r'"),
+                              {"t": table.name}).first()
+            db.commit()
+            if held is None:                                        # no such table in this schema
+                continue
+            held = dict(option.split("=", 1) for option in (held[0] or []))
+            if all(held.get(k) == v for k, v in wanted.items()):
+                continue
+            try:
+                db.execute(text("SET LOCAL lock_timeout = '%s'" % STORAGE_LOCK_TIMEOUT))
+                db.execute(text('ALTER TABLE "%s" SET (%s)' % (
+                    table.name, ", ".join("%s = %s" % (k, v) for k, v in sorted(wanted.items())))))
+                db.commit()
+                done[table.name] = "set"
+            except OperationalError:
+                db.rollback()
+                done[table.name] = "busy"
+        return done
+    finally:
+        db.close()
+
+
+def _storage_and_say(db_session_factory):
+    """-> True once every declared storage holds."""
+    done = apply_table_storage(db_session_factory)
+    for table, how in sorted(done.items()):
+        if how == "set":
+            logger.info("[Indexes] %s storage set as declared", table)
+        else:
+            logger.warning("[Indexes] %s storage not set - its lock was busy past %s (a running vacuum keeps it); "
+                           "tried again at the next merge", table, STORAGE_LOCK_TIMEOUT)
+    return "busy" not in done.values()
 
 
 def _each(works):
@@ -135,6 +209,8 @@ def run(db_session_factory, stop=None):
     started = time.time()
     _each(_start_work(db_session_factory))
     logger.info("[Indexes] start work done in %.1f s", time.time() - started)
+    stored = [False]
+    _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])
     cleaned = time.monotonic()
     while not stop.wait(POLL_SECONDS):
         try:
@@ -144,6 +220,8 @@ def run(db_session_factory, stop=None):
         if time.monotonic() - cleaned >= GIN_CLEAN_SECONDS:
             cleaned = time.monotonic()
             _each([(_clean_and_say, db_session_factory)])
+            if not stored[0]:
+                _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])
 
 
 def start(db_session_factory):

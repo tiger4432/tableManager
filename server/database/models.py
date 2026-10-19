@@ -767,6 +767,11 @@ class CellSource(Base):
         Index("idx_sources_by_origin", "origin_row_id",
               postgresql_where=text("origin_row_id IS NOT NULL"),
               info={"purpose": "the cells deleted rows fed", "serves": "chain retraction of a deleted row"}),
+        # 🔴 PAGES KEPT 30 % FREE (owner 10-20): a layer updated in place (its source says a new value) leaves
+        #    its old version on the page; with room there the update is HOT and the old version is pruned without
+        #    vacuum - measured at 100: 0 HOT; at 70: nearly all. Set at the scheduler's start, a new table's and an
+        #    existing one's alike (`maintenance_line.apply_table_storage`).
+        {"info": {"storage": {"fillfactor": 70}}},
     )
 
 

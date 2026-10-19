@@ -277,7 +277,12 @@ def test_the_scheduler_s_poll_reads_its_rows_before_it_closes_the_session(monkey
 
 def test_a_slow_flush_is_said_with_its_table_s_indexes_and_a_fast_one_is_not(caplog):
     """Owner 10-16 (1,000 rows, 20 s): a flush past SLOW_FLUSH_SECONDS says its table, rows and indexes - one line."""
+    import contextlib
+
     class _Db:
+        def begin_nested(self):
+            return contextlib.nullcontext()
+
         def execute(self, *a, **k):
             raise RuntimeError("no catalogue here")
 
@@ -325,3 +330,59 @@ def test_the_line_merges_a_search_index_s_pending_list(table):
     merged = maintenance_line.clean_gin_pending(sessionmaker(bind=table))
     assert [name for name, _pages in merged] == [models.auto_index_name(TABLE, ["s"]) + "_search"] or merged == [], merged
     assert maintenance_line.clean_gin_pending(sessionmaker(bind=table)) == [], "merged once, nothing pending after"
+
+
+@pytest.mark.pg
+def test_the_line_merges_no_partitioned_index_and_says_nothing_wrong(pg_engine):
+    """Owner 10-20: the ledger's GIN index on its partitioned table (relkind 'I') was handed to gin_clean_pending_list
+    every merge - «is not a GIN index». Its partitions' indexes are the ones merged."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from conftest import PG_TEST_SCHEMA
+    from runtime import maintenance_line
+
+    parent = '"%s".gin_part_probe' % PG_TEST_SCHEMA
+    with pg_engine.begin() as conn:
+        conn.execute(text("CREATE TABLE %s (k int, j jsonb) PARTITION BY RANGE (k)" % parent))
+        conn.execute(text('CREATE TABLE "%s".gin_part_probe_1 PARTITION OF %s FOR VALUES FROM (0) TO (1000)'
+                          % (PG_TEST_SCHEMA, parent)))
+        conn.execute(text("CREATE INDEX gin_part_probe_j ON %s USING gin (j)" % parent))
+        conn.execute(text("INSERT INTO %s SELECT g, jsonb_build_object('a', g) FROM generate_series(1, 300) g" % parent))
+    try:
+        merged = maintenance_line.clean_gin_pending(sessionmaker(bind=pg_engine))
+        assert "gin_part_probe_j" not in [name for name, _pages in merged], merged
+    finally:
+        with pg_engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS %s" % parent))
+
+
+@pytest.mark.pg
+def test_cell_sources_takes_its_declared_fillfactor_and_a_busy_lock_is_left_for_later(pg_engine):
+    """Owner 10-20: pages kept 30 % free so an updated layer's old version is pruned without vacuum. An existing table
+    takes it by ALTER; a lock held elsewhere is not waited for past STORAGE_LOCK_TIMEOUT."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from runtime import maintenance_line
+
+    factory = sessionmaker(bind=pg_engine)
+
+    def fillfactor():
+        with pg_engine.connect() as conn:
+            return conn.execute(text("SELECT c.reloptions FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+                                     " WHERE c.relname = 'cell_sources' AND n.nspname = current_schema()")).scalar()
+
+    with pg_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE cell_sources RESET (fillfactor)"))
+    holder = pg_engine.connect()
+    try:
+        held = holder.begin()
+        holder.execute(text("LOCK TABLE cell_sources IN SHARE UPDATE EXCLUSIVE MODE"))
+        assert maintenance_line.apply_table_storage(factory) == {"cell_sources": "busy"}
+        held.rollback()
+    finally:
+        holder.close()
+    assert maintenance_line.apply_table_storage(factory) == {"cell_sources": "set"}
+    assert "fillfactor=70" in fillfactor()
+    assert maintenance_line.apply_table_storage(factory) == {}, "held already - nothing to do"
