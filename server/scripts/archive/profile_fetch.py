@@ -8,6 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from database.database import engine, SessionLocal
 from database import models, crud
 from sqlalchemy import func
+from error_said import told
 
 def seed_data_if_empty(db, table_model):
     count = db.query(table_model).count()
@@ -103,7 +104,7 @@ def profile():
         t1 = time.time()
         print(f"[Method 1 (jsonb_build_object)] Fetch time: {t1-t0:.4f}s")
     except Exception as e:
-        print(f"[Method 1] Failed: {e}")
+        print(f"[Method 1] Failed: {told(e)}")
 
     # Method 2: Raw columns fetch (without jsonb_build_object)
     try:

@@ -89,6 +89,7 @@ import event_constants
 #    ⚠️ 여기서 읽는 이름들은 «재수출»이 아니라 이 모듈이 그것들을 «쓰기» 때문이다 —
 #       `ReplayRefused` 는 스무 자리에서 raise 되고, 헬퍼 셋은 다른 함수들이 부른다.
 from chain.cell_layer import DEFAULT_CHUNK_SIZE, PROTECTED_SOURCES, R1_SOURCE_NAME, R2_AUDIT_SOURCE, ReplayRefused, _claimed_filter, _load_cell_state, _resolve_cell, key_columns, resolve_target, withdraw_source
+from error_said import told
 
 # ⚰️ `WRITE_CHUNK = 1000` stood here - how many proposals this module wrote at once.
 #    It writes none. How many rows travel in one event is `OUTBOX_COLLAPSE_CHUNK_ROWS`,
@@ -581,7 +582,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 #   `test_a_declared_join_can_be_backfilled_like_any_rule` called 「worth fixing and
                 #   not this round's subject」, would have gone on killing a whole run per bad page.
                 db.rollback()
-                gist = str(page_error).strip().splitlines()
+                gist = told(page_error).strip().splitlines()
                 stats["pages_failed"] += 1
                 if len(stats["page_failures"]) < 10:
                     stats["page_failures"].append(

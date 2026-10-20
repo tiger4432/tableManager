@@ -305,7 +305,9 @@ def test_a_slow_flush_is_said_with_its_table_s_indexes_and_a_fast_one_is_not(cap
         crud._say_a_slow_flush(_Db(), None, "raw_table_1", 1000, crud.SLOW_FLUSH_SECONDS - 0.1)
         crud._say_a_slow_flush(_Db(), None, "raw_table_1", 1000, 20.0)
     said = [r.getMessage() for r in caplog.records if "slow flush" in r.getMessage()]
-    assert said == ["[Batch] slow flush: raw_table_1 1000 row(s) in 20.0 s - indexes unread: RuntimeError"], said
+    assert len(said) == 1 and said[0].startswith(
+        "[Batch] slow flush: raw_table_1 1000 row(s) in 20.0 s - indexes unread: RuntimeError: no catalogue here "
+        "(test_a_used_column_gets_an_automatic_index.py:") and said[0].endswith(" in execute)"), said
 
 
 def test_the_line_merges_no_gin_list_where_there_is_no_postgres():

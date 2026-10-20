@@ -4,6 +4,7 @@ import time
 import logging
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from error_said import told
 
 logger = logging.getLogger("Watcher.ConfigWatcher")
 
@@ -150,13 +151,13 @@ class ConfigChangeHandler(FileSystemEventHandler):
                 process_pool.recycle()
             except Exception as exc:                              # noqa: BLE001
                 logger.error("[Reload] walk pool NOT recycled - its processes keep the table config they read until "
-                             "restart: %s: %s", type(exc).__name__, exc)
+                             "restart: %s: %s", type(exc).__name__, told(exc), exc_info=exc)
             try:
                 from ledger_api import ledger_subgraph        # walk_processes 0: the walks kept here end as the pool's
                 ledger_subgraph.end_kept_walks("reloaded")
             except Exception as exc:                              # noqa: BLE001
                 logger.error("[Reload] walks kept in this process NOT ended - their More goes on under the table "
-                             "config they began with: %s: %s", type(exc).__name__, exc)
+                             "config they began with: %s: %s", type(exc).__name__, told(exc), exc_info=exc)
 
             # 🔴 A `search_columns` ENTRY NOTHING CAN SEARCH IS NAMED HERE, NOT WHEN
             # SOMEBODY SEARCHES (판정 255). A typo in that cell is invisible until a
@@ -238,5 +239,5 @@ def _report_unsearchable_declarations(config: dict):
                     table_name, sorted(unknown), list(used))
     except Exception as exc:                                         # noqa: BLE001
         # A reload that dies here would trade a typo for an outage.
-        logger.warning("[Config] search_columns check skipped: %s", exc)
+        logger.warning("[Config] search_columns check skipped: %s", told(exc), exc_info=exc)
 

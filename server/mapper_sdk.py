@@ -27,6 +27,7 @@ import threading
 from typing import Any, Dict, List
 
 import pandas as pd
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -423,14 +424,14 @@ def _walk(package):
     try:
         pkg = importlib.import_module(package)
     except Exception as exc:
-        return tuple(MAPPER_REGISTRY), {package: f"{type(exc).__name__}: {exc}"}
+        return tuple(MAPPER_REGISTRY), {package: f"{type(exc).__name__}: {told(exc)}"}
 
     for info in pkgutil.iter_modules(getattr(pkg, "__path__", [])):
         name = f"{package}.{info.name}"
         try:
             importlib.import_module(name)
         except Exception as exc:
-            refusals[name] = f"{type(exc).__name__}: {exc}"
+            refusals[name] = f"{type(exc).__name__}: {told(exc)}"
     # 🔴 [판정 567] THE BUILT MAPPERS GO IN HERE, AND ONLY HERE. This function CLEARS the
     #   registry before re-importing, so anything installed elsewhere is silently emptied by
     #   the next reload - the rules would survive and their mapper would not, and every join
@@ -442,7 +443,7 @@ def _walk(package):
 
         dynamic_mappers.install()
     except Exception as exc:                                       # noqa: BLE001
-        refusals["chain.dynamic_mappers"] = "%s: %s" % (type(exc).__name__, exc)
+        refusals["chain.dynamic_mappers"] = "%s: %s" % (type(exc).__name__, told(exc))
     return tuple(sorted(MAPPER_REGISTRY)), refusals
 
 

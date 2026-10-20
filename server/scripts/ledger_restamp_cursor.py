@@ -35,6 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SERVER = os.path.dirname(HERE)
 if SERVER not in sys.path:
     sys.path.insert(0, SERVER)
+from error_said import told
 
 
 def main(argv=None):
@@ -81,7 +82,7 @@ def main(argv=None):
                 doc, config_root=root, catalog=catalog, **more))
         setup = resolved["setup"]
         dropped = resolved["invalid"]
-        print(f"config does not compile whole ({exc}); "
+        print(f"config does not compile whole ({told(exc)}); "
               f"reading what resolves and naming what does not")
     for key in sorted(dropped):
         reasons = dropped[key].get("reasons") or []

@@ -22,6 +22,7 @@ from __future__ import annotations
 import time
 
 from utils import heartbeat
+from error_said import told
 
 
 #: In the order the board numbers them (①~⑦ with ③ split four ways).
@@ -157,7 +158,7 @@ def runtime_loops(db, *, heartbeats=None, now=None):
             try:
                 item["depth"] = _outbox_depth(db)
             except Exception as exc:                        # noqa: BLE001
-                item["depth_error"] = f"{type(exc).__name__}"
+                item["depth_error"] = f"{type(exc).__name__}: {told(exc)}"
         knob = KNOBS.get(loop)
         if knob:
             item["knob"] = knob

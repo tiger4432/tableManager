@@ -66,6 +66,7 @@ from datetime import datetime
 import sqlalchemy as sa
 
 import paths
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def load_config(path: str = None) -> dict:
     except FileNotFoundError:
         return {}
     except Exception as e:
-        logger.warning("[AuditHistory] failed to load config %s: %s", p, e)
+        logger.warning("[AuditHistory] failed to load config %s: %s", p, told(e), exc_info=e)
         return {}
 
 

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from utils.time_format import TS_FMT
+from error_said import told
 
 logger = logging.getLogger("Scheduler.Markers")
 
@@ -146,7 +147,7 @@ def parse_script_comments(script_path: str) -> dict:
                         elif key in ("window", "window_format"):
                             config[key] = val
     except Exception as e:
-        logger.warning(f"Failed to parse script comments for {script_path}: {e}")
+        logger.warning(f"Failed to parse script comments for {script_path}: {told(e)}", exc_info=e)
     return config
 
 

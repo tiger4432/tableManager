@@ -6,6 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from database.database import SessionLocal
 from sqlalchemy import text
+from error_said import told
 
 def create_index():
     print("Creating index idx_table_rowid...")
@@ -16,7 +17,7 @@ def create_index():
         db.commit()
         print(f"Index created in {time.time() - t0:.3f}s")
     except Exception as e:
-        print(f"Failed: {e}")
+        print(f"Failed: {told(e)}")
         db.rollback()
     finally:
         db.close()

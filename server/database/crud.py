@@ -1009,9 +1009,10 @@ def update_table_config(new_config: dict):
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(TABLE_CONFIG, f, indent=2, ensure_ascii=False)
     except Exception as e:
-        print(f"[crud] Failed to save table config: {e}")
+        print(f"[crud] Failed to save table config: {told(e)}")
 
 import sys
+from error_said import told
 if not hasattr(sys, "_table_config_singleton"):
     sys._table_config_singleton = load_table_config()
 TABLE_CONFIG = sys._table_config_singleton
@@ -2091,7 +2092,7 @@ def record_interaction_effort(db: Session, transaction_id: str, session_id: str,
         return False
     except Exception as e:
         db.rollback()
-        print(f"[EffortMetric] failed to record effort for tx {transaction_id}: {e}")
+        print(f"[EffortMetric] failed to record effort for tx {transaction_id}: {told(e)}")
         return False
 
 
@@ -4733,7 +4734,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
             # behaviour exactly as it was; failing closed would drop good rows on a
             # dialect quirk.
             logger.warning("[JoinUnique] %s: stored-key probe skipped (%s)",
-                           table_name, probe_error)
+                           table_name, told(probe_error))
             continue
         if not owners:
             continue
@@ -5105,7 +5106,7 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                     logger.warning(
                         "[Ingest] %s refusal line skipped (%s: %s) - the batch is still "
                         "refused and the original error is raised unchanged",
-                        table_name, type(line_err).__name__, line_err)
+                        table_name, type(line_err).__name__, told(line_err))
                 raise
             db.rollback()
             if attempt >= BK_CONFLICT_MAX_RETRIES:
@@ -5201,7 +5202,7 @@ def _say_a_slow_flush(db, table_model, table_name, rows, seconds):
             " WHERE x.indrelid = to_regclass(:relation)"), {"relation": '"%s"' % relation}).scalars().all())
         said = "%d index(es), %d GIN" % (len(kinds), sum(1 for k in kinds if k == 'gin'))
     except Exception as exc:  # noqa: BLE001 - the line is said without its indexes
-        said = "indexes unread: %s" % type(exc).__name__
+        said = "indexes unread: %s: %s" % (type(exc).__name__, told(exc))
     logger.warning("[Batch] slow flush: %s %d row(s) in %.1f s - %s", table_name, rows, seconds, said)
 
 

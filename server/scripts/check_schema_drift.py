@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, text  # noqa: E402
 
 # Re-exported so anything already importing them from this script keeps working.
 from admin.schema_drift import MIGRATION_OWNER, SEVERITY_ORDER, TYPE_KINDS, banner_lines, check, finding_label, run_at_startup
+from error_said import told
 
 
 def main():
@@ -46,7 +47,7 @@ def main():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
     except Exception as e:
-        print(f"[drift] cannot reach the database: {e}")
+        print(f"[drift] cannot reach the database: {told(e)}")
         return 2
 
     if not args.quiet:

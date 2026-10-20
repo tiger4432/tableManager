@@ -14,6 +14,7 @@ import re
 import json
 import logging
 import threading
+from error_said import told
 
 logger = logging.getLogger("AutoUpdateControl")
 
@@ -68,7 +69,7 @@ def read_disabled_scripts(base_dir: str = None) -> set:
     except FileNotFoundError:
         pass
     except Exception as e:
-        logger.warning(f"Failed to read auto update control file '{path}': {e}. Treating all scripts as active.")
+        logger.warning(f"Failed to read auto update control file '{path}': {told(e)}. Treating all scripts as active.", exc_info=e)
     return set()
 
 

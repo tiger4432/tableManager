@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **잡은 오류가 첫 줄만 남지 않는다 — «(파일:줄 in 함수)» · 반복문 밖은 traceback 째 (총괄 dc388bf47, 소유자 «이게 다 에러를 접어서 띄워서 모르잖아»)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     넓게 잡고 문장 한 줄만 남기던 404 자리가 그 문장 뒤에 터진 자리를 붙인다 (server/error_said.py 의 told · where)
+>          같은 함수 안 반복문 밑이 아닌 로그 줄은 traceback 전체를 같이 찍는다. 삼키기 · 던지기는 그대로
+> 볼 줄     server.log · watcher.log · chain_worker.log · auto_update.log 의 오류 줄 끝  «<그 문장> (<파일>.py:<줄> in <함수>)»
+>          그 줄 밑에 «Traceback (most recent call last):» 가 이어지면 반복문 밖 자리
+>          찾기  Select-String -Path server\*.log -Pattern '\.py:\d+ in \w+\)'
+> 답의 뜻   줄 끝에 괄호가 없음  -> 이름 붙은 오류만 잡는 자리(손대지 않음)거나 재기동 전 판
+>          로그 파일이 갑자기 커짐  -> 반복문 밖 자리가 계속 터지는 중. traceback 의 맨 아래 줄이 고칠 자리
+> 되돌리기  git revert __HASH__ -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **메인 그리드 갤러리 — 그림 칸이 있는 표에서 «Gallery» (소유자 「불량 이미지 보기 좋게 · 조건별 썸네일」 · 「1 같은 표 칸 2 160px 3 하나만」)** — git pull · 브라우저 새로고침
 >
 > ```

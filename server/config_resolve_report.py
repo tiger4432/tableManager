@@ -62,6 +62,7 @@ from chain import ingestion_worker as worker
 import mapper_sdk
 from chain import rule_shape
 from chain.join_refusal import join_detail                     # noqa: F401
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -958,7 +959,7 @@ def _resolve_catalog() -> dict:
     try:
         document = crud.load_table_config_or_raise()
     except Exception as exc:
-        load_error = "%s: %s" % (exc.__class__.__name__, exc)
+        load_error = "%s: %s" % (exc.__class__.__name__, told(exc))
 
     sources = [source(
         CATALOG_SOURCE_KEY, crud.CONFIG_PATH,
@@ -1052,7 +1053,7 @@ def _resolve_ledger() -> dict:
     except FileNotFoundError:
         document = {}
     except Exception as e:
-        load_error = f"{e.__class__.__name__}: {e}"
+        load_error = f"{e.__class__.__name__}: {told(e)}"
 
     # 🔴 THE LOADER'S OWN VERDICT, of the very file read (총괄 11d0b6b88). The source lines asked
     #    the retired grammar's validator, so every source of today's grammar was 「rejected」 -
@@ -1064,7 +1065,7 @@ def _resolve_ledger() -> dict:
 
             setup = load_setup(os.path.dirname(sources_path))
         except Exception as e:                         # noqa: BLE001 - reported below
-            setup_error = f"{e.__class__.__name__}: {e}"
+            setup_error = f"{e.__class__.__name__}: {told(e)}"
 
     declared_names = sorted(name for name in (document.get("sources") or {})
                             if not str(name).startswith("__"))
@@ -1214,7 +1215,7 @@ def _resolve_walk() -> dict:
         # HTTPException 은 detail 에 사유를 싣습니다 — 그 문장을 그대로 나릅니다.
         detail = getattr(exc, "detail", None)
         failure = (detail or {}).get("message") if isinstance(detail, dict) else None
-        failure = failure or ("%s: %s" % (exc.__class__.__name__, exc))
+        failure = failure or ("%s: %s" % (exc.__class__.__name__, told(exc)))
 
     sources = [source(
         "entities", "ledger_config.json (entities)",

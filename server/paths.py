@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import re
+from error_said import told
 
 # Location of this file == the server package directory.
 # 🔴 THE DEPTH OF THIS FILE IS PART OF THE CONTRACT (S-211, 판정 360). `SERVER_DIR` is
@@ -160,7 +161,7 @@ def _database_url_from_config(path):
     except Exception as exc:
         log.error(
             "Ignoring unusable database config %s (%s: %s) - falling back to "
-            "the next DB URL source", path, type(exc).__name__, exc)
+            "the next DB URL source", path, type(exc).__name__, told(exc), exc_info=exc)
         return None
 
     url = cfg.get("url")

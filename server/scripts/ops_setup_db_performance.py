@@ -6,6 +6,7 @@ from sqlalchemy import select, text
 # 프로젝트 루트를 경로에 추가
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from database.database import engine
+from error_said import told
 
 def _verify_plan_shapes(conn, targets):
     """EXPLAIN ANALYZE one seek per TEXT target and report filter-shaped plans.
@@ -46,7 +47,7 @@ def _verify_plan_shapes(conn, targets):
             plan = "\n".join(r[0] for r in conn.execute(
                 text("EXPLAIN (ANALYZE) " + sql)).fetchall())
         except Exception as e:
-            print(f" - {table}.{column}: could not EXPLAIN ({e})")
+            print(f" - {table}.{column}: could not EXPLAIN ({told(e)})")
             unresolved.append(f"{table}.{column}")
             continue
         checked += 1
@@ -161,7 +162,7 @@ def _verify_withdraw_plan(conn, idx_name):
             plan = "\n".join(r[0] for r in conn.execute(
                 text("EXPLAIN (ANALYZE) " + sql)).fetchall())
         except Exception as e:
-            print(f" - !! {label}: could not EXPLAIN ({e}) — UNCHECKED")
+            print(f" - !! {label}: could not EXPLAIN ({told(e)}) — UNCHECKED")
             continue
         elapsed = time.time() - t0
         verdict, reasons, discarded = value_suggest.classify_seek_plan(
@@ -266,7 +267,7 @@ def setup_performance():
                 conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} ON {table} {definition}"))
                 print(f"   Success ({time.time() - t0:.2f}s)")
             except Exception as e:
-                print(f"   Failed to create {idx_name}: {e}")
+                print(f"   Failed to create {idx_name}: {told(e)}")
 
         # 3.5 [C-3] 레거시 중복 outbox 인덱스 제거 (실측 합계 429MB — 전량 역할 중복/미사용)
         #   🔴 [2026-08-07 D3] 이 넷 중 `ix_database_outbox_id`만 「PK 인덱스의 사본」 계급이고,
@@ -295,7 +296,7 @@ def setup_performance():
                 conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {idx_name}"))
                 print(f"   Done ({time.time() - t0:.2f}s)")
             except Exception as e:
-                print(f"   Failed to drop {idx_name}: {e}")
+                print(f"   Failed to drop {idx_name}: {told(e)}")
 
         # 3.6 [재교정률] 대시보드 재교정률 집계 전용 부분 커버링 인덱스.
         #   create_all은 이미 존재하는 테이블에 인덱스를 추가하지 않으므로, 운영 DB에는 이 경로로만
@@ -314,7 +315,7 @@ def setup_performance():
             conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} ON {table} {definition}"))
             print(f"   Success ({time.time() - t0:.2f}s)")
         except Exception as e:
-            print(f"   Failed to create {idx_name}: {e}")
+            print(f"   Failed to create {idx_name}: {told(e)}")
 
         # 3.7 [V1 계기 — 완료까지의 상호작용 점수] interaction_effort_logs 집계/멱등성 인덱스.
         #   models.py InteractionEffortLog.__table_args__ 와 동일 정의 — **두 곳을 함께 고칠 것**.
@@ -367,7 +368,7 @@ def setup_performance():
                     print(f"   Success ({time.time() - t0:.2f}s)")
                 except Exception as e:
                     # UNIQUE 생성 실패는 중복 tx 행이 이미 있다는 뜻일 수 있다 — 조용히 넘기지 않는다.
-                    print(f"   Failed to create {idx_name}: {e}")
+                    print(f"   Failed to create {idx_name}: {told(e)}")
 
         # 3.8 [F3 값 제안] 접두 조회 인덱스 — `(lower(col) COLLATE "C", col COLLATE "C")`.
         #   **models.py에 선언하지 않는다.** 두 가지 이유가 겹친다:
@@ -451,7 +452,7 @@ def setup_performance():
                         {"n": idx_name}).scalar()
                     print(f"   Success ({time.time() - t0:.2f}s, {size})")
                 except Exception as e:
-                    print(f"   Failed to create {idx_name}: {e}")
+                    print(f"   Failed to create {idx_name}: {told(e)}")
 
             # 대상에서 빠진 잔존 인덱스는 **자동 삭제하지 않고 보고만** 한다.
             # config 로드가 일시 실패한 상태에서 일괄 DROP이 돌면 조용히 전 인덱스를
@@ -480,7 +481,7 @@ def setup_performance():
             print("\nStep 3.9: Verifying suggestion index PLAN SHAPE (F7)...")
             _verify_plan_shapes(conn, targets)
         except Exception as e:
-            print(f"   Suggestion index step failed: {e}")
+            print(f"   Suggestion index step failed: {told(e)}")
 
         # 3.10 [R2 withdraw] The index that bounds "which cells does this source claim".
         #   `models.py CellSource.__table_args__` carries the SAME definition —
@@ -535,7 +536,7 @@ def setup_performance():
                     {"n": idx_name}).scalar()
                 print(f"   Success ({time.time() - t1:.2f}s, {size})")
             except Exception as e:
-                print(f"   Failed to create {idx_name}: {e}")
+                print(f"   Failed to create {idx_name}: {told(e)}")
 
         # ⚰️ THE WITHDRAW INDEX'S BUILD AND ITS PLAN CHECK (3.11) STOOD HERE, reading a
         #   `withdraw_idx` this file no longer defines - the step died with NameError

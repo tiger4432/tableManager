@@ -41,6 +41,7 @@ grows without bound. Age is the signal; size is reported for context only.
 """
 import time
 from datetime import datetime, timezone
+from error_said import told
 
 STATUS_OK = "ok"
 STATUS_DEGRADED = "degraded"
@@ -94,7 +95,7 @@ def probe_config_backups(now=None):
         import config_backup
         value = config_backup.probe(now=now)
     except Exception as e:
-        value = {"status": "unknown", "error": f"{type(e).__name__}: {e}"}
+        value = {"status": "unknown", "error": f"{type(e).__name__}: {told(e)}"}
     _backup_cache["at"] = wall
     _backup_cache["value"] = value
     return value

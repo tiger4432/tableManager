@@ -7,6 +7,7 @@ import os
 
 import paths
 from database.crud import _decode_config_text
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -24,5 +25,5 @@ def read_ingestion_settings(path=None) -> dict:
             if isinstance(loaded, dict):
                 return loaded
     except Exception as e:                                          # noqa: BLE001
-        logger.warning("Could not load ingestion settings (%s): %s", path, e)
+        logger.warning("Could not load ingestion settings (%s): %s", path, told(e), exc_info=e)
     return {}

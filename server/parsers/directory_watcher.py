@@ -148,12 +148,12 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
             search_path = db.execute(_sa_text("SHOW search_path")).scalar()
         except Exception as path_err:                                  # noqa: BLE001
             logger.info("[%s] search_path unreadable (%s) - ANALYZE will use the "
-                        "server's default path", table_name, path_err)
+                        "server's default path", table_name, told(path_err), exc_info=path_err)
             search_path = None
     except Exception as bind_err:                                      # noqa: BLE001
         logger.warning("[%s] could not reach the database URL (%s) - statistics are "
                        "stale and a page query may sort until autovacuum catches up.",
-                       table_name, bind_err)
+                       table_name, told(bind_err), exc_info=bind_err)
         return False
     finally:
         db.close()
@@ -221,7 +221,7 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
     except Exception as err:                                           # noqa: BLE001
         logger.warning("[%s] could not re-analyse after %d row(s): %s - the rows landed, "
                        "the statistics are stale, and a page query may sort instead of "
-                       "scanning until autovacuum catches up.", table_name, rows, err)
+                       "scanning until autovacuum catches up.", table_name, rows, told(err), exc_info=err)
         return False
 
 
@@ -326,7 +326,7 @@ def load_global_table_config() -> dict:
             with open(global_config_path, "r", encoding="utf-8") as f:
                 return json.load(f)
     except Exception as e:
-        logger.warning(f"Could not load global table_config: {e}")
+        logger.warning(f"Could not load global table_config: {told(e)}", exc_info=e)
     return {}
 
 
@@ -433,6 +433,7 @@ def std_parse_enabled_for(t_name, table_info, legacy: dict, legacy_path=None) ->
 # 전용 파일 ingestion_settings.json을 신설한다. 파일 부재/손상 시 기본값으로 동작.
 DEFAULT_HEAVY_FILE_MB = 10
 import paths  # single override point (ASSY_DATA_ROOT)
+from error_said import told, where
 INGESTION_SETTINGS_PATH = paths.config_path("ingestion_settings.json")
 
 
@@ -663,7 +664,7 @@ def _new_row_ids(table, results):
         return {_inspect(row).identity[0] for row, was_new in results if was_new}
     except Exception as exc:                                        # noqa: BLE001
         logger.warning("[Ingest] %s new rows of a chunk not read (%s: %s) - the ingestion is "
-                       "unaffected", table, type(exc).__name__, exc)
+                       "unaffected", table, type(exc).__name__, told(exc), exc_info=exc)
         return None
 
 
@@ -698,13 +699,8 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None) -> dict:
         said = (str(error) if isinstance(error, (crud.CellRefused, crud.NothingWritten))
                 else traceback.format_exception_only(type(error), error)[-1])
         result["reason"] = (said.strip().splitlines() or [""])[0][:500] or None
-        root = error                              # the frame it broke in: under any error that wraps it
-        while root.__cause__ is not None or (root.__context__ is not None and not root.__suppress_context__):
-            root = root.__cause__ or root.__context__
-        frames = traceback.extract_tb(root.__traceback__) if root.__traceback__ is not None else []
-        if frames:
-            result["failed_at"] = ("%s:%d in %s" % (os.path.basename(frames[-1].filename), frames[-1].lineno,
-                                                    frames[-1].name))[:500]
+        at = where(error)                         # the frame it broke in: under any error that wraps it
+        result["failed_at"] = at[:500] if at else None
     return result
 
 
@@ -734,7 +730,7 @@ class _FileTally:
             for verdict, n in (time_left or {}).items():
                 self.time_left[verdict] = self.time_left.get(verdict, 0) + n
         except Exception as exc:                                    # noqa: BLE001
-            self.silenced = "%s: %s" % (type(exc).__name__, exc)
+            self.silenced = "%s: %s" % (type(exc).__name__, told(exc))
             logger.warning("[Ingest] %s file line stops counting (%s) - the ingestion is "
                            "unaffected", table, self.silenced)
 
@@ -745,7 +741,7 @@ class _FileTally:
                                                                    self.silenced))
         except Exception as exc:                                    # noqa: BLE001
             logger.warning("[Ingest] %s file line not written (%s: %s) - the ingestion is "
-                           "unaffected", table, type(exc).__name__, exc)
+                           "unaffected", table, type(exc).__name__, told(exc), exc_info=exc)
 
     def _add_chunk(self, summary, rows, sent, new_ids, changed_cells, sampler):
         if new_ids is None:
@@ -816,7 +812,7 @@ def _plan_digest(db, sql, params, cap):
         lines = [r[0] for r in db.execute(_t("EXPLAIN " + sql), params).fetchall()]
     except Exception as exc:
         db.rollback()
-        return "EXPLAIN refused (%s)" % type(exc).__name__
+        return "EXPLAIN refused (%s: %s)" % (type(exc).__name__, told(exc))
     keep = [" ".join(l.split()) for l in lines
             if any(w in l for w in ("Scan", "Index", "Join", "rows="))]
     return (" | ".join(keep) or " ".join(" ".join(lines).split()))[:cap]
@@ -1431,7 +1427,7 @@ class HeavyIngestionLane:
                 job()
             except Exception as e:
                 # 방어선: _run_lane_job이 자체 예외 처리를 하므로 여기는 최후 로깅만
-                logger.error(f"[HeavyLane] Unexpected error in heavy lane job: {e}")
+                logger.error(f"[HeavyLane] Unexpected error in heavy lane job: {told(e)}")
             finally:
                 with self._cond:
                     self._running.discard(key)
@@ -1656,7 +1652,7 @@ def _register_legacy_import_shim():
         aliases["server.parsers.html_topology_parser"] = html_topology_parser
     except Exception as e:
         # html_topology_parser는 선택 의존(bs4 등) — 실패해도 나머지 shim은 유효.
-        logger.warning(f"Legacy import shim: html_topology_parser alias skipped: {e}")
+        logger.warning(f"Legacy import shim: html_topology_parser alias skipped: {told(e)}", exc_info=e)
 
     for dotted, mod in aliases.items():
         sys.modules[dotted] = mod
@@ -2503,7 +2499,7 @@ class IngestionHandler(FileSystemEventHandler):
             self._notify_ingestion_state({
                 "table_name": t_display, "filename": filename, "filepath": abs_path, "status": "FINISHED",
             })
-            logger.error(f"[{t_display}] Heavy lane submit failed — falling back inline: {e}")
+            logger.error(f"[{t_display}] Heavy lane submit failed — falling back inline: {told(e)}", exc_info=e)
             return False
         return True
 
@@ -2534,7 +2530,7 @@ class IngestionHandler(FileSystemEventHandler):
                     _INGEST_LANE.reset(token)
         except Exception as e:
             # process_with_retry는 자체적으로 err 이동/로그를 수행 — 여기는 방어선
-            logger.error(f"[{t_display}] Heavy lane job failed unexpectedly: {e}")
+            logger.error(f"[{t_display}] Heavy lane job failed unexpectedly: {told(e)}", exc_info=e)
         finally:
             with self._lane_state_lock:
                 self._heavy_backlog -= 1
@@ -2560,7 +2556,7 @@ class IngestionHandler(FileSystemEventHandler):
         try:
             cb(state)
         except Exception as e:
-            logger.warning(f"Ingestion state callback failed: {e}")
+            logger.warning(f"Ingestion state callback failed: {told(e)}", exc_info=e)
 
     def process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         """
@@ -2826,7 +2822,7 @@ class IngestionHandler(FileSystemEventHandler):
         except Exception as e:
             # 가용성 우선 — 조회 실패는 처리를 막지 않는다(전체 해시 경로로 떨어진다).
             logger.warning(f"[{t_name}] Tier-1 path/stat lookup failed (falling back to "
-                           f"full hashing): {e}")
+                           f"full hashing): {told(e)}", exc_info=e)
             return False
         finally:
             db.close()
@@ -2919,7 +2915,7 @@ class IngestionHandler(FileSystemEventHandler):
             logger.warning(
                 f"[{t_name}] Batched tier-1 lookup failed for {len(askable)} file(s) "
                 f"(falling back to per-file dispatch, which asks the same question "
-                f"one at a time): {e}"
+                f"one at a time): {told(e)}", exc_info=e
             )
             return set()
         finally:
@@ -2974,7 +2970,7 @@ class IngestionHandler(FileSystemEventHandler):
             db.rollback()
             logger.warning(
                 f"[{t_name}] Could not seal the failure in the ingestion ledger "
-                f"(the file will be retried on the next sweep): {e}"
+                f"(the file will be retried on the next sweep): {told(e)}", exc_info=e
             )
         finally:
             db.close()
@@ -3011,7 +3007,7 @@ class IngestionHandler(FileSystemEventHandler):
             here = ingestion.checkpoint.concluded_here(db, done, os.path.abspath(file_path), file_stat)
         except Exception as e:
             # dedup 조회 실패는 처리를 막지 않는다(가용성 우선) — 단, 조용히 넘어가지 않는다.
-            logger.warning(f"[{t_name}] Dedup lookup failed (proceeding with ingestion): {e}")
+            logger.warning(f"[{t_name}] Dedup lookup failed (proceeding with ingestion): {told(e)}", exc_info=e)
             return False
         finally:
             db.close()
@@ -3036,7 +3032,7 @@ class IngestionHandler(FileSystemEventHandler):
             except Exception as e:
                 db.rollback()
                 logger.warning(f"[{t_name}] Could not record the new location of an already "
-                               f"ingested file (it will be re-hashed next sweep): {e}")
+                               f"ingested file (it will be re-hashed next sweep): {told(e)}", exc_info=e)
             finally:
                 db.close()
 
@@ -3088,10 +3084,10 @@ class IngestionHandler(FileSystemEventHandler):
             db.rollback()
             logger.error(
                 f"[{t_name}] Checkpoint planning failed — ingesting from row 0 without "
-                f"checkpointing: {e}"
+                f"checkpointing: {told(e)}", exc_info=e
             )
             return CheckpointPlan.disabled(
-                note=f"[checkpoint-off] 체크포인트 기록 실패로 처음부터 적재 (사유: {e})"
+                note=f"[checkpoint-off] 체크포인트 기록 실패로 처음부터 적재 (사유: {told(e)})"
             )
         finally:
             db.close()
@@ -3105,7 +3101,7 @@ class IngestionHandler(FileSystemEventHandler):
         except Exception as e:
             db.rollback()
             # DONE 미기록 = 다음에 같은 파일이 오면 dedup되지 않고 재적재된다(업서트라 무해).
-            logger.warning(f"Failed to finalize ingestion checkpoint (dedup will not apply): {e}")
+            logger.warning(f"Failed to finalize ingestion checkpoint (dedup will not apply): {told(e)}", exc_info=e)
         finally:
             db.close()
 
@@ -3138,7 +3134,7 @@ class IngestionHandler(FileSystemEventHandler):
             logger.error(
                 "[%s] Failed to write the %s ingestion log row for %s to the database; "
                 "retrying with a reduced row that carries no text from the failure: %s",
-                t_name or "unknown", status, os.path.basename(original_path), e)
+                t_name or "unknown", status, os.path.basename(original_path), told(e), exc_info=e)
             db.rollback()
             self._log_reduced_ingestion_record(
                 db, original_path, archived_path, t_name, status)
@@ -3194,7 +3190,7 @@ class IngestionHandler(FileSystemEventHandler):
             logger.error(
                 "[%s] The reduced %s ingestion log row for %s ALSO failed, so this file "
                 "has no record and will not appear in the failure list: %s",
-                t_name or "unknown", status, os.path.basename(original_path), reduced_error)
+                t_name or "unknown", status, os.path.basename(original_path), told(reduced_error), exc_info=reduced_error)
 
     def _lock_waits_before(self, abs_path: str) -> int:
         """How many times this file, where it lies, has already waited past the lock timeout
@@ -3210,7 +3206,7 @@ class IngestionHandler(FileSystemEventHandler):
                 Log.error_message.like(LOCK_WAITED_OUT_PREFIX + "%"),
                 (loaded.is_(None)) | (Log.created_at > loaded)).scalar() or 0
         except Exception as exc:                                   # noqa: BLE001
-            logger.warning("[Ingest] could not count the lock waits of %s: %s", abs_path, exc)
+            logger.warning("[Ingest] could not count the lock waits of %s: %s", abs_path, told(exc), exc_info=exc)
             return 0
         finally:
             db.close()
@@ -3240,7 +3236,7 @@ class IngestionHandler(FileSystemEventHandler):
         try:
             return ingestion.checkpoint.find_completed_ingestion(db, t_name, signature) is not None
         except Exception as e:
-            logger.warning(f"[{t_name}] Retry checkpoint lookup failed (resuming if possible): {e}")
+            logger.warning(f"[{t_name}] Retry checkpoint lookup failed (resuming if possible): {told(e)}", exc_info=e)
             return False
         finally:
             db.close()
@@ -3429,7 +3425,7 @@ class IngestionHandler(FileSystemEventHandler):
             logger.debug(f"File vanished during move to err: {file_path}")
             return None
         except Exception as e:
-            logger.error(f"Failed to move file to err: {e}")
+            logger.error(f"Failed to move file to err: {told(e)}", exc_info=e)
             return None
 
     def _archive_file(self, file_path: str) -> str:
@@ -3457,7 +3453,7 @@ class IngestionHandler(FileSystemEventHandler):
             logger.debug(f"File vanished during move: {file_path}")
             return None
         except Exception as e:
-            logger.error(f"Failed to move file to archive: {e}")
+            logger.error(f"Failed to move file to archive: {told(e)}", exc_info=e)
             return None
 
     def _discover_and_execute_pipeline(self, file_path: str, meta: dict = None,
@@ -3754,7 +3750,7 @@ class IngestionHandler(FileSystemEventHandler):
                 from pipeline_base import BasePipelineParser
                 real_source = BasePipelineParser.get_basename(filename)
             except Exception as e:
-                logger.warning(f"Failed to get clean original filename: {e}")
+                logger.warning(f"Failed to get clean original filename: {told(e)}", exc_info=e)
                 real_source = filename
         else:
             real_source = "pipeline_parser" if os.path.exists(self.scripts_path) else "batch_ingester"
@@ -4025,7 +4021,7 @@ class IngestionHandler(FileSystemEventHandler):
                             self.on_progress_callback(t_name, filepath or filename or "unknown", progress_pct, processed_rows,
                                                      total_rows)
                         except Exception as pe:
-                            logger.warning(f"Progress callback failed: {pe}")
+                            logger.warning(f"Progress callback failed: {told(pe)}")
 
                     if _sampler is not None:
                         _sampler.stop()
@@ -4043,7 +4039,7 @@ class IngestionHandler(FileSystemEventHandler):
                         logger.warning(
                             "[Ingest] %s slow-prefetch PLAN skipped (%s: %s) - the "
                             "chunk is unaffected", t_name,
-                            type(_plan_err).__name__, _plan_err)
+                            type(_plan_err).__name__, told(_plan_err))
                         _explained = True
                     _stages = _summary.get("stages") or {}
                     _wall = time.monotonic() - chunk_started
@@ -4188,7 +4184,7 @@ def _say_what_stalled_files_wait_on():
             logger.warning("[Watcher] %s: %s", what, line)
     except Exception as exc:                                       # noqa: BLE001
         # The observer goes quiet, never the loop it rides on.
-        logger.warning("[Watcher] the stall check went quiet this slice: %s", exc)
+        logger.warning("[Watcher] the stall check went quiet this slice: %s", told(exc), exc_info=exc)
 
 
 class WorkspaceWatcher:
@@ -4249,7 +4245,7 @@ class WorkspaceWatcher:
         except Exception as e:
             logger.warning(
                 f"External source event registration failed for {root} -> "
-                f"{spec['table_name']}: {e}. Periodic recursive polling remains active.")
+                f"{spec['table_name']}: {told(e)}. Periodic recursive polling remains active.", exc_info=e)
             return False
         target["scheduled"] = True
         self.watch_count += 1
@@ -4319,7 +4315,7 @@ class WorkspaceWatcher:
             except Exception as e:
                 logger.error(
                     f"External source registration failed for {spec['root']} -> "
-                    f"{spec['table_name']}: {e}")
+                    f"{spec['table_name']}: {told(e)}")
         return added
 
     def _provision_workspaces(self) -> list:
@@ -4346,7 +4342,7 @@ class WorkspaceWatcher:
                 if changed:
                     provisioned.append(t_name)
             except Exception as e:
-                logger.error(f"Failed to provision workspace for table '{t_name}': {e}")
+                logger.error(f"Failed to provision workspace for table '{t_name}': {told(e)}")
         if provisioned:
             logger.info(f"🏗️ Auto-provisioned ingestion workspace structure for table(s): {provisioned}")
         return provisioned
@@ -4412,7 +4408,7 @@ class WorkspaceWatcher:
         try:
             self._provision_workspaces()
         except Exception as e:
-            logger.error(f"Workspace auto-provisioning failed (continuing with existing workspaces): {e}")
+            logger.error(f"Workspace auto-provisioning failed (continuing with existing workspaces): {told(e)}", exc_info=e)
 
         logger.info(f"Scanning {self.base_dir} for 'raws' folders...")
         table_config = load_global_table_config()
@@ -4432,7 +4428,7 @@ class WorkspaceWatcher:
             try:
                 self._provision_workspaces()
             except Exception as e:
-                logger.error(f"Workspace auto-provisioning failed during sync: {e}")
+                logger.error(f"Workspace auto-provisioning failed during sync: {told(e)}", exc_info=e)
 
             added = 0
             new_raw_paths = []
@@ -4547,7 +4543,7 @@ class WorkspaceWatcher:
                         f"Sweep: batched tier-1 lookup failed for "
                         f"{os.path.basename(os.path.dirname(handler.workspace_path))}"
                         f"/{os.path.basename(handler.workspace_path)} "
-                        f"({len(entries)} file(s)) — dispatching them individually: {e}"
+                        f"({len(entries)} file(s)) — dispatching them individually: {told(e)}"
                     )
 
             processed = 0
@@ -4668,7 +4664,7 @@ class WorkspaceWatcher:
                 except Exception as e:
                     logger.warning(
                         f"External sweep tier-1 lookup failed for {handler.table_name} "
-                        f"({len(entries)} file(s)); dispatching individually: {e}")
+                        f"({len(entries)} file(s)); dispatching individually: {told(e)}")
 
             # Sources in turn, each in its mtime order (소유자 10-20: one share's thousands of old files held every
             # source behind it for minutes). A line per source every SWEEP_PROGRESS_SECONDS while it runs.
@@ -4706,12 +4702,12 @@ class WorkspaceWatcher:
         try:
             self.sweep_existing_files(raw_paths)
         except Exception as e:
-            logger.error(f"Managed workspace sweep failed ({reason or 'unspecified'}): {e}")
+            logger.error(f"Managed workspace sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
         if raw_paths is None:
             try:
                 self.sweep_external_sources()
             except Exception as e:
-                logger.error(f"External source sweep failed ({reason or 'unspecified'}): {e}")
+                logger.error(f"External source sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
 
     def sweep_existing_files_async(self, raw_paths=None, reason=""):
         """스윕을 데몬 스레드로 실행 (기동·reload 경로를 파일 처리가 블로킹하지 않도록)."""
@@ -4727,7 +4723,7 @@ class WorkspaceWatcher:
             try:
                 self.sweep_external_sources(source_ids)
             except Exception as e:
-                logger.error(f"External sweep failed ({reason or 'unspecified'}): {e}")
+                logger.error(f"External sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
 
         t = threading.Thread(target=run, name="watcher-external-sweep", daemon=True)
         t.start()
@@ -4800,7 +4796,7 @@ class WorkspaceWatcher:
             try:
                 self.recheck_subfolders()
             except Exception as e:
-                logger.error(f"Subfolder recheck failed: {e}")
+                logger.error(f"Subfolder recheck failed: {told(e)}")
             if self._stop_event.wait(subfolder_recheck_seconds()):
                 return
 

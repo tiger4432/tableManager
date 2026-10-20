@@ -1495,7 +1495,7 @@ def sync_dynamic_tables_schema(engine):
     except Exception as err:                                     # pragma: no cover
         # A dialect that cannot list views behaves exactly as before rather than
         # pretending nothing is a view.
-        logger.debug("[Schema Sync] view list unavailable (%s); treating all as tables", err)
+        logger.debug("[Schema Sync] view list unavailable (%s); treating all as tables", told(err), exc_info=err)
 
     for table_name, model_class in schema_synced_tables().items():
         if not inspector.has_table(table_name):
@@ -1565,12 +1565,14 @@ def sync_dynamic_tables_schema(engine):
                     # so and carries on. What was missing was the saying.
                     logger.error(
                         "[Schema Sync] could not add column '%s' to '%s': %s",
-                        col_name, table_name, err)
+                        col_name, table_name, told(err))
 
 
 # [이슈 #7] 런타임 신규 테이블 물리 CREATE — 동일 프로세스 내 watchdog 스레드와
 # /admin/reload-configs 요청 스레드가 동시에 진입할 수 있으므로 in-process 직렬화 락 사용.
 import threading
+import error_said
+from error_said import told
 _runtime_ddl_lock = threading.Lock()
 
 
@@ -1597,7 +1599,7 @@ def create_missing_dynamic_tables(engine):
         try:
             inspector = inspect(engine)
         except Exception as err:
-            print(f"[Schema Sync] Failed to inspect database for missing tables: {err}")
+            print(f"[Schema Sync] Failed to inspect database for missing tables: {told(err)}")
             return created
 
         for table_name, model_class in list(DYNAMIC_TABLES.items()):
@@ -1611,7 +1613,7 @@ def create_missing_dynamic_tables(engine):
                 print(f"[Schema Sync] Created missing physical table '{table_name}' at runtime.")
             except Exception as err:
                 # CREATE 경합(DuplicateTable 등) 포함 — 실패를 격리하고 계속 진행
-                print(f"[Schema Sync] Failed to create missing table '{table_name}': {err}")
+                print(f"[Schema Sync] Failed to create missing table '{table_name}': {told(err)}")
     return created
 
 
@@ -1712,7 +1714,7 @@ def _ensure_one_index(engine, name, statement, what, say=print):
                     connection.execute(_text("RESET statement_timeout"))
         return INDEX_BUILT
     except Exception as err:
-        say(f"[Schema Sync] Failed to ensure {what} index '{name}': {err}")
+        say(f"[Schema Sync] Failed to ensure {what} index '{name}': {told(err)}")
         _note_failure(engine, name, err)
         return INDEX_FAILED
 
@@ -2109,7 +2111,7 @@ def _ledger_index_rows(engine):
         return [dict(name="ledger partitioned indexes", table="ledger_events", columns=[], where=None, include=[],
                      using=None, unique=False, constraint=False, purpose=None, serves=None, source="ledger",
                      world=None, partitions=None, partitions_missing=None, state=INDEX_UNKNOWN, building=None,
-                     failure="%s: %s" % (type(exc).__name__, exc), size_bytes=None, scans=None)]
+                     failure="%s: %s" % (type(exc).__name__, told(exc)), size_bytes=None, scans=None)]
     rows = []
     for row in states:
         shape = _re.match(r"USING (\w+) \((.*)\)", row["columns"])
@@ -2295,7 +2297,7 @@ def ensure_auto_indexes_sync(db_session_factory, wanted, say, decide=True):
         ensure_auto_indexes(engine, wanted or (), say=say, decide_keys=decide_key_wants() if decide else None)
     except Exception as exc:                                            # noqa: BLE001
         say("[Indexes] the automatic indexes were not compared (this process goes on): %s: %s"
-            % (type(exc).__name__, exc))
+            % (type(exc).__name__, told(exc)))
 
 
 def ensure_model_indexes_sync(db_session_factory, sources, say):
@@ -2315,7 +2317,7 @@ def ensure_model_indexes_sync(db_session_factory, sources, say):
         ensure_model_indexes(engine, build=build, say=say, sources=sources)
     except Exception as exc:                                            # noqa: BLE001
         say("[Indexes] the declared indexes of %s were not compared (this process goes on): %s"
-            % ("/".join(sources), exc))
+            % ("/".join(sources), told(exc)))
 
 
 def _build_ledger_index(engine, row, say):
@@ -2358,7 +2360,7 @@ def _build_ledger_index(engine, row, say):
         done = schema.build_partitioned_index(connection, names, index, columns, apply=True,
                                               say=lambda line: say("[Indexes] " + line), child_name=child)
     except Exception as exc:                                            # noqa: BLE001 - said, the rest go on
-        say("[Indexes] %s failed - %s: %s" % (row["name"], type(exc).__name__, exc))
+        say("[Indexes] %s failed - %s: %s" % (row["name"], type(exc).__name__, error_said.told(exc)))
         return INDEX_FAILED
     finally:
         stop.set()
@@ -2402,7 +2404,7 @@ def _say_while_building(engine, watched, started, stop, say, every):
             with engine.connect() as connection:
                 name, said = watched(connection)
         except Exception as exc:                                        # noqa: BLE001
-            say("[Indexes] %s: its progress did not read (%s) - the build goes on, unwatched" % (name, exc))
+            say("[Indexes] %s: its progress did not read (%s) - the build goes on, unwatched" % (name, told(exc)))
             return
         if said:
             say("[Indexes] %s still building after %.0f s - %s" % (name, time.monotonic() - started, said))
@@ -2516,7 +2518,7 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
             rules = enrich_declarations.declarations(
                 known_tables=_crud.TABLE_CONFIG)
         except Exception as err:                       # noqa: BLE001
-            print(f"[Schema Sync] alignment rules unreadable, no decision-key index: {err}")
+            print(f"[Schema Sync] alignment rules unreadable, no decision-key index: {told(err)}")
             return []
     created = []
     for rule in rules or []:
@@ -2587,7 +2589,7 @@ def ensure_ingestion_checkpoint_table(engine):
         try:
             inspector = inspect(engine)
         except Exception as err:
-            print(f"[Ingestion Schema] Failed to inspect database for checkpoint table: {err}")
+            print(f"[Ingestion Schema] Failed to inspect database for checkpoint table: {told(err)}")
             return created
 
         table_name = FileIngestionCheckpoint.__tablename__
@@ -2600,7 +2602,7 @@ def ensure_ingestion_checkpoint_table(engine):
             created.append(table_name)
             print(f"[Ingestion Schema] Created ingestion checkpoint table '{table_name}'.")
         except Exception as err:
-            print(f"[Ingestion Schema] Failed to create table '{table_name}': {err}")
+            print(f"[Ingestion Schema] Failed to create table '{table_name}': {told(err)}")
     return created
 
 

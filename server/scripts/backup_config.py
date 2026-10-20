@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.abspath(
 
 import paths  # noqa: E402
 import config_backup  # noqa: E402
+from error_said import told
 
 
 def cmd_list(args):
@@ -159,7 +160,7 @@ def main():
         return {"list": cmd_list, "check": cmd_check,
                 "snapshot": cmd_snapshot, "restore": cmd_restore}[args.cmd](args)
     except Exception as e:
-        print(f"{type(e).__name__}: {e}", file=sys.stderr)
+        print(f"{type(e).__name__}: {told(e)}", file=sys.stderr)
         return 2
 
 

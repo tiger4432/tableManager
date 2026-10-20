@@ -121,6 +121,7 @@ import sys
 import threading
 import time
 import subprocess
+from error_said import told
 
 try:
     import paths
@@ -255,7 +256,7 @@ def shared_dependency_down(url=None, timeout=2.0):
             return False, None
     except Exception as e:
         return True, (f"the database at {host}:{port} is not accepting "
-                      f"connections ({type(e).__name__})")
+                      f"connections ({type(e).__name__}: {told(e)})")
 
 
 def port_owner(port, log=None):
@@ -580,7 +581,7 @@ def stop_retroactive_child(grace=RETROACTIVE_STOP_GRACE_SEC, log=None):
                 beat["pid"], grace), level="WARNING")
             return "killed"
     except Exception as exc:                                     # noqa: BLE001
-        say("Could not stop the retroactive child: %s" % exc, level="WARNING")
+        say("Could not stop the retroactive child: %s" % told(exc), level="WARNING")
         return "error"
 
 
@@ -834,7 +835,7 @@ class Supervisor:
                     if console:
                         self._to_console(spec.name, line)        # never waits - a blocked console is not this pipe's
             except Exception as e:
-                self._log(f"Output capture for {spec.name} stopped: {e}",
+                self._log(f"Output capture for {spec.name} stopped: {told(e)}",
                           level="WARNING")
             finally:
                 for closeable in (handle, stream):
@@ -902,8 +903,8 @@ class Supervisor:
             # A spawn that raises is a failure exactly like a child that exits
             # immediately - otherwise a bad command line would spin here forever.
             child.proc = None
-            self._log(f"Failed to spawn {name}: {e}", level="ERROR")
-            self._register_failure(child, exit_code=None, reason=f"spawn failed: {e}")
+            self._log(f"Failed to spawn {name}: {told(e)}", level="ERROR")
+            self._register_failure(child, exit_code=None, reason=f"spawn failed: {told(e)}")
         return child.proc
 
     # --------------------------------------------------------------- policy
@@ -952,7 +953,7 @@ class Supervisor:
                     conflict, conflict_detail = self.port_probe(child.spec)
                 except Exception as e:
                     # A probe that breaks must not decide anything.
-                    self._log(f"port conflict probe failed: {e}", level="WARNING")
+                    self._log(f"port conflict probe failed: {told(e)}", level="WARNING")
             if conflict:
                 self._fail_permanently(child, exit_code, reason,
                                        verdict=VERDICT_PORT_CONFLICT,
@@ -966,7 +967,7 @@ class Supervisor:
                     env_down, env_detail = self.environment_probe()
                 except Exception as e:
                     # A probe that breaks must not decide anything.
-                    self._log(f"environment probe failed: {e}", level="WARNING")
+                    self._log(f"environment probe failed: {told(e)}", level="WARNING")
             if len(peers) + 1 >= self.correlated_min_children or env_down:
                 self._enter_correlated(child, now, peers, exit_code, env_detail)
             else:
@@ -1162,7 +1163,7 @@ class Supervisor:
                 proc.wait(timeout=timeout)
                 self._log(f"{child.spec.name} stopped successfully.")
             except Exception as e:
-                self._log(f"Error stopping {child.spec.name}: {e}. Killing process...",
+                self._log(f"Error stopping {child.spec.name}: {told(e)}. Killing process...",
                           level="ERROR")
                 try:
                     proc.kill()
@@ -1234,7 +1235,7 @@ class Supervisor:
             os.replace(tmp, path)  # atomic: /health never reads a partial file
             return True
         except Exception as e:
-            self._log(f"Failed to write supervisor status: {e}", level="ERROR")
+            self._log(f"Failed to write supervisor status: {told(e)}", level="ERROR")
             return False
 
 

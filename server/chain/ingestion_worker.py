@@ -145,7 +145,7 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
                 return False
             return True
         except Exception as e:
-            logger.error(f"[Chain Worker] Failed to send API notification: {e}")
+            logger.error(f"[Chain Worker] Failed to send API notification: {told(e)}", exc_info=e)
             return False
     return await asyncio.to_thread(do_post)
 
@@ -208,7 +208,7 @@ def purge_expired_outbox_sync(db_session_factory, retention_days=OUTBOX_RETENTIO
             )
     except Exception as e:
         db.rollback()
-        logger.error(f"[Outbox Purge] Failed (will retry next cycle): {e}")
+        logger.error(f"[Outbox Purge] Failed (will retry next cycle): {told(e)}", exc_info=e)
     finally:
         db.close()
     # 🔴 계기는 «호출자»가 아니라 여기서 낸다 — 유일한 호출자는 이 결과를 안 받는다
@@ -236,7 +236,7 @@ def _stamp_broadcast_at_sync(db_session_factory, event_ids):
         stamp_db.commit()
     except Exception as e:
         stamp_db.rollback()
-        logger.error(f"[Chain Worker] Failed to stamp broadcast_at (rows will be re-swept): {e}")
+        logger.error(f"[Chain Worker] Failed to stamp broadcast_at (rows will be re-swept): {told(e)}", exc_info=e)
     finally:
         stamp_db.close()
 
@@ -266,13 +266,13 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
                     all_ok = False
             except Exception as e:
                 all_ok = False
-                logger.error(f"[Chain Worker] Broadcast dispatch failed (ignored): {e}")
+                logger.error(f"[Chain Worker] Broadcast dispatch failed (ignored): {told(e)}")
         # 그룹의 모든 메시지가 전달 확정된 경우에만 broadcast_at 스탬프(전달 마킹).
         if all_ok and event_ids:
             try:
                 await asyncio.to_thread(_stamp_broadcast_at_sync, db_session_factory, event_ids)
             except Exception as e:
-                logger.error(f"[Chain Worker] broadcast_at stamp offload failed (rows will be re-swept): {e}")
+                logger.error(f"[Chain Worker] broadcast_at stamp offload failed (rows will be re-swept): {told(e)}")
         # [Latency SLO 계측] tx당 1줄: wake(감지→매퍼시작) mapper(매퍼+updates) commit notify(커밋→POST응답) total.
         if timing:
             t_notify_done = time.monotonic()
@@ -691,7 +691,7 @@ def read_rules_document(path=None):
         rules = data.get("rules", [])
         document = data if isinstance(data, dict) else {}
     except Exception as exc:
-        document, rules, error = {}, [], str(exc)
+        document, rules, error = {}, [], told(exc)
     return {"document": document, "rules": rules, "path": target,
             "exists": True, "error": error, "base": base}
 
@@ -751,7 +751,7 @@ def load_chain_rules():
     except Exception as grammar_error:
         # 못 읽으면 «오늘 그대로» 간다 — 새 문법 때문에 옛 선언이 멈추는 일은 없다
         logger.error("[ChainRules] unified grammar unreadable, old shapes only: %s",
-                     grammar_error)
+                     told(grammar_error), exc_info=grammar_error)
 
     kept = []
     refused_here = []  # (이름, 코드) — 아래 census 가 「안 도는 것」으로 같이 말한다
@@ -922,7 +922,7 @@ def load_chain_rules():
                         rule_census.describe(changes))
         _LAST_CENSUS = _rows
     except Exception as census_error:  # 사진이 못 찍혀도 체인은 돈다
-        logger.warning("[ChainRules] census unavailable: %s", census_error)
+        logger.warning("[ChainRules] census unavailable: %s", told(census_error), exc_info=census_error)
 
     # [500 addendum] THE ROLL CALL, BESIDE THE OTHER BOOT-TIME JUDGES. It runs on the FULL
     #    set, and it runs LAST so the rules it counts are the ones that would actually be
@@ -967,7 +967,7 @@ def _reset_right_keys():
 
         _synthesis_for_keys.reset_right_key_cache()
     except Exception as _reset_error:                                  # noqa: BLE001
-        logger.warning("[Warmup] 오른쪽 키 캐시를 못 비웠습니다(계속): %s", _reset_error)
+        logger.warning("[Warmup] 오른쪽 키 캐시를 못 비웠습니다(계속): %s", told(_reset_error), exc_info=_reset_error)
 
 
 def loaded_chain_rules():
@@ -1385,6 +1385,7 @@ def log_failure_folded(logger_, rule_name, target_table, reason: str):
 # ⚰️ [총괄 3c3f2b1f2] `mark_processed` lives in `event_constants` now, beside
 #   `chain_state_of` - the scheduler drains rows too and does not import this module.
 from event_constants import mark_processed  # noqa: E402
+from error_said import told
 
 
 
@@ -2677,7 +2678,7 @@ async def _await_group_beating(group, db):
             await _say_what_a_stalled_group_waits_on(db)
         except Exception as exc:                                   # noqa: BLE001
             # The observer goes quiet, never the group it is watching.
-            logger.warning("[Chain] the stall check went quiet this slice: %s", exc)
+            logger.warning("[Chain] the stall check went quiet this slice: %s", told(exc))
         heartbeat.beat(GROUP_BEAT, note=_worker_note())
 
 
@@ -2751,7 +2752,7 @@ def warmup_worker(rules, db_session_factory=None):
         for module_name, message in sorted(refusals.items()):
             logger.error("[Warmup] Mapper module refused: %s — %s", module_name, message)
     except Exception as e:
-        logger.error("[Warmup] Mapper discovery failed entirely: %s", e)
+        logger.error("[Warmup] Mapper discovery failed entirely: %s", told(e), exc_info=e)
 
     # 1) 활성 규칙의 매퍼 모듈 선(先)import — importlib 캐시를 덥힌다(기동 + 리로드 재웜업 공통).
     for rule in rules:
@@ -2763,7 +2764,7 @@ def warmup_worker(rules, db_session_factory=None):
         try:
             importlib.import_module(module_name)
         except Exception as e:
-            logger.warning(f"[Warmup] Mapper pre-import failed ({module_name}): {e}")
+            logger.warning(f"[Warmup] Mapper pre-import failed ({module_name}): {told(e)}")
     t1 = time.monotonic()
     # 2) DB 커넥션 프라임 — 풀 첫 커넥션·다이얼렉트 초기화(기동 시에만).
     if db_session_factory is not None:
@@ -2774,7 +2775,7 @@ def warmup_worker(rules, db_session_factory=None):
             finally:
                 db.close()
         except Exception as e:
-            logger.warning(f"[Warmup] DB connection prime failed: {e}")
+            logger.warning(f"[Warmup] DB connection prime failed: {told(e)}", exc_info=e)
     t2 = time.monotonic()
     # 3) HTTP 클라이언트 준비 — requests 모듈 import(전역 캐시)로 첫 통지의 import 비용 제거.
     #    그리고 통지 항목 하나를 지어 둔다 — `event_constants.upsert_item` 이 첫 호출에 인코더
@@ -2783,7 +2784,7 @@ def warmup_worker(rules, db_session_factory=None):
         internal_event_client.internal_event_session()
         event_constants.upsert_item("warmup", {}, None, None)
     except Exception as e:
-        logger.warning(f"[Warmup] HTTP session init failed: {e}")
+        logger.warning(f"[Warmup] HTTP session init failed: {told(e)}", exc_info=e)
     t3 = time.monotonic()
     logger.info(
         f"[Warmup] mappers={(t1 - t0) * 1000.0:.0f}ms db={(t2 - t1) * 1000.0:.0f}ms "
@@ -2842,7 +2843,7 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
                         _dropped)
     except Exception as _key_error:                                    # noqa: BLE001
         logger.error("[Warmup] 선언된 유일 키를 세우지 못했습니다"
-                     "(체인은 계속): %s", _key_error)
+                     "(체인은 계속): %s", told(_key_error), exc_info=_key_error)
 
 
 async def _say_if_no_ledger_beats(after=heartbeat.DEFAULT_STALE_AFTER_SEC):
@@ -3311,7 +3312,7 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
                 all_ok = False
         except Exception as ex:
             all_ok = False
-            logger.error(f"[Chain Worker] Recovery sweep broadcast failed for '{tgt}' (retry next sweep): {ex}")
+            logger.error(f"[Chain Worker] Recovery sweep broadcast failed for '{tgt}' (retry next sweep): {told(ex)}")
 
     if not all_ok:
         # 일부 발사 실패 → broadcast_at을 확정하지 않고 다음 스윕에서 재시도(eventual delivery 유지).
@@ -3492,7 +3493,7 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     except Exception as err:                                       # noqa: BLE001
         db.rollback()
         logger.error("[ChainRetract] retraction failed for table %s "
-                     "(the group itself is committed): %s", table, err)
+                     "(the group itself is committed): %s", table, told(err), exc_info=err)
 
 
 def _deleted_rows_of(events):
@@ -3743,7 +3744,7 @@ def _analyze_stale_tables_sync(db_session_factory):
     except Exception as exc:                                           # noqa: BLE001
         # Not PostgreSQL, or the view is unreadable. A boot must not die over statistics.
         logger.warning("[Chain] could not read table statistics, so no boot ANALYZE ran: "
-                       "%s", exc)
+                       "%s", told(exc), exc_info=exc)
         return []
     finally:
         db.close()
@@ -3829,8 +3830,8 @@ def _report_layer_table_health(db_session_factory):
                     " FROM pg_stat_user_tables WHERE relname = :t"), {"t": table}).fetchone()
             except Exception as exc:
                 db.rollback()
-                logger.info("[LayerHealth] %s: statistics unavailable (%s)",
-                            table, type(exc).__name__)
+                logger.info("[LayerHealth] %s: statistics unavailable (%s: %s)",
+                            table, type(exc).__name__, told(exc))
                 continue
             if stat is None:
                 continue
@@ -3894,7 +3895,7 @@ def _ensure_human_claims_index_sync(db_session_factory):
                     {"name": models.RETIRED_CLAIMS_INDEX}).scalar()
         except Exception as err:                                       # noqa: BLE001
             logger.warning("[Chain] could not check whether %s is still present: %s",
-                           models.RETIRED_CLAIMS_INDEX, err)
+                           models.RETIRED_CLAIMS_INDEX, told(err), exc_info=err)
     finally:
         db.close()
     if leftover:
@@ -4088,7 +4089,7 @@ def reload_rules(work):
             if created_tables:
                 logger.info(f"[Reload] Created missing physical tables at runtime: {created_tables}")
         except Exception as e:
-            logger.error(f"[Reload] Dynamic model refresh failed: {e}")
+            logger.error(f"[Reload] Dynamic model refresh failed: {told(e)}", exc_info=e)
         # 2. Reload chain rules configurations from disk
         rules = load_chain_rules()
         # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
@@ -4373,12 +4374,12 @@ async def start_chain_ingestion_worker(db_session_factory):
                                 db_session_factory)
     except Exception as exc:
         logger.error("[Chain] could not look for database queries a gone chain worker left "
-                     "running, so startup may wait behind them: %s", exc)
+                     "running, so startup may wait behind them: %s", told(exc), exc_info=exc)
     # Before the dynamic-table indexes - a column stands before its index (5b-2).
     try:
         await asyncio.to_thread(_starting(steps, _sync_dynamic_tables_schema_sync), db_session_factory)
     except Exception as exc:
-        logger.error(f"Failed to sync dynamic tables schema: {exc}")
+        logger.error(f"Failed to sync dynamic tables schema: {told(exc)}", exc_info=exc)
 
     # 🔴 NO INDEX BUILD AND NO ANALYZE HERE (소유자 10-15): a backfill's stale statistics and long transactions held
     #    this start for an hour. They are the scheduler's index and statistics line (`runtime.maintenance_line`).
@@ -4566,7 +4567,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                         queued_replay = start_replay_if_queued(db)
                     except Exception as sweep_err:                     # noqa: BLE001
                         # 훑기가 드레인을 멈출 수는 없다.
-                        logger.error("[Chain] replay sweep failed: %s", sweep_err)
+                        logger.error("[Chain] replay sweep failed: %s", told(sweep_err))
                         queued_replay = None
                     if queued_replay:
                         logger.info("[Chain] starting replay run_id=%s off this loop",
@@ -4598,7 +4599,7 @@ async def start_chain_ingestion_worker(db_session_factory):
 
             except Exception as e:
                 db.rollback()
-                logger.error(f"Error in Chain Worker execution loop: {e}")
+                logger.error(f"Error in Chain Worker execution loop: {told(e)}")
                 await asyncio.sleep(3)
             finally:
                 # ── 유지보수는 «일 뒤»에 ─────────────────────────────────────────────
@@ -4641,7 +4642,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                 except Exception as maint_err:                       # noqa: BLE001
                     # 유지보수의 실패가 «일»의 오류를 덮지 않게 한다. 이 finally 는 예외 경로에서도
                     # 돌고, 거기서 새 예외를 던지면 원래 예외가 사라진다.
-                    logger.error(f"[Chain Worker] maintenance pass failed: {maint_err}")
+                    logger.error(f"[Chain Worker] maintenance pass failed: {told(maint_err)}")
                 # S-176: this loop's own lap, recorded where it ends. `iter_start_ts` is
                 # the timer the iteration already kept; nothing new is measured. The depth
                 # this loop is judged by is the outbox backlog, and THAT is a database
@@ -4655,5 +4656,5 @@ async def start_chain_ingestion_worker(db_session_factory):
                                      **activity.registry.instants())
                 db.close()
         except Exception as e:
-            logger.error(f"Database session setup failed in Chain Worker: {e}")
+            logger.error(f"Database session setup failed in Chain Worker: {told(e)}")
             await asyncio.sleep(5)

@@ -7,6 +7,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.join(script_dir, "server")
 if server_dir not in sys.path:
     sys.path.append(server_dir)
+from error_said import told
 
 try:
     from database.database import SessionLocal
@@ -117,7 +118,7 @@ def run_migration():
 
     except Exception as e:
         db.rollback()
-        print(f"Error occurred during migration: {e}", file=sys.stderr)
+        print(f"Error occurred during migration: {told(e)}", file=sys.stderr)
     finally:
         db.close()
 

@@ -15,6 +15,7 @@ sys.path.append(server_root)
 
 from database import models
 from database.database import Base, DEFAULT_PG_URL
+from error_said import told
 
 # 1. 원본 (SQLite) 설정
 SQLITE_PATH = os.path.join(server_root, "assy_manager.db")
@@ -99,7 +100,7 @@ def migrate():
         print("[*] SUCCESS: Migration completed successfully!")
         
     except Exception as e:
-        print(f"[!] ERROR during migration: {e}")
+        print(f"[!] ERROR during migration: {told(e)}")
         pg_db.rollback()
     finally:
         sqlite_db.close()

@@ -21,6 +21,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import event_constants
+from error_said import told
 
 #: Where a running item runs - words the screen draws as they come, never branches on.
 WHERE_CHAIN_WORKER = "chain_worker"
@@ -248,5 +249,5 @@ def running_now(db, now=None, sight=None):
         try:
             items.extend(read())
         except Exception as exc:                                 # noqa: BLE001
-            logging.getLogger(__name__).warning("running_now: %s unreadable: %s", name, exc)
+            logging.getLogger(__name__).warning("running_now: %s unreadable: %s", name, told(exc))
     return items

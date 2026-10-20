@@ -44,6 +44,7 @@ SERVER_DIR = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
+from error_said import told
 
 EXIT_REFUSED = 9
 
@@ -289,7 +290,7 @@ def main(argv=None):
     except Exception as e:  # unreachable DB, bad credentials, anything
         return _refuse([
             "could not open a session to prove which database this process "
-            f"reaches: {e.__class__.__name__}: {e}"])
+            f"reaches: {e.__class__.__name__}: {told(e)}"])
 
     print(f"[iso-watcher] LIVE CONNECTION       -> {live['describe']}")
     violations = check_live_isolation(live_database=live["database"],

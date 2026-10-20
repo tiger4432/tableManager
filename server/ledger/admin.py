@@ -39,6 +39,7 @@ from declaration_names import bare_name as _bare_name, fold_versions
 from datetime import datetime
 
 import config_backup
+from error_said import told
 
 logger = logging.getLogger("Ledger.Admin")
 
@@ -121,7 +122,7 @@ def source_raw_view(source: str = None) -> dict:
     try:
         document = _read_json(read_path, {})
     except Exception as exc:
-        error = f"{exc.__class__.__name__}: {exc}"
+        error = f"{exc.__class__.__name__}: {told(exc)}"
     sources = (document.get("sources") or {}) if isinstance(document, dict) else {}
     out = {
         "config_path": path,
@@ -171,7 +172,7 @@ def table_config_raw_view(table: str = None) -> dict:
     try:
         document = _read_json(path, {})
     except Exception as exc:
-        error = f"{exc.__class__.__name__}: {exc}"
+        error = f"{exc.__class__.__name__}: {told(exc)}"
     if not isinstance(document, dict):
         document, error = {}, error or "table_config.json is not a JSON object"
     out = {
@@ -331,7 +332,7 @@ def chain_rule_raw_view(name: str = None) -> dict:
     try:
         document = _read_json(path, {})
     except Exception as exc:
-        error = f"{exc.__class__.__name__}: {exc}"
+        error = f"{exc.__class__.__name__}: {told(exc)}"
     rules = (document.get("rules") or []) if isinstance(document, dict) else []
     named = {str(r.get("name")): r for r in rules if isinstance(r, dict) and r.get("name")}
     # 🔴 [판정 540] THE NAME LIST AND THE GRAMMAR MAP COME OFF `named`, WHICH IS ONE
@@ -718,7 +719,7 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
     except Exception as exc:                                        # noqa: BLE001
         logger.error("[ChainRules] %s saved, but the chain worker was NOT told - it reads the "
                      "rules at the next Reload or restart: %s: %s",
-                     name, type(exc).__name__, exc)
+                     name, type(exc).__name__, told(exc), exc_info=exc)
     return {"ok": True, "name": name, "base": file_fingerprint(path),
             # what the loader will say of this declaration - a cell it does not read, by name (총괄 6c6d76924)
             "notes": notes,
@@ -1236,8 +1237,8 @@ def ingestion_view(db, declared) -> dict:
             for row in db.execute(text(f"SELECT {columns} FROM {names.cursor}")):
                 cursor[row[0]] = dict(zip(_CURSOR_FIELDS, row[1:]))
         except Exception as exc:
-            logger.warning("ledger translator cursor unreadable: %s", exc)
-            unavailable = f"{exc.__class__.__name__}: {exc}"
+            logger.warning("ledger translator cursor unreadable: %s", told(exc), exc_info=exc)
+            unavailable = f"{exc.__class__.__name__}: {told(exc)}"
 
     rows = []
     if unavailable is None:
@@ -1293,7 +1294,7 @@ def sources_view(db=None) -> dict:
     try:
         document = _read_json(path, {})
     except Exception as exc:
-        error = f"{exc.__class__.__name__}: {exc}"
+        error = f"{exc.__class__.__name__}: {told(exc)}"
     sources = (document.get("sources") or {})
     # The declaration is a mapping here; a list spelling would name each source inside
     # its entry. Both are read the same way rather than assumed, because the two other
@@ -1332,7 +1333,7 @@ def _declaration() -> dict:
         from ledger import config as ledger_config
         return ledger_config.load() or {}
     except Exception as exc:                                   # pragma: no cover
-        logger.warning("declaration unreadable for the admin catalogue: %s", exc)
+        logger.warning("declaration unreadable for the admin catalogue: %s", told(exc), exc_info=exc)
         return {}
 
 

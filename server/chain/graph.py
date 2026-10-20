@@ -36,6 +36,7 @@ from __future__ import annotations
 import time
 
 from chain import rule_shape
+from error_said import told
 
 #: The two node kinds. A table is a catalogue name; the ledger is ONE node, because a
 #: ledger source's atoms all land in the same place and drawing fifteen ledger nodes would
@@ -320,7 +321,7 @@ def _quarter(name, load, counts, unread, catalogue):
     try:
         rules = load(rejections) or []
     except Exception as exc:                                        # noqa: BLE001
-        unread[name] = "%s: %s" % (type(exc).__name__, exc)
+        unread[name] = "%s: %s" % (type(exc).__name__, told(exc))
         return []
     counts[name] = len(rules)
     if rejections:

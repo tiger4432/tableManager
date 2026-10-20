@@ -13,6 +13,7 @@ sys.path.append(server_root)
 
 from database.database import SessionLocal, engine
 from database import crud, models
+from error_said import told
 
 def clear_db(table_config):
     db = SessionLocal()
@@ -32,7 +33,7 @@ def clear_db(table_config):
         print("Database cleared.")
     except Exception as e:
         db.rollback()
-        print(f"Failed to clear database: {e}")
+        print(f"Failed to clear database: {told(e)}")
     finally:
         db.close()
 
@@ -139,7 +140,7 @@ def seed():
                 print(f"Table {table_name}: {count} rows")
     except Exception as e:
         db.rollback()
-        print(f"Failed to seed data: {e}")
+        print(f"Failed to seed data: {told(e)}")
     finally:
         db.close()
 

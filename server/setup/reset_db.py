@@ -9,6 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from database.database import engine, Base, is_sqlite
 from database import models
 from setup.init_db import setup_database
+from error_said import told
 
 def reset_database():
     print("[WARNING] AssyManager Database RESET Starting...")
@@ -23,7 +24,7 @@ def reset_database():
         models.init_dynamic_models(table_config)
         print("    [OK] Dynamic models registered for clean teardown.")
     except Exception as e:
-        print(f"    [Warning] Failed to load table_config: {e}")
+        print(f"    [Warning] Failed to load table_config: {told(e)}")
 
     # 2. PostgreSQL 환경인 경우, 락(Lock) 충돌을 방지하기 위해 다른 활성 커넥션 강제 종료
     if not is_sqlite:
@@ -38,7 +39,7 @@ def reset_database():
                 """))
             print("    [OK] Active database sessions terminated.")
         except Exception as e:
-            print(f"    [Warning] Failed to terminate active sessions: {e}")
+            print(f"    [Warning] Failed to terminate active sessions: {told(e)}")
 
     # 3. 모든 테이블 삭제
     with engine.connect() as conn:
@@ -48,7 +49,7 @@ def reset_database():
             conn.commit()
             print("    [OK] All tables dropped.")
         except Exception as e:
-            print(f"    [Error] Failed to drop tables: {e}")
+            print(f"    [Error] Failed to drop tables: {told(e)}")
 
     # 4. 초기화 스크립트 호출하여 다시 생성 (pg_trgm 확장 및 인덱스 포함)
     print("\n  - Step 4: Re-initializing database structure...")

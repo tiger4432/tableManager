@@ -151,7 +151,7 @@ def _resolved_choices(param):
         try:
             choices = choices()
         except Exception as exc:                   # noqa: BLE001
-            logger.warning("could not resolve choices for '%s': %s", param["name"], exc)
+            logger.warning("could not resolve choices for '%s': %s", param["name"], told(exc), exc_info=exc)
             return None
     return list(choices) if choices else None
 
@@ -1197,7 +1197,7 @@ def _send_broadcasts(messages):
                 logger.error("[Retroactive] broadcast failed: %s -> %s %s",
                              _url, res.status_code, note or "")
         except Exception as exc:                                   # noqa: BLE001
-            logger.error("[Retroactive] broadcast failed: %s", exc)
+            logger.error("[Retroactive] broadcast failed: %s", told(exc))
 
 
 def _run_withdraw(db, params, log, control=None):
@@ -2390,6 +2390,8 @@ OPERATIONS = {
 RUN_QUEUED = "queued"
 RUN_RUNNING = "running"
 import event_constants as ec                                      # noqa: E402
+import error_said
+from error_said import told
 
 RUN_DONE = "done"
 RUN_CANCEL_REQUESTED = "cancel_requested"
@@ -2823,7 +2825,7 @@ def _beat(control, stop, url, held):
                 slow, last = slow_statement_seconds(), now
     except Exception as exc:                               # noqa: BLE001 - the beat's own failure, said below
         control._log("[%s] beat stopped - %s: %s; no more beat or slow-statement lines for this run, the run goes on"
-                     % (control.op, type(exc).__name__, str(exc).strip().splitlines()[0] if str(exc).strip() else ""))
+                     % (control.op, type(exc).__name__, told(exc).strip().splitlines()[0] if told(exc).strip() else ""))
     finally:
         for closing in (conn, probe):
             try:
@@ -2911,7 +2913,7 @@ class RunControl:
             # safe direction: the work continues and is restartable either way, whereas a
             # stop invented by a broken query would look to the operator like a cancel
             # they never requested.
-            logger.debug("cancel check failed for run_id=%s: %s", self.run_id, exc)
+            logger.debug("cancel check failed for run_id=%s: %s", self.run_id, told(exc), exc_info=exc)
             return False
         finally:
             session.close()
@@ -3020,7 +3022,7 @@ class RunControl:
                 session.rollback()
                 self.telling = False
                 logger.warning("[Retroactive] run_id=%s: its stage could not be written - none more for this run: %s",
-                               self.run_id, exc)
+                               self.run_id, told(exc), exc_info=exc)
                 return
             finally:
                 session.close()
@@ -3069,7 +3071,7 @@ class RunControl:
             # Progress is a report, never the work. A run must not fail because its
             # bookkeeping did.
             session.rollback()
-            logger.debug("progress write failed for run_id=%s: %s", self.run_id, exc)
+            logger.debug("progress write failed for run_id=%s: %s", self.run_id, told(exc), exc_info=exc)
         finally:
             session.close()
 
@@ -3136,7 +3138,7 @@ def announce_progress(run_id, op, status, processed=None, total=None, **told):
             return False
         return True
     except Exception as exc:                       # noqa: BLE001
-        logger.debug("progress notification failed for run_id=%s: %s", run_id, exc)
+        logger.debug("progress notification failed for run_id=%s: %s", run_id, error_said.told(exc), exc_info=exc)
         return False
 
 
@@ -3228,7 +3230,7 @@ def _stages_of(db, run_ids):
             found = conn.execute(text("SELECT run_id, phase, phase_at FROM retroactive_runs WHERE run_id IN :ids")
                                  .bindparams(bindparam("ids", expanding=True)), {"ids": list(run_ids)}).all()
     except Exception as exc:                                            # noqa: BLE001 - the list goes on, stageless
-        logger.debug("[Retroactive] run stages not read: %s", exc)
+        logger.debug("[Retroactive] run stages not read: %s", told(exc), exc_info=exc)
         return {}
     from datetime import datetime
 
@@ -3798,8 +3800,8 @@ def spawn_claimed(run_id, log=logger.info):
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception as exc:                                     # noqa: BLE001
         _mark_run(run_id, state=RUN_FAILED, finished=True,
-                  error="its process could not start: %s" % exc)
-        log("[Retroactive] run_id=%s could not start its process: %s" % (run_id, exc))
+                  error="its process could not start: %s" % told(exc))
+        log("[Retroactive] run_id=%s could not start its process: %s" % (run_id, told(exc)))
         return None
     _restamp_runner(run_id, "%s/%s/%d" % (RUN_HERE_HEARTBEAT, socket.gethostname(), child.pid))
     log("[Retroactive] run_id=%s runs in its own process pid=%d - its log is retroactive.log"
@@ -4114,7 +4116,7 @@ def _mark_run(run_id, *, state, started=False, finished=False, result=None, erro
             "[Retroactive] run row update FAILED for run_id=%s: %s. The run itself is "
             "unaffected, but its row no longer tracks it - a screen will read this as "
             "waiting while it runs. If this is a fresh deployment, check that the "
-            "migrations in server/migrations/ have been applied.", run_id, exc)
+            "migrations in server/migrations/ have been applied.", run_id, told(exc), exc_info=exc)
         if expect_state is not None:
             # 🔴 집기가 «터지면» 「못 집었다」로 답한다. 「모르겠다」의 안전한 쪽이 그것이다 —
             #    이겼다고 답하면 둘이 도는 쪽으로 틀리고, 못 집었다고 답하면 «아무도 안 도는»

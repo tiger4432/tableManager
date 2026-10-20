@@ -18,6 +18,7 @@ logger = get_process_logger("Watcher", "watcher.log")
 from database.database import SessionLocal, engine
 from database import models
 from directory_watcher import WorkspaceWatcher
+from error_said import told
 from ingestion.activity import path_of
 
 # Initialize dynamic database models
@@ -32,16 +33,16 @@ try:
         models.sync_dynamic_tables_schema(engine)
         logger.info("Dynamic database models and schema sync completed.")
     except Exception as e:
-        logger.error(f"Failed to sync dynamic tables schema: {e}")
+        logger.error(f"Failed to sync dynamic tables schema: {told(e)}", exc_info=e)
     # [P2] 오프셋 체크포인트/해시 dedup 원장 테이블 보장.
     # 웹서버는 부팅 create_all로 만들지만 워처는 create_all을 돌리지 않으므로
     # (분리 모드에서 워처만 먼저 뜨는 경우 포함) 여기서 명시적으로 보장한다.
     try:
         models.ensure_ingestion_checkpoint_table(engine)
     except Exception as e:
-        logger.error(f"Failed to ensure ingestion checkpoint table: {e}")
+        logger.error(f"Failed to ensure ingestion checkpoint table: {told(e)}", exc_info=e)
 except Exception as e:
-    logger.error(f"Failed to load table_config or init dynamic models: {e}")
+    logger.error(f"Failed to load table_config or init dynamic models: {told(e)}", exc_info=e)
 
 import internal_event_client
 # Single definition of the web server's address lives in internal_event_client.
@@ -102,8 +103,8 @@ def post_event(endpoint: str, payload: dict):
                 logger.warning(f"API notification failed: {url} -> {res.status_code}")
             _record_undelivered(endpoint, payload, f"HTTP {res.status_code}")
     except Exception as e:
-        logger.error(f"Failed to send API notification: {e}")
-        _record_undelivered(endpoint, payload, f"{type(e).__name__}: {e}")
+        logger.error(f"Failed to send API notification: {told(e)}", exc_info=e)
+        _record_undelivered(endpoint, payload, f"{type(e).__name__}: {told(e)}")
 
 def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None, total_log_count: int = None):
     logger.info(f"Refresh required for {table_name}: {count} rows updated.")
@@ -193,7 +194,7 @@ def reload_watcher_cache():
 
         synthesis.reset_right_key_cache()
     except Exception as reset_error:                                   # noqa: BLE001
-        logger.warning("오른쪽 키 캐시를 못 비웠습니다(계속): %s", reset_error)
+        logger.warning("오른쪽 키 캐시를 못 비웠습니다(계속): %s", told(reset_error), exc_info=reset_error)
 
     logger.info("Watcher worker modules cache cleared.")
 
@@ -409,20 +410,20 @@ def poll_pending_retries():
                     if created:
                         logger.info(f"[Reload] Created missing physical tables at runtime: {created}")
                 except Exception as e:
-                    logger.error(f"[Reload] Dynamic model refresh failed: {e}")
+                    logger.error(f"[Reload] Dynamic model refresh failed: {told(e)}")
                 # [Std Ingestion] 신규 테이블 워크스페이스 자동 생성 + 실행 중 observer에 런타임 감시 등록
                 if workspace_watcher is not None:
                     try:
                         workspace_watcher.sync_new_workspaces()
                     except Exception as e:
-                        logger.error(f"[Reload] Workspace sync after SYSTEM_RELOAD failed: {e}")
+                        logger.error(f"[Reload] Workspace sync after SYSTEM_RELOAD failed: {told(e)}")
                 
             # a table whose reading changed hands its failed files here, so the query below reads them this cycle
             try:
                 reading_stamps = hear_changed_readings(db, reading_stamps)
             except Exception as reading_error:                         # noqa: BLE001 - the retries below go on
                 db.rollback()
-                logger.warning("[Watcher] the tables' readings were not compared this time: %s", reading_error)
+                logger.warning("[Watcher] the tables' readings were not compared this time: %s", told(reading_error))
 
             # Reclaim first, so anything given back is visible to the query below
             # in this same cycle rather than waiting a whole extra one.
@@ -439,7 +440,7 @@ def poll_pending_retries():
                 retry_one(db, log)
                     
         except Exception as e:
-            logger.error(f"Error in retry poller loop: {e}")
+            logger.error(f"Error in retry poller loop: {told(e)}")
         finally:
             db.close()
             
@@ -472,7 +473,7 @@ def main():
         from database.config_watcher import start_config_watcher
         config_watcher = start_config_watcher(None)
     except Exception as e:
-        logger.error(f"Failed to start config watcher: {e}")
+        logger.error(f"Failed to start config watcher: {told(e)}", exc_info=e)
     
     watcher = WorkspaceWatcher(
         workspace_base,

@@ -43,6 +43,7 @@ import event_constants
 import map_overlay
 from dt_map_derivation import parse_frame, source_meta_for_frame
 from utils.logger import ConsoleSafeHandler
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -2555,7 +2556,7 @@ def _d_meta(meta: dict | None) -> list:
                   % (axes[0], _d(axes[1]), axes[2], axes[3], axes[4], axes[5],
                      axes[6], _d(axes[7], 90)))
     except Exception as e:
-        axes_t = "<frame_axes failed: %s: %s>" % (type(e).__name__, e)
+        axes_t = "<frame_axes failed: %s: %s>" % (type(e).__name__, told(e))
     return ["raw=%s" % _d(meta, _DIAG_CHARS_LONG),
             "axes(as read by map_overlay.frame_axes)= %s" % axes_t,
             "declaration=%s" % map_overlay.geometry_declaration(meta)]
@@ -2570,7 +2571,7 @@ def _d_frame_phys(meta: dict | None) -> str:
     try:
         return _d(map_overlay._frame_phys_params(meta), 90)
     except Exception as e:
-        return "<unavailable: %s: %s>" % (type(e).__name__, e)
+        return "<unavailable: %s: %s>" % (type(e).__name__, told(e))
 
 
 class _RollNoticeHandler(logging.handlers.RotatingFileHandler):
@@ -2666,7 +2667,7 @@ def _diag_logger():
         fh.setFormatter(fmt)
         lg.addHandler(fh)
     except Exception as e:
-        _DIAG_FILE_ERROR = "%s: %s" % (type(e).__name__, e)
+        _DIAG_FILE_ERROR = "%s: %s" % (type(e).__name__, told(e))
         _DIAG_FILE_PATH = None
         logger.warning("[MapAlignment] %s unavailable (%s) - scoring diagnostics go to "
                        "the console only", name, _DIAG_FILE_ERROR)
@@ -3140,7 +3141,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                         first_die_of(ref_pairs, True), first_die_of(ref_pairs, False),
                         reference_top_left, reference_top_right, _lc_ref)
         except Exception as _e:
-            logger.info("[Align] REF diag unavailable: %s", _e)
+            logger.info("[Align] REF diag unavailable: %s", told(_e), exc_info=_e)
         # [D13] 기준 다이마다 **훑기 번호**. `_residual_shift`가 「이 자리에 앉히면 소스가
         # 덮는 다이들이 훑기의 끊기지 않은 한 구간인가」를 묻는 데 쓴다(§_residual_shift).
         # `ref_sorted`와 **같은 순서로** 늘어놓는다 - 저쪽이 searchsorted 첨자로 읽는다.
@@ -3468,7 +3469,7 @@ def score_candidates(source_maps: list, reference_cells, reference_meta: dict,
                     first_die_of(sum([sm.get("_use") or [] for sm in usable], []), _ltr),
                     _sf, _base, dx, dy, _hit)
             except Exception as _e:                     # 진단이 채점을 막지 않는다
-                logger.info("[Align] %s diag unavailable: %s", c["frame"], _e)
+                logger.info("[Align] %s diag unavailable: %s", c["frame"], told(_e))
             # 탐색 갈래에도 이름을 준다 — 창의 크기가 답을 가둘 수 있고(옛 ±3 실패의 지문은
             # **창 끝에 붙은 값**이었다), 그 사실은 수치가 아니라 상태로 읽혀야 한다.
             c["_residual"] = {"state": PLACEMENT_SEARCH, "window": shift_window,
@@ -5189,7 +5190,7 @@ def basis_cells_for(db, reference: dict, cfg: dict = None):
         logger.warning("[basis_cells] the valid-die reference '%s/%s' could not be read "
                        "(%s: %s) — the confirmed origin falls back to the wafer circle while "
                        "the editor draws this map from the mask",
-                       table, map_id, type(e).__name__, e)
+                       table, map_id, type(e).__name__, told(e), exc_info=e)
         return None
     if truncated:
         # 잘린 마스크는 **틀린 마스크**다(같은 판단이 `resolve_valid_die_set`의 상한 거절에
@@ -5687,7 +5688,7 @@ def _source_rows_by_map(db, key_attrs, map_key_cols, filters, q_cols, id_rows, c
                   .limit(budget + 1).all())
     except Exception as e:                      # noqa: BLE001 - decline, do not guess
         logger.error("[MapAlignment] batched source-cell read failed (%s): %s",
-                     map_key_cols, e)
+                     map_key_cols, told(e), exc_info=e)
         return {}, set()
     if len(rows) > budget:
         # The per-map caps could not have admitted this many rows. Reading map
@@ -6544,7 +6545,7 @@ def resolve_reference_catalog(db, cfg: dict, table: str = None,
             #    안 되는가」가 통째로 사라지고, 화면은 정렬 기능 자체가 죽은 것으로 읽는다.
             #    모델 부재와 **같은 상태**로 접는다 — 둘 다 「바닥 목록을 낼 수 없다」이고,
             #    원인의 이름은 `meta_access`가 요청 단위로 따로 말한다.
-            logger.error("[MapAlignment] reference catalog query failed (%s): %s", ftable, e)
+            logger.error("[MapAlignment] reference catalog query failed (%s): %s", ftable, told(e))
             return dict(base, state=REFERENCE_CATALOG_UNAVAILABLE,
                         reason="맵 규격 표(%s)를 조회하지 못했습니다"
                                % map_overlay.META_TABLE)
@@ -6679,7 +6680,7 @@ def _count_cells_bulk(db, cfg: dict, table: str, map_ids):
         n = len(attrs)
         rows = db.query(*attrs, _func.count()).group_by(*attrs).all()
     except Exception as e:                      # noqa: BLE001 - decline, do not guess
-        logger.error("[MapAlignment] bulk cell count failed (%s): %s", table, e)
+        logger.error("[MapAlignment] bulk cell count failed (%s): %s", table, told(e), exc_info=e)
         return {}, set()
     by_key = {}
     for r in rows:
@@ -6783,7 +6784,7 @@ def _load_metas_reporting(db, map_table: str, map_ids):
             # 🔴 조용히 {}로 접지 않는다 — 로그는 error로 남기고, 호출자가
             #    `meta_absence_reason`으로 **이름을 붙여** 응답에 싣는다. 예외를 그대로
             #    올리면 목록이 500이 되어 「무엇이 왜 안 되는가」가 통째로 사라진다.
-            logger.error("[MapAlignment] meta batch query failed (%s): %s", map_table, e)
+            logger.error("[MapAlignment] meta batch query failed (%s): %s", map_table, told(e))
             return out, False
         for row in rows:
             raw = row[1]

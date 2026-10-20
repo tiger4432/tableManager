@@ -22,6 +22,7 @@ import event_constants
 from collector_markers import (
     CollectorRefused, collector_scripts, fill_markers, filled_copy_path, parse_script_comments,
     script_refusals, usual_window, window_length)
+from error_said import told
 
 logger = get_process_logger("Scheduler", "auto_update.log")
 
@@ -67,7 +68,7 @@ def _apply_proxy_policy():
         pass
     except Exception as e:
         logger.warning("auto_update_control.json 을 읽지 못했습니다(%s). "
-                       "기본값 true(직결)로 진행합니다.", e)
+                       "기본값 true(직결)로 진행합니다.", told(e), exc_info=e)
 
     if not bypass:
         logger.info("[proxy] bypass_proxy=false - 수집 스크립트가 환경의 프록시 설정을 그대로 씁니다.")
@@ -142,7 +143,7 @@ class BaseCollector(ABC):
                     try:
                         os.remove(file_path)
                     except Exception as e:
-                        self.logger.warning(f"Could not clean up temporary source file '{file_path}': {e}")
+                        self.logger.warning(f"Could not clean up temporary source file '{file_path}': {told(e)}")
         except Exception as e:
             self.logger.error(f"Failed to execute collection lifecycle for table '{self.table_name}': {e}")
             raise e
@@ -506,7 +507,7 @@ class MultiDiscoveryScheduler:
                 logger.info(f"Registered Comment-Driven Script Runner: '{os.path.basename(script_path)}' for table '{table_name}' (Cron: {cron_expr}, Next Run: {collector_inst.next_run})")
                 return
             except Exception as e:
-                logger.error(f"Invalid cron expression '{comment_config['schedule']}' in {script_path}: {e}")
+                logger.error(f"Invalid cron expression '{comment_config['schedule']}' in {script_path}: {told(e)}", exc_info=e)
 
         module_name = f"dynamic_collector_{table_name}_{os.path.basename(script_path)[:-3]}"
         try:
@@ -537,12 +538,12 @@ class MultiDiscoveryScheduler:
                         logger.info(f"Registered Class Collector: '{attr_name}' for table '{table_name}'")
                         found_class = True
                     except Exception as e:
-                        logger.error(f"Failed to instantiate class '{attr_name}' in {script_path}: {e}")
+                        logger.error(f"Failed to instantiate class '{attr_name}' in {script_path}: {told(e)}")
             
             if not found_class and not comment_config["schedule"]:
                 logger.warning(f"Script '{os.path.basename(script_path)}' lacks both valid BaseCollector class and # schedule: comments.")
         except Exception as e:
-            logger.error(f"Failed to load script module '{script_path}': {e}")
+            logger.error(f"Failed to load script module '{script_path}': {told(e)}", exc_info=e)
 
     def _reload_changed_script(self, collector):
         """A script edited on disk goes through the load's own door (총괄 69aad666e B): dropped and
@@ -600,7 +601,7 @@ class MultiDiscoveryScheduler:
             with open(self.status_file_path, "w", encoding="utf-8") as f:
                 json.dump(status_data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.error(f"Failed to write scheduler status file: {e}")
+            logger.error(f"Failed to write scheduler status file: {told(e)}", exc_info=e)
 
     def start_collector(self, collector) -> bool:
         """Run one collector OFF the tick thread, at most one of it at a time.
@@ -677,7 +678,7 @@ class MultiDiscoveryScheduler:
             try:
                 collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
             except Exception as e:
-                logger.error(f"Failed to calculate next_run: {e}")
+                logger.error(f"Failed to calculate next_run: {told(e)}", exc_info=e)
                 
         self._write_status_file()
         
@@ -724,7 +725,7 @@ class MultiDiscoveryScheduler:
                         self._reload_changed_script(collector)
                         continue
                 except Exception as file_err:
-                    logger.warning(f"Failed to check file mtime for {collector.script_path}: {file_err}")
+                    logger.warning(f"Failed to check file mtime for {collector.script_path}: {told(file_err)}")
 
             if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
                 if now >= collector.next_run:
@@ -734,7 +735,7 @@ class MultiDiscoveryScheduler:
                         try:
                             collector.next_run = croniter(collector.cron_expression, now).get_next(datetime)
                         except Exception as cron_err:
-                            logger.error(f"Failed to advance next_run for disabled collector '{key}': {cron_err}")
+                            logger.error(f"Failed to advance next_run for disabled collector '{key}': {told(cron_err)}")
                         collector.last_status = "SKIPPED"
                         collector.last_error = None
                         logger.info(f"[Skip] Collector '{key}' is disabled via control file. Skipping scheduled run (Next Run: {collector.next_run}).")
@@ -773,7 +774,7 @@ class MultiDiscoveryScheduler:
             return config_backup.run_scheduled(config_dir=self.config_dir, now=now)
         except Exception as e:
             # Never let a backup failure stop the collectors from running.
-            logger.error(f"[ConfigBackup] maintenance cycle raised: {e}")
+            logger.error(f"[ConfigBackup] maintenance cycle raised: {told(e)}", exc_info=e)
             return None
 
     def retroactive_busy(self) -> bool:
@@ -824,7 +825,7 @@ class MultiDiscoveryScheduler:
             finally:
                 session.close()
         except Exception as e:                                   # noqa: BLE001
-            logger.debug("[Retroactive] could not read the in-flight state: %s", e)
+            logger.debug("[Retroactive] could not read the in-flight state: %s", told(e), exc_info=e)
             return None
 
     def start_retroactive_run(self, payload: dict) -> bool:
@@ -864,7 +865,7 @@ class MultiDiscoveryScheduler:
                 blocking = retroactive.gate_refusal(session)
             except Exception as e:                                     # noqa: BLE001
                 # 진단이 스케줄러를 멈출 수는 없다 — 게이트는 이미 닫혔고 이건 «말»이다.
-                logger.debug("[Retroactive] could not describe the gate: %s", e)
+                logger.debug("[Retroactive] could not describe the gate: %s", told(e), exc_info=e)
                 blocking = None
             finally:
                 session.close()
@@ -1007,7 +1008,7 @@ class MultiDiscoveryScheduler:
                         getattr(retro_trigger, "id", "?"),
                         (retro_payload or {}).get("run_id", "?"),
                         (retro_payload or {}).get("op", "?"),
-                        retro_err)
+                        told(retro_err), exc_info=retro_err)
                     try:
                         db.rollback()
                         event_constants.mark_processed(retro_trigger, "FAILED")
@@ -1019,7 +1020,7 @@ class MultiDiscoveryScheduler:
                             "Could not mark the failed RETROACTIVE_RUN "
                             "(outbox#%s) as finished; the queue is still "
                             "blocked behind it: %s",
-                            getattr(retro_trigger, "id", "?"), mark_err)
+                            getattr(retro_trigger, "id", "?"), told(mark_err), exc_info=mark_err)
 
 
     def run(self):
@@ -1051,7 +1052,7 @@ class MultiDiscoveryScheduler:
                 last_reload_event_id = latest_reload.id
             db.close()
         except Exception as e:
-            logger.warning(f"Failed to query initial SYSTEM_RELOAD outbox id: {e}")
+            logger.warning(f"Failed to query initial SYSTEM_RELOAD outbox id: {told(e)}", exc_info=e)
 
         try:
             while True:
@@ -1140,7 +1141,7 @@ class MultiDiscoveryScheduler:
                                 getattr(latest_trigger, "id", "?"),
                                 (payload_data or {}).get("table_name", "?"),
                                 (payload_data or {}).get("script_name", "?"),
-                                trig_err)
+                                told(trig_err))
                             try:
                                 db.rollback()
                                 event_constants.mark_processed(latest_trigger, "FAILED")
@@ -1152,18 +1153,18 @@ class MultiDiscoveryScheduler:
                                     "Could not mark the failed SCHEDULER_RUN_NOW "
                                     "(outbox#%s) as finished; the queue is still blocked "
                                     "behind it: %s",
-                                    getattr(latest_trigger, "id", "?"), mark_err)
+                                    getattr(latest_trigger, "id", "?"), told(mark_err))
 
                     self.handle_retroactive_trigger(db)
                     db.close()
                 except Exception as e:
-                    logger.warning(f"Database outbox polling failed inside scheduler: {e}")
+                    logger.warning(f"Database outbox polling failed inside scheduler: {told(e)}")
 
                 # 2. 크론 스케줄링 가동 및 동적 파일 변경 감지 (disabled 스크립트 핫 스킵 포함)
                 try:
                     self.check_and_run_schedules()
                 except Exception as e:
-                    logger.error(f"Scheduler runtime error: {e}")
+                    logger.error(f"Scheduler runtime error: {told(e)}")
 
                 # 3. 주간 config 스냅샷 (수집기가 아닌 유지보수 작업 — maybe_backup_configs 참조)
                 self.maybe_backup_configs()
@@ -1188,14 +1189,14 @@ def main():
         from database.config_watcher import start_config_watcher
         config_watcher = start_config_watcher(None)
     except Exception as e:
-        logger.error(f"Failed to start config watcher: {e}")
+        logger.error(f"Failed to start config watcher: {told(e)}", exc_info=e)
     try:
         # the index and statistics line - the chain worker builds and analyzes nothing (소유자 10-15)
         from database.database import SessionLocal
         from runtime import maintenance_line
         maintenance_line.start(SessionLocal)
     except Exception as e:
-        logger.error(f"Failed to start the index and statistics line: {e}")
+        logger.error(f"Failed to start the index and statistics line: {told(e)}", exc_info=e)
     try:
         MultiDiscoveryScheduler(check_interval=5).run()
     finally:

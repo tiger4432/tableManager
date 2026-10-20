@@ -65,6 +65,7 @@ if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
 import paths  # noqa: E402
+from error_said import told
 
 
 def declared_tables(config_path):
@@ -183,7 +184,7 @@ def run(db_url=None, schema="public", out=None):
     try:
         system = system_tables(build_models(config_path))
     except Exception as err:
-        print(f"error: could not enumerate the product's system tables: {err}", file=out)
+        print(f"error: could not enumerate the product's system tables: {told(err)}", file=out)
         return 2
 
     lines = []
@@ -290,7 +291,7 @@ def main(argv=None):
     try:
         return run(db_url=args.db_url, schema=args.schema)
     except Exception as err:
-        print(f"error: {err}", file=sys.stdout)
+        print(f"error: {told(err)}", file=sys.stdout)
         return 2
 
 

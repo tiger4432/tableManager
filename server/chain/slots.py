@@ -34,6 +34,7 @@ import subprocess
 import sys
 import threading
 import time
+from error_said import told
 
 #: ingestion_settings.json - how many slot processes run the chain's queue lines. 1 runs them one
 #: at a time; 0 or a wrong value reads as the default.
@@ -341,7 +342,7 @@ class SlotPool:
                 self.slots[index] = _Slot(index, self._spawn(index), self.woken)
                 logger.info("[Chain] slot %d started, pid %d", index, self.slots[index].pid)
             except Exception as exc:                                    # noqa: BLE001
-                logger.error("[Chain] slot %d could not start: %s", index, exc)
+                logger.error("[Chain] slot %d could not start: %s", index, told(exc))
         for index, slot in self.slots.items():
             if index > wanted and not slot.leaving:
                 slot.leaving = True
@@ -549,7 +550,7 @@ async def _run_batch(key, run, rules, seen):
         # on, it ended the slot, and the slot's end set its whole line aside (총괄 10-08).
         db.rollback()
         logger.error("[Chain] a batch of line %s raised - its events wait as they were and run again: %s",
-                     key, exc)
+                     key, told(exc), exc_info=exc)
         failed = True
     finally:
         db.close()

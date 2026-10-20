@@ -28,6 +28,7 @@ from collections import OrderedDict
 
 from fastapi import HTTPException
 from starlette.responses import Response
+from error_said import told
 
 SETTING = "walk_processes"
 DEFAULT = 2
@@ -241,7 +242,7 @@ def _start_all(pool):
                     pool.cond.notify_all()              # a pinned request waits for its own process
     except Exception as exc:                                    # noqa: BLE001 - the server goes on all the same
         logger.error("[Pool] %s processes not started ahead - the first %s starts one: %s: %s",
-                     pool.name, pool.name, type(exc).__name__, exc)
+                     pool.name, pool.name, type(exc).__name__, told(exc), exc_info=exc)
 
 
 def recycle():
@@ -446,7 +447,7 @@ def _serve(connection, modules, process_name=PROCESS_NAME, log_file="walk_pool.l
         try:
             logger.info("[Pool] %s", getattr(importlib.import_module(module), name)())
         except Exception as exc:                                # noqa: BLE001 - the process serves all the same
-            logger.error("[Pool] %s.%s did not prepare: %s: %s", module, name, type(exc).__name__, exc)
+            logger.error("[Pool] %s.%s did not prepare: %s: %s", module, name, type(exc).__name__, told(exc))
     connection.send("ready")
     while True:
         try:

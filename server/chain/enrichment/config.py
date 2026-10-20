@@ -121,6 +121,7 @@ INGESTION_SETTINGS_PATH = os.path.join(CONFIG_DIR, "ingestion_settings.json")
 # The one bind parser: text()'s own. The single-key probe runs the view through text() and the batched one substitutes
 # by this, so a spelling text() reads no bind in (`:x::int`) cannot become a bind on one path only (총괄 59c0bfb8c 1)
 from sqlalchemy.sql.elements import TextClause as _TextClause  # noqa: E402
+from error_said import told
 _BIND_PARAM_RE = _TextClause._bind_params_regex
 #: a bind a `::` cast follows - text() reads no bind there and the database refuses the statement; refused at load
 _BIND_CAST_RE = re.compile(r"(?<![:\w\x5c]):(\w+)::(\w+)")
@@ -265,7 +266,7 @@ def _resolve_view_query(view: dict) -> tuple:
             with open(ref_path, "r", encoding="utf-8") as f:
                 return f.read().strip(), None
         except Exception as e:
-            return None, f"failed to read query_ref file: {e}"
+            return None, f"failed to read query_ref file: {told(e)}"
     return None, "reference view requires 'query' or 'query_ref'"
 
 
@@ -322,7 +323,7 @@ def ledger_time(table):
     try:
         setup = _compiled_setup(None)
     except Exception as exc:                                    # noqa: BLE001 - said in the refusal
-        return None, "the ledger declaration did not load: %s" % (str(exc).splitlines() or [type(exc).__name__])[0]
+        return None, "the ledger declaration did not load: %s" % (told(exc).splitlines() or [type(exc).__name__])[0]
     return followup.time_of_table(setup, table)
 
 

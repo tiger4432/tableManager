@@ -1,4 +1,5 @@
 from sqlalchemy.exc import IntegrityError  # [D3] business-key conflict -> 409, not 500
+from error_said import told
 from sqlalchemy.orm import Session
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
@@ -82,7 +83,7 @@ except crud.TableConfigError as e:
 try:
     models.init_dynamic_models(table_config)
 except Exception as e:
-    logger.error(f"Failed to init dynamic models: {e}")
+    logger.error(f"Failed to init dynamic models: {told(e)}", exc_info=e)
 
 
 def bootstrap_database_schema(bind=None):
@@ -134,7 +135,7 @@ def bootstrap_database_schema(bind=None):
     try:
         models.sync_dynamic_tables_schema(target)
     except Exception as e:
-        logger.error(f"Failed to sync dynamic tables schema: {e}")
+        logger.error(f"Failed to sync dynamic tables schema: {told(e)}", exc_info=e)
 
 app = FastAPI(title="AssyManager Table Server")
 # Every sync route's answer becomes bytes on its worker thread, not the event loop (runtime.offloop_json).
@@ -308,7 +309,7 @@ async def health_check():
             outbox_result = {"status": "unavailable"}
         except Exception as e:
             _health_probe_inflight = False
-            db_result = {"status": "down", "error": f"{type(e).__name__}: {e}"}
+            db_result = {"status": "down", "error": f"{type(e).__name__}: {told(e)}"}
             outbox_result = {"status": "unavailable"}
 
     payload, http_status = health_mod.compute_health(
@@ -411,7 +412,7 @@ async def startup_event():
         global_config_watcher = start_config_watcher(engine)
         logger.info("Dynamic table config watcher started.")
     except Exception as e:
-        logger.error(f"Failed to start config watcher: {e}")
+        logger.error(f"Failed to start config watcher: {told(e)}", exc_info=e)
     # The walk's pool processes, started behind the start - a walk that comes first starts its own (lead b47388fde);
     # in testing mode `warm` starts none
     from runtime import process_pool
@@ -447,7 +448,7 @@ async def startup_event():
         for _module_name, _message in sorted(_refused.items()):
             logger.error("[Startup] Mapper module refused: %s — %s", _module_name, _message)
     except Exception as exc:                                       # noqa: BLE001
-        logger.error("[Startup] Mapper discovery failed entirely: %s", exc)
+        logger.error("[Startup] Mapper discovery failed entirely: %s", told(exc), exc_info=exc)
 
 
     # 🔴 이 블록은 «두 번» 안 도는 자리에 있었다. 둘 다 조용했다.
@@ -476,7 +477,7 @@ async def startup_event():
             logger.info("[Outbox Queue] change-broadcast listener NOT started: dialect=%s "
                         "has no LISTEN/NOTIFY.", engine.dialect.name)
     except Exception as e:
-        logger.error(f"[Outbox Queue] change-broadcast listener failed to start: {e}")
+        logger.error(f"[Outbox Queue] change-broadcast listener failed to start: {told(e)}", exc_info=e)
 
     try:
         # [2026-07-25 정리] 레거시 data_rows NULL updated_at 보정 마이그레이션 제거
@@ -498,7 +499,7 @@ async def startup_event():
                     logger.info("Added processed_chain column to database_outbox.")
             except Exception as e:
                 conn.rollback()
-                logger.error(f"processed_chain migration failed: {e}")
+                logger.error(f"processed_chain migration failed: {told(e)}", exc_info=e)
 
             # [Reliability F1] database_outbox.broadcast_at 컬럼 + **최초 생성 시에만** 1회 백필.
             #   broadcast_at NULL 인 처리완료(SUCCESS) 행 = "통지 미확정" → 워커 스윕이 재발사 대상으로 삼는다.
@@ -530,7 +531,7 @@ async def startup_event():
             except Exception as e:
                 # 백필 중단 시 잔여 NULL 행은 워커 스윕이 회수(over-refresh 1회, stale 아님) — 삼키지 않고 기록.
                 conn.rollback()
-                logger.error(f"broadcast_at migration/backfill failed (undelivered rows recovered by worker sweep): {e}")
+                logger.error(f"broadcast_at migration/backfill failed (undelivered rows recovered by worker sweep): {told(e)}", exc_info=e)
 
         # [Schema drift] Say out loud whether this database carries the schema this
         # build expects. The outages on 2026-08-05 had one shape: a model gained a
@@ -562,9 +563,9 @@ async def startup_event():
                        f"(from {DB_URL_SOURCE})",
             )
         except Exception as e:
-            logger.error(f"[Schema] drift check unavailable ({type(e).__name__}: {e}). "
+            logger.error(f"[Schema] drift check unavailable ({type(e).__name__}: {told(e)}). "
                          f"Starting anyway - run "
-                         f"'python server/scripts/check_schema_drift.py' by hand.")
+                         f"'python server/scripts/check_schema_drift.py' by hand.", exc_info=e)
 
 
         if os.getenv("DECOUPLED") == "True":
@@ -587,7 +588,7 @@ async def startup_event():
             try:
                 asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
             except Exception as e:
-                logger.error(f"Failed to broadcast refresh signal: {e}")
+                logger.error(f"Failed to broadcast refresh signal: {told(e)}", exc_info=e)
 
         def trigger_ws_file_processed(table_name: str, filename: str, status: str, error_msg: str = None):
             import json
@@ -604,11 +605,11 @@ async def startup_event():
             try:
                 ingestion_activity_registry.remove(table_name, clean_filename, path_of(filename))
             except Exception as e:
-                logger.warning(f"Failed to clear ingestion activity entry: {e}")
+                logger.warning(f"Failed to clear ingestion activity entry: {told(e)}", exc_info=e)
             try:
                 asyncio.run_coroutine_threadsafe(manager.broadcast(json.dumps(msg)), main_loop)
             except Exception as e:
-                logger.error(f"Failed to broadcast file ingestion completion: {e}")
+                logger.error(f"Failed to broadcast file ingestion completion: {told(e)}", exc_info=e)
 
         def trigger_ingestion_state(state: dict):
             # [Heavy Lane P1] 임베디드 모드: watcher가 같은 프로세스이므로 HTTP 왕복 없이
@@ -621,7 +622,7 @@ async def startup_event():
             try:
                 ingestion_activity_registry.apply_state({**state, "filename": clean})
             except Exception as e:
-                logger.warning(f"Failed to apply ingestion state: {e}")
+                logger.warning(f"Failed to apply ingestion state: {told(e)}", exc_info=e)
 
         global_watcher = WorkspaceWatcher(
             workspace_base,
@@ -689,7 +690,7 @@ async def startup_event():
         # 🔴 주어를 «지웠습니다». 이 try 는 워처«와» 체인 워커를 둘 다 감싸는데 문구가
         #    워처를 지목하고 있어, 체인 쪽 실패가 「워처 탓」으로 보고됐습니다 — 오진을
         #    만드는 문장이었습니다.
-        logger.error(f"Startup step failed (watcher/chain worker): {e}")
+        logger.error(f"Startup step failed (watcher/chain worker): {told(e)}", exc_info=e)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -737,7 +738,7 @@ async def shutdown_event():
             # Named, not swallowed: what did NOT stop is the thing the next line is
             # about to close underneath.
             logger.warning("[Outbox Queue] listener task ended with %s: %s",
-                           type(task_error).__name__, task_error)
+                           type(task_error).__name__, told(task_error), exc_info=task_error)
 
     if _outbox_listener is not None:
         logger.info("Closing outbox change-broadcast listener...")
@@ -770,7 +771,7 @@ class ConnectionManager:
             try:
                 await connection.send_text(message)
             except Exception as e:
-                logger.error(f"Error sending to a client: {e}")
+                logger.error(f"Error sending to a client: {told(e)}")
                 failed_connections.append(connection)
         
         for conn in failed_connections:
@@ -852,7 +853,7 @@ def _hear_join_keys(mark):
                         rows[-1].id)
         return rows[-1].id
     except Exception as error:                                     # noqa: BLE001
-        logger.warning("[Reload] SYSTEM_RELOAD rows not read (the write gate keeps what it learned): %s", error)
+        logger.warning("[Reload] SYSTEM_RELOAD rows not read (the write gate keeps what it learned): %s", told(error), exc_info=error)
         return mark
 
 
@@ -1059,8 +1060,8 @@ def _whole_counter():
             total = (narrowed_table_query(db, table_name, model)[0].order_by(None).limit(COUNT_CAP + 1).count()
                      if model is not None else 0)
         except Exception as exc:                                    # noqa: BLE001 - one line, the next count goes on
-            logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, exc)
-            failed = {"reason": ("%s: %s" % (type(exc).__name__, str(exc).strip().split("\n")[0]))[:200],
+            logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, told(exc))
+            failed = {"reason": ("%s: %s" % (type(exc).__name__, told(exc).strip().split("\n")[0]))[:200],
                       "at": datetime.now(timezone.utc).isoformat()}
         finally:
             db.close()
@@ -1880,12 +1881,12 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
             db.rollback()
         except Exception:
             pass
-        print(f"[Dashboard] re-correction rate unavailable: {e}")
+        print(f"[Dashboard] re-correction rate unavailable: {told(e)}")
         # F6 (twin of _get_effort_stat): name the ACTUAL cause. The old text claimed
         # "timeout or failure" and pointed at the index unconditionally, so a missing
         # column or a broken query read as "the index is slow" and sent whoever was on
         # call to tune an index that was never the problem.
-        detail = (str(e).strip().splitlines() or [""])[0][:200]
+        detail = (told(e).strip().splitlines() or [""])[0][:200]
         lowered = detail.lower()
         if "timeout" in lowered or "canceling statement" in lowered:
             reason = (f"집계 시간 초과 ({RECORRECTION_TIMEOUT_MS}ms) — "
@@ -1934,11 +1935,11 @@ def _get_effort_stat(db: Session) -> schemas.EffortStat:
             db.rollback()
         except Exception:
             pass
-        print(f"[Dashboard] interaction effort score unavailable: {e}")
+        print(f"[Dashboard] interaction effort score unavailable: {told(e)}")
         # F6: name the ACTUAL cause. The old text claimed a timeout unconditionally, so a
         # missing column or a broken query read as "the index is slow" and sent whoever
         # was on call to tune an index that was never the problem.
-        detail = (str(e).strip().splitlines() or [""])[0][:200]
+        detail = (told(e).strip().splitlines() or [""])[0][:200]
         lowered = detail.lower()
         if "timeout" in lowered or "canceling statement" in lowered:
             reason = (f"집계 시간 초과 ({EFFORT_TIMEOUT_MS}ms) — idx_effort_window 인덱스 확인. "
@@ -2042,9 +2043,9 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
                 db.rollback()
             except Exception:
                 pass
-            logger.warning("[Dashboard] '%s' could not be counted: %s", name, e)
+            logger.warning("[Dashboard] '%s' could not be counted: %s", name, told(e))
             uncounted.append(schemas.UncountedTable(
-                table_name=name, reason=f"{type(e).__name__}: {e}"))
+                table_name=name, reason=f"{type(e).__name__}: {told(e)}"))
             continue
 
 
@@ -2535,7 +2536,7 @@ def _attach_ledger_sources(db, table_name, rows):
             _LEDGER_SOURCES_UNREAD.add(table_name)
             logger.warning("[get_table_data] '%s': the ledger row index could not be read, "
                            "so rows carry no ledger_sources (drawn as Unknown): %s: %s",
-                           table_name, type(exc).__name__, exc)
+                           table_name, type(exc).__name__, told(exc), exc_info=exc)
         return None
     for row in rows:
         row["ledger_sources"] = found.get(str(row.get("row_id")), [])
@@ -2559,7 +2560,7 @@ def _attach_ledger_sources(db, table_name, rows):
                 _LEDGER_SOURCES_UNREAD.add((table_name, world))
                 logger.warning("[get_table_data] '%s': world '%s' - its declaration or row index could not be read, "
                                "so its sources are left out of ledger_rows and the page names it in "
-                               "ledger_worlds_unread: %s: %s", table_name, world, type(exc).__name__, exc)
+                               "ledger_worlds_unread: %s: %s", table_name, world, type(exc).__name__, told(exc))
             continue
         for source, changed_by_row in said.items():
             for row_id, changed in changed_by_row.items():
@@ -3908,7 +3909,7 @@ def _validate_effort(effort):
         try:
             report = schemas.EffortReport.model_validate(effort)
         except Exception as e:
-            return None, f"effort could not be parsed and was discarded: {e}"
+            return None, f"effort could not be parsed and was discarded: {told(e)}"
     else:
         return None, (f"effort must be an object with "
                       f"{{session_id, key, mouse, nav, nav_preserved}}, got "
@@ -5172,7 +5173,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             # 🔴 WARNING, NOT DEBUG. 운영에서 debug 는 «안 보입니다» — 이 줄이 debug 인
             #    동안 이 실패는 「아무 일도 없었다」와 로그에서도 구별되지 않았습니다.
             #    실패하는 것이 무해한 것은 아닙니다.
-            logger.warning("in-flight retroactive unreadable for the queue view: %s", e)
+            logger.warning("in-flight retroactive unreadable for the queue view: %s", told(e), exc_info=e)
             # ⚠️ null 은 «그대로» 둡니다 — 그 값에는 이미 뜻이 있고(「도는 것이 없다」),
             #    패널이 그 뜻에 맞춰 아무것도 안 그립니다. 바뀌는 것은 «그 옆의 상태»이고,
             #    그것이 「못 읽어서 null」을 「도는 것이 없어서 null」에서 가릅니다.
@@ -5762,7 +5763,7 @@ def load_maps_config() -> dict:
             with open(MAPS_CONFIG_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            print(f"[Maps Config] Error loading maps.json: {e}")
+            print(f"[Maps Config] Error loading maps.json: {told(e)}")
     return {"presets": {}}
 
 def save_maps_config(data: dict) -> bool:
@@ -5772,7 +5773,7 @@ def save_maps_config(data: dict) -> bool:
             json.dump(data, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
-        print(f"[Maps Config] Error saving maps.json: {e}")
+        print(f"[Maps Config] Error saving maps.json: {told(e)}")
         return False
 
 class MapPresetItem(BaseModel):
@@ -5882,7 +5883,7 @@ def get_bonding_plan_core_summary(
     try:
         return bonding_plan_module.get_core_summary(db, lot, slot, rects=rects, config=config)
     except Exception as e:
-        logger.error(f"[BondingPlan] core-summary failed for ({lot}, {slot}): {e}")
+        logger.error(f"[BondingPlan] core-summary failed for ({lot}, {slot}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to compute core summary.")
 
 # -----------------------------------------------------------------------------
@@ -5929,7 +5930,7 @@ def get_map_overlay(
         return map_overlay_module.get_overlay(
             db, config, target_table, target_key, src_list, cell_cap=cap)
     except Exception as e:
-        logger.error(f"[MapOverlay] overlay failed ({target_table}/{target_key}): {e}")
+        logger.error(f"[MapOverlay] overlay failed ({target_table}/{target_key}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to build map overlay.")
 
 @app.get("/api/maps/alignment/view")
@@ -6039,7 +6040,7 @@ def get_map_alignment_view(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"[MapAlignment] view failed ({rule}/{map_table}): {e}")
+        logger.error(f"[MapAlignment] view failed ({rule}/{map_table}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to build map alignment view.")
 
 
@@ -6142,7 +6143,7 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         db.rollback()
-        logger.error(f"[MapAlignment] confirm failed ({rule_name}): {e}")
+        logger.error(f"[MapAlignment] confirm failed ({rule_name}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to record frame confirmation.")
 
 
@@ -6232,7 +6233,7 @@ def get_map_alignment_worklist(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"[MapAlignment] worklist failed ({rule}/{map_table}): {e}")
+        logger.error(f"[MapAlignment] worklist failed ({rule}/{map_table}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to build alignment worklist.")
 
 
@@ -6282,7 +6283,7 @@ def get_map_alignment_references(
     try:
         return map_alignment.resolve_reference_catalog(db, config, table=table, cap=cap)
     except Exception as e:
-        logger.error(f"[MapAlignment] reference catalog failed (table={table}): {e}")
+        logger.error(f"[MapAlignment] reference catalog failed (table={table}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to build reference catalog.")
 
 
@@ -6341,7 +6342,7 @@ def get_map_preset_routing(
         return map_preset_routing_module.resolve_preset_routing(
             db, config, table, map_key, presets)
     except Exception as e:
-        logger.error(f"[PresetRouting] resolution failed ({table}/{map_key}): {e}")
+        logger.error(f"[PresetRouting] resolution failed ({table}/{map_key}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to resolve preset routing.")
 
 # [M4 phase 1] 유효 다이(`valid_die_ref`)에 **새 REST 경로는 추가하지 않았다.**
@@ -6367,7 +6368,7 @@ def get_transfer_plan_stages():
     try:
         return transfer_plan_module.list_stages(config)
     except Exception as e:
-        logger.error(f"[TransferPlan] stages listing failed: {e}")
+        logger.error(f"[TransferPlan] stages listing failed: {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to list transfer plan stages.")
 
 @app.get("/admin/transfer-plan/dry-run", dependencies=[Depends(require_admin_token)])
@@ -6392,7 +6393,7 @@ def get_transfer_plan_dry_run():
     try:
         return transfer_plan_module.dry_run(config)
     except Exception as e:
-        logger.error(f"[TransferPlan] dry-run failed: {e}")
+        logger.error(f"[TransferPlan] dry-run failed: {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to evaluate transfer plan config.")
 
 @app.get("/api/transfer-plan/source-summary")
@@ -6451,7 +6452,7 @@ def get_transfer_plan_source_summary(
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[TransferPlan] source-summary failed for stage={stage} ({lot}, {slot}): {e}")
+        logger.error(f"[TransferPlan] source-summary failed for stage={stage} ({lot}, {slot}): {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to compute source summary.")
 
 @app.get("/api/transfer-plan/validate")
@@ -6479,7 +6480,7 @@ def validate_transfer_plan(
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"[TransferPlan] validate failed for map '{ref_table}/{map_key}': {e}")
+        logger.error(f"[TransferPlan] validate failed for map '{ref_table}/{map_key}': {told(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail="Failed to validate transfer plan.")
 
 @app.get("/admin/file-ingestion/workspaces", dependencies=[Depends(require_admin_token)])
@@ -6523,7 +6524,7 @@ def get_ingestion_workspaces():
                         config_data = json.load(f)
                     table_name = config_data.get("table_name", table_name)
                 except Exception as e:
-                    print(f"Error reading workspace config {config_path}: {e}")
+                    print(f"Error reading workspace config {config_path}: {told(e)}")
 
             # [Deprecation 2026-07-25] 글로벌 table_config.json의 workspace_name 별칭이
             # 레거시 워크스페이스 config.json보다 우선한다 (충돌 시 table_config 승리).
@@ -6533,7 +6534,7 @@ def get_ingestion_workspaces():
                 if aliased is not None:
                     table_name = aliased
             except Exception as e:
-                print(f"Error resolving workspace alias for '{name}': {e}")
+                print(f"Error resolving workspace alias for '{name}': {told(e)}")
             
             # Check for custom scripts
             custom_scripts = []
@@ -6748,7 +6749,7 @@ def get_mappers():
                             "summary": first_line
                         })
             except Exception as e:
-                print(f"AST parsing error in mapper {name}: {e}")
+                print(f"AST parsing error in mapper {name}: {told(e)}")
                 
             mappers.append({
                 "filename": name,
@@ -7582,8 +7583,8 @@ async def get_auto_update_status():
             "last_updated": data.get("last_updated")
         }
     except Exception as e:
-        logger.error(f"Failed to read scheduler status file: {e}")
-        return {"status": "error", "message": str(e), "data": []}
+        logger.error(f"Failed to read scheduler status file: {told(e)}", exc_info=e)
+        return {"status": "error", "message": told(e), "data": []}
 
 @app.post("/admin/auto-update/toggle", dependencies=[Depends(require_admin_token)])
 def toggle_auto_update_script(payload: dict = Body(...)):
@@ -7650,8 +7651,8 @@ def trigger_auto_update_run_now(
         return {"status": "success", "message": f"Successfully published trigger to run '{script_name}' for table '{table_name}'."}
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to publish on-demand run trigger: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Failed to publish on-demand run trigger: {told(e)}", exc_info=e)
+        return {"status": "error", "message": told(e)}
 
 # [B5] /internal/events/* is worker->web-server IPC, and it was completely
 # unauthenticated while read-only admin routes were gated - an inverted
@@ -7701,7 +7702,7 @@ async def internal_event_batch_refresh(
         try:
             await run_in_threadpool(audit_cache.add_logs_batch, sliced_logs, actual_count)
         except Exception as e:
-            print(f"[Main Server] Failed to update audit_cache from batch-refresh: {e}")
+            print(f"[Main Server] Failed to update audit_cache from batch-refresh: {told(e)}")
     text_msg = await run_in_threadpool(json.dumps, msg)
     await manager.broadcast(text_msg)
     return {"status": "ok"}
@@ -7728,7 +7729,7 @@ async def internal_event_broadcast(payload: dict = Body(...)):
                 filepath=payload.get("filepath"),
             )
         except Exception as e:
-            print(f"[Main Server] Failed to update ingestion activity from progress: {e}")
+            print(f"[Main Server] Failed to update ingestion activity from progress: {told(e)}")
 
     created_logs = payload.get("created_logs")
     if created_logs:
@@ -7743,7 +7744,7 @@ async def internal_event_broadcast(payload: dict = Body(...)):
             # [C-1] pydantic 검증(add_logs_batch)·대형 json.dumps는 CPU 바운드 — threadpool로 이관
             await run_in_threadpool(audit_cache.add_logs_batch, sliced_logs, actual_count)
         except Exception as e:
-            print(f"[Main Server] Failed to update audit_cache from broadcast: {e}")
+            print(f"[Main Server] Failed to update audit_cache from broadcast: {told(e)}")
 
     text_msg = await run_in_threadpool(json.dumps, payload)
     await manager.broadcast(text_msg)
@@ -7771,7 +7772,7 @@ async def internal_event_file_processed(
     try:
         ingestion_activity_registry.remove(table_name, clean_filename, path_of(filename))
     except Exception as e:
-        print(f"[Main Server] Failed to clear ingestion activity entry: {e}")
+        print(f"[Main Server] Failed to clear ingestion activity entry: {told(e)}")
     await manager.broadcast(json.dumps(msg))
     return {"status": "ok"}
 
@@ -7786,7 +7787,7 @@ async def internal_event_ingestion_state(payload: dict = Body(...)):
     try:
         ingestion_activity_registry.apply_state(payload)
     except Exception as e:
-        print(f"[Main Server] Failed to apply ingestion state event: {e}")
+        print(f"[Main Server] Failed to apply ingestion state event: {told(e)}")
     return {"status": "ok"}
 
 # --- Admin Code Editor APIs ---

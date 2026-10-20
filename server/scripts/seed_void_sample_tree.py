@@ -27,6 +27,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "parsers"))
+from error_said import told
 
 FILENAME = "voids.json"
 UNIT = "um"
@@ -101,7 +102,7 @@ def verify(written: list[tuple[str, str]]) -> int:
                     path, rel_path=rel, table_name=table, options={})
             except Exception as exc:                      # noqa: BLE001 - report, not raise
                 failures += 1
-                print(f"  REFUSED {rel} -> {table}: {type(exc).__name__}: {exc}")
+                print(f"  REFUSED {rel} -> {table}: {type(exc).__name__}: {told(exc)}")
                 continue
             work_ids = sorted({str(row.get("work_id")) for row in rows})
             print(f"  ok {rel} -> {table:15s} rows={total} refused={refused} "

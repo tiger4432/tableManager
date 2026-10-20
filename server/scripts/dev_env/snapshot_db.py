@@ -41,6 +41,7 @@ from sqlalchemy.engine.url import make_url
 
 import db_safety
 import paths
+from error_said import told
 
 #: 정본을 «부른다» — 스냅숏 출처의 기본값은 서버의 기본 DB 와 «같은 값»이어야 한다.
 DEFAULT_SOURCE = paths.DEFAULT_PG_URL
@@ -189,11 +190,11 @@ def build_target_schema(target_url):
     try:
         models.sync_dynamic_tables_schema(target_engine)
     except Exception as e:
-        log(f"WARN sync_dynamic_tables_schema: {e}")
+        log(f"WARN sync_dynamic_tables_schema: {told(e)}")
     try:
         models.ensure_ingestion_checkpoint_table(target_engine)
     except Exception as e:
-        log(f"WARN ensure_ingestion_checkpoint_table: {e}")
+        log(f"WARN ensure_ingestion_checkpoint_table: {told(e)}")
     log(f"target schema built from {paths.config_path('table_config.json')}")
     return target_engine
 

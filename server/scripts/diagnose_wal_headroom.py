@@ -66,6 +66,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import sqlalchemy as sa                                              # noqa: E402
 import paths                                                        # noqa: E402
+from error_said import told
 
 DEFAULT_PG_URL = paths.DEFAULT_PG_URL
 STATEMENT_TIMEOUT_MS = 15000
@@ -136,7 +137,7 @@ class RO:
         except Exception as e:
             self._release()
             print("     [읽기 실패] %s: %s" % (type(e).__name__,
-                                            str(e).splitlines()[0][:140]))
+                                            told(e).splitlines()[0][:140]))
             return None            # None = 못 읽음, [] = 진짜로 없음 (구분한다)
 
     def one(self, sql, **p):
@@ -397,7 +398,7 @@ def main():
             freeb = shutil.disk_usage(dd).free
             print("     WAL 볼륨 남은 공간 : %s   (data_directory = %s)" % (hb(freeb), dd))
         except Exception as e:
-            print("     남은 공간을 읽지 못했다: %s" % e)
+            print("     남은 공간을 읽지 못했다: %s" % told(e))
     else:
         print("     ⚠️ 남은 디스크 공간은 «측정 불가» 다 — 이 스크립트를 DB 서버 «자신»")
         print("        에서 돌려야 읽을 수 있다 (data_directory=%r 가 여기서 안 보인다)."

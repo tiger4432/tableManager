@@ -77,7 +77,7 @@ def _blocks(connection, partitions):
             read = {name: (read, hit) for name, read, hit in cursor.fetchall()}
         except Exception as exc:                                        # noqa: BLE001 - said in the note
             cursor.execute("ROLLBACK TO SAVEPOINT ledger_blocks")
-            return str(exc).strip().splitlines()[0]
+            return told(exc).strip().splitlines()[0]
         cursor.execute("RELEASE SAVEPOINT ledger_blocks")
         return read
 
@@ -1070,3 +1070,4 @@ class LedgerStore:
 # The one time parser lives in `utils.time_format` (총괄 ca87ffdb3): the declaration's check and
 # the binding's reading reach it there without reaching this module. Same names, same function.
 from utils.time_format import _candidate_formats, _zone, parse_occurred_at  # noqa: E402,F401
+from error_said import told

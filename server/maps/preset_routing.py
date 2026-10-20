@@ -85,6 +85,7 @@ logger = logging.getLogger(__name__)
 
 import map_overlay
 import validation
+from error_said import told
 
 # --- answer statuses -------------------------------------------------------
 STATUS_OK = "ok"                      # a preset was resolved
@@ -402,7 +403,7 @@ def _lookup_product_code(db, lookup: dict, lot_raw):
     except Exception as e:
         # A failing QUERY is not a miss — this one is a real fault and says so.
         logger.warning("[PresetRouting] product lookup failed (%s.%s == %r): %s",
-                       lookup_table, lookup["key_column"], bound, e)
+                       lookup_table, lookup["key_column"], bound, told(e), exc_info=e)
         return None, LOOKUP_ERROR
 
     if not row or row[0] is None:

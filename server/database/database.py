@@ -5,6 +5,7 @@ from sqlalchemy.orm import (sessionmaker, declarative_base, Session,
 import os
 import uuid
 from datetime import datetime, date
+from error_said import told
 
 # Database connection URL. Precedence (pinned by test_database_url_config.py):
 #   env DATABASE_URL  >  <config dir>/database.json  >  DEFAULT_PG_URL
@@ -121,7 +122,7 @@ try:
 except Exception as _e:  # pragma: no cover - never block boot on this
     import logging as _logging
     _logging.getLogger("database").warning(
-        "notation fold could not be registered for non-PostgreSQL dialects: %s", _e)
+        "notation fold could not be registered for non-PostgreSQL dialects: %s", told(_e), exc_info=_e)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

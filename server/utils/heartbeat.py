@@ -70,6 +70,7 @@ import time
 import itertools
 import threading
 from contextlib import contextmanager
+from error_said import told
 
 try:
     import paths
@@ -384,7 +385,7 @@ def stalled_lines(name, probe, shown=()):
             try:
                 said = probe(pid)
             except Exception as exc:                               # noqa: BLE001
-                said = "not probed (%s: %s)" % (type(exc).__name__, exc)
+                said = "not probed (%s: %s)" % (type(exc).__name__, told(exc))
         line = "stalled %d s in %s (%s) - %s" % (
             since, claim["stage"] or "no stage yet",
             " · ".join(["%s %s" % (fact, facts.get(fact) or absent) for fact, absent in shown]
@@ -507,7 +508,7 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
                 "age_seconds": None,
                 "stale": True,
                 "stale_after_seconds": stale_after,
-                "error": f"unreadable heartbeat: {type(e).__name__}",
+                "error": f"unreadable heartbeat: {type(e).__name__}: {told(e)}",
             }
     return out
 

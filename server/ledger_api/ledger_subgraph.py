@@ -46,6 +46,7 @@ from ledger.schema import LEDGER_COLUMNS, event_time_sql, reads_as_event_time
 from utils.wire_format import wire_text
 from declaration_names import bare_name as _bare_name, fold_versions
 from ledger import trace
+from error_said import told
 
 
 DEFAULT_HOPS = 12
@@ -446,7 +447,7 @@ def _sweeping():
             with _KEPT_LOCK:
                 _sweep_kept()
         except Exception as exc:                            # noqa: BLE001 - the clock goes on; the next sweep tries again
-            logging.getLogger(__name__).error("[Walk] kept walks not swept: %s: %s", type(exc).__name__, exc)
+            logging.getLogger(__name__).error("[Walk] kept walks not swept: %s: %s", type(exc).__name__, told(exc))
 
 
 def _asked(seed_id, lookup, declaration_paths, aux, arguments):
@@ -577,7 +578,7 @@ def prepare_operating_declaration():
         _compiled_setup(None)
     except Exception as exc:                                    # noqa: BLE001 - the walk says it again when asked
         return "prepared nothing - the operating world's declaration (%s) did not compile: %s" % (
-            world, str(exc).splitlines()[0][:200] if str(exc) else type(exc).__name__)
+            world, told(exc).splitlines()[0][:200] if told(exc) else type(exc).__name__)
     return "prepared the operating world's declaration (%s) in %.1f s" % (world, time.monotonic() - began)
 
 
@@ -601,7 +602,7 @@ def _say_value_types(nodes, edges):
                 except Exception as exc:                          # noqa: BLE001 - what goes quiet is said
                     logging.getLogger(__name__).warning(
                         "[walk] value types not said for world %s - its declaration could not be compiled: %s",
-                        world or "(operating)", exc)
+                        world or "(operating)", told(exc), exc_info=exc)
                     setups[world] = None
             from ledger.setup import declared_value_type
             said[key] = setups[world] and declared_value_type(setups[world], source, name)

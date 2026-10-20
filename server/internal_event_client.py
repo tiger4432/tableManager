@@ -35,6 +35,7 @@ a fourth sender has to remember is not good enough.
 """
 import os
 import threading
+from error_said import told
 
 def send_internal_event(base_url, endpoint, payload, timeout):
     """Assemble and send ONE internal event. Returns `(url, response, note)`.
@@ -182,8 +183,8 @@ def record_undelivered_notification(session_factory, table_name, endpoint,
         if logger is not None:
             logger.error(
                 f"[internal-events] Could not record the undelivered-notification "
-                f"marker for '{table_name}' ({endpoint}): {e}. That notification "
-                f"is now unrecoverable.")
+                f"marker for '{table_name}' ({endpoint}): {told(e)}. That notification "
+                f"is now unrecoverable.", exc_info=e)
         return False
     finally:
         if db is not None:
@@ -222,7 +223,7 @@ def proxy_environment_summary():
         import urllib.request
         proxies = urllib.request.getproxies() or {}
     except Exception as e:  # pragma: no cover - defensive
-        return f"unknown ({e})"
+        return f"unknown ({told(e)})"
     if not proxies:
         return "none"
     parts = [f"{scheme}={_redact_proxy(url)}" for scheme, url in sorted(proxies.items())
@@ -307,7 +308,7 @@ def check_api_reachable(base_url=None, timeout=3.0):
         res = internal_event_session().get(url, timeout=timeout)
     except Exception as e:
         return "info", (
-            f"[internal-events] {url} not reachable yet ({type(e).__name__}) - "
+            f"[internal-events] {url} not reachable yet ({type(e).__name__}: {told(e)}) - "
             "normal during startup, the launcher brings the API up alongside this "
             f"process. proxy-env={proxy_env}"
         )

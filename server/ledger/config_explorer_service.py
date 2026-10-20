@@ -39,6 +39,7 @@ from .setup_bundle import (
     CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, SHORT_FORM_VERSION, LedgerSetupValidationError,
     _read_json, _resolve_config_path, default_ordering_key, predicate_claim, upgrade_setup,
 )
+from error_said import told
 
 
 def _atoms_per_sentence(preview: Any, plan: Any) -> list[dict[str, Any]]:
@@ -1039,7 +1040,7 @@ class OntologyExplorerService:
             catalog = self._catalog_loader()
         except Exception as exc:                       # noqa: BLE001 - the lists answer without it
             catalog = {}
-            payload["tables_unavailable"] = f"{type(exc).__name__}: {exc}"[:300]
+            payload["tables_unavailable"] = f"{type(exc).__name__}: {told(exc)}"[:300]
         payload["tables"] = {name: {"columns": dict(table.get("columns") or {}),
                                     "key": list(default_ordering_key(catalog, name))}
                              for name, table in catalog.items()}

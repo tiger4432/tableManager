@@ -8,6 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from database.database import engine, Base
 from database import models  # 모델을 임포트해야 Base.metadata가 채워짐
+from error_said import told
 
 def setup_database():
     print("[Launcher] AssyManager Database Setup Starting...")
@@ -21,7 +22,7 @@ def setup_database():
         models.init_dynamic_models(table_config)
         print("    [OK] Dynamic models initialized from table_config.json.")
     except Exception as e:
-        print(f"    [Error] Failed to initialize dynamic models: {e}")
+        print(f"    [Error] Failed to initialize dynamic models: {told(e)}")
         return
 
     # 2. pg_trgm 확장 기능 활성화 (PostgreSQL용)
@@ -32,7 +33,7 @@ def setup_database():
             conn.commit()
             print("    [OK] pg_trgm extension is ready.")
         except Exception as e:
-            print(f"    [Warning] Failed to create extension (can be ignored for SQLite): {e}")
+            print(f"    [Warning] Failed to create extension (can be ignored for SQLite): {told(e)}")
 
     # 3. 모든 테이블 및 인덱스 생성
     print("  - Step 3: Creating tables and indices from models...")
@@ -40,7 +41,7 @@ def setup_database():
         Base.metadata.create_all(bind=engine)
         print("    [OK] All tables and indices are created successfully.")
     except Exception as e:
-        print(f"    [Error] Failed to create tables: {e}")
+        print(f"    [Error] Failed to create tables: {told(e)}")
         return
 
     # 4. 인덱스 최적화 통계 업데이트 (PostgreSQL용)
@@ -55,7 +56,7 @@ def setup_database():
             conn.commit()
             print("    [OK] Optimization complete.")
         except Exception as e:
-            print(f"    [Warning] Failed to run ANALYZE (can be ignored for SQLite): {e}")
+            print(f"    [Warning] Failed to run ANALYZE (can be ignored for SQLite): {told(e)}")
 
     print("\n[OK] Database setup finished! You are ready to handle 10M+ rows.")
 

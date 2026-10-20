@@ -8,6 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from database.database import SessionLocal, engine
 from database.models import DataRow
 from sqlalchemy import update, func
+from error_said import told
 
 def migrate():
     print("Starting migration to populate NULL updated_at values...")
@@ -20,7 +21,7 @@ def migrate():
         db.commit()
         print(f"Migration completed in {time.time() - t0:.3f}s. Rows updated: {result.rowcount}")
     except Exception as e:
-        print(f"Migration failed: {e}")
+        print(f"Migration failed: {told(e)}")
         db.rollback()
     finally:
         db.close()

@@ -37,6 +37,7 @@ name per rule, which is a second naming scheme for something the declaration alr
 from __future__ import annotations
 
 import logging
+from error_said import told
 
 logger = logging.getLogger("Chain.DynamicMappers")
 
@@ -302,4 +303,4 @@ try:
 except Exception as _exc:                                          # noqa: BLE001
     logger.error("[DynamicMappers] 기본틀을 꽂지 못했습니다 — 조인·확정 규칙이 "
                  "「이름을 못 찾음」으로 거절됩니다: %s: %s",
-                 type(_exc).__name__, _exc)
+                 type(_exc).__name__, told(_exc), exc_info=_exc)

@@ -142,4 +142,4 @@ def test_the_lap_line_separates_what_it_measured_from_what_it_rested():
     assert "measured_seconds += time.monotonic() - source_started" in body
     # ⚠️ Timed OUTSIDE the try, so a source that RAISED still carries its cost.
     # Counting only the successes would report a lap as cheaper than it was.
-    assert body.index('logger.warning("[LedgerCensus] %s failed: %s", source, exc)') <         body.index("measured_seconds += time.monotonic() - source_started")
+    assert body.index('logger.warning("[LedgerCensus] %s failed: %s", source, told(exc))') <         body.index("measured_seconds += time.monotonic() - source_started")

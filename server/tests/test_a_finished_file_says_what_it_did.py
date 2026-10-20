@@ -236,8 +236,10 @@ def test_a_tally_that_breaks_silences_the_line_and_not_the_file(env, monkeypatch
         _drop(handler, workspace, FILE_NAME, SEED, "normal", monkeypatch)
 
     messages = [r.getMessage() for r in caplog.records]
-    assert sum("stops counting (RuntimeError: boom)" in m for m in messages) == 1
-    assert any("FILE %s: not counted (RuntimeError: boom)" % FILE_NAME in m for m in messages)
+    at = " (test_a_finished_file_says_what_it_did.py:"                 # told(e): where it broke
+    assert sum("stops counting (RuntimeError: boom" + at in m and " in boom))" in m for m in messages) == 1
+    assert any("FILE %s: not counted (RuntimeError: boom" % FILE_NAME + at in m and m.endswith(" in boom))")
+               for m in messages)
     db = directory_watcher.SessionLocal()
     try:
         assert db.query(models.DYNAMIC_TABLES[TABLE]).count() == len(SEED), "the file landed"

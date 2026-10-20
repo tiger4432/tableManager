@@ -27,6 +27,7 @@ import threading
 from collections import OrderedDict
 
 import paths
+from error_said import told
 
 logger = logging.getLogger("Server")
 
@@ -136,7 +137,7 @@ def shrink(answer, px):
         else:
             image.save(out, "PNG")
     except Exception as exc:                                    # noqa: BLE001 - the original still answers
-        logger.info("[Image] %s is sent as it is - it did not shrink: %s: %s", key[1], type(exc).__name__, exc)
+        logger.info("[Image] %s is sent as it is - it did not shrink: %s: %s", key[1], type(exc).__name__, told(exc), exc_info=exc)
         return answer
     thumb = ("bytes", out.getvalue(), "image/jpeg" if jpeg else "image/png")
     with _THUMBS_LOCK:

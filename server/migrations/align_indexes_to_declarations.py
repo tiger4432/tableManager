@@ -89,6 +89,7 @@ import db_safety  # noqa: E402
 # already carries the measurements for.
 from drop_redundant_layering_indexes import (  # noqa: E402
     _drop, index_facts, quote_ident, rollback_ddl, stats_are_trustworthy)
+from error_said import told
 
 READONLY_APPLICATION_NAME = "assy_align_indexes_check"
 
@@ -151,7 +152,7 @@ def _create(conn, name, table, cols):
     try:
         conn.execute(text(ddl))
     except Exception as e:
-        print(f"      !! FAILED: {str(e).strip().splitlines()[0]}")
+        print(f"      !! FAILED: {told(e).strip().splitlines()[0]}")
         return None
     row = conn.execute(text(
         "SELECT x.indisvalid FROM pg_class i "

@@ -29,6 +29,7 @@ from database.database import get_db
 from ledger_api import ledger_subgraph
 from ledger import gaps, schema, trace
 from declaration_names import bare_name as _bare_name
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -1158,7 +1159,7 @@ def _row_census_by_source(world=None):
                         out[source] = {**census, "world": names.name}
         return out
     except Exception as exc:                       # noqa: BLE001 - see the docstring
-        logger.warning("row census unavailable: %s", exc)
+        logger.warning("row census unavailable: %s", told(exc), exc_info=exc)
         return {}
 
 
@@ -1332,7 +1333,7 @@ def ledger_declaration_catalog(
             for source_id, plan in sorted(plans.items())
         ]
     except Exception as exc:                       # noqa: BLE001 - see the note above
-        logger.error("declaration sources unavailable: %s", exc)
+        logger.error("declaration sources unavailable: %s", told(exc), exc_info=exc)
     # 총괄 8d10633ae ㉢ · e51e3e417: the worlds there are and the operating one ride the
     # response the screen already reads.
     catalogue.update(schema.world_listing())

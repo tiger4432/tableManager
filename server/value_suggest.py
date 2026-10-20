@@ -112,6 +112,7 @@ import event_constants
 import sqlalchemy as sa
 
 import paths
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +231,7 @@ def load_config(path: str = None) -> dict:
     except FileNotFoundError:
         return {}
     except Exception as e:
-        logger.warning("[Suggest] failed to load config %s: %s", p, e)
+        logger.warning("[Suggest] failed to load config %s: %s", p, told(e), exc_info=e)
         return {}
 
 
@@ -808,7 +809,7 @@ def suggest_values(db, table: str, column: str, prefix: str = "", limit=None,
         result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         result["unavailable_reason"] = _diagnose(
             db, table, column, e, timeout_ms, is_pg, settings=settings)
-        logger.warning("[Suggest] %s.%s unavailable: %s", table, column, e)
+        logger.warning("[Suggest] %s.%s unavailable: %s", table, column, told(e), exc_info=e)
         return result
 
     # STOP_DEADLINE is not truncation. Running out of TIME is the shape a
@@ -873,7 +874,7 @@ def _slow_reason(db, table, column, elapsed_ms, warn_ms, is_pg, settings) -> str
             # Diagnosis is the bonus, not the signal. Losing it must not cost the
             # measurement, which is the part the caller actually branches on.
             logger.warning("[Suggest] slow-path diagnosis failed for %s.%s: %s",
-                           table, column, e)
+                           table, column, told(e), exc_info=e)
     key = (table, column)
     if key in _slow_warned:
         logger.debug("[Suggest] %s.%s slow again: %s", table, column, msg)
@@ -976,7 +977,7 @@ def _why_not_a_target(db, table, column, settings) -> str:
                 f"자동 대상이 아닙니다. suggest_config.json 의 "
                 f"index_columns['{table}'] 에 이 컬럼을 선언하고 재실행하세요.")
     except Exception as e:
-        logger.warning("[Suggest] target diagnosis failed for %s.%s: %s", table, column, e)
+        logger.warning("[Suggest] target diagnosis failed for %s.%s: %s", table, column, told(e), exc_info=e)
         return ("server/scripts/ops_setup_db_performance.py 를 실행하세요 "
                 "(대상 여부는 suggest_config.json 의 index_columns / index_exclude / "
                 "index_min_rows 확인).")

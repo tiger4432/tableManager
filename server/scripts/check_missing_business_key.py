@@ -60,6 +60,7 @@ from sqlalchemy import text                                    # noqa: E402
 from db_safety import (  # noqa: E402
     close_readonly_connection, open_readonly_connection)
 import db_safety  # noqa: E402
+from error_said import told
 
 CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                       "..", "config", "table_config.json")
@@ -110,7 +111,7 @@ def _report(conn, cfg, only_table):
             n = q("SELECT count(*) FROM \"%s\" "
                   "WHERE business_key_val IS NULL OR business_key_val=''" % t)[0][0]
         except Exception as e:
-            print("%-24s  조회 실패: %s" % (t, str(e)[:60]))
+            print("%-24s  조회 실패: %s" % (t, told(e)[:60]))
             continue
         if not n:
             continue

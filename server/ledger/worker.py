@@ -13,6 +13,7 @@ from chain import keyset_scan
 from ledger import followup as ledger_followup
 from utils import heartbeat
 from utils.logger import count_crossed
+from error_said import told
 
 logger = logging.getLogger("Ledger")
 #: This process's heartbeat name - its beat, and the laps of its follow-up and census (`runtime.loops`).
@@ -253,7 +254,7 @@ async def run_ledger_row_census(db_session_factory):
         try:
             units, rest = pacing.job_pace(ROW_CENSUS_JOB)
         except Exception as exc:
-            logger.warning("[LedgerCensus] pace unreadable, using the default: %s", exc)
+            logger.warning("[LedgerCensus] pace unreadable, using the default: %s", told(exc))
             units, rest = 1, 60.0
         # 🔴 ONE COMPILE PER LAP, NOT ONE PER SOURCE (S-122). `load_setup()` compiles the
         # whole declaration - 91 ms on this box - and it cannot change inside a lap, so
@@ -269,7 +270,7 @@ async def run_ledger_row_census(db_session_factory):
             # loader REFUSED is measured - its census is the refusal (총괄 7426f76b0 ㉤).
             sources, retired = census_sources(setup)
         except Exception as exc:
-            logger.warning("[LedgerCensus] the declaration could not be read: %s", exc)
+            logger.warning("[LedgerCensus] the declaration could not be read: %s", told(exc))
             # ✓ [S-284] NOTHING TO REPAIR HERE, AND THE REASON IS WORTH KEEPING. A census
             # instrument flagged `len(sources)` on the lap line below as 「a swallowed
             # failure that becomes a number」 - it is not: the whole block is guarded by
@@ -291,7 +292,7 @@ async def run_ledger_row_census(db_session_factory):
                 census = await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
                                                  source)
             except Exception as exc:
-                logger.warning("[LedgerCensus] %s failed: %s", source, exc)
+                logger.warning("[LedgerCensus] %s failed: %s", source, told(exc))
             # ⚠️ THE FAILING SOURCE COSTS THE DATABASE TOO, so it is timed like any
             # other - counting only the successes would report a lap as cheaper than
             # it was, which is the direction a pacing number must never be wrong in.
@@ -360,7 +361,7 @@ async def run_ledger_followup(db_session_factory):
         try:
             units, rest = pacing.job_pace(ledger_followup.FOLLOWUP_JOB)
         except Exception as exc:
-            logger.warning("[LedgerFollowUp] pace unreadable, using the default: %s", exc)
+            logger.warning("[LedgerFollowUp] pace unreadable, using the default: %s", told(exc))
             units, rest = None, FOLLOWUP_IDLE_SECONDS
         drained = 0
         confirmed_total = refused_total = 0
@@ -386,7 +387,7 @@ async def run_ledger_followup(db_session_factory):
                 nth = count_crossed(ledger_followup.REPEATS, ("batch", type(exc).__name__))
                 if nth:
                     logger.warning("[LedgerFollowUp] batch failed: %s - #%d of this error (said at the "
-                                   "1st, 10th, 100th ...)", exc, nth)
+                                   "1st, 10th, 100th ...)", told(exc), nth)
                 break
             if _FOLLOWUP_STOP:
                 await asyncio.to_thread(_say_the_follow_up, None,
@@ -476,7 +477,7 @@ def _set_partitions_autoanalyze_sync(db_session_factory):
             connection.close()
     except Exception as exc:                                            # noqa: BLE001
         logger.warning("[Ledger] the partitions' autoanalyze setting was not compared (this process goes on): %s: %s",
-                       type(exc).__name__, exc)
+                       type(exc).__name__, told(exc), exc_info=exc)
 
 
 def _restamp_moved_fingerprints_sync(db_session_factory):
@@ -581,7 +582,7 @@ async def start_ledger_worker(db_session_factory):
         await asyncio.to_thread(_ensure_ledger_schema_sync, db_session_factory)
     except Exception as exc:
         logger.error("[Ledger] the ledger schema could not be ensured, so a column that "
-                     "landed in code may be missing here: %s", exc)
+                     "landed in code may be missing here: %s", told(exc), exc_info=exc)
     # 🔴 S-87 — AFTER THE SCHEMA ENSURE AND BEFORE ANY LOOP READS A CURSOR. The ensure above may
     # have added the very column this reads, and both loops below refuse to run against a cursor
     # whose fingerprint does not match.
@@ -589,7 +590,7 @@ async def start_ledger_worker(db_session_factory):
         await asyncio.to_thread(_restamp_moved_fingerprints_sync, db_session_factory)
     except Exception as exc:
         logger.error("[Ledger] cursor fingerprints could not be re-stamped, so a source "
-                     "whose declaration did not change may still refuse to run: %s", exc)
+                     "whose declaration did not change may still refuse to run: %s", told(exc), exc_info=exc)
     # The partitions' build waits on the database's older transactions - beside the loops, on a thread. Their
     # autoanalyze setting first, on the same line, so its ALTER and a CONCURRENTLY build never wait on each other.
     async def index_line():

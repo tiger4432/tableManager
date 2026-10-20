@@ -73,6 +73,7 @@ logger = logging.getLogger(__name__)
 
 import paths  # single override point (ASSY_DATA_ROOT)
 import validation
+from error_said import told
 CONFIG_PATH = paths.config_path("map_overlay_config.json")
 
 MAX_OVERLAY_CELLS = 20_000     # 오버레이 1종당 셀 상한 (초과 시 truncated 표기)
@@ -143,7 +144,7 @@ def load_overlay_config(path: str = None) -> dict:
         _CONFIG_MEMO[p] = (stamp, {})
         return {}
     except Exception as e:
-        logger.warning("[MapOverlay] failed to load config %s: %s", p, e)
+        logger.warning("[MapOverlay] failed to load config %s: %s", p, told(e), exc_info=e)
         return {}
 
 
@@ -392,7 +393,7 @@ def meta_access_state(db):
     try:
         _meta_select(db, model, _META_PROBE_KEY, _META_PROBE_KEY)
     except Exception as e:
-        return META_ACCESS_QUERY_FAILED, "%s: %s (%s)" % (type(e).__name__, e, META_TABLE)
+        return META_ACCESS_QUERY_FAILED, "%s: %s (%s)" % (type(e).__name__, told(e), META_TABLE)
     return META_ACCESS_OK, None
 
 
@@ -413,7 +414,7 @@ def load_map_meta(db, target_table: str, map_id: str) -> dict | None:
         # 🔴 error이지 warning이 아니다. 이 실패는 **요청의 모든 맵**을 동시에 못 읽게 만들고
         #    (오염된 트랜잭션에서 이후 질의도 전부 실패한다), 로그가 그 사실을 warning으로
         #    말하면 아무도 데이터가 아니라 스키마를 보러 가지 않는다.
-        logger.error("[MapOverlay] meta query failed (%s/%s): %s", target_table, map_id, e)
+        logger.error("[MapOverlay] meta query failed (%s/%s): %s", target_table, map_id, told(e), exc_info=e)
         return None
     if not row or not row[0]:
         return None
@@ -2199,7 +2200,7 @@ def get_overlay(db, cfg: dict, target_table: str, target_key: str,
                       .order_by(y_col, x_col, getattr(model, "row_id"))
                       .limit(cell_cap + 1).all())
         except Exception as e:
-            logger.warning("[MapOverlay] cell query failed (%s/%s): %s", s_table, key, e)
+            logger.warning("[MapOverlay] cell query failed (%s/%s): %s", s_table, key, told(e))
             entry["status"] = STATUS_SOURCE_MISSING
             entry["detail"] = "셀 조회 실패"
             overlays.append(entry)
@@ -2662,7 +2663,7 @@ def resolve_valid_die_basis(meta: dict | None, resolver=None, table: str = None)
         result = resolver(ref)
     except Exception as e:                       # noqa: BLE001 — 해석 실패는 거절이다
         return {"basis": None, "source": SOURCE_REFUSED,
-                "reason": f"참조 해석 중 오류: [{type(e).__name__}] {e}" + note}
+                "reason": f"참조 해석 중 오류: [{type(e).__name__}] {told(e)}" + note}
     basis, reason = _basis_from_resolver(result)
     if basis is None:
         return {"basis": None, "source": SOURCE_REFUSED,
@@ -2851,7 +2852,7 @@ def _resolve_valid_die_uncached(db, cfg, ref, target_meta, cell_cap, home=None):
         rows = db.query(x_col, y_col).filter(*filters).limit(cell_cap + 1).all()
     except Exception as e:
         logger.warning("[ValidDie] ref cell query failed (%s/%s): %s",
-                       ref_table, ref_key, e)
+                       ref_table, ref_key, told(e), exc_info=e)
         return _valid_die_refused(
             ref, STATUS_SOURCE_MISSING, f"참조 맵 '{ref_table}/{ref_key}' 셀 조회 실패")
 

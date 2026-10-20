@@ -46,6 +46,7 @@ for _p in (_SERVER, _HERE):
         sys.path.insert(0, _p)
 
 import product_door                                                  # noqa: E402
+from error_said import told
 
 #: A map is 20x20 by the owner's production shape, and each map is a different material.
 MAP_SIDE = 20
@@ -496,7 +497,7 @@ def main(argv=None) -> int:
         print(f"REFUSED: {refusal}")
         return 2
     except Exception as failure:                        # noqa: BLE001 - reported, not hidden
-        print(f"FAILED after starting: {type(failure).__name__}: {failure}")
+        print(f"FAILED after starting: {type(failure).__name__}: {told(failure)}")
         return 4
     print("\n" + json.dumps(result, indent=2))
     return 0

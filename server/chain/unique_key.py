@@ -22,6 +22,7 @@ import logging
 import os
 
 import db_safety
+from error_said import told
 
 # 🔴 [S-283, AND THIS IS THAT ROUND] THE LOGGER NAME MOVED. S-283 left it alone and
 # said why: an operator greps their logs for what they saw yesterday, so a channel that
@@ -208,7 +209,7 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
     try:
         connection = _open_ddl_connection(db.get_bind())
     except Exception as open_error:
-        report["error"] = "autocommit connection unavailable: %s" % open_error
+        report["error"] = "autocommit connection unavailable: %s" % told(open_error)
         return report
 
     try:
@@ -224,7 +225,7 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
     except Exception as create_error:
         # 여기서 실패하면 대개 «중복»이다. PostgreSQL 이 어떤 키인지까지 말해 주므로
         # 우리 진단으로 덮어쓰지 않고 그 문장을 그대로 나른다.
-        report["error"] = str(create_error).strip().splitlines()[0]
+        report["error"] = told(create_error).strip().splitlines()[0]
         if db_safety.waited_past_the_lock_timeout(create_error):
             # Not the data: another session held the table past the time limit (⑤).
             report["state"] = "deferred"
@@ -375,7 +376,7 @@ def retract_unrequired_once(db, required) -> dict:
         except Exception:                                              # noqa: BLE001
             pass
         report = {"dropped": [], "kept": [],
-                  "skipped": str(probe_error).strip().splitlines()[0] or "probe failed"}
+                  "skipped": told(probe_error).strip().splitlines()[0] or "probe failed"}
         _RETRACTED[key] = report
         logger.warning("[Join] 제품 인덱스 목록을 읽지 못했습니다(로딩은 계속): %s",
                        report["skipped"])
@@ -405,7 +406,7 @@ def retract_unrequired_once(db, required) -> dict:
                     index_name, table, db_safety.DDL_LOCK_TIMEOUT)
             else:
                 logger.warning("[Join] 인덱스 %s 를 걷어내지 못했습니다: %s",
-                               index_name, str(drop_error).strip().splitlines()[0])
+                               index_name, told(drop_error).strip().splitlines()[0])
             continue
         dropped.append(index_name)
         logger.warning(
@@ -456,7 +457,7 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
     except Exception as probe_error:                                   # noqa: BLE001
         db.rollback()
         report["state"] = "probe_failed"
-        report["error"] = str(probe_error).strip().splitlines()[0]
+        report["error"] = told(probe_error).strip().splitlines()[0]
         _TRIED[memo] = report
         logger.warning("[Join] 조회 인덱스 %s 점검 실패(체인은 계속): %s", name, report["error"])
         return report
@@ -469,7 +470,7 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         connection = _open_ddl_connection(db.get_bind())
     except Exception as open_error:                                    # noqa: BLE001
         report["state"] = "failed"
-        report["error"] = "autocommit connection unavailable: %s" % open_error
+        report["error"] = "autocommit connection unavailable: %s" % told(open_error)
         _TRIED[memo] = report
         return report
     try:
@@ -481,7 +482,7 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         report["state"] = "ok"
     except Exception as create_error:                                  # noqa: BLE001
         report["created"] = None
-        report["error"] = str(create_error).strip().splitlines()[0]
+        report["error"] = told(create_error).strip().splitlines()[0]
         report["state"] = ("deferred" if db_safety.waited_past_the_lock_timeout(create_error)
                            else "failed")
     finally:

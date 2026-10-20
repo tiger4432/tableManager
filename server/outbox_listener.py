@@ -20,6 +20,7 @@ import time
 
 from utils import heartbeat
 from event_constants import OUTBOX_NOTIFY_CHANNEL
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -158,10 +159,10 @@ class OutboxListener:
             if self._closed:
                 logger.info(
                     "[Outbox Queue] listener connection closed while a wait was in "
-                    "flight - that is the shutdown, not a fault (%s)", e)
+                    "flight - that is the shutdown, not a fault (%s)", told(e), exc_info=e)
                 return False
             # 커넥션 끊김/예외 시 안전 재생성(다음 wait에서 새 LISTEN 커넥션 확보).
-            logger.error(f"PostgreSQL LISTEN/NOTIFY socket wait failed, resetting listener connection: {e}")
+            logger.error(f"PostgreSQL LISTEN/NOTIFY socket wait failed, resetting listener connection: {told(e)}", exc_info=e)
             self._reset_connection()
             time.sleep(1.0)
             return False

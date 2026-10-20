@@ -82,6 +82,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from db_safety import close_readonly_connection  # noqa: E402
+from error_said import told
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "..", ".."))
@@ -459,7 +460,7 @@ def probe_numeric_fill(engine, candidates, sample=20000):
                                "min": row[2], "max": row[3], "nonintegral": int(row[4])}
             except Exception as e:
                 conn.rollback()
-                out[(t, c)] = {"error": str(e).strip().splitlines()[0][:80]}
+                out[(t, c)] = {"error": told(e).strip().splitlines()[0][:80]}
     finally:
         close_readonly_connection(conn)
     return out
@@ -1695,7 +1696,7 @@ def main(argv=None):
             with engine.connect() as c:
                 c.execute(text("SELECT 1"))
         except Exception as e:
-            print(f"[canon] cannot reach the database: {e}")
+            print(f"[canon] cannot reach the database: {told(e)}")
             return 2
         phys = load_physical(engine, label)
 
@@ -1718,7 +1719,7 @@ def main(argv=None):
         try:
             default_surface = load_default_surface(_read_json(cfg_path) or {})
         except Exception as e:  # a model import failure must not hide the other seven rules
-            print(f"[canon] R4 surface unavailable ({type(e).__name__}: {e}) - "
+            print(f"[canon] R4 surface unavailable ({type(e).__name__}: {told(e)}) - "
                   f"R4 reports the config half only.")
 
     # The fill probe runs over R1's candidate set ONLY - identifier columns that are

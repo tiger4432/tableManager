@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from sqlalchemy import create_engine, text
 from database.database import SQLALCHEMY_DATABASE_URL
+from error_said import told
 
 print(f"Optimizing Search for DB: {SQLALCHEMY_DATABASE_URL}")
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
@@ -27,6 +28,6 @@ with engine.connect() as conn:
             conn.commit()
             print("  - Success")
         except Exception as e:
-            print(f"  - Error: {e}")
+            print(f"  - Error: {told(e)}")
 
 print("Search optimization (Trigram Index) completed.")

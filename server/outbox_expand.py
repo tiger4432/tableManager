@@ -65,6 +65,7 @@ from event_constants import (
     is_collapsed_payload,
 )
 from utils.payload_helper import get_payload_dict
+from error_said import told
 
 
 def _data_columns(model) -> list:
@@ -223,7 +224,7 @@ def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
         probe = db.query(model).filter(model.row_id.in_(unique_ids[:chunk_size]))
         facts["sql"] = " ".join(str(probe).split())
     except Exception as exc:                                        # pragma: no cover
-        facts["sql"] = "<unrenderable: %s>" % type(exc).__name__
+        facts["sql"] = "<unrenderable: %s: %s>" % (type(exc).__name__, told(exc))
     facts["ids"] = len(unique_ids)
     facts["id_types"] = sorted({type(v).__name__ for v in unique_ids})
     facts["sample_id"] = repr(unique_ids[0])
@@ -240,7 +241,7 @@ def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
                 .bindparams(_bindparam("ids", expanding=True)), {"ids": ids_as_text}).scalar()
             facts[label] = value
         except Exception as exc:
-            facts[label] = "ERR:%s" % type(exc).__name__
+            facts[label] = "ERR:%s: %s" % (type(exc).__name__, told(exc))
 
     _recount(db, "same_session_now")
     for label, sql in (("txid", "SELECT txid_current()"),
@@ -248,7 +249,7 @@ def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
         try:
             facts[label] = str(db.execute(_sqltext(sql)).scalar())
         except Exception as exc:
-            facts[label] = "ERR:%s" % type(exc).__name__
+            facts[label] = "ERR:%s: %s" % (type(exc).__name__, told(exc))
 
     _time.sleep(0.1)
     _recount(db, "same_session_after_100ms")
@@ -263,7 +264,7 @@ def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
             _sqltext("SELECT DISTINCT xmin::text FROM \"%s\" WHERE row_id IN :ids" % physical)
             .bindparams(_bindparam("ids", expanding=True)), {"ids": ids_as_text}).fetchall()]
     except Exception as exc:
-        facts["writer_xid"] = "ERR:%s" % type(exc).__name__
+        facts["writer_xid"] = "ERR:%s: %s" % (type(exc).__name__, told(exc))
     try:
         from database.database import SessionLocal
         fresh = SessionLocal()
@@ -272,7 +273,7 @@ def _report_unreadable(db, model, table_name, unique_ids, chunk_size):
         finally:
             fresh.close()
     except Exception as exc:                                        # pragma: no cover
-        facts["fresh_session"] = "ERR:%s" % type(exc).__name__
+        facts["fresh_session"] = "ERR:%s: %s" % (type(exc).__name__, told(exc))
 
     logger.warning(
         "[OUTBOX-4/PROBE] '%s' named %d row(s) and read back ZERO. "

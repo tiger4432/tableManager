@@ -23,6 +23,7 @@ import logging
 import os
 import threading
 from declaration_names import bare_name as _bare_name, fold_versions
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ def load(force_reload=False):
         except FileNotFoundError:
             pass
         except Exception as exc:                                  # pragma: no cover
-            logger.error("declared entities unreadable at %s: %s", path, exc)
+            logger.error("declared entities unreadable at %s: %s", path, told(exc), exc_info=exc)
         _keys = keys
         _cache = keys
         return _cache

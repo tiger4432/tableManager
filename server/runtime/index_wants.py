@@ -17,6 +17,7 @@ import queue
 import re
 import threading
 import uuid
+from error_said import told
 
 logger = logging.getLogger("Server")
 
@@ -60,7 +61,7 @@ def _asking():
         try:
             job()
         except Exception as exc:                                    # noqa: BLE001 - the next ask goes on
-            logger.error("[Indexes] %s: %s: %s", what, type(exc).__name__, exc)
+            logger.error("[Indexes] %s: %s: %s", what, type(exc).__name__, told(exc))
 
 
 def _plan_wants(label, view, statement, params, seconds, bind):

@@ -138,6 +138,7 @@ logger = logging.getLogger("NotationNorm")
 
 import paths  # single override point (ASSY_DATA_ROOT)
 import validation
+from error_said import told
 
 NOTATION_RULES_PATH = paths.config_path("notation_rules.json")
 
@@ -767,7 +768,7 @@ def install_sqlite_fold():
             create_function(SQL_FOLD_FUNCTION, 2, _fold)
         except Exception as e:      # pragma: no cover - defensive
             logger.warning("[NotationNorm] could not register %s on this "
-                           "connection: %s", SQL_FOLD_FUNCTION, e)
+                           "connection: %s", SQL_FOLD_FUNCTION, told(e), exc_info=e)
 
     _SQLITE_FOLD_INSTALLED["done"] = True
 
@@ -1027,7 +1028,7 @@ def load_notation_rules(path: str = None, known_tables: dict = None,
         with open(rules_path, "r", encoding="utf-8") as f:
             raw_config = json.load(f)
     except Exception as e:
-        logger.error("Failed to load %s: %s", rules_path, e)
+        logger.error("Failed to load %s: %s", rules_path, told(e), exc_info=e)
         _record(rejections, SCOPE_FILE, None,
                 f"notation_rules.json could not be read "
                 f"({e.__class__.__name__}) - NO column is normalized", CODE_SHAPE)
@@ -1053,7 +1054,7 @@ def normalized_by_table() -> dict:
         # direction is the one that compares raw values - the behaviour every
         # join had before this feature existed.
         logger.error("[NotationNorm] declarations unreadable, no column is "
-                     "normalized: %s", e)
+                     "normalized: %s", told(e), exc_info=e)
         loaded = {}
     _RULES_CACHE["by_table"] = loaded
     _RULES_CACHE["at"] = now
@@ -1363,8 +1364,8 @@ def declared_previews(db, limit: int = PREVIEW_GROUP_LIMIT) -> list:
                                         write=bool(spec.get("write"))))
             except Exception as e:
                 logger.error("[NotationNorm] preview failed for %s.%s: %s",
-                             table, column, e)
+                             table, column, told(e))
                 out.append({"table": table, "column": column, "declared": True,
                             "rules": dict(spec["rules"]),
-                            "error": f"{e.__class__.__name__}: {e}"})
+                            "error": f"{e.__class__.__name__}: {told(e)}"})
     return out

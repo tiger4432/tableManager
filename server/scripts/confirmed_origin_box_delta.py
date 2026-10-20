@@ -46,6 +46,7 @@ import map_meta_registrar           # noqa: E402
 import map_overlay                  # noqa: E402
 from database.database import SessionLocal, SQLALCHEMY_DATABASE_URL  # noqa: E402
 from database import crud, models   # noqa: E402
+from error_said import told
 
 #: Two anchor pairs, only to prove the delta does not depend on them (see the module docstring).
 PROBE_ANCHORS = (((0, 0), (0, 0)), ((7, 3), (-2, 11)))
@@ -109,7 +110,7 @@ def main(counterfactual=False):
                         db, cfg, table, map_id, map_overlay.MAX_VALID_DIE_CELLS)
                     cells_cache[key] = None if trunc else cells
                 except Exception as e:                       # noqa: BLE001
-                    print("   ! cells unreadable for %s/%s: %s" % (table, map_id, e))
+                    print("   ! cells unreadable for %s/%s: %s" % (table, map_id, told(e)))
                     cells_cache[key] = None
             return cells_cache[key]
 

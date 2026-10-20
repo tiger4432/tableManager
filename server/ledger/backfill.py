@@ -94,6 +94,7 @@ import sys
 from pathlib import Path
 import time
 from typing import Any
+from error_said import told
 
 logger = logging.getLogger("Ledger.Backfill")
 
@@ -978,7 +979,7 @@ def analyze_stale_partitions(engine, world, only=None, skips=None):
                 said.append(name + _after_skips(skips.pop(name, None)))
             except Exception as exc:                                    # noqa: BLE001 - said, the run goes on
                 connection.rollback()
-                reason = str(exc).strip().splitlines()[0]
+                reason = told(exc).strip().splitlines()[0]
                 before = skips.get(name)
                 if before and before[2] == reason:
                     before[0] += 1
@@ -1956,7 +1957,7 @@ def measure_every_source(engine, setup, store=None, now=None):
         try:
             measure_and_store(engine, setup, source, writer, now=now)
         except Exception as exc:
-            logger.warning("[Ledger] census of %s failed: %s", source, exc)
+            logger.warning("[Ledger] census of %s failed: %s", source, told(exc))
             continue
         done.append(source)
     return done
@@ -2684,7 +2685,7 @@ def beat(result):
         heartbeat.beat("ledger", note=observability.note(result.get("lag_note")),
                        force=True)
     except Exception as exc:                                     # pragma: no cover
-        logger.warning("[Ledger] heartbeat could not be written: %s", exc)
+        logger.warning("[Ledger] heartbeat could not be written: %s", told(exc), exc_info=exc)
 
 
 def _written(op, params):

@@ -65,6 +65,7 @@ import sys
 
 from sqlalchemy import inspect, text
 from sqlalchemy import types as sqltypes
+from error_said import told
 
 
 # Overrides, for remedies that are NOT a file anyone can run. Everything that IS
@@ -229,7 +230,7 @@ def _register_dynamic_models(models):
         models.init_dynamic_models(crud.load_table_config_or_raise())
     except Exception as e:
         print(f"[drift] dynamic tables could not be loaded, checking system tables "
-              f"only: {type(e).__name__}: {e}")
+              f"only: {type(e).__name__}: {told(e)}")
 
 
 def _dynamic_table_names():
@@ -879,7 +880,7 @@ def run_at_startup(engine, emit, target=None):
     try:
         findings = check(engine)
     except Exception as e:
-        emit("error", f"[Schema] drift check could not run ({type(e).__name__}: {e}). "
+        emit("error", f"[Schema] drift check could not run ({type(e).__name__}: {told(e)}). "
                       f"Starting anyway - run "
                       f"'python server/scripts/check_schema_drift.py' by hand.")
         return None

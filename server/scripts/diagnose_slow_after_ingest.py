@@ -104,6 +104,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 import sqlalchemy as sa                                              # noqa: E402
 import paths                                                        # noqa: E402
+from error_said import told
 
 # 🔴 Take the URL the APP resolves, never a literal. `resolve_database_url` is the
 #    same three-step chain server/database/database.py consumes at import
@@ -244,7 +245,7 @@ class Probe:
             return out
         except Exception as e:
             self._release()
-            print(f"     [읽기 실패] {type(e).__name__}: {str(e).splitlines()[0][:150]}")
+            print(f"     [읽기 실패] {type(e).__name__}: {told(e).splitlines()[0][:150]}")
             return []
 
     def one(self, sql, **params):
@@ -915,7 +916,7 @@ def _get(base, path, timeout=60, headers=None):
         return (time.perf_counter() - t0) * 1000, e.code, len(body), body
     except Exception as e:
         return ((time.perf_counter() - t0) * 1000,
-                f"ERR {type(e).__name__}", 0, b"")
+                f"ERR {type(e).__name__}: {told(e)}", 0, b"")
 
 
 def _stat(samples):
@@ -1547,7 +1548,7 @@ def _table_names():
             tables = cfg.get("tables") if isinstance(cfg.get("tables"), dict) else cfg
             return sorted(k for k in tables.keys() if not k.startswith("_")), path
     except Exception as e:
-        print(f"     [table_config.json을 읽지 못했다: {type(e).__name__}: {e}]")
+        print(f"     [table_config.json을 읽지 못했다: {type(e).__name__}: {told(e)}]")
     return [], path
 
 
@@ -1582,7 +1583,7 @@ def section_page_load(p, max_tables, http_base):
             eng.dispose()
             samples.append((time.perf_counter() - t0) * 1000)
         except Exception as e:
-            print(f"     신규 접속 실패: {type(e).__name__}: {str(e).splitlines()[0][:120]}")
+            print(f"     신규 접속 실패: {type(e).__name__}: {told(e).splitlines()[0][:120]}")
             break
     if samples:
         print(f"     신규 접속 + SELECT 1 : " +
@@ -1733,7 +1734,7 @@ def _time_http(base, tables):
         except urllib.error.HTTPError as e:
             return (time.perf_counter() - t0) * 1000, e.code, 0
         except Exception as e:
-            return (time.perf_counter() - t0) * 1000, f"ERR {type(e).__name__}", 0
+            return (time.perf_counter() - t0) * 1000, f"ERR {type(e).__name__}: {told(e)}", 0
 
     ms, status, n = get("/")
     print(f"     GET /                             {ms:8.1f} ms  [{status}] {human(n)}"
@@ -1997,7 +1998,7 @@ def main():
     try:
         p = Probe(url)
     except Exception as e:
-        print(f"\n  [치명] 데이터베이스에 접속하지 못했다: {type(e).__name__}: {e}")
+        print(f"\n  [치명] 데이터베이스에 접속하지 못했다: {type(e).__name__}: {told(e)}")
         print(f"  대상: {paths.mask_db_password(url)} (출처: {source})")
         return 2
 

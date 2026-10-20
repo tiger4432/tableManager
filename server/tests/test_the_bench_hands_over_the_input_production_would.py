@@ -333,7 +333,8 @@ def test_a_match_that_throws_is_not_a_match_that_said_no(tmp_path):
     (raws / "a.csv").write_text("a\n", encoding="utf-8")
 
     swept = dev_bench.sweep_claims(str(raws), scripts_path=str(scripts))
-    assert swept["files"][0]["claimed_by"] == ["Angry!ValueError"]
+    [claim] = swept["files"][0]["claimed_by"]
+    assert claim.startswith("Angry!ValueError: nope (angry.py:") and claim.endswith(" in match)"), claim
 
 
 def test_an_empty_folder_is_an_answer_not_a_crash(tmp_path):

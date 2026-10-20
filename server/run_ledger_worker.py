@@ -11,6 +11,7 @@ logger = get_process_logger("Ledger", "ledger.log")
 from database.database import SessionLocal
 from database import models
 from ledger.worker import start_ledger_worker
+from error_said import told
 
 try:
     import json
@@ -20,7 +21,7 @@ try:
         table_config = json.load(f)
     models.init_dynamic_models(table_config)
 except Exception as e:
-    logger.error(f"Failed to load table_config or init dynamic models: {e}")
+    logger.error(f"Failed to load table_config or init dynamic models: {told(e)}", exc_info=e)
 
 async def main():
     logger.info("=" * 60)
@@ -32,14 +33,14 @@ async def main():
         from database.config_watcher import start_config_watcher
         config_watcher = start_config_watcher(None)
     except Exception as e:
-        logger.error(f"Failed to start config watcher: {e}")
+        logger.error(f"Failed to start config watcher: {told(e)}", exc_info=e)
 
     try:
         await start_ledger_worker(SessionLocal)
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received.")
     except Exception as e:
-        logger.error(f"Exception occurred: {e}")
+        logger.error(f"Exception occurred: {told(e)}", exc_info=e)
     finally:
         if config_watcher:
             handler = getattr(config_watcher, "config_handler", None)

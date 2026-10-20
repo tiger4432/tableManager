@@ -71,6 +71,7 @@ from sqlalchemy import text  # noqa: E402
 from db_safety import (  # noqa: E402
     assert_writable, close_readonly_connection, open_readonly_connection)
 import db_safety  # noqa: E402
+from error_said import told
 
 READONLY_APPLICATION_NAME = "assy_drop_redundant_check"
 
@@ -510,7 +511,7 @@ def _drop(conn, name):
         conn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS public."
                           + quote_ident(name)))
     except Exception as e:
-        print(f"      !! FAILED: {str(e).strip().splitlines()[0]}")
+        print(f"      !! FAILED: {told(e).strip().splitlines()[0]}")
         return None
     still = conn.execute(text(
         "SELECT 1 FROM pg_class i JOIN pg_namespace n ON n.oid = i.relnamespace "

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from database import models
 from database.database import engine
+from error_said import told
 
 #: Same name `crud` logs under, so the handlers `get_process_logger` attaches to the
 #: root logger carry these lines to the same file with the same origin.
@@ -119,7 +120,7 @@ def reload_local_process_cache():
         if created:
             logger.info(f"[Reload] Created missing physical tables at runtime: {created}")
     except Exception as e:
-        print(f"[Reload] Failed to reload table_config.json: {e}")
+        print(f"[Reload] Failed to reload table_config.json: {told(e)}")
         
     # [Join unique keys] 🔴 [판정 667] THE TTL THAT USED TO BE HERE IS GONE, AND THIS LINE IS
     # WHAT REPLACED IT. The old comment said the cache carried a TTL "for worker processes
@@ -151,7 +152,7 @@ def reload_local_process_cache():
     except Exception as exc:                                   # noqa: BLE001
         # The reload goes on; what went quiet is said once (총괄 790511099 뒤).
         logger.error("[Reload] chain rules NOT forgotten - this process keeps the set it read "
-                     "until restart: %s: %s", type(exc).__name__, exc)
+                     "until restart: %s: %s", type(exc).__name__, told(exc), exc_info=exc)
 
     # [Notation normalization] Same shape and same reason as the line above: the
     # declaration carries a TTL for the worker processes, but one edited in the
@@ -194,7 +195,7 @@ def reload_local_process_cache():
         process_pool.recycle()
     except Exception as exc:                                   # noqa: BLE001
         logger.error("[Reload] walk pool NOT recycled - its processes answer from the caches they "
-                     "read until restart: %s: %s", type(exc).__name__, exc)
+                     "read until restart: %s: %s", type(exc).__name__, told(exc), exc_info=exc)
 
     # [Ledger skeleton] The authoring screen GENERATES its form from
     # `ledger/ledger_skeleton.json`, and the loader caches it for the life of the process.
@@ -256,7 +257,7 @@ def reload_system_configs(db: Session):
         try:
             active_watcher.sync_new_workspaces()
         except Exception as e:
-            logger.error(f"[Reload] Embedded watcher workspace sync failed: {e}")
+            logger.error(f"[Reload] Embedded watcher workspace sync failed: {told(e)}", exc_info=e)
 
     # 2. SYSTEM_RELOAD Outbox 이벤트 적재 (데몬 프로세스들로 전파) — 범위 없음 = 전부
     publish_reload(db, msg="Reload configs and custom scripts modules")

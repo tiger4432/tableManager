@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from error_said import told
 
 PACING_PATH = Path(__file__).with_name("pacing.json")
 
@@ -54,7 +55,7 @@ def page_seconds(path=None):
     try:
         value = json.loads(Path(path or PACING_PATH).read_text(encoding="utf-8")).get(PAGE_SECONDS_KEY)
     except Exception as exc:                      # noqa: BLE001
-        logging.getLogger(__name__).warning("[Pacing] page_seconds unreadable, using the default: %s", exc)
+        logging.getLogger(__name__).warning("[Pacing] page_seconds unreadable, using the default: %s", told(exc), exc_info=exc)
         return PAGE_SECONDS_DEFAULT
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         return PAGE_SECONDS_DEFAULT

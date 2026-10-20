@@ -127,6 +127,7 @@ import paths  # single override point (ASSY_DATA_ROOT)
 # A PRESENT-but-broken declaration keeps every pre-existing demotion.
 import event_constants
 from bonding_plan import STATUS_NOT_DECLARED, finite_point, role_is_declared
+from error_said import told
 
 CONFIG_PATH = paths.config_path("transfer_plan_config.json")
 
@@ -308,7 +309,7 @@ def load_transfer_plan_config(path: str = None) -> dict:
     except FileNotFoundError:
         return {}
     except Exception as e:
-        logger.warning("[TransferPlan] failed to load config %s: %s", p, e)
+        logger.warning("[TransferPlan] failed to load config %s: %s", p, told(e), exc_info=e)
         return {}
 
 
@@ -930,7 +931,7 @@ def load_source_region(db, cfg: dict, ref_table: str, map_key: str,
                 .limit(MAX_REGION_CELLS).all())
     except Exception as e:
         logger.warning("[TransferPlan] source_region query failed (%s/%s/%s/%s): %s",
-                       ref_table, map_key, source_lot, source_slot, e)
+                       ref_table, map_key, source_lot, source_slot, told(e), exc_info=e)
         return None
     if len(rows) >= MAX_REGION_CELLS:
         logger.warning("[TransferPlan] source_region hit hard cap (%d)", MAX_REGION_CELLS)
@@ -1204,8 +1205,8 @@ def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
         cells_by_bin, raws_by_bin, unbinned, cells_total, uni_trunc = _bin_universe(
             db, cols, filters)
     except Exception as e:
-        logger.warning("[TransferPlan] bin universe query failed (%s/%s): %s", lot, slot, e)
-        return _bins_unavailable(f"BIN 분포 조회에 실패했습니다: {e}", scope, requested)
+        logger.warning("[TransferPlan] bin universe query failed (%s/%s): %s", lot, slot, told(e), exc_info=e)
+        return _bins_unavailable(f"BIN 분포 조회에 실패했습니다: {told(e)}", scope, requested)
 
     # 좌표는 **필요한 BIN만** 가져온다 — 요청이 없으면 맵에 있는 전부.
     wanted = list(requested) if requested is not None else sorted(cells_by_bin.keys())
@@ -1213,8 +1214,8 @@ def _bins_block(db, stage_cfg, lot, slot, total_pts, fail_union, used_set,
     try:
         cell_sets, cell_trunc = _bin_cell_sets(db, cols, filters, need_raws)
     except Exception as e:
-        logger.warning("[TransferPlan] bin cell query failed (%s/%s): %s", lot, slot, e)
-        return _bins_unavailable(f"BIN 좌표 조회에 실패했습니다: {e}", scope, requested)
+        logger.warning("[TransferPlan] bin cell query failed (%s/%s): %s", lot, slot, told(e), exc_info=e)
+        return _bins_unavailable(f"BIN 좌표 조회에 실패했습니다: {told(e)}", scope, requested)
 
     entries = []
     for b in wanted:
@@ -1686,7 +1687,7 @@ def _collect_history(db, source_cfg, lot, slot):
                 })
         return _demote_unresolved("connected", cols), history, warnings_out
     except Exception as e:
-        logger.warning("[TransferPlan] role 'process_history' query failed: %s", e)
+        logger.warning("[TransferPlan] role 'process_history' query failed: %s", told(e), exc_info=e)
         return "missing", [], []
 
 
@@ -1738,7 +1739,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                         .filter(*_identity_filters(src, cols, lot, slot)).count())
             statuses["total_chips"] = _demote_unresolved("connected", cols)
         except Exception as e:
-            logger.warning("[TransferPlan] role 'total_chips' query failed: %s", e)
+            logger.warning("[TransferPlan] role 'total_chips' query failed: %s", told(e), exc_info=e)
             statuses["total_chips"] = "missing"
 
     # ---- transfer_log (기전사 — distinct 칩) ----
@@ -1795,7 +1796,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                     status = "connected(count_only)"
                 statuses["transfer_log"] = _demote_unresolved(status, cols)
             except Exception as e:
-                logger.warning("[TransferPlan] role 'transfer_log' query failed: %s", e)
+                logger.warning("[TransferPlan] role 'transfer_log' query failed: %s", told(e), exc_info=e)
                 statuses["transfer_log"] = "missing"
 
     # ---- origin_log (칩 단위 출신 귀속 — by_core·fail 투영의 다리) ----
@@ -1829,7 +1830,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
             ]
             statuses["origin_log"] = _demote_unresolved("connected", cols)
         except Exception as e:
-            logger.warning("[TransferPlan] role 'origin_log' query failed: %s", e)
+            logger.warning("[TransferPlan] role 'origin_log' query failed: %s", told(e), exc_info=e)
             origin_rows = None
             statuses["origin_log"] = "missing"
 
@@ -1955,7 +1956,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 # without coordinates: stays plain connected, no demotion.
                 statuses[name] = _demote_unresolved(status, cols)
             except Exception as e:
-                logger.warning("[TransferPlan] fail source '%s' query failed: %s", name, e)
+                logger.warning("[TransferPlan] fail source '%s' query failed: %s", name, told(e))
                 statuses[name] = "missing"
                 fail_breakdown[name] = 0
             continue
@@ -2011,7 +2012,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 fail_breakdown[name] = len(projected)
                 fail_union.update(projected)
         except Exception as e:
-            logger.warning("[TransferPlan] fail source '%s' projection failed: %s", name, e)
+            logger.warning("[TransferPlan] fail source '%s' projection failed: %s", name, told(e))
             statuses[name] = "missing"
             fail_breakdown[name] = 0
 
@@ -2147,7 +2148,7 @@ def _summarize_inline(db, stage_name: str, stage_cfg: dict, lot: str, slot: str,
                 by_core_origin = "area_map"
                 statuses["origin_area_map"] = _demote_unresolved("connected(area_only)", cols)
             except Exception as e:
-                logger.warning("[TransferPlan] origin_area_map query failed: %s", e)
+                logger.warning("[TransferPlan] origin_area_map query failed: %s", told(e), exc_info=e)
                 statuses["origin_area_map"] = "missing"
 
     # ---- history ----
@@ -3388,7 +3389,7 @@ def _painted_values(db, ref_table: str, map_key: str, overlay_cfg: dict):
                 .limit(MAX_PLAN_VALUES + 1).all())
     except Exception as e:
         logger.warning("[TransferPlan] painted values query failed (%s/%s): %s",
-                       ref_table, map_key, e)
+                       ref_table, map_key, told(e), exc_info=e)
         return {}, "missing", False
     truncated = len(rows) > MAX_PLAN_VALUES
     if truncated:
@@ -3646,7 +3647,7 @@ def validate_plan(db, cfg: dict, ref_table: str, map_key: str,
                     db, cfg, stage_name, s_lot, s_slot), None)
             except Exception as e:
                 logger.warning("[TransferPlan] source summary failed for (%s,%s): %s",
-                               s_lot, s_slot, e)
+                               s_lot, s_slot, told(e), exc_info=e)
                 summary_cache[key] = (None, e)
         return summary_cache[key]
 

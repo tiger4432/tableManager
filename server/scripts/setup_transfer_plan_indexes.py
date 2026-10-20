@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from sqlalchemy import text
 from database.database import engine
+from error_said import told
 
 INDEXES = [
     ("idx_dt_log_tape_lot_slot", "dt_log", "(tape_lot, tape_slot)"),
@@ -61,7 +62,7 @@ def main():
                 print(f"[ok] {name} ON {table} {cols}")
             except Exception as e:
                 conn.rollback()
-                print(f"[fail] {name}: {e}")
+                print(f"[fail] {name}: {told(e)}")
 
 
 if __name__ == "__main__":

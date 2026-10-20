@@ -28,6 +28,7 @@ import csv
 import io
 import json
 import os
+from error_said import told
 
 MAPPER = "mapper"
 PARSER = "parser"
@@ -283,7 +284,7 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
             fn = getattr(importlib.import_module(module_name), function_name)
             who = "%s.%s" % (module_name, function_name)
         except Exception as exc:
-            return _unknown_name(name, detail="%s: %s" % (type(exc).__name__, exc))
+            return _unknown_name(name, detail="%s: %s" % (type(exc).__name__, told(exc)))
     if fn is None:
         return _unknown_name(name)
 
@@ -309,7 +310,7 @@ def try_mapper(name, sample, *, rule=None, target_table="bench_target"):
                 raise
             out = fn(session, payloads)
     except Exception as exc:
-        return {"who": who, "rows": [], "refusal": "%s: %s" % (type(exc).__name__, exc)}
+        return {"who": who, "rows": [], "refusal": "%s: %s" % (type(exc).__name__, told(exc))}
     finally:
         closer()
         restore_target()
@@ -349,7 +350,7 @@ def try_parser(file_path, *, force=None, scripts_path=None):
                 if not obj.match(file_path):
                     return None
             except Exception as exc:
-                load_errors[label] = "match(): %s: %s" % (type(exc).__name__, exc)
+                load_errors[label] = "match(): %s: %s" % (type(exc).__name__, told(exc))
                 return None
         instance = obj()
         # The watcher hands the path in as an ATTRIBUTE for the same reason: `parse(path)` is
@@ -360,7 +361,7 @@ def try_parser(file_path, *, force=None, scripts_path=None):
     try:
         claim = scan_workspace_pipeline_parsers(scripts_path, visit, load_errors)
     except Exception as exc:
-        return {"who": None, "rows": [], "refusal": "%s: %s" % (type(exc).__name__, exc)}
+        return {"who": None, "rows": [], "refusal": "%s: %s" % (type(exc).__name__, told(exc))}
 
     if claim is SCAN_UNAVAILABLE:
         return {"who": None, "rows": [],
@@ -529,7 +530,7 @@ def raw_for_parser(file_path, *, lines=20, head_bytes=65536):
 
         frame = BasePipelineParser()._read_file_to_dataframe(path)
     except Exception as exc:
-        refusal = "%s: %s: %s" % (UNREADABLE, type(exc).__name__, exc)
+        refusal = "%s: %s: %s" % (UNREADABLE, type(exc).__name__, told(exc))
 
     return {"path": path, "size_bytes": size, "encoding": encoding,
             "lines": text_lines, "df": frame, "read_refusal": refusal}
@@ -560,7 +561,7 @@ def claimers(file_path, *, scripts_path=None):
         try:
             hit, error = bool(obj.match(str(file_path))), None
         except Exception as exc:
-            hit, error = None, "%s: %s" % (type(exc).__name__, exc)
+            hit, error = None, "%s: %s" % (type(exc).__name__, told(exc))
         rows.append({"script": filename, "class": obj.__name__, "match": hit,
                      "error": error, "cls": obj})
         return None                    # never claims - that is what makes it a survey
@@ -692,7 +693,7 @@ def sweep_claims(folder, *, scripts_path=None):
             except Exception as exc:
                 # ⚠️ A `match()` THAT THROWS IS NOT A `match()` THAT SAID NO. Production
                 # treats it as a decline, but the author has to see which one it was.
-                hits.append("%s!%s" % (cls.__name__, type(exc).__name__))
+                hits.append("%s!%s: %s" % (cls.__name__, type(exc).__name__, told(exc)))
         files.append({"file": path, "claimed_by": hits})
 
     return {"files": files,
@@ -1049,7 +1050,7 @@ def load_folder_mappers(folder):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
         except Exception as exc:
-            refusals[filename] = "%s: %s" % (type(exc).__name__, exc)
+            refusals[filename] = "%s: %s" % (type(exc).__name__, told(exc))
     return refusals
 
 

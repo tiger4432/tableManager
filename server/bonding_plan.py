@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 import paths  # single override point (ASSY_DATA_ROOT)
 import event_constants
+from error_said import told
 CONFIG_PATH = paths.config_path("bonding_plan_config.json")
 
 ROLES = ("process_history", "defect", "eds_fail", "used_chips", "total_chips")
@@ -91,7 +92,7 @@ def load_bonding_plan_config(path: str = None) -> dict:
     except FileNotFoundError:
         return {}
     except Exception as e:
-        logger.warning("[BondingPlan] failed to load config %s: %s", p, e)
+        logger.warning("[BondingPlan] failed to load config %s: %s", p, told(e), exc_info=e)
         return {}
 
 
@@ -213,7 +214,7 @@ def load_map_meta(db, config: dict, target_table: str, map_id: str,
                     meta = json.loads(row[0]) if isinstance(row[0], str) else row[0]
             except Exception as e:
                 logger.warning("[BondingPlan] map meta load failed (%s/%s): %s",
-                               target_table, map_id, e)
+                               target_table, map_id, told(e), exc_info=e)
                 meta = None
     if not isinstance(meta, dict):
         meta = None
@@ -284,7 +285,7 @@ def canonical_basis(db, config: dict, map_pairs, meta_cache: dict = None):
         header = frame_confirmation.live_confirmation_for_maps(db, map_pairs)
     except Exception as e:
         # 확정 표를 못 읽는 것이 계획을 못 내는 것은 아니다 — 물러나되 **말한다**.
-        logger.warning("[BondingPlan] frame confirmation lookup failed: %s", e)
+        logger.warning("[BondingPlan] frame confirmation lookup failed: %s", told(e), exc_info=e)
         return None, {"kind": BASIS_ROLE_ORDER,
                       "reason": BINDING_MAPPING_UNAVAILABLE, "roles": roles}
     if header is None:
@@ -995,7 +996,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                     # 좌표 미바인딩 소스는 영역 교차 불가 — 0으로 집계 (보고서 명시)
                     region_counts[count_key] = 0
         except Exception as e:
-            logger.warning("[BondingPlan] role '%s' query failed: %s", role, e)
+            logger.warning("[BondingPlan] role '%s' query failed: %s", role, told(e))
             statuses[role] = "missing"
             counts[count_key] = 0
             if region_counts is not None:
@@ -1036,7 +1037,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                         region_counts["used"] = 0
                 statuses["used_chips"] = _demote_for_unresolved("connected", cols)
             except Exception as e:
-                logger.warning("[BondingPlan] role 'used_chips' query failed: %s", e)
+                logger.warning("[BondingPlan] role 'used_chips' query failed: %s", told(e), exc_info=e)
                 statuses["used_chips"] = "missing"
                 counts["used"] = 0
 
@@ -1098,7 +1099,7 @@ def get_core_summary(db, lot: str, slot: str, rects=None, config: dict = None) -
                         })
                 statuses["process_history"] = _demote_for_unresolved("connected", cols)
             except Exception as e:
-                logger.warning("[BondingPlan] role 'process_history' query failed: %s", e)
+                logger.warning("[BondingPlan] role 'process_history' query failed: %s", told(e), exc_info=e)
                 statuses["process_history"] = "missing"
 
     # ---- remaining = total − defect − eds_fail − used (missing 역할은 0으로 계산) ----

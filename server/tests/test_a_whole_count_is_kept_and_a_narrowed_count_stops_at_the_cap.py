@@ -181,10 +181,14 @@ def test_a_count_that_fails_says_so_and_keeps_its_pacing(client, monkeypatch, ca
     counted = _until_counted(TABLE, 10)
 
     assert failed["counting"] is False and failed["total"] is None and failed["failed"]["at"]
-    assert failed["failed"]["reason"] == "RuntimeError: count broken on purpose", failed
+    at = " (test_a_whole_count_is_kept_and_a_narrowed_count_stops_at_the_cap.py:"      # told(e): where it broke
+    assert failed["failed"]["reason"].startswith("RuntimeError: count broken on purpose" + at) and \
+        failed["failed"]["reason"].endswith(" in broken)"), failed
     assert tried == [TABLE] and again == [failed] * 3, "a failed count keeps its pacing: %s" % tried
-    assert [r.getMessage() for r in caplog.records if "the whole count of" in r.getMessage()] == [
-        "[Count] the whole count of %s|total_count was not counted: RuntimeError: count broken on purpose" % TABLE]
+    said = [r.getMessage() for r in caplog.records if "the whole count of" in r.getMessage()]
+    assert len(said) == 1 and said[0].startswith(
+        "[Count] the whole count of %s|total_count was not counted: RuntimeError: count broken on purpose" % TABLE + at) \
+        and said[0].endswith(" in broken)"), said
     assert counted["failed"] is None and _count(client)["failed"] is None
 
 

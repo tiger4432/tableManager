@@ -162,6 +162,7 @@ from db_safety import (  # noqa: E402
     READONLY_OPTIONS, READONLY_REFUSAL, assert_readonly, assert_writable,
     close_readonly_connection, open_readonly_connection)
 import db_safety  # noqa: E402
+from error_said import told
 
 #: The name `pg_stat_activity` shows for this script's counting pass.
 READONLY_APPLICATION_NAME = "assy_bk_index_check"
@@ -362,7 +363,7 @@ def build_index(conn, table: str, name: str) -> tuple:
     try:
         conn.execute(text(ddl))
     except Exception as e:  # duplicates that appeared between census and build land here
-        return (BLOCKED if db_safety.waited_past_the_lock_timeout(e) else FAILED), str(e).strip().splitlines()[0]
+        return (BLOCKED if db_safety.waited_past_the_lock_timeout(e) else FAILED), told(e).strip().splitlines()[0]
     exists, valid = index_exists(conn, name)
     if not exists:
         return FAILED, "index absent after CREATE reported success"
@@ -501,7 +502,7 @@ def drop_redundant_indexes(conn, apply: bool, write_conn=None) -> dict:
         try:
             wconn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS " + quote_ident(r["index"])))
         except Exception as e:
-            failed.append(dict(r, error=str(e).strip().splitlines()[0]))
+            failed.append(dict(r, error=told(e).strip().splitlines()[0]))
             print(f"  !! FAILED   {r['index']}: {failed[-1]['error']}")
             continue
         # 🔴 "The statement did not raise" is not "the index is gone" - the same standard

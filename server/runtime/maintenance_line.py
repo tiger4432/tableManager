@@ -14,6 +14,7 @@ does all of it beside the scheduler's 5 s loop, on a thread of its own:
 import logging
 import threading
 import time
+from error_said import told
 
 logger = logging.getLogger("Server")
 
@@ -56,7 +57,7 @@ def clean_gin_pending(db_session_factory):
                 if name not in _SAID_GIN_FAILURES:                  # said once a process, not every merge
                     _SAID_GIN_FAILURES.add(name)
                     logger.warning("[Indexes] GIN pending list of %s not merged: %s", name,
-                                   str(exc).strip().split("\n")[0][:200])
+                                   told(exc).strip().split("\n")[0][:200])
                 continue
             if pages:
                 merged.append((name, int(pages)))
@@ -138,7 +139,7 @@ def _each(works):
         try:
             work[0](*work[1:])
         except Exception as exc:                                    # noqa: BLE001
-            logger.error("[Indexes] %s failed: %s", getattr(work[0], "__name__", work[0]), exc)
+            logger.error("[Indexes] %s failed: %s", getattr(work[0], "__name__", work[0]), told(exc))
 
 
 def _declared_work(db_session_factory):
@@ -213,7 +214,7 @@ def run(db_session_factory, stop=None):
         try:
             mark = poll_once(db_session_factory, mark)
         except Exception as exc:                                    # noqa: BLE001
-            logger.error("[Indexes] poll failed: %s", exc)
+            logger.error("[Indexes] poll failed: %s", told(exc))
         if time.monotonic() - cleaned >= GIN_CLEAN_SECONDS:
             cleaned = time.monotonic()
             _each([(_clean_and_say, db_session_factory)])

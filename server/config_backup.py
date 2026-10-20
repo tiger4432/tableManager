@@ -94,6 +94,7 @@ import re
 import shutil
 import logging
 from datetime import datetime, timedelta
+from error_said import told
 
 try:
     import paths as _paths
@@ -428,8 +429,8 @@ def run_scheduled(config_dir=None, now=None):
             for err in snap["errors"]:
                 logger.error("[ConfigBackup] %s", err)
     except Exception as e:  # never take the daemon down
-        logger.error("[ConfigBackup] snapshot cycle failed: %s", e)
-        out["error"] = str(e)
+        logger.error("[ConfigBackup] snapshot cycle failed: %s", told(e), exc_info=e)
+        out["error"] = told(e)
 
     status = probe(config_dir, now)
     out["probe"] = status

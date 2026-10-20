@@ -331,6 +331,7 @@ RETIRED_REGISTER_OBJECT_CONSTRAINT = "ck_ledger_register_has_no_object"
 #: The basis a not-an-event atom carries - an entity reference's, and a mapping's that binds no event
 #: time (총괄 29047aedc · 0c9b6e3c0). Spelled once, in `setup_bundle`; the translator's stamp reads it.
 from .setup_bundle import NOT_AN_EVENT_BASIS  # noqa: E402
+from error_said import told
 
 
 def reads_as_event_time(basis) -> bool:
@@ -722,7 +723,7 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
             except Exception as exc:                      # noqa: BLE001 - said; the next partition goes on
                 out["failed"] += 1
                 say(f"{partition}: {child} failed after {time.perf_counter() - started:.1f} s - "
-                    f"{type(exc).__name__}: {str(exc).strip().splitlines()[0] if str(exc).strip() else ''}; "
+                    f"{type(exc).__name__}: {told(exc).strip().splitlines()[0] if told(exc).strip() else ''}; "
                     f"the other partitions go on, this one is built at the next start")
                 continue
             size = one("SELECT pg_relation_size(to_regclass(%s))", (space + child,))[0]
@@ -1007,7 +1008,7 @@ def set_partitions_autoanalyze(connection):
             except Exception as exc:                                    # noqa: BLE001 - said, the rest go on
                 connection.rollback()
                 logger.warning("[Ledger] %s: autovacuum_analyze_scale_factor not set - %s", name,
-                               str(exc).strip().splitlines()[0])
+                               told(exc).strip().splitlines()[0])
     if done:
         logger.info("[Ledger] autovacuum_analyze_scale_factor %s set on %d partition(s): %s", factor, len(done),
                     ", ".join(done))

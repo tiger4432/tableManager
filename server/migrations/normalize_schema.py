@@ -27,6 +27,7 @@ sys.path.insert(0, SERVER_DIR)
 from sqlalchemy import text, inspect
 from database.database import engine, Base, SessionLocal
 from database import models, crud
+from error_said import told
 
 
 # ─────────────────────────────────────────────
@@ -46,7 +47,7 @@ def drop_orphan_indexes(db, table_name: str):
                 db.execute(text(f'DROP INDEX IF EXISTS "{idx_name}"'))
                 db.commit()
     except Exception as e:
-        print(f"  [!] Warning during index cleanup for '{table_name}': {e}")
+        print(f"  [!] Warning during index cleanup for '{table_name}': {told(e)}")
         db.rollback()
 
 
@@ -69,10 +70,10 @@ def drop_backup_indexes(db, backup_table_name: str, is_sqlite: bool):
                     db.execute(text(f'DROP INDEX IF EXISTS "{idx_name}"'))
                     db.commit()
                 except Exception as e:
-                    print(f"  [!] Could not drop index '{idx_name}': {e}")
+                    print(f"  [!] Could not drop index '{idx_name}': {told(e)}")
                     db.rollback()
     except Exception as e:
-        print(f"  [!] Failed to enumerate indexes for '{backup_table_name}': {e}")
+        print(f"  [!] Failed to enumerate indexes for '{backup_table_name}': {told(e)}")
         db.rollback()
 
 
