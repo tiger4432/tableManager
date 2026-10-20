@@ -372,6 +372,55 @@ def warn_invalid_std_parse_once(source_key: str, value):
                    f"the next source decides")
 
 
+def workspace_config_path(workspace_root: str) -> str:
+    """The legacy workspace config file: config/config.json, else the first .json in config/."""
+    config_dir = os.path.join(workspace_root, "config")
+    config_path = os.path.join(config_dir, "config.json")
+    if not os.path.exists(config_path) and os.path.exists(config_dir):
+        json_files = [f for f in os.listdir(config_dir) if f.endswith('.json')]
+        if json_files:
+            config_path = os.path.join(config_dir, json_files[0])
+    return config_path
+
+
+def load_legacy_workspace_config(config_path) -> dict:
+    """[하위호환] 레거시 워크스페이스 config 파일 -> dict ({} when absent or unreadable).
+    소비 필드(table_name/std_parse)가 있으면 deprecation 경고를 1회 남긴다."""
+    data = {}
+    if config_path and os.path.exists(config_path):
+        import json
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
+            data = {}
+        if ("table_name" in data) or ("std_parse" in data):
+            warn_legacy_workspace_config(config_path)
+    return data
+
+
+def std_parse_enabled_for(t_name, table_info, legacy: dict, legacy_path=None) -> bool:
+    """std parser 폴백 옵트아웃 게이트 - the handler's read and an external source's registration ask it.
+    우선순위(충돌 시 상위가 승리):
+    1) 글로벌 table_config.json 테이블 항목의 `std_parse` (파일 경계 핫리로드 — F4 해소)
+    2) [deprecated] 레거시 워크스페이스 config.json의 `std_parse`
+    3) 기본 활성(True) — config가 없는 워크스페이스도 활성.
+    [D6] bool 외 값은 무시(1회 경고) 후 하위 원천으로 폴백."""
+    if isinstance(table_info, dict) and "std_parse" in table_info:
+        val = table_info["std_parse"]
+        if not validation.flag_refusal("std_parse", val):
+            return val
+        warn_invalid_std_parse_once(f"table_config.json entry '{t_name}'", val)
+    if "std_parse" in legacy:
+        lval = legacy["std_parse"]
+        if not validation.flag_refusal("std_parse", lval):
+            return lval
+        warn_invalid_std_parse_once(f"workspace config '{legacy_path}'", lval)
+    return True
+
+
 # ── [Heavy Lane P1] 대형 파일 인제션 격리 설정 ─────────────────────────────
 # 임계값 위치 결정 근거: table_config.json에 `_system` 메타 키를 넣는 안은
 # 모든 소비처(init_dynamic_models·_provision_workspaces·/tables·마이그레이션 등)가
@@ -921,25 +970,24 @@ def validate_external_source_specs(settings: dict, table_config: dict,
                 f"composite_key_source.")
             continue
         if parser_name is None or (isinstance(parser_name, str) and not parser_name.strip()):
-            # `parser` omitted -> ONE resolution point with the managed raws/ path:
-            # the target table's workspace scripts/ folder.  The whitelist drew the
-            # boundary "config cannot name arbitrary code"; that boundary is now
-            # drawn by the workspace itself -- config names a TABLE, never a code
-            # location, and only a plugin that really exists in that table's
-            # workspace can run.  Which plugin takes a given file is a runtime
-            # match() decision, so registration checks existence only.
-            scripts_dir = os.path.join(
-                resolve_workspace_root(workspace_base, table_name, table_config), "scripts")
+            # `parser` omitted -> the file is read as a managed raws/ file is: the table's
+            # workspace plugin, else the standard parser (`_resolve_rows`, one road - lead
+            # 10-20, owner 「기본 파서도 있는데 왜 파서 없다고 막아」). Refused only when
+            # neither can read it. Which plugin takes a file stays a runtime match().
+            workspace_root = resolve_workspace_root(workspace_base, table_name, table_config)
+            scripts_dir = os.path.join(workspace_root, "scripts")
             plugin_names, plugin_load_errors = workspace_pipeline_parser_names(scripts_dir)
-            if not plugin_names:
+            legacy_path = workspace_config_path(workspace_root)
+            if not plugin_names and not std_parse_enabled_for(
+                    table_name, table_info, load_legacy_workspace_config(legacy_path), legacy_path):
                 detail = ""
                 if plugin_load_errors:
                     detail = (f" Script(s) that failed to load: "
                               f"{', '.join(sorted(plugin_load_errors))}.")
                 errors.append(
-                    f"{where} declares no 'parser' and table {table_name!r} has no "
-                    f"BasePipelineParser plugin in {scripts_dir} to read the file "
-                    f"with.{detail}")
+                    f"{where} declares no 'parser', table {table_name!r} has no "
+                    f"BasePipelineParser plugin in {scripts_dir}, and its std_parse is false - "
+                    f"nothing reads the file.{detail}")
                 continue
             parser_name = None
         elif (not isinstance(parser_name, str)
@@ -1587,6 +1635,27 @@ def render_resolution_probe(probe: dict | None) -> str:
     return "\n".join(lines)
 
 
+#: sys.path and sys.modules are the process's: one plugin's import window at a time, so a table's helper is its own
+_PLUGIN_IMPORT_LOCK = threading.Lock()
+
+
+def _exec_plugin_module(spec, module, scripts_path: str):
+    """Run a plugin with its own scripts/ first on sys.path; the helpers it imported from there leave sys.modules
+    after (the plugin holds them), so another table's same-named helper is that table's."""
+    here = os.path.normcase(os.path.abspath(scripts_path)) + os.sep
+    with _PLUGIN_IMPORT_LOCK:
+        before = set(sys.modules)
+        sys.path.insert(0, scripts_path)
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.remove(scripts_path)
+            for name in set(sys.modules) - before:
+                origin = getattr(sys.modules.get(name), "__file__", None)
+                if origin and os.path.normcase(os.path.abspath(origin)).startswith(here):
+                    del sys.modules[name]
+
+
 def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict | None = None,
                                     probe: dict | None = None):
     """Load every plugin under ``scripts_path`` and offer each parser class to ``visit``.
@@ -1598,10 +1667,11 @@ def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict 
 
     ``visit(filename, cls)`` returns ``None`` to keep scanning, or a 1-tuple to claim
     the file (a 1-tuple, not the bare value, so a parser may legitimately claim with
-    a ``None`` payload).  ``visit`` runs INSIDE the per-script guard deliberately:
-    an exception raised while matching or parsing has always been reported as that
-    script's error, and hoisting it out would quietly change how the managed path
-    reports a broken plugin.
+    a ``None`` payload).  ``visit`` runs OUTSIDE the per-script load guard: a read that
+    raises is the read's failure, not «Failed to load plugin script» (lead 10-20).
+
+    A plugin imports the helpers beside it (``import helper`` -> ``scripts_path/helper.py``),
+    each folder its own: the helpers it brought leave ``sys.modules`` once it is loaded.
 
     Returns ``SCAN_UNAVAILABLE``, the ``visit`` claim tuple, or ``None``.
     Script load failures are recorded in ``load_errors`` (filename -> traceback).
@@ -1651,8 +1721,9 @@ def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict 
                 module_name = f"pipeline_plugin_{filename[:-3]}"
                 spec = importlib.util.spec_from_file_location(module_name, script_path)
                 module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+                _exec_plugin_module(spec, module, scripts_path)
 
+                parsers = []
                 for name, obj in inspect.getmembers(module, inspect.isclass):
                     is_sub = False
                     try:
@@ -1668,17 +1739,20 @@ def scan_workspace_pipeline_parsers(scripts_path: str, visit, load_errors: dict 
                                 break
 
                     if is_sub and obj.__name__ != "BasePipelineParser":
-                        if probe is not None:
-                            probe["parser_classes"].append(f"{filename}::{obj.__name__}")
-                        claim = visit(filename, obj)
-                        if claim is not None:
-                            return claim
-                        if probe is not None:
-                            probe["declined"].append(f"{filename}::{obj.__name__}")
+                        parsers.append(obj)
             except Exception as e:
                 load_error_detail = traceback.format_exc()
                 logger.error(f"Failed to load plugin script {script_path}: {e}")
                 load_errors[filename] = load_error_detail
+                continue
+            for obj in parsers:
+                if probe is not None:
+                    probe["parser_classes"].append(f"{filename}::{obj.__name__}")
+                claim = visit(filename, obj)
+                if claim is not None:
+                    return claim
+                if probe is not None:
+                    probe["declined"].append(f"{filename}::{obj.__name__}")
 
     return None
 
@@ -1830,20 +1904,8 @@ class IngestionHandler(FileSystemEventHandler):
         글로벌 table_config.json이 항상 우선하며, 이 파일은 폴백 원천일 뿐이다."""
         if self._legacy_config_cache is not None:
             return self._legacy_config_cache
-        data = {}
-        if self.config_path and os.path.exists(self.config_path):
-            import json
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    loaded = json.load(f)
-                if isinstance(loaded, dict):
-                    data = loaded
-            except Exception:
-                data = {}
-            if ("table_name" in data) or ("std_parse" in data):
-                warn_legacy_workspace_config(self.config_path)
-        self._legacy_config_cache = data
-        return data
+        self._legacy_config_cache = load_legacy_workspace_config(self.config_path)
+        return self._legacy_config_cache
 
     def _resolve_table_name(self, global_cfg: dict):
         """워크스페이스 → 테이블명 해석. 우선순위(충돌 시 상위가 승리):
@@ -1872,23 +1934,8 @@ class IngestionHandler(FileSystemEventHandler):
         return t_name, table_info
 
     def _std_parse_enabled_for(self, t_name, table_info) -> bool:
-        """std parser 폴백 옵트아웃 게이트 (스냅샷 기반). 우선순위(충돌 시 상위가 승리):
-        1) 글로벌 table_config.json 테이블 항목의 `std_parse` (파일 경계 핫리로드 — F4 해소)
-        2) [deprecated] 레거시 워크스페이스 config.json의 `std_parse`
-        3) 기본 활성(True) — config가 없는 워크스페이스도 활성.
-        [D6] bool 외 값은 무시(1회 경고) 후 하위 원천으로 폴백."""
-        if isinstance(table_info, dict) and "std_parse" in table_info:
-            val = table_info["std_parse"]
-            if not validation.flag_refusal("std_parse", val):
-                return val
-            warn_invalid_std_parse_once(f"table_config.json entry '{t_name}'", val)
-        legacy = self._load_legacy_config()
-        if "std_parse" in legacy:
-            lval = legacy["std_parse"]
-            if not validation.flag_refusal("std_parse", lval):
-                return lval
-            warn_invalid_std_parse_once(f"workspace config '{self.config_path}'", lval)
-        return True
+        """std parser 폴백 옵트아웃 게이트 (스냅샷 기반) - `std_parse_enabled_for` with this workspace's legacy config."""
+        return std_parse_enabled_for(t_name, table_info, self._load_legacy_config(), self.config_path)
 
     @property
     def table_name(self):
@@ -3359,7 +3406,14 @@ class IngestionHandler(FileSystemEventHandler):
                 # 그 파서를 안 쓰는 워크스페이스가 대부분입니다 — 없는 것은 «정상»이고,
                 # 여기서 실패해도 인제션을 막지 않습니다.
                 pass
-            return (parser_instance.parse(file_path),)
+            try:
+                return (parser_instance.parse(file_path),)
+            except Exception as e:
+                logger.error(f"[{self.table_name}] ❌ {filename}::{obj.__name__} could not read "
+                             f"'{os.path.basename(file_path)}': {e}")
+                raise ValueError(
+                    f"Plugin {filename}::{obj.__name__} could not read '{os.path.basename(file_path)}': {e}\n"
+                    + traceback.format_exc()) from e
 
         claim = scan_workspace_pipeline_parsers(
             self.scripts_path, _claim_first_match, load_errors, probe=probe)
@@ -3427,26 +3481,8 @@ class IngestionHandler(FileSystemEventHandler):
                 )
             if parser_name:
                 raise ValueError(f"Unsupported external parser {parser_name!r}.")
-            # No declared parser: resolve the file exactly where a managed raws/
-            # file is resolved -- this handler's own workspace scripts/ folder,
-            # by the same match() rule.  The handler an external root is bound to
-            # IS the target table's handler, so `self.scripts_path` is already the
-            # right folder; nothing extra has to be carried on the spec.
-            probe = {"table": t_name, "workspace": self.workspace_path,
-                     "std": "not offered -- this file came from an external source root"}
-            rows = self._discover_and_execute_pipeline(file_path, meta=meta, probe=probe)
-            if rows is None:
-                # No std-parser fallback here on purpose.  Registration already
-                # proved a plugin exists in this workspace, so reaching this line
-                # means every plugin declined THIS file -- silently handing it to
-                # the standard parser would ingest an external artifact under a
-                # shape nobody declared.
-                raise ValueError(
-                    f"No workspace pipeline parser accepted the external file "
-                    f"'{os.path.basename(file_path)}' for table {t_name!r} "
-                    f"(searched {self.scripts_path}).\n"
-                    + render_resolution_probe(probe))
-            return rows, None, 0
+            # No declared parser: read as a managed raws/ file is, below - the handler an external root is bound to
+            # IS the target table's handler, so its scripts/ and its std_parse are the table's.
 
         probe = {"table": t_name, "workspace": self.workspace_path}
         rows = self._discover_and_execute_pipeline(file_path, meta=meta, probe=probe)
@@ -4032,6 +4068,7 @@ class WorkspaceWatcher:
         self._external_sweep_lock = threading.Lock()
         self._external_sweep_attempted = {}
         self._external_availability = {}
+        self._external_unmatched_said = set()       # source ids told «none matched» while that lasts
         self._stop_event = threading.Event()
         self._periodic_sweep_thread = None
         self._subfolder_recheck_thread = None
@@ -4169,16 +4206,10 @@ class WorkspaceWatcher:
             return False
 
         workspace_root = os.path.dirname(raws_root)
-        config_dir = os.path.join(workspace_root, "config")
-        config_path = os.path.join(config_dir, "config.json")
+        config_path = workspace_config_path(workspace_root)
         archives_path = os.path.join(workspace_root, "archives")
-
-        # Agent D v7: Be more flexible if config.json is not present
-        if not os.path.exists(config_path) and os.path.exists(config_dir):
-            json_files = [f for f in os.listdir(config_dir) if f.endswith('.json')]
-            if json_files:
-                config_path = os.path.join(config_dir, json_files[0])
-                logger.info(f"Using alternative config: {config_path}")
+        if os.path.exists(config_path) and os.path.basename(config_path) != "config.json":
+            logger.info(f"Using alternative config: {config_path}")
 
         folder_name = os.path.basename(workspace_root)
         # 글로벌 table_config 기준 폴더명 해석 (workspace_name 별칭 > 폴더명=테이블명 규약)
@@ -4425,14 +4456,18 @@ class WorkspaceWatcher:
                     )
                 else:
                     try:
-                        iterator = (os.path.join(root, name) for name in os.listdir(root))
+                        iterator = (os.path.join(root, name) for name in os.listdir(root)
+                                    if os.path.isfile(os.path.join(root, name)))
                     except OSError as e:
                         logger.warning(f"External sweep cannot list {root}: {e}")
                         continue
 
+                looked = taken = 0
                 for file_path in iterator:
+                    looked += 1
                     if not target["event_handler"].accepted_path(file_path):
                         continue
+                    taken += 1
                     try:
                         if not os.path.isfile(file_path):
                             continue
@@ -4451,6 +4486,14 @@ class WorkspaceWatcher:
                         signature,
                         (mtime_ns_to_datetime(stat.st_mtime_ns), int(stat.st_size)),
                     ))
+                unmatched = looked > 0 and taken == 0
+                if unmatched and source_id not in self._external_unmatched_said:
+                    options = spec.get("options") or {}
+                    logger.warning(f"External source {source_id}: {looked} file(s) under the root, none matched "
+                                   f"{options.get('glob') or options.get('filename')}")
+                    self._external_unmatched_said.add(source_id)
+                elif not unmatched:
+                    self._external_unmatched_said.discard(source_id)
 
             # Bound the cache when a producer removes old work directories.
             active_ids = {source_id for source_id, _target in targets}

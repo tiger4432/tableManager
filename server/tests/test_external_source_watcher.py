@@ -406,31 +406,41 @@ def test_external_source_without_parser_resolves_the_table_workspace_plugin(tmp_
 
 
 def test_external_source_without_parser_is_refused_naming_table_and_folder(tmp_path):
+    """Refused only when nothing reads the file: no plugin AND std_parse false (lead 10-20, owner 「기본 파서도 있는데
+    왜 파서 없다고 막아」). With the standard parser on, the same declaration is taken."""
     base = tmp_path / "ingestion_workspace"
     external = tmp_path / "external"
     external.mkdir()
+    no_std = dict(TABLES, void_obs=dict(VOID_INFO, std_parse=False))
+    scripts_dir = os.path.join(str(base), "void_obs", "scripts")
+
+    def refusal():
+        specs, errors = validate_external_source_specs(_external_spec(external), no_std, str(base))
+        taken, none = validate_external_source_specs(_external_spec(external), TABLES, str(base))
+        assert none == [] and taken[0]["parser"] is None, "std_parse on: taken"
+        assert specs == [] and len(errors) == 1
+        assert "void_obs" in errors[0] and scripts_dir in errors[0] and "std_parse is false" in errors[0]
+        return errors[0]
 
     # (a) the table has no workspace scripts/ folder at all
-    _spec, errors = validate_external_source_specs(
-        _external_spec(external), TABLES, str(base))
-    scripts_dir = os.path.join(str(base), "void_obs", "scripts")
-    assert len(errors) == 1
-    assert "void_obs" in errors[0] and scripts_dir in errors[0]
+    refusal()
 
     # (b) scripts/ exists but holds nothing that subclasses BasePipelineParser
     (base / "void_obs" / "scripts").mkdir(parents=True)
     (base / "void_obs" / "scripts" / "not_a_parser.py").write_text(
         "VALUE = 1\n", encoding="utf-8")
-    _spec, errors = validate_external_source_specs(
-        _external_spec(external), TABLES, str(base))
-    assert len(errors) == 1 and scripts_dir in errors[0]
+    refusal()
 
     # (c) a plugin that cannot even be imported is named in the refusal
     (base / "void_obs" / "scripts" / "broken_parser.py").write_text(
         "import a_module_that_does_not_exist\n", encoding="utf-8")
-    _spec, errors = validate_external_source_specs(
-        _external_spec(external), TABLES, str(base))
-    assert len(errors) == 1 and "broken_parser.py" in errors[0]
+    assert "broken_parser.py" in refusal()
+
+    # (d) std_parse false in the workspace's legacy config is the same answer as in table_config
+    (base / "void_obs" / "config").mkdir()
+    (base / "void_obs" / "config" / "config.json").write_text('{"std_parse": false}', encoding="utf-8")
+    specs, errors = validate_external_source_specs(_external_spec(external), TABLES, str(base))
+    assert specs == [] and "std_parse is false" in errors[0]
 
 
 def test_declared_whitelist_parser_still_wins_over_a_workspace_plugin(tmp_path):
