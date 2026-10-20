@@ -774,11 +774,13 @@ def bare_name_of(name):
     return bare_name(str(name or ""))
 
 
-def walk_context(sight, recipe_rows, state, end=False):
+def walk_context(sight, recipe_rows, state, end=False, cap=None):
     """The one context of the agent walk: `state`'s rows of the recipe (the one place a state is asked), each its
     card (`ledger.walk_cards.card`) for `sight`, read as text - node ids as short identifiers, listed once with
-    their labels. -> {cards, text, ids: {identifier: node id}, print}. A state the recipe has no row for, and a
-    card no function answers, are refused by name (`walk_cards.UnknownCard`)."""
+    their labels; within `cap` characters (`llm_config`'s walk_chars) the instructions and the answer's shape always,
+    the cards' lines in order while they fit, each card saying how many it did not show. -> {cards, text,
+    ids: {identifier: node id}, print}. A state the recipe has no row for, and a card no function answers, are
+    refused by name (`walk_cards.UnknownCard`)."""
     from ledger import walk_cards
 
     rows = sorted((row for row in recipe_rows if str(row.get("state")) == state),
@@ -803,17 +805,30 @@ def walk_context(sight, recipe_rows, state, end=False):
                              for v in value)
         return value
 
-    lines = []
-    for card in cards:
-        lines.append("## %s" % card["card"])
+    tail = [str(row["instruction"]) for row in rows if str(row.get("instruction") or "").strip()]
+    tail.append(WALK_END_ASK if end else WALK_HOP_ASK)
+    room = None if cap is None else cap - len("\n".join(tail)) - 1
+    body, listed = [], {}
+
+    def text():
+        return "\n".join(body + (["## nodes"] + list(listed.values()) if listed else []))
+
+    more_line = len("- (99999 more not shown)") + 1
+    for at, card in enumerate(cards):
+        body.append("## %s" % card["card"])
+        cut = 0
+        # what still comes after this card's lines: its own «more» line, and each later card's heading and «more»
+        reserve = more_line + sum(len("## %s" % later["card"]) + 1 + more_line for later in cards[at + 1:])
         for item in card["items"]:
-            lines.append("- " + "; ".join("%s: %s" % (key, said(key, value)) for key, value in item.items()
-                                          if value not in (None, "", [])))
-        if card["more"]:
-            lines.append("- (%d more not shown)" % card["more"])
-    if ids:
-        lines.append("## nodes")
-        lines.extend("%s: %s" % (name, _node_line(node_id, nodes)) for name, node_id in ids.items())
-    lines.extend(str(row["instruction"]) for row in rows if str(row.get("instruction") or "").strip())
-    lines.append(WALK_END_ASK if end else WALK_HOP_ASK)
-    return {"cards": cards, "text": "\n".join(lines), "ids": ids, "print": recipe_print(recipe_rows)}
+            kept = (len(body), dict(listed), dict(ident), dict(ids))
+            body.append("- " + "; ".join("%s: %s" % (key, said(key, value)) for key, value in item.items()
+                                         if value not in (None, "", [])))
+            for name, node_id in ids.items():
+                listed.setdefault(name, "%s: %s" % (name, _node_line(node_id, nodes)))
+            if room is not None and len(text()) + reserve > room:
+                del body[kept[0]:]
+                listed, ident, ids = kept[1], kept[2], kept[3]
+                cut += 1
+        if card["more"] or cut:
+            body.append("- (%d more not shown)" % (card["more"] + cut))
+    return {"cards": cards, "text": "\n".join([text()] + tail), "ids": ids, "print": recipe_print(recipe_rows)}

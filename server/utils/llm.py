@@ -48,11 +48,13 @@ DEFAULT_TIMEOUT_S = 60.0
 #: the answer copies each link's sentence, so it grows with the texts; 4,000 keeps it far under a
 #: 4k-token answer cap. known_chars - the dictionary lines and known links one request carries when the
 #: mapper hands `known` (the same 4,000 - their sum is a second text block). known_per_seed - known links
-#: drawn for each seed, bridges between seeds not counted.
+#: drawn for each seed, bridges between seeds not counted. walk_chars - the cards one agent-walk request carries
+#: (`text_links.walk_context`; its instructions and the answer's shape always go).
 NUMBER_CELLS = {"timeout_s": (DEFAULT_TIMEOUT_S, False, "a number of seconds"),
                 "batch_chars": (4000, True, "a whole number of characters"),
                 "known_chars": (4000, True, "a whole number of characters"),
-                "known_per_seed": (5, True, "a whole number of links")}
+                "known_per_seed": (5, True, "a whole number of links"),
+                "walk_chars": (4000, True, "a whole number of characters")}
 RETIRED_ENV = ("ASSY_LLM_BASE_URL", "ASSY_LLM_MODEL", "ASSY_LLM_API_KEY", "ASSY_LLM_TIMEOUT_S")
 TOO_MANY_REQUESTS = 429
 REQUEST_TIMEOUT = 408

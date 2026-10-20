@@ -108,9 +108,13 @@ def _ask(text, ids, end):
 def _decide(sight, recipe, state, end):
     """The cards for `state`, asked; a refused answer is asked once more with why. -> (context, decision, refusal,
     calls made)."""
-    from utils import text_links
+    from utils import llm, text_links
 
-    context = text_links.walk_context(sight, recipe, state, end=end)
+    try:
+        cap = llm.settings()["walk_chars"]
+    except llm.LlmRefused:
+        cap = None                                                 # the ask below says why
+    context = text_links.walk_context(sight, recipe, state, end=end, cap=cap)
     decision, why = _ask(context["text"], context["ids"], end)
     if decision is not None:
         return context, decision, None, 1

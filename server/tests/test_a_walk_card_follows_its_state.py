@@ -132,6 +132,15 @@ def test_a_hub_is_cut_at_the_card_limit(sight):
     assert (branch["count"], branch["sample"]) == (5 + 3, DIES[:2])
 
 
+def test_the_cards_fit_the_character_cap_and_the_ask_always_goes(sight):
+    whole = text_links.walk_context(_on(sight, CORE, ANSWER), RECIPE, "on_node")["text"]
+    cap = len(whole) - 40
+    context = text_links.walk_context(sight, RECIPE, "on_node", cap=cap)
+    assert len(context["text"]) <= cap and context["text"].endswith(text_links.WALK_HOP_ASK)
+    assert "more not shown)" in context["text"] and "more not shown)" not in whole
+    assert all(name in context["text"] for name in context["ids"])     # every identifier named is listed
+
+
 def test_stuck_shows_the_branch_not_taken(sight):
     context = text_links.walk_context(_on(sight, CORE, {"nodes": [], "edges": []}), RECIPE, "stuck")
     by = {card["card"]: card for card in context["cards"]}
