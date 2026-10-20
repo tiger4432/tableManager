@@ -3,7 +3,8 @@
 
 `retry-failed?table=…&preview=true` walks the disk (`reread.select_files`). It ran on the event loop, so while it
 walked every request of the API waited. A real server process with a walk that sleeps: `/health` answers inside a
-second while the preview is still walking, and the preview's answer is the walk's."""
+second while the preview is still walking, and the preview's answer is the walk's. The cancel (`reread.cancel_reread`,
+the folder's waiting rows read and put back) is the same door's pair."""
 import json
 import os
 import socket
@@ -13,6 +14,8 @@ import threading
 import time
 import urllib.error
 import urllib.request
+
+import pytest
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SLOW = 4.0
@@ -29,7 +32,12 @@ def slow_select_files(db, table, folder, limit=None):
     time.sleep(float(sys.argv[2]))
     return {"picked": [(None, "a.csv", folder + "/a.csv")], "not_taken": {}, "not_taken_files": [], "walked": 1}
 
+def slow_cancel_reread(db, folder=None, apply=False):
+    time.sleep(float(sys.argv[2]))
+    return {"count": 1, "removed": 0, "unmarked": 0}
+
 reread.select_files = slow_select_files
+reread.cancel_reread = slow_cancel_reread
 crud.TABLE_CONFIG["probe_table"] = {}
 main.app.dependency_overrides[auth.require_admin_token] = lambda: None
 uvicorn.run(main.app, host="127.0.0.1", port=int(sys.argv[1]), log_level="warning")
@@ -52,7 +60,18 @@ def _ask(opener, url, data=None, timeout=30):
         return reply.code, reply.read()
 
 
-def test_health_answers_while_a_preview_walks_the_disk(tmp_path):
+ASKED = {
+    "re-read preview": ("/admin/file-ingestion/retry-failed?folder=%s&table=probe_table&preview=true",
+                        lambda said: (said["status"], said["count"], said["by_state"], said["table"], said["walked"]),
+                        ("preview", 1, {"NEW": 1}, "probe_table", 1)),
+    "cancel": ("/admin/file-ingestion/cancel-reread?folder=%s",
+               lambda said: (said["status"], said["count"], said["removed"]), ("success", 1, 0)),
+}
+
+
+@pytest.mark.parametrize("asked", sorted(ASKED))
+def test_health_answers_while_a_preview_walks_the_disk(tmp_path, asked):
+    route, read, expected = ASKED[asked]
     port = _free_port()
     driver = tmp_path / "slow_reread_server.py"
     driver.write_text(DRIVER, encoding="utf-8")
@@ -78,8 +97,7 @@ def test_health_answers_while_a_preview_walks_the_disk(tmp_path):
 
         def ask_preview():
             started = time.monotonic()
-            preview["answer"] = _ask(opener, base + "/admin/file-ingestion/retry-failed?folder=%s&table=probe_table"
-                                     "&preview=true" % urllib.request.quote(str(tmp_path)), data=b"")
+            preview["answer"] = _ask(opener, base + route % urllib.request.quote(str(tmp_path)), data=b"")
             preview["ended"] = time.monotonic()
             preview["took"] = preview["ended"] - started
 
@@ -100,5 +118,4 @@ def test_health_answers_while_a_preview_walks_the_disk(tmp_path):
     assert status == 200, body
     said = json.loads(body)
     assert preview["took"] >= SLOW
-    assert (said["status"], said["count"], said["by_state"], said["table"], said["walked"]) == \
-        ("preview", 1, {"NEW": 1}, "probe_table", 1)
+    assert read(said) == expected

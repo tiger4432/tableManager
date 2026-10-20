@@ -7308,9 +7308,13 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
     """The re-read taken back (총괄 10-11 ㄱ): rows still waiting (PENDING_RETRY) under `folder` - every waiting row
     without one - go back to the state they had before it; a row the watcher already claimed is not touched.
     `preview` counts and writes nothing."""
+    import asyncio
+
     from ingestion import reread
 
-    said = reread.cancel_reread(db, folder=None if crud.is_blank_value(folder) else folder, apply=not preview)
+    # off the event loop, as the re-read's own selection (lead 937c41b6a)
+    said = await asyncio.to_thread(reread.cancel_reread, db, folder=None if crud.is_blank_value(folder) else folder,
+                                   apply=not preview)
     where = f" under {folder}" if not crud.is_blank_value(folder) else ""
     return {"status": "preview" if preview else "success", "folder": folder, **said,
             "message": "%d waiting file(s)%s %s" % (said["count"], where, "to put back" if preview else "put back")
