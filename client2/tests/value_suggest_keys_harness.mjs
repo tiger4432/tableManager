@@ -1593,6 +1593,8 @@ async function runChecks(mod, { label = '', strict = true } = {}) {
     const VW = fresh.sandbox.window.innerWidth;          // 1280
     const cell = new El('div');
     cell._rect = { left: 1180, top: 300, right: 1280, bottom: 326, width: 100, height: 26 };
+    // In the page, as a grid cell is: fitUnder places nothing under a control that left the document (39fd7571e).
+    fresh.sandbox.document.body.appendChild(cell);
     const ed = new fresh.SuggestCellEditor();
     ed.init({ value: '', eventKey: 'F2', cellStartedEdit: true,
       column: { getColId: () => 'long_note' }, colDef: {}, node: {}, data: {}, rowIndex: 0,
