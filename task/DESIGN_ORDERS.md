@@ -1,3 +1,38 @@
+# 🔴 [구현자] **숫자 철자 한 자리 — «1 / 1.0 / 001 / 1.50»** (소유자 10-20 ㄱ 「1 ㅇㅇ 2ㅇㅇ 3 ㅇㅇ」, 총괄)
+
+근거: 응용 census (10-20, 재현 다섯 + 코드 읽음 열). 원인 하나 — 철자 함수가 «칸 타입을 보는 쪽»(key_part · canonical_bind_value)과
+«안 보는 쪽»(str · clean_str_value · roleframe._key_spelling · %r)으로 갈리고, 갈림은 둘이 마주치는 자리.
+```
+도착지   값을 «키로 견주는» 모든 자리가 «한 함수»의 철자를 지난다. 같은 픽스처가 모든 자리에서 같은 답
+판정     ① 정본 = 칸 타입을 보는 함수 «하나» (key_part 를 넓히거나 canonical_bind_value 와 접어 하나로 — 둘째를 만들지 않는다)
+         ② 숫자 칸 «1.50» -> «1.5» (10-14 「정수 철자로 접기」의 연장, 소유자 10-20)
+         ③ 옛 철자로 저장된 행 · 원자는 «다시 적지 않는다» (소유자 10-20)
+```
+자리 (census 의 것 — 전수로 다시 세어 표로; 떠올린 자리 말고 센 자리)
+```
+재현됨   pipeline_base._read_file_to_dataframe (pandas 가 숫자·NA 를 바꿈 -> 글자 그대로 읽기) · roleframe._key_spelling ·
+         map_alignment.compose_map_id · ingestion_worker.group_key · enrichment analysis._typed_key_values
+코드 읽음 export wire_text · enrichment _withdraw_blanks/_delete_gone/backfill.existing · crud._update_row_business_key(row_id 갈래) ·
+         crud._merge_into_key_holder · voids_json._merge_path_identity · advanced_ingester._cast_type · join_into(타입 다른 쌍 — 사유 없는 0 건) ·
+         compose_unit_key 와 파생 business_key_val
+클라     걷기·시험대 키 상자(entitySeedId — trim·접기 없음) · walk expression.js(die(1,2) 가 JSON 숫자) -> [클라] 몫, 서버 정본과 같은 철자
+```
+순서  클라 키 상자(매일 걸림)를 «먼저» 착지 — 서버 정본이 정해지면 같은 규칙을 클라가 따른다(계약 벡터 하나를 양쪽이 채점)
+게이트 같은 입력 표(1 · 1.0 · '1.0' · '001' · '1.50' · numpy · Decimal · '1e3' · '+1' · '-0' · 공백) × 칸 타입 셋을 «모든 자리»에 넣어 같은 답 ·
+      고침 뺀 변이 빨강 · 키 접기 시험 전부. 착지는 자리 «전부»가 한 커밋(나눠 착지하면 그 사이가 거짓)
+보고  자리 표(전 · 후 철자) · 바뀌는 운영 동작 한 줄씩
+
+---
+
+# 🔴 [응용] **허브 기준 재기 — 가지 수(팬아웃)** (총괄 10-20, [구현자]에서 옮김)
+
+1a1a3f73a 의 [구현자] 「허브 기준 재기」를 응용이 맡는다(구현자는 위 철자 일). 내용은 그 절 그대로 — 노드마다 한 걸음 이웃 수
+(술어·방향별) 타입별 분포(중앙값 · p90 · p99 · 최대 · 상위 10) · 그 노드를 펼칠 때 읽는 원자 수와 시간 · 지금 정적 허브 셋 대조 ·
+기준 후보 둘~셋과 후보마다 허브가 되는 타입/노드 수. 덧붙여: 걷기 SQL 이 노드의 원자를 «전부» 꺼낸 뒤 술어·시각으로 자른다
+(인덱스에 술어·시각 없음) — 허브 노드 한 번 펼칠 때 읽는 원자 수가 그 비용이다. 박스 수임을 적는다. 코드 수정 없음.
+
+---
+
 # 🔴 [클라] **시험대 · 걷기가 느린 시간이 «어디서» 드는지 재기** (소유자 10-20 「걷기 및 시험대는 여전히 오래걸려 못쓰겠어」, 총괄)
 
 배경: 소유자 검토안 — 걷기를 «한 홉씩» 쪽으로 받아 홉마다 그리기(서버의 이어 걷기 쪽 경계를 상한 → 한 홉). 짓기 «전»에 잰다.
