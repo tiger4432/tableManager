@@ -4,7 +4,8 @@ instant whatever it is stored as (timestamptz or text) and however it is spelled
 wall clock of ingestion_settings "expression_time_zone" (Asia/Seoul when unset); the spelling is the one the stored
 keys already carry - ISO, `T`, the zone's offset («2026-08-14T00:03:00+09:00»). Every seat that spells or compares
 a key gives one answer: key_part · canonical_bind_value · the group key · the join-key probe · «did it change» ·
-SQLite's and PostgreSQL's assy_key_instant · the join and its index."""
+SQLite's and PostgreSQL's assy_key_instant · the join and its index. And the write door (d94342107): a time
+without an offset is stored as the instant its key names, whatever zone the database session reads in."""
 import os
 import sys
 from datetime import datetime, timezone
@@ -22,7 +23,9 @@ import map_overlay                                                  # noqa: E402
 import chain_bindings                                               # noqa: E402
 import notation_norm                                                # noqa: E402
 from chain import ingestion_worker, join_into, join_key_index       # noqa: E402
-from database import crud, models                                   # noqa: E402
+import event_constants                                              # noqa: E402
+from database import crud, models, schemas                          # noqa: E402
+from database.context import channel                                # noqa: E402
 
 T_KEY, T_LEFT, T_RIGHT = "zz_dk_key", "zz_dk_left", "zz_dk_right"
 KEY = "2026-08-14T00:03:00+09:00"
@@ -89,6 +92,14 @@ def test_a_date_is_its_midnight_and_a_text_that_is_no_time_keeps_its_text():
         assert seats.pop("group key") == "t=%r" % value
         assert set(seats.values()) == {value}, seats
     assert crud.key_part(T_KEY, "t", "  ") is None
+
+
+def test_the_write_door_gives_a_time_without_an_offset_the_declared_zone():
+    """d94342107: read where the key reads it, passed on with the zone's offset; anything else byte-identical."""
+    assert crud.cast_value_by_type("2026-08-14 00:03", "datetime", "t", T_KEY) == KEY
+    assert crud.cast_value_by_type(datetime(2026, 8, 14, 0, 3), "datetime", "t", T_KEY) == KEY
+    for kept in ("2026-08-13T15:03:00Z", "2026-08-14T00:03:00+09:00", "2026/08/14 00:03"):
+        assert crud.cast_value_by_type(kept, "datetime", "t", T_KEY) == kept
 
 
 def test_a_pair_of_a_time_and_not_a_time_is_said():
@@ -190,3 +201,20 @@ def test_a_timestamptz_column_and_a_text_column_declared_datetime_meet_and_the_j
         select(right_model.row_id).where(key == KEY).compile(pg.get_bind(), compile_kwargs={"literal_binds": True})))))
     assert "uq_vjoin_%s" % T_RIGHT in plan, plan
     pg.execute(text("RESET enable_seqscan"))
+
+
+@pytest.mark.pg
+@pytest.mark.parametrize("session_zone", ["UTC", "Asia/Seoul"])
+def test_a_naive_time_written_is_stored_as_its_key_instant_in_any_session_zone(pg, pg_engine, session_zone):
+    """The session reads a naive text in ITS zone; the door hands it the declared one's offset first, so the stored
+    instant is the key's - 08-13T15:03Z - under a UTC session and a Seoul one alike."""
+    pg.execute(text("SET TIME ZONE '%s'" % session_zone))
+    with channel(event_constants.CHANNEL_API):
+        crud.apply_batch_updates(pg, T_RIGHT, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates={"lot": "L1", "t": "2026-08-14 00:03", "v": "x"},
+                                      source_name="parser_a", updated_by="t")]))
+        pg.commit()
+    with pg_engine.connect() as conn:
+        stored = conn.execute(text('SELECT t FROM "%s"."%s"' % (PG_TEST_SCHEMA, T_RIGHT))).scalar()
+    assert stored == INSTANT, (session_zone, stored)
+    assert crud.key_part(T_RIGHT, "t", stored) == crud.key_part(T_RIGHT, "t", "2026-08-14 00:03") == KEY

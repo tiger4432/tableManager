@@ -15,8 +15,11 @@ and two processes configured differently disagreed about the same row.
 ⚠️ ROUND ⓐ DOES NOT REFUSE. Refusing an undeclared source is R5's own answer and is
 already live for ledger sources, but switching it on for ordinary tables today would stop
 every running load at once. So this round COUNTS and leaves the value alone — which is
-what `test_an_undeclared_table_is_not_one_character_different` pins — and 판정 289's round
-ⓑ turns the count into a refusal once the owner has declared.
+what round ⓐ pinned — and 판정 289's round ⓑ was to turn the count into a refusal once the owner declared.
+🔴 ⓑ WAS ANSWERED, AND NOT WITH A REFUSAL (d94342107, owner 「한국시간」): a naive value is read in
+ingestion_settings "expression_time_zone" - where its key reads it - and passed on with that zone's offset; a
+value with an offset and a text that is not a time stay byte-identical
+(`test_a_naive_time_takes_the_declared_zone_and_nothing_else_moves`).
 """
 import os
 import sys
@@ -95,10 +98,14 @@ def test_an_unusable_zone_is_not_silently_defaulted():
 # Gate D — 🔴 THE REGRESSION LINE, which is what makes this safe to deploy
 # ---------------------------------------------------------------------------
 
-def test_an_undeclared_table_is_not_one_character_different():
-    """Round ⓐ counts; it does not change a value. If this ever goes red, the round has
-    become the refusal that was deliberately deferred to ⓑ."""
-    for value in (NAIVE_TEXT, OFFSET_TEXT, "not a time at all"):
+def test_a_naive_time_takes_the_declared_zone_and_nothing_else_moves():
+    """Round ⓑ as the owner answered it (d94342107): a naive time gains the declared zone's offset; nothing
+    else is one character different, and it is still never a refusal."""
+    import expression
+
+    assert crud.cast_value_by_type(NAIVE_TEXT, "datetime", "observed_at", "s182_table") == \
+        datetime.fromisoformat(NAIVE_TEXT).replace(tzinfo=expression.time_zone()).isoformat()
+    for value in (OFFSET_TEXT, "not a time at all"):
         assert crud.cast_value_by_type(
             value, "datetime", "observed_at", "s182_table") == value
     # ⚠️ A BLANK STILL FOLDS TO `None`, and that is S-181's rule (판정 284), not this

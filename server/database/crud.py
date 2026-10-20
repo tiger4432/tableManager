@@ -1168,14 +1168,19 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
         # 쓰레기는 거절되고(DataError), **naive 문자열은 세션 TimeZone 으로 조용히
         # 재해석된다**」. R5 forbids exactly that value, and until now nothing looked.
         #
-        # ⚠️ IT DOES NOT CHANGE THE VALUE, and that is the point of round ⓐ. Refusing an
-        # undeclared source is R5's own answer and is already live for ledger sources
-        # (`occurred_at_timezone`), but switching it on for ordinary tables today would
-        # stop every running load at once. So this seat COUNTS and passes through - 「a
-        # table that declared nothing is not one character different」 - and 판정 289's
-        # round ⓑ turns the count into a refusal once the owner has declared.
+        # 🔴 [d94342107] THE OWNER ANSWERED R5 ⓑ - NOT A REFUSAL BUT A ZONE (「한국시간」). Round ⓐ passed a naive
+        #    value through unchanged, so PostgreSQL read it in the SESSION zone while its key read it in the
+        #    declared one: one text, two instants. It is now read where the key reads it (`expression._wall`,
+        #    ingestion_settings "expression_time_zone") and passed on with that zone's offset. Still counted -
+        #    «it came without an offset» is the observation. A value with an offset, and a text that is not a time
+        #    (PostgreSQL refuses it as before), pass byte-identical.
         if time_format.time_is_naive(value):
             time_format.note_naive_time(table_name, col_name)
+            import expression
+
+            moment = expression._wall(value, expression.time_zone())
+            if moment is not None:
+                value = moment.isoformat()
         # 🔴 [총괄 791c0f45e 4] A datetime OBJECT - what the chain moves out of a datetime
         #    column - leaves here in crud's JSON spelling (ISO, its offset kept), because the
         #    layer is JSON and the object made the whole write raise TypeError. Text passes

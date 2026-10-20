@@ -46,6 +46,9 @@ from zoneinfo import ZoneInfo
 # round safe to deploy (gate D): a table that has declared nothing is not one character
 # different, it is only COUNTED. Refusing an undeclared source is round ⓑ and a separate
 # ruling, because turning it on today would stop every running load at once.
+# ⚠️ ⓑ WAS ANSWERED FOR THE GENERAL WRITE BOUNDARY, NOT WITH A REFUSAL (d94342107, owner 「한국시간」):
+# `crud.cast_value_by_type` reads a naive value in ingestion_settings "expression_time_zone" and passes it on
+# with that offset - still counted here.
 
 #: Seats that saw a naive world time, as counts - `{"<table>.<column>": n}`.
 #: A plain dict on purpose: this is a diagnostic counter, not a ledger, and a lost
@@ -72,8 +75,9 @@ def time_is_naive(value) -> bool:
 
     🔴 ONE PREDICATE, BECAUSE TWO DOORS MUST REFUSE THE SAME THING (판정 290). The
     general write boundary (`crud.cast_value_by_type`) and the ledger's
-    (`parse_occurred_at`, below - its home since 10-08) both answer this question, and S-182 ⓑ turns the answer
-    into a REFUSAL at both. Two spellings of a predicate that only counts is a latent
+    (`parse_occurred_at`, below - its home since 10-08) both answer this question: the ledger's refuses a naive
+    value without a declared zone, the general one reads it in "expression_time_zone" (d94342107). Two
+    spellings of a predicate that only counts is a latent
     disagreement; two spellings of a predicate that refuses is two different products.
 
     ⚠️ TEXT IS JUDGED BY ITS OFFSET, NOT BY PARSING IT. PostgreSQL is what will read the
