@@ -690,6 +690,7 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None) -> dict:
         "source": external["source_root"] if external else ("raws" if meta.get("rel_path") is not None else None),
         "rows_read": None, "rows_new": None, "rows_changed": None, "rows_unchanged": None, "rows_refused": None,
         "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
+        "transaction_id": tally.transaction_id if tally is not None else None,
     }
     if tally is not None and tally.silenced is None:
         written = tally.new + tally.changed + tally.unchanged
@@ -717,6 +718,7 @@ class _FileTally:
         self.samples = self.lock_samples = 0
         self.sampled = False
         self.silenced = None          # why the line stopped counting, if it did
+        self.transaction_id = None    # the transaction the file's rows were written under (총괄 10-20)
         self.time_left = {}           # verdict -> values a `time` rule left as written
 
     def add_chunk(self, table, summary, rows, sent, new_ids, changed_cells, sampler,
@@ -3758,7 +3760,9 @@ class IngestionHandler(FileSystemEventHandler):
         # 4. 배치 단위로 정규화 및 로컬 DB 전송
         import uuid
         from itertools import islice
-        file_tx_id = str(uuid.uuid4())
+        # 총괄 10-20: the checkpoint's own when there is one - a resumed read writes under its first run's transaction
+        file_tx_id = (checkpoint.transaction_id if checkpoint is not None and checkpoint.active
+                      and checkpoint.transaction_id else str(uuid.uuid4()))
 
         batch_size = 1000
         total_changed = 0
@@ -3854,6 +3858,7 @@ class IngestionHandler(FileSystemEventHandler):
         from event_constants import OUTBOX_MODE_COLLAPSED
         _outbox_token = request_outbox_mode.set(OUTBOX_MODE_COLLAPSED)
         file_tally = tally if tally is not None else _FileTally()
+        file_tally.transaction_id = file_tx_id
 
         try:
             while True:

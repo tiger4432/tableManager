@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **파일 완료 기록에 그 파일의 transaction_id · 폴더 Retry 를 «그 표가 읽었던 실패 파일»로 좁히는 read_by · 폴더 묶음은 고른 폴더 바로 아래 첫 폴더 (총괄 51a824774)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     file_ingestion_logs 에 transaction_id 칸 — 그 파일의 행이 쓰인 tx(감사 로그와 같은 값). Retry 는 그 행을 새 읽기의 tx 로 덮는다
+>          file_ingestion_checkpoints 에도 같은 칸 — 파일 중간에 죽고 기동해서 «이어 읽은» 파일도 tx 가 하나다
+>          POST /admin/file-ingestion/retry-failed?folder=…&read_by=<표> — 그 폴더 아래 «그 표가 읽었던» FAILED 만(미리보기 수 = 넘기는 수)
+>          read_by 와 table(디스크에서 그 표로 다시 읽기)을 같이 주면 400
+>          GET /admin/file-ingestion/logs?group=folder&folder=<폴더> — 묶음 열쇠가 «그 폴더 바로 아래 첫 폴더 이름»(바로 안의 파일은 «.»)
+>          = 미리보기 by_folder 의 열쇠. folder 없이 묶으면 오늘처럼 파일 자기 폴더(전체 경로)
+>          group= 이 오면 줄마다 group_key — 그 줄이 세어진 groups[].key 와 같은 값(folder · reason · status 셋 다)
+> 칸       기동 동기화가 두 표에 칸을 더한다(server · watcher · chain worker 기동). 기동 전에 손으로:
+>          psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_transaction_id.sql
+> 볼 것    파일 적재 화면의 /admin/file-ingestion/logs 응답에 transaction_id — 이 착지 전 행 · 건너뛴 파일은 비어 있다
+>          이 착지 전에 남은 체크포인트(tx 없음)를 이어 읽으면 그 파일만 새 tx 로 시작한다(앞 쪽은 옛 tx)
+>          폴더를 고르고 폴더로 묶으면 파일마다 그 폴더의 실제 경로를 묻는다 — 이 박스 로컬 디스크 1만 파일(폴더 1만) 3.3 s · 공유 폴더는 안 쟀다
+> 되돌리기  git revert <착지> -> 런처 재기동 -> (칸까지 지우려면) psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_transaction_id_reverse.sql
+> ```
+>
+> ---
+>
 > ## [10-20] **잡은 오류가 첫 줄만 남지 않는다 — «(파일:줄 in 함수)» · 반복문 밖은 traceback 째 (총괄 dc388bf47, 소유자 «이게 다 에러를 접어서 띄워서 모르잖아»)** — git pull · 런처 재기동
 >
 > ```

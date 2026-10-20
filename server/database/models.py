@@ -378,6 +378,9 @@ class FileIngestionLog(Base):
     reason = Column(String(500), nullable=True)
     failed_at = Column(String(500), nullable=True)
     took_seconds = Column(Float, nullable=True)
+    # The transaction the file's read wrote under (총괄 10-20) - every audit log row of that read carries it; a re-read
+    # writes its own. Null on rows written before it and on files skipped without a read.
+    transaction_id = Column(String(64), nullable=True)
 
     # once `index=True` on their columns - the same names, now able to say what they are for
     __table_args__ = (
@@ -492,18 +495,7 @@ _PHASE_COLUMNS = weakref.WeakSet()
 
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
 FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "reader", "source",
-                       "reason", "failed_at", "took_seconds")
-
-
-#: System tables the boot schema sync (`sync_dynamic_tables_schema`) also adds a declared column to - a column added to
-#: one of these later reaches a database that never ran its SQL (총괄 10-20: a pulled server reading a column the
-#: database lacked failed every file list and every watcher record with UndefinedColumn).
-SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog,)
-
-
-def schema_synced_tables() -> dict:
-    """{table name: model} the boot schema sync adds missing columns to: the dynamic tables and the system ones above."""
-    return {**DYNAMIC_TABLES, **{model.__tablename__: model for model in SCHEMA_SYNCED_SYSTEM_TABLES}}
+                       "reason", "failed_at", "took_seconds", "transaction_id")
 
 
 class FileRereadMark(Base):
@@ -580,6 +572,9 @@ class FileIngestionCheckpoint(Base):
     note = Column(String, nullable=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # The transaction this content's read writes under (총괄 10-20): a read resumed from this checkpoint writes under
+    # the same one, so the file's rows are one transaction however many runs it took. Null on rows written before it.
+    transaction_id = Column(String(64), nullable=True)
 
     __table_args__ = (
         Index("idx_fic_identity", "table_name", "file_signature", unique=True,
@@ -593,6 +588,17 @@ class FileIngestionCheckpoint(Base):
               info={"purpose": "a file already concluded, asked without hashing it",
                     "serves": "watcher's skip of an unchanged file"}),
     )
+
+
+#: System tables the boot schema sync (`sync_dynamic_tables_schema`) also adds a declared column to - a column added to
+#: one of these later reaches a database that never ran its SQL (총괄 10-20: a pulled server reading a column the
+#: database lacked failed every file list and every watcher record with UndefinedColumn).
+SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog, FileIngestionCheckpoint)
+
+
+def schema_synced_tables() -> dict:
+    """{table name: model} the boot schema sync adds missing columns to: the dynamic tables and the system ones above."""
+    return {**DYNAMIC_TABLES, **{model.__tablename__: model for model in SCHEMA_SYNCED_SYSTEM_TABLES}}
 
 
 class CellOverwrite(Base):

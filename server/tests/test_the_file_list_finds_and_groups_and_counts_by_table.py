@@ -48,8 +48,8 @@ def test_the_list_finds_groups_and_the_tables_count(client, db_session, tmp_path
     assert [r["id"] for r in ask(until="2026-10-19")["data"]] == [ids[5], ids[4]]
 
     by_folder = ask(table="insp", folder=str(lot_a), group="folder")["groups"]
-    assert sorted(by_folder, key=lambda g: g["key"]) == [{"key": str(lot_a / "W1"), "count": 2, "failed": 0},
-                                                         {"key": str(lot_a / "W2"), "count": 2, "failed": 2}]
+    assert sorted(by_folder, key=lambda g: g["key"]) == [{"key": "W1", "count": 2, "failed": 0},
+                                                         {"key": "W2", "count": 2, "failed": 2}]
     by_reason = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", group="reason")["groups"]}
     assert by_reason == {None: (3, 0), "ValueError: line 3": (2, 2)}, by_reason
     by_status = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", name="bmap", group="status")["groups"]}
@@ -66,3 +66,42 @@ def test_the_list_finds_groups_and_the_tables_count(client, db_session, tmp_path
     assert (tables["insp"]["total"], tables["insp"]["by_status"]) == (5, {"SUCCESS": 3, "FAILED": 2})
     assert (tables["voids"]["total"], tables["voids"]["by_status"]) == (1, {"PENDING_RETRY": 1})
     assert tables["insp"]["last_at"][:16] == "2026-10-20T09:00" and tables["voids"]["last_at"][:16] == "2026-10-18T09:00"
+
+
+def test_a_folder_group_below_a_chosen_folder_is_its_first_folder(client, db_session, tmp_path):
+    """총괄 10-20: a wafer folder holds one file, so grouped by the file's own folder each group was one file and the
+    screen grouped again «one folder up». Below a chosen folder the key is its first folder - the preview's key."""
+    lot = tmp_path / "LOT"
+    failed = {"STEP1": 1, "STEP2": 0, "STEP3": 2}
+    for step, n_failed in failed.items():
+        for w in range(3):
+            path = lot / step / ("W%d" % w) / "bmap.txt"
+            path.parent.mkdir(parents=True)
+            path.write_text("x", encoding="utf-8")
+            _log(db_session, "insp", str(path), "FAILED" if w < n_failed else "SUCCESS",
+                 "ValueError: %s" % step if w < n_failed else None)
+    db_session.commit()
+
+    def groups(group="folder", **params):
+        res = client.get("/admin/file-ingestion/logs", params=dict(table="insp", group=group, limit=50, **params))
+        assert res.status_code == 200, res.text
+        body = res.json()
+        counted = [(g["key"], g["count"]) for g in body["groups"]]
+        rows = {}
+        for row in body["data"]:
+            rows[row["group_key"]] = rows.get(row["group_key"], 0) + 1
+        assert sorted(rows.items(), key=str) == sorted(counted, key=str), (group, params)  # a row's key = its group's
+        return sorted(((g["key"], g["count"], g["failed"]) for g in body["groups"]), key=str)
+
+    assert all("group_key" not in row for row in client.get("/admin/file-ingestion/logs").json()["data"])
+    assert groups("reason") == sorted([(None, 6, 0), ("ValueError: STEP1", 1, 1), ("ValueError: STEP3", 2, 2)],
+                                      key=str)
+    assert groups("status", folder=str(lot)) == [("FAILED", 3, 3), ("SUCCESS", 6, 0)]
+
+    assert groups(folder=str(lot)) == [("STEP1", 3, 1), ("STEP2", 3, 0), ("STEP3", 3, 2)]
+    preview = client.post("/admin/file-ingestion/retry-failed",
+                          params={"folder": str(lot), "preview": True, "statuses": "FAILED,SUCCESS"}).json()
+    assert preview["by_folder"] == {"STEP1": 3, "STEP2": 3, "STEP3": 3}, preview     # one key for one folder
+    assert groups(folder=str(lot / "STEP3")) == [("W0", 1, 1), ("W1", 1, 1), ("W2", 1, 0)]
+    assert groups() == sorted(((str(lot / step / ("W%d" % w)), 1, int(w < n)) for step, n in failed.items()
+                               for w in range(3)), key=str)                        # no folder: as before

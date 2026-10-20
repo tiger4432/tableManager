@@ -94,6 +94,7 @@ writes each file once this is the right trade (39x cheaper sweeps), but it is a
 import hashlib
 import logging
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, or_
@@ -256,14 +257,15 @@ class CheckpointPlan:
     note:        재개/재시작 사유 — 로그와 FileIngestionLog detail에 **반드시** 남긴다.
     active:      False면 체크포인트 비활성(시그니처 계산 실패 등) — 기존 동작 그대로.
     started_at:  그 (표, 시그니처) 행이 처음 생긴 시각 — 같은 파일이면 Retry 에도 같음(총괄 4311a51ed nokey)
+    transaction_id: the read's transaction - the checkpoint's own when it resumes, a new one otherwise (총괄 10-20)
     """
 
     __slots__ = ("table_name", "file_signature", "filename", "filepath",
-                 "source_kind", "total_rows", "resume_from", "note", "active", "started_at")
+                 "source_kind", "total_rows", "resume_from", "note", "active", "started_at", "transaction_id")
 
     def __init__(self, table_name=None, file_signature=None, filename=None, filepath=None,
                  source_kind=None, total_rows=None, resume_from=0, note=None, active=False,
-                 started_at=None):
+                 started_at=None, transaction_id=None):
         self.table_name = table_name
         self.file_signature = file_signature
         self.filename = filename
@@ -274,6 +276,7 @@ class CheckpointPlan:
         self.note = note
         self.active = active
         self.started_at = started_at
+        self.transaction_id = transaction_id
 
     @classmethod
     def disabled(cls, note: str = None):
@@ -546,11 +549,11 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
             file_mtime=file_mtime, file_size=file_size,
             processed_rows=0, chunk_index=0, status=STATUS_IN_PROGRESS,
             # Stated rather than left to the server default, so the plan holds it with no read back.
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(timezone.utc), transaction_id=str(uuid.uuid4()),
         )
         db.add(row)
         db.commit()
-        plan.started_at = row.started_at
+        plan.started_at, plan.transaction_id = row.started_at, row.transaction_id
         return plan
 
     plan.started_at = row.started_at
@@ -605,6 +608,11 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
     if plan.resume_from == 0:
         row.processed_rows = 0
         row.chunk_index = 0
+    # 총괄 10-20: a resumed read writes under the transaction its first run wrote under - a new one only for a read
+    # from the start, or a checkpoint written before the column
+    if plan.resume_from == 0 or not row.transaction_id:
+        row.transaction_id = str(uuid.uuid4())
+    plan.transaction_id = row.transaction_id
     db.commit()
     return plan
 

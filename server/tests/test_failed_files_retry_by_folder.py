@@ -86,3 +86,22 @@ def test_a_preview_without_a_folder_writes_nothing(client, db_session, tree):
 
     assert (body["status"], body["count"]) == ("preview", 6)
     assert _statuses(db_session) == before
+
+
+def test_read_by_takes_only_the_failed_files_that_table_read(client, db_session, tree):
+    """총괄 10-20: two tables' failed files under one folder - `read_by` takes one table's; the preview's count is the
+    count handed over, and `table` (read from the disk into a table) with it is refused."""
+    path = str(tree / "A" / "x" / "u1.csv")
+    db_session.add(models.FileIngestionLog(filename="u1.csv", filepath=path, table_name="u", status="FAILED"))
+    db_session.commit()
+    folder = str(tree / "A")
+
+    preview = client.post(URL, params={"folder": folder, "read_by": "u", "preview": True}).json()
+    body = client.post(URL, params={"folder": folder, "read_by": "u"}).json()
+
+    after = _statuses(db_session)
+    assert (preview["count"], body["count"]) == (1, 1)
+    assert sorted(name for name, status in after.items() if status == "PENDING_RETRY") == ["u1.csv"]
+    assert (after["f1.csv"], after["f2.csv"], after["f3.csv"]) == ("FAILED", "FAILED", "FAILED")
+    refused = client.post(URL, params={"folder": folder, "read_by": "u", "table": "t"})
+    assert refused.status_code == 400 and "read_by" in refused.json()["detail"]

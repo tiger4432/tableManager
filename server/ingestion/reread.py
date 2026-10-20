@@ -140,8 +140,18 @@ def logs_query(db, statuses=None, table=None, folder=None, since=None, until=Non
 
 
 def folder_of(filepath):
-    """The folder a logged file sits in - the search's folder group and each row's folder (총괄 e390600d6)."""
+    """The folder a logged file sits in - each row's folder (총괄 e390600d6)."""
     return os.path.dirname(filepath) if filepath else None
+
+
+def folder_key(filepath, folder):
+    """The search's folder group (총괄 10-20): below a chosen folder its first folder - `top_folder`, a preview's key;
+    without one, or for a row whose real path is not below it, the file's own folder. Inside `one_sweep`."""
+    from database import crud
+    from directory_watcher import _safe_relative_path
+
+    rel = None if crud.is_blank_value(folder) or not filepath else _safe_relative_path(filepath, folder)
+    return folder_of(filepath) if rel is None else top_folder(rel)
 
 
 def select_logs(db, statuses, table=None, folder=None, since=None, until=None, log_id=None):
@@ -367,11 +377,16 @@ def stand_rows(db, table, picked, folder=None):
     return logs, stood
 
 
+def top_folder(rel):
+    """The first folder of a path below the chosen folder, "." for a file right in it."""
+    return rel.split("/", 1)[0] if rel and "/" in rel else "."
+
+
 def by_top_folder(picked):
     """{the first folder below the chosen one, or "." : rows} - what a preview shows."""
     out = {}
     for _log, rel in picked:
-        head = rel.split("/", 1)[0] if rel and "/" in rel else "."
+        head = top_folder(rel)
         out[head] = out.get(head, 0) + 1
     return dict(sorted(out.items()))
 

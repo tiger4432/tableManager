@@ -5650,8 +5650,11 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     `"ALL"`(거르지 않음)입니다. 여기에 상태를 «이름으로 적지 않습니다» —
     그 목록은 위 상수가 정본이고, 적으면 사본이 된다 (총괄 판정 25·30).
     찾기(총괄 e390600d6): table · name(파일 이름의 일부) · folder(그 폴더 밑) · since/until 은 다시 읽기와 «같은 거르기»
-    (`reread.logs_query`). group=folder|reason|status 면 groups 에 묶음마다 수 · 실패 수 — 맞는 행 COUNT_CAP 까지에서.
+    (`reread.logs_query`). group=folder|reason|status 면 groups 에 묶음마다 수 · 실패 수 — 맞는 행 COUNT_CAP 까지에서 —
+    그리고 줄마다 group_key: 그 줄이 세어진 묶음의 열쇠(같은 식 하나, 총괄 10-20). folder 묶음의 열쇠는
+    `reread.folder_key` — folder 를 주면 그 바로 아래 첫 폴더(미리보기의 by_folder 와 같은 열쇠).
     """
+    from directory_watcher import one_sweep
     from ingestion import reread
 
     try:
@@ -5669,7 +5672,10 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     total, capped = min(counted, COUNT_CAP), counted > COUNT_CAP
     start = (page - 1) * limit
     logs = query.offset(start).limit(limit).all()
-    
+
+    def key_of(filepath, state, reason):
+        return reread.folder_key(filepath, folder) if group == "folder" else {"reason": reason, "status": state}[group]
+
     result_list = []
     for log in logs:
         result_list.append({
@@ -5689,12 +5695,15 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     said = {"status": "success", "total": total, "capped": capped, "page": page, "limit": limit, "data": result_list}
     if group:
         model, groups = models.FileIngestionLog, {}
-        for filepath, state, reason in query.with_entities(model.filepath, model.status, model.reason).limit(
-                COUNT_CAP + 1):
-            key = {"folder": reread.folder_of(filepath), "reason": reason, "status": state}[group]
-            entry = groups.setdefault(key, {"key": key, "count": 0, "failed": 0})
-            entry["count"] += 1
-            entry["failed"] += state == "FAILED"
+        with one_sweep():
+            for row, log in zip(result_list, logs):
+                row["group_key"] = key_of(log.filepath, log.status, log.reason)
+            for filepath, state, reason in query.with_entities(model.filepath, model.status, model.reason).limit(
+                    COUNT_CAP + 1):
+                key = key_of(filepath, state, reason)
+                entry = groups.setdefault(key, {"key": key, "count": 0, "failed": 0})
+                entry["count"] += 1
+                entry["failed"] += state == "FAILED"
         said["groups"] = list(groups.values())
     return said
 
@@ -7399,14 +7408,15 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
 async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                                       preview: bool = False, statuses: str = None,
                                       since: str = None, until: str = None, table: str = None,
-                                      db: Session = Depends(get_db)):
+                                      read_by: str = None, db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다.
 
     `folder` 면 그 폴더 «아래» FAILED 전부 · `preview` 면 쓰지 않고 몇 개인지와 바로 아래 폴더별 수만.
     `statuses`(쉼표, 없으면 FAILED) · `since`/`until`(인입 시각)이면 들어간 파일도 — 지금 파서로 다시 읽기
     (총괄 a4d135a06: 은퇴한 소급 «Re-read files» 의 일이 이 문이다).
     `table` (with `folder`): the files under the folder that table takes, picked from the disk - read into that table
-    whichever table read them before (총괄 10-20, 소유자 「어드민 파일 리트라이는 돌았던 테이블로만 도네」)."""
+    whichever table read them before (총괄 10-20, 소유자 「어드민 파일 리트라이는 돌았던 테이블로만 도네」).
+    `read_by`: only the files that table read (its log rows) - the preview and the retry pick the same (총괄 10-20)."""
     import os
     import asyncio
     import json
@@ -7423,6 +7433,10 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
     # only this request, not every other (소유자 10-20 「파일 소급 미리보기 하니까 다 멈추네」)
     by_folder_asked = log_id is None and not crud.is_blank_value(folder)
     into = None if crud.is_blank_value(table) else str(table).strip()
+    read_by = None if crud.is_blank_value(read_by) else str(read_by).strip()
+    if into is not None and read_by is not None:
+        raise HTTPException(status_code=400, detail="table (read from the disk into a table) and read_by (the files "
+                                                    "a table read) are two re-reads - give one")
     chosen = None
     missing = []
     if into is not None:
@@ -7439,7 +7453,8 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
             raise HTTPException(status_code=409, detail=str(refused_walk))
         picked = [(log, rel) for log, rel, _path in chosen["picked"]]
     else:
-        picked = await asyncio.to_thread(reread.select_logs, db, states, folder=folder if by_folder_asked else None,
+        picked = await asyncio.to_thread(reread.select_logs, db, states, table=read_by,
+                                         folder=folder if by_folder_asked else None,
                                          since=start, until=end, log_id=log_id)
         if states != reread.RETRY_STATUSES:
             # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
