@@ -7,7 +7,7 @@
 >          마지막 «File …, line …, in …» 줄 — 그 줄이 dict 를 해시한 자리다
 > 찾기     Select-String -Path server\server.log -Pattern "자동 점검 실패" -Context 0,40
 > 뜻       규칙마다 프로세스당 한 번(그 판정을 기억한다) — 로그가 불지 않는다. 읽기는 전과 같이 계속된다
-> 되돌리기  git revert <착지> -> 런처 재기동
+> 되돌리기  git revert 4cbf5089e -> 런처 재기동
 > ```
 >
 > ---
