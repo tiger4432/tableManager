@@ -448,3 +448,21 @@ def test_the_package_walk_at_start_does_not_import_the_route():
                           text=True, env={**os.environ, "TESTING": "True",
                                           "DATABASE_URL": "sqlite:///:memory:"})
     assert done.stdout.split()[-2:] == ["True", "False"], done.stdout + done.stderr
+
+
+def test_the_answer_carries_the_walk_cards_of_its_seeds(db):
+    """a0ca0428c: the walk's answer carries the branch summary and the declared-but-missing edges at its seeds - the
+    agent walk's own card functions on this answer, the contrast's signs counting each branch's far nodes."""
+    from ledger import walk_cards
+
+    positive, negative = [_lot("P1"), _lot("P2")], [_lot("N1")]
+    answer = trace_router.evidence_subgraph(
+        node_id=positive[0], positive=positive[1:], negative=negative, hops=1, direction="both", since=None,
+        until=UNTIL.isoformat(), node_limit=400, edge_limit=1200, follow=None, backbone_hops=0, collect=None,
+        seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT, group_by=None, measure=None,
+        response_format="json", db=db, include_superseded=False, fanout_limit=None)
+    signs = {**{seed: 1 for seed in positive}, **{seed: -1 for seed in negative}}
+    assert answer["cards"] == walk_cards.answer_cells(answer, list(signs), signs, trace_router._declaration())
+    branches = answer["cards"]["branches"]["items"]
+    assert branches and all(b["from_positive"] + b["from_negative"] > 0 for b in branches)
+    assert any(b["from_negative"] for b in branches) and any(b["from_positive"] for b in branches)

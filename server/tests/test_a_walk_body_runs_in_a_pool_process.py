@@ -189,7 +189,9 @@ def test_a_direct_call_of_the_walk_function_answers_a_dict(monkeypatch):
             collect=None, include_superseded=False)
     finally:
         db.close()
-    assert got == {"ok": 1}
+    # the walk's answer as it came, and the seeds' cards the route adds to every listed walk (a0ca0428c)
+    assert {key: value for key, value in got.items() if key != "cards"} == {"ok": 1} and set(got["cards"]) == {
+        "branches", "missing_edges"}
 
 
 def test_the_walk_route_is_the_one_that_runs_in_the_pool():

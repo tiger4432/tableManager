@@ -428,13 +428,14 @@ KNOWN_ASKS = (
 )
 
 
-def _walked(seeds, follow, hops):
-    """The operating world's walk from `seeds` [(node_type, node_key)] along `follow`, `hops` steps - the
-    screen's own walk (`trace_router._evidence_graph`, no bundles), called directly on a connection of its
-    own - a session's, so inside a chain group it runs under `chain_statement_timeout_seconds` like the
-    group's own reads (`database._set_statement_time_limits`). A seed of a type that does not declare
-    exactly one key has no id from one node_key - left out, one line. No source-event projection: the walk's
-    own 503 (`HTTPException`, source_event_projection_not_deployed) fails the call."""
+def _walked(seeds, follow, hops, fanout_limit=None):
+    """The operating world's walk from `seeds` [(node_type, node_key)] or node ids along `follow` (empty: every
+    predicate), `hops` steps - the screen's own walk (`trace_router._evidence_graph`; a fan-out over `fanout_limit`
+    comes back as a bundle), called directly on a connection of its own - a session's, so inside a chain group it
+    runs under `chain_statement_timeout_seconds` like the group's own reads (`database._set_statement_time_limits`).
+    A (type, key) seed of a type that does not declare exactly one key has no id from one node_key - left out, one
+    line. No source-event projection: the walk's own 503 (`HTTPException`, source_event_projection_not_deployed)
+    fails the call."""
     from sqlalchemy.orm import Session
 
     from database import database
@@ -443,7 +444,11 @@ def _walked(seeds, follow, hops):
     from ledger_api import ledger_subgraph
 
     ids, left = [], []
-    for node_type, key in seeds:
+    for seed in seeds:
+        if isinstance(seed, str):
+            ids.append(seed)
+            continue
+        node_type, key = seed
         bare = bare_name(str(node_type))
         order = ledger_subgraph._declared_key_order(bare) or ()
         if len(order) == 1:
@@ -459,7 +464,7 @@ def _walked(seeds, follow, hops):
         return trace_router._evidence_graph(
             session.connection(), node_id={"positive": ids, "negative": []}, hops=hops, direction="both",
             node_limit=ledger_subgraph.DEFAULT_NODE_LIMIT, edge_limit=ledger_subgraph.DEFAULT_EDGE_LIMIT,
-            follow=list(follow))
+            follow=list(follow) or None, fanout_limit=fanout_limit)
 
 
 def _known_links(walk, node_of, follow, certainty=None):
@@ -726,3 +731,104 @@ def unknown_words(texts, names, links):
                            for i, ch in enumerate(sentence))
             counts.update(_WORD.findall(rest))
     return [{"word": word, "count": count} for word, count in counts.most_common()]
+
+
+# --------------------------------------------------------------------------- the agent walk (e38466810)
+
+#: What the model answers on a hop, and at the end - the shapes `mappers.agent_walk` reads back.
+WALK_HOP_ASK = ('Answer one JSON object: {"go": "<node identifier>", "reason": "<why>"} to walk to one node listed'
+                ' above, or, when the question is answered, {"answer": "<the answer>", "evidence": ["<node identifier>",'
+                ' ...], "rule_draft": "<a rule that would find this without a walk, or empty>"}.')
+WALK_END_ASK = ('Answer one JSON object: {"answer": "<the answer to the question>", "evidence": ["<node identifier>",'
+                ' ...], "rule_draft": "<a rule that would find this without a walk, or empty>"}.')
+NODE_KEYS = ("id", "position", "node", "from", "to")
+
+
+def recipe_print(recipe_rows):
+    """A recipe's print: the hash of its rows, so a log row says which recipe it was walked by."""
+    import hashlib
+    import json
+
+    cells = sorted((str(row.get("state")), float(row.get("card_order") or 0), str(row.get("card")),
+                    row.get("card_limit"), row.get("argument"), row.get("instruction")) for row in recipe_rows)
+    return hashlib.sha1(json.dumps(cells, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()[:12]
+
+
+def _node_line(node_id, nodes):
+    from ledger_api import ledger_subgraph
+
+    node = nodes.get(node_id) or {}
+    if node.get("label"):
+        return "%s %s" % (bare_name_of(node.get("type")), node["label"])
+    try:
+        found = ledger_subgraph.decode_node_id(node_id)
+    except ValueError:
+        return str(node_id)
+    return "%s %s" % (bare_name_of(found.get("type")),
+                      ", ".join("%s=%s" % pair for pair in (found.get("keys") or {}).items()))
+
+
+def bare_name_of(name):
+    from declaration_names import bare_name
+
+    return bare_name(str(name or ""))
+
+
+def walk_context(sight, recipe_rows, state, end=False, cap=None):
+    """The one context of the agent walk: `state`'s rows of the recipe (the one place a state is asked), each its
+    card (`ledger.walk_cards.card`) for `sight`, read as text - node ids as short identifiers, listed once with
+    their labels; within `cap` characters (`llm_config`'s walk_chars) the instructions and the answer's shape always,
+    the cards' lines in order while they fit, each card saying how many it did not show. -> {cards, text,
+    ids: {identifier: node id}, print}. A state the recipe has no row for, and a card no function answers, are
+    refused by name (`walk_cards.UnknownCard`)."""
+    from ledger import walk_cards
+
+    rows = sorted((row for row in recipe_rows if str(row.get("state")) == state),
+                  key=lambda row: float(row.get("card_order") or 0))
+    if not rows:
+        raise walk_cards.UnknownCard("the recipe has no row for state '%s'" % state)
+    cards = [walk_cards.card(row.get("card"), sight, row.get("card_limit"), row.get("argument")) for row in rows]
+    nodes = {node["id"]: node for node in ((sight.answer or {}).get("nodes") or ())}
+    ids, ident = {}, {}
+
+    def named(value):
+        if value not in ident:
+            ident[value] = "N%d" % (len(ident) + 1)
+            ids[ident[value]] = value
+        return ident[value]
+
+    def said(key, value):
+        if key in NODE_KEYS and isinstance(value, str) and value.startswith("ledger-entity:"):
+            return named(value)
+        if key == "sample" and isinstance(value, list):
+            return ", ".join(named(v) if isinstance(v, str) and v.startswith("ledger-entity:") else str(v)
+                             for v in value)
+        return value
+
+    tail = [str(row["instruction"]) for row in rows if str(row.get("instruction") or "").strip()]
+    tail.append(WALK_END_ASK if end else WALK_HOP_ASK)
+    room = None if cap is None else cap - len("\n".join(tail)) - 1
+    body, listed = [], {}
+
+    def text():
+        return "\n".join(body + (["## nodes"] + list(listed.values()) if listed else []))
+
+    more_line = len("- (99999 more not shown)") + 1
+    for at, card in enumerate(cards):
+        body.append("## %s" % card["card"])
+        cut = 0
+        # what still comes after this card's lines: its own «more» line, and each later card's heading and «more»
+        reserve = more_line + sum(len("## %s" % later["card"]) + 1 + more_line for later in cards[at + 1:])
+        for item in card["items"]:
+            kept = (len(body), dict(listed), dict(ident), dict(ids))
+            body.append("- " + "; ".join("%s: %s" % (key, said(key, value)) for key, value in item.items()
+                                         if value not in (None, "", [])))
+            for name, node_id in ids.items():
+                listed.setdefault(name, "%s: %s" % (name, _node_line(node_id, nodes)))
+            if room is not None and len(text()) + reserve > room:
+                del body[kept[0]:]
+                listed, ident, ids = kept[1], kept[2], kept[3]
+                cut += 1
+        if card["more"] or cut:
+            body.append("- (%d more not shown)" % (card["more"] + cut))
+    return {"cards": cards, "text": "\n".join([text()] + tail), "ids": ids, "print": recipe_print(recipe_rows)}

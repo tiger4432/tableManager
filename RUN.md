@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **에이전트 걷기 · 뜻 표 — 물음 한 행을 적으면 LLM 이 홉마다 골라 걷고 걸은 길과 답이 표에 남음 (총괄 e38466810 · a0ca0428c)** — git pull · 표 설치 · 규칙 셋 · 런처 재기동
+>
+> ```
+> 무엇     walk_request 한 행 -> 체인의 LLM 맵퍼가 홉마다 다음 노드를 골라 걷고 walk_log 에 홉마다 한 행 + 끝 행(답 · 근거 · 규칙 초안)
+>          선언된 엔티티 · 술어마다 빈 뜻 행(ontology_meaning) - 빈 뜻은 LLM 초안(llm_draft 층), 사람 값이 이김
+>          걷기 응답(/api/ledger/subgraph, id 씨앗)에 cards 칸: branches · missing_edges
+> 돌릴 것   cd server && python scripts/install_product_tables.py --apply      표 넷(ontology_meaning · walk_request · walk_log · walk_recipe)
+>          chain_rules.json 에 config/sample/chain_rules.json.sample 의 세 규칙: agent_walk_hop · agent_walk_follow · meaning_draft
+>          walk_recipe 에 레시피 행: recipe · state(unwalked | on_node | stuck | end) · card_order · card · card_limit · argument · instruction
+> 확인     walk_request 에 request_id · question · recipe 한 행 -> chain_worker.log «[ChainRule] rule=agent_walk_hop … rows_out=1» -> walk_log 에 step 1 행
+>          선언 저장 · Reload 뒤 server.log «[Meanings] N blank meaning row(s) made for the declaration's new names»
+> 뜻      끝 행 reason «chain depth 8 → 4 hops» -> 깊이 상한에서 멈춤(정상). 홉 하나가 체인 두 걸음이라 max_chain_depth 의 절반까지
+>          «recipe 'r' has no rows - write its rows in walk_recipe» -> 레시피 행이 없음 / «unknown card 'x' - one of …» -> 카드 이름이 틀림
+>          «the answer was refused twice: the language model call was refused: …» -> 게이트웨이 · config/llm_config.json 문제. llm_requests.log 의 error 를 봄
+>          «[Meanings] ontology_meaning is not in table_config.json» -> 표 설치를 안 함
+> 급할 때   chain_rules.json 의 세 규칙 enabled 를 false (파일 감시가 바로 읽음)
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **선언 파일을 고치면 모든 프로세스가 바로 다시 읽음 — 체인 규칙 · 맵퍼 · 설정 파일 (총괄 e6a0bdbbd, 소유자 ㄱ)** — git pull · 런처 재기동
 >
 > ```

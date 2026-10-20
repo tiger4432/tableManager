@@ -160,6 +160,7 @@
 
 ### 걷기 화면
 
+- 2026-10-21 [에이전트 걷기 — 물음 한 행을 적으면 LLM 이 홉마다 골라 걷고, 걸은 길과 답이 표에 남는다 · 뜻 표](#2026-10-21--에이전트-걷기--물음-한-행을-적으면-llm-이-홉마다-골라-걷고-걸은-길과-답이-표에-남는다--뜻-표) — 적는 곳 walk_request · walk_recipe · chain_rules.json · 보는 곳 walk_log
 - 2026-10-20 [걷기 — 묶음으로 잘린 먼 타입은 «complete» 가 아니다](#2026-10-20--걷기--묶음으로-잘린-먼-타입은-complete-가-아니다) — 누르는 곳 시험대 · 걷기의 상태 줄
 - 2026-10-15 [걷기 hops=0 — 씨앗의 자기 기록만, 엣지 없이](#2026-10-15--걷기-hops0--씨앗의-자기-기록만-엣지-없이) — 누르는 곳 없음(서버 재기동)
 - 2026-10-15 [고침 — 걷기의 이름표 · 여러 값 이름이 선언 파일이 바뀌면 다음 걷기에 바로 바뀐다](#2026-10-15--고침--걷기의-이름표--여러-값-이름이-선언-파일이-바뀌면-다음-걷기에-바로-바뀐다)
@@ -458,6 +459,23 @@
 - 2026-09-29 ~ 10-01 [이번 주 고친 것 — 소유자가 신고한 화면](#2026-09-29--10-01--이번-주-고친-것--소유자가-신고한-화면)
 
 ---
+
+## 2026-10-21 · 에이전트 걷기 — 물음 한 행을 적으면 LLM 이 홉마다 골라 걷고, 걸은 길과 답이 표에 남는다 · 뜻 표
+
+- **무엇** — 소유자 「표 → 체인 LLM → 걷기 → 표」 · 「걷기 안에서 LLM 에 주변을 주고 다음 갈 곳을 정하게」 · 「뜻은 표에」(10-20). 운영자가 물음 한 행을 적으면 체인의 LLM 맵퍼가 홉마다 그 자리의 «카드»(이어진 엣지 · 선언상 없는 엣지 · 걸어온 길 · 남은 예산 …)를 보고 다음 노드를 고르고, 홉마다 한 행과 끝 행(답 · 근거 노드 · 규칙 초안)이 표에 남습니다. 선언된 엔티티 · 술어마다 뜻 한 행이 있고, 빈 뜻은 LLM 이 초안을 씁니다.
+- **선언**
+  - 표 넷 — `server/scripts/install_product_tables.py --apply` 가 `table_config.json` 에 넣습니다: `walk_request`(request_id · question · start_node · hop_budget · call_budget · recipe, 체인이 position · step · state 를 씀) · `walk_log`(request_id · step · kind hop/end · position · state · cards · chosen · reason · recipe_print · answer · evidence · rule_draft) · `walk_recipe`(recipe · state · card_order · card · card_limit · argument · instruction) · `ontology_meaning`(target_kind · target_name · meaning).
+  - 규칙 셋 — `config/sample/chain_rules.json.sample` 의 `agent_walk_hop`(walk_request → walk_log) · `agent_walk_follow`(walk_log → walk_request) · `meaning_draft`(ontology_meaning → ontology_meaning) 를 `chain_rules.json` 에 그대로 넣습니다.
+  - 레시피 — 상태(unwalked · on_node · stuck · end)마다 실을 카드를 행으로: `{"recipe": "r", "state": "on_node", "card_order": 1, "card": "edges", "card_limit": 20}`. 카드 이름 13: node_types · key_shapes · node_count · meanings · key_candidates · edges · missing_edges · mentions · path · budget · question · dead_end · full_path. `mentions` 는 `argument` 칸에 술어 이름(예 `mentions`). `instruction` 은 그 상태에서 LLM 에 주는 한 줄.
+- **바뀐 동작**
+  - 홉 하나는 체인 두 걸음입니다(요청 → 기록 → 요청) — 규칙은 자기 쓰기로 깨지 않아서(소유자 09-28) 두 규칙이 번갈아 깨웁니다. 홉 상한 = min(hop_budget, max_chain_depth ÷ 2) — `max_chain_depth` 8 이면 4 홉. 깊이로 멈추면 끝 행 reason 이 «chain depth 8 → 4 hops».
+  - LLM 이 목록에 없는 노드를 고르거나 답의 모양이 틀리면 이유를 붙여 한 번 더 묻고, 또 틀리면 끝 행에 이유를 남기고 멈춥니다. 레시피 행이 없거나 카드 이름이 틀리면 끝 행 reason 이 그것을 이름 댑니다.
+  - 카드 글자 상한 = `llm_config.json` 의 `walk_chars`(기본 4000). 넘치는 줄은 «(N more not shown)».
+  - 뜻 표 — 원장 선언이 바뀌면(탐색기 저장 · 손 편집 · Reload) API 가 선언된 이름마다 빈 뜻 행을 만듭니다. 있는 행은 그대로, 선언에서 빠진 이름의 행도 남습니다. 빈 뜻은 `meaning_draft` 가 LLM 초안을 `llm_draft` 층(사람보다 아래)으로 씁니다. 사람이 쓴 값이 이기고, 사람이 비운 뜻은 다시 초안하지 않습니다.
+  - 걷기 응답(`GET /api/ledger/subgraph`, `id` 로 씨앗을 준 걷기)에 `cards` 칸 — `branches`(술어 · 방향 · 건너편 타입 · 수 · 표본, 대조 걷기면 양 · 음 쪽 수) · `missing_edges`(선언상 있어야 하는데 없는 엣지). 에이전트 걷기가 LLM 에 주는 카드와 같은 함수입니다.
+- **보는 곳** — `walk_log` 표 · `walk_request` 의 state · chain_worker.log 의 «[ChainRule] rule=agent_walk_hop …» · llm_requests.log · server.log 의 «[Meanings] …».
+- **필요한 조건** — git pull · 표 설치 · 규칙 셋 · 레시피 행 · LLM 게이트웨이(`config/llm_config.json`) · 런처 재기동.
+- **자세히** — 시험 `test_a_walk_card_follows_its_state.py` · `test_a_walk_takes_one_hop_per_chain_step.py` · `test_a_walk_goes_on_past_its_third_hop_in_the_chain_worker.py` · `test_a_meaning_draft_stays_below_a_persons.py` · `test_a_declared_name_gets_one_blank_meaning_row.py` · RUN.md 같은 날 절.
 
 ## 2026-10-21 · 선언 파일을 고치면 그 파일을 읽는 모든 프로세스가 바로 다시 읽는다 — 체인 규칙 · 맵퍼 · 설정 파일
 

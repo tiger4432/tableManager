@@ -339,7 +339,7 @@ def test_the_number_cells_default_and_a_bad_one_is_refused(root):
     _declare(root, **CELLS)
     cells = llm.settings()
     assert {name: cells[name] for name in llm.NUMBER_CELLS} == {
-        "timeout_s": 60.0, "batch_chars": 4000, "known_chars": 4000, "known_per_seed": 5}
+        "timeout_s": 60.0, "batch_chars": 4000, "known_chars": 4000, "known_per_seed": 5, "walk_chars": 4000}
     for name, bad in (("batch_chars", 0), ("batch_chars", 1.5), ("known_chars", "9"), ("known_per_seed", True)):
         _declare(root, **CELLS)
         llm.settings()

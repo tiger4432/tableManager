@@ -1588,6 +1588,9 @@ OPERATOR_IMPORT_NAMES = (
     "event_constants",
     "mapper_sdk",
     "notation_norm",
+    # the tracked `mappers/agent_walk.py` reads the product tables' names and the bare name (e38466810)
+    "product_tables",
+    "declaration_names",
 )
 
 
