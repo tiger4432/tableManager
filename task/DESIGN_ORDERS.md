@@ -1,3 +1,20 @@
+# 🔴🔴 [구현자 B] **체인 문법의 목록 칸 둘 — key.columns 가 글자로 쪼개져 조인 유일 인덱스가 조용히 안 지어짐** (소유자 10-20 「1 ㅇㅇ」, 총괄)
+
+근거(조사 10-20, 코드 읽음 · 실행 안 함):
+- `key.columns` — rule_shape.KEY_CELL_SHAPES 에 `unique` 만 모양이 있어 columns 는 한 칸(leaf). 폼에 «lot» 을 적으면 문자열로 저장되고
+  chain/synthesis.py 가 `[str(column) for column in (rule.get("key") or {}).get("columns")]` 로 «글자»를 돈다 → ['l','o','t'] → 조인의 진짜 키와 안 맞아 유일 인덱스를 안 짓는다(오류 없음)
+- `group_by` · `limits.group_by` — chain_bindings._LIST_CELLS 에 group_by 가 없어 두 문법 다 한 칸. 서버 검사는 «칸 이름 목록»만 받음(bad_group_by) → 폼으로는 저장이 거절
+```
+할 일   1) 두 칸을 목록으로 — _LIST_CELLS 에 group_by, KEY_CELL_SHAPES 에 columns (기존 목록 칸과 같은 자리 · 새 기제 금지)
+        2) 이미 문자열로 저장된 key.columns 가 있으면: 읽는 쪽이 글자로 돌지 않게 — 로더가 «문자열 하나 = 칸 하나»로 받든, 이름 대어 거절하든 하나.
+           둘 중 무엇이 기존 문(같은 종류의 다른 칸이 문자열을 어떻게 받나)과 같은 모양인지 보고 고르고 보고
+        3) 박스 체인 규칙 파일에 문자열 key.columns 가 몇 개 있는지 읽기 전용으로 센다(운영 파일은 손대지 않음 — 수만)
+게이트  문법 → 폼이 두 칸을 «줄 목록»으로 그림(스켈레톤 응답 단언) · 문자열 key.columns 판에서 유일 인덱스 이름이 진짜 키 칸으로 지어짐 · group_by 두 칸 저장 통과 ·
+        test_a_declared_list_is_drawn_as_a_list 가 이 두 칸을 실제로 재게(샘플에 칸 추가 — 지금은 샘플에 없어 공허) · 변이 각 하나
+```
+
+---
+
 # 🔴 [구현자 B] **게이트가 거짓말 안 하게 — 셋째 묶음 (A 전체 스위트 10-20)** (총괄)
 
 근거: A 의 전체 스위트(a2414a909, 32 분) 9 failed · 5 errors — 하나는 시간에 흔들림, 나머지 8 failed · 5 errors 는 .gitignore 된 server/mappers 에 기대는 시험(90820c62c 의 test_chained_ingestion 과 같은 원인).
