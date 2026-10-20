@@ -1846,6 +1846,9 @@ const FLOORS = new Map([
   // New 2026-10-20 (lead 9075f6605, owner 10-20 «일단 ㄱ»). The test bed draws what is in view: the table's window of lines
   // (and a drag past it), a filter's most counted values with a search box.
   ['testbed_draw_window_harness.mjs', 10],
+  // New 2026-10-20 (lead, owner 10-20 «다 voids.json 이면 뭐가 뭔지 모름»). A file's folder on its log line: cut at the front,
+  // the whole in the tooltip and on the Copy, escaped, on both lists the row draws.
+  ['file_folder_harness.mjs', 7],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

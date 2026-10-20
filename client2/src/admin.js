@@ -1751,6 +1751,14 @@ function buildFileLogRow(log, { withStatus }) {
     selectFileRow(log, row.parentElement || fileListBody);
   });
 
+  const folderCopy = row.querySelector('.file-folder-copy');
+  if (folderCopy) {
+    folderCopy.addEventListener('click', (event) => {
+      event.stopPropagation();
+      copyText(folderCopy.dataset.path, '📋 Folder path copied', 'info');
+    });
+  }
+
   const retryBtn = row.querySelector('.btn-retry-file');
   if (retryBtn) {
     retryBtn.addEventListener('click', async () => {

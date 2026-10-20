@@ -29,6 +29,22 @@ import { localeCountText, isCount } from './absent.js';
 import { statusBadgeClass } from './retry_verdict.js';
 import { BACKFILL_WORDS } from './collector_backfill.js';
 
+/** The most of a folder a log line shows; past it the front gives way so the last folders stay (owner 10-20). */
+export const FOLDER_TAIL = 40;
+
+/** A file's folder for its log line (owner 10-20 «다 voids.json 이면 뭐가 뭔지 모름»): `{full, shown}` - the path less its
+ *  name, `shown` cut at the front on a folder line («…\W12\»). Null when the path says no folder. */
+export function folderOf(filepath) {
+  const path = String(filepath || '').trim();
+  const cut = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+  if (cut < 0) return null;
+  const full = path.slice(0, cut + 1);
+  if (full.length <= FOLDER_TAIL) return { full, shown: full };
+  const tail = full.slice(full.length - FOLDER_TAIL);
+  const at = tail.search(/[\\/]/);
+  return { full, shown: `…${at >= 0 && at < tail.length - 1 ? tail.slice(at) : tail}` };
+}
+
 /** File Ingestion 로그 행. `withStatus` 는 Auto Update 탭 실패 목록과 공용이라 남습니다. */
 export function fileLogRowHtml(log, { withStatus, timeStr }) {
   // The badge reads the one seat (lead 65f2c808d) — a waiting file is not drawn as failed. Retry on every row, one button:
@@ -41,7 +57,7 @@ export function fileLogRowHtml(log, { withStatus, timeStr }) {
     : 'color: var(--text-dim);';
   return `
     <td>${escapeHtml(log.id)}</td>
-    <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(log.filename)}</td>
+    <td data-wrap-ok style="font-weight: 500; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-button); word-break: break-all;">${escapeHtml(log.filename)}${folderLineHtml(log.filepath)}</td>
     <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(log.table_name)}</td>
     ${withStatus ? `<td style="text-align: center;">${statusBadge}</td>` : ''}
     <td style="text-align: center; ${retryStyle}">${escapeHtml(log.retry_count)}</td>
@@ -50,6 +66,16 @@ export function fileLogRowHtml(log, { withStatus, timeStr }) {
       ${retryBtnHtml}
     </td>
   `;
+}
+
+/** The folder under a file's name: the tail shown, the whole in its tooltip and on its Copy (admin.js wires `.file-folder-copy`). */
+function folderLineHtml(filepath) {
+  const folder = folderOf(filepath);
+  if (!folder) return '';
+  const full = escapeHtml(folder.full);
+  return `<div class="file-folder" title="${full}" style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); font-weight: 400; font-size: var(--fs-meta); color: var(--text-dim); word-break: normal;">`
+    + `<span class="file-folder__path" style="overflow: hidden; white-space: nowrap;">${escapeHtml(folder.shown)}</span>`
+    + `<button type="button" class="admin-btn file-folder-copy" data-path="${full}" style="flex: none; padding: 0 var(--space-2); font-size: var(--fs-meta);">Copy</button></div>`;
 }
 
 /** 진행 중 인제션 행. `elapsedText` 는 admin 의 포매터가 만든 것이라 받아서 «감쌉니다». */
