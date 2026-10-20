@@ -155,6 +155,12 @@ def _checkpoint(engine, table, filename):
                                  "WHERE table_name = :t AND filename = :f"), {"t": table, "f": filename}).one()
 
 
+def _processed(engine, filename):
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT coalesce(max(processed_rows), 0) FROM file_ingestion_checkpoints "
+                                 "WHERE table_name = :t AND filename = :f"), {"t": TABLE, "f": filename}).scalar()
+
+
 @pytest.mark.pg
 def test_a_file_held_up_by_a_lock_fails_unsealed_and_the_next_sweep_finishes_it(box):
     box["settings"](lock_timeout_seconds=1)
@@ -226,6 +232,11 @@ def test_the_stalled_line_and_the_folder_line_say_the_folder_the_file_and_the_ho
     try:
         with caplog.at_level(logging.INFO):
             stuck.start()
+            # the loop that says stalls starts once chunk 1 is in: its own write (~0.6 s cold on the box) is past
+            # the 0.5 s here and would be an episode of its own (10-20: red whenever the cell ran first)
+            deadline = time.time() + 10.0
+            while time.time() < deadline and _processed(box["engine"], "f1.csv") < 1000:
+                time.sleep(0.02)
             loop.start()
             deadline = time.time() + 3.0
             while time.time() < deadline and not _stalled(caplog):
