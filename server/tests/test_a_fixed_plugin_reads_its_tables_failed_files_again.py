@@ -183,8 +183,9 @@ def test_a_fixed_plugin_reads_its_tables_failed_files_again(tmp_path):
 
 
 def test_a_settings_file_that_reads_as_nothing_passes_the_tick(tmp_path, monkeypatch):
-    """Lead 10-20: ingestion_settings.json there but read as nothing (mid-write) - the external part is not compared,
-    nothing handed, the stamps not written over; the file absent is no external source, compared as before."""
+    """Lead 10-20: ingestion_settings.json there but read as nothing (mid-write) - the external part is kept as it was,
+    neither compared nor written over, while a plugin fixed in that tick is handed as ever; the file absent is no
+    external source, compared as before."""
     sys.path.insert(0, os.path.join(SERVER_DIR, "parsers"))
     import directory_watcher
     import run_watcher
@@ -212,6 +213,12 @@ def test_a_settings_file_that_reads_as_nothing_passes_the_tick(tmp_path, monkeyp
 
     path.write_text("", encoding="utf-8")                          # there, read as nothing
     assert run_watcher.hear_changed_readings(None, kept) == kept and not handed and not written
+
+    (scripts / "p.py").write_text(FIXED, encoding="utf-8")         # and a plugin fixed in that tick
+    after = run_watcher.hear_changed_readings(None, kept)
+    assert handed == ["ta"] and len(written) == 1
+    assert after["ta"]["external source"] == kept["ta"]["external source"] and "scripts\\p.py" in after["ta"]
+    kept, handed[:], written[:] = after, [], []
 
     path.unlink()                                                  # absent: no external source - a change
     assert run_watcher.hear_changed_readings(None, kept) != kept and handed == ["ta"] and len(written) == 1
