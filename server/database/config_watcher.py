@@ -36,7 +36,7 @@ _PENDING = {}
 _SAID_HERE = {}
 _UNSAID = object()
 _ONTOLOGY_DIRS = ("ontology", "ontology_worlds")
-ONTOLOGY, MAPPERS = "ontology", "mappers"
+ONTOLOGY, MAPPERS, COLLECTORS = "ontology", "mappers", "collectors"
 
 
 _MAPPER_DIRS = []
@@ -68,21 +68,25 @@ def name_of(path):
         return None
     if isinstance(path, bytes):
         path = path.decode("utf-8", "replace")
-    asked = (str(path), paths.CONFIG_DIR)
+    asked = (str(path), paths.CONFIG_DIR, paths.WORKSPACE_DIR)
     if asked not in _NAMES:
-        _NAMES[asked] = _name_of(str(path), paths.CONFIG_DIR)
+        _NAMES[asked] = _name_of(str(path), paths.CONFIG_DIR, paths.WORKSPACE_DIR)
     return _NAMES[asked]
 
 
 _NAMES = {}
 
 
-def _name_of(path, config_dir):
+def _name_of(path, config_dir, workspace_dir):
     full = os.path.normcase(os.path.abspath(path))
     base = os.path.basename(full)
     for folder in _mapper_dirs():
         if os.path.dirname(full) == folder:
             return MAPPERS if base.endswith(".py") else None
+    workspace = os.path.normcase(os.path.abspath(workspace_dir))
+    if full.startswith(workspace + os.sep):
+        parts = os.path.relpath(full, workspace).split(os.sep)
+        return COLLECTORS if len(parts) == 3 and parts[1] == "auto_update" and base.endswith(".py") else None
     root = os.path.normcase(os.path.abspath(config_dir))
     if full == root or full.startswith(root + os.sep):
         parts = os.path.relpath(full, root).split(os.sep)
@@ -322,11 +326,20 @@ def _mappers(paths, engine):
     mapper_sdk.reload_modules(paths)
 
 
+def _collectors(paths, engine):
+    """The scheduler holds the collector scripts it imported: it imports them again at its next tick."""
+    import collector_markers
+
+    collector_markers.SCRIPTS_CHANGED.set()
+
+
 #: 🔴 THE ONE TABLE - name -> (what a process forgets, waits for the chain loop's boundary). A file not here is
 #:    read again through `held` alone.
 ROWS = {
     CONFIG_FILENAME: (_table_config, False),
     "chain_rules.json": (_chain_rules, True),
+    # the ledger's compile is the one value not kept when its file breaks: the refusal is the answer the authoring
+    # screen and the follow-up give alike (`held(keep=False)`, lead 558a46ef1)
     ONTOLOGY: (_ontology, False),
     "ledger_resolver.json": (_pools, False),
     "notation_rules.json": (_pools, False),
@@ -334,6 +347,9 @@ ROWS = {
     "ingestion_settings.json": (_pools, False),
     "database.json": (_database, False),
     MAPPERS: (_mappers, True),
+    # watched per <table>/auto_update folder there at start: a folder made after it is seen at the Reload button or
+    # a restart, as before (lead 10-21)
+    COLLECTORS: (_collectors, False),
 }
 
 
@@ -543,7 +559,7 @@ def start_config_watcher(engine=None, boundary=False):
 
     observer = Observer()
     observer.schedule(event_handler, path=config_dir, recursive=True)
-    for folder in _mapper_dirs():
+    for folder in _mapper_dirs() + _collector_dirs():
         if os.path.isdir(folder):
             observer.schedule(event_handler, path=folder, recursive=False)
     observer.start()
@@ -551,8 +567,19 @@ def start_config_watcher(engine=None, boundary=False):
     # nothing about. Expose the handler so a shutdown (or a test) can cancel an
     # armed reload instead of letting it run against a disposed engine.
     observer.config_handler = event_handler
-    logger.info(f"Started config folder watchdog on '{config_dir}' and the mappers folder")
+    logger.info(f"Started config folder watchdog on '{config_dir}', the mappers folder and the collector folders")
     return observer
+
+
+def _collector_dirs():
+    """Every <workspace>/<table>/auto_update folder there now - not the workspace itself, whose raws take every
+    data file."""
+    import paths
+
+    if not os.path.isdir(paths.WORKSPACE_DIR):
+        return ()
+    folders = (os.path.join(paths.WORKSPACE_DIR, table, "auto_update") for table in os.listdir(paths.WORKSPACE_DIR))
+    return tuple(folder for folder in folders if os.path.isdir(folder))
 
 
 def _report_unsearchable_declarations(config: dict):

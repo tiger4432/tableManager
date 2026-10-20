@@ -23,6 +23,7 @@ WHERE = {
     "ingestion_settings.json": "ingestion_settings.json",
     "database.json": "database.json",
     config_watcher.MAPPERS: os.path.join("..", "mappers", "probe_row.py"),
+    config_watcher.COLLECTORS: os.path.join("..", "ingestion_workspace", "t1", "auto_update", "pull.py"),
 }
 
 
@@ -33,6 +34,7 @@ def root(tmp_path, monkeypatch):
     (config / "ontology").mkdir(parents=True)
     (tmp_path / "mappers").mkdir()
     monkeypatch.setattr(paths, "CONFIG_DIR", str(config))
+    monkeypatch.setattr(paths, "WORKSPACE_DIR", str(tmp_path / "ingestion_workspace"))
     monkeypatch.setattr(config_watcher, "_MAPPER_DIRS", [(os.path.normcase(str(tmp_path / "mappers")),)])
     monkeypatch.setattr(config_watcher, "_NAMES", {})
     monkeypatch.setattr(config_watcher, "_PENDING", {})
@@ -76,7 +78,10 @@ def test_a_changed_file_moves_its_name_and_runs_its_row_once(root, monkeypatch, 
     assert ran == [(name, [path])], "once, now or at the boundary"
 
 
-@pytest.mark.parametrize("rel", ["table_config.json.bak", os.path.join("sample", "x.json"), "beat.txt"])
+@pytest.mark.parametrize("rel", ["table_config.json.bak", os.path.join("sample", "x.json"), "beat.txt",
+                                 # the workspace: a data file (raws take thousands) and a plugin (read per file)
+                                 os.path.join("..", "ingestion_workspace", "t1", "raws", "voids.json"),
+                                 os.path.join("..", "ingestion_workspace", "t1", "scripts", "parser.py")])
 def test_a_file_that_is_no_declaration_moves_nothing(root, monkeypatch, rel):
     ran = _recording_rows(monkeypatch)
     every = config_watcher.generation(*config_watcher.ROWS)
@@ -192,6 +197,69 @@ def test_a_whole_reload_starts_the_walk_pool_once(monkeypatch):
     assert recycled == [1], "once for the whole reload"
     config_watcher._apply("probe_a", None, None)
     assert recycled == [1, 1], "and once for one row"
+
+
+def test_a_changed_collector_script_is_imported_again_by_the_scheduler_at_its_next_tick(monkeypatch, tmp_path):
+    """The collectors row (lead 10-21 ㄱ): a changed script sets the flag; the scheduler's next tick imports its
+    collectors again - before the database, which is not asked here."""
+    import collector_markers
+    import run_auto_update
+    from utils import heartbeat
+
+    class _Rescanned(Exception):
+        pass
+
+    class _TicksWithoutIt(Exception):
+        pass
+
+    scheduler = run_auto_update.MultiDiscoveryScheduler(check_interval=0.01, server_dir=str(tmp_path))
+    calls = []
+
+    def discover():
+        calls.append(1)
+        if len(calls) == 2:
+            raise _Rescanned
+
+    monkeypatch.setattr(scheduler, "discover_and_load_collectors", discover)
+    beats = []
+
+    def beat(*a, **k):
+        beats.append(1)
+        if len(beats) > 4:                       # the start's beat and three ticks
+            raise _TicksWithoutIt
+
+    monkeypatch.setattr(heartbeat, "beat", beat)
+    config_watcher._apply(config_watcher.COLLECTORS, ["pull.py"], None)
+    assert collector_markers.SCRIPTS_CHANGED.is_set()
+    with pytest.raises(_Rescanned):
+        scheduler.run()                          # the start's discovery, then the tick's
+    assert not collector_markers.SCRIPTS_CHANGED.is_set(), "taken once"
+
+
+def test_a_collector_folder_there_at_start_is_watched(root, monkeypatch):
+    """`start_config_watcher` watches each <table>/auto_update - not the workspace, whose raws take every file."""
+    import collector_markers
+    from database import crud
+
+    monkeypatch.setattr(config_watcher, "DEBOUNCE_SEC", 0.05)
+    monkeypatch.setattr(crud, "CONFIG_PATH", str(root / "table_config.json"))
+    monkeypatch.setattr(config_watcher, "_MAPPER_DIRS", [()])
+    folder = root.parent / "ingestion_workspace" / "t1" / "auto_update"
+    folder.mkdir(parents=True)
+    observer = config_watcher.start_config_watcher(None)
+    try:
+        watched = {os.path.normcase(w.watch.path) for w in observer.emitters}
+        assert os.path.normcase(str(folder)) in watched
+        assert os.path.normcase(str(folder.parent.parent)) not in watched, "not the workspace"
+        _write(folder / "pull.py", "# schedule: 0 0 1 1 *\n")
+        deadline = time.time() + 10
+        while not collector_markers.SCRIPTS_CHANGED.is_set() and time.time() < deadline:
+            time.sleep(0.05)
+        assert collector_markers.SCRIPTS_CHANGED.is_set(), "a script written in it reached the collectors row"
+    finally:
+        observer.config_handler.cancel_pending()
+        observer.stop()
+        observer.join(5)
 
 
 def test_a_watched_folder_reads_a_hand_edit_and_a_save_once(root, monkeypatch, caplog):

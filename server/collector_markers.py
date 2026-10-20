@@ -8,6 +8,7 @@ is imported, so the API process must not import it - this module imports nothing
 import logging
 import os
 import re
+import threading
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -149,6 +150,10 @@ def parse_script_comments(script_path: str) -> dict:
     except Exception as e:
         logger.warning(f"Failed to parse script comments for {script_path}: {told(e)}", exc_info=e)
     return config
+
+
+#: A collector script changed (`config_watcher`'s collectors row) - the scheduler takes it at its next tick.
+SCRIPTS_CHANGED = threading.Event()
 
 
 def collector_scripts(root: str) -> list:

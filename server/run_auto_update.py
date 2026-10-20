@@ -17,6 +17,7 @@ from utils.logger import get_process_logger
 from utils.auto_update_control import read_disabled_scripts
 from utils import heartbeat
 import paths  # single override point (ASSY_DATA_ROOT)
+import collector_markers
 import config_backup
 import event_constants
 from collector_markers import (
@@ -423,6 +424,13 @@ class MultiDiscoveryScheduler:
         # the tick removes the accident that was doing this job, so the job becomes
         # explicit. `retroactive_busy()` is the same idea one level up.
         self._collectors_running = set()
+
+    def rescan_collectors(self):
+        """Every collector script imported again - the Reload button's and a changed script's."""
+        for name in [k for k in sys.modules if k.startswith("dynamic_collector_")]:
+            sys.modules.pop(name, None)
+        self.discover_and_load_collectors()
+        logger.info(f"[Reload] Re-scan complete. Total active collectors: {len(self.collectors)}")
 
     def discover_and_load_collectors(self):
         """
@@ -1059,6 +1067,11 @@ class MultiDiscoveryScheduler:
                 # [B1/B2] Progress beat from the scheduler's own loop
                 # (check_interval = 5 s).
                 heartbeat.beat("scheduler")
+                # a collector script changed (`config_watcher`'s collectors row) - before the database, which may not
+                # answer this tick
+                if collector_markers.SCRIPTS_CHANGED.is_set():
+                    collector_markers.SCRIPTS_CHANGED.clear()
+                    self.rescan_collectors()
                 # 1. 무중단 핫 리로드 (SYSTEM_RELOAD) 및 강제 실행(SCHEDULER_RUN_NOW) 감시
                 try:
                     from database.database import SessionLocal
@@ -1080,15 +1093,8 @@ class MultiDiscoveryScheduler:
                         from database import config_watcher
 
                         config_watcher.reload_everything()
-                        # 모듈 캐시 초기화
-                        keys_to_remove = [k for k in sys.modules.keys() if k.startswith("dynamic_collector_")]
-                        for k in keys_to_remove:
-                            sys.modules.pop(k, None)
-                            
-                        # 수집기 리스트 재구성
-                        self.discover_and_load_collectors()
-                        logger.info(f"[Reload] Re-scan complete. Total active collectors: {len(self.collectors)}")
-                    
+                        self.rescan_collectors()
+
                     # 1-2. SCHEDULER_RUN_NOW 감시
                     # 🔴 ORDERED, like its sibling below. Without `order_by` the row this
                     # picks is whatever the plan happens to return, so which trigger runs

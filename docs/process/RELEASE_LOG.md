@@ -466,10 +466,11 @@
 - **바뀐 동작**
   - 체인 규칙 · 맵퍼는 체인 프로세스에서 «다음 묶음 경계»에 바뀝니다 — 도는 묶음은 한 벌의 규칙 · 맵퍼로 끝납니다.
   - 맵퍼 파일을 고치면 그 모듈만 다시 import 합니다. import 가 실패하면 «전에 쓰던 모듈을 그대로» 쓰고, 체인 규칙의 거절 문장에 전처럼 «mappers.<모듈> did not import: <사유>» 가 붙습니다. 파일을 지우면 그 파일의 맵퍼 이름이 빠집니다.
+  - 수집기 스크립트(`ingestion_workspace/<표>/auto_update/*.py`)를 고치면 스케줄러가 다음 틱에 다시 읽습니다. 기동 뒤 새로 만든 `auto_update` 폴더는 Reload 버튼·재기동까지 안 보입니다(전과 같은 범위).
   - 고친 파일이 깨져 읽히지 않으면 «전에 읽은 값»을 그대로 쓰고 로그에 파일과 사유를 한 번 적습니다: «[Config] <파일> does not read - this process keeps what it read before: <사유>». 처음부터 깨져 있으면 빈 것으로 읽고 «… reads it as empty until it does».
   - 원장 선언(`ontology/ledger_config.json`)은 예외 — 깨지면 거절이 답입니다(작성 화면과 따라가기가 같은 답, 총괄 558a46ef1).
   - 선언된 엔티티 · SSO 설정 · LLM 설정 · 느린 요청 문턱도 바뀌면 다시 읽습니다 — 전에는 재기동까지 기다렸습니다.
-  - 체인 규칙 저장 · 온톨로지 탐색기 저장 · 코드 편집기의 맵퍼 저장은 이제 SYSTEM_RELOAD 행을 쓰지 않습니다(파일 감시가 대신함). Reload 버튼은 전과 같이 전부 다시 읽습니다.
+  - 체인 규칙 저장 · 온톨로지 탐색기 저장 · 코드 편집기 저장은 이제 SYSTEM_RELOAD 행을 쓰지 않습니다(파일 감시가 대신함). Reload 버튼은 전과 같이 전부 다시 읽습니다.
   - `database.json` 이 바뀌면 «restart to use it» 경고만 — 연결은 기동 때 엽니다.
 - **보는 곳** — 각 프로세스 로그(server.log · watcher.log · auto_update.log · chain_worker.log)에 «[Config] <이름> changed - read again in this process». 이름은 파일 이름이거나 `ontology` · `mappers`.
 - **필요한 조건** — git pull · 런처 재기동.

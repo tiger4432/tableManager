@@ -2693,14 +2693,10 @@ async def _say_what_a_stalled_group_waits_on(db):
 
 def reload_worker_process_cache():
     """The Reload button in this process: every declaration and mapper again (`config_watcher.reload_everything`
-    - a mapper that does not import keeps the one it had) and the pipeline plugin modules dropped."""
-    import sys
+    - a mapper that does not import keeps the one it had)."""
     from database import config_watcher
 
     config_watcher.reload_everything()
-    plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
-    for k in plugin_keys:
-        sys.modules.pop(k, None)
     logger.info("[Reload] Chain worker modules cache cleared.")
 
 def warmup_worker(rules, db_session_factory=None):

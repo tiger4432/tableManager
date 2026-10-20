@@ -7953,10 +7953,7 @@ def get_admin_script_code(path: str):
 # file, /admin/auto-update/run-now runs it. Refuses with 503 when no admin token
 # is configured - an unconfigured server must not offer this at all.
 @app.post("/admin/scripts/code", dependencies=[Depends(require_admin_token_strict)])
-async def save_admin_script_code(
-    payload: dict = Body(...),
-    db: Session = Depends(get_db)
-):
+async def save_admin_script_code(payload: dict = Body(...)):
     import os
 
     path = payload.get("path")
@@ -8004,15 +8001,11 @@ async def save_admin_script_code(
             os.fsync(f.fileno())
         os.replace(temporary, full_path)
             
-        # 🔴 [e6a0bdbbd] A MAPPER IS READ AGAIN WHERE IT IS WATCHED - this process now (its grammar judge used to
-        #    keep the old registry: the row below never reached it), every other one from its own watcher at its
-        #    next boundary; one that does not import keeps the one it had. The row this save wrote is retired for
-        #    mappers. A file in the ingestion workspace (a pipeline plugin) is not watched, so it still asks every
-        #    process to reload - through the one writer of that row.
+        # 🔴 [e6a0bdbbd] A SCRIPT IS READ AGAIN WHERE IT IS HELD, FROM ITS WATCHER - a mapper in this process now and
+        #    every chain process at its next boundary (one that does not import keeps the one it had); a collector by
+        #    the scheduler. A pipeline plugin is read per file: nothing holds it. The row this save wrote is retired.
         from database import config_watcher
 
-        if config_watcher.name_of(full_path) != config_watcher.MAPPERS:
-            system_reload.publish_reload(db, msg="code editor saved " + clean_path)
         config_watcher.changed(full_path)
 
         return {
@@ -8020,7 +8013,7 @@ async def save_admin_script_code(
             # The copy that can undo this save. A value, so a screen can offer the
             # restore instead of the operator having to know a path on the server.
             "backup": backup_path,
-            "message": f"Successfully saved file: {clean_path} and triggered system reload."
+            "message": f"Successfully saved file: {clean_path}."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")

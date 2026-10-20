@@ -104,10 +104,8 @@ def reload_for(reader: str, rows) -> str:
 
 def reload_local_process_cache():
     """The Reload button in the web server: every declaration and mapper read again by the one table
-    (`config_watcher.reload_everything` - the table config with its physical sync, as this process writes), the
-    authoring skeleton and the pipeline plugin modules."""
-    import sys
-
+    (`config_watcher.reload_everything` - the table config with its physical sync, as this process writes) and the
+    authoring skeleton."""
     from database import config_watcher
 
     # 🔴 [e6a0bdbbd] THE ONE TABLE (`config_watcher.ROWS`), NOT A SECOND LIST OF IT. Eleven clears stood here one by
@@ -130,11 +128,6 @@ def reload_local_process_cache():
         logger.warning("[Reload] the authoring skeleton cache was not cleared: %s", told(exc), exc_info=exc)
         pass
 
-    # Remove pipeline plugin parsers from sys.modules cache
-    plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
-    for k in plugin_keys:
-        sys.modules.pop(k, None)
-        
     print("[Reload] Local web server process cache successfully cleared.")
 
 

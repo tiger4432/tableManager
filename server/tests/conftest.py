@@ -131,6 +131,7 @@ def _the_held_declarations_are_forgotten():
     file. A test that rewrites a file mid-way says so with `config_watcher.changed(path)` - the watcher's own call - or
     `forget_held()`."""
     from database import config_watcher
+    import collector_markers
     from runtime import maintenance_line
 
     def fresh():
@@ -140,6 +141,7 @@ def _the_held_declarations_are_forgotten():
         config_watcher._SAID_HERE.clear()
         config_watcher._BOUNDARY[0], config_watcher._ENGINE[0] = False, None
         maintenance_line._DECLARATIONS_CHANGED.clear()     # the chain rules row's flag for the index line
+        collector_markers.SCRIPTS_CHANGED.clear()            # the collectors row's flag for the scheduler
 
     fresh()
     yield

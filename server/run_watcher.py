@@ -173,15 +173,11 @@ def trigger_ws_ingestion_state(state: dict):
 
 def reload_watcher_cache():
     """The Reload button in the watcher process: every declaration and mapper again by the one table
-    (`config_watcher.reload_everything` - the join keys this writer learned go with the chain rules' row) and the
-    pipeline plugin modules dropped."""
-    import sys
+    (`config_watcher.reload_everything` - the join keys this writer learned go with the chain rules' row). Pipeline
+    plugins are read per file (`scan_workspace_pipeline_parsers`): nothing is held to drop."""
     from database import config_watcher
 
     config_watcher.reload_everything()
-    plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
-    for k in plugin_keys:
-        sys.modules.pop(k, None)
     logger.info("Watcher worker modules cache cleared.")
 
 # Database polling for PENDING_RETRY logs
