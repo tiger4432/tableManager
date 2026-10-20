@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+  <title>File Ingestion</title>
+  <script type="module" src="/src/file_ingestion/main.js"></script>
+</head>
+
+<body>
+  <div id="fi-page" class="fi-page">
+    <header class="fi-head">
+      <h1>File Ingestion</h1>
+      <span id="fi-as-of" class="fi-meta"></span>
+      <span id="fi-said" class="fi-said" role="status"></span>
+    </header>
+    <div class="fi-row">
+      <div id="fi-tables" class="fi-col-tables"></div>
+      <main class="fi-col-main">
+        <div id="fi-search"></div>
+        <div id="fi-files"></div>
+      </main>
+      <div id="fi-detail" class="fi-col-detail"></div>
+    </div>
+  </div>
+</body>
+
+</html>

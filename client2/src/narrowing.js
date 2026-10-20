@@ -47,3 +47,12 @@ export function narrowingTail(src = {}) {
   const s = narrowingParams(src).toString();
   return s ? `&${s}` : '';
 }
+
+/** The grid's address (`/?table=<t>&tx=<id>`, the file ingestion page's «Show its rows in the grid», lead 10-20): the table
+ *  to open when the list has it, and the transaction to narrow it to - the History tab's «Click Tx» narrowing, no other. */
+export function gridAddress(search, tables = []) {
+  const p = new URLSearchParams(search || '');
+  const table = (tables || []).includes(p.get('table')) ? p.get('table') : null;
+  const tx = table && p.get('tx') ? p.get('tx').trim() : '';
+  return { table, tx: tx || null };
+}

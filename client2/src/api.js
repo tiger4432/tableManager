@@ -1,5 +1,5 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
-import { narrowingParams as buildNarrowing } from './narrowing.js';
+import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
@@ -8,7 +8,7 @@ import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { activateHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
-import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
+import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
 import { renderGrid, dropGridFilters, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { countOf, setMatchCount } from './match_count.js';
@@ -198,9 +198,10 @@ async function loadTablesOnce() {
       // `groups` rides the list (lead 685f236d7): {table: group}, an ungrouped table absent.
       state.tableList = { tables: data.tables, groups: data.groups, perWorld: data.per_world,
         worlds: data.worlds, operating: data.operating };
-      // Auto select first table (switchTable draws the dropdown)
-      const firstTable = data.tables[0];
-      await switchTable(firstTable);
+      // The address's table, else the first (switchTable draws the dropdown); the address's tx narrows it after
+      const asked = gridAddress(window.location.search, data.tables);
+      await switchTable(asked.table || data.tables[0]);
+      if (asked.tx) await setTransactionFilter(asked.tx);
     } else {
       elements.tableSelect.innerHTML = '<option value="">No tables found</option>';
     }
