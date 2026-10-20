@@ -13,6 +13,7 @@ import secrets
 import pytest
 from sqlalchemy import text
 
+import pacing
 from admin import retroactive
 from chain import keyset_scan
 from ledger import backfill, gate, roleframe
@@ -49,6 +50,9 @@ def _atoms_by_ref(world):
 
 
 def test_a_molecule_over_the_row_index_key_is_refused_and_the_run_goes_on(world, monkeypatch):
+    # pages sized by the clock (`keyset_scan.PageSize`) cut to one row on a slow run - the victim's page then held no
+    # other key value (총괄 10-20); a page time no page reaches doubles them alike every run: 1 2 4 8 16 9
+    monkeypatch.setattr(pacing, "page_seconds", lambda path=None: 3600.0)
     real, made = roleframe._claim_source_raw_ref, []
     monkeypatch.setattr(roleframe, "_claim_source_raw_ref",
                         lambda event_ref, row_refs: made.append(event_ref) or real(event_ref, row_refs))
