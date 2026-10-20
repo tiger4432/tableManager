@@ -303,6 +303,10 @@ def _ontology(paths, engine):
     _each([("the walk's vocabulary", trace.reset_walk_cache),
            ("the walks kept here", ledger_subgraph.reset_declaration_cache),
            ("the walk pool", recycle_pools)])
+    if engine is not None:                                         # the writing half: the API's (e38466810)
+        from ledger import meanings
+
+        _each([("the blank meaning rows", lambda: meanings.fill_blank_meanings(engine))])
 
 
 def _pools(paths, engine):
