@@ -22,6 +22,22 @@ sample   one sample page renders every base element. A screen is composed from i
 ```
 - A defect seen on one screen is fixed in the base layer, not on that screen - fixed on the screen, the next screen repeats it (the margin defect was fixed part by part and came back).
 - The Design System document is drawn FROM the sample page. Code is the source; the document is its picture, and the round that changes the base layer redraws it.
+### 0-bis. One class per element, its spacing fixed there (owner 10-21 — the canonical development style)
+Owner: 「아예 행 요소는 무조건 한 클래스만 쓰고 css 로 마진 똑같이 다 고정해야 함」 · 「앞으로 요소 클래스 쓰고 마진 고정하는 개발 스타일 정본으로 해」.
+Cause it answers: «숫자로는 몇 픽셀 아닌데 거슬림» — a row of each kind (leaf, group, one-of, adder) set its own height and gaps, and they drifted by a few px.
+```
+one class   every element of one role (a form row, a value box, a chip, a list item, a card body ...) carries ONE class,
+            and that class's rule alone sets height · margin · padding · gap · border-width
+modifiers   a kind/state class (is-branch, is-open, is-refused ...) sets colour · weight · background ONLY.
+            A modifier that sets a size or a space is a defect
+inline      no inline style sets a size or a space (inline beats the sheet - the screen stops obeying the rule)
+separators  a line between blocks must not change layout: inset box-shadow or the row's own edge, never an extra margin
+values      sizes and spaces are tokens (--space-*, --control-h*, --fs-*); a px literal is a defect
+```
+- Gate for a screen round, measured in the built page: every element of the role has one height · one left x (box and text) ·
+  one gap to its neighbour; each child's centre within 1px of its row's centre. CSS check: no selector that adds to the role's
+  class sets height / margin / padding / gap / border-width.
+- A mockup obeys the same rule and is measured BEFORE it is shown (the 10-21 mockup itself had three of these defects).
 
 ## 1. Colour — the `--oe-*` roles, zero literals
 ```
