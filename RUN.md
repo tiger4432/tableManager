@@ -9,7 +9,7 @@
 >          찾기  Select-String -Path server\*.log -Pattern 'was not (read|reset|counted|resolved|written|looked up|cleared|reloaded|forgotten)|discovery stopped|did not open'
 > 답의 뜻   줄이 없음  -> 그 자리가 실패하지 않았다 (전에는 실패해도 아무 줄이 없었다)
 >          줄이 계속 남  -> 그 일이 매번 실패 중. traceback 맨 아래 줄이 고칠 자리 — 예: «[Reload] … not reset» 이면 설정을 고쳐도 그 프로세스는 옛 캐시를 쥔다
-> 되돌리기  git revert __HASH__ -> 런처 재기동
+> 되돌리기  git revert 1ae7d0b76 -> 런처 재기동
 > ```
 >
 > ---
