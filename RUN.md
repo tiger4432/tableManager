@@ -12,7 +12,7 @@
 > 새 줄        External source <표>@<루트>: N file(s) under the root, none matched <glob/filename>   <- 그 연결이 아무 파일도 안 받는 동안 한 번
 >              [<표>] ❌ <스크립트>::<클래스> could not read '<파일>': <사유>   <- 플러그인이 읽다가 실패(전: «Failed to load plugin script»), 그 파일은 FAILED
 > 플러그인     scripts/ 옆의 .py 를 import 할 수 있음(import helper) — 표마다 자기 폴더의 것. 모듈 맨 위 import 만(parse 안에서 하는 import 는 못 찾음)
-> 되돌리기     git revert <착지> -> 런처 재기동 (그사이 읽힌 행은 남음)
+> 되돌리기     git revert 93dde66d2 -> 런처 재기동 (그사이 읽힌 행은 남음)
 > ```
 >
 > ---
