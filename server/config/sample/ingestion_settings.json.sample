@@ -6,7 +6,7 @@
   "reread_max_files": 25,
   "_heavy_lane_workers_doc": "heavy 레인 워커 수(1 이상 정수). 한 표의 파일은 한 워커가 차례대로, 다른 표끼리는 동시에 처리합니다. 기본값 1(= 워커 하나, 전 표 한 줄). 감시자 재기동 때 읽습니다(핫리로드 없음). 쓰기가 대부분인 적재라 워커를 늘리면 DB 부하도 같이 늘어납니다.",
   "heavy_lane_workers": 1,
-  "_dedup_by_signature_doc": "[P2] 동일 내용(sha256 시그니처) 파일이 이미 적재 완료됐으면 재처리를 건너뜁니다(기본 true). 스킵은 무음이 아니라 로그 + FileIngestionLog(status=SKIPPED, 사유) + 완료 통지 detail로 남습니다. 개별 파일만 강제 재처리하려면 파일명에 '__force__'를 포함시키세요(예: report__force__.csv). false로 두면 dedup 자체를 끕니다.",
+  "_dedup_by_signature_doc": "[P2] 동일 내용(sha256 시그니처) 파일이 «같은 경로에서» 이미 적재 완료됐으면 재처리를 건너뜁니다(기본 true). 같은 내용이어도 다른 경로의 파일은 읽습니다(10-20). 스킵은 무음이 아니라 로그 + FileIngestionLog(status=SKIPPED, 사유) + 완료 통지 detail로 남습니다. 개별 파일만 강제 재처리하려면 파일명에 '__force__'를 포함시키세요(예: report__force__.csv). false로 두면 dedup 자체를 끕니다.",
   "dedup_by_signature": true,
   "_dedup_by_path_stat_doc": "[Tier 1] 같은 경로에 (mtime, size)가 그대로인 파일은 **내용을 읽지 않고** 건너뜁니다(기본 true). 이 박스 실측(22,626 파일 / 194.6MB): stat만 1.0초 vs 전체 sha256 39.4초 — 파일을 옮기지 않게 되면 스윕마다 나는 차이입니다. 🔴 실패 방향을 알고 켜십시오: tier 1은 「mtime과 size가 그대로인 채 내용만 바뀐 파일을 다시 읽지 않는 쪽」으로 집니다(mtime을 보존하는 복사 도구, 같은 길이·같은 마이크로초 덮어쓰기). 파일을 한 번만 쓰는 피드에는 맞는 거래지만 판단이지 공짜가 아닙니다. false로 두면 항상 전체 해시를 계산합니다. dedup_by_signature를 false로 두면 이 값과 무관하게 tier 1도 함께 꺼집니다(전역 강제 재처리 스위치가 조용히 무력해지지 않도록).",
   "dedup_by_path_stat": true,
@@ -48,6 +48,8 @@
   "flatten_nested_dirs": true,
   "_subfolder_recheck_seconds_doc": "raws/ 하위 폴더를 다시 보는 간격(초). 이미 있는 폴더에 나중에 온 파일은 이벤트가 없어 이것이 찾습니다. 바뀐 폴더이거나 마지막 처리 뒤 300초가 지난 폴더만 처리합니다. 양수가 아니면 30. 재기동 없이 다음 바퀴부터 읽습니다.",
   "subfolder_recheck_seconds": 30,
+  "_copy_settled_after_seconds_doc": "쓰이지도 만들어지지도 않은 지 이만큼(초) 지난 파일은 복사가 끝나길 1초 기다리지 않고 바로 읽습니다(외부 저장소의 옛 파일). null 이나 0 이면 모든 파일이 기다립니다. 파일마다 읽습니다.",
+  "copy_settled_after_seconds": 60,
 
   "_external_sources_doc": "외부 읽기 전용 디렉터리를 테이블 핸들러에 연결합니다. 워처는 원본을 이동·삭제하지 않으며 created/moved/modified 이벤트와 300초 재귀 스윕을 함께 사용합니다. 아래 두 항목은 같은 voids.json이 inspection_run(분모)과 void_obs(관측) 두 사실을 말하기 때문에 한 쌍입니다 — 분모가 없으면 「void 0건」과 「스캔한 적 없음」이 구분되지 않습니다. 실제로 켜기 전에 table_config에 두 canonical 테이블이 선언·물리 반영됐는지 확인하세요. 🔴 반영 시점: **새 항목 추가**는 /admin/reload-configs로 재기동 없이 등록되고 초기 스윕까지 돕니다. 반면 **기존 항목의 path·parser·options 변경**은 워처가 도는 중이면 거절되어 프로세스 재기동이 필요합니다 — 운영에서는 고치기보다 새 항목으로 추가하는 편이 무중단입니다. 🔴 parser는 **선택**입니다(2026-08-18): 적지 않으면 그 표의 워크스페이스 scripts/ 폴더에 있는 BasePipelineParser 플러그인으로 읽습니다 — 관리 raws/와 같은 입구이고, 그 표의 워크스페이스에 실재하는 플러그인만 돌 수 있다는 것이 경계입니다. 적으면 종전대로 내장 파서 이름(현재 voids_json 하나)이어야 합니다. 어느 쪽으로도 못 찾으면 어느 표의 어느 폴더를 봤는지 대며 거절합니다. ⚠️ 받는 파일은 options.glob 이 있으면 루트에서의 경로가 그 패턴(하나 또는 목록, 예 '**/raw/**/*.jpg' — ** 는 몇 겹이든 폴더, * 는 한 겹 안, ? 는 한 글자, / 가 없으면 어느 깊이든 파일 이름)에 맞는 파일이고, 없으면 options.filename 하나(기본 voids.json)입니다. 파일 이름이 다르면 둘 중 하나를 반드시 선언하십시오. 빈 패턴이 하나라도 있으면 그 항목 전체가 거절됩니다. voids_json 파서는 경로를 <웨이퍼>/<작업 폴더>/<options.filename>으로 다시 보므로, glob 으로 받은 다른 이름 · 다른 깊이의 파일은 FAILED 로 남습니다.",
   "_external_sources_folder_doc": "🔴 폴더 구조가 고정 규격입니다: <외부 루트>/<WAFERID>/<WORKID>_<YYYYMMDD>_<HHMMSS>/voids.json — 정확히 세 단계여야 하고 그보다 깊거나 얕으면 그 파일은 거절됩니다(깊이를 허용하면 어느 폴더가 웨이퍼 식별자인지 알 수 없기 때문). 웨이퍼 식별자와 스캔 시각은 JSON 안이 아니라 **폴더 이름에서** 옵니다. 시각은 이름 끝에 있으면 되고 그 앞의 것은 무엇이든 work_id 컬럼으로 기록됩니다: 'JOB1234_20260818_143000'→work_id 'JOB1234', 'WORK_20260818_143000'→'WORK', '20260818_143000'→없음. recursive:true는 이 세 단계를 훑는다는 뜻이지 임의 깊이를 받는다는 뜻이 아닙니다. work_id는 기록만 되고 키가 아닙니다 — 키에 넣으려면 table_config의 composite_key_source와 void_sat_format.compose_run_uid를 같은 커밋에서 함께 바꿔야 합니다.",

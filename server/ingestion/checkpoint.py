@@ -312,25 +312,30 @@ def find_completed_ingestion(db, table_name: str, file_signature: str):
     return None
 
 
-def failed_here_unchanged(db, table_name: str, file_signature: str, filepath: str,
-                          file_stat) -> bool:
-    """Tier 2 for FAILED content (총괄 b5b77495a, 소유자 ㄱ): this content ended FAILED AND this
-    path failed at or after the file's current mtime - it has not changed since it failed HERE.
+def _same_path(recorded: str, filepath: str) -> bool:
+    return os.path.normcase(os.path.abspath(recorded)) == os.path.normcase(filepath)
 
-    The ledger row holds ONE path per content, so two failed copies pushed each other off tier 1
-    and each watcher start re-parsed one of them. A copy with no failure at its own path, or a
-    file saved again after it failed, still goes through - FAILED is a conclusion about that
-    file, not about the content (`find_completed_ingestion`)."""
-    if not file_stat or not filepath:
+
+def concluded_here(db, row, filepath: str, file_stat) -> bool:
+    """Tier 2: this content's ledger row `row` already answers for THIS path - the file is not read again.
+
+    DONE: the row's path is this one, or this path succeeded at or after the file's mtime. The same content at
+    ANOTHER path is read (소유자 10-20 ㄱ - one bmap.txt per wafer, the same bytes in each wafer's folder).
+    FAILED (총괄 b5b77495a): this path failed at or after the file's mtime - not changed since it failed HERE.
+    The row holds ONE path per content, so copies push each other off it; the log row of each path keeps its own
+    answer, and a file saved again after its answer still goes through."""
+    if row is None or not filepath or row.status not in (STATUS_DONE, STATUS_FAILED):
         return False
-    row = find_checkpoint(db, table_name, file_signature)
-    if row is None or row.status != STATUS_FAILED:
+    if row.status == STATUS_DONE and row.filepath and _same_path(row.filepath, filepath):
+        return True
+    if not file_stat:
         return False
     from sqlalchemy import func
     from database.models import FileIngestionLog as Log
 
+    said = "SUCCESS" if row.status == STATUS_DONE else STATUS_FAILED
     return db.query(Log.id).filter(
-        Log.table_name == table_name, Log.filepath == filepath, Log.status == STATUS_FAILED,
+        Log.table_name == row.table_name, Log.filepath == filepath, Log.status == said,
         func.coalesce(Log.updated_at, Log.created_at) >= file_stat[0]).first() is not None
 
 
@@ -470,7 +475,7 @@ def adopt_new_location(db, row, filepath: str, file_stat) -> bool:
         return False
     file_mtime, file_size = file_stat
     recorded = row.filepath
-    if recorded and os.path.normcase(os.path.abspath(recorded)) == os.path.normcase(filepath):
+    if recorded and _same_path(recorded, filepath):
         # Same place, possibly touched: refresh the stat so tier 1 hits again.
         if row.file_mtime == file_mtime and row.file_size == file_size:
             return False

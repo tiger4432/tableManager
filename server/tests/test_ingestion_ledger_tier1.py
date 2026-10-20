@@ -19,6 +19,7 @@
 
 import json
 import os
+import time
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -397,8 +398,9 @@ def test_admin_retry_records_the_tier1_key(env):
 # §5 같은 내용이 다른 경로에 — 원장이 새 위치를 「기억」하는가
 # ---------------------------------------------------------------------------
 
-def test_duplicate_content_at_a_new_path_is_skipped_and_recorded(env):
-    """내용 시그니처가 최종 권위 — 적재는 안 하되 새 위치는 남긴다."""
+def test_duplicate_content_at_a_new_path_is_read_and_each_copy_keeps_its_answer(env):
+    """같은 내용이어도 다른 경로는 다른 파일 — 읽는다(소유자 10-20 ㄱ, 웨이퍼마다 따로인 bmap.txt).
+    원장 행은 한 경로만 들므로, 다시 볼 때 각 사본은 «자기 경로의 답»으로 건너뛴다 — 다시 적재하지 않는다."""
     env["settings"](archive_processed_files=False)
     content = _csv(3)
     a = _write(env["raws"] / "a.csv", content)
@@ -406,11 +408,16 @@ def test_duplicate_content_at_a_new_path_is_skipped_and_recorded(env):
     assert _rows(env) == 3
 
     b = _write(env["raws"] / "b.csv", content)
+    for path in (a, b):          # files of before their answer - sqlite keeps the log's time to the second
+        os.utime(path, (time.time() - 10,) * 2)
     m = env["process"](b)
-    assert m["hashes"] == 1, "새 경로는 tier 1을 miss하고 해시로 판정해야 한다"
-    assert m["ingests"] == 0, "내용이 같은데 재적재됐다"
+    assert (m["hashes"], m["ingests"]) == (1, 1), m
+
+    again_a, again_b = env["process"](a), env["process"](b)
+    assert again_a["ingests"] == 0 and again_b["ingests"] == 0, (again_a, again_b)
+    assert again_b["hashes"] == 0, "the ledger row's own copy is a tier-1 hit"
     row = _ledger(env, "DONE")[0]
-    assert "b.csv" in (row.note or ""), "사본의 위치가 아무 데도 안 남았다"
+    assert "a.csv" in (row.note or ""), "the other copy's place is said nowhere"
 
 
 def test_the_ledger_adopts_the_survivor_when_the_original_is_gone(env):
@@ -423,6 +430,6 @@ def test_the_ledger_adopts_the_survivor_when_the_original_is_gone(env):
 
     b = _write(env["raws"] / "b.csv", content)
     first = env["process"](b)
-    assert first["hashes"] == 1 and first["ingests"] == 0
+    assert first["hashes"] == 1 and first["ingests"] == 1
     second = env["process"](b)
     assert second["hashes"] == 0, "채택이 안 돼서 사본이 매 스윕 다시 해시된다"

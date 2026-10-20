@@ -7,6 +7,7 @@ import logging
 import threading
 import contextlib
 import contextvars
+import itertools
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -297,6 +298,8 @@ WORKSPACE_SUBDIRS = ("raws", "archives", "err", "auto_update", "scripts", "confi
 # 업서트가 멱등이라 중복 처리는 무해하고, 동일 (mtime, size) 시그니처 재시도 차단으로
 # 처리 실패 잔류 파일의 무한 재시도 루프를 막는다.
 PERIODIC_SWEEP_INTERVAL_SECONDS = 300
+#: Seconds between two «External sweep in progress» lines of one sweep.
+SWEEP_PROGRESS_SECONDS = 30
 
 #: 🔴 HOW OFTEN THE SWEEP LOOP BEATS WHILE IT WAITS (S-142 ①), AND WHY IT IS NOT
 #: THE SWEEP INTERVAL. In integrated mode this loop is the watcher's only always-running
@@ -540,6 +543,25 @@ def grid_read_timeout(settings=None):
 def subfolder_recheck_seconds(settings=None) -> float:
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, SUBFOLDER_RECHECK_SETTING, None) or SUBFOLDER_RECHECK_DEFAULT
+
+
+#: A file neither written nor created for this many seconds cannot be mid-copy: it is read without the one-second
+#: copy wait (소유자 10-20 「아직도 외부 저장소 안 읽어」 - a share's files of days ago waited one second each).
+#: null or 0: every file waits.
+COPY_SETTLED_SETTING = "copy_settled_after_seconds"
+COPY_SETTLED_DEFAULT = 60.0
+
+
+def copy_wait_needed(abs_path: str, settings=None) -> bool:
+    """Whether the file could still be being copied. Creation time counts too: a copy that keeps the source's mtime
+    is born now (on Linux st_ctime - the last change)."""
+    settings = load_ingestion_settings() if settings is None else settings
+    settled = _timeout_seconds(settings, COPY_SETTLED_SETTING, COPY_SETTLED_DEFAULT)
+    try:
+        st = os.stat(abs_path)
+    except OSError:
+        return True
+    return settled is None or time.time() - max(st.st_mtime, getattr(st, "st_birthtime", st.st_ctime)) < settled
 
 
 #: How a lock-timeout failure's message begins - its rows are counted by it (`_lock_waits_before`).
@@ -2556,7 +2578,8 @@ class IngestionHandler(FileSystemEventHandler):
         logger.info(f"[{t_name or self.table_name}] 📥 New file detected: {basename}")
 
         # Initial debounce to allow file copy to finish
-        time.sleep(delay)
+        if copy_wait_needed(abs_path):
+            time.sleep(delay)
 
         if not os.path.exists(abs_path):
             logger.debug(f"File vanished during debounce (likely processed by concurrent thread): {file_path}")
@@ -2914,7 +2937,8 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _try_dedup_skip(self, file_path: str, basename: str, t_name: str, signature: str | None,
                         file_stat=None) -> bool:
-        """[P2-B] 동일 시그니처가 이미 SUCCESS로 적재됐으면 재처리를 건너뛴다.
+        """[P2-B] 동일 시그니처가 «이 경로»에서 이미 결론 났으면 재처리를 건너뛴다(`concluded_here`) —
+        같은 내용이어도 다른 경로의 파일은 읽는다(소유자 10-20 ㄱ).
 
         **무음 skip 금지**: 로그 + FileIngestionLog(status="SKIPPED", 사유 문장) +
         완료 콜백(detail 포함)으로 세 곳에 남긴다. 파일은 archives/로 옮겨
@@ -2939,9 +2963,8 @@ class IngestionHandler(FileSystemEventHandler):
 
         db = SessionLocal()
         try:
-            done = ingestion.checkpoint.find_completed_ingestion(db, t_name, signature)
-            failed_here = done is None and ingestion.checkpoint.failed_here_unchanged(
-                db, t_name, signature, os.path.abspath(file_path), file_stat)
+            done = ingestion.checkpoint.find_checkpoint(db, t_name, signature)
+            here = ingestion.checkpoint.concluded_here(db, done, os.path.abspath(file_path), file_stat)
         except Exception as e:
             # dedup 조회 실패는 처리를 막지 않는다(가용성 우선) — 단, 조용히 넘어가지 않는다.
             logger.warning(f"[{t_name}] Dedup lookup failed (proceeding with ingestion): {e}")
@@ -2949,15 +2972,15 @@ class IngestionHandler(FileSystemEventHandler):
         finally:
             db.close()
 
-        if failed_here:
+        if not here:
+            return False
+        if done.status == ingestion.checkpoint.STATUS_FAILED:
             # Quiet like tier 1: the FAILED row written when it failed here is the record.
             logger.debug(f"[{t_name}] ⏭️ [tier2] same content already FAILED at this path and "
                          f"the file has not changed since - {basename}")
             return True
-        if done is None:
-            return False
 
-        # [Tier 1 feed] 내용은 같은데 경로가 다르다 — 그 새 위치를 원장에 남긴다.
+        # [Tier 1 feed] 이 경로의 답인데 원장 행이 다른 사본을 가리키거나 stat 이 낡았다 — 원장에 남긴다.
         # 남기지 않으면 이 파일은 재기동마다 tier 1을 miss해 영원히 다시 해시된다.
         # 채택 규칙(공존 사본 ping-pong 회피)은 `adopt_new_location` 참조.
         if file_stat:
@@ -4596,15 +4619,31 @@ class WorkspaceWatcher:
                         f"External sweep tier-1 lookup failed for {handler.table_name} "
                         f"({len(entries)} file(s)); dispatching individually: {e}")
 
+            # Sources in turn, each in its mtime order (소유자 10-20: one share's thousands of old files held every
+            # source behind it for minutes). A line per source every SWEEP_PROGRESS_SECONDS while it runs.
+            queues = {}
+            for item in candidates:
+                queues.setdefault(item[1], []).append(item)
+            total = {source_id: len(items) for source_id, items in queues.items()}
+            done = dict.fromkeys(total, 0)
+            said, said_at = dict(done), time.monotonic()
             processed = 0
-            for _mtime, source_id, abs_path, handler, signature, _file_stat in candidates:
+            for turn in itertools.zip_longest(*queues.values()):
                 if self._stop_event.is_set():
                     break
-                self._external_sweep_attempted[(source_id, abs_path)] = signature
-                if (handler, abs_path) in cleared:
-                    continue
-                handler._handle_event(abs_path)
-                processed += 1
+                for item in turn:
+                    if item is None:
+                        continue
+                    _mtime, source_id, abs_path, handler, signature, _file_stat = item
+                    self._external_sweep_attempted[(source_id, abs_path)] = signature
+                    done[source_id] += 1
+                    if (handler, abs_path) not in cleared:
+                        handler._handle_event(abs_path)
+                        processed += 1
+                    if time.monotonic() - said_at >= SWEEP_PROGRESS_SECONDS:
+                        for moved in [s for s in done if done[s] != said[s]]:
+                            logger.info(f"External sweep in progress: {moved} {done[moved]}/{total[moved]} candidate(s) through")
+                        said, said_at = dict(done), time.monotonic()
             if candidates or cleared:
                 logger.info(
                     f"External sweep: {len(candidates)} candidate binding(s) - "

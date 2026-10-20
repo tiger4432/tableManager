@@ -480,7 +480,7 @@ def test_duplicate_signature_is_skipped_with_explicit_record(p2_env):
         applied.append(t)
         return real_apply(db_, t, b, **kw)
 
-    p2 = _write(ws / "raws" / "second.csv", content)   # 다른 이름, 같은 내용
+    p2 = _write(ws / "raws" / "first.csv", content)    # 같은 경로에 다시, 같은 내용
     with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
         handler.process_with_retry(p2, delay=0.01)
 
@@ -494,7 +494,12 @@ def test_duplicate_signature_is_skipped_with_explicit_record(p2_env):
     assert "[dedup-skip]" in (logs[-1].error_message or "")
     # 3) 파일은 raws/에 남지 않는다 (스윕 무한 재시도 방지)
     assert not os.path.exists(p2)
-    assert os.path.exists(str(ws / "archives" / "second.csv"))
+
+    # 4) 다른 이름 · 같은 내용은 다른 파일이다 — 읽는다 (소유자 10-20 ㄱ)
+    p3 = _write(ws / "raws" / "second.csv", content)
+    with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
+        handler.process_with_retry(p3, delay=0.01)
+    assert applied and notified[-1][1] == "SUCCESS", notified[-1]
 
 
 def test_dedup_is_scoped_per_table(p2_env):

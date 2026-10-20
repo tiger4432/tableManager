@@ -399,10 +399,13 @@ def test_foreign_source_reingest_is_deduped_quietly(flat_env, caplog):
     assert [l.status for l in _logs(flat_env)] == ["SUCCESS"]
     assert len(fired) == 1
     # And a MANAGED file's skip is still loud (the no-silent-skip rule holds where
-    # the repeat is not structural).
+    # the repeat is not structural). The same content at another path is read (소유자 10-20 ㄱ);
+    # dropped again at its own path it is skipped.
     managed = _write(ws / "raws" / "same.csv", _csv(1, "F"))
     handler._handle_event(managed)
-    assert sorted(l.status for l in _logs(flat_env)) == ["SKIPPED", "SUCCESS"]
+    assert sorted(l.status for l in _logs(flat_env)) == ["SUCCESS", "SUCCESS"]
+    handler._handle_event(_write(ws / "raws" / "same.csv", _csv(1, "F")))
+    assert sorted(l.status for l in _logs(flat_env)) == ["SKIPPED", "SUCCESS", "SUCCESS"]
 
 
 # ---------------------------------------------------------------------------
