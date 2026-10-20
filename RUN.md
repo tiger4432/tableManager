@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **행렬 텍스트 파서 견본 (소유자 10-20 «와처가 자동으로 읽게»)** — git pull (재기동 없음)
+>
+> ```
+> 복사     server\parsers\matrix_text_parser.py.sample -> ingestion_workspace\<표>\scripts\matrix_text_parser.py
+> 고칠 것  파일 맨 위 FILE_PATTERN(받을 파일 이름, 기본 *.txt) · DELIMITER(기본 auto) · COLUMNS(기본 x, y, value)
+> 표       그 세 칸을 선언. 행렬 파일만 받을 표는 table_config.json 그 표에 "std_parse": false (아니면 패턴 밖 파일을 표준 파서가 읽음)
+> 볼 것    raws\ 에 넣은 파일의 적재 기록 SUCCESS · 거절은 «could not read '<파일>': line N: M values for K x values»
+> 되돌리기  scripts\ 의 그 파일을 지움
+> ```
+>
+> ---
+>
 > ## [10-20] **파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map (소유자 10-20 「ㄱ 이고 맵키랑 같아」)** — git pull · 런처 재기동
 >
 > ```
