@@ -516,6 +516,7 @@ def db_session():
 # stay so the three files that import them from here keep working.
 from tests.support.isolated_pg import (       # noqa: E402
     PG_TEST_URL_ENV,
+    HELD as _held_declarations,
     declared_as_test_database as _declared_as_test_database,
     install_trigram,
     resolve_url as _resolve_pg_test_url,
@@ -613,7 +614,7 @@ def pg_engine():
     import db_safety
     before = os.environ.get(db_safety.TEST_DATABASE_URL_ENV)
     with _declared_as_test_database(url):
-        _PG_DECLARATION["before"] = before
+        _PG_DECLARATION["before"], _PG_DECLARATION["depth"] = before, len(_held_declarations)
         engine = create_engine(
             url, poolclass=NullPool,
             connect_args=scratch_connect_args(PG_TEST_SCHEMA))
@@ -681,7 +682,8 @@ def pg_engine():
                 f"drop it by hand before the next run")
 
 
-#: While `pg_engine` holds the test-database declaration for the session: the variable's value before it ("before").
+#: While `pg_engine` holds the test-database declaration for the session: the variable's value before it ("before")
+#: and how many declarations were open with its own ("depth").
 _PG_DECLARATION = {}
 
 
@@ -690,10 +692,13 @@ def _a_test_without_pg_sees_the_declaration_as_it_was(request):
     """🔴 [총괄 10-20] `pg_engine` is session-scoped and yields inside its declaration, so after the first PG test the
     variable stayed for the rest of the session - and `test_dev_env_isolation` read it as the pin, red whenever a PG
     test ran before it. A test that asks for no PG fixture sees the variable as it was before `pg_engine` declared it,
-    the window the declaration's comment above promises; the module and session fixtures built on `pg_engine` keep it."""
+    the window the declaration's comment above promises; the module and session fixtures built on `pg_engine` keep it.
+    A fixture's own declaration over it (`test_ledger_v2_pg`'s module one) is that fixture's - kept (10-20: undone,
+    its four setups were refused after any `pg_engine` test)."""
     import db_safety
 
-    if not _PG_DECLARATION or {"pg_engine", "pg_session"} & set(request.fixturenames):
+    if (not _PG_DECLARATION or len(_held_declarations) != _PG_DECLARATION["depth"]
+            or {"pg_engine", "pg_session"} & set(request.fixturenames)):
         yield
         return
     key, held = db_safety.TEST_DATABASE_URL_ENV, os.environ.get(db_safety.TEST_DATABASE_URL_ENV)
