@@ -39,7 +39,7 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
   `scripts/check_external_sources.py`(외부 디렉터리 등록 확인) ·
   `scripts/replay_ingestion.py`(읽기 전용 소스의 파일 하나 재적재) ·
   `scripts/seed_void_sample_tree.py`(폴더 규격 실물 생성). 외부 소스는 이제 `parser`를
-  비우면 그 표의 워크스페이스 플러그인으로 들어간다(`401dc72`).
+  비우면 그 표의 워크스페이스 플러그인, 없거나 다 사양하면 표준 파서로 들어간다(`401dc72` · 10-20 `93dde66d2`).
 - ⚠️ **이 박스의 표 모양·DB·config를 운영 사실로 인용하지 말 것.** 2026-08-18 하루에 세 번
   틀렸다(빈 DB 접속 / 지워진 config / `void` 표의 스키마). 운영 `void`는 키가
   `x·y·waferid·tkouttime·void_index`이고 정상 가동 중이다 — 이 박스의 `void`와 다른 표다.

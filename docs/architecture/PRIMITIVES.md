@@ -334,7 +334,7 @@
 
 ### 키 값은 **선언 타입으로 캐노니컬화**한 뒤 조합·바인드한다 (2026-07-29 등록)
 - **무엇**: 정체성을 조합하거나(`map_id`) 값으로 풀을 바인드할 때, 원문을 그대로 쓰지 않고 **그 컬럼의 선언 타입**(`table_config.column_types`)으로 한 번 정규화한 문자열을 쓴다. `number` 선언이면 정수 판정(`'01'`·`' 1 '`·`1.0` → `'1'`), 그 외/미선언이면 트림만.
-- **어디**: `server/map_overlay.py`의 `canonical_key_value`(**THE 구현**) · 사용 형태 `canonical_bind_value`(테이블·컬럼) / `canonical_role_value`(역할 맵) / `compose_map_id`(정체성) — 소비: `transfer_plan` 풀 바인드 전량 · `build_key_filters` · **등록 측** `map_meta_registrar` · **프리셋 라우팅** `map_preset_routing` · **dt 맵 파생** `dt_map_derivation` · **표기 폴드** `notation_norm` · **원장 원자 키** `roleframe._key_spelling`(코드 맵퍼 · 참조 상수 키, 10-14) · 양측 채점 `contracts/map_seam/`. 🔴 **맵 키를 다루는 새 모듈이 이 목록에 안 들어가면 그것이 결함이다** — 목록은 계속 자라고 있고, 자라지 않는 라운드가 오히려 의심스럽다.
+- **어디**: `server/map_overlay.py`의 `canonical_key_value`(**THE 구현**) · 사용 형태 `canonical_bind_value`(테이블·컬럼) / `canonical_role_value`(역할 맵) / `compose_map_id`(정체성) — 소비: 🆕 10-20 체인 묶음 키 `ingestion_worker.spelled_group_key`(라이브 묶기 · 리플레이의 키째 쪽이 같이 부름, `cea429827`) · `transfer_plan` 풀 바인드 전량 · `build_key_filters` · **등록 측** `map_meta_registrar` · **프리셋 라우팅** `map_preset_routing` · **dt 맵 파생** `dt_map_derivation` · **표기 폴드** `notation_norm` · **원장 원자 키** `roleframe._key_spelling`(코드 맵퍼 · 참조 상수 키, 10-14) · 양측 채점 `contracts/map_seam/`. 🔴 **맵 키를 다루는 새 모듈이 이 목록에 안 들어가면 그것이 결함이다** — 목록은 계속 자라고 있고, 자라지 않는 라운드가 오히려 의심스럽다.
 - **언제 재사용**: "저장된 값"과 "파싱해서 얻은 토큰"이 **같은 것을 가리켜야 하는** 모든 자리. 값이 DB 컬럼을 거치는 순간 표기가 바뀌므로(`'01'`을 number 컬럼에 넣으면 `1`), 문자열 정체성은 그 캐스팅을 **모방**해야 한다. 새 조합기·새 필터를 손으로 쓰기 전에 이 함수를 부를 자리인지 먼저 보라.
 - **함정** — 값을 치르고 배운 것들:
   - **조용히 빗나간다.** 운영 실증: 메타는 `LOT_1`로 등록됐는데 토큰이 `LOT_01`을 조합해 조회가 `None`이 됐고, 결과는 예외가 아니라 **정렬 강등**과 **가용량 0**이었다. `0`은 "다 썼다"로 읽히므로 사용자는 잘못된 화면을 믿는다.
