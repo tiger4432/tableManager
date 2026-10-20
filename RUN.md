@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **선언 파일을 고치면 모든 프로세스가 바로 다시 읽음 — 체인 규칙 · 맵퍼 · 설정 파일 (총괄 e6a0bdbbd, 소유자 ㄱ)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     서버 · 와처 · 스케줄러 · 체인 워커(줄 프로세스 포함)가 config/ 전체와 mappers/ 를 지켜봄. 저장이든 손 편집이든 파일이 1 초 조용하면 다시 읽음
+>          체인 규칙 · 맵퍼는 체인 프로세스에서 다음 묶음 경계에. 맵퍼 import 가 실패하면 전 모듈을 그대로 씀
+>          체인 규칙 저장 · 온톨로지 탐색기 저장 · 코드 편집기 맵퍼 저장은 SYSTEM_RELOAD 행을 안 씀. Reload 버튼은 그대로
+> 확인     Chain 탭에서 규칙 하나 저장 -> chain_worker.log «[Config] chain_rules.json changed - read again in this process»
+>          GET /admin/chain/queue 의 rules_base 가 저장 답의 base 와 같으면 체인 워커가 그 저장을 읽은 것 — 파일이 1 초 조용한 뒤 체인 루프의 다음 틱에
+>          server.log 에도 같은 «[Config] chain_rules.json changed» 한 줄 (저장한 프로세스는 바로 읽음 · 감시의 같은 사건은 두 번 안 적힘)
+> 뜻      chain_worker.log 에 그 줄이 없음 -> 그 프로세스가 감시를 안 띄움. 기동 줄 «Started config folder watchdog on '<폴더>' and the mappers folder» 를 찾음
+>          «[Config] <파일> does not read - this process keeps what it read before: <사유>» -> 파일이 깨짐. 전 값으로 돌고 있음 — 파일을 고치면 다시 읽음
+>          «[Config] database.json changed - … restart to use it» -> 연결은 재기동해야 바뀜(다른 파일은 재기동 필요 없음)
+> 급할 때   스위치 없음 — Reload 버튼이 전과 같이 전부 다시 읽음
+> 되돌리기  git revert fe71989c7 -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **시간대 없이 쓴 시각도 한국 시간으로 저장 — 세션 시간대와 무관 (총괄 d94342107)** — git pull · 런처 재기동
 >
 > ```
@@ -5977,6 +5995,8 @@
 ---
 
 > ## 🔴 [09-29 밤 4] **체인 규칙을 저장하면 체인 워커가 «규칙만» 다시 읽음 — 마이그레이션 «없음» · 재기동 run_app.bat 전체(서버 · 체인 워커 · 워처 · 스케줄러)**
+>
+> ⚰️ [10-21] 아래는 은퇴 — 저장은 행을 안 쓰고 파일 감시가 읽음. 맨 위 [10-21] 절을 봄
 >
 > ```
 > 무엇이 바뀌나  Chain 탭 저장 · 문법 변환 -> 범위(chain_rules)를 실은 SYSTEM_RELOAD 한 행
