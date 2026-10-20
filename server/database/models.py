@@ -5,6 +5,7 @@ from .database import Base, is_sqlite
 from sqlalchemy.dialects.postgresql import JSONB
 
 import contextlib
+import os
 import logging
 import weakref
 
@@ -342,6 +343,13 @@ class DatabaseOutbox(Base):
         return get_payload_dict(self.payload)
 
 
+def path_key(column):
+    """A stored path as the filesystem compares it - lower case, one separator. THE one spelling: the folder search
+    (`reread._under_folder`) and the index that serves it (`ix_file_ingestion_logs_folder`) must say the same."""
+    other = "/" if os.sep == "\\" else "\\"
+    return func.lower(func.replace(column, other, os.sep))
+
+
 class FileIngestionLog(Base):
     __tablename__ = "file_ingestion_logs"
 
@@ -372,6 +380,11 @@ class FileIngestionLog(Base):
 
     # once `index=True` on their columns - the same names, now able to say what they are for
     __table_args__ = (
+        # 총괄 e390600d6: the file search's «folder starts with» - measured on assy_test, 3,000,000 rows: a seq scan
+        # (count 5.5 s) without it, an index scan (0.12 s) with it. text_pattern_ops: a LIKE prefix under any collation.
+        Index("ix_file_ingestion_logs_folder", path_key(filepath).label("path_key"),
+              postgresql_ops={"path_key": "text_pattern_ops"},
+              info={"purpose": "ingestion log rows under one folder", "serves": "file search by folder, re-read"}),
         Index("ix_file_ingestion_logs_filename", "filename",
               info={"purpose": "ingestion log rows of one file name", "serves": "ingestion log lookups"}),
         Index("ix_file_ingestion_logs_table_name", "table_name",
@@ -2111,13 +2124,15 @@ def _ledger_index_rows(engine):
     return rows
 
 
-def model_index_ddl(index):
+def model_index_ddl(index, dialect=None):
     """A declared `Index`'s CREATE statement, CONCURRENTLY and IF NOT EXISTS - compiled from the
-    declaration (columns · INCLUDE · WHERE · USING), never written a second time."""
+    declaration (columns · INCLUDE · WHERE · USING), never written a second time. `dialect`: the connected
+    database's - a bare one doubles a backslash in a literal, which a server with standard_conforming_strings reads
+    as two (ix_file_ingestion_logs_folder's separator)."""
     from sqlalchemy.dialects import postgresql
     from sqlalchemy.schema import CreateIndex
 
-    statement = str(CreateIndex(index, if_not_exists=True).compile(dialect=postgresql.dialect()))
+    statement = str(CreateIndex(index, if_not_exists=True).compile(dialect=dialect or postgresql.dialect()))
     for head in ("CREATE INDEX IF NOT EXISTS ", "CREATE UNIQUE INDEX IF NOT EXISTS "):
         if statement.startswith(head):
             return head.replace("INDEX", "INDEX CONCURRENTLY", 1) + statement[len(head):]
@@ -2150,7 +2165,7 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
         if row["source"] == "ledger":
             done[row["name"]] = _build_ledger_index(engine, row, say)
             continue
-        statement = (model_index_ddl(items[row["name"]]) if row["source"] == "model"
+        statement = (model_index_ddl(items[row["name"]], engine.dialect) if row["source"] == "model"
                      else table_index_ddl(row))
         done[row["name"]] = _build_one(engine, statement, row, say, say_every)
     return done

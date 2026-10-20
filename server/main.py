@@ -5640,18 +5640,27 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
     }
 
 @app.get("/admin/file-ingestion/logs", dependencies=[Depends(require_admin_token)])
-def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
+def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10, table: str = None, name: str = None,
+                            folder: str = None, since: str = None, until: str = None, group: str = None,
+                            db: Session = Depends(get_db)):
     """File Ingestion 로그 목록을 페이지네이션하여 반환합니다.
 
     `status` 는 `file_ingestion_status.FILE_INGESTION_STATUS_VOCABULARY` 의 한 값이거나
     `"ALL"`(거르지 않음)입니다. 여기에 상태를 «이름으로 적지 않습니다» —
     그 목록은 위 상수가 정본이고, 적으면 사본이 된다 (총괄 판정 25·30).
+    찾기(총괄 e390600d6): table · name(파일 이름의 일부) · folder(그 폴더 밑) · since/until 은 다시 읽기와 «같은 거르기»
+    (`reread.logs_query`). group=folder|reason 이면 groups 에 묶음마다 수 · 실패 수 — 맞는 행 COUNT_CAP 까지에서.
     """
-    query = db.query(models.FileIngestionLog)
-    if status != "ALL":
-        query = query.filter(models.FileIngestionLog.status == status)
-    
-    query = query.order_by(models.FileIngestionLog.id.desc())
+    from ingestion import reread
+
+    try:
+        since_at, until_at = reread.times_of(since, until)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if group not in (None, "", "folder", "reason"):
+        raise HTTPException(status_code=400, detail=f"group is folder or reason, not {group!r}")
+    query = reread.logs_query(db, None if status == "ALL" else (status,), table, folder, since_at, until_at,
+                              name=name).order_by(models.FileIngestionLog.id.desc())
 
     # 🔴 STOPS PAST COUNT_CAP (owner 10-16: the failed list took 10 s) - the log table only grows, and a count of all
     #    its failed rows held a connection the other admin routes waited on. Past it the screen says «10,000+».
@@ -5666,6 +5675,7 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
             "id": log.id,
             "filename": log.filename,
             "filepath": log.filepath,
+            "folder": reread.folder_of(log.filepath),
             "table_name": log.table_name,
             "status": log.status,
             "error_message": log.error_message,
@@ -5675,14 +5685,39 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
             "updated_at": log.updated_at.isoformat() if log.updated_at else None
         })
         
-    return {
-        "status": "success",
-        "total": total,
-        "capped": capped,
-        "page": page,
-        "limit": limit,
-        "data": result_list
-    }
+    said = {"status": "success", "total": total, "capped": capped, "page": page, "limit": limit, "data": result_list}
+    if group:
+        model, groups = models.FileIngestionLog, {}
+        for filepath, state, reason in query.with_entities(model.filepath, model.status, model.reason).limit(
+                COUNT_CAP + 1):
+            key = reread.folder_of(filepath) if group == "folder" else reason
+            entry = groups.setdefault(key, {"key": key, "count": 0, "failed": 0})
+            entry["count"] += 1
+            entry["failed"] += state == "FAILED"
+        said["groups"] = list(groups.values())
+    return said
+
+
+@app.get("/admin/file-ingestion/tables", dependencies=[Depends(require_admin_token)])
+def get_file_ingestion_tables(db: Session = Depends(get_db)):
+    """표마다 파일 기록 수 — 전체 · 상태별 · 마지막 시각 (총괄 e390600d6). 한 질의(GROUP BY table_name, status), 정확한 수."""
+    from sqlalchemy import func
+
+    model = models.FileIngestionLog
+    at = func.max(func.coalesce(model.updated_at, model.created_at))
+    tables = {}
+    for table_name, state, n, last in db.query(model.table_name, model.status, func.count(model.id), at).group_by(
+            model.table_name, model.status):
+        entry = tables.setdefault(table_name, {"table_name": table_name, "total": 0, "by_status": {}, "last_at": None})
+        entry["total"] += n
+        entry["by_status"][state] = n
+        if last is not None and (entry["last_at"] is None or last > entry["last_at"]):
+            entry["last_at"] = last
+    data = sorted(tables.values(), key=lambda e: str(e["table_name"]))
+    for entry in data:
+        entry["last_at"] = entry["last_at"].isoformat() if hasattr(entry["last_at"], "isoformat") else entry["last_at"]
+    return {"status": "success", "data": data}
+
 
 @app.get("/admin/file-ingestion/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_file_ingestion_logs(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):

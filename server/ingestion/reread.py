@@ -66,10 +66,12 @@ def over_the_limit(count, limit):
 def _under_folder(column, folder):
     """SQL: the stored path starts with the folder or its real path, as the filesystem compares them - lower case,
     one separator, a boundary. A superset of `_safe_relative_path`'s answer, which still decides each row read."""
-    from sqlalchemy import func, or_
+    from sqlalchemy import or_
+
+    from database.models import path_key
 
     other = "/" if os.sep == "\\" else "\\"
-    stored = func.lower(func.replace(column, other, os.sep))
+    stored = path_key(column)
     roots = {os.path.normcase(root).lower().replace(other, os.sep).rstrip(os.sep) + os.sep
              for root in (os.path.abspath(folder), os.path.realpath(os.path.abspath(folder)))}
     return or_(*[stored.like(root.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%", escape="!")
@@ -110,15 +112,17 @@ def times_of(since, until):
     return tuple(out)
 
 
-def select_logs(db, statuses, table=None, folder=None, since=None, until=None, log_id=None):
-    """-> [(log, its path below `folder`, or None without a folder)] - oldest first. The folder
-    is a boundary (`C:\\a\\A` never takes `C:\\a\\AB`), case and separators as the filesystem
-    reads them: the external-root judgement, `_safe_relative_path`."""
+def logs_query(db, statuses=None, table=None, folder=None, since=None, until=None, log_id=None, name=None):
+    """The file log rows a re-read or a search names - one filter for both (총괄 e390600d6). `statuses` None: any;
+    `folder` as `_under_folder` reads it; `name` a part of the file name, any case."""
+    from sqlalchemy import func
+
     from database import crud, models
-    from directory_watcher import _safe_relative_path, one_sweep
 
     model = models.FileIngestionLog
-    query = db.query(model).filter(model.status.in_(list(statuses)))
+    query = db.query(model)
+    if statuses is not None:
+        query = query.filter(model.status.in_(list(statuses)))
     if log_id is not None:
         query = query.filter(model.id == log_id)
     if not crud.is_blank_value(table):
@@ -129,7 +133,26 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
         query = query.filter(model.created_at < until)
     if not crud.is_blank_value(folder):
         query = query.filter(_under_folder(model.filepath, folder))   # not the whole table into memory (총괄 10-11)
-    logs = query.order_by(model.id.asc()).all()
+    if not crud.is_blank_value(name):
+        part = str(name).strip().lower().replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        query = query.filter(func.lower(model.filename).like("%" + part + "%", escape="!"))
+    return query
+
+
+def folder_of(filepath):
+    """The folder a logged file sits in - the search's folder group and each row's folder (총괄 e390600d6)."""
+    return os.path.dirname(filepath) if filepath else None
+
+
+def select_logs(db, statuses, table=None, folder=None, since=None, until=None, log_id=None):
+    """-> [(log, its path below `folder`, or None without a folder)] - oldest first. The folder
+    is a boundary (`C:\\a\\A` never takes `C:\\a\\AB`), case and separators as the filesystem
+    reads them: the external-root judgement, `_safe_relative_path`."""
+    from database import crud, models
+    from directory_watcher import _safe_relative_path, one_sweep
+
+    model = models.FileIngestionLog
+    logs = logs_query(db, statuses, table, folder, since, until, log_id).order_by(model.id.asc()).all()
     if crud.is_blank_value(folder):
         return [(log, None) for log in logs]
     picked = []

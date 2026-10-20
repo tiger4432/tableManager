@@ -148,10 +148,33 @@ def fixture_scratch(pg_engine):
             _ddl(pg_engine, "DROP INDEX IF EXISTS %s" % schema.REF_INDEX,
                  "CREATE INDEX %s ON ledger_events %s" % (schema.REF_INDEX, schema.REF_INDEX_COLUMNS))
             continue
-        statement = (models.model_index_ddl(items[row["name"]]) if row["source"] == "model"
+        statement = (models.model_index_ddl(items[row["name"]], pg_engine.dialect) if row["source"] == "model"
                      else models.table_index_ddl(row))
         _ddl(pg_engine, 'DROP INDEX IF EXISTS "%s"' % row["name"], statement.replace(" CONCURRENTLY", "", 1))
     assert {row["state"] for row in _states(pg_engine).values()} == {models.INDEX_PRESENT}
+
+
+@pytest.mark.pg
+def test_the_folder_index_is_built_as_the_folder_search_reads_it(scratch):
+    """총괄 e390600d6: ix_file_ingestion_logs_folder's separator is one backslash on a server that reads a string as
+    written - compiled with a bare dialect it was two, and the folder search never used the index."""
+    from ingestion import reread
+
+    with scratch.connect():
+        pass                                        # the dialect learns how this server reads a backslash
+    item = {name: item for _table, name, item in models.declared_indexes()}["ix_file_ingestion_logs_folder"]
+    statement = models.model_index_ddl(item, scratch.dialect)
+    _ddl(scratch, "DROP INDEX IF EXISTS ix_file_ingestion_logs_folder", statement.replace(" CONCURRENTLY", "", 1))
+    session = sessionmaker(bind=scratch)()
+    try:
+        query = reread.logs_query(session, None, None, r"\\fab-share\inspection\LOT_0042")
+        sql = str(query.statement.compile(scratch, compile_kwargs={"literal_binds": True}))
+        session.execute(text("SET LOCAL enable_seqscan = off"))
+        plan = " / ".join(row[0] for row in session.execute(text("EXPLAIN " + sql)))
+    finally:
+        session.rollback()
+        session.close()
+    assert "ix_file_ingestion_logs_folder" in plan, plan
 
 
 @pytest.mark.pg
