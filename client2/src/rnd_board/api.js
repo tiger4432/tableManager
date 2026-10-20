@@ -48,6 +48,7 @@ import { declaredKeys } from '../walk/derive.js';
 import { simplePaths } from '../walk/paths.js';
 import { UNPICKED, isBlank } from '../absent.js';
 import { SERVER_REFUSED } from '../ui_words.js';
+import { canonicalKeyValue } from '../map_key.js';
 
 export const ROUTES = Object.freeze({
   lotMap: '/api/ledger/lot_map',
@@ -1787,9 +1788,12 @@ export function entitySeedId(type, keys) {
   // 🔴 The server's spelling (explorer._canonical: sort_keys, no spaces): the keys in code point order, whatever order
   //    the form typed them - a die typed mat_id, x, y, mat_type was refused «not in canonical spelling» (lead 10-10).
   //    Spelled here, not through an object: an object puts integer-like names first, sort_keys does not.
+  // A key given as a JSON number (a walk expression's die(1, 2)) is spelled as the ledger writes keys - text, by the
+  // one spelling (map_key canonicalKeyValue: 1.0 -> '1', 1.5 -> '1.5'); sent as a number it named no node (owner 10-20).
   const held = keys || {};
+  const spell = (value) => (typeof value === 'number' ? canonicalKeyValue(value, null) : value);
   const json = `[${JSON.stringify(String(type || ''))},{${Object.keys(held).sort()
-    .map((name) => `${JSON.stringify(name)}:${JSON.stringify(held[name])}`).join(',')}}]`;
+    .map((name) => `${JSON.stringify(name)}:${JSON.stringify(spell(held[name]))}`).join(',')}}]`;
   const b64 = btoa(unescape(encodeURIComponent(json)));
   // 🔴 base64URL 은 «서버가 요구하는 것»이지 취향이 아닙니다. 클라 레인 실측 2026-08-27,
   //    키 `SYN-BW-101-16>` (base64 에 `+` 가 들어가는 첫 키):

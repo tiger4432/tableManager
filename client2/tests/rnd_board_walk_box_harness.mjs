@@ -507,8 +507,23 @@ async function suite(mods) {
     const SERVER_IDS = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'server_entity_ids.json'), 'utf8'));
     const spelled = (i) => entitySeedId(SERVER_IDS[i].type, SERVER_IDS[i].keys);
     eq('S7 a composite key typed in the form\'s order is spelled as the server spells it', spelled(0), SERVER_IDS[0].id);
-    eq('S8 number keys as the ledger holds them, spelled as the server spells them', spelled(1), SERVER_IDS[1].id);
+    // Keys given as numbers name the node the ledger writes - its keys are text (owner 10-20 one spelling; until 10-20 this
+    // line pinned the numbers through as numbers, 619855bc9).
+    eq('S8 number keys are spelled as text - the id of the same keys typed', spelled(1), SERVER_IDS[0].id);
     eq('S9 keys already in order: the same id', spelled(2), SERVER_IDS[2].id);
+    // The no-type cells of the contract's one spelling (contracts/map_seam canonical_value_cases): a JSON number is its
+    // integer text when integral, else its short spelling - read from the vectors where they carry such a cell, and
+    // these three always (the vectors on main carry none yet).
+    const VECTORS = JSON.parse(readFileSync(path.join(HERE, '..', '..', 'contracts', 'map_seam', 'vectors.json'), 'utf8'));
+    const numberCells = (VECTORS.canonical_value_cases || []).filter((c) => c.name && typeof c.value === 'number'
+      && (c.declared_type === null || c.declared_type === undefined)).map((c) => [c.value, c.expect, c.name]);
+    const asText = (value) => entitySeedId('die', { mat_id: 'M-1', x: value });
+    for (const [i, [value, expect, name]] of [[1.0, '1', 'one'], [7, '7', 'seven'], [1.5, '1.5', 'one and a half'], ...numberCells].entries()) {
+      eq(`S10.${i + 1} the number ${name} is the key text «${expect}»`, asText(value), asText(expect));
+    }
+    eq('S11 text is sent as typed - «1.50» and «001» keep their letters (the type decides, not this)',
+      [asText('1.50'), asText('001')].map((id) => Buffer.from(id.split(':').pop().replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+        .toString('utf8')).join(' '), '["die",{"mat_id":"M-1","x":"1.50"}] ["die",{"mat_id":"M-1","x":"001"}]');
   }
 
   // 🔴 SECTION L RETIRED 2026-08-28 -- it measured the COLLECT dropdown, and the
@@ -835,6 +850,10 @@ async function suite(mods) {
 //    mutant whose anchor is absent reports as a harness failure rather than as a caught
 //    defect -- which is the honest behaviour, and why they leave rather than linger.
 const MUTANTS = [
+  // A key given as a number sent as a number (until 10-20): die(1, 2) named no node.
+  { name: 'a-number-key-is-sent-as-a-number', catches: ['S8', 'S10.1'], file: 'api.js',
+    from: '    .map((name) => `${JSON.stringify(name)}:${JSON.stringify(spell(held[name]))}`).join(\',\')}}]`;',
+    to: '    .map((name) => `${JSON.stringify(name)}:${JSON.stringify(held[name])}`).join(\',\')}}]`;' },
   { name: 'the-keys-keep-the-form-order', catches: ['S7', 'S8'], file: 'api.js',
     from: "  const json = `[${JSON.stringify(String(type || ''))},{${Object.keys(held).sort()",
     to: "  const json = `[${JSON.stringify(String(type || ''))},{${Object.keys(held)" },

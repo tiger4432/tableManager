@@ -57,7 +57,9 @@ const STATIC = new Set(ENTITIES.filter((e) => Array.isArray(e.class) && e.class.
 // The same declaration with no type static: the lump cells' fixtures fan out to quantity and recipe, which the picture
 // now draws from the first (owner 10-12), so a lump is measured where the declaration holds nothing static.
 const DYNAMIC = ENTITIES.map((e) => ({ ...e, class: (Array.isArray(e.class) ? e.class : []).filter((c) => c !== 'static') }));
-const startId = (body) => (body._start ? entitySeedId(body._start.type, body._start.keys) : body.seed.id);
+// The start is the seed the captured walk was asked with (its seed.id) - the die capture asked with number keys, which the
+// client spells as text since 10-20, so its own spelling would name a node this capture does not hold.
+const startId = (body) => (body.seed && body.seed.id) || entitySeedId(body._start.type, body._start.keys);
 // Two themes of token values the stub document answers with, so a colour drawn can be traced to its token.
 const TOKENS = {
   light: { '--fs-body': '15px', '--fs-tag': '11px', '--fs-label': '12px',

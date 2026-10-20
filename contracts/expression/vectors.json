@@ -4759,10 +4759,10 @@
           "y"
         ]
       },
-      "expect": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiTDEiLCJ4Ijo1LCJ5IjozfV0",
+      "expect": "ledger-entity:v1:WyJkaWUiLHsibWF0X2lkIjoiTDEiLCJ4IjoiNSIsInkiOiIzIn1d",
       "screen_only": true,
       "basis": "ours",
-      "cite": "owner 3b97fcfb9 (lead 10-14): type(\"key\", ...) - the node of that type, its keys in the order its entity declares them; an empty key gives no node"
+      "cite": "owner 3b97fcfb9 (lead 10-14): type(\"key\", ...) - the node of that type, its keys in the order its entity declares them; an empty key gives no node. Owner 10-20 (lead): a key given as a number is the key text the ledger writes - 5 -> \"5\" (until 10-20 the id carried the numbers and named no node)"
     },
     {
       "id": "node.blank.key",
