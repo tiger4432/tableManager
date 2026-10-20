@@ -36,6 +36,7 @@ from .config_explorer import (
     resolve_declarations,
 )
 from .implementations import trusted_implementations
+from .roleframe import when_says
 from .setup_bundle import (
     CONFIG_FILENAME,
     SHORT_FORM_VERSION,
@@ -911,7 +912,7 @@ class OntologyDraftStore:
         # 총괄 10-14 창 문: a source of a short file is shown short - held long, so every reader
         # of the record (preview, fill, activation) reads the grammar it always read
         if record.get("shows_short"):
-            written, _why = shorten_source(out["raw"])
+            written, _why = shorten_source(out["raw"], says=when_says)
             out["raw"] = written
             # 검수 3: a refusal said where the short body writes it
             out["validation_errors"] = [
@@ -929,7 +930,7 @@ class OntologyDraftStore:
         shows = bool(record.get("short_file") and record.get("target_kind") == SOURCE_NODE_KIND
                      and is_long_source(raw))
         if shows:
-            written, _why = shorten_source(raw)
+            written, _why = shorten_source(raw, says=when_says)
             shows = written is not None and not short_form_moves(raw, written, catalog or {})
         record["shows_short"] = shows
 
@@ -1013,7 +1014,7 @@ class OntologyDraftStore:
                          if short and op_path[0] == "sources"}:
                 body = (document.get("sources") or {}).get(name)
                 if is_long_source(body):
-                    written, why = shorten_source(body)
+                    written, why = shorten_source(body, says=when_says)
                     # 검수 1: a read or map cell the operator wrote that the short form answers
                     # otherwise would be dropped in silence - refused by the cell instead
                     moves = short_form_moves(body, written, catalog or {}) if written is not None else ()

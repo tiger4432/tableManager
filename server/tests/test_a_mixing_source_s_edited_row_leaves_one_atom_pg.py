@@ -28,6 +28,7 @@ from ledger.setup_bundle import require_ready_bundle, shorten_setup, validate_bu
 from ledger.setup_registry import compile_setup_snapshot            # noqa: E402
 from scripts import migrate_ledger_config_to_v7 as v7               # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
+from ledger.roleframe import when_says  # noqa: E402
 
 pytestmark = pytest.mark.pg
 
@@ -66,7 +67,7 @@ def _short_setup(world):
     catalog = world["setup"].catalog
     _short, lines, written = v7.convert(document, catalog)
     assert written and [line.split()[:2] for line in lines] == [[hw.SOURCE, "mixes"]]
-    short, _verdicts = shorten_setup(fold_versions(document))
+    short, _verdicts = shorten_setup(fold_versions(document), says=when_says)
     bundle = require_ready_bundle(validate_bundle(short, catalog=catalog))
     return LedgerSetup(config_root=world["setup"].config_root, bundle=bundle,
                        snapshot=compile_setup_snapshot(bundle, trusted_implementations(),

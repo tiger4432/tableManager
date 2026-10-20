@@ -1519,7 +1519,7 @@ def _short_value_errors(value: Any, path: str, problems: _Problems, *, node: boo
 SHORTENED, DROPPED, REFUSED = "short", "dropped", "refused"
 
 
-def shorten_setup(document: Any) -> tuple[dict[str, Any], dict[str, tuple[str, str]]]:
+def shorten_setup(document: Any, *, says) -> tuple[dict[str, Any], dict[str, tuple[str, str]]]:
     """A long (SETUP_VERSION) document written SHORT - `expand_short_form` read backwards - and
     each source's verdict: (SHORTENED, ""), (DROPPED, why) or (REFUSED, why + Next).
 
@@ -1530,7 +1530,7 @@ def shorten_setup(document: Any) -> tuple[dict[str, Any], dict[str, tuple[str, s
     A read whose order or time is not the product's default IS written short: its new rows are
     translated on the default identity, old atoms stay as they are (소유자 10-14 «ㄹ»); which
     sources those are is the converter's fingerprint comparison, not a rule here.
-    `virtual_joins` with a rule refuses the file; an empty one is dropped."""
+    `virtual_joins` with a rule refuses the file; an empty one is dropped. `says` is `shorten_source`'s."""
     document = copy.deepcopy(dict(document))
     verdicts: dict[str, tuple[str, str]] = {}
     joins = document.pop("virtual_joins", None)
@@ -1539,7 +1539,7 @@ def shorten_setup(document: Any) -> tuple[dict[str, Any], dict[str, tuple[str, s
                                               f"a source reads. Next: move each to a chain rule")
     sources = {}
     for name, source in (document.get("sources") or {}).items():
-        short, why = shorten_source(source)
+        short, why = shorten_source(source, says=says)
         if short is not None:
             sources[name] = short
             verdicts[name] = (SHORTENED, "")
@@ -1583,9 +1583,10 @@ def _role_order(role: str) -> tuple:
     return (_ROLE_ORDER.index(role) if role in _ROLE_ORDER else len(_ROLE_ORDER), role)
 
 
-def shorten_source(source: Mapping[str, Any]) -> tuple[Any, str]:
+def shorten_source(source: Mapping[str, Any], *, says) -> tuple[Any, str]:
     """One long source written short, or (None, why + Next) - `shorten_setup`'s per-source half,
-    and the explorer's when it activates a long body into a short file."""
+    and the explorer's when it activates a long body into a short file. `says` is `roleframe.when_says`,
+    the translation's judge of a `when` condition - handed in, this module reaching no runtime."""
     read, mapper, bind = (source.get(name) or {} for name in ("read", "map", "bind"))
     if read.get("unit") == "group" or read_group_by(read):
         return None, ("reads rows in groups (read.group_by) - a short source says one row's facts. "
@@ -1630,7 +1631,13 @@ def shorten_source(source: Mapping[str, Any]) -> tuple[Any, str]:
                               f"not write: {json.dumps(binding, ensure_ascii=False, default=str)[:160]}")
             item[role] = value
         sentences.append(item)
-    for clause in read.get("exclude_when") or ():
+    # 🔴 A COLUMN'S CONDITIONS ARE ANDED INTO ONE (총괄 10-20, 소유자 「둘 다 물을 수도 있지, 막지 마」): a blank
+    #    clause and a value clause on one column are «none of them»; an equal beside a «not» keeps the equal when the
+    #    equal says the «not» (the «not» says nothing more), and only a sentence no row can say is refused - naming
+    #    the two places that ask
+    asked = {}                      # (sentence, column) -> where its when's condition came from
+    for index, clause in enumerate(read.get("exclude_when") or ()):
+        where = f"read.exclude_when[{index}]"
         if "when" in clause:
             if len(clause["when"]) != 1:
                 return None, ("excludes rows on several columns at once (read.exclude_when) - a "
@@ -1640,10 +1647,19 @@ def shorten_source(source: Mapping[str, Any]) -> tuple[Any, str]:
         else:
             column, negated = clause.get("column"), {"not": ""}
         for item in sentences:
-            if column in item.get("when", {}):
-                return None, (f"sentence {item['sentence']!r} already asks {column!r} in its when, "
-                              f"and read.exclude_when asks it too. Next: write the one condition")
-            item.setdefault("when", {})[column] = negated
+            when = item.setdefault("when", {})
+            if column not in when:
+                when[column] = negated
+                asked[(item["sentence"], column)] = where
+                continue
+            have, came = when[column], asked.get((item["sentence"], column), "its when")
+            kept = _when_and(have, negated, says)
+            if kept is None:
+                return None, (f"sentence {item['sentence']!r} is said for no row: {came} asks {column!r} "
+                              f"{json.dumps(have, ensure_ascii=False)} and {where} asks {column!r} "
+                              f"{json.dumps(negated, ensure_ascii=False)}. Next: drop the one that is not meant")
+            when[column] = kept
+            asked[(item["sentence"], column)] = f"{came} and {where}"
     if any(value is None for own in attributes.values() for value in own.values()):
         return None, "binds an attribute in a shape the short form does not write"
     # a sentence's own words first - its name, predicate and condition - then its roles
@@ -1656,6 +1672,22 @@ def shorten_source(source: Mapping[str, Any]) -> tuple[Any, str]:
         short["attributes"] = attributes
     short["sentences"] = sentences
     return short, ""
+
+
+def _when_and(have: Any, add: Any, says) -> Any:
+    """One column's two `when` conditions as one, or None when no cell says both - `says` is
+    `roleframe.when_says`, so the fold here is the translation's."""
+    equal = [value for value in (have, add) if not isinstance(value, Mapping)]
+    others = [one for value in (have, add) if isinstance(value, Mapping)
+              for one in (value["not"] if isinstance(value["not"], (list, tuple)) else [value["not"]])]
+    if equal:
+        both = [have, add]
+        return equal[0] if all(says(equal[0], value) for value in both) else None
+    kept = []
+    for one in others:
+        if all(says(one, {"not": seen}) for seen in kept):
+            kept.append(one)
+    return {"not": kept[0]} if len(kept) == 1 else {"not": kept}
 
 
 def _root_document_errors(document: Mapping[str, Any]
@@ -2712,9 +2744,11 @@ def _validate_when(value: Any, path: str, problems: _Problems) -> None:
     the per-sentence atom count of a test run, not as a refusal anywhere.
 
     ⛔ A MAP, EQUAL OR NOT EQUAL. Same shape as `entities.references[].from.when`, which
-    ruling 195 named as the model: keys are ANDed, there is no list, no range, no OR and
-    no comparison. A value is `<v>` (the column equals it) or `{"not": <v>}` (it does not -
-    a blank column included, 소유자 10-12). One spelling of "condition" in this grammar.
+    ruling 195 named as the model: keys are ANDed, there is no range, no OR and no
+    comparison. A value is `<v>` (the column equals it), `{"not": <v>}` (it does not - a blank
+    column included, 소유자 10-12) or `{"not": [<v>, ...]}` (it is none of them - one column's
+    exclusions written short together, 소유자 10-20 「둘 다 물을 수도 있지」). One spelling of
+    "condition" in this grammar; `roleframe.when_says` is its one judge.
     """
     if value is None:
         return
@@ -2727,13 +2761,15 @@ def _validate_when(value: Any, path: str, problems: _Problems) -> None:
             problems.add("invalid_type", f"{path}.{column}", "must name a column")
             continue
         said = value[column]
+        several = [said]
         if isinstance(said, Mapping) and set(said) == {"not"}:
             said = said["not"]
-        if isinstance(said, (Mapping, list, tuple)) or said is None:
+            several = list(said) if isinstance(said, (list, tuple)) and said else [said]
+        if any(isinstance(one, (Mapping, list, tuple)) or one is None for one in several):
             problems.add(
                 "invalid_type", f"{path}.{column}",
-                'must be a string, number or boolean the column equals, or {"not": <one of '
-                'those>} for a column that does not')
+                'must be a string, number or boolean the column equals, {"not": <one of '
+                'those>} for a column that does not, or {"not": [<those>, ...]} for none of them')
 
 
 def _validate_binding(value: Any, path: str, problems: _Problems) -> None:

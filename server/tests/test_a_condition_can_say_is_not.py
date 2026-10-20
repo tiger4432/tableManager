@@ -112,8 +112,9 @@ def test_is_not_takes_a_string_a_number_or_a_boolean(value):
     assert _paths(_bundle({"c": {"a": value}})) == _paths(_bundle({"c": None}))
 
 
-@pytest.mark.parametrize("value", [{"not": None}, {"not": ["b"]}, {"ne": "b"}, {"not": "b", "x": 1}],
-                         ids=["not-null", "not-a-list", "another-operator", "not-and-more"])
+@pytest.mark.parametrize("value", [{"not": None}, {"not": []}, {"not": [["b"]]}, {"ne": "b"}, {"not": "b", "x": 1}],
+                         ids=["not-null", "not-an-empty-list", "not-a-list-of-lists", "another-operator",
+                              "not-and-more"])
 def test_any_other_object_is_refused_at_its_column(value):
     errors = validate_bundle_errors(_bundle({"c": {"a": value}}), catalog=CATALOG)
     new = {(e.path, e.message) for e in errors} - {
@@ -232,8 +233,8 @@ def test_a_reference_from_when_says_is_not():
     assert [die for die, _ in _edges(preview)] == sorted(dt)
 
 
-REFUSED_VALUE = ('must be a string, number or boolean the column equals, or {"not": <one of those>} '
-                 'for a column that does not')
+REFUSED_VALUE = ('must be a string, number or boolean the column equals, {"not": <one of those>} '
+                 'for a column that does not, or {"not": [<those>, ...]} for none of them')
 
 
 def _root_with_reference_when(tmp_path, value):

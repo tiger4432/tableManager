@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **v7 짧게 쓰기 — 한 칸을 묻는 제외 절 둘(빈 값 + 값)도 짧게 써짐 (총괄, 소유자 10-20 «둘 다 물을 수도 있지, 막지 마»)** — git pull · 서버 재기동 없음 (스크립트만)
+>
+> ```
+> 다시 미리보기   cd server && python -m scripts.migrate_ledger_config_to_v7
+> 뜻      막히던 «sentence … already asks <칸> in its when, and read.exclude_when asks it too» 가 사라짐
+>         그 소스는 같은 칸의 조건을 한 when 으로 씀: 빈 값 제외 + 값 제외 -> {"<칸>": {"not": ["", "<값>"]}}
+>         그래도 refused 가 나오면 «sentence … is said for no row: <어디>가 묻는 것 and <어디>가 묻는 것» —
+>           문장 자신의 when 이 «칸 = A» 인데 제외도 «칸 = A» 라 그 문장은 어떤 행에도 안 섬. 둘 중 뜻이 아닌 쪽을 지움
+> 쓰기     미리보기가 그 소스를 mixes 로 말하면(절 하나일 때와 같음) python -m scripts.migrate_ledger_config_to_v7 --apply -> 런처 재기동
+> 되돌리기  git revert <착지> (쓴 파일은 스크립트가 남긴 백업으로)
+> ```
+>
+> ---
+>
 > ## [10-20] **원장 숫자 키 원자를 정본 철자로 — 다시 번역 (소유자 10-20 「1 ㅇㅇ」)** — 코드 변경 없음 · 재기동 없음
 >
 > ```

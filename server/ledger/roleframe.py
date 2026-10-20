@@ -959,13 +959,20 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
         values = unit_columns.get(column)
         if values is None:
             return False
-        negated = isinstance(expected, Mapping)
-        target = clean_str_value(expected["not"] if negated else expected)
-        # a blank cell - missing, NaN, spaces - is "" as `exclude_when`'s blank is (총괄 10-14 ② 검수 3)
-        if any((("" if is_blank_source_value(value) else clean_str_value(value)) == target) == negated
-               for value in values):
+        if not all(when_says(value, expected) for value in values):
             return False
     return True
+
+
+def when_says(value: Any, expected: Any) -> bool:
+    """Does one cell say one `when` condition - `<v>`, `{"not": <v>}` or `{"not": [<v>, ...]}` (none of them,
+    총괄 10-20 소유자 「둘 다 물을 수도 있지」)? THE one judge: `_unit_says` per row, `shorten_source` when it folds a
+    column's two conditions into one."""
+    negated = isinstance(expected, Mapping)
+    said = expected["not"] if negated else expected
+    targets = {clean_str_value(v) for v in (said if isinstance(said, (list, tuple)) else (said,))}
+    # a blank cell - missing, NaN, spaces - is "" as `exclude_when`'s blank is (총괄 10-14 ② 검수 3)
+    return (("" if is_blank_source_value(value) else clean_str_value(value)) in targets) != negated
 
 
 def _said_by_no_when(unit_columns: Mapping[Any, tuple], profile: ProfileDescriptor):

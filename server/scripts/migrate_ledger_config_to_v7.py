@@ -87,12 +87,13 @@ def _refusal(plan) -> str:
 def convert(document: dict, catalog) -> tuple[dict, list[str], bool]:
     """(the short document, one line per source, written?) - `written` False is a refusal."""
     from declaration_names import fold_versions
+    from ledger.roleframe import when_says
     from ledger.setup import LedgerSetupError
     from ledger.setup_bundle import (DROPPED, REFUSED, SHORT_FORM_VERSION, LedgerSetupValidationError,
                                      short_form_moves, shorten_setup, upgrade_setup)
 
     document = fold_versions(upgrade_setup(document))
-    short, verdicts = shorten_setup(document)
+    short, verdicts = shorten_setup(document, says=when_says)
     width = max(map(len, verdicts), default=0)
     lines = [f"  {name:<{width}} refused  - {why}" for name, (verdict, why) in verdicts.items()
              if verdict == REFUSED]

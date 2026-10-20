@@ -29,6 +29,7 @@ from ledger.runtime_v2 import last_cursor, preview_cursor_batch           # noqa
 from ledger.setup_registry import compile_setup_snapshot, cursor_translator_version  # noqa: E402
 from scripts import migrate_ledger_config_to_v7 as v7                     # noqa: E402
 from scripts import migrate_ledger_config_to_v6 as v6                     # noqa: E402
+from ledger.roleframe import when_says  # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SAMPLE = os.path.join(SERVER, "config", "sample")
@@ -89,7 +90,7 @@ def _row(relation):
 @pytest.mark.parametrize("source", ["die_inspection", "lot_slot_wafer", "transfer_event"])
 def test_a_same_source_s_row_is_translated_to_the_same_atoms(source):
     long = fold_versions(_sample())
-    short, _verdicts_ = sb.shorten_setup(long)
+    short, _verdicts_ = sb.shorten_setup(long, says=when_says)
 
     def atoms(document):
         compiled = _compiled(document)
@@ -140,7 +141,7 @@ def test_a_v7_file_is_read_through_the_same_expansion(tmp_path, monkeypatch, cap
 
 
 def _short_errors(change):
-    short, _verdicts_ = sb.shorten_setup(fold_versions(_sample()))
+    short, _verdicts_ = sb.shorten_setup(fold_versions(_sample()), says=when_says)
     change(short)
     return [(e.code, e.path) for e in sb.validate_bundle_errors(short, catalog=CATALOG)]
 
@@ -201,16 +202,85 @@ def test_the_v6_script_leaves_a_v7_file_alone(tmp_path, monkeypatch, capsys):
     ([{"when": {"kind": "bbox"}}], {"kind": {"not": "bbox"}}),
     ([{"when": {"kind": {"not": "die"}}}], {"kind": "die"}),
     ([{"when": {"kind": "bbox", "lot": "L1"}}], None),
+    # 총괄 10-20 (소유자 「둘 다 물을 수도 있지, 막지 마」): one column's two clauses are «none of them»
+    ([{"column": "kind", "blank": True}, {"when": {"kind": "bbox"}}], {"kind": {"not": ["", "bbox"]}}),
+    ([{"when": {"kind": "bbox"}}, {"when": {"kind": "bbox"}}], {"kind": {"not": "bbox"}}),
+    ([{"when": {"kind": {"not": "die"}}}, {"when": {"kind": "bbox"}}], {"kind": "die"}),
 ])
 def test_a_row_the_read_excluded_is_a_row_no_sentence_says(excluded, said):
     source = copy.deepcopy(fold_versions(_sample())["sources"]["transfer_event"])
     source["read"]["exclude_when"] = excluded
-    short, why = sb.shorten_source(source)
+    short, why = sb.shorten_source(source, says=when_says)
     if said is None:
         assert short is None and "several columns" in why
     else:
         assert {json.dumps(s.get("when"), sort_keys=True) for s in short["sentences"]} == {
             json.dumps(said, sort_keys=True)}
+
+
+@pytest.mark.parametrize("own, excluded, said", [
+    ("die", {"when": {"kind": "bbox"}}, "die"),            # A != B: the exclusion says nothing more
+    ("die", {"when": {"kind": "die"}}, None),              # A == B: no row says the sentence
+    ("die", {"column": "kind", "blank": True}, "die"),
+])
+def test_a_sentence_s_own_condition_and_an_exclusion_on_its_column(own, excluded, said):
+    source = copy.deepcopy(fold_versions(_sample())["sources"]["transfer_event"])
+    next(iter(source["bind"]["mappings"].values()))["when"] = {"kind": own}
+    source["read"]["exclude_when"] = [excluded]
+    short, why = sb.shorten_source(source, says=when_says)
+    if said is None:
+        assert short is None and why.startswith(
+            "sentence 'die-transfer' is said for no row: its when asks 'kind' \"die\" and read.exclude_when[0] asks "
+            "'kind' {\"not\": \"die\"}")
+    else:
+        assert [s["when"] for s in short["sentences"]] == [{"kind": said}]
+
+
+def test_two_exclusions_of_one_column_written_short_translate_to_the_same_atoms():
+    """The owner's file's shape (총괄 10-20): a blank clause and a value clause on one column - the short file says
+    the rows the long one kept, and reads back through its expansion to its own fingerprint."""
+    long = fold_versions(_sample())
+    long["sources"]["transfer_event"]["read"]["exclude_when"] = [
+        {"column": "product", "blank": True}, {"when": {"product": "P9"}}]
+    short, verdicts = sb.shorten_setup(copy.deepcopy(long), says=when_says)
+    assert verdicts["transfer_event"] == (sb.SHORTENED, "")
+    assert [s["when"] for s in short["sources"]["transfer_event"]["sentences"]] == [{"product": {"not": ["", "P9"]}}]
+
+    def atoms(document):
+        compiled = _compiled(document)
+        rows = [dict(_row("dt_transfer_log"), row_id="R%d" % k, dt_cell_key="C%d" % k, product=product)
+                for k, product in enumerate(["P1", "", "P9", None, "P2"])]
+        frame = _v2_frame(rows)
+        preview = preview_cursor_batch(compiled, "transfer_event", frame,
+                                       last_cursor(compiled.source_plans["transfer_event"], frame),
+                                       role_mapper_registry(), known_registrations=())
+        return sorted(json.dumps({**atom, "source_translator_ver": None}, sort_keys=True, default=str)
+                      for atom in preview.candidate_semantics)
+
+    said = atoms(long)
+    assert said and atoms(short) == said
+    unexcluded = copy.deepcopy(long)
+    del unexcluded["sources"]["transfer_event"]["read"]["exclude_when"]
+    assert len(atoms(unexcluded)) > len(said), "the three blank or P9 rows are not said - the cell is not vacuous"
+    expanded = {**short, "sources": {**short["sources"],
+                                     "transfer_event": sb.expand_source(short["sources"]["transfer_event"])}}
+    assert cursor_translator_version(_compiled(short), "transfer_event") == \
+        cursor_translator_version(_compiled(expanded), "transfer_event")
+
+
+@pytest.mark.parametrize("value, ok", [
+    ({"not": ["", "P9"]}, True), ({"not": ["a", 1, True]}, True), ({"not": []}, False),
+    ({"not": [{"x": 1}]}, False), ({"not": [None]}, False), ({"not": [["a"]]}, False)])
+def test_a_column_that_is_none_of_several_values_is_one_condition(value, ok):
+    from ledger.roleframe import when_says
+
+    problems = sb._Problems()
+    sb._validate_when({"c": value}, "when", problems)
+    assert (not problems.finish()) is ok
+    if ok:
+        assert [when_says(cell, value) for cell in ("", None, "  ", "P9", "a", "1", 1.0, "x")] == [
+            "" not in value["not"], "" not in value["not"], "" not in value["not"], "P9" not in value["not"],
+            "a" not in value["not"], 1 not in value["not"], 1 not in value["not"], True]
 
 
 def test_the_explorer_s_authoring_reads_a_short_file_as_the_loader_does(tmp_path):
@@ -268,5 +338,5 @@ def test_a_node_typed_from_a_column_with_attributes_is_refused_by_name():
     mapping = next(iter(source["bind"]["mappings"].values()))
     mapping["bind"]["subject"]["entity_type"] = {"kind": "column", "column": "kind"}
     mapping["bind"]["subject"]["attributes"] = {"a": {"kind": "column", "column": "a"}}
-    short, why = sb.shorten_source(source)
+    short, why = sb.shorten_source(source, says=when_says)
     assert short is None and "read from a column" in why
