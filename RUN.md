@@ -10,7 +10,7 @@
 >          볼 줄: «[JoinUnique] <규칙> … 같은 오른쪽 키(…)를 쓰는 행 N 개가 «한 배치 안»에 있어 «모두» 건너뜁니다»
 >          찾기: Select-String -Path server\server.log, server\chain_worker.log -Pattern "\[JoinUnique\]"
 > 그래도   «could not load declarations» 가 다시 나오면 그 줄 아래 traceback 의 마지막 File 줄을 보낸다(이제 같이 찍힌다)
-> 되돌리기  git revert <착지> -> 런처 재기동
+> 되돌리기  git revert 02a5042b2 -> 런처 재기동
 > ```
 >
 > ---
