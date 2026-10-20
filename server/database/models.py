@@ -1264,7 +1264,9 @@ def init_dynamic_models(config_dict: dict, engine=None):
             # `server/migrations/retire_unread_framework_indexes.py` is run - see that
             # file for the drop and its reverse.
             Column("created_at", DateTime(timezone=True), server_default=func.now()),
-            Column("updated_at", DateTime(timezone=True), server_default=func.now(), index=True),
+            # No `index=True` (소유자 10-20 「한칸짜리 지워」): `idx_<table>_updated` below leads with this column and
+            # takes every read the one-column index took. A table that has it keeps it until a person drops it (RUN.md).
+            Column("updated_at", DateTime(timezone=True), server_default=func.now()),
             # RETIRED 2026-08-31: is_graph_synced, needs_graph_rollback, graph_synced_at.
             # A NEW table no longer gets three dead columns - two of them INDEXED, so every
             # insert was maintaining two indexes for a synchroniser that does not exist
@@ -2404,11 +2406,9 @@ def dynamic_table_index_ddls(table_name: str, entry) -> list:
     disagrees. That is the same gap the business-key and decision-key ensures close, at the
     same seat and through the same builder.
 
-    ⚠️ BOTH, EVEN THOUGH ONE IS A PREFIX OF THE OTHER. `(updated_at)` and
-    `(updated_at, row_id)` are declared together on purpose: the grid's page query orders by
-    both, and the migration that retires prefix-redundant indexes states the reason for
-    keeping such a pair - a small hot index replaced by a much larger one is a slower read,
-    not a saving. An ensure that quietly built one of them would be a third opinion.
+    ⚠️ ONE: `(updated_at, row_id)`, which the grid's page query orders by. The one-column
+    `(updated_at)` beside it is gone (소유자 10-20 「한칸짜리 지워」) - the pair leads with the same
+    column, and `updated_at` changes on every write, so each index on it was one more to write.
 
     ⚠️ A VIEW GETS NOTHING, the same refusal the neighbours make and for the same reason.
     """
@@ -2417,11 +2417,8 @@ def dynamic_table_index_ddls(table_name: str, entry) -> list:
     name = str(table_name or "").strip()
     if not name:
         return []
-    single = f"ix_{name}_updated_at"[:63]
     pair = f"idx_{name}_updated"[:63]
     return [
-        (single, f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{single}" '
-                 f'ON "{name}" ("updated_at")'),
         (pair, f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{pair}" '
                f'ON "{name}" ("updated_at", "row_id")'),
     ]

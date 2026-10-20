@@ -172,7 +172,6 @@ def test_every_index_names_a_declaration(built, table):
     allowed = {
         f"ix_{table}_business_key_val",       # business_key (materialised)
         f"idx_{table}_updated",               # updated_at ordering / watermark
-        f"ix_{table}_updated_at",             # 〃
         f"idx_{table}_declared_key",          # THE declared lookup key
     }
     assert set(index_map(built[table])) <= allowed
@@ -189,7 +188,6 @@ def test_a_table_with_no_usable_declaration_gets_no_key_index(built):
     assert "idx_f6idx_broken_declared_key" not in idx
     assert set(idx) == {
         "ix_f6idx_broken_business_key_val", "idx_f6idx_broken_updated",
-        "ix_f6idx_broken_updated_at",
     }
 
 

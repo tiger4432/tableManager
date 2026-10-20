@@ -25,16 +25,15 @@ from parsers import directory_watcher as dw                            # noqa: E
 
 # ── the indexes a model declares and a table may lack ────────────────────────
 
-def test_both_declared_indexes_are_asked_for():
-    """⚠️ BOTH, THOUGH ONE IS A PREFIX OF THE OTHER. They are declared together because the
-    page query orders by both columns; the migration that retires prefix-redundant indexes
-    states why such a pair is kept, so an ensure building one of them would be a third
-    opinion about the same declaration."""
+def test_the_declared_index_is_asked_for(db_session):
+    """The pair the page query orders by - and not the one-column index it leads with (소유자 10-20)."""
     built = dict(models.dynamic_table_index_ddls("some_table", {}))
 
-    assert set(built) == {"ix_some_table_updated_at", "idx_some_table_updated"}
-    assert '("updated_at")' in built["ix_some_table_updated_at"]
+    assert set(built) == {"idx_some_table_updated"}
     assert '("updated_at", "row_id")' in built["idx_some_table_updated"]
+    table = models.DYNAMIC_TABLES["inventory_master"].__table__
+    assert [sorted(c.name for c in index.columns) for index in table.indexes
+            if "updated_at" in {c.name for c in index.columns}] == [["row_id", "updated_at"]]
     for statement in built.values():
         assert "CONCURRENTLY" in statement and "IF NOT EXISTS" in statement
 
@@ -58,19 +57,19 @@ def test_the_count_is_what_was_built_and_not_what_was_attempted():
         # `True` meaning "the statement ran" announced sixty-eight indexes nobody built,
         # and `False` meaning "already there" made a caller print COULD NOT BE ENSURED
         # about an index that exists. Both false, in opposite directions, from one bit.
-        return (models.INDEX_BUILT if name.endswith("_updated")
+        return (models.INDEX_BUILT if name == "idx_t_updated"
                 else models.INDEX_PRESENT)
 
     original = models._ensure_one_index
     models._ensure_one_index = _fake
     try:
         created = models.ensure_dynamic_table_indexes(
-            object(), config={"t": {}, "v": {"kind": "view"}})
+            object(), config={"t": {}, "u": {}, "v": {"kind": "view"}})
     finally:
         models._ensure_one_index = original
 
     assert created == ["idx_t_updated"]
-    assert attempted == ["ix_t_updated_at", "idx_t_updated"], attempted
+    assert attempted == ["idx_t_updated", "idx_u_updated"], attempted
 
 
 def test_every_caller_of_the_builder_speaks_the_same_three_words():

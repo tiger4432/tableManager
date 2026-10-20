@@ -7374,7 +7374,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         return {"status": "success", **said,
                 "message": f"{len(failed_logs)} file(s) handed to the watcher"}
         
-    from directory_watcher import IngestionHandler
+    from directory_watcher import IngestionHandler, get_workspace_serial_lock
     success_count = 0
     fail_count = 0
     
@@ -7426,7 +7426,12 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
             on_file_processed_callback=sync_file_processed_callback
         )
         
-        res = await asyncio.to_thread(handler.process_archived_file_sync, log, db)
+        def _retry_in_order(handler=handler, log=log):
+            # The table's files one at a time, as the watcher and the split-mode poller take them (총괄 5c0a86cec).
+            with get_workspace_serial_lock(handler.workspace_path):
+                return handler.process_archived_file_sync(log, db)
+
+        res = await asyncio.to_thread(_retry_in_order)
         if res:
             success_count += 1
         else:

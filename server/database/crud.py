@@ -5596,6 +5596,22 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                                 suppressed_row_ids,
                                 reported_only_for_drops=len(reported_only_for_drops))
 
+        # 🔴 총괄 5c0a86cec (소유자 10-20): THE ROWS GO IN FIRST, the new ones in business-key order. Two writers
+        # inserting one new key meet at its unique index; the loser used to find out after writing its history and
+        # layers, so its rollback left them all dead (box: 6,002 per 1,000 rows x 5) - now it waits there first and
+        # leaves ~2. And two batches of the same new keys in opposite orders wait in one order instead of deadlocking
+        # (40P01, which nothing retries; box: 2 of 13). The steps below write by row id and read no data row.
+        new_rows = sorted((row for row in db.new if isinstance(row, table_model)),
+                          key=lambda row: (row.business_key_val is None, row.business_key_val or ""))
+        for row in new_rows:
+            db.expunge(row)
+        db.add_all(new_rows)
+        from time import monotonic
+        flushed = monotonic()
+        with alignment_batch_counts.write_step("flush"):
+            db.flush()
+        _say_a_slow_flush(db, table_model, table_name, len(unique_results), monotonic() - flushed)
+
         # Execute Bulk Upserts, Bulk Inserts, and Deletes - each its own step, so a chunk
         # line says which of the four took the time and how many rows it wrote (소유자
         # 2026-09-26 「헤비 레인 쓰기 속도 느린 거는 로그는 추가해 봐」). The counts are the
@@ -5658,12 +5674,6 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"In Scope: {len(replace_scope_row_ids)} | Claimed: {len(claimed_row_ids)} | "
                 f"Removed: {len(removed_row_ids)}"
             )
-
-        from time import monotonic
-        flushed = monotonic()
-        with alignment_batch_counts.write_step("flush"):
-            db.flush()
-        _say_a_slow_flush(db, table_model, table_name, len(unique_results), monotonic() - flushed)
 
         serialized_logs = []
         for l in logs_to_cache:
