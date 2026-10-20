@@ -16,7 +16,7 @@
 >          «the answer was refused twice: the language model call was refused: …» -> 게이트웨이 · config/llm_config.json 문제. llm_requests.log 의 error 를 봄
 >          «[Meanings] ontology_meaning is not in table_config.json» -> 표 설치를 안 함
 > 급할 때   chain_rules.json 의 세 규칙 enabled 를 false (파일 감시가 바로 읽음)
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert e8ae04b69 -> 런처 재기동
 > ```
 >
 > ---
