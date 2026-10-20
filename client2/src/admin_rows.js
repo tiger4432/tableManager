@@ -92,7 +92,7 @@ export function activeIngestionRowHtml(item, { elapsedText }) {
     : (isCount(item.processed_rows) && Number(item.processed_rows) > 0
       ? localeCountText(item.processed_rows) : '-');
   return `
-      <td data-wrap-ok style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text); word-break: break-all;">${escapeHtml(item.filename)}</td>
+      <td data-wrap-ok style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text); word-break: break-all;">${escapeHtml(item.filename)}${folderLineHtml(item.filepath)}</td>
       <td style="font-weight: bold; color: var(--color-primary);">${escapeHtml(item.table_name)}</td>
       <td style="text-align: center;">${laneBadge}</td>
       <td>

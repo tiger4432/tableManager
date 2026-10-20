@@ -1736,6 +1736,16 @@ function renderFileTable() {
   updatePaginationFooter(fileTotal, filePage, maxPage, fileCapped);
 }
 
+/** A row's folder Copy (admin_rows folderLineHtml): the whole folder onto the clipboard, the row not picked. */
+function wireFolderCopy(row) {
+  const folderCopy = row.querySelector('.file-folder-copy');
+  if (!folderCopy) return;
+  folderCopy.addEventListener('click', (event) => {
+    event.stopPropagation();
+    copyText(folderCopy.dataset.path, '📋 Folder path copied', 'info');
+  });
+}
+
 // 파일 로그 행 빌더 — File 탭 로그와 Auto Update 탭 산출물 실패 목록이 공용
 function buildFileLogRow(log, { withStatus }) {
   const row = document.createElement('tr');
@@ -1751,13 +1761,7 @@ function buildFileLogRow(log, { withStatus }) {
     selectFileRow(log, row.parentElement || fileListBody);
   });
 
-  const folderCopy = row.querySelector('.file-folder-copy');
-  if (folderCopy) {
-    folderCopy.addEventListener('click', (event) => {
-      event.stopPropagation();
-      copyText(folderCopy.dataset.path, '📋 Folder path copied', 'info');
-    });
-  }
+  wireFolderCopy(row);
 
   const retryBtn = row.querySelector('.btn-retry-file');
   if (retryBtn) {
@@ -1851,6 +1855,7 @@ function renderActiveIngestions() {
     row.innerHTML = activeIngestionRowHtml(item, {
       elapsedText: formatElapsed(item.elapsed_seconds),
     });
+    wireFolderCopy(row);
     activeIngestionBody.appendChild(row);
   });
 }

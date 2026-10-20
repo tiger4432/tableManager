@@ -1848,7 +1848,8 @@ const FLOORS = new Map([
   ['testbed_draw_window_harness.mjs', 10],
   // New 2026-10-20 (lead, owner 10-20 «다 voids.json 이면 뭐가 뭔지 모름»). A file's folder on its log line: cut at the front,
   // the whole in the tooltip and on the Copy, escaped, on both lists the row draws.
-  ['file_folder_harness.mjs', 7],
+  // 7 -> 8 (lead, after A 6470b773f): the in-progress row carries the same folder line (P7).
+  ['file_folder_harness.mjs', 8],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

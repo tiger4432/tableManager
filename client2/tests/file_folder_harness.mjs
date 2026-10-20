@@ -6,6 +6,7 @@
 //   P4 no folder (a bare name, nothing, null) - no folder line
 //   P5 a path cannot break out of the tooltip or the Copy's attribute
 //   P6 both lists the row draws (the File tab's with a status, Auto Update's failures without) carry it
+//   P7 the in-progress row the same folder line (lead, after A 6470b773f put `filepath` on /admin/file-ingestion/active)
 // Imports only (the probe copies a module whole); each defect must go red at its line.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,6 +60,10 @@ async function suite(M) {
   ok('P5 a path cannot break out of the tooltip or the Copy, nor open an element', !/" onmouseover=/.test(hostile) && !hostile.includes('<b>'), hostile.slice(0, 400));
 
   ok('P6 both lists carry it - with a status and without', row(M, SHORT, true).includes('file-folder-copy') && row(M, SHORT, false).includes('file-folder-copy'));
+  const active = (filepath) => M.activeIngestionRowHtml({ filename: 'voids.json', filepath, table_name: 't', lane: 'normal', progress: 40, status: 'PROCESSING', processed_rows: 1, total_rows: 2 }, { elapsedText: '3s' });
+  const live = active(LONG);
+  ok('P7 the in-progress row: the same folder line, the whole in its tooltip and Copy; none without a path',
+    attr(live, 'title') === l.full && attr(live, 'data-path') === l.full && live.includes(`>${l.shown}</span>`) && !active(undefined).includes('file-folder'), live.slice(0, 400));
   return { ran, failed: failed.slice() };
 }
 
@@ -72,6 +77,7 @@ const MUTANTS = [
   { name: 'a bare name drawn as a folder', catches: ['P4'], mutate: swap('  if (cut < 0) return null;', "  if (cut < 0) return { full: path, shown: path };") },
   { name: 'the path not escaped', catches: ['P5'], mutate: swap('  const full = escapeHtml(folder.full);', '  const full = folder.full;') },
   { name: 'the folder only on the status list', catches: ['P6'], mutate: swap('${escapeHtml(log.filename)}${folderLineHtml(log.filepath)}</td>', "${escapeHtml(log.filename)}${withStatus ? folderLineHtml(log.filepath) : ''}</td>") },
+  { name: 'the in-progress row without its folder', catches: ['P7'], mutate: swap('${escapeHtml(item.filename)}${folderLineHtml(item.filepath)}</td>', '${escapeHtml(item.filename)}</td>') },
 ];
 
 const load = async (m) => (await loadWithProbe(FILE, m ? { mutate: m.mutate } : {})).module;
