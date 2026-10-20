@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint, Float
 from sqlalchemy.sql import func
 from .database import Base, is_sqlite
 
@@ -377,6 +377,7 @@ class FileIngestionLog(Base):
     source = Column(String, nullable=True)
     reason = Column(String(500), nullable=True)
     failed_at = Column(String(500), nullable=True)
+    took_seconds = Column(Float, nullable=True)
 
     # once `index=True` on their columns - the same names, now able to say what they are for
     __table_args__ = (
@@ -491,7 +492,7 @@ _PHASE_COLUMNS = weakref.WeakSet()
 
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
 FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "reader", "source",
-                       "reason", "failed_at")
+                       "reason", "failed_at", "took_seconds")
 
 
 #: System tables the boot schema sync (`sync_dynamic_tables_schema`) also adds a declared column to - a column added to

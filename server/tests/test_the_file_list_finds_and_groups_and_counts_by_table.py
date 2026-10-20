@@ -52,6 +52,8 @@ def test_the_list_finds_groups_and_the_tables_count(client, db_session, tmp_path
                                                          {"key": str(lot_a / "W2"), "count": 2, "failed": 2}]
     by_reason = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", group="reason")["groups"]}
     assert by_reason == {None: (3, 0), "ValueError: line 3": (2, 2)}, by_reason
+    by_status = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", name="bmap", group="status")["groups"]}
+    assert by_status == {"SUCCESS": (3, 0), "FAILED": (1, 1)}, by_status       # the chips' counts, under the name too
 
     # the re-read and the search take the same rows for the same words
     picked = reread.select_logs(db_session, ("SUCCESS", "FAILED"), table="insp", folder=str(lot_a))

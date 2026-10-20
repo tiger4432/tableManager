@@ -19,3 +19,4 @@ ALTER TABLE file_ingestion_logs DROP COLUMN IF EXISTS reader;
 ALTER TABLE file_ingestion_logs DROP COLUMN IF EXISTS source;
 ALTER TABLE file_ingestion_logs DROP COLUMN IF EXISTS reason;
 ALTER TABLE file_ingestion_logs DROP COLUMN IF EXISTS failed_at;
+ALTER TABLE file_ingestion_logs DROP COLUMN IF EXISTS took_seconds;

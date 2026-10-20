@@ -471,13 +471,13 @@
 
 ## 2026-10-20 · 파일 기록 찾기 · 폴더와 사유로 묶기 · 표마다 수
 
-- **무엇** — 총괄 e390600d6 2·3 (파일 적재 화면 시안). `GET /admin/file-ingestion/logs` 가 `table` · `status` · `name`(파일 이름의 일부, 대소문자 무관) · `folder`(그 폴더 밑) · `since`/`until` 로 찾는다 — 다시 읽기(Retry)와 «같은 거르기»라 같은 낱말이면 같은 파일이 잡힌다. `group=folder|reason` 이면 `groups` 에 묶음마다 수 · 실패 수(맞는 행 1만까지). 줄마다 `folder`. `GET /admin/file-ingestion/tables` 는 표마다 전체 · 상태별 수 · 마지막 시각(정확한 수, 한 질의).
+- **무엇** — 총괄 e390600d6 2·3 (파일 적재 화면 시안). `GET /admin/file-ingestion/logs` 가 `table` · `status` · `name`(파일 이름의 일부, 대소문자 무관) · `folder`(그 폴더 밑) · `since`/`until` 로 찾는다 — 다시 읽기(Retry)와 «같은 거르기»라 같은 낱말이면 같은 파일이 잡힌다. `group=folder|reason|status` 면 `groups` 에 묶음마다 수 · 실패 수(맞는 행 1만까지) — status 는 검색 줄 상태 칩의 수. 줄마다 `folder`. `GET /admin/file-ingestion/tables` 는 표마다 전체 · 상태별 수 · 마지막 시각(정확한 수, 한 질의).
 - **바뀐 동작** — 폴더 찾기에 인덱스 `ix_file_ingestion_logs_folder`(경로를 파일 시스템처럼 견준 값, 앞부분 일치). 박스 실측 300만 행: 폴더만으로 찾기 5.5 s → 0.02 s, 표 하나 + 폴더 0.37 s → 0.02 s, 표마다 수 0.4~0.7 s. 다시 읽기의 폴더 거르기도 같은 인덱스를 탄다.
 - **필요한 조건** — git pull · 런처 재기동. 인덱스는 스케줄러의 인덱스 줄이 지은다(`build_missing_indexes`, 기본 켬).
 
 ## 2026-10-20 · 파일마다 적재 결과가 완료 기록에 남는다 — 읽은 · 새 · 바뀜 · 그대로 · 거절 · 읽은 것 · 소스 · 실패 사유와 자리
 
-- **무엇** — 총괄 e390600d6 (소유자 「ㅇㅇ 일케 해」, 파일 적재 화면 시안). 파일 하나를 읽고 나면 그 완료 기록(`file_ingestion_logs` 행)에 결과가 같이 남는다: `rows_read` · `rows_new` · `rows_changed` · `rows_unchanged` · `rows_refused`(키가 빈 행 · 쓰기가 거절한 행), `reader`(플러그인 «p.py::P» / standard / 선언 파서 이름), `source`(raws / 외부 루트), 실패면 `reason`(한 줄) · `failed_at`(터진 자리 «파일:줄», 감싼 오류 밑의 원래 자리). 수는 쓰기 문이 이미 세던 것 그대로다. 다시 읽기(Retry)는 같은 행을 새 값으로 덮어쓴다.
+- **무엇** — 총괄 e390600d6 (소유자 「ㅇㅇ 일케 해」, 파일 적재 화면 시안). 파일 하나를 읽고 나면 그 완료 기록(`file_ingestion_logs` 행)에 결과가 같이 남는다: `rows_read` · `rows_new` · `rows_changed` · `rows_unchanged` · `rows_refused`(키가 빈 행 · 쓰기가 거절한 행), `reader`(플러그인 «p.py::P» / standard / 선언 파서 이름), `source`(raws / 외부 루트), 실패면 `reason`(한 줄) · `failed_at`(터진 자리 «파일:줄 in 함수», 감싼 오류 밑의 원래 자리) · `took_seconds`(읽는 데 걸린 초). 수는 쓰기 문이 이미 세던 것 그대로다. 다시 읽기(Retry)는 같은 행을 새 값으로 덮어쓴다.
 - **화면에서** — `GET /admin/file-ingestion/logs` 의 줄마다 그 아홉 칸. 이 칸들이 생기기 전에 적힌 행과 건너뛴 파일은 비어 있다.
 - **필요한 조건** — git pull · 런처 재기동. 칸은 서버 · 와처 · 체인 워커 중 먼저 뜨는 것이 기동 때 스스로 붙인다(스키마 동기화, 잠금 상한 20 s). 손으로 미리 붙이려면 `server/migrations/add_file_ingestion_log_results.sql`.
 

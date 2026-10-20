@@ -5649,7 +5649,7 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     `"ALL"`(거르지 않음)입니다. 여기에 상태를 «이름으로 적지 않습니다» —
     그 목록은 위 상수가 정본이고, 적으면 사본이 된다 (총괄 판정 25·30).
     찾기(총괄 e390600d6): table · name(파일 이름의 일부) · folder(그 폴더 밑) · since/until 은 다시 읽기와 «같은 거르기»
-    (`reread.logs_query`). group=folder|reason 이면 groups 에 묶음마다 수 · 실패 수 — 맞는 행 COUNT_CAP 까지에서.
+    (`reread.logs_query`). group=folder|reason|status 면 groups 에 묶음마다 수 · 실패 수 — 맞는 행 COUNT_CAP 까지에서.
     """
     from ingestion import reread
 
@@ -5657,8 +5657,8 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         since_at, until_at = reread.times_of(since, until)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    if group not in (None, "", "folder", "reason"):
-        raise HTTPException(status_code=400, detail=f"group is folder or reason, not {group!r}")
+    if group not in (None, "", "folder", "reason", "status"):
+        raise HTTPException(status_code=400, detail=f"group is folder, reason or status, not {group!r}")
     query = reread.logs_query(db, None if status == "ALL" else (status,), table, folder, since_at, until_at,
                               name=name).order_by(models.FileIngestionLog.id.desc())
 
@@ -5690,7 +5690,7 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         model, groups = models.FileIngestionLog, {}
         for filepath, state, reason in query.with_entities(model.filepath, model.status, model.reason).limit(
                 COUNT_CAP + 1):
-            key = reread.folder_of(filepath) if group == "folder" else reason
+            key = {"folder": reread.folder_of(filepath), "reason": reason, "status": state}[group]
             entry = groups.setdefault(key, {"key": key, "count": 0, "failed": 0})
             entry["count"] += 1
             entry["failed"] += state == "FAILED"

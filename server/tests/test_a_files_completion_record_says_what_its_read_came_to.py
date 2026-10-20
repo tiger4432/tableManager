@@ -40,7 +40,7 @@ OLD_SHAPE = ('CREATE TABLE file_ingestion_logs (id INTEGER PRIMARY KEY, filename
              'created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)')
 TABLE = {"business_key": "lot", "column_types": {"lot": "string", "val": "string"}, "display_columns": ["lot", "val"]}
 RESULT = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "reader", "source", "reason",
-          "failed_at")
+          "failed_at", "took_seconds")
 
 
 class _Stub(http.server.BaseHTTPRequestHandler):
@@ -120,13 +120,13 @@ def test_a_files_completion_record_says_what_its_read_came_to(tmp_path):
             records = _records(c)
         assert records, said[-3000:]
         by_table = {r[0]: r for r in records}
-        assert by_table["tp"][1:] == ("SUCCESS", 3, 3, 0, 0, 1, "standard", str(share), None,
-                                      None), by_table["tp"]
+        assert by_table["tp"][1:11] == ("SUCCESS", 3, 3, 0, 0, 1, "standard", str(share), None, None), by_table["tp"]
+        assert 0 <= by_table["tp"][11] < 30 and 0 <= by_table["tf"][11] < 30, (by_table["tp"], by_table["tf"])
         status, *result = by_table["tf"][1:]
         assert (status, result[:5]) == ("FAILED", [None] * 5), by_table["tf"]
-        assert result[5:] == ["p.py::P", str(failing),
+        assert result[5:9] == ["p.py::P", str(failing),
                               "ValueError: Plugin p.py::P could not read 'f.csv': the probe cannot read this",
-                              "p.py:%d" % raise_line], by_table["tf"]
+                              "p.py:%d in parse" % raise_line], by_table["tf"]
 
         # the file again, one value changed: a new record of new · changed · unchanged
         time.sleep(1.1)

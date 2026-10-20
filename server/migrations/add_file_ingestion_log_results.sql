@@ -21,3 +21,4 @@ ALTER TABLE file_ingestion_logs ADD COLUMN IF NOT EXISTS reader VARCHAR(300);
 ALTER TABLE file_ingestion_logs ADD COLUMN IF NOT EXISTS source VARCHAR;
 ALTER TABLE file_ingestion_logs ADD COLUMN IF NOT EXISTS reason VARCHAR(500);
 ALTER TABLE file_ingestion_logs ADD COLUMN IF NOT EXISTS failed_at VARCHAR(500);
+ALTER TABLE file_ingestion_logs ADD COLUMN IF NOT EXISTS took_seconds DOUBLE PRECISION;

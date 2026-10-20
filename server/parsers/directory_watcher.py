@@ -673,10 +673,11 @@ def _new_row_ids(table, results):
 _INGEST_LANE = contextvars.ContextVar("assy_ingest_lane", default=None)
 
 
-def _file_result(tally, skipped_no_key, parse_meta, error=None) -> dict:
+def _file_result(began, tally, skipped_no_key, parse_meta, error=None) -> dict:
     """What a file's read came to, for its completion record (총괄 e390600d6): the write door's own counts (`_FileTally`,
-    no second count), the reader, the source; for a failure its one-line reason and the frame it broke in. Counts are
-    None when nothing was read yet or the tally stopped counting."""
+    no second count), the reader, the source, the seconds since `began` (a monotonic time); for a failure its one-line
+    reason and the frame it broke in («p.py:7 in parse»). Counts are None when nothing was read yet or the tally
+    stopped counting."""
     import traceback
 
     meta = parse_meta or {}
@@ -687,7 +688,7 @@ def _file_result(tally, skipped_no_key, parse_meta, error=None) -> dict:
                    else kind.split(":")[1] if kind.startswith("external:") else None),
         "source": external["source_root"] if external else ("raws" if meta.get("rel_path") is not None else None),
         "rows_read": None, "rows_new": None, "rows_changed": None, "rows_unchanged": None, "rows_refused": None,
-        "reason": None, "failed_at": None,
+        "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
     }
     if tally is not None and tally.silenced is None:
         written = tally.new + tally.changed + tally.unchanged
@@ -702,7 +703,8 @@ def _file_result(tally, skipped_no_key, parse_meta, error=None) -> dict:
             root = root.__cause__ or root.__context__
         frames = traceback.extract_tb(root.__traceback__) if root.__traceback__ is not None else []
         if frames:
-            result["failed_at"] = ("%s:%d" % (os.path.basename(frames[-1].filename), frames[-1].lineno))[:500]
+            result["failed_at"] = ("%s:%d in %s" % (os.path.basename(frames[-1].filename), frames[-1].lineno,
+                                                    frames[-1].name))[:500]
     return result
 
 
@@ -2631,7 +2633,7 @@ class IngestionHandler(FileSystemEventHandler):
         file_stat = read_file_stat(abs_path) or file_stat
 
         signature = None
-        parse_meta, tally, skipped_no_key = {}, None, 0
+        began, parse_meta, tally, skipped_no_key = time.monotonic(), {}, None, 0
         for attempt in range(retries):
             try:
                 # [P2-B] 파일 시그니처(내용 전체 sha256) — 재개 동일성 판정과 dedup의 공통 키.
@@ -2701,7 +2703,7 @@ class IngestionHandler(FileSystemEventHandler):
                     + (f" ({detail})" if detail else "")
                 )
                 self._log_ingestion_success(file_path, dest_path, t_name=t_name, detail=detail,
-                                            result=_file_result(tally, skipped_no_key, parse_meta))
+                                            result=_file_result(began, tally, skipped_no_key, parse_meta))
                 self._tell_processed(t_name, abs_path, "SUCCESS", detail)
                 return
             except LockWaitedOut as e:
@@ -2713,7 +2715,7 @@ class IngestionHandler(FileSystemEventHandler):
                 logger.warning(f"[{t_name}] ⏳ {basename}: {error_msg} - left in place for the next sweep")
                 self._log_ingestion_record(file_path, file_path, t_name, "FAILED", error_msg,
                                            retry_count=retry,
-                                           result=_file_result(tally, skipped_no_key, parse_meta, e))
+                                           result=_file_result(began, tally, skipped_no_key, parse_meta, e))
                 self.waiting_on_a_lock.add(abs_path)
                 self._tell_processed(t_name, abs_path, "FAILED", error_msg)
                 return
@@ -2731,7 +2733,7 @@ class IngestionHandler(FileSystemEventHandler):
                     dest_path = file_path
                 self._record_failure(t_name, signature, basename, dest_path, error_msg, file_stat)
                 self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name,
-                                            result=_file_result(tally, skipped_no_key, parse_meta, e))
+                                            result=_file_result(began, tally, skipped_no_key, parse_meta, e))
                 self._tell_processed(t_name, abs_path, "FAILED", str(e))
                 return
 
@@ -3264,7 +3266,7 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _process_archived_file_sync(self, log_entry, db, uploader, filepath,
                                     t_name, table_info):
-        parse_meta, tally, skipped_no_key = {}, None, 0
+        began, parse_meta, tally, skipped_no_key = time.monotonic(), {}, None, 0
         try:
             # [P2] 관리자 재시도는 **명시적 재처리 의사**이므로 dedup skip을 적용하지 않는다.
             # 다만 중단된 적재(IN_PROGRESS)를 이어받는 것은 여전히 이득이므로 체크포인트는 쓴다:
@@ -3303,7 +3305,7 @@ class IngestionHandler(FileSystemEventHandler):
                                           self._grid_refusal(), dropped)  # [F1] + [P2] + 0행
             log_entry.status = "SUCCESS"
             log_entry.error_message = detail
-            for column, value in _file_result(tally, skipped_no_key, parse_meta).items():
+            for column, value in _file_result(began, tally, skipped_no_key, parse_meta).items():
                 setattr(log_entry, column, value)
             db.commit()
             self._tell_processed(t_name, filepath, "SUCCESS", detail)
@@ -3316,7 +3318,7 @@ class IngestionHandler(FileSystemEventHandler):
             log_entry.status = "FAILED"
             log_entry.error_message = error_msg
             log_entry.retry_count += 1
-            for column, value in _file_result(tally, skipped_no_key, parse_meta, e).items():
+            for column, value in _file_result(began, tally, skipped_no_key, parse_meta, e).items():
                 setattr(log_entry, column, value)
             db.commit()
             self._tell_processed(t_name, filepath, "FAILED", str(e))

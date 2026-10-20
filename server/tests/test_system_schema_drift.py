@@ -220,10 +220,10 @@ SYSTEM_TABLE_COLUMNS = {
     # file_reread_marks: 총괄 10-11 ㄱ - the re-read's state before, a table of its own (create_all, no ALTER)
     "file_reread_marks": ('folder', 'log_id', 'marked_at', 'status_before'),
     "file_ingestion_checkpoints": ('chunk_index', 'file_mtime', 'file_signature', 'file_size', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'updated_at'),
-    # failed_at, reader, reason, rows_changed, rows_new, rows_read, rows_refused, rows_unchanged, source:
+    # failed_at, reader, reason, rows_changed, rows_new, rows_read, rows_refused, rows_unchanged, source, took_seconds:
     #   migrations/add_file_ingestion_log_results.sql [총괄 e390600d6, 2026-10-20] - and the boot schema sync adds them
     #   without it (models.SCHEMA_SYNCED_SYSTEM_TABLES), so a pulled server never reads a column its database lacks.
-    "file_ingestion_logs": ('created_at', 'error_message', 'failed_at', 'filename', 'filepath', 'id', 'reader', 'reason', 'retry_count', 'rows_changed', 'rows_new', 'rows_read', 'rows_refused', 'rows_unchanged', 'source', 'status', 'table_name', 'updated_at'),
+    "file_ingestion_logs": ('created_at', 'error_message', 'failed_at', 'filename', 'filepath', 'id', 'reader', 'reason', 'retry_count', 'rows_changed', 'rows_new', 'rows_read', 'rows_refused', 'rows_unchanged', 'source', 'status', 'table_name', 'took_seconds', 'updated_at'),
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_assumed: migrations/add_frame_confirmation.py (spec MAP_ALIGNMENT 9a - which
     # confirmations rest on a borrowed wafer spec)
