@@ -1852,7 +1852,8 @@ const FLOORS = new Map([
   ['file_folder_harness.mjs', 8],
   // New 2026-10-20 (lead 77ffe5cb6). The main grid's gallery: groups, blank images, the image box, «N of total loaded»,
   // drawn again from the grid's rows, only the lines in view, the tile's side panel, the choices kept per table.
-  ['gallery_harness.mjs', 12],
+  // 12 -> 18 (owner 10-20 «갤러리 1,2,3,5»): the caption column, the group order, the side panel's keys, its shown columns, two galleries.
+  ['gallery_harness.mjs', 18],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

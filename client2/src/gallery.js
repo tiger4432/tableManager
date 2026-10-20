@@ -19,6 +19,7 @@ export const CAPTION_PX = 20;
 export const OVERSCAN = 2;
 export const WORDS = Object.freeze({
   gallery: 'Gallery', grid: 'Grid', groupBy: 'Group by', none: '(None)', image: 'Image', empty: '(Empty)', all: 'All rows',
+  caption: 'Caption', order: 'Order', mostRows: 'Most rows', byValue: 'Value',
   loadMore: 'Load more', showInGrid: 'Show in grid', close: 'Close', noImageColumn: 'This table has no image column',
   rows: (n) => `${n.toLocaleString('en-US')} row${n === 1 ? '' : 's'}`,
   loaded: (n, total) => `${n.toLocaleString('en-US')} of ${total} loaded`,
@@ -28,13 +29,16 @@ export const WORDS = Object.freeze({
 
 const textOf = (v) => (isBlank(v) ? '' : String(v));
 
+/** The Order box: the groups with most rows first (the first said first among equals), or by their value. */
+export const ORDERS = Object.freeze([['count', WORDS.mostRows], ['value', WORDS.byValue]]);
+
 /**
- * The rows in groups: one a value of `groupBy` in the order the rows first say it (the grid's sort), all in one when none
- * is chosen; each group's rows with an image and how many have none.
+ * The rows in groups: one a value of `groupBy`, all in one when none is chosen; each group's rows with an image (its
+ * caption the `caption` column's value) and how many have none. `order` - ORDERS; the tiles keep the grid's sort.
  * @param {Array<{id, data}>} rows  the grid's rows as it holds them, filtered and sorted
- * @param {{groupBy: string|null, image: string, valueOf: (row, column) => any}} o
+ * @param {{groupBy: string|null, image: string, caption?: string|null, order?: string, valueOf: (row, column) => any}} o
  */
-export function galleryModel(rows, { groupBy, image, valueOf }) {
+export function galleryModel(rows, { groupBy, image, caption = null, order = 'count', valueOf }) {
   const groups = new Map();
   for (const row of rows) {
     const key = groupBy ? textOf(valueOf(row, groupBy)) : '';
@@ -42,9 +46,12 @@ export function galleryModel(rows, { groupBy, image, valueOf }) {
     const g = groups.get(key);
     g.count += 1;
     const ref = valueOf(row, image);
-    if (isBlank(ref)) g.without += 1; else g.tiles.push({ id: row.id, ref: String(ref), row });
+    if (isBlank(ref)) g.without += 1;
+    else g.tiles.push({ id: row.id, ref: String(ref), caption: caption ? textOf(valueOf(row, caption)) : String(ref), row });
   }
-  return [...groups.values()];
+  const out = [...groups.values()];
+  if (order === 'value') return out.sort((a, b) => a.value.localeCompare(b.value, 'en', { numeric: true }));
+  return out.map((g, i) => [g, i]).sort((a, b) => b[0].count - a[0].count || a[1] - b[1]).map(([g]) => g);
 }
 
 /** Where each group's head and each line of tiles stands: `{kind: 'head'|'tiles', group, top, height, tiles?}`, the whole height. */
@@ -74,8 +81,8 @@ export class GalleryPart {
   /**
    * @param {HTMLElement} mount  its own div
    * @param {{doc, base, loader, storage?, table: () => string, columns: () => Array<{name, type}>, rows: () => Array<{id, data}>,
-   *          valueOf: (row, column) => any, count: () => object|null, whole: () => boolean, loadMore: () => void,
-   *          showRow: (id) => void, onClose?: () => void}} deps
+   *          shown: () => string[], valueOf: (row, column) => any, count: () => object|null, whole: () => boolean,
+   *          loadMore: () => void, showRow: (id) => void}} deps  `shown` - the columns the grid shows (its own answer)
    */
   constructor(mount, deps) {
     this.mount = mount;
@@ -85,6 +92,23 @@ export class GalleryPart {
     this.drawn = new Map();
     this.layout = { items: [], height: 0, per: 1 };
     this.asked = false;
+    // ← → the neighbour tile, Esc closes - only while this gallery's side panel is open, never while typing in a box
+    this.onKey = (event) => {
+      if (!this.picked) return;
+      const t = event.target;
+      const tag = t && t.tagName ? String(t.tagName).toLowerCase() : '';
+      if (tag === 'input' || tag === 'select' || tag === 'textarea' || (t && t.isContentEditable)) return;
+      if (event.key === 'Escape') { event.preventDefault(); this.close(); return; }
+      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!step) return;
+      const tiles = (this.groups || []).flatMap((g) => g.tiles);
+      const at = tiles.findIndex((x) => x.id === this.picked.id);
+      const next = tiles[at + step];
+      if (at < 0 || !next) return;
+      event.preventDefault();
+      this.showSide(next);
+      this.reveal(next);
+    };
   }
 
   el(tag, cls, text) { const n = this.doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
@@ -111,6 +135,9 @@ export class GalleryPart {
     const image = images.includes(kept.image) ? kept.image : images[0];
     const names = (this.deps.columns() || []).map((c) => c.name);
     const groupBy = names.includes(kept.groupBy) ? kept.groupBy : null;
+    const shown = (this.deps.shown ? this.deps.shown() : names) || [];
+    const caption = names.includes(kept.caption) ? kept.caption : (shown.find((n) => n !== image) || null);
+    const order = ORDERS.some(([v]) => v === kept.order) ? kept.order : ORDERS[0][0];
     const root = this.el('div', 'gallery');
     const bar = this.el('div', 'gallery-bar');
     root.append(bar);
@@ -131,6 +158,8 @@ export class GalleryPart {
     };
     bar.append(select(WORDS.groupBy, [['', WORDS.none], ...names.map((n) => [n, n])], groupBy || '', (v) => { this.keep({ groupBy: v || null }); this.render(); }));
     if (images.length > 1) bar.append(select(WORDS.image, images.map((n) => [n, n]), image, (v) => { this.keep({ image: v }); this.render(); }));
+    bar.append(select(WORDS.caption, names.map((n) => [n, n]), caption || '', (v) => { this.keep({ caption: v }); this.render(); }));
+    if (groupBy) bar.append(select(WORDS.order, ORDERS.slice(), order, (v) => { this.keep({ order: v }); this.render(); }));
     const rows = this.deps.rows() || [];
     // the grid holds part of the table: the counts are of the rows it holds, and it says so (lead 10-20)
     const count = this.deps.count ? this.deps.count() : null;
@@ -153,7 +182,7 @@ export class GalleryPart {
     body.append(this.side);
     root.append(body);
     this.mount.replaceChildren(root);
-    this.groups = galleryModel(rows, { groupBy, image, valueOf: this.deps.valueOf });
+    this.groups = galleryModel(rows, { groupBy, image, caption, order, valueOf: this.deps.valueOf });
     this.scroller = scroller;
     this.canvas = canvas;
     this.drawn = new Map();
@@ -162,6 +191,26 @@ export class GalleryPart {
     this.place();
     if (was) { scroller.scrollTop = was; this.place(); }
     if (this.picked) this.showSide(this.picked);
+  }
+
+  /** The side panel shut and the keys let go. */
+  close() {
+    this.picked = null;
+    if (this.side) this.side.hidden = true;
+    if (this.doc.removeEventListener) this.doc.removeEventListener('keydown', this.onKey);
+    this.render();
+  }
+
+  /** The tile's line scrolled into the view when it is out of it. */
+  reveal(tile) {
+    const item = this.layout.items.find((it) => it.kind === 'tiles' && it.tiles.some((x) => x.id === tile.id));
+    if (!item || !this.scroller) return;
+    const top = this.scroller.scrollTop || 0;
+    const height = this.scroller.clientHeight || 0;
+    if (item.top < top || item.top + item.height > top + height) {
+      this.scroller.scrollTop = Math.max(0, item.top - HEAD_PX);
+      this.place();
+    }
   }
 
   soon() {
@@ -209,8 +258,8 @@ export class GalleryPart {
       tile.type = 'button';
       tile.dataset.row = String(t.id);
       const at = this.el('span', 'gallery-tile__img');
-      tile.append(at, this.el('span', 'gallery-tile__cap', t.ref));
-      tile.title = t.ref;
+      tile.append(at, this.el('span', 'gallery-tile__cap', t.caption));
+      tile.title = t.caption === t.ref ? t.ref : `${t.caption} · ${t.ref}`;
       new Thumb(at, { doc: this.doc, loader: this.deps.loader }).show([t.ref], TILE_PX);
       tile.addEventListener('click', () => this.showSide(t));
       line.append(tile);
@@ -221,6 +270,7 @@ export class GalleryPart {
   /** A tile pressed: its picture large, its row's values, and the way back to the grid's row. */
   showSide(t) {
     this.picked = t;
+    if (this.doc.addEventListener) { this.doc.removeEventListener && this.doc.removeEventListener('keydown', this.onKey); this.doc.addEventListener('keydown', this.onKey); }
     for (const node of this.canvas ? this.canvas.querySelectorAll('.gallery-tile') : []) node.classList.toggle('is-picked', node.dataset.row === String(t.id));
     const side = this.side;
     side.hidden = false;
@@ -230,15 +280,15 @@ export class GalleryPart {
     show.addEventListener('click', () => this.deps.showRow(t.id));
     const close = this.el('button', 'glass-btn gallery-side__close', WORDS.close);
     close.type = 'button';
-    close.addEventListener('click', () => { this.picked = null; side.hidden = true; this.render(); });
+    close.addEventListener('click', () => this.close());
     head.append(show, close);
     const big = this.el('img', 'gallery-side__img');
     big.alt = t.ref;
     const url = this.deps.loader.url(t.ref, LARGE_PX);
     this.deps.loader.want(url, (ok) => { if (this.picked === t) big.src = ok ? url : ''; });
     const values = this.el('dl', 'gallery-side__values');
-    for (const c of this.deps.columns() || []) {
-      values.append(this.el('dt', '', c.name), this.el('dd', '', textOf(this.deps.valueOf(t.row, c.name))));
+    for (const name of (this.deps.shown ? this.deps.shown() : (this.deps.columns() || []).map((c) => c.name)) || []) {
+      values.append(this.el('dt', '', name), this.el('dd', '', textOf(this.deps.valueOf(t.row, name))));
     }
     side.replaceChildren(head, big, values);
   }

@@ -3,8 +3,8 @@
 import { GalleryPart, WORDS } from './gallery.js';
 import { ImageLoader } from './image_thumb.js';
 import { IMAGE_TYPE } from './grid_image_column.js';
-import { appendNextRows, gridRowsInOrder, holdsWholeTable, showGridRow } from './grid.js';
-import { state } from './state.js';
+import { appendNextRows, gridRowsInOrder, holdsWholeTable, isSystemColumn, showGridRow } from './grid.js';
+import { state, visibleRangeColIds } from './state.js';
 import './gallery.css';
 
 export function seatGallery({ doc = document, base = '', storage = null, loadAll = () => {} } = {}) {
@@ -19,6 +19,8 @@ export function seatGallery({ doc = document, base = '', storage = null, loadAll
   const part = new GalleryPart(host, {
     doc, base, storage, loader: new ImageLoader({ base }),
     table: () => state.currentTable || '', columns, rows: gridRowsInOrder,
+    // the grid's own answers: the columns it shows, less its system ones (owner 10-20 ⑤)
+    shown: () => visibleRangeColIds().filter((name) => !isSystemColumn(name) && columns().some((c) => c.name === name)),
     valueOf: (row, column) => row.cell(column),
     count: () => (counted && counted.matchCount) || null, whole: holdsWholeTable,
     // the grid's own next step: a page added while scrolling, Load All while paging

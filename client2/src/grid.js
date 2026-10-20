@@ -286,6 +286,10 @@ export function updateGridSortState() {
   }
 }
 
+/** The system columns every table carries - drawn read-only, not filtered (row_id is), and left out of the gallery's values. */
+const SYSTEM_COLUMNS = Object.freeze(['created_at', 'updated_at', 'row_id', 'id', 'updated_by']);
+export const isSystemColumn = (col) => SYSTEM_COLUMNS.includes(col);
+
 /** The rows the grid holds, in its filter's and sort's order - what the gallery shows (lead 77ffe5cb6: no rows of its own).
  *  `cell(column)` is the grid's own text of that cell (its column's getter and formatter - row_id · created_at live beside `data`). */
 export function gridRowsInOrder() {
@@ -849,7 +853,7 @@ export function buildColumnDefs() {
   const retired = ['is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
   const shown = state.currentColumns.filter((col) => !retired.includes(col));
   const columnDefs = shown.map((col, index) => {
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
+    const isSystem = isSystemColumn(col);
     // ROW_ID alone among them is filterable (owner 10-02, lead e67ef53f3): finding a row by its id
     // is the question. It stays read-only, and the other system columns stay unfilterable.
     const filterable = !isSystem || col === 'row_id';
