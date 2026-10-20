@@ -201,7 +201,7 @@ def test_apply_drops_concurrently_and_idempotently(monkeypatch):
     out = mig.drop_redundant_indexes(conn, apply=True)
     assert len(out["dropped"]) == 1
     assert conn.sql[0] == ('DROP INDEX CONCURRENTLY IF EXISTS '
-                           'public."ix_cell_sources_id"')
+                           '"ix_cell_sources_id"')   # the current schema's (총괄 10-20)
     # and the drop is CONFIRMED against the catalogue, not assumed from the return code
     assert any("pg_index" in s for s in conn.sql[1:])
 
@@ -260,7 +260,7 @@ def test_the_drop_quotes_the_identifier(monkeypatch):
     monkeypatch.setattr(mig, "index_exists", lambda c, n: (False, False))
     conn = RecordingConn()
     mig.drop_redundant_indexes(conn, apply=True)
-    assert conn.sql == ['DROP INDEX CONCURRENTLY IF EXISTS public."ix_Foo_Id"']
+    assert conn.sql == ['DROP INDEX CONCURRENTLY IF EXISTS "ix_Foo_Id"']
 
 
 def test_quote_ident_escapes_embedded_quotes():

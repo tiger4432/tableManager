@@ -47,7 +47,7 @@
 >          «… business-key unique index after the merge: {'built': [['<표>', 'created', …]] …}»   세워짐
 >          «… 'refused': [['<표>', n]]»   아직 n 행이 키를 나눠 가짐 -> 1 을 다시. 대개 skipped 행
 >          «… 'built': [['<표>', 'blocked', …]]»   표를 쥔 세션을 기다리다 멈춤 -> 스케줄러 다음 시작이 세움
->          «… not built: the builder works on PostgreSQL's public schema only»   public 밖에서 돌림
+>          «… not built: the builder works on PostgreSQL only»   PostgreSQL 이 아닌 곳에서 돌림
 > 확인     1 의 두 SELECT 다시 — 중복 0 줄 · uq_bk_<표> 한 줄
 > 급할 때  소급 탭의 × — 쪽 사이에서 멈춤, 이미 합친 쪽은 그대로, 인덱스는 안 세움
 > 되돌리기  git revert 82a32f8a3 -> 런처 재기동 (합친 행은 안 돌아옴)

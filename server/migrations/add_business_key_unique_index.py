@@ -192,7 +192,12 @@ def unique_index_name(table: str) -> str:
 
 
 def tables_with_business_key(conn) -> list:
-    """Every public table that actually has the column, asked of the live catalogue.
+    """Every table of the current schema that actually has the column, asked of the live catalogue.
+
+    The CURRENT schema (총괄 10-20), not 'public': production's is public; under a scratch schema's search path a
+    pinned 'public' counted and built on public's table of the same name. Every catalogue question here asks
+    `current_schema()`, and a statement names its table or index unqualified - the search path finds it in that
+    schema first, since the question found it there.
 
     Not read from `table_config.json`: config declares intent, and this migration must
     act on what the database HAS. A table declared but never created, or created under
@@ -203,7 +208,7 @@ def tables_with_business_key(conn) -> list:
         FROM information_schema.columns c
         JOIN information_schema.tables t
           ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.column_name = :col
           AND t.table_type = 'BASE TABLE'
         ORDER BY c.table_name
@@ -232,7 +237,7 @@ def existing_unique_index(conn, table: str):
         JOIN pg_class i ON i.oid = x.indexrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
         JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = x.indkey[0]
-        WHERE n.nspname = 'public'
+        WHERE n.nspname = current_schema()
           AND c.relname = :t
           AND x.indisunique
           AND x.indpred IS NULL
@@ -258,7 +263,7 @@ def index_exists(conn, name: str):
         FROM pg_class i
         JOIN pg_namespace n ON n.oid = i.relnamespace
         JOIN pg_index x ON x.indexrelid = i.oid
-        WHERE n.nspname = 'public' AND i.relname = :n
+        WHERE n.nspname = current_schema() AND i.relname = :n
     """), {"n": name}).first()
     return (True, bool(row[0])) if row else (False, False)
 
@@ -276,18 +281,19 @@ def duplicate_census(conn, table: str, sample: int = 5) -> dict:
     this is a one-shot operator action, not a request path.
     """
     t0 = time.time()
+    where = quote_ident(table)
     n, nbk = conn.execute(text(
-        f'SELECT count(*), count({BK_COLUMN}) FROM public."{table}"')).first()
+        f'SELECT count(*), count({BK_COLUMN}) FROM {where}')).first()
     groups, dup_rows = conn.execute(text(f'''
         SELECT count(*), coalesce(sum(c), 0) FROM (
-            SELECT {BK_COLUMN}, count(*) AS c FROM public."{table}"
+            SELECT {BK_COLUMN}, count(*) AS c FROM {where}
             WHERE {BK_COLUMN} IS NOT NULL
             GROUP BY {BK_COLUMN} HAVING count(*) > 1
         ) s''')).first()
     keys = []
     if groups:
         keys = [r[0] for r in conn.execute(text(f'''
-            SELECT {BK_COLUMN} FROM public."{table}"
+            SELECT {BK_COLUMN} FROM {where}
             WHERE {BK_COLUMN} IS NOT NULL
             GROUP BY {BK_COLUMN} HAVING count(*) > 1
             ORDER BY count(*) DESC LIMIT :k'''), {"k": sample}).fetchall()]
@@ -352,7 +358,7 @@ def build_index(conn, table: str, name: str) -> tuple:
     raise" would ship exactly the silent non-enforcement this migration exists to end.
     """
     ddl = (f'CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS {quote_ident(name)} '
-           f'ON public.{quote_ident(table)} ({BK_COLUMN})')
+           f'ON {quote_ident(table)} ({BK_COLUMN})')
     try:
         conn.execute(text(ddl))
     except Exception as e:  # duplicates that appeared between census and build land here
@@ -409,7 +415,7 @@ JOIN pg_am amd ON amd.oid = d.relam
 JOIN pg_index xp ON xp.indrelid = xd.indrelid AND xp.indisprimary
 JOIN pg_class p ON p.oid = xp.indexrelid
 JOIN pg_am amp ON amp.oid = p.relam
-WHERE n.nspname = 'public'
+WHERE n.nspname = current_schema()
   AND NOT xd.indisunique
   AND NOT xd.indisprimary
   AND xd.indisvalid
@@ -493,8 +499,7 @@ def drop_redundant_indexes(conn, apply: bool, write_conn=None) -> dict:
             print(f"  would drop {r['index']:44s} ({size_mb:8.1f} MB)  == {r['pk_index']}")
             continue
         try:
-            wconn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS public."
-                               + quote_ident(r["index"])))
+            wconn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS " + quote_ident(r["index"])))
         except Exception as e:
             failed.append(dict(r, error=str(e).strip().splitlines()[0]))
             print(f"  !! FAILED   {r['index']}: {failed[-1]['error']}")
@@ -648,7 +653,7 @@ def _report_section1(results: list, apply: bool) -> dict:
               f"{r['surplus']} surplus rows. The index was NOT attempted here and the "
               f"rest of the run continued.")
         print(f"   Offending keys (top {len(r['sample'])}): {r['sample']}")
-        print(f"   Inspect:  SELECT {BK_COLUMN}, count(*) FROM public.\"{r['table']}\" "
+        print(f"   Inspect:  SELECT {BK_COLUMN}, count(*) FROM \"{r['table']}\" "
               f"GROUP BY 1 HAVING count(*) > 1 ORDER BY 2 DESC;")
     for r in invalid:
         print(f"\n!! REFUSED (invalid leftover) {r['table']}: an index named "

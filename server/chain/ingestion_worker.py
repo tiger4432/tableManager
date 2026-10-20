@@ -3907,7 +3907,8 @@ def _build_unique_index_waiting(bind, uq, table, name):
     try:
         try:
             if conn.execute(text("SELECT count(*) FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
-                                 "WHERE c.relname = :n AND NOT i.indisvalid"), {"n": name}).scalar():
+                                 "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = current_schema() "
+                                 "AND c.relname = :n AND NOT i.indisvalid"), {"n": name}).scalar():
                 conn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS %s" % uq.quote_ident(name)))
             verdict, detail = uq.build_index(conn, table, name)
         except Exception as e:                                          # the leftover's drop waited past it

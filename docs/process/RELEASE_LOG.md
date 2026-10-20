@@ -456,7 +456,7 @@
 - **화면에서** — 어드민 소급 탭 «Fold stored values into the declared spelling» → 표 → count → run. count 가 «N row key(s) change» 와 «N row(s) fold onto another row's key - A key(s) held by more than one row as stored, B key(s) met by spelling» 를 말한다.
 - **합치기** — 쓰기의 키 충돌 병합과 같은 함수(`crud.merge_into_key_holders`). 층 · 이력 줄이 남는 행으로 옮고 합쳐진 행은 지워진다. 남는 행의 칸은 합쳐진 행의 값으로 덮이고, 사람이 고친 칸은 남는 행 값이 남는다. 바뀐 행 · 지운 행의 사건이 원장으로 간다. 되돌릴 수 없다.
 - **그대로인 것** — 글자 칸 키(«001» 은 «001»). 날짜 칸 키. 칸 값이 저장 키를 더는 적지 않는 행(«skipped» 로 센다).
-- **필요한 조건** — git pull · 런처 재기동. 인덱스는 PostgreSQL 의 public 스키마에서만 세운다(다른 스키마에서 돌리면 «not built» 한 줄).
+- **필요한 조건** — git pull · 런처 재기동. 인덱스는 PostgreSQL 에서, 그 실행이 도는 스키마(운영은 public)의 표에 세운다.
 
 ## 2026-10-20 · 숫자 키의 철자 하나 — «1 / 1.0 / 001 / 1.50» 이 키로 견주는 모든 자리에서 같은 키
 

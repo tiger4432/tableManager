@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """총괄 49792d3f6 A (소유자 「체인은 뭐 10 분째 스타팅이냐」): the business-key index build waits for the transactions on its
 table no longer than its cap; then the leftover is dropped and the session holding the table is named. The build is
-the migration's own (`build_index`) aimed at the test schema's table - the product's DDL names public."""
+the migration's own (`build_index`) aimed at the test schema's table."""
 import logging
 import os
 import sys

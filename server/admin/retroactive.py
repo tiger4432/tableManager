@@ -1534,19 +1534,15 @@ def _run_fold_written_notation(db, params, log, control=None):
 
 
 def _build_key_index_after_merge(db, table, log):
-    """The start-up builder for this one table. It reads and builds in the public schema only: elsewhere (a scratch
-    schema) it would act on public's table of the same name, so it is not called there."""
-    from sqlalchemy import text
+    """The start-up builder for this one table, in the run's schema - on PostgreSQL, the one it builds on."""
     from sqlalchemy.orm import sessionmaker
     from chain.ingestion_worker import _ensure_business_key_unique_indexes_sync
 
     bind = db.get_bind()
-    schema = db.execute(text("SELECT current_schema()")).scalar() if bind.dialect.name == "postgresql" else None
     db.commit()                    # the run's read ends - a CONCURRENTLY build waits for every session on the table
-    if schema != "public":
-        log(f"[notation] '{table}' business-key unique index not built: the builder works on PostgreSQL's public "
-            f"schema only (here {bind.dialect.name} {schema or ''})")
-        return {"skipped": f"{bind.dialect.name} {schema or ''}".strip()}
+    if bind.dialect.name != "postgresql":
+        log(f"[notation] '{table}' business-key unique index not built: the builder works on PostgreSQL only")
+        return {"skipped": bind.dialect.name}
     index = _ensure_business_key_unique_indexes_sync(sessionmaker(bind=bind), only=[table])
     found = {kind: [list(entry) for entry in index[kind]] for kind in index}
     log(f"[notation] '{table}' business-key unique index after the merge: {found}")

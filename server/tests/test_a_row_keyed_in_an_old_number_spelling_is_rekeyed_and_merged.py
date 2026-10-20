@@ -135,9 +135,8 @@ def test_old_number_spellings_are_rekeyed_and_merged_row_path(sqlite_db):
     _check(sqlite_db, _scenarios(sqlite_db))
 
 
-def test_a_run_that_merged_builds_the_tables_key_index_where_the_builder_reads(sqlite_db, monkeypatch):
-    """The Admin op, after a merge: the start-up builder for this one table - on PostgreSQL's public schema. Elsewhere
-    it is not called (it reads public only, and would act on public's table of the same name)."""
+def test_a_run_that_merged_calls_the_key_index_builder_on_postgresql_only(sqlite_db, monkeypatch):
+    """The Admin op, after a merge: the start-up builder for this one table - on PostgreSQL; on SQLite a line."""
     from admin import retroactive
     from chain import ingestion_worker
 
@@ -148,14 +147,13 @@ def test_a_run_that_merged_builds_the_tables_key_index_where_the_builder_reads(s
     out = retroactive._run_fold_written_notation(sqlite_db, {"table": NUM}, log=lambda line: None)
     assert out["rows_merged"] == 4 and out["unique_index"] == {"skipped": "sqlite"} and called == []
     monkeypatch.setattr(sqlite_db.get_bind().dialect, "name", "postgresql")
-    monkeypatch.setattr(sqlite_db, "execute", lambda *a, **k: type("R", (), {"scalar": lambda self: "public"})())
     assert retroactive._build_key_index_after_merge(sqlite_db, NUM, lambda line: None) == \
         {"built": [], "refused": [], "invalid": []}
     assert called == [[NUM]]
 
 
-@pytest.mark.pg
-def test_old_number_spellings_are_rekeyed_and_merged_by_value(pg_engine):
+@pytest.fixture(name="pg_db")
+def fixture_pg_db(pg_engine):
     from conftest import PG_TEST_SCHEMA, retire_dynamic_model
 
     saved = dict(crud.TABLE_CONFIG)
@@ -180,8 +178,7 @@ def test_old_number_spellings_are_rekeyed_and_merged_by_value(pg_engine):
     db = sessionmaker(autocommit=False, autoflush=False, bind=pg_engine)()
     try:
         assert db.execute(text("SELECT current_schema()")).scalar() == PG_TEST_SCHEMA
-        assert db.get_bind().dialect.name in replay.FOLD_BY_VALUE_DIALECTS      # the by-value page
-        _check(db, _scenarios(db))
+        yield db
     finally:
         db.rollback()
         db.close()
@@ -190,3 +187,41 @@ def test_old_number_spellings_are_rekeyed_and_merged_by_value(pg_engine):
         crud.TABLE_CONFIG.update(saved)
         for name in CFG:
             retire_dynamic_model(name)
+
+
+@pytest.mark.pg
+def test_old_number_spellings_are_rekeyed_and_merged_by_value(pg_db):
+    assert pg_db.get_bind().dialect.name in replay.FOLD_BY_VALUE_DIALECTS      # the by-value page
+    _check(pg_db, _scenarios(pg_db))
+
+
+@pytest.mark.pg
+def test_the_key_index_is_built_after_the_merge_in_the_schema_the_run_reads(pg_db):
+    """총괄 10-20 ③: the builder asks the connection's current schema (public in production). Here the scratch schema:
+    refused while «7» · «9» are held twice, built on the scratch table after the Admin op's merge - and public's
+    business-key unique indexes are the same before and after."""
+    from admin import retroactive
+    from chain import ingestion_worker
+    from conftest import PG_TEST_SCHEMA
+
+    count_uq = ("SELECT n.nspname, c.relname, x.indisvalid FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE x.indisunique AND c.relname LIKE 'uq_bk_%' "
+                "AND n.nspname IN ('public', :s) ORDER BY 1, 2")
+    public_before = [r for r in pg_db.execute(text(count_uq), {"s": PG_TEST_SCHEMA}).fetchall() if r[0] == "public"]
+    _scenarios(pg_db)
+    pg_db.commit()
+    before = ingestion_worker._ensure_business_key_unique_indexes_sync(
+        sessionmaker(bind=pg_db.get_bind()), only=[NUM])
+    assert before["refused"] == [(NUM, 2)] and before["built"] == [], before     # a second «7» and «9»
+    out = retroactive._run_fold_written_notation(pg_db, {"table": NUM}, log=lambda line: None)
+    assert out["rows_merged"] == 4 and [entry[:2] for entry in out["unique_index"]["built"]] == [[NUM, "created"]], out
+    after = pg_db.execute(text(count_uq), {"s": PG_TEST_SCHEMA}).fetchall()
+    assert [r for r in after if r[0] == PG_TEST_SCHEMA and r[1] == "uq_bk_" + NUM] == \
+        [(PG_TEST_SCHEMA, "uq_bk_" + NUM, True)], after
+    assert [r for r in after if r[0] == "public"] == public_before
+    again = ingestion_worker._ensure_business_key_unique_indexes_sync(sessionmaker(bind=pg_db.get_bind()), only=[NUM])
+    assert again == {"built": [], "refused": [], "invalid": []}, again                  # it is seen as there
+    with pytest.raises(Exception, match="uq_bk_" + NUM):                         # the index holds the key now
+        pg_db.execute(text("INSERT INTO %s (row_id, business_key_val, unit_no, payload) VALUES ('x1', '1', 1, 'dup')"
+                           % NUM))
+    pg_db.rollback()
