@@ -1,0 +1,63 @@
+# MATRIX TEXT -> (x, y, value) ROWS. HAND-COPY THIS FILE to:
+#
+#     <ASSY_DATA_ROOT>/ingestion_workspace/<table>/scripts/matrix_text_parser.py
+#     (server/ingestion_workspace/<table>/scripts/ when ASSY_DATA_ROOT is not set)
+#
+# and edit the three constants below. The table declares the three output columns.
+#
+# The file:     the first line holds the x values; every line after it is a y value and then one value per x.
+#               The top-left corner cell is dropped when the first line is as long as the longest data line
+#               (or when it is blank). A blank value makes no row. A line with more values than x values
+#               refuses the file. Values go on as written - the table's column types convert them.
+# A file this plugin does not take goes on to the table's standard parser unless the table says
+# "std_parse": false in table_config.json.
+import fnmatch
+
+from pipeline_base import BasePipelineParser
+
+#: File names this plugin takes - one pattern, case ignored ("*" for every file).
+FILE_PATTERN = "*.txt"
+#: "auto" - a tab if the first line has one, else a comma if it has one, else spaces. Or "\t" / "," / " ".
+#: A tab or a comma keeps a blank cell in its place; spaces cannot say a blank cell (a run of spaces is one).
+DELIMITER = "auto"
+#: The three output column names: the x value, the y value, the value.
+COLUMNS = ("x", "y", "value")
+
+
+def _delimiter(first_line):
+    if DELIMITER != "auto":
+        return DELIMITER
+    return "\t" if "\t" in first_line else "," if "," in first_line else " "
+
+
+def _cells(line, delimiter):
+    if delimiter == " ":
+        return line.split()
+    return [cell.strip() for cell in line.split(delimiter)]
+
+
+class MatrixTextParser(BasePipelineParser):
+    """A matrix text file -> one row a non-blank value: {x, y, value}."""
+
+    @classmethod
+    def match(cls, file_path: str) -> bool:
+        return fnmatch.fnmatch(cls.get_basename(file_path).lower(), FILE_PATTERN.lower())
+
+    def parse(self, file_path: str) -> list[dict]:
+        with open(file_path, encoding="utf-8-sig") as f:
+            lines = [(number, line.rstrip("\r\n")) for number, line in enumerate(f, 1) if line.strip()]
+        if not lines:
+            return []
+        delimiter = _delimiter(lines[0][1])
+        xs = _cells(lines[0][1], delimiter)
+        body = [(number, _cells(line, delimiter)) for number, line in lines[1:]]
+        if xs and (not xs[0] or len(xs) == max((len(cells) for _, cells in body), default=0)):
+            xs = xs[1:]
+        x_name, y_name, value_name = COLUMNS
+        rows = []
+        for number, cells in body:
+            y, values = cells[0], cells[1:]
+            if len(values) > len(xs):
+                raise ValueError(f"line {number}: {len(values)} values for {len(xs)} x values")
+            rows += [{x_name: xs[i], y_name: y, value_name: value} for i, value in enumerate(values) if value]
+        return rows
