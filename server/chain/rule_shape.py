@@ -260,6 +260,9 @@ def as_chain_rule(internal: dict) -> dict:
         derived = join_wake_columns(derive.get("join") or {})
         if derived:
             out["trigger_columns"] = derived
+        # a gathering join recounts the key a value row left - a deletion included (lead 10-20, the gap fill's cell)
+        if join_into.gathers(out["params"]):
+            out[chain_bindings.ALLOW_DELETE_TRIGGER_KEY] = True
         # 🔴 [S-278, 소유자 2026-09-16] A JOIN RUNS LIKE ANY OTHER CHAIN RULE — ON THE
         # TRIGGER PATH. It used to stand `follow_up: True`, which put it on the paced lap
         # instead, and the owner's ruling is that the join is not a follow-up: the outbox
@@ -479,6 +482,7 @@ def companion_rules(internal: dict) -> list:
     target_key = [str(pair["left"]) for pair in (derive.get("join") or {}).get("on") or ()
                   if isinstance(pair, dict) and pair.get("left")]
     companion.pop("trigger_columns", None)
+    companion.pop(chain_bindings.ALLOW_DELETE_TRIGGER_KEY, None)     # a target row's deletion feeds no key
     # `on.require` is about the SOURCE rows this half never receives (총괄 49052cbdd).
     for key in chain_bindings.ROW_GATE_KEYS:
         companion.pop(key, None)
@@ -781,6 +785,10 @@ def expand_declaration(declaration, table_config=None,
         blank = join_into.blank_refusal((internal.get("derive") or {}).get("join") or {})
         if blank:
             return ([], "%s: %s" % (name, blank), unread)
+        gathered = join_into.take_refusal((internal.get("derive") or {}).get("join") or {}, internal.get(KEY_CELL),
+                                          (internal.get("on") or {}).get("table"))
+        if gathered:
+            return ([], "%s: %s" % (name, gathered), unread)
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,

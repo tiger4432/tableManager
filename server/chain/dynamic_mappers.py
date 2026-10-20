@@ -67,7 +67,7 @@ def _join(db, payload, rule=None):
     """
     from chain import join_into
 
-    return join_into.propose(db, rule, _row_ids(payload))
+    return join_into.propose(db, rule, _row_ids(payload), join_into.old_keys(rule, payload))
 
 
 
