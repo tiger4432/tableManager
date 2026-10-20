@@ -4521,7 +4521,7 @@ def _virtual_join_right_keys(db: Session, table_name: str):
         # is in effect, so there is no uniqueness to protect. Failing the write here would
         # turn a config problem into an outage.
         logger.error(f"[JoinUnique] could not load declarations for "
-                     f"'{table_name}', no row is refused: {e}")
+                     f"'{table_name}', no row is refused: {e}", exc_info=True)
         return []
 
 

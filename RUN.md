@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **«[JoinUnique] could not load declarations … unhashable type: 'dict'» — 조인 키에 표기 규칙이 걸린 선언 (총괄, 소유자 10-20)** — git pull · 런처 재기동
+>
+> ```
+> 원인     조인 키 칸에 notation_rules 가 걸리고 key.unique 인 선언이 있으면, 쓰기 가드가 그 선언을 읽다가 터졌다
+>          -> 쓰기 배치마다 선언 파일을 다시 읽고 pg_index 를 묻고 ERROR 한 줄 · 조인 유일성 쓰기 가드가 «모든 표»에서 꺼져 있었다
+> 바뀜     그 ERROR 줄이 사라지고, 선언은 프로세스당 한 번 읽는다
+> 🔴 재기동 뒤  조인 오른쪽 표에 «한 배치 안» 같은 (접힌) 조인 키를 쓰는 행 둘이 오면 둘 다 건너뛴다 — 지금까지 이 가드가 꺼져 있던 동안은 안 하던 일
+>          볼 줄: «[JoinUnique] <규칙> … 같은 오른쪽 키(…)를 쓰는 행 N 개가 «한 배치 안»에 있어 «모두» 건너뜁니다»
+>          찾기: Select-String -Path server\server.log, server\chain_worker.log -Pattern "\[JoinUnique\]"
+> 그래도   «could not load declarations» 가 다시 나오면 그 줄 아래 traceback 의 마지막 File 줄을 보낸다(이제 같이 찍힌다)
+> 되돌리기  git revert <착지> -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **조인 유일 인덱스 «자동 점검 실패» 경고에 traceback (총괄, 소유자 줄 «unhashable type: 'dict'»)** — git pull · 런처 재기동
 >
 > ```

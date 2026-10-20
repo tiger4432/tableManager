@@ -69,6 +69,49 @@ def _target(name, table=TABLE, columns=None):
 # ⓐ 「적재당 한 번」 — 배치 2..N 은 아무것도 안 읽는다
 # ---------------------------------------------------------------------------
 
+def test_a_folded_join_key_is_learned_once_and_refuses_its_duplicates(monkeypatch, tmp_path, caplog):
+    """A join key column with notation rules (lead 10-20, the owner's line «[JoinUnique] could not load declarations for
+    '<table>', no row is refused: unhashable type: 'dict'»): its folds are rule dicts, and the loader's identity hashed
+    them - so the load never stood, every batch read the declarations again, and no duplicate was refused."""
+    import json
+    import logging
+
+    import notation_norm
+    from chain import ingestion_worker, join_into, join_key_index
+    from database import schemas
+
+    left = "w652_left"
+    monkeypatch.setattr(crud, "TABLE_CONFIG", dict(crud.TABLE_CONFIG, **{
+        left: {"business_key": "lk", "column_types": {"lk": "string", "job": "string", "lot": "string"}},
+        TABLE: {"business_key": "job", "column_types": {"job": "string", "lot": "string"}}}))
+    declared = tmp_path / "notation_rules.json"
+    declared.write_text(json.dumps({"columns": {TABLE: {"job": {"rules": {"case": "upper"}}}}}), encoding="utf-8")
+    monkeypatch.setattr(notation_norm, "NOTATION_RULES_PATH", str(declared))
+    notation_norm.reset_cache()
+    rule = {"name": "w652_join", "mapper": join_into.JOIN_INTO_MAPPER, "trigger_table": left, "target_table": left,
+            "key": {"unique": True},
+            "params": {"right_table": TABLE, "on": [{"left": "job", "right": "job"}], "take": ["lot"]}}
+    loads = []
+    monkeypatch.setattr(ingestion_worker, "loaded_chain_rules", lambda: loads.append(1) or [dict(rule)])
+    monkeypatch.setattr(join_key_index, "unique_index_covering", lambda db, table, columns, folds=None: "uq_w652")
+
+    def batch():
+        return schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(business_key_val=key, updates={"job": key, "lot": "L"}) for key in ("cl-1", "CL-1")])
+
+    try:
+        with caplog.at_level(logging.ERROR, logger=crud.logger.name):
+            first = crud.refuse_virtual_join_duplicates(None, TABLE, batch())
+            second = crud.refuse_virtual_join_duplicates(None, TABLE, batch())
+    finally:
+        notation_norm.reset_cache()
+
+    assert "could not load declarations" not in caplog.text, caplog.text
+    assert loads == [1], "the declarations were read %d times" % len(loads)
+    assert isinstance(synthesis.right_keys_for(None, TABLE)[0][2][0], dict), "the fold is a rule dict - the case this measures"
+    assert sorted(r["row"] for r in first) == ["CL-1", "cl-1"] and len(second) == 2
+
+
 def test_the_second_batch_asks_nothing(monkeypatch):
     probes = []
     monkeypatch.setattr(synthesis, "declared_unique_targets",

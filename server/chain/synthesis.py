@@ -477,7 +477,10 @@ def right_keys_for(db, table_name: str) -> list:
                 #    reported under two rule names - 「한 사실, 두 문장」. The index seat
                 #    already folds this way for the same reason (asking twice probes
                 #    `pg_index` twice and reports one index as two).
-                shape = (table, tuple(columns), tuple(folds or ()))
+                # 🔴 THE INDEX'S NAME IS THE IDENTITY, as at the warmup seat (lead 10-20): a tuple of the
+                #    folds hashed their notation-rule dicts, raised, and the load never stood - every batch
+                #    re-read the file and probed pg_index, and no write gate refused a duplicate.
+                shape = join_key_index.required_index_name(table, columns, folds)
                 if shape in seen:
                     continue
                 if not join_key_index.unique_index_covering(
