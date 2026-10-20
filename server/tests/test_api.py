@@ -52,7 +52,34 @@ def test_put_batch_update(client):
     assert mutated_row["data"]["EQP_ID"]["is_overwrite"] is True
 
 
-def test_chained_ingestion(client, db_session, monkeypatch):
+#: The rule's mapper, carried by the test (총괄 10-20): the shipped rule names `mappers.production_mapper`, and
+#: server/mappers/* is gitignored - the box's own file is in no fresh checkout.
+PRODUCTION_MAPPER = '''
+from mapper_sdk import payloads_to_df
+
+
+def reserve_materials_batch_df(db, payloads):
+    df = payloads_to_df(payloads)
+    if "model_name" not in df.columns or "target_qty" not in df.columns:
+        return {"updates": []}
+    df = df.dropna(subset=["model_name", "target_qty"])
+    return {"updates": [{"business_key_val": "INV_%s" % row["model_name"],
+                         "updates": {"stock_qty": row["target_qty"] * 10, "part_no": "INV_%s" % row["model_name"]},
+                         "source_name": "chain_ingestion", "updated_by": "chain_worker"}
+                        for _, row in df.iterrows()], "silent": False}
+'''
+
+
+def test_chained_ingestion(client, db_session, monkeypatch, tmp_path):
+    import importlib.util
+    import sys
+
+    carried = tmp_path / "production_mapper.py"
+    carried.write_text(PRODUCTION_MAPPER, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("mappers.production_mapper", str(carried))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setitem(sys.modules, "mappers.production_mapper", module)
     # 1. Trigger Table에 데이터 인제션 시뮬레이션
     from database import models
     import uuid
