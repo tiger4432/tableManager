@@ -102,20 +102,19 @@ CREATE TABLE lot_lineage (
 #: offers one, because it reads its instant from a BASIS and so can never miss an
 #: `occurred_at` column.
 #:
-#: `process_param_num_measure` is the shipped source that gives both, and the two come from
-#: the DECLARATION rather than from anything invented here: its identity is the column
-#: `param_id` (blank -> `no_identity`) and its `occurred_at` is the column `eventtime`
+#: `wafer_process_recipe` is the shipped source that gives both, and the two come from
+#: the DECLARATION rather than from anything invented here: its subject's key is the column
+#: `wafer_id` (blank -> `no_identity`) and its `occurred_at` is the column `eventtime`
 #: (blank -> a missing instant). Two blanks, two reasons, one run.
-PROCESS_PARAM_DDL = """
-CREATE TABLE process_param_num (
-    param_id  TEXT PRIMARY KEY,
-    row_id    TEXT,
+#: ⚰️ It was `process_param_num_measure`, a view source c193986a8 took out of the sample.
+WAFER_PROCESS_DDL = """
+CREATE TABLE wafer_process (
+    row_id    TEXT PRIMARY KEY,
+    proc_id   TEXT,
     wafer_id  TEXT,
     step      TEXT,
-    param     TEXT,
-    value     DOUBLE PRECISION,
-    role      TEXT,
-    eqp_id    TEXT,
+    recipe_id TEXT,
+    mat_type  TEXT,
     eventtime TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now()
 )
@@ -149,38 +148,37 @@ def _seed(connection, rows):
     connection.commit()
 
 
-def _seed_process_param(connection, rows):
-    """Seed `process_param_num`. A row per measurement, one molecule each."""
+def _seed_wafer_process(connection, rows):
+    """Seed `wafer_process`. A row per process step, one molecule each."""
     with connection.cursor() as cursor:
-        cursor.execute("TRUNCATE process_param_num")
+        cursor.execute("TRUNCATE wafer_process")
         for index, r in enumerate(rows):
             cursor.execute(
-                "INSERT INTO process_param_num (param_id, row_id, wafer_id, step, param, "
-                "value, role, eqp_id, eventtime) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (r["param_id"], f"p{index}", r.get("wafer_id"), r.get("step"),
-                 r.get("param"), r.get("value"), r.get("role"), r.get("eqp_id"),
-                 r.get("eventtime")))
+                "INSERT INTO wafer_process (row_id, proc_id, wafer_id, step, recipe_id, "
+                "eventtime) VALUES (%s,%s,%s,%s,%s,%s)",
+                (f"p{index}", r["proc_id"], r.get("wafer_id"), r.get("step"),
+                 r.get("recipe_id"), r.get("eventtime")))
     connection.commit()
 
 
-def param(param_id, *, wafer_id="WF-1", step="CMP", name="pressure", value=1.5,
-          role="measured", eqp_id="EQP-9", eventtime="2026-05-03T02:17:00+00:00"):
-    """One `process_param_num` row. Blank `param_id` or `eventtime` makes it refusable."""
-    return {"param_id": param_id, "wafer_id": wafer_id, "step": step, "param": name,
-            "value": value, "role": role, "eqp_id": eqp_id, "eventtime": eventtime}
+def process(proc_id, *, wafer_id="WF-1", step="CMP", recipe_id="RCP-1",
+            eventtime="2026-05-03T02:17:00+00:00"):
+    """One `wafer_process` row. Blank `wafer_id` or `eventtime` makes it refusable."""
+    return {"proc_id": proc_id, "wafer_id": wafer_id, "step": step, "recipe_id": recipe_id,
+            "eventtime": eventtime}
 
 
 #: Two good rows, one with no identity, one with no instant: two reasons, one run.
 #:
-#: 🔴 THE BLANK IS `wafer_id`, NOT `param_id`, AND THAT DISTINCTION IS THE WHOLE FIXTURE.
-#: `param_id` is this source's identity AND its cursor AND its order_by, so blanking it is
+#: 🔴 THE BLANK IS `wafer_id`, NOT `row_id`, AND THAT DISTINCTION IS THE WHOLE FIXTURE.
+#: `row_id` is this source's identity AND its cursor AND its order_by, so blanking it is
 #: refused at the BASE FRAME - `driver identity/group_by value is missing` - which
 #: aborts the whole batch before molecules exist and is counted under no reason at all.
 #: `wafer_id` is an entity KEY the molecule check reads (`_required_entity_columns`), so
 #: blanking it refuses ONE molecule, by name, and the rest of the batch still lands.
-PARAM_ROWS = [param("P-1"), param("P-2")]
-PARAM_NO_IDENTITY = param("P-3", wafer_id="")
-PARAM_NO_INSTANT = param("P-4", eventtime=None)
+PROCESS_ROWS = [process("P-1"), process("P-2")]
+PROCESS_NO_IDENTITY = process("P-3", wafer_id="")
+PROCESS_NO_INSTANT = process("P-4", eventtime=None)
 
 
 def _seed_lot_lineage(connection, rows):
@@ -269,7 +267,7 @@ def pg():
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
             conn.execute(text(LOT_LINEAGE_DDL))
-            conn.execute(text(PROCESS_PARAM_DDL))
+            conn.execute(text(WAFER_PROCESS_DDL))
             conn.execute(text(DESTINATION_INVENTORY_DDL))
         # 🔴 [총괄 f8f9eaa46] The follow-up writes its receipt through the product's write path
         # into `audit_logs`. Without it here the unqualified INSERT fell through the search
@@ -305,7 +303,7 @@ def ledger(pg):
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.LEDGER_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.CURSOR_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.ROW_REF_TABLE} CASCADE")
-                cursor.execute("TRUNCATE process_param_num")
+                cursor.execute("TRUNCATE wafer_process")
                 cursor.execute("TRUNCATE destination_inventory")
             connection.commit()
             _seed(connection, BASE_ROWS)
@@ -910,11 +908,11 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     two DIFFERENT reasons, in one run, each counted, with the rest of the batch landing.
 
     ⚠️ BOTH REASONS COME FROM THE DECLARATION, not from anything invented here.
-    `process_param_num_measure` is a shipped row source whose identity is a column and whose
+    `wafer_process_recipe` is a shipped row source whose subject key is a column and whose
     `occurred_at` is a column, so it can miss either - and `dt_job` cannot miss the second,
     because it reads its instant from a BASIS.
 
-    🔴 AND THE BLANK IS `wafer_id`, NOT `param_id`. `param_id` is identity AND cursor AND
+    🔴 AND THE BLANK IS `wafer_id`, NOT `row_id`. `row_id` is identity AND cursor AND
     order_by, so blanking it is refused at the BASE FRAME - "driver identity/group_by value
     is missing", as the identity - which aborts the whole batch before any molecule exists and is counted
     under no reason at all. An entity KEY is what the molecule check reads, so blanking that
@@ -923,13 +921,13 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     """
     connection = ledger.raw_connection()
     try:
-        _seed_process_param(connection,
-                            PARAM_ROWS + [PARAM_NO_IDENTITY, PARAM_NO_INSTANT])
+        _seed_wafer_process(connection,
+                            PROCESS_ROWS + [PROCESS_NO_IDENTITY, PROCESS_NO_INSTANT])
     finally:
         connection.close()
 
     with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
-        result = run(ledger, source="process_param_num_measure")
+        result = run(ledger, source="wafer_process_recipe")
 
     assert result["rows_read"] == 4
     assert result["refused_total"] == 2, (
@@ -1044,14 +1042,14 @@ def test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row(ledger):
 
     connection = ledger.raw_connection()
     try:
-        _seed_process_param(connection, PARAM_ROWS + [PARAM_NO_IDENTITY, PARAM_NO_INSTANT])
+        _seed_wafer_process(connection, PROCESS_ROWS + [PROCESS_NO_IDENTITY, PROCESS_NO_INSTANT])
     finally:
         connection.close()
 
-    result = run(ledger, source="process_param_num_measure")
+    result = run(ledger, source="wafer_process_recipe")
     assert result["refused_total"] == 2, result
 
-    row = read_cursor_row(ledger, "process_param_num_measure")
+    row = read_cursor_row(ledger, "wafer_process_recipe")
     assert row is not None, (
         "the refusal write must create the row too: since S-76 nothing else does, so an "
         "UPDATE would land nowhere for a source declared today")

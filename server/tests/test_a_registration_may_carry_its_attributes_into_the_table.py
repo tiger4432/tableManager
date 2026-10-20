@@ -124,6 +124,12 @@ def ledger(pg_engine):
         schema.ensure_partition(connection, OCCURRED_AT)
         yield connection
     finally:
+        # the rows this file wrote leave with the test: one left standing breaks the narrow rule
+        # `test_an_install_that_predates_attributes_is_widened_once` puts back (gate batch 4)
+        connection.rollback()
+        with connection.cursor() as cursor:
+            cursor.execute(f"DELETE FROM {schema.LEDGER_TABLE} WHERE source_raw_ref LIKE %s", (RAW_REF + "%",))
+        connection.commit()
         connection.close()
 
 
@@ -133,8 +139,11 @@ def ledger(pg_engine):
 #: only the WHOLE lane saw (another file leaves a row with that spelling standing) and
 #: a read-back that returned the other test's row. Returned rather than named twice,
 #: because a second literal anywhere puts the shared spelling back.
+RAW_REF = "registration-attributes-"
+
+
 def insert(connection, object_kind, object_payload, predicate="register"):
-    raw_ref = "raw-" + uuid.uuid4().hex
+    raw_ref = RAW_REF + uuid.uuid4().hex
     with connection.cursor() as cursor:
         cursor.execute(
             f"INSERT INTO {schema.LEDGER_TABLE} "

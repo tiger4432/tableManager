@@ -776,11 +776,9 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
             )
 
 
-#: The one line the candidate list needs beside it.  A name that is not on the list yet is
-#: NOT a wall: `/admin/scripts/code` reads and writes Python under `mappers/`, and
-#: `implementations._descendants()` picks a newly written class up on the next start.
-NEW_IMPLEMENTATION_NOTE = (
-    "New implementation: write mappers/ledger_v2_*.py in /admin/scripts/code · listed after a server restart")
+#: The one line the candidate list needs beside it: where a name not on it yet is written. `_declarations`
+#: imports `mappers/ledger_v2_*` on every plan, so a new class is listed on the next one - no restart.
+NEW_IMPLEMENTATION_NOTE = "New one: mappers/ledger_v2_*.py in /admin/scripts/code"
 
 
 def _registered_ids(declarations: Mapping[tuple[str, int], type]) -> tuple[str, ...]:
@@ -883,7 +881,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         base = f"bundle.sources.{source_id}.map"
         yield from _implementation_clause_fields(
             base, mapper, mappers, mapper_ids, "Mapper implementation",
-            "The first one runs on the declaration alone, with no code · " + NEW_IMPLEMENTATION_NOTE)
+            NEW_IMPLEMENTATION_NOTE)
         # `emits` was a `derived` row here until 2026-08-21 -- set equality in BOTH
         # directions, zero degrees of freedom.  A field the screen fills and never asks is
         # still a field the file carries, so this round removed the declaration instead:
@@ -1420,7 +1418,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any], time_s
             state="answered" if relation else "missing", tier=TIER_CONSTRAINED,
             value=relation, declared=relation if relation else _ABSENT,
             candidates=tuple(sorted(catalog, key=str)),
-            note=f"Candidates come from {PHYSICAL_CATALOG_FILENAME}. Declare a missing one there first.",
+            note=f"Missing one: declare it in {PHYSICAL_CATALOG_FILENAME}",
             reshapes=True,
         )
         # 🔴 [총괄 261311e71] A CELL THE FILE LEAVES OUT IS SHOWN WITH THE PRODUCT'S ANSWER, from
