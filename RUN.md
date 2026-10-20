@@ -15,7 +15,7 @@
 > 볼 것    파일 적재 화면의 /admin/file-ingestion/logs 응답에 transaction_id — 이 착지 전 행 · 건너뛴 파일은 비어 있다
 >          이 착지 전에 남은 체크포인트(tx 없음)를 이어 읽으면 그 파일만 새 tx 로 시작한다(앞 쪽은 옛 tx)
 >          폴더로 묶기는 디스크를 묻지 않는다 — 이 박스 sqlite 1만 파일(폴더 1만) 응답 0.11~0.13 s
-> 되돌리기  git revert 1ca62c943 1107c5a8e -> 런처 재기동 -> (칸까지 지우려면) psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_transaction_id_reverse.sql
+> 되돌리기  git revert 22edf8101 1ca62c943 1107c5a8e -> 런처 재기동 -> (칸까지 지우려면) psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_transaction_id_reverse.sql
 > ```
 >
 > ---
