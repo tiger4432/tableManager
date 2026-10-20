@@ -4527,7 +4527,7 @@ good」이라 적는다. 모양은 여기, 판정은 로더. 두 자리가 같�
 | `server/parsers/pipeline_base.py` | **109** | docstring 없음(pandas/numpy 임포트로 시작) — 파서 파이프라인 기반. ⚠️ **한 줄도 실측하지 못했다** |
 | 🆕 `server/parsers/matrix_text_parser.py.sample` | **63** | 10-20 `6c971612f` 행렬 텍스트 표본 플러그인 — 복사해 `.py` 로 두고 상수 셋(`FILE_PATTERN` · `DELIMITER` · `COLUMNS`)만 고친다. 와쳐가 파일마다 scripts/ 를 다시 읽는다. 플러그인이 안 받는 파일은 `"std_parse": false` 가 아니면 표준 파서로 |
 | `server/utils/payload_helper.py` | **38** | docstring 없음 — JSON 페이로드 헬퍼. ⚠️ **〃** |
-| 🆕 `server/error_said.py` (10-20 `c166afaa5`) | **28** | 잡은 오류를 «어디서» 터졌는지와 함께 한 줄로 — `where(e)` = «p.py:7 in parse»(감싼 예외를 거슬러 원인의 마지막 프레임, 안 터진 예외면 None) · `told(e)` = «<문장, 없으면 타입> (p.py:7 in parse)». 표준 라이브러리만 — 서버 모든 패키지가 import. 넓은 except 가 한 줄만 남기던 자리는 `told(e)` 를 싣고, 그 로그는 루프 밖이면 `exc_info=e`(루프 안은 told 만). 남긴 자리(일부러 한 줄)는 시험 `test_every_broad_catch_says_where_it_broke.py` 의 KEPT 목록 — 넓은 except 가 한 줄로 돌아가면 빨강 |
+| 🆕 `server/error_said.py` (10-20 `c166afaa5`) | **28** | 잡은 오류를 «어디서» 터졌는지와 함께 한 줄로 — `where(e)` = «p.py:7 in parse»(감싼 예외를 거슬러 원인의 마지막 프레임, 안 터진 예외면 None) · `told(e)` = «<문장, 없으면 타입> (p.py:7 in parse)». 표준 라이브러리만 — 서버 모든 패키지가 import. 넓은 except 가 한 줄만 남기던 자리는 `told(e)` 를 싣고, 그 로그는 루프 밖이면 `exc_info=e`(루프 안은 told 만). 남긴 자리(일부러 한 줄)는 시험 `test_every_broad_catch_says_where_it_broke.py` 의 KEPT 목록 — 넓은 except 가 한 줄로 돌아가면 빨강. 🆕 `1ae7d0b76` 아무것도 안 남기고 삼키던 넓은 except 는 경고 한 줄 «<하던 일>: told(e)» + `exc_info` — 일부러 조용한 자리는 같은 시험의 `QUIET_KEPT`(파일마다 까닭별 수: probe · cleanup · parse · import · elsewhere · hot · stream · logging), 그 밖에서 조용해지면 빨강. 안쪽에 겹친 except 의 낱말은 그 except 의 것으로 센다 |
 
 
 ### 서버 — 마이그레이션·맵퍼 (이름만)
