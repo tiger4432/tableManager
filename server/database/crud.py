@@ -5162,10 +5162,12 @@ def _say_a_slow_flush(db, table_model, table_name, rows, seconds):
 
     try:
         relation = getattr(getattr(table_model, '__table__', None), 'name', None) or table_name
-        with db.begin_nested():     # a failed read rolls back to here, never the batch's transaction (QA 10-20)
-            kinds = db.execute(sql_text(
-                "SELECT am.amname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_am am ON am.oid = c.relam"
-                " WHERE x.indrelid = to_regclass(:relation)"), {"relation": '"%s"' % relation}).scalars().all()
+        from session_contract import in_savepoint
+
+        # in a savepoint: a failed read rolls back to it, never the batch's transaction (QA 10-20)
+        kinds = in_savepoint(db, "slow flush line", lambda: db.execute(sql_text(
+            "SELECT am.amname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid JOIN pg_am am ON am.oid = c.relam"
+            " WHERE x.indrelid = to_regclass(:relation)"), {"relation": '"%s"' % relation}).scalars().all())
         said = "%d index(es), %d GIN" % (len(kinds), sum(1 for k in kinds if k == 'gin'))
     except Exception as exc:  # noqa: BLE001 - the line is said without its indexes
         said = "indexes unread: %s" % type(exc).__name__

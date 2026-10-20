@@ -277,11 +277,19 @@ def test_the_scheduler_s_poll_reads_its_rows_before_it_closes_the_session(monkey
 
 def test_a_slow_flush_is_said_with_its_table_s_indexes_and_a_fast_one_is_not(caplog):
     """Owner 10-16 (1,000 rows, 20 s): a flush past SLOW_FLUSH_SECONDS says its table, rows and indexes - one line."""
-    import contextlib
+    class _Savepoint:
+        def rollback(self):
+            pass
+
+        def commit(self):
+            pass
 
     class _Db:
+        def in_transaction(self):
+            return True
+
         def begin_nested(self):
-            return contextlib.nullcontext()
+            return _Savepoint()
 
         def execute(self, *a, **k):
             raise RuntimeError("no catalogue here")
