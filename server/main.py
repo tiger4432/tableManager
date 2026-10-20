@@ -7314,19 +7314,23 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
     where = f" under {folder}" if not crud.is_blank_value(folder) else ""
     return {"status": "preview" if preview else "success", "folder": folder, **said,
             "message": "%d waiting file(s)%s %s" % (said["count"], where, "to put back" if preview else "put back")
+                       + (" · %d made by the re-read %s" % (said["removed"], "to remove" if preview else "removed")
+                          if said["removed"] else "")
                        + (" · %d waiting without a mark, left" % said["unmarked"] if said["unmarked"] else "")}
 
 
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                                       preview: bool = False, statuses: str = None,
-                                      since: str = None, until: str = None,
+                                      since: str = None, until: str = None, table: str = None,
                                       db: Session = Depends(get_db)):
     """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다.
 
     `folder` 면 그 폴더 «아래» FAILED 전부 · `preview` 면 쓰지 않고 몇 개인지와 바로 아래 폴더별 수만.
     `statuses`(쉼표, 없으면 FAILED) · `since`/`until`(인입 시각)이면 들어간 파일도 — 지금 파서로 다시 읽기
-    (총괄 a4d135a06: 은퇴한 소급 «Re-read files» 의 일이 이 문이다)."""
+    (총괄 a4d135a06: 은퇴한 소급 «Re-read files» 의 일이 이 문이다).
+    `table` (with `folder`): the files under the folder that table takes, picked from the disk - read into that table
+    whichever table read them before (총괄 10-20, 소유자 「어드민 파일 리트라이는 돌았던 테이블로만 도네」)."""
     import os
     import asyncio
     import json
@@ -7340,24 +7344,44 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
     # 🔴 [총괄 fab40ed69 ②, 소유자 「폴더 아래 선택해서 한꺼번에」] ONE SELECTION FOR THE PREVIEW AND
     #    THE RETRY, so the number the screen shows is the number that runs.
     by_folder_asked = log_id is None and not crud.is_blank_value(folder)
-    picked = reread.select_logs(db, states, folder=folder if by_folder_asked else None,
-                                since=start, until=end, log_id=log_id)
+    into = None if crud.is_blank_value(table) else str(table).strip()
+    chosen = None
     missing = []
-    if states != reread.RETRY_STATUSES:
-        # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
-        # Failed files keep today's answer.
-        picked, missing = reread.split_missing(reread.one_per_file(picked))
+    if into is not None:
+        # 총괄 10-20: into a table - by the disk, as that table's handler takes files; the poller reads them there
+        refused = (f"table {into!r} is not declared" if into not in crud.TABLE_CONFIG
+                   else "a re-read into a table needs a folder" if not by_folder_asked else None)
+        if refused:
+            raise HTTPException(status_code=400, detail=refused)
+        if os.getenv("DECOUPLED") != "True":
+            raise HTTPException(status_code=409, detail="a re-read into a table needs the watcher process")
+        try:
+            chosen = reread.select_files(db, into, folder)
+        except reread.RereadRefused as refused_walk:
+            raise HTTPException(status_code=409, detail=str(refused_walk))
+        picked = [(log, rel) for log, rel, _path in chosen["picked"]]
+    else:
+        picked = reread.select_logs(db, states, folder=folder if by_folder_asked else None,
+                                    since=start, until=end, log_id=log_id)
+        if states != reread.RETRY_STATUSES:
+            # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
+            # Failed files keep today's answer.
+            picked, missing = reread.split_missing(reread.one_per_file(picked))
     failed_logs = [log for log, _rel in picked]
     by_state = {}
     for log in failed_logs:
-        by_state[log.status] = by_state.get(log.status, 0) + 1
+        state = log.status if log is not None else "NEW"     # a file the table has no row for (into a table)
+        by_state[state] = by_state.get(state, 0) + 1
     said = {"folder": folder, "count": len(failed_logs), "by_state": dict(sorted(by_state.items())),
             "by_folder": reread.by_top_folder(picked) if by_folder_asked else {},
             "missing": len(missing), "missing_files": [log.filename for log, _rel in missing[:5]],
             "limit": reread.max_files()}
-    what = "failed file" if states == reread.RETRY_STATUSES else "file"
+    if chosen is not None:
+        said.update(table=into, walked=chosen["walked"], not_taken=chosen["not_taken"],
+                    not_taken_files=chosen["not_taken_files"])
+    what = "failed file" if states == reread.RETRY_STATUSES and chosen is None else "file"
     if preview or (by_folder_asked and not picked):      # a preview never writes
-        where = f" under {folder}" if by_folder_asked else ""
+        where = (f" under {folder}" if by_folder_asked else "") + (f" for {into}" if into else "")
         return {"status": "preview" if preview else "success", **said,
                 "message": (f"{len(failed_logs)} {what}(s){where}" if failed_logs
                             else f"No {what}{where}")}
@@ -7370,6 +7394,8 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
 
     # 만약 프로세스 분리(DECOUPLED) 모드라면 상태만 PENDING_RETRY로 변경하고 즉시 반환합니다.
     if os.getenv("DECOUPLED") == "True":
+        if chosen is not None:
+            failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"], folder=folder)
         reread.mark_for_reread(db, failed_logs, folder=folder if by_folder_asked else None)
         return {"status": "success", **said,
                 "message": f"{len(failed_logs)} file(s) handed to the watcher"}

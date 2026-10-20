@@ -843,6 +843,21 @@ def _source_takes(options: dict, file_path: str, rel_path: str) -> bool:
     return any(_glob_regex(p).fullmatch(rel_path) for p in patterns)
 
 
+def source_taking(specs, file_path: str):
+    """(the external source that takes `file_path`, its path below that source's root), or None - the deepest root
+    when two take it. THE one judgement: the handler's read (`external_source_context`) and the re-read into a table
+    (`ingestion.reread.select_files`) ask it, so what a preview counts is what the handler reads."""
+    matches = []
+    for spec in specs:
+        rel_path = _safe_relative_path(file_path, spec["root"])
+        if rel_path is not None and _source_takes(spec.get("options") or {}, file_path, rel_path):
+            matches.append((len(spec["root"]), spec, rel_path))
+    if not matches:
+        return None
+    _length, spec, rel_path = max(matches, key=lambda item: item[0])
+    return spec, rel_path
+
+
 def validate_external_source_specs(settings: dict, table_config: dict,
                                    workspace_base: str):
     """Validate ``external_sources`` and return ``(valid_specs, errors)``.
@@ -1754,15 +1769,10 @@ class IngestionHandler(FileSystemEventHandler):
         if source_id is not None:
             spec = self._external_sources.get(source_id)
             specs = (spec,) if spec is not None else ()
-        matches = []
-        for spec in specs:
-            rel_path = _safe_relative_path(file_path, spec["root"])
-            if rel_path is not None and _source_takes(
-                    spec.get("options") or {}, file_path, rel_path):
-                matches.append((len(spec["root"]), spec, rel_path))
-        if not matches:
+        taken = source_taking(specs, file_path)
+        if taken is None:
             return None
-        _length, spec, rel_path = max(matches, key=lambda item: item[0])
+        spec, rel_path = taken
         return {
             "source_id": spec["source_id"],
             "source_root": spec["root"],
