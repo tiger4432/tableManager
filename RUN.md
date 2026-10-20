@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **파일 기록 찾기 · 묶기 · 표마다 수 (총괄 e390600d6 2·3)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     GET /admin/file-ingestion/logs ?table= &status= &name= &folder= &since= &until= &group=folder|reason
+>          GET /admin/file-ingestion/tables   표마다 total · by_status · last_at
+>          새 인덱스 ix_file_ingestion_logs_folder (폴더 «로 시작» 찾기 · 다시 읽기의 폴더 거르기)
+> 볼 줄     server\auto_update.log  «[Indexes] 1 declared index(es) the database lacks …: ix_file_ingestion_logs_folder on file_ingestion_logs (missing) - building them one at a time»
+>          그다음 같은 이름의 built 줄. 큰 표면 몇 분 (CONCURRENTLY — 쓰기를 막지 않음)
+> 답의 뜻   폴더로 찾기가 느리다 -> 인덱스가 아직 없거나 짓는 중. GET /admin/indexes 에서 그 이름의 state
+>          «not built: build_missing_indexes is off» -> ingestion_settings.json 의 그 칸이 false
+> 되돌리기  git revert bbbea4323 -> 런처 재기동 (인덱스는 남는다 — 지우려면 DROP INDEX CONCURRENTLY ix_file_ingestion_logs_folder)
+> ```
+>
+> ---
+>
 > ## [10-20] **설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는다 (총괄 ab951f09b, 소유자 «ㅇㅇ»)** — git pull · 런처 재기동
 >
 > ```
