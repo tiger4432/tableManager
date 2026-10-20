@@ -18,6 +18,7 @@ logger = get_process_logger("Watcher", "watcher.log")
 from database.database import SessionLocal, engine
 from database import models
 from directory_watcher import WorkspaceWatcher
+from ingestion.activity import path_of
 
 # Initialize dynamic database models
 try:
@@ -150,7 +151,7 @@ def trigger_ws_progress(table_name: str, filename: str, progress: int, processed
     payload = event_constants.progress_event(
         event_constants.PROGRESS_STATUS_RUNNING,
         progress=progress, processed_rows=processed_rows, total_rows=total_rows,
-        table_name=table_name, filename=clean_filename)
+        table_name=table_name, filename=clean_filename, filepath=path_of(filename))
     post_event("/internal/events/broadcast", payload)
 
 def trigger_ws_ingestion_state(state: dict):
@@ -325,7 +326,7 @@ def retry_one(db, log):
         log.status = "FAILED"
         log.error_message = traceback.format_exc()
         db.commit()
-        trigger_ws_file_processed(table_name, log.filename, "FAILED", str(e))
+        trigger_ws_file_processed(table_name, log.filepath or log.filename, "FAILED", str(e))
 
 
 def poll_pending_retries():

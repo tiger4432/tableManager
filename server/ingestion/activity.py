@@ -16,6 +16,7 @@ snapshot() 시 updated_at 기준 TTL 초과 엔트리를 퇴거한다.
 페이로드는 소형 스칼라 필드만 담는다 — 무절단 컬렉션 동봉 금지 교훈(server-pm.md) 준수.
 """
 
+import os
 import threading
 import time
 
@@ -35,8 +36,14 @@ STALE_ENTRY_TTL_SECONDS = 30 * 60
 STALE_QUEUED_TTL_SECONDS = 24 * 60 * 60
 
 
+def path_of(filename):
+    """The full path when the watcher's file slot holds one, else None - the watcher tells its files by full path
+    (총괄 10-20: two voids.json of one table were one line)."""
+    return str(filename) if filename and os.path.isabs(str(filename)) else None
+
+
 class IngestionActivityRegistry:
-    """(table_name, filename) 키의 진행 중 인제션 엔트리 저장소 (스레드 안전)."""
+    """(table_name, 전체 경로) 키의 진행 중 인제션 엔트리 저장소 (스레드 안전). 경로가 없는 통지는 파일 이름이 키."""
 
     def __init__(self, ttl_seconds: int = STALE_ENTRY_TTL_SECONDS,
                  queued_ttl_seconds: int = STALE_QUEUED_TTL_SECONDS):
@@ -46,15 +53,16 @@ class IngestionActivityRegistry:
         self._queued_ttl = queued_ttl_seconds
 
     @staticmethod
-    def _key(table_name, filename):
-        return (str(table_name), str(filename))
+    def _key(table_name, filename, filepath=None):
+        return (str(table_name), str(filepath or filename))
 
-    def _new_entry(self, table_name, filename, lane="normal",
+    def _new_entry(self, table_name, filename, filepath=None, lane="normal",
                    status=event_constants.PROGRESS_STATUS_RUNNING):
         now = time.time()
         return {
             "table_name": table_name,
             "filename": filename,
+            "filepath": filepath,
             "lane": lane,
             "status": status,          # QUEUED | PROCESSING
             "progress": 0,             # 0-100
@@ -76,7 +84,8 @@ class IngestionActivityRegistry:
         status = state.get("status")
         if not table_name or not filename or not status:
             return
-        key = self._key(table_name, filename)
+        filepath = state.get("filepath")
+        key = self._key(table_name, filename, filepath)
         with self._lock:
             if status == "FINISHED":
                 self._entries.pop(key, None)
@@ -85,7 +94,7 @@ class IngestionActivityRegistry:
                 return
             entry = self._entries.get(key)
             if entry is None:
-                entry = self._new_entry(table_name, filename)
+                entry = self._new_entry(table_name, filename, filepath)
                 self._entries[key] = entry
             entry["status"] = status
             if state.get("lane"):
@@ -95,16 +104,17 @@ class IngestionActivityRegistry:
                     entry[field] = state[field]
             entry["updated_at"] = time.time()
 
-    def apply_progress(self, table_name, filename, progress=None, processed_rows=None, total_rows=None):
+    def apply_progress(self, table_name, filename, progress=None, processed_rows=None, total_rows=None,
+                       filepath=None):
         """`file_ingestion_progress` 브로드캐스트 경유 진행률 반영.
         엔트리가 없으면 normal 레인으로 생성 (normal 파일의 유일한 유입 경로)."""
         if not table_name or not filename:
             return
-        key = self._key(table_name, filename)
+        key = self._key(table_name, filename, filepath)
         with self._lock:
             entry = self._entries.get(key)
             if entry is None:
-                entry = self._new_entry(table_name, filename)
+                entry = self._new_entry(table_name, filename, filepath)
                 self._entries[key] = entry
             entry["status"] = event_constants.PROGRESS_STATUS_RUNNING
             if isinstance(progress, (int, float)) and not isinstance(progress, bool):
@@ -115,12 +125,12 @@ class IngestionActivityRegistry:
                 entry["total_rows"] = total_rows
             entry["updated_at"] = time.time()
 
-    def remove(self, table_name, filename):
+    def remove(self, table_name, filename, filepath=None):
         """파일 완료/실패(file-processed) 시 제거 — 멱등."""
         if not table_name or not filename:
             return
         with self._lock:
-            self._entries.pop(self._key(table_name, filename), None)
+            self._entries.pop(self._key(table_name, filename, filepath), None)
 
     def _ttl_for(self, entry) -> int:
         """[QA F1] 상태별 TTL 차등 — QUEUED는 무갱신 장기 대기가 정상이므로 긴 TTL."""

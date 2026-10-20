@@ -602,7 +602,7 @@ async def startup_event():
                 table_name, clean_filename, status, error_msg)
             # [Heavy Lane P1] 완료/실패 시 진행 스냅샷 레지스트리 정리 (멱등)
             try:
-                ingestion_activity_registry.remove(table_name, clean_filename)
+                ingestion_activity_registry.remove(table_name, clean_filename, path_of(filename))
             except Exception as e:
                 logger.warning(f"Failed to clear ingestion activity entry: {e}")
             try:
@@ -1623,7 +1623,7 @@ from admin.audit_cache import audit_cache
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
-from ingestion.activity import registry as ingestion_activity_registry
+from ingestion.activity import path_of, registry as ingestion_activity_registry
 
 @app.get("/audit_logs/recent", response_model=schemas.AuditLogGroupPage)
 def get_recent_audit_logs(response: Response, limit_groups: int = 100,
@@ -7689,6 +7689,7 @@ async def internal_event_broadcast(payload: dict = Body(...)):
                 progress=payload.get("progress"),
                 processed_rows=payload.get("processed_rows"),
                 total_rows=payload.get("total_rows"),
+                filepath=payload.get("filepath"),
             )
         except Exception as e:
             print(f"[Main Server] Failed to update ingestion activity from progress: {e}")
@@ -7732,7 +7733,7 @@ async def internal_event_file_processed(
         table_name, clean_filename, status, error_msg)
     # [Heavy Lane P1] 완료/실패한 파일은 진행 스냅샷에서 제거 (멱등)
     try:
-        ingestion_activity_registry.remove(table_name, clean_filename)
+        ingestion_activity_registry.remove(table_name, clean_filename, path_of(filename))
     except Exception as e:
         print(f"[Main Server] Failed to clear ingestion activity entry: {e}")
     await manager.broadcast(json.dumps(msg))

@@ -392,7 +392,7 @@ def test_file_ingestion_callback_direct(db_session, tmp_path, monkeypatch):
         assert res is True
         assert len(called_back) == 1
         assert called_back[0][0] == "inventory_master"
-        assert called_back[0][1] == "test_direct_callback.csv"
+        assert called_back[0][1] == os.path.abspath(dummy_file_path)   # the full path (총괄 10-20)
         assert called_back[0][2] == "SUCCESS"
         # 폐기된 워크스페이스 config.json을 세우지 않았음을 고정
         assert not os.path.exists(str(workspace_root / "config" / "config.json"))

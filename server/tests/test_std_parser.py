@@ -436,7 +436,7 @@ def test_process_with_retry_std_success_archives_file(tmp_path, fake_table_confi
     events = {"progress": [], "processed": [], "refresh": []}
     ws, handler = _make_workspace(tmp_path)
     handler.on_progress_callback = lambda t, f, pct, done, total: events["progress"].append((pct, done, total))
-    handler.on_file_processed_callback = lambda t, f, status, err: events["processed"].append((f, status, err))
+    handler.on_file_processed_callback = lambda t, f, status, err: events["processed"].append((os.path.basename(f), status, err))
     handler.on_refresh_callback = lambda t, count, logs, total_logs: events["refresh"].append((t, count))
 
     p = _write(ws / "raws" / "drop.csv", "part_no,category,stock_qty\nP-1,Cap,1\nP-2,Res,2\nP-3,Ind,3\n")
@@ -467,7 +467,7 @@ def test_process_with_retry_rejects_missing_bk_to_err(tmp_path, fake_table_confi
 
     events = {"processed": []}
     ws, handler = _make_workspace(tmp_path)
-    handler.on_file_processed_callback = lambda t, f, status, err: events["processed"].append((f, status))
+    handler.on_file_processed_callback = lambda t, f, status, err: events["processed"].append((os.path.basename(f), status))
 
     p = _write(ws / "raws" / "no_bk.csv", "category,stock_qty\nCap,1\n")
     handler.process_with_retry(p, uploader="tester", delay=0.01)
@@ -484,7 +484,7 @@ def test_process_with_retry_empty_file_archives_without_upsert(tmp_path, fake_ta
 
     events = {"processed": []}
     ws, handler = _make_workspace(tmp_path)
-    handler.on_file_processed_callback = lambda t, f, status, err: events["processed"].append((f, status))
+    handler.on_file_processed_callback = lambda t, f, status, err: events["processed"].append((os.path.basename(f), status))
 
     p = _write(ws / "raws" / "empty.csv", "")
     handler.process_with_retry(p, uploader="tester", delay=0.01)
@@ -501,7 +501,7 @@ def test_process_with_retry_skip_count_in_completion_detail(tmp_path, fake_table
 
     events = {"processed": []}
     ws, handler = _make_workspace(tmp_path)
-    handler.on_file_processed_callback = lambda t, f, status, detail: events["processed"].append((f, status, detail))
+    handler.on_file_processed_callback = lambda t, f, status, detail: events["processed"].append((os.path.basename(f), status, detail))
 
     p = _write(ws / "raws" / "mix.csv", "part_no,category\nP-1,Cap\n,Subtotal\n,Note\n")
     handler.process_with_retry(p, uploader="tester", delay=0.01)

@@ -2448,6 +2448,7 @@ class IngestionHandler(FileSystemEventHandler):
         self._notify_ingestion_state({
             "table_name": t_display,
             "filename": filename,
+            "filepath": abs_path,
             "lane": lane,
             "status": "QUEUED",
             "size_bytes": size_bytes,
@@ -2465,7 +2466,7 @@ class IngestionHandler(FileSystemEventHandler):
                 self._heavy_backlog -= 1
             # 선발신한 QUEUED 엔트리 정리 — QUEUED는 장기 TTL(F1)이라 방치 시 고아가 오래 남는다.
             self._notify_ingestion_state({
-                "table_name": t_display, "filename": filename, "status": "FINISHED",
+                "table_name": t_display, "filename": filename, "filepath": abs_path, "status": "FINISHED",
             })
             logger.error(f"[{t_display}] Heavy lane submit failed — falling back inline: {e}")
             return False
@@ -2483,6 +2484,7 @@ class IngestionHandler(FileSystemEventHandler):
                 self._notify_ingestion_state({
                     "table_name": t_display,
                     "filename": filename,
+                    "filepath": abs_path,
                     "lane": lane,  # [QA F4] 분류 실값 (재라우팅 소형 파일은 "normal")
                     "status": "PROCESSING",
                     "size_bytes": size_bytes,
@@ -2505,8 +2507,14 @@ class IngestionHandler(FileSystemEventHandler):
                 self.processing_files.discard(abs_path)
             # 파일 소실 등으로 완료 콜백 없이 반환되는 경로까지 확실히 정리 (수신측 멱등)
             self._notify_ingestion_state({
-                "table_name": t_display, "filename": filename, "status": "FINISHED",
+                "table_name": t_display, "filename": filename, "filepath": abs_path, "status": "FINISHED",
             })
+
+    def _tell_processed(self, t_name, file_path, status, detail=None):
+        """A file's answer, told by its full path - the progress list's key (총괄 10-20: two voids.json of one table
+        were one line, and the one that finished took the other's away)."""
+        if self.on_file_processed_callback:
+            self.on_file_processed_callback(t_name, os.path.abspath(file_path), status, detail)
 
     def _notify_ingestion_state(self, state: dict):
         """진행 상태 통지 — 콜백 미배선/실패는 처리 흐름에 영향을 주지 않는다.
@@ -2634,7 +2642,7 @@ class IngestionHandler(FileSystemEventHandler):
                 dropped = None
                 if has_rows:
                     dropped = self._send_to_upsert(
-                        rows, uploader=uploader, filename=basename,
+                        rows, uploader=uploader, filename=basename, filepath=abs_path,
                         source_name=self._external_cell_source_name(abs_path, parse_meta),
                         skipped_no_key=skipped_no_key,
                         total_rows=total_rows, t_name=t_name,
@@ -2658,8 +2666,7 @@ class IngestionHandler(FileSystemEventHandler):
                     + (f" ({detail})" if detail else "")
                 )
                 self._log_ingestion_success(file_path, dest_path, t_name=t_name, detail=detail)
-                if self.on_file_processed_callback:
-                    self.on_file_processed_callback(t_name, basename, "SUCCESS", detail)
+                self._tell_processed(t_name, abs_path, "SUCCESS", detail)
                 return
             except LockWaitedOut as e:
                 # 총괄 10-07 ③ ㄴ: another session's lock, not this file - so it stays where it
@@ -2671,8 +2678,7 @@ class IngestionHandler(FileSystemEventHandler):
                 self._log_ingestion_record(file_path, file_path, t_name, "FAILED", error_msg,
                                            retry_count=retry)
                 self.waiting_on_a_lock.add(abs_path)
-                if self.on_file_processed_callback:
-                    self.on_file_processed_callback(t_name, basename, "FAILED", error_msg)
+                self._tell_processed(t_name, abs_path, "FAILED", error_msg)
                 return
             except PermissionError:
                 logger.warning(f"[{t_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
@@ -2688,8 +2694,7 @@ class IngestionHandler(FileSystemEventHandler):
                     dest_path = file_path
                 self._record_failure(t_name, signature, basename, dest_path, error_msg, file_stat)
                 self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name)
-                if self.on_file_processed_callback:
-                    self.on_file_processed_callback(t_name, os.path.basename(file_path), "FAILED", str(e))
+                self._tell_processed(t_name, abs_path, "FAILED", str(e))
                 return
 
         error_msg = f"Failed to process file after {retries} attempts: PermissionError (file locked)"
@@ -2701,8 +2706,7 @@ class IngestionHandler(FileSystemEventHandler):
         # so it is deliberately NOT sealed in the ledger: the next sweep must be
         # allowed to try again once the lock is released.
         self._log_ingestion_failure(file_path, dest_path, error_msg, t_name=t_name)
-        if self.on_file_processed_callback:
-            self.on_file_processed_callback(t_name, os.path.basename(file_path), "FAILED", error_msg)
+        self._tell_processed(t_name, abs_path, "FAILED", error_msg)
 
     # ── [P2] 체크포인트 재개 / 시그니처 dedup ────────────────────────────
 
@@ -3019,10 +3023,9 @@ class IngestionHandler(FileSystemEventHandler):
         logger.warning(f"[{t_name}] ⏭️ {reason} — {basename}")
         dest_path = self._archive_file(file_path)
         self._log_ingestion_record(file_path, dest_path or file_path, t_name, "SKIPPED", reason)
-        if self.on_file_processed_callback:
-            # The real status (총괄 69aad666e, reversing the old "SUCCESS" here): the receiver no
-            # longer builds a SUCCESS / failure sentence - the screen reads SKIPPED as skipped.
-            self.on_file_processed_callback(t_name, basename, "SKIPPED", reason)
+        # The real status (총괄 69aad666e, reversing the old "SUCCESS" here): the receiver no
+        # longer builds a SUCCESS / failure sentence - the screen reads SKIPPED as skipped.
+        self._tell_processed(t_name, file_path, "SKIPPED", reason)
         return True
 
     def _plan_checkpoint(self, signature, basename, abs_path, t_name,
@@ -3246,7 +3249,7 @@ class IngestionHandler(FileSystemEventHandler):
             dropped = None
             if has_rows:
                 dropped = self._send_to_upsert(
-                    rows, uploader=uploader, filename=os.path.basename(filepath),
+                    rows, uploader=uploader, filename=os.path.basename(filepath), filepath=os.path.abspath(filepath),
                     source_name=self._external_cell_source_name(filepath, parse_meta),
                     skipped_no_key=skipped_no_key,
                     total_rows=total_rows, t_name=t_name,
@@ -3259,8 +3262,7 @@ class IngestionHandler(FileSystemEventHandler):
             log_entry.status = "SUCCESS"
             log_entry.error_message = detail
             db.commit()
-            if self.on_file_processed_callback:
-                self.on_file_processed_callback(t_name, os.path.basename(filepath), "SUCCESS", detail)
+            self._tell_processed(t_name, filepath, "SUCCESS", detail)
             return True
         except Exception as e:
             import traceback
@@ -3271,8 +3273,7 @@ class IngestionHandler(FileSystemEventHandler):
             log_entry.error_message = error_msg
             log_entry.retry_count += 1
             db.commit()
-            if self.on_file_processed_callback:
-                self.on_file_processed_callback(t_name, os.path.basename(filepath), "FAILED", str(e))
+            self._tell_processed(t_name, filepath, "FAILED", str(e))
             return False
 
     @staticmethod
@@ -3649,7 +3650,7 @@ class IngestionHandler(FileSystemEventHandler):
     def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None,
                         total_rows: int = None, t_name: str = None,
                         table_info: dict = None, checkpoint=None,
-                        source_name: str = None, skipped_no_key: int = 0):
+                        source_name: str = None, skipped_no_key: int = 0, filepath: str = None):
         """파싱된 행 컬렉션을 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다.
 
         rows: list[dict](기존 파이프라인 경로) 또는 이터레이터(std parser 스트리밍 경로).
@@ -3972,7 +3973,8 @@ class IngestionHandler(FileSystemEventHandler):
                     if self.on_progress_callback:
                         progress_pct = min(int((processed_rows / total_rows) * 100), 100) if total_rows else 100
                         try:
-                            self.on_progress_callback(t_name, filename or "unknown", progress_pct, processed_rows, total_rows)
+                            self.on_progress_callback(t_name, filepath or filename or "unknown", progress_pct, processed_rows,
+                                                     total_rows)
                         except Exception as pe:
                             logger.warning(f"Progress callback failed: {pe}")
 

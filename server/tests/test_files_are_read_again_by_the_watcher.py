@@ -126,7 +126,7 @@ def test_a_closed_operations_gate_does_not_hold_it(env, tmp_path, monkeypatch):
 def test_the_watcher_reads_it_and_says_so_once_as_any_file_it_reads(env, monkeypatch):
     said = []
     monkeypatch.setattr(run_watcher, "trigger_ws_file_processed",
-                        lambda table, filename, status, error=None: said.append((table, filename, status)))
+                        lambda table, filename, status, error=None: said.append((table, os.path.basename(filename), status)))
     w = directory_watcher.WorkspaceWatcher(str(env["workspace"]),
                                            on_file_processed_callback=run_watcher.trigger_ws_file_processed)
     w.discover_and_watch()
