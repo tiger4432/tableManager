@@ -1,3 +1,22 @@
+# [구현자 B] + [구현자] **게이트 넷째 묶음 — main 의 기존 빨강 10 은 전부 «코드» 쪽 (B 착지 19f64a033 보고)** (총괄 10-21)
+
+B 표(새 작업 나무 · 박스 설정 0):
+| 시험 | 혼자 | 원인 |
+|---|---|---|
+| ledger_l1_pg 2 | 빨강 | 추적 견본 ledger_config.json.sample 에 process_param_num_measure 소스 없음 |
+| catalogue_kind 1 | 빨강 | /tables/{name}/schema 응답에 column_indexes 칸이 늘었는데 시험 목록은 그대로 |
+| registration_attributes 1 | 빨강 | 같은 파일 앞 시험이 공유 스크래치 원장 표에 남긴 행 (fixture 가 안 비움) |
+| withdrawal_collapsed 2 | 초록 | 앞 시험이 남긴 큐 상태 |
+| ledger_follows 1 | 초록 | 앞 시험이 남긴 체인 이벤트 ledger_state NULL |
+| database_url_config 1 | 초록 | 어느 시험이 DATABASE_URL 을 바꾸고 안 되돌림 (B 가 범인 찾는 중) |
+| config_reload_integrity inv_9_1 | 5 판에 1 빨강 | 시간 흔들림 |
+| collector grid list 상한 | 혼자 초록 | 1500 ms 읽기 마감 — 부하 |
+
+- [구현자 B] e38466810(에이전트 걷기) 착지 «다음». 위 표의 앞 여섯 줄. 「새는 것」은 새는 시험 쪽을 고친다(받는 시험에 방어를 덧대지 않는다). 견본 · 목록이 어긋난 둘은 «어느 쪽이 참인가»를 코드로 정하고 그쪽에 맞춘다
+- [구현자] e6a0bdbbd(저장 즉시 다시 읽기) 안에서 config_reload_integrity inv_9_1 — 그 일이 다시 읽기 기제를 바꾸니 같은 커밋에서 «시간 기다림 → 상태 기다림»으로
+- collector 1500 ms 는 부하 판에서만 — 둘 다 끝난 뒤 다시 재고, 남으면 그때
+게이트: 같은 밑의 새 작업 나무 전체 판에서 위 줄들이 초록 · 혼자 / 스위트 안 둘 다 · 변이는 줄마다 하나
+
 # [구현자] a10d88cd7 보탬 둘 — **브라우저 확장: 지금 보고 있는 페이지(컨플루언스)의 글 구조 · 내용을 뽑아 같은 문서 표로** (소유자 10-21, 총괄)
 
 소유자 말: 「보고 있는 브라우저 화면 html 에서 글 구조 및 내용 뽑아서 서버로 쏴주는 확장 프로그램도 만들어 줄 수 있어? 컨플루언스 (api는 못 쓰게 함)」
