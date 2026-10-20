@@ -1850,6 +1850,9 @@ const FLOORS = new Map([
   // the whole in the tooltip and on the Copy, escaped, on both lists the row draws.
   // 7 -> 8 (lead, after A 6470b773f): the in-progress row carries the same folder line (P7).
   ['file_folder_harness.mjs', 8],
+  // New 2026-10-20 (lead 77ffe5cb6). The main grid's gallery: groups, blank images, the image box, «N of total loaded»,
+  // drawn again from the grid's rows, only the lines in view, the tile's side panel, the choices kept per table.
+  ['gallery_harness.mjs', 12],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

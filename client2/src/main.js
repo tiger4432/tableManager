@@ -103,6 +103,7 @@ import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
 import { OutboxQueuePanel } from './outbox_queue_panel.js';
 import { pollBeat, pollQueue, timedRead, readAgeWords, oneRead } from './queue_poll.js';
 import { onBroadcast } from './websocket.js';
+import { seatGallery } from './gallery_seat.js';
 import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
   startSession,
@@ -178,6 +179,10 @@ async function init() {
       installGlobalListeners();
       installNavLinkCounting(ROUTES.GRID); // covers the nav dropdown anchors in index.html
       setupEventListeners();
+      // the grid's gallery (lead 77ffe5cb6) - its choices kept in this browser
+      let galleryStorage = null;
+      try { galleryStorage = window.localStorage; } catch (e) { galleryStorage = null; }
+      seatGallery({ doc: document, base: API_BASE, storage: galleryStorage, loadAll: () => { if (elements.loadAllBtn) elements.loadAllBtn.click(); } });
       // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
       // `setRelation` 한 번으로 문장이 확정됩니다.
       sourceLabel = initGridSourceLabel();

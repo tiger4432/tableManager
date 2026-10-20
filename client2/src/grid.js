@@ -286,6 +286,34 @@ export function updateGridSortState() {
   }
 }
 
+/** The rows the grid holds, in its filter's and sort's order - what the gallery shows (lead 77ffe5cb6: no rows of its own).
+ *  `cell(column)` is the grid's own text of that cell (its column's getter and formatter - row_id · created_at live beside `data`). */
+export function gridRowsInOrder() {
+  const out = [];
+  if (state.gridApi) state.gridApi.forEachNodeAfterFilterAndSort((node) => { if (node.data) out.push({ id: node.id, data: node.data, cell: (column) => state.gridApi.getCellValue({ rowNode: node, colKey: column, useFormatter: true }) }); });
+  return out;
+}
+
+/** The next page added to the rows held (infinite scrolling's one step) - the grid near its bottom and the gallery's «Load more».
+ *  -> false when there is none to add or one is on its way. */
+export function appendNextRows() {
+  if (state.isLoadingMore || !state.hasMoreData || state.allDataLoaded) return false;
+  state.currentSkip += pageLimit;
+  fetchData(false);
+  return true;
+}
+
+/** That row brought into view and picked in the grid - the gallery's «Show in grid». */
+export function showGridRow(id) {
+  const api = state.gridApi;
+  const node = api && api.getRowNode(String(id));
+  if (!node) return false;
+  api.ensureNodeVisible(node, 'middle');
+  api.deselectAll();
+  node.setSelected(true);
+  return true;
+}
+
 // Update Loaded count slice text
 export function updateLoadedCount(forcedCount = null) {
   if (!state.gridApi) return;
@@ -1540,10 +1568,7 @@ export function renderGrid(initialRows) {
       if (viewport) {
         const threshold = 150;
         const nearBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < threshold;
-        if (nearBottom) {
-          state.currentSkip += pageLimit;
-          fetchData(false);
-        }
+        if (nearBottom) appendNextRows();
       }
     }
   };

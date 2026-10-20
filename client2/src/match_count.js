@@ -81,6 +81,8 @@ const CLOCK = { now: () => Date.now(), every: (fn, ms) => setInterval(fn, ms), s
 export function setMatchCount(el, x, clock = CLOCK) {
   if (!el) return;
   const c = countOf(x);
+  // the count it says, for a reader beside it (the gallery's «312 of 1,200 loaded»)
+  el.matchCount = c;
   const draw = () => { el.textContent = matchCountText(c, clock.now()); };
   draw();
   // A narrow bar (the screen gate at 1280 with the side panel at 500): the tail («rows · 10s ago») gives way, the

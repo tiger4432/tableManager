@@ -315,6 +315,8 @@
   --menu-max-height: 50vh;
   /* The image preview box's side cap (lead 191912ce2) - image_preview.js reads it to keep the box on screen. */
   --image-preview-max: 320px;
+  /* The gallery's tile side - gallery.js TILE_PX asks the server for the same px. */
+  --gallery-tile: 160px;
 
   /* ── Spotfire standard — what both themes share (owner 10-13 «선언 UI 는 스팟파이어 표준으로»; ui-design-system §9) ──
      The properties and filters panels are light here, as Spotfire's (the testbed's dark theme gives them a dark set -

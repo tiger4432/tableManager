@@ -394,6 +394,8 @@
             class="ag-theme-quartz-dark"
             style="height: 100%; width: 100%"
           ></div>
+          <!-- 갤러리의 «자기 div» (총괄 77ffe5cb6): 그리드 자리에 겹쳐 그리드의 행을 썸네일로 -->
+          <div id="gallery-host" class="gallery-host" hidden></div>
           <!-- 상태 바 (PyQt의 Zero-Lag Sync 디자인 반영) -->
           <footer class="grid-footer">
             <div class="status-left">
@@ -434,6 +436,7 @@
                   <option value="pagination">📄 Paging</option>
                   <option value="infinite">♾️ Scroll</option>
                 </select>
+                <button id="gallery-toggle-btn" class="glass-page-btn" type="button" hidden>Gallery</button>
                 <button id="load-all-btn" class="glass-page-btn">
                   📥 Load All
                 </button>
