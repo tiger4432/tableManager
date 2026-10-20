@@ -8,7 +8,10 @@ stand_rows(파일마다 행)를 «이벤트 루프 위에서 동기로» 돈다(
         같은 모양(async def 안의 동기 DB · 디스크)이 이 라우트 «말고» 어디 있는지 전수 세어 표로 — 고치는 건 이 라우트만, 나머지는 보고
 게이트   진짜 서버(프로세스) + 느린 훑기 대역(select_files 가 N 초 잠듦): 훑는 동안 /health 가 1 초 안에 답 · 미리보기 답은 전과 같음
         변이(스레드 빼기) 빨강 · 기존 test_a_reread_goes_into_the_table_asked 초록
-RUN.md   무엇이 바뀌나 · 미리보기가 느린 건 그대로(폴더 크기) · 되돌리기
+덧붙임(소유자 「훑기 그렇게 큰 폴더도 안 했는데」): 작은 폴더도 느린 몫 — select_files 의 select_logs 가 table= 이면 상태 «전부» · 그 표의 로그 «전 이력»을
+        lower(replace(filepath)) LIKE 로 거른다(경로 인덱스 없음, table_name 인덱스 뒤 전부 훑음). 걸은 파일들의 filename IN (…) 으로
+        ix_file_ingestion_logs_filename 을 타고 경로는 파이썬에서 맞춘다 — 답(고른 행)은 같게. 운영 시간은 안 쟀다 — 박스에서 로그 N 만 행 판으로 전 · 후
+RUN.md   무엇이 바뀌나 · 미리보기 시간 전 · 후 · 되돌리기
 ```
 
 ---
