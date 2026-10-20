@@ -2810,6 +2810,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                              f"direction is outgoing or incoming, as a bundle says it")
         expand_keys.add(parts)
     bundles = []
+    #: far type -> the far nodes a bundle left undrawn (총괄 9075f6605): the reach of that type is not complete
+    fan_left = defaultdict(set)
     if seed_type:
         # ⛔ An undeclared type is refused before this, by name, at the route's one seat for a
         # request's names (`trace_router._declared_or_refused`, 총괄 17b6337e4).
@@ -3437,12 +3439,13 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             joined = ({(_bare(e["predicate"]), e["source"], e["target"]) for e in edges.values()}
                       if told else set())
             for key in sorted(told, key=str):
-                drawn = sum(1 for far in (taken[key] if key in over else fanned[key])
-                            if ((_bare(key[1]), key[0], far) if key[2] == "outgoing"
-                                else (_bare(key[1]), far, key[0])) in joined)
-                if key in over or drawn < len(fanned[key]):
+                drawn = {far for far in (taken[key] if key in over else fanned[key])
+                         if ((_bare(key[1]), key[0], far) if key[2] == "outgoing"
+                             else (_bare(key[1]), far, key[0])) in joined}
+                if key in over or len(drawn) < len(fanned[key]):
                     bundles.append({"node": key[0], "predicate": key[1], "direction": key[2],
-                                    "far_type": key[3], "count": len(fanned[key]), "drawn": drawn})
+                                    "far_type": key[3], "count": len(fanned[key]), "drawn": len(drawn)})
+                    fan_left[_bare(key[3])] |= fanned[key] - drawn
 
         # 🔴 FOUR BRANCHES LEFT HERE ON 2026-08-28: finding summaries, finding
         # points, quantities and source events, plus the enrich-action tail. Each expanded a
@@ -3473,9 +3476,13 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                            static_types, direction)
     #: each seed's reach after this page - the ranking's (`_propagation`), handed on in `resume` (MORE)
     reached = {}
+    # 🔴 A BUNDLE CUTS THE REACH OF ITS FAR TYPE (총괄 9075f6605, 소유자 10-20): fanout_limit 20 drew 20 dies of 400 and
+    #    the answer said complete - the far nodes it left that no other step drew are this type's unexpanded too
+    fan_out = {kind: len({far for far in ids if far not in nodes and far not in known}) for kind, ids in fan_left.items()}
     # a continued page says the first page's instant it reads as of; a first page carries it in its `resume`
     more = {"unexpanded": len(left),
-            "reach": {kind: {"complete": not still[kind], "unexpanded": still[kind]} for kind in wanted},
+            "reach": {kind: {"complete": not still[kind] and not fan_out.get(kind),
+                             "unexpanded": still[kind] + fan_out.get(kind, 0)} for kind in wanted},
             "resume": paused["resume"] if left else None, **({"as_of": _instant(as_of)} if resume is not None else {})}
     # 🔴 ONE EDGE IS ONE CLAIM, so the predicate is read off the edge rather than off a node
     # that no longer exists.  This used to walk edge -> claim NODE -> its predicate; claims
@@ -3594,6 +3601,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # -- a contrast computed over a fifth of the controls is the skew `propagation.complete`
     # exists to name.
     if seed_cut: reasons.append("seeds")
+    fan_cut = sum(fan_out.values())
+    if fan_cut: reasons.append("fan-out")
     # 🔴 THE VERDICTS NEED THE CUTS, so they are folded once the budget is known — the same
     # walk, no second pass over the store.
     _absence_verdicts(page, not reasons, reasons[0] if reasons else None)
@@ -3648,7 +3657,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         **({"propagation": _propagation(
             nodes, ordered_edges, seed_signs,
             not (depth_cut or node_cut or edge_cut or claim_cut or action_cut
-                 or seed_cut),
+                 or seed_cut or fan_cut),
             static_types, (resume or {}).get("reach"), reached)} if propagation else {}),
         "walk": {
             "mode": "evidence_graph", "direction": direction,
@@ -3679,6 +3688,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             # 「how much was left out」 is what tells an operator whether to narrow the
             # question. Present only when a description was asked for.
             **({"seeds": seed_cut} if seed_type else {}),
+            # how many far nodes the bundles left undrawn - asked only with `fanout_limit`, as `bundles` (총괄 9075f6605)
+            **({} if fanout_limit is None else {"fan_out": fan_cut}),
             # 🔴 S-98 / ruling 208. Present ONLY when an interval was asked for - a key
             # that is absent says 「this question was not put」, and a 0 would say 「it was put
             # and nothing was excluded」. Those are different answers and a reader cannot
