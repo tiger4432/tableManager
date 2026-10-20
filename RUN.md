@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는다 (총괄 ab951f09b, 소유자 «ㅇㅇ»)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     와처가 3 초마다 표마다 «읽기 모양»을 잰다 — table_config 의 그 표 항목(display_columns · search_columns · source_priority 빼고 전부)
+>          · ingestion_settings 의 그 표 external_sources 항목 · 그 표 scripts\*.py 파일(이름 · 수정 시각 · 크기)
+>          바뀌면 그 표의 FAILED 파일을 Retry failed 와 같은 자리(PENDING_RETRY)로 넘긴다. 와처가 꺼져 있던 동안 고친 것도 기동 때 넘긴다
+> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N failed file(s) handed again»
+>          상한 넘음  «[Watcher] <표>: its reading changed (<무엇>) - N failed files wait - Retry failed by folder (over reread_max_files M)»
+>                    -> 그때는 아무것도 안 넘겼다. 화면의 Retry failed 를 폴더별로 누른다(상한은 ingestion_settings.json reread_max_files)
+>          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
+> 기억     server\config\watcher_reading_stamps.json (표마다 마지막 읽기 모양). 지우면 다음 기동에 모든 표가 «처음 봄» — 넘기지 않고 다시 적는다
+> 처음     이 착지 뒤 첫 기동은 기억이 없어 넘기지 않는다 — 그 전에 고친 것의 실패 파일은 한 번 Retry failed 로
+> 되돌리기  git revert <착지> -> 런처 재기동 (기억 파일은 남아도 아무도 안 읽는다)
+> ```
+>
+> ---
+>
 > ## [10-20] **진행 목록에도 폴더 줄 — 파일 이름 밑 «…/W12/» + Copy (소유자 「다 voids.json 이면 뭐가 뭔지」)** — git pull · 브라우저 새로고침
 >
 > ```

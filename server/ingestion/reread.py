@@ -41,6 +41,14 @@ NOT_MATCHED = "not matched by the source's glob or filename"
 BEING_READ = "being read now"
 
 
+#: The table_config cells that do not change how a table's files are read (lead 10-20 ab951f09b): the schema screen,
+#: search and the layer ranking. Every other cell - today's and tomorrow's - is part of the reading.
+NOT_READING = ("display_columns", "search_columns", "source_priority")
+#: Each table's last reading, kept across the watcher's restarts beside the scheduler's status file - so a plugin fixed
+#: while the watcher was down still hands its table's failed files at the start (lead 10-20).
+READING_STAMPS_FILENAME = "watcher_reading_stamps.json"
+
+
 def max_files():
     """The declared cap, or the default when it is absent or not a positive whole number."""
     from ingestion.settings import read_ingestion_settings
@@ -131,6 +139,78 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
             if rel is not None:
                 picked.append((log, rel))
     return picked
+
+
+def reading_of(table, entry, sources, scripts_dir):
+    """What decides how `table`'s files are read, as {part: stamp} - its table_config entry without `NOT_READING`, its
+    external sources (`table_name` is the table) and each plugin file in its scripts folder (mtime_ns, size)."""
+    import hashlib
+    import json
+
+    def digest(value):
+        return hashlib.sha1(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
+
+    parts = {"table_config": digest({k: v for k, v in (entry or {}).items() if k not in NOT_READING}),
+             "external source": digest(sorted((s for s in sources or () if isinstance(s, dict)
+                                               and s.get("table_name") == table), key=digest))}
+    try:
+        names = sorted(n for n in os.listdir(scripts_dir) if n.endswith(".py") and n != "__init__.py")
+    except OSError:
+        names = []
+    for name in names:
+        try:
+            stat = os.stat(os.path.join(scripts_dir, name))
+        except OSError:
+            continue
+        parts["scripts\\" + name] = [stat.st_mtime_ns, stat.st_size]
+    return parts
+
+
+def hand_on_a_changed_reading(db, table, before, now):
+    """The table's failed files handed to the watcher again (`mark_for_reread`, the retry door's mark) when its reading
+    changed - up to `max_files()`; past it, one line and nothing handed. -> the line said, or None."""
+    changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
+    if not changed:
+        return None
+    logs = [log for log, _rel in select_logs(db, RETRY_STATUSES, table=table)]
+    if not logs:
+        return None
+    what, limit = ", ".join(changed), max_files()
+    if len(logs) > limit:
+        line = ("[Watcher] %s: its reading changed (%s) - %d failed files wait - Retry failed by folder (over %s %d)"
+                % (table, what, len(logs), REREAD_MAX_FILES_KEY, limit))
+        logger.warning(line)
+        return line
+    mark_for_reread(db, logs)
+    line = "[Watcher] %s: its reading changed (%s) - %d failed file(s) handed again" % (table, what, len(logs))
+    logger.info(line)
+    return line
+
+
+def load_reading_stamps():
+    """{table: reading} as last kept, {} when there is none or it cannot be read."""
+    import json
+
+    import paths
+
+    try:
+        with open(paths.config_path(READING_STAMPS_FILENAME), encoding="utf-8") as handle:
+            kept = json.load(handle)
+        return kept if isinstance(kept, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def keep_reading_stamps(stamps):
+    """Write {table: reading} whole (a temporary file, then a replace)."""
+    import json
+
+    import paths
+
+    path = paths.config_path(READING_STAMPS_FILENAME)
+    with open(path + ".tmp", "w", encoding="utf-8") as handle:
+        json.dump(stamps, handle, ensure_ascii=False, sort_keys=True)
+    os.replace(path + ".tmp", path)
 
 
 class RereadRefused(ValueError):

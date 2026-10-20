@@ -329,9 +329,40 @@ def retry_one(db, log):
         trigger_ws_file_processed(table_name, log.filepath or log.filename, "FAILED", str(e))
 
 
+def hear_changed_readings(db, stamps):
+    """🔴 [총괄 10-20 ab951f09b, 소유자 「ㅇㅇ」] Each watched table's reading (`reread.reading_of`) against the one kept:
+    changed -> its failed files handed again through the retry door; a table seen the first time is only kept. A
+    table_config that reads as nothing (absent, or mid-write) is no reading - the tick passes. -> the stamps."""
+    from directory_watcher import load_global_table_config
+    from ingestion import reread
+    from ingestion.settings import read_ingestion_settings
+
+    handlers = list(workspace_watcher.handlers_by_raw_path.values()) if workspace_watcher is not None else []
+    table_config = load_global_table_config() if handlers else {}
+    if not table_config:
+        return stamps
+    sources = read_ingestion_settings().get("external_sources") or []
+    now = {}
+    for handler in handlers:
+        table = handler._resolve_table_name(table_config)
+        if table:
+            now[table] = reread.reading_of(table, table_config.get(table), sources, handler.scripts_path)
+    changed = {table: reading for table, reading in now.items() if stamps.get(table) != reading}
+    for table, reading in changed.items():
+        if table in stamps:
+            reread.hand_on_a_changed_reading(db, table, stamps[table], reading)
+    if changed:
+        stamps = {**stamps, **changed}
+        reread.keep_reading_stamps(stamps)
+    return stamps
+
+
 def poll_pending_retries():
     logger.info("Background retry poller thread started.")
     last_reload_event_id = 0
+    from ingestion import reread
+
+    reading_stamps = reread.load_reading_stamps()
 
     while True:
         # [B1/B2] Liveness beat. This loop does real work every ~3 s (a database
@@ -381,6 +412,13 @@ def poll_pending_retries():
                     except Exception as e:
                         logger.error(f"[Reload] Workspace sync after SYSTEM_RELOAD failed: {e}")
                 
+            # a table whose reading changed hands its failed files here, so the query below reads them this cycle
+            try:
+                reading_stamps = hear_changed_readings(db, reading_stamps)
+            except Exception as reading_error:                         # noqa: BLE001 - the retries below go on
+                db.rollback()
+                logger.warning("[Watcher] the tables' readings were not compared this time: %s", reading_error)
+
             # Reclaim first, so anything given back is visible to the query below
             # in this same cycle rather than waiting a whole extra one.
             reclaim_stranded_claims(db)
