@@ -282,10 +282,13 @@ CARDS = {fn.__name__: fn for fn in (node_types, key_shapes, node_count, meanings
 
 def card(name, sight, limit=None, argument=None):
     """The card `name` for `sight`, or `UnknownCard` naming it and the names there are."""
+    from database import crud
+
     fn = CARDS.get(str(name or "").strip())
     if fn is None:
         raise UnknownCard("unknown card '%s' - one of %s" % (name, ", ".join(CARDS)))
-    return fn(sight, limit, argument)
+    # a number cell reads back as a float (5.0)
+    return fn(sight, None if crud.is_blank_value(limit) else int(float(limit)), argument)
 
 
 def answer_cells(answer, at, signs, declaration, limit=None):

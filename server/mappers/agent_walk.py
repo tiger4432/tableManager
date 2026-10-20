@@ -240,12 +240,12 @@ def _advance(db, rows):
     for row in sorted(rows, key=lambda r: (_number(r.step) or 0, r.kind == END_ROW)):
         if _blank(row.request_id):
             continue
-        cells = {"request_id": row.request_id, "step": _number(row.step)}
+        cells = latest.setdefault(row.request_id, {"request_id": row.request_id})
+        cells["step"] = _number(row.step)
         if row.kind == END_ROW:
             cells["state"] = END
         else:
             cells.update(position=row.position, state=ON_NODE)
-        latest[row.request_id] = cells
     return [schemas.GeneralUpdateItem(updates=cells, source_name=crud.CHAIN_SOURCE) for cells in latest.values()]
 
 
