@@ -150,10 +150,18 @@ def test_the_scheduler_watches_the_config_like_the_other_workers(monkeypatch):
         def join(self):
             said.append("join")
 
+    import threading
+
+    from runtime import maintenance_line
+
     monkeypatch.setattr(config_watcher, "start_config_watcher",
                         lambda engine=None: said.append("start") or Watch())
+    # the real line is a daemon thread with no stop: left running, it polled every later test's declarations flag and
+    # called whatever `load_chain_rules` that test had patched in (a third load in the watcher test, one run in two)
+    monkeypatch.setattr(maintenance_line, "start", lambda factory: said.append("line"))
     monkeypatch.setattr(rau, "init_models", lambda: said.append("models"))
     monkeypatch.setattr(rau.MultiDiscoveryScheduler, "__init__", lambda self, **k: None)
     monkeypatch.setattr(rau.MultiDiscoveryScheduler, "run", lambda self: said.append("run"))
     rau.main()
-    assert said == ["models", "start", "run", "stop", "join"]
+    assert said == ["models", "start", "line", "run", "stop", "join"]
+    assert not [t for t in threading.enumerate() if t.name == "index-statistics-line"], "the line outlives the test"
