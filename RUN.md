@@ -15,7 +15,7 @@
 > 볼 것    파일 적재 화면의 /admin/file-ingestion/logs 응답에 transaction_id — 이 착지 전 행 · 건너뛴 파일은 비어 있다
 >          이 착지 전에 남은 체크포인트(tx 없음)를 이어 읽으면 그 파일만 새 tx 로 시작한다(앞 쪽은 옛 tx)
 >          폴더를 고르고 폴더로 묶으면 파일마다 그 폴더의 실제 경로를 묻는다 — 이 박스 로컬 디스크 1만 파일(폴더 1만) 3.3 s · 공유 폴더는 안 쟀다
-> 되돌리기  git revert <착지> -> 런처 재기동 -> (칸까지 지우려면) psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_transaction_id_reverse.sql
+> 되돌리기  git revert 1107c5a8e -> 런처 재기동 -> (칸까지 지우려면) psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_transaction_id_reverse.sql
 > ```
 >
 > ---
