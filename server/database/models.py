@@ -1484,6 +1484,20 @@ def sync_dynamic_tables_schema(engine):
     inspector = inspect(engine)
     dialect = engine.dialect
 
+    # 🔴 [599fc1988] A DATETIME KEY IS ITS INSTANT IN SQL TOO (`notation_norm.KEY_INSTANT_SQL`). Here because every
+    #    process that compares a key runs this before it compares one - the join's query calls the function, not
+    #    only its index. CREATE OR REPLACE: the same each time, in the schema the connection's path names first.
+    #    The DB-API cursor with no parameters: the body holds `%` and `:=`, which any bound call reads as parameters.
+    if dialect.name == "postgresql":
+        import notation_norm
+
+        try:
+            with engine.begin() as conn:
+                conn.connection.cursor().execute(notation_norm.key_instant_sql())
+        except Exception as err:
+            logger.error("[Schema Sync] %s was not made - a join on a datetime key fails until it is: %s",
+                         notation_norm.KEY_INSTANT_FUNCTION, told(err), exc_info=err)
+
     # 🔴 A DECLARED RELATION MAY BE A VIEW, AND `has_table` SAYS TRUE FOR ONE. Measured
     # 2026-09-04: nine declared "tables" were views, so this function issued 28 ALTERs per
     # boot that CANNOT succeed - ADD COLUMN on a view is `WrongObjectType`, permanently -

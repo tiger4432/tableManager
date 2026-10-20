@@ -280,7 +280,7 @@ def take_targets(rule) -> list:
     return [into for _right, into in _takes(join_spec(rule))]
 
 
-def _folded(column, fold):
+def _folded(column, fold, zone=None):
     """The key expression, folded and NULL-safe - the SAME shape the unique index has.
 
     🔴 `coalesce(..., '')` IS NOT A STYLE CHOICE (S-181, 판정 285·287). NULL equals NULL where
@@ -300,13 +300,30 @@ def _folded(column, fold):
     # String type, so asking it afterwards could only ever answer 「already text」 - which is
     # right today only because the declaration validator refuses a fold on a non-string
     # column. Asking the column is the question we actually mean.
-    return notation_norm.key_expression_sql(column, fold)
+    return notation_norm.key_expression_sql(column, fold, zone)
+
+
+def _zone(table, column):
+    """The zone a key column is compared in when it is declared datetime, else None (`map_overlay.key_time_zone`)."""
+    import map_overlay
+
+    return map_overlay.key_time_zone(table, column)
+
+
+def _key_literal(value, column_type, zone):
+    """A stored key part as a statement value of the column's type - a datetime one as TEXT, so the instant is
+    read in the declared zone by `assy_key_instant` and not in the session's by a cast to the column type."""
+    from sqlalchemy import String, literal
+
+    if zone:
+        return literal(None if value is None else str(value), type_=String)
+    return literal(value, type_=column_type)
 
 
 def _key_types_differ(spec: dict, left_table: str) -> list:
-    """The `on` pairs whose two columns are a number and a not-number - «left.col number · right.col
-    string» each. Such a pair compares the number's text to the other's letters, so 1 and «01» never
-    meet; said, not folded (총괄 88761926b ④)."""
+    """The `on` pairs whose two columns are a number and a not-number, or a datetime and a not-datetime -
+    «left.col number · right.col string» each. Such a pair compares one side's text to the other's letters, so
+    1 and «01» (or one instant and its other spelling) never meet; said, not folded (총괄 88761926b ④ · 599fc1988)."""
     import map_overlay
 
     right_table = str(spec.get("right_table") or "")
@@ -314,7 +331,7 @@ def _key_types_differ(spec: dict, left_table: str) -> list:
     for left, right, _fold in _pairs(spec, left_table):
         types = (map_overlay.declared_column_type(left_table, left),
                  map_overlay.declared_column_type(right_table, right))
-        if (types[0] == "number") != (types[1] == "number"):
+        if (types[0] == "number") != (types[1] == "number") or (types[0] == "datetime") != (types[1] == "datetime"):
             out.append("%s.%s %s · %s.%s %s" % (left_table, left, types[0] or "undeclared",
                                                 right_table, right, types[1] or "undeclared"))
     return out
@@ -414,7 +431,8 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     from database import crud
 
     pairs = _pairs(spec, left_table)
-    left_key = [_folded(getattr(left_model, left_col), fold) for left_col, _r, fold in pairs]
+    left_key = [_folded(getattr(left_model, left_col), fold, _zone(left_table, left_col))
+                for left_col, _r, fold in pairs]
     left = {}
     for where in wheres:
         for row in db.execute(select(left_model.row_id, *left_key).where(where)):
@@ -424,7 +442,8 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     empty = [row_id for row_id, key in left.items() if crud.every_key_part_blank(key)]
     for row_id in empty:
         del left[row_id]
-    right_key = [_folded(getattr(right_model, right_col), fold) for _l, right_col, fold in pairs]
+    right_key = [_folded(getattr(right_model, right_col), fold, _zone(spec.get("right_table"), right_col))
+                 for _l, right_col, fold in pairs]
     takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
     # 🔴 [총괄 2276e38cf] A value row with an empty `require` column is not an answer, from
     #   whichever side the join woke - the SQL twin of the seat's `crud.is_blank_value`.
@@ -658,20 +677,23 @@ def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
 
     pairs = _pairs(spec, left_table)
     keys = db.execute(
-        select(*[_folded(getattr(right_model, right_col), fold).label("k%d" % index)
+        select(*[_folded(getattr(right_model, right_col), fold, _zone(spec.get("right_table"), right_col)).label(
+            "k%d" % index)
                  for index, (_left, right_col, fold) in enumerate(pairs)])
         .where(right_model.row_id.in_(list(right_row_ids)))).fetchall()
     # the keys rows left (`old_keys`), folded by the same expression on the same column type - one statement a page
-    from sqlalchemy import literal, union_all
+    from sqlalchemy import union_all
 
     for chunk in [list(keys_left)[at:at + 200] for at in range(0, len(keys_left), 200)]:
         keys += db.execute(union_all(*[
-            select(*[_folded(literal(value, type_=getattr(right_model, right_col).type), fold).label("k%d" % index)
+            select(*[_folded(_key_literal(value, getattr(right_model, right_col).type,
+                                          _zone(spec.get("right_table"), right_col)),
+                             fold, _zone(spec.get("right_table"), right_col)).label("k%d" % index)
                      for index, ((_left, right_col, fold), value) in enumerate(zip(pairs, key))])
             for key in chunk])).fetchall()
     if not keys:
         return None, 0
-    left_key = [_folded(getattr(left_model, left_col), fold)
+    left_key = [_folded(getattr(left_model, left_col), fold, _zone(left_table, left_col))
                 for left_col, _right, fold in pairs]
     # ⚠️ A TUPLE `IN`, NOT A COLUMN-WISE `IN` PER PART. Matching each part independently
     # would pull in every left row that shares ONE part of the key with ONE changed right

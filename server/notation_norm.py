@@ -701,7 +701,87 @@ def _install_text_cast_construct():
 _TextCast = _install_text_cast_construct()
 
 
-def key_expression_sql(column, rules=None):
+# ---------------------------------------------------------------------------
+# A datetime key - SQL half (lead 599fc1988, owner «한국시간»)
+# ---------------------------------------------------------------------------
+
+#: The function a datetime-declared key column is compared and indexed through - SQLite calls
+#: `map_overlay.time_key_text` under the same name (`install_sqlite_fold`).
+KEY_INSTANT_FUNCTION = "assy_key_instant"
+
+#: `map_overlay.time_key_text` in PostgreSQL: one text per instant - ISO, `T`, the zone's offset, microseconds
+#: when not 0 - from a timestamptz, a timestamp (that zone's wall clock), a date (its midnight) or a text in
+#: `expression.TIME` (a real day, a time without an offset on that zone's wall clock); any other text trimmed.
+#:
+#: 🔴 IMMUTABLE BY POSTGRESQL'S OWN WORD, NOT OURS. A text -> timestamptz cast is STABLE (it reads DateStyle and
+#: TimeZone) and cannot sit in an index; nothing here casts. The text is cut by `expression.TIME`'s pattern and
+#: the parts are checked before `make_timestamp` (so a 30 February keeps its text instead of raising); the zone is
+#: an argument; and every builtin used - regexp_match, make_date, make_timestamp, make_interval, timezone(text, …),
+#: date_part on a timestamp, lpad, || - is IMMUTABLE in pg_proc. `SET search_path FROM CURRENT` because an index
+#: expression is evaluated under whatever path the session has, and the overloads call one another unqualified.
+#: Created by `models.sync_dynamic_tables_schema` - every process that compares a key, before it compares one.
+KEY_INSTANT_SQL = r"""
+CREATE OR REPLACE FUNCTION assy_key_instant(t timestamptz, zone text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE AS $f$
+DECLARE
+  w timestamp := timezone(zone, t);
+  us bigint := date_part('microseconds', w)::bigint % 1000000;
+  off int := round(date_part('epoch', w - timezone('UTC', t)) / 60)::int;
+BEGIN
+  RETURN lpad(date_part('year', w)::int::text, 4, '0') || '-' || lpad(date_part('month', w)::int::text, 2, '0')
+    || '-' || lpad(date_part('day', w)::int::text, 2, '0') || 'T' || lpad(date_part('hour', w)::int::text, 2, '0')
+    || ':' || lpad(date_part('minute', w)::int::text, 2, '0') || ':' || lpad(floor(date_part('second', w))::int::text, 2, '0')
+    || CASE WHEN us = 0 THEN '' ELSE '.' || lpad(us::text, 6, '0') END
+    || CASE WHEN off < 0 THEN '-' ELSE '+' END || lpad((abs(off) / 60)::text, 2, '0') || ':'
+    || lpad((abs(off) % 60)::text, 2, '0');
+END $f$;
+CREATE OR REPLACE FUNCTION assy_key_instant(t timestamp, zone text) RETURNS text
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path FROM CURRENT AS $f$
+  SELECT assy_key_instant(timezone(zone, t), zone)
+$f$;
+CREATE OR REPLACE FUNCTION assy_key_instant(t date, zone text) RETURNS text
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path FROM CURRENT AS $f$
+  SELECT assy_key_instant(timezone(zone, t::timestamp), zone)
+$f$;
+CREATE OR REPLACE FUNCTION assy_key_instant(t text, zone text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE STRICT PARALLEL SAFE SET search_path FROM CURRENT AS $f$
+DECLARE
+  s text := regexp_replace(t, '^\s+|\s+$', '', 'g');
+  g text[] := regexp_match(s, '__TIME__');
+  y int; mo int; d int; h int; mi int; se int; us int; oh int := 0; om int := 0; at timestamp;
+BEGIN
+  IF g IS NULL THEN RETURN s; END IF;
+  y := g[1]::int; mo := g[2]::int; d := g[3]::int;
+  h := coalesce(g[4], '0')::int; mi := coalesce(g[5], '0')::int; se := coalesce(g[6], '0')::int;
+  us := rpad(coalesce(g[7], '0'), 6, '0')::int;
+  IF y < 1 OR mo < 1 OR mo > 12 OR d < 1 OR h > 23 OR mi > 59 OR se > 59
+     OR d > date_part('day', make_date(y, mo, 1) + interval '1 month' - interval '1 day')::int THEN
+    RETURN s;
+  END IF;
+  at := make_timestamp(y, mo, d, h, mi, se) + make_interval(secs => us / 1000000.0);
+  IF g[8] IS NULL THEN RETURN assy_key_instant(timezone(zone, at), zone); END IF;
+  IF g[8] <> 'Z' THEN
+    oh := substr(replace(g[8], ':', ''), 2, 2)::int; om := substr(replace(g[8], ':', ''), 4, 2)::int;
+    IF oh > 23 OR om > 59 THEN RETURN s; END IF;
+    IF left(g[8], 1) = '-' THEN oh := -oh; om := -om; END IF;
+  END IF;
+  RETURN assy_key_instant(timezone('UTC', at - make_interval(hours => oh, mins => om)), zone);
+END $f$;
+"""
+
+
+def key_instant_sql():
+    """`KEY_INSTANT_SQL` with `expression.TIME` written in - the one shape a time is read in."""
+    import expression
+
+    return KEY_INSTANT_SQL.replace("__TIME__", expression.TIME.pattern.replace("'", "''"))
+
+
+def _key_instant_call(inner_sql: str, zone: str) -> str:
+    return "%s(%s, '%s')" % (KEY_INSTANT_FUNCTION, inner_sql, str(zone).replace("'", "''"))
+
+
+def key_expression_sql(column, rules=None, zone=None):
     """The key expression as a SQLAlchemy element - what a join COMPARES.
 
     🔴 THE CAST COMES FIRST, AND IT IS THE MACHINE'S JOB (owner 2026-09-15: 「내가
@@ -712,17 +792,22 @@ def key_expression_sql(column, rules=None):
     ⚠️ A TEXT COLUMN IS LEFT BYTE-IDENTICAL. Every index built yesterday is still the index
     this expression matches - which is the whole reason the cast is conditional rather than
     unconditional.
+
+    `zone`: the column is declared datetime (`map_overlay.key_time_zone`) - compared as its instant
+    (`KEY_INSTANT_FUNCTION`), whatever the database stores it as.
     """
-    if not is_text_type(getattr(column, "type", None)):
+    from sqlalchemy import func
+
+    if zone:
+        column = getattr(func, KEY_INSTANT_FUNCTION)(column, zone)
+    elif not is_text_type(getattr(column, "type", None)):
         column = _TextCast(column)
     if rules:
         column = fold_notation_sql(column, rules)
-    from sqlalchemy import func
-
     return func.coalesce(column, "")
 
 
-def key_expression_text(inner_sql: str, rules=None, text_column: bool = True) -> str:
+def key_expression_text(inner_sql: str, rules=None, text_column: bool = True, zone=None) -> str:
     """The same expression as PostgreSQL text - what an index is BUILT on.
 
     `inner_sql` is already quoted by the caller (`"col"`), the way `fold_sql_text` takes it.
@@ -732,7 +817,9 @@ def key_expression_text(inner_sql: str, rules=None, text_column: bool = True) ->
     stays unfixed at that seat rather than the text case silently changing shape at all of
     them, because the second is an outage and the first is the status quo.
     """
-    if not text_column:
+    if zone:
+        inner_sql = _key_instant_call(inner_sql, zone)
+    elif not text_column:
         inner_sql = "%s::text" % inner_sql
     if rules:
         inner_sql = fold_sql_text(inner_sql, rules)
@@ -764,8 +851,17 @@ def install_sqlite_fold():
             return          # not a sqlite3 connection - nothing to register
         def _fold(value, rules_json):
             return fold_notation(value, json.loads(rules_json))
+        def _instant(value, zone):
+            if value is None:
+                return None
+            from zoneinfo import ZoneInfo
+
+            import map_overlay
+
+            return map_overlay.time_key_text(value, ZoneInfo(zone))
         try:
             create_function(SQL_FOLD_FUNCTION, 2, _fold)
+            create_function(KEY_INSTANT_FUNCTION, 2, _instant)
         except Exception as e:      # pragma: no cover - defensive
             logger.warning("[NotationNorm] could not register %s on this "
                            "connection: %s", SQL_FOLD_FUNCTION, told(e), exc_info=e)

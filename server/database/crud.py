@@ -758,7 +758,7 @@ def is_file_layer(source_name) -> bool:
 def value_key(value, col_type: str):
     """What a value COMPARES as - the ONE equality every 「did this cell change」 asks (총괄
     a7d2e90ec · 2dd93d4a9 2): a blank is absence (판정 284), a number column compares numbers
-    when the value reads as one, a datetime column instants (`time_format.instant_key`),
+    when the value reads as one, a datetime column instants (`expression._wall` on the declared zone),
     anything else its text with the ends trimmed."""
     if is_blank_value(value):
         return None
@@ -768,9 +768,11 @@ def value_key(value, col_type: str):
         except (ValueError, TypeError):
             pass
     if col_type == "datetime":
-        moment = time_format.instant_key(value)
+        import expression
+
+        moment = expression._wall(value, expression.time_zone())
         if moment is not None:
-            return moment
+            return ("t", moment)
     return ("s", str(value).strip())
 
 
@@ -2871,17 +2873,13 @@ def key_part(table_name: str, column: str, value):
     """🔴 ONE KEY PART AS ITS COLUMN STORES IT - the one spelling a payload's part and a stored
     row's part share (총괄 e243d6abf ③ · d5cf3a954): the one speller by the declared type
     (`map_overlay.canonical_key_value`, 총괄 88761926b - "1.0" · "01" · 1.0 -> "1", "1.50" ->
-    "1.5"). A time is its instant (`time_format.instant_text`) - the write door passes its text
-    and PostgreSQL gives back a datetime; a time that is not ISO-8601 keeps its text. (The time
-    branch is here, not in the speller, until the owner answers 총괄 10-20 ①.)"""
+    "1.5", a time -> its instant in ISO on the declared zone, 총괄 599fc1988) - the write door passes
+    its text and PostgreSQL gives back a datetime, and both spell one key."""
     import map_overlay
 
     if is_blank_value(value):
         return None
-    col_type = map_overlay.declared_column_type(table_name, column)
-    if col_type == "datetime":
-        return time_format.instant_text(value) or value
-    return map_overlay.canonical_key_value(value, col_type)
+    return map_overlay.canonical_key_value(value, map_overlay.declared_column_type(table_name, column))
 
 
 def rebuilt_business_key(table_name: str, row) -> Optional[str]:
@@ -4555,20 +4553,25 @@ def _virtual_join_right_keys(db: Session, table_name: str):
         return []
 
 
-def _folded_join_key(updates: dict, columns: list, folds: list):
+def _folded_join_key(updates: dict, columns: list, folds: list, table_name: str):
     """One item's value for a join key, folded THE WAY THE INDEX FOLDS IT, or None.
 
     `None` means 「this payload does not carry the whole key」, which is not a verdict: the
     stored row may complete it, and refusing on a partial update would refuse a write that
     cannot break anything. And 「every part is blank」 (`every_key_part_blank`): the index leaves that row out.
     """
+    import map_overlay
     import notation_norm
 
     key = []
     for index, column in enumerate(columns):
         if column not in (updates or {}):
             return None
-        value = clean_str_value(updates.get(column))
+        value = updates.get(column)
+        # a datetime key is the index's `assy_key_instant` - the one speller's spelling
+        value = (map_overlay.canonical_bind_value(table_name, column, value)
+                 if map_overlay.key_time_zone(table_name, column) and not is_blank_key_part(value)
+                 else clean_str_value(value))
         rules = folds[index] if index < len(folds) else None
         key.append(notation_norm.fold_notation(value, rules) if rules else value)
     return None if every_key_part_blank(key) else tuple(key)
@@ -4670,7 +4673,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
     for rule_name, columns, folds in keys:
         by_key = {}
         for index, item in enumerate(items):
-            key = _folded_join_key(getattr(item, "updates", None), columns, folds)
+            key = _folded_join_key(getattr(item, "updates", None), columns, folds, table_name)
             if key is not None:
                 by_key.setdefault(key, []).append(index)
         for key, group in sorted(by_key.items(), key=lambda pair: str(pair[0])):
@@ -4722,7 +4725,7 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
         for index, item in enumerate(items):
             if index in refused_indexes:
                 continue
-            key = _folded_join_key(getattr(item, "updates", None), columns, folds)
+            key = _folded_join_key(getattr(item, "updates", None), columns, folds, table_name)
             if key is not None:
                 wanted.setdefault(key, []).append(index)
         if not wanted:

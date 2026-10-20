@@ -132,7 +132,7 @@ def _moved_parts(table: str, old, new, sources: list, sep: str) -> str:
     type (총괄 e243d6abf ③ · d5cf3a954): `number` · `datetime` · `string`, joined; `not_iso`
     when the stored time part does not read as ISO-8601 (its text is kept as it came); `split`
     when the stored key does not split into one part per column."""
-    from utils import time_format
+    import expression
 
     olds, news = str(old).split(sep), str(new).split(sep)
     if len(olds) != len(sources) or len(news) != len(sources):
@@ -143,7 +143,7 @@ def _moved_parts(table: str, old, new, sources: list, sep: str) -> str:
         if before == after:
             continue
         kind = types.get(column) or "string"
-        if kind == "datetime" and time_format.instant_key(before) is None:
+        if kind == "datetime" and expression._wall(before, expression.time_zone()) is None:
             kind = "not_iso"
         moved.append(kind)
     return " + ".join(sorted(set(moved))) or "none"

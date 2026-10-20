@@ -175,6 +175,10 @@ def canonical_key_value(value, col_type):
       its trimmed original — the lookup misses honestly instead of inventing a key.
       🔴 THE ONE SPELLER OF A KEY (lead 88761926b): `crud.key_part` and `canonical_bind_value`
       look the declared type up and call this; a key compared anywhere passes here.
+    - "datetime": its instant on the zone's wall clock - ISO, `T`, the zone's offset, microseconds when not 0
+      («2026-08-14T00:03:00+09:00», the spelling the stored keys already carry). A time without an offset is that
+      zone's wall clock, a date its midnight; the zone is ingestion_settings "expression_time_zone" (owner
+      «한국시간», lead 599fc1988). A text that is not a time (`expression.TIME`) keeps its trimmed original.
     - anything else (string / undeclared): trimmed as-is.
     - 🔴 A BLANK IS `None`, NOT `''` (S-181, 판정 284·287). This seat used to keep `None`
       as `None` and return `''` for `''`, which made the SAME key read as two different
@@ -200,6 +204,10 @@ def canonical_key_value(value, col_type):
         if not math.isfinite(f):
             return s
         return str(int(f)) if f.is_integer() else repr(f)
+    if col_type == "datetime":
+        import expression
+
+        return time_key_text(value, expression.time_zone())
     if isinstance(value, float):
         # A float VALUE is numeric regardless of the declared type — '3.0' is a
         # repr artifact, not data (mirrors crud.clean_str_value, which the
@@ -208,6 +216,25 @@ def canonical_key_value(value, col_type):
                 and value.is_integer():
             return str(int(value))
     return str(value).strip()
+
+
+def time_key_text(value, zone):
+    """A datetime key part on `zone` (`canonical_key_value`'s datetime spelling) - its SQL twin is
+    `notation_norm.KEY_INSTANT_FUNCTION`, and SQLite calls this one under that name."""
+    import expression
+
+    moment = expression._wall(value, zone)
+    return moment.isoformat() if moment is not None else str(value).strip()
+
+
+def key_time_zone(table, column):
+    """The zone name a join reads `table.column` in when it is declared datetime, else None - the one seat a key
+    expression asks whether its column is a time."""
+    if declared_column_type(table, column) != "datetime":
+        return None
+    import expression
+
+    return expression.time_zone().key
 
 
 def declared_column_type(table, column):

@@ -12,6 +12,7 @@ is a walk from the row, not read on the server yet.
 Dates (lead fe2ba4b1f): a time is cut into its date and parts on the wall clock of `zone` - run's argument, else
 ingestion_settings "expression_time_zone" (Asia/Seoul, owner «ㅇㅇ kst»). A time with an offset is moved there; one
 without is read as that wall clock. Date · DateTime answer a time text («2026-10-14T00:00:00+09:00», «Z» at offset 0).
+The same zone and the same reader (`_wall`) spell a datetime key part, its join and «did this cell change» (599fc1988).
 """
 import json
 import math
@@ -112,17 +113,17 @@ def _distinct(items):
 
 
 def _instant(v):
-    from utils.time_format import instant_key
-
-    return None if is_blank(v) else instant_key(v)
+    return None if is_blank(v) else _wall(v, time_zone())
 
 
 # ── dates ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 #: ingestion_settings.json - the zone a time is cut into its date and parts in (lead fe2ba4b1f, owner «ㅇㅇ kst»).
+#: A key, a join and a comparison read a time without an offset in it too (lead 599fc1988, owner «한국시간»).
 ZONE_SETTING, ZONE_DEFAULT = "expression_time_zone", "Asia/Seoul"
 #: The one shape a time is read in - the screen's TIME (expression.js) is the same pattern.
-TIME = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?\s*"
-                  r"(Z|[+-]\d{2}:?\d{2})?$")
+#: [0-9], not \d: \d also reads fullwidth digits, which the screen and PostgreSQL (`notation_norm.KEY_INSTANT_SQL`) do not.
+TIME = re.compile(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[T ]([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]{1,6}))?)?)?\s*"
+                  r"(Z|[+-][0-9]{2}:?[0-9]{2})?$")
 #: DatePart's part names (Date and Time «DatePart») this edition answers - the others are refused by name.
 PARTS = {**dict.fromkeys(("year", "yy"), "Year"), **dict.fromkeys(("quarter", "qq"), "Quarter"),
          **dict.fromkeys(("month", "mm"), "Month"),
@@ -168,9 +169,15 @@ def time_zone():
 
 
 def _wall(v, zone):
-    """`v` on `zone`'s wall clock (an aware datetime), or None - empty, or not a time (`TIME`, a real day)."""
-    from datetime import datetime, timedelta, timezone
+    """`v` on `zone`'s wall clock (an aware datetime), or None - empty, or not a time (`TIME`, a real day).
+    A datetime as the database hands it is the same instant: one without a zone is `zone`'s wall clock, a date its
+    midnight. Microseconds kept - a key told apart by them stays two keys."""
+    from datetime import date, datetime, timedelta, timezone
 
+    if isinstance(v, datetime):
+        return v.replace(tzinfo=zone) if v.tzinfo is None else v.astimezone(zone)
+    if isinstance(v, date):
+        return datetime(v.year, v.month, v.day, tzinfo=zone)
     if is_blank(v) or not isinstance(v, str):
         return None
     m = TIME.match(v.strip())
@@ -179,7 +186,7 @@ def _wall(v, zone):
     y, mo, d, h, mi, s, frac, off = m.groups()
     try:
         moment = datetime(int(y), int(mo), int(d), int(h or 0), int(mi or 0), int(s or 0),
-                          int((frac or "0").ljust(6, "0")[:3]) * 1000)
+                          int((frac or "0").ljust(6, "0")))
         if off is None:
             return moment.replace(tzinfo=zone)          # fold 0: a wall clock the zone skips or repeats - the offset before
         digits = "0000" if off == "Z" else off[1:].replace(":", "")
@@ -837,8 +844,8 @@ def _time_of_row(row):
     at = row.get("$at") if isinstance(row, dict) else None
     if _is_num(at):
         return at
-    key = _instant(at) if isinstance(at, str) else None
-    return key[1].timestamp() * 1000 if key and key[0] == "t" else None
+    moment = _instant(at) if isinstance(at, str) else None
+    return moment.timestamp() * 1000 if moment else None
 
 
 def _items_of(v, t):

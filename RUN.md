@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **날짜 키도 한 철자 — 같은 순간이면 한 키, 시간대 없는 글자는 한국 시간 (총괄 599fc1988, 소유자 «ㄱ, 한국시간»)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     datetime 으로 선언된 칸의 키 · 조인 · 비교가 «ISO · T · 시간대 오프셋» 한 철자 (예 2026-08-14T00:03:00+09:00)
+>          시간대 없는 글자는 ingestion_settings.json expression_time_zone (비었으면 Asia/Seoul) 으로 읽음
+>          서버 · 와처 · 체인 워커가 기동 때 DB 함수 assy_key_instant 를 만듦 (CREATE OR REPLACE)
+> 먼저 셈   키 칸에 datetime 이 든 표마다 (읽기만 함):
+>          python server/scripts/rebuild_blank_business_keys.py --table <표>
+> 답의 뜻   미리보기의 datetime 줄이 0  -> 저장 키가 이미 새 철자. 그대로 둠 (이 박스: inspection_run · step_inspection_run 둘 다 datetime 줄 없음 = 0. 그 표들의 string · split 줄은 다른 조각 탓)
+>          datetime 줄이 N  -> 그 N 행은 다음 쓰기에서 새 행으로 갈라질 수 있음. --apply 전에 총괄에 수를 올림
+> 볼 줄     함수를 못 만들면 server.log · chain_worker.log  «[Schema Sync] assy_key_instant was not made - a join on a datetime key fails until it is: …»
+>          그때 날짜 키 조인이 «function assy_key_instant(…) does not exist» 로 실패 — DB 권한 · 재기동
+> 되돌리기  git revert __HASH__ -> 런처 재기동 (DB 함수는 남아도 아무도 안 부름)
+> ```
+>
+> ---
+>
 > ## [10-20] **선언 폼 D 의 서버 몫 — 추천 목록이 선언에서 · 표 설정 스켈레톤 (총괄 f3639d4a2, 구현자 B)** — git pull · 런처 재기동 (화면은 클라 착지 뒤)
 >
 > ```

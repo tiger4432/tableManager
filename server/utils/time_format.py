@@ -24,7 +24,6 @@ import re
 from functools import lru_cache
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-import logging
 
 # ---------------------------------------------------------------------------
 # S-182 ⓐ - THE ONE FOLD FOR A WORLD TIME (SCHEMA_CANON R5, 판정 289)
@@ -145,56 +144,7 @@ def naive_time_note():
     return "timezone_naive: " + " · ".join(parts)
 
 
-#: The zone PostgreSQL reads a NAIVE time in on this process's connections - the session
-#: `TimeZone` the server reports when a connection opens (`database._note_the_session_zone`).
-#: Empty until one has opened, and on SQLite, which reports none.
-_SESSION_ZONE = []
-
-
-def note_session_zone(name):
-    """Record the session TimeZone a connection reported. A name `ZoneInfo` cannot read leaves
-    the zone unknown - never a guessed one."""
-    try:
-        _SESSION_ZONE[:] = [ZoneInfo(str(name))] if name else []
-    except Exception as exc:                            # noqa: BLE001
-        # the standard library only (this module is held to it) - the traceback says where
-        logging.getLogger(__name__).warning("[Time] the session time zone %r was not read", name, exc_info=exc)
-        _SESSION_ZONE[:] = []
-
-
-def instant_key(value):
-    """What a world time COMPARES as (총괄 2dd93d4a9 2): `("t", its UTC instant)`, or
-    `("tn", its wall clock)` for a naive one while no connection has said which zone it is read
-    in - two naive values are the same instant exactly when their wall clocks are. `None` when
-    the value does not read as ISO-8601; the caller then compares its text, as before.
-
-    🔴 A NAIVE TIME IS READ IN THE SESSION ZONE because that is what the write door does with
-    it: it hands the text to PostgreSQL, which reads it there. No second rule."""
-    moment = value
-    if not isinstance(value, datetime):
-        try:
-            moment = datetime.fromisoformat(str(value).strip())
-        except ValueError:
-            return None
-    if moment.tzinfo is None:
-        if not _SESSION_ZONE:
-            return ("tn", moment)
-        moment = moment.replace(tzinfo=_SESSION_ZONE[0])
-    return ("t", moment.astimezone(timezone.utc))
-
-
 TS_FMT = "%Y-%m-%d %H:%M:%S"
-
-
-def instant_text(value):
-    """A time as a key spells it (총괄 d5cf3a954): its instant on the session zone's wall clock,
-    `TS_FMT` (+ `.ffffff` when it carries them) - one text for every spelling of one instant,
-    read by `instant_key`. `None`: not ISO-8601; the caller keeps the text."""
-    key = instant_key(value)
-    if key is None:
-        return None
-    moment = key[1].astimezone(_SESSION_ZONE[0]) if key[0] == "t" and _SESSION_ZONE else key[1]
-    return moment.strftime(TS_FMT + (".%f" if moment.microsecond else ""))
 
 # Value memo. Rows are bulk-ingested, so a page of them shares a handful of
 # timestamps: measured on a 10,000-row `dt_log` grid page, this function is called

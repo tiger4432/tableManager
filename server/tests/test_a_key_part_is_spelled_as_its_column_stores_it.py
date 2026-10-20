@@ -2,12 +2,12 @@
 """총괄 e243d6abf ③ · d5cf3a954: a composite key was assembled from the payload's spelling and
 rebuilt from the stored value's, so the same row written twice - a number sent as "1.0", a time
 sent without seconds - made a shell and merged it. Each part is now spelled as its column stores
-it (`crud.key_part`): a number as `cast_value_by_type` stores it, a time as its instant on the
-session zone's wall clock. Every spelling of one value lands on one row; a key part edited to
-ANOTHER row's value still merges."""
+it (`crud.key_part`): a number as `cast_value_by_type` stores it, a time as its instant in ISO on the
+declared zone (ingestion_settings "expression_time_zone", 599fc1988). Every spelling of one value lands on one
+row; a key part edited to ANOTHER row's value still merges."""
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
@@ -20,7 +20,7 @@ from conftest import PG_TEST_SCHEMA, retire_dynamic_model            # noqa: E40
 import event_constants                                              # noqa: E402
 from database import crud, models, schemas                          # noqa: E402
 from database.context import channel                                # noqa: E402
-from utils import time_format                                       # noqa: E402
+import expression                                                   # noqa: E402
 
 T_ONLY, T_KEY = "zz_spell_only", "zz_spell_key"
 TYPES = {"lot": "string", "wafer": "number", "t": "datetime", "v": "string"}
@@ -34,8 +34,8 @@ NUMBERS = ["1", "1.0", "01", 1.0, 1, " 1 "]
 
 
 def _times(instant):
-    """Every spelling of one instant the write door takes - naive ones on the session wall."""
-    wall = instant.astimezone(time_format._SESSION_ZONE[0]) if time_format._SESSION_ZONE else instant
+    """Every spelling of one instant the write door takes - naive ones on the declared zone's wall."""
+    wall = instant.astimezone(expression.time_zone())
     naive = wall.replace(tzinfo=None)
     micro = ".%06d" % instant.microsecond if instant.microsecond else ""
     return [naive.strftime("%Y-%m-%d %H:%M") if not micro else naive.strftime("%Y-%m-%d %H:%M:%S") + micro,
@@ -48,8 +48,7 @@ def _times(instant):
 
 # ------------------------------------------------------------------ the spelling, no database
 
-def test_every_spelling_of_one_value_is_one_key_part(monkeypatch):
-    monkeypatch.setattr(time_format, "_SESSION_ZONE", [timezone(timedelta(hours=9))])
+def test_every_spelling_of_one_value_is_one_key_part():
     crud.TABLE_CONFIG[T_ONLY] = TABLES[T_ONLY]
     try:
         assert {crud.clean_str_value(crud.key_part(T_ONLY, "wafer", n)) for n in NUMBERS} == {"1"}
@@ -58,7 +57,8 @@ def test_every_spelling_of_one_value_is_one_key_part(monkeypatch):
             assert len(spelled) == 1, spelled
         assert crud.key_part(T_ONLY, "t", INSTANT) != crud.key_part(          # two instants
             T_ONLY, "t", INSTANT.replace(microsecond=123456))
-        assert crud.key_part(T_ONLY, "t", "2026-10-03 12:00") == "2026-10-03 12:00:00"
+        assert crud.key_part(T_ONLY, "t", "2026-10-03 12:00") == datetime(
+            2026, 10, 3, 12, tzinfo=expression.time_zone()).isoformat()          # ISO, T, the zone's offset
         assert crud.key_part(T_ONLY, "t", "2026/10/03 12:00") == "2026/10/03 12:00"  # not ISO: as sent
         assert crud.key_part(T_ONLY, "wafer", "abc") == "abc"          # refused by the column: as sent
         assert crud.key_part(T_ONLY, "wafer", "  ") is None
@@ -90,8 +90,10 @@ def fixture_db(pg_engine):
     with pg_engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM pg_namespace WHERE nspname = :s"),
                             {"s": PG_TEST_SCHEMA}).scalar() == 1
-    # The session zone is what a naive time is read in; without it the gate runs in no zone.
-    assert time_format._SESSION_ZONE, "PostgreSQL's TimeZone was not read"
+    # The write door still hands a naive time to PostgreSQL, which stores it on the SESSION zone (R5 ⓑ) - so
+    # stored = rebuilt below asks that the session reads it on the zone the key reads it on.
+    with pg_engine.connect() as conn:
+        assert conn.execute(text("SHOW TimeZone")).scalar() == expression.time_zone().key
     saved = dict(crud.TABLE_CONFIG)
     for name in TABLES:
         retire_dynamic_model(name)

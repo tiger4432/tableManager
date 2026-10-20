@@ -122,8 +122,11 @@ def index_key_expression(column: str, fold_rules=None, table: str = None) -> str
     # change. And this function is the ONE spelling: `join_onclause` builds the same
     # expression, because a query whose expression differs from the index's silently stops
     # using the index rather than failing.
+    import map_overlay
+
     return notation_norm.key_expression_text(
-        '"%s"' % column, fold_rules, text_column=column_is_text(table, column))
+        '"%s"' % column, fold_rules, text_column=column_is_text(table, column),
+        zone=map_overlay.key_time_zone(table, column))
 
 def blank_key_slot_expression(table: str, columns: list, folds=None) -> str:
     """The unique index's last key: `''` for a row with a filled key part, the row's own id when EVERY part is blank
