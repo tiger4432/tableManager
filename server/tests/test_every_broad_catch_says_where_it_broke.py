@@ -55,7 +55,6 @@ QUIET_KEPT = {
     "server/outbox_listener.py": {"cleanup": 1},
     "server/parsers/advanced_ingester.py": {"parse": 1},
     "server/parsers/directory_watcher.py": {"cleanup": 1, "hot": 1, "import": 3, "parse": 1, "probe": 3},
-    "server/run_auto_update.py": {"probe": 1},
     "server/run_watcher.py": {"import": 2},
     "server/runtime/process_supervisor.py": {"cleanup": 2, "logging": 4, "parse": 1, "probe": 5, "elsewhere": 1},
     "server/runtime/running.py": {"probe": 1},
