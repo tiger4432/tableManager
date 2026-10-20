@@ -102,8 +102,8 @@ def test_the_report_lists_the_collector_area():
 def test_an_edited_script_goes_through_the_load_door_again(tmp_path, monkeypatch):
     """총괄 69aad666e B: the edit branch re-read only the schedule and the file prefix - a window
     added took a restart, and a marker broken ran anyway. Now the load's own door, keeping the
-    last run."""
-    from datetime import datetime
+    last run - reached by the watcher's collectors row (`rescan_collectors`, e6a0bdbbd), the tick's own mtime poll
+    retired."""
     folder = os.path.join(str(tmp_path), "ingestion_workspace", TABLE, "auto_update")
     os.makedirs(folder)
     script = os.path.join(folder, "probe.py")
@@ -122,16 +122,15 @@ def test_an_edited_script_goes_through_the_load_door_again(tmp_path, monkeypatch
     scheduler.discover_and_load_collectors()
     [first] = scheduler.collectors
     first.last_status = "SUCCESS"
-    long_ago = datetime(2000, 1, 1)             # before any next run - nothing is started
 
     edit(SCHEDULE + WINDOW + USES_WINDOW, 2_000_000)
-    scheduler.check_and_run_schedules(now=long_ago)
+    scheduler.rescan_collectors()
     [again] = scheduler.collectors
     assert again is not first and again.window_length == "1d"
     assert again.last_status == "SUCCESS", "the last run is kept"
 
     edit(SCHEDULE + WINDOW + 'out = [{"a": "1"}]\n', 3_000_000)
-    scheduler.check_and_run_schedules(now=long_ago)
+    scheduler.rescan_collectors()
     assert scheduler.collectors == []
     assert any("declares '# window: 1d' but writes neither" in line for line in logged), logged
 

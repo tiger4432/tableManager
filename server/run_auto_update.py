@@ -173,11 +173,6 @@ class GenericScriptRunnerCollector:
         self.last_error = None
         # `<heartbeat name>/<host>/<pid>` of the process running it, set when a run starts.
         self.runner = None
-        self.last_mtime = 0
-        try:
-            self.last_mtime = os.path.getmtime(script_path)
-        except:
-            pass
 
         server_dir = server_dir or paths.DATA_ROOT
         self.target_dir = os.path.join(server_dir, "ingestion_workspace", table_name, "raws")
@@ -553,23 +548,6 @@ class MultiDiscoveryScheduler:
         except Exception as e:
             logger.error(f"Failed to load script module '{script_path}': {told(e)}", exc_info=e)
 
-    def _reload_changed_script(self, collector):
-        """A script edited on disk goes through the load's own door (총괄 69aad666e B): dropped and
-        loaded again by `_load_collector_from_script` - the same header read and the same judge -
-        keeping its last run. One that no longer passes stays out, with the load's line; the
-        header's window, window format and list markers are read afresh."""
-        with self._lock:
-            self.collectors.remove(collector)
-            before = len(self.collectors)
-            self._load_collector_from_script(collector.table_name, collector.script_path)
-            for fresh in self.collectors[before:]:
-                for name in CARRIED_STATUS:
-                    setattr(fresh, name, getattr(collector, name))
-                logger.info("[Auto-Reload] '%s' changed - loaded again (cron %s)",
-                            os.path.basename(collector.script_path),
-                            getattr(fresh, "cron_expression", None))
-            self._write_status_file()
-
     def _collector_key(self, collector) -> str:
         """제어 파일 규격('<workspace>/<script.py>')과 일치하는 수집기 식별 키를 반환합니다."""
         script_name = os.path.basename(collector.script_path) if getattr(collector, "script_path", None) else collector.__class__.__name__
@@ -726,14 +704,6 @@ class MultiDiscoveryScheduler:
         now = now or datetime.now()
         disabled_set = read_disabled_scripts(self.server_dir)
         for collector in list(self.collectors):
-            # GenericScriptRunnerCollector 일 경우 파일 동적 변경 감지 수행
-            if isinstance(collector, GenericScriptRunnerCollector):
-                try:
-                    if os.path.getmtime(collector.script_path) > collector.last_mtime:
-                        self._reload_changed_script(collector)
-                        continue
-                except Exception as file_err:
-                    logger.warning(f"Failed to check file mtime for {collector.script_path}: {told(file_err)}")
 
             if getattr(collector, "cron_expression", None) and getattr(collector, "next_run", None):
                 if now >= collector.next_run:
