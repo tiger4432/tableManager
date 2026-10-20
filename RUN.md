@@ -1,5 +1,36 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **숫자 키 옛 철자 행 다시 적기 · 같은 키 행 합치기 · 그 뒤 키 유일 인덱스 (소유자 10-20 「체인 아직도 복제」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     소급 «Fold stored values into the declared spelling» 이 숫자 키 행의 옛 철자(«1.0» · «001»)를 «1» 로 다시 적고,
+>          같은 키가 된 행 · 같은 키를 둘이 가진 행을 그 키의 첫 행(row_id 가 가장 작은 행)으로 합친 뒤 그 표의 uq_bk_<표> 를 세움
+> 1 세기(읽기만)
+>          SELECT business_key_val, count(*) FROM <표> GROUP BY 1 HAVING count(*) > 1 ORDER BY 2 DESC LIMIT 20;
+>              줄이 있으면 같은 철자 중복 — 그 표에 키 유일 인덱스가 없다
+>          SELECT indexrelid::regclass FROM pg_index WHERE indrelid = '<표>'::regclass AND indisunique;
+>              uq_bk_<표> 가 없으면 체인이 같은 키로 행을 또 만들 수 있다
+> 2 미리보기  소급 탭 -> Fold stored values into the declared spelling -> 표 -> count
+>   답의 뜻  «N row key(s) change»                              옛 철자로 적힌 키 — 다시 적힘
+>          «N row(s) fold onto another row's key»             합쳐질 행 수
+>          «A key(s) held by more than one row as stored»     같은 철자 중복 키 수
+>          «B key(s) met by spelling»                         철자가 갈려 같은 키가 되는 키 수
+>          «e.g. 1.0 -> row <id> (1)»                         합쳐질 행의 키 -> 남는 행 (그 키)
+>          «N row(s) skipped (their cells no longer spell their stored key)»  건드리지 않음 — 칸 값과 저장 키가 다른 행
+> 3 실행     run. 합치기는 되돌릴 수 없음 — 남는 행의 칸은 합쳐진 행 값으로 덮임(사람이 고친 칸은 남는 행 값)
+> 볼 로그  retroactive.log
+>          «[notation] '<표>' apply: … N row(s) merged … (A key(s) held twice as stored, B met by spelling)»
+>          «… business-key unique index after the merge: {'built': [['<표>', 'created', …]] …}»   세워짐
+>          «… 'refused': [['<표>', n]]»   아직 n 행이 키를 나눠 가짐 -> 1 을 다시. 대개 skipped 행
+>          «… 'built': [['<표>', 'blocked', …]]»   표를 쥔 세션을 기다리다 멈춤 -> 스케줄러 다음 시작이 세움
+>          «… not built: the builder works on PostgreSQL's public schema only»   public 밖에서 돌림
+> 확인     1 의 두 SELECT 다시 — 중복 0 줄 · uq_bk_<표> 한 줄
+> 급할 때  소급 탭의 × — 쪽 사이에서 멈춤, 이미 합친 쪽은 그대로, 인덱스는 안 세움
+> 되돌리기  git revert 82a32f8a3 -> 런처 재기동 (합친 행은 안 돌아옴)
+> ```
+>
+> ---
+>
 > ## [10-20] **폴더 다시 읽기를 «다른 표로» — Into table (소유자 10-20 「어드민 파일 리트라이는 돌았던 테이블로만 도네」)** — git pull · 런처 재기동
 >
 > ```
