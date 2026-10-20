@@ -19,7 +19,8 @@ sys.path.insert(0, os.path.join(ROOT, "server"))
 from ledger.explorer import entity_id  # noqa: E402
 
 # The keys in the order the walk page's cells type them (the declaration's order), as the form holds them (text) and as
-# the ledger holds them (numbers).
+# a walk expression hands them (numbers - the client spells those as text since 10-20, so the second id is the server's
+# answer for numbers, no longer the client's).
 CASES = [
     ("die", {"mat_id": "M-1", "x": "3", "y": "12", "mat_type": "core"}),
     ("die", {"mat_id": "M-1", "x": 3, "y": 12, "mat_type": "core"}),
