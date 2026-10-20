@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **걷기 — 묶음으로 잘린 먼 타입은 «complete» 가 아니다 (총괄 9075f6605, 소유자 10-20 «일단 ㄱ,ㄷ»)** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    시험대 · 걷기에서 fanout_limit 을 걸어 묶음이 생기면 «Rows N · complete» 대신 «cut»
+> 뜻       답의 more.reach.<타입>.complete false · unexpanded = 묶음이 남기고 다른 걸음도 안 그린 먼 노드 수 · truncated.reason 에 fan-out
+>          fanout_limit 없는 걷기는 전과 같은 답
+> 박스 판  웨이퍼 W01 다이 400 · fanout_limit 20 -> 다이 20 · reach.die complete false · unexpanded 380 (운영 주장 아님)
+> 되돌리기  git revert <착지> -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **키 병합이 버린 편집 값을 로그로 말함 · 조인 거절 두 문장 영어로** — git pull · 런처 재기동
 >
 > ```

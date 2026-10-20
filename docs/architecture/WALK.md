@@ -344,7 +344,11 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 수    가드(정적 · 도로 내려가기 · 키 제약)를 «지난» 걸음의 서로 다른 먼 노드 — 그 묶음을 펼치면 그려지는 수.
       판정은 `_step` 한 함수를 펼치기와 같이 지난다
 ```
-⚠️ 묶음은 노드가 아니다 — `nodes` 에 없고 `truncated` 와 별개 칸이다.
+⚠️ 묶음은 노드가 아니다 — `nodes` 에 없고 노드 예산을 쓰지 않는다.
+🔴 🆕 10-20 (총괄 9075f6605) 묶음이 남긴 먼 노드는 그 먼 타입의 «미완»이다 — 다른 걸음이 그리지 않은 것만 세어
+   `more.reach.<타입>` 은 complete false · unexpanded 에 그 수, `truncated.fan_out` 에 그 수(fanout_limit 을 물었을 때만 있는 칸),
+   `truncated.reason` 에 «fan-out», `propagation.complete` 도 false. 클라의 «complete / cut» 은 `truncated` 칸을 읽으므로 따로 고칠 것 없음
+   박스 판(A 의 운영 모양 판, 운영 주장 아님): 웨이퍼 W01 inspected 다이 400 · hops 1 · fanout_limit 20 -> 다이 20 · reach.die complete false · unexpanded 380
 ⚠️ 🆕 10-08 클라 그래프는 묶음을 `expand` 로 다시 걷지 않는다 — 그 노드에서 그 술어 · 그 방향 · 먼 타입으로 한 걸음(`stepAlong`, 총괄 11e5ea207). 덩어리는 `count − drawn` 을 센다.
 ⚠️ 원자는 오늘처럼 읽고 «가져온 뒤» 가른다. `truncated.claims` 가 참이면 묶음의 수도 읽은 만큼이다.
 ⚠️ 🆕 그래서 `fanout_limit` 이 아끼는 것은 «덩어리로 남긴 먼 노드를 다음 깊이에서 안 넓히는» 몫뿐이다 — 그 걸음의 원자는 다 읽어 claims 에 든다(응용 10-10, 18767 리허설 조각 · 불량 base 원자 4278: 비우면 claims 6000 에서 잘림 · 100 이면 5974(다이 179 중 100 그림) · 50 이면 5180(50 그림), RUN.md 일요일 절 «잘리면 ③»).

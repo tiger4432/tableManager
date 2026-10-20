@@ -4,7 +4,8 @@ to more than `fanout_limit` nodes draws its first `fanout_limit` - the first rea
 the rest, with the count and what was drawn (소유자 「잘려도 일부는 나와야지」).
 
 The count is taken over the steps the walk's guards pass (`_step`), so it is what expanding
-that bundle draws. A bundle is not a node and not a truncation.
+that bundle draws. A bundle is not a node and spends no node budget; the far nodes it leaves undrawn cut its far
+type's reach - `more.reach.<type>.complete` false, `truncated.fan_out` their count, reason «fan-out» (총괄 9075f6605).
 """
 import os
 import sys
@@ -109,18 +110,46 @@ def test_no_fanout_limit_answers_as_today():
     roomy = _walk(atoms, fanout_limit=1000)
     assert "bundles" not in plain, "the key is absent when the question was not put"
     assert roomy.pop("bundles") == []
+    assert roomy["truncated"].pop("fan_out") == 0 and "fan_out" not in plain["truncated"]
     for body in (plain, roomy):
         body.pop("generated_at")
     assert plain == roomy
     assert len(_dies(plain)) == DIES
 
 
-def test_a_bundle_is_not_a_truncation():
+def test_a_bundle_spends_no_node_budget():
     cut = _walk(_wafer_of_dies(), node_limit=10)
     assert cut["truncated"]["nodes"] is True and "bundles" not in cut
     bundled = _walk(_wafer_of_dies(), node_limit=60, fanout_limit=20)    # room for what it draws
     assert (bundled["truncated"]["nodes"], bundled["truncated"]["edges"],
             len(bundled["bundles"])) == (False, False, 2)
+
+
+def test_without_a_limit_the_reach_of_the_dies_is_complete():
+    body = _walk(_wafer_of_dies())
+    assert len(_dies(body)) == DIES
+    assert body["more"]["reach"]["die"] == {"complete": True, "unexpanded": 0}
+    assert "fan-out" not in (body["truncated"]["reason"] or "")
+
+
+def test_a_limit_of_20_leaves_the_reach_of_the_dies_incomplete_by_what_it_did_not_draw():
+    body = _walk(_wafer_of_dies(), fanout_limit=20)
+    left = DIES - len(_dies(body))
+    assert left > 0, "the bundles left dies undrawn"
+    assert body["more"]["reach"]["die"] == {"complete": False, "unexpanded": left}
+    assert body["truncated"]["fan_out"] == left and "fan-out" in body["truncated"]["reason"]
+    # the ranking: over a cut answer it is not complete - the walk below reaches every hop it can, so only the bundles cut
+    whole = ledger_subgraph.subgraph(SEED, ledger_subgraph.InMemoryEvidenceLookup(_wafer_of_dies()), hops=3)
+    bundled = ledger_subgraph.subgraph(SEED, ledger_subgraph.InMemoryEvidenceLookup(_wafer_of_dies()), hops=3,
+                                       fanout_limit=20)
+    assert (whole["propagation"]["complete"], bundled["propagation"]["complete"]) == (True, False)
+
+
+def test_an_opened_bundle_cuts_nothing():
+    body = _walk(_wafer_of_dies(), fanout_limit=20, expand=["%s|in_container|incoming" % WAFER,
+                                                            "%s|inspected|outgoing" % WAFER])
+    assert len(_dies(body)) == DIES and body["more"]["reach"]["die"]["complete"] is True
+    assert body["truncated"]["fan_out"] == 0
 
 
 @pytest.mark.parametrize("item", ["W|in_container", "W|in_container|sideways", "|x|incoming"])
