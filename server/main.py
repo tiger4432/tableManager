@@ -5652,9 +5652,8 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     찾기(총괄 e390600d6): table · name(파일 이름의 일부) · folder(그 폴더 밑) · since/until 은 다시 읽기와 «같은 거르기»
     (`reread.logs_query`). group=folder|reason|status 면 groups 에 묶음마다 수 · 실패 수 — 맞는 행 COUNT_CAP 까지에서 —
     그리고 줄마다 group_key: 그 줄이 세어진 묶음의 열쇠(같은 식 하나, 총괄 10-20). folder 묶음의 열쇠는
-    `reread.folder_key` — folder 를 주면 그 바로 아래 첫 폴더(미리보기의 by_folder 와 같은 열쇠).
+    `reread.folder_key` — folder 를 주면 그 줄을 고른 path_key 접두 다음의 첫 폴더(소문자 철자).
     """
-    from directory_watcher import one_sweep
     from ingestion import reread
 
     try:
@@ -5671,10 +5670,14 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     counted = query.order_by(None).limit(COUNT_CAP + 1).count()
     total, capped = min(counted, COUNT_CAP), counted > COUNT_CAP
     start = (page - 1) * limit
-    logs = query.offset(start).limit(limit).all()
+    model, spelled = models.FileIngestionLog, models.path_key(models.FileIngestionLog.filepath)
+    page_rows = query.add_columns(spelled).offset(start).limit(limit).all()
+    logs = [log for log, _spelled in page_rows]
+    roots = () if crud.is_blank_value(folder) else reread.folder_roots(folder)
 
-    def key_of(filepath, state, reason):
-        return reread.folder_key(filepath, folder) if group == "folder" else {"reason": reason, "status": state}[group]
+    def key_of(filepath, spelled_path, state, reason):
+        return (reread.folder_key(filepath, spelled_path, roots) if group == "folder"
+                else {"reason": reason, "status": state}[group])
 
     result_list = []
     for log in logs:
@@ -5694,16 +5697,15 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         
     said = {"status": "success", "total": total, "capped": capped, "page": page, "limit": limit, "data": result_list}
     if group:
-        model, groups = models.FileIngestionLog, {}
-        with one_sweep():
-            for row, log in zip(result_list, logs):
-                row["group_key"] = key_of(log.filepath, log.status, log.reason)
-            for filepath, state, reason in query.with_entities(model.filepath, model.status, model.reason).limit(
-                    COUNT_CAP + 1):
-                key = key_of(filepath, state, reason)
-                entry = groups.setdefault(key, {"key": key, "count": 0, "failed": 0})
-                entry["count"] += 1
-                entry["failed"] += state == "FAILED"
+        groups = {}
+        for row, (log, spelled_path) in zip(result_list, page_rows):
+            row["group_key"] = key_of(log.filepath, spelled_path, log.status, log.reason)
+        for filepath, spelled_path, state, reason in query.with_entities(
+                model.filepath, spelled, model.status, model.reason).limit(COUNT_CAP + 1):
+            key = key_of(filepath, spelled_path, state, reason)
+            entry = groups.setdefault(key, {"key": key, "count": 0, "failed": 0})
+            entry["count"] += 1
+            entry["failed"] += state == "FAILED"
         said["groups"] = list(groups.values())
     return said
 

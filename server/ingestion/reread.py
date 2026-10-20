@@ -63,19 +63,25 @@ def over_the_limit(count, limit):
             % (count, limit, REREAD_MAX_FILES_KEY)) if count > limit else None
 
 
+def folder_roots(folder):
+    """What a stored path below `folder` starts with as `path_key` spells it - the folder and its real path, lower
+    case, one separator, a boundary; the longer first."""
+    other = "/" if os.sep == "\\" else "\\"
+    return sorted({os.path.normcase(root).lower().replace(other, os.sep).rstrip(os.sep) + os.sep
+                   for root in (os.path.abspath(folder), os.path.realpath(os.path.abspath(folder)))},
+                  key=lambda root: (-len(root), root))
+
+
 def _under_folder(column, folder):
-    """SQL: the stored path starts with the folder or its real path, as the filesystem compares them - lower case,
-    one separator, a boundary. A superset of `_safe_relative_path`'s answer, which still decides each row read."""
+    """SQL: the stored path starts with one of `folder_roots`. A superset of `_safe_relative_path`'s answer, which
+    still decides each row read."""
     from sqlalchemy import or_
 
     from database.models import path_key
 
-    other = "/" if os.sep == "\\" else "\\"
     stored = path_key(column)
-    roots = {os.path.normcase(root).lower().replace(other, os.sep).rstrip(os.sep) + os.sep
-             for root in (os.path.abspath(folder), os.path.realpath(os.path.abspath(folder)))}
     return or_(*[stored.like(root.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%", escape="!")
-                 for root in sorted(roots)])
+                 for root in folder_roots(folder)])
 
 
 def states_of(text):
@@ -144,14 +150,14 @@ def folder_of(filepath):
     return os.path.dirname(filepath) if filepath else None
 
 
-def folder_key(filepath, folder):
-    """The search's folder group (총괄 10-20): below a chosen folder its first folder - `top_folder`, a preview's key;
-    without one, or for a row whose real path is not below it, the file's own folder. Inside `one_sweep`."""
-    from database import crud
-    from directory_watcher import _safe_relative_path
-
-    rel = None if crud.is_blank_value(folder) or not filepath else _safe_relative_path(filepath, folder)
-    return folder_of(filepath) if rel is None else top_folder(rel)
+def folder_key(filepath, spelled, roots):
+    """The search's folder group (총괄 10-20): below a chosen folder the first folder (`top_folder`) of what follows
+    the root it was picked by - `spelled` is the path as `path_key` spells it, `roots` the folder's `folder_roots`;
+    without a folder (no roots), the file's own folder."""
+    for root in roots:
+        if spelled and spelled.startswith(root):
+            return top_folder(spelled[len(root):].replace(os.sep, "/"))
+    return folder_of(filepath)
 
 
 def select_logs(db, statuses, table=None, folder=None, since=None, until=None, log_id=None):
