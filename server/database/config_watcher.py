@@ -327,6 +327,8 @@ def _mappers(paths, engine):
 ROWS = {
     CONFIG_FILENAME: (_table_config, False),
     "chain_rules.json": (_chain_rules, True),
+    # the ledger's compile is the one value not kept when its file breaks: the refusal is the answer the authoring
+    # screen and the follow-up give alike (`held(keep=False)`, lead 558a46ef1)
     ONTOLOGY: (_ontology, False),
     "ledger_resolver.json": (_pools, False),
     "notation_rules.json": (_pools, False),
