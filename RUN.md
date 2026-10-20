@@ -14,7 +14,7 @@
 >          «[Config] <파일> does not read - this process keeps what it read before: <사유>» -> 파일이 깨짐. 전 값으로 돌고 있음 — 파일을 고치면 다시 읽음
 >          «[Config] database.json changed - … restart to use it» -> 연결은 재기동해야 바뀜(다른 파일은 재기동 필요 없음)
 > 급할 때   스위치 없음 — Reload 버튼이 전과 같이 전부 다시 읽음
-> 되돌리기  git revert 076363066 fe71989c7 -> 런처 재기동
+> 되돌리기  git revert 2e081cad4 076363066 fe71989c7 -> 런처 재기동
 > ```
 >
 > ---
