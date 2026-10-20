@@ -794,9 +794,19 @@ def _params_node():
     reader's vocabulary is `'name' | 'index'` (its line 16) and it only tests for `index`,
     so `"param"` worked by falling through - a third spelling that happens to land right.
     That is the same defect as `node`, at the same node, and it is cheaper to say now.
+
+    🔴 [총괄 10-21] AN ARGUMENT IS A VALUE OR A LIST - picked by the value's shape, and a list's item a value or a
+    record (fold_unit's `match` is a list of {left, right}). One value each, a list argument (copy_columns ·
+    node_types · key_columns) was drawn as a blank box. The list is `list_node`'s spelling.
     """
-    return {"kind": "map", "keyed_by": "name", "member": "인자",
-            "of": {"kind": "leaf", "hint": "free"}}
+    free = {"kind": "leaf", "hint": "free"}
+    item = {"kind": "oneOf", "hint": "choice", "pick": "shape",
+            "branches": {"value": free, "record": {"kind": "map", "keyed_by": "name", "member": "field", "of": free}},
+            "empty": {"value": "", "record": {}}}
+    return {"kind": "map", "keyed_by": "name", "member": "parameter",
+            "of": {"kind": "oneOf", "hint": "choice", "pick": "shape",
+                   "branches": {"value": free, "list": list_node("value", item)},
+                   "empty": {"value": "", "list": []}}}
 
 
 def _unified_root():

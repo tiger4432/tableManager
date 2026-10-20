@@ -568,6 +568,15 @@
                 }
               },
               {
+                "key": "absence_is_normal",
+                "required": false,
+                "label": "Absence is normal - a node without this predicate is not listed as missing (blank = it is)",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              },
+              {
                 "key": "inverse_of",
                 "required": false,
                 "label": "Inverse of - the predicate that says this link the other way; the walk does not step back down either (blank = none)",

@@ -95,8 +95,9 @@ def test_a_predicate_whose_absence_is_normal_asks_no_question_of_its_own(normal)
     if normal:
         assert len(gaps.questions(declared, names=NAMES)) == 4
     else:
-        with pytest.raises(gaps.GapTableMismatch, match="z@1"):
+        with pytest.raises(gaps.GapTableMismatch, match="z@1") as caught:
             gaps.questions(declared, names=NAMES)
+        assert '"absence_is_normal": true on the predicate' in str(caught.value), "the refusal names the cell"
 
 
 def test_absence_is_normal_is_true_or_false():

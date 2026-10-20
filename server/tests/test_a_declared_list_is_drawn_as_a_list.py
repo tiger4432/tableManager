@@ -33,9 +33,17 @@ def blank_boxes(node, value, path=()):
         return []
     kind, here = node.get("kind"), ".".join(path)
     if kind == "oneOf" and node.get("pick") == "shape":
-        # the branch of the value's shape, as the form picks it (ontology_skeleton.js shapeBranch)
-        want = "record" if isinstance(value, dict) else "leaf" if isinstance(value, (str, int, float)) else ""
-        branch = next((b for b in node["branches"].values() if b.get("kind") == want), None)
+        # the branch of the value's shape, as the form picks it (ontology_skeleton.js shapeBranch): a scalar its leaf,
+        # a list its map by index, an object its record or else its map by name (총괄 10-21)
+        branches = list(node["branches"].values())
+        if isinstance(value, list):
+            wanted = [b for b in branches if b.get("kind") == "map" and b.get("keyed_by") == "index"]
+        elif isinstance(value, dict):
+            wanted = ([b for b in branches if b.get("kind") == "record"]
+                      or [b for b in branches if b.get("kind") == "map" and b.get("keyed_by") != "index"])
+        else:
+            wanted = [b for b in branches if b.get("kind") == "leaf"] if isinstance(value, (str, int, float)) else []
+        branch = wanted[0] if wanted else None
         return blank_boxes(branch, value, path) if branch else [here]
     if kind == "leaf":
         wrong = isinstance(value, (list, dict)) or (
@@ -90,6 +98,11 @@ FIXTURE = [
      "into": {"table": "derived_t"}},
     {"name": "flat", "trigger_table": "t", "trigger_columns": ["c"], "target_table": "t",
      "mapper": "m", "reads": ["u"], "reference": {"table": "u"}, "group_by": ["c"]},
+    # a mapper's list arguments (총괄 10-21): hold_copy's columns, fold_unit's list of pairs - in no shipped rule
+    {"name": "hold", "trigger_table": "t", "target_table": "u", "mapper": "copy_rows_with_hold",
+     "params": {"key_columns": ["k"], "columns": ["v"], "hold_column": "hold", "source_table": "t"}},
+    {"name": "fold", "trigger_table": "t", "target_table": "u", "mapper": "fold_by_unit",
+     "params": {"unit_table": "t", "group": "g", "match": [{"left": "a", "right": "b"}], "mark_column": "m"}},
 ]
 
 #: The cells the order named (and the two the lead added, and key.columns · group_by of 77793123e), by root.
@@ -99,7 +112,8 @@ NAMED = [("unified", ("derive", "join", cell)) for cell in ("on", "take")] + [
         "auto_confirm", "alignment")] + [
     ("unified", ("key", "unique")), ("unified", ("on", "columns")), ("unified", ("reads",)),
     ("unified", ("key", "columns")), ("unified", ("limits", "group_by")),
-    ("flat", ("reference",)), ("flat", ("reads",)), ("flat", ("trigger_columns",)), ("flat", ("group_by",))]
+    ("flat", ("reference",)), ("flat", ("reads",)), ("flat", ("trigger_columns",)), ("flat", ("group_by",)),
+    ("flat", ("params",))]
 
 
 def _child(node, key):

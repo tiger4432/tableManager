@@ -355,10 +355,50 @@
         "node": {
           "kind": "map",
           "keyed_by": "name",
-          "member": "인자",
+          "member": "parameter",
           "of": {
-            "kind": "leaf",
-            "hint": "free"
+            "kind": "oneOf",
+            "hint": "choice",
+            "pick": "shape",
+            "branches": {
+              "value": {
+                "kind": "leaf",
+                "hint": "free"
+              },
+              "list": {
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "value",
+                "of": {
+                  "kind": "oneOf",
+                  "hint": "choice",
+                  "pick": "shape",
+                  "branches": {
+                    "value": {
+                      "kind": "leaf",
+                      "hint": "free"
+                    },
+                    "record": {
+                      "kind": "map",
+                      "keyed_by": "name",
+                      "member": "field",
+                      "of": {
+                        "kind": "leaf",
+                        "hint": "free"
+                      }
+                    }
+                  },
+                  "empty": {
+                    "value": "",
+                    "record": {}
+                  }
+                }
+              }
+            },
+            "empty": {
+              "value": "",
+              "list": []
+            }
           }
         }
       },
@@ -830,10 +870,50 @@
                   "node": {
                     "kind": "map",
                     "keyed_by": "name",
-                    "member": "인자",
+                    "member": "parameter",
                     "of": {
-                      "kind": "leaf",
-                      "hint": "free"
+                      "kind": "oneOf",
+                      "hint": "choice",
+                      "pick": "shape",
+                      "branches": {
+                        "value": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        },
+                        "list": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "value",
+                          "of": {
+                            "kind": "oneOf",
+                            "hint": "choice",
+                            "pick": "shape",
+                            "branches": {
+                              "value": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              },
+                              "record": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "field",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            "empty": {
+                              "value": "",
+                              "record": {}
+                            }
+                          }
+                        }
+                      },
+                      "empty": {
+                        "value": "",
+                        "list": []
+                      }
                     }
                   }
                 }

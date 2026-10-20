@@ -206,9 +206,10 @@ def _refuse_unnamed(declaration, live, named):
             "the declaration asks questions the spec has not named: "
             + "; ".join(sorted(set(missing)))
             + ". Name them in docs/spec/APPLICATION_GAP_SPEC.md and add the rows to "
-              "gap_names.json - do not name them here. Or, if the declaration should not ask "
-              "them, take that type out of the predicate's subjects (object types) in "
-              "ledger_config.json.")
+              "gap_names.json - do not name them here. Or, if a node without that predicate is "
+              "normal, write \"absence_is_normal\": true on the predicate in ledger_config.json; "
+              "if the declaration should not ask them, take that type out of the predicate's "
+              "subjects (object types) there.")
 
 
 #: How many distinct nodes one question examines before it calls itself a sample. Small on
