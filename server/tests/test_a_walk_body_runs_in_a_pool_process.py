@@ -360,7 +360,7 @@ def test_a_pool_process_that_died_while_idle_is_not_handed_the_next_body(client)
     idle = client.get("/body", params={"kind": "pid"}).json()["pid"]
     assert idle != os.getpid()
     os.kill(idle, 9)
-    time.sleep(0.5)
+    psutil.Process(idle).wait(30) if psutil.pid_exists(idle) else None
     after = client.get("/body", params={"kind": "pid"})
     assert after.status_code == 200 and after.json()["pid"] != idle
 
@@ -393,11 +393,12 @@ def _walk_children(before=frozenset()):
     return alive
 
 
-def _within_the_size(seconds, size=2, children=None):
+def _within_the_size(seconds, size=2, children=None, settled=None):
     """Idle plus working never above `size` while the pool settles - and, given the children alive before, the walk
-    processes alive never above it either."""
-    end = time.monotonic() + seconds
-    while time.monotonic() < end:
+    processes alive never above it either. Watched for `seconds`, and on until `settled()` (the starts are over)."""
+    end, cap = time.monotonic() + seconds, time.monotonic() + 600
+    while time.monotonic() < end or (settled is not None and not settled()):
+        assert time.monotonic() < cap, "the pool did not settle"
         with process_pool._cond:
             assert len(process_pool._idle) + process_pool._taken[0] <= size
         if children is not None:
@@ -405,12 +406,17 @@ def _within_the_size(seconds, size=2, children=None):
         time.sleep(0.02)
 
 
+def _settled(idle):
+    """The pool's starts are over and `idle` processes wait."""
+    return lambda: process_pool._taken[0] == 0 and len(process_pool._idle) == idle
+
+
 def test_two_starts_ahead_at_once_stay_within_the_size(client, warming, monkeypatch):
     _set(monkeypatch, walk_processes=1, walk_seconds_max=60)
     before = frozenset(_walk_children())
     process_pool.warm()
     process_pool.warm()
-    _within_the_size(8, size=1, children=before)
+    _within_the_size(8, size=1, children=before, settled=_settled(1))
     assert len(process_pool._idle) == 1
     assert process_pool._taken[0] == 0, "warm's starts were not counted, or not given back"
 
@@ -429,7 +435,7 @@ def test_a_reload_starts_the_pool_ahead_again_and_keeps_no_older_process(client,
     before = {worker[0].pid for worker in process_pool._idle}
     process_pool.recycle()
     process_pool.recycle()
-    _within_the_size(8)
+    _within_the_size(8, settled=_settled(2))
     _until_idle(2)
     assert all(worker[2] == process_pool._generation[0] for worker in process_pool._idle)
     assert not before & {worker[0].pid for worker in process_pool._idle}
@@ -487,6 +493,15 @@ def test_one_deadline_covers_the_wait_for_a_slot_and_the_answer(client, monkeypa
 
 # ── a kept walk goes back to its own process (총괄 54f7edfdb ㄴ-1) ─────────────────────────────────────────────────
 
+def _until_busy(pid):
+    """The pool process `pid` is running a body - what a continued page pinned to it waits behind."""
+    for _ in range(600):
+        if pid in process_pool._busy:
+            return
+        time.sleep(0.01)
+    raise AssertionError("the walk process %d never took the body" % pid)
+
+
 def _keep(client, name, out=None, hold=0):
     answer = client.post("/kept", params={"name": name, "hold": hold}).json()
     if out is not None:
@@ -542,7 +557,7 @@ def test_a_kept_walk_waits_for_its_own_busy_process(client):
     holding = threading.Thread(target=lambda: out.setdefault("hold", client.post(
         "/kept", params={"name": "A", "hold": 1.0}, json={"resume": {"walk": first["walk"]}})))
     holding.start()
-    time.sleep(0.3)
+    _until_busy(first["pid"])
     busy.start()
     holding.join()
     busy.join()
@@ -560,7 +575,7 @@ def test_a_kept_walk_s_wait_for_its_process_has_a_deadline_of_its_own(client, mo
     holding = threading.Thread(target=lambda: out.setdefault("hold", client.post(
         "/kept", params={"name": "A", "hold": 1.5}, json={"resume": {"walk": a["walk"]}})))
     holding.start()
-    time.sleep(0.3)
+    _until_busy(a["pid"])
     pinned = client.post("/kept", params={"name": "C", "hold": 1.2}, json={"resume": {"walk": c["walk"]}})
     holding.join()
     assert (out["hold"].status_code, pinned.status_code) == (200, 200), (out["hold"].text, pinned.text)
@@ -573,7 +588,7 @@ def test_a_kept_walk_s_process_busy_past_the_deadline_is_said_as_a_wait(client, 
     holding = threading.Thread(target=lambda: out.setdefault("hold", client.post(
         "/kept", params={"name": "A", "hold": 0.4}, json={"resume": {"walk": a["walk"]}})))
     holding.start()
-    time.sleep(0.1)
+    _until_busy(a["pid"])
     _set(monkeypatch, walk_processes=1, walk_seconds_max=0.1)
     pinned = client.post("/kept", params={"name": "C"}, json={"resume": {"walk": c["walk"]}})
     holding.join()
