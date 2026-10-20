@@ -327,9 +327,13 @@ def test_the_line_merges_a_search_index_s_pending_list(table):
         conn.execute(text('INSERT INTO "%s"."%s" (row_id, business_key_val, k, s, n) '
                           "SELECT 'p' || g, 'P' || g, 'P' || g, 'pending ' || g, g FROM generate_series(1, 300) g"
                           % (PG_TEST_SCHEMA, TABLE)))
-    merged = maintenance_line.clean_gin_pending(sessionmaker(bind=table))
-    assert [name for name, _pages in merged] == [models.auto_index_name(TABLE, ["s"]) + "_search"] or merged == [], merged
-    assert maintenance_line.clean_gin_pending(sessionmaker(bind=table)) == [], "merged once, nothing pending after"
+    mine = models.auto_index_name(TABLE, ["s"]) + "_search"
+    # only this test's index is asked about - the schema may hold other GIN indexes with pending lists (QA 10-20: a
+    # shared test database's ledger partition index made this red in a wide run)
+    merged = [name for name, _pages in maintenance_line.clean_gin_pending(sessionmaker(bind=table)) if name == mine]
+    assert merged in ([mine], []), merged
+    again = [name for name, _pages in maintenance_line.clean_gin_pending(sessionmaker(bind=table)) if name == mine]
+    assert again == [], "merged once, nothing pending after"
 
 
 @pytest.mark.pg
