@@ -12,7 +12,7 @@
 >          datetime 줄이 N  -> 그 N 행은 다음 쓰기에서 새 행으로 갈라질 수 있음. --apply 전에 총괄에 수를 올림
 > 볼 줄     함수를 못 만들면 server.log · chain_worker.log  «[Schema Sync] assy_key_instant was not made - a join on a datetime key fails until it is: …»
 >          그때 날짜 키 조인이 «function assy_key_instant(…) does not exist» 로 실패 — DB 권한 · 재기동
-> 되돌리기  git revert __HASH__ -> 런처 재기동 (DB 함수는 남아도 아무도 안 부름)
+> 되돌리기  git revert b3a6e64f7 -> 런처 재기동 (DB 함수는 남아도 아무도 안 부름)
 > ```
 >
 > ---
