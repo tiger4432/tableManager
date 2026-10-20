@@ -1,3 +1,15 @@
+# 🔴 [구현자 B] **게이트가 거짓말 안 하게 — 셋째 묶음 (A 전체 스위트 10-20)** (총괄)
+
+근거: A 의 전체 스위트(a2414a909, 32 분) 9 failed · 5 errors — 하나는 시간에 흔들림, 나머지 8 failed · 5 errors 는 .gitignore 된 server/mappers 에 기대는 시험(90820c62c 의 test_chained_ingestion 과 같은 원인).
+```
+1) test_a_late_file_in_a_raws_subfolder_goes_in::test_folder_kept_by_a_file_that_stays — 셋 중 둘 빨강(착지 전 나무에서도). 38562f98c 처럼 원인을 재고 시간 대신 상태를 기다리게
+2) mappers 에 기대는 8 failed · 5 errors — 목록을 뽑아(새 worktree 에서 돌린 실제 이름) 90820c62c 와 같은 길로: 시험이 자기 맵퍼를 들고 감. 제품 · .gitignore 그대로.
+   같은 픽스처가 셋 이상에 쓰이면 conftest 의 도우미 하나로(둘째 사본 금지)
+```
+게이트  새 worktree 전체 스위트에서 그 열넷이 초록 · 1) 정순 · 역순 · 단독 각 3 회 · 원인 한 줄씩
+
+---
+
 # 🔴 [구현자] **넓게 잡고 아무것도 안 남기는 188 자리 — 한 줄 남기기 (작게)** (소유자 10-20 「오류 남기게 해 너무 일 키우지는 말고」, 총괄)
 
 근거: c166afaa5 census 의 quiet · 넓게 잡음 188 (목록 caught_quiet_broad.tsv, 줄 번호는 착지 전 기준).
