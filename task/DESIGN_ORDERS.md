@@ -1,3 +1,20 @@
+# 🔴 [구현자 B] **설정 · 플러그인을 고치면 그 표의 실패 파일을 다시 읽는다** (소유자 10-20 「ㅇㅇ」, 총괄)
+
+근거: 실패한 파일은 «그 경로 · 바뀌지 않음» 동안 훑기가 다시 안 집는다(checkpoint.concluded_here 의 FAILED 갈래 · tier-1). 원인이 파일이 아니라
+그 표의 선언(table_config 항목 · 외부 소스 항목) 또는 scripts\ 플러그인이었으면, 고쳐도 사람이 Retry failed 를 눌러야 다시 읽힘.
+```
+할 일   와처가 «그 표의 읽기 모양이 바뀜»을 알면(그 표의 table_config 항목 · 그 표의 외부 소스 항목 · 그 표 scripts\ 의 플러그인 파일 지문) 그 표의
+        FAILED 파일을 «이미 있는 다시 읽기 문»(retry-failed 의 PENDING_RETRY → 와처 폴러)으로 넘긴다 — 둘째 재시도 길 금지.
+        다른 표의 변경 · 그 표의 무관한 칸(표시 칸 등)만 바뀐 것으로는 안 넘김 — «읽기 모양»의 범위를 지문 하나로 정하고 보고에 그 칸 목록
+        상한: 한 번에 넘기는 수는 reread_max_files 그대로(넘으면 «N failed files wait - Retry failed by folder» 한 줄, 넘기지 않음)
+        로그 한 줄: «[Watcher] <표>: its reading changed (<무엇>) - N failed file(s) handed again»
+게이트   진짜 watcher: 플러그인이 터지는 판 → FAILED 3 → 플러그인 고침(재기동 없이) → 3 개 다시 읽혀 SUCCESS · 다른 표 플러그인 고침은 이 표 안 건드림 ·
+        표시 칸만 바꿈은 안 넘김 · 상한 넘으면 줄만 · 변이 빨강
+RUN.md · RELEASE_LOG
+```
+
+---
+
 # 🔴🔴 [구현자] **외부 저장소 옛 파일 — 기다리지 않기 · 소스끼리 번갈아 · 진행 줄 · 다른 경로는 같은 내용이어도 읽기** (소유자 10-20 「아직도 외부 저장소 안 읽어」 · 「ㄱ」, 총괄)
 
 근거(응용 재현 10-20, 박스): 훑기가 모든 소스의 후보를 mtime 순 «한 줄»로 _handle_event — 파일마다 _process_with_retry 의 time.sleep(delay=1.0)
