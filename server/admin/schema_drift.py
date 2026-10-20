@@ -257,6 +257,16 @@ def _dynamic_table_names():
         return set()
 
 
+def _synced_table_names():
+    """The tables `sync_dynamic_tables_schema` loops over - its own list (`models.schema_synced_tables`), the dynamic
+    ones and the system ones it also reaches. Empty on failure, the safe direction (`_dynamic_table_names`)."""
+    try:
+        from database import models
+        return set(models.schema_synced_tables())
+    except Exception:
+        return set()
+
+
 def _sync_repairs(table, column_name, actual_columns, dynamic_names):
     """Will `models.sync_dynamic_tables_schema` add this column by itself?
 
@@ -577,7 +587,7 @@ def _relation_exists(engine, name):
 
 def check(engine):
     declared, actual = _declared(), _actual(engine)
-    dynamic_names = _dynamic_table_names()
+    dynamic_names, synced_names = _dynamic_table_names(), _synced_table_names()
     dialect = engine.dialect
     findings = []
 
@@ -617,7 +627,7 @@ def check(engine):
 
         missing = [c for name, c in columns.items() if name not in actual[table]]
         for col in missing:
-            if _sync_repairs(table, col.name, actual[table], dynamic_names):
+            if _sync_repairs(table, col.name, actual[table], synced_names):
                 # Reported, never hidden - the operator gets the table and the
                 # column, and a second sighting after a restart is the signal that
                 # the ALTER is failing. What changes is the two sentences that were

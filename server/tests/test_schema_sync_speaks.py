@@ -87,6 +87,7 @@ class _EngineThatCountsAlters(_EngineThatCannotAlter):
 @pytest.fixture
 def one_unrepairable_table(monkeypatch):
     monkeypatch.setattr(models, "DYNAMIC_TABLES", {"probe_relation": _Model})
+    monkeypatch.setattr(models, "SCHEMA_SYNCED_SYSTEM_TABLES", ())
     monkeypatch.setattr(sqlalchemy, "inspect", lambda target: _Inspector())
     return "probe_relation"
 
@@ -127,6 +128,7 @@ def test_a_failing_repair_does_not_take_the_boot_down(one_unrepairable_table):
 @pytest.fixture
 def one_declared_view(monkeypatch):
     monkeypatch.setattr(models, "DYNAMIC_TABLES", {"probe_relation": _Model})
+    monkeypatch.setattr(models, "SCHEMA_SYNCED_SYSTEM_TABLES", ())
     monkeypatch.setattr(sqlalchemy, "inspect", lambda target: _ViewInspector())
     return "probe_relation"
 
@@ -193,6 +195,7 @@ def test_a_view_that_lacks_nothing_is_said_but_not_cried_about(caplog, monkeypat
     none, which this repository has already ruled once.
     """
     monkeypatch.setattr(models, "DYNAMIC_TABLES", {"probe_relation": _Model})
+    monkeypatch.setattr(models, "SCHEMA_SYNCED_SYSTEM_TABLES", ())
     monkeypatch.setattr(sqlalchemy, "inspect", lambda target: _HealthyViewInspector())
 
     with caplog.at_level(logging.DEBUG, logger="Server"):

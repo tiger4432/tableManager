@@ -5670,6 +5670,7 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
             "status": log.status,
             "error_message": log.error_message,
             "retry_count": log.retry_count,
+            **{column: getattr(log, column) for column in models.FILE_RESULT_COLUMNS},
             "created_at": log.created_at.isoformat() if log.created_at else None,
             "updated_at": log.updated_at.isoformat() if log.updated_at else None
         })

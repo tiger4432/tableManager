@@ -357,6 +357,18 @@ class FileIngestionLog(Base):
     retry_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # What the file's read came to (총괄 e390600d6), set where its answer is written: the write door's own counts, the
+    # reader, the source, and for a failure its one-line reason and the frame it broke in. Null on rows written before
+    # them and on files skipped without a read. Added to a database by the boot schema sync (SCHEMA_SYNCED_SYSTEM_TABLES).
+    rows_read = Column(Integer, nullable=True)
+    rows_new = Column(Integer, nullable=True)
+    rows_changed = Column(Integer, nullable=True)
+    rows_unchanged = Column(Integer, nullable=True)
+    rows_refused = Column(Integer, nullable=True)
+    reader = Column(String(300), nullable=True)
+    source = Column(String, nullable=True)
+    reason = Column(String(500), nullable=True)
+    failed_at = Column(String(500), nullable=True)
 
     # once `index=True` on their columns - the same names, now able to say what they are for
     __table_args__ = (
@@ -462,6 +474,22 @@ def ensure_run_phase_columns(engine):
 
 #: The databases `ensure_run_phase_columns` found or made the two columns on, in this process.
 _PHASE_COLUMNS = weakref.WeakSet()
+
+
+#: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
+FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "reader", "source",
+                       "reason", "failed_at")
+
+
+#: System tables the boot schema sync (`sync_dynamic_tables_schema`) also adds a declared column to - a column added to
+#: one of these later reaches a database that never ran its SQL (총괄 10-20: a pulled server reading a column the
+#: database lacked failed every file list and every watcher record with UndefinedColumn).
+SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog,)
+
+
+def schema_synced_tables() -> dict:
+    """{table name: model} the boot schema sync adds missing columns to: the dynamic tables and the system ones above."""
+    return {**DYNAMIC_TABLES, **{model.__tablename__: model for model in SCHEMA_SYNCED_SYSTEM_TABLES}}
 
 
 class FileRereadMark(Base):
@@ -1455,7 +1483,7 @@ def sync_dynamic_tables_schema(engine):
         # pretending nothing is a view.
         logger.debug("[Schema Sync] view list unavailable (%s); treating all as tables", err)
 
-    for table_name, model_class in DYNAMIC_TABLES.items():
+    for table_name, model_class in schema_synced_tables().items():
         if not inspector.has_table(table_name):
             continue
 
