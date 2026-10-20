@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map (소유자 10-20 「ㄱ 이고 맵키랑 같아」)** — git pull · 런처 재기동
+>
+> ```
+> 켜는 법   table_config.json 의 그 표에 "allow_replace_map": true  (그 표에 "map_key_columns" 가 있어야 함)
+> 무엇     그 표에 파일이 들어오면 파일에 있는 맵(map_key_columns 값)마다 그 맵의 기존 행을 파일의 행으로 통째 교체
+>          다시 온 다이 = 같은 행 그대로 · 파일에 없는 다이 = 지움(지움 이벤트 · 행 지움 이력 · 원장 후속) · 파일에 없는 맵 = 안 건드림
+> 🔴 주의   사람이 그 행에 고친 값도 행과 같이 지워진다(체인 allow_replace_map 과 같음)
+> 거절     키(맵 키 포함)가 빈 행이 하나라도 있으면 그 파일 FAILED · 아무것도 안 지움
+>            «Column '<맵 키>' does not take '' - a key on every row (allow_replace_map …; N row(s) had a blank key …)»
+>          map_key_columns 없이 켜면  watcher.log «… sets allow_replace_map but declares no map_key_columns …»
+> 크기     그 표의 파일은 통째로 메모리에 올라가고 체크포인트 재개를 안 씀(다시 넣어도 바뀌는 것 없음)
+>          박스 실측 50 만 행(맵 1,250 × 400) 한 파일 453 s
+> 끄기     그 칸을 지움(또는 false) -> 오늘처럼 덮어쓰기
+> 되돌리기  git revert 49a467884 -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **«[JoinUnique] could not load declarations … unhashable type: 'dict'» — 조인 키에 표기 규칙이 걸린 선언 (총괄, 소유자 10-20)** — git pull · 런처 재기동
 >
 > ```
