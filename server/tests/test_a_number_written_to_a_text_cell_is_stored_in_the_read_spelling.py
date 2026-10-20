@@ -103,6 +103,7 @@ def fixture_pg_table(pg_engine):
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
         conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
+        conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": T})
     Base.metadata.create_all(bind=pg_engine, tables=[models.DYNAMIC_TABLES[T].__table__])
     crud.TABLE_CONFIG[T] = TABLE
     db = sessionmaker(bind=pg_engine, autoflush=False)()
@@ -116,6 +117,7 @@ def fixture_pg_table(pg_engine):
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
             conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
+            conn.execute(text("DELETE FROM database_outbox WHERE table_name = :t"), {"t": T})
 
 
 @pytest.mark.pg
