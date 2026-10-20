@@ -307,11 +307,22 @@ def test_stop_all_leaves_no_orphans_including_grandchildren(tmp_path):
     child_pid = sup.children[0].proc.pid
 
     gc_file = os.path.join(work, "gc.pid")
+
+    def written():
+        """The grandchild's pid once the file holds it - the child creates the file, then writes (a loaded box
+        read it in between: int(''))."""
+        try:
+            with open(gc_file) as f:
+                text = f.read().strip()
+        except OSError:
+            return None
+        return int(text) if text.isdigit() else None
+
     deadline = time.time() + 20
-    while not os.path.exists(gc_file) and time.time() < deadline:
+    while written() is None and time.time() < deadline:
         time.sleep(0.1)
-    assert os.path.exists(gc_file), "fixture broken: no grandchild was spawned"
-    gc_pid = int(open(gc_file).read())
+    gc_pid = written()
+    assert gc_pid is not None, "fixture broken: no grandchild pid was written"
     assert psutil.pid_exists(gc_pid), "fixture broken: grandchild not running"
 
     try:
