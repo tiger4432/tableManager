@@ -9,7 +9,7 @@
 >         그래도 refused 가 나오면 «sentence … is said for no row: <어디>가 묻는 것 and <어디>가 묻는 것» —
 >           문장 자신의 when 이 «칸 = A» 인데 제외도 «칸 = A» 라 그 문장은 어떤 행에도 안 섬. 둘 중 뜻이 아닌 쪽을 지움
 > 쓰기     미리보기가 그 소스를 mixes 로 말하면(절 하나일 때와 같음) python -m scripts.migrate_ledger_config_to_v7 --apply -> 런처 재기동
-> 되돌리기  git revert <착지> (쓴 파일은 스크립트가 남긴 백업으로)
+> 되돌리기  git revert 57137972a (쓴 파일은 스크립트가 남긴 백업으로)
 > ```
 >
 > ---
