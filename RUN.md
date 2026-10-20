@@ -7,7 +7,7 @@
 > 뜻       답의 more.reach.<타입>.complete false · unexpanded = 묶음이 남기고 다른 걸음도 안 그린 먼 노드 수 · truncated.reason 에 fan-out
 >          fanout_limit 없는 걷기는 전과 같은 답
 > 박스 판  웨이퍼 W01 다이 400 · fanout_limit 20 -> 다이 20 · reach.die complete false · unexpanded 380 (운영 주장 아님)
-> 되돌리기  git revert <착지> -> 서버 재기동
+> 되돌리기  git revert 3bf2791f7 -> 서버 재기동
 > ```
 >
 > ---
