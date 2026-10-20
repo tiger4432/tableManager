@@ -50,6 +50,7 @@
 >
 > ```
 > 무엇     file_ingestion_logs 에 rows_read · rows_new · rows_changed · rows_unchanged · rows_refused · reader · source · reason · failed_at
+>          · took_seconds (06c21a7b1 — failed_at 은 «p.py:7 in parse» 꼴, 찾기의 group=status 는 상태 칩의 수)
 >          SQL 을 안 돌려도 된다 — 서버 · 와처 · 체인 워커가 기동 때 스스로 붙인다 (스키마 동기화, 잠금 상한 20 s)
 > 볼 줄     server.log 또는 watcher.log  «[Schema Sync] added column 'rows_read' to 'file_ingestion_logs'» … 아홉 줄, 처음 한 번만
 >          그 뒤 파일 하나 읽고  GET /admin/file-ingestion/logs?limit=1  -> rows_read · reader · source 가 채워져 있음
@@ -57,7 +58,7 @@
 >          그새 이 칸을 읽는 목록 · 와처 기록이 실패한다 — 급하면 손으로:
 >          psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_log_results.sql
 >          칸이 비어 있음  이 칸이 생기기 전에 적힌 행이거나 건너뛴 파일 (정상)
-> 되돌리기  git revert 0eba61a50 -> 런처 재기동 -> 그다음에 server/migrations/add_file_ingestion_log_results_reverse.sql (순서 반대면 다음 기동이 칸을 다시 붙임)
+> 되돌리기  git revert 06c21a7b1 0eba61a50 -> 런처 재기동 -> 그다음에 server/migrations/add_file_ingestion_log_results_reverse.sql (순서 반대면 다음 기동이 칸을 다시 붙임)
 > ```
 >
 > ---
