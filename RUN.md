@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **외부 저장소도 표준 파서 — raws/ 와 같은 규칙 (총괄, 소유자 10-20 «기본 파서도 있는데 왜 파서 없다고 막아» · «ㅇㅇ 해»)** — git pull · 런처 재기동
+>
+> ```
+> 🔴 재기동하면 «지금 거절돼 있던 외부 연결»이 살아나, 그 폴더에 이미 있는 파일을 표준 파서로 읽기 시작한다
+> 재기동 «전»   Select-String -Path server\watcher.log -Pattern "External source config rejected"
+>              -> 줄마다 «declares no 'parser' and table '<표>' has no BasePipelineParser plugin» 이면 재기동 뒤 그 표가 읽기 시작함
+>              -> 그중 읽히면 안 되는 표는 table_config.json 그 표 항목에 "std_parse": false -> 그 연결은 오늘처럼 거절
+> 무엇         ingestion_settings.json external_sources 에서 parser 를 안 적은 연결: 그 표 scripts/ 의 플러그인 -> 없거나 다 안 받으면 표준 파서(raws/ 와 같은 길)
+>              거절은 «플러그인 없음 + std_parse false» 일 때만: «… has no BasePipelineParser plugin in <폴더>, and its std_parse is false - nothing reads the file.»
+> 새 줄        External source <표>@<루트>: N file(s) under the root, none matched <glob/filename>   <- 그 연결이 아무 파일도 안 받는 동안 한 번
+>              [<표>] ❌ <스크립트>::<클래스> could not read '<파일>': <사유>   <- 플러그인이 읽다가 실패(전: «Failed to load plugin script»), 그 파일은 FAILED
+> 플러그인     scripts/ 옆의 .py 를 import 할 수 있음(import helper) — 표마다 자기 폴더의 것. 모듈 맨 위 import 만(parse 안에서 하는 import 는 못 찾음)
+> 되돌리기     git revert <착지> -> 런처 재기동 (그사이 읽힌 행은 남음)
+> ```
+>
+> ---
+>
 > ## [10-20] **시험대: 보이는 줄만 그림 · 필터 값 위 20 개 + 검색 (소유자 10-20 「일단 ㄱ」)** — git pull · 브라우저 새로 고침 (서버 재기동 없음)
 >
 > ```
