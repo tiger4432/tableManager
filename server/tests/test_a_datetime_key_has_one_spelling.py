@@ -95,11 +95,23 @@ def test_a_date_is_its_midnight_and_a_text_that_is_no_time_keeps_its_text():
 
 
 def test_the_write_door_gives_a_time_without_an_offset_the_declared_zone():
-    """d94342107: read where the key reads it, passed on with the zone's offset; anything else byte-identical."""
-    assert crud.cast_value_by_type("2026-08-14 00:03", "datetime", "t", T_KEY) == KEY
-    assert crud.cast_value_by_type(datetime(2026, 8, 14, 0, 3), "datetime", "t", T_KEY) == KEY
-    for kept in ("2026-08-13T15:03:00Z", "2026-08-14T00:03:00+09:00", "2026/08/14 00:03"):
-        assert crud.cast_value_by_type(kept, "datetime", "t", T_KEY) == kept
+    """d94342107: into a time column, read where the key reads it and passed on with the zone's offset; into a text
+    column declared datetime - and anything else - byte-identical (the lead, after 3ea1ae778)."""
+    tables = {T_KEY: {"column_types": {"lot": "string", "t": "datetime"}},
+              T_LEFT: {"column_types": {"lot": "string", "t": "string"}}}
+    for name in tables:
+        retire_dynamic_model(name)
+    models.init_dynamic_models(tables)
+    try:
+        assert crud.cast_value_by_type("2026-08-14 00:03", "datetime", "t", T_KEY) == KEY
+        assert crud.cast_value_by_type(datetime(2026, 8, 14, 0, 3), "datetime", "t", T_KEY) == KEY
+        for kept in ("2026-08-13T15:03:00Z", "2026-08-14T00:03:00+09:00", "2026/08/14 00:03"):
+            assert crud.cast_value_by_type(kept, "datetime", "t", T_KEY) == kept
+        for kept in ("2026-08-14 00:03", "2026-08-14T00:03:00", "2026-08-13T15:03:00Z"):
+            assert crud.cast_value_by_type(kept, "datetime", "t", T_LEFT) == kept
+    finally:
+        for name in tables:
+            retire_dynamic_model(name)
 
 
 def test_a_pair_of_a_time_and_not_a_time_is_said():
@@ -218,3 +230,19 @@ def test_a_naive_time_written_is_stored_as_its_key_instant_in_any_session_zone(p
         stored = conn.execute(text('SELECT t FROM "%s"."%s"' % (PG_TEST_SCHEMA, T_RIGHT))).scalar()
     assert stored == INSTANT, (session_zone, stored)
     assert crud.key_part(T_RIGHT, "t", stored) == crud.key_part(T_RIGHT, "t", "2026-08-14 00:03") == KEY
+
+
+@pytest.mark.pg
+def test_a_naive_time_written_into_a_text_column_keeps_its_bytes_and_its_key(pg, pg_engine):
+    """A TEXT column declared datetime: PostgreSQL does not read it, so the door leaves the person's text as written
+    (the lead, after 3ea1ae778) - and its key is still the instant every other spelling keys to."""
+    pg.execute(text("SET TIME ZONE 'UTC'"))
+    with channel(event_constants.CHANNEL_API):
+        crud.apply_batch_updates(pg, T_LEFT, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates={"lot": "L1", "t": "2026-08-14 00:03"},
+                                      source_name="parser_a", updated_by="t")]))
+        pg.commit()
+    with pg_engine.connect() as conn:
+        stored = conn.execute(text('SELECT t FROM "%s"."%s"' % (PG_TEST_SCHEMA, T_LEFT))).scalar()
+    assert stored == "2026-08-14 00:03", stored
+    assert crud.key_part(T_LEFT, "t", stored) == KEY

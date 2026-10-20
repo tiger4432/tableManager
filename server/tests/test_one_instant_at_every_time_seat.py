@@ -102,9 +102,19 @@ def test_a_naive_time_takes_the_declared_zone_and_nothing_else_moves():
     """Round ⓑ as the owner answered it (d94342107): a naive time gains the declared zone's offset; nothing
     else is one character different, and it is still never a refusal."""
     import expression
+    from conftest import retire_dynamic_model
+    from database import models
 
-    assert crud.cast_value_by_type(NAIVE_TEXT, "datetime", "observed_at", "s182_table") == \
-        datetime.fromisoformat(NAIVE_TEXT).replace(tzinfo=expression.time_zone()).isoformat()
+    # into a TIME column only (the lead, after 3ea1ae778): a table this process has no model of - a text
+    # column, or none - keeps the text as written
+    assert crud.cast_value_by_type(NAIVE_TEXT, "datetime", "observed_at", "s182_table") == NAIVE_TEXT
+    retire_dynamic_model("s182_table")
+    models.init_dynamic_models({"s182_table": {"column_types": {"observed_at": "datetime"}}})
+    try:
+        assert crud.cast_value_by_type(NAIVE_TEXT, "datetime", "observed_at", "s182_table") == \
+            datetime.fromisoformat(NAIVE_TEXT).replace(tzinfo=expression.time_zone()).isoformat()
+    finally:
+        retire_dynamic_model("s182_table")
     for value in (OFFSET_TEXT, "not a time at all"):
         assert crud.cast_value_by_type(
             value, "datetime", "observed_at", "s182_table") == value

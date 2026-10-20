@@ -1174,11 +1174,15 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
         #    ingestion_settings "expression_time_zone") and passed on with that zone's offset. Still counted -
         #    «it came without an offset» is the observation. A value with an offset, and a text that is not a time
         #    (PostgreSQL refuses it as before), pass byte-identical.
+        #    ⚠️ ONLY INTO A TIME COLUMN (총괄 after 3ea1ae778): a text column declared datetime is not read by
+        #    PostgreSQL, its key already reads it in the declared zone, so the person's text stays as written.
         if time_format.time_is_naive(value):
             time_format.note_naive_time(table_name, col_name)
             import expression
+            from chain import join_key_index
 
-            moment = expression._wall(value, expression.time_zone())
+            moment = (None if join_key_index.column_is_text(table_name, col_name)
+                      else expression._wall(value, expression.time_zone()))
             if moment is not None:
                 value = moment.isoformat()
         # 🔴 [총괄 791c0f45e 4] A datetime OBJECT - what the chain moves out of a datetime
