@@ -680,8 +680,8 @@ async function groupG(src) {
 //    (the push path) type-coerces the panel per `column_types` before composing;
 //    `getCurrentMapKey` composes from raw trimmed strings. `canonicalKeyValue` absorbs
 //    the difference for every integer-shaped value, which is why nobody has noticed --
-//    but not for a non-integral padded value or an unreadable one. K4/K5 below are the
-//    two reachable divergences, pinned so they cannot drift further unseen.
+//    and since 10-20 for a non-integral padded value too (K4, its short spelling) - not for an
+//    unreadable one. K5 below is the reachable divergence left, pinned so it cannot drift unseen.
 //
 //    `currentIdentityMismatch()` (the ⚡ Push guard) uses the UNTYPED spelling while
 //    `loadedIdentity.mapKey` after a push is the TYPED one, so the guard can fire
@@ -711,7 +711,7 @@ async function groupK(src) {
     K1: await spell('07', numeric),
     K2: await spell('7.0', numeric),
     K3: await spell('1e3', numeric),
-    K4: await spell('007.5', numeric),   // 🔴 diverges
+    K4: await spell('007.5', numeric),   // one spelling since 10-20 (was the first divergence)
     K5: await spell('ABC', numeric),     // 🔴 diverges
     K6: await spell('07', textual),      // a string column keeps its padding on BOTH sides
   };
@@ -787,7 +787,7 @@ const EXPECT_K = {
   K1: 'L1_7|L1_7',
   K2: 'L1_7|L1_7',
   K3: 'L1_1000|L1_1000',
-  K4: 'L1_7.5|L1_007.5',    // 🔴 RECORDED DEFECT — two spellings of one business key
+  K4: 'L1_7.5|L1_7.5',      // closed 10-20: a number key's non-integral value is one short spelling (canonicalKeyValue, owner)
   K5: 'L1_NaN|L1_ABC',      // 🔴 RECORDED DEFECT — and the typed one invents 'NaN'
   K6: 'L1_07|L1_07',
 };
@@ -999,7 +999,7 @@ const MUTANTS = [
     apply: s => s.replace(
       `    if (val !== '') dict[col] = val;`,
       `    if (val !== '') dict[col] = (tableSchema.column_types[col] === 'number') ? Number(val) : val;`),
-    group: 'K', breaks: ['K4', 'K5']
+    group: 'K', breaks: ['K5']
   },
 ];
 

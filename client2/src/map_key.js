@@ -40,6 +40,15 @@ const CANON_INT_RE = /^[+-]?[0-9]+$/;
 // value the server never stores. Unreadable must stay unreadable (trimmed original).
 const CANON_FLOAT_RE = /^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
 
+// Python's repr(float) of a finite non-integral number - the server's short spelling ('1.50' -> '1.5', owner 10-20):
+// JS's shortest digits, laid out as repr lays them (plain from 1e-4 to 1e16, else d.ddde-05 with two exponent digits).
+function floatRepr(f) {
+  const [mantissa, power] = f.toExponential().split('e');
+  const e = Number(power);
+  if (e < -4 || e >= 16) return `${mantissa}e${e < 0 ? '-' : '+'}${String(Math.abs(e)).padStart(2, '0')}`;
+  return String(f);
+}
+
 // str(int(s)) without parseInt — exact for arbitrarily long digit strings.
 function canonIntString(s) {
   const neg = s[0] === '-';
@@ -51,8 +60,8 @@ function canonIntString(s) {
 
 // Value + DECLARED column type -> canonical key string.
 //   · "number": integer-parse ('01' / ' 1 ' / '1.0' are the same key). A non-integral numeric
-//     keeps its repr ('7.5'); an UNREADABLE value keeps its trimmed original — the lookup
-//     misses honestly instead of inventing a key.
+//     is the float's short spelling ('1.50' / '7.5' -> '1.5' / '7.5', owner 10-20); an UNREADABLE value keeps
+//     its trimmed original — the lookup misses honestly instead of inventing a key.
 //   · anything else (string / undeclared): trimmed as-is. Padding may be meaningful.
 //   · null/undefined stay null (composition sites decide their own placeholder).
 export function canonicalKeyValue(value, colType) {
@@ -70,13 +79,13 @@ export function canonicalKeyValue(value, colType) {
   if (colType === 'number' && typeof value !== 'boolean') {
     if (typeof value === 'number') {
       if (Number.isFinite(value) && Number.isInteger(value)) return String(value);
-      return String(value).trim();
+      return Number.isFinite(value) ? floatRepr(value) : String(value).trim();
     }
     const s = String(value).trim();
     if (CANON_INT_RE.test(s)) return canonIntString(s);
     if (CANON_FLOAT_RE.test(s)) {
       const f = Number(s);
-      if (Number.isFinite(f) && Number.isInteger(f)) return String(f);
+      if (Number.isFinite(f)) return Number.isInteger(f) ? String(f) : floatRepr(f);
     }
     return s;
   }
