@@ -330,13 +330,37 @@ def concluded_here(db, row, filepath: str, file_stat) -> bool:
         return True
     if not file_stat:
         return False
-    from sqlalchemy import func
     from database.models import FileIngestionLog as Log
 
     said = "SUCCESS" if row.status == STATUS_DONE else STATUS_FAILED
     return db.query(Log.id).filter(
-        Log.table_name == row.table_name, Log.filepath == filepath, Log.status == said,
-        func.coalesce(Log.updated_at, Log.created_at) >= file_stat[0]).first() is not None
+        Log.table_name == row.table_name, _answered_here(Log, filepath, file_stat[0], said)).first() is not None
+
+
+def _answered_here(Log, filepath: str, file_mtime, status: str):
+    """A log row saying `status` for the file at `filepath`, written at or after its mtime - the file has not changed
+    since that answer. The file name lets ix_file_ingestion_logs_filename serve it."""
+    from sqlalchemy import func
+    return and_(Log.filename == os.path.basename(filepath), Log.filepath == filepath, Log.status == status,
+                func.coalesce(Log.updated_at, Log.created_at) >= file_mtime)
+
+
+def _succeeded_here(db, table_name: str, items, size: int) -> dict:
+    """Tier 1's second half (총괄 10-20): the ledger row holds ONE path per content, so a copy of the same bytes at
+    another path, read and SUCCESS there, missed tier 1 and was hashed again on every watcher start. Its own log row
+    answers it - `{filepath: log row}` for the `(filepath, file_stat)` items that succeeded unchanged."""
+    from database.models import FileIngestionLog as Log
+
+    found = {}
+    for start in range(0, len(items), size):
+        chunk = items[start:start + size]
+        rows = db.query(Log).filter(
+            Log.table_name == table_name,
+            or_(*[_answered_here(Log, filepath, file_stat[0], "SUCCESS") for filepath, file_stat in chunk]),
+        ).order_by(Log.id.desc()).all()
+        for row in rows:
+            found.setdefault(row.filepath, row)
+    return found
 
 
 def find_terminal_by_path_stat(db, table_name: str, filepath: str, file_stat):
@@ -349,12 +373,13 @@ def find_terminal_by_path_stat(db, table_name: str, filepath: str, file_stat):
 
     행이 둘 이상일 수 있다(같은 경로가 여러 내용을 담았다가 mtime까지 같아진 경우).
     상한이 걸린 읽기이므로 **전순서**를 준다(SCHEMA_CANON R7): 최신 갱신 → id 역순.
+    원장 행이 없으면 그 경로의 SUCCESS 로그 행(`_succeeded_here`)이 답한다.
     """
     if not table_name or not filepath or not file_stat:
         return None
     file_mtime, file_size = file_stat
     Model = _get_model()
-    return (
+    row = (
         db.query(Model)
         .filter(
             Model.table_name == table_name,
@@ -366,6 +391,7 @@ def find_terminal_by_path_stat(db, table_name: str, filepath: str, file_stat):
         .order_by(Model.updated_at.desc(), Model.id.desc())
         .first()
     )
+    return row if row is not None else _succeeded_here(db, table_name, [(filepath, file_stat)], 1).get(filepath)
 
 
 # How many files ONE tier-1 lookup answers when the caller already holds every
@@ -455,6 +481,7 @@ def find_terminal_by_path_stat_batch(db, table_name: str, entries, batch_size: i
         for row in rows:
             if row.filepath not in found:
                 found[row.filepath] = row
+    found.update(_succeeded_here(db, table_name, [item for item in items if item[0] not in found], size))
     return found
 
 

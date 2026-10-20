@@ -6,7 +6,7 @@ data root, a sqlite file and a stub API:
   bm     w1/bmap.csv and w2/bmap.csv, the same bytes -> both read (each wafer's own file)
 and a line «External sweep in progress: <source> k/N candidate(s) through» while the sweep runs.
 Run 2 (a restart, sweeps every 2 s): small's s0.csv written again with the same bytes at its own path is skipped; the
-bmap copies are not read again."""
+bmap copies are concluded by tier 1 - not dispatched, not hashed (총괄 10-20)."""
 import ctypes
 import http.server
 import json
@@ -175,8 +175,10 @@ def test_old_files_are_read_in_turn_without_waiting(tmp_path):
         with sqlite3.connect(str(db)) as c:
             assert len(_logs(c)) == 45, [r[1:4] for r in _logs(c)[45:]]
         assert re.search(r"New file detected: \S+s0\.csv", said), "s0.csv was not looked at again"
-        again = re.findall(r"New file detected: \S+bmap\.csv", said)
-        print("bmap copies looked at again after the restart: %d" % len(again))
-        assert len(again) <= 1, again                                    # the copy the ledger row does not hold
+        [ended] = re.findall(r"External sweep: (\d+) candidate binding\(s\) - (\d+) already concluded .*?(\d+) dispatched",
+                             said)
+        print("after the restart: %s candidates, %s concluded by tier 1, %s dispatched" % ended)
+        assert ended == ("45", "44", "1"), ended                         # s0.csv only - it was written again
+        assert not re.findall(r"New file detected: \S+bmap\.csv", said)
     finally:
         api.shutdown()

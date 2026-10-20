@@ -400,7 +400,8 @@ def test_admin_retry_records_the_tier1_key(env):
 
 def test_duplicate_content_at_a_new_path_is_read_and_each_copy_keeps_its_answer(env):
     """같은 내용이어도 다른 경로는 다른 파일 — 읽는다(소유자 10-20 ㄱ, 웨이퍼마다 따로인 bmap.txt).
-    원장 행은 한 경로만 들므로, 다시 볼 때 각 사본은 «자기 경로의 답»으로 건너뛴다 — 다시 적재하지 않는다."""
+    원장 행은 한 경로만 들므로, 다시 볼 때 각 사본은 «자기 경로의 답»으로 건너뛴다 — 다시 적재하지 않고,
+    행이 안 든 사본도 해시하지 않는다(총괄 10-20: 그 경로의 SUCCESS 로그가 tier 1 에 답한다)."""
     env["settings"](archive_processed_files=False)
     content = _csv(3)
     a = _write(env["raws"] / "a.csv", content)
@@ -415,9 +416,7 @@ def test_duplicate_content_at_a_new_path_is_read_and_each_copy_keeps_its_answer(
 
     again_a, again_b = env["process"](a), env["process"](b)
     assert again_a["ingests"] == 0 and again_b["ingests"] == 0, (again_a, again_b)
-    assert again_b["hashes"] == 0, "the ledger row's own copy is a tier-1 hit"
-    row = _ledger(env, "DONE")[0]
-    assert "a.csv" in (row.note or ""), "the other copy's place is said nowhere"
+    assert (again_a["hashes"], again_b["hashes"]) == (0, 0), "a copy missed tier 1 and was hashed again"
 
 
 def test_the_ledger_adopts_the_survivor_when_the_original_is_gone(env):
