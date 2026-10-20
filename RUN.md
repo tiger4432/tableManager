@@ -10,7 +10,7 @@
 >          찾기  Select-String -Path server\*.log -Pattern '\.py:\d+ in \w+\)'
 > 답의 뜻   줄 끝에 괄호가 없음  -> 이름 붙은 오류만 잡는 자리(손대지 않음)거나 재기동 전 판
 >          로그 파일이 갑자기 커짐  -> 반복문 밖 자리가 계속 터지는 중. traceback 의 맨 아래 줄이 고칠 자리
-> 되돌리기  git revert __HASH__ -> 런처 재기동
+> 되돌리기  git revert c166afaa5 -> 런처 재기동
 > ```
 >
 > ---
