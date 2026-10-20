@@ -5,7 +5,7 @@
 > ```
 > 무엇     쓰기 문이 «2026-08-14 00:03» 같은 시각을 expression_time_zone 으로 읽어 «…+09:00» 을 붙여 넘김. 오프셋 있는 값은 그대로. 소급 없음
 > 볼 것     새로 쓴 행의 datetime 칸 = 그 시각의 한국 시간 (PG 세션 TimeZone 이 UTC 여도). watcher.log 청크 줄 끝 « | timezone_naive: <표.칸> N» · chain_worker.log [LayerHealth] 줄은 전처럼 셈(«오프셋 없이 왔다»)
-> 되돌리기  git revert __HASH__ -> 런처 재기동
+> 되돌리기  git revert 3ea1ae778 -> 런처 재기동
 > ```
 >
 > ---
