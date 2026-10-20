@@ -275,24 +275,6 @@ SCOPE_FILE = "file"
 SCOPE_TABLE = "table"
 SCOPE_COLUMN = "column"
 
-# TTL cache: the explicit invalidation (`reset_cache`) is wired into the web server's
-# reload hook (`runtime/system_reload.py`), and the TTL is what covers the worker
-# processes that never reach it.
-#
-# ⚠️ [판정 677 ①] THIS USED TO CITE `chain.legacy_materialized_join.RULES_CACHE_TTL` AS
-# 「the same discipline」. The sentence above is still true of THIS cache; it stopped being
-# true of that one, whose reload-hook call was removed and whose TTL is now the only thing
-# dropping it. A comparison expires when its other half changes, and it does so silently.
-RULES_CACHE_TTL = 5.0
-_RULES_CACHE = {"at": 0.0, "by_table": None}
-
-
-def reset_cache():
-    """Drop the declaration cache (web server config-reload hook)."""
-    _RULES_CACHE["at"] = 0.0
-    _RULES_CACHE["by_table"] = None
-
-
 # ---------------------------------------------------------------------------
 # The fold - Python half
 # ---------------------------------------------------------------------------
@@ -1134,27 +1116,26 @@ def load_notation_rules(path: str = None, known_tables: dict = None,
 
 
 def normalized_by_table() -> dict:
-    """`{table: {column: spec}}`, TTL-cached. Every consumer's only entry."""
-    import time
+    """`{table: {column: spec}}`, held until notation_rules.json or the table config changes (`config_watcher.held`,
+    e6a0bdbbd - a 5-second clock in every process but the web server before). Every consumer's only entry.
 
-    now = time.monotonic()
-    cached = _RULES_CACHE["by_table"]
-    if cached is not None and (now - _RULES_CACHE["at"]) < RULES_CACHE_TTL:
-        return cached
-    try:
-        from database import crud
-        loaded = load_notation_rules(known_tables=crud.TABLE_CONFIG)
-    except Exception as e:
-        # An unreadable declaration means NO column is normalized. Failing the
-        # read here would turn a config problem into an outage, and the safe
-        # direction is the one that compares raw values - the behaviour every
-        # join had before this feature existed.
-        logger.error("[NotationNorm] declarations unreadable, no column is "
-                     "normalized: %s", told(e), exc_info=e)
-        loaded = {}
-    _RULES_CACHE["by_table"] = loaded
-    _RULES_CACHE["at"] = now
-    return loaded
+    An unreadable declaration means NO column is normalized - failing the read here would turn a config problem into
+    an outage, and the safe direction is the one that compares raw values, the behaviour every join had before this
+    feature existed. One that stops reading after a good read keeps the good one."""
+    from database import config_watcher, crud
+
+    return config_watcher.held(config_watcher.names_of([NOTATION_RULES_PATH, crud.CONFIG_PATH]),
+                               "notation_norm.by_table", _read_by_table, fallback={})
+
+
+def _read_by_table():
+    from database import crud
+
+    if not os.path.exists(NOTATION_RULES_PATH):
+        return {}
+    with open(NOTATION_RULES_PATH, "r", encoding="utf-8") as f:
+        raw_config = json.load(f)
+    return validate_notation_rules(raw_config, known_tables=crud.TABLE_CONFIG)
 
 
 def rules_for_column(table: str, column: str):

@@ -83,7 +83,8 @@ def _write_decl(tmp_path, monkeypatch, decl):
     path = tmp_path / "notation_rules.json"
     path.write_text(json.dumps(decl), encoding="utf-8")
     monkeypatch.setattr(notation_norm, "NOTATION_RULES_PATH", str(path))
-    notation_norm.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     return str(path)
 
 
@@ -95,7 +96,8 @@ def norm_env(db_session, tmp_path, monkeypatch):
     Base.metadata.create_all(bind=db_session.get_bind())
     _write_decl(tmp_path, monkeypatch, BASE_DECL)
     yield db_session
-    notation_norm.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     from conftest import retire_dynamic_model
 
     for name in TABLES:
@@ -275,11 +277,13 @@ def test_a_missing_declaration_file_is_not_an_error(tmp_path, monkeypatch):
     """File absence is 'no declaration', not a rejection (the repo's rule)."""
     monkeypatch.setattr(notation_norm, "NOTATION_RULES_PATH",
                         str(tmp_path / "nope.json"))
-    notation_norm.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     rejections = []
     assert notation_norm.load_notation_rules(rejections=rejections) == {}
     assert rejections == []
-    notation_norm.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
 
 
 # ---------------------------------------------------------------------------

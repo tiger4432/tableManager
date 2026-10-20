@@ -78,13 +78,13 @@ def test_the_declaration_answer_carries_the_setting_the_screen_cuts_by(monkeypat
 
 
 def _settings_file_says(monkeypatch, settings):
-    """The settings file as one that now holds `settings` - its stamp changed with it (`time_zone` reads again then)."""
+    """The settings file as one that now holds `settings` - and changed, as the watcher says (`time_zone` reads again
+    then)."""
     import ingestion.settings
-    from ledger import setup
+    from database import config_watcher
 
-    stamp = ("a file holding", repr(sorted(settings.items())))
-    monkeypatch.setattr(setup, "file_stamp", lambda path: stamp)
     monkeypatch.setattr(ingestion.settings, "read_ingestion_settings", lambda path=None: dict(settings))
+    config_watcher.changed(ingestion.settings.INGESTION_SETTINGS_PATH)
 
 
 def test_with_no_zone_the_setting_is_read(monkeypatch):
@@ -97,17 +97,19 @@ def test_with_no_zone_the_setting_is_read(monkeypatch):
 
 
 def test_the_setting_is_read_again_only_when_its_file_changed(monkeypatch, caplog):
-    """Lead's review ④: not every run reads the file - once a stamp; a name that is no zone is said once a process."""
+    """Lead's review ④: not every run reads the file - once a change (e6a0bdbbd: the watcher says it); a name that is no
+    zone is said once a process."""
     import ingestion.settings
-    from ledger import setup
+    from database import config_watcher
 
     reads = []
     monkeypatch.setattr(ingestion.settings, "read_ingestion_settings",
                         lambda path=None: reads.append(1) or {expression.ZONE_SETTING: "Nowhere/Zone"})
     monkeypatch.setattr(expression, "_ZONE_REFUSED", set())
     caplog.set_level("WARNING", logger="Expression")
-    for stamp in ("one", "one", "one", "two", "two"):
-        monkeypatch.setattr(setup, "file_stamp", lambda path, stamp=stamp: stamp)
+    for change in (True, False, False, True, False):
+        if change:
+            config_watcher.changed(ingestion.settings.INGESTION_SETTINGS_PATH)
         assert expression.time_zone().key == expression.ZONE_DEFAULT
     assert len(reads) == 2, reads
     assert [r.getMessage() for r in caplog.records].count(

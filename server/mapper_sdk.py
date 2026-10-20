@@ -294,11 +294,6 @@ MAPPER_REFUSALS: dict[str, str] = {}
 #: retrying per name would walk it once per rule in a file of refusals.
 _DISCOVERY_ATTEMPTED = False
 
-#: The package's files (`_files_of`) when the last walk left a module refused, else None. A miss walks
-#: again only once they differ (lead 10-20): a fixed mapper file is found on the next ask, a module
-#: that keeps failing is not walked again per group.
-_REFUSED_AT = None
-
 #: One walk at a time, and a reload's empty-then-refill is one step: a reader that misses
 #: while it runs waits for the refill instead of reading the empty registry (lead 10-20).
 _DISCOVERY_LOCK = threading.RLock()
@@ -324,9 +319,8 @@ def reset_registry():
     MAPPER_PARAMS.clear()
     MAPPER_FACTS.clear()
     MAPPER_REFUSALS.clear()
-    global _DISCOVERY_ATTEMPTED, _REFUSED_AT
+    global _DISCOVERY_ATTEMPTED
     _DISCOVERY_ATTEMPTED = False
-    _REFUSED_AT = None
 
 
 def rediscover(package="mappers"):
@@ -382,17 +376,15 @@ def discover(package="mappers"):
     the modules rules NAME -- this walks the package, because 「which mappers exist」 cannot
     be answered from the rules that happen to use them.
     """
-    global _REFUSED_AT
     with _DISCOVERY_LOCK:
         registered, refusals = _walk(package)
         MAPPER_REFUSALS.clear()
         MAPPER_REFUSALS.update(refusals)
-        _REFUSED_AT = _files_of(package) if refusals else None
         return registered, refusals
 
 
-def _files_of(package):
-    """The package's .py files as (path, mtime, size) - what a refused walk is compared with."""
+def _module_files(package):
+    """The package's .py files, as paths."""
     import importlib.util
 
     try:
@@ -402,14 +394,93 @@ def _files_of(package):
     files = []
     for folder in (spec.submodule_search_locations or ()) if spec else ():
         try:
-            entries = list(os.scandir(folder))
+            files.extend(entry.path for entry in os.scandir(folder) if entry.name.endswith(".py"))
         except OSError:
             continue
-        for entry in entries:
-            if entry.name.endswith(".py"):
-                stat = entry.stat()
-                files.append((entry.path, stat.st_mtime_ns, stat.st_size))
     return tuple(sorted(files))
+
+
+def reload_modules(paths=None, package="mappers"):
+    """The mapper files that changed (`paths`; None: every file, the Reload button), each imported again and swapped
+    in only once it imports - one that does not keeps the module and the names it had, and is said by file and why
+    (owner 10-21 ㄱ, lead e6a0bdbbd ③). A file gone takes its names with it. A process that has not looked yet does
+    nothing (`ensure_discovered` walks when it asks). The config watcher calls this - in a chain process at its next
+    group boundary. -> {module: why} of those kept."""
+    import importlib
+    import sys
+
+    with _DISCOVERY_LOCK:
+        if not _DISCOVERY_ATTEMPTED:
+            return {}
+        importlib.invalidate_caches()
+        prefix = package + "."
+        if paths is None:
+            stems = {os.path.splitext(os.path.basename(path))[0] for path in _module_files(package)}
+            stems |= {name[len(prefix):] for name in list(sys.modules) if name.startswith(prefix)}
+        else:
+            stems = {os.path.splitext(os.path.basename(str(path)))[0] for path in paths if path}
+        kept = {}
+        for stem in sorted(stems):
+            why = _swap(prefix + stem)
+            if why:
+                kept[prefix + stem] = why
+        if paths is None:
+            try:
+                from chain import dynamic_mappers
+
+                dynamic_mappers.install()
+            except Exception as exc:                               # noqa: BLE001
+                MAPPER_REFUSALS["chain.dynamic_mappers"] = "%s: %s" % (type(exc).__name__, told(exc))
+        return kept
+
+
+def _swap(module_name):
+    """`module_name` imported again; its old module and names come back if it does not import. -> why, or None."""
+    import importlib
+    import importlib.util
+    import sys
+
+    old = sys.modules.pop(module_name, None)
+    had = {name: (fn, MAPPER_PARAMS.get(name), MAPPER_FACTS.get(name))
+           for name, fn in list(MAPPER_REGISTRY.items()) if _origin(fn) == module_name}
+    _unregister(module_name)
+    if importlib.util.find_spec(module_name) is None:
+        MAPPER_REFUSALS.pop(module_name, None)
+        if had:
+            logger.info("[MapperSDK] %s is gone - %s no longer registered", module_name, ", ".join(sorted(had)))
+        return None
+    try:
+        importlib.import_module(module_name)
+    except Exception as exc:                                       # noqa: BLE001 - kept, said
+        _unregister(module_name)
+        sys.modules.pop(module_name, None)
+        if old is not None:
+            sys.modules[module_name] = old
+            parent = sys.modules.get(module_name.rpartition(".")[0])
+            if parent is not None:
+                setattr(parent, module_name.rpartition(".")[2], old)
+        for name, (fn, params, facts) in had.items():
+            MAPPER_REGISTRY[name] = fn
+            if params is not None:
+                MAPPER_PARAMS[name] = params
+            if facts:
+                MAPPER_FACTS[name] = facts
+        why = "%s: %s" % (type(exc).__name__, told(exc))
+        MAPPER_REFUSALS[module_name] = why
+        logger.error("[MapperSDK] %s does not import - this process keeps %s: %s", module_name,
+                     "the one it had" if old is not None else "none of it", why)
+        return why
+    MAPPER_REFUSALS.pop(module_name, None)
+    logger.info("[MapperSDK] %s imported again", module_name)
+    return None
+
+
+def _unregister(module_name):
+    for name, fn in list(MAPPER_REGISTRY.items()):
+        if _origin(fn) == module_name:
+            MAPPER_REGISTRY.pop(name, None)
+            MAPPER_PARAMS.pop(name, None)
+            MAPPER_FACTS.pop(name, None)
 
 
 def _walk(package):
@@ -447,14 +518,6 @@ def _walk(package):
     return tuple(sorted(MAPPER_REGISTRY)), refusals
 
 
-def look_again_on_a_miss():
-    """The next name `rule_run.runnable` cannot find walks the package once more. Additive -
-    nothing is cleared - and nothing is walked unless a name misses (총괄 76aa4b6ed ①: a saved
-    rule may name a mapper file added since this process last looked)."""
-    global _DISCOVERY_ATTEMPTED
-    _DISCOVERY_ATTEMPTED = False
-
-
 def ensure_discovered(package="mappers"):
     """Walk the mapper package if nobody has yet, so 「that name is not registered」
     cannot be this process's way of saying 「I have not looked」.
@@ -473,7 +536,7 @@ def ensure_discovered(package="mappers"):
     global _DISCOVERY_ATTEMPTED
     # the lock first: a reload refilling the registry is waited for, then the flag read
     with _DISCOVERY_LOCK:
-        if _DISCOVERY_ATTEMPTED and (_REFUSED_AT is None or _files_of(package) == _REFUSED_AT):
+        if _DISCOVERY_ATTEMPTED:
             return
         # 🔴 RECORDED HERE, NOT LEFT TO `discover`. The promise this function makes is
         #    「at most one walk」 for a clean package, so it has to be the one that keeps it - a

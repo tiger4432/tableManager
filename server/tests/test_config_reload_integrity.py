@@ -266,6 +266,43 @@ def test_inv_9_1_atomic_save_event_applies_physical_alter(alter_target, make_han
     )
 
 
+def test_a_waiter_never_hears_idle_before_the_reload_ran(make_handler, tmp_path, monkeypatch):
+    """inv_9_1 · h3 were red one run in five (총괄 71044b745, B): `_fire` let its timer go and only then took the
+    reload's lock, so a waiter between the two saw no timer and a free lock and read the schema before the reload.
+    The gap is forced here - the timer's thread pauses at the lock - and the waiter must still hear the reload."""
+    import threading
+
+    ran = []
+    monkeypatch.setattr(config_watcher_mod, "DEBOUNCE_SEC", 0.05)
+    monkeypatch.setattr(config_watcher_mod, "changed", lambda path, **kw: ran.append(path))
+    handler = make_handler()
+
+    class _SlowForTheTimer:
+        def __init__(self):
+            self.lock = threading.Lock()
+
+        def acquire(self, *a, **k):
+            if isinstance(threading.current_thread(), threading.Timer):
+                time.sleep(0.5)
+            return self.lock.acquire(*a, **k)
+
+        def release(self):
+            self.lock.release()
+
+        def __enter__(self):
+            self.acquire()
+            return self
+
+        def __exit__(self, *exc):
+            self.release()
+
+    handler._reload_lock = _SlowForTheTimer()
+    cfg_path = tmp_path / "table_config.json"
+    handler.dispatch(FileModifiedEvent(str(cfg_path)))
+    assert handler.wait_for_idle(timeout=_IDLE_TIMEOUT)
+    assert ran == [str(cfg_path)], "idle was heard before the reload ran"
+
+
 def test_h3_cross_directory_replace_applies_physical_alter(alter_target, make_handler, tmp_path, monkeypatch):
     """deleted+created (no `moved`) must still reach the physical schema.
 

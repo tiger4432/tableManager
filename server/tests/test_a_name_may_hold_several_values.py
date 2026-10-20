@@ -116,6 +116,9 @@ def declared(tmp_path, monkeypatch, request):
         # cleared the sentinel by hand would keep passing on the day the real reset stopped
         # clearing the other half.
         ledger_subgraph.reset_declaration_cache()
+        from database import config_watcher
+
+        config_watcher.changed(str(root / "ledger_config.json"))      # what the watcher calls on a write
     # ⚠️ AND IT IS FORGOTTEN AGAIN ON THE WAY OUT. This cache is module state: a test that
     # left it holding a tmp_path declaration would hand the next one an answer from a file
     # that no longer exists. [[the-model-registries-come-back]] is the same posture.
@@ -196,21 +199,22 @@ def test_the_version_does_not_have_to_be_spelled_by_the_node(declared):
     assert ledger_subgraph._declared_plural_attributes("wafer@1") == {"product"}
 
 
-def test_one_read_answers_both_questions(declared):
+def test_one_read_answers_both_questions(declared, monkeypatch):
     """🔴 KEY ORDER AND CARDINALITY COME FROM ONE READ. Two cached reads could answer from
     two revisions of one file — a node labelled by one and valued by another."""
+    from database import config_watcher
+
     declared({"wafer@1": {"keys": ["wid", "slot"], "attributes": ["product"],
                           "attribute_cardinality": {"product": "many"}}})
+    monkeypatch.setattr(config_watcher, "_HELD", {})
 
-    from ledger import worker
-
-    assert not [key for key in worker._COMPILED if key[0] == "facts"], "nothing has read it yet"
+    assert not [key for key in config_watcher._HELD if key[0] == "facts"], "nothing has read it yet"
 
     assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}
 
     # The key order arrived in the SAME read, without a second open().
     (order, _plural, _confirmers, _inverses, _labels, _steps), = [
-        held[1] for key, held in worker._COMPILED.items() if key[0] == "facts"]
+        held.value for key, held in config_watcher._HELD.items() if key[0] == "facts"]
     assert order["wafer"] == ["wid", "slot"]
 
 
@@ -283,12 +287,18 @@ def test_the_envelope_uses_the_declarations_own_word_and_its_own_default(declare
 
 def test_a_changed_file_is_read_again_without_a_reload(declared):
     """⚠️ REVERSED 10-15 (총괄 10-15, the stamp rule): this used to keep the old answer until a reload, and that second
-    cache could answer from another revision than the route's. Held still - but only until a file changes."""
+    cache could answer from another revision than the route's. Held still - but only until a file changes, which
+    since e6a0bdbbd the config watcher says (`config_watcher.changed`, what it calls on a write)."""
+    import paths
+    from database import config_watcher
+
     declared({"wafer@1": {"keys": ["wid"], "attributes": ["product"]}})
     assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset()
     assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset(), "held, not read again"
 
     _redeclare_product_as_many()
+    assert ledger_subgraph._declared_plural_attributes("wafer") == frozenset(), "unchanged until the watcher says"
+    config_watcher.changed(paths.config_path("ontology", "ledger_config.json"))
 
     assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}, "the next read is the new file"
 
@@ -327,14 +337,15 @@ def test_forgetting_drops_both_halves_of_the_one_read(declared):
 
 def test_the_reload_seat_names_this_cache_beside_the_others():
     """⛔ SCORED ON THE SOURCE. The defect is an OMISSION -- a cache that is simply not in
-    the list -- and an omission leaves no failing call to catch. Every neighbour in that
-    list is there because the same thing went wrong once."""
+    the list -- and an omission leaves no failing call to catch. The list is the config watcher's ontology row
+    (e6a0bdbbd), and the Reload button runs every row."""
     import inspect
 
+    from database import config_watcher
     from runtime import system_reload
 
-    body = inspect.getsource(system_reload.reload_local_process_cache)
-    assert "reset_declaration_cache()" in body
+    assert "reset_declaration_cache" in inspect.getsource(config_watcher._ontology)
+    assert "reload_everything(" in inspect.getsource(system_reload.reload_local_process_cache)
 
 
 def _redeclare_product_as_many():

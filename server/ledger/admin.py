@@ -525,7 +525,7 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
     """Write ONE chain rule. 🔴 A NEW RULE IS SAVED ARMED BUT NOT FIRING.
 
     A saved table registers something and nothing runs; a saved rule is re-read by
-    `load_chain_rules` on the next SYSTEM_RELOAD and RUNS - no restart needed - because
+    every process that watches the file (`config_watcher`) and RUNS - no restart needed - because
     `rule.get("enabled", True)` defaults to on at all six sites that ask. So "the same
     shape as the table editor" means the save must carry the same weight, and it does not
     unless a new rule lands switched off.
@@ -705,23 +705,11 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
     ingestion_worker._validate_chain_cascade_graph(expanded_set)
 
     backup = _atomic_write(path, merged)
-    ingestion_worker.forget_loaded_chain_rules()     # this process reads the saved file next
-    # 🔴 [총괄 76aa4b6ed, 소유자 09-29 「체인 선언 저장후 무슨 반응이라도 나오게」] And the chain
-    #    worker re-reads its rules - a SYSTEM_RELOAD scoped to them, not the whole reload.
-    #    Until this, a save ran nowhere until someone pressed Reload.
-    # ⚠️ The file is already written: a row that cannot be written is a line, never a refused
-    #    save - refusing would send the operator back with a base that is now stale.
-    # ⚠️ Through the caller's session when it has one (the routes do) - the request's own.
-    try:
-        from runtime import system_reload
+    # 🔴 [e6a0bdbbd] THIS PROCESS READS THE SAVED FILE AT ONCE, EVERY OTHER ONE FROM ITS OWN WATCHER - the file is the
+    #    word, a hand edit's too (owner 10-21 ㄱ). The row this save wrote for the chain worker (76aa4b6ed) is retired.
+    from database import config_watcher
 
-        with _session_of(db) as session:
-            system_reload.publish_reload(session, scope=system_reload.SCOPE_CHAIN_RULES,
-                                         rule=name)
-    except Exception as exc:                                        # noqa: BLE001
-        logger.error("[ChainRules] %s saved, but the chain worker was NOT told - it reads the "
-                     "rules at the next Reload or restart: %s: %s",
-                     name, type(exc).__name__, told(exc), exc_info=exc)
+    config_watcher.changed(path)
     return {"ok": True, "name": name, "base": file_fingerprint(path),
             # what the loader will say of this declaration - a cell it does not read, by name (총괄 6c6d76924)
             "notes": notes,

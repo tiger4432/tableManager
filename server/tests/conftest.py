@@ -126,15 +126,24 @@ def _the_loaded_chain_rules_are_forgotten():
 
 @pytest.fixture(autouse=True)
 def _the_held_declarations_are_forgotten():
-    """A declaration one test read (`ledger.worker._stamped` holds it until its file changes) must not answer for the
-    next, whose fake `config.load` would otherwise never be asked. Only when the module is already imported."""
-    worker = sys.modules.get("ledger.worker")
-    if worker is not None:
-        worker._COMPILED.clear()
+    """A declaration one test read (`config_watcher.held` holds it until its file changes) must not answer for the
+    next, whose fake reader or file would otherwise never be asked - nor keep its value for the next one's broken
+    file. A test that rewrites a file mid-way says so with `config_watcher.changed(path)` - the watcher's own call - or
+    `forget_held()`."""
+    from database import config_watcher
+    from runtime import maintenance_line
+
+    def fresh():
+        # what a process holds - and how it applies (a chain process's boundary, the API's engine) - per test
+        config_watcher._HELD.clear()
+        config_watcher._PENDING.clear()
+        config_watcher._SAID_HERE.clear()
+        config_watcher._BOUNDARY[0], config_watcher._ENGINE[0] = False, None
+        maintenance_line._DECLARATIONS_CHANGED.clear()     # the chain rules row's flag for the index line
+
+    fresh()
     yield
-    worker = sys.modules.get("ledger.worker")
-    if worker is not None:
-        worker._COMPILED.clear()
+    fresh()
 
 
 @pytest.fixture(autouse=True)

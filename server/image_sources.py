@@ -66,8 +66,15 @@ class ImageRefused(Exception):
 
 
 def load_sources(path=None):
-    """The declared sources; no file declares none."""
+    """The declared sources; no file declares none - held until the file changes (`config_watcher.held`). One that
+    stops reading keeps the sources read before; with none read before it raises, as it did."""
+    from database import config_watcher
+
     path = path or CONFIG_PATH
+    return config_watcher.held(config_watcher.names_of([path]), ("image_sources", path), lambda: _read_sources(path))
+
+
+def _read_sources(path):
     if not os.path.exists(path):
         return {}
     with open(path, encoding="utf-8") as fh:

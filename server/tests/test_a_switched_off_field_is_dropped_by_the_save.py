@@ -18,6 +18,7 @@ from ledger.config_explorer_service import OntologyExplorerService
 from ledger.setup import load_setup
 from ledger.setup_bundle import load_physical_catalog
 from ledger_api import ontology_config_explorer_router as explorer_router
+from database import config_watcher
 
 SHIPPED = Path(__file__).resolve().parent.parent / "config" / "sample"
 SOURCE, SENTENCE = "wafer_process_recipe", "wafer-processed-with-recipe"
@@ -176,6 +177,7 @@ def test_a_config_file_gone_under_a_draft_is_refused_by_name_next_action_first(c
     라우터를 빠져나가 500 이었다. view 도 같은 자리에서 같은 거절."""
     http, draft = client
     (tmp_path / "ontology" / "ledger_config.json").unlink()
+    config_watcher.changed(str(tmp_path / 'ontology'))   # the explorer's root, as its save says it
     plan = http.post(PLAN, json={"selection": "source_plan|" + SOURCE,
                                  "draft_id": draft["draft_id"], "raw": json.dumps(draft["raw"])})
     view = http.get(VIEW)
@@ -194,6 +196,7 @@ def test_a_file_that_cannot_be_read_is_one_refusal_at_the_plan_and_at_view(clien
     invalid_type(path bundle) 이었다. 한 사실에 한 낱말."""
     http, _draft = client
     (tmp_path / "ontology" / "ledger_config.json").write_text(text, encoding="utf-8")
+    config_watcher.changed(str(tmp_path / 'ontology'))   # the explorer's root, as its save says it
     plan = http.get(PLAN, params={"selection": "source_plan|" + SOURCE})
     view = http.get(VIEW)
 
@@ -210,6 +213,7 @@ def test_a_file_with_a_repeated_key_is_still_read_by_the_plan_and_by_view(client
     repeated = sample.replace('"setup_version"', '"setup_version": 0, "setup_version"', 1)
     assert repeated != sample
     (tmp_path / "ontology" / "ledger_config.json").write_text(repeated, encoding="utf-8")
+    config_watcher.changed(str(tmp_path / 'ontology'))   # the explorer's root, as its save says it
 
     plan = http.get(PLAN, params={"selection": "source_plan|" + SOURCE})
     view = http.get(VIEW)

@@ -70,7 +70,8 @@ def test_a_declaration_changed_after_the_prepare_is_compiled_again(monkeypatch, 
     from tests.support.declaration import use_committed_declaration
 
     root = use_committed_declaration(monkeypatch, tmp_path)
-    monkeypatch.setattr(worker, "_COMPILED", {})
+    from database import config_watcher
+    config_watcher.forget_held()
     compiles = []
     monkeypatch.setattr(setup, "load_setup", lambda path: compiles.append(path) or object())
     said = ledger_subgraph.prepare_operating_declaration()
@@ -79,8 +80,7 @@ def test_a_declaration_changed_after_the_prepare_is_compiled_again(monkeypatch, 
     assert len(compiles) == 1, "a prepared declaration is not compiled again"
     declaration = root / "ontology" / "ledger_config.json"
     declaration.write_text(declaration.read_text(encoding="utf-8") + "\n", encoding="utf-8")
-    stamp = os.stat(declaration).st_mtime + 5
-    os.utime(declaration, (stamp, stamp))
+    config_watcher.changed(str(declaration))      # what the watcher calls on a write
     worker._compiled_setup(None)
     assert len(compiles) == 2, "a changed declaration is compiled again"
 

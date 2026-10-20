@@ -33,7 +33,7 @@ from .config_explorer import (
     reference_diff,
 )
 from .setup import (
-    DEFAULT_ONTOLOGY_ROOT, file_stamp, live_physical_catalog, load_setup, physical_catalog_path,
+    DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup, physical_catalog_path,
     setup_from_document,
 )
 from .setup_bundle import (
@@ -1260,14 +1260,14 @@ class OntologyExplorerService:
         return result
 
     def _file_stamp(self) -> tuple[Any, ...]:
-        # 🔴 THE CATALOGUE TOO (총괄 558a46ef1). It sits outside this folder, so a changed
-        #    `table_config.json` left this screen and its test runs on the old compile's 「OK」
-        #    while the follow-up, which stamps it, refused on the new one.
-        catalog = ("catalog", file_stamp(physical_catalog_path()))
-        if not self.config_root.is_dir():
-            return ((str(self.config_root), "missing"), catalog)
-        return (*((path.relative_to(self.config_root).as_posix(), file_stamp(path))
-                  for path in sorted(self.config_root.rglob("*.json"))), catalog)
+        """Where this root and the catalogue stand (`config_watcher.generation`): it moves when one is saved or edited
+        (e6a0bdbbd) - every file of the root was stat-ed per call before. 🔴 THE CATALOGUE TOO (총괄 558a46ef1): it
+        sits outside this folder, so a changed `table_config.json` left this screen and its test runs on the old
+        compile's 「OK」 while the follow-up refused on the new one. And whether the root is there at all."""
+        from database import config_watcher
+
+        return (self.config_root.is_dir(),) + config_watcher.generation(
+            *config_watcher.names_of([self.config_root, physical_catalog_path()]))
 
     @staticmethod
     def _assert_context(payload: dict[str, Any]) -> None:

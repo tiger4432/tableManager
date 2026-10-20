@@ -178,48 +178,86 @@ def test_a_package_that_cannot_be_imported_at_all_is_reported_not_raised():
 # The reload seat
 # ---------------------------------------------------------------------------
 
-def test_the_reload_clears_the_registry_where_it_drops_the_modules():
-    """⛔ SCORED ON THE SOURCE: running the real reload needs a database and a live app, and
-    what matters here is that the two live in the SAME function -- a registry cleared
-    somewhere else could drift away from the eviction it exists to follow."""
-    import inspect
-
-    from runtime import system_reload
-
-    body = inspect.getsource(system_reload.reload_local_process_cache)
-    assert "rediscover()" in body                       # the reset and the refill, one step (lead 10-20)
-    head, _, tail = body.partition('startswith("mappers.")')
-    assert tail, "the eviction this follows is gone"
-    assert "rediscover()" in tail, "the reset must come AFTER the eviction"
-
-
-def test_a_module_that_keeps_failing_is_walked_again_only_once_its_files_change(tmp_path, monkeypatch):
-    """A refused walk is walked again on a miss only when the package's files changed since (lead 10-20, app QA): a
-    module that keeps failing would otherwise walk the package on every miss - per group in the chain."""
-    from chain import rule_run
-
-    pkg = tmp_path / "probe_mappers"
+def _probe_package(tmp_path, monkeypatch, files, package="probe_mappers"):
+    pkg = tmp_path / package
     pkg.mkdir()
     (pkg / "__init__.py").write_text("", encoding="utf-8")
-    (pkg / "broken.py").write_text("raise ImportError('still broken')\n", encoding="utf-8")
+    for name, text in files.items():
+        (pkg / name).write_text(text, encoding="utf-8")
     monkeypatch.syspath_prepend(str(tmp_path))
+    return pkg
+
+
+def _forget_probe(monkeypatch, package):
+    for module in [m for m in sys.modules if m.startswith(package)]:
+        monkeypatch.delitem(sys.modules, module)
+    for name in [n for n, fn in mapper_sdk.MAPPER_REGISTRY.items() if mapper_sdk._origin(fn).startswith(package)]:
+        mapper_sdk.MAPPER_REGISTRY.pop(name, None)
+    mapper_sdk.MAPPER_REFUSALS.pop(package + ".m", None)
+
+
+MAPPER_TEXT = "from mapper_sdk import mapper\nVERSION = %r\n\n@mapper()\ndef probe_%s(df, db):\n    return df\n"
+
+
+def test_a_changed_mapper_file_is_swapped_in_only_once_it_imports(tmp_path, monkeypatch):
+    """e6a0bdbbd ③ (owner 10-21 ㄱ 「맵퍼 폴더도 감시해」): a changed file is imported again and swapped in when it
+    imports; one that does not keeps the module and the names it had, and is said by module and why; a file gone takes
+    its names with it."""
+    pkg = _probe_package(tmp_path, monkeypatch, {"m.py": MAPPER_TEXT % ("v1", "one")}, "probe_swap")
+    monkeypatch.setattr(mapper_sdk, "_DISCOVERY_ATTEMPTED", False)
+    try:
+        mapper_sdk.discover("probe_swap")
+        monkeypatch.setattr(mapper_sdk, "_DISCOVERY_ATTEMPTED", True)
+        old = mapper_sdk.MAPPER_REGISTRY["probe_one"]
+        assert sys.modules["probe_swap.m"].VERSION == "v1"
+
+        (pkg / "m.py").write_text("import nowhere_at_all\n" + MAPPER_TEXT % ("v2", "one"), encoding="utf-8")
+        kept = mapper_sdk.reload_modules([str(pkg / "m.py")], package="probe_swap")
+        assert "probe_swap.m" in kept and "nowhere_at_all" in kept["probe_swap.m"]
+        assert mapper_sdk.MAPPER_REGISTRY["probe_one"] is old, "the old one is kept"
+        assert sys.modules["probe_swap.m"].VERSION == "v1"
+        assert "probe_swap.m" in mapper_sdk.MAPPER_REFUSALS, "and said"
+
+        (pkg / "m.py").write_text(MAPPER_TEXT % ("v3", "one") + "\n# a longer file\n", encoding="utf-8")
+        assert mapper_sdk.reload_modules([str(pkg / "m.py")], package="probe_swap") == {}
+        assert mapper_sdk.MAPPER_REGISTRY["probe_one"] is not old and sys.modules["probe_swap.m"].VERSION == "v3"
+        assert "probe_swap.m" not in mapper_sdk.MAPPER_REFUSALS
+
+        (pkg / "m.py").unlink()
+        assert mapper_sdk.reload_modules([str(pkg / "m.py")], package="probe_swap") == {}
+        assert "probe_one" not in mapper_sdk.MAPPER_REGISTRY, "a file gone takes its names"
+    finally:
+        _forget_probe(monkeypatch, "probe_swap")
+
+
+def test_a_module_that_keeps_failing_is_walked_once_and_found_when_its_file_changes(tmp_path, monkeypatch):
+    """A refused walk is not walked again per miss (lead 10-20, app QA: per group in the chain); the fixed file is
+    found when the watcher says it changed (`reload_modules`, e6a0bdbbd) - it compared the folder's stamps per miss
+    before."""
+    from chain import rule_run
+
+    pkg = _probe_package(tmp_path, monkeypatch, {"broken.py": "raise ImportError('still broken')\n"})
     walks = []
     real_walk = mapper_sdk._walk
     monkeypatch.setattr(mapper_sdk, "_walk", lambda package: walks.append(package) or real_walk(package))
     monkeypatch.setattr(mapper_sdk, "ensure_discovered",
                         lambda package="mappers", ensure=mapper_sdk.ensure_discovered: ensure("probe_mappers"))
+    monkeypatch.setattr(mapper_sdk, "_DISCOVERY_ATTEMPTED", False)
+    try:
+        for _ in range(5):
+            assert rule_run.runnable("probe_fixed") is None
+        assert walks == ["probe_mappers"], "a module that keeps failing walked again: %d walks" % len(walks)
+        assert "probe_mappers.broken" in mapper_sdk.MAPPER_REFUSALS
 
-    for _ in range(5):
-        assert rule_run.runnable("probe_fixed") is None
-    assert walks == ["probe_mappers"], "a module that keeps failing walked again: %d walks" % len(walks)
-    assert "probe_mappers.broken" in mapper_sdk.MAPPER_REFUSALS
-
-    (pkg / "broken.py").write_text("from mapper_sdk import mapper\n\n@mapper()\ndef probe_fixed(df, db):\n"
-                                   "    return df\n", encoding="utf-8")
-    assert rule_run.runnable("probe_fixed") is not None, "the fixed file is found on the next ask"
-    assert len(walks) == 2 and mapper_sdk.MAPPER_REFUSALS == {}
-    for module in [m for m in sys.modules if m.startswith("probe_mappers")]:
-        monkeypatch.delitem(sys.modules, module)
+        (pkg / "broken.py").write_text(MAPPER_TEXT % ("ok", "fixed"), encoding="utf-8")
+        assert rule_run.runnable("probe_fixed") is None, "not before the watcher says"
+        mapper_sdk.reload_modules([str(pkg / "broken.py")], package="probe_mappers")
+        assert rule_run.runnable("probe_fixed") is not None, "the fixed file is found"
+        assert walks == ["probe_mappers"] and "probe_mappers.broken" not in mapper_sdk.MAPPER_REFUSALS
+    finally:
+        mapper_sdk.MAPPER_REGISTRY.pop("probe_fixed", None)
+        for module in [m for m in sys.modules if m.startswith("probe_mappers")]:
+            monkeypatch.delitem(sys.modules, module)
 
 
 def test_a_reload_does_not_empty_the_registry_under_a_walk(monkeypatch):

@@ -70,7 +70,11 @@ def fixture_root(tmp_path, monkeypatch):
 
 
 def _declare(root, **cells):
-    (root / "config" / llm.CONFIG_FILE).write_text(json.dumps(cells), encoding="utf-8")
+    from database import config_watcher
+
+    path = root / "config" / llm.CONFIG_FILE
+    path.write_text(json.dumps(cells), encoding="utf-8")
+    config_watcher.changed(str(path))           # as the watcher says it (e6a0bdbbd)
 
 
 def _log_lines(root):

@@ -30,11 +30,8 @@ logger = logging.getLogger("Server")
 #: the workspace sync below is skipped exactly as it was when the watcher was absent.
 active_watcher = None
 
-#: 🔴 [총괄 76aa4b6ed, 소유자 09-29 ㄱ] The scope a chain-rules save puts on its SYSTEM_RELOAD:
-#:    the chain worker re-reads its rules and nothing else - no mapper re-import, no table
-#:    shapes - and every other reader lets the row pass. A row without a scope is the whole
-#:    reload (the Reload button, the code editor), unchanged.
-SCOPE_CHAIN_RULES = "chain_rules"
+#: ⚰️ [e6a0bdbbd] `SCOPE_CHAIN_RULES` - a chain-rules save's row (76aa4b6ed) - is retired: every process watches
+#:    the file itself (`database.config_watcher`), a hand edit too. A row without a scope is the Reload button.
 #: 🔴 [총괄 10-20] The index line built or took back a join's unique index: each process that writes forgets the
 #:    join keys its write gate learned (`synthesis.reset_right_key_cache`), nothing else. Without it a process that
 #:    learned 「no index」 before the index stood kept its gate off until somebody reloaded by hand.
@@ -45,9 +42,8 @@ FULL = "full"
 #: line (`runtime.maintenance_line`), which read the rows too.
 CHAIN_WORKER, WATCHER, SCHEDULER = "chain", "watcher", "scheduler"
 API, INDEX_LINE = "api", "index_line"
-#: Who each scope is for, widest first - re-reading the rules forgets the join keys too.
-SCOPE_READERS = ((SCOPE_CHAIN_RULES, frozenset({CHAIN_WORKER, INDEX_LINE})),
-                 (SCOPE_JOIN_KEYS, frozenset({CHAIN_WORKER, WATCHER, API})))
+#: Who each scope is for.
+SCOPE_READERS = ((SCOPE_JOIN_KEYS, frozenset({CHAIN_WORKER, WATCHER, API})),)
 
 
 def publish_reload(db: Session, scope=None, **said):
@@ -107,100 +103,18 @@ def reload_for(reader: str, rows) -> str:
 
 
 def reload_local_process_cache():
-    """웹 서버 프로세스의 table_config 캐시 및 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다.
-
-    [이슈 #7] config 재로드 시 TABLE_CONFIG 싱글턴·DYNAMIC_TABLES(ORM) 갱신과 함께
-    런타임에 추가된 신규 테이블의 물리 CREATE까지 동기적으로 수행한다
-    (watchdog 스레드 디바운스 타이밍에 의존하지 않는 결정적 경로 — 기존 테이블 ALTER는 범위 밖).
-    """
+    """The Reload button in the web server: every declaration and mapper read again by the one table
+    (`config_watcher.reload_everything` - the table config with its physical sync, as this process writes), the
+    authoring skeleton and the pipeline plugin modules."""
     import sys
 
-    try:
-        created = models.refresh_dynamic_models(engine)
-        if created:
-            logger.info(f"[Reload] Created missing physical tables at runtime: {created}")
-    except Exception as e:
-        print(f"[Reload] Failed to reload table_config.json: {told(e)}")
-        
-    # [Join unique keys] 🔴 [판정 667] THE TTL THAT USED TO BE HERE IS GONE, AND THIS LINE IS
-    # WHAT REPLACED IT. The old comment said the cache carried a TTL "for worker processes
-    # that never reach this hook" - a clock standing in for an invalidation those processes
-    # do not get. Expiry is keyed to LOADING now, so every process invalidates at its own
-    # reload seat rather than waiting out a clock; this is the web server's.
-    #
-    # ⚰️ [판정 677 ② -> 652 3걸음] THE ABSOLUTE IS TRUE AGAIN, AND THIS IS WHY IT READS AS
-    # ONE LINE NOW. 677 ② had to narrow 「none of them waits out a clock」 because the
-    # read-time half of the same question held a 5-second TTL in
-    # `chain.legacy_materialized_join`. That module was deleted, so the clock it predicted
-    # would 「die with its grammar」 did. There is one invalidation seat left and it is
-    # keyed to LOADING, not to a clock.
-    try:
-        from chain import synthesis
-        synthesis.reset_right_key_cache()
-    except Exception as exc:
-        logger.warning("[Reload] the chain's right-key cache was not reset: %s", told(exc), exc_info=exc)
-        pass
-    # The external sources a re-read preview judges (총괄 10-20): validated again by the next preview.
-    try:
-        from ingestion import reread
-        reread.forget_sources()
-    except Exception as exc:
-        logger.warning("[Reload] the file re-read sources were not forgotten: %s", told(exc), exc_info=exc)
-        pass
-    # The rule set this process read (총괄 57ae5c2da): the next request reads the file again.
-    try:
-        from chain import ingestion_worker
-        ingestion_worker.forget_loaded_chain_rules()
-    except Exception as exc:                                   # noqa: BLE001
-        # The reload goes on; what went quiet is said once (총괄 790511099 뒤).
-        logger.error("[Reload] chain rules NOT forgotten - this process keeps the set it read "
-                     "until restart: %s: %s", type(exc).__name__, told(exc), exc_info=exc)
+    from database import config_watcher
 
-    # [Notation normalization] Same shape and same reason as the line above: the
-    # declaration carries a TTL for the worker processes, but one edited in the
-    # admin UI has to take effect on the next QUERY here. (It is a query-time fold
-    # now, not a write hook - see notation_norm's docstring.)
-    try:
-        import notation_norm
-        notation_norm.reset_cache()
-    except Exception as exc:
-        logger.warning("[Reload] the notation cache was not reset: %s", told(exc), exc_info=exc)
-        pass
-
-
-    # 걷기가 들고 있는 파생 목록(fetch 집합·통과 술어)도 어휘에서 나온 사본이므로 같이
-    # 버린다. 어휘만 갱신하고 이걸 두면 새 술어가 게이트에는 있고 걷기에는 없다.
-    try:
-        from ledger import trace
-        trace.reset_walk_cache()
-        # 🔴 그리고 해소기 캐시도. 선언형 소스의 `emit` 규칙이 «클래스»를 선언하므로
-        # (`class: "inference"`), 그 목록은 이제 `ledger_config.json`에서 온다 — admin에서
-        # 규칙 하나를 추가하고 이 캐시를 안 버리면, 새 규칙의 원자가 «다음 재기동까지»
-        # 3류가 아니라 2류로 순위된다. 그건 조용히 가정이 실측을 이기는 상태다.
-        trace.load_resolver_config(force_reload=True)
-    except Exception as exc:
-        logger.warning("[Reload] the walk cache was not reset: %s", told(exc), exc_info=exc)
-        pass
-
-    # 🔴 AND THE WALK'S COPY OF THE ENTITY DECLARATION (S-206). `ledger_subgraph` caches
-    # key order AND attribute cardinality behind a process-lifetime sentinel, so a `many`
-    # the operator declared and activated would read as `one` until a RESTART -- the
-    # declaration changed and the thing that answers questions about it did not.
-    # Same `try/except` posture as its neighbours: one cache that will not clear does not
-    # kill the reload.
-    try:
-        from ledger_api import ledger_subgraph
-        ledger_subgraph.reset_declaration_cache()
-    except Exception as exc:
-        logger.warning("[Reload] the declaration cache was not reset: %s", told(exc), exc_info=exc)
-        pass
-    # The walk's pool processes hold their own copies of every cache above (lead b47388fde).
-    try:
-        from runtime import process_pool
-        process_pool.recycle()
-    except Exception as exc:                                   # noqa: BLE001
-        logger.error("[Reload] walk pool NOT recycled - its processes answer from the caches they "
-                     "read until restart: %s: %s", type(exc).__name__, told(exc), exc_info=exc)
+    # 🔴 [e6a0bdbbd] THE ONE TABLE (`config_watcher.ROWS`), NOT A SECOND LIST OF IT. Eleven clears stood here one by
+    #    one - the table config, the join keys, the external sources, the chain rules, notation, the walk's vocabulary
+    #    and resolver, the kept walks, the pool, the mappers - and a cache added to the table and not here was a
+    #    reload that left it.
+    config_watcher.reload_everything(engine)
 
     # [Ledger skeleton] The authoring screen GENERATES its form from
     # `ledger/ledger_skeleton.json`, and the loader caches it for the life of the process.
@@ -216,34 +130,6 @@ def reload_local_process_cache():
         logger.warning("[Reload] the authoring skeleton cache was not cleared: %s", told(exc), exc_info=exc)
         pass
 
-    # Remove custom mappers from sys.modules cache
-    mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
-    for k in mapper_keys:
-        sys.modules.pop(k, None)
-
-    # 🔴 THE REGISTRY GOES WITH THEM (S-188 ⓒ). `mapper_sdk` is NOT evicted -- it is not
-    # under `mappers.` -- so its registry would keep pointing at functions from the modules
-    # just dropped, and the re-import would then refuse every name as 「claimed twice」. A
-    # reload would break the thing it exists to refresh. Same `try/except` posture as the
-    # blocks above: one cache that will not clear does not kill the reload.
-    try:
-        import mapper_sdk
-        # 🔴 AND THEY COME BACK, BECAUSE THIS PROCESS JUDGES WITH THEM (S-204 (3), 판정 326).
-        # The eviction above is half a reload: the chain worker evicts, resets AND re-runs
-        # `discover()` in its warmup, so its registry is as fresh as the files. This process
-        # only ever did the first half, which left the rule editor's grammar judge looking
-        # at an empty registry from the first SYSTEM_RELOAD onward -- refusing every rule
-        # written in the one-cell mapper form, including the ones it had just accepted.
-        # ⚠️ ONE STEP (lead 10-20): a request reading the rules between the reset and the refill
-        #    dropped a rule as `unresolvable_mapper` and kept it dropped until the next reload.
-        _registered, _refused = mapper_sdk.rediscover()
-        logger.info("[Reload] Mapper registry: %d registered", len(_registered))
-        for _module_name, _message in sorted(_refused.items()):
-            logger.error("[Reload] Mapper module refused: %s — %s", _module_name, _message)
-    except Exception as exc:
-        logger.warning("[Reload] the mapper modules were not reloaded: %s", told(exc), exc_info=exc)
-        pass
-        
     # Remove pipeline plugin parsers from sys.modules cache
     plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
     for k in plugin_keys:

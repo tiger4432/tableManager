@@ -87,7 +87,8 @@ def test_a_folded_join_key_is_learned_once_and_refuses_its_duplicates(monkeypatc
     declared = tmp_path / "notation_rules.json"
     declared.write_text(json.dumps({"columns": {TABLE: {"job": {"rules": {"case": "upper"}}}}}), encoding="utf-8")
     monkeypatch.setattr(notation_norm, "NOTATION_RULES_PATH", str(declared))
-    notation_norm.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     rule = {"name": "w652_join", "mapper": join_into.JOIN_INTO_MAPPER, "trigger_table": left, "target_table": left,
             "key": {"unique": True},
             "params": {"right_table": TABLE, "on": [{"left": "job", "right": "job"}], "take": ["lot"]}}
@@ -104,7 +105,8 @@ def test_a_folded_join_key_is_learned_once_and_refuses_its_duplicates(monkeypatc
             first = crud.refuse_virtual_join_duplicates(None, TABLE, batch())
             second = crud.refuse_virtual_join_duplicates(None, TABLE, batch())
     finally:
-        notation_norm.reset_cache()
+        from database import config_watcher
+        config_watcher.forget_held()
 
     assert "could not load declarations" not in caplog.text, caplog.text
     assert loads == [1], "the declarations were read %d times" % len(loads)

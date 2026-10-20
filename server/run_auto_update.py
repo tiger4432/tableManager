@@ -1065,7 +1065,7 @@ class MultiDiscoveryScheduler:
                     from database.models import DatabaseOutbox
                     db = SessionLocal()
                     
-                    # 1-1. SYSTEM_RELOAD 감시 — 체인 규칙 저장의 행은 체인 워커 몫이라 지나간다(총괄 76aa4b6ed)
+                    # 1-1. SYSTEM_RELOAD 감시 — Reload 버튼의 행만 (저장은 행을 안 쓴다: 파일 감시, e6a0bdbbd)
                     from runtime import system_reload
                     new_reloads = system_reload.reloads_after(db, last_reload_event_id)
                     latest_reload = new_reloads[-1] if new_reloads else None
@@ -1076,6 +1076,10 @@ class MultiDiscoveryScheduler:
                                                 new_reloads) == system_reload.FULL:
                         logger.info(f"[Reload] Auto Update Scheduler detected SYSTEM_RELOAD trigger (Event ID: {latest_reload.id}). Re-scanning workspace...")
                         
+                        # every declaration again by the one table (e6a0bdbbd), then the collectors
+                        from database import config_watcher
+
+                        config_watcher.reload_everything()
                         # 모듈 캐시 초기화
                         keys_to_remove = [k for k in sys.modules.keys() if k.startswith("dynamic_collector_")]
                         for k in keys_to_remove:

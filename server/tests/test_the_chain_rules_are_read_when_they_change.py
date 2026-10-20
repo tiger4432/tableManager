@@ -90,5 +90,5 @@ def test_a_reload_that_cannot_forget_says_so(rules_file, client, caplog, monkeyp
     monkeypatch.setattr(worker, "forget_loaded_chain_rules", broken)
     system_reload.reload_local_process_cache()
 
-    said = [r.getMessage() for r in caplog.records if "chain rules NOT forgotten" in r.getMessage()]
+    said = [r.getMessage() for r in caplog.records if "the chain rules not done in this process" in r.getMessage()]
     assert len(said) == 1 and "forget broke" in said[0], said

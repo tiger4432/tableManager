@@ -466,9 +466,12 @@ def main(argv=None):
     # FIRST, before anything opens a log of its own: no file here - the lines go up stderr and the
     # dispatcher writes them into the file it names (its own).
     log = get_process_logger(process_name(index), os.environ[RELAY_LOG_ENV], relay=sys.stderr)
-    from database import crud, models
+    from database import config_watcher, crud, models
 
     models.init_dynamic_models(crud.TABLE_CONFIG)
+    # 🔴 [e6a0bdbbd ④] A slot watches the declarations as every process does - it ran the table config it started
+    #    with until a Reload or a restart. Its rules and mappers wait for the next batch (`_reloaded`).
+    config_watcher.start_config_watcher(None, boundary=True)
     from chain import ingestion_worker
 
     ingestion_worker.GROUP_BEAT = beat_name(index)
@@ -574,11 +577,15 @@ def _newest_reload():
 
 
 def _reloaded(rules, seen):
-    """The reloads past `seen`, applied as the chain loop applies them."""
+    """The reloads past `seen` and the declaration files changed since the last batch, applied as the chain loop
+    applies them."""
     from chain import ingestion_worker
+    from database import config_watcher
     from database.database import SessionLocal
     from runtime import system_reload
 
+    if config_watcher.apply_pending():
+        rules = ingestion_worker.loaded_chain_rules()
     session = SessionLocal()
     try:
         rows = system_reload.reloads_after(session, seen)

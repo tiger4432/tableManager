@@ -47,7 +47,9 @@ def declared(tmp_path, monkeypatch, request):
         (root / "ledger_config.json").write_text(json.dumps({
             "entities": {"wafer@1": {"keys": ["wid"]}},
             "vocabulary": vocabulary}), encoding="utf-8")
+        from database import config_watcher
 
+        config_watcher.changed(str(root / "ledger_config.json"))
         import paths
 
         monkeypatch.setattr(paths, "config_path",

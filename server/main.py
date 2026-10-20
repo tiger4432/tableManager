@@ -5772,19 +5772,20 @@ def reload_system_configs(db: Session = Depends(get_db)):
 MAPS_CONFIG_PATH = paths.config_path("maps.json")
 
 def load_maps_config() -> dict:
-    if os.path.exists(MAPS_CONFIG_PATH):
-        try:
-            with open(MAPS_CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[Maps Config] Error loading maps.json: {told(e)}")
-    return {"presets": {}}
+    """maps.json, held until it changes (`config_watcher.json_object`); none or a broken one with nothing read
+    before is no presets."""
+    from database import config_watcher
+
+    return config_watcher.json_object(MAPS_CONFIG_PATH) or {"presets": {}}
 
 def save_maps_config(data: dict) -> bool:
     try:
         os.makedirs(os.path.dirname(MAPS_CONFIG_PATH), exist_ok=True)
         with open(MAPS_CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        from database import config_watcher
+
+        config_watcher.changed(MAPS_CONFIG_PATH)
         return True
     except Exception as e:
         print(f"[Maps Config] Error saving maps.json: {told(e)}")
@@ -7957,11 +7958,7 @@ async def save_admin_script_code(
     db: Session = Depends(get_db)
 ):
     import os
-    import json
-    import uuid
-    from datetime import datetime
-    from sqlalchemy import text
-    
+
     path = payload.get("path")
     code = payload.get("code")
     
@@ -8007,22 +8004,16 @@ async def save_admin_script_code(
             os.fsync(f.fileno())
         os.replace(temporary, full_path)
             
-        # Trigger System Reload
-        reload_payload = {
-            "trigger": "code_editor",
-            "modified_file": clean_path,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        reload_event = models.DatabaseOutbox(
-            event_uuid=str(uuid.uuid4()),
-            table_name="system",
-            event_type="SYSTEM_RELOAD",
-            payload=json.dumps(reload_payload),
-            status="PENDING"
-        )
-        db.add(reload_event)
-        db.commit()
+        # 🔴 [e6a0bdbbd] A MAPPER IS READ AGAIN WHERE IT IS WATCHED - this process now (its grammar judge used to
+        #    keep the old registry: the row below never reached it), every other one from its own watcher at its
+        #    next boundary; one that does not import keeps the one it had. The row this save wrote is retired for
+        #    mappers. A file in the ingestion workspace (a pipeline plugin) is not watched, so it still asks every
+        #    process to reload - through the one writer of that row.
+        from database import config_watcher
+
+        if config_watcher.name_of(full_path) != config_watcher.MAPPERS:
+            system_reload.publish_reload(db, msg="code editor saved " + clean_path)
+        config_watcher.changed(full_path)
 
         return {
             "status": "success",

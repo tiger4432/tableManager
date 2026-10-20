@@ -34,7 +34,8 @@ def test_a_slow_page_reads_progressing_and_a_lock_wait_reads_stalled(pg_engine, 
     rules.write_text(json.dumps({"columns": {TABLE: {"note": {"write": True, "rules": {"join": "-"}}}}}),
                      encoding="utf-8")
     monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(rules))
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     model = models.DYNAMIC_TABLES[TABLE]
     for n in (1, 2):                                     # one row a page; each page folds x.n -> x-n
         pg_session.add(model(row_id="r%d" % n, business_key_val="P%d" % n, part_no="P%d" % n, note="x.%d" % n))

@@ -51,7 +51,8 @@ SAID = ("rows_scanned", "pages", "cells_folded", "layers_folded", "keys_changed"
 
 def _declare(path, columns):
     path.write_text(json.dumps({"columns": columns}), encoding="utf-8")
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
 
 
 def _write(db, table, rows, source="f01.csv", by="seed"):
@@ -270,7 +271,8 @@ def copies(pg_engine, tmp_path_factory):
                 conn.execute(text("TRUNCATE %s RESTART IDENTITY CASCADE" % emptied))
             scratch.drop_all(pg_engine, tables=[scratch.tables["%s.%s" % (PG_TEST_SCHEMA, t)]
                                                 for t in tables if t not in existed])
-            nn.reset_cache()
+            from database import config_watcher
+            config_watcher.forget_held()
             for t in tables:
                 crud.TABLE_CONFIG.pop(t, None)
                 if t != NOTATION_ALIAS_TABLE or not had_alias:

@@ -66,7 +66,6 @@ from datetime import datetime
 import sqlalchemy as sa
 
 import paths
-from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -101,17 +100,11 @@ class CursorError(ValueError):
 # ---------------------------------------------------------------------------
 
 def load_config(path: str = None) -> dict:
-    """Load audit_history_config.json. Missing file -> {} (all defaults apply)."""
-    p = path or CONFIG_PATH
-    try:
-        with open(p, "r", encoding="utf-8-sig") as f:
-            raw = json.load(f)
-        return raw if isinstance(raw, dict) else {}
-    except FileNotFoundError:
-        return {}
-    except Exception as e:
-        logger.warning("[AuditHistory] failed to load config %s: %s", p, told(e), exc_info=e)
-        return {}
+    """Load audit_history_config.json. Missing file -> {} (all defaults apply) - held until it changes, a broken one
+    said once (`config_watcher.json_object`)."""
+    from database import config_watcher
+
+    return config_watcher.json_object(path or CONFIG_PATH, "utf-8-sig")
 
 
 def resolve_settings(config: dict = None) -> dict:

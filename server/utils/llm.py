@@ -83,8 +83,16 @@ class LlmCallFailed(LlmRefused):
 
 
 def settings():
-    """The cells of config/llm_config.json, read now. Refused by name when the file is absent
-    (with the retired environment values named when they are still set) or a cell is not usable."""
+    """The cells of config/llm_config.json - held until the file changes (`config_watcher.held`, e6a0bdbbd; read per
+    call before). Refused by name when the file is absent (with the retired environment values named when they are
+    still set) or a cell is not usable; a file that stops being usable after it was keeps the cells read before."""
+    from database import config_watcher
+
+    path = paths.config_path(CONFIG_FILE)
+    return dict(config_watcher.held(config_watcher.names_of([path]), "llm.settings", _read_settings))
+
+
+def _read_settings():
     from database.crud import _decode_config_text, _parse_position, is_blank_value
 
     path = paths.config_path(CONFIG_FILE)

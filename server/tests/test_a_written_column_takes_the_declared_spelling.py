@@ -40,7 +40,8 @@ def _declare(tmp_path, monkeypatch, columns):
     path = tmp_path / "notation_rules.json"
     path.write_text(json.dumps({"columns": {"notval_test_wafer": columns}}), encoding="utf-8")
     monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(path))
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
 
 
 @pytest.fixture()
@@ -52,7 +53,8 @@ def val_env(db_session, tmp_path, monkeypatch):
     Base.metadata.create_all(bind=db_session.get_bind())
     _declare(tmp_path, monkeypatch, DECLARED)
     yield db_session
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     from conftest import retire_dynamic_model
     for name in tables:
         retire_dynamic_model(name)

@@ -19,20 +19,9 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
-import threading
 from declaration_names import bare_name as _bare_name, fold_versions
-from error_said import told
 
-logger = logging.getLogger(__name__)
-
-_cache = None
-#: The identity keys of every declared entity, from the SAME parse as `_cache`. The
-#: declaration is the only place that knows them, and two readers of one file would be two
-#: chances to disagree about it.
-_keys = None
-_lock = threading.Lock()
 
 
 def _config_path():
@@ -43,43 +32,44 @@ def _config_path():
 
 
 def load(force_reload=False):
-    """`{entity type: [identity key, …]}`, 캐시. 없거나 깨진 파일은 «답»이다.
-
-    선언이 없는 박스는 아는 타입이 «없는» 것이고, 그것이 이 함수의 정답이다.
+    """`{entity type: [identity key, …]}` - the identity keys of every declared entity, from one parse: the
+    declaration is the only place that knows them, and two readers of one file would be two chances to disagree. 없는
+    파일은 «답»이다 - 선언이 없는 박스는 아는 타입이 «없는» 것이고, 그것이 이 함수의 정답이다.
+    🔴 [e6a0bdbbd ④] Held until the declaration changes (`config_watcher.held`) - it was read once a process, so an
+    entity declared and activated was unknown to every check until a restart. A file that stops reading keeps the
+    keys read before; one broken with none before is read as none, and said.
     """
-    global _cache, _keys
-    with _lock:
-        if _cache is not None and not force_reload:
-            return _cache
-        path = _config_path()
-        keys = {}
-        try:
-            with open(path, "r", encoding="utf-8") as handle:
-                raw = fold_versions(json.load(handle))
-            for name, spec in (raw.get("entities") or {}).items():
-                declared = (spec or {}).get("keys")
-                if isinstance(declared, list):
-                    keys[_bare(name)] = [str(k) for k in declared if isinstance(k, str)]
-        except FileNotFoundError:
-            pass
-        except Exception as exc:                                  # pragma: no cover
-            logger.error("declared entities unreadable at %s: %s", path, told(exc), exc_info=exc)
-        _keys = keys
-        _cache = keys
-        return _cache
+    from database import config_watcher
+
+    if force_reload:
+        return _read()
+    return config_watcher.held(config_watcher.names_of([_config_path()]), "declared_entities", _read, fallback={})
+
+
+def _read():
+    path = _config_path()
+    keys = {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = fold_versions(json.load(handle))
+    except FileNotFoundError:
+        return keys
+    for name, spec in (raw.get("entities") or {}).items():
+        declared = (spec or {}).get("keys")
+        if isinstance(declared, list):
+            keys[_bare(name)] = [str(k) for k in declared if isinstance(k, str)]
+    return keys
 
 
 def declared_types():
     """Every entity type the declaration names, bare and sorted. `[]` says the declaration
     names none -- an absent or broken file is an ANSWER here too."""
-    load()
-    return sorted(_keys or {})
+    return sorted(load() or {})
 
 
 def identity_keys(entity_type):
     """That entity's identity keys, in declared order. `[]` when it is not declared."""
-    load()
-    return list((_keys or {}).get(_bare(entity_type)) or ())
+    return list((load() or {}).get(_bare(entity_type)) or ())
 
 
 def _bare(entity_type):

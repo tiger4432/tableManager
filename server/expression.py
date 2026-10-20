@@ -136,36 +136,35 @@ OTHER_PARTS = {"minute", "mi", "second", "ss", "millisecond", "ms", "day of year
                "yearandweek", "yywk", "isoyear", "isoweek"}
 
 
-#: [the settings file's stamp, its zone] - read again when the file changes (`ledger.setup.file_stamp`, the stamp the
-#: declaration reads take; `ledger.worker._stamped` is the ledger process's cache and pulls that runtime in).
-_ZONE_READ = [object(), None]
 #: The names already said to be no zone - each once a process.
 _ZONE_REFUSED = set()
 
 
 def time_zone():
     """`expression_time_zone` (an IANA name), or the default - one that does not name a zone is said (once a process)
-    and read as it. Read again only when the settings file changed."""
+    and read as it. Read again only once the settings file changed (`config_watcher.held`)."""
+    from database import config_watcher
+    from ingestion.settings import INGESTION_SETTINGS_PATH
+
+    return config_watcher.held(config_watcher.names_of([INGESTION_SETTINGS_PATH]), "expression.time_zone", _read_zone)
+
+
+def _read_zone():
     from zoneinfo import ZoneInfo
 
-    from ingestion.settings import INGESTION_SETTINGS_PATH, read_ingestion_settings
-    from ledger.setup import file_stamp
+    from ingestion.settings import read_ingestion_settings
 
-    stamp = file_stamp(INGESTION_SETTINGS_PATH)
-    if _ZONE_READ[0] != stamp:
-        name = read_ingestion_settings().get(ZONE_SETTING, ZONE_DEFAULT)
-        try:
-            zone = ZoneInfo(str(name))
-        except (ValueError, KeyError, OSError):
-            if str(name) not in _ZONE_REFUSED:
-                _ZONE_REFUSED.add(str(name))
-                import logging
+    name = read_ingestion_settings().get(ZONE_SETTING, ZONE_DEFAULT)
+    try:
+        return ZoneInfo(str(name))
+    except (ValueError, KeyError, OSError):
+        if str(name) not in _ZONE_REFUSED:
+            _ZONE_REFUSED.add(str(name))
+            import logging
 
-                logging.getLogger("Expression").warning("ingestion_settings.json: %s is %r - not a time zone; read as %s",
-                                                        ZONE_SETTING, name, ZONE_DEFAULT)
-            zone = ZoneInfo(ZONE_DEFAULT)
-        _ZONE_READ[:] = [stamp, zone]
-    return _ZONE_READ[1]
+            logging.getLogger("Expression").warning("ingestion_settings.json: %s is %r - not a time zone; read as %s",
+                                                    ZONE_SETTING, name, ZONE_DEFAULT)
+        return ZoneInfo(ZONE_DEFAULT)
 
 
 def _wall(v, zone):

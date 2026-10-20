@@ -45,7 +45,8 @@ def _declared_default_zone(monkeypatch):
     import ingestion.settings
 
     monkeypatch.setattr(ingestion.settings, "read_ingestion_settings", lambda *a, **k: {})
-    monkeypatch.setattr(expression, "_ZONE_READ", [object(), None])
+    from database import config_watcher
+    config_watcher.forget_held()
     crud.TABLE_CONFIG[T_KEY] = {"composite_key_source": ["lot", "t"],
                                 "column_types": {"lot": "string", "t": "datetime"}}
     yield

@@ -59,7 +59,8 @@ def _declare(tmp_path, monkeypatch, columns):
     path = tmp_path / "notation_rules.json"
     path.write_text(json.dumps({"columns": columns}), encoding="utf-8")
     monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(path))
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
 
 
 def _tables():
@@ -80,7 +81,8 @@ def env(db_session, tmp_path, monkeypatch):
     db_session.commit()
     _declare(tmp_path, monkeypatch, DECLARED)
     yield db_session
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     for name in _tables():
         retire_dynamic_model(name)
         crud.TABLE_CONFIG.pop(name, None)
@@ -277,7 +279,8 @@ def fixture_watcher(tmp_path, monkeypatch):
     handler = IngestionHandler(workspace, None, os.path.join(workspace, "archives"),
                                default_table_name=PLAIN, heavy_lane=FakeLane())
     yield handler, workspace, factory
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     engine.dispose()
     for name in _tables():
         retire_dynamic_model(name)

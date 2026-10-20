@@ -89,5 +89,5 @@ def test_only_the_dispatchers_loop_says_the_loops():
                 found += [fn.name for node in ast.walk(fn) if isinstance(node, ast.Call)
                           and getattr(node.func, "attr", getattr(node.func, "id", None)) == "say_the_declaration"]
         return found
-    assert callers("chain/ingestion_worker.py") == ["start_chain_ingestion_worker"] * 2
+    assert callers("chain/ingestion_worker.py") == ["start_chain_ingestion_worker"] * 3   # boot · Reload · a changed file
     assert callers("chain/slots.py") == []

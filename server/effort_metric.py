@@ -37,7 +37,6 @@ import math
 import os
 
 import paths
-from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +63,11 @@ WEIGHT_KEYS = ("key", "mouse", "nav", "nav_preserved")
 
 
 def load_config(path: str = None) -> dict:
-    """Load effort_metric.json. Missing file -> {} (all defaults apply)."""
-    p = path or CONFIG_PATH
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        return raw if isinstance(raw, dict) else {}
-    except FileNotFoundError:
-        return {}
-    except Exception as e:
-        logger.warning("[EffortMetric] failed to load config %s: %s", p, told(e), exc_info=e)
-        return {}
+    """Load effort_metric.json. Missing file -> {} (all defaults apply) - held until it changes, a broken one said once
+    (`config_watcher.json_object`)."""
+    from database import config_watcher
+
+    return config_watcher.json_object(path or CONFIG_PATH)
 
 
 def resolve_weights(config: dict = None) -> dict:

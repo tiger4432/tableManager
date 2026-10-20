@@ -35,6 +35,7 @@ import directory_watcher
 from directory_watcher import HeavyIngestionLane, IngestionHandler, WorkspaceWatcher
 from ingestion import activity
 from ingestion.activity import IngestionActivityRegistry
+from database import config_watcher
 
 
 HVY_INFO = {
@@ -106,10 +107,12 @@ def test_heavy_threshold_reads_and_hot_reloads_settings_file(tmp_path, monkeypat
     monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(settings))
 
     settings.write_text(json.dumps({"heavy_file_mb": 1}), encoding="utf-8")
+    config_watcher.changed(str(settings))
     assert directory_watcher.get_heavy_threshold_bytes() == 1 * 1024 * 1024
 
     # 파일 재기록 → 다음 호출(=다음 파일 이벤트)부터 반영 (파일 경계 핫리로드)
     settings.write_text(json.dumps({"heavy_file_mb": 2.5}), encoding="utf-8")
+    config_watcher.changed(str(settings))
     assert directory_watcher.get_heavy_threshold_bytes() == int(2.5 * 1024 * 1024)
 
 
@@ -117,6 +120,7 @@ def test_heavy_threshold_reads_and_hot_reloads_settings_file(tmp_path, monkeypat
 def test_heavy_threshold_invalid_values_fall_back_to_default(tmp_path, monkeypatch, bad):
     settings = tmp_path / "ingestion_settings.json"
     settings.write_text(json.dumps({"heavy_file_mb": bad}), encoding="utf-8")
+    config_watcher.changed(str(settings))
     monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(settings))
     assert directory_watcher.get_heavy_threshold_bytes() == 10 * 1024 * 1024
 
@@ -161,6 +165,7 @@ def test_threshold_config_change_reflected_on_next_file(tmp_path, monkeypatch, i
     """config 변경(임계 하향)이 다음 파일 이벤트부터 라우팅에 반영된다."""
     settings = tmp_path / "ingestion_settings.json"
     settings.write_text(json.dumps({"heavy_file_mb": 1}), encoding="utf-8")
+    config_watcher.changed(str(settings))
     monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(settings))
 
     ws = _make_workspace(tmp_path, "hvy_test_cfg", {"f1.csv": 2048, "f2.csv": 2048})
@@ -175,6 +180,7 @@ def test_threshold_config_change_reflected_on_next_file(tmp_path, monkeypatch, i
 
     # 임계를 ~1KB로 하향 → 같은 크기 파일이 heavy로 라우팅
     settings.write_text(json.dumps({"heavy_file_mb": 0.001}), encoding="utf-8")
+    config_watcher.changed(str(settings))
     handler._handle_event(os.path.join(ws, "raws", "f2.csv"))
     assert len(lane.jobs) == 1
     lane.run_all()
@@ -766,6 +772,7 @@ def test_the_worker_count_is_one_cell_read_when_the_lane_is_built(
     settings = tmp_path / "ingestion_settings.json"
     settings.write_text(json.dumps({} if declared is None
                                    else {"heavy_lane_workers": declared}), encoding="utf-8")
+    config_watcher.changed(str(settings))
     monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(settings))
     lane = HeavyIngestionLane()
     try:

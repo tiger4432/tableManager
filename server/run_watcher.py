@@ -172,30 +172,16 @@ def trigger_ws_ingestion_state(state: dict):
     post_event("/internal/events/ingestion-state", payload)
 
 def reload_watcher_cache():
-    """와처 프로세스의 동적 모듈 캐시(pipeline plugins, mappers)를 명시적으로 무효화합니다."""
+    """The Reload button in the watcher process: every declaration and mapper again by the one table
+    (`config_watcher.reload_everything` - the join keys this writer learned go with the chain rules' row) and the
+    pipeline plugin modules dropped."""
     import sys
-    
-    # Remove pipeline plugin parsers from sys.modules cache
+    from database import config_watcher
+
+    config_watcher.reload_everything()
     plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
     for k in plugin_keys:
         sys.modules.pop(k, None)
-        
-    # Remove custom mappers from sys.modules cache
-    mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
-    for k in mapper_keys:
-        sys.modules.pop(k, None)
-        
-    # 🔴 [판정 667] 이 프로세스도 «쓰는 쪽»이다 — `directory_watcher` 가
-    #    `apply_batch_updates` 를 부르고, 그 안의 중복 그물이 오른쪽 키 답을 씁니다. 그 답의
-    #    만료가 시간이 아니라 «적재»라서, 이 프로세스가 다시 싣는 자리가 여기입니다.
-    #    안 걸면 이 프로세스만 낡은 답으로 남습니다 — 조용히.
-    try:
-        from chain import synthesis
-
-        synthesis.reset_right_key_cache()
-    except Exception as reset_error:                                   # noqa: BLE001
-        logger.warning("오른쪽 키 캐시를 못 비웠습니다(계속): %s", told(reset_error), exc_info=reset_error)
-
     logger.info("Watcher worker modules cache cleared.")
 
 # Database polling for PENDING_RETRY logs
@@ -385,8 +371,8 @@ def poll_pending_retries():
         heartbeat.beat("watcher")
         db = SessionLocal()
         try:
-            # Check for SYSTEM_RELOAD outbox event to reload modules - a chain-rules save's row
-            # is the chain worker's alone (총괄 76aa4b6ed), and passes here.
+            # The Reload button's SYSTEM_RELOAD row and the index line's join-keys row - a save writes none; this
+            # process watches the files (e6a0bdbbd).
             from runtime import system_reload
             new_reloads = system_reload.reloads_after(db, last_reload_event_id)
             latest_reload = new_reloads[-1] if new_reloads else None

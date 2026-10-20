@@ -80,6 +80,9 @@ def _declare(world, document):
     root = Path(paths.config_path("ontology_worlds", world))
     root.mkdir(parents=True, exist_ok=True)
     (root / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    from database import config_watcher
+
+    config_watcher.changed(str(root / "ledger_config.json"))      # what the watcher calls on a write
 
 
 @pytest.fixture(name="config")
@@ -831,7 +834,8 @@ def test_a_failure_to_compile_is_held_until_its_files_change(config, monkeypatch
     from chain import ingestion_worker
     from ledger import setup as ledger_setup
 
-    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
+    from database import config_watcher
+    config_watcher.forget_held()
     _declare(A, _refused_everywhere())
     compiled = []
     real = ledger_setup.load_setup
@@ -849,7 +853,8 @@ def test_a_failure_to_compile_is_held_until_its_files_change(config, monkeypatch
 def test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike(config, monkeypatch):
     from chain import ingestion_worker
 
-    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
+    from database import config_watcher
+    config_watcher.forget_held()
     _declare(A, _refused_everywhere())
     service = _screen(A, monkeypatch)
 
@@ -865,7 +870,8 @@ def test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike(
 def test_a_catalogue_change_reaches_the_screen_as_it_reaches_the_follow_up(config, monkeypatch):
     from chain import ingestion_worker
 
-    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
+    from database import config_watcher
+    config_watcher.forget_held()
     _declare(A, _only(CHANGED))
     service = _screen(A, monkeypatch)
     assert ledger_worker._compiled_setup(A) is not None
@@ -875,6 +881,7 @@ def test_a_catalogue_change_reaches_the_screen_as_it_reaches_the_follow_up(confi
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     catalog.pop("wafer_process")                                          # the relation it reads
     catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    config_watcher.forget_held()      # the catalogue changed: what every process holds of it goes
 
     followed = {source: path for source, path, _message in _follow_up_refusals(A).refusals}
     shown, valid = _screen_refusals(service)
@@ -896,7 +903,8 @@ def test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_g
     from utils import heartbeat
 
     monkeypatch.setattr(backfill, "beat", lambda result: None)
-    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
+    from database import config_watcher
+    config_watcher.forget_held()
     _seed(world)
     a = _make(world, A, _only(CHANGED), CHANGED)
     c = _make(world, C, _only(CHANGED), CHANGED)
@@ -947,7 +955,8 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
     from runtime import loops
     from utils import heartbeat
 
-    monkeypatch.setattr(ledger_worker, "_COMPILED", {})
+    from database import config_watcher
+    config_watcher.forget_held()
     monkeypatch.setattr(ledger_worker, "_FOLLOWUP_STOP", {})
     _seed(world)
     _make(world, A, _only(CHANGED), CHANGED)

@@ -203,7 +203,8 @@ def test_a_write_column_with_a_number_layer_is_counted_where_the_notation_fold_s
     path.write_text(json.dumps({"columns": {T: {"v": {"write": True, "rules": {
         "replace": [["x", "y"]]}}}}}), encoding="utf-8")
     monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(path))
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     try:
         _write(table, [{"k": "r", "v": "1.0"}])
         row_id = _stored_as_production_did(table, T, "r", "v", "1.0", 1.0)
@@ -213,7 +214,8 @@ def test_a_write_column_with_a_number_layer_is_counted_where_the_notation_fold_s
         assert (row.v, _layer(table, T, row_id, "v")) == ("1", "1")
         assert replay.fold_written_notation(table, T)["layers_folded"] == 0
     finally:
-        nn.reset_cache()
+        from database import config_watcher
+        config_watcher.forget_held()
 
 
 def test_a_key_moves_only_when_its_cells_still_spell_it(comp):

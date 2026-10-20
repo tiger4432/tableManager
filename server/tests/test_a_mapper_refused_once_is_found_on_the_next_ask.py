@@ -5,9 +5,9 @@
 Real processes - the API (uvicorn) and the chain worker - on one sqlite file and a scratch data root, the owner's
 mappers in a package of their own (one imports another; one does not import until its file is fixed):
   window   reloads while requests read the rule list: after each reload the rule still runs in the API
-  fixed    a module that did not import at boot, its file fixed: the next ask walks again (the files changed since the
-           refusal) - the save gate takes the rule naming it and the worker's next reload runs it; while it cannot,
-           the refusal says why
+  fixed    a module that did not import at boot, its file fixed: each process's watcher imports it again (e6a0bdbbd) -
+           the save gate takes the rule naming it and the worker runs it; while it cannot, the refusal says why
+  by hand  chain_rules.json edited with no save: the worker reads it at its next boundary and the API at once - no row
 """
 import json
 import os
@@ -130,9 +130,14 @@ def test_a_mapper_refused_once_is_found_on_the_next_ask(tmp_path):
                              {"name": "r1", "declaration": rule, "base": opened["base"]})
         assert code >= 400 and "mappers.flaky did not import: ImportError: the probe is broken" in json.dumps(refused)
         (pkg / "flaky.py").write_text(working, encoding="utf-8")
-        _code, opened = _ask(opener, base + "/admin/chain/rules/raw?name=r1")
-        code, saved = _ask(opener, base + "/admin/chain/rules/raw",
-                           {"name": "r1", "declaration": rule, "base": opened["base"]})
+        deadline = time.monotonic() + 30
+        while True:                                     # the API's watcher imports it again a second after the write
+            _code, opened = _ask(opener, base + "/admin/chain/rules/raw?name=r1")
+            code, saved = _ask(opener, base + "/admin/chain/rules/raw",
+                               {"name": "r1", "declaration": rule, "base": opened["base"]})
+            if code == 200 or time.monotonic() > deadline:
+                break
+            time.sleep(0.5)
         assert code == 200, saved
 
         # window: reloads while requests read the rule list
@@ -159,6 +164,23 @@ def test_a_mapper_refused_once_is_found_on_the_next_ask(tmp_path):
             for reader in readers:
                 reader.join(60)
         time.sleep(8)                                  # the worker reads the last reload
+
+        # by hand: the rules file edited with no save
+        heard = "[Config] chain_rules.json changed - read again in this process"
+        before = (tmp_path / "worker.log").read_text(encoding="utf-8", errors="replace").count(heard)
+        rules_path = data / "config" / "chain_rules.json"
+        declared = json.loads(rules_path.read_text(encoding="utf-8"))
+        declared["rules"].append({"name": "r2", "trigger_table": "t_src", "mapper": "owner_m0",
+                                  "target_table": "t_dst"})
+        rules_path.write_text(json.dumps(declared), encoding="utf-8")
+        deadline = time.monotonic() + 30
+        while (tmp_path / "worker.log").read_text(encoding="utf-8", errors="replace").count(heard) == before:
+            assert worker.poll() is None and time.monotonic() < deadline, "the worker never read the hand edit"
+            time.sleep(0.5)
+        while _states(opener, base).get("r2") != "running":
+            assert time.monotonic() < deadline, "the API never read the hand edit: %s" % _states(opener, base)
+            time.sleep(0.5)
+        time.sleep(3)                                  # the worker's next ticks, after the boundary that read it
     finally:
         for process in (api, worker):
             process.kill()
@@ -168,6 +190,8 @@ def test_a_mapper_refused_once_is_found_on_the_next_ask(tmp_path):
     dropped = [states for states in after if states.get("r0") != "running" or states.get("r1") != "running"]
     assert dropped == [], "%d of %d reloads left a rule not running: %s" % (len(dropped), RELOADS, dropped[:2])
     said = (tmp_path / "worker.log").read_text(encoding="utf-8", errors="replace")
+    broke = [line for line in said.splitlines() if "Error in Chain Worker execution loop" in line]
+    assert broke == [], "the loop broke on a reload or a changed file: %s" % broke[:2]
     loads = [line.split("[Reload] Loaded", 1)[1].split(" active", 1)[0].strip()
              for line in said.splitlines() if "[Reload] Loaded" in line]
     assert loads and set(loads) == {"2"}, "each reload after the file was fixed runs both rules: %s" % loads

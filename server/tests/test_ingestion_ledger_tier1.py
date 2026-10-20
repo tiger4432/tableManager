@@ -41,6 +41,7 @@ import ingestion.checkpoint
 from directory_watcher import IngestionHandler
 from database.database import Base
 from database import crud, models
+from database import config_watcher
 
 TABLE = "tier1_test_parts"
 PARTS_INFO = {
@@ -106,6 +107,7 @@ def env(tmp_path, monkeypatch):
 
     def settings(**kw):
         settings_path.write_text(json.dumps(kw), encoding="utf-8")
+        config_watcher.changed(str(settings_path))
 
     def process(path):
         counter["hashes"] = counter["ingests"] = 0

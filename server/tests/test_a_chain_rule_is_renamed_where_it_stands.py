@@ -72,7 +72,7 @@ def test_a_rename_keeps_the_place_and_the_switch_and_leaves_no_old_name(rules_fi
     assert result["created"] is False and result["rules"] == 3
     assert result["renamed_from"] == "second"
     assert result["note"].startswith("Cells this rule wrote are written again")
-    assert [r["name"] for r in worker.reread_rules_only()].count("second") == 0
+    assert [r["name"] for r in worker.loaded_chain_rules()].count("second") == 0, "this process read the save"
 
 
 def test_a_save_that_is_not_a_rename_says_nothing_about_one(rules_file, db):

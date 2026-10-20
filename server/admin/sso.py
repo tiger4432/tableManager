@@ -7,7 +7,6 @@ optional: without it the server is a public client. Then every route but ``/auth
 a users list - and the admin gate asks for a name on the admin list instead of ``X-Admin-Token``.
 Sessions, login rounds and personal keys are server-side rows holding digests, never secrets.
 """
-import functools
 import hashlib
 import html
 import json
@@ -63,11 +62,21 @@ NOT_LISTED_REASON = "not_on_users_list"
 router = APIRouter(route_class=OffLoopJSONRoute)
 
 
-@functools.lru_cache(maxsize=None)
 def settings():
-    """Every sign-in setting, read in one place and once per process - a change waits for the
-    restart (lead 10-07): auth_config.json and the client secret. A file that cannot be read is
-    remembered as such, not raised - boot and every request read this (lead 10-07)."""
+    """Every sign-in setting, read in one place - held until auth_config.json changes (`config_watcher.held`;
+    🔴 e6a0bdbbd reverses lead 10-07's 「a change waits for the restart」 for the file - every declaration is read
+    again when it changes, owner 10-21 ㄱ; the client secret is the environment's and still the process's). A file
+    that cannot be read is remembered as such, not raised - boot and every request read this (lead 10-07) - and
+    one that stops reading after it read keeps the settings read before."""
+    from database import config_watcher
+
+    cells = config_watcher.held(config_watcher.names_of([CONFIG_PATH]), "sso.settings",
+                                lambda: _read_settings(strict=True), fallback=None)
+    return dict(cells) if cells is not None else _read_settings(strict=False)
+
+
+def _read_settings(strict):
+    """The cells; `strict`: a file that does not read raises instead of being read as unreadable."""
     loaded, unreadable = {}, None
     if os.path.exists(CONFIG_PATH):
         try:
@@ -77,6 +86,8 @@ def settings():
             loaded, unreadable = {}, _parse_position(exc)
         if not isinstance(loaded, dict):
             loaded, unreadable = {}, "the top level is %s, not an object" % json.dumps(loaded)[:40]
+        if strict and unreadable is not None:
+            raise ValueError(unreadable)
     cells = {name: loaded.get(name) for name in REQUIRED_CELLS + ("name_claim", "post_logout_redirect_uri")}
     cells = {name: None if is_blank_value(value) else str(value) for name, value in cells.items()}
     cells["enabled"] = loaded.get("enabled") is True
@@ -174,7 +185,6 @@ def identify(connection: HTTPConnection):
                 db.commit()
                 return name
     return None
-
 
 
 

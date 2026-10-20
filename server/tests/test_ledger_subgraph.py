@@ -625,8 +625,8 @@ def test_the_static_step_predicates_are_DERIVED_from_the_declaration(monkeypatch
         raise RuntimeError("declaration unreadable")
 
     monkeypatch.setattr(ledger_config, "load", unreadable)
-    from ledger import worker
-    worker._COMPILED.clear()                     # a changed declaration is a changed file - the held one goes
+    from database import config_watcher
+    config_watcher.forget_held()                     # a changed declaration is a changed file - read again
     assert trace_router._static_step_predicates() == set(), (
         "an unreadable declaration must expand no name, not every name")
 

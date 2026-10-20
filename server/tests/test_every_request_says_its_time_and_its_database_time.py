@@ -54,16 +54,19 @@ def fixture_declare(monkeypatch, tmp_path):
     main.app.router.routes.insert(0, route)                   # ahead of the screen's catch-all
     settings = tmp_path / request_timing.SETTINGS_FILE
     monkeypatch.setattr(request_timing, "SETTINGS_PATH", str(settings))
-    request_timing.slow_request_ms.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
 
     def declare(**cells):
         settings.write_text(json.dumps(cells), encoding="utf-8")
-        request_timing.slow_request_ms.cache_clear()
+        from database import config_watcher
+        config_watcher.forget_held()
     try:
         yield declare
     finally:
         main.app.router.routes.remove(route)
-        request_timing.slow_request_ms.cache_clear()
+        from database import config_watcher
+        config_watcher.forget_held()
 
 
 def _slow_lines(caplog):

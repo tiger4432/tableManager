@@ -882,7 +882,8 @@ def test_the_overlay_config_is_read_once_and_handed_out_as_a_copy(tmp_path):
 
     config_file = tmp_path / "map_overlay_config.json"
     config_file.write_text(json.dumps({"alignment": {"min_score": 1}}), encoding="utf-8")
-    map_overlay.clear_overlay_config_memo()
+    from database import config_watcher
+    config_watcher.forget_held()
 
     first = map_overlay.load_overlay_config(str(config_file))
     first["alignment"]["min_score"] = 999

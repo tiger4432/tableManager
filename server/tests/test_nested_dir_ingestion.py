@@ -47,6 +47,7 @@ from directory_watcher import IngestionHandler, WorkspaceWatcher
 from database.database import Base
 from database import crud, models
 from database.models import FileIngestionLog
+from database import config_watcher
 
 PARTS_INFO = {
     "business_key": "part_no",
@@ -613,6 +614,7 @@ def test_hidden_system_files_discarded_with_folder(flat_env):
 
 def test_disabled_by_setting_leaves_directory_alone(flat_env, caplog):
     flat_env["settings_path"].write_text('{"flatten_nested_dirs": false}', encoding="utf-8")
+    config_watcher.changed(str(flat_env['settings_path']))
     ws, handler = flat_env["make_handler"]()
     raws = ws / "raws"
     batch = raws / "batch"
@@ -627,6 +629,7 @@ def test_disabled_by_setting_leaves_directory_alone(flat_env, caplog):
 
     # Hot semantics: removing the off-switch re-enables on the NEXT trigger.
     flat_env["settings_path"].write_text('{"flatten_nested_dirs": true}', encoding="utf-8")
+    config_watcher.changed(str(flat_env['settings_path']))
     _speed_up_processing(handler)
     _ingest_sync(handler, str(batch))
     assert not batch.exists()
@@ -706,6 +709,7 @@ class _RecordingLane:
 def test_heavy_file_in_folder_routes_to_heavy_lane_in_place(flat_env):
     # Threshold ~10 bytes so the "big" file is cheap to fabricate.
     flat_env["settings_path"].write_text('{"heavy_file_mb": 0.00001}', encoding="utf-8")
+    config_watcher.changed(str(flat_env['settings_path']))
     lane = _RecordingLane()
     ws, handler = flat_env["make_handler"](heavy_lane=lane)
     small_calls = _stub_processing(handler)

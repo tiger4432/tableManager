@@ -36,7 +36,7 @@ async def main():
     config_watcher = None
     try:
         from database.config_watcher import start_config_watcher
-        config_watcher = start_config_watcher(None)
+        config_watcher = start_config_watcher(None, boundary=True)
     except Exception as e:
         logger.error(f"Failed to start config watcher: {told(e)}", exc_info=e)
     

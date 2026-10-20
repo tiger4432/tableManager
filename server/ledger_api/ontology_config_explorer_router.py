@@ -31,6 +31,14 @@ def configure_service(service: OntologyExplorerService, world: str | None = None
     _services[world] = service
 
 
+def _read_again(service):
+    """🔴 [e6a0bdbbd] A written declaration: this process reads it at once, every other one from its own watcher
+    (`config_watcher`'s ontology row) - the Reload this used to press for every process is the button's again."""
+    from database import config_watcher
+
+    config_watcher.changed(str(service.config_root))
+
+
 def _service_for(world) -> OntologyExplorerService:
     """The explorer of the world a request named - None, blank or FastAPI's `Query` sentinel
     (a direct call) is the default. A branch not made yet is served too: its bootstrap is
@@ -420,13 +428,12 @@ def discard_draft(
 def delete_declaration(
     target_key: str,
     base_snapshot_hash: str,
-    db: Session = Depends(get_db),
     world: str | None = Query(default=None)):
     try:
-        from runtime import system_reload
-        deleted = _service_for(world).delete_declaration(
+        service = _service_for(world)
+        deleted = service.delete_declaration(
             target_key, base_snapshot_hash=base_snapshot_hash,
-            reload_callback=lambda: system_reload.reload_system_configs(db))
+            reload_callback=lambda: _read_again(service))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
     _world_after_write(world)
@@ -438,15 +445,13 @@ def delete_declaration(
 def activate_draft(
     draft_id: str,
     payload: dict[str, Any] = Body(...),
-    db: Session = Depends(get_db),
     world: str | None = Query(default=None)):
     try:
-        # Import at the write boundary, as the sibling handler does.
-        from runtime import system_reload
-        activated = _service_for(world).activate_draft(
+        service = _service_for(world)
+        activated = service.activate_draft(
             draft_id,
             expected_revision=payload.get("expected_revision"),
-            reload_callback=lambda: system_reload.reload_system_configs(db),
+            reload_callback=lambda: _read_again(service),
         )
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc

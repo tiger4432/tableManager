@@ -199,7 +199,8 @@ def test_the_ledger_time_of_a_table_is_its_sources_occurred_at(monkeypatch, tmp_
     from tests.support.declaration import use_committed_declaration
 
     use_committed_declaration(monkeypatch, tmp_path)
-    monkeypatch.setattr(worker, "_COMPILED", {})
+    from database import config_watcher
+    config_watcher.forget_held()
     setup = worker._compiled_setup(None)
     tables = {plan.relation for plan in setup.snapshot.source_plans.values() if plan.runs}
     assert tables, "control: the shipped declaration has sources"

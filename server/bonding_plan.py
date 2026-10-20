@@ -32,7 +32,6 @@ bbox가 0이 아닌 맵(원에 잘리는 실격자)에서 거울 변환이 끼�
 import math
 import json
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -80,20 +79,11 @@ BASIS_ROLE_ORDER = "role_order"       # 확정이 없어 위 튜플 순서로 �
 # ---------------------------------------------------------------------------
 
 def load_bonding_plan_config(path: str = None) -> dict:
-    """bonding_plan_config.json을 로드한다. 없거나 손상 시 {} (부분 가동 — 에러 아님)."""
-    p = path or CONFIG_PATH
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        if not isinstance(raw, dict):
-            logger.warning("[BondingPlan] config root is not an object — ignored: %s", p)
-            return {}
-        return raw
-    except FileNotFoundError:
-        return {}
-    except Exception as e:
-        logger.warning("[BondingPlan] failed to load config %s: %s", p, told(e), exc_info=e)
-        return {}
+    """bonding_plan_config.json을 로드한다. 없거나 손상 시 {} (부분 가동 — 에러 아님) - held until it changes
+    (`config_watcher.json_object`)."""
+    from database import config_watcher
+
+    return config_watcher.json_object(path or CONFIG_PATH)
 
 
 def _valid_source(src) -> bool:
@@ -535,29 +525,20 @@ DERIVATION_DECLARED = "map_overlay_declared"
 DERIVATION_DERIVED = "map_overlay_derived"
 DERIVATION_UNAVAILABLE = "unavailable"
 
-_OVERLAY_MEMO = {"stamp": None, "cfg": None}
-
-
 def _overlay_config_snapshot() -> dict:
-    """`map_overlay_config.json`, memoized on the file's (mtime_ns, size).
+    """`map_overlay_config.json`, held until the file changes (`config_watcher.held`, e6a0bdbbd - a stamp of its own
+    before) - one shared copy for this module's resolvers, which only read it.
 
     A resolver runs several times per request, so re-reading the file on each
     call would be a per-role disk hit exactly in the configs that adopt the
-    shorter form - the ones this change is meant to reward. Keying the memo on
-    the file stamp keeps hot-reload (a saved edit changes mtime) while giving
-    one read per edit instead of one per role.
+    shorter form - the ones this change is meant to reward.
     """
     import map_overlay
+    from database import config_watcher
+
     path = map_overlay.CONFIG_PATH
-    try:
-        st = os.stat(path)
-        stamp = (path, st.st_mtime_ns, st.st_size)
-    except OSError:
-        stamp = (path, None, None)
-    if _OVERLAY_MEMO["stamp"] != stamp:
-        _OVERLAY_MEMO["cfg"] = map_overlay.load_overlay_config(path)
-        _OVERLAY_MEMO["stamp"] = stamp
-    return _OVERLAY_MEMO["cfg"] or {}
+    return config_watcher.held(config_watcher.names_of([path]), ("bonding_plan.overlay", path),
+                               lambda: map_overlay.load_overlay_config(path)) or {}
 
 
 def _map_binding_for(table: str):

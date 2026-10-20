@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """총괄 9166099d4 (소유자 «ㅇㅇ 진행해», B 의 걷기 스캔 재기): a walk request read and checked its declaration four to six
 times (19.6 ms each on the box's) - now its files are read again only when one changes, by the follow-up's own stamp
-rule (`worker._stamped`); and a caller that does not read the ranking says `propagation=false` and is not made to wait
+rule (`worker._stamped`, the config watcher's `held` since e6a0bdbbd); and a caller that does not read the ranking says `propagation=false` and is not made to wait
 for it (70 % of a 200-seed value walk). The default is today's: ranked."""
 import json
 import os
@@ -26,13 +26,19 @@ def root(monkeypatch, tmp_path):
 
 
 def _bump(path):
-    """The file written again and stamped later - what an activation does."""
+    """The file written again - what an activation does - and the config watcher's call for it."""
+    from database import config_watcher
+
     path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
-    stamp = os.stat(path).st_mtime + 5
-    os.utime(path, (stamp, stamp))
+    config_watcher.changed(str(path))
 
 
-def test_the_stamp_rule_builds_once_a_stamp_and_holds_a_failure(tmp_path):
+def test_the_stamp_rule_builds_once_a_change_and_holds_a_failure(tmp_path):
+    """Built once until the watcher says a file changed (`config_watcher.changed`); a failure is held the same way -
+    raised anew, not built again until its file changes - and it is the answer even after a good build: the
+    authoring screen compiles the same files and refuses alike (총괄 558a46ef1)."""
+    from database import config_watcher
+
     a = tmp_path / "a.json"
     a.write_text("1", encoding="utf-8")
     built = []
@@ -45,21 +51,19 @@ def test_the_stamp_rule_builds_once_a_stamp_and_holds_a_failure(tmp_path):
 
     assert [worker._stamped("k", (a,), build) for _ in range(3)] == ["1", "1", "1"] and len(built) == 1
     a.write_text("bad", encoding="utf-8")
-    os.utime(a, (os.stat(a).st_mtime + 5,) * 2)
-    for _ in range(2):
-        with pytest.raises(ValueError, match="bad file"):
-            worker._stamped("k", (a,), build)
-    assert len(built) == 2, "the same files fail the same way - not read again"
+    assert worker._stamped("k", (a,), build) == "1" and len(built) == 1, "not read before the watcher says"
+    config_watcher.changed(str(a))
     raised = []
     for _ in range(2):
         try:
             worker._stamped("k", (a,), build)
         except ValueError as exc:
             raised.append(exc)
+    assert len(built) == 2, "the same files fail the same way - not read again"
     assert raised[0] is not raised[1] and str(raised[0]) == str(raised[1]) == "bad file", "raised anew each time"
-    assert not any(isinstance(part, BaseException) for part in worker._COMPILED["k"]), "no exception object is held"
+    assert not isinstance(config_watcher._HELD["k"].failure, BaseException), "no exception object is held"
     a.write_text("2", encoding="utf-8")
-    os.utime(a, (os.stat(a).st_mtime + 10,) * 2)
+    config_watcher.changed(str(a))
     assert worker._stamped("k", (a,), build) == "2" and len(built) == 3
 
 
@@ -80,7 +84,9 @@ def test_a_walk_request_reads_its_declaration_once_until_a_file_changes(root, mo
     document = json.loads(declaration.read_text(encoding="utf-8"))
     document["entities"]["probe_b@1"] = {"keys": ["k"]}
     declaration.write_text(json.dumps(document), encoding="utf-8")
-    os.utime(declaration, (os.stat(declaration).st_mtime + 5,) * 2)
+    from database import config_watcher
+
+    config_watcher.changed(str(declaration))      # what the watcher calls on a write
     assert "probe_b" in trace_router._declaration()["entities"], "an edited file is read at once - no reload"
     assert len(reads) == 2
 

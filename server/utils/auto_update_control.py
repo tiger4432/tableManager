@@ -14,7 +14,6 @@ import re
 import json
 import logging
 import threading
-from error_said import told
 
 logger = logging.getLogger("AutoUpdateControl")
 
@@ -56,20 +55,16 @@ def validate_script_key(script_key) -> bool:
 def read_disabled_scripts(base_dir: str = None) -> set:
     """
     제어 파일에서 disabled 스크립트 키 집합을 읽어 반환합니다.
-    파일 부재/손상 시 빈 집합(=전부 active)을 반환합니다 (fail-open).
+    파일 부재/손상 시 빈 집합(=전부 active)을 반환합니다 (fail-open) - held until the file changes
+    (`config_watcher.json_object`; a broken one is said once and read as before).
     """
+    from database import config_watcher
+
     path = get_control_path(base_dir)
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        disabled = data.get("disabled", [])
-        if isinstance(disabled, list):
-            return {s for s in disabled if isinstance(s, str)}
-        logger.warning(f"Control file 'disabled' field is not a list; treating all scripts as active: {path}")
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        logger.warning(f"Failed to read auto update control file '{path}': {told(e)}. Treating all scripts as active.", exc_info=e)
+    disabled = config_watcher.json_object(path).get("disabled", [])
+    if isinstance(disabled, list):
+        return {s for s in disabled if isinstance(s, str)}
+    logger.warning(f"Control file 'disabled' field is not a list; treating all scripts as active: {path}")
     return set()
 
 
@@ -91,6 +86,9 @@ def set_script_active(script_key: str, active: bool, base_dir: str = None) -> No
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump({"disabled": sorted(disabled)}, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, path)
+        from database import config_watcher
+
+        config_watcher.changed(path)
 
 
 def resolve_script_file(script_key: str, base_dir: str = None) -> str:

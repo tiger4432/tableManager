@@ -34,7 +34,6 @@ offers them.
 import json
 import os
 import re
-import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -79,7 +78,6 @@ _WALK_CACHE = {}
 
 
 
-
 def rollup_subject_types(root_type: str) -> tuple:
     """The subject types a read about `root_type` must include (ruling R-2026-08-15-O).
 
@@ -102,11 +100,9 @@ def rollup_subject_types(root_type: str) -> tuple:
 
 
 
-
 def reset_walk_cache():
     """Tests only - so a swapped vocabulary is actually re-read."""
     _WALK_CACHE.clear()
-
 
 
 #: How deep the walk goes before it stops and SAYS it stopped. A cap that ends
@@ -275,8 +271,8 @@ CONVENTION_DERIVATIONS_RULE = __doc__
 
 RESOLVER_CONFIG_FILENAME = "ledger_resolver.json"
 
-_config_lock = threading.Lock()
-_config_cache = None            # type: Optional[Dict[str, Any]]
+#: A config a test installed (`set_resolver_config`) - read instead of the file while it is there.
+_INSTALLED = [None]
 
 
 class ResolverConfigError(RuntimeError):
@@ -284,34 +280,46 @@ class ResolverConfigError(RuntimeError):
 
 
 def load_resolver_config(force_reload=False):
-    """The resolver's class table. Read once, cached, overridable by config file."""
-    global _config_cache
-    with _config_lock:
-        if _config_cache is not None and not force_reload:
-            return _config_cache
-        merged = dict(DEFAULT_RESOLVER_CONFIG)
-        path = _paths.config_path(RESOLVER_CONFIG_FILENAME)
-        if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    declared = json.load(fh)
-            except Exception as exc:
-                raise ResolverConfigError(
-                    f"{RESOLVER_CONFIG_FILENAME} is not readable JSON: {exc}")
-            if not isinstance(declared, dict):
-                raise ResolverConfigError(
-                    f"{RESOLVER_CONFIG_FILENAME} must be a JSON object")
-            unknown = set(declared) - set(DEFAULT_RESOLVER_CONFIG)
-            if unknown:
-                raise ResolverConfigError(
-                    f"{RESOLVER_CONFIG_FILENAME} declares unknown keys: "
-                    f"{sorted(unknown)}")
-            merged.update(declared)
-        merged["inference_derivations"] = sorted(
-            set(merged.get("inference_derivations") or ())
-            | set(_declared_inference_derivations()))
-        _config_cache = merged
-        return merged
+    """The resolver's class table, overridable by config file - held until ledger_resolver.json or the declaration
+    (whose `emit` rules declare classes) changes (`config_watcher.held`, e6a0bdbbd; read once a process before). A
+    file that stops reading keeps the table read before; one unusable with none before is refused, loudly.
+    `force_reload`: read now, past the held one."""
+    from database import config_watcher
+
+    if _INSTALLED[0] is not None:
+        return _INSTALLED[0]
+    if force_reload:
+        return _read_resolver_config()
+    from ledger import schema
+
+    return config_watcher.held(
+        config_watcher.names_of([_paths.config_path(RESOLVER_CONFIG_FILENAME), schema.world_names().declaration_path]),
+        "trace.resolver_config", _read_resolver_config)
+
+
+def _read_resolver_config():
+    merged = dict(DEFAULT_RESOLVER_CONFIG)
+    path = _paths.config_path(RESOLVER_CONFIG_FILENAME)
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                declared = json.load(fh)
+        except Exception as exc:
+            raise ResolverConfigError(
+                f"{RESOLVER_CONFIG_FILENAME} is not readable JSON: {exc}")
+        if not isinstance(declared, dict):
+            raise ResolverConfigError(
+                f"{RESOLVER_CONFIG_FILENAME} must be a JSON object")
+        unknown = set(declared) - set(DEFAULT_RESOLVER_CONFIG)
+        if unknown:
+            raise ResolverConfigError(
+                f"{RESOLVER_CONFIG_FILENAME} declares unknown keys: "
+                f"{sorted(unknown)}")
+        merged.update(declared)
+    merged["inference_derivations"] = sorted(
+        set(merged.get("inference_derivations") or ())
+        | set(_declared_inference_derivations()))
+    return merged
 
 
 def _declared_inference_derivations():
@@ -348,11 +356,10 @@ def _declared_inference_derivations():
 
 
 def set_resolver_config(config):
-    """Install a config for this process. Tests use it; nothing else should."""
-    global _config_cache
-    with _config_lock:
-        _config_cache = dict(DEFAULT_RESOLVER_CONFIG) if config is None else dict(config)
-        return _config_cache
+    """Install a config for this process. Tests use it; nothing else should. None takes it out again - the file is
+    read."""
+    _INSTALLED[0] = None if config is None else dict(config)
+    return _INSTALLED[0] if config is not None else load_resolver_config()
 
 
 # --------------------------------------------------------------------------
@@ -912,7 +919,6 @@ def _hop(frm, to, resolution, predicate, zone, config=None):
                         if winner is not None else None),
         "event_id": str(winner.id) if winner is not None else None,
     }
-
 
 
 

@@ -297,20 +297,11 @@ EFFECT_HISTORY_INCOMPLETE = "history_incomplete"       # 이력만 누락 (remai
 # ---------------------------------------------------------------------------
 
 def load_transfer_plan_config(path: str = None) -> dict:
-    """transfer_plan_config.json 로드. 없거나 손상 시 {} (부분 가동 — 에러 아님)."""
-    p = path or CONFIG_PATH
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        if not isinstance(raw, dict):
-            logger.warning("[TransferPlan] config root is not an object — ignored: %s", p)
-            return {}
-        return raw
-    except FileNotFoundError:
-        return {}
-    except Exception as e:
-        logger.warning("[TransferPlan] failed to load config %s: %s", p, told(e), exc_info=e)
-        return {}
+    """transfer_plan_config.json 로드. 없거나 손상 시 {} (부분 가동 — 에러 아님) - held until it changes
+    (`config_watcher.json_object`)."""
+    from database import config_watcher
+
+    return config_watcher.json_object(path or CONFIG_PATH)
 
 
 def get_stages(cfg: dict) -> dict:

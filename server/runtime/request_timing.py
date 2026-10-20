@@ -9,7 +9,6 @@ The database time is counted by two cursor hooks while a request's counter is se
 request (a worker, a thread the request started) finds no counter and is not counted.
 """
 import contextvars
-import functools
 import json
 import logging
 import os
@@ -49,11 +48,17 @@ def _query_ended(conn, cursor, statement, parameters, context, executemany):
         counter[1] += 1
 
 
-@functools.lru_cache(maxsize=None)
 def slow_request_ms():
-    """The declared budget, read once per process (a change waits for the restart), or None: not
-    measured. The same reading as table_config (a BOM is read); the budget's rule is the one
-    every slow budget follows (`event_constants.slow_warn_ms`)."""
+    """The declared budget, or None: not measured - held until server_settings.json changes (`config_watcher.held`;
+    🔴 e6a0bdbbd reverses 「a change waits for the restart」, owner 10-21 ㄱ). The same reading as table_config (a BOM
+    is read); the budget's rule is the one every slow budget follows (`event_constants.slow_warn_ms`). A file that
+    stops reading keeps the budget read before."""
+    from database import config_watcher
+
+    return config_watcher.held(config_watcher.names_of([SETTINGS_PATH]), "request_timing.slow", _read_slow_request_ms)
+
+
+def _read_slow_request_ms():
     declared = DEFAULT_SLOW_REQUEST_MS
     if os.path.exists(SETTINGS_PATH):
         try:

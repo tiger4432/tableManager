@@ -56,7 +56,8 @@ def refusal_env(db_session, tmp_path, monkeypatch):
     # declarations. `test_transfer_plan_derivation.py` owns the derived cases.
     import map_overlay
     monkeypatch.setattr(map_overlay, "CONFIG_PATH", str(tmp_path / "no_overlay.json"))
-    bonding_plan._OVERLAY_MEMO["stamp"] = None
+    from database import config_watcher
+    config_watcher.forget_held()
     return db_session
 
 

@@ -21,6 +21,7 @@ from database import crud, models
 from database.database import Base
 from directory_watcher import WorkspaceWatcher
 from tests.test_external_source_watcher import VOID_INFO, _write_voids
+from database import config_watcher
 
 PARTS = {"business_key": "part_no", "column_types": {
     "part_no": "string", "category": "string", "stock_qty": "number"}}
@@ -59,6 +60,7 @@ def env(tmp_path, monkeypatch):
             "path": str(external), "table_name": "void_obs", "parser": "voids_json",
             "recursive": True, "options": dict({"filename": "voids.json"}, **options)}]}),
             encoding="utf-8")
+        config_watcher.changed(str(settings))
         w = WorkspaceWatcher(str(workspace))
         w.discover_and_watch()
         monkeypatch.setattr(run_watcher, "workspace_watcher", w)

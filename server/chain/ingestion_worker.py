@@ -949,17 +949,6 @@ def load_chain_rules():
     return rules
 
 
-def reread_rules_only():
-    """[총괄 76aa4b6ed, 소유자 09-29 ㄱ] A saved chain declaration: the rules again, nothing
-    else - no mapper re-import, no table shapes, no warmup. A name the registry does not hold
-    walks the mapper package once (a file added since this process looked); still unknown,
-    the loader refuses it as it always has."""
-    mapper_sdk.look_again_on_a_miss()
-    rules = load_chain_rules()
-    _reset_right_keys()
-    return rules
-
-
 def _reset_right_keys():
     """[판정 667] The worker re-read its declarations: its right-key answer expires."""
     try:
@@ -2703,19 +2692,15 @@ async def _say_what_a_stalled_group_waits_on(db):
 
 
 def reload_worker_process_cache():
-    """체인 워커 프로세스의 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다."""
+    """The Reload button in this process: every declaration and mapper again (`config_watcher.reload_everything`
+    - a mapper that does not import keeps the one it had) and the pipeline plugin modules dropped."""
     import sys
-    
-    # Remove custom mappers from sys.modules cache
-    mapper_keys = [k for k in sys.modules.keys() if k.startswith("mappers.")]
-    for k in mapper_keys:
-        sys.modules.pop(k, None)
-        
-    # Remove pipeline plugin parsers from sys.modules cache
+    from database import config_watcher
+
+    config_watcher.reload_everything()
     plugin_keys = [k for k in sys.modules.keys() if k.startswith("pipeline_plugin_")]
     for k in plugin_keys:
         sys.modules.pop(k, None)
-
     logger.info("[Reload] Chain worker modules cache cleared.")
 
 def warmup_worker(rules, db_session_factory=None):
@@ -2736,8 +2721,8 @@ def warmup_worker(rules, db_session_factory=None):
     #    That answer used to expire on a 5-second clock because the web server's reload hook
     #    is the only one that existed and workers never reach it. Keyed to loading instead,
     #    every process invalidates where it actually re-reads - and this is that seat for the
-    #    chain worker, which runs on boot AND on SYSTEM_RELOAD (the rules-only reload has its
-    #    own line in `reread_rules_only`, which does not warm up).
+    #    chain worker, which runs on boot AND on SYSTEM_RELOAD (a saved or edited rules file
+    #    forgets it in `database.config_watcher`'s chain_rules row, which does not warm up).
     _reset_right_keys()
 
     # 0) 🔴 맵퍼 패키지 «전체»를 import 해 데코레이터가 등록되게 한다 (S-188 ⓒ, 판정 300).
@@ -4066,35 +4051,32 @@ def start_replay_if_queued(db):
 
 
 def reload_rules(work):
-    """What a SYSTEM_RELOAD does to the rules THIS process runs - `SCOPE_CHAIN_RULES` re-reads
-    them; `FULL` re-imports the mappers and the dynamic models too. The chain loop and every
+    """What a SYSTEM_RELOAD does to the rules THIS process runs - `SCOPE_JOIN_KEYS` forgets the join keys;
+    `FULL` (the Reload button) reads every declaration, mapper and dynamic model again. The chain loop and every
     slot (`chain.slots`) call it, so one reload means one thing. -> the rules."""
     from runtime import system_reload
 
     if work == system_reload.SCOPE_JOIN_KEYS:
         _reset_right_keys()
         return loaded_chain_rules()
-    if work == system_reload.SCOPE_CHAIN_RULES:
-        rules = reread_rules_only()
-    else:
-        # 1. Reload dynamic modules cache
-        reload_worker_process_cache()
-        activity.registry.note_reload()
-        # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
-        #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
-        try:
-            from database.database import engine as _db_engine
-            from database import models as _db_models
-            created_tables = _db_models.refresh_dynamic_models(_db_engine)
-            if created_tables:
-                logger.info(f"[Reload] Created missing physical tables at runtime: {created_tables}")
-        except Exception as e:
-            logger.error(f"[Reload] Dynamic model refresh failed: {told(e)}", exc_info=e)
-        # 2. Reload chain rules configurations from disk
-        rules = load_chain_rules()
-        # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
-        #    (DB 풀은 리로드에도 유지되므로 프라임 생략 — db_session_factory=None)
-        warmup_worker(rules)
+    # 1. Reload dynamic modules cache
+    reload_worker_process_cache()
+    activity.registry.note_reload()
+    # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
+    #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
+    try:
+        from database.database import engine as _db_engine
+        from database import models as _db_models
+        created_tables = _db_models.refresh_dynamic_models(_db_engine)
+        if created_tables:
+            logger.info(f"[Reload] Created missing physical tables at runtime: {created_tables}")
+    except Exception as e:
+        logger.error(f"[Reload] Dynamic model refresh failed: {told(e)}", exc_info=e)
+    # 2. Reload chain rules configurations from disk
+    rules = load_chain_rules()
+    # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
+    #    (DB 풀은 리로드에도 유지되므로 프라임 생략 — db_session_factory=None)
+    warmup_worker(rules)
     logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")
     return rules
 
@@ -4514,10 +4496,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     last_reload_event_id = latest_reload.id
                 reload_work = system_reload.reload_for(system_reload.CHAIN_WORKER, new_reloads)
 
-                if reload_work == system_reload.SCOPE_CHAIN_RULES:
-                    logger.info("[Reload] SYSTEM_RELOAD chain_rules (Event ID: %s) - re-reading "
-                                "the chain rules only", latest_reload.id)
-                elif reload_work == system_reload.SCOPE_JOIN_KEYS:
+                if reload_work == system_reload.SCOPE_JOIN_KEYS:
                     logger.info("[Reload] SYSTEM_RELOAD join_keys (Event ID: %s) - the write gate learns "
                                 "the join unique indexes again", latest_reload.id)
                 elif reload_work == system_reload.FULL:
@@ -4532,6 +4511,13 @@ async def start_chain_ingestion_worker(db_session_factory):
                     if latest_reload.processed_chain == False:
                         mark_processed(latest_reload, "SUCCESS")
                         db.commit()
+                # 🔴 [e6a0bdbbd] A rules or mapper file changed since the last boundary: taken here, between groups -
+                #    a group running reads one set (`config_watcher.apply_pending`).
+                from database import config_watcher
+
+                if config_watcher.apply_pending():
+                    rules = loaded_chain_rules()
+                    say_the_declaration()
 
                 # Fetch pending outbox records
                 #

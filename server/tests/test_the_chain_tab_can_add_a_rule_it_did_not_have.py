@@ -348,35 +348,25 @@ def test_the_grammar_judge_has_exactly_one_spelling_across_the_product():
 # 🔴 the judge's registry must be as fresh as the file it judges (판정 326 (2))
 # ---------------------------------------------------------------------------
 
-def test_a_reload_leaves_the_registry_populated_rather_than_emptied():
-    """🔴 THE HALF-RELOAD THIS CLOSES. `reload_local_process_cache` evicts `mappers.*` from
-    `sys.modules` and resets the registry (S-188 ⓒ) — and then, until now, stopped. The
-    chain worker does the same two things AND re-runs `discover()` in its warmup, so its
-    registry is as fresh as the files; this process's was empty from the first
-    SYSTEM_RELOAD onward.
+def test_a_reload_leaves_the_registry_populated_rather_than_emptied(monkeypatch):
+    """🔴 THE HALF-RELOAD THIS CLOSED (S-188 ⓒ): the web server's reload evicted `mappers.*` and reset the registry,
+    and then stopped - its registry was empty from the first SYSTEM_RELOAD onward, a judge that refused every rule
+    written in the one-cell form. Since e6a0bdbbd the reload never empties it: every mapper file is imported again
+    and swapped in once it imports (`mapper_sdk.reload_modules`, the one the watcher calls), so nothing is ever
+    reset to refill.
 
-    🔴 THE ORDER IS THE ASSERTION, not the call. Discovering and THEN resetting is the same
-    two lines in the other sequence and leaves the registry empty — a judge that refuses
-    every rule written in the one-cell form, which is the failure this round exists to
-    avoid. Measured: removing the discover call reds nothing without this test.
-
-    ⚠️ SCORED BY THE CALLS, NOT BY A COUNT. The box's `mappers/` is gitignored, so asserting
-    a number here would measure this machine rather than the product.
+    ⚠️ SCORED BY THE CALL, NOT BY A COUNT. The box's `mappers/` is gitignored, so asserting a number here would
+    measure this machine rather than the product.
     """
     import mapper_sdk
     from runtime import system_reload
 
-    order = []
-    real_reset, real_discover = mapper_sdk.reset_registry, mapper_sdk.discover
-    mapper_sdk.reset_registry = lambda: order.append("reset")
-    mapper_sdk.discover = lambda *a, **k: (order.append("discover"), ((), {}))[1]
-    try:
-        system_reload.reload_local_process_cache()
-    finally:
-        mapper_sdk.reset_registry, mapper_sdk.discover = real_reset, real_discover
+    asked = []
+    monkeypatch.setattr(mapper_sdk, "reload_modules", lambda paths=None, package="mappers": asked.append(paths) or {})
+    monkeypatch.setattr(mapper_sdk, "reset_registry", lambda: asked.append("reset"))
+    system_reload.reload_local_process_cache()
 
-    assert order == ["reset", "discover"], (
-        "the reload must forget the evicted modules and then find them again, in that order")
+    assert asked == [None], "every mapper file, swapped in - never a reset"
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ import directory_watcher  # noqa: E402
 from directory_watcher import WorkspaceWatcher  # noqa: E402
 from database.database import Base  # noqa: E402
 from database import crud, models  # noqa: E402
+from database import config_watcher
 
 TABLE, OTHER = "flat_test_parts", "flat_test_other"
 INFO = {"business_key": "part_no",
@@ -221,6 +222,7 @@ def test_files_not_archived(box, caplog):
     caplog.set_level(logging.INFO)
     box["settings"].write_text(json.dumps({"subfolder_recheck_seconds": RECHECK, "archive_processed_files": False}),
                                encoding="utf-8")
+    config_watcher.changed(str(box['settings']))
     box["start"]()
     _in(box, "A/f1.csv", "F1")
     assert _went_in(box, ["F1"], 30)
@@ -301,6 +303,7 @@ def test_an_unchanged_folder_of_20000_kept_files_gets_no_worker_until_a_sweep_in
     worker only when it changed, or a sweep interval after the last one. The worker here only counts."""
     box["settings"].write_text(json.dumps({"subfolder_recheck_seconds": 30, "archive_processed_files": False}),
                                encoding="utf-8")
+    config_watcher.changed(str(box['settings']))
     monkeypatch.setattr(directory_watcher, "PERIODIC_SWEEP_INTERVAL_SECONDS", 3600)
     watcher = box["watcher"]
     handler = watcher.handlers_by_raw_path[os.path.abspath(box["raws"])]
@@ -329,6 +332,7 @@ def test_nested_ingestion_off_is_said_at_the_1st_and_10th_of_25_looks(box, caplo
     caplog.set_level(logging.INFO)
     box["settings"].write_text(json.dumps({"subfolder_recheck_seconds": 30, "flatten_nested_dirs": False}),
                                encoding="utf-8")
+    config_watcher.changed(str(box['settings']))
     _in(box, "A/f1.csv", "F1")
     for _ in range(25):
         box["watcher"].recheck_subfolders()

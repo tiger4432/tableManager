@@ -334,12 +334,18 @@ def test_another_failure_is_not_asked_again(retrying, monkeypatch, failure):
 
 
 def test_the_number_cells_default_and_a_bad_one_is_refused(root):
+    from database import config_watcher
+
     _declare(root, **CELLS)
     cells = llm.settings()
     assert {name: cells[name] for name in llm.NUMBER_CELLS} == {
         "timeout_s": 60.0, "batch_chars": 4000, "known_chars": 4000, "known_per_seed": 5}
     for name, bad in (("batch_chars", 0), ("batch_chars", 1.5), ("known_chars", "9"), ("known_per_seed", True)):
+        _declare(root, **CELLS)
+        llm.settings()
         _declare(root, **CELLS, **{name: bad})
+        assert llm.settings() == cells, "a process that read the file keeps what it read (e6a0bdbbd ③)"
+        config_watcher._HELD.clear()            # one that read none refuses it
         with pytest.raises(llm.LlmRefused, match="%s in config/llm_config.json is not a whole number" % name):
             llm.settings()
 

@@ -147,7 +147,8 @@ def _setup(monkeypatch, tmp_path, returns, **cells):
     def config(**changes):
         written.update(changes)
         path.write_text(json.dumps(written), encoding="utf-8")
-        sso.settings.cache_clear()
+        from database import config_watcher
+        config_watcher.forget_held()
     fake.config = config
     config(**cells)
     _clear()
@@ -157,7 +158,8 @@ def _setup(monkeypatch, tmp_path, returns, **cells):
 @pytest.fixture(params=RETURNS)
 def issuer(request, monkeypatch, tmp_path):
     yield _setup(monkeypatch, tmp_path, request.param)
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
     _clear()
 
 
@@ -175,9 +177,11 @@ def off(request, monkeypatch, tmp_path):
     monkeypatch.setattr(sso, "CONFIG_PATH", str(path))
     monkeypatch.delenv(sso.CLIENT_SECRET_ENV, raising=False)
     monkeypatch.setenv(auth.ADMIN_TOKEN_ENV, ADMIN_TOKEN)
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
     yield
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
 
 
 def _client():
@@ -225,7 +229,8 @@ def test_sign_in_is_on_only_when_enabled_and_every_setting_is_there(monkeypatch,
         fake.config(client_id="  ")
     elif drop == "http":
         fake.config(redirect_uri="http://testserver/auth/callback")
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
     said = sso.startup_banner()
     assert said[0] == level
     if words is None:
@@ -236,7 +241,8 @@ def test_sign_in_is_on_only_when_enabled_and_every_setting_is_there(monkeypatch,
         assert said[1].startswith("[sso] OFF") and words in said[1] and CLIENT_SECRET not in said[1]
         assert _client().get("/auth/me").json() == {"user": None, "is_admin": None, "sso": False}
     assert fake.answered == []
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
 
 
 def test_a_change_waits_for_the_restart(issuer):
@@ -244,7 +250,8 @@ def test_a_change_waits_for_the_restart(issuer):
     with open(sso.CONFIG_PATH, "w", encoding="utf-8") as handle:
         json.dump({"enabled": False}, handle)
     assert sso.enabled()                                          # read once per process
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
     assert not sso.enabled()
 
 
@@ -272,7 +279,8 @@ def test_a_settings_file_as_written_never_stops_the_server(monkeypatch, tmp_path
     answered - none of them a 500."""
     _setup(monkeypatch, tmp_path, RETURNS[0])
     (tmp_path / sso.CONFIG_FILE).write_bytes(written)
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
     monkeypatch.setattr(main, "_admin_auth_banner_logged", False)
     with caplog.at_level(logging.INFO, logger="Server"), TestClient(main.app, base_url="https://testserver") as client:
         said = [(r.levelname.lower(), r.getMessage()) for r in caplog.records if r.getMessage().startswith("[sso]")]
@@ -281,7 +289,8 @@ def test_a_settings_file_as_written_never_stops_the_server(monkeypatch, tmp_path
     assert answers["/auth/me"].status_code == 200 and answers["/health"].status_code in (200, 503)
     assert answers["/auth/me"].json()["sso"] is said[0][1].startswith("[sso] ON")
     assert sso.settings()["admins"] == admins and sso.is_admin(UPN) is bool(admins)
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
 
 
 @pytest.mark.parametrize("secret", [CLIENT_SECRET, None], ids=["secret", "public"])
@@ -289,7 +298,8 @@ def test_the_code_exchange_carries_a_secret_only_when_there_is_one(issuer, monke
     """총괄 10-07: no secret is a public client - the exchange is client_id and the PKCE verifier."""
     if secret is None:
         monkeypatch.delenv(sso.CLIENT_SECRET_ENV)
-        sso.settings.cache_clear()
+        from database import config_watcher
+        config_watcher.forget_held()
     issuer.secret = secret
     assert sso.enabled() and ("%s client" % ("secret" if secret else "public")) in sso.startup_banner()[1]
     back = _sign_in(_client(), issuer)
@@ -306,7 +316,8 @@ def test_the_token_endpoint_refusing_the_client_says_its_word(issuer, monkeypatc
     """invalid_client is what an issuer that wants a secret answers a public client: the word is the
     operator's next move (ask IT for a client secret), so it reaches the screen and the log."""
     monkeypatch.delenv(sso.CLIENT_SECRET_ENV)
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
     issuer.secret = None
     issuer.token_refusal = ("invalid_client", "MSIS9622: Client authentication failed.")
     with caplog.at_level(logging.WARNING, logger="Server"):
@@ -397,7 +408,8 @@ def test_the_return_address_without_code_or_error_is_the_screen_it_always_was(is
     path = urlsplit(issuer.returns).path
     signed_in = client.get(path, params={"state": "s"}, follow_redirects=False)
     monkeypatch.setattr(sso, "CONFIG_PATH", sso.CONFIG_PATH + ".absent")
-    sso.settings.cache_clear()
+    from database import config_watcher
+    config_watcher.forget_held()
     today = _client().get(path, params={"state": "s"}, follow_redirects=False)
     assert (signed_in.status_code, signed_in.content) == (today.status_code, today.content)
 

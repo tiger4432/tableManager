@@ -104,7 +104,6 @@ DEFAULT_WORLD = "default"
 #: e67ef53f3 ㄱ · 092a6f9e5): {"operating": name, "live": {name: false}, "history": [...]}.
 #: Absent: the default operates; a world it does not switch off follows live.
 _LAYOUT_FILE = "worlds.json"
-_layouts = {}
 
 
 def _layout_path() -> str:
@@ -112,20 +111,19 @@ def _layout_path() -> str:
 
 
 def layout() -> dict:
-    """The layout as the file says now - read again whenever it changes (one stat a call)."""
+    """The layout as the file says now - held until it changes (`config_watcher.held`, e6a0bdbbd; a stat a call
+    before). One that stops reading keeps the layout read before."""
+    from database import config_watcher
+
     path = _layout_path()
-    try:
-        status = os.stat(path)
-        stamp = (status.st_mtime_ns, status.st_size)
-    except FileNotFoundError:
-        stamp = None
-    if path not in _layouts or _layouts[path][0] != stamp:
-        data = {}
-        if stamp is not None:
-            with open(path, encoding="utf-8") as fh:
-                data = json.load(fh)
-        _layouts[path] = (stamp, data)
-    return _layouts[path][1]
+    return config_watcher.held(config_watcher.names_of([path]), ("worlds", path), lambda: _read_layout(path))
+
+
+def _read_layout(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 def _write_layout(data: dict) -> None:
@@ -134,7 +132,9 @@ def _write_layout(data: dict) -> None:
     with open(path + ".tmp", "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)
     os.replace(path + ".tmp", path)
-    _layouts.pop(path, None)
+    from database import config_watcher
+
+    config_watcher.changed(path)
 
 
 def operating_world() -> str:

@@ -222,17 +222,11 @@ class SuggestValidationError(Exception):
 # ---------------------------------------------------------------------------
 
 def load_config(path: str = None) -> dict:
-    """Load suggest_config.json. Missing file -> {} (all defaults apply)."""
-    p = path or CONFIG_PATH
-    try:
-        with open(p, "r", encoding="utf-8-sig") as f:
-            raw = json.load(f)
-        return raw if isinstance(raw, dict) else {}
-    except FileNotFoundError:
-        return {}
-    except Exception as e:
-        logger.warning("[Suggest] failed to load config %s: %s", p, told(e), exc_info=e)
-        return {}
+    """Load suggest_config.json. Missing file -> {} (all defaults apply) - held until it changes, a broken one said
+    once (`config_watcher.json_object`)."""
+    from database import config_watcher
+
+    return config_watcher.json_object(path or CONFIG_PATH, "utf-8-sig")
 
 
 def resolve_settings(config: dict = None) -> dict:

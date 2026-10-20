@@ -385,13 +385,15 @@ def test_a_notation_fold_that_moves_a_key_recounts_the_key_it_left(db, tmp_path,
     rules = tmp_path / "notation_rules.json"
     monkeypatch.setattr(nn, "NOTATION_RULES_PATH", str(rules))
     rules.write_text(json.dumps({"columns": {}}), encoding="utf-8")
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     _write(db, [{"updates": {"log_id": "L9", "job": "J . 9", "lot": "Z", "t": "9"}}])
     _chain(db)
     assert _inv(db) == {"J . 9": ("Z", 1)}
     rules.write_text(json.dumps({"columns": {SRC: {"job": {"write": True, "rules": {"replace": [[" *[.] *", "."]]}}}}}),
                      encoding="utf-8")
-    nn.reset_cache()
+    from database import config_watcher
+    config_watcher.forget_held()
     replay.fold_written_notation(db, SRC, apply=True, log=lambda message: None)
     _chain(db)
 

@@ -76,7 +76,8 @@ def optabs_env(db_session, tmp_path, monkeypatch):
     path = tmp_path / f"overlay_{uuid.uuid4().hex[:6]}.json"
     path.write_text(json.dumps({"table_bindings": {}}), encoding="utf-8")
     monkeypatch.setattr(map_overlay, "CONFIG_PATH", str(path))
-    bonding_plan._OVERLAY_MEMO["stamp"] = None
+    from database import config_watcher
+    config_watcher.forget_held()
     _seed(db_session)
     return db_session
 

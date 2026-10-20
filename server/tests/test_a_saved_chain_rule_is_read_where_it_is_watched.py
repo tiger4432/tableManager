@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""총괄 76aa4b6ed — 체인 선언을 저장하면 체인 워커가 «규칙만» 다시 읽는다 (소유자 09-29 ㄱ).
-
-저장 -> 범위(scope = chain_rules)를 실은 SYSTEM_RELOAD 한 행 -> 워커는 규칙만, 워처·스케줄러는
-지나감. 범위 없는 행(Reload 버튼 · 코드 편집기)은 전과 같이 무거운 길. 워커가 읽은 규칙 파일의
-지문·시각은 대기열 응답에 실려 저장 답의 `base` 와 견줄 수 있다.
+"""A saved chain declaration is read where it is watched (e6a0bdbbd, owner 10-21 ㄱ) - the saving process at once,
+every other one from its own config watcher, the chain loop at its next boundary, and only the rules: no mapper
+re-import, no table shapes, no warmup. The scoped row a save wrote (76aa4b6ed) is retired; the Reload button's row is
+the heavy path as before, and the join-keys row is the index line's word to the writers. The rules file the worker
+read is carried in the queue answer, to be held against a save's `base`.
 """
 import asyncio
 import json
@@ -18,14 +18,12 @@ from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import mapper_sdk                                                     # noqa: E402
-from chain import activity, rule_run                                  # noqa: E402
+from chain import activity                                            # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
 from database import models                                           # noqa: E402
 from ledger import admin                                              # noqa: E402
 from runtime import system_reload as sr                               # noqa: E402
 
-SCOPED = {"scope": sr.SCOPE_CHAIN_RULES}
 JOIN_KEYS = {"scope": sr.SCOPE_JOIN_KEYS}
 
 
@@ -40,16 +38,11 @@ F5 = [sr.FULL] * 5
 CASES = [
     ("nothing new", [], [None] * 5),
     ("the button", [{"msg": "x"}], F5),
-    ("a chain rules save", [SCOPED], [sr.SCOPE_CHAIN_RULES, None, None, None, sr.SCOPE_CHAIN_RULES]),
-    ("a save right after the button", [{"msg": "x"}, SCOPED], F5),
-    ("the button right after a save", [SCOPED, {"msg": "x"}], F5),
     ("a scope this build does not know", [{"scope": "later"}], F5),
     ("the code editor's string payload", ['{"trigger": "code_editor"}'], F5),
     # 총괄 10-20: the index line built or took back a join unique index - the writers forget their join keys
     ("a join unique index changed", [JOIN_KEYS],
      [sr.SCOPE_JOIN_KEYS, sr.SCOPE_JOIN_KEYS, None, sr.SCOPE_JOIN_KEYS, None]),
-    ("a join index change and a rules save", [JOIN_KEYS, SCOPED],
-     [sr.SCOPE_CHAIN_RULES, sr.SCOPE_JOIN_KEYS, None, sr.SCOPE_JOIN_KEYS, sr.SCOPE_CHAIN_RULES]),
     ("a join index change and the button", [JOIN_KEYS, {"msg": "x"}], F5),
 ]
 
@@ -74,34 +67,41 @@ def fixture_outbox(monkeypatch):
 def test_a_reader_gets_every_row_past_its_mark_oldest_first(outbox):
     db = outbox()
     first = sr.publish_reload(db, msg="button")
-    second = sr.publish_reload(db, scope=sr.SCOPE_CHAIN_RULES, rule="r")
-    third = sr.publish_reload(db, scope=sr.SCOPE_CHAIN_RULES, rule="r")
+    second = sr.publish_reload(db, scope=sr.SCOPE_JOIN_KEYS)
+    third = sr.publish_reload(db, scope=sr.SCOPE_JOIN_KEYS)
 
     assert [r.id for r in sr.reloads_after(db, 0)] == [first.id, second.id, third.id]
     assert [r.id for r in sr.reloads_after(db, first.id)] == [second.id, third.id]
     assert sr.reloads_after(db, third.id) == []
-    assert second.payload["scope"] == sr.SCOPE_CHAIN_RULES and "scope" not in first.payload
+    assert second.payload["scope"] == sr.SCOPE_JOIN_KEYS and "scope" not in first.payload
 
 
 def test_the_chain_worker_forgets_its_join_keys_and_keeps_its_rules(monkeypatch):
     forgot = []
     monkeypatch.setattr(worker, "_reset_right_keys", lambda: forgot.append(1))
     monkeypatch.setattr(worker, "loaded_chain_rules", lambda: ["the rules as loaded"])
-    monkeypatch.setattr(worker, "reread_rules_only", lambda: pytest.fail("the rules were read again"))
+    monkeypatch.setattr(worker, "load_chain_rules", lambda: pytest.fail("the rules were read again"))
 
     assert worker.reload_rules(sr.SCOPE_JOIN_KEYS) == ["the rules as loaded"] and forgot == [1]
 
 
-@pytest.mark.parametrize("payload,runs", [(JOIN_KEYS, False), (SCOPED, True), ({"msg": "x"}, True)],
-                         ids=["its own join-keys row", "a chain rules save", "the button"])
+@pytest.mark.parametrize("payload,runs", [(JOIN_KEYS, False), (None, True), ({"msg": "x"}, True)],
+                         ids=["its own join-keys row", "a changed rules file", "the button"])
 def test_the_index_line_does_its_declared_work_again_except_for_its_own_row(outbox, monkeypatch, payload, runs):
+    import threading
+
+    from database import config_watcher
     from runtime import maintenance_line
 
+    monkeypatch.setattr(maintenance_line, "_DECLARATIONS_CHANGED", threading.Event())
     ran = []
     monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: ran.append(1) or [])
-    sr.publish_reload(outbox(), **payload)
+    if payload is None:
+        config_watcher.changed("chain_rules.json")      # the row in this process: the line's flag
+    else:
+        sr.publish_reload(outbox(), **payload)
 
-    assert maintenance_line.poll_once(outbox, 0) > 0
+    maintenance_line.poll_once(outbox, 0)
     assert bool(ran) is runs
 
 
@@ -139,60 +139,20 @@ def fixture_rules_file(tmp_path, monkeypatch):
     return path
 
 
-def test_a_save_writes_one_scoped_row_and_the_reread_names_the_saved_base(outbox, rules_file):
+def test_a_save_is_read_here_at_once_and_writes_no_row(outbox, rules_file):
+    """The saving process reads the saved file on its next ask; no SYSTEM_RELOAD row is written - every other
+    process watches the file. The queue names the base it read."""
+    worker.loaded_chain_rules()
     saved = admin.save_chain_rule_raw(
         "live_one", {"trigger_table": "a", "target_table": "b2", "mapper_module": "m",
                      "mapper_function": "f"}, admin.file_fingerprint(str(rules_file)))
 
-    rows = sr.reloads_after(outbox(), 0)
-    assert [(r.payload.get("scope"), r.payload.get("rule")) for r in rows] == [
-        (sr.SCOPE_CHAIN_RULES, "live_one")]
-
-    rules = worker.reread_rules_only()
+    assert sr.reloads_after(outbox(), 0) == []
+    rules = worker.loaded_chain_rules()
     assert [r.get("target_table") for r in rules if r.get("name") == "live_one"] == ["b2"]
     shape = activity.view(activity.registry.instants())
     assert shape["rules_base"] == saved["base"], "the queue cannot tell the save was read"
     assert shape["rules_loaded_age_seconds"] is not None
-
-
-def test_a_save_given_the_request_session_writes_through_it(outbox, rules_file, monkeypatch):
-    """The routes pass theirs - the row rides the request's own session."""
-    import database.database as database_module
-
-    def refuse():
-        raise AssertionError("the save opened its own session")
-
-    request_db = outbox()
-    monkeypatch.setattr(database_module, "SessionLocal", refuse)
-    admin.save_chain_rule_raw(
-        "live_one", {"trigger_table": "a", "target_table": "b3", "mapper_module": "m",
-                     "mapper_function": "f"}, admin.file_fingerprint(str(rules_file)),
-        db=request_db)
-
-    assert [r.payload.get("rule") for r in sr.reloads_after(request_db, 0)] == ["live_one"]
-
-
-# ---------------------------------------------------------------- ① a new mapper name
-
-def test_a_new_mapper_name_walks_the_package_once_and_a_known_one_never(monkeypatch):
-    walks = []
-
-    def fake_discover(package="mappers"):
-        walks.append(package)
-        mapper_sdk.MAPPER_REGISTRY["s76_late"] = lambda db, payload: []
-        return tuple(mapper_sdk.MAPPER_REGISTRY), {}
-
-    monkeypatch.setattr(mapper_sdk, "discover", fake_discover)
-    monkeypatch.setattr(mapper_sdk, "_DISCOVERY_ATTEMPTED", True)   # boot already looked
-    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "s76_known", lambda db, payload: [])
-    monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
-    try:
-        worker.reread_rules_only()
-        assert rule_run.runnable("s76_known") is not None and walks == []
-        assert rule_run.runnable("s76_late") is not None and walks == ["mappers"]
-        assert rule_run.runnable("s76_nowhere") is None and walks == ["mappers"], "walks once"
-    finally:
-        mapper_sdk.MAPPER_REGISTRY.pop("s76_late", None)
 
 
 # ---------------------------------------------------------------- the real loop
@@ -289,19 +249,25 @@ def fixture_loop(monkeypatch):
     return run
 
 
-def test_ten_saves_reread_the_rules_and_never_the_heavy_path(loop):
-    """저장 반복 10 번 -> refresh_dynamic_models 0 · 매퍼 비우기 0 · 웜업은 기동의 1 번뿐."""
-    feed = [[_row(1, SCOPED), _row(2, SCOPED), _row(3, SCOPED), _row(4, SCOPED)],
-            [_row(5, SCOPED), _row(6, SCOPED), _row(7, SCOPED)],
-            [_row(8, SCOPED), _row(9, SCOPED), _row(10, SCOPED)]]
-    seen = loop(feed, 3.6)
+def test_a_changed_rules_file_waits_for_the_boundary_and_never_the_heavy_path(loop, monkeypatch):
+    """A rules file changed while the loop runs (`config_watcher` in a boundary process): the rules once more at the
+    loop's next check - never refresh_dynamic_models, the mapper eviction or a second warmup."""
+    from database import config_watcher
+
+    monkeypatch.setattr(config_watcher, "_BOUNDARY", [True])
+    monkeypatch.setattr(config_watcher, "_PENDING", {})
+    for _ in range(10):
+        config_watcher.changed("chain_rules.json")
+    assert list(config_watcher._PENDING) == ["chain_rules.json"], "it waits for the boundary"
+    seen = loop([], 1.5)
 
     assert seen["refresh"] == 0 and seen["evict"] == 0 and seen["warmup"] == 1
-    assert seen["load"] == 1 + 3, "boot, then once per check that found saves"
+    assert seen["load"] == 2, "boot, then once at the boundary for ten changes"
+    assert config_watcher._PENDING == {}
 
 
 def test_the_button_is_the_heavy_path_as_before(loop):
-    seen = loop([[_row(1, {"msg": "Reload configs and custom scripts modules"}), _row(2, SCOPED)]],
+    seen = loop([[_row(1, {"msg": "Reload configs and custom scripts modules"}), _row(2, JOIN_KEYS)]],
                 1.5)
 
     assert seen["refresh"] == 1 and seen["evict"] == 1 and seen["warmup"] == 2

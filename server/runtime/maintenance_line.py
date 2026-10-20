@@ -6,7 +6,8 @@ INDEX_WANTED beside the outbox. The chain worker now starts at once and builds n
 does all of it beside the scheduler's 5 s loop, on a thread of its own:
   start     the startup indexes, then ANALYZE of the stale tables, then the declared keys', the
             models' and the automatic indexes
-  reload    any SYSTEM_RELOAD past its mark - the chain rules read again, the declared work again
+  reload    any SYSTEM_RELOAD past its mark, or a changed chain_rules.json (`declarations_changed`) - the
+            chain rules read again, the declared work again
   ask       INDEX_WANTED rows (`index_wants.taken`) - the automatic index each names
   merge     every GIN_CLEAN_SECONDS the GIN indexes' pending lists (`clean_gin_pending`) - not a file's flush
   storage   the tables' declared storage (`apply_table_storage`) - at the start, then each merge until it holds
@@ -164,8 +165,18 @@ def _start_work(db_session_factory):
             (worker._analyze_stale_tables_sync, db_session_factory)] + _declared_work(db_session_factory)
 
 
+#: The chain rules file changed (`config_watcher`'s chain_rules row) - the next poll does the declared work again.
+_DECLARATIONS_CHANGED = threading.Event()
+
+
+def declarations_changed():
+    """The chain rules changed in this process: the line's next poll builds the declared indexes again."""
+    _DECLARATIONS_CHANGED.set()
+
+
 def poll_once(db_session_factory, mark):
-    """One read: reloads past `mark` -> the declared work again; INDEX_WANTED -> its automatic index. -> the new mark."""
+    """One read: the Reload button's rows past `mark`, or a changed rules file (`declarations_changed`) -> the
+    declared work again; INDEX_WANTED -> its automatic index. -> the new mark."""
     import event_constants
     from database import models
     from runtime import index_wants, system_reload
@@ -185,10 +196,13 @@ def poll_once(db_session_factory, mark):
         db.commit()
     finally:
         db.close()
+    if _DECLARATIONS_CHANGED.is_set():
+        _DECLARATIONS_CHANGED.clear()
+        declared = True
     if latest != mark:
         mark = latest
-        if declared:
-            _each(_declared_work(db_session_factory))
+    if declared:
+        _each(_declared_work(db_session_factory))
     if asked:
         _each([(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
     return mark
