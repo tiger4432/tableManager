@@ -151,7 +151,6 @@ def select_files(db, table, folder, limit=None):
     the file)], "not_taken": {why: count}, "not_taken_files": [first names], "walked": files looked at}.
     More than `limit` files under the folder is refused (RereadRefused) before anything is judged."""
     from directory_watcher import _safe_relative_path, source_taking
-    from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
 
     limit = WALK_MAX_ENTRIES if limit is None else limit
     files = []
@@ -161,9 +160,7 @@ def select_files(db, table, folder, limit=None):
             if len(files) > limit:
                 raise RereadRefused("more than %d files under %s - narrow the folder" % (limit, folder))
     raws, specs = table_sources(table)
-    rows = {os.path.normcase(os.path.abspath(log.filepath or "")): log
-            for log, _rel in one_per_file(select_logs(db, FILE_INGESTION_STATUS_VOCABULARY, table=table,
-                                                      folder=folder))}
+    rows = _newest_rows_of(db, table, files)
     picked, not_taken, names = [], {}, []
     for path in sorted(files):
         why = None
@@ -180,6 +177,24 @@ def select_files(db, table, folder, limit=None):
         picked.append((log, _safe_relative_path(path, folder), path))
     return {"picked": picked, "not_taken": dict(sorted(not_taken.items())), "not_taken_files": names[:5],
             "walked": len(files)}
+
+
+def _newest_rows_of(db, table, files):
+    """{a path as the filesystem compares it: the table's newest row for it} for the rows named as `files` are - looked up
+    by name (`ix_file_ingestion_logs_filename`), the caller matching the path: a path filter on the table's whole
+    history read every row of it (총괄 f5280f794)."""
+    from database import models
+    from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
+
+    model = models.FileIngestionLog
+    names = sorted({os.path.basename(path) for path in files})
+    rows = {}
+    for start in range(0, len(names), MARK_PAGE):
+        for log in (db.query(model).filter(model.table_name == table, model.filename.in_(names[start:start + MARK_PAGE]),
+                                           model.status.in_(list(FILE_INGESTION_STATUS_VOCABULARY)))
+                    .order_by(model.id.asc())):
+            rows[os.path.normcase(os.path.abspath(log.filepath or ""))] = log   # oldest first: the newest stays
+    return rows
 
 
 def stand_rows(db, table, picked, folder=None):

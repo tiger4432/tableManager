@@ -176,3 +176,22 @@ def test_without_a_table_the_door_is_as_it_was(env):
     body = _ask(env["Session"], folder=str(env["share"]), statuses="SUCCESS", preview=True)
 
     assert (body["count"], body["by_state"]) == (1, {"SUCCESS": 1}) and "table" not in body
+
+
+def test_the_file_s_newest_row_is_found_by_its_name_and_its_path(env):
+    """Rows are looked up by the file's name and matched by its path (lead f5280f794): of the file's two rows the newest
+    is reused, and the newer row naming a same-named file in another folder is not the file's."""
+    S = env["Session"]
+    db = S()
+    try:
+        for path, status in ((env["voids"], "FAILED"), (env["voids"], "SUCCESS"),
+                             (env["share"] / "elsewhere" / "voids.json", "FAILED")):
+            db.add(models.FileIngestionLog(filename="voids.json", filepath=os.path.abspath(str(path)), table_name=B,
+                                           status=status))
+            db.commit()
+    finally:
+        db.close()
+
+    preview = _ask(S, folder=str(env["root"]), table=B, preview=True)
+
+    assert (preview["count"], preview["by_state"]) == (1, {"SUCCESS": 1})

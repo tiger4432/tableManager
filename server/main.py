@@ -7343,6 +7343,8 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         raise HTTPException(status_code=400, detail=str(refused))
     # 🔴 [총괄 fab40ed69 ②, 소유자 「폴더 아래 선택해서 한꺼번에」] ONE SELECTION FOR THE PREVIEW AND
     #    THE RETRY, so the number the screen shows is the number that runs.
+    # The disk and the database below go off the event loop, one call at a time, so a big folder's walk stops
+    # only this request, not every other (소유자 10-20 「파일 소급 미리보기 하니까 다 멈추네」)
     by_folder_asked = log_id is None and not crud.is_blank_value(folder)
     into = None if crud.is_blank_value(table) else str(table).strip()
     chosen = None
@@ -7356,17 +7358,17 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         if os.getenv("DECOUPLED") != "True":
             raise HTTPException(status_code=409, detail="a re-read into a table needs the watcher process")
         try:
-            chosen = reread.select_files(db, into, folder)
+            chosen = await asyncio.to_thread(reread.select_files, db, into, folder)
         except reread.RereadRefused as refused_walk:
             raise HTTPException(status_code=409, detail=str(refused_walk))
         picked = [(log, rel) for log, rel, _path in chosen["picked"]]
     else:
-        picked = reread.select_logs(db, states, folder=folder if by_folder_asked else None,
-                                    since=start, until=end, log_id=log_id)
+        picked = await asyncio.to_thread(reread.select_logs, db, states, folder=folder if by_folder_asked else None,
+                                         since=start, until=end, log_id=log_id)
         if states != reread.RETRY_STATUSES:
             # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
             # Failed files keep today's answer.
-            picked, missing = reread.split_missing(reread.one_per_file(picked))
+            picked, missing = await asyncio.to_thread(lambda: reread.split_missing(reread.one_per_file(picked)))
     failed_logs = [log for log, _rel in picked]
     by_state = {}
     for log in failed_logs:
@@ -7394,9 +7396,13 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
 
     # 만약 프로세스 분리(DECOUPLED) 모드라면 상태만 PENDING_RETRY로 변경하고 즉시 반환합니다.
     if os.getenv("DECOUPLED") == "True":
-        if chosen is not None:
-            failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"], folder=folder)
-        reread.mark_for_reread(db, failed_logs, folder=folder if by_folder_asked else None)
+        def _hand(failed_logs=failed_logs):
+            if chosen is not None:
+                failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"], folder=folder)
+            reread.mark_for_reread(db, failed_logs, folder=folder if by_folder_asked else None)
+            return failed_logs
+
+        failed_logs = await asyncio.to_thread(_hand)
         return {"status": "success", **said,
                 "message": f"{len(failed_logs)} file(s) handed to the watcher"}
         
