@@ -1,3 +1,18 @@
+# 🔴🔴 [구현자 B] **파일 다시 읽기 미리보기가 서버 전체를 멈춤 — 디스크 훑기를 이벤트 루프 밖으로** (소유자 10-20 「파일 소급 미리보기 하니까 다 멈추네」, 총괄) — 지금 일보다 먼저
+
+근거(코드): main.py retry_failed_file_ingestion 은 `async def` 인데 table= 이면 reread.select_files(os.walk 최대 10 만 + 파일마다 판정 + 로그 조회)와
+stand_rows(파일마다 행)를 «이벤트 루프 위에서 동기로» 돈다(1d194343f, 총괄 착지). 훑는 동안 API 의 «모든» 요청이 선다. select_logs 도 같은 자리.
+```
+할 일   그 라우트의 동기 DB · 디스크 일(select_files · select_logs · split_missing · stand_rows · mark_for_reread)을 스레드로(asyncio.to_thread 또는
+        starlette run_in_threadpool) — 한 세션을 두 스레드가 «동시에» 쓰지 않게. DECOUPLED 아닌 갈래(loop 를 쓰는 옛 길)는 그대로
+        같은 모양(async def 안의 동기 DB · 디스크)이 이 라우트 «말고» 어디 있는지 전수 세어 표로 — 고치는 건 이 라우트만, 나머지는 보고
+게이트   진짜 서버(프로세스) + 느린 훑기 대역(select_files 가 N 초 잠듦): 훑는 동안 /health 가 1 초 안에 답 · 미리보기 답은 전과 같음
+        변이(스레드 빼기) 빨강 · 기존 test_a_reread_goes_into_the_table_asked 초록
+RUN.md   무엇이 바뀌나 · 미리보기가 느린 건 그대로(폴더 크기) · 되돌리기
+```
+
+---
+
 # 🔴🔴 [구현자] **콘솔이 막혀도 서버 · 체인은 안 멈춘다 — 출력 읽기에서 콘솔 쓰기를 떼기** (소유자 10-20 「ㅇㅇ」, 총괄) — 지금 일보다 먼저
 
 근거: 운영에서 소급(Fold) 도중 API · 체인 워커가 같이 멈추고 재기동이 안 됨, 소급만 계속(소유자 10-20). 박스 로그는 못 봄 — 코드로 짚은 기제:
