@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **키 병합이 버린 편집 값을 로그로 말함 · 조인 거절 두 문장 영어로** — git pull · 런처 재기동
+>
+> ```
+> 볼 로그  «[Merge] <표> row <id> column <칸>: the edited value was refused (<사유>) - the merged row's value <값> is kept»
+>          키가 겹쳐 두 행이 합쳐질 때 이번 편집 값을 그 칸이 안 받아 버렸다 — 합쳐진 행의 값이 남았다. 동작은 전과 같음
+>          자주 뜨면 그 칸의 타입(table_config column_types)과 들어오는 값을 본다
+> 화면     체인 대기열의 조인 거절: «no row matched in the right table (N row(s) handed)» · «matched N row(s) - every value was already the same»
+> 되돌리기  git revert 240465d7c -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **숫자 키 옛 철자 행 다시 적기 · 같은 키 행 합치기 · 그 뒤 키 유일 인덱스 (소유자 10-20 「체인 아직도 복제」)** — git pull · 런처 재기동
 >
 > ```
