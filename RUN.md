@@ -7,7 +7,7 @@
 >          체인 스켈레톤의 표 이름 칸 = section "tables", 칸 이름 칸 = section "columns" + table_from(어느 칸의 표인지, 루트에서의 경로들)
 >          표 설정 스켈레톤 table_skeleton.json — 코드의 칸 목록 table_cells.TABLE_CELLS(18칸) 하나에서 생성 · /admin/tables/config/raw 의 응답에 skeleton
 > 볼 것    지금 화면은 그대로다 — 폼은 클라 착지 뒤에 그려진다. 저장 문은 /admin/tables/config/raw 그대로
-> 되돌리기  git revert <착지> -> 런처 재기동
+> 되돌리기  git revert 5d5b99fac -> 런처 재기동
 > ```
 >
 > ---
