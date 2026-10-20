@@ -3,10 +3,11 @@
 «unresolvable_mapper» until a reload).
 
 Real processes - the API (uvicorn) and the chain worker - on one sqlite file and a scratch data root, the owner's
-mappers in a package of their own (one imports another; one refuses to import while a flag file stands):
+mappers in a package of their own (one imports another; one does not import until its file is fixed):
   window   reloads while requests read the rule list: after each reload the rule still runs in the API
-  flag     a module that did not import at boot imports on the next ask - the save gate takes the rule naming it, and
-           the worker's next reload runs it; while it cannot, the refusal says why
+  fixed    a module that did not import at boot, its file fixed: the next ask walks again (the files changed since the
+           refusal) - the save gate takes the rule naming it and the worker's next reload runs it; while it cannot,
+           the refusal says why
 """
 import json
 import os
@@ -77,15 +78,12 @@ def test_a_mapper_refused_once_is_found_on_the_next_ask(tmp_path):
         pytest.skip("server/mappers is a regular package here - the slot processes cannot see the scratch mappers")
     pkg = tmp_path / "mappers"
     pkg.mkdir()
-    flag = tmp_path / "flag"
-    flag.write_text("up", encoding="utf-8")
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "common.py").write_text("import time\ntime.sleep(0.05)\nFACTOR = 2\n", encoding="utf-8")
     (pkg / "m0.py").write_text("from mappers import common\nfrom mapper_sdk import mapper\n\n"
                                "@mapper()\ndef owner_m0(df, db):\n    return df\n", encoding="utf-8")
-    (pkg / "flaky.py").write_text("import os\nif os.path.exists(%r):\n    raise ImportError('the probe flag is up')\n"
-                                  "from mapper_sdk import mapper\n\n@mapper()\ndef owner_flaky(df, db):\n"
-                                  "    return df\n" % str(flag), encoding="utf-8")
+    working = "from mapper_sdk import mapper\n\n@mapper()\ndef owner_flaky(df, db):\n    return df\n"
+    (pkg / "flaky.py").write_text("raise ImportError('the probe is broken')\n" + working, encoding="utf-8")
     data = tmp_path / "data"
     (data / "config").mkdir(parents=True)
     (data / "config" / "table_config.json").write_text(json.dumps({"t_src": TABLE, "t_dst": TABLE}), encoding="utf-8")
@@ -121,17 +119,17 @@ def test_a_mapper_refused_once_is_found_on_the_next_ask(tmp_path):
                 time.sleep(0.5)
 
         while "Mapper module refused: mappers.flaky" not in (tmp_path / "worker.log").read_text(errors="replace"):
-            assert worker.poll() is None and time.monotonic() < deadline, "the worker never walked with the flag up"
+            assert worker.poll() is None and time.monotonic() < deadline, "the worker never walked the broken file"
             time.sleep(0.5)
 
-        # flag: refused at boot, and the refusal says why
+        # fixed: refused at boot, and the refusal says why
         assert _states(opener, base)["r1"] != "running"
         _code, opened = _ask(opener, base + "/admin/chain/rules/raw?name=r1")
         rule = {"trigger_table": "t_src", "mapper": "owner_flaky", "target_table": "t_dst", "enabled": True}
         code, refused = _ask(opener, base + "/admin/chain/rules/raw",
                              {"name": "r1", "declaration": rule, "base": opened["base"]})
-        assert code >= 400 and "mappers.flaky did not import: ImportError: the probe flag is up" in json.dumps(refused)
-        flag.unlink()
+        assert code >= 400 and "mappers.flaky did not import: ImportError: the probe is broken" in json.dumps(refused)
+        (pkg / "flaky.py").write_text(working, encoding="utf-8")
         _code, opened = _ask(opener, base + "/admin/chain/rules/raw?name=r1")
         code, saved = _ask(opener, base + "/admin/chain/rules/raw",
                            {"name": "r1", "declaration": rule, "base": opened["base"]})
@@ -172,4 +170,4 @@ def test_a_mapper_refused_once_is_found_on_the_next_ask(tmp_path):
     said = (tmp_path / "worker.log").read_text(encoding="utf-8", errors="replace")
     loads = [line.split("[Reload] Loaded", 1)[1].split(" active", 1)[0].strip()
              for line in said.splitlines() if "[Reload] Loaded" in line]
-    assert loads and set(loads) == {"2"}, "each reload after the flag came down runs both rules: %s" % loads
+    assert loads and set(loads) == {"2"}, "each reload after the file was fixed runs both rules: %s" % loads

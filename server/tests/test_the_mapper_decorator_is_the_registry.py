@@ -193,6 +193,35 @@ def test_the_reload_clears_the_registry_where_it_drops_the_modules():
     assert "rediscover()" in tail, "the reset must come AFTER the eviction"
 
 
+def test_a_module_that_keeps_failing_is_walked_again_only_once_its_files_change(tmp_path, monkeypatch):
+    """A refused walk is walked again on a miss only when the package's files changed since (lead 10-20, app QA): a
+    module that keeps failing would otherwise walk the package on every miss - per group in the chain."""
+    from chain import rule_run
+
+    pkg = tmp_path / "probe_mappers"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "broken.py").write_text("raise ImportError('still broken')\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    walks = []
+    real_walk = mapper_sdk._walk
+    monkeypatch.setattr(mapper_sdk, "_walk", lambda package: walks.append(package) or real_walk(package))
+    monkeypatch.setattr(mapper_sdk, "ensure_discovered",
+                        lambda package="mappers", ensure=mapper_sdk.ensure_discovered: ensure("probe_mappers"))
+
+    for _ in range(5):
+        assert rule_run.runnable("probe_fixed") is None
+    assert walks == ["probe_mappers"], "a module that keeps failing walked again: %d walks" % len(walks)
+    assert "probe_mappers.broken" in mapper_sdk.MAPPER_REFUSALS
+
+    (pkg / "broken.py").write_text("from mapper_sdk import mapper\n\n@mapper()\ndef probe_fixed(df, db):\n"
+                                   "    return df\n", encoding="utf-8")
+    assert rule_run.runnable("probe_fixed") is not None, "the fixed file is found on the next ask"
+    assert len(walks) == 2 and mapper_sdk.MAPPER_REFUSALS == {}
+    for module in [m for m in sys.modules if m.startswith("probe_mappers")]:
+        monkeypatch.delitem(sys.modules, module)
+
+
 def test_a_reload_does_not_empty_the_registry_under_a_walk(monkeypatch):
     """A reload's reset waits for a walk in flight (lead 10-20): reset in the middle of another thread's walk
     emptied what that walk had registered, and the name it was walking for read as unknown."""

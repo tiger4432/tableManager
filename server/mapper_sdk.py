@@ -22,6 +22,7 @@ table declaration, and about nothing else.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from typing import Any, Dict, List
 
@@ -287,10 +288,15 @@ MAPPER_FACTS: dict[str, dict] = {}
 #: registered is refused with (lead 10-20). One dict, emptied and filled in place.
 MAPPER_REFUSALS: dict[str, str] = {}
 
-#: Has anyone walked the mapper package in THIS process yet. A walk that left a module refused
-#: does not count: the next miss walks again (the module may import now - lead 10-20, a name
-#: refused until a reload). A clean walk does, so a file of unknown names walks once.
+#: Has anyone walked the mapper package in THIS process yet. Not "did it succeed" -
+#: a package that cannot be imported will not import on the second ask either, and
+#: retrying per name would walk it once per rule in a file of refusals.
 _DISCOVERY_ATTEMPTED = False
+
+#: The package's files (`_files_of`) when the last walk left a module refused, else None. A miss walks
+#: again only once they differ (lead 10-20): a fixed mapper file is found on the next ask, a module
+#: that keeps failing is not walked again per group.
+_REFUSED_AT = None
 
 #: One walk at a time, and a reload's empty-then-refill is one step: a reader that misses
 #: while it runs waits for the refill instead of reading the empty registry (lead 10-20).
@@ -317,8 +323,9 @@ def reset_registry():
     MAPPER_PARAMS.clear()
     MAPPER_FACTS.clear()
     MAPPER_REFUSALS.clear()
-    global _DISCOVERY_ATTEMPTED
+    global _DISCOVERY_ATTEMPTED, _REFUSED_AT
     _DISCOVERY_ATTEMPTED = False
+    _REFUSED_AT = None
 
 
 def rediscover(package="mappers"):
@@ -374,13 +381,34 @@ def discover(package="mappers"):
     the modules rules NAME -- this walks the package, because 「which mappers exist」 cannot
     be answered from the rules that happen to use them.
     """
+    global _REFUSED_AT
     with _DISCOVERY_LOCK:
         registered, refusals = _walk(package)
         MAPPER_REFUSALS.clear()
         MAPPER_REFUSALS.update(refusals)
-        if refusals:
-            look_again_on_a_miss()
+        _REFUSED_AT = _files_of(package) if refusals else None
         return registered, refusals
+
+
+def _files_of(package):
+    """The package's .py files as (path, mtime, size) - what a refused walk is compared with."""
+    import importlib.util
+
+    try:
+        spec = importlib.util.find_spec(package)
+    except Exception:                                              # noqa: BLE001 - a package that cannot be found
+        return ()
+    files = []
+    for folder in (spec.submodule_search_locations or ()) if spec else ():
+        try:
+            entries = list(os.scandir(folder))
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.name.endswith(".py"):
+                stat = entry.stat()
+                files.append((entry.path, stat.st_mtime_ns, stat.st_size))
+    return tuple(sorted(files))
 
 
 def _walk(package):
@@ -421,8 +449,7 @@ def _walk(package):
 def look_again_on_a_miss():
     """The next name `rule_run.runnable` cannot find walks the package once more. Additive -
     nothing is cleared - and nothing is walked unless a name misses (총괄 76aa4b6ed ①: a saved
-    rule may name a mapper file added since this process last looked; `discover` after a walk
-    that left a module refused)."""
+    rule may name a mapper file added since this process last looked)."""
     global _DISCOVERY_ATTEMPTED
     _DISCOVERY_ATTEMPTED = False
 
@@ -445,7 +472,7 @@ def ensure_discovered(package="mappers"):
     global _DISCOVERY_ATTEMPTED
     # the lock first: a reload refilling the registry is waited for, then the flag read
     with _DISCOVERY_LOCK:
-        if _DISCOVERY_ATTEMPTED:
+        if _DISCOVERY_ATTEMPTED and (_REFUSED_AT is None or _files_of(package) == _REFUSED_AT):
             return
         # 🔴 RECORDED HERE, NOT LEFT TO `discover`. The promise this function makes is
         #    「at most one walk」 for a clean package, so it has to be the one that keeps it - a
