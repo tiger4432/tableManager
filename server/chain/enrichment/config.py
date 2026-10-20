@@ -147,7 +147,8 @@ def _declared_predicates():
     try:
         from ledger import config as _config
         declared = (_config.load() or {}).get("vocabulary") or {}
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Enrichment] the ledger vocabulary was not read: %s", told(exc), exc_info=exc)
         return set()
     return {_bare_name(key) for key in declared}
 

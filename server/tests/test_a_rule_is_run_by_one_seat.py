@@ -208,6 +208,7 @@ def test_the_kind_question_is_asked_in_one_place_however_it_is_spelled():
 CHAIN_LOG_TAGS = {
     "%s": "the seat's own line, composed from RULE_LOG_TAG",
     "Chain": "the group step",
+    "ChainGraph": "the chain graph screen reading the worker's live rules",
     "Chain Depth": "the hop ceiling",
     "Chain Worker": "the process",
     "ChainKeyGate": "the business-key gate",

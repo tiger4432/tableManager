@@ -54,5 +54,5 @@ def test_a_declaration_that_cannot_be_read_still_draws_the_graph():
 
     body = inspect.getsource(trace_router._predicate_cardinalities)
 
-    assert "except Exception:" in body
+    assert "except Exception as exc:" in body
     assert body.rstrip().endswith("return cardinalities")

@@ -122,6 +122,7 @@ import threading
 import time
 import subprocess
 from error_said import told
+import logging
 
 try:
     import paths
@@ -212,7 +213,9 @@ def _database_endpoint(url=None):
         # treated "nothing configured" as nothing to probe.
         try:
             url, _src = paths.resolve_database_url()
-        except Exception:
+        except Exception as exc:
+            logging.getLogger(__name__).warning("[Supervisor] the database URL was not resolved - DATABASE_URL is used: %s",
+                                                told(exc), exc_info=exc)
             url = os.environ.get("DATABASE_URL", "")
         url = url or ""
     if not url or url.startswith("sqlite"):

@@ -137,13 +137,15 @@ def reload_local_process_cache():
     try:
         from chain import synthesis
         synthesis.reset_right_key_cache()
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Reload] the chain's right-key cache was not reset: %s", told(exc), exc_info=exc)
         pass
     # The external sources a re-read preview judges (총괄 10-20): validated again by the next preview.
     try:
         from ingestion import reread
         reread.forget_sources()
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Reload] the file re-read sources were not forgotten: %s", told(exc), exc_info=exc)
         pass
     # The rule set this process read (총괄 57ae5c2da): the next request reads the file again.
     try:
@@ -161,7 +163,8 @@ def reload_local_process_cache():
     try:
         import notation_norm
         notation_norm.reset_cache()
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Reload] the notation cache was not reset: %s", told(exc), exc_info=exc)
         pass
 
 
@@ -175,7 +178,8 @@ def reload_local_process_cache():
         # 규칙 하나를 추가하고 이 캐시를 안 버리면, 새 규칙의 원자가 «다음 재기동까지»
         # 3류가 아니라 2류로 순위된다. 그건 조용히 가정이 실측을 이기는 상태다.
         trace.load_resolver_config(force_reload=True)
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Reload] the walk cache was not reset: %s", told(exc), exc_info=exc)
         pass
 
     # 🔴 AND THE WALK'S COPY OF THE ENTITY DECLARATION (S-206). `ledger_subgraph` caches
@@ -187,7 +191,8 @@ def reload_local_process_cache():
     try:
         from ledger_api import ledger_subgraph
         ledger_subgraph.reset_declaration_cache()
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Reload] the declaration cache was not reset: %s", told(exc), exc_info=exc)
         pass
     # The walk's pool processes hold their own copies of every cache above (lead b47388fde).
     try:
@@ -207,7 +212,8 @@ def reload_local_process_cache():
     try:
         from ledger import config_authoring as ledger_authoring
         ledger_authoring.skeleton.cache_clear()
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Reload] the authoring skeleton cache was not cleared: %s", told(exc), exc_info=exc)
         pass
 
     # Remove custom mappers from sys.modules cache
@@ -234,7 +240,8 @@ def reload_local_process_cache():
         logger.info("[Reload] Mapper registry: %d registered", len(_registered))
         for _module_name, _message in sorted(_refused.items()):
             logger.error("[Reload] Mapper module refused: %s — %s", _module_name, _message)
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Reload] the mapper modules were not reloaded: %s", told(exc), exc_info=exc)
         pass
         
     # Remove pipeline plugin parsers from sys.modules cache

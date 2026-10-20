@@ -29,6 +29,7 @@ import io
 import json
 import os
 from error_said import told
+import logging
 
 MAPPER = "mapper"
 PARSER = "parser"
@@ -138,7 +139,8 @@ def _readonly_session():
                 engine.dispose()
 
         return session, closer
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning("[Bench] the read-only session did not open: %s", told(exc), exc_info=exc)
         return None, lambda: None
 
 

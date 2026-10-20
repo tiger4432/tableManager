@@ -40,6 +40,7 @@ from .setup_bundle import (
     _read_json, _resolve_config_path, default_ordering_key, predicate_claim, upgrade_setup,
 )
 from error_said import told
+import logging
 
 
 def _atoms_per_sentence(preview: Any, plan: Any) -> list[dict[str, Any]]:
@@ -817,7 +818,9 @@ class OntologyExplorerService:
                 try:
                     missing, read = backfill.count_rows_missing(
                         engine, setup, source_id, column)
-                except Exception:                      # noqa: BLE001
+                except Exception as count_err:         # noqa: BLE001
+                    logging.getLogger(__name__).warning("[LedgerExplorer] %s: the rows the source misses were not counted: %s",
+                                                        source_id, told(count_err), exc_info=count_err)
                     missing = read = None
                 if read:
                     result["refusal"]["rows_read"] = read

@@ -5404,7 +5404,9 @@ def _meta_row_exists(db, table: str, map_id: str) -> bool:
         return (db.query(getattr(model, "map_id"))
                   .filter(getattr(model, "target_table") == table,
                           getattr(model, "map_id") == map_id).first()) is not None
-    except Exception:
+    except Exception as exc:
+        logger.warning("[MapAlignment] %s map %s: its meta row was not looked up: %s",
+                       table, map_id, told(exc), exc_info=exc)
         return False
 
 
@@ -6745,7 +6747,9 @@ def _count_cells(db, cfg: dict, table: str, map_id: str):
         if filters is None:
             return None
         return int(db.query(_func.count()).select_from(model).filter(*filters).scalar() or 0)
-    except Exception:
+    except Exception as exc:
+        logger.warning("[MapAlignment] %s map %s: its cells were not counted: %s",
+                       table, map_id, told(exc), exc_info=exc)
         return None
 
 

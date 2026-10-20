@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from . import config
 from declaration_names import bare_name as _bare_name
+from error_said import told
+import logging
 
 
 PROFILE_META = {
@@ -70,7 +72,9 @@ def _declared_signature(predicate):
     """
     try:
         declared = (config.load() or {}).get("vocabulary") or {}
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning("[SourceContract] %s: the ledger vocabulary was not read: %s",
+                                            predicate, told(exc), exc_info=exc)
         return None
     for key, item in declared.items():
         if _bare_name(key) == predicate:

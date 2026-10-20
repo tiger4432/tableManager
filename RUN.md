@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **삼키던 오류 27 곳이 한 줄을 남긴다 (총괄 c60fabe71, 소유자 «오류 남기게 해 너무 일 키우지는 말고»)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     넓게 잡고 아무것도 안 남기던 자리 중 실패를 삼키던 27 곳이 WARNING 한 줄 + traceback 을 남긴다. 삼키기 · 흐름은 그대로
+> 볼 줄     «[Reload] … was not reset» · «[Walk] world … its declaration was not read» · «[MapAlignment] …» · «[Watcher] … legacy workspace config» 등
+>          꼴  «<무엇을 하다가>: <오류 문장> (<파일>.py:<줄> in <함수>)» 다음 줄부터 traceback
+>          찾기  Select-String -Path server\*.log -Pattern 'was not (read|reset|counted|resolved|written|looked up|cleared|reloaded|forgotten)|discovery stopped|did not open'
+> 답의 뜻   줄이 없음  -> 그 자리가 실패하지 않았다 (전에는 실패해도 아무 줄이 없었다)
+>          줄이 계속 남  -> 그 일이 매번 실패 중. traceback 맨 아래 줄이 고칠 자리 — 예: «[Reload] … not reset» 이면 설정을 고쳐도 그 프로세스는 옛 캐시를 쥔다
+> 되돌리기  git revert __HASH__ -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **체인 규칙의 key.columns · group_by · limits.group_by 가 «목록»으로 — 폼이 줄로 그리고, 글자로 적힌 key.columns 는 이름 대어 거절 (총괄 77793123e)** — git pull · 런처 재기동 · 브라우저 새로고침
 >
 > ```

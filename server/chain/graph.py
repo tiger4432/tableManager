@@ -37,6 +37,7 @@ import time
 
 from chain import rule_shape
 from error_said import told
+import logging
 
 #: The two node kinds. A table is a catalogue name; the ledger is ONE node, because a
 #: ledger source's atoms all land in the same place and drawing fifteen ledger nodes would
@@ -369,7 +370,9 @@ def chain_graph(db):
     # demonstrably picks up.
     try:
         live_rules = worker.loaded_chain_rules() or []
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning("[ChainGraph] the worker's live rules were not read - the declared rules are drawn: %s",
+                                            told(exc), exc_info=exc)
         live_rules = chain_rules
 
     names = {edge["from"] for edge in edges} | {edge["to"] for edge in edges}

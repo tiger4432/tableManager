@@ -66,6 +66,7 @@ import sys
 from sqlalchemy import inspect, text
 from sqlalchemy import types as sqltypes
 from error_said import told
+import logging
 
 
 # Overrides, for remedies that are NOT a file anyone can run. Everything that IS
@@ -552,7 +553,9 @@ def _declared_kind(table):
         from ledger.setup_bundle import catalog_kind
 
         return catalog_kind(crud.TABLE_CONFIG.get(table))
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning("[SchemaDrift] %s: its declared kind was not read - taken as a table: %s",
+                                            table, told(exc), exc_info=exc)
         return "table"
 
 

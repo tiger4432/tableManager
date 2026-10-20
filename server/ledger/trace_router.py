@@ -548,9 +548,10 @@ def _predicate_cardinalities(world=None) -> dict:
     """
     try:
         declared = _declaration(world) or {}
-    except Exception:                                                  # noqa: BLE001
+    except Exception as exc:                                           # noqa: BLE001
         # A walk must answer even when the declaration cannot be read; it simply says
         # nothing about cardinality rather than refusing to draw the graph.
+        logger.warning("[Walk] world %s: its declaration was not read: %s", world, told(exc), exc_info=exc)
         return {}
     cardinalities = {}
     for key, rule in (declared.get("vocabulary") or {}).items():
@@ -587,7 +588,8 @@ def _self_describing_predicates(world=None):
 
     try:
         declared = _declaration(world) or {}
-    except Exception:                                                  # noqa: BLE001
+    except Exception as exc:                                           # noqa: BLE001
+        logger.warning("[Walk] world %s: its declaration was not read: %s", world, told(exc), exc_info=exc)
         return set()
     return set(registration_predicates(declared.get("vocabulary") or {}))
 
@@ -620,7 +622,8 @@ def _followable_predicates(world=None):
     try:
         declared = (_declaration(world) or {}).get("vocabulary") or {}
         names |= {_bare_name(key) for key in declared}
-    except Exception:      # an unreadable declaration refuses everything rather than guessing
+    except Exception as exc:  # an unreadable declaration refuses everything rather than guessing
+        logger.warning("[Walk] world %s: its declaration was not read: %s", world, told(exc), exc_info=exc)
         return set()
     return names
 
@@ -638,7 +641,8 @@ def _static_types(world=None):
     """
     try:
         declared = (_declaration(world) or {}).get("entities") or {}
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Walk] world %s: its declaration was not read: %s", world, told(exc), exc_info=exc)
         return set()
     from ledger import setup_bundle
 
@@ -668,7 +672,8 @@ def _static_step_predicates(world=None):
     """
     try:
         declared = _declaration(world) or {}
-    except Exception:
+    except Exception as exc:
+        logger.warning("[Walk] world %s: its declaration was not read: %s", world, told(exc), exc_info=exc)
         return set()
     from ledger import setup_bundle
 

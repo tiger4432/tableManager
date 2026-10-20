@@ -398,7 +398,9 @@ def load_legacy_workspace_config(config_path) -> dict:
                 loaded = json.load(f)
             if isinstance(loaded, dict):
                 data = loaded
-        except Exception:
+        except Exception as exc:
+            logger.warning("[Watcher] %s: the legacy workspace config was not read: %s",
+                           config_path, told(exc), exc_info=exc)
             data = {}
         if ("table_name" in data) or ("std_parse" in data):
             warn_legacy_workspace_config(config_path)

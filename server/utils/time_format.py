@@ -24,6 +24,7 @@ import re
 from functools import lru_cache
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+import logging
 
 # ---------------------------------------------------------------------------
 # S-182 ⓐ - THE ONE FOLD FOR A WORLD TIME (SCHEMA_CANON R5, 판정 289)
@@ -155,7 +156,9 @@ def note_session_zone(name):
     the zone unknown - never a guessed one."""
     try:
         _SESSION_ZONE[:] = [ZoneInfo(str(name))] if name else []
-    except Exception:                                   # noqa: BLE001
+    except Exception as exc:                            # noqa: BLE001
+        # the standard library only (this module is held to it) - the traceback says where
+        logging.getLogger(__name__).warning("[Time] the session time zone %r was not read", name, exc_info=exc)
         _SESSION_ZONE[:] = []
 
 

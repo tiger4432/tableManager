@@ -482,11 +482,12 @@ def ensure_discovered(package="mappers"):
         _DISCOVERY_ATTEMPTED = True
         try:
             discover(package)
-        except Exception:                                          # noqa: BLE001
+        except Exception as exc:                                   # noqa: BLE001
             # A judge that cannot look must still answer. `discover` already turns a
             # broken module into a refusal message rather than a raise; this catches the
             # case where the walk itself dies, and the caller then reads an empty
             # registry exactly as it did before.
+            logger.warning("[MapperSDK] %s: discovery stopped: %s", package, told(exc), exc_info=exc)
             pass
 
 

@@ -24,6 +24,7 @@ import logging
 import uuid
 
 from sqlalchemy import func, select
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +224,8 @@ def _load_metas_and_basis(db, contributors: list, reference: dict = None) -> tup
     if ref.get("table") and ref.get("map_id"):
         try:
             basis_meta = map_overlay.load_map_meta(db, str(ref["table"]), str(ref["map_id"]))
-        except Exception:
+        except Exception as exc:
+            logger.warning("[FrameConfirmation] the basis map's meta was not read: %s", told(exc), exc_info=exc)
             basis_meta = None
     return metas, basis_meta
 

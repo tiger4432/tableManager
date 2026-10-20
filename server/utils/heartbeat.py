@@ -71,6 +71,7 @@ import itertools
 import threading
 from contextlib import contextmanager
 from error_said import told
+import logging
 
 try:
     import paths
@@ -553,7 +554,9 @@ def write_roster(names, now=None):
             json.dump(payload, f)
         os.replace(tmp, roster_path())
         return True
-    except Exception:                                            # noqa: BLE001
+    except Exception as exc:                                     # noqa: BLE001
+        logging.getLogger(__name__).warning("[Heartbeat] the process roster was not written: %s",
+                                            told(exc), exc_info=exc)
         return False
 
 

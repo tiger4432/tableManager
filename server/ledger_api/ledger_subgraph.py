@@ -1278,7 +1278,8 @@ def _entity_facts(paths):
                     if how == ATTRIBUTE_CARDINALITY_MANY)
                 if plural:
                     plural_by_type[bare] = plural
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning("[Walk] the entity declarations were not read: %s", told(exc), exc_info=exc)
         order, plural_by_type, confirmers, inverses, labels, steps = {}, {}, {}, {}, {}, {}
     return order, plural_by_type, confirmers, inverses, labels, steps
 
