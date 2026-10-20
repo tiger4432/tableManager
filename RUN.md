@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **파일마다 적재 결과 — 완료 기록에 아홉 칸 (총괄 e390600d6, 소유자 「ㅇㅇ 일케 해」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     file_ingestion_logs 에 rows_read · rows_new · rows_changed · rows_unchanged · rows_refused · reader · source · reason · failed_at
+>          SQL 을 안 돌려도 된다 — 서버 · 와처 · 체인 워커가 기동 때 스스로 붙인다 (스키마 동기화, 잠금 상한 20 s)
+> 볼 줄     server.log 또는 watcher.log  «[Schema Sync] added column 'rows_read' to 'file_ingestion_logs'» … 아홉 줄, 처음 한 번만
+>          그 뒤 파일 하나 읽고  GET /admin/file-ingestion/logs?limit=1  -> rows_read · reader · source 가 채워져 있음
+> 답의 뜻   «could not add column … another session held the table past 20s»  -> 그 표를 오래 잡은 세션이 있음. 재기동하면 다시 시도.
+>          그새 이 칸을 읽는 목록 · 와처 기록이 실패한다 — 급하면 손으로:
+>          psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_log_results.sql
+>          칸이 비어 있음  이 칸이 생기기 전에 적힌 행이거나 건너뛴 파일 (정상)
+> 되돌리기  git revert 0eba61a50 -> 런처 재기동 -> 그다음에 server/migrations/add_file_ingestion_log_results_reverse.sql (순서 반대면 다음 기동이 칸을 다시 붙임)
+> ```
+>
+> ---
+>
 > ## [10-20] **진행 목록 — 같은 표의 같은 이름 파일 둘이 두 줄 (소유자 「다 voids.json 이면 뭐가 뭔지」)** — git pull · 런처 재기동
 >
 > ```
