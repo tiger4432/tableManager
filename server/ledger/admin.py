@@ -683,7 +683,8 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
             candidate, f"rules.{name}",
             mapper_resolvable=ingestion_worker._resolvable_mapper, derived_tables=derived,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get,
-            mapper_made_by_sdk=ingestion_worker._made_by_sdk)
+            mapper_made_by_sdk=ingestion_worker._made_by_sdk,
+            mapper_refusals=mapper_sdk.MAPPER_REFUSALS)
         if grammar:
             first = grammar[0]
             raise _table_config_refusal(

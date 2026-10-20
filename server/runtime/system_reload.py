@@ -198,14 +198,15 @@ def reload_local_process_cache():
     # blocks above: one cache that will not clear does not kill the reload.
     try:
         import mapper_sdk
-        mapper_sdk.reset_registry()
         # 🔴 AND THEY COME BACK, BECAUSE THIS PROCESS JUDGES WITH THEM (S-204 (3), 판정 326).
         # The eviction above is half a reload: the chain worker evicts, resets AND re-runs
         # `discover()` in its warmup, so its registry is as fresh as the files. This process
         # only ever did the first half, which left the rule editor's grammar judge looking
         # at an empty registry from the first SYSTEM_RELOAD onward -- refusing every rule
         # written in the one-cell mapper form, including the ones it had just accepted.
-        _registered, _refused = mapper_sdk.discover()
+        # ⚠️ ONE STEP (lead 10-20): a request reading the rules between the reset and the refill
+        #    dropped a rule as `unresolvable_mapper` and kept it dropped until the next reload.
+        _registered, _refused = mapper_sdk.rediscover()
         logger.info("[Reload] Mapper registry: %d registered", len(_registered))
         for _module_name, _message in sorted(_refused.items()):
             logger.error("[Reload] Mapper module refused: %s — %s", _module_name, _message)

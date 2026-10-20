@@ -339,7 +339,7 @@ def flat_param_cells(rule):
 
 
 def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_params=None,
-                  mapper_made_by_sdk=None):
+                  mapper_made_by_sdk=None, mapper_refusals=None):
     """Why this chain rule CANNOT RUN — the one spelling, for every reader (S-180 ⓑ-0).
 
     🔴 IT WAS SPELLED TWICE AND THE TWO HAD ALREADY DIVERGED. The loader
@@ -391,10 +391,14 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
     one_cell, module_name, function_name = mapper_cells(candidate)
     resolvable = bool(mapper_resolvable(one_cell)) if one_cell else False
     if not resolvable and not (module_name and function_name):
+        # `mapper_refusals`: {module: why} the last walk of the mapper package left - the name may be
+        # one of theirs (lead 10-20)
+        refused = "".join("; %s did not import: %s" % (module, why)
+                          for module, why in sorted((mapper_refusals or {}).items()))
         issues.append(validation.DeclarationValidationError(
             "unresolvable_mapper", path + "." + MAPPER_KEY,
             "names no mapper this process can run: '%s' is not registered and "
-            "mapper_module/mapper_function are not both set" % (one_cell or "")))
+            "mapper_module/mapper_function are not both set%s" % (one_cell or "", refused)))
 
     # 🔴 [S-153, 판정 378] A CEILING THAT IS NOT A POSITIVE NUMBER IS NOT A CEILING. Written
     # as text or as zero it would read as 「no limit」 or 「merge nothing」 depending on who

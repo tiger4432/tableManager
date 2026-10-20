@@ -764,7 +764,8 @@ def load_chain_rules():
         # only where the verdict comes from moved.
         issues = chain_bindings.rule_refusals(
             rule, path, mapper_resolvable=_resolvable_mapper, derived_tables=derived,
-            mapper_params=mapper_sdk.MAPPER_PARAMS.get, mapper_made_by_sdk=_made_by_sdk)
+            mapper_params=mapper_sdk.MAPPER_PARAMS.get, mapper_made_by_sdk=_made_by_sdk,
+            mapper_refusals=mapper_sdk.MAPPER_REFUSALS)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
         # 🪦 [판정 498 ①] THIS PASSED `MAPPER_REGISTRY.get`, WHICH ANSWERS FOR ONE
         # TABLE OF TWO. A `builtin:` name is runnable and was reported unresolvable here,

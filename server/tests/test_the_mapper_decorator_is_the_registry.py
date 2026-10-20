@@ -187,10 +187,38 @@ def test_the_reload_clears_the_registry_where_it_drops_the_modules():
     from runtime import system_reload
 
     body = inspect.getsource(system_reload.reload_local_process_cache)
-    assert "reset_registry()" in body
+    assert "rediscover()" in body                       # the reset and the refill, one step (lead 10-20)
     head, _, tail = body.partition('startswith("mappers.")')
     assert tail, "the eviction this follows is gone"
-    assert "reset_registry()" in tail, "the reset must come AFTER the eviction"
+    assert "rediscover()" in tail, "the reset must come AFTER the eviction"
+
+
+def test_a_reload_does_not_empty_the_registry_under_a_walk(monkeypatch):
+    """A reload's reset waits for a walk in flight (lead 10-20): reset in the middle of another thread's walk
+    emptied what that walk had registered, and the name it was walking for read as unknown."""
+    import threading
+
+    inside, release = threading.Event(), threading.Event()
+
+    def walk(package):
+        mapper_sdk.register("walked", lambda db, payload: [])
+        if not inside.is_set():
+            inside.set()
+            release.wait(10)
+        return tuple(mapper_sdk.MAPPER_REGISTRY), {}
+
+    monkeypatch.setattr(mapper_sdk, "_walk", walk)
+    first = threading.Thread(target=mapper_sdk.discover)
+    first.start()
+    assert inside.wait(10)
+    reload = threading.Thread(target=mapper_sdk.rediscover)
+    reload.start()
+    reload.join(0.3)
+    held = "walked" in mapper_sdk.MAPPER_REGISTRY
+    release.set()
+    first.join(10)
+    reload.join(10)
+    assert held, "the reload emptied the registry while a walk was in flight"
 
 
 # ---------------------------------------------------------------------------

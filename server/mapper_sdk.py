@@ -22,6 +22,7 @@ table declaration, and about nothing else.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -282,10 +283,18 @@ MAPPER_PARAMS: dict[str, tuple] = {}
 #: product builds passes its facts here too (`chain.dynamic_mappers.install`) - one home to read.
 MAPPER_FACTS: dict[str, dict] = {}
 
-#: Has anyone walked the mapper package in THIS process yet. Not "did it succeed" -
-#: a package that cannot be imported will not import on the second ask either, and
-#: retrying per name would walk it once per rule in a file of refusals.
+#: module -> why it did not import, as the last walk left it - the sentence a name it should have
+#: registered is refused with (lead 10-20). One dict, emptied and filled in place.
+MAPPER_REFUSALS: dict[str, str] = {}
+
+#: Has anyone walked the mapper package in THIS process yet. A walk that left a module refused
+#: does not count: the next miss walks again (the module may import now - lead 10-20, a name
+#: refused until a reload). A clean walk does, so a file of unknown names walks once.
 _DISCOVERY_ATTEMPTED = False
+
+#: One walk at a time, and a reload's empty-then-refill is one step: a reader that misses
+#: while it runs waits for the refill instead of reading the empty registry (lead 10-20).
+_DISCOVERY_LOCK = threading.RLock()
 
 
 class MapperNameClaimedTwice(MapperContractError):
@@ -307,8 +316,17 @@ def reset_registry():
     MAPPER_REGISTRY.clear()
     MAPPER_PARAMS.clear()
     MAPPER_FACTS.clear()
+    MAPPER_REFUSALS.clear()
     global _DISCOVERY_ATTEMPTED
     _DISCOVERY_ATTEMPTED = False
+
+
+def rediscover(package="mappers"):
+    """A reload's `reset_registry` + `discover`, as one step under the walk's lock - a name asked
+    in between waits for the refill (`ensure_discovered`) rather than missing. -> `discover`'s."""
+    with _DISCOVERY_LOCK:
+        reset_registry()
+        return discover(package)
 
 
 def _origin(fn):
@@ -356,6 +374,17 @@ def discover(package="mappers"):
     the modules rules NAME -- this walks the package, because 「which mappers exist」 cannot
     be answered from the rules that happen to use them.
     """
+    with _DISCOVERY_LOCK:
+        registered, refusals = _walk(package)
+        MAPPER_REFUSALS.clear()
+        MAPPER_REFUSALS.update(refusals)
+        if refusals:
+            look_again_on_a_miss()
+        return registered, refusals
+
+
+def _walk(package):
+    """`discover`'s walk, under its lock."""
     import importlib
     import pkgutil
 
@@ -392,7 +421,8 @@ def discover(package="mappers"):
 def look_again_on_a_miss():
     """The next name `rule_run.runnable` cannot find walks the package once more. Additive -
     nothing is cleared - and nothing is walked unless a name misses (총괄 76aa4b6ed ①: a saved
-    rule may name a mapper file added since this process last looked)."""
+    rule may name a mapper file added since this process last looked; `discover` after a walk
+    that left a module refused)."""
     global _DISCOVERY_ATTEMPTED
     _DISCOVERY_ATTEMPTED = False
 
@@ -413,21 +443,23 @@ def ensure_discovered(package="mappers"):
     filling late cannot empty what a caller already installed.
     """
     global _DISCOVERY_ATTEMPTED
-    if _DISCOVERY_ATTEMPTED:
-        return
-    # 🔴 RECORDED HERE, NOT LEFT TO `discover`. The promise this function makes is
-    #    「at most one walk」, so it has to be the one that keeps it - a caller that
-    #    replaces `discover` (a test, a stub) would otherwise turn a file of
-    #    unknown names into one package walk per rule.
-    _DISCOVERY_ATTEMPTED = True
-    try:
-        discover(package)
-    except Exception:                                          # noqa: BLE001
-        # A judge that cannot look must still answer. `discover` already turns a
-        # broken module into a refusal message rather than a raise; this catches the
-        # case where the walk itself dies, and the caller then reads an empty
-        # registry exactly as it did before.
-        pass
+    # the lock first: a reload refilling the registry is waited for, then the flag read
+    with _DISCOVERY_LOCK:
+        if _DISCOVERY_ATTEMPTED:
+            return
+        # 🔴 RECORDED HERE, NOT LEFT TO `discover`. The promise this function makes is
+        #    「at most one walk」 for a clean package, so it has to be the one that keeps it - a
+        #    caller that replaces `discover` (a test, a stub) would otherwise turn a file of
+        #    unknown names into one package walk per rule.
+        _DISCOVERY_ATTEMPTED = True
+        try:
+            discover(package)
+        except Exception:                                          # noqa: BLE001
+            # A judge that cannot look must still answer. `discover` already turns a
+            # broken module into a refusal message rather than a raise; this catches the
+            # case where the walk itself dies, and the caller then reads an empty
+            # registry exactly as it did before.
+            pass
 
 
 #: The mark the decorator leaves on the `run` it builds - read by `made_by_sdk` and nowhere else.
