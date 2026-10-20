@@ -1,8 +1,8 @@
 import json
 from types import SimpleNamespace
 
-from conftest import requires_live
-from mappers import core_usage_mapper as mapper
+from conftest import carried_mapper, requires_live
+mapper = carried_mapper("core_usage_mapper")
 
 
 EQUATION = {

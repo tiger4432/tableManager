@@ -27,7 +27,7 @@ import json
 import pytest
 
 import chain_bindings
-from conftest import requires_live
+from conftest import carried_mapper, requires_live
 from database import crud, models, schemas
 
 
@@ -239,7 +239,7 @@ def _standard_map_payload():
 
 
 def _run_standard_map(monkeypatch):
-    from mappers import dt_standard_map_mapper
+    dt_standard_map_mapper = carried_mapper("dt_standard_map_mapper")
 
     monkeypatch.setitem(models.DYNAMIC_TABLES, "jobcol_test_src", _SourceModel)
     monkeypatch.setattr(dt_standard_map_mapper.map_meta_registrar, "meta_business_key",
@@ -279,7 +279,7 @@ def test_standard_map_scopes_the_replace_by_the_configured_name(monkeypatch):
 
 
 def test_inventory_metadata_writes_the_configured_name(monkeypatch):
-    from mappers.dt_inventory_metadata_mapper import copy_dt_metadata_to_inventory_batch
+    copy_dt_metadata_to_inventory_batch = carried_mapper("dt_inventory_metadata_mapper").copy_dt_metadata_to_inventory_batch
 
     result = copy_dt_metadata_to_inventory_batch(None, [{"data": {
         "target_table": {"value": "jobcol_test_src"},
@@ -296,7 +296,7 @@ def test_inventory_metadata_writes_the_configured_name(monkeypatch):
 def test_core_usage_reads_the_configured_name(monkeypatch):
     from types import SimpleNamespace
 
-    from mappers import core_usage_mapper
+    core_usage_mapper = carried_mapper("core_usage_mapper")
 
     equation = {"core_x_base": "X", "core_x_sign": 1, "core_x_offset": 4,
                 "core_y_base": "Y", "core_y_sign": 1, "core_y_offset": 4}

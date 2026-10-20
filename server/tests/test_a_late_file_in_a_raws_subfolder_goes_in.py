@@ -16,7 +16,6 @@ import time
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 here = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.abspath(os.path.join(here, ".."))
@@ -42,9 +41,17 @@ def _csv(prefix):
 
 
 def _write(path, text):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(text)
+    """As a producer does: the tree worker removes a folder it emptied, and that can land between the makedirs
+    and the open (10-21: FileNotFoundError on A/f2.csv) - the folder is made again."""
+    for _ in range(50):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+            return
+        except FileNotFoundError:
+            continue
+    raise AssertionError("%s: its folder kept vanishing" % path)
 
 
 def _until(pred, seconds):
@@ -58,7 +65,9 @@ def _until(pred, seconds):
 
 @pytest.fixture
 def box(tmp_path, monkeypatch):
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    # a file, so each thread has its own connection: on one shared in-memory connection (StaticPool) the polling
+    # session's close rolled back the watcher's open write - the file said «success» and its rows never came (10-21)
+    engine = create_engine("sqlite:///" + str(tmp_path / "box.db"), connect_args={"check_same_thread": False})
     Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     cfg = {TABLE: dict(INFO), OTHER: dict(INFO)}
     models.init_dynamic_models(cfg)

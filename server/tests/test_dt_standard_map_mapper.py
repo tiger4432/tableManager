@@ -20,9 +20,9 @@ import json
 import pytest
 
 import chain_bindings
-from conftest import requires_live
+from conftest import carried_mapper, requires_live
 from database import crud, models
-from mappers import dt_standard_map_mapper
+dt_standard_map_mapper = carried_mapper("dt_standard_map_mapper")
 
 
 FRAME = {

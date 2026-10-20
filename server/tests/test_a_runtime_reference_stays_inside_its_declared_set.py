@@ -21,9 +21,10 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import chain_bindings as cb                                      # noqa: E402
+from conftest import carried_mapper                             # noqa: E402
 
 SERVER = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-MAPPER = os.path.join(SERVER, "mappers", "core_alignment_mapper.py")
+MAPPER = os.path.join(SERVER, "mappers", "core_alignment_mapper.py.sample")   # carried: mappers/*.py is gitignored
 SAMPLE = os.path.join(SERVER, "config", "sample", "chain_rules.json.sample")
 
 RULE = {"name": "r", "trigger_table": "dt_log", "target_table": "dt_inventory",
@@ -40,8 +41,7 @@ def test_the_runtime_half_is_the_map_id_never_the_table(monkeypatch):
     """🔴 판정 65 의 조건 그 자체 — 실행 시점 값이 무엇이든 «표»는 선언된 그것이다."""
     # undone after this test: left in place, a pool process spawned later imports mappers/utils.py as `utils`
     monkeypatch.syspath_prepend(os.path.join(SERVER, "mappers"))
-    import importlib
-    mod = importlib.import_module("mappers.core_alignment_mapper")
+    mod = carried_mapper("core_alignment_mapper")
 
     for identity in ({"product": "PRD-A", "dt_type": "DT13"},
                      {"product": "x:y", "dt_type": "z"},          # 구분자를 품은 값

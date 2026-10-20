@@ -14,9 +14,10 @@ os.environ["TESTING"] = "True"
 # This is a hard assignment, not setdefault: an ambient DATABASE_URL in the shell
 # (e.g. a developer pointing at production) must not be able to leak in. To run
 # the suite against a different isolated database, set ASSY_TEST_DATABASE_URL.
-os.environ["DATABASE_URL"] = os.environ.get(
-    "ASSY_TEST_DATABASE_URL", "sqlite:///:memory:"
-)
+#: The pin, read once here - what `test_dev_env_isolation` holds the engine to. Not the variable read later: a PG
+#: fixture declares ASSY_TEST_DATABASE_URL for its own engine and the session keeps it (총괄 10-20).
+PINNED_DATABASE_URL = os.environ.get("ASSY_TEST_DATABASE_URL", "sqlite:///:memory:")
+os.environ["DATABASE_URL"] = PINNED_DATABASE_URL
 
 # [Isolation] Same class of leak as the DATABASE_URL pin above. An operator who
 # has exported ASSY_ADMIN_TOKEN in their shell (which is exactly what production
@@ -227,6 +228,30 @@ def requires_live(shape):
         not os.environ.get(LIVE_TESTS_ENV),
         reason="requires the live %s; set %s=1 to judge the live files" % (
             shape, LIVE_TESTS_ENV))
+
+
+def carried_mapper(name):
+    """`mappers.<name>` from its tracked sample, put in `sys.modules` (총괄 10-20): server/mappers/*.py is gitignored,
+    so the box's file is in no fresh checkout - a test carries the one it judges, in every tree the same.
+    `requires_live` cells hold the live file to the sample. The sample has one home - `server/mappers/` or, for
+    one moved to the guides (판정 348), `authoring/examples/`; `test_the_authoring_guides_...` keeps it one."""
+    import importlib.machinery
+    import importlib.util
+
+    full = "mappers." + name
+    server = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    homes = [os.path.join(server, "mappers"), os.path.join(os.path.dirname(server), "authoring", "examples")]
+    found = [p for p in (os.path.join(h, name + ".py.sample") for h in homes) if os.path.exists(p)]
+    assert len(found) == 1, (name, found)
+    path = found[0]
+    held = sys.modules.get(full)
+    if held is not None and getattr(held, "__file__", None) == path:
+        return held
+    loader = importlib.machinery.SourceFileLoader(full, path)
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(full, loader))
+    sys.modules[full] = module
+    loader.exec_module(module)
+    return module
 
 
 # ===========================================================================
@@ -516,7 +541,6 @@ def db_session():
 # stay so the three files that import them from here keep working.
 from tests.support.isolated_pg import (       # noqa: E402
     PG_TEST_URL_ENV,
-    HELD as _held_declarations,
     declared_as_test_database as _declared_as_test_database,
     install_trigram,
     resolve_url as _resolve_pg_test_url,
@@ -611,10 +635,7 @@ def pg_engine():
     # the dynamic tables these tests drive.
     models.init_dynamic_models(PG_TEST_TABLE_CONFIG)
 
-    import db_safety
-    before = os.environ.get(db_safety.TEST_DATABASE_URL_ENV)
     with _declared_as_test_database(url):
-        _PG_DECLARATION["before"], _PG_DECLARATION["depth"] = before, len(_held_declarations)
         engine = create_engine(
             url, poolclass=NullPool,
             connect_args=scratch_connect_args(PG_TEST_SCHEMA))
@@ -667,7 +688,6 @@ def pg_engine():
         try:
             yield engine
         finally:
-            _PG_DECLARATION.clear()
             with engine.begin() as conn:
                 conn.execute(text(f'DROP SCHEMA IF EXISTS "{PG_TEST_SCHEMA}" CASCADE'))
             # Asserted, not assumed. A reported drop that did not happen is how
@@ -680,39 +700,6 @@ def pg_engine():
             assert left == 0, (
                 f"the scratch schema {PG_TEST_SCHEMA!r} survived teardown; "
                 f"drop it by hand before the next run")
-
-
-#: While `pg_engine` holds the test-database declaration for the session: the variable's value before it ("before")
-#: and how many declarations were open with its own ("depth").
-_PG_DECLARATION = {}
-
-
-@pytest.fixture(autouse=True)
-def _a_test_without_pg_sees_the_declaration_as_it_was(request):
-    """🔴 [총괄 10-20] `pg_engine` is session-scoped and yields inside its declaration, so after the first PG test the
-    variable stayed for the rest of the session - and `test_dev_env_isolation` read it as the pin, red whenever a PG
-    test ran before it. A test that asks for no PG fixture sees the variable as it was before `pg_engine` declared it,
-    the window the declaration's comment above promises; the module and session fixtures built on `pg_engine` keep it.
-    A fixture's own declaration over it (`test_ledger_v2_pg`'s module one) is that fixture's - kept (10-20: undone,
-    its four setups were refused after any `pg_engine` test)."""
-    import db_safety
-
-    if (not _PG_DECLARATION or len(_held_declarations) != _PG_DECLARATION["depth"]
-            or {"pg_engine", "pg_session"} & set(request.fixturenames)):
-        yield
-        return
-    key, held = db_safety.TEST_DATABASE_URL_ENV, os.environ.get(db_safety.TEST_DATABASE_URL_ENV)
-    if _PG_DECLARATION["before"] is None:
-        os.environ.pop(key, None)
-    else:
-        os.environ[key] = _PG_DECLARATION["before"]
-    try:
-        yield
-    finally:
-        if held is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = held
 
 
 @pytest.fixture(scope="function")

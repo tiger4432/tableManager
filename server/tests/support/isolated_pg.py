@@ -188,27 +188,21 @@ def resolve_url():
     return url, None
 
 
-#: The `declared_as_test_database` blocks open now, outermost first.
-HELD = []
-
-
 @contextlib.contextmanager
 def declared_as_test_database(url):
     """Hold `db_safety`'s variable at `url` for the block, then put back what was there.
 
     The production code these proofs drive asks `db_safety` whether the database it is
     about to write to is a test one, so a proof that opened its own connection and did not
-    say so would be refused by the very guard it depends on. `HELD` names the blocks open now.
+    say so would be refused by the very guard it depends on.
     """
     import db_safety
     key = db_safety.TEST_DATABASE_URL_ENV
     previous = os.environ.get(key)
     os.environ[key] = url
-    HELD.append(url)
     try:
         yield
     finally:
-        HELD.pop()
         if previous is None:
             os.environ.pop(key, None)
         else:

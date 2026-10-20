@@ -1,14 +1,13 @@
 """Unit contracts for the config-driven primary-core automatic mapper."""
 from __future__ import annotations
 
-import importlib
 from types import SimpleNamespace
 
 import map_alignment
-from conftest import requires_live
+from conftest import carried_mapper, requires_live
 
 
-mapper = importlib.import_module("mappers.core_alignment_mapper")
+mapper = carried_mapper("core_alignment_mapper")
 
 
 def _row(index, wafer, lot="L1", slot="S1"):

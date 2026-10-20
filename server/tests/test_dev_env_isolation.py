@@ -69,9 +69,11 @@ class TestSuiteNeverTouchesProduction:
         (rather than merely 'is not production') is what catches a `setdefault`
         downgrade, because setdefault would let an ambient value win.
         """
+        from conftest import PINNED_DATABASE_URL
         from database import database as db_mod
 
-        expected = os.environ.get("ASSY_TEST_DATABASE_URL", "sqlite:///:memory:")
+        # the pin as conftest set it, not the variable now - a PG fixture declares it for its own engine (총괄 10-20)
+        expected = PINNED_DATABASE_URL
         assert db_mod.SQLALCHEMY_DATABASE_URL == expected, (
             "conftest.py must pin DATABASE_URL before `from main import app`; "
             f"engine resolved to {db_mod.SQLALCHEMY_DATABASE_URL!r}"

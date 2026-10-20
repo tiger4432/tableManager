@@ -2,9 +2,9 @@ import filecmp
 import json
 from pathlib import Path
 
-from conftest import requires_live                                   # noqa: E402
+from conftest import carried_mapper, requires_live                   # noqa: E402
 
-from mappers.dt_inventory_metadata_mapper import copy_dt_metadata_to_inventory_batch
+copy_dt_metadata_to_inventory_batch = carried_mapper("dt_inventory_metadata_mapper").copy_dt_metadata_to_inventory_batch
 
 
 def _payload(target_table="dt_log", map_id="SYN-001", grid_metadata=None):

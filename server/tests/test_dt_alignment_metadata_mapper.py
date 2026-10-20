@@ -1,13 +1,12 @@
 """Contract tests for the automatic DT alignment metadata chain."""
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 
-from conftest import requires_live                                   # noqa: E402
+from conftest import carried_mapper, requires_live                   # noqa: E402
 
 
-mapper = importlib.import_module("mappers.dt_alignment_metadata_mapper")
+mapper = carried_mapper("dt_alignment_metadata_mapper")
 
 
 def _payload(dt_job="DT-J1"):
