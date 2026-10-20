@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **조인의 take 에 집계 함수 (소유자 10-20 «uniqueconcat 해서 붙이는 게 필요», 총괄 0eb7ad0c6)** — git pull · 런처 재기동
+>
+> ```
+> 적는 법   chain_rules.json 의 조인 선언 take 항목에 {"from": "<원천 칸>", "into": "<쓸 칸>", "fn": "unique_concat"}
+>          fn = count · min · max · unique_concat (separator, 기본 ", ") — 가이드 chain_rules §⑥
+> 볼 것    원천 행을 넣거나 지우면 그 키의 왼쪽 행 칸이 다시 계산됨 · 키의 원천 행이 없으면 칸이 빔
+> 거절     로드 로그 «[ChainRules] <규칙>: key.unique and take fn (<칸>) cannot stand together» -> 둘 중 하나를 지움
+>          «take '<칸>' fn min over <표>.<칸>, a string column» -> min/max 는 숫자 · 시각 칸만
+> 되돌리기  선언에서 fn 을 지움(오늘의 키당 한 행) · 코드는 git revert b1eb22b47 -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **다시 읽기 미리보기 · 외부 소스 훑기가 파일마다 경로를 열지 않는다 (소유자 10-20 「glob 은 1 초인데 리스트 뽑기가 왜 오래」)** — git pull · 런처 재기동
 >
 > ```
