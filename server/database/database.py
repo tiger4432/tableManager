@@ -379,8 +379,10 @@ def write_changed_rows_by_shape(session, flush_context, instances):
        names - fewer is a row gone from under the write, refused as the ORM refuses it (its row count check).
     ⚠️ LEFT WITH THE FLUSH (총괄 10-14): a group whose column holds values of two kinds (text and a number, a
        boolean - the ORM casts each row on assignment, one array takes one type), and a row whose `updated_at` is
-       None (the array writes now() for it). In key order, groups by (table, columns) - the row lock order the
-       write door keeps against deadlocks.
+       None (the array writes now() for it). In key order, groups by (table, columns).
+    🔴 THE CHANGED ROWS ARE LOCKED FIRST, a table's all in row_id order (총괄 5c0a86cec ②): the groups lock group by
+       group, so two writers changing other columns of the same rows took them in crossing orders - 40P01, which
+       nothing retries (box: 12 of 13 runs, 1,000 rows each way).
     """
     from .models import DYNAMIC_TABLES
     dynamic = tuple(DYNAMIC_TABLES.values())
@@ -395,20 +397,27 @@ def write_changed_rows_by_shape(session, flush_context, instances):
     def kind(value):
         return "bool" if isinstance(value, bool) else "number" if isinstance(value, numbers.Number) else type(value)
 
-    shapes = {}
+    shapes, locking = {}, {}
     for obj in session.dirty:
         if not isinstance(obj, dynamic):
             continue
         state = inspect(obj)
         changed = {attr.key: attr.value for attr in state.attrs if attr.history.has_changes()}
+        if state.persistent and changed:
+            locking.setdefault(obj.__table__, set()).add(obj.row_id)
         if (not state.persistent or not changed or "row_id" in changed
                 or ("updated_at" in changed and changed["updated_at"] is None)
                 or any(isinstance(value, ClauseElement) for value in changed.values())):
             continue
         stamp = changed.get("updated_at")
         shapes.setdefault((obj.__table__, tuple(sorted(changed)), stamp), []).append((obj, changed))
+    from sqlalchemy import select
+
     from database import crud
 
+    for table in sorted(locking, key=lambda table: table.name):
+        session.execute(select(table.c.row_id).where(table.c.row_id.in_(sorted(locking[table])))
+                        .order_by(table.c.row_id).with_for_update())
     for (table, names, stamp) in sorted(shapes, key=lambda shape: (shape[0].name, shape[1], repr(shape[2]))):
         rows = sorted(shapes[(table, names, stamp)], key=lambda row: row[0].row_id)
         if any(len({kind(changed[name]) for _obj, changed in rows if changed[name] is not None}) > 1
