@@ -28,6 +28,11 @@
 /* the kinds' visible areas - each in the root's template (spotfire.css .sf-frame: the trays and the legend round it) */
 .tb-plot { min-height: 0; min-width: 0; }
 .tb-cross__wrap, .tb-table__wrap { overflow: auto; min-height: 0; min-width: 0; }
+/* the table's box keeps its lines' layout to itself: without it each window drawn while scrolling laid out the whole page
+   again - a map of 6,000 cells beside it made a frame 138 ms, 13 ms with it (wm board C, 10-20) */
+.tb-table__wrap { contain: strict; }
+/* the table's spacer lines above and below the lines drawn (kinds/table.js: only the lines in view) - no padding, no stripe */
+.tb-table__wrap .sf-table--rows tr.tb-table__pad td { padding: 0; border: 0; background: transparent; cursor: default; }
 .tb-map__plot { min-height: 0; min-width: 0; }
 .tb-map__svg { display: block; width: 100%; height: 100%; }
 .tb-map__svg rect { cursor: pointer; }

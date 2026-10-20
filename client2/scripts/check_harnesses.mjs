@@ -1843,6 +1843,9 @@ const FLOORS = new Map([
   // New 2026-10-14 (lead 4c7b42b0a, owner 10-14). The ledger declaration window as sentence bars: its edits on the
   // short form, its drawing, the test run as its table, the explorer handing it the draft, its chips, the column lists.
   ['ledger_declaration_bar_harness.mjs', 64],
+  // New 2026-10-20 (lead 9075f6605, owner 10-20 «일단 ㄱ»). The test bed draws what is in view: the table's window of lines
+  // (and a drag past it), a filter's most counted values with a search box.
+  ['testbed_draw_window_harness.mjs', 10],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

@@ -4,6 +4,10 @@
 import { numberOf } from '../walk/reach_table.js';
 import { valueText } from './slot.js';
 
+/** A text slot with more values than this draws its most counted this many and a search box (owner 10-20: 34,616 boxes at
+ *  once held the page); a value not drawn keeps its check. */
+export const FILTER_TOP = 20;
+
 /** A condition's identity - its row type and its slot - so one slot holds one condition. */
 export const conditionKey = (c) => JSON.stringify([c.row, c.steps || [], c.value, c.end || null, c.endTypes || null, c.reduce || null, c.expr || null]);
 
@@ -30,8 +34,9 @@ export function conditionWords(c, total) {
 /**
  * The control. `onChange(next)` hears every edit at once (Spotfire filters apply as they move).
  * @param {{row, words, slot, values: Array<[*, number]>, empty: number}} summary
+ * @param {{search?: string, onSearch?: (text) => void}} [view]  the search box's text, kept by the caller across drawings
  */
-export function drawCondition(doc, summary, condition, onChange) {
+export function drawCondition(doc, summary, condition, onChange, view = {}) {
   const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
   const c = condition || conditionFor(summary);
   const box = el('div', 'sf-filter');
@@ -55,7 +60,7 @@ export function drawCondition(doc, summary, condition, onChange) {
     box.append(line);
   } else {
     const kept = new Set((c.values || []).map((v) => JSON.stringify(v)));
-    for (const [v, n] of summary.values) {
+    const line = (v, n) => {
       const label = el('label', 'sf-filter__v');
       const check = el('input');
       check.type = 'checkbox';
@@ -70,8 +75,29 @@ export function drawCondition(doc, summary, condition, onChange) {
       words.title = said;
       words.setAttribute('data-clip-ok', '');
       label.append(check, words, el('span', 'sf-filter__n', String(n)));
-      box.append(label);
+      return label;
+    };
+    const many = summary.values.length > FILTER_TOP;
+    const list = el('div', 'sf-filter__list');
+    // the values the search matches, the most counted first when there are many; past FILTER_TOP, a count of the rest
+    const fill = (text) => {
+      const want = String(text || '').trim().toLowerCase();
+      const matched = want ? summary.values.filter(([v]) => valueText(v, summary.time).toLowerCase().includes(want)) : summary.values;
+      const shown = many ? [...matched].sort((x, y) => y[1] - x[1]).slice(0, FILTER_TOP) : matched;
+      list.replaceChildren(...shown.map(([v, n]) => line(v, n)));
+      if (matched.length > shown.length) list.append(el('div', 'sf-filter__more', `${matched.length - shown.length} more`));
+    };
+    if (many) {
+      const search = el('input', 'sf-filter__search');
+      search.type = 'search';
+      search.placeholder = 'Search values';
+      search.setAttribute('aria-label', `Search ${summary.words}`);
+      search.value = view.search || '';
+      search.addEventListener('input', () => { if (view.onSearch) view.onSearch(search.value); fill(search.value); });
+      box.append(search);
     }
+    box.append(list);
+    fill(many ? view.search : '');
   }
   const empty = el('label', 'sf-filter__v');
   const check = el('input');

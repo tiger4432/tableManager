@@ -1728,7 +1728,7 @@ const MUTANTS = [
   { id: 'MK1', what: 'a press on what is marked marks it again - never taken out', catches: 'T2b ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, '    if (!drag && ids.length && ids.every((id) => on.has(id))) {', '    if (false) {') },
   { id: 'MK2', what: 'the table lends its lines to no drag - a drag marks nothing', catches: 'T2b ', file: 'testbed/kinds/table.js', key: 'table',
-    mutate: (t) => swap(t, '    drag.add(tr, model.lines.indexOf(line), 0, line);', '') },
+    mutate: (t) => swap(t, '    drag.add(tr, i, 0, line);', '') },
   { id: 'M31', what: 'the start takes the marking\'s spread layer again', catches: 'W4 ', file: 'testbed/visual_part.js', key: 'visual',
     mutate: (t) => swap(t, 'return got.positive.length ? { positive: got.positive, negative: got.negative } : null;',
       'return got.positive.length ? { positive: [...new Set([...got.positive, ...this.layers.layer(name).set])], negative: got.negative } : null;') },

@@ -9,6 +9,8 @@ import { slotWords, isTimeRead } from '../slot.js';
 import { IMAGE_ROW_PX } from '../../image_thumb.js';
 
 const COLUMN = /^col(\d+)$/;
+/** Lines drawn above and below the ones in view (owner 10-20 «보이는 줄만»); with no height to measure, the first 2 x this. */
+export const OVERSCAN = 20;
 const order = (key) => Number(COLUMN.exec(key)[1]);
 
 /** The next column's key. */
@@ -86,10 +88,18 @@ export function render(area, model, ctx) {
     th.addEventListener('click', () => ctx.declare({ sort: { key, desc: on ? !model.sort.desc : false } }));
     head.append(th);
   });
-  table.append(head);
-  // a drag over lines marks the lines between (owner 10-16) - drag_mark.js, the cross table's one helper
-  const drag = dragMarks((spanned, event) => ctx.mark([...new Set(spanned.flatMap((c) => c.data.ids || [c.data.id]))], event, true));
-  for (const line of model.lines) {
+  const thead = el('thead');
+  thead.append(head);
+  const body = el('tbody');
+  table.append(thead, body);
+  // a drag over lines marks the lines between (owner 10-16) - drag_mark.js, the cross table's one helper; the lines
+  // between are the model's by their numbers, so a drag scrolled past lines not drawn marks them too
+  const drag = dragMarks((spanned, event) => {
+    const at = spanned.map((c) => c.row);
+    const between = model.lines.slice(Math.min(...at), Math.max(...at) + 1);
+    ctx.mark([...new Set(between.flatMap((l) => l.ids || [l.id]))], event, true);
+  });
+  const lineOf = (line, i) => {
     const tr = el('tr', line.marked ? 'is-marked' : '');
     if (line.color) { tr.setAttribute('data-color', line.color); tr.style.setProperty('--sf-line-color', line.color); }
     line.cells.forEach((cell, k) => {
@@ -98,16 +108,49 @@ export function render(area, model, ctx) {
       tr.append(td);
     });
     tr.addEventListener('click', (event) => { event.stopPropagation(); if (!drag.ended()) ctx.mark(line.ids || [line.id], event); });
-    drag.add(tr, model.lines.indexOf(line), 0, line);
+    drag.add(tr, i, 0, line);
     tr.addEventListener('mousemove', (event) => ctx.hover({ id: line.id }, event));
     tr.addEventListener('mouseleave', () => ctx.hover(null));
-    table.append(tr);
-  }
+    return tr;
+  };
+  // Only the lines in view are drawn (owner 10-20: 34,075 lines at once held the page for minutes) - a spacer line above
+  // and below keeps the scroll as long as every line; the window follows the scroll and the box's size. The window starts
+  // on an even line so a line keeps its stripe (nth-child) as it scrolls.
+  const pad = () => { const td = el('td'); td.colSpan = Math.max(1, model.keys.length); const tr = el('tr', 'tb-table__pad'); tr.append(td); return [tr, td]; };
+  const [above, aboveTd] = pad();
+  const [below, belowTd] = pad();
+  let from = -1;
+  let to = -1;
+  let rowPx = 0;
+  const draw = () => {
+    // the line height read off a line drawn (not yet laid out, nothing) - the window is then the box's real size
+    const shown = body.children[1];
+    if (!rowPx && shown && shown !== below && shown.getBoundingClientRect) rowPx = shown.getBoundingClientRect().height || 0;
+    const n = model.lines.length;
+    const view = wrap.clientHeight || 0;
+    const top = wrap.scrollTop || 0;
+    let [a, b] = view > 0 && rowPx > 0
+      ? [Math.max(0, Math.floor(top / rowPx) - OVERSCAN), Math.min(n, Math.ceil((top + view) / rowPx) + OVERSCAN)]
+      : [0, Math.min(n, 2 * OVERSCAN)];
+    a -= a % 2;
+    if (a === from && b === to) return;
+    const lines = model.lines.slice(a, b).map((line, k) => lineOf(line, a + k));
+    aboveTd.style.height = `${a * rowPx}px`;
+    belowTd.style.height = `${(n - b) * rowPx}px`;
+    body.replaceChildren(above, ...lines, below);
+    [from, to] = [a, b];
+    if (!rowPx && lines.length && view > 0) draw();
+  };
+  let asked = false;
+  const frame = (doc.defaultView && doc.defaultView.requestAnimationFrame) || ((fn) => setTimeout(fn, 16));
+  wrap.addEventListener('scroll', () => { if (asked) return; asked = true; frame(() => { asked = false; draw(); }); });
   wrap.append(table);
   // A press on the table's own ground, not on a line or a head, unmarks (Spotfire: a click on nothing).
   wrap.addEventListener('click', (event) => { if (event.target === wrap) ctx.clear(); });
   area.replaceChildren(wrap);
-  return { resize: () => {}, dispose: () => {} };
+  draw();
+  // a new size draws again only when the lines in view are other lines
+  return { resize: draw, dispose: () => {} };
 }
 
 /** The title when the declaration names none - its row type, as Spotfire's table says its data table. */

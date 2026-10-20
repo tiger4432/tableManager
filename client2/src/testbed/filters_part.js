@@ -12,6 +12,8 @@ export class FiltersPart extends Panel {
     this.stats = d.stats;
     this.active = d.active;
     this.name = d.name || 'filter:1';
+    // each slot's search box text, so a check (which draws the panel again) keeps what was typed
+    this.searches = new Map();
   }
 
   mount() {
@@ -46,7 +48,8 @@ export class FiltersPart extends Panel {
     if (!stats || !stats.slots || !stats.slots.length) root.append(el('div', 'sf-say', 'No values to filter'));
     for (const summary of (stats && stats.slots) || []) {
       const key = conditionKey({ row: summary.row, ...summary.slot });
-      root.append(drawCondition(doc, summary, held.get(key) || null, (next) => this.put(next)));
+      root.append(drawCondition(doc, summary, held.get(key) || null, (next) => this.put(next),
+        { search: this.searches.get(key) || '', onSearch: (text) => this.searches.set(key, text) }));
     }
     this.host.replaceChildren(root);
   }

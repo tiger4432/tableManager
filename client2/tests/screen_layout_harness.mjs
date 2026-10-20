@@ -352,7 +352,7 @@ CELLS.push({ entry: 'testbed.html', after: 'images', rule: 'picture in its place
     if (r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1) return 'a picture out of its cell';
     if (Math.abs(r.width / r.height - i.naturalWidth / i.naturalHeight) > 0.1) return 'a picture ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' of a ' + i.naturalWidth + 'x' + i.naturalHeight + ' one';
   }
-  const lines = [...document.querySelectorAll('.sf-table--images tr')].filter((tr) => tr.querySelector('td'));
+  const lines = [...document.querySelectorAll('.sf-table--images tr')].filter((tr) => tr.querySelector('td') && !tr.classList.contains('tb-table__pad'));
   if (lines.some((tr) => Math.abs(tr.getBoundingClientRect().height - 48) > 2)) return 'a line of the table of pictures not 48 px';
   // the map's cells: a picture in each of those big enough (16 px - image_thumb THUMB_MIN_PX), none asked under it
   const svg = document.querySelector('.tb-map__svg');

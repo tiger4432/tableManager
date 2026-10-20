@@ -207,6 +207,10 @@ button.sf-legend__name { padding: 0; min-height: 0; border: 0; background: trans
 .sf-filter__num { box-sizing: border-box; width: 98px; height: 28px; min-height: 0; padding: 1px 4px; border: 1px solid var(--sf-panel-line); border-radius: 0;
   background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
 .sf-filter__v { display: flex; align-items: center; gap: 6px; height: 20px; }
+/* a slot of many values: the search box over its most counted, the rest a count (condition_editor FILTER_TOP) */
+.sf-filter__search { box-sizing: border-box; width: 100%; height: 28px; margin-bottom: 4px; padding: 1px 4px; border: 1px solid var(--sf-panel-line);
+  border-radius: 0; background: var(--sf-panel-bg); color: var(--sf-panel-text); font: inherit; }
+.sf-filter__more { height: 20px; display: flex; align-items: center; color: var(--sf-panel-muted); }
 .sf-filter__n { margin-left: auto; color: var(--sf-panel-muted); }
 .sf-filter__t { flex: 1 1 auto; }
 
