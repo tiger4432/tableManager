@@ -8,7 +8,7 @@
 >          POST /admin/file-ingestion/retry-failed?folder=…&read_by=<표> — 그 폴더 아래 «그 표가 읽었던» FAILED 만(미리보기 수 = 넘기는 수)
 >          read_by 와 table(디스크에서 그 표로 다시 읽기)을 같이 주면 400
 >          GET /admin/file-ingestion/logs?group=folder&folder=<폴더> — 묶음 열쇠가 «그 줄을 고른 접두 다음의 첫 폴더»(바로 안의 파일은 «.»)
->          고르기와 같은 철자라 소문자다(STEP1 -> step1). folder 없이 묶으면 오늘처럼 파일 자기 폴더(전체 경로)
+>          열쇠는 고르기와 같은 철자라 소문자(step1), groups[].label 은 그 묶음 첫 줄의 저장 철자(STEP1). folder 없이 묶으면 오늘처럼 파일 자기 폴더(전체 경로)
 >          group= 이 오면 줄마다 group_key — 그 줄이 세어진 groups[].key 와 같은 값(folder · reason · status 셋 다)
 > 칸       기동 동기화가 두 표에 칸을 더한다(server · watcher · chain worker 기동). 기동 전에 손으로:
 >          psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_transaction_id.sql

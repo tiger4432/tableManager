@@ -151,13 +151,16 @@ def folder_of(filepath):
 
 
 def folder_key(filepath, spelled, roots):
-    """The search's folder group (총괄 10-20): below a chosen folder the first folder (`top_folder`) of what follows
-    the root it was picked by - `spelled` is the path as `path_key` spells it, `roots` the folder's `folder_roots`;
-    without a folder (no roots), the file's own folder."""
+    """The search's folder group (총괄 10-20) -> (key, label): below a chosen folder the first folder (`top_folder`)
+    of what follows the root it was picked by - `spelled` is the path as `path_key` spells it, `roots` the folder's
+    `folder_roots`; the label is the stored path's own spelling at that place. Without a folder (no roots), the file's
+    own folder for both."""
     for root in roots:
         if spelled and spelled.startswith(root):
-            return top_folder(spelled[len(root):].replace(os.sep, "/"))
-    return folder_of(filepath)
+            key = top_folder(spelled[len(root):].replace(os.sep, "/"))
+            same_place = len(filepath) == len(spelled)              # lower() kept every letter's place
+            return key, top_folder(filepath[len(root):].replace("\\", "/")) if same_place else key
+    return folder_of(filepath), folder_of(filepath)
 
 
 def select_logs(db, statuses, table=None, folder=None, since=None, until=None, log_id=None):

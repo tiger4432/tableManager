@@ -5676,8 +5676,11 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     roots = () if crud.is_blank_value(folder) else reread.folder_roots(folder)
 
     def key_of(filepath, spelled_path, state, reason):
-        return (reread.folder_key(filepath, spelled_path, roots) if group == "folder"
-                else {"reason": reason, "status": state}[group])
+        """-> (the group's key, the name it is drawn by)."""
+        if group == "folder":
+            return reread.folder_key(filepath, spelled_path, roots)
+        key = {"reason": reason, "status": state}[group]
+        return key, key
 
     result_list = []
     for log in logs:
@@ -5699,11 +5702,11 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     if group:
         groups = {}
         for row, (log, spelled_path) in zip(result_list, page_rows):
-            row["group_key"] = key_of(log.filepath, spelled_path, log.status, log.reason)
+            row["group_key"] = key_of(log.filepath, spelled_path, log.status, log.reason)[0]
         for filepath, spelled_path, state, reason in query.with_entities(
                 model.filepath, spelled, model.status, model.reason).limit(COUNT_CAP + 1):
-            key = key_of(filepath, spelled_path, state, reason)
-            entry = groups.setdefault(key, {"key": key, "count": 0, "failed": 0})
+            key, label = key_of(filepath, spelled_path, state, reason)
+            entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0})   # its first row's
             entry["count"] += 1
             entry["failed"] += state == "FAILED"
         said["groups"] = list(groups.values())

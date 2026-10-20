@@ -48,8 +48,8 @@ def test_the_list_finds_groups_and_the_tables_count(client, db_session, tmp_path
     assert [r["id"] for r in ask(until="2026-10-19")["data"]] == [ids[5], ids[4]]
 
     by_folder = ask(table="insp", folder=str(lot_a), group="folder")["groups"]
-    assert sorted(by_folder, key=lambda g: g["key"]) == [{"key": "w1", "count": 2, "failed": 0},
-                                                         {"key": "w2", "count": 2, "failed": 2}]
+    assert sorted(by_folder, key=lambda g: g["key"]) == [{"key": "w1", "label": "W1", "count": 2, "failed": 0},
+                                                         {"key": "w2", "label": "W2", "count": 2, "failed": 2}]
     by_reason = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", group="reason")["groups"]}
     assert by_reason == {None: (3, 0), "ValueError: line 3": (2, 2)}, by_reason
     by_status = {g["key"]: (g["count"], g["failed"]) for g in ask(table="insp", name="bmap", group="status")["groups"]}
@@ -71,7 +71,7 @@ def test_the_list_finds_groups_and_the_tables_count(client, db_session, tmp_path
 def test_a_folder_group_below_a_chosen_folder_is_its_first_folder(client, db_session, tmp_path):
     """총괄 10-20: a wafer folder holds one file, so grouped by the file's own folder each group was one file and the
     screen grouped again «one folder up». Below a chosen folder the key is the first folder after the path_key prefix
-    that picked the row - so in path_key's spelling, lower case."""
+    that picked the row - so in path_key's spelling, lower case - and the label its stored spelling."""
     lot = tmp_path / "LOT"
     failed = {"STEP1": 1, "STEP2": 0, "STEP3": 2}
     for step, n_failed in failed.items():
@@ -93,6 +93,7 @@ def test_a_folder_group_below_a_chosen_folder_is_its_first_folder(client, db_ses
             rows[row["group_key"]] = rows.get(row["group_key"], 0) + 1
         assert sorted(rows.items(), key=str) == sorted(counted, key=str), (group, params)  # a row's key = its group's
         assert sum(n for _key, n in counted) == body["total"], (group, params)        # every picked row in one group
+        assert group == "folder" or all(g["label"] == g["key"] for g in body["groups"])
         return sorted(((g["key"], g["count"], g["failed"]) for g in body["groups"]), key=str)
 
     assert all("group_key" not in row for row in client.get("/admin/file-ingestion/logs").json()["data"])
@@ -104,5 +105,17 @@ def test_a_folder_group_below_a_chosen_folder_is_its_first_folder(client, db_ses
     if os.path.normcase("A") == "a":                       # a folder spelled in another case picks and groups alike
         assert groups(folder=str(lot).upper() + "/") == [("step1", 3, 1), ("step2", 3, 0), ("step3", 3, 2)]
     assert groups(folder=str(lot / "STEP3")) == [("w0", 1, 1), ("w1", 1, 1), ("w2", 1, 0)]
+    labels = {g["key"]: g["label"] for g in client.get("/admin/file-ingestion/logs", params={
+        "table": "insp", "group": "folder", "folder": str(lot)}).json()["groups"]}
+    assert labels == {"step1": "STEP1", "step2": "STEP2", "step3": "STEP3"}, labels
+
+    # one folder in two spellings (Windows reads them as one): one group, drawn by its stored spelling
+    _log(db_session, "spelt", str(lot / "step1" / "W8" / "b.txt"), "FAILED")
+    _log(db_session, "spelt", str(lot / "STEP1" / "W9" / "a.txt"), "FAILED")     # the newest: the list's first row
+    db_session.commit()
+    spelt = client.get("/admin/file-ingestion/logs", params={"table": "spelt", "group": "folder",
+                                                             "folder": str(lot)}).json()
+    assert [(g["key"], g["label"], g["count"]) for g in spelt["groups"]] == [("step1", "STEP1", 2)], spelt["groups"]
+    assert [row["group_key"] for row in spelt["data"]] == ["step1", "step1"]
     assert groups() == sorted(((str(lot / step / ("W%d" % w)), 1, int(w < n)) for step, n in failed.items()
                                for w in range(3)), key=str)                        # no folder: as before
