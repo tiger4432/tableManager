@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 
 from ledger_api import ledger_subgraph
-from ledger import gaps, schema, trace
+from ledger import gaps, schema, trace, walk_cards
 from declaration_names import bare_name as _bare_name
 from error_said import told
 
@@ -358,6 +358,20 @@ def evidence_subgraph(
             # of the source - `rows` was folded from this payload's own structures.
             return PlainTextResponse(payload.get("rows") or "",
                                      media_type="text/tab-separated-values")
+        if listed and time_page is None:
+            # a0ca0428c: the branches and the declared-but-missing edges at the seeds - the agent walk's own cards
+            # (`walk_cards`), on this answer; signed by the contrast when one was asked
+            seeds = _signed_start(node_id, positive, negative)
+            signs = ({**{s: 1 for s in seeds["positive"]}, **{s: -1 for s in seeds["negative"]}}
+                     if isinstance(seeds, dict) and seeds["negative"] else {})
+            try:
+                declaration, unread = _declaration(world), None
+            except Exception as exc:                               # noqa: BLE001 - as `_static_types` reads it
+                declaration, unread = None, "the declaration was not read: %s" % told(exc)
+                logger.warning("[Walk] world %s: %s - the answer's missing edges are not said", world, unread)
+            payload["cards"] = walk_cards.answer_cells(
+                payload, list(signs) or ([*seeds["positive"]] if isinstance(seeds, dict) else [node_id]), signs,
+                declaration, limit=fanout_limit if isinstance(fanout_limit, int) else None, unread=unread)
         return payload
     except ledger_subgraph.WalkExpired as exc:
         # 🔴 A CONTINUED PAGE WHOSE WALK IS GONE (총괄 54f7edfdb): said with why, never walked again on its own - the

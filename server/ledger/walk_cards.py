@@ -291,8 +291,11 @@ def card(name, sight, limit=None, argument=None):
     return fn(sight, None if crud.is_blank_value(limit) else int(float(limit)), argument)
 
 
-def answer_cells(answer, at, signs, declaration, limit=None):
+def answer_cells(answer, at, signs, declaration, limit=None, unread=None):
     """The walk route answer's two cards (a0ca0428c) - `branches` (the `edges` card) and `missing_edges` - for the
-    nodes the walk started from, on that answer; `limit` the far nodes each names."""
+    nodes the walk started from, on that answer; `limit` the far nodes each names. A declaration that was not read
+    (`unread`, why) leaves the missing edges unsaid, saying so - not an empty list that reads as «none missing»."""
     sight = Sight(at=list(at), signs=dict(signs), answer=answer, declaration=declaration)
-    return {"branches": edges(sight, limit), "missing_edges": missing_edges(sight, limit)}
+    missing = ({"card": "missing_edges", "items": [], "more": 0, "unread": unread} if unread
+               else missing_edges(sight, limit))
+    return {"branches": edges(sight, limit), "missing_edges": missing}
