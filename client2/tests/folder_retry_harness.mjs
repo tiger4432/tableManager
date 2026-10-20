@@ -32,24 +32,34 @@ const RETRIED = 'Decoupled mode: Marked 3 logs as PENDING_RETRY. Standalone watc
 // The same folder asked with the files that went in (server 04b40d64b's shape).
 const SERVER_IN = { status: 'preview', folder: LOT, count: 14, by_state: { FAILED: 2, SKIPPED: 1, SUCCESS: 11 }, by_folder: { a: 14 },
   missing: 10, missing_files: ['m1.csv', 'm2.csv', 'm3.csv', 'm4.csv', 'm5.csv'], message: `14 file(s) under ${LOT}` };
+// The same folder read into a table (lead 10-20): picked from the disk, with what that table does not take.
+const INTO = 'inspection_run';
+const TABLES = ['void_obs', INTO];
+const SERVER_INTO = { status: 'preview', folder: LOT, table: INTO, count: 2, by_state: { NEW: 1, SUCCESS: 1 }, by_folder: { a: 2 },
+  walked: 4, not_taken: { "not matched by the source's glob or filename": 2 }, not_taken_files: ['n.txt', 'o.txt'],
+  missing: 0, missing_files: [], message: `2 file(s) under ${LOT} for ${INTO}` };
 
 function seat(M, answers = {}) {
-  const calls = { preview: [], retry: [], include: [], retryInclude: [], refreshed: 0 };
+  const calls = { preview: [], retry: [], include: [], retryInclude: [], table: [], retryTable: [], refreshed: 0 };
   const mount = makeNode(doc, 'div');
   doc.body.appendChild(mount);
   const part = new M.FolderRetryPanel(mount, {
     doc,
     rows: () => ROWS,
-    preview: async (folder, include) => {
+    tables: async () => TABLES,
+    preview: async (folder, include, table) => {
       calls.preview.push(folder);
       calls.include.push(include);
+      calls.table.push(table);
       if (answers.previewFails) return { ok: false, text: 'Preview failed · 503' };
+      if (table === INTO && folder === LOT) return { ok: true, body: SERVER_INTO };
       if (include && folder === LOT) return { ok: true, body: SERVER_IN };
       return { ok: true, body: SERVER[folder] || { status: 'preview', folder, count: 0, by_folder: {}, message: `No failed file under ${folder}` } };
     },
-    retry: async (folder, include) => {
+    retry: async (folder, include, table) => {
       calls.retry.push(folder);
       calls.retryInclude.push(include);
+      calls.retryTable.push(table);
       return { ok: true, body: { status: 'success', message: RETRIED } };
     },
     onRetried: () => { calls.refreshed += 1; },
@@ -163,6 +173,35 @@ async function suite(M) {
     ok(s.calls.retryInclude[0] === true && s.calls.retry[0] === LOT, `F5 Retry sends the toggle its preview had [${s.calls.retryInclude}]`);
   }
 
+  // ── G: into a table (lead 10-20): the tables offered, the table rides on the ask, its preview is its own ────
+  {
+    const s = seat(M);
+    const box = s.cls('folder-retry-table');
+    await box.dispatch('focus', {});
+    await new Promise((r) => setTimeout(r, 0));
+    const offered = walk(box).filter((n) => n.tagName === 'OPTION').map((n) => n.value);
+    ok(JSON.stringify(offered) === JSON.stringify(['', ...TABLES]),
+      `G1 focused, it offers every table the product knows, after «${M.FOLDER_RETRY_WORDS.sameTable}» [${offered}]`);
+    s.type(LOT);
+    await s.press('folder-retry-preview');
+    ok(s.calls.table[0] === '', `G2 left empty, the ask names no table - today's door [${JSON.stringify(s.calls.table)}]`);
+    box.value = INTO;
+    box.dispatch('change', {});
+    const run = s.cls('folder-retry-run');
+    ok(run.disabled === true && run.attrs.title === M.FOLDER_RETRY_WORDS.previewFirst,
+      `G3 a picked table drops the old preview [${run.textContent}]`);
+    await s.press('folder-retry-preview');
+    ok(s.calls.table[1] === INTO && run.textContent === 'Retry 2',
+      `G4 the preview names the table, and Retry carries that count [${s.calls.table} · ${run.textContent}]`);
+    const rows = walk(s.cls('folder-retry-by')).filter((n) => n.tagName === 'DIV' && n !== s.cls('folder-retry-by'))
+      .map((n) => n.textContent);
+    const want = [`${M.FOLDER_RETRY_WORDS.walked} 4`, 'NEW 1 · SUCCESS 1', 'a · 2',
+      `${M.FOLDER_RETRY_WORDS.notTaken} · not matched by the source's glob or filename 2: n.txt, o.txt`];
+    ok(JSON.stringify(rows) === JSON.stringify(want), `G5 the files looked at and the ones not taken, by why [${rows}]`);
+    await s.press('folder-retry-run');
+    ok(s.calls.retryTable[0] === INTO, `G6 Retry sends the table its preview had [${s.calls.retryTable}]`);
+  }
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -180,13 +219,21 @@ const DEFECTS = [
   ['the suggestions take every row, not the failed ones',
     (s) => s.replace('.filter((r) => r && isFailedStatus(r.status))', '.filter((r) => r)')],
   ['a changed folder keeps the old preview',
-    (s) => s.replace('return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include() ? this.seen : null;',
-      'return this.seen && this.seen.include === this.include() ? this.seen : null;')],
+    (s) => s.replace('return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include()',
+      'return this.seen && this.seen.include === this.include()')],
   ['a turned toggle keeps the old preview',
-    (s) => s.replace('return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include() ? this.seen : null;',
-      'return this.seen && this.seen.folder === this.folder() ? this.seen : null;')],
+    (s) => s.replace('return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include()',
+      'return this.seen && this.seen.folder === this.folder()')],
   ['the toggle is not sent',
-    (s) => s.replace('const got = await this.preview(folder, include);', 'const got = await this.preview(folder, false);')],
+    (s) => s.replace('const got = await this.preview(folder, include, table);', 'const got = await this.preview(folder, false, table);')],
+  ['a picked table keeps the old preview',
+    (s) => s.replace('      && this.seen.table === this.table() ? this.seen : null;', '      ? this.seen : null;')],
+  ['the table is not sent',
+    (s) => s.replace('const got = await this.preview(folder, include, table);', "const got = await this.preview(folder, include, '');")],
+  ['Retry does not send the table',
+    (s) => s.replace('const got = await this.retry(seen.folder, seen.include, seen.table);', 'const got = await this.retry(seen.folder, seen.include);')],
+  ['the files not taken are not drawn',
+    (s) => s.replace("          ...(notTaken.length ? [", "          ...(false ? [")],
   ['the files not where their record says are not drawn',
     (s) => s.replace("          ...(missing ? [`${FOLDER_RETRY_WORDS.missing} ${missing}: ${names.join(', ')}${missing > names.length ? ', …' : ''}`] : []),\n", '')],
   ['0 failed leaves Retry on',

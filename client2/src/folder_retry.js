@@ -7,6 +7,8 @@
 // sends the folder that was previewed — change the folder and it is off until previewed again.
 // «Include files that went in» (lead a4d135a06) asks the same door for the files that went in too, read again with
 // today's parser; a preview belongs to its folder and to that toggle.
+// «Into table» (lead 10-20, owner 「어드민 파일 리트라이는 돌았던 테이블로만 도네」) names the table to read the files into: the
+// server picks the files under the folder that table takes, from the disk; empty, the table that read them before.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { setDisabledReason } from './disabled_reason.js';
 import { isFailedStatus } from './retry_verdict.js';
@@ -21,6 +23,10 @@ export const FOLDER_RETRY_WORDS = Object.freeze({
   running: 'Running',
   include: 'Include files that went in',
   missing: 'Missing',
+  table: 'Into table',
+  sameTable: 'The table that read it',
+  walked: 'Files looked at',
+  notTaken: 'Not taken',
 });
 
 /** The states the toggle asks for (lead a4d135a06); off, the server's own default (FAILED). */
@@ -44,8 +50,9 @@ export function folderCandidates(paths) {
 export class FolderRetryPanel {
   /**
    * @param mount  the part's host; it owns one div inside it
-   * @param deps   { doc, rows: () => the log rows the page lists, preview(folder, include), retry(folder, include),
-   *                onRetried() } - include: the files that went in are asked for too
+   * @param deps   { doc, rows: () => the log rows the page lists, tables: async () => table names or null,
+   *                preview(folder, include, table), retry(folder, include, table), onRetried() } - include: the files
+   *                that went in are asked for too; table: '' or the table to read them into
    *   The suggestions are the FAILED rows' folders (lead a30c55a13 — 「실패 목록」).
    *   preview / retry resolve to { ok: true, body } or { ok: false, text } — the page reads
    *   the route and says its own refusal; this part draws what it is handed.
@@ -53,6 +60,7 @@ export class FolderRetryPanel {
   constructor(mount, deps = {}) {
     this.doc = deps.doc || (mount && mount.ownerDocument);
     this.rows = deps.rows || (() => []);
+    this.tables = deps.tables || (async () => []);
     this.preview = deps.preview;
     this.retry = deps.retry;
     this.onRetried = deps.onRetried || null;
@@ -86,7 +94,11 @@ export class FolderRetryPanel {
     this.includeBox.setAttribute('type', 'checkbox');
     const includeLabel = el('label', 'folder-retry-include');
     includeLabel.append(this.includeBox, el('span', '', FOLDER_RETRY_WORDS.include));
-    controls.append(this.input, this.list, includeLabel, this.previewBtn, this.retryBtn);
+    this.tableBox = el('select', 'folder-retry-table');
+    this.tableBox.setAttribute('aria-label', FOLDER_RETRY_WORDS.table);
+    this.tableBox.setAttribute('title', FOLDER_RETRY_WORDS.table);
+    this.tableBox.appendChild(Object.assign(el('option', '', FOLDER_RETRY_WORDS.sameTable), { value: '' }));
+    controls.append(this.input, this.list, this.tableBox, includeLabel, this.previewBtn, this.retryBtn);
     this.said = el('div', 'folder-retry-said');
     this.said.hidden = true;
     this.byFolder = el('div', 'meta folder-retry-by');
@@ -98,6 +110,8 @@ export class FolderRetryPanel {
       this.input.addEventListener('focus', () => this.suggest());
       this.input.addEventListener('input', () => this.refresh());
       this.includeBox.addEventListener('change', () => this.refresh());
+      this.tableBox.addEventListener('focus', () => this.offerTables());
+      this.tableBox.addEventListener('change', () => this.refresh());
       this.input.addEventListener('keydown', (e) => { if (e && e.key === 'Enter') this.runPreview(); });
       this.previewBtn.addEventListener('click', () => this.runPreview());
       this.retryBtn.addEventListener('click', () => this.runRetry());
@@ -107,6 +121,20 @@ export class FolderRetryPanel {
   folder() { return String(this.input.value || '').trim(); }
 
   include() { return Boolean(this.includeBox.checked); }
+
+  table() { return String(this.tableBox.value || ''); }
+
+  /** Every table the product knows (GET /tables) - which of them takes the folder is the server's judgement. */
+  async offerTables() {
+    const names = await this.tables();
+    if (!Array.isArray(names)) return;
+    const keep = this.table();
+    while (this.tableBox.children.length > 1) this.tableBox.removeChild(this.tableBox.children[1]);
+    for (const name of names) {
+      this.tableBox.appendChild(Object.assign(this.doc.createElement('option'), { value: name, textContent: name }));
+    }
+    this.tableBox.value = keep;
+  }
 
   suggest() {
     this.list.textContent = '';
@@ -120,7 +148,8 @@ export class FolderRetryPanel {
 
   /** The preview answer that belongs to what the field says now, or null. */
   current() {
-    return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include() ? this.seen : null;
+    return this.seen && this.seen.folder === this.folder() && this.seen.include === this.include()
+      && this.seen.table === this.table() ? this.seen : null;
   }
 
   refresh() {
@@ -148,22 +177,29 @@ export class FolderRetryPanel {
   async runPreview() {
     const folder = this.folder();
     const include = this.include();
+    const table = this.table();
     if (!folder || this.busy || !this.preview) return;
     this.busy = true;
     this.refresh();
-    const got = await this.preview(folder, include);
+    const got = await this.preview(folder, include, table);
     this.busy = false;
     const body = (got && got.body) || {};
     if (got && got.ok && Number.isInteger(body.count)) {
-      // The answer as it came: by state, each folder just below, and the files not where their record says.
+      // The answer as it came: by state, each folder just below, the files not where their record says, and - into a
+      // table - the files looked at and the ones that table does not take, by why.
       const states = Object.entries(body.by_state || {});
       const missing = Number(body.missing) || 0;
       const names = Array.isArray(body.missing_files) ? body.missing_files.map(String) : [];
-      this.seen = { folder, include, count: body.count, message: String(body.message || ''),
+      const notTaken = Object.entries(body.not_taken || {});
+      const notNames = Array.isArray(body.not_taken_files) ? body.not_taken_files.map(String) : [];
+      this.seen = { folder, include, table, count: body.count, message: String(body.message || ''),
         lines: [
+          ...(Number.isInteger(body.walked) ? [`${FOLDER_RETRY_WORDS.walked} ${body.walked}`] : []),
           ...(states.length ? [states.map(([state, n]) => `${state} ${n}`).join(' · ')] : []),
           ...Object.entries(body.by_folder || {}).map(([name, n]) => `${name} · ${n}`),
           ...(missing ? [`${FOLDER_RETRY_WORDS.missing} ${missing}: ${names.join(', ')}${missing > names.length ? ', …' : ''}`] : []),
+          ...(notTaken.length ? [`${FOLDER_RETRY_WORDS.notTaken} · ${notTaken.map(([why, n]) => `${why} ${n}`).join(' · ')}`
+            + (notNames.length ? `: ${notNames.join(', ')}` : '')] : []),
         ] };
       this.say(this.seen.message, false);
     } else {
@@ -178,7 +214,7 @@ export class FolderRetryPanel {
     if (!seen || seen.count < 1 || this.busy || !this.retry) return;
     this.busy = true;
     this.refresh();
-    const got = await this.retry(seen.folder, seen.include);
+    const got = await this.retry(seen.folder, seen.include, seen.table);
     this.busy = false;
     // The count is spent: the next Retry needs a new preview of what is failed now.
     this.seen = null;

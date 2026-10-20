@@ -4268,24 +4268,28 @@ function seatFolderRetry() {
   folderRetryPanel = new FolderRetryPanel(mount, {
     doc: document,
     rows: () => fileData,
-    preview: (folder, include) => folderRetryCall(folder, true, include),
-    retry: (folder, include) => folderRetryCall(folder, false, include),
+    tables: () => loadTableNames(),
+    preview: (folder, include, table) => folderRetryCall(folder, true, include, table),
+    retry: (folder, include, table) => folderRetryCall(folder, false, include, table),
     onRetried: () => fetchData({ silent: true }),
   });
 }
 /** One route, two asks: `preview` writes nothing and counts; without it the same selection runs. `include` asks for
- *  the files that went in too (lead a4d135a06). */
-async function folderRetryCall(folder, preview, include) {
+ *  the files that went in too (lead a4d135a06); `table` reads the folder's files into that table (lead 10-20). */
+async function folderRetryCall(folder, preview, include, table) {
   let res = null;
   try {
     res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed?folder=${encodeURIComponent(folder)}`
-      + (preview ? '&preview=true' : '') + (include ? `&statuses=${encodeURIComponent(INCLUDE_STATUSES)}` : ''),
+      + (preview ? '&preview=true' : '') + (include ? `&statuses=${encodeURIComponent(INCLUDE_STATUSES)}` : '')
+      + (table ? `&table=${encodeURIComponent(table)}` : ''),
       { method: 'POST' });
   } catch (err) {
     console.error('[FolderRetry] request failed', folder, preview, err);
   }
   if (!res || !res.ok) {
-    return { ok: false, text: fetchFailureLine(res ? failureFactOf(res) : null, preview ? 'Preview failed' : 'Retry failed') };
+    // the server's sentence first (its 409s: over the limit · narrow the folder · needs the watcher process)
+    const fallback = preview ? 'Preview failed' : 'Retry failed';
+    return { ok: false, text: res ? await retroFailureLine(res, failureFactOf(res), fallback) : fetchFailureLine(null, fallback) };
   }
   return { ok: true, body: await res.json().catch(() => ({})) };
 }
