@@ -1384,5 +1384,44 @@
       "extractor",
       "evidence"
     ]
+  },
+  "doc_chunk": {
+    "__comment": "[a10d88cd7] A text a person or an upload wrote - one row a piece of a document. The rule doc_chunk_to_doc_mention reads chunk_text and writes the nodes it names into doc_mention.",
+    "business_key": "chunk_id",
+    "column_types": {
+      "chunk_id": "string",
+      "document": "string",
+      "written_at": "datetime",
+      "chunk_text": "string"
+    },
+    "display_columns": [
+      "chunk_id",
+      "document",
+      "written_at",
+      "chunk_text"
+    ]
+  },
+  "doc_mention": {
+    "__comment": "[a10d88cd7] The chain writes it - one row a node a chunk's text names, known by its three key columns alone: a mention the text no longer names leaves nothing but its keys, and that row goes. The ledger's mentions@1 reads it by declaration.",
+    "composite_key_source": [
+      "chunk_id",
+      "node_type",
+      "node_key"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "chunk_id": "string",
+      "document": "string",
+      "written_at": "datetime",
+      "node_type": "string",
+      "node_key": "string"
+    },
+    "display_columns": [
+      "chunk_id",
+      "document",
+      "node_type",
+      "node_key",
+      "written_at"
+    ]
   }
 }

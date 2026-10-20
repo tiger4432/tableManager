@@ -157,12 +157,13 @@ def person_rows(db, table_name: str, row_ids) -> set:
 
 
 def key_columns(table_name: str) -> set:
-    """The columns a row of this table is known by - its `composite_key_source`, else its `business_key`
-    (what `crud.unfilled_key_columns` reads too)."""
+    """The columns a row of this table is known by - its `composite_key_source` and its `business_key` (what
+    `crud.unfilled_key_columns` reads too). The business key built from the composite is a key as well (총괄 10-21 ②):
+    read as a shown column, a row its source stopped feeding was never a shell while that column held its key."""
     from database import crud
 
     config = crud.TABLE_CONFIG.get(table_name) or {}
-    return {str(c) for c in (config.get("composite_key_source") or [config.get("business_key")]) if c}
+    return {str(c) for c in list(config.get("composite_key_source") or []) + [config.get("business_key")] if c}
 
 
 def shells(db, table_name: str, row_ids) -> list:

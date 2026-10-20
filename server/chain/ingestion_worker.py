@@ -1884,17 +1884,14 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     asked = [row_id for row_id, column in changed_cells if column in blanked] + sorted(withdrawn)
                     # their identity, so an expired row is not loaded to be asked
                     created = {identity_of(row).identity[0] for row, is_new in results if is_new} if asked else ()
-                    gone = cell_layer.shells(db, target_table, [
+                    gone = _delete_shells(db, target_table, [
                         row_id for row_id in asked if row_id not in created]) if asked else []
                     if gone:
                         # the upsert broadcast below reads its rows back - not the gone ones
                         gone_ids = set(gone)
                         results = [(row, is_new) for row, is_new in results
                                    if identity_of(row).identity[0] not in gone_ids]
-                        crud.delete_rows_batch(db, target_table, gone, cell_layer.SHELL_DELETER)
                         deleted_row_ids = list(deleted_row_ids or []) + gone
-                        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left",
-                                    target_table, len(gone))
 
                 # [M3] Absent-only wafer_map_metadata auto-registration for
                 # chain-created maps. Uses the VALIDATED batch items (same
@@ -2039,10 +2036,12 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     keep = _rows_written_from(db, target_table, written.get(target_table))
                     for spec in specs:
                         try:
-                            _withdraw_and_tell(db, spec["trigger_table"], spec["origins"], "edited",
-                                               declarations=(spec["declaration"],),
-                                               table=target_table, columns=spec["columns"],
-                                               keep=keep)
+                            stats = _withdraw_and_tell(db, spec["trigger_table"], spec["origins"], "edited",
+                                                       declarations=(spec["declaration"],),
+                                                       table=target_table, columns=spec["columns"],
+                                                       keep=keep)
+                            for lost_in, (_columns, ids) in sorted(stats["lost_a_layer"].items()):
+                                _delete_shells(db, lost_in, ids)
                         except Exception as retract_err:               # noqa: BLE001
                             db.rollback()
                             limit = _limit_that_stopped(
@@ -3461,7 +3460,9 @@ def _retract_what_those_rows_fed(db, table, row_ids):
         # The follow-up lap is the chain's own write - said, so it does not lean on the
         # source name the way events queued before the channel do.
         with channel(event_constants.CHANNEL_CHAIN):
-            _withdraw_and_tell(db, table, row_ids, "deleted")
+            stats = _withdraw_and_tell(db, table, row_ids, "deleted")
+            for lost_in, (_columns, ids) in sorted(stats["lost_a_layer"].items()):
+                _delete_shells(db, lost_in, ids)
         # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
         #   There is one set now, so it walks the loader's - and that is WIDER, which is
         #   right: a rule that cannot be reverted is worth naming whichever path runs it.
@@ -3531,6 +3532,20 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=Non
                 stats.get("groups", 0), stats.get("cells_withdrawn", 0),
                 stats.get("protected_skipped", 0), told)
     return stats
+
+
+def _delete_shells(db, table, row_ids) -> list:
+    """The rows of these that only the chain's keys were left on (`cell_layer.shells`, 총괄 5eee501eb) go by the grid's
+    delete - asked after a write (the write seat) and after a withdrawal an edit or a deletion took (총괄 10-21, 소유자
+    10-09 「키값만 남아 있네」: a mention its text stopped naming stayed as a row of keys). -> the row ids gone."""
+    from chain import cell_layer
+    from database import crud
+
+    gone = cell_layer.shells(db, table, row_ids)
+    if gone:
+        crud.delete_rows_batch(db, table, gone, cell_layer.SHELL_DELETER)
+        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left", table, len(gone))
+    return gone
 
 
 def _withdraw_blanks(db, table, blanks):

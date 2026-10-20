@@ -41,6 +41,19 @@ def as_v5(ledger, tables, rules):
     return ledger, tables, rules
 
 
+#: What the samples gained after v6 - not the migration's to write (a10d88cd7: a text's mentions).
+LATER = {"entities": ["doc_chunk@1"], "vocabulary": ["mentions@1"], "sources": ["doc_mention"]}
+
+
+def without_later(ledger):
+    ledger = copy.deepcopy(ledger)
+    for section, names in LATER.items():
+        for name in names:
+            del ledger[section][name]
+    del ledger["vocabulary"]["observed@1"]["absence_is_normal"]     # the gap spec's ③, declared (총괄 10-21)
+    return ledger
+
+
 def without_retired_cells(ledger):
     """⚰️ `map.input_columns` (총괄 2a8d9073c) and `read.registration_probe` (총괄 a6db2f469)
     retired: a file that has them keeps them - read and ignored, never rewritten - and the
@@ -59,7 +72,7 @@ def test_a_v5_setup_migrates_to_exactly_what_ships(shipped):
 
     assert any("input_columns" in source.get("map", {}) for source in ledger["sources"].values())
     assert any("registration_probe" in source.get("read", {}) for source in ledger["sources"].values())
-    assert (without_retired_cells(ledger), tables, rules) == shipped
+    assert (without_retired_cells(ledger), tables, rules) == (without_later(shipped[0]),) + shipped[1:]
     assert said == [
         "sources.lot_event.bind.mappings.descent -> sources.lot_lineage (derived_from for split, merge)",
         "sources.lot_event: retired (its atoms stay)",

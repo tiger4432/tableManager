@@ -53,7 +53,7 @@ def _verdicts(lines):
     (("config", "sample", "ledger_config.json.sample"),
      {"die_inspection": "same", "lot_slot_wafer": "same", "transfer_event": "same",
       "dt_job": "mixes", "lot_lineage": "mixes", "wafer_process_recipe": "mixes",
-      "lot_event": "dropped"}, True),
+      "lot_event": "dropped", "doc_mention": "same"}, True),
     (("config", "sample", "ontology", "transfer_explorer", "ledger_config.json"),
      {"virtual_joins": "refused", "dt_log": "refused"}, False),
     (("tests", "support", "v5_setup", "ledger_config.json"),

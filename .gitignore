@@ -90,6 +90,8 @@ server/mappers/*
 !server/mappers/hold_copy.py
 # The fold by unit (총괄 402f1ab2e): a fixed product mapper, named by its registered name - the same reason.
 !server/mappers/fold_unit.py
+# The text mentions (a10d88cd7): a fixed product mapper, named by its registered name - the same reason.
+!server/mappers/doc_mentions.py
 # The two chain mappers derived from `lot_event` (총괄 e14416950): the shipped sample rules
 # `lot_event_to_lot_slot_wafer` and `lot_event_to_lot_lineage` name them - the same reason as
 # above. One home: `authoring/examples` holds no copy (판정 348·349 moved it there; reversed).

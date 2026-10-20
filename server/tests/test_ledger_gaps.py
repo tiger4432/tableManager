@@ -85,6 +85,33 @@ def test_a_chain_has_two_ends_and_neither_of_them_is_a_gap():
     assert len(gaps.questions(declared, names=NAMES)) == 4
 
 
+@pytest.mark.parametrize("normal", [True, False])
+def test_a_predicate_whose_absence_is_normal_asks_no_question_of_its_own(normal):
+    """Exclusion ③, declared (총괄 10-21): `absence_is_normal` on the predicate - a node it does not name is not a gap.
+    Written false or left out, the same unnamed sides are refused."""
+    z = dict(edge(["d@1"], ["e@1"]), **({"absence_is_normal": True} if normal else {}))
+    declared = declaration({"x@1": edge(["a@1"], ["b@1"]), "y@1": edge(["c@1"], ["b@1"]),
+                            "z@1": z, "w@1": dict(edge(["e@1"], ["d@1"]), absence_is_normal=True)})
+    if normal:
+        assert len(gaps.questions(declared, names=NAMES)) == 4
+    else:
+        with pytest.raises(gaps.GapTableMismatch, match="z@1"):
+            gaps.questions(declared, names=NAMES)
+
+
+def test_absence_is_normal_is_true_or_false():
+    from ledger import setup_bundle as sb
+
+    document = {"setup_version": 6, "entities": {"a@1": {"keys": ["a"]}, "b@1": {"keys": ["b"]}},
+                "vocabulary": {"x@1": {"status": "active", "subjects": ["a@1"], "absence_is_normal": "yes", "object": {
+                    "kind": "entity_ref", "types": ["b@1"], "qualifiers": {"required": [], "optional": []}}}},
+                "sources": {}}
+    said = [str(issue) for issue in sb.validate_bundle_errors(document, catalog={})]
+    assert said == ["bundle.vocabulary.x.absence_is_normal: must be true or false"], said
+    document["vocabulary"]["x@1"]["absence_is_normal"] = True
+    assert sb.validate_bundle_errors(document, catalog={}) == ()
+
+
 def test_a_type_whose_only_way_into_existence_is_that_predicate_is_not_applicable():
     """🔴 EMPTY BY CONSTRUCTION IS NOT THE SAME AS EMPTY TODAY, and 0 says the second.
 

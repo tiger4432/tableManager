@@ -551,6 +551,30 @@
       }
     },
     {
+      "__comment": "[a10d88cd7] doc_chunk -> doc_mention: every key of node_types the text spells (spaces and ASCII case ignored, a key not inside a longer word) is one mention row - copy_columns from the chunk, the type in type_column, the key in key_column. An edited text takes back what it no longer names; a deleted chunk takes back its own. The keys are read from the ledger each run - a node named after the text was written is found when the chunk's rule is replayed.",
+      "name": "doc_chunk_to_doc_mention",
+      "trigger_table": "doc_chunk",
+      "target_table": "doc_mention",
+      "mapper": "link_mentions",
+      "is_batch": true,
+      "enabled": true,
+      "params": {
+        "text_column": "chunk_text",
+        "copy_columns": [
+          "chunk_id",
+          "document",
+          "written_at"
+        ],
+        "type_column": "node_type",
+        "key_column": "node_key",
+        "node_types": [
+          "lot",
+          "wafer"
+        ]
+      },
+      "__why_enabled": "SHIPS ENABLED because the ledger source doc_mention reads only this table: off, a text names no node. It runs only when a doc_chunk row is written."
+    },
+    {
       "__comment": "lot_event -> lot_lineage: a row naming a parent (parent_lot) or a child (child_lot) becomes one descent row (parent, child, kind, time); the two rows of a pair write the same row. A row naming no lot is an old generation and writes nothing; a row naming both is refused by name. [총괄 e14416950 - the ledger's lot_event preparer retires; this is the computation it did, moved to the chain]",
       "name": "lot_event_to_lot_lineage",
       "trigger_table": "lot_event",

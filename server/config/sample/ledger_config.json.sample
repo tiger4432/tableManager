@@ -191,7 +191,8 @@
             "run_uid"
           ]
         }
-      }
+      },
+      "absence_is_normal": true
     },
     "processed_with@1": {
       "status": "active",
@@ -275,6 +276,24 @@
           "optional": []
         }
       }
+    },
+    "mentions@1": {
+      "status": "active",
+      "subjects": [
+        "doc_chunk@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "lot@1",
+          "wafer@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      },
+      "absence_is_normal": true
     }
   },
   "entities": {
@@ -337,6 +356,11 @@
       "keys": [
         "lot",
         "slot"
+      ]
+    },
+    "doc_chunk@1": {
+      "keys": [
+        "chunk"
       ]
     }
   },
@@ -1013,6 +1037,90 @@
               "occurred_at": {
                 "kind": "column",
                 "column": "event_time"
+              }
+            }
+          }
+        }
+      }
+    },
+    "doc_mention": {
+      "relation": "doc_mention",
+      "read": {
+        "occurred_at": {
+          "column": "written_at",
+          "timezone": "Asia/Seoul"
+        }
+      },
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "mappings": {
+          "mention_lot": {
+            "predicate": "mentions@1",
+            "when": {
+              "node_type": "lot"
+            },
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "doc_chunk@1",
+                "keys": {
+                  "chunk": {
+                    "kind": "column",
+                    "column": "chunk_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "lot@1",
+                "keys": {
+                  "lot": {
+                    "kind": "column",
+                    "column": "node_key"
+                  }
+                }
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "written_at"
+              }
+            }
+          },
+          "mention_wafer": {
+            "predicate": "mentions@1",
+            "when": {
+              "node_type": "wafer"
+            },
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "doc_chunk@1",
+                "keys": {
+                  "chunk": {
+                    "kind": "column",
+                    "column": "chunk_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "wafer@1",
+                "keys": {
+                  "wafer": {
+                    "kind": "column",
+                    "column": "node_key"
+                  }
+                }
+              },
+              "occurred_at": {
+                "kind": "column",
+                "column": "written_at"
               }
             }
           }

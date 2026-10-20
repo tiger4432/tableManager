@@ -2138,9 +2138,13 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         #: word from quietly reading as a live rule.
         if not problems.exact(
                 item, path, required=("status", "subjects", "object"),
-                optional=("cardinality", "absence_confirmed_by", "class", "inverse_of")):
+                optional=("cardinality", "absence_confirmed_by", "absence_is_normal", "class", "inverse_of")):
             continue
         _validate_class(item, path, problems, "invalid_predicate")
+        # 「이 술어가 없는 것이 결측인가」 - the gap spec's exclusion ③ (absence is the good outcome), declared on the
+        # predicate (총괄 10-21): `ledger.gaps` reads it, and no predicate is named in code.
+        if not isinstance(item.get("absence_is_normal", False), bool):
+            problems.add("invalid_predicate", f"{path}.absence_is_normal", "must be true or false")
         status = item.get("status")
         if not isinstance(status, str) or status not in LIFECYCLE_STATES:
             problems.add("invalid_predicate", f"{path}.status",

@@ -21,10 +21,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-#: Ruled by the spec §1 exclusion ③ and not derivable from the declaration: the predicate
-#: whose ABSENCE is the good outcome - a die with no defect is a good die. Cited here, not
-#: decided here; this is the only predicate named in this file.
-SPEC_EXCLUDED = ("observed",)
+#: ⚰️ SPEC_EXCLUDED = ("observed",) - the spec §1 exclusion ③ (a predicate whose ABSENCE is the good outcome) is
+#: declared on the predicate now, `absence_is_normal: true` (총괄 10-21): a name here was the one predicate this file
+#: knew, and a declared mention predicate could not say the same of itself.
 
 NAMES_PATH = Path(__file__).with_name("gap_names.json")
 
@@ -101,7 +100,7 @@ def questions(declaration, names=None):
     """
     names = names or load_names()
     vocabulary = _vocabulary(declaration)
-    live = {name: spec for name, spec in vocabulary.items() if name not in SPEC_EXCLUDED}
+    live = {name: spec for name, spec in vocabulary.items() if not (spec or {}).get("absence_is_normal")}
     by_bare = {_bare(name): name for name in vocabulary}
     vacuous = {(_bare(p), t) for p, t in vacuous_types(declaration)}
 
@@ -245,7 +244,7 @@ def prefix_case(connection) -> str:
     return PREFIX_INSENSITIVE if connection.exec_driver_sql("SELECT 'a' < 'B'").scalar() else PREFIX_EXACT
 
 
-def _nodes_of_type_sql(prefix=None):
+def _nodes_of_type_sql(prefix=None, whole=False):
     """Nodes of one type, from BOTH sides, with the moment each was first named.
 
     `prefix` (`PREFIX_INSENSITIVE` · `PREFIX_EXACT`, 총괄 bccbdd601): only the keys whose `%(axis)s`
@@ -267,7 +266,17 @@ def _nodes_of_type_sql(prefix=None):
     for the chosen keys only. The set is the FRONT OF THE KEY ORDER (`SAMPLE_NOT_AGE_ORDERED`).
     ⚠️ Reading a whole type this way is slower than grouping it - no caller asks past the
     route's seed cap (`ledger_subgraph.MAX_SEED_LIMIT`) or `NODE_SCAN_LIMIT`.
+    `whole`: every node of the type, grouped from both sides - the keys only (a text's mentions read a whole type:
+    the box's 17,121 wafers 2.2 s grouped against 5.2 s stepped, 103,863 defects 1.0 s against 25.8 s, 10-21).
     """
+    if whole:
+        return """
+        SELECT keys FROM (
+            SELECT subject_keys AS keys FROM {table} f WHERE subject_type = %(bare)s
+            UNION
+            SELECT object_payload->'keys' FROM {table} f
+             WHERE object_kind = 'entity_ref' AND object_payload->>'type' = %(bare)s
+        ) whole_type"""
     start_s = start_o = keep_s = keep_o = pick = ""
     if prefix is not None:
         # the one place the case is decided - the bound and the match together

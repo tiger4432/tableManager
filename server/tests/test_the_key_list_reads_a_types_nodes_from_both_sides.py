@@ -306,3 +306,42 @@ def test_first_letters_of_another_key_are_refused(ask):
     with pytest.raises(HTTPException) as refused:
         ask("lot_slot", key="slot", starts_with="1")
     assert (refused.value.status_code, refused.value.detail["reason"]) == (422, "prefix_on_another_key")
+
+# ------------------------------------------------------------- whole (a10d88cd7, text mentions)
+
+@pytest.mark.parametrize("bare", ["recipe", "wafer", "lot", "lot_slot", "die", "base", "holder", "carrier"])
+def test_the_whole_type_reads_the_same_nodes_as_the_skip_scan(engine, bare):
+    """`whole` groups both sides instead of stepping them: the same node set - the object-only recipe and
+    SYN-CW-107, wafer W1 named on both sides once, the slot's lot not a lot, the die past a float."""
+    from ledger import gaps
+
+    def keys(statement, params):
+        raw = engine.raw_connection()
+        try:
+            with raw.cursor() as cursor:
+                cursor.execute("SELECT keys::text FROM (%s) n" % statement.format(table=schema.LEDGER_TABLE), params)
+                return sorted(row[0] for row in cursor.fetchall())
+        finally:
+            raw.rollback()
+            raw.close()
+
+    stepped = keys(gaps._nodes_of_type_sql(), {"bare": bare, "scan": 1000})
+    whole = keys(gaps._nodes_of_type_sql(whole=True), {"bare": bare})
+    assert whole == stepped and len(whole) == len(set(whole))
+    assert bool(whole) == (bare != "carrier")
+
+
+def test_a_texts_dictionary_reads_every_text_key_of_the_type_in_the_operating_world(engine):
+    """`doc_mentions._keys_of` (a10d88cd7): the whole type from both sides - the object-only recipe, SYN-CW-107 -
+    and only text values (a die's keys are numbers)."""
+    from sqlalchemy.orm import Session
+    from mappers import doc_mentions
+
+    db = Session(bind=engine)
+    try:
+        assert sorted(doc_mentions._keys_of(db, "recipe", "recipe")) == ["R1", "R2"]
+        assert "SYN-CW-107" in doc_mentions._keys_of(db, "base", "base")
+        assert len(doc_mentions._keys_of(db, "base", "base")) == 72
+        assert doc_mentions._keys_of(db, "die", "x") == []
+    finally:
+        db.close()

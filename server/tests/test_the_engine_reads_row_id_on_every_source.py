@@ -69,8 +69,8 @@ def test_every_source_whose_relation_has_one_reads_the_row_id(snapshot):
         if plan.runs and event_frame.FRAME_ROW_ID_COLUMN not in
         event_frame.base_select_columns(plan))
     assert without == []
-    # Seven declared, six read: `lot_event` is retired (setup_version 6) and reads nothing.
-    assert len([plan for plan in snapshot.source_plans.values() if plan.runs]) == 6, (
+    # Eight declared, seven read: `lot_event` is retired (setup_version 6) and reads nothing.
+    assert len([plan for plan in snapshot.source_plans.values() if plan.runs]) == 7, (
         "the shipped sample changed size -- confirm the claim still covers all of it")
 
 
@@ -103,7 +103,7 @@ def test_the_name_is_scored_against_the_catalogue_and_not_against_itself(catalog
             (item.get("name") if isinstance(item, dict) else item) for item in declared}
         assert event_frame.FRAME_ROW_ID_COLUMN in names, relation
         checked += 1
-    assert checked == 7, "the seven relations the seven shipped sources read"
+    assert checked == 8, "the eight relations the eight shipped sources read"
 
 
 # ------------------------------------------------------- and it costs no cursor a restamp
@@ -122,7 +122,7 @@ def test_the_read_is_not_what_a_cursor_fingerprint_is_made_of(snapshot, monkeypa
                         lambda plan: calls.append(plan) or real(plan))
     fingerprints = {name: source_cursor_fingerprint(snapshot, name)
                     for name, plan in snapshot.source_plans.items() if plan.runs}
-    assert len(fingerprints) == 6 and calls == [], (
+    assert len(fingerprints) == 7 and calls == [], (
         "a cursor fingerprint read the SELECT list, so an engine-owned column would "
         "restamp every source")
     # 🔴 AND THE COMPILED ANSWER IS OUT OF THE MATERIAL TOO. `source_cursor_fingerprint`
