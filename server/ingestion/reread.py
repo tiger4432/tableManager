@@ -101,7 +101,7 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
     is a boundary (`C:\\a\\A` never takes `C:\\a\\AB`), case and separators as the filesystem
     reads them: the external-root judgement, `_safe_relative_path`."""
     from database import crud, models
-    from directory_watcher import _safe_relative_path
+    from directory_watcher import _safe_relative_path, one_sweep
 
     model = models.FileIngestionLog
     query = db.query(model).filter(model.status.in_(list(statuses)))
@@ -119,10 +119,11 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
     if crud.is_blank_value(folder):
         return [(log, None) for log in logs]
     picked = []
-    for log in logs:
-        rel = _safe_relative_path(log.filepath, folder) if log.filepath else None
-        if rel is not None:
-            picked.append((log, rel))
+    with one_sweep():
+        for log in logs:
+            rel = _safe_relative_path(log.filepath, folder) if log.filepath else None
+            if rel is not None:
+                picked.append((log, rel))
     return picked
 
 
@@ -150,7 +151,7 @@ def select_files(db, table, folder, limit=None):
     handler's own judgement). -> {"picked": [(the table's newest row for the file or None, its path below the folder,
     the file)], "not_taken": {why: count}, "not_taken_files": [first names], "walked": files looked at}.
     More than `limit` files under the folder is refused (RereadRefused) before anything is judged."""
-    from directory_watcher import _safe_relative_path, source_taking
+    from directory_watcher import _safe_relative_path, one_sweep, source_taking
 
     limit = WALK_MAX_ENTRIES if limit is None else limit
     files = []
@@ -162,19 +163,20 @@ def select_files(db, table, folder, limit=None):
     raws, specs = table_sources(table)
     rows = _newest_rows_of(db, table, files)
     picked, not_taken, names = [], {}, []
-    for path in sorted(files):
-        why = None
-        if _safe_relative_path(path, raws) is None and source_taking(specs, path) is None:
-            why = NOT_MATCHED if any(_safe_relative_path(path, spec["root"]) is not None for spec in specs) \
-                else OUTSIDE_SOURCES
-        log = rows.get(os.path.normcase(os.path.abspath(path)))
-        if why is None and log is not None and log.status == "PENDING":
-            why = BEING_READ
-        if why is not None:
-            not_taken[why] = not_taken.get(why, 0) + 1
-            names.append(os.path.basename(path))
-            continue
-        picked.append((log, _safe_relative_path(path, folder), path))
+    with one_sweep():
+        for path in sorted(files):
+            why = None
+            if _safe_relative_path(path, raws) is None and source_taking(specs, path) is None:
+                why = NOT_MATCHED if any(_safe_relative_path(path, spec["root"]) is not None for spec in specs) \
+                    else OUTSIDE_SOURCES
+            log = rows.get(os.path.normcase(os.path.abspath(path)))
+            if why is None and log is not None and log.status == "PENDING":
+                why = BEING_READ
+            if why is not None:
+                not_taken[why] = not_taken.get(why, 0) + 1
+                names.append(os.path.basename(path))
+                continue
+            picked.append((log, _safe_relative_path(path, folder), path))
     return {"picked": picked, "not_taken": dict(sorted(not_taken.items())), "not_taken_files": names[:5],
             "walked": len(files)}
 

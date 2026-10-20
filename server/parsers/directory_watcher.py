@@ -5,6 +5,7 @@ import time
 import shutil
 import logging
 import threading
+import contextlib
 import contextvars
 from datetime import datetime
 from watchdog.observers import Observer
@@ -840,6 +841,32 @@ def _maybe_explain_slow_prefetch(db, table_name, summary, results, already):
 SUPPORTED_EXTERNAL_PARSERS = frozenset({"voids_json"})
 
 
+_REAL_FOLDERS = contextvars.ContextVar("real_folders", default=None)
+
+
+@contextlib.contextmanager
+def one_sweep():
+    """Inside it a folder's real path is asked of the filesystem once (총괄 f0bdb35eb, 소유자 「glob 은 1 초도 안 걸리던데
+    리스트 뽑는 게 왜 오래 걸려」 - a realpath on Windows opens the path, on a share a round trip each). Held for one
+    sweep only: a junction changed later is read again by the next sweep."""
+    token = _REAL_FOLDERS.set({})
+    try:
+        yield
+    finally:
+        _REAL_FOLDERS.reset(token)
+
+
+def _real_folder(folder: str) -> str:
+    """`folder`'s real path - once per sweep inside `one_sweep`, else asked each time."""
+    folder = os.path.abspath(folder)
+    known = _REAL_FOLDERS.get()
+    if known is None:
+        return os.path.realpath(folder)
+    if folder not in known:
+        known[folder] = os.path.realpath(folder)
+    return known[folder]
+
+
 def _safe_relative_path(path: str, root: str) -> str | None:
     """Real-path-contained POSIX relative path, or ``None`` when outside.
 
@@ -848,10 +875,13 @@ def _safe_relative_path(path: str, root: str) -> str | None:
     resolved before the relative path is accepted.  Compared as the filesystem does
     (``normcase``): a path stored or typed in another case is still under its folder -
     the retry-by-folder asks this same question (총괄 fab40ed69 ②).
+    A file's real path is its FOLDER's real path and its name (총괄 f0bdb35eb): a junction is a folder, so a file
+    under one that leads outside the root is still outside.
     """
     try:
-        real_path = os.path.realpath(os.path.abspath(path))
-        real_root = os.path.realpath(os.path.abspath(root))
+        absolute = os.path.abspath(path)
+        real_path = os.path.join(_real_folder(os.path.dirname(absolute)), os.path.basename(absolute))
+        real_root = _real_folder(root)
         if (os.path.normcase(os.path.commonpath((real_path, real_root)))
                 != os.path.normcase(real_root)):
             return None
@@ -4470,7 +4500,7 @@ class WorkspaceWatcher:
         one ``voids.json`` deliberately feeds both ``inspection_run`` and
         ``void_obs`` and each table must reach its own ledger verdict.
         """
-        with self._external_sweep_lock:
+        with self._external_sweep_lock, one_sweep():
             if source_ids is None:
                 targets = list(self.external_targets.items())
             else:
