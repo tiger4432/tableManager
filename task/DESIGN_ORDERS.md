@@ -1,3 +1,73 @@
+# 🔴 [클라] + [구현자 B] **선언 폼 D — 왼쪽 원문 | 오른쪽 접힌 폼. 스켈레톤 → 렌더러 하나로 표 · 체인 · 원장** (소유자 10-20, 총괄)
+
+소유자 말: 「d가 괜찮네」 · 「2 이대로해, 명세 좀 잘 만들어 특히 클라, 맨날 버튼 안에 글씨 정렬 안 맞고 마진 이상하고」 ·
+「클라가 짓고 그거(디자인 비평 스킬) 써서 잘 만들어 오게 해, 지을 때도 스킬 쓰고」 · 「토큰대로 12」
+
+시안 — Design 캔버스 https://claude.ai/artifact/4uvPARMtc9BQ1XcRV8syW5 (보드 셋: Table · Chain rule · Ledger. Artifact read 로 연다)
+⚠️ 시안은 «배치와 동작»의 근거다. 치수 · 글자 크기 · 색은 시안이 아니라 아래 «치수»와 토큰을 따른다 (시안은 hex · 14~15px · 손 px 로 그려졌다)
+
+도착지 — 표 설정 · 체인 규칙 · 원장이 «같은 폼»으로 적힌다. 새 선언 종류는 스켈레톤 json 만 적으면 폼이 선다 (렌더러 코드 0 줄)
+```
+두 줄   「선언 폼은 그 선언의 스켈레톤 json 에 칸을 적으면 그려집니다.
+        추천 목록은 그 칸의 hint 와 section 이 고릅니다.」
+```
+
+기존 문 (총괄이 읽음 — 착수 전 다시 확인)
+- 렌더러 하나: `client2/src/ontology_explorer_view.js` renderSkeletonForm · renderSkeletonMap · renderSkeletonLeaf · renderSkeletonOneOf. raw_registry_panel.js 가 체인 규칙에도 같은 것을 쓴다
+- 추천 문 하나: renderSkeletonLeaf 의 `hint === 'ref' ? context.declared(section) : hint === 'role' ? context.rolesNear(...) : context.usedElsewhere(...)` — 이것을 «넓힌다». 옆에 새 추천 기제 금지
+- 체인 패널은 `usedElsewhere: () => []` 로 비워 둠 (raw_registry_panel.js) → 체인 폼 칸 추천 0
+- 표 설정은 폼이 없다 (원문 + 붙여넣기, /admin/tables/config/raw)
+- 원장 폼이 «Authoring» · «Raw JSON» 두 탭에 겹쳐 있다
+
+## [구현자 B] — 77793123e(체인 목록 칸) 다음, 01d018420(게이트 셋째 묶음) 앞
+1. 추천 출처 넓히기 — `ref` 칸의 `section` 이 고를 수 있는 목록에 시스템 선언을 넣는다:
+   tables(표 설정 이름) · columns(그 표의 칸) · entities · predicates(원장 선언). 닫힌 목록은 지금처럼 public_bundle_schema
+   columns 는 «어느 표인지»를 형제 칸 경로 한 키로 적는다 (키 이름은 기존 스켈레톤 키와 안 겹치게. `of` 는 map 이 이미 씀)
+   그 목록을 클라에 주는 라우트가 이미 있는지 먼저 찾는다 — 있으면 넓히고, 없으면 짓기 «전»에 보고
+2. 표 설정 스켈레톤 json 하나 — 기존 둘(ledger_skeleton · chain_skeleton)과 같은 문법, 같은 로더. 저장 문은 /admin/tables/config/raw 그대로
+3. 체인 스켈레톤의 표 · 칸 이름 칸에 1번의 section 을 단다 (into · on 양쪽 · take.column · key.columns · group_by)
+게이트 — 세 스켈레톤이 같은 로더로 읽힘 · 추천 목록이 «선언에서» 나옴(스크래치 선언을 바꾸면 목록이 바뀜) · 변이 하나씩
+
+## [클라] — 파일 화면 착지 다음, 갤러리 매트릭스 «앞»
+### A. 배치 D
+- 왼쪽 원문(고칠 수 있음) | 오른쪽 접힌 폼 — 같은 문서 하나. 한쪽을 고치면 다른 쪽이 따라온다
+- 원문이 JSON 으로 안 읽히면 폼은 마지막 정상 상태에 머물고, 원문의 틀린 줄에 표시, Save 막음
+- 원문 바탕은 표면색 계열 (어두운 블록 금지 — 시선은 폼으로). 원장의 두 탭 겹침은 하나로 접는다
+- 머리줄: 선언 이름 · 바뀜 표시(Unsaved) · Save 하나. 서버 거절은 `detail` 그대로 그 칸 옆에
+
+### B. 렌더러 — renderSkeletonForm 하나에서. 선언 종류를 묻는 if 금지 (갈래는 스켈레톤의 kind · hint 만)
+- 칸 값의 목록(asList) = 칩 줄. Enter 로 추가하고 포커스는 입력에 남는다. 붙여넣기는 쉼표 · 줄바꿈으로 쪼개 칩 여럿. 빼기는 SVG 아이콘(글자 «×» 금지)
+- record 의 목록 = 표 행 (칸마다 머리줄) · 맨 아래 + 행
+- map member · record = 접는 줄: ▸ 이름 · 자동 요약(채워진 칸 값, 목록은 개수). 처음엔 접힘, 오류가 있는 줄은 펼침
+- when 분기: 분기 칸이 바뀌면 그 갈래 칸만 보인다. 다른 갈래에 적던 값은 화면이 들고 있다가 돌아오면 복원 (저장 문서에는 현재 갈래만)
+- choice 의 옵션이 하나뿐이면 미리 채움
+- 추천은 모두 B 의 출처로. 체인 패널의 usedElsewhere 비움을 그 출처로 채운다. 조인 짝은 양쪽에 표 이름을 붙여 보인다 (`lot_summary.lot_id = inspection_run.lot_id`)
+
+### C. 치수 — 기본 층에서 «한 번» (tokens.css · ontology_explorer.css). 이 화면만의 CSS 로 고치지 않는다
+```
+글자       --fs-button 12px (소유자 「토큰대로 12」). 시안의 14~15px 를 따르지 않는다
+높이       둘뿐 — --control-h, 그리고 폼 안 작은 컨트롤용 토큰 «하나»(값은 3.4 그리드 위)
+           버튼 · 칩 · 입력 · 선택 · 세그먼트 · 스위치 전부 둘 중 하나. 칩만 22px 같은 따로 높이 금지
+세로 가운데  inline-flex · align-items:center · 높이는 토큰 · 위아래 패딩 0 · 가로 패딩 --space-3
+간격       한 무리 안 --space-2 · 무리 사이 --space-3 · 들여쓰기는 토큰의 합 · 라벨 칸 폭은 폼 격자 하나
+색 · 모양   --oe-* 만 · radius 0 · 스위치에 aria-label · 칩 빼기 누르는 상자 ≥ 24px
+```
+
+### D. 스킬 (소유자 「지을 때도 스킬 쓰고」)
+- 착수 전 `ui-design-system` 스킬
+- 기본 층 컨트롤을 고친 뒤 `design:design-system` 으로 기본 층 점검 한 번
+- 다 지은 뒤 `design:design-critique` — 시안과 «지은 화면 스샷»(1920, 세 선언)을 같이 넣는다. 🔴 · 🟡 전부 고치고 «한 번 더» 비평
+- `design:accessibility-review` 한 번
+- 보고에 두 번의 비평 표를 붙인다 (고친 것 · 안 고친 것과 그 사유)
+
+### E. 게이트 — 숫자로
+- screen_layout_harness 에 검사 둘을 «모든 화면»에: 컨트롤 안 글자 상자 가운데 vs 컨트롤 가운데 ≤ 1px · 같은 줄 컨트롤 높이 같음
+  다른 화면에서 나오는 빨강은 «먼저 수와 화면을 보고», 고치는 곳은 기본 층
+- 변이: 기본 층 버튼에 padding-top 하나 → 가운데 검사 빨강 / 칩 높이만 바꿈 → 높이 검사 빨강
+- 렌더러 시험: 같은 화면에 폼 둘 간섭 없음 · 스켈레톤에 칸 하나 넣으면 코드 0 줄로 그려짐 · 원문 → 폼 → 원문 왕복 같은 문서 · when 갈래 복원
+- 1920 에서 세 선언 «시안 | 산출물» 나란히 + 간격 잼 · 크롬 MCP 한 줄
+- 착지 커밋에 RELEASE_LOG 항목
+
 # 🔴🔴 [구현자 B] **체인 문법의 목록 칸 둘 — key.columns 가 글자로 쪼개져 조인 유일 인덱스가 조용히 안 지어짐** (소유자 10-20 「1 ㅇㅇ」, 총괄)
 
 근거(조사 10-20, 코드 읽음 · 실행 안 함):
