@@ -39,6 +39,7 @@ from declaration_names import bare_name as _bare_name, fold_versions
 from datetime import datetime
 
 import config_backup
+import table_cells
 from error_said import told
 
 logger = logging.getLogger("Ledger.Admin")
@@ -181,6 +182,7 @@ def table_config_raw_view(table: str = None) -> dict:
         "tables": sorted(t for t in document if not str(t).startswith("__")),
         "error": error,
         "editable_unit": "table",
+        "skeleton": table_cells.skeleton(),          # the form's shape of one entry (총괄 f3639d4a2)
     }
     # 🔴 [판정 521] 「길이 0 인 문자열은 NULL 이다」 (소유자 2026-09-11). `?table=` arrives as
     #   `''`, which `is not None` reads as A NAME - so the route looked for a table called

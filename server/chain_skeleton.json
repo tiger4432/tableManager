@@ -17,7 +17,8 @@
         "required": true,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -25,7 +26,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -33,7 +35,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -41,7 +44,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -49,7 +53,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -57,7 +62,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -65,7 +71,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -85,7 +92,12 @@
           "member": "column",
           "of": {
             "kind": "leaf",
-            "hint": "free"
+            "hint": "ref",
+            "section": "columns",
+            "table_from": [
+              "trigger_table",
+              "on.table"
+            ]
           }
         }
       },
@@ -98,7 +110,12 @@
           "member": "column",
           "of": {
             "kind": "leaf",
-            "hint": "free"
+            "hint": "ref",
+            "section": "columns",
+            "table_from": [
+              "trigger_table",
+              "on.table"
+            ]
           }
         }
       },
@@ -111,7 +128,12 @@
           "member": "column",
           "of": {
             "kind": "leaf",
-            "hint": "free"
+            "hint": "ref",
+            "section": "columns",
+            "table_from": [
+              "trigger_table",
+              "on.table"
+            ]
           }
         }
       },
@@ -278,7 +300,12 @@
           "member": "column",
           "of": {
             "kind": "leaf",
-            "hint": "free"
+            "hint": "ref",
+            "section": "columns",
+            "table_from": [
+              "trigger_table",
+              "on.table"
+            ]
           }
         }
       },
@@ -360,7 +387,8 @@
           "member": "table",
           "of": {
             "kind": "leaf",
-            "hint": "ref"
+            "hint": "ref",
+            "section": "tables"
           }
         }
       },
@@ -375,7 +403,8 @@
               "required": false,
               "node": {
                 "kind": "leaf",
-                "hint": "ref"
+                "hint": "ref",
+                "section": "tables"
               }
             }
           ]
@@ -396,7 +425,11 @@
                 "member": "column",
                 "of": {
                   "kind": "leaf",
-                  "hint": "free"
+                  "hint": "ref",
+                  "section": "columns",
+                  "table_from": [
+                    "on.table"
+                  ]
                 }
               }
             },
@@ -443,7 +476,8 @@
               "required": true,
               "node": {
                 "kind": "leaf",
-                "hint": "ref"
+                "hint": "ref",
+                "section": "tables"
               }
             },
             {
@@ -455,7 +489,12 @@
                 "member": "column",
                 "of": {
                   "kind": "leaf",
-                  "hint": "free"
+                  "hint": "ref",
+                  "section": "columns",
+                  "table_from": [
+                    "trigger_table",
+                    "on.table"
+                  ]
                 }
               }
             },
@@ -468,7 +507,12 @@
                 "member": "column",
                 "of": {
                   "kind": "leaf",
-                  "hint": "free"
+                  "hint": "ref",
+                  "section": "columns",
+                  "table_from": [
+                    "trigger_table",
+                    "on.table"
+                  ]
                 }
               }
             },
@@ -481,7 +525,12 @@
                 "member": "column",
                 "of": {
                   "kind": "leaf",
-                  "hint": "free"
+                  "hint": "ref",
+                  "section": "columns",
+                  "table_from": [
+                    "trigger_table",
+                    "on.table"
+                  ]
                 }
               }
             }
@@ -513,7 +562,12 @@
                           "required": false,
                           "node": {
                             "kind": "leaf",
-                            "hint": "free"
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "target_table",
+                              "into.table"
+                            ]
                           }
                         },
                         {
@@ -521,7 +575,11 @@
                           "required": false,
                           "node": {
                             "kind": "leaf",
-                            "hint": "free"
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "on.table"
+                            ]
                           }
                         }
                       ]
@@ -537,7 +595,11 @@
                     "member": "column",
                     "of": {
                       "kind": "leaf",
-                      "hint": "free"
+                      "hint": "ref",
+                      "section": "columns",
+                      "table_from": [
+                        "on.table"
+                      ]
                     }
                   }
                 },
@@ -789,7 +851,8 @@
           "branches": {
             "table": {
               "kind": "leaf",
-              "hint": "ref"
+              "hint": "ref",
+              "section": "tables"
             }
           }
         }
@@ -809,7 +872,11 @@
                 "member": "column",
                 "of": {
                   "kind": "leaf",
-                  "hint": "free"
+                  "hint": "ref",
+                  "section": "columns",
+                  "table_from": [
+                    "on.table"
+                  ]
                 }
               }
             },
@@ -839,7 +906,12 @@
                 "member": "column",
                 "of": {
                   "kind": "leaf",
-                  "hint": "free"
+                  "hint": "ref",
+                  "section": "columns",
+                  "table_from": [
+                    "trigger_table",
+                    "on.table"
+                  ]
                 }
               }
             },
@@ -883,7 +955,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -891,7 +964,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -899,7 +973,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -907,7 +982,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -915,7 +991,8 @@
         "required": false,
         "node": {
           "kind": "leaf",
-          "hint": "ref"
+          "hint": "ref",
+          "section": "tables"
         }
       },
       {
@@ -1081,7 +1158,8 @@
           "member": "table",
           "of": {
             "kind": "leaf",
-            "hint": "ref"
+            "hint": "ref",
+            "section": "tables"
           }
         }
       },
@@ -1096,7 +1174,8 @@
               "required": false,
               "node": {
                 "kind": "leaf",
-                "hint": "ref"
+                "hint": "ref",
+                "section": "tables"
               }
             }
           ]

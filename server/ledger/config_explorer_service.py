@@ -17,6 +17,7 @@ from .config_authoring import authoring_plan, closed_lists
 from .config_drafts import OntologyDraftStore, with_unsaved_body
 from .config_explorer import (
     AUTHORABLE_SECTION_NAMES,
+    AUTHORABLE_SECTIONS,
     ConfigExplorerError,
     DeletionPlan,
     ExplorerIndex,
@@ -1063,6 +1064,12 @@ class OntologyExplorerService:
                 "qualifiers": [role for role, spec in roles.items() if spec.get("kind") == "attribute"],
                 # what a sentence's far end is - a node of these types, a value, or nothing (총괄 10-14)
                 "object": {"kind": spoken.get("kind") or "none", "types": list(spoken.get("types") or ())}}
+        # the names a `ref` leaf's `section` picks from (총괄 f3639d4a2) - a `columns` section reads `tables` above
+        import chain_bindings
+
+        payload["sections"] = {chain_bindings.SECTION_TABLES: sorted(payload["tables"]),
+                               AUTHORABLE_SECTIONS["entity"]: sorted(payload["entities"]),
+                               AUTHORABLE_SECTIONS["predicate"]: sorted(payload["vocabulary"])}
         return payload
 
     @staticmethod

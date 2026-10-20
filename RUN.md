@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **선언 폼 D 의 서버 몫 — 추천 목록이 선언에서 · 표 설정 스켈레톤 (총괄 f3639d4a2, 구현자 B)** — git pull · 런처 재기동 (화면은 클라 착지 뒤)
+>
+> ```
+> 무엇     온톨로지 탐색기 authoring/schema 응답에 sections {tables · entities · vocabulary} — 표 설정 · 원장 선언에서 그 자리에서 뽑음
+>          체인 스켈레톤의 표 이름 칸 = section "tables", 칸 이름 칸 = section "columns" + table_from(어느 칸의 표인지, 루트에서의 경로들)
+>          표 설정 스켈레톤 table_skeleton.json — 코드의 칸 목록 table_cells.TABLE_CELLS(18칸) 하나에서 생성 · /admin/tables/config/raw 의 응답에 skeleton
+> 볼 것    지금 화면은 그대로다 — 폼은 클라 착지 뒤에 그려진다. 저장 문은 /admin/tables/config/raw 그대로
+> 되돌리기  git revert <착지> -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **삼키던 오류 27 곳이 한 줄을 남긴다 (총괄 c60fabe71, 소유자 «오류 남기게 해 너무 일 키우지는 말고»)** — git pull · 런처 재기동
 >
 > ```

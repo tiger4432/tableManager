@@ -97,7 +97,8 @@ KEY_CELLS = ("columns", "unique")
 
 #: The skeleton node of each `key` cell that is NOT one value (`chain.synthesis` reads
 #: `unique` as a flag and `columns` as a list). A cell missing here is a value.
-KEY_CELL_SHAPES = {"columns": chain_bindings.list_node("column", "free"), "unique": {"kind": "leaf", "hint": "flag"}}
+KEY_CELL_SHAPES = {"columns": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)),
+                   "unique": {"kind": "leaf", "hint": "flag"}}
 
 #: The two things `into` can say, and they are exclusive: a join that WRITES names its
 #: table, a join that answers at READ time says so (S-251). The form draws one or the

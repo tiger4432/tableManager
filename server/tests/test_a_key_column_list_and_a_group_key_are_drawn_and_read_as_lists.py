@@ -26,7 +26,7 @@ from database import crud                                            # noqa: E40
 COLS = {"lot": "string", "slot": "string", "dt_job": "string", "dt_lot": "string", "dt_slot": "string"}
 TABLES = {"k77_log": {"business_key": "k", "composite_key_source": ["lot", "slot"], "column_types": dict(COLS)},
           "k77_inventory": {"business_key": "k", "composite_key_source": ["dt_job"], "column_types": dict(COLS)}}
-LIST = {"kind": "map", "keyed_by": "index", "member": "column", "of": {"kind": "leaf", "hint": "free"}}
+LIST = {"kind": "map", "keyed_by": "index", "member": "column"}           # rows of columns, whatever each row's leaf
 
 
 def _join(columns):
@@ -36,6 +36,10 @@ def _join(columns):
                                                 "take": ["dt_lot", "dt_slot"]}},
             "into": {"table": "k77_log"},
             "key": {"unique": True, "columns": columns}}
+
+
+def _list(node):
+    return {k: node.get(k) for k in LIST} == LIST and node["of"]["kind"] == "leaf"
 
 
 def _field(record, key):
@@ -61,10 +65,10 @@ def test_the_window_draws_the_three_cells_as_rows():
 
     skeleton = admin.chain_rule_raw_view()["skeleton"]           # what the declaration window is handed
     flat, unified = skeleton["root"], skeleton["unified_root"]
-    assert _field(_field(flat, "key"), "columns") == LIST
-    assert _field(_field(unified, "key"), "columns") == LIST
-    assert _field(flat, "group_by") == LIST
-    assert _field(_field(unified, "limits"), "group_by") == LIST
+    assert _list(_field(_field(flat, "key"), "columns"))
+    assert _list(_field(_field(unified, "key"), "columns"))
+    assert _list(_field(flat, "group_by"))
+    assert _list(_field(_field(unified, "limits"), "group_by"))
 
 
 @pytest.mark.parametrize("grammar", ["unified", "flat"])

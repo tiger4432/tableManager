@@ -643,12 +643,34 @@ _SKELETON_HINTS = {
     "mapper": "choice",
 }
 
-#: Routing cells whose value is a LIST of names -> (member, item hint). `trigger_columns` is
+#: The suggestion lists a `ref` leaf names by its `section` (총괄 f3639d4a2): every table declared in table_config,
+#: and the columns of one of them - which one, `table_from` says: paths from the declaration's root, the first that
+#: holds a value (one node spelling serves both grammars). `authoring_schema` serves the lists.
+SECTION_TABLES, SECTION_COLUMNS = "tables", "columns"
+TRIGGER_TABLE_AT = ("trigger_table", "on.table")         # the table a rule is woken by
+SOURCE_TABLE_AT = ("on.table",)                           # a unified join's value table - its key and its takes
+TARGET_TABLE_AT = ("target_table", "into.table")          # the table a rule writes
+
+
+def table_ref():
+    """A leaf that names a table declared in table_config."""
+    return {"kind": "leaf", "hint": "ref", "section": SECTION_TABLES}
+
+
+def column_ref(table_from):
+    """A leaf that names a column of the table at the first of `table_from` that holds one."""
+    return {"kind": "leaf", "hint": "ref", "section": SECTION_COLUMNS, "table_from": list(table_from)}
+
+
+#: Routing cells whose value is a LIST of names -> (member, the item's node). `trigger_columns` is
 #: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below; `group_by` by
 #: `rule_refusals` (bad_group_by takes only a list - drawn as one value, the form could not save it, 총괄 77793123e).
-_LIST_CELLS = {"trigger_columns": ("column", "free"), REQUIRE_KEY: ("column", "free"), GROUP_BY_KEY: ("column", "free"),
-               EXCLUDE_KEY: ("column", "free"), **{key: ("column", "free") for key in SOURCE_GATE_KEYS.values()},
-               READS_KEY: ("table", "ref")}
+_LIST_CELLS = {"trigger_columns": ("column", column_ref(TRIGGER_TABLE_AT)),
+               REQUIRE_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
+               GROUP_BY_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
+               EXCLUDE_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
+               **{key: ("column", {"kind": "leaf", "hint": "free"}) for key in SOURCE_GATE_KEYS.values()},
+               READS_KEY: ("table", table_ref())}
 
 
 def skeleton():
@@ -708,7 +730,8 @@ def _record(*fields):
 
 
 def _leaf(key):
-    return {"kind": "leaf", "hint": _SKELETON_HINTS.get(key, "free")}
+    hint = _SKELETON_HINTS.get(key, "free")
+    return table_ref() if hint == "ref" else {"kind": "leaf", "hint": hint}     # every `ref` cell names a table
 
 
 def _node_for(key):
@@ -723,16 +746,16 @@ def _node_for(key):
     if key == REFERENCE_BLOCK:
         # Tracked code reads only `reference.table` (`reference_tables`); the rest is the
         # owner's mapper's. The form writes by path into the raw document, so those survive.
-        return _record(_field(REFERENCE_TABLE_KEY, {"kind": "leaf", "hint": "ref"}))
+        return _record(_field(REFERENCE_TABLE_KEY, table_ref()))
     if key in _LIST_CELLS:
         return list_node(*_LIST_CELLS[key])
     return _leaf(key)
 
 
-def list_node(member, hint):
-    """The node of a cell whose value is a LIST - drawn as rows, one `member` each. `_LIST_CELLS` and
-    `rule_shape.KEY_CELL_SHAPES` both spell it here."""
-    return {"kind": "map", "keyed_by": "index", "member": member, "of": {"kind": "leaf", "hint": hint}}
+def list_node(member, of):
+    """The node of a cell whose value is a LIST - drawn as rows, one `member` each, every item drawn as `of`.
+    `_LIST_CELLS`, `rule_shape.KEY_CELL_SHAPES` and `join_into.JOIN_CELL_SHAPES` spell it here."""
+    return {"kind": "map", "keyed_by": "index", "member": member, "of": of}
 
 
 def _key_node():

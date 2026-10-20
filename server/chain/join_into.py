@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import logging
 
+import chain_bindings
+
 logger = logging.getLogger("Chain.JoinInto")
 
 #: The kind an operator's `derive: {kind: "join"}` becomes. One string, read by the translator
@@ -100,12 +102,10 @@ BLANK_WORDS = (BLANK_SKIP,)
 #: ⚠️ `take` also reads a {from, into} item; the vocabulary has no union, so the item is drawn
 #:    as a name and the record form stays in the raw editor - named, never refused.
 JOIN_CELL_SHAPES = {
-    "on": {"kind": "map", "keyed_by": "index", "member": "pair",
-           "of": {"kind": "record", "fields": [
-               {"key": "left", "required": False, "node": {"kind": "leaf", "hint": "free"}},
-               {"key": "right", "required": False, "node": {"kind": "leaf", "hint": "free"}}]}},
-    "take": {"kind": "map", "keyed_by": "index", "member": "column",
-             "of": {"kind": "leaf", "hint": "free"}},
+    "on": chain_bindings.list_node("pair", {"kind": "record", "fields": [
+        {"key": "left", "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)},
+        {"key": "right", "required": False, "node": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)}]}),
+    "take": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)),
 }
 
 

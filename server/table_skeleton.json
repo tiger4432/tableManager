@@ -1,0 +1,236 @@
+{
+  "skeleton_version": 1,
+  "note": "The shape of ONE table's entry in table_config.json. Generated from `table_cells.TABLE_CELLS`; server/tests/test_the_table_skeleton_is_the_keys_the_product_reads.py counts it against the keys the product reads.",
+  "root": {
+    "kind": "record",
+    "fields": [
+      {
+        "key": "column_types",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "business_key",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "composite_key_source",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "composite_key_separator",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "display_columns",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "search_columns",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "map_key_columns",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "version_column",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "null_policy",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
+        "key": "source_priority",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "source",
+          "of": {
+            "kind": "leaf",
+            "hint": "number"
+          }
+        }
+      },
+      {
+        "key": "indexes",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "index",
+          "of": {
+            "kind": "record",
+            "fields": [
+              {
+                "key": "columns",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "column",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
+                "key": "unique",
+                "required": false,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              },
+              {
+                "key": "search",
+                "required": false,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "flag"
+                }
+              },
+              {
+                "key": "purpose",
+                "required": false,
+                "node": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "key": "kind",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "group",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "workspace_name",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "std_parse",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_replace_map",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "map_push_ok",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "smart_paste",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "format",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      }
+    ]
+  }
+}
