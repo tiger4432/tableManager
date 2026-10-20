@@ -5,15 +5,16 @@
 > ```
 > 무엇     서버 · 와처 · 스케줄러 · 체인 워커(줄 프로세스 포함)가 config/ 전체와 mappers/ 를 지켜봄. 저장이든 손 편집이든 파일이 1 초 조용하면 다시 읽음
 >          체인 규칙 · 맵퍼는 체인 프로세스에서 다음 묶음 경계에. 맵퍼 import 가 실패하면 전 모듈을 그대로 씀
->          체인 규칙 저장 · 온톨로지 탐색기 저장 · 코드 편집기 맵퍼 저장은 SYSTEM_RELOAD 행을 안 씀. Reload 버튼은 그대로
+>          수집기 스크립트(ingestion_workspace/<표>/auto_update/*.py)는 스케줄러가 다음 틱에 다시 읽음 — 기동 뒤 새로 만든 auto_update 폴더는 Reload · 재기동까지 안 보임
+>          체인 규칙 저장 · 온톨로지 탐색기 저장 · 코드 편집기 저장은 SYSTEM_RELOAD 행을 안 씀. Reload 버튼은 그대로
 > 확인     Chain 탭에서 규칙 하나 저장 -> chain_worker.log «[Config] chain_rules.json changed - read again in this process»
 >          GET /admin/chain/queue 의 rules_base 가 저장 답의 base 와 같으면 체인 워커가 그 저장을 읽은 것 — 파일이 1 초 조용한 뒤 체인 루프의 다음 틱에
 >          server.log 에도 같은 «[Config] chain_rules.json changed» 한 줄 (저장한 프로세스는 바로 읽음 · 감시의 같은 사건은 두 번 안 적힘)
-> 뜻      chain_worker.log 에 그 줄이 없음 -> 그 프로세스가 감시를 안 띄움. 기동 줄 «Started config folder watchdog on '<폴더>' and the mappers folder» 를 찾음
+> 뜻      chain_worker.log 에 그 줄이 없음 -> 그 프로세스가 감시를 안 띄움. 기동 줄 «Started config folder watchdog on '<폴더>', the mappers folder and the collector folders» 를 찾음
 >          «[Config] <파일> does not read - this process keeps what it read before: <사유>» -> 파일이 깨짐. 전 값으로 돌고 있음 — 파일을 고치면 다시 읽음
 >          «[Config] database.json changed - … restart to use it» -> 연결은 재기동해야 바뀜(다른 파일은 재기동 필요 없음)
 > 급할 때   스위치 없음 — Reload 버튼이 전과 같이 전부 다시 읽음
-> 되돌리기  git revert fe71989c7 -> 런처 재기동
+> 되돌리기  git revert 076363066 fe71989c7 -> 런처 재기동
 > ```
 >
 > ---
