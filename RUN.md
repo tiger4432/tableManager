@@ -9,7 +9,7 @@
 > 볼 것    선언 창에서 key 의 columns · limits 의 group_by 에 행 추가 칸이 보이는지
 >          chain_worker.log · 서버 로그에 «key.columns must be a list» 줄이 있으면 그 규칙은 서지 않은 것 — 파일에서 ["lot"] 처럼 목록으로 고친다
 >          이 박스 chain_rules.json: 규칙 13 · key 를 적은 규칙 1(unique 만) · 글자 key.columns 0 · group_by 0 (박스 판, 운영은 안 셈)
-> 되돌리기  git revert <착지> -> 런처 재기동
+> 되돌리기  git revert 20698eeca -> 런처 재기동
 > ```
 >
 > ---
