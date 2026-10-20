@@ -89,8 +89,8 @@ def test_the_file_write_is_outside_the_console_predicate():
     assert "handle.write(line)" in body
     assert body.index("handle.write(line)") > console_at, \
         "the file write must not sit inside the console branch"
-    # And the console write is the only thing the predicate guards.
-    assert "console.write(line)" in body
+    # And the console hand-off is the only thing the predicate guards (it never waits - lead cc6840513).
+    assert "self._to_console(spec.name, line)" in body
 
 
 def test_the_launcher_hands_the_selection_to_the_supervisor():

@@ -95,8 +95,9 @@ the bind fails - goes to the child's stdout/stderr, which the launcher used to
 leave attached to the console and never record. So the single most decisive line
 of the incident above existed in **no file on disk**, and diagnosing it required
 reconstructing the cause from 74 deaths' worth of statistics. Each child's output
-is now teed: byte-for-byte to the launcher's console exactly as before, and
-appended to ``<DATA_ROOT>/<name>_stdout.log``.
+is now teed: byte-for-byte to the launcher's console as before - through a console thread, so a blocked
+console drops (and counts) lines instead of stopping the child (lead cc6840513) - and every line appended to
+``<DATA_ROOT>/<name>_stdout.log``.
 
 Restarting a mid-ingestion watcher is safe, and this design depends on that being
 true: P2's checkpoint resume was drilled under a real ``taskkill /F`` at 30,000 of
@@ -170,6 +171,10 @@ PORT_PROBE_TIMEOUT_SEC = 0.5
 # uvicorn's access log is the volume driver, so this cannot be left unbounded on
 # a launcher that runs for months.
 CHILD_LOG_MAX_BYTES = 20 * 1024 * 1024
+# Console lines waiting for a console that does not take them (a Windows console in selection mode stops every write
+# to it): past this many, a line is dropped and counted - the reader never waits, so a child's pipe never fills
+# (owner 10-20, lead cc6840513: the API and the chain stopped while a retroactive run went on).
+CONSOLE_QUEUE_LINES = 10000
 
 STATE_RUNNING = "running"
 STATE_BACKOFF = "backoff"
@@ -680,6 +685,9 @@ class Supervisor:
         self.events = []
         self._last_status_write = 0.0
         self._started_wall = time.time()
+        self._console_queue = None              # (name, line) for the console thread - started with the first tee
+        self._console_dropped = {}              # name -> lines dropped since the console last took one
+        self._console_lock = threading.Lock()
 
     # ------------------------------------------------------------- internals
     def _default_spawn(self, spec):
@@ -735,6 +743,38 @@ class Supervisor:
             cwd=spec.cwd, env=env,
             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
 
+    def _to_console(self, name, line):
+        """Hand a line to the console thread; when it is behind by CONSOLE_QUEUE_LINES the line is dropped and
+        counted. Never waits."""
+        import queue
+
+        with self._console_lock:
+            if self._console_queue is None:
+                self._console_queue = queue.Queue(CONSOLE_QUEUE_LINES)
+                threading.Thread(target=self._console_writer, args=(self._console_queue,), name="console-writer",
+                                 daemon=True).start()
+            try:
+                self._console_queue.put_nowait((name, line))
+            except queue.Full:
+                self._console_dropped[name] = self._console_dropped.get(name, 0) + 1
+
+    def _console_writer(self, lines):
+        """The one thread that writes children's lines to the console - it may stay blocked; nothing waits on it.
+        Before a line, the lines dropped while it was blocked are said, one line per child."""
+        console = getattr(sys.stdout, "buffer", None)
+        while True:
+            name, line = lines.get()
+            with self._console_lock:
+                dropped, self._console_dropped = self._console_dropped, {}
+            try:
+                for who, count in dropped.items():
+                    console.write(("[Supervisor] %s: %d console line(s) dropped while the console was blocked\n"
+                                   % (who, count)).encode("ascii", "replace"))
+                console.write(line)
+                console.flush()
+            except Exception:
+                pass
+
     def _attach_log_pump(self, child):
         """Tee a child's merged stdout/stderr to the console AND to its own file.
 
@@ -772,8 +812,7 @@ class Supervisor:
                 written = os.path.getsize(path)
                 # [S-138] 콘솔에 흘릴 자식인가. 파일은 «무조건» 쓴다 — 파일이 정본이고
                 # 선택은 «보는 눈»의 문제이지 «남기는 기록»의 문제가 아니다.
-                console = (getattr(sys.stdout, "buffer", None)
-                           if self._tees_to_console(spec.name) else None)
+                console = self._tees_to_console(spec.name) and getattr(sys.stdout, "buffer", None) is not None
                 for line in iter(stream.readline, b""):
                     try:
                         handle.write(line)
@@ -792,12 +831,8 @@ class Supervisor:
                             pass
                         handle = open(path, "ab")
                         written = 0
-                    if console is not None:
-                        try:
-                            console.write(line)
-                            console.flush()
-                        except Exception:
-                            pass
+                    if console:
+                        self._to_console(spec.name, line)        # never waits - a blocked console is not this pipe's
             except Exception as e:
                 self._log(f"Output capture for {spec.name} stopped: {e}",
                           level="WARNING")
