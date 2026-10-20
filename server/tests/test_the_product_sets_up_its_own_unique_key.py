@@ -111,19 +111,6 @@ def test_when_there_is_nothing_in_the_way_it_says_it_will_build_it():
     assert sentence.endswith(operator_line.restart_to_apply())
 
 
-def test_an_empty_key_is_absence_and_gets_its_own_sentence():
-    """🔴 박스 실측에서 바로 나온 것: 한 컬럼의 «빈 문자열»이 수십만 행이었다. 그것을
-    「중복」이라 부르면 운영자가 «없는 중복»을 찾으러 가고, 접기로 고치려 들면 키 없는 행
-    전부가 한 행이 된다. 상설이 이미 답을 정해 뒀다 — 길이 0 인 문자열은 «부재»다."""
-    report = {"state": "blank_keys", "invalid": [], "duplicates": [],
-              "blank_keys": [{"key": [""], "rows": 523015}]}
-    sentence = unique_key.describe("dt_log", ["dt_job_id"], report)
-
-    assert "비어 있습니다" in sentence and "523015" in sentence
-    assert "부재" in sentence
-    assert "중복이 아니라" in sentence
-
-
 def test_a_blank_bucket_is_noted_but_does_not_hide_the_real_duplicates():
     """⚠️ 둘이 같이 있을 수 있다. 그때는 «진짜 중복»이 본문이고 빈 키는 꼬리표다."""
     report = {"state": "duplicates", "invalid": [],

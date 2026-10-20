@@ -59,7 +59,10 @@ def required_index_name(table: str, columns: list, folds=None, prefix: str = IND
     # under the name a plain `UNIQUE (a, b)` already holds, and `CREATE` would fail with
     # 「already exists」 — leaving the operator to drop an index blind, on a live table,
     # to find out whether the new one even builds.
-    suffix = ("_nf" if any(_folds_list(columns, folds)) else "") + "_ns"
+    # 🔴 `_eb` (owner 10-20): the unique index leaves out rows whose join key is blank in every part - a new shape,
+    #    so a new name, and the old one is taken back by the retraction once this one stands. The lookup index
+    #    has no such slot.
+    suffix = ("_nf" if any(_folds_list(columns, folds)) else "") + "_ns" + ("_eb" if prefix == INDEX_PREFIX else "")
     base = "%s%s_%s%s" % (prefix, table, "_".join(columns), suffix)
     if len(base.encode("utf-8")) <= _MAX_IDENTIFIER:
         return base
@@ -122,6 +125,17 @@ def index_key_expression(column: str, fold_rules=None, table: str = None) -> str
     return notation_norm.key_expression_text(
         '"%s"' % column, fold_rules, text_column=column_is_text(table, column))
 
+def blank_key_slot_expression(table: str, columns: list, folds=None) -> str:
+    """The unique index's last key: `''` for a row with a filled key part, the row's own id when EVERY part is blank
+    (owner 10-20 «키가 전부 빈 행은 유일성에서 뺀다») - so those rows never meet each other, and every other row is
+    unique on the key exactly as before. Not a partial index: PostgreSQL uses a partial one only where it can PROVE
+    the query implies the predicate, and an `IN` of more than 100 keys is never proved - measured, the join's and the
+    write gate's reads fell to a sequential scan (lead 10-20). Blank is `crud.every_key_part_blank`'s, over the
+    index's own expressions (coalesced, so `<> ''` is 「filled」)."""
+    fl = _folds_list(columns, folds)
+    filled = " OR ".join("%s <> ''" % index_key_expression(c, f, table) for c, f in zip(columns, fl))
+    return "(CASE WHEN %s THEN '' ELSE \"row_id\" END)" % filled
+
 def required_index_ddl(table: str, columns: list, folds=None, unique: bool = True) -> str:
     """운영자가 그대로 실행할 수 있는 DDL 한 줄. `unique=False` 는 조인 왼쪽의 조회 인덱스(같은 식).
 
@@ -140,10 +154,11 @@ def required_index_ddl(table: str, columns: list, folds=None, unique: bool = Tru
     붙여 넣을 수 있다(제어문자를 날것으로 싣지 않는 이유가 그것이다).
     """
     fl = _folds_list(columns, folds)
+    keys = [index_key_expression(c, f, table) for c, f in zip(columns, fl)]
     return 'CREATE %sINDEX CONCURRENTLY %s ON "%s" (%s);' % (
         "UNIQUE " if unique else "",
         required_index_name(table, columns, folds, INDEX_PREFIX if unique else LOOKUP_PREFIX),
-        table, ", ".join(index_key_expression(c, f, table) for c, f in zip(columns, fl)))
+        table, ", ".join(keys + ([blank_key_slot_expression(table, columns, folds)] if unique else [])))
 
 def _dialect_of(db) -> str:
     try:
@@ -284,9 +299,12 @@ def unique_index_covering(db, table: str, columns: list, folds=None):
     """), {"t": table}).fetchall()
     wanted = {normalize_index_expression(index_key_expression(c, f, table))
               for c, f in zip(columns, fl)}
+    # 🔴 ONLY WITH THE EXACT BLANK-KEY SLOT (owner 10-20). An index without it counts blank keys as one key, and
+    #    taking it would leave the product never building the one that does not.
+    slot = normalize_index_expression(blank_key_slot_expression(table, columns, folds))
     for idx, oid, nkeys in rows:
         keys = {normalize_index_expression(e)
                 for e in _index_key_expressions(db, oid, nkeys)}
-        if keys <= wanted:
+        if slot in keys and keys - {slot} <= wanted:
             return idx
     return None

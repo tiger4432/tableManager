@@ -161,50 +161,55 @@ def pg_v2(tmp_path_factory):
             connection.execute(text(
                 f'CREATE UNIQUE INDEX "{UNIQUE_INDEX}" '
                 f'ON public."{RIGHT_TABLE}" '
-                f'({join_key_index.index_key_expression("join_id")})'))
+                f'({join_key_index.index_key_expression("join_id")}, '
+                f'{join_key_index.blank_key_slot_expression(RIGHT_TABLE, ["join_id"])})'))
 
-        raw = _bundle()
-        Maker = sessionmaker(bind=admin, autoflush=False)
-        verifier_session = Maker()
+        # 🔴 FROM HERE THE FINALLY GUARDS public (총괄 10-20): a setup assert below used to fail before the old try,
+        #    and its two public tables and their index were never dropped - five left in assy_test public.
+        restore = False
         try:
-            # ⚰️ [판정 652 3걸음] 이 자리가 읽기 시점 로더의 `load_verified_rules` 를 불렀다.
-            #    🔴 «물리 검증»은 안 죽었다 — 인덱스가 실재하나를 묻는 것은
-            #    `join_key_index.unique_index_covering` 이고 그 좌석은 그대로다. 죽은 것은
-            #    그것을 감싸던 로더뿐이라, 여기서 «같은 탐침»을 직접 물어 증서를 낸다.
-            #    (setup_version 6 에서 증서를 받던 준비기가 은퇴했다 — 탐침은 이제 아래
-            #    `test_postgres_right_unique_index_is_used_by_the_join_probe` 의 전제만 잰다.)
-            #
-            # 🔴 `RIGHT_TABLE` 이지 "reference_rows" 가 아니다. 죽은 로더는 `known_tables` 를
-            #    받아 논리 이름을 «자기가» 물리 이름으로 풀었고, 직접 묻는 이 자리는 그 풀이를
-            #    물려받지 못한다. 제가 논리 이름을 그대로 타이핑해 PG 에서 다섯이 setup 에서
-            #    죽었다 — 탐침은 «이 픽스처가 실제로 만든 표»를 물어야 한다.
-            probed = join_key_index.unique_index_covering(
-                verifier_session, RIGHT_TABLE, ["join_id"])
-        finally:
-            verifier_session.close()
-        assert probed == UNIQUE_INDEX, (
-            "the unique index this fixture built was not found, so nothing below "
-            "measures anything: %r" % (probed,))
-        compiled = compile_setup_snapshot(
-            validate_bundle(raw, catalog=CATALOG), trusted_implementations(),
-            catalog=CATALOG)
+            raw = _bundle()
+            Maker = sessionmaker(bind=admin, autoflush=False)
+            verifier_session = Maker()
+            try:
+                # ⚰️ [판정 652 3걸음] 이 자리가 읽기 시점 로더의 `load_verified_rules` 를 불렀다.
+                #    🔴 «물리 검증»은 안 죽었다 — 인덱스가 실재하나를 묻는 것은
+                #    `join_key_index.unique_index_covering` 이고 그 좌석은 그대로다. 죽은 것은
+                #    그것을 감싸던 로더뿐이라, 여기서 «같은 탐침»을 직접 물어 증서를 낸다.
+                #    (setup_version 6 에서 증서를 받던 준비기가 은퇴했다 — 탐침은 이제 아래
+                #    `test_postgres_right_unique_index_is_used_by_the_join_probe` 의 전제만 잰다.)
+                #
+                # 🔴 `RIGHT_TABLE` 이지 "reference_rows" 가 아니다. 죽은 로더는 `known_tables` 를
+                #    받아 논리 이름을 «자기가» 물리 이름으로 풀었고, 직접 묻는 이 자리는 그 풀이를
+                #    물려받지 못한다. 제가 논리 이름을 그대로 타이핑해 PG 에서 다섯이 setup 에서
+                #    죽었다 — 탐침은 «이 픽스처가 실제로 만든 표»를 물어야 한다.
+                probed = join_key_index.unique_index_covering(
+                    verifier_session, RIGHT_TABLE, ["join_id"])
+            finally:
+                verifier_session.close()
+            assert probed == UNIQUE_INDEX, (
+                "the unique index this fixture built was not found, so nothing below "
+                "measures anything: %r" % (probed,))
+            compiled = compile_setup_snapshot(
+                validate_bundle(raw, catalog=CATALOG), trusted_implementations(),
+                catalog=CATALOG)
 
-        RightBase = declarative_base()
+            RightBase = declarative_base()
 
-        class RightModel(RightBase):
-            __tablename__ = RIGHT_TABLE
-            __table_args__ = {"schema": "public"}
-            row_id = Column(String, primary_key=True)
-            updated_at = Column(DateTime(timezone=True), nullable=False)
-            join_id = Column(String, nullable=False)
-            target_id = Column(String, nullable=False)
+            class RightModel(RightBase):
+                __tablename__ = RIGHT_TABLE
+                __table_args__ = {"schema": "public"}
+                row_id = Column(String, primary_key=True)
+                updated_at = Column(DateTime(timezone=True), nullable=False)
+                join_id = Column(String, nullable=False)
+                target_id = Column(String, nullable=False)
 
-        from database import models
-        previous_model = models.DYNAMIC_TABLES.get(RIGHT_TABLE)
-        models.DYNAMIC_TABLES[RIGHT_TABLE] = RightModel
-        store = LedgerStore(runtime, who="ledger-v2-stage6")
-        store.ensure_schema()
-        try:
+            from database import models
+            previous_model = models.DYNAMIC_TABLES.get(RIGHT_TABLE)
+            models.DYNAMIC_TABLES[RIGHT_TABLE] = RightModel
+            restore = True
+            store = LedgerStore(runtime, who="ledger-v2-stage6")
+            store.ensure_schema()
             # 🔴 THE BATCH RECEIPT IS WRITTEN ON THE ATOMS' CONNECTION, UNQUALIFIED (`runtime_v2._batch_receipt`):
             #   with no audit_logs of its own the scratch path fell through to public - 3 rows in assy_test
             #   public.audit_logs (총괄 10-10). Its own table, and asked that the name lands on it before anything
@@ -222,10 +227,11 @@ def pg_v2(tmp_path_factory):
                     bind=runtime, autoflush=False),
             }
         finally:
-            if previous_model is None:
-                models.DYNAMIC_TABLES.pop(RIGHT_TABLE, None)
-            else:
-                models.DYNAMIC_TABLES[RIGHT_TABLE] = previous_model
+            if restore:
+                if previous_model is None:
+                    models.DYNAMIC_TABLES.pop(RIGHT_TABLE, None)
+                else:
+                    models.DYNAMIC_TABLES[RIGHT_TABLE] = previous_model
             runtime.dispose()
             with admin.begin() as connection:
                 connection.execute(text(

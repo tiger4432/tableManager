@@ -104,6 +104,8 @@ def duplicate_keys(db, table: str, columns: list, folds=None,
                    limit: int = MAX_REPORTED_DUPLICATES) -> list:
     """유일성을 막고 있는 «값»과 «건수». 운영자가 읽는 것은 이것이지 DDL 이 아니다."""
     from sqlalchemy import text as sa_text
+
+    from database import crud
     exprs = _expressions(table, columns, folds)
     select = ", ".join("%s AS k%d" % (expr, index) for index, expr in enumerate(exprs))
     group = ", ".join(exprs)
@@ -117,17 +119,10 @@ def duplicate_keys(db, table: str, columns: list, folds=None,
     duplicates, blanks = [], []
     for row in rows:
         key = [row[index] for index in range(len(exprs))]
-        bucket = blanks if all(_is_blank(value) for value in key) else duplicates
+        # 🔴 [총괄 f36abbb1a ②] crud's one judgement - the join's and the write gate's
+        bucket = blanks if crud.every_key_part_blank(key) else duplicates
         bucket.append({"key": key, "rows": row[-1]})
     return duplicates, blanks
-
-
-def _is_blank(value) -> bool:
-    """🔴 [총괄 f36abbb1a ②] 판정은 crud 하나(`is_blank_key_part`) — 조인이 「키가 빈 행」을
-    거르는 그 판정이라 인덱스 보고와 조인이 «빈 키»에 다르게 답하지 않는다."""
-    from database import crud
-
-    return crud.is_blank_key_part(value)
 
 
 def inspect(db, table: str, columns: list, folds=None) -> dict:
@@ -139,10 +134,8 @@ def inspect(db, table: str, columns: list, folds=None) -> dict:
         return {"state": "ok", "index": existing, "invalid": [], "duplicates": []}
     invalid = invalid_leftovers(db, table, columns, folds)
     duplicates, blanks = duplicate_keys(db, table, columns, folds)
+    # ⚰️ «blank_keys» 상태가 여기 있었다 — 빈 키만 겹쳐도 인덱스를 못 세웠다. 이제 인덱스가 그 행을 뺀다 (소유자 10-20)
     state = "duplicates" if duplicates else ("invalid" if invalid else "missing")
-    if not duplicates and blanks and not invalid:
-        # 🔴 다른 상태다 — 「중복이라 못 세운다」와 「키가 없어서 못 세운다」는 수리가 다르다
-        state = "blank_keys"
     return {"state": state, "index": None, "invalid": invalid,
             "duplicates": duplicates, "blank_keys": blanks}
 
@@ -166,13 +159,6 @@ def describe(table: str, columns: list, report: dict) -> str:
             "강제하지 않으면서 이름만 붙잡고 있습니다" % ", ".join(columns),
             operator_line.restart_to_apply(),
             report.get("invalid") or ())
-    if state == "blank_keys":
-        total = sum(entry["rows"] for entry in (report.get("blank_keys") or ()))
-        return operator_line.line(
-            "JoinIndex", table,
-            "%s 행에 그 키(%s)가 «비어 있습니다» — 중복이 아니라 «부재»입니다"
-            % (total, ", ".join(columns)),
-            operator_line.fill_or_declare_null(table, columns))
     lines = ["%s(%s) 에 같은 조인 키를 가진 행이 있습니다 - 유일 인덱스를 세울 수 없습니다:"
              % (table, ", ".join(columns))]
     for entry in (report.get("duplicates") or [])[:MAX_REPORTED_DUPLICATES]:

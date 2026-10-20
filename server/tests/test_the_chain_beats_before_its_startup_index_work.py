@@ -295,7 +295,8 @@ def test_an_index_that_waits_past_the_limit_is_deferred_by_name_and_built_on_the
     #    retry could not see it and failed with 「already exists」.
     with pg_engine.begin() as c:
         c.execute(text("DROP TABLE IF EXISTS public.%s" % table))
-        c.execute(text("CREATE TABLE public.%s (k text)" % table))
+        # row_id as every product table has it - the unique index's blank-key slot names it (owner 10-20)
+        c.execute(text("CREATE TABLE public.%s (row_id text, k text)" % table))
     db = sessionmaker(bind=pg_engine)()
     holder = _holding(pg_engine, table)
     try:

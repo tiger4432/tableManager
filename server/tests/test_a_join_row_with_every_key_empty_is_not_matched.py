@@ -2,7 +2,7 @@
 """총괄 534f375f8 — 조인 키 칸이 «모두» 빈 행은 짝이 아니다. «일부»만 비면 지금 그대로.
 
 소유자: 「키가 여러 컬럼이면 모든 칼럼 null이면 무시, 일부 null은 허용」.
-두 반쪽(대상 쪽 :target · 값 쪽)이 같은 판정(`join_into._every_part_blank`)을 지난다.
+두 반쪽(대상 쪽 :target · 값 쪽)이 같은 판정(`crud.every_key_part_blank`)을 지난다.
 """
 import logging
 import os

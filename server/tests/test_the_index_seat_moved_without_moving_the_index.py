@@ -34,9 +34,11 @@ from chain import join_key_index as vjc                                   # noqa
 #: 🔴 PINNED LITERALS, NOT `jki.required_index_name(...)` ON BOTH SIDES. A test that
 #: compares the function with itself moves whenever the function does, which is the one
 #: thing this file exists to notice. These are the spellings standing in databases today.
+#: ⚠️ `_eb` (owner 10-20): the index that leaves out every-part-blank keys is a new shape under a new name; the `_ns`
+#:    one standing before it is taken back by the retraction once this one is built.
 PINNED = [
-    (("s283_right", ["job"], None), "uq_vjoin_s283_right_job_ns"),
-    (("s283_right", ["lot", "slot"], None), "uq_vjoin_s283_right_lot_slot_ns"),
+    (("s283_right", ["job"], None), "uq_vjoin_s283_right_job_ns_eb"),
+    (("s283_right", ["lot", "slot"], None), "uq_vjoin_s283_right_lot_slot_ns_eb"),
 ]
 
 

@@ -3161,6 +3161,13 @@ def is_blank_key_part(value) -> bool:
     return is_blank_value(value)
 
 
+def every_key_part_blank(key) -> bool:
+    """A key whose EVERY part is blank is no key (owner 10-20 «키가 전부 빈 행은 유일성에서 뺀다», 총괄 534f375f8): the
+    join matches nothing on it, and the join's unique index and the write gate leave its row out. One blank part among
+    filled ones is still a key (blank equals blank, S-181). The SQL twin is `join_key_index.blank_key_slot_expression`."""
+    return all(is_blank_key_part(part) for part in key)
+
+
 def _unfilled_composite_parts(composite_src, updates) -> list:
     """Which `composite_key_source` columns this payload does not supply a value for.
 
@@ -4552,7 +4559,7 @@ def _folded_join_key(updates: dict, columns: list, folds: list):
 
     `None` means 「this payload does not carry the whole key」, which is not a verdict: the
     stored row may complete it, and refusing on a partial update would refuse a write that
-    cannot break anything.
+    cannot break anything. And 「every part is blank」 (`every_key_part_blank`): the index leaves that row out.
     """
     import notation_norm
 
@@ -4563,7 +4570,7 @@ def _folded_join_key(updates: dict, columns: list, folds: list):
         value = clean_str_value(updates.get(column))
         rules = folds[index] if index < len(folds) else None
         key.append(notation_norm.fold_notation(value, rules) if rules else value)
-    return tuple(key)
+    return None if every_key_part_blank(key) else tuple(key)
 
 
 def _item_identity(item, index: int):

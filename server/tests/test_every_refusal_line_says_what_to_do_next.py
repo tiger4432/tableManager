@@ -129,19 +129,6 @@ def test_the_index_report_says_the_product_will_build_it_after_a_restart():
     assert "재기동" in rendered.split(NEXT)[1]
 
 
-def test_the_blank_key_report_says_absence_and_points_at_the_catalogue():
-    """🔴 A BLANK KEY IS NOT A DUPLICATE, AND THE REPAIR IS NEITHER OF THE OTHER TWO."""
-    from chain import unique_key
-
-    rendered = unique_key.describe(
-        "dt_inventory", ["dt_job"],
-        {"state": "blank_keys", "blank_keys": [{"key": [None], "rows": 12}]})
-
-    action = rendered.split(NEXT)[1]
-    assert "null_policy" in action
-    assert "합치" not in action
-
-
 def test_the_duplicate_list_still_ends_with_one_action():
     """⚠️ THIS ONE IS A LIST - the values ARE the diagnosis - and the last line still has
     to be the sentence the operator acts on."""

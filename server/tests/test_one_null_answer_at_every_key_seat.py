@@ -162,7 +162,7 @@ def test_the_index_name_carries_the_shape():
     """So the old index and the new one can COEXIST while a deployment migrates — without
     it, `CREATE` collides with the name a plain UNIQUE already holds and an operator has
     to drop an index blind on a live table."""
-    assert vjc.required_index_name("t", ["a"]).endswith("_ns")
+    assert vjc.required_index_name("t", ["a"]).endswith("_ns_eb")
 
 
 def test_the_join_compares_the_same_expression_the_index_is_built_on():

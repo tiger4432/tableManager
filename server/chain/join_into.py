@@ -392,16 +392,6 @@ class _Answer:
         self.matched = origin_row_id is not None
 
 
-def _every_part_blank(key) -> bool:
-    """🔴 [총괄 534f375f8, 소유자 「키가 여러 컬럼이면 모든 칼럼 null이면 무시, 일부 null은 허용」]
-    A join key whose EVERY part is blank matches nothing - a target row seeks no answer and a
-    value row is none. One blank part among filled ones still matches (blank equals blank,
-    S-181). Blank is crud's one judgement; the parts arrive folded, blank as `''`."""
-    from database import crud
-
-    return all(crud.is_blank_key_part(part) for part in key)
-
-
 def _say_empty_keys(rule, side: str, count: int) -> None:
     if count:
         logger.info("%s: %d row(s) with every join key empty - not matched (%s side)",
@@ -429,7 +419,9 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     for where in wheres:
         for row in db.execute(select(left_model.row_id, *left_key).where(where)):
             left[row[0]] = tuple(row[1:])
-    empty = [row_id for row_id, key in left.items() if _every_part_blank(key)]
+    # 🔴 [총괄 534f375f8, 소유자 「키가 여러 컬럼이면 모든 칼럼 null이면 무시, 일부 null은 허용」] crud's one judgement;
+    #    the parts arrive folded, blank as `''`
+    empty = [row_id for row_id, key in left.items() if crud.every_key_part_blank(key)]
     for row_id in empty:
         del left[row_id]
     right_key = [_folded(getattr(right_model, right_col), fold) for _l, right_col, fold in pairs]
@@ -692,7 +684,7 @@ def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
     from chain import keyset_scan
     from database import crud
 
-    filled = [tuple(row) for row in keys if not _every_part_blank(tuple(row))]
+    filled = [tuple(row) for row in keys if not crud.every_key_part_blank(tuple(row))]
     distinct = list(dict.fromkeys(filled))
     wheres = [tuple_(*left_key).in_(chunk)
               for chunk in crud._chunks(distinct, keyset_scan.DEFAULT_CHUNK_SIZE)]

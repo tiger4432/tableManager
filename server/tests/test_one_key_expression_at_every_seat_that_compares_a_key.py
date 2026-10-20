@@ -191,7 +191,7 @@ def test_the_index_name_does_not_move_when_the_cast_appears(known):
     something about types - and the old one would be retracted (S-248) and rebuilt."""
     assert (vjc.required_index_name("s245_left", ["num"])
             == vjc.required_index_name("s245_left", ["num"], [None]))
-    assert vjc.required_index_name("s245_left", ["num"]).endswith("_ns")
+    assert vjc.required_index_name("s245_left", ["num"]).endswith("_ns_eb")
 
 
 # ---------------------------------------------------------------------------
