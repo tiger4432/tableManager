@@ -521,12 +521,12 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
         differ = [] if answers else _key_types_differ(spec, left_table)
         refusal = ("no row matched - the join key types differ: %s" % "; ".join(differ)
                    if differ else
-                   "오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % handed
+                   "no row matched in the right table (%d row(s) handed)" % handed
                    if not rows else
                    "matched %d row(s) and wrote nothing - %d blank answer(s) not written "
                    "(blank: skip), the rest already held" % (len(rows), sum(unsaid.values()))
                    if unsaid else
-                   "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
+                   "matched %d row(s) - every value was already the same" % len(rows))
     answer = {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
               "next_page": (lambda: _page(db, rule, spec, left_table, left_rows, answers,
                                           after, handed, side))

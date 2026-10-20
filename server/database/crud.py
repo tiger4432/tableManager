@@ -3543,8 +3543,10 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
             try:
                 new_val = cast_value_by_type(explicit[col_name], column_types.get(col_name, "string"),
                                              col_name, table_name)
-            except CellRefused:
-                pass
+            except CellRefused as refused:
+                # the edit's value is dropped as before - said, since the merged row's value is kept instead
+                logger.warning("[Merge] %s row %s column %s: the edited value was refused (%s) - the merged row's "
+                               "value %r is kept", table_name, row.row_id, col_name, refused, new_val)
 
         old_val = getattr(row, col_name, None)
 

@@ -16,7 +16,8 @@ from database import crud, models, schemas                            # noqa: E4
 
 T = "zz_merge_cast"
 CFG = {T: {"business_key": "map_pk", "composite_key_source": ["map_id", "die_no"], "composite_key_separator": "_",
-           "column_types": {"map_pk": "string", "map_id": "string", "die_no": "string", "note": "string"}}}
+           "column_types": {"map_pk": "string", "map_id": "string", "die_no": "string", "note": "string",
+                            "qty": "number"}}}
 
 
 @pytest.fixture(name="db")
@@ -46,3 +47,24 @@ def test_the_holder_takes_the_edit_cast(db):
     _write(db, row_id=mover, updates={"die_no": "3", "note": 1.0})          # collides with M1_3
     rows = [(r.business_key_val, r.note) for r in db.query(model).all()]
     assert rows == [("M1_3", "1")], rows
+
+
+def test_a_refused_edit_value_is_said_and_the_merged_value_is_kept(db, caplog):
+    """App QA of 1460cfef2 ①: a value the column refuses is dropped as before, and said - table, row, column, reason.
+    The merge body is called with it: the write door refuses such a cell before any merge."""
+    import logging
+
+    _write(db, updates={"map_id": "M1", "die_no": "3", "qty": 5})
+    _write(db, updates={"map_id": "M1", "die_no": "4", "qty": 7})
+    model = models.DYNAMIC_TABLES[T]
+    holder = db.query(model).filter(model.business_key_val == "M1_3").one()
+    shell = db.query(model).filter(model.business_key_val == "M1_4").one()
+    caplog.set_level(logging.WARNING, logger=crud.logger.name)
+    crud._merge_into_key_holder(db, T, model, shell, holder, explicit={"qty": "abc"}, human_columns=set(),
+                                source_name="pipeline_parser", updated_by="watcher", transaction_id="t1",
+                                changed_cols=[])
+    db.commit()
+    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Merge] ")]
+    assert len(said) == 1 and T in said[0] and " column qty: " in said[0] and "abc" in said[0], said
+    assert "value 7.0 is kept" in said[0], said
+    assert [(r.business_key_val, r.qty) for r in db.query(model).all()] == [("M1_3", 7)]
