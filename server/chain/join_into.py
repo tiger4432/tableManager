@@ -178,6 +178,103 @@ def _takes(spec: dict) -> list:
     return out
 
 
+#: The cell of a `take` item that gathers EVERY value-table row of a key into one value (owner 10-20 「a 테이블에서
+#: b 테이블로 집계해서 조인」 · 「uniqueconcat 해서 붙이는 게 필요」). The words and the calculation are the gap fill's
+#: (`enrichment.config.AGGREGATION_FUNCTIONS` · `aggregation_record`); a take without it is one row a key, as before.
+TAKE_FN = "fn"
+
+
+def _fn_takes(spec: dict) -> dict:
+    """{left column: (value-table column, the aggregation as the gap fill writes one)} of the `take` items saying `fn`."""
+    out = {}
+    for item in spec.get("take") or ():
+        if isinstance(item, dict) and item.get("from") and item.get(TAKE_FN):
+            record = {"fn": item[TAKE_FN]}
+            if item[TAKE_FN] != "count":
+                record["column"] = str(item["from"])
+            if "separator" in item:
+                record["separator"] = item["separator"]
+            out[str(item.get("into") or item["from"])] = (str(item["from"]), record)
+    return out
+
+
+def gathers(spec: dict) -> bool:
+    """Does this join gather a key's rows (`take ... fn`)? Then a value row that leaves - deleted, or moved to another
+    key - recounts the key it left (`rule_shape` stamps `allow_delete_trigger` on the value side)."""
+    return bool(_fn_takes(spec))
+
+
+def take_refusal(join: dict, key: dict, right_table: str):
+    """Why this join's `take ... fn` cannot stand, by name - or None."""
+    import map_overlay
+    from chain.enrichment import config
+
+    fns = _fn_takes(join or {})
+    if fns and (key or {}).get("unique"):
+        return ("key.unique and take fn (%s) cannot stand together - fn gathers every row of a key, key.unique says "
+                "a key has one row" % ", ".join(sorted(fns)))
+    for into, (column, record) in sorted(fns.items()):
+        fn = record["fn"]
+        if fn not in config.AGGREGATION_FUNCTIONS:
+            return "take %r fn %r - one of %s" % (into, fn, " · ".join(config.AGGREGATION_FUNCTIONS))
+        if "separator" in record and fn not in config.AGGREGATION_SEPARATOR_DEFAULTS:
+            return "take %r separator - only %s takes one" % (into, " · ".join(config.AGGREGATION_SEPARATOR_DEFAULTS))
+        kind = map_overlay.declared_column_type(right_table, column)
+        if fn in ("min", "max") and kind not in config.EXPRESSED_MIN_MAX_TYPES:
+            return ("take %r fn %s over %s.%s, a %s column - min and max order %s" % (
+                into, fn, right_table, column, kind or "undeclared", " · ".join(config.EXPRESSED_MIN_MAX_TYPES)))
+    return None
+
+
+def _gathered(spec: dict, found) -> dict:
+    """{left column: value} of the `fn` takes over ONE key's value-table rows `found` ([(row id, take values)], what
+    `_read_once` read - the join's key, blank and require). Each by the gap fill's calculation: the expression its
+    record becomes (`config.aggregation_record` -> `expression`), else its `unique_concat` join (`mapper._joined`). A key
+    with no row has no value - its cell is taken back, never written 0 (lead 10-20)."""
+    fns = _fn_takes(spec)
+    if not fns or not found:
+        return dict.fromkeys(fns)
+    import expression
+    import map_overlay
+    from chain.enrichment import config, mapper
+    from database import crud
+
+    at = {into: index for index, (_right, into) in enumerate(_takes(spec))}
+    right_table = str(spec.get("right_table") or "")
+    out = {}
+    for into, (column, record) in fns.items():
+        values = [take[at[into]] for _row_id, take in found]
+        types = {column: map_overlay.declared_column_type(right_table, column)}
+        said, _why = config.aggregation_record(record, types)
+        if isinstance(said, str):
+            out[into] = expression.run(expression.compile(said), [{column: value} for value in values],
+                                       types).get("value")
+        else:
+            out[into] = mapper._joined(record, {value for value in values if not crud.is_blank_value(value)})
+    return out
+
+
+def old_keys(rule: dict, payload) -> list:
+    """The join keys value rows LEFT, as their events' old values say - a gathering join's value side only (a key a
+    row moved off or was deleted from is recounted, as the gap fill does). Raw, one tuple a row."""
+    import event_constants
+
+    spec = join_spec(rule)
+    if not gathers(spec) or str((rule or {}).get("trigger_table") or "") != str(spec.get("right_table") or ""):
+        return []
+    columns = [right for _left, right, _fold in _pairs(spec)]
+    out = []
+    for item in payload if isinstance(payload, list) else [payload]:
+        old = event_constants.old_values_of(item)
+        if not old.keys() & set(columns):
+            continue
+        data = (item or {}).get("data") or {}
+        out.append(tuple(old[column] if column in old else (
+            data[column].get("value") if isinstance(data.get(column), dict) else data.get(column))
+            for column in columns))
+    return list(dict.fromkeys(out))
+
+
 def take_targets(rule) -> list:
     """The left table's columns this join writes - its `take` targets, by the declaration."""
     return [into for _right, into in _takes(join_spec(rule))]
@@ -367,8 +464,11 @@ def _update_items(db, left_table: str, rows, spec, source_name: str):
     """
     from database import crud, schemas
 
+    fns = _fn_takes(spec)
     takes = _takes(spec)
-    # THE ROW-LEVEL NET (principle 2). If the SELECT returned two answers for one left
+    if fns and len(fns) == len(takes):
+        return []                       # every take gathers - `_page` writes them, no row is one answer
+    # THE ROW-LEVEL NET (principle 2) - the takes without `fn` only; a gathering take wants every row. If the SELECT returned two answers for one left
     # row, the right side fanned out for THAT key despite the gates. Neither answer is
     # THE answer, so neither is written; those rows are named once and the rest proceed.
     seen = {}
@@ -398,7 +498,7 @@ def _update_items(db, left_table: str, rows, spec, source_name: str):
             continue
         mapping = row._mapping
         values = {into_col: mapping["take_%d" % index]
-                  for index, (_right, into_col) in enumerate(takes)}
+                  for index, (_right, into_col) in enumerate(takes) if into_col not in fns}
         for column in _unsaid(spec, values):
             del values[column]
         if takes and not values:
@@ -431,7 +531,7 @@ def _update_items(db, left_table: str, rows, spec, source_name: str):
 #    What made it safe this time is that the last door without one (replay's row-ids arm) is
 #    collapsed in this same commit. Reinstate either half alone and that log line comes back.
 
-def propose(db, rule: dict, row_ids=None):
+def propose(db, rule: dict, row_ids=None, keys_left=()):
     """What this join would change, as update items — and why, when it is nothing.
 
     🔴 [판정 567] THE BODY THE DYNAMIC MAPPER RUNS. A mapper proposes and the caller
@@ -462,7 +562,7 @@ def propose(db, rule: dict, row_ids=None):
         spec.get("right_table") or "")
     if reference_side:
         wheres, empty = _left_rows_for_reference(db, spec, left_model, right_model,
-                                                 rows_in, left_table)
+                                                 rows_in, left_table, keys_left)
         _say_empty_keys(rule, "value", empty)
     else:
         wheres = [left_model.row_id.in_(rows_in)]
@@ -492,6 +592,20 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
             for row_id, key in page
             for origin, values in (answers.get(key) or [(None, blank)])]
     updates = _update_items(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
+    fns = _fn_takes(spec)
+    if fns:
+        from database import crud
+
+        # 🔴 [lead 10-20] NO ORIGIN, AND A BLANK ONE IS WITHDRAWN - the gap fill's door: a gathered cell has every row
+        #    of its key for a source, so no one row's deletion or move may take it back (`_retract_deleted_rows` aims at
+        #    origins); the recount is its one author, and a key left with no row takes back what this rule wrote
+        #    (`withdraw` -> `_withdraw_blanks`).
+        for row_id, key in page:
+            gathered = _gathered(spec, answers.get(key) or ())
+            updates.append({"row_id": row_id, "source_name": CHAIN_LAYER,
+                            "updated_by": str((rule or {}).get("name") or ""),
+                            "updates": {c: v for c, v in gathered.items() if not crud.is_blank_value(v)},
+                            "withdraw": sorted(c for c, v in gathered.items() if crud.is_blank_value(v))})
     more = after is not None
     unsaid, total = {}, 0
     if not start:
@@ -501,9 +615,12 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
         intos = [into for _right, into in _takes(spec)]
         for _id, key in left_rows:
             found = answers.get(key) or ()
-            if len(found) != 1:
+            if fns and found:
+                total += 1
                 continue
-            values = dict(zip(intos, found[0][1]))
+            if len(found) != 1 or (fns and len(fns) == len(intos)):
+                continue
+            values = {into: value for into, value in zip(intos, found[0][1]) if into not in fns}
             blank_takes = _unsaid(spec, values)
             for column in blank_takes:
                 unsaid[column] = unsaid.get(column, 0) + 1
@@ -537,7 +654,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
 
 
 def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
-                            left_table=""):
+                            left_table="", keys_left=()):
     """The left rows whose key matches the right rows that just moved -> (wheres or None,
     right rows whose every key part is blank - answer nobody).
 
@@ -552,6 +669,14 @@ def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
         select(*[_folded(getattr(right_model, right_col), fold).label("k%d" % index)
                  for index, (_left, right_col, fold) in enumerate(pairs)])
         .where(right_model.row_id.in_(list(right_row_ids)))).fetchall()
+    # the keys rows left (`old_keys`), folded by the same expression on the same column type - one statement a page
+    from sqlalchemy import literal, union_all
+
+    for chunk in [list(keys_left)[at:at + 200] for at in range(0, len(keys_left), 200)]:
+        keys += db.execute(union_all(*[
+            select(*[_folded(literal(value, type_=getattr(right_model, right_col).type), fold).label("k%d" % index)
+                     for index, ((_left, right_col, fold), value) in enumerate(zip(pairs, key))])
+            for key in chunk])).fetchall()
     if not keys:
         return None, 0
     left_key = [_folded(getattr(left_model, left_col), fold)

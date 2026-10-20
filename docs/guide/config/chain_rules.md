@@ -149,6 +149,26 @@ return {"batches": [{"target_table": "dt_map",
 
 - 원천에 이미 중복이 있으면 인덱스를 안 세우고 그 값과 건수를 로그에 냅니다. 중복을 치운 뒤에는 앱을 다시 띄워야 다시 시도합니다 — 리로드만으로는 같은 프로세스가 지난 답을 기억합니다(`chain/unique_key.ensure_once`).
 
+**⑥ 원천에 키 하나가 여러 행이고, 그 행들을 모아 한 칸에 → `take` 항목의 `fn`** (🆕 10-20)
+
+키가 같은 원천 행 «전부»를 결손 보정(decide)과 같은 계산으로 모아 왼쪽 행의 칸에 씁니다. 함수는 `count` · `min` · `max` · `unique_concat`(`separator`, 기본 `", "`).
+
+```json
+{
+  "name": "sample_gathering_join",
+  "on": { "table": "dt_job_attribution" },
+  "derive": { "kind": "join", "join": { "on": [{ "left": "dt_job", "right": "dt_job" }],
+    "take": [{ "from": "wafer_id", "into": "wafer_ids", "fn": "unique_concat" },
+             { "from": "wafer_id", "into": "wafer_count", "fn": "count" }] } },
+  "into": { "table": "dt_inventory" }
+}
+```
+
+- 원천 행이 들어오고 · 바뀌고 · 지워지고 · 키를 옮기면 그 키(옮기면 옛 키 · 새 키 둘 다)의 원천 행 전부를 다시 읽어 다시 계산합니다. 키 철자 · 표기 접기 · 빈 키 · `require` 는 조인의 것 그대로입니다.
+- 키의 원천 행이 하나도 없으면 그 칸은 비웁니다(이 규칙이 쓴 층을 거둠) — `count` 도 0 을 쓰지 않습니다.
+- `fn` 없는 take 는 오늘처럼 키당 한 행 — 둘 이상이면 그 왼쪽 행을 건너뜁니다(`fn` take 는 그 거절에서 빠집니다).
+- `key.unique` 와 `fn` 을 한 선언에 같이 적으면 로드에서 두 칸 이름을 대고 거절합니다. `min` · `max` 는 숫자 · 시각 칸만(글자 칸은 이름 대어 거절).
+
 ## 1. 언제 이 파일을 만지는가
 
 - **테이블 A의 변경이 테이블 B를 자동 갱신하게 만들 때** (trigger→target→mapper 체인)
@@ -261,6 +281,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 | `on.table` · `into.table` | `rule_shape` | 트리거 표(값이 바뀌는 표) · 쓰는 표 — `mapper`·`decide`·`join` 이 같은 문장이다. `join` 에서 `on.table` 은 «원천»이고 없으면 거절된다(「a join needs on.table - the table whose value changes」). `on.columns` 는 join 에서 적지 않는다 — 원천 쪽 키(`join.on` 의 `right`)와 take 칸에서 유도(판정 398 · 총괄 a73196eec). 적으면 그 둘과 «집합으로» 같아야 한다(순서 무관) — 다르면 거절되고 거절 문장이 기대하는 칸을 보인다. 키만 적은 옛 모양은 로드되고 한 줄로 이름 불린다. `into` 는 «택1»이다(`rule_shape.INTO_KINDS` = `table` · `read`). 폼이 «내놓는» 가지는 그중 `rule_shape.RETIRED_INTO_KINDS` 를 뺀 것 — 오늘 `table` 하나(09-25 `65f3590c2` — 전엔 드롭다운이 `read` 를 내놓고, 고르면 로더가 거절했다). ⚰ `read` 는 «은퇴»했고, 문법에서는 «빼지 않고» 이름으로 거절한다(아래 행) |
 | `into.read` | `rule_shape.expand_declaration` «하나»(로더와 어드민 저장 라우트가 같이 부른다) — `rule_shape.RETIRED_INTO_KINDS` 에 든 가지를 `READ_TIME_RETIRED` «한 문장»으로 거절한다. 같은 목록을 스켈레톤(`chain_bindings._unified_root`)이 «안 내놓을 것»으로 읽는다 | ⚰ **[2026-09-16 은퇴 1단계 `6580c30f`, 판정 440 ④ — 소유자 「운영은 조인 값을 표에 써서 쓴다」]** 통합 선언의 `derive.kind: join` + `into: {read: true}` 는 «이름 대고 거절»된다: 「읽기 시점 조인(into.read)은 은퇴했습니다 — 조인 값을 «표에 써서» 씁니다. → 다음: 이 선언의 `into` 를 `{"table": "<대상 표>"}` 로 바꾸십시오」. 거절은 «규칙 하나»만 떨어뜨리고 파일은 선다(같은 파일의 쓰는 조인은 규칙 둘로 선다 — `test_a_writing_join_still_stands_two_chain_rules`), 어드민 저장 라우트도 «같은 문장»을 `declaration_refused` 로 낸다. `read` 는 `INTO_KINDS` 에 «남는다» — 빼면 「모르는 칸」이 되어 운영자가 «안 낸 오타»를 찾는다(S-251 이 닫은 구멍을 은퇴가 다시 열지 않는다). `enabled: false` 는 여전히 «조용하다»(판정 399 ③′). ⚰ `virtual_join_rules.json` 쪽도 끝났다 — 09-17 `306419fd5` 가 엔진을 지웠고, 09-22 `fd546ccb1`(판정 652)이 그 문법을 지웠다 — 서버·클라 소스에서 그 파일 이름은 주석에만 남았다(09-25 `git grep`). 조인 쪽 옛 규율은 [config/virtual_join_rules](./virtual_join_rules.md) |
 | `key.unique` · `key.columns` | 워커 웜업(`chain/synthesis.ensure_declared_unique_keys` — 부팅 + 리로드마다. 읽기 경로가 «아니다») | `unique: true` 면 «제품이» 원천 표(`on.table`)에 유일 인덱스를 세운다 — 읽기 시점 가상 조인과 같은 `unique_key.ensure_once`, 같은 `uq_vjoin_*` 이름(S-240 `8cab58da`). 중복이 있으면 안 세우고 값·건수를 줄로 낸다(→ `RUN.md` §2 로 가른다). `columns` 는 «선택»이고 «검사»만 — 조인의 원천 쪽 키(`right`)와 같으면 무변, 다르면 두 목록을 이름 대고 안 세운다(`07a568ad` — 다른 컬럼 위의 인덱스는 이 조인이 안 쓴다). `enabled: false` 면 호출 0. 쓰기 시점 «행 단위 그물»은 그대로다 — 답이 둘인 into 행만 `[join_into:<규칙>] … → 다음:` 한 줄로 건너뛰고 나머지는 써진다 |
+| `derive.join.take[].fn` · `separator` (🆕 10-20) | `join_into._fn_takes` · `_gathered`(계산은 `enrichment.config.aggregation_record` → `expression`, 다른 구분자의 `unique_concat` 은 `enrichment.mapper._joined`) · 로드 거절 `join_into.take_refusal` | 키가 같은 원천 행 전부를 모아 한 칸에. 그 칸의 층은 origin 없이 쓰고 빈 집계는 `withdraw` — 결손 보정과 같은 문이라 원천 행 하나의 지움 · 이사가 그 칸을 거두지 않는다(다시 계산이 유일한 저자). 값 쪽 규칙에 로더가 `allow_delete_trigger` 를 찍어 지움도 다시 센다 |
 | `enabled` | 로더(`rule_shape.is_switched_off`) | `false` 면 규칙이 «안 선다» — DB 도 안 만진다(판정 399, ③′). 5-B 의 `enabled` 가 로드 «뒤» 걸러지는 것과 다르다. ⚰️ `ASSY_CHAIN_SYNTHESIZE` 은퇴(S-234 `5c845e67`, 판정 408) — 어느 문법이든 규칙 하나는 «적은 파일»의 `enabled`, 전부는 `ASSY_CHAIN_WORKER=0`. 🆕 이 파일·`enrichment_rules.json`·`virtual_join_rules.json` 의 규칙 이름은 «한 집합»(판정 409): 같은 이름이 두 번이면 로더가 «어느 쪽도 안 세우고» 한 번 거절한다 — `[ChainRules] <이름>: 같은 규칙 이름이 N 번 선언돼 있습니다 (<파일> · <파일>) — 어느 쪽도 돌지 않습니다 → 다음: 두 파일 중 하나에서 이름을 바꾸십시오` |
 
 ### 5-bis. 맵퍼 «사설» 키 — 프레임워크가 «안 읽고 안 검증한다» (출하 샘플 기준)
