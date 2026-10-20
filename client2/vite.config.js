@@ -43,7 +43,9 @@ export default defineConfig({
         // The visual testbed (lead aca803a7a): the visual part's kinds, basket, status bar, filters, properties.
         testbed: resolve(__dirname, 'testbed.html'),
         // The base layer's sample page (lead de64fb0f9) — every base element, both themes.
-        sample: resolve(__dirname, 'sample.html')
+        sample: resolve(__dirname, 'sample.html'),
+        // The file ingestion page by table · folder · result (lead, mockup FWp74vd6UqX1i7qXpyQg8K) - linked from Admin's File tab.
+        file_ingestion: resolve(__dirname, 'file_ingestion.html')
       }
     }
   }
