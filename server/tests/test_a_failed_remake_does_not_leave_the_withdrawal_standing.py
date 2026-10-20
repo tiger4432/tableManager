@@ -236,15 +236,32 @@ def atom(raw_ref, object_payload=None, predicate="register"):
         derivation="d")
 
 
+#: the refs this file's atoms carry - gone before and after each test, as the scratch schema is the session's
+REFS = ["raw-1", "raw-9"]
+
+
+def _drop_ours(connection):
+    with connection.cursor() as cursor:
+        cursor.execute(f"DELETE FROM {schema.LEDGER_TABLE} WHERE source_who = 'dt_job' AND source_raw_ref = ANY(%s)",
+                       (REFS,))
+    connection.commit()
+
+
 @pytest.fixture
 def store(pg_engine):
     connection = pg_engine.raw_connection()
     try:
         schema.ensure_schema(connection)
         schema.ensure_partition(connection, OCCURRED_AT)
+        _drop_ours(connection)
     finally:
         connection.close()
-    return LedgerStore(pg_engine)
+    yield LedgerStore(pg_engine)
+    connection = pg_engine.raw_connection()
+    try:
+        _drop_ours(connection)
+    finally:
+        connection.close()
 
 
 def rows_named(store, raw_ref):
