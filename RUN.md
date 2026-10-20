@@ -10,7 +10,7 @@
 > 볼 줄    chain_worker.log · server_stdout.log 의 «[ChainRules] <규칙> refused (1): unresolvable_mapper …»
 >          «did not import: …» 가 붙어 있으면 그 맵퍼 파일의 import 를 고친다 — 고친 뒤 리로드 없이 다음 저장 · 다음 읽기에서 잡힌다
 >          붙어 있지 않으면 그 이름의 @mapper 가 정말 없다(철자 · 파일 위치)
-> 되돌리기  git revert <착지> -> 런처 재기동
+> 되돌리기  git revert f30eff4a5 -> 런처 재기동
 > ```
 >
 > ---
