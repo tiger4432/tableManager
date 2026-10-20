@@ -2,11 +2,12 @@
 //   M1 a read's Result: «400 rows · 12 new · 388 unchanged» (zeros after the rows left out); a failure - its reason; none counted - ABSENT
 //   M2 Took «0.4 s»; none timed - ABSENT
 //   M3 the query: blanks left out, status ALL by default, `to` a day included (until = the day after), the group word
-//   M4 grouped by folder - under the folder ABOVE a file's own, the server's per-folder counts summed into it, in the rows' order;
+//   M4 grouped by folder - the server's groups as given (its count · failed), in the rows' order;
 //      by reason - a blank reason «(No reason)»; no group - one group without a head
 //   M5 the table list: ok · failed from /tables, running from /active per table
 //   M6 a status's word and tone: PENDING_RETRY «Pending retry» warn · FAILED danger · SUCCESS ok
-//   P1 the files part: a head per group with its count, a line per file with its folder (whole in the tooltip), the picked
+//   P1 the files part: a head per group with its count (a folder's head narrows the search to it), a line per file with its
+//      folder (whole in the tooltip), the picked
 //      one marked, a press hands the log; Show more only while more match
 //   P2 the detail: a failure - «Why it failed» with the reason and the frame, «Retry this file»; a success - «Read again», no
 //      reason box; Copy folder copies the folder; only the counts the server wrote
@@ -67,12 +68,13 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   ok('M3 the query: blanks out, ALL by default, the To day included, the group word', q.get('table') === 't' && q.get('status') === 'ALL' && q.get('name') === 'bmap'
     && !q.has('folder') && q.get('since') === '2026-10-19' && q.get('until') === '2026-10-21' && q.get('group') === 'folder' && q.get('page') === '2', q.toString());
 
-  const rows = [log(11), log(12, { status: 'FAILED', reason: 'bad' }), log(21, { folder: P('', '', 'fab', 'LOT', 'STEP_02', 'W21') })];
-  const server = [{ key: P('', '', 'fab', 'LOT', 'STEP_01', 'W11'), count: 1, failed: 0 }, { key: P('', '', 'fab', 'LOT', 'STEP_01', 'W12'), count: 1, failed: 1 },
-    { key: P('', '', 'fab', 'LOT', 'STEP_01', 'W13'), count: 3, failed: 1 }, { key: P('', '', 'fab', 'LOT', 'STEP_02', 'W21'), count: 2, failed: 0 }];
+  const F1 = P('', '', 'fab', 'LOT', 'STEP_01');
+  const F2 = P('', '', 'fab', 'LOT', 'STEP_02');
+  const rows = [log(11, { folder: F1 }), log(12, { folder: F1, status: 'FAILED', reason: 'bad' }), log(21, { folder: F2 })];
+  const server = [{ key: F1, count: 5, failed: 2 }, { key: F2, count: 2, failed: 0 }];
   const byFolder = M.groupFiles(rows, 'folder', server);
-  ok('M4a by folder: under the folder above, the counts summed, in the rows\' order',
-    byFolder.length === 2 && byFolder[0].key === P('', '', 'fab', 'LOT', 'STEP_01', '') && byFolder[0].files.length === 2 && byFolder[0].count === 5 && byFolder[0].failed === 2
+  ok('M4a by folder: the server\'s groups as given, in the rows\' order',
+    byFolder.length === 2 && byFolder[0].key === F1 && byFolder[0].files.length === 2 && byFolder[0].count === 5 && byFolder[0].failed === 2
       && byFolder[1].count === 2, JSON.stringify(byFolder.map((g) => [g.key, g.files.length, g.count, g.failed])));
   const byReason = M.groupFiles(rows, 'reason', [{ key: null, count: 2, failed: 0 }, { key: 'bad', count: 1, failed: 1 }]);
   const none = M.groupFiles(rows, '', server);
@@ -93,7 +95,8 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   doc.body.append(host);
   const picks = [];
   let mores = 0;
-  const files = new Q.FilesPart(host, { doc, onPick: (l) => picks.push(l.id), onMore: () => { mores += 1; } });
+  const drills = [];
+  const files = new Q.FilesPart(host, { doc, onPick: (l) => picks.push(l.id), onMore: () => { mores += 1; }, onDrill: (k) => drills.push(k) });
   files.render({ groups: byFolder, shown: 'x', picked: 12, more: true });
   const fileRows = walk(host).filter((n) => n.tagName === 'TR' && String(n.className).includes('fi-file'));
   const folderSpan = walk(fileRows[0]).find((n) => n.tagName === 'SPAN' && n.title);
@@ -104,6 +107,9 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
     texts(host, 'fi-group__line').length === 2 && texts(host, 'fi-group__line')[0].includes(M.WORDS.groupSummary(5, 2)) && fileRows.length === 3
       && folderSpan && folderSpan.title === P('', '', 'fab', 'LOT', 'STEP_01', 'W11', '') && String(fileRows[1].className).includes('is-picked')
       && JSON.stringify(picks) === '[12]' && mores === 1, `${texts(host, 'fi-group__line')} rows ${fileRows.length} picks ${picks}`);
+  const drill = byClass(host, 'fi-group__drill')[0];
+  if (drill) drill.dispatch('click');
+  ok('P1c a folder\'s head narrows the search to that folder', drill && drill.textContent === F1 && JSON.stringify(drills) === JSON.stringify([F1]), JSON.stringify(drills));
   files.render({ groups: byFolder, shown: 'x', picked: null, more: false });
   ok('P1b no Show more when nothing more matches', byClass(host, 'fi-more').length === 0);
 
@@ -171,8 +177,8 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   const one = doc.createElement('div');
   const two = doc.createElement('div');
   doc.body.append(one, two);
-  new Q.FilesPart(one, { doc, onPick() {}, onMore() {} }).render({ groups: byFolder, shown: 'one', picked: null, more: false });
-  new Q.FilesPart(two, { doc, onPick() {}, onMore() {} }).render({ groups: none, shown: 'two', picked: null, more: false });
+  new Q.FilesPart(one, { doc, onPick() {}, onMore() {}, onDrill() {} }).render({ groups: byFolder, shown: 'one', picked: null, more: false });
+  new Q.FilesPart(two, { doc, onPick() {}, onMore() {}, onDrill() {} }).render({ groups: none, shown: 'two', picked: null, more: false });
   ok('P5 two parts in one page keep to their own div', byClass(one, 'fi-group').length === 2 && byClass(two, 'fi-group').length === 0 && texts(one, 'fi-meta')[0] === 'one');
   return { ran, failed: failed.slice() };
 }
@@ -180,17 +186,17 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
 const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`); return t.split(from).join(to); };
 const MUTANTS = [
   { name: 'zeros said too', catches: ['M1a'], file: 'model', mutate: swap('    if (numberOr(v)) parts.push', '    if (numberOr(v) !== null) parts.push') },
-  { name: 'a failure said by its counts', catches: ['M1b'], file: 'model', mutate: swap("  if (String(log.status) === 'FAILED') return reasonOf(log) || ABSENT;", '') },
+  { name: 'a failure said by its counts', catches: ['M1b'], file: 'model', mutate: swap("  if (isFailedStatus(log.status)) return reasonOf(log) || ABSENT;", '') },
   { name: 'Took without its unit', catches: ['M2'], file: 'model', mutate: swap("Math.round(s).toLocaleString('en-US')} s`", "Math.round(s).toLocaleString('en-US')}`") },
   { name: 'the To day left out (until = To)', catches: ['M3'], file: 'model', mutate: swap('      day.setDate(day.getDate() + 1);\n', '') },
-  { name: 'grouped by a file\'s own folder', catches: ['M4a'], file: 'model', mutate: swap("return group === 'folder' && key ? folderGroupOf(key) : key;", 'return key;') },
-  { name: 'the head counts the last child folder only', catches: ['M4a'], file: 'model', mutate: swap('    c.count += numberOr(g.count) || 0;', '    c.count = numberOr(g.count) || 0;') },
+  { name: 'the head count not the server\'s', catches: ['M4a'], file: 'model', mutate: swap('count: c ? numberOr(c.count) : null', 'count: null') },
+  { name: 'a folder head narrows to nothing', catches: ['P1c'], file: 'parts', mutate: swap('this.deps.onDrill(g.key)', "this.deps.onDrill('')") },
   { name: 'a blank reason said blank', catches: ['M4b'], file: 'model', mutate: swap("label: key || (group === 'reason' ? WORDS.noReason : ABSENT)", 'label: key') },
   { name: 'running not counted per table', catches: ['M5'], file: 'model', mutate: swap('running: count(running.get(t.table_name))', 'running: count(0)') },
   { name: 'a waiting retry drawn as a failure', catches: ['M6'], file: 'model', mutate: swap("return tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warn';", "return tone === 'ok' ? 'ok' : 'danger';") },
   { name: 'the picked line not marked', catches: ['P1a'], file: 'parts', mutate: swap("`fi-file${view.picked === log.id ? ' is-picked' : ''}`", "'fi-file'") },
   { name: 'Show more always', catches: ['P1b'], file: 'parts', mutate: swap('    if (view.more) {', '    if (true) {') },
-  { name: 'no reason box on a failure', catches: ['P2a'], file: 'parts', mutate: swap("    if (String(log.status) === 'FAILED' || reason && String(log.status) !== 'SUCCESS') {", '    if (false) {') },
+  { name: 'no reason box on a failure', catches: ['P2a'], file: 'parts', mutate: swap('    if (isFailedStatus(log.status) || (reason && !isDoneStatus(log.status))) {', '    if (false) {') },
   { name: 'Copy folder copies the path', catches: ['P2a'], file: 'parts', mutate: swap('copy(WORDS.copyFolder, folder.full)', 'copy(WORDS.copyFolder, log.filepath)') },
   { name: 'All counts nothing', catches: ['P3'], file: 'parts', mutate: swap("[{ key: 'ALL', count: total }", "[{ key: 'ALL', count: 0 }") },
   { name: 'the rows link without its tx', catches: ['P2c'], file: 'model', mutate: swap('tx: String(log.transaction_id)', "tx: ''") },

@@ -57,6 +57,8 @@
 .fi-list td { padding: var(--space-2); vertical-align: top; }
 .fi-group td { background: var(--bg-header); border-top: 1px solid var(--border); }
 .fi-group__line { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.fi-group__drill { height: auto; padding: 0; border: 0; border-radius: 0; background: none; color: var(--text); cursor: pointer; text-align: left; line-height: normal; }
+.fi-group__drill:hover { color: var(--accent); text-decoration: underline; }
 .fi-file { cursor: pointer; border-top: 1px solid var(--bg-inset); }
 .fi-file:hover { background: var(--bg-header); }
 .fi-file.is-picked { background: var(--accent-weak); }

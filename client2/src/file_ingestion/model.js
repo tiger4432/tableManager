@@ -3,7 +3,7 @@
 // what the page runs. The server's answers: /admin/file-ingestion/tables · /logs (A bbbea4323 · 0eba61a50 · 06c21a7b1).
 import { ABSENT, isBlank } from '../absent.js';
 import { folderOf } from '../admin_rows.js';
-import { retryVerdict } from '../retry_verdict.js';
+import { isFailedStatus, retryVerdict } from '../retry_verdict.js';
 import { localShort } from '../server_time.js';
 
 /** Lines a page of the list asks for; «Show more» asks the next page. */
@@ -54,7 +54,7 @@ export function reasonOf(log) {
 
 /** The Result cell: a failure's reason; else «400 rows · 12 new · 388 unchanged» (zeros after the rows left out). */
 export function resultText(log) {
-  if (String(log.status) === 'FAILED') return reasonOf(log) || ABSENT;
+  if (isFailedStatus(log.status)) return reasonOf(log) || ABSENT;
   const read = numberOr(log.rows_read);
   if (read === null) return ABSENT;
   const parts = [`${count(read)} row${read === 1 ? '' : 's'}`];
@@ -96,38 +96,19 @@ export function queryOf(q, { page = 1, limit = PAGE_ROWS, group = q.group, statu
   return p;
 }
 
-/** The folder a file's line groups under - the one ABOVE the file's own (mockup: …\STEP_01\W11\bmap.txt under STEP_01; a
- *  file a wafer folder each would otherwise be a group each). Ends on its separator; none above - the folder itself. */
-export function folderGroupOf(folder) {
-  const f = String(folder || '').replace(/[\\/]+$/, '');
-  const cut = Math.max(f.lastIndexOf('\\'), f.lastIndexOf('/'));
-  if (cut < 0) return f;
-  return f.slice(0, cut + 1);
-}
-
 /** The lines in groups: by `group` (folder · reason), in the order the lines first say a key, each with the server's count
- *  of all that match (`groups` - by a file's own folder, summed into the folder above); no group - one group, no head. */
+ *  of all that match (`groups`, the server's one grouping); no group - one group, no head. A folder group is drilled into. */
 export function groupFiles(rows, group, groups = []) {
   if (!group) return [{ key: null, head: false, files: rows.slice() }];
-  const keyOf = (raw) => {
-    const key = raw === null || raw === undefined ? '' : String(raw);
-    return group === 'folder' && key ? folderGroupOf(key) : key;
-  };
-  const counted = new Map();
-  for (const g of groups || []) {
-    const key = keyOf(g.key);
-    const c = counted.get(key) || { count: 0, failed: 0 };
-    c.count += numberOr(g.count) || 0;
-    c.failed += numberOr(g.failed) || 0;
-    counted.set(key, c);
-  }
+  const keyOf = (raw) => (raw === null || raw === undefined ? '' : String(raw));
+  const counted = new Map((groups || []).map((g) => [keyOf(g.key), g]));
   const out = new Map();
   for (const row of rows) {
     const key = keyOf(group === 'folder' ? row.folder : row.reason);
     if (!out.has(key)) {
       const c = counted.get(key);
       out.set(key, { key, head: true, label: key || (group === 'reason' ? WORDS.noReason : ABSENT), files: [],
-        count: c ? c.count : null, failed: c ? c.failed : 0, retry: group === 'folder' && key !== '' });
+        count: c ? numberOr(c.count) : null, failed: c ? numberOr(c.failed) || 0 : 0, folder: group === 'folder' && key !== '' });
     }
     out.get(key).files.push(row);
   }

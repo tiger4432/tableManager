@@ -36,6 +36,7 @@ export function seatFileIngestionPage(doc = document) {
   const files = new FilesPart(byId('fi-files'), {
     doc, onPick: (log) => { view.picked = log; draw(); },
     onMore: () => { view.page += 1; list(true); },
+    onDrill: (folder) => { query.folder = folder; search(); },
   });
   const detail = new DetailPart(byId('fi-detail'), {
     doc,

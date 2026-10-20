@@ -2,6 +2,7 @@
 // (grouped under a folder or a reason), one file's detail. Each owns its div and is handed its doc and what it calls; the
 // page seats them and holds the query.
 import { ABSENT } from '../absent.js';
+import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
 import { GROUPS, WORDS, folderLine, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
 
 function maker(doc) {
@@ -132,7 +133,7 @@ export class SearchPart {
 }
 
 export class FilesPart {
-  /** @param {{doc, onPick: (log) => void, onMore: () => void}} deps */
+  /** @param {{doc, onPick: (log) => void, onMore: () => void, onDrill: (folder) => void}} deps */
   constructor(mount, deps) {
     this.mount = mount;
     this.deps = deps;
@@ -165,7 +166,14 @@ export class FilesPart {
         const td = el('td');
         td.colSpan = WORDS.heads.length;
         const line = el('span', 'fi-group__line');
-        line.append(el('span', 'fi-mono', g.label));
+        if (g.folder) {
+          // a folder's head narrows the search to it (lead 10-20: the server groups below the folder asked)
+          const drill = el('button', 'fi-group__drill fi-mono', g.label);
+          drill.type = 'button';
+          drill.title = g.label;
+          drill.addEventListener('click', () => this.deps.onDrill(g.key));
+          line.append(drill);
+        } else line.append(el('span', 'fi-mono', g.label));
         if (g.count !== null) line.append(el('span', 'fi-meta fi-num', WORDS.groupSummary(g.count, g.failed)));
         td.append(line);
         tr.append(td);
@@ -239,14 +247,14 @@ export class DetailPart {
       body.append(result);
     }
     const reason = reasonOf(log);
-    if (String(log.status) === 'FAILED' || reason && String(log.status) !== 'SUCCESS') {
+    if (isFailedStatus(log.status) || (reason && !isDoneStatus(log.status))) {
       const why = el('div', 'fi-why');
       why.append(el('span', 'fi-why__title', WORDS.whyFailed), el('span', '', reason || ABSENT));
       if (log.failed_at) why.append(el('span', 'fi-mono fi-meta', log.failed_at));
       body.append(why);
     }
     const acts = el('div', 'fi-actions');
-    const act = el('button', 'fi-btn fi-btn--primary', String(log.status) === 'FAILED' ? WORDS.retryFile : WORDS.readAgain);
+    const act = el('button', 'fi-btn fi-btn--primary', isFailedStatus(log.status) ? WORDS.retryFile : WORDS.readAgain);
     act.type = 'button';
     act.addEventListener('click', () => this.deps.onAct(log));
     acts.append(act);
