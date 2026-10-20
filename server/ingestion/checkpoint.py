@@ -542,7 +542,12 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
     ):
         reason = f"오프셋 손상(processed_rows={row.processed_rows}, total_rows={total_rows})"
 
-    if reason is None:
+    # The same content DONE at another path is another file (총괄 10-20): read from the start, nothing aborted.
+    another_file = (row.status == STATUS_DONE and not force_restart
+                    and not (row.filepath and _same_path(row.filepath, filepath)))
+    if another_file:
+        plan.resume_from = 0
+    elif reason is None:
         plan.resume_from = int(row.processed_rows or 0)
         if plan.resume_from > 0:
             plan.note = (

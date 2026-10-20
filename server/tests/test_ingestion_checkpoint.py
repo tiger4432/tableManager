@@ -502,6 +502,30 @@ def test_duplicate_signature_is_skipped_with_explicit_record(p2_env):
     assert applied and notified[-1][1] == "SUCCESS", notified[-1]
 
 
+def test_a_done_content_at_another_path_is_read_without_an_abort_sentence(p2_env, caplog):
+    """총괄 10-20: the same content at another path is another file - read from the start and nothing «aborted» said.
+    At the ledger row's own path (force, dedup off) the sentence stays."""
+    ck = ingestion.checkpoint
+    a, b = os.path.abspath("a.csv"), os.path.abspath("b.csv")
+    db = p2_env["SessionLocal"]()
+    try:
+        db.add(models.FileIngestionCheckpoint(
+            table_name=TABLE, file_signature="sha256:same", filename="a.csv", filepath=a, source_kind="std",
+            total_rows=2, processed_rows=2, chunk_index=1, status=ck.STATUS_DONE))
+        db.commit()
+        other = ck.plan_ingestion(db, TABLE, "sha256:same", "b.csv", b, 2, "std")
+        assert (other.resume_from, other.note) == (0, None), other.note
+        assert not [r for r in caplog.records if "[resume-abort]" in r.getMessage()]
+
+        row = ck.find_checkpoint(db, TABLE, "sha256:same")
+        row.status = ck.STATUS_DONE
+        db.commit()
+        same = ck.plan_ingestion(db, TABLE, "sha256:same", "b.csv", b, 2, "std")
+        assert same.resume_from == 0 and "[resume-abort]" in (same.note or ""), same.note
+    finally:
+        db.close()
+
+
 def test_dedup_is_scoped_per_table(p2_env):
     """같은 내용이라도 다른 테이블 대상이면 스킵하지 않는다."""
     ws_a, handler_a = p2_env["make_handler"](TABLE, name="ws_a")
