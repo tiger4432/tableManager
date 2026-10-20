@@ -1,3 +1,18 @@
+# 🔴 [구현자] **파일 다시 읽기 미리보기 · 외부 훑기가 파일마다 realpath — 폴더당 한 번으로** (소유자 10-20 「glob 은 1 초도 안 걸리던데 리스트 뽑는 게 왜 오래 걸려」, 총괄) — 맵 통째 교체 착지 다음
+
+근거(코드, 재지 않음): reread.select_files 는 걸은 파일마다 _safe_relative_path(raws) + source_taking(specs) 를 부르고, _safe_relative_path 는 부를 때마다
+os.path.realpath(파일) · os.path.realpath(루트) 둘 — 윈도우 realpath 는 경로를 «열어» 최종 경로를 묻는다. 네트워크 공유에서 파일 수 × (1 + 소스 수) × 2 번 왕복.
+glob 은 열지 않아서 빠르다. 와처의 외부 훑기(accepted_path → external_source_context → source_taking)도 같은 값을 5 분마다 치른다.
+```
+할 일   realpath 는 «루트당 한 번 · 디렉터리당 한 번»(파일 이름은 디렉터리 실경로 + 이름) — 정션 탈출 막기(이 함수의 이유)는 그대로.
+        한 함수(_safe_relative_path)를 고치거나 그 앞에 캐시 하나 — 둘째 판정 금지. 캐시 수명은 한 훑기(호출 묶음) — 오래 들고 있지 않는다
+게이트   박스에서 파일 수천 개 폴더(가능하면 SMB/UNC 공유, 안 되면 로컬 + realpath 호출 수 세기)로 미리보기 · 외부 훑기 전 · 후 초와 realpath 호출 수 ·
+        정션으로 루트 밖을 가리키는 파일은 여전히 «밖» · 변이(파일마다 realpath) 빨강 · 고른 파일 집합 전후 같음
+RUN.md
+```
+
+---
+
 # 🔴🔴 [구현자 B] **조인 유일성이 «키가 전부 빈 행»을 뺀다 — 조인과 같은 «빈 키» 답** (소유자 10-20 「조인키가 계산 칼럼일때 빌수 있는데 유니크키 땜에 아무것도 못함」 · 「ㅇㅇ」, 총괄)
 
 근거: 조인은 키가 전부 빈 행을 짝짓지 않는다(f36abbb1a). 유일 인덱스(coalesce(col,'')) · 쓰기 가드(_folded_join_key) · unique_key.inspect 는
