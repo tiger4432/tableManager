@@ -76,7 +76,7 @@ def _node_type(node_id, nodes):
         return None
 
 
-def _key_values(sight, node_type, limit, starts_with=None):
+def key_values(sight, node_type, limit, starts_with=None):
     """The node search (`GET /api/ledger/key-values`), called in this process on the sight's session."""
     from fastapi import HTTPException
 
@@ -101,7 +101,7 @@ def key_shapes(sight, limit=None, argument=None):
     """Per declared type, its keys and the first `limit` nodes' key values (the node search's first page)."""
     items = []
     for name, spec in _entities(sight).items():
-        found = _key_values(sight, _bare(name), limit or 3)
+        found = key_values(sight, _bare(name), limit or 3)
         items.append({"type": _bare(name), "keys": list((spec or {}).get("keys") or []),
                       "sample": [node["keys"] for node in (found or {}).get("nodes") or ()]})
     return _out("key_shapes", items, None)
@@ -113,7 +113,7 @@ def node_count(sight, limit=None, argument=None):
 
     items = []
     for name in _entities(sight):
-        found = _key_values(sight, _bare(name), trace_router.KEY_VALUE_MAX_LIMIT) or {}
+        found = key_values(sight, _bare(name), trace_router.KEY_VALUE_MAX_LIMIT) or {}
         items.append({"type": _bare(name), "count": found.get("scanned", 0),
                       "at_least": bool(found.get("scan_truncated") or found.get("values_truncated"))})
     return _out("node_count", items, limit)
@@ -135,7 +135,7 @@ def key_candidates(sight, limit=None, argument=None):
     items, seen = [], set()
     for name in _entities(sight):
         for word in words:
-            found = _key_values(sight, _bare(name), limit or 5, starts_with=word)
+            found = key_values(sight, _bare(name), limit or 5, starts_with=word)
             for node in (found or {}).get("nodes") or ():
                 node_id = explorer.entity_id(_bare(name), node["keys"])
                 if node_id not in seen:

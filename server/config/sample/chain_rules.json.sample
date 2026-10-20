@@ -360,6 +360,70 @@
       }
     },
     {
+      "__comment": "e38466810 - the agent walk, hop by hop: a walk_request row -> the LLM picks the next node from the cards its position shows (walk_recipe) -> a walk_log row, by the tracked mapper server/mappers/agent_walk.py. agent_walk_follow writes the request's position back, which wakes this rule again: a rule is never woken by its own writes, so the two take turns and a hop is two chain depths (max_chain_depth 8 -> 4 hops). rows_per_run 1: one walk a group, the LLM's time is the group's.",
+      "name": "agent_walk_hop",
+      "__why_enabled": "SHIPS ENABLED because the agent walk is a request written in walk_request (e38466810, owner 10-20): off, a question row is a row nothing walks. It runs only when a walk_request row is written, and test_a_walk_takes_one_hop_per_chain_step reads what it writes.",
+      "enabled": true,
+      "is_batch": true,
+      "allow_chain_trigger": true,
+      "rows_per_run": 1,
+      "on": {
+        "table": "walk_request"
+      },
+      "into": {
+        "table": "walk_log"
+      },
+      "derive": {
+        "kind": "mapper",
+        "mapper": {
+          "mapper_module": "mappers.agent_walk",
+          "mapper_function": "agent_walk"
+        }
+      }
+    },
+    {
+      "__comment": "e38466810 - a walk_log row -> its walk_request's position, step and state (the same mapper; no LLM call). Its write wakes agent_walk_hop for the next hop; an end row sets state end and nothing walks on.",
+      "name": "agent_walk_follow",
+      "__why_enabled": "SHIPS ENABLED with agent_walk_hop - off, a walk stops after its first hop. It runs only when a walk_log row is written.",
+      "enabled": true,
+      "is_batch": true,
+      "allow_chain_trigger": true,
+      "on": {
+        "table": "walk_log"
+      },
+      "into": {
+        "table": "walk_request"
+      },
+      "derive": {
+        "kind": "mapper",
+        "mapper": {
+          "mapper_module": "mappers.agent_walk",
+          "mapper_function": "agent_walk"
+        }
+      }
+    },
+    {
+      "__comment": "e38466810 - a blank meaning row (made from the ledger declaration) -> the LLM's draft, in its own layer llm_draft below a person's. A meaning a person wrote or emptied is not drafted. rows_per_run 20: one LLM request carries twenty names.",
+      "name": "meaning_draft",
+      "__why_enabled": "SHIPS ENABLED because the meaning table's blank rows are for the LLM to draft (e38466810, owner 10-20 「뜻은 LLM 이 초안, 사람이 승인」). It runs only when a meaning row is written, and test_a_meaning_draft_stays_below_a_persons reads what it writes.",
+      "enabled": true,
+      "is_batch": true,
+      "rows_per_run": 20,
+      "on": {
+        "table": "ontology_meaning"
+      },
+      "into": {
+        "table": "ontology_meaning"
+      },
+      "derive": {
+        "kind": "mapper",
+        "mapper": {
+          "mapper_module": "mappers.agent_walk",
+          "mapper_function": "meaning_draft"
+        }
+      }
+    },
+    {
       "__comment": "Every bind param in a reference view MUST be a decision_key column -- the loader rejects anything else (enrichment_config.py:126-129) and drops just that view. A view that binds only PART of the decision key is legal but gets flagged scope_unresolved, because one confirmed value would then be stamped onto every member of the wider scope; both rules in this file bind the FULL key. | candidate_for is {target_field: view_result_column}. Without it declaring_views is empty, resolve_target_candidate refuses before running any SQL (enrichment_candidates.py:306-308), and the probe emits ZERO log lines -- which is indistinguishable from 'the feature is off'. That silent state is what this config exists to avoid. | INFERENCE #1 -- confirm which DT lot and slot a DT job's wafer ended up as. This cannot be done with a SQL join: bonding_log's (dt_lot, dt_slot) is the value AS OF BONDING and dt_log's is the value AS OF DT, and split/merge moved the wafer in between, so a naive join does not error -- it matches the wrong wafer plausibly. | auto_confirm is ON here: the candidate is a RECORDED FACT (an equipment track-in event) plus an assignment fixed by the monotonic constraint, not a guess, and a single distinct answer is the only thing that confirms. Anything else -- zero candidates, two candidates, a failed view -- stays in the queue for a human.",
       "name": "dt_job_lot_slot_attribution",
       "enabled": false,
