@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+import json
+
 import chain_bindings
 from chain import join_into
 
@@ -94,8 +96,8 @@ def from_chain_rule(raw: dict, origin: str = "declared") -> dict:
 KEY_CELLS = ("columns", "unique")
 
 #: The skeleton node of each `key` cell that is NOT one value (`chain.synthesis` reads
-#: `unique` as a flag). A cell missing here is a value.
-KEY_CELL_SHAPES = {"unique": {"kind": "leaf", "hint": "flag"}}
+#: `unique` as a flag and `columns` as a list). A cell missing here is a value.
+KEY_CELL_SHAPES = {"columns": chain_bindings.list_node("column", "free"), "unique": {"kind": "leaf", "hint": "flag"}}
 
 #: The two things `into` can say, and they are exclusive: a join that WRITES names its
 #: table, a join that answers at READ time says so (S-251). The form draws one or the
@@ -738,6 +740,13 @@ def expand_declaration(declaration, table_config=None,
     flags = chain_bindings.flag_refusals(declaration)
     if flags:
         return ([], "%s: %s" % (name, "; ".join(flags)), unread)
+    # 🔴 key.columns AS TEXT (총괄 77793123e): read as letters, «lot» was ['l', 'o', 't'] and the join's unique index
+    #    was skipped without an error - refused by name, as a list param written as text is (`param_not_a_list`).
+    key_cell = declaration.get(KEY_CELL) if isinstance(declaration, dict) else None
+    if isinstance(key_cell, dict) and "columns" in key_cell and not isinstance(key_cell["columns"], list):
+        written = key_cell["columns"]
+        return ([], "%s: key.columns must be a list, e.g. %s" % (name, json.dumps(
+            [written] if isinstance(written, str) else ["<column>"])), unread)
     if not unified:
         return ([declaration], None, unread)
 

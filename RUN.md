@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **체인 규칙의 key.columns · group_by · limits.group_by 가 «목록»으로 — 폼이 줄로 그리고, 글자로 적힌 key.columns 는 이름 대어 거절 (총괄 77793123e)** — git pull · 런처 재기동 · 브라우저 새로고침
+>
+> ```
+> 무엇     선언 창(Chain rules 의 declaration)이 key.columns · group_by(평평) · limits.group_by(통합) 를 한 칸 대신 «줄 목록»으로 그린다
+>          key.columns 를 글자로 적으면(예: "lot") 저장 · 적재 둘 다 거절: «<규칙>: key.columns must be a list, e.g. ["lot"]»
+>          전에는 ['l','o','t'] 로 읽혀 조인 유일 인덱스가 오류 없이 안 지어졌다
+> 볼 것    선언 창에서 key 의 columns · limits 의 group_by 에 행 추가 칸이 보이는지
+>          chain_worker.log · 서버 로그에 «key.columns must be a list» 줄이 있으면 그 규칙은 서지 않은 것 — 파일에서 ["lot"] 처럼 목록으로 고친다
+>          이 박스 chain_rules.json: 규칙 13 · key 를 적은 규칙 1(unique 만) · 글자 key.columns 0 · group_by 0 (박스 판, 운영은 안 셈)
+> 되돌리기  git revert <착지> -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **갤러리 다듬기 넷 — Caption 칸 · ← → Esc · 묶음 Order · 옆 판은 그리드 표시 칸만 (소유자 「갤러리 1,2,3,5 하고」)** — git pull · 브라우저 새로고침
 >
 > ```

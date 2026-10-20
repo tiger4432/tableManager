@@ -273,8 +273,13 @@
         "key": "group_by",
         "required": false,
         "node": {
-          "kind": "leaf",
-          "hint": "free"
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
         }
       },
       {
@@ -386,8 +391,13 @@
               "key": "columns",
               "required": false,
               "node": {
-                "kind": "leaf",
-                "hint": "free"
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "column",
+                "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
               }
             },
             {
@@ -794,8 +804,13 @@
               "key": "columns",
               "required": false,
               "node": {
-                "kind": "leaf",
-                "hint": "free"
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "column",
+                "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
               }
             },
             {
@@ -819,8 +834,13 @@
               "key": "group_by",
               "required": false,
               "node": {
-                "kind": "leaf",
-                "hint": "free"
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "column",
+                "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
               }
             },
             {

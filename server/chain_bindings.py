@@ -644,8 +644,9 @@ _SKELETON_HINTS = {
 }
 
 #: Routing cells whose value is a LIST of names -> (member, item hint). `trigger_columns` is
-#: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below.
-_LIST_CELLS = {"trigger_columns": ("column", "free"), REQUIRE_KEY: ("column", "free"),
+#: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below; `group_by` by
+#: `rule_refusals` (bad_group_by takes only a list - drawn as one value, the form could not save it, 총괄 77793123e).
+_LIST_CELLS = {"trigger_columns": ("column", "free"), REQUIRE_KEY: ("column", "free"), GROUP_BY_KEY: ("column", "free"),
                EXCLUDE_KEY: ("column", "free"), **{key: ("column", "free") for key in SOURCE_GATE_KEYS.values()},
                READS_KEY: ("table", "ref")}
 
@@ -724,10 +725,14 @@ def _node_for(key):
         # owner's mapper's. The form writes by path into the raw document, so those survive.
         return _record(_field(REFERENCE_TABLE_KEY, {"kind": "leaf", "hint": "ref"}))
     if key in _LIST_CELLS:
-        member, hint = _LIST_CELLS[key]
-        return {"kind": "map", "keyed_by": "index", "member": member,
-                "of": {"kind": "leaf", "hint": hint}}
+        return list_node(*_LIST_CELLS[key])
     return _leaf(key)
+
+
+def list_node(member, hint):
+    """The node of a cell whose value is a LIST - drawn as rows, one `member` each. `_LIST_CELLS` and
+    `rule_shape.KEY_CELL_SHAPES` both spell it here."""
+    return {"kind": "map", "keyed_by": "index", "member": member, "of": {"kind": "leaf", "hint": hint}}
 
 
 def _key_node():

@@ -75,7 +75,8 @@ FIXTURE = [
                                          "on": [{"left": "a", "right": "x"}],
                                          "take": ["x", "y"]}},
      "into": {"table": "left_t"},
-     "key": {"unique": True},
+     "key": {"unique": True, "columns": ["x"]},
+     "limits": {"group_by": ["a"]},
      "reads": ["other_t"]},
     {"name": "decides", "enabled": True,
      "on": {"table": "src_t"},
@@ -88,16 +89,17 @@ FIXTURE = [
          "auto_confirm": True, "alignment": True}},
      "into": {"table": "derived_t"}},
     {"name": "flat", "trigger_table": "t", "trigger_columns": ["c"], "target_table": "t",
-     "mapper": "m", "reads": ["u"], "reference": {"table": "u"}},
+     "mapper": "m", "reads": ["u"], "reference": {"table": "u"}, "group_by": ["c"]},
 ]
 
-#: The cells the order named (and the two the lead added), by the root they sit under.
+#: The cells the order named (and the two the lead added, and key.columns · group_by of 77793123e), by root.
 NAMED = [("unified", ("derive", "join", cell)) for cell in ("on", "take")] + [
     ("unified", ("derive", "decide", cell)) for cell in (
         "key", "fields", "list_columns", "aggregations", "reference_views",
         "auto_confirm", "alignment")] + [
     ("unified", ("key", "unique")), ("unified", ("on", "columns")), ("unified", ("reads",)),
-    ("flat", ("reference",)), ("flat", ("reads",)), ("flat", ("trigger_columns",))]
+    ("unified", ("key", "columns")), ("unified", ("limits", "group_by")),
+    ("flat", ("reference",)), ("flat", ("reads",)), ("flat", ("trigger_columns",)), ("flat", ("group_by",))]
 
 
 def _child(node, key):
