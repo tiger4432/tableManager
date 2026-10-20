@@ -122,6 +122,13 @@ async function suite(d) {
   ok('A14 a value predicate turned entity_ref: its types are a list and + Type adds one', Array.isArray(turned.object.types) && Array.isArray(typed.object.types) && typed.object.types.length === 1, JSON.stringify(typed.object));
   const removed = bar.editDeclaration(RAW, { op: 'remove', path: 'sentences.0' }, CTX);
   ok('A8 × takes that sentence out', removed.sentences.length === 1 && removed.sentences[0].sentence === 's2');
+  // «none of» (implementer B 57137972a): another chip's edit leaves the list a list - the draft is the declaration, edited
+  // at one path
+  const NONE_OF = { product: { not: ['', 'P9'] } };
+  const listed = { ...RAW, sentences: [{ ...RAW.sentences[0], when: NONE_OF }, RAW.sentences[1]] };
+  const stepped = bar.editDeclaration(listed, { op: 'set', path: 'sentences.0.step', value: 'step_no' }, CTX);
+  ok('A15 a «none of» list stays a list when another chip of its sentence is edited', same(stepped.sentences[0].when, NONE_OF)
+    && stepped.sentences[0].step === 'step_no', JSON.stringify(stepped.sentences[0].when));
 
   console.log('\n── B. the drawing ──');
   const root = bar.renderDeclarationBar(document, RAW, { kind: 'source', name: 'wafer_process_recipe', sourceId: 'wafer_process_recipe', draftId: 'd-1',
@@ -149,6 +156,9 @@ async function suite(d) {
   ok('B10 a sentence with no atom time does not make the time mixed', untimedRead.includes('eventtime') && !untimedRead.includes('mixed'), untimedRead);
   const all = root.textContent;
   ok('B7 a when reads its condition', all.includes('mat_type is blank') && all.includes('mat_type ≠ "DT"'), all.slice(0, 400));
+  const noneOf = bar.renderDeclarationBar(document, { ...RAW, sentences: [{ ...RAW.sentences[0], when: { product: { not: ['', 'P9'] } } }] },
+    { kind: 'source', name: 'wafer_process_recipe', catalog: CATALOG, ctx: CTX }).textContent;
+  ok('B7b a «none of» list reads as its values', noneOf.includes('product is none of: blank, "P9"'), noneOf.slice(0, 400));
   const run = byAction(root, 'test-run')[0];
   ok('B8 Test run names the source and the draft; Save draft and Activate are there', run?.dataset.value === 'wafer_process_recipe' && run?.dataset.draft === 'd-1'
     && byAction(root, 'save-draft-only').length === 1 && byAction(root, 'save-draft')[0]?.textContent === 'Activate');
@@ -373,6 +383,11 @@ const MUTANTS = [
   { name: 'an untimed sentence counts as a time', catches: ['B10'], file: 'bar', mutate: swap('.filter((s) => s.occurred_at !== undefined && s.occurred_at !== null)', '') },
   { name: 'mixed times drawn without the refusal', catches: ['B6'], file: 'bar', mutate: swap("bar.append(el('span', 'ldb-pill is-bad', BAR_WORDS.timesDiffer));", '') },
   { name: 'the Read line reads one sentence\'s time', catches: ['B6'], file: 'bar', mutate: swap('  return seen.length > 1 ? BAR_WORDS.mixed : seen[0] || \'\';', '  return seen[0] || \'\';') },
+  { name: 'a «none of» list reads as one value', catches: ['B7b'], file: 'bar',
+    mutate: swap("  if (isObj(v) && Array.isArray(v.not)) return BAR_WORDS.noneOf(", "  if (false) return BAR_WORDS.noneOf(") },
+  { name: 'a «none of» list is written back as its text', catches: ['A15'], file: 'bar',
+    mutate: swap("const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v));",
+      "const clone = (v) => JSON.parse(JSON.stringify(v === undefined ? null : v, (k, x) => (k === 'not' && Array.isArray(x) ? x.join(',') : x)));") },
   { name: 'a differs-when reads as equals', catches: ['B7'], file: 'bar', mutate: swap('`${c} ≠ ${JSON.stringify(v.not)}`', '`${c} = ${JSON.stringify(v.not)}`') },
   { name: 'Test run forgets its draft', catches: ['B8', 'E5'], file: 'bar', mutate: swap(' if (view.draftId) run.dataset.draft = view.draftId;', '') },
   { name: 'a word drawn in Korean', catches: ['B9'], file: 'bar', mutate: swap("  addSentence: '+ Sentence',", "  addSentence: '+ 문장',") },

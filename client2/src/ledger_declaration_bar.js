@@ -15,7 +15,8 @@
 // A source in the short form (implementer B 10-14): { table, status?, attributes?: {type: {attribute: value}},
 //   sentences: [{sentence, predicate, when?, <role>: value}] } - the roles subject · target · value · occurred_at and the
 //   qualifiers. A value is a column's name, {const: v}, a time {column, timezone, format} or an end {node: type|{column}, keys}.
-//   A when is {column: condition}, its columns «and»: "" blank, {not: ""} not blank, v equals, {not: v} differs.
+//   A when is {column: condition}, its columns «and»: "" blank, {not: ""} not blank, v equals, {not: v} differs,
+//   {not: [v, …]} none of them (implementer B 57137972a) - drawn as it is; the when chip still writes one condition.
 // The atom time is each sentence's occurred_at; the Read line's chips write it on every sentence (path `sentences.*.…`).
 // Sentences that state it must state the same one - the server refuses a source whose sentences differ (missing_time).
 
@@ -27,7 +28,7 @@ export const BAR_WORDS = Object.freeze({
   sentences: 'Sentences', perRow: 'one row → one edge per sentence', with: '· with', when: '· when', addQualifier: '+ Qualifier',
   addSentence: '+ Sentence', remove: 'Remove sentence', fromSource: (s) => `— from source ${s}`,
   run: (draft) => `Test run · ${draft ? 'draft' : 'active declaration'}`, runSummary: (r) => `first ${r.rows} rows → ${r.edges} edges · ${r.refused} refused`, runNone: 'Not run yet',
-  constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', unset: '?', mixed: 'mixed', timesDiffer: 'sentences differ: one row, one time',
+  constant: 'Constant…', blank: 'is blank', notBlank: 'is not blank', noneOf: (c, vs) => `${c} is none of: ${vs}`, unset: '?', mixed: 'mixed', timesDiffer: 'sentences differ: one row, one time',
   nodeType: 'Node type', keys: 'keys', addKey: '+ Key', predicate: 'Predicate', from: 'from', addSubject: '+ Subject', addType: '+ Type',
   more: 'More', json: 'JSON', columnsUnavailable: (why) => `Column lists unavailable: ${why}`,
   problems: (n) => `${n} problem${n === 1 ? '' : 's'} — see the bar`,
@@ -50,6 +51,7 @@ function whenWords(w) {
   if (!c) return BAR_WORDS.unset;
   const v = w[c];
   if (v === '') return `${c} ${BAR_WORDS.blank}`;
+  if (isObj(v) && Array.isArray(v.not)) return BAR_WORDS.noneOf(c, v.not.map((x) => (x === '' ? 'blank' : JSON.stringify(x))).join(', '));
   if (isObj(v) && 'not' in v) return v.not === '' ? `${c} ${BAR_WORDS.notBlank}` : `${c} ≠ ${JSON.stringify(v.not)}`;
   return `${c} = ${JSON.stringify(v)}`;
 }
