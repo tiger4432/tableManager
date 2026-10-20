@@ -138,6 +138,10 @@ const CANON_MATRIX = [
   [' A_B ', 'string', 'A_B'],
   [1.0, 'string', '1'],            // a float VALUE is numeric whatever the declared type
   [true, 'number', 'true'],        // bool is not a number here (mirrors the server guard)
+  // owner 10-20: a number key's non-integral value is the float's short spelling, laid out as Python's repr
+  ['1.50', 'number', '1.5'], ['007.50', 'number', '7.5'], [1.5, 'number', '1.5'],
+  ['0.00001', 'number', '1e-05'], ['1.5e-7', 'number', '1.5e-07'], [0.00001, 'number', '1e-05'],
+  ['0.0001', 'number', '0.0001'], ['123456789012345.6', 'number', '123456789012345.6'],
 ];
 CANON_MATRIX.forEach(([v, t, exp]) => {
   check('7b-1/2', `canonicalKeyValue(${JSON.stringify(v)}, ${JSON.stringify(t)})`,

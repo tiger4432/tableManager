@@ -5394,7 +5394,7 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 
 | export | 시그니처 | 내용 | 라인 |
 |---|---|---|---|
-| ✅ | `canonicalKeyValue(value, colType)` | null/undefined → `null`. **`number` 선언**이면 정수 정규화(`'01'`→`'1'`, `'1.0'`→`'1'`), 못 읽으면 trim한 원문. 그 외는 trim한 문자열. 단 **정수형 유한 JS number는 선언 타입과 무관하게** 정수로 문자열화된다 | ~58 |
+| ✅ | `canonicalKeyValue(value, colType)` | null/undefined → `null`. **`number` 선언**이면 정수 정규화(`'01'`→`'1'`, `'1.0'`→`'1'`), 🆕 10-20 비정수는 짧은 철자(`'1.50'`→`'1.5'`, 서버 repr 꼴 — `floatRepr`, 1e-4 밑은 `'1e-05'`), 못 읽으면 trim한 원문. 그 외는 trim한 문자열. 단 **정수형 유한 JS number는 선언 타입과 무관하게** 정수로 문자열화된다 | ~58 |
 | ✅ | `composeMapId(keyColumns, values, columnTypes)` | 컬럼별 `canonicalKeyValue` → null은 `''` → `join('_')` | ~84 |
 | ✅ | `decomposeMapKey(keyColumns, mapKey, columnTypes)` | `'_'` 분할, **마지막 컬럼이 나머지를 흡수**. 조각이 컬럼보다 적으면 `cols[0]`에만 전체를 배정 | ~95 |
 | ✅ | `canonicalMapKey(keyColumns, mapKey, columnTypes)` | 분해 후 재합성(멱등). 분해 불가 갈래에서는 **재합성하지 않고** 첫 컬럼의 정규값을 돌려준다 — 빈 꼬리를 발명하지 않기 위해서다 | ~115 |
