@@ -355,7 +355,13 @@ def poll_pending_retries():
             if latest_reload is not None:
                 last_reload_event_id = latest_reload.id
 
-            if system_reload.reload_for(system_reload.WATCHER, new_reloads) == system_reload.FULL:
+            reload_work = system_reload.reload_for(system_reload.WATCHER, new_reloads)
+            if reload_work == system_reload.SCOPE_JOIN_KEYS:
+                # the index line built or took back a join unique index: this writer's gate learns it again
+                from chain import synthesis
+
+                synthesis.reset_right_key_cache()
+            if reload_work == system_reload.FULL:
                 logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading scripts...")
                 reload_watcher_cache()
                 # [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충

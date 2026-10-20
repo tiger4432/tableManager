@@ -163,14 +163,6 @@ def _start_work(db_session_factory):
             (worker._analyze_stale_tables_sync, db_session_factory)] + _declared_work(db_session_factory)
 
 
-def _latest_reload_id(db):
-    from database.models import DatabaseOutbox
-
-    row = (db.query(DatabaseOutbox.id).filter(DatabaseOutbox.event_type == "SYSTEM_RELOAD")
-           .order_by(DatabaseOutbox.id.desc()).first())
-    return row[0] if row else 0
-
-
 def poll_once(db_session_factory, mark):
     """One read: reloads past `mark` -> the declared work again; INDEX_WANTED -> its automatic index. -> the new mark."""
     import event_constants
@@ -183,6 +175,8 @@ def poll_once(db_session_factory, mark):
         # reading one raised every poll - the mark never moved and the asks taken were never built (10-16)
         reloads = system_reload.reloads_after(db, mark)
         latest = reloads[-1].id if reloads else mark
+        # a join-keys row is this line's own word to the writers - not a reason to do the declared work again
+        declared = system_reload.reload_for(system_reload.INDEX_LINE, reloads)
         asks = index_wants.taken(db)
         asked = [each for _row, each in asks if each is not None]
         for row, _each_ask in asks:
@@ -192,7 +186,8 @@ def poll_once(db_session_factory, mark):
         db.close()
     if latest != mark:
         mark = latest
-        _each(_declared_work(db_session_factory))
+        if declared:
+            _each(_declared_work(db_session_factory))
     if asked:
         _each([(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
     return mark
@@ -203,7 +198,9 @@ def run(db_session_factory, stop=None):
     stop = stop or threading.Event()
     db = db_session_factory()
     try:
-        mark = _latest_reload_id(db)
+        from runtime import system_reload
+
+        mark = system_reload.latest_reload_id(db)
     finally:
         db.close()
     started = time.time()

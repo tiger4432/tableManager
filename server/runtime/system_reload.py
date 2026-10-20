@@ -34,10 +34,19 @@ active_watcher = None
 #:    shapes - and every other reader lets the row pass. A row without a scope is the whole
 #:    reload (the Reload button, the code editor), unchanged.
 SCOPE_CHAIN_RULES = "chain_rules"
+#: 🔴 [총괄 10-20] The index line built or took back a join's unique index: each process that writes forgets the
+#:    join keys its write gate learned (`synthesis.reset_right_key_cache`), nothing else. Without it a process that
+#:    learned 「no index」 before the index stood kept its gate off until somebody reloaded by hand.
+SCOPE_JOIN_KEYS = "join_keys"
 #: What a reader does for a row without a scope, or with one this build does not know.
 FULL = "full"
-#: The readers of SYSTEM_RELOAD, by their heartbeat names.
+#: The readers of SYSTEM_RELOAD, by their heartbeat names - and the API's outbox listener and the scheduler's index
+#: line (`runtime.maintenance_line`), which read the rows too.
 CHAIN_WORKER, WATCHER, SCHEDULER = "chain", "watcher", "scheduler"
+API, INDEX_LINE = "api", "index_line"
+#: Who each scope is for, widest first - re-reading the rules forgets the join keys too.
+SCOPE_READERS = ((SCOPE_CHAIN_RULES, frozenset({CHAIN_WORKER, INDEX_LINE})),
+                 (SCOPE_JOIN_KEYS, frozenset({CHAIN_WORKER, WATCHER, API})))
 
 
 def publish_reload(db: Session, scope=None, **said):
@@ -58,6 +67,14 @@ def publish_reload(db: Session, scope=None, **said):
     return event
 
 
+def latest_reload_id(db: Session) -> int:
+    """The newest SYSTEM_RELOAD row's id, 0 if none - where a reader that starts now sets its mark."""
+    from sqlalchemy import func
+
+    return db.query(func.max(models.DatabaseOutbox.id)).filter(
+        models.DatabaseOutbox.event_type == "SYSTEM_RELOAD").scalar() or 0
+
+
 def reloads_after(db: Session, after_id: int) -> list:
     """The SYSTEM_RELOAD rows past a reader's high-water mark, oldest first. Every one, not
     the newest only: a scoped row landing right after a button press must not hide it."""
@@ -68,7 +85,7 @@ def reloads_after(db: Session, after_id: int) -> list:
 
 
 def reload_for(reader: str, rows) -> str:
-    """What `reader` does for these rows: FULL, SCOPE_CHAIN_RULES, or None. The one seat that
+    """What `reader` does for these rows: FULL, a scope of `SCOPE_READERS`, or None. The one seat that
     asks a row's scope."""
     import json
 
@@ -83,9 +100,9 @@ def reload_for(reader: str, rows) -> str:
         scopes.add(payload.get("scope") if isinstance(payload, dict) else None)
     if not scopes:
         return None
-    if scopes - {SCOPE_CHAIN_RULES}:
+    if scopes - {scope for scope, _readers in SCOPE_READERS}:
         return FULL
-    return SCOPE_CHAIN_RULES if reader == CHAIN_WORKER else None
+    return next((scope for scope, readers in SCOPE_READERS if scope in scopes and reader in readers), None)
 
 
 def reload_local_process_cache():

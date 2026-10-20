@@ -809,6 +809,8 @@ async def _outbox_queue_broadcast_loop():
     #    아래 `CancelledError` 가 종료 «시점»에 NameError 를 냈을 자리라 여기서 든다.
     import asyncio
     message = json.dumps({"event": event_constants.EVENT_OUTBOX_QUEUE_CHANGED})
+    # set before the first wait, at the start: a join-keys row after it is heard (this process learns its first batch later)
+    reload_mark = await asyncio.to_thread(_hear_join_keys, None)
     _outbox_listener = OutboxListener(SessionLocal,
                                       event_constants.OUTBOX_NOTIFY_CHANNEL,
                                       # [Q-207] lap 은 «안 찍는다» — main 은
@@ -819,10 +821,39 @@ async def _outbox_queue_broadcast_loop():
         while True:
             if await _outbox_listener.wait(30.0):
                 await manager.broadcast(message)
+            reload_mark = await asyncio.to_thread(_hear_join_keys, reload_mark)
     except asyncio.CancelledError:
         raise
     finally:
         _outbox_listener.close()
+
+
+def _hear_join_keys(mark):
+    """🔴 [총괄 10-20] The SYSTEM_RELOAD rows past `mark`, as this process reads them: a join-keys row (the index line
+    built or took back a join unique index) - this process's write gate learns the join keys again. Every other row
+    this process published and reloaded for where it did. `None` is the first read: the mark is set at the newest
+    row. -> the new mark. A failure is a line; the broadcast goes on."""
+    from chain import synthesis
+    from runtime import system_reload
+
+    try:
+        db = SessionLocal()
+        try:
+            if mark is None:
+                return system_reload.latest_reload_id(db)
+            rows = system_reload.reloads_after(db, mark)
+        finally:
+            db.close()
+        if not rows:
+            return mark
+        if system_reload.reload_for(system_reload.API, rows):
+            synthesis.reset_right_key_cache()
+            logger.info("[Reload] SYSTEM_RELOAD (Event ID: %s) - the write gate learns the join unique indexes again",
+                        rows[-1].id)
+        return rows[-1].id
+    except Exception as error:                                     # noqa: BLE001
+        logger.warning("[Reload] SYSTEM_RELOAD rows not read (the write gate keeps what it learned): %s", error)
+        return mark
 
 
 @app.get("/")

@@ -98,9 +98,12 @@ async def test_the_outbox_broadcast_loop_keeps_going(monkeypatch):
             pass
 
     monkeypatch.setattr(main, "OutboxListener", Listener)
+    # the reload rows' read is a thread on the database - this measures the broadcast alone
+    monkeypatch.setattr(main, "_hear_join_keys", lambda mark: mark)
     loop = asyncio.create_task(main._outbox_queue_broadcast_loop())
-    for _ in range(100):
-        await asyncio.sleep(0)
+    # each round hops to a thread for the reload rows - ticks of the clock, not of the loop
+    for _ in range(300):
+        await asyncio.sleep(0.01)
         if len(rounds) >= 3:
             break
 

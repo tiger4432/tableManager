@@ -52,7 +52,6 @@ def test_the_action_is_chosen_from_this_module_not_written_at_the_call_site():
     being wrong is most expensive."""
     assert "합치십시오" in operator_line.fold_the_data("t", ["a"])
     assert "데이터를 합치면 사실이 사라집니다" in operator_line.widen_the_key("선언", "컬럼")
-    assert "null_policy" in operator_line.fill_or_declare_null("t", ["a"])
     assert "재기동" in operator_line.restart_to_apply()
     assert "없음" in operator_line.nothing_to_do()
 

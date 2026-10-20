@@ -2818,6 +2818,18 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
             _report = synthesis.ensure_declared_unique_keys(_index_db, rules)
             synthesis.ensure_declared_lookup_keys(_index_db, rules)
             _retracted = synthesis.retract_unrequired_indexes_once(_index_db)
+            # 🔴 [총괄 10-20] a join unique index built or taken back: the writers learned the old answer once
+            #    and keep it - one join-keys reload tells them (the lookup indexes gate nothing)
+            from chain import join_key_index
+            from runtime import system_reload
+
+            _changed = ["%s (built)" % _name for _name, _one in _report.get("ensured") or () if _one.get("created")] + [
+                "%s (taken back)" % _name for _name in (_retracted or {}).get("dropped") or ()
+                if str(_name).startswith(join_key_index.INDEX_PREFIX)]
+            if _changed:
+                system_reload.publish_reload(_index_db, scope=system_reload.SCOPE_JOIN_KEYS, changed=_changed)
+                logger.info("[Warmup] 조인 유일 인덱스가 바뀌어 쓰기 가드에 다시 배우라고 알렸습니다: %s",
+                            ", ".join(map(str, _changed)))
         finally:
             _index_db.close()
         for _name, _why in _report.get("skipped") or ():
@@ -4058,6 +4070,9 @@ def reload_rules(work):
     slot (`chain.slots`) call it, so one reload means one thing. -> the rules."""
     from runtime import system_reload
 
+    if work == system_reload.SCOPE_JOIN_KEYS:
+        _reset_right_keys()
+        return loaded_chain_rules()
     if work == system_reload.SCOPE_CHAIN_RULES:
         rules = reread_rules_only()
     else:
@@ -4501,6 +4516,9 @@ async def start_chain_ingestion_worker(db_session_factory):
                 if reload_work == system_reload.SCOPE_CHAIN_RULES:
                     logger.info("[Reload] SYSTEM_RELOAD chain_rules (Event ID: %s) - re-reading "
                                 "the chain rules only", latest_reload.id)
+                elif reload_work == system_reload.SCOPE_JOIN_KEYS:
+                    logger.info("[Reload] SYSTEM_RELOAD join_keys (Event ID: %s) - the write gate learns "
+                                "the join unique indexes again", latest_reload.id)
                 elif reload_work == system_reload.FULL:
                     logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading configurations...")
                     head_watch.note_reload()

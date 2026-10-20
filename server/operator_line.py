@@ -49,12 +49,6 @@ def widen_the_key(where_declared: str, what_to_add: str) -> str:
             "데이터를 합치면 사실이 사라집니다" % (where_declared, what_to_add))
 
 
-def fill_or_declare_null(table: str, columns) -> str:
-    """키가 «비어 있다» — 중복이 아니라 부재다."""
-    return ("%s 의 %s 를 채우거나, 카탈로그에 그 컬럼의 null 정책(`null_policy`)을 "
-            "적으십시오" % (table, _names(columns)))
-
-
 def rename_one_declaration(files) -> str:
     """같은 이름이 «두 선언»에 있다 — 한쪽 이름을 바꿔라. 어느 쪽인지는 제품이 못 고른다 (S-234 ①).
 

@@ -258,6 +258,13 @@ def test_the_scheduler_s_poll_reads_its_rows_before_it_closes_the_session(monkey
                 raise RuntimeError("Instance <DatabaseOutbox> is not bound to a Session")
             return self._id
 
+        @property
+        def payload(self):
+            # the scope is read before the close too (총괄 10-20: a join-keys row does not start the declared work)
+            if closed:
+                raise RuntimeError("Instance <DatabaseOutbox> is not bound to a Session")
+            return None
+
     class _Db:
         def commit(self):
             pass

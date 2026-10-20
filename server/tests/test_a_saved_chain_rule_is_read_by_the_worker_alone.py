@@ -26,6 +26,7 @@ from ledger import admin                                              # noqa: E4
 from runtime import system_reload as sr                               # noqa: E402
 
 SCOPED = {"scope": sr.SCOPE_CHAIN_RULES}
+JOIN_KEYS = {"scope": sr.SCOPE_JOIN_KEYS}
 
 
 def _row(row_id, payload):
@@ -34,16 +35,22 @@ def _row(row_id, payload):
 
 # ---------------------------------------------------------------- the one seat, every reader
 
-READERS = [sr.CHAIN_WORKER, sr.WATCHER, sr.SCHEDULER]
+READERS = [sr.CHAIN_WORKER, sr.WATCHER, sr.SCHEDULER, sr.API, sr.INDEX_LINE]
+F5 = [sr.FULL] * 5
 CASES = [
-    ("nothing new", [], [None, None, None]),
-    ("the button", [{"msg": "x"}], [sr.FULL, sr.FULL, sr.FULL]),
-    ("a chain rules save", [SCOPED], [sr.SCOPE_CHAIN_RULES, None, None]),
-    ("a save right after the button", [{"msg": "x"}, SCOPED], [sr.FULL, sr.FULL, sr.FULL]),
-    ("the button right after a save", [SCOPED, {"msg": "x"}], [sr.FULL, sr.FULL, sr.FULL]),
-    ("a scope this build does not know", [{"scope": "later"}], [sr.FULL, sr.FULL, sr.FULL]),
-    ("the code editor's string payload", ['{"trigger": "code_editor"}'],
-     [sr.FULL, sr.FULL, sr.FULL]),
+    ("nothing new", [], [None] * 5),
+    ("the button", [{"msg": "x"}], F5),
+    ("a chain rules save", [SCOPED], [sr.SCOPE_CHAIN_RULES, None, None, None, sr.SCOPE_CHAIN_RULES]),
+    ("a save right after the button", [{"msg": "x"}, SCOPED], F5),
+    ("the button right after a save", [SCOPED, {"msg": "x"}], F5),
+    ("a scope this build does not know", [{"scope": "later"}], F5),
+    ("the code editor's string payload", ['{"trigger": "code_editor"}'], F5),
+    # 총괄 10-20: the index line built or took back a join unique index - the writers forget their join keys
+    ("a join unique index changed", [JOIN_KEYS],
+     [sr.SCOPE_JOIN_KEYS, sr.SCOPE_JOIN_KEYS, None, sr.SCOPE_JOIN_KEYS, None]),
+    ("a join index change and a rules save", [JOIN_KEYS, SCOPED],
+     [sr.SCOPE_CHAIN_RULES, sr.SCOPE_JOIN_KEYS, None, sr.SCOPE_JOIN_KEYS, sr.SCOPE_CHAIN_RULES]),
+    ("a join index change and the button", [JOIN_KEYS, {"msg": "x"}], F5),
 ]
 
 
@@ -74,6 +81,48 @@ def test_a_reader_gets_every_row_past_its_mark_oldest_first(outbox):
     assert [r.id for r in sr.reloads_after(db, first.id)] == [second.id, third.id]
     assert sr.reloads_after(db, third.id) == []
     assert second.payload["scope"] == sr.SCOPE_CHAIN_RULES and "scope" not in first.payload
+
+
+def test_the_chain_worker_forgets_its_join_keys_and_keeps_its_rules(monkeypatch):
+    forgot = []
+    monkeypatch.setattr(worker, "_reset_right_keys", lambda: forgot.append(1))
+    monkeypatch.setattr(worker, "loaded_chain_rules", lambda: ["the rules as loaded"])
+    monkeypatch.setattr(worker, "reread_rules_only", lambda: pytest.fail("the rules were read again"))
+
+    assert worker.reload_rules(sr.SCOPE_JOIN_KEYS) == ["the rules as loaded"] and forgot == [1]
+
+
+@pytest.mark.parametrize("payload,runs", [(JOIN_KEYS, False), (SCOPED, True), ({"msg": "x"}, True)],
+                         ids=["its own join-keys row", "a chain rules save", "the button"])
+def test_the_index_line_does_its_declared_work_again_except_for_its_own_row(outbox, monkeypatch, payload, runs):
+    from runtime import maintenance_line
+
+    ran = []
+    monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: ran.append(1) or [])
+    sr.publish_reload(outbox(), **payload)
+
+    assert maintenance_line.poll_once(outbox, 0) > 0
+    assert bool(ran) is runs
+
+
+@pytest.mark.parametrize("created,dropped,said", [
+    (True, [], True), (False, ["uq_vjoin_t_k_ns"], True), (False, ["ix_vjoin_t_k_ns"], False), (False, [], False)],
+    ids=["built", "taken back", "only a lookup index taken back", "nothing changed"])
+def test_the_index_line_tells_the_writers_once_when_a_join_unique_index_changes(outbox, monkeypatch, created, dropped,
+                                                                                 said):
+    from chain import synthesis, unique_key
+
+    monkeypatch.setattr(unique_key, "forget", lambda *a: None)
+    monkeypatch.setattr(unique_key, "forget_retractions", lambda *a: None)
+    monkeypatch.setattr(synthesis, "ensure_declared_unique_keys", lambda db, rules: {
+        "ensured": [("r", {"created": "CREATE UNIQUE INDEX …" if created else None})], "skipped": []})
+    monkeypatch.setattr(synthesis, "ensure_declared_lookup_keys", lambda db, rules: {"ensured": []})
+    monkeypatch.setattr(synthesis, "retract_unrequired_indexes_once", lambda db: {"dropped": list(dropped)})
+
+    worker._ensure_declared_indexes_sync([], outbox)
+
+    rows = sr.reloads_after(outbox(), 0)
+    assert [r.payload.get("scope") for r in rows] == ([sr.SCOPE_JOIN_KEYS] if said else [])
 
 
 # ---------------------------------------------------------------- the save tells the worker

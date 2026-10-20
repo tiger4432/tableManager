@@ -562,14 +562,12 @@ async def _run_batch(key, run, rules, seen):
 
 
 def _newest_reload():
-    from sqlalchemy import func
     from database.database import SessionLocal
-    from database.models import DatabaseOutbox
+    from runtime import system_reload
 
     session = SessionLocal()
     try:
-        return session.query(func.max(DatabaseOutbox.id)).filter(
-            DatabaseOutbox.event_type == "SYSTEM_RELOAD").scalar() or 0
+        return system_reload.latest_reload_id(session)
     finally:
         session.close()
 

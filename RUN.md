@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **조인 유일 인덱스가 서거나 걷히면 쓰기 가드가 «스스로» 다시 배운다 — 손 리로드 없음 (총괄, f10464703 뒤)** — git pull · 런처 재기동
+>
+> ```
+> 원인     쓰기 가드는 «이 조인 키를 덮는 인덱스가 있나»를 프로세스마다 첫 배치에 한 번 배우고 리로드까지 기억했다
+>          -> 인덱스가 서기 전에 배운 API · 체인 워커 · 감시기는 그 표에서 가드가 꺼진 채 — 채워진 같은 키 둘이 오면 묶음째 23505
+> 바뀜     스케줄러 인덱스 줄이 조인 유일 인덱스를 세우거나 걷으면 범위 리로드(scope join_keys) 한 행을 낸다
+>          API · 체인 워커(슬롯 포함) · 감시기는 그 행에서 «배운 조인 키만» 잊는다 — 규칙 · 매퍼 · 표는 다시 안 읽는다
+> 볼 줄    server\auto_update.log  «[Warmup] 조인 유일 인덱스가 바뀌어 쓰기 가드에 다시 배우라고 알렸습니다: <규칙> (built), uq_vjoin_… (taken back)»
+>          server\server.log       «[Reload] SYSTEM_RELOAD (Event ID: N) - the write gate learns the join unique indexes again»
+>          server\chain_worker.log «[Reload] SYSTEM_RELOAD join_keys (Event ID: N) - the write gate learns the join unique indexes again»
+>          찾기  Select-String -Path server\auto_update.log, server\server.log, server\chain_worker.log -Pattern "다시 배우라고|learns the join unique"
+> 뜻       첫 줄 없이 둘째 · 셋째도 없다 = 인덱스가 안 바뀌었다(할 일 없음). 첫 줄만 있고 둘째가 없다 = API 가 못 들었다 — server.log 의
+>          «SYSTEM_RELOAD rows not read» 줄을 보낸다
+> 그새 실패한 묶음   인덱스가 서기 전 «제약 `uq_vjoin_…` 위반으로 이 배치(…)를 «거절»했습니다» 줄이 난 묶음은 첫 줄 뒤 다시 돌린다
+>          (체인 큐의 실패 묶음 재시도 · 파일은 다시 읽기)
+> 되돌리기  git revert <착지> -> 런처 재기동 (그 뒤엔 인덱스가 선 다음 설정 다시 읽기 한 번이 다시 필요하다)
+> ```
+>
+> ---
+>
 > ## [10-20] **외부 저장소 옛 파일 — 기다리지 않음 · 소스끼리 번갈아 · 진행 줄 · 같은 내용 다른 경로도 읽음 (소유자 10-20 「아직도 외부 저장소 안 읽어」 · 「ㄱ」)** — git pull · 런처 재기동
 >
 > ```
@@ -48,8 +68,6 @@
 >          걷음  «[Warmup] 아무 선언도 요구하지 않아 제품 인덱스를 걷었습니다: uq_vjoin_…_ns»
 >          찾기  Select-String -Path server\auto_update.log -Pattern "_ns_eb|제품 인덱스를 걷었습니다"
 >          ⚠️ 세우는 시간은 오른쪽 표 크기에 비례(CONCURRENTLY — 쓰기는 안 막는다)
-> 「세움」 뒤 한 번   설정 다시 읽기(config 저장 또는 /admin/reload-configs) — API · 체인 워커가 쓰기 가드의 «인덱스 있음»을 프로세스당
->          첫 배치에 한 번 배우므로, 인덱스가 서기 전에 배운 프로세스는 다시 읽어야 가드가 다시 선다(코드로 읽음, 재지 않음)
 > 그새 실패한 묶음   «제약 `uq_vjoin_…` 위반으로 이 배치(…)를 «거절»했습니다» 줄이 난 묶음은 「세움」 뒤 다시 돌린다
 >          (체인 큐의 실패 묶음 재시도 · 파일은 다시 읽기)
 > 그래도   «세움» 대신 «중복»/«failed» 줄이 나오면 그 줄의 키 값을 보낸다 — 채워진 키의 진짜 중복이다
