@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **원장 숫자 키 원자를 정본 철자로 — 다시 번역 (소유자 10-20 「1 ㅇㅇ」)** — 코드 변경 없음 · 재기동 없음
+>
+> ```
+> 무엇     키 값이 JSON 수(9.0)인 원자는 걷기에서 글자 «9» 와 다른 노드 — 다시 번역하면 정본 글자로 다시 적힘(1460cfef2 의 철자)
+>          🔴 «표 소스»에만 뜻이 있음. 뷰를 읽는 소스는 로더가 거절해(c193986a8) 다시 번역이 안 닿음 — 그 원자는 그대로 둠(총괄)
+> ① 세기 (읽기만 · 원장 세상마다: 기본은 ledger_events, 브랜치는 "w_<세상>".ledger_events)
+>   SELECT source_who, count(*) AS atoms,
+>     count(*) FILTER (WHERE EXISTS (SELECT 1 FROM jsonb_each(subject_keys) e WHERE jsonb_typeof(e.value) = 'number')) AS subject_number,
+>     count(*) FILTER (WHERE jsonb_typeof(object_payload->'keys') = 'object' AND EXISTS (
+>       SELECT 1 FROM jsonb_each(object_payload->'keys') e WHERE jsonb_typeof(e.value) = 'number')) AS object_number
+>   FROM ledger_events GROUP BY 1 ORDER BY 3 DESC;
+>   뜻  subject_number · object_number 가 둘 다 0 -> 할 일 없음
+>       0 이 아닌 소스 -> ② 로. 단 그 소스가 ledger.log 에 «source <이름> is NOT planned» 로 찍히면(뷰 소스) 다시 번역 불가 — 그대로 둠
+> ② 소스마다 미리보기 (쓰지 않음)
+>   cd server && python -m ledger.backfill --source <소스> --whole-source
+> ③ 다시 번역
+>   cd server && python -m ledger.backfill --source <소스> --whole-source --apply --pace slow
+>   (Admin 소급 대기열의 «다시 번역»과 같은 일)  끝 줄 «withdrawn N, written N of N, refused 0» -> ① 을 다시 돌려 그 소스가 0
+> 박스에서 잰 것  스크래치 mix 판 transfer_event 원자 2,810(행 1,405) — 13.5 s(프로세스 시작 포함, 조각 4, --pace 없음) · 약 4.8 s / 원자 1,000
+>               전 · 후: 수 키 2,810 -> 0 · 원자 2,810 -> 2,810 · 같은 사실 둘 0 · 글자 씨앗 die(W07, 10, 5) 한 걸음 엣지 0 -> 2
+> 박스 원장 수(운영 주장 아님): 수 키 원자 560,441 은 전부 뷰 소스 넷(bw_dt_seat · void_observation · bonded_from · dt_transfer)의 09-25 전 잔해
+> ```
+>
+> ---
+>
 > ## [10-20] **숫자 키의 철자 하나 — «1 / 1.0 / 001 / 1.50» (소유자 10-20)** — git pull · 런처 재기동
 >
 > ```
