@@ -81,3 +81,47 @@ def test_an_uninstalled_meaning_table_is_said_not_raised(box, monkeypatch, caplo
     monkeypatch.delitem(models.DYNAMIC_TABLES, TABLE)
     assert meanings.fill_blank_meanings(engine) is None
     assert any("install_product_tables.py --apply" in r.getMessage() for r in caplog.records)
+
+
+def test_an_explorer_save_makes_the_new_entity_s_blank_row(box, tmp_path, monkeypatch):
+    """The gate cell (총괄 10-21): a new entity saved in the declaration window has its blank meaning row right
+    after - the window's own callback (`_read_again`) -> `config_watcher.changed` -> the ontology row, in a process
+    whose watcher holds the engine (the API's)."""
+    import json
+    from pathlib import Path
+
+    from database import config_watcher
+    from ledger import config as ledger_config, setup_bundle
+    from ledger.config_explorer_service import OntologyExplorerService
+    from ledger.setup import load_setup
+    from ledger_api import ontology_config_explorer_router as router
+
+    engine, _ = box
+    shipped = Path(SERVER) / "config" / "sample"
+    root = tmp_path / "ontology"
+    root.mkdir()
+    (root / "ledger_config.json").write_text((shipped / "ledger_config.json.sample").read_text(encoding="utf-8"),
+                                             encoding="utf-8")
+    catalog = setup_bundle.load_physical_catalog(shipped / "table_config.json.sample")
+    real_load = ledger_config.load
+    monkeypatch.setattr(trace_router, "_declaration",
+                        lambda world=None: real_load(str(root / "ledger_config.json"), catalog=catalog))
+    monkeypatch.setattr(config_watcher, "_ENGINE", [engine])                     # what start_config_watcher holds in the API
+    service = OntologyExplorerService(
+        config_root=root, draft_root=tmp_path / "drafts", setup_loader=lambda where: load_setup(where, catalog=catalog),
+        catalog_loader=lambda: catalog,
+        convergence_probe=lambda expected: {"ontology-explorer-api": expected, "ledger-persistent-reader": expected})
+    meanings.fill_blank_meanings(engine)
+    before = set(_rows(engine))
+    assert ("entity", "probe_part") not in before and before                    # the shipped names, not the new one
+
+    _, index, _ = service.active()
+    draft = service.create_declaration_draft(kind="entity", canonical_id="probe_part@1",
+                                             base_snapshot_hash=index.snapshot_hash)
+    raw = dict(draft["raw"], keys=["probe_part"])
+    saved = service.save_draft(draft["draft_id"], expected_revision=0, raw=json.dumps(raw))
+    assert saved["preview_valid"] is True, saved.get("validation_errors")
+    service.activate_draft(draft["draft_id"], expected_revision=1, reload_callback=lambda: router._read_again(service))
+
+    assert set(_rows(engine)) - before == {("entity", "probe_part")}
+    assert _rows(engine)[("entity", "probe_part")] is None
