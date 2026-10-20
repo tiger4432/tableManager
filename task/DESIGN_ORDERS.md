@@ -1,3 +1,22 @@
+# 🔴 [구현자 B] **멀쩡한 맵퍼가 «unresolvable_mapper» 로 거절되다가 리로드하면 됨 — 끈적한 «못 찾음»을 찾아 없앤다** (소유자 10-20, 총괄) — 표준 파서 착지 다음
+
+증상(운영, 소유자): 소유자 맵퍼(mappers/ 의 @mapper)가 체인 규칙 에러 «unresolvable_mapper … is not registered» 로 거절되고, 리로드하면 다시 됨.
+코드에서 본 것(재지 않음): 이름 조회 rule_run.runnable → 없으면 mapper_sdk.ensure_discovered() — «한 번만» 훑고 _DISCOVERY_ATTEMPTED 를 세움.
+system_reload 는 mappers.* 를 sys.modules 에서 빼고 reset_registry(비움 + 플래그 내림) 뒤 discover. 그 사이 다른 스레드가 묻거나,
+훑는 순간 그 맵퍼 모듈 import 가 실패(반쯤 쓰인 파일 · 다른 mappers.* 가 아직 다시 import 중 · 일시 오류)하면 그 이름은 «없음»으로 남고
+플래그가 서 있어 다음 리로드까지 다시 안 찾는다 — 증상과 같은 모양. 후보일 뿐, 재현으로 가른다.
+```
+할 일   1) 재현: 진짜 체인 워커 + API, 소유자 꼴 맵퍼(다른 mappers 모듈 import 하는 것 포함) — 설정 저장(SYSTEM_RELOAD)을 N 번 · 체인이 도는 중에.
+           거절이 난 판마다 «어느 프로세스 · 어느 순간 · 레지스트리에 무엇이 있었나 · 그때 refusals» 를 표로
+        2) 고침: «못 찾음» 이 끈적하지 않게 — 그 이름이 없으면 다음 물음에서 다시 훑는다(look_again_on_a_miss 가 이미 있는 문 — 그것을 넓히거나 부름,
+           둘째 재시도 길 금지). 리셋과 다시 채우기 사이를 다른 스레드가 «빈 레지스트리»로 보지 않게
+        3) 그 이름을 못 찾을 때의 문장에 «그 모듈의 import 실패 사유»(refusals)가 있으면 같이 — 지금은 «not registered» 만
+게이트   재현 판 N 번 거절 0 · 일부러 import 를 한 번 실패시킨 뒤 다음 물음에서 살아남 · 변이(재시도 빼기) 빨강 · 기존 mapper_sdk / reload 시험 초록
+RUN.md   볼 줄 · 되돌리기
+```
+
+---
+
 # 🔴 [응용] **소급(체인 리플레이)이 group_by 묶음을 안 쪼갠다 — 쪽을 키 경계에서 자른다** (소유자 10-20 「집계하는 체인인데도 리플레이 쪼개네」 · 「ㄱ」, 총괄)
 
 근거(코드): 리플레이는 row_id 순으로 쪽(chunk)을 잘라 «접힌 사건»(row_ids 만, 값 없음)으로 큐에 넣는다. ingestion_worker.group_key 는 접힌 사건이면
