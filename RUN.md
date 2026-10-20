@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **폴더 다시 읽기를 «다른 표로» — Into table (소유자 10-20 「어드민 파일 리트라이는 돌았던 테이블로만 도네」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     어드민 File Ingestion «Retry failed files under a folder» 에 표 고르기. 고르면 그 폴더 아래 «그 표가 받는» 디스크 파일을
+>          그 표로 다시 읽음(그 표 기록이 없는 파일도). 처음 읽은 표의 기록 · 행은 그대로
+> 먼저     ingestion_settings.json 의 external_sources 에 새 표가 그 폴더를 읽는 항목이 있어야 함(없으면 전부 «not taken»)
+> 하는 법  폴더 적기 -> 표 고르기 -> Preview -> 수 확인 -> Retry
+> 답의 뜻  Files looked at N            폴더 아래 본 파일 수
+>          NEW n · SUCCESS m …          넘길 파일 — NEW 는 그 표 기록이 없던 파일(기록을 새로 세움)
+>          Not taken · outside the table's source folders n        그 표의 소스 루트 밖 -> 폴더나 external_sources.path 를 본다
+>          Not taken · not matched by the source's glob or filename n  루트 안이지만 glob/filename 이 안 받음 -> options 를 본다
+>          Not taken · being read now n  그 표가 지금 읽는 중 -> 끝난 뒤 다시
+>          «more than 100000 files under … - narrow the folder»   폴더를 좁힌다
+>          «N files - over the limit M; … reread_max_files …»      좁히거나 ingestion_settings.json 의 reread_max_files 를 올린다
+>          «a re-read into a table needs the watcher process»      와쳐가 따로 도는 런처로 띄운다(운영 모드)
+> 재기동 뒤 watcher 로그  «Retry succeeded for log ID #<id>.»  — 표 이름은 Admin 목록의 Target Table
+> 확인(읽기만)  SELECT l.id, l.table_name, l.status FROM file_reread_marks m JOIN file_ingestion_logs l ON l.id = m.log_id
+>              WHERE m.status_before = 'STOOD';      아직 안 집힌, 이번 다시 읽기가 세운 기록
+> 급할 때  POST /admin/file-ingestion/cancel-reread?folder=<폴더>&preview=true 로 수를 보고, preview 없이 한 번 더(화면 단추 없음)
+>          아직 안 집힌 것만 — 세운 기록은 지워지고(removed), 원래 있던 기록은 전 상태로(put back)
+> 되돌리기  git revert 1d194343f -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **같은 기존 행의 다른 칸을 두 쓰기가 동시에 고칠 때 — 바뀌는 행을 row_id 순으로 먼저 잠금 (총괄 5c0a86cec ②, 소유자 10-20)** — git pull · watcher · 체인 워커 · API 서버 재기동
 >
 > ```
