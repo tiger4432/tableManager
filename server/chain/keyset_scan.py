@@ -125,6 +125,47 @@ def pages(items, start: int = 0):
     return items[start:after], (after if after < len(items) else None), -(-len(items) // size)
 
 
+#: Rows a whole-key read takes from the server cursor at a time (`keyed_rows`).
+KEYED_READ_ROWS = 10000
+
+
+def keyed_rows(db, model, columns, key_of, condition=None, max_row_id=None) -> dict:
+    """{key: [row_id, ...]} of the rows `condition` picks - a row's key is `key_of({column: value})` over `columns`, the
+    keys in the row_id order of their first row. One streamed read of the row_id and those columns; the replay's
+    whole-key pages (`key_pages`) and the fold's groups (`replay.fold_units`) stand on it."""
+    from sqlalchemy import select
+
+    names = list(columns)
+    statement = select(model.row_id, *(getattr(model, name) for name in names)).order_by(model.row_id)
+    if condition is not None:
+        statement = statement.where(condition)
+    if max_row_id is not None:
+        statement = statement.where(model.row_id <= max_row_id)
+    keyed, spelled = {}, {}                        # spelled: raw values -> key, asked once a distinct value set
+    for row in db.execute(statement.execution_options(yield_per=KEYED_READ_ROWS)):
+        raw = tuple(row[1:])
+        if raw not in spelled:
+            spelled[raw] = key_of(dict(zip(names, raw)))
+        keyed.setdefault(spelled[raw], []).append(row[0])
+    return keyed
+
+
+def key_pages(keyed, size, log=logger.info):
+    """Pages of row_ids from `keyed` (`keyed_rows`) that end only between keys - a key's rows are on one page (소유자 10-20
+    「집계하는 체인인데도 리플레이 쪼개네」). A page takes whole keys up to `size.next()` rows; a key with more rows than the
+    largest page (`size.most`) is a page that size, said in one line."""
+    page, n = [], size.next()
+    for key, ids in keyed.items():
+        if page and len(page) + len(ids) > n:
+            yield page
+            page, n = [], size.next()
+        if len(ids) > size.most:
+            log("[pages] key %s holds %d rows, more than a page of %d - its page holds them all" % (key, len(ids), size.most))
+        page.extend(ids)
+    if page:
+        yield page
+
+
 def iter_pages(db, model, columns=None, condition=None, chunk_size: int = DEFAULT_CHUNK_SIZE,
                limit: int = None, max_row_id: str = None, size=None, ranged: bool = False):
     """Yield pages of rows ordered by `row_id`, keyset-seeked.

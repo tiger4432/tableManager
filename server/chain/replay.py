@@ -358,6 +358,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     """
     trg_model, columns = replay_refusal(rule, force)
 
+    from chain import ingestion_worker
     from database import crud, database, models, schemas
     import map_meta_registrar
     # 🪦 [S-214, 판정 370 · 소유자 2026-09-23] `from chain import rule_run` stood here. This
@@ -508,10 +509,24 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         #    data columns」, which is about whether the rule can say anything at all, not
         #    about what this scan needs.
         size = keyset_scan.PageSize(chunk_size)
-        for page in keyset_scan.iter_pages(db, trg_model, columns=[],
-                                           condition=selection,
-                                           chunk_size=chunk_size, limit=limit,
-                                           max_row_id=max_row_id, size=size):
+        by_key = ingestion_worker.group_by_columns(rule) if apply else []
+        if by_key:
+            # a group_by rule's key on one page (소유자 10-20): the replay's events name rows, so the worker groups them
+            # by the page's transaction - a key cut across pages reached the mapper in parts. A dry run stages nothing,
+            # so its pages are today's (a preview reads its scan_limit rows, not every key)
+            log(f"[replay] '{rule['name']}' groups by {', '.join(by_key)} - reading every picked row's key first")
+            keyed = keyset_scan.keyed_rows(
+                db, trg_model, by_key, lambda values: ingestion_worker.spelled_group_key(rule, trigger_table, values),
+                condition=selection, max_row_id=max_row_id)
+            log(f"[replay] {sum(map(len, keyed.values()))} row(s) in {len(keyed)} key(s); a page ends between keys")
+            pages = keyset_scan.key_pages(keyed, size, log=log)
+        else:
+            pages = ([row.row_id for row in page] for page in keyset_scan.iter_pages(
+                db, trg_model, columns=[], condition=selection, chunk_size=chunk_size, limit=limit,
+                max_row_id=max_row_id, size=size))
+        for page in pages:
+            if limit is not None and stats["rows_scanned"] >= limit:
+                break
             # The batch boundary, and the only place a stop is safe: the previous page is
             # committed and this one has not begun. `checkpoint(processed)` is called at each batch boundary and returns True to stop. It is one call rather than two because both facts belong to the same instant - where the run has got to, and whether it should go on - and a stop is only safe AT that instant, where the previous batch is committed and the next has not started. Returning True breaks the loop; the operation returns its stats as usual with `stopped` set, because a cancelled run has done real work and must report it.
             if checkpoint is not None and checkpoint(stats["rows_scanned"]):
@@ -543,7 +558,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                     from database.context import channel
                     with channel(None):
                         database.stage_collapsed_event(
-                            db, "EDIT", trigger_table, [row.row_id for row in page],
+                            db, "EDIT", trigger_table, page,
                             only_rule=rule.get("name"), replay=True)
                     db.commit()
                     stats["events_staged"] += 1
@@ -603,6 +618,8 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         if stage_token is not None:
             request_transaction_id.reset(stage_token)
 
+    if limit is not None and stats["rows_scanned"] > limit:
+        log(f"[replay] limit {limit}: {stats['rows_scanned'] - limit} row(s) past it to keep the last key whole")
     if not apply:
         db.rollback()  # belt and braces: a dry-run holds no writes, make it structural
     return stats
@@ -1271,8 +1288,12 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     groups, losing = db.execute(select(func.count().filter(ranked.c.ranks, ranked.c.n == 1),
                                        func.count().filter(ranked.c.ranks, ranked.c.n > 1)).select_from(ranked)).one()
     unit_ids = [row_id for (row_id,) in db.execute(select(units.row_id).order_by(units.row_id))]
-    group = getattr(units, params["group"])
-    in_order = [value for (value,) in db.execute(select(group).where(group.isnot(None)).distinct().order_by(group))]
+    import map_overlay
+
+    keyed = keyset_scan.keyed_rows(db, units, [params["group"]], lambda values: map_overlay.canonical_bind_value(
+        params["unit_table"], params["group"], values[params["group"]]))
+    keyed.pop(None, None)                          # a unit with no group is asked by none ('' and spaces are no group)
+    in_order = list(keyed)
     columns = outbox_expand._data_columns(units)
     answers = []
     stats = {"mode": "apply" if apply else "dry-run", "rule": rule_name, "table": log_table, "units": len(unit_ids),
@@ -1295,8 +1316,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
         at, n = 0, 1
         while at < len(in_order):
             part, at, n = in_order[at:at + n], at + n, min(n * 2, FOLD_UNITS_GROUPS)
-            ids = [row_id for (row_id,) in db.execute(
-                select(units.row_id).where(group.in_(part)).order_by(units.row_id))]
+            ids = sorted(row_id for key in part for row_id in keyed[key])
             _model, found = outbox_expand.load_rows_by_ids(db, params["unit_table"], ids)
             answer = rule_run.run_rule(db, rule, payloads=[
                 outbox_expand._synthesize_payload(found[row_id], columns, {}) for row_id in ids if row_id in found])

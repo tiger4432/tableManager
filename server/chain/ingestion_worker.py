@@ -440,18 +440,28 @@ def group_key(rule, payload):
     trigger table's column type - 총괄 88761926b): `None`, `''` and `'   '` are one key, and 1 · 1.0
     · '01' on a number column are one key, exactly as everywhere else a key is composed.
     """
-    columns = [str(name) for name in ((rule or {}).get(chain_bindings.GROUP_BY_KEY) or ())
-               if str(name).strip()]
-    if not columns:
-        return None
     payload = payload or {}
     if payload.get("root_transaction_id") or event_constants.is_collapsed_payload(payload):
+        return None
+    return spelled_group_key(rule, str(payload.get("table_name") or ""), payload.get("data") or {})
+
+
+def group_by_columns(rule) -> list:
+    """The columns a rule's `group_by` names - [] when it names none."""
+    return [str(name) for name in ((rule or {}).get(chain_bindings.GROUP_BY_KEY) or ()) if str(name).strip()]
+
+
+def spelled_group_key(rule, table, data):
+    """The key one row's values make under the rule's `group_by` - `None` when it declares none. `data`: {column:
+    value or {"value": value}}. The live grouping (`group_key`) and the replay's whole-key pages
+    (`replay.replay_rule` - 소유자 10-20 「집계하는 체인인데도 리플레이 쪼개네」) both ask this, so 「the same key」 has
+    one answer on both paths; a blank key is a key (`col=None`), never a dropped row."""
+    columns = group_by_columns(rule)
+    if not columns:
         return None
 
     import map_overlay
 
-    data = payload.get("data") or {}
-    table = str(payload.get("table_name") or "")
     parts = []
     for column in columns:
         cell = data.get(column)
