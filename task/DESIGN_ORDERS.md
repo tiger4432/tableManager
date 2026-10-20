@@ -1,3 +1,24 @@
+# 🔴 [구현자 B] + [클라] **파일 적재 화면의 두 버튼 — 폴더 Retry 를 그 표로 · «Show its rows in the grid»** (소유자 시안 승인 10-20, 총괄)
+
+근거(클라 10-20 물음): 시안의 두 버튼이 «있는 문»에 안 닿는다.
+```
+[구현자 B]
+  1) retry-failed 가 «그 표가 읽었던 FAILED» 로 좁힐 칸이 없다 — table= 은 «디스크에서 그 표로 다시 읽기»(와처) 뜻이라 다른 일.
+     select_logs 는 이미 table 을 받는다(logs_query). retry-failed 에 낱말 하나(이름은 table 아닌 것 — 한 낱말 두 뜻 금지)를 더해 select_logs(table=) 로 넘김.
+     preview 와 실제가 같은 고름(그 문의 약속 그대로) · table= 과 같이 오면 400
+  2) 완료 기록에 transaction_id 칸 — 파일 하나 = file_tx_id 하나(directory_watcher 의 file_tx_id). _file_result 가 싣고,
+     기동 동기화 · 손 SQL · 매니페스트 · /logs 줄에 같이(0eba61a50 과 같은 길). 재시도는 그 행을 덮음(가장 최근 읽기의 tx)
+     파일 하나가 tx 를 둘 이상 쓰는 갈래가 있으면(맵 통째 교체 · 관리자 재시도 등) 찾아서 보고 — 고치기 전에
+  게이트  1) 두 표가 같은 폴더에 FAILED → 좁힘 = 그 표 것만 · preview 수 = 실제 수 · 변이   2) 진짜 와처 한 파일 → 기록 tx = 그 파일이 쓴 감사 로그 tx · 변이
+[클라]
+  «Show its rows in the grid» = 메인 그리드를 그 표 + 그 tx 로 연다 — 거르기는 이미 있는 narrowing 의 transactionId(History «Click Tx» 와 같은 문).
+  메인 그리드에 «주소로 표 · tx 를 받는» 자리가 없으면 그것 하나(?table=&tx=)를 더함. tx 가 빈 기록(옛 행 · 건너뜀)은 버튼을 안 그림
+  폴더 Retry 는 B 1) 의 낱말로 표를 좁혀 넘김 · Running 수는 /active 를 읽어 표마다 셈(서버 변경 0)
+순서   B 착지 → 클라가 붙임. 클라는 그동안 나머지를 짓는다
+```
+
+---
+
 # 🔴 [구현자] **잡은 오류가 첫 줄만 남는 자리 — 전수 세고 함수 하나로** (소유자 10-20 「이게 다 에러를 접어서 띄워서 모르잖아」 · 「나중에해 ㄱ」 — 서버 줄이 비어 지금, 총괄)
 
 근거: [JoinUnique] unhashable dict 가 네 판을 먹었다 — 두 자리 다 `str(e)` 한 줄만 남겨 어디서 터졌는지 몰랐다.
