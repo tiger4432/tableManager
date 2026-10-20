@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-20] **조인 유일 인덱스 «자동 점검 실패» 경고에 traceback (총괄, 소유자 줄 «unhashable type: 'dict'»)** — git pull · 런처 재기동
+>
+> ```
+> 보낼 것   재기동 뒤 server 로그에서 «[Join:<규칙>] 유일 인덱스 자동 점검 실패(읽기는 계속): …» 아래 traceback 의
+>          마지막 «File …, line …, in …» 줄 — 그 줄이 dict 를 해시한 자리다
+> 찾기     Select-String -Path server\server.log -Pattern "자동 점검 실패" -Context 0,40
+> 뜻       규칙마다 프로세스당 한 번(그 판정을 기억한다) — 로그가 불지 않는다. 읽기는 전과 같이 계속된다
+> 되돌리기  git revert <착지> -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-20] **멀쩡한 맵퍼가 «unresolvable_mapper» 로 거절되다가 리로드하면 되던 것 (총괄, 소유자 10-20 · 응용 QA)** — git pull · 런처 재기동
 >
 > ```

@@ -291,8 +291,9 @@ def ensure_once(db, rule_name: str, table: str, columns: list, folds=None) -> di
                   "duplicates": [], "blank_keys": [], "created": None, "dropped": [],
                   "error": str(probe_error).strip().splitlines()[0] if str(probe_error).strip() else "probe failed"}
         _TRIED[rule_name] = report
+        # with the traceback: the first line alone does not say where (lead 10-20, «unhashable type: 'dict'»)
         logger.warning("[Join:%s] 유일 인덱스 자동 점검 실패(읽기는 계속): %s",
-                       rule_name, report["error"])
+                       rule_name, report["error"], exc_info=True)
         return report
     _TRIED[rule_name] = report
     if report.get("created"):

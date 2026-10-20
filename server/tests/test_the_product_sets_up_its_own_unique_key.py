@@ -43,6 +43,23 @@ def test_a_changed_declaration_may_be_asked_again(monkeypatch):
     assert len(calls) == 2
 
 
+def test_a_failed_probe_says_where_it_failed(monkeypatch, caplog):
+    """The probe's failure carries its traceback (lead 10-20): its first line alone, «unhashable type: 'dict'», named
+    no frame to look at."""
+    import logging
+
+    def the_frame_that_failed(*_a, **_k):
+        return {set(): 1}
+
+    monkeypatch.setattr(unique_key, "ensure", the_frame_that_failed)
+    with caplog.at_level(logging.WARNING, logger=unique_key.logger.name):
+        report = unique_key.ensure_once(None, "r", "t", ["k"])
+
+    assert report["state"] == "probe_failed" and report["error"] == "unhashable type: 'set'"
+    [said] = [r for r in caplog.records if "자동 점검 실패" in r.getMessage()]
+    assert said.exc_info and "the_frame_that_failed" in caplog.text
+
+
 def test_the_switch_stops_the_product_from_touching_the_database(monkeypatch):
     """운영자가 «자동 설치»를 끌 수 있어야 한다 — DDL 은 언제나 누군가의 결정이다."""
     monkeypatch.setenv("ASSY_VJOIN_AUTO_INDEX", "0")
