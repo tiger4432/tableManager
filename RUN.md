@@ -12,7 +12,7 @@
 >          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
 > 기억     server\config\watcher_reading_stamps.json (표마다 마지막 읽기 모양). 지우면 다음 기동에 모든 표가 «처음 봄» — 넘기지 않고 다시 적는다
 > 처음     이 착지 뒤 첫 기동은 기억이 없어 넘기지 않는다 — 그 전에 고친 것의 실패 파일은 한 번 Retry failed 로
-> 되돌리기  git revert <착지> -> 런처 재기동 (기억 파일은 남아도 아무도 안 읽는다)
+> 되돌리기  git revert d087e77c8 -> 런처 재기동 (기억 파일은 남아도 아무도 안 읽는다)
 > ```
 >
 > ---
