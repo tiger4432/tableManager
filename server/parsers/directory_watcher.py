@@ -963,6 +963,11 @@ def validate_external_source_specs(settings: dict, table_config: dict,
                 f"got {table_name!r}.")
             continue
         table_info = table_config.get(table_name) or {}
+        try:
+            crud.replace_map_columns(table_name, table_info)
+        except ValueError as refused:
+            errors.append(f"{where}: {refused}")
+            continue
         if not table_info.get("business_key") and not table_info.get("composite_key_source"):
             errors.append(
                 f"{where} targets unkeyed table {table_name!r}; a watched file can be "
@@ -2578,6 +2583,7 @@ class IngestionHandler(FileSystemEventHandler):
                     dropped = self._send_to_upsert(
                         rows, uploader=uploader, filename=basename,
                         source_name=self._external_cell_source_name(abs_path, parse_meta),
+                        skipped_no_key=skipped_no_key,
                         total_rows=total_rows, t_name=t_name,
                         table_info=table_info, checkpoint=plan)
 
@@ -3189,6 +3195,7 @@ class IngestionHandler(FileSystemEventHandler):
                 dropped = self._send_to_upsert(
                     rows, uploader=uploader, filename=os.path.basename(filepath),
                     source_name=self._external_cell_source_name(filepath, parse_meta),
+                    skipped_no_key=skipped_no_key,
                     total_rows=total_rows, t_name=t_name,
                     table_info=table_info, checkpoint=plan)
             self._finalize_checkpoint(plan, effective_total)
@@ -3556,10 +3563,40 @@ class IngestionHandler(FileSystemEventHandler):
                 pass
         return "system"
 
+    @staticmethod
+    def _map_batches(t_name, rows, map_columns, declared_by_lower, skipped_no_key=0):
+        """The file's rows as one list per map - [(file row, row), ...] in file order, maps in the order they first
+        appear - grouped by the one key speller (`crud.key_part`), so «1» and «1.0» rows are one map. A row whose map
+        key is blank refuses the file (`crud.CellRefused`, its file row): nothing is written, so nothing is purged -
+        and so do rows the parser already skipped for a missing key (`skipped_no_key`): a map replaced without them
+        would lose their dies quietly."""
+        if skipped_no_key:
+            raise crud.CellRefused(map_columns[0], "",
+                                   "a key on every row (allow_replace_map replaces each map of the file whole; %d "
+                                   "row(s) had a blank key and were skipped, so nothing was written)" % skipped_no_key)
+        maps, blank = {}, []
+        for file_row, row in enumerate(rows, start=1):
+            cells = {declared_by_lower.get(str(key).lower()): value for key, value in row.items()}
+            key = []
+            for column in map_columns:
+                value = cells.get(declared_by_lower.get(column.lower(), column))
+                if crud.is_blank_value(value):
+                    blank.append((file_row, column, value))
+                    break
+                key.append(crud.clean_str_value(crud.key_part(t_name, column, value)))
+            else:
+                maps.setdefault(tuple(key), []).append((file_row, row))
+        if blank:
+            file_row, column, value = blank[0]
+            raise crud.CellRefused(column, "" if value is None else value,
+                                   "a map key (allow_replace_map replaces each map of the file whole; %d row(s) "
+                                   "have none, so nothing was written)" % len(blank), row=file_row)
+        return list(maps.values())
+
     def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None,
                         total_rows: int = None, t_name: str = None,
                         table_info: dict = None, checkpoint=None,
-                        source_name: str = None):
+                        source_name: str = None, skipped_no_key: int = 0):
         """파싱된 행 컬렉션을 직접 DB crud.apply_batch_updates 로 넘겨 초고속 처리합니다.
 
         rows: list[dict](기존 파이프라인 경로) 또는 이터레이터(std parser 스트리밍 경로).
@@ -3640,6 +3677,15 @@ class IngestionHandler(FileSystemEventHandler):
             rows = [r for r in rows if not _declared_blank(r)]
 
         # [확장성] list와 이터레이터 모두 지원 — 이터레이터(std parser)는 총 행 수를 인자로 받는다.
+        # allow_replace_map (lead 59b020ca2): the file is read whole, a row with a blank map key refuses the file before
+        # anything is written, and each map goes as ONE replace_map batch - a map split over two chunks would have its
+        # second chunk purge the first. Not resumed from a checkpoint: a map batch is not a row offset, and writing
+        # the same file again moves nothing (the purge keeps what is written again).
+        map_columns = crud.replace_map_columns(t_name, table_info)
+        if map_columns:
+            rows = list(rows)
+            rows, total_rows = (self._map_batches(t_name, rows, map_columns, declared_by_lower, skipped_no_key),
+                                len(rows))
         if total_rows is None:
             total_rows = len(rows)
         row_iter = iter(rows)
@@ -3647,7 +3693,8 @@ class IngestionHandler(FileSystemEventHandler):
 
         # [P2-A] 체크포인트 재개 — 이미 커밋된 선두 N행은 **파싱만 하고 업서트하지 않는다**.
         # (재파싱 비용은 CSV 스캔 수준이고, 병목인 DB 업서트를 건너뛰는 것이 재개의 실이득)
-        resume_from = checkpoint.resume_from if (checkpoint is not None and checkpoint.active) else 0
+        resume_from = (checkpoint.resume_from if (checkpoint is not None and checkpoint.active and not map_columns)
+                       else 0)
         if resume_from > 0:
             consumed = sum(1 for _ in islice(row_iter, resume_from))
             processed_rows = consumed
@@ -3711,7 +3758,7 @@ class IngestionHandler(FileSystemEventHandler):
 
         try:
             while True:
-                chunk = list(islice(row_iter, batch_size))
+                chunk = next(row_iter, []) if map_columns else list(islice(row_iter, batch_size))
                 # once-per-FILE latch for the slow-prefetch plan (S-169 ④)
                 try:
                     _explained
@@ -3732,7 +3779,7 @@ class IngestionHandler(FileSystemEventHandler):
                     item_rows = []      # each item's data row in the FILE, for a refusal to name
 
                     with alignment_batch_counts.stage("parse"):
-                        for file_row, row in enumerate(chunk, start=processed_rows + 1):
+                        for file_row, row in (chunk if map_columns else enumerate(chunk, start=processed_rows + 1)):
                             normalized_row = {}
                             bk_val = None
                     
@@ -3775,7 +3822,8 @@ class IngestionHandler(FileSystemEventHandler):
                         batch_obj = schemas.GeneralUpdateBatch(
                             updates=items,
                             transaction_id=file_tx_id,
-                            silent=True
+                            silent=True,
+                            replace_map=bool(map_columns),      # the map's scope: its key, from its rows
                         )
                         batch_obj._file_origin = file_origin
                         # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.

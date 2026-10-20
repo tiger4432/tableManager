@@ -54,6 +54,7 @@
 `@mapper` 맵퍼를 쓰는 규칙에 `allow_retraction: true` 를 적으면, 그 출처(`target_job_column`)가 이번에 안 낸 셀이 지워집니다.
 🆕 지운 행은 `allow_replace_map` 의 맵 퍼지와 같은 문(`crud.purge_map_rows`)을 지나, 그리드에서 지운 행처럼 지움 이벤트(1,000 행마다 하나)와 행 지움 이력을 남기고 원장 후속에 닿습니다(10-01 `cb4d5157d` — 전엔 셋 다 없었다). 그 이벤트는 규칙을 깨우지 않습니다.
 `allow_replace_map: true` 를 적으면 맵 단위로 통째로 바뀝니다(맵 키는 `table_config` 의 `map_key_columns`).
+🆕 파일도 — 같은 낱말을 `table_config` 의 그 표에 적으면 파일 인제션이 파일에 있는 맵마다 같은 문으로 통째 교체합니다([table_config](./table_config.md) 의 `allow_replace_map` 행).
 
 - 맵퍼는 DataFrame 만 돌려줍니다 — 잡마다 / 맵마다 봉투는 제품이 짓습니다. 잡과 맵은 «들어온 행»에서도 읽어서, 이번에 한 행도 안 낸 잡·맵에도 봉투가 나갑니다.
 - 로드에서 거절: `is_batch: true` 가 아님 · 두 칸 다 적음 · (`allow_replace_map`) 트리거 표에 대상의 맵 키 칸이 같은 이름으로 없음 · (`allow_retraction`) 잡 칸을 못 정함.

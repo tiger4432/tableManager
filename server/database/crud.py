@@ -4419,6 +4419,28 @@ def purge_map_rows(db, table_model, table_name: str, row_ids):
     return row_ids
 
 
+def replace_map_columns(table_name: str, table_info: dict = None):
+    """The map_key_columns a file replaces whole when the table's table_config sets `allow_replace_map` (the chain
+    rule's word, widened to files - lead 59b020ca2, owner 10-20); None when it does not. Refused (ValueError, one
+    sentence) when the cell is not true/false, or is on for a table declaring no map_key_columns. The watcher asks
+    it where it loads its sources and where it writes a file."""
+    import validation
+
+    info = TABLE_CONFIG.get(table_name, {}) if table_info is None else (table_info or {})
+    on = info.get("allow_replace_map", False)
+    why = validation.flag_refusal("allow_replace_map", on)
+    if why:
+        raise ValueError("table_config '%s': %s" % (table_name, why))
+    if not on:
+        return None
+    columns = info.get("map_key_columns")
+    if not columns or not isinstance(columns, list):
+        raise ValueError("table_config '%s' sets allow_replace_map but declares no map_key_columns - a file replaces "
+                         "each map it holds whole, and the map is named by those columns. Next: declare "
+                         "map_key_columns, or remove allow_replace_map" % table_name)
+    return [str(column) for column in columns]
+
+
 def derive_replace_map_scope(table_name: str, batch: schemas.GeneralUpdateBatch) -> Optional[dict]:
     """Resolve the exact {column: value} filters a replace_map purge will DELETE by.
 
