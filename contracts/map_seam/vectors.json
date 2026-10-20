@@ -1021,7 +1021,7 @@
       "declared_type": "number",
       "expect": "12345678901234567890",
       "$source": "spec",
-      "$why": "An integer text is read as an integer: through a float it became 12345678901234567168 (crud.key_part, measured 10-20)."
+      "$why": "An integer text is read as an integer, no float on the way - 20 digits stay 20 digits."
     },
     {
       "name": "num_json_integral_float",
