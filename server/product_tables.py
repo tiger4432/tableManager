@@ -38,6 +38,10 @@ ANNOTATION_KEYS = ("__comment",)
 #: The notation alias table (`notation_norm.aliases_by_column` reads it by this name).
 NOTATION_ALIAS_TABLE = "notation_alias"
 
+#: The agent walk's tables (e38466810).
+MEANING_TABLE, WALK_REQUEST_TABLE = "ontology_meaning", "walk_request"
+WALK_LOG_TABLE, WALK_RECIPE_TABLE = "walk_log", "walk_recipe"
+
 # Order here is the order new entries are appended to a config file.
 PRODUCT_TABLES = {
     "wafer_map_metadata": {
@@ -168,6 +172,128 @@ PRODUCT_TABLES = {
             "column_name",
             "written",
             "canonical"
+        ]
+    },
+    # The agent walk (e38466810, owner 10-20): a question row -> the chain's LLM mapper walks hop by hop -> a log
+    # row per hop. Meanings are what the walk's cards read; a recipe says which card a state carries.
+    MEANING_TABLE: {
+        "__comment": "One row per declared entity or predicate (target_kind entity | predicate, target_name its bare name). The rows are made blank from the ledger declaration; the LLM drafts a blank meaning in its own layer (llm_draft) and a person's value wins.",
+        "business_key": "meaning_key",
+        "composite_key_source": [
+            "target_kind",
+            "target_name"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "meaning_key": "string",
+            "target_kind": "string",
+            "target_name": "string",
+            "meaning": "string"
+        },
+        "display_columns": [
+            "meaning_key",
+            "target_kind",
+            "target_name",
+            "meaning"
+        ]
+    },
+    WALK_REQUEST_TABLE: {
+        "__comment": "One question for the agent walk. The operator writes question (and start_node, budgets, recipe if wanted); the chain writes position, step and state back as the walk goes.",
+        "business_key": "request_id",
+        "composite_key_source": [
+            "request_id"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "request_id": "string",
+            "question": "string",
+            "start_node": "string",
+            "hop_budget": "number",
+            "call_budget": "number",
+            "recipe": "string",
+            "position": "string",
+            "step": "number",
+            "state": "string"
+        },
+        "display_columns": [
+            "request_id",
+            "question",
+            "start_node",
+            "hop_budget",
+            "call_budget",
+            "recipe",
+            "position",
+            "step",
+            "state"
+        ]
+    },
+    WALK_LOG_TABLE: {
+        "__comment": "One row per hop of a walk (kind hop) and one at its end (kind end: answer, evidence, rule_draft). Written by the chain only.",
+        "business_key": "log_key",
+        "composite_key_source": [
+            "request_id",
+            "step"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "log_key": "string",
+            "request_id": "string",
+            "step": "number",
+            "kind": "string",
+            "position": "string",
+            "state": "string",
+            "cards": "string",
+            "chosen": "string",
+            "reason": "string",
+            "recipe_print": "string",
+            "answer": "string",
+            "evidence": "string",
+            "rule_draft": "string"
+        },
+        "display_columns": [
+            "log_key",
+            "request_id",
+            "step",
+            "kind",
+            "position",
+            "state",
+            "cards",
+            "chosen",
+            "reason",
+            "recipe_print",
+            "answer",
+            "evidence",
+            "rule_draft"
+        ]
+    },
+    WALK_RECIPE_TABLE: {
+        "__comment": "Which cards a walk state carries, in card_order: card is a card name, card_limit its size, argument what the card reads (a predicate name), instruction the line the LLM is told. A state's rows are its whole recipe; an unknown card name is refused.",
+        "business_key": "recipe_key",
+        "composite_key_source": [
+            "recipe",
+            "state",
+            "card_order"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "recipe_key": "string",
+            "recipe": "string",
+            "state": "string",
+            "card_order": "number",
+            "card": "string",
+            "card_limit": "number",
+            "argument": "string",
+            "instruction": "string"
+        },
+        "display_columns": [
+            "recipe_key",
+            "recipe",
+            "state",
+            "card_order",
+            "card",
+            "card_limit",
+            "argument",
+            "instruction"
         ]
     },
 }

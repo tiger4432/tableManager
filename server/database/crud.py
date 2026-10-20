@@ -671,6 +671,9 @@ class LightCellOverwrite:
 #: blank, and a second literal in the asking would be a second answer to 「is this the
 #: chain」 - the repository already spells this string in six other modules.
 CHAIN_SOURCE = "chain_ingestion"
+#: A language model's draft (e38466810: the meaning table). Below every other writer - a person's value wins - and not
+#: a writer that can mean 「I emptied this cell」 (`can_mean_emptied`).
+LLM_DRAFT_SOURCE = "llm_draft"
 
 SOURCE_PRIORITY = {
     "user": 0,
@@ -680,6 +683,7 @@ SOURCE_PRIORITY = {
     # [QA G1-⑥] 체인 파생 쓰기 소스 서열 명시(구: 미등재 기본 99). 기존 4대 소스와의
     # 상대 서열은 불변(4 > 3)이라 표시값 레이어링 결과는 유지되며, 미등재 소스 대비로만 승격된다.
     CHAIN_SOURCE: 4,
+    LLM_DRAFT_SOURCE: 5,
 }
 
 # The priority-0 layer above is the only source that means "a human typed this".
