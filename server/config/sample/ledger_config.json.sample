@@ -1046,6 +1046,7 @@
     "doc_mention": {
       "relation": "doc_mention",
       "read": {
+        "unit": "row",
         "occurred_at": {
           "column": "written_at",
           "timezone": "Asia/Seoul"
