@@ -26,6 +26,7 @@ export const FOLDER_RETRY_WORDS = Object.freeze({
   table: 'Into table',
   sameTable: 'The table that read it',
   walked: 'Files looked at',
+  took: 'Took',
   notTaken: 'Not taken',
 });
 
@@ -192,9 +193,15 @@ export class FolderRetryPanel {
       const names = Array.isArray(body.missing_files) ? body.missing_files.map(String) : [];
       const notTaken = Object.entries(body.not_taken || {});
       const notNames = Array.isArray(body.not_taken_files) ? body.not_taken_files.map(String) : [];
+      // where the preview's seconds went: the total and its slowest stage, as the server timed them
+      const took = body.took || {};
+      const slowest = Object.entries(took).filter(([name, s]) => name !== 'total' && Number.isFinite(s))
+        .reduce((most, each) => (!most || each[1] > most[1] ? each : most), null);
       this.seen = { folder, include, table, count: body.count, message: String(body.message || ''),
         lines: [
           ...(Number.isInteger(body.walked) ? [`${FOLDER_RETRY_WORDS.walked} ${body.walked}`] : []),
+          ...(Number.isFinite(took.total) ? [`${FOLDER_RETRY_WORDS.took} ${took.total.toFixed(1)} s`
+            + (slowest ? ` · ${slowest[0]} ${slowest[1].toFixed(1)} s` : '')] : []),
           ...(states.length ? [states.map(([state, n]) => `${state} ${n}`).join(' · ')] : []),
           ...Object.entries(body.by_folder || {}).map(([name, n]) => `${name} · ${n}`),
           ...(missing ? [`${FOLDER_RETRY_WORDS.missing} ${missing}: ${names.join(', ')}${missing > names.length ? ', …' : ''}`] : []),

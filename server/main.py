@@ -416,6 +416,10 @@ async def startup_event():
     # in testing mode `warm` starts none
     from runtime import process_pool
     process_pool.warm()
+    # The external sources a re-read preview judges, validated once behind the start (소유자 「시작할 때 안 읽는 거는」)
+    if os.getenv("TESTING") != "True":
+        from ingestion import reread
+        threading.Thread(target=reread.validated_sources, name="reread-sources", daemon=True).start()
     
     if os.getenv("TESTING") == "True":
         logger.info("Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
@@ -7384,7 +7388,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
             "limit": reread.max_files()}
     if chosen is not None:
         said.update(table=into, walked=chosen["walked"], not_taken=chosen["not_taken"],
-                    not_taken_files=chosen["not_taken_files"])
+                    not_taken_files=chosen["not_taken_files"], folders=chosen["folders"], took=chosen["took"])
     what = "failed file" if states == reread.RETRY_STATUSES and chosen is None else "file"
     if preview or (by_folder_asked and not picked):      # a preview never writes
         where = (f" under {folder}" if by_folder_asked else "") + (f" for {into}" if into else "")

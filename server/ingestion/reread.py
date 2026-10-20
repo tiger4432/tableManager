@@ -11,7 +11,13 @@ wait page by page on top of this mark, and did not run in production (총괄 a4d
 """
 from __future__ import annotations
 
+import logging
 import os
+import threading
+import time
+
+logger = logging.getLogger(__name__)
+_SOURCES, _SOURCES_LOCK = {}, threading.Lock()      # the validated sources this process holds - see validated_sources
 
 #: The state that puts a row in the watcher's hands.
 REREAD_STATUS = "PENDING_RETRY"
@@ -131,16 +137,39 @@ class RereadRefused(ValueError):
     """A re-read the door will not hand over - the sentence says why and what to do."""
 
 
+def validated_sources():
+    """(table_config, every external source as `validate_external_source_specs` - the watcher's registration - answers)
+    held by this process: validated again only when table_config.json or ingestion_settings.json changes stamp, or
+    after a reload (`forget_sources`). Judging a source resolves its root, and one unreachable share root cost every
+    preview 21 s (총괄 10-20, 소유자 「시작할 때 안 읽는 거는」); the API's start fills it."""
+    import paths
+    from directory_watcher import (INGESTION_SETTINGS_PATH, load_global_table_config, load_ingestion_settings,
+                                   validate_external_source_specs)
+    from ledger.setup import file_stamp
+
+    stamp = (file_stamp(paths.config_path("table_config.json")), file_stamp(INGESTION_SETTINGS_PATH))
+    with _SOURCES_LOCK:
+        if _SOURCES.get("stamp") != stamp:
+            config = load_global_table_config()
+            specs, _errors = validate_external_source_specs(load_ingestion_settings(), config, paths.WORKSPACE_DIR)
+            _SOURCES.update(stamp=stamp, config=config, specs=specs)
+        return _SOURCES["config"], _SOURCES["specs"]
+
+
+def forget_sources():
+    """A reload's seat: the next preview validates the sources again."""
+    with _SOURCES_LOCK:
+        _SOURCES.clear()
+
+
 def table_sources(table):
     """(the table's raws folder, its external sources) as the watcher registers them (`raws_root_for` ·
     `_register_external_sources`) - the handler that will read the files holds exactly these."""
     import paths
-    from directory_watcher import (load_global_table_config, load_ingestion_settings, resolve_workspace_root,
-                                   validate_external_source_specs)
+    from directory_watcher import resolve_workspace_root
 
-    config = load_global_table_config()
+    config, specs = validated_sources()
     raws = os.path.abspath(os.path.join(resolve_workspace_root(paths.WORKSPACE_DIR, table, config), "raws"))
-    specs, _errors = validate_external_source_specs(load_ingestion_settings(), config, paths.WORKSPACE_DIR)
     return raws, [spec for spec in specs if spec["table_name"] == table]
 
 
@@ -154,14 +183,26 @@ def select_files(db, table, folder, limit=None):
     from directory_watcher import _safe_relative_path, one_sweep, source_taking
 
     limit = WALK_MAX_ENTRIES if limit is None else limit
-    files = []
+    began = clock = time.perf_counter()
+    took = {}
+
+    def stage(name):
+        nonlocal clock
+        now = time.perf_counter()
+        took[name], clock = round(now - clock, 3), now
+
+    files, folders = [], 0
     for top, _dirs, names in os.walk(folder):
+        folders += 1
         for name in names:
             files.append(os.path.join(top, name))
             if len(files) > limit:
                 raise RereadRefused("more than %d files under %s - narrow the folder" % (limit, folder))
+    stage("walk")
     raws, specs = table_sources(table)
+    stage("sources")
     rows = _newest_rows_of(db, table, files)
+    stage("lookup")
     picked, not_taken, names = [], {}, []
     with one_sweep():
         for path in sorted(files):
@@ -177,8 +218,13 @@ def select_files(db, table, folder, limit=None):
                 names.append(os.path.basename(path))
                 continue
             picked.append((log, _safe_relative_path(path, folder), path))
+    stage("judge")
+    took["total"] = round(time.perf_counter() - began, 3)
+    logger.info("[Reread] preview of %s for %s: %d file(s) in %d folder(s), %d picked - %.1f s (walk %.1f · sources "
+                "%.1f · lookup %.1f · judge %.1f)", folder, table, len(files), folders, len(picked), took["total"],
+                took["walk"], took["sources"], took["lookup"], took["judge"])
     return {"picked": picked, "not_taken": dict(sorted(not_taken.items())), "not_taken_files": names[:5],
-            "walked": len(files)}
+            "walked": len(files), "folders": folders, "took": took}
 
 
 def _newest_rows_of(db, table, files):

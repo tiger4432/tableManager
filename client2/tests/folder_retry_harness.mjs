@@ -37,6 +37,7 @@ const INTO = 'inspection_run';
 const TABLES = ['void_obs', INTO];
 const SERVER_INTO = { status: 'preview', folder: LOT, table: INTO, count: 2, by_state: { NEW: 1, SUCCESS: 1 }, by_folder: { a: 2 },
   walked: 4, not_taken: { "not matched by the source's glob or filename": 2 }, not_taken_files: ['n.txt', 'o.txt'],
+  folders: 2, took: { walk: 0.4, sources: 21.05, lookup: 0.2, judge: 0.1, total: 21.75 },
   missing: 0, missing_files: [], message: `2 file(s) under ${LOT} for ${INTO}` };
 
 function seat(M, answers = {}) {
@@ -195,7 +196,8 @@ async function suite(M) {
       `G4 the preview names the table, and Retry carries that count [${s.calls.table} · ${run.textContent}]`);
     const rows = walk(s.cls('folder-retry-by')).filter((n) => n.tagName === 'DIV' && n !== s.cls('folder-retry-by'))
       .map((n) => n.textContent);
-    const want = [`${M.FOLDER_RETRY_WORDS.walked} 4`, 'NEW 1 · SUCCESS 1', 'a · 2',
+    const want = [`${M.FOLDER_RETRY_WORDS.walked} 4`, `${M.FOLDER_RETRY_WORDS.took} 21.8 s · sources 21.1 s`,
+      'NEW 1 · SUCCESS 1', 'a · 2',
       `${M.FOLDER_RETRY_WORDS.notTaken} · not matched by the source's glob or filename 2: n.txt, o.txt`];
     ok(JSON.stringify(rows) === JSON.stringify(want), `G5 the files looked at and the ones not taken, by why [${rows}]`);
     await s.press('folder-retry-run');

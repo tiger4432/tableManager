@@ -121,6 +121,12 @@ def reload_local_process_cache():
         synthesis.reset_right_key_cache()
     except Exception:
         pass
+    # The external sources a re-read preview judges (총괄 10-20): validated again by the next preview.
+    try:
+        from ingestion import reread
+        reread.forget_sources()
+    except Exception:
+        pass
     # The rule set this process read (총괄 57ae5c2da): the next request reads the file again.
     try:
         from chain import ingestion_worker

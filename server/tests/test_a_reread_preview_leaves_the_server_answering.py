@@ -30,7 +30,8 @@ from ingestion import reread
 
 def slow_select_files(db, table, folder, limit=None):
     time.sleep(float(sys.argv[2]))
-    return {"picked": [(None, "a.csv", folder + "/a.csv")], "not_taken": {}, "not_taken_files": [], "walked": 1}
+    return {"picked": [(None, "a.csv", folder + "/a.csv")], "not_taken": {}, "not_taken_files": [], "walked": 1,
+            "folders": 1, "took": {"walk": 0, "sources": 0, "lookup": 0, "judge": 0, "total": 0}}
 
 def slow_cancel_reread(db, folder=None, apply=False):
     time.sleep(float(sys.argv[2]))
