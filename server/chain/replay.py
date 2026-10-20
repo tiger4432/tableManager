@@ -1599,21 +1599,23 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     config = crud.TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     composite_src = config.get("composite_key_source")
+    parts_of_key = composite_src or ([key_col] if key_col else [])
+    numbered = any(col_types.get(column) == "number" for column in parts_of_key)
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "written_columns": list(written), "text_columns": text_columns,
              "rows_scanned": 0, "pages": 0,
              "cells_folded": 0, "layers_folded": 0, "keys_changed": 0, "rows_merged": 0,
+             "same_key_groups": 0, "split_key_groups": 0,
              "merged": [], "keys_not_rebuilt": 0, "not_rebuilt": [],
              "moves_again": 0, "again": [], "time_left": {},
              "stopped": False, "stopped_on_moves_again": False}
-    if not folded:
-        log(f"[notation] '{table_name}' has no \"write\" column and no text column - nothing "
-            f"to fold")
+    if not folded and not numbered:
+        log(f"[notation] '{table_name}' has no \"write\" column, no text column and no number key - "
+            f"nothing to fold")
         return stats
     aliases = notation_norm.aliases_by_column(db)
     claimed = {}                        # folded key -> the row that took it in this run
     tx_id = f"{NOTATION_BACKFILL_SOURCE}_{uuid.uuid4().hex[:8]}"
-    parts_of_key = composite_src or ([key_col] if key_col else [])
     by_value = db.get_bind().dialect.name in FOLD_BY_VALUE_DIALECTS
 
     def fold_value(column, value):
@@ -1639,8 +1641,23 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             again.append(moved)
         return stored
 
-    def plan_rows(page, again, fold):
+    def twins_of(rows):
+        """{row_id: the key's first row} - rows whose stored key a row with a smaller row_id stores too: a
+        same-spelling duplicate (owner 10-20 - two «1» rows, and the table could not take its uq_bk_ index)."""
+        keys = sorted({row.business_key_val for row in rows if row.business_key_val})
+        if not keys:
+            return {}
+        firsts = dict(db.query(model.business_key_val, func.min(model.row_id))
+                      .filter(model.business_key_val.in_(keys))
+                      .group_by(model.business_key_val).having(func.count() > 1).all())
+        return {row.row_id: firsts[row.business_key_val] for row in rows
+                if row.business_key_val in firsts and firsts[row.business_key_val] != row.row_id}
+
+    same_groups, split_groups = set(), set()
+
+    def plan_rows(page, again, fold, twins=None):
         """The row path over `page` (rows of the model): each row's cells, layers, key and merge."""
+        twins = twins_of(page) if twins is None else twins
         plans = {}
         for row in page:
             cells = {}
@@ -1680,6 +1697,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
         for plan in plans.values():
             row, cells = plan["row"], plan["cells"]
             if not any(column in cells for column in parts_of_key):
+                plan["key"] = numbered and respelled_key(table_name, row, parts_of_key) or None
                 continue
             before, after = (
                 None if any(crud.is_blank_key_part(p) for p in parts)
@@ -1694,8 +1712,10 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             else:
                 plan["key"] = after
         wanted = {plan["key"] for plan in plans.values() if plan["key"]}
-        holders = dict(db.query(model.business_key_val, model.row_id)
-                       .filter(model.business_key_val.in_(list(wanted))).all()) \
+        # the key's first row holds it - one answer when the key is held twice
+        holders = dict(db.query(model.business_key_val, func.min(model.row_id))
+                       .filter(model.business_key_val.in_(list(wanted)))
+                       .group_by(model.business_key_val).all()) \
             if wanted else {}
         for row_id, plan in list(plans.items()):
             key = plan["key"]
@@ -1711,12 +1731,21 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                         else claimed[key])
                 plan["key"], plan["into"] = None, into
                 stats["rows_merged"] += 1
+                split_groups.add(key)
                 if len(stats["merged"]) < max_report:
                     stats["merged"].append({"row_id": row_id,
                                             "business_key_val": plan["row"].business_key_val,
                                             "folded_key": key, "into": into})
             elif key:
                 claimed[key] = row_id
+            elif row_id in twins:
+                plan["into"] = twins[row_id]
+                stats["rows_merged"] += 1
+                same_groups.add(plan["row"].business_key_val)
+                if len(stats["merged"]) < max_report:
+                    stats["merged"].append({"row_id": row_id,
+                                            "business_key_val": plan["row"].business_key_val,
+                                            "folded_key": plan["row"].business_key_val, "into": twins[row_id]})
         return plans
 
     def quiet(column, value, _again):
@@ -1742,7 +1771,13 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 for verdict, n in values["time_left"].items():
                     stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + n
                 again = values["again"]
-                plans = plan_rows([values["rows"][row_id] for row_id in sorted(values["hard"])], [], quiet)
+                if numbered:
+                    values["hard"].update(row_id for row_id, row in values["rows"].items()
+                                          if respelled_key(table_name, row, parts_of_key))
+                twins = twins_of(list(values["rows"].values()))
+                values["hard"].update(twins)
+                plans = plan_rows([values["rows"][row_id] for row_id in sorted(values["hard"])], [], quiet,
+                                  twins)
                 # A row that merges, and the row it merges into, keep the ORM write: the shell is
                 # deleted at the flush and the holder changed again by the merge, one event each.
                 # Every other planned row - its key moved onto nothing or did not move - is
@@ -1783,7 +1818,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 stats["cells_folded"] += len(values["cells"])
                 stats["layers_folded"] += len(values["layers"])
                 stats["keys_changed"] += len(values["keys"])
-            if apply and (changed or values and (values["cells"] or values["layers"])):
+            # a re-spelled key may move no cell: a page that only re-keys or merges is written too (owner 10-20)
+            merging = any(plan.get("into") for plan in plans.values())
+            if apply and (changed or merging or values and (values["cells"] or values["layers"] or values["keys"])):
                 if values:
                     _write_by_values(db, table_name, model, values, tx_id)
                 for plan in changed:
@@ -1809,13 +1846,46 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             step("write", stats["pages"], None, len(page))
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 size.rest(rest_seconds)
+    stats["same_key_groups"], stats["split_key_groups"] = len(same_groups), len(split_groups)
     log(f"[notation] '{table_name}' {stats['mode']}: {stats['cells_folded']} cell(s) and "
         f"{stats['layers_folded']} layer(s) folded in {stats['rows_scanned']} row(s), "
         f"{stats['keys_changed']} key(s) changed, {stats['keys_not_rebuilt']} row(s) skipped "
         f"(their cells no longer spell their stored key), {stats['rows_merged']} row(s) "
-        f"{'merged' if apply else 'to merge'} into the row holding their folded key, "
+        f"{'merged' if apply else 'to merge'} into the row holding their folded key "
+        f"({stats['same_key_groups']} key(s) held twice as stored, {stats['split_key_groups']} met by spelling), "
         f"{stats['moves_again']} value(s) change again")
     return stats
+
+
+def respelled_key(table_name, row, parts_of_key):
+    """The row's key in the one spelling when its stored key is that key in an old NUMBER spelling - else None
+    (owner 10-20: «1.0» · «001» rows re-keyed to «1», and rows meeting there merged; dates wait for the owner).
+
+    Old spelling means: the stored key split by the separator gives one piece per key part, every piece and the
+    row's own value of that part spell alike by the one speller (`crud.key_part`), and a piece that differs from
+    that spelling is a number column's. A key that differs any other way - a mapper's key beside another column
+    value, a separator inside a value - is not touched."""
+    import map_overlay
+    from database import crud
+
+    stored = getattr(row, "business_key_val", None)
+    values = [getattr(row, column, None) for column in parts_of_key]
+    if not stored or not values or any(crud.is_blank_key_part(value) for value in values):
+        return None
+    key = crud.compose_business_key(table_name, values, parts_of_key)
+    if key == stored:
+        return None
+    separator = crud.TABLE_CONFIG.get(table_name, {}).get("composite_key_separator", "_")
+    pieces = [stored] if len(parts_of_key) == 1 else str(stored).split(separator)
+    if len(pieces) != len(parts_of_key):
+        return None
+    for column, piece, value in zip(parts_of_key, pieces, values):
+        spelled = crud.clean_str_value(crud.key_part(table_name, column, value))
+        if crud.clean_str_value(crud.key_part(table_name, column, piece)) != spelled:
+            return None
+        if piece != spelled and map_overlay.declared_column_type(table_name, column) != "number":
+            return None
+    return key
 
 
 def _fold_by_values(db, table_name, page, folded, key_parts, col_types, fold_value) -> dict:
@@ -1960,7 +2030,8 @@ def _write_by_values(db, table_name, model, values, tx_id):
     if values["layers"]:
         crud.update_by_arrays(db, models.CellSource.__table__, ["value"],
                           [[layer_id, new] for layer_id, new in values["layers"].items()], None, key="id")
-    by_row = {}
+    # a row whose key alone moved (an old number spelling, owner 10-20) is written too
+    by_row = {row_id: {} for row_id in values["keys"]}
     for (row_id, column), cell in values["cells"].items():
         by_row.setdefault(row_id, {})[column] = cell
     shown, history, written = {}, [], {}

@@ -3929,7 +3929,7 @@ def _build_unique_index_waiting(bind, uq, table, name):
         unique_key._close_ddl_connection(conn)
 
 
-def _ensure_business_key_unique_indexes_sync(db_session_factory):
+def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
     """Build the UNIQUE index that makes `business_key_val` an enforced identity.
 
     \U0001f534 판정 189 — S-88's SIBLING, WITH A GUARD S-88 DID NOT NEED. `models.py` keeps
@@ -3961,7 +3961,8 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory):
         built, refused, invalid = [], [], []
         with engine.connect() as conn:
             tables = uq.tables_with_business_key(conn)
-            for table in tables:
+            # `only`: the tables a fold just merged (총괄 10-20) - the start-up builds every table
+            for table in [t for t in tables if only is None or t in only]:
                 found = uq.existing_unique_index(conn, table)
                 if found is not None and not (not found[1] and found[0] == uq.unique_index_name(table)):
                     if not found[1]:

@@ -1466,10 +1466,11 @@ def _count_fold_written_notation(db, params, scan_limit):
     s = replay.fold_written_notation(db, params["table"], apply=False, limit=scan_limit,
                                      log=lambda m: logger.debug(m))
     truncated = s["rows_scanned"] >= scan_limit
-    affected = s["cells_folded"]
-    if not s["written_columns"] and not s["text_columns"]:
+    # a row re-keyed or merged is a change too - a table keyed by a number may move nothing else
+    affected = s["cells_folded"] + s["keys_changed"] + s["rows_merged"]
+    if not s["written_columns"] and not s["text_columns"] and not s["rows_scanned"]:
         return {"affected": 0, "absence": ABSENCE_NOT_APPLICABLE,
-                "affected_label": "cells whose spelling changes",
+                "affected_label": "cells and row keys whose spelling changes",
                 "count_kind": COUNT_EXACT, "scanned": 0, "scan_limit": scan_limit,
                 "truncated": False,
                 "detail": (f"'{params['table']}' has no \"write\" column in "
@@ -1477,7 +1478,7 @@ def _count_fold_written_notation(db, params, scan_limit):
                 "extra": {}}
     left = s["time_left"]
     detail = (
-        f"{affected} cell(s) and {s['layers_folded']} stored layer(s) in {s['rows_scanned']} "
+        f"{s['cells_folded']} cell(s) and {s['layers_folded']} stored layer(s) in {s['rows_scanned']} "
         f"row(s) of '{params['table']}' take the declared spelling; {s['keys_changed']} row "
         f"key(s) change. Cannot be undone - the spelling that was stored stays in each cell's "
         f"history line.")
@@ -1487,8 +1488,10 @@ def _count_fold_written_notation(db, params, scan_limit):
     if s["rows_merged"]:
         sample = "; ".join(f"{m['business_key_val']} -> row {m['into']} ({m['folded_key']})"
                            for m in s["merged"][:3])
-        detail += (f" {s['rows_merged']} row(s) fold onto another row's key - the run merges "
-                   f"each into that row (e.g. {sample}); a merge cannot be undone.")
+        detail += (f" {s['rows_merged']} row(s) fold onto another row's key - {s['same_key_groups']} key(s) "
+                   f"held by more than one row as stored, {s['split_key_groups']} key(s) met by spelling; "
+                   f"the run merges each into the key's first row (e.g. {sample}) and then builds the "
+                   f"table's business-key unique index; a merge cannot be undone.")
     if s["moves_again"]:
         detail += (f" {s['moves_again']} value(s) change again on a second fold - the run "
                    f"stops there; fix the declaration first.")
@@ -1501,14 +1504,14 @@ def _count_fold_written_notation(db, params, scan_limit):
         "affected": affected,
         "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
                     else ABSENCE_TRULY_NONE if not affected else None),
-        "affected_label": "cells whose spelling changes",
+        "affected_label": "cells and row keys whose spelling changes",
         "count_kind": COUNT_SAMPLE if truncated else COUNT_EXACT,
         "scanned": s["rows_scanned"],
         "scan_limit": scan_limit,
         "truncated": truncated,
         "detail": detail,
-        "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_merged",
-                                          "merged", "keys_not_rebuilt", "not_rebuilt",
+        "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_merged", "same_key_groups",
+                                          "split_key_groups", "merged", "keys_not_rebuilt", "not_rebuilt",
                                           "moves_again", "again", "time_left")},
     }
 
@@ -1520,9 +1523,34 @@ def _run_fold_written_notation(db, params, log, control=None):
                                      checkpoint=_checkpoint(control),
                                      **_given(params, "limit", "chunk_size", "pace"))
     _final_progress(control, s.get("rows_scanned"), s)
-    return {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
-                                    "rows_merged", "keys_not_rebuilt", "moves_again",
-                                    "stopped_on_moves_again", "rows_scanned")}
+    out = {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
+                                   "rows_merged", "same_key_groups", "split_key_groups", "keys_not_rebuilt",
+                                   "moves_again", "stopped_on_moves_again", "rows_scanned")}
+    if s["rows_merged"] and not s["stopped"]:
+        # a table that held a key twice could not take its uq_bk_ index, and the builder runs at the scheduler's
+        # start only - so it builds it here, after the merge (총괄 10-20)
+        out["unique_index"] = _build_key_index_after_merge(db, params["table"], log)
+    return out
+
+
+def _build_key_index_after_merge(db, table, log):
+    """The start-up builder for this one table. It reads and builds in the public schema only: elsewhere (a scratch
+    schema) it would act on public's table of the same name, so it is not called there."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from chain.ingestion_worker import _ensure_business_key_unique_indexes_sync
+
+    bind = db.get_bind()
+    schema = db.execute(text("SELECT current_schema()")).scalar() if bind.dialect.name == "postgresql" else None
+    db.commit()                    # the run's read ends - a CONCURRENTLY build waits for every session on the table
+    if schema != "public":
+        log(f"[notation] '{table}' business-key unique index not built: the builder works on PostgreSQL's public "
+            f"schema only (here {bind.dialect.name} {schema or ''})")
+        return {"skipped": f"{bind.dialect.name} {schema or ''}".strip()}
+    index = _ensure_business_key_unique_indexes_sync(sessionmaker(bind=bind), only=[table])
+    found = {kind: [list(entry) for entry in index[kind]] for kind in index}
+    log(f"[notation] '{table}' business-key unique index after the merge: {found}")
+    return found
 
 
 def _run_resolve(db, params, log, control=None):
@@ -2046,7 +2074,8 @@ OPERATIONS = {
     "fold_written_notation": {
         "label": "Fold stored values into the declared spelling",
         "what_is_missing": ("a \"write\" column keeps the spellings stored before it was declared, "
-                            "and a text column keeps numbers stored before text took them"),
+                            "a text column keeps numbers stored before text took them, and a row keyed "
+                            "by a number keeps the key spelling it was stored with («1.0» · «001»)"),
         "params": [_p("table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
