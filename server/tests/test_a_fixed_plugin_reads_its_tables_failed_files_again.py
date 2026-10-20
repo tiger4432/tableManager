@@ -180,3 +180,38 @@ def test_a_fixed_plugin_reads_its_tables_failed_files_again(tmp_path):
             assert "te" in json.load(f)
     finally:
         watcher.stop()
+
+
+def test_a_settings_file_that_reads_as_nothing_passes_the_tick(tmp_path, monkeypatch):
+    """Lead 10-20: ingestion_settings.json there but read as nothing (mid-write) - the external part is not compared,
+    nothing handed, the stamps not written over; the file absent is no external source, compared as before."""
+    sys.path.insert(0, os.path.join(SERVER_DIR, "parsers"))
+    import directory_watcher
+    import run_watcher
+    from ingestion import reread, settings
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    entry = dict(TABLE)
+    source = {"path": str(tmp_path / "share"), "table_name": "ta", "options": {"glob": "*.csv"}}
+    kept = {"ta": reread.reading_of("ta", entry, [source], str(scripts))}
+
+    class Handler:
+        scripts_path = str(scripts)
+
+        def _resolve_table_name(self, table_config):
+            return "ta"
+
+    monkeypatch.setattr(run_watcher, "workspace_watcher", type("W", (), {"handlers_by_raw_path": {"r": Handler()}}))
+    monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: {"ta": entry})
+    handed, written = [], []
+    monkeypatch.setattr(reread, "hand_on_a_changed_reading", lambda *a: handed.append(a[1]))
+    monkeypatch.setattr(reread, "keep_reading_stamps", lambda stamps: written.append(stamps))
+    path = tmp_path / "ingestion_settings.json"
+    monkeypatch.setattr(settings, "INGESTION_SETTINGS_PATH", str(path))
+
+    path.write_text("", encoding="utf-8")                          # there, read as nothing
+    assert run_watcher.hear_changed_readings(None, kept) == kept and not handed and not written
+
+    path.unlink()                                                  # absent: no external source - a change
+    assert run_watcher.hear_changed_readings(None, kept) != kept and handed == ["ta"] and len(written) == 1

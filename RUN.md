@@ -26,6 +26,7 @@
 >                    -> 그때는 아무것도 안 넘겼다. 화면의 Retry failed 를 폴더별로 누른다(상한은 ingestion_settings.json reread_max_files)
 >          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
 > 기억     server\config\watcher_reading_stamps.json (표마다 마지막 읽기 모양). 지우면 다음 기동에 모든 표가 «처음 봄» — 넘기지 않고 다시 적는다
+> 못 읽음   table_config.json · ingestion_settings.json 이 쓰는 중이라 못 읽히는 틱은 견주지 않는다(기억도 그대로) — 다음 틱에 잰다
 > 처음     이 착지 뒤 첫 기동은 기억이 없어 넘기지 않는다 — 그 전에 고친 것의 실패 파일은 한 번 Retry failed 로
 > 되돌리기  git revert d087e77c8 -> 런처 재기동 (기억 파일은 남아도 아무도 안 읽는다)
 > ```

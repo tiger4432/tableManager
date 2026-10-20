@@ -332,16 +332,17 @@ def retry_one(db, log):
 def hear_changed_readings(db, stamps):
     """🔴 [총괄 10-20 ab951f09b, 소유자 「ㅇㅇ」] Each watched table's reading (`reread.reading_of`) against the one kept:
     changed -> its failed files handed again through the retry door; a table seen the first time is only kept. A
-    table_config that reads as nothing (absent, or mid-write) is no reading - the tick passes. -> the stamps."""
+    table_config that reads as nothing (absent, or mid-write), or an ingestion_settings.json there that reads as
+    nothing (mid-write, 총괄 10-20), is no reading - the tick passes and the stamps stay. -> the stamps."""
     from directory_watcher import load_global_table_config
-    from ingestion import reread
-    from ingestion.settings import read_ingestion_settings
+    from ingestion import reread, settings as ingestion_settings
 
     handlers = list(workspace_watcher.handlers_by_raw_path.values()) if workspace_watcher is not None else []
     table_config = load_global_table_config() if handlers else {}
-    if not table_config:
+    declared = ingestion_settings.read_ingestion_settings() if table_config else {}
+    if not table_config or (not declared and os.path.exists(ingestion_settings.INGESTION_SETTINGS_PATH)):
         return stamps
-    sources = read_ingestion_settings().get("external_sources") or []
+    sources = declared.get("external_sources") or []
     now = {}
     for handler in handlers:
         table = handler._resolve_table_name(table_config)
