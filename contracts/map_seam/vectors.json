@@ -968,6 +968,111 @@
       "declared_type": null,
       "expect": "B",
       "$source": "declared-type"
+    },
+    {
+      "$comment": "Owner 10-20 (lead 88761926b): ONE spelling for a key, by its declared type. A number reads an integer text as an integer (exactly - no float on the way, so 20 digits survive), any other number text as a float: integral -> its integer, else the float's short spelling. Text and undeclared keep their letters. JSON numbers are here too: a walk expression hands die(1, 2) as numbers."
+    },
+    {
+      "name": "num_trailing_zero",
+      "value": "1.50",
+      "declared_type": "number",
+      "expect": "1.5",
+      "$source": "owner",
+      "$why": "Owner 10-20: a number key's non-integral text is the float's short spelling - '1.50' and '1.5' are one key."
+    },
+    {
+      "name": "num_trailing_zeros",
+      "value": "1.5000",
+      "declared_type": "number",
+      "expect": "1.5",
+      "$source": "owner"
+    },
+    {
+      "name": "num_negative_trailing_zero",
+      "value": "-1.50",
+      "declared_type": "number",
+      "expect": "-1.5",
+      "$source": "owner"
+    },
+    {
+      "name": "num_padded_non_integral",
+      "value": "007.50",
+      "declared_type": "number",
+      "expect": "7.5",
+      "$source": "owner"
+    },
+    {
+      "name": "num_small_fraction",
+      "value": "0.10",
+      "declared_type": "number",
+      "expect": "0.1",
+      "$source": "owner"
+    },
+    {
+      "name": "num_exponent_integral",
+      "value": "1e3",
+      "declared_type": "number",
+      "expect": "1000",
+      "$source": "owner"
+    },
+    {
+      "name": "num_long_integer",
+      "value": "12345678901234567890",
+      "declared_type": "number",
+      "expect": "12345678901234567890",
+      "$source": "spec",
+      "$why": "An integer text is read as an integer, no float on the way - 20 digits stay 20 digits."
+    },
+    {
+      "name": "num_json_integral_float",
+      "value": 1.0,
+      "declared_type": "number",
+      "expect": "1",
+      "$source": "owner"
+    },
+    {
+      "name": "num_json_integer",
+      "value": 7,
+      "declared_type": "number",
+      "expect": "7",
+      "$source": "owner"
+    },
+    {
+      "name": "num_json_non_integral",
+      "value": 1.5,
+      "declared_type": "number",
+      "expect": "1.5",
+      "$source": "owner"
+    },
+    {
+      "name": "str_trailing_zero",
+      "value": "1.50",
+      "declared_type": "string",
+      "expect": "1.50",
+      "$source": "declared-type",
+      "$why": "A text key keeps its letters - only a number column reads '1.50' as 1.5."
+    },
+    {
+      "name": "str_json_integral_float",
+      "value": 1.0,
+      "declared_type": "string",
+      "expect": "1",
+      "$source": "spec",
+      "$why": "A float VALUE is numeric whatever the column - '1.0' is its repr, not data (crud.clean_str_value)."
+    },
+    {
+      "name": "undeclared_trailing_zero",
+      "value": "1.50",
+      "declared_type": null,
+      "expect": "1.50",
+      "$source": "spec"
+    },
+    {
+      "name": "undeclared_json_integral_float",
+      "value": 1.0,
+      "declared_type": null,
+      "expect": "1",
+      "$source": "spec"
     }
   ],
   "canonical_value_server_only_cases": [

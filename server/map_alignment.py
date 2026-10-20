@@ -5480,7 +5480,7 @@ def _map_key_columns(cfg: dict, table: str):
     return list(cols)
 
 
-def compose_map_id(values) -> str:
+def compose_map_id(values, table=None, columns=None) -> str:
     """맵 키 컬럼 값들 → 맵 ID. **목록과 상세가 같은 문자열을 만들어야 한다** — 목록이 센 맵과
     상세가 여는 맵이 다른 이름을 가지면 개수가 조용히 갈린다. 그래서 철자는 여기 하나다.
 
@@ -5489,6 +5489,12 @@ def compose_map_id(values) -> str:
        (`('A_B','C')` → `'A_B_C'` → `('A','B_C')`). 그 경우 셀 조회는 아무것도 만나지
        못하고, `_no_cell_refusal`이 `key_ambiguous`로 그 사실을 이름 붙여 내보낸다.
     """
+    if table and columns:
+        # each part by its column's declared type - the registrar's and the editor's spelling
+        # (총괄 88761926b: a Float cell 1.0 composed 'L_1.0' here and 'L_1' there)
+        import map_overlay
+        values = [map_overlay.canonical_bind_value(table, column, value)
+                  for column, value in zip(columns, values)]
     return _MAP_KEY_SEPARATOR.join("" if v is None else str(v) for v in values)
 
 
@@ -5786,7 +5792,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # `DISTINCT` makes the projection unique, so ordering by all of it is total.
     with alignment_batch_counts.phase("ids"):
         id_rows = db.query(*key_attrs).filter(*filters).distinct().order_by(*key_attrs).all()
-    ids = [compose_map_id(r) for r in id_rows]
+    ids = [compose_map_id(r, src_table, map_key_cols) for r in id_rows]
 
     # 🔴 좌표 컬럼은 **인자**다. 예전에는 여기서 `_binding_of`가 정본이라 `dt_log`의 선언
     #    바인딩(`dt_x`/`dt_y`)이 `map_table`과 무관하게 이겼고, `core_wafer_map`으로 열면
@@ -6829,7 +6835,7 @@ def _unit_maps(db, src_model, decision_key: list, map_key_cols: list,
     out = {}
     for r in rows:
         unit = tuple("" if v is None else str(v) for v in r[:n])
-        out.setdefault(unit, set()).add(compose_map_id(r[n:]))
+        out.setdefault(unit, set()).add(compose_map_id(r[n:], src_model.__table__.name, map_key_cols))
     return out, truncated
 
 

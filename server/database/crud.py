@@ -2868,21 +2868,19 @@ def compose_business_key(table_name: str, values, columns) -> str:
 
 def key_part(table_name: str, column: str, value):
     """🔴 ONE KEY PART AS ITS COLUMN STORES IT - the one spelling a payload's part and a stored
-    row's part share (총괄 e243d6abf ③ · d5cf3a954). A number is what `cast_value_by_type`
-    stores ("1.0" · "01" · 1.0 -> 1); a time is its instant (`time_format.instant_text`), since
-    the write door passes its text and PostgreSQL gives back a datetime - so a time does not go
-    through `cast_value_by_type`, which passes text and counts naive times for the write door,
-    not for keys. A part the column would refuse, or a time that is not ISO-8601, keeps its
-    text - as the key did before."""
+    row's part share (총괄 e243d6abf ③ · d5cf3a954): the one speller by the declared type
+    (`map_overlay.canonical_key_value`, 총괄 88761926b - "1.0" · "01" · 1.0 -> "1", "1.50" ->
+    "1.5"). A time is its instant (`time_format.instant_text`) - the write door passes its text
+    and PostgreSQL gives back a datetime; a time that is not ISO-8601 keeps its text. (The time
+    branch is here, not in the speller, until the owner answers 총괄 10-20 ①.)"""
+    import map_overlay
+
     if is_blank_value(value):
         return None
-    col_type = (TABLE_CONFIG.get(table_name, {}).get("column_types") or {}).get(column)
+    col_type = map_overlay.declared_column_type(table_name, column)
     if col_type == "datetime":
         return time_format.instant_text(value) or value
-    try:
-        return cast_value_by_type(value, col_type, column, table_name)
-    except CellRefused:
-        return value
+    return map_overlay.canonical_key_value(value, col_type)
 
 
 def rebuilt_business_key(table_name: str, row) -> Optional[str]:
@@ -3235,7 +3233,8 @@ def unfilled_key_columns(table_name: str, update_item) -> list:
     return []
 
 
-def _update_row_business_key(row: Any, key_col: str, update_item: schemas.GeneralUpdateItem, row_cache: dict):
+def _update_row_business_key(row: Any, key_col: str, update_item: schemas.GeneralUpdateItem, row_cache: dict,
+                             table_name: str = None):
     """비즈니스 키가 업데이트 항목에 있거나 기존 행에 존재하면 DYNAMIC 테이블의 business_key_val 필드를 최신화합니다.
 
     🔴 A BLANK KEY COLUMN NEVER PRODUCES `''`. A new row is left with the **NULL** it
@@ -3288,13 +3287,11 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
     def _apply(raw):
         if raw is None:
             return
-        # THE SAME FUNCTION the item's key was built with (`mapper_sdk.df_to_updates`,
-        # `compose_business_key`) and the same one `get_row_by_business_key` reads with.
-        # `str().strip()` is a SECOND spelling: it renders a float 1234.0 as `'1234.0'`
-        # where every other side of this seam says `'1234'`, so the row is stored under a
-        # key nothing looks it up by and the next push inserts another copy - without
-        # colliding on `uq_bk_`, because the two strings differ.
-        str_val = clean_str_value(raw)
+        # THE SAME SPELLING the item's key was assembled with (`compose_business_key` - the
+        # key column's type, 총괄 88761926b): a row named by id whose key column says '1.50'
+        # is keyed '1.5', as the next write by key asks. A second spelling stores the row
+        # under a key nothing looks it up by - without colliding on `uq_bk_`.
+        str_val = compose_business_key(table_name, [raw], [key_col])
         if str_val == "":
             # Blank -> write nothing. Never `''` (a shared identity that collides), and
             # never a clear (it destroys a map row's key on re-push). See the docstring.
@@ -3542,7 +3539,12 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
 
         # explicit에도 명시적으로 새로 기입된 값이 있으면 그 값을 우선적으로 선정
         if col_name in explicit:
-            new_val = explicit[col_name]
+            # cast as every write casts (총괄 88761926b: a float 1.0 into a text column was stored '1.0')
+            try:
+                new_val = cast_value_by_type(explicit[col_name], column_types.get(col_name, "string"),
+                                             col_name, table_name)
+            except CellRefused:
+                pass
 
         old_val = getattr(row, col_name, None)
 
@@ -3860,7 +3862,7 @@ def apply_row_update_internal(
         return row, is_new, changed_cols
 
     # Update business key first
-    _update_row_business_key(row, key_col, update_item, row_cache)
+    _update_row_business_key(row, key_col, update_item, row_cache, table_name)
 
     # Old values snapshot for auditing
     old_values_snapshot = {}

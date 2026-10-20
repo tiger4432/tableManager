@@ -1365,7 +1365,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     return stats
 
 
-def _fold_units_forced(item, plain, layers, overwrite, clean, col_type, key_column, gated):
+def _fold_units_forced(item, plain, layers, overwrite, clean, col_type, key_column, gated, table_name):
     """'empty' · 'same' · None - the two cells whose write-door answer is already decided (총괄 10-11, speed):
     no layer and no overwrite on the cell, or its one layer is this item's own, saying the same, and shown.
     None - the door judges it (`crud.apply_row_update_internal`): any other layer, an overwrite row, a
@@ -1377,7 +1377,8 @@ def _fold_units_forced(item, plain, layers, overwrite, clean, col_type, key_colu
             or item._written_spelling or crud.is_blank_value(clean)):
         return None
     if key_column and key_value is not None and (
-            isinstance(key_value, dict) or crud.clean_str_value(key_value) not in ("", business_key)):
+            isinstance(key_value, dict)
+            or crud.compose_business_key(table_name, [key_value], [key_column]) not in ("", business_key)):
         return None
     if not layers:
         return "empty"
@@ -1451,7 +1452,7 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
             cell = (item.row_id, mark)
             clean = crud.cast_value_by_type(item.updates.get(mark), col_type, mark, table_name)
             forced = _fold_units_forced(item, plain[item.row_id], sources.get(cell), overwrites.get(cell), clean,
-                                        col_type, key_column, gated)
+                                        col_type, key_column, gated, table_name)
             if forced is None:
                 door.append(item)
             elif forced == "same":
@@ -1683,8 +1684,6 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             before, after = (
                 None if any(crud.is_blank_key_part(p) for p in parts)
                 else crud.compose_business_key(table_name, parts, parts_of_key)
-                if composite_src
-                else crud.clean_str_value(parts[0])
                 for parts in ([getattr(row, c, None) for c in parts_of_key],
                               [cells[c][1] if c in cells else getattr(row, c, None)
                                for c in parts_of_key]))

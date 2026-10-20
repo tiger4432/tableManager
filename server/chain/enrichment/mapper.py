@@ -513,7 +513,8 @@ def map_enrichment_dedup(db, payloads, rule=None):
             joined = crud.compose_business_key(
                 derived_table, [key_map.get(c) for c in comp_src], comp_src)
         elif bk_col and bk_col in key_map:
-            joined = key_map[bk_col]
+            # the derived key column's spelling, as the write assembles it (총괄 88761926b)
+            joined = crud.compose_business_key(derived_table, [key_map[bk_col]], [bk_col])
         else:
             # 방어적 폴백(로더가 키 계약을 검증하므로 정상 경로에선 도달하지 않음)
             #

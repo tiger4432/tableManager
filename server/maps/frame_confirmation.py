@@ -126,9 +126,7 @@ def compose_unit_key(rule: dict, decision_key: dict) -> str:
         raise ConfirmationRefused(
             "The decision unit is not complete - a confirmation holds only for the whole unit. "
             "Missing decision key(s): %s" % ", ".join(missing))
-    derived = rule.get("derived_table")
-    sep = (crud.TABLE_CONFIG.get(derived) or {}).get("composite_key_separator", "_")
-    return sep.join(crud.clean_str_value(decision_key.get(c)) for c in cols)
+    return crud.compose_business_key(rule.get("derived_table"), [decision_key.get(c) for c in cols], cols)
 
 
 def live_confirmation(db, rule_name: str, unit_key: str):

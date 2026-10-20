@@ -232,7 +232,11 @@ def _merge_path_identity(row: dict, path_data: dict, *, row_label: str) -> dict:
     out = dict(row)
     source_wafer = out.get("base_wafer_id")
     path_wafer = path_data["base_wafer_id"]
-    if source_wafer is not None and str(source_wafer).strip() != path_wafer:
+    import map_overlay
+
+    # one spelling (the key speller, no column type): a body 12.0 is the path's «12» (총괄 88761926b)
+    if source_wafer is not None and map_overlay.canonical_key_value(source_wafer, None) != \
+            map_overlay.canonical_key_value(path_wafer, None):
         raise ValueError(
             f"{row_label}: body base_wafer_id {source_wafer!r} conflicts with "
             f"path wafer id {path_wafer!r}. Refusing rather than assigning the "

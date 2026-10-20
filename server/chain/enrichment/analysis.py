@@ -260,17 +260,19 @@ def _typed_key_values(rule: dict, keys: dict) -> tuple:
     DECLARED type governs the cast, so a number-declared key binds as a number
     and the index is actually used.
     """
+    from chain.enrichment.mapper import _clean_key
     from database import crud
 
     src_types = (crud.TABLE_CONFIG.get(rule["source_table"], {}).get("column_types", {}))
-    clean, raw = [], []
-    for k in rule["decision_key"]:
-        sv = crud.clean_str_value(keys.get(k))
-        if sv == "":
-            return None, None
-        clean.append(sv)
-        raw.append(crud.cast_value_by_type(sv, src_types.get(k, "string"), k))
-    return tuple(clean), tuple(raw)
+    # the decision key's one spelling (`_clean_key`, the source column's type - 총괄 88761926b):
+    # an input '001' and the database's 1.0 are one key, as the row read back below spells it
+    clean = _clean_key(rule["source_table"], rule["decision_key"],
+                       [keys.get(k) for k in rule["decision_key"]])
+    if "" in clean:
+        return None, None
+    raw = tuple(crud.cast_value_by_type(sv, src_types.get(k, "string"), k)
+                for k, sv in zip(rule["decision_key"], clean))
+    return clean, raw
 
 
 def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: dict) -> dict:
@@ -283,6 +285,7 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
     source ever have it": it could not have.
     """
     from sqlalchemy import func, tuple_, cast, String, and_, or_
+    from chain.enrichment.mapper import _clean_key
     from chain.rule_run import gate_conditions, gates_of
     from database import crud, models
 
@@ -312,7 +315,7 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
         rows = (db.query(*cols, func.count().label("cnt"))
                 .filter(cond, non_blank, *gated).group_by(*cols).all())
         for row in rows:
-            key = tuple(crud.clean_str_value(v) for v in row[:-1])
+            key = _clean_key(rule["source_table"], rule["decision_key"], row[:-1])
             out[key] = int(row[-1])
     return out
 

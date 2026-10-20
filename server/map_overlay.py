@@ -64,6 +64,8 @@
 import copy
 import json
 import logging
+import math
+import numbers
 import os
 import re
 
@@ -165,10 +167,13 @@ _CANON_INT_RE = re.compile(r"^[+-]?[0-9]+$")
 def canonical_key_value(value, col_type):
     """Value + DECLARED column type -> canonical key string.
 
-    - "number": integer-parse -> str, honoring the project's single-integer-judge
-      semantics ('01' / '1' / ' 1 ' are the same key; 1.0 -> '1'). A non-integral
-      numeric keeps its repr ('7.5'); an unreadable value keeps its trimmed
-      original — the lookup misses honestly instead of inventing a key.
+    - "number": an integer text is read as an integer - exactly, no float on the way ('01' /
+      '1' / ' 1 ' are one key, and 20 digits stay 20 digits); any other number is read as a
+      float: integral -> its integer ('1.0' · 1.0 · '1e3'), else the float's short spelling
+      ('1.50' · Decimal('1.50') -> '1.5', owner 10-20). An unreadable or non-finite value keeps
+      its trimmed original — the lookup misses honestly instead of inventing a key.
+      🔴 THE ONE SPELLER OF A KEY (lead 88761926b): `crud.key_part` and `canonical_bind_value`
+      look the declared type up and call this; a key compared anywhere passes here.
     - anything else (string / undeclared): trimmed as-is.
     - 🔴 A BLANK IS `None`, NOT `''` (S-181, 판정 284·287). This seat used to keep `None`
       as `None` and return `''` for `''`, which made the SAME key read as two different
@@ -182,23 +187,18 @@ def canonical_key_value(value, col_type):
     if crud.is_blank_key_part(value):
         return None
     if col_type == "number" and not isinstance(value, bool):
-        if isinstance(value, int):
-            return str(value)
-        if isinstance(value, float):
-            if value == value and value not in (float("inf"), float("-inf")) \
-                    and value.is_integer():
-                return str(int(value))
-            return str(value).strip()
+        if isinstance(value, numbers.Integral):
+            return str(int(value))
         s = str(value).strip()
-        if _CANON_INT_RE.match(s):
+        if not isinstance(value, float) and _CANON_INT_RE.match(s):
             return str(int(s))
         try:
-            f = float(s)
+            f = float(value)
         except (TypeError, ValueError):
             return s
-        if f == f and f not in (float("inf"), float("-inf")) and f.is_integer():
-            return str(int(f))
-        return s
+        if not math.isfinite(f):
+            return s
+        return str(int(f)) if f.is_integer() else repr(f)
     if isinstance(value, float):
         # A float VALUE is numeric regardless of the declared type — '3.0' is a
         # repr artifact, not data (mirrors crud.clean_str_value, which the

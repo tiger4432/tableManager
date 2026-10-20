@@ -206,6 +206,23 @@ def _folded(column, fold):
     return notation_norm.key_expression_sql(column, fold)
 
 
+def _key_types_differ(spec: dict, left_table: str) -> list:
+    """The `on` pairs whose two columns are a number and a not-number - «left.col number · right.col
+    string» each. Such a pair compares the number's text to the other's letters, so 1 and «01» never
+    meet; said, not folded (총괄 88761926b ④)."""
+    import map_overlay
+
+    right_table = str(spec.get("right_table") or "")
+    out = []
+    for left, right, _fold in _pairs(spec, left_table):
+        types = (map_overlay.declared_column_type(left_table, left),
+                 map_overlay.declared_column_type(right_table, right))
+        if (types[0] == "number") != (types[1] == "number"):
+            out.append("%s.%s %s · %s.%s %s" % (left_table, left, types[0] or "undeclared",
+                                                right_table, right, types[1] or "undeclared"))
+    return out
+
+
 def _models(spec: dict, left_table: str):
     from database import models
 
@@ -501,7 +518,10 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
     #    Said only by an answer that is ONE page: an empty first page says nothing of the rest.
     refusal = None
     if not updates and not more and not start:
-        refusal = ("오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % handed
+        differ = [] if answers else _key_types_differ(spec, left_table)
+        refusal = ("no row matched - the join key types differ: %s" % "; ".join(differ)
+                   if differ else
+                   "오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % handed
                    if not rows else
                    "matched %d row(s) and wrote nothing - %d blank answer(s) not written "
                    "(blank: skip), the rest already held" % (len(rows), sum(unsaid.values()))

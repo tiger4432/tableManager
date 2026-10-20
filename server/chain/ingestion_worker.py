@@ -436,9 +436,9 @@ def group_key(rule, payload):
     transaction. MEASURED - `database.py`'s collapsed stager writes `row_ids` where the per-row
     stager writes `data`.
 
-    ⚠️ THE VALUE IS FOLDED BY `crud.fold_key_value`, the one fold for a key part (S-181):
-    `None`, `''` and `'   '` are ONE key here, exactly as they are everywhere else a key is
-    composed. A second folding rule here is how two seats come to disagree about null.
+    ⚠️ THE VALUE IS SPELLED BY THE ONE KEY SPELLER (`map_overlay.canonical_bind_value`, the
+    trigger table's column type - 총괄 88761926b): `None`, `''` and `'   '` are one key, and 1 · 1.0
+    · '01' on a number column are one key, exactly as everywhere else a key is composed.
     """
     columns = [str(name) for name in ((rule or {}).get(chain_bindings.GROUP_BY_KEY) or ())
                if str(name).strip()]
@@ -448,7 +448,7 @@ def group_key(rule, payload):
     if payload.get("root_transaction_id") or event_constants.is_collapsed_payload(payload):
         return None
 
-    from database import crud
+    import map_overlay
 
     data = payload.get("data") or {}
     table = str(payload.get("table_name") or "")
@@ -456,7 +456,7 @@ def group_key(rule, payload):
     for column in columns:
         cell = data.get(column)
         value = cell.get("value") if isinstance(cell, dict) and "value" in cell else cell
-        parts.append("%s=%r" % (column, crud.fold_key_value(table, column, value)))
+        parts.append("%s=%r" % (column, map_overlay.canonical_bind_value(table, column, value)))
     return "|".join(parts)
 
 
