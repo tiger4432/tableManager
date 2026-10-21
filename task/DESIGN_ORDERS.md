@@ -1,3 +1,19 @@
+# [구현자 B] **체인 행 거르기가 «값»으로도 거른다 — require · exclude 항목이 값 목록을 받는다** (소유자 10-21 「체인 행 내 특정 값일 때 제외하는 거는」 → 안 ㄱ, 총괄) — bce8d755a(take fn) «다음», a7b67be28 ㄴ «앞»
+
+지금: `require` · `exclude` 는 칸 이름 목록뿐이고 판단은 «비었나» 하나(`rule_run.gate_misses` · SQL 짝 `gate_conditions`)
+도착 — 두 줄
+```
+exclude 에 {"칸": [값, …]} 를 적으면 그 칸이 그 값 중 하나인 행은 규칙에 안 넘어간다. require 에 적으면 그 값 중 하나인 행만 넘어간다
+칸 이름만 적으면 지금과 같다(비었나)
+```
+지킬 것
+- 넓히는 곳은 판단 짝 «하나»: `gate_misses`(파이썬) · `gate_conditions`(SQL). 같은 픽스처에 둘이 같은 행 집합을 답한다(지금 그 둘이 한 집합이라는 계약, 총괄 63c747046)
+- 값 견주기: 칸의 글자 꼴로 — SQL 은 `column_text_sql`, 파이썬은 같은 접기. 목록의 "" 는 «빈 값»(길이 0 = NULL, 상설)
+- `gates_of` · `SOURCE_GATE_KEYS`(source_exclude · source_require 를 load 에 찍는 짝) · edit 로 문 밖으로 나간 행을 «나간 행»으로 넘기는 갈래(held_back 의 left)가 새 꼴을 그대로 지난다 — 꼴마다 갈래를 트지 않는다
+- 저장 관문: 모르는 칸 · 빈 목록 · 스칼라가 아닌 값은 거절(사유 + 다음 행동). 스켈레톤 · 폼은 그 항목을 «이름 | {칸: 값 목록}» oneOf 로(take fn 과 같은 꼴)
+- 로그 «held back» 줄이 값으로 걸린 수도 같은 줄에(낱말 하나 더하지 않고 칸 이름 옆에 값)
+게이트: 진짜 체인 워커 · 스크래치 — exclude {status: [SCRAP]} 행 안 넘어감 · 다른 값 · 빈 값은 넘어감 · require {status: [OK]} 반대 · 편집으로 SCRAP 이 된 행은 회수 규칙에서 «나간 행»으로 거둬짐 · 소급의 다시 세기(SQL)가 같은 집합. 변이 둘(SQL 짝 안 넓힘 → 두 답이 갈라져 빨강 · 값 무시 → 빨강). RUN.md · RELEASE_LOG · 가이드 한 줄
+
 # [구현자 B] **체인 선언 폼의 join take 에 fn 이 없다** (소유자 10-21 「체인 선언 take 에 fn 이 없네」, 총괄) — target_columns 착지 «다음»
 
 원인(총괄이 코드로 읽음): `join_into.JOIN_CELL_SHAPES["take"]` 가 «칸 이름 목록»(column_ref) 하나뿐이다. 주석이 「the vocabulary has no union, so the item is drawn as a name and the record form stays in the raw editor」라 하는데, 지금은 union 이 있다 — `rule_shape.DECIDE_CELL_SHAPES["aggregations"]` 가 oneOf(`pick: "shape"`)로 이름 · 레코드를 가른다. b1eb22b47(take fn)이 이 노드를 안 넓혔다
