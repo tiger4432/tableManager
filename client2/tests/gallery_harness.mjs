@@ -13,6 +13,16 @@
 //   G11 the side panel's keys: → ← the neighbour tile across a group's end, Esc closes, nothing while typing in a box
 //   G12 the side panel's values: the columns the grid shows (its answer handed in), no other
 //   G13 two galleries on one page, two tables: a caption picked on one leaves the other's
+// The board (lead 3589216b9, owner 10-20 «갤러리는 매트릭스로»): Columns by picked, the lines are rows x columns.
+//   B1 a cell is the rows of its line's and its column's values; a line's cells add up to its total, the totals to the rows held
+//   B2 Columns by (None) is the list as it was - the same heads, no board
+//   B3 Rows by + Column: the values of both are a line's key and its words; (None) in the added box takes the column out
+//   B4 a cell pressed: under the board its tiles - as many as its rows with a picture - its head its rows, ← → inside it
+//   B5 Filter grid to this cell hands the line's and the column's columns with one of the cell's rows
+//   B6 the shares: a line's of the rows held, a cell's of its line; a cell with no rows says «none» and cannot be pressed
+//   B7 Show: 4 or 9 thumbnails a cell, kept for the table; the columns in the Order's order
+//   B8 two boards on one page: a cell opened on one leaves the other's
+//   B9 + Column adds the first column not used to Rows by
 // Imports only (the probe copies a module whole); each defect must go red at its line.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -159,7 +169,7 @@ async function suite(M) {
   groupBox.dispatch('change');
   k.state.table = 'U';
   k.part.render();
-  ok('G8 a Group by picked is kept for that table only', JSON.parse(store.getItem('gallery:T') || '{}').groupBy === 'lot' && store.getItem('gallery:U') === null && box(k.mount, M.WORDS.groupBy).value === '',
+  ok('G8 a Group by picked is kept for that table only', JSON.stringify(JSON.parse(store.getItem('gallery:T') || '{}').groupBy) === '["lot"]' && store.getItem('gallery:U') === null && box(k.mount, M.WORDS.groupBy).value === '',
     `T ${store.getItem('gallery:T')}, U ${store.getItem('gallery:U')}`);
   // G9 - the caption: by default the first shown column not the picture; a picked one kept for its table
   const cap = seat(M, { shown: ['pic', 'defect', 'lot'] });
@@ -225,6 +235,114 @@ async function suite(M) {
   g2.part.render();
   ok('G13 two galleries, two tables: a caption picked on one leaves the other\'s', (box(g1.mount, M.WORDS.caption) || {}).value === 'pic' && (box(g2.mount, M.WORDS.caption) || {}).value === 'lot',
     `${(box(g1.mount, M.WORDS.caption) || {}).value} / ${(box(g2.mount, M.WORDS.caption) || {}).value}`);
+
+  // ── the board ──
+  const BCOLS = [...IMG, { name: 'step', type: null }];
+  // defect A B C by row; step S1 for rows 0-3, S2 for 4-9, S3 for 10-11: A has no S3, so its S3 cell is empty
+  const boardRows = (n = 12) => Array.from({ length: n }, (_, i) => ({ id: String(i),
+    data: { lot: `L${i % 2}`, defect: ['A', 'B', 'C'][i % 3], step: i < 4 ? 'S1' : i < 10 ? 'S2' : 'S3', pic: i === 9 ? '' : `img/${i}.png` } }));
+  const press = (n, ev = 'click') => { if (n) n.dispatch(ev); };
+  const keptAs = (o) => { const st = memory(); st.setItem('gallery:T', JSON.stringify(o)); return st; };
+  const cells = (root) => byClass(root, 'gallery-cell');
+  const cellOf = (root, d, step) => cells(root).find((c) => JSON.parse(c.dataset.line)[0] === d && JSON.parse(c.dataset.column)[0] === step);
+  const nOf = (c) => (c ? Number(textOf(byClass(c, 'gallery-cell__n')[0])) : NaN);
+  const filtered = [];
+  const bd = seat(M, { columns: BCOLS, rows: boardRows(), storage: keptAs({ groupBy: 'defect', columnBy: 'step', order: 'value' }) });
+  bd.part.deps.filterTo = (pairs) => filtered.push(pairs);
+  bd.part.render();
+  lay(bd, 2000, 3000);
+  const want = { A: { S1: 2, S2: 2, S3: 0 }, B: { S1: 1, S2: 2, S3: 1 }, C: { S1: 1, S2: 2, S3: 1 } };
+  const got = {};
+  for (const d of ['A', 'B', 'C']) { got[d] = {}; for (const st of ['S1', 'S2', 'S3']) got[d][st] = cellOf(bd.mount, d, st) ? nOf(cellOf(bd.mount, d, st)) : null; }
+  const totals = byClass(bd.mount, 'gallery-board__total').map((n) => Number(textOf(n)));
+  ok('B1 a cell is its line\'s and its column\'s rows; a line adds up to its total, the totals to the rows held',
+    JSON.stringify(got) === JSON.stringify(want) && JSON.stringify(totals) === '[4,4,4]' && totals.reduce((a, b) => a + b, 0) === 12
+      && byClass(bd.mount, 'gallery-board__col').map(textOf).join() === 'S1,S2,S3,' + M.WORDS.total,
+    `${JSON.stringify(got)} totals ${JSON.stringify(totals)}`);
+
+  const flat = seat(M, { columns: BCOLS, rows: boardRows(), storage: keptAs({ groupBy: 'defect', order: 'value' }) });
+  lay(flat, 2000, 3000);
+  const flatAgain = seat(M, { columns: BCOLS, rows: boardRows(), storage: keptAs({ groupBy: 'defect', columnBy: null, order: 'value' }) });
+  lay(flatAgain, 2000, 3000);
+  ok('B2 Columns by (None) is the list as it was: the same heads, no board',
+    byClass(flat.mount, 'gallery-board').length === 0 && JSON.stringify(heads(flat.mount)) === JSON.stringify([['A', '4', M.WORDS.without(1)], ['B', '4', ''], ['C', '4', '']])
+      && JSON.stringify(heads(flatAgain.mount)) === JSON.stringify(heads(flat.mount)) && box(flat.mount, M.WORDS.columnsBy).value === '',
+    JSON.stringify(heads(flat.mount)));
+
+  const pair = seat(M, { columns: BCOLS, rows: boardRows(), storage: keptAs({ groupBy: ['defect', 'lot'], columnBy: 'step', order: 'value' }) });
+  lay(pair, 2000, 3000);
+  const lineWords = byClass(pair.mount, 'gallery-board__value').map(textOf);
+  const added = byClass(pair.mount, 'gallery-select--more')[0];
+  if (added) { added.value = ''; press(added, 'change'); }
+  ok('B3 Rows by + Column: both values are a line\'s key and its words; (None) in the added box takes it out',
+    lineWords.join('|') === 'A · L0|A · L1|B · L0|B · L1|C · L0|C · L1' && !!added
+      && byClass(pair.mount, 'gallery-board__value').map(textOf).join('|') === 'A|B|C' && byClass(pair.mount, 'gallery-add').length === 1,
+    `${lineWords.join('|')} -> ${byClass(pair.mount, 'gallery-board__value').map(textOf).join('|')}`);
+  const plus = byClass(bd.mount, 'gallery-add')[0];
+  const plusStore = memory();
+  const pl = seat(M, { columns: BCOLS, rows: boardRows(), storage: (() => { plusStore.setItem('gallery:T', JSON.stringify({ groupBy: 'defect', columnBy: 'step' })); return plusStore; })() });
+  press(byClass(pl.mount, 'gallery-add')[0]);
+  ok('B9 + Column adds the first column not used to Rows by', !!plus && JSON.stringify(JSON.parse(plusStore.getItem('gallery:T') || '{}').groupBy) === '["defect","lot"]',
+    plusStore.getItem('gallery:T'));
+
+  const c22 = cellOf(bd.mount, 'B', 'S2');
+  press(c22);
+  lay(bd, 2000, 3000);
+  const openTiles = tiles(bd.mount).map((t) => t.dataset.row);
+  const openWords = textOf(byClass(bd.mount, 'gallery-open__label')[0]);
+  const openN = textOf(byClass(bd.mount, 'gallery-open__n')[0]);
+  press(tiles(bd.mount)[0]);
+  bd.doc.press('ArrowRight');
+  const step1 = bd.part.picked && bd.part.picked.id;
+  bd.doc.press('ArrowRight');
+  const step2 = bd.part.picked && bd.part.picked.id;
+  ok('B4 a cell pressed: its tiles under the board, as many as its rows with a picture, ← → inside it',
+    JSON.stringify(openTiles) === '["4","7"]' && openWords === 'B · S2' && openN === M.WORDS.rows(2) && !!cellOf(bd.mount, 'B', 'S2') && cellOf(bd.mount, 'B', 'S2').classList.contains('is-open')
+      && byClass(bd.mount, 'gallery-head').length === 0 && step1 === '7' && step2 === '7',
+    `tiles ${JSON.stringify(openTiles)} «${openWords}» «${openN}» → ${step1} ${step2}`);
+  bd.doc.press('Escape');
+  const a2 = cellOf(bd.mount, 'A', 'S2');
+  press(a2);
+  lay(bd, 2000, 3000);
+  const aN = textOf(byClass(bd.mount, 'gallery-open__n')[0]);
+  press(byClass(bd.mount, 'gallery-open__filter')[0]);
+  const handed = (filtered[0] || []).map(({ column, row }) => [column, row.data[column]]);
+  ok('B5 Filter grid to this cell hands the line\'s and the column\'s columns with one of its rows; the head says the rows without picture',
+    JSON.stringify(handed) === '[["defect","A"],["step","S2"]]' && aN === `${M.WORDS.rows(2)} · ${M.WORDS.without(1)}` && tiles(bd.mount).length === 1,
+    `${JSON.stringify(handed)} «${aN}» ${tiles(bd.mount).length} tiles`);
+
+  const shares = byClass(bd.mount, 'gallery-board__share').map(textOf);
+  const empty = cellOf(bd.mount, 'A', 'S3');
+  ok('B6 the shares: a line\'s of the rows held, a cell\'s of its line; an empty cell says none and cannot be pressed',
+    JSON.stringify(shares) === JSON.stringify(['33%', '33%', '33%'].map(M.WORDS.ofRows)) && textOf(cellOf(bd.mount, 'B', 'S2') && byClass(cellOf(bd.mount, 'B', 'S2'), 'gallery-cell__share')[0]) === M.WORDS.ofRow('50%')
+      && !!empty && textOf(byClass(empty, 'gallery-cell__share')[0]) === M.WORDS.noRows && empty.disabled === true && nOf(empty) === 0,
+    `${JSON.stringify(shares)}`);
+
+  const many = Array.from({ length: 20 }, (_, i) => ({ id: String(i), data: { lot: 'L', defect: 'A', step: i < 12 ? 'S2' : 'S1', pic: `img/${i}.png` } }));
+  const sh = memory();
+  sh.setItem('gallery:T', JSON.stringify({ groupBy: 'defect', columnBy: 'step' }));
+  const nine = seat(M, { columns: BCOLS, rows: many, storage: sh });
+  const thumbsIn = (c) => (c ? byClass(c, 'gallery-cell__thumb').length : -1);
+  const four = thumbsIn(cellOf(nine.mount, 'A', 'S2'));
+  const showBox = box(nine.mount, M.WORDS.show);
+  if (showBox) { showBox.value = '9'; press(showBox, 'change'); }
+  const nined = thumbsIn(cellOf(nine.mount, 'A', 'S2'));
+  const firstCol = textOf(byClass(nine.mount, 'gallery-board__col')[0]);
+  nine.state.table = 'U';
+  nine.part.render();
+  ok('B7 Show 4 or 9 thumbnails a cell, kept for the table; the columns most rows first',
+    four === 4 && nined === 9 && JSON.parse(sh.getItem('gallery:T') || '{}').perCell === 9 && firstCol === 'S2' && byClass(nine.mount, 'gallery-board').length === 0,
+    `${four} -> ${nined}, first column ${firstCol}`);
+
+  const boards = memory();
+  boards.setItem('gallery:T', JSON.stringify({ groupBy: 'defect', columnBy: 'step' }));
+  const b1 = seat(M, { columns: BCOLS, rows: boardRows(), storage: boards });
+  const b2 = seat(M, { columns: BCOLS, rows: boardRows(), storage: boards, doc: b1.doc });
+  press(cellOf(b1.mount, 'C', 'S3'));
+  b2.part.render();
+  ok('B8 two boards on one page: a cell opened on one leaves the other\'s',
+    textOf(byClass(b1.mount, 'gallery-open__label')[0]) === 'C · S3' && textOf(byClass(b2.mount, 'gallery-open__label')[0]) !== 'C · S3',
+    `${textOf(byClass(b1.mount, 'gallery-open__label')[0])} / ${textOf(byClass(b2.mount, 'gallery-open__label')[0])}`);
   return { ran, failed: failed.slice() };
 }
 
@@ -237,7 +355,7 @@ const MUTANTS = [
   { name: 'the kept image column not read', catches: ['G3b'], mutate: swap('    const image = images.includes(kept.image) ? kept.image : images[0];', '    const image = images[0];') },
   { name: 'part held said as the rows alone', catches: ['G4a'], mutate: swap('whole || !total ? WORDS.rows(rows.length) : WORDS.loaded(rows.length, total)', 'WORDS.rows(rows.length)') },
   { name: 'Load more when all are held', catches: ['G4b'], mutate: swap('    if (!whole) {\n      const more', '    if (true) {\n      const more') },
-  { name: 'the groups kept from the first draw', catches: ['G5'], mutate: swap('    this.groups = galleryModel(rows,', '    this.groups = this.groups || galleryModel(rows,') },
+  { name: 'the groups kept from the first draw', catches: ['G5'], mutate: swap('if (!columnBy) this.groups = galleryModel(rows,', 'if (!columnBy) this.groups = this.groups || galleryModel(rows,') },
   { name: 'every line drawn', catches: ['G6a'], mutate: swap('  return layout.items.filter((it) => it.top + it.height >= top - margin && it.top <= top + height + margin);', '  return layout.items;') },
   { name: 'the drawn lines do not follow the scroll', catches: ['G6b'], mutate: swap("    const want = itemsInView(this.layout, this.scroller.scrollTop || 0,", '    const want = itemsInView(this.layout, 0,') },
   { name: 'the large picture asked at the tile\'s px', catches: ['G7'], mutate: swap('    const url = this.deps.loader.url(t.ref, LARGE_PX);', '    const url = this.deps.loader.url(t.ref, TILE_PX);') },
@@ -249,6 +367,15 @@ const MUTANTS = [
   { name: 'the arrows stop at a group\'s end', catches: ['G11'], mutate: swap('const tiles = (this.groups || []).flatMap((g) => g.tiles);', 'const tiles = ((this.groups || []).find((g) => g.tiles.some((x) => x.id === this.picked.id)) || { tiles: [] }).tiles;') },
   { name: 'typing in a box moves the panel', catches: ['G11'], mutate: swap("if (tag === 'input' || tag === 'select' || tag === 'textarea' || (t && t.isContentEditable)) return;", '') },
   { name: 'Esc keeps the keys', catches: ['G11'], mutate: swap("    if (this.doc.removeEventListener) this.doc.removeEventListener('keydown', this.onKey);\n    this.render();", '    this.render();') },
+  { name: 'a cell holds its line\'s rows whatever the column', catches: ['B1'], mutate: swap('      const cells = new Map(galleryModel(line.rows,', '      const cells = new Map(galleryModel(rows,') },
+  { name: 'Columns by (None) still draws a board', catches: ['B2'], mutate: swap('    this.heads = !columnBy;\n    if (columnBy) {', '    this.heads = !columnBy;\n    if (true) {') },
+  { name: 'Rows by is its first column alone', catches: ['B3'], mutate: swap("  const by = [].concat(groupBy || []).filter(Boolean);", "  const by = [].concat(groupBy || []).filter(Boolean).slice(0, 1);") },
+  { name: 'the opened cell lays out every line\'s tiles', catches: ['B4'], mutate: swap('      this.groups = open ? [open.cell] : [];', '      this.groups = board.lines;') },
+  { name: 'Filter grid to this cell hands the column alone', catches: ['B5'], mutate: swap('this.deps.filterTo([...rowsBy, columnBy].map(', 'this.deps.filterTo([columnBy].map(') },
+  { name: 'a cell\'s share of all rows, not of its line', catches: ['B6'], mutate: swap('WORDS.ofRow(percent(cell.count, line.count))', 'WORDS.ofRow(percent(cell.count, board.all))') },
+  { name: 'every cell draws four thumbnails', catches: ['B7'], mutate: swap('cell.tiles.slice(0, perCell)', 'cell.tiles.slice(0, 4)') },
+  { name: 'the opened cell kept for the module, not the gallery', catches: ['B8'], mutate: (t) => swap('export const PER_CELL', 'const OPENED = {};\nexport const PER_CELL')(swap('    const kept = this.opened && at(this.opened.line, this.opened.column);', '    const kept = OPENED.at && at(OPENED.at.line, OPENED.at.column);')(swap("if (cell) b.addEventListener('click', () => { this.opened =", "if (cell) b.addEventListener('click', () => { OPENED.at =")(t))) },
+  { name: '+ Column adds no column', catches: ['B9'], mutate: swap('rowsKept([...rowsBy, unused[0]])', 'rowsKept([...rowsBy])') },
   { name: 'the side panel shows every column', catches: ['G12'], mutate: swap('(this.deps.shown ? this.deps.shown() : (this.deps.columns() || []).map((c) => c.name))', '(this.deps.columns() || []).map((c) => c.name)') },
 ];
 
