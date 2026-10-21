@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-21 [리플레이는 쪽마다 따로 돌고 커밋한다 — 이력 화면은 run 하나로 접어 보인다](#2026-10-21--리플레이는-쪽마다-따로-돌고-커밋한다--이력-화면은-run-하나로-접어-보인다) — 보는 곳 chain_worker.log [ChainRule] rows_in · 이력 화면
 - 2026-10-21 [거두기가 비운 행은 남지 않는다 — 편집 · 지움 · 리플레이 · R2 가 모두 같은 껍데기 판단을 묻는다](#2026-10-21--거두기가-비운-행은-남지-않는다--편집--지움--리플레이--r2-가-모두-같은-껍데기-판단을-묻는다) — 보는 곳 chain_worker.log [ChainShell] · 소급 R2 미리보기
 - 2026-10-21 [체인 선언 폼 — target_columns 가 Advanced 밖, 대상 표 옆 첫 화면에 선다](#2026-10-21--체인-선언-폼--target_columns-가-advanced-밖-대상-표-옆-첫-화면에-선다) — 보는 곳 어드민 Chain 탭 폼
 - 2026-10-21 [체인 선언 폼의 join take 에 fn — 레코드 {from, into, fn, separator} 가 폼에 그려지고 fn 을 고른다](#2026-10-21--체인-선언-폼의-join-take-에-fn--레코드-from-into-fn-separator-가-폼에-그려지고-fn-을-고른다) — 보는 곳 어드민 Chain 탭 폼의 take
@@ -484,6 +485,14 @@
 
 
 
+
+## 2026-10-21 · 리플레이는 쪽마다 따로 돌고 커밋한다 — 이력 화면은 run 하나로 접어 보인다
+
+- **무엇** — 리플레이의 쪽들이 같은 트랜잭션(`replay_<run>`)을 달고 있어, 워커가 트랜잭션을 마저 끌어오며 한 run 을 한 그룹(최대 2만 행)으로 한 번에 돌리고 한 번에 커밋했습니다.
+- **선언** — 바뀐 것 없음.
+- **바뀐 동작** — 리플레이 쪽 하나가 그룹 하나입니다(`ingestion_worker.group_id`). 쪽마다 돌고 커밋하며, 이력 라벨은 `chain_replay_<run>·<이벤트>` 입니다. 이력 화면 · 펼치기 · 그리드 «이 트랜잭션 행만»은 `audit_cache.group_of` · `in_group` 을 지나 run 하나로 접습니다. 대기열은 그대로 run 하나가 한 줄입니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_audit_cache_recent_scan.py::test_n_a_replays_pages_are_one_line_per_run` · `test_a_rule_can_say_what_a_group_is.py::test_a_replay_page_is_a_group_of_its_own`.
 
 ## 2026-10-21 · 외장 훑기가 패턴대로 걷고 쪽마다 바로 넘긴다 — 맞을 수 없는 폴더는 안 들어가고, 이름이 안 맞으면 실제 경로를 묻지 않는다
 

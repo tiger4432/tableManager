@@ -477,7 +477,9 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     # 🔴 [판정 426] `business_key_val` RIDES ALONG, LAST AND OUTSIDE `columns`. It is not a
     # declared data column, so it must not land in `data` - it is its own cell of the payload,
     # and without selecting it here retroactive could not fill the cell the live path fills.
-    # 🔴 ONE REPLAY IS ONE TRANSACTION, AND THIS IS THE LINE THAT MAKES IT TRUE.
+    # 🔴 ONE REPLAY IS ONE TRANSACTION, AND THIS IS THE LINE THAT MAKES IT TRUE. ⚠️ Its pages are groups of their
+    #    own since 총괄 ㄴ 10-21 (`ingestion_worker.group_id`), so each commits alone and its label is
+    #    `chain_replay_<run>·<event>`; the history folds them back to one line per run (`audit_cache.group_of`).
     #    `stage_collapsed_event` takes its envelope from `_outbox_envelope()`, which reads
     #    `request_transaction_id.get() or str(uuid.uuid4())`. This runs on the WORKER's
     #    thread, where that context var is unset - so without this every page would mint its

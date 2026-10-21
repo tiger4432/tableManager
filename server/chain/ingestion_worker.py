@@ -498,6 +498,13 @@ def group_id(event, rules):
     if keys:
         return "group_by:" + "|".join(keys)
     transaction_id = payload.get("transaction_id")
+    if transaction_id and event_constants.replay_of(payload):
+        # 🔴 A REPLAY PAGE IS ITS OWN GROUP (총괄 ㄴ 안 1, 10-21): one run's pages share `replay_<run>`, so the
+        #    pull that completes a transaction drew up to 20k rows into one group and one commit. Each page now
+        #    drains and commits alone; the label is `chain_replay_<run>·<event>` - this reverses ㉡ (총괄 09-23
+        #    「one run, one label」, a page per commit is a label per page). The history folds them back to one
+        #    line per run (`audit_cache.group_of`).
+        return "%s%s%s" % (transaction_id, event_constants.GROUP_PART, event.event_uuid)
     return transaction_id if transaction_id else f"single_{event.event_uuid}"
 
 

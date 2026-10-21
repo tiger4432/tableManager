@@ -119,8 +119,10 @@ def _drain(db, rule):
               .order_by(models.DatabaseOutbox.id.asc()).all()
               if (e.payload or {}).get("only_rule")]
     assert staged, "nothing was handed over, so draining proves nothing"
-    tx = (staged[0].payload or {}).get("transaction_id")
-    worker._process_chain_transaction_group_sync(tx, staged, db, [rule])
+    # grouped by the worker's own seat: a replay page is a group of its own (총괄 ㄴ 10-21)
+    order, groups = worker.group_events(staged, [rule])
+    for key in order:
+        worker._process_chain_transaction_group_sync(key, groups[key], db, [rule])
     return staged
 
 
@@ -178,14 +180,18 @@ def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):
 
     made = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).count() - before
-    assert made == 1, (
-        "the backfill wrote 5 rows and produced %d outbox events - the shape S-249 removed "
-        "from the follow-up lap and S-278 from the group path" % made)
+    # one event per PAGE: a page is a group of its own and commits alone (총괄 ㄴ 10-21)
+    assert stats["events_staged"] < stats["rows_staged"], "a page per row cannot tell the two apart"
+    assert made == stats["events_staged"], (
+        "the backfill wrote 5 rows in %d pages and produced %d outbox events - the shape S-249 removed "
+        "from the follow-up lap and S-278 from the group path" % (stats["events_staged"], made))
 
 
 
-def test_one_run_writes_one_transaction_label_however_many_pages(db):
-    """⚠️ GATE ㉡ (총괄 2026-09-23). 🔴 MORE THAN ONE PAGE, BECAUSE ONE PAGE CANNOT TELL
+def test_one_run_writes_a_label_per_page_and_the_history_folds_them_to_one(db):
+    """⚠️ GATE ㉡ (총괄 2026-09-23), REVERSED IN STORAGE BY 총괄 ㄴ 10-21: a page is a group of its own and
+    commits alone, so a page is a label - `chain_replay_<run>·<event>`. What ㉡ kept, one run as one line on
+    the history screen, `audit_cache.group_of` keeps. 🔴 MORE THAN ONE PAGE, BECAUSE ONE PAGE CANNOT TELL
     「one label per run」 FROM 「one per page」 - they give the same count.
 
     ⚰️ MEASURED BEFORE THE CHANGE, on this box: 21 replay runs carried 30 labels in
@@ -197,6 +203,8 @@ def test_one_run_writes_one_transaction_label_however_many_pages(db):
     ⚠️ THE PAGE NUMBER ITSELF DID NOT DIE - `stats["pages"]` still counts, and a failed page
     still reports which one it was. What died is the page being part of the NAME."""
     import re
+
+    from admin.audit_cache import group_of
 
     _seed(db)
     # The seed's own write carries a generated id, so the subject is the DELTA. Counting
@@ -213,11 +221,19 @@ def test_one_run_writes_one_transaction_label_however_many_pages(db):
     assert stats["pages"] > 1, (
         "one page cannot decide this - the fixture stopped being a discriminant")
     labels = _labels() - before
-    assert len(labels) == 1, (
-        "%d pages left %d labels: %s" % (stats["pages"], len(labels), sorted(labels)))
-    only = labels.pop()
-    assert re.fullmatch(r"chain_replay_[0-9a-zA-Z]+", only), (
-        "the write's label still carries a page, so it cannot be the envelope's: %r" % only)
+    assert len(labels) == stats["pages"], (
+        "%d pages left %d labels - a page is one commit: %s" % (stats["pages"], len(labels), sorted(labels)))
+    runs = {group_of(label) for label in labels}
+    assert len(runs) == 1, "the history shows one run as %d lines: %s" % (len(runs), sorted(runs))
+    run = runs.pop()
+    assert re.fullmatch(r"chain_replay_[0-9a-zA-Z]+", run), sorted(labels)
+
+    # the grid's 「this transaction's rows」 asked with the run's line gives every page's rows
+    import main
+    written = {a.row_id for a in db.query(models.AuditLog).filter(
+        models.AuditLog.table_name == LEFT, models.AuditLog.transaction_id.in_(labels))}
+    query, _ = main.narrowed_table_query(db, LEFT, models.DYNAMIC_TABLES[LEFT], transaction_id=run)
+    assert len(written) > 1 and {r.row_id for r in query} == written
 
 
 def test_a_dry_run_writes_nothing_and_says_what_it_would_be_handed(db):

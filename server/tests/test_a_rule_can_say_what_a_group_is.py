@@ -170,6 +170,19 @@ def test_a_collapsed_event_carries_no_values_so_it_keeps_its_transaction():
     assert worker.group_id(collapsed, [BY_LOT]) == "txA"
 
 
+def test_a_replay_page_is_a_group_of_its_own():
+    """총괄 ㄴ 10-21: a run's pages share `replay_<run>`, and the pull that completes a transaction drew them
+    into one group and one commit. Each page is its own group now; an ordinary collapsed event keeps its
+    transaction (above)."""
+    pages = [FakeEvent(u, "replay_r1", {}, {"row_ids": ["r1"], "row_count": 1, "replay": True})
+             for u in ("u1", "u2")]
+
+    order, groups = worker.group_events(pages, [SAYS_NOTHING])
+
+    assert order == ["replay_r1·u1", "replay_r1·u2"]
+    assert all(len(groups[key]) == 1 for key in order)
+
+
 # ---------------------------------------------------------------------------
 # 🔴 gate ⓓ - the cell is declared, and a name that matches nothing is refused
 # ---------------------------------------------------------------------------

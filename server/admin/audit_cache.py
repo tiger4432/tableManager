@@ -86,6 +86,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
+import event_constants
 from admin import audit_history
 from database import models
 from database import schemas
@@ -238,23 +239,15 @@ class AuditLogCache:
         keys of a window together, and the window holds at most `limit_groups`
         of them. The cost is therefore bounded by the PAGE, not by history.
 
-        ⚠️ A NULL `transaction_id` cannot be asked this way - `IN` never matches
-        NULL, and `a.transaction_id = b.transaction_id` is NULL rather than true.
-        The walk folds every such row into one pseudo-group (`no_tid`), so it is
-        asked as the one question it actually is: does ANY unattributed row sit
-        at or above the floor.
+        A key is a GROUP (`group_of`), so it is asked by `in_group`: the
+        unattributed rows for `no_tid`, a run's pages for a replay.
         """
         m = models.AuditLog
-        real = [k for k in keys if k != "no_tid"]
-        seen = set()
-        if real:
-            q = self._ordered_rows(db.query(m.transaction_id).distinct(), floor)
-            seen = {r[0] for r in q.filter(m.transaction_id.in_(real)).all()}
-        if "no_tid" in keys:
-            q = self._ordered_rows(db.query(m.id), floor)
-            if q.filter(m.transaction_id.is_(None)).first() is not None:
-                seen.add("no_tid")
-        return seen
+        if not keys:
+            return set()
+        q = self._ordered_rows(db.query(m.transaction_id).distinct(), floor)
+        q = q.filter(sa.or_(*[in_group(m.transaction_id, key) for key in keys]))
+        return {group_of(r[0]) for r in q.all()}
 
     def _count_by_transaction(self, db: Session, cursor: Optional[str], edge):
         """One row per transaction inside `(cursor, edge]`, counted BY POSTGRES.
@@ -329,13 +322,13 @@ class AuditLogCache:
             # and the older rows it left scattered below are exactly what this
             # window meets. Asked once per chunk, for the chunk's own keys only.
             if floor is not None:
-                fresh = {tid if tid is not None else "no_tid" for tid, *_ in rows}
+                fresh = {group_of(tid) for tid, *_ in rows}
                 already = self._groups_seen_at_or_above(db, floor, fresh - set(counts))
             else:
                 already = ()
             for tid, n, newest_ts, newest_id in rows:
                 scanned += n
-                key = tid if tid is not None else "no_tid"
+                key = group_of(tid)
                 if key in already:
                     continue
                 if key in counts:
@@ -434,10 +427,7 @@ class AuditLogCache:
             # `AuditLogResponse.timestamp: datetime` - a 500 on the route, from
             # rows the count never even saw.
             q = self._ordered_rows(db.query(m).filter(m.id <= watermark), bottom)
-            if tid == "no_tid":
-                q = q.filter(m.transaction_id.is_(None))
-            else:
-                q = q.filter(m.transaction_id == tid)
+            q = q.filter(in_group(m.transaction_id, tid))
             top = tops.get(tid)
             if top is not None:
                 q = q.filter(sa.tuple_(m.timestamp, m.id) <= sa.tuple_(*top))
@@ -558,7 +548,7 @@ class AuditLogCache:
                 log_dict = log_obj.__dict__.copy()
                 log_dict["business_key"] = log_obj.business_key
                 log_model = schemas.AuditLogResponse.model_validate(log_dict)
-                tid = log_obj.transaction_id or "no_tid"
+                tid = group_of(log_obj.transaction_id)
                 for group in self.groups:
                     if group["transaction_id"] == tid:
                         # 🔴 ABSORB, DO NOT ADD, WHAT AN EVENT ALREADY CLAIMED.
@@ -603,7 +593,7 @@ class AuditLogCache:
             if not self.is_loaded:
                 return
 
-            tid = log_dict.get("transaction_id") or "no_tid"
+            tid = group_of(log_dict.get("transaction_id"))
             log_model = schemas.AuditLogResponse.model_validate(log_dict)
             per_group = resolve_recent_settings()["recent_logs_per_group"]
 
@@ -661,7 +651,7 @@ class AuditLogCache:
             per_group = settings["recent_logs_per_group"]
             logs_by_tx = defaultdict(list)
             for log_dict in logs_list:
-                tid = log_dict.get("transaction_id") or "no_tid"
+                tid = group_of(log_dict.get("transaction_id"))
                 try:
                     log_model = schemas.AuditLogResponse.model_validate(log_dict)
                     logs_by_tx[tid].append(log_model)
@@ -731,6 +721,22 @@ class AuditLogCache:
 # It cannot leak upward. An event claims N; the refresh that reads those same N
 # rows absorbs exactly N. If a group is evicted and later rebuilt, the credit
 # goes with it and the count is derived from the database alone.
+
+def group_of(transaction_id) -> str:
+    """The history group an audit label belongs to - the one answer the walk, the merges and the detail route ask.
+    A label's part after `GROUP_PART` is one commit of its group (a replay page, 총괄 ㄴ 10-21), so a run is one
+    line with its pages inside. No label is the one pseudo-group `no_tid`."""
+    if not transaction_id:
+        return "no_tid"
+    return transaction_id.split(event_constants.GROUP_PART, 1)[0]
+
+
+def in_group(column, key):
+    """The rows of history group `key`, as a filter - `group_of` read backwards."""
+    if key == "no_tid":
+        return sa.or_(column.is_(None), column == "")
+    return sa.or_(column == key, column.startswith(key + event_constants.GROUP_PART, autoescape=True))
+
 
 def _claim(group: dict, contribution: int):
     """A notification adds to the total AND records that it did."""

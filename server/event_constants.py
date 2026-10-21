@@ -577,6 +577,9 @@ WRITTEN_BY_KEY = "written_by"
 #: [RUN] The retroactive run (`retroactive_runs.run_id`) whose work this event is - one job is one
 #: line in the queue whatever transactions its operations wrote in (총괄 b3a4334db). Absent = no run.
 RUN_KEY = "run_id"
+#: [PART] Between a group's name and the one commit of it a label names - `chain_replay_<run>·<event>` is one page
+#: of run <run> (총괄 ㄴ 10-21). The worker's grouping writes it; the history folds on it (`audit_cache.group_of`).
+GROUP_PART = "·"
 
 
 def run_of(payload):

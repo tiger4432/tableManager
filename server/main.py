@@ -1620,7 +1620,7 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
                 existing_keys.add((t_name, f_id))
     return existing_keys
 
-from admin.audit_cache import audit_cache
+from admin.audit_cache import audit_cache, in_group
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
@@ -1808,13 +1808,14 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                     }
                 break
                 
-    # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면)
-    total_count = db.query(models.AuditLog).filter(models.AuditLog.transaction_id == tx_id).count()
+    # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면) - a group, so a replay's pages too
+    in_tx = in_group(models.AuditLog.transaction_id, tx_id)
+    total_count = db.query(models.AuditLog).filter(in_tx).count()
     if total_count == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
         
     db_logs = db.query(models.AuditLog)\
-                .filter(models.AuditLog.transaction_id == tx_id)\
+                .filter(in_tx)\
                 .order_by(models.AuditLog.timestamp.desc(), models.AuditLog.id.desc())\
                 .limit(limit)\
                 .all()
@@ -2680,7 +2681,7 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
         refuse_row_address(table_name)
         subquery = db.query(models.AuditLog.row_id).filter(
             models.AuditLog.table_name == table_name,
-            models.AuditLog.transaction_id == transaction_id
+            in_group(models.AuditLog.transaction_id, transaction_id)
         )
         query = query.filter(table_model.row_id.in_(subquery))
 
@@ -3368,7 +3369,7 @@ def export_table_csv(
         refuse_row_address(table_name)
         subquery = db.query(models.AuditLog.row_id).filter(
             models.AuditLog.table_name == table_name,
-            models.AuditLog.transaction_id == transaction_id
+            in_group(models.AuditLog.transaction_id, transaction_id)
         )
         query = query.filter(table_model.row_id.in_(subquery))
 

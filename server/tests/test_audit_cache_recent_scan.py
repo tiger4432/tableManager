@@ -421,6 +421,40 @@ def test_j_a_group_straddling_the_boundary_is_named_once(client, db_session, kno
         f"and the groups below it are all still reachable. Got {later!r}"
 
 
+def test_n_a_replays_pages_are_one_line_per_run(client, db_session, knobs):
+    """ALARM FOR: a replay showing as one line per page (총괄 ㄴ 10-21 - ㉡'s 「21 runs, 30 labels」 moved here).
+
+    A page commits alone, so its label is `chain_replay_<run>·<event>`. The history folds on `group_of`: the
+    walk, the resumed walk's 「already named」 ask, hydration and the detail route all see the run. The pages of
+    the runs interleave, so a page-sized window always meets runs a previous page named.
+    """
+    runs = [f"chain_replay_r{i:02d}" for i in range(21)]
+    for page in range(3):
+        for run in runs:
+            seed(db_session, [(f"{run}·p{page}-{run[-2:]}", 2)])
+    seed(db_session, [("plain-tx", 2)])
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=16)
+    audit_cache.audit_cache.__init__()
+
+    seen, cursor = [], None
+    for _ in range(10):                                 # bounded: never a live loop
+        url = "/audit_logs/recent?limit_groups=5" + (f"&cursor={cursor}" if cursor else "")
+        body = client.get(url).json()
+        seen.extend(g["transaction_id"] for g in body["groups"])
+        cursor = body["next_cursor"]
+        if not cursor:
+            break
+    assert sorted(seen) == sorted(runs + ["plain-tx"]), f"each run once, on one page: {seen!r}"
+
+    # counts are the window's (`_discover_groups`), so they are asked of a window that holds every page
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=1_000)
+    audit_cache.audit_cache.__init__()
+    body = client.get("/audit_logs/recent?limit_groups=100").json()
+    assert sorted((g["transaction_id"], g["total_count"]) for g in body["groups"]) ==         sorted([(run, 6) for run in runs] + [("plain-tx", 2)])
+    detail = client.get(f"/audit_logs/transaction/{runs[0]}").json()
+    assert detail["total_count"] == 6 and len(detail["logs"]) == 6, "the line opens to every page's rows"
+
+
 def test_k_only_a_table_that_has_row_id_is_asked_for_its_rows(monkeypatch):
     """총괄 377231278 — the panel's 500 was a view model asked for `row_id`.
 
