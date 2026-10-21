@@ -28,6 +28,7 @@ import { makeDoc, makeNode, walk } from './lib/board_dom.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PANEL = path.join(HERE, '..', 'src', 'raw_registry_panel.js');
 const PATHS = path.join(HERE, '..', 'src', 'ontology_path.js');
+const CHAIN = path.join(HERE, '..', 'src', 'chain_rule_panel.js');
 const SKELETON = JSON.parse(readFileSync(
   path.join(HERE, '..', '..', 'server', 'chain_skeleton.json'), 'utf8'));
 
@@ -213,10 +214,29 @@ function suitePaths(P) {
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
+// TC -- the columns a rule writes stand on the first screen, not under Advanced (owner 10-21), in either grammar
+const { RawRegistryPanel } = await import('../src/raw_registry_panel.js');
+function suiteFirst(C) {
+  const before = { pass, fail };
+  const FLAT = { name: 'r_flat', trigger_table: 't_a', target_table: 't_b', mapper: 'm.f' };
+  for (const [grammar, declaration] of [['unified', JOIN], ['flat', FLAT]]) {
+    const host = makeNode(doc, 'div');
+    new RawRegistryPanel(host, { doc }, C.CHAIN_RULE_REGISTRY).render({ ...payloadFor(declaration), grammar });
+    const all = walk(host);
+    const box = all.find((n) => n.attrs && n.attrs['data-path'] === 'target_columns');
+    const later = all.find((n) => cls(n).includes('chain-rule-advanced'));
+    ok(Boolean(box) && Boolean(later) && !walk(later).includes(box),
+      `TC1 ${grammar}: a rule with no target_columns draws the cell on the first screen [${box ? 'drawn' : 'not drawn'}`
+      + `${box && later && walk(later).includes(box) ? ', under Advanced' : ''}]`);
+  }
+  return { pass: pass - before.pass, fail: fail - before.fail };
+}
+
 // -- base --------------------------------------------------------------------------------
 const base0 = { pass, fail };
 suite(await import('../src/raw_registry_panel.js'));
 suitePaths(await import('../src/ontology_path.js'));
+suiteFirst(await import('../src/chain_rule_panel.js'));
 const base = { pass: pass - base0.pass, fail: fail - base0.fail };
 
 // -- mutants -----------------------------------------------------------------------------
@@ -239,6 +259,8 @@ const DEFECTS = [
     (s) => s.replace('const held = asList(node, getAtPath(', 'const held = ((n, v) => v)(node, getAtPath(')],
   [PATHS, suitePaths, 'an index step into a word is not lifted, so edit and "-" do nothing',
     (s) => s.replace('    next = setAtPath(next, steps.slice(0, depth), [held]) || next;\n', '')],
+  [CHAIN, suiteFirst, 'target_columns back under Advanced',
+    (s) => s.replace("firstScreen: ['target_table', 'target_columns', 'mapper'],", "firstScreen: ['target_table', 'mapper'],")],
 ];
 const CONTROLS = [
   [PANEL, suite, 'a local rename', (s) => s.replace(/\bheld3\b/g, 'parsed3')],

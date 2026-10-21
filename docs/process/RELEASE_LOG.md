@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-21 [체인 선언 폼 — target_columns 가 Advanced 밖, 대상 표 옆 첫 화면에 선다](#2026-10-21--체인-선언-폼--target_columns-가-advanced-밖-대상-표-옆-첫-화면에-선다) — 보는 곳 어드민 Chain 탭 폼
 - 2026-10-21 [체인 선언 폼의 join take 에 fn — 레코드 {from, into, fn, separator} 가 폼에 그려지고 fn 을 고른다](#2026-10-21--체인-선언-폼의-join-take-에-fn--레코드-from-into-fn-separator-가-폼에-그려지고-fn-을-고른다) — 보는 곳 어드민 Chain 탭 폼의 take
 - 2026-10-21 [체인 규칙이 «쓰는 칸»을 적는다 — target_columns 밖 칸은 쓰이지 않고, 이미 쌓인 층은 R2 로 한 번 거둔다](#2026-10-21--체인-규칙이-쓰는-칸을-적는다--target_columns-밖-칸은-쓰이지-않고-이미-쌓인-층은-r2-로-한-번-거둔다) — 적는 곳 chain_rules.json 의 `target_columns` · 보는 곳 chain_worker.log [ChainRule]
 - 2026-10-21 [교체 · 거두기 규칙이 원천 행 지움에도 돌고, 행이 떠난 맵을 통째로 받는다 — 파일 교체가 지운 다이의 체인 행이 거둬진다](#2026-10-21--교체--거두기-규칙이-원천-행-지움에도-돌고-행이-떠난-맵을-통째로-받는다--파일-교체가-지운-다이의-체인-행이-거둬진다) — 적는 곳 chain_rules.json 의 allow_replace_map · allow_retraction · 보는 곳 chain_worker.log [ChainRule]
@@ -475,6 +476,14 @@
 
 
 
+
+## 2026-10-21 · 체인 선언 폼 — target_columns 가 Advanced 밖, 대상 표 옆 첫 화면에 선다
+
+- **무엇** — 규칙이 쓰는 칸 목록 `target_columns`(10-21)가 폼에서 Advanced 안에 접혀 있어 «없는 칸»으로 보였습니다(소유자 「선언에 체인 칼럼 타겟 없는데」). 이제 첫 화면에 섭니다.
+- **선언** — 바뀐 것 없음.
+- **바뀐 동작** — 통합 · 평평한 문법 둘 다, 그 칸이 없는 규칙에도 빈 칸으로 첫 화면에 섭니다. 첫 화면에 서는 칸은 등록부의 `firstScreen` 한 목록이 정하고, 거기에 더했습니다.
+- **필요한 조건** — git pull · 브라우저 새로고침.
+- **자세히** — 하니스 `chain_list_edit_harness.mjs`(TC1) · `screen_layout_harness.mjs`(크롬, Chain 폼 상태).
 
 ## 2026-10-21 · 체인 선언 폼의 join take 에 fn — 레코드 {from, into, fn, separator} 가 폼에 그려지고 fn 을 고른다
 

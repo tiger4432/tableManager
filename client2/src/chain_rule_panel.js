@@ -286,7 +286,8 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   //    ⚠️ 규칙이 «쓰는 표»와 «도는 코드»를 안 보고는 규칙을 못 읽습니다. 그리고 맵퍼가 안 풀리면
   //       저장이 `unresolvable_mapper` 로 거절됩니다 — 첫 화면에서 보이지 않으면 그 거절이
   //       「고급」 뒤에서 옵니다.
-  firstScreen: ['target_table', 'mapper'],
+  // target_columns: the columns the rule writes stand beside the table it writes (owner 10-21: it was under Advanced)
+  firstScreen: ['target_table', 'target_columns', 'mapper'],
   // C-95 ③. 맵퍼를 대는 «두 철자». 로더가 둘 다 읽습니다(`chain_bindings.mapper_cells`) —
   // 하나가 이름 하나, 다른 하나가 module + function 입니다. 화면이 둘을 같이 내놓으면
   // 운영자가 「둘 다 적어야 하나」를 묻게 되고, 실측에서 그 셋이 한 화면에 서 있었습니다.

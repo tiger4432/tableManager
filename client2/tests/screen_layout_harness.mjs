@@ -556,6 +556,25 @@ CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'ledger word first', at
 })()` });
 // The Retroactive tab's contents (owner 10-11 R): a chip a card, and a press brings that card to the tab's top - the last
 // ones as far as the tab scrolls; the header's own press (folding) not taken.
+// The chain form (lead after a2b7f6e14 · owner 10-21 「선언에 체인 칼럼 타겟 없는데」): target_columns stands on the first
+// screen, not under Advanced, in either grammar; a take record's fn picks from the four the rule answer carries.
+const TARGET_COLUMNS_FIRST = `(() => {
+  const box = document.querySelector('.chain-rule-form [data-path="target_columns"]');
+  if (!box) return 'target_columns is not drawn';
+  if (box.closest('.chain-rule-advanced')) return 'target_columns is under Advanced';
+  return box.getClientRects().length ? null : 'target_columns is drawn hidden';
+})()`;
+for (const after of ['Chain, a join whose take holds a record', 'Chain, a flat rule']) {
+  CELLS.push({ entry: 'admin.html', after, rule: 'contents', at: 'target_columns', expr: TARGET_COLUMNS_FIRST });
+}
+CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rule: 'contents', at: 'derive.join.take', expr: `(() => {
+  const words = (at) => { const s = document.querySelector('select[data-value="' + at + '"]');
+    return s ? [...s.options].map((o) => o.value).filter(Boolean).join(',') : 'no picker'; };
+  const want = 'count,min,max,unique_concat';
+  for (const at of ['derive.join.take[1].fn', 'derive.join.take[2].fn']) if (words(at) !== want) return at + ' offers ' + words(at);
+  const held = document.querySelector('select[data-value="derive.join.take[1].fn"]').value;
+  return held === 'unique_concat' ? null : 'take[1].fn holds ' + held;
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'retroactive-sub', expr: `(() => {
   const chips = [...document.querySelectorAll('#retroactive-sub .retro-toc')];
   const cards = [...document.querySelectorAll('#retroactive-body article.retro-op')];
@@ -1734,6 +1753,42 @@ const DRIVE = {
     // The other tabs, each by its address (lead 10-09: the File tab showed two defects the first time it was opened).
     ...[['Tables', 'tables'], ['Chain', 'chain'], ['Auto Update', 'autoupdate'], ['Retroactive', 'retroactive']]
       .map(([name, hash]) => [name, (c) => evaluate(c, `location.hash = '#${hash}'; true`).then(() => sleep(1500))]),
+    // The chain form opened on a rule (lead after a2b7f6e14 · owner 10-21): a join whose take holds a record - its rows,
+    // the fn picker, then + and record on a third item - and a flat rule; both with target_columns on the first screen.
+    // The rules are the captured take_record_probe and dt_log_to_dt_map.
+    ['Chain, a flat rule', async (c) => {
+      await evaluate(c, "location.hash = '#chain'; true");
+      await until(c, "!!document.querySelector('select.chain-rule-picker')");
+      await choose(c, 'select.chain-rule-picker', [0, "x.value === 'dt_log_to_dt_map'"]);
+      await until(c, "!!document.querySelector('[data-path=\"target_table\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('[data-path="target_columns"]');
+        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    ['Chain, a join whose take holds a record', async (c) => {
+      await evaluate(c, "location.hash = '#chain'; true");
+      await until(c, "!!document.querySelector('select.chain-rule-picker')");
+      await choose(c, 'select.chain-rule-picker', [0, "x.value === 'take_record_probe'"]);
+      await until(c, "!!document.querySelector('[data-path=\"derive.join.take\"]')");
+      // a folded toggle is oe-field-folded on a field and oe-node-folded on a row
+      const unfold = (at) => evaluate(c, `(() => {
+        const fold = document.querySelector('button[data-action="toggle-field"][data-value="${at}"]');
+        if (fold && /folded/.test(fold.className)) fold.click(); return Boolean(fold); })()`);
+      await unfold('derive.join.take');
+      await until(c, "!!document.querySelector('[data-path=\"derive.join.take[1]\"]')");
+      await unfold('derive.join.take[1]');
+      await until(c, "!!document.querySelector('[data-value=\"derive.join.take[1].fn\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
+        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    ['Chain, + then record on the take', async (c) => {
+      await evaluate(c, `(() => { const add = document.querySelector('button[data-action="form-append"][data-value="derive.join.take"]');
+        if (add) add.click(); return Boolean(add); })()`);
+      await until(c, "!!document.querySelector('select[data-action=\"edit-shape-branch\"][data-value=\"derive.join.take[2]\"]')");
+      await choose(c, 'select[data-action="edit-shape-branch"][data-value="derive.join.take[2]"]', [0, "x.value === 'record'"]);
+      await until(c, "!!document.querySelector('[data-value=\"derive.join.take[2].fn\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
+        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
