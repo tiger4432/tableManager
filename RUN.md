@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **소급 · 체인이 서로를 묶지 않음 — 같은 표 줄은 디스패처가 막고, 표 잠금 대기에 상한, 소급 자식이 페이지 사이에 선언을 다시 읽음, 리플레이 사건이 남은 동안 소급 게이트가 닫힘 (총괄 1ff4dcc6c ⑤ ② ④)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      ④ 슬롯이 도는 줄의 표를 건드리는 줄은 종류와 무관하게 주지 않음 — 그 묶음이 끝나면 바로 다시 읽어 줌
+>             전에는 접힌 줄(파일 · 리플레이 페이지)이 옆 슬롯에 주어져 표 잠금에서 기다렸음 = 슬롯이 묶임
+>           ④ 표 잠금 대기에 상한 = 체인 문장 상한(chain_statement_timeout_seconds) — 넘으면 그 묶음을 되감고 사건은 그대로 기다렸다 다시 돎
+>             ④ 상한은 틈의 안전망, 기다림은 디스패처가 막음
+>           ⑤ 소급 자식(admin.retroactive_run)이 페이지 경계마다 바뀐 선언(chain_rules · 맵퍼)과 Reload 버튼 행을 읽음
+>             op 지역 rule dict 는 안 바뀜 — 도는 소급이 시작 때 읽은 그 규칙은 그 판 끝까지 그대로
+>           ② 리플레이 판은 페이지를 올리면 done 인데, 그 사건이 체인 대기열에 남은 동안 소급 게이트가 닫힘 (어느 표의 소급이든)
+>             원장 backfill --drifted --apply 와 scripts/fold_comp_id.py 도 같은 게이트를 지남
+> 보이는 것  chain_worker.log «[Chain] tx '<tx>': table not held: <표> within <s> s (another group holds it) - rewound, runs again; its N event(s) stay queued»
+>           retroactive.log «[Retroactive] declarations read again at a page boundary»
+>           소급 거절 «run_id=<id> chain_replay has staged its pages, and N of its event(s) on <표> still wait in the chain queue - ...»
+> 읽는 법    rewound 줄이 같은 표로 계속 = 디스패처 밖에서 그 표를 오래 잡는 것이 있음(스크립트 · 다른 프로세스의 긴 트랜잭션) -> 그쪽을 찾음
+>           rewound 가 드물게 = 틈(묶음이 끝나는 순간 등)에서 난 것, 사건은 그대로라 할 일 없음
+>           소급이 «still wait» 로 거절 = 리플레이 사건이 아직 도는 중(정상) -> 끝나면 열림. 당장 끊으려면 그 대기열 줄의 ×
+>           retroactive.log «not read again at this page - the next page tries» = 그 페이지의 다시 읽기 실패, 다음 페이지가 다시 시도
+> 바뀐 것    같은 표를 쓰는 줄은 한 번에 하나 — 전에는 둘이 나란히 주어지고 하나는 잠금에서 기다렸음
+>           표 잠금 대기가 끝없이 기다리던 것을 뒤집음 (사유: 상한 없는 대기가 슬롯을 묶음)
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-22] **갤러리 행 × 열 판 — Rows by · Columns by (소유자 「갤러리는 매트릭스로」 · 「내일 새벽까지」, 총괄, df324363b · dist 676abddad)**
 >
 > ```

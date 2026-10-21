@@ -833,8 +833,14 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
                 except ReplayRefused as refused:
                     why = str(refused)
             if why is None:
-                with table_locks.hold(db, {rule.get("target_table"), rule.get("trigger_table")}):
-                    swept = _sweep(db, rule, run_id)
+                try:
+                    with table_locks.hold(db, {rule.get("target_table"), rule.get("trigger_table")}):
+                        swept = _sweep(db, rule, run_id)
+                except table_locks.NotHeld as not_held:
+                    # not judged this wake - its tally stays for the next (총괄 1ff4dcc6c ④)
+                    db.rollback()
+                    log("[ReplaySweep] run %s %s: not judged this wake - %s" % (run_id, name, not_held))
+                    continue
                 why = swept if isinstance(swept, str) else None
                 if why is None:
                     log("[ReplaySweep] run %s %s: %d map(s) its batches never named emptied in %s"

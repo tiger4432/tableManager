@@ -96,36 +96,42 @@ def chain_slots(settings=None):
 # ------------------------------------------------------------------------------ the dispatcher
 
 def line_of(db, line):
-    """A queue line (`chain.queue_lines`) with its first waiting rows: `{"line", "run", "per_row", "events"}`."""
+    """A queue line (`chain.queue_lines`) with its first waiting rows: `{"line", "run", "orders", "events"}` -
+    `orders`: a live line with a row-by-row event, whose events carry the value of their moment."""
     import event_constants
     from chain import ingestion_worker
     from utils.payload_helper import get_payload_dict
 
     events = ingestion_worker.pending_chain_events(db, limit=WINDOW_ROWS, line=line.key, run=bool(line.run))
     return {"line": line.key, "run": bool(line.run), "events": events,
-            "per_row": any(not event_constants.is_collapsed_payload(get_payload_dict(e) or {}) for e in events)}
+            "orders": not line.run and any(not event_constants.is_collapsed_payload(get_payload_dict(e) or {})
+                                           for e in events)}
 
 
 def lines_to_give(lines, rules, behind=(), skip=(), limit=None):
-    """The lines that may be given now, oldest first, up to `limit`. A line waits while a ROW-BY-ROW
-    line ahead of it touching one of its tables is unfinished - held, resting or waiting: those
-    events carry the value of their moment, and a later line run first would leave the earlier value
-    last. `behind` is the tables of the row-by-row lines slots hold; `skip` the keys not to give.
-    The tables a line touches are the order guard's own set, kept on the line as `touches`."""
+    """The lines that may be given now, oldest first, up to `limit`. A line waits while a line touching one of its
+    tables runs - a slot's, or one given ahead of it now - or while an `orders` line ahead of it is unfinished (held,
+    resting or waiting): those events carry the value of their moment, and a later line run first would leave the
+    earlier value last. `behind` is the tables of what slots run and of the `orders` lines they hold (`SlotPool.
+    _givable`); `skip` the keys not to give. 🔴 ONE JUDGEMENT FOR EVERY KIND OF LINE (총괄 1ff4dcc6c ④): a collapsed
+    line was given beside one on its tables and its slot waited on the table lock - a slot tied for as long as the
+    other group held it (C 간섭 ④). The tables a line touches are the order guard's own set, kept as `touches`."""
     from chain.ingestion_worker import _group_read_tables, _group_target_tables
 
-    given, behind = [], set(behind)
+    given, behind, held_back = [], set(behind), 0
     for line in lines:
         if limit is not None and len(given) >= limit:
             break
         line["touches"] = _group_target_tables(line["events"], rules) | _group_read_tables(line["events"], rules)
-        waits = bool(line["touches"] & behind)
-        # a retroactive run's line never holds a live one back (소유자 10-15: a backfill does not block the chain)
-        if line["per_row"] and not line["run"]:
-            behind |= line["touches"]
-        if not (waits or line["line"] in skip):
+        give = not (line["touches"] & behind or line["line"] in skip)
+        if give:
             given.append(line)
-    return given
+        elif line["line"] not in skip:
+            held_back += 1
+        # a retroactive run's line never holds a live one back (소유자 10-15: a backfill does not block the chain)
+        if (give and not line["run"]) or line["orders"]:
+            behind |= line["touches"]
+    return given, held_back
 
 
 class _Slot:
@@ -200,9 +206,8 @@ def _spawn(index):
 
 
 def _held(line):
-    """What the dispatcher keeps of a line it gave: key, run, and - row by row - its tables."""
-    return {"line": line["line"], "run": line["run"],
-            "behind": sorted(line["touches"]) if line["per_row"] and not line["run"] else []}
+    """What the dispatcher keeps of a line it gave: key, run, whether it `orders`, and its tables."""
+    return {"line": line["line"], "run": line["run"], "orders": line["orders"], "touches": sorted(line["touches"])}
 
 
 class SlotPool:
@@ -216,6 +221,7 @@ class SlotPool:
         self._started = {}            # slot index -> monotonic time it was last started
         self._wanted = DEFAULT_SLOTS
         self._read_at, self._waiting = -READ_EVERY_SECONDS, []
+        self._held_back = 0           # lines the last read held back for a running line's tables
         self.woken = threading.Event()
 
     def busy(self):
@@ -227,7 +233,7 @@ class SlotPool:
         from chain import control
 
         self.woken.clear()
-        self._read_answers(db)
+        answered = self._read_answers(db)
         self._reap(db)
         self._size(chain_slots())
         open_slots = [slot for _i, slot in sorted(self.slots.items())
@@ -242,8 +248,9 @@ class SlotPool:
         now = time.monotonic()
         self._resting = {key: until for key, until in self._resting.items() if until > now}
         held = {slot.line["line"] for slot in self.slots.values() if slot.line is not None}
-        if notified or now - self._read_at >= READ_EVERY_SECONDS:
-            self._read_at, self._waiting = now, self._givable(db, rules, held, len(open_slots))
+        # a batch that ended freed its tables: a line held back for them is read again now, not at the next read
+        if notified or (answered and self._held_back) or now - self._read_at >= READ_EVERY_SECONDS:
+            self._read_at, (self._waiting, self._held_back) = now, self._givable(db, rules, held, len(open_slots))
         # live lines before a retroactive run's, then the longest unrun first (소유자 10-15)
         rank = lambda line: (bool(line["run"]), self._ran.get(line["line"], 0.0))   # noqa: E731
         waiting = sorted((line for line in self._waiting
@@ -271,12 +278,16 @@ class SlotPool:
         line's rows read only as far as the order needs them."""
         from chain import queue_lines
 
-        behind = {t for slot in self.slots.values() if slot.line is not None for t in slot.line["behind"]}
+        # a slot running a live line's batch holds its tables; between batches (`ready`) only an `orders` line does,
+        # and a retroactive run's line never does (소유자 10-15)
+        behind = {t for slot in self.slots.values() if slot.line is not None and not slot.line["run"]
+                  and (slot.line["orders"] or not slot.ready) for t in slot.line["touches"]}
         lines = (line_of(db, line) for line in queue_lines.waiting_lines(db, LINES_CAP) if line.key not in held)
         return lines_to_give(lines, rules, behind, set(self._resting), limit=wanted)
 
     def _read_answers(self, db):
-        now = time.monotonic()
+        """-> whether a slot answered (a batch of its line ended)."""
+        now, answered = time.monotonic(), False
         for slot in self.slots.values():
             while True:
                 try:
@@ -286,6 +297,7 @@ class SlotPool:
                 if slot.line is None or answer.get("line") != slot.line["line"]:
                     continue
                 key, outcome = slot.line["line"], answer.get("outcome")
+                answered = True
                 if outcome == RAN:
                     slot.ready = True
                     self._ran[key] = now
@@ -304,6 +316,7 @@ class SlotPool:
             if slot.leaving and (slot.line is None or slot.ready):
                 slot.line = None
                 slot.let_go()
+        return answered
 
     def _rest_by_pace(self, db, key, now):
         per_cycle, rest = _pace(db, key)
@@ -470,7 +483,8 @@ def main(argv=None):
 
     models.init_dynamic_models(crud.TABLE_CONFIG)
     # 🔴 [e6a0bdbbd ④] A slot watches the declarations as every process does - it ran the table config it started
-    #    with until a Reload or a restart. Its rules and mappers wait for the next batch (`_reloaded`).
+    #    with until a Reload or a restart. Its rules and mappers wait for the next batch
+    #    (`ingestion_worker.reload_at_boundary`).
     config_watcher.start_config_watcher(None, boundary=True)
     from chain import ingestion_worker
 
@@ -501,13 +515,14 @@ def _read_asks(loop, asks):
 async def _serve(index, answers):
     from chain import activity, ingestion_worker
     from database.database import SessionLocal
+    from runtime import system_reload
     from utils import heartbeat
 
     name = beat_name(index)
     activity.registry.attach()
     rules = ingestion_worker.load_chain_rules()
     ingestion_worker.warmup_worker(rules, SessionLocal)
-    seen = _newest_reload()
+    seen = system_reload.reload_mark()
     asks = asyncio.Queue()
     threading.Thread(target=_read_asks, args=(asyncio.get_running_loop(), asks),
                      name="chain-slot-asks", daemon=True).start()
@@ -534,6 +549,7 @@ async def _run_batch(key, run, rules, seen):
     """One batch of the line's waiting events, through the chain's batch body."""
     from chain import activity, control, ingestion_worker
     from database.database import SessionLocal
+    from runtime import system_reload
     from utils import heartbeat
     from utils import logger as process_logging
 
@@ -544,7 +560,8 @@ async def _run_batch(key, run, rules, seen):
     try:
         # the reload reads the database too: a dropped connection there is this batch's, said and run again - outside
         # this try it ended the slot, and the slot's end set its whole line aside (C five stages 8, 총괄 6deeb723e)
-        rules, seen = _reloaded(rules, seen)
+        changed, seen = ingestion_worker.reload_at_boundary(system_reload.CHAIN_WORKER, seen)
+        rules = ingestion_worker.loaded_chain_rules() if changed else rules
         events = ingestion_worker.pending_chain_events(db, line=key, run=run)
         if not events:
             return DRAINED, rules, seen
@@ -565,39 +582,6 @@ async def _run_batch(key, run, rules, seen):
     if control.paused() is not None:
         return PAUSED, rules, seen
     return (FAILED if failed else RAN), rules, seen
-
-
-def _newest_reload():
-    from database.database import SessionLocal
-    from runtime import system_reload
-
-    session = SessionLocal()
-    try:
-        return system_reload.latest_reload_id(session)
-    finally:
-        session.close()
-
-
-def _reloaded(rules, seen):
-    """The reloads past `seen` and the declaration files changed since the last batch, applied as the chain loop
-    applies them."""
-    from chain import ingestion_worker
-    from database import config_watcher
-    from database.database import SessionLocal
-    from runtime import system_reload
-
-    session = SessionLocal()
-    try:
-        # read before anything is applied: a read that raises leaves the files' changes for the batch that runs again
-        rows = system_reload.reloads_after(session, seen)
-    finally:
-        session.close()
-    if config_watcher.apply_pending():
-        rules = ingestion_worker.loaded_chain_rules()
-    if not rows:
-        return rules, seen
-    work = system_reload.reload_for(system_reload.CHAIN_WORKER, rows)
-    return (ingestion_worker.reload_rules(work) if work else rules), rows[-1].id
 
 
 if __name__ == "__main__":

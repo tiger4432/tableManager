@@ -812,9 +812,18 @@ def test_a_retroactive_row_by_row_line_never_holds_a_live_line_on_its_tables(mon
 
     monkeypatch.setattr(ingestion_worker, "_group_target_tables", lambda events, rules: {"t"})
     monkeypatch.setattr(ingestion_worker, "_group_read_tables", lambda events, rules: set())
-    run = {"line": "run:1", "run": True, "per_row": True, "events": []}
-    live = {"line": "tx:2", "run": False, "per_row": True, "events": []}
-    after_live = {"line": "tx:3", "run": False, "per_row": True, "events": []}
-    given = [line["line"] for line in slots.lines_to_give([run, live, after_live], [])]
-    assert given == ["run:1", "tx:2"], given            # a live row-by-row line still holds the live line after it
-    assert slots._held(run)["behind"] == [] and slots._held(live)["behind"] == ["t"]
+    run = {"line": "run:1", "run": True, "orders": False, "events": []}
+    live = {"line": "tx:2", "run": False, "orders": True, "events": []}
+    after_live = {"line": "tx:3", "run": False, "orders": True, "events": []}
+    given, _held_back = slots.lines_to_give([run, live, after_live], [])
+    assert [line["line"] for line in given] == ["run:1", "tx:2"], given   # a live row-by-row line holds the one after it
+    # held by slots: the run's line holds nothing back, running or not; the live one does (총괄 1ff4dcc6c ④)
+    pool = slots.SlotPool(spawn=lambda index: None)
+    for index, line, ready in ((1, run, False), (2, live, True)):
+        pool.slots[index] = type("S", (), {"line": slots._held(line), "ready": ready})()
+    monkeypatch.setattr("chain.queue_lines.waiting_lines", lambda db, cap: [type("L", (), {"key": "tx:9", "run": None})()])
+    monkeypatch.setattr(slots, "line_of", lambda db, line: {"line": line.key, "run": False, "orders": False,
+                                                             "events": []})
+    assert pool._givable(None, [], set(), 2) == ([], 1), "a live line on the live row-by-row line's table waits"
+    pool.slots.pop(2)
+    assert [l["line"] for l in pool._givable(None, [], set(), 2)[0]] == ["tx:9"], "a running run held a live line"

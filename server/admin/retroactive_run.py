@@ -31,6 +31,9 @@ def main(argv=None):
     if len(args) != 1:
         logger.error("usage: python -m admin.retroactive_run <run_id>")
         return 2
+    # the declarations watched as a slot watches them - applied at the run's page boundaries (총괄 1ff4dcc6c ⑤)
+    from database import config_watcher
+    config_watcher.start_config_watcher(None, boundary=True)
     try:
         retroactive.run_claimed(args[0], log=logger.info)
         return 0

@@ -734,13 +734,49 @@ def _checkpoint(control):
     """
     if control is None:
         return None
+    seen = [_reload_mark()]
 
     def hook(processed=None, total=None):
         control.progress(processed, total)
+        seen[0] = _reload_between_pages(seen[0])
         return control.stop_requested()
 
     hook.step = control.step
     return hook
+
+
+def _reload_mark():
+    """Where a run's reloads start - the newest SYSTEM_RELOAD row now; None when it cannot be read (the first page
+    boundary then reads it)."""
+    from runtime import system_reload
+
+    try:
+        return system_reload.reload_mark()
+    except Exception as exc:                                     # noqa: BLE001
+        logger.warning("[Retroactive] the reload mark could not be read - the first page boundary reads it: %s",
+                       told(exc))
+        return None
+
+
+def _reload_between_pages(seen):
+    """At a page boundary, the declarations this process saw change and the Reload button's rows - the slot's own
+    boundary reload (`ingestion_worker.reload_at_boundary`, 총괄 1ff4dcc6c ⑤). The run's own `rule` dict, read at its
+    start, stays as it was. A reload that does not read is said and tried at the next page - the run goes on.
+    -> the last row seen."""
+    from chain import ingestion_worker
+    from runtime import system_reload
+
+    if seen is None:
+        return _reload_mark()
+    try:
+        applied, seen = ingestion_worker.reload_at_boundary(system_reload.RETROACTIVE, seen)
+    except Exception as exc:                                     # noqa: BLE001
+        logger.warning("[Retroactive] the declarations were not read again at this page - the next page tries: %s",
+                       told(exc))
+        return seen
+    if applied:
+        logger.info("[Retroactive] declarations read again at a page boundary")
+    return seen
 
 
 def _rescope(db, params, control, key_range=None):
@@ -3536,7 +3572,7 @@ def gate_refusal(db):
     """
     blocking = in_flight(db)
     if not blocking:
-        return None
+        return _replay_still_waiting(db)
     # 🔴 「취소해라」만으로는 «그 취소가 안전한지»를 못 읽는다 (소유자 2026-09-23
     #    「qued replay waiting ~~~ 계속 뜨는데 어케함」). runner 가 살아 있으면 취소는 «도는
     #    일»을 끊는 것이고, 죽었으면 취소가 이 자물쇠를 «푸는» 유일한 길이다 — 판단이
@@ -3561,6 +3597,29 @@ def gate_refusal(db):
     return ("run_id=%s op=%s is %s, %s (runner=%s is alive — cancelling stops work that "
             "is actually running) — %s"
             % (run_id, op, blocking["moving"], last, blocking.get("runner"), where))
+
+
+def _replay_still_waiting(db):
+    """A replay run is `done` once it has staged its pages, while the chain still runs them (C 간섭 ②, 총괄
+    1ff4dcc6c): the gate stays closed until they have run - every retroactive run waits, whatever table it writes.
+    -> the sentence, or None. Reads the waiting rows only (`idx_outbox_unprocessed`)."""
+    from sqlalchemy import func
+
+    from database import models
+
+    outbox = models.DatabaseOutbox
+    run_of = outbox.payload[event_constants.RUN_KEY].as_string()
+    waiting = (db.query(run_of, func.count(), func.min(outbox.table_name))
+               .filter(outbox.processed_chain == False,                       # noqa: E712 - the index's spelling
+                       outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True,  # noqa: E712
+                       run_of.isnot(None))
+               .group_by(run_of).order_by(func.min(outbox.id)).first())
+    if waiting is None:
+        return None
+    run_id, events, table = waiting
+    return ("run_id=%s chain_replay has staged its pages, and %d of its event(s) on %s still wait in the chain "
+            "queue - every retroactive run, on any table, waits until they have run. × on that queue line stops them "
+            "(POST /admin/chain/queue/cancel {\"key\": \"%s\"})" % (run_id, events, table, run_id))
 
 
 #: The lock every claim takes (총괄 f453968fe ⓒ). Checking the gate and writing the running

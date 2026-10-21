@@ -2638,6 +2638,9 @@ def _claimed_group_sync(tx_id, events, db, rules):
             with table_locks.hold(db, _group_target_tables(events, rules) | _group_read_tables(events, rules),
                                   on_wait=_waiting_for_a_table, on_held=_holding_the_tables):
                 answer = _process_chain_transaction_group_sync(tx_id, events, db, rules)
+        except table_locks.NotHeld as not_held:
+            # a table not got within the limit comes back as the group's answer, for the batch to rewind (④)
+            return False, str(not_held), []
         except Exception as exc:                            # noqa: BLE001
             # A stop the pause made - its stage boundary, or the query it cancelled - comes
             # back as the group's answer, for `process_pending_groups` to rewind (3840af307).
@@ -3092,6 +3095,14 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 logger.warning("[Chain] paused - tx '%s' was rewound at a stage boundary; its "
                                "%d event(s) stay queued until Resume",
                                tx_id, len(events_in_tx))
+                break
+            # 🔴 A TABLE NOT HELD WITHIN THE LIMIT IS REWOUND, NOT FAILED (총괄 1ff4dcc6c ④) - no attempt charged,
+            #    nothing set aside; the rest of this batch waits too, so a line keeps its order and the slot is free.
+            if not success and str(error_reason or "").startswith(table_locks.NOT_HELD):
+                with alignment_batch_counts.stage("rollback"):
+                    db.rollback()
+                logger.warning("[Chain] tx '%s': %s - rewound, runs again; its %d event(s) stay queued",
+                               tx_id, error_reason, len(events_in_tx))
                 break
 
             if success:
@@ -4128,6 +4139,27 @@ def start_replay_if_queued(db):
         logger.info("[Chain] a queued replay is waiting for the gate: %s", blocked)
         return None
     return nxt
+
+
+def reload_at_boundary(reader, seen):
+    """A boundary's reload (총괄 1ff4dcc6c ⑤): the declaration files this process's watcher saw change, and the
+    SYSTEM_RELOAD rows past `seen` as `reader` takes them (`reload_rules`) - a slot between batches, a retroactive run
+    between pages. The rows are read first: a read that raises leaves the files' changes for the next boundary.
+    -> (anything applied, the last row seen)."""
+    from database import config_watcher
+    from database.database import SessionLocal
+    from runtime import system_reload
+
+    session = SessionLocal()
+    try:
+        rows = system_reload.reloads_after(session, seen)
+    finally:
+        session.close()
+    applied = bool(config_watcher.apply_pending())
+    work = system_reload.reload_for(reader, rows) if rows else None
+    if work:
+        reload_rules(work)
+    return applied or bool(work), (rows[-1].id if rows else seen)
 
 
 def reload_rules(work):

@@ -1629,8 +1629,9 @@ def rows_drifted(engine, setup, source, world=None):
     return {"rows_drifted": int(drifted), "rows_unprinted": int(unprinted)}
 
 
-def retranslate_drifted(engine, setup, source, apply=False, world=None):
-    """Translate again exactly the rows `rows_drifted` counts as drifted (not the unprinted)."""
+def drifted_scope(engine, setup, source, world=None):
+    """The scope of the rows `rows_drifted` counts as drifted (not the unprinted) - `(column, values)`, the re-translate's
+    own scope: `--drifted --apply` runs it as a `ledger_rescope` through the retroactive gate (총괄 1ff4dcc6c ②)."""
     from .followup import scope_column
 
     plan = setup.snapshot.source_plans[source]
@@ -1645,6 +1646,12 @@ def retranslate_drifted(engine, setup, source, apply=False, world=None):
     finally:
         connection.rollback()
         connection.close()
+    return column, values
+
+
+def retranslate_drifted(engine, setup, source, apply=False, world=None):
+    """Translate again exactly the rows `rows_drifted` counts as drifted (not the unprinted)."""
+    column, values = drifted_scope(engine, setup, source, world=world)
     if not values:
         return {"source": source, "scope_values": 0}
     return rescope(engine, setup, source, column, values, apply=apply, world=world)
@@ -2806,9 +2813,17 @@ def main(argv=None):
         logger.info("[Ledger] caught up %s: %s", world, caught)
         return 0
     if args.drifted:
-        result = retranslate_drifted(engine, load_setup(names.declaration_root), args.source,
-                                     apply=args.apply,
-                                     world=world)
+        if args.apply:
+            # through the retroactive gate, its run record and its cancel - as every other --apply (총괄 1ff4dcc6c ②)
+            column, values = drifted_scope(engine, load_setup(names.declaration_root), args.source, world=world)
+            result = ({"source": args.source, "scope_values": 0} if not values else
+                      _written("ledger_rescope", {"source": args.source, "scope_column": column,
+                                                  "scope_values": values, "world": world}))
+            if result is None:
+                return 2
+        else:
+            result = retranslate_drifted(engine, load_setup(names.declaration_root), args.source,
+                                         apply=False, world=world)
         logger.info("[Ledger] drifted rows of %s: %s", args.source, result)
         print("drifted: %s" % result)
         return 0
