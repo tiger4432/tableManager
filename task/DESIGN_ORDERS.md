@@ -1,3 +1,18 @@
+# [구현자 B] **체인 대기열 답에 칸 넷 — 규칙 · 받은/낸 행 · 실패 줄 목록 · 재시도 줄의 단계** (903053c14 의 서버 몫, 클라가 센 «빠진 칸», 소유자 10-21 「화면에 좀 띄워, 로그 언제 찾아보냐」, 총괄) — a7b67be28 ㄴ «다음», fc1e1e385 «앞»
+
+클라가 센 것(main.py get_chain_queue_depth, 코드): 줄(waiting_transactions[])에 규칙 이름 없음 · rows_in/rows_out 없음(rows 는 기다리는 아웃박스 행 수) · 영구 실패 그룹은 답에 아예 없음 · stage 는 «도는 중»만. activity.view 는 running[]{rule · mapper · target_table · rows_in · running_seconds} 를 짓는데 이 라우트가 안 내보냄(c1dc16fdd 로 «running» 은퇴)
+도착: /admin/chain/queue 답만 읽고 화면이 아래를 그린다
+```
+줄마다       rule(여럿이면 목록) · 지금 단계 · rows_in · rows_out(끝난 판이면 마지막 판) · 흐른 초
+재시도 줄     깨진 단계 · 서버 문장 그대로
+최근 실패     규칙 · 단계 · rows_in · rows_out · 문장 그대로(event_constants.failure_cause) · 시각 — 상한 N 과 «잘림» 표시
+```
+지킬 것
+- 새 계산 · 새 기록 자리 금지: rows_in 은 activity(이미 짓는 running)에서, 문장은 failure_cause 한 좌석에서, 단계는 chain_state.why.stage 를 실패 때도 남기는 것으로 — 같은 낱말 그대로
+- rows_out 이 지금 어디에도 남지 않으면 «[ChainRule] 줄과 같은 값»을 activity 에 한 칸 더해 같은 좌석이 갖게(로그 줄과 화면이 다른 수를 말하지 않게)
+- 실패 목록은 이미 있는 Failed 수와 «같은 모집단»
+게이트: 진짜 체인 워커 · 스크래치 — 도는 그룹 · statement timeout 으로 실패한 그룹 · 재시도 중 그룹을 각각 만들어 답의 칸이 로그 줄([ChainRule] · permanently failed)과 같은 수 · 같은 문장. 변이 하나. 클라(903053c14)가 이 칸을 그리므로 칸 이름을 착지 전에 클라에게 메시지로
+
 # 🔴 [구현자 B] **소급을 끊었다가 «끊긴 자리부터» 이어 한다** (소유자 10-21 「소급은 좀 끊고 이어 하기 못 하냐? 작업 끊으면 다 돌려야 하네 다시」, 총괄) — a7b67be28 ㄴ(쪽마다 커밋) «다음»(그 위에 선다), c40ec1ded «앞»
 
 지금(총괄이 읽은 것 — 다시 셀 것): 체인 리플레이(R1)는 checkpoint 로 «쪽 사이에서» 멈출 수 있지만, 다시 돌리면 고른 행을 «처음부터» 다시 넣는다. 끊은 소급의 남은 쪽을 이어 가는 문이 없다
