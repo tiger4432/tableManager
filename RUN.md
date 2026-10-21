@@ -44,7 +44,7 @@
 >          «Background retry poller thread started.» · «Started observer» — 몇 초 안
 >          훑기마다 소스별 한 줄:
 >          External source <표>@<경로>: N file(s) looked at - outside the root a · name not matched b · not a file c ·
->            stat failed d · folders below max_depth e · folders not listed f · already read g · dispatched h
+>            stat failed d · folders not matching m · folders below max_depth e · folders not listed f · already read g · dispatched h
 >          그 훑기 끝에 한 번 «[Watcher] read files stamped N · left for re-read M (failed K · changed since read C)»
 > 뜻      N 이 0                 -> 그 경로에 파일이 안 보임 (경로 · 권한 · 공유 연결)
 >          name not matched 가 큼   -> options.glob / filename 이 안 맞음

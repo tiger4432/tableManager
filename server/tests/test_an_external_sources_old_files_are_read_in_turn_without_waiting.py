@@ -4,7 +4,7 @@ data root, a sqlite file and a stub API:
   big    40 files of three days ago   -> read without the one-second copy wait
   small  3 files of two days ago      -> taken in turn with big, so read among the first dispatches
   bm     w1/bmap.csv and w2/bmap.csv, the same bytes -> both read (each wafer's own file)
-and a line «External sweep in progress: <source> k/N candidate(s) through» while the sweep runs.
+and a line «External sweep in progress: <source> looked x · dispatched y · z s» while the sweep runs.
 Run 2 (a restart, sweeps every 2 s): small's s0.csv written again (same bytes, a new mtime) at its own path is read
 again; the rest - the bmap copies too - are already read by the checklist: not dispatched, not hashed (소유자 10-21)."""
 import ctypes
@@ -158,7 +158,7 @@ def test_old_files_are_read_in_turn_without_waiting(tmp_path):
                            for r in (logs[0], logs[-1]))
         print("files per second: %.2f (45 files in %.0f s)" % (45 / max(last - first, 1), last - first))
         assert last - first < 0.5 * 45, "a file waited for a copy that cannot be running"
-        progress = re.findall(r"External sweep in progress: (big@\S+) (\d+)/40 candidate\(s\) through", said)
+        progress = re.findall(r"External sweep in progress: (big@\S+) looked (\d+) · dispatched (\d+) · \d+ s", said)
         assert progress, said[-3000:]
 
         # run 2: a restart; s0.csv written again with the same bytes at its own path

@@ -28,6 +28,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from database import models
 from ingestion import checkpoint, reread
 
@@ -136,6 +138,22 @@ def test_the_rows_from_before_the_checklist_are_stamped_once(db_session, tmp_pat
     assert checkpoint.stamp_read_files(db_session, "ta", asked) == {"stamped": [], "failed": [rows[1].id],
                                                                      "changed": [rows[2].id]}
 
+
+
+@pytest.mark.parametrize("session", ["db_session", pytest.param("pg_session", marks=pytest.mark.pg)])
+def test_a_stamp_stored_reads_back_as_the_file_stat_again(request, tmp_path, session):
+    """A stamp as stored (a read's, the fill's) and the same file stat'd again are one value - nanoseconds the column
+    cannot hold are folded off both sides by one function (`stamp_of`), else every sweep reads it again."""
+    db = request.getfixturevalue(session)
+    read, filled = _write(tmp_path / "r.csv", "x"), _write(tmp_path / "f.csv", "x")
+    for path in (read, filled):
+        os.utime(path, ns=(1_760_000_000_123_456_789, 1_760_000_000_123_456_789))
+    _row(db, "ta", read, file_stat=checkpoint.read_file_stat(read))
+    _row(db, "ta", filled, at=datetime.now(timezone.utc) + timedelta(seconds=5))
+    assert checkpoint.stamp_read_files(db, "ta", [(filled, checkpoint.read_file_stat(filled))])["stamped"]
+    db.expire_all()
+    again = [(path, checkpoint.read_file_stat(path)) for path in (read, filled)]
+    assert checkpoint.checked(db, "ta", again) == {read: "SUCCESS", filled: "SUCCESS"}
 
 # ── a real watcher ────────────────────────────────────────────────────────────────────────────────────────────────────
 

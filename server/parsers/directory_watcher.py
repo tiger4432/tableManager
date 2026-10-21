@@ -95,7 +95,7 @@ import validation
 
 # [P2] 오프셋 체크포인트 재개 + «이미 읽었나» 체크리스트 (설계 근거·해시 비용 실측은 모듈 docstring)
 import ingestion.checkpoint
-from ingestion.checkpoint import CheckpointPlan, compute_file_signature, mtime_ns_to_datetime, read_file_stat
+from ingestion.checkpoint import CheckpointPlan, compute_file_signature, read_file_stat, stamp_of
 
 # [Drop visibility] Per-file budget for the undeclared-column drop summary. The keys
 # come from the payload, not from the schema, so a malformed header row or a parser
@@ -301,6 +301,9 @@ WORKSPACE_SUBDIRS = ("raws", "archives", "err", "auto_update", "scripts", "confi
 PERIODIC_SWEEP_INTERVAL_SECONDS = 300
 #: Seconds between two «External sweep in progress» lines of one sweep.
 SWEEP_PROGRESS_SECONDS = 30
+#: An external sweep hands a page on when it holds the checklist's batch or has been gathering this long - a share
+#: whose matching files are few and far apart is not walked to its end before its first file goes (총괄 10-21).
+SWEEP_PAGE_SECONDS = 5
 
 #: 🔴 HOW OFTEN THE SWEEP LOOP BEATS WHILE IT WAITS (S-142 ①), AND WHY IT IS NOT
 #: THE SWEEP INTERVAL. In integrated mode this loop is the watcher's only always-running
@@ -933,6 +936,18 @@ def _real_folder(folder: str) -> str:
     return known[folder]
 
 
+def _written_relative_path(path: str, root: str) -> str | None:
+    """The POSIX path below `root` as `path` is spelled (`normcase` compared, nothing resolved), or ``None``."""
+    absolute, top = os.path.abspath(path), os.path.abspath(root)
+    try:
+        if os.path.normcase(os.path.commonpath((absolute, top))) != os.path.normcase(top):
+            return None
+    except ValueError:
+        return None
+    rel = os.path.relpath(absolute, top)
+    return None if rel == os.curdir else rel.replace(os.sep, "/")
+
+
 def _safe_relative_path(path: str, root: str) -> str | None:
     """Real-path-contained POSIX relative path, or ``None`` when outside.
 
@@ -959,23 +974,72 @@ def _safe_relative_path(path: str, root: str) -> str | None:
     return rel.replace(os.sep, "/")
 
 
+_GLOB_FLAGS = re.IGNORECASE if os.path.normcase("A") == "a" else 0
+
+
+def _glob_segments(pattern: str) -> tuple:
+    """The pattern as segments: with ``/`` the whole path from the root; without, the name at any depth."""
+    return tuple(pattern.split("/")) if "/" in pattern else ("**", pattern)
+
+
+def _glob_segment(seg: str) -> str:
+    """One segment's regex: ``*`` = within the segment · ``?`` = one non-``/``."""
+    return "".join("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c) for c in seg)
+
+
 @functools.lru_cache(maxsize=None)
 def _glob_regex(pattern: str):
     """``**`` = any number of whole segments (zero too) · ``*`` = within one segment · ``?`` = one
     non-``/``. With ``/`` the pattern is the whole path from the root; without, the name at any
     depth. Case as the filesystem compares it (``normcase``)."""
-    segments = pattern.split("/") if "/" in pattern else ["**", pattern]
+    segments = _glob_segments(pattern)
     parts = []
     for i, seg in enumerate(segments):
         last = i == len(segments) - 1
         if seg == "**":
             parts.append(".*" if last else "(?:[^/]+/)*")
             continue
-        parts.append("".join("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c)
-                             for c in seg))
+        parts.append(_glob_segment(seg))
         if not last:
             parts.append("/")
-    return re.compile("".join(parts), re.IGNORECASE if os.path.normcase("A") == "a" else 0)
+    return re.compile("".join(parts), _GLOB_FLAGS)
+
+
+@functools.lru_cache(maxsize=None)
+def _glob_segment_regex(seg: str):
+    return re.compile(_glob_segment(seg), _GLOB_FLAGS)
+
+
+def _segments_may_go_on(pattern: tuple, folders: tuple) -> bool:
+    """Can the `pattern` segments still take a file below the `folders` segments."""
+    if not folders:
+        return bool(pattern)
+    if not pattern:
+        return False
+    if pattern[0] == "**":
+        return (len(pattern) == 1 or _segments_may_go_on(pattern[1:], folders)
+                or _segments_may_go_on(pattern, folders[1:]))
+    if len(pattern) == 1:
+        return False                                            # only the file's own name is left
+    return (bool(_glob_segment_regex(pattern[0]).fullmatch(folders[0]))
+            and _segments_may_go_on(pattern[1:], folders[1:]))
+
+
+def _folder_may_hold(options: dict, rel_dir: str) -> bool:
+    """Can a file below the folder `rel_dir` (POSIX, from the root) be one the source takes (`_source_takes`) - the
+    sweep enters only such folders, as a glob does (총괄 10-21, 소유자 「glob 돌리면 뜨는데」). The same segments
+    `_glob_regex` reads; `options.filename` alone is a name at any depth."""
+    patterns = options.get("glob")
+    if patterns is None:
+        return True
+    folders = tuple(rel_dir.split("/"))
+    return any(_segments_may_go_on(_glob_segments(p), folders) for p in patterns)
+
+
+def _dispatch_order(page: list) -> list:
+    """The order a sweep hands one page of a source on - oldest first within the page (소유자 10-20 「오래된 것부터」;
+    the whole source's order would wait for its whole walk, 총괄 10-21). THE one place the order is chosen."""
+    return sorted(page, key=lambda item: item[0])
 
 
 def _within_depth(spec, depth: int) -> bool:
@@ -1037,11 +1101,20 @@ def source_taking(specs, file_path: str):
     """(the external source that takes `file_path`, its path below that source's root), or None - the deepest root
     when two take it. THE one judgement: the handler's read (`external_source_context`) and the re-read into a table
     (`ingestion.reread.select_files`) ask it, so what a preview counts is what the handler reads."""
+    def takes(spec, rel_path):
+        return (rel_path is not None and _within_depth(spec, rel_path.count("/"))
+                and _source_takes(spec.get("options") or {}, file_path, rel_path))
+
     matches = []
     for spec in specs:
+        # The path as written first - no disk call (총괄 10-21: a share's realpath per folder was half a sweep): a
+        # name the source does not take under its root as spelled is not asked of the filesystem. A path spelled
+        # another way (a mapped drive for a share) is asked by its real path as before.
+        written = _written_relative_path(file_path, spec["root"])
+        if written is not None and not takes(spec, written):
+            continue
         rel_path = _safe_relative_path(file_path, spec["root"])
-        if (rel_path is not None and _within_depth(spec, rel_path.count("/"))
-                and _source_takes(spec.get("options") or {}, file_path, rel_path)):
+        if takes(spec, rel_path):
             matches.append((len(spec["root"]), spec, rel_path))
     if not matches:
         return None
@@ -2352,7 +2425,7 @@ class IngestionHandler(FileSystemEventHandler):
                 # The checklist's stamp off the stat we just took.
                 to_process.append((
                     st.st_mtime, fp,
-                    (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
+                    stamp_of(st),
                 ))
             if not to_process:
                 return done["dispatched"]
@@ -4336,7 +4409,7 @@ class WorkspaceWatcher:
                     # The stamp off the stat we ALREADY took — the point of asking here, not one dispatch deeper.
                     candidates.append((
                         st.st_mtime, fp, os.path.abspath(fp), handler,
-                        (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
+                        stamp_of(st),
                     ))
 
             candidates.sort(key=lambda c: c[0])
@@ -4381,8 +4454,7 @@ class WorkspaceWatcher:
                 targets = [item for item in self.external_targets.items()
                            if item[0] in wanted]
 
-            candidates = []
-            why_not = {}
+            why_not, pages = {}, {}
             for source_id, target in targets:
                 spec = target["spec"]
                 root = spec["root"]
@@ -4398,117 +4470,118 @@ class WorkspaceWatcher:
                         f"External source available again: {root} -> {spec['table_name']}")
                 self._external_availability[source_id] = True
                 self._try_schedule_external(target)
+                why_not[source_id] = dict.fromkeys(
+                    ("looked", "outside the root", "name not matched", "not a file", "stat failed",
+                     "folders not matching", "folders below max_depth", "folders not listed", "already read",
+                     "dispatched"), 0)
+                pages[source_id] = self._external_pages(source_id, target, why_not[source_id], lambda: said())
 
-                why = why_not[source_id] = dict.fromkeys(
-                    ("outside the root", "name not matched", "not a file", "stat failed", "folders below max_depth",
-                     "folders not listed"), 0)
-                unlisted = []
+            began = said_at = time.monotonic()
 
-                def walk(spec=spec, root=root, why=why, unlisted=unlisted):
-                    """The files the source can take: never below its max_depth (the folders are not entered)."""
-                    for dirpath, dirnames, filenames in os.walk(root, onerror=unlisted.append):
-                        rel = os.path.relpath(dirpath, root)
-                        if dirnames and not _within_depth(spec, 1 if rel == "." else rel.count(os.sep) + 2):
-                            why["folders below max_depth"] += len(dirnames)
-                            dirnames[:] = []
-                        for filename in filenames:
-                            yield os.path.join(dirpath, filename)
+            def said(force=False):
+                """Every SWEEP_PROGRESS_SECONDS: each source's looked · dispatched · seconds - running or stuck."""
+                nonlocal said_at
+                if not force and time.monotonic() - said_at < SWEEP_PROGRESS_SECONDS:
+                    return
+                for source_id, why in why_not.items():
+                    logger.info(f"External sweep in progress: {source_id} looked {why['looked']} · dispatched "
+                                f"{why['dispatched']} · {time.monotonic() - began:.0f} s")
+                said_at = time.monotonic()
 
-                looked = taken = 0
-                looked_said_at = time.monotonic()
-                for file_path in walk():
-                    looked += 1
-                    if time.monotonic() - looked_said_at >= SWEEP_PROGRESS_SECONDS:
-                        logger.info(f"External sweep in progress: {source_id} {looked} file(s) looked at")
-                        looked_said_at = time.monotonic()
-                    if not target["event_handler"].accepted_path(file_path):
-                        # Which way it was refused - for the line below only; the judgement is `accepted_path`'s:
-                        # a name the pattern takes on the walked path, refused, is a real path outside the root.
-                        walked = os.path.relpath(file_path, root).replace(os.sep, "/")
-                        outside = _source_takes(spec.get("options") or {}, file_path, walked)
-                        why["outside the root" if outside else "name not matched"] += 1
+            # Sources in turn, file by file (소유자 10-20: one share's thousands of old files held every source behind
+            # it for minutes) - over a page of each, handed on as soon as it is walked (총괄 10-21: a deep share's whole
+            # walk held its first file).
+            live = list(pages)
+            while live and not self._stop_event.is_set():
+                turns = []
+                for source_id in list(live):
+                    page = next(pages[source_id], None) if source_id in self.external_targets else None
+                    if page is None:
+                        live.remove(source_id)          # walked to its end, or retired while this sweep ran
                         continue
-                    taken += 1
-                    try:
-                        stat = os.stat(file_path)            # one look at the file on a share - its kind is in it
-                    except OSError:
-                        why["stat failed"] += 1
-                        continue
-                    if not _stat.S_ISREG(stat.st_mode):
-                        why["not a file"] += 1
-                        continue
-                    candidates.append((
-                        stat.st_mtime, source_id, os.path.abspath(file_path), target["handler"],
-                        (mtime_ns_to_datetime(stat.st_mtime_ns), int(stat.st_size)),
-                    ))
-                why["folders not listed"] = len(unlisted)
-                why["looked"] = looked
-                if unlisted:
-                    why["first not listed"] = told(unlisted[0])
-                unmatched = looked > 0 and taken == 0
-                if unmatched and source_id not in self._external_unmatched_said:
-                    options = spec.get("options") or {}
-                    logger.warning(f"External source {source_id}: {looked} file(s) under the root, none matched "
-                                   f"{options.get('glob') or options.get('filename')}")
-                    self._external_unmatched_said.add(source_id)
-                elif not unmatched:
-                    self._external_unmatched_said.discard(source_id)
-
-            candidates.sort(key=lambda item: item[0])
-            cleared = set()
-            by_handler = {}
-            for _mtime, _source_id, abs_path, handler, file_stat in candidates:
-                by_handler.setdefault(handler, []).append((abs_path, file_stat))
-            for handler, entries in by_handler.items():
-                if self._stop_event.is_set():
-                    break
-                for path in handler.already_checked(entries):
-                    cleared.add((handler, path))
-
-            # Sources in turn, each in its mtime order (소유자 10-20: one share's thousands of old files held every
-            # source behind it for minutes). A line per source every SWEEP_PROGRESS_SECONDS while it runs.
-            queues = {}
-            for item in candidates:
-                queues.setdefault(item[1], []).append(item)
-            total = {source_id: len(items) for source_id, items in queues.items()}
-            done = dict.fromkeys(total, 0)
-            said, said_at = dict(done), time.monotonic()
-            processed = 0
-            handed = {}
-            for turn in itertools.zip_longest(*queues.values()):
-                if self._stop_event.is_set():
-                    break
-                for item in turn:
-                    if item is None:
-                        continue
-                    _mtime, source_id, abs_path, handler, _file_stat = item
-                    if source_id not in self.external_targets:
-                        continue            # retired while this sweep ran (총괄 10-21)
-                    done[source_id] += 1
-                    if (handler, abs_path) not in cleared:
+                    handler = self.external_targets[source_id]["handler"]
+                    cleared = handler.already_checked([(abs_path, file_stat) for _m, abs_path, file_stat in page])
+                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s in page if abs_path in cleared)
+                    turns.append([(source_id, handler, abs_path) for _m, abs_path, _s in _dispatch_order(page)
+                                  if abs_path not in cleared])
+                for turn in itertools.zip_longest(*turns):
+                    for item in turn:
+                        if item is None or self._stop_event.is_set():
+                            continue
+                        source_id, handler, abs_path = item
+                        if source_id not in self.external_targets:
+                            continue                    # retired while this sweep ran (총괄 10-21)
                         handler._handle_event(abs_path)
-                        processed += 1
-                        handed[source_id] = handed.get(source_id, 0) + 1
-                    if time.monotonic() - said_at >= SWEEP_PROGRESS_SECONDS:
-                        for moved in [s for s in done if done[s] != said[s]]:
-                            logger.info(f"External sweep in progress: {moved} {done[moved]}/{total[moved]} candidate(s) through")
-                        said, said_at = dict(done), time.monotonic()
-            if candidates or cleared:
+                        why_not[source_id]["dispatched"] += 1
+                        said()
+            processed = sum(why["dispatched"] for why in why_not.values())
+            already = sum(why["already read"] for why in why_not.values())
+            if processed or already:
                 logger.info(
-                    f"External sweep: {len(candidates)} candidate binding(s) - "
-                    f"{len(cleared)} already read, "
+                    f"External sweep: {processed + already} candidate binding(s) - "
+                    f"{already} already read, "
                     f"{processed} dispatched; source files left untouched.")
             # 🔴 Each source, each sweep (총괄 10-21 「외장 파일마다 왜 안 넘겼나를 사유별 수로」): what the walk saw and
             #    why a file was not handed on - one restart says it, no log digging.
             for source_id, why in why_not.items():
-                already = sum(1 for _mtime, sid, abs_path, handler, _stat in candidates
-                              if sid == source_id and (handler, abs_path) in cleared)
                 reasons = " · ".join(f"{name} {n}" for name, n in why.items()
                                      if name not in ("looked", "first not listed"))
-                logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons} · "
-                            f"already read {already} · dispatched {handed.get(source_id, 0)}"
+                logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons}"
                             + (f" (first not listed: {why['first not listed']})" if "first not listed" in why else ""))
             return processed
+
+    def _external_pages(self, source_id, target, why, said):
+        """A source's files, walked as its pattern and max_depth allow (the folders no file of it can be in are not
+        entered) and stat'd once - in pages of the checklist's batch, each yielded as soon as it is walked. `why`
+        counts what was not handed on; `said` is called as the walk goes."""
+        spec = target["spec"]
+        root, options = spec["root"], spec.get("options") or {}
+        unlisted, page, page_began = [], [], time.monotonic()
+        for dirpath, dirnames, filenames in os.walk(root, onerror=unlisted.append):
+            rel = os.path.relpath(dirpath, root)
+            base = "" if rel == "." else rel.replace(os.sep, "/") + "/"
+            if dirnames and not _within_depth(spec, base.count("/") + 1):
+                why["folders below max_depth"] += len(dirnames)
+                dirnames[:] = []
+            kept = [name for name in dirnames if _folder_may_hold(options, base + name)]
+            why["folders not matching"] += len(dirnames) - len(kept)
+            dirnames[:] = kept
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                why["looked"] += 1
+                said()
+                if not target["event_handler"].accepted_path(file_path):
+                    # Which way it was refused - for the line only; the judgement is `accepted_path`'s: a name
+                    # the pattern takes on the walked path, refused, is a real path outside the root.
+                    outside = _source_takes(options, file_path, base + filename)
+                    why["outside the root" if outside else "name not matched"] += 1
+                    continue
+                try:
+                    stat = os.stat(file_path)            # one look at the file on a share - its kind is in it
+                except OSError:
+                    why["stat failed"] += 1
+                    continue
+                if not _stat.S_ISREG(stat.st_mode):
+                    why["not a file"] += 1
+                    continue
+                page.append((stat.st_mtime, os.path.abspath(file_path),
+                             stamp_of(stat)))
+                if (len(page) >= ingestion.checkpoint.CHECKED_BATCH_SIZE
+                        or time.monotonic() - page_began >= SWEEP_PAGE_SECONDS):
+                    yield page
+                    page, page_began = [], time.monotonic()
+        if page:
+            yield page
+        why["folders not listed"] = len(unlisted)
+        if unlisted:
+            why["first not listed"] = told(unlisted[0])
+        taken = why["looked"] - why["outside the root"] - why["name not matched"]
+        if why["looked"] and not taken and source_id not in self._external_unmatched_said:
+            logger.warning(f"External source {source_id}: {why['looked']} file(s) under the root, none matched "
+                           f"{options.get('glob') or options.get('filename')}")
+            self._external_unmatched_said.add(source_id)
+        elif taken:
+            self._external_unmatched_said.discard(source_id)
 
     def _sweep_safely(self, raw_paths=None, reason=""):
         reached = True
