@@ -319,6 +319,14 @@ def grammar_of(rule):
     return "unified" if isinstance(rule.get("derive"), dict) else "flat"
 
 
+def _chain_lists() -> dict:
+    """{list name: members} of the chain skeleton's `choice` leaves - from the readers' own constants."""
+    from chain import join_into
+    from chain.enrichment import config
+
+    return {join_into.TAKE_FN_LIST: list(config.AGGREGATION_FUNCTIONS)}
+
+
 def chain_rule_raw_view(name: str = None) -> dict:
     """One chain RULE's raw JSON plus the base fingerprint a save will check.
 
@@ -364,6 +372,8 @@ def chain_rule_raw_view(name: str = None) -> dict:
         # rule would be absent at the only moment it is needed.
         "skeleton": chain_bindings.skeleton(),
         # ⚰️ the `run_in` closed list rode here for the skeleton's leaf - retired (총괄 72f419bd1)
+        # the closed lists the skeleton's `choice` leaves name, by that name: a join take's fn (총괄 bce8d755a)
+        "lists": _chain_lists(),
         # 🔴 [판정 513] A NEW RULE IS WRITTEN IN THE UNIFIED GRAMMAR, AND THE SERVER SAYS SO.
         # This cell used to be set only inside `if name is not None`, so the one call a screen
         # makes when it is about to CREATE a rule carried no grammar - and `chain_rule_panel`

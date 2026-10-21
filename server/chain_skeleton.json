@@ -612,12 +612,69 @@
                     "keyed_by": "index",
                     "member": "column",
                     "of": {
-                      "kind": "leaf",
-                      "hint": "ref",
-                      "section": "columns",
-                      "table_from": [
-                        "on.table"
-                      ]
+                      "kind": "oneOf",
+                      "hint": "choice",
+                      "pick": "shape",
+                      "branches": {
+                        "name": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "on.table"
+                          ]
+                        },
+                        "record": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "from",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "columns",
+                                "table_from": [
+                                  "on.table"
+                                ]
+                              }
+                            },
+                            {
+                              "key": "into",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "columns",
+                                "table_from": [
+                                  "target_table",
+                                  "into.table"
+                                ]
+                              }
+                            },
+                            {
+                              "key": "fn",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "choice",
+                                "list": "aggregation_functions"
+                              }
+                            },
+                            {
+                              "key": "separator",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "empty": {
+                        "name": ""
+                      }
                     }
                   }
                 },

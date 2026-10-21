@@ -73,7 +73,8 @@ FIXTURE = [
      "on": {"table": "left_t", "columns": ["a", "b"]},
      "derive": {"kind": "join", "join": {"right_table": "right_t",
                                          "on": [{"left": "a", "right": "x"}],
-                                         "take": ["x", "y"]}},
+                                         "take": ["x", {"from": "y", "into": "b", "fn": "unique_concat",
+                                                        "separator": "/"}]}},
      "into": {"table": "left_t"},
      "key": {"unique": True, "columns": ["x"]},
      "limits": {"group_by": ["a"]},
@@ -170,6 +171,25 @@ def test_the_shapes_are_the_ones_beside_the_readers():
             assert _node_at(unified, ("derive", branch, cell)) == shape, (branch, cell)
     for cell, shape in rule_shape.KEY_CELL_SHAPES.items():
         assert _node_at(unified, ("key", cell)) == shape, cell
+
+
+def test_a_take_record_drawn_as_a_name_is_caught():
+    """A take item is a name or a record {from, into, fn, separator} (총괄 bce8d755a): the node turned back into a list
+    of names draws the record as one value."""
+    skeleton = copy.deepcopy(chain_bindings.skeleton())
+    _node_at(skeleton["unified_root"], ("derive", "join", "take"))["of"] = chain_bindings.column_ref(
+        chain_bindings.SOURCE_TABLE_AT)
+
+    assert "derive.join.take.1" in census(skeleton, FIXTURE[0])
+
+
+def test_the_fn_choices_ride_the_answer_by_the_name_the_leaf_names():
+    from chain.enrichment import config
+    from ledger import admin
+
+    take = _node_at(admin.chain_rule_raw_view()["skeleton"]["unified_root"], ("derive", "join", "take"))
+    fn = next(f for f in take["of"]["branches"]["record"]["fields"] if f["key"] == join_into.TAKE_FN)["node"]
+    assert admin.chain_rule_raw_view()["lists"][fn["list"]] == list(config.AGGREGATION_FUNCTIONS)
 
 
 def test_the_route_hands_the_browser_these_shapes():

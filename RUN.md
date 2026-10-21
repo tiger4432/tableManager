@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **체인 선언 폼의 join take 에 fn — 레코드가 폼에 줄로 그려지고 fn 을 고름 (총괄 bce8d755a, 소유자 「체인 선언 take 에 fn 이 없네」)** — git pull · 런처 재기동 · 브라우저 새로고침
+>
+> ```
+> 무엇     어드민 Chain 탭 폼: take 가 이름뿐이면 지금처럼 칩 · 레코드가 하나라도 있으면 줄
+>          줄의 레코드 = from · into · fn(count · min · max · unique_concat 고르개) · separator
+> 첫 레코드 왼쪽 글에 적음 (폼의 칩 추가는 이름만 넣음):
+>          "take": ["lot_id", {"from": "wafer_id", "into": "wafers", "fn": "unique_concat", "separator": ", "}]
+>          그 뒤로는 폼의 + 와 항목마다 name / record 고르개로 더함
+> 확인     레코드가 있는 join 규칙을 열면 take 가 줄로, fn 칸이 네 낱말 고르개
+> 뜻      fn 고르개가 비어 있음 -> 옛 번들(새로고침) 또는 재기동 전 서버 (규칙 답에 lists 칸이 없음)
+> 급할 때   없음 (화면만 바뀜) — 되돌리기로
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동 · 새로고침
+> ```
+>
+> ---
+>
 > ## [10-21] **체인 규칙이 «쓰는 칸»을 적음 — target_columns 밖 칸은 안 씀, 이미 쌓인 층은 R2 withdraw --rule 로 한 번 (총괄 a7b67be28 ㄱ, 소유자 「ㄴ」)** — git pull · 런처 재기동
 >
 > ```

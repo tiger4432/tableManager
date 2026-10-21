@@ -1193,6 +1193,8 @@ async function refreshChainRule(name, extra = {}) {
     ...(mappers === null ? {} : { mappers }),
     ...(tables === null ? {} : { tables }),
     ...(catalog === null ? {} : { ...catalog.sections, table_columns: catalog.tables }),
+    // the closed lists the skeleton's choice leaves name ride on this answer, by their names (a take's fn)
+    ...(body && body.lists && typeof body.lists === 'object' ? body.lists : {}),
   });
   const view = chainRulePanel.render(body, opts);
   const count = byId('chain-rule-editor-count');

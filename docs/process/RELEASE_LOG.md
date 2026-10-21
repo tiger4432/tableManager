@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-21 [체인 선언 폼의 join take 에 fn — 레코드 {from, into, fn, separator} 가 폼에 그려지고 fn 을 고른다](#2026-10-21--체인-선언-폼의-join-take-에-fn--레코드-from-into-fn-separator-가-폼에-그려지고-fn-을-고른다) — 보는 곳 어드민 Chain 탭 폼의 take
 - 2026-10-21 [체인 규칙이 «쓰는 칸»을 적는다 — target_columns 밖 칸은 쓰이지 않고, 이미 쌓인 층은 R2 로 한 번 거둔다](#2026-10-21--체인-규칙이-쓰는-칸을-적는다--target_columns-밖-칸은-쓰이지-않고-이미-쌓인-층은-r2-로-한-번-거둔다) — 적는 곳 chain_rules.json 의 `target_columns` · 보는 곳 chain_worker.log [ChainRule]
 - 2026-10-21 [교체 · 거두기 규칙이 원천 행 지움에도 돌고, 행이 떠난 맵을 통째로 받는다 — 파일 교체가 지운 다이의 체인 행이 거둬진다](#2026-10-21--교체--거두기-규칙이-원천-행-지움에도-돌고-행이-떠난-맵을-통째로-받는다--파일-교체가-지운-다이의-체인-행이-거둬진다) — 적는 곳 chain_rules.json 의 allow_replace_map · allow_retraction · 보는 곳 chain_worker.log [ChainRule]
 - 2026-10-21 [통째 리플레이가 이번에 한 번도 안 낸 맵을 거둔다 — 원천 행이 다 사라진 맵의 체인 층](#2026-10-21--통째-리플레이가-이번에-한-번도-안-낸-맵을-거둔다--원천-행이-다-사라진-맵의-체인-층) — 명령 소급 탭 Replay chain rules over old data (R1) · 보는 곳 chain_worker.log [ReplaySweep]
@@ -473,6 +474,14 @@
 
 
 
+
+## 2026-10-21 · 체인 선언 폼의 join take 에 fn — 레코드 {from, into, fn, separator} 가 폼에 그려지고 fn 을 고른다
+
+- **무엇** — 폼의 take 는 칸 이름만 그렸고, 레코드 `{from, into, fn, separator}` 는 왼쪽 글에서만 고칠 수 있었습니다(소유자 「체인 선언 take 에 fn 이 없네」). 이제 take 항목은 이름 또는 레코드로 그려집니다. 결손 보정의 aggregations 와 같은 꼴이고, fn 은 count · min · max · unique_concat 중에서 고릅니다.
+- **선언** — 바뀐 것 없음. take 의 레코드는 10-20 그대로입니다.
+- **바뀐 동작** — take 가 이름뿐이면 지금처럼 칩입니다. 레코드가 하나라도 있으면 줄로 그려지고, 줄마다 name / record 를 고릅니다. 첫 레코드는 왼쪽 글에 적습니다(칩의 추가 칸은 이름만 넣습니다).
+- **필요한 조건** — git pull · 런처 재기동 · 브라우저 새로고침.
+- **자세히** — 시험 `test_a_declared_list_is_drawn_as_a_list.py` · 하니스 `chain_list_edit_harness.mjs`(T1~T3) · [체인 규칙 가이드](../guide/config/chain_rules.md) ⑥.
 
 ## 2026-10-21 · 체인 규칙이 «쓰는 칸»을 적는다 — target_columns 밖 칸은 쓰이지 않고, 이미 쌓인 층은 R2 로 한 번 거둔다
 

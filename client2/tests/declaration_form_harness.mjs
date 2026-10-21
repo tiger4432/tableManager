@@ -311,8 +311,8 @@ async function score(which, mutate, tag) {
 
 const DEFECTS = [
   ['view', 'a list of words is drawn as member rows again',
-    (s) => s.replace('  if (isChipList(context, shape) && !context.planRow(path)) {', '  if (false) {')
-      .replace('  if (isChipList(context, node) && valueFits(node, value)) return renderChips', '  if (false) return renderChips')],
+    (s) => s.replace('  if (isChipList(context, shape, value) && !context.planRow(path)) {', '  if (false) {')
+      .replace('  if (isChipList(context, node, value) && valueFits(node, value)) return renderChips', '  if (false) return renderChips')],
   ['view', 'a gated list of records is drawn as a table',
     (s) => s.replace("      return !field.when && shape && shape.kind === 'leaf';", "      return shape && shape.kind === 'leaf';")],
   ['view', 'two forms share one datalist id', (s) => s.replace("${context.listPrefix || 'oe'}-dl-", 'oe-dl-')],

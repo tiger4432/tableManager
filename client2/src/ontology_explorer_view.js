@@ -1983,7 +1983,7 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   const covers = context.covering ? context.covering(path, shape) : null;
   if (covers === 'all') return renderTreeLeaf(context, shape, path, value, depth, label);
   // Form D (lead f3639d4a2): a list of words the plan does not speak for is one row - its words as chips, an adder.
-  if (isChipList(context, shape) && !context.planRow(path)) {
+  if (isChipList(context, shape, value) && !context.planRow(path)) {
     return renderTreeLeaf(context, shape, path, value, depth, label, required);
   }
   // 🔴 THE DECLARATION'S OUTLINE IS ALWAYS DRAWN; FOLDING STARTS BELOW IT. Owner opened a
@@ -2281,10 +2281,12 @@ function renderSkeletonMap(context, node, path, value, depth) {
 
 // -- form D's shapes (lead f3639d4a2, owner 10-20): chosen by the skeleton's shape, never by which declaration --
 
-/** A list of words: an index map whose member is a leaf. Drawn as chips. */
-function isChipList(context, shape) {
+/** A list of words: an index map whose member is a leaf - or is picked by shape (a join's take, 총괄 bce8d755a) while
+ *  every item it holds is a word; one record among them draws the list as rows. Drawn as chips. */
+function isChipList(context, shape, value) {
   if (!shape || shape.kind !== 'map' || shape.keyed_by !== 'index') return false;
   const of = context.deref(shape.of);
+  if (of && of.pick === 'shape') return Array.isArray(value) ? value.every((item) => typeof item === 'string') : value == null;
   return Boolean(of && of.kind === 'leaf' && of.hint !== 'flag');
 }
 
@@ -2382,7 +2384,10 @@ function renderChips(context, node, path, value) {
     if (!list.length) wrap.append(h('span', 'oe-value is-none', 'None'));
     return wrap;
   }
-  const of = context.deref(node.of);
+  // an item picked by shape suggests what its word branch does
+  const item = context.deref(node.of);
+  const of = item && item.pick === 'shape' ? context.deref((item.branches || {})[shapeBranch(item, '', context.deref)])
+    : item;
   const held = new Set(list.map(String));
   wrap.append(adder(context, path, node.member || 'Add',
     offered(context, of, memberPath(path, list.length, 'index')).filter((item) => !held.has(String(item)))));
@@ -2461,7 +2466,7 @@ function foldSummary(shape, value, count) {
 /** A leaf cell's control: the plan's row where the plan speaks for it, a list's chips, else the skeleton's control. */
 function leafControl(context, node, path, value, planned = node ? context.planRow(path) : null) {
   if (planned) return context.renderRow(context.suggest(planned, node, path), node, true);
-  if (isChipList(context, node) && valueFits(node, value)) return renderChips(context, node, path, value);
+  if (isChipList(context, node, value) && valueFits(node, value)) return renderChips(context, node, path, value);
   return renderSkeletonLeaf(context, node, path, value);
 }
 

@@ -97,6 +97,36 @@ function suite(M) {
   const flag = p.inputAt('key.unique');
   ok(flag && flag.type === 'checkbox' && flag.checked === true, 'C4 key.unique is a ticked checkbox');
 
+  // T -- a take record {from, into, fn, separator} is drawn as one, its fn from the list the answer carries
+  const FNS = ['count', 'min', 'max', 'unique_concat'];
+  const TAKES = { ...JOIN, derive: { join: { ...JOIN.derive.join,
+    take: ['c3', { from: 'c4', into: 'c5', fn: 'unique_concat' }] } } };
+  const t = mountPanel(M, TAKES);
+  t.panel.setLists({ aggregation_functions: FNS });
+  t.panel.render(payloadFor(TAKES));
+  t.click('toggle-field', 'derive.join.take');
+  if (!t.inputAt('derive.join.take[1].from')) t.click('toggle-field', 'derive.join.take[1]');
+  const from1 = t.inputAt('derive.join.take[1].from');
+  const fnSel = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-value'] === 'derive.join.take[1].fn');
+  const fnWords = fnSel ? walk(fnSel).filter((k) => k.tagName === 'OPTION').map((k) => (k.attrs || {}).value ?? k.textContent)
+    .filter((v) => v !== '') : [];
+  ok(from1 && from1.value === 'c4', `T1 the record's from is its own input [${from1 && from1.value}]`);
+  const fnHeld = fnSel ? walk(fnSel).filter((k) => k.tagName === 'OPTION' && (k.selected || (k.attrs || {}).selected != null))
+    .map((k) => (k.attrs || {}).value ?? k.textContent) : [];
+  ok(fnWords.join(',') === FNS.join(',') && fnHeld.join(',') === 'unique_concat',
+    `T2 its fn picks from the answer's list, held on unique_concat [${fnWords.join(',')} = ${fnHeld.join(',')}]`);
+  const take = () => (((t.raw() || {}).derive || {}).join || {}).take;
+  t.click('form-append', 'derive.join.take');
+  const picker = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-action'] === 'edit-shape-branch'
+    && n.attrs['data-value'] === 'derive.join.take[2]');
+  if (picker) { picker.value = 'record'; picker.dispatch('change'); }
+  const fnNew = t.find((n) => n.tagName === 'SELECT' && n.attrs && n.attrs['data-value'] === 'derive.join.take[2].fn');
+  if (fnNew) { fnNew.value = 'count'; fnNew.dispatch('change'); }
+  const third = (take() || [])[2];
+  ok(Boolean(picker) && third && typeof third === 'object' && third.fn === 'count'
+     && (take() || [])[1].fn === 'unique_concat',
+    `T3 "+", then record, then fn count writes a record into the take list [${JSON.stringify(take())}]`);
+
   // D -- editing one item keeps a list a list
   // The input AS IT STANDS ON SCREEN now, not the one grabbed before `take` opened: D scores the
   // write. Whether a redraw keeps that node is `chain_rule_form` N1's question, not this one's.
