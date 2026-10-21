@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 import chain_bindings
+import validation
 from chain import join_into
 
 #: 체인 문법에서 «모양으로 접히는» 칸. 나머지는 전부 `extra` 로 간다.
@@ -711,6 +712,11 @@ def is_switched_off(rule: dict) -> bool:
     return not rule.get("enabled", True)
 
 
+def _refused(name, sentence, cell):
+    """A declaration's refusal: «<name>: <sentence>», naming the cell it refuses (`validation.Refusal`)."""
+    return validation.Refusal("%s: %s" % (name, sentence), cell)
+
+
 def expand_declaration(declaration, table_config=None,
                        rejections: list = None, caps: dict = None) -> tuple:
     """A rules-file entry -> (the chain rules it stands, refusal, notes).
@@ -740,14 +746,14 @@ def expand_declaration(declaration, table_config=None,
               for where, cells in unread_cells(declaration)] if unified else flat_cell_notes(declaration)
     flags = chain_bindings.flag_refusals(declaration)
     if flags:
-        return ([], "%s: %s" % (name, "; ".join(flags)), unread)
+        return ([], _refused(name, "; ".join(flags), validation.cell_of(flags[0])), unread)
     # 🔴 key.columns AS TEXT (총괄 77793123e): read as letters, «lot» was ['l', 'o', 't'] and the join's unique index
     #    was skipped without an error - refused by name, as a list param written as text is (`param_not_a_list`).
     key_cell = declaration.get(KEY_CELL) if isinstance(declaration, dict) else None
     if isinstance(key_cell, dict) and "columns" in key_cell and not isinstance(key_cell["columns"], list):
         written = key_cell["columns"]
-        return ([], "%s: key.columns must be a list, e.g. %s" % (name, json.dumps(
-            [written] if isinstance(written, str) else ["<column>"])), unread)
+        return ([], _refused(name, "key.columns must be a list, e.g. %s" % json.dumps(
+            [written] if isinstance(written, str) else ["<column>"]), "key.columns"), unread)
     if not unified:
         return ([declaration], None, unread)
 
@@ -763,7 +769,7 @@ def expand_declaration(declaration, table_config=None,
     #    sentence. A declaration that writes no kind but names its `derive` cell is read by
     #    `from_declaration` and passes.
     if (internal.get("derive") or {}).get("kind") not in DECLARED_KINDS:
-        return ([], "%s: %s" % (name, unknown_derive_kind(declaration["derive"].get("kind"))), unread)
+        return ([], _refused(name, unknown_derive_kind(declaration["derive"].get("kind")), "derive.kind"), unread)
 
     # 🔴 [S-282 · 판정 440] A READ-TIME JOIN IS REFUSED HERE, BY NAME. `into: {read: true}`
     # declares a join that answers when somebody READS; the owner's ruling is that production
@@ -785,20 +791,20 @@ def expand_declaration(declaration, table_config=None,
     # brings that exact shape back unless the retirement names itself, so it does.
     if ((internal.get("derive") or {}).get("kind") == "join"
             and any((internal.get("into") or {}).get(kind) for kind in RETIRED_INTO_KINDS)):
-        return ([], "%s: %s" % (name, READ_TIME_RETIRED), unread)
+        return ([], _refused(name, READ_TIME_RETIRED, "into.read"), unread)
     if (internal.get("derive") or {}).get("kind") == "join":
         old_source = ((internal.get("derive") or {}).get("join") or {}).get("right_table")
         if old_source is not None:
-            return ([], "%s: %s" % (name, JOIN_RIGHT_TABLE_RETIRED % old_source), unread)
+            return ([], _refused(name, JOIN_RIGHT_TABLE_RETIRED % old_source, "derive.join.right_table"), unread)
         if not (internal.get("on") or {}).get("table"):
-            return ([], "%s: %s" % (name, JOIN_NEEDS_SOURCE), unread)
+            return ([], _refused(name, JOIN_NEEDS_SOURCE, "on.table"), unread)
         blank = join_into.blank_refusal((internal.get("derive") or {}).get("join") or {})
         if blank:
-            return ([], "%s: %s" % (name, blank), unread)
+            return ([], _refused(name, blank, validation.cell_of(blank, "derive.join.blank")), unread)
         gathered = join_into.take_refusal((internal.get("derive") or {}).get("join") or {}, internal.get(KEY_CELL),
                                           (internal.get("on") or {}).get("table"))
         if gathered:
-            return ([], "%s: %s" % (name, gathered), unread)
+            return ([], _refused(name, gathered, validation.cell_of(gathered, "derive.join.take")), unread)
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,
@@ -806,7 +812,7 @@ def expand_declaration(declaration, table_config=None,
     decided, decide_refusal = decide_rules(internal, table_config,
                                            rejections=rejections, caps=caps)
     if decide_refusal:
-        return ([], "%s: %s" % (name, decide_refusal), unread)
+        return ([], _refused(name, decide_refusal, validation.cell_of(decide_refusal, "derive.decide")), unread)
     if decided:
         stood = decided
         notes = ["%s: derive.decide cell this product does not read — %s. "
@@ -816,7 +822,7 @@ def expand_declaration(declaration, table_config=None,
         try:
             old_shape = refuse_join_trigger_conflict(internal)
         except JoinTriggerConflict as conflict:
-            return ([], "join_trigger_conflict: %s" % conflict, unread)
+            return ([], validation.Refusal("join_trigger_conflict: %s" % conflict, "on.columns"), unread)
 
         notes = [old_shape] if old_shape else []
         unknown = unknown_join_cells(internal)

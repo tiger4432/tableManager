@@ -17,11 +17,14 @@ TABLE = "x568_rows"
 def two_schemas(pg_engine):
     """An engine whose search path is a schema of this test's own: TABLE with 3 rows, never analysed, and a cursor
     saying 3 indexed; another schema of this test's own holds TABLE with 50 rows, analysed."""
-    from tests.conftest import PG_TEST_SCHEMA
     from tests.support.isolated_pg import scratch_connect_args
     from ledger import schema
 
-    here, other = PG_TEST_SCHEMA + "_x568a", PG_TEST_SCHEMA + "_x568b"
+    # the engine's own scratch schema, asked of it - `from tests.conftest import` ran conftest a second time, and its
+    # DATABASE_URL pin with it, leaving the session's PG URL in DATABASE_URL for every test after (gate batch 4)
+    with pg_engine.connect() as conn:
+        scratch = conn.execute(text("SELECT current_schema()")).scalar()
+    here, other = scratch + "_x568a", scratch + "_x568b"
     cursor = schema.world_names(None).cursor
     with pg_engine.begin() as conn:
         for name in (here, other):

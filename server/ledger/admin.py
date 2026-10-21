@@ -301,6 +301,14 @@ def _table_config_refusal(code: str, path: str, message: str):
         "ok": False, "code": code, "path": path, "message": message})
 
 
+def _rule_cell(name: str, refusal) -> str:
+    """`rules.<name>.<the cell the refusal names>` - the address a form stands the sentence beside (lead 10-21)."""
+    import validation
+
+    cell = validation.cell_of(refusal)
+    return f"rules.{name}.{cell}" if cell else f"rules.{name}"
+
+
 def chain_rules_path() -> str:
     """Where `chain_rules.json` lives. Read from the worker, never respelled here."""
     from chain import ingestion_worker
@@ -660,14 +668,14 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
     _saved, _saved_refusal, saved_notes = rule_shape.expand_declaration(entry, _catalogue.TABLE_CONFIG)
     flags = chain_bindings.flag_refusals(entry)
     if flags:
-        raise _table_config_refusal("declaration_refused", f"rules.{name}",
+        raise _table_config_refusal("declaration_refused", _rule_cell(name, flags[0]),
                                     " | ".join(["%s: %s" % (name, "; ".join(flags))] + saved_notes))
     judged = dict(entry)
     judged["enabled"] = True
     stood, expand_refusal, notes = rule_shape.expand_declaration(
         judged, _catalogue.TABLE_CONFIG)
     if expand_refusal:
-        raise _table_config_refusal("declaration_refused", f"rules.{name}",
+        raise _table_config_refusal("declaration_refused", _rule_cell(name, expand_refusal),
                                     " | ".join([expand_refusal] + notes))
     if rule_shape.is_switched_off(entry):
         notes = saved_notes

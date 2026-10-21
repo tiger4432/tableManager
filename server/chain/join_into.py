@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 
 import chain_bindings
+import validation
 
 logger = logging.getLogger("Chain.JoinInto")
 
@@ -120,7 +121,8 @@ def blank_refusal(join: dict):
     said = (join or {}).get("blank")
     if crud.is_blank_value(said) or said in BLANK_WORDS:
         return None
-    return "derive.join.blank %r - one of %s" % (said, " · ".join(BLANK_WORDS))
+    return validation.Refusal("derive.join.blank %r - one of %s" % (said, " · ".join(BLANK_WORDS)),
+                              "derive.join.blank")
 
 
 def _unsaid(spec: dict, values: dict) -> list:
@@ -211,18 +213,22 @@ def take_refusal(join: dict, key: dict, right_table: str):
 
     fns = _fn_takes(join or {})
     if fns and (key or {}).get("unique"):
-        return ("key.unique and take fn (%s) cannot stand together - fn gathers every row of a key, key.unique says "
-                "a key has one row" % ", ".join(sorted(fns)))
+        return validation.Refusal(
+            "key.unique and take fn (%s) cannot stand together - fn gathers every row of a key, key.unique says "
+            "a key has one row" % ", ".join(sorted(fns)), "key.unique")
     for into, (column, record) in sorted(fns.items()):
         fn = record["fn"]
         if fn not in config.AGGREGATION_FUNCTIONS:
-            return "take %r fn %r - one of %s" % (into, fn, " · ".join(config.AGGREGATION_FUNCTIONS))
+            return validation.Refusal("take %r fn %r - one of %s" % (into, fn, " · ".join(
+                config.AGGREGATION_FUNCTIONS)), "derive.join.take.%s.fn" % into)
         if "separator" in record and fn not in config.AGGREGATION_SEPARATOR_DEFAULTS:
-            return "take %r separator - only %s takes one" % (into, " · ".join(config.AGGREGATION_SEPARATOR_DEFAULTS))
+            return validation.Refusal("take %r separator - only %s takes one" % (
+                into, " · ".join(config.AGGREGATION_SEPARATOR_DEFAULTS)), "derive.join.take.%s.separator" % into)
         kind = map_overlay.declared_column_type(right_table, column)
         if fn in ("min", "max") and kind not in config.EXPRESSED_MIN_MAX_TYPES:
-            return ("take %r fn %s over %s.%s, a %s column - min and max order %s" % (
-                into, fn, right_table, column, kind or "undeclared", " · ".join(config.EXPRESSED_MIN_MAX_TYPES)))
+            return validation.Refusal("take %r fn %s over %s.%s, a %s column - min and max order %s" % (
+                into, fn, right_table, column, kind or "undeclared", " · ".join(config.EXPRESSED_MIN_MAX_TYPES)),
+                "derive.join.take.%s.fn" % into)
     return None
 
 

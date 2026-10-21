@@ -108,6 +108,22 @@ def did_you_mean(wanted: Any, declared: Iterable[Any], label: str) -> str:
     return f"; declared {label}: {listed}"
 
 
+class Refusal(str):
+    """A refusal's sentence that names the cell it refuses: `cell`, a path inside the declaration ('' - the whole).
+    A str, so every reader of the sentence reads it as before; a NEW string made from it (+, %, a slice) has no
+    `cell` - whoever rewords a refusal and still needs the cell carries it over (lead 10-21)."""
+
+    def __new__(cls, sentence, cell=""):
+        made = super().__new__(cls, sentence)
+        made.cell = cell
+        return made
+
+
+def cell_of(refusal, default=""):
+    """The cell a refusal names, or `default` when it names none (a plain sentence)."""
+    return getattr(refusal, "cell", "") or default
+
+
 def flag_refusal(name: str, value: Any):
     """A yes/no cell holds true or false and nothing else - None, or the ONE sentence (총괄
     de64fb0f9 · 872f6cb6b). `"false"` is truthy and `0` is not, so every reader that guessed
@@ -120,7 +136,7 @@ def flag_refusal(name: str, value: Any):
         shown = json.dumps(value, ensure_ascii=False)
     except (TypeError, ValueError):
         shown = repr(value)
-    return f"{name} must be true or false, got {shown} - write true or false"
+    return Refusal(f"{name} must be true or false, got {shown} - write true or false", name)
 
 
 def flag_refusals(value: Any, node: Mapping, path: str = "") -> list:
