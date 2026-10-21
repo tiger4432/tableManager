@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **체인 화면이 실패 사유를 문장째 — 규칙 · 받은/낸 행 · 단계 · 최근 실패 (소유자 「빨간 글씨 600 s 나오고 끝」, 총괄 903053c14, 5e5922c32 · dist 9a8fd9c43)**
+>
+> ```
+> 무엇     어드민 Chain 탭: Chain failures 줄 밑에 그 줄의 가장 새 실패 문장
+>          Chain queue 에 Rules 열(도는 규칙 in N · running Xs, 아니면 in N · out M) · 상태 칸 사유는 세 줄 + 툴팁, 재시도 · 실패는 단계를 앞에
+>          대기열 아래 Recent failures 표(가장 새 실패 그룹 20: 시각 · 트랜잭션 · 규칙 · 단계 · In · Out · 사유)
+>          메인 그리드 Queue 의 상태 칸도 같은 사유 세 줄
+> 돌릴 것   git pull 뒤 브라우저 새로고침 (클라만 바뀜, 서버 칸은 9c1d2f26f 에 이미 있음)
+> 확인     어드민 -> Chain 탭 -> 실패가 있으면 Recent failures 표, 그 Failure 칸에 서버 문장(statement timeout · 600 s · stage … 처럼)
+> 뜻      Rules 열이 없음 -> 서버가 rules 를 안 보냄(9c1d2f26f 전 서버) 또는 옛 번들(새로고침)
+>          Recent failures 표가 없음 -> 실패 그룹이 없음(Failed 수가 0) - 고장 아님
+>          In · Out 이 «—» -> 그 규칙의 마지막 실행 기록이 없음(서버가 null)
+> 급할 때   화면만 바뀜 - 되돌리기로 충분
+> 되돌리기  git revert 9a8fd9c43 5e5922c32 -> 브라우저 새로고침
+> ```
+>
+> ---
+>
 > ## [10-22] **갤러리 판 썸네일이 칸을 채움 · Columns by 만 고른 판 (총괄, 208cf4fb8 · dist 3b9a1f5b9)**
 >
 > ```
