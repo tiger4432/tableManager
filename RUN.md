@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **파일은 한 번 읽는다 — (경로, 표) 체크리스트 (소유자 「(파일, 돌려야 할 테이블) 을 키로 넣고 체크리스트」, 총괄, 4492b8813)** — git pull · 와처 재기동 한 번 · 서버 재기동
+>
+> ```
+> 무엇     «이미 읽었나»의 답이 하나: 같은 (경로, 표) 로그 행이 파일의 (수정 시각, 크기)를 들면 안 읽음, 바뀌면 읽음
+>          재기동해도 다시 안 읽음. 표 스크립트 · table_config 항목 · 외장 소스 항목이 바뀌면 «그 표»만 다시 읽음
+> 돌릴 것   git pull -> 와처 재기동 -> 서버 재기동 (새 칸 둘은 기동이 더함)
+> 확인     와처 로그에 «한 번»: [Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L
+>          그다음 훑기: «External sweep: … X already read, Y dispatched» — 다시 기동해도 Y 는 새로 온 파일 수
+> 뜻      M = 배포 뒤 한 번 다시 읽히는 수(실패했던 파일 · 읽은 뒤 바뀐 파일). 그 뒤로는 안 읽힘
+>          stamped 가 0 인데 파일이 많음 -> 로그 행의 경로가 지금 훑는 폴더와 다름(공유 경로 바뀜) -> 그 파일들은 한 번 다시 읽힘
+>          «its reading changed (...) - N read file(s) unchecked» -> 그 표 스크립트 · 설정이 바뀜 -> 그 표만 다시 읽음(정상)
+>          옮겨진(archives/) 파일은 표 읽기가 바뀌어도 다시 안 읽음 — 제자리 파일(외장 · archive 끈 raws)만
+>          한 파일을 다시 -> 파일 화면 Retry. 여럿 -> python server/scripts/replay_ingestion.py --path <파일> --path ... --apply
+>          __force__ 파일 이름 · dedup_by_signature · dedup_by_path_stat 는 은퇴(값은 안 읽힘)
+> 급할 때   외장 소스 하나 멈춤: ingestion_settings.json 그 항목에 "enabled": false 저장(재기동 없이 · 다시 켜도 다시 안 읽음)
+>          config/watcher_read_files_stamped 는 지우지 않음 — 지우면 다음 기동이 채움을 한 번 더 돌림
+> 되돌리기  git revert 4492b8813 -> 와처 재기동. 되돌린 뒤 첫 훑기는 제자리 파일을 해시만 다시 냄(같은 경로 같은 내용은 안 읽음)
+> ```
+>
+> ---
+>
 > ## [10-21] **쓰기 문이 행마다 다시 하던 일을 묶음에 한 번 — 복합 키 조립 · 칸 판정 · 소스 서열 (총괄 249b43409 ㄴ + ㄱ')** — git pull · 런처 재기동
 >
 > ```
