@@ -1464,7 +1464,7 @@ def test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises(
                 continue
             if not any(word in haystack for word in spellings(param["name"])):
                 missing.append(f"{op}.{param['name']}")
-    assert no_cli == ["chain_replay.cascade"]
+    assert no_cli == ["chain_replay.cascade", "chain_replay.continued_from"]
     assert not missing, (
         "these parameters exist on the operation but appear nowhere in its cli line or "
         f"cli_only, so the promise is false for them: {missing}")

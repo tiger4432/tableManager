@@ -454,9 +454,10 @@ class RetroactiveRun(Base):
     runner = Column(String(160), nullable=True)
     # 배치마다 갱신된다 — 「살아 있나」를 이 값의 나이로 판단할 수 있게.
     last_progress_at = Column(DateTime(timezone=True), nullable=True)
-    # ⚠️ phase · phase_at (the run's stage, `RunControl.tell`) are columns of this table and NOT of this model: mapped,
-    # an INSERT names them (deferred leaves only the SELECT, QA 10-14 on 2.0.49) and every run row's writer breaks on a
-    # database they are not yet added to. `ensure_run_phase_columns` adds them; `tell` writes and `runs` reads them.
+    # ⚠️ phase · phase_at (the run's stage, `RunControl.tell`) and a replay's cursor (`RUN_CURSOR_COLUMNS`) are
+    # columns of this table and NOT of this model: mapped, an INSERT names them (deferred leaves only the SELECT, QA
+    # 10-14 on 2.0.49) and every run row's writer breaks on a database they are not yet added to.
+    # `ensure_run_columns` adds them; their writers and readers spell them in SQL.
     finished_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
@@ -483,32 +484,44 @@ class ReplayNamedMap(Base):
     rows = Column(Integer, nullable=True)
 
 
-def ensure_run_phase_columns(engine):
-    """`retroactive_runs.phase` · `phase_at`, the run's stage (`RetroactiveRun` does not map them), on a database
-    without them. ONE SEAT: their writer (`RunControl.tell`) asks here before it writes; their reader (`runs`) reads
-    them null where they are not. Looked up first, so a database that has them takes no lock - once a process and
-    database, after which it asks nothing."""
-    if engine in _PHASE_COLUMNS:
-        return
+#: A replay run's cursor (fc1e1e385, `chain.replay`): the last page whose processing committed, where it ends, the
+#: rows through it, the last page staged, and the run that continues it.
+RUN_CURSOR_COLUMNS = {"cursor_page": "INTEGER", "cursor_end": "VARCHAR(64)", "cursor_rows": "INTEGER",
+                      "staged_page": "INTEGER", "continued_by": "VARCHAR(32)"}
+
+
+def ensure_run_columns(engine, add=True):
+    """`retroactive_runs`' unmapped columns - `phase` · `phase_at`, the run's stage, and a replay's cursor
+    (`RUN_CURSOR_COLUMNS`) - on a database without them. ONE SEAT: each writer asks here before it writes; a
+    read-only door asks with `add` False and reads nothing of them when they are not there. Looked up first, so a
+    database that has them takes no lock - once a process and database, after which it asks nothing.
+    -> whether they are there."""
+    if engine in _RUN_COLUMNS:
+        return True
     from sqlalchemy import inspect
 
-    with engine.begin() as conn:
-        missing = [name for name in ("phase", "phase_at")
-                   if name not in {c["name"] for c in inspect(conn).get_columns("retroactive_runs")}]
-        if missing:
-            postgres = engine.dialect.name == "postgresql"
+    postgres = engine.dialect.name == "postgresql"
+    kinds = dict({"phase": "VARCHAR(200)", "phase_at": "TIMESTAMPTZ" if postgres else "TIMESTAMP"},
+                 **RUN_CURSOR_COLUMNS)
+    with engine.connect() as conn:
+        have = {c["name"] for c in inspect(conn).get_columns("retroactive_runs")}
+    missing = [name for name in kinds if name not in have]
+    if missing and not add:
+        return False
+    if missing:
+        with engine.begin() as conn:
             if postgres:
                 conn.execute(text("SET LOCAL lock_timeout = '5s'"))
             for name in missing:
-                kind = "VARCHAR(200)" if name == "phase" else ("TIMESTAMPTZ" if postgres else "TIMESTAMP")
                 conn.execute(text("ALTER TABLE retroactive_runs ADD COLUMN %s%s %s"
-                                  % ("IF NOT EXISTS " if postgres else "", name, kind)))
-            logger.info("[Retroactive] retroactive_runs: %s added", " and ".join(missing))
-    _PHASE_COLUMNS.add(engine)
+                                  % ("IF NOT EXISTS " if postgres else "", name, kinds[name])))
+        logger.info("[Retroactive] retroactive_runs: %s added", " and ".join(missing))
+    _RUN_COLUMNS.add(engine)
+    return True
 
 
-#: The databases `ensure_run_phase_columns` found or made the two columns on, in this process.
-_PHASE_COLUMNS = weakref.WeakSet()
+#: The databases `ensure_run_columns` found or made the columns on, in this process.
+_RUN_COLUMNS = weakref.WeakSet()
 
 
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.

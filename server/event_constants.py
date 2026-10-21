@@ -603,6 +603,17 @@ def replay_of(payload) -> bool:
     return isinstance(payload, dict) and payload.get(REPLAY_KEY) is True
 
 
+#: [PAGE] The replay page an event is (fc1e1e385): `{"n", "end", "rows", "part", "parts"}` - its number in the run's
+#: pages, where it ends (`chain.replay` resumes after it), its rows, and which of the page's events this is.
+REPLAY_PAGE_KEY = "replay_page"
+
+
+def replay_page_of(payload):
+    """The replay page an event is (`REPLAY_PAGE_KEY`), or None - an event staged before the key has none."""
+    page = payload.get(REPLAY_PAGE_KEY) if isinstance(payload, dict) else None
+    return page if isinstance(page, dict) and isinstance(page.get("n"), int) else None
+
+
 def cascade_of(payload) -> bool:
     """Did the replay that caused this event ask to cascade?"""
     return isinstance(payload, dict) and payload.get(CASCADE_KEY) is True

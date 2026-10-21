@@ -133,12 +133,19 @@ def stop_line(db, key, by, must_be_run=False):
     `done` stays `done`; of the line's chain events waiting when the × read, `skipped_events`
     are set aside and `already_processed` ran, counted once the slot has ended."""
     from admin import retroactive
-    from chain import set_aside, slots
+    from chain import replay, set_aside, slots
     from database import models
 
-    run = db.query(models.RetroactiveRun.run_id).filter(models.RetroactiveRun.run_id == key).first() is not None
-    if must_be_run and not run:
+    models.ensure_run_columns(db.get_bind())          # before this session reads the table (`replay._cursor_start`)
+    run = db.query(models.RetroactiveRun.state).filter(models.RetroactiveRun.run_id == key).first()
+    if must_be_run and run is None:
         raise retroactive.RetroactiveRefused(f"unknown run_id '{key}'")
+    # × on a cut replay's line closes it - not continued, its cursor and tally cleared (총괄 fc1e1e385)
+    if run is not None and replay.close_interrupted(db, run_id=key):
+        db.commit()
+        return {"run": run.state, "closed": "not continued", "skipped_events": 0, "already_processed": 0,
+                "slot_pid": None}
+    run = run is not None
     answer = {"run": retroactive.request_cancel(db, key)["state"]} if run else {}
     done = set_aside.set_aside_line(db, key, by, run=run)
     slot_pid = slots.stop_slot(db, key)

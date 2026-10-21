@@ -6013,7 +6013,7 @@ def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
     for row in rows or []:
         logs.append(create_audit_log(
             db, table_name, row.row_id, ROW_DELETION_COLUMN,
-            None, "행 삭제됨", "system", user_name,
+            None, "row deleted", "system", user_name,
             transaction_id=transaction_id,
             business_key=getattr(row, "business_key_val", None),
             add_to_cache=False))

@@ -1042,6 +1042,7 @@ def _run_chain_replay(db, params, log, control=None):
                                business_keys=params.get("business_keys"),
                                row_ids=params.get("row_ids"),
                                pace=params.get("pace"),
+                               continued_from=params.get("continued_from"),
                                **_given(params, "limit", "chunk_size"))
     _final_progress(control, s.get("rows_scanned"), s)
     # 🔴 THIS RUN NO LONGER WRITES, SO IT MUST NOT REPORT WRITES. It hands the rows to the
@@ -1053,7 +1054,8 @@ def _run_chain_replay(db, params, log, control=None):
     # ⚠️ THE WORKER'S SIDE OF THE NUMBER IS READ WHERE THE WORKER REPORTS IT - the queue and
     #    the chain log, under the same `chain_<tx>` label every other change uses.
     return {"rows_staged": s["rows_staged"], "events_staged": s["events_staged"],
-            "rows_scanned": s["rows_scanned"], "pages_failed": s.get("pages_failed", 0)}
+            "rows_scanned": s["rows_scanned"], "pages_failed": s.get("pages_failed", 0),
+            "pages": s.get("pages"), "first_page": s.get("first_page")}
 
 
 def _scope(params):
@@ -1975,7 +1977,10 @@ OPERATIONS = {
                    _p("cascade", required=False, kind="bool", form=False,
                       cli="grid click only - owner 09-27",
                       help="let what this replay writes wake the opted-in chain rules, "
-                           "as the chain does - only the grid's click replay sends it")],
+                           "as the chain does - only the grid's click replay sends it"),
+                   _p("continued_from", required=False, form=False, cli="Resume on a cut run's line only",
+                      help="the cut replay run this one resumes - its pages after that run's last committed "
+                           "page (POST /admin/retroactive/runs/{run_id}/resume writes it)")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "judge": _judge_chain_replay,
@@ -3058,7 +3063,7 @@ class RunControl:
 
             session = self._session()
             try:
-                models.ensure_run_phase_columns(session.get_bind())
+                models.ensure_run_columns(session.get_bind())
                 session.execute(text("UPDATE retroactive_runs SET phase = :phase, phase_at = :at WHERE run_id = :run"),
                                 {"phase": phase[:200], "run": self.run_id,
                                  "at": datetime.now(timezone.utc) - timedelta(seconds=now - since)})
@@ -3487,7 +3492,7 @@ def count(db, op: str, params: dict, scan_limit: int = DEFAULT_SCAN_LIMIT) -> di
     return out
 
 
-def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
+def publish(db, op: str, params: dict, requested_by: str = None, run_id: str = None) -> dict:
     """Queue the run and return. Does NOT execute anything.
 
     Same mechanism as `POST /admin/auto-update/run-now`: one `DatabaseOutbox` row.
@@ -3503,7 +3508,8 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
 
     spec = operation(op)
     params = validate(op, params)
-    run_id = uuid.uuid4().hex[:12]
+    # `run_id` given: a caller that names the run in the same commit (`chain.replay.resume_run`)
+    run_id = run_id or uuid.uuid4().hex[:12]
     # 🔴 NO INVENTED AUTHOR. "admin" is a word that reads like a person, and writing it
     # ANSWERS "who asked for this" with something nobody said. The column is nullable;
     # absent stays absent, and the screen decides how to show that.

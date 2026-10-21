@@ -140,19 +140,21 @@ def test_a_running_rule_says_its_rows_in_and_seconds_and_a_ran_one_its_last_rows
         heartbeat.progress(MAPPER_STAGE)
         heartbeat.beat("chain", force=True)
         assert line_now()["chain_state"]["why"]["rule_run"] is None
-        with activity.running(RULE, MAPPER, DST, 2):
+        with activity.running(RULE, MAPPER, DST, 2) as entry:
             during = line_now()
+            entry.rows_out = 5
         after = line_now()
     finally:
         cm.__exit__(None, None, None)
     [rule] = during["rules"]
     assert (rule["rule"], rule["rows_in"], rule["rows_out"]) == (RULE, 2, None) and rule["running_seconds"] >= 0
     assert during["chain_state"]["why"]["stage"] == MAPPER_STAGE
-    assert during["chain_state"]["why"]["rule_run"] == {"rule": RULE, "rows_in": 2,
+    assert during["chain_state"]["why"]["rule_run"] == {"rule": RULE, "rows_in": 2, "rows_out": None,
                                                         "running_seconds": rule["running_seconds"]}
-    # ended: the claim says no run, and the rule's rows are its last run's (a run that said no count: unchanged)
-    assert after["chain_state"]["why"]["rule_run"] is None
-    assert after["rules"] == [{"rule": RULE, "rows_in": 9, "rows_out": 7, "running_seconds": None}]
+    # ended: the claim keeps the finished run's rows until the claim ends (총괄 fc1e1e385) - no blink to nothing
+    assert after["chain_state"]["why"]["rule_run"] == {"rule": RULE, "rows_in": 2, "rows_out": 5,
+                                                       "running_seconds": None}
+    assert after["rules"] == [{"rule": RULE, "rows_in": 2, "rows_out": 5, "running_seconds": None}]
 
 
 def test_the_rows_are_the_groups_only_and_only_for_one_named_rule():

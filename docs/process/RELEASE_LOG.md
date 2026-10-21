@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [끊긴 리플레이를 끊긴 쪽 다음부터 이어 한다 — 대기열의 «Interrupted · Resume», 거두기는 이어 간 끝에 한 번](#2026-10-22--끊긴-리플레이를-끊긴-쪽-다음부터-이어-한다--대기열의-interrupted--resume-거두기는-이어-간-끝에-한-번) — 보는 곳 대기열 interrupted_runs · run 줄 pages · POST /admin/retroactive/runs/<id>/resume
 - 2026-10-21 [소급과 체인이 서로를 묶지 않는다 — 같은 표 줄은 디스패처가 막고, 표 잠금 대기에 상한, 소급 자식이 페이지 사이에 선언을 다시 읽고, 리플레이 사건이 남은 동안 소급 게이트가 닫힌다](#2026-10-21--소급과-체인이-서로를-묶지-않는다--같은-표-줄은-디스패처가-막고-표-잠금-대기에-상한-소급-자식이-페이지-사이에-선언을-다시-읽고-리플레이-사건이-남은-동안-소급-게이트가-닫힌다) — 보는 곳 chain_worker.log «rewound» · retroactive.log «read again at a page boundary» · 소급 거절 «still wait in the chain queue»
 - 2026-10-21 [체인 대기열 답이 줄마다 규칙 · 받은/낸 행 · 재시도의 깨진 단계 · 최근 실패 20 그룹을 싣는다](#2026-10-21--체인-대기열-답이-줄마다-규칙--받은낸-행--재시도의-깨진-단계--최근-실패-20-그룹을-싣는다) — 보는 곳 /admin/chain/queue rules[] · recent_failures[] · /admin/outbox/failed summary[].last_failure
 - 2026-10-21 [API 가 통지를 안 받으면 체인은 첫 실패에서 통지를 멈춘다 — 슬롯이 통지에 붙잡히지 않는다](#2026-10-21--api-가-통지를-안-받으면-체인은-첫-실패에서-통지를-멈춘다--슬롯이-통지에-붙잡히지-않는다) — 보는 곳 chain_worker.log «notifications not delivered» · [Latency] notify
@@ -497,6 +498,14 @@
 
 
 
+
+## 2026-10-22 · 끊긴 리플레이를 끊긴 쪽 다음부터 이어 한다 — 대기열의 «Interrupted · Resume», 거두기는 이어 간 끝에 한 번
+
+- **무엇** — 소유자 「소급은 좀 끊고 이어 하기 못 하냐? 작업 끊으면 다 돌려야 하네 다시」. 끊은 리플레이를 다시 돌리면 고른 행을 처음부터 다시 넣었습니다.
+- **선언** — 바뀐 것 없음. `retroactive_runs` 에 커서 칸 다섯이 붙습니다(첫 리플레이가 붙임).
+- **바뀐 동작** — 리플레이 쪽 사건이 번호 · 끝 위치 · 행 수를 싣고(`event_constants.REPLAY_PAGE_KEY`), 그 쪽 그룹의 SUCCESS 커밋 안에서 run 의 커서가 바로 앞 쪽 다음일 때만 갑니다(`chain.replay.advance_cursors`). 끊긴 run 의 판정은 한 곳(`replay.interrupted_runs`)이고, 대기열 · Resume · × · 거두기가 그것을 부릅니다. Resume 은 `continued_from` 을 든 새 run 이 커서 다음부터 넣고, 거두기 집계는 사슬의 첫 run 에 모여 마지막 run 이 끝난 뒤 한 번 판단됩니다. 끊긴 run 은 × 나 같은 규칙의 새 통째 리플레이로 닫힙니다(`replay.close_interrupted`).
+- **필요한 조건** — git pull · 런처 재기동. 화면은 클라가 그립니다(interrupted_runs · pages).
+- **자세히** — 시험 `test_a_cut_replay_resumes_after_its_last_committed_page.py`.
 
 ## 2026-10-21 · Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도
 

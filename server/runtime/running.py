@@ -76,8 +76,10 @@ def work_facts(work):
             "elapsed_seconds": work.get("held_seconds"), "stalled_on": work.get("stalled_on"),
             "stalled": bool(work.get("stalled")),
             # the rule it runs now, as `chain.activity.running` noted it on the claim (총괄 3de34d292)
-            "rule_run": ({"rule": run.get("rule"), "rows_in": run.get("rows_in"),
-                          "running_seconds": round(max(0.0, time.time() - float(run["started"])), 1)}
+            # a finished one keeps its rows out and has no running seconds (총괄 fc1e1e385)
+            "rule_run": ({"rule": run.get("rule"), "rows_in": run.get("rows_in"), "rows_out": run.get("rows_out"),
+                          "running_seconds": (None if run.get("ended") else
+                                              round(max(0.0, time.time() - float(run["started"])), 1))}
                          if isinstance(run, dict) and run.get("started") else None)}
 
 

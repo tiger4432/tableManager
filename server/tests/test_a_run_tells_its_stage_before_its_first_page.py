@@ -40,7 +40,7 @@ class _Kept:
 def _columns_asked_again(monkeypatch):
     """The test database's tables are made again for each test on one engine - so is the check's memory of them."""
     import weakref
-    monkeypatch.setattr(models, "_PHASE_COLUMNS", weakref.WeakSet())
+    monkeypatch.setattr(models, "_RUN_COLUMNS", weakref.WeakSet())
 
 
 @pytest.fixture(name="run")
@@ -107,7 +107,7 @@ def test_a_slice_tells_nothing(db_session, monkeypatch):
     db_session.add(models.RetroactiveRun(run_id="sliced", op="ledger_rescope", params="{}",
                                          state=retroactive.RUN_RUNNING))
     db_session.commit()
-    models.ensure_run_phase_columns(db_session.get_bind())
+    models.ensure_run_columns(db_session.get_bind())
     slice_control = retroactive.RunControl("sliced", session_factory=lambda: _Kept(db_session), op="ledger_rescope",
                                            log=lambda line: None, report=lambda processed: None)
     slice_control.tell()
@@ -122,7 +122,7 @@ def test_the_runs_list_carries_the_stage_and_pace_of_a_run_in_flight(db_session)
     db_session.add(models.RetroactiveRun(run_id="going", state=retroactive.RUN_RUNNING, **common))
     db_session.add(models.RetroactiveRun(run_id="ended", state="done", finished_at=now, **common))
     db_session.commit()
-    models.ensure_run_phase_columns(db_session.get_bind())
+    models.ensure_run_columns(db_session.get_bind())
     db_session.execute(text("UPDATE retroactive_runs SET phase = 'Page 3: insert atoms', phase_at = :at"),
                        {"at": now - timedelta(seconds=7)})
     db_session.commit()
@@ -158,7 +158,7 @@ def test_a_database_without_the_two_columns_queues_runs_and_lists_them_until_the
         conn.execute(text('ALTER TABLE "%s".retroactive_runs DROP COLUMN IF EXISTS phase, '
                           'DROP COLUMN IF EXISTS phase_at' % S))
     import weakref
-    monkeypatch.setattr(models, "_PHASE_COLUMNS", weakref.WeakSet())
+    monkeypatch.setattr(models, "_RUN_COLUMNS", weakref.WeakSet())
     monkeypatch.setattr(retroactive, "validate", lambda op, params: params)
     session = sessionmaker(bind=pg_engine)()
     try:

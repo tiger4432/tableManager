@@ -3117,6 +3117,10 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # is most of the remainder or none of it is exactly what could not be
                 # read off the line before, and naming the unnamed is what found the
                 # 0.875 s hook in the first place.
+                # a replay page's run cursor, in this commit - a page that does not commit does not move it (fc1e1e385)
+                with alignment_batch_counts.stage("replay cursor"):
+                    from chain import replay as _replay
+                    _replay.advance_cursors(db, events_in_tx)
                 with alignment_batch_counts.stage("mark processed"):
                     event_ids = [event.id for event in events_in_tx]
                     deleted = _deleted_rows_of(events_in_tx)

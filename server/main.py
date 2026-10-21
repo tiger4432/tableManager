@@ -5085,6 +5085,14 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         # a replay's line runs its one rule (`only_rule`)
         if r.op in event_constants.CHAIN_OWNED_RETROACTIVE_OPS:
             replayed[r.run_id] = (json.loads(r.params) if r.params else {}).get("rule")
+    # a replay's pages - the last committed, the last staged, the rows through the first (fc1e1e385); null before it
+    from sqlalchemy import bindparam, text
+    from chain import replay as chain_replay
+    # a read-only answer: it asks whether the columns are there and adds none (`replay._cursor_start` does)
+    pages = {r[0]: {"done": r[1], "staged": r[2], "rows_done": r[3]} for r in (db.execute(text(
+        "SELECT run_id, cursor_page, staged_page, cursor_rows FROM retroactive_runs WHERE run_id IN :ids "
+        "AND cursor_page IS NOT NULL").bindparams(bindparam("ids", expanding=True)), {"ids": run_ids})
+        if run_ids and models.ensure_run_columns(db.get_bind(), add=False) else ())}
 
     def _age(dt):
         if dt is None:
@@ -5119,7 +5127,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         evaluation did not run it."""
         now = (facts or {}).get("rule_run")
         if now is not None and now.get("rule") == name:
-            return {"rule": name, "rows_in": now.get("rows_in"), "rows_out": None,
+            return {"rule": name, "rows_in": now.get("rows_in"), "rows_out": now.get("rows_out"),
                     "running_seconds": now.get("running_seconds")}
         last = shape["rule_outcomes"].get(name) or {}
         return {"rule": name, "rows_in": last.get("last_rows_in"), "rows_out": last.get("last_rows_out"),
@@ -5145,6 +5153,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             # 같은 판정을 줄에도. 화면이 event_type 을 보고 «스스로» 정하면 그 판정의 사본이 생긴다.
             "owners": sorted({event_constants.outbox_owner(t) for t in d["event_types"]}),
             **({"retroactive": d["retroactive"]} if d["retroactive"] else {}),
+            **({"pages": pages.get(line.run)} if is_run else {}),
             "rules": [_rule_on_line(name, running.get(line.key)) for name in line_rules],
             "max_retry": int(line.max_retry or 0),
             "waiting_seconds": _age(line.created_at),
@@ -5278,6 +5287,12 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         "recent_failures": recent_failures[:_RECENT_FAILURES_CAP],
         "recent_failures_listed": {"cap": _RECENT_FAILURES_CAP,
                                    "capped": len(recent_failures) > _RECENT_FAILURES_CAP},
+        # cut replays - no events wait, so no line above: «Interrupted · Resume», × closes (총괄 fc1e1e385)
+        "interrupted_runs": [
+            {"run_id": cut["run_id"], "rule": cut["rule"], "state": cut["state"], "pages": cut["pages"],
+             "cut_at": to_local_str(cut["finished_at"]) if cut["finished_at"] is not None else None,
+             "resume": {"run_id": cut["run_id"]}, "cancel": {"key": cut["run_id"]}}
+            for cut in chain_replay.interrupted_runs(db)],
         # 세지 «않은» 것을 이름으로 말한다. 응답에 없는 수는 「0」으로 읽히기 쉽고,
         # 그 오독이 바로 이 라우트가 없애려는 부류다.
         "not_measured": {
@@ -7410,6 +7425,21 @@ def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"[Retroactive] failed to list runs: {e}")
         raise HTTPException(status_code=500, detail=f"The run list could not be read: {e}")
+
+
+@app.post("/admin/retroactive/runs/{run_id}/resume",
+          dependencies=[Depends(require_admin_token)])
+def resume_retroactive_run(run_id: str, request: Request, db: Session = Depends(get_db)):
+    """Resume on a cut replay's line (총괄 fc1e1e385): a new run that continues it from the page after its last
+    committed one (`chain.replay.resume_run`). A run that is not cut is refused with why."""
+    from admin import retroactive
+    from chain import replay
+
+    try:
+        return replay.resume_run(db, run_id, by=_who_stops(request))
+    except retroactive.RetroactiveRefused as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/admin/retroactive/runs/{run_id}/cancel",

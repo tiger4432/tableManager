@@ -503,6 +503,7 @@ def db_session():
     
     db.close()
     Base.metadata.drop_all(bind=engine)
+    models._RUN_COLUMNS.discard(engine)       # the run table went with its added columns (`ensure_run_columns`)
     crud.TABLE_CONFIG.clear()
     crud.TABLE_CONFIG.update(saved_table_config)
 

@@ -1,5 +1,31 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **끊긴 리플레이를 끊긴 쪽 다음부터 이어 함 — 대기열 «Interrupted · Resume» (소유자 10-21, 총괄 fc1e1e385)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      리플레이의 쪽마다 번호와 끝 위치가 실리고, 그 쪽 처리가 커밋될 때 run 의 커서가 «바로 앞 쪽 다음일 때만» 한 칸 감
+>           끊긴 run = 끝났는데(done · cancelled · failed) 넣은 쪽 중 안 돈 쪽이 남았거나 넣다가 멈췄고, 그 run 의 쪽이 더 기다리지 않음
+>             -> 대기열 답 interrupted_runs[] 에 «Interrupted · Resume»
+>           Resume -> 새 run 하나(params.continued_from = 앞 run)가 커서 다음 쪽부터, 쪽 번호를 이어서 넣음
+>           끊긴 줄의 × -> 이어 가지 않음으로 닫음: 커서와 거두기 집계를 지우고, 거두기는 안 함
+>           같은 규칙의 새 통째 리플레이가 시작되면 그 규칙의 끊긴 run 은 전부 같은 식으로 닫힘
+>           통째 리플레이의 거두기는 이어 간 사슬의 마지막 run 이 끝난 뒤 한 번 — 끊긴 run 의 집계는 그때까지 남음
+> 새 키     그 사이 생긴 group_by 키와 행은 끝에 붙음(키는 첫 행 위치로 줄 섬)
+>           커서보다 앞 위치에 생긴 키 · 행은 이어 가기가 다루지 않음 — 라이브 체인이 이미 돌렸음
+> 끊길 때   × : 넣은 쪽 중 안 돈 쪽은 set aside. 돌던 쪽이 그 순간 커밋되면 커서에 들어감(판: 쪽 4 뒤 × -> 커서 5 -> Resume 은 쪽 6 부터)
+>           워커 재기동 : 넣은 쪽은 재기동 뒤에 돌고, 넣기는 멈춘 채 run 이 running(죽은 runner)으로 남음 -> 그 줄 × 가 failed 로 풀고 -> Resume
+> 보이는 것  대기열 run 줄 pages {done, staged, rows_done} · interrupted_runs[] · POST /admin/retroactive/runs/<run_id>/resume
+>           chain_worker.log «[ReplaySweep] run <새 run> <- <앞 run> <규칙>: ...» — 이어 간 사슬은 한 줄
+>           그룹 줄 «replay cursor <s> s» = 그 그룹 커밋 안의 커서 UPDATE 시간
+>           retroactive_runs 에 칸 다섯(cursor_page · cursor_end · cursor_rows · staged_page · continued_by) — 첫 리플레이가 스스로 붙임
+> 그대로    이 착지 전에 넣은 run 은 커서가 없어 Resume 대상이 아님
+> 같이      이력 패널 행 삭제 값 «행 삭제됨» -> «row deleted» (옛 기록은 그대로)
+>           대기열 규칙 줄: 끝난 규칙의 rows_in · rows_out 이 그룹이 끝날 때까지 남음 — 끝나는 순간 빈 칸으로 깜빡이지 않음
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동 (붙은 칸은 남아도 무해)
+> ```
+>
+> ---
+>
 > ## [10-21] **Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다 (소유자 「다시 로드는 파일 인제션 창 이용하면 되잖아」, 602e3e555)** — git pull · 서버 재기동 · 와처 재기동
 >
 > ```

@@ -295,7 +295,8 @@ def running(rule, mapper, target_table, rows_in):
 
     entry = _Run()
     token = registry.start(rule, mapper, target_table, rows_in)
-    _say_on_the_claim({"rule": rule, "rows_in": rows_in, "started": time.time()})
+    started = time.time()
+    _say_on_the_claim({"rule": rule, "rows_in": rows_in, "started": started})
     try:
         yield entry
     except Exception as error:                                     # noqa: BLE001
@@ -313,7 +314,10 @@ def running(rule, mapper, target_table, rows_in):
         # 🔴 IN `finally`. A run that threw is exactly the case where an entry left
         # behind sits in the view forever saying something is still running.
         registry.finish(token)
-        _say_on_the_claim(None)
+        # the finished run's rows stay on the claim until the next run or the claim's end (총괄 fc1e1e385) - the line
+        # does not blink to nothing between a run and the batch's end
+        _say_on_the_claim({"rule": rule, "rows_in": rows_in, "rows_out": entry.rows_out, "started": started,
+                           "ended": time.time()})
 
 
 def _say_on_the_claim(rule_run):

@@ -76,6 +76,8 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
+from sqlalchemy import and_, or_, text
+
 from chain import keyset_scan
 import outbox_expand
 import event_constants
@@ -349,13 +351,16 @@ def replay_refusal(rule: dict, force: bool = False):
 def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
                 checkpoint=None, business_keys=None, row_ids=None, pace=None,
-                force: bool = False) -> dict:
+                force: bool = False, continued_from=None) -> dict:
     """[R1] Re-run one chain rule over the trigger table's current contents.
 
     Dry-run (default) reads only and reports what WOULD change, including which
     cells a human's value protects and which cells lost their value (R2
     candidates). Apply commits per write chunk, so a large replay is restartable
     and idempotent - re-running recomputes the same values.
+
+    `continued_from`: the cut run this one resumes (fc1e1e385) - its pages start after that run's cursor, numbered
+    on from it; rows and keys that came after its end are at the end (a key is placed by its first row).
     """
     trg_model, columns = replay_refusal(rule, force)
 
@@ -491,7 +496,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     # ⚠️ `request_chain_depth` IS LEFT UNSET ON PURPOSE. The staged event starts OUTSIDE the
     #    chain, exactly like a person's edit, so the hop counter begins where it begins for
     #    them and `max_chain_depth` bounds the cascade the same way.
-    stage_token = None
+    stage_token, run, start = None, None, {"page": 0, "end": None}
     if apply:
         from database.context import request_transaction_id
         # 🔴 "replay_<run>" AND NOT "chain_replay_<run>". The worker prefixes "chain_" to
@@ -502,7 +507,14 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         #    `chain_chain_replay_<run>` never appears.
         stage_token = request_transaction_id.set("replay_%s" % run_id)
         from database.context import request_run_id
-        open_tally(db, request_run_id.get(), rule)
+        run = request_run_id.get()
+        start = _cursor_start(db, run, continued_from)
+        stats.update(first_page=start["page"] + 1, resumed_after=start["end"])
+        if not continued_from and whole_replay_of(db, run) == rule.get("name"):
+            # a new whole replay of the rule closes its cut runs - their cursors and tallies (총괄 fc1e1e385)
+            close_interrupted(db, rule=rule.get("name"))
+            db.commit()
+        open_tally(db, run, rule)
     try:
         # ⚰️ A PAYLOAD ENVELOPE STOOD HERE (`chain_replay_<run_id>` / `R1_SOURCE_NAME`), and
         #    the scan selected every declared data column to fill it. Both were for building
@@ -523,12 +535,18 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
             keyed = keyset_scan.keyed_rows(
                 db, trg_model, by_key, lambda values: ingestion_worker.spelled_group_key(rule, trigger_table, values),
                 condition=selection, max_row_id=max_row_id)
+            if start["end"]:
+                keyed = {key: ids for key, ids in keyed.items() if ids[0] > start["end"]}
             log(f"[replay] {sum(map(len, keyed.values()))} row(s) in {len(keyed)} key(s); a page ends between keys")
+            firsts = {ids[0] for ids in keyed.values()}
             pages = keyset_scan.key_pages(keyed, size, log=log)
         else:
+            after = start["end"] if apply and start["end"] else None
             pages = ([row.row_id for row in page] for page in keyset_scan.iter_pages(
-                db, trg_model, columns=[], condition=selection, chunk_size=chunk_size, limit=limit,
-                max_row_id=max_row_id, size=size))
+                db, trg_model, columns=[],
+                condition=(selection if after is None else trg_model.row_id > after if selection is None
+                           else and_(selection, trg_model.row_id > after)),
+                chunk_size=chunk_size, limit=limit, max_row_id=max_row_id, size=size))
         for page in pages:
             if limit is not None and stats["rows_scanned"] >= limit:
                 break
@@ -561,10 +579,17 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                     # 🔴 NO CHANNEL on a trigger event (총괄 c2995cdd8): it has to wake the rule
                     #   it names, and the run around it is on the retroactive channel.
                     from database.context import channel
+                    number = start["page"] + stats["pages"]
+                    # where it ends: a row page at its last row; a key page at its last key's first row
+                    end = max(i for i in page if i in firsts) if by_key else page[-1]
                     with channel(None):
                         database.stage_collapsed_event(
                             db, "EDIT", trigger_table, page,
-                            only_rule=rule.get("name"), replay=True)
+                            only_rule=rule.get("name"), replay=True,
+                            page={"n": number, "end": end, "rows": len(page)} if run else None)
+                    if run:
+                        db.execute(text("UPDATE retroactive_runs SET staged_page = :n WHERE run_id = :run"),
+                                   {"n": number, "run": run})
                     db.commit()
                     stats["events_staged"] += 1
                     stats["rows_staged"] += len(page)
@@ -684,6 +709,7 @@ def record_named(db, run_id, rule, events, batches):
     from database import models
     from utils.payload_helper import get_payload_dict
 
+    run_id, staged_as = root_run(db, run_id), run_id
     M = models.ReplayNamedMap
     scopes = {_spelled(scope if scope is not None else {retract[0]: retract[1]})
               for _table, _updates, scope, retract in batches if scope is not None or retract is not None}
@@ -696,7 +722,7 @@ def record_named(db, run_id, rule, events, batches):
     rows = 0
     for event in events:
         payload = get_payload_dict(event) or {}
-        if (event_constants.replay_of(payload) and event_constants.run_of(payload) == run_id
+        if (event_constants.replay_of(payload) and event_constants.run_of(payload) == staged_as
                 and event_constants.only_rule_of(payload) == name):
             rows += int(payload.get("row_count") or len(payload.get("row_ids") or ()) or 1)
     if rows:
@@ -713,6 +739,7 @@ def open_tally(db, run_id, rule):
         return
     from database import models
 
+    run_id = root_run(db, run_id)
     M = models.ReplayNamedMap
     if db.query(M.run_id).filter(M.run_id == run_id, M.rule == name, M.scope == TALLY).first() is None:
         db.add(M(run_id=run_id, rule=name, scope=TALLY, rows=0))
@@ -797,8 +824,9 @@ def _sweep(db, rule, run_id):
 def sweep_finished_replays(log=logger.info, session_factory=None):
     """Each wake of the chain worker: every whole replay whose run ended and whose staged rows all ran is judged
     ONCE - its rule's maps the run's batches never named are emptied, through the chain's write door (총괄 c67aa93bb
-    ㄴ). A run cut short, cancelled, failed, or with a staged row its rule did not run on is not swept and says
-    why. Its rows here go either way. -> how many runs were judged."""
+    ㄴ). A run cancelled, failed, or with a staged row its rule did not run on is not swept and says why. Its rows
+    here go either way - except a cut run's (`interrupted_runs`, 총괄 fc1e1e385): its tally stays for its Resume,
+    and a resumed chain is judged at its last run, over the rows of all its runs. -> how many runs were judged."""
     import json
     from database import models
     from database.database import SessionLocal
@@ -808,7 +836,9 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
     db = (session_factory or SessionLocal)()
     judged = 0
     try:
-        for run_id, name, rows in db.query(M.run_id, M.rule, M.rows).filter(M.scope == TALLY).all():
+        for root, name, rows in db.query(M.run_id, M.rule, M.rows).filter(M.scope == TALLY).all():
+            chain = _chain_of(db, root)
+            run_id = chain[-1]
             run = db.query(R).filter(R.run_id == run_id).with_for_update().first()
             if run is not None and run.state in ("queued", "running", "cancel_requested"):
                 db.rollback()
@@ -818,14 +848,23 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
                     outbox.processed_chain == False, narrow, line).first() is not None:  # noqa: E712
                 db.rollback()
                 continue
+            if run is not None and interrupted_runs(db, run_id=run_id):
+                db.rollback()           # kept for its Resume, its × or the rule's next whole replay
+                continue
             result = json.loads(run.result) if run is not None and run.result else {}
+            # the rows the chain's pages committed - its last run's cursor counts on from the run it resumed; a run
+            # staged before the cursor counts its staged rows
+            models.ensure_run_columns(db.get_bind())
+            through = db.execute(text("SELECT cursor_rows FROM retroactive_runs WHERE run_id = :r"),
+                                 {"r": run_id}).scalar()
+            staged = through if through is not None else int(result.get("rows_staged") or 0)
             why = None
             if run is None or run.state != "done":
                 why = "the run %s" % (run.state if run is not None else "is gone")
             elif result.get("pages_failed"):
                 why = "%d page(s) failed to stage" % result["pages_failed"]
-            elif int(result.get("rows_staged") or 0) != int(rows or 0):
-                why = "the rule ran on %d of the %d staged row(s)" % (rows or 0, int(result.get("rows_staged") or 0))
+            elif staged != int(rows or 0):
+                why = "the rule ran on %d of the %d staged row(s)" % (rows or 0, staged)
             rule = None
             if why is None:
                 try:
@@ -835,7 +874,7 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
             if why is None:
                 try:
                     with table_locks.hold(db, {rule.get("target_table"), rule.get("trigger_table")}):
-                        swept = _sweep(db, rule, run_id)
+                        swept = _sweep(db, rule, root)
                 except table_locks.NotHeld as not_held:
                     # not judged this wake - its tally stays for the next (총괄 1ff4dcc6c ④)
                     db.rollback()
@@ -844,15 +883,187 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
                 why = swept if isinstance(swept, str) else None
                 if why is None:
                     log("[ReplaySweep] run %s %s: %d map(s) its batches never named emptied in %s"
-                        % (run_id, name, swept, rule.get("target_table")))
+                        % (" <- ".join(reversed(chain)), name, swept, rule.get("target_table")))
             if why is not None:
-                log("[ReplaySweep] run %s %s: not swept - %s" % (run_id, name, why))
-            db.query(M).filter(M.run_id == run_id, M.rule == name).delete(synchronize_session=False)
+                log("[ReplaySweep] run %s %s: not swept - %s" % (" <- ".join(reversed(chain)), name, why))
+            db.query(M).filter(M.run_id == root, M.rule == name).delete(synchronize_session=False)
             db.commit()
             judged += 1
     finally:
         db.close()
     return judged
+
+
+# ---------------------------------------------------------------- a cut replay resumes after its cursor (fc1e1e385)
+#: A run's cursor (`models.RUN_CURSOR_COLUMNS`): `cursor_page` the last page whose processing committed, moved only
+#: from the page before it in that page's own commit (`advance_cursors`) - so a page that did not commit holds it
+#: there; `cursor_end` where that page ends; `cursor_rows` the rows through it; `staged_page` the last page staged;
+#: `continued_by` the run that resumed it.
+_ROOT = {}      # run_id -> the first run of its continued_from chain - a run's params never change
+
+
+def root_run(db, run_id):
+    """The first run of `run_id`'s `continued_from` chain - whose tally a resumed whole replay counts into."""
+    import json
+    from database import models
+
+    if run_id not in _ROOT:
+        at, seen = run_id, set()
+        while at and at not in seen:
+            seen.add(at)
+            row = db.query(models.RetroactiveRun.params).filter(models.RetroactiveRun.run_id == at).first()
+            back = (json.loads(row.params) if row is not None and row.params else {}).get("continued_from")
+            if not back:
+                break
+            at = back
+        _ROOT[run_id] = at
+    return _ROOT[run_id]
+
+
+def _chain_of(db, root):
+    """`[root, its continuation, ...]` - each run's `continued_by`, to the last."""
+    from database import models
+
+    models.ensure_run_columns(db.get_bind())
+    chain = [root]
+    while len(chain) < 1000:
+        nxt = db.execute(text("SELECT continued_by FROM retroactive_runs WHERE run_id = :r"),
+                         {"r": chain[-1]}).scalar()
+        if not nxt or nxt in chain:
+            break
+        chain.append(nxt)
+    return chain
+
+
+def _cursor_start(db, run, continued_from):
+    """Before the first page: the run's cursor at the run it resumes (`continued_from`'s), else before page 1.
+    The first thing a replay does with its run row - the cursor's columns are added here, with this session holding
+    nothing (an ALTER waits on any open read of the table, this process's own too). -> `{"page", "end"}`."""
+    from database import models
+
+    if not run:
+        return {"page": 0, "end": None}
+    db.commit()
+    models.ensure_run_columns(db.get_bind())
+    page, end, rows = 0, None, 0
+    if continued_from:
+        before = db.execute(text("SELECT cursor_page, cursor_end, cursor_rows FROM retroactive_runs "
+                                 "WHERE run_id = :r"), {"r": continued_from}).first()
+        if before is not None and before[0] is not None:
+            page, end, rows = before[0], before[1], before[2] or 0
+    db.execute(text("UPDATE retroactive_runs SET cursor_page = :p, cursor_end = :e, cursor_rows = :n, "
+                    "staged_page = :p WHERE run_id = :r"), {"p": page, "e": end, "n": rows, "r": run})
+    db.commit()
+    return {"page": page, "end": end}
+
+
+def advance_cursors(db, events):
+    """In a chain group's SUCCESS commit, before it (the write seat, 총괄 fc1e1e385): each replay page these events
+    finish moves its run's cursor - only from the page before it, so a page that failed or was set aside holds the
+    cursor where it was. A page of several events moves it at its last, when the others ran (SUCCESS and not set
+    aside - a set-aside event ends SUCCESS with its mark, `event_constants.cancelled_columns`). -> pages moved."""
+    from database import models
+    from utils.payload_helper import get_payload_dict
+
+    pages, ids = {}, {event.id for event in events}
+    for event in events:
+        payload = get_payload_dict(event) or {}
+        page, run = event_constants.replay_page_of(payload), event_constants.run_of(payload)
+        if page and run and page.get("part", 1) == page.get("parts", 1):
+            pages[(run, page["n"])] = page
+    if not pages:
+        return 0
+    models.ensure_run_columns(db.get_bind())
+    outbox, moved = models.DatabaseOutbox, 0
+    for (run, n), page in sorted(pages.items()):
+        if page.get("parts", 1) > 1 and db.query(outbox.id).filter(
+                outbox.payload[event_constants.RUN_KEY].as_string() == run,
+                outbox.payload[event_constants.REPLAY_PAGE_KEY]["n"].as_integer() == n,
+                or_(outbox.status != "SUCCESS", outbox.payload[event_constants.CANCEL_MARK].as_string().isnot(None)),
+                outbox.id.notin_(ids)).first() is not None:
+            continue
+        moved += db.execute(text(
+            "UPDATE retroactive_runs SET cursor_page = :n, cursor_end = :end, "
+            "cursor_rows = coalesce(cursor_rows, 0) + :rows WHERE run_id = :run AND cursor_page = :before"),
+            {"n": n, "end": page.get("end"), "rows": int(page.get("rows") or 0), "run": run,
+             "before": n - 1}).rowcount or 0
+    return moved
+
+
+def interrupted_runs(db, run_id=None, rule=None):
+    """The replay runs cut short (총괄 fc1e1e385) - ONE JUDGEMENT, asked by the queue, Resume, × and the sweep: a run
+    with a cursor, ended (done · cancelled · failed), not continued, and either cut while staging or with a page
+    staged after its cursor - and none of its events waiting (those still run). A run staged before the cursor
+    existed has none and is never one. -> `[{"run_id", "rule", "state", "pages", "finished_at", "params"}]`."""
+    import json
+    from database import models
+
+    if not models.ensure_run_columns(db.get_bind(), add=False):
+        return []                                  # no replay has staged a page here since the cursor existed
+    rows = db.execute(text(
+        "SELECT run_id, params, state, cursor_page, staged_page, cursor_rows, finished_at FROM retroactive_runs "
+        "WHERE op = 'chain_replay' AND cursor_page IS NOT NULL AND continued_by IS NULL "
+        "AND state IN ('done', 'cancelled', 'failed') AND (state <> 'done' OR cursor_page < staged_page)"
+        + (" AND run_id = :run" if run_id else "") + " ORDER BY finished_at"),
+        {"run": run_id} if run_id else {}).fetchall()
+    outbox, found = models.DatabaseOutbox, []
+    for run, params, state, done, staged, rows_done, finished_at in rows:
+        params = json.loads(params) if params else {}
+        if rule is not None and params.get("rule") != rule:
+            continue
+        # its own pages, as the gate reads them (`retroactive._replay_still_waiting`) - not what their writes woke
+        narrow, line = event_constants.queue_line_rows(outbox, run, run=True)
+        if db.query(outbox.id).filter(outbox.processed_chain == False, narrow, line,  # noqa: E712
+                                      outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True).first() is not None:  # noqa: E712
+            continue
+        found.append({"run_id": run, "rule": params.get("rule"), "state": state, "params": params,
+                      "pages": {"done": done, "staged": staged, "rows_done": rows_done},
+                      "finished_at": finished_at})
+    return found
+
+
+def close_interrupted(db, run_id=None, rule=None):
+    """× on a cut run's line, and a new whole replay of its rule (총괄 fc1e1e385) - ONE way a cut run closes: not
+    continued, its cursor and its chain's tally cleared, nothing swept. The caller commits. -> the runs closed."""
+    from database import models
+
+    closed = []
+    for found in interrupted_runs(db, run_id=run_id, rule=rule):
+        db.execute(text("UPDATE retroactive_runs SET cursor_page = NULL, cursor_end = NULL, cursor_rows = NULL, "
+                        "staged_page = NULL WHERE run_id = :r"), {"r": found["run_id"]})
+        db.query(models.ReplayNamedMap).filter(
+            models.ReplayNamedMap.run_id == root_run(db, found["run_id"])).delete(synchronize_session=False)
+        closed.append(found["run_id"])
+        logger.info("[ReplaySweep] run %s %s: closed - not continued, its tally cleared (%s)", found["run_id"],
+                    found["rule"], "× on its line" if run_id else "a new whole replay of the rule")
+    return closed
+
+
+def resume_run(db, run_id, by=None):
+    """Resume on a cut run's line (총괄 fc1e1e385): a new run of the same params that `continued_from` it - its pages
+    after the cut run's cursor - queued in the commit that marks the cut run `continued_by` it.
+    -> `{"run_id", "continued_from", "from_page"}`."""
+    import json
+    from admin import retroactive
+    from database import models
+
+    models.ensure_run_columns(db.get_bind())          # before this session reads the table (`_cursor_start`)
+    row = (db.query(models.RetroactiveRun).filter(models.RetroactiveRun.run_id == run_id)
+           .with_for_update().first())
+    if row is None:
+        raise retroactive.RetroactiveRefused("unknown run_id '%s'" % run_id)
+    found = interrupted_runs(db, run_id=run_id)
+    if not found:
+        raise retroactive.RetroactiveRefused(
+            "run_id=%s is not a cut replay - a replay whose pages all ran, one still running or waiting in the chain "
+            "queue, one already resumed or closed, or one staged before resuming existed has nothing to resume"
+            % run_id)
+    params = dict(json.loads(row.params) if row.params else {}, continued_from=run_id)
+    new = uuid.uuid4().hex[:12]
+    db.execute(text("UPDATE retroactive_runs SET continued_by = :new WHERE run_id = :r AND continued_by IS NULL"),
+               {"new": new, "r": run_id})
+    retroactive.publish(db, "chain_replay", params, requested_by=by, run_id=new)
+    return {"run_id": new, "continued_from": run_id, "from_page": found[0]["pages"]["done"] + 1}
 
 
 def replay_all(db, apply: bool = False, limit: int = None,

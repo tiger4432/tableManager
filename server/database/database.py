@@ -454,7 +454,7 @@ def _outbox_envelope():
 
 
 def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None,
-                          only_rule=None, replay=False, old=None):
+                          only_rule=None, replay=False, old=None, page=None):
     """[OUTBOX-4] Stage ONE outbox event naming `row_ids` instead of N events.
 
     🔴 THE TRANSACTIONAL-OUTBOX GUARANTEE IS PRESERVED, AND HERE IS WHY IT SURVIVES
@@ -482,9 +482,11 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
 
     `old` - each row's values before this event, in `row_ids`' order (총괄 옛 키): chunked with them, and
     absent from a chunk none of whose rows has one.
+
+    `page` - the replay page these rows are (`event_constants.REPLAY_PAGE_KEY`), on each chunk with its part.
     """
     from .models import DatabaseOutbox
-    from event_constants import OLD_VALUES_KEY
+    from event_constants import OLD_VALUES_KEY, REPLAY_PAGE_KEY
     try:
         from event_constants import (OUTBOX_COLLAPSE_CHUNK_ROWS, CHAIN_DEPTH_KEY,
                                      ONLY_RULE_KEY, CHANNEL_KEY, CASCADE_KEY,
@@ -564,6 +566,10 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         # [REPLAY] Same rule: present only when the replay's staging seat says so.
         if replay:
             chunk_event.payload[REPLAY_KEY] = True
+        if page:
+            chunk_event.payload[REPLAY_PAGE_KEY] = dict(
+                page, part=i // OUTBOX_COLLAPSE_CHUNK_ROWS + 1,
+                parts=(len(row_ids) + OUTBOX_COLLAPSE_CHUNK_ROWS - 1) // OUTBOX_COLLAPSE_CHUNK_ROWS)
         old_chunk = list(old[i:i + OUTBOX_COLLAPSE_CHUNK_ROWS]) if old else []
         if any(old_chunk):
             chunk_event.payload[OLD_VALUES_KEY] = old_chunk
