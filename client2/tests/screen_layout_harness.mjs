@@ -27,7 +27,7 @@
 // --mutate: the five that leaked on 10-08/09, and the ledger table's hand widths (owner 10-09), are built back one at a
 // time (vite, a temp folder) and each must be red.
 //   node client2/tests/screen_layout_harness.mjs [--mutate] [--only <entry.html>] [--shots <dir>]
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
@@ -1043,19 +1043,38 @@ function removeFolder(dir, what) {
   try { rmSync(dir, { recursive: true, force: true }); } catch (err) { console.log(`${what} folder not removed: ${dir} ${err.code || err.message}`); }
 }
 
+// What listens on a port, by process name - for the sentence a Chrome that did not answer leaves (lead 10-22).
+const holderOf = (port) => {
+  try {
+    return execFileSync('powershell', ['-NoProfile', '-Command', `$c = Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue | `
+      + `Select-Object -First 1; if ($c) { (Get-Process -Id $c.OwningProcess).ProcessName + ' pid ' + $c.OwningProcess } else { 'nothing' }`], { encoding: 'utf8' }).trim();
+  } catch (err) { return `not read (${err.message.split('\n')[0]})`; }
+};
+
+// The OS picks the DevTools port (port 0) and Chrome writes it into its profile's DevToolsActivePort (lead 10-22): with a
+// random port of 9300-9799 two runs on one box could meet - a port held by anything else left «did not answer», one held
+// by another run's Chrome handed this run THAT Chrome's page. The page asked for carries this run's own mark.
 async function openChrome() {
   if (!existsSync(CHROME)) throw new Error(`no Chrome at ${CHROME} - the screens cannot be opened`);
-  const port = 9300 + Math.floor(Math.random() * 500);
   const profile = mkdtempSync(path.join(tmpdir(), 'screens-'));
   folders.push(profile);
-  const proc = spawn(CHROME, ['--headless=new', '--hide-scrollbars', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
-    '--window-size=1920,950', 'about:blank'], { stdio: 'ignore' });
+  const start = `data:text/html,screens-${process.pid}-${path.basename(profile)}`;
+  const proc = spawn(CHROME, ['--headless=new', '--hide-scrollbars', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
+    '--window-size=1920,950', start], { stdio: 'ignore' });
+  const written = path.join(profile, 'DevToolsActivePort');
+  let port = null;
   let target;
   for (let i = 0; i < 75 && !target; i += 1) {
     await sleep(200);
+    if (!port && existsSync(written)) port = Number(readFileSync(written, 'utf8').split(/\r?\n/)[0]) || null;
+    if (!port) continue;
     try { target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === 'page'); } catch { /* not up yet */ }
   }
-  if (!target) { proc.kill(); throw new Error('Chrome did not answer on its DevTools port'); }
+  if (!target) {
+    proc.kill();
+    throw new Error(`Chrome did not answer on its DevTools port - ${port ? `port ${port}, held by ${holderOf(port)}` : 'no port written in 15 s'}`);
+  }
+  if (target.url !== start) { proc.kill(); throw new Error(`the DevTools page on port ${port} is not this run's: ${target.url.slice(0, 80)}`); }
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((ok) => ws.addEventListener('open', ok));
   let id = 0;
