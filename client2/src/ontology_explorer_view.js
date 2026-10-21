@@ -1560,7 +1560,8 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     // The folded line is one row: value, and WHY it folded. A fold whose reason is
     // invisible reads as the screen deciding for the operator, which is the exact thing
     // the acceptance bar forbids -- so the reason is rendered, not implied.
-    const line = button('', 'toggle-field', row.path, 'oe-field-folded');
+    // In a tree row the folded value is the row's value box (`oe-box`, lead 10-21).
+    const line = button('', 'toggle-field', row.path, bare ? 'oe-field-folded oe-box' : 'oe-field-folded');
     line.setAttribute('aria-expanded', 'false');
     // An optional row the server grounds says what its blank MEANS in the value's place (lead
     // 04cecc30f ②: 「Not an event」) - one word on the same line, so 8fd2f185d's space holds.
@@ -2164,7 +2165,7 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   const demand = demandState({ planned: false, planLoaded: context.planLoaded !== false, hasShape: true, required });
   box.appendChild(treeRow(depth, name, [],
     renderClosedList(closedListChoice(names, chosen, { loaded: true, name: path }),
-      h, { action: 'edit-shape-branch', path, label: name }),
+      h, { action: 'edit-shape-branch', path, label: name, cls: 'oe-box' }),
     demandWord(demand, required, chosen), 'is-branch oe-node-head'));
   // 고른 가지만 내려갑니다. 안 고른 자리에는 «아무것도» 없습니다.
   // 🔴 가지의 칸들을 «고르개 바로 밑»에 펴서 놓습니다 — 그것을 다시 한 상자에 넣으면
@@ -2266,7 +2267,7 @@ function renderSkeletonMap(context, node, path, value, depth) {
   if (node.keyed_by === 'index') {
     naming.append(button('+ ' + (node.member || 'Item'), 'form-append', path, 'oe-form-add'));
   } else {
-    const input = h('input', 'oe-form-new-id');
+    const input = h('input', 'oe-form-new-id oe-box');
     input.type = 'text';
     input.placeholder = node.member || 'Name';
     input.dataset.for = path;
@@ -2535,9 +2536,9 @@ function renderSkeletonLeaf(context, node, path, value) {
   // Reading shows the value; writing shows the control. Same renderer, same rows, same
   // folding -- 「읽기에서는 편집 컨트롤 대신 값이 그려질 뿐, 무엇이 있는지 보이는 것은 같다」.
   if (context.readOnly) {
-    if (value === undefined || value === null) return h('span', 'oe-value is-none', 'None');
+    if (value === undefined || value === null) return h('span', 'oe-value oe-box is-none', 'None');
     // One box high in its row: a long value is cut, its whole one hover away.
-    const read = h('span', 'oe-value', spelledValue(value));
+    const read = h('span', 'oe-value oe-box', spelledValue(value));
     read.title = read.textContent;
     read.setAttribute('data-clip-ok', '');
     return read;
@@ -2583,9 +2584,9 @@ function renderSkeletonLeaf(context, node, path, value) {
       : text;
     return renderClosedList(
       closedListChoice(context.schema[node.list], chosen, { loaded, name: node.list }),
-      h, { action: 'edit-shape', path });
+      h, { action: 'edit-shape', path, cls: 'oe-box' });
   }
-  const input = h('input', 'oe-field-input');
+  const input = h('input', 'oe-field-input oe-box');
   // 🔴 A NUMBER FIELD SAYS SO, BECAUSE OTHERWISE IT CANNOT BE FILLED AT ALL. Typing 1 into a
   // text box stores "1", the validator refuses it (`invalid_version -- must be a positive
   // integer`), and typing it again produces the same string: a new mapper or preparer could

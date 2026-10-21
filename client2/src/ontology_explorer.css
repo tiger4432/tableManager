@@ -80,6 +80,8 @@
   --oe-tint-accent-press: color-mix(in srgb, var(--oe-accent) 18%, transparent);
   /* One depth step of the tree (lead 619befe8c): a spacing token, not a typed px. */
   --oe-indent: var(--space-5);
+  /* A tree row's value box is one width (lead 10-21; the mockup's 240 on the 3.4 grid). */
+  --oe-box-w: calc(var(--space-6) * 9);
   --oe-line-hover: var(--line-hover);
   --oe-ink-label: var(--ink-label);
   --oe-ink-th: var(--ink-th);
@@ -808,7 +810,7 @@
 /* The value cell: its box, then the row's word (Declared · Derived · Required ...) right of it, muted. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value > * { flex: 0 1 auto; min-width: 0; }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value > :is(.oe-field, .oe-chips, .oe-form-suggested, .oe-field-input, .oe-field-select, .oe-form-new) { flex: 1 1 auto; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value > .oe-chips { flex: 1 1 auto; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value > .oe-tier { flex: none; }
 /* A line of its own under a row (lead 10-21): the plan's note, a refusal - one line at the value x, cut with «…». */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:is(.is-note, .is-refusal) > .oe-node-value > * {
@@ -858,14 +860,13 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row:not(.is-branch), .oe-node-row.oe-node-head) > .oe-node-label {
   padding-left: calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0) + var(--space-5));
 }
-/* A value box with no edge (lead 10-21): a block's summary, a value read - one box high, its text where an input's is. */
-:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-summary, .oe-node-value > .oe-value) {
+/* A block's summary: one box high with no edge, its text where a box's text is. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-summary {
   display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   box-sizing: border-box; height: var(--control-h-small); line-height: calc(var(--control-h-small) - 2px);
   padding: 0 var(--space-3); border: 1px solid transparent;
-  font-family: var(--oe-font-mono); font-size: var(--fs-button);
+  font-family: var(--oe-font-mono); font-size: var(--fs-button); color: var(--oe-muted);
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-summary { color: var(--oe-muted); }
 /* Form D: a list of words - its chips, then the adder. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-chips {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0;
@@ -885,9 +886,6 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table th { font-size: var(--fs-label); }
 /* A table's line is a row's height (lead 10-21): its box and a step. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table :is(th, td) { height: calc(var(--control-h-small) + var(--space-2)); padding-block: 0; }
-:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-form-table, .oe-node-value) :is(.oe-field-input, .oe-field-select, input, select) {
-  height: var(--control-h-small); min-height: var(--control-h-small);
-}
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table__name { font-family: var(--oe-font-mono); font-size: var(--fs-button); }
 /* Form D: a column cell says its table before its box - «lot_summary.» lot_id. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-column { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
@@ -951,9 +949,10 @@
 #ontology-explorer-root .oe-field.is-bare .oe-field-path { display: none; }
 /* A head with nothing in it takes no gap and is no baseline: the value starts where the inputs do. */
 #ontology-explorer-root .oe-field.is-bare .oe-field-head:empty { display: none; }
-/* A folded one-value field in a tree row is ONE line: its head and its value side by side on the
-   row's baseline (lead 8fd2f185d). Open, or outside the tree, the card still stacks. */
-#ontology-explorer-root .oe-field.is-bare.is-folded { flex-direction: row; flex-wrap: nowrap; align-items: center; }
+/* A folded one-value field in a tree row is ONE line (lead 8fd2f185d): the card has no box of its own, so its folded
+   value is the row's value box and the row's word stands right after it (lead 10-21). Open, or outside the tree, the
+   card still stacks. */
+#ontology-explorer-root .oe-field.is-bare.is-folded { display: contents; }
 
 /* The folded line is the value, and outside the tree its reason. Measured at 0px apart the two
    ran together into one run of text, so the line carries the spacing unit. */
@@ -1259,10 +1258,10 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-unread small { color: var(--oe-ink-meta); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-nochoice small { color: var(--oe-warn); }
 #ontology-explorer-root .oe-key-row .oe-key-input { flex: 1; width: auto; }
-/* The datalist wrapper is a span; without this the input inside it cannot be 100% wide. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-suggested { display: block; min-width: 0; }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new { display: flex; align-items: center; gap: 6.8px; min-width: 0; }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new .oe-form-new-id { flex: 1; width: auto; min-width: 0; }
+/* The datalist wrapper is a span with no box of its own: the input inside it is the cell's box, sized by .oe-box. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-suggested { display: contents; }
+/* A name to add and its + stand in the value cell as the cell's own box and button. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new { display: contents; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-role-required { accent-color: var(--oe-accent); margin: 0; }
 
 /* TAG — 11px, 0.02em, 3 / 10, square. A tag you can press (a candidate) keeps its box. */
@@ -1314,6 +1313,19 @@
   border-color: var(--oe-accent); color: var(--oe-surface);
   background: var(--oe-accent); font-weight: 600;
 }
+
+/* 🔴 THE VALUE BOX (lead 10-21, skill §0-bis). Every box a tree row's value cell holds - an input, a picker, a folded
+   value, a value read, a name to add - carries .oe-box, and this rule alone sizes it: one width, the small height, a
+   step of padding, a hairline edge. As wide as its cell up to that width - a table's cell is narrower. After the
+   controls' own rules, which it outranks in the tree. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-box {
+  display: inline-block; box-sizing: border-box; flex: 0 1 auto; width: 100%; max-width: var(--oe-box-w); min-width: 0;
+  height: var(--control-h-small); min-height: var(--control-h-small); padding: 0 var(--space-3);
+  border-width: 1px; border-style: solid;
+  line-height: calc(var(--control-h-small) - 2px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* A value read, or the one choice there is, has no edge to press. */
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-value, .oe-field-onechoice).oe-box { border-color: transparent; }
 
 /* 🔴 RADIUS 0 IS THE SIGNATURE, AND IT IS STATED LAST SO NOTHING ABOVE CAN WALK IT BACK.
    Everything this screen draws with a box -- pills, badges, dialogs, code blocks, popovers,

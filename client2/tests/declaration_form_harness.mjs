@@ -127,6 +127,17 @@ function viewSuite(M) {
     `V6 every datalist id carries the form's prefix [${ids.join(' ')}]`);
   const table = walk(boxAt(form, 'col') || makeNode(doc, 'div')).find((n) => has(n, 'oe-form-column__table'));
   ok(table && String(table.textContent) === 'T.', `V7 a column cell says its table before its box [${table && table.textContent}]`);
+  // Every control in a tree row's value cell is the one value box (lead 10-21): a one-of's picker, a choice, a word.
+  const BOXED = { kind: 'record', fields: [
+    { key: 'word', required: true, node: LEAF },
+    { key: 'pick', required: true, node: { kind: 'leaf', hint: 'choice', list: 'modes' } },
+    { key: 'shape', required: true, node: { kind: 'oneOf', hint: 'choice', branches: { l: LEAF, r: { kind: 'record', fields: [{ key: 'z', required: true, node: LEAF }] } } } }] };
+  const bform = M.view.renderSkeletonForm(viewContext(M), BOXED, '', { word: 'w', pick: 'l', shape: { r: { z: 'q' } } }, 0, 'b');
+  const controls = walk(bform).filter((n) => has(n, 'oe-node-value')).flatMap((c) => c.children)
+    .filter((n) => n.tagName === 'SELECT' || n.tagName === 'INPUT' || has(n, 'oe-form-suggested'))
+    .map((n) => (has(n, 'oe-form-suggested') ? n.children.find((k) => k.tagName === 'INPUT') : n));
+  ok(controls.length >= 4 && controls.every((n) => n && has(n, 'oe-box')),
+    `V10 every control in a row's value cell is the value box [${controls.map((n) => (n ? `${n.tagName}:${has(n, 'oe-box')}` : '-')).join(' ')}]`);
   const folded = M.view.renderAuthoringRow({ path: 'p', label: 'P', state: 'answered', tier: 'constrained_input',
     value: ['run_uid', 'lot'], refusals: [], candidates: null }, [], null, true);
   const shown = walk(folded).filter((n) => has(n, 'oe-folded-value')).map((n) => String(n.textContent));
@@ -307,6 +318,10 @@ const DEFECTS = [
   ['view', 'two forms share one datalist id', (s) => s.replace("${context.listPrefix || 'oe'}-dl-", 'oe-dl-')],
   ['view', 'a folded record drops its count',
     (s) => s.replace("  return words.length ? `${words.join(' · ')} · ${count}` : '';", "  return words.join(' · ');")],
+  ['view', "a one-of's picker stretches on its own class again",
+    (s) => s.replace("      h, { action: 'edit-shape-branch', path, label: name, cls: 'oe-box' }),", "      h, { action: 'edit-shape-branch', path, label: name }),")],
+  ['view', 'a word box sized by its own class again',
+    (s) => s.replace("  const input = h('input', 'oe-field-input oe-box');\n  // 🔴 A NUMBER", "  const input = h('input', 'oe-field-input');\n  // 🔴 A NUMBER")],
   ['view', 'a column cell hides its table', (s) => s.replace('  if (!table) return control;', '  return control;')],
   ['view', "a plan row's folded list is its JSON again",
     (s) => s.replace("words ? words.map(String).join(', ')", 'words ? JSON.stringify(words)')],

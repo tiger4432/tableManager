@@ -91,8 +91,8 @@ const decl = (body, prop) => {
 function suite(view, css, skel) {
   console.log('\n-- L. a folded one-value field is one line --');
   ok('L0 the fixture has a grounded derived row (else the rest proves nothing)', Boolean(GROUNDED), 'none');
-  eq('L1 the bare folded card lays its parts out in a row',
-    decl(rule(css, '#ontology-explorer-root .oe-field.is-bare.is-folded'), 'flex-direction'), 'row');
+  eq('L1 the bare folded card has no box of its own: its folded value is the row\'s value box (lead 10-21)',
+    decl(rule(css, '#ontology-explorer-root .oe-field.is-bare.is-folded'), 'display'), 'contents');
   const folded = rule(css, '#ontology-explorer-root .oe-field-folded');
   eq('L2 the folded value reads from the left and is one box high, a long one cut (lead 10-21) - not the global 36px centred box',
     `${decl(folded, 'justify-content')}|${decl(folded, 'height')}|${decl(folded, 'min-height')}|${decl(folded, 'white-space')}`,
@@ -214,6 +214,11 @@ function suite(view, css, skel) {
     sized.join(' | '), '');
   const own = rows.filter((r) => r.sel === ROW);
   eq('R2 the row rule declares no border', own.map((r) => (/(?:^|[;\s])border[\w-]*\s*:/.test(r.body) ? 'border' : '-')).join(','), '-');
+  const BOX = ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-box';
+  const boxSized = sheet.filter((r) => r.sel !== BOX && parts(r.sel).some((one) => /\.oe-box(?![\w-])/.test(subject(one))) && SIZE.test(r.body))
+    .map((r) => `${r.sel} { ${SIZE.exec(r.body)[1]} }`);
+  ok('R4 only the value box rule sets a value box\'s size; what adds to it sets colour (lead 10-21)',
+    sheet.some((r) => r.sel === BOX && /width\s*:/.test(r.body)) && boxSized.length === 0, boxSized.join(' | ') || 'no .oe-box rule read');
   const tree = sheet.filter((r) => /\.oe-node/.test(r.sel)).map((r) => r.sel);
   eq('R3 no tree selector has two rule sets (no layering)', tree.filter((sel, i) => tree.indexOf(sel) !== i).join(' | '), '');
 
@@ -243,7 +248,7 @@ const load = (mutate) => loadFrom(VIEW, mutate, ['renderDeclarationMap', 'render
 
 const MUTANTS = [
   { name: 'the-bare-card-stacks-again', catches: ['L1'], file: CSS,
-    from: '.oe-field.is-bare.is-folded { flex-direction: row;', to: '.oe-field.is-bare.is-folded { flex-direction: column;' },
+    from: '.oe-field.is-bare.is-folded { display: contents; }', to: '.oe-field.is-bare.is-folded { display: flex; flex-direction: column; }' },
   { name: 'the-global-button-rule-wins', catches: ['L2'], file: CSS,
     from: '  justify-content: flex-start; box-sizing: border-box; height: var(--control-h-small); min-height: 0; white-space: nowrap;\n', to: '\n' },
   { name: 'a-word-wears-a-box-again', catches: ['P1'], file: CSS,
@@ -305,6 +310,8 @@ const MUTANTS = [
     from: '.oe-node-row.is-root { background: transparent; }', to: '.oe-node-row.is-root { background: transparent; padding: 3px 0; }' },
   { name: 'the-row-has-a-border-again', catches: ['R2'], file: CSS,
     from: '  margin: 0; padding: 0;\n', to: '  margin: 0; padding: 0; border-bottom: 1px solid var(--oe-line);\n' },
+  { name: 'a-read-value-padded-on-its-own', catches: ['R4'], file: CSS,
+    from: ':is(.oe-value, .oe-field-onechoice).oe-box { border-color: transparent; }', to: ':is(.oe-value, .oe-field-onechoice).oe-box { border-color: transparent; padding: 0; }' },
   { name: 'a-second-rule-for-the-row', catches: ['R3'], file: CSS,
     from: '.oe-node-row.is-new { background: transparent; }', to: '.oe-node-row { background: transparent; }' },
   { name: 'the-retry-on-every-refusal', catches: ['K6'], file: VIEW,

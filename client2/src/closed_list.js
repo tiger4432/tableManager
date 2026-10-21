@@ -94,12 +94,12 @@ export function closedListChoice(options, current, opts = {}) {
  *
  * @param {object} decision `closedListChoice` 의 답
  * @param {(tag: string, cls?: string, text?: string) => any} h 원소 만들기
- * @param {{action: string, path: string, label?: string}} spec 이 칸의 쓰기 주소
+ * @param {{action: string, path: string, label?: string, cls?: string}} spec 이 칸의 쓰기 주소 · 컨트롤에 더할 클래스
  */
 export function renderClosedList(decision, h, spec) {
   const label = spec.label === undefined ? spec.path : spec.label;
   if (decision.control === 'picker') {
-    const select = h('select', 'oe-field-select');
+    const select = h('select', 'oe-field-select' + (spec.cls ? ` ${spec.cls}` : ''));
     select.dataset.action = spec.action;
     select.dataset.value = spec.path;
     select.setAttribute('aria-label', label);
@@ -125,7 +125,7 @@ export function renderClosedList(decision, h, spec) {
     return select;
   }
   if (decision.control === 'value') {
-    const only = h('span', 'oe-field-onechoice', decision.value);
+    const only = h('span', 'oe-field-onechoice' + (spec.cls ? ` ${spec.cls}` : ''), decision.value);
     only.setAttribute('aria-label', label);
     return only;
   }

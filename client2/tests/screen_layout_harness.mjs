@@ -211,6 +211,12 @@ const CELLS = [
   const css = getComputedStyle(document.documentElement);
   const box = parseFloat(css.getPropertyValue('--control-h-small')), unit = box + parseFloat(css.getPropertyValue('--space-2'));
   const R = (e) => e.getBoundingClientRect(), mid = (b) => (b.top + b.bottom) / 2, say = (e) => '«' + e.textContent.trim().slice(0, 24) + '»';
+  const probe = document.createElement('div');
+  probe.style.width = 'var(--oe-box-w)';
+  document.querySelector('#sample-decl-form .oe-skeleton-form').append(probe);
+  const boxW = R(probe).width;
+  probe.remove();
+  if (!(boxW > 0)) return 'the box width token reads ' + boxW;
   const textOf = (e) => { const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); for (let t = w.nextNode(); t; t = w.nextNode()) if (t.textContent.trim()) { const g = document.createRange(); g.selectNodeContents(t); return g.getBoundingClientRect(); } return null; };
   const seen = { chips: 0, folded: 0, deep: 0, word: 0, table: 0 }, lefts = new Set(), texts = new Set();
   const tables = [...document.querySelectorAll('#sample-decl-form .oe-node-table')].filter((t) => t.getClientRects().length);
@@ -234,6 +240,7 @@ const CELLS = [
     if (!b) continue;
     const first = chips ? chips.firstElementChild : b, fb = R(first), fs = getComputedStyle(first);
     if (Math.abs(fb.height - box) > 0.5) return 'box ' + say(first) + ' ' + fb.height.toFixed(1) + ' px high, not ' + box;
+    if (first.classList.contains('oe-box') && Math.abs(fb.width - Math.min(boxW, R(cell).width)) > 0.5) return 'box ' + say(first) + ' ' + fb.width.toFixed(1) + ' px wide, not ' + boxW.toFixed(1);
     lefts.add(Math.round(fb.left));
     texts.add(Math.round(fb.left + parseFloat(fs.borderLeftWidth) + parseFloat(fs.paddingLeft)));
     const word = cell.querySelector(':scope > .oe-tier');
@@ -1938,6 +1945,9 @@ const MUTANTS = [
     at: 'sample-decl-form', says: /table .* not a whole number/, file: 'src/ontology_explorer.css',
     edits: [['  padding: 0 0 0 calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0) + var(--space-5));',
       '  padding: var(--space-1) 0 0 calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0) + var(--space-5));']] },
+  { name: 'a value box stretched to its cell again', entry: 'sample.html', rule: 'rows one height, boxes at one x',
+    at: 'sample-decl-form', says: /px wide, not/, file: 'src/ontology_explorer.css',
+    edits: [['width: 100%; max-width: var(--oe-box-w);', 'width: 100%; max-width: none;']] },
   { name: 'chip lines closer than the row step', entry: 'sample.html', rule: 'rows one height, boxes at one x',
     at: 'sample-decl-form', says: /not a whole number|steps high/, file: 'src/ontology_explorer.css',
     edits: [['  padding-block: var(--space-1);', '']] },
