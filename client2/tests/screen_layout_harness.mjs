@@ -96,7 +96,7 @@ const QUEUE = {
     return { status: 'success', total: 1, page: 1, limit: 10, oldest_failed_at: at, day_zone: 'Asia/Seoul',
       summary: [
         { table_name: 'dt_wafer', event_type: 'EDIT', day: '2026-10-21', count: 19000, first_at: '2026-10-21T16:50:00+09:00',
-          last_at: at, retry_max: 1, last_reason: TIMEOUT },
+          last_at: at, retry_max: 1, last_failure: TIMEOUT },
         { table_name: 'dt_log', event_type: 'CREATE', day: '2026-10-20', count: 2, first_at: at, last_at: at, retry_max: 0 }],
       data: [{ transaction_id: 'tx-timeout-0000-0000', table_names: ['dt_wafer'], event_types: ['EDIT'], retry_count: 1,
         attempts_this_round: 1, failed_at: at, events: [{ id: 1, event_uuid: 'e-1', event_type: 'EDIT', table_name: 'dt_wafer',
@@ -2128,7 +2128,7 @@ const MUTANTS = [
     file: 'admin.html', edits: [['    .chain-queue-table [data-col="rows"] { text-align: right; }',
       '    .chain-queue-table .queue-line-state-why { white-space: nowrap; }\n    .chain-queue-table [data-col="rows"] { text-align: right; }']] },
   { name: 'the failed line says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
-    file: 'src/failure_summary.js', edits: [["l.last_reason.trim() : '';", "(l.last_reason.match(/\\d+ s/) || [''])[0] : '';"]] },
+    file: 'src/failure_summary.js', edits: [["l.last_failure.trim() : '';", "(l.last_failure.match(/\\d+ s/) || [''])[0] : '';"]] },
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',

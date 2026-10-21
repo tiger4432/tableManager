@@ -45,7 +45,7 @@
 // The table reuses `admin.html`'s existing `.table-container` / `.table-header` /
 //    `.table-row` styles — a diagnostic panel is not a reason to grow a second table style.
 
-import { ABSENT, UNKNOWN, countText, isCount } from './absent.js';
+import { ABSENT, UNKNOWN, countText, isCount, localeCountText } from './absent.js';
 import { FAILED, NONE, WAITING, unitText } from './ui_words.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { pickupState } from './pickup_state.js';
@@ -181,10 +181,11 @@ export function chainStateWhy(chainState) {
     running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],
     waiting_for_table: [w.table && `waiting for ${w.table}`],
     stalled: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds), w.stalled_on && `on ${w.stalled_on}`],
-    retrying: [attempt, w.last_failure],
+    // the stage a retry or a failure broke in - the claim's word, the one a running line says (3de34d292)
+    retrying: [attempt, w.stage, w.last_failure],
     paused: [w.by && `by ${w.by}`, w.at, w.reason],
     set_aside: [w.by && `by ${w.by}`, w.reason],
-    failed: [w.failure],
+    failed: [w.stage, w.failure],
     waiting: [w.unexpected_status && `status ${w.unexpected_status}`],
     done: [w.unexpected_status && `status ${w.unexpected_status}`],
   }[s.state] || [];
@@ -194,7 +195,26 @@ export function chainStateWhy(chainState) {
 /** The state cell both queues draw: the token, then `chainStateWhy` under it, read to the end (base.css), and in its title;
  *  then the slot process running the line when one is sent - the pid an operator kills (lead, slot 422d075c7). */
 /** The queue list's short columns - each as wide as its words (`cell-fit`); Waiting takes the rest. */
-const QUEUE_FIT = new Set(['tx', 'tables', 'rows', 'owners', 'act']);
+const QUEUE_FIT = new Set(['tx', 'tables', 'rules', 'rows', 'owners', 'act']);
+
+/** One of a line's rules (`rules[]`, 3de34d292): the one its group runs now says its rows in and its seconds, else its
+ *  last run's rows in and out. A count the server leaves null is a dash. */
+export function ruleLine(r) {
+  const x = r && typeof r === 'object' ? r : {};
+  const running = formatAge(x.running_seconds);
+  return [x.rule == null ? ABSENT : String(x.rule), `in ${localeCountText(x.rows_in)}`,
+    running ? `running ${running}` : `out ${localeCountText(x.rows_out)}`].join(' · ');
+}
+
+/** A failed group of `recent_failures[]` (3de34d292) - its cells as drawn, a dash where the server sends null. */
+function recentFailureOf(f) {
+  const x = f && typeof f === 'object' ? f : {};
+  const names = (v) => (Array.isArray(v) && v.length ? v.map(String).join(', ') : ABSENT);
+  return Object.freeze({ id: String(x.transaction_id ?? ''), label: shortTx(x.transaction_id),
+    at: x.failed_at ? String(x.failed_at) : ABSENT, rules: names(x.rules), stage: x.stage ? String(x.stage) : ABSENT,
+    rowsIn: localeCountText(x.rows_in), rowsOut: localeCountText(x.rows_out),
+    failure: typeof x.failure === 'string' && x.failure.trim() ? x.failure.trim() : ABSENT });
+}
 
 export function chainStateCell(doc, chainState, slotPid = null) {
   const cell = doc.createElement('div');
@@ -474,6 +494,8 @@ export function queueView(payload, opts = {}) {
     //    re-decided it from the same field there would be TWO copies of that judgement and they
     //    would drift. A row whose owners the server did not name draws a dash, not 「chain」.
     owners: Object.freeze(Array.isArray(t.owners) ? t.owners.map(String) : []),
+    // null when the server sends no `rules` (a server from before 3de34d292): no Rules column then
+    rules: Array.isArray(t.rules) ? Object.freeze(t.rules.map(ruleLine)) : null,
     at: t.waiting_at || '',
     // An empty string means zero retries. The badge exists to surface the NON-zero ones,
     // and a 「0」 on every row is noise that hides the one row that is not 0.
@@ -490,6 +512,12 @@ export function queueView(payload, opts = {}) {
     ? `Showing ${countOf(listed.lines)} of ${unitText(countOf(listed.lines_total), 'line')}`
       + ` (cap ${countOf(listed.cap)}).`
     : '';
+  // The newest failed groups (3de34d292), cut as rule ④ says: a capped list says so.
+  const recentFailures = Array.isArray(payload.recent_failures) ? payload.recent_failures.map(recentFailureOf) : [];
+  const failedListed = payload.recent_failures_listed && typeof payload.recent_failures_listed === 'object'
+    ? payload.recent_failures_listed : null;
+  const recentCut = failedListed && failedListed.capped
+    ? `Showing the newest ${countOf(failedListed.cap)} (cap ${countOf(failedListed.cap)}).` : '';
 
   // ── the four numbers (A). A cell that cannot be read is DROPPED, not drawn as 0 (rule ②) ──
   const cell = (key, label, value, extra = {}) => Object.freeze({
@@ -533,6 +561,8 @@ export function queueView(payload, opts = {}) {
     pickup: pickup ? Object.freeze(pickup) : null,
     rows: Object.freeze(rows),
     truncated,
+    recentFailures: Object.freeze(recentFailures),
+    recentCut,
   });
 }
 
@@ -648,6 +678,7 @@ export class ChainQueuePanel {
     if (view.truncated) this.root.appendChild(this._line('chain-queue-truncated', view.truncated));
     this.root.appendChild(view.rows.length
       ? this._table(view.rows) : this._line('chain-queue-empty', 'Nothing waiting'));
+    if (view.recentFailures.length) this.root.appendChild(this._failures(view));
 
     const again = this._refresh();
     if (view.meta.length || again) {
@@ -751,9 +782,11 @@ export class ChainQueuePanel {
     const thead = doc.createElement('thead');
     thead.className = 'table-header';
     const hr = doc.createElement('tr');
-    // The × column stands only when a line has a × - a server before the queue's × draws the table it drew.
+    // The × column stands only when a line has a × - a server before the queue's × draws the table it drew; so does Rules.
     const act = rows.some((r) => r.skip);
+    const rules = rows.some((r) => r.rules);
     for (const [label, col] of [['Job / Transaction', 'tx'], [WAITING, 'age'], ['Tables', 'tables'],
+                                ...(rules ? [['Rules', 'rules']] : []),
                                 ['Rows', 'rows'], ['Drained by', 'owners'], ...(act ? [['', 'act']] : [])]) {
       const th = doc.createElement('th');
       th.textContent = label;
@@ -784,6 +817,11 @@ export class ChainQueuePanel {
       if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState, r.slotPid));
       tr.appendChild(tdAge);
       tr.appendChild(this._td(r.tables, 'tables'));
+      if (rules) {
+        const tdRules = this._td(r.rules && r.rules.length ? '' : ABSENT, 'rules');
+        for (const said of r.rules || []) tdRules.appendChild(this._line('chain-queue-rule', said));
+        tr.appendChild(tdRules);
+      }
       // The event count rides the Rows cell as a badge on its own line above the number (admin.html),
       // so the numbers stay right-aligned — no sixth column (the table overflowed its panel; d886307b6).
       const tdRows = this._td('', 'rows');
@@ -824,5 +862,65 @@ export class ChainQueuePanel {
     }
     table.appendChild(tbody);
     return table;
+  }
+
+  /** The newest failed groups: when · which · rule · stage · rows in · rows out · the server's sentence, whole to three
+   *  lines and in its title (903053c14). */
+  _failures(view) {
+    const doc = this.doc;
+    const box = doc.createElement('div');
+    box.className = 'chain-queue-failures';
+    box.appendChild(this._line('box-title', 'Recent failures'));
+    if (view.recentCut) box.appendChild(this._line('chain-queue-truncated', view.recentCut));
+    const table = doc.createElement('table');
+    table.className = 'table-container chain-queue-table';
+    const thead = doc.createElement('thead');
+    thead.className = 'table-header';
+    const hr = doc.createElement('tr');
+    const cols = [['Failed at', 'at'], ['Transaction', 'tx'], ['Rules', 'rules'], ['Stage', 'stage'], ['In', 'in'],
+                  ['Out', 'out'], ['Failure', 'failure']];
+    for (const [label, col] of cols) {
+      const th = doc.createElement('th');
+      th.textContent = label;
+      th.setAttribute('data-col', col);
+      if (col !== 'failure') th.className = 'cell-fit';
+      hr.appendChild(th);
+    }
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = doc.createElement('tbody');
+    for (const f of view.recentFailures) {
+      const tr = doc.createElement('tr');
+      tr.className = 'table-row';
+      tr.setAttribute('data-line-id', f.id);
+      const cell = (text, col) => {
+        const td = doc.createElement('td');
+        td.textContent = text;
+        td.setAttribute('data-col', col);
+        if (col !== 'failure') td.className = 'cell-fit';
+        return td;
+      };
+      tr.appendChild(cell(f.at, 'at'));
+      const tdId = cell('', 'tx');
+      const chip = doc.createElement('span');
+      chip.className = 'tx-id-chip';
+      chip.title = f.id;
+      chip.textContent = f.label;
+      chip.addEventListener('click', () => this.copy(f.id, 'Transaction ID'));
+      tdId.appendChild(chip);
+      tr.appendChild(tdId);
+      for (const [text, col] of [[f.rules, 'rules'], [f.stage, 'stage'], [f.rowsIn, 'in'], [f.rowsOut, 'out']]) {
+        tr.appendChild(cell(text, col));
+      }
+      const tdWhy = cell('', 'failure');
+      const said = this._line('refusal reason-lines chain-queue-failure', f.failure);
+      said.setAttribute('title', f.failure);
+      tdWhy.appendChild(said);
+      tr.appendChild(tdWhy);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    box.appendChild(table);
+    return box;
   }
 }

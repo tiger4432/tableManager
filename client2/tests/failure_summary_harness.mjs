@@ -26,7 +26,7 @@ const REASON = '[rules=lot_slot_join target=dt_wafer] statement timeout · 600 s
   + 'of this group ran past chain_statement_timeout_seconds (ingestion_settings.json); the database stopped it';
 const BODY = { day_zone: 'Asia/Seoul', summary: [
   { table_name: 'dt_inventory', event_type: 'EDIT', day: '2026-09-23', count: 33,
-    first_at: FIRST, last_at: LAST, retry_max: 1, last_reason: REASON },
+    first_at: FIRST, last_at: LAST, retry_max: 1, last_failure: REASON },
   { table_name: 'wafer', event_type: 'CREATE', day: '2026-09-22', count: 2,
     first_at: FIRST, last_at: FIRST, retry_max: 0 },
 ] };
@@ -132,7 +132,7 @@ const MUTANTS = [
   { id: 'Y10', what: 'a record stored as JSON is never read back', catches: ['R6'],
     mutate: (s) => s.replace('  try { record = JSON.parse(errorText); } catch { return null; }', '  return null;') },
   { id: 'Y11', what: 'the reason drawn as its seconds alone (the owner\'s red «600 s»)', catches: ['G1'],
-    mutate: (s) => s.replace("l.last_reason.trim() : '';", "(l.last_reason.match(/\\d+ s/) || [''])[0] : '';") },
+    mutate: (s) => s.replace("l.last_failure.trim() : '';", "(l.last_failure.match(/\\d+ s/) || [''])[0] : '';") },
   { id: 'Y12', what: 'the reason never drawn', catches: ['G2'],
     mutate: (s) => s.replace('      if (line.reason) {', '      if (false) {') },
 ];

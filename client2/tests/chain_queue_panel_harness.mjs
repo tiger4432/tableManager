@@ -964,6 +964,51 @@ async function xSuite(m, say) {
       && pidLines(m.chainStateCell(makeDoc(), running, null)).length === 0
       && same(rowsOf(slotted.host).map(slotOf), [['slot pid 4242'], []]),
     JSON.stringify([pidLines(withPid), rowsOf(slotted.host).map(slotOf)]));
+  // A group's reason whole (lead 903053c14, server 3de34d292): each line's rules with their rows, the stage a retry or a
+  // failure broke in, and the newest failed groups - a count or a stage the server leaves null is a dash.
+  const RUN = { rule: 'lot_slot_join', rows_in: 3, rows_out: null, running_seconds: 12 };
+  const LAST = { rule: 'wafer_sum', rows_in: 19000, rows_out: 20000, running_seconds: null };
+  const NEVER = { rule: 'map_fill', rows_in: null, rows_out: null, running_seconds: null };
+  const said = [RUN, LAST, NEVER].map(m.ruleLine);
+  say('W1 a rule running says its rows in and seconds, else its last run\'s rows in and out, a null a dash', same(said,
+    ['lot_slot_join · in 3 · running 12s', 'wafer_sum · in 19,000 · out 20,000', 'map_fill · in — · out —']), JSON.stringify(said));
+  const col = (tr, c) => tr.children.find((td) => td.getAttribute('data-col') === c);
+  const ruled = seat({ ...BODY, waiting_transactions: BODY.waiting_transactions.map((t, i) => (i === 2 ? t : { ...t,
+    rules: i === 0 ? [RUN, LAST] : [] })) });
+  const ruleCells = rowsOf(ruled.host).map((tr) => { const td = col(tr, 'rules');
+    return td ? [byClass(td, 'chain-queue-rule').map((n) => n.textContent), td.textContent] : null; });
+  const heads = (h) => byTag(h, 'TH').map((th) => th.getAttribute('data-col'));
+  say('W2 a Rules column, one line a rule, a dash where none; a server that sends no rules draws no Rules column',
+    same(ruleCells, [[said.slice(0, 2), said.slice(0, 2).join('')], [[], '—'], [[], '—']])
+      && heads(ruled.host).includes('rules') && !heads(seat(BODY).host).includes('rules'), JSON.stringify(ruleCells));
+  const staged = [m.chainStateWhy({ state: 'retrying', why: { attempt: 1, cap: 2, stage: 'mapper', last_failure: 'X' } }),
+    m.chainStateWhy({ state: 'failed', why: { stage: 'write', failure: 'Y' } }),
+    m.chainStateWhy({ state: 'failed', why: { stage: null, failure: 'Y' } })];
+  say('W3 a retry and a failure say the stage they broke in, before the sentence', same(staged,
+    ['attempt 1/2 · mapper · X', 'write · Y', 'Y']), JSON.stringify(staged));
+  const FAILED = [{ transaction_id: 'tx-timeout-0000-0000', rules: ['lot_slot_join'], tables: ['dt_wafer'], stage: 'write',
+    rows_in: 19000, rows_out: 20000, rows: 19000, failure: 'statement timeout · 600 s · stage write', failed_at: '2026-10-21 17:00:00' },
+  { transaction_id: 'single_e-2', rules: null, tables: null, stage: null, rows_in: null, rows_out: null, rows: null,
+    failure: 'ValueError: no wafer', failed_at: null }];
+  const listed = seat({ ...BODY, recent_failures: FAILED, recent_failures_listed: { cap: 20, capped: false } });
+  const box = byClass(listed.host, 'chain-queue-failures')[0];
+  const failedRows = box ? rowsOf(box).map((tr) => ['at', 'tx', 'rules', 'stage', 'in', 'out', 'failure']
+    .map((c) => col(tr, c).textContent)) : null;
+  const failWhys = box ? byClass(box, 'chain-queue-failure').map((n) => [n.textContent, n.getAttribute('title')]) : null;
+  say('W4 the newest failed groups: when · which · rule · stage · in · out · the sentence whole in its title, a dash for a null',
+    same(failedRows, [['2026-10-21 17:00:00', 'tx-timeo…', 'lot_slot_join', 'write', '19,000', '20,000', FAILED[0].failure],
+      ['—', 'single_e…', '—', '—', '—', '—', FAILED[1].failure]])
+      && same(failWhys, FAILED.map((f) => [f.failure, f.failure])) && Boolean(box) && byClass(box, 'box-title')[0].textContent === 'Recent failures',
+    JSON.stringify([failedRows, failWhys]));
+  press(box && byClass(box, 'tx-id-chip')[0]);
+  say('W5 none sent or none failed draws no failure table; a press copies the full id',
+    !byClass(seat(BODY).host, 'chain-queue-failures').length
+      && !byClass(seat({ ...BODY, recent_failures: [] }).host, 'chain-queue-failures').length
+      && same(listed.copied, [['tx-timeout-0000-0000', 'Transaction ID']]), JSON.stringify(listed.copied));
+  const capped = seat({ ...BODY, recent_failures: FAILED, recent_failures_listed: { cap: 20, capped: true } });
+  const cut = (h) => byClass(byClass(h, 'chain-queue-failures')[0] || { children: [] }, 'chain-queue-truncated').map((n) => n.textContent);
+  say('W6 a capped failure list says so above it; an uncapped one says nothing', same(cut(capped.host),
+    ['Showing the newest 20 (cap 20).']) && same(cut(listed.host), []), JSON.stringify(cut(capped.host)));
 }
 const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
 const refreshed = [];
@@ -1020,6 +1065,25 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
       mutate: swap('chainStateCell(doc, r.chainState, r.slotPid)', 'chainStateCell(doc, r.chainState)') },
     { id: 'SM10', what: 'a line without a slot pid says «slot pid null»', catches: 'S7',
       mutate: swap("  if (slotPid !== null && slotPid !== undefined && slotPid !== '') {", '  if (true) {') },
+    { id: 'WM1', what: 'a running rule says out, not its seconds', catches: 'W1',
+      mutate: swap('running ? `running ${running}` : `out ${localeCountText(x.rows_out)}`', '`out ${localeCountText(x.rows_out)}`') },
+    { id: 'WM2', what: 'a null count is drawn as 0', catches: 'W1',
+      mutate: swap('`in ${localeCountText(x.rows_in)}`', '`in ${Number(x.rows_in).toLocaleString()}`') },
+    { id: 'WM3', what: 'the rules are not drawn on the line', catches: 'W2',
+      mutate: swap("for (const said of r.rules || []) tdRules.appendChild(this._line('chain-queue-rule', said));", '') },
+    { id: 'WM4', what: 'the Rules column always stands', catches: 'W2', mutate: swap('const rules = rows.some((r) => r.rules);', 'const rules = true;') },
+    { id: 'WM5', what: 'a retry does not say its stage', catches: 'W3', mutate: swap('retrying: [attempt, w.stage, w.last_failure],', 'retrying: [attempt, w.last_failure],') },
+    { id: 'WM6', what: 'a failure does not say its stage', catches: 'W3', mutate: swap('failed: [w.stage, w.failure],', 'failed: [w.failure],') },
+    { id: 'WM7', what: 'the failure sentence is drawn as its number alone', catches: 'W4',
+      mutate: swap("const said = this._line('refusal reason-lines chain-queue-failure', f.failure);",
+        "const said = this._line('refusal reason-lines chain-queue-failure', (f.failure.match(/\\d+ s/) || [''])[0]);") },
+    { id: 'WM8', what: 'the failure keeps no title', catches: 'W4', mutate: swap("      said.setAttribute('title', f.failure);\n", '') },
+    { id: 'WM9', what: 'a null stage is drawn as null', catches: 'W4', mutate: swap("stage: x.stage ? String(x.stage) : ABSENT", 'stage: String(x.stage)') },
+    { id: 'WM10', what: 'the failure table is never drawn', catches: 'W4',
+      mutate: swap('    if (view.recentFailures.length) this.root.appendChild(this._failures(view));\n', '') },
+    { id: 'WM11', what: 'a press copies the short label', catches: 'W5', mutate: swap("this.copy(f.id, 'Transaction ID')", "this.copy(f.label, 'Transaction ID')") },
+    { id: 'WM12', what: 'a capped failure list says nothing', catches: 'W6',
+      mutate: swap('    if (view.recentCut) box.appendChild(this._line(\'chain-queue-truncated\', view.recentCut));\n', '') },
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;

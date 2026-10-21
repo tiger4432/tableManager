@@ -79,8 +79,8 @@ export function failureSummaryView(body, sentZone = '') {
     const parts = [`${l.table_name} ${l.event_type} ${count}`, localSpan(l.first_at, l.last_at)];
     if (foreignDay) parts.push(`${l.day} (${zone} day)`);
     parts.push(`attempts ${Number(l && l.retry_max) || 0}`);
-    // The line's newest failure sentence, the server's (`last_reason`, lead 903053c14) - as sent, '' when it sends none.
-    const reason = typeof (l && l.last_reason) === 'string' ? l.last_reason.trim() : '';
+    // The line's newest failure sentence, the server's (`last_failure`, lead 903053c14 · 3de34d292) - as sent, '' when it sends none.
+    const reason = typeof (l && l.last_failure) === 'string' ? l.last_failure.trim() : '';
     return { key: lineKey(l), text: parts.join(' · '), reason, count,
              filter: { table: String(l.table_name), event_type: String(l.event_type), day: String(l.day) } };
   });
