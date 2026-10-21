@@ -64,6 +64,11 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
     M.resultText(log(2, { status: 'FAILED', reason: 'line 3: 3 values for 2 x values' })) === 'line 3: 3 values for 2 x values'
       && M.resultText(log(3, { status: 'FAILED', reason: null, error_message: '\nTraceback first\nmore' })) === 'Traceback first'
       && M.resultText(log(4, { rows_read: null })) === ABSENT);
+  ok('M1c a read the write refused part of: its counts, then the server\'s words for what it refused (총괄 10-21)',
+    M.resultText(log(5, { rows_read: 1, rows_new: 0, rows_changed: 0, rows_unchanged: 0, rows_refused: 1,
+      reason: '1 map refused: version_older' })) === '1 row · 1 refused · 1 map refused: version_older',
+    M.resultText(log(5, { rows_read: 1, rows_new: 0, rows_changed: 0, rows_unchanged: 0, rows_refused: 1,
+      reason: '1 map refused: version_older' })));
   ok('M2 Took in seconds; none timed - ABSENT', M.tookText(0.4) === '0.4 s' && M.tookText(null) === ABSENT && M.tookText(12.6) === '13 s', `${M.tookText(0.4)} ${M.tookText(12.6)}`);
 
   const q = M.queryOf({ table: 't', status: '', name: ' bmap ', folder: '', from: '2026-10-19', to: '2026-10-20', group: 'folder' }, { page: 2 });
@@ -239,6 +244,7 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
 const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`); return t.split(from).join(to); };
 const MUTANTS = [
   { name: 'zeros said too', catches: ['M1a'], file: 'model', mutate: swap('    if (numberOr(v)) parts.push', '    if (numberOr(v) !== null) parts.push') },
+  { name: 'a read\'s refusal not said', catches: ['M1c'], file: 'model', mutate: swap('  if (!isBlank(log.reason)) parts.push(String(log.reason));', '') },
   { name: 'a failure said by its counts', catches: ['M1b'], file: 'model', mutate: swap("  if (isFailedStatus(log.status)) return reasonOf(log) || ABSENT;", '') },
   { name: 'Took without its unit', catches: ['M2'], file: 'model', mutate: swap("Math.round(s).toLocaleString('en-US')} s`", "Math.round(s).toLocaleString('en-US')}`") },
   { name: 'the To day left out (until = To)', catches: ['M3'], file: 'model', mutate: swap('      day.setDate(day.getDate() + 1);\n', '') },

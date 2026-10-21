@@ -348,6 +348,7 @@
 
 ### 어드민 화면
 
+- 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
 - 2026-10-21 [Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도](#2026-10-21--read-all-again--표--폴더의-파일을-통째로-다시-읽힌다-상한은-거절이-아니라-속도) — 누르는 곳 파일 화면 폴더 줄 · Files 머리의 «Read all again»
 - 2026-10-21 [Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께](#2026-10-21--read-now--경로-하나를-와처가-본-것처럼-지금-읽힌다-왜-안-집었는지와-함께) — 누르는 곳 파일 화면 «Read a file now» · 명령 `replay_ingestion.py --now`
 - 2026-10-21 [체인 실패 사유가 화면에 문장째 — 실패 목록 줄 · 대기열 상태 칸](#2026-10-21--체인-실패-사유가-화면에-문장째--실패-목록-줄--대기열-상태-칸) — 누르는 곳 어드민 Chain 탭의 Chain failures · Chain queue
@@ -567,6 +568,14 @@
 - **거절** — 안 읽히는 값이 있으면 대기열 줄이 실패로 끝나며 «N value(s) are not numbers/times, e.g. …» 를 남기고 파일 · 칸은 그대로. 키 칸(행 키 · 맵 키 · decide 판단키 · 조인 키)을 숫자 · 시간으로 바꾸는 저장은 그 자리 이름과 함께 거절.
 - **보는 곳** — 저장 줄 «<칸>: string → number queued, run <id>, est. lock N s - values are checked by the conversion - see the queue» · 소급 대기열의 그 줄.
 - **필요한 조건** — git pull · 서버 · 스케줄러 재기동.
+
+## 2026-10-21 · 파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»
+
+소유자 10-21 맵 단위 버전 착지 뒤 (총괄 «거절된 파일이 SUCCESS 로만 보이는 것은 화면이 참이 아닌 것»).
+
+- **무엇** — 버전 칸이 맵이나 행을 거절한 파일은 파일 화면 결과 칸에 «1 row · 1 refused · 1 map refused: version_older» 처럼 수와 낱말이 붙는다. 행 단위 거절도 같다(«2 rows refused: version_same»). 낱말은 와처 로그 VersionGate 줄과 같다. 같은 버전인데 내용이 바뀐 행은 «1 row version_same_content_differs» 로 덧붙는다.
+- **바뀐 동작** — 전에는 거절된 행이 «unchanged» 로 세어졌다. 이제 «refused» 로 센다. 상태 낱말은 그대로 SUCCESS.
+- **필요한 조건** — git pull · 서버 재기동 · 와처 재기동.
 
 ## 2026-10-21 · API 가 통지를 안 받으면 5 초 동안 아무도 다시 안 보낸다 — 와처도
 

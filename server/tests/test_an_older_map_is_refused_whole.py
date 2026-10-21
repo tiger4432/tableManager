@@ -32,7 +32,10 @@ PURGE, DIFF = "mver_purge", "mver_diff"
 COLUMNS = {"cell_key": "string", "job": "string", "cell": "string", "v": "string", "rev": "number"}
 BASE = {"business_key": "cell_key", "map_key_columns": ["job"], "version_column": "rev", "allow_replace_map": True,
         "column_types": COLUMNS, "display_columns": list(COLUMNS)}
-TABLES = {PURGE: dict(BASE), DIFF: dict(BASE, composite_key_source=["job", "cell"], composite_key_separator="_")}
+ROWS = "mver_rows"                      # version_column and no map replace: row by row
+TABLES = {PURGE: dict(BASE), DIFF: dict(BASE, composite_key_source=["job", "cell"], composite_key_separator="_"),
+          ROWS: {"business_key": "k", "version_column": "rev", "column_types": {"k": "string", "v": "string",
+                                                                                "rev": "number"}}}
 
 
 @pytest.fixture()
@@ -216,3 +219,36 @@ def test_the_watcher_s_file_is_judged(watcher):
     assert read("new.csv", "job,cell,v,rev\nJ,c1,new,2\nJ,c2,new,2\n") == NEW
     assert read("old.csv", "job,cell,v,rev\nJ,c1,old,1\n") == NEW
     assert read("newer.csv", "job,cell,v,rev\nJ,c1,newer,3\n") == [("c1", "newer", 3.0)]
+    # 총괄 10-21: the refused file says so on its row, in the write's words - not a bare SUCCESS
+    assert _results(factory) == {
+        "new.csv": ("SUCCESS", 2, 2, 0, None),
+        "old.csv": ("SUCCESS", 1, 0, 1, "1 map refused: version_older"),
+        "newer.csv": ("SUCCESS", 1, 0, 0, None)}
+
+
+def _results(factory):
+    """{file: (status, rows read, rows new, rows refused, reason)} - the file's completion record."""
+    db = factory()
+    try:
+        return {log.filename: (log.status, log.rows_read, log.rows_new, log.rows_refused, log.reason)
+                for log in db.query(models.FileIngestionLog).all()}
+    finally:
+        db.close()
+
+
+def test_a_file_s_rows_the_row_gate_refused_are_said_on_its_row(watcher, tmp_path):
+    _handler, _workspace, factory = watcher
+    workspace = str(tmp_path / "rows_ws")
+    for sub in ("raws", "archives", "err"):
+        os.makedirs(os.path.join(workspace, sub))
+    handler = IngestionHandler(workspace, None, os.path.join(workspace, "archives"), default_table_name=ROWS,
+                               heavy_lane=FakeLane())
+    for name, text in (("a.csv", "k,v,rev\nK1,a,2\nK2,a,2\n"), ("b.csv", "k,v,rev\nK1,b,1\nK2,b,2\nK3,b,1\n")):
+        path = os.path.join(workspace, "raws", name)
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        handler._handle_event(path)
+        handler.heavy_lane.run_all()
+    assert _results(factory)["b.csv"] == ("SUCCESS", 3, 1, 2,
+                                         "1 row refused: version_older · 1 row refused: version_same"
+                                         " · 1 row version_same_content_differs")

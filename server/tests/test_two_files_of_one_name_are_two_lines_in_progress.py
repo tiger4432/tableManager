@@ -63,7 +63,7 @@ def test_two_files_of_one_name_are_two_lines_and_one_ending_leaves_the_other(tmp
     monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: {"inventory_master": INFO})
     monkeypatch.setattr(directory_watcher, "SessionLocal", lambda: _DB())
     monkeypatch.setattr(directory_watcher.crud, "apply_batch_updates",
-                        lambda db, t, batch, notation_report=None, replace_report=None: ([], [("r", "c")] * len(batch.updates), [], []))
+                        lambda db, t, batch, notation_report=None, replace_report=None, drop_report=None: ([], [("r", "c")] * len(batch.updates), [], []))
     monkeypatch.setattr(run_watcher, "post_event", lambda endpoint, payload: client.post(endpoint, json=payload))
     ws = tmp_path / "ws"
     for sub in ("raws", "archives", "config"):
