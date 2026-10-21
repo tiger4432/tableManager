@@ -55,6 +55,8 @@ def test_over_the_limit_the_watcher_gets_them_all_and_reads_the_cap_a_turn(clien
     assert answer.status_code == 200, answer.text
     waiting = {"f1.csv", "f2.csv", "f3.csv"}
     assert {name for name, state in _statuses(db_session).items() if state == "PENDING_RETRY"} == waiting
+    groups = client.get("/admin/file-ingestion/logs", params={"folder": folder, "group": "folder"}).json()["groups"]
+    assert sorted((g["count"], g["failed"], g["waiting"]) for g in groups) == [(2, 0, 1), (2, 0, 2)], groups
     monkeypatch.setattr(run_watcher, "workspace_watcher", object())
     db_session.expire_all()
     assert [log.filename for log in run_watcher.pending_retries(db_session)] == ["f1.csv", "f2.csv"], "the cap a turn"
