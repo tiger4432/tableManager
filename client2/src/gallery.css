@@ -23,9 +23,10 @@
 .gallery-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gallery-tile__img { flex: none; display: block; width: var(--gallery-tile); height: var(--gallery-tile); background: var(--bg-header); }
 .gallery-tile__cap { flex: none; display: block; height: 20px; line-height: 20px; padding: 0 var(--space-1); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-meta); color: var(--text-dim); }
-/* Thumb's own drawing (spotfire.css is not on this page) - a tile's picture and a board cell's thumbnails */
+/* Thumb's own drawing (spotfire.css is not on this page) - a tile's picture and a board cell's thumbnails; the picture fills its
+   box, its ratio kept: it is read at 160 px and a cell's share at the column's cap is wider (lead 10-22) */
 .gallery-tile__img .sf-thumb, .gallery-cell__thumb .sf-thumb { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
-.gallery-tile__img .sf-thumb__img, .gallery-cell__thumb .sf-thumb__img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.gallery-tile__img .sf-thumb__img, .gallery-cell__thumb .sf-thumb__img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .gallery-tile__img .sf-thumb__img:not([src]), .gallery-cell__thumb .sf-thumb__img:not([src]) { visibility: hidden; }
 .gallery-tile__img .sf-thumb__n, .gallery-cell__thumb .sf-thumb__n { font-size: var(--fs-meta); color: var(--text-dim); }
 /* The board (lead 3589216b9, mockup 2): its own box, rolled both ways inside it; a column at least a tile and a quarter wide. */

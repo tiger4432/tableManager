@@ -633,6 +633,18 @@ CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'boar
   if (grid.querySelectorAll('.gallery-board__col').length !== cols + 1) return grid.querySelectorAll('.gallery-board__col').length + ' column heads for ' + cols + ' columns';
   return null;
 })()` });
+// A cell's thumbnail fills its share of the cell, its ratio kept (lead 10-22): the picture is read at 160 px and a share
+// at the column's cap is wider - a picture held at its own size stood small in its box.
+CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'thumbs fill', at: 'gallery-cell__thumb', expr: `(() => {
+  const imgs = [...document.querySelectorAll('#gallery-host .gallery-cell__thumb img')].filter((i) => i.complete && i.naturalWidth > 0);
+  if (!imgs.length) return 'no thumbnail loaded';
+  for (const i of imgs) {
+    const box = i.closest('.gallery-cell__thumb').getBoundingClientRect();
+    const r = i.getBoundingClientRect();
+    if (Math.abs(r.width - box.width) > 1 && Math.abs(r.height - box.height) > 1) return 'a ' + i.naturalWidth + ' x ' + i.naturalHeight + ' picture drawn ' + Math.round(r.width) + ' x ' + Math.round(r.height) + ' in a ' + Math.round(box.width) + ' x ' + Math.round(box.height) + ' box';
+  }
+  return null;
+})()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, a cell opened and a tile pressed', rule: 'opened cell tiles', at: 'gallery-open', expr: `(() => {
   const words = ((document.querySelector('#gallery-host .gallery-open__n') || {}).textContent || '').replace(/,/g, '');
   const m = words.match(/^(\\d+) rows?(?: · (\\d+) without image)?$/);
@@ -2077,6 +2089,9 @@ const MUTANTS = [
     file: 'src/gallery.css', edits: [['max-height: 60%; overflow: auto; contain: inline-size;', 'max-height: 60%; overflow: auto;']] },
   { name: 'a shut gallery laid out under the grid', entry: 'index.html', rule: 'clip', at: '', says: /px past its top or bottom: «AssyManager/,
     file: 'src/gallery.css', edits: [['.gallery-host[hidden] { display: none; }', '']] },
+  { name: 'a thumbnail held at its own size', entry: 'index.html', rule: 'thumbs fill', at: 'gallery-cell__thumb',
+    file: 'src/gallery.css', edits: [['.sf-thumb__img { display: block; width: 100%; height: 100%; object-fit: contain; }',
+      '.sf-thumb__img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }']] },
   { name: 'the chip strip not folded again when the header gives it another width', entry: 'index.html', rule: 'clip', at: 'filter-chips',
     file: 'src/grid.js', edits: [['    chipBarWatch.observe(bar);', '']] },
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',
