@@ -264,7 +264,7 @@ class TestInventory:
         ops = {o["op"]: o for o in client.get("/admin/retroactive/operations").json()
                ["operations"]}
         assert [p["name"] for p in ops["withdraw"]["params"]] == \
-            ["table", "source", "columns"]
+            ["table", "source", "columns", "rule"]
         # withdraw takes no --limit and no --chunk-size on the CLI either; a
         # parameter here that the operation does not have would be a lie the
         # client would render as a control.

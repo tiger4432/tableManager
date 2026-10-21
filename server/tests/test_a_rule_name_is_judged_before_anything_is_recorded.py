@@ -11,9 +11,10 @@ from database import models
 from tests.test_a_declared_join_can_be_backfilled_like_any_rule import _rules
 from tests.test_retroactive_admin import RULE_MIXED, retro_env  # noqa: F401
 
-RULE_OPS = ["chain_replay", "enrichment_backfill", "enrichment_confirm", "rule_rows", "fold_units"]
+RULE_OPS = ["chain_replay", "enrichment_backfill", "enrichment_confirm", "rule_rows", "fold_units", "withdraw"]
 #: What an operation requires besides its rule, so the rule is what gets judged.
-_REQUIRED_TOO = {"rule_rows": {"transaction": "t", "events": "e"}}
+_REQUIRED_TOO = {"rule_rows": {"transaction": "t", "events": "e"},
+                 "withdraw": {"table": "retro_test_target", "source": "chain_ingestion"}}
 
 
 def _recorded(db):

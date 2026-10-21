@@ -252,17 +252,21 @@ REQUIRE_KEY = "require"
 EXCLUDE_KEY = "exclude"
 #: The cells that decide whether a trigger row is handed to the rule at all (`rule_run.held_back`).
 ROW_GATE_KEYS = (REQUIRE_KEY, EXCLUDE_KEY)
+#: 총괄 a7b67be28 ㄱ (소유자 「ㄴ」): the target-table columns a rule writes. Whatever its mapper hands over, the rest
+#: is not written (`written_columns`); a rule without the cell writes what it hands over, as before.
+TARGET_COLUMNS_KEY = "target_columns"
 #: Each row gate as a rule recounting another rule's output reads it - `source_<gate>`, stamped at load
 #: by the mapper that pairs the two, not written by hand (총괄 016a766af ㄴ · 0117a0048: both gates).
 SOURCE_GATE_KEYS = {gate: "source_" + gate for gate in ROW_GATE_KEYS}
 SOURCE_EXCLUDE_KEY = SOURCE_GATE_KEYS[EXCLUDE_KEY]
 #: What a refusal of an unknown gate column says, per cell.
 _GATE_WORDS = {REQUIRE_KEY: ("requires", "no row could ever be handed to it"),
-               EXCLUDE_KEY: ("excludes by", "no row could ever be held back")}
+               EXCLUDE_KEY: ("excludes by", "no row could ever be held back"),
+               TARGET_COLUMNS_KEY: ("writes", "nothing would ever be written there")}
 
 RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
-    "target_field", "trigger_columns", REQUIRE_KEY, EXCLUDE_KEY, *SOURCE_GATE_KEYS.values(), "enabled", "is_batch",
+    "target_field", "trigger_columns", REQUIRE_KEY, EXCLUDE_KEY, TARGET_COLUMNS_KEY, *SOURCE_GATE_KEYS.values(), "enabled", "is_batch",
     "allow_chain_trigger", "allow_map_metadata_upsert",
     # 옛 키 (총괄): a deletion wakes the rule only when it says so - it reads the rows' old values
     "allow_delete_trigger",
@@ -463,8 +467,9 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
     # 총괄 49052cbdd: `require` names trigger-table columns a row must have filled - and `exclude`
     # (016a766af) columns it must have empty. A name the table does not have is never filled, so
     # `require` would hand over no row and `exclude` would hold none back - refused by name, the
-    # way an unknown `trigger_columns` entry is named.
-    for key in ROW_GATE_KEYS:
+    # way an unknown `trigger_columns` entry is named. `target_columns` names the TARGET table's (총괄 a7b67be28 ㄱ).
+    for key in (*ROW_GATE_KEYS, TARGET_COLUMNS_KEY):
+        table = candidate.get("target_table" if key == TARGET_COLUMNS_KEY else "trigger_table")
         if key not in candidate:
             continue
         written = candidate.get(key)
@@ -475,14 +480,14 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
                 "bad_" + key, path + "." + key,
                 "%s must be a list of column names, got %r" % (key, written)))
         else:
-            known = declared_columns(str(candidate.get("trigger_table") or ""))
+            known = declared_columns(str(table or ""))
             unknown = sorted(set(names) - known) if known is not None else []
             if unknown:
                 issues.append(validation.DeclarationValidationError(
                     "unknown_%s_column" % key, path + "." + key,
                     "rule %s %s %s that '%s' does not have; %s. Fix the names or remove the cell."
                     % (candidate.get("name"), _GATE_WORDS[key][0], unknown,
-                       candidate.get("trigger_table"), _GATE_WORDS[key][1])))
+                       table, _GATE_WORDS[key][1])))
 
     target = str(candidate.get("target_table") or "")
     if target in (derived_tables or ()):
@@ -619,6 +624,24 @@ def removes_whole_maps(rule) -> bool:
     return bool(rule.get("allow_replace_map") or rule.get("allow_retraction"))
 
 
+def written_columns(rule):
+    """The columns this rule writes: its `target_columns`, and every column a target row is found by - the business
+    key and what composes it, the map key, the job column a withdrawal aims by, `group_by`. None when it lists none:
+    it writes what it hands over, as before. 🔴 The one answer the write's filter (`rule_run.signed`),
+    `rule_run.columns_a_rule_writes` and R2 narrowed to one rule (`chain.replay.unwritten_scope`) read - one
+    spelling, so a column the filter keeps is never one the withdrawal takes (총괄 a7b67be28 ㄱ)."""
+    listed = (rule or {}).get(TARGET_COLUMNS_KEY)
+    if not listed:
+        return None
+    config = _table_config(str(rule.get("target_table") or ""))
+    keys = [config.get("business_key"), rule.get("target_job_column"), rule.get("job_column")]
+    for cell in ("composite_key_source", "map_key_columns"):
+        keys += [config.get(cell)] if isinstance(config.get(cell), str) else list(config.get(cell) or ())
+    group = rule.get(GROUP_BY_KEY)
+    keys += [group] if isinstance(group, str) else list(group or ())
+    return {str(column) for column in list(listed) + keys if column}
+
+
 def takes_deletions(rule) -> bool:
     """A deleted source row wakes this rule: it declares `allow_delete_trigger`, or it answers for whole maps - a map a
     row left is that map changed (소유자 10-21 「자동 회수 안 됨?」, 총괄 c67aa93bb ㄱ-a)."""
@@ -679,6 +702,7 @@ def column_ref(table_from):
 #: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below; `group_by` by
 #: `rule_refusals` (bad_group_by takes only a list - drawn as one value, the form could not save it, 총괄 77793123e).
 _LIST_CELLS = {"trigger_columns": ("column", column_ref(TRIGGER_TABLE_AT)),
+               TARGET_COLUMNS_KEY: ("column", column_ref(TARGET_TABLE_AT)),
                REQUIRE_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
                GROUP_BY_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
                EXCLUDE_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),

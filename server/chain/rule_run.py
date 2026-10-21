@@ -270,14 +270,27 @@ def item_cell(item, name):
     return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
 
 
-def signed(result, declaration):
+def signed(result, declaration, rule=None, kept_out=None):
     """A proposal signed by the rule that made it (총괄 bc9710454 가-1 ㄱ): every item it proposes - updates, map
     metadata, its batches' items and its further pages as they are asked - carries the rule's declaration in
     `updated_by`, which the write puts on the layer row. A recount that came back blank takes back its own rule's
-    plain chain layer by it, and not another rule's that wrote the cell after it."""
+    plain chain layer by it, and not another rule's that wrote the cell after it.
+
+    🔴 AND KEPT TO WHAT THE RULE WRITES (총괄 a7b67be28 ㄱ): a rule that lists its `target_columns` has every other
+    cell taken out of its updates and its batches' items here - whichever kind of mapper made them - counted into
+    `kept_out` {column: cells} for `say_kept_out`. Map metadata goes to another table and is not narrowed."""
+    import chain_bindings
+
     if not isinstance(result, dict):
         return result
-    batched = (item for batch in result.get("batches") or () for item in (item_cell(batch, "updates") or ()))
+    batched = [item for batch in result.get("batches") or () for item in (item_cell(batch, "updates") or ())]
+    written = chain_bindings.written_columns(rule)
+    if written is not None:
+        for item in itertools.chain(result.get("updates") or (), batched):
+            cells = item_cell(item, "updates") or {}
+            for column in [column for column in cells if column not in written]:
+                del cells[column]
+                kept_out[column] = kept_out.get(column, 0) + 1
     for item in itertools.chain(result.get("updates") or (), result.get("map_metadata_updates") or (), batched):
         if isinstance(item, dict):
             item["updated_by"] = declaration
@@ -285,8 +298,20 @@ def signed(result, declaration):
             item.updated_by = declaration
     more = result.get("next_page")
     if more is not None:
-        result["next_page"] = lambda: signed(more(), declaration)
+        def page():
+            out = {}
+            answer = signed(more(), declaration, rule, out)
+            say_kept_out(rule, out)
+            return answer
+        result["next_page"] = page
     return result
+
+
+def say_kept_out(rule, kept_out):
+    """The one line a run (or a further page) says about the cells its rule's `target_columns` kept out."""
+    if kept_out:
+        logger.info("[%s] rule %s: %d cell(s) in %s not in its written columns, not written", RULE_LOG_TAG,
+                    (rule or {}).get("name"), sum(kept_out.values()), sorted(kept_out))
 
 
 def output_stamps(items):
@@ -318,7 +343,13 @@ def columns_a_rule_writes(rule, items=(), more=False):
     its old cells have to go - so then its mapper's declaration answers (`dynamic_mappers.
     columns_declared_for` - a kind the product builds, or a file mapper that registered `columns`,
     총괄 016a766af), and a mapper that declares nothing with what it last wrote in this process.
+    A rule that lists its `target_columns` answers with them first (총괄 a7b67be28 ㄱ).
     """
+    import chain_bindings
+
+    listed = chain_bindings.written_columns(rule)
+    if listed is not None:
+        return listed
     columns = {column for item in items or () for column in (item_cell(item, "updates") or ())}
     if more:
         # an answer with more pages (`next_page`) is its first page here - with the declaration, or a join whose first
@@ -639,13 +670,15 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
             batched = (rule or {}).get("is_batch", False)
             handed_out = [without_missing(handed)] if batched and (handed or not offered) else [
                 without_missing(one) for one in handed]
-            results = []
+            results, kept_out = [], {}
             with stage_timing():
                 for one in handed_out:
                     if bound.accepts_rule:
-                        results.append(signed(without_missing(bound.call(db, one, rule=rule)), declaration))
+                        results.append(signed(without_missing(bound.call(db, one, rule=rule)), declaration,
+                                              rule, kept_out))
                     else:
-                        results.append(signed(without_missing(bound.call(db, one)), declaration))
+                        results.append(signed(without_missing(bound.call(db, one)), declaration, rule, kept_out))
+            say_kept_out(rule, kept_out)
             for result in results:
                 if not isinstance(result, dict):
                     continue

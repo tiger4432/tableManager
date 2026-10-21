@@ -138,6 +138,24 @@
         }
       },
       {
+        "key": "target_columns",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "ref",
+            "section": "columns",
+            "table_from": [
+              "target_table",
+              "into.table"
+            ]
+          }
+        }
+      },
+      {
         "key": "source_require",
         "required": false,
         "node": {
@@ -1001,6 +1019,24 @@
         "node": {
           "kind": "leaf",
           "hint": "free"
+        }
+      },
+      {
+        "key": "target_columns",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "ref",
+            "section": "columns",
+            "table_from": [
+              "target_table",
+              "into.table"
+            ]
+          }
         }
       },
       {

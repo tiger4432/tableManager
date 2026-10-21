@@ -53,7 +53,7 @@ PROTECTED_SOURCES = frozenset({"user"})
 class ReplayRefused(Exception):
     """Raised when a replay must not proceed. The message states why."""
 
-def _claimed_filter(table_name: str, source_name: str, columns: list = None):
+def _claimed_filter(table_name: str, source_name: str, columns: list = None, written_by=None):
     """The predicate for "cells `source_name` claims on `table_name`".
 
     Extracted so `count_withdrawable` and `withdraw_source` cannot answer
@@ -75,6 +75,8 @@ def _claimed_filter(table_name: str, source_name: str, columns: list = None):
     conds = [models.CellSource.table_name == table_name, named]
     if columns:
         conds.append(models.CellSource.column_name.in_(list(columns)))
+    if written_by:      # one rule's layers - the declaration that wrote them (`replay.unwritten_scope`)
+        conds.append(models.CellSource.updated_by.in_(list(written_by)))
     return conds
 
 def _load_cell_state(db, table_name: str, chunk_row_ids: list, columns=None):
@@ -367,7 +369,7 @@ def resolve_target(table_name: str, columns: list = None):
 def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                     row_ids: list = None, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
-                    checkpoint=None) -> dict:
+                    checkpoint=None, written_by=None) -> dict:
     """[R2] Retract `source_name`'s claim on cells, revealing the layer beneath.
 
     For each affected cell: delete that one `cell_sources` row, recompute
@@ -398,7 +400,8 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #    source claims few rows the whole run pages the whole table, 3.0-4.4x longer and 6.3x at most (1M rows, 9M
     #    layers, one row in 1,000 claimed - QA's turns, 총괄 ff4eb2cf0) - 총괄 5ad030347 · 10-13.
     cs = models.CellSource
-    q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(*_claimed_filter(table_name, source_name, columns))
+    q = db.query(cs.row_id, cs.column_name, cs.source_name).filter(
+        *_claimed_filter(table_name, source_name, columns, written_by))
     asked = [chunk_size]
 
     class _Asked:

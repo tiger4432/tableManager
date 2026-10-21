@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **체인 규칙이 «쓰는 칸»을 적음 — target_columns 밖 칸은 안 씀, 이미 쌓인 층은 R2 withdraw --rule 로 한 번 (총괄 a7b67be28 ㄱ, 소유자 「ㄴ」)** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   chain_rules.json 의 규칙에 "target_columns": ["칸", ...] (대상 표의 칸) — 업무 키 · 맵 키 · 잡 칸 · group_by 칸은 안 적어도 남음
+> 보이는 것 chain_worker.log «[ChainRule] rule <규칙>: N cell(s) in [칸들] not in its written columns, not written» — 실행마다 한 줄
+>          목록 밖 칸에는 그 규칙의 층이 안 섬 (파일 층과 같은 값을 통째로 내도) · 목록 없는 규칙은 오늘 그대로
+>          맵퍼가 스스로 쓰는 규칙(결과에 written)은 걸러지지 않음
+>          목록을 적은 규칙이 버린 칸은 이 한 줄로만 — [Chain Write Discard] 줄이 같은 칸으로 또 서지 않음 (목록 없는 규칙은 그대로)
+> 거두기    이미 쌓인 그 규칙 층 중 목록 밖 칸 — 한 번만. 사람 층 · 다른 규칙 층 · 키 칸은 안 건드림
+>          미리보기  python server/scripts/chain_replay_cli.py withdraw <대상 표> chain_ingestion --rule <규칙>
+>          실행     같은 줄 끝에 --apply   (화면: 어드민 소급 «Withdraw a stale source (R2)» 에 rule 칸)
+> 뜻      «lists no target_columns» 거절 -> 목록을 먼저 적음 · «nothing to withdraw» -> 목록 밖 칸이 없음
+>          «writes '<표>', not '<표>'» -> 그 규칙의 대상 표를 적음
+> 급할 때   규칙에서 target_columns 줄을 지우고 저장 -> 오늘처럼 (거둔 층은 다음 실행에 다시 섬)
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **설정 와처가 프로세스 상태 파일을 «설정 바뀜»으로 찍지 않는다 (소유자 「supervisor.json 변경되어서 컨피그 워처 돈다고 계속 로그 뜨는데」, 총괄, a9b7a08e0)** — git pull · 런처 재기동
 >
 > ```
