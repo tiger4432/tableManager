@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **맵 교체가 맵마다 쓴 행 · 지운 행 · 지운 키를 말한다 (소유자 「맵 replace 제대로 되는 거 맞는지 · 로그 띄워 지워진 것」, 총괄, 7b434c2b3)** — git pull · 와처 재기동
+>
+> ```
+> 볼 줄    server\watcher.log
+>          diff 모드   «🔄 [Map Diff] Table: '<표>' | TX: … | In Scope: N | Claimed: C | Written: W | Removed: M (die_no=3, … 앞 5 개)»
+>          purge 모드  «🔄 [Map Replace Executed] … Purged Old Rows: M (<키 앞 5 개>) | …»
+>          파일 끝     «[Ingest] <표> FILE <파일>: … · replaced K map(s), deleted M row(s) · STAGES …»
+> 뜻      FILE 줄에 replaced 가 없음 -> 그 파일은 맵 교체를 안 탐(표에 allow_replace_map 이 없으면 조용히 업서트)
+>          Removed 0 -> 이 파일에서 없어진 다이 없음 · 괄호 안 키 = 맵 안의 키(composite_key_source 에서 map_key_columns 를 뺀 칸)
+>          남는 다이의 빈 칸은 아직 옛 값이 남음 — 이 착지는 «말»만, 고침은 다음 착지
+> 찾기     Select-String -Path server\watcher.log -Pattern "Map Diff|Map Replace Executed|replaced \d+ map"
+> 되돌리기  git revert 7b434c2b3 -> 와처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **파일은 한 번 읽는다 — (경로, 표) 체크리스트 (소유자 「(파일, 돌려야 할 테이블) 을 키로 넣고 체크리스트」, 총괄, 4492b8813)** — git pull · 와처 재기동 한 번 · 서버 재기동
 >
 > ```
