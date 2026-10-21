@@ -1742,7 +1742,7 @@ def resolution_ingested_at(entry: Any, source_name: str = None,
 
 
 def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None,
-                           ingested_at_by_source: dict = None):
+                           ingested_at_by_source: dict = None, ranks: dict = None):
     """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다.
 
     🔴 THE ORDER IS EXPLICIT AND TOTAL, AND IT HAS TO BE. This used to be
@@ -1789,10 +1789,15 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
         val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
         return val, manual_priority_source
 
+    # `ranks` {source: declared rank} - a batch's memo over its rows, one table; alone, this call's own
+    ranks = {} if ranks is None else ranks
+
     def _rank(name):
         ts = resolution_ingested_at(sources[name], name, ingested_at_by_source)
+        if name not in ranks:
+            ranks[name] = get_source_priority(name, table_name)
         return (
-            get_source_priority(name, table_name),   # 1. declared ranking
+            ranks[name],                             # 1. declared ranking
             0 if ts is not None else 1,        # 2a. a dated layer beats an undated one
             -ts if ts is not None else 0.0,    # 2b. newest first
             name,                              # 3. total order, always decides
@@ -3832,7 +3837,8 @@ def apply_row_update_internal(
     batch_now: Any = None,
     # [file-layer fold] Per-batch accumulator of `(table, row, column, source)` layers a file
     # write made redundant (`file_layer_fold`). None = do not fold.
-    cell_sources_to_delete: set = None
+    cell_sources_to_delete: set = None,
+    plan: dict = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     # The three graph-sync names left with their branch on 2026-08-31. They stay OUT of
@@ -3852,8 +3858,9 @@ def apply_row_update_internal(
     # filter, which is the only way the prefetch can see a key that does not exist yet
     # in the payload. The call stays here too: it is idempotent (the item already has a
     # key by now, so this returns immediately) and it keeps this function correct on its
-    # own terms rather than on its caller's.
-    assemble_composite_business_key(table_name, update_item)
+    # own terms rather than on its caller's. A batch that already did says so in `plan` (총괄 249b43409).
+    if not (plan or {}).get("keys_assembled"):
+        assemble_composite_business_key(table_name, update_item)
 
     row, is_new = _get_or_create_row(db, table_model, update_item, row_cache, table_name,
                                      probed_identity=probed_identity)
@@ -3891,6 +3898,9 @@ def apply_row_update_internal(
         if col_name in system_cols: continue
         old_values_snapshot[col_name] = getattr(row, col_name, None)
 
+    # `plan` - what a batch worked out once for all its rows; alone, this row works it out itself
+    loadable = plan["loadable"] if plan else loadable_columns(config)
+    unmapped = plan["unmapped"] if plan else {}
     for col_name, val in update_item.updates.items():
         if col_name in system_cols:
             # [Drop report] A discard too, and it was the ONE silent branch nobody had
@@ -3905,7 +3915,7 @@ def apply_row_update_internal(
         # The one answer, so this path and the watcher's cannot drift (S-119). The
         # type dict below answers a DIFFERENT question - what this column IS, not whether
         # it may be written - so it is read where it is used, not used as a filter.
-        if col_name not in loadable_columns(config):
+        if col_name not in loadable:
             # Drop behaviour is deliberately unchanged: rejecting the write would turn a
             # lagging config into an outage. Only the silence is fixed.
             # ⚠️ Despite the name this COUNTS every drop and re-announces at each power
@@ -3919,7 +3929,9 @@ def apply_row_update_internal(
                                      col_name, DROP_UNDECLARED_COLUMN)
             continue
 
-        if unmapped_columns(table_name, (col_name,)):
+        if col_name not in unmapped:
+            unmapped[col_name] = bool(unmapped_columns(table_name, (col_name,)))
+        if unmapped[col_name]:
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
                                      col_name, DROP_UNMAPPED_COLUMN)
@@ -4094,7 +4106,8 @@ def apply_row_update_internal(
         if update_item.source_name == "user":
             manual_pin = None # 수동 값 입력 시 핀 초기화
             
-        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name)
+        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name,
+                                                  ranks=plan["ranks"] if plan else None)
         old_val = old_values_snapshot.get(col_name)
         
         # 6. cell_overwrites 마킹
@@ -5539,6 +5552,9 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # item 2 then fills, and that row is not a phantom.
         rows_with_content = set()
 
+        # what is the same for every row of this batch, once (총괄 249b43409) - the keys were assembled above
+        plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
+                "unmapped": {}, "ranks": {}}
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:
@@ -5558,7 +5574,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                         probed_identity=probed_identity,
                         drop_stats=drop_stats,
                         batch_now=batch_now,
-                        cell_sources_to_delete=cell_sources_to_delete
+                        cell_sources_to_delete=cell_sources_to_delete,
+                        plan=plan,
                     )
                     prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                     unique_results[row.row_id] = (row, is_new or prev_is_new)

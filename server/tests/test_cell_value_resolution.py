@@ -57,7 +57,7 @@ def res_env(db_session):
 # ---------------------------------------------------------------------------
 
 def _legacy_compute_priority_value(sources, manual_priority_source=None, table_name=None,
-                                   ingested_at_by_source=None):
+                                   ingested_at_by_source=None, ranks=None):
     if not sources:
         return None, None
     if manual_priority_source and manual_priority_source in sources:
