@@ -4927,12 +4927,12 @@ def chain_dry_run(payload: dict = Body(...)):
     return result
 
 
-class ChainPauseRequest(BaseModel):
+class PauseRequest(BaseModel):
     reason: str = ""
 
 
 @app.post("/admin/chain/pause", dependencies=[Depends(require_admin_token)])
-def pause_chain(body: ChainPauseRequest, request: Request, db: Session = Depends(get_db)):
+def pause_chain(body: PauseRequest, request: Request, db: Session = Depends(get_db)):
     """The emergency stop (총괄 3840af307 ㄱ): the chain takes no new group, a running one is
     rewound at its next stage and its query cancelled now. Nothing queued is lost. Held
     across restarts until Resume. -> `{paused: {by, at, reason, cancelled_pids}}`."""
@@ -4954,6 +4954,30 @@ def resume_chain():
     """Lift the emergency stop; the chain takes its queue again on its next tick."""
     from chain import control as chain_control
     chain_control.resume()
+    return {"paused": None}
+
+
+@app.post("/admin/watcher/pause", dependencies=[Depends(require_admin_token)])
+def pause_watcher(body: PauseRequest, request: Request):
+    """The watcher's stop (총괄 290e22ac0), the chain's shape: no file is taken out - a file being read is read to its
+    end - and the ones that come stay on the disk. Held across restarts until Resume. -> `{paused: {by, at, reason}}`."""
+    from chain import control as chain_control
+    by = sso.who(request, request.headers.get("X-User") or "operator")
+    return {"paused": chain_control.pause(by, body.reason, "watcher")}
+
+
+@app.get("/admin/watcher/pause", dependencies=[Depends(require_admin_token)])
+def get_watcher_pause():
+    """Whether the watcher's pause is REQUESTED; `/health` says `paused` once the watcher takes it."""
+    from chain import control as chain_control
+    return {"paused": chain_control.paused("watcher")}
+
+
+@app.post("/admin/watcher/resume", dependencies=[Depends(require_admin_token)])
+def resume_watcher():
+    """Lift the watcher's stop; it sweeps what came meanwhile on its next tick."""
+    from chain import control as chain_control
+    chain_control.resume("watcher")
     return {"paused": None}
 
 
@@ -5706,9 +5730,11 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         for filepath, spelled_path, state, reason in query.with_entities(
                 model.filepath, spelled, model.status, model.reason).limit(COUNT_CAP + 1):
             key, label = key_of(filepath, spelled_path, state, reason)
-            entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0})   # its first row's
+            entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0,  # its first row's
+                                            "waiting": 0})
             entry["count"] += 1
             entry["failed"] += state == "FAILED"
+            entry["waiting"] += state == reread.WAITING_STATUS
         said["groups"] = list(groups.values())
     return said
 

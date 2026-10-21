@@ -9,6 +9,9 @@ Paused, the chain gives no slot a new line, a running group is rewound at its ne
 boundary (`alignment_batch_counts.interrupt_at_stages`, on the group's own thread) and not
 charged as a failure, and the query it is running is cancelled by the pause itself. Its
 events stay queued: nothing is lost, and Resume runs them.
+
+The watcher's Pause is the same stop by another name (총괄 290e22ac0): `watcher_control.json`, the same shape; paused,
+the watcher takes no file out and leaves the ones that come on the disk, and Resume sweeps them.
 """
 import json
 import os
@@ -19,21 +22,22 @@ try:
 except ImportError:  # imported without server/ on sys.path
     from .. import paths  # type: ignore
 
-CONTROL_FILENAME = "chain_control.json"
+#: One control file per stop, one shape: {"paused": {by, at, reason} or null}.
+CONTROL_FILENAMES = {"chain": "chain_control.json", "watcher": "watcher_control.json"}
 
 
 class ChainPaused(Exception):
     """Raised at a stage boundary of a running group while the chain is paused."""
 
 
-def control_path():
-    return paths.config_path(CONTROL_FILENAME)
+def control_path(what="chain"):
+    return paths.config_path(CONTROL_FILENAMES[what])
 
 
-def paused():
-    """`{"by", "at", "reason"}` while the chain is paused, else `None`. Read every time."""
+def paused(what="chain"):
+    """`{"by", "at", "reason"}` while `what` is paused, else `None`. Read every time."""
     try:
-        with open(control_path(), encoding="utf-8") as f:
+        with open(control_path(what), encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
         return None
@@ -41,8 +45,8 @@ def paused():
     return state if isinstance(state, dict) else None
 
 
-def _write(data):
-    path = control_path()
+def _write(data, what="chain"):
+    path = control_path(what)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -50,15 +54,15 @@ def _write(data):
     os.replace(tmp, path)
 
 
-def pause(by, reason):
+def pause(by, reason, what="chain"):
     state = {"by": str(by or "operator"), "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
              "reason": str(reason or "")}
-    _write({"paused": state})
+    _write({"paused": state}, what)
     return state
 
 
-def resume():
-    _write({"paused": None})
+def resume(what="chain"):
+    _write({"paused": None}, what)
 
 
 def raise_if_paused():

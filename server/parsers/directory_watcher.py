@@ -94,6 +94,7 @@ import validation
 
 # [P2] 오프셋 체크포인트 재개 + 파일 시그니처 dedup (설계 근거·해시 비용 실측은 모듈 docstring)
 import ingestion.checkpoint
+from ingestion import reread
 from ingestion.checkpoint import CheckpointPlan, compute_file_signature, is_force_reingest, mtime_ns_to_datetime, read_file_stat
 
 # [Drop visibility] Per-file budget for the undeclared-column drop summary. The keys
@@ -1410,10 +1411,10 @@ class HeavyIngestionLane:
 
     def _take(self):
         """The oldest waiting job whose table no worker is on, marked running - or None
-        once the lane is stopped."""
+        once the lane is stopped. While the watcher is paused none is taken; they wait."""
         with self._cond:
             while not self._stop_event.is_set():
-                for i, (key, job) in enumerate(self._waiting):
+                for i, (key, job) in enumerate(() if watcher_paused() else self._waiting):
                     if key not in self._running:
                         del self._waiting[i]
                         self._running.add(key)
@@ -2066,6 +2067,8 @@ class IngestionHandler(FileSystemEventHandler):
     # Agent D v7: Removed on_modified as it causes too many duplicates on Windows
 
     def _handle_event(self, file_path: str):
+        if watcher_paused():
+            return          # left on the disk, untried - the sweep at Resume takes it (총괄 290e22ac0)
         abs_path = os.path.abspath(file_path)
         # [Startup Sweep] 멤버십 검사→add 사이 갭에서 스윕 스레드와 watchdog 스레드가
         # 동시에 통과하던 비원자 check-then-add를 락으로 원자화 (이중 처리 가드).
@@ -2350,8 +2353,10 @@ class IngestionHandler(FileSystemEventHandler):
             cleared = self.settle_already_terminal(
                 [(os.path.abspath(fp), fstat) for _m, fp, fstat in to_process])
             done["cleared"] += len(cleared)
+            held, _judged = _waiting_held(self, [os.path.abspath(fp) for _m, fp, _s in to_process
+                                                 if os.path.abspath(fp) not in cleared], reread.load_owed())
             for _mtime, fp, _fstat in to_process:
-                if os.path.abspath(fp) in cleared:
+                if os.path.abspath(fp) in cleared or os.path.abspath(fp) in held:
                     continue
                 self._handle_event(fp)
                 done["dispatched"] += 1
@@ -4172,6 +4177,33 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
             self.dispatch_path(event.src_path)
 
 
+def watcher_paused():
+    """Whether the watcher's Pause is on (총괄 290e22ac0) - the chain's control file shape, by the name "watcher" (read
+    every call, so it holds across a restart and a Resume reaches a running watcher)."""
+    from chain import control
+
+    return control.paused("watcher") is not None
+
+
+def _waiting_held(handler, paths, owed):
+    """`reread.hold_waiting` for the handler's table on its own session - both sweeps and the tree walk pass here before
+    they read (총괄 290e22ac0). `owed`: `reread.load_owed()`. On an error, while the table owes a sweep every path is
+    held (a mass read is what this stops), else none (read as before). -> (the paths held, whether it judged)."""
+    if not paths:
+        return set(), True
+    table = handler.table_name
+    db = SessionLocal()
+    try:
+        return reread.hold_waiting(db, table, paths, owed.get(table)), True
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"[{table}] the waiting files were not judged ({len(paths)} file(s)) - "
+                       f"{'none read this time' if owed.get(table) else 'read as before'}: {told(e)}", exc_info=e)
+        return (set(paths) if owed.get(table) else set()), False
+    finally:
+        db.close()
+
+
 def _tried_already(memo, key, signature, handler, abs_path):
     """The one rule both sweeps skip by (총괄 10-07 ③): a file tried at this (mtime, size) is
     not tried again - unless that try waited past the lock timeout, which was not the file."""
@@ -4225,6 +4257,9 @@ class WorkspaceWatcher:
         self.external_targets = {}
         self._external_sweep_lock = threading.Lock()
         self._external_sweep_attempted = {}
+        self._readings_lock = threading.Lock()
+        self._reading_stamps = None                 # read at the first notice_changed_readings
+        self._owed_unjudged = False                 # a sweep's waiting judgement failed - its table keeps owing
         self._external_availability = {}
         self._external_unmatched_said = set()       # source ids told «none matched» while that lasts
         self._stop_event = threading.Event()
@@ -4463,6 +4498,59 @@ class WorkspaceWatcher:
                 self._ensure_periodic_sweep_running()
             return added
 
+    def notice_changed_readings(self):
+        """🔴 [총괄 10-20 ab951f09b · 290e22ac0] Each watched table's reading (`reread.reading_of`: its table_config
+        entry, its external sources, its plugins) against the one kept - the one place it is compared. A table whose
+        reading changed, or that is new once anything was kept, owes its next full sweep (`reread.owe`): the files that
+        sweep finds stand WAITING, and its failed files stay failed, said in one line. A box that never kept a reading
+        only keeps the first. A table_config that reads as nothing (absent, mid-write) is no reading; an
+        ingestion_settings.json there that reads as nothing (mid-write) keeps each table's external part as kept.
+        -> the tables that owe from now."""
+        from ingestion import settings as ingestion_settings
+
+        with self._readings_lock:
+            handlers = list(self.handlers_by_raw_path.values())
+            table_config = load_global_table_config() if handlers else {}
+            if not table_config:
+                return []
+            if self._reading_stamps is None:
+                self._reading_stamps = reread.load_reading_stamps()
+            kept = self._reading_stamps
+            declared = ingestion_settings.read_ingestion_settings()
+            unread = not declared and os.path.exists(ingestion_settings.INGESTION_SETTINGS_PATH)
+            sources = declared.get("external_sources") or []
+            now = {}
+            for handler in handlers:
+                table = handler._resolve_table_name(table_config)
+                if table:
+                    now[table] = reread.reading_of(table, table_config.get(table), sources, handler.scripts_path)
+                    if unread and table in kept:
+                        now[table]["external source"] = kept[table].get("external source")
+            changed = {table: reading for table, reading in now.items() if kept.get(table) != reading}
+            if not changed:
+                return []
+            owing = {table: reread.changed_parts(kept.get(table), reading)
+                     for table, reading in changed.items()} if kept else {}
+            if owing:
+                reread.owe(owing, datetime.now().isoformat(sep=" ", timespec="seconds"))
+                db = SessionLocal()
+                try:
+                    for table, why in sorted(owing.items()):
+                        reread.say_failed_after_a_changed_reading(db, table, why)
+                finally:
+                    db.close()
+            self._reading_stamps = {**kept, **changed}
+            reread.keep_reading_stamps(self._reading_stamps)
+            return sorted(owing)
+
+    def _notice_and_owed(self):
+        """A sweep's first step: the readings heard, then what is owed (`reread.load_owed`)."""
+        try:
+            self.notice_changed_readings()
+        except Exception as e:
+            logger.warning(f"[Watcher] the tables' readings were not compared before this sweep: {told(e)}", exc_info=e)
+        return reread.load_owed()
+
     def sweep_existing_files(self, raw_paths=None) -> int:
         """[Startup Sweep] 감시 대상 raws/ '직속' 기존 파일을 mtime 오름차순으로,
         기존 watchdog 이벤트 처리 경로(IngestionHandler._handle_event)와 동일하게 처리한다.
@@ -4484,7 +4572,9 @@ class WorkspaceWatcher:
 
         raw_paths: None이면 등록된 전체 raws/, 아니면 해당 절대경로 목록만.
         반환: `_handle_event`로 디스패치한 파일 수 (tier 1이 여기서 종결한 파일은 제외 —
-        그 수는 스윕 로그 한 줄에 함께 남는다)."""
+        그 수는 스윕 로그 한 줄에 함께 남는다).
+        Before the dispatch every file passes `_waiting_held` (총괄 290e22ac0); a Pause stops it, the rest untried."""
+        owed = self._notice_and_owed()
         with self._sweep_lock:
             if raw_paths is None:
                 targets = list(self.handlers_by_raw_path.items())
@@ -4555,23 +4645,33 @@ class WorkspaceWatcher:
                         f"/{os.path.basename(handler.workspace_path)} "
                         f"({len(entries)} file(s)) — dispatching them individually: {told(e)}"
                     )
+            held = self._held_of(by_handler, cleared, owed)
 
             processed = 0
             for _mtime, fp, abs_fp, handler, sig, _fstat in candidates:
-                if self._stop_event.is_set():
+                if self._stop_event.is_set() or watcher_paused():
                     break
                 self._sweep_attempted[fp] = sig
-                if abs_fp in cleared:
+                if abs_fp in cleared or abs_fp in held:
                     continue
                 handler._handle_event(fp)
                 processed += 1
-            if processed or cleared:
+            if processed or cleared or held:
                 logger.info(
                     f"🧹 Sweep: {len(candidates)} candidate file(s) in raws/ — "
-                    f"{len(cleared)} already concluded (tier-1, batched), "
+                    f"{len(cleared)} already concluded (tier-1, batched), {len(held)} waiting, "
                     f"{processed} dispatched."
                 )
             return processed
+
+    def _held_of(self, by_handler, cleared, owed):
+        """Each handler's files not cleared, through `_waiting_held` -> the paths held."""
+        held = set()
+        for handler, entries in by_handler.items():
+            said, judged = _waiting_held(handler, [path for path, _stat in entries if path not in cleared], owed)
+            held |= said
+            self._owed_unjudged = self._owed_unjudged or not judged
+        return held
 
     def sweep_external_sources(self, source_ids=None) -> int:
         """Recursively poll configured read-only sources and dispatch changed files.
@@ -4579,7 +4679,9 @@ class WorkspaceWatcher:
         The cache key includes the binding id, not only the absolute filename:
         one ``voids.json`` deliberately feeds both ``inspection_run`` and
         ``void_obs`` and each table must reach its own ledger verdict.
+        Before the dispatch every file passes `_waiting_held` (총괄 290e22ac0); a Pause stops it, the rest untried.
         """
+        owed = self._notice_and_owed()
         with self._external_sweep_lock, one_sweep():
             if source_ids is None:
                 targets = list(self.external_targets.items())
@@ -4675,6 +4777,7 @@ class WorkspaceWatcher:
                     logger.warning(
                         f"External sweep tier-1 lookup failed for {handler.table_name} "
                         f"({len(entries)} file(s)); dispatching individually: {told(e)}")
+            held = self._held_of(by_handler, {path for _handler, path in cleared}, owed)
 
             # Sources in turn, each in its mtime order (소유자 10-20: one share's thousands of old files held every
             # source behind it for minutes). A line per source every SWEEP_PROGRESS_SECONDS while it runs.
@@ -4686,7 +4789,7 @@ class WorkspaceWatcher:
             said, said_at = dict(done), time.monotonic()
             processed = 0
             for turn in itertools.zip_longest(*queues.values()):
-                if self._stop_event.is_set():
+                if self._stop_event.is_set() or watcher_paused():
                     break
                 for item in turn:
                     if item is None:
@@ -4694,7 +4797,7 @@ class WorkspaceWatcher:
                     _mtime, source_id, abs_path, handler, signature, _file_stat = item
                     self._external_sweep_attempted[(source_id, abs_path)] = signature
                     done[source_id] += 1
-                    if (handler, abs_path) not in cleared:
+                    if (handler, abs_path) not in cleared and abs_path not in held:
                         handler._handle_event(abs_path)
                         processed += 1
                     if time.monotonic() - said_at >= SWEEP_PROGRESS_SECONDS:
@@ -4704,20 +4807,27 @@ class WorkspaceWatcher:
             if candidates or cleared:
                 logger.info(
                     f"External sweep: {len(candidates)} candidate binding(s) - "
-                    f"{len(cleared)} already concluded (tier-1, batched), "
+                    f"{len(cleared)} already concluded (tier-1, batched), {len(held)} waiting, "
                     f"{processed} dispatched; source files left untouched.")
             return processed
 
     def _sweep_safely(self, raw_paths=None, reason=""):
+        """Both sweeps. A full one (`raw_paths` None) that judged every file settles what was owed when it began
+        (`reread.settle_owed`) - its tables' files found then stand WAITING, and later ones are read."""
+        seen, self._owed_unjudged, swept = self._notice_and_owed(), False, True
         try:
             self.sweep_existing_files(raw_paths)
         except Exception as e:
+            swept = False
             logger.error(f"Managed workspace sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
         if raw_paths is None:
             try:
                 self.sweep_external_sources()
             except Exception as e:
+                swept = False
                 logger.error(f"External source sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
+            if swept and seen and not self._owed_unjudged and not self._stop_event.is_set():
+                reread.settle_owed(seen)
 
     def sweep_existing_files_async(self, raw_paths=None, reason=""):
         """스윕을 데몬 스레드로 실행 (기동·reload 경로를 파일 처리가 블로킹하지 않도록)."""

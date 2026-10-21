@@ -17,7 +17,7 @@ logger = get_process_logger("Watcher", "watcher.log")
 # Now we can import database, models, and directory_watcher
 from database.database import SessionLocal, engine
 from database import models
-from directory_watcher import WorkspaceWatcher
+from directory_watcher import WorkspaceWatcher, watcher_paused
 from error_said import told
 from ingestion.activity import path_of
 
@@ -312,45 +312,10 @@ def retry_one(db, log):
         trigger_ws_file_processed(table_name, log.filepath or log.filename, "FAILED", str(e))
 
 
-def hear_changed_readings(db, stamps):
-    """🔴 [총괄 10-20 ab951f09b, 소유자 「ㅇㅇ」] Each watched table's reading (`reread.reading_of`) against the one kept:
-    changed -> its failed files handed again through the retry door; a table seen the first time is only kept. A
-    table_config that reads as nothing (absent, or mid-write) is no reading - the tick passes. An
-    ingestion_settings.json there that reads as nothing (mid-write, 총괄 10-20) keeps each table's external part as
-    kept - neither compared nor written over; its table_config and plugins are compared as ever. -> the stamps."""
-    from directory_watcher import load_global_table_config
-    from ingestion import reread, settings as ingestion_settings
-
-    handlers = list(workspace_watcher.handlers_by_raw_path.values()) if workspace_watcher is not None else []
-    table_config = load_global_table_config() if handlers else {}
-    if not table_config:
-        return stamps
-    declared = ingestion_settings.read_ingestion_settings()
-    unread = not declared and os.path.exists(ingestion_settings.INGESTION_SETTINGS_PATH)
-    sources = declared.get("external_sources") or []
-    now = {}
-    for handler in handlers:
-        table = handler._resolve_table_name(table_config)
-        if table:
-            now[table] = reread.reading_of(table, table_config.get(table), sources, handler.scripts_path)
-            if unread and table in stamps:
-                now[table]["external source"] = stamps[table].get("external source")
-    changed = {table: reading for table, reading in now.items() if stamps.get(table) != reading}
-    for table, reading in changed.items():
-        if table in stamps:
-            reread.hand_on_a_changed_reading(db, table, stamps[table], reading)
-    if changed:
-        stamps = {**stamps, **changed}
-        reread.keep_reading_stamps(stamps)
-    return stamps
-
-
 def poll_pending_retries():
     logger.info("Background retry poller thread started.")
     last_reload_event_id = 0
-    from ingestion import reread
-
-    reading_stamps = reread.load_reading_stamps()
+    was_paused = False
 
     while True:
         # [B1/B2] Liveness beat. This loop does real work every ~3 s (a database
@@ -364,7 +329,9 @@ def poll_pending_retries():
         # ingestion path opens work claims (directory_watcher.HEARTBEAT_NAME),
         # and this beat carries their stall age. The poller is now the reporter
         # of a wedged ingestion rather than a mask over it.
-        heartbeat.beat("watcher")
+        # Paused (총괄 290e22ac0): no retry is taken, the beat says so; Resume sweeps what came meanwhile
+        held = watcher_paused()
+        heartbeat.beat("watcher", state="paused" if held else None)
         db = SessionLocal()
         try:
             # The Reload button's SYSTEM_RELOAD row and the index line's join-keys row - a save writes none; this
@@ -400,18 +367,25 @@ def poll_pending_retries():
                     except Exception as e:
                         logger.error(f"[Reload] Workspace sync after SYSTEM_RELOAD failed: {told(e)}")
                 
-            # a table whose reading changed hands its failed files here, so the query below reads them this cycle
-            try:
-                reading_stamps = hear_changed_readings(db, reading_stamps)
-            except Exception as reading_error:                         # noqa: BLE001 - the retries below go on
-                db.rollback()
-                logger.warning("[Watcher] the tables' readings were not compared this time: %s", told(reading_error))
+            # a table whose reading changed owes a sweep - one now, which stands the files there WAITING
+            if workspace_watcher is not None:
+                try:
+                    if workspace_watcher.notice_changed_readings():
+                        workspace_watcher.sweep_existing_files_async(reason="reading-changed")
+                except Exception as reading_error:                     # noqa: BLE001 - the retries below go on
+                    db.rollback()
+                    logger.warning("[Watcher] the tables' readings were not compared this time: %s",
+                                   told(reading_error))
+                if was_paused and not held:
+                    logger.info("[Watcher] resumed - sweeping what came while paused")
+                    workspace_watcher.sweep_existing_files_async(reason="resume")
+            was_paused = held
 
             # Reclaim first, so anything given back is visible to the query below
             # in this same cycle rather than waiting a whole extra one.
             reclaim_stranded_claims(db)
 
-            pending_logs = pending_retries(db)
+            pending_logs = [] if held else pending_retries(db)
 
             for log in pending_logs:
                 logger.info(f"Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")

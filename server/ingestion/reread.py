@@ -39,13 +39,17 @@ STOOD_BY_REREAD = "STOOD"
 OUTSIDE_SOURCES = "outside the table's source folders"
 NOT_MATCHED = "not matched by the source's glob or filename"
 BEING_READ = "being read now"
+#: A file a sweep found right after its table's reading changed (a setting, a script, an external source coming up) - not
+#: read until someone presses Read on the file page, the retry door with statuses=WAITING (소유자 10-21 운영 마비 「막 도는
+#: 거 막아」 · 「고친 것만 선택적 읽기」, 총괄 290e22ac0). New files after that sweep are read as ever.
+WAITING_STATUS = "WAITING"
 
 
 #: The table_config cells that do not change how a table's files are read (lead 10-20 ab951f09b): the schema screen,
 #: search and the layer ranking. Every other cell - today's and tomorrow's - is part of the reading.
 NOT_READING = ("display_columns", "search_columns", "source_priority")
-#: Each table's last reading, kept across the watcher's restarts beside the scheduler's status file - so a plugin fixed
-#: while the watcher was down still hands its table's failed files at the start (lead 10-20).
+#: Each table's last reading, kept across the watcher's restarts beside the scheduler's status file - so a reading
+#: changed while the watcher was down is still heard at the start (lead 10-20).
 READING_STAMPS_FILENAME = "watcher_reading_stamps.json"
 
 
@@ -208,51 +212,116 @@ def reading_of(table, entry, sources, scripts_dir):
     return parts
 
 
-def hand_on_a_changed_reading(db, table, before, now):
-    """The table's failed files handed to the watcher again (`mark_for_reread`, the retry door's mark) when its reading
-    changed - up to `max_files()`; past it, one line and nothing handed. -> the line said, or None."""
-    changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
-    if not changed:
+def changed_parts(before, now):
+    """What of a table's reading changed, one word list - "new" for a table not kept before."""
+    if not before:
+        return "new"
+    return ", ".join(sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part)))
+
+
+def say_failed_after_a_changed_reading(db, table, why):
+    """The table's failed files are not handed again by themselves (총괄 290e22ac0 - they were, ab951f09b, and a script
+    change read a whole share): one line with their count, Retry failed on the file page picks them. -> the line, or None."""
+    failed = logs_query(db, RETRY_STATUSES, table).count()
+    if not failed:
         return None
-    logs = [log for log, _rel in select_logs(db, RETRY_STATUSES, table=table)]
-    if not logs:
-        return None
-    what, limit = ", ".join(changed), max_files()
-    if len(logs) > limit:
-        line = ("[Watcher] %s: its reading changed (%s) - %d failed files wait - Retry failed by folder (over %s %d)"
-                % (table, what, len(logs), REREAD_MAX_FILES_KEY, limit))
-        logger.warning(line)
-        return line
-    mark_for_reread(db, logs)
-    line = "[Watcher] %s: its reading changed (%s) - %d failed file(s) handed again" % (table, what, len(logs))
-    logger.info(line)
+    line = "[Watcher] %s: its reading changed (%s) - %d failed file(s) wait - Retry failed on the file page" % (
+        table, why, failed)
+    logger.warning(line)
     return line
 
 
-def load_reading_stamps():
-    """{table: reading} as last kept, {} when there is none or it cannot be read."""
+#: The tables whose next full sweep stands its files WAITING: {table: {"at", "why"}} - kept before the stamps, so a stop
+#: between the two hears the change again (총괄 290e22ac0).
+WAITING_OWED_FILENAME = "watcher_waiting_owed.json"
+_OWED_LOCK = threading.Lock()
+
+
+def _load_kept(name):
+    """A dict kept in the config directory, {} when there is none or it cannot be read."""
     import json
 
     import paths
 
     try:
-        with open(paths.config_path(READING_STAMPS_FILENAME), encoding="utf-8") as handle:
+        with open(paths.config_path(name), encoding="utf-8") as handle:
             kept = json.load(handle)
         return kept if isinstance(kept, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
-def keep_reading_stamps(stamps):
-    """Write {table: reading} whole (a temporary file, then a replace)."""
+def _keep(name, value):
+    """Write a dict whole (a temporary file, then a replace)."""
     import json
 
     import paths
 
-    path = paths.config_path(READING_STAMPS_FILENAME)
+    path = paths.config_path(name)
     with open(path + ".tmp", "w", encoding="utf-8") as handle:
-        json.dump(stamps, handle, ensure_ascii=False, sort_keys=True)
+        json.dump(value, handle, ensure_ascii=False, sort_keys=True)
     os.replace(path + ".tmp", path)
+
+
+def load_reading_stamps():
+    """{table: reading} as last kept."""
+    return _load_kept(READING_STAMPS_FILENAME)
+
+
+def keep_reading_stamps(stamps):
+    _keep(READING_STAMPS_FILENAME, stamps)
+
+
+def load_owed():
+    """{table: {"at", "why"}} - the tables whose next full sweep stands its files WAITING."""
+    return _load_kept(WAITING_OWED_FILENAME)
+
+
+def owe(tables, at):
+    """`tables` ({table: why}) owe a full sweep from `at` on - a table already owing keeps its first `at`."""
+    with _OWED_LOCK:
+        owed = load_owed()
+        for table, why in tables.items():
+            owed[table] = {"at": owed.get(table, {}).get("at") or at, "why": why}
+        _keep(WAITING_OWED_FILENAME, owed)
+
+
+def settle_owed(seen):
+    """A full sweep stood its tables' files: each table it saw owing (`seen`, as `load_owed` gave it) owes no more -
+    one that owed again since keeps owing."""
+    with _OWED_LOCK:
+        owed = load_owed()
+        left = {table: entry for table, entry in owed.items() if seen.get(table) != entry}
+        if left != owed:
+            _keep(WAITING_OWED_FILENAME, left)
+
+
+def hold_waiting(db, table, paths, owed=None):
+    """The one judgement every sweep makes before it reads (총괄 290e22ac0): of `paths` (the files of `table` it would
+    read), the ones it must not - each whose newest row is WAITING, and while `table` owes a sweep (`owed`, its reading
+    just changed) each it would have read, stood WAITING with the change in its reason. A file being read (PENDING ·
+    PENDING_RETRY) is left to that read. -> the paths held."""
+    from database import models
+
+    rows = _newest_rows_of(db, table, paths)
+    held, stood = set(), 0
+    for path in paths:
+        log = rows.get(os.path.normcase(os.path.abspath(path)))
+        state = log.status if log is not None else None
+        if state == WAITING_STATUS:
+            held.add(path)
+        elif owed and state not in ("PENDING", REREAD_STATUS):
+            db.add(models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table,
+                                           status=WAITING_STATUS, retry_count=0,
+                                           reason="its reading changed (%s) at %s - Read to read it"
+                                                  % (owed.get("why"), owed.get("at"))))
+            held.add(path)
+            stood += 1
+    if stood:
+        db.commit()
+        logger.warning("[Watcher] %s: %d file(s) found after its reading changed (%s) wait - Read on the file page",
+                       table, stood, owed.get("why"))
+    return held
 
 
 class RereadRefused(ValueError):

@@ -1,0 +1,10 @@
+/* The pause line and its controls (lead 668fa004c) - every instance, the chain's and the watcher's (lead 290e22ac0). */
+.chain-pause { display: flex; flex-direction: column; gap: var(--space-1); }
+.chain-pause-line { font-weight: 600; font-variant-numeric: tabular-nums; }
+.chain-pause[data-tone="ok"] .chain-pause-line { color: var(--success); }
+.chain-pause[data-tone="warn"] .chain-pause-line { color: var(--warning); }
+.chain-pause-worker, .chain-pause-ask { font-size: var(--fs-label); color: var(--text-dim); }
+.chain-pause-said { font-size: var(--fs-label); color: var(--danger); }
+.chain-pause-worker:empty, .chain-pause-said:empty { display: none; }
+.chain-pause-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
+.chain-pause-controls .chain-pause-reason { width: 16em; max-width: 100%; }

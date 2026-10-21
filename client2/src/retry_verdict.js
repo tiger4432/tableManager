@@ -47,6 +47,8 @@ export function retryVerdict(status) {
   if (spelled === 'PENDING_RETRY') return { state: 'queued', tone: 'warn', settled: false };
   // Skipped is ended, and neither loaded nor failed (lead 69aad666e) — amber, like the badge.
   if (spelled === 'SKIPPED') return { state: 'skipped', tone: 'warn', settled: true };
+  // Found when its table's reading changed, read when someone presses Read (lead 290e22ac0).
+  if (spelled === 'WAITING') return { state: 'waiting', tone: 'warn', settled: false };
   return { state: 'unknown', tone: 'warn', settled: false };
 }
 
@@ -113,9 +115,12 @@ export const wentIn = (status) => ['done', 'skipped'].includes(retryVerdict(stat
  */
 export function fileRetryAsk(log, includeStatuses) {
   const reread = wentIn(log.status);
+  const waiting = retryVerdict(log.status).state === 'waiting';
+  const statuses = reread ? includeStatuses : waiting ? 'WAITING' : '';
   return {
-    confirm: reread ? `Read ${log.filename} again with today's parser?` : `Retry file ingestion for log #${log.id}?`,
-    query: `log_id=${encodeURIComponent(log.id)}${reread ? `&statuses=${encodeURIComponent(includeStatuses)}` : ''}`,
+    confirm: reread ? `Read ${log.filename} again with today's parser?`
+      : waiting ? `Read ${log.filename}?` : `Retry file ingestion for log #${log.id}?`,
+    query: `log_id=${encodeURIComponent(log.id)}${statuses ? `&statuses=${encodeURIComponent(statuses)}` : ''}`,
   };
 }
 

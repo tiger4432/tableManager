@@ -2,6 +2,7 @@
 .fi-page { min-height: 100%; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); background: var(--bg-inset); }
 .fi-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--bg-surface); border: 1px solid var(--border); }
 .fi-head h1 { font-family: var(--font-head); font-weight: 600; font-size: var(--fs-h3); line-height: 1.12; letter-spacing: -0.015em; }
+.fi-pause { margin-left: auto; }
 .fi-said { color: var(--danger); font-size: var(--fs-label); }
 .fi-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-start; }
 .fi-col-tables { flex: 1 1 260px; max-width: 300px; min-width: 0; }
@@ -76,6 +77,8 @@
 .fi-btn { height: auto; padding: var(--space-1) var(--space-3); font: inherit; font-size: var(--fs-h5); font-weight: 400; border: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text); cursor: pointer; line-height: normal; }
 .fi-btn--danger { border-color: var(--danger); color: var(--danger); }
 .fi-group__retry { margin-left: auto; }
+.fi-group__waiting { margin-left: auto; }
+.fi-group__retry ~ .fi-group__waiting { margin-left: 0; }
 .fi-btn--link { display: inline-block; text-decoration: none; }
 .fi-btn--primary { padding: var(--space-2) var(--space-4); border-color: var(--accent); background: var(--accent); color: var(--bg-surface); }
 .fi-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); font-size: var(--fs-h5); margin: 0; }

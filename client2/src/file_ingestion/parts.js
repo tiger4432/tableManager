@@ -64,6 +64,10 @@ export class TableListPart {
       const ok = el('span', 'fi-num', WORDS.ok(t.ok)); ok.dataset.tone = 'ok';
       const failed = el('span', 'fi-num', WORDS.failed(t.failed)); failed.dataset.tone = 'danger';
       counts.append(ok, failed, el('span', 'fi-meta fi-num', WORDS.running(t.running)));
+      if (t.waiting) {
+        const waiting = el('span', 'fi-num', WORDS.waiting(t.waiting)); waiting.dataset.tone = 'warn';
+        counts.append(waiting);
+      }
       b.append(top, counts, el('span', 'fi-meta', WORDS.last(t.last)));
       b.addEventListener('click', () => this.deps.onPick(t.name));
       return b;
@@ -180,6 +184,14 @@ export class FilesPart {
           retry.type = 'button';
           retry.addEventListener('click', () => this.deps.onRetryFolder(g));
           line.append(retry);
+        }
+        if (g.folder && g.waiting > 0) {
+          // files found when the table's reading changed - read only when pressed (lead 290e22ac0)
+          const waiting = el('span', 'fi-num fi-group__waiting', WORDS.waiting(g.waiting)); waiting.dataset.tone = 'warn';
+          const read = el('button', 'fi-btn fi-group__read', WORDS.read);
+          read.type = 'button';
+          read.addEventListener('click', () => this.deps.onRetryFolder(g, 'WAITING'));
+          line.append(waiting, read);
         }
         td.append(line);
         tr.append(td);

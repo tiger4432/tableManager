@@ -17,6 +17,7 @@ export const WORDS = Object.freeze({
   readBy: 'Read by', source: 'Source', readAt: 'Read at', result: 'Result', whyFailed: 'Why it failed',
   retryFile: 'Retry this file', readAgain: 'Read again', showRows: 'Show its rows in the grid',
   retryFailed: (n) => `Retry ${count(n)} failed`, retryAsk: (n, folder) => `Retry ${count(n)} failed file${n === 1 ? '' : 's'} under ${folder}?`, showMore: 'Show more', noReason: '(No reason)',
+  waiting: (n) => `${count(n)} waiting`, read: 'Read', readAsk: (n, folder) => `Read ${count(n)} waiting file${n === 1 ? '' : 's'} under ${folder}?`,
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
   heads: ['File · folder', 'Status', 'Result', 'Read at', 'Took'],
   last: (at) => `last ${at}`, ok: (n) => `${n} ok`, failed: (n) => `${n} failed`, running: (n) => `${n} running`,
@@ -121,7 +122,8 @@ export function groupFiles(rows, group, groups = [], base = '') {
       const c = counted.get(key) || {};
       const label = isBlank(c.label) ? key : String(c.label);
       out.set(key, { key, head: true, label: label || (group === 'reason' ? WORDS.noReason : ABSENT), files: [],
-        count: numberOr(c.count), failed: numberOr(c.failed) || 0, folder: group === 'folder' && key !== '' ? groupFolder(base, label) : null });
+        count: numberOr(c.count), failed: numberOr(c.failed) || 0, waiting: numberOr(c.waiting) || 0,
+        folder: group === 'folder' && key !== '' ? groupFolder(base, label) : null });
     }
     out.get(key).files.push(row);
   }
@@ -134,6 +136,7 @@ export function tableLines(tables, active = []) {
   for (const a of active || []) running.set(a.table_name, (running.get(a.table_name) || 0) + 1);
   return (tables || []).map((t) => ({
     name: t.table_name, total: count(t.total), ok: count((t.by_status || {}).SUCCESS), failed: count((t.by_status || {}).FAILED),
+    waiting: numberOr((t.by_status || {}).WAITING) || 0,
     running: count(running.get(t.table_name)), last: t.last_at ? localShort(t.last_at) : ABSENT,
   }));
 }

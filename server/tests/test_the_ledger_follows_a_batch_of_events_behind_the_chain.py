@@ -184,7 +184,7 @@ def test_the_pause_holds_the_follow_up_and_resuming_lets_it_go(world, monkeypatc
     import ledger.setup
 
     monkeypatch.setattr(ledger.setup, "load_setup", lambda *a, **k: world["setup"])
-    monkeypatch.setattr(chain_control, "control_path", lambda: str(tmp_path / "chain_control.json"))
+    monkeypatch.setattr(chain_control, "control_path", lambda what="chain": str(tmp_path / "chain_control.json"))
     monkeypatch.setattr(ledger_worker, "FOLLOWUP_IDLE_SECONDS", 0.05)
     hw.push(world, [_row(1, 10)])
     hw.run_chain(world)
