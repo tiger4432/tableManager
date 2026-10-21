@@ -16,7 +16,7 @@
 >          not swept - the run cancelled / failed · N page(s) failed to stage -> 그 실행은 안 거둠. 다시 돌리면 됨
 >          줄이 안 나옴 -> 그 규칙에 두 칸이 없거나 고르기 칸을 줬거나, 실행의 사건이 아직 큐에 있음(큐가 비면 5 초 안에 나옴)
 > 급할 때   끄는 칸 없음 — 되돌리기로
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동 (replay_named_maps 표는 남아도 무해)
+> 되돌리기  git revert aa215b1b8 -> 런처 재기동 (replay_named_maps 표는 남아도 무해)
 > ```
 >
 > ---
