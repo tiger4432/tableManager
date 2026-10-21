@@ -1774,10 +1774,10 @@ const FLOORS = new Map([
   // else's early return goes silent precisely where that guard bites, which is how a queue that
   // had a hook still stopped being redrawn.
   ['broadcast_hook_seat_harness.mjs', 7],
-  // `history_tabs_harness` holds ONE seat for the active-tab mark: five sites used to list their
-  // siblings by hand, and a fourth tab that joined the row but not those lists lit two tabs at
-  // once. Its core assertion adds a tab WITHOUT touching any list.
-  ['history_tabs_harness.mjs', 9],
+  // `history_tabs_harness` holds ONE seat for the side panel's tab: the lit tab, the shown pane and the
+  // tab state change only through pickHistoryTab (a table switch lit Global over the Queue pane, owner
+  // 10-21). Every tab to every tab, and a scan that nothing outside the seat sets the three.
+  ['history_tabs_harness.mjs', 24],
   // New 2026-09-24 (owner: 「당장 고쳐 1순위」). A value the skeleton's node cannot hold -- a list
   // at a leaf, a string where it says list -- is SHOWN, never drawn as an empty box, and gets no
   // control whose first keystroke would overwrite it. P3 is the Lead's census run through the

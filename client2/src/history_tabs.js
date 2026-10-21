@@ -1,4 +1,5 @@
 import { elements } from './dom.js';
+import { state } from './state.js';
 
 // 사이드바 탭 «한 줄»에서 활성 표시를 정하는 좌석. 이것 하나뿐이다.
 //
@@ -10,11 +11,8 @@ import { elements } from './dom.js';
 //    하나 더 넣으면 목록에 «자동으로» 든다. 손으로 적은 목록은 다음 탭에서 또 낡는다.
 //    (같은 저장소의 선례: enrichment_reference_view.js 의 탭 띠도 children 으로 접는다)
 
-/**
- * 이 버튼을 켜고, 같은 줄의 나머지를 «전부» 끈다.
- * @param {object|null|undefined} button 탭 버튼 (없으면 아무것도 안 한다)
- */
-export function activateHistoryTab(button) {
+/** 이 버튼을 켜고, 같은 줄의 나머지를 «전부» 끈다. 없으면 아무것도 안 한다. */
+function activateHistoryTab(button) {
   if (!button) return;
   const bar = button.parentNode;
   const siblings = bar && bar.children ? bar.children : [button];
@@ -23,20 +21,25 @@ export function activateHistoryTab(button) {
   }
 }
 
+// 🔴 탭마다 «켤 버튼 · 보일 창» 한 줄 (총괄 10-21, 소유자 「탭은 글로벌인데 가끔 대기열 따로 있네」): 탭 표시 ·
+//    창 보이기 · state.activeHistoryTab 이 셋으로 따로 불려서, 표 바꾸기가 탭만 Global 로 켜고 대기열 창을 남겼다.
+//    셋은 pickHistoryTab 하나로만 바뀐다. 창이 하나 더 생기면 고칠 자리는 이 표뿐이다.
+const TABS = {
+  global: [() => elements.tabGlobalBtn, () => elements.timelineContainer],
+  cell: [() => elements.tabCellBtn, () => elements.timelineContainer],
+  row: [() => elements.tabRowBtn, () => elements.timelineContainer],
+  reference: [() => elements.tabReferenceBtn, () => elements.referenceView],
+  queue: [() => elements.tabQueueBtn, () => elements.queueView],
+};
 
-// 🔴 창 «전환»도 같은 사고를 한 층 아래서 되풀이한다 — `hideReferenceView` 는 창을 «둘»만
-//    알고 있었고, 셋째가 생기면 그 둘만 아는 자리가 조용히 틀린다(앞 창이 안 닫힌다).
-//    그래서 창 목록도 «여기 하나»에 적는다. 넷째가 생기면 고칠 자리는 이 줄뿐이다.
-const PANES = [
-  () => elements.timelineContainer,
-  () => elements.referenceView,
-  () => elements.queueView,
-];
-
-/** 이 창을 보이고 나머지 형제를 «전부» 감춘다. @param {object|null} pane */
-export function showHistoryPane(pane) {
-  for (const get of PANES) {
+/** 이 탭을 고른다 — 그 버튼을 켜고, 그 창만 보이고, state 에 적는다. @param {keyof TABS} name */
+export function pickHistoryTab(name) {
+  const [button, pane] = TABS[name];
+  state.activeHistoryTab = name;
+  activateHistoryTab(button());
+  const shown = pane();
+  for (const [, get] of Object.values(TABS)) {
     const el = get();
-    if (el && el.style) el.style.display = (el === pane) ? '' : 'none';
+    if (el && el.style) el.style.display = (el === shown) ? '' : 'none';
   }
 }

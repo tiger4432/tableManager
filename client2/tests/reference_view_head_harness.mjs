@@ -70,7 +70,7 @@ function element(tag) {
 const host = element('div');
 // 🔴 EVERY id GETS A NODE, and the same node twice. `elements.*` is a GETTER over
 //    `getElementById`, so the host is handed over the way the browser hands it over --
-//    but `activateReferenceTab` also reaches for the timeline containers and tab buttons,
+//    but `pickHistoryTab('reference')` also reaches for the timeline containers and tab buttons,
 //    and a `null` there throws BEFORE the request is built (measured: C-73 section died on
 //    `elements.timelineContainer.style`). Nothing in the subject is patched.
 const byId = new Map([['reference-view-content', host]]);
@@ -683,10 +683,9 @@ const RULE_MUTANTS = [
   { id: 'M18', what: 'a failed re-read swaps the pane under the highlighted tab',
     catches: ['R8 a pick that fails again', 'R9 ...and under another tab'],
     mutate: (text) => swap(text,
-      "  } else if (elements.referenceView?.style.display !== 'none') hideReferenceView();",
-      '  } else hideReferenceView();')
-      .split("  else if (state.activeHistoryTab === 'reference') {\n    if (!rulesAnswer) showReferenceView();")
-      .join("  else if (state.activeHistoryTab === 'reference') {\n    if (!rulesAnswer) hideReferenceView();") },
+      "    if (!rulesAnswer) showReferenceView();              // still unknown: its line again\n"
+      + "    else pickHistoryTab('global');                      // known, and no rule here: Global\n  }\n}",
+      "    if (!rulesAnswer) pickHistoryTab('global');\n    else pickHistoryTab('global');\n  } else pickHistoryTab('global');\n}") },
   { id: 'M16', what: 'an answer is asked again on every sync', catches: 'R5 once answered',
     mutate: (text) => swap(text, '  if (rulesAnswer) return Promise.resolve(rulesAnswer);\n', '') },
   // 🔴 The second judge, put back: the screen refuses the panel before asking the server.

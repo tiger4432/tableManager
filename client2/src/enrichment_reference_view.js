@@ -2,7 +2,7 @@ import { API_BASE } from './config.js';
 import { state, isVirtualColumn, visibleRangeColIds } from './state.js';
 import { unitText } from './ui_words.js';
 import { elements } from './dom.js';
-import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
+import { pickHistoryTab } from './history_tabs.js';
 // The ONE TSV implementation in this codebase. Pure: no DOM, no module state, no
 // clipboard API — which is exactly why importing it does not drag the app graph in
 // behind it the way importing `clipboard.js` would.
@@ -29,12 +29,6 @@ function valueOf(row, column) {
 function selectedRow() {
   if (!state.selectedCell || !state.gridApi) return null;
   return state.gridApi.getRowNode(String(state.selectedCell.rowId))?.data || null;
-}
-
-function activateReferenceTab() {
-  activateHistoryTab(elements.tabReferenceBtn);
-  state.activeHistoryTab = 'reference';
-  showHistoryPane(elements.referenceView);
 }
 
 /** A row pick. `resync` is the caller's rule read (with its ①② headers), used while the rule
@@ -106,16 +100,8 @@ export async function syncReferenceViewRule() {
   //    tab was highlighted (ui-designer review, 09-29: under Reference and under Queue).
   else if (state.activeHistoryTab === 'reference') {
     if (!rulesAnswer) showReferenceView();              // still unknown: its line again
-    else {                                              // known, and no rule here: Global
-      activateHistoryTab(elements.tabGlobalBtn);
-      state.activeHistoryTab = 'global';
-      hideReferenceView();
-    }
-  } else if (elements.referenceView?.style.display !== 'none') hideReferenceView();
-}
-
-export function hideReferenceView() {
-  showHistoryPane(elements.timelineContainer);
+    else pickHistoryTab('global');                      // known, and no rule here: Global
+  }
 }
 
 // The reference panel is a read/copy surface, not an alternate grid editor.
@@ -620,11 +606,11 @@ function render(results) {
 export async function showReferenceView() {
   if (!activeRule) {
     if (rulesAnswer) return;
-    activateReferenceTab();
+    pickHistoryTab('reference');
     elements.referenceViewContent.textContent = rulesFailure;
     return;
   }
-  activateReferenceTab();
+  pickHistoryTab('reference');
   const row = selectedRow();
   if (!row) { elements.referenceViewContent.textContent = 'Select a row in the grid first'; return; }
   // 🔴 C-73. THE BIND IS EVERY COLUMN THE DERIVED TABLE DECLARES, NOT JUST THE DECISION KEY.

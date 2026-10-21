@@ -5338,7 +5338,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 
 인덱스 페이지 사이드바의 **네 번째 탭(참조뷰)** — 선택된 행의 `decision_key`로 `GET /enrichment/rules/{name}/references/{index}`를 물어 표로 그린다.
 
-- export: `refreshReferenceForSelection()` · `syncReferenceViewRule()` · `hideReferenceView()` · `installReferenceKeyboardIsolation()` · `showReferenceView()`. 소비자 — `api.js`(rule sync) · `grid.js`(선택 변경) · `main.js`(탭 배선 + 키보드 격리).
+- export: `refreshReferenceForSelection()` · `syncReferenceViewRule()` · `installReferenceKeyboardIsolation()` · `showReferenceView()`. @[10-21 tabs] `hideReferenceView` · `activateReferenceTab` 은퇴 — 오른쪽 패널의 켜진 탭 · 보이는 판 · `state.activeHistoryTab` 은 `history_tabs.js` 의 `pickHistoryTab(name)` 하나만 바꾼다(탭마다 버튼 · 판 한 줄 `TABS`; `activateHistoryTab` · `showHistoryPane` 은 그 안으로). 부르는 곳 `main.js` 탭 넷 · `api.js` 표 바꾸기 · 이 파일의 참조 탭 열기 · 규칙 없는 표의 Global. 게이트 = history_tabs_harness T1(탭마다 → 탭마다) · T3(좌석 밖 0) + 화면 게이트 «lit tab shows its pane». 소비자 — `api.js`(rule sync) · `grid.js`(선택 변경) · `main.js`(탭 배선 + 키보드 격리).
 
 🆕⑪ **[2026-08-23 재측정 — 118 → 497줄, 이 절의 위 서술이 절반만 참이 됐다]**
 

@@ -34,6 +34,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
+import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(HERE, '..');
@@ -400,6 +401,20 @@ const PICKERS_IN_VIEW = `(async () => {
   return out.length ? out.join(' | ') : null;
 })()`;
 // The right-most column's filter took its letter and the grid asked a read filtered by that column (lead 72b2d7f8f).
+// The side panel's lit tab is the pane it shows (owner 10-21 「탭은 글로벌인데 가끔 대기열 따로 있네」): after the row pick
+// under Queue, a queue beat, a row picked on the open queue and a table switched from it.
+for (const after of ['row picked, Queue tab', 'Queue tab, a beat later', 'a row picked under the Queue tab', 'table switched from the Queue tab',
+  'the first table again']) {
+  CELLS.push({ entry: 'index.html', after, rule: 'lit tab shows its pane', at: 'history-sidebar', expr: `(() => {
+  const paneOf = { 'tab-global': 'timeline-container', 'tab-row': 'timeline-container', 'tab-reference': 'reference-view', 'tab-queue': 'queue-view' };
+  const lit = [...document.querySelectorAll('.history-sidebar .history-tabs > .tab-btn.active')].map((b) => b.id);
+  const shown = ['timeline-container', 'reference-view', 'queue-view']
+    .filter((id) => { const p = document.getElementById(id); return p && getComputedStyle(p).display !== 'none'; });
+  if (lit.length !== 1) return 'tabs lit: ' + (lit.join(' ') || 'none');
+  if (shown.length !== 1 || shown[0] !== paneOf[lit[0]]) return 'tab «' + lit[0] + '» lit, pane shown: ' + (shown.join(' ') || 'none');
+  return '';
+})()` });
+}
 CELLS.push({ entry: 'index.html', after: 'right-most column filtered', rule: 'filter typed', at: 'ag-floating-filter', expr: `(() => {
   const t = window.__filterTyped;
   if (!t) return 'the right-most filter was never typed';
@@ -1668,6 +1683,31 @@ const DRIVE = {
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
+    // The Queue tab open for one beat of its poll and a little more.
+    ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
+      .then(() => sleep(QUEUE_POLL_MS + 1500))],
+    ['a row picked under the Queue tab', (c) => evaluate(c, `(() => {
+      const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell');
+      if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+      return true; })()`).then(() => sleep(600))],
+    // Another table from the dropdown, the Queue tab still open (the switch that left the Queue pane under Global).
+    ['table switched from the Queue tab', async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel) return false;
+        window.__firstTable = sel.value;
+        sel.value = sel.value === 'dt_log' ? 'ledger_events' : 'dt_log';
+        sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
+    // Back to the table the page opened on: the filters, the row pick and the header panels after it are that table's.
+    ['the first table again', async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__firstTable) return false;
+        sel.value = window.__firstTable; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
     // One filter at a time, each one's load waited out: typed together, which half-set the grid's debounce sent
     // depended on the clock and the answers held only some (application QA 4bd46df68: red in one run of four).
     ['three filters', async (c, log) => {
@@ -1882,6 +1922,10 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
   // A panel left inside the header is placed in the header's zoomed px (10-08).
+  // A table switch lights Global and leaves the Queue pane shown (owner 10-21) - the tab marked, its pane not asked.
+  { name: 'a table switch lights Global over the Queue pane', entry: 'index.html', rule: 'lit tab shows its pane', at: 'history-sidebar',
+    says: /pane shown: queue-view/, file: 'src/api.js', edits: [["  pickHistoryTab('global');\n",
+      "  state.activeHistoryTab = 'global';\n  for (const b of elements.tabGlobalBtn.parentNode.children) b.classList.toggle('active', b === elements.tabGlobalBtn);\n"]] },
   { name: 'Replay chain panel placed inside the zoomed header', entry: 'index.html', rule: 'panel', at: 'redo-panel', says: /under/,
     file: 'src/dropdown.js', edits: [['    doc.body.appendChild(panel);\n', '']] },
   // Options and Menu hung from their buttons by CSS inside the header: narrowed by its zoom, their rows in two (10-09).
