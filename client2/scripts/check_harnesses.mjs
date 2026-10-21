@@ -1855,7 +1855,7 @@ const FLOORS = new Map([
   ['file_folder_harness.mjs', 8],
   // New 2026-10-20 (lead, owner 10-20 «ㅇㅇ 일케 해»). The file ingestion page: a read's result and time, the query, the groups
   // under the folder above, the table list's counts, and its four parts.
-  ['file_ingestion_page_harness.mjs', 26],   // 20 -> 26: Read now P6a-b, Read all again P1e-g, a read's refusal M1c (A 10-21)
+  ['file_ingestion_page_harness.mjs', 30],   // 20 -> 30: Read now P6a-b, Read all again P1e-g, a read's refusal M1c, the Watcher box W1-4 (A 10-21)
   // New 2026-10-20 (lead 77ffe5cb6). The main grid's gallery: groups, blank images, the image box, «N of total loaded»,
   // drawn again from the grid's rows, only the lines in view, the tile's side panel, the choices kept per table.
   // 12 -> 18 (owner 10-20 «갤러리 1,2,3,5»): the caption column, the group order, the side panel's keys, its shown columns, two galleries.
