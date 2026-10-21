@@ -1,3 +1,10 @@
+# [구현자] **설정 와처가 supervisor_status.json 바뀜을 계속 «설정 바뀜»으로 찍는다** (소유자 10-21 「supervisor.json 변경되어서 컨피그 워처 돈다고 계속 로그 뜨는데」, 총괄) — a-blankmap 착지 «다음», aa8ff1af5 «앞» (작다)
+
+원인(총괄이 코드로 읽음): `config_watcher._name_of` 가 config 폴더 맨 위의 .json 이면 «무엇이든» 이름으로 돌려준다. 프로세스가 스스로 다시 쓰는 상태 파일(supervisor_status.json · scheduler_status.json)도 그래서 `_apply` 까지 가 «[Config] … changed - read again in this process» 를 찍고 `_GEN` 을 올린다. ROWS 에 없으니 하는 일은 그것뿐이다
+그 파일들이 «사람이 고치지 않는 런타임 파일»이라는 판정은 이미 한 자리에 있다: `config_backup.RUNTIME_FILES`
+할 일: `_name_of` 가 그 «한 목록»을 물어 None 을 돌려준다 — 목록을 옮기거나 둘째 목록을 적지 않는다(옮길 거면 두 쪽이 «한 상수»를 부르게)
+게이트: 두 파일을 써도 «changed» 줄 0 · `_GEN` 그대로, table_config.json 은 지금처럼 한 줄. 변이 하나(물음 뺌 → 줄이 다시 뜸). RUN.md 한 줄(그 줄이 사라짐 · 되돌리기)
+
 # 🔴 [구현자] **표 선언에서 칸을 문자 → 숫자로 바꾸면 그 표의 모든 조회가 죽는다 — 저장이 값을 보고 칸을 바꾸거나 거절한다** (소유자 10-21 「문자 타입에서 숫자 타입으로 테이블 선언 바꾸니 numeric pg 에러」 → 안 ㄴ 「ㅇㅇ」, 총괄) — a-mapline «다음»
 
 지금(총괄이 코드로 읽음): 제품은 칸 타입을 자동으로 바꾸지 않는다(schema_drift `_sync_repairs` · `_type_remedy` 「do NOT cast the column blind」). 선언만 number 가 되면 모델이 그 칸을 Float 로 읽어, 그 표를 SELECT 하는 «모든» 조회가 `Unknown PG numeric type` 으로 죽는다(`_type_findings` (a) type-breaking, 2026-08-18 dt_log 사례). 부팅 INFO 한 줄 말고는 아무도 막지 않는다
