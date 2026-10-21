@@ -209,7 +209,9 @@ def test_a_rule_that_now_writes_nothing_still_takes_back_what_it_wrote_before(db
     assert [l for l in _layers(db, "P1") if l[2] == _row(db, "C").row_id] == []
 
 
-def test_a_rule_this_process_has_not_seen_write_says_so_and_takes_back_nothing(db, monkeypatch, caplog):
+def test_after_a_restart_a_rule_takes_back_what_its_layers_say_it_wrote(db, monkeypatch, caplog):
+    """총괄 09f58844f ⑥: no process memory answers - a rule that writes nothing now and declares no columns is
+    answered by the layers it left (`_columns_its_layers_hold`). It said «not known» and kept the cell before."""
     import logging
     from chain import rule_run
 
@@ -217,15 +219,13 @@ def test_a_rule_this_process_has_not_seen_write_says_so_and_takes_back_nothing(d
     _push(db, [{"k": "P1"}, {"k": "C", "p": "P1"}])
     _drain(db, rules)
     monkeypatch.setattr(rule_run, "_ORIGIN_SEEN", {})            # a restart: nothing seen yet
-    monkeypatch.setattr(rule_run, "_COLUMNS_SEEN", {})
 
     with caplog.at_level(logging.WARNING):
         _push(db, [{"k": "C", "p": ""}])
         _drain(db, rules)
 
-    assert _row(db, "P1").z == "C!"
-    said = [r.getMessage() for r in caplog.records if "[ChainRetract]" in r.getMessage()]
-    assert len(said) == 1 and "er_z" in said[0], said
+    assert _row(db, "P1").z is None
+    assert not [r for r in caplog.records if "wrote nothing here" in r.getMessage()]
 
 
 def test_a_second_rule_filling_the_same_other_row_keeps_its_cell_when_only_the_first_reruns(db):
@@ -588,7 +588,6 @@ def test_a_join_value_row_moved_to_a_key_no_left_row_carries_empties_what_it_fil
     # no left row carries J9: the join proposes nothing, and what it filled under J2 still goes - after
     # a restart too, when nothing of it was seen: the join's declaration says what it writes
     monkeypatch.setattr(rule_run, "_ORIGIN_SEEN", {})
-    monkeypatch.setattr(rule_run, "_COLUMNS_SEEN", {})
     _join_push(join_world, JR, [{"rk": "r1", "dt_job": "J9"}])
     _join_settle(join_world)
     assert _join_state(join_world) == {"filled": {"J1": 0, "J2": 0}, "atoms": {}}

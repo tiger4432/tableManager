@@ -260,8 +260,8 @@ def _chain_lines(db):
 
 
 def test_a_group_that_fails_between_pages_runs_again_to_the_same_cells(monkeypatch):
-    """Pages already written stay (each committed); running the group again - what a replay
-    does - ends where one write ends, and the pages already written are no-ops."""
+    """A group's pages are one commit (총괄 09f58844f): a failure between pages leaves none of them, and running
+    the group again ends where one write ends."""
     monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", PAGE)
     db = _db()
     _seed_wide(db)
@@ -269,14 +269,12 @@ def test_a_group_that_fails_between_pages_runs_again_to_the_same_cells(monkeypat
     ok, _writes, _stages = _run(db, _rules(), RIGHT, monkeypatch, fail_on_write=3)
     assert not ok
     half = _cells(db)
-    assert sum(1 for v in half.values() if v == "LOT-W") == 20, "pages one and two stayed"
-    logs_after_first = _chain_lines(db)
+    assert sum(1 for v in half.values() if v == "LOT-W") == 0, "pages one and two went with the group"
+    assert _chain_lines(db) == 0
 
     ok, _writes, _stages = _run(db, _rules(), RIGHT, monkeypatch)
     assert ok
     assert set(_cells(db).values()) == {"LOT-W"}
-    logs = _chain_lines(db)
-    assert logs - logs_after_first == 15, "the pages written before the failure changed again"
 
 
 # ---------------------------------------------------------------------------

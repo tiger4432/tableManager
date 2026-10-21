@@ -76,7 +76,6 @@ def _layers_of(world, log_id):
 def test_the_first_group_after_a_start_takes_back_what_the_marked_row_fed(world, monkeypatch, caplog):
     _two_claims(world)
     before = _layers_of(world, "B")
-    monkeypatch.setattr(rule_run, "_COLUMNS_SEEN", {})              # a process that has run nothing yet
     monkeypatch.setattr(rule_run, "_ORIGIN_SEEN", {})
     last = world["db"].query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]
     out = _fold(world)
@@ -128,7 +127,6 @@ def test_a_rule_without_exclude_still_takes_the_marked_row(plain_world):
 
 def test_a_row_that_lost_require_is_taken_back_in_a_fresh_process(world, monkeypatch):
     _two_claims(world)
-    monkeypatch.setattr(rule_run, "_COLUMNS_SEEN", {})
     monkeypatch.setattr(rule_run, "_ORIGIN_SEEN", {})
     with channel(event_constants.CHANNEL_API):
         crud.apply_batch_updates(world["db"], hw.LOG, schemas.GeneralUpdateBatch(updates=[

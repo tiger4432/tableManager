@@ -9,8 +9,8 @@ process taking groups in id order never let the two overlap.
 
 ⚠️ THE SET IS THE ONE THE ORDER GUARD ASKS: `_group_target_tables | _group_read_tables`, from
 the caller. No second overlap judgement here.
-⚠️ SESSION LOCKS ON A CONNECTION OF THEIR OWN. A group's writes commit table by table, so a
-transaction lock would go at the first commit. The group takes a connection from the pool for the
+⚠️ SESSION LOCKS ON A CONNECTION OF THEIR OWN, taken before the group's first statement and let go after its one
+commit (총괄 09f58844f). The group takes a connection from the pool for the
 block, holds them on it in sorted order (no deadlock between slots), lets them go when the group
 ends and gives the connection back; one whose unlock failed is closed instead, so a pooled
 connection never holds a table. Kept per thread, three of them held a slot's 2 + 2 pool for good
@@ -37,6 +37,14 @@ WAITING_FOR = event_constants.CHAIN_WAITING_FOR
 HOLDING = "holding "
 #: How a group's failure that is a table not held begins - the batch rewinds it (`process_pending_groups`).
 NOT_HELD = "table not held"
+
+
+def rewinds(error) -> bool:
+    """A group's failure that is a lock not got - a table past the limit (`NotHeld`), or a row lock that crossed
+    another write's and PostgreSQL broke (40P01, a person's save and a group writing a table in two pages) - rewound to
+    run again, its attempts as they were (총괄 1ff4dcc6c ④, 09f58844f rule 4)."""
+    import db_safety
+    return str(error or "").startswith(NOT_HELD) or db_safety.lost_a_lock(error)
 
 
 class NotHeld(Exception):

@@ -462,6 +462,12 @@ LOCK_TIMEOUT_SETTING = "lock_timeout_seconds"
 #: a large healthy write must not die of it). A value that is not a positive number is read as
 #: left out, for both cells.
 STATEMENT_TIMEOUT_SETTING = "statement_timeout_seconds"
+#: Seconds a write over HTTP - a person's save - waits for another write's lock, the rows a chain group's write stage
+#: holds to its one commit among them, before it is refused: «Another write is in progress - save again» (총괄
+#: 09f58844f ②). Left out: 10 - the board's longest wait behind a 1,000-row group was 0.66 s (box, 4 rounds), and 10 s
+#: is twice that group's whole norm (`GROUP_SECONDS_PER_1000_ROWS`); null or 0: no limit.
+SAVE_LOCK_TIMEOUT_SETTING = "save_lock_timeout_seconds"
+SAVE_LOCK_TIMEOUT_DEFAULT = 10.0
 #: Seconds one statement of a chain group may run (소유자 10-08 「체인 타임아웃 걸어」 · 「2분」).
 #: Left out: the default; null or 0: no limit; not a positive number: the default.
 CHAIN_STATEMENT_TIMEOUT_SETTING = "chain_statement_timeout_seconds"
@@ -510,6 +516,13 @@ def chain_statement_timeout(settings=None):
     the same read as `file_write_timeouts`, set by the same listener."""
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, CHAIN_STATEMENT_TIMEOUT_SETTING, CHAIN_STATEMENT_TIMEOUT_DEFAULT)
+
+
+def save_lock_timeout(settings=None):
+    """Lock seconds for a write over HTTP, None = no limit - the same file and read as `file_write_timeouts`, set by
+    the same listener."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, SAVE_LOCK_TIMEOUT_SETTING, SAVE_LOCK_TIMEOUT_DEFAULT)
 
 
 def count_recount_seconds(settings=None):

@@ -41,6 +41,7 @@ from event_constants import (MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT,
 # [OUTBOX-4] Collapsed outbox events name rows instead of carrying them; this is
 # where they are read back into the payload shape the mappers take.
 import outbox_expand
+import session_contract
 
 # [듣는 쪽이 둘] `OutboxListener` 는 2026-09-22 에 `server/outbox_listener.py` 로 «옮겼다».
 # API 프로세스도 같은 채널을 들어야 해서다 — 복사가 아니라 인스턴스가 둘이다.
@@ -331,6 +332,8 @@ DEFAULT_MAX_ROWS_NOT_VISIBLE_DEFERS = 30
 #: WAIT, not a correctness decision, so a restart handing an event a fresh minute is the
 #: harmless direction. Cleared the moment the group succeeds or is refused.
 _ROWS_NOT_VISIBLE_DEFERS = {}
+#: tx -> how many times in a row a deadlock with a save rewound it - said on its line (`LAST_FAILURE`)
+_DEADLOCK_REWINDS = {}
 
 
 def max_rows_not_visible_defers() -> int:
@@ -1666,6 +1669,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
         # ⚠️ `user` AND `transaction_id` STAY HERE. They are this transaction's identity, not
         # the rule's - replay's writes are the same rule with a different one.
         try:
+            # 🔴 ONE COMMIT FROM THE FIRST WRITE (총괄 09f58844f): every step below ends in a savepoint and the
+            #    group's processed mark commits them all - held here, not at the group's start, so the reads and the
+            #    mapper before hold no row (lock rule 1). A next page's mapper (more()) runs inside it.
+            opened = session_contract.hold_commit(db)
             # Map metadata goes first. Its fixed standard frame and
             # valid_die_ref must be visible before the job's dt_map cells are
             # created; otherwise the absent-only auto registrar could preserve
@@ -1681,7 +1688,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                       for target, updates, scope, retract in scoped_batches]
             written = defaultdict(list)    # target -> the items its batches wrote, keys composed
             # The tables are read LAZILY: a paging proposal's next page is asked only after
-            # the page before it was written and committed (총괄 e10c58e5e).
+            # the page before it was written (총괄 e10c58e5e).
             for target_table, updates_list, replace_map, scope, retract, page_said in itertools.chain(
                     write_batches, _in_rule_order(table_updates), scoped):
                 writing = target_table          # the target a failure below is about
@@ -1779,6 +1786,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
                         db, target_table, batch_data, drop_report=drop_report)
                 written[target_table].extend(batch_data.updates)
+                with alignment_batch_counts.stage("plain layer moved"):
+                    _move_off_the_plain_layer(db, target_table, batch_data.updates)
 
                 if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
                     logger.warning(
@@ -1862,9 +1871,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                     f"retracted {n} stale row(s), protected "
                                     f"{plan.get('protected', 0)} human-touched row(s)")
                         except Exception as retract_err:
+                            session_contract.undo_step(db)
                             logger.error(
                                 f"🔴 [DtMapRetraction] Table: '{target_table}' | TX: "
-                                f"'{chain_tx_id}' | retraction failed AFTER a committed write; "
+                                f"'{chain_tx_id}' | retraction failed after the write; "
                                 f"stale rows may remain: "
                                 f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
@@ -1879,10 +1889,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                             # the grid hears them with this batch - a row whose write changed nothing is not in `results`
                             results = list(results) + _rows_not_in(db, target_table, withdrawn, results)
                         except Exception as retract_err:               # noqa: BLE001
-                            db.rollback()
+                            session_contract.undo_step(db)
                             logger.error(
                                 f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | a blank "
-                                f"recount's withdrawal failed AFTER a committed write; old values may remain: "
+                                f"recount's withdrawal failed after the write; old values may remain: "
                                 f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
                 if gone_keys:
@@ -1892,7 +1902,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         try:
                             deleted_row_ids = list(deleted_row_ids or []) + _delete_gone(db, target_table, gone_keys)
                         except Exception as gone_err:                   # noqa: BLE001
-                            db.rollback()
+                            session_contract.undo_step(db)
                             logger.error(
                                 f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | deleting "
                                 f"{len(gone_keys)} row(s) whose key no source row holds failed - the group "
@@ -2057,7 +2067,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         # 예외 타입과 스택을 남기지 않으면 이 한 줄이 엉뚱한 원인을 가리킨다.
                         logger.error(
                             f"Failed to build chained update notification for '{target_table}' "
-                            f"(tx {chain_tx_id}) - rows are COMMITTED but clients will NOT be "
+                            f"(tx {chain_tx_id}) - rows are written but clients will NOT be "
                             f"notified: [{type(ws_err).__name__}] {ws_err}",
                             exc_info=True,
                         )
@@ -2071,21 +2081,35 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 with alignment_batch_counts.stage("edit retraction:%s" % target_table):
                     keep = _rows_written_from(db, target_table, written.get(target_table))
                     for spec in specs:
+                        # 🔴 THE COLUMNS FROM THIS WRITE (총괄 09f58844f ⑥): what the rule's items wrote, every page of
+                        #    it, or what it declares - not what this process last saw it write
+                        spec["columns"] = rule_run.columns_a_rule_writes(spec["rule"], [
+                            item for item in written.get(target_table, ())
+                            if rule_run.item_cell(item, "updated_by") == spec["declaration"]], more=True) \
+                            or _columns_its_layers_hold(db, target_table, spec["declaration"], spec["origins"])
+                        if not spec["columns"]:
+                            logger.warning(
+                                "[ChainRetract] rule %s: it wrote nothing here this time and declares no columns - "
+                                "the old cells of %d edited source row(s) were not withdrawn",
+                                (spec["rule"] or {}).get("name"), len(spec["origins"]))
+                            continue
                         try:
                             _withdraw_and_tell(db, spec["trigger_table"], spec["origins"], "edited",
                                                declarations=(spec["declaration"],),
                                                table=target_table, columns=spec["columns"],
                                                keep=keep)
                         except Exception as retract_err:               # noqa: BLE001
-                            db.rollback()
+                            session_contract.undo_step(db)
                             limit = _limit_that_stopped(
                                 retract_err, time.time() - _group_claim().get("started", time.time()))
                             logger.error(
                                 f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | "
-                                f"rule: {spec['declaration']} | the edit's withdrawal failed AFTER a "
-                                f"committed write; old layers may remain: "
+                                f"rule: {spec['declaration']} | the edit's withdrawal failed after the "
+                                f"write; old layers may remain: "
                                 + ("statement timeout · %g s - " % limit if limit else "")
                                 + f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+            if opened:
+                session_contract.release_hold(db)       # nothing committed - the caller's one commit takes it
 
         except Exception as e:
             import traceback
@@ -2346,21 +2370,12 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                                                   cascade=cascade, run=run)
                 edited = [p.get("row_id") for e in trigger_events if e.event_type == "EDIT"
                           for p in expanded[outbox_expand.event_key(e)] if p.get("row_id")]
-                # 🔴 [총괄 10-08] ASKED OF THE RULE, NOT OF THIS RUN ALONE: a run that proposed nothing
-                #   still owns what it wrote before - a join whose value row moved to a key no left
-                #   row carries proposes nothing, and the cells it filled under the old key stay.
-                known = rule_run.stamps_its_origin(rule) if edited else False
-                columns = (rule_run.columns_a_rule_writes(rule, target_payload["updates"],
-                                                     more=bool(target_payload.get("next_page")))
-                           if known else None)
-                if columns:
+                # the edited source rows only - the write seat builds what they no longer feed from what it wrote
+                # (총괄 09f58844f ⑥). A run that proposed nothing still owns what it wrote before (총괄 10-08).
+                if edited:
                     edit_retractions[target_table].append({
                         "trigger_table": table_name, "declaration": rule_shape.declaration_of(rule),
-                        "origins": edited, "columns": columns})
-                elif known is not False:
-                    logger.warning(
-                        "[ChainRetract] %s: 이 규칙이 무엇을 쓰는지 아직 모릅니다(이 프로세스에서 낸 행이 없음) — "
-                        "고친 원천 행 %d 개가 먹이던 옛 층을 거두지 않았습니다", _rule_name, len(edited))
+                        "origins": edited, "rule": rule})
                 if target_payload["updates"]:
                     table_updates[target_table].extend(target_payload.get("updates"))
                     if rule.get("name") not in table_contributors[target_table]:
@@ -2623,6 +2638,26 @@ def _claimed_group_sync(tx_id, events, db, rules):
             with table_locks.hold(db, _group_target_tables(events, rules) | _group_read_tables(events, rules),
                                   on_wait=_waiting_for_a_table, on_held=_holding_the_tables):
                 answer = _process_chain_transaction_group_sync(tx_id, events, db, rules)
+                if answer[0]:
+                    # 🔴 THE GROUP'S ONE COMMIT, INSIDE THE TABLES' HOLD (총괄 09f58844f): its writes (held from the
+                    #    first, `apply_chain_writes`), a replay page's run cursor, what its deleted rows fed and the
+                    #    processed mark - all or none, and no other slot's group on these tables between.
+                    deleted = _deleted_rows_of(events)
+                    with alignment_batch_counts.stage("replay cursor"):
+                        from chain import replay as _replay
+                        _replay.advance_cursors(db, events)
+                    _retract_deleted_rows(db, deleted)
+                    with alignment_batch_counts.stage("mark processed"):
+                        # asked right before the ending is written, as the failure path asks (총괄 54a53f894)
+                        _ran_though_set_aside(db, tx_id, events)
+                        for event in events:
+                            mark_processed(event, "SUCCESS")
+                            # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 즉시 전달 확정(스윕 제외). 메시지가 있는
+                            # 그룹은 broadcast_at 을 NULL 로 두고, 통지 성공 시 _dispatch_broadcasts 가 스탬프한다.
+                            if not answer[2]:
+                                event.broadcast_at = func.now()
+                    with alignment_batch_counts.stage("commit"):
+                        db.commit()
         except table_locks.NotHeld as not_held:
             # a table not got within the limit comes back as the group's answer, for the batch to rewind (④)
             return False, str(not_held), []
@@ -3016,6 +3051,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
         _GROUP_LINE_KEYS.set(tuple(line_keys))
         group_targets = _group_target_tables(events_in_tx, rules)
         group_rows = _group_rows(events_in_tx)          # before its commit expires the events
+        event_ids = [event.id for event in events_in_tx]
         # 🔴 «읽기»도 순서에 걸린다. 앞선 그룹이 실패한 표를 이 그룹이 «읽으면», 그 답은
         #    낡은 값 위에서 나오고 오류가 «안 난다» — 선언된 교차 다섯이 그 모양이었다.
         # ⚠️ 실측(출하 아홉): 어느 규칙에서도 `target_table` 이 자기 «읽기 집합 안»에 없다.
@@ -3083,44 +3119,29 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 break
             # 🔴 A TABLE NOT HELD WITHIN THE LIMIT IS REWOUND, NOT FAILED (총괄 1ff4dcc6c ④) - no attempt charged,
             #    nothing set aside; the rest of this batch waits too, so a line keeps its order and the slot is free.
-            if not success and str(error_reason or "").startswith(table_locks.NOT_HELD):
+            if not success and table_locks.rewinds(error_reason):
                 with alignment_batch_counts.stage("rollback"):
                     db.rollback()
+                if not str(error_reason or "").startswith(table_locks.NOT_HELD):
+                    # a deadlock with a save, again and again, is seen on the line - not an endless quiet loop (총괄)
+                    rewound = _DEADLOCK_REWINDS[tx_id] = _DEADLOCK_REWINDS.get(tx_id, 0) + 1
+                    error_reason = "deadlock with a save, rewound %d time(s)" % rewound
+                    for event in events_in_tx:
+                        event.status = "RETRYING"            # tried again, its attempts as they were
+                        event.payload = dict(get_payload_dict(event) or {},
+                                             **{event_constants.LAST_FAILURE: error_reason})
+                    db.commit()
                 logger.warning("[Chain] tx '%s': %s - rewound, runs again; its %d event(s) stay queued",
                                tx_id, error_reason, len(events_in_tx))
                 break
 
             if success:
+                # committed by the group, inside its tables' hold (`_claimed_group_sync`, 총괄 09f58844f)
                 _ROWS_NOT_VISIBLE_DEFERS.pop(tx_id, None)
-                t_mapper_done = time.monotonic()
-                has_messages = bool(broadcast_messages)
-                # commit 시 expire_on_commit으로 속성이 만료되므로 id를 커밋 전에 캡처(재조회 N+1 방지).
-                # 🔴 NAMED BECAUSE IT IS PER EVENT, AND A GROUP IS A THOUSAND OF THEM
-                # (S-151 ③). The MACHINERY remainder is 0.327 s and this is the only
-                # thousand-iteration loop left inside it - three attribute writes per
-                # outbox row, each on an ORM object the session will flush. Whether that
-                # is most of the remainder or none of it is exactly what could not be
-                # read off the line before, and naming the unnamed is what found the
-                # 0.875 s hook in the first place.
-                # a replay page's run cursor, in this commit - a page that does not commit does not move it (fc1e1e385)
-                with alignment_batch_counts.stage("replay cursor"):
-                    from chain import replay as _replay
-                    _replay.advance_cursors(db, events_in_tx)
-                with alignment_batch_counts.stage("mark processed"):
-                    event_ids = [event.id for event in events_in_tx]
-                    deleted = _deleted_rows_of(events_in_tx)
-                    # asked right before the ending is written, as the failure path asks (총괄 54a53f894)
-                    _ran_though_set_aside(db, tx_id, events_in_tx)
-                    for event in events_in_tx:
-                        mark_processed(event, "SUCCESS")
-                        # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).
-                        # 메시지가 있는 그룹은 broadcast_at을 NULL로 두고, 통지 성공 시 _dispatch_broadcasts가 스탬프한다.
-                        if not has_messages:
-                            event.broadcast_at = func.now()
-                with alignment_batch_counts.stage("commit"):
-                    db.commit()
+                _DEADLOCK_REWINDS.pop(tx_id, None)
                 t_commit_done = time.monotonic()
-                _retract_deleted_rows(db, deleted)
+                t_mapper_done = t_commit_done - alignment_summary()["stages"].get("commit", 0.0)
+                has_messages = bool(broadcast_messages)
                 # [Reliability F1/F2] 데이터 처리 성공 + 커밋 이후에만 통지 대상으로 누적한다(발사는 배치 끝 단일 순차).
                 # 통지 실패는 이미 커밋된 그룹의 재처리/중복을 유발하지 않는다(재시도는 오직 처리 실패로만 트리거).
                 if has_messages:
@@ -3223,10 +3244,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                                                                              None)})
                         retrying_count += 1
 
-                deleted = _deleted_rows_of(events_in_tx) if isolate_group else {}
+                _retract_deleted_rows(db, _deleted_rows_of(events_in_tx) if isolate_group else {})
                 with alignment_batch_counts.stage("commit"):
                     db.commit()
-                _retract_deleted_rows(db, deleted)
 
                 if failed_permanently_count > 0:
                     logger.error(
@@ -3550,9 +3570,9 @@ def _retract_what_those_rows_fed(db, table, row_ids):
             if refusal:
                 logger.warning("[ChainRetract] %s", refusal)
     except Exception as err:                                       # noqa: BLE001
-        db.rollback()
+        session_contract.undo_step(db)
         logger.error("[ChainRetract] retraction failed for table %s "
-                     "(the group itself is committed): %s", table, told(err), exc_info=err)
+                     "(the events are marked as they are): %s", table, told(err), exc_info=err)
 
 
 def _deleted_rows_of(events):
@@ -3568,10 +3588,14 @@ def _deleted_rows_of(events):
 def _retract_deleted_rows(db, deleted):
     """What the deleted rows `{table: row ids}` (`_deleted_rows_of`) fed, withdrawn - once, where the chain ends their
     events: a group's SUCCESS commit or its quarantine, a depth refusal, an operator's set-aside. A row deleted is a
-    fact whether or not a rule runs on it (총괄 fa5417c28 3). Table by table."""
-    for table, row_ids in sorted(deleted.items()):
-        if row_ids:
-            _retract_what_those_rows_fed(db, table, row_ids)
+    fact whether or not a rule runs on it (총괄 fa5417c28 3). Table by table. 🔴 IN THE COMMIT THAT ENDS THEM, BEFORE
+    IT (총괄 09f58844f): its steps are held (`session_contract.held`), so the caller's commit takes them with its marks."""
+    if not any(deleted.values()):
+        return
+    with session_contract.held(db):
+        for table, row_ids in sorted(deleted.items()):
+            if row_ids:
+                _retract_what_those_rows_fed(db, table, row_ids)
 
 
 def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=None, ask_shells=True, **scope):
@@ -3612,7 +3636,7 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=Non
                 if kept:
                     stage_collapsed_event(db, "EDIT", target, kept, sorted(columns))
                     told += len(kept)
-            db.commit()
+            session_contract.end_step(db)
     logger.info("[ChainRetract] table=%s %s_rows=%d groups=%d cells_withdrawn=%d "
                 "protected_skipped=%d rows_told=%d rows_deleted=%d", from_table, why, len(row_ids),
                 stats.get("groups", 0), stats.get("cells_withdrawn", 0),
@@ -3696,28 +3720,68 @@ def _rows_not_in(db, table, row_ids, results):
             for row in db.query(model).filter(model.row_id.in_(rest[i:i + DEFAULT_CHUNK_SIZE]))]
 
 
-def _rows_written_from(db, table, items):
-    """{(origin_row_id, row_id)} - the rows these written items put each origin's output on, by
-    the key the write composed (`dt_map_derivation.derived_keys_of` reads it the same way)."""
+def _row_of_each(db, table, items):
+    """[(item, row_id)] - the row each written item landed on: its `row_id`, else the row its composed key names (one
+    read per chunk of keys). An item whose row is not found is left out."""
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE
     from database import models
 
-    pairs, by_key = set(), {}
+    landed, by_key = [], {}
     for item in items or ():
-        origin = getattr(item, "origin_row_id", None)
-        if not origin:
-            continue
         if getattr(item, "row_id", None):
-            pairs.add((origin, item.row_id))
+            landed.append((item, item.row_id))
         elif getattr(item, "business_key_val", None) is not None:
-            by_key.setdefault(item.business_key_val, set()).add(origin)
+            by_key.setdefault(item.business_key_val, []).append(item)
+    if not by_key:
+        return landed
     model = models.DYNAMIC_TABLES[table]
     keys = list(by_key)
     for i in range(0, len(keys), DEFAULT_CHUNK_SIZE):
         for row_id, key in (db.query(model.row_id, model.business_key_val)
                             .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE]))):
-            pairs.update((origin, row_id) for origin in by_key.get(key, ()))
-    return pairs
+            landed.extend((item, row_id) for item in by_key.get(key, ()))
+    return landed
+
+
+def _rows_written_from(db, table, items):
+    """{(origin_row_id, row_id)} - the rows these written items put each origin's output on, by
+    the key the write composed (`dt_map_derivation.derived_keys_of` reads it the same way)."""
+    return {(item.origin_row_id, row_id)
+            for item, row_id in _row_of_each(db, table, [i for i in items or () if getattr(i, "origin_row_id", None)])}
+
+
+def _columns_its_layers_hold(db, table, declaration, origins):
+    """The columns of `table` whose layers `declaration` wrote from these source rows - what an edited row's rule
+    wrote there before, read off the layers when this write and its declaration name none (총괄 09f58844f ⑥: not
+    what this process last saw it write)."""
+    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
+    from database import models
+
+    S, ids, columns = models.CellSource, [str(o) for o in origins or () if o], set()
+    for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
+        columns.update(c for (c,) in db.query(S.column_name).filter(
+            S.table_name == table, S.updated_by == declaration, S.origin_row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))
+            .distinct())
+    return columns or None
+
+
+def _move_off_the_plain_layer(db, table, items):
+    """⑦ (총괄 09f58844f, option 1): a cell written with the row it came from sits on that row's layer
+    (`rule_run.layer_of_a_rules_write`); the plain chain layer its rule wrote on that cell before - when its mapper
+    did not carry the row - goes in this commit (`cell_layer.withdraw_layers`), so withdrawing that row later leaves
+    no old value behind. Nothing of the kind there, nothing done. -> the layers withdrawn."""
+    from chain import cell_layer
+
+    cells = defaultdict(dict)                      # writer -> {(row_id, column): the layer it was just written on}
+    for item, row_id in _row_of_each(db, table, [i for i in items or () if getattr(i, "origin_row_id", None)]):
+        cells[item.updated_by].update({(row_id, column): item.source_name for column in (item.updates or {})})
+    moved = 0
+    for writer, wanted in sorted(cells.items(), key=lambda kv: str(kv[0])):
+        found = [layer for layer in cell_layer.cells_written_by(db, table, sorted(wanted), (writer,))
+                 if layer[3] != wanted.get((layer[1], layer[2]))]
+        if found:
+            moved += cell_layer.withdraw_layers(db, found, apply=True)["cells_withdrawn"]
+    return moved
 
 
 
@@ -4257,9 +4321,8 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
         normalized_events.append(event)
 
     if depth_refused:
-        deleted = _deleted_rows_of(depth_refused)
+        _retract_deleted_rows(db, _deleted_rows_of(depth_refused))
         db.commit()          # the FAILED marks, so they are not re-read
-        _retract_deleted_rows(db, deleted)
 
     if not normalized_events:
         # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and

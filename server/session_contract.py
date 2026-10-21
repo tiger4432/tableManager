@@ -24,6 +24,7 @@
    `test_a_dry_run_undoes_only_what_it_wrote` 가 지킨다. commit 쪽은 아직 «안 셌다».
 """
 import logging
+from contextlib import contextmanager
 
 import operator_line
 
@@ -104,6 +105,114 @@ def in_savepoint(db, where: str, work):
             raise _refused(where, exc)
         raise
     return answer
+
+
+#: `session.info` key - the savepoint of the write step in progress while a seat holds this transaction's commit
+#: (`hold_commit`, 총괄 09f58844f: a chain group's writes, withdrawals, shells and processed mark are ONE commit).
+HELD_STEP = "held_step"
+#: set while the seat itself releases a held step's savepoint (`end_step` · `release_hold`)
+_HOLDER_COMMITS = "held_step_releasing"
+#: the refusal of any other commit while one is held - the queue's last failure says it (총괄 09f58844f 안 1)
+COMMIT_REFUSED = "a mapper may not commit inside the write stage"
+
+
+class CommitRefused(RuntimeError):
+    """A commit asked of a held transaction by someone other than its holder."""
+
+
+def _held(db):
+    """The held step's savepoint, or None - also when the transaction it was held in has ended (it is not on the
+    session's chain of transactions any more)."""
+    info = getattr(db, "info", None)
+    step = info.get(HELD_STEP) if isinstance(info, dict) else None      # a stand-in session holds nothing
+    if step is None:
+        return None
+    t = db.get_nested_transaction()
+    while t is not None and t is not step:
+        t = t.parent
+    if t is None:
+        db.info.pop(HELD_STEP, None)
+    return t
+
+
+def hold_commit(db) -> bool:
+    """From here a write step does not commit: each step's `end_step` releases a savepoint, its `undo_step` rolls back
+    to one, and any other commit is refused (`refuse_a_commit_while_held`) - until its holder lets go
+    (`release_hold`), and the caller's one commit takes them all. -> whether this call opened it (asked again inside a
+    held transaction, nothing)."""
+    if _held(db) is not None:
+        return False
+    # ⚠️ a driver that opens its transaction only at its first write (pysqlite) takes this savepoint as the outermost,
+    #    and its release COMMITS - so the transaction is begun first (measured: a rolled-back group left its rows)
+    connection = db.connection()
+    if getattr(connection.connection.dbapi_connection, "in_transaction", True) is False:
+        connection.exec_driver_sql("BEGIN")
+    db.info[HELD_STEP] = db.begin_nested()
+    return True
+
+
+def release_hold(db):
+    """The holder's end (`hold_commit`): the last step's savepoint released, nothing committed - the transaction
+    stays open for its caller's one commit, and a step called after this commits as it always did."""
+    step = _held(db)
+    if step is None:
+        return
+    db.info[_HOLDER_COMMITS] = True
+    try:
+        step.commit()
+    finally:
+        db.info.pop(_HOLDER_COMMITS, None)
+        db.info.pop(HELD_STEP, None)
+
+
+@contextmanager
+def held(db):
+    """`hold_commit` for a block - let go at its end when it opened it; a block that raised leaves the transaction to
+    its caller's rollback."""
+    opened = hold_commit(db)
+    yield
+    if opened:
+        release_hold(db)
+
+
+def end_step(db):
+    """A write step's end - THE ONE SEAT of a write's commit. Held (`hold_commit`): its savepoint released and the
+    next begun. Not held: a commit, as a step called alone always did."""
+    step = _held(db)
+    if step is None:
+        db.commit()
+        return
+    db.info[_HOLDER_COMMITS] = True
+    try:
+        step.commit()
+    finally:
+        db.info.pop(_HOLDER_COMMITS, None)
+    db.info[HELD_STEP] = db.begin_nested()
+
+
+def undo_step(db):
+    """A write step's failure undone - `end_step`'s pair. Held: back to the step's savepoint, what the steps before
+    it wrote kept. Not held: a rollback, as a step called alone always did."""
+    step = _held(db)
+    if step is None:
+        db.rollback()
+        return
+    step.rollback()
+    db.info[HELD_STEP] = db.begin_nested()
+
+
+def refuse_a_commit_while_held(session):
+    """`before_commit`: a commit of a held transaction by anyone but the seat - a mapper's `db.commit()` inside a
+    paging proposal's next page (more()) - is refused. SQLAlchemy 2's commit ends the OUTER transaction whatever
+    savepoint is open (measured: both rows seen by another connection), so it would commit the group's writes
+    without their processed mark. ⚠️ SQLAlchemy asks this of a savepoint's release too, the first of such a commit:
+    one with the held step innermost that is not the holder's is refused; a savepoint opened inside the step
+    (`in_savepoint`) releases as it always did."""
+    if session.info.get(_HOLDER_COMMITS):
+        return
+    step = _held(session)
+    if step is not None and session.get_nested_transaction() is step:
+        raise CommitRefused("%s (return rows; the worker writes them)" % COMMIT_REFUSED)
 
 
 def _refused(where: str, exc) -> SessionNotUsable:

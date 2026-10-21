@@ -205,8 +205,8 @@ def test_the_marks_are_written_a_page_at_a_time_and_end_as_one_write_would(db, m
 
 
 def test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_ends_as_one_write_would(db, monkeypatch):
-    """A page that fails stops the group after the pages before it were committed; the re-run hands every losing
-    row again (총괄 406d7c102 - one left out is a mark withdrawn) and ends where one write ends."""
+    """A page that fails stops the group and its pages go with it - one commit (총괄 09f58844f); the re-run hands
+    every losing row again (총괄 406d7c102 - one left out is a mark withdrawn) and ends where one write ends."""
     from chain import keyset_scan
 
     monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", 2)
@@ -214,7 +214,7 @@ def test_a_stop_between_pages_keeps_the_pages_written_and_a_rerun_ends_as_one_wr
     ok, writes, _lines = _inventory_group(db, monkeypatch, fail_on_write=3)
     assert not ok and writes == [2, 2, 2]
     rows = db.query(models.DYNAMIC_TABLES[LOG]).filter(models.DYNAMIC_TABLES[LOG].fold_mark.isnot(None)).count()
-    assert rows == 4, "pages one and two stayed"
+    assert rows == 0, "pages one and two went with the group"
     ok, writes, lines = _inventory_group(db, monkeypatch)
     assert ok and writes == [2, 2, 2, 2, 1], "every losing row handed again"
     assert lines[0] == "mapper · fu_by_unit -> fu_log · page 1/5 · 2 / 9 rows", lines

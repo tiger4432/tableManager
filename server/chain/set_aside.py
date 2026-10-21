@@ -118,9 +118,10 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
             for table, marked in _mark(db, page_ids, reason).items():
                 out["marked"] += marked
                 out["marked_by_table"][table] = out["marked_by_table"].get(table, 0) + marked
-            db.commit()
-            # a deletion set aside still happened - its rows' cells go as a run one's do (총괄 fa5417c28 3)
+            # a deletion set aside still happened - its rows' cells go as a run one's do (총괄 fa5417c28 3), in the
+            # commit that marks it (총괄 09f58844f)
             _retract_deleted_rows(db, deleted)
+            db.commit()
             # A group running one of them now is cut and rewinds without them - the rest of its
             # line runs on in the same slot (총괄 10-08: only stopping a WHOLE line stops its slot).
             control.cancel_running_group(db, ids=page_ids)
@@ -220,6 +221,22 @@ def _mark(db, ids, reason):
     for event in events:
         event_constants.mark_cancelled(event, OPERATOR, reason)
     return dict(Counter(event.table_name for event in events))
+
+
+def deletions_set_aside(db, tables=(), rules=(), transactions=()):
+    """-> `{table: [(row id, its values before the deletion or None)]}` - the rows the set-aside DELETE events in scope
+    named, each with the old values its event carried (`event_constants.OLD_VALUES_KEY`; an event staged before they
+    were kept has none)."""
+    out = {}
+    for event, payload in _in_scope(db, True, tables, rules, transactions):
+        if event.event_type != "DELETE":
+            continue
+        rows, old = rows_of(payload), payload.get(event_constants.OLD_VALUES_KEY)
+        olds = old if isinstance(old, list) else [old]
+        out.setdefault(event.table_name, []).extend(
+            (row_id, olds[i] if i < len(olds) and isinstance(olds[i], dict) and olds[i] else None)
+            for i, row_id in enumerate(rows))
+    return out
 
 
 def rows_set_aside(db, tables=(), rules=(), transactions=()):

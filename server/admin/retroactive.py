@@ -1118,22 +1118,43 @@ def _run_rerun_set_aside(db, params, log, control=None):
     """Replay the rows the set-aside events named - every enabled rule on each table (or the
     rules named), in the declaration's order, ONCE and without `cascade`: what those rules
     write wakes no rule downstream. 총괄 2dbbfd1e5 had it cascade; the owner reversed that
-    (09-27 「큰 소급 치워둔거니 한번만」) - only the grid's click replay cascades."""
+    (09-27 「큰 소급 치워둔거니 한번만」) - only the grid's click replay cascades.
+    A deleted row has nothing to replay: its deletion goes back as the deletion it was - staged with its old values
+    through the door a deletion is staged by, one rule each - so a rule without lineage (a join's or a decide's
+    recount) takes it as it takes a live one (총괄 g26). One its event kept no old values of is said, not staged."""
+    import chain_bindings
     from chain import replay, rule_shape, set_aside
+    from database.context import channel
+    from database.database import stage_collapsed_event
 
     rows = set_aside.rows_set_aside(db, **_scope(params))
+    deleted = set_aside.deletions_set_aside(db, **_scope(params))
     wanted = set(_scope(params)["rules"])
-    staged = 0
-    for table, ids in sorted(rows.items()):
+    staged = deletions = 0
+    for table in sorted(set(rows) | set(deleted)):
         rules = replay.order_rules([
             r for r in replay.load_rules()
             if r.get("trigger_table") == table and not rule_shape.is_switched_off(r)
             and (not wanted or r.get("name") in wanted)])
+        gone = {row_id for row_id, _old in deleted.get(table, ())}
+        ids = [row_id for row_id in rows.get(table, ()) if row_id not in gone]
+        kept = [(row_id, old) for row_id, old in deleted.get(table, ()) if old]
+        lost = [row_id for row_id, old in deleted.get(table, ()) if not old]
+        if lost:
+            log("[rerun_set_aside] %s: old values not kept - this deletion cannot be replayed; rows: %s"
+                % (table, ", ".join(lost)))
         for rule in rules:
-            one = _run_chain_replay(db, {"rule": rule.get("name"), "row_ids": ids},
-                                    log, control)
-            staged += one["rows_staged"]
-    return {"rows_staged": staged, "tables": len(rows)}
+            if ids:
+                one = _run_chain_replay(db, {"rule": rule.get("name"), "row_ids": ids},
+                                        log, control)
+                staged += one["rows_staged"]
+            if kept and chain_bindings.takes_deletions(rule):
+                with channel(None):
+                    stage_collapsed_event(db, "DELETE", table, [row_id for row_id, _old in kept],
+                                          only_rule=rule.get("name"), replay=True, old=[old for _id, old in kept])
+                db.commit()
+                deletions += len(kept)
+    return {"rows_staged": staged, "deletions_staged": deletions, "tables": len(set(rows) | set(deleted))}
 
 
 #: The run a chain group queued for a `run_in: operation` rule (총괄 be0abe305 ②). ⚰️ No group queues

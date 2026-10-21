@@ -16,6 +16,8 @@
   "statement_timeout_seconds": null,
   "_chain_statement_timeout_seconds_doc": "체인 묶음의 SQL 문장 하나가 걸릴 수 있는 상한(초). 넘으면 DB 가 그 문장을 끊고 그 묶음은 실패(재시도 규칙 그대로)로 끝나며 체인은 다음 묶음으로 갑니다. 적지 않으면 120. null 이나 0 이면 상한 없음. 재기동 없이 다음 트랜잭션부터 읽습니다. PostgreSQL 만. 볼 줄과 끄는 법은 RUN.md 10-08 절.",
   "chain_statement_timeout_seconds": 120,
+  "_save_lock_timeout_seconds_doc": "사람 저장(HTTP 로 들어오는 쓰기)이 다른 쓰기의 잠금을 기다리는 상한(초). 체인 그룹은 쓰기 단계 내내 그 행을 쥐므로, 같은 행을 저장하면 그 그룹이 커밋할 때까지 기다립니다. 넘으면 409 «Another write is in progress - save again» — 다시 저장하면 됩니다. 적지 않으면 10(판: 1,000 행 그룹 뒤의 가장 긴 기다림 0.66 초, 그룹 하나의 기준 5 초의 두 배). null 이나 0 이면 상한 없음. 재기동 없이 다음 트랜잭션부터 읽습니다. PostgreSQL 만.",
+  "save_lock_timeout_seconds": 10,
   "_retroactive_debug_doc": "소급 실행(Re-translate 등)의 쪽 안 단계 줄을 켭니다(기본 true). 켜면 retroactive.log 에 쪽마다 단계(읽기 · 번역 · 거두기 셈 · 쓰기 …)의 초 · 행 수와, 쪽 읽기 · 거두기 셈의 계획(인덱스를 타는지)이 한 줄씩 남습니다. false 면 쪽 줄과 5 초 박동 줄만 남습니다. 재기동 없이 다음 쪽부터. 줄의 뜻은 RUN.md 10-13 절.",
   "retroactive_debug": true,
   "_retroactive_slow_statement_seconds_doc": "소급 실행 프로세스의 SQL 문장 하나가 이 초를 넘겨 도는 중이면 retroactive.log 에 «slow statement» 한 줄(문장 앞 400 자), 끝나면 «ended» 한 줄. 적지 않으면 2. null 이나 0 이면 안 찍음. 재기동 없이 다음 박동부터.",

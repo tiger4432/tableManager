@@ -211,8 +211,8 @@ def test_opted_in_the_ping_pong_climbs_to_the_ceiling_and_stops(db):
 
     refused = _drain(db, _bumpers(opt_in=True), max_depth=4)
 
-    written = [p for p in _events(db, PA) + _events(db, PB)
-               if p.get("source_name") == rule_run.CHAIN_SOURCE]
+    written = [p for p in _events(db, PA) + _events(db, PB)                  # a row layer is the chain's too (⑦)
+               if crud.layer_ranks_as(p.get("source_name")) == rule_run.CHAIN_SOURCE]
     assert sorted(p[event_constants.CHAIN_DEPTH_KEY] for p in written) == [1, 2, 3, 4, 5]
     assert {p.get(event_constants.CHANNEL_KEY) for p in written} == {"chain"}
     assert refused == [5], "one event past the ceiling, refused once"
@@ -284,7 +284,7 @@ def test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_ask
 
     _drain(db, rules, max_depth=3)
 
-    wrote = [p for p in _events(db, PB) if p.get("source_name") == rule_run.CHAIN_SOURCE]
+    wrote = [p for p in _events(db, PB) if crud.layer_ranks_as(p.get("source_name")) == rule_run.CHAIN_SOURCE]
     first = wrote[0]
     assert first.get(event_constants.CHANNEL_KEY) == "retroactive", wrote
     assert first.get(event_constants.CASCADE_KEY, False) is cascade
@@ -293,7 +293,7 @@ def test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_ask
         return
     # Asked to cascade, the downstream woke and went on as the chain goes - opted-in rules
     # only, bounded by the ceiling, and without the replay's key on the chain's own hops.
-    later = [p for p in _events(db, PA) + wrote[1:] if p.get("source_name") == rule_run.CHAIN_SOURCE]
+    later = [p for p in _events(db, PA) + wrote[1:] if crud.layer_ranks_as(p.get("source_name")) == rule_run.CHAIN_SOURCE]
     assert later and _values(db, PA, "n") != ["0"]
     assert {p.get(event_constants.CHANNEL_KEY) for p in later} == {"chain"}
     assert not any(event_constants.CASCADE_KEY in p for p in later)

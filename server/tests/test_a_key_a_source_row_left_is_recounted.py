@@ -447,6 +447,7 @@ def test_a_failed_delete_fails_the_group_and_its_retry_deletes(db, monkeypatch, 
     with caplog.at_level(logging.ERROR):
         anyio.run(run)
     assert said[0][0] is False
+    db.rollback()                       # as its caller does (`process_pending_groups`) - the group is one commit
     assert set(_inv(db)) == {"J1", "J3"}
     assert [r for r in caplog.records if "then FAILED" in r.getMessage()]
     monkeypatch.setattr(crud, "delete_rows_batch", real)
@@ -591,3 +592,67 @@ def test_a_row_that_was_never_inside_is_not_handed_and_one_that_left_is_handed_a
     assert missed == {"t": 2}
     assert rule_run.held_back({**rule, "allow_delete_trigger": False}, [never, left, inside])[0] == [inside], \
         "a rule that does not read rows that left is not handed them"
+
+
+# ------------------------------------------------------------------------------ a deletion set aside, run again
+
+def _dies_before_its_mark(db, monkeypatch):
+    real = worker.mark_processed
+
+    def dies(event, status):
+        raise RuntimeError("killed before the mark")
+    monkeypatch.setattr(worker, "mark_processed", dies)
+    with pytest.raises(RuntimeError, match="killed before the mark"):
+        _chain(db)
+    monkeypatch.setattr(worker, "mark_processed", real)
+    db.rollback()
+
+
+def _set_aside_what_waits(db):
+    from chain import set_aside
+    from database.models import DatabaseOutbox
+
+    waiting = db.query(DatabaseOutbox).filter(DatabaseOutbox.table_name == SRC,
+                                              DatabaseOutbox.processed_chain == False).all()  # noqa: E712
+    set_aside.set_aside(db, ids=[e.id for e in waiting], apply=True)
+    return waiting
+
+
+def test_a_deletion_set_aside_comes_back_as_the_deletion_it_was_and_recounts(db, monkeypatch):
+    """총괄 g26: the group that took the deletion dies before its mark - one commit, all undone - and the deletion is
+    set aside. A decide keeps no lineage, so the set-aside's withdrawal does not reach its row; rerun_set_aside puts
+    the deletion back as it was, with its old values, and the decide recounts as it does a live one."""
+    from admin import retroactive
+
+    _seed(db)
+    crud.delete_rows_batch(db, SRC, [_src(db, "L3").row_id], "okey")
+    _dies_before_its_mark(db, monkeypatch)
+    _set_aside_what_waits(db)
+    assert set(_inv(db)) == {"J1", "J3"}, "no lineage: the set-aside withdrew nothing of it"
+
+    said = []
+    out = retroactive._run_rerun_set_aside(db, {"tables": [SRC]}, said.append)
+    assert out["deletions_staged"] >= 1 and said == [], (out, said)
+    _chain(db)
+    assert set(_inv(db)) == {"J1"}, "the key the deleted row left is recounted - its row goes"
+
+
+def test_a_deletion_set_aside_without_its_old_values_is_said_not_replayed(db, monkeypatch):
+    """총괄 g26: one set aside before its old values were kept cannot be put back - one line says which rows."""
+    from admin import retroactive
+    from database.models import DatabaseOutbox
+
+    _seed(db)
+    gone = _src(db, "L3").row_id
+    crud.delete_rows_batch(db, SRC, [gone], "okey")
+    for event in db.query(DatabaseOutbox).filter(DatabaseOutbox.table_name == SRC,
+                                                 DatabaseOutbox.processed_chain == False):  # noqa: E712
+        event.payload = {k: v for k, v in get_payload_dict(event).items() if k != event_constants.OLD_VALUES_KEY}
+    db.commit()
+    _set_aside_what_waits(db)
+
+    said = []
+    out = retroactive._run_rerun_set_aside(db, {"tables": [SRC]}, said.append)
+    assert out["deletions_staged"] == 0
+    assert said == ["[rerun_set_aside] %s: old values not kept - this deletion cannot be replayed; rows: %s"
+                    % (SRC, gone)]

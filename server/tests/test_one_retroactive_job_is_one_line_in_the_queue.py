@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import event_constants                                                # noqa: E402
 from admin import retroactive                                         # noqa: E402
 from chain import ingestion_worker as worker, replay, rule_run        # noqa: E402
-from database import database as dbmod, models                        # noqa: E402
+from database import crud, database as dbmod, models                  # noqa: E402
 from database.context import request_run_id                           # noqa: E402
 from utils.payload_helper import get_payload_dict                     # noqa: E402
 
@@ -51,7 +51,8 @@ def test_a_runs_trigger_events_and_what_they_woke_carry_the_run(db, monkeypatch,
 
     _drain(db, rules, max_depth=3)
 
-    wrote = [p for p in _events(db, PA) + _events(db, PB) if p.get("source_name") == rule_run.CHAIN_SOURCE]
+    wrote = [p for p in _events(db, PA) + _events(db, PB)
+             if crud.layer_ranks_as(p.get("source_name")) == rule_run.CHAIN_SOURCE]
     assert wrote, "the replay wrote nothing, so the run's carry is not asked"
     assert {event_constants.run_of(p) for p in wrote} == {RUN}, wrote
 
