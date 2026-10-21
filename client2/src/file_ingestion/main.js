@@ -45,21 +45,28 @@ export function seatFileIngestionPage(doc = document) {
     doc, onPick: (log) => { view.picked = log; draw(); },
     onMore: () => { view.page += 1; list(true); },
     onDrill: (folder) => { query.folder = folder; search(); },
-    // «Retry N failed»: the files this table read under that folder (read_by, B 1107c5a8e), the preview's number asked first
-    onRetryFolder: async (g) => {
-      const p = new URLSearchParams({ read_by: query.table, folder: g.folder });
-      const q = queryOf(query);
-      for (const key of ['since', 'until']) if (q.has(key)) p.set(key, q.get(key));
-      try {
-        const seen = await act(`/admin/file-ingestion/retry-failed?${p}&preview=true`);
-        if (!seen.count) { showToast(seen.message || 'Nothing to retry', 'info'); return; }
-        if (!doc.defaultView.confirm(WORDS.retryAsk(seen.count, g.folder))) return;
-        const done = await act(`/admin/file-ingestion/retry-failed?${p}`);
-        showToast(done.message || `${seen.count} handed again`, 'success');
-        await list(false);
-      } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
-    },
+    onRetryFolder: (g) => handAgain(g.folder, false),
+    onReadAll: (folder) => handAgain(folder || query.folder, true),
   });
+  // «Retry N failed» and «Read all again»: the files this table read (read_by, B 1107c5a8e) under the folder - none: the
+  // whole table - through the one Retry door, every state with `all` (총괄 10-21); the preview's number asked first
+  async function handAgain(folder, all) {
+    const p = new URLSearchParams({ read_by: query.table || '' });
+    if (folder) p.set('folder', folder);
+    if (all) p.set('statuses', INCLUDE_STATUSES);
+    const q = queryOf(query);
+    for (const key of ['since', 'until']) if (q.has(key)) p.set(key, q.get(key));
+    try {
+      const seen = await act(`/admin/file-ingestion/retry-failed?${p}&preview=true`);
+      if (!seen.count) { showToast(seen.message || 'Nothing to read', 'info'); return; }
+      const where = folder || query.table;
+      if (!doc.defaultView.confirm(all ? WORDS.readAllAsk(seen.count, where) : WORDS.retryAsk(seen.count, where))) return;
+      const done = await act(`/admin/file-ingestion/retry-failed?${p}`);
+      showToast(done.message || `${seen.count} handed again`, 'success');
+      await list(false);
+    } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
+  }
+
   // «Read now» (총괄 aaf19d0ca): who reads the path and why the watcher did not, then one owner's button hands it over
   const readNow = new ReadNowPart(byId('fi-readnow'), {
     doc,
@@ -105,6 +112,7 @@ export function seatFileIngestionPage(doc = document) {
     const groups = groupFiles(view.rows, query.group, view.groups, query.folder);
     const match = view.total ? countNumberText(view.total) : '0';
     files.render({ groups, picked: view.picked ? view.picked.id : null, more: !!view.total && view.rows.length < view.total.total,
+      table: query.table,
       shown: WORDS.shown(view.rows.length, groups.filter((g) => g.head).length, match) });
     detail.render(view.picked);
   }
