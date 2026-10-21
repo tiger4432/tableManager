@@ -4145,6 +4145,25 @@ def start_replay_if_queued(db):
     return nxt
 
 
+def release_dead_replays(db):
+    """A chain-owned run left in flight by a chain worker that died (총괄 fc1e1e385 「넣다 죽은 리플레이」): its runner
+    judged gone (`heartbeat.runner_state`, the judgement × asks) is released by the × door's own answer
+    (`retroactive.request_cancel` - `failed`, the reason on the row), so it shows cut (`replay.interrupted_runs`) with
+    Resume and nobody has to press × first. Asked while this worker runs no replay itself. -> the runs released."""
+    from admin import retroactive
+    from database import models
+
+    R = models.RetroactiveRun
+    released = []
+    for run_id, runner in (db.query(R.run_id, R.runner)
+                           .filter(R.op.in_(event_constants.CHAIN_OWNED_RETROACTIVE_OPS),
+                                   R.state.in_(retroactive.IN_FLIGHT_STATES)).all()):
+        if retroactive._runner_state(runner) == "orphaned":
+            retroactive.request_cancel(db, run_id)
+            released.append(run_id)
+    return released
+
+
 def reload_at_boundary(reader, seen):
     """A boundary's reload (총괄 1ff4dcc6c ⑤): the declaration files this process's watcher saw change, and the
     SYSTEM_RELOAD rows past `seen` as `reader` takes them (`reload_rules`) - a slot between batches, a retroactive run
@@ -4666,6 +4685,7 @@ async def start_chain_ingestion_worker(db_session_factory):
                     replay_task = None
                 if replay_task is None:
                     try:
+                        release_dead_replays(db)
                         queued_replay = start_replay_if_queued(db)
                     except Exception as sweep_err:                     # noqa: BLE001
                         # 훑기가 드레인을 멈출 수는 없다.

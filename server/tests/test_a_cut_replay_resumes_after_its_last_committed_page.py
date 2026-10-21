@@ -209,6 +209,46 @@ async def test_what_a_cut_runs_pages_wrote_still_draining_does_not_hide_the_cut(
     assert db.query(models.ReplayNamedMap).filter_by(run_id="x2").count() == 1
 
 
+@pytest.mark.anyio
+async def test_a_replay_its_worker_died_staging_is_released_by_the_next_and_shows_cut(db, monkeypatch):
+    """총괄 fc1e1e385 답: no × first - the next chain worker releases it (`failed`, why on the row)."""
+    from admin import retroactive
+    _seed(db, ["K%02d" % i for i in range(6)])
+    _stage(db, "d1")
+    pages = _pages(db, "d1")
+    await _process(db, pages[1])
+    _set_aside(db, pages[2])
+    db.query(models.RetroactiveRun).filter_by(run_id="d1").update({"state": "running", "runner": "chain/h/1"})
+    db.add(models.RetroactiveRun(run_id="d2", op="chain_replay", params=json.dumps({"rule": RULE}),
+                                 state="running", runner="chain/h/2"))
+    db.add(models.RetroactiveRun(run_id="d3", op="withdraw", params="{}", state="running", runner="sched/h/1"))
+    db.commit()
+    monkeypatch.setattr(retroactive, "_runner_state", lambda r: "owned" if r == "chain/h/2" else "orphaned")
+    monkeypatch.setattr("database.database.SessionLocal", lambda: _Kept(db))   # the run row's own session
+    assert replay.interrupted_runs(db) == []
+    assert ciw.release_dead_replays(db) == ["d1"]
+    states = {r.run_id: (r.state, r.error) for r in db.query(models.RetroactiveRun)}
+    assert states["d1"][0] == "failed" and "not alive" in states["d1"][1]
+    assert states["d2"][0] == "running" and states["d3"][0] == "running", "a live one, and another op's"
+    assert [f["run_id"] for f in replay.interrupted_runs(db)] == ["d1"]
+
+
+@pytest.mark.anyio
+async def test_a_run_released_with_pages_still_waiting_is_judged_only_once_they_ran(db):
+    _seed(db, ["K%02d" % i for i in range(6)])
+    _stage(db, "w1")
+    pages = _pages(db, "w1")
+    await _process(db, pages[1])
+    db.query(models.RetroactiveRun).filter_by(run_id="w1").update({"state": "failed"})
+    db.commit()
+    assert replay.sweep_finished_replays(lambda _l: None, session_factory=lambda: _Kept(db)) == 0
+    assert db.query(models.ReplayNamedMap).filter_by(run_id="w1").count() == 1, "page 2 still waits"
+    await _process(db, pages[2])
+    assert replay.sweep_finished_replays(lambda _l: None, session_factory=lambda: _Kept(db)) == 0
+    assert [f["run_id"] for f in replay.interrupted_runs(db)] == ["w1"], "failed - cut, kept for its Resume"
+    assert db.query(models.ReplayNamedMap).filter_by(run_id="w1").count() == 1
+
+
 def test_a_run_staged_before_the_cursor_existed_is_never_cut(db):
     db.add(models.RetroactiveRun(run_id="old", op="chain_replay", params=json.dumps({"rule": RULE}),
                                  state="cancelled"))

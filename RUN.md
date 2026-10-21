@@ -13,7 +13,7 @@
 > 새 키     그 사이 생긴 group_by 키와 행은 끝에 붙음(키는 첫 행 위치로 줄 섬)
 >           커서보다 앞 위치에 생긴 키 · 행은 이어 가기가 다루지 않음 — 라이브 체인이 이미 돌렸음
 > 끊길 때   × : 넣은 쪽 중 안 돈 쪽은 set aside. 돌던 쪽이 그 순간 커밋되면 커서에 들어감(판: 쪽 4 뒤 × -> 커서 5 -> Resume 은 쪽 6 부터)
->           워커 재기동 : 넣은 쪽은 재기동 뒤에 돌고, 넣기는 멈춘 채 run 이 running(죽은 runner)으로 남음 -> 그 줄 × 가 failed 로 풀고 -> Resume
+>           워커 재기동 : 다시 뜬 워커가 죽은 runner 의 run 을 failed 로 풂(사유 «the runner that started it is not alive») -> 넣은 쪽이 다 돈 뒤 «Interrupted · Resume»
 > 보이는 것  대기열 run 줄 pages {done, staged, rows_done} · interrupted_runs[] · POST /admin/retroactive/runs/<run_id>/resume
 >           chain_worker.log «[ReplaySweep] run <새 run> <- <앞 run> <규칙>: ...» — 이어 간 사슬은 한 줄
 >           그룹 줄 «replay cursor <s> s» = 그 그룹 커밋 안의 커서 UPDATE 시간

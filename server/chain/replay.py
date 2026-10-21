@@ -844,7 +844,9 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
                 db.rollback()
                 continue
             narrow, line = event_constants.queue_line_rows(outbox, run_id, run=True)
-            if run is not None and run.state == "done" and db.query(outbox.id).filter(
+            # whatever its state: a run released or cancelled with pages still waiting is judged once they ran - it may be
+            # cut then, its tally kept for Resume (board: a dead worker's run released with 2 pages waiting lost its tally)
+            if run is not None and db.query(outbox.id).filter(
                     outbox.processed_chain == False, narrow, line).first() is not None:  # noqa: E712
                 db.rollback()
                 continue
