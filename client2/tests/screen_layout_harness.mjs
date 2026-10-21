@@ -213,6 +213,9 @@ const withPhotos = (a) => {
 // The main grid's gallery (lead 3589216b9): while its states run, dt_log is read with an image column «photo» - a picture on
 // every row but every seventh - and its rows and count narrowed by the grid's filters the way the server narrows them.
 const GALLERY = { on: false };
+// The declaration read refused the way the server refuses it (lead 06d7ca89e): 503, its sentence in detail.message.
+const DECL_REFUSED = { on: false };
+const DECL_SENTENCE = 'The declaration could not be read: no ledger configuration at C:/assy/config/ledger_config.json - fix the declaration and reload';
 const DT_LOG_ROWS = '/tables/dt_log/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true';
 const galleryAnswer = (u) => {
   if (u.pathname === '/tables/dt_log/schema') {
@@ -236,6 +239,9 @@ const galleryAnswer = (u) => {
 };
 const answerOf = (u) => {
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
+  if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
+    return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
+  }
   for (const [p, body] of Object.entries(QUEUE)) if (u.pathname === p) return { status: 200, type: 'application/json', body };
   const a = ANSWERS[u.pathname + u.search];
   const got = a && a.same_as ? ANSWERS[a.same_as] : a || null;
@@ -647,6 +653,13 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rul
 // The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
+// A refused declaration read: the header's label says the server's sentence, not «server refused (503)» (lead 06d7ca89e).
+CELLS.push({ entry: 'index.html', after: 'declaration refused, page opened again', rule: 'server sentence said', at: 'grid-source-label', expr: `(() => {
+  const l = document.querySelector('#grid-source-label-host .grid-source-label');
+  if (!l) return 'no header label';
+  const said = l.textContent.trim();
+  return said.includes(${JSON.stringify(DECL_SENTENCE)}) ? null : 'the label says «' + said + '»';
+})()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'board adds up', at: 'gallery-board', expr: `(() => {
   const grid = document.querySelector('#gallery-host .gallery-board__grid');
   if (!grid) return 'no board drawn';
@@ -1977,6 +1990,18 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
+    // The page opened again with its declaration read refused: the header's label reads it once, at the start.
+    ['declaration refused, page opened again', async (c, log) => {
+      DECL_REFUSED.on = true;
+      log.opening = true;
+      await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
+      await sleep(1500);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, GRID_LOADED, 15000);
+      await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label.is-unknown'))");
+      DECL_REFUSED.on = false;
+    }],
   ],
   'admin.html': [
     ['Overview', async () => true],
@@ -2121,6 +2146,10 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  // The refused declaration read drawn as its status alone again (lead 06d7ca89e).
+  { name: 'a refused declaration said as its status alone', entry: 'index.html', rule: 'server sentence said', at: 'grid-source-label',
+    file: 'src/main.js', edits: [["    if (!res.ok) return { ok: false, message: await refusalText(res, 'server refused') };\n",
+      "    if (!res.ok) return { ok: false, message: `server refused (${res.status})` };\n"]] },
   // A panel left inside the header is placed in the header's zoomed px (10-08).
   // A table switch lights Global and leaves the Queue pane shown (owner 10-21) - the tab marked, its pane not asked.
   { name: 'a table switch lights Global over the Queue pane', entry: 'index.html', rule: 'lit tab shows its pane', at: 'history-sidebar',

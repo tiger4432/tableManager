@@ -36,7 +36,8 @@ import {
   showAllRows,
   nextPage,
   prevPage,
-  openExport
+  openExport,
+  refusalText
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -219,12 +220,13 @@ async function loadLedgerDeclaration(world) {
   try {
     // `world`: one world's declaration; none reads the operating world's.
     const res = await withWorld((url, init) => fetch(url, init), () => world)(`${API_BASE}/api/ledger/declaration`);
+    // 🔴 «사유»만 돌려줍니다. 부품이 「선언을 못 읽었습니다」를 이미 말하므로, 여기서 같은
+    //    문장을 또 쓰면 화면에 두 번 나옵니다 (실측 2026-08-31에 실제로 그렇게 나왔습니다).
+    //    The reason is the server's sentence (detail.message), through the one refusal seat - the status alone only
+    //    when it sent none (lead 06d7ca89e).
+    if (!res.ok) return { ok: false, message: await refusalText(res, 'server refused') };
     const body = await res.json().catch(() => null);
-    if (!res.ok || !body) {
-      // 🔴 «사유»만 돌려줍니다. 부품이 「선언을 못 읽었습니다」를 이미 말하므로, 여기서 같은
-      //    문장을 또 쓰면 화면에 두 번 나옵니다 (실측 2026-08-31에 실제로 그렇게 나왔습니다).
-      return { ok: false, message: `server refused (${res.status})` };
-    }
+    if (!body) return { ok: false, message: `server refused (${res.status})` };
     return { ok: true, sources: Array.isArray(body.sources) ? body.sources : null,
       worlds: Array.isArray(body.worlds) ? body.worlds : [], operating: body.operating };
   } catch (err) {
