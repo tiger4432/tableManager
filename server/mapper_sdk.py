@@ -606,6 +606,20 @@ def _stamped_updates(out, table, *, source_name, updated_by) -> dict:
     return result
 
 
+def removal_columns(rule, table):
+    """`(came_as, keys)` - the columns an incoming row names its map or job by, and the target's columns its batch is
+    scoped by: the two job columns (`allow_retraction`), else the target's map identity on both sides."""
+    import chain_bindings
+    import dt_map_derivation
+
+    if rule.get("allow_retraction"):
+        trigger = str(rule.get("trigger_table") or "")
+        return ([chain_bindings.resolve_column(rule, "trigger_job_column", trigger, "the job of an incoming row")],
+                [chain_bindings.resolve_column(rule, "target_job_column", table, "the job a written cell carries")])
+    keys = dt_map_derivation.identity_columns(table)
+    return keys, keys
+
+
 def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> dict:
     """The rule's removal flag as the scoped batches the seat reads (ed70c3970 ② · 717f60124).
 
@@ -618,22 +632,14 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> d
     kept their old cells.
     """
     import chain_bindings
-    import dt_map_derivation
 
     refusals = chain_bindings.sdk_mapper_refusals(rule)
     if refusals:
         raise MapperContractError(" ".join(why for _code, why in refusals))
     unread = {str(job) for job in ((out.attrs.get(UNREAD_JOBS) if out is not None else None) or ())}
     out = out if out is not None else pd.DataFrame()
-    trigger = str(rule.get("trigger_table") or "")
     by_job = bool(rule.get("allow_retraction"))
-    if by_job:
-        came_as = [chain_bindings.resolve_column(rule, "trigger_job_column", trigger,
-                                                 "the job of an incoming row")]
-        keys = [chain_bindings.resolve_column(rule, "target_job_column", table,
-                                              "the job a written cell carries")]
-    else:
-        keys = came_as = dt_map_derivation.identity_columns(table)
+    came_as, keys = removal_columns(rule, table)
     if not out.empty:
         _require_columns(out, keys, rule)
     # ⚠️ LINEAR IN THE ROWS. `df_to_updates` gives one item per row in row order, so it runs ONCE

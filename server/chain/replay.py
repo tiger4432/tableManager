@@ -499,6 +499,8 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
         #    ledger does not have to learn a new name for the same run, and the doubled
         #    `chain_chain_replay_<run>` never appears.
         stage_token = request_transaction_id.set("replay_%s" % run_id)
+        from database.context import request_run_id
+        open_tally(db, request_run_id.get(), rule)
     try:
         # ⚰️ A PAYLOAD ENVELOPE STOOD HERE (`chain_replay_<run_id>` / `R1_SOURCE_NAME`), and
         #    the scan selected every declared data column to fill it. Both were for building
@@ -636,6 +638,215 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
 #       untouched - it lives in `crud` and is measured by
 #       `tests/test_the_cell_layer_stays_below_its_readers.py` - what is gone is seeing it
 #       in advance.
+
+# ---------------------------------------------------------------- a whole replay sweeps what it never named
+#: The tally row of a whole replay (`models.ReplayNamedMap`, this `scope`): `rows` counts the staged rows its rule ran
+#: on. The run is swept only when that is every row it staged (총괄 c67aa93bb ㄴ).
+TALLY = ""
+_WHOLE = {}     # run_id -> the rule it replays whole, or "" - a run's params never change
+
+
+def removes_whole_maps(rule) -> bool:
+    """A rule whose batches answer for whole maps or jobs - the two flags `mapper_sdk._removal_batches` reads."""
+    return bool((rule or {}).get("allow_replace_map") or (rule or {}).get("allow_retraction"))
+
+
+def whole_replay_of(db, run_id):
+    """The rule run `run_id` replays WHOLE - a chain_replay with no row_ids, business_keys or limit - or None. Only
+    such a run sweeps: a selection or a limit leaves maps it never asked (총괄 c67aa93bb ㄴ)."""
+    if not run_id:
+        return None
+    if run_id not in _WHOLE:
+        import json
+        from database import models
+
+        row = (db.query(models.RetroactiveRun.op, models.RetroactiveRun.params)
+               .filter(models.RetroactiveRun.run_id == run_id).first())
+        params = json.loads(row.params) if row is not None and row.params else {}
+        whole = (row is not None and row.op == "chain_replay"
+                 and not any(params.get(cell) for cell in ("row_ids", "business_keys", "limit")))
+        _WHOLE[run_id] = str(params.get("rule") or "") if whole else ""
+    return _WHOLE[run_id] or None
+
+
+def _spelled(scope) -> str:
+    import json
+
+    return json.dumps(scope, sort_keys=True, default=str)
+
+
+def record_named(db, run_id, rule, events, batches):
+    """In the group's own transaction: the maps or jobs `batches` (the rule's normalized scoped batches) named and the
+    staged rows of `events` it ran on - for a whole replay of this rule, nothing for any other run. A map named
+    with nothing written is named too: its batch already emptied it."""
+    name = (rule or {}).get("name")
+    if not removes_whole_maps(rule) or whole_replay_of(db, run_id) != name:
+        return
+    from database import models
+    from utils.payload_helper import get_payload_dict
+
+    M = models.ReplayNamedMap
+    scopes = {_spelled(scope if scope is not None else {retract[0]: retract[1]})
+              for _table, _updates, scope, retract in batches if scope is not None or retract is not None}
+    wanted = sorted(scopes)
+    for i in range(0, len(wanted), DEFAULT_CHUNK_SIZE):
+        piece = wanted[i:i + DEFAULT_CHUNK_SIZE]
+        have = {s for (s,) in db.query(M.scope).filter(M.run_id == run_id, M.rule == name, M.scope.in_(piece))}
+        db.add_all(M(run_id=run_id, rule=name, scope=s) for s in piece if s not in have)
+        db.flush()      # the session does not autoflush: the next ask in this transaction must see these
+    rows = 0
+    for event in events:
+        payload = get_payload_dict(event) or {}
+        if (event_constants.replay_of(payload) and event_constants.run_of(payload) == run_id
+                and event_constants.only_rule_of(payload) == name):
+            rows += int(payload.get("row_count") or len(payload.get("row_ids") or ()) or 1)
+    if rows:
+        (db.query(M).filter(M.run_id == run_id, M.rule == name, M.scope == TALLY)
+         .update({M.rows: M.rows + rows}, synchronize_session=False))
+
+
+def open_tally(db, run_id, rule):
+    """Before a whole replay stages its first page: the tally its groups count into. None, nothing is swept."""
+    name = (rule or {}).get("name")
+    if not removes_whole_maps(rule) or whole_replay_of(db, run_id) != name:
+        return
+    from database import models
+
+    M = models.ReplayNamedMap
+    if db.query(M.run_id).filter(M.run_id == run_id, M.rule == name, M.scope == TALLY).first() is None:
+        db.add(M(run_id=run_id, rule=name, scope=TALLY, rows=0))
+        db.commit()
+
+
+def _gone_maps(db, rule, run_id):
+    """`(columns, [key tuple])` - the maps or jobs the rule's layers sit on in its target that this run's batches never
+    named, by the target's own values; or `(None, why)` when it cannot be told."""
+    import json
+    from sqlalchemy import or_, tuple_
+    import mapper_sdk
+    from chain import rule_shape
+    from database import crud, models
+
+    table = rule.get("target_table")
+    model = models.DYNAMIC_TABLES.get(table)
+    if model is None:
+        return None, "the target %s has no model in this process" % table
+    came_as, keys = mapper_sdk.removal_columns(rule, table)
+    named = [spelled for (spelled,) in db.query(models.ReplayNamedMap.scope).filter(
+        models.ReplayNamedMap.run_id == run_id, models.ReplayNamedMap.rule == rule.get("name"),
+        models.ReplayNamedMap.scope != TALLY)]
+    by_columns = {}
+    for spelled in named:
+        scope = json.loads(spelled)
+        by_columns.setdefault(tuple(scope), []).append(tuple(scope.values()))
+    covered = set()
+    for names, values in by_columns.items():
+        columns = [getattr(model, column, None) for column in names]
+        if any(c is None for c in columns):
+            return None, "a batch named %s, not all columns of %s" % (", ".join(names), table)
+        if len(columns) == 1:
+            target, values = columns[0], [value for (value,) in values]
+        else:
+            target = tuple_(*columns)
+        for i in range(0, len(values), DEFAULT_CHUNK_SIZE):
+            covered.update(r for (r,) in db.query(model.row_id).filter(target.in_(values[i:i + DEFAULT_CHUNK_SIZE])))
+    S = models.CellSource
+    owned = {r for (r,) in db.query(S.row_id).filter(
+        S.table_name == table, S.updated_by == rule_shape.declaration_of(rule),
+        or_(S.source_name == crud.CHAIN_SOURCE, S.source_name.like(crud.CHAIN_SOURCE + " (%"))).distinct()}
+    gone_rows = sorted(owned - covered)
+    found = set()
+    key_columns = [getattr(model, column) for column in keys]
+    for i in range(0, len(gone_rows), DEFAULT_CHUNK_SIZE):
+        for values in db.query(*key_columns).filter(model.row_id.in_(gone_rows[i:i + DEFAULT_CHUNK_SIZE])):
+            if all(not crud.is_blank_value(v) for v in values):
+                found.add(tuple(values))
+    return came_as, sorted(found, key=str)
+
+
+def _sweep(db, rule, run_id):
+    """The gone maps, emptied by the chain's write door - `_removal_batches` with nothing written, so the batches are
+    the ones a live run gives a map that produced nothing. -> the count, or a sentence why not."""
+    from collections import defaultdict
+    import pandas as pd
+    import dt_map_derivation
+    import mapper_sdk
+    from chain import ingestion_worker, rule_shape
+    from database import crud
+
+    came_as, gone = _gone_maps(db, rule, run_id)
+    if came_as is None:
+        return gone
+    if not gone:
+        return 0
+    table, name = rule.get("target_table"), rule.get("name")
+    batches = mapper_sdk._removal_batches(rule, table, pd.DataFrame(gone, columns=came_as), pd.DataFrame(),
+                                          source_name=crud.CHAIN_SOURCE, updated_by=name)["batches"]
+    scoped = [dt_map_derivation.normalize_scoped_batch(batch, rule, table) for batch in batches]
+    ok, error = ingestion_worker.apply_chain_writes(
+        db, "replay_sweep_%s" % run_id, rule, 0, defaultdict(set, {table: {name}}), defaultdict(list), [],
+        scoped, defaultdict(list, {table: [name]}), [], woken_by_a_replay=True,
+        declarations_by_target=defaultdict(set, {table: {rule_shape.declaration_of(rule)}}), run=run_id)
+    if not ok:
+        db.rollback()
+        return "the write refused: %s" % (str(error).strip().splitlines() or [""])[-1]
+    return len(gone)
+
+
+def sweep_finished_replays(log=logger.info, session_factory=None):
+    """Each wake of the chain worker: every whole replay whose run ended and whose staged rows all ran is judged
+    ONCE - its rule's maps the run's batches never named are emptied, through the chain's write door (총괄 c67aa93bb
+    ㄴ). A run cut short, cancelled, failed, or with a staged row its rule did not run on is not swept and says
+    why. Its rows here go either way. -> how many runs were judged."""
+    import json
+    from database import models
+    from database.database import SessionLocal
+    from chain import table_locks
+
+    M, R, outbox = models.ReplayNamedMap, models.RetroactiveRun, models.DatabaseOutbox
+    db = (session_factory or SessionLocal)()
+    judged = 0
+    try:
+        for run_id, name, rows in db.query(M.run_id, M.rule, M.rows).filter(M.scope == TALLY).all():
+            run = db.query(R).filter(R.run_id == run_id).with_for_update().first()
+            if run is not None and run.state in ("queued", "running", "cancel_requested"):
+                db.rollback()
+                continue
+            narrow, line = event_constants.queue_line_rows(outbox, run_id, run=True)
+            if run is not None and run.state == "done" and db.query(outbox.id).filter(
+                    outbox.processed_chain == False, narrow, line).first() is not None:  # noqa: E712
+                db.rollback()
+                continue
+            result = json.loads(run.result) if run is not None and run.result else {}
+            why = None
+            if run is None or run.state != "done":
+                why = "the run %s" % (run.state if run is not None else "is gone")
+            elif result.get("pages_failed"):
+                why = "%d page(s) failed to stage" % result["pages_failed"]
+            elif int(result.get("rows_staged") or 0) != int(rows or 0):
+                why = "the rule ran on %d of the %d staged row(s)" % (rows or 0, int(result.get("rows_staged") or 0))
+            rule = None
+            if why is None:
+                try:
+                    rule = find_rule(name)
+                except ReplayRefused as refused:
+                    why = str(refused)
+            if why is None:
+                with table_locks.hold(db, {rule.get("target_table"), rule.get("trigger_table")}):
+                    swept = _sweep(db, rule, run_id)
+                why = swept if isinstance(swept, str) else None
+                if why is None:
+                    log("[ReplaySweep] run %s %s: %d map(s) its batches never named emptied in %s"
+                        % (run_id, name, swept, rule.get("target_table")))
+            if why is not None:
+                log("[ReplaySweep] run %s %s: not swept - %s" % (run_id, name, why))
+            db.query(M).filter(M.run_id == run_id, M.rule == name).delete(synchronize_session=False)
+            db.commit()
+            judged += 1
+    finally:
+        db.close()
+    return judged
+
 
 def replay_all(db, apply: bool = False, limit: int = None,
                chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,

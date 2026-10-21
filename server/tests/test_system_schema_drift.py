@@ -201,6 +201,8 @@ SYSTEM_TABLE_COLUMNS = {
     #   runner: migrations/add_retroactive_runs_runner.sql - and that one DOES need
     #   running on every existing database, because `create_all` never adds a column to a
     #   table it finds.
+    # a whole replay's named maps - new, created whole (총괄 c67aa93bb ㄴ)
+    "replay_named_maps": ('rows', 'rule', 'run_id', 'scope'),
     "retroactive_runs": ('error', 'finished_at', 'last_progress_at', 'op', 'params', 'processed_rows', 'queued_at', 'requested_by', 'result', 'run_id', 'runner', 'started_at', 'state', 'total_rows'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event
     # ledger_state:     migrations/add_outbox_ledger_state.py  (총괄 bb9b1c19c (가))

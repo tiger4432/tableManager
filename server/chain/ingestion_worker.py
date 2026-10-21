@@ -2349,6 +2349,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
                             raise ValueError("chain map metadata update requires a non-empty map_id")
                         map_metadata_updates.append(requested)
+                mine = []
                 if target_payload["batches"]:
                     # Either permission opens the envelope - the reader asks it of a batch
                     # that is not a write-back - and its per-batch checks then require the
@@ -2362,6 +2363,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         batch = dt_map_derivation.normalize_scoped_batch(
                             requested, rule, target_table)
                         scoped_batches.append(batch)
+                        mine.append(batch)
                         # A scoped batch writes its table - this target, or the trigger
                         # table written back (총괄 2dd93d4a9 1) - so a failure in it names
                         # this rule (총괄 a4cb623e0 ②) and its write carries this
@@ -2371,6 +2373,10 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                             rule_shape.declaration_of(rule))
                         if rule.get("name") not in table_contributors[batch[0]]:
                             table_contributors[batch[0]].append(rule.get("name"))
+                if run:
+                    # a whole replay keeps the maps its rule's batches named (총괄 c67aa93bb ㄴ)
+                    from chain import replay as _replay
+                    _replay.record_named(db, run, rule, trigger_events, mine)
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()
@@ -2398,6 +2404,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
 
     return True, None, broadcast_messages
 
+
+#: How often the worker asks whether a whole replay ended (`replay.sweep_finished_replays`).
+REPLAY_SWEEP_SECONDS = 5.0
 
 #: The chain group norm (운영 규격): 1,000 rows in at most this many seconds. A group slower in
 #: proportion to its rows says where its time went - the one threshold (총괄 248ae20cd).
@@ -4400,6 +4409,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     listener = OutboxListener(db_session_factory, event_constants.OUTBOX_NOTIFY_CHANNEL)
     #: 지금 이 프로세스에서 도는 리플레이 태스크. 게이트가 아니라 «앞문»이다.
     replay_task = None
+    sweep_task, sweep_at = None, 0.0
 
     async def idle_wait():
         """The ONE place this loop yields when a tick did no work (S-252).
@@ -4556,6 +4566,13 @@ async def start_chain_ingestion_worker(db_session_factory):
                                     queued_replay.get("run_id"))
                         replay_task = asyncio.create_task(
                             asyncio.to_thread(_execute_retroactive, queued_replay))
+                # 총괄 c67aa93bb ㄴ: a whole replay that ended is judged once - off this loop, like the run itself
+                if (sweep_task is None or sweep_task.done()) and time.monotonic() - sweep_at >= REPLAY_SWEEP_SECONDS:
+                    if sweep_task is not None and not sweep_task.cancelled() and sweep_task.exception() is not None:
+                        logger.error("[ReplaySweep] judging failed: %s", told(sweep_task.exception()))
+                    from chain import replay as _replay
+                    sweep_task = asyncio.create_task(asyncio.to_thread(_replay.sweep_finished_replays, logger.info))
+                    sweep_at = time.monotonic()
 
                 # 🔴 THE LINES RUN IN SLOTS (총괄 19f6a9277): this loop gives each open slot a line
                 #    it may run (`chain.slots`), reaps a slot that died and sizes the pool. It runs

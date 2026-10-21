@@ -465,6 +465,19 @@ class RetroactiveRun(Base):
     )
 
 
+class ReplayNamedMap(Base):
+    """A whole replay's maps (총괄 c67aa93bb ㄴ) - each map or job its rule's batches named while the run's events ran,
+    and one tally row (`scope` `chain.replay.TALLY`) whose `rows` counts the staged rows the rule ran on. Written in
+    the group's own transaction, read once when the run ends (`chain.replay.sweep_finished_replays`), then deleted."""
+
+    __tablename__ = "replay_named_maps"
+
+    run_id = Column(String(32), primary_key=True)
+    rule = Column(String(200), primary_key=True)
+    scope = Column(String, primary_key=True)        # sorted JSON {column: value}
+    rows = Column(Integer, nullable=True)
+
+
 def ensure_run_phase_columns(engine):
     """`retroactive_runs.phase` · `phase_at`, the run's stage (`RetroactiveRun` does not map them), on a database
     without them. ONE SEAT: their writer (`RunControl.tell`) asks here before it writes; their reader (`runs`) reads

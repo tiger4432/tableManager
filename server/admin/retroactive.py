@@ -1015,7 +1015,7 @@ def _run_chain_replay(db, params, log, control=None):
     # ⚠️ THE WORKER'S SIDE OF THE NUMBER IS READ WHERE THE WORKER REPORTS IT - the queue and
     #    the chain log, under the same `chain_<tx>` label every other change uses.
     return {"rows_staged": s["rows_staged"], "events_staged": s["events_staged"],
-            "rows_scanned": s["rows_scanned"]}
+            "rows_scanned": s["rows_scanned"], "pages_failed": s.get("pages_failed", 0)}
 
 
 def _scope(params):

@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **통째 리플레이가 이번에 한 번도 안 낸 맵을 거둠 — 원천 행이 다 사라진 맵의 체인 층 (총괄 c67aa93bb ㄴ, 소유자 「리플레이 맵이 다 안 거두네」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     allow_replace_map · allow_retraction 규칙을 «통째» 리플레이하면, 실행이 끝까지 돈 뒤 체인 워커가 한 번 판단:
+>          대상 표에서 그 규칙 층이 앉은 맵 중 이번 리플레이의 배치가 한 번도 이름 안 댄 맵 -> 출력이 빈 맵과 같은 문으로 거둠
+>          (교체 규칙 = 그 맵의 행째, 사람 값도 행과 같이 감 — 49a467884 의 교체 규칙 그대로 · 거두기 규칙 = 그 규칙 칸만, 사람 값 든 행은 남음)
+>          --row-ids · --business-keys · --limit 리플레이는 거두지 않음
+> 돌릴 것   운영에 이미 남은 층 거두기 = 그 규칙 통째 리플레이 한 번 (체인 워커가 떠 있어야 거둠)
+>          화면: 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름만, 고르기 칸은 비움
+>          또는  python server/scripts/chain_replay_cli.py replay <규칙> --apply
+> 확인     chain_worker.log «[ReplaySweep] run <id> <규칙>: N map(s) its batches never named emptied in <표>»
+> 뜻      N map(s) … emptied -> 그만큼 거둠. 0 이면 남은 맵이 없었음
+>          not swept - the rule ran on X of Y staged row(s) -> 실행의 사건 일부가 안 돎(격리 · 치움 · 취소). 원인을 풀고 통째 리플레이 다시
+>          not swept - the run cancelled / failed · N page(s) failed to stage -> 그 실행은 안 거둠. 다시 돌리면 됨
+>          줄이 안 나옴 -> 그 규칙에 두 칸이 없거나 고르기 칸을 줬거나, 실행의 사건이 아직 큐에 있음(큐가 비면 5 초 안에 나옴)
+> 급할 때   끄는 칸 없음 — 되돌리기로
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동 (replay_named_maps 표는 남아도 무해)
+> ```
+>
+> ---
+>
 > ## [10-21] **선언 폼 D — 표 설정 · 체인 규칙 · 원장을 한 폼으로, 원문은 왼쪽 (총괄 지시, 소유자 10-20, 43e97e151)**
 >
 > ```
