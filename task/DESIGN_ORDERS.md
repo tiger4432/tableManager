@@ -1,3 +1,11 @@
+# 🔴 [클라] + [구현자 B] **(a875e29b1 자리 고침) Draft 는 «리플레이 목록»에 — 그리드 행 고르기 배너의 규칙 목록, 어드민 Chain 탭이 아니다** (소유자 10-21 「아니 리플레이 리스트에」, 총괄)
+
+- 자리: 그리드에서 행을 고르면 뜨는 리플레이 배너(redo_banner.js)의 규칙 목록 — `loadReplayableRules` → `GET /admin/chain/rules/replayable?table=&row_scoped=true`
+- 서버 [B]: 그 라우트가 이 표를 트리거로 하는 enabled:false 규칙도 «draft: true» 칸을 달아 같은 목록에 낸다(새 라우트 금지). 켜진 규칙의 거르기(S-250 · S-270)는 그대로
+- 화면 [클라]: Draft 줄은 «Draft» 딱지, 누르면 실행이 아니라 «Test run» — 배너가 이미 든 row_ids 로 8391fcb0f 의 셋(넣은 것 · 나온 것 · 쓸 것). 켜진 줄에도 Test run 옆 버튼. Draft 줄에는 Replay(실행) 버튼 없음
+- 어드민 Chain 탭 목록은 오늘 그대로 — a875e29b1 의 «목록 딱지» 몫은 이것으로 갈음
+게이트: 꺼진 규칙 하나를 둔 표에서 행 고름 → 배너 목록에 Draft 줄 → Test run 셋 · DB 변화 0 · 대기열 사건 0 · Draft 줄로는 실행 불가
+
 # 🔴 [구현자 B] **안 닿은 통지 다시 쏘기가 API 가 안 받을 때 체인 디스패처를 붙잡음 — 한 회차 스윕은 첫 실패에서 멈춘다** (B 2af64170d 측정: dead API 판 편집당 56~76 s · stub 판 1 s, 안 1, 총괄 10-21) — 지금 «다음», 3de34d292 «앞»
 
 원인(B 잰 것): 디스패처 루프가 회차 끝 finally 에서 `sweep_undelivered_broadcasts` 를 await(두 번 발사 막으려 일부러 순차 — 이 판정은 그대로). broadcast_at NULL 행을 행 · 표마다 다시 쏘고, 거부된 연결 하나가 ~2 s, 그동안 pool.tick 이 안 돌아 새 줄이 슬롯에 안 감
