@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다 (소유자 「다시 로드는 파일 인제션 창 이용하면 되잖아」, 602e3e555)** — git pull · 서버 재기동 · 와처 재기동
+>
+> ```
+> 쓰는 법   파일 화면 -> 표 하나 고름 -> Files 머리 «Read all again» (표 전부) 또는 폴더 줄 «Read all again» (그 폴더)
+>          -> «Read N files of <표> again?» 확인
+> 보이는 것 폴더 줄 «N waiting» · 표 목록 «N waiting» = 넘겨졌고 와처가 아직 안 읽은 수. 바퀴마다 reread_max_files(기본 25)씩 줄어듦
+> 뜻      N waiting 이 줄지 않음 -> 와처가 안 돌거나 Retry 폴러가 멈춤 -> 와처 로그 «Retry» 줄 · 와처 재기동
+>          파일 수가 생각보다 적음 -> 디스크에서 사라진 파일은 수에서 빠짐(미리보기의 missing)
+> 끄기     속도를 늦추기: ingestion_settings.json «reread_max_files» 를 작게
+>          넘긴 것을 거두기(화면 단추 없음, 아직 안 읽힌 것만 원래 상태로):
+>          curl.exe --noproxy "*" -X POST -G "http://127.0.0.1:8080/admin/file-ingestion/cancel-reread" -H "X-Admin-Token: <토큰>" --data-urlencode "folder=<폴더>" --data-urlencode "preview=true"
+>          -> 수를 보고 preview 줄을 빼고 한 번 더. folder 를 빼면 기다리는 행 전부
+> 되돌리기  git revert 602e3e555 -> 서버 · 와처 재기동 (그 뒤 상한 넘는 요청은 다시 409 거절)
+> ```
+>
+> ---
+>
 > ## [10-21] **이력 패널의 행 만들기 값이 영어 «row created» (총괄 06d7ca89e)** — git pull · 서버 재기동
 >
 > ```
