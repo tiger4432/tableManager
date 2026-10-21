@@ -67,15 +67,15 @@ function suite(view, bar) {
   const deepest = Math.max(...rows.map(depthOf));
   ok('G1 the real form is drawn deep (else the rest proves nothing)', rows.length > 50 && deepest >= 5,
     `${rows.length} rows, deepest ${deepest}`);
-  const off = rows.filter((r) => guidesIn(r) !== depthOf(r));
-  eq('G2 every row at depth N carries N guides', off.length, 0);
+  const off = rows.filter((r) => guidesIn(r) !== Math.max(depthOf(r) - 1, 0));
+  eq('G2 every row at depth N carries N - 1 guides (the declaration\'s own row draws none, lead 10-21)', off.length, 0);
   const ONE_OF = { defs: {}, root: { kind: 'record', fields: [{ key: 'outer', node: { kind: 'record', fields: [
     { key: 'pick', node: { kind: 'oneOf', branches: {
       alpha: { kind: 'record', fields: [{ key: 'x', node: { kind: 'leaf' } }] },
       beta: { kind: 'record', fields: [] } } } }] } }] } };
   const small = view.renderSkeletonForm(contextFor(ONE_OF), ONE_OF.root, '', { outer: { pick: { alpha: { x: '1' } } } }, 0, 'root');
   const head = walk(small).find((n) => cls(n, 'oe-node-head'));
-  eq('G3 a one-of\'s own row keeps the stair and its guides', head ? `${depthOf(head)}|${guidesIn(head)}` : '(none)', '2|2');
+  eq('G3 a one-of\'s own row keeps the stair and its guides', head ? `${depthOf(head)}|${guidesIn(head)}` : '(none)', '2|1');
 
   console.log('\n-- T. the trail is the declaration path\'s own words --');
   const HEAD = [SECTION, 'die_inspection'];
@@ -177,7 +177,7 @@ const barModule = async (mutate) => {
 
 const MUTANTS = [
   { name: 'one-guide-too-many', catches: ['G2'], file: VIEW,
-    from: '  for (let i = 0; i < depth; i += 1) {', to: '  for (let i = 0; i <= depth; i += 1) {' },
+    from: '  for (let i = 1; i < depth; i += 1) {', to: '  for (let i = 1; i <= depth; i += 1) {' },
   { name: 'the-one-of-row-has-no-guides', catches: ['G3'], file: VIEW,
     from: '  box.appendChild(treeRow(depth, name, [],', to: '  box.appendChild(treeRow(0, name, [],' },
   { name: 'the-head-words-are-dropped', catches: ['T2', 'T3', 'T4'], file: VIEW,

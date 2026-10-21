@@ -189,18 +189,55 @@ const answerOf = (u) => {
 // Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
 const CELLS = [
   // The declaration form is one grid (lead 10-21, form D): on the sample page a 40-letter name three levels down is
-  // whole in its cell, and every row's value and state stand at one x. At the stacked width the rows have no columns.
+  // whole in its cell, and every row's value stands at one x. At the stacked width the rows have no columns.
   { entry: 'sample.html', after: 'Ledger declaration, list open, light', sizes: ['1024x768'], rule: 'names whole, columns in line',
     at: 'sample-decl-form', expr: `(() => {
   const rows = [...document.querySelectorAll('#sample-decl-form .oe-node-row')].filter((r) => r.getClientRects().length);
   if (rows.length < 6) return 'the sample form drew ' + rows.length + ' rows';
   const cut = [...document.querySelectorAll('#sample-decl-form .oe-node-name')].find((e) => e.scrollWidth > e.clientWidth + 1);
   if (cut) return '«' + cut.textContent + '» ' + cut.clientWidth + ' of ' + cut.scrollWidth + ' px';
-  for (const cell of ['oe-node-value', 'oe-node-state']) {
-    const xs = new Set(rows.map((r) => [...r.children].find((c) => c.classList.contains(cell))).filter(Boolean)
-      .map((c) => Math.round(c.getBoundingClientRect().left)));
-    if (xs.size !== 1) return cell + ' at ' + [...xs].join(' · ') + ' px';
+  const xs = new Set(rows.map((r) => [...r.children].find((c) => c.classList.contains('oe-node-value'))).filter(Boolean)
+    .map((c) => Math.round(c.getBoundingClientRect().left)));
+  if (xs.size !== 1) return 'oe-node-value at ' + [...xs].join(' · ') + ' px';
+  return null;
+})()` },
+  // The form's rows (lead 10-21, skill §0-bis): every row a whole number of row steps (a box and a step) high and the
+  // chip lines it holds that many, no gap between rows, every first box one box high at one x with its text at one x,
+  // and a one-line row's name and box (and the box's text) on the row's middle within 1 px.
+  { entry: 'sample.html', after: 'Ledger declaration, list open, light', sizes: ['1024x768'], rule: 'rows one height, boxes at one x',
+    at: 'sample-decl-form', expr: `(() => {
+  const rows = [...document.querySelectorAll('#sample-decl-form .oe-node-row')].filter((r) => r.getClientRects().length);
+  const css = getComputedStyle(document.documentElement);
+  const box = parseFloat(css.getPropertyValue('--control-h-small')), unit = box + parseFloat(css.getPropertyValue('--space-2'));
+  const R = (e) => e.getBoundingClientRect(), mid = (b) => (b.top + b.bottom) / 2, say = (e) => '«' + e.textContent.trim().slice(0, 24) + '»';
+  const textOf = (e) => { const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); for (let t = w.nextNode(); t; t = w.nextNode()) if (t.textContent.trim()) { const g = document.createRange(); g.selectNodeContents(t); return g.getBoundingClientRect(); } return null; };
+  const seen = { chips: 0, folded: 0, deep: 0 }, lefts = new Set(), texts = new Set();
+  let prev = null;
+  for (const r of rows) {
+    const rb = R(r), k = Math.round(rb.height / unit);
+    if (k < 1 || Math.abs(rb.height - k * unit) > 0.5) return 'row ' + say(r) + ' ' + rb.height.toFixed(1) + ' px, not a whole number of ' + unit.toFixed(1);
+    if (prev && Math.abs(rb.top - R(prev).bottom) > 0.5) return 'row ' + say(r) + ' ' + (rb.top - R(prev).bottom).toFixed(1) + ' px below the row above';
+    prev = r;
+    const cell = r.querySelector(':scope > .oe-node-value'), b = cell && cell.firstElementChild;
+    const chips = b && b.classList.contains('oe-chips') ? b : null;
+    const lines = chips ? new Set([...chips.children].map((c) => Math.round(R(c).top))).size : 1;
+    if (k !== lines) return 'row ' + say(r) + ' ' + k + ' steps high for ' + lines + ' line(s)';
+    seen.chips += chips && lines > 1 ? 1 : 0; seen.folded += r.classList.contains('is-folded') ? 1 : 0; seen.deep += Number(r.dataset.depth) >= 3 ? 1 : 0;
+    if (!b) continue;
+    const first = chips ? chips.firstElementChild : b, fb = R(first), fs = getComputedStyle(first);
+    if (Math.abs(fb.height - box) > 0.5) return 'box ' + say(first) + ' ' + fb.height.toFixed(1) + ' px high, not ' + box;
+    lefts.add(Math.round(fb.left));
+    texts.add(Math.round(fb.left + parseFloat(fs.borderLeftWidth) + parseFloat(fs.paddingLeft)));
+    const glyphs = textOf(first);
+    if (glyphs && Math.abs(mid(glyphs) - mid(fb)) > 1) return 'the text of ' + say(first) + ' ' + (mid(glyphs) - mid(fb)).toFixed(1) + ' px off its box middle';
+    if (k > 1) continue;
+    for (const c of [r.querySelector(':scope > .oe-node-label .oe-node-name'), first].filter(Boolean)) {
+      if (Math.abs(mid(R(c)) - mid(rb)) > 1) return say(c) + ' ' + (mid(R(c)) - mid(rb)).toFixed(1) + ' px off its row middle';
+    }
   }
+  if (lefts.size !== 1) return 'boxes start at ' + [...lefts].join(' · ') + ' px';
+  if (texts.size !== 1) return 'box text starts at ' + [...texts].join(' · ') + ' px';
+  if (!seen.chips || !seen.folded || !seen.deep) return 'the sample form lacks ' + Object.keys(seen).filter((n) => !seen[n]).join(', ') + ' (else this proves nothing)';
   return null;
 })()` },
   // The audit row's Kind word whole in its cell (lead 10-12: «OVERWRIT…» cut at 74 px) - every pill drawn, and the longest
@@ -1876,10 +1913,22 @@ const MUTANTS = [
       '  height: var(--control-h);\n  padding: 6px var(--space-3) 0;\n  font-family: var(--font-head);']] },
   { name: 'the name column back at its base width, a long name cut', entry: 'sample.html', rule: 'names whole, columns in line',
     at: 'sample-decl-form', says: /a_forty_letter_name_of_a_declared_column/, file: 'src/ontology_explorer.css',
-    edits: [['    minmax(var(--oe-label-w, 288px), max-content) minmax(0, 1fr)', '    var(--oe-label-w, 288px) minmax(0, 1fr)']] },
+    edits: [['  grid-template-columns: max-content minmax(0, 1fr);', '  grid-template-columns: calc(var(--space-6) * 5) minmax(0, 1fr);']] },
+  { name: 'a row padded again, its height off the row step', entry: 'sample.html', rule: 'rows one height, boxes at one x',
+    at: 'sample-decl-form', says: /not a whole number/, file: 'src/ontology_explorer.css',
+    edits: [['  margin: 0; padding: 0;\n', '  margin: 0; padding: 3px 0;\n']] },
+  { name: 'chip lines closer than the row step', entry: 'sample.html', rule: 'rows one height, boxes at one x',
+    at: 'sample-decl-form', says: /not a whole number|steps high/, file: 'src/ontology_explorer.css',
+    edits: [['  padding-block: var(--space-1);', '']] },
+  { name: 'the row sets its boxes at its top', entry: 'sample.html', rule: 'rows one height, boxes at one x',
+    at: 'sample-decl-form', says: /off its row middle/, file: 'src/ontology_explorer.css',
+    edits: [['  align-items: center; min-width: 0;', '  align-items: start; min-width: 0;']] },
+  { name: 'a summary text a step left of the values', entry: 'sample.html', rule: 'rows one height, boxes at one x',
+    at: 'sample-decl-form', says: /box text starts at/, file: 'src/ontology_explorer.css',
+    edits: [['  padding: 0 var(--space-3); border: 1px solid transparent;', '  padding: 0; border: 1px solid transparent;']] },
   { name: 'a chip of its own height beside the small field', entry: 'sample.html', rule: 'heights', at: 'sample-actions',
-    file: 'src/base.css', edits: [['  box-sizing: border-box;\n  height: var(--control-h-small);\n  padding: 0 0 0 var(--space-3);',
-      '  box-sizing: border-box;\n  height: 22px;\n  padding: 0 0 0 var(--space-3);']] },
+    file: 'src/base.css', edits: [['  box-sizing: border-box;\n  height: var(--control-h-small);\n  padding: 0 var(--space-3);',
+      '  box-sizing: border-box;\n  height: 22px;\n  padding: 0 var(--space-3);']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-copyid { height: var(--wk-h-small);', '.wk-copyid { height: 20px;']] },
   { name: 'a 12 px line again', entry: 'walk.html', rule: 'three type sizes', at: 'wk-page',

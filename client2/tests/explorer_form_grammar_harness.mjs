@@ -94,9 +94,9 @@ function suite(view, css, skel) {
   eq('L1 the bare folded card lays its parts out in a row',
     decl(rule(css, '#ontology-explorer-root .oe-field.is-bare.is-folded'), 'flex-direction'), 'row');
   const folded = rule(css, '#ontology-explorer-root .oe-field-folded');
-  eq('L2 the folded value reads from the left, is one line high and wraps - not the global 36px centred nowrap box',
+  eq('L2 the folded value reads from the left and is one box high, a long one cut (lead 10-21) - not the global 36px centred box',
     `${decl(folded, 'justify-content')}|${decl(folded, 'height')}|${decl(folded, 'min-height')}|${decl(folded, 'white-space')}`,
-    'flex-start|auto|0|normal');
+    'flex-start|var(--control-h-small)|0|nowrap');
   const shut = view.renderAuthoringRow(GROUNDED, {}, null, true);
   const line = walk(shut).find((n) => cls(n, 'oe-field-folded'));
   eq('L3 the folded line is the value only', line ? line.children.map((c) => c.className).join(',') : '(no line)', 'oe-folded-value');
@@ -109,8 +109,9 @@ function suite(view, css, skel) {
   eq('P1 a word that explains has no box and is the canon\'s dim ink (the state word, a demand, a node\'s kind)',
     `${decl(words, 'border')}|${decl(words, 'padding')}|${decl(words, 'color')}`, '0|0|var(--oe-muted)');
   const fold = rule(css, ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,\n:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded');
-  eq('P2 a fold is a link-coloured caret in a one-step square, pressed past its edges (form D)', `${decl(fold, 'color')}|${decl(fold, 'width')}|${decl(fold, 'height')}`,
-    'var(--oe-accent)|var(--space-5)|var(--space-5)');
+  eq('P2 a fold is the row head, one box high, its caret in the depth colour (lead 10-21)',
+    `${decl(fold, 'height')}|${decl(rule(css, ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-caret'), 'color')}`,
+    'var(--control-h-small)|var(--oe-tone)');
   eq('P3 the folded value wears the input\'s surface', `${decl(folded, 'border')}|${decl(folded, 'background')}`,
     '1px solid var(--oe-line)|var(--oe-surface)');
   const heads = [shut, open, view.renderAuthoringRow(GROUNDED, {}, null, false)]
@@ -135,16 +136,18 @@ function suite(view, css, skel) {
   const stateOf = (tree) => {
     const node = walk(tree).find((n) => cls(n, 'oe-node') && n.dataset.path === at);
     const row = node && node.children.find((c) => cls(c, 'oe-node-row'));
-    const st = row && row.children.find((c) => cls(c, 'oe-node-state'));
-    return st ? st.textContent : '(no row)';
+    const cell = row && row.children.find((c) => cls(c, 'oe-node-value'));
+    const st = cell && cell.children.find((c) => cls(c, 'oe-tier'));
+    return cell ? (st ? st.textContent : '') : '(no row)';
   };
   const folded2 = form(ALL_OPEN_BRANCHES);
   const opened = form(new Proxy({}, { get: (_t, k) => (k === LEAF.path ? true : ALL_OPEN_BRANCHES[k]) }));
-  eq('W1 the state column says the same word folded and opened (not the tier word)',
+  eq('W1 the row\'s word beside its box is the same folded and opened (not the tier word)',
     `${stateOf(folded2)}|${stateOf(opened)}`, 'Declared|Declared');
   const TIERS = new Set(PLAN.fields.map((r) => r.tier));
-  const states = walk(opened).filter((n) => cls(n, 'oe-node-state')).map((n) => n.textContent).filter(Boolean);
-  ok('W2 no tier word in any state column', states.length > 5 && !states.some((s) => TIERS.has(s)),
+  const states = walk(opened).filter((n) => cls(n, 'oe-node-value')).flatMap((c) => c.children.filter((n) => cls(n, 'oe-tier')))
+    .map((n) => n.textContent).filter(Boolean);
+  ok('W2 no tier word beside any box', states.length > 5 && !states.some((s) => TIERS.has(s)),
     `${states.length} states, tiers seen: ${states.filter((s) => TIERS.has(s)).join(',')}`);
   eq('W3 no row is named «This slot»', walk(opened).filter((n) => cls(n, 'oe-node-name') && n.textContent === 'This slot').length, 0);
   const paths = walk(open).filter((n) => cls(n, 'oe-ground-from')).map((n) => n._text);
@@ -168,11 +171,11 @@ function suite(view, css, skel) {
     planRow: (p) => (p === at ? { ...LEAF, candidates: [], remaining: false, refusals: [], conflicts: false, ...facts } : liveContext(view, {}).planRow(p)) },
   declarationShape(SKELETON.skeleton, SECTION), '', RAW, 0, 'dt_job'));
   const refusal = { code: 'x', path: LEAF.path, message: 'refused' };
-  eq('W9 a row somebody owes says which fact: missing · refused · differs · optional · default, and a fact with no word stays blank',
+  eq('W9 a row somebody owes says which fact: missing · refused · differs · default; an optional one and a fact with no word say nothing (lead 10-21)',
     [{ state: 'missing', remaining: true }, { state: 'answered', remaining: true, refusals: [refusal] },
       { state: 'derived', conflicts: true }, { state: 'unanswered' },
       { state: 'derived', disposition: 'default_overridable', candidates: ['a', 'b'] }, { state: 'nobody_named_this' }]
-      .map(said).join('|'), 'Missing|Refused|Differs|Optional|Default|');
+      .map(said).join('|'), 'Missing|Refused|Differs||Default|');
   const field = { key: 'group_by', when: { field: 'unit', is: 'group' } };
   eq('W8 the predicate the form asks (the one blank rule of the screen): an empty list, a blank string or a list of blanks holds nothing, a list or 0 holds a value',
     ['[]', '"  "', '[""]', '["lot"]', '0'].map((v) => skel.fieldApplies(field, { unit: 'row' }, JSON.parse(v))).join('|'),
@@ -188,8 +191,31 @@ function suite(view, css, skel) {
   eq('N1 opened as made, the shut Time says its default on its own line, once (the zone is behind it)', noted(newForm({})), '1|0');
   eq('N2 Time opened, its folded row says the default and the folded zone when it is asked, each once',
     noted(newForm({ 'read.occurred_at': true })), '1|1');
-  eq('N3 under a folded value the note takes a line of its own',
-    decl(rule(css, '#ontology-explorer-root .oe-field.is-bare.is-folded > .oe-field-note'), 'flex-basis'), '100%');
+  const lines = walk(newForm({ 'read.occurred_at': true })).filter((n) => cls(n, 'oe-field-note') && n.textContent === ZONE.note)
+    .map((n) => n.parentNode && n.parentNode.parentNode);
+  eq('N3 the note is a row of its own, under its row, at the value x (lead 10-21 ①)',
+    lines.map((r) => `${Boolean(r) && cls(r, 'oe-node-row') && cls(r, 'is-note')}|${(r && r.children.find((c) => cls(c, 'oe-node-value')) || { children: [] }).children.length}`).join(','),
+    'true|1');
+
+  console.log('\n-- R. one row class (lead 10-21, skill §0-bis) --');
+  // The sheet's rules outside @media, each by its selector list; the subject of a selector is its last compound.
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+  const sheet = [...flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim().replace(/\s+/g, ' '), body: m[2] }));
+  const parts = (sel) => { const out = []; let depth = 0, cur = ''; for (const ch of sel) { depth += ch === '(' ? 1 : ch === ')' ? -1 : 0;
+    if (depth === 0 && ch === ',') { out.push(cur.trim()); cur = ''; } else cur += ch; } out.push(cur.trim()); return out; };
+  const subject = (one) => { let depth = 0, at = 0; [...one].forEach((ch, i) => { depth += ch === '(' ? 1 : ch === ')' ? -1 : 0;
+    if (depth === 0 && /[\s>+~]/.test(ch)) at = i + 1; }); return one.slice(at); };
+  const ROW = ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row';
+  const rows = sheet.filter((r) => parts(r.sel).some((one) => /\.oe-node-row(?![\w-])/.test(subject(one))));
+  const SIZE = /(?:^|[;\s])(height|min-height|max-height|margin[\w-]*|padding[\w-]*|gap|row-gap|column-gap|border(?:-(?:top|right|bottom|left))?(?:-width)?)\s*:/;
+  const sized = rows.filter((r) => r.sel !== ROW && SIZE.test(r.body)).map((r) => `${r.sel} { ${SIZE.exec(r.body)[1]} }`);
+  ok('R0 the row rule and its decorations are read (else the rest proves nothing)', rows.some((r) => r.sel === ROW) && rows.length > 5, `${rows.length} rules`);
+  eq('R1 only the row rule sets a row\'s height, margin, padding, gap or border width; its decorations set colour and background',
+    sized.join(' | '), '');
+  const own = rows.filter((r) => r.sel === ROW);
+  eq('R2 the row rule declares no border', own.map((r) => (/(?:^|[;\s])border[\w-]*\s*:/.test(r.body) ? 'border' : '-')).join(','), '-');
+  const tree = sheet.filter((r) => /\.oe-node/.test(r.sel)).map((r) => r.sel);
+  eq('R3 no tree selector has two rule sets (no layering)', tree.filter((sel, i) => tree.indexOf(sel) !== i).join(' | '), '');
 
   console.log('\n-- K. a create refused for a moved snapshot says its next move (lead 10-11 ②) --');
   const naming = (code) => view.renderNewDeclaration({ newDeclaration: { kind: 'source_plan', id: 'zz', error: 'refused', code } }, 'source_plan');
@@ -219,7 +245,7 @@ const MUTANTS = [
   { name: 'the-bare-card-stacks-again', catches: ['L1'], file: CSS,
     from: '.oe-field.is-bare.is-folded { flex-direction: row;', to: '.oe-field.is-bare.is-folded { flex-direction: column;' },
   { name: 'the-global-button-rule-wins', catches: ['L2'], file: CSS,
-    from: '  justify-content: flex-start; height: auto; min-height: 0; white-space: normal;\n', to: '\n' },
+    from: '  justify-content: flex-start; box-sizing: border-box; height: var(--control-h-small); min-height: 0; white-space: nowrap;\n', to: '\n' },
   { name: 'a-word-wears-a-box-again', catches: ['P1'], file: CSS,
     from: '  padding: 0; border: 0; background: transparent; color: var(--oe-muted);',
     to: '  padding: 3px 10px; border: 1px solid var(--oe-line); background: transparent; color: var(--oe-muted);' },
@@ -230,10 +256,11 @@ const MUTANTS = [
     from: '.oe-chip:not(.oe-pick) { border-color: transparent; }', to: '.oe-chip:not(.oe-pick) { border-color: var(--oe-line); }' },
   { name: 'the-empty-head-takes-a-gap', catches: ['P6'], file: CSS,
     from: '.oe-field.is-bare .oe-field-head:empty { display: none; }', to: '.oe-field.is-bare .oe-field-head:empty { }' },  { name: 'the-fold-goes-grey', catches: ['P2'], file: CSS,
-    from: '  font-size: var(--fs-button); line-height: 1; color: var(--oe-accent);', to: '  font-size: var(--fs-button); line-height: 1; color: var(--oe-muted);' },
+    from: '.oe-node-caret { flex: none; width: var(--space-5); font-size: var(--fs-button); color: var(--oe-tone); }',
+    to: '.oe-node-caret { flex: none; width: var(--space-5); font-size: var(--fs-button); color: var(--oe-muted); }' },
   { name: 'the-folded-value-looks-like-text', catches: ['P3'], file: CSS,
-    from: '  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: var(--space-1) var(--space-2);',
-    to: '  border: 1px solid transparent; background: transparent; padding: var(--space-1) var(--space-2);' },
+    from: '  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: 0 var(--space-3);',
+    to: '  border: 1px solid transparent; background: transparent; padding: 0 var(--space-3);' },
   { name: 'the-tier-chip-comes-back', catches: ['P4'], file: VIEW,
     from: "  if (!bare) head.append(h('b', '', row.label));\n",
     to: "  if (!bare) head.append(h('b', '', row.label));\n  head.append(h('i', `oe-tier oe-tier--${row.tier}`, row.tier));\n" },
@@ -241,8 +268,8 @@ const MUTANTS = [
     from: "    state = h('i', 'oe-tier oe-tier--' + planned.tier, fold.word);",
     to: "    state = h('i', 'oe-tier oe-tier--' + planned.tier, fold.open ? planned.tier : fold.word);" },
   { name: 'this-slot-is-back', catches: ['W3'], file: VIEW,
-    from: "  return treeRow(depth + 1, '', [],\n                 context.renderRow(own,",
-    to: "  return treeRow(depth + 1, 'This slot', [],\n                 context.renderRow(own," },
+    from: "  const rows = [treeRow(depth + 1, '', [], context.renderRow(own,",
+    to: "  const rows = [treeRow(depth + 1, 'This slot', [], context.renderRow(own," },
   { name: 'the-bundle-path-is-back', catches: ['W4'], file: VIEW,
     from: "    box.append(h('code', 'oe-ground-from', trail.join(' › ')));", to: "    box.append(h('code', 'oe-ground-from', from));" },
   { name: 'unmeasured-is-said-again', catches: ['W5'], file: VIEW,
@@ -253,7 +280,7 @@ const MUTANTS = [
     from: "    const word = row.refusals?.length ? 'Refused' : row.conflicts ? 'Differs' : row.state === 'missing' ? 'Missing' : '';",
     to: "    const word = '';" },
   { name: 'optional-is-empty-again', catches: ['W9'], file: VIEW,
-    from: "reason: 'Optional', word: 'Optional' }", to: "reason: 'Empty', word: 'Empty' }" },
+    from: "reason: 'Optional', word: '' }", to: "reason: 'Empty', word: 'Empty' }" },
   { name: 'the-default-says-nothing', catches: ['W9'], file: VIEW,
     from: "word: row.disposition === 'default_overridable' ? 'Default' : '' };", to: "word: '' };" },
   { name: 'the-here-row-is-a-link-again', catches: ['P7'], file: CSS,
@@ -267,13 +294,19 @@ const MUTANTS = [
   { name: 'the-form-skips-the-gate', catches: ['W6'], file: VIEW,
     from: '    if (!fieldApplies(field, held, current)) continue;\n', to: '\n' },
   { name: 'the-folded-line-drops-its-note', catches: ['N2'], file: VIEW,
-    from: "    card.append(line);\n    if (row.note) card.append(noteOf(row));\n", to: "    card.append(line);\n" },
+    from: "  if (planned && planned.note) box.append(lineRow(depth, noteOf(planned), 'is-note'));\n", to: '\n' },
   { name: 'the-shut-branch-drops-its-note', catches: ['N1'], file: VIEW,
-    from: ": shut && shut.note ? noteOf(shut) : summary, null,", to: ": summary, null," },
+    from: "    if (noted && noted.note) box.append(lineRow(depth, noteOf(noted), 'is-note'));\n", to: '\n' },
   { name: 'the-open-branch-says-its-note-twice', catches: ['N2'], file: VIEW,
     from: '    const shut = !open && !own ? context.planRow(path) : null;', to: '    const shut = !own ? context.planRow(path) : null;' },
-  { name: 'the-note-beside-the-value', catches: ['N3'], file: CSS,
-    from: '.oe-field.is-bare.is-folded > .oe-field-note { flex-basis: 100%; }', to: '.oe-field.is-bare.is-folded > .oe-field-note { }' },
+  { name: 'the-note-beside-the-value', catches: ['N3'], file: VIEW,
+    from: "  if (planned && planned.note) box.append(lineRow(depth, noteOf(planned), 'is-note'));", to: '  if (planned && planned.note) box.append(noteOf(planned));' },
+  { name: 'a-modifier-pads-the-row', catches: ['R1'], file: CSS,
+    from: '.oe-node-row.is-root { background: transparent; }', to: '.oe-node-row.is-root { background: transparent; padding: 3px 0; }' },
+  { name: 'the-row-has-a-border-again', catches: ['R2'], file: CSS,
+    from: '  margin: 0; padding: 0;\n', to: '  margin: 0; padding: 0; border-bottom: 1px solid var(--oe-line);\n' },
+  { name: 'a-second-rule-for-the-row', catches: ['R3'], file: CSS,
+    from: '.oe-node-row.is-new { background: transparent; }', to: '.oe-node-row { background: transparent; }' },
   { name: 'the-retry-on-every-refusal', catches: ['K6'], file: VIEW,
     from: "    if (state.newDeclaration.code === 'stale_base_snapshot') {", to: '    if (true) {' },
   { name: 'the-retry-off-the-line', catches: ['K6'], file: VIEW,

@@ -444,13 +444,10 @@
     .table-config-advanced[hidden],
     .chain-rule-raw[hidden],
     .table-config-raw[hidden] { display: none; }
-    /* 거절은 «그 칸 옆»에. 코드 한 낱말이고 문장은 아래 거절 상자의 것입니다.
-       C-95: 값 열 «안»에서 입력 바로 아래에 섭니다 — 줄의 결을 끊지 않으면서 어느 칸의
-       답인지가 «자리»로 보입니다(상태 열은 92px 고정이라 코드가 카드 밖으로 넘쳤습니다). */
+    /* 거절은 «그 칸 바로 밑» 자기 줄에 (총괄 10-21 ③) — 줄의 높이·간격은 그 줄(.oe-node-row)의 것입니다. */
     .chain-rule-field-refusal,
     .table-config-field-refusal {
       display: block;
-      margin: var(--space-1) 0 0;
       color: var(--danger);
       font-size: var(--fs-label);
       font-style: normal;

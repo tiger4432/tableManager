@@ -1427,7 +1427,15 @@ function renderValue(row) {
 /** The plan's note - the one seat that draws it: the open card, the folded line and a shut branch's line all
  *  come here (lead 10-11 ①: folded, a Time said nothing of its default and a zone nothing of when it is asked). */
 function noteOf(row) {
-  return h('small', 'oe-field-note', row.note);
+  const note = h('small', 'oe-field-note', row.note);
+  note.title = row.note;
+  note.setAttribute('data-clip-ok', '');
+  return note;
+}
+
+/** A line of its own under a row, at the value x, one row high (lead 10-21): the plan's note, a refusal. */
+export function lineRow(depth, el, cls) {
+  return treeRow(depth, '', [], el, null, cls);
 }
 
 function foldDecision(row, expanded = {}) {
@@ -1479,7 +1487,8 @@ function foldDecision(row, expanded = {}) {
   // complete config into a short page, which is the state it should read as.
   if (row.state === 'answered') return { open: false, reason: 'Declared', word: 'Declared' };
   // The skeleton's word for the same state: the server defines unanswered as optional and absent (lead a5720d9d8).
-  if (row.state === 'unanswered') return { open: false, reason: 'Optional', word: 'Optional' };
+  // No word beside its box (lead 10-21: Required/Optional only on an empty required field).
+  if (row.state === 'unanswered') return { open: false, reason: 'Optional', word: '' };
   return { open: true, reason: '', word: row.disposition === 'default_overridable' ? 'Default' : '' };
 }
 
@@ -1555,15 +1564,17 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     line.setAttribute('aria-expanded', 'false');
     // An optional row the server grounds says what its blank MEANS in the value's place (lead
     // 04cecc30f ②: 「Not an event」) - one word on the same line, so 8fd2f185d's space holds.
-    // Form D: a list of words reads as its chips here too, not as its JSON.
+    // Form D: a list of words reads as its words, not as its JSON - in the one box (lead 10-21), not a chip in a box.
     const words = Array.isArray(row.value) && row.value.length
       && row.value.every((v) => typeof v === 'string' || typeof v === 'number') ? row.value : null;
     const cells = !words && row.value && typeof row.value === 'object' && !Array.isArray(row.value)
       ? Object.entries(row.value).filter(([, v]) => v !== null && typeof v !== 'object').map(([k, v]) => `${k} ${v}`).join(' · ')
       : '';
-    const shown = h('code', 'oe-folded-value', words ? undefined : row.state === 'unanswered' && row.ground
+    const shown = h('code', 'oe-folded-value', words ? words.map(String).join(', ') : row.state === 'unanswered' && row.ground
       ? row.ground.text : cells || formatValue(row.value));
-    for (const word of words || []) shown.append(h('span', 'chip', String(word)));
+    // One box high: a long value is cut, its whole one hover away.
+    shown.title = shown.textContent;
+    shown.setAttribute('data-clip-ok', '');
     line.append(shown);
     // 🔴 THE REASON BELONGS TO WHICHEVER COLUMN OWNS IT. In the tree the row's state column
     // already says 「선언됨」, so repeating it here put the same word at two x-positions and
@@ -1575,7 +1586,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     // is the open card's (`renderGround`), one press away. This overturns 「the ground goes NEXT TO
     // the value」 for the folded line only - the owner read those sentences as noise (482288b12).
     card.append(line);
-    if (row.note) card.append(noteOf(row));
+    if (row.note && !bare) card.append(noteOf(row));
     return card;
   }
   if (fold.byHand) {
@@ -1757,7 +1768,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     line.append(h('span', '', refusal.message));
     card.append(line);
   }
-  if (row.note) card.append(noteOf(row));
+  if (row.note && !bare) card.append(noteOf(row));
   return card;
 }
 
@@ -1864,14 +1875,19 @@ function defaultsOnly(plan, absolute) {
   return rows.some(isDefault) && rows.every((row) => isDefault(row) || row.state === 'unanswered');
 }
 
-/** One guide per ancestor (lead 619befe8c), placed by the stylesheet from `--oe-guide`. Out of
- *  flow, so the label's own layout is untouched. */
+/** The depth colour of a row at `depth` - an index into the five the stylesheet names (lead 10-21, mockup «1 - Tree»):
+ *  the declaration's own blocks take the first. */
+const toneOf = (depth) => String((depth + 4) % 5);
+
+/** One guide per ancestor below the declaration's own row (lead 619befe8c; its blocks stand at the left edge, mockup
+ *  «1 - Tree»), placed by the stylesheet from `--oe-guide` in its ancestor's colour. Out of flow. */
 function depthGuides(depth) {
   const box = h('span', 'oe-node-guides');
   box.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < depth; i += 1) {
+  for (let i = 1; i < depth; i += 1) {
     const line = h('span', 'oe-node-guide');
     line.style.setProperty('--oe-guide', String(i));
+    line.dataset.tone = toneOf(i);
     box.append(line);
   }
   return box;
@@ -1903,25 +1919,27 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls, lead = null) {
   const row = h('div', 'oe-node-row' + (cls ? ' ' + cls : ''));
   // Depth is DATA; the formula turning it into a width lives in the stylesheet.
   row.style.setProperty('--oe-depth', String(depth));
+  row.dataset.depth = String(depth);
+  row.dataset.tone = toneOf(depth);
   const name = h('div', 'oe-node-label');
-  if (lead) name.append(lead);
   // A name may break only right after an '_' (lead 10-21): each segment is its own span, a <wbr> after its '_'.
   // It wraps only where the rows stack (CSS); the one grid keeps it on one line everywhere else.
   const nameText = h('span', 'oe-node-name');
   for (const part of String(label ?? '').split(/(?<=_)/)) nameText.append(h('span', '', part), h('wbr'));
   nameText.setAttribute('data-wrap-ok', '');
   nameText.title = String(label);
-  name.append(nameText);
+  // The head is one button, its caret and its name (lead 10-21).
+  if (lead) lead.append(nameText);
+  name.append(lead || nameText);
   for (const extra of extras || []) name.append(extra);
   if (depth > 0) name.append(depthGuides(depth));
   row.append(name);
   const value = h('div', 'oe-node-value');
   value.setAttribute('data-wrap-ok', '');
   if (valueEl) value.append(valueEl);
+  // No state column (lead 10-21): the row's word stands right of its box.
+  if (stateEl) value.append(stateEl);
   row.append(value);
-  const state = h('div', 'oe-node-state');
-  if (stateEl) state.append(stateEl);
-  row.append(state);
   return row;
 }
 
@@ -2030,8 +2048,9 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     // list by its count; a fold of defaults says so (04cecc30f); a fold with nothing to summarise still says how
     // many it folds (the fold-shows-its-count rule above).
     const hidden = shape.kind === 'map' ? membersOf(shape, value).length : children.childElementCount;
-    const toggle = path ? button(open ? '▾' : '▸', 'toggle-field', path, open ? 'oe-node-fold' : 'oe-node-folded') : null;
+    const toggle = path ? button('', 'toggle-field', path, open ? 'oe-node-fold' : 'oe-node-folded') : null;
     if (toggle) {
+      toggle.append(h('span', 'oe-node-caret', open ? '▾' : '▸'));
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       toggle.setAttribute('aria-label', `${open ? 'Fold' : 'Open'} ${label || path}`);
     }
@@ -2044,12 +2063,14 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     // control belongs on the line that carries the name -- and a fold then hides only the
     // keys nobody picked for, never the picker itself.
     const own = covers ? context.planRow(path) : null;
-    // Shut, the branch's own plan row is not drawn below it, so its note rides the branch's line.
+    // Shut, the branch's own plan row is not drawn below it, so its note is said under the branch's line.
     const shut = !open && !own ? context.planRow(path) : null;
     box.append(treeRow(depth, label || path, [],
-                       own ? context.renderRow(own, shape, true) : shut && shut.note ? noteOf(shut) : summary, null,
+                       own ? context.renderRow(own, shape, true) : summary, null,
                        (path ? 'is-branch' : 'is-branch is-root')
                        + (open ? '' : ' is-folded'), toggle));
+    const noted = own || shut;
+    if (noted && noted.note) box.append(lineRow(depth, noteOf(noted), 'is-note'));
   }
   if (open) box.append(children);
   return box;
@@ -2076,8 +2097,9 @@ function branchOwnRow(context, path, depth) {
   const state = h('i', 'oe-tier oe-tier--' + own.tier, fold.word);
   const cls = own.remaining ? 'is-remaining'
     : own.refusals && own.refusals.length ? 'is-refused' : '';
-  return treeRow(depth + 1, '', [],
-                 context.renderRow(own, null, true), state, cls);
+  const rows = [treeRow(depth + 1, '', [], context.renderRow(own, null, true), state, cls)];
+  if (own.note) rows.push(lineRow(depth + 1, noteOf(own), 'is-note'));
+  return rows;
 }
 
 /** A derived `shape` row whose value is a MAPPING: the plan's value for a map the document
@@ -2145,8 +2167,7 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   box.appendChild(treeRow(depth, name, [],
     renderClosedList(closedListChoice(names, chosen, { loaded: true, name: path }),
       h, { action: 'edit-shape-branch', path, label: name }),
-    demand.text ? h('i', `oe-tier oe-demand oe-demand--${demand.tone}`, demand.text) : null,
-    'is-branch oe-node-head'));
+    demandWord(demand, required, chosen), 'is-branch oe-node-head'));
   // 고른 가지만 내려갑니다. 안 고른 자리에는 «아무것도» 없습니다.
   // 🔴 가지의 칸들을 «고르개 바로 밑»에 펴서 놓습니다 — 그것을 다시 한 상자에 넣으면
   //    그 상자가 접힐 수 있고(깊이 규칙), 실측해 보니 접혀 있었습니다: 고르고 나서도
@@ -2168,7 +2189,7 @@ function renderSkeletonRecord(context, node, path, value, depth, covers = null) 
   // When the record's own plan row is drawn as the picker on the branch line above, it is
   // not drawn again here -- one row, one control, one place to press.
   const own = path && !covers ? branchOwnRow(context, path, depth) : null;
-  if (own) box.append(own);
+  if (own) box.append(...own);
   const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   for (const field of node.fields || []) {
     // The keys the picker above writes are not also asked for one box at a time.
@@ -2203,7 +2224,7 @@ function renderSkeletonMap(context, node, path, value, depth) {
   if (given) box.append(...renderPlannedValue(context, node, path, given, depth));
   else {
     const own = branchOwnRow(context, path, depth);
-    if (own) box.append(own);
+    if (own) box.append(...own);
   }
   // 🔴 THE MEMBERS THE PLAN NAMES ARE DRAWN TOO, NOT ONLY THE ONES THE DOCUMENT HOLDS
   // (owner, 2026-08-21: 「packs 제거 후 소스에는 문장id - vocab - vocab 정의 따른 하위 항목별
@@ -2485,12 +2506,20 @@ function renderTreeLeaf(context, node, path, value, depth, label, required = und
     cls = planned.remaining ? 'is-remaining'
       : planned.refusals && planned.refusals.length ? 'is-refused' : '';
   } else if (demand.text) {
-    // The plan's own state column, carrying the skeleton's word instead of the plan's.
-    state = h('i', `oe-tier oe-demand oe-demand--${demand.tone}`, demand.text);
+    // The plan's own word, carrying the skeleton's instead of the plan's.
+    state = demandWord(demand, required, value);
     cls = demand.source === 'broken' ? 'is-refused' : '';
   }
   box.append(treeRow(depth, label || path, [], control, state, cls));
+  if (planned && planned.note) box.append(lineRow(depth, noteOf(planned), 'is-note'));
   return box;
+}
+
+/** The skeleton's word beside a box: a fault and an unread plan always, Required only on an empty required cell
+ *  (lead 10-21) - an optional or a filled cell says nothing. */
+function demandWord(demand, required, value) {
+  if (!demand.text || (demand.source === 'skeleton' && !(required === true && isBlank(value)))) return null;
+  return h('i', `oe-tier oe-demand oe-demand--${demand.tone}`, demand.text);
 }
 
 /** A held value as text: a string as itself, anything else as the JSON the file holds.
@@ -2509,7 +2538,11 @@ function renderSkeletonLeaf(context, node, path, value) {
   // folding -- 「읽기에서는 편집 컨트롤 대신 값이 그려질 뿐, 무엇이 있는지 보이는 것은 같다」.
   if (context.readOnly) {
     if (value === undefined || value === null) return h('span', 'oe-value is-none', 'None');
-    return h('span', 'oe-value', spelledValue(value));
+    // One box high in its row: a long value is cut, its whole one hover away.
+    const read = h('span', 'oe-value', spelledValue(value));
+    read.title = read.textContent;
+    read.setAttribute('data-clip-ok', '');
+    return read;
   }
   // 🔴 A VALUE THIS CONTROL CANNOT HOLD IS SHOWN, AND NO CONTROL IS OFFERED FOR IT. The text
   //    box used to open EMPTY over a list, a record or a boolean (9 cells on the box's own

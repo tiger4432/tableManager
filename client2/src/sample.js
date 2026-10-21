@@ -31,11 +31,18 @@ if (formMount) {
     { key: 'name', required: true, node: leaf },
     { key: 'read', required: true, node: { kind: 'record', fields: [
       { key: 'table', required: true, node: leaf },
+      { key: 'columns', required: false, node: { kind: 'map', keyed_by: 'index', member: 'column', of: leaf } },
       { key: 'time', required: false, node: { kind: 'record', fields: [
         { key: 'column', required: true, node: leaf },
-        { key: 'a_forty_letter_name_of_a_declared_column', required: false, node: leaf }] } }] } }] };
-  const value = { name: 'lot_master', read: { table: 'lot_master', time: { column: 'observed_at', a_forty_letter_name_of_a_declared_column: 'Asia/Seoul' } } };
-  const tree = renderSkeletonForm(readContext({}, { read: true, 'read.time': true }), skeleton, '', value, 0, 'lot_master');
+        { key: 'a_forty_letter_name_of_a_declared_column', required: false, node: leaf }] } }] } },
+    { key: 'limits', required: false, node: { kind: 'record', fields: [
+      { key: 'group_by', required: false, node: leaf }, { key: 'unit', required: false, node: leaf }] } }] };
+  // A list of words long enough to wrap (a chip row two lines high), and a block left folded (its summary).
+  const columns = ['lot_id', 'wafer_id', 'slot', 'die_x', 'die_y', 'bin', 'soft_bin', 'test_program', 'tester', 'probe_card',
+    'operator', 'started_at', 'ended_at', 'site', 'temperature', 'retest', 'yield', 'remark'];
+  const value = { name: 'lot_master', read: { table: 'lot_master', columns, time: { column: 'observed_at', a_forty_letter_name_of_a_declared_column: 'Asia/Seoul' } },
+    limits: { group_by: 'lot_id', unit: 'lot' } };
+  const tree = renderSkeletonForm(readContext({}, { read: true, 'read.time': true, limits: false }), skeleton, '', value, 0, 'lot_master');
   formMount.replaceChildren(Object.assign(document.createElement('div'), { className: 'oe-skeleton-form' }));
   formMount.firstChild.append(tree);
 }

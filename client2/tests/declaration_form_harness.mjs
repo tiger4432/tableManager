@@ -129,8 +129,8 @@ function viewSuite(M) {
   ok(table && String(table.textContent) === 'T.', `V7 a column cell says its table before its box [${table && table.textContent}]`);
   const folded = M.view.renderAuthoringRow({ path: 'p', label: 'P', state: 'answered', tier: 'constrained_input',
     value: ['run_uid', 'lot'], refusals: [], candidates: null }, [], null, true);
-  const shown = walk(folded).filter((n) => has(n, 'chip')).map((n) => String(n.textContent));
-  ok(same(shown, ['run_uid', 'lot']), `V8 a plan row's folded list reads as its chips, not its JSON [${shown}]`);
+  const shown = walk(folded).filter((n) => has(n, 'oe-folded-value')).map((n) => String(n.textContent));
+  ok(same(shown, ['run_uid, lot']), `V8 a plan row's folded list reads as its words in its one box, not its JSON [${shown}]`);
 }
 
 // ── A: ontology_path ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -238,6 +238,17 @@ function panelSuite(M) {
   const caret = k1 ? walk(k1.children[0]).find((n) => attr(n, 'data-action') === 'toggle-field') : null;
   ok(caret && attr(caret, 'aria-expanded') === 'true' && walk(k1).some((n) => has(n, 'decl-field-refusal')),
     'P5 a refused cell inside a folded member opens it, and its mark stands beside it');
+  const lineOf = (tag) => tag && tag.parentNode && tag.parentNode.parentNode;
+  const line = lineOf(walk(r.host).find((n) => has(n, 'decl-field-refusal')));
+  const kin = line && line.parentNode ? line.parentNode.children : [];
+  ok(line && has(line, 'oe-node-row') && has(line, 'is-refusal') && kin.indexOf(line) > 0 && has(kin[kin.indexOf(line) - 1], 'oe-node-row'),
+    'P9 the refusal is a row of its own, right under its cell\'s row (lead 10-21 ③)');
+  const again = { name: 'alpha', refusal: { code: 'bad_x', path: 'rules.alpha.deep.k1.x', message: 'no' } };
+  r.panel._markShort(r.panel._formBox, again, []);
+  r.panel._markShort(r.panel._formBox, again, []);
+  const lines = walk(r.host).filter((n) => has(n, 'is-refusal'));
+  ok(lines.length === 1 && lines.every((n) => walk(n).some((t) => has(t, 'decl-field-refusal'))),
+    `P10 marked again, the old refusal goes with its row - no empty line is left [${lines.length}]`);
 
   // Enter and a paste at an adder
   const w = panelOf(M, FIX, copy(DOC));
@@ -298,7 +309,7 @@ const DEFECTS = [
     (s) => s.replace("  return words.length ? `${words.join(' · ')} · ${count}` : '';", "  return words.join(' · ');")],
   ['view', 'a column cell hides its table', (s) => s.replace('  if (!table) return control;', '  return control;')],
   ['view', "a plan row's folded list is its JSON again",
-    (s) => s.replace("    for (const word of words || []) shown.append(h('span', 'chip', String(word)));", '')],
+    (s) => s.replace("words ? words.map(String).join(', ')", 'words ? JSON.stringify(words)')],
   ['path', "the adder's words go in as one member", (s) => s.replace('.split(/[,\\n\\t]/)', '.split(/\\u0000/)')],
   ['path', 'a switched gate forgets what was typed', (s) => s.replace('      kept[at] = record[field.key];\n', '')],
   ['path', 'a switched gate keeps the shut branch in the document', (s) => s.replace('      delete record[field.key];\n', '')],
@@ -307,6 +318,11 @@ const DEFECTS = [
       '  return undefined;')],
   ['panel', 'two panels of a registry share list ids',
     (s) => s.replace('    this._listPrefix = `${spec.cls}-${Math.random().toString(36).slice(2, 8)}`;', '    this._listPrefix = spec.cls;')],
+  ['panel', 'the refusal back inside its cell\'s value column',
+    (s) => s.replace("  if (own) node.insertBefore(lineRow(Number(own.dataset.depth) || 0, tag, 'is-refusal'), own.nextSibling || null);\n  else node.appendChild(tag);",
+      '  (slot || node).appendChild(tag);')],
+  ['panel', 'marked again, the old refusal leaves its empty line',
+    (s) => s.replace("      const gone = line && ` ${line.className || ''} `.includes(' is-refusal ') ? line : tag;", '      const gone = tag;')],
   ['panel', 'a refused cell stays folded shut',
     (s) => s.replace('[refusedAt(view, spec), ...missingRequired(root, value, this._defs)].filter(Boolean)', '[]')],
   ['panel', 'a paste at an adder is a plain paste', (s) => s.replace("        box.addEventListener('paste', adderInput);\n", '')],

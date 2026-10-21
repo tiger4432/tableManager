@@ -145,7 +145,7 @@
   align-items: center;
   box-sizing: border-box;
   height: var(--control-h-small);
-  padding: 0 0 0 var(--space-3);
+  padding: 0 var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--fs-button);
   line-height: 1;
@@ -154,6 +154,8 @@
   background: var(--bg-header);
   border: 1px solid var(--border);
 }
+/* With its remove the chip ends at the remove's square, not at a step of its own. */
+:where(.chip:has(> .chip-remove)) { padding-right: 0; }
 :where(.chip-remove) {
   width: calc(var(--control-h-small) - 2px);
   height: calc(var(--control-h-small) - 2px);
@@ -211,8 +213,6 @@
 }
 :where(.decl-split__fault) { color: var(--danger); font-size: var(--fs-label); overflow-wrap: anywhere; }
 :where(.decl-split__form) {
-  --oe-label-w: calc(var(--space-6) * 7);
-  --oe-state-w: calc(var(--space-6) * 4);
   min-width: 0;
   min-inline-size: 0;
   margin: 0;

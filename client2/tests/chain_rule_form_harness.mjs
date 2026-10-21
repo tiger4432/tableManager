@@ -1076,7 +1076,7 @@ const DEFECTS = [
   ['a declaration that cannot run is saved in silence again',
     (s) => s.replace('        if (short.length) this._markShort(this._formBox, view, short);', '')],
   ['the save presses stack their marks, so a second press doubles every cell',
-    (s) => s.replace('      if (tag.parentNode) tag.parentNode.removeChild(tag);', '')],
+    (s) => s.replace('      if (gone.parentNode) gone.parentNode.removeChild(gone);', '')],
   ['a stray read draws the new form before the button\'s answer, which then redraws it under the typing',
     (s) => s.replace('(this.open || (this.newMode && this._awaitingNew))', 'this.open')],
   ['the guard keys on newMode alone, so a failed answer strands the panel',

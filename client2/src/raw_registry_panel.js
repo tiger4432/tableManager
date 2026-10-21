@@ -25,7 +25,7 @@
 
 import { ABSENT, countText } from './absent.js';
 import { CHOOSE } from './ui_words.js';
-import { renderSkeletonForm, adderInput } from './ontology_explorer_view.js';
+import { renderSkeletonForm, adderInput, lineRow } from './ontology_explorer_view.js';
 import { emptyOf, missingRequired, pickBranch, refNames, shapeAt } from './ontology_skeleton.js';
 // The grid's own reader of pasted sheet text (lead f382dacfb: no second parser).
 import { parseTsv, serializeTsv } from './tsv.js';
@@ -289,16 +289,15 @@ function markRefusedField(box, view, spec) {
   //    own sentence (`detail`), and the box below the form leaves it out; one that names no cell stays in that box.
   //    The code alone is said only when the server sent no sentence (a required cell left empty, `_markShort`).
   tag.textContent = refusal.message || refusal.code || '';
-  // 🔴 그 칸의 «값 열»에 답니다. `[data-path]` 는 칸의 «상자»라서 거기 붙이면 코드가 줄
-  //    «아래» 한 줄로 떨어지고, 줄이 세 열짜리 격자가 된 뒤로는 그것이 줄의 결을 끊습니다.
-  //    ⚠️ 상태 열(필수·선택이 사는 곳)에 먼저 넣어 봤고 «재서» 물렸습니다 — 그 열은 92px
-  //       고정이라 `unresolvable_mapper` 가 카드 밖으로 넘쳤습니다. 값 열은 1fr 이고,
-  //       거기 붙으면 코드가 «그 입력 바로 아래»에 서서 어느 칸의 답인지가 자리로 보입니다.
-  //    열을 못 찾으면 종전대로 상자에 답니다.
+  tag.title = tag.textContent;
+  tag.setAttribute('data-clip-ok', '');
+  // 🔴 그 칸의 줄 «바로 밑» 자기 줄에, 값 열 x 에서 섭니다 (총괄 10-21 ③: 한 줄 높이, 넘치면 «…» + title).
+  //    줄을 못 찾으면 종전대로 상자에 답니다.
   // ⚠️ `:scope` 를 안 씁니다 — 하니스의 DOM 스텁이 못 읽는 선택자는 «조용히» 빗나갑니다.
   const own = firstChildOf(node, 'oe-node-row');
   const slot = own ? firstChildOf(own, 'oe-node-value') : null;
-  (slot || node).appendChild(tag);
+  if (own) node.insertBefore(lineRow(Number(own.dataset.depth) || 0, tag, 'is-refusal'), own.nextSibling || null);
+  else node.appendChild(tag);
   const control = slot && slot.querySelector ? slot.querySelector('input, select, textarea') : null;
   if (control) {
     tag.id = `${spec.cls}-refusal-${Math.random().toString(36).slice(2, 8)}`;
@@ -1319,7 +1318,10 @@ export class RawRegistryPanel {
     const spec = this.spec;
     if (!box || !box.querySelectorAll) return;
     for (const tag of [...box.querySelectorAll(`.${spec.cls}-field-refusal`)]) {
-      if (tag.parentNode) tag.parentNode.removeChild(tag);
+      // A tag on its own line goes with its line.
+      const line = tag.parentNode && tag.parentNode.parentNode;
+      const gone = line && ` ${line.className || ''} `.includes(' is-refusal ') ? line : tag;
+      if (gone.parentNode) gone.parentNode.removeChild(gone);
     }
     markRefusedField(box, view, spec);
     for (const at of short) {
