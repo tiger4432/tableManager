@@ -14,7 +14,7 @@
 > 뜻      «lists no target_columns» 거절 -> 목록을 먼저 적음 · «nothing to withdraw» -> 목록 밖 칸이 없음
 >          «writes '<표>', not '<표>'» -> 그 규칙의 대상 표를 적음
 > 급할 때   규칙에서 target_columns 줄을 지우고 저장 -> 오늘처럼 (거둔 층은 다음 실행에 다시 섬)
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert 86362dc28 -> 런처 재기동
 > ```
 >
 > ---
