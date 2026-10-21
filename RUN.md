@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **API 가 통지를 안 받으면 5 초 동안 아무도 다시 안 보낸다 — 와처도 (총괄 1ff4dcc6c ③, 588db62b0)** — git pull · 와처 · 체인 워커 재기동
+>
+> ```
+> 보이는 것 watcher.log · chain_worker.log «[Watcher|Chain Worker] notifications not delivered (<API 주소> did not take
+>          one - the line above says why) ..., no sender tries for 5 s» — 안 받기 시작할 때 한 번 · 다시 받으면 «delivered again»
+> 뜻      이 줄이 계속 남 -> API(웹 서버)가 죽었거나 통지를 거절 -> 서버 로그 · 재기동. 데이터는 그대로 들어가고
+>          화면은 API 가 다시 받은 뒤 5 초 안에 표 새로고침으로 따라옴
+> 되돌리기  git revert 588db62b0 -> 와처 · 체인 워커 재기동 (그 뒤 와처는 다시 통지마다 기다림)
+> ```
+>
+> ---
+>
 > ## [10-22] **끊긴 리플레이를 끊긴 쪽 다음부터 이어 함 — 대기열 «Interrupted · Resume» (소유자 10-21, 총괄 fc1e1e385)** — git pull · 런처 재기동
 >
 > ```
@@ -136,7 +148,7 @@
 > 무엇      체인이 그룹 커밋 뒤 화면 통지를 하나씩 보내다 API 가 안 받으면 «첫 실패에서» 그 배치의 남은 통지를 멈춤
 >           안 보낸 것은 미전달로 남고, 체인 워커의 스윕이 5 초마다 표 단위 새로고침으로 다시 보냄 (스윕도 첫 실패에서 멈춤)
 >           지금까지는 맵 50 개짜리 그룹이면 통지 50 건 × 거부 약 2 초 = 약 100 초 동안 그 줄이 «도는 중»이라 같은 표의 다음 일이 기다렸음
-> 보이는 것  chain_worker.log «[Chain Worker] notifications not delivered (<API 주소> did not take one ...) - N waiting, next try in 5 s» — API 가 안 받기 시작할 때 한 번
+> 보이는 것  chain_worker.log «[Chain Worker] notifications not delivered (<API 주소> did not take one ...) - N waiting, no sender tries for 5 s» — API 가 안 받기 시작할 때 한 번
 >           «[Chain Worker] notifications delivered again (<API 주소>)» — 다시 받을 때 한 번
 >           «[Latency] … notify=<ms>» 가 수만 ms 이던 것이 실패 한 번 몫으로
 > 화면      API 가 안 받는 동안의 변경은 API 가 살아난 뒤 5 초 안에 표 새로고침으로 보임 (데이터는 그대로)
