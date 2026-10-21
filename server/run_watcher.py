@@ -358,34 +358,27 @@ def readings_now(watcher, stamps):
 
 
 def stamp_read_files_once(watcher):
-    """🔴 Once, before the first sweep and before the retry poller keeps its readings (총괄 10-21): the log rows from
-    before the checklist get their stamp (`checkpoint.stamp_read_files`), else the first sweep reads every file
-    again - and the readings are kept as `reading_of` spells them now (it no longer reads `enabled`), else the first
-    tick takes the new spelling for a changed reading and unchecks those tables. Not a second judge: it runs once,
-    then the marker file says it ran."""
+    """🔴 The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」) - nothing heavy before the watcher
+    stands: the rows from before it are stamped by the first full sweep off the stat it takes anyway
+    (`directory_watcher.start_read_files_fill`; the marker is written when that sweep reached every source). Here only
+    the readings are kept as `reading_of` spells them now (it no longer reads `enabled`), else the first tick takes the
+    new spelling for a changed reading and unchecks those tables. A failure is said and the watcher goes on."""
+    import directory_watcher
     import paths
-    from directory_watcher import _safe_relative_path
-    from ingestion import checkpoint, reread
+    from ingestion import reread
 
     marker = paths.config_path(READ_FILES_STAMPED_FILENAME)
     if os.path.exists(marker):
         return None
-    roots = list(watcher.handlers_by_raw_path) + [target["spec"]["root"] for target in watcher.external_targets.values()]
-    db = SessionLocal()
+    directory_watcher.start_read_files_fill(marker)
     try:
-        said = checkpoint.stamp_read_files(
-            db, lambda path: any(_safe_relative_path(path, root) is not None for root in roots))
-    finally:
-        db.close()
-    stamps = reread.load_reading_stamps()
-    now = readings_now(watcher, stamps)
-    if now is not None:
-        reread.keep_reading_stamps({**stamps, **now})
-    with open(marker, "w", encoding="utf-8") as handle:
-        handle.write(datetime.now(timezone.utc).isoformat())
-    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d) · "
-            "missing on disk %d" % (said["stamped"], said["failed"] + said["changed"], said["failed"],
-                                    said["changed"], said["missing"]))
+        stamps = reread.load_reading_stamps()
+        now = readings_now(watcher, stamps)
+        if now is not None:
+            reread.keep_reading_stamps({**stamps, **now})
+    except Exception as e:                                                  # noqa: BLE001 - the watcher goes on
+        logger.warning("[Watcher] the tables' readings were not kept for the checklist's first start: %s", told(e))
+    line = "[Watcher] read files are stamped by the first sweep (the checklist's first start)"
     logger.info(line)
     return line
 

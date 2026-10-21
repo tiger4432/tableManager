@@ -10,10 +10,10 @@ size) - asked by every seat through `checkpoint.checked`.
   no stamp            a read that waited out a lock writes none                  -> not checked
   reading changed     table ta: its read rows unchecked, its failed handed; tb   -> untouched
   enabled             switching a source off and on                             -> no new reading
-  the fill            unchanged SUCCESS stamped; failed / changed / missing told; outside the swept folders untouched;
-                      once more                                                  -> nothing
+  the fill            off the stat a sweep took: unchanged SUCCESS stamped; failed / changed told; a path or table
+                      not asked untouched; once more                             -> nothing
   a real watcher      rows from before the checklist + their files in place -> started: none read, the failed one read
-                      once; a file saved again -> read; tb's plugin changed -> tb's files read again, ta's not;
+                      once, the first sweep's line says the fill; a file saved again -> read; tb's plugin changed -> tb's files read again, ta's not;
                       restarted -> nothing read
 """
 import http.server
@@ -121,16 +121,18 @@ def test_the_rows_from_before_the_checklist_are_stamped_once(db_session, tmp_pat
     outside = _write(tmp_path / "elsewhere" / "o.csv", "x")
     rows = [_row(db_session, "ta", same, at=later), _row(db_session, "ta", failed, "FAILED", at=later),
             _row(db_session, "ta", changed, at=later - timedelta(days=1)),
-            _row(db_session, "ta", str(root / "gone.csv"), at=later), _row(db_session, "ta", outside, at=later)]
-    looked_at = lambda path: os.path.normcase(path).startswith(os.path.normcase(str(root)))   # noqa: E731
+            _row(db_session, "tb", same, at=later), _row(db_session, "ta", outside, at=later)]
+    asked = [(path.replace("\\", "/").upper() if os.sep == "\\" else path, checkpoint.read_file_stat(path))
+             for path in (same, failed, changed)]
 
-    said = checkpoint.stamp_read_files(db_session, looked_at)
+    said = checkpoint.stamp_read_files(db_session, "ta", asked)
 
     db_session.expire_all()
-    assert said == {"stamped": 1, "failed": 1, "changed": 1, "missing": 1}
+    assert said == {"stamped": [rows[0].id], "failed": [rows[1].id], "changed": [rows[2].id]}
     assert [row.file_size is not None for row in rows] == [True, False, False, False, False]
     assert checkpoint.checked(db_session, "ta", [(same, checkpoint.read_file_stat(same))]) == {same: "SUCCESS"}
-    assert checkpoint.stamp_read_files(db_session, looked_at) == {"stamped": 0, "failed": 1, "changed": 1, "missing": 1}
+    assert checkpoint.stamp_read_files(db_session, "ta", asked) == {"stamped": [], "failed": [rows[1].id],
+                                                                     "changed": [rows[2].id]}
 
 
 # ── a real watcher ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -246,8 +248,8 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
     watcher, log = start()
     try:
         assert until(lambda: reads().get(("ta", "af.csv")) == 2, watcher), reads()        # the failed one, once
-        assert said("[Watcher] read files stamped 3 · left for re-read 1 (failed 1 · changed since read 0) · "
-                    "missing on disk 0")
+        assert until(lambda: said("[Watcher] read files stamped 3 · left for re-read 1 (failed 1 · changed since read 0)"),
+                     watcher)
         assert until(lambda: reads().get(("tb", "rb.csv")) == 1, watcher), reads()
         time.sleep(5)
         assert reads() == {("ta", "a1.csv"): 1, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 2, ("tb", "b1.csv"): 1,

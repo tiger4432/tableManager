@@ -8,6 +8,7 @@ import threading
 import contextlib
 import contextvars
 import itertools
+import stat as _stat
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -985,6 +986,43 @@ def _source_takes(options: dict, file_path: str, rel_path: str) -> bool:
         expected = str(options.get("filename", "voids.json"))
         return os.path.basename(file_path).lower() == expected.lower()
     return any(_glob_regex(p).fullmatch(rel_path) for p in patterns)
+
+
+#: The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): while `marker` is set, the seat that asks
+#: the checklist (`already_checked`) first stamps the rows from before it off the stat its caller just took - nothing
+#: walks the disk before the watcher stands. The first full sweep that reached every source ends it
+#: (`finish_read_files_fill`): the marker file is written and this never runs again.
+_READ_FILES_FILL = {"marker": None, "held": False, "said": {"stamped": set(), "failed": set(), "changed": set()}}
+_READ_FILES_FILL_LOCK = threading.Lock()
+
+
+def start_read_files_fill(marker: str):
+    """Stamp the rows from before the checklist as the sweeps look - until `marker` is written."""
+    with _READ_FILES_FILL_LOCK:
+        _READ_FILES_FILL.update(marker=marker, held=False, said={"stamped": set(), "failed": set(), "changed": set()})
+
+
+def finish_read_files_fill(reached_all: bool):
+    """A full sweep ended: when it reached every source and stamped every batch, the marker is written and one line
+    says what was stamped; else the next sweep goes on. -> the line, or None."""
+    with _READ_FILES_FILL_LOCK:
+        marker, held = _READ_FILES_FILL["marker"], _READ_FILES_FILL["held"]
+        said = {key: len(ids) for key, ids in _READ_FILES_FILL["said"].items()}
+        if marker is None:
+            return None
+        _READ_FILES_FILL["held"] = False
+        if held or not reached_all:
+            line = ("[Watcher] read files stamped %d so far - the next sweep goes on (%s)"
+                    % (said["stamped"], "a batch was not stamped" if held else "a source was not reached"))
+            logger.warning(line)
+            return line
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write(datetime.now().astimezone().isoformat())
+        _READ_FILES_FILL["marker"] = None
+    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d)"
+            % (said["stamped"], said["failed"] + said["changed"], said["failed"], said["changed"]))
+    logger.info(line)
+    return line
 
 
 def source_taking(specs, file_path: str):
@@ -2733,6 +2771,25 @@ class IngestionHandler(FileSystemEventHandler):
             parts.append(plan.note)
         return " / ".join(parts) if parts else None
 
+    def _stamp_read_files(self, db, t_name, entries):
+        """While the checklist's first start lasts (`start_read_files_fill`): the rows from before it stamped off the
+        stat the caller just took. -> True, or False when they could not be - the caller holds the files this time."""
+        if _READ_FILES_FILL["marker"] is None:
+            return True
+        try:
+            said = ingestion.checkpoint.stamp_read_files(db, t_name, entries)
+        except Exception as e:                                                  # noqa: BLE001 - said, and held
+            db.rollback()
+            with _READ_FILES_FILL_LOCK:
+                _READ_FILES_FILL["held"] = True
+            logger.warning(f"[{t_name}] The read files were not stamped for {len(entries)} file(s) - not read now, "
+                           f"the next sweep stamps them: {told(e)}", exc_info=e)
+            return False
+        with _READ_FILES_FILL_LOCK:
+            for key, ids in said.items():
+                _READ_FILES_FILL["said"][key].update(ids)
+        return True
+
     def already_checked(self, entries) -> set:
         """The checklist asked for this handler's table (소유자 10-21): of `[(abs_path, file_stat), ...]`, the paths
         already read at that (mtime, size) - not dispatched, not read. EVERY seat asks here: the raws/ sweep, the
@@ -2745,6 +2802,8 @@ class IngestionHandler(FileSystemEventHandler):
             return set()
         db = SessionLocal()
         try:
+            if not self._stamp_read_files(db, t_name, entries):
+                return {filepath for filepath, _stat in entries}
             statuses = ingestion.checkpoint.checked(db, t_name, entries)
         except Exception as e:
             logger.warning(f"[{t_name}] The checklist could not be read for {len(entries)} file(s) - they are read: "
@@ -4334,16 +4393,20 @@ class WorkspaceWatcher:
                         continue
 
                 looked = taken = 0
+                looked_said_at = time.monotonic()
                 for file_path in iterator:
                     looked += 1
+                    if time.monotonic() - looked_said_at >= SWEEP_PROGRESS_SECONDS:
+                        logger.info(f"External sweep in progress: {source_id} {looked} file(s) looked at")
+                        looked_said_at = time.monotonic()
                     if not target["event_handler"].accepted_path(file_path):
                         continue
                     taken += 1
                     try:
-                        if not os.path.isfile(file_path):
-                            continue
-                        stat = os.stat(file_path)
+                        stat = os.stat(file_path)            # one look at the file on a share - its kind is in it
                     except OSError:
+                        continue
+                    if not _stat.S_ISREG(stat.st_mode):
                         continue
                     candidates.append((
                         stat.st_mtime, source_id, os.path.abspath(file_path), target["handler"],
@@ -4403,15 +4466,21 @@ class WorkspaceWatcher:
             return processed
 
     def _sweep_safely(self, raw_paths=None, reason=""):
+        reached = True
         try:
             self.sweep_existing_files(raw_paths)
         except Exception as e:
+            reached = False
             logger.error(f"Managed workspace sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
         if raw_paths is None:
             try:
                 self.sweep_external_sources()
             except Exception as e:
+                reached = False
                 logger.error(f"External source sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
+            finish_read_files_fill(reached and not self._stop_event.is_set()
+                                   and all(self._external_availability.get(source_id)
+                                           for source_id in self.external_targets))
 
     def sweep_existing_files_async(self, raw_paths=None, reason=""):
         """스윕을 데몬 스레드로 실행 (기동·reload 경로를 파일 처리가 블로킹하지 않도록)."""
