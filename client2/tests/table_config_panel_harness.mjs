@@ -419,8 +419,11 @@ async function pasteSuite(m) {
       tables > 0 && shownTables > 0 && bothTables > 0 && wrong.length === 0,
       `${tables} tables, ${shownTables} with hidden columns, ${wrong.slice(0, 3).join(' | ')}`);
     console.log(`    (sample: ${tables} tables · ${bothTables} with both key spellings · ${shownTables} with hidden columns)`);
-    say('E2 ...and a table carrying a type word outside the three is refused on the way back, by name',
-      JSON.stringify(odd) === '["lot_slot_wafer"]', JSON.stringify(odd));
+    // the sample's one outside word (lot_slot_wafer's TEXT) became string with the server's closed list (lead 10-21)
+    const outsideBack = m.columnsFromPaste(m.columnsToSheet({ column_types: { a: 'TEXT' }, display_columns: ['a'] }).rows, null);
+    say('E2 ...no sample table carries a type word outside the list, and one that does is refused on the way back, by name',
+      JSON.stringify(odd) === '[]' && outsideBack.next === null && outsideBack.refused.some((r) => r.includes('unknown type TEXT')),
+      JSON.stringify({ odd, refused: outsideBack.refused }));
     const keyless = m.columnsToSheet({ column_types: { a: 'string' }, display_columns: ['a'] });
     say('E3 a table with no key copies two rows, and says nothing about a key', keyless.rows.length === 2 && keyless.note === '',
       JSON.stringify(keyless));

@@ -1346,6 +1346,8 @@ async function refreshTableConfig(table, extra = {}) {
   } catch (e) {                                              // noqa
     opts.relationsUnread = true;
   }
+  // the closed lists the table skeleton names (column_types' words) come with it - unread stays unread
+  if (body && body.skeleton && body.skeleton.lists) tableConfigPanel.setLists(body.skeleton.lists);
   const view = tableConfigPanel.render(body, opts);
   const count = byId('table-config-count');
   if (count) count.textContent = view.count;

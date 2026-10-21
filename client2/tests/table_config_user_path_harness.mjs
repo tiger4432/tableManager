@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import { NEW_NAME, PICK_NAME } from '../src/raw_registry_panel.js';
 import { makeDoc, flush } from './lib/board_dom.mjs';
+import fs from 'node:fs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN = path.join(HERE, '..', 'src', 'admin.js');
@@ -58,8 +59,11 @@ const askedTable = (call) => {
   }
   return '';
 };
+// the server's own table skeleton, as /admin/tables/config/raw carries it (its closed lists with it, lead 10-21)
+const SKELETON = JSON.parse(fs.readFileSync(path.join(HERE, '..', '..', 'server', 'table_skeleton.json'), 'utf8'));
 const rawView = (table) => ({
   config_path: '/box/table_config.json', base: 'fp-1', tables: TABLES, error: null, editable_unit: 'table',
+  skeleton: SKELETON,
   ...(table ? { table, declaration: DECL, raw: JSON.stringify(DECL, null, 2) } : {}),
 });
 globalThis.fetch = async (url, init) => {
@@ -182,6 +186,12 @@ async function suite(probe) {
   try { opened = JSON.parse((byCls('table-config-raw') || {}).value || 'null'); } catch (e) { opened = null; }
   ok(JSON.stringify(opened) === JSON.stringify(DECL) && chosen() === 'lot_event',
      `D the raw box holds that table, and the picker names it (${chosen()})`);
+  const typeRow = byAttr('data-path', 'column_types.lot');
+  const typePick = typeRow ? all(typeRow).find((el) => el.tagName === 'SELECT') : null;
+  const typeWords = typePick ? typePick.children.map((o) => o.value).filter(Boolean) : [];
+  ok(JSON.stringify(typeWords) === JSON.stringify(SKELETON.lists.column_types) && typeWords.length === 4
+     && typePick.children.filter((o) => o.selected).map((o) => o.value).join() === 'string',
+     `D a column's type is picked from the server's list, the held word chosen (${JSON.stringify(typeWords)})`);
   calls.length = 0;
   press('save-table-config');
   await settle();
@@ -215,6 +225,8 @@ const DEFECTS = [
   ['the save forgets the base fingerprint',
     s => s.replace('      body: JSON.stringify({ table, declaration, base, from }),',
                    '      body: JSON.stringify({ table, declaration, from }),')],
+  ['the table window is not handed the skeleton\'s lists',
+    s => s.replace('  if (body && body.skeleton && body.skeleton.lists) tableConfigPanel.setLists(body.skeleton.lists);\n', '')],
 ];
 const CONTROLS = [
   ['a comment removed', s => s.replace(
