@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **API 서버가 내려가거나 안 받는 동안 체인이 멎지 않음 — 그룹 통지가 슬롯을 100 초씩 붙잡던 것 (총괄 4ee0a1946)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      체인이 그룹 커밋 뒤 화면 통지를 하나씩 보내다 API 가 안 받으면 «첫 실패에서» 그 배치의 남은 통지를 멈춤
+>           안 보낸 것은 미전달로 남고, 체인 워커의 스윕이 5 초마다 표 단위 새로고침으로 다시 보냄 (스윕도 첫 실패에서 멈춤)
+>           지금까지는 맵 50 개짜리 그룹이면 통지 50 건 × 거부 약 2 초 = 약 100 초 동안 그 줄이 «도는 중»이라 같은 표의 다음 일이 기다렸음
+> 보이는 것  chain_worker.log «[Chain Worker] notifications not delivered (<API 주소> did not take one ...) - N waiting, next try in 5 s» — API 가 안 받기 시작할 때 한 번
+>           «[Chain Worker] notifications delivered again (<API 주소>)» — 다시 받을 때 한 번
+>           «[Latency] … notify=<ms>» 가 수만 ms 이던 것이 실패 한 번 몫으로
+> 화면      API 가 안 받는 동안의 변경은 API 가 살아난 뒤 5 초 안에 표 새로고침으로 보임 (데이터는 그대로)
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **DB 연결이 끊겨도 체인 줄이 옆으로 빠지지 않음 — 슬롯이 묶음 전에 리로드를 읽다 끊기면 슬롯이 죽고 줄 전체가 set aside 되던 것 (총괄 6deeb723e)** — git pull · 런처 재기동
 >
 > ```

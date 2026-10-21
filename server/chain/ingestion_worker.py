@@ -150,6 +150,29 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
     return await asyncio.to_thread(do_post)
 
 
+#: [Reliability F1] The undelivered sweep's least interval (s) - and so when a refused notification is tried again.
+SWEEP_INTERVAL = 5.0
+
+#: Did the API take the last notification this process sent (총괄 4ee0a1946)?
+_API_TAKES = [True]
+
+
+def api_took(ok, waiting) -> bool:
+    """`ok` of the notification just sent, as given - the one judgement both senders (a batch's, the undelivered sweep)
+    ask before their next message. A refusal stops the sender: one refused connection costs ~2 s, and a batch of 50 map
+    messages to an API that took none held its slot ~100 s while the table's next line waited (B 2af64170d). What it
+    did not send stays undelivered for the sweep, every SWEEP_INTERVAL. Said once when the API stops taking them
+    (`waiting` the rows left undelivered), once when it takes them again."""
+    if ok != _API_TAKES[0]:
+        _API_TAKES[0] = ok
+        if ok:
+            logger.info("[Chain Worker] notifications delivered again (%s)", API_BASE_URL)
+        else:
+            logger.warning("[Chain Worker] notifications not delivered (%s did not take one - the line above says "
+                           "why) - %d waiting, next try in %g s", API_BASE_URL, waiting, SWEEP_INTERVAL)
+    return ok
+
+
 # [C-3] Outbox 보관 정책 (사용자 확정: 7일)
 #   처리 완료(processed_chain=true)된 outbox 행을 7일 경과 후 주기적으로 삭제한다.
 #   보존 기준은 created_at — 정상 운영에서 이벤트는 생성 후 수 초 내 처리되므로 생성시점 ≈ 처리시점이며,
@@ -257,16 +280,19 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
     - 계측: timing(dict)이 있으면 tx당 1줄 [Latency] INFO 로그로 구간별 ms를 남긴다(SLO 검증용).
     실패는 로깅만 하고 삼킨다(처리 성공/재시도에 영향 없음).
     """
-    for event_ids, messages, timing in pending_broadcasts:
+    pending_broadcasts = list(pending_broadcasts)
+    for at, (event_ids, messages, timing) in enumerate(pending_broadcasts):
         all_ok = True
         for m in messages:
             try:
                 ok = await post_event_async("/internal/events/broadcast", m)
-                if not ok:
-                    all_ok = False
             except Exception as e:
-                all_ok = False
+                ok = False
                 logger.error(f"[Chain Worker] Broadcast dispatch failed (ignored): {told(e)}")
+            # the first refusal ends this batch's sending - its groups' rows wait for the sweep (총괄 4ee0a1946)
+            if not api_took(ok, sum(len(ids or ()) for ids, _m, _t in pending_broadcasts[at:])):
+                all_ok = False
+                break
         # 그룹의 모든 메시지가 전달 확정된 경우에만 broadcast_at 스탬프(전달 마킹).
         if all_ok and event_ids:
             try:
@@ -283,6 +309,8 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
                 f"mapper={timing['mapper_ms']:.0f}ms commit={timing['commit_ms']:.0f}ms "
                 f"notify={notify_ms:.0f}ms total={total_ms:.0f}ms ok={all_ok}"
             )
+        if not all_ok:
+            break
 
 #: [DEPTH] The chain-rules DOCUMENT as last loaded, for the settings that sit beside
 #: `rules` rather than inside a rule. Kept here instead of re-opening the file: a second
@@ -3303,11 +3331,13 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
         msg = event_constants.batch_refresh_message(tgt, 0)
         try:
             ok = await post_event_async("/internal/events/broadcast", msg)
-            if not ok:
-                all_ok = False
         except Exception as ex:
-            all_ok = False
+            ok = False
             logger.error(f"[Chain Worker] Recovery sweep broadcast failed for '{tgt}' (retry next sweep): {told(ex)}")
+        # the first refusal ends this round - the next is SWEEP_INTERVAL away (총괄 4ee0a1946)
+        if not api_took(ok, len(stale_ids)):
+            all_ok = False
+            break
 
     if not all_ok:
         # 일부 발사 실패 → broadcast_at을 확정하지 않고 다음 스윕에서 재시도(eventual delivery 유지).
@@ -4411,7 +4441,6 @@ async def start_chain_ingestion_worker(db_session_factory):
     # [Reliability F1] 통지 미확정 교정 행 안전망 스윕도 매 루프가 아니라 최소 간격(초)으로만 수행한다.
     last_sweep_ts = 0.0
     head_watch = QueueHeadWatch()
-    SWEEP_INTERVAL = 5.0
 
     # [C-3] outbox 보관 정책(7일) purge — 기동 직후 1회(다운타임 백로그 소화) + 이후 1시간 주기.
     #   전달 기한이 없는 유지보수 작업이므로 백그라운드 태스크(to_thread)로 발사해 폴링 루프를 막지 않는다
