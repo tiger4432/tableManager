@@ -318,7 +318,7 @@ const FLOORS = new Map([
   // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
   // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
   // already stopped says what became of it (XA, XM10).
-  ['chain_queue_panel_harness.mjs', 239],   // 238 -> 239: the age the screen hands it, its first line - QA2 (owner 10-11 Q)
+  ['chain_queue_panel_harness.mjs', 257],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
   // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
   // 76 -> 83: the Queue tab's one read - fifty broadcasts on a read read twice, off the tab none, a failed read frees it -
   //    PQ1-PQ3, PM7-PM10; PL3 restated on the one read (lead 10-12).
@@ -1288,7 +1288,7 @@ const FLOORS = new Map([
   ['run_lines_harness.mjs', 24],
   // New with lead e573a6edf · 2f2a2f570: the failure section folds to one line per (table · kind · day).
   // Floor is the count it reports on the commit that introduces it.
-  ['failure_summary_harness.mjs', 28],
+  ['failure_summary_harness.mjs', 32],
   // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
   // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
   // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of

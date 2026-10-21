@@ -7,6 +7,7 @@
 //   D  the open line — and only it — gets the row table; pressing it again folds it
 //   E  no summary is unread, not 「no failures」
 //   F  two instances on one page do not touch each other
+//   G  a line carries its newest failure sentence as the server sent it, drawn under the line (lead 903053c14)
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
@@ -20,9 +21,12 @@ const REAL = await import('../src/failure_summary.js');
 
 const FIRST = '2026-09-23T00:14:00+09:00';
 const LAST = '2026-09-23T00:39:00+09:00';
+// The worker's statement-limit sentence (_said_timeout), as a failed group's record carries it.
+const REASON = '[rules=lot_slot_join target=dt_wafer] statement timeout · 600 s · stage write:dt_wafer - one statement '
+  + 'of this group ran past chain_statement_timeout_seconds (ingestion_settings.json); the database stopped it';
 const BODY = { day_zone: 'Asia/Seoul', summary: [
   { table_name: 'dt_inventory', event_type: 'EDIT', day: '2026-09-23', count: 33,
-    first_at: FIRST, last_at: LAST, retry_max: 1 },
+    first_at: FIRST, last_at: LAST, retry_max: 1, last_failure: REASON },
   { table_name: 'wafer', event_type: 'CREATE', day: '2026-09-22', count: 2,
     first_at: FIRST, last_at: FIRST, retry_max: 0 },
 ] };
@@ -78,7 +82,7 @@ async function suite(mod) {
   part.render(view, { openKey: view.lines[1].key, rowsBody: rows });
   const kids = mount.children[0].children;
   eq('D1 the open line, and only it, is followed by the row table',
-    kids.map((k) => k.className), ['fail-summary__line', 'fail-summary__line is-open', 'rows-box']);
+    kids.map((k) => k.className), ['fail-summary__line', 'refusal reason-lines fail-summary__reason', 'fail-summary__line is-open', 'rows-box']);
   const lines = byClass(mount, 'fail-summary__line');
   (lines[0].listeners.click || []).forEach((fn) => fn());
   (lines[1].listeners.click || []).forEach((fn) => fn());
@@ -90,6 +94,14 @@ async function suite(mod) {
   new mod.FailureSummary(mount2, { doc }).render(mod.failureSummaryView({ summary: [BODY.summary[0]] }, ''));
   eq('F1 a second instance draws only its own lines, the first keeps its own',
     [byClass(mount2, 'fail-summary__line').length, byClass(mount, 'fail-summary__line').length], [1, 2]);
+  eq('G1 a line carries its newest failure sentence whole, as sent; a line the server gave none has none',
+    view.lines.map((l) => l.reason), [REASON, '']);
+  part.render(view, { openKey: null, rowsBody: rows });
+  const said = byClass(mount, 'fail-summary__reason');
+  const order = mount.children[0].children;
+  eq('G2 the sentence is drawn right under its line, its whole text in the title; the line without one draws none',
+    said.map((n) => [n.textContent, n.getAttribute('title'), order.indexOf(n) === order.indexOf(byClass(mount, 'fail-summary__line')[0]) + 1]),
+    [[REASON, REASON, true]]);
   return { ran, failures };
 }
 
@@ -119,6 +131,10 @@ const MUTANTS = [
     mutate: (s) => s.replace("\n    && Object.prototype.hasOwnProperty.call(record, 'reason') ? record : null;", ' ? record : null;') },
   { id: 'Y10', what: 'a record stored as JSON is never read back', catches: ['R6'],
     mutate: (s) => s.replace('  try { record = JSON.parse(errorText); } catch { return null; }', '  return null;') },
+  { id: 'Y11', what: 'the reason drawn as its seconds alone (the owner\'s red «600 s»)', catches: ['G1'],
+    mutate: (s) => s.replace("l.last_failure.trim() : '';", "(l.last_failure.match(/\\d+ s/) || [''])[0] : '';") },
+  { id: 'Y12', what: 'the reason never drawn', catches: ['G2'],
+    mutate: (s) => s.replace('      if (line.reason) {', '      if (false) {') },
 ];
 console.log('');
 console.log('-- defect mutants (each must be CAUGHT by its named line) -----------');

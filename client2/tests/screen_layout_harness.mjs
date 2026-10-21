@@ -70,20 +70,49 @@ const STATES = JSON.parse(readFileSync(path.join(FIX, 'chain_states.json'), 'utf
 // row's table has a long name.
 const LONG_TABLE = 'wafer_process_inspection_result_by_lot_and_slot';
 const tableOf = (i) => (i === 0 ? LONG_TABLE : 'dt_log');
+// The worker's statement-limit sentence (_said_timeout), on a retrying line of both queues and on the failed list's line
+// and record (lead 903053c14, owner 10-21 «빨간 글씨 600 s 나오고 끝»).
+const TIMEOUT = '[rules=lot_slot_join target=dt_wafer] statement timeout · 600 s · stage write:dt_wafer - one statement '
+  + 'of this group ran past chain_statement_timeout_seconds (ingestion_settings.json); the database stopped it';
+const TIMED_OUT = { state: 'retrying', why: { attempt: 1, cap: 2, stage: 'write:dt_wafer', last_failure: TIMEOUT } };
+// Each line's rules (3de34d292): a running line's rule its rows in and seconds, the timed-out line's its last run's rows.
+const RULES_OF = (state) => [state === TIMED_OUT ? { rule: 'lot_slot_join', rows_in: 19000, rows_out: 20000, running_seconds: null }
+  : state.state === 'running' ? { rule: 'dt_log_to_dt_map', rows_in: 500, rows_out: null, running_seconds: 72 }
+  : { rule: 'dt_log_to_dt_map', rows_in: null, rows_out: null, running_seconds: null }];
+const LINES = [...STATES.map((s) => s.chain_state), TIMED_OUT];
 const QUEUE = {
   '/outbox/queue/rows': {
     generated_at: '2026-10-08 20:00:00', clock: 'server', rules_known: ['dt_log_to_dt_map'],
     listed: { cap: 200, next_cursor: null }, population: 'processed_chain=false',
-    rows: STATES.map((s, i) => ({ outbox_id: 300 + i, event_type: 'EDIT', table_name: tableOf(i), created_at: '2026-10-08 19:59:00',
-      waiting_seconds: 60, owner: 'chain', chain_state: s.chain_state, broadcast_state: 'pending',
+    rows: LINES.map((state, i) => ({ outbox_id: 300 + i, event_type: 'EDIT', table_name: tableOf(i), created_at: '2026-10-08 19:59:00',
+      waiting_seconds: 60, owner: 'chain', chain_state: state, broadcast_state: 'pending',
       rules: [{ name: 'dt_log_to_dt_map', will_fire: true }] })),
   },
   '/admin/chain/queue': {
-    waiting: STATES.length, oldest_waiting_seconds: 60, waiting_by_owner: [], retried_among_waiting: 0,
+    waiting: LINES.length, oldest_waiting_seconds: 60, waiting_by_owner: [], retried_among_waiting: 0,
     loop_seen_via: 'this_process', generated_at: '2026-10-08T20:00:00+09:00', now_running: [],
-    waiting_transactions: STATES.map((s, i) => ({ transaction_id: `tx-${i}-0000-0000`, events: 1, rows: 1, tables: [tableOf(i)],
-      waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: s.chain_state, slot_pid: 4242 })),
+    waiting_transactions: LINES.map((state, i) => ({ transaction_id: `tx-${i}-0000-0000`, events: 1, rows: 1, tables: [tableOf(i)],
+      waiting_seconds: 60, cancel: { key: `tx:${i}` }, chain_state: state, slot_pid: 4242, rules: RULES_OF(state) })),
+    recent_failures: [
+      { transaction_id: 'tx-timeout-0000-0000', rules: ['lot_slot_join'], tables: ['dt_wafer'], stage: 'write:dt_wafer', rows_in: 19000,
+        rows_out: 20000, rows: 19000, failure: TIMEOUT, failed_at: '2026-10-21 17:00:00' },
+      { transaction_id: 'single_e-2', rules: null, tables: null, stage: null, rows_in: null, rows_out: null, rows: null,
+        failure: 'ValueError: no wafer', failed_at: '2026-10-21 16:40:00' }],
+    recent_failures_listed: { cap: 20, capped: false },
   },
+  '/admin/outbox/failed': (() => {
+    const at = '2026-10-21T17:00:00+09:00';
+    const record = { failed_at: at, reason: TIMEOUT, rules: ['lot_slot_join'], tables: ['dt_wafer'], rows: 19000, row: null };
+    return { status: 'success', total: 1, page: 1, limit: 10, oldest_failed_at: at, day_zone: 'Asia/Seoul',
+      summary: [
+        { table_name: 'dt_wafer', event_type: 'EDIT', day: '2026-10-21', count: 19000, first_at: '2026-10-21T16:50:00+09:00',
+          last_at: at, retry_max: 1, last_failure: TIMEOUT },
+        { table_name: 'dt_log', event_type: 'CREATE', day: '2026-10-20', count: 2, first_at: at, last_at: at, retry_max: 0 }],
+      data: [{ transaction_id: 'tx-timeout-0000-0000', table_names: ['dt_wafer'], event_types: ['EDIT'], retry_count: 1,
+        attempts_this_round: 1, failed_at: at, events: [{ id: 1, event_uuid: 'e-1', event_type: 'EDIT', table_name: 'dt_wafer',
+          payload: { transaction_id: 'tx-timeout-0000-0000', error_log: record }, status: 'FAILED', retry_count: 1,
+          attempts_this_round: 1, created_at: at, processed_at: at }] }] };
+  })(),
 };
 // The main grid's Ledger column (lead 10-12): the recorded table is declared a source of the operating world and its rows
 // carry ledger_rows - the first changed in another world, the second taken by no world read with one world not read - so
@@ -665,6 +694,26 @@ CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'f
   if (cells !== 1) return cells + ' cells with rows after the grid was filtered to one';
   return null;
 })()` });
+// A failure sentence is the server's, whole (lead 903053c14): the failed list's line, the queue's timeout line and the
+// newest failed groups say it as sent, and it reads to its end or to three lines with the whole of it in its title -
+// never one line cut; a line's rules say their rows (3de34d292).
+CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'reason whole', at: 'fail-summary__reason', expr: `(() => {
+  const want = ${JSON.stringify(TIMEOUT)};
+  const line = [...document.querySelectorAll('#chain-fail-summary-mount .fail-summary__reason')];
+  const why = [...document.querySelectorAll('#chain-queue-mount .queue-line-state-why')].filter((e) => e.textContent.includes('timeout'));
+  const recent = [...document.querySelectorAll('#chain-queue-mount .chain-queue-failure')].filter((e) => e.textContent.includes('timeout'));
+  if (line.length !== 1 || why.length !== 1 || recent.length !== 1) return line.length + ' failed-list sentences, ' + why.length + ' queue timeout whys, ' + recent.length + ' recent failures';
+  const rules = [...document.querySelectorAll('#chain-queue-mount .chain-queue-rule')].map((e) => e.textContent);
+  for (const said of ['lot_slot_join · in 19,000 · out 20,000', 'dt_log_to_dt_map · in 500 · running 1m 12s']) if (!rules.includes(said)) return 'no rule line «' + said + '»: ' + JSON.stringify(rules.slice(0, 3));
+  for (const [el, whole] of [[line[0], want], [why[0], 'attempt 1/2 · write:dt_wafer · ' + want], [recent[0], want]]) {
+    if (el.textContent.trim() !== whole || el.getAttribute('title') !== whole) return '«' + el.textContent.trim().slice(0, 48) + '» drawn, title «' + (el.getAttribute('title') || '').slice(0, 24) + '»';
+    const s = getComputedStyle(el);
+    const lines = Math.round(el.clientHeight / (parseFloat(s.lineHeight) || parseFloat(s.fontSize) * 1.2));
+    if (el.scrollWidth > el.clientWidth + 1) return '«' + whole.slice(0, 24) + '» cut at its side, ' + lines + ' line(s)';
+    if (el.scrollHeight > el.clientHeight + 1 && lines < 3) return '«' + whole.slice(0, 24) + '» cut at ' + lines + ' line(s)';
+  }
+  return null;
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'retroactive-sub', expr: `(() => {
   const chips = [...document.querySelectorAll('#retroactive-sub .retro-toc')];
   const cards = [...document.querySelectorAll('#retroactive-body article.retro-op')];
@@ -1135,7 +1184,10 @@ function screensLib(TOL) {
       if (el.scrollWidth - el.clientWidth <= 1 && el.scrollHeight - el.clientHeight <= 1) continue;
       // Held more than it shows; cut is where a glyph's box crosses the box it is drawn in (screen px, any zoom).
       const [dx, dy] = textBeyond(el);
-      if (dx > 1 || dy > 1) {
+      // A sentence held to three lines or more with the whole of it in its title is cut at its bottom on purpose (lead
+      // 10-21, 903053c14: a reason or a why, the rest in the tooltip) - never at its side.
+      const clamped = parseInt(s.webkitLineClamp, 10) >= 3 && (el.getAttribute('title') || '').trim() === el.textContent.trim();
+      if (dx > 1 || (dy > 1 && !clamped)) {
         lines.push({ rule: 'clip', path: pathOf(el), what: [dx > 1 && `${Math.round(dx)} px of text past its side`, dy > 1 && `${Math.round(dy)} px past its top or bottom`]
           .filter(Boolean).join(', ') + `: «${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)}»` });
       }
@@ -2097,8 +2149,20 @@ const MUTANTS = [
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',
     file: 'src/base.css', edits: [
       [':where(.queue-line-state) { display: flex; flex-direction: column; align-items: flex-start;', ':where(.queue-line-state) { display: flex; align-items: center;'],
-      [':where(.queue-line-state-why) { white-space: normal; overflow-wrap: anywhere; min-width: 0; }',
-        ':where(.queue-line-state-why) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }']] },
+      [':where(.reason-lines) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;',
+        ':where(.reason-lines) { display: block;'],
+      ['  overflow: hidden; white-space: normal; overflow-wrap: anywhere; min-width: 0; }',
+        '  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }']] },
+  { name: 'the admin queue why held to one line again', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
+    file: 'admin.html', edits: [['    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }',
+      '    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }\n    .chain-queue-table .queue-line-state-why { -webkit-line-clamp: 1; line-clamp: 1; }']] },
+  { name: 'a recent failure breaks its words anywhere', entry: 'admin.html', rule: 'words', at: 'td > div.refusal.reason-lines',
+    file: 'admin.html', edits: [['    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }', '    .chain-queue-table .chain-queue-failure { }']] },
+  { name: 'the failed line says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
+    file: 'src/failure_summary.js', edits: [["l.last_failure.trim() : '';", "(l.last_failure.match(/\\d+ s/) || [''])[0] : '';"]] },
+  { name: 'a recent failure says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
+    file: 'src/chain_queue_panel.js', edits: [["const said = this._line('refusal reason-lines chain-queue-failure', f.failure);",
+      "const said = this._line('refusal reason-lines chain-queue-failure', (f.failure.match(/\\d+ s/) || [''])[0]);"]] },
   { name: 'the chain state object drawn as text', entry: 'index.html', rule: 'text', at: 'queue',
     file: 'src/chain_queue_panel.js', edits: [["const token = chainState && chainState.state ? String(chainState.state) : '';", "const token = chainState ? String(chainState) : '';"]] },
   { name: 'the Overview queue Refresh boxed at the base button height', entry: 'admin.html', rule: 'size', at: 'chain-queue-refresh',
