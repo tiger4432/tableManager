@@ -11,7 +11,8 @@ P1(heavy 레인)까지는 1,000행 청크로 적재하되 **진행 오프셋을 
 - A. 시그니처(sha256) 산출 / 청크 커밋과 원자적인 오프셋 기록 / 중간 오프셋 재개
      / 재개 불가(총행수 불일치·파서 불일치·오프셋 손상) 시 0부터 재처리 + **명시 기록**
      / **멱등성**(강제 중간 재개 후 행 수·bk 중복 0) / 스윕·heavy 레인 경로 동일 동작
-- B. 동일 시그니처 SUCCESS 파일 skip(명시 기록·통지) + 강제 재처리 3경로 + 테이블별 격리
+- B. 같은 내용이어도 다른 표 · 다른 경로는 읽힘 · 관리자 재시도는 다시 읽음 (10-21: 내용 dedup · `__force__` ·
+     `dedup_by_signature` 은퇴, «이미 읽었나»는 체크리스트 - test_a_file_read_is_checked_by_its_path_and_table)
 - C. audit_cache total_count 누적 의미론(#10) / 감사 값 길이 상한·절단 표기
 
 테이블명은 사용자 config에 실존 불가능한 `p2_test_*` 접두 사용 (교훈 파일).
@@ -507,44 +508,6 @@ def test_different_content_is_not_skipped(p2_env):
     assert len(_rows(p2_env)) == 4
 
 
-def test_force_token_in_filename_bypasses_dedup(p2_env):
-    ws, handler = p2_env["make_handler"]()
-    content = _csv(3)
-    handler.process_with_retry(_write(ws / "raws" / "f1.csv", content), delay=0.01)
-
-    applied = []
-    import unittest.mock as _mock
-    real_apply = crud.apply_batch_updates
-
-    def spy(db_, t, b, **kw):
-        applied.append(len(b.updates))
-        return real_apply(db_, t, b, **kw)
-
-    with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
-        handler.process_with_retry(_write(ws / "raws" / "f1__force__.csv", content), delay=0.01)
-
-    assert applied == [3], "강제 재처리 파일은 dedup을 우회해 전량 재적재되어야 한다"
-
-
-def test_dedup_can_be_disabled_globally(p2_env):
-    ws, handler = p2_env["make_handler"]()
-    content = _csv(3)
-    handler.process_with_retry(_write(ws / "raws" / "g1.csv", content), delay=0.01)
-
-    p2_env["settings_path"].write_text(json.dumps({"dedup_by_signature": False}), encoding="utf-8")
-
-    applied = []
-    import unittest.mock as _mock
-    real_apply = crud.apply_batch_updates
-
-    def spy(db_, t, b, **kw):
-        applied.append(len(b.updates))
-        return real_apply(db_, t, b, **kw)
-
-    with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
-        handler.process_with_retry(_write(ws / "raws" / "g2.csv", content), delay=0.01)
-
-    assert applied == [3]
 
 
 def test_admin_retry_path_bypasses_dedup_and_reingests(p2_env):

@@ -110,8 +110,8 @@ def test_neither_purge_site_spells_the_deletes_by_hand_any_more():
 
     body = inspect.getsource(crud._apply_batch_updates_once)
     assert "purged_row_ids" in body and "removed_row_ids" in body
-    for site in ("purge_map_rows(db, table_model, table_name, purged_row_ids)",
-                 "purge_map_rows(db, table_model, table_name, removed_row_ids)"):
+    for site in ("purge_map_rows(db, table_model, table_name, purged_row_ids, said=purged_keys)",
+                 "purge_map_rows(db, table_model, table_name, removed_row_ids, said=removed_keys)"):
         assert site in body, "a purge site no longer goes through the helper"
     assert "CellOverwrite.row_id.in_(purged_row_ids)" not in body
     assert "CellOverwrite.row_id.in_(removed_row_ids)" not in body

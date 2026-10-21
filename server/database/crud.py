@@ -4388,8 +4388,23 @@ def prime_merge_overwrites(db, table_name: str, overwrites_cache: dict, row_ids,
     return len(unprimed)
 
 
-def purge_map_rows(db, table_model, table_name: str, row_ids):
-    """Delete map rows and their cell metadata, and TELL THE OUTBOX.
+def map_keys_said(table_name: str, row_ids, values, limit: int = 5) -> str:
+    """The first `limit` of `row_ids` as an operator reads them (총괄 10-21, 소유자 「로그 띄워 지워진 것」): each row's
+    key inside its map - composite_key_source less map_key_columns, «base_x=3 base_y=4» - from `values` ({row_id: its
+    values}); its row_id when the table names no such key. «…» past the limit."""
+    cfg = TABLE_CONFIG.get(table_name, {})
+    inside = [c for c in (cfg.get("composite_key_source") or []) if c not in (cfg.get("map_key_columns") or [])]
+    said = []
+    for row_id in list(row_ids)[:limit]:
+        cells = values.get(row_id) or {}
+        said.append(" ".join("%s=%s" % (c, key_part(table_name, c, cells.get(c))) for c in inside)
+                    if inside and cells else str(row_id))
+    return ", ".join(said) + (" …" if len(row_ids) > limit else "")
+
+
+def purge_map_rows(db, table_model, table_name: str, row_ids, said=None):
+    """Delete map rows and their cell metadata, and TELL THE OUTBOX. `said` (a list): the deleted rows' keys are put
+    on it as one text (`map_keys_said`), from the values read before the delete - for the replace line.
 
     🔴 THE ONE WRITE THE OUTBOX COULD NOT SEE. Every other write in this system reaches
     `database.stage_event` through SQLAlchemy's `before_flush`, which walks
@@ -4435,6 +4450,8 @@ def purge_map_rows(db, table_model, table_name: str, row_ids):
     # rows -- the transactional-outbox guarantee this codebase keeps everywhere else.
     # With each row's values as its old values (총괄 옛 키).
     values = {row.row_id: row_values(row) for row in rows}
+    if said is not None:
+        said.append(map_keys_said(table_name, row_ids, values))
     stage_collapsed_event(db, "DELETE", table_name, row_ids,
                           old=[values.get(row_id, {}) for row_id in row_ids])
 
@@ -5328,10 +5345,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 # claim is removed after the loop - see [scope diff] there.
                 purged_row_ids = []
 
+            purged_keys = []
             if purged_row_ids:
                 # One helper for both purge sites, so the outbox event cannot be added to
                 # one branch and forgotten on the other. See `purge_map_rows`.
-                purge_map_rows(db, table_model, table_name, purged_row_ids)
+                purge_map_rows(db, table_model, table_name, purged_row_ids, said=purged_keys)
                 db.flush()
 
             if replace_report is not None:
@@ -5354,7 +5372,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 f"🔄 [Map Replace Executed] Table: '{table_name}' | TX: {tx_id} | "
                 f"Mode: {'diff' if use_diff else 'purge'} | Filters: {scope_filters} | "
                 f"Rows In Scope: {len(replace_scope_row_ids)} | "
-                f"Purged Old Rows: {len(purged_row_ids)} | "
+                f"Purged Old Rows: {len(purged_row_ids)}{' (%s)' % purged_keys[0] if purged_keys else ''} | "
                 f"Incoming Active Cells: {len(batch.updates)}"
             )
 
@@ -5733,15 +5751,17 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         if batch.replace_map and use_diff:
             claimed_row_ids = set(unique_results.keys()) | set(deleted_row_ids)
             removed_row_ids = [r for r in replace_scope_row_ids if r not in claimed_row_ids]
+            removed_keys = []
             if removed_row_ids:
-                purge_map_rows(db, table_model, table_name, removed_row_ids)
+                purge_map_rows(db, table_model, table_name, removed_row_ids, said=removed_keys)
             if replace_report is not None:
                 replace_report["deleted"] = len(removed_row_ids)
             deleted_row_ids = list(deleted_row_ids) + removed_row_ids
             logger.info(
                 f"🔄 [Map Diff] Table: '{table_name}' | TX: {tx_id} | "
                 f"In Scope: {len(replace_scope_row_ids)} | Claimed: {len(claimed_row_ids)} | "
-                f"Removed: {len(removed_row_ids)}"
+                f"Written: {len(unique_results)} | "
+                f"Removed: {len(removed_row_ids)}{' (%s)' % removed_keys[0] if removed_keys else ''}"
             )
 
         serialized_logs = []
