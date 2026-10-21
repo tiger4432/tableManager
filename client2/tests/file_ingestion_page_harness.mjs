@@ -211,6 +211,37 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   new Q.FilesPart(two, { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder() {} }).render({ groups: none, shown: 'two', picked: null, more: false });
   ok('P5 two parts in one page keep to their own div', byClass(one, 'fi-group').length === 2 && byClass(two, 'fi-group').length === 0 && texts(one, 'fi-meta')[0] === 'one');
 
+  // W - the watcher's state (총괄 10-21): /health's verdict and claim, the «sources» lap's words
+  const lap = { started_at: 1761000000, retry_waiting: 3, refused: ['External source config rejected: nobody is not a table'],
+    fill: { running: false, line: '[Watcher] read files stamped 5 · left for re-read 0 (failed 0 · changed since read 0)' },
+    sources: { s1: { table: 'ta', root: 'X:\\share', reachable: true }, s2: { table: 'ta', root: 'X:\\gone', reachable: false },
+      s3: { table: 'tb', root: 'X:\\new', reachable: true } },
+    sweep: { state: 'done', began_at: 1761000100, seconds: 12.4, sources: { s1: { looked: 3, 'outside the root': 0, 'name not matched': 1,
+      'folders below max_depth': 1, 'already read': 0, dispatched: 1 } } } };
+  ok('W1 the top line: alive and what the claim says it does, for how long; a beat too old says its age; no beat said',
+    M.watcherTop({ status: 'ok', age_seconds: 1.2, work: { what: 'ingest a.csv', held_seconds: 12.4 } }).text === 'alive · ingest a.csv · 12 s'
+      && M.watcherTop({ status: 'ok', age_seconds: 1 }).text === `alive · ${M.WORDS.idle}`
+      && M.watcherTop({ status: 'stale', age_seconds: 93.4 }).text === `stale 93 s · ${M.WORDS.idle}`
+      && M.watcherTop({ status: 'stale', age_seconds: 93.4 }).tone === 'danger' && M.watcherTop(null).text === M.WORDS.noBeat,
+    JSON.stringify(M.watcherTop({ status: 'ok', age_seconds: 1.2, work: { what: 'ingest a.csv', held_seconds: 12.4 } })));
+  const wLines = M.watcherSources(lap);
+  ok('W2 a line per source in the sweep line\'s words, zeros left out; a root not reached; a source not swept yet',
+    JSON.stringify(wLines.map((l) => [l.table, l.words.join(' · '), l.tone])) === JSON.stringify([
+      ['ta', '3 looked · name not matched 1 · folders below max_depth 1 · dispatched 1', 'ok'],
+      ['ta', M.WORDS.notReached, 'danger'], ['tb', M.WORDS.notSwept, 'ok']]), JSON.stringify(wLines));
+  const facts = Object.fromEntries(M.watcherFacts(lap));
+  ok('W3 the watcher\'s facts: the last sweep\'s seconds and state, the fill\'s own line, the retries waiting; none - ABSENT',
+    facts[M.WORDS.lastSweep].endsWith(' · 12 s · done') && facts[M.WORDS.fill] === lap.fill.line && facts[M.WORDS.retriesWaiting] === '3'
+      && M.watcherFacts(null).every(([, v]) => v === ABSENT), JSON.stringify(facts));
+  const wHost = doc.createElement('div');
+  doc.body.append(wHost);
+  new Q.WatcherPart(wHost, { doc }).render({ worker: { status: 'stalled', age_seconds: 2, work: { what: 'ingest b.csv', held_seconds: 400 } },
+    lap, asOf: 'as of 10:00:00', error: '' });
+  const top = byClass(wHost, 'fi-watcher__top')[0];
+  ok('W4 the part: the top line with its tone, a line per source, each refusal in its sentence',
+    top?.textContent === 'stalled · ingest b.csv · 400 s' && top.dataset.tone === 'warn' && byClass(wHost, 'fi-watcher__source').length === 3
+      && texts(wHost, 'fi-watcher__refused').join('') === M.WORDS.refused + lap.refused[0], `${top?.textContent} ${texts(wHost, 'fi-watcher__refused')}`);
+
   // P6 - Read now: who reads the path and why the watcher did not (the server's words), a button per owner
   const rHost = doc.createElement('div');
   doc.body.append(rHost);
@@ -262,6 +293,12 @@ const MUTANTS = [
   { name: 'a waiting retry drawn as a failure', catches: ['M6'], file: 'model', mutate: swap("return tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warn';", "return tone === 'ok' ? 'ok' : 'danger';") },
   { name: 'the picked line not marked', catches: ['P1a'], file: 'parts', mutate: swap("`fi-file${view.picked === log.id ? ' is-picked' : ''}`", "'fi-file'") },
   { name: 'Show more always', catches: ['P1b'], file: 'parts', mutate: swap('    if (view.more) {', '    if (true) {') },
+  { name: 'the claim not said', catches: ['W1'], file: 'model', mutate: swap('work && work.what ? `${work.what} · ${secondsText(work.held_seconds)}` : WORDS.idle', 'WORDS.idle') },
+  { name: 'a stale beat without its age', catches: ['W1'], file: 'model', mutate: swap('`stale ${secondsText(worker.age_seconds)}`', "'stale'") },
+  { name: 'zeros said too', catches: ['W2'], file: 'model', mutate: swap("word !== 'first not listed' && n)", "word !== 'first not listed')") },
+  { name: 'a root not reached read as swept', catches: ['W2'], file: 'model', mutate: swap('source.reachable === false ? [WORDS.notReached] : ', '') },
+  { name: 'the fill\'s line not said', catches: ['W3'], file: 'model', mutate: swap('l.fill ? l.fill.line || ', 'l.fill ? ') },
+  { name: 'a refusal not shown', catches: ['W4'], file: 'parts', mutate: swap('for (const sentence of (view.lap && view.lap.refused) || [])', 'for (const sentence of [])') },
   { name: 'Read now hides why the watcher did not', catches: ['P6a'], file: 'parts', mutate: swap("owner.why_not.length ? owner.why_not.join(' · ') : WORDS.taken", 'WORDS.taken') },
   { name: 'Read now hands the first owner', catches: ['P6a'], file: 'parts', mutate: swap('this.deps.onRead(this.answer.path, owner.table)', 'this.deps.onRead(this.answer.path, this.answer.owners[0].table)') },
   { name: 'no reason box on a failure', catches: ['P2a'], file: 'parts', mutate: swap('    if (isFailedStatus(log.status) || (reason && !isDoneStatus(log.status))) {', '    if (false) {') },

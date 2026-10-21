@@ -24,6 +24,9 @@ export const WORDS = Object.freeze({
   heads: ['File · folder', 'Status', 'Result', 'Read at', 'Took'],
   last: (at) => `last ${at}`, ok: (n) => `${n} ok`, failed: (n) => `${n} failed`, running: (n) => `${n} running`,
   waiting: (n) => `${count(n)} waiting`,
+  watcher: 'Watcher', idle: 'idle', noBeat: 'No beat from the watcher', notReached: 'root not reached',
+  notSwept: 'not swept yet', looked: (n) => `${count(n)} looked`, started: 'Started', lastSweep: 'Last sweep',
+  fill: 'Read files fill', retriesWaiting: 'Retries waiting', refused: 'Refused',
   groupSummary: (n, failed, waiting) => `${count(n)} file${n === 1 ? '' : 's'} · ${count(failed)} failed${waiting ? ` · ${count(waiting)} waiting` : ''}`,
   shown: (n, groups, match) => `${count(n)} file${n === 1 ? '' : 's'}${groups ? ` in ${count(groups)} group${groups === 1 ? '' : 's'}` : ''} shown · ${match} match`,
 });
@@ -69,6 +72,44 @@ export function resultText(log) {
   }
   if (!isBlank(log.reason)) parts.push(String(log.reason));
   return parts.join(' · ');
+}
+
+const secondsText = (s) => `${Math.round(numberOr(s) || 0).toLocaleString('en-US')} s`;
+const atText = (epoch) => (numberOr(epoch) === null ? ABSENT : localShort(new Date(epoch * 1000).toISOString()));
+
+/** The watcher's top line (총괄 10-21): /health's verdict on its beat - «ok» is alive, a beat too old says its age - and
+ * what its work claim says it is doing, for how long. `worker` is /health's `workers.watcher`. */
+export function watcherTop(worker) {
+  if (!worker) return { tone: 'danger', text: WORDS.noBeat };
+  const state = worker.status === 'ok' ? 'alive'
+    : ['wedged', 'stale'].includes(worker.status) ? `stale ${secondsText(worker.age_seconds)}` : String(worker.status);
+  const work = worker.work;
+  const doing = work && work.what ? `${work.what} · ${secondsText(work.held_seconds)}` : WORDS.idle;
+  return { tone: worker.status === 'ok' ? 'ok' : worker.status === 'stalled' || worker.status === 'starting' ? 'warn' : 'danger',
+    text: `${state} · ${doing}` };
+}
+
+/** A line per source from the watcher's «sources» lap: its table and root, and the last sweep's words for it - the
+ * sweep line's own («name not matched 1 · dispatched 1»), zeros left out - or that its root was not reached. */
+export function watcherSources(lap) {
+  const said = ((lap || {}).sweep || {}).sources || {};
+  return Object.entries((lap || {}).sources || {}).map(([id, source]) => {
+    const why = said[id];
+    const words = source.reachable === false ? [WORDS.notReached] : !why ? [WORDS.notSwept]
+      : [WORDS.looked(why.looked), ...Object.entries(why)
+        .filter(([word, n]) => word !== 'looked' && word !== 'first not listed' && n).map(([word, n]) => `${word} ${count(n)}`)];
+    return { id, table: source.table, root: source.root, words, tone: source.reachable === false ? 'danger' : 'ok' };
+  });
+}
+
+/** The whole watcher's facts from the same lap: when it started, the last sweep, the fill's last line, the retries. */
+export function watcherFacts(lap) {
+  const l = lap || {};
+  const sweep = l.sweep;
+  return [[WORDS.started, atText(l.started_at)],
+    [WORDS.lastSweep, sweep ? `${atText(sweep.began_at)} · ${secondsText(sweep.seconds)} · ${sweep.state}` : ABSENT],
+    [WORDS.fill, l.fill ? l.fill.line || (l.fill.running ? 'running' : ABSENT) : ABSENT],
+    [WORDS.retriesWaiting, numberOr(l.retry_waiting) === null ? ABSENT : count(l.retry_waiting)]];
 }
 
 /** «0.4 s»; none timed (a skip, a tier-1 copy) - ABSENT. */

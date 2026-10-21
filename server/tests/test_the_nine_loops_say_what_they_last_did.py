@@ -78,11 +78,11 @@ def clean_laps():
 def test_all_nine_loops_are_answered_for():
     payload = runtime.loops.runtime_loops(_FakeDb(), heartbeats={})
     loops = [item["loop"] for item in payload["loops"]]
-    assert loops == ["web", "watcher", "chain", "outbox_purge", "listen", "replay_sweep",
+    assert loops == ["web", "watcher", "sources", "chain", "outbox_purge", "listen", "replay_sweep",
                      "ledger_followup", "ledger_census", "scheduler", "postgres",
                      "retroactive_run"]
     assert [item["board"] for item in payload["loops"]] == [
-        "1", "2", "3", "3-a", "3-b", "3-c", "4", "5", "6", "7", "8"]
+        "1", "2", "2-a", "3", "3-a", "3-b", "3-c", "4", "5", "6", "7", "8"]
 
 
 def test_the_loop_and_the_process_are_two_columns():
@@ -305,9 +305,9 @@ def test_the_route_answers_200_with_the_nine(client, monkeypatch):
 
     assert res.status_code == 200, res.text
     payload = res.json()
-    assert len(payload["loops"]) == 11
+    assert len(payload["loops"]) == 12
     assert [i["loop"] for i in payload["loops"]] == [
-        "web", "watcher", "chain", "outbox_purge", "listen", "replay_sweep",
+        "web", "watcher", "sources", "chain", "outbox_purge", "listen", "replay_sweep",
         "ledger_followup", "ledger_census", "scheduler", "postgres", "retroactive_run"]
     for item in payload["loops"]:
         assert item["process"] and item["board"]

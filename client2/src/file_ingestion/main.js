@@ -12,9 +12,12 @@ import { INCLUDE_STATUSES } from '../folder_retry.js';
 import { countNumberText } from '../match_count.js';
 import { initTheme } from '../theme.js';
 import { WORDS, groupFiles, queryOf, tableLines } from './model.js';
-import { DetailPart, FilesPart, ReadNowPart, SearchPart, TableListPart } from './parts.js';
+import { DetailPart, FilesPart, ReadNowPart, SearchPart, TableListPart, WatcherPart } from './parts.js';
 
 const NO_TOKEN = 'Admin token needed - open Admin once on this browser';
+
+/** How often the watcher's state is asked again - its sweep's progress line is said every few seconds. */
+const WATCH_MS = 10000;
 
 async function read(path) {
   const res = await adminFetch(`${API_BASE}${path}`);
@@ -65,6 +68,18 @@ export function seatFileIngestionPage(doc = document) {
       showToast(done.message || `${seen.count} handed again`, 'success');
       await list(false);
     } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
+  }
+
+  // The watcher's state (총괄 10-21): /health's verdict and claim, /runtime's «sources» lap - again every WATCH_MS
+  const watcher = new WatcherPart(byId('fi-watcher'), { doc });
+  async function watch() {
+    const view = { worker: null, lap: null, asOf: `as of ${new Date().toLocaleTimeString('en-GB')}`, error: '' };
+    try {
+      const health = await (await adminFetch(`${API_BASE}/health`)).json();       // 503 still carries the verdict
+      view.worker = (health.workers || {}).watcher || null;
+      view.lap = ((await read('/runtime')).loops || []).find((loop) => loop.loop === 'sources') || null;
+    } catch (e) { view.error = e.message; }
+    watcher.render(view);
   }
 
   // «Read now» (총괄 aaf19d0ca): who reads the path and why the watcher did not, then one owner's button hands it over
@@ -151,6 +166,8 @@ export function seatFileIngestionPage(doc = document) {
 
   draw();
   readNow.render();
+  watch();
+  doc.defaultView.setInterval(watch, WATCH_MS);
   start();
   return { query, view, search };
 }

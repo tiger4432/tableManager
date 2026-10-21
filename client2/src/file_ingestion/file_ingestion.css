@@ -84,6 +84,9 @@
 .fi-counts { border-collapse: collapse; font-size: var(--fs-h5); font-variant-numeric: tabular-nums; }
 .fi-counts td { padding: var(--space-1) var(--space-4) var(--space-1) 0; }
 .fi-counts td.fi-num { text-align: right; padding-right: 0; }
+.fi-watcher__top { padding-bottom: 0; font-size: var(--fs-h4); }
+.fi-watcher__source { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; padding: var(--space-2) var(--space-4); border-top: 1px solid var(--border); font-size: var(--fs-h5); }
+.fi-watcher__refused { margin: 0 var(--space-4) var(--space-3); }
 .fi-readnow__form { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; }
 .fi-readnow__form .fi-input, .fi-readnow__form .fi-btn { box-sizing: border-box; height: var(--control-h); }
 .fi-readnow__said { margin: 0 var(--space-4) var(--space-3); }

@@ -3,7 +3,7 @@
 // page seats them and holds the query.
 import { ABSENT } from '../absent.js';
 import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
-import { GROUPS, WORDS, folderLine, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
+import { GROUPS, WORDS, folderLine, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText, watcherFacts, watcherSources, watcherTop } from './model.js';
 
 function maker(doc) {
   return (tag, cls, text) => {
@@ -21,6 +21,43 @@ const boxHead = (el, words, side) => {
   if (side !== undefined) h.append(el('span', 'fi-meta', side));
   return h;
 };
+
+export class WatcherPart {
+  /** The watcher's state (총괄 10-21): /health's verdict and work claim, and its heartbeat's «sources» lap through
+   * /runtime - nothing else is asked. @param {{doc}} deps */
+  constructor(mount, deps) {
+    this.mount = mount;
+    this.el = maker(deps.doc || mount.ownerDocument);
+  }
+
+  /** @param {{worker, lap, asOf: string, error: string}} view */
+  render(view) {
+    const el = this.el;
+    const root = el('section', 'fi-box fi-watcher');
+    const top = watcherTop(view.worker);
+    root.append(boxHead(el, WORDS.watcher, view.asOf));
+    const said = el('div', 'fi-watcher__top fi-pad', top.text);
+    said.dataset.tone = top.tone;
+    root.append(said);
+    if (view.error) root.append(el('div', 'fi-say fi-pad', view.error));
+    const facts = el('dl', 'fi-facts fi-pad');
+    for (const [label, value] of watcherFacts(view.lap)) facts.append(el('dt', '', label), el('dd', 'fi-num', value));
+    root.append(facts);
+    for (const source of watcherSources(view.lap)) {
+      const line = el('div', 'fi-watcher__source');
+      const words = el('span', '', source.words.join(' · '));
+      words.dataset.tone = source.tone;
+      line.append(el('span', 'fi-mono', source.table), el('span', 'fi-meta fi-path', source.root), words);
+      root.append(line);
+    }
+    for (const sentence of (view.lap && view.lap.refused) || []) {
+      const why = el('div', 'fi-why fi-watcher__refused');
+      why.append(el('span', 'fi-why__title', WORDS.refused), el('span', '', sentence));
+      root.append(why);
+    }
+    this.mount.replaceChildren(root);
+  }
+}
 
 export class ReadNowPart {
   /** «Read now» (총괄 aaf19d0ca): a path, who reads it and why the watcher did not - the server's words - and a button
