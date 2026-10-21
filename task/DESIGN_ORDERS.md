@@ -1,3 +1,9 @@
+# [클라] **(Test run 화면) 결과는 팝업 — 시안 https://claude.ai/artifact/Xd9s2vXexU4hXrbYZc9ieN** (소유자 10-21 「테스트런 결과 시안 좀」 · 「팝업 띄워서 보여 주면 좋을 듯」, 총괄 시안 · 소유자 확인 전)
+
+- 리플레이 배너의 Test run -> 팝업: 머리(규칙 · Draft · 이 규칙 한 걸음) · 수 칸 여덟 · 탭 셋(Went in · Came out · Will be written) · 바닥(실행 시각 · 초 · rolled back · Replay these rows 는 Draft 면 막힘 · Run again · Close)
+- Will be written 은 기본 «바뀌는 것만», 안 바뀐 칸 수 + Show unchanged. 표마다 N of M shown
+- 소유자 확인 뒤 짓는다. 시안 값은 토큰 값(tokens.css)
+
 # 🔴 [클라] + [구현자 B] **(a875e29b1 자리 고침) Draft 는 «리플레이 목록»에 — 그리드 행 고르기 배너의 규칙 목록, 어드민 Chain 탭이 아니다** (소유자 10-21 「아니 리플레이 리스트에」, 총괄)
 
 - 자리: 그리드에서 행을 고르면 뜨는 리플레이 배너(redo_banner.js)의 규칙 목록 — `loadReplayableRules` → `GET /admin/chain/rules/replayable?table=&row_scoped=true`
