@@ -59,8 +59,9 @@ function childOf(node, step, defs) {
   if (node.kind === 'map') return deref(node.of, defs);
   if (node.kind === 'oneOf') {
     const branches = node.branches && typeof node.branches === 'object' ? node.branches : {};
-    // Picked by shape, no branch key is on the path: the step is a field of the record branch.
-    if (node.pick === 'shape') return childOf(deref(branches[shapeBranch(node, {}, defs)], defs), step, defs);
+    // Picked by shape, no branch key is on the path: an index step is a member of the list branch, a name step a
+    // field of the record branch (or a member of the name map).
+    if (node.pick === 'shape') return childOf(deref(branches[shapeBranch(node, typeof step === 'number' ? [] : {}, defs)], defs), step, defs);
     const branch = branches[String(step)];
     return branch ? deref(branch, defs) : null;
   }
@@ -69,16 +70,25 @@ function childOf(node, step, defs) {
 
 /**
  * The branch a `pick: 'shape'` oneOf's value is in (lead 068c904a6 ②): a word, or nothing yet,
- * is the leaf branch -- the cell as it was before it had a second branch; a mapping is the record
- * branch. A value of neither shape is in none ('').
+ * is the leaf branch -- the cell as it was before it had a second branch; a list is the index map
+ * branch; a mapping is the record branch, else the name map branch (implementer A, params). A
+ * value of none of these shapes is in none ('').
  * @param {(node: any) => any|object} [resolve] the defs, or a function that follows `{use}`
  */
 export function shapeBranch(node, value, resolve) {
   const branches = node && node.branches && typeof node.branches === 'object' ? node.branches : {};
   const real = typeof resolve === 'function' ? resolve : (n) => deref(n, resolve);
-  const want = value === undefined || value === null || typeof value === 'string' || typeof value === 'number'
-    ? 'leaf' : typeof value === 'object' && !Array.isArray(value) ? 'record' : '';
-  return Object.keys(branches).find((key) => want && (real(branches[key]) || {}).kind === want) || '';
+  const word = value === undefined || value === null || typeof value === 'string' || typeof value === 'number';
+  const record = !word && typeof value === 'object' && !Array.isArray(value);
+  const wants = word ? [(b) => b.kind === 'leaf']
+    : Array.isArray(value) ? [(b) => b.kind === 'map' && b.keyed_by === 'index']
+      : record ? [(b) => b.kind === 'record', (b) => b.kind === 'map' && b.keyed_by === 'name'] : [];
+  const keys = Object.keys(branches);
+  for (const want of wants) {
+    const hit = keys.find((key) => want(real(branches[key]) || {}));
+    if (hit) return hit;
+  }
+  return '';
 }
 
 /**

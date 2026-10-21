@@ -83,6 +83,19 @@ const LISTS = { names: ['n1', 'n2'], ones: ['only'], modes: ['l', 'r'],
   table_columns: { T: { columns: { c1: 'string', c2: 'number' } } } };
 const DOC = { name: 'alpha', words: ['n1'], rows: [{ a: 'x', pick: 'only' }], gated_rows: [{ mode: 'l', left: 'L' }],
   pairs: { k: 'v' }, gate: { mode: 'l', left: 'L' }, deep: { k1: { x: 'v' } }, tab: 'T', col: 'c1' };
+// Implementer A's params shape (a mapper's arguments): a value, or a list of values or of name -> value records.
+const PARAMS = { kind: 'map', keyed_by: 'name', member: 'arg', of: { kind: 'oneOf', hint: 'choice', pick: 'shape', branches: {
+  value: LEAF,
+  list: { kind: 'map', keyed_by: 'index', member: 'value', of: { kind: 'oneOf', hint: 'choice', pick: 'shape', branches: {
+    value: LEAF, record: { kind: 'map', keyed_by: 'name', member: 'field', of: LEAF } }, empty: { value: '', record: {} } } } },
+  empty: { value: '', list: [] } } };
+// A's fixtures: the params of copy_rows_with_hold, fold_by_unit and doc_chunk_to_doc_mention.
+const PARAM_DOCS = [
+  { key_columns: ['k'], columns: ['v'], hold_column: 'hold', source_table: 't' },
+  { unit_table: 't', group: 'g', match: [{ left: 'a', right: 'b' }], mark_column: 'm' },
+  { text_column: 'chunk_text', copy_columns: ['chunk_id', 'document', 'written_at'], type_column: 'node_type',
+    key_column: 'node_key', node_types: ['lot', 'wafer'] },
+];
 const copy = (v) => JSON.parse(JSON.stringify(v));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -127,6 +140,20 @@ function viewSuite(M) {
     `V6 every datalist id carries the form's prefix [${ids.join(' ')}]`);
   const table = walk(boxAt(form, 'col') || makeNode(doc, 'div')).find((n) => has(n, 'oe-form-column__table'));
   ok(table && String(table.textContent) === 'T.', `V7 a column cell says its table before its box [${table && table.textContent}]`);
+  // A's params: every held value is drawn in its own box at its own path (no blank box), a word as the value branch.
+  const PSKEL = { kind: 'record', fields: [{ key: 'params', required: false, node: PARAMS }] };
+  const gaps = [];
+  for (const params of PARAM_DOCS) {
+    const pform = M.view.renderSkeletonForm(viewContext(M, { expanded: new Proxy({}, { get: () => true }) }), PSKEL, '', { params }, 0, 'p');
+    const boxes = walk(pform).filter((n) => n.tagName === 'INPUT' && attr(n, 'data-action') && attr(n, 'data-enter') !== 'form-name');
+    const want = [];
+    const spell = (at, v) => { if (Array.isArray(v)) v.forEach((x, i) => spell(`${at}[${i}]`, x));
+      else if (v && typeof v === 'object') Object.entries(v).forEach(([k, x]) => spell(`${at}.${k}`, x)); else want.push(`${at}=${v}`); };
+    spell('params', params);
+    const got = boxes.map((n) => `${attr(n, 'data-value')}=${n.value}`);
+    gaps.push(want.filter((w) => !got.includes(w)).concat(got.filter((g) => !want.includes(g))).join(' '));
+  }
+  ok(gaps.every((x) => x === ''), `V9 a mapper's params: each held value in its own box, no blank box (A's three fixtures) [${gaps.join(' | ')}]`);
   const folded = M.view.renderAuthoringRow({ path: 'p', label: 'P', state: 'answered', tier: 'constrained_input',
     value: ['run_uid', 'lot'], refusals: [], candidates: null }, [], null, true);
   const shown = walk(folded).filter((n) => has(n, 'chip')).map((n) => String(n.textContent));
@@ -170,6 +197,12 @@ function skelSuite(M) {
   const names = M.skel.refNames(LISTS, LISTS.table_columns, { kind: 'leaf', hint: 'ref', section: 'names' }, DOC);
   ok(col.table === 'T' && same(col.names, ['c1', 'c2']) && same(names, { table: '', names: ['n1', 'n2'] }),
     `S2 refNames: the first table_from holding a value names the table; else the section [${JSON.stringify([col, names])}]`);
+  const inner = PARAMS.of.branches.list.of;
+  const picks = [M.skel.shapeBranch(PARAMS.of, 'hold', {}), M.skel.shapeBranch(PARAMS.of, ['k'], {}),
+    M.skel.shapeBranch(inner, 'k', {}), M.skel.shapeBranch(inner, { left: 'a', right: 'b' }, {}), M.skel.shapeBranch(PARAMS.of, true, {})];
+  const at = M.skel.shapeAt({ kind: 'record', fields: [{ key: 'params', node: PARAMS }] }, ['params', 'match', 0, 'left'], {});
+  ok(same(picks, ['value', 'list', 'value', 'record', '']) && at && at.kind === 'leaf',
+    `S3 a shape picks its branch: a word the value, a list the index map, a record the name map; a path walks through them [${JSON.stringify(picks)} ${at && at.kind}]`);
 }
 
 // ── P: the panel, as the table and chain windows seat it ─────────────────────────────────────────────────────────
@@ -302,6 +335,11 @@ const DEFECTS = [
   ['path', "the adder's words go in as one member", (s) => s.replace('.split(/[,\\n\\t]/)', '.split(/\\u0000/)')],
   ['path', 'a switched gate forgets what was typed', (s) => s.replace('      kept[at] = record[field.key];\n', '')],
   ['path', 'a switched gate keeps the shut branch in the document', (s) => s.replace('      delete record[field.key];\n', '')],
+  ['skel', 'a list held where its shape picks finds no branch again',
+    (s) => s.replace("    : Array.isArray(value) ? [(b) => b.kind === 'map' && b.keyed_by === 'index']", '    : Array.isArray(value) ? []')],
+  ['skel', 'a record held where only a name map is offered finds no branch again',
+    (s) => s.replace("      : record ? [(b) => b.kind === 'record', (b) => b.kind === 'map' && b.keyed_by === 'name'] : [];",
+      "      : record ? [(b) => b.kind === 'record'] : [];")],
   ['skel', 'a choice of one is left for the person',
     (s) => s.replace("  return shape && shape.hint === 'choice' && shape.list && lists ? onlyMember(lists[shape.list]) : undefined;",
       '  return undefined;')],
