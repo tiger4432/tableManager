@@ -294,8 +294,24 @@ export const isSystemColumn = (col) => SYSTEM_COLUMNS.includes(col);
  *  `cell(column)` is the grid's own text of that cell (its column's getter and formatter - row_id · created_at live beside `data`). */
 export function gridRowsInOrder() {
   const out = [];
-  if (state.gridApi) state.gridApi.forEachNodeAfterFilterAndSort((node) => { if (node.data) out.push({ id: node.id, data: node.data, cell: (column) => state.gridApi.getCellValue({ rowNode: node, colKey: column, useFormatter: true }) }); });
+  if (state.gridApi) state.gridApi.forEachNodeAfterFilterAndSort((node) => { if (node.data) out.push({ id: node.id, data: node.data,
+    cell: (column) => state.gridApi.getCellValue({ rowNode: node, colKey: column, useFormatter: true }),
+    value: (column) => state.gridApi.getCellValue({ rowNode: node, colKey: column }) }); });
   return out;
+}
+
+/** The grid's filter on these columns set to these values, its other filters kept - the gallery's «Filter grid to this cell»
+ *  (lead 3589216b9: the grid's own filter model, no filter of the gallery's). A blank value is the blank filter. */
+export function filterGridTo(pairs) {
+  const api = state.gridApi;
+  if (!api) return;
+  const model = { ...(api.getFilterModel() || {}) };
+  for (const { column, value } of pairs) {
+    const number = (state.currentColumnTypes || {})[column] === 'number';
+    const filterType = number ? 'number' : 'text';
+    model[column] = isBlank(value) ? { filterType, type: 'blank' } : { filterType, type: 'equals', filter: number ? Number(value) : String(value) };
+  }
+  api.setFilterModel(model);
 }
 
 /** The next page added to the rows held (infinite scrolling's one step) - the grid near its bottom and the gallery's «Load more».

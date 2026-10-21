@@ -1,7 +1,9 @@
 // THE MAIN GRID'S GALLERY (owner 10-20 «불량 이미지 보기 좋게 · 메인 그리드 · 조건별 썸네일», lead 77ffe5cb6): the rows the
-// grid holds - its filter, its sort, its count cap - as 160 px tiles of one image column, a line a value of the Group by
-// column. A tile pressed: its picture large, its row's values, and «Show in grid». Its own div; the grid's rows, the page's
+// grid holds - its filter, its sort, its count cap - as 160 px tiles of one image column, a line a value of the Rows by
+// columns. A tile pressed: its picture large, its row's values, and «Show in grid». Its own div; the grid's rows, the page's
 // one picture loader and the grid's row are handed in. Only the lines in view are drawn.
+// With a Columns by column the lines are a board, rows x columns (owner 10-20 «갤러리는 매트릭스로», lead 3589216b9): a cell its
+// rows' count, its share of the row and its first thumbnails; a cell pressed lays its tiles out under the board as the list does.
 import { isBlank } from './absent.js';
 import { Thumb } from './image_thumb.js';
 import { countNumberText } from './match_count.js';
@@ -18,8 +20,12 @@ export const CAPTION_PX = 20;
 /** Lines of tiles drawn above and below the ones in view. */
 export const OVERSCAN = 2;
 export const WORDS = Object.freeze({
-  gallery: 'Gallery', grid: 'Grid', groupBy: 'Group by', none: '(None)', image: 'Image', empty: '(Empty)', all: 'All rows',
+  gallery: 'Gallery', grid: 'Grid', groupBy: 'Rows by', none: '(None)', image: 'Image', empty: '(Empty)', all: 'All rows',
   caption: 'Caption', order: 'Order', mostRows: 'Most rows', byValue: 'Value',
+  columnsBy: 'Columns by', addColumn: '+ Column', show: 'Show', total: 'All', noRows: 'none', filterTo: 'Filter grid to this cell',
+  perCell: (n) => `${n} per cell`,
+  ofRows: (share) => `${share} of rows`,
+  ofRow: (share) => `${share} of row`,
   loadMore: 'Load more', showInGrid: 'Show in grid', close: 'Close', noImageColumn: 'This table has no image column',
   rows: (n) => `${n.toLocaleString('en-US')} row${n === 1 ? '' : 's'}`,
   loaded: (n, total) => `${n.toLocaleString('en-US')} of ${total} loaded`,
@@ -31,20 +37,32 @@ const textOf = (v) => (isBlank(v) ? '' : String(v));
 
 /** The Order box: the groups with most rows first (the first said first among equals), or by their value. */
 export const ORDERS = Object.freeze([['count', WORDS.mostRows], ['value', WORDS.byValue]]);
+/** Thumbnails a board cell draws - the Show box. */
+export const PER_CELL = Object.freeze([4, 9]);
+
+/** A share as the board says it: «37%». */
+const percent = (part, whole) => `${whole ? Math.round((part / whole) * 100) : 0}%`;
 
 /**
- * The rows in groups: one a value of `groupBy`, all in one when none is chosen; each group's rows with an image (its
- * caption the `caption` column's value) and how many have none. `order` - ORDERS; the tiles keep the grid's sort.
+ * The rows in groups: one a value of the `groupBy` columns (one column, or several - their values together are the key),
+ * all in one when none is chosen; each group's rows, those with an image as tiles (the caption the `caption` column's
+ * value) and how many have none. `order` - ORDERS; the tiles keep the grid's sort.
  * @param {Array<{id, data}>} rows  the grid's rows as it holds them, filtered and sorted
- * @param {{groupBy: string|null, image: string, caption?: string|null, order?: string, valueOf: (row, column) => any}} o
+ * @param {{groupBy: string|string[]|null, image: string, caption?: string|null, order?: string, valueOf: (row, column) => any}} o
  */
 export function galleryModel(rows, { groupBy, image, caption = null, order = 'count', valueOf }) {
+  const by = [].concat(groupBy || []).filter(Boolean);
   const groups = new Map();
   for (const row of rows) {
-    const key = groupBy ? textOf(valueOf(row, groupBy)) : '';
-    if (!groups.has(key)) groups.set(key, { value: key, label: groupBy ? (key === '' ? WORDS.empty : key) : WORDS.all, count: 0, tiles: [], without: 0 });
+    const parts = by.map((column) => textOf(valueOf(row, column)));
+    const key = JSON.stringify(parts);
+    if (!groups.has(key)) {
+      groups.set(key, { key, parts, value: parts.join(' · '), count: 0, tiles: [], without: 0, rows: [],
+        label: by.length ? parts.map((v) => (v === '' ? WORDS.empty : v)).join(' · ') : WORDS.all });
+    }
     const g = groups.get(key);
     g.count += 1;
+    g.rows.push(row);
     const ref = valueOf(row, image);
     if (isBlank(ref)) g.without += 1;
     else g.tiles.push({ id: row.id, ref: String(ref), caption: caption ? textOf(valueOf(row, caption)) : String(ref), row });
@@ -54,15 +72,34 @@ export function galleryModel(rows, { groupBy, image, caption = null, order = 'co
   return out.map((g, i) => [g, i]).sort((a, b) => b[0].count - a[0].count || a[1] - b[1]).map(([g]) => g);
 }
 
-/** Where each group's head and each line of tiles stands: `{kind: 'head'|'tiles', group, top, height, tiles?}`, the whole height. */
-export function galleryLayout(groups, width) {
+/**
+ * The board: a line a group of `rowsBy`, a column a group of `columnBy`, both from galleryModel and in its order; a cell the
+ * line's rows of that column's value grouped by the same function (null where the line has none), its share of the line.
+ */
+export function galleryBoard(rows, { rowsBy, columnBy, ...o }) {
+  const columns = galleryModel(rows, { ...o, groupBy: [columnBy] }).map(({ key, label, parts }) => ({ key, label, value: parts[0] }));
+  return {
+    all: rows.length,
+    columns,
+    lines: galleryModel(rows, { ...o, groupBy: rowsBy }).map((line) => {
+      const cells = new Map(galleryModel(line.rows, { ...o, groupBy: [columnBy] }).map((g) => [g.key, g]));
+      return { ...line, share: percent(line.count, rows.length), cells: columns.map((c) => cells.get(c.key) || null) };
+    }),
+  };
+}
+
+/** Where each group's head and each line of tiles stands: `{kind: 'head'|'tiles', group, top, height, tiles?}`, the whole height.
+ *  `heads` false - the tiles alone (a board cell opened: its head is the board's). */
+export function galleryLayout(groups, width, { heads = true } = {}) {
   const per = Math.max(1, Math.floor((width + GAP_PX) / (TILE_PX + GAP_PX)));
   const lineHeight = TILE_PX + CAPTION_PX + GAP_PX;
   const items = [];
   let top = 0;
   for (const group of groups) {
-    items.push({ kind: 'head', group, top, height: HEAD_PX });
-    top += HEAD_PX;
+    if (heads) {
+      items.push({ kind: 'head', group, top, height: HEAD_PX });
+      top += HEAD_PX;
+    }
     for (let i = 0; i < group.tiles.length; i += per) {
       items.push({ kind: 'tiles', group, top, height: lineHeight, tiles: group.tiles.slice(i, i + per) });
       top += lineHeight;
@@ -89,6 +126,7 @@ export class GalleryPart {
     this.deps = deps;
     this.doc = deps.doc || mount.ownerDocument;
     this.picked = null;
+    this.opened = null;
     this.drawn = new Map();
     this.layout = { items: [], height: 0, per: 1 };
     this.asked = false;
@@ -134,7 +172,11 @@ export class GalleryPart {
     const kept = this.kept();
     const image = images.includes(kept.image) ? kept.image : images[0];
     const names = (this.deps.columns() || []).map((c) => c.name);
-    const groupBy = names.includes(kept.groupBy) ? kept.groupBy : null;
+    // Rows by: one column or several (a choice kept before the board was one name)
+    const rowsBy = [...new Set([].concat(kept.groupBy || []))].filter((n) => names.includes(n));
+    const groupBy = rowsBy.length ? rowsBy : null;
+    const columnBy = names.includes(kept.columnBy) && !rowsBy.includes(kept.columnBy) ? kept.columnBy : null;
+    const perCell = PER_CELL.includes(kept.perCell) ? kept.perCell : PER_CELL[0];
     const shown = (this.deps.shown ? this.deps.shown() : names) || [];
     const caption = names.includes(kept.caption) ? kept.caption : (shown.find((n) => n !== image) || null);
     const order = ORDERS.some(([v]) => v === kept.order) ? kept.order : ORDERS[0][0];
@@ -156,10 +198,29 @@ export class GalleryPart {
       box.append(s);
       return box;
     };
-    bar.append(select(WORDS.groupBy, [['', WORDS.none], ...names.map((n) => [n, n])], groupBy || '', (v) => { this.keep({ groupBy: v || null }); this.render(); }));
+    // Rows by - its first box and one more per column added (+ Column); (None) in a box takes that column out
+    const rowsKept = (next) => { this.keep({ groupBy: next.filter(Boolean) }); this.render(); };
+    bar.append(select(WORDS.groupBy, [['', WORDS.none], ...names.map((n) => [n, n])], rowsBy[0] || '', (v) => rowsKept([v, ...rowsBy.slice(1)])));
+    rowsBy.slice(1).forEach((name, i) => {
+      const extra = this.el('select', 'gallery-select gallery-select--more');
+      for (const [v, words] of [['', WORDS.none], ...names.map((n) => [n, n])]) { const o = this.el('option', '', words); o.value = v; extra.append(o); }
+      extra.value = name;
+      extra.addEventListener('change', () => rowsKept(rowsBy.map((n, j) => (j === i + 1 ? extra.value : n))));
+      bar.append(extra);
+    });
+    const unused = names.filter((n) => !rowsBy.includes(n) && n !== columnBy && n !== image);
+    if (rowsBy.length && unused.length) {
+      const add = this.el('button', 'glass-page-btn gallery-add', WORDS.addColumn);
+      add.type = 'button';
+      add.addEventListener('click', () => rowsKept([...rowsBy, unused[0]]));
+      bar.append(add);
+    }
+    bar.append(select(WORDS.columnsBy, [['', WORDS.none], ...names.filter((n) => !rowsBy.includes(n)).map((n) => [n, n])], columnBy || '',
+      (v) => { this.opened = null; this.keep({ columnBy: v || null }); this.render(); }));
+    if (columnBy) bar.append(select(WORDS.show, PER_CELL.map((n) => [String(n), WORDS.perCell(n)]), String(perCell), (v) => { this.keep({ perCell: Number(v) }); this.render(); }));
     if (images.length > 1) bar.append(select(WORDS.image, images.map((n) => [n, n]), image, (v) => { this.keep({ image: v }); this.render(); }));
     bar.append(select(WORDS.caption, names.map((n) => [n, n]), caption || '', (v) => { this.keep({ caption: v }); this.render(); }));
-    if (groupBy) bar.append(select(WORDS.order, ORDERS.slice(), order, (v) => { this.keep({ order: v }); this.render(); }));
+    if (groupBy || columnBy) bar.append(select(WORDS.order, ORDERS.slice(), order, (v) => { this.keep({ order: v }); this.render(); }));
     const rows = this.deps.rows() || [];
     // the grid holds part of the table: the counts are of the rows it holds, and it says so (lead 10-20)
     const count = this.deps.count ? this.deps.count() : null;
@@ -180,9 +241,17 @@ export class GalleryPart {
     this.side = this.el('aside', 'gallery-side');
     this.side.hidden = !this.picked;
     body.append(this.side);
+    this.heads = !columnBy;
+    if (columnBy) {
+      const board = galleryBoard(rows, { rowsBy, columnBy, image, caption, order, valueOf: this.deps.valueOf });
+      const open = this.openedIn(board);
+      root.append(this.boardOf(board, { rowsBy, columnBy, perCell, open }));
+      if (open) root.append(this.openHead(open, { rowsBy, columnBy }));
+      this.groups = open ? [open.cell] : [];
+    }
     root.append(body);
     this.mount.replaceChildren(root);
-    this.groups = galleryModel(rows, { groupBy, image, caption, order, valueOf: this.deps.valueOf });
+    if (!columnBy) this.groups = galleryModel(rows, { groupBy, image, caption, order, valueOf: this.deps.valueOf });
     this.scroller = scroller;
     this.canvas = canvas;
     this.drawn = new Map();
@@ -226,7 +295,7 @@ export class GalleryPart {
     const width = this.scroller.clientWidth || TILE_PX;
     if (width !== this.width) {
       this.width = width;
-      this.layout = galleryLayout(this.groups, width);
+      this.layout = galleryLayout(this.groups, width, { heads: this.heads !== false });
       this.canvas.style.height = `${this.layout.height}px`;
       for (const node of this.drawn.values()) node.remove();
       this.drawn = new Map();
@@ -242,6 +311,83 @@ export class GalleryPart {
       this.canvas.append(node);
       this.drawn.set(it.top, node);
     }
+  }
+
+  /** The cell opened - the one pressed while it still has rows, else the first cell that has. */
+  openedIn(board) {
+    const at = (lineKey, colKey) => {
+      const li = board.lines.findIndex((l) => l.key === lineKey);
+      const ci = board.columns.findIndex((c) => c.key === colKey);
+      const cell = li >= 0 && ci >= 0 ? board.lines[li].cells[ci] : null;
+      return cell ? { line: board.lines[li], column: board.columns[ci], cell, li } : null;
+    };
+    const kept = this.opened && at(this.opened.line, this.opened.column);
+    if (kept) return kept;
+    for (const line of board.lines) {
+      const ci = line.cells.findIndex(Boolean);
+      if (ci >= 0) return at(line.key, board.columns[ci].key);
+    }
+    return null;
+  }
+
+  /** The board: a corner, a head per column and «All»; a line its head (value · share of all rows), its cells and its total. */
+  boardOf(board, { rowsBy, columnBy, perCell, open }) {
+    const box = this.el('div', 'gallery-board');
+    const grid = this.el('div', 'gallery-board__grid');
+    grid.style.setProperty('--gallery-cols', String(board.columns.length));
+    grid.append(this.el('span', 'gallery-board__corner', `${rowsBy.length ? rowsBy.join(' · ') : WORDS.all} \\ ${columnBy}`));
+    for (const c of board.columns) grid.append(this.el('span', 'gallery-board__col', c.label));
+    grid.append(this.el('span', 'gallery-board__col gallery-board__col--total', WORDS.total));
+    board.lines.forEach((line, li) => {
+      const head = this.el('div', 'gallery-board__row');
+      head.style.setProperty('--gallery-cat', `var(--cat-${(li % 9) + 1})`);
+      head.append(this.el('span', 'gallery-board__value', line.label), this.el('span', 'gallery-board__share', WORDS.ofRows(line.share)));
+      grid.append(head);
+      line.cells.forEach((cell, ci) => {
+        const column = board.columns[ci];
+        const on = open && open.line.key === line.key && open.column.key === column.key;
+        const b = this.el('button', `gallery-cell${cell ? '' : ' is-empty'}${on ? ' is-open' : ''}`);
+        b.type = 'button';
+        b.dataset.line = line.key;
+        b.dataset.column = column.key;
+        b.setAttribute('aria-label', `${line.label} · ${column.label}, ${WORDS.rows(cell ? cell.count : 0)}`);
+        const top = this.el('span', 'gallery-cell__top');
+        top.append(this.el('span', 'gallery-cell__n', WORDS.groupCount(cell ? cell.count : 0)),
+          this.el('span', 'gallery-cell__share', cell ? WORDS.ofRow(percent(cell.count, line.count)) : WORDS.noRows));
+        b.append(top);
+        if (cell && cell.tiles.length) {
+          const thumbs = this.el('span', `gallery-cell__thumbs gallery-cell__thumbs--${perCell}`);
+          for (const t of cell.tiles.slice(0, perCell)) {
+            const at = this.el('span', 'gallery-cell__thumb');
+            new Thumb(at, { doc: this.doc, loader: this.deps.loader }).show([t.ref], TILE_PX);
+            thumbs.append(at);
+          }
+          b.append(thumbs);
+        }
+        if (cell) b.addEventListener('click', () => { this.opened = { line: line.key, column: column.key }; this.picked = null; this.render(); });
+        else b.disabled = true;
+        grid.append(b);
+      });
+      grid.append(this.el('div', 'gallery-board__total', WORDS.groupCount(line.count)));
+    });
+    box.append(grid);
+    return box;
+  }
+
+  /** The opened cell's head: its colour, its words, its rows · without image, and the grid's filter set to it. */
+  openHead(open, { rowsBy, columnBy }) {
+    const head = this.el('div', 'gallery-open');
+    head.style.setProperty('--gallery-cat', `var(--cat-${(open.li % 9) + 1})`);
+    head.append(this.el('span', 'gallery-open__mark'), this.el('span', 'gallery-open__label', `${open.line.label} · ${open.column.label}`),
+      this.el('span', 'gallery-open__n', [WORDS.rows(open.cell.count), open.cell.without ? WORDS.without(open.cell.without) : ''].filter(Boolean).join(' · ')));
+    if (this.deps.filterTo) {
+      const go = this.el('button', 'glass-page-btn gallery-open__filter', WORDS.filterTo);
+      go.type = 'button';
+      const row = open.cell.rows[0];
+      go.addEventListener('click', () => this.deps.filterTo([...rowsBy, columnBy].map((column) => ({ column, row }))));
+      head.append(go);
+    }
+    return head;
   }
 
   head(group) {

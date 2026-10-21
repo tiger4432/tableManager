@@ -3,7 +3,7 @@
 import { GalleryPart, WORDS } from './gallery.js';
 import { ImageLoader } from './image_thumb.js';
 import { IMAGE_TYPE } from './grid_image_column.js';
-import { appendNextRows, gridRowsInOrder, holdsWholeTable, isSystemColumn, showGridRow } from './grid.js';
+import { appendNextRows, filterGridTo, gridRowsInOrder, holdsWholeTable, isSystemColumn, showGridRow } from './grid.js';
 import { state, visibleRangeColIds } from './state.js';
 import './gallery.css';
 
@@ -26,6 +26,8 @@ export function seatGallery({ doc = document, base = '', storage = null, loadAll
     // the grid's own next step: a page added while scrolling, Load All while paging
     loadMore: () => { if (state.viewMode !== 'infinite' || !appendNextRows()) loadAll(); },
     showRow: (id) => { show(false); requestAnimationFrame(() => showGridRow(id)); },
+    // a board cell's columns and one of its rows: the grid's filter set to that row's values (the grid's own, not its text)
+    filterTo: (pairs) => filterGridTo(pairs.map(({ column, row }) => ({ column, value: row.value(column) }))),
   });
   const show = (on) => {
     open = on && hasImage();
