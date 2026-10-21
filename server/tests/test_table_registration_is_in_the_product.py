@@ -149,3 +149,53 @@ def test_a_good_column_types_mapping_goes_through(config_file):
         "probe", {"column_types": {"a": "string"}}, base_of(config_file))
     saved = json.loads(config_file.read_text(encoding="utf-8"))
     assert saved["probe"]["column_types"] == {"a": "string"}
+
+
+
+# ------------------------------------------------- the column type words are one closed list (lead 10-21)
+
+@pytest.mark.parametrize("bad", ["not_a_type", "TEXT", "Number", ""])
+def test_a_column_type_word_off_the_list_is_refused_by_its_cell_and_nothing_is_written(config_file, bad):
+    """`models` builds any word but number and datetime as a text column in silence - so the save names the cell, the
+    word and the list (`models.COLUMN_TYPES`), and the file is byte-identical after."""
+    from database import models
+
+    before = config_file.read_bytes()
+    with pytest.raises(Exception) as raised:
+        admin.save_table_config_raw("probe", {"column_types": {"a": "string", "b": bad}}, base_of(config_file))
+    detail = raised.value.detail
+    assert (detail["code"], detail["path"]) == ("column_type_unknown", "tables.probe.column_types.b"), detail
+    assert detail["message"] == 'column_types.b %s - one of %s' % (json.dumps(bad), " · ".join(models.COLUMN_TYPES))
+    assert config_file.read_bytes() == before
+
+
+def test_every_word_on_the_list_saves(config_file):
+    from database import models
+
+    types = {"c%d" % i: word for i, word in enumerate(models.COLUMN_TYPES)}
+    admin.save_table_config_raw("probe", {"column_types": types}, base_of(config_file))
+    assert json.loads(config_file.read_text(encoding="utf-8"))["probe"]["column_types"] == types
+
+
+def test_another_tables_old_word_does_not_stop_this_save(config_file):
+    """Boot still reads a word already written; only the table being saved is judged."""
+    config_file.write_text(json.dumps({"existing": {"column_types": {"k": "TEXT"}}}), encoding="utf-8")
+    admin.save_table_config_raw("probe", {"column_types": {"a": "number"}}, base_of(config_file))
+    saved = json.loads(config_file.read_text(encoding="utf-8"))
+    assert saved["existing"]["column_types"] == {"k": "TEXT"} and saved["probe"]["column_types"] == {"a": "number"}
+
+
+def test_the_model_and_the_form_read_the_one_list():
+    """The two model branches go through `sql_type_of`, and the table skeleton's type cell picks from the same tuple."""
+    from sqlalchemy import DateTime, Float, String
+
+    import table_cells
+    from database import models
+
+    assert models.sql_type_of("number") is Float
+    assert isinstance(models.sql_type_of("datetime"), DateTime) and models.sql_type_of("datetime").timezone
+    assert models.sql_type_of("image") is String and models.sql_type_of("not_a_type") is String
+    shape = table_cells.skeleton()
+    leaf = next(f["node"]["of"] for f in shape["root"]["fields"] if f["key"] == "column_types")
+    assert leaf == {"kind": "leaf", "hint": "choice", "list": table_cells.COLUMN_TYPES_LIST}
+    assert shape["lists"] == {table_cells.COLUMN_TYPES_LIST: list(models.COLUMN_TYPES)}
