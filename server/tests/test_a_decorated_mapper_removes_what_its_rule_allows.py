@@ -130,10 +130,10 @@ def test_the_envelope_for_every_flag_and_shape(flags, shape):
 
     if kind == "refused":
         with pytest.raises(mapper_sdk.MapperContractError) as refused:
-            run(None, [_payload(*p) for p in incoming], rule=rule)
+            run(_db(), [_payload(*p) for p in incoming], rule=rule)
         assert want in str(refused.value), str(refused.value)
         return
-    envelope = run(None, [_payload(*p) for p in incoming], rule=rule)
+    envelope = run(_db(), [_payload(*p) for p in incoming], rule=rule)
     if kind == "updates":
         assert "batches" not in envelope and len(envelope["updates"]) == want
         return
@@ -295,7 +295,7 @@ THREE = [("T1", "J-A", 2), ("T2", "J-B", 0), ("T3", "J-C", "unread")]
 def test_without_the_cell_the_envelope_is_todays_byte_for_byte():
     import json
     run = mapper_sdk.MAPPER_REGISTRY["sdkm_build"]
-    envelope = run(None, [_payload("T1", "J-A", 2), _payload("T2", "J-B", 0), _payload("T3", "J-C", 0)],
+    envelope = run(_db(), [_payload("T1", "J-A", 2), _payload("T2", "J-B", 0), _payload("T3", "J-C", 0)],
                    rule=_rule(allow_retraction=True))
     assert json.dumps(envelope, ensure_ascii=False) == TODAY
 
@@ -303,7 +303,7 @@ def test_without_the_cell_the_envelope_is_todays_byte_for_byte():
 def test_a_job_the_mapper_could_not_read_gets_no_batch_and_one_line(caplog):
     run = mapper_sdk.MAPPER_REGISTRY["sdkm_build_unread"]
     with caplog.at_level(logging.INFO):
-        envelope = run(None, [_payload(*p) for p in THREE], rule=_rule(allow_retraction=True))
+        envelope = run(_db(), [_payload(*p) for p in THREE], rule=_rule(allow_retraction=True))
     assert [(b["retract"]["source_value"], len(b["updates"])) for b in envelope["batches"]] == [("J-A", 2), ("J-B", 0)]
     assert [r.getMessage() for r in caplog.records if r.name == "mapper_sdk"] == [
         "[Chain] sdkm_rule: kept old cells of 1 job(s) the mapper could not read - J-C"]

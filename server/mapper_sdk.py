@@ -620,11 +620,13 @@ def removal_columns(rule, table):
     return keys, keys
 
 
-def _with_the_maps_rows_left(db, rule, table, payloads, rows_in):
-    """`rows_in` and the rows there are now of each map or job an incoming row LEFT - a deletion's, an edit's that moved
-    its key (`event_constants.key_left`) - read from the trigger table, so a rule that answers for whole maps is handed
-    the whole map (총괄 c67aa93bb ㄱ-a). A row comes once: an incoming row is not read again. A map no row holds now
-    adds none, and is still named (`left`, to `_removal_batches`): its batch then empties it. -> `(rows_in, left)`."""
+def _with_the_whole_maps(db, rule, table, payloads, rows_in):
+    """`rows_in` and the rows there are now of each map or job an incoming row is IN or LEFT - a deletion's, an edit's
+    that moved its key (`event_constants.key_left`), an edit's that kept it - read from the trigger table, so a rule that
+    answers for whole maps is handed the whole map whichever way its rows came (총괄 c67aa93bb ㄱ-a; f2 10-21: an edit
+    inside a map handed that row alone, and the map was replaced by it). A row comes once: an incoming row is not read
+    again. A map no row holds now adds none, and is still named (`left`, to `_removal_batches`): its batch then empties
+    it. -> `(rows_in, left)`."""
     import event_constants
     import outbox_expand
     from sqlalchemy import tuple_
@@ -634,13 +636,17 @@ def _with_the_maps_rows_left(db, rule, table, payloads, rows_in):
     listed = [payloads] if isinstance(payloads, dict) else list(payloads or ())
     left = {key for key in (event_constants.key_left(p, came_as) for p in listed if isinstance(p, dict))
             if key is not None and not any(crud.is_blank_value(v) for v in key)}
+    held = set()
+    if all(column in rows_in.columns for column in came_as):
+        held = {key for key in rows_in[list(came_as)].astype(object).itertuples(index=False, name=None)
+                if all(_present(v) for v in key)}
     model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
-    if not left or model is None:
+    if not (left or held) or model is None:
         return rows_in, left
     seen = set(rows_in["row_id"].dropna()) if "row_id" in rows_in.columns else set()
     columns = [getattr(model, column) for column in came_as]
     target = columns[0] if len(columns) == 1 else tuple_(*columns)
-    values = sorted((key[0] for key in left) if len(columns) == 1 else left, key=str)
+    values = sorted({key[0] for key in left | held} if len(columns) == 1 else left | held, key=str)
     names = outbox_expand._data_columns(model)
     more = []
     for i in range(0, len(values), 1000):
@@ -659,7 +665,7 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by, left
     One retract batch per job, or one replace_map batch per map. The jobs and maps are read from
     the INCOMING rows as well as the result - one that produced nothing this time is still
     named, and its old cells are what its batch removes (the half guard still judges that). And the maps an incoming
-    row LEFT (`left`, `_with_the_maps_rows_left` - whose rows there are now the frame already holds). A job
+    row LEFT (`left`, `_with_the_whole_maps` - whose rows there are now the frame already holds). A job
     the frame lists under `UNREAD_JOBS` gets no batch (`allow_retraction`) - one line says how many
     kept their old cells.
     """
@@ -783,7 +789,7 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
 
             left = ()
             if chain_bindings.removes_whole_maps(rule):
-                rows_in, left = _with_the_maps_rows_left(db, rule, table, payloads, rows_in)
+                rows_in, left = _with_the_whole_maps(db, rule, table, payloads, rows_in)
             if "row_id" in rows_in.columns:
                 rows_in[ORIGIN_MARK] = rows_in["row_id"]
             out = fn(rows_in, db)

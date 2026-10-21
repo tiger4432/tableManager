@@ -5,6 +5,7 @@ emptied. A map no row holds any more is still named, and its batch empties it.
 
   wakes     a DELETE wakes allow_delete_trigger · allow_replace_map · allow_retraction - a rule with none, not
   handed    a deletion · a key moved off: the map left comes whole; a row comes once, as it came
+  in        an edit inside a map, a key moved on: the map the row is in comes whole too (총괄 f2 10-21)
   gone      a map with no row now: named, nothing written - its batch empties it
   plain     a rule without the two flags reads nothing again
 
@@ -115,11 +116,20 @@ def test_a_map_no_row_holds_is_named_and_emptied(db):
     assert SEEN == [[]] and _maps(envelope) == {"J-Z": 0}
 
 
-def test_a_key_moved_off_hands_the_map_it_left_whole(db):
+def test_a_key_moved_hands_the_map_it_left_and_the_map_it_joined_whole(db):
     moved = _edited(db, "T2", "J-B", "1", {"job": "J-A"})
     envelope = mapper_sdk.MAPPER_REGISTRY["left_build"](db, [moved], rule=_rule(allow_replace_map=True))
-    assert SEEN == [[("T1", "J-A", "2"), ("T2", "J-B", "1")]]
-    assert _maps(envelope) == {"J-A": 2, "J-B": 1}
+    assert SEEN == [[("T1", "J-A", "2"), ("T2", "J-B", "1"), ("T3", "J-B", "1")]]
+    assert _maps(envelope) == {"J-A": 2, "J-B": 2}
+
+
+@pytest.mark.parametrize("flag", ["allow_replace_map", "allow_retraction"])
+def test_an_edit_inside_a_map_hands_the_map_whole(db, flag):
+    """총괄 f2 10-21: the edit kept its key, so no map was LEFT - the row came alone and the map was replaced by it."""
+    edited = _edited(db, "T2", "J-A", "3", {"qty": "1"})
+    envelope = mapper_sdk.MAPPER_REGISTRY["left_build"](db, [edited], rule=_rule(**{flag: True}))
+    assert SEEN == [[("T1", "J-A", "2"), ("T2", "J-A", "3")]]
+    assert _maps(envelope, flag == "allow_retraction") == {"J-A": 5}
 
 
 def test_an_incoming_row_comes_once_as_it_came(db):
