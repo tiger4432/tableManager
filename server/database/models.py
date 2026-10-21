@@ -1238,6 +1238,21 @@ FRAMEWORK_COLUMNS = (
 )
 
 
+#: The words a `column_types` value may say - the one list (lead 10-21): the two branches below, the table save
+#: gate (`ledger.admin.save_table_config_raw`) and the table skeleton's choice (`table_cells`) read it. A word
+#: not here is refused when its table is saved; boot still reads one already written as text.
+COLUMN_TYPES = ("string", "number", "datetime", "image")
+
+
+def sql_type_of(word):
+    """A `column_types` word -> its column type: number a float, datetime a zoned instant, every other a string."""
+    if word == "number":
+        return Float
+    if word == "datetime":
+        return DateTime(timezone=True)
+    return String
+
+
 def init_dynamic_models(config_dict: dict, engine=None):
     """
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
@@ -1269,14 +1284,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
                 if col_name in FRAMEWORK_COLUMNS:
                     continue
                 if col_name not in table_obj.columns:
-                    if type_str == "number":
-                        sql_type = Float
-                    elif type_str == "datetime":
-                        sql_type = DateTime(timezone=True)
-                    else:
-                        sql_type = String
-                        
-                    col_obj = Column(col_name, sql_type, nullable=True)
+                    col_obj = Column(col_name, sql_type_of(type_str), nullable=True)
                     table_obj.append_column(col_obj)
                     mapper.add_property(col_name, _mapped(col_obj))
                     added = True
@@ -1390,12 +1398,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
             # silently drop a column the view genuinely selects.
             if col_name in FRAMEWORK_COLUMNS and not is_view:
                 continue
-            if type_str == "number":
-                sql_type = Float
-            elif type_str == "datetime":
-                sql_type = DateTime(timezone=True)
-            else:
-                sql_type = String
+            sql_type = sql_type_of(type_str)
             if is_view:
                 columns.append(Column(col_name, sql_type, nullable=True,
                                       primary_key=(col_name in key_names)))

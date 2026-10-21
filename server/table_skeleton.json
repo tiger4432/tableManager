@@ -13,7 +13,8 @@
           "member": "column",
           "of": {
             "kind": "leaf",
-            "hint": "free"
+            "hint": "choice",
+            "list": "column_types"
           }
         }
       },
@@ -231,6 +232,14 @@
           }
         }
       }
+    ]
+  },
+  "lists": {
+    "column_types": [
+      "string",
+      "number",
+      "datetime",
+      "image"
     ]
   }
 }

@@ -10,8 +10,11 @@ none naming itself).
 from __future__ import annotations
 
 import chain_bindings
+from database import models
 
 SKELETON_VERSION = 1
+#: The closed list a `column_types` value picks from - served under this name beside the skeleton.
+COLUMN_TYPES_LIST = "column_types"
 
 
 def _leaf(hint="free"):
@@ -29,7 +32,7 @@ def _columns():
 
 #: (cell, node) - the order is the form's.
 TABLE_CELLS = (
-    ("column_types", _names("column", _leaf())),
+    ("column_types", _names("column", {"kind": "leaf", "hint": "choice", "list": COLUMN_TYPES_LIST})),
     ("business_key", _leaf()),
     ("composite_key_source", _columns()),
     ("composite_key_separator", _leaf()),
@@ -63,4 +66,5 @@ def skeleton():
                  "the product reads."),
         "root": {"kind": "record", "fields": [{"key": cell, "required": False, "node": node}
                                               for cell, node in TABLE_CELLS]},
+        "lists": {COLUMN_TYPES_LIST: list(models.COLUMN_TYPES)},
     }

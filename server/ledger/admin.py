@@ -247,8 +247,16 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
         raise _table_config_refusal(
             "column_types_not_object", f"tables.{table}.column_types",
             "column_types must be a JSON object (boot reads it as a mapping)")
-    # The table's own indexes - built by the chain worker's index work (총괄 06e8c22c3 · 98be7faf3).
     from database import models as _models
+    # A word the models do not know would build a text column in silence (lead 10-21) - this table's only.
+    unknown = [(column, word) for column, word in (declaration.get("column_types") or {}).items()
+               if word not in _models.COLUMN_TYPES]
+    if unknown:
+        raise _table_config_refusal(
+            "column_type_unknown", f"tables.{table}.column_types.{unknown[0][0]}",
+            "%s - one of %s" % (", ".join("column_types.%s %s" % (column, json.dumps(word, ensure_ascii=False))
+                                          for column, word in unknown), " · ".join(_models.COLUMN_TYPES)))
+    # The table's own indexes - built by the chain worker's index work (총괄 06e8c22c3 · 98be7faf3).
     refused = _models.table_index_refusal(table, declaration)
     if refused:
         raise _table_config_refusal("indexes_refused", *refused)
