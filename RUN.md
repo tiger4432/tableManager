@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 (소유자 「외부 저장소 별로 끄기」, 총괄, edb82082f)** — git pull · 와처 재기동 한 번
+>
+> ```
+> 무엇     ingestion_settings.json 의 external_sources 항목 하나를 저장하면 와처가 재기동 없이 그 소스만 다시 세움
+>          "enabled": false -> 그 소스의 이벤트 · 훑기 멈춤.  options.filename/glob · parser · path 바꿈 -> 옛 연결 빼고 새 모양으로
+>          다른 소스 · raws/ · 다른 표는 그대로 돎. 그 소스가 읽던 파일은 끝까지
+> 돌릴 것   git pull -> 와처 재기동 «한 번»(이 코드를 싣는 것). 그다음부터는 설정 저장만
+> 급할 때   돌고 있는 외장 소스 하나 끄기: config/ingestion_settings.json 의 그 항목에 "enabled": false 를 넣고 저장
+> 확인     3~5 초 안에 와처 로그 «External source switched off or removed - no longer read as it was: <경로> -> <표>»
+>          바꿨으면 «External source changed - …» 다음 줄 «Watching external read-only source: …»
+> 뜻      그 줄이 안 나옴 -> 와처가 옛 코드(재기동 전)이거나 저장한 JSON 이 안 읽힘(로그 «[Config] … read again» 이 있는지)
+>          그 줄은 나왔는데 옛 이름 파일이 또 읽힘 -> 그 파일은 저장 «전»에 이미 큐에 있던 것(끝까지 읽힘) — 새로 온 것은 안 읽혀야 정상
+> 다시 켬   "enabled": true 로 저장 -> 그 소스가 다시 서고 꺼져 있던 동안 들어온 파일을 훑어 읽음
+> 되돌리기  git revert edb82082f -> 와처 재기동 (그 뒤로는 소스를 바꾸면 다시 재기동해야 먹음)
+> ```
+>
+> ---
+>
 > ## [10-21] **선언 폼 값 상자 — 한 너비 · 낱말은 상자 바로 옆 (총괄 지시, 98198e037 · dist 1a3ac4e7d)**
 >
 > ```
