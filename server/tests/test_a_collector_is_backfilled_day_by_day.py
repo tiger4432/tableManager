@@ -66,19 +66,20 @@ def fixture_workspace(tmp_path, monkeypatch):
 
 
 def ingests(monkeypatch, verdicts):
-    """The watcher, as the ledger answers for it: the n-th file read gets verdicts[n]
-    (DONE · FAILED · None = not yet). Returns the windows the files carried, in order."""
+    """The watcher, as the checklist answers for it: the n-th file read gets verdicts[n]
+    (DONE = read · FAILED · None = not yet). Returns the windows the files carried, in order."""
     seen, calls = [], []
 
-    def door(db, table, filepath, file_stat):
+    def door(db, table, entries):
+        [(filepath, _file_stat)] = entries
         with open(filepath, encoding="utf-8") as f:
             row = next(csv.DictReader(io.StringIO(f.read())))
         if not seen or seen[-1] != (row["s"], row["e"]) or calls[-1] is not None:
             seen.append((row["s"], row["e"]))
         verdict = verdicts[len(seen) - 1] if len(seen) - 1 < len(verdicts) else checkpoint.STATUS_DONE
         calls.append(verdict)
-        return None if verdict is None else SimpleNamespace(status=verdict)
-    monkeypatch.setattr(checkpoint, "find_terminal_by_path_stat", door)
+        return {} if verdict is None else {filepath: "SUCCESS" if verdict == checkpoint.STATUS_DONE else verdict}
+    monkeypatch.setattr(checkpoint, "checked", door)
     return seen
 
 

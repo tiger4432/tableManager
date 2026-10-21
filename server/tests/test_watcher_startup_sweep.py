@@ -98,9 +98,10 @@ def test_sweep_processes_preexisting_files_mtime_order_excluding_err(tmp_path, m
     # err//archives//하위 디렉토리 파일은 미포함
     assert all("failed.csv" not in p and "done.csv" not in p and "deep.csv" not in p for p in calls)
 
-    # 시그니처 가드: 파일이 그대로 잔류(핸들러 no-op)해도 동일 시그니처는 재시도 안 함
-    assert watcher.sweep_existing_files() == 0
-    assert len(calls) == 3
+    # 체크리스트(소유자 10-21): 읽힌 기록이 없는 파일(핸들러 no-op)은 다음 스윕에 다시 간다 - 읽은 파일은 그 로그
+    # 행의 도장이 막는다(test_a_file_read_is_checked_by_its_path_and_table)
+    assert watcher.sweep_existing_files() == 3
+    assert len(calls) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -211,30 +212,6 @@ def test_concurrent_handle_event_processes_once(tmp_path, monkeypatch):
 
     assert len(processed) == 1, "동일 파일 동시 진입은 정확히 1회만 처리되어야 한다"
     assert not handler.processing_files, "처리 종료 후 processing_files는 비워져야 한다"
-
-
-# ---------------------------------------------------------------------------
-# 5) 시그니처 가드: 파일 갱신(mtime 변경) 시에만 재시도
-# ---------------------------------------------------------------------------
-
-def test_sweep_signature_guard_allows_retry_on_file_change(tmp_path, monkeypatch):
-    base = tmp_path / "ingestion_workspace"
-    base.mkdir()
-    config = {"sweeptest_sig": dict(SWEEP_INFO)}
-    monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: config)
-    raws = _make_workspace(base, "sweeptest_sig", ["stuck.csv"])
-    stuck = os.path.join(raws, "stuck.csv")
-
-    # 핸들러 no-op → 처리 실패로 파일이 raws/에 잔류하는 상황 시뮬레이션
-    monkeypatch.setattr(IngestionHandler, "_handle_event", lambda self, fp: None)
-
-    watcher = WorkspaceWatcher(str(base))
-    watcher.discover_and_watch()
-
-    assert watcher.sweep_existing_files() == 1
-    assert watcher.sweep_existing_files() == 0  # 동일 시그니처 → 무한 재시도 방지
-    _set_mtime(stuck, time.time() + 10)         # 파일 갱신 → 시그니처 변경
-    assert watcher.sweep_existing_files() == 1  # 재시도 허용
 
 
 # ---------------------------------------------------------------------------

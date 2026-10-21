@@ -291,6 +291,7 @@
 
 ### 설정 파일
 
+- 2026-10-21 [파일은 한 번 읽는다 — (경로, 표) 체크리스트, 표 스크립트가 바뀌면 그 표만 다시](#2026-10-21--파일은-한-번-읽는다--경로-표-체크리스트-표-스크립트가-바뀌면-그-표만-다시) — 보는 곳 와처 로그 · 적을 것 없음(`dedup_by_signature` · `dedup_by_path_stat` 은퇴)
 - 2026-10-21 [외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 — enabled · filename/glob · path](#2026-10-21--외부-소스-하나를-끄거나-바꾸면-재기동-없이-그-소스에만-먹는다--enabled--filenameglob--path) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목
 - 2026-10-20 [선언 폼의 추천 목록이 선언에서 나오고 표 설정에도 스켈레톤이 생김 (서버 몫)](#2026-10-20--선언-폼의-추천-목록이-선언에서-나오고-표-설정에도-스켈레톤이-생김-서버-몫) — 적는 곳 선언 폼(클라 착지 뒤) · `table_config.json`
 - 2026-10-20 [체인 규칙의 key.columns · group_by 를 목록으로 — 폼이 줄로 그리고 글자 key.columns 는 거절](#2026-10-20--체인-규칙의-keycolumns--group_by-를-목록으로--폼이-줄로-그리고-글자-keycolumns-는-거절) — 적는 곳 체인 규칙 선언 창 · `chain_rules.json`
@@ -467,6 +468,17 @@
 
 ---
 
+
+## 2026-10-21 · 파일은 한 번 읽는다 — (경로, 표) 체크리스트, 표 스크립트가 바뀌면 그 표만 다시
+
+소유자 10-21 「(파일, 돌려야 할 테이블) 을 키로 넣고 체크리스트 하면 되잖아」 · 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제하고」 · 「문 나누지 말랬지」 (총괄).
+
+- **무엇** — «이 파일을 이미 읽었나»의 답이 하나가 됐다. 같은 (경로, 표)의 파일 로그 행이 그 파일의 (수정 시각, 크기)를 들고 있으면 안 읽고, 파일이 바뀌면 읽는다. 와처를 재기동해도 읽은 파일을 다시 읽지 않는다. 어느 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` 는 빼고)이 바뀌면 «그 표»의 제자리 파일(외장 소스 · archive 를 끈 raws)만 다시 읽는다 — 다른 표와 archives/ 로 옮겨진 파일은 그대로.
+- **선언 예시** — 적을 것 없음. 한 파일을 다시 읽히려면 파일 화면의 Retry.
+- **보는 곳** — 와처 로그: 배포 뒤 첫 기동에 한 번 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L` · 훑기마다 `External sweep: … X already read, Y dispatched` · 표 읽기가 바뀌면 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again`.
+- **필요한 조건** — 없음. 새 칸 둘(`file_ingestion_logs.file_mtime · file_size`)은 기동의 스키마 동기화가 더하고, 그전 로그 행의 도장은 와처가 첫 훑기 전에 한 번 채운다.
+- **다시 읽히기** — 한 파일은 파일 화면 Retry. 여럿은 `python server/scripts/replay_ingestion.py --path <파일> [--path …] [--table <표>] --apply` — 그 (경로, 표) 키를 풀어 다음 훑기가 다시 읽는다(원장 행은 안 지움).
+- **은퇴** — 파일 이름 `__force__` · 설정 `dedup_by_signature` / `dedup_by_path_stat`(남아 있는 값은 읽히지 않음) · 같은 내용 다른 경로 건너뛰기.
 
 ## 2026-10-21 · 쓰기 문이 행마다 다시 하던 일을 묶음에 한 번 한다 — 복합 키 · 칸 판정 · 소스 서열, 결과는 그대로
 

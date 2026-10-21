@@ -381,6 +381,11 @@ class FileIngestionLog(Base):
     # The transaction the file's read wrote under (총괄 10-20) - every audit log row of that read carries it; a re-read
     # writes its own. Null on rows written before it and on files skipped without a read.
     transaction_id = Column(String(64), nullable=True)
+    # The file as it was when this row's read came to its answer (소유자 10-21 체크리스트): a row with the file's
+    # (mtime, size) checks it - `checkpoint.checked`. Null = not checked: a read that waited out a lock, a row written
+    # before these, a table whose reading changed (`reread.hand_on_a_changed_reading` empties its rows).
+    file_mtime = Column(DateTime(timezone=True), nullable=True)
+    file_size = Column(BigInteger, nullable=True)
 
     # once `index=True` on their columns - the same names, now able to say what they are for
     __table_args__ = (
@@ -524,7 +529,7 @@ class FileRereadMark(Base):
 
 
 class FileIngestionCheckpoint(Base):
-    """[P2] 파일 인제션 오프셋 체크포인트 + 해시 dedup 원장.
+    """[P2] 파일 인제션 오프셋 체크포인트 — 이어 읽기(재개)의 원장.
 
     설계 결정 — 왜 `file_ingestion_logs`에 컬럼을 추가하지 않았는가:
       1) `Base.metadata.create_all`은 **기존 테이블에 컬럼을 추가하지 않는다**. 운영 DB에
@@ -542,19 +547,9 @@ class FileIngestionCheckpoint(Base):
     [확장성] (table_name, file_signature) UNIQUE 인덱스 단일 조회 — 파일 1건당 1행이므로
     1,000만 행 데이터에서도 이 테이블은 '처리한 파일 수' 규모로만 자란다.
 
-    ── `filepath` 승격 (2026-08-13, SCHEMA_CANON R6) ──────────────────────────
-    R6의 사고 예시가 바로 이 컬럼이었다: **저장은 되는데 아무도 그걸로 묻지 않는**
-    표식. 처리된 파일을 옮기지 않기로 하면서 그 표식이 **열쇠가 된다** — 그래서 R6이
-    요구하는 세 가지를 «선언»으로 같이 정한다.
-
-    | | |
-    |---|---|
-    | **인덱스** | `idx_fic_path_stat (table_name, filepath, file_mtime, file_size)`. tier-1 조회가 이 인덱스만으로 판정된다 |
-    | **NULL 계약** | 셋 다 `nullable=True`를 **유지**한다. NULL은 「모름」이고, SQL `=`는 NULL에 참이 될 수 없으므로 **NULL 행은 tier 1에 절대 걸리지 않는다** = 전체 해시로 떨어진다(안전한 방향). 이 컬럼들이 없던 시절에 적힌 행이 정확히 그 경우다. NOT NULL로 조이지 않는 이유: 운영에 NULL 행이 하나라도 있으면 `SET NOT NULL`이 실패해 마이그레이션이 멈추는데, 얻는 것은 이미 `=`가 주는 보장뿐이다 |
-    | **유일성 계약** | **UNIQUE 아니다.** 유일 키는 여전히 `(table_name, file_signature)` 하나다. 한 경로는 시간이 지나며 여러 내용을 담을 수 있으므로 `(table_name, filepath)`에 UNIQUE를 걸면 정당한 갱신이 충돌한다. 그래서 tier-1 조회는 여러 행을 만날 수 있고, **전순서로 하나를 고른다**(R7) |
-
-    `file_size`는 R1대로 **수량**이라 수치형(`BigInteger`)이 맞다 — 종전에는 시그니처
-    **문자열** 안에 갇혀 있어서 질의가 불가능했다. `file_mtime`은 R5대로 `timestamptz`.
+    ⚰️ `file_mtime` · `file_size` · `idx_fic_path_stat` (2026-08-13 tier 1 의 조회 키) — 소유자 10-21 체크리스트가
+    «이미 읽었나»를 `file_ingestion_logs` 의 도장(`checkpoint.checked`)으로 갈음해, 이 둘은 쓰지도 읽지도 않는다.
+    칸과 인덱스는 스키마에 남았다(지우는 것은 DDL). `filepath` 는 이어 읽기가 묻는 마지막 위치로 남는다.
     """
 
     __tablename__ = "file_ingestion_checkpoints"
@@ -567,7 +562,6 @@ class FileIngestionCheckpoint(Base):
     # 시그니처와 절대 충돌하지 않는다.
     file_signature = Column(String(120), nullable=False)
     filename = Column(String, nullable=True)
-    # [Tier 1] 승격된 조회 키. 위 표의 NULL/유일성 계약이 이 세 컬럼에 함께 적용된다.
     filepath = Column(String, nullable=True)
     file_mtime = Column(DateTime(timezone=True), nullable=True)
     file_size = Column(BigInteger, nullable=True)
@@ -578,7 +572,7 @@ class FileIngestionCheckpoint(Base):
     # 커밋이 완료된 행 수 = 다음 실행의 재개 오프셋 (청크 커밋과 **같은 트랜잭션**에서 갱신)
     processed_rows = Column(Integer, nullable=False, default=0)
     chunk_index = Column(Integer, nullable=False, default=0)
-    # "IN_PROGRESS"(재개 대상) | "DONE"(dedup 대상) | "FAILED"(종결·비성공)
+    # "IN_PROGRESS"(재개 대상) | "DONE"(완료 — Retry 는 0 부터) | "FAILED"(종결·비성공)
     # FAILED가 필요한 이유: 종전에 「실패」는 **파일의 위치**(err/)로만 표현됐고,
     # 파일을 옮기지 않는 모드에서는 그 표현 수단이 사라진다.
     status = Column(String(20), nullable=False, default="IN_PROGRESS")
@@ -594,12 +588,11 @@ class FileIngestionCheckpoint(Base):
               info={"purpose": "one checkpoint per table and file content",
                     "serves": "resuming an ingestion, skipping a file already done"}),
         Index("idx_fic_signature", "file_signature", "status",
-              info={"purpose": "checkpoints of one file content", "serves": "ingestion dedup"}),
-        # [Tier 1] 해시 없이 「이 파일은 이미 결론이 났다」를 묻는 조회. NOT UNIQUE —
-        # 위 클래스 도크스트링의 유일성 계약 참조.
+              info={"purpose": "checkpoints of one file content", "serves": "a Retry's restart judgement"}),
+        # ⚰️ unread since the checklist (소유자 10-21) - see the class docstring; left in the schema.
         Index("idx_fic_path_stat", "table_name", "filepath", "file_mtime", "file_size",
-              info={"purpose": "a file already concluded, asked without hashing it",
-                    "serves": "watcher's skip of an unchanged file"}),
+              info={"purpose": "none since the checklist (소유자 10-21) - left in the schema",
+                    "serves": "nothing"}),
     )
 
 

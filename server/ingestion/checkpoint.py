@@ -1,4 +1,4 @@
-"""[P2] 파일 인제션 오프셋 체크포인트 + 파일 시그니처 dedup.
+"""[P2] 파일 인제션 오프셋 체크포인트 + «이미 읽었나» 체크리스트(`checked`).
 
 해결하는 결함
 --------------
@@ -21,7 +21,7 @@ P1(heavy 레인)까지의 워처는 1,000행 청크로 적재하되 **진행 오
    sha256이 blake2b보다 2배 빠르다(CPU의 SHA 확장 명령 사용, ~935MB/s). 라이브 드릴
    실측 기준 15.6MB 파일의 총 처리 시간은 415초인데 전체 해시는 **16ms(0.004%)**,
    500MB 파일이라도 0.5초다. 샘플링은 더 빠르지만 **중간만 바뀐 파일을 같은 파일로
-   오판**해 데이터 유실(재개 오프셋 오적용)·오검출(dedup 오스킵)을 낳는다. 비용이
+   오판**해 데이터 유실(재개 오프셋 오적용)을 낳는다. 비용이
    무시 가능한 수준이므로 **정확성을 택해 전체 해시**를 채택한다.
 
 2. **체크포인트 갱신 시점** — 청크의 `db.commit()`과 **같은 트랜잭션**에서 UPDATE한다.
@@ -38,57 +38,19 @@ P1(heavy 레인)까지의 워처는 1,000행 청크로 적재하되 **진행 오
    생기지 않는다(`test_ingestion_checkpoint.py`가 중간 오프셋 강제 재개로 실증).
    따라서 재개 실패의 최악 비용은 '느려짐'이지 '중복/유실'이 아니다.
 
-Two-tier ledger (2026-08-13)
-----------------------------
-The content signature above answers "have I processed this?" **only by reading
-the whole file**. That was affordable only because a processed file was MOVED
-out of `raws/`, so the tree the sweep walks was normally empty. Once files stay
-where they land, the sweep's cost becomes O(files in tree) *hashes*.
+The checklist (소유자 10-21)
+---------------------------
+«Is this file already read?» has one answer: `checked`. A file log row of the same (path, table) carrying the
+file's (mtime, size) - written where that read came to its answer - checks it; the watcher does not read it again.
+Anything else (no row, a row without a stamp, the file saved again) is read. Every seat that asks - the two sweeps,
+the tree walk, the event, the collector's wait - calls it. The content signature is no longer a judge: the same
+bytes at another path are read (소유자 10-20 ㄱ); it stays the identity a read RESUMES by (above).
 
-Measured on this box over the 22,626 files that today's `archives/` holds
-(194.6 MB) — i.e. exactly the set that would accumulate in `raws/`:
+It replaced three judges that answered the same question differently (소유자 10-21 「문 나누지 말랬지」): the sweeps'
+process memory of (mtime, size), this ledger's exact-path tier 1, and content dedup.
 
-    listdir + stat   1.0 s      (575 files/s hashing is per-FILE-bound, not
-    full sha256     39.4 s       byte-bound: 4.9 MB/s over many small files)
-
-So a cheap first tier is added:
-
-  * **Tier 1** — `(table_name, filepath, file_mtime, file_size)` all match a
-    ledger row in a TERMINAL state (`DONE` or `FAILED`) -> skip, **one stat, no
-    read**. "Terminal" and not "DONE" on purpose: today a failed file is not
-    retried because it was moved to `err/`; with no move, the FAILED ledger row
-    is what carries that same fact.
-  * **Tier 2** — anything differs -> hash, exactly as before. **The content
-    signature remains the final authority.** A completed row found by content
-    under a different path still skips, and the ledger adopts the new location
-    when the recorded one is gone.
-
-Where tier 1 is ASKED (2026-08-13, second round)
-------------------------------------------------
-The two tiers above are about *what* is asked. This is about *where*, and it was
-worth more than tier 1 itself. Tier 1 originally lived inside
-`_process_with_retry`, one dispatch deeper than the caller that already holds
-the `stat` — so a HIT still paid the whole per-file pipeline to get there: a
-`SessionLocal()` per file, `table_config.json` re-read from disk per file (twice),
-`ingestion_settings.json` re-read per file. Measured on this box: **~92 ms per
-hit, ≈35 min over the 22,626-file tree, and none of it the ledger** — while the
-`listdir + stat` that finds those files costs 1.0 s.
-
-`find_terminal_by_path_stat_batch` below is that question asked once for many
-files. `sweep_existing_files` and `_ingest_directory_tree` both call it with the
-stats they already took, and dispatch only what it does not clear. The
-single-file `find_terminal_by_path_stat` stays exactly where it was and still
-answers for everything the batch declines — the fast answer just arrives earlier
-now.
-
-🔴 **Failure direction of tier 1, stated so nobody has to rediscover it.**
-Tier 1 fails toward **not re-reading a file whose content changed while mtime
-and size stayed identical**. That is reachable: some copy tools preserve mtime,
-and a same-microsecond rewrite of equal length does it too. For a fab feed that
-writes each file once this is the right trade (39x cheaper sweeps), but it is a
-**judgement, not a free lunch**. Two escapes exist and both must keep working:
-`ingestion_settings.json` `dedup_by_path_stat: false` (forces hashing), and the
-`__force__` filename token (forces full re-ingestion of one file).
+🔴 Failure direction: a file rewritten with its mtime and size kept is not read again - some copy tools keep mtime.
+The way back for one file is the file screen's Retry (the retry door reads without asking, then stamps).
 """
 
 import hashlib
@@ -106,7 +68,7 @@ _HASH_CHUNK_BYTES = 1024 * 1024
 
 SIGNATURE_ALGO = "sha256"
 
-# Tier-1 identity of an UNREADABLE file. `compute_file_signature` returns None
+# Ledger identity of an UNREADABLE file. `compute_file_signature` returns None
 # when the content cannot be read at all, and the ledger's unique key is
 # (table_name, file_signature) — so a failure on such a file had nowhere to be
 # recorded and, with no move to `err/`, would be retried on every restart
@@ -167,21 +129,13 @@ STATUS_DONE = "DONE"
 # moving files therefore has to write the fact down instead of walking past it.
 STATUS_FAILED = "FAILED"
 
-# States that mean "I have already reached a terminal answer about this exact
-# file". Tier 1 skips on these; tier 2 (content dedup) still skips on DONE only.
-TERMINAL_STATUSES = (STATUS_DONE, STATUS_FAILED)
 
 _EPOCH_UTC = datetime(1970, 1, 1, tzinfo=timezone.utc)
-
-# 강제 재처리 마커 — 파일명에 이 토큰이 들어 있으면 dedup skip을 우회한다.
-# (기존 `user(name)` 파일명 규약과 같은 계열의 명시적 사용자 의사 표현 경로)
-FORCE_REINGEST_TOKEN = "__force__"
-
 
 def compute_file_signature(file_path: str) -> str | None:
     """파일 내용 시그니처 `sha256:<size>:<hexdigest>`. 읽기 실패 시 None.
 
-    None이면 호출자는 체크포인트/dedup을 **비활성화**하고 기존(P1) 동작으로 처리해야 한다
+    None이면 호출자는 체크포인트를 **비활성화**하고 기존(P1) 동작으로 처리해야 한다
     (시그니처 없이 재개하면 다른 파일에 오프셋을 오적용할 수 있다)."""
     try:
         size = os.path.getsize(file_path)
@@ -200,23 +154,18 @@ def compute_file_signature(file_path: str) -> str | None:
     except OSError as e:
         logger.warning(
             f"Could not compute file signature for '{file_path}': {e} — "
-            f"checkpoint/dedup disabled for this file (falls back to full reprocessing)."
+            f"checkpoint disabled for this file (falls back to full reprocessing)."
         )
         return None
-
-
-def is_force_reingest(filename: str) -> bool:
-    """파일명 기반 강제 재처리 요청 여부 (`__force__` 토큰, 대소문자 무시)."""
-    return FORCE_REINGEST_TOKEN in (filename or "").lower()
 
 
 def mtime_ns_to_datetime(mtime_ns: int) -> datetime:
     """`st_mtime_ns` -> tz-aware UTC datetime **truncated to whole microseconds**.
 
     Integer arithmetic on purpose. `datetime.fromtimestamp(st.st_mtime)` goes
-    through a float, and tier 1 compares this value with `=`: a value that is
+    through a float, and `checked` compares this value with `=`: a value that is
     not reproduced bit-for-bit from the same file simply MISSES, silently, and
-    the fast path quietly stops existing. Truncation (not rounding) to
+    every file is read again. The ONE spelling a stamp is written and asked in. Truncation (not rounding) to
     microseconds is what PostgreSQL's `timestamptz` stores anyway, so the value
     written and the value re-derived on the next sweep are identical.
     """
@@ -224,11 +173,7 @@ def mtime_ns_to_datetime(mtime_ns: int) -> datetime:
 
 
 def read_file_stat(file_path: str):
-    """`(mtime_datetime, size_bytes)` for tier 1, or `None` when unavailable.
-
-    One `os.stat`. `None` (vanished / unstattable) makes tier 1 MISS, which is
-    the safe direction: the file falls through to the existing full-hash path.
-    """
+    """`(mtime_datetime, size_bytes)` - the stamp `checked` asks and a read writes - or `None` when unavailable."""
     try:
         st = os.stat(file_path)
     except OSError:
@@ -239,8 +184,7 @@ def read_file_stat(file_path: str):
 def stat_identity_signature(file_stat) -> str | None:
     """Ledger key for a file whose CONTENT could not be read — `stat:<size>:<us>`.
 
-    Only ever used to record a FAILURE (see `record_failure`). Never used for
-    dedup-by-content: `find_completed_ingestion` is called with a real
+    Only ever used to record a FAILURE (see `record_failure`). `find_completed_ingestion` is called with a real
     `sha256:` signature or not at all.
     """
     if not file_stat:
@@ -305,10 +249,7 @@ def find_checkpoint(db, table_name: str, file_signature: str):
 
 
 def find_completed_ingestion(db, table_name: str, file_signature: str):
-    """같은 테이블에 같은 내용이 이미 완료 적재됐는지 — dedup 판정용.
-
-    **DONE만** 해당한다. FAILED는 「이 파일에 대한 결론」이지 「이 내용을 적재했다」가
-    아니므로, 같은 내용이 다른 경로로 다시 오면 재시도하는 것이 맞다(종전 동작 유지)."""
+    """같은 테이블에 같은 내용이 이미 완료 적재됐는지 — Retry 가 0 부터 다시 넣나(`_retry_should_restart`)."""
     row = find_checkpoint(db, table_name, file_signature)
     if row is not None and row.status == STATUS_DONE:
         return row
@@ -319,222 +260,89 @@ def _same_path(recorded: str, filepath: str) -> bool:
     return os.path.normcase(os.path.abspath(recorded)) == os.path.normcase(filepath)
 
 
-def concluded_here(db, row, filepath: str, file_stat) -> bool:
-    """Tier 2: this content's ledger row `row` already answers for THIS path - the file is not read again.
-
-    DONE: the row's path is this one, or this path succeeded at or after the file's mtime. The same content at
-    ANOTHER path is read (소유자 10-20 ㄱ - one bmap.txt per wafer, the same bytes in each wafer's folder).
-    FAILED (총괄 b5b77495a): this path failed at or after the file's mtime - not changed since it failed HERE.
-    The row holds ONE path per content, so copies push each other off it; the log row of each path keeps its own
-    answer, and a file saved again after its answer still goes through."""
-    if row is None or not filepath or row.status not in (STATUS_DONE, STATUS_FAILED):
-        return False
-    if row.status == STATUS_DONE and row.filepath and _same_path(row.filepath, filepath):
-        return True
-    if not file_stat:
-        return False
-    from database.models import FileIngestionLog as Log
-
-    said = "SUCCESS" if row.status == STATUS_DONE else STATUS_FAILED
-    return db.query(Log.id).filter(
-        Log.table_name == row.table_name, _answered_here(Log, filepath, file_stat[0], said)).first() is not None
+#: Files one `checked` query asks about - the OR of (path, mtime, size) clauses. 500 is the top of the flat band
+#: measured for the same OR shape on the ledger (2026-08-13: ms/file flat from 50 to 500, 3x worse at 2,000).
+CHECKED_BATCH_SIZE = 500
 
 
-def _answered_here(Log, filepath: str, file_mtime, status: str):
-    """A log row saying `status` for the file at `filepath`, written at or after its mtime - the file has not changed
-    since that answer. The file name lets ix_file_ingestion_logs_filename serve it."""
-    from sqlalchemy import func
-    return and_(Log.filename == os.path.basename(filepath), Log.filepath == filepath, Log.status == status,
-                func.coalesce(Log.updated_at, Log.created_at) >= file_mtime)
+def checked(db, table_name: str, entries) -> dict:
+    """The checklist (소유자 10-21): `{filepath: status}` for the `(filepath, file_stat)` entries a file log row of
+    `table_name` checks - the same path as `path_key` spells it (both sides folded in SQL, one spelling), the same
+    (mtime, size). Its status is the newest such row's (SUCCESS, FAILED, or PENDING once handed to the retry door).
+    A path absent is not checked: it is read."""
+    from sqlalchemy import literal, select
 
+    from database.models import FileIngestionLog as Log, path_key
 
-def _succeeded_here(db, table_name: str, items, size: int) -> dict:
-    """Tier 1's second half (총괄 10-20): the ledger row holds ONE path per content, so a copy of the same bytes at
-    another path, read and SUCCESS there, missed tier 1 and was hashed again on every watcher start. Its own log row
-    answers it - `{filepath: log row}` for the `(filepath, file_stat)` items that succeeded unchanged."""
-    from database.models import FileIngestionLog as Log
-
-    found = {}
-    for start in range(0, len(items), size):
-        chunk = items[start:start + size]
-        rows = db.query(Log).filter(
-            Log.table_name == table_name,
-            or_(*[_answered_here(Log, filepath, file_stat[0], "SUCCESS") for filepath, file_stat in chunk]),
-        ).order_by(Log.id.desc()).all()
-        for row in rows:
-            found.setdefault(row.filepath, row)
-    return found
-
-
-def find_terminal_by_path_stat(db, table_name: str, filepath: str, file_stat):
-    """**Tier 1** — 같은 경로·같은 (mtime, size)에 대해 이미 종결된 행. 없으면 None.
-
-    조회 조건이 `idx_fic_path_stat`(table_name, filepath, file_mtime, file_size)를
-    그대로 탄다. 세 값 중 하나라도 NULL이면 SQL `=`가 참이 될 수 없으므로 tier 1은
-    **자동으로 miss**한다 — 이 컬럼들이 없던 시절에 적힌 행(그리고 filepath가 NULL인
-    행)은 tier 1의 대상이 아니라는 NULL 계약이 여기서 강제된다.
-
-    행이 둘 이상일 수 있다(같은 경로가 여러 내용을 담았다가 mtime까지 같아진 경우).
-    상한이 걸린 읽기이므로 **전순서**를 준다(SCHEMA_CANON R7): 최신 갱신 → id 역순.
-    원장 행이 없으면 그 경로의 SUCCESS 로그 행(`_succeeded_here`)이 답한다.
-    """
-    if not table_name or not filepath or not file_stat:
-        return None
-    file_mtime, file_size = file_stat
-    Model = _get_model()
-    row = (
-        db.query(Model)
-        .filter(
-            Model.table_name == table_name,
-            Model.filepath == filepath,
-            Model.file_mtime == file_mtime,
-            Model.file_size == file_size,
-            Model.status.in_(TERMINAL_STATUSES),
-        )
-        .order_by(Model.updated_at.desc(), Model.id.desc())
-        .first()
-    )
-    return row if row is not None else _succeeded_here(db, table_name, [(filepath, file_stat)], 1).get(filepath)
-
-
-# How many files ONE tier-1 lookup answers when the caller already holds every
-# stat (the sweep and the tree walk both do). See
-# `find_terminal_by_path_stat_batch` for why this number and not another.
-TIER1_BATCH_SIZE = 500
-
-
-def find_terminal_by_path_stat_batch(db, table_name: str, entries, batch_size: int = None):
-    """**Tier 1, batched** — `find_terminal_by_path_stat` asked for MANY files.
-
-    `entries`: iterable of `(filepath, file_stat)` where `file_stat` is the
-    `(mtime, size)` pair `read_file_stat` returns. Returns `{filepath: row}` for
-    the files that already have a TERMINAL row matching all four of
-    `(table_name, filepath, file_mtime, file_size)`. A path that is absent simply
-    MISSES and its caller must send it down the unchanged per-file path — the
-    same safe direction the single-file lookup fails in.
-
-    **The predicate is not a re-derivation.** Each file contributes the exact
-    `and_(filepath ==, file_mtime ==, file_size ==)` triple the single-file query
-    builds, OR'd together under the same `table_name` + `status IN (TERMINAL)`
-    filter. That matters more than it looks: comparing the stat in Python instead
-    would mean re-deriving how a `DateTime(timezone=True)` comes BACK from each
-    backend (SQLite returns it naive, PostgreSQL returns it in the session's
-    timezone), and a batch that gets that wrong either clears everything or
-    clears nothing — both silent. Leaving the comparison in SQL means there is
-    no second spelling of tier 1 to keep in step with the first.
-
-    **Which row wins.** The lookup is deliberately not unique-keyed (one path can
-    have held several contents), so `find_terminal_by_path_stat` imposes a total
-    order and takes the first. The same total order is applied here across the
-    whole chunk and the first row seen per path is kept: restricting a globally
-    sorted stream to one path preserves that path's internal order, so the row
-    this returns is the row the single-file query would have returned. The
-    winner's `status` is what decides `archives/` vs `err/` at the call site,
-    which is why the row, and not merely "yes/no", comes back.
-
-    **Batch size (`TIER1_BATCH_SIZE = 500`), measured rather than guessed.** One
-    file costs 3 bind parameters, so a chunk costs ~1,500 of PostgreSQL's 65,535
-    ceiling — the ceiling is not what breaks first. What breaks first is PLANNING,
-    which grows with the OR arity. Whole-sweep cost over 2,001 files against a
-    52,001-row ledger on isolated `assy_qa` (2026-08-13, median of 3):
-
-        batch     50   100   250   500   1000   2000
-        ms/file  0.37  0.46  0.41  0.41   0.59   1.26
-
-    Flat from 50 to 500 and then it degrades — one query for all 2,001 files is
-    **3x worse** than five queries of 500. 500 is the top of the flat band: the
-    fewest round trips that still cost nothing to plan. It keeps a 22,626-file
-    tree at 46 queries.
-    """
-    if not table_name or not entries:
+    if not table_name:
         return {}
-    Model = _get_model()
-    size = int(batch_size or TIER1_BATCH_SIZE)
-
-    # Dedupe by path: a duplicate would add a redundant OR arm and could let a
-    # later chunk's ordering overwrite an earlier chunk's winner.
-    items, seen = [], set()
-    for filepath, file_stat in entries:
-        if not filepath or not file_stat or filepath in seen:
-            continue
-        seen.add(filepath)
-        items.append((filepath, file_stat))
-
+    items = list({filepath: (filepath, file_stat) for filepath, file_stat in entries if filepath and file_stat}.values())
     found = {}
-    for start in range(0, len(items), size):
-        chunk = items[start:start + size]
-        clauses = [
-            and_(
-                Model.filepath == filepath,
-                Model.file_mtime == file_stat[0],
-                Model.file_size == file_stat[1],
-            )
-            for filepath, file_stat in chunk
-        ]
-        rows = (
-            db.query(Model)
-            .filter(
-                Model.table_name == table_name,
-                Model.status.in_(TERMINAL_STATUSES),
-                or_(*clauses),
-            )
-            .order_by(Model.updated_at.desc(), Model.id.desc())
-            .all()
-        )
-        for row in rows:
-            if row.filepath not in found:
-                found[row.filepath] = row
-    found.update(_succeeded_here(db, table_name, [item for item in items if item[0] not in found], size))
+    for start in range(0, len(items), CHECKED_BATCH_SIZE):
+        chunk = items[start:start + CHECKED_BATCH_SIZE]
+        keys = db.execute(select(*[path_key(literal(filepath)) for filepath, _stat in chunk])).one()
+        asked = {}
+        for (filepath, file_stat), key in zip(chunk, keys):
+            asked.setdefault((key, file_stat[0], file_stat[1]), []).append(filepath)
+        rows = db.query(path_key(Log.filepath), Log.file_mtime, Log.file_size, Log.status).filter(
+            Log.table_name == table_name,
+            or_(*[and_(path_key(Log.filepath) == key, Log.file_mtime == file_stat[0], Log.file_size == file_stat[1])
+                  for (_filepath, file_stat), key in zip(chunk, keys)]),
+        ).order_by(Log.id.desc()).all()
+        by_key = {}
+        for key, _mtime, size, status in rows:
+            by_key.setdefault((key, size), status)
+        for (key, _mtime, size), paths in asked.items():
+            if (key, size) in by_key:
+                for filepath in paths:
+                    found[filepath] = by_key[(key, size)]
     return found
 
 
-def adopt_new_location(db, row, filepath: str, file_stat) -> bool:
-    """Tier-2 dedup 적중 시 **새 경로를 원장에 기록**한다. 반영했으면 True.
+def stamp_read_files(db, looked_at) -> dict:
+    """Once, when the checklist arrives (총괄 10-21): the log rows written before it carry no stamp, so every file a
+    sweep looks at would be read again. For each (table, path) whose newest row is SUCCESS, under a folder a sweep
+    looks at (`looked_at(path)`), the file on the disk now and the row written at or after its mtime - the file has
+    not changed since that read - the row gets the file's stamp. A failed file is not stamped: it is read once more.
+    -> {"stamped", "failed", "changed", "missing"} - the last three counted under the swept folders."""
+    from database.models import FileIngestionLog as Log, path_key
 
-    이 원장의 유일 키는 `(table_name, file_signature)` 하나뿐이므로 한 내용은 한 행,
-    즉 **경로를 하나만** 기억할 수 있다. 그래서 규칙은:
-
-      - 기록된 경로가 디스크에 **없으면** 새 위치를 채택한다 (파일이 옮겨졌거나
-        정리된 뒤 다시 떨어진 정상 경우 — 다음 스윕부터 tier 1이 적중한다).
-      - 기록된 경로가 **아직 살아 있으면** 건드리지 않는다. 사본 둘이 공존하는데
-        경로를 옮기면 스윕마다 두 사본이 서로를 밀어내며(ping-pong) 매번 해시가
-        다시 돈다. 대신 그 사본은 `note`에 위치가 남고, **스윕당 해시 1회**의
-        비용이 남는다(사본 수에 비례할 뿐 트리 크기와 무관 — 보고서에 명시).
-    """
-    if row is None or not filepath or not file_stat:
-        return False
-    file_mtime, file_size = file_stat
-    recorded = row.filepath
-    if recorded and _same_path(recorded, filepath):
-        # Same place, possibly touched: refresh the stat so tier 1 hits again.
-        if row.file_mtime == file_mtime and row.file_size == file_size:
-            return False
-    elif recorded and os.path.exists(recorded):
-        note = f"[dedup-alt-location] 같은 내용의 사본이 여기에도 있음: {filepath}"
-        if row.note == note:
-            return False
-        row.note = note
+    newest, said = {}, {"stamped": 0, "failed": 0, "changed": 0, "missing": 0}
+    query = db.query(Log.id, Log.table_name, path_key(Log.filepath), Log.filepath, Log.status,
+                     Log.updated_at, Log.created_at, Log.file_mtime).filter(Log.filepath.isnot(None))
+    for row in query.order_by(Log.id.desc()).yield_per(5000):
+        newest.setdefault((row[1], row[2]), row)
+    stamps = []
+    for log_id, _table, _key, filepath, status, updated, created, stamped in newest.values():
+        if stamped is not None or status not in ("SUCCESS", STATUS_FAILED) or not looked_at(filepath):
+            continue
+        file_stat = read_file_stat(filepath)
+        if file_stat is None:
+            said["missing"] += 1
+        elif status == STATUS_FAILED:
+            said["failed"] += 1
+        else:
+            when = updated or created
+            if when is not None and when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            if when is not None and when >= file_stat[0]:
+                stamps.append({"id": log_id, "file_mtime": file_stat[0], "file_size": file_stat[1]})
+            else:
+                said["changed"] += 1
+    for start in range(0, len(stamps), 1000):
+        db.bulk_update_mappings(Log, stamps[start:start + 1000])
         db.commit()
-        return True
-    row.filepath = filepath
-    row.file_mtime = file_mtime
-    row.file_size = file_size
-    db.commit()
-    return True
+    said["stamped"] = len(stamps)
+    return said
 
 
 def plan_ingestion(db, table_name: str, file_signature: str, filename: str, filepath: str,
-                   total_rows: int, source_kind: str, force_restart: bool = False,
-                   file_stat=None) -> CheckpointPlan:
+                   total_rows: int, source_kind: str, force_restart: bool = False) -> CheckpointPlan:
     """체크포인트 행을 준비하고 재개 오프셋을 결정한다 (커밋은 호출자 책임 아님 — 여기서 커밋).
 
-    force_restart=True면 기존 진행분을 무시하고 0부터 재적재한다(사용자 명시 재처리 경로).
-    file_stat=`(mtime, size)`가 오면 tier-1 조회 키를 같이 심는다 — **적재를 시작한
-    시점의 파일 모습**이므로, 도중에 파일이 바뀌면 다음 스윕의 tier 1이 miss하여
-    재적재로 떨어진다(안전한 방향).
+    force_restart=True면 기존 진행분을 무시하고 0부터 재적재한다(Retry 가 완료된 내용을 다시 넣는 경로).
     """
     Model = _get_model()
-    file_mtime, file_size = file_stat if file_stat else (None, None)
     plan = CheckpointPlan(
         table_name=table_name, file_signature=file_signature, filename=filename,
         filepath=filepath, source_kind=source_kind, total_rows=total_rows,
@@ -546,7 +354,6 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
         row = Model(
             table_name=table_name, file_signature=file_signature, filename=filename,
             filepath=filepath, source_kind=source_kind, total_rows=total_rows,
-            file_mtime=file_mtime, file_size=file_size,
             processed_rows=0, chunk_index=0, status=STATUS_IN_PROGRESS,
             # Stated rather than left to the server default, so the plan holds it with no read back.
             started_at=datetime.now(timezone.utc), transaction_id=str(uuid.uuid4()),
@@ -560,7 +367,7 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
     # 기존 행이 있다 — 재개 가부를 명시적으로 판정한다.
     reason = None
     if force_restart:
-        reason = "사용자 명시 재처리(force) 요청"
+        reason = "Retry 로 다시 넣음"
     elif row.status == STATUS_DONE:
         reason = f"이전 적재가 이미 완료(DONE, {row.processed_rows}행) 상태"
     elif row.source_kind != source_kind:
@@ -597,12 +404,6 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
     row.filepath = filepath
     row.source_kind = source_kind
     row.total_rows = total_rows
-    # SCHEMA_CANON R4: only name the tier-1 columns when we actually have values.
-    # Writing NULL over a good stat because this call site had none would turn a
-    # tier-1 hit into a permanent miss.
-    if file_stat:
-        row.file_mtime = file_mtime
-        row.file_size = file_size
     row.status = STATUS_IN_PROGRESS
     row.note = plan.note
     if plan.resume_from == 0:
@@ -640,7 +441,6 @@ def record_failure(db, table_name: str, file_signature: str, filename: str, file
         )
         return False
     Model = _get_model()
-    file_mtime, file_size = file_stat if file_stat else (None, None)
     brief = (reason or "").strip().splitlines()
     brief = brief[-1][:500] if brief else "unknown error"
     note = f"[failed] {brief}"
@@ -648,16 +448,12 @@ def record_failure(db, table_name: str, file_signature: str, filename: str, file
     if row is None:
         row = Model(
             table_name=table_name, file_signature=key, filename=filename,
-            filepath=filepath, file_mtime=file_mtime, file_size=file_size,
-            processed_rows=0, chunk_index=0, status=STATUS_FAILED, note=note,
+            filepath=filepath, processed_rows=0, chunk_index=0, status=STATUS_FAILED, note=note,
         )
         db.add(row)
     else:
         row.filename = filename
         row.filepath = filepath
-        if file_stat:
-            row.file_mtime = file_mtime
-            row.file_size = file_size
         row.status = STATUS_FAILED
         row.note = note
     db.commit()
@@ -690,7 +486,7 @@ def record_chunk_progress(db, plan: CheckpointPlan, processed_rows: int, chunk_i
 
 
 def mark_done(db, plan: CheckpointPlan, processed_rows: int = None, note: str = None):
-    """파일 처리 성공 확정 — 이후 같은 시그니처는 dedup skip 대상이 된다."""
+    """파일 처리 성공 확정 — 같은 시그니처의 다음 Retry 는 0 부터(`find_completed_ingestion`)."""
     if not plan.active:
         return
     Model = _get_model()

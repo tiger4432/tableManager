@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """Fix a table's plugin or its declaration and its failed files are read again (lead 10-20 ab951f09b, owner 「ㅇㅇ」).
 
-A real watcher process (`run_watcher.main`) on a scratch data root and a sqlite file; reread_max_files is 2.
+A real watcher process (`run_watcher.main`) on a scratch data root and a sqlite file; reread_max_files is 2 - the
+screen's cap, not this one's (총괄 10-21: a changed reading hands them all, the watcher reads at its own pace).
 Run 1:
   ta (2 files) · tb (1) · tc (3) · td (1) · te (1) - every plugin raises, every file FAILED
   ta's display_columns changed             -> nothing handed
   tb's plugin fixed                         -> tb read again, ta untouched
   ta's plugin fixed                         -> ta's 2 read again, one line
-  tc's plugin fixed                         -> 3 over the cap of 2: one line, nothing handed
+  tc's plugin fixed                         -> all 3 read again, past reread_max_files
 Run 2 (a restart): td's and te's plugins fixed while the watcher is down, te's kept reading taken away
   td -> read again at the start · te -> seen the first time: kept, not handed
 """
@@ -152,13 +153,14 @@ def test_a_fixed_plugin_reads_its_tables_failed_files_again(tmp_path):
         _plugin(data, "ta", FIXED)
         states = watcher.until(lambda s: s["ta"] == {"SUCCESS": 2})
         assert states["ta"] == {"SUCCESS": 2}, states
-        assert "[Watcher] ta: its reading changed (scripts\\p.py) - 2 failed file(s) handed again" in watcher.text()
+        assert ("[Watcher] ta: its reading changed (scripts\\p.py) - 0 read file(s) unchecked, 2 failed file(s) "
+                "handed again - " in watcher.text())
 
         _plugin(data, "tc", FIXED)
-        time.sleep(10)
-        assert watcher.until(lambda s: False, 1)["tc"] == {"FAILED": 3}
-        assert ("[Watcher] tc: its reading changed (scripts\\p.py) - 3 failed files wait - Retry failed by folder"
-                in watcher.text())
+        states = watcher.until(lambda s: s["tc"] == {"SUCCESS": 3})
+        assert states["tc"] == {"SUCCESS": 3}, states
+        assert ("[Watcher] tc: its reading changed (scripts\\p.py) - 0 read file(s) unchecked, 3 failed file(s) "
+                "handed again - " in watcher.text())
     finally:
         watcher.stop()
 
@@ -203,10 +205,11 @@ def test_a_settings_file_that_reads_as_nothing_passes_the_tick(tmp_path, monkeyp
         def _resolve_table_name(self, table_config):
             return "ta"
 
-    monkeypatch.setattr(run_watcher, "workspace_watcher", type("W", (), {"handlers_by_raw_path": {"r": Handler()}}))
+    monkeypatch.setattr(run_watcher, "workspace_watcher",
+                        type("W", (), {"handlers_by_raw_path": {"r": Handler()}, "external_targets": {}}))
     monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: {"ta": entry})
     handed, written = [], []
-    monkeypatch.setattr(reread, "hand_on_a_changed_reading", lambda *a: handed.append(a[1]))
+    monkeypatch.setattr(reread, "hand_on_a_changed_reading", lambda *a, **k: handed.append(a[1]))
     monkeypatch.setattr(reread, "keep_reading_stamps", lambda stamps: written.append(stamps))
     path = tmp_path / "ingestion_settings.json"
     monkeypatch.setattr(settings, "INGESTION_SETTINGS_PATH", str(path))

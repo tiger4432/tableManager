@@ -299,8 +299,8 @@ def run(table: str, rows: int, label: str, number_start: int, work_root: str,
 
     try:
         # The outer path, in the order `_process_with_retry` walks it.
+        clock.wrap(dw.IngestionHandler, "already_checked", "checklist lookup")
         clock.wrap(dw, "compute_file_signature", "file signature (sha256)")
-        clock.wrap(dw.IngestionHandler, "_try_dedup_skip", "dedup lookup")
         clock.wrap(dw.IngestionHandler, "_resolve_rows", "parse pass 1 (count+header)")
         clock.wrap(dw.IngestionHandler, "_plan_checkpoint", "checkpoint plan")
         clock.wrap(dw.IngestionHandler, "_send_to_upsert", "WRITE (whole file)")
@@ -404,8 +404,8 @@ def run(table: str, rows: int, label: str, number_start: int, work_root: str,
 
 def report(clock: Clock, total: float, rows: int, deep: bool = False):
     order = [
+        "checklist lookup",
         "file signature (sha256)",
-        "dedup lookup",
         "parse pass 1 (count+header)",
         "checkpoint plan",
         "WRITE (whole file)",

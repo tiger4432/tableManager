@@ -377,11 +377,11 @@ def test_foreign_source_failure_does_not_move_it_to_err(flat_env):
     assert [l.status for l in _logs(flat_env)] == ["FAILED"]
 
 
-def test_foreign_source_reingest_is_deduped_quietly(flat_env, caplog):
+def test_foreign_source_resweep_is_quiet(flat_env, caplog):
     """A foreign file cannot be archived away, so every sweep re-finds it and the
-    dedup skip repeats forever by construction. One log row + one callback per
+    checklist's «already read» repeats forever by construction. One log row + one callback per
     sweep would bury every real event, so the repeat is quiet — the durable record
-    is the SUCCESS row from the first ingestion, keyed by the same signature."""
+    is the SUCCESS row from the first ingestion, carrying the file's stamp (소유자 10-21)."""
     ws, handler = flat_env["make_handler"]()
     _speed_up_processing(handler)
     foreign = _write(flat_env["tmp_path"] / "share" / "lot.csv", _csv(1, "F"))
@@ -396,17 +396,16 @@ def test_foreign_source_reingest_is_deduped_quietly(flat_env, caplog):
             handler.processing_files.discard(os.path.abspath(foreign))
         handler._handle_event(foreign)
 
-    # Still exactly ONE row and ONE callback — no unbounded SKIPPED noise.
+    # Still exactly ONE row and ONE callback — no unbounded noise.
     assert [l.status for l in _logs(flat_env)] == ["SUCCESS"]
     assert len(fired) == 1
-    # And a MANAGED file's skip is still loud (the no-silent-skip rule holds where
-    # the repeat is not structural). The same content at another path is read (소유자 10-20 ㄱ);
-    # dropped again at its own path it is skipped.
+    # The same content at another path is read (소유자 10-20 ㄱ); a managed file dropped again at its
+    # own path is a new file there - the first one went to archives/ - and is read too (소유자 10-21).
     managed = _write(ws / "raws" / "same.csv", _csv(1, "F"))
     handler._handle_event(managed)
     assert sorted(l.status for l in _logs(flat_env)) == ["SUCCESS", "SUCCESS"]
     handler._handle_event(_write(ws / "raws" / "same.csv", _csv(1, "F")))
-    assert sorted(l.status for l in _logs(flat_env)) == ["SKIPPED", "SUCCESS", "SUCCESS"]
+    assert sorted(l.status for l in _logs(flat_env)) == ["SUCCESS", "SUCCESS", "SUCCESS"]
 
 
 # ---------------------------------------------------------------------------

@@ -65,7 +65,7 @@ def test_the_external_sweep_resolves_each_folder_once(tmp_path, monkeypatch):
     _tree(str(external), name="x%02d.json")
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings", lambda: _specs(external))
     monkeypatch.setattr(IngestionHandler, "_handle_event", lambda self, path: None)
-    monkeypatch.setattr(IngestionHandler, "settle_already_terminal", lambda self, entries: set())
+    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: set())
     watcher = WorkspaceWatcher(str(workspace))
     watcher.discover_and_watch()
     calls = _counted(monkeypatch)

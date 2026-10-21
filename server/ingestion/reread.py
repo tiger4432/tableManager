@@ -5,7 +5,8 @@ files, or with `statuses` files that went in - a re-read with today's parser.
 
 The reading is always the watcher's: a row marked PENDING_RETRY is claimed by `run_watcher`'s
 poller and read by `retry_one` on the table's own handler - from where the file lies (its
-archive, or the external path it was read from), with the parser as it is now, dedup skipped.
+archive, or the external path it was read from), with the parser as it is now, the checklist not asked - and its
+row then checks the file.
 ⚰️ The retroactive «Re-read files» (976defaac) is retired: it put a run, the operations gate and a
 wait page by page on top of this mark, and did not run in production (총괄 a4d135a06).
 """
@@ -185,7 +186,9 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
 
 def reading_of(table, entry, sources, scripts_dir):
     """What decides how `table`'s files are read, as {part: stamp} - its table_config entry without `NOT_READING`, its
-    external sources (`table_name` is the table) and each plugin file in its scripts folder (mtime_ns, size)."""
+    external sources (`table_name` is the table) without `enabled` - switching a source off and on is no new reading,
+    its files left meanwhile are read and the rest stay checked (총괄 10-21) - and each plugin file in its scripts folder
+    (mtime_ns, size)."""
     import hashlib
     import json
 
@@ -193,8 +196,8 @@ def reading_of(table, entry, sources, scripts_dir):
         return hashlib.sha1(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
 
     parts = {"table_config": digest({k: v for k, v in (entry or {}).items() if k not in NOT_READING}),
-             "external source": digest(sorted((s for s in sources or () if isinstance(s, dict)
-                                               and s.get("table_name") == table), key=digest))}
+             "external source": digest(sorted(({k: v for k, v in s.items() if k != "enabled"} for s in sources or ()
+                                               if isinstance(s, dict) and s.get("table_name") == table), key=digest))}
     try:
         names = sorted(n for n in os.listdir(scripts_dir) if n.endswith(".py") and n != "__init__.py")
     except OSError:
@@ -208,25 +211,41 @@ def reading_of(table, entry, sources, scripts_dir):
     return parts
 
 
-def hand_on_a_changed_reading(db, table, before, now):
-    """The table's failed files handed to the watcher again (`mark_for_reread`, the retry door's mark) when its reading
-    changed - up to `max_files()`; past it, one line and nothing handed. -> the line said, or None."""
+def uncheck(db, table=None, paths=None, folders=None):
+    """The checklist's keys let go (소유자 10-21): the rows of `table` (any table when None) - of `paths`, or under
+    `folders` (as `_under_folder` reads them) - lose their stamp, so the sweeps read those files again where they look.
+    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it. -> rows unchecked."""
+    from sqlalchemy import literal, or_
+
+    from database import models
+
+    model = models.FileIngestionLog
+    query = db.query(model).filter(model.file_mtime.isnot(None), model.status != REREAD_STATUS)
+    if table is not None:
+        query = query.filter(model.table_name == table)
+    if paths is not None:
+        query = query.filter(models.path_key(model.filepath).in_([models.path_key(literal(path)) for path in paths]))
+    if folders is not None:
+        query = query.filter(or_(*[_under_folder(model.filepath, folder) for folder in folders]))
+    unchecked = query.update({model.file_mtime: None, model.file_size: None}, synchronize_session=False)
+    db.commit()
+    return unchecked
+
+
+def hand_on_a_changed_reading(db, table, before, now, folders=()):
+    """The table's reading changed (소유자 10-21 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」): its failed files are
+    handed to the retry door (`mark_for_reread`), whatever folder holds them, and its read files still in place - under
+    `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
+    「옮겨진 건 하지 마」). No cap: the watcher reads at its own pace. Other tables are not touched. -> the line to say
+    (the caller adds what its sweeps dispatched), or None."""
     changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
     if not changed:
         return None
     logs = [log for log, _rel in select_logs(db, RETRY_STATUSES, table=table)]
-    if not logs:
-        return None
-    what, limit = ", ".join(changed), max_files()
-    if len(logs) > limit:
-        line = ("[Watcher] %s: its reading changed (%s) - %d failed files wait - Retry failed by folder (over %s %d)"
-                % (table, what, len(logs), REREAD_MAX_FILES_KEY, limit))
-        logger.warning(line)
-        return line
     mark_for_reread(db, logs)
-    line = "[Watcher] %s: its reading changed (%s) - %d failed file(s) handed again" % (table, what, len(logs))
-    logger.info(line)
-    return line
+    unchecked = uncheck(db, table=table, folders=list(folders)) if folders else 0
+    return ("[Watcher] %s: its reading changed (%s) - %d read file(s) unchecked, %d failed file(s) handed again"
+            % (table, ", ".join(changed), unchecked, len(logs)))
 
 
 def load_reading_stamps():

@@ -20,7 +20,7 @@
 | `AuditLog` | `audit_logs` | `table_name`, `row_id`, `column_name`, `old_value`, `new_value`, `source_name`, `updated_by`, `transaction_id`, `timestamp` | 셀 단위 변경 이력 |
 | `DatabaseOutbox` | `database_outbox` | `event_uuid`(unique), `event_type`, `payload`, `status`, `retry_count`, `processed_chain` | 프로세스 간 이벤트(outbox 패턴). PENDING 부분 인덱스 |
 | `FileIngestionLog` | `file_ingestion_logs` | `filename`, `filepath`, `table_name`, `status`, `error_message`, `retry_count` | FAILED/SUCCESS/PENDING/PENDING_RETRY. **시도마다 append**되는 이력 |
-| `FileIngestionCheckpoint` | `file_ingestion_checkpoints` | `table_name`, `file_signature`, `filepath`, **`file_mtime`**, **`file_size`**, `processed_rows`, `chunk_index`, `status`, `note` | **(테이블, 파일내용)당 단일 최신 상태** — 위 로그와 수명이 다릅니다. 상세 아래 §1.1-bis |
+| `FileIngestionCheckpoint` | `file_ingestion_checkpoints` | `table_name`, `file_signature`, `filepath`, `processed_rows`, `chunk_index`, `status`, `note` | **(테이블, 파일내용)당 단일 최신 상태** — 이어 읽기(재개)만 맡습니다. «이미 읽었나»는 `file_ingestion_logs` 의 `file_mtime · file_size`(10-21 체크리스트) |
 | `CellOverwrite` | `cell_overwrites` | `table_name`, `row_id`, `column_name`, `is_overwrite`, `updated_by`, `manual_priority_source` | 셀 오버라이트/핀. (table,row,col) unique |
 | `CellSource` | `cell_sources` | `table_name`, `row_id`, `column_name`, `source_name`, `value`, `ingested_at`, `updated_by`, `confirmation_uid`, 🆕 **`origin_row_id`** | **다중 소스 레이어링 저장소**. (table,row,col,source) unique.<br>🆕 **`origin_row_id`**(S-280 `e1318d28`) = 「이 값을 «어느 행에서» 읽었나」 — 그 행이 DELETE 될 때 제품이 이 칸으로 겨냥해 그 셀만 철회한다(`chain/cell_layer.py::withdraw_by_origin` → `withdraw_source`). 🔴 **NULL 은 「도장이 생기기 전에 쓰였다」 한 뜻뿐**이고 「못 찍는 종류」는 `chain/rule_run.py::retraction_refusal` 이 **이름으로** 답한다. 부분 인덱스 `idx_sources_by_origin` 은 이 컬럼을 «앞»에 둔다(철회는 row id 만 들고 시작한다). 개념·함정은 [PRIMITIVES §1](./PRIMITIVES.md) |
 | ~~`GraphNode`~~ | ~~`graph_nodes`~~ | — | ⚰️ **[2026-08-14 `2ec78b9`] 물리 테이블 DROP**(590,885행 · 324 MB) |
@@ -32,6 +32,8 @@
 ⚰️ **[2026-08-14 `2ec78b9` · R-2026-08-14-H] 종전 이 자리는 「그래프 3테이블은 `ensure_graph_tables(engine)`로 생성되며 `refresh_dynamic_models`에 동승합니다」였고, 그 문장이 «부활 경로»였습니다.** 표를 DROP한 뒤 **다시 만들** 경로가 셋 있었고 각각 변이 주입으로 증명됐습니다 — ① 부팅 `create_all` ② 핫리로드가 타는 이 `ensure_graph_tables` 동승 ③ **스케줄러가 워커보다 오래 살아남아** 고아 스윕이 첫 동작으로 같은 함수를 부름. 셋 다 봉인됐습니다(`models.py`의 호출 지점에 묘비 주석이 있습니다). 🔴 **[2026-08-18] 그리고 그 봉인만으로는 부족했던 것이 드러났습니다** — 클래스를 남긴 채 부팅에서 «제외»하는 방식이라, 부팅 스키마 점검이 세 표를 매 재기동 **결손으로 신고**했습니다(「SCHEMA DRIFT: missing 3 thing(s)」). 은퇴가 고장처럼 보이는 것은 이 절이 없애려던 바로 그 종류의 거짓말입니다. 이제 **클래스와 `ensure_graph_tables`가 함께 제거**돼 요구 자체가 없습니다. 🔴 **닫지 않았다면 재기동이 «빈 표 셋»을 돌려주고 화면이 「그래프가 아직 비어 있습니다」라 말했을 것입니다 — 은퇴가 「아직 안 채워짐」의 옷을 입는 것**이고, 그 둘은 운영자가 할 일이 정반대입니다. 되돌리는 SQL(`server/migrations/drop_graph_storage_reverse.sql`)은 **모양만 복원할 뿐 갈래를 되살리지 않습니다.** 후계는 [원장 §1.1-ter](#) 및 [guide/LEDGER_GUIDE](../guide/LEDGER_GUIDE.md).
 
 ### 1.1-bis 인제션 원장의 `filepath` 승격 — 표식에서 열쇠로 (2026-08-13)
+
+> ⚰️ **10-21 은퇴** — 이 절의 tier 1(원장의 `filepath · file_mtime · file_size` 로 «이미 결론 났나»)은 체크리스트가 갈음했습니다: 답은 `file_ingestion_logs` 의 `(경로, 표)` 행이 든 `file_mtime · file_size` 하나(`checkpoint.checked`, [guide/INGESTION_GUIDE §1.8-bis](../guide/INGESTION_GUIDE.md)). 원장의 두 칸과 `idx_fic_path_stat` 은 스키마에 남았고 쓰지도 읽지도 않습니다. 아래는 그때의 기록입니다.
 
 [SCHEMA_CANON R6](./SCHEMA_CANON.md)이 **바로 이 컬럼**을 사고 예시로 든 자리입니다: 저장은 되는데 아무도 그걸로 묻지 않는 표식(`nullable`, 인덱스 없음, 조회는 전부 `(table_name, file_signature)`). 처리된 파일을 **옮기지 않기로** 하면서 그 표식이 열쇠가 됐고, R6대로 **인덱스·NULL 계약·유일성 계약을 함께 선언**했습니다.
 

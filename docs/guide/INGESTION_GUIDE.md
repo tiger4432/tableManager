@@ -1,6 +1,6 @@
 # 📥 AssyManager 인제션 파이프라인 가이드 (Ingestion Pipeline Guide)
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-07 (**§1.10 맵 메타 자동 등록이 «은퇴»했습니다** — 소유자 지시 「맵 메타 자동 등록은 없애줘」(S-38). 그 절만 고쳤고 다른 절은 아래 날짜 기준입니다) · 직전 2026-08-17 (§1.12 외부 읽기 전용 voids.json 감시 — 실제 경로 확인, 본문은 0바이트라 합성 계약) | **Previous verification:** 2026-08-13 (2차 배치 — **§1.11 신설: 한 파일이 두 사실을 말할 때(void SAT)**, `346aa88`. 🔴 **워처는 테이블당 핸들러 하나라 같은 파일을 두 `raws/`에 모두 넣는다** · 🔴 **체인으로 대신할 수 없다**(깨끗한 스캔은 파생할 행이 0개다) · 로직은 추적되는 `void_sat_format.py`에 있고 손복사는 세 줄 shim 둘뿐 · **검증이 찾은 결함 둘은 둘 다 오라클 없던 자리에서 나왔다** — 깨끗한 스캔이 런을 하나도 못 만들던 무음 결함과, **어떤 수치 검사도 발화할 수 없는** 소수점 쉼표 칼럼 시프트. 직전 **§1.8-ter 신설 — tier 1을 «어디서» 묻는가**, `831ab68`. tier 1은 `_process_with_retry` 안에 있어서 **HIT조차 파일당 세션 1개 + `table_config.json` 디스크 재독 2회**를 냈다. 지금은 스윕과 트리 워크가 **이미 든 `stat`으로 500개씩 묶어** 묻고(`settle_already_terminal` → `find_terminal_by_path_stat_batch`) 걸러진 파일을 거기서 종결한다. 🔴 **술어는 다시 쓰지 않았고**(같은 `and_` 세 쌍을 OR로) **단일 조회는 무변경**이며 **걸러진 파일도 이동 재시도는 갚는다**. 실측 재스윕 26.432초→0.602초(43.9배), 콜드 스윕 1.0배(= 아무것도 안 건너뛴다는 대조군). ⚠️ **「~92 ms/file·≈35분」은 `assy_manager`에서 잰 «이전» 값**이고 그 격리 측정과 같은 실행이 아니다. 직전 **§1.8-bis 두 층 원장 신설**(`ba664c5`). 직전 2026-07-30 **§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-10-21 (**§1.8-bis 가 체크리스트가 됐습니다** — «이미 읽었나»의 답은 `(경로, 표)` 로그 행의 도장 하나(소유자 10-21). 옛 두 층 원장 · §1.8-ter · `__force__` · `dedup_by_*` 는 은퇴. 그 앞 2026-09-07: **§1.10 맵 메타 자동 등록이 «은퇴»했습니다** — 소유자 지시 「맵 메타 자동 등록은 없애줘」(S-38). 그 절만 고쳤고 다른 절은 아래 날짜 기준입니다) · 직전 2026-08-17 (§1.12 외부 읽기 전용 voids.json 감시 — 실제 경로 확인, 본문은 0바이트라 합성 계약) | **Previous verification:** 2026-08-13 (2차 배치 — **§1.11 신설: 한 파일이 두 사실을 말할 때(void SAT)**, `346aa88`. 🔴 **워처는 테이블당 핸들러 하나라 같은 파일을 두 `raws/`에 모두 넣는다** · 🔴 **체인으로 대신할 수 없다**(깨끗한 스캔은 파생할 행이 0개다) · 로직은 추적되는 `void_sat_format.py`에 있고 손복사는 세 줄 shim 둘뿐 · **검증이 찾은 결함 둘은 둘 다 오라클 없던 자리에서 나왔다** — 깨끗한 스캔이 런을 하나도 못 만들던 무음 결함과, **어떤 수치 검사도 발화할 수 없는** 소수점 쉼표 칼럼 시프트. 직전 **§1.8-ter 신설 — tier 1을 «어디서» 묻는가**, `831ab68`. tier 1은 `_process_with_retry` 안에 있어서 **HIT조차 파일당 세션 1개 + `table_config.json` 디스크 재독 2회**를 냈다. 지금은 스윕과 트리 워크가 **이미 든 `stat`으로 500개씩 묶어** 묻고(`settle_already_terminal` → `find_terminal_by_path_stat_batch`) 걸러진 파일을 거기서 종결한다. 🔴 **술어는 다시 쓰지 않았고**(같은 `and_` 세 쌍을 OR로) **단일 조회는 무변경**이며 **걸러진 파일도 이동 재시도는 갚는다**. 실측 재스윕 26.432초→0.602초(43.9배), 콜드 스윕 1.0배(= 아무것도 안 건너뛴다는 대조군). ⚠️ **「~92 ms/file·≈35분」은 `assy_manager`에서 잰 «이전» 값**이고 그 격리 측정과 같은 실행이 아니다. 직전 **§1.8-bis 두 층 원장 신설**(`ba664c5`). 직전 2026-07-30 **§1.9 전면 대체 + §1.9-bis 신설** — `600b49d`+`a5eb934` 소스 대조: `directory_watcher.request_tree_ingest`/`_ingest_directory_tree`/`relative_source_path`/`is_managed_source`/`_unique_dest`/`nested_dirs_enabled`, `advanced_ingester.extract_path_metadata`/`_merge_row`/`process_file`/`REASON_*`/`ALLOWED_RULE_KEYS`. ① **평탄화가 사라졌습니다** — 파일은 승격되지 않고 **자기 중첩 경로 그대로** 적재되며 상대 POSIX 경로가 파서에 `self.rel_path`로 전달됩니다. `_build_collision_name`·`_resolve_flatten_dest`·`_sanitize_flatten_component`·`FLATTEN_SEP` 및 `~` 구분자·`__force__` 조작 방어가 **함께 소멸**(접합하는 코드가 없으면 조작할 토큰이 없음). 함께 신설: 조건부 아카이브(`is_managed_source` — 외부 읽기 전용 트리는 이동·삭제 없음), `_unique_dest`(동명 파일 아카이브 충돌 — 종전 `_<epoch>` 1회 시도는 같은 초에 POSIX에서 **덮어썼습니다**). 🔴 **`flatten_nested_dirs`는 뜻이 바뀐 채 이름을 유지**합니다(개명하면 운영자의 off 스위치가 조용히 무력화) — 로그 문구도 "파일이 적재되지 않는다"로 정정됐습니다. ② **§1.9-bis `filename_rules` 선언 규격 신설** — 이 스키마는 **어느 문서에도 없었습니다**: 허용 키 5개(미지 키는 거절)·명명 상태 4종(`no_match`/`ambiguous_reference`/`cast_failed`/**`path_value_discarded`** ← `path_overrides_header`에서 개명)·`required` 기본 false·로드 시점 거절(캡처 그룹 없는 정규식 포함)·대상은 **상대 POSIX 경로**·`^` 앵커 주의(살아 있는 규칙 0건이라 무피해). 🔴 **우선순위는 사용자 판정 `filename < header < row`** — 「파일이 정본」이 경로까지 확장됩니다. ⚠️ `600b49d`의 커밋 메시지는 `header < filename < row`로 적혀 있으나 그것은 `a5eb934`에서 **뒤집혔습니다**. 직전 2026-07-29: §1.10 맵 키 조합 규약 정정 — 7b 공용 캐노니컬라이저가 **같은 커밋에서 착지**해 "예정/TODO" 서술이 낡았음) | **Owner:** Ingester | **Source-of-truth:** `server/parsers/directory_watcher.py`, `pipeline_base.py`, `advanced_ingester.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 본 문서는 `assyManager`의 핵심 자동화 모듈인 **Directory Watcher**의 작동 원리와, 새로운 데이터를 DB로 적재하기 위한 **Pandas 기반 파이프라인(Pipeline) 구성 방법**을 설명합니다.
 
@@ -78,9 +78,9 @@ watchdog Observer는 모든 워크스페이스의 이벤트를 **단일 디스�
 
 ---
 
-## 1.8 체크포인트 재개 & 파일 dedup (P2, 2026-07-26)
+## 1.8 체크포인트 재개 (P2, 2026-07-26)
 
-P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 진행 중이던 파일을 **0행부터 다시** 처리했고 ② 같은 파일이 다시 떨어지면 그대로 다시 적재했습니다. P2가 둘 다 닫습니다. 구현: `server/ingestion/checkpoint.py` + `directory_watcher.process_with_retry`/`_try_dedup_skip`/`_plan_checkpoint`.
+P1은 대형 파일이 **남을 막지 않게** 했지만, 재기동하면 진행 중이던 파일을 **0행부터 다시** 처리했습니다. P2가 그것을 닫습니다. 구현: `server/ingestion/checkpoint.py` + `directory_watcher.process_with_retry`/`_plan_checkpoint`. 「이미 읽었나」는 §1.8-bis 체크리스트가 답합니다.
 
 **파일 시그니처** = `sha256:<size>:<digest>` — **샘플링이 아니라 전체 해시**입니다. 실측 500MB 0.535초(~935MB/s), 15.6MB 0.016초로 라이브 드릴 총 처리 415초의 0.004%라, 비용보다 정확성을 택했습니다.
 
@@ -89,93 +89,32 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, ① 재기동하면 �
 | 저장소 | 신규 테이블 **`file_ingestion_checkpoints`**(`UNIQUE(table_name, file_signature)`). `FileIngestionLog`에 컬럼을 붙이지 않은 이유는 `create_all`이 ALTER를 하지 않아 **조회 프로세스보다 먼저 도는 마이그레이션**이 필요해지고 운영 DB에서 `UndefinedColumn` 500이 열리기 때문입니다. 준비: `python server/scripts/setup_ingestion_checkpoint.py`(멱등) |
 | 원자성 | 오프셋 갱신(`record_chunk_progress`)은 청크 upsert와 **같은 트랜잭션**에서 일어납니다 → **"커밋된 행 수 == 기록된 오프셋"**이 항상 성립합니다 |
 | 재개 조건 | 시그니처 + `total_rows` + `source_kind`(파서 정체성 `std` / `pipeline:<Class>`) + 오프셋 범위(`0 ≤ processed_rows ≤ total_rows`)가 **전부** 일치할 때만. 하나라도 다르면 0부터 재처리하되 **사유를 로그·`FileIngestionLog.detail`·완료 통지에 명시**합니다(조용한 재처리 금지) |
-| dedup | 동일 시그니처가 이미 `DONE`이면 skip + `archives/` 이동 + `FileIngestionLog(status="SKIPPED", 사유)`. ⚠️ **WS 통지의 `status`는 `SUCCESS`**입니다 — 수신부(클라)가 비-SUCCESS를 일괄 "실패"로 렌더링하므로 오표기를 막기 위함이고, 사유는 `detail`에 담깁니다 |
-| 강제 재처리 3경로 | ① 파일명에 `__force__` 토큰 ② `ingestion_settings.json`의 `dedup_by_signature: false`(전역 스위치) ③ 어드민 재시도(재시도는 명시적 의도이므로 dedup skip 미적용) |
+| 다시 넣기 | 어드민 재시도는 내용이 이미 `DONE` 이면 0 부터 다시 넣습니다(`_retry_should_restart`) |
 | 적용 범위 | heavy / normal 레인, 기동·주기 스윕, 관리자 재시도 — **4경로 전부 동일 동작** |
-| 비활성화 | `resume_from_checkpoint: false`로 재개만 끌 수 있습니다. 시그니처 계산이 `OSError`로 실패하면 체크포인트·dedup이 자동으로 비활성화되고 사유가 note에 남습니다 |
-| ⚠️ 검증 상태 | 스위트(307 passed)는 통과했으나 **라이브 드릴 3종(체크포인트 재개·dedup·이슈 #10)은 재기동 대기 중으로 미검증**입니다 |
+| 비활성화 | `resume_from_checkpoint: false`로 재개만 끌 수 있습니다. 시그니처 계산이 `OSError`로 실패하면 체크포인트가 자동으로 비활성화되고 사유가 note에 남습니다 |
 
 ---
 
-## 1.8-bis 두 층 원장 — **파일을 옮기지 않고 재처리를 막는다** (2026-08-13)
+## 1.8-bis 체크리스트 — «이미 읽었나»의 답은 하나 (소유자 10-21)
 
-§1.8의 dedup은 「이 내용을 적재했나」를 **파일 전체를 읽어야만** 답합니다. 그게 감당됐던 이유는 처리된 파일이 `archives/`로 **옮겨져** 스윕이 훑는 트리가 늘 비어 있었기 때문입니다. 파일을 제자리에 두기로 하면 그 전제가 사라지고, 스윕 비용이 **트리의 파일 수만큼의 해시**가 됩니다.
+> 소유자: 「(파일, 돌려야 할 테이블) 을 키로 넣고 체크리스트 하면 되잖아」 · 「문 나누지 말랬지」.
 
-이 박스에서 잰 값(오늘 `archives/`가 든 22,626 파일 · 194.6MB — 옮기기를 멈추면 `raws/`에 쌓일 바로 그 집합):
-
-| | |
+| 항목 | 동작 |
 |---|---|
-| `listdir` + `stat` 1회 | **1.0초** |
-| 전체 sha256 | **39.4초** (4.9MB/s · 575파일/s — 바이트가 아니라 **파일당 열기·읽기 오버헤드**가 지배합니다) |
+| 열쇠 | **(경로, 표)** — 경로는 `path_key`(소문자 · 구분자 하나)로 접어서 견줍니다. 양쪽 다 DB 가 접습니다 |
+| 체크 | 그 열쇠의 `file_ingestion_logs` 행이 파일의 **(수정 시각, 크기)** 를 들고 있으면(`file_mtime` · `file_size`) 안 읽습니다. 하나라도 다르면 읽습니다 |
+| 도장을 적는 곳 | 읽기가 «답을 낸» 자리 — SUCCESS, 그리고 파일 탓의 FAILED. **잠금 대기로 끝난 FAILED 는 도장이 없어** 다음 훑기가 다시 집습니다 |
+| 묻는 자리 | 함수 하나 `checkpoint.checked` — raws 훑기 · 외장 훑기 · 폴더 트리 걷기 · 이벤트 · 수집기(소급 backfill)의 기다림. 재시도 문(파일 화면 Retry)은 **묻지 않고** 읽은 뒤 도장을 적습니다 |
+| 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` 는 빼고)이 바뀌면 **그 표의 키만** 해제합니다 — 읽은 행의 도장을 비우고(훑기가 제자리 파일을 다시 읽음), 실패 파일은 재시도 문으로 넘깁니다. 상한 없음, 와처가 자기 속도로 읽습니다. 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again` |
+| 처음 한 번 | 이 칸이 오기 전의 로그 행은 도장이 비어 있어, 와처가 첫 훑기 «전»에 **한 번** 채웁니다: 최신 행이 SUCCESS 이고 파일이 그대로(행이 수정 시각 이후에 쓰임)면 도장을 적습니다. 로그 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L`. 다 하면 `config/watcher_read_files_stamped` 가 생기고 다시 돌지 않습니다 |
+| 실패 방향 | 수정 시각과 크기를 그대로 둔 채 내용만 바꾼 파일은 다시 읽지 않습니다(수정 시각을 보존하는 복사 도구). 다시 읽히려면 파일 화면의 **Retry**, 여럿이면 `scripts/replay_ingestion.py --path … --apply`(그 키 해제 — `reread.uncheck`) |
+| 은퇴 | 원장의 경로 tier 1 · 내용 서명 dedup(같은 내용이어도 다른 경로면 읽음, 소유자 10-20 ㄱ) · 훑기의 프로세스 메모리 · 외장 «수정» 이벤트의 해시 우회 · 파일 이름 `__force__` · 설정 `dedup_by_signature` / `dedup_by_path_stat`. 원장(`file_ingestion_checkpoints`)은 **이어 읽기(재개)** 만 맡습니다 |
 
-그래서 앞에 싼 층을 하나 답니다.
+**파일을 옮기지 않는 모드** — `archive_processed_files: false`. `.sample`의 기본값은 `true`(종전 동작)입니다. 「이 파일은 실패했다」는 `err/` 위치가 아니라 그 파일의 `file_ingestion_logs(status='FAILED')` 행이 듭니다.
 
-| 층 | 열쇠 | 판정 |
-|---|---|---|
-| **Tier 1** | `(table_name, filepath, file_mtime, file_size)` | 원장에 **종결(`DONE` 또는 `FAILED`)** 행이 있으면 **읽지 않고** 스킵. stat 1회 |
-| **Tier 2** | `sha256:<size>:<digest>` | 하나라도 다르면 종전대로 해시. **내용 시그니처가 여전히 최종 권위**이고, 같은 내용이 새 경로로 오면 그 위치를 원장에 남긴 뒤 스킵합니다 |
+⚠️ **`archive_processed_files: false`에서는 `raws/`가 무한히 자랍니다** — 워처는 아무것도 지우지 않으므로 보관 기간 정리는 운영자 몫입니다.
 
-🔴 **Tier 1의 실패 방향을 알고 켜십시오.** tier 1은 **「mtime과 size가 그대로인 채 내용만 바뀐 파일을 다시 읽지 않는 쪽」**으로 집니다 — mtime을 보존하는 복사 도구가 있고, 같은 길이로 같은 마이크로초에 덮어써도 그렇게 됩니다. 파일을 한 번만 쓰는 fab 피드에는 맞는 거래(스윕 39초→1초)지만 **판단이지 공짜가 아닙니다**. 되돌리는 스위치가 `dedup_by_path_stat: false`이고, `dedup_by_signature: false`(전역 강제 재처리)는 **tier 1까지 같이 끕니다**.
-
-**파일을 옮기지 않는 모드** — `archive_processed_files: false`. `.sample`의 기본값은 `true`(종전 동작)이고, 운영 전환은 운영자의 결정입니다.
-
-| 옮길 때 「위치」가 들던 사실 | 안 옮길 때 그 사실이 사는 곳 |
-|---|---|
-| 「이 파일은 처리됐다」 = `archives/`에 있음 | 원장의 `status='DONE'` 행 (+ tier-1 열쇠) |
-| **「이 파일은 실패했다」 = `err/`에 있음** | 원장의 **`status='FAILED'` 행** — `filepath`가 **어느 파일**인지, `note`가 **왜**인지를 듭니다. 트레이스는 종전 그대로 `file_ingestion_logs(status='FAILED')` |
-
-🔴 **`FAILED` 행은 「다시 시도하지 않는다」까지 뜻합니다** — `err/`로 옮긴 파일이 자동 재시도되지 않던 것과 같은 의미론입니다. 파일을 고치면 `mtime`이 바뀌어 tier 1이 miss하고 자동으로 다시 걸립니다. 강제하려면 `__force__` 또는 어드민 재시도.
-
-⚠️ **`archive_processed_files: false`에서는 `raws/`가 무한히 자랍니다** — 워처는 이제 아무것도 지우지 않으므로 보관 기간 정리는 운영자 몫입니다.
-⚠️ **`__force__` 파일을 제자리에 두면 스윕마다 재적재됩니다**(실측). 토큰은 「항상 다시 넣어라」는 뜻이고, 옮기지 않으면 그것을 멈출 것이 없습니다 — 1회 재처리 뒤 **파일명에서 토큰을 빼거나 파일을 치우십시오**.
-
-🔴 **스키마 선행 조건**: `server/migrations/add_ingestion_ledger_path_stat.sql`. `create_all`도 `ensure_ingestion_checkpoint_table`도 **기존 테이블에 컬럼을 추가하지 않으므로**, 이미 `file_ingestion_checkpoints`가 있는 DB는 이 파일을 한 번 돌려야 합니다. 안 돌리면 원장 **읽기부터** `UndefinedColumn`으로 실패하고(실측), 워처는 살아남되 **체크포인트·dedup이 통째로 꺼진 채**로 삽니다 = 파일을 안 옮기는 모드와 겹치면 **모든 파일이 매 스윕 재적재**됩니다.
-
----
-
-## 1.8-ter Tier 1을 **어디서** 묻는가 — 이미 `stat`을 든 호출부에서, **묶어서** (`831ab68` · 2026-08-13)
-
-§1.8-bis는 tier 1이 **무엇을** 묻는지를 정합니다. 이 절은 **어디서** 묻는지이고, **그 자리가 tier 1 자체보다 컸습니다.**
-
-tier 1은 원래 `_process_with_retry` **안**에 있었습니다 — 스윕과 트리 워크가 이미 `os.stat`을 들고 있는 지점보다 **디스패치 한 단계 아래**입니다. 그래서 **HIT조차 거기까지 가는 파이프라인 전액을 냈습니다**: 파일당 `SessionLocal()` 하나, 파일당 `table_config.json` **디스크 재독 2회**, 파일당 `ingestion_settings.json` 재독.
-
-| | |
-|---|---|
-| 이미 결론 난 파일 1개가 그 자리까지 가는 비용 | **~92 ms** — ⚠️ **이 수는 `assy_manager`에서 잰 «이전» 값**이고, 아래 격리 측정과 **같은 실행에서 나온 수가 아닙니다** |
-| 22,626 파일 트리에 그 값을 곱하면 | **≈35분** (같은 출처 · 같은 단서) |
-| 그 파일들을 **찾는** `listdir + stat` | **1.0초** |
-
-🔴 **35분 중 원장 몫은 0이었습니다.** 느렸던 것은 질문이 아니라 **질문에 도달하는 길**입니다.
-
-**지금**: `IngestionHandler.settle_already_terminal(entries)`가 `(abs_path, (mtime, size))` 목록을 받아 `ingestion_checkpoint.find_terminal_by_path_stat_batch(db, table_name, entries)`로 **`TIER1_BATCH_SIZE = 500`개씩 한 질의에** 묻고, 걸러진 파일을 **거기서 종결**합니다. 부르는 곳은 **둘**입니다 — `WorkspaceWatcher.sweep_existing_files`(기동·주기 스윕)와 `IngestionHandler._ingest_directory_tree`(§1.9 폴더 드롭). 걸러지지 않은 파일은 `_handle_event`로 **종전 경로 그대로** 내려갑니다.
-
-- 🔴 **술어를 다시 쓰지 않았습니다.** 배치는 파일마다 단일 조회가 만드는 `and_(filepath, file_mtime, file_size)` **바로 그 세 쌍**을 기여하고 같은 `table_name` + 종결 상태 필터 아래 OR로 묶습니다 — 비교는 **SQL 안에** 남습니다. 파이썬에서 stat을 비교하면 `DateTime(timezone=True)`가 백엔드마다 **어떻게 돌아오는지**(SQLite는 naive, PostgreSQL은 세션 타임존)를 다시 유도해야 하고, 그걸 틀리면 **전부 걸러지거나 하나도 안 걸러지고 둘 다 조용합니다.**
-- **단일 조회 `find_terminal_by_path_stat` / `_try_path_stat_skip`은 무변경**입니다. 배치가 걸러 주지 않는 것 전부를 **여전히 그쪽이** 답합니다 — 배치는 빠른 답이 **더 일찍 도착**하게 할 뿐입니다.
-- 🔴 **걸러진 파일은 no-op이 아닙니다.** 파일을 옮기는 모드에서 종결된 파일이 아직 `raws/`에 있다면 **그 이동이 실패한 것**이고, 재시도를 빼면 그 파일이 — 중첩 인제션이면 **그 디렉터리 통째로** — 영구히 남습니다. `_settle_terminal_hits`가 그 이동 재시도를 `_handle_event`와 **같은 `processing_files` 클레임** 아래에서 갚습니다. `archive_processed_files: false`(옮기지 않는 모드)에서는 갚을 것이 없으므로 조기 반환합니다.
-- **실패 방향은 「종전 경로」입니다.** 원장을 못 읽으면 빈 집합을 돌려주고 **모든 파일이 예전처럼 개별 디스패치**됩니다(가용성 우선 — `_try_path_stat_skip`과 같은 규칙).
-- **끄는 스위치는 새로 생기지 않았습니다** — `dedup_by_path_stat: false`와 `dedup_by_signature: false`가 이 배치도 함께 끕니다(계약을 `dedup_by_path_stat_enabled()`에서 그대로 상속합니다).
-
-**실측** (격리 `assy_qa` · 후보 파일 2,001개 · 원장 52,001행 · 두 팔을 번갈아 실행 · 중앙값):
-
-| 시나리오 | 이전 | 이후 | |
-|---|---|---|---|
-| 재기동 후 **변경 없는 트리** 재스윕 | 26.432초 (13.21 ms/file) | **0.602초** (0.30 ms/file) | **43.9배** |
-| **콜드 스윕**(전부 신규) | 21.140초 | 20.964초 | **1.0배 — 이것이 「아무것도 건너뛰지 않았다」는 대조군입니다** |
-| 그중 새 파일 1개 | 31.0초 | 1.81초 | |
-| 그중 변경된 파일 1개 | 31.2초 | 1.96초 | |
-| 그중 `__force__` 파일 1개 | 28.5초 | 1.81초 | |
-
-**배치 크기 500은 고른 것이 아니라 잰 것입니다** (같은 2,001 파일, ms/file):
-
-| batch | 50 | 100 | 250 | **500** | 1000 | 2000 |
-|---|---|---|---|---|---|---|
-| ms/file | 0.37 | 0.46 | 0.41 | **0.41** | 0.59 | 1.26 |
-
-50~500이 평평하고 그 뒤로 나빠집니다 — **2,001개를 한 질의로 묻는 것이 500짜리 다섯 질의보다 3배 나쁩니다.** 파일당 바인드는 3개라 500 청크가 ~1,500개로 PostgreSQL의 65,535 상한과는 거리가 멀고, **먼저 무너지는 것은 OR arity에 따라 자라는 «계획 비용»**입니다. 500 = 평평한 구간의 꼭대기(계획 비용이 아직 0인 채로 왕복이 가장 적은 지점)이고, 22,626 파일 트리를 **46 질의**로 유지합니다.
-
-⚠️ **트리 워크 쪽이 스윕보다 더 아픕니다.** `_ingest_directory_tree`는 트리거마다 트리의 **모든 파일을 다시 디스패치**하고 스윕의 `_sweep_attempted` 같은 인메모리 캐시가 없습니다 — 파일을 안 옮기는 모드에서는 트리가 영원히 안 비므로 **재기동당 1회가 아니라 매 사이클** 그 비용을 냅니다.
-
-채점: `server/tests/test_sweep_tier1_hoist.py`(18) + `test_nested_dir_ingestion.py`(22).
+채점: `server/tests/test_a_file_read_is_checked_by_its_path_and_table.py`.
 
 ---
 
@@ -187,16 +126,16 @@ tier 1은 원래 `_process_with_retry` **안**에 있었습니다 — 스윕과 
 >
 > 접두를 무조건으로 만들고 구분자를 발명해 다시 디코드하는 대신 **경로 자체를 나릅니다.** 파서는 이미 전체 경로를 받아서 그 뒤에 축약하므로(`advanced_ingester.process_file`), 폴더명을 파일명에 인코딩하는 것은 **호출 대상이 이미 갖고 있는 정보를 문자열로 왕복**시키는 일이었습니다. 그리고 `"/"`는 폴더명 안에 들어갈 수 없으므로 경로는 **발명한 구분자도, 살균도, 경계 표식도 필요 없습니다.**
 >
-> **사라진 기계장치**: `_build_collision_name` · `_resolve_flatten_dest` · `_sanitize_flatten_component` · `FLATTEN_SEP`. 접두 개명이 없으므로 **`~` 구분자 규칙과 `__force__` 조작 방어도 함께 사라졌습니다**(폴더명을 파일명에 접합하는 코드가 없으면 토큰을 조작할 방법이 없습니다).
+> **사라진 기계장치**: `_build_collision_name` · `_resolve_flatten_dest` · `_sanitize_flatten_component` · `FLATTEN_SEP`. 접두 개명이 없으므로 **`~` 구분자 규칙도 함께 사라졌습니다**.
 
 | 항목 | 동작 |
 |---|---|
 | 정온(quiescence) 게이트 | 트리 스냅샷(`{상대경로: (size, mtime)}`)을 폴링 간격(1초)마다 찍습니다. **파일 하나**가 두 스냅샷에서 같으면 그 파일은 다 쓴 것이라 **그때** 넣습니다 — 계속 자라는 파일 하나가 옆의 다 쓴 파일을 붙잡지 않습니다(소유자 10-08). 반쯤 쓴 파일은 읽지 않습니다(«다 씀» = 두 스냅샷(1.0초 간격)에서 크기 · 수정 시각이 같음 — 쓰기가 1.0초 넘게 멈추면 다 쓴 것으로 읽힌다. raws/ 맨 위 파일은 고정 지연 뒤 바로 읽는다 · 🆕 600초에는 다 쓴 파일을 «처리하는 시간»도 든다 — 처리 중에 다 쓴 파일은 «still writing» 으로 이름이 불려 다음 다시 보기(30초)까지 남는다(응용 잼)). 비워진 폴더 지우기는 **트리 전체**가 같을 때만입니다. 최대 600초 뒤에도 쓰는 중인 파일이 있으면 그 파일과 폴더는 두고 유예(하위 폴더 다시 보기가 재시도) — 로그 `[<표>] 📂 '<폴더>': N file(s) left - Tree ingestion deferred — K file(s) still being written after 600s (still writing: <이름 몇 개>; M finished file(s) dispatched) - next look in 30 s - #1 for this folder and reason (…)`. 같은 폴더 · 같은 이유는 1 · 10 · 100 번째만 말합니다. 같은 줄이 다른 이유도 말합니다 — 일꾼이 도는 중 · 보관 끔이라 처리 뒤 제자리(`kept in place (archive_processed_files=false)`) · 남은 파일(`Tree ingestion incomplete`) · 중첩 끔 |
-| 파일 디스패치 | 모든 일반 파일을 mtime 오름차순으로 **자기 위치에서** 기존 이벤트 경로에 투입(`_handle_event` → 레인 라우팅 → 파서 → 체크포인트/dedup → archives/·err/ **전부 무변경**). 바뀐 것은 **넘겨지는 경로가 중첩됐다는 것 하나**입니다. 🔴 **[`831ab68`] 그 앞에 tier-1 배치 관문이 하나 섭니다** — 이미 결론 난 파일은 `settle_already_terminal`이 **묶어서** 원장에 묻고 여기서 종결하므로 `_handle_event`에 가지 않습니다(§1.8-ter). 이 루프는 트리거마다 트리 전체를 다시 디스패치하고 인메모리 캐시가 없어 **스윕보다 이 관문이 더 필요한 자리**입니다. 로그의 「dispatched N」은 이제 **후보 수가 아니라 실제 내려간 수**이고, 걸러진 수는 같은 줄에 함께 남습니다 |
+| 파일 디스패치 | 모든 일반 파일을 mtime 오름차순으로 **자기 위치에서** 기존 이벤트 경로에 투입(`_handle_event` → 레인 라우팅 → 파서 → 체크포인트 → archives/·err/ **전부 무변경**). 바뀐 것은 **넘겨지는 경로가 중첩됐다는 것 하나**입니다. 그 앞에서 이미 읽은 파일은 체크리스트(`already_checked`, §1.8-bis)가 **묶어서** 묻고 걸러 `_handle_event`에 가지 않습니다. 로그의 「dispatched N」은 **실제 내려간 수**이고, 걸러진 수(`already read`)는 같은 줄에 함께 남습니다 |
 | 파서가 받는 것 | 매칭된 파이프라인 파서 인스턴스에 **`self.rel_path`**(POSIX 상대 경로)를 심습니다 — `parse(path)` 시그니처를 넓히지 않습니다(사용자 스크립트가 전부 서브클래스이므로 시그니처 변경은 전수 수정입니다). 이 문자열이 **`filename_rules`가 매칭하는 대상**입니다(→ §1.9-bis) |
 | 경로 문자열의 규격 | `relative_source_path(abs, root)` — **상대**(절대 경로는 규칙을 dev↔운영 사이에서 비이식적으로 만듭니다)이고 **POSIX 구분자**(Windows 구분자는 JSON 정규식에서 네 글자가 됩니다). 봉쇄는 **결과 기반**입니다(문자 블랙리스트가 아니라 "다시 join하면 같은 파일인가") — `..` 성분이나 다른 드라이브는 생존할 수 없고, 트리 순회는 이 검사에 실패하는 항목을 **건드리지 않고 남깁니다**(정션이 그 경로입니다) |
 | 폴더 제거 | **비게 된 디렉터리만** `os.rmdir` — 내용물이 남은 폴더는 구조적으로 삭제 불가입니다. 처리 못 한 파일은 자기 디렉터리를 살려 두고, 하위 폴더 다시 보기가 나중에 재시도합니다 |
-| 아카이브는 **조건부** | `is_managed_source(path)`가 두 이동 프리미티브를 함께 통제하므로 모든 호출부가 한 번에 덮입니다 — 워크스페이스 파일은 종전대로 archives/로, **외부(읽기 전용) 트리의 파일은 옮기지도·err/로 보내지도·삭제하지도 않고** 인제션 기록이 원본 경로를 가리킵니다. 내용 시그니처는 그대로 dedup에 답하며, 외부 파일의 반복 dedup-skip은 **조용합니다**(스윕이 구조적으로 영원히 다시 찾으므로 스윕당 로그 한 줄은 실제 사건을 묻습니다) |
+| 아카이브는 **조건부** | `is_managed_source(path)`가 두 이동 프리미티브를 함께 통제하므로 모든 호출부가 한 번에 덮입니다 — 워크스페이스 파일은 종전대로 archives/로, **외부(읽기 전용) 트리의 파일은 옮기지도·err/로 보내지도·삭제하지도 않고** 인제션 기록이 원본 경로를 가리킵니다. 외부 파일의 반복 «이미 읽음»은 **조용합니다**(스윕이 구조적으로 영원히 다시 찾으므로 스윕당 로그 한 줄은 실제 사건을 묻습니다) |
 | 아카이브 이름 충돌 | `_unique_dest`: 원래 이름 → `name_<epoch>`(종전 형태) → `name_<epoch>_2..`. **제자리 적재는 다른 폴더의 동명 파일을 일상적으로 아카이브**하므로, `_<epoch>` 한 번만 시도하던 종전 방식은 같은 초에 끝난 두 파일에서 충돌했습니다 — POSIX에서는 **먼저 온 아카이브를 덮어쓰고** Windows에서는 예외가 나서 파일이 `raws/`에 영구 잔류했습니다 |
 | 숨김/시스템 파일 | `Thumbs.db` · `desktop.ini` · `.DS_Store`(대소문자 무시) 및 macOS AppleDouble `._*`는 **폐기**(적재하지 않음) |
 | 멱등/재진입 | 같은 트리에 이벤트+스윕이 중복 발화해도 진행 중 가드로 1회만. zip 등 아카이브 추출은 범위 밖(폴더만) |
@@ -316,10 +255,10 @@ SAT 보이드 출력 하나가 **두 테이블**을 채웁니다 — `inspection
 - **파서는 전체 `file_path`와 외부 루트 기준 상대 POSIX 경로를 함께 받습니다.** 웨이퍼 ID는 파일명 문자열을 자르지 않고 상대 경로의 첫 구성요소에서 읽습니다. `WORK_DATETIME`은 KST(`+09:00`)의 `observed_at`으로 바뀝니다. 구성요소가 셋이 아니거나 시각이 유효하지 않으면 파일 전체를 거절합니다. 본문 `observed_at`은 경로 시각과 같은 순간인지 확인하는 중복 선언일 뿐이며, 다르면 경로와 본문 중 하나를 고르지 않고 거절합니다.
 - **경로 웨이퍼와 본문 `base_wafer_id`가 다르면 거절합니다.** 둘 중 하나를 임의로 고르면 모든 좌표가 그럴듯한 다른 웨이퍼에 붙습니다. 본문에 ID가 없을 때만 경로 값이 채워집니다.
 - **한 파일을 두 바인딩이 읽습니다.** `inspection_run`은 스캔 분모를, `void_obs`는 발견을 기록합니다. 한 루트를 서로 다른 테이블에 연결하는 것은 허용하고, 같은 테이블에 겹치는 루트 둘은 상대경로가 둘이 되므로 설정 단계에서 거절합니다.
-- **외부 원본은 읽기 전용입니다.** 성공·실패·중복 스킵 어느 경우에도 archives/·err/로 이동하거나 삭제하지 않습니다. 체크포인트의 `filepath`와 각 셀의 `source_name`은 전체 원본 경로를 보존하므로 모든 파일명이 `voids.json`이어도 웨이퍼·작업시각별 원천을 역추적할 수 있습니다.
-- **신규·이동·수정 이벤트를 받으며 300초 재귀 스윕이 안전망입니다.** 수정 이벤트는 `(mtime,size)`가 우연히 그대로여도 tier-1을 한 번 우회하고 내용 sha256까지 확인합니다. 네트워크 드라이브에서 watchdog 등록이 실패하거나 이벤트를 잃어도 스윕은 계속됩니다. 스윕만 놓고 보면 `(table binding, path, mtime, size)`가 같은 잔류 파일은 다시 보내지 않습니다. ⚠️ 따라서 **수정 이벤트까지 유실되고 크기·mtime도 보존된 덮어쓰기**는 다음 스윕이 발견하지 못합니다. 이 실패 방향을 없애려면 전 파일 주기 해시 비용을 지불하는 별도 노브 판정이 필요하며 현재는 없습니다.
+- **외부 원본은 읽기 전용입니다.** 성공·실패 어느 경우에도 archives/·err/로 이동하거나 삭제하지 않습니다. 로그 행의 `filepath`와 각 셀의 `source_name`은 전체 원본 경로를 보존하므로 모든 파일명이 `voids.json`이어도 웨이퍼·작업시각별 원천을 역추적할 수 있습니다.
+- **신규·이동·수정 이벤트를 받으며 300초 재귀 스윕이 안전망입니다.** 네트워크 드라이브에서 watchdog 등록이 실패하거나 이벤트를 잃어도 스윕은 계속됩니다. 이벤트든 스윕이든 «이미 읽었나»는 체크리스트 하나가 답합니다(§1.8-bis — `(경로, 표)` 의 로그 행이 그 `(mtime, size)` 를 들고 있나). ⚠️ 따라서 **크기·mtime을 보존한 덮어쓰기**는 다시 읽히지 않습니다 — 그 파일은 파일 화면 Retry 입니다.
 - **업데이트 안전 때문에 대상 테이블에 업무 키가 필수입니다.** 키 없는 legacy `void`는 재전달 때 새 행을 만들 수 있어 설정에서 거절하고, canonical `inspection_run`/`void_obs`만 받습니다.
-- **기존 DB는 체크포인트 마이그레이션이 선행되어야 합니다.** `server/migrations/add_ingestion_ledger_path_stat.sql`이 `file_mtime`·`file_size`·`idx_fic_path_stat`을 보충합니다. 없으면 기존 테이블을 `create_all`이 고치지 못해 원장 조회가 `UndefinedColumn`로 실패하고 잔류 외부 파일의 반복 갱신 안전성이 무너집니다.
+- **체크리스트 칸은 기동이 보충합니다.** `file_ingestion_logs` 의 `file_mtime` · `file_size` 는 서버 · 와처 · 체인 워커 기동의 스키마 동기화가 더합니다(손으로 먼저: `server/migrations/add_file_ingestion_log_stamp.sql`).
 
 JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...], "unit": "um"}`)입니다. 배열/`voids`의 각 행에는 `base_x`, `base_y`, `gate`(또는 `stack_gate`/`layer`), `inchip_x`, `inchip_y`, `radius_x`, `radius_y`가 필요합니다. `unit`은 행·파일 루트·설정 옵션 중 한 곳에서 `um|px|mm`로 선언해야 하며 추측하지 않습니다. 깨끗한 스캔은 `voids: []`와 함께 `runs`/`scans`에 검사한 `base_x`, `base_y`, `gate`를 적어야 합니다. 빈 0바이트 파일은 정상적인 0건과 복사 중단을 구분할 수 없어 거절합니다.
 
@@ -356,12 +295,12 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 - `statuses`(쉼표 — 들어간 파일까지면 `SUCCESS,FAILED,SKIPPED`, 적지 않으면 FAILED 만 = 실패 재시도) · `folder`(그 폴더 «아래» — `A` 는 `AB` 를 안 잡음) · `since` / `until`(인입 시각, `YYYY-MM-DD` 또는 `YYYY-MM-DD HH:MM`) · `preview`.
 - 미리보기(`preview=true`)가 다시 읽힐 파일 수 `count` · 상태별 `by_state` · 바로 아래 폴더별 `by_folder`, 기록이 말하는 자리에 없는 파일 수 `missing` 과 앞 다섯 이름 `missing_files` 를 말합니다. 한 파일을 여러 번 읽었으면 가장 새 기록 하나만 다시 읽힙니다.
 - 🆕 10-11 넘길 파일이 `ingestion_settings.json` 의 `reread_max_files`(기본 25)를 넘으면 409 «N files - over the limit M; narrow the folder or raise reread_max_files in ingestion_settings.json» 이고 아무것도 표시하지 않습니다(미리보기는 상한을 안 따지고 답에 `limit` 을 싣습니다).
-- 실행하면 요청 안에서 그 기록들을 `PENDING_RETRY` 로 표시하고(«N file(s) handed to the watcher»), 워처가 **하나씩** 읽습니다 — 워처의 그 표 핸들러로, dedup 을 건너뛰고(내용이 같아도 다시 읽음), 끝나면 보통 인제션과 같은 토스트가 옵니다.
+- 실행하면 요청 안에서 그 기록들을 `PENDING_RETRY` 로 표시하고(«N file(s) handed to the watcher»), 워처가 **하나씩** 읽습니다 — 워처의 그 표 핸들러로, 체크리스트를 묻지 않고(내용이 같아도 다시 읽음) 읽은 뒤 그 행이 파일을 체크하며, 끝나면 보통 인제션과 같은 토스트가 옵니다.
 - 소급 관문을 안 잡습니다 — replay 가 돌아도 다시 읽기가 기다리지 않고, 다시 읽기가 replay 를 막지 않습니다.
 - 🆕 10-11 되돌리기 — POST `/admin/file-ingestion/cancel-reread?folder=<폴더>[&preview=true]` 가 아직 기다리는 행을 넘기기 전 상태로 돌립니다. 워처가 이미 집은 행(PENDING 이후)은 안 건드립니다. 🆕 10-12 워처는 아직 `PENDING_RETRY` 인 행만 조건부로 집으므로 되돌린 행은 읽히지 않고, 취소 답의 수가 곧 되돌린 수입니다.
 - ⚠️ 파서가 업무키를 바꾸면 옛 키의 행은 남습니다(업서트라 새 키 행이 따로 섭니다).
 - ⚰️ 소급 «Re-read files»(976defaac)는 은퇴했습니다 — 옛 실행 기록은 목록에 `reread_files (retired)` 로 남습니다.
-- 파일 하나의 «읽었음» 기록만 지워 다음 훑기에 맡기는 길은 그대로 `scripts/replay_ingestion.py --path` 입니다.
+- 파일 여럿의 «읽었음»을 풀어 다음 훑기에 맡기는 길은 `scripts/replay_ingestion.py --path <파일> [--path …] [--table <표>] --apply` 입니다 — 10-21 부터 체크리스트 키 해제(`reread.uncheck`, 표 읽기가 바뀔 때와 같은 함수)이고 원장 행은 지우지 않습니다.
 
 ---
 

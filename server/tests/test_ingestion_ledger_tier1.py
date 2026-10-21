@@ -7,12 +7,13 @@
 (`(경로, mtime, size)` 일치 → 해시 없이 스킵)을 넣었고, 이 파일은 그 결정이
 **깨질 수 있는 방향들**을 못으로 박는다:
 
-  1. 켜져 있으면 해시가 **0회**여야 한다 (스킵이 진짜 싸야 의미가 있다)
-  2. 꺼져 있으면 해시가 **다시 돌아야** 한다 (고장 주입 없이는 ①의 초록이
-     「스윕이 아무것도 안 했다」와 구별되지 않는다)
-  3. 내용이 바뀌면 **다시 적재돼야** 한다 (tier 1이 삼키면 안 되는 유일한 경우)
+  1. 읽은 파일은 해시가 **0회**여야 한다 (스킵이 진짜 싸야 의미가 있다)
+  2. 도장 없는 로그 행은 아무것도 체크하지 않는다 (①의 초록이 「스윕이 아무것도 안 했다」와 구별된다)
+  3. 내용이 바뀌면 **다시 적재돼야** 한다 (체크리스트가 삼키면 안 되는 유일한 경우)
   4. 실패한 파일은 `err/` 없이도 **다시 시도되지 않고**, 「무엇이 왜」가 남아야 한다
-  5. 강제 재처리 3경로가 새 경로에서도 **여전히 산다**
+  5. 관리자 재시도는 묻지 않고 읽고, 그 행이 파일을 체크한다
+⚰️ 10-21: tier 1(원장의 경로+stat)·내용 dedup·`__force__`·`dedup_by_*` 는 체크리스트(`checkpoint.checked`)로 갈음 —
+그 스위치 · 토큰 칸은 은퇴했다. 파일 이름은 이력이라 그대로 둔다.
 
 테이블명은 사용자 config에 실존 불가능한 `tier1_test_*` 접두 사용 (교훈 파일).
 """
@@ -22,6 +23,7 @@ import os
 import time
 import sys
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 import pytest
 from sqlalchemy import create_engine
@@ -187,34 +189,6 @@ def test_tier1_skips_without_reading_the_file(env):
     assert _rows(env) == 3
 
 
-def test_tier1_off_falls_back_to_full_hashing(env):
-    """🔴 고장 주입 — 스위치를 끄면 같은 검사가 «빨개져야» 한다.
-
-    위 테스트의 초록은 「스윕이 아무 일도 안 했다」로도 설명된다. 이 테스트가
-    그 대안 설명을 지운다: 해시는 돌고(=파일에 도달했고) 적재만 안 한다."""
-    env["settings"](archive_processed_files=False)
-    p = _write(env["raws"] / "a.csv", _csv(3))
-    env["process"](p)
-
-    env["settings"](archive_processed_files=False, dedup_by_path_stat=False)
-    m = env["process"](p)
-    assert m["hashes"] == 1, "tier 1을 껐는데 해시가 안 돌았다 = 다른 이유로 스킵된 것"
-    assert m["ingests"] == 0, "tier 2(내용 시그니처)가 여전히 최종 권위여야 한다"
-    assert _rows(env) == 3
-
-
-def test_disabling_dedup_by_signature_disables_tier1_too(env):
-    """전역 강제 재처리 스위치가 tier 1에 조용히 무력해지면 안 된다."""
-    env["settings"](archive_processed_files=False)
-    p = _write(env["raws"] / "a.csv", _csv(3))
-    env["process"](p)
-
-    env["settings"](archive_processed_files=False, dedup_by_signature=False)
-    m = env["process"](p)
-    assert m["hashes"] == 1
-    assert m["ingests"] == 1, "dedup_by_signature=false인데 재적재되지 않았다"
-
-
 def test_changed_content_at_the_same_path_is_reingested(env):
     """tier 1이 삼키면 안 되는 유일한 경우 — 경로는 같고 내용이 바뀌었다."""
     env["settings"](archive_processed_files=False)
@@ -228,26 +202,23 @@ def test_changed_content_at_the_same_path_is_reingested(env):
     assert _rows(env) == 7
 
 
-def test_tier1_never_matches_a_row_written_before_the_columns_existed(env):
-    """NULL 계약 — file_mtime/file_size가 NULL인 행은 tier 1에 **절대** 안 걸린다.
-
-    마이그레이션 이전에 적힌 모든 행이 이 모양이다. 걸리면 「내용을 확인한 적 없는
-    파일을 확인했다고 치는」 방향으로 진다."""
+def test_a_log_row_without_a_stamp_checks_nothing(env):
+    """NULL 계약 — 도장(file_mtime/file_size)이 없는 행은 아무 파일도 체크하지 않는다: 잠금 대기로 끝난 읽기,
+    이 칸 이전에 적힌 행. 걸리면 「읽은 적 없는 파일을 읽었다고 치는」 방향으로 진다."""
     env["settings"](archive_processed_files=False)
     p = _write(env["raws"] / "a.csv", _csv(3))
     env["process"](p)
     db = env["SessionLocal"]()
     try:
-        row = db.query(models.FileIngestionCheckpoint).one()
-        row.file_mtime = None
-        row.file_size = None
+        for row in db.query(models.FileIngestionLog).all():
+            row.file_mtime = None
+            row.file_size = None
         db.commit()
     finally:
         db.close()
 
     m = env["process"](p)
-    assert m["hashes"] == 1, "NULL stat 행에 tier 1이 적중했다"
-    assert m["ingests"] == 0, "tier 2는 여전히 내용으로 막아야 한다"
+    assert (m["hashes"], m["ingests"]) == (1, 1), "a row without a stamp checked the file"
 
 
 # ---------------------------------------------------------------------------
@@ -280,12 +251,12 @@ def test_failure_leaves_the_file_in_place_and_the_reason_in_the_ledger(env):
     assert len(failed) == 1, "실패 사실이 원장에 없다 — err/ 폴더도 없는데 아무 데도 없다"
     assert os.path.normcase(failed[0].filepath) == os.path.normcase(os.path.abspath(p))
     assert failed[0].note and "[failed]" in failed[0].note
-    assert failed[0].file_size is not None and failed[0].file_mtime is not None
 
     db = env["SessionLocal"]()
     try:
         logs = db.query(models.FileIngestionLog).filter_by(status="FAILED").all()
         assert len(logs) == 1 and logs[0].error_message, "트레이스는 종전 자리에 그대로"
+        assert logs[0].file_size == os.path.getsize(p), "the failed read's row checks the file - not read again"
     finally:
         db.close()
 
@@ -347,22 +318,77 @@ def test_tier1_hit_still_retries_a_move_that_failed_before(env):
     assert not os.path.exists(p), "적중 뒤에도 이동이 재시도되지 않았다"
 
 
-# ---------------------------------------------------------------------------
-# §4 강제 재처리 3경로가 새 경로에서도 산다
-# ---------------------------------------------------------------------------
+def _fail_the_first_move():
+    moves = {"n": 0}
+    real_move = directory_watcher.shutil.move
 
-def test_force_token_bypasses_tier1(env):
-    """`__force__`는 tier 1보다 «앞»에서 빠져나가야 한다 — 뒤였다면 해시조차 안 돈다."""
-    env["settings"](archive_processed_files=False)
-    p = _write(env["raws"] / "a__force__.csv", _csv(3))
+    def failing_move(src, dst):
+        moves["n"] += 1
+        if moves["n"] == 1:
+            raise OSError("simulated locked file")
+        return real_move(src, dst)
+
+    return mock.patch.object(directory_watcher.shutil, "move", failing_move)
+
+
+def test_a_checked_failure_still_retries_the_move_to_err(env):
+    """(from test_sweep_tier1_hoist, retired 10-21) A failed file whose err/ move failed is checked by its FAILED row -
+    and must keep being offered to err/, not silently kept in raws/."""
+    p = _write(env["raws"] / "bad.csv", "nothing,here\n1,2\n")
+    with _fail_the_first_move():
+        env["process"](p)
+        assert os.path.exists(p), "premise: the first err-move must fail"
+        m = env["process"](p)
+    assert m["hashes"] == 0
+    assert not os.path.exists(p)
+    assert (env["ws"] / "err" / "bad.csv").exists(), "the failure never reached err/"
+
+
+def test_a_checked_file_is_not_moved_while_another_thread_owns_it(env):
+    """(from test_sweep_tier1_hoist, retired 10-21) The move a checked file owes takes the same claim `_handle_event`
+    takes - moving a file out from under the thread reading it is the race `processing_files` exists for."""
+    handler = env["handler"]
+    env["settings"](archive_processed_files=False)                # read where it lies
+    p = _write(env["raws"] / "claimed.csv", _csv(3))
     env["process"](p)
-    m = env["process"](p)
-    assert m["hashes"] == 1, "__force__ 파일이 tier 1에 삼켜졌다"
-    assert m["ingests"] == 1
+    assert os.path.exists(p)
+
+    env["settings"]()                                             # move mode: a checked file owes its archive
+    with handler._processing_lock:
+        handler.processing_files.add(os.path.abspath(p))
+    try:
+        env["process"](p)
+        assert os.path.exists(p), "a file another thread claimed was moved"
+    finally:
+        with handler._processing_lock:
+            handler.processing_files.discard(os.path.abspath(p))
+    env["process"](p)                                             # released -> moved now
+    assert not os.path.exists(p)
 
 
-def test_admin_retry_records_the_tier1_key(env):
-    """관리자 재시도도 원장의 tier-1 열쇠를 갱신한다 — 안 그러면 다음 스윕이 또 해시한다."""
+def test_new_file_is_said_only_for_a_file_actually_read(env, caplog):
+    """(from test_sweep_tier1_hoist, retired 10-21; S-128) «New file detected» sits past the checklist: a checked file
+    is passed in silence, a file read is announced."""
+    import logging
+
+    env["settings"](archive_processed_files=False)
+    p = _write(env["raws"] / "a.csv", _csv(3))
+    with caplog.at_level(logging.INFO):
+        env["process"](p)
+        first = [r.getMessage() for r in caplog.records if "New file detected" in r.getMessage()]
+        caplog.clear()
+        env["process"](p)
+        again = [r.getMessage() for r in caplog.records if "New file detected" in r.getMessage()]
+    assert len(first) == 2 and all("a.csv" in line for line in first), first
+    assert again == [], again
+
+
+# ---------------------------------------------------------------------------
+# §4 관리자 재시도
+# ---------------------------------------------------------------------------
+
+def test_admin_retry_stamps_the_file_it_read(env):
+    """관리자 재시도는 체크리스트를 묻지 않고 읽고, 그 행에 도장을 적는다 — 안 그러면 다음 스윕이 또 읽는다."""
     env["settings"](archive_processed_files=False)
     p = _write(env["raws"] / "a.csv", _csv(3))
     env["process"](p)
@@ -374,24 +400,16 @@ def test_admin_retry_records_the_tier1_key(env):
         db.add(log)
         db.commit()
         assert env["handler"].process_archived_file_sync(log, db) is True
+        log_id = log.id
     finally:
         db.close()
 
-    row = _ledger(env, "DONE")[0]
     st = ingestion.checkpoint.read_file_stat(os.path.abspath(p))
-    assert row.file_size == st[1]
-    # 저장된 값을 «시각으로» 비교한다. SQLite의 DateTime은 tzinfo를 떼고 돌려주고
-    # PostgreSQL은 KST로 붙여 돌려준다 — 두 백엔드에서 다른 객체가 같은 순간을
-    # 뜻하므로, 객체 동일성으로 재면 한쪽에서만 빨개진다.
-    stored = row.file_mtime
-    if stored.tzinfo is None:
-        stored = stored.replace(tzinfo=timezone.utc)
-    assert stored == st[0]
-    # 무엇보다 «행동»으로 확인한다: 이 열쇠로 tier 1이 실제로 적중하는가.
     db = env["SessionLocal"]()
     try:
-        assert ingestion.checkpoint.find_terminal_by_path_stat(
-            db, TABLE, os.path.abspath(p), st) is not None
+        assert db.query(models.FileIngestionLog).filter_by(id=log_id).one().file_size == st[1]
+        # 행동으로: 이 도장으로 체크리스트가 실제로 적중하는가 (저장된 시각은 백엔드마다 다른 객체로 돌아온다)
+        assert ingestion.checkpoint.checked(db, TABLE, [(os.path.abspath(p), st)]) == {os.path.abspath(p): "SUCCESS"}
     finally:
         db.close()
 
@@ -402,8 +420,7 @@ def test_admin_retry_records_the_tier1_key(env):
 
 def test_duplicate_content_at_a_new_path_is_read_and_each_copy_keeps_its_answer(env):
     """같은 내용이어도 다른 경로는 다른 파일 — 읽는다(소유자 10-20 ㄱ, 웨이퍼마다 따로인 bmap.txt).
-    원장 행은 한 경로만 들므로, 다시 볼 때 각 사본은 «자기 경로의 답»으로 건너뛴다 — 다시 적재하지 않고,
-    행이 안 든 사본도 해시하지 않는다(총괄 10-20: 그 경로의 SUCCESS 로그가 tier 1 에 답한다)."""
+    다시 볼 때 각 사본은 «자기 경로의 로그 행»(체크리스트)으로 건너뛴다 — 다시 적재하지도 해시하지도 않는다."""
     env["settings"](archive_processed_files=False)
     content = _csv(3)
     a = _write(env["raws"] / "a.csv", content)
@@ -411,18 +428,16 @@ def test_duplicate_content_at_a_new_path_is_read_and_each_copy_keeps_its_answer(
     assert _rows(env) == 3
 
     b = _write(env["raws"] / "b.csv", content)
-    for path in (a, b):          # files of before their answer - sqlite keeps the log's time to the second
-        os.utime(path, (time.time() - 10,) * 2)
     m = env["process"](b)
     assert (m["hashes"], m["ingests"]) == (1, 1), m
 
     again_a, again_b = env["process"](a), env["process"](b)
     assert again_a["ingests"] == 0 and again_b["ingests"] == 0, (again_a, again_b)
-    assert (again_a["hashes"], again_b["hashes"]) == (0, 0), "a copy missed tier 1 and was hashed again"
+    assert (again_a["hashes"], again_b["hashes"]) == (0, 0), "a copy missed the checklist and was hashed again"
 
 
-def test_the_ledger_adopts_the_survivor_when_the_original_is_gone(env):
-    """원본이 사라지면 새 위치를 «채택»한다 — 그래야 반복 해시가 멈춘다."""
+def test_the_same_content_at_a_new_path_after_the_original_is_gone_is_read_once(env):
+    """원본이 사라진 뒤 같은 내용이 새 경로로 오면 읽고, 그 뒤로는 그 경로의 행이 체크한다 — 반복 해시 없음."""
     env["settings"](archive_processed_files=False)
     content = _csv(3)
     a = _write(env["raws"] / "a.csv", content)

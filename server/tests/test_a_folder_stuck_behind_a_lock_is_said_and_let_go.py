@@ -155,6 +155,13 @@ def _checkpoint(engine, table, filename):
                                  "WHERE table_name = :t AND filename = :f"), {"t": table, "f": filename}).one()
 
 
+def _stamped(engine, filename):
+    """The stamps of the file's log rows - None where a read came to no answer about it (총괄 10-21 체크리스트)."""
+    with engine.connect() as conn:
+        return [r[0] for r in conn.execute(text("SELECT file_size FROM file_ingestion_logs WHERE filename = :f "
+                                                "AND table_name = :t ORDER BY id"), {"f": filename, "t": TABLE})]
+
+
 def _processed(engine, filename):
     with engine.connect() as conn:
         return conn.execute(text("SELECT coalesce(max(processed_rows), 0) FROM file_ingestion_checkpoints "
@@ -184,13 +191,13 @@ def test_a_file_held_up_by_a_lock_fails_unsealed_and_the_next_sweep_finishes_it(
     for (_status, message, count) in said:
         assert "on pid %d " % locker.pid in message and message.endswith("(retry %d)" % count), message
     assert [s for s, _m, _c in box["logs"]("f2.csv")] == ["SUCCESS"]
-    assert os.path.exists(f1) and os.path.abspath(f1) in handler.waiting_on_a_lock     # unsealed, in place
+    assert os.path.exists(f1) and _stamped(box["engine"], "f1.csv") == [None, None]      # unchecked, in place
     assert _checkpoint(box["engine"], TABLE, "f1.csv") == ("IN_PROGRESS", 1000)
 
     _tree(handler, "batch")                                       # the sweep after the release
     assert [s for s, _m, _c in box["logs"]("f1.csv")][-1] == "SUCCESS"
     assert not os.path.exists(os.path.join(handler.raws_path, "batch"))
-    assert os.path.abspath(f1) not in handler.waiting_on_a_lock
+    assert _stamped(box["engine"], "f1.csv")[-1] is not None                              # read: checked
     once = box["rows"](CONTROL)
     assert len(once) == 1502 and box["rows"](TABLE) == once       # rows and cells, as loaded once
 
@@ -311,27 +318,3 @@ def test_the_ingestion_settings_file_is_read_with_a_bom(monkeypatch, tmp_path):
     assert dw.file_write_timeouts() == (7.0, None)
 
 
-def test_both_sweeps_try_again_a_file_that_waited_on_a_lock_and_only_that_file(env, monkeypatch):
-    """총괄 10-07 ③ 1) ㄱ: the raws/ sweep and the external sweep skip by one rule (`_tried_already`)."""
-    import directory_watcher as running                 # the module the external harness wires
-    dispatched = []
-    monkeypatch.setattr(running.IngestionHandler, "_handle_event",
-                        lambda self, fp: dispatched.append(os.path.basename(fp)))
-    watcher = env["watcher"]({})
-    raws = watcher.raws_root_for("rt_parts")
-    top = os.path.join(raws, "parts.csv")
-    with open(top, "w", encoding="utf-8") as fh:
-        fh.write(HEADER + "P-1,Cap,1\n")
-    external = str(_write_voids(env["external"]))
-
-    def sweep():
-        dispatched.clear()
-        watcher.sweep_existing_files()
-        watcher.sweep_external_sources()
-        return sorted(dispatched)
-
-    assert sweep() == ["parts.csv", "voids.json"]                    # first sight
-    assert sweep() == []                                              # tried at this (mtime, size)
-    for root, path in ((raws, top), (watcher.raws_root_for("void_obs"), external)):
-        watcher.handlers_by_raw_path[root].waiting_on_a_lock.add(os.path.abspath(path))
-    assert sweep() == ["parts.csv", "voids.json"]

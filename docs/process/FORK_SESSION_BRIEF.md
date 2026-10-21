@@ -37,7 +37,7 @@ Git commit이며, 개발 완료 뒤 지정 Audit task에 exact commit을 제출�
   **열 번의 착지 모두 원자 디프 0.**
 - 인제션 쪽 도구(같은 날): `scripts/ledger_deploy_preflight.py`(배포 전 상태 판정) ·
   `scripts/check_external_sources.py`(외부 디렉터리 등록 확인) ·
-  `scripts/replay_ingestion.py`(읽기 전용 소스의 파일 하나 재적재) ·
+  `scripts/replay_ingestion.py`(파일 여럿의 체크리스트 키 해제 — 다음 훑기가 다시 읽음, 10-21) ·
   `scripts/seed_void_sample_tree.py`(폴더 규격 실물 생성). 외부 소스는 이제 `parser`를
   비우면 그 표의 워크스페이스 플러그인, 없거나 다 사양하면 표준 파서로 들어간다(`401dc72` · 10-20 `93dde66d2`).
 - ⚠️ **이 박스의 표 모양·DB·config를 운영 사실로 인용하지 말 것.** 2026-08-18 하루에 세 번

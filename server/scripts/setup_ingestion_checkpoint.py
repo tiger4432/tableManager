@@ -1,6 +1,6 @@
 """[P2] 파일 인제션 체크포인트 테이블 생성 (멱등).
 
-`file_ingestion_checkpoints`는 오프셋 재개와 해시 dedup의 원장이다. 부팅 경로
+`file_ingestion_checkpoints`는 오프셋 재개(이어 읽기)의 원장이다. 부팅 경로
 (웹서버 `create_all` / 워처 `ensure_ingestion_checkpoint_table`)가 자동으로 만들지만,
 **프로세스 재기동 없이** 먼저 준비하고 싶을 때 이 스크립트를 쓴다.
 

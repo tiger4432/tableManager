@@ -460,47 +460,8 @@ def test_resume_disabled_by_setting_restarts_from_zero(p2_env):
 
 
 # ---------------------------------------------------------------------------
-# §B dedup
+# §B 같은 내용 · 다른 경로
 # ---------------------------------------------------------------------------
-
-def test_duplicate_signature_is_skipped_with_explicit_record(p2_env):
-    ws, handler = p2_env["make_handler"]()
-    notified = []
-    handler.on_file_processed_callback = lambda t, f, s, d: notified.append((f, s, d))
-
-    content = _csv(3)
-    p1 = _write(ws / "raws" / "first.csv", content)
-    handler.process_with_retry(p1, delay=0.01)
-
-    applied = []
-    import unittest.mock as _mock
-    real_apply = crud.apply_batch_updates
-
-    def spy(db_, t, b, **kw):
-        applied.append(t)
-        return real_apply(db_, t, b, **kw)
-
-    p2 = _write(ws / "raws" / "first.csv", content)    # 같은 경로에 다시, 같은 내용
-    with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
-        handler.process_with_retry(p2, delay=0.01)
-
-    # 1) 적재 자체가 일어나지 않았다
-    assert applied == []
-    # 2) 무음이 아니다 — 통지 detail + FileIngestionLog(status=SKIPPED)
-    assert notified[-1][1] == "SKIPPED"           # 실제 상태 그대로 (총괄 69aad666e — 옛 "SUCCESS" 우회를 뒤집음)
-    assert "[dedup-skip]" in (notified[-1][2] or "")
-    logs = _ingestion_logs(p2_env)
-    assert logs[-1].status == "SKIPPED"
-    assert "[dedup-skip]" in (logs[-1].error_message or "")
-    # 3) 파일은 raws/에 남지 않는다 (스윕 무한 재시도 방지)
-    assert not os.path.exists(p2)
-
-    # 4) 다른 이름 · 같은 내용은 다른 파일이다 — 읽는다 (소유자 10-20 ㄱ)
-    p3 = _write(ws / "raws" / "second.csv", content)
-    with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
-        handler.process_with_retry(p3, delay=0.01)
-    assert applied and notified[-1][1] == "SUCCESS", notified[-1]
-
 
 def test_a_done_content_at_another_path_is_read_without_an_abort_sentence(p2_env, caplog):
     """총괄 10-20: the same content at another path is another file - read from the start and nothing «aborted» said.

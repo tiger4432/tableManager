@@ -317,12 +317,12 @@ def test_map_push_ok_unlocks_only_on_true_and_says_why_otherwise(caplog, written
 
 def test_an_ingestion_setting_falls_back_to_its_default_and_says_why(monkeypatch, caplog):
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings",
-                        lambda: {"dedup_by_signature": "false"})
+                        lambda: {"resume_from_checkpoint": "false"})
     monkeypatch.setattr(directory_watcher, "_invalid_field_warned", set())
     with caplog.at_level(logging.WARNING):
-        on = directory_watcher.dedup_by_signature_enabled()
-    assert on is directory_watcher.DEFAULT_DEDUP_BY_SIGNATURE
-    assert any(validation.flag_refusal("dedup_by_signature", "false") in r.getMessage()
+        on = directory_watcher.resume_from_checkpoint_enabled()
+    assert on is directory_watcher.DEFAULT_RESUME_FROM_CHECKPOINT
+    assert any(validation.flag_refusal("resume_from_checkpoint", "false") in r.getMessage()
                for r in caplog.records)
 
 

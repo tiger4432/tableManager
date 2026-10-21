@@ -34,7 +34,7 @@ try:
         logger.info("Dynamic database models and schema sync completed.")
     except Exception as e:
         logger.error(f"Failed to sync dynamic tables schema: {told(e)}", exc_info=e)
-    # [P2] 오프셋 체크포인트/해시 dedup 원장 테이블 보장.
+    # [P2] 오프셋 체크포인트(이어 읽기) 원장 테이블 보장.
     # 웹서버는 부팅 create_all로 만들지만 워처는 create_all을 돌리지 않으므로
     # (분리 모드에서 워처만 먼저 뜨는 경우 포함) 여기서 명시적으로 보장한다.
     try:
@@ -312,19 +312,20 @@ def retry_one(db, log):
         trigger_ws_file_processed(table_name, log.filepath or log.filename, "FAILED", str(e))
 
 
-def hear_changed_readings(db, stamps):
-    """🔴 [총괄 10-20 ab951f09b, 소유자 「ㅇㅇ」] Each watched table's reading (`reread.reading_of`) against the one kept:
-    changed -> its failed files handed again through the retry door; a table seen the first time is only kept. A
-    table_config that reads as nothing (absent, or mid-write) is no reading - the tick passes. An
-    ingestion_settings.json there that reads as nothing (mid-write, 총괄 10-20) keeps each table's external part as
-    kept - neither compared nor written over; its table_config and plugins are compared as ever. -> the stamps."""
+#: Written once the read files' log rows were stamped (`stamp_read_files_once`) - beside the reading stamps.
+READ_FILES_STAMPED_FILENAME = "watcher_read_files_stamped"
+
+
+def readings_now(watcher, stamps):
+    """{table: its reading now} for the watcher's tables, or None when table_config reads as nothing. An
+    ingestion_settings.json there that reads as nothing keeps each table's kept external part (see the caller)."""
     from directory_watcher import load_global_table_config
     from ingestion import reread, settings as ingestion_settings
 
-    handlers = list(workspace_watcher.handlers_by_raw_path.values()) if workspace_watcher is not None else []
+    handlers = list(watcher.handlers_by_raw_path.values()) if watcher is not None else []
     table_config = load_global_table_config() if handlers else {}
     if not table_config:
-        return stamps
+        return None
     declared = ingestion_settings.read_ingestion_settings()
     unread = not declared and os.path.exists(ingestion_settings.INGESTION_SETTINGS_PATH)
     sources = declared.get("external_sources") or []
@@ -335,10 +336,90 @@ def hear_changed_readings(db, stamps):
             now[table] = reread.reading_of(table, table_config.get(table), sources, handler.scripts_path)
             if unread and table in stamps:
                 now[table]["external source"] = stamps[table].get("external source")
+    return now
+
+
+def stamp_read_files_once(watcher):
+    """🔴 Once, before the first sweep and before the retry poller keeps its readings (총괄 10-21): the log rows from
+    before the checklist get their stamp (`checkpoint.stamp_read_files`), else the first sweep reads every file
+    again - and the readings are kept as `reading_of` spells them now (it no longer reads `enabled`), else the first
+    tick takes the new spelling for a changed reading and unchecks those tables. Not a second judge: it runs once,
+    then the marker file says it ran."""
+    import paths
+    from directory_watcher import _safe_relative_path
+    from ingestion import checkpoint, reread
+
+    marker = paths.config_path(READ_FILES_STAMPED_FILENAME)
+    if os.path.exists(marker):
+        return None
+    roots = list(watcher.handlers_by_raw_path) + [target["spec"]["root"] for target in watcher.external_targets.values()]
+    db = SessionLocal()
+    try:
+        said = checkpoint.stamp_read_files(
+            db, lambda path: any(_safe_relative_path(path, root) is not None for root in roots))
+    finally:
+        db.close()
+    stamps = reread.load_reading_stamps()
+    now = readings_now(watcher, stamps)
+    if now is not None:
+        reread.keep_reading_stamps({**stamps, **now})
+    with open(marker, "w", encoding="utf-8") as handle:
+        handle.write(datetime.now(timezone.utc).isoformat())
+    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d) · "
+            "missing on disk %d" % (said["stamped"], said["failed"] + said["changed"], said["failed"],
+                                    said["changed"], said["missing"]))
+    logger.info(line)
+    return line
+
+
+def folders_of(watcher, table, table_config):
+    """(the table's raws/ folders, its external source ids) - where its sweeps look. A handler's table as
+    `readings_now` resolves it."""
+    raws = [path for path, handler in watcher.handlers_by_raw_path.items()
+            if handler._resolve_table_name(table_config) == table]
+    sources = [source_id for source_id, target in watcher.external_targets.items()
+               if target["spec"]["table_name"] == table]
+    return raws, sources
+
+
+def sweep_a_table_now(watcher, raws, sources, line):
+    """What a changed reading unchecked is looked at now, by that table's own sweeps - not the next periodic one - and
+    ONE line says both: what was unchecked and what was dispatched to be read again (총괄 10-21)."""
+    dispatched = 0
+    try:
+        if raws:
+            dispatched += watcher.sweep_existing_files(raws)
+        if sources:
+            dispatched += watcher.sweep_external_sources(sources)
+        logger.info("%s - %d dispatched to be read again", line, dispatched)
+    except Exception as e:                                         # noqa: BLE001 - the periodic sweep reads them
+        logger.warning("%s - its sweep failed, the next periodic sweep reads them: %s", line, told(e), exc_info=e)
+
+
+def hear_changed_readings(db, stamps):
+    """🔴 [총괄 10-20 ab951f09b, 소유자 「ㅇㅇ」] Each watched table's reading (`reread.reading_of`) against the one kept:
+    changed -> its failed files handed again through the retry door; a table seen the first time is only kept. A
+    table_config that reads as nothing (absent, or mid-write) is no reading - the tick passes. An
+    ingestion_settings.json there that reads as nothing (mid-write, 총괄 10-20) keeps each table's external part as
+    kept - neither compared nor written over; its table_config and plugins are compared as ever. -> the stamps."""
+    from directory_watcher import load_global_table_config
+    from ingestion import reread
+
+    now = readings_now(workspace_watcher, stamps)
+    if now is None:
+        return stamps
     changed = {table: reading for table, reading in now.items() if stamps.get(table) != reading}
+    table_config = load_global_table_config() if changed else {}
     for table, reading in changed.items():
-        if table in stamps:
-            reread.hand_on_a_changed_reading(db, table, stamps[table], reading)
+        if table not in stamps:
+            continue
+        raws, sources = folders_of(workspace_watcher, table, table_config)
+        line = reread.hand_on_a_changed_reading(
+            db, table, stamps[table], reading,
+            folders=raws + [workspace_watcher.external_targets[source_id]["spec"]["root"] for source_id in sources])
+        if line:
+            threading.Thread(target=sweep_a_table_now, args=(workspace_watcher, raws, sources, line),
+                             name="watcher-reading-changed", daemon=True).start()
     if changed:
         stamps = {**stamps, **changed}
         reread.keep_reading_stamps(stamps)
@@ -456,10 +537,6 @@ def main():
     
     import paths
     workspace_base = paths.WORKSPACE_DIR
-
-    # Start retry poller thread
-    poller_thread = threading.Thread(target=poll_pending_retries, daemon=True)
-    poller_thread.start()
     
     # [최적화] table_config.json의 동적 스키마 실시간 변경을 감시하는 config watcher 시작 (데몬이므로 engine=None 전달)
     config_watcher = None
@@ -477,6 +554,11 @@ def main():
         on_ingestion_state_callback=trigger_ws_ingestion_state
     )
     watcher.discover_and_watch()
+    stamp_read_files_once(watcher)
+
+    # Start retry poller thread - after the stamp fill, which rewrites the readings it keeps
+    poller_thread = threading.Thread(target=poll_pending_retries, daemon=True)
+    poller_thread.start()
 
     # [Std Ingestion] SYSTEM_RELOAD 폴러가 런타임 워크스페이스 동기화에 사용할 참조 등록
     global workspace_watcher

@@ -8,11 +8,8 @@
   10-07 665a5dff4: the one read is server/ingestion/settings.py read_ingestion_settings (a BOM is read);
     load_ingestion_settings and the other three readers call it
   heavy_file_mb: directory_watcher.py:173 get_heavy_threshold_bytes (read per file event; bool/non-positive -> warn once + default 10)
-  dedup_by_signature: directory_watcher.dedup_by_signature_enabled (default True)
   resume_from_checkpoint: directory_watcher.resume_from_checkpoint_enabled (default True)
-  dedup_by_path_stat: directory_watcher.dedup_by_path_stat_enabled (default True; ALSO returns
-    False whenever dedup_by_signature_enabled() is False - the global force-reprocess switch
-    must not be silently defeated by the tier-1 fast path) [2026-08-13]
+  dedup_by_signature, dedup_by_path_stat: retired 10-21 (the checklist, checkpoint.checked) - a value left is not read
   archive_processed_files: directory_watcher.archive_processed_files_enabled (default True);
     consumed at the two move primitives via _refuse_move_by_retention [2026-08-13]
     all via _bool_setting (non-boolean -> warn once + default)
@@ -24,11 +21,10 @@
 ## 1. 언제 이 파일을 만지는가
 
 - **대형 파일이 소형 파일 처리를 막을 때** — heavy 레인 임계(`heavy_file_mb`) 조정
-- **같은 파일을 강제로 전량 재처리해야 할 때** — `dedup_by_signature`를 잠시 `false`로 (개별 파일 1건이면 파일명에 `__force__`를 넣는 편이 낫습니다: `report__force__.csv`)
+- **같은 파일을 다시 읽혀야 할 때** — 이 파일이 아니라 파일 화면의 Retry 입니다(⚰️ `dedup_by_signature` · `dedup_by_path_stat` · 파일 이름 `__force__` 는 10-21 은퇴 — 남아 있는 값은 읽히지 않습니다)
 - 중단 재개를 끄고 항상 처음부터 적재하게 할 때 — `resume_from_checkpoint`
 - **폴더째 드롭한 것을 아예 손대지 않게 하고 싶을 때** — `flatten_nested_dirs`를 `false`로. 🔴 **이 키는 `600b49d`(2026-07-30)에서 이름은 그대로 뜻만 바뀌었습니다** — 아래 §5 참조. 이미 `false`로 넣어 둔 값은 **그대로 유효**합니다(그래서 개명하지 않았습니다)
-- 🔴 **처리된 파일을 옮기지 않고 그 자리에 두고 싶을 때** — `archive_processed_files`를 `false`로. **선행 조건이 둘 있습니다**(§5의 주의 참조): 마이그레이션 `add_ingestion_ledger_path_stat.sql`, 그리고 「무엇이 왜 실패했나」의 답이 `err/` 폴더에서 **원장**으로 옮겨 간다는 사실
-- **스윕이 매번 트리 전체를 다시 읽어 느릴 때** — `dedup_by_path_stat`(기본 `true`)가 그것을 막는 층입니다. 끄면 항상 전체 해시로 돌아갑니다
+- 🔴 **처리된 파일을 옮기지 않고 그 자리에 두고 싶을 때** — `archive_processed_files`를 `false`로. 「무엇이 왜 실패했나」의 답이 `err/` 폴더에서 그 파일의 **FAILED 로그 행**으로 옮겨 간다는 것을 알고 바꿉니다(§5)
 - **enrichment 자동 확정을 전부 멈추거나, 작업 단위당 탐색량을 조절할 때** — `enrichment_auto_confirm_enabled` / `enrichment_auto_confirm_max_keys`(정본 [config/enrichment_rules §7](./enrichment_rules.md))
 - **다른 시스템이 소유한 폴더를 읽기 전용으로 감시할 때** — `external_sources`. 원본은 성공·실패 어느 쪽에서도 이동·삭제하지 않으며, 대상 테이블은 재전달에 안전한 업무 키를 선언해야 합니다.
 - **파일이 없어도 정상입니다** — 전 항목 기본값으로 동작합니다(현 저장소 상태가 그렇습니다).
@@ -42,8 +38,6 @@
    ```json
    {
      "heavy_file_mb": 10,
-     "dedup_by_signature": true,
-     "dedup_by_path_stat": true,
      "archive_processed_files": true,
      "resume_from_checkpoint": true,
      "flatten_nested_dirs": true,
@@ -51,8 +45,8 @@
    }
    ```
 
-   `heavy_file_mb`는 **양수 숫자만**(bool·문자열·0 이하는 경고 1회 후 기본 10), **나머지 boolean 6개는 JSON boolean만**(문자열 `"false"`는 경고 1회 후 기본값 — 오타가 스위치를 조용히 뒤집지 않습니다).
-4. 저장 — 수치·boolean 노브는 **다음 작업 단위부터** 반영됩니다. 단위는 키마다 다르지만 한 작업 단위 안에서는 값이 갈리지 않습니다: `heavy_file_mb`·`dedup_by_signature`·`dedup_by_path_stat`·`archive_processed_files`·`resume_from_checkpoint`는 **다음 파일 이벤트**, `flatten_nested_dirs`는 **다음 폴더 트리거**, `enrichment_auto_confirm_*`은 **다음 체인 트랜잭션 그룹**. 🔴 **`external_sources`의 추가·경로·파서·옵션 변경은 watcher 재기동 후 반영**됩니다. 런타임 reload는 새 바인딩 추가를 시도하지만 기존 바인딩 교체·해제는 하지 않습니다.
+   `heavy_file_mb`는 **양수 숫자만**(bool·문자열·0 이하는 경고 1회 후 기본 10), **나머지 boolean 4개는 JSON boolean만**(문자열 `"false"`는 경고 1회 후 기본값 — 오타가 스위치를 조용히 뒤집지 않습니다).
+4. 저장 — 수치·boolean 노브는 **다음 작업 단위부터** 반영됩니다. 단위는 키마다 다르지만 한 작업 단위 안에서는 값이 갈리지 않습니다: `heavy_file_mb`·`archive_processed_files`·`resume_from_checkpoint`는 **다음 파일 이벤트**, `flatten_nested_dirs`는 **다음 폴더 트리거**, `enrichment_auto_confirm_*`은 **다음 체인 트랜잭션 그룹**. `external_sources`는 저장하면 와처가 재기동 없이 그 항목만 다시 세웁니다(edb82082f) — `"enabled": false` 로 끄고, `options` · `parser` · `path` 를 바꾸면 옛 연결을 빼고 새 모양으로 섭니다. 파서 · 옵션이 바뀐 표는 체크리스트가 그 표 키만 해제합니다(`enabled` 는 아님).
 
 ## 3. 반영 확인
 
@@ -60,13 +54,12 @@
   ```
   [<table>] 🐘 Routed to heavy lane queue (<사유>, <크기>B): <파일명>
   ```
-- **dedup**: 같은 파일을 다시 떨어뜨렸을 때 — `true`면 `GET /admin/file-ingestion/logs`에 `SKIPPED`(사유 포함)가 남고, `false`면 재적재됩니다. 스킵은 무음이 아닙니다.
 - **잘못된 값**: 워처 로그에 `Ignoring invalid 'heavy_file_mb' ...` / `ingestion_settings.json: <칸> must be true or false, got <값> - write true or false - falling back to <기본값>.` 경고(값당 1회 — 예/아니오 칸의 문장은 09-27 `096d5ca31` 부터 `validation.flag_refusal` 하나)가 뜨면 설정이 무시되고 기본값으로 돌고 있다는 뜻입니다.
 - **외부 소스**: 워처 로그의 `Watching external read-only source: <경로> -> <테이블>` 두 줄(`inspection_run`, `void_obs`)을 확인합니다. 경로가 잠시 없으면 `External source unavailable`이 한 번 남고 300초 스윕이 계속 복구를 시도합니다.
 
 ## 4. 잘못됐을 때
 
-파일을 지우면 **전 항목 기본값**(10 MB / dedup on / resume on / flatten on / 맵 메타 자동 등록 on)으로 즉시 돌아갑니다 — 이 파일에 한해서는 삭제가 가장 빠른 복구입니다. 스냅샷 복원:
+파일을 지우면 **전 항목 기본값**(10 MB / resume on / flatten on)으로 즉시 돌아갑니다 — 이 파일에 한해서는 삭제가 가장 빠른 복구입니다. 스냅샷 복원:
 
 ```bash
 conda run -n assy_manager python server/scripts/backup_config.py restore ingestion_settings_<yymmdd>.json.bak --yes
@@ -79,11 +72,10 @@ conda run -n assy_manager python server/scripts/backup_config.py restore ingesti
 | 키 | 타입 / 기본값 | 의미 |
 |---|---|---|
 | `heavy_file_mb` | 양수, 기본 `10` | 이 크기(MB) 이상 파일은 전용 heavy 워커로 격리 라우팅. 단, **같은 워크스페이스에 heavy 백로그가 있으면 소형 파일도 순서 보존을 위해 큐 뒤로** 갑니다 |
-| `dedup_by_signature` | boolean, 기본 `true` | 동일 내용(sha256) 파일을 «같은 경로에서» 다시 만나면 재처리 skip — 다른 경로의 같은 내용 파일은 읽는다(**[10-20]** 웨이퍼마다 따로인 bmap.txt). `false` = 전역 강제 재처리 스위치 |
-| `dedup_by_path_stat` | boolean, 기본 `true` | **[Tier 1, 2026-08-13]** 같은 경로에 `(mtime, size)`가 그대로면 **내용을 읽지 않고** 스킵. 이 박스 실측(22,626파일/194.6MB): stat만 **1.0초** vs 전체 sha256 **39.4초**. 🔴 **실패 방향**: 「mtime·size가 그대로인 채 내용만 바뀐 파일을 다시 읽지 않는 쪽」으로 집니다(mtime 보존 복사, 같은 마이크로초·같은 길이 덮어쓰기). 판단이지 공짜가 아닙니다. `false` = 항상 전체 해시. `dedup_by_signature: false`는 **이 값과 무관하게 tier 1도 함께 끕니다** — 안 그러면 「전역 강제 재처리 스위치」가 조용히 무력해집니다. 🔴 **[2026-08-13 `831ab68`] 이 키 하나가 «묶어서 묻는» 관문도 함께 통제합니다** — 스윕과 폴더 트리거는 이제 이미 든 `stat`으로 500개씩 한 질의에 묻는데(`settle_already_terminal`), 그 관문은 활성화 계약을 이 키에서 **상속**합니다. **세 번째 노브를 만들지 마십시오.** 정본 [INGESTION_GUIDE §1.8-bis](../INGESTION_GUIDE.md) · **§1.8-ter**(어디서 묻는가) |
-| `archive_processed_files` | boolean, 기본 `true` | **[2026-08-13]** 성공한 파일을 `archives/`로, 실패한 파일을 `err/`로 **옮길지**. `true` = 종전 동작. `false` = 파일은 떨어진 자리에 남고 재처리 방지는 전적으로 원장(`file_ingestion_checkpoints`)이 맡습니다. 🔴 **`false`로 가기 전 셋**: ① 마이그레이션 `server/migrations/add_ingestion_ledger_path_stat.sql`을 먼저 돌리십시오 — 없으면 원장 **읽기부터** `UndefinedColumn`으로 죽고 워처는 dedup을 통째로 끈 채 살아남아 **매 스윕 전량 재적재**합니다 ② 「무엇이 왜 실패했나」의 답이 `err/` 폴더에서 원장의 `status='FAILED'` 행(`filepath`·`note`)으로 옮겨 갑니다(트레이스는 종전대로 `file_ingestion_logs`) ③ `raws/`가 무한히 자랍니다 — 워처는 아무것도 지우지 않으므로 보관 정리는 운영자 몫이고, `__force__` 파일은 치우지 않으면 **매 스윕 재적재**됩니다. 정본 [INGESTION_GUIDE §1.8-bis](../INGESTION_GUIDE.md) |
+| ⚰️ `dedup_by_signature` · `dedup_by_path_stat` | 은퇴(10-21) | 체크리스트(`checkpoint.checked`, [INGESTION_GUIDE §1.8-bis](../INGESTION_GUIDE.md))가 갈음했습니다. 남아 있는 값은 읽히지 않습니다. 한 파일은 파일 화면 Retry |
+| `archive_processed_files` | boolean, 기본 `true` | **[2026-08-13]** 성공한 파일을 `archives/`로, 실패한 파일을 `err/`로 **옮길지**. `true` = 종전 동작. `false` = 파일은 떨어진 자리에 남고 다시 읽지 않는 것은 체크리스트가 맡습니다. 「무엇이 왜 실패했나」의 답은 `err/` 폴더가 아니라 그 파일의 `file_ingestion_logs(status='FAILED')` 행입니다. `raws/`가 무한히 자랍니다 — 워처는 아무것도 지우지 않으므로 보관 정리는 운영자 몫입니다. 정본 [INGESTION_GUIDE §1.8-bis](../INGESTION_GUIDE.md) |
 | `resume_from_checkpoint` | boolean, 기본 `true` | 중단된 적재를 커밋된 오프셋부터 재개. 재개 불가 시 사유를 남기고 처음부터 |
-| 🆕 `lock_timeout_seconds` | 양수, 기본 `300`(걸림 판정과 같은 수) · `null`/`0` = 상한 없음 | **[10-07 `3959975eb`]** 파일 쓰기가 다른 세션의 잠금을 기다리는 상한. 넘으면 그 파일은 FAILED(`waited past the lock timeout … - <잡고 있던 세션>`, 행에 `retry_count`)로 끝나고 폴더는 다음 파일로 간다. 그 파일은 봉인하지 않고 제자리에 두어 다음 스윕이 마지막 커밋된 청크부터 다시 넣는다(`(mtime, size)` 를 본 적 있어도). 다시 시도에 상한은 없다 — 잠금이 남아 있는 동안 스윕마다 이 상한만큼 기다린다. 파일 채널이 여는 트랜잭션마다 `SET LOCAL lock_timeout`(PostgreSQL 만). 🆕 `aca9d8d24` 적재 뒤 `ANALYZE` 도 같은 상한 — 넘으면 `ANALYZE` 만 건너뛰고(`ANALYZE skipped: <표> locked by <잡은 세션>`) 파일은 SUCCESS. 다시 시도는 raws/ 스윕과 외부 스윕이 한 규칙(`_tried_already`)으로 판다. 숫자가 아닌 값은 기본값으로 읽는다 · 파일은 BOM 이 붙어도 읽는다 |
+| 🆕 `lock_timeout_seconds` | 양수, 기본 `300`(걸림 판정과 같은 수) · `null`/`0` = 상한 없음 | **[10-07 `3959975eb`]** 파일 쓰기가 다른 세션의 잠금을 기다리는 상한. 넘으면 그 파일은 FAILED(`waited past the lock timeout … - <잡고 있던 세션>`, 행에 `retry_count`)로 끝나고 폴더는 다음 파일로 간다. 그 파일은 제자리에 두어 다음 스윕이 마지막 커밋된 청크부터 다시 넣는다. 다시 시도에 상한은 없다 — 잠금이 남아 있는 동안 스윕마다 이 상한만큼 기다린다. 파일 채널이 여는 트랜잭션마다 `SET LOCAL lock_timeout`(PostgreSQL 만). 🆕 `aca9d8d24` 적재 뒤 `ANALYZE` 도 같은 상한 — 넘으면 `ANALYZE` 만 건너뛰고(`ANALYZE skipped: <표> locked by <잡은 세션>`) 파일은 SUCCESS. 그 FAILED 행은 도장이 없어 체크리스트가 다음 스윕에 다시 집는다(raws/ · 외부 같음). 숫자가 아닌 값은 기본값으로 읽는다 · 파일은 BOM 이 붙어도 읽는다 |
 | 🆕 `statement_timeout_seconds` | 양수, 기본 `null`(끔) | **[10-07 `3959975eb`]** 파일 쓰기의 문장 하나가 걸릴 수 있는 상한. 끈 것이 기본인 이유는 큰 정상 쓰기를 죽이지 않기 위해서다. 켜면 넘은 파일은 다른 실패처럼 FAILED · 봉인 |
 | 🆕 `chain_statement_timeout_seconds` | 양수, 기본 `120` · `null`/`0` = 상한 없음 | **[10-08]** 체인 묶음의 SQL 문장 하나가 걸릴 수 있는 상한. 묶음의 트랜잭션마다(묶음이 시작할 때 열려 있던 것도) `SET LOCAL statement_timeout`(PostgreSQL 만) — 쓰기 채널이 CHAIN 이든 리플레이가 깨운 묶음의 RETROACTIVE 든. 넘으면 그 묶음은 실패(재시도 규칙 그대로)이고 기록 사유가 `[rules=… target=…] statement timeout · N s · stage <단계> - …` 한 줄, 체인은 다음 묶음으로 간다. 편집 회수가 끊기면 그 줄만 오류(`statement timeout · N s - …`)이고 묶음은 성공. 묶음 밖의 일(워커가 돌리는 리플레이 실행 · 원장 따라가기 · 행 세기)은 안 걸린다. ⚠️ 다른 세션의 잠금을 «기다리는» 시간도 센다 — 쓰기가 잠금 뒤에서 상한까지 기다리면 같은 문장(`statement timeout`)으로 실패한다(응용 잼: `CONCURRENTLY` 없는 `CREATE INDEX` 가 거는 SHARE 잠금 뒤의 묶음 쓰기 · 상한 1 초로 1.09 초에 끊김). 그래서 이 문장은 «느린 질의» 와 «잠금 기다림» 둘 다다. 숫자가 아닌 값은 120 으로 읽는다 · 재기동 없이 다음 트랜잭션부터 |
 | 🆕 `walk_processes` | 0 이상의 정수, 기본 `2` | **[10-12]** 걷기(`/api/ledger/subgraph`)를 도는 걷기 프로세스 수 — 서버가 띄우고(기동 뒤 · 리로드 뒤 미리 — 리로드는 서버만, 같은 리로드를 도는 워처 · 체인 워커 · 자동 갱신 데몬은 안 띄운다), 걷기 하나가 하나를 쓴다. `0` 이면 다음 걷기부터 전처럼 서버 안에서 돌고, 쉬는 걷기 프로세스는 그 걷기가 올 때 내린다. 수를 줄이면 넘치는 것은 걷기가 끝날 때마다 하나씩 내린다. 정수가 아니면(`"0"` · `false` · `0.0` · 음수) 로그 한 줄과 함께 `0` 으로 읽는다(끄는 스위치가 기본값이 되지 않게) · 요청마다 읽음 — RUN.md 10-12 «걷기 프로세스» 절 |
@@ -110,7 +102,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore ingesti
 | 🆕 `expression_time_zone` | IANA 시간대 이름, 기본 `Asia/Seoul` | **[10-14 총괄 fe2ba4b1f]** 식 계산기의 날짜 함수(Date · DateTime · Year · Quarter · Month · Day · Hour · Week · DayOfWeek · DatePart)가 시각을 «어느 시간대의 벽시계»로 날짜 · 조각으로 자르는지(소유자 «ㅇㅇ kst»). 원장 시각은 UTC 라 KST 08:00 = UTC 전날 23:00 이 KST 날짜로 잘립니다. 오프셋이 없는 시각은 이 시간대의 벽시계로 읽습니다. 시간대가 아닌 값은 한 줄 남기고 기본값(`expression.ZONE_SETTING`). 서버 계산기(체인 decide 집계)가 읽고, 화면 계산기(시험대)는 `GET /api/ledger/declaration` 의 `expression_time_zone` 으로 같은 값을 받습니다 — 화면이 그 답을 못 받았을 때만 같은 기본값(`expression.js` `ZONE_DEFAULT`) |
 | 🆕 `retroactive_slow_statement_seconds` | 양수(초), 기본 `2` · `null`/`0` = 안 말함 | **[10-13 `85d7e1de1`]** 소급 실행 프로세스의 문장이 이만큼 넘게 돌면 맥박이 그 문장을 한 줄로 말합니다(`retroactive.SLOW_STATEMENT_SETTING`) |
 | `build_missing_indexes` | boolean, 기본 `true` | 체인 워커의 색인 일(기동 · SYSTEM_RELOAD)이 선언된 색인 중 DB 에 없는 것을 «짓는지»(`true`) «이름만 대는지»(`false`). 10-13 `17d8ea0d6` 부터 원장 ref 색인의 빠진 파티션도 이 일이 짓습니다(`ingestion_worker.BUILD_MISSING_INDEXES_SETTING`) |
-| `external_sources` | 배열, 기본 `[]` | **외부 읽기 전용 바인딩**. 항목은 `enabled`(기본 true)·절대 `path`·`table_name`·**`parser`(선택)**·`recursive`(기본 true)·`options`입니다. 받는 파일은 `options.filename`(경로 없는 파일 이름 하나, 기본 `voids.json`, 대소문자 무시)이고, 🆕 10-11 `options.glob`(패턴 하나 또는 목록 — 빈 패턴이 하나라도 있으면 그 항목 전체를 거절)을 적으면 `filename` 은 안 보고 루트에서의 경로가 그중 하나에 맞는 파일입니다 — `**` 몇 겹이든 폴더 · `*` 한 겹 안 · `?` `/` 아닌 한 글자 · `/` 없는 패턴은 어느 깊이든 파일 이름(예 `**/raw/**/*.jpg`) · `/` 로 시작하거나 끝나는 패턴은 아무 파일도 안 받음, 대소문자는 운영체제 규칙대로(윈도우는 무시). 다만 `parser: voids_json` 은 경로를 `<웨이퍼>/<작업 시각>/<options.filename>` 으로 다시 보므로 이름 · 깊이가 다른 파일은 FAILED 행으로 남습니다. 대상 테이블은 업무 키를 선언해야 하며 관리 워크스페이스와 겹치는 경로는 거절합니다. 같은 루트가 서로 다른 테이블을 먹이는 것은 허용하지만 같은 테이블의 겹치는 루트는 거절합니다. 🔴 **`parser`를 적지 않으면 그 표의 워크스페이스 `scripts/` 플러그인**(`BasePipelineParser`)으로 읽습니다 — 관리 `raws/`와 같은 입구입니다(2026-08-18). 🆕 10-20 플러그인이 없거나 다 사양하면 `std_parse` 가 켜진 표(기본)는 표준 파서로 읽습니다. 적으면 종전대로 내장 화이트리스트를 보며 현재 값은 `voids_json` 하나(대상 `inspection_run`/`void_obs`)입니다. 어느 쪽으로도 못 읽으면(`parser` 없는 항목은 플러그인 없음 + `std_parse: false` 일 때) **어느 표의 어느 폴더를 봤는지 대며 거절**합니다. **기존 DB에는 `add_ingestion_ledger_path_stat.sql` 선행 필수**, 설정은 **재기동 반영**. 상세·JSON 형태는 [INGESTION_GUIDE §1.12](../INGESTION_GUIDE.md)·[§1.12-bis](../INGESTION_GUIDE.md) |
+| `external_sources` | 배열, 기본 `[]` | **외부 읽기 전용 바인딩**. 항목은 `enabled`(기본 true)·절대 `path`·`table_name`·**`parser`(선택)**·`recursive`(기본 true)·`options`입니다. 받는 파일은 `options.filename`(경로 없는 파일 이름 하나, 기본 `voids.json`, 대소문자 무시)이고, 🆕 10-11 `options.glob`(패턴 하나 또는 목록 — 빈 패턴이 하나라도 있으면 그 항목 전체를 거절)을 적으면 `filename` 은 안 보고 루트에서의 경로가 그중 하나에 맞는 파일입니다 — `**` 몇 겹이든 폴더 · `*` 한 겹 안 · `?` `/` 아닌 한 글자 · `/` 없는 패턴은 어느 깊이든 파일 이름(예 `**/raw/**/*.jpg`) · `/` 로 시작하거나 끝나는 패턴은 아무 파일도 안 받음, 대소문자는 운영체제 규칙대로(윈도우는 무시). 다만 `parser: voids_json` 은 경로를 `<웨이퍼>/<작업 시각>/<options.filename>` 으로 다시 보므로 이름 · 깊이가 다른 파일은 FAILED 행으로 남습니다. 대상 테이블은 업무 키를 선언해야 하며 관리 워크스페이스와 겹치는 경로는 거절합니다. 같은 루트가 서로 다른 테이블을 먹이는 것은 허용하지만 같은 테이블의 겹치는 루트는 거절합니다. 🔴 **`parser`를 적지 않으면 그 표의 워크스페이스 `scripts/` 플러그인**(`BasePipelineParser`)으로 읽습니다 — 관리 `raws/`와 같은 입구입니다(2026-08-18). 🆕 10-20 플러그인이 없거나 다 사양하면 `std_parse` 가 켜진 표(기본)는 표준 파서로 읽습니다. 적으면 종전대로 내장 화이트리스트를 보며 현재 값은 `voids_json` 하나(대상 `inspection_run`/`void_obs`)입니다. 어느 쪽으로도 못 읽으면(`parser` 없는 항목은 플러그인 없음 + `std_parse: false` 일 때) **어느 표의 어느 폴더를 봤는지 대며 거절**합니다. 설정은 저장하면 그 항목만 **재기동 없이** 반영(edb82082f). 상세·JSON 형태는 [INGESTION_GUIDE §1.12](../INGESTION_GUIDE.md)·[§1.12-bis](../INGESTION_GUIDE.md) |
 | `enrichment_auto_confirm_enabled` | boolean, 기본 `true` | **전역 킬 스위치**(2026-07-30 ①). `false`면 규칙별 `auto_confirm`이 켜져 있어도 자동 확정을 전부 멈춥니다. 기본 `true`는 "막지 않는다"는 뜻일 뿐이고 **실제로 쓰려면 규칙별 옵트인이 필요**합니다(기본 OFF) — 즉 기본 상태의 동작은 종전과 같습니다. 정본 [config/enrichment_rules §7](./enrichment_rules.md) |
 | `enrichment_auto_confirm_max_keys` | 양의 정수, 기본 `200` | 작업 단위(체인 트랜잭션 그룹)당 참조뷰로 **탐색할 판단키 상한**. 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 대량 인제션에서 쿼리 폭주를 막는 유일한 장치입니다. 상한을 넘은 키는 **쓰지 않고 워크리스트에 그대로 남으며** 건수가 로그에 남습니다(정직한 열화 — 조용히 버리지 않음). 🔴 **이것은 「키 개수」 예산이고 읽기 하나의 폭과 무관합니다** — 절단 거절을 쫓는 중이라면 아래 `enrichment_read_caps`입니다 |
 | `enrichment_read_caps` | 객체, 아래 4키 | 참조뷰 **읽기를 자르는 상한**(2026-08-05 신설 — 종전엔 코드 상수라 재배포 없이 못 움직였습니다). 미선언 키는 **출하 기본값**을 그대로 쓰므로 이 블록을 안 넣어도 동작이 바뀌지 않습니다 |

@@ -49,7 +49,7 @@ conda run -n assy_manager python scripts/<이름>.py
 
 | 스크립트 | 쓰기 | 언제 |
 |---|---|---|
-| `replay_ingestion.py` | **드라이런** | 읽기 전용 소스의 **파일 하나**를 다시 먹인다. 파일은 안 건드리고 인제션 기록만 잊는다 |
+| `replay_ingestion.py` | **드라이런** | 파일 여럿을 다음 훑기가 **다시 읽게** 한다 — 체크리스트 키 해제(`reread.uncheck`, 10-21). 파일은 안 건드리고 로그 행의 도장만 비운다 |
 | `dedupe_business_key_rows.py` | **드라이런** | 한 업무키에 여러 행 → 한 행으로 접는다 |
 | `backfill_enrichment.py` | **보고 후 선택** | 소급 enrichment 백필 |
 | `rebuild_blank_business_keys.py` | 쓴다 | 빈 컴포넌트가 든 업무키를 원본 컬럼에서 다시 조립 |
