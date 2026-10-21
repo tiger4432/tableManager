@@ -10,7 +10,7 @@
 >           «[Chain Worker] notifications delivered again (<API 주소>)» — 다시 받을 때 한 번
 >           «[Latency] … notify=<ms>» 가 수만 ms 이던 것이 실패 한 번 몫으로
 > 화면      API 가 안 받는 동안의 변경은 API 가 살아난 뒤 5 초 안에 표 새로고침으로 보임 (데이터는 그대로)
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert f6907c0e8 -> 런처 재기동
 > ```
 >
 > ---
