@@ -266,6 +266,24 @@ def claim_retry(db, log):
     return bool(claimed)
 
 
+def hand_back_claimed_retries():
+    """The file log's PENDING rows when the watcher starts, handed to the retry door again (총괄 18a3bc5b7 ㄱ). Only
+    `claim_retry` writes PENDING there, and this process reads nothing yet - so the run that claimed them is gone. A
+    claim it left before its first checkpoint is one `reclaim_stranded_claims` skips by design: it stood PENDING for
+    good. One watcher per install. -> how many."""
+    db = SessionLocal()
+    try:
+        handed = (db.query(models.FileIngestionLog)
+                  .filter(models.FileIngestionLog.status == "PENDING")
+                  .update({"status": "PENDING_RETRY"}, synchronize_session=False))
+        db.commit()
+    finally:
+        db.close()
+    if handed:
+        logger.warning("[Retry] %d retry claim(s) left by the last run handed again", handed)
+    return handed
+
+
 def pending_retries(db):
     """PENDING_RETRY rows, oldest first - none before the watcher holds its handlers
     (총괄 fab40ed69): this thread starts first, and a retry runs on the table's own handler."""
@@ -555,6 +573,7 @@ def main():
     )
     watcher.discover_and_watch()
     stamp_read_files_once(watcher)
+    hand_back_claimed_retries()
 
     # Start retry poller thread - after the stamp fill, which rewrites the readings it keeps
     poller_thread = threading.Thread(target=poll_pending_retries, daemon=True)
