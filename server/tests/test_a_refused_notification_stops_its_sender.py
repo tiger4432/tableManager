@@ -9,6 +9,7 @@ import logging
 
 import pytest
 
+import internal_event_client
 from chain import ingestion_worker as ciw
 from test_broadcast_recovery import RULES, FakeDB, FakeRow
 
@@ -27,7 +28,13 @@ def _posts(monkeypatch, answers):
 
 @pytest.fixture(autouse=True)
 def _api_took_the_last_one(monkeypatch):
-    monkeypatch.setattr(ciw, "_API_TAKES", [True])
+    monkeypatch.setattr(internal_event_client, "_API_TAKES", [True])
+    monkeypatch.setattr(internal_event_client, "_REFUSED_AT", [None])
+
+
+def _the_window_passes():
+    """SWEEP_INTERVAL later (총괄 10-21: a refusal's window - no sender of the process tries within it)."""
+    internal_event_client._REFUSED_AT[0] -= internal_event_client.SWEEP_INTERVAL
 
 
 def _said(caplog):
@@ -44,14 +51,19 @@ async def test_a_batch_stops_at_its_first_refusal_and_leaves_its_rows_unstamped(
     with caplog.at_level(logging.INFO):
         await ciw._dispatch_broadcasts(batch, None)
     assert (posted, stamped) == (["m1"], []), "a refused API was asked again, or a group read as delivered"
-    assert len(_said(caplog)) == 1 and "3 waiting, next try in 5 s" in _said(caplog)[0]
+    assert len(_said(caplog)) == 1 and "3 waiting, no sender tries for 5 s" in _said(caplog)[0]
 
     posted = _posts(monkeypatch, [False])
+    await ciw._dispatch_broadcasts(batch, None)
+    assert (posted, stamped) == ([], []), "a sender tried within the window a refusal opened"
+
+    _the_window_passes()
     caplog.clear()
     with caplog.at_level(logging.INFO):
         await ciw._dispatch_broadcasts(batch, None)
     assert posted == ["m1"] and _said(caplog) == [], "said again while nothing changed"
 
+    _the_window_passes()
     posted = _posts(monkeypatch, [True])
     with caplog.at_level(logging.INFO):
         await ciw._dispatch_broadcasts(batch, None)
@@ -68,6 +80,7 @@ async def test_a_sweep_stops_at_its_first_refusal(monkeypatch):
     await ciw.sweep_undelivered_broadcasts(db, RULES, lambda: FakeDB([]))
     assert len(posted) == 1 and all(r.broadcast_at is None for r in rows)
 
+    _the_window_passes()
     posted = _posts(monkeypatch, [True])
     await ciw.sweep_undelivered_broadcasts(db, RULES, lambda: FakeDB([]))
     assert len(posted) == 4, "canary: the sweep refreshes four tables (three sources and the chain target)"

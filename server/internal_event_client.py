@@ -35,7 +35,40 @@ a fourth sender has to remember is not good enough.
 """
 import os
 import threading
+import time
 from error_said import told
+
+#: [Reliability F1] The chain's undelivered sweep's least interval (s) - and so the window after a refused
+#: notification in which no sender of this process tries another (총괄 10-21): what it does not send waits for that sweep.
+SWEEP_INTERVAL = 5.0
+
+#: Did the API take the last notification this process sent (총괄 4ee0a1946) - and when it last refused one.
+_API_TAKES = [True]
+_REFUSED_AT = [None]
+
+
+def api_may_send() -> bool:
+    """Asked before each notification by every sender of this process (the chain's batch and sweep, the watcher):
+    False within SWEEP_INTERVAL of a refusal - the sender leaves it undelivered and goes on (총괄 10-21: an API that
+    takes none cost the watcher ~2 s, or a timeout, per notification while it held the table's lock)."""
+    return _REFUSED_AT[0] is None or time.monotonic() - _REFUSED_AT[0] >= SWEEP_INTERVAL
+
+
+def api_took(ok, waiting, logger, said_as) -> bool:
+    """`ok` of the notification just sent, as given - the one judgement every sender asks after its message (B
+    2af64170d: a batch of 50 map messages to an API that took none held a chain slot ~100 s). A refusal opens the
+    window `api_may_send` keeps. Said once when the API stops taking them (`waiting` the rows left undelivered, None
+    when the sender does not count them), once when it takes them again."""
+    _REFUSED_AT[0] = None if ok else time.monotonic()
+    if ok != _API_TAKES[0]:
+        _API_TAKES[0] = ok
+        if ok:
+            logger.info("[%s] notifications delivered again (%s)", said_as, api_base_url())
+        else:
+            logger.warning("[%s] notifications not delivered (%s did not take one - the line above says why)%s, "
+                           "no sender tries for %g s", said_as, api_base_url(),
+                           "" if waiting is None else " - %d waiting" % waiting, SWEEP_INTERVAL)
+    return ok
 
 def send_internal_event(base_url, endpoint, payload, timeout):
     """Assemble and send ONE internal event. Returns `(url, response, note)`.

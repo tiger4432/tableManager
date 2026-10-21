@@ -150,27 +150,8 @@ async def post_event_async(endpoint: str, payload: dict) -> bool:
     return await asyncio.to_thread(do_post)
 
 
-#: [Reliability F1] The undelivered sweep's least interval (s) - and so when a refused notification is tried again.
-SWEEP_INTERVAL = 5.0
-
-#: Did the API take the last notification this process sent (총괄 4ee0a1946)?
-_API_TAKES = [True]
-
-
-def api_took(ok, waiting) -> bool:
-    """`ok` of the notification just sent, as given - the one judgement both senders (a batch's, the undelivered sweep)
-    ask before their next message. A refusal stops the sender: one refused connection costs ~2 s, and a batch of 50 map
-    messages to an API that took none held its slot ~100 s while the table's next line waited (B 2af64170d). What it
-    did not send stays undelivered for the sweep, every SWEEP_INTERVAL. Said once when the API stops taking them
-    (`waiting` the rows left undelivered), once when it takes them again."""
-    if ok != _API_TAKES[0]:
-        _API_TAKES[0] = ok
-        if ok:
-            logger.info("[Chain Worker] notifications delivered again (%s)", API_BASE_URL)
-        else:
-            logger.warning("[Chain Worker] notifications not delivered (%s did not take one - the line above says "
-                           "why) - %d waiting, next try in %g s", API_BASE_URL, waiting, SWEEP_INTERVAL)
-    return ok
+#: [Reliability F1] The undelivered sweep's least interval (s) - the window a refusal opens (`internal_event_client`).
+SWEEP_INTERVAL = internal_event_client.SWEEP_INTERVAL
 
 
 # [C-3] Outbox 보관 정책 (사용자 확정: 7일)
@@ -284,13 +265,17 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
     for at, (event_ids, messages, timing) in enumerate(pending_broadcasts):
         all_ok = True
         for m in messages:
+            # within a refusal's window nothing is sent - its groups' rows wait for the sweep (총괄 4ee0a1946 · 10-21)
+            if not internal_event_client.api_may_send():
+                all_ok = False
+                break
             try:
                 ok = await post_event_async("/internal/events/broadcast", m)
             except Exception as e:
                 ok = False
                 logger.error(f"[Chain Worker] Broadcast dispatch failed (ignored): {told(e)}")
-            # the first refusal ends this batch's sending - its groups' rows wait for the sweep (총괄 4ee0a1946)
-            if not api_took(ok, sum(len(ids or ()) for ids, _m, _t in pending_broadcasts[at:])):
+            if not internal_event_client.api_took(ok, sum(len(ids or ()) for ids, _m, _t in pending_broadcasts[at:]),
+                                                  logger, "Chain Worker"):
                 all_ok = False
                 break
         # 그룹의 모든 메시지가 전달 확정된 경우에만 broadcast_at 스탬프(전달 마킹).
@@ -3360,13 +3345,16 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
     for tgt in sorted(refresh_targets):
         # change_count 0 은 «표준 계약 필드»(정보성). 스윕 복구는 테이블 전체 새로고침 신호다.
         msg = event_constants.batch_refresh_message(tgt, 0)
+        # within a refusal's window this round sends nothing - the next is SWEEP_INTERVAL away (총괄 4ee0a1946 · 10-21)
+        if not internal_event_client.api_may_send():
+            all_ok = False
+            break
         try:
             ok = await post_event_async("/internal/events/broadcast", msg)
         except Exception as ex:
             ok = False
             logger.error(f"[Chain Worker] Recovery sweep broadcast failed for '{tgt}' (retry next sweep): {told(ex)}")
-        # the first refusal ends this round - the next is SWEEP_INTERVAL away (총괄 4ee0a1946)
-        if not api_took(ok, len(stale_ids)):
+        if not internal_event_client.api_took(ok, len(stale_ids), logger, "Chain Worker"):
             all_ok = False
             break
 

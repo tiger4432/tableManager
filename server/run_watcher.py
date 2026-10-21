@@ -90,9 +90,17 @@ def post_event(endpoint: str, payload: dict):
     # [S-37 · 판정 98] URL·헤더·판별자는 `internal_event_client` 가 «짓는다**. 이 자리는
     # 「실패가 무슨 뜻인가」만 들고 있다 — 워처에게 그것은 «미전달 기록»이다.
     import internal_event_client
+    # 총괄 10-21 (C 간섭 전수 ③): within a refusal's window nothing is sent - the file goes on without waiting on the
+    # API for every chunk; what is not sent is undelivered, as a refusal's is, for the chain's sweep
+    if not internal_event_client.api_may_send():
+        _record_undelivered(endpoint, payload, "not sent - the API refused one under %g s ago"
+                            % internal_event_client.SWEEP_INTERVAL)
+        return
+    ok = False
     try:
         url, res, note = internal_event_client.send_internal_event(
             API_BASE_URL, endpoint, payload, timeout=5)
+        ok = res.ok
         if not res.ok:
             # [F8] Third sender, same discriminator. An auth-shaped refusal
             # escalates to ERROR: a 401/403 here means real-time propagation is
@@ -105,6 +113,7 @@ def post_event(endpoint: str, payload: dict):
     except Exception as e:
         logger.error(f"Failed to send API notification: {told(e)}", exc_info=e)
         _record_undelivered(endpoint, payload, f"{type(e).__name__}: {told(e)}")
+    internal_event_client.api_took(ok, None, logger, "Watcher")
 
 def trigger_ws_refresh(table_name: str, count: int, created_logs: list = None, total_log_count: int = None):
     logger.info(f"Refresh required for {table_name}: {count} rows updated.")
