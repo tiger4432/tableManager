@@ -1,3 +1,16 @@
+# [구현자] **파일 목록에서 이름으로 찾은 파일을 «그대로» 다시 읽기** (소유자 10-21 「파일 리스트에서 특정 이름 있는 거 검색해서 돌리고 싶어」, 총괄)
+
+지금(코드, 총괄이 읽음): 파일 목록(file_ingestion.html)은 Name 칸(파일 이름 일부 · 대소문자 무시)으로 찾는다 — reread.logs_query(name=).
+다시 읽기 문 POST /admin/file-ingestion/retry-failed 는 목록과 같은 거르개(statuses · since/until · folder · read_by)를 받지만 «name 만» 없다 — select_logs 가 logs_query 에 name 을 안 넘긴다.
+화면의 다시 읽기는 폴더 묶음 줄의 «Retry failed N» 뿐이라, 이름으로 찾은 결과를 돌리는 버튼이 없다.
+착수: 지금 일(문서 노드는 클라 params 후속 대기) 사이에 — 이것 먼저
+
+도착: 목록의 거르개 그대로(표 · 상태 · Name · 폴더 · 기간) «지금 보이는 파일 N 개 다시 읽기» 버튼 하나 → 미리보기(수) → 실행. 찾기와 다시 읽기가 «같은 logs_query 한 번»을 지난다
+- 서버: retry-failed 에 name 하나 — select_logs → logs_query 로 그대로 넘김(이름 판정 새로 짓지 않음). 상한은 reread_max_files 그대로
+- 화면: 목록 머리에 버튼 «Re-read N shown» (N = 미리보기가 센 수 = 실행 수). 상태 거르개가 ALL 이면 OK 파일도 다시 읽는다 — 버튼 글자나 미리보기 한 줄에 «상태별 수»
+- 한 커밋(서버 + 화면 + dist), RUN.md 한 줄(무엇이 보이나 · 되돌리기)
+게이트: 같은 거르개로 목록 수 = 미리보기 수 = 실행으로 넘어간 수 · name 빼기 변이 빨강 · 크롬 한 줄(file_ingestion.html 에서 이름 넣고 버튼 · 미리보기 수 · 실행 뒤 그 파일들 상태가 PENDING_RETRY) · 화면은 SKILL.md §0-bis(클래스 하나 · 간격 고정)
+
 # [구현자 B] **스켈레톤 ↔ 선언 문법 — 지금은 «칸 이름»만 센다. 빈 셋을 닫는다** (소유자 10-21 「빈 거 세 개 지어」, 총괄)
 
 총괄이 잰 것(main): 노드 체인 149 · 원장 120 · 표 33. 정합 시험 셋(test_chain_skeleton · test_ledger_skeleton · test_the_table_skeleton_is_the_keys_the_product_reads)은 «칸이 있나»를 양방향으로 센다. 아래 셋은 아무도 안 견준다.
