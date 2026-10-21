@@ -26,8 +26,10 @@ REREAD_STATUS = "PENDING_RETRY"
 RETRY_STATUSES = ("FAILED",)
 #: Rows one mark commits.
 MARK_PAGE = 1000
-#: Files one retry may hand over unless ingestion_settings.json says `reread_max_files` (총괄 10-11 ㄱ): the busiest
-#: minute of this box's watcher - 25 SUCCESS rows (file_ingestion_logs by updated_at minute, median 2).
+#: Files the watcher reads again in one turn of its retry poller unless ingestion_settings.json says
+#: `reread_max_files` - the rest wait (PENDING_RETRY) for its next turns (총괄 10-21: a pace, not a refusal). Read in
+#: the request (not DECOUPLED), it is still the most one retry may hand over (총괄 10-11 ㄱ). 25: the busiest minute of
+#: this box's watcher - 25 SUCCESS rows (file_ingestion_logs by updated_at minute, median 2).
 REREAD_MAX_FILES_KEY = "reread_max_files"
 REREAD_MAX_FILES_DEFAULT = 25
 #: Entries one walk of a folder may look at before it is refused (총괄 10-20 ④) - a re-read into a table picks files

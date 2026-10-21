@@ -285,13 +285,16 @@ def hand_back_claimed_retries():
 
 
 def pending_retries(db):
-    """PENDING_RETRY rows, oldest first - none before the watcher holds its handlers
+    """PENDING_RETRY rows, oldest first, `reread.max_files()` of them a turn - the rest wait for the next turns, and
+    the poller's other work runs between (총괄 10-21: the cap is a pace). None before the watcher holds its handlers
     (총괄 fab40ed69): this thread starts first, and a retry runs on the table's own handler."""
+    from ingestion import reread
+
     if workspace_watcher is None:
         return []
     return (db.query(models.FileIngestionLog)
             .filter(models.FileIngestionLog.status == "PENDING_RETRY")
-            .order_by(models.FileIngestionLog.id.asc()).all())
+            .order_by(models.FileIngestionLog.id.asc()).limit(reread.max_files()).all())
 
 
 def retry_one(db, log):

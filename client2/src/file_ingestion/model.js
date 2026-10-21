@@ -17,10 +17,12 @@ export const WORDS = Object.freeze({
   readBy: 'Read by', source: 'Source', readAt: 'Read at', result: 'Result', whyFailed: 'Why it failed',
   retryFile: 'Retry this file', readAgain: 'Read again', showRows: 'Show its rows in the grid',
   retryFailed: (n) => `Retry ${count(n)} failed`, retryAsk: (n, folder) => `Retry ${count(n)} failed file${n === 1 ? '' : 's'} under ${folder}?`, showMore: 'Show more', noReason: '(No reason)',
+  readAll: 'Read all again', readAllAsk: (n, where) => `Read ${count(n)} file${n === 1 ? '' : 's'} of ${where} again?`,
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
   heads: ['File · folder', 'Status', 'Result', 'Read at', 'Took'],
   last: (at) => `last ${at}`, ok: (n) => `${n} ok`, failed: (n) => `${n} failed`, running: (n) => `${n} running`,
-  groupSummary: (n, failed) => `${count(n)} file${n === 1 ? '' : 's'} · ${count(failed)} failed`,
+  waiting: (n) => `${count(n)} waiting`,
+  groupSummary: (n, failed, waiting) => `${count(n)} file${n === 1 ? '' : 's'} · ${count(failed)} failed${waiting ? ` · ${count(waiting)} waiting` : ''}`,
   shown: (n, groups, match) => `${count(n)} file${n === 1 ? '' : 's'}${groups ? ` in ${count(groups)} group${groups === 1 ? '' : 's'}` : ''} shown · ${match} match`,
 });
 
@@ -121,7 +123,7 @@ export function groupFiles(rows, group, groups = [], base = '') {
       const c = counted.get(key) || {};
       const label = isBlank(c.label) ? key : String(c.label);
       out.set(key, { key, head: true, label: label || (group === 'reason' ? WORDS.noReason : ABSENT), files: [],
-        count: numberOr(c.count), failed: numberOr(c.failed) || 0, folder: group === 'folder' && key !== '' ? groupFolder(base, label) : null });
+        count: numberOr(c.count), failed: numberOr(c.failed) || 0, waiting: numberOr(c.waiting) || 0, folder: group === 'folder' && key !== '' ? groupFolder(base, label) : null });
     }
     out.get(key).files.push(row);
   }
@@ -135,6 +137,7 @@ export function tableLines(tables, active = []) {
   return (tables || []).map((t) => ({
     name: t.table_name, total: count(t.total), ok: count((t.by_status || {}).SUCCESS), failed: count((t.by_status || {}).FAILED),
     running: count(running.get(t.table_name)), last: t.last_at ? localShort(t.last_at) : ABSENT,
+    waiting: (t.by_status || {}).PENDING_RETRY || 0,
   }));
 }
 

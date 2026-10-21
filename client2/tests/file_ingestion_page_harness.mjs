@@ -105,8 +105,9 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   let mores = 0;
   const drills = [];
   const retries = [];
+  const readAlls = [];
   const files = new Q.FilesPart(host, { doc, onPick: (l) => picks.push(l.id), onMore: () => { mores += 1; }, onDrill: (k) => drills.push(k),
-    onRetryFolder: (g) => retries.push(g.folder) });
+    onRetryFolder: (g) => retries.push(g.folder), onReadAll: (f) => readAlls.push(f) });
   files.render({ groups: byFolder, shown: 'x', picked: 12, more: true });
   const fileRows = walk(host).filter((n) => n.tagName === 'TR' && String(n.className).includes('fi-file'));
   const folderSpan = walk(fileRows[0]).find((n) => n.tagName === 'SPAN' && n.title);
@@ -124,7 +125,17 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   if (retryButtons[0]) retryButtons[0].dispatch('click');
   ok('P1d «Retry N failed» on a folder with failures only, handing that folder', retryButtons.length === 1 && retryButtons[0].textContent === M.WORDS.retryFailed(2)
     && JSON.stringify(retries) === JSON.stringify([F1]), `${retryButtons.length} ${JSON.stringify(retries)}`);
-  files.render({ groups: byFolder, shown: 'x', picked: null, more: false });
+  const readAllButtons = byClass(host, 'fi-readall');
+  for (const b of readAllButtons) b.dispatch('click');
+  ok('P1e «Read all again» on every folder head, handing that folder; no table named - none on the box head (총괄 10-21)',
+    readAllButtons.length === 2 && readAllButtons.every((b) => b.textContent === M.WORDS.readAll) && readAlls.length === 2 && readAlls[0] === F1,
+    `${readAllButtons.length} ${JSON.stringify(readAlls)}`);
+  files.render({ groups: byFolder, shown: 'x', picked: null, more: false, table: 't1' });
+  const tableReadAll = byClass(byClass(host, 'fi-box-head')[0], 'fi-readall');
+  if (tableReadAll[0]) tableReadAll[0].dispatch('click');
+  ok('P1f a table named: «Read all again» on the box head too, handing no folder - the whole table',
+    tableReadAll.length === 1 && readAlls.length === 3 && readAlls[2] === null, JSON.stringify(readAlls));
+  ok('P1g a folder head says what waits: «N waiting»', M.WORDS.groupSummary(5, 2, 3).endsWith(' · 3 waiting') && !M.WORDS.groupSummary(5, 2, 0).includes('waiting'));
   ok('P1b no Show more when nothing more matches', byClass(host, 'fi-more').length === 0);
 
   // P2 - the detail

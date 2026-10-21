@@ -64,6 +64,7 @@ export class TableListPart {
       const ok = el('span', 'fi-num', WORDS.ok(t.ok)); ok.dataset.tone = 'ok';
       const failed = el('span', 'fi-num', WORDS.failed(t.failed)); failed.dataset.tone = 'danger';
       counts.append(ok, failed, el('span', 'fi-meta fi-num', WORDS.running(t.running)));
+      if (t.waiting) counts.append(el('span', 'fi-meta fi-num', WORDS.waiting(t.waiting)));
       b.append(top, counts, el('span', 'fi-meta', WORDS.last(t.last)));
       b.addEventListener('click', () => this.deps.onPick(t.name));
       return b;
@@ -133,19 +134,30 @@ export class SearchPart {
 }
 
 export class FilesPart {
-  /** @param {{doc, onPick: (log) => void, onMore: () => void, onDrill: (folder) => void, onRetryFolder: (group) => void}} deps */
+  /** «Read all again»: every file read there - failed, read and archived alike - through the Retry door (총괄 10-21). */
+  readAll(folder) {
+    const b = this.el('button', 'fi-btn fi-readall', WORDS.readAll);
+    b.type = 'button';
+    b.addEventListener('click', () => this.deps.onReadAll(folder));
+    return b;
+  }
+
+  /** @param {{doc, onPick: (log) => void, onMore: () => void, onDrill: (folder) => void, onRetryFolder: (group) => void,
+   *            onReadAll: (folder) => void}} deps - onReadAll(null): the table the search names, whole */
   constructor(mount, deps) {
     this.mount = mount;
     this.deps = deps;
     this.el = maker(deps.doc || mount.ownerDocument);
   }
 
-  /** @param {{groups, shown: string, picked: number|null, more: boolean}} view */
+  /** @param {{groups, shown: string, picked: number|null, more: boolean, table: string}} view */
   render(view) {
     const el = this.el;
     const root = el('section', 'fi-box fi-files');
     root.setAttribute('aria-label', 'Files');
-    root.append(boxHead(el, WORDS.files, view.shown));
+    const top = boxHead(el, WORDS.files, view.shown);
+    if (view.table) top.append(this.readAll(null));
+    root.append(top);
     const files = (view.groups || []).reduce((n, g) => n + g.files.length, 0);
     if (!files) {
       root.append(el('div', 'fi-say fi-pad', WORDS.noFiles));
@@ -174,12 +186,17 @@ export class FilesPart {
           drill.addEventListener('click', () => this.deps.onDrill(g.folder));
           line.append(drill);
         } else line.append(el('span', 'fi-mono', g.label));
-        if (g.count !== null) line.append(el('span', 'fi-meta fi-num', WORDS.groupSummary(g.count, g.failed)));
-        if (g.folder && g.failed > 0) {
-          const retry = el('button', 'fi-btn fi-btn--danger fi-group__retry', WORDS.retryFailed(g.failed));
-          retry.type = 'button';
-          retry.addEventListener('click', () => this.deps.onRetryFolder(g));
-          line.append(retry);
+        if (g.count !== null) line.append(el('span', 'fi-meta fi-num', WORDS.groupSummary(g.count, g.failed, g.waiting)));
+        if (g.folder) {
+          const acts = el('span', 'fi-group__acts');
+          if (g.failed > 0) {
+            const retry = el('button', 'fi-btn fi-btn--danger fi-group__retry', WORDS.retryFailed(g.failed));
+            retry.type = 'button';
+            retry.addEventListener('click', () => this.deps.onRetryFolder(g));
+            acts.append(retry);
+          }
+          acts.append(this.readAll(g.folder));
+          line.append(acts);
         }
         td.append(line);
         tr.append(td);
