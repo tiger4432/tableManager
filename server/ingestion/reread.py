@@ -120,9 +120,8 @@ def times_of(since, until):
 
 def logs_query(db, statuses=None, table=None, folder=None, since=None, until=None, log_id=None, name=None):
     """The file log rows a re-read or a search names - one filter for both (총괄 e390600d6). `statuses` None: any;
-    `folder` as `_under_folder` reads it; `name` a part of the file name, any case."""
-    from sqlalchemy import func
-
+    `folder` as `_under_folder` reads it; `name` a part of the file's path, any case - an external file's name is often
+    the same everywhere (voids.json) and what tells it apart is a folder (소유자 10-21 「경로는 인식 못 하나?」)."""
     from database import crud, models
 
     model = models.FileIngestionLog
@@ -140,8 +139,9 @@ def logs_query(db, statuses=None, table=None, folder=None, since=None, until=Non
     if not crud.is_blank_value(folder):
         query = query.filter(_under_folder(model.filepath, folder))   # not the whole table into memory (총괄 10-11)
     if not crud.is_blank_value(name):
-        part = str(name).strip().lower().replace("!", "!!").replace("%", "!%").replace("_", "!_")
-        query = query.filter(func.lower(model.filename).like("%" + part + "%", escape="!"))
+        other = "/" if os.sep == "\\" else "\\"
+        part = str(name).strip().lower().replace(other, os.sep).replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        query = query.filter(models.path_key(model.filepath).like("%" + part + "%", escape="!"))
     return query
 
 

@@ -12,7 +12,7 @@ export const PAGE_ROWS = 100;
 export const GROUPS = Object.freeze([['folder', 'Folder'], ['reason', 'Failure reason'], ['', 'None']]);
 export const WORDS = Object.freeze({
   title: 'File Ingestion', day: 'YYYY-MM-DD', tables: 'Tables', findTable: 'Find table', table: 'Table', status: 'Status', all: 'All',
-  name: 'File name contains', folder: 'Folder starts with', between: 'Read between', from: 'From', to: 'To',
+  name: 'Path contains', folder: 'Folder starts with', between: 'Read between', from: 'From', to: 'To',
   groupBy: 'Group by', files: 'Files read', file: 'File', path: 'Path', copyPath: 'Copy path', copyFolder: 'Copy folder',
   readBy: 'Read by', source: 'Source', readAt: 'Read at', result: 'Result', whyFailed: 'Why it failed',
   retryFile: 'Retry this file', readAgain: 'Read again', showRows: 'Show its rows in the grid',
