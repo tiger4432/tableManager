@@ -107,6 +107,16 @@ def _the_whole_counts_are_forgotten():
 
 
 @pytest.fixture(autouse=True)
+def _the_api_took_the_last_notification():
+    """A refusal one test's sender met opens a window (`internal_event_client.api_may_send`) the next test's sender
+    must not inherit (총괄 10-21)."""
+    import internal_event_client
+
+    internal_event_client._API_TAKES[0], internal_event_client._REFUSED_AT[0] = True, None
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _the_loaded_chain_rules_are_forgotten():
     """A rule set one test loaded must not answer for the next, whose fake `load_chain_rules`
     would otherwise never be asked. Only when the module is already imported - forgetting

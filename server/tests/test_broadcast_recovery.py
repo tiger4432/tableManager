@@ -191,7 +191,9 @@ async def test_a_failed_broadcast_is_not_stamped(monkeypatch):
     assert all(r.broadcast_at is None for r in rows), \
         "a broadcast that failed was marked delivered - the row is now lost"
 
-    # And the retry really happens.
+    # And the retry really happens - at the next sweep, past the window the refusal opened (총괄 10-21).
+    import internal_event_client
+    internal_event_client._REFUSED_AT[0] -= internal_event_client.SWEEP_INTERVAL
     posted2 = _capture_posts(monkeypatch, ok=True)
     await ciw.sweep_undelivered_broadcasts(db, RULES, lambda: FakeDB([]))
     assert posted2 and all(r.broadcast_at is not None for r in rows)
