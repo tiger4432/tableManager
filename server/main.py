@@ -7410,6 +7410,27 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
                        + (" · %d waiting without a mark, left" % said["unmarked"] if said["unmarked"] else "")}
 
 
+@app.post("/admin/file-ingestion/read-now", dependencies=[Depends(require_admin_token)])
+def read_file_now(path: str, table: str = None, preview: bool = False, db: Session = Depends(get_db)):
+    """One file read now as if the watcher saw it (총괄 aaf19d0ca, 소유자 「그냥 와처 인식한 걸로 하면 되잖아」): the table
+    that owns its folder, its row handed to the Retry door under that source. `preview`: who owns it and why the
+    watcher did not pick it - nothing written."""
+    from ingestion import reread
+
+    table = None if crud.is_blank_value(table) else str(table).strip()
+    if not preview and os.getenv("DECOUPLED") != "True":
+        raise HTTPException(status_code=409, detail="reading a file now needs the watcher process")
+    try:
+        said = reread.read_now(db, str(path).strip(), table=table, apply=not preview)
+    except reread.RereadRefused as refused:
+        raise HTTPException(status_code=409, detail=str(refused))
+    owner = said["owner"]
+    return {"status": "preview" if preview else "success", **said,
+            "message": (f"{os.path.basename(said['path'])} handed to the watcher for {owner['table']}" if not preview
+                        else f"{owner['table']} reads it" + (" - " + "; ".join(owner["why_not"])
+                                                            if owner["why_not"] else ""))}
+
+
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
 async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                                       preview: bool = False, statuses: str = None,
