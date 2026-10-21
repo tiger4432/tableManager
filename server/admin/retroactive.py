@@ -246,8 +246,8 @@ def _count_withdraw(db, params, scan_limit):
 
     table = params["table"]
     source = params["source"]
-    columns = params.get("columns")
-    c = replay.count_withdrawable(db, table, source, columns=columns)
+    written_by, columns = replay.unwritten_scope(params.get("rule"), table, params.get("columns"))
+    c = replay.count_withdrawable(db, table, source, columns=columns, written_by=written_by)
     affected = max(0, c["cells_claimed"] - c["pinned"])
     return {
         "affected": affected,
@@ -1203,9 +1203,10 @@ def _send_broadcasts(messages):
 def _run_withdraw(db, params, log, control=None):
     from chain import replay
 
+    written_by, columns = replay.unwritten_scope(params.get("rule"), params["table"], params.get("columns"))
     s = replay.withdraw_source(db, params["table"], params["source"],
-                                     columns=params.get("columns"), apply=True, log=log,
-                                     checkpoint=_checkpoint(control))
+                                     columns=columns, apply=True, log=log,
+                                     checkpoint=_checkpoint(control), written_by=written_by)
     _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")), s)
     return {"cells_withdrawn": s["cells_withdrawn"], "revealed": s["revealed"],
             "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"]}
@@ -1804,6 +1805,11 @@ def _judge_withdraw(params):
             f"'a human typed this'. There is no supported way to remove a human's value "
             f"from here - edit the cell instead.")
     _judge_table(params)
+    from chain import replay
+    try:
+        replay.unwritten_scope(params.get("rule"), params["table"], params.get("columns"))
+    except replay.ReplayRefused as e:
+        raise RetroactiveRefused(str(e)) from None
 
 
 def _judge_enrichment_backfill(params):
@@ -1953,11 +1959,13 @@ OPERATIONS = {
         "what_is_missing": "a wrong value an old rule wrote still wins the priority stack",
         "params": [_p("table"), _p("source"),
                    _p("columns", required=False, kind="csv",
-                      help="comma-separated column allowlist")],
+                      help="comma-separated column allowlist"),
+                   _p("rule", required=False,
+                      help="only this chain rule's layers, on the columns outside its target_columns")],
         "count": _count_withdraw,
         "run": _run_withdraw,
         "judge": _judge_withdraw,
-        "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> --apply",
+        "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> [--rule <rule>] --apply",
         # It deletes a source's CLAIM, not the cell and not the row: the revealed
         # value is recomputed and written, and every changed cell gets an AuditLog
         # entry naming the withdrawn source.

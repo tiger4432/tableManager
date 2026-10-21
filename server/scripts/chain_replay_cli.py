@@ -183,6 +183,8 @@ def main(argv=None):
     p.add_argument("table")
     p.add_argument("source")
     p.add_argument("--columns", default=None, help="comma-separated column allowlist")
+    p.add_argument("--rule", default=None,
+                   help="only this chain rule's layers, on the columns outside its target_columns")
     p.add_argument("--apply", action="store_true")
 
     p = sub.add_parser("resolve")
@@ -332,10 +334,13 @@ def main(argv=None):
                 list_all=args.list_all))
         else:
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
-            print(_report_withdraw(written("withdraw", {
-                "table": args.table, "source": args.source, "columns": cols})
-                if args.apply else replay.withdraw_source(
-                    db, args.table, args.source, columns=cols, apply=False, log=say)))
+            if args.apply:
+                print(_report_withdraw(written("withdraw", {
+                    "table": args.table, "source": args.source, "columns": cols, "rule": args.rule})))
+            else:
+                written_by, cols = replay.unwritten_scope(args.rule, args.table, cols)
+                print(_report_withdraw(replay.withdraw_source(
+                    db, args.table, args.source, columns=cols, apply=False, log=say, written_by=written_by)))
     except (replay.ReplayRefused, retroactive.RetroactiveRefused) as e:
         print(f"REFUSED: {e}")
         return 2

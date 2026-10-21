@@ -888,7 +888,30 @@ def replay_all(db, apply: bool = False, limit: int = None,
 
 
 
-def count_withdrawable(db, table_name: str, source_name: str, columns: list = None) -> dict:
+def unwritten_scope(rule_name, table_name, columns=None):
+    """`(written_by, columns)` for R2: with a rule, its own layers (its declaration) on the columns of `table_name` it
+    does not write - outside `chain_bindings.written_columns`, narrowed by `columns` when given (총괄 a7b67be28 ㄱ).
+    Without one, `(None, columns)`. Refused when the rule writes elsewhere, lists no `target_columns`, or leaves
+    no column out - an empty list here would mean every column."""
+    import chain_bindings
+    from chain import rule_shape
+
+    if not rule_name:
+        return None, columns
+    rule = find_rule(rule_name, row_scoped=True)
+    if rule.get("target_table") != table_name:
+        raise ReplayRefused(f"chain rule '{rule_name}' writes '{rule.get('target_table')}', not '{table_name}'")
+    written = chain_bindings.written_columns(rule)
+    if written is None:
+        raise ReplayRefused(f"chain rule '{rule_name}' lists no target_columns - write the list first")
+    outside = [c for c in sorted(chain_bindings.declared_columns(table_name) or ())
+               if c not in written and (not columns or c in columns)]
+    if not outside:
+        raise ReplayRefused(f"chain rule '{rule_name}' writes every column of '{table_name}' asked - nothing to withdraw")
+    return (rule_shape.declaration_of(rule),), outside
+
+
+def count_withdrawable(db, table_name: str, source_name: str, columns: list = None, written_by=None) -> dict:
     """[R2 preview] How many cells would a withdrawal touch, without touching any.
 
     Two aggregate queries, no row materialisation, no per-cell recompute - so this
@@ -916,7 +939,7 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
     from database import models
 
     claimed = db.query(func.count()).select_from(models.CellSource).filter(
-        *_claimed_filter(table_name, source_name, columns)).scalar() or 0
+        *_claimed_filter(table_name, source_name, columns, written_by)).scalar() or 0
 
     # Cells this source claims AND a human pinned TO this source. Joined rather
     # than counted separately: a pin naming this source on a cell it does not
@@ -927,7 +950,7 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
              models.CellOverwrite.row_id == models.CellSource.row_id,
              models.CellOverwrite.column_name == models.CellSource.column_name),
     ).filter(
-        *_claimed_filter(table_name, source_name, columns),
+        *_claimed_filter(table_name, source_name, columns, written_by),
         models.CellOverwrite.manual_priority_source == models.CellSource.source_name,
     ).scalar() or 0
 
