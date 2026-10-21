@@ -70,6 +70,10 @@ def test_the_external_sweep_resolves_each_folder_once(tmp_path, monkeypatch):
     watcher.discover_and_watch()
     calls = _counted(monkeypatch)
     watcher.sweep_external_sources()
+    assert calls == []                  # names the sources do not take are not asked of the filesystem (총괄 10-21)
+    for folder in range(FOLDERS):
+        open(os.path.join(str(external), "d%d" % folder, "voids.json"), "w").close()
+    watcher.sweep_external_sources()
     # two sources on one root: the root and its folders - not files x sources x 2
     assert 0 < len(calls) <= FOLDERS + 2, len(calls)
 

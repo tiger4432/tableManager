@@ -936,6 +936,18 @@ def _real_folder(folder: str) -> str:
     return known[folder]
 
 
+def _written_relative_path(path: str, root: str) -> str | None:
+    """The POSIX path below `root` as `path` is spelled (`normcase` compared, nothing resolved), or ``None``."""
+    absolute, top = os.path.abspath(path), os.path.abspath(root)
+    try:
+        if os.path.normcase(os.path.commonpath((absolute, top))) != os.path.normcase(top):
+            return None
+    except ValueError:
+        return None
+    rel = os.path.relpath(absolute, top)
+    return None if rel == os.curdir else rel.replace(os.sep, "/")
+
+
 def _safe_relative_path(path: str, root: str) -> str | None:
     """Real-path-contained POSIX relative path, or ``None`` when outside.
 
@@ -1089,11 +1101,20 @@ def source_taking(specs, file_path: str):
     """(the external source that takes `file_path`, its path below that source's root), or None - the deepest root
     when two take it. THE one judgement: the handler's read (`external_source_context`) and the re-read into a table
     (`ingestion.reread.select_files`) ask it, so what a preview counts is what the handler reads."""
+    def takes(spec, rel_path):
+        return (rel_path is not None and _within_depth(spec, rel_path.count("/"))
+                and _source_takes(spec.get("options") or {}, file_path, rel_path))
+
     matches = []
     for spec in specs:
+        # The path as written first - no disk call (총괄 10-21: a share's realpath per folder was half a sweep): a
+        # name the source does not take under its root as spelled is not asked of the filesystem. A path spelled
+        # another way (a mapped drive for a share) is asked by its real path as before.
+        written = _written_relative_path(file_path, spec["root"])
+        if written is not None and not takes(spec, written):
+            continue
         rel_path = _safe_relative_path(file_path, spec["root"])
-        if (rel_path is not None and _within_depth(spec, rel_path.count("/"))
-                and _source_takes(spec.get("options") or {}, file_path, rel_path)):
+        if takes(spec, rel_path):
             matches.append((len(spec["root"]), spec, rel_path))
     if not matches:
         return None
