@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **DB 연결이 끊겨도 체인 줄이 옆으로 빠지지 않음 — 슬롯이 묶음 전에 리로드를 읽다 끊기면 슬롯이 죽고 줄 전체가 set aside 되던 것 (총괄 6deeb723e)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      슬롯이 묶음마다 먼저 하는 리로드 읽기(system_reloads)가 «묶음이 던지면 그대로 다시 돎» 안으로 들어감
+>           지금까지는 그 읽기에서 연결이 끊기면 슬롯이 죽고, 그 줄의 기다리던 사건 전부가 set aside 됨
+> 보이는 것  chain_worker.log «[Chain] a batch of line <줄> raised - its events wait as they were and run again: <사유>» 한 줄 -> 1 초 뒤 같은 사건으로 다시 돎
+>           전에는 «slot pid N ended (exit 1) before finishing line <줄> - N waiting event(s) set aside» 였음
+> 그대로    슬롯 기동 중 실패(맵퍼 import · DLL · 기동 때 DB 읽기)는 지금처럼 슬롯이 죽고 그 줄은 set aside -> rerun_set_aside
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **맵 교체 · 회수 규칙이 맵 «안» 편집과 리플레이 쪽에서도 맵 전체를 받음 — 한 행으로 맵이 교체되던 것 · 48fc448af 가 낳은 회귀(group_by 없는 맵 교체 규칙을 통째 리플레이하면 마지막 쪽 행만 남음)를 닫음 (총괄 f2)** — git pull · 런처 재기동
 >
 > ```

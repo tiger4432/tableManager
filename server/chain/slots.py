@@ -539,10 +539,12 @@ async def _run_batch(key, run, rules, seen):
 
     if control.paused() is not None:
         return PAUSED, rules, seen
-    rules, seen = _reloaded(rules, seen)
     started = time.monotonic()
     db = SessionLocal()
     try:
+        # the reload reads the database too: a dropped connection there is this batch's, said and run again - outside
+        # this try it ended the slot, and the slot's end set its whole line aside (C five stages 8, 총괄 6deeb723e)
+        rules, seen = _reloaded(rules, seen)
         events = ingestion_worker.pending_chain_events(db, line=key, run=run)
         if not events:
             return DRAINED, rules, seen
@@ -584,13 +586,14 @@ def _reloaded(rules, seen):
     from database.database import SessionLocal
     from runtime import system_reload
 
-    if config_watcher.apply_pending():
-        rules = ingestion_worker.loaded_chain_rules()
     session = SessionLocal()
     try:
+        # read before anything is applied: a read that raises leaves the files' changes for the batch that runs again
         rows = system_reload.reloads_after(session, seen)
     finally:
         session.close()
+    if config_watcher.apply_pending():
+        rules = ingestion_worker.loaded_chain_rules()
     if not rows:
         return rules, seen
     work = system_reload.reload_for(system_reload.CHAIN_WORKER, rows)
