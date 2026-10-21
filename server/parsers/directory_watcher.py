@@ -95,7 +95,7 @@ import validation
 
 # [P2] 오프셋 체크포인트 재개 + «이미 읽었나» 체크리스트 (설계 근거·해시 비용 실측은 모듈 docstring)
 import ingestion.checkpoint
-from ingestion.checkpoint import CheckpointPlan, compute_file_signature, mtime_ns_to_datetime, read_file_stat
+from ingestion.checkpoint import CheckpointPlan, compute_file_signature, read_file_stat, stamp_of
 
 # [Drop visibility] Per-file budget for the undeclared-column drop summary. The keys
 # come from the payload, not from the schema, so a malformed header row or a parser
@@ -2404,7 +2404,7 @@ class IngestionHandler(FileSystemEventHandler):
                 # The checklist's stamp off the stat we just took.
                 to_process.append((
                     st.st_mtime, fp,
-                    (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
+                    stamp_of(st),
                 ))
             if not to_process:
                 return done["dispatched"]
@@ -4388,7 +4388,7 @@ class WorkspaceWatcher:
                     # The stamp off the stat we ALREADY took — the point of asking here, not one dispatch deeper.
                     candidates.append((
                         st.st_mtime, fp, os.path.abspath(fp), handler,
-                        (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
+                        stamp_of(st),
                     ))
 
             candidates.sort(key=lambda c: c[0])
@@ -4541,7 +4541,7 @@ class WorkspaceWatcher:
                     why["not a file"] += 1
                     continue
                 page.append((stat.st_mtime, os.path.abspath(file_path),
-                             (mtime_ns_to_datetime(stat.st_mtime_ns), int(stat.st_size))))
+                             stamp_of(stat)))
                 if (len(page) >= ingestion.checkpoint.CHECKED_BATCH_SIZE
                         or time.monotonic() - page_began >= SWEEP_PAGE_SECONDS):
                     yield page

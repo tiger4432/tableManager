@@ -172,13 +172,19 @@ def mtime_ns_to_datetime(mtime_ns: int) -> datetime:
     return _EPOCH_UTC + timedelta(microseconds=int(mtime_ns) // 1000)
 
 
+def stamp_of(st) -> tuple:
+    """An `os.stat` result as the stamp `checked` asks and a read writes: `(mtime_datetime, size_bytes)` - every seat
+    that turns a stat into a stamp calls this, so a stored stamp and the same file stat'd again are one value."""
+    return mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)
+
+
 def read_file_stat(file_path: str):
-    """`(mtime_datetime, size_bytes)` - the stamp `checked` asks and a read writes - or `None` when unavailable."""
+    """The file's stamp (`stamp_of`), or `None` when unavailable."""
     try:
         st = os.stat(file_path)
     except OSError:
         return None
-    return mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)
+    return stamp_of(st)
 
 
 def stat_identity_signature(file_stat) -> str | None:
