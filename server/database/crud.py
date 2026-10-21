@@ -577,7 +577,11 @@ def version_gate_verdict(table_name, config, row, is_new, update_item):
     if incoming is None:
         return False, REASON_VERSION_UNORDERABLE
 
-    stored = parse_version_key(getattr(row, version_col, None), col_type)
+    return _version_order(incoming, parse_version_key(getattr(row, version_col, None), col_type))
+
+
+def _version_order(incoming, stored):
+    """`(applied, reason)` for two `parse_version_key` keys - a row's, or a map's (its rows' greatest)."""
     if stored is None:
         # Adoption. A row written before the column existed has nothing to regress to,
         # and refusing it would wedge the table behind a manual backfill forever. Named
@@ -591,6 +595,28 @@ def version_gate_verdict(table_name, config, row, is_new, update_item):
     if incoming[1] == stored[1]:
         return False, REASON_VERSION_SAME
     return False, REASON_VERSION_OLDER
+
+
+def map_version_verdict(config, items, stored_values):
+    """Per-MAP verdict for a map replace (소유자 10-21 「맵교체랑 섞이면 맵단위로 버전관리」): `(applied, reason)`.
+    A map's version is the greatest of its rows' - the incoming items', the stored rows' (`stored_values`). Not
+    asked: a table with no version column · a batch with no item (a scope emptied) · a person's batch."""
+    version_col = config.get("version_column")
+    if not version_col or not items or all(item.source_name == "user" for item in items):
+        return True, None
+    col_type = config.get("column_types", {}).get(version_col, "string")
+    incoming = [parse_version_key(item.updates.get(version_col), col_type) for item in items
+                if not is_blank_value(item.updates.get(version_col))]
+    if not incoming:
+        return False, REASON_VERSION_MISSING
+    if None in incoming or len({key[0] for key in incoming}) > 1:
+        return False, REASON_VERSION_UNORDERABLE
+    stored = [key for key in (parse_version_key(value, col_type) for value in stored_values) if key is not None]
+    if not stored:
+        return True, NOTE_ROW_VERSION_ABSENT if stored_values else None
+    if len({key[0] for key in stored}) > 1:
+        return False, REASON_VERSION_UNORDERABLE
+    return _version_order(max(incoming), max(stored))
 
 
 def log_version_gate_summary(table_name, version_col, source_name, stats):
@@ -3877,8 +3903,8 @@ def apply_row_update_internal(
     # the write would actually land on, however it was keyed) and before a single cell is
     # touched. A refusal returns an EMPTY changed_cols, so no value moves, no CellSource
     # is upserted, no audit log is written and nothing is broadcast as changed.
-    gate_applied, gate_reason = version_gate_verdict(
-        table_name, config, row, is_new, update_item)
+    gate_applied, gate_reason = version_gate_verdict(          # a row of a map judged whole: not asked again
+        table_name, config, row, is_new or (plan or {}).get("map_judged", False), update_item)
     if gate_reason is not None and version_stats is not None:
         counts = version_stats.setdefault("counts", {})
         counts[gate_reason] = counts.get(gate_reason, 0) + 1
@@ -5290,6 +5316,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # [adopt] Row ids inside the scope a replace_map write declares. Empty for every
         # other write path, which is what makes the adoption check below a no-op there.
         replace_scope_row_ids = set()
+        # a map replace on a version-gated table: the map judged whole, its rows not asked again (map_version_verdict)
+        map_judged, map_note = False, None
 
         if batch.replace_map:
             # [U6] The purge scope comes from ONE shared resolver (also called by the API
@@ -5312,8 +5340,23 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             ]
 
             from sqlalchemy import and_
-            matching_rows = db.query(table_model.row_id).filter(and_(*meta_conditions)).all()
+            _cfg = TABLE_CONFIG.get(table_name, {})
+            map_version_col = _cfg.get("version_column")
+            matching_rows = db.query(table_model.row_id, *([getattr(table_model, map_version_col)] if map_version_col
+                                                           else [])).filter(and_(*meta_conditions)).all()
             purged_row_ids = [r[0] for r in matching_rows if r[0]]
+            # 🔴 The map is one version (소유자 10-21): judged here, before the purge or the diff deletes anything.
+            #    Refused, the map is neither written nor deleted - the VersionGate line says it in its words.
+            map_applied, map_note = map_version_verdict(_cfg, batch.updates, [r[1] for r in matching_rows]
+                                                        if map_version_col else [])
+            if not map_applied:
+                log_version_gate_summary(table_name, map_version_col, source_val,
+                                         {"rows": len(batch.updates), "counts": {map_note: len(batch.updates)}})
+                if replace_report is not None:
+                    replace_report.update(filters=scope_filters, deleted=0, mode="refused", reason=map_note)
+                db.commit()
+                return [], [], [], []
+            map_judged = bool(map_version_col and batch.updates)
 
             # [scope diff] Only a DECLARED scope may be diffed.
             #
@@ -5335,7 +5378,6 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # was not matched at all until 총괄 5c0a86cec (every push a fresh row); it is
             # now, but the diff stays on composite-keyed maps - all seven shipped map
             # tables declare one, so this excludes no real map.
-            _cfg = TABLE_CONFIG.get(table_name, {})
             use_diff = bool(_cfg.get("map_key_columns")) and bool(_cfg.get("composite_key_source"))
 
             # [adopt] The ids this write DECLARED it was operating on - the whole scope,
@@ -5560,6 +5602,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # a version column, so an ordinary table pays one dict lookup for the whole batch.
         version_col = TABLE_CONFIG.get(table_name, {}).get("version_column")
         version_stats = {"rows": len(batch.updates)} if version_col else None
+        if map_note is not None and version_stats is not None:
+            version_stats["counts"] = {map_note: len(batch.updates)}
 
         # [Drop report] Allocated for EVERY batch, not only when a report was requested,
         # because the phantom-row guard below reads it and that guard is not optional.
@@ -5577,7 +5621,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
 
         # what is the same for every row of this batch, once (총괄 249b43409) - the keys were assembled above
         plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
-                "unmapped": {}, "ranks": {}}
+                "unmapped": {}, "ranks": {}, "map_judged": map_judged}
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:
