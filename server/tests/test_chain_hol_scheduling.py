@@ -7,6 +7,7 @@ process_pending_groups 가 한 배치 안에서:
 를 확인한다.
 """
 import pytest
+import event_constants
 from chain import ingestion_worker as ciw
 
 
@@ -35,6 +36,15 @@ class FakeDB:
 
     def rollback(self):
         self.rollbacks += 1
+
+
+def _the_claim_marks(events, messages):
+    """What a group's claim does with its success since 총괄 09f58844f - the marks are its one commit's
+    (`_claimed_group_sync`): SUCCESS, and a group with nothing to tell delivered at once."""
+    for event in events:
+        event_constants.mark_processed(event, "SUCCESS")
+        if not messages:
+            event.broadcast_at = "now"
 
 
 def every_event_still_waiting(db, events):
@@ -78,6 +88,7 @@ def _patch_processor(monkeypatch, failing_tx_ids):
         called.append(tx_id)
         if tx_id in failing_tx_ids:
             return False, f"boom:{tx_id}", []
+        _the_claim_marks(events, [])
         return True, None, []
 
     monkeypatch.setattr(ciw, "process_chain_transaction_group", fake_process)
@@ -168,6 +179,7 @@ def _patch_processor_with_messages(monkeypatch, messages_by_tx, failing_tx_ids=N
         called.append(tx_id)
         if tx_id in failing_tx_ids:
             return False, f"boom:{tx_id}", []
+        _the_claim_marks(events, messages_by_tx.get(tx_id))
         return True, None, list(messages_by_tx.get(tx_id, []))
 
     monkeypatch.setattr(ciw, "process_chain_transaction_group", fake_process)

@@ -5162,7 +5162,8 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 # constraint, with no action in it. The owner met exactly that on
                 # 2026-09-16: 「인제션 세션에 바운드 안 되어 있다고 안 들어감」, on a table
                 # that had been working, while every other table went in.
-                db.rollback()
+                from session_contract import undo_step
+                undo_step(db)
                 # 🔴 [S-275] THE LINE THAT EXPLAINS THE REFUSAL MAY NOT REPLACE IT.
                 # 「진단기는 자기가 진단하는 것을 죽일 수 없다」. This call reads
                 # `batch.updates`, asks the exception for a constraint name and imports
@@ -5185,7 +5186,8 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                         "refused and the original error is raised unchanged",
                         table_name, type(line_err).__name__, told(line_err))
                 raise
-            db.rollback()
+            from session_contract import undo_step
+            undo_step(db)           # this batch's try only - a held group's earlier steps stay
             if attempt >= BK_CONFLICT_MAX_RETRIES:
                 # 🔴 [S-247] THE OPPOSITE REPAIR OF THE TWO LINES ABOVE, AND IT
                 # READS THE SAME. 「중복 키」 here means the TABLE'S OWN identity does not
@@ -5342,8 +5344,10 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             from sqlalchemy import and_
             _cfg = TABLE_CONFIG.get(table_name, {})
             map_version_col = _cfg.get("version_column")
+            # locked as read, row_id order - the purge or the diff compares against them (총괄 09f58844f ②)
             matching_rows = db.query(table_model.row_id, *([getattr(table_model, map_version_col)] if map_version_col
-                                                           else [])).filter(and_(*meta_conditions)).all()
+                                                           else [])).filter(and_(*meta_conditions)) \
+                .order_by(table_model.row_id).with_for_update().all()
             purged_row_ids = [r[0] for r in matching_rows if r[0]]
             # 🔴 The map is one version (소유자 10-21): judged here, before the purge or the diff deletes anything.
             #    Refused, the map is neither written nor deleted - the VersionGate line says it in its words.
@@ -5354,7 +5358,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                                          {"rows": len(batch.updates), "counts": {map_note: len(batch.updates)}})
                 if replace_report is not None:
                     replace_report.update(filters=scope_filters, deleted=0, mode="refused", reason=map_note)
-                db.commit()
+                from session_contract import end_step
+                end_step(db)
                 return [], [], [], []
             map_judged = bool(map_version_col and batch.updates)
 
@@ -5496,12 +5501,15 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                         target_bks.append(value)
 
             from sqlalchemy import or_
+            # 🔴 LOCKED AS READ (총괄 09f58844f ②): the cells below are computed from these rows and their layers,
+            #    so another writer of the same rows waits here until this one commits - the lost update of two
+            #    writers reading the layers unlocked. row_id order, one order for every writer.
             existing_rows_list = db.query(table_model).filter(
                 or_(
                     table_model.row_id.in_(target_ids) if target_ids else False,
                     table_model.business_key_val.in_(target_bks) if target_bks else False
                 )
-            ).all()
+            ).order_by(table_model.row_id).with_for_update().all()
         
             row_cache = {}
             for r in existing_rows_list:
@@ -5559,7 +5567,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 ).filter(
                     models.CellSource.table_name == table_name,
                     models.CellSource.row_id.in_(all_row_ids)
-                ).order_by(models.CellSource.source_name.asc()).all()
+                ).order_by(models.CellSource.row_id, models.CellSource.column_name,
+                           models.CellSource.source_name.asc()).with_for_update().all()
                 for t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin in all_sources:
                     key = (r_id, col_name)
                     if key not in sources_cache:
@@ -5831,7 +5840,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 "business_key": l.get("business_key")
             })
             
-        db.commit()
+        from session_contract import end_step
+        end_step(db)                # a commit, or a held group's step (총괄 09f58844f)
         
         if logs_to_cache:
             from admin.audit_cache import audit_cache
@@ -6087,7 +6097,8 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
                 old=[row_values(row) for row in rows_to_delete])
             logs_to_cache = record_row_deletions(
                 db, table_name, rows_to_delete, user_name, tx_id)
-            db.commit()
+            from session_contract import end_step
+            end_step(db)
 
             if logs_to_cache:
                 from admin.audit_cache import audit_cache

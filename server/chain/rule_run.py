@@ -261,8 +261,6 @@ def rule_label(rule):
 #: rule name -> did its last run that proposed rows carry `origin_row_id` on them. This process's
 #: runs only: after a restart a rule is 「not known yet」 until it runs again.
 _ORIGIN_SEEN = {}
-#: rule name -> the columns its last run that proposed rows wrote. Same scope.
-_COLUMNS_SEEN = {}
 
 
 def item_cell(item, name):
@@ -270,7 +268,7 @@ def item_cell(item, name):
     return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
 
 
-def signed(result, declaration, rule=None, kept_out=None):
+def signed(result, declaration, rule=None, kept_out=None, handed=None, unmatched=None):
     """A proposal signed by the rule that made it (총괄 bc9710454 가-1 ㄱ): every item it proposes - updates, map
     metadata, its batches' items and its further pages as they are asked - carries the rule's declaration in
     `updated_by`, which the write puts on the layer row. A recount that came back blank takes back its own rule's
@@ -278,7 +276,11 @@ def signed(result, declaration, rule=None, kept_out=None):
 
     🔴 AND KEPT TO WHAT THE RULE WRITES (총괄 a7b67be28 ㄱ): a rule that lists its `target_columns` has every other
     cell taken out of its updates and its batches' items here - whichever kind of mapper made them - counted into
-    `kept_out` {column: cells} for `say_kept_out`. Map metadata goes to another table and is not narrowed."""
+    `kept_out` {column: cells} for `say_kept_out`. Map metadata goes to another table and is not narrowed.
+
+    🔴 AND EACH ITEM WITH THE ROW IT CAME FROM (총괄 09f58844f ⑦): `handed` the rows the call was handed - an item
+    its mapper left without one gets it here (`origin_by_key`), `unmatched` [rows, of] counting those it could not
+    for `say_origin_unknown`."""
     import chain_bindings
 
     if not isinstance(result, dict):
@@ -296,12 +298,15 @@ def signed(result, declaration, rule=None, kept_out=None):
             item["updated_by"] = declaration
         else:
             item.updated_by = declaration
+    if handed is not None:
+        origin_by_key(rule, handed, itertools.chain(result.get("updates") or (), batched), unmatched)
     more = result.get("next_page")
     if more is not None:
         def page():
-            out = {}
-            answer = signed(more(), declaration, rule, out)
+            out, missed = {}, [0, 0]
+            answer = signed(more(), declaration, rule, out, handed, missed)
             say_kept_out(rule, out)
+            say_origin_unknown(rule, missed)
             return answer
         result["next_page"] = page
     return result
@@ -312,6 +317,50 @@ def say_kept_out(rule, kept_out):
     if kept_out:
         logger.info("[%s] rule %s: %d cell(s) in %s not in its written columns, not written", RULE_LOG_TAG,
                     (rule or {}).get("name"), sum(kept_out.values()), sorted(kept_out))
+
+
+def origin_by_key(rule, handed, items, unmatched=None):
+    """⑦ (총괄 09f58844f): an item its mapper left without the row it came from - its frame cut to the columns it
+    writes drops `mapper_sdk.ORIGIN_MARK` - gets the handed row whose values in the target's key columns
+    (`cell_layer.key_columns`) are the item's, when exactly ONE handed row has them. None or several: left without,
+    and counted in `unmatched` [rows, of]. A rule whose mapper declares it stamps nothing (an aggregate) is not asked."""
+    items = [item for item in items if not item_cell(item, "origin_row_id")]
+    if not items or dynamic_mappers.stamps_origin((rule or {}).get("mapper"), rule) is False:
+        return
+    from chain import cell_layer
+
+    keys = sorted(cell_layer.key_columns((rule or {}).get("target_table")))
+    import mapper_sdk
+
+    # the handed rows read as a mapper reads them - one flat row each, the cell envelopes dropped
+    frame, rows = mapper_sdk.payloads_to_df(list(handed or ())), {}
+    if keys and "row_id" in frame.columns and all(key in frame.columns for key in keys):
+        for record in frame[["row_id", *keys]].itertuples(index=False):
+            rows.setdefault(tuple(str(value) for value in record[1:]), []).append(str(record[0]))
+    missed = 0
+    for item in items:
+        cells = item_cell(item, "updates") or {}
+        found = rows.get(tuple(str(cells[key]) for key in keys)) if keys and all(key in cells for key in keys) else None
+        if found is None or len(found) != 1:
+            missed += 1
+        elif isinstance(item, dict):
+            item["origin_row_id"] = found[0]
+        else:
+            item.origin_row_id = found[0]
+    if unmatched is not None:
+        unmatched[0] += missed
+        unmatched[1] += len(items)
+
+
+def say_origin_unknown(rule, unmatched):
+    """The one line a run (or a further page) says about its rows that carry no row they came from (⑦)."""
+    if unmatched and unmatched[0]:
+        from chain import cell_layer
+
+        logger.warning("[ChainRetract] origin unknown - rule %s: %d of %d row(s) carry no row they came from and match "
+                       "no single handed row by %s - deleting or editing their source will not take them back",
+                       (rule or {}).get("name"), unmatched[0], unmatched[1],
+                       sorted(cell_layer.key_columns((rule or {}).get("target_table"))))
 
 
 def output_stamps(items):
@@ -342,7 +391,9 @@ def columns_a_rule_writes(rule, items=(), more=False):
     wrote before - a join whose value row moved to a key no left row carries proposes nothing, and
     its old cells have to go - so then its mapper's declaration answers (`dynamic_mappers.
     columns_declared_for` - a kind the product builds, or a file mapper that registered `columns`,
-    총괄 016a766af), and a mapper that declares nothing with what it last wrote in this process.
+    총괄 016a766af). ⚰️ What it last wrote in this process answered after that - a slot that had not run the rule
+    answered «not known» (총괄 09f58844f ⑥); the write seat hands every page's rows, and reads the layers the rule
+    left when neither answers (`ingestion_worker._columns_its_layers_hold`).
     A rule that lists its `target_columns` answers with them first (총괄 a7b67be28 ㄱ).
     """
     import chain_bindings
@@ -358,9 +409,7 @@ def columns_a_rule_writes(rule, items=(), more=False):
     if columns:
         return columns
     declared = dynamic_mappers.columns_declared_for(rule)
-    if declared:
-        return set(declared)
-    return set(_COLUMNS_SEEN.get((rule or {}).get("name")) or ()) or None
+    return set(declared) if declared else None
 
 
 def retraction_refusal(rule):
@@ -670,15 +719,18 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
             batched = (rule or {}).get("is_batch", False)
             handed_out = [without_missing(handed)] if batched and (handed or not offered) else [
                 without_missing(one) for one in handed]
-            results, kept_out = [], {}
+            results, kept_out, unmatched = [], {}, [0, 0]
             with stage_timing():
                 for one in handed_out:
+                    rows = one if isinstance(one, list) else [one]
                     if bound.accepts_rule:
                         results.append(signed(without_missing(bound.call(db, one, rule=rule)), declaration,
-                                              rule, kept_out))
+                                              rule, kept_out, rows, unmatched))
                     else:
-                        results.append(signed(without_missing(bound.call(db, one)), declaration, rule, kept_out))
+                        results.append(signed(without_missing(bound.call(db, one)), declaration, rule, kept_out,
+                                              rows, unmatched))
             say_kept_out(rule, kept_out)
+            say_origin_unknown(rule, unmatched)
             for result in results:
                 if not isinstance(result, dict):
                     continue
@@ -717,7 +769,6 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
             answer["stamps_origin"] = output_stamps(proposed)
             if answer["stamps_origin"] is not None:
                 _ORIGIN_SEEN[name] = answer["stamps_origin"]
-                _COLUMNS_SEEN[name] = sorted(columns_a_rule_writes(rule, proposed) or ())
             # ⚠️ PROPOSED PLUS WRITTEN. A rule does one or the other, so this equals whichever
             #    it did - and a rule that did both is counted once for each, which is what
             #    「이 규칙이 낸 행」 means to the operator reading the queue.

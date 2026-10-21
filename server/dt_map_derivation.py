@@ -972,7 +972,8 @@ def apply_retraction(db, plan) -> int:
         chunk = ids[i:i + CHUNK]
         deleted += db.query(model).filter(model.row_id.in_(chunk)).count()
         crud.purge_map_rows(db, model, table_name, chunk)
-    db.commit()
+    from session_contract import end_step
+    end_step(db)
     return deleted
 
 

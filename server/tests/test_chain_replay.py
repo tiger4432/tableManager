@@ -234,8 +234,8 @@ def test_r1_hands_the_rows_over_and_the_worker_writes_them(rep_env):
 
     row = _target(rep_env, "P1")
     assert float(row.reserved) == 10.0
-    assert set(_sources(rep_env, "crep_test_target", row.row_id, "reserved")) == \
-        {"chain_ingestion"}, "the worker wrote it in the chain's layer, like any live edit"
+    assert {crud.layer_ranks_as(s) for s in _sources(rep_env, "crep_test_target", row.row_id, "reserved")} == \
+        {"chain_ingestion"}, "the worker wrote it in the chain's layer (its row's - ⑦), like any live edit"
 
 
 def test_one_replay_is_one_transaction(rep_env):
@@ -318,7 +318,8 @@ def test_r1_cannot_overwrite_a_human_value(rep_env):
 
     row = _target(rep_env, "P1")
     assert float(row.reserved) == 999.0, "a replay must never outrank a human's value"
-    srcs = _sources(rep_env, "crep_test_target", row.row_id, "reserved")
+    srcs = {crud.layer_ranks_as(s): v for s, v in _sources(rep_env, "crep_test_target", row.row_id,
+                                                              "reserved").items()}
     assert set(srcs) == {"user", "chain_ingestion"}, srcs
     assert float(srcs["chain_ingestion"]) == 10.0, "both layers exist; the human's wins"
 

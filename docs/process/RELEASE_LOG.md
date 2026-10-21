@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [체인 그룹 하나의 쓰기가 한 커밋 — 어디서 꺼져도 다 됨 또는 하나도 안 됨](#2026-10-22--체인-그룹-하나의-쓰기가-한-커밋--어디서-꺼져도-다-됨-또는-하나도-안-됨) — 적는 곳 ingestion_settings.json 의 `save_lock_timeout_seconds` · 보는 곳 체인 대기열 «deadlock with a save» · chain_worker.log «origin unknown»
 - 2026-10-22 [끊긴 리플레이를 끊긴 쪽 다음부터 이어 한다 — 대기열의 «Interrupted · Resume», 거두기는 이어 간 끝에 한 번](#2026-10-22--끊긴-리플레이를-끊긴-쪽-다음부터-이어-한다--대기열의-interrupted--resume-거두기는-이어-간-끝에-한-번) — 보는 곳 대기열 interrupted_runs · run 줄 pages · POST /admin/retroactive/runs/<id>/resume
 - 2026-10-21 [소급과 체인이 서로를 묶지 않는다 — 같은 표 줄은 디스패처가 막고, 표 잠금 대기에 상한, 소급 자식이 페이지 사이에 선언을 다시 읽고, 리플레이 사건이 남은 동안 소급 게이트가 닫힌다](#2026-10-21--소급과-체인이-서로를-묶지-않는다--같은-표-줄은-디스패처가-막고-표-잠금-대기에-상한-소급-자식이-페이지-사이에-선언을-다시-읽고-리플레이-사건이-남은-동안-소급-게이트가-닫힌다) — 보는 곳 chain_worker.log «rewound» · retroactive.log «read again at a page boundary» · 소급 거절 «still wait in the chain queue»
 - 2026-10-21 [체인 대기열 답이 줄마다 규칙 · 받은/낸 행 · 재시도의 깨진 단계 · 최근 실패 20 그룹을 싣는다](#2026-10-21--체인-대기열-답이-줄마다-규칙--받은낸-행--재시도의-깨진-단계--최근-실패-20-그룹을-싣는다) — 보는 곳 /admin/chain/queue rules[] · recent_failures[] · /admin/outbox/failed summary[].last_failure
@@ -510,6 +511,16 @@
 - **바뀐 동작** — 와처가 API 가 죽었을 때 조각마다 기다렸다(응답 없는 서버면 통지마다 5 초, 표 잠금을 쥔 채). 이제 파일당 한 번 이하. 판(세 조각 파일 셋): 응답 없는 API 파일당 23.0 · 21.4 · 21.3 초 -> 8.2 · 1.3 · 6.3 초.
 - **보는 곳** — «[Watcher] notifications not delivered (... did not take one ...), no sender tries for 5 s» · 다시 받으면 «notifications delivered again». 체인 줄의 끝도 «next try in 5 s» 에서 «no sender tries for 5 s» 로 바뀜.
 - **필요한 조건** — git pull · 와처 재기동 · 체인 워커 재기동.
+
+## 2026-10-22 · 체인 그룹 하나의 쓰기가 한 커밋 — 어디서 꺼져도 다 됨 또는 하나도 안 됨
+
+- **무엇** — 소유자 10-21 «ㄱ 쓰기»(총괄 09f58844f). 그룹 하나가 쓰기 · 잡 회수 · 빈 재계산 거두기 · 사라진 키 · 껍데기 · 편집 거두기를 단계마다 커밋하고, 지운 행 거두기 · 리플레이 커서 · 처리됨 표시를 또 커밋했습니다. 그 사이에 꺼지면 쓴 행은 남고 사건은 다시 돌았습니다.
+- **선언** — `ingestion_settings.json` 에 `save_lock_timeout_seconds`(기본 10) 한 칸.
+- **바뀐 동작** — 쓰기 단계 안의 커밋은 `session_contract.end_step` 한 좌석을 지나 세이브포인트 해제가 되고, 그룹의 커밋은 처리됨 표시와 함께 한 번(`_claimed_group_sync`, 표 잠금 안)입니다. 같은 함수를 혼자 부르는 길(API 저장 · R2 · 리플레이 끝 스윕)은 예전처럼 그 자리에서 커밋합니다. 쓰기가 읽는 대상 행 · 그 층 · 맵 교체의 범위 행 · 거두기의 행을 row_id 순 FOR UPDATE 로 잡습니다. 사람 저장은 그 행을 쥔 그룹 뒤에서 `save_lock_timeout_seconds` 를 넘기면, 교착이면 바로 409 «Another write is in progress - save again». 사람 저장과 교착한 그룹은 시도를 안 올리고 되감고, 대기열 줄에 «deadlock with a save, rewound N time(s)». 쓰기 단계 안(여러 쪽 제안의 다음 쪽)에서 맵퍼가 `db.commit()` 을 부르면 거절되고 그 그룹이 실패합니다 — «a mapper may not commit inside the write stage (return rows; the worker writes them)». 맵퍼가 출신 열을 버려도 건넨 행과 대상 키로 한 행씩 맞으면 출신을 붙이고, 그 규칙의 맨 층은 같은 커밋에서 거둡니다. 안 맞으면 «[ChainRetract] origin unknown - rule <규칙>» 한 줄. 편집 거두기의 칸은 이번에 쓴 결과와 선언(없으면 그 규칙이 남긴 층)에서 읽고, 프로세스가 전에 본 것을 묻지 않습니다.
+- **다시 돌리기** — `rerun_set_aside` 는 치워 둔 삭제를 행 대신 옛 값과 함께 삭제 사건으로 다시 넣습니다(`stage_collapsed_event` DELETE). 조인 · decide 처럼 계보 없이 다시 세는 규칙이 실시간과 같은 길로 거둡니다. 옛 값이 없는 옛 사건은 run 로그에 «old values not kept - this deletion cannot be replayed; rows: …» 한 줄을 남기고 건너뜁니다.
+- **막지 않는 것** — 맵퍼가 읽는 입력 값은 잠금 없이 읽습니다. 다음 쪽(more())의 맵퍼는 쓰기 단계 안에서 돌아 그 동안 행을 쥡니다.
+- **필요한 조건** — git pull · 런처 재기동. 맵퍼에 `db.commit()` 이 있으면 지웁니다(행을 돌려주면 워커가 씁니다).
+- **자세히** — 시험 `test_a_chain_groups_writes_are_one_commit.py`.
 
 ## 2026-10-22 · 끊긴 리플레이를 끊긴 쪽 다음부터 이어 한다 — 대기열의 «Interrupted · Resume», 거두기는 이어 간 끝에 한 번
 

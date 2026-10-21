@@ -549,7 +549,10 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
             by_row = {}
             for row_id, col in claims:
                 by_row.setdefault(row_id, set()).add(col)
-            rows = {r.row_id: r for r in db.query(model).filter(model.row_id.in_(chunk)).all()}
+            # locked as read when it withdraws - its remaining layers decide each cell (총괄 09f58844f ②); a dry
+            # pass reads them as they are, holding nothing
+            read_rows = db.query(model).filter(model.row_id.in_(chunk)).order_by(model.row_id)
+            rows = {r.row_id: r for r in (read_rows.with_for_update() if apply else read_rows).all()}
 
             # Remaining sources + pins for the whole chunk: two batched queries, not
             # two per cell. Shared with R3 so the two operations cannot assemble the
@@ -634,7 +637,8 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                             tuple_(models.CellSource.source_name, models.CellSource.row_id)
                             .in_(pairs[j:j + chunk_size]),
                         ).delete(synchronize_session=False)
-                db.commit()
+                from session_contract import end_step
+                end_step(db)
 
     if not apply:
         db.rollback()

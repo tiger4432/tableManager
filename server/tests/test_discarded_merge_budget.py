@@ -349,8 +349,9 @@ async def test_chain_at_threshold_still_builds_the_items_it_ships(db_session):
     assert item["data"]["prod_line"]["value"] == "L1"     # a wrapped cell, as every sender's (9eb902922 ①)
     assert item["created_at"] and item["updated_at"]
 
-    assert len(selects_from(recorded, CHAIN_TABLE)) == BROADCAST_ITEM_LIMIT + 1, (
-        "the items this arm really sends still cost their reloads")
+    # its write step ends in a savepoint, not a commit (총괄 09f58844f) - nothing written is expired, so the items
+    # it ships cost no reload
+    assert len(selects_from(recorded, CHAIN_TABLE)) == 1, "crud's own prefetch, and nothing else"
 
 
 # ---------------------------------------------------------------------------

@@ -439,12 +439,17 @@ def test_the_chain_group_translates_nothing_and_queues_nothing_in_memory(monkeyp
         raise AssertionError("the chain path re-translated inline")
 
     monkeypatch.setattr(backfill, "rescope", boom)
+    # the group's end - its cursor, marks and one commit (총괄 09f58844f) - is not this test's subject
+    from chain import replay
+    monkeypatch.setattr(replay, "advance_cursors", lambda db, events: 0)
+    monkeypatch.setattr(worker, "_ran_though_set_aside", lambda db, tx_id, events: 0)
+    monkeypatch.setattr(worker, "mark_processed", lambda event, status: None)
     events = [FakeEvent("dt_log", "EDIT", {"row_id": "r1"}),
               FakeEvent("dt_log", "EDIT", {"row_ids": ["r2", "r3"]}),
               FakeEvent("dt_log", "CREATE", {"row_id": "r4"})]
     ok, reason, messages = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
         worker.process_chain_transaction_group(
-            "tx", events, types.SimpleNamespace(in_transaction=lambda: False), []))
+            "tx", events, types.SimpleNamespace(in_transaction=lambda: False, commit=lambda: None), []))
     assert ok is True and reason is None and messages == []
     assert followup.queue_depth() == 0
 

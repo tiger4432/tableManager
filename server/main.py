@@ -1,4 +1,4 @@
-from sqlalchemy.exc import IntegrityError  # [D3] business-key conflict -> 409, not 500
+from sqlalchemy.exc import IntegrityError, OperationalError  # [D3] business-key conflict -> 409, not 500
 from error_said import told
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -223,6 +223,21 @@ async def _read_only_relation_refused(request: Request, exc: crud.ReadOnlyRelati
     from fastapi.responses import JSONResponse as _JSONResponse
 
     return _JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+# A write over HTTP that did not get its lock within `save_lock_timeout_seconds` - a chain group's write stage holds
+# the rows to its one commit - or that PostgreSQL broke out of a deadlock: 409 and one sentence, on every route
+# (총괄 09f58844f ②). Any other database error is not this one's.
+@app.exception_handler(OperationalError)
+async def _a_lock_not_got(request: Request, exc: OperationalError):
+    import db_safety
+    from fastapi.responses import JSONResponse as _JSONResponse
+
+    if not db_safety.lost_a_lock(exc):
+        raise exc
+    logger.warning("[Save] %s %s: %s - %s", request.method, request.url.path, db_safety.SAVE_AGAIN,
+                   (str(exc).strip().splitlines() or [""])[0])
+    return _JSONResponse(status_code=409, content={"detail": db_safety.SAVE_AGAIN})
 
 
 # --- Ledger read routes (GET /api/ledger/subgraph and nine others) ---------
@@ -5106,7 +5121,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     from chain import ingestion_worker as chain_worker
     from runtime import running as running_seat
     running, paused = running_seat.chain_lines_running(), chain_control.paused()
-    retrying = [line.key for line in lines if line.max_retry]
+    # an attempt charged, or a deadlock with a save that charged none (총괄 09f58844f rule 4)
+    retrying = [line.key for line in lines if line.max_retry or line.retrying]
     last_failure = {}
     for key, said, stage in (db.query(line_key, outbox.payload[event_constants.LAST_FAILURE].as_string(),
                                       outbox.payload[event_constants.LAST_FAILURE_STAGE].as_string())
@@ -5162,8 +5178,9 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             "cancel": {"key": line.key},
             # {"state", "why"} - the grid queue's rows carry the same (총괄 248ae20cd)
             "chain_state": event_constants.chain_state_of(
-                False, "RETRYING" if line.max_retry else "PENDING", retry_count=int(line.max_retry or 0),
-                attempts_cap=(chain_worker.group_attempts_cap(line_rules, chain_rules) if line.max_retry else None),
+                False, "RETRYING" if line.max_retry or line.retrying else "PENDING", retry_count=int(line.max_retry or 0),
+                attempts_cap=(chain_worker.group_attempts_cap(line_rules, chain_rules)
+                              if line.max_retry or line.retrying else None),
                 payload=last_failure.get(line.key),
                 waiting_seconds=_age(line.created_at), running=running.get(line.key), paused=paused),
             # the slot process running it - killing that pid stops this line only (총괄 19f6a9277)

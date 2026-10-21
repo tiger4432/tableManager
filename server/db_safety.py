@@ -315,6 +315,19 @@ def waited_past_the_lock_timeout(error) -> bool:
     code = getattr(error, "pgcode", None) or getattr(getattr(error, "orig", None), "pgcode", None)
     return code == "55P03" or "lock timeout" in str(error)
 
+#: The sentence a person's save gets when it did not get a lock (`lost_a_lock`, 총괄 09f58844f ②).
+SAVE_AGAIN = "Another write is in progress - save again"
+
+
+def lost_a_lock(error) -> bool:
+    """A write that did not get its lock - it waited past `lock_timeout` (55P03), or PostgreSQL broke a deadlock it
+    was in (40P01). Asked of an exception, or of the text a chain group's failure carries. ONE JUDGE: a save over HTTP
+    answers it with `SAVE_AGAIN` (main.py), a chain group rewinds (`table_locks.rewinds`)."""
+    code = getattr(error, "pgcode", None) or getattr(getattr(error, "orig", None), "pgcode", None)
+    said = str(error or "")
+    return (code in ("55P03", "40P01") or "LockNotAvailable" in said or "DeadlockDetected" in said
+            or "deadlock detected" in said)
+
 #: WHAT IS DELIBERATELY NOT IN HERE: `lock_timeout` and
 #: `idle_in_transaction_session_timeout`, which `scripts/diagnose_wal_headroom.py`
 #: also pins. Adding a timeout to a pass that does a full GROUP BY over every

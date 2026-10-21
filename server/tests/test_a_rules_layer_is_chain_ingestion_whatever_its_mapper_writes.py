@@ -3,7 +3,8 @@
 「모든 맵퍼의 소스네임은 chain_ingestion 에서 못 바꾸게 해야 할 듯」 · 「체인 출력이 예전 체인에 덮여 있네」).
 
   ① the name a mapper wrote -> chain_ingestion (a row layer keeps its bracket); @mapper(source_name=) told once
-    an item read from a row -> that row's layer chain_ingestion (<row>) (총괄 8ec008914)
+    an item read from a row -> that row's layer chain_ingestion (<row>) (총괄 8ec008914) - and since 09f58844f ⑦
+    an item its mapper left without the row, when its key matches one handed row, the same
   ② an old chain_ingestion layer, and a mapper that writes 'dt_inventory': the new value shows
   ④ a person's layer still wins
   ⑤ auto-confirm's two names and the enrichment backfill's stay as written
@@ -132,7 +133,7 @@ def test_1_the_name_a_mapper_wrote_is_written_as_chain_ingestion(db, written, la
     NAMED.update(name=written, origin=origin)
     _write(db, "user", k="K1", a="v")
     _drain(db)
-    assert _x(db) == ("v!", {_row_layer(db) if origin else layer: "v!"})
+    assert _x(db) == ("v!", {_row_layer(db): "v!"}), "the row its key matches is its origin (⑦)"
 
 
 @pytest.mark.parametrize("meant", [candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY,
