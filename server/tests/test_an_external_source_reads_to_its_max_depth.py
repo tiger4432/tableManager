@@ -143,7 +143,8 @@ def test_a_real_watcher_never_walks_below_max_depth(tmp_path):
         assert until(lambda: "External source ta@" in text()), text()[-3000:]
         assert until(lambda: reads() == ["d0.csv", "d1.csv"]), reads()
         assert re.search(r"External source ta@[^\n]*: 2 file\(s\) looked at - outside the root 0 · name not matched 0 · "
-                         r"not a file 0 · stat failed 0 · folders below max_depth 1 · folders not listed 0 · "
+                         r"not a file 0 · stat failed 0 · folders not matching 0 · folders below max_depth 1 · "
+                         r"folders not listed 0 · "
                          r"already read 0 · dispatched 2", text()), text()[-3000:]
         opened = {os.path.normcase(p) for p in listed.read_text(encoding="utf-8").splitlines()}
         assert os.path.normcase(str(share / "a")) in opened                              # the recorder records

@@ -13,6 +13,7 @@ from directory_watcher import (
     ExternalSourceEventHandler,
     IngestionHandler,
     WorkspaceWatcher,
+    _folder_may_hold,
     validate_external_source_specs,
 )
 from tests.test_a_failed_external_file_retries_on_its_own_handler import env  # noqa: F401
@@ -63,6 +64,31 @@ def test_the_seat_takes_a_file_only_when_its_path_from_the_root_matches(
     assert (context is not None) is taken
     if taken:
         assert context["rel_path"] == rel
+
+
+def _listed(glob):
+    return [glob] if isinstance(glob, str) else glob      # as the registration keeps it
+
+
+@pytest.mark.parametrize("glob,rel,taken", TAKES)
+def test_the_sweep_enters_every_folder_a_taken_file_is_in(glob, rel, taken):
+    """The sweep's folder prune reads the pattern as the seat does: a file the seat takes is never below a folder the
+    walk leaves out."""
+    folders = rel.split("/")[:-1]
+    if taken:
+        assert all(_folder_may_hold({"glob": _listed(glob)}, "/".join(folders[:n])) for n in range(1, len(folders) + 1))
+
+
+@pytest.mark.parametrize("glob,folder,enters", [
+    ("*.png", "x/y", True), ("sub/*.png", "sub", True), ("sub/*.png", "other", False), ("sub/*.png", "sub/c", False),
+    ("*/raw/**/*.jpg", "A", True), ("*/raw/**/*.jpg", "A/b", False), ("*/raw/**/*.jpg", "A/raw/x/y", True),
+    ("raw/**/*.jpg", "A", False), ("**/raw/**/*.jpg", "A/B/C", True), ("LOT*/W*/STEP_02/v.csv", "LOT1/W2/STEP_01", False),
+    ("LOT*/W*/STEP_02/v.csv", "LOT1/W2/STEP_02", True), ("LOT*/W*/STEP_02/v.csv", "X1", False),
+    (["sub/*.png", "other/*.png"], "other", True),
+])
+def test_the_sweep_leaves_out_the_folders_no_taken_file_can_be_in(glob, folder, enters):
+    assert _folder_may_hold({"glob": _listed(glob)}, folder) is enters
+    assert _folder_may_hold({"filename": "voids.json"}, folder) is True
 
 
 def test_no_glob_is_today_the_one_filename(tmp_path):
