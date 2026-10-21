@@ -5946,7 +5946,7 @@ def create_empty_rows_batch(db: Session, table_name: str, count: int, user_name:
             for row in new_rows:
                 log_dict = create_audit_log(
                     db, table_name, row.row_id, "CREATE",
-                    None, "새 행 생성됨", "system", user_name,
+                    None, "row created", "system", user_name,
                     transaction_id=tx_id,
                     business_key=row.business_key_val,
                     add_to_cache=False
