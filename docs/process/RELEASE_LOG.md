@@ -580,11 +580,13 @@
 
 - **무엇** — 체인 묶음이 시간 상한에 끊겼을 때 화면에는 빨간 «600 s» 만 남고, 규칙 · 단계는 chain_worker.log 를 열어야 보였습니다(소유자 「빨간 글씨 600 s 나오고 끝」 · 「화면에 좀 띄워」). 이제 서버가 지은 문장(`[rules=… target=…] statement timeout · 600 s · stage … - …`)이 그대로 화면에 섭니다.
 - **바뀐 동작**
-  - Chain failures 의 줄(표 · 종류 · 날)마다 그 줄의 가장 새 실패 문장이 줄 밑에 섭니다. 서버가 그 칸(`summary[].last_reason`)을 보내야 서고, 보내기 전에는 줄이 오늘과 같습니다.
-  - 대기열 상태 칸의 사유(재시도의 실패 문장 · 도는 줄의 단계 · 기다리는 것)는 세 줄까지 줄바꿈하고, 넘치면 툴팁에 전문이 있습니다. 메인 그리드의 Queue 와 어드민 Chain queue 가 같습니다.
+  - Chain failures 의 줄(표 · 종류 · 날)마다 그 줄의 가장 새 실패 문장(`summary[].last_failure`)이 줄 밑에 섭니다.
+  - 대기열 상태 칸의 사유(재시도의 실패 문장 · 도는 줄의 단계 · 기다리는 것)는 세 줄까지 줄바꿈하고, 넘치면 툴팁에 전문이 있습니다. 재시도 · 실패 줄은 깨진 단계를 문장 앞에 말합니다(`why.stage`). 메인 그리드의 Queue 와 어드민 Chain queue 가 같습니다.
+  - 어드민 Chain queue 표에 Rules 열: 줄의 규칙마다 한 줄 — 도는 규칙은 `in 500 · running 1m 12s`, 아니면 마지막 실행의 `in 19,000 · out 20,000`. 서버가 비운 수는 «—».
+  - 대기열 아래 «Recent failures» 표: 가장 새 실패 그룹 20 개 — Failed at · Transaction(누르면 전체 id 복사) · Rules · Stage · In · Out · Failure(서버 문장, 세 줄 · 툴팁). 20 개로 잘렸으면 표 위에 «Showing the newest 20 (cap 20).».
 - **뒤집은 판정** — 「어드민 대기열 표는 칸마다 한 줄」(총괄 a9db721a3)을 «사유 칸»에 한해 뒤집습니다. 나머지 칸은 한 줄 그대로입니다.
-- **필요한 조건** — 브라우저 새로고침(클라만 바뀜). 실패 목록 줄의 문장은 서버의 `last_reason` 이 착지한 뒤.
-- **자세히** — 이 항목과 같은 커밋. 하니스 `failure_summary_harness.mjs`(G1 · G2) · 화면 하니스 «reason whole».
+- **필요한 조건** — 브라우저 새로고침(클라만 바뀜). 서버 칸은 9c1d2f26f 에 이미 착지.
+- **자세히** — 이 항목과 같은 커밋. 하니스 `failure_summary_harness.mjs`(G1 · G2) · `chain_queue_panel_harness.mjs`(W1–W6) · 화면 하니스 «reason whole».
 
 ## 2026-10-21 · 와처가 가볍게 선다 · 외장 소스에 max_depth · 훑기마다 소스별로 «왜 안 넘겼나»
 
