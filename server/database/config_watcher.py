@@ -3,6 +3,7 @@ import threading
 import time
 import logging
 from error_said import told
+from config_backup import RUNTIME_FILES
 
 logger = logging.getLogger("Watcher.ConfigWatcher")
 
@@ -92,7 +93,9 @@ def _name_of(path, config_dir, workspace_dir):
         parts = os.path.relpath(full, root).split(os.sep)
         if parts[0] in _ONTOLOGY_DIRS:
             return ONTOLOGY
-        return parts[0] if len(parts) == 1 and parts[0].endswith(".json") else None
+        # a process's own status file (`RUNTIME_FILES`) is no declaration - nobody edits it (소유자 10-21)
+        return (parts[0] if len(parts) == 1 and parts[0].endswith(".json") and parts[0] not in RUNTIME_FILES
+                else None)
     return base if base in ROWS else full
 
 

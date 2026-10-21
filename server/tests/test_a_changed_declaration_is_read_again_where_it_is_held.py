@@ -298,3 +298,41 @@ def test_a_watched_folder_reads_a_hand_edit_and_a_save_once(root, monkeypatch, c
         observer.config_handler.cancel_pending()
         observer.stop()
         observer.join(5)
+
+
+def test_a_process_status_file_is_no_declaration_to_the_watcher(root, monkeypatch, caplog):
+    """e53e11add (소유자 10-21 「supervisor.json 변경되어서 컨피그 워처 돈다고 계속 로그 뜨는데」): the watcher's own event -
+    supervisor_status.json and scheduler_status.json written (`config_backup.RUNTIME_FILES`) say nothing and move
+    nothing; table_config.json written after them is read once, as it always was."""
+    from config_backup import RUNTIME_FILES
+    from database import crud
+
+    ran = _recording_rows(monkeypatch)
+    monkeypatch.setattr(crud, "CONFIG_PATH", str(root / "table_config.json"))      # the folder the watcher watches
+    monkeypatch.setattr(config_watcher, "DEBOUNCE_SEC", 0.3)       # a write is two events: one window holds both
+    monkeypatch.setattr(config_watcher, "_ENGINE", [None])
+    monkeypatch.setattr(config_watcher, "_MAPPER_DIRS", [()])
+    status = sorted(RUNTIME_FILES)
+    assert status == ["scheduler_status.json", "supervisor_status.json"]
+    before = config_watcher.generation(*status)
+    observer = config_watcher.start_config_watcher(None)
+    try:
+        with caplog.at_level(logging.INFO, logger=WATCHER_LOG):
+            for _ in range(3):                          # a process rewrites its status file every tick
+                for name in status:
+                    _write(str(root / name), {"beat": time.time()})
+                time.sleep(0.1)
+            _write(str(root / "table_config.json"), {})
+            deadline = time.time() + 10
+            while not ran and time.time() < deadline:
+                time.sleep(0.05)
+            time.sleep(0.5)
+            assert observer.config_handler.wait_for_idle(timeout=10)
+        said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Config]")]
+        assert said == ["[Config] table_config.json changed - read again in this process"], said
+        assert [name for name, _paths in ran] == ["table_config.json"], ran
+        assert config_watcher.generation(*status) == before
+    finally:
+        observer.config_handler.cancel_pending()
+        observer.stop()
+        observer.join(5)
