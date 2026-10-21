@@ -12,7 +12,7 @@ import { INCLUDE_STATUSES } from '../folder_retry.js';
 import { countNumberText } from '../match_count.js';
 import { initTheme } from '../theme.js';
 import { WORDS, groupFiles, queryOf, tableLines } from './model.js';
-import { DetailPart, FilesPart, SearchPart, TableListPart } from './parts.js';
+import { DetailPart, FilesPart, ReadNowPart, SearchPart, TableListPart } from './parts.js';
 
 const NO_TOKEN = 'Admin token needed - open Admin once on this browser';
 
@@ -26,10 +26,11 @@ async function read(path) {
   return res.json();
 }
 
-async function act(path) {
+async function act(path, sentence = false) {
   const res = await adminFetch(`${API_BASE}${path}`, { method: 'POST' });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(res.status === 401 ? NO_TOKEN : `${res.status}${body.detail ? ` · ${typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)}` : ''}`);
+  const detail = body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : '';
+  if (!res.ok) throw new Error(res.status === 401 ? NO_TOKEN : sentence && detail ? detail : `${res.status}${detail ? ` · ${detail}` : ''}`);
   return body;
 }
 
@@ -56,6 +57,20 @@ export function seatFileIngestionPage(doc = document) {
         const done = await act(`/admin/file-ingestion/retry-failed?${p}`);
         showToast(done.message || `${seen.count} handed again`, 'success');
         await list(false);
+      } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
+    },
+  });
+  // «Read now» (총괄 aaf19d0ca): who reads the path and why the watcher did not, then one owner's button hands it over
+  const readNow = new ReadNowPart(byId('fi-readnow'), {
+    doc,
+    onCheck: (path) => act(`/admin/file-ingestion/read-now?${new URLSearchParams({ path, preview: 'true' })}`, true),
+    onRead: async (path, table) => {
+      if (!doc.defaultView.confirm(WORDS.readNowAsk(path, table))) return;
+      try {
+        const done = await act(`/admin/file-ingestion/read-now?${new URLSearchParams({ path, table })}`, true);
+        showToast(done.message, 'success');
+        query.table = table;
+        await search();
       } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
     },
   });
@@ -127,6 +142,7 @@ export function seatFileIngestionPage(doc = document) {
   }
 
   draw();
+  readNow.render();
   start();
   return { query, view, search };
 }

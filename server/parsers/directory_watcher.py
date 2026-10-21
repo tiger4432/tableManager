@@ -1097,13 +1097,33 @@ def finish_read_files_fill(reached_all: bool):
     return line
 
 
-def source_taking(specs, file_path: str):
+def why_not_taken(spec, file_path: str, rel_path: str) -> str | None:
+    """Why the source does not take the file `rel_path` below its root (as walked or written) - THE words the sweep's
+    source line counts and Read now's preview says (총괄 10-21: one function, one vocabulary): "below max_depth",
+    "name not matched", "outside the root" (its real path), or None - taken."""
+    if not _within_depth(spec, rel_path.count("/")):
+        return "below max_depth"
+    if not _source_takes(spec.get("options") or {}, file_path, rel_path):
+        return "name not matched"
+    if _safe_relative_path(file_path, spec["root"]) is None:
+        return "outside the root"
+    return None
+
+
+class SourceGone(RuntimeError):
+    """A log row names an external source the watcher no longer holds - read under nothing rather than as raws."""
+
+
+def source_taking(specs, file_path: str, named: bool = True):
     """(the external source that takes `file_path`, its path below that source's root), or None - the deepest root
     when two take it. THE one judgement: the handler's read (`external_source_context`) and the re-read into a table
-    (`ingestion.reread.select_files`) ask it, so what a preview counts is what the handler reads."""
+    (`ingestion.reread.select_files`) ask it, so what a preview counts is what the handler reads. `named=False` - a
+    person chose the file for that source (Read now, a Retry; 총괄 10-21): only the real path is asked to be under the
+    root, not the name or the depth."""
     def takes(spec, rel_path):
-        return (rel_path is not None and _within_depth(spec, rel_path.count("/"))
-                and _source_takes(spec.get("options") or {}, file_path, rel_path))
+        return (rel_path is not None and (not named or (
+            _within_depth(spec, rel_path.count("/"))
+            and _source_takes(spec.get("options") or {}, file_path, rel_path))))
 
     matches = []
     for spec in specs:
@@ -2042,14 +2062,15 @@ class IngestionHandler(FileSystemEventHandler):
                 f"restart is required to change root/parser/options safely.")
         self._external_sources[source_id] = dict(spec)
 
-    def external_source_context(self, file_path: str, source_id: str | None = None):
+    def external_source_context(self, file_path: str, source_id: str | None = None, named: bool = True):
         """Parser context for an external file, or ``None`` when it escapes/root-misses or the
-        source does not take its name (`_source_takes`) - the one seat every hand-off asks."""
+        source does not take its name (`_source_takes`, unless `named=False` - see `source_taking`) - the one seat
+        every hand-off asks."""
         specs = self._external_sources.values()
         if source_id is not None:
             spec = self._external_sources.get(source_id)
             specs = (spec,) if spec is not None else ()
-        taken = source_taking(specs, file_path)
+        taken = source_taking(specs, file_path, named=named)
         if taken is None:
             return None
         spec, rel_path = taken
@@ -2061,10 +2082,24 @@ class IngestionHandler(FileSystemEventHandler):
             "options": dict(spec.get("options") or {}),
         }
 
-    def _parse_meta_for(self, abs_path: str) -> dict:
+    def _parse_meta_for(self, abs_path: str, source: str | None = None) -> dict:
+        """`source` - the external source root a log row names (Read now, a Retry): the file is read under that
+        source whatever its name or depth (총괄 10-21 «와처가 본 것처럼»)."""
         managed_rel = self.relative_source_path(abs_path, os.path.abspath(self.raws_path))
         if managed_rel is not None:
             return {"rel_path": managed_rel}
+        if source and source != "raws":
+            named = [spec["source_id"] for spec in self._external_sources.values()
+                     if os.path.normcase(spec["root"]) == os.path.normcase(os.path.abspath(source))]
+            context = self.external_source_context(abs_path, named[0], named=False) if named else None
+            if context is None:                     # 총괄 10-21: never read as raws under no source
+                owners = [spec["root"] for spec in self._external_sources.values()
+                          if _safe_relative_path(abs_path, spec["root"]) is not None]
+                raise SourceGone(
+                    (f"the source {source} is not in ingestion_settings.json" if not named
+                     else f"{abs_path} is not under the source {source} by its real path")
+                    + f" - owned now by: {', '.join(owners) or 'no source of ' + str(self.table_name)}")
+            return {"rel_path": context["rel_path"], "external_source": context}
         context = self.external_source_context(abs_path)
         if context is None:
             return {"rel_path": None}
@@ -3159,7 +3194,7 @@ class IngestionHandler(FileSystemEventHandler):
             #   - IN_PROGRESS(중단됨) → 기록된 오프셋에서 재개
             #   - DONE(이미 완료) → 사용자가 굳이 다시 눌렀으므로 0부터 전량 재적재
             signature = compute_file_signature(filepath)
-            parse_meta = self._parse_meta_for(os.path.abspath(filepath))
+            parse_meta = self._parse_meta_for(os.path.abspath(filepath), source=log_entry.source)
             rows, total_rows, skipped_no_key = self._resolve_rows(
                 filepath, t_name=t_name, table_info=table_info, meta=parse_meta
             )
@@ -4551,10 +4586,9 @@ class WorkspaceWatcher:
                 why["looked"] += 1
                 said()
                 if not target["event_handler"].accepted_path(file_path):
-                    # Which way it was refused - for the line only; the judgement is `accepted_path`'s: a name
-                    # the pattern takes on the walked path, refused, is a real path outside the root.
-                    outside = _source_takes(options, file_path, base + filename)
-                    why["outside the root" if outside else "name not matched"] += 1
+                    # Which way it was refused - for the line only; the judgement is `accepted_path`'s.
+                    reason = why_not_taken(spec, file_path, base + filename) or "outside the root"
+                    why[reason] = why.get(reason, 0) + 1
                     continue
                 try:
                     stat = os.stat(file_path)            # one look at the file on a share - its kind is in it

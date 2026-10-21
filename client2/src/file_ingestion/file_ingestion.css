@@ -84,5 +84,9 @@
 .fi-counts { border-collapse: collapse; font-size: var(--fs-h5); font-variant-numeric: tabular-nums; }
 .fi-counts td { padding: var(--space-1) var(--space-4) var(--space-1) 0; }
 .fi-counts td.fi-num { text-align: right; padding-right: 0; }
+.fi-readnow__form { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; }
+.fi-readnow__said { margin: 0 var(--space-4) var(--space-3); }
+.fi-readnow__owner { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; padding: var(--space-2) var(--space-4); border-top: 1px solid var(--border); font-size: var(--fs-h5); }
+.fi-readnow__owner .fi-btn { margin-left: auto; }
 .fi-why { display: flex; flex-direction: column; gap: var(--space-1); border: 1px solid var(--danger); padding: var(--space-3); font-size: var(--fs-h5); }
 .fi-why__title { font-size: var(--fs-label); color: var(--danger); }

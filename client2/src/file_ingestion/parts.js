@@ -22,6 +22,66 @@ const boxHead = (el, words, side) => {
   return h;
 };
 
+export class ReadNowPart {
+  /** «Read now» (총괄 aaf19d0ca): a path, who reads it and why the watcher did not - the server's words - and a button
+   * per owner. @param {{doc, onCheck: (path) => Promise<answer>, onRead: (path, table) => Promise<void>}} deps */
+  constructor(mount, deps) {
+    this.mount = mount;
+    this.deps = deps;
+    this.el = maker(deps.doc || mount.ownerDocument);
+    this.path = '';
+    this.answer = null;
+    this.refused = '';
+  }
+
+  render() {
+    const el = this.el;
+    const root = el('section', 'fi-box fi-readnow');
+    root.append(boxHead(el, WORDS.readNowTitle));
+    const form = el('form', 'fi-readnow__form fi-pad');
+    const label = el('label', 'fi-field fi-grow2');
+    label.append(el('span', 'fi-label', WORDS.readNowPath));
+    const input = el('input', 'fi-input fi-mono');
+    input.value = this.path;
+    input.spellcheck = false;
+    label.append(input);
+    const check = el('button', 'fi-btn', WORDS.check);
+    check.type = 'submit';
+    form.append(label, check);
+    form.addEventListener('submit', (e) => { e.preventDefault(); this.path = input.value.trim(); if (this.path) this.check(); });
+    root.append(form);
+    if (this.refused) {
+      const why = el('div', 'fi-why fi-readnow__said');
+      why.append(el('span', 'fi-why__title', WORDS.notRead), el('span', '', this.refused));
+      root.append(why);
+    }
+    for (const owner of (this.answer && this.answer.owners) || []) {
+      const line = el('div', 'fi-readnow__owner');
+      const words = owner.why_not.length ? owner.why_not.join(' · ') : WORDS.taken;
+      const said = el('span', '', words);
+      said.dataset.tone = owner.why_not.length ? 'warn' : 'ok';
+      const read = el('button', 'fi-btn fi-btn--primary', WORDS.readNow);
+      read.type = 'button';
+      read.dataset.table = owner.table;
+      read.addEventListener('click', () => this.deps.onRead(this.answer.path, owner.table));
+      line.append(el('span', 'fi-mono', owner.table), el('span', 'fi-meta fi-path', owner.source), said, read);
+      root.append(line);
+    }
+    this.mount.replaceChildren(root);
+  }
+
+  async check() {
+    try {
+      this.answer = await this.deps.onCheck(this.path);
+      this.refused = '';
+    } catch (e) {
+      this.answer = null;
+      this.refused = e.message;
+    }
+    this.render();
+  }
+}
+
 export class TableListPart {
   /** @param {{doc, onPick: (name) => void}} deps */
   constructor(mount, deps) {

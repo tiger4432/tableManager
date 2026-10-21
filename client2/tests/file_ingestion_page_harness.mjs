@@ -194,6 +194,34 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   new Q.FilesPart(one, { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder() {} }).render({ groups: byFolder, shown: 'one', picked: null, more: false });
   new Q.FilesPart(two, { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder() {} }).render({ groups: none, shown: 'two', picked: null, more: false });
   ok('P5 two parts in one page keep to their own div', byClass(one, 'fi-group').length === 2 && byClass(two, 'fi-group').length === 0 && texts(one, 'fi-meta')[0] === 'one');
+
+  // P6 - Read now: who reads the path and why the watcher did not (the server's words), a button per owner
+  const rHost = doc.createElement('div');
+  doc.body.append(rHost);
+  const asked = [];
+  const reads = [];
+  const answer = { path: 'X:\share\a\notes.txt', owners: [
+    { table: 'ta', source: 'X:\share', why_not: ['name not matched'] }, { table: 'tb', source: 'raws', why_not: [] }] };
+  let refuse = '';
+  const rn = new Q.ReadNowPart(rHost, { doc, onCheck: async (p) => { asked.push(p); if (refuse) throw new Error(refuse); return answer; },
+    onRead: (p, table) => reads.push([p, table]) });
+  rn.render();
+  const pathInput = walk(rHost).find((n) => n.tagName === 'INPUT');
+  pathInput.value = '  X:\share\a\notes.txt ';
+  walk(rHost).find((n) => n.tagName === 'FORM').dispatch('submit', { preventDefault() {} });
+  await new Promise((r) => setTimeout(r, 0));
+  const owners = byClass(rHost, 'fi-readnow__owner');
+  const said = owners.map((o) => walk(o).filter((n) => n.dataset && n.dataset.tone).map((n) => `${n.dataset.tone}:${n.textContent}`)[0]);
+  const buttons = byClass(rHost, 'fi-btn--primary');
+  if (buttons[1]) buttons[1].dispatch('click');
+  ok('P6a Check asks the trimmed path; a line per owner with the server\'s reason or «the watcher takes it»; Read now hands that owner',
+    JSON.stringify(asked) === JSON.stringify(['X:\share\a\notes.txt']) && owners.length === 2
+      && JSON.stringify(said) === JSON.stringify(['warn:name not matched', `ok:${M.WORDS.taken}`]) && buttons.length === 2
+      && JSON.stringify(reads) === JSON.stringify([['X:\share\a\notes.txt', 'tb']]), `${asked} ${JSON.stringify(said)} ${JSON.stringify(reads)}`);
+  refuse = 'No table reads X:\e.csv: it is under no raws folder and no external source root';
+  await rn.check();
+  ok('P6b a refusal: the server\'s sentence where the owners were, no button', byClass(rHost, 'fi-why')[0]?.textContent === M.WORDS.notRead + refuse
+    && byClass(rHost, 'fi-readnow__owner').length === 0, byClass(rHost, 'fi-why')[0]?.textContent);
   return { ran, failed: failed.slice() };
 }
 
@@ -214,6 +242,8 @@ const MUTANTS = [
   { name: 'a waiting retry drawn as a failure', catches: ['M6'], file: 'model', mutate: swap("return tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warn';", "return tone === 'ok' ? 'ok' : 'danger';") },
   { name: 'the picked line not marked', catches: ['P1a'], file: 'parts', mutate: swap("`fi-file${view.picked === log.id ? ' is-picked' : ''}`", "'fi-file'") },
   { name: 'Show more always', catches: ['P1b'], file: 'parts', mutate: swap('    if (view.more) {', '    if (true) {') },
+  { name: 'Read now hides why the watcher did not', catches: ['P6a'], file: 'parts', mutate: swap("owner.why_not.length ? owner.why_not.join(' · ') : WORDS.taken", 'WORDS.taken') },
+  { name: 'Read now hands the first owner', catches: ['P6a'], file: 'parts', mutate: swap('this.deps.onRead(this.answer.path, owner.table)', 'this.deps.onRead(this.answer.path, this.answer.owners[0].table)') },
   { name: 'no reason box on a failure', catches: ['P2a'], file: 'parts', mutate: swap('    if (isFailedStatus(log.status) || (reason && !isDoneStatus(log.status))) {', '    if (false) {') },
   { name: 'Copy folder copies the path', catches: ['P2a'], file: 'parts', mutate: swap('copy(WORDS.copyFolder, folder.full)', 'copy(WORDS.copyFolder, log.filepath)') },
   { name: 'All counts nothing', catches: ['P3'], file: 'parts', mutate: swap("[{ key: 'ALL', count: total }", "[{ key: 'ALL', count: 0 }") },

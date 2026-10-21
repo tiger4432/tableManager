@@ -10,6 +10,10 @@ hashed; only the rows' stamps are emptied (their history stays).
 
     python scripts/replay_ingestion.py --path "D:/feeds/WF-001/JOB1_20260818_140000/voids.json"
     python scripts/replay_ingestion.py --path "..." --path "..." --table void_obs --apply
+    python scripts/replay_ingestion.py --path "..." --now [--table <table>] [--apply]
+
+`--now` reads the file now as the watcher would have - even one no row names and one the source's pattern did not
+take (총괄 aaf19d0ca): the screen's «Read now», the same function (`reread.read_now`).
 
 Dry run by default: it prints the rows that check the files and changes nothing. Re-ingestion UPDATES rows that
 carry the same business key rather than duplicating them, so a replay of unchanged content lands the same values
@@ -33,7 +37,10 @@ def main(argv=None) -> int:
     parser.add_argument("--path", required=True, action="append", help="a file to let through again (repeatable)")
     parser.add_argument("--table", help="narrow to one table (a file may feed two)")
     parser.add_argument("--apply", action="store_true", help="actually let them go; without this nothing changes")
+    parser.add_argument("--now", action="store_true", help="hand each file to the watcher to read now")
     args = parser.parse_args(argv)
+    if args.now:
+        return read_now(args)
 
     from sqlalchemy import literal
 
@@ -70,6 +77,30 @@ def main(argv=None) -> int:
     except Exception:
         db.rollback()
         raise
+    finally:
+        db.close()
+
+
+def read_now(args) -> int:
+    from database.database import SessionLocal
+    from ingestion import reread
+
+    db = SessionLocal()
+    try:
+        for path in args.path:
+            try:
+                said = reread.read_now(db, path, table=args.table, apply=args.apply)
+            except reread.RereadRefused as refused:
+                print(f"refused   : {refused}")
+                continue
+            for owner in said["owners"]:
+                why = "; ".join(owner["why_not"]) or "the watcher takes it"
+                print(f"owner     : {owner['table']} ({owner['source']}) - {why}")
+            print(f"file      : {said['path']} -> "
+                  + (f"handed to the watcher for {said['owner']['table']} (log #{said['log_id']})" if args.apply
+                     else f"{len(said['owners'])} tables read it - add --table" if said["owner"] is None
+                     else f"{said['owner']['table']} would read it (dry run - add --apply)"))
+        return 0
     finally:
         db.close()
 

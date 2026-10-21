@@ -335,6 +335,7 @@
 
 ### 어드민 화면
 
+- 2026-10-21 [Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께](#2026-10-21--read-now--경로-하나를-와처가-본-것처럼-지금-읽힌다-왜-안-집었는지와-함께) — 누르는 곳 파일 화면 «Read a file now» · 명령 `replay_ingestion.py --now`
 - 2026-10-21 [파일 적재 화면 검색이 경로로 찾는다 — Path contains](#2026-10-21--파일-적재-화면-검색이-경로로-찾는다--path-contains) — 누르는 곳 어드민 File Ingestion 탭 머리의 «Path contains»
 - 2026-10-21 [선언 폼 스타일 — 줄 높이 하나 · 깊이 색 · 설명은 자기 줄](#2026-10-21--선언-폼-스타일--줄-높이-하나--깊이-색--설명은-자기-줄) — 누르는 곳 어드민 Tables · Chain 탭 · Ontology Explorer 의 Declaration 탭
   - 2026-10-21 [고침 — 선언 폼의 접기 화살표 · 이름을 눌러도 접히고 펼쳐진다, 구분선 위아래에 여백](#2026-10-21--고침--선언-폼의-접기-화살표--이름을-눌러도-접히고-펼쳐진다-구분선-위아래에-여백)
@@ -485,6 +486,17 @@
 
 
 
+
+
+## 2026-10-21 · Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께
+
+소유자 10-21 「이거 강제로 못 돌리냐고 · 그냥 와처 인식한 걸로 하면 되잖아」 (총괄).
+
+- **무엇** — 파일 화면 맨 위 «Read a file now» 에 경로를 넣고 **Check** — 그 경로를 맡는 자리(그 폴더의 외장 소스 · 그 표의 raws)와 와처가 왜 안 집었는지(`name not matched` · `below max_depth` · `outside the root` · `already read` — 와처 로그의 소스 줄과 같은 낱말)가 그 자리에 나온다. 자리마다 **Read now** — 그 파일이 있는 Retry 문으로 넘어가 그 소스의 층 이름으로 읽힌다. 로그 행이 없는 파일도 된다.
+- **바뀐 동작** — Retry 는 이제 행에 적힌 소스로 읽는다(패턴 · 깊이는 다시 묻지 않고, 실제 경로가 그 소스 root 안인지만). 전에는 Retry 때 패턴을 다시 물어 안 맞으면 외장이 아닌 것으로 읽혔다. 행의 소스가 설정에 없으면 «the source … is not in ingestion_settings.json - owned now by: …» 로 실패한다(raws 로 읽지 않음).
+- **거절** — 디스크에 없음 · 맡는 자리 없음(«No table reads …: it is under no raws folder and no external source root - add an external source for its folder in ingestion_settings.json») · 맡는 표가 둘 이상인데 하나를 안 누름 · 실제 경로가 root 밖 · 지금 읽는 중.
+- **명령** — `python server/scripts/replay_ingestion.py --path <파일> --now [--table <표>] [--apply]` — 같은 함수(`reread.read_now`), --apply 없이는 미리보기.
+- **필요한 조건** — git pull · 서버 재기동 · 와처 재기동.
 
 ## 2026-10-21 · 리플레이는 쪽마다 따로 돌고 커밋한다 — 이력 화면은 run 하나로 접어 보인다
 

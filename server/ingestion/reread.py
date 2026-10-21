@@ -407,6 +407,83 @@ def stand_rows(db, table, picked, folder=None):
     return logs, stood
 
 
+def read_now_owners(db, path):
+    """Who would read the file `path` and why the watcher did not (소유자 10-21 「이거 강제로 못 돌리냐고 · 그냥 와처 인식한
+    걸로 하면 되잖아」): every table whose raws folder holds it, every external source whose root holds it by its real
+    path - each with what the watcher's own judgement says (`_within_depth` · `_source_takes` · the checklist).
+    -> {"path", "on_disk", "owners": [{"table", "source", "why_not": [sentences]}]}."""
+    from directory_watcher import _safe_relative_path, _written_relative_path, one_sweep, why_not_taken
+    from ingestion import checkpoint
+
+    path = os.path.abspath(path)
+    config, specs = validated_sources()
+    on_disk = os.path.isfile(path)
+    owners = []
+    with one_sweep():
+        for table in sorted(config):
+            if _safe_relative_path(path, table_sources(table)[0]) is not None:
+                owners.append({"table": table, "source": "raws", "why_not": []})
+        for spec in specs:
+            rel = _written_relative_path(path, spec["root"]) or _safe_relative_path(path, spec["root"])
+            if rel is None:
+                continue
+            why = why_not_taken(spec, path, rel)
+            owners.append({"table": spec["table_name"], "source": spec["root"], "why_not": [why] if why else []})
+    stat = checkpoint.read_file_stat(path) if on_disk else None
+    for owner in owners:
+        if stat is not None and checkpoint.checked(db, owner["table"], [(path, stat)]):
+            owner["why_not"].append("already read")
+    return {"path": path, "on_disk": on_disk, "owners": owners}
+
+
+def read_now(db, path, table=None, apply=False):
+    """Read the file `path` now as the watcher would have (총괄 aaf19d0ca): the owner `read_now_owners` finds (one, or
+    the `table` named) - its newest row for the file, else one stood (`stand_rows`), handed to the Retry door
+    (`mark_for_reread`) carrying the source it is read under. Refused (RereadRefused) when the file is not on the disk,
+    nothing reads its folder, or more than one table does and none is named. -> the owners' answer, with "owner" and,
+    applied, "log_id"."""
+    from sqlalchemy import literal
+
+    from database import models
+
+    said = read_now_owners(db, path)
+    path = said["path"]
+    if not said["on_disk"]:
+        raise RereadRefused(f"{path} is not on the disk this server sees - check the path")
+    owners = [owner for owner in said["owners"] if table is None or owner["table"] == table]
+    if not owners:
+        raise RereadRefused(
+            f"No table reads {path}" + (f" into {table}" if table else "") + ": it is under no raws folder and no "
+            "external source root - add an external source for its folder in ingestion_settings.json")
+    if len({owner["table"] for owner in owners}) > 1:
+        if not apply:
+            said["owner"] = None
+            return said
+        raise RereadRefused(f"{len(owners)} tables read {path} ({', '.join(owner['table'] for owner in owners)}) "
+                            "- choose one")
+    owner = owners[-1]                              # an external source over a raws folder: the one the row names
+    said["owner"] = owner
+    if not apply:
+        return said
+    if "outside the root" in owner["why_not"]:
+        raise RereadRefused(f"{path} is outside the root of {owner['source']} by its real path (a junction or link "
+                            "leads out) - read it from where it really is")
+    model = models.FileIngestionLog
+    row = (db.query(model).filter(model.table_name == owner["table"],
+                                  models.path_key(model.filepath) == models.path_key(literal(path)))
+           .order_by(model.id.desc()).first())
+    if row is not None and row.status == "PENDING":
+        raise RereadRefused(f"{path} is being read now (log #{row.id})")
+    if row is None:
+        _logs, (row,) = stand_rows(db, owner["table"], [(None, None, path)])
+    else:
+        mark_for_reread(db, [row])
+    row.source = owner["source"]
+    db.commit()
+    said["log_id"] = row.id
+    return said
+
+
 def top_folder(rel):
     """The first folder of a path below the chosen folder, "." for a file right in it."""
     return rel.split("/", 1)[0] if rel and "/" in rel else "."

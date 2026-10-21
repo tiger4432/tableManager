@@ -157,6 +157,7 @@ def test_the_retry_path_holds_its_own_claim(hb_dir, handler, monkeypatch, tmp_pa
         status = "PENDING"
         error_message = None
         retry_count = 0
+        source = None
 
     assert handler.process_archived_file_sync(_Log(), _FakeSession()) is False
     assert seen.get("claims"), "the retry path opened no work claim"

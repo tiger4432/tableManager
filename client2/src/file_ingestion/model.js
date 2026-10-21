@@ -16,6 +16,8 @@ export const WORDS = Object.freeze({
   groupBy: 'Group by', files: 'Files read', file: 'File', path: 'Path', copyPath: 'Copy path', copyFolder: 'Copy folder',
   readBy: 'Read by', source: 'Source', readAt: 'Read at', result: 'Result', whyFailed: 'Why it failed',
   retryFile: 'Retry this file', readAgain: 'Read again', showRows: 'Show its rows in the grid',
+  readNowTitle: 'Read a file now', readNowPath: 'File path', check: 'Check', readNow: 'Read now', notRead: 'Not read',
+  taken: 'the watcher takes it', readNowAsk: (path, table) => `Read ${path} now into ${table}?`,
   retryFailed: (n) => `Retry ${count(n)} failed`, retryAsk: (n, folder) => `Retry ${count(n)} failed file${n === 1 ? '' : 's'} under ${folder}?`, showMore: 'Show more', noReason: '(No reason)',
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
   heads: ['File · folder', 'Status', 'Result', 'Read at', 'Took'],

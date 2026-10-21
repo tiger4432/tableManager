@@ -107,7 +107,7 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, 재기동하면 진�
 | 묻는 자리 | 함수 하나 `checkpoint.checked` — raws 훑기 · 외장 훑기 · 폴더 트리 걷기 · 이벤트 · 수집기(소급 backfill)의 기다림. 재시도 문(파일 화면 Retry)은 **묻지 않고** 읽은 뒤 도장을 적습니다 |
 | 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` · `max_depth` 는 빼고)이 바뀌면 **그 표의 키만** 해제합니다 — 읽은 행의 도장을 비우고(훑기가 제자리 파일을 다시 읽음), 실패 파일은 재시도 문으로 넘깁니다. 상한 없음, 와처가 자기 속도로 읽습니다. 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again` |
 | 처음 한 번 | 이 칸이 오기 전의 로그 행은 도장이 비어 있어, 와처의 첫 훑기가 그 훑기의 stat 위에서 **한 번** 채웁니다(디스크를 따로 안 훑음): 최신 행이 SUCCESS 이고 파일이 그대로(행이 수정 시각 이후에 쓰임)면 도장을 적습니다. 로그 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C)`. 모든 외장 소스에 닿은 훑기가 끝나면 `config/watcher_read_files_stamped` 가 생기고 다시 돌지 않습니다 |
-| 실패 방향 | 수정 시각과 크기를 그대로 둔 채 내용만 바꾼 파일은 다시 읽지 않습니다(수정 시각을 보존하는 복사 도구). 다시 읽히려면 파일 화면의 **Retry**, 여럿이면 `scripts/replay_ingestion.py --path … --apply`(그 키 해제 — `reread.uncheck`) |
+| 실패 방향 | 수정 시각과 크기를 그대로 둔 채 내용만 바꾼 파일은 다시 읽지 않습니다(수정 시각을 보존하는 복사 도구). 다시 읽히려면 파일 화면의 **Read a file now** 에 경로를 넣고 **Read now**(행이 없거나 와처가 안 집은 파일도) 또는 **Retry**, 여럿이면 `scripts/replay_ingestion.py --path … --apply`(그 키 해제 — `reread.uncheck`) |
 | 은퇴 | 원장의 경로 tier 1 · 내용 서명 dedup(같은 내용이어도 다른 경로면 읽음, 소유자 10-20 ㄱ) · 훑기의 프로세스 메모리 · 외장 «수정» 이벤트의 해시 우회 · 파일 이름 `__force__` · 설정 `dedup_by_signature` / `dedup_by_path_stat`. 원장(`file_ingestion_checkpoints`)은 **이어 읽기(재개)** 만 맡습니다 |
 
 **파일을 옮기지 않는 모드** — `archive_processed_files: false`. `.sample`의 기본값은 `true`(종전 동작)입니다. 「이 파일은 실패했다」는 `err/` 위치가 아니라 그 파일의 `file_ingestion_logs(status='FAILED')` 행이 듭니다.
