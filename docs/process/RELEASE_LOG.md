@@ -475,6 +475,7 @@
 
 - **무엇** — «이 파일을 이미 읽었나»의 답이 하나가 됐다. 같은 (경로, 표)의 파일 로그 행이 그 파일의 (수정 시각, 크기)를 들고 있으면 안 읽고, 파일이 바뀌면 읽는다. 와처를 재기동해도 읽은 파일을 다시 읽지 않는다. 어느 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` 는 빼고)이 바뀌면 «그 표»의 제자리 파일(외장 소스 · archive 를 끈 raws)만 다시 읽는다 — 다른 표와 archives/ 로 옮겨진 파일은 그대로.
 - **선언 예시** — 적을 것 없음. 한 파일을 다시 읽히려면 파일 화면의 Retry.
+- **바뀐 동작** — 표 읽기가 바뀌면, 예전(10-20)에는 실패가 reread_max_files(기본 25)를 넘을 때 하나도 안 넘기고 한 줄만 남겼다. 이제는 그 표의 제자리 파일을 전부 해제하고 곧바로 다시 읽는다. 그 수(그 표의 제자리 파일 수)는 이미 찍히는 `its reading changed` 줄에 보입니다. `reread_max_files` 는 이제 화면 Retry 의 상한만 정합니다.
 - **보는 곳** — 와처 로그: 배포 뒤 첫 기동에 한 번 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L` · 훑기마다 `External sweep: … X already read, Y dispatched` · 표 읽기가 바뀌면 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again`.
 - **필요한 조건** — 없음. 새 칸 둘(`file_ingestion_logs.file_mtime · file_size`)은 기동의 스키마 동기화가 더하고, 그전 로그 행의 도장은 와처가 첫 훑기 전에 한 번 채운다.
 - **다시 읽히기** — 한 파일은 파일 화면 Retry. 여럿은 `python server/scripts/replay_ingestion.py --path <파일> [--path …] [--table <표>] --apply` — 그 (경로, 표) 키를 풀어 다음 훑기가 다시 읽는다(원장 행은 안 지움).
@@ -678,7 +679,7 @@
 ## 2026-10-20 · 설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는 것
 
 - **무엇** — 실패한 파일은 그 경로 · 내용이 안 바뀌는 동안 와처가 다시 집지 않습니다. 원인이 파일이 아니라 그 표의 선언이나 scripts 플러그인이었으면, 고친 뒤에도 Retry failed 를 눌러야 다시 읽혔습니다.
-- **바뀐 동작** — 와처가 표마다 «읽기 모양»(table_config 의 그 표 항목에서 표시 · 검색 · 층 순위 칸을 뺀 나머지, 그 표의 외부 소스 항목, scripts 의 플러그인 파일)을 재고, 바뀌면 그 표의 실패 파일을 Retry failed 와 같은 자리로 넘깁니다. 한 번에 reread_max_files 까지, 넘으면 한 줄만 남깁니다. 와처가 꺼져 있던 동안 고친 것도 기동 때 넘깁니다.
+- **바뀐 동작** — 와처가 표마다 «읽기 모양»(table_config 의 그 표 항목에서 표시 · 검색 · 층 순위 칸을 뺀 나머지, 그 표의 외부 소스 항목, scripts 의 플러그인 파일)을 재고, 바뀌면 그 표의 실패 파일을 Retry failed 와 같은 자리로 넘깁니다. 한 번에 reread_max_files 까지, 넘으면 한 줄만 남깁니다. (10-21 부터는 상한 없이 그 표의 제자리 파일 전부 — 2026-10-21 체크리스트 항목) 와처가 꺼져 있던 동안 고친 것도 기동 때 넘깁니다.
 - **필요한 조건** — 런처 재기동. 이 착지 뒤 첫 기동은 기억이 없어 넘기지 않습니다.
 - **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 날 절.
 

@@ -11,6 +11,7 @@
 > 뜻      M = 배포 뒤 한 번 다시 읽히는 수(실패했던 파일 · 읽은 뒤 바뀐 파일). 그 뒤로는 안 읽힘
 >          stamped 가 0 인데 파일이 많음 -> 로그 행의 경로가 지금 훑는 폴더와 다름(공유 경로 바뀜) -> 그 파일들은 한 번 다시 읽힘
 >          «its reading changed (...) - N read file(s) unchecked» -> 그 표 스크립트 · 설정이 바뀜 -> 그 표만 다시 읽음(정상)
+>          표 읽기가 바뀌면, 예전(10-20)에는 실패가 reread_max_files(기본 25)를 넘을 때 하나도 안 넘기고 한 줄만 남겼다. 이제는 그 표의 제자리 파일을 전부 해제하고 곧바로 다시 읽는다 — 그 수는 같은 줄의 «N read file(s) unchecked, K failed file(s) handed again - D dispatched to be read again» (reread_max_files 는 이제 화면 Retry 의 상한만)
 >          옮겨진(archives/) 파일은 표 읽기가 바뀌어도 다시 안 읽음 — 제자리 파일(외장 · archive 끈 raws)만
 >          한 파일을 다시 -> 파일 화면 Retry. 여럿 -> python server/scripts/replay_ingestion.py --path <파일> --path ... --apply
 >          __force__ 파일 이름 · dedup_by_signature · dedup_by_path_stat 는 은퇴(값은 안 읽힘)
@@ -337,9 +338,8 @@
 > 무엇     와처가 3 초마다 표마다 «읽기 모양»을 잰다 — table_config 의 그 표 항목(display_columns · search_columns · source_priority 빼고 전부)
 >          · ingestion_settings 의 그 표 external_sources 항목 · 그 표 scripts\*.py 파일(이름 · 수정 시각 · 크기)
 >          바뀌면 그 표의 FAILED 파일을 Retry failed 와 같은 자리(PENDING_RETRY)로 넘긴다. 와처가 꺼져 있던 동안 고친 것도 기동 때 넘긴다
-> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N failed file(s) handed again»
->          상한 넘음  «[Watcher] <표>: its reading changed (<무엇>) - N failed files wait - Retry failed by folder (over reread_max_files M)»
->                    -> 그때는 아무것도 안 넘겼다. 화면의 Retry failed 를 폴더별로 누른다(상한은 ingestion_settings.json reread_max_files)
+> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N read file(s) unchecked, K failed file(s) handed again - D dispatched to be read again» (10-21 4492b8813 부터)
+>          10-21 부터 상한 없음: 표 읽기가 바뀌면, 예전(10-20)에는 실패가 reread_max_files(기본 25)를 넘을 때 하나도 안 넘기고 한 줄만 남겼다. 이제는 그 표의 제자리 파일을 전부 해제하고 곧바로 다시 읽는다
 >          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
 > 기억     server\config\watcher_reading_stamps.json (표마다 마지막 읽기 모양). 지우면 다음 기동에 모든 표가 «처음 봄» — 넘기지 않고 다시 적는다
 > 못 읽음   table_config.json 이 쓰는 중이라 못 읽히는 틱은 견주지 않는다 · ingestion_settings.json 이 못 읽히면 외부 소스 부분만 지난 기억 그대로(플러그인 · 표 항목은 그대로 견줌)
