@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다 (소유자 「강제로 못 돌리냐고」, 총괄 aaf19d0ca, 2f305d34a)** — git pull · 서버 재기동 · 와처 재기동
+>
+> ```
+> 쓰는 법   파일 화면 맨 위 «Read a file now» 에 경로 -> Check -> 맡는 자리 줄의 Read now
+>          명령: cd server ; python scripts/replay_ingestion.py --path "<파일>" --now --apply   (--apply 없으면 미리보기)
+> 보이는 것 자리마다 «표 · 소스 경로 · 왜 안 집었나»: name not matched · below max_depth · outside the root · already read
+>          (와처 로그 소스 줄과 같은 낱말) · 사유가 없으면 «the watcher takes it»
+> 뜻      No table reads … -> 그 폴더를 맡는 외장 소스가 없음 -> ingestion_settings.json 에 그 폴더의 소스를 적음
+>          name not matched -> 소스의 glob/filename 이 그 이름을 안 받음 -> Read now 는 그래도 그 소스로 읽음
+> 바뀐 것   Retry 는 행에 적힌 소스로 읽음(패턴 · 깊이 안 물음). 행의 소스가 설정에 없으면 «the source … is not in
+>          ingestion_settings.json - owned now by: …» 로 실패
+> 되돌리기  git revert 2f305d34a -> 서버 · 와처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **소급 리플레이가 쪽마다 따로 돌고 커밋 — 같은 run 의 쪽들이 한 덩어리(최대 2만 행)로 한 번에 돌던 것 (총괄 ㄴ 안 1)** — git pull · 런처 재기동
 >
 > ```
