@@ -5759,9 +5759,11 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         for filepath, spelled_path, state, reason in query.with_entities(
                 model.filepath, spelled, model.status, model.reason).limit(COUNT_CAP + 1):
             key, label = key_of(filepath, spelled_path, state, reason)
-            entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0})   # its first row's
+            entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0,   # its first row's
+                                            "waiting": 0})
             entry["count"] += 1
             entry["failed"] += state == "FAILED"
+            entry["waiting"] += state == "PENDING_RETRY"            # handed again, not read yet (총괄 10-21)
         said["groups"] = list(groups.values())
     return said
 
@@ -7561,8 +7563,10 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                             else f"No {what}{where}")}
     if not failed_logs:
         return {"status": "success", **said, "message": f"No {what} ingestion logs found."}
-    # 총괄 10-11 ㄱ (소유자 「다시 읽기 잘못 걸었다가 파일 너무 많아서 서버 뻗었어」): over the declared cap, nothing is handed
-    refused = reread.over_the_limit(len(failed_logs), said["limit"])
+    # 총괄 10-11 ㄱ (소유자 「다시 읽기 잘못 걸었다가 파일 너무 많아서 서버 뻗었어」): over the declared cap, nothing is handed -
+    # when this request would read them. Handed to the watcher (DECOUPLED), the cap is its pace (총괄 10-21).
+    refused = (reread.over_the_limit(len(failed_logs), said["limit"]) if os.getenv("DECOUPLED") != "True"
+               else None)
     if refused:
         raise HTTPException(status_code=409, detail=refused)
 
