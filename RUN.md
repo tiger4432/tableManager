@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **맵 교체 + 버전 컬럼 — 옛 버전 파일은 맵째 거절 (소유자 「맵교체랑 섞이면 맵단위로 버전관리」, 총괄 c8cb6aca0, 4d76641f7)** — git pull · 서버 · 와처 · 체인 워커 재기동
+>
+> ```
+> 닿는 표  table_config 에 version_column 과 allow_replace_map 을 같이 적은 표 · 체인 규칙 allow_replace_map 의 타깃이 version_column 을 적은 표
+> 볼 줄    와처 · 체인 로그: [VersionGate] '<표>' version column '<칸>', source '<파일>': version_older=N out of N row(s)
+> 뜻      version_older -> 그 파일의 맵이 저장된 맵보다 옛 버전 -> 맵 그대로(정상)
+>          version_same -> 같은 버전을 다시 읽음 -> 맵 그대로. 내용이 바뀐 파일인데 버전을 안 올렸으면 파일 쪽 버전을 올림
+>          version_missing -> 파일의 그 맵 행에 버전 값이 하나도 없음 -> 파일 · 맵퍼가 그 칸을 채우는지 봄
+>          row_version_absent -> 저장된 맵에 버전이 없어 받아들임(칸을 나중에 적은 표, 한 번)
+> 되돌리기  git revert 4d76641f7 -> 서버 · 와처 · 체인 워커 재기동 (그 뒤 옛 파일이 다시 맵을 덮음)
+> ```
+>
+> ---
+>
 > ## [10-21] **API 서버가 내려가거나 안 받는 동안 체인이 멎지 않음 — 그룹 통지가 슬롯을 100 초씩 붙잡던 것 (총괄 4ee0a1946)** — git pull · 런처 재기동
 >
 > ```
