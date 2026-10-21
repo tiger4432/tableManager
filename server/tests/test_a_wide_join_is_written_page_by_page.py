@@ -335,6 +335,7 @@ def test_the_left_rows_are_selected_through_the_lookup_index(pg_engine, monkeypa
     from chain import synthesis, unique_key
 
     db = _pg(pg_engine)
+    before = db.execute(text("SELECT coalesce(max(id), 0) FROM database_outbox")).scalar()
     try:
         _insert(db, RIGHT, [{"row_id": "R%04d" % i, "business_key_val": "J%04d" % i,
                              "job": "J%04d" % i, "lot": "LOT"} for i in range(2000)])
@@ -361,6 +362,10 @@ def test_the_left_rows_are_selected_through_the_lookup_index(pg_engine, monkeypa
         assert "Seq Scan" not in plan, plan
     finally:
         db.rollback()
+        # the index work's notice of the indexes it took back (SYSTEM_RELOAD) leaves with this test: a waiting event at
+        # the queue's head moves every later reader's pages (gate batch 4)
+        db.execute(text("DELETE FROM database_outbox WHERE id > :before AND table_name = 'system'"), {"before": before})
+        db.commit()
         db.close()
         unique_key.forget()
         synthesis  # noqa: B018  (the seat under test reads it)
