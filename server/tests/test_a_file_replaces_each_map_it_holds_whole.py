@@ -29,7 +29,8 @@ from database import crud, models                          # noqa: E402
 T = "zz_file_map_replace"
 REPLACE = {"business_key": "die_key", "composite_key_source": ["map_id", "die_no"], "composite_key_separator": "_",
            "map_key_columns": ["map_id"], "allow_replace_map": True,
-           "column_types": {"die_key": "string", "map_id": "string", "die_no": "number", "v": "string"}}
+           "column_types": {"die_key": "string", "map_id": "string", "die_no": "number", "v": "string",
+                            "w": "string", "c": "string"}}
 UPSERT = {key: value for key, value in REPLACE.items() if key != "allow_replace_map"}
 
 
@@ -158,6 +159,47 @@ def test_a_map_purged_whole_says_its_rows_by_id(load, caplog):
                         caplog.text)
     assert said.endswith(" …") and len(said[:-2].split(", ")) == 5 and set(said[:-2].split(", ")) <= set(ids), said
     assert " · replaced 1 map(s), deleted 7 row(s)" in caplog.text, caplog.text[-2000:]
+
+
+def _write(engine, source, die, **cells):
+    """A person's or the chain's cell on map A's die - not a file."""
+    from database import schemas
+
+    db = sessionmaker(bind=engine)()
+    try:
+        crud.apply_batch_updates(db, T, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+            updates=dict(map_id="A", die_no=die, **cells), source_name=source, updated_by=source)]))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _cells(engine):
+    with engine.connect() as conn:
+        return conn.execute(text('SELECT die_no, v, w, c FROM "%s" ORDER BY die_no' % T)).all()
+
+
+@pytest.mark.pg
+def test_a_blank_cell_a_replacing_file_names_is_emptied(load):
+    """총괄 10-21 (소유자 「기존 값 그대로 있음」): in a map the file replaces, a cell its row names blank is emptied by
+    that file's layer - as the chain's replace does; a person's value stays above it, and a cell the file does not
+    name (the chain's c) is not touched."""
+    load_file, _rows, engine = load
+    load_file("map_id,die_no,v,w\nA,1,a1,x1\nA,2,a1,x1\nA,3,a1,x1\n")
+    _write(engine, crud.CHAIN_SOURCE, 1, c="chain1")
+    _write(engine, crud.USER_SOURCE, 2, w="human")
+    assert [tuple(r) for r in _cells(engine)] == [(1, "a1", "x1", "chain1"), (2, "a1", "human", None),
+                                                 (3, "a1", "x1", None)]               # canary
+    load_file("map_id,die_no,v,w\nA,1,,x2\nA,2,a2,\n", name="maps2.csv")
+    assert [tuple(r) for r in _cells(engine)] == [(1, None, "x2", "chain1"), (2, "a2", "human", None)]
+
+
+@pytest.mark.pg
+def test_without_the_cell_a_blank_is_not_written_as_before(load):
+    load_file, _rows, engine = load
+    load_file("map_id,die_no,v,w\nA,1,a1,x1\nA,2,a1,x1\n", config=UPSERT)
+    load_file("map_id,die_no,v,w\nA,1,,x2\nA,2,a2,\n", config=UPSERT, name="maps2.csv")
+    assert [tuple(r) for r in _cells(engine)] == [(1, "a1", "x2", None), (2, "a2", "x1", None)]
 
 
 @pytest.mark.pg

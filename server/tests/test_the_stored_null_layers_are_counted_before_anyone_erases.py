@@ -222,3 +222,13 @@ def test_postgres_gives_the_same_answer(pg_engine):
         db.query(models.CellSource).filter(models.CellSource.table_name == TABLE).delete()
         db.commit()
         db.close()
+
+
+def test_a_replace_map_tables_file_blank_is_said_as_normal_and_not_a_candidate(stored, monkeypatch):
+    """Lead 10-21: a file of an allow_replace_map table empties a cell it names blank - its NULL layer is the map's
+    statement, counted under its own kind and left out of «-> next»; the same layer of another table is still ABSENT."""
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(crud.TABLE_CONFIG.get(TABLE, {}), allow_replace_map=True))
+    found = counter.count(stored)
+    assert found == [(counter.REPLACED, TABLE, COLUMN, FILE_SOURCE, 2, 1)], found
+    said = counter.render(found)
+    assert "정상" in said and "가리는 층이 0" in said, said

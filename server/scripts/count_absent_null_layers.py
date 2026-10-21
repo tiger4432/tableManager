@@ -40,9 +40,14 @@ MAX_ROWS_SHOWN = 40
 ABSENT = "absent"
 MERGED_ABSENT = "merged_absent"
 MERGED_UNSURE = "merged_unsure"
-KINDS = (ABSENT, MERGED_ABSENT, MERGED_UNSURE)
+REPLACED = "replaced"
+KINDS = (ABSENT, MERGED_ABSENT, MERGED_UNSURE, REPLACED)
+#: Counted and said, never a candidate: «→ 다음» does not add them.
+NORMAL = (REPLACED,)
 MEANING = {
     ABSENT: "비울 수 없는 쓴 이(파일 등)의 빈 층 (S-243-b) — 판정 405 이전에 쌓인 부재",
+    REPLACED: ("allow_replace_map 표의 파일이 비운 칸 — 그 맵을 통째로 갈아 끼운 파일의 진술, «정상» (총괄 10-21). "
+               "지울 후보가 아니다"),
     MERGED_ABSENT: "합치기가 남긴 빈 사본, 비울 수 없는 쓴 이 — 부재로 확정 (판정 405)",
     MERGED_UNSURE: ("합치기가 남긴 빈 사본, 사람 · 체인 — 부재인지, 일부러 비운 칸의 사본인지 "
                     "구별이 안 된다"),
@@ -86,7 +91,8 @@ def count(db) -> list:
         if writer == source_name:
             if crud.can_mean_emptied(source_name):
                 continue
-            kind = ABSENT
+            replaces = crud.TABLE_CONFIG.get(table_name, {}).get("allow_replace_map") is True
+            kind = REPLACED if crud.can_mean_emptied(source_name, replaces) else ABSENT
         else:
             kind = MERGED_UNSURE if crud.can_mean_emptied(writer) else MERGED_ABSENT
         out.append((kind, table_name, column_name, source_name,
@@ -116,7 +122,7 @@ def render(found: list) -> str:
                 lines.append("... 그리고 %d 조합 더 (수는 위 합계에 «전부» 들어 있습니다)"
                              % (len(entries) - MAX_ROWS_SHOWN))
         lines.append("")
-    hiding = sum(entry[5] for entry in found)
+    hiding = sum(entry[5] for entry in found if entry[0] not in NORMAL)
     lines.append("→ 다음: " + (
         "없음 — 가리는 층이 0 입니다. 지워도 화면이 안 바뀝니다"
         if hiding == 0 else
