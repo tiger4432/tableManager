@@ -8,7 +8,7 @@
 --   psql "$DATABASE_URL" -f server/migrations/add_file_ingestion_log_stamp.sql
 --
 -- Nullable, no default: an ADD COLUMN that rewrites no row. Rows written before stay null - unchecked - until
--- scripts/stamp_read_files.py stamps the ones whose file has not changed since (RUN.md, before the restart).
+-- the watcher's first full sweep stamps the ones whose file has not changed since (checkpoint.stamp_read_files).
 -- Reverse: add_file_ingestion_log_stamp_reverse.sql.
 
 SET lock_timeout = '20s';

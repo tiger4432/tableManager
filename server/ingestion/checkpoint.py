@@ -299,40 +299,48 @@ def checked(db, table_name: str, entries) -> dict:
     return found
 
 
-def stamp_read_files(db, looked_at) -> dict:
-    """Once, when the checklist arrives (총괄 10-21): the log rows written before it carry no stamp, so every file a
-    sweep looks at would be read again. For each (table, path) whose newest row is SUCCESS, under a folder a sweep
-    looks at (`looked_at(path)`), the file on the disk now and the row written at or after its mtime - the file has
-    not changed since that read - the row gets the file's stamp. A failed file is not stamped: it is read once more.
-    -> {"stamped", "failed", "changed", "missing"} - the last three counted under the swept folders."""
+def stamp_read_files(db, table_name: str, entries) -> dict:
+    """The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): a log row from before it carries no
+    stamp, so every file a sweep looks at would be read again. For the `(filepath, file_stat)` entries a sweep has just
+    stat'd - the disk is not looked at again - the newest row of each (table, path) with no stamp: SUCCESS and written
+    at or after the file's mtime (unchanged since that read) gets the file's stamp; FAILED is not stamped (read once
+    more). -> {"stamped", "failed", "changed"}: the log row ids - a file asked again (its read's own ask) is one."""
+    from sqlalchemy import literal, select
+
     from database.models import FileIngestionLog as Log, path_key
 
-    newest, said = {}, {"stamped": 0, "failed": 0, "changed": 0, "missing": 0}
-    query = db.query(Log.id, Log.table_name, path_key(Log.filepath), Log.filepath, Log.status,
-                     Log.updated_at, Log.created_at, Log.file_mtime).filter(Log.filepath.isnot(None))
-    for row in query.order_by(Log.id.desc()).yield_per(5000):
-        newest.setdefault((row[1], row[2]), row)
-    stamps = []
-    for log_id, _table, _key, filepath, status, updated, created, stamped in newest.values():
-        if stamped is not None or status not in ("SUCCESS", STATUS_FAILED) or not looked_at(filepath):
-            continue
-        file_stat = read_file_stat(filepath)
-        if file_stat is None:
-            said["missing"] += 1
-        elif status == STATUS_FAILED:
-            said["failed"] += 1
-        else:
+    said = {"stamped": [], "failed": [], "changed": []}
+    items = list({filepath: (filepath, file_stat) for filepath, file_stat in entries if filepath and file_stat}.values())
+    for start in range(0, len(items), CHECKED_BATCH_SIZE):
+        chunk = items[start:start + CHECKED_BATCH_SIZE]
+        keys = db.execute(select(*[path_key(literal(filepath)) for filepath, _stat in chunk])).one()
+        stat_of = dict(zip(keys, (file_stat for _filepath, file_stat in chunk)))
+        newest = {}
+        for row in db.query(Log.id, path_key(Log.filepath), Log.status, Log.updated_at, Log.created_at,
+                            Log.file_mtime).filter(Log.table_name == table_name,
+                                                   path_key(Log.filepath).in_(list(stat_of))).order_by(Log.id.desc()):
+            newest.setdefault(row[1], row)
+        stamps = []
+        for log_id, key, status, updated, created, stamped in newest.values():
+            if stamped is not None:
+                continue
+            if status == STATUS_FAILED:
+                said["failed"].append(log_id)
+                continue
+            if status != "SUCCESS":
+                continue
             when = updated or created
             if when is not None and when.tzinfo is None:
                 when = when.replace(tzinfo=timezone.utc)
-            if when is not None and when >= file_stat[0]:
-                stamps.append({"id": log_id, "file_mtime": file_stat[0], "file_size": file_stat[1]})
+            mtime, size = stat_of[key]
+            if when is not None and when >= mtime:
+                stamps.append({"id": log_id, "file_mtime": mtime, "file_size": size})
             else:
-                said["changed"] += 1
-    for start in range(0, len(stamps), 1000):
-        db.bulk_update_mappings(Log, stamps[start:start + 1000])
-        db.commit()
-    said["stamped"] = len(stamps)
+                said["changed"].append(log_id)
+        if stamps:
+            db.bulk_update_mappings(Log, stamps)
+            db.commit()
+        said["stamped"] += [stamp["id"] for stamp in stamps]
     return said
 
 

@@ -8,6 +8,7 @@ import threading
 import contextlib
 import contextvars
 import itertools
+import stat as _stat
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -977,6 +978,14 @@ def _glob_regex(pattern: str):
     return re.compile("".join(parts), re.IGNORECASE if os.path.normcase("A") == "a" else 0)
 
 
+def _within_depth(spec, depth: int) -> bool:
+    """A file `depth` folders below the source's root (its own files are 0) is within the source's `max_depth` (소유자
+    10-21 「와처 max depth 지정하게 해, 적은 경로부터」) - THE one comparison: the judgement (`source_taking`) and the
+    sweep's prune (`sweep_external_sources`) both ask it."""
+    max_depth = spec.get("max_depth")
+    return max_depth is None or depth <= max_depth
+
+
 def _source_takes(options: dict, file_path: str, rel_path: str) -> bool:
     """Does this external source take the file? ``options.glob`` (any pattern on the path from
     the root) when declared, else the one ``options.filename`` by name."""
@@ -987,6 +996,43 @@ def _source_takes(options: dict, file_path: str, rel_path: str) -> bool:
     return any(_glob_regex(p).fullmatch(rel_path) for p in patterns)
 
 
+#: The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): while `marker` is set, the seat that asks
+#: the checklist (`already_checked`) first stamps the rows from before it off the stat its caller just took - nothing
+#: walks the disk before the watcher stands. The first full sweep that reached every source ends it
+#: (`finish_read_files_fill`): the marker file is written and this never runs again.
+_READ_FILES_FILL = {"marker": None, "held": False, "said": {"stamped": set(), "failed": set(), "changed": set()}}
+_READ_FILES_FILL_LOCK = threading.Lock()
+
+
+def start_read_files_fill(marker: str):
+    """Stamp the rows from before the checklist as the sweeps look - until `marker` is written."""
+    with _READ_FILES_FILL_LOCK:
+        _READ_FILES_FILL.update(marker=marker, held=False, said={"stamped": set(), "failed": set(), "changed": set()})
+
+
+def finish_read_files_fill(reached_all: bool):
+    """A full sweep ended: when it reached every source and stamped every batch, the marker is written and one line
+    says what was stamped; else the next sweep goes on. -> the line, or None."""
+    with _READ_FILES_FILL_LOCK:
+        marker, held = _READ_FILES_FILL["marker"], _READ_FILES_FILL["held"]
+        said = {key: len(ids) for key, ids in _READ_FILES_FILL["said"].items()}
+        if marker is None:
+            return None
+        _READ_FILES_FILL["held"] = False
+        if held or not reached_all:
+            line = ("[Watcher] read files stamped %d so far - the next sweep goes on (%s)"
+                    % (said["stamped"], "a batch was not stamped" if held else "a source was not reached"))
+            logger.warning(line)
+            return line
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write(datetime.now().astimezone().isoformat())
+        _READ_FILES_FILL["marker"] = None
+    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d)"
+            % (said["stamped"], said["failed"] + said["changed"], said["failed"], said["changed"]))
+    logger.info(line)
+    return line
+
+
 def source_taking(specs, file_path: str):
     """(the external source that takes `file_path`, its path below that source's root), or None - the deepest root
     when two take it. THE one judgement: the handler's read (`external_source_context`) and the re-read into a table
@@ -994,7 +1040,8 @@ def source_taking(specs, file_path: str):
     matches = []
     for spec in specs:
         rel_path = _safe_relative_path(file_path, spec["root"])
-        if rel_path is not None and _source_takes(spec.get("options") or {}, file_path, rel_path):
+        if (rel_path is not None and _within_depth(spec, rel_path.count("/"))
+                and _source_takes(spec.get("options") or {}, file_path, rel_path)):
             matches.append((len(spec["root"]), spec, rel_path))
     if not matches:
         return None
@@ -1109,6 +1156,17 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         if why:
             errors.append(f"{where}: {why}")
             continue
+        # `recursive` widened into `max_depth` (소유자 10-21): false is 0, true or unwritten is to the end.
+        max_depth = raw.get("max_depth")
+        if max_depth is not None and (type(max_depth) is not int or max_depth < 0):
+            errors.append(f"{where}.max_depth must be a whole number 0 or more (0: the path's own files), "
+                          f"got {max_depth!r}.")
+            continue
+        if max_depth is not None and "recursive" in raw and (recursive is False) != (max_depth == 0):
+            errors.append(f"{where}: recursive {recursive} and max_depth {max_depth} disagree - write max_depth only.")
+            continue
+        if recursive is False:
+            max_depth = 0
         if not isinstance(options, dict):
             errors.append(f"{where}.options must be a JSON object.")
             continue
@@ -1131,7 +1189,7 @@ def validate_external_source_specs(settings: dict, table_config: dict,
             "root": root,
             "table_name": table_name,
             "parser": parser_name,
-            "recursive": recursive,
+            "max_depth": max_depth,
             "options": {**options, "filename": filename},
         }
         valid.append(spec)
@@ -2733,6 +2791,25 @@ class IngestionHandler(FileSystemEventHandler):
             parts.append(plan.note)
         return " / ".join(parts) if parts else None
 
+    def _stamp_read_files(self, db, t_name, entries):
+        """While the checklist's first start lasts (`start_read_files_fill`): the rows from before it stamped off the
+        stat the caller just took. -> True, or False when they could not be - the caller holds the files this time."""
+        if _READ_FILES_FILL["marker"] is None:
+            return True
+        try:
+            said = ingestion.checkpoint.stamp_read_files(db, t_name, entries)
+        except Exception as e:                                                  # noqa: BLE001 - said, and held
+            db.rollback()
+            with _READ_FILES_FILL_LOCK:
+                _READ_FILES_FILL["held"] = True
+            logger.warning(f"[{t_name}] The read files were not stamped for {len(entries)} file(s) - not read now, "
+                           f"the next sweep stamps them: {told(e)}", exc_info=e)
+            return False
+        with _READ_FILES_FILL_LOCK:
+            for key, ids in said.items():
+                _READ_FILES_FILL["said"][key].update(ids)
+        return True
+
     def already_checked(self, entries) -> set:
         """The checklist asked for this handler's table (소유자 10-21): of `[(abs_path, file_stat), ...]`, the paths
         already read at that (mtime, size) - not dispatched, not read. EVERY seat asks here: the raws/ sweep, the
@@ -2745,6 +2822,8 @@ class IngestionHandler(FileSystemEventHandler):
             return set()
         db = SessionLocal()
         try:
+            if not self._stamp_read_files(db, t_name, entries):
+                return {filepath for filepath, _stat in entries}
             statuses = ingestion.checkpoint.checked(db, t_name, entries)
         except Exception as e:
             logger.warning(f"[{t_name}] The checklist could not be read for {len(entries)} file(s) - they are read: "
@@ -3968,7 +4047,7 @@ class WorkspaceWatcher:
             return False
         try:
             target["watch"] = self.observer.schedule(
-                target["event_handler"], root, recursive=spec["recursive"])
+                target["event_handler"], root, recursive=spec["max_depth"] != 0)
         except Exception as e:
             logger.warning(
                 f"External source event registration failed for {root} -> "
@@ -3981,7 +4060,7 @@ class WorkspaceWatcher:
         logger.info(
             f"Watching external read-only source: {root} -> {spec['table_name']} "
             f"(parser={spec['parser'] or 'workspace scripts/'}, "
-            f"recursive={spec['recursive']})")
+            f"max_depth={'to the end' if spec['max_depth'] is None else spec['max_depth']})")
         if was is False:
             logger.info(f"External source recovered: {root} -> {spec['table_name']}")
         return True
@@ -4303,6 +4382,7 @@ class WorkspaceWatcher:
                            if item[0] in wanted]
 
             candidates = []
+            why_not = {}
             for source_id, target in targets:
                 spec = target["spec"]
                 root = spec["root"]
@@ -4319,36 +4399,52 @@ class WorkspaceWatcher:
                 self._external_availability[source_id] = True
                 self._try_schedule_external(target)
 
-                if spec["recursive"]:
-                    iterator = (
-                        os.path.join(dirpath, filename)
-                        for dirpath, _dirnames, filenames in os.walk(root)
-                        for filename in filenames
-                    )
-                else:
-                    try:
-                        iterator = (os.path.join(root, name) for name in os.listdir(root)
-                                    if os.path.isfile(os.path.join(root, name)))
-                    except OSError as e:
-                        logger.warning(f"External sweep cannot list {root}: {e}")
-                        continue
+                why = why_not[source_id] = dict.fromkeys(
+                    ("outside the root", "name not matched", "not a file", "stat failed", "folders below max_depth",
+                     "folders not listed"), 0)
+                unlisted = []
+
+                def walk(spec=spec, root=root, why=why, unlisted=unlisted):
+                    """The files the source can take: never below its max_depth (the folders are not entered)."""
+                    for dirpath, dirnames, filenames in os.walk(root, onerror=unlisted.append):
+                        rel = os.path.relpath(dirpath, root)
+                        if dirnames and not _within_depth(spec, 1 if rel == "." else rel.count(os.sep) + 2):
+                            why["folders below max_depth"] += len(dirnames)
+                            dirnames[:] = []
+                        for filename in filenames:
+                            yield os.path.join(dirpath, filename)
 
                 looked = taken = 0
-                for file_path in iterator:
+                looked_said_at = time.monotonic()
+                for file_path in walk():
                     looked += 1
+                    if time.monotonic() - looked_said_at >= SWEEP_PROGRESS_SECONDS:
+                        logger.info(f"External sweep in progress: {source_id} {looked} file(s) looked at")
+                        looked_said_at = time.monotonic()
                     if not target["event_handler"].accepted_path(file_path):
+                        # Which way it was refused - for the line below only; the judgement is `accepted_path`'s:
+                        # a name the pattern takes on the walked path, refused, is a real path outside the root.
+                        walked = os.path.relpath(file_path, root).replace(os.sep, "/")
+                        outside = _source_takes(spec.get("options") or {}, file_path, walked)
+                        why["outside the root" if outside else "name not matched"] += 1
                         continue
                     taken += 1
                     try:
-                        if not os.path.isfile(file_path):
-                            continue
-                        stat = os.stat(file_path)
+                        stat = os.stat(file_path)            # one look at the file on a share - its kind is in it
                     except OSError:
+                        why["stat failed"] += 1
+                        continue
+                    if not _stat.S_ISREG(stat.st_mode):
+                        why["not a file"] += 1
                         continue
                     candidates.append((
                         stat.st_mtime, source_id, os.path.abspath(file_path), target["handler"],
                         (mtime_ns_to_datetime(stat.st_mtime_ns), int(stat.st_size)),
                     ))
+                why["folders not listed"] = len(unlisted)
+                why["looked"] = looked
+                if unlisted:
+                    why["first not listed"] = told(unlisted[0])
                 unmatched = looked > 0 and taken == 0
                 if unmatched and source_id not in self._external_unmatched_said:
                     options = spec.get("options") or {}
@@ -4378,6 +4474,7 @@ class WorkspaceWatcher:
             done = dict.fromkeys(total, 0)
             said, said_at = dict(done), time.monotonic()
             processed = 0
+            handed = {}
             for turn in itertools.zip_longest(*queues.values()):
                 if self._stop_event.is_set():
                     break
@@ -4391,6 +4488,7 @@ class WorkspaceWatcher:
                     if (handler, abs_path) not in cleared:
                         handler._handle_event(abs_path)
                         processed += 1
+                        handed[source_id] = handed.get(source_id, 0) + 1
                     if time.monotonic() - said_at >= SWEEP_PROGRESS_SECONDS:
                         for moved in [s for s in done if done[s] != said[s]]:
                             logger.info(f"External sweep in progress: {moved} {done[moved]}/{total[moved]} candidate(s) through")
@@ -4400,18 +4498,34 @@ class WorkspaceWatcher:
                     f"External sweep: {len(candidates)} candidate binding(s) - "
                     f"{len(cleared)} already read, "
                     f"{processed} dispatched; source files left untouched.")
+            # 🔴 Each source, each sweep (총괄 10-21 「외장 파일마다 왜 안 넘겼나를 사유별 수로」): what the walk saw and
+            #    why a file was not handed on - one restart says it, no log digging.
+            for source_id, why in why_not.items():
+                already = sum(1 for _mtime, sid, abs_path, handler, _stat in candidates
+                              if sid == source_id and (handler, abs_path) in cleared)
+                reasons = " · ".join(f"{name} {n}" for name, n in why.items()
+                                     if name not in ("looked", "first not listed"))
+                logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons} · "
+                            f"already read {already} · dispatched {handed.get(source_id, 0)}"
+                            + (f" (first not listed: {why['first not listed']})" if "first not listed" in why else ""))
             return processed
 
     def _sweep_safely(self, raw_paths=None, reason=""):
+        reached = True
         try:
             self.sweep_existing_files(raw_paths)
         except Exception as e:
+            reached = False
             logger.error(f"Managed workspace sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
         if raw_paths is None:
             try:
                 self.sweep_external_sources()
             except Exception as e:
+                reached = False
                 logger.error(f"External source sweep failed ({reason or 'unspecified'}): {told(e)}", exc_info=e)
+            finish_read_files_fill(reached and not self._stop_event.is_set()
+                                   and all(self._external_availability.get(source_id)
+                                           for source_id in self.external_targets))
 
     def sweep_existing_files_async(self, raw_paths=None, reason=""):
         """스윕을 데몬 스레드로 실행 (기동·reload 경로를 파일 처리가 블로킹하지 않도록)."""
