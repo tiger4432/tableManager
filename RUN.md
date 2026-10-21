@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **설정 와처가 프로세스 상태 파일을 «설정 바뀜»으로 찍지 않는다 (소유자 「supervisor.json 변경되어서 컨피그 워처 돈다고 계속 로그 뜨는데」, 총괄, a9b7a08e0)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     supervisor_status.json · scheduler_status.json 이 다시 써져도 «[Config] … changed - read again» 줄이 안 뜸 · 아무것도 다시 안 읽음
+>          그 두 이름은 config_backup.RUNTIME_FILES (백업도 이미 빼던 «사람이 안 고치는 파일» 목록) 한 곳에서 옴
+> 확인     재기동 뒤 로그에서 Select-String -Pattern "\[Config\] (supervisor|scheduler)_status.json" -> 0
+>          table_config.json 을 저장하면 «[Config] table_config.json changed - read again in this process» 는 전과 같이 한 줄
+> 되돌리기  git revert a9b7a08e0 -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **맵을 통째로 바꾸는 파일의 빈 칸이 옛 값을 지운다 (소유자 「기존 값 그대로 있음」, 총괄, 338dffcf7)** — git pull · 런처 재기동
 >
 > ```
