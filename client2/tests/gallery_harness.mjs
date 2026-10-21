@@ -23,6 +23,7 @@
 //   B7 Show: 4 or 9 thumbnails a cell, kept for the table; the columns in the Order's order
 //   B8 two boards on one page: a cell opened on one leaves the other's
 //   B9 + Column adds the first column not used to Rows by
+//   B10 Columns by alone: one line «All rows», a column a value adding up to the rows held; Filter hands the column alone
 // Imports only (the probe copies a module whole); each defect must go red at its line.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -343,6 +344,26 @@ async function suite(M) {
   ok('B8 two boards on one page: a cell opened on one leaves the other\'s',
     textOf(byClass(b1.mount, 'gallery-open__label')[0]) === 'C · S3' && textOf(byClass(b2.mount, 'gallery-open__label')[0]) !== 'C · S3',
     `${textOf(byClass(b1.mount, 'gallery-open__label')[0])} / ${textOf(byClass(b2.mount, 'gallery-open__label')[0])}`);
+
+  // Columns by alone, no Rows by (owner 10-22 «축을 안 고르면 안 고른 대로»): one line of all rows, a column a value.
+  const colsOnly = [];
+  const co = seat(M, { columns: BCOLS, rows: boardRows(), storage: keptAs({ columnBy: 'step', order: 'value' }) });
+  co.part.deps.filterTo = (pairs) => colsOnly.push(pairs);
+  co.part.render();
+  lay(co, 2000, 3000);
+  const coCell = (step) => cells(co.mount).find((c) => JSON.parse(c.dataset.column)[0] === step);
+  const coN = ['S1', 'S2', 'S3'].map((st) => nOf(coCell(st)));
+  const coTotals = byClass(co.mount, 'gallery-board__total').map((n) => Number(textOf(n)));
+  press(coCell('S2'));
+  lay(co, 2000, 3000);
+  press(byClass(co.mount, 'gallery-open__filter')[0]);
+  const coHanded = (colsOnly[0] || []).map(({ column, row }) => [column, row.data[column]]);
+  ok('B10 Columns by alone: one line of all rows, the corner says so, a column a value adding up to the rows held; Filter hands the column alone',
+    byClass(co.mount, 'gallery-board__value').map(textOf).join('|') === M.WORDS.all
+      && textOf(byClass(co.mount, 'gallery-board__corner')[0]) === `${M.WORDS.all} \\ step`
+      && byClass(co.mount, 'gallery-board__col').map(textOf).join() === 'S1,S2,S3,' + M.WORDS.total
+      && JSON.stringify(coN) === '[4,6,2]' && JSON.stringify(coTotals) === '[12]' && JSON.stringify(coHanded) === '[["step","S2"]]',
+    `lines ${byClass(co.mount, 'gallery-board__value').map(textOf).join('|')} corner «${textOf(byClass(co.mount, 'gallery-board__corner')[0])}» ${JSON.stringify(coN)} totals ${JSON.stringify(coTotals)} filter ${JSON.stringify(coHanded)}`);
   return { ran, failed: failed.slice() };
 }
 
@@ -376,6 +397,8 @@ const MUTANTS = [
   { name: 'every cell draws four thumbnails', catches: ['B7'], mutate: swap('cell.tiles.slice(0, perCell)', 'cell.tiles.slice(0, 4)') },
   { name: 'the opened cell kept for the module, not the gallery', catches: ['B8'], mutate: (t) => swap('export const PER_CELL', 'const OPENED = {};\nexport const PER_CELL')(swap('    const kept = this.opened && at(this.opened.line, this.opened.column);', '    const kept = OPENED.at && at(OPENED.at.line, OPENED.at.column);')(swap("if (cell) b.addEventListener('click', () => { this.opened =", "if (cell) b.addEventListener('click', () => { OPENED.at =")(t))) },
   { name: '+ Column adds no column', catches: ['B9'], mutate: swap('rowsKept([...rowsBy, unused[0]])', 'rowsKept([...rowsBy])') },
+  { name: 'no Rows by leaves the corner without its line\'s words', catches: ['B10'],
+    mutate: swap("${rowsBy.length ? rowsBy.join(' · ') : WORDS.all} \\\\ ${columnBy}", "${rowsBy.join(' · ')} \\\\ ${columnBy}") },
   { name: 'the side panel shows every column', catches: ['G12'], mutate: swap('(this.deps.shown ? this.deps.shown() : (this.deps.columns() || []).map((c) => c.name))', '(this.deps.columns() || []).map((c) => c.name)') },
 ];
 
