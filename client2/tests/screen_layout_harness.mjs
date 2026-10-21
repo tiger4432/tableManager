@@ -53,7 +53,7 @@ const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'tes
 // Chrome and ends unsettled - not chased (lead 10-14 «그 밖의 1024 결함은 찾아 나서지 말 것»).
 const FIRST_STATE_ONLY = { 'index.html': ['1024x768'] };
 const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
-const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'columns', 'words'];
+const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'centre', 'heights', 'columns', 'words'];
 const TOL = 12;
 const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const only = argOf('--only');
@@ -188,6 +188,21 @@ const answerOf = (u) => {
 };
 // Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
 const CELLS = [
+  // The declaration form is one grid (lead 10-21, form D): on the sample page a 40-letter name three levels down is
+  // whole in its cell, and every row's value and state stand at one x. At the stacked width the rows have no columns.
+  { entry: 'sample.html', after: 'Ledger declaration, list open, light', sizes: ['1024x768'], rule: 'names whole, columns in line',
+    at: 'sample-decl-form', expr: `(() => {
+  const rows = [...document.querySelectorAll('#sample-decl-form .oe-node-row')].filter((r) => r.getClientRects().length);
+  if (rows.length < 6) return 'the sample form drew ' + rows.length + ' rows';
+  const cut = [...document.querySelectorAll('#sample-decl-form .oe-node-name')].find((e) => e.scrollWidth > e.clientWidth + 1);
+  if (cut) return '«' + cut.textContent + '» ' + cut.clientWidth + ' of ' + cut.scrollWidth + ' px';
+  for (const cell of ['oe-node-value', 'oe-node-state']) {
+    const xs = new Set(rows.map((r) => [...r.children].find((c) => c.classList.contains(cell))).filter(Boolean)
+      .map((c) => Math.round(c.getBoundingClientRect().left)));
+    if (xs.size !== 1) return cell + ' at ' + [...xs].join(' · ') + ' px';
+  }
+  return null;
+})()` },
   // The audit row's Kind word whole in its cell (lead 10-12: «OVERWRIT…» cut at 74 px) - every pill drawn, and the longest
   // word the row builder can draw (timeline.js kindOf: «OVERWRITE») set in a drawn cell and measured, as the answers may
   // hold none of it.
@@ -584,13 +599,16 @@ const WALK_LOOK = [
 })()`],
   ['two heights', `(() => { ${WALK_PAGE}
   if (!page) return 'no walk page';
+  // the base layer's two (lead f3639d4a2: walk's own 44 / 28 moved onto them)
+  const token = (n) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(n));
+  const big = token('--control-h'), small = token('--control-h-small');
   const bad = new Map();
   for (const el of page.querySelectorAll('button, select, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])')) {
     if (!mine(el)) continue;
-    const h = Math.round(el.getBoundingClientRect().height);
-    if (h !== 44 && h !== 28) tally(bad, h + 'px', el);
+    const h = el.getBoundingClientRect().height;
+    if (Math.abs(h - big) > 1 && Math.abs(h - small) > 1) tally(bad, Math.round(h) + 'px', el);
   }
-  return bad.size ? 'a control neither 44 nor 28 px high: ' + said(bad) : null;
+  return bad.size ? 'a control neither --control-h (' + big + ') nor --control-h-small (' + small + ') high: ' + said(bad) : null;
 })()`],
   // Parts stacked one over another touch nowhere (lead 348310aee: a section's NEXT, + Column and table 0 px apart):
   // two blocks side by side in a box, the lower one's top on the upper one's bottom, no line between - red.
@@ -986,7 +1004,8 @@ function screensLib(TOL) {
     // (a flex row stretches a text box to the button beside it). Odd: half again taller, its letters no larger.
     // A button with no words is an icon, the size of its icon.
     const isButton = (e) => e.matches('button, [role="button"]');
-    const isControl = (e) => e.matches('button, [role="button"], input, select, textarea') || (e.matches('a[href]') && css(e).display !== 'inline');
+    // A base chip (base.css .chip) stands in a line as a control does - one of the two heights (lead f3639d4a2).
+    const isControl = (e) => e.matches('button, [role="button"], input, select, textarea, .chip') || (e.matches('a[href]') && css(e).display !== 'inline');
     const median = (xs) => xs.sort((x, y) => x - y)[Math.floor(xs.length / 2)];
     const textBox = (el) => {
       let top = Infinity, bottom = -Infinity;
@@ -999,26 +1018,45 @@ function screensLib(TOL) {
       }
       return bottom > top ? { top, bottom, height: bottom - top } : null;
     };
-    for (const b of all.filter((e) => isButton(e) && e.textContent.trim())) {
-      // a vertical pill (a left tray's axis) runs along its words - its height is its length, not its size
-      if (/^vertical/.test(css(b).writingMode)) continue;
-      const r = b.getBoundingClientRect();
+    const mid = (x) => (x.top + x.bottom) / 2;
+    // The line a control stands on: its bar (its widest ancestor still one line high), and the bar's other controls - and
+    // words, by their letters - whose middle is within the control's height. One grouping for size and heights.
+    const lineOf = (b, r) => {
       let bar = b.parentElement;
       while (bar && bar.parentElement && bar.parentElement !== document.body && bar.parentElement.getBoundingClientRect().height < r.height * 3) bar = bar.parentElement;
-      if (!bar) continue;
-      const mid = (x) => (x.top + x.bottom) / 2;
+      if (!bar) return null;
       const items = [];
       for (const e of bar.querySelectorAll('*')) {
         if (e === b || b.contains(e) || e.contains(b) || !shown(e)) continue;
         if (isControl(e)) {
-          if (!e.parentElement.closest('button, [role="button"]')) items.push({ box: e.getBoundingClientRect(), font: parseFloat(css(e).fontSize), control: true });
+          if (!e.parentElement.closest('button, [role="button"]')) items.push({ el: e, box: e.getBoundingClientRect(), font: parseFloat(css(e).fontSize), control: true });
           continue;
         }
         if (e.closest('button, [role="button"]')) continue;
         const t = textBox(e);
         if (t) items.push({ box: t, font: parseFloat(css(e).fontSize) });
       }
-      const near = items.filter((x) => mid(x.box) >= r.top && mid(x.box) <= r.bottom);
+      return { bar, near: items.filter((x) => mid(x.box) >= r.top && mid(x.box) <= r.bottom) };
+    };
+    // A control boxed by a height: not a tick box, a slider, a text area, nor a control inside a control, nor a vertical pill.
+    // Only a control that draws its box (a line or a fill) shows a height; a word-like link button shows none. AG-Grid's
+    // parts are its theme's (the base layer stops at them, base.css).
+    const clear = (c) => !c || c === 'transparent' || /rgba\([^)]*,\s*0\)$/.test(c);
+    const drawsBox = (e) => {
+      const s = css(e);
+      return !clear(s.backgroundColor) || ['Top', 'Right', 'Bottom', 'Left'].some((k) => parseFloat(s[`border${k}Width`]) > 0
+        && s[`border${k}Style`] !== 'none' && !clear(s[`border${k}Color`]));
+    };
+    const boxed = (e) => isControl(e) && !e.matches('textarea, input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"], input[type="color"], input[type="hidden"]')
+      && !e.parentElement.closest('button, [role="button"]') && !e.closest('[class^="ag-"], [class*=" ag-"]')
+      && !/^vertical/.test(css(e).writingMode) && drawsBox(e);
+    for (const b of all.filter((e) => isButton(e) && e.textContent.trim())) {
+      // a vertical pill (a left tray's axis) runs along its words - its height is its length, not its size
+      if (/^vertical/.test(css(b).writingMode)) continue;
+      const r = b.getBoundingClientRect();
+      const at = lineOf(b, r);
+      if (!at) continue;
+      const near = at.near;
       // The other controls of the line when it has any; its text when the button stands alone among words.
       const line = near.some((x) => x.control) ? near.filter((x) => x.control) : near;
       if (!line.length) continue;
@@ -1028,6 +1066,59 @@ function screensLib(TOL) {
       if (r.height > h * 1.5 && font <= f) {
         lines.push({ rule: 'size', path: pathOf(b), what: `«${label(b)}» ${Math.round(r.height)} px high at ${font} px letters, its line ${Math.round(h)} px at ${f} px` });
       }
+    }
+    // centre: a control's words in its middle (owner 10-20 «버튼 안에 글씨 정렬 안 맞고») - the middle of its own letters'
+    // box within 1 px of its box's. A field's text is placed by the browser between its paddings: those two, within 2 px.
+    const ownWords = (c) => {
+      let top = Infinity, bottom = -Infinity;
+      const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.textContent.trim() || n.parentElement.closest('button, [role="button"], a[href], select') !== c || !shown(n.parentElement)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        for (const q of range.getClientRects()) if (q.height) { top = Math.min(top, q.top); bottom = Math.max(bottom, q.bottom); }
+      }
+      return bottom > top ? { top, bottom } : null;
+    };
+    for (const c of all.filter(boxed)) {
+      const r = c.getBoundingClientRect();
+      if (r.height < 4) continue;
+      let off;
+      if (c.matches('input, select')) {
+        const s = css(c);
+        off = ((parseFloat(s.paddingTop) + parseFloat(s.borderTopWidth)) - (parseFloat(s.paddingBottom) + parseFloat(s.borderBottomWidth))) / 2;
+      } else {
+        const t = ownWords(c);
+        if (!t) continue;
+        off = mid(t) - mid(r);
+      }
+      if (Math.abs(off) > 1) lines.push({ rule: 'centre', path: pathOf(c), what: `«${label(c)}» its words ${Math.abs(off).toFixed(1)} px ${off > 0 ? 'below' : 'above'} its middle` });
+    }
+    // heights: the controls of one line stand one height (owner 10-20, lead f3639d4a2 - two heights, --control-h and the
+    // small one; never a chip of its own height beside a field). Said once per line.
+    // The height a person sees: a segmented group's (a box of controls only, the control filling it) - its border is the
+    // group's. Compared only within one layer: a list hung over a header is not of the header's line.
+    const face = (e) => {
+      const own = e.getBoundingClientRect().height;
+      // up through the wrappers that draw nothing and are the control's own size, to the box that holds them
+      let p = e.parentElement;
+      while (p && p !== document.body && !drawsBox(p) && p.getBoundingClientRect().height - own <= 2.5) p = p.parentElement;
+      if (!p || p === document.body || !drawsBox(p) || [...p.children].some((k) => shown(k) && !isControl(k) && !k.querySelector('button, [role="button"], select, input'))) return own;
+      const ph = p.getBoundingClientRect().height;
+      return ph - own <= 2.5 ? ph : own;
+    };
+    const layer = (e) => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (/fixed|absolute/.test(css(a).position)) return a; return null; };
+    const told = new Set();
+    for (const c of all.filter(boxed)) {
+      const r = c.getBoundingClientRect();
+      if (r.height < 4) continue;
+      const at = lineOf(c, r);
+      if (!at || told.has(at.bar)) continue;
+      const mine = face(c);
+      const other = at.near.find((x) => x.control && boxed(x.el) && x.box.height >= 4 && layer(x.el) === layer(c) && Math.abs(face(x.el) - mine) > 1);
+      if (!other) continue;
+      told.add(at.bar);
+      lines.push({ rule: 'heights', path: pathOf(c), what: `«${label(c)}» ${Math.round(mine)} px high beside «${label(other.el)}» ${Math.round(face(other.el))} px on one line` });
     }
     // columns: one line per table - a row where a cell runs past three lines while a neighbouring column is more than
     // half empty all the way down (its widest cell decides; a column as wide as its longest word is not slack)
@@ -1719,8 +1810,8 @@ const MUTANTS = [
       '    #mapper-list-body .admin-btn,\n']] },
   // The admin tabs round (lead 10-09): what the gate found when it first opened Tables, Chain, Auto Update, Retroactive.
   { name: 'the Chain and Auto Update row buttons boxed at the base button height', entry: 'admin.html', rule: 'size',
-    at: 'mapper-list-body', file: 'admin.html', edits: [['    #mapper-list-body .admin-btn,\n    #autoupdate-linked-body .admin-btn,\n    #retry-all-outbox-btn {\n',
-      '    #retry-all-outbox-btn {\n']] },
+    at: 'mapper-list-body', file: 'admin.html', edits: [['    #mapper-list-body .admin-btn,\n    #autoupdate-linked-body .admin-btn,\n    .file-folder-copy,\n    #retry-all-outbox-btn {\n',
+      '    .file-folder-copy,\n    #retry-all-outbox-btn {\n']] },
   { name: 'the Backfill column back at 220px beside the collector names', entry: 'admin.html', rule: 'columns', at: 'sec-collectors',
     file: 'admin.html', edits: [['<th title="Run the collector once per day from a start day (KST)">Backfill</th>',
       '<th style="width: 220px;" title="Run the collector once per day from a start day (KST)">Backfill</th>']] },
@@ -1777,8 +1868,18 @@ const MUTANTS = [
     file: 'src/walk/start_baskets.js', edits: [["    this.place = () => { if (this.pop.open) fitUnder(body, chip, { align: 'left', gap: 3.4 }); };", '    this.place = () => {};']] },
   // The owner's (72b2d7f8f): a pill's picker dropped under its pill whatever the room - the X axis at the foot of the page.
   { name: 'the slot picker drops under its pill again, off the foot of the screen', entry: 'testbed.html', rule: 'pickers in view', at: 'sf-pop-host',
-    file: 'src/testbed/picker.js', edits: [["      if (anchor && anchor.getBoundingClientRect) fitUnder(this.host, anchor, { align: 'left', gap: 4 });",
-      "      if (anchor && anchor.getBoundingClientRect) { const s = anchor.getBoundingClientRect(); this.host.style.left = `${Math.max(8, Math.min(s.left, document.documentElement.clientWidth - 760))}px`; this.host.style.top = `${s.bottom + 4}px`; }"]] },
+    file: 'src/testbed/picker.js', edits: [["      fitUnder(this.host, pill, { align: 'left', gap: 4 });",
+      "      { const s = pill.getBoundingClientRect(); this.host.style.left = `${Math.max(8, Math.min(s.left, document.documentElement.clientWidth - 760))}px`; this.host.style.top = `${s.bottom + 4}px`; }"]] },
+  // The base layer's controls (lead f3639d4a2, owner 10-20 «버튼 안에 글씨 정렬 안 맞고»): built back, on the sample page.
+  { name: 'a padding-top on the base button, its words off its middle', entry: 'sample.html', rule: 'centre', at: 'sample-actions',
+    file: 'src/base.css', edits: [['  height: var(--control-h);\n  padding: 0 var(--space-3);\n  font-family: var(--font-head);',
+      '  height: var(--control-h);\n  padding: 6px var(--space-3) 0;\n  font-family: var(--font-head);']] },
+  { name: 'the name column back at its base width, a long name cut', entry: 'sample.html', rule: 'names whole, columns in line',
+    at: 'sample-decl-form', says: /a_forty_letter_name_of_a_declared_column/, file: 'src/ontology_explorer.css',
+    edits: [['    minmax(var(--oe-label-w, 288px), max-content) minmax(0, 1fr)', '    var(--oe-label-w, 288px) minmax(0, 1fr)']] },
+  { name: 'a chip of its own height beside the small field', entry: 'sample.html', rule: 'heights', at: 'sample-actions',
+    file: 'src/base.css', edits: [['  box-sizing: border-box;\n  height: var(--control-h-small);\n  padding: 0 0 0 var(--space-3);',
+      '  box-sizing: border-box;\n  height: 22px;\n  padding: 0 0 0 var(--space-3);']] },
   { name: 'Copy id back at 20 px high', entry: 'walk.html', rule: 'two heights', at: 'wk-page',
     file: 'src/walk/styles.js', edits: [['.wk-copyid { height: var(--wk-h-small);', '.wk-copyid { height: 20px;']] },
   { name: 'a 12 px line again', entry: 'walk.html', rule: 'three type sizes', at: 'wk-page',

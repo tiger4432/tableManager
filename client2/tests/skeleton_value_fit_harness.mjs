@@ -14,8 +14,8 @@
  *   M  an index map or a record holding the wrong shape shows the value -- no empty `+` door
  *   N  ⛔ NOT INFERRED: a list at a leaf is not drawn as a list. The skeleton says what a cell
  *      is; the value is only checked against it
- *   K  what already fit is drawn exactly as before (input, checkbox, members + door)
- *   W  a word in a list of WORDS is that list's one member: a box holding it, its `-`, the door
+ *   K  what already fit is drawn as it fits (input, checkbox, a list of words as its chips + adder - form D)
+ *   W  a word in a list of WORDS is that list's one member: a chip holding it, its remove, the adder
  *   R  read mode spells a list and a record as their JSON, not `a,b` / `[object Object]`
  *   P  the real chain panel with the SHIPPED skeleton: no cell that holds a value is drawn
  *      blank. It says nothing about which shape the server declares, so it holds before and
@@ -87,7 +87,7 @@ const UNFIT = ['decoy_text', 'decoy_flag', 'decoy_pick', 'decoy_list', 'decoy_re
 // goes to the control the skeleton draws.
 const context = (readOnly) => ({
   schema: { decoys: ['one', 'two'] }, readOnly, planRow: () => null, planLoaded: true,
-  plannedMembers: () => [], covering: () => null, deref: (node) => node, declared: () => [],
+  plannedMembers: () => [], covering: () => null, deref: (node) => node, refOf: () => ({ table: '', names: [] }),
   heldChoice: () => '', rolesNear: () => [], usedElsewhere: () => [], renderRow: () => null,
   suggest: (row) => row, hot: [], expanded: {}, absolute: (at) => at,
 });
@@ -102,6 +102,9 @@ const shownIn = (box) => {
   return span ? String(span.textContent) : null;
 };
 const doorsIn = (box) => walk(box).filter((n) => cls(n).includes('oe-form-add'));
+// Form D: a list of words is its chips, each with its remove, and the adder's `+`.
+const chipsIn = (box) => walk(box).filter((n) => cls(n).includes('chip')).map((n) => String(n.textContent));
+const addersIn = (box) => walk(box).filter((n) => cls(n).includes('oe-form-adder__go'));
 const nestedIn = (box) => walk(box).slice(1).filter((n) => cls(n).includes('oe-node'));
 
 function suite(M) {
@@ -136,32 +139,31 @@ function suite(M) {
   const fitFlag = controlsIn(at('fit_flag'))[0];
   ok(fitFlag && fitFlag.type === 'checkbox' && fitFlag.checked === true,
     'K2 a boolean at a flag leaf is still a ticked checkbox');
-  ok(boxAt(form, 'fit_list[0]') && boxAt(form, 'fit_list[1]') && doorsIn(at('fit_list')).length === 1,
-    'K3 a list at a list node still draws its members and its "+ item" door');
+  ok(chipsIn(at('fit_list')).join(',') === 'p,q' && addersIn(at('fit_list')).length === 1,
+    `K3 a list at a list node still draws its members (as chips) and its adder [${chipsIn(at('fit_list'))}]`);
 
   // '' is absence, not a wrong shape: it must not become a blank span where a control belongs
   const blankHeld = { fit_flag: '', fit_list: '' };
   const blankForm = M.renderSkeletonForm(context(false), FIXTURE, '', blankHeld, 0, 'decoy');
   const blankFlag = controlsIn(boxAt(blankForm, 'fit_flag') || makeNode(doc, 'div'))[0];
   ok(blankFlag && blankFlag.type === 'checkbox' && blankFlag.checked === false
-     && doorsIn(boxAt(blankForm, 'fit_list') || makeNode(doc, 'div')).length === 1,
-    "K4 '' at a flag is an unticked box and '' at a list is its empty door -- absence, not a misfit");
+     && chipsIn(boxAt(blankForm, 'fit_list') || makeNode(doc, 'div')).length === 0
+     && addersIn(boxAt(blankForm, 'fit_list') || makeNode(doc, 'div')).length === 1,
+    "K4 '' at a flag is an unticked box and '' at a list is its empty adder -- absence, not a misfit");
 
   // W -- one word in a list of words is that list's one member (owner: 「선언창도 다 지원하게해」)
-  const removesIn = (box) => walk(box).filter((n) => cls(n).includes('oe-form-remove'));
-  const inputAt = (p) => controlsIn(boxAt(form, p) || makeNode(doc, 'div'))[0];
-  ok(inputAt('word_list[0]') && inputAt('word_list[0]').value === 'Lot'
-     && !boxAt(form, 'word_list[1]') && removesIn(at('word_list')).length === 1
-     && doorsIn(at('word_list')).length === 1,
-    `W1 a word at a list of words draws ONE member holding the word, its "-" and the "+" door `
-    + `[${inputAt('word_list[0]') && inputAt('word_list[0]').value}]`);
-  ok(['a', 'b', 'c'].every((word, i) => inputAt(`three_list[${i}]`)
-       && inputAt(`three_list[${i}]`).value === word)
-     && !boxAt(form, 'three_list[3]') && removesIn(at('three_list')).length === 3,
-    'W2 a list of three draws three members, each holding its own word');
-  ok(!boxAt(form, 'empty_list[0]') && controlsIn(at('empty_list')).length === 0
-     && doorsIn(at('empty_list')).length === 1,
-    'W3 an empty list draws no member and no box -- only its "+" door');
+  const removesIn = (box) => walk(box).filter((n) => cls(n).includes('chip-remove')
+    && (n.attrs || {})['data-action'] === 'form-remove');
+  ok(chipsIn(at('word_list')).join(',') === 'Lot' && removesIn(at('word_list')).length === 1
+     && addersIn(at('word_list')).length === 1,
+    `W1 a word at a list of words draws ONE member holding the word, its remove and the adder `
+    + `[${chipsIn(at('word_list'))}]`);
+  ok(chipsIn(at('three_list')).join(',') === 'a,b,c' && removesIn(at('three_list')).length === 3,
+    `W2 a list of three draws three members, each holding its own word [${chipsIn(at('three_list'))}]`);
+  ok(chipsIn(at('empty_list')).length === 0
+     && controlsIn(at('empty_list')).every((n) => cls(n).includes('oe-form-new-id'))
+     && addersIn(at('empty_list')).length === 1,
+    'W3 an empty list draws no member and no box -- only its adder');
 
   // every unfit path together: nothing typeable over a value the form cannot hold
   const typeable = UNFIT.flatMap((p) => controlsIn(at(p)));
@@ -176,8 +178,8 @@ function suite(M) {
     `R2 read mode spells a record as JSON, not [object Object] [${shownIn(rAt('decoy_pick'))}]`);
   ok(shownIn(rAt('decoy_list')) === 'lot_event',
     'R3 read mode shows a string held where the skeleton says list of records');
-  ok(shownIn(rAt('word_list[0]')) === 'Lot' && !boxAt(read, 'word_list[1]'),
-    `R4 read mode shows a word in a list of words as its one member [${shownIn(rAt('word_list[0]'))}]`);
+  ok(chipsIn(rAt('word_list')).join(',') === 'Lot' && addersIn(rAt('word_list')).length === 0,
+    `R4 read mode shows a word in a list of words as its one member [${chipsIn(rAt('word_list'))}]`);
 
   // V -- a oneOf picked by the value's shape (lead 068c904a6 ②): the picker says the branch the
   //      value's shape is in, and that branch is drawn at the cell's OWN path -- no branch key.
@@ -255,7 +257,7 @@ function panelCensus(ChainRulePanel) {
       const drawn = input ? (input.type === 'checkbox' ? String(input.checked === true) === String(value)
                                                      : String(input.value ?? '') !== '')
         : nodes.some((n) => n.tagName === 'SELECT' || cls(n).includes('oe-node-folded')
-                           || (cls(n).includes('oe-value') && String(n.textContent) !== ''));
+                           || ((cls(n).includes('oe-value') || cls(n).includes('chip')) && String(n.textContent) !== ''));
       if (!drawn) blank.push(`${rule.declaration.name}:${at}`);
     }
   }
@@ -291,8 +293,8 @@ const DEFECTS = [
                      "    return h('span', 'oe-value', String(value));")],
   ['an unfit value is spelled with String(), so a record reads [object Object]',
     (s) => s.replace('  return JSON.stringify(value);', '  return String(value);')],
-  ['a member row indexes the word itself, so "Lot" reads "L"',
-    (s) => s.replace('(asList(node, value) || [])[key]', '(value || [])[key]')],
+  ['a list of words reads the word itself as the list, so "Lot" reads "L,o,t"',
+    (s) => s.replace('  const list = asList(node, value) || [];\n  list.forEach', '  const list = [...(value || [])];\n  list.forEach')],
 ];
 const CONTROLS = [
   ['a local rename', (s) => s.replace(/\bspelledValue\b/g, 'heldAsText')],

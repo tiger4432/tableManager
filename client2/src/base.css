@@ -77,7 +77,7 @@
   gap: var(--space-2);
   box-sizing: border-box;
   height: var(--control-h);
-  padding: 0 var(--space-4);
+  padding: 0 var(--space-3);
   font-family: var(--font-head);
   font-weight: 600;
   font-size: var(--fs-button);
@@ -136,6 +136,94 @@
 :where(:is(input, select, textarea):not(:is([class^="ag-"], [class*=" ag-"]) *):focus-visible) { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
 :where(:is(input, select, textarea):not(:is([class^="ag-"], [class*=" ag-"]) *):disabled) { opacity: 0.5; cursor: not-allowed; }
 :where(:is(input, textarea):not(:is([class^="ag-"], [class*=" ag-"]) *))::placeholder { color: var(--text-dim); }
+
+/* ── the small control — the second of the two heights (lead f3639d4a2): a control inside a form row ───────── */
+:where(.ctl-small) { height: var(--control-h-small); min-height: var(--control-h-small); padding: 0 var(--space-3); }
+/* ── chip — one value of a list, at the small height; its remove an icon in a square of that height ─────── */
+:where(.chip) {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--control-h-small);
+  padding: 0 0 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-button);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+}
+:where(.chip-remove) {
+  width: calc(var(--control-h-small) - 2px);
+  height: calc(var(--control-h-small) - 2px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+}
+:where(.chip-remove svg) { width: var(--space-3); height: var(--space-3); stroke: currentColor; stroke-width: 1.6; fill: none; }
+:where(.chip-remove:hover:not(:disabled)) { color: var(--danger); background: var(--tint-hover); }
+
+/* ── a declaration's text | its form (form D, lead f3639d4a2 — declaration_split.js) ──────────────────────── */
+/* The text on the surface, not a dark block: the eye goes to the form. The text is as tall as its lines and scrolls
+   with its line numbers in one box; a line that does not read is marked there and said under the text. */
+:where(.decl-split) { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-3); align-items: start; }
+:where(.decl-split__text) { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+:where(.decl-split__body) {
+  display: flex;
+  align-items: flex-start;
+  max-height: var(--decl-split-h);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+:where(.decl-split__gutter) {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-button);
+  line-height: 1.6;
+  text-align: right;
+  color: var(--text-dim);
+  background: var(--bg-header);
+  user-select: none;
+}
+:where(.decl-split__gutter > .is-bad) { color: var(--danger); background: var(--danger-weak); font-weight: 600; }
+:where(textarea.decl-split__area) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  margin: 0;
+  padding: var(--space-3);
+  border: 0;
+  resize: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: pre;
+  font-family: var(--font-mono);
+  font-size: var(--fs-button);
+  line-height: 1.6;
+  background: transparent;
+}
+:where(.decl-split__fault) { color: var(--danger); font-size: var(--fs-label); overflow-wrap: anywhere; }
+:where(.decl-split__form) {
+  --oe-label-w: calc(var(--space-6) * 7);
+  --oe-state-w: calc(var(--space-6) * 4);
+  min-width: 0;
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--space-3);
+  max-height: var(--decl-split-h);
+  overflow: auto;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+:where(.decl-split__form:disabled) { opacity: 0.6; }
+@media (max-width: 900px) { :where(.decl-split) { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── table — the first and last cells sit on the box's text edge (mockup ㄴ) ─────── */
 :where(table) {

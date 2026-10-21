@@ -1135,6 +1135,24 @@ async function loadTableNames() {
   return chainTableNames;
 }
 
+// Form D (B 5d5b99fac): the names a ref cell is offered - tables, entities, vocabulary - and every table's columns,
+// from the explorer's own read. Read once, like the table names.
+let authoringCatalog = null;
+
+async function loadAuthoringCatalog() {
+  if (authoringCatalog !== null) return authoringCatalog;
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/ontology-explorer/authoring/schema`);
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    if (!body || !body.sections || typeof body.sections !== 'object') return null;
+    authoringCatalog = { sections: body.sections, tables: body.tables && typeof body.tables === 'object' ? body.tables : {} };
+  } catch (e) {                                              // noqa
+    return null;
+  }
+  return authoringCatalog;
+}
+
 async function refreshChainRule(name, extra = {}) {
   const mount = byId('chain-rule-mount');
   if (!mount) return;
@@ -1149,7 +1167,7 @@ async function refreshChainRule(name, extra = {}) {
   // 등록부를 다시 묻는 것은 같은 답에 대한 두 번째 질문입니다.
   // 🔴 C-101 ②. 목록이 «둘»이고 상태도 각자입니다 — 안 넣으면 「모름」, 빈 배열이면 「없음」.
   //    하나를 못 읽었을 때 다른 하나까지 「없음」으로 그리면 안 물어본 것이 답이 됩니다.
-  const [mapperBody, tables] = await Promise.all([loadChainMappers(), loadTableNames()]);
+  const [mapperBody, tables, catalog] = await Promise.all([loadChainMappers(), loadTableNames(), loadAuthoringCatalog()]);
   const mappers = mapperChoices(mapperBody);
   // C-101 ③. 목록 «밖»의 줄들 — 서버가 그 칸들을 낼 때만 섭니다(S-223). 없으면 빈 배열이고
   // 패널은 아무것도 안 그립니다: 「못 읽음」을 「없음」으로 그리지 않는 자리입니다.
@@ -1174,6 +1192,7 @@ async function refreshChainRule(name, extra = {}) {
   chainRulePanel.setLists({
     ...(mappers === null ? {} : { mappers }),
     ...(tables === null ? {} : { tables }),
+    ...(catalog === null ? {} : { ...catalog.sections, table_columns: catalog.tables }),
   });
   const view = chainRulePanel.render(body, opts);
   const count = byId('chain-rule-editor-count');

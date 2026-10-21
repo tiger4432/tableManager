@@ -8,6 +8,9 @@ import './spotfire.css';
 import './ledger_declaration_bar.css';
 import { renderDeclarationBar } from './ledger_declaration_bar.js';
 import { SAMPLE_RAW, SAMPLE_VIEW } from './ledger_declaration_sample.js';
+// The declaration form's tree (form D), read-only: names three levels deep, the longest 40 letters.
+import './ontology_explorer.css';
+import { readContext, renderSkeletonForm } from './ontology_explorer_view.js';
 
 const root = document.documentElement;
 const button = document.getElementById('sample-theme');
@@ -21,6 +24,21 @@ button.addEventListener('click', () => {
 });
 if (!root.dataset.theme) root.dataset.theme = 'light';
 draw();
+const formMount = document.getElementById('sample-decl-form');
+if (formMount) {
+  const leaf = { kind: 'leaf', hint: 'free' };
+  const skeleton = { kind: 'record', fields: [
+    { key: 'name', required: true, node: leaf },
+    { key: 'read', required: true, node: { kind: 'record', fields: [
+      { key: 'table', required: true, node: leaf },
+      { key: 'time', required: false, node: { kind: 'record', fields: [
+        { key: 'column', required: true, node: leaf },
+        { key: 'a_forty_letter_name_of_a_declared_column', required: false, node: leaf }] } }] } }] };
+  const value = { name: 'lot_master', read: { table: 'lot_master', time: { column: 'observed_at', a_forty_letter_name_of_a_declared_column: 'Asia/Seoul' } } };
+  const tree = renderSkeletonForm(readContext({}, { read: true, 'read.time': true }), skeleton, '', value, 0, 'lot_master');
+  formMount.replaceChildren(Object.assign(document.createElement('div'), { className: 'oe-skeleton-form' }));
+  formMount.firstChild.append(tree);
+}
 const declMount = document.getElementById('sample-decl-bar');
 // A chip pressed opens its list (the explorer's decl-open, here on the sample's own data); the page opens shut.
 let declOpen = null;

@@ -6,7 +6,7 @@ import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import { pathSteps } from './path_bar.js';
 import {
-  asList, declarationShape, fieldApplies, memberPath, membersOf, shapeAt, shapeBranch, valueFits,
+  asList, declarationShape, fieldApplies, memberPath, membersOf, refNames, shapeAt, shapeBranch, valueFits,
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { isBlank } from './absent.js';
@@ -16,6 +16,7 @@ import { placeBeside } from './image_preview.js';
 import { countWithAbsence } from './count_with_absence.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석. 이 화면의 「Draft preview」가 «말 없이» 꺼져 있었습니다.
 import { setDisabledReason } from './disabled_reason.js';
+import { DeclarationSplit } from './declaration_split.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
 import {
@@ -544,7 +545,7 @@ function renderReadTree(state) {
 
 /** The context a READ draws with: the skeleton's shape, and "no" to everything editable. One
  *  literal, called by the read tree and by the form's read-only values (`renderPlannedValue`). */
-function readContext(schema, expanded) {
+export function readContext(schema, expanded) {
   const defs = schema?.skeleton?.defs || {};
   return {
     schema: schema || {},
@@ -557,7 +558,7 @@ function readContext(schema, expanded) {
     plannedMembers: () => [],
     covering: () => null,
     deref: (item) => (item && item.use ? defs[item.use] : item),
-    declared: () => [],
+    refOf: () => ({ table: '', names: [] }),
     rolesNear: () => [],
     usedElsewhere: () => [],
     renderRow: () => null,
@@ -789,9 +790,9 @@ function renderRaw(state) {
     const textarea = h('textarea', 'oe-editor-textarea');
     textarea.value = state.editorText;
     textarea.spellcheck = false;
+    textarea.setAttribute('aria-label', 'Working draft JSON');
     textarea.readOnly = !isDraftRevisionEditable(state.draft);
     if (!textarea.readOnly) textarea.dataset.action = 'edit-raw';
-    label.append(textarea);
     const validation = h('div', 'oe-editor-validation');
     validation.dataset.valid = String(Boolean(state.draft.preview_valid));
     const errors = state.draft.validation_errors || [];
@@ -819,7 +820,15 @@ function renderRaw(state) {
     // name for what Save already does, and the second was a control nobody asked for.
     const controls = h('div', 'oe-editor-controls');
     const bar = barDeclaration(state);
-    if (!bar) controls.append(button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary'));
+    // Form D (lead f3639d4a2): the text on the left, the form on the right; a text that does not read turns Save off.
+    const split = bar ? null : new DeclarationSplit(document, textarea);
+    if (state.dirty) controls.append(h('span', 'oe-editor-unsaved', 'Unsaved'));
+    if (!bar) {
+      const save = button('Save', 'save-draft', '', 'oe-editor-action oe-editor-action-primary');
+      const fault = split && split.fault;
+      setDisabledReason(save, fault ? (fault.line ? `Line ${fault.line} · ${fault.message}` : fault.message) : '');
+      controls.append(save);
+    }
     // 🔴 WHAT WOULD REFUSE THIS SAVE, BY NAME. An empty list is the answer the screen
     //    never had: it could see a red test run and nothing else, so a draft that was
     //    writable looked blocked.
@@ -863,27 +872,27 @@ function renderRaw(state) {
       const refusals = errors.length + ((state.decl && state.decl.refused) || []).length;
       if (refusals) validation.textContent = BAR_WORDS.problems(refusals);
       const json = h('div', 'oe-decl-json');
+      label.append(textarea);
       json.append(context, label);
       editor.append(...saveNotices(state), renderDeclarationBar(document, bar.raw, declarationView(state, bar.kind, state.decl && state.decl.json ? json : null)),
         validation, controls);
       return editor;
     }
+    const form = [];
     if (state.draft.target_kind === 'entity') {
       const keysForm = renderEntityKeys(state);
-      if (keysForm) editor.append(keysForm);
+      if (keysForm) form.push(keysForm);
     }
     // 🔴 THE FIELD ROWS LIVE IN THE EDITING AREA, NOT IN A LIST UNDER IT.
     //     「그거를 편집 영역으로 올려서 폼으로 만들면 되겠네」 (owner, 2026-08-19)
     // This is a MOVE, not a new surface: the same rows the plan already rendered below,
     // brought up to where the declaration is being edited, so filling them IS the editing.
     // No new area, no new mode, no modal -- the owner's standing rule.
-    if (state.authoring) editor.append(renderAuthoring(state));
-    // 🔴 THE TREE FIRST, THE DRAFT'S PAPERWORK AFTER IT. 「항목 열면 트리가 위에 나오게」:
-    // the three-line context and the raw JSON are ABOUT the draft, and reading them is not
-    // what opening a declaration is for. Nothing is deleted -- the snapshot hash, the
-    // revision and the lifecycle all still say exactly what they said, one screen lower and
-    // one line tall (see `.oe-editor-context`).
-    editor.append(context, label, validation, controls);
+    if (state.authoring) form.push(renderAuthoring(state));
+    split.setForm(...form);
+    // 🔴 THE TREE FIRST, THE DRAFT'S PAPERWORK AFTER IT. 「항목 열면 트리가 위에 나오게」: the save head, then the text and
+    // the form side by side (form D), then the three-line context - ABOUT the draft, one line tall (`.oe-editor-context`).
+    editor.append(controls, split.el, validation, context);
     return editor;
   }
   if (state.draft) {
@@ -894,9 +903,15 @@ function renderRaw(state) {
     wrap.append(notice, code);
     return wrap;
   }
-  const code = h('pre', 'oe-code');
-  code.append(h('code', '', JSON.stringify(state.selection.raw, null, 2)));
-  return code;
+  // Form D: not being edited, the same two sides - the declaration's text, read only, and what the plan says of it
+  // (the Authoring tab's, folded in here).
+  const text = h('textarea', 'oe-editor-textarea');
+  text.value = JSON.stringify(state.selection.raw, null, 2);
+  text.readOnly = true;
+  text.setAttribute('aria-label', 'Declaration JSON');
+  const split = new DeclarationSplit(document, text);
+  split.setForm(renderAuthoring(state));
+  return split.el;
 }
 
 // ------------------------------------------------------------------ 시험 실행
@@ -1181,7 +1196,7 @@ function renderInspector(state) {
   const tabs = h('div', 'oe-tabs');
   tabs.setAttribute('role', 'tablist');
   for (const [id, label] of [
-    ['definition', 'Definition'], ['authoring', 'Authoring'], ['usage', 'Used by'], ['raw', 'Raw JSON'],
+    ['definition', 'Definition'], ['usage', 'Used by'], ['raw', 'Declaration'],
   ]) {
     const tab = button(label, 'tab', id, 'oe-tab');
     tab.setAttribute('role', 'tab');
@@ -1193,8 +1208,8 @@ function renderInspector(state) {
   panel.id = `oe-panel-${state.detailTab}`;
   panel.setAttribute('role', 'tabpanel');
   if (state.detailTab === 'usage') panel.append(renderUsage(state));
-  else if (state.detailTab === 'raw') panel.append(renderRaw(state));
-  else if (state.detailTab === 'authoring') panel.append(renderAuthoring(state));
+  // Form D: the declaration's text and its form in one tab - Authoring and Raw JSON were the same document twice.
+  else if (state.detailTab === 'raw' || state.detailTab === 'authoring') panel.append(renderRaw(state));
   else panel.append(renderDefinition(state));
   article.append(tabs, panel);
   return article;
@@ -1540,8 +1555,16 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     line.setAttribute('aria-expanded', 'false');
     // An optional row the server grounds says what its blank MEANS in the value's place (lead
     // 04cecc30f ②: 「Not an event」) - one word on the same line, so 8fd2f185d's space holds.
-    line.append(h('code', 'oe-folded-value', row.state === 'unanswered' && row.ground
-      ? row.ground.text : formatValue(row.value)));
+    // Form D: a list of words reads as its chips here too, not as its JSON.
+    const words = Array.isArray(row.value) && row.value.length
+      && row.value.every((v) => typeof v === 'string' || typeof v === 'number') ? row.value : null;
+    const cells = !words && row.value && typeof row.value === 'object' && !Array.isArray(row.value)
+      ? Object.entries(row.value).filter(([, v]) => v !== null && typeof v !== 'object').map(([k, v]) => `${k} ${v}`).join(' · ')
+      : '';
+    const shown = h('code', 'oe-folded-value', words ? undefined : row.state === 'unanswered' && row.ground
+      ? row.ground.text : cells || formatValue(row.value));
+    for (const word of words || []) shown.append(h('span', 'chip', String(word)));
+    line.append(shown);
     // 🔴 THE REASON BELONGS TO WHICHEVER COLUMN OWNS IT. In the tree the row's state column
     // already says 「선언됨」, so repeating it here put the same word at two x-positions and
     // rendered as one run of text -- `dt_log선언됨`. Outside the tree there IS no state
@@ -1876,13 +1899,17 @@ export function nodeTrail(el, head = []) {
 const isFormNode = (node) => node.nodeType === 1 && ` ${node.className || ''} `.includes(' oe-node ')
   && node.dataset && node.dataset.path !== undefined;
 
-function treeRow(depth, label, extras, valueEl, stateEl, cls) {
+function treeRow(depth, label, extras, valueEl, stateEl, cls, lead = null) {
   const row = h('div', 'oe-node-row' + (cls ? ' ' + cls : ''));
   // Depth is DATA; the formula turning it into a width lives in the stylesheet.
   row.style.setProperty('--oe-depth', String(depth));
   const name = h('div', 'oe-node-label');
-  const nameText = h('span', 'oe-node-name', label);
-  // The label column truncates at depth, so the full identifier stays reachable.
+  if (lead) name.append(lead);
+  // A name may break only right after an '_' (lead 10-21): each segment is its own span, a <wbr> after its '_'.
+  // It wraps only where the rows stack (CSS); the one grid keeps it on one line everywhere else.
+  const nameText = h('span', 'oe-node-name');
+  for (const part of String(label ?? '').split(/(?<=_)/)) nameText.append(h('span', '', part), h('wbr'));
+  nameText.setAttribute('data-wrap-ok', '');
   nameText.title = String(label);
   name.append(nameText);
   for (const extra of extras || []) name.append(extra);
@@ -1938,6 +1965,10 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   // so drawing them again below would be the same list twice with two ways to edit it.
   const covers = context.covering ? context.covering(path, shape) : null;
   if (covers === 'all') return renderTreeLeaf(context, shape, path, value, depth, label);
+  // Form D (lead f3639d4a2): a list of words the plan does not speak for is one row - its words as chips, an adder.
+  if (isChipList(context, shape) && !context.planRow(path)) {
+    return renderTreeLeaf(context, shape, path, value, depth, label, required);
+  }
   // 🔴 THE DECLARATION'S OUTLINE IS ALWAYS DRAWN; FOLDING STARTS BELOW IT. Owner opened a
   // finished pack and saw two lines -- `lot-lineage@1` and 「주장 MAP 접힘 · 5」 -- and asked
   // whether it had been pushed. The tree was there and the fold rule was doing exactly what
@@ -1969,17 +2000,6 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   // step. (Not `data-key`: that is `dom_patch`'s reconciliation signature and these boxes
   // are already reconciled positionally among their siblings.)
   box.dataset.path = path;
-  // 🔴 THREE SHAPES, NOT TWO. Owner, looking at the badge: 「편집창에서 map으로 떠있는건
-  // 머야」 -- and asking is the verdict, because two different things wore one word. A
-  // name-keyed map asks you for a NAME before it can hold anything; an index-keyed one just
-  // appends. Same badge, opposite actions.
-  //
-  // The words are the screen's own, not coined here: the naming control already asks for
-  // 「이름」 and the append control already says 「+ 항목」. `RECORD` is unchanged -- the
-  // mockup drew it, and it was not what was asked about.
-  const kind = h('i', 'oe-node-badge',
-                 shape.kind !== 'map' ? 'RECORD'
-                   : shape.keyed_by === 'index' ? 'Item' : 'Name');
   const children = shape.kind === 'map'
     ? renderSkeletonMap(context, shape, path, value, depth)
     : renderSkeletonRecord(context, shape, path, value, depth, covers);
@@ -2006,12 +2026,19 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     // with extra steps -- the mockup's rule is 「접힌 것은 개수를 보인다」, and it is the
     // same fault this round has been removing everywhere else: an absence nobody can tell
     // apart from an emptiness.
-    const hidden = children.childElementCount;
-    const toggle = path
-      ? button(open ? '−' : (defaults ? 'Defaults · ' : 'Folded · ') + hidden, 'toggle-field', path,
-               open ? 'oe-node-fold' : 'oe-node-folded')
-      : null;
-    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    // Form D (mockup 4uvPARMtc9BQ1XcRV8syW5): the row says what it holds - «▸ name · summary», its filled cells and a
+    // list by its count; a fold of defaults says so (04cecc30f); a fold with nothing to summarise still says how
+    // many it folds (the fold-shows-its-count rule above).
+    const hidden = shape.kind === 'map' ? membersOf(shape, value).length : children.childElementCount;
+    const toggle = path ? button(open ? '▾' : '▸', 'toggle-field', path, open ? 'oe-node-fold' : 'oe-node-folded') : null;
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', `${open ? 'Fold' : 'Open'} ${label || path}`);
+    }
+    const said = defaults ? `Defaults · ${hidden}` : (foldSummary(shape, value, hidden) || (open ? '' : `Folded · ${hidden}`));
+    const summary = said ? h('span', 'oe-node-summary', said) : null;
+    // One line, cut in its own slot on purpose; the whole of it is its title.
+    if (summary) { summary.title = said; summary.setAttribute('data-clip-ok', ''); }
     // 🔴 THE PICKER RIDES IN THE BRANCH'S OWN VALUE COLUMN, NOT IN AN 「이 자리」 CHILD ROW.
     // A record whose candidates fill some of its keys keeps the rest as rows below, so the
     // control belongs on the line that carries the name -- and a fold then hides only the
@@ -2019,10 +2046,10 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     const own = covers ? context.planRow(path) : null;
     // Shut, the branch's own plan row is not drawn below it, so its note rides the branch's line.
     const shut = !open && !own ? context.planRow(path) : null;
-    box.append(treeRow(depth, label || path, [kind],
-                       own ? context.renderRow(own, shape, true) : shut && shut.note ? noteOf(shut) : null, toggle,
+    box.append(treeRow(depth, label || path, [],
+                       own ? context.renderRow(own, shape, true) : shut && shut.note ? noteOf(shut) : summary, null,
                        (path ? 'is-branch' : 'is-branch is-root')
-                       + (open ? '' : ' is-folded')));
+                       + (open ? '' : ' is-folded'), toggle));
   }
   if (open) box.append(children);
   return box;
@@ -2111,15 +2138,15 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
     : stated || names.find((name) => held[name] !== undefined) || '';
   const box = h('div', 'oe-node');
   box.dataset.path = path;
-  const head = h('div', 'oe-node-head');
-  head.style.setProperty('--oe-depth', String(depth));
-  head.appendChild(h('span', 'oe-node-label', label === null ? path : label));
-  if (depth > 0) head.appendChild(depthGuides(depth));
-  if (required) head.appendChild(h('i', 'oe-node-badge oe-demand--warn', 'Required'));
-  head.appendChild(renderClosedList(
-    closedListChoice(names, chosen, { loaded: true, name: path }),
-    h, { action: 'edit-shape-branch', path, label: label === null ? path : label }));
-  box.appendChild(head);
+  // Form D: the head is a tree row like every other - its name, the picker in the value column, its demand in the
+  // state column (the leaves' own seat, `demandState`) - so its words stand on the rows' lines.
+  const name = label === null ? path : label;
+  const demand = demandState({ planned: false, planLoaded: context.planLoaded !== false, hasShape: true, required });
+  box.appendChild(treeRow(depth, name, [],
+    renderClosedList(closedListChoice(names, chosen, { loaded: true, name: path }),
+      h, { action: 'edit-shape-branch', path, label: name }),
+    demand.text ? h('i', `oe-tier oe-demand oe-demand--${demand.tone}`, demand.text) : null,
+    'is-branch oe-node-head'));
   // 고른 가지만 내려갑니다. 안 고른 자리에는 «아무것도» 없습니다.
   // 🔴 가지의 칸들을 «고르개 바로 밑»에 펴서 놓습니다 — 그것을 다시 한 상자에 넣으면
   //    그 상자가 접힐 수 있고(깊이 규칙), 실측해 보니 접혀 있었습니다: 고르고 나서도
@@ -2161,7 +2188,7 @@ function renderSkeletonRecord(context, node, path, value, depth, covers = null) 
     // chrome now, so the control rides in the label column beside the name.
     if (!context.readOnly && field.required === false && current !== undefined) {
       const slot = drawn.querySelector('.oe-node-label');
-      if (slot) slot.append(button('−', 'form-clear', at, 'oe-form-remove'));
+      if (slot) slot.append(removeButton(at, field.label || field.key, 'form-clear', 'Clear'));
     }
     box.append(drawn);
   }
@@ -2196,6 +2223,12 @@ function renderSkeletonMap(context, node, path, value, depth) {
   const held = membersOf(node, value);
   const planned = node.keyed_by === 'index' ? [] : context.plannedMembers(path);
   const members = [...held, ...planned.filter((key) => !held.includes(key))];
+  // Form D: a list of records whose cells are all leaves, or a name -> word map, is a table.
+  const cells = tableCells(context, node);
+  if (cells) {
+    box.append(renderMapTable(context, node, path, value, depth, cells, members, held));
+    return box;
+  }
   for (const key of members) {
     const at = memberPath(path, key, node.keyed_by);
     const drawn = renderSkeletonForm(
@@ -2205,7 +2238,7 @@ function renderSkeletonMap(context, node, path, value, depth) {
     if (!drawn) continue;
     const slot = drawn.querySelector('.oe-node-label');
     if (!context.readOnly && slot && held.includes(key)) {
-      slot.append(button('−', 'form-remove', at, 'oe-form-remove'));
+      slot.append(removeButton(at, String(key)));
     }
     box.append(drawn);
   }
@@ -2226,6 +2259,210 @@ function renderSkeletonMap(context, node, path, value, depth) {
   return box;
 }
 
+// -- form D's shapes (lead f3639d4a2, owner 10-20): chosen by the skeleton's shape, never by which declaration --
+
+/** A list of words: an index map whose member is a leaf. Drawn as chips. */
+function isChipList(context, shape) {
+  if (!shape || shape.kind !== 'map' || shape.keyed_by !== 'index') return false;
+  const of = context.deref(shape.of);
+  return Boolean(of && of.kind === 'leaf' && of.hint !== 'flag');
+}
+
+/** The columns a map is drawn as a table with, or null: a list of records whose every field is a leaf and none is
+ *  gated (`when`) - its fields; a name -> word map - its names and their values. Anything else keeps the tree. */
+function tableCells(context, node) {
+  const of = context.deref(node.of);
+  if (!of) return null;
+  if (node.keyed_by === 'index' && of.kind === 'record') {
+    const fields = of.fields || [];
+    const leaves = fields.length > 0 && fields.every((field) => {
+      const shape = context.deref(field.node);
+      return !field.when && shape && shape.kind === 'leaf';
+    });
+    return leaves ? fields.map((field) => ({ key: field.key, label: field.label || field.key, node: context.deref(field.node) })) : null;
+  }
+  if (node.keyed_by !== 'index' && of.kind === 'leaf') return [{ key: null, label: 'Value', node: of }];
+  return null;
+}
+
+/** The SVG cross a remove draws - an icon, not the letter «×» (lead f3639d4a2). */
+function crossIcon() {
+  if (typeof document.createElementNS !== 'function') return h('span', 'chip-remove__icon');
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 10 10');
+  svg.setAttribute('aria-hidden', 'true');
+  const line = document.createElementNS(NS, 'path');
+  line.setAttribute('d', 'M2 2l6 6M8 2l-6 6');
+  svg.append(line);
+  return svg;
+}
+
+/** A remove for one member (`form-remove`) or the clear of an optional field (`form-clear`): the form's own doors,
+ *  drawn as the icon (lead f3639d4a2: an SVG, not a glyph). */
+function removeButton(at, what, action = 'form-remove', word = 'Remove') {
+  const x = button('', action, at, 'chip-remove');
+  x.setAttribute('aria-label', `${word} ${what}`);
+  x.append(crossIcon());
+  return x;
+}
+
+/** The names a cell is offered: a ref cell its section, a role cell the roles near it, else what the file uses. */
+function offered(context, node, path) {
+  if (!node) return [];
+  return node.hint === 'ref' ? context.refOf(node).names
+    : node.hint === 'role' ? context.rolesNear(path, node.from)
+      : context.usedElsewhere(context.absolute(path));
+}
+
+/** `input` with a datalist of `items`, when there are any. A datalist SUGGESTS; a name nothing has yet stays typable.
+ *  Its id carries the form's prefix, so two forms on one page keep their own lists. */
+function withList(context, input, path, items) {
+  if (!items.length) return input;
+  const list = h('datalist');
+  list.id = `${context.listPrefix || 'oe'}-dl-${path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  for (const item of items) {
+    const option = h('option');
+    option.value = item;
+    list.append(option);
+  }
+  input.setAttribute('list', list.id);
+  const wrap = h('span', 'oe-form-suggested');
+  wrap.append(input, list);
+  return wrap;
+}
+
+/** The adder of a list or a name map: what is typed goes in through the `+` beside it (`form-name`); Enter and a paste
+ *  reach the same `+` (`adderInput`). */
+function adder(context, path, placeholder, items) {
+  const row = h('span', 'oe-form-adder');
+  const input = h('input', 'oe-form-new-id ctl-small');
+  input.type = 'text';
+  input.placeholder = placeholder;
+  input.dataset.for = path;
+  input.dataset.value = path;
+  input.dataset.enter = 'form-name';
+  input.setAttribute('aria-label', `${placeholder} - ${path}`);
+  const go = button('+', 'form-name', path, 'ctl-small oe-form-adder__go');
+  go.setAttribute('aria-label', `Add to ${path}`);
+  row.append(withList(context, input, path, items), go);
+  return row;
+}
+
+/** A list of words as chips: each a member with its remove, the adder last. */
+function renderChips(context, node, path, value) {
+  const wrap = h('span', 'oe-chips');
+  const list = asList(node, value) || [];
+  list.forEach((item, index) => {
+    const chip = h('span', 'chip', spelledValue(item));
+    if (!context.readOnly) chip.append(removeButton(memberPath(path, index, 'index'), spelledValue(item)));
+    wrap.append(chip);
+  });
+  if (context.readOnly) {
+    if (!list.length) wrap.append(h('span', 'oe-value is-none', 'None'));
+    return wrap;
+  }
+  const of = context.deref(node.of);
+  const held = new Set(list.map(String));
+  wrap.append(adder(context, path, node.member || 'Add',
+    offered(context, of, memberPath(path, list.length, 'index')).filter((item) => !held.has(String(item)))));
+  return wrap;
+}
+
+/** A map as a table: a row per member, a cell per field (or its name and value), each held row's remove, the add row. */
+function renderMapTable(context, node, path, value, depth, cells, members, held) {
+  const wrap = h('div', 'oe-node-table');
+  wrap.style.setProperty('--oe-depth', String(depth + 1));
+  const table = h('table', 'oe-form-table');
+  const head = h('tr');
+  const named = cells[0].key === null;
+  if (named) head.append(h('th', 'cell-fit', node.member || 'Name'));
+  for (const cell of cells) head.append(h('th', '', cell.label));
+  if (!context.readOnly) head.append(h('th', 'oe-form-table__x cell-fit'));
+  const thead = h('thead');
+  thead.append(head);
+  const body = h('tbody');
+  const list = node.keyed_by === 'index' ? (asList(node, value) || []) : null;
+  for (const key of members) {
+    const at = memberPath(path, key, node.keyed_by);
+    const member = list ? list[key] : (value || {})[key];
+    const row = h('tr');
+    row.dataset.path = at;
+    if (named) row.append(h('td', 'oe-form-table__name cell-fit', String(key)));
+    for (const cell of cells) {
+      const td = h('td');
+      const cellAt = cell.key === null ? at : `${at}.${cell.key}`;
+      const cellValue = cell.key === null ? member : (member && typeof member === 'object' ? member[cell.key] : undefined);
+      const control = leafControl(context, cell.node, cellAt, cellValue);
+      if (control) td.append(control);
+      row.append(td);
+    }
+    if (!context.readOnly) {
+      const x = h('td', 'oe-form-table__x cell-fit');
+      if (held.includes(key)) x.append(removeButton(at, String(key)));
+      row.append(x);
+    }
+    body.append(row);
+  }
+  table.append(thead, body);
+  wrap.append(table);
+  if (!context.readOnly) {
+    wrap.append(node.keyed_by === 'index'
+      ? button(`+ ${node.member || 'Row'}`, 'form-append', path, 'ctl-small oe-form-table__add')
+      : adder(context, path, node.member || 'Name', []));
+  }
+  return wrap;
+}
+
+/** What a folded row says of what it holds: its filled cells and how many rows it folds (the owner's «a fold shows
+ *  its count», lead 10-21), a list by its count - one line. */
+function foldSummary(shape, value, count) {
+  if (shape.kind === 'map') {
+    const keys = membersOf(shape, value);
+    if (!keys.length) return '';
+    const words = shape.keyed_by === 'index'
+      ? (asList(shape, value) || []).filter((v) => typeof v === 'string' || typeof v === 'number').map(String)
+      : keys;
+    return words.length ? `${keys.length} · ${words.slice(0, 4).join(', ')}${words.length > 4 ? ', …' : ''}`
+      : `${shape.member || 'Item'} ${keys.length}`;
+  }
+  const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const words = [];
+  for (const field of shape.fields || []) {
+    const v = held[field.key];
+    if (v === undefined || v === null || v === '') continue;
+    const name = field.label || field.key;
+    if (Array.isArray(v)) words.push(`${name} ${v.length}`);
+    else if (typeof v !== 'object') words.push(`${name} ${spelledValue(v)}`);
+  }
+  return words.length ? `${words.join(' · ')} · ${count}` : '';
+}
+
+/** A leaf cell's control: the plan's row where the plan speaks for it, a list's chips, else the skeleton's control. */
+function leafControl(context, node, path, value, planned = node ? context.planRow(path) : null) {
+  if (planned) return context.renderRow(context.suggest(planned, node, path), node, true);
+  if (isChipList(context, node) && valueFits(node, value)) return renderChips(context, node, path, value);
+  return renderSkeletonLeaf(context, node, path, value);
+}
+
+/** A chip adder's Enter (its `change`) or a paste: the words go in through the adder's own `+` (`form-name`) - the door
+ *  both windows already route. A paste keeps its line breaks (a text box drops them). True when it took the event. */
+export function adderInput(event) {
+  const el = event && event.target;
+  if (!el || !el.dataset || el.dataset.enter !== 'form-name') return false;
+  if (event.type === 'paste') {
+    const text = event.clipboardData ? String(event.clipboardData.getData('text') || '') : '';
+    if (!/[,\n\t]/.test(text)) return false;
+    if (event.preventDefault) event.preventDefault();
+    el.value = [String(el.value || ''), text].filter(Boolean).join(',');
+  }
+  if (!String(el.value || '').trim()) return false;
+  const row = el.closest ? el.closest('.oe-form-adder') : null;
+  const go = row ? [...row.querySelectorAll('[data-action="form-name"]')].find((b) => b.dataset.value === el.dataset.for) : null;
+  if (go) go.click();
+  return Boolean(go);
+}
+
 /** A leaf row. The control itself is unchanged -- only the chrome around it is new. */
 function renderTreeLeaf(context, node, path, value, depth, label, required = undefined) {
   const planned = node ? context.planRow(path) : null;
@@ -2237,10 +2474,7 @@ function renderTreeLeaf(context, node, path, value, depth, label, required = und
     planned: Boolean(planned), planLoaded: context.planLoaded !== false,
     hasShape: Boolean(node), required,
   });
-  const control = demand.source === 'broken' ? null
-    : planned
-      ? context.renderRow(context.suggest(planned, node, path), node, true)
-      : renderSkeletonLeaf(context, node, path, value);
+  const control = demand.source === 'broken' ? null : leafControl(context, node, path, value, planned);
   const box = h('div', 'oe-node');
   box.dataset.path = path;             // the map's jump target; see `renderSkeletonForm`
   let state = null;
@@ -2343,24 +2577,12 @@ function renderSkeletonLeaf(context, node, path, value) {
   // has stood in this same slot, and what they put there is what this one probably wants.
   // Suggestions only -- the input keeps taking anything typed, because a zone nobody has
   // used yet has to stay possible.
-  const suggestions = node.hint === 'ref' ? context.declared(node.section)
-    : node.hint === 'role' ? context.rolesNear(path, node.from)
-      : context.usedElsewhere(context.absolute(path));
-  if (suggestions.length) {
-    const listId = `oe-dl-${path.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-    const list = h('datalist');
-    list.id = listId;
-    for (const item of suggestions) {
-      const option = h('option');
-      option.value = item;
-      list.append(option);
-    }
-    input.setAttribute('list', listId);
-    const wrap = h('span', 'oe-form-suggested');
-    wrap.append(input, list);
-    return wrap;
-  }
-  return input;
+  const control = withList(context, input, path, offered(context, node, path));
+  const table = node.hint === 'ref' ? context.refOf(node).table : '';
+  if (!table) return control;
+  const column = h('span', 'oe-form-column');
+  column.append(h('span', 'oe-form-column__table', `${table}.`), control);
+  return column;
 }
 
 
@@ -2446,7 +2668,10 @@ function renderAuthoring(state) {
   // Parsed once for the whole panel, not per row: the draft text is one document.
   let draftRaw = null;
   if (prefix) {
-    try { draftRaw = JSON.parse(state.editorText); } catch { draftRaw = null; }
+    // Form D: a text that does not read leaves the form on the last that did (the store's formText).
+    for (const text of [state.editorText, state.formText]) {
+      try { draftRaw = JSON.parse(text); break; } catch { draftRaw = null; }
+    }
   }
   // A row is editable only when its leaf actually resolves inside the open draft AND is a
   // string. A leaf that does not resolve belongs to another declaration, and a list or an
@@ -2708,7 +2933,8 @@ function renderAuthoring(state) {
     covering,
     usedElsewhere,
     deref: (node) => (node && node.use ? (skeleton.defs || {})[node.use] : node),
-    declared: (name) => (state.authoring?.sections || {})[name] || [],
+    // Form D: what a ref cell is offered comes from the schema's sections and tables (B 5d5b99fac), as in the panel.
+    refOf: (node) => refNames(state.authoringSchema?.sections, state.authoringSchema?.tables, node, draftRaw),
     rolesNear,
     // 🔴 THE ROLES A CLAIM DEFINED A MOMENT AGO ARE OFFERED BEFORE IT IS SAVED. The plan
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among

@@ -16,7 +16,7 @@
 // sides is the property being kept here; being right about dotted ids is a separate fix and
 // belongs in the server first.
 
-import { asList, emptyOf, valueFits } from './ontology_skeleton.js';
+import { asList, emptyOf, valueFits, shapeAt } from './ontology_skeleton.js';
 
 const PATH_STEP = /([^.[\]]+)|\[(\d+)\]/g;
 
@@ -52,6 +52,38 @@ export function setAtPath(document, steps, value) {
   if (typeof leaf === 'number' ? !Array.isArray(cursor) : Array.isArray(cursor)) return null;
   cursor[leaf] = value;
   return next;
+}
+
+/**
+ * Form D (lead f3639d4a2): a leaf that gates its siblings (`when: {field, is}`) was written - `before` -> `after`. The
+ * fields its new value shuts leave the record into `stash`, under the branch they belong to; the fields it opens come
+ * back from it. The document holds only the branch picked; the stash is the screen's, so going back restores what was
+ * typed there. Nothing else moves: a leaf no field is gated on returns `after` and `stash` as they are.
+ * @returns {{document: object, stash: object}}
+ */
+export function switchGated(before, after, relative, root, defs, stash = {}) {
+  const steps = splitBundlePath(relative);
+  const key = steps[steps.length - 1];
+  const parent = shapeAt(root, steps.slice(0, -1), defs);
+  const gated = parent && parent.kind === 'record'
+    ? (parent.fields || []).filter((field) => field.when && field.when.field === key) : [];
+  const now = getAtPath(after, steps);
+  if (!gated.length || getAtPath(before, steps) === now) return { document: after, stash };
+  const document = JSON.parse(JSON.stringify(after));
+  const record = getAtPath(document, steps.slice(0, -1));
+  if (!record || typeof record !== 'object' || Array.isArray(record)) return { document: after, stash };
+  const kept = { ...stash };
+  for (const field of gated) {
+    const at = `${relative}=${JSON.stringify(field.when.is)}:${field.key}`;
+    if (field.when.is === now) {
+      if (record[field.key] === undefined && kept[at] !== undefined) record[field.key] = kept[at];
+      delete kept[at];
+    } else if (record[field.key] !== undefined) {
+      kept[at] = record[field.key];
+      delete record[field.key];
+    }
+  }
+  return { document, stash: kept };
 }
 
 /**
@@ -163,15 +195,22 @@ export function deleteAtPath(document, steps) {
  *  Index map: appended, born at `path[n]`. Name map: `name` is required; born at `path.name`.
  *  Returns null when nothing may be written, the same as the other writers here.
  */
-export function addMember(document, relative, node, defs, name = '') {
+export function addMember(document, relative, node, defs, name = '', lists = null) {
   if (!node || node.kind !== 'map') return null;
   const held = asList(node, getAtPath(document, splitBundlePath(relative)));
   if (!valueFits(node, held)) return null;
-  const seed = emptyOf(node.of, defs);
+  const seed = emptyOf(node.of, defs, 0, lists);
   if (node.keyed_by === 'index') {
     const list = Array.isArray(held) ? held : [];
-    const written = writeShapeAtPath(document, relative, [...list, seed]);
-    return written === null ? null : { document: written, born: `${relative}[${list.length}]`, seed };
+    // Form D: a list of words takes what was typed at its adder - split on commas, line breaks and tabs (a paste of a
+    // column of names) - each a member; nothing typed appends one empty member, as before.
+    const item = shapeAt(node, ['0'], defs);
+    const words = item && item.kind === 'leaf' ? String(name || '').split(/[,\n\t]/).map((w) => w.trim()).filter(Boolean) : [];
+    const added = words.length
+      ? words.map((w) => (item.hint === 'number' && Number.isFinite(Number(w)) ? Number(w) : w)) : [seed];
+    const written = writeShapeAtPath(document, relative, [...list, ...added]);
+    return written === null ? null
+      : { document: written, born: `${relative}[${list.length + added.length - 1}]`, seed: added[added.length - 1] };
   }
   const key = String(name || '').trim();
   if (!key) return null;

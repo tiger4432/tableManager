@@ -91,7 +91,8 @@ function syncAttributes(live, next) {
   for (const name of attributeNames(live)) {
     if (!seen.has(name)) live.removeAttribute(name);
   }
-  if (live.className !== next.className) live.className = next.className;
+  // An SVG element's className is a read-only object; its class is the attribute copied above.
+  if (typeof live.className === 'string' && live.className !== next.className) live.className = next.className;
   // `dataset` is how the controller routes every click, so a stale key silently rewires
   // a button to the previous action rather than breaking loudly.
   const nextData = next.dataset || {};

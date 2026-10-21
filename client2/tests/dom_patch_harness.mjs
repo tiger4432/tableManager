@@ -302,6 +302,28 @@ const kids = (node) => node.childNodes;
     kids(kids(droot)[0])[0].open === false);
 }
 
+// ---------------------------------------------------------------------------------
+// H. An SVG element's className is a read-only object (SVGAnimatedString); its class is only an
+//    attribute. Form D's remove icon is one: writing className on it threw in Chrome mid-commit,
+//    and the rest of that redraw - the adder emptying after its word went in - never ran.
+// ---------------------------------------------------------------------------------
+{
+  const svg = (cls) => {
+    const node = element('svg');
+    const animated = { baseVal: cls };
+    Object.defineProperty(node, 'className', {
+      get: () => animated, set: () => { throw new TypeError('className has only a getter'); } });
+    node.setAttribute('class', cls);
+    return node;
+  };
+  const root = element('div');
+  commitTree(root, el('span', 'chip', [svg('icon')]), null);
+  let threw = null;
+  try { commitTree(root, el('span', 'chip', [svg('icon-2')]), null); } catch (e) { threw = e.message; }
+  check('H1 an SVG child is committed without writing its read-only className', threw === null, threw || '');
+  eq('H2 its class still follows the new tree, as the attribute', kids(kids(root)[0])[0].getAttribute('class'), 'icon-2');
+}
+
 // The runner's contract: one machine line from this harness's OWN counters. Taken from
 // `check_harnesses.mjs`, not from memory -- a prose summary exits 0 having proved nothing,
 // which the gate reads as death rather than as a pass.

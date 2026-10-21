@@ -48,7 +48,7 @@ values      sizes and spaces are tokens (--space-*, --control-h*, --fs-*); a px 
 ```
 - The `--oe-*` roles in the canon's `:root` are the ONLY colour vocabulary, and they point at `tokens.css`. A hex or `rgb()` in a component is a defect, and so is a name nothing defines — a fallback on it is drawn in both themes (lead 3ea218524; the token harness counts it).
 - States are MIXES of a role, never a fixed grey (a fixed grey dies in one of the two themes):
-  hover `--oe-tint-hover` (text 7%) · press `--oe-tint-press` (14%) · row `--oe-tint-row` (4%) · accent hover `--oe-tint-accent-hover` (10%) · accent press `--oe-tint-accent-press` (18%) · label ink 70% · th ink 60% · meta ink 50%.
+  hover `--oe-tint-hover` (text 7%) · press `--oe-tint-press` (14%) · row `--oe-tint-row` (4%) · accent hover `--oe-tint-accent-hover` (10%) · accent press `--oe-tint-accent-press` (18%) · label ink 70% · th ink 68% · meta ink 65% (each >= 4.5:1 on surface and surface-2 in both themes, lead 10-21).
 - Theme follows the site toggle (`:root[data-theme=…]` + `color-scheme`), not the OS. Both halves live in `tokens.css`; never define a colour that exists in only one theme.
 
 ## 2. Type

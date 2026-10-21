@@ -49,7 +49,7 @@ const liveContext = (fields) => ({
   schema: { skeleton: SKELETON.skeleton, authorable_kinds: SKELETON.authorable_kinds }, readOnly: false,
   planRow: (at) => fields.find((row) => row.path === `${PLAN.base}${at ? '.' + at : ''}`) || null,
   plannedMembers: () => [], covering: () => null,
-  deref: (item) => (item && item.use ? (SKELETON.skeleton.defs || {})[item.use] : item), declared: () => [],
+  deref: (item) => (item && item.use ? (SKELETON.skeleton.defs || {})[item.use] : item), refOf: () => ({ table: '', names: [] }),
   rolesNear: () => [], usedElsewhere: () => [], renderRow: () => null, suggest: (row) => row,
   hot: [], expanded: ALL_OPEN, absolute: (at) => `${PLAN.base}.${at}`, planLoaded: true,
 });
@@ -69,7 +69,7 @@ function suite(view) {
   const map = nodeAt(form, ROLE);
   const row = INHERITED.find((r) => r.path === `${PLAN.base}.${ROLE}`);
   const header = map ? walk(map).filter((n) => cls(n, 'oe-node-row') && blocksIn(n) === 1) : [];
-  const textOf = (el, c) => ((el && walk(el).find((n) => cls(n, c))) || {})._text;
+  const textOf = (el, c) => ((el && walk(el).find((n) => cls(n, c))) || {}).textContent;
   eq('I1 in the value column: the server\'s sentence, then the path in the declaration\'s words; the name column empty',
     header.length ? [textOf(header[0], 'oe-ground-text'), textOf(header[0], 'oe-ground-from'),
       JSON.stringify(textOf(header[0], 'oe-node-name'))].join(' | ') : '(no block)',

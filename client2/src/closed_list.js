@@ -61,6 +61,13 @@ function member(item) {
  * @returns {{control: 'unread'|'none'|'value'|'picker', value: string,
  *            options: {value: string, label: string, group: string}[], reason: string}}
  */
+/** The one value a list offers, or undefined when it offers none or more than one (form D: a choice of one is
+ *  prefilled - the count is this file's, as it is for the control). */
+export function onlyMember(options) {
+  const members = Array.isArray(options) ? options.map(member).filter(Boolean) : [];
+  return members.length === 1 ? members[0].value : undefined;
+}
+
 export function closedListChoice(options, current, opts = {}) {
   const value = typeof current === 'string' || typeof current === 'number' ? String(current) : '';
   const name = opts.name ? String(opts.name) : '';

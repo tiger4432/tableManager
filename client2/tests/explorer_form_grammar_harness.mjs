@@ -56,7 +56,7 @@ const liveContext = (view, expanded, plan = PLAN) => ({
   schema: { skeleton: SKELETON.skeleton, authorable_kinds: SKELETON.authorable_kinds }, readOnly: false,
   planRow: (p) => plan.fields.find((row) => row.path === `${plan.base}${p ? '.' + p : ''}`) || null,
   plannedMembers: () => [], covering: () => null,
-  deref: (item) => (item && item.use ? (SKELETON.skeleton.defs || {})[item.use] : item), declared: () => [],
+  deref: (item) => (item && item.use ? (SKELETON.skeleton.defs || {})[item.use] : item), refOf: () => ({ table: '', names: [] }),
   rolesNear: () => [], usedElsewhere: () => [],
   renderRow: (row, node, bare = false) => view.renderAuthoringRow(row, expanded, null, bare, null),
   suggest: (row) => row, hot: [], expanded, absolute: (p) => `${plan.base}.${p}`, planLoaded: true,
@@ -109,7 +109,8 @@ function suite(view, css, skel) {
   eq('P1 a word that explains has no box and is the canon\'s dim ink (the state word, a demand, a node\'s kind)',
     `${decl(words, 'border')}|${decl(words, 'padding')}|${decl(words, 'color')}`, '0|0|var(--oe-muted)');
   const fold = rule(css, ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,\n:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded');
-  eq('P2 a fold is a link-coloured word, one line high', `${decl(fold, 'color')}|${decl(fold, 'height')}`, 'var(--oe-accent)|auto');
+  eq('P2 a fold is a link-coloured caret in a one-step square, pressed past its edges (form D)', `${decl(fold, 'color')}|${decl(fold, 'width')}|${decl(fold, 'height')}`,
+    'var(--oe-accent)|var(--space-5)|var(--space-5)');
   eq('P3 the folded value wears the input\'s surface', `${decl(folded, 'border')}|${decl(folded, 'background')}`,
     '1px solid var(--oe-line)|var(--oe-surface)');
   const heads = [shut, open, view.renderAuthoringRow(GROUNDED, {}, null, false)]
@@ -145,7 +146,7 @@ function suite(view, css, skel) {
   const states = walk(opened).filter((n) => cls(n, 'oe-node-state')).map((n) => n.textContent).filter(Boolean);
   ok('W2 no tier word in any state column', states.length > 5 && !states.some((s) => TIERS.has(s)),
     `${states.length} states, tiers seen: ${states.filter((s) => TIERS.has(s)).join(',')}`);
-  eq('W3 no row is named «This slot»', walk(opened).filter((n) => cls(n, 'oe-node-name') && n._text === 'This slot').length, 0);
+  eq('W3 no row is named «This slot»', walk(opened).filter((n) => cls(n, 'oe-node-name') && n.textContent === 'This slot').length, 0);
   const paths = walk(open).filter((n) => cls(n, 'oe-ground-from')).map((n) => n._text);
   ok('W4 a ground names where it comes from in the declaration\'s words, not the bundle path',
     paths.length > 0 && paths.every((p) => !p.startsWith('bundle') && p.includes('›')), paths.join(' | '));
@@ -229,7 +230,7 @@ const MUTANTS = [
     from: '.oe-chip:not(.oe-pick) { border-color: transparent; }', to: '.oe-chip:not(.oe-pick) { border-color: var(--oe-line); }' },
   { name: 'the-empty-head-takes-a-gap', catches: ['P6'], file: CSS,
     from: '.oe-field.is-bare .oe-field-head:empty { display: none; }', to: '.oe-field.is-bare .oe-field-head:empty { }' },  { name: 'the-fold-goes-grey', catches: ['P2'], file: CSS,
-    from: '  color: var(--oe-accent); padding: 0 var(--space-1); height: auto;', to: '  color: var(--oe-muted); padding: 0 var(--space-1); height: auto;' },
+    from: '  font-size: var(--fs-button); line-height: 1; color: var(--oe-accent);', to: '  font-size: var(--fs-button); line-height: 1; color: var(--oe-muted);' },
   { name: 'the-folded-value-looks-like-text', catches: ['P3'], file: CSS,
     from: '  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: var(--space-1) var(--space-2);',
     to: '  border: 1px solid transparent; background: transparent; padding: var(--space-1) var(--space-2);' },
@@ -268,7 +269,7 @@ const MUTANTS = [
   { name: 'the-folded-line-drops-its-note', catches: ['N2'], file: VIEW,
     from: "    card.append(line);\n    if (row.note) card.append(noteOf(row));\n", to: "    card.append(line);\n" },
   { name: 'the-shut-branch-drops-its-note', catches: ['N1'], file: VIEW,
-    from: ": shut && shut.note ? noteOf(shut) : null, toggle,", to: ": null, toggle," },
+    from: ": shut && shut.note ? noteOf(shut) : summary, null,", to: ": summary, null," },
   { name: 'the-open-branch-says-its-note-twice', catches: ['N2'], file: VIEW,
     from: '    const shut = !open && !own ? context.planRow(path) : null;', to: '    const shut = !own ? context.planRow(path) : null;' },
   { name: 'the-note-beside-the-value', catches: ['N3'], file: CSS,

@@ -941,7 +941,7 @@ const FLOORS = new Map([
   // 114 -> 123 (lead 99032248f): beneath gives way to Empty / Copy of (copy_from), the walk's world set row, Live
   // paused and resumed (asked once, one PUT, the worlds read again), Paused said, each history line says what.
   // 130 -> 139 ([11] K1-K5 and four mutants, lead 10-11 small two: the stale Create re-reads and sends once; a save's 409 untouched).
-  ['explorer_open_path_harness.mjs', 139],
+  ['explorer_open_path_harness.mjs', 147],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -1203,7 +1203,7 @@ const FLOORS = new Map([
   // 50 -> 56 (2026-08-19). Section G: an empty config through the whole client path.
   // Four separate places read "there is no selection" as "the selection is wrong" or
   // dereferenced it anyway; every one was found by the owner, not by a test.
-  ['ontology_explorer_harness.mjs', 83],
+  ['ontology_explorer_harness.mjs', 78],
   // New 2026-08-19. The explorer panel committed every state change with
   // `replaceChildren`, which is correct output that destroys the operator's scroll,
   // focus, expand state and half-typed text -- the owner reported it as "refreshed to
@@ -1219,7 +1219,7 @@ const FLOORS = new Map([
   // stayed green through -- an error banner inserted ahead of `.oe-main` renumbered it
   // under absolute-index keying and the tree was rebuilt. Sections A-F all rendered the
   // SAME SHAPE twice, so none of them could shift a sibling.
-  ['dom_patch_harness.mjs', 27],
+  ['dom_patch_harness.mjs', 29],
   // New 2026-08-19 with the authoring panels (what one declaration forces, and its
   // ground). Counts are taken INSIDE each bucket element, never off the page, so a
   // legend using the same words cannot satisfy them.
@@ -1784,6 +1784,9 @@ const FLOORS = new Map([
   // real chain panel on the shipped skeleton: 9 blank cells before, 0 now, and it is written so
   // it stays true when the skeleton learns lists.
   ['skeleton_value_fit_harness.mjs', 26],
+  // Form D (lead f3639d4a2, owner 10-20): one renderer for the three declarations - chips, tables, the fold row, the
+  // gate switch, the adder, a choice of one - scored per module on a skeleton that names no declaration's word.
+  ['declaration_form_harness.mjs', 22],
   // New 2026-09-24 with the list skeleton (90b9f443). In the owner's Chrome the chain window's lists
   // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real

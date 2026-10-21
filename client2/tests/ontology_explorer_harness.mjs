@@ -4,7 +4,7 @@ import {
   initialExplorerState, reduceExplorerState, assertOneContext, canLeaveSelection,
   fieldOpensByDefault, relationInEffect, draftValueAt,
   dirtyNavigationDecision, isDraftRevisionEditable, mirrorLoaded, reduceNewDeclaration,
-  restoreDirtyEditorCheckpoint, sectionMembers,
+  restoreDirtyEditorCheckpoint,
 } from '../src/ontology_explorer_store.js';
 // The path tools the store is handed rather than importing, so it stays a pure reducer
 // module. The harness hands it the SAME pair the controller does.
@@ -253,9 +253,8 @@ const payload = (token, selected = 'entity|A@1') => ({
 
 // --- F. the mirror: one source for what is declared ------------------------------
 //
-// Every picker from step 5 onward reads `sectionMembers` and holds no copy. These pin the
-// two properties that make that safe, and both are things a plausible implementation gets
-// wrong in a way no test would notice without them.
+// F1-F5 (`sectionMembers`, the plan's sections as the pickers' list) retired with it in form D: a ref cell's names
+// are ontology_skeleton.refNames over the schema's sections, scored in declaration_form S2.
 {
   const plan = {
     sections: { packs: ['a@1', 'b@1'], entities: ['E@1'], vocabulary: [],
@@ -268,26 +267,6 @@ const payload = (token, selected = 'entity|A@1') => ({
     items: [{ key: 'pack|a@1', kind: 'pack', canonical_id: 'a@1' }],
     newDeclaration: { kind: 'pack', id: 'typing@1', error: null },
   };
-
-  check('F1 members come from the plan, unpaged and unfiltered',
-    sectionMembers(state, 'packs').join(',') === 'a@1,b@1');
-
-  // 🔴 THE DEFECT THIS PREVENTS IS SILENT. A picker fed from `state.items` would have
-  // WORKED in every test where nothing was filtered, then offered a subset the moment
-  // somebody typed in the search box -- not an error, not empty, just fewer options than
-  // exist, with nothing on screen to tell the operator.
-  check('F2 members are NOT the filtered tree page',
-    sectionMembers(state, 'packs').length > state.items.length);
-
-  // 🔴 The name being typed is not declared. Merging it would let a source's profile point
-  // at a pack the server never accepted, and a REFUSED create would keep showing as real.
-  check('F3 the declaration being typed is never offered as existing',
-    !sectionMembers(state, 'packs').includes('typing@1'));
-
-  check('F4 an unknown section is empty rather than undefined',
-    Array.isArray(sectionMembers(state, 'nope')) && sectionMembers(state, 'nope').length === 0);
-  check('F5 called without a section it returns the whole map',
-    Object.keys(sectionMembers(state)).length === Object.keys(plan.sections).length);
 
   // "Nothing declared" and "not read yet" render as the same empty list and mean opposite
   // things -- one is a prerequisite to state, the other is a spinner.

@@ -25,15 +25,16 @@
 
 import { ABSENT, countText } from './absent.js';
 import { CHOOSE } from './ui_words.js';
-import { renderSkeletonForm } from './ontology_explorer_view.js';
-import { emptyOf, missingRequired, pickBranch, shapeAt } from './ontology_skeleton.js';
+import { renderSkeletonForm, adderInput } from './ontology_explorer_view.js';
+import { emptyOf, missingRequired, pickBranch, refNames, shapeAt } from './ontology_skeleton.js';
 // The grid's own reader of pasted sheet text (lead f382dacfb: no second parser).
 import { parseTsv, serializeTsv } from './tsv.js';
 // The one clipboard writer that works on plain HTTP (check_clipboard_convention), lead 72aa14785.
 import { writeClipboardRich } from './clipboard_write.js';
 import { setDisabledReason } from './disabled_reason.js';
+import { DeclarationSplit } from './declaration_split.js';
 import {
-  writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember,
+  writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember, switchGated,
 } from './ontology_path.js';
 import { reduceFieldFold } from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
@@ -191,18 +192,14 @@ function sameDocument(a, b) {
   try { return JSON.stringify(JSON.parse(a)) === JSON.stringify(JSON.parse(b)); } catch (e) { return false; }
 }
 
-function formContext(skeleton, lists, spec, held, expanded) {
+function formContext(skeleton, lists, spec, held, expanded, hot = [], listPrefix = spec.cls) {
   const defs = (skeleton && skeleton.defs) || {};
   const choiceList = spec.choiceList;
   const refList = spec.refList;
-  /** 이름 하나로 목록 하나. 문자열 아닌 멤버는 «제안»이 될 수 없어 빠집니다. */
-  const named = (name) => {
-    const list = name ? (lists || {})[name] : null;
-    return Array.isArray(list) ? list.filter((item) => typeof item === 'string') : [];
-  };
   return {
     schema: lists || {},
     readOnly: false,
+    listPrefix,
     planRow: () => null,
     planLoaded: true,
     plannedMembers: () => [],
@@ -218,7 +215,9 @@ function formContext(skeleton, lists, spec, held, expanded) {
     },
     // 🔴 C-101 ②. 참조 칸의 제안 목록. 스켈레톤이 «칸마다» 다른 절을 댈 수 있으므로 그 이름이
     //    먼저이고, 안 대면 등록부가 댄 이름입니다 — 위 `deref` 와 «같은 규율»입니다.
-    declared: (section) => named(section || refList),
+    // Form D: a column cell offers its table's columns (`table_columns`, the schema's tables) - `refNames`, the explorer's.
+    refOf: (node) => refNames(lists, (lists || {}).table_columns,
+      node && !node.section && !node.table_from ? { ...node, section: refList } : node, held),
     // 🔴 C-101 ③. 「이 고르개가 지금 무엇을 골랐나」가 «이 칸 하나»로 안 답해질 수 있습니다 —
     //    한 사실을 두 칸으로 적는 문법이 있고, 그때 이 칸은 비어 있는데 규칙은 그것을 «듭니다».
     //    번역은 등록부의 것이고(`join`), 이 자리는 그 함수를 부를 뿐입니다.
@@ -234,7 +233,8 @@ function formContext(skeleton, lists, spec, held, expanded) {
     usedElsewhere: () => [],
     renderRow: () => null,
     suggest: (row) => row,
-    hot: [],
+    // Form D: a row holding the server's refusal or a required cell still empty starts open (fieldOpensByDefault).
+    hot,
     expanded: expanded || {},
     absolute: (at) => at,
   };
@@ -263,21 +263,32 @@ function firstChildOf(el, cls) {
 
 const NOT_FILLED = 'not filled';
 
+/** The cell a refusal names, as the form's own path, or null: the server's address less `<list>.<name>.`. */
+function refusedAt(view, spec) {
+  const refusal = view.refusal;
+  if (!refusal || !refusal.path) return null;
+  const prefix = `${spec.listKey}.${view.name}.`;
+  return refusal.path.startsWith(prefix) ? refusal.path.slice(prefix.length) : null;
+}
+
 function markRefusedField(box, view, spec) {
   const refusal = view.refusal;
-  if (!refusal || !refusal.path || !box.querySelector) return null;
-  const prefix = `${spec.listKey}.${view.name}.`;
-  if (!refusal.path.startsWith(prefix)) return null;
+  if (!box.querySelector) return null;
   // 접두를 뗀 나머지가 칸의 주소입니다. 빈 문자열을 «먼저 거르는 갈래»는 두지 않습니다 —
   // 실측(변이 하나): 그 갈래를 지워도 답이 안 바뀝니다. 서버는 규칙 전체를 `rules.<이름>`
   // 으로 부르고 그건 위 접두(점까지)로 «이미» 걸러지며, 남는다 해도 빈 주소를 가진 칸이 없습니다.
-  const at = refusal.path.slice(prefix.length);
+  const at = refusedAt(view, spec);
+  if (at === null) return null;
   const node = box.querySelector(`[data-path="${at}"]`);
   if (!node || !node.ownerDocument) return null;
   const tag = node.ownerDocument.createElement('i');
   tag.className = `${spec.cls}-field-refusal`;
   tag.setAttribute('data-refused', at);
-  tag.textContent = refusal.code || '';
+  if (refusal.code) tag.setAttribute('data-code', refusal.code);
+  // 🔴 ONE FACT, ONE PLACE (lead 10-21, form D). A refusal that names a cell is said beside that cell, in the server's
+  //    own sentence (`detail`), and the box below the form leaves it out; one that names no cell stays in that box.
+  //    The code alone is said only when the server sent no sentence (a required cell left empty, `_markShort`).
+  tag.textContent = refusal.message || refusal.code || '';
   // 🔴 그 칸의 «값 열»에 답니다. `[data-path]` 는 칸의 «상자»라서 거기 붙이면 코드가 줄
   //    «아래» 한 줄로 떨어지고, 줄이 세 열짜리 격자가 된 뒤로는 그것이 줄의 결을 끊습니다.
   //    ⚠️ 상태 열(필수·선택이 사는 곳)에 먼저 넣어 봤고 «재서» 물렸습니다 — 그 열은 92px
@@ -288,6 +299,12 @@ function markRefusedField(box, view, spec) {
   const own = firstChildOf(node, 'oe-node-row');
   const slot = own ? firstChildOf(own, 'oe-node-value') : null;
   (slot || node).appendChild(tag);
+  const control = slot && slot.querySelector ? slot.querySelector('input, select, textarea') : null;
+  if (control) {
+    tag.id = `${spec.cls}-refusal-${Math.random().toString(36).slice(2, 8)}`;
+    control.setAttribute('aria-invalid', 'true');
+    control.setAttribute('aria-describedby', tag.id);
+  }
   return tag;
 }
 
@@ -304,6 +321,8 @@ export class RawRegistryPanel {
     }
     this.mount = mount;
     this.spec = spec;
+    // Form D: this form's datalist ids - two panels of one registry on a page keep their own lists.
+    this._listPrefix = `${spec.cls}-${Math.random().toString(36).slice(2, 8)}`;
     this.doc = deps.doc || mount.ownerDocument;
     if (!this.doc) throw new Error('RawRegistryPanel needs a document (deps.doc or mount.ownerDocument)');
     this.onOpen = deps.onOpen || null;
@@ -323,9 +342,8 @@ export class RawRegistryPanel {
     // [+ add] asked for its answer and it has not come back. Only that answer clears this.
     this._awaitingNew = false;
     // 🔴 접힘은 «사람이 둔 자리»입니다 — 응답의 성질이 아니라서 여기 삽니다. 다시 그릴 때
-    //    이 둘이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
+    //    이것이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
     this.moreOpen = false;
-    this.rawOpen = false;
     // The document whose unsaved text came from a paste, and what the last paste refused (both by
     // document name) - the parts a re-render draws again (lead f382dacfb). None is null: '' names nothing picked.
     this._pasted = null;
@@ -546,7 +564,7 @@ export class RawRegistryPanel {
       && ((root.fields || []).some((f) => f && f.key === spec.nameKey));
     // 🔴 C-101 ①. 문서의 «이름». 초안은 그 이름을 같이 듭니다.
     const key = this.newMode ? NEW_NAME : String(view.name || '');
-    if (this._formFoldOf !== key) { this._formFold = { expandedFields: {} }; this._formFoldOf = key; }
+    if (this._formFoldOf !== key) { this._formFold = { expandedFields: {} }; this._formFoldOf = key; this._gated = {}; }
     // 서버가 준 «그 문서». 초안이 이것과 같아지면 초안이 아닙니다 — `_keep` 이 내려놓습니다.
     this._baseline = this.newMode ? null : { key, raw: view.raw };
     // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
@@ -581,6 +599,9 @@ export class RawRegistryPanel {
     // ═══ 머리 한 줄: 고르개 · 추가/취소 · 상태 · 저장 ══════════════════════════════════
     const head = doc.createElement('div');
     head.className = `${spec.cls}-head`;
+    this._head = head;
+    // Whether this draw put the refusal beside its cell (then the box below the form leaves it out).
+    let placed = false;
 
     const picker = doc.createElement('select');
     // 🔴 탐색기의 고르개 «그 자체»를 씁니다 — 값을 베끼는 대신 규칙에 «닿습니다».
@@ -709,21 +730,7 @@ export class RawRegistryPanel {
     // 🔴 C-106 ①. 「저장 안 됨」은 «값»입니다 — 배지 하나, 문장 없음. C-101 이 세운 가드(타이머가
     //    편집 중인 폼을 안 갈아 끼움)는 «보이지 않았고», 안 보이는 가드는 운영자에게 없는 것과
     //    같습니다. 복원된 초안도 «같은 배지»가 말합니다(값이 다릅니다).
-    if (drafted !== null) {
-      const mark = this._line(`${spec.cls}-unsaved`, restored ? 'Unsaved · restored' : 'Unsaved');
-      mark.setAttribute('data-unsaved', restored ? 'restored' : 'edited');
-      head.appendChild(mark);
-      // 🔴 C-106 ③. 되돌릴 «길»이 있어야 합니다. 오늘까지는 다른 규칙에 들렀다 오는 것이
-      //    유일한 길이었고, 그건 우연이지 컨트롤이 아닙니다.
-      const undo = doc.createElement('button');
-      undo.className = `admin-btn ${spec.cls}-undo`;
-      undo.setAttribute('data-action', `undo-${spec.cls}`);
-      undo.textContent = 'Revert';
-      if (undo.addEventListener) {
-        undo.addEventListener('click', () => { this._forget(); this._again(); });
-      }
-      head.appendChild(undo);
-    }
+    if (drafted !== null) this._sayUnsaved(restored);
 
     // 🔴 [판정 548] 문법을 바꾸는 컨트롤 «하나». 방향은 등록부가 말합니다 — 한 문서가 갈 수
     //    있는 쪽은 «하나»뿐이고, 갈 곳이 없으면(문법을 못 읽으면) 컨트롤이 «없습니다».
@@ -754,6 +761,7 @@ export class RawRegistryPanel {
     }
 
     const save = doc.createElement('button');
+    this._saveButton = save;
     save.className = `admin-btn btn-primary ${spec.cls}-save`;
     save.setAttribute('data-action', `save-${spec.cls}`);
     save.textContent = 'Save';
@@ -762,6 +770,7 @@ export class RawRegistryPanel {
     //    ⚠️ C-106 ①: 단축키도 «이 함수»를 부릅니다. 두 번째 저장 본문을 만들지 않습니다.
     const runSave = () => {
       if (!this.onSave) return;
+      if (this._text && this._text.fault) return;
       let held;
       try { held = JSON.parse(area.value || '{}'); } catch (e) { held = null; }
       let named = nameInput ? String(nameInput.value || '').trim() : view.name;
@@ -811,10 +820,12 @@ export class RawRegistryPanel {
     this.root.setAttribute(`data-${spec.nameKey}`, this.newMode ? '' : view.name);
 
     // ═══ 폼 ═══════════════════════════════════════════════════════════════════════════
+    let formBox = null;
+    this._text = null;
     // ② 서버가 스켈레톤을 실어 줄 때«만» 그립니다 — 없으면 오늘 그대로입니다.
     if (root && picked) {
       let held = this.newMode
-        ? (emptyOf(root, (payload.skeleton || {}).defs) || {})
+        ? (emptyOf(root, (payload.skeleton || {}).defs, 0, this.lists) || {})
         : (payload.declaration && typeof payload.declaration === 'object'
           ? payload.declaration : {});
       // 초안이 있으면 «그것»이 문서입니다. 반쯤 친 JSON 이면 폼은 종전 문서로 그리고 글자는
@@ -833,12 +844,13 @@ export class RawRegistryPanel {
       this._formBox = box;
       const draw = (value) => {
         const form = renderSkeletonForm(
-          formContext(payload.skeleton, this.lists, spec, value, this._formFold.expandedFields),
+          formContext(payload.skeleton, this.lists, spec, value, this._formFold.expandedFields,
+            [refusedAt(view, spec), ...missingRequired(root, value, this._defs)].filter(Boolean), this._listPrefix),
           root, '', value, 0, this.newMode ? NEW_NAME : view.name);
         if (!form) { box.textContent = ''; return; }
         this._partition(form, root, value);
         // ④ 서버가 «주소를 대어» 거절하면 그 칸 «옆»에 붙입니다 (S-204 ③).
-        markRefusedField(form, view, spec);
+        placed = Boolean(markRefusedField(form, view, spec)) || placed;
         // 🔴 C-106 ⑥. 목록 «밖»의 줄들은 그 목록을 먹이는 칸 «바로 밑»에 섭니다 — 폼 아래에
         //    두면 「내 파일이 왜 안 보이나」의 답이 물음에서 한 화면 떨어져 있습니다.
         this._notesUnder(form);
@@ -852,6 +864,7 @@ export class RawRegistryPanel {
       // 폼이 낸 편집을 문서에 «적습니다». 컨트롤의 낱말(`edit-shape`)은 탐색기의 것입니다.
       if (box.addEventListener) {
         const write = (event) => {
+          if (adderInput(event)) return;
           const el = event && event.target;
           const action = el && el.dataset ? el.dataset.action : '';
           if (action !== 'edit-shape' && action !== 'edit-shape-flag'
@@ -873,7 +886,7 @@ export class RawRegistryPanel {
             // 🔴 새 가지의 «빈 값»은 스켈레톤이 정합니다 — 원장 폼과 «같은 함수»(`pickBranch`).
             const oneOfNode = shapeAt(root, splitBundlePath(String(path)),
                                       (payload.skeleton || {}).defs);
-            const next2 = pickBranch(oneOfNode, picked2, was, (payload.skeleton || {}).defs);
+            const next2 = pickBranch(oneOfNode, picked2, was, (payload.skeleton || {}).defs, this.lists);
             if (next2 === undefined) return;
             const written2 = writeShapeAtPath(held2, String(path), next2);
             if (written2 === null) return;
@@ -899,6 +912,10 @@ export class RawRegistryPanel {
             if (written === null) return;
             updated = written;
           }
+          // Form D: a gate switched keeps what was typed under the other branch on the screen, not in the document.
+          const switched = switchGated(held2, updated, String(path), root, (payload.skeleton || {}).defs, this._gated);
+          updated = switched.document;
+          this._gated = switched.stash;
           area.value = JSON.stringify(updated, null, 2);
           this._keep(key, area.value);
           draw(updated);
@@ -936,7 +953,7 @@ export class RawRegistryPanel {
               ? [...box.querySelectorAll('.oe-form-new-id')].find((n) => n.dataset.for === path)
               : null;
             const added = addMember(held3, path, node, (payload.skeleton || {}).defs,
-                                    named ? named.value : '');
+                                    named ? named.value : '', this.lists);
             if (added) {
               next = added.document;
               // What you just added is open -- and so is the list it landed in.
@@ -949,17 +966,23 @@ export class RawRegistryPanel {
           area.value = JSON.stringify(next, null, 2);
           this._keep(key, area.value);
           draw(next);
+          // The adder is kept live by the redraw; what it took is in the document now.
+          const typed = action === 'form-name'
+            ? [...box.querySelectorAll('.oe-form-new-id')].find((n) => n.dataset.for === path) : null;
+          if (typed) typed.value = '';
         };
         box.addEventListener('click', act);
+        box.addEventListener('paste', adderInput);
       }
-      this.root.appendChild(box);
+      formBox = box;
       this._redraw = draw;
       if (this.newMode) view = Object.freeze({ ...view, raw: JSON.stringify(held, null, 2) });
     }
 
     // 🔴 거절은 «서버의 낱말»로. 이 파일은 문구를 짓지 않습니다.
     //    ⚠️ code 나 path 가 없으면 그 칸을 «안 그립니다» — 빈 칸이 아니라 없는 것입니다.
-    if (view.refusal) {
+    // A refusal said beside its cell is not said again here (markRefusedField).
+    if (view.refusal && !placed) {
       const box = doc.createElement('div');
       box.className = `${spec.cls}-refusal`;
       box.setAttribute('data-code', view.refusal.code);
@@ -973,33 +996,35 @@ export class RawRegistryPanel {
     //    말하지 않습니다. 문서는 그대로 여기 삽니다(접혀도 DOM 에 있습니다).
     area.className = `${spec.cls}-raw`;
     area.setAttribute('data-raw', spec.nameKey);
+    area.setAttribute('aria-label', 'Declaration text');
     // 🔴 초안이 «문서»입니다 — 서버의 글자로 덮는 그 순간이 초기화입니다.
     const text = drafted !== null ? drafted : view.raw;
     area.value = text;
     area.textContent = text;
+    // Form D (lead f3639d4a2): the text on the left, the form on the right - one document, either side edits it.
+    const split = formBox ? new DeclarationSplit(doc, area) : null;
+    this._text = split;
+    const saveOff = () => setDisabledReason(save, off || (split && split.fault
+      ? (split.fault.line ? `Line ${split.fault.line} · ${split.fault.message}` : split.fault.message) : ''));
+    if (split) { split.setForm(formBox); saveOff(); }
     if (area.addEventListener && root && picked) {
       // 글자가 문서입니다. 파싱이 안 되면 폼을 «그대로 둡니다» — 반쯤 친 JSON 위에서 폼을
-      // 비우면 사람이 치던 것이 사라진 것처럼 보입니다.
+      // 비우면 사람이 치던 것이 사라진 것처럼 보입니다. 그동안 폼은 꺼지고(그 줄이 표시) 저장도 꺼집니다.
       area.addEventListener('input', () => {
         // 🔴 파싱 여부와 «무관하게» 초안입니다. 반쯤 친 JSON 을 안 들고 있으면 다음 그림이
         //    그것을 지우고, 그 그림은 접기 버튼 하나로도 옵니다.
         this._keep(key, area.value);
+        if (split) { split.sync(); saveOff(); }
         let held2;
         try { held2 = JSON.parse(area.value || '{}'); } catch (e) { return; }
         if (this._redraw) this._redraw(held2);
       });
     }
-    if (root && picked) {
-      this.root.appendChild(this._fold(`${spec.cls}-raw-fold`, 'Raw', null, this.rawOpen, () => {
-        this.rawOpen = !this.rawOpen;
-        this._again();
-      }));
-      if (!this.rawOpen) area.hidden = true;
-    }
     // 🔴 C-95-b. 아무것도 안 골랐으면 «문서 자체가 없습니다» — 원문 상자도 그 문서의 한 모습이라
     //    같이 빠집니다. 스켈레톤이 없는 등록부(표 등록)는 원문이 «유일한» 편집기라 그대로 섭니다.
     setDisabledReason(area, off);
-    if (picked || !root) this.root.appendChild(area);
+    if (split) this.root.appendChild(split.el);
+    else if (picked || !root) this.root.appendChild(area);
 
     // 저장이 «됐다»는 것도 값으로. 몇 개가 됐고 백업이 어디인지는 서버가 말합니다.
     if (view.saved) {
@@ -1076,6 +1101,31 @@ export class RawRegistryPanel {
     this.render(this._payload, { ...this._opts, background: false });
   }
 
+  /** The head's «Unsaved» and its Revert, before Save. Form D: said the moment the text differs from the server's (every
+   *  edit passes `_keep`), and taken away by `_forget` - not only on the next draw. */
+  _sayUnsaved(restored = false) {
+    const head = this._head;
+    const spec = this.spec;
+    if (!head || (this._unsaved && this._unsaved.head === head)) return;
+    const mark = this._line(`${spec.cls}-unsaved`, restored ? 'Unsaved · restored' : 'Unsaved');
+    mark.setAttribute('data-unsaved', restored ? 'restored' : 'edited');
+    // 🔴 C-106 ③. 되돌릴 «길»이 있어야 합니다. 오늘까지는 다른 규칙에 들렀다 오는 것이
+    //    유일한 길이었고, 그건 우연이지 컨트롤이 아닙니다.
+    const undo = this.doc.createElement('button');
+    undo.className = `admin-btn ${spec.cls}-undo`;
+    undo.setAttribute('data-action', `undo-${spec.cls}`);
+    undo.textContent = 'Revert';
+    if (undo.addEventListener) {
+      undo.addEventListener('click', () => { this._forget(); this._again(); });
+    }
+    const save = this._saveButton && this._saveButton.parentNode === head ? this._saveButton : null;
+    for (const node of [mark, undo]) {
+      if (save && head.insertBefore) head.insertBefore(node, save);
+      else head.appendChild(node);
+    }
+    this._unsaved = { head, nodes: [mark, undo] };
+  }
+
   /** 저장 안 된 글자를 «부품이» 듭니다. 이름을 같이 드는 이유는 생성자의 `draftOf` 를 보십시오. */
   _keep(key, text) {
     // 🔴 [총괄 09-24] 「+」 뒤 「−」 로 원문이 «원래와 같아져도» 초안이 남아서, 다음에 열면
@@ -1089,6 +1139,7 @@ export class RawRegistryPanel {
     }
     this.draft = String(text == null ? '' : text);
     this.draftOf = String(key || '');
+    this._sayUnsaved();
     // 🔴 C-106 ④. 메모리와 «같은 순간»에 보관합니다 — 나중에 한 번 더 쓰는 자리를 만들면
     //    그 사이에 창이 닫히는 글자가 생기고, 그 창이 정확히 이 기능이 겨냥한 창입니다.
     if (!this.store || !this.draftOf) return;
@@ -1097,6 +1148,10 @@ export class RawRegistryPanel {
 
   _forget() {
     const was = this.draftOf;
+    for (const node of this._unsaved ? this._unsaved.nodes : []) {
+      if (node.parentNode) node.parentNode.removeChild(node);
+    }
+    this._unsaved = null;
     this._pasted = null;
     this.draft = null;
     this.draftOf = '';

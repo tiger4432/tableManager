@@ -2,6 +2,9 @@
 // The reducer is deliberately DOM-free: one response may describe exactly one compiled
 // context, and late responses can never overwrite a newer selection/search/draft request.
 import { saysTruncated } from './truncation.js';
+import { jsonFault } from './declaration_split.js';
+
+const reads = (text) => !jsonFault(text);
 
 export const initialExplorerState = Object.freeze({
   // The ledger world this screen reads (null = the operating one) and the worlds there are (lead 64c380aeb);
@@ -323,7 +326,10 @@ export function reduceExplorerState(state = initialExplorerState, action) {
       };
     case 'EDITOR_CHANGED':
       if (!isDraftRevisionEditable(state.draft)) return state;
-      return { ...state, editorText: action.text, dirty: true };
+      // Form D: while the text does not read, the form stays on the last text that did (formText) - set only here,
+      // where a text can stop reading; every other writer of editorText writes a document.
+      return { ...state, editorText: action.text, dirty: true,
+        formText: reads(action.text) ? action.text : (reads(state.editorText) ? state.editorText : state.formText) };
     case 'DRAFT_SAVED':
       return {
         ...state,
@@ -543,37 +549,9 @@ export function reduceFieldFold(state, action) {
   return { ...state, expandedFields: choices };
 }
 
-// 🔴 THE ONE PLACE ANYTHING ASKS "WHAT IS DECLARED IN THIS SECTION".
-//
-// Every picker built from step 5 onward reads this and holds no copy of its own. A picker
-// that snapshots at mount is the defect the mirror exists to remove: declare a pack, go to
-// the source whose profile needs it, and the list it captured a minute ago does not have it.
-//
-// 🔴 IT READS THE PLAN, NOT THE TREE, AND THAT IS THE WHOLE POINT. `state.items` is the
-// obvious source and it is wrong twice over: `/view` is PAGED (100 at a time) and it is
-// FILTERED BY THE SEARCH BOX, so a picker fed from it goes silently short -- and shortest
-// exactly when the operator has typed a filter, which is when they are least likely to
-// notice a name missing. `authoring.sections` is unpaged and unfiltered.
-//
-// 🔴 IT NEVER MERGES `newDeclaration`. The name being typed is not declared yet. Offering
-// it would let a source's profile point at a pack the server has never accepted, and a create
-// was REFUSED would go on showing as though it existed.
-// 🔴 IT ANSWERS FOR THE AUTHORABLE SECTIONS AND NOTHING ELSE, and the picker round will
-// hit that. Derived from the live config on 2026-08-19: every reference edge carries
-// `expected_kind`, so `AUTHORABLE_SECTIONS[expected_kind]` gives the section a picker
-// draws from -- entities, vocabulary, packs, sources. (`mappers`, `source_preparers` and
-// `profiles` were on that list until 2026-08-20, when all three moved inside a source plan
-// and joined the kinds below.)
-// The rest of the expected kinds have no section of their own: `claim`, `mapping`,
-// `binding`, `mapper` and `profile` (they live INSIDE an owner -- a mapper's `emits`
-// picks claims from across all packs) and `table` (physical, read-only here, its own
-// column universes). Those need a second source that does not exist yet. This is a gap in
-// what is here, not a defect in it.
-export function sectionMembers(state, section) {
-  const all = state.authoring?.sections || {};
-  if (section === undefined) return all;
-  return all[section] || [];
-}
+// ⚰️ sectionMembers (the plan's sections as every picker's list) retired with form D (lead 10-21): what a ref cell is
+//    offered is ontology_skeleton.refNames over the schema's sections (B 5d5b99fac) - unpaged, and never the name
+//    being typed (declaration_form S2).
 
 // Is the mirror populated at all? Distinguishes "no declarations" from "not read yet",
 // which render as the same empty list and mean opposite things to an operator.

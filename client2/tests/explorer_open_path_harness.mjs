@@ -1372,8 +1372,11 @@ console.log('\n[9] the source form writes only what was picked');
   const before = text();
   ok('F0 the draft is open on the slim source', JSON.stringify(JSON.parse(before || 'null')) === JSON.stringify(SLIM), before);
   // The count is the panel harness's (K1): this stub has no childElementCount.
-  ok('F1 read starts folded on its defaults', String(toggle('read')?.textContent).startsWith('Defaults · '),
-    toggle('read')?.textContent);
+  // Form D: the caret says shut, the row's summary says what it folds.
+  const readRow = find((n) => n._classes?.includes('oe-node') && n.dataset?.path === 'read');
+  const readWords = readRow ? walkAll(readRow.children[0] || {}).find((n) => n._classes?.includes('oe-node-summary')) : null;
+  ok('F1 read starts folded on its defaults', toggle('read')?.getAttribute?.('aria-expanded') === 'false'
+    && String(readWords?.textContent).startsWith('Defaults · '), readWords?.textContent);
   if (toggle('read')) await press(toggle('read'));
   ok('F2 opening it writes nothing - the draft is byte-identical', text() === before);
   const own = toggle('bundle.sources.s.read.exclude_when');
@@ -1476,6 +1479,109 @@ console.log('\n[10] a oneOf picked by shape writes the branch value itself');
     return t.split(from).join('    if (false) {');
   } })).module.createOntologyExplorerController);
   ok('S-M1 mutant (the picker is not handled) is caught by S2', !judge(mutated)[1][1], JSON.stringify(mutated));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [12] form D (lead f3639d4a2) through the controller's own events - the panel's half is
+//      declaration_form_harness: a gate switched holds only its branch and switched back restores
+//      what was typed; + row is born with a choice of one; an adder's Enter and paste reach its +.
+//      The fixture's names exist nowhere in the product.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[12] form D through the explorer: the gate switch, a choice of one, the adder');
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const SUBJECT = join(HERE, '..', 'src', 'ontology_explorer.js');
+  const leaf = { kind: 'leaf', hint: 'free' };
+  const SCHEMA_G = { authorable_kinds: [{ id: 'thing', section: 'things', versioned: false }], ones: ['only'], modes: ['l', 'r'],
+    skeleton: { defs: {}, root: { kind: 'record', fields: [{ key: 'things', required: true, node: { kind: 'map',
+      keyed_by: 'name', member: 'Thing', of: { kind: 'record', fields: [
+        { key: 'gate', required: false, node: { kind: 'record', fields: [
+          { key: 'mode', required: true, node: { kind: 'leaf', hint: 'choice', list: 'modes' } },
+          { key: 'left', required: true, when: { field: 'mode', is: 'l' }, node: leaf },
+          { key: 'right', required: true, when: { field: 'mode', is: 'r' }, node: leaf }] } },
+        { key: 'rows', required: false, node: { kind: 'map', keyed_by: 'index', member: 'row', of: { kind: 'record',
+          fields: [{ key: 'a', required: true, node: leaf },
+            { key: 'pick', required: true, node: { kind: 'leaf', hint: 'choice', list: 'ones' } }] } } }] } } }] } } };
+  const TKEY = 'thing|t';
+  const START = { gate: { mode: 'l', left: 'L' }, rows: [] };
+  const walk = async (create) => {
+    const on = { click: [], change: [], input: [], paste: [] };
+    const root = element('div');
+    root.addEventListener = (type, fn) => { if (on[type]) on[type].push(fn); };
+    const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+    const fire = async (type, event) => { for (const fn of on[type]) await fn({ type, ...event }); await settle(); };
+    const SEL = { key: TKEY, canonical_id: 't', kind: 'thing', context_token: 'ctx:1', raw: START };
+    const TDRAFT = { draft_id: 'd1', target_key: TKEY, target_kind: 'thing', target_id: 't',
+      revision: 1, raw: START, lifecycle_status: 'draft', validation_errors: [], context_token: 'ctx:1' };
+    const fetchOf = async (url, init = {}) => {
+      const u = String(url);
+      const path = u.split('?')[0];
+      const method = init.method || 'GET';
+      let body = /draft_id=d1/.test(u) ? { ...COMPILE, selection: SEL, items: [SEL], draft: TDRAFT }
+        : { ...COMPILE, selection: SEL, items: [SEL] };
+      if (/\/drafts$/.test(path) && method === 'POST') body = TDRAFT;
+      else if (path.endsWith('/authoring/schema')) body = SCHEMA_G;
+      else if (path.endsWith('/authoring/plan')) body = { ...AUTHORING, fields: [] };
+      return { ok: true, status: 200, json: async () => body };
+    };
+    const controller = create({ root, apiBase: '', adminFetch: fetchOf, showToast: () => {} });
+    await controller.refresh();
+    await settle();
+    const create1 = { dataset: { action: 'create-draft' }, disabled: false };
+    create1.closest = () => create1;
+    await fire('click', { target: create1 });
+    const held = () => { try { return JSON.parse(controller.getState().editorText); } catch (e) { return {}; } };
+    const edit = (value, typed) => fire('input', { target: { dataset: { action: 'edit-shape', value }, value: typed } });
+    const out = {};
+    await edit('gate.mode', 'r');
+    out.shut = held().gate;
+    await edit('gate.right', 'R');
+    await edit('gate.mode', 'l');
+    out.back = held().gate;
+    await edit('gate.mode', 'r');
+    out.again = held().gate;
+    const plus = { dataset: { action: 'form-append', value: 'rows' }, disabled: false };
+    plus.closest = () => plus;
+    await fire('click', { target: plus });
+    out.rows = held().rows;
+    // The adder's own + is what both events must reach (adderInput); what it then writes is the + door's, scored above.
+    const pressed = [];
+    const go = { dataset: { action: 'form-name', value: 'rows' }, click() { pressed.push(1); } };
+    const adder = (value) => ({ dataset: { enter: 'form-name', for: 'rows' }, value,
+      closest: () => ({ querySelectorAll: () => [go] }) });
+    await fire('change', { target: adder('x') });
+    await fire('paste', { target: adder(''), clipboardData: { getData: () => 'a,b' }, preventDefault() {} });
+    out.pressed = pressed.length;
+    return out;
+  };
+  const judge = (o) => [
+    ['G1 a gate switched holds only its branch', JSON.stringify(o.shut) === JSON.stringify({ mode: 'r' })],
+    ['G2 ...switched back, what was typed under the other branch returns',
+      JSON.stringify(o.back) === JSON.stringify({ mode: 'l', left: 'L' })
+      && JSON.stringify(o.again) === JSON.stringify({ mode: 'r', right: 'R' })],
+    ['G3 + row is born holding the choice of one', JSON.stringify(o.rows) === JSON.stringify([{ pick: 'only' }])],
+    ['G4 an adder\'s Enter and its paste each press its +', o.pressed === 2],
+  ];
+  const base = await walk(createOntologyExplorerController);
+  for (const [name, cond] of judge(base)) ok(name, cond, JSON.stringify(base));
+  const MUTANTS = [
+    ['G-M1 the explorer never switches a gate', 'G2',
+      ["    const { document: next, stash } = switchGated(raw, written, relative, shapeForPath(''),\n"
+       + '                                                  state.authoringSchema?.skeleton?.defs, gated.stash);',
+       '    const next = written; const stash = gated.stash;']],
+    ['G-M2 + row is born without the lists', 'G3',
+      ["box ? box.value : '', state.authoringSchema);", "box ? box.value : '');"]],
+    ['G-M3 Enter at an adder is a plain change', 'G4', ['    if (adderInput(event)) return;\n', '']],
+    ['G-M4 a paste at an adder is a plain paste', 'G4', ["  root.addEventListener('paste', adderInput);\n", '']],
+  ];
+  for (const [name, cell, [from, to]] of MUTANTS) {
+    const mutated = await walk((await loadWithProbe(SUBJECT, { mutate: (t) => {
+      if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${name}`);
+      return t.split(from).join(to);
+    } })).module.createOntologyExplorerController);
+    const row = judge(mutated).find(([n]) => n.startsWith(cell));
+    ok(`${name} is caught by ${cell}`, !row[1], JSON.stringify(mutated));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════

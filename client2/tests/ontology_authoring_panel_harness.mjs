@@ -85,6 +85,15 @@ const walk = (node, out = []) => {
 };
 const byClass = (root, name) =>
   walk(root).filter((node) => node._classes?.includes(name));
+// Form D: a fold row's words are its summary (the caret only says open or shut) - read off the row, not its children.
+const rowWords = (box) => {
+  const said = walk((box && box.children && box.children[0]) || element('span'))
+    .find((node) => node._classes?.includes('oe-node-summary'));
+  return said ? said.textContent : '';
+};
+const foldedWords = (root) => byClass(root, 'oe-node')
+  .filter((box) => walk(box.children[0] || element('span')).some((node) => node._classes?.includes('oe-node-folded')))
+  .map(rowWords);
 // A harness that dies on the first missing node hides every assertion after it, which
 // is how one defect comes to look like one failure. Index through this instead.
 const at = (list, index) => list[index] || element('span');
@@ -321,7 +330,7 @@ const renderDraft = (plan) => {
   const root = element('div');
   renderOntologyExplorer(root, {
     ...stateWith(plan),
-    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+    draft: { target_kind: 'source_plan', target_id: 'dt_job', target_key: 'source_plan|dt_job' },
     editorText: JSON.stringify(DOCUMENT),
     expandedFields: Object.fromEntries(
       (plan.fields || []).map((row) => [row.path, true])),
@@ -479,7 +488,7 @@ const renderDraft = (plan) => {
   const plain = element('div');
   renderOntologyExplorer(plain, {
     ...stateWith(PLAN),
-    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+    draft: { target_kind: 'source_plan', target_id: 'dt_job', target_key: 'source_plan|dt_job' },
     editorText: JSON.stringify(DOCUMENT),
   });
   const shut = byClass(plain, 'oe-node').filter(
@@ -494,7 +503,7 @@ const renderDraft = (plan) => {
   const worded = element('div');
   renderOntologyExplorer(worded, {
     ...stateWith(PLAN),
-    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+    draft: { target_kind: 'source_plan', target_id: 'dt_job', target_key: 'source_plan|dt_job' },
     editorText: JSON.stringify({ ...DOCUMENT, read: { ...DOCUMENT.read, order_by: 'dt_index' } }),
     expandedFields: Object.fromEntries(
       (PLAN.fields || []).map((row) => [row.path, true])),
@@ -531,7 +540,7 @@ const renderDraft = (plan) => {
   const old = element('div');
   renderOntologyExplorer(old, {
     ...stateWith(PLAN),
-    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+    draft: { target_kind: 'source_plan', target_id: 'dt_job', target_key: 'source_plan|dt_job' },
     editorText: JSON.stringify({ ...DOCUMENT, map: { input_columns: ['dt_index', 'dt_job'] } }),
     expandedFields: Object.fromEntries(
       (PLAN.fields || []).map((row) => [row.path, true])),
@@ -880,7 +889,7 @@ const renderDraft = (plan) => {
     renderOntologyExplorer(root, {
       ...stateWith(PLAN),
       selection: { ...stateWith(PLAN).selection, raw: twoMappings },
-      draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+      draft: { target_kind: 'source_plan', target_id: 'dt_job', target_key: 'source_plan|dt_job' },
       editorText: JSON.stringify(twoMappings),
       ...(expandedFields ? { expandedFields } : {}),
     });
@@ -889,7 +898,7 @@ const renderDraft = (plan) => {
 
   // Nobody has chosen anything yet -- this is what the screen decides on its own.
   const root = draw(null);
-  const labels = byClass(root, 'oe-node-folded').map((n) => n.textContent);
+  const labels = foldedWords(root);
   check('J1 no fold hides a single child', labels.every((t) => t !== 'Folded · 1'),
     labels.join(' | '));
   // 🔴 WITHOUT THIS, J1 IS VACUOUS: a screen that folded nothing at all would pass it.
@@ -911,8 +920,7 @@ const renderDraft = (plan) => {
   // 🔴 THE SHUT SCREEN IS ALLOWED TO SAY 「접힘 · 1」 — that is a person's answer, not the
   //    rule's, and a rule that overrode it would be the fold nobody can close.
   check('J5 a hand may shut a one-child row, and then it says so',
-    byClass(shut, 'oe-node-folded').map((n) => n.textContent).includes('Folded · 1'),
-    byClass(shut, 'oe-node-folded').map((n) => n.textContent).join(' | '));
+    foldedWords(shut).includes('Folded · 1'), foldedWords(shut).join(' | '));
 }
 
 // ── L. lead 04cecc30f ②: a blank optional row the server grounds says what blank MEANS ──────
@@ -976,7 +984,7 @@ const renderDraft = (plan) => {
       authoringSchema: { skeleton: SOURCE_SKELETON,
         authorable_kinds: [{ id: 'source_plan', section: 'sources', versioned: false }] },
       navigation: { back: [], forward: [] },
-      draft: { target_kind: 'source_plan', target_id: 's' },
+      draft: { target_kind: 'source_plan', target_id: 's', target_key: 'source_plan|s' },
       editorText: JSON.stringify(raw),
       expandedFields,
     });
@@ -984,19 +992,23 @@ const renderDraft = (plan) => {
   };
   const toggleOf = (root, path) => walk(root).find((n) => n.dataset?.action === 'toggle-field'
     && n.dataset.value === path);
+  const openOf = (root, path) => toggleOf(root, path)?.getAttribute?.('aria-expanded');
+  const wordsOf = (root, path) => rowWords(walk(root).find((n) => n._classes?.includes('oe-node')
+    && n.dataset?.path === path));
   const chips = (root) => walk(root).filter((n) => n._classes?.includes('oe-pick'));
   const SLIM = { relation: 't' };
 
   eq('K1 a read of server defaults and an empty optional row starts folded, saying Defaults',
-    toggleOf(draw([UNIT, EXCLUDE()], SLIM), 'read')?.textContent, 'Defaults · 2');
+    `${openOf(draw([UNIT, EXCLUDE()], SLIM), 'read')} ${wordsOf(draw([UNIT, EXCLUDE()], SLIM), 'read')}`,
+    'false Defaults · 2');
   eq('K2 ...a read holding a declared value does not',
-    toggleOf(draw([{ ...UNIT, state: 'answered', disposition: '', ground: null }, EXCLUDE()], SLIM),
-      'read')?.textContent, '−');
+    openOf(draw([{ ...UNIT, state: 'answered', disposition: '', ground: null }, EXCLUDE()], SLIM),
+      'read'), 'true');
   eq('K2b ...nor a read with only an empty optional row and no default',
-    toggleOf(draw([EXCLUDE()], SLIM), 'read')?.textContent, '−');
+    openOf(draw([EXCLUDE()], SLIM), 'read'), 'true');
   eq('K3 ...nor one whose optional row holds a value',
-    toggleOf(draw([UNIT, EXCLUDE({ state: 'answered', value: [CLAUSE('a')] })],
-      { relation: 't', read: { exclude_when: [CLAUSE('a')] } }), 'read')?.textContent, '−');
+    openOf(draw([UNIT, EXCLUDE({ state: 'answered', value: [CLAUSE('a')] })],
+      { relation: 't', read: { exclude_when: [CLAUSE('a')] } }), 'read'), 'true');
   const opened = draw([UNIT, EXCLUDE()], SLIM, { read: true, [at('read.exclude_when')]: true });
   check('K4 opened, the default is drawn', byClass(opened, 'oe-folded-value')
     .some((n) => n.textContent === 'row'), byClass(opened, 'oe-folded-value').map((n) => n.textContent).join(' | '));

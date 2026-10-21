@@ -44,6 +44,6 @@
      page's palette, so the box is the page's dark, not the site's (lead 10-13: a white box, then a navy one). */
   --bg-surface: var(--sf-bg); --text: var(--sf-text); --border: var(--sf-pill); --border-strong: var(--sf-pill); }
 .tb-start__pick { display: flex; align-items: center; gap: 8px; }
-.tb-start__type { height: 24px; background: var(--sf-bg); color: var(--sf-text); border: 1px solid var(--sf-pill); }
+.tb-start__type { height: var(--control-h); background: var(--sf-bg); color: var(--sf-text); border: 1px solid var(--sf-pill); }
 /* A start's × stands alone among its basket's words here (the walk page's bar has Walk beside it): as high as its line. */
 .tb-start .wk-basketremove { height: auto; }

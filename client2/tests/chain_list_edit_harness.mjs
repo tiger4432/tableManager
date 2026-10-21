@@ -59,13 +59,14 @@ function mountPanel(M, declaration, storage = null) {
   const btn = (action, value) => find((n) => n.attrs && n.attrs['data-action'] === action
     && n.attrs['data-value'] === value);
   const click = (action, value) => { const b = btn(action, value); if (b) b.dispatch('click'); return !!b; };
-  const boxAt = (p) => find((n) => cls(n).includes('oe-node') && n.attrs && n.attrs['data-path'] === p);
-  const inputAt = (p) => { const b = boxAt(p); return b ? walk(b).find((n) => n.tagName === 'INPUT') : null; };
+  const boxAt = (p) => find((n) => n.attrs && n.attrs['data-path'] === p);
+  const inputAt = (p) => find((n) => n.tagName === 'INPUT' && n.attrs && n.attrs['data-value'] === p);
+  const chipsAt = (p) => { const b = boxAt(p); return b ? walk(b).filter((n) => cls(n).includes('chip')).map((n) => n.textContent) : []; };
   const raw = () => {
     const area = find((n) => n.tagName === 'TEXTAREA');
     try { return JSON.parse(area.value); } catch (e) { return null; }
   };
-  return { host, panel, btn, click, boxAt, inputAt, raw, find };
+  return { host, panel, btn, click, boxAt, inputAt, chipsAt, raw, find };
 }
 
 const memStore = () => ({ m: new Map(), getItem(k) { return this.m.has(k) ? this.m.get(k) : null; },
@@ -85,16 +86,14 @@ function suite(M) {
   // C -- the fold opens, and the items are inputs
   ok(!p.inputAt('derive.join.on[0].left'), 'C0 before: the pair list is folded -- its items are not drawn');
   ok(p.click('toggle-field', 'derive.join.on') && Boolean(p.boxAt('derive.join.on[0]')),
-    'C1 its toggle opens it: the item row is drawn');
+    'C1 its toggle opens it: the item row (a table row, form D) is drawn');
   // [총괄 09-24] ONE click: an index-list item follows its list open, so no second toggle here --
   //    pressing `on[0]` now would CLOSE it.
   const l0 = p.inputAt('derive.join.on[0].left'); const r0 = p.inputAt('derive.join.on[0].right');
   ok(l0 && r0 && l0.value === 'c1' && r0.value === 'c2',
     `C2 ONE click shows the pair's left=c1 right=c2 as inputs [${l0 && l0.value} / ${r0 && r0.value}]`);
-  p.click('toggle-field', 'derive.join.take');
-  const t0 = p.inputAt('derive.join.take[0]'); const t1 = p.inputAt('derive.join.take[1]');
-  ok(t0 && t1 && t0.value === 'c3' && t1.value === 'c4',
-    `C3 the column list shows its two items [${t0 && t0.value} / ${t1 && t1.value}]`);
+  const takes = p.chipsAt('derive.join.take');
+  ok(takes.join(',') === 'c3,c4', `C3 the column list shows its two items, as chips (form D) [${takes.join(' / ')}]`);
   const flag = p.inputAt('key.unique');
   ok(flag && flag.type === 'checkbox' && flag.checked === true, 'C4 key.unique is a ticked checkbox');
 
@@ -186,7 +185,7 @@ const DEFECTS = [
   [PANEL, suite, 'the chain panel stops receiving clicks on its form, as before 09-24',
     (s) => s.replace("        box.addEventListener('click', act);", '')],
   [PANEL, suite, 'the form context is handed an empty fold record, as it used to be',
-    (s) => s.replace('spec, value, this._formFold.expandedFields),', 'spec, value, {}),')],
+    (s) => s.replace('spec, value, this._formFold.expandedFields,', 'spec, value, {},')],
   [PANEL, suite, 'what "+" added is not opened',
     (s) => s.replace("type: 'FIELD_TOGGLED', paths: [path, added.born], open: true,",
                      "type: 'FIELD_TOGGLED', paths: [], open: true,")],

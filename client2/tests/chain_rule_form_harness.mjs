@@ -354,14 +354,16 @@ function suite(M) {
   const marks = attrOf(e.host, 'data-refused');
   ok(marks.length === 1 && marks[0].attrs['data-refused'] === 'mapper',
     `E1 the refused FIELD is marked -- ${marks.length} mark(s)`);
-  ok(marks.length === 1 && marks[0].textContent === 'mapper_not_registered',
-    'E2 ... with the server`s CODE, not a sentence of ours');
+  ok(marks.length === 1 && marks[0].textContent === 'x: y' && marks[0].attrs['data-code'] === 'mapper_not_registered'
+     && byCls(e.host, 'chain-rule-refusal').length === 0,
+    'E2 ... in the server`s own sentence, and only there - the box below leaves it out (lead 10-21)');
   const e2 = makePanel(M, SPEC);
   e2.panel.render(payloadFor(SKELETON, { name: 'alpha' }), {
     refusal: { code: 'stale_base', path: 'rules.alpha', message: 'x' },
   });
-  ok(attrOf(e2.host, 'data-refused').length === 0,
-    'E3 a refusal about the WHOLE rule marks no field -- it has no field to mark');
+  ok(attrOf(e2.host, 'data-refused').length === 0
+     && (byCls(e2.host, 'chain-rule-refusal-why')[0] || {}).textContent === 'x',
+    'E3 a refusal about the WHOLE rule marks no field -- it stays in the box below, in its sentence');
 
   // ── F: a list nobody served is UNREAD, not empty ─────────────────────────────────
   const f = makePanel(M, SPEC);
@@ -428,9 +430,10 @@ function suite(M) {
     `H2 ... while the LIST it went for does refresh -- that is what the read was for [${clockNames.join(',')}]`);
   ok(clockNames.indexOf(M.PICK_NAME) === -1,
     'H3 ... and refreshing the list does not put 「nothing picked」 over an open rule');
-  // 🔴 THE SAME LOSS THROUGH A CLICK, AND NO TIMER NEEDED. Folding 「원본」 redraws the panel from
-  //    the response it is holding, so before C-101 ① one fold threw away everything typed.
-  const fold = byCls(clock.host, 'chain-rule-raw-fold')[0];
+  // 🔴 THE SAME LOSS THROUGH A CLICK, AND NO TIMER NEEDED. A fold of the panel's own redraws it from
+  //    the response it is holding, so before C-101 ① one fold threw away everything typed. (The text's
+  //    「원본」 fold went with form D - the text stands beside the form; «Advanced» is the panel's fold now.)
+  const fold = byCls(clock.host, 'chain-rule-more')[0];
   if (fold) fold.dispatch('click', {});
   const afterFold = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
   ok(Boolean(fold) && Boolean(afterFold) && afterFold.value === 'typed',
@@ -460,11 +463,13 @@ function suite(M) {
   // 🔴 AND A PERSON PRESSING A BUTTON IS NOT THE CLOCK. The panel redraws itself from the
   //    response it stored; if it passed that response's background flag back in, every fold
   //    after the tab opened would be a button that does nothing.
-  const reFold = byCls(first.host, 'chain-rule-raw-fold')[0];
+  const reFold = byCls(first.host, 'chain-rule-more')[0];
   if (reFold) reFold.dispatch('click', {});
+  const reOpen = byCls(first.host, 'chain-rule-more')[0];
   const reArea = byCls(first.host, 'chain-rule-raw')[0];
-  ok(Boolean(reFold) && Boolean(reArea) && reArea.hidden !== true,
-    'H7 a fold pressed after a background read still opens');
+  ok(Boolean(reFold) && Boolean(reOpen) && reOpen.getAttribute('aria-expanded') === 'true'
+     && Boolean(reArea) && reArea.hidden !== true && byCls(first.host, 'decl-split').length === 1,
+    'H7 a fold pressed after a background read still opens - and the text stands beside the form (form D)');
 
   // ── I: reference cells choose from a catalogue, and still take anything (C-101 ②) ──
   // 🔴 Measured 2026-09-13 in `server/chain_skeleton.json`: SEVEN leaves carry `hint: 'ref'` and
@@ -972,7 +977,7 @@ const DEFECTS = [
     s => s.replace('    if (picked || !root) head.appendChild(save);', '    head.appendChild(save);')],
   ['a new rule starts from the rule that was open',
     s => s.replace('      let held = this.newMode\n'
-                   + '        ? (emptyOf(root, (payload.skeleton || {}).defs) || {})\n',
+                   + '        ? (emptyOf(root, (payload.skeleton || {}).defs, 0, this.lists) || {})\n',
                    '      let held = this.newMode\n        ? (payload.declaration || {})\n')],
   ['a form edit no longer reaches the document that is saved',
     s => s.replace('          area.value = JSON.stringify(updated, null, 2);\n', '')],
@@ -987,19 +992,19 @@ const DEFECTS = [
                    + '            updated = written;',
                    '            writeShapeAtPath(updated, at, val);')],
   ['the refused field is not marked',
-    s => s.replace('        markRefusedField(form, view, spec);\n', '')],
-  ['the mark carries a sentence instead of the code',
-    s => s.replace('  tag.textContent = refusal.code || \'\';',
-                   '  tag.textContent = refusal.message || \'\';')],
+    s => s.replace('        placed = Boolean(markRefusedField(form, view, spec)) || placed;\n', '')],
+  ['the mark carries the code instead of the server`s sentence',
+    s => s.replace('  tag.textContent = refusal.message || refusal.code || \'\';',
+                   '  tag.textContent = refusal.code || \'\';')],
+  ['a refusal beside its cell is said again in the box below',
+    s => s.replace('    if (view.refusal && !placed) {', '    if (view.refusal) {')],
   // 🔴 E3's mutant would have been 「delete the empty-address guard」, and it ESCAPED: the
   //    prefix ends in a dot, so a whole-rule address never reaches that line, and an empty
   //    address matches no field anyway. The guard is gone rather than the assertion -- scoring
   //    a branch nobody takes reports coverage this harness does not have. Same finding as C-85.
   ['a refusal that names no field is pinned to one anyway',
-    s => s.replace('  if (!refusal.path.startsWith(prefix)) return null;',
-                   '  const loose = !refusal.path.startsWith(prefix);')
-          .replace('  const at = refusal.path.slice(prefix.length);',
-                   "  const at = loose ? 'name' : refusal.path.slice(prefix.length);")],
+    s => s.replace('  return refusal.path.startsWith(prefix) ? refusal.path.slice(prefix.length) : null;',
+                   "  return refusal.path.startsWith(prefix) ? refusal.path.slice(prefix.length) : 'name';")],
   ['the registry`s closed list is ignored, so the field claims there are none',
     s => s.replace('      if (shape && shape.kind === \'leaf\' && shape.hint === \'choice\' && !shape.list && choiceList) {',
                    '      if (false) {')],
@@ -1019,9 +1024,9 @@ const DEFECTS = [
     s => s.replace('    if (opts.saved) this._forget();', '')],
   // 🔴 C-101 ②. The owner's second sentence: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」.
   ['the reference cells lose their catalogue, so every table name is typed by hand',
-    s => s.replace('    declared: (section) => named(section || refList),', '    declared: () => [],')],
+    s => s.replace('    refOf: (node) => refNames(lists, ', '    refOf: (node) => refNames({}, ')],
   ['one list answers for every reference cell, whatever section the skeleton named',
-    s => s.replace('named(section || refList)', 'named(refList)')],
+    s => s.replace('{ ...node, section: refList } : node, held)', '{ ...node, section: refList } : { ...node, section: refList }, held)')],
   // 🔴 C-101 ③. Five ways one choice stops writing what the operator chose.
   ['the registry`s translation is ignored, so a file function writes the wrong cell',
     s => s.replace('        const spread = group.split(value);', '        const spread = null;')],
@@ -1038,7 +1043,7 @@ const DEFECTS = [
                    '    if (true) return;')],
   // 🔴 C-106. Nine ways the unsaved document stops being visible, defensible or reversible.
   ['the unsaved mark is never drawn',
-    s => s.replace('    if (drafted !== null) {\n      const mark', '    if (false) {\n      const mark')],
+    s => s.replace('    if (!head || (this._unsaved && this._unsaved.head === head)) return;', '    return;')],
   ['the shortcut is not the save button but nothing at all',
     s => s.replace("        if (key !== 's' || !(event.ctrlKey || event.metaKey)) return;",
                    '        if (true) return;')],
@@ -1052,8 +1057,8 @@ const DEFECTS = [
     s => s.replace('        if (drafted !== null && !this.ask(LEAVE_UNSAVED)) {',
                    '        if (drafted !== null && !this.ask(LEAVE_UNSAVED) && false) {')],
   ['the way back does not actually drop the draft',
-    s => s.replace('        undo.addEventListener(\'click\', () => { this._forget(); this._again(); });',
-                   '        undo.addEventListener(\'click\', () => { this._again(); });')],
+    s => s.replace('      undo.addEventListener(\'click\', () => { this._forget(); this._again(); });',
+                   '      undo.addEventListener(\'click\', () => { this._again(); });')],
   ['a kept draft is never read back, so a refresh loses it again',
     s => s.replace('      const held = this._stored(key);', '      const held = null;')],
   ['a saved document leaves its draft in the browser',

@@ -8,14 +8,14 @@ import {
   // 791c0f45e: whether the draft moved a leaf the plan marks as shaping the form.
   draftReshapesPlan,
 } from './ontology_explorer_store.js';
-import { renderOntologyExplorer, nodeTrail, placePopover, declarationView } from './ontology_explorer_view.js';
+import { renderOntologyExplorer, nodeTrail, placePopover, declarationView, adderInput } from './ontology_explorer_view.js';
 import { editDeclaration, refusalIssues, BAR_WORDS } from './ledger_declaration_bar.js';
 import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
 import { CURRENT_USER } from './config.js';
 import { BranchPicker } from './branch_picker.js';
 import {
-  splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember,
+  splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember, switchGated,
 } from './ontology_path.js';
 import { declarationShape, pickBranch, shapeAt } from './ontology_skeleton.js';
 import { censusBySource, censusNames } from './source_backlog.js';
@@ -138,6 +138,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // ㄱ ㄴ (lead 619befe8c) — where the hand is in the form. The bar is its own part; the view only
   //    leaves it a seat, which every render rebuilds, so every render seats it again (`render`).
   let hoverPath = null;
+  // What was typed under a `when` branch the open draft switched away from (`switchGated`) - this screen's, per draft.
+  let gated = { of: null, stash: {} };
   const formNodes = () => root.querySelectorAll('.oe-bucket--form .oe-node[data-path]');
   const formNode = (path) => [...formNodes()].find((node) => node.dataset.path === path) || null;
   const handInForm = () => Boolean(document.activeElement && document.activeElement.closest
@@ -338,8 +340,14 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     // 🔴 THE WRITER MOVED TO `ontology_path.js` (C-86) AND NOTHING ABOUT IT CHANGED. The
     // chain rule form draws from a skeleton too, so the branch building and the type
     // preservation now have ONE author instead of two that could drift apart in silence.
-    const next = writeShapeAtPath(raw, relative, value);
-    if (next === null) return;
+    const written = writeShapeAtPath(raw, relative, value);
+    if (written === null) return;
+    // Form D: a gate switched keeps what was typed under the other branch on the screen, not in the document.
+    const draftKey = state.draft.target_key || '';
+    if (gated.of !== draftKey) gated = { of: draftKey, stash: {} };
+    const { document: next, stash } = switchGated(raw, written, relative, shapeForPath(''),
+                                                  state.authoringSchema?.skeleton?.defs, gated.stash);
+    gated.stash = stash;
     dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(next, null, 2) });
   };
 
@@ -1236,7 +1244,7 @@ No effect`;
         const box = action === 'form-name'
           ? root.querySelector(`.oe-form-new-id[data-for="${path}"]`) : null;
         const added = addMember(raw, path, node, state.authoringSchema?.skeleton?.defs,
-                                box ? box.value : '');
+                                box ? box.value : '', state.authoringSchema);
         if (!added) return;
         const { born, seed: empty } = added;
         dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(added.document, null, 2) });
@@ -1524,6 +1532,7 @@ No effect`;
   const TYPED_BOXES = new Set(['edit-draft-item', 'edit-shape', 'edit-field-item', 'edit-field',
     'edit-entity-key']);
   root.addEventListener('change', (event) => {
+    if (adderInput(event)) return;
     // The bar's typed value (Enter or the box left): a constant, a when's «= …», a name.
     if (event.target?.dataset?.action === 'decl-const') {
       const { path, chip } = event.target.dataset;
@@ -1551,6 +1560,7 @@ No effect`;
     void reshapeIfMoved();
   });
   root.addEventListener('click', () => { void reshapeIfMoved(); });
+  root.addEventListener('paste', adderInput);
 
   root.addEventListener('input', (event) => {
     typing = TYPED_BOXES.has(event.target.dataset.action);
@@ -1597,7 +1607,7 @@ No effect`;
       try { raw = JSON.parse(state.editorText || ''); } catch { return; }
       const next = pickBranch(shapeForPath(relative), event.target.value,
                               getAtPath(raw, splitBundlePath(relative)),
-                              state.authoringSchema?.skeleton?.defs);
+                              state.authoringSchema?.skeleton?.defs, state.authoringSchema);
       if (next !== undefined) editShapeAtPath(relative, next);
       return;
     }

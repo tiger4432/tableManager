@@ -22,6 +22,7 @@
 // would have to stop one level in and call that the grammar.
 
 import { isBlank } from './absent.js';
+import { onlyMember } from './closed_list.js';
 
 /** Follow `{use}` until a real node. */
 function deref(node, defs) {
@@ -86,18 +87,18 @@ export function shapeBranch(node, value, resolve) {
  *   shape  the branch's own value, from the skeleton's `empty` -- unless it already is that shape
  * @returns {any} undefined when `picked` is no branch
  */
-export function pickBranch(node, picked, was, defs) {
+export function pickBranch(node, picked, was, defs, lists = null) {
   const branches = node && node.branches && typeof node.branches === 'object' ? node.branches : {};
   if (!picked || !branches[picked]) return undefined;
   if (node.pick === 'shape') {
     if (shapeBranch(node, was, defs) === picked) return was;
     return node.empty && Object.prototype.hasOwnProperty.call(node.empty, picked)
-      ? JSON.parse(JSON.stringify(node.empty[picked])) : emptyOf(branches[picked], defs);
+      ? JSON.parse(JSON.stringify(node.empty[picked])) : emptyOf(branches[picked], defs, 0, lists);
   }
   const kept = was && typeof was === 'object' && !Array.isArray(was) ? was : {};
   const next = {};
   if (Object.prototype.hasOwnProperty.call(kept, 'kind')) next.kind = picked;
-  next[picked] = kept[picked] === undefined ? emptyOf(branches[picked], defs) : kept[picked];
+  next[picked] = kept[picked] === undefined ? emptyOf(branches[picked], defs, 0, lists) : kept[picked];
   return next;
 }
 
@@ -109,6 +110,22 @@ export function shapeAt(node, steps, defs) {
     cursor = childOf(cursor, step, defs);
   }
   return cursor;
+}
+
+/** The names a `ref` leaf is offered, and for a column the table they are columns of (form D, B 5d5b99fac). A ref
+ *  naming `table_from` (paths from the declaration's root; the first that holds a value names the table) offers that
+ *  table's columns from `tables` (T -> {columns}); any other ref offers `sections[section]`.
+ * @returns {{table: string, names: string[]}} */
+export function refNames(sections, tables, node, document) {
+  if (!node || node.hint !== 'ref') return { table: '', names: [] };
+  if (Array.isArray(node.table_from)) {
+    const dig = (at) => String(at).split('.').reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), document);
+    const table = node.table_from.map(dig).find((v) => typeof v === 'string' && v) || '';
+    const columns = table && tables && tables[table] ? tables[table].columns : null;
+    return { table, names: columns && typeof columns === 'object' ? Object.keys(columns) : [] };
+  }
+  const list = sections && node.section ? sections[node.section] : null;
+  return { table: '', names: Array.isArray(list) ? list.filter((name) => typeof name === 'string') : [] };
 }
 
 /** The node for one declaration of `section`, i.e. what a member of that section is. */
@@ -181,7 +198,7 @@ export function missingRequired(node, held, defs, at = '') {
 }
 
 /** The emptiest value of this node's kind -- what a newly named member starts as. */
-export function emptyOf(node, defs, depth = 0) {
+export function emptyOf(node, defs, depth = 0, lists = null) {
   const shape = deref(node, defs);
   if (!shape) return '';
   // 🔴 ONE LEGAL VALUE IS NOT A DECISION — IT IS A SEED. `const` says the grammar admits exactly
@@ -212,7 +229,7 @@ export function emptyOf(node, defs, depth = 0) {
   // required oneOf fell through to the leaf tail below and was seeded `''` -- a string where
   // a mapping belongs, drawn the same and loaded the same only while both sides stay lenient.
   // Picked by shape, nothing picked yet is the leaf branch's empty -- the cell as it always began.
-  if (shape.kind === 'oneOf') return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs) : {};
+  if (shape.kind === 'oneOf') return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs, lists) : {};
   if (shape.kind === 'record') {
     // 🔴 A REQUIRED CONTAINER IS THERE FROM THE START, NOT WHEN SOMEBODY FILLS IT. Same
     // rule the server seeds a new declaration with (`empty_declaration`), applied to a
@@ -255,13 +272,21 @@ export function emptyOf(node, defs, depth = 0) {
       if (!fieldApplies(field, seeded)) continue;
       const child = childOf(shape, field.key, defs);
       if (!child) continue;
-      // A oneOf picked by shape begins as its leaf branch, so it stays absent like a leaf.
-      if ((child.kind === 'leaf' || child.pick === 'shape') && child.hint !== 'flag') continue;
-      seeded[field.key] = emptyOf(field.node, defs, depth + 1);
+      // A oneOf picked by shape begins as its leaf branch, so it stays absent like a leaf. A required choice of ONE
+      // is not a question (form D): it is born holding that one.
+      if ((child.kind === 'leaf' || child.pick === 'shape') && child.hint !== 'flag' && onlyChoice(child, lists) === undefined) continue;
+      seeded[field.key] = emptyOf(field.node, defs, depth + 1, lists);
     }
     return seeded;
   }
+  const one = onlyChoice(shape, lists);
+  if (one !== undefined) return one;
   return shape.hint === 'flag' ? false : '';
+}
+
+/** A choice leaf's one value, when its list (in `lists`, the window's choice lists) offers exactly one. */
+function onlyChoice(shape, lists) {
+  return shape && shape.hint === 'choice' && shape.list && lists ? onlyMember(lists[shape.list]) : undefined;
 }
 
 /** `a.b` + a member -> the path the server would spell, brackets and all.

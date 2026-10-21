@@ -542,12 +542,14 @@
   overflow-wrap: anywhere;
 }
 
+/* Form D: the editor's head - Unsaved · what blocks · what reruns · Save · Delete - over its text and form. */
 #ontology-explorer-root .oe-editor-controls {
-  display: flex; justify-content: flex-end; gap: 6.8px; flex-wrap: wrap;
-  position: sticky; bottom: 0; z-index: 2;
-  padding: 10.2px 0;
-  background: var(--oe-bg); border-top: 1px solid var(--oe-line);
+  display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 2;
+  padding: var(--space-3) 0;
+  background: var(--oe-bg); border-bottom: 1px solid var(--oe-line);
 }
+#ontology-explorer-root .oe-editor-unsaved { margin-right: auto; color: var(--oe-warn); font-size: var(--fs-label); }
 #ontology-explorer-root .oe-empty { color: var(--oe-muted); padding: 10.2px 6.8px; font-size: var(--fs-h6); }
 #ontology-explorer-root .oe-error,
 #ontology-explorer-root .oe-warning { padding: 10.2px 13.6px; border-bottom: 1px solid var(--oe-line); font-size: var(--fs-h6); }
@@ -758,15 +760,26 @@
    `Required · unknown` needs ~126 (system-ui) and ~132 (sans-serif) with its border, so the
    column is 132.6, the grid step above both. One width for every row, so value and state
    keep their one vertical line. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
-  display: grid;
+/* 🔴 ONE GRID FOR THE WHOLE TREE (lead 10-21, form D). The topmost node holds the three columns; every node, children
+   box and row below it is a subgrid of them, so a name column is as wide as its longest name with its indent, and
+   the value column starts at one x at every depth. A name is never cut while the form has the room; the columns
+   start at their base widths. `:not([hidden])` - a `display` here would beat the page's `[hidden]` rule (id weight). */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node:not(.oe-node *):not([hidden]) {
+  display: grid; min-width: 0; column-gap: 10px;
   grid-template-columns:
-    calc(288px - var(--oe-indent) * var(--oe-depth, 0)) minmax(0, 1fr) 132.6px;
-  gap: 10px; align-items: baseline; min-width: 0;
-  /* The indent is padding, and the label column loses exactly what the padding gains --
-     so `value` starts at the same x at every depth. Measured before this line existed:
-     depth 0 put the value column at 331px and depth 1 at 315px. */
-  padding: 7px 12px 7px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
+    minmax(var(--oe-label-w, 288px), max-content) minmax(0, 1fr) minmax(var(--oe-state-w, 132.6px), max-content);
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node :is(.oe-node, .oe-node-children):not([hidden]) {
+  display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; min-width: 0;
+}
+/* What is not a node stands across the row: a table needs the width; a button or a note keeps its own. */
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node, .oe-node-children) > :not(.oe-node, .oe-node-children) { grid-column: 1 / -1; }
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node, .oe-node-children) > :not(.oe-node, .oe-node-children, .oe-node-row, .oe-node-table) { justify-self: start; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
+  display: grid; grid-template-columns: subgrid; grid-column: 1 / -1;
+  align-items: baseline; min-width: 0;
+  /* The indent is the name cell's own padding (below), so it widens the name column, never narrows the name. */
+  padding: 7px 12px;
   border: 1px solid var(--oe-line); border-top: 0;
   background: var(--oe-surface);
 }
@@ -776,6 +789,7 @@
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-label {
   display: flex; align-items: baseline; gap: 6.8px; min-width: 0;
+  padding-left: calc(var(--oe-indent) * var(--oe-depth, 0));
 }
 /* 🔴 THE ROW KEEPS ONE HEIGHT. At depth the label column is narrow -- 214px less 16px a
    level, so 134px by depth 5 -- and `allowed_binding_kinds` plus its badge needed 144. The
@@ -787,6 +801,8 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Chrome breaks at a <wbr> even under nowrap (measured 10-21): the break after an '_' is the stacked layout's only. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name wbr { display: none; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-badge { flex: none; white-space: nowrap; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name {
   font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);
@@ -803,6 +819,7 @@
 /* Narrow: the label column alone is 288px, so at 375 the input had ~22px (measured 09-29).
    The row stacks -- name and state, then the value across the whole row. */
 @media (max-width: 700px) {
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node:not(.oe-node *):not([hidden]) { grid-template-columns: minmax(0, 1fr); }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "label state" "value value";
@@ -812,6 +829,8 @@
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value { grid-area: value; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-state { grid-area: state; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value:empty { display: none; }
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name { white-space: normal; overflow: visible; }
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name wbr { display: inline; }
 }
 /* Node kind, said in the row rather than implied by indentation alone.
    Named `-badge`, not `-kind`: `.oe-node-kind` was already taken by the path popover
@@ -821,17 +840,50 @@
 /* The two states the mockup keeps open get the 3px edge and the taller box. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-remaining {
   border-left: 3px solid var(--oe-accent);
-  padding: 8px 12px 8px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
+  padding: 8px 12px;
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-refused {
   border-left: 3px solid var(--oe-warn);
-  padding: 8px 12px 8px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
+  padding: 8px 12px;
 }
-/* A fold states its count; both halves are buttons so it opens where it says it folded. */
+/* Form D: the fold is a caret before the name (▸ shut, ▾ open); what the row holds is said in its value column. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded {
-  border: 1px solid transparent; background: transparent; cursor: pointer; font-size: var(--fs-tag);
-  color: var(--oe-accent); padding: 0 var(--space-1); height: auto; min-height: 0; line-height: inherit;
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  position: relative; width: var(--space-5); height: var(--space-5); min-height: 0; padding: 0;
+  border: 1px solid transparent; background: transparent; cursor: pointer;
+  font-size: var(--fs-button); line-height: 1; color: var(--oe-accent);
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-fold, .oe-node-folded)::after { content: ''; position: absolute; inset: calc(var(--space-1) * -1); }
+/* A leaf's name, and a one-of's (no caret of its own), stand where a branch's name stands after its caret. */
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row:not(.is-branch), .oe-node-row.oe-node-head) > .oe-node-label {
+  padding-left: calc(var(--oe-indent) * var(--oe-depth, 0) + var(--space-5) + var(--space-2));
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-summary {
+  display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--oe-font-mono); font-size: var(--fs-button); color: var(--oe-muted);
+}
+/* Form D: a list of words - its chips, then the adder. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-adder { display: inline-flex; align-items: center; gap: var(--space-1); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-adder .oe-form-new-id {
+  width: calc(var(--space-6) * 6); height: var(--control-h-small); min-height: var(--control-h-small);
+}
+/* Form D: a list of records, or a name -> word map, as a table under its row. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-table {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3) calc(var(--space-3) + var(--oe-indent) * var(--oe-depth, 0));
+  border: 1px solid var(--oe-line); border-top: 0; background: var(--oe-surface);
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table th { font-size: var(--fs-label); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table :is(.oe-field-input, .oe-field-select, input, select) {
+  height: var(--control-h-small); min-height: var(--control-h-small);
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table__name { font-family: var(--oe-font-mono); font-size: var(--fs-button); }
+/* Form D: a column cell says its table before its box - «lot_summary.» lot_id. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-column { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-column__table {
+  flex: none; font-family: var(--oe-font-mono); font-size: var(--fs-button); color: var(--oe-muted);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-new { background: transparent; border-bottom: 0; }
 /* 🔴 DEPTH YOU CAN SEE (lead 619befe8c; owner 「어디의 하위 선언을 고치고 있는지」). One guide per
@@ -850,11 +902,6 @@
 /* The 3px edge moves the padding box 2px right; the lines stay on the column every other row draws. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:is(.is-remaining, .is-refused) .oe-node-guide {
   margin-left: -2px;
-}
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-head {
-  display: flex; align-items: baseline; gap: var(--space-2); min-width: 0;
-  padding: 7px 12px 7px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
-  border: 1px solid var(--oe-line); border-top: 0; background: var(--oe-surface-2);
 }
 /* ㄴ The section the field being edited sits in: its whole block, tinted over what each row is. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node.is-editing-parent:not([data-path=""]) :is(.oe-node-row, .oe-node-head) {
@@ -921,6 +968,7 @@
 #ontology-explorer-root .oe-field-folded:hover { border-color: var(--oe-line-hover); }
 #ontology-explorer-root .oe-field-folded:active { background: var(--oe-tint-press); }
 #ontology-explorer-root .oe-folded-value {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1);
   font-family: var(--oe-font-mono); font-size: var(--fs-label); color: var(--oe-text);
   overflow-wrap: anywhere; min-width: 0;
 }
@@ -999,8 +1047,8 @@
 #ontology-explorer-root .oe-editor-action,
 #ontology-explorer-root .oe-dirty-dialog-actions button {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1.2;
-  padding: 6.8px 12.24px; border: 1px solid var(--oe-line); border-radius: 0;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1;
+  height: var(--control-h); padding: 0 var(--space-3); border: 1px solid var(--oe-line); border-radius: 0;
   background: transparent; color: var(--oe-text); cursor: pointer; white-space: nowrap;
 }
 /* Secondary: the divider border, and hover/press are text mixed into the ground. */
@@ -1025,7 +1073,7 @@
 #ontology-explorer-root .oe-tree-add,
 #ontology-explorer-root .oe-key-add { color: var(--oe-accent); }
 #ontology-explorer-root .oe-key-add { align-self: flex-start; }
-#ontology-explorer-root .oe-mode-action { color: var(--oe-muted); font-size: var(--fs-h6); padding: 3.4px 6.8px; }
+#ontology-explorer-root .oe-mode-action { color: var(--oe-muted); font-size: var(--fs-h6); height: var(--control-h-small); }
 #ontology-explorer-root .oe-mode-action.is-current,
 #ontology-explorer-root .oe-mode-action[aria-pressed="true"] {
   border-color: var(--oe-accent); background: var(--oe-accent-soft); color: var(--oe-accent);
@@ -1064,10 +1112,10 @@
   opacity: 0.45; cursor: not-allowed;
 }
 
-/* ICON BUTTON — 36 × 36, no padding. */
+/* ICON BUTTON — a square of the control height, no padding. */
 #ontology-explorer-root .oe-icon-action {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; padding: 0;
+  width: var(--control-h); height: var(--control-h); padding: 0;
   border: 1px solid var(--oe-line); border-radius: 0;
   background: transparent; color: var(--oe-text); cursor: pointer;
   font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1.2;
@@ -1080,7 +1128,6 @@
    their in-row size and take the ghost's border, padding and mixes. */
 #ontology-explorer-root .oe-jump,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-add,
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-remove,
 #ontology-explorer-root .oe-field-row-add,
 #ontology-explorer-root .oe-field-row-remove,
 #ontology-explorer-root .oe-field-refold {
@@ -1091,9 +1138,12 @@
   font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-h6); line-height: 1.2;
   overflow-wrap: anywhere;
 }
+/* The tree's + and − stand at the small height. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-add,
+#ontology-explorer-root .oe-field-row-add,
+#ontology-explorer-root .oe-field-row-remove { min-height: var(--control-h-small); }
 #ontology-explorer-root .oe-jump:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-add:hover,
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-remove:hover,
 #ontology-explorer-root .oe-field-row-add:hover,
 #ontology-explorer-root .oe-field-row-remove:hover,
 #ontology-explorer-root .oe-field-refold:hover,
@@ -1101,14 +1151,13 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded:hover { background: var(--oe-tint-accent-hover); }
 #ontology-explorer-root .oe-jump:active,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-add:active,
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-remove:active,
 #ontology-explorer-root .oe-field-row-add:active,
 #ontology-explorer-root .oe-field-row-remove:active,
 #ontology-explorer-root .oe-field-refold:active,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold:active,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded:active { background: var(--oe-tint-accent-press); }
 
-/* INPUT — 100% wide, 36px tall, 6/10 padding, 14px, one hairline, square, accent caret.
+/* INPUT — 100% wide, --control-h tall, text centred (no block padding), 12px, one hairline, square, accent caret.
    Hover raises the border to 45% of the text colour; focus takes the accent and pulls the
    ring flush so the two edges do not double up. */
 #ontology-explorer-root .oe-search,
@@ -1120,7 +1169,7 @@
    base.css now gives every select and input outside the explorer this look (lead de64fb0f9). */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id,
 #ontology-explorer-root .oe-editor-textarea {
-  width: 100%; min-height: 36px; padding: 6px 10px; font-size: var(--fs-button);
+  width: 100%; min-height: var(--control-h); padding: 0 var(--space-3); font-size: var(--fs-button);
   /* 🔴 글꼴을 «명시»합니다. 탐색기 안에서는 뿌리에서 상속돼 Barlow 였는데, 폼 컨트롤은
      밖에서 UA 글꼴(Arial)로 떨어집니다 — `font: inherit` 재설정도 뿌리 안에만 있어서
      어드민의 고르개가 «모양만 같고 글꼴이 달랐습니다»(실측). 값은 같으므로 탐색기의
@@ -1152,6 +1201,11 @@
 }
 #ontology-explorer-root .oe-editor-textarea {
   display: block; min-height: 260px; resize: vertical; padding: 10.2px; font-size: var(--fs-label);
+}
+/* Form D: the text inside the split takes the split's rules (base.css .decl-split) - no box of its own. */
+#ontology-explorer-root .oe-editor-textarea.decl-split__area {
+  width: auto; min-height: 0; resize: none; padding: var(--space-3); border: 0; background: transparent;
+  font-size: var(--fs-button); line-height: 1.6;
 }
 /* 14px is the Industry input figure. This line had been overriding the input block back
    down to 13px, so the spec landed everywhere except the size a person reads. */
@@ -1294,7 +1348,7 @@
    14px/6x10 back -- measured: width and family took, size and padding did not. Same
    shape as the 13px override that had already swallowed the input spec once. */
 #ontology-explorer-root .oe-search {
-  font-family: var(--oe-font-mono); font-size: var(--fs-tag); padding: 5px 9px; min-height: 0;
+  font-family: var(--oe-font-mono); font-size: var(--fs-tag); padding: 0 var(--space-3); min-height: var(--control-h);
 }
 
 /* --- 시험 실행: 선언이 실제 행에서 무엇을 냈는가 -------------------------------- */

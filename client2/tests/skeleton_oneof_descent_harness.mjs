@@ -249,7 +249,7 @@ const DEFECTS = [
     (s) => s.replace('    return branch ? deref(branch, defs) : null;',
                      '    return deref(Object.values(branches)[0] || null, defs);')],
   ['a oneOf empties to the leaf tail again, so a required oneOf is seeded as a string',
-    (s) => s.replace("  if (shape.kind === 'oneOf') return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs) : {};", '')],
+    (s) => s.replace("  if (shape.kind === 'oneOf') return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs, lists) : {};", '')],
   // ⑤ lead 068c904a6 ② -- a oneOf picked by the value's shape.
   ['a oneOf picked by shape is descended by branch key, so entity_type.column is unreachable',
     (s) => s.replace("    if (node.pick === 'shape') return childOf(", "    if (false) return childOf(")],
@@ -265,7 +265,7 @@ const DEFECTS = [
   ['the skeleton\'s own empty is handed out, so the next keystroke edits the skeleton',
     (s) => s.replace('JSON.parse(JSON.stringify(node.empty[picked]))', 'node.empty[picked]')],
   ['a new one starts as a mapping, so a new binding opens on the column branch',
-    (s) => s.replace("return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs) : {};",
+    (s) => s.replace("return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs, lists) : {};",
                      'return {};')],
   ['a required one is seeded, so a new binding holds a type nobody picked',
     (s) => s.replace("(child.kind === 'leaf' || child.pick === 'shape')", "child.kind === 'leaf'")],

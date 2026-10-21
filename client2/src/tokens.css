@@ -263,6 +263,9 @@
 
   /* One control height — inputs, selects and buttons stand in one line (mockup ㄱ). */
   --control-h: 36px;
+  /* The second of the two (lead f3639d4a2, owner 10-20): a control inside a form row - a chip, its remove, a row's add.
+     3.4 grid x 8; a chip's remove keeps a >= 24 px press. No third height. */
+  --control-h-small: 27.2px;
 
   /* State mixes of the text colour (canon §1) — both themes follow one declaration. */
   --tint-hover: color-mix(in srgb, var(--text) 7%, transparent);
@@ -270,8 +273,8 @@
   --tint-row: color-mix(in srgb, var(--text) 4%, transparent);
   --line-hover: color-mix(in srgb, var(--text) 45%, transparent);
   --ink-label: color-mix(in srgb, var(--text) 70%, transparent);
-  --ink-th: color-mix(in srgb, var(--text) 60%, transparent);
-  --ink-meta: color-mix(in srgb, var(--text) 50%, transparent);
+  --ink-th: color-mix(in srgb, var(--text) 68%, transparent);
+  --ink-meta: color-mix(in srgb, var(--text) 65%, transparent);
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ── 여백 «한 벌» — 3.4 그리드 (ui-design-system §3, 캐논 `ontology_explorer.css`) ──
@@ -310,6 +313,8 @@
   /* 그림 상자의 «높이 상한». 넘치면 그 상자 «안»에서 스크롤합니다 — 페이지가 안 늘어납니다.
      ⚠️ 값이 아니라 «성질»입니다: 노드가 몇이든 한 화면에서 다음 블록이 보여야 합니다. */
   --graph-max-height: 420px;
+  /* The declaration split's two sides (form D): the text and the form scroll inside this height. */
+  --decl-split-h: 72vh;
   /* A menu's rows stop here and scroll inside it (43fc32479). Half the screen: the menu's lines
      above and below its rows stay on screen from a phone (812) to a 900-high window. */
   --menu-max-height: 50vh;

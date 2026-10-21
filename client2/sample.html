@@ -108,6 +108,12 @@
             <button type="button" disabled title="Pick rows">Re-run</button>
             <span class="meta">Re-run: pick rows</span>
           </div>
+          <div class="sample-actions">
+            <span class="chip">lot_id<button type="button" class="chip-remove" aria-label="Remove lot_id"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6"/></svg></button></span>
+            <span class="chip">wafer<button type="button" class="chip-remove" aria-label="Remove wafer"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6"/></svg></button></span>
+            <input class="ctl-small" placeholder="Add a column" aria-label="Add a column">
+            <button type="button" class="ctl-small">+ Row</button>
+          </div>
           <div class="refusal">Refused — 'rule' is required · pick a rule, then Count again</div>
         </div>
       </section>
@@ -246,6 +252,10 @@
     <section class="box">
       <div class="box-head"><h2 class="box-title">Ledger declaration</h2><span class="meta">sentence bars · the mockup's data</span></div>
       <div class="box-body"><div id="sample-decl-bar"></div></div>
+    </section>
+    <section class="box">
+      <div class="box-head"><h2 class="box-title">Declaration form</h2><span class="meta">read-only · three depths · a 40-letter name</span></div>
+      <div class="box-body sample-scroll"><div id="sample-decl-form"></div></div>
     </section>
   </main>
 </body>

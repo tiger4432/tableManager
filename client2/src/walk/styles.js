@@ -25,7 +25,7 @@ export const WALK_CSS = `
 /* The walk page's type, heights and spaces (lead 34d91c09d 8, 18da45b73; owner «간격 정리 넣어»): letters 13 (a line
    beside, the result tables - lead 10-11 W 12), 14 (body), 16 (titles); a control 44 high, a small one in a cell 28; every space a --space-* token.
    The screen gate asks all three of every element on the page. */
-:root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: 44px; --wk-h-small: 28px;
+:root { --wk-fs-line: 13px; --wk-fs-body: 14px; --wk-fs-title: 16px; --wk-h: var(--control-h); --wk-h-small: var(--control-h-small);
   /* One face for the page; the mono only for ids and ways (lead 10-11 W 3). */
   --wk-font: 'IBM Plex Sans', 'Outfit', system-ui, sans-serif; --wk-mono: 'IBM Plex Mono', var(--font-mono, ui-monospace), monospace; }
 .wk-bar, .wk-main { font-family: var(--wk-font); }
@@ -77,6 +77,7 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* One that would run off the page's right edge hangs from its chip's right instead (the page script sets is-end). */
 .wk-barpop.is-end > .wk-barpopbody { left: auto; right: 0; }
 .wk-barpopbody .wk-field { gap: var(--space-2); padding: 0; background: transparent; border: 0; }
+#wk-branch .branch-picker__chip { min-height: var(--wk-h-small); }
 .wk-bar .wk-chip, .wk-bar .wk-add { min-height: var(--wk-h-small); padding: 0 var(--space-3); font-size: var(--wk-fs-line); }
 /* Closed, collect's + shows only «+»; its list still names every type. */
 .wk-bar .wk-add { width: 4.5em; }
@@ -158,10 +159,10 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 /* A section's toolbar, one line (lead 10-11 W): its name · Wide | Long · Table | Trend · Columns · Copy · the rows. One
    height for every press in it: a view chooser segmented, an action a small button (W 2). */
 .wk-secbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.wk-seg { display: inline-flex; border: 1px solid var(--border); }
+.wk-seg { display: inline-flex; }
 .wk-segb { height: var(--wk-h-small); padding: 0 var(--space-3); font: inherit; font-size: var(--wk-fs-line); color: var(--text);
-  background: var(--bg-surface); border: 0; border-left: 1px solid var(--border); border-radius: 0; cursor: pointer; }
-.wk-segb:first-child { border-left: 0; }
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+.wk-segb + .wk-segb { border-left-width: 0; }
 .wk-segb.is-on { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
 .wk-segb[disabled] { opacity: 0.45; cursor: not-allowed; }
 .wk-act { height: var(--wk-h-small); padding: 0 var(--space-3); font: inherit; font-size: var(--wk-fs-line); color: var(--text);

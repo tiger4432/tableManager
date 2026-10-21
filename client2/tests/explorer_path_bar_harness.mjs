@@ -52,7 +52,7 @@ const cls = (n, c) => ` ${n.className || ''} `.includes(` ${c} `);
 const ALL_OPEN = new Proxy({}, { get: () => true });
 const contextFor = (skeleton) => ({
   schema: {}, readOnly: true, planRow: () => null, plannedMembers: () => [], covering: () => null,
-  deref: (item) => (item && item.use ? (skeleton.defs || {})[item.use] : item), declared: () => [],
+  deref: (item) => (item && item.use ? (skeleton.defs || {})[item.use] : item), refOf: () => ({ table: '', names: [] }),
   rolesNear: () => [], usedElsewhere: () => [], renderRow: () => null, suggest: (row) => row,
   hot: [], expanded: ALL_OPEN, absolute: (at) => at,
 });
@@ -179,7 +179,7 @@ const MUTANTS = [
   { name: 'one-guide-too-many', catches: ['G2'], file: VIEW,
     from: '  for (let i = 0; i < depth; i += 1) {', to: '  for (let i = 0; i <= depth; i += 1) {' },
   { name: 'the-one-of-row-has-no-guides', catches: ['G3'], file: VIEW,
-    from: '  if (depth > 0) head.appendChild(depthGuides(depth));\n', to: '' },
+    from: '  box.appendChild(treeRow(depth, name, [],', to: '  box.appendChild(treeRow(0, name, [],' },
   { name: 'the-head-words-are-dropped', catches: ['T2', 'T3', 'T4'], file: VIEW,
     from: '    ...head.map((word) =>', to: '    ...[].map((word) =>' },
   { name: 'every-step-lands-on-the-node-itself', catches: ['T5', 'T6'], file: VIEW,
