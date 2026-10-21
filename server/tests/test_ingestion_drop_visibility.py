@@ -78,7 +78,7 @@ class _StubCrud:
     not_written_sentence = staticmethod(_real_crud.not_written_sentence)
 
     @staticmethod
-    def apply_batch_updates(_db, _t_name, batch_obj, notation_report=None, replace_report=None):
+    def apply_batch_updates(_db, _t_name, batch_obj, notation_report=None, replace_report=None, drop_report=None):
         # results, changed_cells, created_logs, deleted_row_ids
         return [], [], [], []
 

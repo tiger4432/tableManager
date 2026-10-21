@@ -57,7 +57,8 @@ export function reasonOf(log) {
   return first ? first.trim() : '';
 }
 
-/** The Result cell: a failure's reason; else «400 rows · 12 new · 388 unchanged» (zeros after the rows left out). */
+/** The Result cell: a failure's reason; else «400 rows · 12 new · 388 unchanged» (zeros after the rows left out) and
+ * what the write refused, in its words («1 map refused: version_older») - the server's reason on a read. */
 export function resultText(log) {
   if (isFailedStatus(log.status)) return reasonOf(log) || ABSENT;
   const read = numberOr(log.rows_read);
@@ -66,6 +67,7 @@ export function resultText(log) {
   for (const [word, v] of [['new', log.rows_new], ['changed', log.rows_changed], ['unchanged', log.rows_unchanged], ['refused', log.rows_refused]]) {
     if (numberOr(v)) parts.push(`${count(v)} ${word}`);
   }
+  if (!isBlank(log.reason)) parts.push(String(log.reason));
   return parts.join(' · ');
 }
 

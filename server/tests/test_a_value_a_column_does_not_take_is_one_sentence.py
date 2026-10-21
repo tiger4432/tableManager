@@ -68,7 +68,7 @@ def test_a_file_load_names_the_file_row_not_the_batch_row(monkeypatch):
         not_written_sentence = staticmethod(crud.not_written_sentence)
 
         @staticmethod
-        def apply_batch_updates(_db, _table, batch, notation_report=None, replace_report=None):
+        def apply_batch_updates(_db, _table, batch, notation_report=None, replace_report=None, drop_report=None):
             bad = [i for i, item in enumerate(batch.updates, start=1)
                    if item.updates.get("target_qty") == "abc"]
             raise crud.CellRefused("target_qty", "abc", "a number", row=bad[0])

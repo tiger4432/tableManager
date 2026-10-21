@@ -703,7 +703,8 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
     if tally is not None and tally.silenced is None:
         written = tally.new + tally.changed + tally.unchanged
         result.update(rows_read=tally.rows, rows_new=tally.new, rows_changed=tally.changed,
-                      rows_unchanged=tally.unchanged, rows_refused=(skipped_no_key or 0) + tally.rows - written)
+                      rows_unchanged=tally.unchanged, rows_refused=(skipped_no_key or 0) + tally.rows - written,
+                      reason=tally.refused_text() or None)
     if error is not None:
         said = (str(error) if isinstance(error, (crud.CellRefused, crud.NothingWritten))
                 else traceback.format_exception_only(type(error), error)[-1])
@@ -729,18 +730,28 @@ class _FileTally:
         self.transaction_id = None    # the transaction the file's rows were written under (총괄 10-20)
         self.time_left = {}           # verdict -> values a `time` rule left as written
         self.maps = self.map_deleted = 0  # allow_replace_map: maps replaced, rows they deleted (총괄 10-21)
+        # whole maps and rows the write refused, by the write's word (version_older · ...) - 총괄 10-21
+        self.maps_refused, self.rows_refused = {}, {}
 
     def add_chunk(self, table, summary, rows, sent, new_ids, changed_cells, sampler,
-                  time_left=None, replaced=None):
+                  time_left=None, replaced=None, dropped=None):
         """🔴 AN OBSERVER DOES NOT KILL WHAT IT OBSERVES - a tally that raises silences the
         file line, says so once, and the chunk goes on."""
         if self.silenced is not None:
             return
         try:
-            self._add_chunk(summary, rows, sent, new_ids, changed_cells, sampler)
+            refused = (replaced or {}).get("mode") == "refused"
+            by_word = {replaced["reason"]: sent} if refused else (dropped or {}).get("rows_refused") or {}
+            for word, n in ({} if refused else by_word).items():      # a refused map is said as the map
+                self.rows_refused[word] = self.rows_refused.get(word, 0) + n
+            self._add_chunk(summary, rows, sent - sum(n for word, n in by_word.items()
+                                                      if word != crud.NOTE_SAME_VERSION_CONTENT_DIFFERS),
+                            new_ids, changed_cells, sampler)
             for verdict, n in (time_left or {}).items():
                 self.time_left[verdict] = self.time_left.get(verdict, 0) + n
-            if replaced is not None:
+            if refused:
+                self.maps_refused[replaced["reason"]] = self.maps_refused.get(replaced["reason"], 0) + 1
+            elif replaced is not None:
                 self.maps += 1
                 self.map_deleted += replaced.get("deleted", 0)
         except Exception as exc:                                    # noqa: BLE001
@@ -777,6 +788,16 @@ class _FileTally:
             self.lock_samples += sum(n for key, n in sampler.counts.items()
                                      if key.startswith("Lock:"))
 
+    def refused_text(self) -> str:
+        """«1 map refused: version_older · 3 rows refused: version_older» - the write's own words; "" when none."""
+        def said(counts, unit, verb):
+            return ["%d %s%s %s%s" % (n, unit, "" if n == 1 else "s", verb, word) for word, n in sorted(counts.items())]
+        return " · ".join(said(self.maps_refused, "map", "refused: ")
+                          + said({w: n for w, n in self.rows_refused.items()
+                                  if w != crud.NOTE_SAME_VERSION_CONTENT_DIFFERS}, "row", "refused: ")
+                          + said({w: n for w, n in self.rows_refused.items()
+                                  if w == crud.NOTE_SAME_VERSION_CONTENT_DIFFERS}, "row", ""))
+
     #: What each lane's wait covers - the same word means a different span on each lane.
     WAITED_SPANS = {"heavy": "queue + table lock", "normal": "table lock"}
 
@@ -799,7 +820,8 @@ class _FileTally:
                     self.time_left.get("unmatched", 0), self.time_left.get("zoned", 0))
                 if self.time_left else "",
                 # allow_replace_map (총괄 10-21): the maps the file replaced and the rows they deleted
-                " · replaced %d map(s), deleted %d row(s)" % (self.maps, self.map_deleted) if self.maps else "",
+                (" · replaced %d map(s), deleted %d row(s)" % (self.maps, self.map_deleted) if self.maps else "")
+                + (" · " + self.refused_text() if self.refused_text() else ""),
                 "".join(" · %s %.3f s" % item for item in sorted(self.stages.items()))
                 or " (none named)",
                 alignment_batch_counts.write_steps_text(
@@ -3873,12 +3895,13 @@ class IngestionHandler(FileSystemEventHandler):
                         except Exception:
                             _sampler = None
 
-                        _time_left, _replaced = {}, ({} if map_columns else None)
+                        _time_left, _replaced, _dropped = {}, ({} if map_columns else None), {}
                         with alignment_batch_counts.stage("apply"):
                             try:
                                 results, changed_cells, created_logs, deleted_row_ids = \
                                     crud.apply_batch_updates(db, t_name, batch_obj,
                                                              replace_report=_replaced,
+                                                             drop_report=_dropped,
                                                              notation_report=_time_left)
                             except crud.CellRefused as refused:
                                 # The write names the chunk's row; the operator reads the file's.
@@ -3991,7 +4014,7 @@ class IngestionHandler(FileSystemEventHandler):
                                          depth=len(chunk), table=t_name,
                                          chunk=chunk_index)
                     file_tally.add_chunk(t_name, _summary, len(chunk), len(items), new_row_ids,
-                                         changed_cells, _sampler, _time_left, _replaced)
+                                         changed_cells, _sampler, _time_left, _replaced, _dropped)
                     
             # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
             # commits, this table's row count is one the planner has never seen, and the
