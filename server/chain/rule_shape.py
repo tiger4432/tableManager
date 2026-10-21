@@ -800,11 +800,11 @@ def expand_declaration(declaration, table_config=None,
             return ([], _refused(name, JOIN_NEEDS_SOURCE, "on.table"), unread)
         blank = join_into.blank_refusal((internal.get("derive") or {}).get("join") or {})
         if blank:
-            return ([], _refused(name, blank, validation.cell_of(blank, "derive.join.blank")), unread)
+            return ([], _refused(name, blank, validation.cell_of(blank)), unread)
         gathered = join_into.take_refusal((internal.get("derive") or {}).get("join") or {}, internal.get(KEY_CELL),
                                           (internal.get("on") or {}).get("table"))
         if gathered:
-            return ([], _refused(name, gathered, validation.cell_of(gathered, "derive.join.take")), unread)
+            return ([], _refused(name, gathered, validation.cell_of(gathered)), unread)
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,
