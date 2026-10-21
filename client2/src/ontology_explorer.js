@@ -17,7 +17,7 @@ import { BranchPicker } from './branch_picker.js';
 import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember, switchGated,
 } from './ontology_path.js';
-import { declarationShape, pickBranch, shapeAt } from './ontology_skeleton.js';
+import { declarationShape, leafValue, pickBranch, shapeAt } from './ontology_skeleton.js';
 import { censusBySource, censusNames } from './source_backlog.js';
 
 /**
@@ -353,12 +353,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
 
   // The skeleton node describing a path inside the open declaration -- the same path the
   // writer would write.
-  const shapeForPath = (relative) => {
+  // A plan row names its leaf from the bundle (`<section>.<id>.` first): `bundled` drops those two steps.
+  const shapeForPath = (relative, bundled = false) => {
     const skeleton = state.authoringSchema?.skeleton;
     const section = (state.authoringSchema?.authorable_kinds || [])
       .find((row) => row.id === state.draft?.target_kind)?.section;
     if (!skeleton || !section) return null;
-    return shapeAt(declarationShape(skeleton, section), splitBundlePath(relative),
+    return shapeAt(declarationShape(skeleton, section), splitBundlePath(relative).slice(bundled ? 2 : 0),
                    skeleton.defs);
   };
 
@@ -1579,25 +1580,14 @@ No effect`;
       // A relative path inside the declaration body -- `claims.<id>.roles.<name>.kind`.
       // `splitBundlePath` only strips a leading `bundle.`, so a relative path splits the
       // same way, brackets included. Same writer, same buffer, same save.
-      // 🔴 A NUMBER LEAF WRITES A NUMBER. The skeleton says which leaves those are, the same
-      // way it has always said which are booleans, so nothing here knows a field by name.
-      // Without it `1` lands as `"1"`, the validator refuses it, and retyping cannot help --
-      // measured on a preparer built from nothing.
-      if (event.target.dataset.number === 'true') {
-        const typed = event.target.value.trim();
-        // Blank means "no value here", which is the key leaving -- not an empty string, and
-        // not a 0 nobody asked for.
-        if (typed === '') removeShapeAtPath(event.target.dataset.value);
-        else if (Number.isFinite(Number(typed))) {
-          editShapeAtPath(event.target.dataset.value, Number(typed));
-        }
-        return;
-      }
-      editShapeAtPath(event.target.dataset.value, event.target.value);
+      // What the leaf writes is its skeleton node's (leafValue): a number leaf a number, nothing typed the key leaving.
+      const next = leafValue(shapeForPath(event.target.dataset.value), event.target.value);
+      if (next === null) removeShapeAtPath(event.target.dataset.value);
+      else if (next !== undefined) editShapeAtPath(event.target.dataset.value, next);
       return;
     }
     if (event.target.dataset.action === 'edit-shape-flag') {
-      editShapeAtPath(event.target.dataset.value, event.target.checked);
+      editShapeAtPath(event.target.dataset.value, leafValue(shapeForPath(event.target.dataset.value), event.target.checked));
       return;
     }
     // A oneOf's picker: the same writer as the chain rule form (`pickBranch`).
@@ -1613,7 +1603,8 @@ No effect`;
     }
     if (event.target.dataset.action === 'edit-field-item') {
       const at = Number(event.target.dataset.index);
-      const typed = event.target.value;
+      const typed = leafValue(shapeForPath(`${event.target.dataset.value}[${at}]`, true), event.target.value);
+      if (typed === undefined || typed === null) return;
       editFieldList(event.target.dataset.value,
                     (items) => items.map((item, i) => (i === at ? typed : item)),
                     shownList(event.target));
@@ -1623,7 +1614,10 @@ No effect`;
       // Typing is never refused: whatever is in the box goes into the draft, list or no
       // list. The datalist offers the declared names; coining a new one stays possible,
       // which is the entire reason this is an input and not a `select`.
-      editFieldAtPath(event.target.dataset.value, event.target.value);
+      // What it writes is the leaf's skeleton node's (leafValue) - a number a number; nothing typed in one is the key
+      // leaving (undefined drops out of the JSON text).
+      const typed = leafValue(shapeForPath(event.target.dataset.value, true), event.target.value);
+      if (typed !== undefined) editFieldAtPath(event.target.dataset.value, typed === null ? undefined : typed);
       return;
     }
     if (event.target.dataset.action === 'edit-entity-key') {

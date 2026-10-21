@@ -17,6 +17,7 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
  */
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import { makeDoc, makeNode, walk } from './lib/board_dom.mjs';
@@ -164,6 +165,10 @@ function pathSuite(M) {
 
 // ── S: ontology_skeleton ─────────────────────────────────────────────────────────────────────────────────────────
 function skelSuite(M) {
+  const lv = (hint, typed) => M.skel.leafValue({ kind: 'leaf', hint }, typed);
+  const said = [lv('number', ' 7 '), lv('number', ''), lv('number', 'x'), lv('flag', true), lv('flag', false), lv('free', 7), lv('choice', 'b')];
+  ok(same(said, [7, null, undefined, true, false, '7', 'b']) && said[2] === undefined,
+    `S4 leafValue: a number a number, nothing typed null, not a number nothing; a flag a boolean; the rest text [${JSON.stringify(said)}]`);
   const row = FIX.root.fields.find((f) => f.key === 'rows').node.of;
   const optional = { kind: 'record', fields: [{ key: 'pick', required: false, node: { kind: 'leaf', hint: 'choice', list: 'ones' } }] };
   ok(same(M.skel.emptyOf(row, {}, 0, LISTS), { pick: 'only' }) && same(M.skel.emptyOf(row, {}), {})
@@ -281,6 +286,100 @@ function panelSuite(M) {
     `P8 one edit and the head says Unsaved; edited back to the server's text, it no longer does [${clean} ${edited} ${marks()}]`);
 }
 
+// ── L: every leaf of the three skeletons writes the JSON type its hint names (lead c7e7f7913, owner 10-21 «rows_per_run
+//    은 숫자인데 문자로 들어가네»). The skeleton is the form's one contract: the leaves are read from the server's own files,
+//    not listed here. Each leaf is held in a document of its own, drawn by the panel with every fold open, typed into
+//    through its control, and the text on the left read back. ──
+const SERVER = path.join(HERE, '..', '..', 'server');
+// Each form's root: the table's, the chain rule's two grammars, and one ledger declaration per section of the bundle.
+const FORMS = (M) => {
+  const read = (file) => JSON.parse(readFileSync(path.join(SERVER, file), 'utf8'));
+  const table = read('table_skeleton.json'), chain = read('chain_skeleton.json');
+  const ledger = read(path.join('ledger', 'ledger_skeleton.json'));
+  return [['table', table.root, table.defs], ['chain', chain.root, chain.defs], ['chain unified', chain.unified_root, chain.defs],
+    ...ledger.root.fields.filter((f) => f.node.kind === 'map')
+      .map((f) => [`ledger ${f.key}`, M.skel.declarationShape(ledger, f.key), ledger.defs])];
+};
+const WANT = { number: 'number', flag: 'boolean' };
+function leavesOf(root, defs) {
+  const out = [];
+  const go = (node, at, gates, seen, branch = false) => {
+    while (node && node.use) { if (seen.has(node.use)) return; seen = new Set([...seen, node.use]); node = defs[node.use]; }
+    if (!node) return;
+    const step = (k) => (at ? `${at}.${k}` : k);
+    if (node.kind === 'leaf') out.push({ at, node, gates, branch });
+    else if (node.kind === 'record') {
+      for (const f of node.fields || []) go(f.node, step(f.key), f.when ? [...gates, [step(f.when.field), f.when.is]] : gates, seen);
+    } else if (node.kind === 'map') go(node.of, node.keyed_by === 'index' ? `${at}[0]` : step('k'), gates, seen);
+    else if (node.kind === 'oneOf') {
+      for (const [k, b] of Object.entries(node.branches || {})) go(b, node.pick === 'shape' ? at : step(k), gates, seen, node.pick !== 'shape');
+    }
+  };
+  go(root, '', [], new Set());
+  return out;
+}
+const stepsOf = (at) => at.split(/\.|\[(\d+)\]/).filter((s) => s !== undefined && s !== '').map((s) => (/^\d+$/.test(s) ? Number(s) : s));
+function putAt(doc, at, value) {
+  const steps = stepsOf(at);
+  let here = doc;
+  steps.forEach((s, i) => {
+    if (i === steps.length - 1) { here[s] = value; return; }
+    if (here[s] === null || typeof here[s] !== 'object') here[s] = typeof steps[i + 1] === 'number' ? [] : {};
+    here = here[s];
+  });
+  return doc;
+}
+const readAt = (doc, at) => stepsOf(at).reduce((v, s) => (v === null || v === undefined ? v : v[s]), doc);
+
+function leafSuite(M) {
+  for (const [form, root, defs = {}] of FORMS(M)) {
+    const leaves = leavesOf(root, defs);
+    // A choice is drawn from its list: each list the leaves name holds two words here.
+    const lists = { ...LISTS, ...Object.fromEntries(leaves.filter((l) => l.node.list).map((l) => [l.node.list, ['a', 'b']])) };
+    const wrong = [], undrawn = [];
+    for (const { at, node, gates, branch } of leaves) {
+      // As a person meets it: a record's field not yet written (its parent there), a list's or a map's member as «+»
+      // made it - the empty word. A list of words is typed at its adder, so there it starts empty.
+      const drawn = (doc) => {
+        const host = makeNode(globalThis.document, 'div');
+        const panel = new M.panel.RawRegistryPanel(host, { doc: globalThis.document, lists }, SPEC);
+        // Drawn once (a new form starts its own fold record), then every fold open, then drawn again.
+        panel.render(payloadFor({ root, defs }, doc));
+        panel._formFold = { expandedFields: new Proxy({}, { get: () => true, has: () => true }) };
+        panel.render(payloadFor({ root, defs }, doc));
+        return host;
+      };
+      const base = () => { const d = {}; for (const [g, is] of gates) putAt(d, g, is); return d; };
+      const parent = at.replace(/(\.[^.[\]]+|\[\d+\])$/, '');
+      let doc = base();
+      if (branch || typeof stepsOf(at).pop() === 'number' || /\.k$/.test(at)) putAt(doc, at, '');
+      else if (parent !== at) putAt(doc, parent, readAt(doc, parent) || {});
+      let host = drawn(doc);
+      const typed = node.hint === 'number' ? '7' : node.hint === 'choice' ? 'b' : 'w';
+      const c = walk(host).find((n) => (n.tagName === 'INPUT' || n.tagName === 'SELECT')
+        && (attr(n, 'data-value') === at || attr(n, 'data-path') === at) && /^edit-shape(-flag)?$/.test(attr(n, 'data-action') || ''));
+      if (c) {
+        if (node.hint === 'flag') c.checked = true; else c.value = typed;
+        c.dispatch('change', {});
+      } else if (/\[0\]$/.test(at)) {
+        doc = putAt(base(), parent, []);
+        host = drawn(doc);
+        const adder = walk(host).find((n) => has(n, 'oe-form-new-id') && attr(n, 'data-for') === parent);
+        if (!adder) { undrawn.push(`${at}(${node.hint})`); continue; }
+        adder.value = typed;
+        adder.dispatch('change', {});
+      } else { undrawn.push(`${at}(${node.hint})`); continue; }
+      let held = null;
+      try { held = JSON.parse(walk(host).find((n) => has(n, 'decl-raw')).value); } catch (e) { held = null; }
+      const got = held ? readAt(held, at) : undefined;
+      if (typeof got !== (WANT[node.hint] || 'string')) wrong.push(`${at}(${node.hint})=${JSON.stringify(got)}`);
+    }
+    ok(leaves.length > 0 && wrong.length === 0,
+      `L1 ${form}: each of ${leaves.length} leaves writes its hint's JSON type [${wrong.length} wrong${wrong.length ? `: ${wrong.slice(0, 6).join(' ')}` : ''}]`);
+    if (!quiet && undrawn.length) console.log(`       ${form}: ${undrawn.length} leaves not drawn from a document holding them alone: ${undrawn.join(' ')}`);
+  }
+}
+
 async function score(which, mutate, tag) {
   const M = {};
   try {
@@ -292,9 +391,11 @@ async function score(which, mutate, tag) {
     return { pass: 0, fail: 1 };
   }
   const before = { pass, fail };
-  const suites = { view: viewSuite, path: pathSuite, skel: skelSuite, panel: panelSuite };
+  const suites = { view: viewSuite, path: pathSuite, skel: skelSuite, panel: panelSuite, leaf: leafSuite };
+  // The leaf suite drives the panel, the skeleton and the path writers together.
+  const leafRuns = ['skel', 'panel', 'path'];
   try {
-    for (const [key, run] of Object.entries(suites)) if (!which || key === which) run(M);
+    for (const [key, run] of Object.entries(suites)) if (!which || key === which || (key === 'leaf' && leafRuns.includes(which))) run(M);
   } catch (e) {
     if (!quiet) console.log(`  BAD  threw: ${e && e.stack}`);
     fail++;
@@ -337,6 +438,9 @@ const DEFECTS = [
   ['panel', 'the adder keeps what it took', (s) => s.replace("          if (typed) typed.value = '';\n", '')],
   ['panel', 'the panel never switches a gate', (s) => s.replace('          updated = switched.document;\n', '')],
   ['panel', 'the head says Unsaved only on the next draw', (s) => s.replace('    this.draftOf = String(key || \'\');\n    this._sayUnsaved();\n', '    this.draftOf = String(key || \'\');\n')],
+  ['skel', 'a number leaf writes its text again', (s) => s.replace('    return Number.isFinite(n) ? n : undefined;', '    return text;')],
+  ['panel', 'the panel writes what the box holds again',
+    (s) => s.replace("action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);", "action === 'edit-shape-flag' ? Boolean(el.checked) : el.value) && (action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);")],
   ['panel', 'a + row is born without the lists', (s) => s.replace("named ? named.value : '', this.lists);", "named ? named.value : '');")],
 ];
 const CONTROLS = [

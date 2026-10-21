@@ -102,6 +102,23 @@ export function pickBranch(node, picked, was, defs, lists = null) {
   return next;
 }
 
+/**
+ * What a leaf writes for what was typed or ticked - the one answer every input of the form goes through (lead c7e7f7913,
+ * owner 10-21: rows_per_run went in as text). The leaf's hint is the JSON type: a number is a number - nothing typed is
+ * the key leaving (null), what is not a number writes nothing (undefined); a flag is a boolean; every other hint is text.
+ */
+export function leafValue(node, typed) {
+  const hint = node && node.hint;
+  if (hint === 'flag') return typed === true || typed === 'true';
+  if (hint === 'number') {
+    const text = String(typed ?? '').trim();
+    if (text === '') return null;
+    const n = Number(text);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return typed === undefined || typed === null ? '' : String(typed);
+}
+
 /** The node describing the value at `steps`, walking from `node`. */
 export function shapeAt(node, steps, defs) {
   let cursor = deref(node, defs);

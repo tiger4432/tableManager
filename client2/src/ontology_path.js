@@ -16,7 +16,7 @@
 // sides is the property being kept here; being right about dotted ids is a separate fix and
 // belongs in the server first.
 
-import { asList, emptyOf, valueFits, shapeAt } from './ontology_skeleton.js';
+import { asList, emptyOf, valueFits, shapeAt, leafValue } from './ontology_skeleton.js';
 
 const PATH_STEP = /([^.[\]]+)|\[(\d+)\]/g;
 
@@ -102,9 +102,8 @@ export function switchGated(before, after, relative, root, defs, stash = {}) {
  * 🔴 A LIST SLOT IS NEVER INVENTED, but what lives inside one still gets built: a missing
  * INDEX is a member nobody added, and inventing it would put an empty slot in somebody's list.
  *
- * 🔴 THE UI NEVER ASSERTS A TYPE. Whatever type is already at that leaf is preserved, and a
- * value typed into an empty leaf goes in as typed. If that is wrong the validator says so on
- * the screen, and showing beats blocking.
+ * 🔴 IT WRITES THE VALUE IT IS HANDED. The type is the skeleton's, given by the caller through `leafValue` (lead
+ * c7e7f7913): the old keep-the-type-already-there guess wrote a number typed into an empty leaf as text.
  */
 export function writeShapeAtPath(document, relative, value) {
   const steps = splitBundlePath(relative);
@@ -118,13 +117,7 @@ export function writeShapeAtPath(document, relative, value) {
     if (built === null) break;
     raw = built;
   }
-  const current = getAtPath(raw, steps);
-  let written = value;
-  if (typeof current === 'number' && typeof value === 'string') {
-    const asNumber = Number(value.trim());
-    if (value.trim() !== '' && Number.isFinite(asNumber)) written = asNumber;
-  }
-  return setAtPath(raw, steps, written);
+  return setAtPath(raw, steps, value);
 }
 
 // `class[0]` on a file holding `"class": "Lot"`: the form drew that word as a one-item list
@@ -207,7 +200,7 @@ export function addMember(document, relative, node, defs, name = '', lists = nul
     const item = shapeAt(node, ['0'], defs);
     const words = item && item.kind === 'leaf' ? String(name || '').split(/[,\n\t]/).map((w) => w.trim()).filter(Boolean) : [];
     const added = words.length
-      ? words.map((w) => (item.hint === 'number' && Number.isFinite(Number(w)) ? Number(w) : w)) : [seed];
+      ? words.map((w) => leafValue(item, w)).filter((v) => v !== undefined && v !== null) : [seed];
     const written = writeShapeAtPath(document, relative, [...list, ...added]);
     return written === null ? null
       : { document: written, born: `${relative}[${list.length + added.length - 1}]`, seed: added[added.length - 1] };

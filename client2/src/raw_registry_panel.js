@@ -26,7 +26,7 @@
 import { ABSENT, countText } from './absent.js';
 import { CHOOSE } from './ui_words.js';
 import { renderSkeletonForm, adderInput, lineRow } from './ontology_explorer_view.js';
-import { emptyOf, missingRequired, pickBranch, refNames, shapeAt } from './ontology_skeleton.js';
+import { emptyOf, leafValue, missingRequired, pickBranch, refNames, shapeAt } from './ontology_skeleton.js';
 // The grid's own reader of pasted sheet text (lead f382dacfb: no second parser).
 import { parseTsv, serializeTsv } from './tsv.js';
 // The one clipboard writer that works on plain HTTP (check_clipboard_convention), lead 72aa14785.
@@ -894,7 +894,10 @@ export class RawRegistryPanel {
             draw(written2);
             return;
           }
-          const next = action === 'edit-shape-flag' ? Boolean(el.checked) : el.value;
+          // The leaf's own node says what it writes (leafValue); nothing typed in a number is the key leaving.
+          const next = leafValue(shapeAt(root, splitBundlePath(String(path)), (payload.skeleton || {}).defs),
+            action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);
+          if (next === undefined) return;
           // 🔴 탐색기와 «같은 함수»입니다. 그리고 새 문서를 «돌려받습니다» — `setAtPath` 는
           //    제자리에서 안 고칩니다(그렇게 읽어 이 줄이 한 번 죽었습니다).
           // 🔴 C-101 ③. 한 번 고르기가 문서를 «한 번» 바꿉니다. 고른 것이 다른 철자의 것이면

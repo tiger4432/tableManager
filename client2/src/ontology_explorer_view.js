@@ -2602,7 +2602,6 @@ function renderSkeletonLeaf(context, node, path, value) {
   // no second author and no branch that knows a field by name -- the same three lines would
   // type a field this screen has never heard of.
   input.type = node.hint === 'number' ? 'number' : 'text';
-  if (node.hint === 'number') input.dataset.number = 'true';
   input.value = text;
   input.dataset.action = 'edit-shape';
   input.dataset.value = path;
