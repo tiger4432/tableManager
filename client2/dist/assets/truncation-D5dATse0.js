@@ -1,0 +1,1 @@
+function e(e){return`Top ${e} only · type more to narrow`}function t(e){if(typeof e==`boolean`)return e;if(e&&typeof e==`object`&&!Array.isArray(e)){let t=Object.values(e).filter(e=>e&&typeof e==`object`&&!Array.isArray(e)&&`cut`in e);return t.length?t.some(e=>e.cut===!0):!!e.reason}return null}export{e as n,t};
