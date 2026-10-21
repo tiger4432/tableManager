@@ -6,6 +6,8 @@
 //      rows' order; a folder group stands for the folder asked + its name («.» the folder asked itself);
 //      by reason - a blank reason «(No reason)»; no group - one group without a head
 //   M5 the table list: ok · failed from /tables, running from /active per table
+//   M8 waiting (lead 290e22ac0): a table's WAITING count and each folder group's, as the server counts them
+//   P1e «N waiting · Read» on a folder with waiting files only; Read hands that folder and WAITING
 //   M6 a status's word and tone: PENDING_RETRY «Pending retry» warn · FAILED danger · SUCCESS ok
 //   M7 the folder a group stands for: the asked folder + the name in its separator, «.» the asked folder, none asked - the label
 //   P1 the files part: a head per group with its count (a folder's head narrows the search to it), a line per file with its
@@ -94,6 +96,10 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
     [{ table_name: 'a' }, { table_name: 'a' }, { table_name: 'c' }]);
   ok('M5 the table list: ok · failed by status, running from /active per table', lines[0].ok === '1,190' && lines[0].failed === '11' && lines[0].running === '2' && lines[1].running === '0'
     && lines[0].total === '1,203', JSON.stringify(lines));
+  const held = M.groupFiles([log(41, { group_key: 'w', status: 'WAITING' })], 'folder', [{ key: 'w', label: 'W', count: 4, failed: 0, waiting: 3 }], X);
+  const heldLines = M.tableLines([{ table_name: 'a', total: 7, by_status: { SUCCESS: 3, WAITING: 4 } }, { table_name: 'b', total: 1, by_status: { SUCCESS: 1 } }]);
+  ok('M8 a table\'s and a folder group\'s waiting, as the server counts them', held[0].waiting === 3 && byFolder[0].waiting === 0
+    && heldLines[0].waiting === 4 && heldLines[1].waiting === 0, JSON.stringify([held[0].waiting, heldLines.map((t) => t.waiting)]));
   ok('M6 a status\'s word and tone', M.statusWord('PENDING_RETRY') === 'Pending retry' && M.statusTone('PENDING_RETRY') === 'warn' && M.statusTone('FAILED') === 'danger'
     && M.statusTone('SUCCESS') === 'ok', `${M.statusWord('PENDING_RETRY')} ${M.statusTone('PENDING_RETRY')}`);
 
@@ -126,6 +132,16 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
     && JSON.stringify(retries) === JSON.stringify([F1]), `${retryButtons.length} ${JSON.stringify(retries)}`);
   files.render({ groups: byFolder, shown: 'x', picked: null, more: false });
   ok('P1b no Show more when nothing more matches', byClass(host, 'fi-more').length === 0);
+  const wHost = doc.createElement('div');
+  doc.body.append(wHost);
+  const asked = [];
+  new Q.FilesPart(wHost, { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder: (g, statuses) => asked.push([g.folder, statuses]) })
+    .render({ groups: held.concat(byFolder), shown: 'x', picked: null, more: false });
+  const reads = byClass(wHost, 'fi-group__read');
+  if (reads[0]) reads[0].dispatch('click');
+  ok('P1e «N waiting · Read» on a folder with waiting files only; Read hands that folder and WAITING',
+    reads.length === 1 && texts(wHost, 'fi-group__waiting')[0] === M.WORDS.waiting(3) && reads[0].textContent === M.WORDS.read
+      && JSON.stringify(asked) === JSON.stringify([[M.groupFolder(X, 'W'), 'WAITING']]), JSON.stringify(asked));
 
   // P2 - the detail
   const dHost = doc.createElement('div');
@@ -209,6 +225,10 @@ const MUTANTS = [
   { name: '«.» drawn as a folder below', catches: ['M7'], file: 'model', mutate: swap("  if (!label || label === '.') return b;", '  if (!label) return b;') },
   { name: 'a folder head narrows to nothing', catches: ['P1c'], file: 'parts', mutate: swap('this.deps.onDrill(g.folder)', "this.deps.onDrill('')") },
   { name: 'Retry on every folder', catches: ['P1d'], file: 'parts', mutate: swap('if (g.folder && g.failed > 0) {', 'if (g.folder) {') },
+  { name: 'a group\'s waiting not carried', catches: ['M8', 'P1e'], file: 'model', mutate: swap('waiting: numberOr(c.waiting) || 0,', 'waiting: 0,') },
+  { name: 'a table\'s waiting not counted', catches: ['M8'], file: 'model', mutate: swap('waiting: numberOr((t.by_status || {}).WAITING) || 0,', 'waiting: 0,') },
+  { name: 'Read on every folder', catches: ['P1e'], file: 'parts', mutate: swap('if (g.folder && g.waiting > 0) {', 'if (g.folder) {') },
+  { name: 'Read retries the failed', catches: ['P1e'], file: 'parts', mutate: swap("this.deps.onRetryFolder(g, 'WAITING')", 'this.deps.onRetryFolder(g)') },
   { name: 'a blank reason said blank', catches: ['M4b'], file: 'model', mutate: swap("label: label || (group === 'reason' ? WORDS.noReason : ABSENT)", 'label: label') },
   { name: 'running not counted per table', catches: ['M5'], file: 'model', mutate: swap('running: count(running.get(t.table_name))', 'running: count(0)') },
   { name: 'a waiting retry drawn as a failure', catches: ['M6'], file: 'model', mutate: swap("return tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warn';", "return tone === 'ok' ? 'ok' : 'danger';") },

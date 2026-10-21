@@ -157,6 +157,32 @@ console.log('\n── C. TWO INSTANCES · A RE-READ ─────────�
     && find(c.root, 'chain-pause-ask') === null);
 }
 
+/** A watcher instance beside a chain instance: what it says and where its Pause and Resume go. */
+async function watcherSends(M) {
+  const doc = makeDoc();
+  const sent = [];
+  const send = async (r) => { sent.push(r.path); return { ok: true }; };
+  const chain = new M.ChainPauseControl(doc.createElement('div'), { doc, send });
+  const watcher = new M.ChainPauseControl(doc.createElement('div'), { doc, kind: 'watcher', send });
+  chain.render(M.chainPauseView(RUNNING, null));
+  watcher.render(M.chainPauseView(RUNNING, null));
+  const said = find(watcher.root, 'chain-pause-go').textContent;
+  find(watcher.root, 'chain-pause-go').click();
+  find(watcher.root, 'chain-pause-confirm').click();
+  await tick();
+  watcher.render(M.chainPauseView(PAUSED, null));
+  find(watcher.root, 'chain-pause-resume').click();
+  await tick();
+  return `${sent.join('|')}|${said}`;
+}
+
+console.log('\n── D. THE WATCHER\'S PAUSE — the same part, its own routes (lead 290e22ac0) ──');
+{
+  const said = await watcherSends(X);
+  ok('D1 a watcher instance says Pause watcher and sends to the watcher\'s routes, the chain instance beside it untouched',
+    said === '/admin/watcher/pause|/admin/watcher/resume|Pause watcher', said);
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}`);
@@ -172,7 +198,11 @@ const DEFECTS = [
   ['M4 the reason is not sent',
     swap("body: { reason: String(reason || '').trim() } };", 'body: {} };')],
   ['M5 Resume sends to the pause route',
-    swap("? { path: RESUME_ROUTE, body: {} }", "? { path: PAUSE_ROUTE, body: {} }")],
+    swap("? { path: routes.resume, body: {} }", "? { path: routes.pause, body: {} }")],
+  ['M10 the watcher\'s Pause stops the chain (lead 290e22ac0)',
+    swap("watcher: Object.freeze({ pause: '/admin/watcher/pause'", "watcher: Object.freeze({ pause: PAUSE_ROUTE")],
+  ['M11 a watcher instance sends the chain\'s routes',
+    swap('pauseRequest(action, this.reason, this.kind)', 'pauseRequest(action, this.reason)')],
   ['M6 an unreadable state hides Pause',
     swap("return { state: 'unknown', tone: '', action: 'pause',", "return { state: 'unknown', tone: '', action: 'resume',")],
   ['M7 every re-read redraws the controls and wipes the reason being typed',
@@ -212,6 +242,7 @@ async function verdict(M) {
   part.render(M.chainPauseView(PAUSED, null));
   part.render(M.chainPauseView(RUNNING, null));
   if (find(part.root, 'chain-pause-ask') !== null) return true;
+  if (await watcherSends(M) !== '/admin/watcher/pause|/admin/watcher/resume|Pause watcher') return true;
   return false;
 }
 

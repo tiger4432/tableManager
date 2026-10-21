@@ -4585,12 +4585,14 @@ class WorkspaceWatcher:
             # (mtime, file_path, abs_path, handler, sweep_signature, tier1_stat)
             candidates = []
             seen_paths = set()
+            owed_trees = []      # (handler, a subfolder) of a table owing a sweep - judged below, read by the tree walk
             for raw_path, handler in targets:
                 try:
                     names = os.listdir(raw_path)
                 except OSError as e:
                     logger.warning(f"Sweep: cannot list {raw_path}: {e}")
                     continue
+                owes = bool(owed) and handler.table_name in owed
                 for name in names:
                     fp = os.path.join(raw_path, name)
                     try:
@@ -4598,6 +4600,8 @@ class WorkspaceWatcher:
                         # never this lock's: one slow file here held every collector's
                         # subfolders (총괄 2f487efb5).
                         if not os.path.isfile(fp):
+                            if owes and os.path.isdir(fp):
+                                owed_trees.append((handler, fp))
                             continue
                         st = os.stat(fp)
                     except OSError:
@@ -4646,6 +4650,7 @@ class WorkspaceWatcher:
                         f"({len(entries)} file(s)) — dispatching them individually: {told(e)}"
                     )
             held = self._held_of(by_handler, cleared, owed)
+            self._hold_owed_trees(owed_trees, owed)
 
             processed = 0
             for _mtime, fp, abs_fp, handler, sig, _fstat in candidates:
@@ -4663,6 +4668,27 @@ class WorkspaceWatcher:
                     f"{processed} dispatched."
                 )
             return processed
+
+    def _hold_owed_trees(self, trees, owed):
+        """A table owing a sweep has its raws/ subfolders' files judged here too - the tree walk reads them on its own
+        thread, maybe after this sweep settles what was owed (총괄 290e22ac0). Only judged: the tree walk reads."""
+        for handler, tree in trees:
+            entries = []
+            for top, _dirs, files in os.walk(tree):
+                for name in files:
+                    path = os.path.abspath(os.path.join(top, name))
+                    try:
+                        st = os.stat(path)
+                    except OSError:
+                        continue
+                    entries.append((path, (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size))))
+            try:
+                cleared = handler.settle_already_terminal(entries)
+            except Exception as e:
+                cleared = set()
+                logger.warning(f"Sweep: tier-1 lookup failed for {tree} ({len(entries)} file(s)): {told(e)}")
+            _said, judged = _waiting_held(handler, [path for path, _stat in entries if path not in cleared], owed)
+            self._owed_unjudged = self._owed_unjudged or not judged
 
     def _held_of(self, by_handler, cleared, owed):
         """Each handler's files not cleared, through `_waiting_held` -> the paths held."""
@@ -4883,7 +4909,9 @@ class WorkspaceWatcher:
         no event (the observer is not recursive), so this is how it is found. A tree worker
         (`request_tree_ingest`) is asked for when the folder changed since the last one started, or
         a sweep interval has passed since - a folder whose files stay (archive off, a locked file)
-        is walked here, not passed through tier-1 every look (총괄 2f487efb5). Returns workers started."""
+        is walked here, not passed through tier-1 every look (총괄 2f487efb5). Returns workers started.
+        The readings are heard first, so a tree there when one changed is judged before it is walked (총괄 290e22ac0)."""
+        self._notice_and_owed()
         started, present = 0, set()
         for raw_path, handler in list(self.handlers_by_raw_path.items()):
             try:

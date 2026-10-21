@@ -9,8 +9,8 @@ A real watcher and a real API process on a scratch data root and a sqlite file. 
   Read under LOT1 (the retry door)         -> its 3 read, LOT2's 2 still WAITING
   new.csv · bad.csv                        -> read by themselves (bad.csv FAILED)
   Pause; new2.csv, Read under LOT2         -> none read; Resume -> all read
-  the plugin changed and raws/old.csv dropped while down, a restart
-                                           -> bad.csv stays FAILED (one line), raws/old.csv WAITING, nothing read
+  the plugin changed, raws/old.csv and raws/TREE1/t.csv dropped while down, a restart
+                                           -> bad.csv stays FAILED (one line), both raws files WAITING, nothing read
   a restart                                -> nothing read, the waiting stay
 """
 import json
@@ -256,12 +256,14 @@ def test_files_there_when_a_reading_changes_wait_and_new_ones_are_read(tmp_path)
         # the plugin changed and a file dropped in raws/ while down: a restart reads none of it
         box.plugin(False)                                          # it would read bad.csv now
         _write(box.raws / "old.csv", "RAW", age=86400)
+        _write(box.raws / "TREE1" / "t.csv", "TREE", age=86400)       # a subfolder: the tree walk's
         before = box.rows()
         box.start_watcher()
-        rows = box.until(lambda r: "old.csv" in r)
+        rows = box.until(lambda r: "old.csv" in r and "t.csv" in r)
         time.sleep(8)
         rows = box.rows()
-        assert _now(rows)["old.csv"] == "WAITING" and rows["bad.csv"] == before["bad.csv"] == ["FAILED"], rows
+        assert _now(rows)["old.csv"] == _now(rows)["t.csv"] == "WAITING", rows
+        assert rows["bad.csv"] == before["bad.csv"] == ["FAILED"], rows
         assert "[Watcher] tw: its reading changed (scripts\\p.py) - 1 failed file(s) wait" in box.text()
         box.stop_watcher()
 
@@ -272,3 +274,91 @@ def test_files_there_when_a_reading_changes_wait_and_new_ones_are_read(tmp_path)
         assert box.rows() == before
     finally:
         box.close()
+
+
+def test_the_waiting_judgement(db_session, tmp_path):
+    """reread.hold_waiting: a WAITING newest row is held; while the table owes a sweep, a file with no row or a read one
+    is stood WAITING with the change in its reason; one being read (PENDING · PENDING_RETRY) is left to that read."""
+    from database import models
+    from ingestion import reread
+
+    paths = {name: str(tmp_path / name) for name in ("none.csv", "read.csv", "reading.csv", "handed.csv", "waits.csv")}
+    for name, state in (("read.csv", "SUCCESS"), ("reading.csv", "PENDING"), ("handed.csv", "PENDING_RETRY"),
+                        ("waits.csv", "WAITING")):
+        db_session.add(models.FileIngestionLog(filename=name, filepath=paths[name], table_name="tw", status=state,
+                                               retry_count=0))
+    db_session.commit()
+
+    assert reread.hold_waiting(db_session, "tw", list(paths.values())) == {paths["waits.csv"]}
+    owed = {"at": "2026-10-21 09:00:00", "why": "scripts\\p.py"}
+    held = reread.hold_waiting(db_session, "tw", list(paths.values()), owed)
+    assert held == {paths[name] for name in ("none.csv", "read.csv", "waits.csv")}
+    stood = (db_session.query(models.FileIngestionLog).filter_by(status="WAITING", table_name="tw")
+             .order_by(models.FileIngestionLog.id).all())
+    reason = "its reading changed (scripts\\p.py) at 2026-10-21 09:00:00 - Read to read it"
+    assert [(row.filename, row.reason) for row in stood] == [("waits.csv", None), ("none.csv", reason),
+                                                              ("read.csv", reason)]
+
+
+def test_the_heavy_lane_takes_no_job_while_the_watcher_is_paused(monkeypatch):
+    sys.path.insert(0, os.path.join(SERVER_DIR, "parsers"))
+    import threading
+
+    import directory_watcher
+
+    paused = [True]
+    monkeypatch.setattr(directory_watcher, "watcher_paused", lambda: paused[0])
+    lane = directory_watcher.HeavyIngestionLane(workers=1)
+    ran = threading.Event()
+    lane.submit(ran.set, "tw")
+    try:
+        assert not ran.wait(1.5), "a job was taken while paused"
+        paused[0] = False
+        assert ran.wait(5), "the job was not taken after Resume"
+    finally:
+        lane.stop()
+
+
+def test_a_settings_file_that_reads_as_nothing_keeps_the_external_part(tmp_path, monkeypatch):
+    """Lead 10-20 (moved with the comparison into the watcher, 290e22ac0): ingestion_settings.json there but read as
+    nothing (mid-write) - the external part is kept as it was, neither compared nor written over, while a plugin
+    changed in that tick is heard as ever; the file absent is no external source, compared as before."""
+    sys.path.insert(0, os.path.join(SERVER_DIR, "parsers"))
+    import threading
+
+    import directory_watcher
+    from ingestion import reread, settings
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    entry = dict(TABLE)
+    source = {"path": str(tmp_path / "share"), "table_name": "ta", "options": {"glob": "*.csv"}}
+    kept = {"ta": reread.reading_of("ta", entry, [source], str(scripts))}
+
+    class Handler:
+        scripts_path = str(scripts)
+
+        def _resolve_table_name(self, table_config):
+            return "ta"
+
+    watcher = directory_watcher.WorkspaceWatcher.__new__(directory_watcher.WorkspaceWatcher)
+    watcher.handlers_by_raw_path, watcher._readings_lock, watcher._reading_stamps = {"r": Handler()}, threading.Lock(), kept
+    monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: {"ta": entry})
+    owed, written = [], []
+    monkeypatch.setattr(reread, "owe", lambda tables, at: owed.append(sorted(tables)))
+    monkeypatch.setattr(reread, "say_failed_after_a_changed_reading", lambda *a: None)
+    monkeypatch.setattr(reread, "keep_reading_stamps", lambda stamps: written.append(stamps))
+    path = tmp_path / "ingestion_settings.json"
+    monkeypatch.setattr(settings, "INGESTION_SETTINGS_PATH", str(path))
+
+    path.write_text("", encoding="utf-8")                          # there, read as nothing
+    assert watcher.notice_changed_readings() == [] and not owed and not written
+
+    (scripts / "p.py").write_text("x = 1", encoding="utf-8")       # and a plugin changed in that tick
+    assert watcher.notice_changed_readings() == ["ta"] and owed == [["ta"]] and len(written) == 1
+    after = written[-1]
+    assert after["ta"]["external source"] == kept["ta"]["external source"] and "scripts\\p.py" in after["ta"]
+    owed[:], written[:] = [], []
+
+    path.unlink()                                                  # absent: no external source - a change
+    assert watcher.notice_changed_readings() == ["ta"] and owed == [["ta"]] and len(written) == 1
