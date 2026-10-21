@@ -15,7 +15,7 @@
 >           한 실패에 규칙이 둘 이상이면 rows_in · rows_out 은 null (어느 규칙 것인지 하나로 못 말함)
 > 바뀐 것    슬롯이 «배치 끝»에 싣던 도는 규칙 목록은 늘 비어 있어서 은퇴 — 도는 규칙은 그룹 클레임의 rule_run 이 말함
 >           /health 의 슬롯 줄 chain_state.why.rule_run 도 같은 값
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert 9c1d2f26f -> 런처 재기동
 > ```
 >
 > ---
