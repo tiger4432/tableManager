@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **거두기가 비운 행은 남지 않음 — 키 칸 층까지 거둬진 «껍데기 행» (소유자 「체인 껍데기는 여전함 · 회수된 게 키이긴 함」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     규칙이 더는 안 내는 행의 층을 거두면(편집 · 원천 행 지움 · 리플레이가 깨운 편집 · R2 withdraw),
+>          층이 하나도 안 남은 행은 그 자리에서 지워짐 — 지금까지는 키 칸이 빈 채(business_key_val 만 남음) 남았음
+> 보이는 것 chain_worker.log «[ChainShell] table=<표> rows_deleted=N - only the chain's keys were left»
+>          바로 뒤 «[ChainRetract] … rows_told=… rows_deleted=N»
+>          R2 미리보기 «At most N row(s) are left with no layer and are deleted as shells.» · 결과 rows_deleted
+> 남는 것  사람 층 · 파일 층 · 다른 규칙 층이 있는 행은 안 지움 · 출신 행 없는 맵퍼(SELECT 로 다시 읽어 냄)는 거둘 것을 못 고름 (그대로)
+> 이미 남은 껍데기  어드민 소급 «Remove rows with no source left» 를 그 표에 한 번 — 끝
+> 틈      거두기 커밋과 지우기 커밋 사이에 프로세스가 죽으면 그 행은 껍데기로 남음 (재시도는 거둘 층이 없어 안 물음) -> 위 op 로
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **선언 폼 숫자 칸이 숫자로 적힘 — rows_per_run 등 (총괄 지시, 2df444d2b · dist 06f64b213)**
 >
 > ```

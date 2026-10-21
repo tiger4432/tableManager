@@ -199,6 +199,19 @@ def shells(db, table_name: str, row_ids) -> list:
     return found
 
 
+def delete_shells(db, table_name: str, gone) -> list:
+    """The rows `gone` (`shells`' answer), deleted by the grid's door - their layers and a history line go with them,
+    one DELETE that wakes no rule - and said once. Every seat that takes layers back asks `shells` and hands its answer
+    here; a chain write asks after its recount (총괄 69b8b029c, 소유자 10-21 「체인 껍데기는 여전함」). -> `gone`."""
+    from database import crud
+
+    for i in range(0, len(gone), DEFAULT_CHUNK_SIZE):
+        crud.delete_rows_batch(db, table_name, gone[i:i + DEFAULT_CHUNK_SIZE], SHELL_DELETER)
+    if gone:
+        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left", table_name, len(gone))
+    return gone
+
+
 def _resolve_cell(table_name: str, col_types: dict, row, col: str,
                   cell_sources: dict, pin, exclude_source: str = None) -> dict:
     """Re-answer "what should this cell display" from its STORED layers.
@@ -425,8 +438,19 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         return [row_id for row_id in ids if row_id in claimed], {cell: sorted(names) for cell, names in claims.items()}
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "source": source_name}
-    stats.update(_withdraw_cells(db, table_name, target, read, apply=apply, chunk_size=chunk_size,
+    touched = set()
+
+    def read_and_keep(size):
+        page = read(size)
+        if page is not None:
+            touched.update(page[0])
+        return page
+    stats.update(_withdraw_cells(db, table_name, target, read_and_keep, apply=apply, chunk_size=chunk_size,
                                  log=log, checkpoint=checkpoint, label=f"'{source_name}' claims"))
+    # a row this withdrawal left a shell goes, as any withdrawal's does (총괄 69b8b029c)
+    stats["rows_deleted"] = len(delete_shells(db, table_name, shells(db, table_name, sorted(touched)))) if apply else 0
+    if apply:
+        db.commit()
     return stats
 
 

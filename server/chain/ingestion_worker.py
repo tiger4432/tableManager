@@ -1891,10 +1891,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         gone_ids = set(gone)
                         results = [(row, is_new) for row, is_new in results
                                    if identity_of(row).identity[0] not in gone_ids]
-                        crud.delete_rows_batch(db, target_table, gone, cell_layer.SHELL_DELETER)
+                        cell_layer.delete_shells(db, target_table, gone)
                         deleted_row_ids = list(deleted_row_ids or []) + gone
-                        logger.info("[ChainShell] table=%s rows_deleted=%d - only the chain's keys were left",
-                                    target_table, len(gone))
 
                 # [M3] Absent-only wafer_map_metadata auto-registration for
                 # chain-created maps. Uses the VALIDATED batch items (same
@@ -3505,13 +3503,15 @@ def _retract_deleted_rows(db, deleted):
             _retract_what_those_rows_fed(db, table, row_ids)
 
 
-def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=None, **scope):
+def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=None, ask_shells=True, **scope):
     """Withdraw what `row_ids` of `from_table` fed, then one EDIT per row that lost a layer. `why` is
     「deleted」 or 「edited」; an edit passes the rule that ran (`declarations`) and narrows the
     withdrawal (`scope`: `table` · `columns` · `keep`, see `cell_layer.withdraw_by_origin`).
     「blank」 passes the `layers` it found in place of origins: a recount that came back blank takes back the layer
     its rule wrote there (`_withdraw_blanks` · `cell_layer.cells_written_by`).
-    -> the withdrawal's stats."""
+    A row the withdrawal left a shell goes (`cell_layer.shells`, 총괄 69b8b029c) and is not told - but not for a blank
+    recount (`ask_shells=False`): its write is not done, and the write seat asks after it.
+    -> the withdrawal's stats, `rows_deleted` the shells that went."""
     from chain import cell_layer
     from database import crud
     from database.context import written_by
@@ -3523,6 +3523,11 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=Non
     with written_by(declarations):
         layers = cell_layer.cells_stamped_by(db, row_ids) if layers is None else layers
         stats = cell_layer.withdraw_layers(db, layers, apply=True, **scope)
+        gone = set()
+        if ask_shells:
+            for target, (_columns, ids) in sorted(stats["lost_a_layer"].items()):
+                gone.update(cell_layer.delete_shells(db, target, cell_layer.shells(db, target, sorted(ids))))
+        stats["rows_deleted"] = len(gone)
         # 🔴 [총괄 e11bb4de0 (나)] A layer that was not the shown one goes without changing a
         #   cell, so no edit event left and a rule that counts layers (the hold recount)
         #   never heard. One EDIT per row that lost a layer, by the door an ordinary edit
@@ -3532,13 +3537,15 @@ def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), layers=Non
         told = 0
         with crud.transaction_context(cell_layer.R2_AUDIT_SOURCE, tx_id, cell_layer.R1_SOURCE_NAME):
             for target, (columns, ids) in sorted(stats["lost_a_layer"].items()):
-                stage_collapsed_event(db, "EDIT", target, sorted(ids), sorted(columns))
-                told += len(ids)
+                kept = sorted(set(ids) - gone)
+                if kept:
+                    stage_collapsed_event(db, "EDIT", target, kept, sorted(columns))
+                    told += len(kept)
             db.commit()
     logger.info("[ChainRetract] table=%s %s_rows=%d groups=%d cells_withdrawn=%d "
-                "protected_skipped=%d rows_told=%d", from_table, why, len(row_ids),
+                "protected_skipped=%d rows_told=%d rows_deleted=%d", from_table, why, len(row_ids),
                 stats.get("groups", 0), stats.get("cells_withdrawn", 0),
-                stats.get("protected_skipped", 0), told)
+                stats.get("protected_skipped", 0), told, len(gone))
     return stats
 
 
@@ -3570,7 +3577,7 @@ def _withdraw_blanks(db, table, blanks):
         if not found:
             continue
         stats = _withdraw_and_tell(db, table, sorted({layer[1] for layer in found}), "blank",
-                                   declarations=(writer,), layers=found)
+                                   declarations=(writer,), layers=found, ask_shells=False)
         lost.update(row_id for _columns, rows in stats["lost_a_layer"].values() for row_id in rows)
     return lost
 

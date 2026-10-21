@@ -934,7 +934,7 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 
     Closing either gap requires the per-cell recompute that is the run itself.
     """
-    from sqlalchemy import and_, func
+    from sqlalchemy import and_, case, func
 
     from database import models
 
@@ -954,7 +954,15 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
         models.CellOverwrite.manual_priority_source == models.CellSource.source_name,
     ).scalar() or 0
 
-    return {"cells_claimed": int(claimed), "pinned": int(pinned)}
+    # Rows every layer of which this withdrawal takes - at most the shells it leaves, which go (총괄 69b8b029c):
+    # a pinned cell, or a value no layer carries, keeps one.
+    cs = models.CellSource
+    whole = (db.query(cs.row_id).filter(cs.table_name == table_name).group_by(cs.row_id)
+             .having(func.min(case((and_(*_claimed_filter(table_name, source_name, columns, written_by)), 1),
+                                   else_=0)) == 1).subquery())
+    emptied = db.query(func.count()).select_from(whole).scalar() or 0
+
+    return {"cells_claimed": int(claimed), "pinned": int(pinned), "rows_emptied": int(emptied)}
 
 
 

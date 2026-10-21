@@ -266,11 +266,13 @@ def _count_withdraw(db, params, scan_limit):
             f"(manual_priority_source) and will not be touched. At most {affected} "
             f"are in scope for withdrawal - the number of cells whose VISIBLE value "
             f"actually changes can be smaller (where the source underneath holds the "
-            f"same value, the display stays as it is)."
+            f"same value, the display stays as it is). At most {c['rows_emptied']} row(s) "
+            f"are left with no layer and are deleted as shells."
         ),
         "extra": {
             "cells_claimed": c["cells_claimed"],
             "pinned": c["pinned"],
+            "rows_emptied": c["rows_emptied"],
             "why_upper_bound": (
                 "The number in scope shrinks in only two ways: (1) the row was "
                 "already deleted and only its cell_sources remain, (2) the value "
@@ -1209,7 +1211,7 @@ def _run_withdraw(db, params, log, control=None):
                                      checkpoint=_checkpoint(control), written_by=written_by)
     _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")), s)
     return {"cells_withdrawn": s["cells_withdrawn"], "revealed": s["revealed"],
-            "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"]}
+            "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"], "rows_deleted": s["rows_deleted"]}
 
 
 def _count_fold_file_layers(db, params, scan_limit):
@@ -1965,10 +1967,10 @@ OPERATIONS = {
         "run": _run_withdraw,
         "judge": _judge_withdraw,
         "cli": "server/scripts/chain_replay_cli.py withdraw <table> <source> [--rule <rule>] --apply",
-        # It deletes a source's CLAIM, not the cell and not the row: the revealed
-        # value is recomputed and written, and every changed cell gets an AuditLog
-        # entry naming the withdrawn source.
-        "deletes": "cell_sources rows (one source's claim on a cell)",
+        # It deletes a source's CLAIM, not the cell: the revealed value is recomputed and
+        # written, and every changed cell gets an AuditLog entry naming the withdrawn source.
+        # A row it leaves with no layer goes as a shell, as any withdrawal's does (총괄 69b8b029c).
+        "deletes": "cell_sources rows (one source's claim on a cell), and the rows left with no layer",
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
