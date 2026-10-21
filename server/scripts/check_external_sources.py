@@ -68,7 +68,7 @@ def main() -> int:
         # parser=None means the declaration omitted `parser` and the watcher
         # resolved it from that table's workspace scripts/ folder.
         print(f"      parser={spec['parser'] or '(워크스페이스 scripts/ 플러그인)'}  "
-              f"recursive={spec['recursive']}  options={spec['options']}")
+              f"max_depth={spec['max_depth']}  options={spec['options']}")
 
     print()
     print(f"=== 거절된 것: {len(errors)}개 ===")

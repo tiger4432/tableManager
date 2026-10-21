@@ -113,7 +113,7 @@
 > 무엇     «이미 읽었나»의 답이 하나: 같은 (경로, 표) 로그 행이 파일의 (수정 시각, 크기)를 들면 안 읽음, 바뀌면 읽음
 >          재기동해도 다시 안 읽음. 표 스크립트 · table_config 항목 · 외장 소스 항목이 바뀌면 «그 표»만 다시 읽음
 > 돌릴 것   git pull -> 와처 재기동 -> 서버 재기동 (새 칸 둘은 기동이 더함)
-> 확인     와처 로그에 «한 번»: [Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L
+> 확인     와처 로그에 «한 번»: [Watcher] read files stamped N · left for re-read M (failed K · changed since read C) (10-21 가벼운 와처 뒤: 첫 훑기 끝에)
 >          그다음 훑기: «External sweep: … X already read, Y dispatched» — 다시 기동해도 Y 는 새로 온 파일 수
 > 뜻      M = 배포 뒤 한 번 다시 읽히는 수(실패했던 파일 · 읽은 뒤 바뀐 파일). 그 뒤로는 안 읽힘
 >          stamped 가 0 인데 파일이 많음 -> 로그 행의 경로가 지금 훑는 폴더와 다름(공유 경로 바뀜) -> 그 파일들은 한 번 다시 읽힘

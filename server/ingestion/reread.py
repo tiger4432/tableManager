@@ -187,8 +187,9 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
 def reading_of(table, entry, sources, scripts_dir):
     """What decides how `table`'s files are read, as {part: stamp} - its table_config entry without `NOT_READING`, its
     external sources (`table_name` is the table) without `enabled` - switching a source off and on is no new reading,
-    its files left meanwhile are read and the rest stay checked (총괄 10-21) - and each plugin file in its scripts folder
-    (mtime_ns, size)."""
+    its files left meanwhile are read and the rest stay checked (총괄 10-21) - and without `max_depth`: a deeper reach
+    finds files not read yet, a shallower one leaves nothing to read again - and each plugin file in its scripts
+    folder (mtime_ns, size)."""
     import hashlib
     import json
 
@@ -196,7 +197,8 @@ def reading_of(table, entry, sources, scripts_dir):
         return hashlib.sha1(json.dumps(value, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")).hexdigest()
 
     parts = {"table_config": digest({k: v for k, v in (entry or {}).items() if k not in NOT_READING}),
-             "external source": digest(sorted(({k: v for k, v in s.items() if k != "enabled"} for s in sources or ()
+             "external source": digest(sorted(({k: v for k, v in s.items() if k not in ("enabled", "max_depth")}
+                                               for s in sources or ()
                                                if isinstance(s, dict) and s.get("table_name") == table), key=digest))}
     try:
         names = sorted(n for n in os.listdir(scripts_dir) if n.endswith(".py") and n != "__init__.py")

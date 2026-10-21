@@ -293,6 +293,7 @@
 
 ### 설정 파일
 
+- 2026-10-21 [와처가 가볍게 선다 · 외장 소스에 max_depth · 훑기마다 소스별로 «왜 안 넘겼나»](#2026-10-21--와처가-가볍게-선다--외장-소스에-max_depth--훑기마다-소스별로-왜-안-넘겼나) — 적는 곳 `ingestion_settings.json` 외장 소스 항목 `max_depth` · 보는 곳 watcher.log
 - 2026-10-21 [파일은 한 번 읽는다 — (경로, 표) 체크리스트, 표 스크립트가 바뀌면 그 표만 다시](#2026-10-21--파일은-한-번-읽는다--경로-표-체크리스트-표-스크립트가-바뀌면-그-표만-다시) — 보는 곳 와처 로그 · 적을 것 없음(`dedup_by_signature` · `dedup_by_path_stat` 은퇴)
 - 2026-10-21 [외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 — enabled · filename/glob · path](#2026-10-21--외부-소스-하나를-끄거나-바꾸면-재기동-없이-그-소스에만-먹는다--enabled--filenameglob--path) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목
 - 2026-10-20 [선언 폼의 추천 목록이 선언에서 나오고 표 설정에도 스켈레톤이 생김 (서버 몫)](#2026-10-20--선언-폼의-추천-목록이-선언에서-나오고-표-설정에도-스켈레톤이-생김-서버-몫) — 적는 곳 선언 폼(클라 착지 뒤) · `table_config.json`
@@ -476,6 +477,19 @@
 
 
 
+
+## 2026-10-21 · 와처가 가볍게 선다 · 외장 소스에 max_depth · 훑기마다 소스별로 «왜 안 넘겼나»
+
+소유자 10-21 「좀 가볍게 돌게 만들어」 · 「와처 max depth 지정하게 해, 적은 경로부터」 · 「와처 뎁스랑 가볍게 같이 착지시켜」 (총괄).
+
+- **무엇** — 와처가 기동할 때 무거운 일 없이 곧바로 선다. 체크리스트 전의 로그 행에 도장을 찍는 일(처음 한 번)은 이제 첫 훑기가 «어차피 찍는 stat» 위에서 한다 — 디스크를 따로 훑지 않는다. 외장 훑기는 파일마다 stat 을 한 번만 묻는다(전: 두 번).
+- **max_depth** — 외장 소스 항목에 `"max_depth": N`. 적은 path 가 0, 그 아래 폴더 하나가 1. 그보다 깊은 폴더는 훑기가 «안 들어가고», 이벤트 · 재시도 · 다시 읽기도 그 파일을 안 집는다. 안 적으면 끝까지(전과 같음). `recursive: false` 는 `max_depth: 0` 과 같다.
+- **선언 예시** — `{"path": "\\\\nas\\share\\LOTS", "table_name": "inspection_run", "options": {"glob": "*.csv"}, "max_depth": 2}`
+- **거절** — 0 이상 정수가 아니면 «external_sources[i].max_depth must be a whole number 0 or more …», recursive 와 어긋나면 «recursive … and max_depth … disagree - write max_depth only.» (그 항목만, 와처 로그 `External source config rejected:`).
+- **바뀐 동작** — 처음 한 번 줄이 첫 훑기 «뒤»에 나오고 `missing on disk` 칸이 없다(디스크를 따로 안 보므로). 훑기가 모든 외장 소스에 닿아야 끝나며, 도장 묶음 하나가 실패하면 그 파일들은 이번에 안 읽고 다음 훑기가 이어 찍는다. `max_depth` 를 적거나 바꿔도 그 표를 다시 읽지 않는다(더 깊어지면 새로 보이는 파일만 읽음).
+- **보는 곳** — watcher.log, 훑기마다 소스별 한 줄: `External source <표>@<경로>: N file(s) looked at - outside the root a · name not matched b · not a file c · stat failed d · folders below max_depth e · folders not listed f · already read g · dispatched h`. 등록 줄은 `Watching external read-only source: … (… max_depth=to the end)`.
+- **필요한 조건** — git pull · 와처 재기동.
+
 ## 2026-10-21 · 체인 선언 폼의 join take 에 fn — 레코드 {from, into, fn, separator} 가 폼에 그려지고 fn 을 고른다
 
 - **무엇** — 폼의 take 는 칸 이름만 그렸고, 레코드 `{from, into, fn, separator}` 는 왼쪽 글에서만 고칠 수 있었습니다(소유자 「체인 선언 take 에 fn 이 없네」). 이제 take 항목은 이름 또는 레코드로 그려집니다. 결손 보정의 aggregations 와 같은 꼴이고, fn 은 count · min · max · unique_concat 중에서 고릅니다.
@@ -524,7 +538,7 @@
 - **무엇** — «이 파일을 이미 읽었나»의 답이 하나가 됐다. 같은 (경로, 표)의 파일 로그 행이 그 파일의 (수정 시각, 크기)를 들고 있으면 안 읽고, 파일이 바뀌면 읽는다. 와처를 재기동해도 읽은 파일을 다시 읽지 않는다. 어느 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` 는 빼고)이 바뀌면 «그 표»의 제자리 파일(외장 소스 · archive 를 끈 raws)만 다시 읽는다 — 다른 표와 archives/ 로 옮겨진 파일은 그대로.
 - **선언 예시** — 적을 것 없음. 한 파일을 다시 읽히려면 파일 화면의 Retry.
 - **바뀐 동작** — 표 읽기가 바뀌면, 예전(10-20)에는 실패가 reread_max_files(기본 25)를 넘을 때 하나도 안 넘기고 한 줄만 남겼다. 이제는 그 표의 제자리 파일을 전부 해제하고 곧바로 다시 읽는다. 그 수(그 표의 제자리 파일 수)는 이미 찍히는 `its reading changed` 줄에 보입니다. `reread_max_files` 는 이제 화면 Retry 의 상한만 정합니다.
-- **보는 곳** — 와처 로그: 배포 뒤 첫 기동에 한 번 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L` · 훑기마다 `External sweep: … X already read, Y dispatched` · 표 읽기가 바뀌면 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again`.
+- **보는 곳** — 와처 로그: 배포 뒤 첫 기동에 한 번 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L` (10-21 뒤: 첫 훑기 «뒤»에 `missing on disk` 없이 — 아래 «와처가 가볍게 선다») · 훑기마다 `External sweep: … X already read, Y dispatched` · 표 읽기가 바뀌면 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again`.
 - **필요한 조건** — 없음. 새 칸 둘(`file_ingestion_logs.file_mtime · file_size`)은 기동의 스키마 동기화가 더하고, 그전 로그 행의 도장은 와처가 첫 훑기 전에 한 번 채운다.
 - **다시 읽히기** — 한 파일은 파일 화면 Retry. 여럿은 `python server/scripts/replay_ingestion.py --path <파일> [--path …] [--table <표>] --apply` — 그 (경로, 표) 키를 풀어 다음 훑기가 다시 읽는다(원장 행은 안 지움).
 - **은퇴** — 파일 이름 `__force__` · 설정 `dedup_by_signature` / `dedup_by_path_stat`(남아 있는 값은 읽히지 않음) · 같은 내용 다른 경로 건너뛰기.

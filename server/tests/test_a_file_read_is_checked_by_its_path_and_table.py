@@ -15,6 +15,8 @@ size) - asked by every seat through `checkpoint.checked`.
   a real watcher      rows from before the checklist + their files in place -> started: none read, the failed one read
                       once, the first sweep's line says the fill; a file saved again -> read; tb's plugin changed -> tb's files read again, ta's not;
                       restarted -> nothing read
+  a fill that fails   its first batch raises -> the watcher stands, the line says it, those files not read; the next
+                      sweep stamps them and writes the marker
 """
 import http.server
 import json
@@ -280,6 +282,84 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
         assert reads() == {("ta", "a1.csv"): 2, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 2, ("tb", "b1.csv"): 2,
                            ("tb", "rb.csv"): 1}
         assert log_path.read_text(encoding="utf-8", errors="replace").count("read files stamped") == 1
+    finally:
+        watcher.kill()
+        watcher.wait(30)
+        log.close()
+        api.shutdown()
+
+
+FAILING_DRIVER = DRIVER.replace("import run_watcher", """import directory_watcher
+from ingestion import checkpoint
+directory_watcher.PERIODIC_SWEEP_INTERVAL_SECONDS = 3
+_stamp, _calls = checkpoint.stamp_read_files, []
+def _once(*args):
+    _calls.append(1)
+    if len(_calls) == 1:
+        raise RuntimeError("injected fill failure")
+    return _stamp(*args)
+checkpoint.stamp_read_files = _once
+import run_watcher""")
+
+
+def test_a_fill_that_fails_holds_its_files_and_the_next_sweep_stamps_them(tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    data, share = tmp_path / "data", tmp_path / "share"
+    (data / "config").mkdir(parents=True)
+    with open(data / "config" / "table_config.json", "w", encoding="utf-8") as f:
+        json.dump({"ta": TABLE}, f)
+    scripts = data / "ingestion_workspace" / "ta" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "p.py").write_text(PLUGIN, encoding="utf-8")
+    with open(data / "config" / "ingestion_settings.json", "w", encoding="utf-8") as f:
+        json.dump({"external_sources": [{"path": str(share), "table_name": "ta", "options": {"glob": "*.csv"}}]}, f)
+    a1 = _write(share / "a1.csv", "lot,val\nA1,v\n")
+    db = tmp_path / "box.db"
+    engine = create_engine("sqlite:///" + db.as_posix())
+    models.FileIngestionLog.__table__.create(engine)
+    with Session(engine) as session:
+        _row(session, "ta", a1, at=datetime.now(timezone.utc) + timedelta(seconds=5))
+    engine.dispose()
+
+    api = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Stub)
+    threading.Thread(target=api.serve_forever, daemon=True).start()
+    env = dict(os.environ, ASSY_DATA_ROOT=str(data), DATABASE_URL="sqlite:///" + db.as_posix(),
+               API_BASE_URL="http://127.0.0.1:%d" % api.server_address[1], NO_PROXY="127.0.0.1,localhost",
+               PYTHONIOENCODING="utf-8", PYTHONPATH=SERVER_DIR, DECOUPLED="True")
+    env.pop("TESTING", None)
+    driver, log_path = tmp_path / "driver.py", tmp_path / "watcher.log"
+    driver.write_text(FAILING_DRIVER, encoding="utf-8")
+    marker = data / "config" / "watcher_read_files_stamped"
+    log = open(log_path, "ab")
+    watcher = subprocess.Popen([sys.executable, str(driver)], cwd=SERVER_DIR, env=env, stdout=log,
+                               stderr=subprocess.STDOUT)
+
+    def said(text):
+        return text in log_path.read_text(encoding="utf-8", errors="replace")
+
+    def until(holds, seconds=60):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            assert watcher.poll() is None, log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+            if holds():
+                return True
+            time.sleep(0.5)
+        return False
+
+    try:
+        assert until(lambda: said("The read files were not stamped for 1 file(s) - not read now, the next sweep "
+                                  "stamps them: injected fill failure"))
+        assert until(lambda: said("[Watcher] read files stamped 0 so far - the next sweep goes on (a batch was not "
+                                  "stamped)"))
+        assert not marker.exists()
+        assert until(lambda: said("[Watcher] read files stamped 1 · left for re-read 0 (failed 0 · changed since "
+                                  "read 0)"))
+        assert marker.exists()
+        with sqlite3.connect(str(db)) as c:
+            rows = c.execute("SELECT count(*), max(file_size) FROM file_ingestion_logs").fetchone()
+        assert rows == (1, os.path.getsize(a1))                                       # not read again, stamped
     finally:
         watcher.kill()
         watcher.wait(30)

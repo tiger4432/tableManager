@@ -105,8 +105,8 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, 재기동하면 진�
 | 체크 | 그 열쇠의 `file_ingestion_logs` 행이 파일의 **(수정 시각, 크기)** 를 들고 있으면(`file_mtime` · `file_size`) 안 읽습니다. 하나라도 다르면 읽습니다 |
 | 도장을 적는 곳 | 읽기가 «답을 낸» 자리 — SUCCESS, 그리고 파일 탓의 FAILED. **잠금 대기로 끝난 FAILED 는 도장이 없어** 다음 훑기가 다시 집습니다 |
 | 묻는 자리 | 함수 하나 `checkpoint.checked` — raws 훑기 · 외장 훑기 · 폴더 트리 걷기 · 이벤트 · 수집기(소급 backfill)의 기다림. 재시도 문(파일 화면 Retry)은 **묻지 않고** 읽은 뒤 도장을 적습니다 |
-| 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` 는 빼고)이 바뀌면 **그 표의 키만** 해제합니다 — 읽은 행의 도장을 비우고(훑기가 제자리 파일을 다시 읽음), 실패 파일은 재시도 문으로 넘깁니다. 상한 없음, 와처가 자기 속도로 읽습니다. 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again` |
-| 처음 한 번 | 이 칸이 오기 전의 로그 행은 도장이 비어 있어, 와처가 첫 훑기 «전»에 **한 번** 채웁니다: 최신 행이 SUCCESS 이고 파일이 그대로(행이 수정 시각 이후에 쓰임)면 도장을 적습니다. 로그 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C) · missing on disk L`. 다 하면 `config/watcher_read_files_stamped` 가 생기고 다시 돌지 않습니다 |
+| 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` · `max_depth` 는 빼고)이 바뀌면 **그 표의 키만** 해제합니다 — 읽은 행의 도장을 비우고(훑기가 제자리 파일을 다시 읽음), 실패 파일은 재시도 문으로 넘깁니다. 상한 없음, 와처가 자기 속도로 읽습니다. 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again` |
+| 처음 한 번 | 이 칸이 오기 전의 로그 행은 도장이 비어 있어, 와처의 첫 훑기가 그 훑기의 stat 위에서 **한 번** 채웁니다(디스크를 따로 안 훑음): 최신 행이 SUCCESS 이고 파일이 그대로(행이 수정 시각 이후에 쓰임)면 도장을 적습니다. 로그 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C)`. 모든 외장 소스에 닿은 훑기가 끝나면 `config/watcher_read_files_stamped` 가 생기고 다시 돌지 않습니다 |
 | 실패 방향 | 수정 시각과 크기를 그대로 둔 채 내용만 바꾼 파일은 다시 읽지 않습니다(수정 시각을 보존하는 복사 도구). 다시 읽히려면 파일 화면의 **Retry**, 여럿이면 `scripts/replay_ingestion.py --path … --apply`(그 키 해제 — `reread.uncheck`) |
 | 은퇴 | 원장의 경로 tier 1 · 내용 서명 dedup(같은 내용이어도 다른 경로면 읽음, 소유자 10-20 ㄱ) · 훑기의 프로세스 메모리 · 외장 «수정» 이벤트의 해시 우회 · 파일 이름 `__force__` · 설정 `dedup_by_signature` / `dedup_by_path_stat`. 원장(`file_ingestion_checkpoints`)은 **이어 읽기(재개)** 만 맡습니다 |
 
@@ -285,6 +285,8 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 🆕 같은 날: 플러그인이 같은 `scripts/` 의 옆 `.py`(헬퍼)를 import 할 수 있고, 같은 이름이어도 표마다 자기 폴더의 것을 씁니다. 플러그인이 읽다가 낸 예외는 «Plugin <파일>::<클래스> could not read '<파일>': …» 로 그 파일이 FAILED 입니다(전: «Failed to load plugin script» 로 다음 플러그인에 넘어감). 연결이 루트 아래 파일을 보고도 하나도 안 받으면 워처 로그에 WARNING «External source <표>@<루트>: N file(s) under the root, none matched <glob/filename>» 한 줄 — 받는 파일이 생길 때까지 한 번입니다.
 
 ⚠️ **받는 파일은 `options.glob` 이 있으면 그 패턴, 없으면 `options.filename` 하나(기본 `voids.json`)입니다.** `glob` 이 있으면 `filename` 은 보지 않고, 받는 쪽에 안 맞는 파일에는 아무 일도 일어나지 않습니다(수집 기록 행도 없음). 🆕 10-11(`053d7858f`) `glob` 은 패턴 하나 또는 목록이고 루트에서의 경로를 견줍니다 — `**` 몇 겹이든(0 포함) 폴더 · `*` 한 겹 안 · `?` `/` 아닌 한 글자 · `/` 없는 패턴은 어느 깊이든 파일 이름. 예 `"options": {"glob": ["**/raw/**/*.jpg"]}`. `/` 로 시작하거나 끝나는 패턴은 거절되지 않지만 아무 파일도 받지 않습니다. 대소문자는 운영체제 규칙대로(윈도우는 무시). ⚠️ `parser: voids_json` 은 경로를 `<웨이퍼>/<작업 시각>/<options.filename>` 으로 다시 보므로, glob 으로 받은 다른 이름 · 다른 깊이의 파일은 FAILED 행으로 남습니다. 빈 패턴 · 빈 목록 · 글자 아닌 값은 «… .options.glob must be one glob string or a list of them, none empty, got <값>.» 으로 그 `external_sources` 항목 전체를 거절합니다(그 폴더는 감시하지 않음). 감시 사건 · 외부 쓸기 · 처리 중 메타 읽기 · 수정 표시가 모두 같은 판정(`IngestionHandler.external_source_context`)을 묻습니다.
+
+**깊이:** 🆕 10-21 외장 소스 항목에 `"max_depth": N` — 적은 path 가 0, 그 아래 폴더 하나가 1. 더 깊은 폴더는 훑기가 들어가지 않고 이벤트 · 재시도도 그 파일을 안 집습니다. 안 적으면 끝까지. `recursive: false` = `max_depth: 0`(둘이 어긋나면 거절). 훑기마다 와처 로그에 소스별 한 줄 `External source <표>@<경로>: N file(s) looked at - outside the root · name not matched · not a file · stat failed · folders below max_depth · folders not listed · already read · dispatched` — 파일이 왜 안 넘어갔는지 사유별 수입니다.
 
 **끈 상태 확인:** 등록 때 워처 로그에 `External sources declared: N (M disabled).` 한 줄이 남습니다. `enabled: false` 항목은 통과도 거절도 아니어서 종전에는 「선언 안 함」과 「꺼 둠」이 로그에서 구분되지 않았습니다. 항목별 판정은 `conda run -n assy_manager python server/scripts/check_external_sources.py`가 그대로 보여 줍니다.
 
