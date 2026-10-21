@@ -742,32 +742,26 @@
    badge fix started truncating names: 「이름잘림 라벨 열넓혀」. The number is measured, not
    chosen -- the widest label is `allowed_binding_kinds` at depth 5, needing 205px for name
    plus badge plus gap, so a base of 285px; 288 rounds that up and stays a multiple of the
-   16px step. Nothing else moved: the stair is still -16px a level, and the value and state
-   columns still each stand on one vertical line.
+   16px step. Nothing else moved: the stair is still -16px a level, and the value column still
+   stands on one vertical line.
 
    --- 6b: the tree ------------------------------------------------------------------
    🔴 THE INDENT MOVES THE LABEL COLUMN ONLY. Depth shortens the first column by 16px a
-   level while the value column absorbs the difference and the state column keeps one width, so
-   value and state stand on ONE vertical line at every depth. Indenting the whole row --
-   the obvious way -- steps all three columns sideways, and a five-deep binding then reads
+   level while the value column absorbs the difference, so the value stands on ONE vertical line
+   at every depth. Indenting the whole row -- the obvious way -- steps the columns sideways, and a
+   five-deep binding then reads
    as five different tables. Owner: 「배치 정렬 저 목업이랑 똑같이해 잘 정돈되게해」.
    These figures are the 6b card's own and are deliberately NOT on the 3.4px grid. */
-/* 🔴 THE STATE COLUMN HOLDS ITS WIDEST WORD (order da59efbb7, owner 「require 뱃지랑 input ui
-   겹치는거」). At 92px five of the thirteen words it can carry did not fit -- `Required ·
-   unknown` 118.6, `constrained_input` 112.8, `No shape · broken` 109.8, `Single candidate`
-   104.5, `Plan · unknown` 95.2 (measured, this sheet, in Barlow) -- and a right-aligned chip
-   spills LEFT, over the input. In the fallback faces (the webfont can be blocked on the box)
-   `Required · unknown` needs ~126 (system-ui) and ~132 (sans-serif) with its border, so the
-   column is 132.6, the grid step above both. One width for every row, so value and state
-   keep their one vertical line. */
-/* 🔴 ONE GRID FOR THE WHOLE TREE (lead 10-21, form D). The topmost node holds the three columns; every node, children
+/* ⚰️ The state column (order da59efbb7: 132.6 px to hold its widest word, so a badge never spilled over the input)
+   retired (lead 10-21): the word stands right of its box, and screen_layout «rows one height, boxes at one x» goes red
+   when it is drawn over it. */
+/* 🔴 ONE GRID FOR THE WHOLE TREE (lead 10-21, form D). The topmost node holds the two columns; every node, children
    box and row below it is a subgrid of them, so a name column is as wide as its longest name with its indent, and
-   the value column starts at one x at every depth. A name is never cut while the form has the room; the columns
-   start at their base widths. `:not([hidden])` - a `display` here would beat the page's `[hidden]` rule (id weight). */
+   the value column starts at one x at every depth. A name is never cut while the form has the room.
+   `:not([hidden])` - a `display` here would beat the page's `[hidden]` rule (id weight). */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node:not(.oe-node *):not([hidden]) {
-  display: grid; min-width: 0; column-gap: 10px;
-  grid-template-columns:
-    minmax(var(--oe-label-w, 288px), max-content) minmax(0, 1fr) minmax(var(--oe-state-w, 132.6px), max-content);
+  display: grid; min-width: 0; column-gap: var(--space-3);
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node :is(.oe-node, .oe-node-children):not([hidden]) {
   display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; min-width: 0;
@@ -775,21 +769,27 @@
 /* What is not a node stands across the row: a table needs the width; a button or a note keeps its own. */
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node, .oe-node-children) > :not(.oe-node, .oe-node-children) { grid-column: 1 / -1; }
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node, .oe-node-children) > :not(.oe-node, .oe-node-children, .oe-node-row, .oe-node-table) { justify-self: start; }
+/* 🔴 ONE ROW CLASS, ONE HEIGHT (lead 10-21, skill §0-bis). Only this rule sets a row's height and spacing: a box
+   (--control-h-small) and a step, 0 between rows; a row of wrapped chips is that height times its lines. A modifier
+   (is-branch, is-new, is-note ...) sets colour, weight and background, nothing else. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
   display: grid; grid-template-columns: subgrid; grid-column: 1 / -1;
-  align-items: baseline; min-width: 0;
-  /* The indent is the name cell's own padding (below), so it widens the name column, never narrows the name. */
-  padding: 7px 12px;
-  border: 1px solid var(--oe-line); border-top: 0;
-  background: var(--oe-surface);
+  align-items: center; min-width: 0;
+  min-height: calc(var(--control-h-small) + var(--space-2));
+  margin: 0; padding: 0;
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:hover { background-color: var(--oe-tint-row); }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-children > .oe-node:first-child > .oe-node-row {
-  border-top: 1px solid var(--oe-line);
-}
+/* The depth colours (mockup «1 - Tree»): a row's caret, a group's name and head, and the rail under it. */
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row, .oe-node-guide) { --oe-tone: var(--cat-5); }
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row, .oe-node-guide)[data-tone="1"] { --oe-tone: var(--cat-8); }
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row, .oe-node-guide)[data-tone="2"] { --oe-tone: var(--cat-3); }
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row, .oe-node-guide)[data-tone="3"] { --oe-tone: var(--cat-6); }
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row, .oe-node-guide)[data-tone="4"] { --oe-tone: var(--cat-4); }
+/* The indent is the name cell's own padding, so it widens the name column, never narrows the name. The declaration's
+   own blocks stand at the left edge. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-label {
-  display: flex; align-items: baseline; gap: 6.8px; min-width: 0;
-  padding-left: calc(var(--oe-indent) * var(--oe-depth, 0));
+  display: flex; align-items: center; gap: var(--space-2); min-width: 0; align-self: stretch;
+  padding-left: calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0));
 }
 /* 🔴 THE ROW KEEPS ONE HEIGHT. At depth the label column is narrow -- 214px less 16px a
    level, so 134px by depth 5 -- and `allowed_binding_kinds` plus its badge needed 144. The
@@ -800,34 +800,32 @@
    node's class, and the flow stacks in a 330px column where wrapping is right. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);
 }
 /* Chrome breaks at a <wbr> even under nowrap (measured 10-21): the break after an '_' is the stacked layout's only. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name wbr { display: none; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-badge { flex: none; white-space: nowrap; }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name {
-  font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);
+/* The value cell: its box, then the row's word (Declared · Derived · Required ...) right of it, muted. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value { display: flex; align-items: center; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value > * { flex: 0 1 auto; min-width: 0; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value > :is(.oe-field, .oe-chips, .oe-form-suggested, .oe-field-input, .oe-field-select, .oe-form-new) { flex: 1 1 auto; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value > .oe-tier { flex: none; }
+/* A line of its own under a row (lead 10-21): the plan's note, a refusal - one line at the value x, cut with «…». */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:is(.is-note, .is-refusal) > .oe-node-value > * {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value { min-width: 0; overflow-wrap: anywhere; }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-state {
-  display: flex; justify-content: flex-end; min-width: 0; font-size: var(--fs-tag);
-}
-/* A word longer than the column is cut with «…» inside its own cell, never drawn over the
-   input beside it -- the box keeps its parts. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-state > * {
-  min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
-}
-/* Narrow: the label column alone is 288px, so at 375 the input had ~22px (measured 09-29).
-   The row stacks -- name and state, then the value across the whole row. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-refusal > .oe-node-value > * { color: var(--oe-warn); font-style: normal; font-size: var(--fs-tag); }
+/* Narrow: the label column alone was 288px, so at 375 the input had ~22px (measured 09-29).
+   The row stacks -- the name, then the value across the whole row. */
 @media (max-width: 700px) {
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node:not(.oe-node *):not([hidden]) { grid-template-columns: minmax(0, 1fr); }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "label state" "value value";
-    row-gap: 3.4px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "label" "value";
+    row-gap: var(--space-1);
   }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-label { grid-area: label; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value { grid-area: value; }
-  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-state { grid-area: state; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value:empty { display: none; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name { white-space: normal; overflow: visible; }
   :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name wbr { display: inline; }
@@ -835,48 +833,59 @@
 /* Node kind, said in the row rather than implied by indentation alone.
    Named `-badge`, not `-kind`: `.oe-node-kind` was already taken by the path popover
    (view.js:200), and styling it here would have restyled that too. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch { background: var(--oe-surface-2); }
+/* A group's head: its name in its depth colour, on a faint wash of it. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch:not(.is-root) { background: color-mix(in srgb, var(--oe-tone) 8%, transparent); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch .oe-node-name { font-weight: 600; }
-/* The two states the mockup keeps open get the 3px edge and the taller box. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-remaining {
-  border-left: 3px solid var(--oe-accent);
-  padding: 8px 12px;
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch:not(.is-root) .oe-node-name { color: var(--oe-tone); }
+/* A top-level block is set off by an inset hairline, never a border: a group, and the first row after one. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-root + .oe-node-children > .oe-node:is(:has(> .is-branch), :has(> .is-branch) + .oe-node) > .oe-node-row {
+  box-shadow: inset 0 1px 0 var(--oe-line);
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-refused {
-  border-left: 3px solid var(--oe-warn);
-  padding: 8px 12px;
-}
-/* Form D: the fold is a caret before the name (▸ shut, ▾ open); what the row holds is said in its value column. */
+/* The two states the mockup keeps open: a field still owed, a field refused - their colour, not a bigger box. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-remaining { box-shadow: inset var(--space-1) 0 0 var(--oe-accent); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-refused { box-shadow: inset var(--space-1) 0 0 var(--oe-warn); }
+/* Form D: the head is one button - the caret (▸ shut, ▾ open) and the name; what the row holds is said in its value
+   column. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded {
-  flex: none; display: inline-flex; align-items: center; justify-content: center;
-  position: relative; width: var(--space-5); height: var(--space-5); min-height: 0; padding: 0;
-  border: 1px solid transparent; background: transparent; cursor: pointer;
-  font-size: var(--fs-button); line-height: 1; color: var(--oe-accent);
+  flex: 0 1 auto; display: inline-flex; align-items: center; justify-content: flex-start; gap: 0;
+  min-width: 0; height: var(--control-h-small); min-height: 0; padding: 0;
+  border: 0; background: transparent; cursor: pointer;
+  font: inherit; letter-spacing: inherit; line-height: 1; color: inherit; text-align: start;
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-fold, .oe-node-folded)::after { content: ''; position: absolute; inset: calc(var(--space-1) * -1); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-caret { flex: none; width: var(--space-5); font-size: var(--fs-button); color: var(--oe-tone); }
 /* A leaf's name, and a one-of's (no caret of its own), stand where a branch's name stands after its caret. */
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row:not(.is-branch), .oe-node-row.oe-node-head) > .oe-node-label {
-  padding-left: calc(var(--oe-indent) * var(--oe-depth, 0) + var(--space-5) + var(--space-2));
+  padding-left: calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0) + var(--space-5));
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-summary {
+/* A value box with no edge (lead 10-21): a block's summary, a value read - one box high, its text where an input's is. */
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-summary, .oe-node-value > .oe-value) {
   display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-family: var(--oe-font-mono); font-size: var(--fs-button); color: var(--oe-muted);
+  box-sizing: border-box; height: var(--control-h-small); line-height: calc(var(--control-h-small) - 2px);
+  padding: 0 var(--space-3); border: 1px solid transparent;
+  font-family: var(--oe-font-mono); font-size: var(--fs-button);
 }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-summary { color: var(--oe-muted); }
 /* Form D: a list of words - its chips, then the adder. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-chips {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0;
+  /* Lines a step apart and half a step over and under: a row of N chip lines is N rows high (lead 10-21 ④). */
+  padding-block: var(--space-1);
+}
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-adder { display: inline-flex; align-items: center; gap: var(--space-1); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-adder .oe-form-new-id {
   width: calc(var(--space-6) * 6); height: var(--control-h-small); min-height: var(--control-h-small);
 }
-/* Form D: a list of records, or a name -> word map, as a table under its row. */
+/* Form D: a list of records, or a name -> word map, as a table under its row - its lines a row high, its adder a box
+   and a step under them, so the block is a whole number of rows (lead 10-21). */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-table {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-3) calc(var(--space-3) + var(--oe-indent) * var(--oe-depth, 0));
-  border: 1px solid var(--oe-line); border-top: 0; background: var(--oe-surface);
+  padding: 0 0 0 calc(var(--oe-indent) * max(var(--oe-depth, 0) - 1, 0) + var(--space-5));
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table th { font-size: var(--fs-label); }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table :is(.oe-field-input, .oe-field-select, input, select) {
+/* A table's line is a row's height (lead 10-21): its box and a step. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table :is(th, td) { height: calc(var(--control-h-small) + var(--space-2)); padding-block: 0; }
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-form-table, .oe-node-value) :is(.oe-field-input, .oe-field-select, input, select) {
   height: var(--control-h-small); min-height: var(--control-h-small);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-table__name { font-family: var(--oe-font-mono); font-size: var(--fs-button); }
@@ -885,7 +894,7 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-column__table {
   flex: none; font-family: var(--oe-font-mono); font-size: var(--fs-button); color: var(--oe-muted);
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-new { background: transparent; border-bottom: 0; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-new { background: transparent; }
 /* 🔴 DEPTH YOU CAN SEE (lead 619befe8c; owner 「어디의 하위 선언을 고치고 있는지」). One guide per
    ancestor, as a code editor draws them: a row at depth N has N lines, each under its ancestor's
    indent. A one-of's own row keeps the same stair and the same lines. */
@@ -896,12 +905,8 @@
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-guides { position: absolute; inset: 0; pointer-events: none; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-guide {
-  position: absolute; top: 0; bottom: 0; width: 1px; background: var(--oe-line);
-  left: calc(12px + var(--oe-indent) * var(--oe-guide, 0) + var(--space-1));
-}
-/* The 3px edge moves the padding box 2px right; the lines stay on the column every other row draws. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:is(.is-remaining, .is-refused) .oe-node-guide {
-  margin-left: -2px;
+  position: absolute; top: 0; bottom: 0; width: 2px; background: var(--oe-tone);
+  left: calc(var(--oe-indent) * (var(--oe-guide, 1) - 1) + var(--space-2));
 }
 /* ㄴ The section the field being edited sits in: its whole block, tinted over what each row is. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node.is-editing-parent:not([data-path=""]) :is(.oe-node-row, .oe-node-head) {
@@ -948,38 +953,31 @@
 #ontology-explorer-root .oe-field.is-bare .oe-field-head:empty { display: none; }
 /* A folded one-value field in a tree row is ONE line: its head and its value side by side on the
    row's baseline (lead 8fd2f185d). Open, or outside the tree, the card still stacks. */
-#ontology-explorer-root .oe-field.is-bare.is-folded { flex-direction: row; flex-wrap: wrap; align-items: baseline; }
-/* The plan's note under the folded value, a line of its own. */
-#ontology-explorer-root .oe-field.is-bare.is-folded > .oe-field-note { flex-basis: 100%; }
+#ontology-explorer-root .oe-field.is-bare.is-folded { flex-direction: row; flex-wrap: nowrap; align-items: center; }
 
 /* The folded line is the value, and outside the tree its reason. Measured at 0px apart the two
-   ran together into one run of text, so the line carries the spacing unit and wraps rather than
-   pushing the state column sideways. */
+   ran together into one run of text, so the line carries the spacing unit. */
 #ontology-explorer-root .oe-field-folded {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2);
-  flex: 1 1 0%; min-width: 0; text-align: left;
-  /* The global button rule centres, makes a 36px box and never wraps; a value is read from the left,
-     one line high, and a long one wraps under its own first line. */
-  justify-content: flex-start; height: auto; min-height: 0; white-space: normal;
+  display: flex; align-items: center; flex-wrap: nowrap; gap: var(--space-2);
+  flex: 1 1 0%; min-width: 0; text-align: left; overflow: hidden;
+  /* A value is read from the left, one box high (lead 10-21): a long one is cut, its whole in `title`. */
+  justify-content: flex-start; box-sizing: border-box; height: var(--control-h-small); min-height: 0; white-space: nowrap;
   /* The input's surface (lead 7602a4a83): the value is the square you press to change it. */
-  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: 0 var(--space-3);
   color: var(--oe-text); cursor: pointer;
 }
 #ontology-explorer-root .oe-field-folded:hover { border-color: var(--oe-line-hover); }
 #ontology-explorer-root .oe-field-folded:active { background: var(--oe-tint-press); }
 #ontology-explorer-root .oe-folded-value {
-  display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1);
+  display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: var(--oe-font-mono); font-size: var(--fs-label); color: var(--oe-text);
-  overflow-wrap: anywhere; min-width: 0;
 }
 #ontology-explorer-root .oe-folded-why { font-style: normal; font-size: var(--fs-tag); color: var(--oe-muted); }
 
 /* The declaration's own row. It is the tree's root, so it never folds and carries no fold
    control -- 「접기 대상은 노드가 아니라 자식」. Before this the root drew no row at all,
    which is why a fully-answered declaration could open onto a single folded line. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-root {
-  background: var(--oe-surface-2); border-top: 1px solid var(--oe-line);
-}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-root { background: transparent; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-root .oe-node-name {
   font-weight: 600; font-size: var(--fs-button);
 }
@@ -993,7 +991,7 @@
 
 /* ── The map ────────────────────────────────────────────────────────────────────────────
    The declaration's outline in the 330px column: one line a node, names only, nothing
-   folded. It has no value column and no state column, which is what lets a shape that
+   folded. It has no value column, which is what lets a shape that
    needs 1048px in the middle stand inside 330 here.
 
    🔴 IT WRAPS, IT NEVER TRUNCATES. An ellipsis at this width would hide the end of the
@@ -1141,7 +1139,7 @@
 /* The tree's + and − stand at the small height. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-add,
 #ontology-explorer-root .oe-field-row-add,
-#ontology-explorer-root .oe-field-row-remove { min-height: var(--control-h-small); }
+#ontology-explorer-root .oe-field-row-remove { height: var(--control-h-small); min-height: var(--control-h-small); }
 #ontology-explorer-root .oe-jump:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-add:hover,
 #ontology-explorer-root .oe-field-row-add:hover,
@@ -1274,13 +1272,13 @@
   color: var(--oe-muted); background: transparent; white-space: nowrap;
 }
 /* A WORD THAT EXPLAINS (lead 7602a4a83, owner 「뭐가 클릭해야되는건지 뭐가 설명인지」): no box — on this
-   screen a box is what can be pressed. The state column's word, a demand, a node's kind. */
+   screen a box is what can be pressed. The row's word beside its box, a demand, a node's kind. */
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-tier, .oe-node-badge) {
   font-style: normal; font-size: var(--fs-tag); letter-spacing: 0.02em; white-space: nowrap;
   padding: 0; border: 0; background: transparent; color: var(--oe-muted);
 }
-/* 🔴 WHO IS SPEAKING FOR A BOX THE PLAN HAS NO ROW FOR. Same column as the plan's own
-   state chip, because it answers the same question -- what does this square want -- just
+/* 🔴 WHO IS SPEAKING FOR A BOX THE PLAN HAS NO ROW FOR. Same place as the plan's own
+   word, because it answers the same question -- what does this square want -- just
    from the skeleton instead. ⚠️ 「필수」 is the warning colour and 「모름」 is not: a demand
    nobody stated must not look like one that was.
 
