@@ -332,7 +332,9 @@ def progress(stage):
 #: session another pooled connection, and the next beat may be a second away - a set-aside cut
 #: the pid the group had left and the group ran on (총괄 10-08). Other claims keep the
 #: `MIN_WRITE_INTERVAL_SEC` bound - a file's ingestion begins a transaction per chunk.
-WRITTEN_AT_ONCE = ("db_pid", "lock_db_pid")
+# `rule_run`: the rule a chain group runs now and its rows in (`chain.activity.running`) - the queue line says it as it
+# starts (총괄 3de34d292)
+WRITTEN_AT_ONCE = ("db_pid", "lock_db_pid", "rule_run")
 
 
 def note_work(db_session=None, **facts):

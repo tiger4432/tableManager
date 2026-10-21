@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-21 [체인 대기열 답이 줄마다 규칙 · 받은/낸 행 · 재시도의 깨진 단계 · 최근 실패 20 그룹을 싣는다](#2026-10-21--체인-대기열-답이-줄마다-규칙--받은낸-행--재시도의-깨진-단계--최근-실패-20-그룹을-싣는다) — 보는 곳 /admin/chain/queue rules[] · recent_failures[] · /admin/outbox/failed summary[].last_failure
 - 2026-10-21 [API 가 통지를 안 받으면 체인은 첫 실패에서 통지를 멈춘다 — 슬롯이 통지에 붙잡히지 않는다](#2026-10-21--api-가-통지를-안-받으면-체인은-첫-실패에서-통지를-멈춘다--슬롯이-통지에-붙잡히지-않는다) — 보는 곳 chain_worker.log «notifications not delivered» · [Latency] notify
 - 2026-10-21 [연결이 끊긴 체인 묶음은 옆으로 빠지지 않고 다시 돈다 — 슬롯의 리로드 읽기도 묶음의 일](#2026-10-21--연결이-끊긴-체인-묶음은-옆으로-빠지지-않고-다시-돈다--슬롯의-리로드-읽기도-묶음의-일) — 보는 곳 chain_worker.log «raised - its events wait as they were and run again»
 - 2026-10-21 [맵을 통째로 답하는 규칙은 길과 무관하게 맵 전체를 받는다 — 편집 · 리플레이 쪽도](#2026-10-21--맵을-통째로-답하는-규칙은-길과-무관하게-맵-전체를-받는다--편집--리플레이-쪽도) — 보는 곳 chain_worker.log [ChainRule] rows_in
@@ -492,6 +493,14 @@
 
 
 
+
+## 2026-10-21 · 체인 대기열 답이 줄마다 규칙 · 받은/낸 행 · 재시도의 깨진 단계 · 최근 실패 20 그룹을 싣는다
+
+- **무엇** — 소유자 「화면에 좀 띄워, 로그 언제 찾아보냐」. 대기열 답에 규칙 이름 · 받은/낸 행 · 영구 실패 그룹이 없었고, 단계는 «도는 중»에만 나왔습니다.
+- **선언** — 바뀐 것 없음.
+- **바뀐 동작** — 줄마다 `rules[]`(규칙 · rows_in · rows_out · running_seconds), 재시도 줄의 `chain_state.why.stage`, 최상위 `recent_failures[]` 와 `recent_failures_listed`, 실패 요약 줄의 `last_failure`. 영구 실패 기록(error_log)에 stage · rows_in · rows_out 이 실립니다(그룹 클레임의 단계, 그 그룹 안의 activity 기록). 도는 규칙은 `chain.activity.running` 이 그룹 클레임에 적고 비트가 바로 써집니다 — 슬롯 lap 의 running 합치기는 늘 비어 있어 은퇴했습니다.
+- **필요한 조건** — git pull · 런처 재기동. 화면은 클라 903053c14 가 그립니다.
+- **자세히** — 시험 `test_the_queue_says_each_lines_rules_and_the_newest_failures.py`.
 
 ## 2026-10-21 · 맵 교체 + 버전 컬럼 — 맵 하나를 한 버전으로, 옛 파일은 맵째 거절
 

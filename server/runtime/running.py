@@ -18,6 +18,7 @@ first; this answers the second.
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timedelta, timezone
 
 import event_constants
@@ -70,9 +71,14 @@ def work_facts(work):
     """A beat's open work as the chain state's `running` facts (`event_constants.chain_state_of`):
     the stage, how long since it moved, how long it has been held, what it was found waiting on,
     and the beat's own stalled verdict - /health's one threshold (총괄 248ae20cd)."""
+    run = (work.get("facts") or {}).get("rule_run")
     return {"stage": work.get("stage"), "moved_seconds": work.get("no_progress_seconds"),
             "elapsed_seconds": work.get("held_seconds"), "stalled_on": work.get("stalled_on"),
-            "stalled": bool(work.get("stalled"))}
+            "stalled": bool(work.get("stalled")),
+            # the rule it runs now, as `chain.activity.running` noted it on the claim (총괄 3de34d292)
+            "rule_run": ({"rule": run.get("rule"), "rows_in": run.get("rows_in"),
+                          "running_seconds": round(max(0.0, time.time() - float(run["started"])), 1)}
+                         if isinstance(run, dict) and run.get("started") else None)}
 
 
 def chain_lines_running(beats=None):
@@ -122,22 +128,21 @@ def chain_sight():
 
 
 def _with_slots(sight, beats):
-    """The groups run in the chain's slot processes (총괄 19f6a9277): their running mappers -
-    each with its slot's pid - and their latest outcome per rule join the loop's own."""
+    """The groups run in the chain's slot processes (총괄 19f6a9277): their latest outcome per rule joins the loop's
+    own. ⚰️ Their running mappers joined too, read off a lap the slot writes at a batch's end, when none runs - always
+    empty (총괄 3de34d292); what a slot runs now is its claim's `rule_run` (`work_facts`)."""
     from chain import slots
 
     instants = dict(sight["instants"])
-    running = list(instants.get("running") or ())
     outcomes = dict(instants.get("outcomes") or {})
     for name, beat in sorted(beats.items()):
         if not name.startswith(slots.BEAT_PREFIX) or beat.get("stale"):
             continue
         lap = (beat.get("laps") or {}).get("chain") or {}
-        running += [dict(e, pid=beat.get("pid")) for e in lap.get("running") or ()]
         for rule, e in (lap.get("outcomes") or {}).items():
             if (e.get("at") or 0) > ((outcomes.get(rule) or {}).get("at") or 0):
                 outcomes[rule] = e
-    return dict(sight, instants=dict(instants, running=running, outcomes=outcomes))
+    return dict(sight, instants=dict(instants, outcomes=outcomes))
 
 
 def _item(what, where, pid, started_at, elapsed, processed=None, total=None, cancel=None,

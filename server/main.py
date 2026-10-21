@@ -4833,6 +4833,8 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
 # 대기열 목록이 «훑는» 행 수의 상한. 목록은 진단용이고, 이 수를 넘겨 읽어야 답이 갈리는
 # 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».
 _QUEUE_LIST_CAP = 200
+# 최근 실패 목록의 그룹 수 상한(총괄 3de34d292). 잘렸는지는 `recent_failures_listed.capped` 가 말한다.
+_RECENT_FAILURES_CAP = 20
 
 # ⚰️ [판정 652] 아래 독스트링이 「네 선언」이라 적고 `virtual_join_rules` 를 넷째로 댔다.
 #    그 문법은 은퇴했고 이 화면도 그 사분면을 더 안 그린다 — `chain.graph` 의 `_quarter` 는
@@ -5076,11 +5078,13 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
                 "outbox_id": row.id})
     # 잡 이름(op)은 «소급 실행 표»가 답한다 — 통제 행이 없는 잡(체인 재실행)도 있다
     run_ids = [line.run for line in lines if line.run]
-    runs = {}
-    if run_ids:
-        runs = {r.run_id: r.op for r in (db.query(models.RetroactiveRun.run_id,
-                                                 models.RetroactiveRun.op)
-                                         .filter(models.RetroactiveRun.run_id.in_(run_ids)).all())}
+    runs, replayed = {}, {}
+    for r in (db.query(models.RetroactiveRun.run_id, models.RetroactiveRun.op, models.RetroactiveRun.params)
+              .filter(models.RetroactiveRun.run_id.in_(run_ids)).all() if run_ids else ()):
+        runs[r.run_id] = r.op
+        # a replay's line runs its one rule (`only_rule`)
+        if r.op in event_constants.CHAIN_OWNED_RETROACTIVE_OPS:
+            replayed[r.run_id] = (json.loads(r.params) if r.params else {}).get("rule")
 
     def _age(dt):
         if dt is None:
@@ -5096,16 +5100,36 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     running, paused = running_seat.chain_lines_running(), chain_control.paused()
     retrying = [line.key for line in lines if line.max_retry]
     last_failure = {}
-    for key, said in (db.query(line_key, outbox.payload[event_constants.LAST_FAILURE].as_string())
-                      .filter(waiting_only, line_key.in_(retrying), outbox.status == "RETRYING")
-                      .order_by(outbox.id.desc()).all() if retrying else ()):
-        last_failure.setdefault(key, said)
-    chain_rules = chain_worker.loaded_chain_rules() if retrying else []
+    for key, said, stage in (db.query(line_key, outbox.payload[event_constants.LAST_FAILURE].as_string(),
+                                      outbox.payload[event_constants.LAST_FAILURE_STAGE].as_string())
+                             .filter(waiting_only, line_key.in_(retrying), outbox.status == "RETRYING")
+                             .order_by(outbox.id.desc()).all() if retrying else ()):
+        last_failure.setdefault(key, {event_constants.LAST_FAILURE: said, event_constants.LAST_FAILURE_STAGE: stage})
+    chain_rules = chain_worker.loaded_chain_rules() if lines else []
+
+    # 🔴 WHOSE LOOP (총괄 3c3f2b1f2) — `running_seat.chain_sight`, the same sight
+    #    `now_running` reads. `activity.view` turns either loop into the same shape.
+    from chain import activity
+    sight = running_seat.chain_sight()
+    shape = activity.view(sight["instants"], now=now_utc.timestamp())
+
+    def _rule_on_line(name, facts):
+        """One of a line's rules (3de34d292): the one its group runs now - its rows in and seconds so far, from the
+        claim (`work_facts`) - else its last run's rows in and out (the [ChainRule] line's), None when its last
+        evaluation did not run it."""
+        now = (facts or {}).get("rule_run")
+        if now is not None and now.get("rule") == name:
+            return {"rule": name, "rows_in": now.get("rows_in"), "rows_out": None,
+                    "running_seconds": now.get("running_seconds")}
+        last = shape["rule_outcomes"].get(name) or {}
+        return {"rule": name, "rows_in": last.get("last_rows_in"), "rows_out": last.get("last_rows_out"),
+                "running_seconds": None}
 
     waiting_transactions = []
     for line in lines:
         d = detail[line.key]
         is_run = bool(line.run)
+        line_rules = chain_worker.rules_of_line(d["tables"], chain_rules, replayed.get(line.run))
         is_row = not is_run and line.key == f"{event_constants.QUEUE_ROW_KEY_PREFIX}{line.first_id}"
         waiting_transactions.append({
             # 줄의 신원 셋 중 하나만 찬다 — 잡(run_id) · 트랜잭션 · 그 행 하나
@@ -5121,6 +5145,7 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             # 같은 판정을 줄에도. 화면이 event_type 을 보고 «스스로» 정하면 그 판정의 사본이 생긴다.
             "owners": sorted({event_constants.outbox_owner(t) for t in d["event_types"]}),
             **({"retroactive": d["retroactive"]} if d["retroactive"] else {}),
+            "rules": [_rule_on_line(name, running.get(line.key)) for name in line_rules],
             "max_retry": int(line.max_retry or 0),
             "waiting_seconds": _age(line.created_at),
             "waiting_at": to_local_str(line.created_at) if line.created_at is not None else None,
@@ -5129,14 +5154,36 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             # {"state", "why"} - the grid queue's rows carry the same (총괄 248ae20cd)
             "chain_state": event_constants.chain_state_of(
                 False, "RETRYING" if line.max_retry else "PENDING", retry_count=int(line.max_retry or 0),
-                attempts_cap=(chain_worker.group_attempts_cap(
-                    [r.get("name") for r in chain_rules if r.get("trigger_table") in d["tables"]], chain_rules)
-                    if line.max_retry else None),
-                payload={event_constants.LAST_FAILURE: last_failure.get(line.key)},
+                attempts_cap=(chain_worker.group_attempts_cap(line_rules, chain_rules) if line.max_retry else None),
+                payload=last_failure.get(line.key),
                 waiting_seconds=_age(line.created_at), running=running.get(line.key), paused=paused),
             # the slot process running it - killing that pid stops this line only (총괄 19f6a9277)
             "slot_pid": (running.get(line.key) or {}).get("pid"),
         })
+
+    # ── 최근 실패 — 실패 목록(/admin/outbox/failed)의 모집단(`failure_clause`)과 그룹 열쇠 그대로 (총괄 3de34d292) ──
+    # Newest first over `idx_outbox_failed`, a page at a time until one group past the cap; each group says its
+    # quarantine record once (the same on each of its events).
+    recent_failures, seen_groups, before = [], set(), None
+    while len(recent_failures) <= _RECENT_FAILURES_CAP:
+        page = (db.query(outbox.id, outbox.event_uuid, outbox.processed_at,
+                         outbox.payload["transaction_id"].as_string(), outbox.payload["error_log"])
+                .filter(event_constants.failure_clause(outbox), *(() if before is None else (outbox.id < before,)))
+                .order_by(outbox.id.desc()).limit(100).all())
+        for row_id, row_uuid, failed_at, tx, record in page:
+            group = tx or f"single_{row_uuid}"
+            if group in seen_groups:
+                continue
+            seen_groups.add(group)
+            record = record if isinstance(record, dict) else {}
+            recent_failures.append({
+                "transaction_id": group, "rules": record.get("rules"), "tables": record.get("tables"),
+                "stage": record.get("stage"), "rows_in": record.get("rows_in"), "rows_out": record.get("rows_out"),
+                "rows": record.get("rows"), "failure": event_constants.failure_cause(record.get("reason")),
+                "failed_at": to_local_str(failed_at) if failed_at is not None else None})
+        if len(page) < 100:
+            break
+        before = page[-1].id
 
     owners = {}
     for event_type, rows_of_type, oldest_of_type in by_type:
@@ -5187,13 +5234,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     # 대기 수가 같고, 그 둘을 가르는 것은 맵퍼를 «돌리는 프로세스»만 압니다.
     # 🔴 `loop_in_this_process` 가 같이 나갑니다 — 목록이 비었을 때 그것이 「도는 게 없다」
     #    인지 「내가 못 본다」인지 화면이 구별해야 합니다. 별도 워커로 띄우면 후자입니다.
-    from chain import activity
-    from runtime import running as running_seat
-    # 🔴 WHOSE LOOP (총괄 3c3f2b1f2) — `running_seat.chain_sight`, the same sight
-    #    `now_running` reads. `activity.view` turns either loop into the same shape.
-    sight = running_seat.chain_sight()
+    # the sight and its shape are read above, once - the lines' rules read them too
     loop_seen_via, loop_seen_age, loop_log = sight["via"], sight["age"], sight["log"]
-    shape = activity.view(sight["instants"], now=now_utc.timestamp())
 
     return {
         # 🔴 이 수들이 「지금」이 아니라 «그때»의 것이다. 새로 고치지 않은 화면은 오래된
@@ -5233,6 +5275,9 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             "cap": _QUEUE_LIST_CAP,
             "capped": bool(lines) and int(lines[0].lines_total) > len(lines),
         },
+        "recent_failures": recent_failures[:_RECENT_FAILURES_CAP],
+        "recent_failures_listed": {"cap": _RECENT_FAILURES_CAP,
+                                   "capped": len(recent_failures) > _RECENT_FAILURES_CAP},
         # 세지 «않은» 것을 이름으로 말한다. 응답에 없는 수는 「0」으로 읽히기 쉽고,
         # 그 오독이 바로 이 라우트가 없애려는 부류다.
         "not_measured": {
@@ -5613,16 +5658,23 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
     #    and the Overview's Chain line both read THIS answer: 81 rows of one burst were 81
     #    lines, and a two-day-old burst read as 「now」. One GROUP BY; no payload is loaded.
     #    Unfiltered: the summary is the whole section even when `data` is one line's rows.
+    lines_of_summary = (db.query(
+        outbox.table_name, outbox.event_type, day_of, func.count(), func.min(outbox.created_at),
+        func.max(outbox.created_at), func.max(outbox.retry_count), func.max(outbox.id))
+        .filter(event_constants.failure_clause(outbox))
+        .group_by(outbox.table_name, outbox.event_type, day_of)
+        .order_by(func.max(outbox.created_at).desc()).all())
+    # each line's newest failure, as its one sentence (`failure_cause`) - the word a retrying line says it with (3de34d292)
+    newest = [line[-1] for line in lines_of_summary]
+    newest_reason = dict(db.query(outbox.id, outbox.payload[("error_log", "reason")].as_string())
+                         .filter(outbox.id.in_(newest)).all()) if newest else {}
     summary = [{
         "table_name": name, "event_type": kind, "day": on_day,
         "count": int(n), "first_at": to_local_str(first), "last_at": to_local_str(last),
         "retry_max": int(retry_max or 0),
-    } for name, kind, on_day, n, first, last, retry_max in db.query(
-        outbox.table_name, outbox.event_type, day_of, func.count(), func.min(outbox.created_at),
-        func.max(outbox.created_at), func.max(outbox.retry_count))
-        .filter(event_constants.failure_clause(outbox))
-        .group_by(outbox.table_name, outbox.event_type, day_of)
-        .order_by(func.max(outbox.created_at).desc()).all()]
+        "last_failure": (event_constants.failure_cause(newest_reason[last_id])
+                         if newest_reason.get(last_id) else None),
+    } for name, kind, on_day, n, first, last, retry_max, last_id in lines_of_summary]
 
     return {
         "status": "success",

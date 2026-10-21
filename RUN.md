@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **체인 대기열 답에 «무슨 규칙이 몇 행을 받아 어디서 멈췄나» (총괄 3de34d292)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      /admin/chain/queue 의 줄마다 rules[] — 규칙 · rows_in · rows_out · running_seconds
+>             도는 규칙: rows_in 과 흐른 초, rows_out 은 null (시작하는 순간 슬롯 비트에 실림)
+>             안 도는 규칙: 그 규칙의 마지막 판 rows_in · rows_out ([ChainRule] 줄과 같은 수)
+>           재시도 줄: chain_state.why.stage = 깨진 단계 (why.last_failure 옆)
+>           recent_failures[] — 최신 20 그룹 (실패 목록과 같은 모집단) · recent_failures_listed.capped = 잘림
+>           /admin/outbox/failed 의 summary[].last_failure = 그 줄의 가장 새 실패 문장
+>           영구 실패 기록(error_log)에 stage · rows_in · rows_out — 이 착지 전 행은 셋이 null (화면 «—»)
+> 읽는 법    rows_in 이 있는데 rows_out 이 null 이고 running_seconds 가 계속 자람 = 그 규칙의 맵퍼가 아직 도는 중
+>           재시도 줄 why.stage 가 mapper = 맵퍼에서 깨짐 · write:<표> = 그 표 쓰기에서 깨짐
+>           한 실패에 규칙이 둘 이상이면 rows_in · rows_out 은 null (어느 규칙 것인지 하나로 못 말함)
+> 바뀐 것    슬롯이 «배치 끝»에 싣던 도는 규칙 목록은 늘 비어 있어서 은퇴 — 도는 규칙은 그룹 클레임의 rule_run 이 말함
+>           /health 의 슬롯 줄 chain_state.why.rule_run 도 같은 값
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **맵 교체 + 버전 컬럼 — 옛 버전 파일은 맵째 거절 (소유자 「맵교체랑 섞이면 맵단위로 버전관리」, 총괄 c8cb6aca0, 4d76641f7)** — git pull · 서버 · 와처 · 체인 워커 재기동
 >
 > ```

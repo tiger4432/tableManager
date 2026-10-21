@@ -623,7 +623,9 @@ def test_the_ended_words_are_answered_and_neither_queue_lists_an_ended_row(clien
         return event_constants.chain_state_of(r.processed_chain, r.status, payload=r.payload)
     assert said(aside) == {"state": event_constants.CHAIN_STATE_SET_ASIDE,
                            "why": {"by": set_aside.OPERATOR, "reason": "skipped from the chain queue by kim"}}
-    assert said(failed) == {"state": event_constants.CHAIN_STATE_FAILED, "why": {"failure": "ValueError: bad row"}}
+    # a record from before 3de34d292 names no stage - null, drawn «—»
+    assert said(failed) == {"state": event_constants.CHAIN_STATE_FAILED,
+                            "why": {"failure": "ValueError: bad row", "stage": None}}
     assert said(done) == {"state": event_constants.CHAIN_STATE_DONE, "why": {}}
     lines = {line["cancel"]["key"] for line in client.get("/admin/chain/queue").json()["waiting_transactions"]}
     assert not {"tx-a", "tx-f", "tx-d"} & lines

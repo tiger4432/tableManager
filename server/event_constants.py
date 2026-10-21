@@ -161,6 +161,8 @@ CHAIN_STATES = frozenset({CHAIN_STATE_WAITING, CHAIN_STATE_RUNNING, CHAIN_STATE_
 #: The payload key a group's failure leaves on its events while they wait to be tried again -
 #: the one line `retrying` shows (a quarantined group's whole record is `error_log`).
 LAST_FAILURE = "last_failure"
+#: Beside it, the stage the group was in when it failed - its claim's, the word a running line shows (3de34d292).
+LAST_FAILURE_STAGE = "last_failure_stage"
 
 #: 통지가 «확정»됐나 — 체인 상태와 «다른 축»이다. 둘을 한 값으로 접으면
 #: 「돌았는데 아직 안 알려졌다」가 「돌았다」에 묻힌다. 그 행은 스윕이 다시 쏜다.
@@ -209,15 +211,15 @@ def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None,
         if payload.get(CANCEL_MARK):
             return said(CHAIN_STATE_SET_ASIDE, by=payload[CANCEL_MARK], reason=payload.get(CANCEL_REASON))
         if status == "FAILED":
+            record = payload.get("error_log") if isinstance(payload.get("error_log"), dict) else {}
             return said(CHAIN_STATE_FAILED, failure=failure_cause(
-                (payload.get("error_log") or {}).get("reason") if isinstance(payload.get("error_log"), dict)
-                else payload.get("error_log")))
+                record.get("reason") if record else payload.get("error_log")), stage=record.get("stage"))
         return said(CHAIN_STATE_DONE, **({} if status == "SUCCESS" else {"unexpected_status": status}))
     if paused is not None:
         return said(CHAIN_STATE_PAUSED, by=paused.get("by"), at=paused.get("at"), reason=paused.get("reason"))
     if running is not None:
         why = {"stage": running.get("stage"), "moved_seconds": running.get("moved_seconds"),
-               "elapsed_seconds": running.get("elapsed_seconds")}
+               "elapsed_seconds": running.get("elapsed_seconds"), "rule_run": running.get("rule_run")}
         if str(running.get("stage") or "").startswith(CHAIN_WAITING_FOR):
             return said(CHAIN_STATE_WAITING_FOR_TABLE, table=running["stage"][len(CHAIN_WAITING_FOR):], **why)
         if running.get("stalled"):
@@ -225,7 +227,7 @@ def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None,
         return said(CHAIN_STATE_RUNNING, **why)
     if status == "RETRYING":
         return said(CHAIN_STATE_RETRYING, attempt=retry_count, cap=attempts_cap,
-                    last_failure=payload.get(LAST_FAILURE))
+                    last_failure=payload.get(LAST_FAILURE), stage=payload.get(LAST_FAILURE_STAGE))
     return said(CHAIN_STATE_WAITING, waiting_seconds=waiting_seconds,
                 **({} if status in ("PENDING", None) else {"unexpected_status": status}))
 

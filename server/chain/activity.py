@@ -111,7 +111,7 @@ class ChainActivityRegistry:
             }
         return token
 
-    def record_outcome(self, rule, outcome, reason=None):
+    def record_outcome(self, rule, outcome, reason=None, rows_in=None, rows_out=None):
         """이 규칙의 «마지막 결과». `finish` 와 «다른 이름»인 이유가 있다.
 
         🔴 `finish(token)` 이 하는 일은 「도는 목록에서 뺀다」 하나이고 그 토큰은 `start` 만
@@ -123,9 +123,11 @@ class ChainActivityRegistry:
         """
         try:
             with self._lock:
+                # the run's rows - the [ChainRule] line's own numbers, None when it did not run (3de34d292)
                 self._outcomes[str(rule)] = {
                     "outcome": outcome,
                     "reason": (str(reason) if reason else None),
+                    "rows_in": rows_in, "rows_out": rows_out,
                     "at": time.time(),
                 }
         except Exception:                                        # noqa: BLE001
@@ -227,12 +229,11 @@ def view(instants, now=None) -> dict:
     return {
         "running": [{"rule": e.get("rule"), "mapper": e.get("mapper"),
                      "target_table": e.get("target_table"), "rows_in": e.get("rows_in"),
-                     "running_seconds": age(e.get("started")),
-                     # the slot process it runs in (총괄 19f6a9277), when the sight merged slots
-                     **({"pid": e["pid"]} if e.get("pid") else {})}
+                     "running_seconds": age(e.get("started"))}
                     for e in instants.get("running") or ()],
         "rule_outcomes": {name: {"last_outcome": e.get("outcome"),
                                  "last_reason": e.get("reason"),
+                                 "last_rows_in": e.get("rows_in"), "last_rows_out": e.get("rows_out"),
                                  "last_age_seconds": age(e.get("at"))}
                           for name, e in (instants.get("outcomes") or {}).items()},
         "loop_uptime_seconds": age(instants.get("attached_at")),
@@ -294,11 +295,12 @@ def running(rule, mapper, target_table, rows_in):
 
     entry = _Run()
     token = registry.start(rule, mapper, target_table, rows_in)
+    _say_on_the_claim({"rule": rule, "rows_in": rows_in, "started": time.time()})
     try:
         yield entry
     except Exception as error:                                     # noqa: BLE001
         registry.record_outcome(rule, event_constants.RULE_OUTCOME_FAILED,
-                                "%s: %s" % (type(error).__name__, error))
+                                "%s: %s" % (type(error).__name__, error), rows_in=rows_in)
         raise
     else:
         if entry.rows_out is not None:
@@ -306,8 +308,20 @@ def running(rule, mapper, target_table, rows_in):
                 rule,
                 event_constants.RULE_OUTCOME_RAN_CHANGED if entry.rows_out
                 else event_constants.RULE_OUTCOME_RAN_UNCHANGED,
-                None if entry.rows_out else entry.reason)
+                None if entry.rows_out else entry.reason, rows_in=rows_in, rows_out=entry.rows_out)
     finally:
         # 🔴 IN `finally`. A run that threw is exactly the case where an entry left
         # behind sits in the view forever saying something is still running.
         registry.finish(token)
+        _say_on_the_claim(None)
+
+
+def _say_on_the_claim(rule_run):
+    """The run on this thread's chain group claim (총괄 3de34d292): its slot's beat carries it the moment it starts and
+    ends - the queue line and /health read it there (`runtime.running.work_facts`). Outside a claim, nothing."""
+    try:
+        from utils import heartbeat
+
+        heartbeat.note_work(rule_run=rule_run)
+    except Exception:                                            # noqa: BLE001
+        pass

@@ -606,14 +606,26 @@ def group_attempts_cap(rule_names, rules):
     return min(caps) if caps else max_group_attempts(None, _RULES_DOCUMENT)
 
 
+def rules_of_line(tables, rules, only_rule=None):
+    """The rules a queue line wakes - the one its replay names, else those its tables trigger. The queue's attempts
+    cap and its `rules` ask this one (3de34d292)."""
+    if only_rule:
+        return [str(only_rule)]
+    return [r.get("name") for r in rules if r.get("trigger_table") in tables]
+
+
 #: The one sentence of a recorded failure - its seat is beside the chain state (총괄 248ae20cd).
 failure_cause = event_constants.failure_cause
 
 
 class NamedFailure(str):
-    """A failure reason that also carries whose it is - `rules` / `tables`, None when unknown."""
+    """A failure reason that also carries whose it is - `rules` / `tables`, None when unknown - and, from its group's
+    claim, the stage it failed in and the named rule's rows in that run (`_failed_at`)."""
     rules = None
     tables = None
+    stage = None
+    rows_in = None
+    rows_out = None
 
 
 def named_failure(rules, tables, text) -> NamedFailure:
@@ -658,6 +670,9 @@ def _failure_record(events, error_reason, tx_id, attempts_cap) -> dict:
                                        "attempt(s)." % (tx_id, attempts_cap))),
         "rules": getattr(error_reason, "rules", None),
         "tables": getattr(error_reason, "tables", None),
+        "stage": getattr(error_reason, "stage", None),
+        "rows_in": getattr(error_reason, "rows_in", None),
+        "rows_out": getattr(error_reason, "rows_out", None),
         "rows": len(row_ids),
         "row": named or None,
     }
@@ -2632,8 +2647,22 @@ def _claimed_group_sync(tx_id, events, db, rules):
         if answer[0]:
             return answer
         claim = _group_claim()
-        return False, _said_timeout(answer[1], claim.get("stage"),
-                                    time.time() - claim.get("started", time.time())), answer[2]
+        return False, _failed_at(_said_timeout(answer[1], claim.get("stage"),
+                                               time.time() - claim.get("started", time.time())), claim), answer[2]
+
+
+def _failed_at(error, claim):
+    """The group's failure with what its claim knows (3de34d292): the stage it was in, and - when it names one rule -
+    that rule's rows_in / rows_out from its activity record, only if the record is this group's (written after the
+    claim began); else None, as for a failure naming several rules."""
+    failure = NamedFailure(str(error))
+    failure.rules, failure.tables = getattr(error, "rules", None), getattr(error, "tables", None)
+    failure.stage = claim.get("stage")
+    if len(failure.rules or ()) == 1:
+        run = activity.registry.instants()["outcomes"].get(failure.rules[0]) or {}
+        if (run.get("at") or 0) >= claim.get("started", float("inf")):
+            failure.rows_in, failure.rows_out = run.get("rows_in"), run.get("rows_out")
+    return failure
 
 
 def _waiting_for_a_table(table, pid):
@@ -3189,7 +3218,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         # what `retrying` shows on the queue - the line this failure ends with
                         # (총괄 248ae20cd); the whole record is the quarantine's
                         event.payload = dict(get_payload_dict(event) or {},
-                                             **{event_constants.LAST_FAILURE: failure_cause(error_reason)})
+                                             **{event_constants.LAST_FAILURE: failure_cause(error_reason),
+                                                event_constants.LAST_FAILURE_STAGE: getattr(error_reason, "stage",
+                                                                                             None)})
                         retrying_count += 1
 
                 deleted = _deleted_rows_of(events_in_tx) if isolate_group else {}
