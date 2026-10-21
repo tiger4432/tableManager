@@ -927,7 +927,10 @@ export class RawRegistryPanel {
         //    fold, `addMember` adds (and refuses to write over a value that is not a list),
         //    `deleteAtPath` removes.
         const act = (event) => {
-          const el = event && event.target;
+          // A press lands on what is inside a control - a head's caret or name, a folded value's text, an icon - and
+          // its control is the nearest [data-action], as the explorer reads it (lead 10-21: a fold pressed on its
+          // caret or name did nothing here).
+          const el = event && event.target && event.target.closest ? event.target.closest('[data-action]') : null;
           const action = el && el.dataset ? el.dataset.action : '';
           const path = el && el.dataset ? String(el.dataset.value || '') : '';
           if (!path) return;

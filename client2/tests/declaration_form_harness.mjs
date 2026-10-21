@@ -32,16 +32,9 @@ const FILES = {
 
 const doc = makeDoc('light');
 globalThis.document = doc;
-// The adder's Enter and paste go in through `closest` and `click` (adderInput), and a fold counts its rows with
-// `childElementCount` - spellings the shared stub does not have. They are added on THIS harness's nodes only - the shared stub's thirty-nine other users stay as they are.
-const matchesSel = (n, sel) => {
-  const c = /^\.([A-Za-z0-9_-]+)$/.exec(sel);
-  if (c) return String(n.className || '').split(/\s+/).includes(c[1]);
-  const a = /^\[([A-Za-z0-9_-]+)="(.*)"\]$/.exec(sel);
-  return Boolean(a && n.attrs && n.attrs[a[1]] === a[2]);
-};
+// The adder's Enter and paste go in through `click` (adderInput), and a fold counts its rows with `childElementCount` -
+// spellings the shared stub does not have (its `closest` it has, lead 10-21). They are added on THIS harness's nodes only.
 const withDom = (n) => {
-  n.closest = function closest(sel) { for (let at = this; at; at = at.parentNode) if (at.attrs && matchesSel(at, sel)) return at; return null; };
   n.click = function click() { return this.dispatch('click', {}); };
   Object.defineProperty(n, 'childElementCount', { get() { return this.children.length; } });
   return n;

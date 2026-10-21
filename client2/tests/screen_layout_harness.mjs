@@ -224,13 +224,16 @@ const CELLS = [
     const n = Math.round(R(t).height / unit);
     if (n < 1 || Math.abs(R(t).height - n * unit) > 0.5) return 'table ' + say(t) + ' ' + R(t).height.toFixed(1) + ' px, not a whole number of ' + unit.toFixed(1);
   }
+  // A row that opens a top-level block stands below its divider: the block's margin, its line and its padding (lead 10-21).
+  const divider = (r) => { const n = r.parentElement; if (!n || n.firstElementChild !== r) return 0; const s = getComputedStyle(n);
+    const line = parseFloat(s.borderTopWidth) || 0; return line ? parseFloat(s.marginTop) + line + parseFloat(s.paddingTop) : 0; };
   let prev = null;
   for (const r of rows) {
     const rb = R(r), k = Math.round(rb.height / unit);
     if (k < 1 || Math.abs(rb.height - k * unit) > 0.5) return 'row ' + say(r) + ' ' + rb.height.toFixed(1) + ' px, not a whole number of ' + unit.toFixed(1);
     const under = prev && tables.find((t) => Math.abs(R(t).top - R(prev).bottom) <= 0.5 && Math.abs(R(t).bottom - rb.top) <= 0.5);
     seen.table += under ? 1 : 0;
-    if (prev && !under && Math.abs(rb.top - R(prev).bottom) > 0.5) return 'row ' + say(r) + ' ' + (rb.top - R(prev).bottom).toFixed(1) + ' px below the row above';
+    if (prev && !under && Math.abs(rb.top - R(prev).bottom - divider(r)) > 0.5) return 'row ' + say(r) + ' ' + (rb.top - R(prev).bottom).toFixed(1) + ' px below the row above';
     prev = r;
     const cell = r.querySelector(':scope > .oe-node-value'), b = cell && cell.firstElementChild;
     const chips = b && b.classList.contains('oe-chips') ? b : null;

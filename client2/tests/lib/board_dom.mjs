@@ -30,6 +30,8 @@ function selectorMatches(node, sel) {
   if (cls) return String(node.className || '').split(/\s+/).includes(cls[1]);
   const attr = /^\[([A-Za-z0-9_-]+)="(.*)"\]$/.exec(String(sel));
   if (attr) return node.attrs && node.attrs[attr[1]] === attr[2];
+  const has = /^\[([A-Za-z0-9_-]+)\]$/.exec(String(sel));
+  if (has) return Boolean(node.attrs) && has[1] in node.attrs;
   return false;
 }
 
@@ -204,6 +206,8 @@ export function makeNode(doc, tag) {
     // so anything else returns null and the caller's assertion fails loudly.
     querySelector(sel) { return querySelectorIn(this, sel); },
     querySelectorAll(sel) { return walk(this).filter((n) => selectorMatches(n, sel)); },
+    // The node or its nearest ancestor the selector names - a press on a control's inner span reaches its control.
+    closest(sel) { for (let n = this; n; n = n.parentNode) if (selectorMatches(n, sel)) return n; return null; },
     set textContent(v) { this._text = String(v); this.children.length = 0; },
     get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
   };

@@ -219,6 +219,12 @@ function suite(view, css, skel) {
     .map((r) => `${r.sel} { ${SIZE.exec(r.body)[1]} }`);
   ok('R4 only the value box rule sets a value box\'s size; what adds to it sets colour (lead 10-21)',
     sheet.some((r) => r.sel === BOX && /width\s*:/.test(r.body)) && boxSized.length === 0, boxSized.join(' | ') || 'no .oe-box rule read');
+  // The top-level divider: its line and a step of space above and below it, in one rule (lead 10-21, owner: the line
+  // sat on the rows above and below).
+  const divider = sheet.filter((r) => /\.oe-node/.test(r.sel) && /(border-top\s*:\s*1px|inset\s+0\s+1px\s+0)/.test(r.body));
+  const step = (r, p) => new RegExp(`(?:^|[;\\s])${p}\\s*:\\s*var\\(--space-[1-6]\\)`).test(r.body);
+  eq('R5 the top-level divider is one rule: its line, a token step above it and a token step below it (lead 10-21)',
+    divider.map((r) => `${/border-top/.test(r.body)}|${step(r, 'margin-top')}|${step(r, 'padding-top')}`).join(','), 'true|true|true');
   const tree = sheet.filter((r) => /\.oe-node/.test(r.sel)).map((r) => r.sel);
   eq('R3 no tree selector has two rule sets (no layering)', tree.filter((sel, i) => tree.indexOf(sel) !== i).join(' | '), '');
 
@@ -310,6 +316,8 @@ const MUTANTS = [
     from: '.oe-node-row.is-root { background: transparent; }', to: '.oe-node-row.is-root { background: transparent; padding: 3px 0; }' },
   { name: 'the-row-has-a-border-again', catches: ['R2'], file: CSS,
     from: '  margin: 0; padding: 0;\n', to: '  margin: 0; padding: 0; border-bottom: 1px solid var(--oe-line);\n' },
+  { name: 'the-divider-on-the-rows-again', catches: ['R5'], file: CSS,
+    from: 'margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--oe-line);', to: 'border-top: 1px solid var(--oe-line);' },
   { name: 'a-read-value-padded-on-its-own', catches: ['R4'], file: CSS,
     from: ':is(.oe-value, .oe-field-onechoice).oe-box { border-color: transparent; }', to: ':is(.oe-value, .oe-field-onechoice).oe-box { border-color: transparent; padding: 0; }' },
   { name: 'a-second-rule-for-the-row', catches: ['R3'], file: CSS,

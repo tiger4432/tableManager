@@ -839,9 +839,10 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch:not(.is-root) { background: color-mix(in srgb, var(--oe-tone) 8%, transparent); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch .oe-node-name { font-weight: 600; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch:not(.is-root) .oe-node-name { color: var(--oe-tone); }
-/* A top-level block is set off by an inset hairline, never a border: a group, and the first row after one. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-root + .oe-node-children > .oe-node:is(:has(> .is-branch), :has(> .is-branch) + .oe-node) > .oe-node-row {
-  box-shadow: inset 0 1px 0 var(--oe-line);
+/* A top-level block is set off by a hairline with a step of space on each side (lead 10-21, owner: the line sat right on
+   the rows above and below): a group, and the first row after one. On the block, so every row stays its 34. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-root + .oe-node-children > .oe-node:is(:has(> .is-branch), :has(> .is-branch) + .oe-node) {
+  margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--oe-line);
 }
 /* The two states the mockup keeps open: a field still owed, a field refused - their colour, not a bigger box. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-remaining { box-shadow: inset var(--space-1) 0 0 var(--oe-accent); }

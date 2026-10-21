@@ -84,6 +84,15 @@ function suite(M) {
   const on = () => (((p.raw() || {}).derive || {}).join || {}).on;
 
   // C -- the fold opens, and the items are inputs
+  // A press lands on what is inside the head - its caret, its name - not on the button (lead 10-21: in Chrome neither
+  // opened the chain form's fold).
+  for (const [part, at] of [['caret', 'oe-node-caret'], ['name', 'oe-node-name']]) {
+    const q0 = mountPanel(M, JOIN);
+    const head = q0.btn('toggle-field', 'derive.join.on');
+    const inner = head ? walk(head).find((n) => n !== head && cls(n).includes(at)) : null;
+    if (inner) inner.dispatch('click');
+    ok(Boolean(inner) && Boolean(q0.boxAt('derive.join.on[0]')), `C1${part === 'caret' ? 'a' : 'b'} a press on the head's ${part} opens it`);
+  }
   ok(!p.inputAt('derive.join.on[0].left'), 'C0 before: the pair list is folded -- its items are not drawn');
   ok(p.click('toggle-field', 'derive.join.on') && Boolean(p.boxAt('derive.join.on[0]')),
     'C1 its toggle opens it: the item row (a table row, form D) is drawn');
@@ -214,6 +223,8 @@ const base = { pass: pass - base0.pass, fail: fail - base0.fail };
 const DEFECTS = [
   [PANEL, suite, 'the chain panel stops receiving clicks on its form, as before 09-24',
     (s) => s.replace("        box.addEventListener('click', act);", '')],
+  [PANEL, suite, 'a press inside a head reaches no control, as after ef2f9501f',
+    (s) => s.replace("event.target.closest ? event.target.closest('[data-action]') : null", 'event.target')],
   [PANEL, suite, 'the form context is handed an empty fold record, as it used to be',
     (s) => s.replace('spec, value, this._formFold.expandedFields,', 'spec, value, {},')],
   [PANEL, suite, 'what "+" added is not opened',
