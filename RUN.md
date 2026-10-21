@@ -11,7 +11,7 @@
 > 그새 실패 어드민 Overview «Chain failures» 의 «Retry All Failed» (또는 그 묶음의 Retry) — 재기동 뒤 다시 돌림
 >          파일 쓰기가 실패한 파일은 File Ingestion «Retry failed»
 > 확인     칸 타입 바꾸고 선언 저장 -> 그 표에 그리드 편집 한 칸 -> 저장됨 (재기동 없이)
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동 (선언에서 타입을 바꾸면 다시 재기동이 필요해짐)
+> 되돌리기  git revert e53117872 -> 런처 재기동 (선언에서 타입을 바꾸면 다시 재기동이 필요해짐)
 > ```
 >
 > ---
