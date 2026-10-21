@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **PENDING 에 선 Retry 를 와처 기동이 다시 넘긴다 (소유자 「파일 리플레이는 펜딩에서 안 도는데」, 총괄 18a3bc5b7, 78dc5ca9d)** — git pull · 와처 재기동
+>
+> ```
+> 무엇     Retry 가 잡은(PENDING) 뒤 첫 체크포인트 전에 와처가 멈추면 그 행은 PENDING 에 영영 섰다
+>          (되돌리기가 «체크포인트 없음»은 일부러 건너뛰고, 화면 Retry 는 FAILED 만 집음) -> 이제 와처 기동이 다시 넘김
+> 확인     재기동 직후 watcher.log 에 한 번 «[Retry] N retry claim(s) left by the last run handed again» (N = 서 있던 수)
+>          그다음 «Detected PENDING_RETRY log ID #…» · «Retry succeeded for log ID #…» 가 그 행마다
+>          줄이 없음 -> 서 있던 PENDING 이 0 이었음(정상)
+> 전제     와처는 설치마다 하나 — 기동하는 와처가 파일 로그의 PENDING 을 «앞선 실행이 남긴 것»으로 읽음.
+>          와처를 둘 띄우면 다른 와처가 읽는 중인 행을 다시 넘김
+> 되돌리기  git revert 78dc5ca9d -> 와처 재기동. 서 있는 행은 손으로: UPDATE file_ingestion_logs SET status='PENDING_RETRY' WHERE status='PENDING' (와처 내린 뒤)
+> ```
+>
+> ---
+>
 > ## [10-21] **선언 폼 접기 — 화살표 · 이름을 눌러도 접힘, 구분선 위아래 여백 (총괄 지시, c48dd7026 · dist 6c58acdf4)**
 >
 > ```
