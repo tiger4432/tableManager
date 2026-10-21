@@ -351,6 +351,8 @@ def poll_pending_retries():
     from ingestion import reread
 
     reading_stamps = reread.load_reading_stamps()
+    from ingestion import settings as ingestion_settings
+    sources_seen = ingestion_settings.read_ingestion_settings().get("external_sources")
 
     while True:
         # [B1/B2] Liveness beat. This loop does real work every ~3 s (a database
@@ -411,6 +413,16 @@ def poll_pending_retries():
             # in this same cycle rather than waiting a whole extra one.
             reclaim_stranded_claims(db)
 
+            # ingestion_settings.json saved: each external source as it says now - a source switched off, removed or
+            # changed is retired or stands again, the others and raws/ untouched, no restart (총괄 10-21). Its held
+            # reading is asked, not the file's stamp: the stamp moves a moment before the reading does.
+            sources_now = ingestion_settings.read_ingestion_settings().get("external_sources")
+            if sources_now != sources_seen and workspace_watcher is not None:
+                sources_seen = sources_now
+                try:
+                    workspace_watcher.refresh_external_sources()
+                except Exception as refresh_error:                     # noqa: BLE001 - the retries below go on
+                    logger.warning("[Watcher] the external sources were not read again: %s", told(refresh_error))
             pending_logs = pending_retries(db)
 
             for log in pending_logs:

@@ -1921,6 +1921,10 @@ class IngestionHandler(FileSystemEventHandler):
         # content hashing instead of being hidden by tier 1.
         self._external_force_hash = set()
 
+    def unregister_external_source(self, source_id: str):
+        """Detach one external-source context - the watcher retired it (switched off, removed or changed)."""
+        self._external_sources.pop(source_id, None)
+
     def register_external_source(self, spec: dict):
         """Attach one validated external-source context to this table handler."""
         source_id = spec["source_id"]
@@ -4250,7 +4254,7 @@ class WorkspaceWatcher:
             self._external_availability[spec["source_id"]] = False
             return False
         try:
-            self.observer.schedule(
+            target["watch"] = self.observer.schedule(
                 target["event_handler"], root, recursive=spec["recursive"])
         except Exception as e:
             logger.warning(
@@ -4268,6 +4272,36 @@ class WorkspaceWatcher:
         if was is False:
             logger.info(f"External source recovered: {root} -> {spec['table_name']}")
         return True
+
+    def _retire_external(self, source_id: str, why: str):
+        """One binding out: its handler forgets it (events not taken), its watch unscheduled, its sweep memory
+        cleared - so switched on again, its files are looked at again."""
+        target = self.external_targets.pop(source_id, None)
+        if target is None:
+            return
+        spec = target["spec"]
+        target["handler"].unregister_external_source(source_id)
+        if target.get("watch") is not None:
+            try:
+                self.observer.unschedule(target["watch"])
+                self.watch_count -= 1
+            except Exception as e:                                  # noqa: BLE001 - the handler no longer takes them
+                logger.warning(f"External source {source_id}: its watch was not unscheduled: {told(e)}")
+        for key in [key for key in self._external_sweep_attempted if key[0] == source_id]:
+            self._external_sweep_attempted.pop(key, None)
+        self._external_unmatched_said.discard(source_id)
+        logger.warning(f"External source {why} - no longer read as it was: {spec['root']} -> {spec['table_name']} "
+                       f"({spec.get('options') or {}}); a file being read finishes")
+
+    def refresh_external_sources(self):
+        """ingestion_settings.json was saved (총괄 10-21): the bindings as it declares them now - retired, changed or
+        new, no restart - and a new or changed one swept. -> the source ids that stood."""
+        with self._sync_lock:
+            added = self._register_external_sources(load_global_table_config())
+        if added:
+            self._ensure_observer_running()
+            self.sweep_external_sources_async(added, reason="external-source-saved")
+        return added
 
     def raws_root_for(self, table_name: str, table_config: dict | None = None) -> str:
         """The raws/ this watcher watches for `table_name` - the key of `handlers_by_raw_path`,
@@ -4295,15 +4329,18 @@ class WorkspaceWatcher:
         for error in errors:
             logger.error(f"External source config rejected: {error}")
 
+        # 🔴 [총괄 10-21, 소유자 「외부 저장소 별로 끄기」 · 「받는 파일을 바꿨는데 voids.json 이 계속 돎」] A binding
+        #    switched off, removed or changed (path · glob/filename · parser) is retired here - no restart: its events
+        #    and its sweep stop, a file it is reading is read to its end - and a changed one stands again below.
+        wanted = {spec["source_id"]: spec for spec in specs}
+        for source_id in [sid for sid, target in list(self.external_targets.items())
+                          if wanted.get(sid) != target["spec"]]:
+            self._retire_external(source_id, "changed" if source_id in wanted else "switched off or removed")
+
         added = []
         for spec in specs:
             source_id = spec["source_id"]
-            existing = self.external_targets.get(source_id)
-            if existing is not None:
-                if existing["spec"] != spec:
-                    logger.error(
-                        f"External source config changed for {source_id}; the running "
-                        f"binding is unchanged. Restart the watcher to apply it.")
+            if source_id in self.external_targets:
                 continue
             try:
                 raws_root = self.raws_root_for(spec["table_name"], table_config)
@@ -4692,6 +4729,8 @@ class WorkspaceWatcher:
                     if item is None:
                         continue
                     _mtime, source_id, abs_path, handler, signature, _file_stat = item
+                    if source_id not in self.external_targets:
+                        continue            # retired while this sweep ran (총괄 10-21)
                     self._external_sweep_attempted[(source_id, abs_path)] = signature
                     done[source_id] += 1
                     if (handler, abs_path) not in cleared:

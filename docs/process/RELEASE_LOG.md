@@ -291,6 +291,7 @@
 
 ### 설정 파일
 
+- 2026-10-21 [외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 — enabled · filename/glob · path](#2026-10-21--외부-소스-하나를-끄거나-바꾸면-재기동-없이-그-소스에만-먹는다--enabled--filenameglob--path) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목
 - 2026-10-20 [선언 폼의 추천 목록이 선언에서 나오고 표 설정에도 스켈레톤이 생김 (서버 몫)](#2026-10-20--선언-폼의-추천-목록이-선언에서-나오고-표-설정에도-스켈레톤이-생김-서버-몫) — 적는 곳 선언 폼(클라 착지 뒤) · `table_config.json`
 - 2026-10-20 [체인 규칙의 key.columns · group_by 를 목록으로 — 폼이 줄로 그리고 글자 key.columns 는 거절](#2026-10-20--체인-규칙의-keycolumns--group_by-를-목록으로--폼이-줄로-그리고-글자-keycolumns-는-거절) — 적는 곳 체인 규칙 선언 창 · `chain_rules.json`
 - 2026-10-20 [파일 완료 기록에 그 파일의 transaction_id · 폴더 Retry 를 그 표로 좁히는 read_by](#2026-10-20--파일-완료-기록에-그-파일의-transaction_id--폴더-retry-를-그-표로-좁히는-read_by) — 누르는 곳 파일 적재 화면 · 명령 `retry-failed?read_by=`
@@ -464,6 +465,16 @@
 
 ---
 
+
+## 2026-10-21 · 외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 — enabled · filename/glob · path
+
+소유자 10-21 「외부 저장소 별로 끄기」 · 「받는 파일을 log.txt 로 바꿨는데 voids.json 이 계속 돎」 · 「다른 작동은 유지하고 해당 타깃만 멈춰야 해」 (총괄).
+
+- **무엇** — `config/ingestion_settings.json` 의 `external_sources` 항목 하나를 저장하면 와처가 재기동 없이 그 항목만 다시 세운다. `"enabled": false` 면 그 연결의 이벤트 · 훑기가 멈추고, `options.filename` · `options.glob` · `parser` · `path` 를 바꾸면 옛 연결을 빼고 새 모양으로 세운다. 다른 소스 · 표의 raws/ 는 그대로 돈다. 그 연결이 읽던 파일은 끝까지 읽는다.
+- **선언 예시** — `{"path": "D:\\share\\void", "table_name": "void_obs", "options": {"filename": "log.txt"}, "enabled": false}`
+- **보는 곳** — 와처 로그 `External source switched off or removed - no longer read as it was: <경로> -> <표>` · `External source changed - …` 다음 줄 `Watching external read-only source: …`(새 모양).
+- **필요한 조건** — 없음. 와처가 3 초마다 설정을 다시 본다(설정 파일 감시가 바뀐 내용을 잡은 뒤).
+- **되돌아가는 것** — 다시 `"enabled": true` 로 저장하면 그 소스가 다시 서고, 꺼져 있던 동안 들어온 파일을 훑어 읽는다.
 ## 2026-10-21 · 교체 · 거두기 규칙이 원천 행 지움에도 돌고, 행이 떠난 맵을 통째로 받는다 — 파일 교체가 지운 다이의 체인 행이 거둬진다
 
 - **무엇** — 원천 행이 지워지면 그 행이 먹이던 맵의 체인 층이 남았습니다(소유자 「자동 회수 안 됨?」). 지움 사건이 `allow_delete_trigger` 를 적은 규칙만 깨웠고, 깨워도 맵퍼가 받는 df 에는 지운 행의 키가 없어 그 맵을 다시 짓지 못했습니다. 이제 `allow_replace_map` · `allow_retraction` 규칙은 지움에도 깨고, 맵퍼는 행이 떠난 맵의 «지금 행 전부»를 받습니다.
