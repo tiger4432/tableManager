@@ -22,6 +22,7 @@ from database import crud, models, schemas                 # noqa: E402
 T = "reload_adds_a_column"
 OLD = {"business_key": "k", "column_types": {"k": "string", "s": "string"}}
 NEW = {"business_key": "k", "column_types": {"k": "string", "s": "string", "d": "datetime"}}
+RETYPED = {"business_key": "k", "column_types": {"k": "string", "s": "number"}}
 
 
 @pytest.fixture(name="table")
@@ -116,3 +117,29 @@ def test_a_reload_that_adds_no_column_keeps_the_cache(table, pg_engine, monkeypa
     models.refresh_dynamic_models(pg_engine)
 
     assert cleared == []
+
+
+@pytest.mark.pg
+@pytest.mark.parametrize("seat", ["server_file_watch", "worker_reload"])
+def test_a_column_retyped_by_reload_is_written_without_a_restart(table, pg_engine, seat):
+    """Owner 10-21 «double 칸에 character»: the column retyped in the database, then declared number - and every
+    UPDATE of the table failed until a restart, the array writer casting to the model's old VARCHAR."""
+    from database.config_watcher import ConfigChangeHandler
+    from ledger import admin
+    Session = sessionmaker(bind=pg_engine)
+    with Session() as session:
+        _write(session, "r1", {"s": "1.5"})
+    with pg_engine.begin() as conn:
+        conn.execute(text('ALTER TABLE "%s" ALTER COLUMN s TYPE double precision USING s::double precision' % T))
+
+    admin.save_table_config_raw(T, RETYPED, admin.file_fingerprint(str(table)))
+    if seat == "server_file_watch":
+        ConfigChangeHandler(engine=pg_engine)._reload(str(table))
+    else:
+        models.refresh_dynamic_models(pg_engine)
+    with Session() as session:
+        _write(session, "r1", {"s": "2.5"})
+    with Session() as session:
+        stored = session.execute(text('SELECT s FROM "%s"' % T)).scalar()
+
+    assert stored == 2.5

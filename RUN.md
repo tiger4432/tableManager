@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **칸 타입 바꾼 선언이 재기동 없이 쓰기에 닿음 — «double 칸에 character varying» 오류 (소유자 「double 칸에 character 를 넣었다」)** — git pull · 런처 재기동 (이번 한 번)
+>
+> ```
+> 원인     선언 리로드(와처 · Reload Configs)가 새 칸만 붙이고 «바뀐 칸의 모델 타입»은 그대로 둠
+>          -> 묶음 UPDATE 가 CAST(.. AS VARCHAR[]) 로 나가 double 칸에서 터짐 (서버 · 체인 워커 · 와처 전부)
+> 이제     선언을 저장하면 그 칸의 타입도 리로드로 따라옴 — 선언 저장 뒤 재기동은 더 필요 없음
+> 순서     DB 먼저, 선언 나중. 반대로(선언 먼저 number, DB 는 아직 varchar) 하면 그 표 쓰기가
+>          «Unknown PG numeric type: 1043» 으로 터지고 ALTER 하면 풀림
+> 그새 실패 어드민 Overview «Chain failures» 의 «Retry All Failed» (또는 그 묶음의 Retry) — 재기동 뒤 다시 돌림
+>          파일 쓰기가 실패한 파일은 File Ingestion «Retry failed»
+> 확인     칸 타입 바꾸고 선언 저장 -> 그 표에 그리드 편집 한 칸 -> 저장됨 (재기동 없이)
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동 (선언에서 타입을 바꾸면 다시 재기동이 필요해짐)
+> ```
+>
+> ---
+>
 > ## [10-21] **메인 그리드 오른쪽 패널 — 눌린 탭과 보이는 판이 늘 같다 (총괄 지시, 42a2df3cc · dist c27ce4c73)**
 >
 > ```

@@ -1244,6 +1244,18 @@ FRAMEWORK_COLUMNS = (
 )
 
 
+def sql_type_of(type_str):
+    """The SQL type a declared column type is mapped as - a new table's column, a column a reload adds and one it
+    retypes all take it here."""
+    from sqlalchemy import DateTime, Float, String
+
+    if type_str == "number":
+        return Float()
+    if type_str == "datetime":
+        return DateTime(timezone=True)
+    return String()
+
+
 def init_dynamic_models(config_dict: dict, engine=None):
     """
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
@@ -1253,15 +1265,20 @@ def init_dynamic_models(config_dict: dict, engine=None):
     🔴 `engine` IS THE PROCESS'S, AND A HOT-SWAP THAT ADDED A COLUMN EMPTIES ITS COMPILED CACHE
     (총괄 791c0f45e 2). A query shape compiled before the swap was served from that cache as
     the old SELECT, so the grid read the new column empty in every row until a restart while
-    the table held the values (74101b158). A reload that adds nothing clears nothing.
+    the table held the values (74101b158). A reload that adds or retypes nothing clears nothing.
+
+    🔴 A COLUMN THE DECLARATION RETYPED IS RETYPED HERE TOO (owner 10-21 «double 칸에 character»). The model's
+    column type is what the array writers cast to (`crud.array_params`); a reload that kept the old one sent
+    `CAST(.. AS VARCHAR[])` into a column the database held as double precision, and every UPDATE of the table
+    failed until a restart.
     """
     # `Boolean` left with the three graph-sync columns on 2026-08-31 - nothing in
     # this function builds one any more, and `"boolean"` is not a declarable type.
-    from sqlalchemy import Table, Column, String, DateTime, Float, Index
+    from sqlalchemy import Table, Column, String, DateTime, Index
     from sqlalchemy.sql import func
     from sqlalchemy.orm import class_mapper
     
-    added = False
+    changed = False
     for table_name, table_cfg in config_dict.items():
         col_types = table_cfg.get("column_types", {})
         
@@ -1274,18 +1291,15 @@ def init_dynamic_models(config_dict: dict, engine=None):
             for col_name, type_str in col_types.items():
                 if col_name in FRAMEWORK_COLUMNS:
                     continue
+                sql_type = sql_type_of(type_str)
                 if col_name not in table_obj.columns:
-                    if type_str == "number":
-                        sql_type = Float
-                    elif type_str == "datetime":
-                        sql_type = DateTime(timezone=True)
-                    else:
-                        sql_type = String
-                        
                     col_obj = Column(col_name, sql_type, nullable=True)
                     table_obj.append_column(col_obj)
                     mapper.add_property(col_name, _mapped(col_obj))
-                    added = True
+                    changed = True
+                elif repr(table_obj.columns[col_name].type) != repr(sql_type):
+                    table_obj.columns[col_name].type = sql_type
+                    changed = True
             continue
             
         # 1. 모든 동적 물리 테이블이 공유할 메타데이터 컬럼들
@@ -1396,12 +1410,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
             # silently drop a column the view genuinely selects.
             if col_name in FRAMEWORK_COLUMNS and not is_view:
                 continue
-            if type_str == "number":
-                sql_type = Float
-            elif type_str == "datetime":
-                sql_type = DateTime(timezone=True)
-            else:
-                sql_type = String
+            sql_type = sql_type_of(type_str)
             if is_view:
                 columns.append(Column(col_name, sql_type, nullable=True,
                                       primary_key=(col_name in key_names)))
@@ -1473,7 +1482,7 @@ def init_dynamic_models(config_dict: dict, engine=None):
         mapper_registry.map_imperatively(dynamic_class, table_obj,
                                          properties={column.key: _mapped(column) for column in table_obj.columns})
         DYNAMIC_TABLES[table_name] = dynamic_class
-    if added and engine is not None:
+    if changed and engine is not None:
         engine.clear_compiled_cache()
 
 
