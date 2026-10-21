@@ -1,3 +1,14 @@
+# [구현자 B] **체인 선언 폼의 join take 에 fn 이 없다** (소유자 10-21 「체인 선언 take 에 fn 이 없네」, 총괄) — target_columns 착지 «다음»
+
+원인(총괄이 코드로 읽음): `join_into.JOIN_CELL_SHAPES["take"]` 가 «칸 이름 목록»(column_ref) 하나뿐이다. 주석이 「the vocabulary has no union, so the item is drawn as a name and the record form stays in the raw editor」라 하는데, 지금은 union 이 있다 — `rule_shape.DECIDE_CELL_SHAPES["aggregations"]` 가 oneOf(`pick: "shape"`)로 이름 · 레코드를 가른다. b1eb22b47(take fn)이 이 노드를 안 넓혔다
+도착: 폼에서 take 항목 하나가 «칸 이름» 또는 «{from · into · fn · separator}» 로 그려지고 고쳐진다. fn 은 고르는 칸(count · min · max · unique_concat)
+지킬 것
+- 넓히는 것은 그 노드 «하나». 노드 꼴은 aggregations 의 oneOf 와 같은 모양(새 노드 종류 0)
+- fn 의 고를 낱말은 `enrichment.config.AGGREGATION_FUNCTIONS`(take fn 이 이미 부르는 그 목록)에서 — 손으로 다시 적지 않는다. from 은 원천 표 칸 ref, into 는 대상 표 칸 ref
+- 주석의 «union 이 없다» 문장은 같은 커밋에서 고친다
+- 저장 관문(load 의 거절 — 모르는 fn · 텍스트 칸 min/max · fn 옆 key.unique)은 그대로. 폼에서 그 거절이 그 줄 밑에 뜨는지만
+게이트: 스켈레톤 시험(노드 모양) · 폼을 빌드한 dist 로 열어 take 레코드 하나 추가 → 왼쪽 글에 {from, into, fn} 이 그대로 · 왼쪽에 적은 레코드가 폼에 레코드로 그려짐(이름으로 뭉개지지 않음). 크롬 한 줄. 변이 하나(노드를 이름 목록으로 되돌림 → 레코드가 이름으로 그려져 빨강)
+
 # 🔴 [구현자] **파일 다시 읽기(Retry)가 PENDING 에서 안 돈다** (소유자 10-21 「파일 리플레이는 펜딩에서 안 도는데 · 외부 저장소 비활성 해두면 안 도나」, 총괄) — e53e11add «다음», aa8ff1af5 «앞»
 
 총괄이 코드로 읽은 것(재지 않음):
