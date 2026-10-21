@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **화면 검사기의 Chrome 이 OS 가 준 포트를 쓴다 — 두 판이 한 박스에서 서로의 Chrome 에 붙지 않음 (총괄, 2044f2c58)**
+>
+> ```
+> 누구     화면 검사기를 돌리는 레인(시험 도구만 바뀜, 제품 · 운영은 그대로)
+> 돌릴 것   git pull 뒤 평소대로 node client2/tests/screen_layout_harness.mjs [--mutate] [--only <화면>]
+> 뜻      «Chrome did not answer on its DevTools port - no port written in 15 s» -> Chrome 이 15 초 안에 못 섬(박스 부하) - 다시 돌림
+>          «… - port N, held by <프로세스> pid P» -> 그 포트를 쥔 것이 적혀 있음
+>          «the DevTools page on port N is not this run's: <url>» -> 남의 Chrome 에 붙을 뻔한 것을 멈춘 것(이 고침 뒤엔 나면 안 됨) - 총괄에 보고
+> 되돌리기  git revert 2044f2c58
+> ```
+>
+> ---
+>
 > ## [10-22] **체인 화면이 실패 사유를 문장째 — 규칙 · 받은/낸 행 · 단계 · 최근 실패 (소유자 「빨간 글씨 600 s 나오고 끝」, 총괄 903053c14, 5e5922c32 · dist 9a8fd9c43)**
 >
 > ```
