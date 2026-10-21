@@ -54,12 +54,12 @@
 | 4 | L+D+G | group_by 면 `keyed_rows` → `key_pages` (rp:521 · 525) · 아니면 `iter_pages` (rp:527) ⚠② | |
 | 5 | G+W | 쪽마다 EDIT 사건, 1,000 id 씩 (rp:563 · database.py:507) ⚠② | C: rp:566 (쪽마다) |
 | 6 | — | 워커가 1-1 의 2–18 로 돈다. 줄 열쇠는 run_id 하나 | |
-| 7 | L+D+R+W | 끝 스윕 `sweep_finished_replays` (rp:810): 런의 사건이 다 처리된 «뒤» `_gone_maps` → `_removal_batches` → `apply_chain_writes` (rp:734–835) ⚠⑤ | C: crud:5790 … |
+| 7 | L+D+R+W | 끝 스윕 `sweep_finished_replays` (rp:810): 런의 사건이 다 처리된 «뒤» `_gone_maps` → `_removal_batches` → `apply_chain_writes` (rp:734–835) ⚠⑤ — 런 단위라 «그룹당 커밋 하나»(3 절 ⑤)로는 안 접힌다 | C: crud:5790 … |
 | 8 | W | 집계 행 지움 (rp:842) | C: rp:843 |
 
 ### 1-3. 소급 rule_rows
 
-코드가 이 운영을 **은퇴**로 적어 두었다 — 아무도 큐에 넣지 않고, 옛 런 목록 때문에 등록만 남았다 (ret:1101).
+코드 주석이 이 운영을 **은퇴**로 적는다 — 「큐에 넣는 그룹이 없고, 옛 런 목록 때문에 등록만 남았다」 (ret:1101). 넣는 자리를 내가 세지는 않았다.
 돌면: 사건 uuid 로 outbox 읽기(L+D, ret:1157) → `_process_chain_transaction_group_sync` 그대로(1-1 의 8–15) → 끝 커밋 (ret:1179). 처리됨 표시는 없다.
 «one commit for the run» 은 거짓이다(묶음마다 crud:5790 커밋 · ret:1167 롤백은 그것을 못 되돌림) — 전수 표 3 에 이미 적었다.
 
