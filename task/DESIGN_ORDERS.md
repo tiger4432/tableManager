@@ -1,3 +1,7 @@
+# [구현자 B] **(4ee0a1946 넓힘) 첫 실패에서 멈춤은 통지를 쏘는 두 자리 모두 — 슬롯의 커밋 뒤 _dispatch_broadcasts 와 디스패처 스윕, 판단 함수 하나** (B 정정: 원인은 슬롯 인라인 통지 그룹당 ~50 건 × 거부 ~2 s 동안 줄이 «도는 중», 안 1, 총괄 10-21)
+- _dispatch_broadcasts: 첫 실패에서 그 배치의 남은 메시지는 안 쏘고 broadcast_at NULL 로 둠 -> 스윕의 표 단위 refresh 가 거둠(있는 길). 상태가 바뀔 때만 한 줄
+- 게이트: qh_board dead 판 편집당 «쓰기 -> 대기열 빔»이 stub 판과 같은 초 단위 · [Latency] notify 가 실패 한 번 꼴 · stub 판 그대로 · 변이(슬롯 자리만 끔 -> 다시 ~100 s)
+
 # [클라] **(Test run 화면) 결과는 팝업 — 시안 https://claude.ai/artifact/Xd9s2vXexU4hXrbYZc9ieN** (소유자 10-21 「테스트런 결과 시안 좀」 · 「팝업 띄워서 보여 주면 좋을 듯」, 총괄 시안 · 소유자 승인 10-21 「ㅇㅇ」)
 
 - 리플레이 배너의 Test run -> 팝업: 머리(규칙 · Draft · 이 규칙 한 걸음) · 수 칸 여덟 · 탭 셋(Went in · Came out · Will be written) · 바닥(실행 시각 · 초 · rolled back · Replay these rows 는 Draft 면 막힘 · Run again · Close)
