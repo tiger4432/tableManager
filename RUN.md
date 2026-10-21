@@ -8,7 +8,7 @@
 > 보이는 것  chain_worker.log «[Chain] a batch of line <줄> raised - its events wait as they were and run again: <사유>» 한 줄 -> 1 초 뒤 같은 사건으로 다시 돎
 >           전에는 «slot pid N ended (exit 1) before finishing line <줄> - N waiting event(s) set aside» 였음
 > 그대로    슬롯 기동 중 실패(맵퍼 import · DLL · 기동 때 DB 읽기)는 지금처럼 슬롯이 죽고 그 줄은 set aside -> rerun_set_aside
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert b7e92db37 -> 런처 재기동
 > ```
 >
 > ---
