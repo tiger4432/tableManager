@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **갤러리 행 × 열 판 — Rows by · Columns by (소유자 「갤러리는 매트릭스로」 · 「내일 새벽까지」, 총괄, df324363b · dist 676abddad)**
+>
+> ```
+> 무엇     메인 그리드 Gallery 에서 Columns by 를 고르면 묶음 목록이 행 × 열 판이 됨
+>          칸마다 행 수 · 그 행에서의 비율 · 썸네일 4 (Show 에서 9) · 행 합계 · 칸 누르면 그 칸 타일 + Filter grid to this cell
+> 돌릴 것   git pull 뒤 브라우저 새로고침 (클라만 바뀜, 서버 재기동 없음)
+> 확인     이미지 칸이 있는 표 -> 바닥줄 Gallery -> Rows by 에 칸 하나 · Columns by 에 칸 하나
+>          -> 판이 서고, 한 줄의 칸 수를 더하면 끝 열 수와 같음
+>          -> 칸을 누르면 판 아래에 그 칸 타일 · Filter grid to this cell 을 누르면 그리드 머리에 필터 칩 둘
+> 뜻      Columns by 가 안 보임 -> 옛 번들(새로고침 · 캐시 비우기)
+>          판이 안 서고 목록만 -> Columns by 가 (None)
+>          수는 그리드가 «받은 행»만 셈 -> 바에 «N of total loaded» 면 Load more 로 더 받음
+> 급할 때   Columns by 를 (None) 으로 -> 오늘 묶음 목록 그대로
+> 되돌리기  git revert 676abddad df324363b -> 브라우저 새로고침
+> ```
+>
+> ---
+>
 > ## [10-21] **체인 대기열 답에 «무슨 규칙이 몇 행을 받아 어디서 멈췄나» (총괄 3de34d292)** — git pull · 런처 재기동
 >
 > ```
