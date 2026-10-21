@@ -647,9 +647,19 @@ export function foldFilterChips() {
   const ends = all.map(chip => chip.getBoundingClientRect().right - box.left);
   // Under the cap the first chip always fits, so what is left to decide is whether the strip is
   // wide enough to read one in at all. Below that, `+N 필터` says more than a sliver of a chip.
-  const hidden = room < READABLE_CHIP_PX
+  let hidden = room < READABLE_CHIP_PX
     ? all.slice()
     : all.filter((chip, i) => ends[i] > room + 1);
+  // The «+N» button takes its room from the strip once it shows: what fits is measured again beside it (three filters
+  // set at once by the gallery's «Filter grid to this cell» left a second chip cut at its side, lead 3589216b9).
+  if (hidden.length) {
+    more.textContent = `+${unitText(hidden.length, 'filter')}`;
+    more.style.display = '';
+    const after = chips.getBoundingClientRect();
+    const barAfter = bar ? bar.getBoundingClientRect() : after;
+    const roomAfter = Math.max(0, Math.min(after.right, barAfter.right) - after.left);
+    hidden = roomAfter < READABLE_CHIP_PX ? all.slice() : all.filter((chip, i) => ends[i] > roomAfter + 1);
+  }
   hidden.forEach(chip => { chip.style.display = 'none'; });
   // Said, not swallowed: a filter that is hiding rows with nothing on screen to name it reads
   // as data that is GONE, and the next question gets asked of the table instead of the strip.

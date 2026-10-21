@@ -381,7 +381,7 @@ export class GalleryPart {
     head.append(this.el('span', 'gallery-open__mark'), this.el('span', 'gallery-open__label', `${open.line.label} · ${open.column.label}`),
       this.el('span', 'gallery-open__n', [WORDS.rows(open.cell.count), open.cell.without ? WORDS.without(open.cell.without) : ''].filter(Boolean).join(' · ')));
     if (this.deps.filterTo) {
-      const go = this.el('button', 'glass-page-btn gallery-open__filter', WORDS.filterTo);
+      const go = this.el('button', 'glass-page-btn ctl-small gallery-open__filter', WORDS.filterTo);
       go.type = 'button';
       const row = open.cell.rows[0];
       go.addEventListener('click', () => this.deps.filterTo([...rowsBy, columnBy].map((column) => ({ column, row }))));

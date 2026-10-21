@@ -181,7 +181,32 @@ const withPhotos = (a) => {
     attributes: { ...(n.attributes || {}), photo: Number(n.keys.x) % 2 ? [`d${n.keys.x}-${n.keys.y}-a`, `d${n.keys.x}-${n.keys.y}-b`] : `d${n.keys.x}-${n.keys.y}-a` },
     records: { ...(n.records || {}), photo: [{ column_type: 'image' }] } })) } };
 };
+// The main grid's gallery (lead 3589216b9): while its states run, dt_log is read with an image column «photo» - a picture on
+// every row but every seventh - and its rows and count narrowed by the grid's filters the way the server narrows them.
+const GALLERY = { on: false };
+const DT_LOG_ROWS = '/tables/dt_log/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true';
+const galleryAnswer = (u) => {
+  if (u.pathname === '/tables/dt_log/schema') {
+    const a = ANSWERS['/tables/dt_log/schema'];
+    const b = bodyOf(a);
+    return { ...a, body: { ...b, columns: [...b.columns.slice(0, -3), 'photo', ...b.columns.slice(-3)], column_types: { ...b.column_types, photo: 'image' } } };
+  }
+  if (u.pathname !== '/tables/dt_log/data' && u.pathname !== '/tables/dt_log/data/count') return null;
+  const a = ANSWERS[DT_LOG_ROWS];
+  const b = bodyOf(a);
+  const filters = JSON.parse(u.searchParams.get('filters') || '{}');
+  const valueOf = (row, col) => { const c = row.data && row.data[col]; return c && typeof c === 'object' ? c.value : c; };
+  const rows = b.data.map((row, i) => ({ ...row, data: { ...row.data, photo: { ...(row.data.c_bn || {}), value: i % 7 === 3 ? null : `photo/${i}.png` } } }))
+    .filter((row) => Object.entries(filters).every(([col, f]) => {
+      const v = valueOf(row, col);
+      if (f.type === 'blank') return v === null || v === undefined || String(v).trim() === '';
+      return f.type === 'equals' ? String(v) === String(f.filter) : true;
+    }));
+  if (u.pathname.endsWith('/count')) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: Object.keys(filters).length ? rows.length : bodyOf(ANSWERS['/tables/dt_log/data/count']).total } };
+  return { ...a, body: { ...b, data: rows } };
+};
 const answerOf = (u) => {
+  if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   for (const [p, body] of Object.entries(QUEUE)) if (u.pathname === p) return { status: 200, type: 'application/json', body };
   const a = ANSWERS[u.pathname + u.search];
   const got = a && a.same_as ? ANSWERS[a.same_as] : a || null;
@@ -589,6 +614,44 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rul
   for (const at of ['derive.join.take[1].fn', 'derive.join.take[2].fn']) if (words(at) !== want) return at + ' offers ' + words(at);
   const held = document.querySelector('select[data-value="derive.join.take[1].fn"]').value;
   return held === 'unique_concat' ? null : 'take[1].fn holds ' + held;
+})()` });
+// The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
+// lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
+// the grid's filter.
+CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'board adds up', at: 'gallery-board', expr: `(() => {
+  const grid = document.querySelector('#gallery-host .gallery-board__grid');
+  if (!grid) return 'no board drawn';
+  const lines = new Map();
+  for (const c of grid.querySelectorAll('.gallery-cell')) lines.set(c.dataset.line, (lines.get(c.dataset.line) || 0) + Number(c.querySelector('.gallery-cell__n').textContent.replace(/,/g, '')));
+  const totals = [...grid.querySelectorAll('.gallery-board__total')].map((n) => Number(n.textContent.replace(/,/g, '')));
+  const sums = [...lines.values()];
+  const held = Number(((document.querySelector('#gallery-host .gallery-count') || {}).textContent || '').replace(/,/g, '').match(/^\\d+/));
+  const cols = new Set([...grid.querySelectorAll('.gallery-cell')].map((c) => c.dataset.column)).size;
+  if (lines.size < 2 || cols < 4) return lines.size + ' lines, ' + cols + ' columns drawn';
+  if (sums.join() !== totals.join()) return 'cells add up to ' + sums.join(' · ') + ', totals ' + totals.join(' · ');
+  if (totals.reduce((a, b) => a + b, 0) !== held) return 'totals ' + totals.reduce((a, b) => a + b, 0) + ' of ' + held + ' rows held';
+  if (grid.querySelectorAll('.gallery-board__col').length !== cols + 1) return grid.querySelectorAll('.gallery-board__col').length + ' column heads for ' + cols + ' columns';
+  return null;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Gallery, a cell opened and a tile pressed', rule: 'opened cell tiles', at: 'gallery-open', expr: `(() => {
+  const words = ((document.querySelector('#gallery-host .gallery-open__n') || {}).textContent || '').replace(/,/g, '');
+  const m = words.match(/^(\\d+) rows?(?: · (\\d+) without image)?$/);
+  if (!m) return 'the opened head says «' + words + '»';
+  const want = Number(m[1]) - Number(m[2] || 0);
+  const scroll = document.querySelector('#gallery-host .gallery-scroll');
+  if (scroll) { scroll.scrollTop = scroll.scrollHeight; scroll.dispatchEvent(new Event('scroll')); }
+  const tiles = document.querySelectorAll('#gallery-host .gallery-tile').length;
+  const side = document.querySelector('#gallery-host .gallery-side');
+  if (tiles !== want && tiles < 12) return tiles + ' tiles for ' + want + ' rows with a picture';
+  if (!side || side.hidden) return 'no side panel after a tile pressed';
+  return null;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'filter set', at: 'filter-chip', expr: `(() => {
+  const chips = [...document.querySelectorAll('.filter-chip-label')].map((n) => n.textContent.toLowerCase());
+  for (const col of ['c_bn', 'core_lot']) if (!chips.some((t) => t.includes(col))) return 'no «' + col + '» filter on the grid: ' + JSON.stringify(chips);
+  const cells = document.querySelectorAll('#gallery-host .gallery-cell:not(.is-empty)').length;
+  if (cells !== 1) return cells + ' cells with rows after the grid was filtered to one';
+  return null;
 })()` });
 CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'retroactive-sub', expr: `(() => {
   const chips = [...document.querySelectorAll('#retroactive-sub .retro-toc')];
@@ -1145,7 +1208,10 @@ function screensLib(TOL) {
     const boxed = (e) => isControl(e) && !e.matches('textarea, input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"], input[type="color"], input[type="hidden"]')
       && !e.parentElement.closest('button, [role="button"]') && !e.closest('[class^="ag-"], [class*=" ag-"]')
       && !/^vertical/.test(css(e).writingMode) && drawsBox(e);
-    for (const b of all.filter((e) => isButton(e) && e.textContent.trim())) {
+    // A control that holds a picture (a gallery tile, a board cell) is a card: its height is its picture's and its words
+    // stand at its top or under it - neither the size of a word control nor its middle.
+    const card = (e) => !!e.querySelector('img, canvas');
+    for (const b of all.filter((e) => isButton(e) && e.textContent.trim() && !card(e))) {
       // a vertical pill (a left tray's axis) runs along its words - its height is its length, not its size
       if (/^vertical/.test(css(b).writingMode)) continue;
       const r = b.getBoundingClientRect();
@@ -1175,7 +1241,7 @@ function screensLib(TOL) {
       }
       return bottom > top ? { top, bottom } : null;
     };
-    for (const c of all.filter(boxed)) {
+    for (const c of all.filter((e) => boxed(e) && !card(e))) {
       const r = c.getBoundingClientRect();
       if (r.height < 4) continue;
       let off;
@@ -1204,13 +1270,13 @@ function screensLib(TOL) {
     };
     const layer = (e) => { for (let a = e.parentElement; a && a !== document.body; a = a.parentElement) if (/fixed|absolute/.test(css(a).position)) return a; return null; };
     const told = new Set();
-    for (const c of all.filter(boxed)) {
+    for (const c of all.filter((e) => boxed(e) && !card(e))) {
       const r = c.getBoundingClientRect();
       if (r.height < 4) continue;
       const at = lineOf(c, r);
       if (!at || told.has(at.bar)) continue;
       const mine = face(c);
-      const other = at.near.find((x) => x.control && boxed(x.el) && x.box.height >= 4 && layer(x.el) === layer(c) && Math.abs(face(x.el) - mine) > 1);
+      const other = at.near.find((x) => x.control && boxed(x.el) && !card(x.el) && x.box.height >= 4 && layer(x.el) === layer(c) && Math.abs(face(x.el) - mine) > 1);
       if (!other) continue;
       told.add(at.bar);
       lines.push({ rule: 'heights', path: pathOf(c), what: `«${label(c)}» ${Math.round(mine)} px high beside «${label(other.el)}» ${Math.round(face(other.el))} px on one line` });
@@ -1364,6 +1430,10 @@ const until = async (chrome, test, most = 10000) => {
   if (!held) waitsRunOut.push(`waited ${most} ms and it never held: ${test}`);
   return held;
 };
+// A box of the gallery's bar by its word, set to a value.
+const GALLERY_PICK = (word, value) => `(() => { const l = [...document.querySelectorAll('#gallery-host .gallery-pick')]
+  .find((p) => (p.querySelector('.gallery-pick__word') || {}).textContent === ${JSON.stringify(word)}); const s = l && l.querySelector('select');
+  if (!s) return false; s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`;
 const GRID_LOADED = `/^Loaded/.test((document.querySelector('#performance-log') || {}).textContent || '')`;
 const press = (c, words) => evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === ${JSON.stringify(words)} && !x.disabled);
   if (b) b.click(); return Boolean(b); })()`);
@@ -1683,6 +1753,53 @@ const DRIVE = {
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
+    // The gallery's board (lead 3589216b9) on dt_log with its picture column: Rows by c_bn, Columns by core_lot (12 values).
+    ['Gallery, rows by columns', async (c, log) => {
+      GALLERY.on = true;
+      // each size starts from no choice kept (+ Column below would add a box per size)
+      await evaluate(c, "window.__galleryFrom = (document.getElementById('table-select') || {}).value; try { localStorage.removeItem('gallery:dt_log'); } catch (e) {} true");
+      for (const name of ['ledger_events', 'dt_log']) {
+        await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === ${JSON.stringify(name)}) return false;
+          sel.value = ${JSON.stringify(name)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await sleep(900);
+        await settle(c, log);
+        await until(c, GRID_LOADED);
+      }
+      await until(c, "!(document.getElementById('gallery-toggle-btn') || {}).hidden");
+      await evaluate(c, "document.getElementById('gallery-toggle-btn').click(); true");
+      await sleep(400);
+      await evaluate(c, GALLERY_PICK('Rows by', 'c_bn'));
+      await evaluate(c, GALLERY_PICK('Columns by', 'core_lot'));
+      await sleep(800);
+    }],
+    ['Gallery, nine a cell', (c) => evaluate(c, GALLERY_PICK('Show', '9')).then(() => sleep(800))],
+    ['Gallery, a cell opened and a tile pressed', async (c) => {
+      await evaluate(c, "(() => { const cell = document.querySelectorAll('#gallery-host .gallery-cell:not(.is-empty)')[1]; if (cell) cell.click(); return Boolean(cell); })()");
+      await sleep(500);
+      await evaluate(c, "(() => { const t = document.querySelector('#gallery-host .gallery-tile'); if (t) t.click(); return Boolean(t); })()");
+      await sleep(600);
+    }],
+    ['Gallery, + Column', (c) => evaluate(c, "(() => { const b = document.querySelector('#gallery-host .gallery-add'); if (b) b.click(); return Boolean(b); })()").then(() => sleep(800))],
+    ['Gallery, filtered to a cell', async (c, log) => {
+      await evaluate(c, "(() => { const b = document.querySelector('#gallery-host .gallery-open__filter'); if (b) b.click(); return Boolean(b); })()");
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      await sleep(600);
+    }],
+    ['Gallery left, the first table again', async (c, log) => {
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__galleryFrom) return false;
+        sel.value = window.__galleryFrom === 'dt_log' ? 'ledger_events' : window.__galleryFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      GALLERY.on = false;
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === window.__galleryFrom) return true;
+        sel.value = window.__galleryFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
     // The Queue tab open for one beat of its poll and a little more.
     ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
       .then(() => sleep(QUEUE_POLL_MS + 1500))],
@@ -1954,6 +2071,14 @@ const MUTANTS = [
     file: 'src/style.css', edits: [['70px 62px 96px 96px 110px minmax(72px, 1fr)', '70px 62px 74px 96px 110px minmax(72px, 1fr)']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',
     file: 'src/style.css', edits: [['max(96px, var(--queue-state-w, 96px))', '96px']] },
+  // The gallery's board (lead 3589216b9): it rolls inside its own box; a shut gallery is not laid out; the chip strip's
+  // fold measured again once its «+N» shows.
+  { name: 'the board sets the page width', entry: 'index.html', rule: 'overflow', at: 'page',
+    file: 'src/gallery.css', edits: [['max-height: 60%; overflow: auto; contain: inline-size;', 'max-height: 60%; overflow: auto;']] },
+  { name: 'a shut gallery laid out under the grid', entry: 'index.html', rule: 'clip', at: '', says: /px past its top or bottom: «AssyManager/,
+    file: 'src/gallery.css', edits: [['.gallery-host[hidden] { display: none; }', '']] },
+  { name: 'the chip fold measured before its +N shows', entry: 'index.html', rule: 'clip', at: 'filter-chips',
+    file: 'src/grid.js', edits: [['  if (hidden.length) {\n    more.textContent', '  if (false) {\n    more.textContent']] },
   { name: 'the why beside its tag, cut at the cell', entry: 'index.html', rule: 'clip', at: 'queue-line-state-why',
     file: 'src/base.css', edits: [
       [':where(.queue-line-state) { display: flex; flex-direction: column; align-items: flex-start;', ':where(.queue-line-state) { display: flex; align-items: center;'],
