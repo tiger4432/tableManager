@@ -7,7 +7,7 @@
 > 확인     chain_worker.log 그룹 줄의 «row build N s» 가 전보다 작음 — 맵 50 × 400 편집 1,000 행 4.1 -> 3.3 s (이 박스)
 > 뜻      그룹 전체는 여전히 1,000 행 약 10 s — 목표 5 s 는 이것으로 안 닿음. 남은 몫(prefetch 2.5 s · row build 3.3 s)은 총괄 판정 뒤
 > 급할 때   끄는 칸 없음 — 되돌리기로
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert e6c52738f -> 런처 재기동
 > ```
 >
 > ---
