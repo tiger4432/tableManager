@@ -525,7 +525,7 @@ def held_back(rule, handed) -> tuple:
     gates = gates_of(rule)
     if not any(gates.values()):
         return handed, {}
-    reads_leaving = bool((rule or {}).get(chain_bindings.ALLOW_DELETE_TRIGGER_KEY))
+    reads_leaving = chain_bindings.takes_deletions(rule)
     kept, missed, left = [], {gate: collections.Counter() for gate in gates}, 0
     for payload in handed:
         data = payload.get("data") if isinstance(payload, dict) else None

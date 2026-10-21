@@ -1172,7 +1172,7 @@ def _is_trigger_event(event, rule=None) -> bool:
        비우나」에 답한다 — 같은 낱말 두 물음이라 상수를 빌려 쓰면 DELETE 가 조용히 체인을 돌린다.
     """
     if event.event_type == "DELETE":
-        return bool((rule or {}).get(chain_bindings.ALLOW_DELETE_TRIGGER_KEY))
+        return chain_bindings.takes_deletions(rule)
     return event.event_type in ("CREATE", "EDIT")
 
 

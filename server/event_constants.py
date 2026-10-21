@@ -933,6 +933,17 @@ def old_values_of(payload) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def key_left(payload, columns):
+    """The key this row LEFT on `columns` - its old values over its data - or None when the event changed none of them
+    (총괄 옛 키: an edit moved it off, a deletion took it). Raw values, one tuple."""
+    old = old_values_of(payload)
+    if not old.keys() & set(columns):
+        return None
+    data = payload.get("data") or {}
+    return tuple(old[column] if column in old else (
+        data[column].get("value") if isinstance(data.get(column), dict) else data.get(column)) for column in columns)
+
+
 def is_collapsed_payload(payload) -> bool:
     """True if this outbox payload NAMES rows instead of CARRYING one row's values.
 

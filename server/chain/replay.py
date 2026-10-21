@@ -646,11 +646,6 @@ TALLY = ""
 _WHOLE = {}     # run_id -> the rule it replays whole, or "" - a run's params never change
 
 
-def removes_whole_maps(rule) -> bool:
-    """A rule whose batches answer for whole maps or jobs - the two flags `mapper_sdk._removal_batches` reads."""
-    return bool((rule or {}).get("allow_replace_map") or (rule or {}).get("allow_retraction"))
-
-
 def whole_replay_of(db, run_id):
     """The rule run `run_id` replays WHOLE - a chain_replay with no row_ids, business_keys or limit - or None. Only
     such a run sweeps: a selection or a limit leaves maps it never asked (총괄 c67aa93bb ㄴ)."""
@@ -679,8 +674,10 @@ def record_named(db, run_id, rule, events, batches):
     """In the group's own transaction: the maps or jobs `batches` (the rule's normalized scoped batches) named and the
     staged rows of `events` it ran on - for a whole replay of this rule, nothing for any other run. A map named
     with nothing written is named too: its batch already emptied it."""
+    import chain_bindings
+
     name = (rule or {}).get("name")
-    if not removes_whole_maps(rule) or whole_replay_of(db, run_id) != name:
+    if not chain_bindings.removes_whole_maps(rule) or whole_replay_of(db, run_id) != name:
         return
     from database import models
     from utils.payload_helper import get_payload_dict
@@ -707,8 +704,10 @@ def record_named(db, run_id, rule, events, batches):
 
 def open_tally(db, run_id, rule):
     """Before a whole replay stages its first page: the tally its groups count into. None, nothing is swept."""
+    import chain_bindings
+
     name = (rule or {}).get("name")
-    if not removes_whole_maps(rule) or whole_replay_of(db, run_id) != name:
+    if not chain_bindings.removes_whole_maps(rule) or whole_replay_of(db, run_id) != name:
         return
     from database import models
 

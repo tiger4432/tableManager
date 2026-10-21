@@ -608,8 +608,21 @@ RUN_IN_VALUES = (RUN_IN_CHAIN, RUN_IN_OPERATION)
 #: (`event_constants.trim_events_to_row_budget`), so a rule of 1 runs one text a group and a
 #: wrong answer fails that text only (총괄 72f419bd1). Not written: no cut of its own.
 ROWS_PER_RUN_KEY = "rows_per_run"
-#: A DELETE wakes this rule - one that reads the deleted rows' old values (총괄 옛 키 ㄱ). Not written: it does not.
+#: A DELETE wakes this rule - one that reads the deleted rows' old values (총괄 옛 키 ㄱ). Not written: it does not -
+#: unless it answers for whole maps (`takes_deletions`).
 ALLOW_DELETE_TRIGGER_KEY = "allow_delete_trigger"
+
+
+def removes_whole_maps(rule) -> bool:
+    """A rule whose batches answer for whole maps or jobs - `allow_replace_map` · `allow_retraction`."""
+    rule = rule or {}
+    return bool(rule.get("allow_replace_map") or rule.get("allow_retraction"))
+
+
+def takes_deletions(rule) -> bool:
+    """A deleted source row wakes this rule: it declares `allow_delete_trigger`, or it answers for whole maps - a map a
+    row left is that map changed (소유자 10-21 「자동 회수 안 됨?」, 총괄 c67aa93bb ㄱ-a)."""
+    return bool((rule or {}).get(ALLOW_DELETE_TRIGGER_KEY)) or removes_whole_maps(rule)
 #: Cells the loader still reads, so an old declaration loads, and the form no longer offers.
 RETIRED_CELLS = (RUN_IN_KEY,)
 

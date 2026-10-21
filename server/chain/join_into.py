@@ -263,16 +263,8 @@ def old_keys(rule: dict, payload) -> list:
     if not gathers(spec) or str((rule or {}).get("trigger_table") or "") != str(spec.get("right_table") or ""):
         return []
     columns = [right for _left, right, _fold in _pairs(spec)]
-    out = []
-    for item in payload if isinstance(payload, list) else [payload]:
-        old = event_constants.old_values_of(item)
-        if not old.keys() & set(columns):
-            continue
-        data = (item or {}).get("data") or {}
-        out.append(tuple(old[column] if column in old else (
-            data[column].get("value") if isinstance(data.get(column), dict) else data.get(column))
-            for column in columns))
-    return list(dict.fromkeys(out))
+    out = (event_constants.key_left(item or {}, columns) for item in (payload if isinstance(payload, list) else [payload]))
+    return list(dict.fromkeys(key for key in out if key is not None))
 
 
 def take_targets(rule) -> list:

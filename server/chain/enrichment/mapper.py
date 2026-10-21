@@ -389,10 +389,9 @@ def map_enrichment_dedup(db, payloads, rule=None):
     skipped = 0
     for p in payloads:
         data = p.get("data") or {}
-        old = event_constants.old_values_of(p)
-        if old.keys() & set(decision_key):
-            was = list(_clean_key(source_table, decision_key,
-                                  [old[k] if k in old else _cell_value(data, k) for k in decision_key]))
+        was = event_constants.key_left(p, decision_key)
+        if was is not None:
+            was = list(_clean_key(source_table, decision_key, list(was)))
             if not enrichment.config.key_is_wholly_blank(enrich, dict(zip(decision_key, was))):
                 left.add(tuple(was))
                 key_raw_values.setdefault(tuple(was), raw_of(was))
