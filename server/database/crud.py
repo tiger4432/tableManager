@@ -696,12 +696,15 @@ SOURCE_PRIORITY = {
 USER_SOURCE = "user"
 
 
-def can_mean_emptied(source_name: str) -> bool:
+def can_mean_emptied(source_name: str, replaces_map: bool = False) -> bool:
     """Can this writer MEAN 「I emptied this cell」? (S-243, 판정 405)
 
     🔴 TWO WRITERS CAN, AND THE SET IS CLOSED BY CONSTRUCTION. A person clearing a cell
     (rank 0) and the chain asserting that a matched right row IS empty (판정 f3c04dee).
-    Everything else that arrives blank means 「아직 입력하지 않은 것」 and makes no layer.
+    Everything else that arrives blank means 「아직 입력하지 않은 것」 and makes no layer -
+    except a write that REPLACES A MAP WHOLE (`replaces_map`: a `replace_map` batch, a file of a table declaring
+    `allow_replace_map`): its rows are its statement of the map, so a cell it names blank is emptied, as the chain's
+    replace already did (총괄 10-21, 소유자 「기존 값 그대로 있음」). A cell the file does not name is not in its rows.
 
     🔴 POSITIVELY, NEVER BY BLACKLIST - the reason is twenty lines above this one: file
     parsers write under the INGESTED FILENAME, so the set of automatic source names is
@@ -712,7 +715,7 @@ def can_mean_emptied(source_name: str) -> bool:
     already stored (S-243-b). Two spellings of 「who may empty a cell」 is how the counting
     and the writing come to disagree about what they are counting.
     """
-    return layer_ranks_as(source_name) in (USER_SOURCE, CHAIN_SOURCE)
+    return replaces_map or layer_ranks_as(source_name) in (USER_SOURCE, CHAIN_SOURCE)
 
 
 def merged_layer_name(name: str, tag: str) -> str:
@@ -3838,7 +3841,9 @@ def apply_row_update_internal(
     # [file-layer fold] Per-batch accumulator of `(table, row, column, source)` layers a file
     # write made redundant (`file_layer_fold`). None = do not fold.
     cell_sources_to_delete: set = None,
-    plan: dict = None
+    plan: dict = None,
+    # The batch replaces a map whole (`batch.replace_map`): a blank cell it names empties it (`can_mean_emptied`).
+    replaces_map: bool = False
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     # The three graph-sync names left with their branch on 2026-08-31. They stay OUT of
@@ -3964,7 +3969,7 @@ def apply_row_update_internal(
         # ⚠️ AND THE EXISTING LAYER IS LEFT ALONE, not deleted. 「Not entered」 is not
         # 「withdraw what you said before」 - so yesterday's value stays, and removing it is
         # the business of a person, of `withdraw_source` (R2), or of `replace_map`.
-        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name):
+        if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map):
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
                                      col_name, DROP_ABSENT_NOT_WRITTEN)
@@ -5594,6 +5599,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                         batch_now=batch_now,
                         cell_sources_to_delete=cell_sources_to_delete,
                         plan=plan,
+                        replaces_map=bool(batch.replace_map)
                     )
                     prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                     unique_results[row.row_id] = (row, is_new or prev_is_new)
