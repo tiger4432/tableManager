@@ -323,6 +323,7 @@
 
 ### 어드민 화면
 
+- 2026-10-21 [표 설정의 칼럼 타입은 닫힌 목록에서 고른다 · 체인 규칙 저장 거절이 칸을 이름 댄다](#2026-10-21--표-설정의-칼럼-타입은-닫힌-목록에서-고른다--체인-규칙-저장-거절이-칸을-이름-댄다) — 보는 곳 Tables 의 column_types 칸 · Chain 의 거절 문장
 - 2026-10-21 [선언 폼 D — 표 설정 · 체인 규칙 · 원장을 한 폼으로, 원문은 왼쪽](#2026-10-21--선언-폼-d--표-설정--체인-규칙--원장을-한-폼으로-원문은-왼쪽) — 누르는 곳 어드민 Tables · Chain 탭 · Ontology Explorer 의 Declaration 탭
 - 2026-10-20 [파일 적재 화면 — 표별 · 폴더 묶음 · 적재 결과 · 실패 사유](#2026-10-20--파일-적재-화면--표별--폴더-묶음--적재-결과--실패-사유) — 누르는 곳 어드민 File Ingestion Logs 머리의 «Open by table»
 - 2026-10-20 [파일 적재 목록에 그 파일의 폴더](#2026-10-20--파일-적재-목록에-그-파일의-폴더) — 누르는 곳 어드민 File Ingestion 탭 · Auto Update 탭 실패 목록
@@ -460,6 +461,19 @@
 - 2026-09-29 ~ 10-01 [이번 주 고친 것 — 소유자가 신고한 화면](#2026-09-29--10-01--이번-주-고친-것--소유자가-신고한-화면)
 
 ---
+
+## 2026-10-21 · 표 설정의 칼럼 타입은 닫힌 목록에서 고른다 · 체인 규칙 저장 거절이 칸을 이름 댄다
+
+- **무엇** — 표 설정의 `column_types` 값이 `string · number · datetime · image` 넷 중 하나로 닫혔습니다. 모르는 낱말은 지금까지 거절 없이 글자 칸으로 지어졌습니다. 체인 규칙을 저장하다 거절되면 그 거절이 «어느 칸»인지까지 말해서, 폼이 그 칸 옆에 문장을 세웁니다.
+- **선언** — 목록은 코드 한 곳(`models.COLUMN_TYPES`)입니다. 모델이 칼럼을 짓는 두 자리 · 표 저장 관문 · 표 설정 스켈레톤의 고르개가 같은 목록을 읽습니다. 운영자가 적을 것은 없습니다.
+- **바뀐 동작**
+  - 표 설정 창의 `column_types` 칸이 넷 중 하나를 고르는 칸으로 그려집니다.
+  - 목록 밖 낱말을 저장하면 거절 — code `column_type_unknown`, path `tables.<표>.column_types.<칸>`, 문장 «column_types.<칸> "<낱말>" - one of string · number · datetime · image». 파일은 그대로입니다. 저장하는 그 표만 봅니다 — 다른 표의 옛 낱말은 이 저장을 막지 않습니다. 부팅은 그대로 읽습니다.
+  - 체인 규칙 저장 거절의 path 가 `rules.<규칙>` 에서 칸까지 내려갑니다 — `on.table` · `key.columns` · `derive.kind` · `into.read` · `derive.join.right_table` · `derive.join.blank` · `derive.join.take.<칸>.fn` · `key.unique` · `derive.decide` · `on.columns` · 예/아니오 칸 이름.
+  - 샘플 `lot_slot_wafer` 의 여섯 칸 `TEXT` → `string`.
+- **보는 곳** — 어드민 Tables 와 Chain 탭의 폼.
+- **필요한 조건** — git pull · 런처 재기동. 운영 `table_config.json` 에 넷 밖 낱말이 있는 표는 그 표를 다음에 저장할 때 고칩니다.
+- **자세히** — 시험 `test_table_registration_is_in_the_product.py` · `test_a_chain_rule_refusal_names_its_cell.py` · RUN.md 같은 날 절.
 
 ## 2026-10-21 · 에이전트 걷기 — 물음 한 행을 적으면 LLM 이 홉마다 골라 걷고, 걸은 길과 답이 표에 남는다 · 뜻 표
 

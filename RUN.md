@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **표 설정의 칼럼 타입은 닫힌 목록 · 체인 규칙 저장 거절이 칸을 이름 댐 (총괄 71044b745 넷째 묶음)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     table_config 의 column_types 값은 string · number · datetime · image 넷 중 하나 — 표 설정 창이 그 넷으로 고르게 그림
+>          목록 밖 낱말을 저장하면 거절: code column_type_unknown, path tables.<표>.column_types.<칸>, 그 칸 옆에 문장
+>          체인 규칙 저장 거절의 path 가 칸까지: rules.<규칙>.on.table · .key.columns · .derive.kind · .derive.join.blank …
+>          샘플 table_config 의 lot_slot_wafer 여섯 칸 TEXT -> string (지금도 글자 칸이라 동작은 같음)
+> 확인     어드민 Tables -> 표 하나 -> column_types 칸이 고르개 넷
+>          원문 상자에 "slot": "not_a_type" 로 적고 Save -> slot 줄 옆 «column_types.slot "not_a_type" - one of string · number · datetime · image»
+> 뜻      column_type_unknown -> 그 칸의 낱말을 넷 중 하나로 고침. 부팅은 그대로 읽음(옛 낱말은 글자 칸), 거절은 «저장하는 그 표»에만
+>          운영 table_config 에 TEXT 같은 다른 낱말이 있는 표는 다음에 그 표를 저장할 때 거절됨 — string 으로 고쳐 저장
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-21] **선언 폼 D — 표 설정 · 체인 규칙 · 원장을 한 폼으로, 원문은 왼쪽 (총괄 지시, 소유자 10-20, 43e97e151)**
 >
 > ```
