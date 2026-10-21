@@ -205,7 +205,7 @@ export function chainStateCell(doc, chainState, slotPid = null) {
   cell.appendChild(tag);
   const why = chainStateWhy(chainState);
   if (why) {
-    const said = line(doc, 'meta queue-line-state-why', why);
+    const said = line(doc, 'meta queue-line-state-why reason-lines', why);
     said.setAttribute('title', why);
     cell.appendChild(said);
   }

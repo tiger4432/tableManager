@@ -1288,7 +1288,7 @@ const FLOORS = new Map([
   ['run_lines_harness.mjs', 24],
   // New with lead e573a6edf · 2f2a2f570: the failure section folds to one line per (table · kind · day).
   // Floor is the count it reports on the commit that introduces it.
-  ['failure_summary_harness.mjs', 28],
+  ['failure_summary_harness.mjs', 32],
   // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
   // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
   // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of

@@ -241,6 +241,9 @@ export class OutboxQueuePanel {
 
       const state = this._cell('queue-state', '');
       state.appendChild(chainStateCell(this.doc, row.chainState, row.slotPid));
+      // The State column is as wide as its widest tag, so a long name in the server's why breaks inside it on purpose.
+      const why = state.querySelector('.queue-line-state-why');
+      if (why) why.setAttribute('data-wrap-ok', '');
       line.appendChild(state);
 
       line.appendChild(this._rulesCell(row.rules));

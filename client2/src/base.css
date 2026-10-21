@@ -304,4 +304,7 @@
    under it, wrapped inside the cell so it reads to the end. Beside the tag it was cut to a letter in the grid's
    State column (lead 10-08: the why is what the owner reads there). */
 :where(.queue-line-state) { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
-:where(.queue-line-state-why) { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+/* A server sentence - a state's why, a failure's reason - wrapped to three lines at most, its whole text in its
+   title (lead 10-21, 903053c14: the admin table's one line holds for every cell but these). */
+:where(.reason-lines) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+  overflow: hidden; white-space: normal; overflow-wrap: anywhere; min-width: 0; }

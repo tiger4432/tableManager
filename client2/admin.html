@@ -276,9 +276,8 @@
     /* px 고정 폭 없음 — Tables 칸이 남는 폭, 나머지는 내용 폭. */
     .chain-queue-table .table-header th,
     .chain-queue-table .table-row td { white-space: nowrap; }
-    /* The state's why stays on one line here like every other cell: allowed to wrap, Tables took the width and
-       the why folded into 71px (base.css wraps it for the grid's fixed State column). */
-    .chain-queue-table .queue-line-state-why { white-space: nowrap; }
+    /* A why here widens its column to its longest word; the grid's narrow State column breaks one (base.css). */
+    .chain-queue-table .queue-line-state-why { overflow-wrap: break-word; }
     .chain-queue-table [data-col="rows"] { text-align: right; }
     /* 13 = 캐논 h6 (토큰 없음, 위와 같은 사정). */
     .chain-queue-table .table-row td[data-col="tx"] { font-family: var(--font-mono); font-size: var(--fs-button); }
@@ -1623,6 +1622,8 @@
       border-bottom: 1px solid var(--border); padding: var(--space-2) var(--space-3); cursor: pointer; }
     .fail-summary__line:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
     .fail-summary__line.is-open { font-weight: 600; }
+    .fail-summary__line:has(+ .fail-summary__reason) { border-bottom: 0; }
+    .fail-summary__reason { padding: 0 var(--space-3) var(--space-2); border-bottom: 1px solid var(--border); }
     .fail-summary__rows { padding: var(--space-2) 0 var(--space-3) var(--space-3); }
     .run-line { display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(calc(var(--space-6) * 4), calc(var(--space-6) * 6))
