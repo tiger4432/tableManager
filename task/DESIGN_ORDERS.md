@@ -1,3 +1,13 @@
+# 🔴 [구현자] **파일 다시 읽기(Retry)가 PENDING 에서 안 돈다** (소유자 10-21 「파일 리플레이는 펜딩에서 안 도는데 · 외부 저장소 비활성 해두면 안 도나」, 총괄) — e53e11add «다음», aa8ff1af5 «앞»
+
+총괄이 코드로 읽은 것(재지 않음):
+- `run_watcher.pending_retries` 는 PENDING_RETRY 를 소스의 enabled 와 무관하게 전부 집는다. `process_archived_file_sync` 에도 enabled 를 보는 줄이 없다 — 「끄면 안 돈다」는 코드에서 못 찾았다
+- 대신 다시 읽기를 도는 스레드 «하나»(`poll_pending_retries`)가 한 바퀴에 차례로: 리로드 · `hear_changed_readings` · `reclaim_stranded_claims` · 외장 설정이 바뀌면 `refresh_external_sources` · 그다음에야 PENDING_RETRY 를 하나씩(`get_workspace_serial_lock` 을 잡고). 앞의 어느 하나가 길면(외장 공유 폴더 훑기 · 4492b8813 의 표 하나 훑기 · 같은 작업 공간 잠금을 쥔 큰 훑기) 다시 읽기는 그만큼 선다. 소유자가 외장을 끈 «그때» refresh 가 이 스레드에서 돈다
+- 운영이 4492b8813 이후인지는 모른다 — 두 판(전 · 후) 다 잰다
+1. 재현: 진짜 와처 · 스크래치. 표 하나에 Retry N 개를 두고 (가) 그냥 (나) 그 표의 외장 소스를 끈 직후 (다) 큰 외장 훑기가 같은 작업 공간 잠금을 쥔 동안 (라) 표 읽기가 바뀐 직후 — 각각 PENDING_RETRY → 끝까지 걸린 초 · 그동안 그 스레드가 어디 서 있었나(py-spy 또는 줄). 끈 외장 소스의 파일은 Retry 가 «읽나 · 거절하나 · 서나» — 거절이면 사유가 화면에 보이나
+2. 원인 한 줄 + 안 셋(무엇 · 위험 · 크기) 보고 «먼저». 방향 후보(총괄): 다시 읽기를 앞의 일과 «같은 스레드 차례»에서 떼는 것 · 끈 소스의 Retry 는 세우지 말고 사유로 끝냄. 새 큐 · 새 스레드 종류를 만들기 전에 있는 문(페이싱된 별도 작업)부터
+지킬 것: 운영 수를 박스로 말하지 않음. 소유자께 확인을 부탁하지 않음
+
 # [구현자] **설정 와처가 supervisor_status.json 바뀜을 계속 «설정 바뀜»으로 찍는다** (소유자 10-21 「supervisor.json 변경되어서 컨피그 워처 돈다고 계속 로그 뜨는데」, 총괄) — a-blankmap 착지 «다음», aa8ff1af5 «앞» (작다)
 
 원인(총괄이 코드로 읽음): `config_watcher._name_of` 가 config 폴더 맨 위의 .json 이면 «무엇이든» 이름으로 돌려준다. 프로세스가 스스로 다시 쓰는 상태 파일(supervisor_status.json · scheduler_status.json)도 그래서 `_apply` 까지 가 «[Config] … changed - read again in this process» 를 찍고 `_GEN` 을 올린다. ROWS 에 없으니 하는 일은 그것뿐이다
