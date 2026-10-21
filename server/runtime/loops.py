@@ -38,6 +38,7 @@ LOOPS = (
     # (loop, process, board, when)
     ("web", "web", "1", ALWAYS),
     ("watcher", "watcher", "2", ALWAYS),
+    ("sources", "watcher", "2-a", ALWAYS),          # its sources, sweep, fill and retries (총괄 10-21, the file screen)
     ("chain", "chain", "3", ALWAYS),
     ("outbox_purge", "chain", "3-a", ALWAYS),
     ("listen", "chain", "3-b", ALWAYS),

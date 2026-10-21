@@ -536,6 +536,12 @@ def poll_pending_retries():
                 except Exception as refresh_error:                     # noqa: BLE001 - the retries below go on
                     logger.warning("[Watcher] the external sources were not read again: %s", told(refresh_error))
             pending_logs = pending_retries(db)
+            if workspace_watcher is not None:
+                # the retries waiting, on the watcher's «sources» lap - counted only when a turn's cap is full
+                workspace_watcher.retry_waiting = (len(pending_logs) if len(pending_logs) < reread.max_files()
+                                                   else db.query(models.FileIngestionLog).filter(
+                                                       models.FileIngestionLog.status == "PENDING_RETRY").count())
+                workspace_watcher.record_state_lap()
 
             for log in pending_logs:
                 logger.info(f"Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")

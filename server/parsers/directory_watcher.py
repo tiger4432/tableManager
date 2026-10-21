@@ -1118,7 +1118,17 @@ _READ_FILES_FILL_LOCK = threading.Lock()
 def start_read_files_fill(marker: str):
     """Stamp the rows from before the checklist as the sweeps look - until `marker` is written."""
     with _READ_FILES_FILL_LOCK:
-        _READ_FILES_FILL.update(marker=marker, held=False, said={"stamped": set(), "failed": set(), "changed": set()})
+        _READ_FILES_FILL.update(marker=marker, held=False, said={"stamped": set(), "failed": set(), "changed": set()},
+                                line=None)
+
+
+def read_files_fill_said():
+    """The fill as the watcher's «sources» lap says it - running, and its last line (the log's words) - or None when it
+    did not run in this process (its marker was there at the start)."""
+    with _READ_FILES_FILL_LOCK:
+        if _READ_FILES_FILL["marker"] is None and not _READ_FILES_FILL.get("line"):
+            return None
+        return {"running": _READ_FILES_FILL["marker"] is not None, "line": _READ_FILES_FILL.get("line")}
 
 
 def finish_read_files_fill(reached_all: bool):
@@ -1134,12 +1144,14 @@ def finish_read_files_fill(reached_all: bool):
             line = ("[Watcher] read files stamped %d so far - the next sweep goes on (%s)"
                     % (said["stamped"], "a batch was not stamped" if held else "a source was not reached"))
             logger.warning(line)
+            _READ_FILES_FILL["line"] = line
             return line
         with open(marker, "w", encoding="utf-8") as handle:
             handle.write(datetime.now().astimezone().isoformat())
         _READ_FILES_FILL["marker"] = None
-    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d)"
-            % (said["stamped"], said["failed"] + said["changed"], said["failed"], said["changed"]))
+        line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d)"
+                % (said["stamped"], said["failed"] + said["changed"], said["failed"], said["changed"]))
+        _READ_FILES_FILL["line"] = line
     logger.info(line)
     return line
 
@@ -4182,6 +4194,11 @@ class WorkspaceWatcher:
         self._external_sweep_lock = threading.Lock()
         self._external_availability = {}
         self._external_unmatched_said = set()       # source ids told «none matched» while that lasts
+        # the «sources» lap (record_state_lap): the sentences the sources were refused with, the last sweep's words,
+        # the PENDING_RETRY rows the retry poller last counted, when this process started
+        self._external_refused, self._sweep_said, self.retry_waiting = [], None, None
+        self._started_at = time.time()
+        self._lap_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._periodic_sweep_thread = None
         self._subfolder_recheck_thread = None
@@ -4275,8 +4292,9 @@ class WorkspaceWatcher:
             logger.info(
                 f"External sources declared: {len(raw_specs)} ({disabled} disabled).")
 
-        for error in errors:
-            logger.error(f"External source config rejected: {error}")
+        refused = [f"External source config rejected: {error}" for error in errors]
+        for sentence in refused:
+            logger.error(sentence)
 
         # 🔴 [총괄 10-21, 소유자 「외부 저장소 별로 끄기」 · 「받는 파일을 바꿨는데 voids.json 이 계속 돎」] A binding
         #    switched off, removed or changed (path · glob/filename · parser) is retired here - no restart: its events
@@ -4309,10 +4327,46 @@ class WorkspaceWatcher:
                 self._try_schedule_external(target)
                 added.append(source_id)
             except Exception as e:
-                logger.error(
-                    f"External source registration failed for {spec['root']} -> "
-                    f"{spec['table_name']}: {told(e)}")
+                refused.append(f"External source registration failed for {spec['root']} -> "
+                               f"{spec['table_name']}: {told(e)}")
+                logger.error(refused[-1])
+        self._external_refused = refused
+        self.record_state_lap()
         return added
+
+    def record_state_lap(self):
+        """«sources» on the watcher's heartbeat (총괄 10-21 - the file screen's state reads it through /runtime): each
+        registered source and whether its root was reached, the sentences sources were refused with, the last sweep's
+        words, the read-files fill, the retries waiting, when the process started - what it already holds, nothing
+        measured for it. 🔴 An observer: a failure here is one line and nothing else stops."""
+        try:
+            with self._lap_lock:
+                heartbeat.record_lap(
+                    HEARTBEAT_NAME, "sources", started_at=round(self._started_at, 3),
+                    sources={source_id: {"table": target["spec"]["table_name"], "root": target["spec"]["root"],
+                                         "reachable": self._external_availability.get(source_id)}
+                             for source_id, target in list(self.external_targets.items())},
+                    refused=list(self._external_refused), sweep=self._sweep_said, fill=read_files_fill_said(),
+                    retry_waiting=self.retry_waiting)
+        except Exception as exc:                                    # noqa: BLE001
+            logger.warning("[Watcher] the state lap was not recorded (%s: %s) - the watcher is unaffected",
+                           type(exc).__name__, told(exc))
+
+    def _say_sweep(self, why_not, began, done):
+        """The external sweep's words from its one dict (총괄 10-21): each source's progress line while it runs, its
+        reasons line when it ends - and that dict on the «sources» lap, so the screen says what the log says."""
+        seconds = time.monotonic() - began
+        for source_id, why in why_not.items():
+            if not done:
+                logger.info(f"External sweep in progress: {source_id} looked {why['looked']} · dispatched "
+                            f"{why['dispatched']} · {seconds:.0f} s")
+                continue
+            reasons = " · ".join(f"{name} {n}" for name, n in why.items() if name not in ("looked", "first not listed"))
+            logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons}"
+                        + (f" (first not listed: {why['first not listed']})" if "first not listed" in why else ""))
+        self._sweep_said = {"state": "done" if done else "running", "began_at": round(time.time() - seconds, 3),
+                            "seconds": round(seconds, 1), "sources": {sid: dict(why) for sid, why in why_not.items()}}
+        self.record_state_lap()
 
     def _provision_workspaces(self) -> list:
         """[테이블 온보딩 자동화] table_config.json에 등록된 각 테이블에 대해
@@ -4569,9 +4623,7 @@ class WorkspaceWatcher:
                 nonlocal said_at
                 if not force and time.monotonic() - said_at < SWEEP_PROGRESS_SECONDS:
                     return
-                for source_id, why in why_not.items():
-                    logger.info(f"External sweep in progress: {source_id} looked {why['looked']} · dispatched "
-                                f"{why['dispatched']} · {time.monotonic() - began:.0f} s")
+                self._say_sweep(why_not, began, False)
                 said_at = time.monotonic()
 
             # Sources in turn, file by file (소유자 10-20: one share's thousands of old files held every source behind
@@ -4609,11 +4661,7 @@ class WorkspaceWatcher:
                     f"{processed} dispatched; source files left untouched.")
             # 🔴 Each source, each sweep (총괄 10-21 「외장 파일마다 왜 안 넘겼나를 사유별 수로」): what the walk saw and
             #    why a file was not handed on - one restart says it, no log digging.
-            for source_id, why in why_not.items():
-                reasons = " · ".join(f"{name} {n}" for name, n in why.items()
-                                     if name not in ("looked", "first not listed"))
-                logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons}"
-                            + (f" (first not listed: {why['first not listed']})" if "first not listed" in why else ""))
+            self._say_sweep(why_not, began, True)
             return processed
 
     def _external_pages(self, source_id, target, why, said):
