@@ -38,6 +38,7 @@
 | 그룹 이름 | 2 철자 | replay 사건: 이름이 replay_<run> 대 run_id | 보고 | — |
 | 이미 읽었나 | 3 열쇠 | 같은 바이트 · 새 mtime: 다시 읽음 · Retry 는 0 부터 | 보고 | 외장 다시 읽기 |
 | 이 규칙이 쓰는 칸 | 4 | 한 쪽짜리 join · take 칸 전부 빈 값 → 그 칸 거두기 빠짐 | 보고 | take fn · target_columns |
+| 이력 묶음 열쇠 | 서버 5 + 3 · 클라 1 | 도는 동안 쪽마다 한 줄 · 새로고침 뒤 한 줄 | 줄(수) · 보고(갈라짐) | 소급 이력이 쪽마다 흩어짐 |
 
 «자리»는 그 물음에 «스스로» 답하는 함수 · 인라인 수다. 정본을 부르기만 하는 곳은 안 셈.
 
@@ -181,6 +182,12 @@ target_columns 없는 한 쪽짜리 join 에서 take 칸 b 가 모든 행에 빈
 
 ---
 
+### 이력 묶음 열쇠 (총괄 덧붙임)
+서버: `admin/audit_cache.py` 의 «tid or "no_tid"» 짓는 줄 **5**(332 · 338 · 561 · 606 · 664) + main.py 의 `AuditLog.transaction_id ==` 거르기 **3** 함수(`get_transaction_logs` · `narrowed_table_query` · `export_table_csv`).
+클라: `timeline.js` `appendHistoryLocally` 가 실시간 줄을 **날 transaction_id** 로 묶음(1178).
+명령: `git grep -n '"no_tid"' 9f8f0ff35 -- server ':!server/tests'`(9 줄 중 짓는 줄 5, 나머지는 읽는 줄) · `git grep -n 'transaction_id ==' 9f8f0ff35 -- server/main.py` · 카나리아 audit_cache 의 class/def 5.
+갈라짐(B 측정, 내가 안 돌림): B 가 서버를 `group_of` · `in_group` 둘로 접는 중 — 소급 런의 쪽마다 커밋이 각자 tid 를 가지므로, 클라는 «도는 동안 쪽마다 한 줄», 새로고침 뒤 서버 답은 «한 줄». 클라 실시간 묶기가 서버의 묶음 열쇠를 부르지 않는 한 남는다.
+
 ## 5. 접을 순서 — 운영 위험 큰 것부터 (추천)
 
 ```
@@ -192,7 +199,7 @@ target_columns 없는 한 쪽짜리 join 에서 take 칸 b 가 모든 행에 빈
 5  칸 타입 하나 (모델 · 선언 · DB)                 운영 «double 칸에 character» — 리로드만 고쳐짐
 6  맵 id 하나 + 맵 키 칸 읽기 하나                  None 대 «L_» — 맵 하나가 두 이름
 7  소급 넣기의 관문 하나                           파일 다시 읽기가 관문 밖 · 대기열 화면에 안 보임
-8  그룹 이름 한 철자 · 쪽 크기 · 이미 읽었나 둘 · 쓰는 칸(한 쪽 join) · rule_rows 커밋 문구
+8  이력 묶음 열쇠(클라 실시간이 서버 열쇠를) · 그룹 이름 한 철자 · 쪽 크기 · 이미 읽었나 둘 · 쓰는 칸(한 쪽 join) · rule_rows 커밋 문구
 ```
 1 은 «쓰기 문 범위»로 접히면 저절로 닫히므로 2 와 한 판으로 해도 된다 — 다만 2 가 길면 1 을 먼저 따로.
 
