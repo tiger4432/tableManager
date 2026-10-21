@@ -1,5 +1,34 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **와처가 가볍게 선다 · 외장 소스에 max_depth · 소스마다 «왜 안 넘겼나» 한 줄 (소유자 「좀 가볍게 돌게 만들어」 · 「와처 뎁스랑 가볍게 같이 착지시켜」, 총괄, 580aad954)** — git pull · 와처 재기동
+>
+> ```
+> 불변식    소유자 「와처는 glob 으로 잡히는 건 무조건 잡는다」 — 빠지는 것은 «이미 읽음», 아니면 소스 줄의 이름 붙은 칸
+> 무엇     기동에 무거운 일 0 — 체크리스트 처음 한 번(옛 행 도장)은 첫 훑기가 그 stat 위에서 함. 외장 파일 stat 은 한 번
+>          외장 소스 항목에 "max_depth": N — 적은 path 가 0, 그 아래 폴더 하나가 1. 더 깊은 폴더는 훑기가 안 들어감
+> 적는 법   ingestion_settings.json 외장 소스 항목에 "max_depth": 2 (안 적으면 끝까지 · recursive false = 0)
+>          저장하면 그 소스만 다시 섬(재기동 없음) · 표를 다시 읽지 않음
+> 돌릴 것   git pull -> 와처 재기동
+> 확인     재기동 직후 «[Watcher] read files are stamped by the first sweep» (marker 없을 때만) 바로 뒤
+>          «Background retry poller thread started.» · «Started observer» — 몇 초 안
+>          훑기마다 소스별 한 줄:
+>          External source <표>@<경로>: N file(s) looked at - outside the root a · name not matched b · not a file c ·
+>            stat failed d · folders below max_depth e · folders not listed f · already read g · dispatched h
+>          그 훑기 끝에 한 번 «[Watcher] read files stamped N · left for re-read M (failed K · changed since read C)»
+> 뜻      N 이 0                 -> 그 경로에 파일이 안 보임 (경로 · 권한 · 공유 연결)
+>          name not matched 가 큼   -> options.glob / filename 이 안 맞음
+>          outside the root 가 큼   -> 패턴엔 맞는데 실제 경로(정션 · 링크 · DFS)가 적은 path 밖으로 나감
+>          folders not listed > 0  -> 폴더를 못 엶 — 줄 끝 (first not listed: …) 가 첫 사유
+>          stat failed > 0         -> 파일을 못 엶(권한 · 잠금)
+>          already read 가 대부분  -> 이미 읽은 파일 — 정상, 새 파일만 dispatched
+>          소스 줄이 없음           -> 그 소스가 등록 안 됨: «External source config rejected» · «unavailable» 줄을 봄
+>          «stamped … so far - the next sweep goes on (a source was not reached)» 가 훑기마다 -> 닿지 못한 소스가 있음
+> 급할 때   깊은 공유 폴더라 훑기가 길면 그 소스에 "max_depth" 를 적고 저장
+> 되돌리기  git revert 580aad954 -> 와처 재기동 (이미 찍은 도장 · marker 는 그대로 둬도 됨)
+> ```
+>
+> ---
+>
 > ## [10-21] **칸 타입 바꾼 선언이 재기동 없이 쓰기에 닿음 — «double 칸에 character varying» 오류 (소유자 「double 칸에 character 를 넣었다」)** — git pull · 런처 재기동 (이번 한 번)
 >
 > ```
