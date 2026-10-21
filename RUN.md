@@ -20,7 +20,7 @@
 >           retroactive.log «not read again at this page - the next page tries» = 그 페이지의 다시 읽기 실패, 다음 페이지가 다시 시도
 > 바뀐 것    같은 표를 쓰는 줄은 한 번에 하나 — 전에는 둘이 나란히 주어지고 하나는 잠금에서 기다렸음
 >           표 잠금 대기가 끝없이 기다리던 것을 뒤집음 (사유: 상한 없는 대기가 슬롯을 묶음)
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert a775cb669 -> 런처 재기동
 > ```
 >
 > ---
