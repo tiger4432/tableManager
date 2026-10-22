@@ -244,7 +244,7 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
         except report_reads.ReadRefused as refused:
             report, out = None, {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
         cells = {"request_id": request.request_id, "setting": request.setting, "state": out["state"],
-                 "reason": out["reason"], "made_at": made}
+                 "reason": out["reason"], "made_at": made.isoformat()}
         if report is not None:
             page = report_html.build("%s report" % request.eval_id, "%s · %s · %s" % (
                 request.request_id, name, made.isoformat(timespec="seconds")), spec.get("layout") or (),

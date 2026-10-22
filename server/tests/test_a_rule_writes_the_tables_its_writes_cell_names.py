@@ -76,3 +76,11 @@ def test_a_report_rule_writes_its_step_and_wafer_tables():
     assert rule["allow_replace_map"] is True
     for table in rule["writes"]:
         assert product_tables.PRODUCT_TABLES[table]["map_key_columns"] == ["request_id"], "replaced by request"
+
+
+def test_the_census_photographs_the_writes_tables():
+    from chain import rule_census
+
+    assert rule_census.rule_row(RULE, 0)["tables"]["writes"] == ["w1", "w2"]
+    changed = rule_census.census_diff(rule_census.census([dict(RULE, writes=["w1"])]), rule_census.census([RULE]))
+    assert changed, "a writes cell that changed is a change the boot line says"
