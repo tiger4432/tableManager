@@ -272,7 +272,7 @@ export function joinResolvedColumn(colId) {
 }
 
 /**
- * Visible column ids in visible order, '#' (the row-number gutter) excluded.
+ * Visible column ids in visible order, the columns that hold no data (isDataColumn) excluded.
  * Ordered by the index map's VALUES rather than trusting key insertion order, so it
  * cannot silently disagree with `visibleColIndexMap` after a column move.
  *
@@ -285,13 +285,18 @@ export function joinResolvedColumn(colId) {
  * have been a second implementation of column order, which is exactly the kind of pair that
  * later disagrees about what '#' means.
  */
+// The grid's own checkbox column, as AG-Grid names it (rowSelection.checkboxes - owner 10-22).
+export const SELECTION_COL_ID = 'ag-Grid-SelectionColumn';
+/** A column that holds the table's data: not the row-number gutter '#', not the selection column (lead 10-22). */
+export const isDataColumn = (colId) => colId !== '#' && colId !== SELECTION_COL_ID;
+
 export function visibleRangeColIds() {
   const map = state.visibleColIndexMap || {};
-  const ids = Object.keys(map).filter(id => id !== '#');
+  const ids = Object.keys(map).filter(isDataColumn);
   if (ids.length > 0) return ids.sort((a, b) => map[a] - map[b]);
   if (!state.gridApi) return [];
   return (state.gridApi.getColumnState() || [])
-    .filter(c => !c.hide && c.colId !== '#')
+    .filter(c => !c.hide && isDataColumn(c.colId))
     .map(c => c.colId);
 }
 

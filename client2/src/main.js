@@ -13,7 +13,7 @@ import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state } from './state.js';
+import { state, isDataColumn } from './state.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
@@ -79,6 +79,7 @@ import {
   renderGrid,
   registerSelectionListener,
   applyFillTargetHeaders,
+  isSystemColumn,
 } from './grid.js';
 import {
   showToast,
@@ -757,7 +758,7 @@ function setupEventListeners() {
         else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
           e.preventDefault();
           if (state.gridApi) {
-            const allCols = state.gridApi.getColumns().map(c => c.getColId()).filter(c => c !== '#');
+            const allCols = state.gridApi.getColumns().map(c => c.getColId()).filter(isDataColumn);
             const totalRows = state.gridApi.getDisplayedRowCount();
             if (allCols.length > 0 && totalRows > 0) {
               state.dragStartCell = { rowIndex: 0, colId: allCols[0] };
@@ -974,8 +975,8 @@ function setupEventListeners() {
     
     columns.forEach(col => {
       const colId = col.getColId();
-      // 번호 열('#')은 가시성 토글에서 제외
-      if (colId === '#') return;
+      // a column with no data (the row number, the checkboxes) is not toggled
+      if (!isDataColumn(colId)) return;
 
       const isVisible = col.isVisible();
       const headerName = col.getColDef().headerName || colId;
@@ -1019,7 +1020,7 @@ function setupEventListeners() {
       e.stopPropagation();
       if (!state.gridApi) return;
       const columns = state.gridApi.getColumns() || [];
-      const colIds = columns.map(c => c.getColId()).filter(id => id !== '#');
+      const colIds = columns.map(c => c.getColId()).filter(isDataColumn);
       state.gridApi.setColumnsVisible(colIds, true);
       renderColumnSelectorList();
     });
@@ -1031,7 +1032,7 @@ function setupEventListeners() {
       e.stopPropagation();
       if (!state.gridApi) return;
       const columns = state.gridApi.getColumns() || [];
-      const colIds = columns.map(c => c.getColId()).filter(id => id !== '#');
+      const colIds = columns.map(c => c.getColId()).filter(isDataColumn);
       state.gridApi.setColumnsVisible(colIds, false);
       renderColumnSelectorList();
     });
@@ -1452,7 +1453,6 @@ function setupDragAndDrop() {
 function getSelectedCells() {
   if (!state.gridApi) return [];
   const cells = [];
-  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
 
   if (state.dragStartCell && state.dragEndCell) {
     const startColIdx = state.visibleColIndexMap[state.dragStartCell.colId];
@@ -1467,7 +1467,7 @@ function getSelectedCells() {
       for (let r = minRowIdx; r <= maxRowIdx; r++) {
         for (let cIdx = minColIdx; cIdx <= maxColIdx; cIdx++) {
           const colId = visibleColIds[cIdx];
-          if (systemCols.includes(colId) || /^\d+$/.test(colId)) continue;
+          if (isSystemColumn(colId) || !isDataColumn(colId) || /^\d+$/.test(colId)) continue;
 
           const rowNode = state.gridApi.getDisplayedRowAtIndex(r);
           if (rowNode && rowNode.data) {
@@ -1482,7 +1482,7 @@ function getSelectedCells() {
     const focusedCell = state.gridApi.getFocusedCell();
     if (focusedCell) {
       const colId = focusedCell.column.getId();
-      if (!systemCols.includes(colId) && !/^\d+$/.test(colId)) {
+      if (!isSystemColumn(colId) && isDataColumn(colId) && !/^\d+$/.test(colId)) {
         const rowNode = state.gridApi.getDisplayedRowAtIndex(focusedCell.rowIndex);
         if (rowNode && rowNode.data) {
           cells.push({ rowId: rowNode.data.row_id, colId, rowIndex: focusedCell.rowIndex });

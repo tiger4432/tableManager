@@ -1,10 +1,10 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn } from './state.js';
+import { state, isVirtualColumn, isDataColumn } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
 import { refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
-import { ensureCellObject, markCellOverwritten, updateGridSortState } from './grid.js';
+import { ensureCellObject, markCellOverwritten, updateGridSortState, isSystemColumn } from './grid.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
 import { getLocalTimeString } from './utils.js';
 // The ONE TSV reader/writer. Lifted out of this file (it used to be four lines inline in
@@ -75,7 +75,7 @@ function writeRangeReadout(startCell, endCell) {
   const minCol = Math.min(startColIdx, endColIdx);
   const maxCol = Math.max(startColIdx, endColIdx);
   const cols = Object.keys(state.visibleColIndexMap)
-    .filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#').length;
+    .filter((colId, idx) => idx >= minCol && idx <= maxCol && isDataColumn(colId)).length;
   readout.textContent = (rows > 1 || cols > 1) ? `${unitText(rows, 'row')} × ${unitText(cols, 'col')} selected` : '';
 }
 
@@ -212,7 +212,7 @@ export function commitDragSelection(api) {
     const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
 
     const visibleColIds = Object.keys(state.visibleColIndexMap);
-    const targetCols = visibleColIds.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+    const targetCols = visibleColIds.filter((_, idx) => idx >= minCol && idx <= maxCol && isDataColumn(_));
 
     for (let r = minRow; r <= maxRow; r++) {
       const node = api.getDisplayedRowAtIndex(r);
@@ -288,7 +288,7 @@ export function getRangeSelectedTSV() {
 
   const colsToCopy = visibleCols.filter((colId, idx) => {
     if (idx < minColIdx || idx > maxColIdx) return false;
-    if (colId === '#' || /^\d+$/.test(colId)) return false;
+    if (!isDataColumn(colId) || /^\d+$/.test(colId)) return false;
     // [Virtual join] A virtual column is NOT in `currentColumns` (it is not stored), but it
     // IS on screen — and this filter runs INSIDE a min..max index window, so dropping it
     // would delete a column from the middle of the copied block and shift everything right
@@ -396,7 +396,7 @@ export function setupClipboardHandlers() {
           const minRow = Math.min(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
           const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
           
-          const targetCols = visibleCols.filter((_, idx) => idx >= minCol && idx <= maxCol && _ !== '#');
+          const targetCols = visibleCols.filter((_, idx) => idx >= minCol && idx <= maxCol && isDataColumn(_));
           for (let r = minRow; r <= maxRow; r++) {
             targetCols.forEach(colId => {
               targetCells.push({ rowIndex: r, colId });
@@ -436,7 +436,7 @@ export function setupClipboardHandlers() {
 
         targetCells.forEach(cell => {
           const { rowIndex, colId } = cell;
-          const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+          const isSystem = isSystemColumn(colId) || !isDataColumn(colId);
           if (isSystem) return;
           // [Virtual join] 🔴 THE GATE HERE IS GRID PRESENCE, NOT `currentColumns`. This
           // funnel builds its updates from grid column ids and never consults
@@ -504,7 +504,7 @@ export function setupClipboardHandlers() {
 
         // If anchor col not in visible list, fallback to first visible column (excluding index column '#')
         if (anchorColVisibleIdx === -1 && visibleCols.length > 0) {
-          const firstNonHash = visibleCols.find(c => c !== '#');
+          const firstNonHash = visibleCols.find(isDataColumn);
           if (firstNonHash) {
             anchorColId = firstNonHash;
             anchorColVisibleIdx = visibleCols.indexOf(firstNonHash);
@@ -524,7 +524,7 @@ export function setupClipboardHandlers() {
             if (targetColIndex >= visibleCols.length) return;
 
             const colId = visibleCols[targetColIndex];
-            const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+            const isSystem = isSystemColumn(colId) || !isDataColumn(colId);
             if (isSystem) return;
             // [Virtual join] Same guard as the 1x1 branch, and this is the branch that
             // matters most: an MxN paste walks the VISIBLE columns from the anchor, so a
@@ -690,7 +690,7 @@ export function setupClipboardHandlers() {
 
     e.preventDefault();
     const columns = state.gridApi.getColumns().filter(c => c.isVisible()).map(c => c.getColId()).filter(c => {
-      if (c === '#' || /^\d+$/.test(c)) return false;
+      if (!isDataColumn(c) || /^\d+$/.test(c)) return false;
       // [Virtual join] Included for the same reason as the range copy above: the row-copy
       // fallback is what a user gets from a row selection, and a visible column missing from
       // it is a wrong answer rather than a smaller one.
@@ -767,12 +767,11 @@ export async function clearSelectedCells() {
 
   if (cellsToClear.length === 0) return;
 
-  const systemCols = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'];
   const updateMapByRow = {};
 
   cellsToClear.forEach(cell => {
     // Skip system columns
-    if (systemCols.includes(cell.colId) || /^\d+$/.test(cell.colId)) return;
+    if (isSystemColumn(cell.colId) || !isDataColumn(cell.colId) || /^\d+$/.test(cell.colId)) return;
     // [Virtual join] Delete-to-clear is a write like any other. A cleared virtual column
     // would be refused batch-level, taking the rest of the cleared rectangle with it.
     if (isVirtualColumn(cell.colId)) return;

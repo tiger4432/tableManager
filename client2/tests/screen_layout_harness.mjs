@@ -657,6 +657,26 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rul
 // The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
+// The row checkboxes and the header's select-all at the grid's left edge with the first data column hidden (owner 10-22).
+CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'select all at the left', at: 'ag-header', expr: `(() => {
+  const gone = window.__hiddenFirst;
+  if (!gone || gone === '#' || /^\\d+$/.test(gone)) return 'the column hidden is not a data column (' + gone + ')';
+  if (document.querySelector('.ag-header-cell[col-id="' + gone + '"]')) return 'the first column was not hidden (' + gone + ')';
+  const shown = (el) => el && el.getClientRects().length && !el.closest('.ag-hidden');
+  const all = document.querySelector('.ag-header .ag-header-select-all');
+  if (!shown(all)) return 'no select-all checkbox in the header';
+  const rows = [...document.querySelectorAll('.ag-row .ag-selection-checkbox')].filter(shown);
+  if (!rows.length) return 'no row checkbox';
+  const left = document.querySelector('.ag-root').getBoundingClientRect().left;
+  const at = all.closest('.ag-header-cell').getBoundingClientRect().left;
+  return at - left > 2 ? 'the select-all checkbox stands ' + Math.round(at - left) + ' px from the left edge of the grid' : null;
+})()` });
+// The row a click picks is selected, as it was (owner 10-22: the selection moved to its own column, its click kept).
+CELLS.push({ entry: 'index.html', after: 'a row picked under the Queue tab', rule: 'a click selects its row', at: 'ag-row', expr: `(() => {
+  const row = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"]');
+  if (!row) return 'no row 1';
+  return row.classList.contains('ag-row-selected') ? null : 'row 1 was clicked and is not selected';
+})()` });
 // A refused declaration read: the header's label says the server's sentence, not «server refused (503)» (lead 06d7ca89e).
 CELLS.push({ entry: 'index.html', after: 'declaration refused, page opened again', rule: 'server sentence said', at: 'grid-source-label', expr: `(() => {
   const l = document.querySelector('#grid-source-label-host .grid-source-label');
@@ -2016,6 +2036,15 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
+    // The first data column hidden from the column selector (owner 10-22): the checkboxes rode on it.
+    ['first column hidden', async (c) => {
+      await evaluate(c, "(() => { const b = document.getElementById('column-selector-btn'); if (b) b.click(); return Boolean(b); })()");
+      await sleep(400);
+      await evaluate(c, `(() => { const box = document.querySelector('#column-list-container .col-selector-checkbox'); if (!box) return false;
+        window.__hiddenFirst = box.id.replace(/^col-toggle-/, ''); box.checked = false; box.dispatchEvent(new Event('change', { bubbles: true }));
+        document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; })()`);
+      await sleep(600);
+    }],
   ],
   'admin.html': [
     ['Overview', async () => true],
@@ -2163,6 +2192,12 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  // The checkboxes back on the schema's first column (owner 10-22): hidden from the column selector, they go with it.
+  { name: 'the checkboxes back on the first data column', entry: 'index.html', rule: 'select all at the left', at: 'ag-header',
+    file: 'src/grid.js', edits: [["    rowSelection: { mode: 'multiRow', checkboxes: true, headerCheckbox: true, enableClickSelection: true },\n", "    rowSelection: 'multiple',\n"], ['      resizable: true,\n      // C-85.', '      resizable: true,\n      checkboxSelection: index === 0,\n      headerCheckboxSelection: index === 0,\n      // C-85.']] },
+  // A click no longer selects its row (the selection options keep it only when asked).
+  { name: 'a click no longer selects its row', entry: 'index.html', rule: 'a click selects its row', at: 'ag-row',
+    file: 'src/grid.js', edits: [['enableClickSelection: true', 'enableClickSelection: false']] },
   // The refused declaration read drawn as its status alone again (lead 06d7ca89e).
   { name: 'a refused declaration said as its status alone', entry: 'index.html', rule: 'server sentence said', at: 'grid-source-label',
     file: 'src/main.js', edits: [["    if (!res.ok) return { ok: false, message: await refusalText(res, 'server refused') };\n",

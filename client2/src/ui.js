@@ -1,10 +1,10 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn } from './state.js';
+import { state, isVirtualColumn, isDataColumn } from './state.js';
 import { refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
 import { updateGridSortState } from './grid.js';
-import { ensureCellObject, markCellOverwritten } from './grid.js';
+import { ensureCellObject, markCellOverwritten, isSystemColumn } from './grid.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 // 🔴 STATIC, and it must stay static. `api.js` imports THIS file back, so the two form an
 //    ESM cycle -- but all three bindings that cross it (`fetchData` here, `updateSelectedCellUI`
@@ -151,7 +151,7 @@ export async function applyValueToSelectedRange(newValue) {
     const maxRow = Math.max(state.dragStartCell.rowIndex, state.dragEndCell.rowIndex);
 
     const visibleColIds = Object.keys(state.visibleColIndexMap);
-    const targetCols = visibleColIds.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && _ !== '#');
+    const targetCols = visibleColIds.filter((_, idx) => idx >= minColIdx && idx <= maxColIdx && isDataColumn(_));
     for (let rIdx = minRow; rIdx <= maxRow; rIdx++) {
       targetCols.forEach(colId => {
         cellsToUpdate.push({ rowIndex: rIdx, colId });
@@ -166,7 +166,7 @@ export async function applyValueToSelectedRange(newValue) {
 
   cellsToUpdate.forEach(cell => {
     const { rowIndex, colId } = cell;
-    const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by', '#'].includes(colId);
+    const isSystem = isSystemColumn(colId) || !isDataColumn(colId);
     if (isSystem) return;
     // [Virtual join] The third write funnel that builds updates from grid column ids
     // (with the two paste branches and the clear path in clipboard.js). Ctrl+Enter bulk

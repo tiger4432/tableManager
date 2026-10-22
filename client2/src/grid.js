@@ -1,6 +1,6 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit, API_BASE } from './config.js';
-import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
+import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
 import { writeRefusal } from './write_guard.js';
@@ -70,7 +70,7 @@ function extendRangeByKeyboard(api, key) {
     const focused = api.getFocusedCell();
     if (!focused || !focused.column) return false;
     const colId = focused.column.getColId();
-    if (colId === '#') return false;
+    if (!isDataColumn(colId)) return false;
     state.dragStartCell = { rowIndex: focused.rowIndex, colId };
     state.dragEndCell = { rowIndex: focused.rowIndex, colId };
   }
@@ -918,8 +918,6 @@ export function buildColumnDefs() {
       headerClass: [fillOrdinal ? 'fill-target-header' : '', ...indexed.map((kind) => `idx-${kind}`)]
         .filter(Boolean).join(' ') || undefined,
       resizable: true,
-      checkboxSelection: index === 0,
-      headerCheckboxSelection: index === 0,
       // C-85. 시각은 보는 쪽 zone 으로 «그리고», 값은 서버가 준 원문 그대로 둔다.
       valueFormatter: isTimeColumn(col, colType) ? timeCellFormatter : undefined,
       valueGetter: (params) => {
@@ -1050,8 +1048,7 @@ export function buildColumnDefs() {
   //
   // APPENDED, NOT MERGED. These names come from `/schema`'s separate `virtual_columns` key
   // and stay out of `state.currentColumns` (see the note on that field in state.js). They go
-  // LAST so the stored columns keep their positions and `checkboxSelection: index === 0`
-  // keeps pointing at the same column it always did.
+  // LAST so the stored columns keep their positions.
   //
   // The payload cell shape is identical to a stored cell — `attach` fills the same keys
   // `fetch_and_merge_metadata` does — so these defs read cells through the same
@@ -1182,6 +1179,8 @@ export function buildColumnDefs() {
   }
 
   columnDefs.unshift({
+    // Its id is said: without one AG-Grid numbers it ('1' - measured 10-22), and every `'#'` test missed it.
+    colId: '#',
     headerName: '#',
     headerTooltip: 'Row Number',
     valueGetter: (params) => {
@@ -1274,10 +1273,6 @@ function applyMockupLayout(columnDefs) {
   //
   // The widths above stay: those are keyed BY NAME and apply wherever the column happens to
   // sit, so they are a statement about a column, not about the sequence.
-  //
-  // The checkbox re-application went with the sort. `buildColumnDefs` sets
-  // `checkboxSelection: index === 0` against the schema order, and that is now the rendered
-  // order, so re-deriving it here could only ever disagree with itself.
   return columnDefs;
 }
 
@@ -1350,7 +1345,10 @@ export function renderGrid(initialRows) {
       // next reader would have spent a day on "why doesn't this work".)
       suppressKeyboardEvent,
     },
-    rowSelection: 'multiple',
+    // The checkboxes in the grid's own column, pinned left - not on a data column, which the column selector can hide
+    // (owner 10-22 「전체 선택하는 체크버튼 ... 다 나오게」). A click still selects its row, as 'multiple' did.
+    rowSelection: { mode: 'multiRow', checkboxes: true, headerCheckbox: true, enableClickSelection: true },
+    selectionColumnDef: { pinned: 'left', lockPinned: true, suppressMovable: true, resizable: false, sortable: false },
     // 선택이 바뀌었다는 «신호»만 냅니다. 누가 듣는지는 화면이 정합니다 --
     // 이 파일이 배너를 알면 그리드가 헤더를 아는 것이 됩니다.
     onSelectionChanged: () => { if (selectionListener) selectionListener(); },
@@ -1421,7 +1419,7 @@ export function renderGrid(initialRows) {
 
       const debugColId = event.column.getId();
       const debugRowId = rowNode.data.row_id;
-      if (!['row_id', 'created_at', 'updated_at', '#'].includes(debugColId)) {
+      if (!['row_id', 'created_at', 'updated_at'].includes(debugColId) && isDataColumn(debugColId)) {
         const cellObj = rowNode.data.data?.[debugColId];
         console.log(`%c[Grid Debug] Clicked Cell Info`, 'color: #00f0ff; font-weight: bold;');
         console.log(`- Row ID: ${debugRowId}`);
@@ -1454,7 +1452,7 @@ export function renderGrid(initialRows) {
     },
     onCellMouseDown: (event) => {
       if (event.event.button !== 0) return;
-      if (event.column.getColId() === '#') return;
+      if (!isDataColumn(event.column.getColId())) return;
 
       const isShift = event.event.shiftKey;
       const isCtrl = event.event.ctrlKey || event.event.metaKey;
@@ -1495,7 +1493,7 @@ export function renderGrid(initialRows) {
       }
 
       if (!state.isDraggingRange || !state.dragStartCell) return;
-      if (event.column.getColId() === '#') return;
+      if (!isDataColumn(event.column.getColId())) return;
 
       const currRow = event.rowIndex;
       const currCol = event.column.getColId();
