@@ -1,5 +1,36 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **AI 리포트 둘째 · 셋째 — 엑셀 양식 · 대조군 · 요약 표 꾸미기 · 한글 낱말 (소유자 10-23, 0c60ef94c)** — git pull · 런처 재기동 · 처음 한 번 하는 일
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 리포트 첫째의 설정(chain_slots 3 · 리포트 규칙)은 그대로
+> 처음 한 번 하는 일 — 순서대로 (시범은 이 목록대로)
+>   1. 표 선언: 웨이퍼 표 · 요약표는 있어야 함. 쓰면 정보 표 · 그림 표 · 디펙 이미지 표 · 비교 묶음 표
+>      제품 표 넷(report_request · report · report_step · report_wafer)은 table_config.json.sample 의 것을 그대로
+>   2. image_sources.json 에 그림 폴더 소스 (합성맵 · 디펙 이미지)
+>   3. llm_config.json 게이트웨이(운영에 이미 있음) · ingestion_settings.json "chain_slots" 3 이상
+>   4. 어드민 Chain 탭에 리포트 규칙 하나: on report_request (require setting) · into report ·
+>      derive.report 에 역할(wafer · summary · info · picture_rows · images · sets) · rows · item_sep ·
+>      formats · labels(한글) · control · layout · prompts   (예시: docs/guide/ai_report_tables.md)
+>   5. 엑셀 양식: 들어갈 칸에 {{title}} · {{summary}} · {{table:yield_by}} 같은 표시, {{table:yield_by}} 밑에
+>      견본 줄 {{info}} · {{picture}} · {{item}} 을 칠함 -> 복사 -> Paste template (클라 버튼 착지 뒤)
+>   6. (쓰면) ledger_config.json 에 report_wafer 소스 — 리포트 -> 웨이퍼 엣지
+>   7. 요청: report_request 에 한 행 (request_id · eval_id · setting). 계측 뒤 저절로 서게 하는 것은 다음 일
+> 확인     저장 줄에 그 규칙이 running · 양식이 그림을 뺐으면 «derive.report.template: image(s) dropped: N»
+>          report 행 state done -> 파일을 열면 양식 그대로, 표시 칸에 표 · 글 · 그림
+>          요약 표: 정보 줄 · 그림 줄 · 칠한 칸 · 묶음 «대조 <평가>»(labels.control 을 적었으면 그 글)
+> 답의 뜻   저장 거절 «… is not a mark this report fills»          양식의 표시 이름이 틀림 -> 거절 문장의 목록에서 고름
+>          «… is fetched from outside the file»                 양식에 바깥 주소(http · //) -> 그 그림 · 링크를 지우고 다시 복사
+>          «{{info}} is a sample row's first cell …»           견본 줄이 {{table:yield_by}} 줄 바로 밑이 아님
+>          «… needs fail and total»                             vs control 규칙인데 요약표가 rate 만 -> 고정 기준 규칙으로
+>          그림 칸에 «no file … in image source …»             그 웨이퍼의 그림 파일이 없음 (리포트는 done)
+>          리포트 글자가 영어                                    labels 에 그 이름을 안 적음 -> 저장 알림의 이름 목록
+> 급할 때   그 규칙 "enabled": false (저장 즉시)
+> 되돌리기  git revert 0c60ef94c -> 런처 재기동. template · control · info · picture_rows · formats · labels 를
+>          쓴 리포트 규칙은 되돌린 코드에서 «모르는 칸» 알림만 내고 그 칸을 안 읽음
+> ```
+>
+
 > ## [10-23] **리포트 HTML 받는 곳 — 메일 중계 PC 에서 띄움 (소유자 10-23 「fastapi 로 html 파일 받는 함수 하나」)**
 >
 > ```
