@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **메인 그리드 피벗 — 화면 몫 ①·② (소유자 10-22, d45ba4aa1)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만. 서버 피벗 착지 위)
+>          pivot 을 선언한 표를 연다 -> 바닥줄 Gallery 옆 «Pivot» 을 누른다
+> 뜻      «Pivot» 이 없음                         -> 그 표에 pivot 선언이 없거나 저장이 거절됨(서버 몫 RUN 항목)
+>          눌렀더니 «Apply or discard the staged edits first» -> 트랜잭션에 쌓인 고침이 있음, Apply 나 Discard 뒤 다시
+>          바닥줄이 «N groups», item 칸이 item 이름 -> 착지됨
+>          «N more items not shown»               -> 펼친 칸이 pivot_max_columns 를 넘음(서버 설정)
+>          붙여넣기에 «Key columns cannot be changed in pivot view» -> 범위가 키 칸에 닿음, 아무것도 안 씀
+>          «Rows are added and deleted with Pivot off» -> 행 추가 · 삭제 · 스마트 붙여넣기는 Pivot 을 끄고
+> 끄기     «Pivot» 을 다시 누름 (표마다 이 브라우저에 기억됨)
+> 되돌리기  git revert 9e223c3ff 와 피벗 커밋들 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-23] **외부 저장소 방아쇠 파일은 «그 폴더가 조용해진 뒤» 읽는다 — voids.json 이 먼저 오고 이미지가 뒤따를 때 목록이 반쪽이던 것 (소유자 10-23 「폴더 전송 중에 읽어버린다」)** — git pull · 런처 재기동
 >
 > ```
