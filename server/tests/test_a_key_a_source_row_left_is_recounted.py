@@ -637,6 +637,25 @@ def test_a_deletion_set_aside_comes_back_as_the_deletion_it_was_and_recounts(db,
     assert set(_inv(db)) == {"J1"}, "the key the deleted row left is recounted - its row goes"
 
 
+@pytest.mark.parametrize("collapsed", [False, True], ids=["per row", "collapsed"])
+def test_an_edit_set_aside_comes_back_with_the_key_it_left_and_recounts_it(db, monkeypatch, collapsed):
+    """총괄 g31: an edit that moved the only row off its key dies before its mark and is set aside - the key it
+    left is still counted. rerun_set_aside puts the edit back with its old values, and the key it left goes."""
+    from admin import retroactive
+
+    _seed(db)
+    _write(db, [{"row_id": _src(db, "L3").row_id, "updates": {"job": "J4"}}], collapsed=collapsed)
+    _dies_before_its_mark(db, monkeypatch)
+    _set_aside_what_waits(db)
+    assert set(_inv(db)) == {"J1", "J3"}, "no lineage: the set-aside withdrew nothing of it"
+
+    said = []
+    out = retroactive._run_rerun_set_aside(db, {"tables": [SRC]}, said.append)
+    assert out["edits_staged"] >= 1 and said == [], (out, said)
+    _chain(db)
+    assert _inv(db) == {"J1": ("A, B", 2), "J4": ("C", 1)}, "the key the edit left is recounted - its row goes"
+
+
 def test_a_deletion_set_aside_without_its_old_values_is_said_not_replayed(db, monkeypatch):
     """총괄 g26: one set aside before its old values were kept cannot be put back - one line says which rows."""
     from admin import retroactive
