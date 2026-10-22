@@ -24,7 +24,7 @@
 [data-tone="warn"] { color: var(--warning); }
 
 .fi-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; border: 0; }
-.fi-input { box-sizing: border-box; width: 100%; padding: var(--space-2); font: inherit; font-size: var(--fs-h5); border: 1px solid var(--border); border-radius: 0; background: var(--bg-surface); color: var(--text); height: auto; }
+.fi-input { box-sizing: border-box; width: 100%; padding: 0 var(--space-2); font: inherit; font-size: var(--fs-h5); border: 1px solid var(--border); border-radius: 0; background: var(--bg-surface); color: var(--text); }
 .fi-input.fi-mono { font-size: var(--fs-h6); }
 
 .fi-table { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); width: 100%; height: auto; text-align: left; padding: var(--space-2) var(--space-4);
@@ -73,7 +73,7 @@
 .fi-detail__body { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
 .fi-path { word-break: break-all; }
 .fi-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.fi-btn { height: auto; padding: var(--space-1) var(--space-3); font: inherit; font-size: var(--fs-h5); font-weight: 400; border: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text); cursor: pointer; line-height: normal; }
+.fi-btn { padding: 0 var(--space-3); font: inherit; font-size: var(--fs-h5); font-weight: 400; border: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text); cursor: pointer; line-height: normal; }
 .fi-btn--danger { border-color: var(--danger); color: var(--danger); }
 .fi-group__acts { margin-left: auto; display: flex; gap: var(--space-2); }
 .fi-btn--link { display: inline-block; text-decoration: none; }
@@ -85,7 +85,6 @@
 .fi-counts td { padding: var(--space-1) var(--space-4) var(--space-1) 0; }
 .fi-counts td.fi-num { text-align: right; padding-right: 0; }
 .fi-readnow__form { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; }
-.fi-readnow__form .fi-input, .fi-readnow__form .fi-btn { box-sizing: border-box; height: var(--control-h); }
 .fi-readnow__said { margin: 0 var(--space-4) var(--space-3); }
 .fi-readnow__owner { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; padding: var(--space-2) var(--space-4); border-top: 1px solid var(--border); font-size: var(--fs-h5); }
 .fi-readnow__owner .fi-btn { margin-left: auto; }
