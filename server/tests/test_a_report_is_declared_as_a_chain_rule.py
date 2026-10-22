@@ -162,5 +162,9 @@ def test_the_form_draws_the_report_from_the_skeleton():
         "a role's columns are its own table's"
     assert summary["rate_scale"] == {"kind": "leaf", "hint": "number"}
     assert fields["template"]["node"] == {"kind": "leaf", "hint": "free"}, "the form pastes the clipboard HTML at derive.report.template"
+    picture = {f["key"]: f["node"] for f in fields["picture_rows"]["node"]["of"]["fields"]}
+    row_table = chain_bindings.column_ref(("derive.report.picture_rows.*.table",))
+    assert picture["wafer"] == chain_bindings.list_node("column", row_table) and picture["image"] == row_table, \
+        "a picture row's columns are its own row's table's - «*» is the cell's own row number"
     control = {f["key"]: f["node"] for f in fields["control"]["node"]["fields"]}
     assert set(control) == {"recent", "max_wafers", "max_evaluations"}

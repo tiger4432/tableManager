@@ -1988,7 +1988,11 @@
                             "member": "column",
                             "of": {
                               "kind": "leaf",
-                              "hint": "free"
+                              "hint": "ref",
+                              "section": "columns",
+                              "table_from": [
+                                "derive.report.picture_rows.*.table"
+                              ]
                             }
                           }
                         },
@@ -1997,7 +2001,11 @@
                           "required": true,
                           "node": {
                             "kind": "leaf",
-                            "hint": "free"
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.picture_rows.*.table"
+                            ]
                           }
                         },
                         {

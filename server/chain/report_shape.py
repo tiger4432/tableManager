@@ -79,6 +79,9 @@ def _column(role):
     return chain_bindings.column_ref(("derive.report.%s.table" % role,))
 
 
+PICTURE_COLUMN = chain_bindings.column_ref(("derive.report.%s.*.table" % PICTURE_ROWS,))
+
+
 def _role_node(role):
     fields = [{"key": "table", "required": True, "node": chain_bindings.table_ref()}]
     for cell in ROLE_COLUMNS[role]:
@@ -124,13 +127,12 @@ def skeleton_node():
                                                       else "free"}} for cell in FORMAT_CELLS]})}},
         {"key": "item_sep", "required": False, "node": {"kind": "leaf", "hint": "free"}},
         {"key": "labels", "required": False, "node": _record(tuple(LABELS), "free")},
-        # a list member's columns cannot name their own row's table (the form's table_from is a path from the root)
+        # «*»: the form fills it with the cell's own row number - a row's columns are its own table's (lead 10-23)
         {"key": PICTURE_ROWS, "required": False, "node": chain_bindings.list_node("row", {"kind": "record", "fields": [
             {"key": "label", "required": True, "node": {"kind": "leaf", "hint": "free"}},
             {"key": "table", "required": True, "node": chain_bindings.table_ref()},
-            {"key": WAFER_CELL, "required": True,
-             "node": chain_bindings.list_node("column", {"kind": "leaf", "hint": "free"})},
-            {"key": "image", "required": True, "node": {"kind": "leaf", "hint": "free"}},
+            {"key": WAFER_CELL, "required": True, "node": chain_bindings.list_node("column", PICTURE_COLUMN)},
+            {"key": "image", "required": True, "node": PICTURE_COLUMN},
             {"key": "px", "required": False, "node": {"kind": "leaf", "hint": "number"}}]})},
     ]
     return {"kind": "record", "fields": fields}
