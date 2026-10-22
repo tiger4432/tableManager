@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **AI 리포트 자동 — 계측이 끝나 요약표가 들어오면 그 평가의 리포트가 돈다 (소유자 10-23, 선언만 · 347898597)** — 코드 없음 · 체인 창에 규칙 넷
+>
+> ```
+> 적을 것   요약표 선언에 request_id · eval_id 두 칸(string) 더하기
+>          체인 창에 규칙 넷 — docs/guide/ai_report_tables.md «계측 → 리포트 자동» 의 예시 그대로, 표 이름만 자기 것으로
+>            1 join     웨이퍼 표 -> 요약표 : take eval_id 를 request_id 와 eval_id 로
+>            2 decide   요약표 -> report_request : key [request_id] · on.require [request_id] · allow_chain_trigger
+>            3 리포트   report_request -> report : allow_chain_trigger
+>            4 맵퍼     report -> (보낸 기록 표) : on.require [{"state": ["done"]}] · allow_chain_trigger · 소유자 맵퍼
+> 확인     저장 줄에 넷 다 running (decide 는 enrichment_dedup:<이름> · enrichment_auto_confirm:<이름> 둘로 섬)
+>          void.json 한 파일이 들어온 뒤: report_request 에 그 평가 행 하나 -> report 행 done -> 소유자 맵퍼가 file_path 를 받음
+> 답의 뜻   report_request 행이 안 섬          요약표 request_id 가 빔 -> 조인이 웨이퍼 표에서 평가를 못 찾음(키 칸 · 웨이퍼 표 행)
+>          요청 행은 섰는데 report 행이 없음   리포트 규칙에 allow_chain_trigger 가 없음 (decide 가 쓴 행은 체인이 쓴 행)
+>          report done 인데 맵퍼가 안 불림     맵퍼 규칙에 allow_chain_trigger · require state done 철자
+>          리포트에 앞 웨이퍼만 있음           요약이 여러 저장으로 나뉘어 들어옴 -> 첫 저장 뒤 한 판뿐 (한 커밋 인제션이 전제)
+>          리포트 이미지가 반쪽               이미지 표가 반쪽으로 들어온 때 돈 것 — 조사 중(B, 8d03a643e)
+> 다시     그 평가의 report_request 행 note 를 고치면 리포트가 다시 돈다
+> 급할 때   규칙 2(decide) 또는 3(리포트)의 "enabled": false
+> 되돌리기  코드 변경 없음 — 규칙 넷을 지우거나 끈다
+> ```
+>
+
 > ## [10-23] **AI 리포트 둘째 · 셋째 — 엑셀 양식 · 대조군 · 요약 표 꾸미기 · 한글 낱말 (소유자 10-23, 0c60ef94c)** — git pull · 런처 재기동 · 처음 한 번 하는 일
 >
 > ```
