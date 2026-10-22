@@ -11,6 +11,8 @@
 
 ## 0. 쓰기 단계 착지 (10-22, B `9cf3e2974` · `1b81a8d14`)
 
+🆕 **받기 단계 착지 (10-22, B `aa0cd1648`)**: `rule_run.prepare` 가 받기 좌석 — 그룹 길은 깬 규칙 전부를 «어느 규칙도 돌기 전에» 받는다(`stage("fetch")`). 맵 · 잡 통째(`@mapper` `handed`) · 조인 값 표(`join_into.read`) · decide · 오토컨펌 읽기가 읽기 반쪽(`.fetch`)으로 옮겨 갔고, group_by 는 키 전체를 받는다(`with_the_whole_keys`). fold_units 도 묻는다. 맵퍼 자신의 `sql()` 만 남아 «reads outside the fetch» 로 한 번 말한다. 계약판 «받기» 열: `task/APPLICATION_CONTRACT_BOARD_FETCH.md`. 남은 것: 다음 쪽 `more()` 는 여전히 쓰기 루프 안(읽지는 않음).
+
 W 좌석 = `apply_chain_writes` → `crud._apply_batch_updates_once`, 걸음의 끝 = `session_contract.end_step` · `undo_step`, 커밋 = `_claimed_group_sync` 의 하나(커서 → 지운 행 거두기 → 처리됨 → 커밋). 아래 표의 🟢 가 그 착지로 바뀐 칸이다.
 남은 것: 리플레이 끝 스윕(`sweep_finished_replays`)은 쥐지 않아 예전처럼 따로 커밋 · R2 는 «쪽마다 한 커밋»(껍데기 포함) · ③(데이터 받기가 돌리기 안)과 ①②(리스트 · 그룹)는 접기 다음 차례. 계약판 결과는 `task/APPLICATION_CONTRACT_BOARD_WRITE.md`.
 
@@ -32,7 +34,7 @@ W 좌석 = `apply_chain_writes` → `crud._apply_batch_updates_once`, 걸음의 
 | 8 | L | 그룹마다 `_still_waiting` (iw:2959) · `wakes` 거르기 (iw:2135) | |
 | 9 | D | `outbox_expand.expand_events` (iw:2147) | |
 | 10 | R | 규칙마다 `run_rule` (iw:2307) → 첫 줄 `held_back` = require · exclude (rr:623) ④ | |
-| 11 | D | 맵퍼 안 읽기: 든 · 떠난 맵 다시 읽기 `_with_the_whole_maps` (sdk:786 · 623, `57a786ae3` 에서 이름 · 범위 바뀜) · 조인 `_read_once` (ji:438–458) · 맵퍼 자신의 `sql()` (sdk:123) ⚠③ | |
+| 11 | D | 맵퍼 안 읽기: 든 · 떠난 맵 다시 읽기 `_with_the_whole_maps` (sdk:786 · 623, `57a786ae3` 에서 이름 · 범위 바뀜) · 조인 `_read_once` (ji:438–458) · 맵퍼 자신의 `sql()` (sdk:123) ⚠③ | 🟢 `aa0cd1648`: 받기 좌석 `rule_run.prepare` 가 읽고 건넴 — 맵퍼 자신의 `sql()` 만 남음(한 줄로 말함) |
 | 12 | R | 맵퍼 호출 (rr:677) · 출신 표시 `ORIGIN_MARK` 는 맵퍼가 그 열을 지닐 때만 (sdk:788 · 597) ⚠⑦ | |
 | 13 | R | **편집 거두기 범위를 지금 지음** — origins · columns (iw:2312–2328) ⚠⑥ | |
 | 14 | W | `apply_chain_writes` (iw:2394) — 묶음마다: | |
@@ -111,7 +113,7 @@ L 파일 고르기 `process_with_retry` (dw:2578) → L(+W) `already_checked` (c
 | ①b | 그 밖의 넓힘 | 셋 더 | 조인 `keys_left` (ji:687) · 맵퍼 SDK 떠난 맵 다시 읽기 (sdk:623) · R2 `touched` (cl:443) |
 | ② | 그룹 나누기가 여러 곳 | **맞다 — 일곱** | 줄 열쇠 (ec:285) · trim (iw:4197) · `group_id` (iw:473) · merge (iw:2877) · 쪽 `_in_rule_order` (iw:1526) · 리플레이 `key_pages` + 1,000 id (rp:525 · database.py:507) · 파일 `_map_batches` (dw:3601). fold_units 는 셋 더 (rp:1553 · 1575 · 거두기 1,000) |
 | ②b | 줄 열쇠와 그룹 열쇠가 다른 답 | 새 발견 | 줄 = run_id → 거래 → 행 (ec:285). 그룹 = group_by 키 → 거래 → 행 (iw:473). 슬롯은 줄 하나만 받으므로, 실시간에서 group_by 그룹은 거래를 넘어 못 모인다고 읽힌다. 안 쟀다 |
-| ③ | 데이터 받기가 돌리기 안 — SDK 맵 다시 읽기 · 조인 `_read_once` · 맵퍼 자신의 SQL | **맞다 — 셋 다** | sdk:786 · ji:438 · sdk:123. 더해: 다음 쪽 `more()` 가 쓰기 루프 안 (iw:1550), fold_units 의 읽기 (rp:1689–1703) |
+| ③ | 데이터 받기가 돌리기 안 — SDK 맵 다시 읽기 · 조인 `_read_once` · 맵퍼 자신의 SQL | **맞다 — 셋 다** | sdk:786 · ji:438 · sdk:123. 더해: 다음 쪽 `more()` 가 쓰기 루프 안 (iw:1550), fold_units 의 읽기 (rp:1689–1703) 🟢 `aa0cd1648` 받기 좌석 착지 |
 | ③b | f2 판 결함(맵 교체에서 편집 행 하나가 맵을 통째 바꿈)의 원인 | ③ 의 결과 — **끝 값은 `57a786ae3` 이 닫음, 자리는 남음** | 이 줄을 쓸 때(5ce9df90f) SDK 는 «떠난» 맵만 다시 읽었다. `57a786ae3`(10-21 20:06)부터 `_with_the_whole_maps` 가 «행이 든» 맵도 읽어 끝 값은 맞다. 그 읽기는 여전히 맵퍼 호출 안(R)이다 — 계약판 «받기» 열의 «읽은 자리» 칸이 잰다 |
 | ④ | 행 거르기(require · exclude)의 자리 | **받기와 돌리기 사이 — 맞는 자리**, 단 좌석 둘 | 정본 `held_back` (rr:623, 받기 뒤 · 맵퍼 앞). 조인은 값 표 쪽을 SQL 조건으로 따로 거른다 (ji:450). 편집으로 문을 나간 행은 «떠난 행»으로 바뀌어 건네진다 (rr:574) |
 | ⑤ | 쓰기가 여러 커밋 · 일부 거두기가 «처리됨» 뒤 | 🟢 체인 묶음 닫힘 `9cf3e2974` — 리플레이 끝 스윕은 남음 · **맞다** | 처리됨 뒤 거두기 셋: iw:3059 · iw:3163 · iw:4151. 리플레이 끝 스윕도 처리됨 뒤 (rp:816). 한 그룹 안 커밋 넷 갈래: crud:5790 · cl:637 · iw:3544 · crud:6046 |
