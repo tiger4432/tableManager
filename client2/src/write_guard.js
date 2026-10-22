@@ -5,10 +5,11 @@
 //    판정 자체는 이미 한 곳이었는데(`tableIsView`), «그 판정을 묻는 일»이 자리마다 손으로
 //    적혀 있었습니다 — 두 줄씩 다섯 번. 여덟째 좌석이 생기는 날 또 빠집니다.
 //
-// ═══ 이 파일이 답하는 둘 ═══════════════════════════════════════════════════════════════
+// ═══ 이 파일이 답하는 셋 ═══════════════════════════════════════════════════════════════
 //
-// ① 「지금 쓰면 거절되나, 그리고 왜」          -> `writeRefusal()` · `refuseWrite()`
+// ① 「지금 쓰면 거절되나, 그리고 왜」          -> `writeRefusal()` · `refuseWrite()` · `refusePivotKeys()`
 // ② 「쓰는 «컨트롤»들은 지금 어떤 상태인가」   -> `applyWriteGuards()`
+// ③ 「그리드의 쓰기를 서버가 받는 모양으로」    -> `wireUpdates()` — 그리드의 PUT /data/updates 다섯 자리가 지난다
 //
 // 🔴 ②의 목록이 «한 곳»인 것이 이 파일의 요점입니다. 컨트롤이 각자 물으면 새 컨트롤마다 한 번씩
 //    빠지고, 빠진 것은 «조용합니다» — 눌리고, 서버까지 가고, 거기서 거절됩니다.
@@ -16,8 +17,8 @@
 // ⚠️ 사유의 철자는 여기서 짓지 «않습니다». `state.js` 의 `VIEW_READ_ONLY_NOTE` 하나이고, 화면의
 //    배지도 같은 글자를 씁니다 — 같은 사실에 두 문구를 쓰면 그 둘은 언젠가 갈라집니다.
 
-import { tableIsView, VIEW_READ_ONLY_NOTE, pivotShown } from './state.js';
-import { PIVOT_BULK_NOTE } from './grid_pivot.js';
+import { state, tableIsView, VIEW_READ_ONLY_NOTE, pivotShown } from './state.js';
+import { PIVOT_ROWS_NOTE, PIVOT_KEY_NOTE, keyColumnsIn, pivotWire } from './grid_pivot.js';
 import { elements } from './dom.js';
 // 🔴 C-120. 「꺼짐 + 왜」를 그리는 «몸통»은 이제 여기 있지 않습니다. 이 파일이 답하는 것은
 //    「이 표에 쓸 수 있나」이고, 「행을 골랐나」 같은 «다른 물음»이 같은 기제를 쓰기 때문입니다.
@@ -47,14 +48,31 @@ export function writeRefusal() {
   return tableIsView() ? VIEW_READ_ONLY_NOTE : '';
 }
 
-/** A write of more than one cell - paste, clear, fill, a row added or deleted, a transaction: the table's refusal, or in
- *  pivot view the pivot's (lead 10-22 ①: one cell at a time there until part ②). */
-export function bulkWriteRefusal() {
-  return writeRefusal() || (pivotShown() ? PIVOT_BULK_NOTE : '');
+/** A row added or deleted, or rows pasted in as a table: the table's refusal, or in pivot view the pivot's. */
+export function rowWriteRefusal() {
+  return writeRefusal() || (pivotShown() ? PIVOT_ROWS_NOTE : '');
 }
 
-// The controls a pivot view refuses with the rest of the grid's bulk writes; the file uploads write the table, not the view.
-const GRID_BULK_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'txApplyBtn', 'smartPasteBtn'];
+// The controls a pivot view refuses with rows; the file uploads write the table, not the view.
+const ROW_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'smartPasteBtn'];
+
+/** In pivot view, a paste, fill or clear that reaches a key column: the line said and true - nothing of it is written
+ *  or staged (lead 10-22 ②). `items` are the grid's updates ({updates} each). */
+export function refusePivotKeys(items) {
+  if (!pivotShown() || keyColumnsIn(items).length === 0) return false;
+  const el = elements.performanceLog;
+  if (el) el.textContent = PIVOT_KEY_NOTE;
+  return true;
+}
+
+/** The grid's updates as PUT /data/updates takes them - every grid write sends through here: in pivot view a group's
+ *  cells become their long rows' updates (lead 10-22 ②), otherwise the updates as they are. */
+export function wireUpdates(updates) {
+  return pivotWire(pivotShown() ? state.pivotView : null, updates, (rowId) => {
+    const node = state.gridApi && state.gridApi.getRowNode(rowId);
+    return node && node.data;
+  });
+}
 
 /**
  * 쓰기가 거절되면 «사유를 적고» true. 부르는 쪽은 `if (refuseWrite()) return;` 한 줄입니다.
@@ -63,8 +81,7 @@ const GRID_BULK_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'txApplyBtn', 'smartPas
  *    두 줄이 자리마다 손으로 적혀 있었고, 한 자리가 «조용한 no-op» 이 되는 것을 막는 것이
  *    그 둘째 줄입니다 — 아무 말 없이 안 되는 것은 고장과 구별되지 않습니다.
  */
-export function refuseWrite() {
-  const why = bulkWriteRefusal();
+export function refuseWrite(why = writeRefusal()) {
   if (!why) return false;
   const el = elements.performanceLog;
   if (el) el.textContent = why;
@@ -81,7 +98,7 @@ export function refuseWrite() {
 export function applyWriteGuards() {
   const why = writeRefusal();
   for (const handle of WRITE_CONTROLS) {
-    setDisabledReason(elements[handle], GRID_BULK_CONTROLS.includes(handle) ? bulkWriteRefusal() : why);
+    setDisabledReason(elements[handle], ROW_CONTROLS.includes(handle) ? rowWriteRefusal() : why);
   }
   // 🔴 C-107. 그리고 «표 자체»가 그 사실을 말합니다. 종전에는 뷰라는 것이 화면에 «없었고»,
   //    쓰려고 해야 알 수 있었습니다 — 잠긴 컨트롤의 «이유»가 눌러 보기 전에는 안 보입니다.

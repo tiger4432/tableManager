@@ -713,7 +713,16 @@ CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot drawn', at: 'p
   const b = document.getElementById('pivot-toggle-btn');
   return b && b.getAttribute('aria-pressed') === 'true' ? null : 'Pivot is not pressed';
 })()` });
+// Part ② (lead 10-22): in pivot view cells are written many at a time and the transaction is open; rows are not.
+CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot writes', at: 'pivot', expr: `(() => {
+  const add = document.getElementById('add-row-btn');
+  if (!add || !add.disabled || add.getAttribute('title') !== 'Rows are added and deleted with Pivot off') return 'Add Row: ' + (add ? add.disabled + ' «' + add.getAttribute('title') + '»' : 'none');
+  const tx = document.getElementById('tx-mode-toggle');
+  return tx && !tx.disabled ? null : 'the transaction toggle is shut in pivot view';
+})()` });
 CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 'pivot', expr: `(() => {
+  const add = document.getElementById('add-row-btn');
+  if (add && add.getAttribute('title') === 'Rows are added and deleted with Pivot off') return 'Add Row still says the pivot';
   if (document.querySelector('.ag-header-cell[col-id^="item:"]')) return 'an item column is left';
   const total = (document.getElementById('total-rows') || {}).textContent || '';
   if (total.includes(' group')) return 'the footer still says «' + total + '»';
@@ -2278,6 +2287,8 @@ const MUTANTS = [
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },
+  { name: 'rows are not refused in pivot view', entry: 'index.html', rule: 'pivot writes', at: 'pivot',
+    file: 'src/write_guard.js', edits: [["const ROW_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'smartPasteBtn'];", 'const ROW_CONTROLS = [];']] },
   { name: 'the footer counts rows in pivot view', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
     file: 'src/api.js', edits: [['elements.totalRowsCount.dataset.unit = rowUnit();', "elements.totalRowsCount.dataset.unit = 'row';"]] },
   // The checkboxes back on the schema's first column (owner 10-22): hidden from the column selector, they go with it.

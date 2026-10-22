@@ -1,6 +1,6 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, isDataColumn } from './state.js';
-import { refuseWrite } from './write_guard.js';
+import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
+import { refuseWrite, refusePivotKeys, wireUpdates } from './write_guard.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
 import { updateGridSortState } from './grid.js';
@@ -183,6 +183,7 @@ export async function applyValueToSelectedRange(newValue) {
     }
     updateMapByRow[rowId].updates[colId] = newValue;
   });
+  if (refusePivotKeys(Object.values(updateMapByRow))) return;
 
   Object.keys(updateMapByRow).forEach(rowId => {
     const item = updateMapByRow[rowId];
@@ -248,7 +249,7 @@ export async function applyValueToSelectedRange(newValue) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        updates: updatesArray,
+        updates: wireUpdates(updatesArray),
         silent: false,
         // V1 instrument: optional field. Raw counts only — the server weights at query time.
         effort: snapshot()
@@ -263,6 +264,8 @@ export async function applyValueToSelectedRange(newValue) {
       commitIfRecorded(result);
       const saveTime = (performance.now() - startTime).toFixed(1);
       elements.performanceLog.textContent = `Updated range cells in ${saveTime}ms (${result.change_count} cells updated)`;
+      // a pivot cell is a long row's: the page read again (a blank one now has its row)
+      if (pivotShown()) { await fetchData(false); return; }
 
       updatesArray.forEach(item => {
         const rowNode = state.gridApi.getRowNode(item.row_id);

@@ -8,7 +8,7 @@
 //   memory   per table, and a storage that throws keeps nothing and breaks nothing
 //
 // Run: node client2/tests/grid_pivot_harness.mjs
-import { pivotRows, pivotColumns, pivotUpdate, itemColId, itemOf, rememberedPivot, rememberPivot } from '../src/grid_pivot.js';
+import { pivotRows, pivotColumns, pivotUpdate, pivotWire, keyColumnsIn, itemColId, itemOf, rememberedPivot, rememberPivot } from '../src/grid_pivot.js';
 import { narrowingParams } from '../src/narrowing.js';
 import { matchCountText } from '../src/match_count.js';
 
@@ -47,6 +47,25 @@ console.log('-- write --');
 eq('W1 a cell with a row writes that row\'s value column', pivotUpdate(VIEW, rows[0], 'item:b', 6), { row_id: 'r2', updates: { value: 6 } });
 eq('W2 a blank cell writes its keys, its item and the value - no row_id', pivotUpdate(VIEW, rows[1], 'item:b', 3),
   { updates: { lot: 'L1', wafer: 'W2', itemid: 'b', value: 3 } });
+
+console.log('-- many cells (part ②) --');
+// a 3x3 paste over three groups and items a, b, c; W2 has no «b» - eight cells with a row, one blank
+const ANSWER3 = { pivot: VIEW, data: [...ANSWER.data,
+  { lot: 'L2', wafer: 'W1', cells: { a: { value: 3, row_id: 'r6' }, b: { value: 4, row_id: 'r7' }, c: { value: 8, row_id: 'r8' } } }] };
+const rows3 = pivotRows(ANSWER3);
+const rowOf = (id) => rows3.find((r) => r.row_id === id);
+const paste = rows3.map((r, i) => ({ row_id: r.row_id, updates: { 'item:a': 10 + i, 'item:b': 20 + i, 'item:c': 30 + i },
+  source_name: 'user', updated_by: 'u' }));
+const wire = pivotWire(VIEW, paste, rowOf);
+eq('P1 a 3x3 paste is nine updates: eight with their long row, one with its keys and item', [wire.length,
+  wire.filter((u) => u.row_id).map((u) => u.row_id), wire.filter((u) => !u.row_id).map((u) => u.updates)],
+  [9, ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'], [{ lot: 'L1', wafer: 'W2', itemid: 'b', value: 21 }]]);
+eq('P2 each carries its cell\'s value under the value column, and the batch\'s own fields',
+  [wire[0].updates, wire.every((u) => u.source_name === 'user' && u.updated_by === 'u')], [{ value: 10 }, true]);
+eq('P3 no pivot view: the updates as they are', pivotWire(null, paste, rowOf) === paste, true);
+eq('K1 a write reaching a key column names it; items alone name none',
+  [keyColumnsIn([{ updates: { 'item:a': 1, lot: 'x' } }, { updates: { lot: 'y', wafer: 'z' } }]), keyColumnsIn(paste)],
+  [['lot', 'wafer'], []]);
 
 console.log('-- narrowing and the footer --');
 eq('N1 pivot=true rides the one narrowing', narrowingParams({ pivot: true }).get('pivot'), 'true');

@@ -1,10 +1,10 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld, pivotShown, rowUnit } from './state.js';
-import { pivotRows, pivotUpdate, itemOf, itemColId, rememberedPivot, rememberPivot, PIVOT_BULK_NOTE } from './grid_pivot.js';
+import { pivotRows, itemColId, rememberedPivot, rememberPivot } from './grid_pivot.js';
 import { notANumber, unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, applyWriteGuards, bulkWriteRefusal } from './write_guard.js';
+import { refuseWrite, applyWriteGuards, rowWriteRefusal, wireUpdates } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
@@ -834,11 +834,6 @@ function settleTx() {
  *  until that is done (settleTx), so an edit made while Apply's PUT is out is staged, not sent straight and then painted
  *  over by the batch's answer (lead 10-13 2; 18766: PUT [28.9] then [29.1], the cell 29.1 and at the end 28.9). */
 export function txToggled() {
-  if (pivotShown() && elements.txModeToggle && elements.txModeToggle.checked) {
-    elements.txModeToggle.checked = false;
-    elements.performanceLog.textContent = PIVOT_BULK_NOTE;
-    return;
-  }
   const pendingCount = Object.keys(state.pendingTxEdits).length;
   if (elements.txModeToggle && !elements.txModeToggle.checked && pendingCount > 0) {
     if (confirm(`${pendingCount} pending edits. Apply them?\n\nOK applies them all.\nCancel discards them all.`)) applyPendingEdits();
@@ -993,7 +988,7 @@ async function applyStaged(choice) {
   }));
 
   const payload = {
-    updates: updates,
+    updates: wireUpdates(updates),
     silent: false,
     // V1 instrument: optional field. Raw counts only — the server weights at query time.
     effort: snapshot()
@@ -1043,6 +1038,8 @@ async function applyStaged(choice) {
     // records no effort row — resetting there would delete the effort it cost.
     commitIfRecorded(result);
     settleTx();
+    // a pivot cell is a long row's: the page read again (a blank one now has its row)
+    if (pivotShown()) await fetchData(false);
     updateGridSortState();
     state.gridApi.refreshCells({ force: true });
 
@@ -1187,12 +1184,9 @@ async function editCell(event) {
   elements.performanceLog.textContent = 'Saving edit...';
   const editStartTime = performance.now();
 
-  // API body payload mapping to GeneralUpdateBatch - an item cell of a pivot view writes its own long row, a blank one
-  // makes it (owner 10-22)
-  const update = pivotShown() && itemOf(colId) !== null ? pivotUpdate(state.pivotView, data, colId, finalValue)
-    : { row_id: rowId, updates: { [colId]: finalValue } };
+  // API body payload mapping to GeneralUpdateBatch
   const payload = {
-    updates: [{ ...update, source_name: 'user', updated_by: CURRENT_USER }],
+    updates: wireUpdates([{ row_id: rowId, updates: { [colId]: finalValue }, source_name: 'user', updated_by: CURRENT_USER }]),
     silent: false,
     // V1 instrument: optional field. Raw counts only — the server weights at query time.
     effort: snapshot()
@@ -1267,7 +1261,7 @@ export async function addRows(count) {
   // 🔴 C-102 ①. 네 번째 깔때기. 붙여넣기·지우기·일괄채우기가 이미 이 모양이고, 이것만
   //    빠져 있어서 뷰에서 «서버까지» 갔습니다. 거절이 깔때기에 있어야 버튼이 아닌 다른
   //    경로로 불려도 같은 답이 납니다 (criterion ④).
-  if (refuseWrite()) return;
+  if (refuseWrite(rowWriteRefusal())) return;
   setBadge(elements.performanceLog, `Creating ${count} empty row(s)...`);
   // 🔴 C-102 ②. 거절의 «사유»는 서버의 것입니다 — 이 파일이 이미 그렇게 하는 자리가 있고
   //    (:528 `errData.detail`), 이 한 자리만 `Error('Create failed')` 로 접고 있었습니다.
@@ -1301,7 +1295,7 @@ export async function addRows(count) {
 //    행동 하나를 붙입니다 — 커밋 뒤 방송에서 실패할 수도 있어 「안 지워졌다」고는 말하지 않습니다.
 export async function deleteSelectedRows() {
   if (!state.gridApi || state.isDeletingRows) return;
-  if (refuseWrite()) return;
+  if (refuseWrite(rowWriteRefusal())) return;
   const selectedNodes = state.gridApi.getSelectedNodes();
   if (selectedNodes.length === 0) {
     alert('No rows selected for deletion');
@@ -1351,7 +1345,7 @@ export async function deleteSelectedRows() {
   } finally {
     clearInterval(timer);
     state.isDeletingRows = false;
-    setDisabledReason(elements.deleteRowBtn, bulkWriteRefusal());
+    setDisabledReason(elements.deleteRowBtn, rowWriteRefusal());
   }
   if (!refused) return;
   const line = `${refused} — reload the table to see which rows remain`;

@@ -1,8 +1,9 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, isDataColumn } from './state.js';
+import { state, isVirtualColumn, isDataColumn, pivotShown, rowUnit } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
-import { refuseWrite } from './write_guard.js';
+import { refuseWrite, refusePivotKeys, wireUpdates } from './write_guard.js';
+import { fetchData } from './api.js';
 import { elements } from './dom.js';
 import { ensureCellObject, markCellOverwritten, updateGridSortState, isSystemColumn } from './grid.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
@@ -557,6 +558,7 @@ export function setupClipboardHandlers() {
         });
       }
 
+      if (refusePivotKeys(Object.values(updateMapByRow))) return;
       // Populate batchUpdates array
       Object.keys(updateMapByRow).forEach(rowId => {
         const item = updateMapByRow[rowId];
@@ -614,7 +616,7 @@ export function setupClipboardHandlers() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           // V1 instrument: `effort` is an optional field. Raw counts only.
-          body: JSON.stringify({ updates: batchUpdates, effort: snapshot() })
+          body: JSON.stringify({ updates: wireUpdates(batchUpdates), effort: snapshot() })
         });
 
         if (res.ok) {
@@ -623,7 +625,9 @@ export function setupClipboardHandlers() {
           // V1 instrument: reset ONLY when the server confirms it recorded the effort — a
           // paste whose values already match storage returns 200 and records nothing.
           commitIfRecorded(result);
-          elements.performanceLog.textContent = `Pasted successfully: ${unitText(batchUpdates.length, 'row')} updated`;
+          elements.performanceLog.textContent = `Pasted successfully: ${unitText(batchUpdates.length, rowUnit())} updated`;
+          // a pivot cell is a long row's: the page read again (a blank one now has its row)
+          if (pivotShown()) { await fetchData(false); return; }
 
           // Fast-apply local data values by updating latest node data in-place
           batchUpdates.forEach(update => {
@@ -794,6 +798,7 @@ export async function clearSelectedCells() {
     updateMapByRow[rowId].updates[cell.colId] = clearValue;
   });
 
+  if (refusePivotKeys(Object.values(updateMapByRow))) return;
   const updatesArray = [];
 
   Object.keys(updateMapByRow).forEach(rowId => {
@@ -864,7 +869,7 @@ export async function clearSelectedCells() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        updates: updatesArray,
+        updates: wireUpdates(updatesArray),
         silent: false,
         // V1 instrument: optional field. Raw counts only — the server weights at query time.
         effort: snapshot()
@@ -879,6 +884,8 @@ export async function clearSelectedCells() {
       commitIfRecorded(result);
       const saveTime = (performance.now() - startTime).toFixed(1);
       elements.performanceLog.textContent = `Cleared cells in ${saveTime}ms (${result.change_count} cells updated)`;
+      // a pivot cell is a long row's: the page read again (a blank one now has its row)
+      if (pivotShown()) { await fetchData(false); return; }
 
       // Apply grid local updates on the latest nodes directly
       updatesArray.forEach(item => {

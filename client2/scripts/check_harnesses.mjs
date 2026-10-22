@@ -1238,7 +1238,7 @@ const FLOORS = new Map([
   // NEW 2026-10-22 (owner, lead ㄱ ①): the main grid's pivot - rows, columns, one cell's write, the narrowing, the footer's
   // unit, the memory. Mutants by hand: a cell with a row written as blank (W1), pivot dropped from the narrowing (N1),
   // the footer's unit ignored (N3) - each red alone.
-  ['grid_pivot_harness.mjs', 18],
+  ['grid_pivot_harness.mjs', 22],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
   // reader. Each is checked in THREE states, not two -- true, false, and 'the server did
   // not say' -- because an older build sends neither key and a two-state test passes

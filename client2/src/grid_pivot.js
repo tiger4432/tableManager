@@ -7,8 +7,23 @@ export const itemColId = (name) => `${ITEM_PREFIX}${name}`;
 /** The item an item column holds, else null. */
 export const itemOf = (colId) => (typeof colId === 'string' && colId.startsWith(ITEM_PREFIX) ? colId.slice(ITEM_PREFIX.length) : null);
 
-/** A write of more than one cell in pivot view - paste, fill, a range, a transaction (lead 10-22: part ② opens them). */
-export const PIVOT_BULK_NOTE = 'Paste and fill are not available in pivot view yet - switch Pivot off';
+/** A row added or deleted, or rows pasted in as a table, in pivot view - a group is no row of the table. */
+export const PIVOT_ROWS_NOTE = 'Rows are added and deleted with Pivot off';
+/** A paste, fill or clear reaching a key column in pivot view - refused whole (lead 10-22 ②): a key is every long row's. */
+export const PIVOT_KEY_NOTE = 'Key columns cannot be changed in pivot view';
+
+/** The key columns a write reaches, of the grid's updates ({updates} each) - none but item columns may be written. */
+export const keyColumnsIn = (items) => [...new Set(items.flatMap((item) => Object.keys(item.updates || {}))
+  .filter((col) => itemOf(col) === null))];
+
+/** The grid's updates as the server takes them (lead 10-22 ②): with a pivot view, a group's update becomes one update per
+ *  item cell - its long row's, or a blank cell's keys and item. Without one (null), the updates as they are.
+ *  @param {(rowId: string) => any} rowOf the grid row a group id is */
+export function pivotWire(view, updates, rowOf) {
+  if (!view) return updates;
+  return updates.flatMap(({ row_id: rowId, updates: cells, ...rest }) => Object.entries(cells)
+    .map(([colId, value]) => ({ ...rest, ...pivotUpdate(view, rowOf(rowId), colId, value) })));
+}
 
 /** The columns a pivot view shows: its keys, then its items. Before its first answer, the declaration's keys. */
 export function pivotColumns(view, pivot, keySources) {
