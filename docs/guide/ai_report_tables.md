@@ -186,7 +186,7 @@
    - `{{summary}}` 처럼 `layout` 의 글 자리 이름 — 모델이 쓴 글
    - `{{table:yield_by}}` · `{{table:pareto}}` · `{{table:trend}}` — 그 표
    - `{{images}}` — 디펙 이미지 묶음
-2. 그 범위를 복사(Ctrl+C) → 어드민 Chain 탭 리포트 규칙의 **Paste template** 에 붙여 넣고 저장.
+2. 그 범위를 복사(Ctrl+C) → 어드민 Chain 탭 리포트 규칙의 **Paste template** 에 붙여 넣고 저장. (그 칸은 클라 착지 뒤 — 그 전엔 선언 글의 `template` 칸에 HTML 그대로)
 3. 리포트는 그 양식 그대로 나오고, 표시가 든 칸 안에 내용이 들어간다. 넓은 표는 그 칸 안에서 가로로 스크롤된다.
 
 - `layout` 의 글 자리(`kind: text`)는 양식에 표시가 «있어야» 저장된다. 양식에만 있는 모르는 표시도 거절(이름을 댐).
