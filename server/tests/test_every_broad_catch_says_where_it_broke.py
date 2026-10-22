@@ -16,6 +16,7 @@ FULL = {"exception", "format_exc", "print_exc", "format_exception", "extract_tb"
 KEPT = {
     "server/admin/sso.py": 2,                       # the sign-in refusal shows the browser the type alone
     "server/chain/enrichment/config.py": 1,         # _reference_view_failure logs the traceback itself
+    "server/chain/rule_run.py": 1,                  # prepare keeps a read's error; run_rule raises it, traceback whole
     "server/ledger/config_explorer_service.py": 1,  # a structured refusal (code · path · message) for the form
     "server/utils/llm.py": 1,                       # _why says every cause in the chain
     "server/scripts/dev_env/devenv.py": 1,          # standalone scripts without server/ on the path at import

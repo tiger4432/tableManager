@@ -297,7 +297,10 @@ def test_auto_confirm_reports_its_row_count_under_the_name_the_others_use(monkey
         def collect_rows(self, *_a):
             pass
 
-        def flush(self, _db=None, propose_into=None):
+        def read_for_flush(self, _db=None):
+            return {"keyed_rows": [1, 2, 3, 4]}
+
+        def flush(self, _db=None, propose_into=None, read=None):
             # The real collector hands its items to the sink and lets the caller write.
             if propose_into is not None:
                 propose_into.extend({"row_id": n, "updates": {"c": n}}

@@ -8,6 +8,7 @@ emptied. A map no row holds any more is still named, and its batch empties it.
   in        an edit inside a map, a key moved on: the map the row is in comes whole too (총괄 f2 10-21)
   gone      a map with no row now: named, nothing written - its batch empties it
   plain     a rule without the two flags reads nothing again
+  fetched   the whole map is read by the fetch seat - the mapper's call reads nothing (총괄 78eec1ec1)
 
 On a real chain worker and a real watcher's file replace - measured on a scratch schema (박스 판).
 """
@@ -21,6 +22,7 @@ from sqlalchemy.orm import sessionmaker
 import chain_bindings
 import mapper_sdk
 from chain import ingestion_worker as worker
+from chain import rule_run
 from database import crud, models, schemas
 from database.database import Base
 
@@ -144,3 +146,34 @@ def test_a_rule_without_the_flags_reads_nothing_again(db):
     envelope = mapper_sdk.MAPPER_REGISTRY["left_build"](db, [_edited(db, "T2", "J-B", "1", {"job": "J-A"})],
                                                         rule=_rule())
     assert SEEN == [[("T2", "J-B", "1")]] and "batches" not in envelope and len(envelope["updates"]) == 1
+
+
+def test_the_whole_map_is_read_by_the_fetch_seat(db, monkeypatch, caplog):
+    import logging
+
+    monkeypatch.setattr(rule_run, "_SAID_READING", set())
+    rule_run.count_reads()
+    caplog.set_level(logging.INFO)
+    edited = _edited(db, "T2", "J-A", "3", {"qty": "1"})
+    envelope = rule_run.run_rule(db, _rule(allow_replace_map=True), payloads=[edited])
+    assert SEEN == [[("T1", "J-A", "2"), ("T2", "J-A", "3")]] and _maps(envelope) == {"J-A": 5}
+    assert not [r for r in caplog.records if "reads outside the fetch" in r.getMessage()]
+
+
+def _copy(df, db):
+    """The board's copy (C 10-22 g04 · g13): the columns there are, nothing guarded."""
+    return df[[c for c in ("job", "cell", "v", mapper_sdk.ORIGIN_MARK) if c in df.columns]].copy()
+
+
+@pytest.mark.parametrize("flag", ["allow_replace_map", "allow_retraction"])
+def test_a_map_deleted_whole_is_handed_with_its_key_column(db, flag):
+    """C 10-22 g04 · g13: every row of a map deleted - its rows were handed with no map column, and the batch refused
+    («removes by ['job'] … has no ['job']»). The rows that left are not rows of the map now; it is named and emptied."""
+    mapper_sdk.mapper(name="left_copy")(_copy)
+    try:
+        envelope = mapper_sdk.MAPPER_REGISTRY["left_copy"](
+            db, [_deleted("T8", "J-Z"), _deleted("T7", "J-Z")], rule=_rule(mapper="left_copy", **{flag: True}))
+    finally:
+        mapper_sdk.MAPPER_REGISTRY.pop("left_copy", None)
+        mapper_sdk.MAPPER_PARAMS.pop("left_copy", None)
+    assert _maps(envelope, flag == "allow_retraction") == {"J-Z": 0}

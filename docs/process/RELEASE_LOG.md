@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [체인 «데이터 받기» — 규칙이 읽는 것은 그룹의 규칙이 돌기 전에 한 번에 읽혀 건네진다 · group_by 규칙은 그 키의 행 전체를 받는다](#2026-10-22--체인-데이터-받기--규칙이-읽는-것은-그룹의-규칙이-돌기-전에-한-번에-읽혀-건네진다--group_by-규칙은-그-키의-행-전체를-받는다) — 보는 곳 chain_worker.log «[ChainRule] rule=<규칙> reads outside the fetch» · [ChainRule] rows_in
 - 2026-10-22 [체인이 잠금을 기다려도 «멈춘 프로세스»로 안 보인다 — 그룹 밖 DB 일도 박동하며 단계 이름과 잡은 쪽을 말한다](#2026-10-22--체인이-잠금을-기다려도-멈춘-프로세스로-안-보인다--그룹-밖-db-일도-박동하며-단계-이름과-잡은-쪽을-말한다) — 보는 곳 /health problems «is beating but its work has not progressed … waiting … on pid» · chain_worker.log «tried again next turn»
 - 2026-10-22 [체인 그룹 하나의 쓰기가 한 커밋 — 어디서 꺼져도 다 됨 또는 하나도 안 됨](#2026-10-22--체인-그룹-하나의-쓰기가-한-커밋--어디서-꺼져도-다-됨-또는-하나도-안-됨) — 적는 곳 ingestion_settings.json 의 `save_lock_timeout_seconds` · 보는 곳 체인 대기열 «deadlock with a save» · chain_worker.log «origin unknown»
 - 2026-10-22 [끊긴 리플레이를 끊긴 쪽 다음부터 이어 한다 — 대기열의 «Interrupted · Resume», 거두기는 이어 간 끝에 한 번](#2026-10-22--끊긴-리플레이를-끊긴-쪽-다음부터-이어-한다--대기열의-interrupted--resume-거두기는-이어-간-끝에-한-번) — 보는 곳 대기열 interrupted_runs · run 줄 pages · POST /admin/retroactive/runs/<id>/resume
@@ -508,6 +509,15 @@
 
 
 
+
+## 2026-10-22 · 체인 «데이터 받기» — 규칙이 읽는 것은 그룹의 규칙이 돌기 전에 한 번에 읽혀 건네진다 · group_by 규칙은 그 키의 행 전체를 받는다
+
+- **무엇** — 총괄 78eec1ec1 안 1(체인 다섯 단계의 둘째 «받기»), 소유자 10-22 「ㅇㅇ 넓혀」. 조인 · decide · 오토컨펌 · @mapper 의 맵 통째 읽기는 맵퍼 호출 «안»에서 DB 를 읽었습니다. 그래서 읽기가 규칙 실행 사이사이에 흩어져 있었고, 운영 맵퍼가 무엇을 읽는지 셀 자리가 없었습니다.
+- **선언** — 바뀐 것 없음.
+- **바뀐 동작** — 그룹이 깨운 규칙마다 받기 좌석(`rule_run.prepare`)이 맵퍼의 읽기 반쪽을 먼저 돌리고, 맵퍼 호출에는 읽은 것을 건넵니다. 제품 맵퍼 넷(조인 · decide · 오토컨펌 · @mapper 맵 통째)은 호출 안에서 읽는 문장이 0 입니다. group_by 맵퍼는 편집 하나에도 그 키의 모든 행을 받습니다(그 행이 떠난 키도). 읽기가 키 크기만큼 늘고, 소급은 0 입니다. 맵 교체 · 잡 규칙에서 맵의 행을 전부 지우면, 지운 행은 맵퍼에 행으로 가지 않고 그 맵을 비우는 묶음이 됩니다 — 예전엔 맵 칸 없는 행이 건네져 «removes by … has no …» 거절로 그룹이 실패했습니다. 받기에서 난 오류는 그 규칙의 실패로, 예전 맵퍼 안 오류와 같은 줄 · 같은 격리 사유를 남깁니다.
+- **보는 곳** — chain_worker.log «[ChainRule] rule=<규칙> reads outside the fetch: N statement(s) in its mapper's call - what it reads is not handed by the fetch seat» — 그 규칙의 맵퍼가 호출 안에서 읽습니다. 프로세스(슬롯)마다 규칙당 한 번 납니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_a_rule_reads_in_the_fetch_seat.py` · `test_a_map_a_row_left_is_handed_whole.py`.
 
 ## 2026-10-22 · 체인이 잠금을 기다려도 «멈춘 프로세스»로 안 보인다 — 그룹 밖 DB 일도 박동하며 단계 이름과 잡은 쪽을 말한다
 

@@ -446,11 +446,11 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
                  for _l, right_col, fold in pairs]
     takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
     # 🔴 [총괄 2276e38cf] A value row with an empty `require` column is not an answer, from
-    #   whichever side the join woke - the SQL twin of the seat's `crud.is_blank_value`.
-    filled = [crud.not_blank_sql_condition(crud.column_text_sql(getattr(right_model, column)))
-              for column in _required(spec)] + [
-        crud.blank_sql_condition(crud.column_text_sql(getattr(right_model, column)))
-        for column in _excluded(spec)]
+    #   whichever side the join woke - the rule's row gates' one judgement (`rule_run.gate_conditions`, 총괄 23fb6060d).
+    from chain import rule_run
+
+    filled = rule_run.gate_conditions({chain_bindings.REQUIRE_KEY: _required(spec),
+                                       chain_bindings.EXCLUDE_KEY: _excluded(spec)}, right_model)
     answers = {}
     width = len(right_key)
     for chunk in crud._chunks(sorted(set(left.values())), keyset_scan.DEFAULT_CHUNK_SIZE):
@@ -543,12 +543,27 @@ def _update_items(db, left_table: str, rows, spec, source_name: str):
 #    collapsed in this same commit. Reinstate either half alone and that log line comes back.
 
 def propose(db, rule: dict, row_ids=None, keys_left=()):
-    """What this join would change, as update items — and why, when it is nothing.
+    """What this join would change, as update items — and why, when it is nothing: what it reads (`read`), answered
+    (`answer`).
 
-    🔴 [판정 567] THE BODY THE DYNAMIC MAPPER RUNS. A mapper proposes and the caller
-    writes, so the answer has to be separable from the act. Nothing here decides anything a
-    different way; the last step is simply not taken.
+    🔴 [판정 567] A mapper proposes and the caller writes, so the answer has to be separable from the act. Nothing
+    here decides anything a different way; the last step is simply not taken.
     """
+    return answer(db, rule, read(db, rule, row_ids, keys_left))
+
+
+def answer(db, rule: dict, got: dict):
+    """The first page of what `read` read, answered - and the call for the next. 🔴 THE DYNAMIC MAPPER'S BODY: it is
+    handed `got` by the fetch seat (총괄 78eec1ec1), so nothing is read while the rules run."""
+    if "answer" in got:
+        return got["answer"]
+    return _page(db, rule, got["spec"], got["left_table"], got["left_rows"], got["answers"], 0, got["handed"],
+                 got["side"])
+
+
+def read(db, rule: dict, row_ids=None, keys_left=()) -> dict:
+    """Everything this join's answer depends on, read once - `{"answer": ...}` when that is already the answer (why
+    it is nothing), else the left rows, the right answers and how they were reached. The join's read half."""
 
     # ⚠️ ONE KIND, TWO SIDES, AND THE RULE SAYS WHICH. The declaration's own rule is triggered
     # on the RIGHT (source) table and recomputes the left rows whose key now resolves
@@ -562,12 +577,12 @@ def propose(db, rule: dict, row_ids=None, keys_left=()):
     #   a question it can answer - and until it did, the operator's queue cell said only
     #   that no rows came out, which they could already see.
     if not rows_in:
-        return {"updates": [], "refusal": "이 규칙이 볼 행이 넘어오지 않았습니다"}
+        return {"answer": {"updates": [], "refusal": "이 규칙이 볼 행이 넘어오지 않았습니다"}}
 
     left_model, right_model = _models(spec, left_table)
     refusal = _missing(spec, left_table, left_model, right_model)
     if refusal:
-        return {"updates": [], "refusal": refusal}
+        return {"answer": {"updates": [], "refusal": refusal}}
 
     reference_side = str((rule or {}).get("trigger_table") or "") == str(
         spec.get("right_table") or "")
@@ -578,8 +593,8 @@ def propose(db, rule: dict, row_ids=None, keys_left=()):
     else:
         wheres = [left_model.row_id.in_(rows_in)]
     if wheres is None:
-        return {"updates": [],
-                "refusal": "기준 표의 이번 변경이 이 규칙의 왼쪽 행을 하나도 가리키지 않습니다"}
+        return {"answer": {"updates": [],
+                           "refusal": "기준 표의 이번 변경이 이 규칙의 왼쪽 행을 하나도 가리키지 않습니다"}}
 
     # 🔴 [총괄 e10c58e5e] PAGES OF LEFT ROWS. One source row can match hundreds of thousands of
     #    left rows, and one SELECT and one write of all of them held the chain for minutes with
@@ -589,8 +604,8 @@ def propose(db, rule: dict, row_ids=None, keys_left=()):
     left_rows, answers, empty = _read_once(db, spec, left_model, right_model, wheres,
                                            left_table)
     _say_empty_keys(rule, "target", empty)
-    return _page(db, rule, spec, left_table, left_rows, answers, 0, len(rows_in),
-                 "reference" if reference_side else "target")
+    return {"spec": spec, "left_table": left_table, "left_rows": left_rows, "answers": answers,
+            "handed": len(rows_in), "side": "reference" if reference_side else "target"}
 
 
 def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):

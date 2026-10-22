@@ -8,6 +8,7 @@ import logging
 import importlib
 import inspect
 import itertools
+import traceback
 import uuid
 import select
 import threading
@@ -2304,16 +2305,30 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # (총괄 c2995cdd8) - asked of the replay's own mark, not of `only_rule`.
     woken_by_a_replay, cascade, run = _replay_ask(events)
 
-    for table_name in trigger_tables_in_order(valid_events):
-        matched_rules = [
-            r for r in rules
-            if r.get("trigger_table") == table_name
-            and any(wakes(r, e) for e in valid_events if e.table_name == table_name)
-        ]
-        if not matched_rules:
-            continue
-            
-        for rule in matched_rules:
+    # the rules this group wakes, a trigger table at a time - each with the events that wake it
+    # (`wakes`, not `fires`: a DELETE another rule on this table takes is not this rule's)
+    woken = [(table_name, rule, trigger_events)
+             for table_name in trigger_tables_in_order(valid_events)
+             for rule in rules if rule.get("trigger_table") == table_name
+             for trigger_events in [[e for e in valid_events if e.table_name == table_name and wakes(rule, e)]]
+             if trigger_events]
+
+    # 🔴 THE FETCH SEAT, BEFORE ANY RULE RUNS (총괄 78eec1ec1 «데이터 받기»): what each rule is handed and what its
+    #    mapper reads - a map's or a job's rows, a join's two sides, a decide's counts - read here, so no rule reads
+    #    while the rules run, and none reads what one before it proposed. Indexed, not `.get(..., ())`: a missing key
+    #    means the expander and this loop disagree about the batch, and deriving nothing silently is the failure
+    #    mode to avoid.
+    prepared = []
+    with alignment_batch_counts.stage("fetch"):
+        for _table_name, rule, trigger_events in woken:
+            try:
+                payloads = [p for e in trigger_events for p in expanded[outbox_expand.event_key(e)]]
+                prepared.append(rule_run.prepare(db, rule, payloads=payloads,
+                                                 row_ids=[p.get("row_id") for p in payloads if p.get("row_id")]))
+            except Exception:
+                return _rule_failed(rule, traceback.format_exc())
+
+    for (table_name, rule, trigger_events), handed in zip(woken, prepared):
             target_table = rule.get("target_table")
             # 🪦 `module_name` / `func_name` were read here and carried to the door. The seat
             #    reads them off the rule, so a rule naming its mapper in the ONE cell (the
@@ -2328,10 +2343,6 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     rule_shape.declaration_of(rule))
 
             try:
-                # `wakes`, not `fires`: a DELETE another rule on this table takes is not this rule's
-                trigger_events = [e for e in valid_events
-                                  if e.table_name == table_name
-                                  and wakes(rule, e)]
                 # 🪦 [판정 495] A BRANCH ON KIND STOOD HERE AND IT HAD NOTHING IN IT.
                 # `rule_run._uniform` was built (판정 428) so that 「a caller can extend all
                 # three lists unconditionally and get a no-op - that is what lets the branch
@@ -2349,22 +2360,12 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # 판정 423's `chain_depth` is stamped for a self-writing kind exactly as it
                 # was when this branch passed `depth=` by hand.
                 #
-                # Indexed, not `.get(..., ())`: a missing key means the expander and this
-                # loop disagree about the batch, and deriving nothing silently is the
-                # failure mode to avoid.
-                payloads = [p for e in trigger_events
-                            for p in expanded[outbox_expand.event_key(e)]]
-                # A `builtin:` kind resolves rows for itself and the seat reads THIS list; a
-                # file mapper never looks at it. Projected rather than branched on, so this
-                # caller stops knowing which door the rule takes.
-                row_ids = [p.get("row_id") for p in payloads if p.get("row_id")]
                 # 🔴 [총괄 12cc7dd1f ③] ONE READING, WHATEVER THE RULE'S SHAPE. The seat hands a
                 #   batch rule its group in one call and a per-row rule one call per row, and
                 #   MERGES `updates` · `map_metadata_updates` · `batches` either way; this read
                 #   the last two only for a batch rule, so a per-row rule's envelope was dropped
-                #   in silence (247c0aba6 보고). A builtin kind picks `row_ids`.
-                target_payload = rule_run.run_rule(db, rule, payloads=payloads,
-                                                  row_ids=row_ids,
+                #   in silence (247c0aba6 보고). What it hands is the fetch seat's, above.
+                target_payload = rule_run.run_rule(db, rule, prepared=handed,
                                                   depth=incoming_depth,
                                                   woken_by_a_replay=woken_by_a_replay,
                                                   cascade=cascade, run=run)
@@ -2425,18 +2426,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     # a whole replay keeps the maps its rule's batches named (총괄 c67aa93bb ㄴ)
                     from chain import replay as _replay
                     _replay.record_named(db, run, rule, trigger_events, mine)
-            except Exception as e:
-                import traceback
-                error_msg = traceback.format_exc()
-                # 🔴 THE RULE NAME GOES IN THE REASON, NOT ONLY IN THIS LINE (2026-09-14).
-                # This string becomes the quarantine `reason` and every downstream FAILED
-                # log, and those said only a transaction id - so an operator staring at
-                # thousands of failures could not tell WHICH declaration to switch off.
-                error_msg = named_failure([rule.get("name")], [rule.get("target_table")],
-                                          error_msg)
-                log_failure_folded(logger, rule.get("name"), rule.get("target_table"),
-                                   error_msg)
-                return False, error_msg, []
+            except Exception:
+                return _rule_failed(rule, traceback.format_exc())
 
     # 4. Perform chained batch updates by target table
     # 🔴 [판정 604 ㅠ] THE WRITE IS A DOOR NOW. Same body, same order; what changed is
@@ -2584,6 +2575,16 @@ def _ran_though_set_aside(db, tx_id, events):
 #: While a slot runs a line the loop looks this often for its answer, so a freed slot is given
 #: the next line at once rather than at the next NOTIFY or the 2 s idle wait.
 SLOT_ANSWER_WAIT_SECONDS = 0.25
+
+
+def _rule_failed(rule, error):
+    """A rule's failure in a group - its fetch or its run, `error` its traceback - as the group's answer.
+    🔴 THE RULE NAME GOES IN THE REASON, NOT ONLY IN THE LINE (2026-09-14). This string becomes the quarantine
+    `reason` and every downstream FAILED log, and those said only a transaction id - so an operator staring at
+    thousands of failures could not tell WHICH declaration to switch off."""
+    error_msg = named_failure([rule.get("name")], [rule.get("target_table")], error)
+    log_failure_folded(logger, rule.get("name"), rule.get("target_table"), error_msg)
+    return False, error_msg, []
 
 
 async def process_chain_transaction_group(tx_id, events, db, rules):
@@ -2836,6 +2837,7 @@ def warmup_worker(rules, db_session_factory=None):
     #    chain worker, which runs on boot AND on SYSTEM_RELOAD (a saved or edited rules file
     #    forgets it in `database.config_watcher`'s chain_rules row, which does not warm up).
     _reset_right_keys()
+    rule_run.count_reads()      # this process runs rules: their mappers' reads are counted (총괄 10-22)
 
     # 0) 🔴 맵퍼 패키지 «전체»를 import 해 데코레이터가 등록되게 한다 (S-188 ⓒ, 판정 300).
     #    아래 ①은 «규칙이 이름 댄» 모듈만 덥히므로 「어떤 맵퍼가 있나」에 답하지 못한다 —

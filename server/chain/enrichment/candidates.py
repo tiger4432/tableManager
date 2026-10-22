@@ -648,9 +648,46 @@ def new_tx_id(tx_prefix: str = None) -> str:
     return f"{tx_prefix or SOURCE_NAME}_{uuid.uuid4().hex[:8]}"
 
 
+def _stats(stats: dict = None) -> dict:
+    """`confirm_keys`' counts, every cell present - in `stats` when handed one."""
+    st = stats if stats is not None else {}
+    st.setdefault("keys_examined", 0)
+    st.setdefault("confirmed", 0)
+    st.setdefault("confirmed_partial_key", 0)
+    st.setdefault("written_cells", 0)
+    st.setdefault("refused", {})
+    st.setdefault("samples", [])
+    # ROW grain. These three are a partition of `rows_examined` - asserted in the
+    # tests, because a partition that silently stops adding up is how a progress
+    # number starts lying (N36).
+    st.setdefault("rows_examined", 0)
+    st.setdefault("rows_fully_confirmed", 0)
+    st.setdefault("rows_partly_confirmed", 0)
+    st.setdefault("rows_unconfirmed", 0)
+    # COLUMN grain: {target_field: {"confirmed": n, "refused": {reason: n}}}.
+    st.setdefault("per_target", {})
+    # CAP grain: {cap_name: {cap_value, cap_declared, cap_home, hits, ambiguous,
+    # unknown, max_read}} - what to turn, and whether turning it would help.
+    st.setdefault("cap_hits", {})
+    return st
+
+
+def confirm_reads(db, rule: dict, keyed_rows: list, caps: dict = None, stats: dict = None) -> tuple:
+    """What `confirm_keys` reads, read: -> (the target cells with no provenance - the absent-only gate, batched
+    before any probing, so a resolved queue costs no queries - and the probes the rows need, asked a view at a
+    time), or None with no target declared. The auto-confirm's read half (총괄 78eec1ec1)."""
+    target_fields = candidate_target_fields(rule)
+    if not target_fields:
+        return None
+    caps = caps if caps is not None else _enrichment_config.load_read_caps()
+    writable = find_unresolved_cells(
+        db, rule["derived_table"], [r.get("row_id") for r in keyed_rows], target_fields)
+    return writable, ask_together(db, rule, keyed_rows, writable, caps, _stats(stats))
+
+
 def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                  stats: dict = None, tx_prefix: str = None, caps: dict = None,
-                 propose_into: list = None, tx_id: str = None) -> dict:
+                 propose_into: list = None, tx_id: str = None, read: tuple = None) -> dict:
 
     """Resolve + (optionally) write single candidates for a set of derived rows.
     `propose_into`: pass a list and the update items are APPENDED to it and NOT
@@ -702,25 +739,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
     from chain.enrichment import config as _enrichment_config
 
     caps = caps if caps is not None else _enrichment_config.load_read_caps()
-    st = stats if stats is not None else {}
-    st.setdefault("keys_examined", 0)
-    st.setdefault("confirmed", 0)
-    st.setdefault("confirmed_partial_key", 0)
-    st.setdefault("written_cells", 0)
-    st.setdefault("refused", {})
-    st.setdefault("samples", [])
-    # ROW grain. These three are a partition of `rows_examined` - asserted in the
-    # tests, because a partition that silently stops adding up is how a progress
-    # number starts lying (N36).
-    st.setdefault("rows_examined", 0)
-    st.setdefault("rows_fully_confirmed", 0)
-    st.setdefault("rows_partly_confirmed", 0)
-    st.setdefault("rows_unconfirmed", 0)
-    # COLUMN grain: {target_field: {"confirmed": n, "refused": {reason: n}}}.
-    st.setdefault("per_target", {})
-    # CAP grain: {cap_name: {cap_value, cap_declared, cap_home, hits, ambiguous,
-    # unknown, max_read}} - what to turn, and whether turning it would help.
-    st.setdefault("cap_hits", {})
+    st = _stats(stats)
 
     derived_table = rule["derived_table"]
     target_fields = candidate_target_fields(rule)
@@ -731,11 +750,8 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
         st["rows_unconfirmed"] += len(keyed_rows)
         return st
 
-    # Absent-only gate, batched before any per-key probing: a cell that already
-    # carries provenance is never probed, so a resolved queue costs no queries.
-    writable = find_unresolved_cells(
-        db, derived_table, [r.get("row_id") for r in keyed_rows], target_fields)
-    asked = ask_together(db, rule, keyed_rows, writable, caps, st)
+    # `read`: what `confirm_reads` read, handed by the fetch seat - read here when nobody did (the sweep)
+    writable, asked = read if read is not None else confirm_reads(db, rule, keyed_rows, caps, st)
 
     items = []
     for entry in keyed_rows:
@@ -1025,20 +1041,34 @@ class AutoConfirmCollector:
     def pending(self) -> bool:
         return self.active and bool(self.entries)
 
-    def flush(self, db, propose_into: list = None) -> dict:
+    def flush(self, db, propose_into: list = None, read: dict = None) -> dict:
         """Resolve for the collected keys, and write unless handed a sink.
 
         `propose_into` goes straight through to `confirm_keys` - this class decides
-        WHICH rows, never whether they are written.
+        WHICH rows, never whether they are written. `read`: what `read_for_flush` read, handed by the fetch seat
+        (총괄 78eec1ec1) - read here when nobody did.
         """
-
-        if not self.pending():
+        got = read if read is not None else self.read_for_flush(db)
+        if not got:
             return {}
+        keyed_rows, over_cap, stats = got["keyed_rows"], got["over_cap"], got["stats"]
+        if keyed_rows:
+            confirm_keys(db, self.rule, keyed_rows, apply=True, stats=stats,
+                         tx_prefix=SOURCE_NAME, caps=self._caps,
+                         propose_into=propose_into, read=got["read"])
+
+        return self._said(stats, over_cap)
+
+    def read_for_flush(self, db) -> dict:
+        """What `flush` reads, read: the collected keys' rows whose target is blank, and what `confirm_keys` reads
+        for them (`confirm_reads`). None with nothing to resolve. The auto-confirm's read half (총괄 78eec1ec1)."""
+        if not self.pending():
+            return None
         from database import crud, models
 
         model = models.DYNAMIC_TABLES.get(self.derived_table)
         if model is None:
-            return {}
+            return None
         target_fields = candidate_target_fields(self.rule)
 
         bks = list(self.entries)
@@ -1066,11 +1096,11 @@ class AutoConfirmCollector:
                 })
 
         stats = {"refused": {REASON_OVER_CAP: over_cap} if over_cap else {}}
-        if keyed_rows:
-            confirm_keys(db, self.rule, keyed_rows, apply=True, stats=stats,
-                         tx_prefix=SOURCE_NAME, caps=self._caps,
-                         propose_into=propose_into)
+        return {"keyed_rows": keyed_rows, "over_cap": over_cap, "stats": stats,
+                "read": confirm_reads(db, self.rule, keyed_rows, self._caps, stats) if keyed_rows else None}
 
+    def _said(self, stats, over_cap) -> dict:
+        """The unit's lines - the keys over the budget, the refusals - and its driver-error total; -> `stats`."""
         if over_cap:
             logger.warning(
                 "[Enrichment:%s] %d decision KEY(s) beyond the per-unit key budget "

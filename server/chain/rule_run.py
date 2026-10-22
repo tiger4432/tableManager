@@ -31,10 +31,14 @@ caller. The choice lives here now; the doors are unchanged.
 """
 import collections
 import contextlib
+import contextvars
 import importlib
 import itertools
 import logging
 import time
+
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -462,7 +466,18 @@ def _uniform():
 #: the call so the seat could pick a door: one door takes row ids and writes for itself,
 #: the other takes payloads and proposes. There is one door, so 「how is it called」 has one
 #: answer, and 「did it write」 is read off the result instead of being registered.
-Resolved = collections.namedtuple("Resolved", "call who accepts_rule")
+#: `fetch`: the mapper's read half (`FETCH`), or None - what it reads, read by the fetch seat (`prepare`) before any
+#: rule runs and handed to the call as `fetched=` (총괄 78eec1ec1 «데이터 받기»).
+Resolved = collections.namedtuple("Resolved", "call who accepts_rule fetch", defaults=(None,))
+
+#: The attribute a mapper carries its read half on: `fetch(db, unit, rule=rule)` -> what that call is `fetched=`.
+FETCH = "fetch"
+
+#: What the fetch seat hands a rule's run: the mapper, the rows it is handed, the calls it is handed them in (one
+#: for a batch rule, one a row otherwise) and what each call's mapper read (`fetched`, one a call, None without a
+#: read half). `failed`: what a read raised - raised by `run_rule` where the call's would be, so it is said and
+#: counted the same way.
+Prepared = collections.namedtuple("Prepared", "bound handed offered units fetched failed", defaults=(None,))
 
 
 class UnresolvableRule(ValueError):
@@ -534,7 +549,7 @@ def resolve(rule):
                ", ".join(sorted(mapper_sdk.MAPPER_REGISTRY)) or "none registered"))
     # A file mapper PROPOSES: its rows come back as `updates` for the caller to write, which
     # is exactly what lets a dry run count them without writing anything.
-    return Resolved(call, who, mapper_accepts_rule(call))
+    return Resolved(call, who, mapper_accepts_rule(call), getattr(call, FETCH, None))
 
 
 def rows_counted(value):
@@ -635,8 +650,97 @@ def held_back(rule, handed) -> tuple:
     return kept, {column: n for gate in missed for column, n in missed[gate].items()}
 
 
+def prepare(db, rule, payloads=None, row_ids=None) -> Prepared:
+    """THE FETCH SEAT (총괄 78eec1ec1 «데이터 받기»): the rows `rule` is handed (`held_back`), the calls it is handed
+    them in - the WHOLE group in one call for a batch rule, one call a row otherwise; an empty batch still calls, a
+    group `require` emptied does not (총괄 2276e38cf ②) - and what each call's mapper reads, read here by its read
+    half (`FETCH`). The group path asks this before any rule runs, so no rule reads while rules run and write; a
+    path that does not ask it yet gets it from `run_rule`, the same seat."""
+    from chain.mapper_call import without_missing
+
+    bound = resolve(rule)
+    # 🔴 [판정 562] ONE HAND. A caller that has only row ids hands them AS payloads -
+    #   the mapper reads `row_id` off each either way, and the group path already builds
+    #   its `row_ids` from exactly that cell. Two shapes of hand was the calling half of
+    #   the two doors.
+    handed = list(payloads or ()) or [{"row_id": rid} for rid in (row_ids or ())]
+    offered = len(handed)
+    handed, _empty = held_back(rule, with_the_whole_keys(db, rule, handed))
+    batched = (rule or {}).get("is_batch", False)
+    units = [without_missing(handed)] if batched and (handed or not offered) else [
+        without_missing(one) for one in handed]
+    try:
+        fetched = [bound.fetch(db, unit, rule=rule) if bound.fetch else None for unit in units]
+    except Exception as exc:                                          # noqa: BLE001
+        return Prepared(bound, handed, offered, units, [], exc)
+    return Prepared(bound, handed, offered, units, fetched)
+
+
+def with_the_whole_keys(db, rule, handed) -> list:
+    """`handed` and the rows there are now of each `group_by` key a handed row is in or left, read from the trigger
+    table - a row once (소유자 10-22 「ㅇㅇ 넓혀」: a group_by rule answers for its key, so it is handed the key whole,
+    the way a whole-map rule is handed its map). The key is `spelled_group_key`'s, the one the grouping makes."""
+    from chain import ingestion_worker
+    from database import models
+    import event_constants
+    import outbox_expand
+    from sqlalchemy import and_, or_
+
+    columns = ingestion_worker.group_by_columns(rule)
+    table = str((rule or {}).get("trigger_table") or "")
+    model = models.DYNAMIC_TABLES.get(table)
+    if not columns or model is None or not handed:
+        return handed
+    keys, values, blank = set(), {column: set() for column in columns}, set()
+    for payload in handed:
+        data = payload.get("data") or {}
+        now = {column: cell.get("value") if isinstance(cell, dict) else cell for column, cell in data.items()}
+        old = event_constants.old_values_of(payload)
+        for row in ([now] if now else []) + ([dict(now, **old)] if old else []):
+            keys.add(ingestion_worker.spelled_group_key(rule, table, row))
+            for column in columns:
+                value = row.get(column)
+                (blank.add(column) if value is None or str(value).strip() == "" else values[column].add(value))
+    if not keys:
+        return handed
+    conditions = [or_(*([getattr(model, c).in_(sorted(values[c], key=str))] if values[c] else []) +
+                      ([getattr(model, c).is_(None)] if c in blank else [])) for c in columns]
+    seen = {payload.get("row_id") for payload in handed}
+    names = outbox_expand._data_columns(model)
+    more = []
+    for row in db.query(model).filter(and_(*conditions)):
+        if row.row_id in seen:
+            continue
+        payload = outbox_expand._synthesize_payload(row, names, {})
+        if ingestion_worker.spelled_group_key(rule, table, payload.get("data") or {}) in keys:
+            seen.add(row.row_id)
+            more.append(payload)
+    return handed + more
+
+
+#: Statements a mapper ran during its call (`_count_reads`), while a run counts them.
+_READS = contextvars.ContextVar("rule_run_reads", default=None)
+#: The rules this process has said read outside the fetch - once each.
+_SAID_READING = set()
+
+
+def _count_reads(conn, cursor, statement, parameters, context, executemany):
+    """A read during a mapper's call, counted for `run_rule` - a SELECT, nothing else."""
+    reads = _READS.get()
+    if reads is not None and (str(statement).split(None, 1) or [""])[0].upper() in ("SELECT", "WITH"):
+        reads[0] += 1
+
+
+def count_reads():
+    """Count mappers' reads in this process (`_count_reads`), once - attached where the chain worker and a slot warm
+    up (`ingestion_worker.warmup_worker`), so a process that runs no rule (the API, the watcher, the scheduler) carries
+    no hook on its engines (총괄 10-22)."""
+    if not event.contains(Engine, "before_cursor_execute", _count_reads):
+        event.listen(Engine, "before_cursor_execute", _count_reads)
+
+
 def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
-             woken_by_a_replay=False, cascade=False, run=None):
+             woken_by_a_replay=False, cascade=False, run=None, prepared=None):
     """Run ONE chain rule over the input it was handed, whichever way it names its code.
 
     `payloads` are expanded trigger rows a proposing rule is handed; `row_ids` are the rows a
@@ -662,14 +766,8 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
     from chain import activity
     from chain.mapper_call import stage_timing, without_missing
 
-    bound = resolve(rule)
-    # 🔴 [판정 562] ONE HAND. A caller that has only row ids hands them AS payloads -
-    #   the mapper reads `row_id` off each either way, and the group path already builds
-    #   its `row_ids` from exactly that cell. Two shapes of hand was the calling half of
-    #   the two doors.
-    handed = list(payloads or ()) or [{"row_id": rid} for rid in (row_ids or ())]
-    offered = len(handed)
-    handed, _empty = held_back(rule, handed)
+    prepared = prepared or prepare(db, rule, payloads, row_ids)
+    bound, handed, offered = prepared.bound, prepared.handed, prepared.offered
     # 🔴 [판정 562] THE ENVELOPE IS ALWAYS OPEN NOW, and that is a deliberate widening.
     #   It used to open only for a rule REGISTERED as self-writing, because only a
     #   `builtin:` kind could write during its own call. Any mapper receives `db` and may
@@ -703,6 +801,8 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
         #   of `rows_out=0`, and it displaced the sentence the operator needed. Each arm
         #   below says what it actually knows, and says nothing when it knows nothing.
         with activity.running(name, bound.who, target, len(handed)) as run, envelope:
+            if prepared.failed is not None:
+                raise prepared.failed
             # ⚰️ THE ROW-IDS ARM STOOD HERE (판정 562 · 571). It called a registered kind
             #   as `(db, rule, row_ids=, done=)` and read `written`/`refusal` back. Both
             #   CELLS survive - the body below reads them off any mapper's result - and
@@ -716,19 +816,25 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
             # empty per-row list is zero calls, because there is no row to speak about.
             # ⚠️ [총괄 2276e38cf ②, 소유자 「맵퍼 에러 방지」] EXCEPT A GROUP `require` EMPTIED:
             #   rows were offered and every one was held back, so there is nothing to tell.
-            batched = (rule or {}).get("is_batch", False)
-            handed_out = [without_missing(handed)] if batched and (handed or not offered) else [
-                without_missing(one) for one in handed]
+            # 🔴 THE CALLS ARE THE FETCH SEAT'S (`prepare`): the same fan-out, and each call handed what its
+            #    mapper's read half read. A mapper that reads in its call anyway is said once (총괄 78eec1ec1).
             results, kept_out, unmatched = [], {}, [0, 0]
-            with stage_timing():
-                for one in handed_out:
-                    rows = one if isinstance(one, list) else [one]
-                    if bound.accepts_rule:
-                        results.append(signed(without_missing(bound.call(db, one, rule=rule)), declaration,
+            reads = [0]
+            token = _READS.set(reads)
+            try:
+                with stage_timing():
+                    for one, got in zip(prepared.units, prepared.fetched):
+                        rows = one if isinstance(one, list) else [one]
+                        kwargs = dict({"rule": rule} if bound.accepts_rule else {},
+                                      **({"fetched": got} if bound.fetch else {}))
+                        results.append(signed(without_missing(bound.call(db, one, **kwargs)), declaration,
                                               rule, kept_out, rows, unmatched))
-                    else:
-                        results.append(signed(without_missing(bound.call(db, one)), declaration, rule, kept_out,
-                                              rows, unmatched))
+            finally:
+                _READS.reset(token)
+            if reads[0] and name not in _SAID_READING:
+                _SAID_READING.add(name)
+                logger.info("[%s] rule=%s reads outside the fetch: %d statement(s) in its mapper's call - "
+                            "what it reads is not handed by the fetch seat", RULE_LOG_TAG, name, reads[0])
             say_kept_out(rule, kept_out)
             say_origin_unknown(rule, unmatched)
             for result in results:
