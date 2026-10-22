@@ -1,22 +1,29 @@
 # 지금 돌리면 되는 것
 
-> ## [10-23] **AI 리포트 자동 — 계측이 끝나 요약표가 들어오면 그 평가의 리포트가 돈다 (소유자 10-23, 선언만 · 347898597)** — 코드 없음 · 체인 창에 규칙 넷
+> ## [10-23] **AI 리포트 — 요청 행은 저절로, 리포트 · 보내기는 리플레이로 (소유자 10-23 「자동 시작은 막고 리플레이로」, 선언만)** — 코드 없음 · 체인 창에 규칙 넷
 >
 > ```
 > 적을 것   요약표 선언에 request_id · eval_id 두 칸(string) 더하기
->          체인 창에 규칙 넷 — docs/guide/ai_report_tables.md «계측 → 리포트 자동» 의 예시 그대로, 표 이름만 자기 것으로
+>          체인 창에 규칙 넷 — docs/guide/ai_report_tables.md «계측 → 리포트» 의 예시 그대로, 표 이름만 자기 것으로
 >            1 join     웨이퍼 표 -> 요약표 : take eval_id 를 request_id 와 eval_id 로
 >            2 decide   요약표 -> report_request : key [request_id] · on.require [request_id] · allow_chain_trigger
->            3 리포트   report_request -> report : allow_chain_trigger
->            4 맵퍼     report -> (보낸 기록 표) : on.require [{"state": ["done"]}] · allow_chain_trigger · 소유자 맵퍼
-> 확인     저장 줄에 넷 다 running (decide 는 enrichment_dedup:<이름> · enrichment_auto_confirm:<이름> 둘로 섬)
->          void.json 한 파일이 들어온 뒤: report_request 에 그 평가 행 하나 -> report 행 done -> 소유자 맵퍼가 file_path 를 받음
-> 답의 뜻   report_request 행이 안 섬          요약표 request_id 가 빔 -> 조인이 웨이퍼 표에서 평가를 못 찾음(키 칸 · 웨이퍼 표 행)
->          요청 행은 섰는데 report 행이 없음   리포트 규칙에 allow_chain_trigger 가 없음 (decide 가 쓴 행은 체인이 쓴 행)
->          report done 인데 맵퍼가 안 불림     맵퍼 규칙에 allow_chain_trigger · require state done 철자
->          리포트에 앞 웨이퍼만 있음           요약이 여러 저장으로 나뉘어 들어옴 -> 첫 저장 뒤 한 판뿐 (한 커밋 인제션이 전제)
->          리포트 이미지가 반쪽               이미지 표가 반쪽으로 들어온 때 돈 것 — 조사 중(B, 8d03a643e)
-> 다시     그 평가의 report_request 행 note 를 고치면 리포트가 다시 돈다
+>            3 리포트   report_request -> report : allow_chain_trigger 를 «적지 않음» (리플레이로만 돎)
+>            4 보내기   report -> (보낸 기록 표) : on.require [{"state": ["done"]}] · allow_chain_trigger · 소유자 맵퍼
+> 돌릴 것   (server 에서, 순서대로)
+>          python scripts/chain_replay_cli.py replay <리포트 규칙> --apply     요청 행마다 리포트 한 판
+>          python scripts/chain_replay_cli.py replay <보내기 규칙> --apply     done 인 리포트마다 보내기 한 번
+>          화면: 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름만
+> 확인     요약 들어온 뒤: report_request 에 평가 행 · report 는 아직 없음
+>          리포트 리플레이 뒤: report 행 done (또는 stopped + 사유) · <데이터 루트>/reports/<평가>.html
+>          보내기 리플레이 뒤: 소유자 맵퍼가 done 행마다 한 번 (stopped 는 안 불림)
+> 답의 뜻   report_request 행이 안 섬          요약표 request_id 가 빔 -> 조인이 웨이퍼 표에서 평가를 못 찾음
+>          리플레이 했는데 report 행이 없음     규칙 이름 철자 · 리플레이 줄 «rows handed over» 가 0 인지
+>          보내기 리플레이에 맵퍼가 안 불림     report 행이 done 이 아님 · require 철자
+>          다시 돌리면                          리포트는 다시 만들어 같은 파일을 덮고, 보내기는 이미 보낸 것도 다시 보냄
+>                                              하나만: --row-ids <행>
+>          손으로 넣은 요청 행                  바로 돎 (사람 쓰기) — 보내기는 그때도 리플레이로
+>          리포트 이미지가 반쪽                 이미지 표가 반쪽일 때 돈 것 — 조사 중(B, 8d03a643e)
+> 자동으로  폴더 조용함(B b15d6b66e) 착지 뒤 리포트 규칙에 "allow_chain_trigger": true 한 칸이면 다시 저절로 돎
 > 급할 때   규칙 2(decide) 또는 3(리포트)의 "enabled": false
 > 되돌리기  코드 변경 없음 — 규칙 넷을 지우거나 끈다
 > ```

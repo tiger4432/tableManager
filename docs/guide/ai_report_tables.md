@@ -228,9 +228,9 @@
 - **한글 낱말** — 파일에 나오는 고정 낱말은 전부 `labels` 를 지난다. 안 적은 이름은 영어 기본값으로 나온다. 모르는 이름은 저장 줄에 알림이 뜬다. `control` 은 묶음 이름이라 report_wafer 의 set_name 과 모델 문맥에도 같은 글이 간다.
 - 붙여 넣은 양식의 charset 줄(엑셀은 `ks_c_5601-1987` 같은 것을 적는다)은 빠지고, 파일에는 utf-8 한 줄만 남는다.
 
-## 계측 → 리포트 자동 — 요약표가 바뀌면 그 평가의 리포트가 돈다 (A, 10-23)
+## 계측 → 리포트 — 요청 행은 저절로, 리포트 · 보내기는 리플레이로 (A, 10-23)
 
-규칙 넷을 체인 창에 적는다. 제품 코드는 없다. 아래는 진짜 프로세스 판에서 제품 로더가 읽어 넷 다 running 으로 선 선언 그대로다 — 표 이름(gs_…)은 판의 것이니 자기 표로 바꾼다.
+요약표가 들어오면 «리포트가 필요한 평가»마다 요청 행이 저절로 선다. 리포트와 보내기는 운영자가 리플레이로 돌린다(소유자 10-23 「자동 시작은 막고 리플레이로」 — 이미지 표가 반쪽으로 들어오는 건 때문). 제품 코드는 없다. 아래 규칙 넷은 진짜 프로세스 판에서 제품 로더가 읽어 넷 다 running 으로 선 선언 그대로다 — 표 이름(gs_…)은 판의 것이니 자기 표로 바꾼다.
 
 1. 조인 — 웨이퍼 표의 평가를 요약표에 쓴다. 요약표 선언에 `request_id` · `eval_id` 두 칸(string)을 더해 둔다.
 ```json
@@ -245,12 +245,12 @@
  "into": {"table": "report_request"}, "allow_chain_trigger": true,
  "derive": {"kind": "decide", "decide": {"key": ["request_id"], "fields": ["note"], "list_columns": ["eval_id"]}}}
 ```
-3. 리포트 규칙 — 요청 행에 깨어난다. `derive.report` 는 위 절들 그대로.
+3. 리포트 규칙 — `allow_chain_trigger` 를 «적지 않는다». 체인이 세운 요청 행으로는 안 돌고 리플레이로만 돈다. `derive.report` 는 위 절들 그대로.
 ```json
-{"name": "gs_report", "on": {"table": "report_request"}, "into": {"table": "report"}, "allow_chain_trigger": true,
+{"name": "gs_report", "on": {"table": "report_request"}, "into": {"table": "report"},
  "derive": {"kind": "report", "report": {"wafer": {"…": "…"}, "summary": {"…": "…"}}}}
 ```
-4. 소유자 맵퍼 자리 — 리포트가 done 이 되면 소유자 맵퍼(`server/mappers/<모듈>.py`)가 불린다. 맵퍼는 `payload["data"]["file_path"]["value"]` 로 파일 경로를 받는다(보내기 · 복사는 맵퍼 몫).
+4. 보내기 — 소유자 맵퍼(`server/mappers/<모듈>.py`)가 done 인 report 행마다 불려 `payload["data"]["file_path"]["value"]` 로 파일 경로를 받는다.
 ```json
 {"name": "gs_send", "on": {"table": "report", "require": [{"state": ["done"]}]},
  "into": {"table": "gs_sent"}, "allow_chain_trigger": true,
@@ -263,7 +263,15 @@ def send(db, payload, rule=None):
     return {"updates": []}
 ```
 
-- 잰 것(박스, 평가 하나 20 열): 요약이 한 저장에 들어오면 요청 행 쓰기 1 · 리포트 1 판 · 마지막 요약 반영 · 4 초.
-- ⚠️ 한계: 한 평가의 요약이 웨이퍼마다 따로 저장되면 리포트는 «첫 저장 뒤 한 판»만 돌고 뒤의 요약은 안 담긴다. 운영은 인제션이 대상 파일을 한 커밋으로 넣어 «한 번에» 들어온다(소유자 10-23).
-- ⚠️ 이미지 표가 반쪽으로 들어온 때에 리포트가 돌면 리포트 이미지도 반쪽이다 — 조사 중.
-- 다시 만들기는 지금처럼 요청 행 고치기(note 등) — 그 쓰기에 리포트 규칙이 다시 돈다.
+돌리는 법 — 두 줄, 순서대로(`server` 에서). 화면은 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름만.
+```
+python scripts/chain_replay_cli.py replay gs_report --apply     # 요청 행마다 리포트 한 판
+python scripts/chain_replay_cli.py replay gs_send --apply       # done 인 리포트마다 보내기 한 번
+```
+- 잰 것(박스, 평가 둘 · 각 20 열): 요약 저장 → 요청 행 둘 · 리포트 0 판 / 리포트 리플레이 → 2 판(37 s, 가짜 LLM) · 파일에 마지막 요약 / 보내기 리플레이 → done 인 것만 한 번(stopped 는 안 불림, 5 s).
+- 다시 돌리면 다시 한다 — 리포트 리플레이는 모든 요청을 다시 만들어 같은 파일을 덮고, 보내기 리플레이는 이미 보낸 것도 다시 보낸다. 하나만 다시 하려면 `--row-ids <행>`.
+- 사람이 report_request 에 손으로 넣은 행은 바로 돈다(사람 쓰기는 체인 쓰기가 아님). 보내기는 그때도 리플레이로.
+- 리플레이는 이어지는 규칙을 깨우지 않는다(소유자 09-26 판정) — 그래서 보내기도 리플레이 한 줄이다.
+- 폴더 조용함(B b15d6b66e)이 착지하면 자동 시작을 다시 켤 수 있다 — 리포트 규칙에 `"allow_chain_trigger": true` 한 칸.
+- ⚠️ 한 평가의 요약이 웨이퍼마다 따로 저장되면 요청 행은 첫 저장에 서고 그 뒤로 안 바뀐다 — 리플레이는 그때의 표를 읽으므로 리플레이 시점에 다 들어와 있으면 된다.
+- ⚠️ 이미지 표가 반쪽일 때 리플레이하면 리포트 이미지도 반쪽이다 — 조사 중.
