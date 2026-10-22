@@ -963,6 +963,7 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
     default_file = schema.world_names(DEFAULT).declaration_path
     good = Path(default_file).read_text(encoding="utf-8")
     Path(default_file).write_text(json.dumps(_refused_everywhere()), encoding="utf-8")
+    config_watcher.changed(default_file)                               # what the watcher calls on a write
     _write(world, "wafer_process", [{"proc_id": "P2", "wafer_id": "W2", "step": "S1",
                                      "recipe_id": "RCP-9", "eventtime": LATER}])
     with world["engine"].begin() as conn:
@@ -998,6 +999,7 @@ def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_
         "[LedgerFollowUp] still stopped, 600 s: world %s" % DEFAULT), lines()
 
     Path(default_file).write_text(good, encoding="utf-8")
+    config_watcher.changed(default_file)
     ledger_worker._drain_ledger_followup_sync(world["maker"])
     ledger_worker._say_the_follow_up(None, waiting, now=1000.0 + 700)
     assert len(lines()) == 3 and lines()[2].startswith(

@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import chain_bindings
 from chain import rule_shape
 
 
@@ -78,7 +79,7 @@ def rule_row(rule: dict, position: int, origin: str = "declared") -> dict:
         "name": rule.get("name"),
         "enabled": not rule_shape.is_switched_off(rule),
         # 선언이 «든» 표 칸만. 없는 칸을 None 으로 채우면 「배선이 생겼다」와 구별이 안 된다
-        "tables": {key: rule[key] for key in table_keys() if key in rule},
+        "tables": {key: rule[key] for key in table_keys() + (chain_bindings.WRITES_KEY,) if key in rule},
         # 정렬해 담는다 — 선언이 적은 «순서»는 이 축의 사실이 아니다
         "trigger_columns": sorted(str(c) for c in columns) if columns else None,
         "derive": derive_kind(rule),

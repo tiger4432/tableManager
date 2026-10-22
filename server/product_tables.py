@@ -41,6 +41,11 @@ NOTATION_ALIAS_TABLE = "notation_alias"
 #: The agent walk's tables (e38466810).
 MEANING_TABLE, WALK_REQUEST_TABLE = "ontology_meaning", "walk_request"
 WALK_LOG_TABLE, WALK_RECIPE_TABLE = "walk_log", "walk_recipe"
+#: The AI report's tables (owner 10-22, lead cd4eb98d0).
+REPORT_REQUEST_TABLE, REPORT_TABLE = "report_request", "report"
+REPORT_STEP_TABLE, REPORT_WAFER_TABLE = "report_step", "report_wafer"
+#: report_wafer's wafer key parts, in `derive.report.wafer.key` order - a wafer key of more columns is refused at save.
+REPORT_WAFER_KEYS = ("key_1", "key_2", "key_3", "key_4")
 
 # Order here is the order new entries are appended to a config file.
 PRODUCT_TABLES = {
@@ -294,6 +299,120 @@ PRODUCT_TABLES = {
             "card_limit",
             "argument",
             "instruction"
+        ]
+    },
+    REPORT_REQUEST_TABLE: {
+        "__comment": "One AI report asked for. The operator writes request_id, eval_id (this evaluation), setting (the report rule's name), compare_sets (compare set names, comma separated; blank: the rule's default) and note (handed to the model). The row wakes the report rule.",
+        "business_key": "request_id",
+        "composite_key_source": [
+            "request_id"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "request_id": "string",
+            "eval_id": "string",
+            "setting": "string",
+            "compare_sets": "string",
+            "note": "string"
+        },
+        "display_columns": [
+            "request_id",
+            "eval_id",
+            "setting",
+            "compare_sets",
+            "note"
+        ]
+    },
+    REPORT_TABLE: {
+        "__comment": "One made report: the HTML file kept on the server (file_path, file_hash), state done or stopped and the reason, the steps in short and when it was made. Written by the chain only.",
+        "business_key": "request_id",
+        "composite_key_source": [
+            "request_id"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "request_id": "string",
+            "setting": "string",
+            "file_path": "string",
+            "file_hash": "string",
+            "state": "string",
+            "reason": "string",
+            "steps": "string",
+            "made_at": "datetime"
+        },
+        "display_columns": [
+            "request_id",
+            "setting",
+            "file_path",
+            "file_hash",
+            "state",
+            "reason",
+            "steps",
+            "made_at"
+        ]
+    },
+    REPORT_STEP_TABLE: {
+        "__comment": "One row per step of a report's loop: the call the model made, what came back in short, the tokens it was reckoned at and the seconds it took, or why it was refused. Written by the chain only.",
+        "business_key": "step_key",
+        "map_key_columns": [
+            "request_id"
+        ],
+        "composite_key_source": [
+            "request_id",
+            "step"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "step_key": "string",
+            "request_id": "string",
+            "step": "number",
+            "call": "string",
+            "summary": "string",
+            "tokens": "number",
+            "seconds": "number",
+            "refused": "string"
+        },
+        "display_columns": [
+            "step_key",
+            "request_id",
+            "step",
+            "call",
+            "summary",
+            "tokens",
+            "seconds",
+            "refused"
+        ]
+    },
+    REPORT_WAFER_TABLE: {
+        "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set). seq is the wafer's place in the report's wafer list (by time - the same on a remake); key_1..key_4 hold the wafer's key columns in derive.report.wafer.key order, plain cells - what the report's edges to wafers are declared from. Written by the chain only.",
+        "business_key": "wafer_key",
+        "map_key_columns": [
+            "request_id"
+        ],
+        "composite_key_source": [
+            "request_id",
+            "seq"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "wafer_key": "string",
+            "request_id": "string",
+            "seq": "number",
+            "key_1": "string",
+            "key_2": "string",
+            "key_3": "string",
+            "key_4": "string",
+            "set_name": "string"
+        },
+        "display_columns": [
+            "wafer_key",
+            "request_id",
+            "seq",
+            "key_1",
+            "key_2",
+            "key_3",
+            "key_4",
+            "set_name"
         ]
     },
 }

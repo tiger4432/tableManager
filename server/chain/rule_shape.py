@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 
 import chain_bindings
-from chain import join_into
+from chain import join_into, report_shape
 
 #: 체인 문법에서 «모양으로 접히는» 칸. 나머지는 전부 `extra` 로 간다.
 CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
@@ -158,7 +158,7 @@ RETIRED_INTO_KINDS = ("read",)
 
 #: The three words a declaration's `derive.kind` can say. A LOADED rule has already been
 #: translated to today's flat shape, so the word has to be read back off what it RUNS.
-DECLARED_KINDS = ("join", "decide", "mapper")
+DECLARED_KINDS = ("join", "decide", "mapper", "report")
 
 #: The word for a declaration whose `derive` the grammar cannot read. Not one of the three and
 #: never guessed into one - a refused join drawn as 「mapper」 is a false row (lead 3b1a7a550).
@@ -288,6 +288,15 @@ def as_chain_rule(internal: dict) -> dict:
         # rather than inside it.
         if internal.get(KEY_CELL):
             out[KEY_CELL] = dict(internal[KEY_CELL])
+    if derive.get("kind") == "report" and "table" in into:
+        # the report's settings ride as its mapper's arguments; one request a group - the model's time is the group's
+        out["mapper"] = report_shape.REPORT_MAPPER
+        out["params"] = dict(derive.get("report") or {})
+        out[chain_bindings.ROWS_PER_RUN_KEY] = 1
+        # its step and wafer rows are written beside the report, a request's whole set replaced on a remake (lead 10-22)
+        import product_tables
+        out[chain_bindings.WRITES_KEY] = [product_tables.REPORT_STEP_TABLE, product_tables.REPORT_WAFER_TABLE]
+        out["allow_replace_map"] = True
     out.update(derive.get("mapper") or {})
     return with_declared_cells(out, internal)
 
@@ -393,7 +402,7 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
     derive = raw.get("derive") or {}
     kind = derive.get("kind")
     if not kind:
-        for name in ("mapper", "join", "decide"):
+        for name in ("mapper", "join", "decide", "report"):
             if name in derive:
                 kind = name
                 break
@@ -640,6 +649,18 @@ def decide_rules(internal: dict, known_tables: dict = None,
         cells, known_tables, rejections=rejections, caps=caps)
 
 
+def unknown_report_cells(internal: dict) -> list:
+    """Sub-cells of `derive.report` this product does not read. NAMED, never refused."""
+    derive = internal.get("derive") or {}
+    return report_shape.unknown_cells(derive.get("report")) if derive.get("kind") == "report" else []
+
+
+def report_notes(internal: dict) -> list:
+    """What a report declaration loses on the way without being refused (`report_shape.notes`)."""
+    derive = internal.get("derive") or {}
+    return report_shape.notes(derive.get("report")) if derive.get("kind") == "report" else []
+
+
 def unknown_decide_cells(internal: dict) -> list:
     """Sub-cells of `derive.decide` this product does not read. NAMED, never refused."""
     derive = internal.get("derive") or {}
@@ -757,7 +778,8 @@ def expand_declaration(declaration, table_config=None,
         return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name] + unread
                 + ["%s: derive.%s cell this product does not read \u2014 %s." % (name, kind, ", ".join(cells))
                    for kind, cells in (("decide", unknown_decide_cells(internal)),
-                                       ("join", unknown_join_cells(internal))) if cells])
+                                       ("join", unknown_join_cells(internal)),
+                                       ("report", unknown_report_cells(internal))) if cells])
     # \ud83d\udd34 One judge for save and load (S-244): refused here, the save gate refuses it at the moment
     #    of saving, and a line already in the file stands on the list as declared-only with this
     #    sentence. A declaration that writes no kind but names its `derive` cell is read by
@@ -799,6 +821,10 @@ def expand_declaration(declaration, table_config=None,
                                           (internal.get("on") or {}).get("table"))
         if gathered:
             return ([], "%s: %s" % (name, gathered), unread)
+    if (internal.get("derive") or {}).get("kind") == "report":
+        refused = report_shape.refusal((internal.get("derive") or {}).get("report"))
+        if refused:
+            return ([], "%s: %s" % (name, refused), unread)
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,
@@ -819,12 +845,13 @@ def expand_declaration(declaration, table_config=None,
             return ([], "join_trigger_conflict: %s" % conflict, unread)
 
         notes = [old_shape] if old_shape else []
-        unknown = unknown_join_cells(internal)
-        if unknown:
-            notes.append(
-                "%s: derive.join cell(s) this product does not read — %s. The rule "
-                "runs; check the spelling if it was meant to do something."
-                % (name, ", ".join(unknown)))
+        for kind, unknown in (("join", unknown_join_cells(internal)), ("report", unknown_report_cells(internal))):
+            if unknown:
+                notes.append(
+                    "%s: derive.%s cell(s) this product does not read — %s. The rule "
+                    "runs; check the spelling if it was meant to do something."
+                    % (name, kind, ", ".join(unknown)))
+        notes += ["%s: %s" % (name, said) for said in report_notes(internal)]
         stood = [as_chain_rule(internal)] + companion_rules(internal)
 
     # 🔴 [판정 640] EVERY RULE THIS DECLARATION STANDS, WITHOUT ASKING WHICH KIND IT IS.

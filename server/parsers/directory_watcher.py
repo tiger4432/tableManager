@@ -1327,6 +1327,12 @@ def validate_external_source_specs(settings: dict, table_config: dict,
                     f"none empty, got {glob!r}.")
                 continue
             options = {**options, "glob": list(patterns)}
+        interval = options.get(STABILITY_INTERVAL_OPTION)
+        if interval is not None and (isinstance(interval, bool) or not isinstance(interval, (int, float))
+                                     or not interval > 0):
+            errors.append(f"{where}.options.{STABILITY_INTERVAL_OPTION} must be a number of seconds above 0 "
+                          f"(1 is the raws/ value), got {interval!r}.")
+            continue
         spec = {
             "source_id": f"{table_name}@{os.path.normcase(root)}",
             "root": root,
@@ -1491,6 +1497,9 @@ DEFAULT_FLATTEN_NESTED_DIRS = True
 # not hold back the finished ones beside it (owner 10-08). The TREE is quiet when
 # the whole snapshot is the same, and only then are emptied folders removed.
 FLATTEN_STABILITY_INTERVAL_SECONDS = 1.0
+#: An external source's switch for the same wait (owner 10-23, 총괄 b15d6b66e): its trigger file is read once the
+#: file's folder looks the same this many seconds apart. Unwritten - read after the one-second debounce, as before.
+STABILITY_INTERVAL_OPTION = "stability_interval_seconds"
 # Stop waiting after this long; the files still being written and every folder are
 # left, and the subfolder recheck re-triggers later.
 FLATTEN_STABILITY_MAX_WAIT_SECONDS = 600
@@ -1504,11 +1513,18 @@ FOLDER_LEFT_REASONS = {
     "kept": (logging.INFO, "next pass when it changes, else in {sweep:g} s"),
     "incomplete": (logging.WARNING, "next pass when it changes, else in {sweep:g} s"),
     "nested_off": (logging.INFO, "no pass while flatten_nested_dirs=false"),
+    "read_while_changing": (logging.WARNING, "read with what was there - if more arrive: re-read it "
+                                             "(POST /admin/file-ingestion/retry-failed statuses=SUCCESS)"),
 }
 
 # OS junk files discarded together with the folder (never ingested, never kept).
 # Exact names, case-insensitive, plus macOS AppleDouble "._*" sidecar files.
 FLATTEN_DISCARD_NAMES = {"thumbs.db", "desktop.ini", ".ds_store"}
+
+
+def _named(still) -> str:
+    """The first FLATTEN_DEFERRED_NAMES_SHOWN of the files a folder still holds, «, …» when there are more."""
+    return ", ".join(still[:FLATTEN_DEFERRED_NAMES_SHOWN]) + (", …" if len(still) > FLATTEN_DEFERRED_NAMES_SHOWN else "")
 
 
 def nested_dirs_enabled() -> bool:
@@ -2248,6 +2264,15 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _handle_event(self, file_path: str):
         abs_path = os.path.abspath(file_path)
+        context = self.external_source_context(abs_path) if self._external_sources else None
+        interval = (context or {}).get("options", {}).get(STABILITY_INTERVAL_OPTION)
+        if interval is not None:
+            # 총괄 b15d6b66e: a trigger file is read once its folder went quiet - on a folder worker, not this thread
+            self._start_folder_worker(os.path.dirname(abs_path), self._read_when_quiet, abs_path, float(interval))
+            return
+        self._handle_now(abs_path)
+
+    def _handle_now(self, abs_path: str):
         # [Startup Sweep] 멤버십 검사→add 사이 갭에서 스윕 스레드와 watchdog 스레드가
         # 동시에 통과하던 비원자 check-then-add를 락으로 원자화 (이중 처리 가드).
         with self._processing_lock:
@@ -2298,19 +2323,30 @@ class IngestionHandler(FileSystemEventHandler):
             self.say_what_a_folder_left(abs_dir, "nested_off", "nested-directory ingestion is off "
                                         "(flatten_nested_dirs=false) - left untouched, its files are NOT ingested")
             return None
+        return self._start_folder_worker(abs_dir, self._tree_ingest_worker)
+
+    def _start_folder_worker(self, abs_dir: str, work, *args):
+        """`work(abs_dir, *args)` on a short-lived daemon thread of its own, one per folder at a time (`_ingesting_dirs`)
+        - the observer's and the sweep's threads hand it on and go on (same HOL discipline as P1). -> the Thread, or
+        None when that folder already has one."""
         key = os.path.normcase(abs_dir)
         with self._processing_lock:
             if key in self._ingesting_dirs:
                 return None
             self._ingesting_dirs[key] = time.time()
-        t = threading.Thread(
-            target=self._tree_ingest_worker, args=(abs_dir, key),
-            name=f"tree-ingest-{os.path.basename(abs_dir)}", daemon=True,
-        )
+
+        def run():
+            try:
+                work(abs_dir, *args)
+            finally:
+                with self._processing_lock:
+                    self._ingesting_dirs.pop(key, None)
+
+        t = threading.Thread(target=run, name=f"tree-ingest-{os.path.basename(abs_dir)}", daemon=True)
         t.start()
         return t
 
-    def _tree_ingest_worker(self, abs_dir: str, key: str):
+    def _tree_ingest_worker(self, abs_dir: str):
         try:
             self._ingest_directory_tree(abs_dir)
         except Exception:
@@ -2319,9 +2355,21 @@ class IngestionHandler(FileSystemEventHandler):
                 f"[{self.table_name}] Tree ingestion failed for {abs_dir} "
                 f"(directory left in place; the subfolder recheck retries):\n{traceback.format_exc()}"
             )
-        finally:
-            with self._processing_lock:
-                self._ingesting_dirs.pop(key, None)
+
+    def _read_when_quiet(self, abs_dir: str, abs_path: str, interval: float):
+        """An external trigger file, read once its folder went quiet (`_wait_tree_quiescent`) - or after the max wait,
+        with what was there, said (총괄 b15d6b66e)."""
+        try:
+            quiet, still = self._wait_tree_quiescent(abs_dir, lambda written: 0, interval)
+            if not quiet and still is not None:
+                self.say_what_a_folder_left(abs_dir, "read_while_changing", (
+                    f"{len(still)} file(s) still changing after {FLATTEN_STABILITY_MAX_WAIT_SECONDS}s "
+                    f"(still changing: {_named(still)})"))
+            self._handle_now(abs_path)
+        except Exception:
+            import traceback
+            logger.error(f"[{self.table_name}] Reading {abs_path} once its folder went quiet failed "
+                         f"(the next sweep or event tries again):\n{traceback.format_exc()}")
 
     def say_a_tree_still_running(self, dir_path: str) -> bool:
         """True when the folder's tree worker is still at it - said with since when and the file
@@ -2353,6 +2401,8 @@ class IngestionHandler(FileSystemEventHandler):
                    "(said at the 1st, 10th, 100th ...)", self.table_name, folder, files, why,
                    then.format(look=subfolder_recheck_seconds(), sweep=PERIODIC_SWEEP_INTERVAL_SECONDS), nth)
 
+    # os.stat per file, NOT the listing's DirEntry.stat: on NTFS the listing keeps a file's size 0 and its first mtime
+    # while a handle is writing it, so a file still being written would read as finished (B probe, 10-23).
     @staticmethod
     def _snapshot_tree(abs_dir: str):
         """Comparable snapshot of a directory tree: {(kind, relpath): (size, mtime)}.
@@ -2387,38 +2437,40 @@ class IngestionHandler(FileSystemEventHandler):
         came or went (`cur == prev`). An entry that could not be stat'ed never matches."""
         return {key[1]: entry for key, entry in cur.items() if key[0] == "f" and prev.get(key) == entry}
 
-    def _wait_tree_quiescent(self, abs_dir: str, take) -> bool:
+    def _wait_tree_quiescent(self, abs_dir: str, take, interval: float | None = None):
         """Wait until the tree stops changing, handing `take` each file as soon as THAT
         file has finished writing (`_files_written`) - a half-written file is never read,
         and a file still growing does not hold back the finished ones (owner 10-08).
 
         `take({relpath: (size, mtime)})` returns how many files this pass has dispatched.
-        True  → tree is quiet - every file was handed over; emptied folders may go.
-        False → directory vanished, or still changing after the max wait (the files
-                still being written and every folder are left; the recheck re-triggers).
+        -> (quiet, still):
+        (True, [])     the tree is quiet - every file was handed over; emptied folders may go.
+        (False, still) still changing after the max wait - `still`: the files still being written; the caller says
+                       what it does with them (raws/ leaves them for the recheck, an external trigger reads).
+        (False, None)  the directory vanished.
+        Looks `interval` apart (unwritten: FLATTEN_STABILITY_INTERVAL_SECONDS, read at the call), or as far apart as
+        the last look took when that is longer - a look at 50,000 files took 1.9 s on the box's local disk (총괄
+        b15d6b66e), so a big folder is not walked back to back.
         """
         deadline = time.monotonic() + FLATTEN_STABILITY_MAX_WAIT_SECONDS
+        began = time.monotonic()
         prev = self._snapshot_tree(abs_dir)
+        looked = time.monotonic() - began
         while prev is not None:
-            time.sleep(FLATTEN_STABILITY_INTERVAL_SECONDS)
+            time.sleep(max(FLATTEN_STABILITY_INTERVAL_SECONDS if interval is None else interval, looked))
+            began = time.monotonic()
             cur = self._snapshot_tree(abs_dir)
+            looked = time.monotonic() - began
             if cur is None:
-                return False
+                return False, None
             written = self._files_written(prev, cur)
-            dispatched = take(written)
+            take(written)
             if cur == prev:
-                return True
+                return True, []
             if time.monotonic() >= deadline:
-                still = sorted(rel for kind, rel in cur if kind == "f" and rel not in written)
-                named = ", ".join(still[:FLATTEN_DEFERRED_NAMES_SHOWN])
-                more = ", …" if len(still) > FLATTEN_DEFERRED_NAMES_SHOWN else ""
-                self.say_what_a_folder_left(abs_dir, "still_writing", (
-                    f"Tree ingestion deferred — {len(still)} file(s) still being written after "
-                    f"{FLATTEN_STABILITY_MAX_WAIT_SECONDS}s (still writing: {named}{more}; "
-                    f"{dispatched} finished file(s) dispatched)"))
-                return False
+                return False, sorted(rel for kind, rel in cur if kind == "f" and rel not in written)
             prev = cur
-        return False
+        return False, None
 
     @staticmethod
     def _is_discardable_system_file(name: str) -> bool:
@@ -2525,7 +2577,13 @@ class IngestionHandler(FileSystemEventHandler):
                 done["dispatched"] += 1
             return done["dispatched"]
 
-        if not self._wait_tree_quiescent(abs_dir, take):
+        quiet, still = self._wait_tree_quiescent(abs_dir, take)
+        if not quiet and still is not None:
+            self.say_what_a_folder_left(abs_dir, "still_writing", (
+                f"Tree ingestion deferred — {len(still)} file(s) still being written after "
+                f"{FLATTEN_STABILITY_MAX_WAIT_SECONDS}s (still writing: {_named(still)}; "
+                f"{done['dispatched']} finished file(s) dispatched)"))
+        if not quiet:
             return
 
         # Junk goes before the rmdir pass below so it can actually empty a directory

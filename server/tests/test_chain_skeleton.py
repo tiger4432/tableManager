@@ -30,7 +30,6 @@ if server_dir not in sys.path:
 import chain_bindings                                                 # noqa: E402
 
 CHAIN_SKELETON = os.path.join(server_dir, "chain_skeleton.json")
-LEDGER_SKELETON = os.path.join(server_dir, "ledger", "ledger_skeleton.json")
 
 
 def _load(path):
@@ -100,11 +99,10 @@ def test_no_node_kind_the_form_has_never_seen():
     # the ledger document does not use, and a vocabulary that cannot express that is a
     # vocabulary with no author.
     #
-    # ⚠️ HINTS ARE STILL WALKED, deliberately: this round did not add one, and moving
-    # both at once would make the change bigger than the ruling.
-    from ledger.config_authoring import SKELETON_NODE_KINDS
+    # The hints too, since `html` was added (lead 10-23) - the same declared-list reason.
+    from ledger.config_authoring import SKELETON_LEAF_HINTS, SKELETON_NODE_KINDS
 
-    allowed_hints = _vocabulary(_load(LEDGER_SKELETON))[1]
+    allowed_hints = set(SKELETON_LEAF_HINTS)
     kinds, hints = _vocabulary(_load(CHAIN_SKELETON))
     assert kinds <= set(SKELETON_NODE_KINDS), sorted(kinds - set(SKELETON_NODE_KINDS))
     assert hints <= allowed_hints, sorted(hints - allowed_hints)

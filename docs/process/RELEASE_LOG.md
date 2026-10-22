@@ -13,6 +13,10 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [AI 리포트 — 글은 «읽은 표 전부»를 받은 쓰기 호출 한 번에서 나온다](#2026-10-23--ai-리포트--글은-읽은-표-전부를-받은-쓰기-호출-한-번에서-나온다) — 적는 곳 없음(prompts.rules 가 쓰기 호출에도) · 보는 곳 report_step 의 write 줄
+- 2026-10-23 [AI 리포트 셋째 — 요약 표에 정보 줄 · 그림 줄 · 조건부 서식 · 항목 계층 · 두 단 머리 · 엑셀 견본 서식 · 한글 낱말](#2026-10-23--ai-리포트-셋째--요약-표에-정보-줄--그림-줄--조건부-서식--항목-계층--두-단-머리--엑셀-견본-서식--한글-낱말) — 적는 곳 derive.report 의 info · picture_rows · formats · item_sep · labels · 보는 곳 리포트 파일의 요약 표
+- 2026-10-23 [AI 리포트 둘째 — 회사 엑셀 양식을 붙여 넣어 쓰기 · 대조군을 모델이 최근 평가에서 고르기](#2026-10-23--ai-리포트-둘째--회사-엑셀-양식을-붙여-넣어-쓰기--대조군을-모델이-최근-평가에서-고르기) — 적는 곳 derive.report 의 template · control · 보는 곳 리포트 파일 · report_wafer 의 «control <평가>»
+- 2026-10-23 [AI 리포트 — 요청 행 하나가 체인 규칙 하나를 깨워 HTML 리포트 한 파일을 만든다](#2026-10-23--ai-리포트--요청-행-하나가-체인-규칙-하나를-깨워-html-리포트-한-파일을-만든다) — 적는 곳 chain_rules.json 의 derive.kind report · 보는 곳 report 표 · <데이터 루트>/reports/<요청>.html
 - 2026-10-22 [체인 규칙의 require · exclude 가 값을 받는다 — 특정 값인 행만 막거나 넘기기](#2026-10-22--체인-규칙의-require--exclude-가-값을-받는다--특정-값인-행만-막거나-넘기기) — require · exclude 항목에 {칸: [값, …]}
 - 2026-10-22 [오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것](#2026-10-22--오토컨펌이-한-단위의-키를-전부-본다--200-개-넘는-키가-빈-칸으로-남던-것) — 보는 곳 chain_worker.log «[Enrichment:<규칙>] page i of n» · 적는 곳 ingestion_settings.json 의 enrichment_auto_confirm_max_keys
 - 2026-10-22 [파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다](#2026-10-22--파생표로-가는-조인은-키-칸을-쓸-때만-키-계약으로-거절한다) — 적는 곳 chain_rules.json 의 `derive.join.take`
@@ -310,6 +314,7 @@
 
 ### 설정 파일
 
+- 2026-10-23 [외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것](#2026-10-23--외부-저장소-방아쇠-파일은-그-폴더가-조용해진-뒤-읽는다--이미지-목록이-반쪽으로-들어가던-것) — 외부 저장소 항목에 stability_interval_seconds
 - 2026-10-21 [맵 교체 + 버전 컬럼 — 맵 하나를 한 버전으로, 옛 파일은 맵째 거절](#2026-10-21--맵-교체--버전-컬럼--맵-하나를-한-버전으로-옛-파일은-맵째-거절) — 적는 곳 table_config 의 version_column + allow_replace_map
 - 2026-10-21 [외장 훑기가 패턴대로 걷고 쪽마다 바로 넘긴다 — 맞을 수 없는 폴더는 안 들어가고, 이름이 안 맞으면 실제 경로를 묻지 않는다](#2026-10-21--외장-훑기가-패턴대로-걷고-쪽마다-바로-넘긴다--맞을-수-없는-폴더는-안-들어가고-이름이-안-맞으면-실제-경로를-묻지-않는다) — 적을 것 없음 · 보는 곳 watcher.log
 - 2026-10-21 [와처가 가볍게 선다 · 외장 소스에 max_depth · 훑기마다 소스별로 «왜 안 넘겼나»](#2026-10-21--와처가-가볍게-선다--외장-소스에-max_depth--훑기마다-소스별로-왜-안-넘겼나) — 적는 곳 `ingestion_settings.json` 외장 소스 항목 `max_depth` · 보는 곳 watcher.log
@@ -517,6 +522,108 @@
 
 
 
+
+## 2026-10-23 · 외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것
+
+- **무엇** — 소유자 10-23 「폴더 전송 중에 읽어버린다」. voids.json 이 먼저 도착하면 와처가 1 초 뒤 바로 읽어, 아직 복사 중인 이미지가 목록에서 빠졌습니다. 그 뒤 스윕도 같은 파일이라 다시 읽지 않아 반쪽이 남았습니다.
+- **선언** — `ingestion_settings.json` 의 `external_sources` 항목 `options.stability_interval_seconds`(0 보다 큰 초). 권장값은 raws/ 와 같은 1 이고, 복사가 끊겼다 이어지는 공유라 반쪽이 남으면 올립니다.
+- **바뀐 동작** — 칸을 적은 항목의 방아쇠 파일은 그 폴더(하위 포함)를 이 초만큼 떨어져 두 번 본 모양이 같아진 뒤 읽습니다. raws/ 하위 폴더 트리와 같은 기다림 함수이고, 폴더마다 짧은 스레드에서 기다려 다른 폴더는 줄 서지 않습니다. 600 초를 넘으면 그때 있는 것으로 읽고 한 줄을 남깁니다. 칸을 안 적은 항목은 그대로입니다.
+- **함께 바뀐 것** — 훑기가 1 초를 넘는 raws/ 폴더는 그만큼 느리게 봅니다. 조용함 판정은 같습니다.
+- **반쪽일 때** — 복사가 600 초 넘게 멈췄다 이어진 평가는 `POST /admin/file-ingestion/retry-failed`(statuses=SUCCESS)로 한 번 다시 읽습니다. 있던 행은 그대로 두고 늘어난 행만 들어갑니다.
+- **필요한 조건** — git pull · 런처 재기동, 그리고 그 항목에 칸 한 줄.
+- **자세히** — 시험 `test_an_external_trigger_is_read_once_its_folder_is_quiet.py` · 가이드 `docs/guide/config/ingestion_settings.md` 의 `external_sources` 줄.
+
+## 2026-10-23 · AI 리포트 — 글은 «읽은 표 전부»를 받은 쓰기 호출 한 번에서 나온다
+
+**무엇** — 모델이 글을 쓸 때 문맥에 지금까지 읽은 표(요약 · 파레토 · 트렌드 · 대조 · 정보 줄 · 조건표)의 결과가 전부 있다. 전에는 바로 앞 걸음 결과 하나와 지난 걸음마다 첫 줄 한 줄뿐이라, 요약 표 숫자가 글 쓰는 순간에 안 보였다. 걸음 · 시간 상한에 닿아도 읽은 만큼의 글이 나온다.
+
+**선언 예시** — 바뀌는 선언 칸 없음. `prompts.rules` 에 적은 쓰기 규칙(예: «한국어로», «숫자는 표 그대로»)은 쓰기 호출에도 실린다.
+```json
+"prompts": {"rules": "한국어로 쓴다. 숫자는 표에 적힌 그대로 쓴다."}
+```
+
+**보이는 것**
+- report_step 에 마지막 줄 `write` — «N text(s) from M table(s) read», 예산으로 자른 것은 그 줄의 기록에
+- 상한으로 멈춘 리포트(step cap · time cap)도 글이 있음 — 상태 stopped · 사유 그대로
+- 새 멈춤 사유 «the write call answered no text»
+
+**바뀐 동작**
+- 읽기 걸음의 끝 대답이 `{"done": {}}`(다 읽었다)로 바뀜 — 글은 그 다음 쓰기 호출에서. 리포트마다 모델 호출이 하나 늘어남
+- 시간 상한에 닿은 리포트는 쓰기 호출 하나만큼 상한을 넘김
+
+## 2026-10-23 · AI 리포트 셋째 — 요약 표에 정보 줄 · 그림 줄 · 조건부 서식 · 항목 계층 · 두 단 머리 · 엑셀 견본 서식 · 한글 낱말
+
+**무엇** — 요약 표 머리줄 밑에 정보 표의 줄(자재 · 평가 정보)과 열마다 그림 한 장(합성맵)이 서고, 값 칸은 항목마다 적은 규칙으로 칠해진다. 항목 이름 «a.b.c» 는 줄 머리 여러 칸으로 나뉘어 같은 앞부분이 합쳐지고, 웨이퍼 키가 (웨이퍼, 버전)이면 머리가 두 단이 된다. 엑셀 양식에 칠해 둔 견본 줄의 서식을 우리 표가 받고, 파일의 고정 낱말은 선언한 한글로 나온다.
+
+**선언 예시** — `derive.report` 에 칸 다섯 (전체: [ai_report_tables.md «요약 표 꾸미기»](../guide/ai_report_tables.md)).
+```json
+"info": {"table": "<정보 표>", "wafer": ["wafer_id", "version"], "item": "name", "value": "value"},
+"picture_rows": [{"label": "합성맵", "table": "<그림 표>", "wafer": ["wafer_id", "version"], "image": "path"}],
+"formats": {"결함.입자.대": [{"vs": "control", "times": 2, "fill": "#ffcccc"}, {"when": ">=", "value": 5, "fill": "#ffffcc"}]},
+"item_sep": ".",
+"labels": {"item": "항목", "control": "대조", "report": "리포트"}
+```
+
+**보이는 것**
+- 리포트 파일의 요약 표: 정보 줄(class rpt-info) · 그림 줄(rpt-picture) · 칠한 값 칸 · rowspan 으로 합친 항목 머리 · 두 단 웨이퍼 머리
+- 저장 거절 «derive.report.formats.<항목>[n].fill is a colour #rrggbb» · «… holds this evaluation against the others' F sum / N sum - derive.report.summary needs fail and total» · «derive.report.picture_rows[n] needs label, wafer and image» · «{{info}} is a sample row's first cell - put it in a row right under {{table:yield_by}}'s row»
+- 저장 알림 «derive.report.labels.<이름> is not a word the report says»
+- 모델 문맥에 «info <이름> | 값 …» 줄과 «<그림 줄 이름>: n of m columns» 줄
+
+**바뀐 동작**
+- 대조 묶음 이름이 `labels.control` 을 따름(기본 «control») — report_wafer 의 set_name · 모델 문맥도 같은 글
+- 표 밑 제외 줄 낱말: «Left out - two summary rows for one wafer and item» → «Left out - two rows for one wafer and name»(정보 · 그림 줄의 두 행도 같은 줄)
+- 문맥 토큰 어림: ASCII 아닌 글자는 한 글자를 한 토큰으로(전에는 4 자에 한 토큰 — 한글이 적게 잡힘)
+- 붙여 넣은 양식의 charset 줄은 파일에서 빠지고 utf-8 한 줄만 남음
+
+## 2026-10-23 · AI 리포트 둘째 — 회사 엑셀 양식을 붙여 넣어 쓰기 · 대조군을 모델이 최근 평가에서 고르기
+
+**무엇** — 리포트 규칙에 엑셀에서 복사한 양식(HTML)을 붙이면 그 양식 그대로 리포트가 나오고 `{{…}}` 표시 칸에 표 · 글 · 이미지가 들어간다. 모델이 최근 평가들의 조건 요약을 보고 대조군(평가 · 웨이퍼)을 골라 요약 표 · 트렌드 가로에 «control <평가>» 묶음으로 붙인다.
+
+**선언 예시** — 리포트 규칙의 `derive.report` 에 두 칸 (전체: [ai_report_tables.md «엑셀 양식 붙이는 법» · «대조군»](../guide/ai_report_tables.md)).
+```json
+"template": "<엑셀에서 복사한 HTML — 어드민의 Paste template 이 넣음>",
+"control": {"recent": {"days": 90, "evaluations": 10}, "max_wafers": 30, "max_evaluations": 3}
+```
+
+**화면에서** — 어드민 Chain 탭 리포트 규칙의 **Paste template**(클라 착지 뒤).
+
+**보이는 것**
+- 저장 줄 «derive.report.template: image(s) dropped: N - Excel puts pictures on the clipboard as local file paths» — 엑셀 그림 · 살림 링크는 빠짐
+- 저장 거절 «{{x}} is not a mark this report fills» · «{{x}} stands alone in its cell» · «… is fetched from outside the file» · «… has no {{x}}»
+- 리포트 표의 칸 class: rpt-group · rpt-head · rpt-item · rpt-cell
+
+**바뀐 동작**
+- 트렌드 표 · 트렌드 문맥이 이번 평가만이 아니라 비교 묶음 · 대조군까지 가로로 — 머리에 묶음 이름 줄(문맥 줄은 «item [묶음]: …»)
+- 리포트 표가 가로 스크롤 상자(overflow-x)에 들어감 — 양식 칸이 늘어나지 않음
+- 읽기 `candidates` 가 모델의 함수 목록에 더해짐 · `compare` 가 `evaluations` · `wafers` 도 받음
+
+## 2026-10-23 · AI 리포트 — 요청 행 하나가 체인 규칙 하나를 깨워 HTML 리포트 한 파일을 만든다
+
+**무엇** — `report_request` 에 요청 행을 쓰면, setting 이 그 이름인 리포트 규칙이 깨어나 모델과 최대 8 걸음 · 5 분 동안 표를 읽고(SQL 없음, 숫자는 함수가 냄) 데이터 · 이미지가 다 들어간 HTML 한 파일을 서버에 남긴다. 결과 행(`report`) · 걸음 행(`report_step`) · 쓴 웨이퍼 행(`report_wafer`)이 같이 남는다.
+
+**선언 예시** — `chain_rules.json` 규칙 하나(어드민 Chain 탭 «derive kind: report»). 전체 모양은 [ai_report_tables.md «운영에서 적는 것»](../guide/ai_report_tables.md).
+```json
+{"name": "eval_summary",
+ "on": {"table": "report_request", "require": [{"setting": ["eval_summary"]}]},
+ "into": {"table": "report"},
+ "derive": {"kind": "report", "report": {
+   "wafer":   {"table": "<웨이퍼 표>", "key": "wafer_id", "time": "measured_at", "evaluation": "eval_id", "conditions": ["split"]},
+   "summary": {"table": "<아이템별 요약 표>", "wafer": "wafer_id", "item": "defect_item", "fail": "fail_chips", "total": "total_chips"},
+   "layout":  [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}]}}}
+```
+
+**필요한 조건** — `config/llm_config.json`(게이트웨이) · `ingestion_settings.json` 의 `chain_slots: 3`(리포트가 도는 동안 일꾼 하나를 씀) · 재기동.
+
+**보이는 것**
+- `report` 행: state `done` / `stopped` + reason(«step cap N» · «time cap N s» · «context over budget» · «the language model call was refused: …») · file_path · file_hash · steps(걸음마다 한 줄)
+- 같은 요청 행을 고치면 다시 만들어지고, 그 요청의 걸음 · 웨이퍼 행은 통째로 바뀐다
+- 리포트는 한 번에 하나 — 밀린 요청은 대기열에서 차례로(다른 규칙은 다른 일꾼에서 계속 돎)
+- 부팅 줄 `[ChainRules]` 에 `writes=['report_step', 'report_wafer']`
+
+**바뀐 동작** — 체인 규칙이 `writes` 칸(표 목록)을 가질 수 있다: 그 표들도 규칙이 쓰는 표로 잠금 · 순서 · 고리 검사 · 그림에 들어가고, 그 표로 가는 맵 교체 배치가 받아진다. 리포트 규칙은 제품이 채운다.
+
+**자세히** — [ai_report_tables.md](../guide/ai_report_tables.md) · 요약 표 읽기(fail · total · rate · rate_scale) · 원장 «리포트 → 웨이퍼» 소스 예시.
 
 ## 2026-10-22 · 메인 그리드 피벗(화면) — 바닥줄 «Pivot» 하나, 키 묶음마다 한 줄 · item 마다 한 칸, 그리드처럼 고침
 

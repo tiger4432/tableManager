@@ -17,6 +17,7 @@ invisible here, exactly as it is to every other declaration-driven guard - ã€Œì„
 """
 import json
 
+import chain_bindings
 from chain import rule_shape
 
 
@@ -106,7 +107,8 @@ def order_rules(rules: list, on_cycle=None) -> list:
     """
     by_target = {}
     for r in rules:
-        by_target.setdefault(r.get("target_table"), []).append(r)
+        for table in sorted(chain_bindings.rule_tables(r, chain_bindings.TABLE_ROLE_WRITE)) or [r.get("target_table")]:
+            by_target.setdefault(table, []).append(r)
 
     state = {}   # rule name -> 0 visiting / 1 done
     ordered = []

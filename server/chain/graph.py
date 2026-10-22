@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import time
 
+import chain_bindings
 from chain import rule_shape
 from error_said import told
 import logging
@@ -125,8 +126,9 @@ def _mapper_edges(rules):
             unknown = [v for v in views if not v.get("reads")]
             if unknown:
                 common["reads_unknown"] = len(unknown)
-        if rule.get("target_table"):
-            edges.append(dict(common, **{"from": source, "to": rule["target_table"]}))
+        for table in ([rule["target_table"]] if rule.get("target_table") else []) + [
+                t for t in chain_bindings.written_tables(rule) if t != rule.get("target_table")]:
+            edges.append(dict(common, **{"from": source, "to": table}))
         # 🔴 A RULE CAN WRITE TWO TABLES, AND A PICTURE THAT SHOWS ONE IS THE HALF-GRAPH
         # THAT ALREADY COST A ROUND. `allow_map_metadata_upsert` writes map metadata as
         # well, that write raises its own chain event, and `_validate_chain_cascade_graph`
