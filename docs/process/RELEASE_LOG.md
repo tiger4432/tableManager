@@ -394,6 +394,7 @@
 
 ### 메인 화면 (그리드 · 보드 · 맵)
 
+- 2026-10-22 [메인 그리드 피벗(서버) — 긴 표를 키 묶음마다 한 줄, item 마다 한 칸으로 읽는다](#2026-10-22--메인-그리드-피벗서버--긴-표를-키-묶음마다-한-줄-item-마다-한-칸으로-읽는다) — 적는 곳 table_config.json 의 pivot · ingestion_settings.json 의 pivot_max_columns · 누르는 곳 (클라 착지 뒤) 그리드 Pivot
 - 2026-10-21 [메인 그리드 오른쪽 패널 — 눌린 탭과 보이는 판이 늘 같다](#2026-10-21--메인-그리드-오른쪽-패널--눌린-탭과-보이는-판이-늘-같다) — 누르는 곳 메인 그리드 오른쪽 패널의 Global · Row · Queue · Reference grid
 - 2026-10-21 [갤러리 행 × 열 판 — Rows by · Columns by, 칸마다 수 · 비율 · 썸네일](#2026-10-21--갤러리-행--열-판--rows-by--columns-by-칸마다-수--비율--썸네일) — 누르는 곳 메인 그리드 «Gallery» 의 Columns by
 - 2026-10-20 [갤러리 다듬기 — 타일 글자 칸 · ← → Esc · 묶음 순서 · 옆 판은 그리드의 표시 칸만](#2026-10-20--갤러리-다듬기--타일-글자-칸----esc--묶음-순서--옆-판은-그리드의-표시-칸만) — 누르는 곳 메인 그리드 «Gallery»
@@ -513,6 +514,16 @@
 
 
 
+
+## 2026-10-22 · 메인 그리드 피벗(서버) — 긴 표를 키 묶음마다 한 줄, item 마다 한 칸으로 읽는다
+
+- **무엇** — 키가 (lot, wafer, itemid) 같은 긴 표를 (lot, wafer) 마다 한 줄, itemid 값마다 한 칸으로 읽는다. 읽기는 그리드 읽기 라우트 그대로(`GET /tables/<표>/data?pivot=true`, 수는 `/data/count?pivot=true`)이고 쪽은 키 묶음 단위라 한 키의 칸이 쪽에서 안 잘린다. 칸마다 원래 행의 `row_id` 가 실려 편집은 지금 저장 문 그대로이고, 빈 칸에 적으면 그 키의 행이 새로 생긴다.
+- **선언 예시** — `table_config.json` 의 표 선언에 `"pivot": {"column": "itemid", "value": "value"}`. `column` 은 표 키(`composite_key_source`) 중 하나, `value` 는 키가 아닌 선언 칸. 아니면 저장이 이유와 함께 거절된다(`pivot_refused`).
+- **거르기 · 정렬** — 키 칸은 그리드 그대로. 펼친 칸은 늘 `item:<값>` 이름으로 거르고 정렬한다. 거르기는 그리드 필터와 같은 조건, «blank» 는 그 item 행이 없는 키. 정렬하면 그 item 이 없는 키는 오름 · 내림 모두 뒤.
+- **상한** — 펼친 칸은 `ingestion_settings.json` 의 `pivot_max_columns`(기본 200)까지, 넘으면 응답에 «몇 개 더»(`items_more`).
+- **안 받는 것** — 피벗 읽기에서 `q` · `after` · `before` · `target_row_id` · `transaction_id` · `enrichment_queue` 는 422 로 이름을 대고 거절한다(쪽은 `skip`/`limit`).
+- **화면에서** — 클라 착지 뒤 그리드의 Pivot ↔ Unpivot. 이 착지는 서버 몫.
+- **필요한 조건** — git pull · 서버 재기동.
 
 ## 2026-10-22 · 오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것
 

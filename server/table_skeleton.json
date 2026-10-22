@@ -230,6 +230,31 @@
             "hint": "free"
           }
         }
+      },
+      {
+        "key": "pivot",
+        "required": false,
+        "node": {
+          "kind": "record",
+          "fields": [
+            {
+              "key": "column",
+              "required": true,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            },
+            {
+              "key": "value",
+              "required": true,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            }
+          ]
+        }
       }
     ]
   }

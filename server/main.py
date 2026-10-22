@@ -51,6 +51,7 @@ import json
 import paths  # single override point for config/ + ingestion_workspace/ (ASSY_DATA_ROOT)
 import db_safety  # [#16a] "a test process may not touch a real database", as a decision
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
+import grid_pivot  # the main grid's pivot read (소유자 10-22)
 from admin import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
@@ -2673,8 +2674,10 @@ def grid_model(table_name, world=None):
 def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
                          transaction_id=None, filters=None,
                          enrichment_queue=None, enrichment_queue_scope=None,
-                         scope_report=None):
+                         scope_report=None, pivot=None):
     """The narrowed query AND the count-cache key that belongs to it. ONE assembly.
+
+    `pivot` (`grid_pivot.of`): the filters split - the key columns' here, the items' by `grid_pivot.narrow`.
 
     🔴 THE ROWS AND THE COUNT OF THEM MUST BE READ FROM THE SAME SENTENCE. `/data` and
     `/data/count` answer the same question in two halves, and a second interpretation of
@@ -2701,7 +2704,10 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
         query = query.filter(table_model.row_id.in_(subquery))
 
     # [NEW] AG-Grid 컬럼 필터링
-    query = apply_column_filters(query, table_model, table_name, filters)
+    key_filters, items = grid_pivot.split_filters(filters, pivot) if pivot else (filters, {})
+    query = apply_column_filters(query, table_model, table_name, key_filters)
+    if pivot:
+        query = grid_pivot.narrow(query, table_model, pivot, items)
 
     # [2026-08-05] 이름 붙은 큐 술어 (일반 필터 DSL이 표현할 수 없는 컬럼 간 OR)
     query = apply_enrichment_queue_predicate(query, table_model, table_name,
@@ -2729,6 +2735,8 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
     # One world's copy of a per-world relation counts its own rows (`grid_model`).
     if table_model.__table__.schema:
         cache_key_parts.append(f"in:{table_model.__table__.schema}")
+    if pivot:
+        cache_key_parts.append("pivot")
     # 🔴 키 철자는 `build_count_cache_key` 하나뿐이다. 여기서 `"|".join(...)`을 다시
     #    쓰면 무효화 쪽 판정과 갈라져 여덟 개 호출 지점이 전부 죽는다(그 사고의 재발).
     return query, build_count_cache_key(table_name, *cache_key_parts)
@@ -2755,6 +2763,9 @@ def grid_read(route):
         from parsers.directory_watcher import grid_read_timeout
 
         asked = inspect.signature(route).bind_partial(*args, **kwargs).arguments
+        if asked.get("pivot"):                    # an item's sort and filter are said as the column that holds it
+            asked = dict(asked, **dict(zip(("order_by", "filters"), grid_pivot.index_names(
+                asked.get("table_name"), asked.get("order_by", "row_id"), asked.get("filters")))))
         q = asked.get("q") if isinstance(asked.get("q"), str) else None     # a direct call leaves Query sentinels
         filters = asked.get("filters")
         seconds = grid_read_timeout() if q or pattern_filtered_columns(filters) else None
@@ -2885,6 +2896,7 @@ def grid_page(
     after: str = None,                  # 앞 쪽의 마지막 행 row_id - 다음 쪽을 열쇠로 (총괄 e570dcda5, key_page)
     before: str = None,                 # 뒤 쪽의 첫 행 row_id - 앞 쪽을 열쇠로
     counted: dict = None,               # the door's count (`grid_count`) - taken in the server process, not here
+    pivot: bool = False,                # one row per key group, one cell per item (`grid_pivot`, 소유자 10-22)
     db: Session = None
 ):
     """
@@ -2912,7 +2924,12 @@ def grid_page(
     table_model = grid_model(table_name, world)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
-        
+    if pivot:
+        return pivot_page(db, table_name, table_model, skip=skip, limit=limit, order_by=order_by,
+                          order_desc=order_desc, filters=filters, counted=counted, q=q,
+                          transaction_id=transaction_id, enrichment_queue=enrichment_queue,
+                          target_row_id=target_row_id, after=after, before=before)
+
     search_scope: dict = {}
     query, cache_key = narrowed_table_query(
         db, table_name, table_model, q=q, cols=cols, transaction_id=transaction_id,
@@ -3156,15 +3173,46 @@ def grid_page(
     }, table_name)
 
 
+def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc, filters, counted, **asked):
+    """A pivot page (`grid_page`'s `pivot`): `limit` key groups from `skip` - a group's items never cut by the page -
+    each cell its row's value and row_id; the items of the narrowed rows up to `pivot_max_columns`, and how many more."""
+    from parsers.directory_watcher import pivot_max_columns
+
+    began = time.time()
+    pivoted = grid_pivot.of(table_name, **asked)
+    rows, _cache_key = narrowed_table_query(db, table_name, table_model, filters=filters, pivot=pivoted)
+    page = [tuple(group) for group in grid_pivot.groups(rows, table_model, pivoted)
+            .order_by(*grid_pivot.order(table_model, pivoted, order_by, order_desc)).offset(skip).limit(limit).all()]
+    items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns())
+    fetched = grid_pivot.rows_of(rows, table_model, pivoted, page)
+    raw_rows = fetched.all() if fetched is not None else []
+    merged = fetch_and_merge_metadata(db, table_name, raw_rows, pivoted.keys + [pivoted.column, pivoted.value],
+                                      include_sources=False)
+    logger.info("[get_table_data] pivot | Total: %.3fs | table=%s groups=%d rows=%d items=%d more=%d skip=%d "
+                "limit=%d order=%s filters=%d", time.time() - began, table_name, len(page), len(raw_rows),
+                len(items), more, skip, limit, order_by, _filtered_column_count(filters))
+    return _table_data_response({
+        "table_name": table_name, "total": None if counted is None else counted["total"], "skip": skip,
+        "limit": limit, **({"count": counted} if counted is not None else {}),
+        "pivot": {"column": pivoted.column, "value": pivoted.value, "keys": pivoted.keys, "items": items,
+                  "items_more": more},
+        "data": grid_pivot.fold(pivoted, page, raw_rows, merged, items),
+    }, table_name)
+
+
 from runtime import process_pool  # noqa: E402
 
 grid_page = process_pool.in_pool(grid_page, pool=process_pool.GRID)
 
 
-def grid_count(db, table_name, world, table_model, **narrowing):
+def grid_count(db, table_name, world, table_model, pivot=False, **narrowing):
     """A grid read's count - `table_total` over `narrowed_table_query` - in the server process, where the kept counts,
-    their worker and their invalidation live (총괄 e570dcda5 ㄴ): the /data door and /data/count."""
-    query, cache_key = narrowed_table_query(db, table_name, table_model, **narrowing)
+    their worker and their invalidation live (총괄 e570dcda5 ㄴ): the /data door and /data/count. A pivot read counts
+    its key groups."""
+    pivoted = grid_pivot.of(table_name, **narrowing) if pivot else None
+    query, cache_key = narrowed_table_query(db, table_name, table_model, pivot=pivoted, **narrowing)
+    if pivoted:
+        query = grid_pivot.groups(query, table_model, pivoted)
     return table_total(db, table_name, world, table_model, query, cache_key)
 
 
@@ -3186,6 +3234,7 @@ def get_table_data(
     world: str = None,
     after: str = None,
     before: str = None,
+    pivot: bool = False,
     db: Session = Depends(get_db)
 ):
     """🔴 THE ONE DOOR OF A GRID PAGE (총괄 e570dcda5 ㄴ): its count here, in the server process (`grid_count`), and
@@ -3197,15 +3246,18 @@ def get_table_data(
         table_model = grid_model(table_name, world)
         if not table_model:
             raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
-        resolve_sort(None, table_model, table_name, order_by, order_desc)
-        counted = grid_count(db, table_name, world, table_model, q=q, cols=cols, transaction_id=transaction_id,
-                             filters=filters, enrichment_queue=enrichment_queue,
+        if pivot:
+            grid_pivot.order(table_model, grid_pivot.of(table_name), order_by, order_desc)
+        else:
+            resolve_sort(None, table_model, table_name, order_by, order_desc)
+        counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
+                             transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
                              enrichment_queue_scope=enrichment_queue_scope)
     return grid_page(table_name=table_name, skip=skip, limit=limit, q=q, cols=cols, order_by=order_by,
                      order_desc=order_desc, target_row_id=target_row_id, transaction_id=transaction_id,
                      filters=filters, enrichment_queue=enrichment_queue,
                      enrichment_queue_scope=enrichment_queue_scope, defer_total=defer_total, world=world,
-                     after=after, before=before, counted=counted, db=db)
+                     after=after, before=before, counted=counted, pivot=pivot, db=db)
 
 
 @app.get("/tables/{table_name}/data/count")
@@ -3219,6 +3271,7 @@ def get_table_data_count(
     enrichment_queue: str = None,
     enrichment_queue_scope: str = None,
     world: str = None,
+    pivot: bool = False,
     db: Session = Depends(get_db)
 ):
     """`GET .../data?defer_total=true`가 미룬 그 수 - `table_total` 하나: 표 전체는 일꾼이 마지막으로 센 수와 그 시각
@@ -3240,8 +3293,8 @@ def get_table_data_count(
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
-    counted = grid_count(db, table_name, world, table_model, q=q, cols=cols, transaction_id=transaction_id,
-                         filters=filters, enrichment_queue=enrichment_queue,
+    counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
+                         transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
                          enrichment_queue_scope=enrichment_queue_scope)
     return {"table_name": table_name, **counted}
 

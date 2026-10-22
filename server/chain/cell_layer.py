@@ -163,8 +163,12 @@ def key_columns(table_name: str) -> set:
     (what `crud.unfilled_key_columns` reads too)."""
     from database import crud
 
-    config = crud.TABLE_CONFIG.get(table_name) or {}
-    return {str(c) for c in (config.get("composite_key_source") or [config.get("business_key")]) if c}
+    return set(entry_key_columns(crud.TABLE_CONFIG.get(table_name) or {}))
+
+
+def entry_key_columns(config: dict) -> list:
+    """`key_columns` of one table entry, in its declared order."""
+    return [str(c) for c in (config.get("composite_key_source") or [config.get("business_key")]) if c]
 
 
 def shells(db, table_name: str, row_ids) -> list:

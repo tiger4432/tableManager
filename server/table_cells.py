@@ -51,6 +51,9 @@ TABLE_CELLS = (
     ("allow_replace_map", _leaf("flag")),
     ("map_push_ok", _leaf("flag")),
     ("smart_paste", chain_bindings.list_node("format", _leaf())),
+    ("pivot", {"kind": "record", "fields": [
+        {"key": "column", "required": True, "node": _leaf()},
+        {"key": "value", "required": True, "node": _leaf()}]}),
 )
 
 
