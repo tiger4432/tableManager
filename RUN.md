@@ -12,7 +12,7 @@
 >           require 값 항목은 «required value(s) missing: status [OK]=<건수>». 칸 이름 항목의 줄은 전과 같음
 >           로드 거절 «bad_exclude» · «bad_require» — 빈 목록 · 목록 아닌 값 · 값에 목록 · 사전 · 참거짓
 >           «unknown_exclude_column» · «unknown_require_column» — 트리거 표에 없는 칸
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동. 값 항목을 적은 규칙은 되돌린 코드에서 로드 거절되니 값 항목부터 지움
+> 되돌리기  git revert badc8faca -> 런처 재기동. 값 항목을 적은 규칙은 되돌린 코드에서 로드 거절되니 값 항목부터 지움
 > ```
 >
 > ## [10-22] **main 의 B 빨강 묶음 — 시험 일곱 칸 · 순서 탓 셋 초록, 줄 하나 더함 (총괄 10-22)** — git pull · 런처 재기동
