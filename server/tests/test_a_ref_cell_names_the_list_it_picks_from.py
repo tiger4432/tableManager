@@ -19,7 +19,7 @@ from ledger import config_authoring                                  # noqa: E40
 from ledger.config_explorer_service import OntologyExplorerService   # noqa: E402
 from ledger.setup_bundle import CONFIG_FILENAME                      # noqa: E402
 
-HINTS = ("free", "ref", "choice", "flag", "number", "role")
+HINTS = config_authoring.SKELETON_LEAF_HINTS
 
 
 def _nodes(node, path="", defs=None, seen=()):

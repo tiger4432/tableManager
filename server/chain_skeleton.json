@@ -1727,7 +1727,7 @@
                   "required": false,
                   "node": {
                     "kind": "leaf",
-                    "hint": "free"
+                    "hint": "html"
                   }
                 },
                 {

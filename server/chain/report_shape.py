@@ -117,7 +117,7 @@ def skeleton_node():
             ("kind", "fill", "slot"), "free"))},
         {"key": "loop", "required": False, "node": _record(LOOP_CELLS, "number")},
         # the HTML Excel puts on the clipboard - the form pastes it (`report_template`)
-        {"key": "template", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": "template", "required": False, "node": {"kind": "leaf", "hint": "html"}},
         {"key": "control", "required": False, "node": {"kind": "record", "fields": [
             {"key": "recent", "required": False, "node": _record(RECENT_CELLS, "number")}]
             + _record(tuple(CONTROL_LIMITS), "number")["fields"]}},
