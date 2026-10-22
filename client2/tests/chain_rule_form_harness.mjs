@@ -809,8 +809,10 @@ function suite(M) {
   ok(pickers.length === 1, `U5 one picker per 「pick one」 with a choice left, no more [${pickers.length}]`);
   const options = (el) => walk(el).filter((k) => k.tagName === 'OPTION')
     .map((k) => (k.attrs || {}).value ?? k.textContent);
-  ok(options(pickers[0]).join(',') === 'join,decide,mapper',
-    `U6 the options are the BRANCH KEYS, in the server's order [${options(pickers[0]).join(',')}]`);
+  // The keys the server's skeleton names, not a copy of them (a copy went stale at the report branch, 223649fa5).
+  const branchKeys = Object.keys(UNI.fields.find((f) => f.key === 'derive').node.branches);
+  ok(branchKeys.includes('join') && options(pickers[0]).join(',') === branchKeys.join(','),
+    `U6 the options are the BRANCH KEYS, in the server's order [${options(pickers[0]).join(',')}] / [${branchKeys.join(',')}]`);
   // 🔴 안 고른 자리는 «비어 있는 것이 아니라 모르는 것»입니다 — 가지를 안 그립니다.
   const u2 = makePanel(M, UNI_SPEC);
   u2.panel.render(uniPayload({ name: 'alpha', on: { table: 'dt_left' } }));
