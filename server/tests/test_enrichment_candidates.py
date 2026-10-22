@@ -564,7 +564,9 @@ def test_user_edit_beats_an_auto_confirmed_value(cand_env):
     assert _derived(cand_env, "L1_S1").wafer_id == "HUMAN_WINS"
 
 
-def test_per_unit_cap_leaves_the_remainder_in_the_queue(cand_env, tmp_path, monkeypatch):
+def test_the_key_budget_is_a_page_and_every_key_is_probed(cand_env, tmp_path, monkeypatch):
+    """소유자 10-22 「소급이 일부만 채워짐 · 클릭하면 채워짐」: the budget dropped the keys past it («NOT probed - they stay
+    in the worklist») and nothing asked them again. A budget of 1 is a page of one key - both keys are confirmed."""
     p = tmp_path / "cap.json"
     p.write_text(json.dumps({"enrichment_auto_confirm_max_keys": 1}), encoding="utf-8")
     monkeypatch.setattr(enrichment.candidates, "INGESTION_SETTINGS_PATH", str(p))
@@ -576,7 +578,7 @@ def test_per_unit_cap_leaves_the_remainder_in_the_queue(cand_env, tmp_path, monk
     _run_chain_for_tx(cand_env, "tx_cap")
     confirmed = [bk for bk in ("L1_S1", "L5_S1")
                  if crud.clean_str_value(getattr(_derived(cand_env, bk), "wafer_id", "")) != ""]
-    assert len(confirmed) == 1, "the cap must bound the probe, not silently drop the rest"
+    assert len(confirmed) == 2, "a page bounds a probe, it drops no key"
 
 
 # ---------------------------------------------------------------------------

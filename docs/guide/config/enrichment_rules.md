@@ -278,7 +278,6 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 | `ambiguous` | 서로 다른 값이 2개 이상 — **이게 바로 사람의 판단** | 큐에 남음 |
 | `view_error` · `missing_bind` · `candidate_column_missing` | 선언된 뷰를 **평가하지 못했다** | 큐에 남음 |
 | `cell_has_provenance` | 그 셀에 이미 어떤 소스든 기록이 있다 | 건드리지 않음 |
-| `over_cap` | 작업 단위 상한 초과 | 큐에 남음(다음 인제션이 처리) |
 | `probe_truncated` | 후보 조회가 스캔 상한(5,000행)에 닿아 **읽기가 잘렸다** | 큐에 남음 |
 | `distinct_truncated` | 후보 조회의 **서로 다른 값 개수가 뷰의 `limit`을 넘어** 집계 결과가 잘렸다 | 큐에 남음 |
 

@@ -158,7 +158,7 @@ resolved  = 모든 target notBlank AND 모든 key notBlank
 
 **M3 `auto_register_map_meta`와 같은 형태** — 부재 시에만, 소스 `enrichment_auto_confirm`은 `SOURCE_PRIORITY` 미등재 = 최하위(99)이므로 `user`(0)가 항상 이긴다. 노브는 작업 단위 경계에서 1회 읽고, 비-boolean은 경고 1회 후 기본값. **다른 점은 기본값뿐이며 근거는 두 가지다**: ⓐ 이 필드의 blank가 **큐 소속을 정의**하므로(§5.1) 오확정은 항목을 워크리스트에서 빼 재검토를 막는다 ⓑ 철회가 부분적이다(R2로 레이어는 되돌리지만 그 셀은 provenance가 남아 재확정되지 않는다).
 
-**거절은 전부 이름이 있다** — `not_declared` · `no_candidate` · `ambiguous`(= 바로 그 사람의 판단) · `view_error` · `missing_bind` · `candidate_column_missing` · `cell_has_provenance` · `over_cap` · **`probe_truncated`** · **`distinct_truncated`**(둘 다 2026-07-30 신설, 아래). 그리고 **평가 못 한 뷰는 "값 없음"이 아니라 "모름"** 이므로, 선언된 뷰 중 하나라도 실패하면 살아남은 뷰가 값 1개를 냈어도 거절한다.
+**거절은 전부 이름이 있다** — `not_declared` · `no_candidate` · `ambiguous`(= 바로 그 사람의 판단) · `view_error` · `missing_bind` · `candidate_column_missing` · `cell_has_provenance` · **`probe_truncated`** · **`distinct_truncated`**(둘 다 2026-07-30 신설, 아래). 그리고 **평가 못 한 뷰는 "값 없음"이 아니라 "모름"** 이므로, 선언된 뷰 중 하나라도 실패하면 살아남은 뷰가 값 1개를 냈어도 거절한다.
 
 **🔴 후보 프로브는 뷰의 `limit`에 잘리지 않는다 (2026-07-30 [F9] 수리).** 종전에는 서버가 행을 자른 **뒤** 파이썬에서 distinct를 셌다. 실측: 라이브 참조뷰 `공정 이력(wafer_process)`는 `limit: 50`인데 (lot,slot) 하나당 행이 최소 69 · 평균 135.4 · 최대 217로 **80개 키 전부가 상한을 넘는다** — 51번째 행이 다른 `wafer_id`를 나르고 있어도 `ambiguous`는 영영 발화하지 않았고, `single` 판정은 "매핑이 우연히 정상"이라는 아무도 검사하지 않는 가정 위에 있었다. 수리는 뷰가 아니라 **실행 형태**를 갈랐다(그 뷰에는 사람의 표시라는 두 번째 소비자가 있고 그쪽은 시간순 **행**이 필요하다):
 
@@ -170,7 +170,7 @@ resolved  = 모든 target notBlank AND 모든 key notBlank
 - 🔴 **참조 질의는 전부 SAVEPOINT 안에서 실행된다**(`enrichment_config._isolated_execute`). Postgres는 실패한 문장이 **트랜잭션 전체를 abort**시키고, 그 뒤 `COMMIT`은 **정상 반환하면서 서버가 ROLLBACK으로 바꾼다**(2026-07-30 읽기 전용 실측). 드라이버 예외를 잡는 것은 격리가 아니다 — 세션은 이미 죽었고 호출자도 로그도 그것을 모른다. 격리가 없으면 ⓐ `_diagnose_probe_failure`의 재질의가 죽은 세션에서 돌아 **`candidate_column_missing`이 Postgres에서 도달 불가**가 되고 ⓑ 오염된 세션이 체인 워커의 `except`를 통과해 `process_pending_groups`의 `processed_chain=True` 커밋을 무산시켜 **그룹이 영원히 재처리**된다(실패로 보고되지 않으므로 재시도 격리 카운터도 오르지 않는다).
 - 컬럼명은 바인딩할 수 없는 **식별자**라 보간된다 → 형태 검증(`_CANDIDATE_COLUMN_RE`)이 **실행보다 먼저** 오고, 참조는 반드시 별칭으로 한정한다(`__enrichment_ref."col"`). ⚠️ SQLite는 해석되지 않는 큰따옴표 이름을 **문자열 리터럴로 강등**하므로, 한정하지 않으면 존재하지 않는 컬럼이 「후보 1개 = 컬럼명 그 자체」로 읽혀 자동 확정된다(2026-07-30 실측).
 
-**확장성**: 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 작업 단위당 상한(`enrichment_auto_confirm_max_keys`, 기본 200)이 있다. 초과 키는 쓰지 않고 **큐에 남으며** 건수를 로그에 남긴다.
+**확장성**: 키 1개당 선언된 뷰 수만큼 SQL이 나가므로 작업 단위의 키를 `enrichment_auto_confirm_max_keys`(기본 200)개씩 **쪽**으로 나눠 탐색한다 — 키를 버리지 않고 전부, 쪽마다 박동과 진행 한 줄(소유자 10-22, 예전 «초과 키는 큐에 남음»은 거짓이었다: 다시 부르는 자리가 없었다).
 
 **구현**: `server/chain/enrichment/candidates.py`(술어·노브·`AutoConfirmCollector`) + 체인 워커 훅(M3 훅 직후) + `server/chain/enrichment/analysis.run_auto_confirm_sweep`(소급·dry-run). 설정 절차 정본은 [config/enrichment_rules §7](../guide/config/enrichment_rules.md).
 

@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것](#2026-10-22--오토컨펌이-한-단위의-키를-전부-본다--200-개-넘는-키가-빈-칸으로-남던-것) — 보는 곳 chain_worker.log «[Enrichment:<규칙>] page i of n» · 적는 곳 ingestion_settings.json 의 enrichment_auto_confirm_max_keys
 - 2026-10-22 [파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다](#2026-10-22--파생표로-가는-조인은-키-칸을-쓸-때만-키-계약으로-거절한다) — 적는 곳 chain_rules.json 의 `derive.join.take`
 - 2026-10-22 [체인 «데이터 받기» — 규칙이 읽는 것은 그룹의 규칙이 돌기 전에 한 번에 읽혀 건네진다 · group_by 규칙은 그 키의 행 전체를 받는다](#2026-10-22--체인-데이터-받기--규칙이-읽는-것은-그룹의-규칙이-돌기-전에-한-번에-읽혀-건네진다--group_by-규칙은-그-키의-행-전체를-받는다) — 보는 곳 chain_worker.log «[ChainRule] rule=<규칙> reads outside the fetch» · [ChainRule] rows_in
 - 2026-10-22 [체인이 잠금을 기다려도 «멈춘 프로세스»로 안 보인다 — 그룹 밖 DB 일도 박동하며 단계 이름과 잡은 쪽을 말한다](#2026-10-22--체인이-잠금을-기다려도-멈춘-프로세스로-안-보인다--그룹-밖-db-일도-박동하며-단계-이름과-잡은-쪽을-말한다) — 보는 곳 /health problems «is beating but its work has not progressed … waiting … on pid» · chain_worker.log «tried again next turn»
@@ -511,6 +512,16 @@
 
 
 
+
+## 2026-10-22 · 오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것
+
+- **무엇** — 소유자 10-22 「체인 소급이 일부만 채워짐 · 빈 거 수동으로 클릭해서 돌리면 채워짐」. 오토컨펌은 한 단위에서 판단키 200 개(`enrichment_auto_confirm_max_keys`)만 보고, 나머지는 «NOT probed - they stay in the worklist» 한 줄을 남기고 버렸습니다. 그 키를 다시 부르는 자리는 없었습니다. 같은 묶음을 다시 돌려도 이미 채운 앞 200 개를 또 골랐습니다.
+- **선언** — `ingestion_settings.json` 의 `enrichment_auto_confirm_max_keys` 는 이름과 기본값(200)이 그대로이고, 뜻이 «한 쪽의 키 수»로 바뀝니다.
+- **바뀐 동작** — 한 단위의 키를 전부, 그 수만큼씩 쪽으로 읽고 판정합니다. 쪽마다 박동하고 진행 한 줄을 남깁니다. 한 실행의 쪽들은 이력에서 트랜잭션 하나입니다. 거절 사유 `over_cap` 은 은퇴했습니다.
+- **이미 빈 칸** — 재기동 뒤 그 규칙의 소급을 한 번 다시 돌리면 채워집니다.
+- **보는 곳** — chain_worker.log «[Enrichment:<규칙>] page i of n: K row(s) with a blank target, C confirmed» · health 의 work.stage «auto-confirm · page i of n».
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_enrichment_candidates.py::test_the_key_budget_is_a_page_and_every_key_is_probed`.
 
 ## 2026-10-22 · 파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다
 

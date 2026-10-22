@@ -76,8 +76,8 @@ QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
 # WHERE THEY LIVE
 #     `ingestion_settings.json` -> `enrichment_read_caps` block. Not a new file
 #     and not a new section: that file already carries this subsystem's other
-#     operational ceiling (`enrichment_auto_confirm_max_keys`, the per-work-unit
-#     KEY budget) beside its kill switch, so the read caps join their siblings
+#     operational ceiling (`enrichment_auto_confirm_max_keys`, the keys a
+#     page probes) beside its kill switch, so the read caps join their siblings
 #     rather than starting a fourth home for enrichment numbers.
 #
 # AN ABSENT DECLARATION KEEPS TODAY'S VALUE, AND THE REFUSAL SAYS SO

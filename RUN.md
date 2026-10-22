@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **오토컨펌이 한 단위의 키를 «전부» 본다 — 200 개 넘는 키를 버리던 것 (소유자 10-22 「소급이 일부만 채워짐 · 클릭하면 채워짐」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      오토컨펌이 한 단위(파생 사건 한 그룹)에서 키 200 개만 보고 나머지를 버렸음 — «NOT probed - they stay in the worklist» 줄만 남고
+>           다시 부르는 자리가 없었음. 같은 묶음을 다시 돌려도 이미 채운 앞 200 개를 또 골라 0. 빈 행 몇 개만 «클릭»하면 채워졌던 까닭
+> 지금      enrichment_auto_confirm_max_keys(이름 · 기본 200 그대로)는 «한 쪽의 키 수» — 키를 전부, 그 수만큼씩 쪽으로 봄
+> 이미 빈 칸  소급(리플레이)을 그 규칙으로 «한 번 다시» 돌리면 채워짐 — 재기동 뒤
+> 보이는 것  chain_worker.log «[Enrichment:<규칙>] page i of n: K row(s) with a blank target, C confirmed» — 쪽마다 한 줄
+>           health work.stage «auto-confirm · page i of n» — 큰 단위가 도는 동안 멈춘 프로세스로 안 보임
+>           «… NOT probed - they stay in the worklist» 줄은 더 안 나옴(나오면 옛 코드가 돌고 있음)
+> 판(박스)  키 1,000 한 단위: 첫 실행 뒤 빈 칸 800 -> 0 · 키 20,000: 빈 칸 0 · PG 15.3 초(쪽 100, 원천 job 인덱스는 내가 만듦 · 클라 Chrome 판과 겹침), sqlite 53.5 초
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
 > ## [10-22] **파생표로 가는 조인은 키 칸을 쓸 때만 키 계약으로 거절 (소유자 「ㅇㅇ」, d3bbf9371)**
 >
 > ```

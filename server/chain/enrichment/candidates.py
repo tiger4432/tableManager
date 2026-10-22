@@ -162,11 +162,9 @@ DEFAULT_ENABLED = False
 GLOBAL_KILL_SWITCH_KEY = "enrichment_auto_confirm_enabled"
 INGESTION_SETTINGS_PATH = paths.config_path("ingestion_settings.json")
 
-# Per work unit ceiling on how many decision keys we will probe. Each probed key
-# costs one SQL round trip PER declaring reference view, so this is the only
-# thing standing between a 10M-row ingestion and a query storm. Keys beyond the
-# cap are NOT resolved and NOT lost - they stay in the queue and the skip is
-# logged with its count (honest degradation, per the 10M-row rule).
+# How many decision keys a page of the auto-confirm probes (`AutoConfirmCollector.read_for_flush`) - every key of a
+# unit is probed, a page at a time, each page a beat and a line (소유자 10-22: it used to be a ceiling, and the keys
+# past it were dropped).
 MAX_KEYS_SETTINGS_KEY = "enrichment_auto_confirm_max_keys"
 DEFAULT_MAX_KEYS_PER_UNIT = 200
 
@@ -201,7 +199,6 @@ REASON_VIEW_ERROR = "view_error"
 REASON_MISSING_BIND = "missing_bind"
 REASON_CANDIDATE_COLUMN_MISSING = "candidate_column_missing"
 REASON_CELL_HAS_PROVENANCE = "cell_has_provenance"
-REASON_OVER_CAP = "over_cap"
 # The probe's ROW scan hit `enrichment_read_caps.probe_scan_rows`, so the read is
 # TRUNCATED. "Exactly one candidate" is not provable from a truncated read - the
 # unread remainder may hold the contradiction. Same posture as `view_error`: an
@@ -272,7 +269,7 @@ def global_auto_confirm_enabled(settings: dict = None) -> bool:
 
 
 def max_keys_per_unit(settings: dict = None) -> int:
-    """Per-work-unit probe ceiling. Non-positive / non-integer warns once."""
+    """Decision keys a page of the auto-confirm probes. Non-positive / non-integer warns once."""
     val = (settings if settings is not None else _load_ingestion_settings()).get(
         MAX_KEYS_SETTINGS_KEY, DEFAULT_MAX_KEYS_PER_UNIT)
     if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
@@ -1042,29 +1039,43 @@ class AutoConfirmCollector:
         return self.active and bool(self.entries)
 
     def flush(self, db, propose_into: list = None, read: dict = None) -> dict:
-        """Resolve for the collected keys, and write unless handed a sink.
+        """Resolve for the collected keys, and write unless handed a sink - a page of keys at a time, every page.
 
         `propose_into` goes straight through to `confirm_keys` - this class decides
         WHICH rows, never whether they are written. `read`: what `read_for_flush` read, handed by the fetch seat
-        (총괄 78eec1ec1) - read here when nobody did.
+        (총괄 78eec1ec1) - read here when nobody did. One history transaction for all the pages.
         """
+        from utils import heartbeat
+
         got = read if read is not None else self.read_for_flush(db)
         if not got:
             return {}
-        keyed_rows, over_cap, stats = got["keyed_rows"], got["over_cap"], got["stats"]
-        if keyed_rows:
-            confirm_keys(db, self.rule, keyed_rows, apply=True, stats=stats,
+        stats, pages, tx_id = got["stats"], got["pages"], new_tx_id(SOURCE_NAME)
+        for number, page in enumerate(pages, 1):
+            if not page["keyed_rows"]:
+                continue
+            heartbeat.progress("auto-confirm · page %d of %d" % (number, len(pages)))
+            before = stats.get("confirmed") or 0
+            confirm_keys(db, self.rule, page["keyed_rows"], apply=True, stats=stats,
                          tx_prefix=SOURCE_NAME, caps=self._caps,
-                         propose_into=propose_into, read=got["read"])
-
-        return self._said(stats, over_cap)
+                         propose_into=propose_into, read=page["read"], tx_id=tx_id)
+            logger.info("[Enrichment:%s] page %d of %d: %d row(s) with a blank target, %d confirmed",
+                        self.rule.get("name"), number, len(pages), len(page["keyed_rows"]),
+                        (stats.get("confirmed") or 0) - before)
+        return self._said(stats)
 
     def read_for_flush(self, db) -> dict:
-        """What `flush` reads, read: the collected keys' rows whose target is blank, and what `confirm_keys` reads
-        for them (`confirm_reads`). None with nothing to resolve. The auto-confirm's read half (총괄 78eec1ec1)."""
+        """What `flush` reads, read: the collected keys a page at a time (`enrichment_auto_confirm_max_keys` keys a
+        page), each page's rows whose target is blank and what `confirm_keys` reads for them (`confirm_reads`). None
+        with nothing to resolve. The auto-confirm's read half (총괄 78eec1ec1).
+
+        ⚰️ THE BUDGET USED TO DROP THE KEYS PAST IT (소유자 10-22 「소급이 일부만 채워짐」): «NOT probed - they stay in the
+        worklist», and nothing asked them again - a 1,000-key unit confirmed 200, and running it again confirmed none
+        more (the first 200 were cut before the blank ones were picked). It is the size of a page now."""
         if not self.pending():
             return None
         from database import crud, models
+        from utils import heartbeat
 
         model = models.DYNAMIC_TABLES.get(self.derived_table)
         if model is None:
@@ -1072,43 +1083,34 @@ class AutoConfirmCollector:
         target_fields = candidate_target_fields(self.rule)
 
         bks = list(self.entries)
-        over_cap = 0
-        if len(bks) > self._max_keys:
-            over_cap = len(bks) - self._max_keys
-            bks = bks[:self._max_keys]
-
-        # Fetch row_id + current target values for the collected keys, batched on
-        # the indexed business_key_val column. Only rows whose target is
-        # currently blank are candidates for probing.
-        keyed_rows = []
+        stats = {"refused": {}}
         cols = [model.row_id, model.business_key_val] + [getattr(model, f) for f in target_fields]
-        for i in range(0, len(bks), CHUNK_SIZE):
-            chunk = bks[i:i + CHUNK_SIZE]
-            for row in db.query(*cols).filter(model.business_key_val.in_(chunk)).all():
-                row_id, bk = row[0], row[1]
-                blanks = [f for f, v in zip(target_fields, row[2:])
-                          if crud.is_blank_value(v)]
-                if not blanks:
-                    continue
-                keyed_rows.append({
-                    "row_id": row_id, "business_key_val": bk,
-                    "keys": self.entries[bk]["keys"], "blank_targets": blanks,
-                })
+        starts = range(0, len(bks), self._max_keys)
+        pages = []
+        for number, start in enumerate(starts, 1):
+            heartbeat.progress("auto-confirm · page %d of %d" % (number, len(starts)))
+            # row_id + current target values for the page's keys, batched on the indexed business_key_val column.
+            # Only rows whose target is currently blank are candidates for probing.
+            keyed_rows = []
+            page_keys = bks[start:start + self._max_keys]
+            for i in range(0, len(page_keys), CHUNK_SIZE):
+                chunk = page_keys[i:i + CHUNK_SIZE]
+                for row in db.query(*cols).filter(model.business_key_val.in_(chunk)).all():
+                    row_id, bk = row[0], row[1]
+                    blanks = [f for f, v in zip(target_fields, row[2:])
+                              if crud.is_blank_value(v)]
+                    if not blanks:
+                        continue
+                    keyed_rows.append({
+                        "row_id": row_id, "business_key_val": bk,
+                        "keys": self.entries[bk]["keys"], "blank_targets": blanks,
+                    })
+            pages.append({"keyed_rows": keyed_rows,
+                          "read": confirm_reads(db, self.rule, keyed_rows, self._caps, stats) if keyed_rows else None})
+        return {"pages": pages, "stats": stats}
 
-        stats = {"refused": {REASON_OVER_CAP: over_cap} if over_cap else {}}
-        return {"keyed_rows": keyed_rows, "over_cap": over_cap, "stats": stats,
-                "read": confirm_reads(db, self.rule, keyed_rows, self._caps, stats) if keyed_rows else None}
-
-    def _said(self, stats, over_cap) -> dict:
-        """The unit's lines - the keys over the budget, the refusals - and its driver-error total; -> `stats`."""
-        if over_cap:
-            logger.warning(
-                "[Enrichment:%s] %d decision KEY(s) beyond the per-unit key budget "
-                "('%s'=%d) were NOT probed - they stay in the worklist. This budget "
-                "bounds HOW MANY KEYS are examined; it does not widen any single read "
-                "(that is enrichment_read_caps.probe_scan_rows / probe_distinct_values). "
-                "Raise it or let the next ingestion pick them up.",
-                self.rule.get("name"), over_cap, MAX_KEYS_SETTINGS_KEY, self._max_keys)
+    def _said(self, stats) -> dict:
+        """The unit's lines - the refusals - and its driver-error total; -> `stats`."""
         if stats.get("confirmed") or stats.get("refused"):
             log_stats(self.rule.get("name"), stats, apply=True)
         # THE WORK-UNIT BOUNDARY, and the only place that knows there is one.
