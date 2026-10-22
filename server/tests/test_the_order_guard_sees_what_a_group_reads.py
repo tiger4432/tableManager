@@ -92,7 +92,8 @@ def test_the_writes_helper_kept_its_meaning_for_its_other_consumer():
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "_group_target_tables")
     body = "\n".join(src.splitlines()[fn.lineno - 1:(fn.end_lineno or fn.lineno)])
-    assert "rule_tables" not in body and "TABLE_ROLE_READ" not in body, \
+    # it asks the one author for what a rule WRITES (총괄 10-22: a rule's `writes` tables too), never what it reads
+    assert "TABLE_ROLE_READ" not in body and "TABLE_ROLE_WRITE" in body, \
         "the writes helper grew a read notion; its second consumer is not about ordering"
 
 

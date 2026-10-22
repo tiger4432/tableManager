@@ -14,16 +14,14 @@ REPORT_MAPPER = "declared:report"
 WAFER_CELL = "wafer"
 ROLE_COLUMNS = {
     "wafer": ("key", "time", "lot", "evaluation", "conditions"),
-    "fail": (WAFER_CELL, "item", "chips"),
-    "total": (WAFER_CELL, "chips"),
+    "summary": (WAFER_CELL, "item", "fail", "total", "rate"),
     "images": (WAFER_CELL, "item", "image"),
     "sets": ("name", "member", "kind"),
 }
 #: The roles a report cannot be made without.
-REQUIRED_ROLES = ("wafer", "fail", "total")
+REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
-LIST_COLUMNS = {("wafer", "key"), ("wafer", "conditions"), ("fail", WAFER_CELL), ("total", WAFER_CELL),
-                ("images", WAFER_CELL)}
+LIST_COLUMNS = {("wafer", "key"), ("wafer", "conditions"), ("summary", WAFER_CELL), ("images", WAFER_CELL)}
 #: What a layout slot holds.
 SLOT_KINDS = ("table", "image", "text")
 #: The reads whose answer a table slot draws (`report_html.TABLES` draws each).
@@ -33,6 +31,10 @@ REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "lo
 PROMPT_CELLS = ("select", "style", "compare")
 LOOP_CELLS = ("steps", "seconds", "context_tokens")
 NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
+#: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
+#: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
+RATE_SCALE = "rate_scale"
+RATE_SCALES = (1, 100)
 SETS_DEFAULT = "default"
 #: `sets.kinds`: what a compare set's `kind` column says for a member that is an evaluation, and for one that is a lot -
 #: the wafer table's own cells of that name are what it picks by (lead 10-22: no such word in code).
@@ -50,7 +52,7 @@ def _role_node(role):
         node = chain_bindings.list_node("column", _column(role)) if (role, cell) in LIST_COLUMNS else _column(role)
         fields.append({"key": cell, "required": False, "node": node})
     fields += [{"key": cell, "required": False, "node": {"kind": "leaf", "hint": "number"}}
-               for (at, cell) in sorted(NUMBER_CELLS) if at == role]
+               for (at, cell) in sorted(NUMBER_CELLS | {("summary", RATE_SCALE)}) if at == role]
     if role == "sets":
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})
@@ -133,6 +135,16 @@ def refusal(spec) -> str | None:
         for at, cell in NUMBER_CELLS:
             if at == role and cell in written and not _whole(written[cell], 1):
                 return "derive.report.%s.%s must be a whole number from 1, got %r" % (role, cell, written[cell])
+    summary = spec["summary"]
+    if not summary.get("item"):
+        return "derive.report.summary.item names no column - the item a row is about"
+    if bool(summary.get("fail")) != bool(summary.get("total")):
+        return "derive.report.summary names fail and total together - the F and the N of one row"
+    if not summary.get("rate") and not summary.get("fail"):
+        return "derive.report.summary needs rate, or fail and total - what a row says about its item"
+    if summary.get("rate") and not (_whole(summary.get(RATE_SCALE), 1) and summary[RATE_SCALE] in RATE_SCALES):
+        return "derive.report.summary.rate_scale: 1 or 100 - what a full rate reads as, got %r" % (
+            summary.get(RATE_SCALE),)
     sets = spec.get("sets")
     if isinstance(sets, dict):
         kinds = sets.get(SETS_KINDS)

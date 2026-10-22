@@ -459,6 +459,20 @@
         }
       },
       {
+        "key": "writes",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "table",
+          "of": {
+            "kind": "leaf",
+            "hint": "ref",
+            "section": "tables"
+          }
+        }
+      },
+      {
         "key": "reference",
         "required": false,
         "node": {
@@ -1102,7 +1116,7 @@
                   }
                 },
                 {
-                  "key": "fail",
+                  "key": "summary",
                   "required": true,
                   "node": {
                     "kind": "record",
@@ -1128,7 +1142,7 @@
                             "hint": "ref",
                             "section": "columns",
                             "table_from": [
-                              "derive.report.fail.table"
+                              "derive.report.summary.table"
                             ]
                           }
                         }
@@ -1141,67 +1155,52 @@
                           "hint": "ref",
                           "section": "columns",
                           "table_from": [
-                            "derive.report.fail.table"
+                            "derive.report.summary.table"
                           ]
                         }
                       },
                       {
-                        "key": "chips",
+                        "key": "fail",
                         "required": false,
                         "node": {
                           "kind": "leaf",
                           "hint": "ref",
                           "section": "columns",
                           "table_from": [
-                            "derive.report.fail.table"
+                            "derive.report.summary.table"
                           ]
                         }
-                      }
-                    ]
-                  }
-                },
-                {
-                  "key": "total",
-                  "required": true,
-                  "node": {
-                    "kind": "record",
-                    "fields": [
-                      {
-                        "key": "table",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "tables"
-                        }
                       },
                       {
-                        "key": "wafer",
-                        "required": false,
-                        "node": {
-                          "kind": "map",
-                          "keyed_by": "index",
-                          "member": "column",
-                          "of": {
-                            "kind": "leaf",
-                            "hint": "ref",
-                            "section": "columns",
-                            "table_from": [
-                              "derive.report.total.table"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "key": "chips",
+                        "key": "total",
                         "required": false,
                         "node": {
                           "kind": "leaf",
                           "hint": "ref",
                           "section": "columns",
                           "table_from": [
-                            "derive.report.total.table"
+                            "derive.report.summary.table"
                           ]
+                        }
+                      },
+                      {
+                        "key": "rate",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.summary.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "rate_scale",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
                         }
                       }
                     ]
@@ -1831,6 +1830,20 @@
       },
       {
         "key": "reads",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "table",
+          "of": {
+            "kind": "leaf",
+            "hint": "ref",
+            "section": "tables"
+          }
+        }
+      },
+      {
+        "key": "writes",
         "required": false,
         "node": {
           "kind": "map",

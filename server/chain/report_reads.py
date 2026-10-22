@@ -4,8 +4,9 @@ declaration (`derive.report`, `report_shape`); every read passes the grid read p
 with the grid filter's own conditions. Each answers {"context": <the model's short text>, "html": <the whole table>}.
 
   conditions(keyword?)       condition value -> wafers; with a keyword, the wafers whose condition holds it
-  yield_by(wafers, by?)      rows = items, columns = wafers by time (or condition values), cell «x% (F/N)»
-  pareto(wafers)             items by fail chips, cumulative share
+  yield_by(wafers, by?)      rows = items, columns = wafers by time (or condition values), cell «x% (F/N)» read
+                             off the owner's summary table - wafers in one column add their F and N
+  pareto(wafers)             items by fail chips added over the wafers, cumulative share
   trend(wafers, items)       each item's share in time order, first · last · least · most
   images(wafers, items?)     defect images of this evaluation's wafers where the item occurred - embedded, not told
   compare(sets)              the compare sets' wafers beside this evaluation's, the same table
@@ -24,6 +25,10 @@ READ_ROW_CAP = 100_000
 #: How many items a pareto tells the model; the HTML has every one.
 PARETO_TOLD = 10
 WAFER_SEP = "/"
+#: The summary cells a row is read by, in order.
+SUMMARY_CELLS = ("fail", "total", "rate")
+#: Why a wafer's item is left out of a table.
+LEFT_OUT = "two summary rows for one wafer and item"
 
 
 class ReadRefused(ValueError):
@@ -137,44 +142,66 @@ class Report:
                     "(%s)" % ", ".join("" if p is None else p for p in w) for w in self.overlaps[str(each)])))
         return [self.named[str(each)][0] for each in said]
 
-    # ---- the numbers --------------------------------------------------------------------------------------------
-    def _fail(self, wafers):
-        role = self.spec["fail"]
+    # ---- the numbers -----------------------------------------------------------------------------------------
+    def _summary(self, wafers):
+        """(wafer, item) -> {"fail", "total", "rate"} as the owner's summary table holds them (owner 10-22: the
+        product does not make a wafer's value again) - one row a pair; a pair two rows say is left out, named."""
+        role = self.spec["summary"]
         width = len(self.keys)
-        out = {}
-        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + [role["item"], role["chips"]], wafers):
-            wafer = tuple(None if p is None else str(p) for p in row[:width])
-            item, chips = row[width], row[width + 1]
-            if item is None or chips is None:
+        cells = [cell for cell in SUMMARY_CELLS if role.get(cell)]
+        found, twice = {}, set()
+        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + [role["item"]]
+                         + [role[cell] for cell in cells], wafers):
+            if row[width] is None:
                 continue
-            out[(wafer, str(item))] = out.get((wafer, str(item)), 0) + float(chips)
-        return out
+            pair = (tuple(None if p is None else str(p) for p in row[:width]), str(row[width]))
+            if pair in found:
+                twice.add(pair)
+            found[pair] = {cell: None if value is None else float(value) for cell, value in zip(cells, row[width + 1:])}
+        for pair in twice:
+            del found[pair]
+        return found, sorted("%s %s" % (label(wafer), item) for wafer, item in twice)
 
-    def _total(self, wafers):
-        """wafer -> its total chips; a wafer whose rows say two totals is left out, named."""
-        role = self.spec["total"]
-        width = len(self.keys)
-        seen = {}
-        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + [role["chips"]], wafers):
-            if row[width] is not None:
-                seen.setdefault(tuple(None if p is None else str(p) for p in row[:width]), set()).add(float(row[width]))
-        return {w: next(iter(v)) for w, v in seen.items() if len(v) == 1}, sorted(label(w) for w, v in seen.items()
-                                                                                   if len(v) > 1)
+    def _summed(self, rows):
+        """Several wafers' rows of one item as one: their F and N added - counting only, so a summary that holds
+        a rate alone cannot be summed (lead 10-22)."""
+        if not self.spec["summary"].get("fail"):
+            raise ReadRefused("several wafers in one column need derive.report.summary.fail and total - "
+                              "this summary holds a rate only")
+        rows = [row for row in rows if row]
+        return {"fail": sum(row.get("fail") or 0 for row in rows),
+                "total": sum(row.get("total") or 0 for row in rows)} if rows else None
 
-    def _items(self, fail):
+    def _items(self, found):
         chosen = [str(item) for item in self.spec.get("rows") or ()]
         if chosen:
             return chosen
+        if not self.spec["summary"].get("fail"):
+            return sorted({item for _w, item in found})
         totals = {}
-        for (_w, item), chips in fail.items():
-            totals[item] = totals.get(item, 0) + chips
+        for (_w, item), row in found.items():
+            totals[item] = totals.get(item, 0) + (row.get("fail") or 0)
         return sorted(totals, key=lambda item: (-totals[item], item))
 
-    def cell(self, fail_chips, total):
-        digits = self.spec.get("digits", 1)
-        if not total:
-            return "— (%s/—)" % _count(fail_chips)
-        return "%.*f%% (%s/%s)" % (digits, 100.0 * fail_chips / total, _count(fail_chips), _count(total))
+    def share(self, row):
+        """A row's percent: its rate over rate_scale, or F/N when it holds no rate; None when it says neither."""
+        if not row:
+            return None
+        if row.get("rate") is not None:
+            return 100.0 * row["rate"] / self.spec["summary"][report_shape.RATE_SCALE]
+        if row.get("fail") is not None and row.get("total"):
+            return 100.0 * row["fail"] / row["total"]
+        return None
+
+    def cell(self, row):
+        """«x% (F/N)» - «x%» when the row holds a rate alone, «—» for no row."""
+        if not row:
+            return "—"
+        counts = ("(%s/%s)" % (_count(row["fail"]), _count(row["total"]))
+                  if row.get("fail") is not None and row.get("total") is not None else "")
+        share = self.share(row)
+        said = "—" if share is None else "%.*f%%" % (self.spec.get("digits", 1), share)
+        return ("%s %s" % (said, counts)).strip()
 
     # ---- the six ------------------------------------------------------------------------------------------------
     def conditions(self, keyword=None):
@@ -196,20 +223,19 @@ class Report:
     def yield_by(self, wafers=None, by=None):
         groups = self._column_groups(self.pick(wafers), by)
         everyone = [w for _name, columns in groups for _col, members in columns for w in members]
-        fail = self._fail(everyone)
-        totals, differs = self._total(everyone)
-        items = self._items(fail)
+        found, twice = self._summary(everyone)
+        items = self._items(found)
         header = [(name, [col for col, _m in columns]) for name, columns in groups]
         rows = []
         for item in items:
             cells = []
             for _name, columns in groups:
                 for _col, members in columns:
-                    f = sum(fail.get((w, item), 0) for w in members)
-                    n = sum(totals.get(w, 0) for w in members if w in totals)
-                    cells.append(self.cell(f, n))
+                    row = (found.get((members[0], item)) if len(members) == 1
+                           else self._summed([found.get((w, item)) for w in members]))
+                    cells.append(self.cell(row))
             rows.append((item, cells))
-        table = {"groups": header, "rows": rows, "left_out": differs}
+        table = {"groups": header, "rows": rows, "left_out": twice}
         return {"context": _table_text(table), "html": table}
 
     def _column_groups(self, wafers, by):
@@ -232,10 +258,12 @@ class Report:
 
     def pareto(self, wafers=None):
         picked = self.pick(wafers)
-        fail = self._fail(picked)
+        if not self.spec["summary"].get("fail"):
+            raise ReadRefused("a pareto adds fail chips - derive.report.summary.fail is not declared")
+        found, _twice = self._summary(picked)
         totals = {}
-        for (_w, item), chips in fail.items():
-            totals[item] = totals.get(item, 0) + chips
+        for (_w, item), row in found.items():
+            totals[item] = totals.get(item, 0) + (row.get("fail") or 0)
         whole = sum(totals.values()) or 1
         rows, running = [], 0
         for item in sorted(totals, key=lambda i: (-totals[i], i)):
@@ -248,19 +276,19 @@ class Report:
 
     def trend(self, wafers=None, items=None):
         picked = self._ordered(self.pick(wafers))
-        fail = self._fail(picked)
-        totals, _differs = self._total(picked)
-        names = [str(i) for i in items] if items else self._items(fail)
+        found, _twice = self._summary(picked)
+        names = [str(i) for i in items] if items else self._items(found)
         lines, rows = [], []
         for item in names:
-            shares = [(label(w), 100.0 * fail.get((w, item), 0) / totals[w]) for w in picked if totals.get(w)]
+            shares = [(label(w), self.share(found.get((w, item)))) for w in picked]
+            shares = [(name, share) for name, share in shares if share is not None]
             if not shares:
                 continue
             values = [s for _l, s in shares]
             lines.append("%s: first %.2f%% last %.2f%% least %.2f%% most %.2f%% over %d wafers"
                          % (item, values[0], values[-1], min(values), max(values), len(values)))
             rows.append((item, shares))
-        return {"context": "\n".join(lines) or "no item has a total to share", "html": {"series": rows}}
+        return {"context": "\n".join(lines) or "no item has a share", "html": {"series": rows}}
 
     def images(self, wafers=None, items=None):
         import image_sources
@@ -272,8 +300,9 @@ class Report:
         outside = [label(w) for w in picked if w not in set(self.groups[self.evaluation])]
         if outside:
             raise ReadRefused("images are this evaluation's only - %s is not" % ", ".join(outside[:5]))
-        fail = self._fail(picked)
-        occurred = {(w, item) for (w, item), chips in fail.items() if chips > 0}
+        found, _twice = self._summary(picked)
+        said = "fail" if self.spec["summary"].get("fail") else "rate"
+        occurred = {pair for pair, row in found.items() if (row.get(said) or 0) > 0}
         wanted = {str(i) for i in items} if items else None
         width = len(self.keys)
         per_item, px = role.get("per_item", 3), role.get("px", 320)
@@ -349,5 +378,5 @@ def _table_text(table):
     for item, cells in table["rows"]:
         lines.append("%s | %s" % (item, " | ".join(cells)))
     if table.get("left_out"):
-        lines.append("left out (their rows say two totals): %s" % ", ".join(table["left_out"]))
+        lines.append("left out (%s): %s" % (LEFT_OUT, ", ".join(table["left_out"])))
     return "\n".join(lines)

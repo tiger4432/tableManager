@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """Owner 10-22 (lead cd4eb98d0 · e53847114): the six reads the AI report's model calls - every table and column from
 the report declaration, every read through the grid read path. Seed: evaluation E1 (W1 · W2 · W3, measured in that
-order but written out of it), evaluation E0 (W0) in compare set «baseline», a wafer W9 of E1 whose total rows
-disagree, and two-column wafer keys in their own table.
+order but written out of it), evaluation E0 (W0) in compare set «baseline», and the owner's summary table - a row a
+wafer and item with its fail and total chips and a rate (owner 10-22 night: the product reads it, never makes it).
 
   conditions   condition value -> wafers, and a keyword's wafers
-  yield_by     rows = the declared items, columns = this evaluation's wafers by time, cell «x% (F/N)»; by a condition
+  yield_by     rows = the declared items, columns = this evaluation's wafers by time, cell «x% (F/N)» read off the
+               summary row; a column of several wafers adds their F and N
+  rate         a declared rate is what x is (over rate_scale) - a rate alone says «x%» and cannot be added
   pareto       items by fail chips with the cumulative share
   trend        an item's share in time order
   images       only this evaluation's wafers, only an item that occurred there, embedded and not told
   compare      a compare set's wafers become a second group of columns
-  refused      a wafer not in the report · a condition that is not one · a read past the row cap
+  refused      a wafer not in the report · a condition that is not one · a read past the row cap ·
+               a wafer and item two summary rows say
 """
 import json
 
@@ -22,30 +25,39 @@ from database import crud, models
 TABLES = {
     "rr_wafer": {"business_key": "wafer_id", "composite_key_source": ["wafer_id"],
                  "column_types": {"wafer_id": "string", "lot_id": "string", "eval_id": "string",
-                                  "measured_at": "string", "split": "string", "total_chips": "number"}},
-    "rr_defect": {"composite_key_source": ["wafer_id", "defect_item"],
-                  "column_types": {"wafer_id": "string", "defect_item": "string", "fail_chips": "number"}},
+                                  "measured_at": "string", "split": "string"}},
+    "rr_summary": {"composite_key_source": ["wafer_id", "defect_item", "n"],
+                   "column_types": {"wafer_id": "string", "defect_item": "string", "n": "string",
+                                    "fail_chips": "number", "total_chips": "number", "loss_pct": "number"}},
     "rr_image": {"business_key": "image_id", "composite_key_source": ["image_id"],
                  "column_types": {"image_id": "string", "wafer_id": "string", "defect_item": "string",
                                   "image_path": "string"}},
     "rr_set": {"composite_key_source": ["set_name", "member"],
                "column_types": {"set_name": "string", "member": "string", "kind": "string"}},
 }
-WAFERS = [("W2", "L1", "E1", "2026-10-02", "A", 200), ("W1", "L1", "E1", "2026-10-01", "A", 100),
-          ("W3", "L2", "E1", "2026-10-03", "B", 400), ("W0", "L0", "E0", "2026-09-01", "A", 100)]
-DEFECTS = [("W1", "particle", 3), ("W1", "scratch", 1), ("W2", "particle", 10), ("W3", "scratch", 40),
-           ("W0", "particle", 50)]
+WAFERS = [("W2", "L1", "E1", "2026-10-02", "A"), ("W1", "L1", "E1", "2026-10-01", "A"),
+          ("W3", "L2", "E1", "2026-10-03", "B"), ("W0", "L0", "E0", "2026-09-01", "A")]
+#: wafer, item, F, N, the summary's own rate in percent - W1 particle's 2.5 is not 3/100, so a cell that says 2.5 read it
+SUMMARY = [("W1", "particle", 3, 100, 2.5), ("W1", "scratch", 1, 100, 1.0), ("W2", "particle", 10, 200, 5.0),
+           ("W2", "scratch", 0, 200, 0.0), ("W3", "particle", 0, 400, 0.0), ("W3", "scratch", 40, 400, 10.0),
+           ("W0", "particle", 50, 100, 50.0)]
 SPEC = {
     "wafer": {"table": "rr_wafer", "key": "wafer_id", "time": "measured_at", "lot": "lot_id", "evaluation": "eval_id",
               "conditions": ["split"]},
-    "fail": {"table": "rr_defect", "wafer": "wafer_id", "item": "defect_item", "chips": "fail_chips"},
-    "total": {"table": "rr_wafer", "wafer": "wafer_id", "chips": "total_chips"},
+    "summary": {"table": "rr_summary", "wafer": "wafer_id", "item": "defect_item", "fail": "fail_chips",
+                "total": "total_chips"},
     "images": {"table": "rr_image", "wafer": "wafer_id", "item": "defect_item", "image": "image_path", "per_item": 1,
                "px": 32},
     "sets": {"table": "rr_set", "name": "set_name", "member": "member", "kind": "kind", "default": ["baseline"],
              "kinds": {"evaluation": "EV", "lot": "LT"}},
     "rows": ["particle", "scratch"], "digits": 1,
 }
+
+
+def _with_summary(**cells):
+    spec = json.loads(json.dumps(SPEC))
+    spec["summary"] = dict({"table": "rr_summary", "wafer": "wafer_id", "item": "defect_item"}, **cells)
+    return spec
 
 
 @pytest.fixture
@@ -58,11 +70,12 @@ def report(db_session, tmp_path, monkeypatch):
         crud.TABLE_CONFIG[name] = entry
         models.DYNAMIC_TABLES[name].__table__.create(bind=db_session.get_bind())
     m = models.DYNAMIC_TABLES
-    for n, (w, lot, ev, at, split, total) in enumerate(WAFERS):
+    for n, (w, lot, ev, at, split) in enumerate(WAFERS):
         db_session.add(m["rr_wafer"](row_id="w%d" % n, wafer_id=w, lot_id=lot, eval_id=ev, measured_at=at,
-                                     split=split, total_chips=total))
-    for n, (w, item, chips) in enumerate(DEFECTS):
-        db_session.add(m["rr_defect"](row_id="d%d" % n, wafer_id=w, defect_item=item, fail_chips=chips))
+                                     split=split))
+    for n, (w, item, fail, total, rate) in enumerate(SUMMARY):
+        db_session.add(m["rr_summary"](row_id="d%d" % n, wafer_id=w, defect_item=item, n="1", fail_chips=fail,
+                                       total_chips=total, loss_pct=rate))
     (tmp_path / "pics").mkdir()
     for n, (w, item) in enumerate([("W1", "particle"), ("W1", "particle"), ("W2", "scratch"), ("W0", "particle")]):
         (tmp_path / "pics" / ("p%d.png" % n)).write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([n]))
@@ -103,9 +116,26 @@ def test_the_summary_table_is_items_down_and_wafers_across_by_time(report):
     assert answer["context"].splitlines()[1] == "particle | 3.0% (3/100) | 5.0% (10/200) | 0.0% (0/400)"
     by_split = report.yield_by(by="split")["html"]
     assert by_split["groups"] == [("E1", ["A", "B"])]
-    assert by_split["rows"][0] == ("particle", ["4.3% (13/300)", "0.0% (0/400)"])
+    assert by_split["rows"][0] == ("particle", ["4.3% (13/300)", "0.0% (0/400)"]), "A adds W1's and W2's F and N"
     picked = report.yield_by({"where": {"split": "B"}})["html"]
     assert picked["groups"] == [("E1", ["W3"])]
+
+
+def test_a_declared_rate_is_read_not_made(report, db_session):
+    from chain import report_reads
+
+    both = report_reads.Report(db_session, _with_summary(fail="fail_chips", total="total_chips", rate="loss_pct",
+                                                         rate_scale=100), "E1")
+    assert both.yield_by()["html"]["rows"][0] == ("particle", ["2.5% (3/100)", "5.0% (10/200)", "0.0% (0/400)"])
+    alone = report_reads.Report(db_session, _with_summary(rate="loss_pct", rate_scale=100), "E1")
+    assert alone.yield_by()["html"]["rows"][1] == ("scratch", ["1.0%", "0.0%", "10.0%"])
+    with pytest.raises(report_reads.ReadRefused, match="several wafers in one column need derive.report.summary.fail"):
+        alone.yield_by(by="split")
+    with pytest.raises(report_reads.ReadRefused, match="a pareto adds fail chips"):
+        alone.pareto()
+    assert alone.trend(items=["particle"])["context"] == (
+        "particle: first 2.50% last 0.00% least 0.00% most 5.00% over 3 wafers")
+    assert list(alone.images()["html"]) == ["particle"], "occurred = a rate above 0 when the summary holds a rate only"
 
 
 def test_pareto_and_trend(report):
@@ -135,17 +165,17 @@ def test_a_compare_set_is_a_second_group_of_columns(report):
     table = report.yield_by()["html"]
     assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("baseline", ["W0"]), ("keylots", ["W0"])]
     assert table["rows"][0][1][-1] == "50.0% (50/100)"
+    assert table["rows"][1][1][-1] == "—", "W0 has no scratch row"
 
 
-def test_a_wafer_whose_totals_disagree_is_left_out_by_name(report, db_session):
+def test_a_wafer_and_item_two_rows_say_is_left_out_by_name(report, db_session):
     m = models.DYNAMIC_TABLES
-    db_session.add(m["rr_wafer"](row_id="w9", wafer_id="W9", eval_id="E1", measured_at="2026-10-09", total_chips=10))
-    db_session.add(m["rr_wafer"](row_id="w9b", wafer_id="W9", eval_id="E1", measured_at="2026-10-09", total_chips=20))
+    db_session.add(m["rr_summary"](row_id="dx", wafer_id="W3", defect_item="particle", n="2", fail_chips=9,
+                                   total_chips=400))
     db_session.commit()
-    from chain import report_reads
-    fresh = report_reads.Report(db_session, report.spec, "E1")
-    table = fresh.yield_by()["html"]
-    assert table["left_out"] == ["W9"] and table["rows"][0][1][-1] == "— (0/—)"
+    table = report.yield_by()["html"]
+    assert table["left_out"] == ["W3 particle"] and table["rows"][0][1][-1] == "—"
+    assert table["rows"][1][1][-1] == "10.0% (40/400)", "W3's other item stands"
 
 
 def test_what_the_reads_cannot_answer_is_refused_by_name(report, monkeypatch):
@@ -156,19 +186,19 @@ def test_what_the_reads_cannot_answer_is_refused_by_name(report, monkeypatch):
     with pytest.raises(report_reads.ReadRefused, match="'tool' is not a condition"):
         report.yield_by(by="tool")
     monkeypatch.setattr(report_reads, "READ_ROW_CAP", 2)
-    with pytest.raises(report_reads.ReadRefused, match="rr_defect holds over 2 rows"):
+    with pytest.raises(report_reads.ReadRefused, match="rr_summary holds over 2 rows"):
         report.pareto()
 
 
 def test_a_wafer_of_two_columns_is_read_column_for_column(report, db_session):
-    """Wafers (A, 2) and (B, 1): each column's filter also lets (A, 1) through - its fail chips must not count."""
+    """Wafers (A, 2) and (B, 1): each column's filter also lets (A, 1) through - its row must not count."""
     from chain import report_reads
 
     pair = {"rr_slot": {"composite_key_source": ["wafer_id", "slot"], "column_types": {
-                "wafer_id": "string", "slot": "string", "eval_id": "string", "measured_at": "string",
-                "total_chips": "number"}},
-            "rr_slot_defect": {"composite_key_source": ["wafer_id", "slot", "defect_item"], "column_types": {
-                "wafer_id": "string", "slot": "string", "defect_item": "string", "fail_chips": "number"}}}
+                "wafer_id": "string", "slot": "string", "eval_id": "string", "measured_at": "string"}},
+            "rr_slot_summary": {"composite_key_source": ["wafer_id", "slot", "defect_item"], "column_types": {
+                "wafer_id": "string", "slot": "string", "defect_item": "string", "fail_chips": "number",
+                "total_chips": "number"}}}
     models.init_dynamic_models(pair)
     m = models.DYNAMIC_TABLES
     try:
@@ -176,17 +206,15 @@ def test_a_wafer_of_two_columns_is_read_column_for_column(report, db_session):
             crud.TABLE_CONFIG[name] = entry
             m[name].__table__.create(bind=db_session.get_bind())
         for n, (w, s, at) in enumerate([("A", "1", "1"), ("A", "2", "2"), ("B", "1", "3")]):
-            db_session.add(m["rr_slot"](row_id="s%d" % n, wafer_id=w, slot=s, eval_id="E1", measured_at=at,
-                                        total_chips=100))
+            db_session.add(m["rr_slot"](row_id="s%d" % n, wafer_id=w, slot=s, eval_id="E1", measured_at=at))
         for n, (w, s, chips) in enumerate([("A", "1", 90), ("A", "2", 5), ("B", "1", 7)]):
-            db_session.add(m["rr_slot_defect"](row_id="d%d" % n, wafer_id=w, slot=s, defect_item="particle",
-                                               fail_chips=chips))
+            db_session.add(m["rr_slot_summary"](row_id="d%d" % n, wafer_id=w, slot=s, defect_item="particle",
+                                                fail_chips=chips, total_chips=100))
         db_session.commit()
         spec = {"wafer": {"table": "rr_slot", "key": ["wafer_id", "slot"], "time": "measured_at",
                           "evaluation": "eval_id"},
-                "fail": {"table": "rr_slot_defect", "wafer": ["wafer_id", "slot"], "item": "defect_item",
-                         "chips": "fail_chips"},
-                "total": {"table": "rr_slot", "wafer": ["wafer_id", "slot"], "chips": "total_chips"}}
+                "summary": {"table": "rr_slot_summary", "wafer": ["wafer_id", "slot"], "item": "defect_item",
+                            "fail": "fail_chips", "total": "total_chips"}}
         two = report_reads.Report(db_session, spec, "E1")
         table = two.yield_by(["A/2", "B/1"])["html"]
         assert table["groups"] == [("E1", ["A/2", "B/1"])]
@@ -213,8 +241,8 @@ def test_a_name_two_wafers_share_is_refused_and_counted(report, db_session):
             db_session.add(model(row_id="x%d" % n, lot=lot, slot=slot, eval_id="E1", measured_at=str(n)))
         db_session.commit()
         spec = {"wafer": {"table": "rr_lot_slot", "key": ["lot", "slot"], "time": "measured_at", "evaluation": "eval_id"},
-                "fail": {"table": "rr_lot_slot", "wafer": ["lot", "slot"], "item": "lot", "chips": "slot"},
-                "total": {"table": "rr_lot_slot", "wafer": ["lot", "slot"], "chips": "slot"}}
+                "summary": {"table": "rr_lot_slot", "wafer": ["lot", "slot"], "item": "lot", "fail": "slot",
+                            "total": "slot"}}
         named = report_reads.Report(db_session, spec, "E1")
         assert sorted(named.overlaps) == ["A/B/1"] and len(named.overlaps["A/B/1"]) == 2
         with pytest.raises(report_reads.ReadRefused) as refused:

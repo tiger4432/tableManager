@@ -14,6 +14,7 @@ import html
 import os
 
 import paths
+from chain import report_reads
 
 REPORTS_DIRNAME = "reports"
 STYLE = """
@@ -47,7 +48,7 @@ def _summary_table(table) -> str:
     columns = "".join("<th>%s</th>" % _e(c) for _name, cols in table["groups"] for c in cols)
     rows = "".join("<tr><td>%s</td>%s</tr>" % (_e(item), "".join("<td>%s</td>" % _e(c) for c in cells))
                    for item, cells in table["rows"])
-    note = ('<p class="note">Left out - their rows say two totals: %s</p>' % _e(", ".join(table["left_out"]))
+    note = ('<p class="note">Left out - %s: %s</p>' % (report_reads.LEFT_OUT, _e(", ".join(table["left_out"])))
             if table.get("left_out") else "")
     return ('<div class="scroll"><table><thead><tr><th></th>%s</tr><tr><th>Item</th>%s</tr></thead>'
             "<tbody>%s</tbody></table></div>%s" % (head, columns, rows, note))

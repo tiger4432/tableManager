@@ -354,6 +354,9 @@ PRODUCT_TABLES = {
     REPORT_STEP_TABLE: {
         "__comment": "One row per step of a report's loop: the call the model made, what came back in short, the tokens it was reckoned at and the seconds it took, or why it was refused. Written by the chain only.",
         "business_key": "step_key",
+        "map_key_columns": [
+            "request_id"
+        ],
         "composite_key_source": [
             "request_id",
             "step"
@@ -383,6 +386,9 @@ PRODUCT_TABLES = {
     REPORT_WAFER_TABLE: {
         "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set). seq is the wafer's place in the report's wafer list (by time - the same on a remake); key_1..key_4 hold the wafer's key columns in derive.report.wafer.key order, plain cells - what the report's edges to wafers are declared from. Written by the chain only.",
         "business_key": "wafer_key",
+        "map_key_columns": [
+            "request_id"
+        ],
         "composite_key_source": [
             "request_id",
             "seq"

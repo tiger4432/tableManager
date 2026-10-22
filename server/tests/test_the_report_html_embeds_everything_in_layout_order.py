@@ -32,7 +32,7 @@ def test_the_summary_table_heads_each_group_over_its_wafers():
     page = _page()
     assert '<th colspan="2">E1</th><th colspan="1">baseline</th>' in page
     assert "<th>W1</th><th>W2</th><th>W0</th>" in page
-    assert "Left out - their rows say two totals: W9" in page
+    assert "Left out - two summary rows for one wafer and item: W9" in page
 
 
 def test_every_text_is_escaped_and_nothing_is_fetched():

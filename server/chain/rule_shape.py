@@ -293,6 +293,10 @@ def as_chain_rule(internal: dict) -> dict:
         out["mapper"] = report_shape.REPORT_MAPPER
         out["params"] = dict(derive.get("report") or {})
         out[chain_bindings.ROWS_PER_RUN_KEY] = 1
+        # its step and wafer rows are written beside the report, a request's whole set replaced on a remake (lead 10-22)
+        import product_tables
+        out[chain_bindings.WRITES_KEY] = [product_tables.REPORT_STEP_TABLE, product_tables.REPORT_WAFER_TABLE]
+        out["allow_replace_map"] = True
     out.update(derive.get("mapper") or {})
     return with_declared_cells(out, internal)
 
