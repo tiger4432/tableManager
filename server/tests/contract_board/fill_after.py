@@ -11,7 +11,9 @@ sys.path.insert(0, HERE)
 import board_gen as G  # noqa: E402
 
 DOC, DRY = args[0], "--dry" in args
-FIX = json.load(open(os.path.join(HERE, "runs_fix/gen_results.json"), encoding="utf-8"))
+FIX_HASH = os.environ.get("BOARD_FIX_HASH", "7d8ec14e9")
+FIX_WHAT = os.environ.get("BOARD_FIX_WHAT", "B 의 쓰기 합치기 + g26 고침(impl-b-writefold 7d8ec14e9)")
+FIX = json.load(open(os.path.join(HERE, os.environ.get("BOARD_FIX_RUNS", "runs_fix"), "gen_results.json"), encoding="utf-8"))
 OLD = json.load(open(os.path.join(HERE, "runs_after/gen_results.json"), encoding="utf-8"))
 CHOSEN, _ = G.cases()
 R2 = {"g33", "g85"}                        # the kill lands in the operator's withdraw command, not a chain group
@@ -78,6 +80,9 @@ product = ["g65", "g69", "g38", "g34", "g13", "g33"]
 same_shape = ["g%02d" % i for i, c in enumerate(CHOSEN) if c["board.kill"] != "none"
               and not str(c.get("board.extra", "")).startswith("refused") and c["board.path"] in ("delete", "file_replace")]
 reached = [n for n in same_shape if n in on_fix and on_fix[n][1] != ["seam never reached"]]
+edits = ["g%02d" % i for i, c in enumerate(CHOSEN) if c["board.kill"] != "none"
+         and not str(c.get("board.extra", "")).startswith("refused") and c["board.path"] == "edit"]
+edits_reached = [n for n in edits if n in on_fix and on_fix[n][1] != ["seam never reached"]]
 killed_fix = [n for n, v in on_fix.items() if not n.endswith("t") and FIX[n]["kill"] != "none"
               and v[1] != ["seam never reached"]]
 partial = [n for n in killed_fix if FIX[n].get("partial_write")]
@@ -89,24 +94,28 @@ for i, c in enumerate(CHOSEN):
 for k, names in cells.items():
     if any(n in on_fix and on_fix[n][1] != ["seam never reached"] for n in names):
         cov.add(k)
+not_green = lambda names: "".join(" — 빨강 " + " · ".join(n for n in names if not green(n)) for _ in [0] if any(not green(n) for n in names))
 by_kind = lambda names: "%d/%d" % (sum(1 for n in names if green(n)), len(names))
 reds_fix = sorted(n for n, v in on_fix.items() if v[1] and v[1] != ["seam never reached"])
 gaps_fix = sorted(n for n, v in on_fix.items() if v[1] == ["seam never reached"])
+r2_red = [n for n in sorted(R2) if n in reds_fix]
 
 summary = [
-    "## 착지 뒤 (10-22) — ① 7d8ec14e9 · ② db9df5374",
+    "## 착지 뒤 (10-22) — ① %s · ② db9df5374" % FIX_HASH,
     "",
-    "① = B 의 쓰기 합치기 + g26 고침(impl-b-writefold 7d8ec14e9), 새 판 도구, 버리는 DB `assy_c_board_1022b`(돌린 뒤 지움). "
+    "① = %s, 새 판 도구, 버리는 DB `assy_c_board_1022b`(돌린 뒤 지움). "
     "%d 판(쌍둥이 포함). ② = 합치기 첫 판 db9df5374 전체 판 — 슬롯 죽음이 «제자리에서 다시 돎»이던 때라 지금 코드와 다름, "
-    "①에 없는 %d 판만 그것으로 채움. 박스 수 — 운영 주장이 아니다." % (len(on_fix), filled - len(on_fix)),
+    "①에 없는 %d 판만 그것으로 채움. 박스 수 — 운영 주장이 아니다." % (FIX_WHAT, len(on_fix), filled - len(on_fix)),
     "",
     "| 게이트 (총괄 10-22) | ① 결과 |",
     "|---|---|",
-    "| 알려진 빨강 다섯 초록 | %s — g85 만 빨강(R2 명령, 아래) |" % by_kind(known),
-    "| 제품 빨강 여섯 초록 | %s — g33 만 빨강(R2 명령, 아래) |" % by_kind(product),
+    "| 알려진 빨강 다섯 초록 | %s%s |" % (by_kind(known), not_green(known)),
+    "| 제품 빨강 여섯 초록 | %s%s |" % (by_kind(product), not_green(product)),
     "| g09 초록 | %s |" % ("초록" if green("g09") else "빨강"),
     "| 같은 꼴(죽임 × delete · file_replace) | %d 판 중 %d 판이 죽임에 닿음, 닿은 것 %s 초록 |" % (
         len(same_shape), len(reached), by_kind(reached)),
+    "| 같은 꼴(죽임 × edit) | %d 판 중 %d 판이 죽임에 닿음, 닿은 것 %s 초록 |" % (
+        len(edits), len(edits_reached), by_kind(edits_reached)),
     "| 부분 쓰기 없음 | 닿은 킬 판 %d 중 부분 쓰기 %d — %s |" % (
         len(killed_fix), len(partial), " · ".join(partial) or "없음"),
     "| 「죽임 자리 × 길」 칸 | %d 칸 중 %d 칸을 ①이 덮음 — 못 덮은 칸: %s |" % (
@@ -118,8 +127,10 @@ summary = [
     "- 부분 쓰기 칸 = «다시 돌리기 전 대상 표 = 씨앗 직후 대상 표 − 치워 두기가 설계대로 거둔 삭제 키의 행»(총괄 승인). "
     "그 행 수는 판 줄 «target rows the set-aside took back N»에 찍힘.",
     "- ① 빨강: %s. 빈칸(안 닿음): %s." % (" · ".join(reds_fix) or "없음", " · ".join(gaps_fix) or "없음"),
-    "- 남는 빨강 g33 · g85 = 죽는 프로세스가 체인 묶음이 아니라 운영자 거두기 명령(R2 `chain_replay_cli.py withdraw`)이다. "
-    "그 명령의 거두기와 껍데기 지우기가 따로 커밋돼 빈 행이 남음 — 쓰기 합치기의 범위 밖.",
+] + ([
+    "- %s = 죽는 프로세스가 체인 묶음이 아니라 운영자 거두기 명령(R2 `chain_replay_cli.py withdraw`) — 거두기와 껍데기 지우기가 "
+    "따로 커밋돼 빈 행이 남음. 총괄 판정: 게이트에 남고 B 가 같은 착지에서 쪽마다 한 커밋으로 고침." % " · ".join(r2_red)]
+    if r2_red else []) + [
     "- 판 도구가 바뀐 것: 쌍둥이도 치워 둔 것을 다시 돌림(박스 DLL 죽음, 최대 세 번 · 매 번 새로 치워진 것만) · «치워 둔 채» 빨강은 "
     "끝까지 다시 안 돈 것만 · 쌍둥이 견주기에서 행마다 층 이름의 행 id 를 접음(g83 · g84 가 그것만 달랐음).",
     "",

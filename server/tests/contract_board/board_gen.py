@@ -493,6 +493,12 @@ def run_one(F, i, name, case, kill, base, ledger):
             F.say("rerun set aside", rounds, left, b.cli(["python", "scripts/outbox_triage.py", "--rerun-set-aside",
                                                           "--tables", trig, "--apply"])[:2])
             b.settle(quiet=6, limit=600)
+        if killed and path == "r2":
+            # the operator's withdraw command died - its recovery is the same command again (the kill hook fires once)
+            aside = aside or 1
+            F.say("r2 again", *b.cli(["python", "scripts/chain_replay_cli.py", "withdraw", tgt, "chain_ingestion",
+                                      "--apply"])[:2])
+            b.settle(quiet=6, limit=600)
         out = look("after %s" % path)
         out["human_recovery"] = bool(aside)
         out["rerun_rounds"] = rounds
