@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만 — 선언 밖 실패 파일은 안 넘기고, 재기동 때 선언 밖 대기 줄을 지운다 (소유자 «지금 선언이랑 안 맞는 거 빼면 안 됨?» · «재기동시», 총괄 dd0f2818c, 0ef000a44)** — git pull · 서버 · 와처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동 · 와처 재기동
+> 뜻      기동 때 watcher.log «[Watcher] <표>: N waiting file(s) the declaration does not take - deleted (name not matched a · …)»
+>          -> 선언 밖 옛 대기 줄 N 개를 지움(로그 · 체크리스트의 다른 행은 그대로). 그 줄이 없으면 지울 것이 없었음
+>          읽는 법이 바뀔 때 «… M failed file(s) handed again · not taken now: name not matched k» -> 선언 밖 실패 파일 k 개는 안 넘김
+>          파일 화면 묶음 Retry 미리보기의 not_taken -> 지금 선언이 안 잡아 빠진 수
+>          꼭 읽혀야 하는 선언 밖 파일 -> Read now 또는 그 파일 한 줄 Retry. 다음 재기동 «전»에 읽혀야 함(기동 때 아직 기다리면 지워짐)
+>          재기동 없이 이미 대기열에 들어가 있던 옛 줄은 한 번 읽힐 수 있음 — 그 뒤엔 다시 안 넘겨짐
+> 되돌리기  git revert 0ef000a44 -> 서버 · 와처 재기동 (이미 지운 대기 줄은 안 돌아옴 — 그 파일은 Read now 로)
+> ```
+>
+> ---
+>
 > ## [10-22] **표 선언에서 칸 타입을 바꾸면 소급 대기열 한 줄이 DB 칸을 바꾼다 (총괄 aa8ff1af5 · d706db3ed · afe3a1b47, 09173fe1e)** — git pull · 재기동
 >
 > ```
