@@ -1733,8 +1733,9 @@ def _count_retype_column(db, params, scan_limit):
 
     table, column = params["table"], params["column"]
     physical = retype.family(db.get_bind(), table, column)
-    values = retype.bad_values(db, table, column) if physical == "text" else None
-    do, said = retype.verdict(params["type"], physical, values)
+    cell = retype.CELLS.get((physical, params["type"]))
+    values = retype.bad_values(db, table, column, cell) if cell else None
+    do, said = retype.verdict(params["type"], physical, values, retype.key_uses(table, column) if cell else ())
     rows = db.execute(text('SELECT count(*) FROM "%s"' % table.replace('"', '""'))).scalar() if physical else 0
     return {
         "affected": rows if do == retype.CONVERT else 0,
@@ -1755,7 +1756,7 @@ def _count_retype_column(db, params, scan_limit):
 def _retype_types():
     from admin import retype
 
-    return retype.CONVERTS_TO
+    return sorted({declared for _family, declared in retype.CELLS})
 
 
 def _run_retype_column(db, params, log, control=None):

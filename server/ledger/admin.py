@@ -270,7 +270,11 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
     # queued below, writes the declared one when the column holds it (admin.retype, lead aa8ff1af5).
     from admin import retype
     from database.database import engine
-    declaration, held = retype.hold(engine, table, declaration)
+    try:
+        declaration, held = retype.hold(engine, table, declaration)
+    except retype.RetypeRefused as refused:
+        raise _table_config_refusal("retype_refused", f"tables.{table}.column_types.{refused.column}",
+                                    str(refused)) from None
 
     merged = dict(document)
     merged[table] = declaration

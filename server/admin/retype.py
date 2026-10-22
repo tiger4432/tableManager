@@ -13,13 +13,23 @@ import time
 from sqlalchemy import text
 
 #: What a declared type asks of a column: nothing · a conversion · a conversion this product does not make.
-NONE, CONVERT, NOT_DONE = "none", "convert", "not done"
-#: The declared types a text column is converted into, and the type the model compiles each to (`models.sql_type_of`).
-CONVERTS_TO = {"number": "double precision"}
-#: The declared type a text column keeps in the file until its conversion is done.
-HELD = "string"
+NONE, CONVERT, NOT_DONE, REFUSED = "none", "convert", "not done", "refused"
+#: The family a declared type is in the database (`schema_drift._type_family`'s words).
+FAMILY = {"number": "number", "datetime": "datetime", "string": "text"}
+#: THE cells - (the database's family, the declared type) -> the type the column becomes, the declared type the file
+#: keeps until it has, and what its values must read as (None: every value does). Any other pair is NOT_DONE.
+CELLS = {
+    ("text", "number"): {"to": "double precision", "held": "string", "reads": "numbers"},
+    ("text", "datetime"): {"to": "timestamp with time zone", "held": "string", "reads": "times"},
+    ("datetime", "string"): {"to": "character varying", "held": "datetime", "reads": None},
+}
+#: A pair the database already takes as it is: a number column declared string reads and writes (lead aa8ff1af5).
+TAKEN = {("number", "string")}
 #: A text value a number column takes - `crud`'s write path reads it with float() and refuses nan/inf, so neither is here.
 NUMBER_TEXT = r"^\s*[-+]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][-+]?[0-9]+)?\s*$"
+#: What `assy_key_instant` hands back for a text it reads as a time (ISO, T, the zone's offset); a text it does not
+#: read comes back as it was. The reading is `expression._wall`'s - the file read's, the key's (b3a6e64f7).
+INSTANT_TEXT = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{6})?[+-][0-9]{2}:[0-9]{2}$"
 #: The values a refusal shows.
 SAMPLE = 5
 #: Seconds of lock per GB of the table and its indexes - box measured 10-22: assy_test, 1,000,000 rows of a two-column
@@ -43,33 +53,75 @@ def family(engine, table, column):
     return schema_drift._type_family(found[0]["type"]) if found else None
 
 
-def verdict(declared, physical, values=None):
-    """THE judgment: the declared type, the database's family, and - once read - the values' (count, sample) that the
-    declared type cannot take -> (NONE | CONVERT | NOT_DONE | "refused", sentence or None)."""
-    if physical is None or physical == declared or declared not in ("number", "datetime"):
+def verdict(declared, physical, values=None, key_uses=()):
+    """THE judgment: the declared type, the database's family, where the column is a key, and - once read - the
+    values' (count, sample) it cannot take -> (NONE | CONVERT | NOT_DONE | REFUSED, sentence or None)."""
+    if physical is None or FAMILY.get(declared) in (None, physical) or (physical, declared) in TAKEN:
         return NONE, None
-    if physical != "text":
-        return NONE, None
-    if declared not in CONVERTS_TO:
-        return NOT_DONE, "a text column is not converted to %s - only to %s" % (declared, ", ".join(CONVERTS_TO))
+    cell = CELLS.get((physical, declared))
+    if cell is None:
+        return NOT_DONE, "a %s column is not converted to %s" % (physical, declared)
+    if key_uses and cell["reads"]:
+        return REFUSED, ("it is a key - %s - and a key's text changes with its type; keep it %s and fill a new column "
+                         "through the chain" % (", ".join(key_uses), cell["held"]))
     if values and values[0]:
         count, sample = values
-        return "refused", ("%d value(s) are not numbers, e.g. %s - correct them in the table (or declare the column "
-                           "string again), then save the declaration" % (count, ", ".join(repr(v) for v in sample)))
+        return REFUSED, ("%d value(s) are not %s, e.g. %s - correct them in the table (or declare the column %s again), "
+                         "then save the declaration" % (count, cell["reads"], ", ".join(repr(v) for v in sample),
+                                                        cell["held"]))
     return CONVERT, None
+
+
+def key_uses(table, column):
+    """Where `table.column` is a key - each seat asked, none listed again here (lead 10-22 ㄱ): the row's key
+    (`cell_layer.key_columns`), the map key, a decide rule's decision key, a join's key on either side."""
+    from chain import cell_layer, enrich_declarations, synthesis
+    from database import crud
+
+    uses = []
+    if column in cell_layer.key_columns(table):
+        uses.append("the row key")
+    if column in ((crud.TABLE_CONFIG.get(table) or {}).get("map_key_columns") or ()):
+        uses.append("the map key")
+    for rule in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG):
+        if rule.get("source_table") == table and column in (rule.get("decision_key") or ()):
+            uses.append("decide %s" % rule.get("name"))
+    rules = list(synthesis._live_stood_rules())
+    for name, t_, columns, _folds, skip, _kind in synthesis.declared_unique_targets(rules):
+        if t_ == table and column in columns:
+            uses.append("join %s" % name)
+    for t_, columns, _folds in synthesis.declared_lookup_targets(rules):
+        if t_ == table and column in columns:
+            uses.append("a join's lookup")
+    return list(dict.fromkeys(uses))
 
 
 def hold(engine, table, declaration):
     """-> (the declaration to write, [(column, held type, declared type)]): each column the save would convert has the
-    database's type kept in its place."""
+    database's type kept in its place. A key column the conversion would change raises the refusal."""
     held, out = [], declaration
     for column, declared in sorted(((declaration or {}).get("column_types") or {}).items()):
-        if verdict(declared, family(engine, table, column))[0] == CONVERT:
+        physical = family(engine, table, column)
+        do, said = verdict(declared, physical)
+        if do == CONVERT:
+            do, said = verdict(declared, physical, key_uses=key_uses(table, column))
+        if do == REFUSED:
+            raise RetypeRefused(column, "%s stays %s: %s" % (column, physical, said))
+        if do == CONVERT:
             if out is declaration:
                 out = copy.deepcopy(declaration)
-            out["column_types"][column] = HELD
-            held.append((column, HELD, declared))
+            cell = CELLS[(physical, declared)]
+            out["column_types"][column] = cell["held"]
+            held.append((column, cell["held"], declared))
     return out, held
+
+
+class RetypeRefused(Exception):
+    """A save the judgment refuses - the column and the sentence."""
+
+    def __init__(self, column, sentence):
+        super().__init__(sentence)
+        self.column = column
 
 
 def queue(table, column, held, declared):
@@ -103,18 +155,46 @@ def _quoted(name):
     return '"%s"' % str(name).replace('"', '""')
 
 
-def bad_values(db, table, column):
-    """-> (count, up to SAMPLE distinct values) the column holds that a number column does not take - one statement."""
-    from sqlalchemy import and_, column as sql_column, func, select, table as sql_table
+def _sql(element):
     from sqlalchemy.dialects import postgresql
+    return str(element.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+
+def _instant(c):
+    """`c` through `assy_key_instant` on the operating zone - the key's own reading and spelling (b3a6e64f7)."""
+    from sqlalchemy import func
+    import expression
+    import notation_norm
+
+    return getattr(func, notation_norm.KEY_INSTANT_FUNCTION)(c, expression.time_zone().key)
+
+
+def using(c, cell):
+    """What `c` becomes in the cell's type: text -> number its blanks NULL (`crud.blank_to_null`) then cast; text ->
+    time read by `assy_key_instant` then cast (its ISO carries the offset, so no session zone reads it); time -> text
+    the key's spelling, not PostgreSQL's ::text."""
+    from sqlalchemy import cast, literal_column
+    from database import crud
+
+    if cell["to"] == "character varying":
+        return _sql(_instant(c))
+    inner = crud.blank_to_null(c) if cell["reads"] == "numbers" else _instant(crud.blank_to_null(c))
+    return "(%s)::%s" % (_sql(inner), cell["to"])
+
+
+def bad_values(db, table, column, cell):
+    """-> (count, up to SAMPLE distinct values) the column holds that the cell's type does not take - one statement."""
+    from sqlalchemy import and_, column as sql_column, func, select, table as sql_table
     from database import crud
 
     c = sql_table(table, sql_column(column)).c[column]
-    bad = and_(crud.not_blank_sql_condition(c), c.op("!~")(NUMBER_TEXT))
+    if not cell["reads"]:
+        return 0, []
+    bad = and_(crud.not_blank_sql_condition(c), c.op("!~")(NUMBER_TEXT) if cell["reads"] == "numbers"
+               else _instant(c).op("!~")(INSTANT_TEXT))
     some = select(c).where(bad).distinct().limit(SAMPLE).subquery()
     query = select(func.count().filter(bad), select(func.array_agg(some.c[column])).scalar_subquery())
-    count, sample = db.execute(text(str(query.compile(dialect=postgresql.dialect(),
-                                                      compile_kwargs={"literal_binds": True})))).one()
+    count, sample = db.execute(text(_sql(query))).one()
     return count or 0, sorted(sample or ())
 
 
@@ -164,16 +244,17 @@ def convert(db, table, column, declared, log):
     """The queued conversion: the values checked, the column converted with the indexes that read it - one transaction,
     the table locked for it - then the declared type written into the file. A refusal changes nothing."""
     from sqlalchemy import column as sql_column, table as sql_table
-    from sqlalchemy.dialects import postgresql
     from admin.retroactive import RetroactiveRefused
-    from database import crud, models
+    from database import models
     from ledger import admin as ledger_admin
     import db_safety
 
     out = {"table": table, "column": column, "type": declared, "converted": False, "indexes_rebuilt": []}
     physical = family(db.get_bind(), table, column)
-    if physical != declared:
-        do, said = verdict(declared, physical, bad_values(db, table, column) if physical == "text" else None)
+    cell = CELLS.get((physical, declared))
+    if verdict(declared, physical)[0] != NONE:
+        do, said = verdict(declared, physical, bad_values(db, table, column, cell) if cell else None,
+                           key_uses(table, column))
         if do != CONVERT:
             raise RetroactiveRefused("%s.%s stays %s: %s" % (table, column, physical, said or "nothing to convert"))
         models.init_dynamic_models(model_config(table, column, declared))
@@ -183,17 +264,16 @@ def convert(db, table, column, declared, log):
                 "%s.%s stays text: index(es) %s read it and the product does not build them - drop them, then save "
                 "the declaration again" % (table, column, ", ".join(refused)))
         out["estimated_lock_seconds"] = lock_estimate(db, table)
-        log("[Retype] %s.%s text -> %s: rebuilding %s, est. lock %s s (box rate)"
-            % (table, column, declared, ", ".join(rebuilt) or "no index", out["estimated_lock_seconds"]))
+        log("[Retype] %s.%s %s -> %s: rebuilding %s, est. lock %s s (box rate)"
+            % (table, column, physical, declared, ", ".join(rebuilt) or "no index", out["estimated_lock_seconds"]))
         c = sql_table(table, sql_column(column)).c[column]
-        using = str(crud.blank_to_null(c).compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
         began = time.monotonic()
         try:
             db.execute(text("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT))
             for name in rebuilt:
                 db.execute(text("DROP INDEX %s" % _quoted(name)))
-            db.execute(text("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING (%s)::%s" % (
-                _quoted(table), _quoted(column), CONVERTS_TO[declared], using, CONVERTS_TO[declared])))
+            db.execute(text("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s" % (
+                _quoted(table), _quoted(column), cell["to"], using(c, cell))))
             for name, (ddl, said) in rebuilt.items():
                 db.execute(text(ddl))
                 if said:
