@@ -80,12 +80,16 @@ export function gridRowOf(rowId) {
  */
 export function refuseWrite(why = writeRefusal()) {
   if (!why) return false;
+  sayStopped(why);
+  return true;
+}
+
+/** A failure or a refusal said: in the badge, and whole in an error toast - the badge is one line and cuts it (lead 10-23:
+ *  «Apply or discard the stage…» at 1536). The badge keeps status lines alone; every stop goes through here. */
+export function sayStopped(why) {
   const el = elements.performanceLog;
   if (el) el.textContent = why;
-  // the badge is one line and cuts a long sentence (lead 10-23: «Apply or discard the stage…» at 1536) - the refusal and
-  // its next step are read whole where the grid's other refusals are, a toast
-  showToast(why, 'error');
-  return true;
+  try { showToast(why, 'error'); } catch (err) { console.error('[toast] stopped', err); }
 }
 
 /**

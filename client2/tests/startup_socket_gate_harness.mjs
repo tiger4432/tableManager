@@ -579,7 +579,7 @@ const SITE_SOCKET_LAST = [
 const SITE_HEALTH_CATCH_UNGUARDED = {
   file: 'api',
   find: "    setBadge(elements.serverStatus, 'API: OFFLINE', 'status-badge offline');\n"
-      + "    setBadge(elements.performanceLog, 'Error connecting to database server');",
+      + "    sayStopped('Error connecting to database server');",
   repl: "    elements.serverStatus.textContent = 'API: OFFLINE';\n"
       + "    elements.serverStatus.className = 'status-badge offline';\n"
       + "    elements.performanceLog.textContent = 'Error connecting to database server';",
@@ -640,8 +640,8 @@ const CONTROLS = [
       repl: 'throw new Error(`/tables returned HTTP ${res.status}`);' }] },
   { name: 'C3 the offline badge text is translated',
     sites: [{ file: 'api',
-      find: "setBadge(elements.performanceLog, 'Error connecting to database server');",
-      repl: "setBadge(elements.performanceLog, '데이터베이스 서버에 연결할 수 없습니다');" }] },
+      find: "sayStopped('Error connecting to database server');",
+      repl: "sayStopped('데이터베이스 서버에 연결할 수 없습니다');" }] },
 ];
 
 async function sweep(list, expectCaught, heading) {
