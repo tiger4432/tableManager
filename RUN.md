@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **메인 그리드 피벗 — 서버 몫 (소유자 10-22, 9638397f2)** — git pull · 서버 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동
+>          표 선언에 "pivot": {"column": "<키 칸>", "value": "<값 칸>"} 을 적고 저장
+>          브라우저에서 /tables/<표>/data?pivot=true&limit=5 를 연다 (화면 버튼은 클라 착지 뒤)
+> 뜻      200 + "pivot": {... "items": [...]}  -> 펼친 칸 목록, data 의 줄마다 cells
+>          422 «declares no pivot»            -> 선언이 저장 안 됨 · 재기동 전
+>          422 «is not one of the table's keys» 등 -> 선언이 틀림, 문장이 고칠 곳을 말함
+>          503 «Filter stopped after 10 s»    -> 큰 표에서 item 의 글자 거르기(contains 등)가 그리드 읽기 상한을 넘음 -> 문장이 말하는 value 칸 검색 인덱스를 선언
+>          items_more 가 0 보다 큼            -> item 이 pivot_max_columns(기본 200)를 넘음, ingestion_settings.json 에서 올릴 수 있음
+> 끄기     표 선언에서 "pivot" 을 지우면 그 표는 예전대로만 읽힘
+> 되돌리기  git revert 9638397f2 -> 서버 재기동
+> ```
+>
+> ---
+>
 > ## [10-22] **최근 이력은 새 행을 이어 붙이고 처음부터 다시 짓지 않는다 — 최근 이력 화면이 1 초 안 (총괄 재구성 빚 ㄱ, 2f6c1423d)** — git pull · 서버 재기동
 >
 > ```
