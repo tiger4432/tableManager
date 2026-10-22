@@ -11,6 +11,8 @@
 
 ## 0. 쓰기 단계 착지 (10-22, B `9cf3e2974` · `1b81a8d14`)
 
+🆕 **`writes` 칸 (10-22, A `223649fa5`)**: 규칙이 대상 말고 쓰는 표를 적는 칸 — «무엇에 쓰나»를 묻는 자리가 `chain_bindings.rule_tables(…, write)` 하나를 지나, 그 표들이 L·G 의 그룹 대상(`_group_target_tables`) · 표 잠금 · 디스패처 겹침 · 고리 그래프에 든다. W 의 범위 배치도 writes 표로 갈 수 있다(`normalize_scoped_batch`).
+
 🆕 **받기 단계 착지 (10-22, B `aa0cd1648`)**: `rule_run.prepare` 가 받기 좌석 — 그룹 길은 깬 규칙 전부를 «어느 규칙도 돌기 전에» 받는다(`stage("fetch")`). 맵 · 잡 통째(`@mapper` `handed`) · 조인 값 표(`join_into.read`) · decide · 오토컨펌 읽기가 읽기 반쪽(`.fetch`)으로 옮겨 갔고, group_by 는 키 전체를 받는다(`with_the_whole_keys`). fold_units 도 묻는다. 맵퍼 자신의 `sql()` 만 남아 «reads outside the fetch» 로 한 번 말한다. 계약판 «받기» 열: `task/APPLICATION_CONTRACT_BOARD_FETCH.md`. 남은 것: 다음 쪽 `more()` 는 여전히 쓰기 루프 안(읽지는 않음).
 
 W 좌석 = `apply_chain_writes` → `crud._apply_batch_updates_once`, 걸음의 끝 = `session_contract.end_step` · `undo_step`, 커밋 = `_claimed_group_sync` 의 하나(커서 → 지운 행 거두기 → 처리됨 → 커밋). 아래 표의 🟢 가 그 착지로 바뀐 칸이다.
