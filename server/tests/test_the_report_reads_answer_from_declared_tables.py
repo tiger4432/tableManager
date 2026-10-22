@@ -196,3 +196,33 @@ def test_a_wafer_of_two_columns_is_read_column_for_column(report, db_session):
         for name in pair:
             m[name].__table__.drop(bind=db_session.get_bind())
             retire_dynamic_model(name)
+
+
+def test_a_name_two_wafers_share_is_refused_and_counted(report, db_session):
+    """Lot «A/B» slot «1» and lot «A» slot «B/1» are both said «A/B/1» to the model (lead 10-22 안 1)."""
+    from chain import report_reads
+
+    pair = {"rr_lot_slot": {"composite_key_source": ["lot", "slot"], "column_types": {
+        "lot": "string", "slot": "string", "eval_id": "string", "measured_at": "string"}}}
+    models.init_dynamic_models(pair)
+    model = models.DYNAMIC_TABLES["rr_lot_slot"]
+    try:
+        crud.TABLE_CONFIG["rr_lot_slot"] = pair["rr_lot_slot"]
+        model.__table__.create(bind=db_session.get_bind())
+        for n, (lot, slot) in enumerate([("A/B", "1"), ("A", "B/1"), ("C", "1")]):
+            db_session.add(model(row_id="x%d" % n, lot=lot, slot=slot, eval_id="E1", measured_at=str(n)))
+        db_session.commit()
+        spec = {"wafer": {"table": "rr_lot_slot", "key": ["lot", "slot"], "time": "measured_at", "evaluation": "eval_id"},
+                "fail": {"table": "rr_lot_slot", "wafer": ["lot", "slot"], "item": "lot", "chips": "slot"},
+                "total": {"table": "rr_lot_slot", "wafer": ["lot", "slot"], "chips": "slot"}}
+        named = report_reads.Report(db_session, spec, "E1")
+        assert sorted(named.overlaps) == ["A/B/1"] and len(named.overlaps["A/B/1"]) == 2
+        with pytest.raises(report_reads.ReadRefused) as refused:
+            named.pick(["A/B/1"])
+        assert str(refused.value).startswith("A/B/1 names two wafers - ")
+        assert "(A/B, 1)" in str(refused.value) and "(A, B/1)" in str(refused.value)
+        assert named.pick(["C/1"]) == [("C", "1")], "a name only one wafer has still picks it"
+    finally:
+        db_session.rollback()
+        model.__table__.drop(bind=db_session.get_bind())
+        retire_dynamic_model("rr_lot_slot")

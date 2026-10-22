@@ -103,6 +103,11 @@ class Report:
                                   "evaluation": values.get(role.get("evaluation")),
                                   "conditions": {c: values.get(c) for c in self.conditions_at}}
             out.append(wafer)
+        self.named = {}                          # the name a model says -> the wafers it names
+        for wafer in self.wafers:
+            self.named.setdefault(label(wafer), []).append(wafer)
+        # names two key spellings share (lot «A/B» + «1», «A» + «B/1») - counted once per list, for the step record
+        self.overlaps = {name: wafers for name, wafers in self.named.items() if len(wafers) > 1}
         return out
 
     def _ordered(self, wafers):
@@ -123,11 +128,14 @@ class Report:
             return [w for w in here if all(str(self.wafers[w]["conditions"].get(c)) == str(v) for c, v in where.items())]
         if not isinstance(said, list):
             raise ReadRefused("wafers is a list of wafer names, «all», or {\"where\": {condition: value}}")
-        by_label = {label(w): w for w in self.wafers}
-        unknown = [str(each) for each in said if str(each) not in by_label]
+        unknown = [str(each) for each in said if str(each) not in self.named]
         if unknown:
             raise ReadRefused("%s is not a wafer of this report" % ", ".join(unknown[:5]))
-        return [by_label[str(each)] for each in said]
+        for each in said:
+            if str(each) in self.overlaps:
+                raise ReadRefused("%s names two wafers - %s" % (each, " · ".join(
+                    "(%s)" % ", ".join("" if p is None else p for p in w) for w in self.overlaps[str(each)])))
+        return [self.named[str(each)][0] for each in said]
 
     # ---- the numbers --------------------------------------------------------------------------------------------
     def _fail(self, wafers):
