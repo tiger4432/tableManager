@@ -2837,6 +2837,7 @@ def warmup_worker(rules, db_session_factory=None):
     #    chain worker, which runs on boot AND on SYSTEM_RELOAD (a saved or edited rules file
     #    forgets it in `database.config_watcher`'s chain_rules row, which does not warm up).
     _reset_right_keys()
+    rule_run.count_reads()      # this process runs rules: their mappers' reads are counted (총괄 10-22)
 
     # 0) 🔴 맵퍼 패키지 «전체»를 import 해 데코레이터가 등록되게 한다 (S-188 ⓒ, 판정 300).
     #    아래 ①은 «규칙이 이름 댄» 모듈만 덥히므로 「어떤 맵퍼가 있나」에 답하지 못한다 —

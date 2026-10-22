@@ -7,13 +7,14 @@ rule of the group runs, and handed to the call as `fetched=` - so a built-in kin
   order      every rule of a group fetched before the first one is called
   per row    a per-row rule fetched a row at a time, each call handed its own
   failed     a read that raises fails the group under the rule's name
+  group_by   a group_by rule handed every row of each key a handed row is in or left (소유자 10-22)
 """
 import logging
 
 import pytest
 
 import mapper_sdk
-from chain import rule_run, rule_shape
+from chain import ingestion_worker as worker, rule_run, rule_shape
 from database import crud, models
 from test_every_declared_kind_runs_and_leaves_rows import (  # noqa: F401 - the fixture is used
     DST, ROWS, SRC, _events, _run, _values, fixture_db)
@@ -24,6 +25,7 @@ LINE = "reads outside the fetch"
 @pytest.fixture(autouse=True)
 def _said_afresh(monkeypatch, caplog):
     monkeypatch.setattr(rule_run, "_SAID_READING", set())
+    rule_run.count_reads()
     caplog.set_level(logging.INFO)
 
 
@@ -105,11 +107,65 @@ def test_a_per_row_rule_is_fetched_a_row_at_a_time(db, monkeypatch):
 
 
 def test_a_read_that_raises_fails_the_group_under_its_rule(db, monkeypatch):
-    from chain import ingestion_worker as worker
-
     def fetch(db, payload, rule=None):
         raise RuntimeError("the read broke")
 
     rule = _register(monkeypatch, "fetch_broken", lambda db, payload, rule=None, fetched=None: {"updates": []}, fetch)
     ok, why, _ = worker._process_chain_transaction_group_sync("tx-broken", _events(db, SRC), db, [rule])
     assert ok is False and "fetch_broken" in why and "the read broke" in why
+
+
+def _edit(db, key, **cells):
+    from database import schemas
+
+    model = models.DYNAMIC_TABLES[SRC]
+    row_id = db.query(model.row_id).filter(model.log_key == key).scalar()
+    crud.apply_batch_updates(db, SRC, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=row_id, updates=cells, source_name="user", updated_by="t")]))
+    db.commit()
+
+
+@pytest.mark.parametrize("seeded, edited, handed", [
+    ({"LK": "K"}, ("L0", {"note": "x"}), ["L0", "L1", "L2"]),                    # the key whole, not K's
+    ({"LK": "K"}, ("L0", {"job": "K"}), ["L0", "L1", "L2", "LK"]),               # the key it left and the key it joined
+    ({"LB1": None, "LB2": "  "}, ("LB1", {"note": "x"}), ["LB1", "LB2"]),        # a blank key is a key
+])
+def test_a_group_by_rule_is_handed_its_keys_whole(db, monkeypatch, seeded, edited, handed):
+    """소유자 10-22 「ㅇㅇ 넓혀」: a group_by rule is handed every row of each key a handed row is in or left."""
+    from database import schemas
+
+    crud.apply_batch_updates(db, SRC, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        updates={"log_key": key, "job": job}, source_name="seed", updated_by="t") for key, job in seeded.items()]))
+    db.commit()
+    _edit(db, edited[0], **edited[1])
+    seen = []
+
+    def call(db, payload, rule=None):
+        seen.append(sorted((p.get("data") or {}).get("log_key", {}).get("value") for p in payload))
+        return {"updates": []}
+
+    rule = dict(_register(monkeypatch, "fetch_group_by", call), group_by=["job"])
+    last = max(_events(db, SRC), key=lambda e: e.id)
+    ok, _why, _ = worker._process_chain_transaction_group_sync("tx-key", [last], db, [rule])
+    assert ok is True and seen == [handed]
+
+
+def test_only_a_process_that_runs_rules_counts_their_reads(tmp_path):
+    """총괄 10-22: the API's engines carry no hook; the chain worker's and a slot's warm-up attaches it."""
+    import os
+    import subprocess
+    import sys
+
+    probe = ("import main\n"
+             "from sqlalchemy import event\n"
+             "from sqlalchemy.engine import Engine\n"
+             "from chain import ingestion_worker, rule_run\n"
+             "print(event.contains(Engine, 'before_cursor_execute', rule_run._count_reads))\n"
+             "ingestion_worker.warmup_worker([])\n"
+             "print(event.contains(Engine, 'before_cursor_execute', rule_run._count_reads))\n")
+    env = dict(os.environ, DATABASE_URL="sqlite:///%s" % (tmp_path / "probe.db").as_posix())
+    env.pop("ASSY_ADMIN_TOKEN", None)
+    out = subprocess.run([sys.executable, "-c", probe], cwd=os.path.dirname(os.path.dirname(__file__)), env=env,
+                         capture_output=True, encoding="utf-8", errors="replace", timeout=180)
+    said = [line.strip() for line in out.stdout.splitlines() if line.strip() in ("False", "True")]
+    assert said == ["False", "True"], out.stdout[-500:] + out.stderr[-2000:]

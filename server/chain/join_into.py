@@ -446,11 +446,11 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
                  for _l, right_col, fold in pairs]
     takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
     # 🔴 [총괄 2276e38cf] A value row with an empty `require` column is not an answer, from
-    #   whichever side the join woke - the SQL twin of the seat's `crud.is_blank_value`.
-    filled = [crud.not_blank_sql_condition(crud.column_text_sql(getattr(right_model, column)))
-              for column in _required(spec)] + [
-        crud.blank_sql_condition(crud.column_text_sql(getattr(right_model, column)))
-        for column in _excluded(spec)]
+    #   whichever side the join woke - the rule's row gates' one judgement (`rule_run.gate_conditions`, 총괄 23fb6060d).
+    from chain import rule_run
+
+    filled = rule_run.gate_conditions({chain_bindings.REQUIRE_KEY: _required(spec),
+                                       chain_bindings.EXCLUDE_KEY: _excluded(spec)}, right_model)
     answers = {}
     width = len(right_key)
     for chunk in crud._chunks(sorted(set(left.values())), keyset_scan.DEFAULT_CHUNK_SIZE):

@@ -665,7 +665,7 @@ def prepare(db, rule, payloads=None, row_ids=None) -> Prepared:
     #   the two doors.
     handed = list(payloads or ()) or [{"row_id": rid} for rid in (row_ids or ())]
     offered = len(handed)
-    handed, _empty = held_back(rule, handed)
+    handed, _empty = held_back(rule, with_the_whole_keys(db, rule, handed))
     batched = (rule or {}).get("is_batch", False)
     units = [without_missing(handed)] if batched and (handed or not offered) else [
         without_missing(one) for one in handed]
@@ -676,18 +676,67 @@ def prepare(db, rule, payloads=None, row_ids=None) -> Prepared:
     return Prepared(bound, handed, offered, units, fetched)
 
 
+def with_the_whole_keys(db, rule, handed) -> list:
+    """`handed` and the rows there are now of each `group_by` key a handed row is in or left, read from the trigger
+    table - a row once (소유자 10-22 「ㅇㅇ 넓혀」: a group_by rule answers for its key, so it is handed the key whole,
+    the way a whole-map rule is handed its map). The key is `spelled_group_key`'s, the one the grouping makes."""
+    from chain import ingestion_worker
+    from database import models
+    import event_constants
+    import outbox_expand
+    from sqlalchemy import and_, or_
+
+    columns = ingestion_worker.group_by_columns(rule)
+    table = str((rule or {}).get("trigger_table") or "")
+    model = models.DYNAMIC_TABLES.get(table)
+    if not columns or model is None or not handed:
+        return handed
+    keys, values, blank = set(), {column: set() for column in columns}, set()
+    for payload in handed:
+        data = payload.get("data") or {}
+        now = {column: cell.get("value") if isinstance(cell, dict) else cell for column, cell in data.items()}
+        old = event_constants.old_values_of(payload)
+        for row in ([now] if now else []) + ([dict(now, **old)] if old else []):
+            keys.add(ingestion_worker.spelled_group_key(rule, table, row))
+            for column in columns:
+                value = row.get(column)
+                (blank.add(column) if value is None or str(value).strip() == "" else values[column].add(value))
+    if not keys:
+        return handed
+    conditions = [or_(*([getattr(model, c).in_(sorted(values[c], key=str))] if values[c] else []) +
+                      ([getattr(model, c).is_(None)] if c in blank else [])) for c in columns]
+    seen = {payload.get("row_id") for payload in handed}
+    names = outbox_expand._data_columns(model)
+    more = []
+    for row in db.query(model).filter(and_(*conditions)):
+        if row.row_id in seen:
+            continue
+        payload = outbox_expand._synthesize_payload(row, names, {})
+        if ingestion_worker.spelled_group_key(rule, table, payload.get("data") or {}) in keys:
+            seen.add(row.row_id)
+            more.append(payload)
+    return handed + more
+
+
 #: Statements a mapper ran during its call (`_count_reads`), while a run counts them.
 _READS = contextvars.ContextVar("rule_run_reads", default=None)
 #: The rules this process has said read outside the fetch - once each.
 _SAID_READING = set()
 
 
-@event.listens_for(Engine, "before_cursor_execute")
 def _count_reads(conn, cursor, statement, parameters, context, executemany):
     """A read during a mapper's call, counted for `run_rule` - a SELECT, nothing else."""
     reads = _READS.get()
     if reads is not None and (str(statement).split(None, 1) or [""])[0].upper() in ("SELECT", "WITH"):
         reads[0] += 1
+
+
+def count_reads():
+    """Count mappers' reads in this process (`_count_reads`), once - attached where the chain worker and a slot warm
+    up (`ingestion_worker.warmup_worker`), so a process that runs no rule (the API, the watcher, the scheduler) carries
+    no hook on its engines (총괄 10-22)."""
+    if not event.contains(Engine, "before_cursor_execute", _count_reads):
+        event.listen(Engine, "before_cursor_execute", _count_reads)
 
 
 def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,

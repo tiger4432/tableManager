@@ -152,6 +152,7 @@ def test_the_whole_map_is_read_by_the_fetch_seat(db, monkeypatch, caplog):
     import logging
 
     monkeypatch.setattr(rule_run, "_SAID_READING", set())
+    rule_run.count_reads()
     caplog.set_level(logging.INFO)
     edited = _edited(db, "T2", "J-A", "3", {"qty": "1"})
     envelope = rule_run.run_rule(db, _rule(allow_replace_map=True), payloads=[edited])
