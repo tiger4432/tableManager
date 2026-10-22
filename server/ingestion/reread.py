@@ -186,6 +186,69 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
     return picked
 
 
+def taken_now(picked):
+    """`picked` [(log, rel)] kept to the files the declaration takes now (소유자 10-22 「지금 선언이랑 안 맞는 거 빼면 안
+    됨?」): a row read under one of its table's external sources (its `source`) is asked `source_taking` as a sweep asks
+    it, and one naming a source its table no longer declares is not taken ("source not declared"); a raws row passes.
+    THE filter the hand-off on a changed reading, a bulk Retry and the watcher's start ask - a Read now and a one-file
+    Retry do not. Rows are not touched.
+    -> (kept, {why_not_taken: count}, the first names not taken)."""
+    from directory_watcher import _safe_relative_path, _written_relative_path, one_sweep, source_taking, why_not_taken
+
+    kept, not_taken, names, specs_of = [], {}, [], {}
+    with one_sweep():
+        for log, rel in picked:
+            if log.table_name not in specs_of:
+                specs_of[log.table_name] = {os.path.normcase(os.path.abspath(spec["root"])): spec
+                                            for spec in (table_sources(log.table_name)[1] if log.table_name else ())}
+            if not (log.source and log.source != "raws" and log.filepath):
+                kept.append((log, rel))
+                continue
+            path = os.path.abspath(log.filepath)
+            spec = specs_of[log.table_name].get(os.path.normcase(os.path.abspath(log.source)))
+            if spec is not None and source_taking([spec], path) is not None:
+                kept.append((log, rel))
+                continue
+            below = (None if spec is None
+                     else _written_relative_path(path, spec["root"]) or _safe_relative_path(path, spec["root"]))
+            why = why_not_taken(spec, path, below) if spec is None or below is not None else None
+            why = why or "outside the root"
+            not_taken[why] = not_taken.get(why, 0) + 1
+            names.append(log.filename)
+    return kept, dict(sorted(not_taken.items())), names[:5]
+
+
+def delete_not_taken(db):
+    """The waiting rows (`REREAD_STATUS`) the declaration does not take now (`taken_now`), deleted with their marks -
+    the watcher's start (소유자 10-22 「그냥 자동으로 선언 안 맞는 리스트 지워」 · 「재기동시」). A row claimed meanwhile is no longer
+    waiting and is not touched: each page deletes only rows still waiting. -> [(table, deleted, {why: count})]."""
+    from sqlalchemy import exists
+
+    from database import models
+
+    model = models.FileIngestionLog
+    by_table = {}
+    for log, rel in select_logs(db, (REREAD_STATUS,)):
+        by_table.setdefault(log.table_name, []).append((log, rel))
+    said = []
+    for table, picked in sorted(by_table.items(), key=lambda item: str(item[0])):
+        kept, not_taken, _names = taken_now(picked)
+        kept_ids = {log.id for log, _rel in kept}
+        ids = [log.id for log, _rel in picked if log.id not in kept_ids]
+        deleted = 0
+        for start in range(0, len(ids), MARK_PAGE):
+            page = ids[start:start + MARK_PAGE]
+            deleted += (db.query(model).filter(model.id.in_(page), model.status == REREAD_STATUS)
+                        .delete(synchronize_session=False))
+            (db.query(models.FileRereadMark)
+             .filter(models.FileRereadMark.log_id.in_(page), ~exists().where(model.id == models.FileRereadMark.log_id))
+             .delete(synchronize_session=False))
+            db.commit()
+        if ids:
+            said.append((table, deleted, not_taken))
+    return said
+
+
 def reading_of(table, entry, sources, scripts_dir):
     """What decides how `table`'s files are read, as {part: stamp} - its table_config entry without `NOT_READING`, its
     external sources (`table_name` is the table) without `enabled` - switching a source off and on is no new reading,
@@ -238,18 +301,21 @@ def uncheck(db, table=None, paths=None, folders=None):
 
 def hand_on_a_changed_reading(db, table, before, now, folders=()):
     """The table's reading changed (소유자 10-21 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」): its failed files are
-    handed to the retry door (`mark_for_reread`), whatever folder holds them, and its read files still in place - under
+    handed to the retry door (`mark_for_reread`) - those the declaration takes now (`taken_now`; the rest are
+    counted, not handed) - whatever folder holds them, and its read files still in place - under
     `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
     「옮겨진 건 하지 마」). No cap: the watcher reads at its own pace. Other tables are not touched. -> the line to say
     (the caller adds what its sweeps dispatched), or None."""
     changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
     if not changed:
         return None
-    logs = [log for log, _rel in select_logs(db, RETRY_STATUSES, table=table)]
+    kept, not_taken, _names = taken_now(select_logs(db, RETRY_STATUSES, table=table))
+    logs = [log for log, _rel in kept]
     mark_for_reread(db, logs)
     unchecked = uncheck(db, table=table, folders=list(folders)) if folders else 0
-    return ("[Watcher] %s: its reading changed (%s) - %d read file(s) unchecked, %d failed file(s) handed again"
-            % (table, ", ".join(changed), unchecked, len(logs)))
+    return ("[Watcher] %s: its reading changed (%s) - %d read file(s) unchecked, %d failed file(s) handed again%s"
+            % (table, ", ".join(changed), unchecked, len(logs),
+               "".join(" · not taken now: %s %d" % item for item in not_taken.items())))
 
 
 def load_reading_stamps():

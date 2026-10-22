@@ -1100,7 +1100,10 @@ def finish_read_files_fill(reached_all: bool):
 def why_not_taken(spec, file_path: str, rel_path: str) -> str | None:
     """Why the source does not take the file `rel_path` below its root (as walked or written) - THE words the sweep's
     source line counts and Read now's preview says (총괄 10-21: one function, one vocabulary): "below max_depth",
-    "name not matched", "outside the root" (its real path), or None - taken."""
+    "name not matched", "outside the root" (its real path), "source not declared" (`spec` None - a log row's source
+    its table no longer declares, 총괄 10-22), or None - taken."""
+    if spec is None:
+        return "source not declared"
     if not _within_depth(spec, rel_path.count("/")):
         return "below max_depth"
     if not _source_takes(spec.get("options") or {}, file_path, rel_path):

@@ -279,17 +279,25 @@ def hand_back_claimed_retries():
     """The file log's PENDING rows when the watcher starts, handed to the retry door again (총괄 18a3bc5b7 ㄱ). Only
     `claim_retry` writes PENDING there, and this process reads nothing yet - so the run that claimed them is gone. A
     claim it left before its first checkpoint is one `reclaim_stranded_claims` skips by design: it stood PENDING for
-    good. One watcher per install. -> how many."""
+    good. One watcher per install. Then every waiting row the declaration does not take now is deleted
+    (`reread.delete_not_taken`, 소유자 10-22 「재기동시」) - a Read now or Retry of such a file is read only before the next
+    start. -> how many handed."""
+    from ingestion import reread
+
     db = SessionLocal()
     try:
         handed = (db.query(models.FileIngestionLog)
                   .filter(models.FileIngestionLog.status == "PENDING")
                   .update({"status": "PENDING_RETRY"}, synchronize_session=False))
         db.commit()
+        deleted = reread.delete_not_taken(db)
     finally:
         db.close()
     if handed:
         logger.warning("[Retry] %d retry claim(s) left by the last run handed again", handed)
+    for table, count, why in deleted:
+        logger.warning("[Watcher] %s: %d waiting file(s) the declaration does not take - deleted (%s)", table, count,
+                       " · ".join("%s %d" % item for item in why.items()))
     return handed
 
 

@@ -7551,7 +7551,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         raise HTTPException(status_code=400, detail="table (read from the disk into a table) and read_by (the files "
                                                     "a table read) are two re-reads - give one")
     chosen = None
-    missing = []
+    missing, not_taken, not_taken_files = [], {}, []
     if into is not None:
         # 총괄 10-20: into a table - by the disk, as that table's handler takes files; the poller reads them there
         refused = (f"table {into!r} is not declared" if into not in crud.TABLE_CONFIG
@@ -7573,6 +7573,9 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
             # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
             # Failed files keep today's answer.
             picked, missing = await asyncio.to_thread(lambda: reread.split_missing(reread.one_per_file(picked)))
+        if log_id is None:
+            # 총괄 dd0f2818c: a bulk Retry picks what the declaration takes now; one file named by its row is read as asked
+            picked, not_taken, not_taken_files = await asyncio.to_thread(reread.taken_now, picked)
     failed_logs = [log for log, _rel in picked]
     by_state = {}
     for log in failed_logs:
@@ -7581,7 +7584,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
     said = {"folder": folder, "count": len(failed_logs), "by_state": dict(sorted(by_state.items())),
             "by_folder": reread.by_top_folder(picked) if by_folder_asked else {},
             "missing": len(missing), "missing_files": [log.filename for log, _rel in missing[:5]],
-            "limit": reread.max_files()}
+            "not_taken": not_taken, "not_taken_files": not_taken_files, "limit": reread.max_files()}
     if chosen is not None:
         said.update(table=into, walked=chosen["walked"], not_taken=chosen["not_taken"],
                     not_taken_files=chosen["not_taken_files"], folders=chosen["folders"], took=chosen["took"])

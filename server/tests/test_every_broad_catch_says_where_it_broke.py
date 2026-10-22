@@ -27,6 +27,7 @@ QUIET_KEPT = {
     "server/admin/auth.py": {"probe": 3},
     "server/admin/dev_bench.py": {"cleanup": 1, "import": 2, "parse": 1},
     "server/admin/retroactive.py": {"cleanup": 2, "parse": 1, "probe": 1},
+    "server/admin/retype.py": {"probe": 1},          # family(): a table not made yet has no column to convert
     "server/admin/schema_drift.py": {"import": 2, "probe": 4, "elsewhere": 1},
     "server/bonding_plan.py": {"parse": 1, "probe": 1, "elsewhere": 1},
     "server/chain/activity.py": {"hot": 2},

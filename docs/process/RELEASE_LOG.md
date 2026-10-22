@@ -314,6 +314,7 @@
 - 2026-10-20 [체인 규칙의 key.columns · group_by 를 목록으로 — 폼이 줄로 그리고 글자 key.columns 는 거절](#2026-10-20--체인-규칙의-keycolumns--group_by-를-목록으로--폼이-줄로-그리고-글자-keycolumns-는-거절) — 적는 곳 체인 규칙 선언 창 · `chain_rules.json`
 - 2026-10-20 [파일 완료 기록에 그 파일의 transaction_id · 폴더 Retry 를 그 표로 좁히는 read_by](#2026-10-20--파일-완료-기록에-그-파일의-transaction_id--폴더-retry-를-그-표로-좁히는-read_by) — 누르는 곳 파일 적재 화면 · 명령 `retry-failed?read_by=`
 - 2026-10-20 [설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는 것](#2026-10-20--설정--플러그인을-고치면-그-표의-실패-파일을-와처가-스스로-다시-읽는-것) — 보는 곳 watcher.log 의 «its reading changed» 줄
+  - 2026-10-22 [와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만 — 선언 밖은 «not taken» 으로 세고, 재기동 때 선언 밖 대기 줄을 지운다](#2026-10-22--와처가-스스로-다시-읽는-파일은-지금-선언에-맞는-것만--선언-밖은-not-taken-으로-세고-재기동-때-선언-밖-대기-줄을-지운다) — 보는 곳 watcher.log 의 «not taken now» · «does not take - deleted» 줄 · 적을 것 없음
 - 2026-10-20 [파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map](#2026-10-20--파일-인제션도-맵-단위-통째-교체--표-설정-allow_replace_map) — 적는 곳 `table_config.json`
 - 2026-10-20 [외부 저장소도 표준 파서 — raws/ 와 같은 규칙](#2026-10-20--외부-저장소도-표준-파서--raws-와-같은-규칙) — 적는 곳 `ingestion_settings.json` 의 `external_sources` · `table_config.json` 의 `std_parse`
 - 2026-10-13 [큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다](#2026-10-13--큰-표-검색--표-선언의-검색-색인-그리드-읽기는-10-초에-끊고-다음-할-일을-말한다) — 적는 곳 `table_config.json` · `ingestion_settings.json`
@@ -504,6 +505,16 @@
 
 
 
+
+## 2026-10-22 · 와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만 — 선언 밖은 «not taken» 으로 세고, 재기동 때 선언 밖 대기 줄을 지운다
+
+소유자 10-22 «외부저장소 체크리스트 옛날 쓰레기도 다시 다 읽는데» · «지금 선언이랑 안 맞는 거 빼면 안 됨?» · «그냥 자동으로 선언 안 맞는 리스트 지워» · «재기동시» (총괄 dd0f2818c).
+
+- **무엇** — 표의 읽는 법(표 선언 · 외장 소스 · 플러그인)이 바뀌어 와처가 그 표의 실패 파일을 다시 넘길 때, 지금 선언(root · glob/filename · max_depth)이 잡는 파일만 넘긴다. 표가 더는 선언하지 않는 소스(root 를 바꾼 경우)에서 읽힌 행도 «source not declared» 로 빠진다. 폴더 · 상태로 고르는 묶음 Retry 도 같은 거르기를 묻는다. 와처가 기동할 때 대기 줄(PENDING_RETRY) 중 지금 선언이 안 잡는 것을 그 표시와 같이 지운다.
+- **바뀐 동작** — 전에는 선언을 좁혀도 그 전에 실패한 파일이 읽는 법이 바뀔 때마다 다시 넘어가 읽혔다(외장 파일의 로그 행은 소스를 적고 있어서, 다시 시도가 이름 · 깊이를 묻지 않았다). 로그 · 체크리스트 행은 지우지 않는다 — 지우는 것은 기동 때의 선언 밖 대기 줄뿐이다.
+- **사람이 고른 것** — Read now · 한 파일 Retry 는 지금처럼 선언과 무관하게 읽는다. 선언 밖 파일을 그렇게 넘겼으면 다음 재기동 «전»에 읽혀야 한다 — 기동 때 아직 기다리고 있으면 지워진다.
+- **보는 곳** — watcher.log «[Watcher] <표>: its reading changed (...) - N read file(s) unchecked, M failed file(s) handed again · not taken now: name not matched k» · 기동 때 «[Watcher] <표>: N waiting file(s) the declaration does not take - deleted (name not matched a · below max_depth b · outside the root c · source not declared d)» · 묶음 Retry 미리보기 답의 not_taken · not_taken_files.
+- **필요한 조건** — git pull · 서버 재기동 · 와처 재기동.
 
 ## 2026-10-22 · 표 선언에서 칸 타입을 바꾸면 소급 대기열 한 줄이 DB 칸을 바꾼다 — 문자 → 숫자 · 문자 → 시간 · 시간 → 문자
 
