@@ -1026,9 +1026,9 @@ const DEFECTS = [
     s => s.replace('    if (opts.saved) this._forget();', '')],
   // 🔴 C-101 ②. The owner's second sentence: 「테이블이랑 맵퍼 설정은 리스트 좀 나오게해」.
   ['the reference cells lose their catalogue, so every table name is typed by hand',
-    s => s.replace('    refOf: (node) => refNames(lists, ', '    refOf: (node) => refNames({}, ')],
+    s => s.replace('    refOf: (node, at) => refNames(lists, ', '    refOf: (node, at) => refNames({}, ')],
   ['one list answers for every reference cell, whatever section the skeleton named',
-    s => s.replace('{ ...node, section: refList } : node, held)', '{ ...node, section: refList } : { ...node, section: refList }, held)')],
+    s => s.replace('{ ...node, section: refList } : node, held, at)', '{ ...node, section: refList } : { ...node, section: refList }, held, at)')],
   // 🔴 C-101 ③. Five ways one choice stops writing what the operator chose.
   ['the registry`s translation is ignored, so a file function writes the wrong cell',
     s => s.replace('        const spread = group.split(value);', '        const spread = null;')],

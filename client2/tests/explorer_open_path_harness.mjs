@@ -1572,7 +1572,7 @@ console.log('\n[12] form D through the explorer: the gate switch, a choice of on
     ['G-M2 + row is born without the lists', 'G3',
       ["box ? box.value : '', state.authoringSchema, target.dataset.branch || '');", "box ? box.value : '');"]],
     ['G-M3 Enter at an adder is a plain change', 'G4', ['    if (adderInput(event)) return;\n', '']],
-    ['G-M4 a paste at an adder is a plain paste', 'G4', ["  root.addEventListener('paste', adderInput);\n", '']],
+    ['G-M4 a paste at an adder is a plain paste', 'G4', ["  root.addEventListener('paste', (event) => adderInput(event) || htmlPaste(event));\n", '']],
   ];
   for (const [name, cell, [from, to]] of MUTANTS) {
     const mutated = await walk((await loadWithProbe(SUBJECT, { mutate: (t) => {
