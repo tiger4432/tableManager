@@ -123,6 +123,12 @@ def ledger(pg_engine):
         schema.ensure_schema(connection)
         schema.ensure_partition(connection, OCCURRED_AT)
         yield connection
+        # the rows it wrote go with it - the scratch schema lives the session, and a later cell that puts the
+        # retired narrow rule back is refused by them
+        connection.rollback()
+        with connection.cursor() as cursor:
+            cursor.execute("TRUNCATE %s" % schema.LEDGER_TABLE)
+        connection.commit()
     finally:
         connection.close()
 

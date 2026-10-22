@@ -10,7 +10,7 @@ from sqlalchemy.orm import aliased
 #: The filter and sort name of an item column - always, so a key column and an item never share a name.
 ITEM_PREFIX = "item:"
 #: The read's own arguments a pivot does not take - each would narrow or page by long rows, not by key groups.
-NOT_TAKEN = ("q", "transaction_id", "enrichment_queue", "target_row_id", "after", "before")
+NOT_TAKEN = ("transaction_id", "enrichment_queue", "target_row_id", "after", "before")
 
 
 def refusal(table, entry):
@@ -39,6 +39,12 @@ def refusal(table, entry):
     return None
 
 
+def declared(table, entry):
+    """The entry's pivot as {"column", "value"}, or None - none declared, or one `refusal` refuses."""
+    pivot = entry.get("pivot")
+    return None if pivot is None or refusal(table, entry) else {"column": pivot["column"], "value": pivot["value"]}
+
+
 class Pivot:
     """One table's pivot as declared: `column`, `value`, `keys` (the row's - the table's keys less `column`)."""
 
@@ -61,7 +67,7 @@ def of(table_name, **asked):
         raise HTTPException(status_code=422, detail="%s: %s" % refused)
     given = [name for name in NOT_TAKEN if asked.get(name)]
     if given:
-        raise HTTPException(status_code=422, detail="a pivot read takes skip, limit, filters and order_by - not %s"
+        raise HTTPException(status_code=422, detail="a pivot read takes skip, limit, q, filters and order_by - not %s"
                                                     % ", ".join(given))
     column = entry["pivot"]["column"]
     return Pivot(table_name, column, entry["pivot"]["value"],
@@ -115,6 +121,12 @@ def index_names(table_name, order_by, filters):
 def _same_keys(one, other, pivot):
     """`one`'s row has `other`'s keys - NULL is NULL (a key part may be absent)."""
     return and_(*(getattr(one, key).is_not_distinct_from(getattr(other, key)) for key in pivot.keys))
+
+
+def group_rows(db, model, pivot):
+    """(an alias of the table, the query of its rows with `model`'s row's keys) - what a search of a key group reads."""
+    held = aliased(model)
+    return held, db.query(held).filter(_same_keys(held, model, pivot))
 
 
 def narrow(query, model, pivot, items):

@@ -1,5 +1,45 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **체인 규칙의 require · exclude 가 «값»을 받는다 — 칸 이름 대신 {칸: [값, …]} (소유자 10-21 「체인 행 내 특정 값일 때 제외하는 거는」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      require · exclude 항목은 칸 이름(빈가 · 찼나)만 받았음. 이제 {칸: [값, …]} 도 받음 — 그 값들 중 하나인가로 거름
+> 적는 법    chain_rules.json 규칙의 "exclude": [{"status": ["SCRAP"]}] -> SCRAP 행만 규칙에 안 넘어감
+>           통합 선언은 on.exclude · on.require 에 같은 모양. 칸 이름 항목과 섞어 적어도 됨
+> 견주는 법   값과 칸을 키 철자 하나로 — 칸 선언 타입대로. 숫자 칸의 1 · 1.0 · 001 은 한 값, "" 는 빈 칸
+> 이미 넘어간 행  값을 새로 적은 뒤 이미 넘어간 행에 맞추려면 그 규칙 소급 한 번 — 재기동 뒤
+> 보이는 것  chain_worker.log «… not handed over - excluding value(s) found: status [SCRAP]=<건수>»
+>           require 값 항목은 «required value(s) missing: status [OK]=<건수>». 칸 이름 항목의 줄은 전과 같음
+>           로드 거절 «bad_exclude» · «bad_require» — 빈 목록 · 목록 아닌 값 · 값에 목록 · 사전 · 참거짓
+>           «unknown_exclude_column» · «unknown_require_column» — 트리거 표에 없는 칸
+> 되돌리기  git revert badc8faca -> 런처 재기동. 값 항목을 적은 규칙은 되돌린 코드에서 로드 거절되니 값 항목부터 지움
+> ```
+>
+> ## [10-22] **main 의 B 빨강 묶음 — 시험 일곱 칸 · 순서 탓 셋 초록, 줄 하나 더함 (총괄 10-22)** — git pull · 런처 재기동
+>
+> ```
+> 새 줄     chain_worker.log «[ChainRule] the rule run was not put on its group's beat - the queue line and /health do not show it: <사유>»
+>             규칙 실행을 그룹의 박동에 못 적음 — 그 규칙은 돌지만 대기열 줄 · /health 에 «지금 도는 규칙»이 안 보임. 예전엔 조용히 넘어갔음
+>             드물어야 함. 자주 나오면 <사유>를 총괄께
+> 나머지     시험만 바뀜(시험 공유 스키마의 큐를 hold world 가 비움 · 칸 일곱의 기대값) — 운영 동작 변화 없음
+> 되돌리기  git revert e9eacbcb5 -> 런처 재기동
+> ```
+>
+> ## [10-22] **피벗 보기 검색 · 화면이 Pivot 버튼을 그릴 칸 (소유자 「피벗 보기 검색 필요」, f3f566d32)** — git pull · 서버 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동
+>          /tables/<표>/schema 를 연다
+>          /tables/<표>/data?pivot=true&q=<찾을 글자>&limit=5 를 연다
+> 뜻      schema 의 "pivot": {"column", "value"} -> 화면이 Pivot 버튼을 그림
+>          "pivot": null                       -> 선언이 없거나 틀림 -> /data?pivot=true 가 고칠 곳을 문장으로 말함
+>          q 답의 줄                            -> 어느 긴 행이라도 q 에 맞은 키, 그 키의 칸은 전부
+>          422 «not q» 가 나옴                   -> 재기동 전의 서버
+> 되돌리기  git revert f3f566d32 -> 서버 재기동 (q 는 다시 422, schema 에 pivot 칸 없음)
+> ```
+>
+> ---
+>
 > ## [10-22] **메인 그리드 피벗 — 서버 몫 (소유자 10-22, 9638397f2)** — git pull · 서버 재기동
 >
 > ```

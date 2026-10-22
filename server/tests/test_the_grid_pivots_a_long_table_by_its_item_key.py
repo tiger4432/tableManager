@@ -7,6 +7,8 @@ itemid) read as one row per (lot, wafer) and one cell per itemid, through the gr
   sort     one item's value, a group without it last both ways; then the keys
   items    the narrowed rows' DISTINCT itemid, up to pivot_max_columns, and how many more
   write    a cell by its row_id through the grid save door; a blank cell by its keys - the row is made
+  search   a key group whose any long row matches q - the grid search's own condition - kept whole (총괄 10-22)
+  schema   /schema says the pivot as declared, or null for one a read refuses (총괄 10-22)
   refused  a declaration that cannot pivot, at save and at read; an argument a pivot does not take
 """
 import json
@@ -160,7 +162,7 @@ def test_a_declaration_that_cannot_pivot_is_refused_at_save_and_at_read(grid, pi
 
 
 @pytest.mark.parametrize("params, said", [
-    ({"q": "L1"}, "not q"),
+    ({"transaction_id": "t"}, "not transaction_id"),
     ({"after": "x"}, "not after"),
     ({"filters": json.dumps({"note": {"type": "equals", "filter": "x"}})}, "'note' is not a key column"),
     ({"order_by": "note"}, "cannot sort a pivot by 'note'"),
@@ -168,6 +170,23 @@ def test_a_declaration_that_cannot_pivot_is_refused_at_save_and_at_read(grid, pi
 def test_what_a_pivot_read_does_not_take_is_refused_by_name(grid, params, said):
     answer = grid.get("/tables/%s/data" % TABLE, params=dict(pivot="true", **params))
     assert answer.status_code == 422 and said in answer.json()["detail"], answer.text
+
+
+def test_a_search_keeps_each_key_group_any_of_whose_rows_matches_whole(grid):
+    """q «c» matches one long row of (L1, W1) and one of (L1, W2) - their itemid: both groups, every item of each."""
+    found = _read(grid, q="c")
+    assert _values(found) == {("L1", "W1"): LONG[("L1", "W1")], ("L1", "W2"): LONG[("L1", "W2")]}
+    assert found["total"] == 2 and found["pivot"]["items"] == ["a", "b", "c"]
+    assert grid.get("/tables/%s/data/count" % TABLE, params={"pivot": "true", "q": "c"}).json()["total"] == 2
+    assert _read(grid, q="nothing-matches")["data"] == []
+
+
+def test_the_schema_says_the_pivot_or_null(grid):
+    said = grid.get("/tables/%s/schema" % TABLE).json()
+    assert said["pivot"] == {"column": "itemid", "value": "value"}
+    crud.TABLE_CONFIG[TABLE] = dict(ENTRY, pivot={"column": "itemid", "value": "lot"})
+    assert "pivot" in grid.get("/tables/%s/schema" % TABLE).json()
+    assert grid.get("/tables/%s/schema" % TABLE).json()["pivot"] is None, "a declaration a read refuses"
 
 
 def test_a_table_without_a_pivot_reads_as_it_did(grid):

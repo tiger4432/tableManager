@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [체인 규칙의 require · exclude 가 값을 받는다 — 특정 값인 행만 막거나 넘기기](#2026-10-22--체인-규칙의-require--exclude-가-값을-받는다--특정-값인-행만-막거나-넘기기) — require · exclude 항목에 {칸: [값, …]}
 - 2026-10-22 [오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것](#2026-10-22--오토컨펌이-한-단위의-키를-전부-본다--200-개-넘는-키가-빈-칸으로-남던-것) — 보는 곳 chain_worker.log «[Enrichment:<규칙>] page i of n» · 적는 곳 ingestion_settings.json 의 enrichment_auto_confirm_max_keys
 - 2026-10-22 [파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다](#2026-10-22--파생표로-가는-조인은-키-칸을-쓸-때만-키-계약으로-거절한다) — 적는 곳 chain_rules.json 의 `derive.join.take`
 - 2026-10-22 [체인 «데이터 받기» — 규칙이 읽는 것은 그룹의 규칙이 돌기 전에 한 번에 읽혀 건네진다 · group_by 규칙은 그 키의 행 전체를 받는다](#2026-10-22--체인-데이터-받기--규칙이-읽는-것은-그룹의-규칙이-돌기-전에-한-번에-읽혀-건네진다--group_by-규칙은-그-키의-행-전체를-받는다) — 보는 곳 chain_worker.log «[ChainRule] rule=<규칙> reads outside the fetch» · [ChainRule] rows_in
@@ -525,14 +526,26 @@
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
 - **자세히** — 화면 검사기 칸 «select all at the left» · «a click selects its row».
 
+## 2026-10-22 · 체인 규칙의 require · exclude 가 값을 받는다 — 특정 값인 행만 막거나 넘기기
+
+- **무엇** — 소유자 10-21 「체인 행 내 특정 값일 때 제외하는 거는」. `require` · `exclude` 항목은 칸 이름만 받아 «빈가 · 찼나»로만 걸렀습니다. 상태 칸이 SCRAP 인 행만 막는 식의 선언을 적을 자리가 없었습니다.
+- **선언** — `chain_rules.json` 규칙(통합 선언은 `on.require` · `on.exclude`)의 항목에 `{칸: [값, …]}` 을 적습니다. 예: `"exclude": [{"status": ["SCRAP"]}]`. 칸 이름 항목과 섞어 적을 수 있습니다.
+- **바뀐 동작** — 값 항목은 «이 값들 중 하나인가»로 거릅니다. 값과 칸은 키 철자 하나로, 칸 선언 타입대로 견줍니다(숫자 칸의 1 · 1.0 · 001 은 한 값, `""` 는 빈 칸). 라이브 · 리플레이 · 보류 셈 · 보강 백필 · 조인 값 표가 같은 판정을 지납니다. 값 항목이 막은 행은 로그에 «excluding value(s) found» · «required value(s) missing» 로 적힙니다. 칸 이름 항목의 줄은 전과 같습니다.
+- **이미 넘어간 행** — 값을 새로 적은 뒤에는 그 규칙의 소급을 한 번 돌립니다.
+- **보는 곳** — chain_worker.log «excluding value(s) found: status [SCRAP]=N» · 로드 거절 `bad_exclude` · `bad_require`.
+- **아직 안 되는 것** — 온톨로지 탐색기 폼에서 값 항목을 고르기는 클라 착지 뒤입니다. 그 전에는 선언 글(왼쪽)로 적으면 저장됩니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_a_rule_gate_takes_values.py` · 가이드 `docs/guide/config/chain_rules.md` 의 require · exclude 줄.
+
 ## 2026-10-22 · 메인 그리드 피벗(서버) — 긴 표를 키 묶음마다 한 줄, item 마다 한 칸으로 읽는다
 
 - **무엇** — 키가 (lot, wafer, itemid) 같은 긴 표를 (lot, wafer) 마다 한 줄, itemid 값마다 한 칸으로 읽는다. 읽기는 그리드 읽기 라우트 그대로(`GET /tables/<표>/data?pivot=true`, 수는 `/data/count?pivot=true`)이고 쪽은 키 묶음 단위라 한 키의 칸이 쪽에서 안 잘린다. 칸마다 원래 행의 `row_id` 가 실려 편집은 지금 저장 문 그대로이고, 빈 칸에 적으면 그 키의 행이 새로 생긴다.
 - **선언 예시** — `table_config.json` 의 표 선언에 `"pivot": {"column": "itemid", "value": "value"}`. `column` 은 표 키(`composite_key_source`) 중 하나, `value` 는 키가 아닌 선언 칸. 아니면 저장이 이유와 함께 거절된다(`pivot_refused`).
 - **거르기 · 정렬** — 키 칸은 그리드 그대로. 펼친 칸은 늘 `item:<값>` 이름으로 거르고 정렬한다. 거르기는 그리드 필터와 같은 조건, «blank» 는 그 item 행이 없는 키. 정렬하면 그 item 이 없는 키는 오름 · 내림 모두 뒤.
 - **상한** — 펼친 칸은 `ingestion_settings.json` 의 `pivot_max_columns`(기본 200)까지, 넘으면 응답에 «몇 개 더»(`items_more`).
-- **안 받는 것** — 피벗 읽기에서 `q` · `after` · `before` · `target_row_id` · `transaction_id` · `enrichment_queue` 는 422 로 이름을 대고 거절한다(쪽은 `skip`/`limit`).
-- **화면에서** — 클라 착지 뒤 그리드의 Pivot ↔ Unpivot. 이 착지는 서버 몫.
+- **검색** — 피벗 읽기의 `q` 는 «키 묶음 안 아무 긴 행이 맞으면 그 키»(그리드 검색과 같은 조건)이고, 맞은 키의 칸은 전부 나온다. 수 · 칸 목록도 같은 검색 안이다.
+- **안 받는 것** — 피벗 읽기에서 `after` · `before` · `target_row_id` · `transaction_id` · `enrichment_queue` 는 422 로 이름을 대고 거절한다(쪽은 `skip`/`limit`).
+- **화면에서** — 클라 착지 뒤 그리드의 Pivot ↔ Unpivot. 버튼은 `GET /tables/<표>/schema` 의 `pivot`(선언 그대로, 거절되는 선언이면 `null`)을 보고 그린다. 이 착지는 서버 몫.
 - **필요한 조건** — git pull · 서버 재기동.
 
 ## 2026-10-22 · 오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것

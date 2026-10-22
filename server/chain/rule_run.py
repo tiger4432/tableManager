@@ -576,25 +576,73 @@ def gates_of(rule) -> dict:
     return {gate: list((rule or {}).get(gate) or ()) for gate in chain_bindings.ROW_GATE_KEYS}
 
 
-def gate_misses(gates, cells) -> list:
-    """[(gate, column)] a row of `cells` {column: value} fails - [] when the rule takes it. THE row-gate judgement:
-    `require` wants the column filled, `exclude` wants it blank (`crud.is_blank_value`); `gate_conditions` is the
-    same judgement in SQL, so the rows a rule is handed and the rows a recount counts are one set (총괄 63c747046)."""
+def gate_misses(gates, cells, table=None) -> list:
+    """[(gate, item, by values)] a row of `cells` {column: value} of `table` fails - [] when the rule takes it. THE row-gate
+    judgement: a column name - `require` wants it filled, `exclude` blank (`crud.is_blank_value`); {column: [values]} -
+    `require` wants one of them, `exclude` none (총괄 9a5206e0b), a value and the cell spelled by the one key speller by
+    the column's declared type (`map_overlay.canonical_bind_value`, 1460cfef2 - 1 · 1.0 · 001 one value, "" a blank).
+    `gate_conditions` is the same judgement in SQL, so the rows a rule is handed and the rows a recount counts are one
+    set (총괄 63c747046). `item`: the column, or «column [values]» - `held_back` says the two in their own words."""
     import chain_bindings
+    import map_overlay
     from database import crud
 
-    return [(gate, column) for gate in chain_bindings.ROW_GATE_KEYS for column in gates.get(gate) or ()
-            if crud.is_blank_value(cells.get(column)) == (gate == chain_bindings.REQUIRE_KEY)]
+    out = []
+    for gate in chain_bindings.ROW_GATE_KEYS:
+        for column, values in chain_bindings.gate_items(gates.get(gate)):
+            if values is None:
+                hit = not crud.is_blank_value(cells.get(column))
+            else:
+                hit = map_overlay.canonical_bind_value(table, column, cells.get(column)) in {
+                    map_overlay.canonical_bind_value(table, column, value) for value in values}
+            if hit == (gate == chain_bindings.EXCLUDE_KEY):
+                out.append((gate, column if values is None else "%s [%s]" % (column, ", ".join(map(str, values))),
+                            values is not None))
+    return out
 
 
 def gate_conditions(gates, model) -> list:
-    """`gate_misses` in SQL over `model`'s columns: one condition per gated column, true for a row the rule takes."""
+    """`gate_misses` in SQL over `model`'s columns: one condition per gate item, true for a row the rule takes."""
     import chain_bindings
+    from sqlalchemy import not_
     from database import crud
 
-    return [(crud.not_blank_sql_condition if gate == chain_bindings.REQUIRE_KEY else crud.blank_sql_condition)(
-        crud.column_text_sql(getattr(model, column)))
-        for gate in chain_bindings.ROW_GATE_KEYS for column in gates.get(gate) or ()]
+    out = []
+    for gate in chain_bindings.ROW_GATE_KEYS:
+        for column, values in chain_bindings.gate_items(gates.get(gate)):
+            if values is None:
+                out.append((crud.not_blank_sql_condition if gate == chain_bindings.REQUIRE_KEY
+                            else crud.blank_sql_condition)(crud.column_text_sql(getattr(model, column))))
+            else:
+                one_of = _one_of_sql(model, column, values)
+                out.append(one_of if gate == chain_bindings.REQUIRE_KEY else not_(one_of))
+    return out
+
+
+def _one_of_sql(model, column, values):
+    """`column` is one of `values` - never NULL: the cell and the values spelled by the one key speller's SQL twin
+    (`notation_norm.key_expression_sql`, a datetime through `assy_key_instant`), a number compared as a number (1 · 1.0 ·
+    001 one value on either database); a blank value is a blank cell."""
+    import map_overlay
+    import notation_norm
+    from sqlalchemy import false, func, or_
+
+    table = model.__table__.name
+    spelled = {map_overlay.canonical_bind_value(table, column, value) for value in values}
+    blank = None in spelled
+    spelled.discard(None)
+    cell = getattr(model, column)
+    if map_overlay.declared_column_type(table, column) == "number":
+        numbers = []
+        for value in spelled:
+            try:
+                numbers.append(float(value))
+            except ValueError:
+                pass                                   # a word on a number column - no cell is it
+        found = func.coalesce(cell.in_(sorted(numbers)), False) if numbers else false()
+        return or_(found, cell.is_(None)) if blank else found
+    expression = func.trim(notation_norm.key_expression_sql(cell, None, map_overlay.key_time_zone(table, column)))
+    return expression.in_(sorted(spelled) + ([""] if blank else []))
 
 
 def held_back(rule, handed) -> tuple:
@@ -620,34 +668,38 @@ def held_back(rule, handed) -> tuple:
     gates = gates_of(rule)
     if not any(gates.values()):
         return handed, {}
+    table = (rule or {}).get("trigger_table")
     reads_leaving = chain_bindings.takes_deletions(rule)
-    kept, missed, left = [], {gate: collections.Counter() for gate in gates}, 0
+    #: the words of a miss, by gate and by item - a name item misses on blank or filled, a value item on its values
+    words = {(chain_bindings.REQUIRE_KEY, False): "required column(s) empty",
+             (chain_bindings.REQUIRE_KEY, True): "required value(s) missing",
+             (chain_bindings.EXCLUDE_KEY, False): "excluding column(s) filled",
+             (chain_bindings.EXCLUDE_KEY, True): "excluding value(s) found"}
+    kept, missed, left = [], {said: collections.Counter() for said in words}, 0
     for payload in handed:
         data = payload.get("data") if isinstance(payload, dict) else None
         old = event_constants.old_values_of(payload)
         # a deletion has no data - its row is judged as it was (총괄 355ee9840 3)
         now = {column: (cell or {}).get("value") if isinstance(cell, dict) else cell
                for column, cell in data.items()} if data else dict(old)
-        misses = gate_misses(gates, now)
+        misses = gate_misses(gates, now, table)
         if not misses:
             kept.append(payload)
             continue
-        for gate, column in misses:
-            missed[gate][column] += 1
+        for gate, item, by_values in misses:
+            missed[gate, by_values][item] += 1
         was = {**now, **old}
-        if reads_leaving and data and old and not gate_misses(gates, was):
+        if reads_leaving and data and old and not gate_misses(gates, was, table):
             kept.append({**payload, "data": {}, event_constants.OLD_VALUES_KEY: was})
             left += 1
-    said = [(words, missed[gate]) for gate, words in ((chain_bindings.REQUIRE_KEY, "required column(s) empty"),
-                                                      (chain_bindings.EXCLUDE_KEY, "excluding column(s) filled"))
-            if missed[gate]]
+    said = [(words[said], missed[said]) for said in words if missed[said]]
     if said:
         logger.info("[Chain] %s: %d row(s) not handed over - %s%s",
                     (rule or {}).get("name") or "<unnamed rule>", len(handed) - len(kept) + left,
-                    "; ".join("%s: %s" % (words, ", ".join("%s=%d" % pair for pair in sorted(c.items())))
-                              for words, c in said),
+                    "; ".join("%s: %s" % (line, ", ".join("%s=%d" % pair for pair in sorted(c.items())))
+                              for line, c in said),
                     " - %d of them handed as rows that left (an edit took them out)" % left if left else "")
-    return kept, {column: n for gate in missed for column, n in missed[gate].items()}
+    return kept, {item: n for said in missed for item, n in missed[said].items()}
 
 
 def prepare(db, rule, payloads=None, row_ids=None) -> Prepared:

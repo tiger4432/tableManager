@@ -252,6 +252,35 @@ REQUIRE_KEY = "require"
 EXCLUDE_KEY = "exclude"
 #: The cells that decide whether a trigger row is handed to the rule at all (`rule_run.held_back`).
 ROW_GATE_KEYS = (REQUIRE_KEY, EXCLUDE_KEY)
+
+
+def gate_items(written) -> list:
+    """[(column, values or None)] of a row gate's items: a column name - judged blank or filled - or {column: [values]}
+    - judged one of those values (소유자 10-21 「체인 행 내 특정 값일 때 제외」, 총괄 9a5206e0b). THE ONE READER of the
+    items: whatever reads a gate's columns or judges a row by it reads them here."""
+    out = []
+    for item in written or ():
+        if isinstance(item, dict):
+            out.extend((str(column), list(values or ())) for column, values in item.items())
+        else:
+            out.append((str(item), None))
+    return out
+
+
+def gate_columns(written) -> list:
+    """The columns a row gate's items name, in order, once each (`gate_items`)."""
+    return list(dict.fromkeys(column for column, _values in gate_items(written)))
+
+
+def gate_item_refused(item) -> bool:
+    """Is this item neither a column name nor {column: [values]} - a non-empty list of scalars a column?"""
+    if isinstance(item, str):
+        return not item.strip()
+    if not isinstance(item, dict) or not item:
+        return True
+    return any(not (isinstance(column, str) and column.strip()) or not isinstance(values, list) or not values
+               or any(isinstance(v, (bool, dict, list)) or not isinstance(v, (str, int, float)) for v in values)
+               for column, values in item.items())
 #: 총괄 a7b67be28 ㄱ (소유자 「ㄴ」): the target-table columns a rule writes. Whatever its mapper hands over, the rest
 #: is not written (`written_columns`); a rule without the cell writes what it hands over, as before.
 TARGET_COLUMNS_KEY = "target_columns"
@@ -469,16 +498,20 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
     # `require` would hand over no row and `exclude` would hold none back - refused by name, the
     # way an unknown `trigger_columns` entry is named. `target_columns` names the TARGET table's (총괄 a7b67be28 ㄱ).
     for key in (*ROW_GATE_KEYS, TARGET_COLUMNS_KEY):
-        table = candidate.get("target_table" if key == TARGET_COLUMNS_KEY else "trigger_table")
+        node = _LIST_CELLS[key][1]
+        table = candidate.get((node["branches"]["name"] if node["kind"] == "oneOf" else node)["table_from"][0])
         if key not in candidate:
             continue
         written = candidate.get(key)
-        names = (written if isinstance(written, list) and written
-                 and all(isinstance(n, str) and n.strip() for n in written) else None)
+        gate = key in ROW_GATE_KEYS
+        names = (gate_columns(written) if gate else written) if isinstance(written, list) and written and all(
+            not gate_item_refused(n) if gate else isinstance(n, str) and n.strip() for n in written) else None
         if names is None:
             issues.append(validation.DeclarationValidationError(
                 "bad_" + key, path + "." + key,
-                "%s must be a list of column names, got %r" % (key, written)))
+                "%s must be a list of column names%s, got %r - next: write each item as a name%s"
+                % (key, " or {column: [values]}" if gate else "", written,
+                   " or as {column: [value, ...]} with at least one value" if gate else "")))
         else:
             known = declared_columns(str(table or ""))
             unknown = sorted(set(names) - known) if known is not None else []
@@ -703,14 +736,24 @@ def column_ref(table_from):
     return {"kind": "leaf", "hint": "ref", "section": SECTION_COLUMNS, "table_from": list(table_from)}
 
 
+def gate_item_node(table_at):
+    """A row gate's item: a column name, or {column: [values]} (`gate_items`) - picked by shape, as a join's take item
+    is (`join_into.JOIN_CELL_SHAPES`)."""
+    return {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
+        "name": column_ref(table_at),
+        "values": {"kind": "map", "keyed_by": "name", "member": "column",
+                   "of": {"kind": "map", "keyed_by": "index", "member": "value", "of": {"kind": "leaf", "hint": "free"}}}},
+        "empty": {"name": ""}}
+
+
 #: Routing cells whose value is a LIST of names -> (member, the item's node). `trigger_columns` is
 #: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below; `group_by` by
 #: `rule_refusals` (bad_group_by takes only a list - drawn as one value, the form could not save it, 총괄 77793123e).
 _LIST_CELLS = {"trigger_columns": ("column", column_ref(TRIGGER_TABLE_AT)),
                TARGET_COLUMNS_KEY: ("column", column_ref(TARGET_TABLE_AT)),
-               REQUIRE_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
+               REQUIRE_KEY: ("column", gate_item_node(TRIGGER_TABLE_AT)),
                GROUP_BY_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
-               EXCLUDE_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
+               EXCLUDE_KEY: ("column", gate_item_node(TRIGGER_TABLE_AT)),
                **{key: ("column", {"kind": "leaf", "hint": "free"}) for key in SOURCE_GATE_KEYS.values()},
                READS_KEY: ("table", table_ref())}
 

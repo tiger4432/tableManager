@@ -146,3 +146,15 @@ def test_the_loop_marks_itself_attached_when_it_starts(monkeypatch):
     with pytest.raises(Stop):
         asyncio.run(worker.start_chain_ingestion_worker(None))
     assert fresh.attached is True, "entering the loop did not mark this process"
+
+def test_a_rule_run_its_claim_could_not_take_says_what_went_quiet(monkeypatch, caplog):
+    """The note that puts a run on its group's beat never stops the run - and when it breaks it says so."""
+    from utils import heartbeat
+
+    def broken(**facts):
+        raise RuntimeError("the beat broke")
+    monkeypatch.setattr(heartbeat, "note_work", broken)
+    with caplog.at_level(logging.WARNING):
+        activity._say_on_the_claim({"rule": "some_rule"})
+    [line] = [r.getMessage() for r in caplog.records if "[ChainRule]" in r.getMessage()]
+    assert "was not put on its group's beat" in line and "the beat broke" in line

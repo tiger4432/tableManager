@@ -45,7 +45,9 @@ def outbox_row(db, *, event_type, table_name, transaction_id=TX):
     db.add(models.DatabaseOutbox(
         event_uuid=str(uuid.uuid4()), table_name=table_name, event_type=event_type,
         payload={"transaction_id": transaction_id}, processed_chain=False))
-    db.flush()
+    # committed: the queue's first read asks for the run table's columns on a connection of its own
+    # (`models.ensure_run_columns`, c9158f8ba), which on the tests' one shared connection ends a flushed row
+    db.commit()
 
 
 def waiting_transactions(client):

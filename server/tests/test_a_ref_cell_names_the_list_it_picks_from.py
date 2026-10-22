@@ -90,7 +90,12 @@ def test_the_chain_table_and_column_cells_name_their_lists():
     def columns(node, table_from):
         assert node == {"kind": "leaf", "hint": "ref", "section": "columns", "table_from": table_from}, node
 
-    columns(_field(unified, "derive", "join", "take")["of"], ["on.table"])
+    # a take item is a source column's name or a record {from, into, fn, separator} (a2b7f6e14, owner 10-21)
+    take = _field(unified, "derive", "join", "take")["of"]["branches"]
+    columns(take["name"], ["on.table"])
+    record = {f["key"]: f["node"] for f in take["record"]["fields"]}
+    columns(record["from"], ["on.table"])
+    columns(record["into"], ["target_table", "into.table"])
     columns(_field(unified, "key", "columns")["of"], ["on.table"])
     columns(_field(flat, "group_by")["of"], ["trigger_table", "on.table"])
     columns(_field(unified, "limits", "group_by")["of"], ["trigger_table", "on.table"])
