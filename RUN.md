@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **표 하나의 행을 전부 지운다 — 소급 탭 «Delete every row of a table» (소유자 「만들어 너가 바로」, 총괄 4435b9b29, 0f187bc70)**
+>
+> ```
+> 누구     표를 비우고 다시 시작하려는 운영자
+> 돌릴 것   git pull · 런처 재기동 뒤 소급 탭 Delete every row of a table -> 표 이름 -> 미리보기 -> 실행
+>          명령으로는 python server/scripts/chain_replay_cli.py delete-every-row <표>          (미리보기)
+>                    python server/scripts/chain_replay_cli.py delete-every-row <표> --apply  (지움)
+> 뜻      미리보기 «N of them hold a person's value» -> 사람이 적은 값도 같이 지워짐(되돌릴 수 없음)
+>          «Rules that take deletions from '<표>' do not run on these: …» -> 그 규칙의 대상 표는 안 따라감, 따라가야 하면 그 규칙 리플레이
+>          «STOPPED by request» -> 쪽 사이에서 섬, 다시 돌리면 남은 행만
+>          파일을 다시 읽히려면 파일 화면의 Read all again (지우기와 따로)
+> 되돌리기  git revert 0f187bc70 (이미 지운 행은 안 돌아옴)
+> ```
+>
+> ---
+>
 > ## [10-22] **화면 검사기의 Chrome 이 OS 가 준 포트를 쓴다 — 두 판이 한 박스에서 서로의 Chrome 에 붙지 않음 (총괄, 2044f2c58)**
 >
 > ```
