@@ -339,7 +339,7 @@ export function drawPivot() {
 export async function setGridPivot(on) {
   if (!state.currentPivot || !state.currentTable) return;
   // staged edits are keyed by the rows of the view they were made in (Tx itself is on by default and works in both)
-  if (Object.keys(state.pendingTxEdits).length) { elements.performanceLog.textContent = 'Apply or discard the staged edits first'; return; }
+  if (refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard the staged edits first' : '')) return;
   state.pivotOn = on;
   state.pivotView = null;
   rememberPivot(browserStore(), state.currentTable, on);

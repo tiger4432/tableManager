@@ -24,6 +24,7 @@ import { elements } from './dom.js';
 //    「이 표에 쓸 수 있나」이고, 「행을 골랐나」 같은 «다른 물음»이 같은 기제를 쓰기 때문입니다.
 //    한 함수가 두 물음에 답하기 시작하면 그것이 다음 라운드의 결함입니다.
 import { setDisabledReason } from './disabled_reason.js';
+import { showToast } from './utils.js';
 
 /**
  * 이 화면에서 «쓰는» 컨트롤들. 실측 2026-09-13: 다 `state.currentTable` 에 씁니다 —
@@ -81,6 +82,9 @@ export function refuseWrite(why = writeRefusal()) {
   if (!why) return false;
   const el = elements.performanceLog;
   if (el) el.textContent = why;
+  // the badge is one line and cuts a long sentence (lead 10-23: «Apply or discard the stage…» at 1536) - the refusal and
+  // its next step are read whole where the grid's other refusals are, a toast
+  showToast(why, 'error');
   return true;
 }
 

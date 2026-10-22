@@ -887,6 +887,15 @@ CELLS.push({ entry: 'index.html', after: 'Pivot, a key pasted over a saved row',
   const said = (document.getElementById('performance-log') || {}).textContent || '';
   return said === 'Key columns cannot be changed in pivot view' ? null : 'the paste ended «' + said + '» · ' + window.__pasteAt;
 })()` });
+// lead 10-23: a refusal and its next step are read whole - not only in the one-line badge, which cuts them.
+CELLS.push({ entry: 'index.html', after: 'Pivot refused over a staged edit', rule: 'refusal read whole', at: 'pivot', expr: `(() => {
+  const said = 'Apply or discard the staged edits first';
+  const b = document.getElementById('pivot-toggle-btn');
+  if (!b || b.getAttribute('aria-pressed') !== 'true') return 'Pivot let go over a staged edit';
+  const whole = [...document.querySelectorAll('.toast')].find((n) => n.textContent.includes(said) && n.getBoundingClientRect().width > 0
+    && n.scrollWidth <= n.clientWidth + 1);
+  return whole ? null : 'the refusal is nowhere on screen whole';
+})()` });
 CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 'pivot', expr: `(() => {
   const add = document.getElementById('add-row-btn');
   if (document.querySelector('.ag-header-cell[col-id^="item:"]')) return 'an item column is left';
@@ -2325,7 +2334,28 @@ const DRIVE = {
         return true; })()`);
       await sleep(1200);
     }],
+    // A refusal read whole (lead 10-23: the one-line badge cut «Apply or discard the stage…» at 1536): an edit staged
+    // in pivot view (Tx is on by default), then «Pivot» pressed.
+    ['Pivot refused over a staged edit', async (c, log) => {
+      await evaluate(c, `(() => {
+        const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell[col-id^="item:"]');
+        if (!cell) return false;
+        cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        return true; })()`);
+      await until(c, "!!document.querySelector('.ag-cell-inline-editing input')");
+      await evaluate(c, `(() => {
+        const input = document.querySelector('.ag-cell-inline-editing input');
+        input.value = '12.5'; input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+        return true; })()`);
+      await until(c, "/pending/.test((document.querySelector('#performance-log') || {}).textContent || '')");
+      await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
+      await sleep(600);
+    }],
     ['Pivot off', async (c, log) => {
+      await evaluate(c, `(() => { const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Discard' && !b.disabled);
+        if (d) d.click(); return Boolean(d); })()`);
+      await sleep(900);
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
       await sleep(900);
       await settle(c, log);
@@ -2695,6 +2725,8 @@ const MUTANTS = [
       'pivotShown() ? groups.flatMap((node) => Object.values(node.data.data).map((cell) => cell.row_id).filter(Boolean)) :']] },
   { name: 'a key pasted over a saved pivot row goes through', entry: 'index.html', rule: 'pivot key paste', at: 'pivot',
     file: 'src/write_guard.js', edits: [['  if (why) return refuseWrite(why);\n', '']] },
+  { name: 'a refusal only in the one-line badge', entry: 'index.html', rule: 'refusal read whole', at: 'pivot',
+    file: 'src/write_guard.js', edits: [["  showToast(why, 'error');\n", '']] },
   { name: 'the footer counts rows in pivot view', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
     file: 'src/api.js', edits: [['elements.totalRowsCount.dataset.unit = rowUnit();', "elements.totalRowsCount.dataset.unit = 'row';"]] },
   // The checkboxes back on the schema's first column (owner 10-22): hidden from the column selector, they go with it.
