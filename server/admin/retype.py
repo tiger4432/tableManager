@@ -155,9 +155,10 @@ def _quoted(name):
     return '"%s"' % str(name).replace('"', '""')
 
 
-def _sql(element):
-    from sqlalchemy.dialects import postgresql
-    return str(element.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+def _sql(element, dialect):
+    """`element` as SQL text in the CONNECTED dialect - an unconnected one assumes backslash escapes and doubles every
+    backslash of a literal (probe 10-22: the regex then matched nothing it should)."""
+    return str(element.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
 
 
 def _instant(c):
@@ -169,7 +170,7 @@ def _instant(c):
     return getattr(func, notation_norm.KEY_INSTANT_FUNCTION)(c, expression.time_zone().key)
 
 
-def using(c, cell):
+def using(c, cell, dialect):
     """What `c` becomes in the cell's type: text -> number its blanks NULL (`crud.blank_to_null`) then cast; text ->
     time read by `assy_key_instant` then cast (its ISO carries the offset, so no session zone reads it); time -> text
     the key's spelling, not PostgreSQL's ::text."""
@@ -177,9 +178,9 @@ def using(c, cell):
     from database import crud
 
     if cell["to"] == "character varying":
-        return _sql(_instant(c))
+        return _sql(_instant(c), dialect)
     inner = crud.blank_to_null(c) if cell["reads"] == "numbers" else _instant(crud.blank_to_null(c))
-    return "(%s)::%s" % (_sql(inner), cell["to"])
+    return "(%s)::%s" % (_sql(inner, dialect), cell["to"])
 
 
 def bad_values(db, table, column, cell):
@@ -194,7 +195,7 @@ def bad_values(db, table, column, cell):
                else _instant(c).op("!~")(INSTANT_TEXT))
     some = select(c).where(bad).distinct().limit(SAMPLE).subquery()
     query = select(func.count().filter(bad), select(func.array_agg(some.c[column])).scalar_subquery())
-    count, sample = db.execute(text(_sql(query))).one()
+    count, sample = db.execute(query).one()
     return count or 0, sorted(sample or ())
 
 
@@ -273,7 +274,7 @@ def convert(db, table, column, declared, log):
             for name in rebuilt:
                 db.execute(text("DROP INDEX %s" % _quoted(name)))
             db.execute(text("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s" % (
-                _quoted(table), _quoted(column), cell["to"], using(c, cell))))
+                _quoted(table), _quoted(column), cell["to"], using(c, cell, db.get_bind().dialect))))
             for name, (ddl, said) in rebuilt.items():
                 db.execute(text(ddl))
                 if said:
