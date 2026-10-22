@@ -8,15 +8,15 @@ R = `rule_run.run_rule` 안에서 판 표를 읽은 SELECT 수, W = `hold_commit
 둘 다 0 이어야 초록 (총괄 10-22). 맵퍼 자신의 `sql()` 판(own sql)은 R 이 남고 «reads outside the fetch» 줄로 판정.
 group_by 의 끝 값 = 그 키의 행 «전체»로 센 수 (소유자 10-22 넓힘 승인 — 기준에서 빨강, 착지 뒤 초록).
 
-## 요약 — 판정 낱말별 판 수
+## 요약 — 판정 낱말별 판 수 (착지 뒤 = `bc0006546`)
 
-| 낱말 | 판 |
-|---|---|
-| read in the run | 36 |
-| oracle | 6 |
-| GREEN | 3 |
-| outbox failed | 2 |
-| no «reads outside the fetch» line | 1 |
+| 낱말 | 기준 | 착지 뒤 |
+|---|---|---|
+| read in the run | 36 | 0 |
+| oracle | 6 | 1 |
+| GREEN | 3 | 45 |
+| outbox failed | 2 | 0 |
+| no «reads outside the fetch» line | 1 | 0 |
 
 ## 기준에서 본 것
 
@@ -27,53 +27,62 @@ group_by 의 끝 값 = 그 키의 행 «전체»로 센 수 (소유자 10-22 넓
 - W 는 46 판 모두 0. 다음 쪽(more())은 조인이 왼쪽 행 1,000 마다 내는데(`keyset_scan.pages`), 이 판들은 6 행이라 다음 쪽이 안 생긴다. 생겨도 조인의 다음 쪽은 한 번 읽어 둔 답을 자르기만 해 판 표를 안 읽는다. 그래서 W 는 빨강→초록 칸이 아니라 «0 을 지키는» 칸이다.
 - 파일 교체 판 10 개(g06 · g07 · g15 · g16 · g24 · g25 · g33 · g34 · g42 · g43)는 씨앗을 «파일»로 넣어 다시 돌린 값이다. 처음 판은 씨앗을 사용자 층으로 넣어, 파일이 K1 값도 K4 의 맵도 못 바꿨다(와처 «changed 0» · 떠난 맵 판은 «unchanged 3»).
 
+## 착지 뒤에서 본 것 (`bc0006546`, B 의 착지 전 브랜치 impl-b-fetch · main 23fb6060d 위)
+
+- 46 판 중 45 초록. R 은 own sql 판(g45, 맵퍼 자신의 sql() 7 회 · «reads outside the fetch» 줄 있음)을 빼고 모두 0, W 는 모두 0. 카나리: 모든 판 ATTACH · ENTER > 0.
+- 기준과 «같은 행 · 같은 층 · 같은 사건»: 38 판. 달라진 8 판 중 7 은 고쳐진 쪽, 1 은 리플레이 쪽 크기 —
+  g04 · g13 은 실패한 그룹이 없어져 대상의 EDIT 사건 1 이 빠짐(행 · 층 같음).
+  group_by 5 판(g18 · g19 · g20 · g24 · g25)은 끝 값이 키 전체로 셈해져 행이 바뀌고, 값이 그대로인 키는 다시 안 써 EDIT 이 빠짐.
+  g14(잡 · 리플레이)는 트리거 EDIT 4 → 3 — 리플레이 쪽이 1·2·2·1 행에서 1·2·3 행으로 나뉨. 행 · 층 같음. 쪽 크기는 시간으로 자라는 `PageSize` 라 판마다 다를 수 있다고 읽힌다(안 쟀다).
+- **남은 빨강 g21 (group_by · 한 행 지움)**: 기준과 같은 빨강. 지움 단계에서 규칙이 «안 깬다» (ENTER 1 = 씨앗뿐) — `allow_delete_trigger` 를 안 적은 group_by 규칙은 DELETE 에 안 깨어, 지운 행의 키(M2)가 다시 안 세진다. 받기가 아니라 «깨우기»의 칸이다.
+
 ## 판마다
 
 | 판 | 꼴 | 경로 | 받기 대상 | 기준 | 읽은 수 | 착지 뒤 |
 |---|---|---|---|---|---|---|
-| g00 | map_replace | insert | map | RED: read in the run (R 2) | R 2 · W 0 · D 19 | |
-| g01 | map_replace | edit | map | RED: read in the run (R 2) | R 2 · W 0 · D 20 | |
-| g02 | map_replace | edit | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 21 | |
-| g03 | map_replace | delete | map | RED: read in the run (R 2) | R 2 · W 0 · D 17 | |
-| g04 | map_replace | delete | left map/key | RED: outbox failed, read in the run (R 2) | R 2 · W 0 · D 17 | |
-| g05 | map_replace | replay | map | RED: read in the run (R 4) | R 4 · W 0 · D 24 | |
-| g06 | map_replace | file_replace | map | RED: read in the run (R 3) | R 3 · W 0 · D 19 | |
-| g07 | map_replace | file_replace | left map/key | RED: read in the run (R 3) | R 3 · W 0 · D 19 | |
-| g08 | map_replace | r2 | map | RED: read in the run (R 1) | R 1 · W 0 · D 32 | |
-| g09 | job | insert | job | RED: read in the run (R 2) | R 2 · W 0 · D 19 | |
-| g10 | job | edit | job | RED: read in the run (R 2) | R 2 · W 0 · D 20 | |
-| g11 | job | edit | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 21 | |
-| g12 | job | delete | job | RED: read in the run (R 2) | R 2 · W 0 · D 17 | |
-| g13 | job | delete | left map/key | RED: outbox failed, read in the run (R 2) | R 2 · W 0 · D 17 | |
-| g14 | job | replay | job | RED: read in the run (R 5) | R 5 · W 0 · D 26 | |
-| g15 | job | file_replace | job | RED: read in the run (R 3) | R 3 · W 0 · D 19 | |
-| g16 | job | file_replace | left map/key | RED: read in the run (R 3) | R 3 · W 0 · D 19 | |
-| g17 | job | r2 | job | RED: read in the run (R 1) | R 1 · W 0 · D 32 | |
-| g18 | group_by | insert | job | RED: oracle | R 0 · W 0 · D 19 | |
-| g19 | group_by | edit | job | RED: oracle | R 0 · W 0 · D 20 | |
-| g20 | group_by | edit | left map/key | RED: oracle | R 0 · W 0 · D 21 | |
-| g21 | group_by | delete | job | RED: oracle | R 0 · W 0 · D 17 | |
-| g22 | group_by | delete | left map/key | GREEN | R 0 · W 0 · D 17 | |
-| g23 | group_by | replay | job | GREEN | R 0 · W 0 · D 19 | |
-| g24 | group_by | file_replace | job | RED: oracle | R 0 · W 0 · D 19 | |
-| g25 | group_by | file_replace | left map/key | RED: oracle | R 0 · W 0 · D 19 | |
-| g26 | group_by | r2 | job | GREEN | R 0 · W 0 · D 27 | |
-| g27 | join | insert | value table | RED: read in the run (R 7) | R 7 · W 0 · D 26 | |
-| g28 | join | edit | value table | RED: read in the run (R 8) | R 8 · W 0 · D 28 | |
-| g29 | join | edit | left map/key | RED: read in the run (R 8) | R 8 · W 0 · D 29 | |
-| g30 | join | delete | value table | RED: read in the run (R 5) | R 5 · W 0 · D 25 | |
-| g31 | join | delete | left map/key | RED: read in the run (R 5) | R 5 · W 0 · D 25 | |
-| g32 | join | replay | value table | RED: read in the run (R 14) | R 14 · W 0 · D 31 | |
-| g33 | join | file_replace | value table | RED: read in the run (R 11) | R 11 · W 0 · D 27 | |
-| g34 | join | file_replace | left map/key | RED: read in the run (R 11) | R 11 · W 0 · D 27 | |
-| g35 | join | r2 | value table | RED: read in the run (R 5) | R 5 · W 0 · D 37 | |
-| g36 | decide | insert | map | RED: read in the run (R 2) | R 2 · W 0 · D 21 | |
-| g37 | decide | edit | map | RED: read in the run (R 2) | R 2 · W 0 · D 21 | |
-| g38 | decide | edit | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 23 | |
-| g39 | decide | delete | map | RED: read in the run (R 2) | R 2 · W 0 · D 19 | |
-| g40 | decide | delete | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 18 | |
-| g41 | decide | replay | map | RED: read in the run (R 4) | R 4 · W 0 · D 24 | |
-| g42 | decide | file_replace | map | RED: read in the run (R 3) | R 3 · W 0 · D 21 | |
-| g43 | decide | file_replace | left map/key | RED: read in the run (R 3) | R 3 · W 0 · D 22 | |
-| g44 | decide | r2 | map | RED: read in the run (R 1) | R 1 · W 0 · D 28 | |
-| g45 | own sql | edit | map | RED: no «reads outside the fetch» line | R 7 · W 0 · D 20 | |
+| g00 | map_replace | insert | map | RED: read in the run (R 2) | R 2 · W 0 · D 19 | GREEN · R 0 · same |
+| g01 | map_replace | edit | map | RED: read in the run (R 2) | R 2 · W 0 · D 20 | GREEN · R 0 · same |
+| g02 | map_replace | edit | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 21 | GREEN · R 0 · same |
+| g03 | map_replace | delete | map | RED: read in the run (R 2) | R 2 · W 0 · D 17 | GREEN · R 0 · same |
+| g04 | map_replace | delete | left map/key | RED: outbox failed, read in the run (R 2) | R 2 · W 0 · D 17 | GREEN · R 0 · moved events |
+| g05 | map_replace | replay | map | RED: read in the run (R 4) | R 4 · W 0 · D 24 | GREEN · R 0 · same |
+| g06 | map_replace | file_replace | map | RED: read in the run (R 3) | R 3 · W 0 · D 19 | GREEN · R 0 · same |
+| g07 | map_replace | file_replace | left map/key | RED: read in the run (R 3) | R 3 · W 0 · D 19 | GREEN · R 0 · same |
+| g08 | map_replace | r2 | map | RED: read in the run (R 1) | R 1 · W 0 · D 32 | GREEN · R 0 · same |
+| g09 | job | insert | job | RED: read in the run (R 2) | R 2 · W 0 · D 19 | GREEN · R 0 · same |
+| g10 | job | edit | job | RED: read in the run (R 2) | R 2 · W 0 · D 20 | GREEN · R 0 · same |
+| g11 | job | edit | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 21 | GREEN · R 0 · same |
+| g12 | job | delete | job | RED: read in the run (R 2) | R 2 · W 0 · D 17 | GREEN · R 0 · same |
+| g13 | job | delete | left map/key | RED: outbox failed, read in the run (R 2) | R 2 · W 0 · D 17 | GREEN · R 0 · moved events |
+| g14 | job | replay | job | RED: read in the run (R 5) | R 5 · W 0 · D 26 | GREEN · R 0 · moved events |
+| g15 | job | file_replace | job | RED: read in the run (R 3) | R 3 · W 0 · D 19 | GREEN · R 0 · same |
+| g16 | job | file_replace | left map/key | RED: read in the run (R 3) | R 3 · W 0 · D 19 | GREEN · R 0 · same |
+| g17 | job | r2 | job | RED: read in the run (R 1) | R 1 · W 0 · D 32 | GREEN · R 0 · same |
+| g18 | group_by | insert | job | RED: oracle | R 0 · W 0 · D 19 | GREEN · R 0 · moved rows/layers |
+| g19 | group_by | edit | job | RED: oracle | R 0 · W 0 · D 20 | GREEN · R 0 · moved rows/layers/events |
+| g20 | group_by | edit | left map/key | RED: oracle | R 0 · W 0 · D 21 | GREEN · R 0 · moved rows |
+| g21 | group_by | delete | job | RED: oracle | R 0 · W 0 · D 17 | RED: oracle · R 0 · same |
+| g22 | group_by | delete | left map/key | GREEN | R 0 · W 0 · D 17 | GREEN · R 0 · same |
+| g23 | group_by | replay | job | GREEN | R 0 · W 0 · D 19 | GREEN · R 0 · same |
+| g24 | group_by | file_replace | job | RED: oracle | R 0 · W 0 · D 19 | GREEN · R 0 · moved rows/events |
+| g25 | group_by | file_replace | left map/key | RED: oracle | R 0 · W 0 · D 19 | GREEN · R 0 · moved rows |
+| g26 | group_by | r2 | job | GREEN | R 0 · W 0 · D 27 | GREEN · R 0 · same |
+| g27 | join | insert | value table | RED: read in the run (R 7) | R 7 · W 0 · D 26 | GREEN · R 0 · same |
+| g28 | join | edit | value table | RED: read in the run (R 8) | R 8 · W 0 · D 28 | GREEN · R 0 · same |
+| g29 | join | edit | left map/key | RED: read in the run (R 8) | R 8 · W 0 · D 29 | GREEN · R 0 · same |
+| g30 | join | delete | value table | RED: read in the run (R 5) | R 5 · W 0 · D 25 | GREEN · R 0 · same |
+| g31 | join | delete | left map/key | RED: read in the run (R 5) | R 5 · W 0 · D 25 | GREEN · R 0 · same |
+| g32 | join | replay | value table | RED: read in the run (R 14) | R 14 · W 0 · D 31 | GREEN · R 0 · same |
+| g33 | join | file_replace | value table | RED: read in the run (R 11) | R 11 · W 0 · D 27 | GREEN · R 0 · same |
+| g34 | join | file_replace | left map/key | RED: read in the run (R 11) | R 11 · W 0 · D 27 | GREEN · R 0 · same |
+| g35 | join | r2 | value table | RED: read in the run (R 5) | R 5 · W 0 · D 37 | GREEN · R 0 · same |
+| g36 | decide | insert | map | RED: read in the run (R 2) | R 2 · W 0 · D 21 | GREEN · R 0 · same |
+| g37 | decide | edit | map | RED: read in the run (R 2) | R 2 · W 0 · D 21 | GREEN · R 0 · same |
+| g38 | decide | edit | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 23 | GREEN · R 0 · same |
+| g39 | decide | delete | map | RED: read in the run (R 2) | R 2 · W 0 · D 19 | GREEN · R 0 · same |
+| g40 | decide | delete | left map/key | RED: read in the run (R 2) | R 2 · W 0 · D 18 | GREEN · R 0 · same |
+| g41 | decide | replay | map | RED: read in the run (R 4) | R 4 · W 0 · D 24 | GREEN · R 0 · same |
+| g42 | decide | file_replace | map | RED: read in the run (R 3) | R 3 · W 0 · D 21 | GREEN · R 0 · same |
+| g43 | decide | file_replace | left map/key | RED: read in the run (R 3) | R 3 · W 0 · D 22 | GREEN · R 0 · same |
+| g44 | decide | r2 | map | RED: read in the run (R 1) | R 1 · W 0 · D 28 | GREEN · R 0 · same |
+| g45 | own sql | edit | map | RED: no «reads outside the fetch» line | R 7 · W 0 · D 20 | GREEN · R 7 · same |
