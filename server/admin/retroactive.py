@@ -2251,7 +2251,8 @@ OPERATIONS = {
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
+        "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
+                               "(crud.delete_rows_batch); a stop "
                                "lands between pages and a re-run finds only what is left"),
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
@@ -2294,7 +2295,8 @@ OPERATIONS = {
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
+        "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
+                               "(crud.delete_rows_batch); a stop "
                                "lands between pages and a re-run finds only what is left"),
         "cli_only": [],
         "downstream_note": ("The deletions go out on the retroactive channel, which wakes no rule - replay "
@@ -2315,7 +2317,8 @@ OPERATIONS = {
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
+        "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
+                               "(crud.delete_rows_batch); a stop "
                                "lands between pages and a re-run finds only what is left"),
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
