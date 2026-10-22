@@ -44,6 +44,8 @@ WALK_LOG_TABLE, WALK_RECIPE_TABLE = "walk_log", "walk_recipe"
 #: The AI report's tables (owner 10-22, lead cd4eb98d0).
 REPORT_REQUEST_TABLE, REPORT_TABLE = "report_request", "report"
 REPORT_STEP_TABLE, REPORT_WAFER_TABLE = "report_step", "report_wafer"
+#: report_wafer's wafer key parts, in `derive.report.wafer.key` order - a wafer key of more columns is refused at save.
+REPORT_WAFER_KEYS = ("key_1", "key_2", "key_3", "key_4")
 
 # Order here is the order new entries are appended to a config file.
 PRODUCT_TABLES = {
@@ -379,7 +381,7 @@ PRODUCT_TABLES = {
         ]
     },
     REPORT_WAFER_TABLE: {
-        "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set) - what the report's edges to wafers are declared from. Written by the chain only.",
+        "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set). key_1..key_4 hold the wafer's key columns in derive.report.wafer.key order - what the report's edges to wafers are declared from; wafer names the row (its key parts joined by /) and is not an edge's key. Written by the chain only.",
         "business_key": "wafer_key",
         "composite_key_source": [
             "request_id",
@@ -390,12 +392,20 @@ PRODUCT_TABLES = {
             "wafer_key": "string",
             "request_id": "string",
             "wafer": "string",
+            "key_1": "string",
+            "key_2": "string",
+            "key_3": "string",
+            "key_4": "string",
             "set_name": "string"
         },
         "display_columns": [
             "wafer_key",
             "request_id",
             "wafer",
+            "key_1",
+            "key_2",
+            "key_3",
+            "key_4",
             "set_name"
         ]
     },

@@ -1345,6 +1345,31 @@
                             "hint": "free"
                           }
                         }
+                      },
+                      {
+                        "key": "kinds",
+                        "required": true,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "evaluation",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "lot",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }

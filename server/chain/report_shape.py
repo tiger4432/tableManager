@@ -34,6 +34,10 @@ PROMPT_CELLS = ("select", "style", "compare")
 LOOP_CELLS = ("steps", "seconds", "context_tokens")
 NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
 SETS_DEFAULT = "default"
+#: `sets.kinds`: what a compare set's `kind` column says for a member that is an evaluation, and for one that is a lot -
+#: the wafer table's own cells of that name are what it picks by (lead 10-22: no such word in code).
+SETS_KINDS = "kinds"
+KIND_ROLES = ("evaluation", "lot")
 
 
 def _column(role):
@@ -50,6 +54,7 @@ def _role_node(role):
     if role == "sets":
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})
+        fields.append({"key": SETS_KINDS, "required": True, "node": _record(KIND_ROLES, "free")})
     return {"kind": "record", "fields": fields}
 
 
@@ -97,6 +102,10 @@ def refusal(spec) -> str | None:
     key_length = len(wafer_columns(spec["wafer"].get("key")))
     if not key_length:
         return "derive.report.wafer.key names no column - the column (or columns) a wafer is known by"
+    import product_tables
+    if key_length > len(product_tables.REPORT_WAFER_KEYS):
+        return ("derive.report.wafer.key names %d columns - a report keeps a wafer's key in at most %d"
+                % (key_length, len(product_tables.REPORT_WAFER_KEYS)))
     for role, cells in ROLE_COLUMNS.items():
         written = spec.get(role)
         if written is None:
@@ -124,6 +133,18 @@ def refusal(spec) -> str | None:
         for at, cell in NUMBER_CELLS:
             if at == role and cell in written and not _whole(written[cell], 1):
                 return "derive.report.%s.%s must be a whole number from 1, got %r" % (role, cell, written[cell])
+    sets = spec.get("sets")
+    if isinstance(sets, dict):
+        kinds = sets.get(SETS_KINDS)
+        said = {role: value for role, value in (kinds.items() if isinstance(kinds, dict) else ())
+                if isinstance(value, str) and value.strip()}
+        if not said or (isinstance(kinds, dict) and set(kinds) - set(KIND_ROLES)):
+            return ("derive.report.sets.kinds says what the kind column holds for %s - e.g. "
+                    '{"evaluation": "<value>", "lot": "<value>"}' % " · ".join(KIND_ROLES))
+        unread = [role for role in said if not spec["wafer"].get(role)]
+        if unread:
+            return ("derive.report.sets.kinds.%s needs derive.report.wafer.%s - the wafer column it picks by"
+                    % (unread[0], unread[0]))
     if "digits" in spec and not _whole(spec["digits"], 0):
         return "derive.report.digits must be a whole number from 0, got %r" % (spec["digits"],)
     for cell in LOOP_CELLS:

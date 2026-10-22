@@ -1585,7 +1585,7 @@
     ]
   },
   "report_wafer": {
-    "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set) - what the report's edges to wafers are declared from. Written by the chain only.",
+    "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set). key_1..key_4 hold the wafer's key columns in derive.report.wafer.key order - what the report's edges to wafers are declared from; wafer names the row (its key parts joined by /) and is not an edge's key. Written by the chain only.",
     "business_key": "wafer_key",
     "composite_key_source": [
       "request_id",
@@ -1596,12 +1596,20 @@
       "wafer_key": "string",
       "request_id": "string",
       "wafer": "string",
+      "key_1": "string",
+      "key_2": "string",
+      "key_3": "string",
+      "key_4": "string",
       "set_name": "string"
     },
     "display_columns": [
       "wafer_key",
       "request_id",
       "wafer",
+      "key_1",
+      "key_2",
+      "key_3",
+      "key_4",
       "set_name"
     ]
   }

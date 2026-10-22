@@ -26,6 +26,7 @@ TABLES = {
                                       "image_path": "string"}},
     "report_request": {"column_types": {"request_id": "string", "setting": "string"}},
     "report": {"column_types": {"request_id": "string", "state": "string"}},
+    "compare_set": {"column_types": {"set_name": "string", "member": "string", "kind": "string"}},
 }
 REPORT = {
     "wafer": {"table": "wafer", "key": "wafer_id", "time": "measured_at", "lot": "lot_id", "evaluation": "eval_id",
@@ -34,6 +35,8 @@ REPORT = {
     "total": {"table": "wafer", "wafer": ["wafer_id"], "chips": "total_chips"},
     "images": {"table": "defect_image", "wafer": "wafer_id", "item": "defect_item", "image": "image_path",
                "per_item": 3, "px": 320},
+    "sets": {"table": "compare_set", "name": "set_name", "member": "member", "kind": "kind",
+             "kinds": {"evaluation": "eval", "lot": "lot"}},
     "rows": ["particle", "scratch"], "digits": 1,
     "prompts": {"select": "pick the split", "style": "short", "compare": "against baseline"},
     "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
@@ -87,6 +90,10 @@ def _with(path, value):
     (("layout",), [{"kind": "table", "fill": "summary"}], "derive.report.layout[0].fill 'summary' - a table is one of"),
     (("layout",), [{"kind": "text"}], "derive.report.layout[0].slot names no text"),
     (("digits",), 1.5, "derive.report.digits must be a whole number from 0"),
+    (("sets", "kinds"), None, "derive.report.sets.kinds says what the kind column holds for evaluation · lot"),
+    (("sets", "kinds"), {"run": "R"}, "derive.report.sets.kinds says what the kind column holds"),
+    (("wafer", "lot"), None, "derive.report.sets.kinds.lot needs derive.report.wafer.lot"),
+    (("wafer", "key"), ["wafer_id"] * 5, "derive.report.wafer.key names 5 columns - a report keeps a wafer's key in at most 4"),
     (("images", "px"), 0, "derive.report.images.px must be a whole number from 1"),
     (("loop", "steps"), "8", "derive.report.loop.steps must be a whole number from 1"),
 ])

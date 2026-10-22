@@ -306,13 +306,12 @@ class Report:
             if not members:
                 lines.append("%s: no member" % name)
                 continue
-            evals = [m for m, k in members if k == "eval"]
-            lots = [m for m, k in members if k == "lot"]
             wafers = []
-            if evals and wafer.get("evaluation"):
-                wafers += self._wafer_rows({wafer["evaluation"]: _equals_any(wafer["evaluation"], evals)})
-            if lots and wafer.get("lot"):
-                wafers += self._wafer_rows({wafer["lot"]: _equals_any(wafer["lot"], lots)})
+            # each kind the declaration names picks members by the wafer column of the same role (sets.kinds)
+            for by, said in (role.get(report_shape.SETS_KINDS) or {}).items():
+                picked = [m for m, k in members if k == str(said)]
+                if picked and wafer.get(by):
+                    wafers += self._wafer_rows({wafer[by]: _equals_any(wafer[by], picked)})
             self.groups[name] = self._ordered(wafers)
             lines.append("%s: %d wafers (%s)" % (name, len(self.groups[name]), ", ".join(m for m, _k in members)))
         return {"context": "\n".join(lines), "html": None}

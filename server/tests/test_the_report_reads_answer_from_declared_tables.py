@@ -42,7 +42,8 @@ SPEC = {
     "total": {"table": "rr_wafer", "wafer": "wafer_id", "chips": "total_chips"},
     "images": {"table": "rr_image", "wafer": "wafer_id", "item": "defect_item", "image": "image_path", "per_item": 1,
                "px": 32},
-    "sets": {"table": "rr_set", "name": "set_name", "member": "member", "kind": "kind", "default": ["baseline"]},
+    "sets": {"table": "rr_set", "name": "set_name", "member": "member", "kind": "kind", "default": ["baseline"],
+             "kinds": {"evaluation": "EV", "lot": "LT"}},
     "rows": ["particle", "scratch"], "digits": 1,
 }
 
@@ -67,7 +68,9 @@ def report(db_session, tmp_path, monkeypatch):
         (tmp_path / "pics" / ("p%d.png" % n)).write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([n]))
         db_session.add(m["rr_image"](row_id="i%d" % n, image_id="i%d" % n, wafer_id=w, defect_item=item,
                                      image_path="pics:p%d.png" % n))
-    db_session.add(m["rr_set"](row_id="s0", set_name="baseline", member="E0", kind="eval"))
+    db_session.add(m["rr_set"](row_id="s0", set_name="baseline", member="E0", kind="EV"))
+    db_session.add(m["rr_set"](row_id="s1", set_name="keylots", member="L0", kind="LT"))
+    db_session.add(m["rr_set"](row_id="s2", set_name="keylots", member="L9", kind="eval"))
     db_session.commit()
     monkeypatch.setattr(image_sources, "load_sources", lambda path=None: {
         "pics": {"kind": "folder", "root": str(tmp_path / "pics")}})
@@ -124,9 +127,13 @@ def test_images_are_this_evaluations_occurred_defects_embedded_not_told(report):
 
 
 def test_a_compare_set_is_a_second_group_of_columns(report):
+    """The kind column's values are the declaration's (sets.kinds) - «eval» written there is not one of them."""
+    assert report.compare(["baseline", "keylots"])["context"].splitlines() == [
+        "baseline: 1 wafers (E0)", "keylots: 1 wafers (L0, L9)"]
+    assert report.groups["keylots"] == [("W0",)], "the lot member picks by the wafer table's lot column"
     assert report.compare()["context"] == "baseline: 1 wafers (E0)"
     table = report.yield_by()["html"]
-    assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("baseline", ["W0"])]
+    assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("baseline", ["W0"]), ("keylots", ["W0"])]
     assert table["rows"][0][1][-1] == "50.0% (50/100)"
 
 
