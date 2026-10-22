@@ -162,9 +162,16 @@ def fetch_cases():
             for target in [own] + (["left map/key"] if path in LEFT_ON else []):
                 out.append(dict(cells, **{"board.shape": shape, "board.path": path, "board.fetch_target": target,
                                           "board.column_type": "string", "board.kill": "none"}))
+                if shape == "group_by" and path == "delete" and target == own:
+                    # whether a DELETE wakes the rule is the declaration's cell (lead 10-22) - this board writes it
+                    out[-1]["allow_delete_trigger"] = True
     out.append({"derive<>": "mapper", "derive.<mapper>.mapper": "board_sql_copy", "board.shape": "own sql",
                 "board.path": "edit", "board.fetch_target": "map", "board.column_type": "string",
                 "board.kill": "none"})
+    # the same delete without the cell: the rule is not woken and the target stays as seeded - by design
+    out.append(dict(SHAPES["group_by"][0], **{"board.shape": "group_by", "board.path": "delete",
+                                              "board.fetch_target": "job", "board.column_type": "string",
+                                              "board.kill": "none", "board.expect": "not woken"}))
     return out
 
 
@@ -576,6 +583,9 @@ def run_one(F, i, name, case, kill, base, ledger):
         out["partial_write"] = partial
         out["killed"] = killed
         out["oracle"] = oracle(b, case, trig, tgt, kind)
+        if case.get("board.expect") == "not woken":            # nothing woke: the target is as it was seeded
+            was, now = seen["seeded"]["snapshot"]["dst"], out["snapshot"]["dst"]
+            out["oracle"] = {"ok": was == now, "seeded": was[:4], "now": now[:4]}
         out["events"] = b.q("SELECT table_name, event_type, count(*) FROM database_outbox WHERE table_name IN "
                             "(%s) GROUP BY 1, 2 ORDER BY 1, 2" % ", ".join("'%s'" % x for x in (SRC, VAL, DST, DEC)))
         if COLUMN == "fetch":
