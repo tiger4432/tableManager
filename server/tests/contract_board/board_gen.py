@@ -12,7 +12,11 @@ board's own axes - path · column type · kill point - one board per case on the
 
 Judged on every board: shells 0 · same key new row 0 · column types · orphan layers · set aside 0 · outbox failed 0.
 An oracle where the kind has one: a copy mapper's target is its source; a join's target cell is its value row's
-(or the aggregate of them). A decide has none here - a killed decide is judged against its own unkilled twin."""
+(or the aggregate of them). A decide has none here - a killed decide is judged against its own unkilled twin.
+
+BOARD_COLUMN=fetch: the «fetch» column (order 78eec1ec1) instead - path × rule shape × what the fetch reads (the rule's
+own map · job · value table, or the map · key a row LEFT), no kill, string columns; a full cross, not pairs. Each board
+also counts where the board tables were read (BOARD_READ_LOG): inside the run (R) or while the write holds (W) is red."""
 import decimal
 import itertools
 import json
@@ -133,8 +137,41 @@ def allowed(case):
     return case["board.path"] in KILL_REACHED_ON[case["board.kill"]] and not refused(case)
 
 
+COLUMN = os.environ.get("BOARD_COLUMN", "write")
+#: the «fetch» column's rule shapes (order 78eec1ec1: 맵 교체 · 조인 · group_by · decide, and the job a withdrawal aims
+#: by) as the cells a case sets, and what each one's fetch reads of its own
+SHAPES = {
+    "map_replace": ({"derive<>": "mapper", "derive.<mapper>.mapper": "board_copy", "is_batch": True,
+                     "allow_replace_map": True}, "map"),
+    "job": ({"derive<>": "mapper", "derive.<mapper>.mapper": "board_copy", "is_batch": True,
+             "allow_retraction": True}, "job"),
+    "group_by": ({"derive<>": "mapper", "derive.<mapper>.mapper": "board_count_map", "is_batch": True,
+                  "limits.group_by": ["m"]}, "job"),
+    "join": ({"derive<>": "join", "derive.<join>.take.[]<>": "plain"}, "value table"),
+    "decide": ({"derive<>": "decide", "derive.<decide>.aggregations.[]<>": "expression"}, "map"),
+}
+#: where a row can LEAVE a map or a key (edit · delete · a file that moves a row) - elsewhere «left» draws no case
+LEFT_ON = {"edit", "delete", "file_replace"}
+
+
+def fetch_cases():
+    """Path × shape × (its own target, and «left» where a row can leave) - then one board of a mapper's own sql()."""
+    out = []
+    for shape, (cells, own) in SHAPES.items():
+        for path in PATHS:
+            for target in [own] + (["left map/key"] if path in LEFT_ON else []):
+                out.append(dict(cells, **{"board.shape": shape, "board.path": path, "board.fetch_target": target,
+                                          "board.column_type": "string", "board.kill": "none"}))
+    out.append({"derive<>": "mapper", "derive.<mapper>.mapper": "board_sql_copy", "board.shape": "own sql",
+                "board.path": "edit", "board.fetch_target": "map", "board.column_type": "string",
+                "board.kill": "none"})
+    return out
+
+
 def cases(seed=1):
     """Greedy all-pairs: every pair of values two axes can hold together, in as few cases as the greedy finds."""
+    if COLUMN == "fetch":
+        return fetch_cases(), 0
     ax = axes()
     names = [n for n, _ in ax]
     values = dict(ax)
@@ -215,7 +252,7 @@ def trigger_of(case):
 
 
 def target_of(case):
-    return DEC if case["derive<>"] == "decide" else DST
+    return DEC if case["derive<>"] == "decide" or case.get("derive.<mapper>.mapper") == "board_count_map" else DST
 
 
 def rule_of(case, name):
@@ -392,6 +429,8 @@ def run_one(F, i, name, case, kill, base, ledger):
     col = "w" if trig == VAL else "v"
     b = F.Board(name, PORT0 + i, None if kill == "none" else kill)
     b.name = name
+    if COLUMN == "fetch":
+        b.read_log = os.path.join(b.root, "reads.txt")
     F.say("=== CASE %s %s" % (name, json.dumps({k: v for k, v in case.items() if v not in ("na", None)})))
 
     def write_config(b):
@@ -418,7 +457,19 @@ def run_one(F, i, name, case, kill, base, ledger):
     def seed(b):
         if trig == VAL:                                         # a join writes onto target rows that are there
             put(DST, rows(DST, range(1, 7), lambda j: {}))
-        put(trig, rows(trig, range(1, 7), lambda j: {col: value(kind, j)}))
+        if case["board.path"] == "file_replace" and case.get("board.fetch_target"):
+            # the «fetch» column seeds a file board by files: a user's seed outranks the file layer, so the step's
+            # file would change no value and move no row out of its map (10-22 baseline: «unchanged 3»)
+            raws = os.path.join(b.root, "ingestion_workspace", trig, "raws")
+            os.makedirs(raws, exist_ok=True)
+            for m, ks in (("M1", (1, 2, 3)), ("M2", (4, 5, 6))):
+                with open(os.path.join(raws, "seed_%s.csv" % m.lower()), "w", encoding="utf-8", newline="") as f:
+                    f.write("k,m,%s\n" % col + "".join("K%d,%s,%s\n" % (j, m, value(kind, j)) for j in ks))
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 120 and b.q('SELECT count(*) FROM "%s"' % trig)[0][0] < 6:
+                time.sleep(1)
+        else:
+            put(trig, rows(trig, range(1, 7), lambda j: {col: value(kind, j)}))
         seen["seeded"] = look("seeded")
         seen["keys"] = {r[0] for r in b.q('SELECT k FROM "%s"' % trig)}
         return seen["seeded"]
@@ -429,15 +480,24 @@ def run_one(F, i, name, case, kill, base, ledger):
             F.say("fresh process /health", b.start())
         if kill != "none":
             open(b.flag + ".arm", "w").close()                  # the seam dies from here on - not in the seed
-        path = case["board.path"]
-        if path == "insert":
+        path, fetch = case["board.path"], case.get("board.fetch_target")
+        left = fetch == "left map/key"
+        if path == "insert" and fetch:                         # a row into a map that holds rows: the map is read
+            put(trig, [dict(r, updates=dict(r["updates"], m="M1")) for r in rows(trig, (7,), lambda j: {col: value(kind, j)})])
+        elif path == "insert":
             put(trig, rows(trig, (7, 8), lambda j: {col: value(kind, j)}))
+        elif path == "edit" and fetch and not left:            # ③b: one value inside its map, nothing leaves
+            put(trig, [{"row_id": b.rid(trig, "K4"), "updates": {col: value(kind, 9)}, "source_name": "user"}])
+        elif path == "edit" and left:                          # K4 leaves map M2 for M1 · K2 leaves its key
+            put(trig, [{"row_id": b.rid(trig, "K4"), "updates": {"m": "M1"}, "source_name": "user"},
+                       {"row_id": b.rid(trig, "K2"), "updates": {"k": "K2X"}, "source_name": "user"}])
         elif path == "edit":
             put(trig, [{"row_id": b.rid(trig, "K4"), "updates": {col: value(kind, 9)}, "source_name": "user"},
                        {"row_id": b.rid(trig, "K2"), "updates": {"k": "K2X"}, "source_name": "user"}])
         elif path == "delete":
-            code, body = b.call("POST", "/tables/%s/rows/batch_delete" % trig, {"row_ids": [b.rid(trig, "K5")],
-                                                                              "user_name": "board"})
+            # one row of a map that keeps rows - or «left»: every row of map M2, which then no row holds
+            code, body = b.call("POST", "/tables/%s/rows/batch_delete" % trig, {
+                "row_ids": [b.rid(trig, k) for k in (("K4", "K5", "K6") if left else ("K5",))], "user_name": "board"})
             assert code == 200, (code, body)
         elif path == "replay":
             # a decide loads as «enrichment_dedup:<name>» + «enrichment_auto_confirm:<name>»; replay takes the loaded
@@ -451,7 +511,8 @@ def run_one(F, i, name, case, kill, base, ledger):
             os.makedirs(raws, exist_ok=True)
             with open(os.path.join(raws, "%s_m1.csv" % trig), "w", encoding="utf-8", newline="") as f:
                 f.write("k,m,%s\n" % col)                       # map M1 again: K1 changed, K3 gone, K9 new
-                for k, j in (("K1", 7), ("K2", 2), ("K9", 9)):
+                # «left»: K4 comes into M1 from M2 instead of K9
+                for k, j in (("K1", 7), ("K2", 2), ("K4", 4) if left else ("K9", 9)):
                     f.write("%s,M1,%s\n" % (k, value(kind, j)))
         elif path == "r2":
             # R2 «the table's chain layers, whole» - `--rule` narrows to columns outside a target_columns list,
@@ -517,6 +578,9 @@ def run_one(F, i, name, case, kill, base, ledger):
         out["oracle"] = oracle(b, case, trig, tgt, kind)
         out["events"] = b.q("SELECT table_name, event_type, count(*) FROM database_outbox WHERE table_name IN "
                             "(%s) GROUP BY 1, 2 ORDER BY 1, 2" % ", ".join("'%s'" % x for x in (SRC, VAL, DST, DEC)))
+        if COLUMN == "fetch":
+            out["reads"] = census(b, tgt)
+            out["shape"], out["path"] = case["board.shape"], path
         return out
 
     secs, checks = F.run(b, None, [seed, step], write_config=write_config)
@@ -526,11 +590,40 @@ def run_one(F, i, name, case, kill, base, ledger):
             "final": {k: v for k, v in final.items() if k != "schema"}}
 
 
+def census(b, tgt):
+    """Where the board tables were read, from the board's read census (pkg/sitecustomize): R inside a rule's run, W while
+    the group's write holds (the target's own reads there are the write's), and the canaries - processes attached, runs
+    entered. A census line that failed is said by the process on its stdout log."""
+    lines = open(b.read_log, encoding="utf-8").read().splitlines() if os.path.exists(b.read_log) else []
+    reads = [l.split(" ", 5)[2:] for l in lines if " READ " in l]           # [stage, tables, statement]
+    r = [x for x in reads if x[1] == "R"]
+    w = [x for x in reads if x[1] == "W" and set(x[2].split(",")) != {tgt}]
+    failed = []
+    for name in os.listdir(b.root):
+        if name.endswith(".log"):
+            with open(os.path.join(b.root, name), encoding="utf-8", errors="replace") as f:
+                failed += [l.strip()[:160] for l in f if "[BoardRead]" in l]
+    return {"attach": sum(" ATTACH " in l for l in lines), "enter": sum(" ENTER " in l for l in lines),
+            "R": len(r), "W": len(w), "D": sum(x[1] == "D" for x in reads),
+            "R_sample": [" ".join(x[1:])[:160] for x in r[:3]], "W_sample": [" ".join(x[1:])[:160] for x in w[:3]],
+            "outside_line": b.log_lines("reads outside the fetch")[:2], "census_failed": failed[:3]}
+
+
 def oracle(b, case, trig, tgt, kind):
     """What the target should hold, where the kind says it: None when it does not (a decide)."""
     if case["derive<>"] == "decide":
         return None
     off = case.get("enabled") is False or case["board.path"] == "r2"   # R2 takes the chain's writes out, whole
+    if case.get("derive.<mapper>.mapper") == "board_count_map":
+        # n = the rows its key holds now - a group_by rule is handed every row of its key (owner 10-22), for every key
+        # a row holds; a key no row holds is not judged (it is handed no row, and removes nothing)
+        held = {}
+        for (m,) in b.q('SELECT m FROM "%s"' % SRC):
+            held[str(m)] = held.get(str(m), 0) + 1
+        got = {str(m): n for m, n in b.q('SELECT m, n FROM "%s"' % DEC)}
+        bad = [(m, None if off else str(n), got.get(m)) for m, n in sorted(held.items())
+               if got.get(m) != (None if off else str(n))]
+        return {"ok": not bad, "wrong": bad[:4]}
     if case["derive<>"] == "mapper":
         by = lambda t: tuple((x is None, x or "") for x in t)          # a blank cell next to a text one
         src = sorted([(str(k), str(m), None if v is None else str(v)) for k, m, v in b.q('SELECT k, m, v FROM "%s"' % SRC)], key=by)
@@ -571,6 +664,20 @@ def verdict(final, kill):
         ("partial write", final.get("partial_write"))) if bad]
     if kill != "none" and final.get("killed") is False:
         reds.append("seam never reached")
+    reads = final.get("reads")
+    if reads is not None:                                   # the «fetch» column (lead 10-22: in the verdict)
+        if not reads["attach"] or reads["census_failed"]:
+            reds.append("read census broke")                # the instrument, not the product - no count is read
+        elif final.get("path") != "r2" and not reads["enter"]:
+            reds.append("run never reached")
+        else:
+            if final.get("shape") == "own sql":             # the mapper's own read stays - and is said
+                if not reads["outside_line"]:
+                    reds.append("no «reads outside the fetch» line")
+            elif reads["R"]:
+                reds.append("read in the run (R %d)" % reads["R"])
+            if reads["W"]:
+                reds.append("read while the write holds (W %d)" % reads["W"])
     return "GREEN" if not reds else "RED: " + ", ".join(reds)
 
 

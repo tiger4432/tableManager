@@ -40,6 +40,8 @@ class Board(E.Launch):
         e["PYTHONPATH"] = os.pathsep.join([PKG, os.path.join(self.wt, "server")])
         if self.kill:
             e.update(BOARD_KILL_AT=self.kill, BOARD_KILL_FLAG=self.flag)
+        if getattr(self, "read_log", None):                         # the «fetch» column's read census (sitecustomize)
+            e["BOARD_READ_LOG"] = self.read_log
         return e
 
     def call(self, method, path, body=None):
@@ -57,7 +59,8 @@ class Board(E.Launch):
 
     def check(self, src=SRC, dst=DST):
         p = subprocess.run([E.PY, os.path.join(HERE, "check_board.py"), src, dst], cwd=os.path.join(WT, "server"),
-                           env=dict(self.env(), BOARD_KILL_AT=""), capture_output=True, text=True, encoding="utf-8",
+                           env=dict(self.env(), BOARD_KILL_AT="", BOARD_READ_LOG=""), capture_output=True, text=True,
+                           encoding="utf-8",
                            errors="replace")
         line = [l for l in p.stdout.splitlines() if l.startswith("BOARD ")]
         assert line, (p.stdout[-800:], p.stderr[-1500:])
