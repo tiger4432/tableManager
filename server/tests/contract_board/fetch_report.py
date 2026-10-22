@@ -13,7 +13,7 @@ import board_gen as G  # noqa: E402
 runs, h, out_path = os.environ["FETCH_RUNS"], os.environ["FETCH_HASH"], os.environ["FETCH_OUT"]
 results = json.load(open(os.path.join(runs, "gen_results.json"), encoding="utf-8"))
 chosen, _ = G.cases()
-assert len(chosen) == 46, len(chosen)                       # canary: the fetch column, not the write one
+assert len(chosen) == 47, len(chosen)                       # canary: the fetch column, not the write one
 
 #: the «after» column: FETCH_AFTER_RUNS · FETCH_AFTER_HASH - the verdict there, and what moved against the baseline
 #: (target rows · layers with a row's id folded · events)
