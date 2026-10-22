@@ -438,17 +438,17 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         return [row_id for row_id in ids if row_id in claimed], {cell: sorted(names) for cell, names in claims.items()}
 
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "source": source_name}
-    touched = set()
+    gone = []
 
-    def read_and_keep(size):
-        page = read(size)
-        if page is not None:
-            touched.update(page[0])
-        return page
-    stats.update(_withdraw_cells(db, table_name, target, read_and_keep, apply=apply, chunk_size=chunk_size,
-                                 log=log, checkpoint=checkpoint, label=f"'{source_name}' claims"))
-    # a row this withdrawal left a shell goes, as any withdrawal's does (총괄 69b8b029c)
-    stats["rows_deleted"] = len(delete_shells(db, table_name, shells(db, table_name, sorted(touched)))) if apply else 0
+    def its_shells(row_ids):
+        # a row this withdrawal left a shell goes, as any withdrawal's does (총괄 69b8b029c) - in the page's own
+        # commit: after every page it was a commit of its own, and a death between left the shells (총괄 g33 · g85)
+        db.flush()
+        gone.extend(delete_shells(db, table_name, shells(db, table_name, sorted(row_ids))))
+    stats.update(_withdraw_cells(db, table_name, target, read, apply=apply, chunk_size=chunk_size,
+                                 log=log, checkpoint=checkpoint, label=f"'{source_name}' claims",
+                                 page_done=its_shells))
+    stats["rows_deleted"] = len(gone)
     if apply:
         db.commit()
     return stats
@@ -470,10 +470,10 @@ def _pages_of(claims: dict):
 
 def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                     chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info, checkpoint=None,
-                    label: str = "") -> dict:
+                    label: str = "", page_done=None) -> dict:
     """R2's one pass over the claims `read(size)` hands a page at a time - `(row ids,
     {(row_id, column): [source_name, ...]})` of at most `size` rows, none in it on a page that holds none, None at
-    the end.
+    the end. `page_done(row ids)`, applied: what else that page's step writes, before it ends.
 
     A cell claimed by several sources withdraws them in that order, each seeing what the one
     before it left on apply - what one `withdraw_source` call per source did, in one pass."""
@@ -637,6 +637,8 @@ def _withdraw_cells(db, table_name: str, target, read, apply: bool = False,
                             tuple_(models.CellSource.source_name, models.CellSource.row_id)
                             .in_(pairs[j:j + chunk_size]),
                         ).delete(synchronize_session=False)
+                if page_done is not None:
+                    page_done(chunk)
                 from session_contract import end_step
                 end_step(db)
 

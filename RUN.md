@@ -22,7 +22,7 @@
 >           안 쓴 칸은 맨 층 그대로이고 해가 없음. 한 번에 옮기려면 그 규칙 통째 리플레이 1 회(소급 비용 = 그 규칙 칸 수)
 > 편집 거두기 거둘 칸은 이번에 쓴 결과(모든 쪽)와 선언에서 — 이 프로세스가 전에 본 것을 묻지 않음
 >           이번에 아무것도 안 쓰고 칸을 선언하지 않은 규칙: «[ChainRetract] rule <규칙>: it wrote nothing here this time and declares no columns ...»
-> 다시 돌리기 rerun_set_aside 가 치워 둔 «삭제»는 행 대신 옛 값과 함께 삭제 사건으로 다시 넣음 — 조인 · decide 의 다시 셈이 실시간과 같은 길로 돎
+> 다시 돌리기 rerun_set_aside 가 치워 둔 «삭제»는 삭제 사건으로, 옛 값이 있는 «고침»은 고침 사건으로 옛 값과 함께 다시 넣음 — 조인 · decide 의 다시 셈이 떠난 옛 키까지 실시간과 같은 길로 거둠. 답에 edits_staged · deletions_staged. R2 거두기는 쪽마다 그 쪽의 껍데기 지우기까지 한 커밋
 >           (한 커밋이라 처리됨 앞에서 꺼진 삭제는 통째 되돌아가고, 계보 없는 규칙은 치워 둘 때 거둬지지 않음 — 총괄 g26)
 >           옛 값이 없는 옛 사건: run 로그 «[rerun_set_aside] <표>: old values not kept - this deletion cannot be replayed; rows: …» — 그 행은 손으로
 > 교착 되감기 사람 저장과 교착한 그룹은 시도를 안 올리고 되감음(상태 retrying, attempt 0)

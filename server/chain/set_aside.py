@@ -223,19 +223,19 @@ def _mark(db, ids, reason):
     return dict(Counter(event.table_name for event in events))
 
 
-def deletions_set_aside(db, tables=(), rules=(), transactions=()):
-    """-> `{table: [(row id, its values before the deletion or None)]}` - the rows the set-aside DELETE events in scope
-    named, each with the old values its event carried (`event_constants.OLD_VALUES_KEY`; an event staged before they
-    were kept has none)."""
+def changes_set_aside(db, tables=(), rules=(), transactions=()):
+    """-> `{table: {row id: (its last set-aside event's type, what it held before the first of them)}}` - each row the
+    set-aside events in scope named. What it held is per column the old value of the first event that carried one
+    (`event_constants.OLD_VALUES_KEY`: an edit the columns it changed, a deletion every column; an event staged before
+    they were kept carries none) - `{}` when none did."""
     out = {}
     for event, payload in _in_scope(db, True, tables, rules, transactions):
-        if event.event_type != "DELETE":
-            continue
         rows, old = rows_of(payload), payload.get(event_constants.OLD_VALUES_KEY)
         olds = old if isinstance(old, list) else [old]
-        out.setdefault(event.table_name, []).extend(
-            (row_id, olds[i] if i < len(olds) and isinstance(olds[i], dict) and olds[i] else None)
-            for i, row_id in enumerate(rows))
+        table = out.setdefault(event.table_name, {})
+        for i, row_id in enumerate(rows):
+            had = olds[i] if i < len(olds) and isinstance(olds[i], dict) else {}
+            table[row_id] = (event.event_type, {**had, **table.get(row_id, (None, {}))[1]})
     return out
 
 

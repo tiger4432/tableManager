@@ -116,3 +116,22 @@ def test_r2_deletes_the_row_it_empties_and_its_preview_said_at_most_that_many(db
     assert preview["rows_emptied"] == 1
     assert stats["rows_deleted"] == 1
     assert _rows(db) == [("b", "b", "x")]
+
+
+def test_r2_withdraws_a_page_and_deletes_its_shells_in_one_commit(db, monkeypatch):
+    """총괄 g33 · g85: R2 committed its withdrawal page by page and the shells it left once at the end - a death
+    between left the rows standing with their keys blank. Now a page's shells go in that page's commit."""
+    row_id = _copy(db, "a", "src-a")
+    [layer] = {s.source_name for s in db.query(models.CellSource).filter_by(table_name=TGT, row_id=row_id)}
+    layers = db.query(models.CellSource).filter_by(table_name=TGT, row_id=row_id, source_name=layer).count()
+    db.rollback()
+
+    def dies(*_args):
+        raise RuntimeError("killed at the shells")
+    monkeypatch.setattr(cell_layer, "delete_shells", dies)
+    with pytest.raises(RuntimeError, match="killed at the shells"):
+        replay.withdraw_source(db, TGT, layer, apply=True)
+    db.rollback()
+
+    assert _rows(db) == [("a", "a", "x")], "the page's withdrawal outlived its shells' death"
+    assert db.query(models.CellSource).filter_by(table_name=TGT, row_id=row_id, source_name=layer).count() == layers == 2
