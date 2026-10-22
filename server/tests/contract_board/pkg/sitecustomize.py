@@ -4,6 +4,9 @@ seam is reached, writes the flag file and ends the process with os._exit (no cle
 
 BOARD_KILL_AT     the seam name (below)
 BOARD_KILL_FLAG   a file; present = already killed, the seam passes from then on (the restarted process runs through)
+BOARD_READ_LOG    a file; when set, every SELECT naming a board table (bd_*) is one line there with the stage it ran in -
+                  R inside `rule_run.run_rule`, W while `session_contract.hold_commit` holds, D otherwise - and each
+                  `run_rule` call one ENTER line, each process's first statement one ATTACH line (the canaries)
 """
 import importlib.abc
 import importlib.machinery
@@ -79,8 +82,10 @@ SEAMS = {
 
 
 class _Patch(importlib.abc.MetaPathFinder):
-    def __init__(self, module, attr, wrap, when, why):
-        self.module, self.attr, self.wrap, self.when, self.why = module, attr, wrap, when, why
+    """`patches`: [(attr, wrap(fn) -> fn)] for one module - a module two hooks touch is patched by ONE finder (the first
+    finder that answers a module is the only one asked)."""
+    def __init__(self, module, patches):
+        self.module, self.patches = module, patches
 
     def find_spec(self, name, path, target=None):
         if name != self.module:
@@ -96,15 +101,82 @@ class _Patch(importlib.abc.MetaPathFinder):
 
             def exec_module(self, module):
                 loader.exec_module(module)
-                setattr(module, patch.attr, patch.wrap(getattr(module, patch.attr), patch.when, patch.why))
+                for attr, wrap in patch.patches:
+                    setattr(module, attr, wrap(getattr(module, attr)))
 
         spec.loader = _Loader()
         return spec
 
 
+# --- the read census (BOARD_READ_LOG) ---------------------------------------------------------------------------------
+READ_LOG = os.environ.get("BOARD_READ_LOG")
+_state = {"held": False, "attached": False}
+
+
+def _line(text):
+    with open(READ_LOG, "a", encoding="utf-8") as f:
+        f.write("%s pid=%d %s\n" % (time.strftime("%H:%M:%S"), os.getpid(), text))
+
+
+def _on_execute(conn, cursor, statement, parameters, context, executemany):
+    try:
+        if not _state["attached"]:
+            _state["attached"] = True
+            _line("ATTACH %s" % os.path.basename(sys.argv[0] if sys.argv and sys.argv[0] else "?"))
+        if not statement.lstrip().lower().startswith(("select", "with")):
+            return
+        import re
+        tables = sorted(set(re.findall(r"\b(bd_(?:src|val|dst|dec))\b", statement)))
+        if not tables:
+            return
+        stage = "R" if _caller_is("run_rule", 1) else "W" if _state["held"] else "D"
+        _line("READ %s %s %s" % (stage, ",".join(tables), " ".join(statement.split())[:140]))
+    except Exception as e:                      # the census goes quiet alone, and says so - the statement still runs
+        sys.stderr.write("[BoardRead] census line failed: %r\n" % (e,))
+
+
+def _enter(fn):
+    def wrapped(db, rule, *a, **k):
+        _line("ENTER %s" % ((rule or {}).get("name") or "?"))
+        return fn(db, rule, *a, **k)
+    wrapped.__wrapped__ = fn
+    return wrapped
+
+
+def _hold(fn):
+    def wrapped(db, *a, **k):
+        opened = fn(db, *a, **k)
+        if opened:
+            _state["held"] = True
+        return opened
+    wrapped.__wrapped__ = fn
+    return wrapped
+
+
+def _let_go(fn):
+    def wrapped(*a, **k):
+        try:
+            return fn(*a, **k)
+        finally:
+            _state["held"] = False
+    wrapped.__wrapped__ = fn
+    return wrapped
+
+
+PATCHES = {}
 if POINT:
     if POINT not in SEAMS:
         sys.stderr.write("[BoardKill] unknown seam %r - nothing armed\n" % POINT)
     else:
-        mod, attr, wrap, when = SEAMS[POINT]
-        sys.meta_path.insert(0, _Patch(mod, attr, wrap, when, POINT))
+        _mod, _attr, _wrap, _when = SEAMS[POINT]
+        PATCHES.setdefault(_mod, []).append((_attr, lambda fn: _wrap(fn, _when, POINT)))
+if READ_LOG:
+    import sqlalchemy.engine
+    import sqlalchemy.event
+    sqlalchemy.event.listen(sqlalchemy.engine.Engine, "before_cursor_execute", _on_execute)
+    PATCHES.setdefault("chain.rule_run", []).append(("run_rule", _enter))
+    PATCHES.setdefault("session_contract", []).extend([("hold_commit", _hold), ("release_hold", _let_go)])
+    # a group that raised never reaches `release_hold` - the write seat's own end lets go too
+    PATCHES.setdefault("chain.ingestion_worker", []).append(("apply_chain_writes", _let_go))
+for _mod, _patches in PATCHES.items():
+    sys.meta_path.insert(0, _Patch(_mod, _patches))
