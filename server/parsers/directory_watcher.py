@@ -475,6 +475,9 @@ CHAIN_STATEMENT_TIMEOUT_DEFAULT = 120.0
 #: A grid read's statement limit (총괄 d16033b63) - null or 0: none. The default is measured on the 4,000,000-row board.
 GRID_READ_TIMEOUT_SETTING = "grid_read_timeout_seconds"
 GRID_READ_TIMEOUT_DEFAULT = 10.0
+#: How many item columns a pivot read spreads at the most - past it the first ones and «N more» (소유자 10-22).
+PIVOT_MAX_COLUMNS_SETTING = "pivot_max_columns"
+PIVOT_MAX_COLUMNS_DEFAULT = 200
 #: How soon a table's whole count is counted again after it changed, at the most (소유자 ㄱ · 총괄 67e5e9ccd) - 0: at once.
 COUNT_RECOUNT_SETTING = "count_recount_seconds"
 COUNT_RECOUNT_DEFAULT = 30.0
@@ -547,10 +550,19 @@ def grid_auto_index_after(settings=None):
 
 def auto_index_per_table(settings=None):
     """How many automatic indexes one table may hold - a whole number from 0; anything else reads as the default."""
+    return _whole_number(settings, AUTO_INDEX_PER_TABLE_SETTING, AUTO_INDEX_PER_TABLE_DEFAULT, 0)
+
+
+def pivot_max_columns(settings=None):
+    """How many item columns a pivot read spreads - a whole number from 1; anything else reads as the default."""
+    return _whole_number(settings, PIVOT_MAX_COLUMNS_SETTING, PIVOT_MAX_COLUMNS_DEFAULT, 1)
+
+
+def _whole_number(settings, cell, absent, least):
     settings = load_ingestion_settings() if settings is None else settings
-    value = settings.get(AUTO_INDEX_PER_TABLE_SETTING, AUTO_INDEX_PER_TABLE_DEFAULT)
-    good = isinstance(value, int) and not isinstance(value, bool) and value >= 0
-    return value if good else AUTO_INDEX_PER_TABLE_DEFAULT
+    value = settings.get(cell, absent)
+    good = isinstance(value, int) and not isinstance(value, bool) and value >= least
+    return value if good else absent
 
 
 def grid_read_timeout(settings=None):

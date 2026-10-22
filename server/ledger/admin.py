@@ -252,6 +252,10 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
     refused = _models.table_index_refusal(table, declaration)
     if refused:
         raise _table_config_refusal("indexes_refused", *refused)
+    import grid_pivot
+    refused = grid_pivot.refusal(table, declaration)
+    if refused:
+        raise _table_config_refusal("pivot_refused", *refused)
 
     path = table_config_path()
     current_base = file_fingerprint(path)
