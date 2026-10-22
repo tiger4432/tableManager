@@ -521,8 +521,9 @@
 - **선언 예시** — `table_config.json` 의 표 선언에 `"pivot": {"column": "itemid", "value": "value"}`. `column` 은 표 키(`composite_key_source`) 중 하나, `value` 는 키가 아닌 선언 칸. 아니면 저장이 이유와 함께 거절된다(`pivot_refused`).
 - **거르기 · 정렬** — 키 칸은 그리드 그대로. 펼친 칸은 늘 `item:<값>` 이름으로 거르고 정렬한다. 거르기는 그리드 필터와 같은 조건, «blank» 는 그 item 행이 없는 키. 정렬하면 그 item 이 없는 키는 오름 · 내림 모두 뒤.
 - **상한** — 펼친 칸은 `ingestion_settings.json` 의 `pivot_max_columns`(기본 200)까지, 넘으면 응답에 «몇 개 더»(`items_more`).
-- **안 받는 것** — 피벗 읽기에서 `q` · `after` · `before` · `target_row_id` · `transaction_id` · `enrichment_queue` 는 422 로 이름을 대고 거절한다(쪽은 `skip`/`limit`).
-- **화면에서** — 클라 착지 뒤 그리드의 Pivot ↔ Unpivot. 이 착지는 서버 몫.
+- **검색** — 피벗 읽기의 `q` 는 «키 묶음 안 아무 긴 행이 맞으면 그 키»(그리드 검색과 같은 조건)이고, 맞은 키의 칸은 전부 나온다. 수 · 칸 목록도 같은 검색 안이다.
+- **안 받는 것** — 피벗 읽기에서 `after` · `before` · `target_row_id` · `transaction_id` · `enrichment_queue` 는 422 로 이름을 대고 거절한다(쪽은 `skip`/`limit`).
+- **화면에서** — 클라 착지 뒤 그리드의 Pivot ↔ Unpivot. 버튼은 `GET /tables/<표>/schema` 의 `pivot`(선언 그대로, 거절되는 선언이면 `null`)을 보고 그린다. 이 착지는 서버 몫.
 - **필요한 조건** — git pull · 서버 재기동.
 
 ## 2026-10-22 · 오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것

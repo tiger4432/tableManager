@@ -2717,8 +2717,13 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
     # ⚠️ AN OUT-PARAM, NOT A FOURTH RETURN VALUE. This function's own docstring
     # says why the 3-tuple is load-bearing, and two call sites unpack it; the codebase
     # already answers 「extra detail for the caller who asks」 with `drop_report`.
-    query = apply_search_filter(query, table_model, table_name, q, cols,
-                                scope_report=scope_report)
+    if pivot and q:             # a key group is searched by any of its long rows (총괄 10-22)
+        held, group_rows = grid_pivot.group_rows(db, table_model, pivot)
+        query = query.filter(apply_search_filter(group_rows, held, table_name, q, cols,
+                                                 scope_report=scope_report).exists())
+    else:
+        query = apply_search_filter(query, table_model, table_name, q, cols,
+                                    scope_report=scope_report)
 
     # [Fix] transaction_id 필터링 시에도 캐시 정합성을 보장하기 위해 키에 포함
     cache_key_parts = ["total_count"]
@@ -2926,7 +2931,7 @@ def grid_page(
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
     if pivot:
         return pivot_page(db, table_name, table_model, skip=skip, limit=limit, order_by=order_by,
-                          order_desc=order_desc, filters=filters, counted=counted, q=q,
+                          order_desc=order_desc, filters=filters, counted=counted, q=q, cols=cols,
                           transaction_id=transaction_id, enrichment_queue=enrichment_queue,
                           target_row_id=target_row_id, after=after, before=before)
 
@@ -3173,14 +3178,16 @@ def grid_page(
     }, table_name)
 
 
-def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc, filters, counted, **asked):
+def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc, filters, counted, cols,
+               **asked):
     """A pivot page (`grid_page`'s `pivot`): `limit` key groups from `skip` - a group's items never cut by the page -
     each cell its row's value and row_id; the items of the narrowed rows up to `pivot_max_columns`, and how many more."""
     from parsers.directory_watcher import pivot_max_columns
 
     began = time.time()
     pivoted = grid_pivot.of(table_name, **asked)
-    rows, _cache_key = narrowed_table_query(db, table_name, table_model, filters=filters, pivot=pivoted)
+    rows, _cache_key = narrowed_table_query(db, table_name, table_model, q=asked.get("q"), cols=cols,
+                                            filters=filters, pivot=pivoted)
     page = [tuple(group) for group in grid_pivot.groups(rows, table_model, pivoted)
             .order_by(*grid_pivot.order(table_model, pivoted, order_by, order_desc)).offset(skip).limit(limit).all()]
     items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns())
@@ -3706,6 +3713,8 @@ def get_table_schema(table_name: str, world: str = None, db: Session = Depends(g
         # The table's smart-paste format order as declared (총괄 12cc7dd1f ⓪), or `None` when
         # it declares none - which is a different fact from an empty order.
         "smart_paste": config.get("smart_paste"),
+        # {"column", "value"} as declared, or None - none declared, or one a pivot read refuses (총괄 10-22)
+        "pivot": grid_pivot.declared(table_name, config),
         # Always present, `[]` when no verified join touches this table: a stable shape
         # is what lets a client read it without asking whether the key exists.
         "virtual_columns": virtual_columns,
