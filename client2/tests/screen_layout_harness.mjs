@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Every screen, opened in real Chrome before a screen commit lands (lead 1343e5cca; owner 10-09 「이런 잘림 같은 ui
-// 요소는 사전에 차단하면 안 됨?」). Each html entry in the built dist is opened at each size, driven through its states,
+// 요소는 사전에 차단하면 안 됨?」). Each html entry of the source, built now into a folder of this run's (lead 10-22 ㄴ - the committed dist can be a
+// build behind), is opened at each size, driven through its states,
 // and measured in the page:
 //   clip      an element that clips (overflow hidden/clip) holds more than it shows - a letter's box crosses its
 //             side - and neither it nor an element around it carries data-clip-ok (a cut made on purpose)
@@ -18,7 +19,7 @@
 //   cells     what one screen asks of itself after one of its states (CELLS): the grid's header message - a press on
 //             the button beside it reaches the button, and its title is its whole sentence (lead 10-09)
 // One line per finding: entry · size · state · element path · what. Sizes: 1920x950, 1536x864, 1280x720.
-// Chrome hands every request here (DevTools Fetch). Files come from dist, GETs from fixtures/screens_answers.json.gz
+// Chrome hands every request here (DevTools Fetch). Files come from that build, GETs from fixtures/screens_answers.json.gz
 // (capture_screens.py), the two queues from fixtures/chain_states.json; no request reaches a server of ours. A GET with
 // no answer is a red line - an unanswered screen draws empty and measures nothing. Other methods are refused and
 // counted; a page that leaves (a link, Log out) is answered 204 and stays. Another origin's file (the fonts, the
@@ -54,7 +55,10 @@ const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'tes
 // Chrome and ends unsettled - not chased (lead 10-14 «그 밖의 1024 결함은 찾아 나서지 말 것»).
 const FIRST_STATE_ONLY = { 'index.html': ['1024x768'] };
 const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
-const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'centre', 'heights', 'columns', 'words'];
+const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'centre', 'heights', 'columns', 'words', 'built now'];
+// This run's mark on every bundle it builds (lead 10-22 ㄴ): a page without it was built by someone else - the committed
+// dist a build behind its source (prebuild runs before vite) or another run's.
+const STAMP = `${process.pid}-${Date.now()}`;
 const TOL = 12;
 const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const only = argOf('--only');
@@ -2086,6 +2090,8 @@ async function runScreens(dist, label, one = only) {
         await settle(chrome, log);
         await evaluate(chrome, `(${screensLib})(${TOL})`);
         const add = (state, lines) => { for (const l of lines) found.push({ entry, size, state, ...l }); };
+        const built = await evaluate(chrome, 'document.documentElement.dataset.screensBuild || null');
+        if (built !== STAMP) add('loaded', [{ rule: 'built now', path: entry, what: `the page is not this run's build (${built || 'no mark'})` }]);
         const panels = [];
         try {
         const all = DRIVE[entry] || [['loaded', async () => true]];
@@ -2136,7 +2142,8 @@ async function runScreens(dist, label, one = only) {
 let ran = 0;
 let failed = 0;
 const t0 = Date.now();
-const { entries, found } = await runScreens(path.join(CLIENT, 'dist'), 'dist');
+const source = await buildBundle('screens-source-');
+const { entries, found } = await runScreens(source, 'source');
 for (const entry of entries) {
   for (const [w, h] of sizesOf(entry)) {
     const cells = CELLS.filter((c) => c.entry === entry && (!c.sizes || c.sizes.includes(`${w}x${h}`)));
@@ -2334,9 +2341,16 @@ const MUTANTS = [
     // The table is fixed-width (owner 10-12): a head's min-width moves nothing - the columns' own widths push it.
     file: 'src/walk/styles.js', edits: [['.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }', '.wk-wide th.wk-sidehead, .wk-wide th.wk-leafhead { text-align: center; }\n.wk-sides col.wk-col-value { width: 1600px !important; }']] },
 ];
-async function buildMutant(m) {
+// The one build door: the source as it is now, into a folder of this run's, every html stamped with STAMP - the base
+// pass with no other plugin, a mutant with its edit (lead 10-22 ㄴ).
+async function buildBundle(prefix, plugins = []) {
   const { build } = await import('vite');
-  const out = mkdtempSync(path.join(tmpdir(), 'screens-mutant-'));
+  const out = mkdtempSync(path.join(tmpdir(), prefix));
+  await build({ root: CLIENT, configFile: path.join(CLIENT, 'vite.config.js'), logLevel: 'silent', build: { outDir: out, emptyOutDir: true },
+    plugins: [...plugins, { name: 'screens-stamp', transformIndexHtml: (html) => html.replace(/<html\b/, `<html data-screens-build="${STAMP}"`) }] });
+  return out;
+}
+async function buildMutant(m) {
   const target = path.join(CLIENT, m.file).replace(/\\/g, '/');
   const hits = new Map(m.edits.map(([a]) => [a, 0]));
   const swap = () => {
@@ -2347,9 +2361,8 @@ async function buildMutant(m) {
     return code;
   };
   const mine = (id) => id.split('?')[0].replace(/\\/g, '/') === target;
-  await build({ root: CLIENT, configFile: path.join(CLIENT, 'vite.config.js'), logLevel: 'silent', build: { outDir: out, emptyOutDir: true },
-    plugins: [{ name: 'screens-mutant', enforce: 'pre', transform: (code, id) => (mine(id) ? swap() : null),
-      transformIndexHtml: { order: 'pre', handler: (html, ctx) => (mine(ctx.filename) ? swap() : html) } }] });
+  const out = await buildBundle('screens-mutant-', [{ name: 'screens-mutant', enforce: 'pre', transform: (code, id) => (mine(id) ? swap() : null),
+    transformIndexHtml: { order: 'pre', handler: (html, ctx) => (mine(ctx.filename) ? swap() : html) } }]);
   for (const [a, n] of hits) if (!n) throw new Error(`mutant «${m.name}»: «${a.slice(0, 60)}» is not in ${m.file}`);
   return out;
 }
@@ -2371,4 +2384,5 @@ if (MUTATE) {
 console.log(`ASSERTIONS ${ran} ${failed}`);
 await sleep(1500);   // the last Chrome's children let go of its profile
 for (const dir of folders) removeFolder(dir, 'profile');
+removeFolder(source, 'build');
 process.exit(failed ? 1 : 0);

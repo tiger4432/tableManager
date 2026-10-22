@@ -94,7 +94,7 @@ row       padding 6.8 · gap 6.8 · list rows 7 12 (mockup figures, kept as stat
 ## 8. 화면 커밋 관문 — the screen gate (lead 1343e5cca, owner 10-09 「이런 잘림 같은 ui 요소는 사전에 차단하면 안 됨?」)
 ```
 checker  client2/tests/screen_layout_harness.mjs - the runner calls it with --mutate; a finding blocks the landing
-         every html entry in client2/dist, in real Chrome at 1920x950, 1536x864 and 1280x720, driven through its states (filters, a row picked,
+         every html entry of the source, built by the checker itself (not client2/dist - that is the report's Chrome line), in real Chrome at 1920x950, 1536x864 and 1280x720, driven through its states (filters, a row picked,
          the queues' nine states, a long table name, the side panel narrowed, each header panel opened)
          clip · overflow · panel under its button · [object ...] / undefined / NaN · a button boxed out of its line ·
          a long text cell past three lines while a short column beside it is half empty ·
