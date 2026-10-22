@@ -231,6 +231,30 @@ function suite(M) {
        && M.pickBranch(derive, 'decide', { join: {} }, CHAIN.defs).kind === undefined,
       'S8 a keyed oneOf still writes the branch under its key, its stated kind kept in step',
       show(keyed));
+    // B's value gates (lead 10-22): a require / exclude item is a name or a map of column -> values.
+    const GATE = { kind: 'oneOf', hint: 'choice', pick: 'shape', branches: { name: { kind: 'leaf', hint: 'free' },
+      list: { kind: 'map', keyed_by: 'index', of: { kind: 'leaf', hint: 'free' } },
+      values: { kind: 'map', keyed_by: 'name', of: { kind: 'leaf', hint: 'free' } } } };
+    ok(show(['ok', undefined, { status: ['SCRAP'] }, {}, ['x'], true].map((v) => M.shapeBranch(GATE, v, {})))
+       === show(['name', 'name', 'values', 'values', '', '']),
+      'S9 a mapping is the map branch keyed by name; a list is in no branch, not the index map',
+      show(['ok', undefined, { status: ['SCRAP'] }, {}, ['x'], true].map((v) => M.shapeBranch(GATE, v, {}))));
+    // The shipped shape-picked oneOfs hold a leaf and a record, no map: a mapping still picks the record.
+    const shipped = [];
+    const census = (n, defs) => {
+      if (!n || typeof n !== 'object') return;
+      if (n.kind === 'oneOf' && n.pick === 'shape') shipped.push([n, defs]);
+      for (const v of Object.values(n)) census(v, defs);
+    };
+    census(CHAIN, CHAIN.defs);
+    census(LEDGER, LEDGER.defs);
+    const notRecord = shipped.filter(([n, defs]) => {
+      const key = M.shapeBranch(n, { a: 1 }, defs);
+      return !key || (M.shapeAt({ kind: 'record', fields: [{ key: 'x', node: n.branches[key] }] }, ['x'], defs) || {}).kind !== 'record';
+    });
+    ok(shipped.length > 0 && notRecord.length === 0,
+      `S10 every shipped shape-picked oneOf (${shipped.length}) still reads a mapping as its record branch`,
+      show(notRecord.map(([n]) => Object.keys(n.branches))));
   }
 
   return { fail: failures.length - before };
@@ -254,9 +278,13 @@ const DEFECTS = [
   ['a oneOf picked by shape is descended by branch key, so entity_type.column is unreachable',
     (s) => s.replace("    if (node.pick === 'shape') return childOf(", "    if (false) return childOf(")],
   ['the shape is not read, so every value is the first branch',
-    (s) => s.replace("  const want = value === undefined", "  const want = 'leaf'; void (value === undefined")
-      .replace("    ? 'leaf' : typeof value === 'object' && !Array.isArray(value) ? 'record' : '';",
-               "    ? 'leaf' : typeof value === 'object' && !Array.isArray(value) ? 'record' : '');")],
+    (s) => s.replace("  const holds = value === undefined", "  const holds = (b) => b.kind === 'leaf'; void (value === undefined")
+      .replace("      ? (b) => b.kind === 'record' || (b.kind === 'map' && b.keyed_by !== 'index') : () => false;",
+               "      ? (b) => b.kind === 'record' || (b.kind === 'map' && b.keyed_by !== 'index') : () => false);")],
+  ['a mapping is the record branch only, so a written values item is in no branch',
+    (s) => s.replace(" || (b.kind === 'map' && b.keyed_by !== 'index')", '')],
+  ['a mapping is in an index map too, so an object picks a list branch',
+    (s) => s.replace(" && b.keyed_by !== 'index'", '')],
   ['the picker writes the branch under its key, as a keyed oneOf',
     (s) => s.replace("  if (node.pick === 'shape') {\n    if (shapeBranch(node, was, defs) === picked) return was;",
                      "  if (false) {\n    if (shapeBranch(node, was, defs) === picked) return was;")],

@@ -16,7 +16,8 @@
 // ⚠️ 사유의 철자는 여기서 짓지 «않습니다». `state.js` 의 `VIEW_READ_ONLY_NOTE` 하나이고, 화면의
 //    배지도 같은 글자를 씁니다 — 같은 사실에 두 문구를 쓰면 그 둘은 언젠가 갈라집니다.
 
-import { tableIsView, VIEW_READ_ONLY_NOTE } from './state.js';
+import { tableIsView, VIEW_READ_ONLY_NOTE, pivotShown } from './state.js';
+import { PIVOT_BULK_NOTE } from './grid_pivot.js';
 import { elements } from './dom.js';
 // 🔴 C-120. 「꺼짐 + 왜」를 그리는 «몸통»은 이제 여기 있지 않습니다. 이 파일이 답하는 것은
 //    「이 표에 쓸 수 있나」이고, 「행을 골랐나」 같은 «다른 물음»이 같은 기제를 쓰기 때문입니다.
@@ -46,6 +47,15 @@ export function writeRefusal() {
   return tableIsView() ? VIEW_READ_ONLY_NOTE : '';
 }
 
+/** A write of more than one cell - paste, clear, fill, a row added or deleted, a transaction: the table's refusal, or in
+ *  pivot view the pivot's (lead 10-22 ①: one cell at a time there until part ②). */
+export function bulkWriteRefusal() {
+  return writeRefusal() || (pivotShown() ? PIVOT_BULK_NOTE : '');
+}
+
+// The controls a pivot view refuses with the rest of the grid's bulk writes; the file uploads write the table, not the view.
+const GRID_BULK_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'txApplyBtn', 'smartPasteBtn'];
+
 /**
  * 쓰기가 거절되면 «사유를 적고» true. 부르는 쪽은 `if (refuseWrite()) return;` 한 줄입니다.
  *
@@ -54,7 +64,7 @@ export function writeRefusal() {
  *    그 둘째 줄입니다 — 아무 말 없이 안 되는 것은 고장과 구별되지 않습니다.
  */
 export function refuseWrite() {
-  const why = writeRefusal();
+  const why = bulkWriteRefusal();
   if (!why) return false;
   const el = elements.performanceLog;
   if (el) el.textContent = why;
@@ -71,7 +81,7 @@ export function refuseWrite() {
 export function applyWriteGuards() {
   const why = writeRefusal();
   for (const handle of WRITE_CONTROLS) {
-    setDisabledReason(elements[handle], why);
+    setDisabledReason(elements[handle], GRID_BULK_CONTROLS.includes(handle) ? bulkWriteRefusal() : why);
   }
   // 🔴 C-107. 그리고 «표 자체»가 그 사실을 말합니다. 종전에는 뷰라는 것이 화면에 «없었고»,
   //    쓰려고 해야 알 수 있었습니다 — 잠긴 컨트롤의 «이유»가 눌러 보기 전에는 안 보입니다.

@@ -13,6 +13,11 @@ export const state = {
   currentColumns: [],
   currentColumnTypes: {},
   currentColumnIndexes: {},
+  // The main grid's pivot (owner 10-22): the table's declaration ({column, value} from /schema, null: none), whether
+  // it is shown, and the last answer's view ({column, value, keys, items, items_more}).
+  currentPivot: null,
+  pivotOn: false,
+  pivotView: null,
   // C-84. 서버 카탈로그가 말하는 이 표의 «종류» — `/tables/<n>/schema.kind` 그대로.
   // 🔴 세 상태다: 'table' · 'view' · ''(«아직/옛 서버가 안 알려 줬다»). 빈 값은 뷰가 «아니다» —
   //    모르는 것을 뷰로 읽으면 멀쩡한 표가 조용히 읽기 전용이 된다.
@@ -235,6 +240,11 @@ export function isVirtualColumn(colId) {
 export function tableIsView() {
   return state.currentTableKind === 'view';
 }
+
+/** The grid shows the open table pivoted - it declares a pivot and it is switched on. */
+export const pivotShown = () => Boolean(state.currentPivot && state.pivotOn);
+/** What one grid row is: a key group in pivot view, else a row. */
+export const rowUnit = () => (pivotShown() ? 'group' : 'row');
 
 /** The open table is one each ledger world has its own of - `/tables` `per_world` says so, not its name
  *  (lead 120450931 ②). The tab row and every read below ask this. */

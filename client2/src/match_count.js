@@ -26,6 +26,7 @@ import { unitText } from './ui_words.js';
 /** 「아직 모른다」의 표기. 0 과도 빈칸과도 달라야 합니다. */
 export const COUNTING = '…';
 export const COUNTING_ROWS = `Counting rows${COUNTING}`;
+const countingText = (unit) => `Counting ${unit}s${COUNTING}`;
 /** A count the server could not make (총괄 0fd18ae19 6: `failed: {reason, at}` · a refused /data/count) - not «counting». */
 export const COUNT_FAILED = 'Count failed';
 /** 바닥줄의 나이를 다시 그리는 간격 (총괄 10-13 ①: 그대로 둔 «10s ago» 가 몇 분 뒤에도 10s 면 거짓). 요청 없음. */
@@ -57,11 +58,11 @@ export function countNumberText(x) {
 }
 
 /** 바닥줄 한 줄 — «4,012,334 rows · 10s ago» · «10,000+ rows» · «Counting rows…» · «Count failed (<reason>)». 나이는 `now` 에서 센 시각까지. */
-export function matchCountText(x, now = Date.now()) {
+export function matchCountText(x, now = Date.now(), unit = 'row') {
   const c = countOf(x);
   if (c.failed) return c.failed.reason ? `${COUNT_FAILED} (${c.failed.reason})` : COUNT_FAILED;
-  if (c.total === null) return c.counting ? COUNTING_ROWS : COUNTING;
-  const rows = unitText(countNumberText(c), 'row');
+  if (c.total === null) return c.counting ? countingText(unit) : COUNTING;
+  const rows = unitText(countNumberText(c), unit);
   const at = c.capped ? null : parseServerInstant(c.countedAt);
   return at ? `${rows} · ${ageText(Math.max(0, (now - at.getTime()) / 1000))} ago` : rows;
 }
@@ -83,7 +84,8 @@ export function setMatchCount(el, x, clock = CLOCK) {
   const c = countOf(x);
   // the count it says, for a reader beside it (the gallery's «312 of 1,200 loaded»)
   el.matchCount = c;
-  const draw = () => { el.textContent = matchCountText(c, clock.now()); };
+  // what it counts, as the element says (`data-unit`: a pivot view's key groups, owner 10-22) - rows when it says none
+  const draw = () => { el.textContent = matchCountText(c, clock.now(), (el.dataset && el.dataset.unit) || 'row'); };
   draw();
   // A narrow bar (the screen gate at 1280 with the side panel at 500): the tail («rows · 10s ago») gives way, the
   // number never - its glyphs and one for the «…» are the element's floor (the bar is monospace: a ch a glyph).

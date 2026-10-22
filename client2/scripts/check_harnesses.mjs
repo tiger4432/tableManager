@@ -1235,6 +1235,10 @@ const FLOORS = new Map([
   // have exactly FOUR callers with nobody assembling the set by hand. The audit recorded two
   // sites and there were four; the count assertion is what stops a fifth appearing quietly.
   ['narrowing_trio_harness.mjs', 17],
+  // NEW 2026-10-22 (owner, lead ㄱ ①): the main grid's pivot - rows, columns, one cell's write, the narrowing, the footer's
+  // unit, the memory. Mutants by hand: a cell with a row written as blank (W1), pivot dropped from the narrowing (N1),
+  // the footer's unit ignored (N3) - each red alone.
+  ['grid_pivot_harness.mjs', 18],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
   // reader. Each is checked in THREE states, not two -- true, false, and 'the server did
   // not say' -- because an older build sends neither key and a two-state test passes
@@ -1546,7 +1550,7 @@ const FLOORS = new Map([
   // record/map/oneOf). Floor is the count it reports on the commit that introduces it. 🔴 IT
   // READS THE SHIPPED CHAIN SKELETON for the descent today's screens take, and a hand fixture
   // for a oneOf nested under a oneOf, which nothing shipped nests yet.
-  ['skeleton_oneof_descent_harness.mjs', 31],
+  ['skeleton_oneof_descent_harness.mjs', 33],
   // New 2026-09-08 with C-41 (the ten-user driver). Floor is the count it reports on the
   // commit that introduces it. 🔴 A LOAD DRIVER'S DEFECTS ALL LOOK LIKE GOOD NEWS -- a lane
   // sharing another's table is fast because a cache answered, ten lanes run one after another
@@ -1783,7 +1787,7 @@ const FLOORS = new Map([
   // control whose first keystroke would overwrite it. P3 is the Lead's census run through the
   // real chain panel on the shipped skeleton: 9 blank cells before, 0 now, and it is written so
   // it stays true when the skeleton learns lists.
-  ['skeleton_value_fit_harness.mjs', 26],
+  ['skeleton_value_fit_harness.mjs', 27],
   // Form D (lead f3639d4a2, owner 10-20): one renderer for the three declarations - chips, tables, the fold row, the
   // gate switch, the adder, a choice of one - scored per module on a skeleton that names no declaration's word.
   ['declaration_form_harness.mjs', 22],

@@ -382,6 +382,8 @@
           <div id="grid-source-label-host"></div>
           <!-- 세상 탭의 «자기 div» (총괄 120450931 ②). 세상마다 있는 표에서만 그려집니다 -->
           <div id="world-tabs-host"></div>
+          <!-- a pivot view's items held back (owner 10-22) -->
+          <div id="pivot-more-line" class="pivot-more-line" hidden></div>
           <!-- Apply 의 물음: 모아 둔 칸이 그사이 서버에서 바뀌었을 때만 섭니다(총괄 c97239697). 헤더는 꽉 차서 자기 줄 -->
           <div id="tx-conflict-line" class="tx-conflict-line" style="display: none">
             <span id="tx-conflict-text"></span>
@@ -437,6 +439,7 @@
                   <option value="infinite">♾️ Scroll</option>
                 </select>
                 <button id="gallery-toggle-btn" class="glass-page-btn" type="button" hidden>Gallery</button>
+                <button id="pivot-toggle-btn" class="glass-page-btn" type="button" aria-pressed="false" hidden>Pivot</button>
                 <button id="load-all-btn" class="glass-page-btn">
                   📥 Load All
                 </button>

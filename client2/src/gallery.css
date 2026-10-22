@@ -70,4 +70,3 @@
 .gallery-side__values { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--fs-body); }
 .gallery-side__values dt { color: var(--text-dim); }
 .gallery-side__values dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-#gallery-toggle-btn.is-on { background: var(--accent-weak); color: var(--accent); }

@@ -204,6 +204,13 @@ function suite(M) {
   ok(!pickerOf(odd) && controlsIn(odd).length === 0 && walk(odd).some((n) => cls(n).includes('oe-value')
      && String(n.textContent) === '["x"]'),
     'V4 a value of neither shape is shown as the value, with no picker and nothing to type over it');
+  // B's value gates (lead 10-22): an item already written as column -> values opens the values branch.
+  const GATED = { kind: 'record', fields: [{ key: 'req', node: { kind: 'oneOf', hint: 'choice', pick: 'shape',
+    branches: { name: LEAF, values: { kind: 'map', keyed_by: 'name', member: 'column', of: LIST } } } }] };
+  const gate = M.renderSkeletonForm(context(false), GATED, '', { req: { status: ['SCRAP'] } }, 0, 'g');
+  const summary = (walk(gate).find((n) => cls(n).includes('oe-node-summary')) || {}).textContent;
+  ok(pickedIn(gate) === 'values' && String(summary) === '1 · status' && !walk(gate).some((n) => cls(n).includes('oe-value')),
+    `V5 a written column -> values item: the picker says values, its box holds the column, not the value as text [${pickedIn(gate)} ${summary}]`);
 
   return { pass: pass - before.pass, fail: fail - before.fail };
 }

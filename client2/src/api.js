@@ -1,15 +1,16 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
-import { state, gridFetch, tableIsPerWorld } from './state.js';
+import { state, gridFetch, tableIsPerWorld, pivotShown, rowUnit } from './state.js';
+import { pivotRows, pivotUpdate, itemOf, itemColId, rememberedPivot, rememberPivot, PIVOT_BULK_NOTE } from './grid_pivot.js';
 import { notANumber, unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, applyWriteGuards, writeRefusal } from './write_guard.js';
+import { refuseWrite, applyWriteGuards, bulkWriteRefusal } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, dropGridFilters, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
+import { renderGrid, buildColumnDefs, dropGridFilters, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { countOf, setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -311,6 +312,56 @@ export async function switchTable(tableName) {
 }
 
 // Load table column schema
+const browserStore = () => { try { return window.localStorage; } catch (e) { return null; } };
+
+/** The pivot's marks (owner 10-22): «Pivot» in the footer - only where the table declares one, pressed when shown - the
+ *  footer count's unit, and «N more items not shown» when the answer held items back. */
+export function drawPivot() {
+  const button = elements.pivotToggleBtn;
+  if (button) {
+    button.hidden = !state.currentPivot;
+    button.classList.toggle('is-on', pivotShown());
+    button.setAttribute('aria-pressed', String(pivotShown()));
+    button.title = state.currentPivot ? `by ${state.currentPivot.column}` : '';
+  }
+  if (elements.totalRowsCount) elements.totalRowsCount.dataset.unit = rowUnit();
+  const line = elements.pivotMoreLine;
+  if (line) {
+    const more = pivotShown() && state.pivotView ? state.pivotView.items_more : 0;
+    line.hidden = !more;
+    line.textContent = more ? `${unitText(more, 'more item')} not shown` : '';
+  }
+}
+
+/** «Pivot» pressed (owner 10-22): the table read again from the top the other way - its filters and sort dropped (an
+ *  item's are not a long row's), the choice kept for this table. */
+export async function setGridPivot(on) {
+  if (!state.currentPivot || !state.currentTable) return;
+  if (state.txModeActive) { elements.performanceLog.textContent = 'Turn transaction mode off first'; return; }
+  state.pivotOn = on;
+  state.pivotView = null;
+  rememberPivot(browserStore(), state.currentTable, on);
+  state.serverSort = null;
+  await dropGridFilters();
+  applyWriteGuards();
+  drawPivot();
+  renderGrid([]);
+  await fetchData(true);
+}
+
+/** A pivot answer: its view kept, its items' columns typed as the value column and drawn again when they changed, its
+ *  key groups as grid rows. */
+function takePivot(answer) {
+  const view = answer.pivot;
+  const before = JSON.stringify(state.pivotView && [state.pivotView.keys, state.pivotView.items]);
+  state.pivotView = view;
+  const types = state.currentColumnTypes || {};
+  for (const item of view.items) types[itemColId(item)] = types[view.value] || 'string';
+  if (JSON.stringify([view.keys, view.items]) !== before) state.gridApi.setGridOption('columnDefs', buildColumnDefs());
+  drawPivot();
+  return pivotRows(answer);
+}
+
 export async function loadSchema(tableName) {
   // [F3] Drop the value-suggestion module's learned negative facts (disabled columns, prefix
   // floors, unavailable cooldowns). They are learned from the server's own refusals, which are
@@ -339,6 +390,11 @@ export async function loadSchema(tableName) {
     state.currentSmartPaste = Array.isArray(data.smart_paste) ? data.smart_paste : null;
     state.currentBusinessKey = data.business_key || '';
     state.currentCompositeKeySources = data.composite_key_source || [];
+    // its pivot (owner 10-22): the declaration ({column, value}, null: none), shown as this browser last showed it
+    state.currentPivot = data.pivot && typeof data.pivot === 'object' ? data.pivot : null;
+    state.pivotOn = Boolean(state.currentPivot) && rememberedPivot(browserStore(), tableName);
+    state.pivotView = null;
+    drawPivot();
     // [Virtual join] The route always sends this key (`[]` when no verified join touches the
     // table), so a missing key means an OLD SERVER — fall back to empty, never to undefined,
     // because every consumer below treats "no virtual columns" as the normal case.
@@ -421,7 +477,7 @@ let countGeneration = 0;
 function narrowingParams() {
   return buildNarrowing({
     globalSearch: elements.globalSearch, searchCols: elements.searchCols,
-    gridApi: state.gridApi, transactionId: state.currentTransactionId,
+    gridApi: state.gridApi, transactionId: state.currentTransactionId, pivot: pivotShown(),
   });
 }
 
@@ -483,16 +539,18 @@ export async function fetchAllRows(baseUrl, queryParams, chunkLimit, onProgress)
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     return res.json();
   };
+  // a pivot answer's key groups as grid rows, as a page's are (owner 10-22)
+  const rowsOf = (answer) => (answer.pivot ? (answer === first ? takePivot(answer) : pivotRows(answer)) : answer.data || []);
   const first = await read(0, false);
   const count = countOf(first);
   const exact = count.total !== null && !count.capped ? count.total : null;
-  let rows = first.data || [];
+  let rows = rowsOf(first);
   let last = rows.length;
   onProgress(rows.length, exact);
   while (last === chunkLimit) {
     // 브라우저 렌더링 프레임 양보하여 UI 갱신 보장
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const chunk = (await read(rows.length, true)).data || [];
+    const chunk = rowsOf(await read(rows.length, true));
     if (!chunk.length) break;
     rows = rows.concat(chunk);
     last = chunk.length;
@@ -576,7 +634,7 @@ export async function fetchData(resetSkip = true, key = null) {
       updatePaginationUI(cached.count, cached.data.length);
       // 아직 안 센 쪽이 캐시에 있으면 «다시 묻습니다». 안 그러면 「세는 중」이 영영 남습니다.
       if (cached.count.total === null) fillMatchCount(narrowingParams(), state.currentTable);
-      elements.performanceLog.textContent = `Loaded ${unitText(cached.data.length, 'row')} from client cache`;
+      elements.performanceLog.textContent = `Loaded ${unitText(cached.data.length, rowUnit())} from client cache`;
       return;
     }
   }
@@ -619,6 +677,7 @@ export async function fetchData(resetSkip = true, key = null) {
     }
     const result = await res.json();
     if (stale()) return;
+    if (result.pivot) result.data = takePivot(result);
 
     const fetchTime = (performance.now() - startTime).toFixed(1);
 
@@ -646,7 +705,7 @@ export async function fetchData(resetSkip = true, key = null) {
     // Update Pagination UI
     updatePaginationUI(count, result.data.length);
 
-    elements.performanceLog.textContent = `Loaded ${unitText(result.data.length, 'row')} in ${fetchTime}ms`;
+    elements.performanceLog.textContent = `Loaded ${unitText(result.data.length, rowUnit())} in ${fetchTime}ms`;
 
     // 행은 그려졌습니다. 이제 개수를 가지러 갑니다 -- «기다리지 않고» 돌려줍니다.
     if (count.total === null) fillMatchCount(narrowing, table);
@@ -775,6 +834,11 @@ function settleTx() {
  *  until that is done (settleTx), so an edit made while Apply's PUT is out is staged, not sent straight and then painted
  *  over by the batch's answer (lead 10-13 2; 18766: PUT [28.9] then [29.1], the cell 29.1 and at the end 28.9). */
 export function txToggled() {
+  if (pivotShown() && elements.txModeToggle && elements.txModeToggle.checked) {
+    elements.txModeToggle.checked = false;
+    elements.performanceLog.textContent = PIVOT_BULK_NOTE;
+    return;
+  }
   const pendingCount = Object.keys(state.pendingTxEdits).length;
   if (elements.txModeToggle && !elements.txModeToggle.checked && pendingCount > 0) {
     if (confirm(`${pendingCount} pending edits. Apply them?\n\nOK applies them all.\nCancel discards them all.`)) applyPendingEdits();
@@ -1123,18 +1187,12 @@ async function editCell(event) {
   elements.performanceLog.textContent = 'Saving edit...';
   const editStartTime = performance.now();
 
-  // API body payload mapping to GeneralUpdateBatch
+  // API body payload mapping to GeneralUpdateBatch - an item cell of a pivot view writes its own long row, a blank one
+  // makes it (owner 10-22)
+  const update = pivotShown() && itemOf(colId) !== null ? pivotUpdate(state.pivotView, data, colId, finalValue)
+    : { row_id: rowId, updates: { [colId]: finalValue } };
   const payload = {
-    updates: [
-      {
-        row_id: rowId,
-        updates: {
-          [colId]: finalValue
-        },
-        source_name: 'user',
-        updated_by: CURRENT_USER
-      }
-    ],
+    updates: [{ ...update, source_name: 'user', updated_by: CURRENT_USER }],
     silent: false,
     // V1 instrument: optional field. Raw counts only — the server weights at query time.
     effort: snapshot()
@@ -1158,6 +1216,8 @@ async function editCell(event) {
       commitIfRecorded(result);
       const saveTime = (performance.now() - editStartTime).toFixed(1);
       elements.performanceLog.textContent = `Saved in ${saveTime}ms (${result.change_count} cell updated)`;
+      // a pivot cell is a long row's: the page read again (a blank one now has its row)
+      if (pivotShown()) { await fetchData(false); return; }
 
       const latestNode = state.gridApi.getRowNode(rowId);
       const latestData = latestNode ? latestNode.data : data;
@@ -1241,6 +1301,7 @@ export async function addRows(count) {
 //    행동 하나를 붙입니다 — 커밋 뒤 방송에서 실패할 수도 있어 「안 지워졌다」고는 말하지 않습니다.
 export async function deleteSelectedRows() {
   if (!state.gridApi || state.isDeletingRows) return;
+  if (refuseWrite()) return;
   const selectedNodes = state.gridApi.getSelectedNodes();
   if (selectedNodes.length === 0) {
     alert('No rows selected for deletion');
@@ -1290,7 +1351,7 @@ export async function deleteSelectedRows() {
   } finally {
     clearInterval(timer);
     state.isDeletingRows = false;
-    setDisabledReason(elements.deleteRowBtn, writeRefusal());
+    setDisabledReason(elements.deleteRowBtn, bulkWriteRefusal());
   }
   if (!refused) return;
   const line = `${refused} — reload the table to see which rows remain`;

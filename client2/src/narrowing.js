@@ -22,7 +22,7 @@
 
 /**
  * @param {{globalSearch?: {value: string}, searchCols?: {value: string},
- *          gridApi?: {getFilterModel: () => object}, transactionId?: string|null}} src
+ *          gridApi?: {getFilterModel: () => object}, transactionId?: string|null, pivot?: boolean}} src
  * @returns {URLSearchParams} empty when nothing is narrowed
  */
 export function narrowingParams(src = {}) {
@@ -39,6 +39,8 @@ export function narrowingParams(src = {}) {
     if (cols) params.set('cols', cols);
   }
   if (Object.keys(filterModel).length > 0) params.set('filters', JSON.stringify(filterModel));
+  // the grid pivoted (owner 10-22): its rows and its count are key groups - both ask it
+  if (src.pivot) params.set('pivot', 'true');
   return params;
 }
 

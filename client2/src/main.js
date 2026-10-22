@@ -13,7 +13,7 @@ import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state, isDataColumn } from './state.js';
+import { state, isDataColumn, pivotShown } from './state.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
@@ -37,7 +37,8 @@ import {
   nextPage,
   prevPage,
   openExport,
-  refusalText
+  refusalText,
+  setGridPivot
 } from './api.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -80,6 +81,7 @@ import {
   registerSelectionListener,
   applyFillTargetHeaders,
   isSystemColumn,
+  sortParams,
 } from './grid.js';
 import {
   showToast,
@@ -185,6 +187,8 @@ async function init() {
       let galleryStorage = null;
       try { galleryStorage = window.localStorage; } catch (e) { galleryStorage = null; }
       seatGallery({ doc: document, base: API_BASE, storage: galleryStorage, loadAll: () => { if (elements.loadAllBtn) elements.loadAllBtn.click(); } });
+      // the grid's pivot (owner 10-22): «Pivot» turns the open table's view and back
+      if (elements.pivotToggleBtn) elements.pivotToggleBtn.addEventListener('click', () => setGridPivot(!state.pivotOn));
       // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
       // `setRelation` 한 번으로 문장이 확정됩니다.
       sourceLabel = initGridSourceLabel();
@@ -1066,12 +1070,14 @@ function setupEventListeners() {
       // the count route must not carry it -- see that file's header.
       const narrowing = narrowingTail({
         globalSearch: elements.globalSearch, searchCols: elements.searchCols,
-        gridApi: state.gridApi, transactionId: state.currentTransactionId,
+        gridApi: state.gridApi, transactionId: state.currentTransactionId, pivot: pivotShown(),
       });
 
       const baseApiUrl = `${API_BASE}/tables/${state.currentTable}/data`;
-      const queryParams = `order_by=${sortLatest ? 'updated_at' : 'row_id'}`
-        + `&order_desc=${sortLatest}${narrowing}`;
+      // a pivot view's key groups in the grid's own order (owner 10-22)
+      const order = pivotShown() ? sortParams() : { orderBy: sortLatest ? 'updated_at' : 'row_id', orderDesc: sortLatest };
+      const queryParams = `order_by=${encodeURIComponent(order.orderBy)}`
+        + `&order_desc=${order.orderDesc}${narrowing}`;
 
       try {
         const chunkLimit = 3000; // 청크 단위로 분할 로드

@@ -219,6 +219,27 @@ const withPhotos = (a) => {
 const GALLERY = { on: false };
 // The declaration read refused the way the server refuses it (lead 06d7ca89e): 503, its sentence in detail.message.
 const DECL_REFUSED = { on: false };
+// The main grid pivoted (owner 10-22): while its states run, dt_log declares a pivot (item column b_wy, value dt_index)
+// and a pivot read answers 40 key groups of eight items - two long names, three more held back, some cells blank.
+const PIVOT = { on: false };
+const PIVOT_DECL = { column: 'b_wy', value: 'dt_index' };
+const PIVOT_ITEMS = ['THK_CENTER', 'THK_EDGE', 'BOW', 'WARP', 'TTV', 'SORI', 'THICKNESS_VARIATION_EDGE_EXCL_3MM', 'FLATNESS_SFQR_MAX_26X8'];
+const pivotAnswer = (u) => {
+  if (u.pathname === '/tables/dt_log/schema') {
+    const a = ANSWERS['/tables/dt_log/schema'];
+    return { ...a, body: { ...bodyOf(a), pivot: PIVOT_DECL } };
+  }
+  if (u.searchParams.get('pivot') !== 'true') return null;
+  if (u.pathname === '/tables/dt_log/data/count') return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: 40 } };
+  if (u.pathname !== '/tables/dt_log/data') return null;
+  const skip = Number(u.searchParams.get('skip') || 0);
+  const limit = Number(u.searchParams.get('limit') || 1000);
+  const groups = Array.from({ length: 40 }, (_, i) => ({ dt_job: `JOB-${String(Math.floor(i / 8) + 1).padStart(3, '0')}`, b_wx: i % 8,
+    cells: Object.fromEntries(PIVOT_ITEMS.map((item, k) => [item, { value: Number((10 + ((i * 7 + k * 3) % 50) / 7).toFixed(2)), row_id: `pv-${i}-${k}` }])
+      .filter((_, k) => (i + k) % 9 !== 0)) }));
+  return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, skip, limit,
+    pivot: { ...PIVOT_DECL, keys: ['dt_job', 'b_wx'], items: PIVOT_ITEMS, items_more: 3 }, data: groups.slice(skip, skip + limit) } };
+};
 const DECL_SENTENCE = 'The declaration could not be read: no ledger configuration at C:/assy/config/ledger_config.json - fix the declaration and reload';
 const DT_LOG_ROWS = '/tables/dt_log/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true';
 const galleryAnswer = (u) => {
@@ -243,6 +264,7 @@ const galleryAnswer = (u) => {
 };
 const answerOf = (u) => {
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
+  if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
   }
@@ -676,6 +698,33 @@ CELLS.push({ entry: 'index.html', after: 'a row picked under the Queue tab', rul
   const row = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"]');
   if (!row) return 'no row 1';
   return row.classList.contains('ag-row-selected') ? null : 'row 1 was clicked and is not selected';
+})()` });
+// The grid pivoted (owner 10-22): an item's column headed by the item alone, the footer counting groups, the items held
+// back said, «Pivot» pressed - and all of it undone when it is pressed again; no «Pivot» on a table that declares none.
+CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot drawn', at: 'pivot', expr: `(() => {
+  const heads = [...document.querySelectorAll('.ag-header-row-column .ag-header-cell[col-id^="item:"]')];
+  if (heads.length !== ${PIVOT_ITEMS.length}) return heads.length + ' item columns, not ${PIVOT_ITEMS.length}';
+  const named = heads.find((h) => (h.querySelector('.ag-header-cell-text') || h).textContent.trim() !== h.getAttribute('col-id').slice(5));
+  if (named) return 'an item header says «' + named.textContent.trim() + '»';
+  const total = (document.getElementById('total-rows') || {}).textContent || '';
+  if (!total.includes(' group')) return 'the footer says «' + total + '»';
+  const more = document.getElementById('pivot-more-line');
+  if (!more || more.hidden || more.textContent.trim() !== '3 more items not shown') return 'the held-back line: «' + (more ? more.textContent : 'none') + '»';
+  const b = document.getElementById('pivot-toggle-btn');
+  return b && b.getAttribute('aria-pressed') === 'true' ? null : 'Pivot is not pressed';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 'pivot', expr: `(() => {
+  if (document.querySelector('.ag-header-cell[col-id^="item:"]')) return 'an item column is left';
+  const total = (document.getElementById('total-rows') || {}).textContent || '';
+  if (total.includes(' group')) return 'the footer still says «' + total + '»';
+  const more = document.getElementById('pivot-more-line');
+  if (more && !more.hidden) return 'the held-back line is left';
+  const b = document.getElementById('pivot-toggle-btn');
+  return b && !b.hidden && b.getAttribute('aria-pressed') === 'false' ? null : 'Pivot is not drawn unpressed';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'pivot only where declared', at: 'pivot', expr: `(() => {
+  const b = document.getElementById('pivot-toggle-btn');
+  return b && b.hidden ? null : 'Pivot is drawn on a table that declares none';
 })()` });
 // A refused declaration read: the header's label says the server's sentence, not «server refused (503)» (lead 06d7ca89e).
 CELLS.push({ entry: 'index.html', after: 'declaration refused, page opened again', rule: 'server sentence said', at: 'grid-source-label', expr: `(() => {
@@ -1942,6 +1991,40 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
+    // The grid pivoted (owner 10-22): dt_log with its pivot declared (PIVOT), «Pivot» pressed, then pressed again.
+    ['Pivot on', async (c, log) => {
+      PIVOT.on = true;
+      await evaluate(c, "window.__pivotFrom = (document.getElementById('table-select') || {}).value; try { localStorage.removeItem('grid-pivot:dt_log'); } catch (e) {} true");
+      for (const name of ['ledger_events', 'dt_log']) {
+        await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === ${JSON.stringify(name)}) return false;
+          sel.value = ${JSON.stringify(name)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await sleep(900);
+        await settle(c, log);
+        await until(c, GRID_LOADED);
+      }
+      await until(c, "!(document.getElementById('pivot-toggle-btn') || {}).hidden");
+      await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      await until(c, "document.querySelectorAll('.ag-header-cell[col-id^=\"item:\"]').length > 0");
+    }],
+    ['Pivot off', async (c, log) => {
+      await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
+    ['Pivot left, the first table again', async (c, log) => {
+      PIVOT.on = false;
+      for (const to of ['ledger_events', '__pivotFrom']) {
+        await evaluate(c, `(() => { const sel = document.getElementById('table-select'); const to = ${JSON.stringify(to)} === '__pivotFrom' ? window.__pivotFrom : ${JSON.stringify(to)};
+          if (!sel || !to || sel.value === to) return true; sel.value = to; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await sleep(900);
+        await settle(c, log);
+        await until(c, GRID_LOADED);
+      }
+    }],
     // The Queue tab open for one beat of its poll and a little more.
     ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
       .then(() => sleep(QUEUE_POLL_MS + 1500))],
@@ -2192,6 +2275,11 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
+  { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
+    file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },
+  { name: 'the footer counts rows in pivot view', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
+    file: 'src/api.js', edits: [['elements.totalRowsCount.dataset.unit = rowUnit();', "elements.totalRowsCount.dataset.unit = 'row';"]] },
   // The checkboxes back on the schema's first column (owner 10-22): hidden from the column selector, they go with it.
   { name: 'the checkboxes back on the first data column', entry: 'index.html', rule: 'select all at the left', at: 'ag-header',
     file: 'src/grid.js', edits: [["    rowSelection: { mode: 'multiRow', checkboxes: true, headerCheckbox: true, enableClickSelection: true },\n", "    rowSelection: 'multiple',\n"], ['      resizable: true,\n      // C-85.', '      resizable: true,\n      checkboxSelection: index === 0,\n      headerCheckboxSelection: index === 0,\n      // C-85.']] },

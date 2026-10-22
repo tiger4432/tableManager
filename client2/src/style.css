@@ -1510,6 +1510,9 @@ body.resizing-active .history-sidebar {
 
 /* Page buttons are the base layer's (base.css). */
 .glass-page-btn { user-select: none; }
+/* a footer toggle pressed - Gallery, Pivot (owner 10-22) */
+.glass-page-btn.is-on { background: var(--accent-weak); color: var(--accent); }
+.pivot-more-line { padding: var(--space-1) var(--space-4); font-size: var(--fs-label); color: var(--warning); background: var(--warning-weak); }
 
 /* C-107. 표가 «자기 종류»를 말합니다. 종전에는 뷰라는 사실이 화면에 «없었고»,
    쓰려고 해야 알 수 있었습니다 — 잠긴 컨트롤의 «이유»가 누르기 전에는 안 보였습니다. */

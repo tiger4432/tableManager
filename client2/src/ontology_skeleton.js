@@ -70,15 +70,17 @@ function childOf(node, step, defs) {
 /**
  * The branch a `pick: 'shape'` oneOf's value is in (lead 068c904a6 ②): a word, or nothing yet,
  * is the leaf branch -- the cell as it was before it had a second branch; a mapping is the record
- * branch. A value of neither shape is in none ('').
+ * branch or a map keyed by name (B's value gates: `{"status": ["SCRAP"]}`). A value of neither shape is in none ('').
  * @param {(node: any) => any|object} [resolve] the defs, or a function that follows `{use}`
  */
 export function shapeBranch(node, value, resolve) {
   const branches = node && node.branches && typeof node.branches === 'object' ? node.branches : {};
   const real = typeof resolve === 'function' ? resolve : (n) => deref(n, resolve);
-  const want = value === undefined || value === null || typeof value === 'string' || typeof value === 'number'
-    ? 'leaf' : typeof value === 'object' && !Array.isArray(value) ? 'record' : '';
-  return Object.keys(branches).find((key) => want && (real(branches[key]) || {}).kind === want) || '';
+  const holds = value === undefined || value === null || typeof value === 'string' || typeof value === 'number'
+    ? (b) => b.kind === 'leaf'
+    : typeof value === 'object' && !Array.isArray(value)
+      ? (b) => b.kind === 'record' || (b.kind === 'map' && b.keyed_by !== 'index') : () => false;
+  return Object.keys(branches).find((key) => holds(real(branches[key]) || {})) || '';
 }
 
 /**

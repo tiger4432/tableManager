@@ -1,6 +1,7 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit, API_BASE } from './config.js';
-import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn } from './state.js';
+import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
+import { pivotColumns, itemOf } from './grid_pivot.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
 import { writeRefusal } from './write_guard.js';
@@ -194,6 +195,8 @@ export function sortParams() {
   if (state.serverSort) {
     return { orderBy: state.serverSort.colId, orderDesc: !!state.serverSort.desc };
   }
+  // a pivot view's groups in key order - its rows have no updated_at of their own (owner 10-22)
+  if (pivotShown()) return { orderBy: 'row_id', orderDesc: false };
   const sortLatest = elements.sortLatestToggle.checked;
   return { orderBy: sortLatest ? 'updated_at' : 'row_id', orderDesc: sortLatest };
 }
@@ -867,7 +870,9 @@ export function buildColumnDefs() {
   //    ⚠️ 아래 필터는 «남겨 둡니다». 새 클라가 옛 서버를 볼 수 있는 배포 중에는 셋이 아직
   //       올 수 있고, 그때 이것이 마지막 방어선입니다. DB 컬럼 44개 표 삭제는 «별도 판정»입니다.
   const retired = ['is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
-  const shown = state.currentColumns.filter((col) => !retired.includes(col));
+  // pivoted (owner 10-22): the keys, then one column per item
+  const shown = pivotShown() ? pivotColumns(state.pivotView, state.currentPivot, state.currentCompositeKeySources)
+    : state.currentColumns.filter((col) => !retired.includes(col));
   const columnDefs = shown.map((col, index) => {
     const isSystem = isSystemColumn(col);
     // ROW_ID alone among them is filterable (owner 10-02, lead e67ef53f3): finding a row by its id
@@ -877,7 +882,7 @@ export function buildColumnDefs() {
     const colType = colTypes[col] || 'string';
 
     // 헤더명에 비즈니스 키 / 조합 소스 컬럼 아이콘 표시
-    let headerLabel = col.toUpperCase();
+    let headerLabel = itemOf(col) ?? col.toUpperCase();
     if (col === state.currentBusinessKey) {
       headerLabel = `${headerLabel}🗝️`;
     } else if (state.currentCompositeKeySources.includes(col)) {
@@ -906,7 +911,8 @@ export function buildColumnDefs() {
       headerTooltip: indexWords.length ? `${headerLabel} · index: ${indexWords.join(', ')}` : headerLabel,
       field: col,
       // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
-      editable: !isSystem && !viewTable,
+      // a pivot view's keys name a group, not a row (owner 10-22): its items are written, its keys are not
+      editable: !isSystem && !viewTable && !(pivotShown() && itemOf(col) === null),
       sortable: true,
       // A system column is not editable and, except ROW_ID, not filterable either.
       // `filter: false` is what AG-Grid reads to skip the floating row, and
@@ -1058,7 +1064,7 @@ export function buildColumnDefs() {
   // (`crud.refuse_virtual_join_columns`); this only stops the grid offering an edit that
   // would come back 400. The paste/clear/bulk-fill funnels do not read `editable` at all,
   // which is why they carry their own `isVirtualColumn` guard.
-  (Array.isArray(state.currentVirtualColumns) ? state.currentVirtualColumns : []).forEach(vc => {
+  (!pivotShown() && Array.isArray(state.currentVirtualColumns) ? state.currentVirtualColumns : []).forEach(vc => {
     // A malformed entry must not become a def: AG-Grid would take `field: undefined` and
     // render a permanently empty column with no way to tell what it is.
     if (!vc || typeof vc.name !== 'string' || vc.name === '') return;
@@ -1171,7 +1177,7 @@ export function buildColumnDefs() {
   });
 
   // 소유자 「맨 끝」(cdf11b222). 답은 라벨의 것이고, 이 표의 답이 아니면 열을 안 세웁니다.
-  const ledger = ledgerColumnDef(state.ledgerAnswer, state.currentTable);
+  const ledger = pivotShown() ? null : ledgerColumnDef(state.ledgerAnswer, state.currentTable);
   if (ledger) {
     // 범위 선택은 다른 열과 «같은 규칙»입니다 — 안 달면 끌어 잡은 직사각형에 이 열만 구멍이 납니다.
     ledger.cellClassRules = { 'custom-range-selected': (params) => isCellInRange(params.node.rowIndex, ledger.colId) };
