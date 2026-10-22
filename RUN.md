@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **리포트 HTML 받는 곳 — 메일 중계 PC 에서 띄움 (소유자 10-23 「fastapi 로 html 파일 받는 함수 하나」)**
+>
+> ```
+> 띄움     메일 중계 PC 에서 저장소의 tools/report_receiver 폴더로 가서
+>          uvicorn receive:app --host 0.0.0.0 --port 8765
+>          (fastapi · uvicorn 이 그 PC 파이썬에 있어야 함. 받는 폴더 바꾸기: 환경변수 REPORT_INBOX)
+> 보냄     curl -X POST --data-binary @<리포트>.html http://<중계 PC>:8765/reports/<이름>.html
+> 답       {"path", "bytes", "sha256"} - bytes 가 보낸 파일 크기와 같고 sha256 이 같으면 «통째로 받음»
+>          400 = 이름이 .html 로 안 끝나거나 폴더 글자(/ \) 가 들어감
+> 받은 것  inbox/<이름>.html - 다 받은 뒤에만 이 이름으로 바뀜(받는 중엔 .part). 같은 이름은 덮어씀
+> 끄기     uvicorn 창에서 Ctrl+C
+> ⚠️ 아직 없는 것: 받은 파일을 메일로 보내는 연결(중계 PC 의 메일 서버 쪽) · 우리 서버가 리포트를 만든 뒤 여기로 보내는 일 · 보내는 쪽 확인(아무나 올릴 수 있음)
+> ```
+
 > ## [10-23] **AI 리포트 — 요청 행 하나가 리포트 규칙 하나를 깨워 HTML 한 파일을 만든다 (소유자 10-22 ㄱ, 223649fa5)** — git pull · 설정 · 런처 재기동
 >
 > ```
