@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **AI 리포트 — 요청 행 하나가 리포트 규칙 하나를 깨워 HTML 한 파일을 만든다 (소유자 10-22 ㄱ, 223649fa5)** — git pull · 설정 · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull
+>          ingestion_settings.json 의 "chain_slots": 3 -> 런처 재기동 (리포트가 도는 동안 일꾼 하나를 씀)
+>          chain_rules.json 에 리포트 규칙 하나 (어드민 Chain 탭 derive kind: report) - 예시 docs/guide/ai_report_tables.md «운영에서 적는 것»
+>             on.require [{"setting": ["<규칙 이름>"]}] · summary 에 아이템별 요약 표 · 칸
+>          ledger_config.json 에 report_wafer 소스 한 줄 (같은 문서의 원장 예시)
+>          report_request 에 행 하나: request_id · eval_id · setting(규칙 이름) · note
+> 확인     부팅 줄 [ChainRules] 에 <규칙 이름>[decl,report] ... writes=['report_step', 'report_wafer']
+>          report 행 state done · file_path 가 <데이터 루트>/reports/<request_id>.html · file_hash 가 그 파일의 sha256
+> 뜻      state stopped 의 reason
+>             step cap N                  걸음 상한까지 모델이 done 을 안 함 -> loop.steps 를 늘리거나 prompts.rules 를 다듬음
+>             time cap N s                loop.seconds 안에 못 끝냄 -> 게이트웨이 응답 시간 확인, loop.seconds 늘림
+>             context over budget         지난 결과 · 조건표를 줄여도 문맥이 loop.context_tokens 를 넘음 -> 조건 칸 수를 줄이거나 예산을 늘림
+>             the language model call was refused: ...   게이트웨이 · llm_config.json 문제 - 사유 문장 그대로
+>          결과 행이 안 생김             setting 이 규칙 이름과 다름 -> chain_worker.log «required value(s) missing: setting»
+>          둘째 요청이 늦게 끝남          정상 - 리포트는 한 번에 하나, 밀린 요청은 대기열에서 차례로
+> 급할 때   규칙 "enabled": false (저장 즉시) - 다른 체인은 그대로
+> 되돌리기  git revert 223649fa5 -> 런처 재기동. 리포트 규칙 · writes 칸을 쓴 규칙은 되돌린 코드에서 로드 거절되니 그 규칙부터 지움
+> ```
+>
 > ## [10-22] **메인 그리드 체크 칸 · 파일 인제션 컨트롤 · 선언 읽기 거절 문장 (클라, 9c3834c5e)** — git pull · 화면 새로 고침
 >
 > ```
