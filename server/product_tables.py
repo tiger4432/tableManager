@@ -381,17 +381,17 @@ PRODUCT_TABLES = {
         ]
     },
     REPORT_WAFER_TABLE: {
-        "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set). key_1..key_4 hold the wafer's key columns in derive.report.wafer.key order - what the report's edges to wafers are declared from; wafer names the row (its key parts joined by /) and is not an edge's key. Written by the chain only.",
+        "__comment": "One row per wafer a report used, and the set it stood in (this evaluation or a compare set). seq is the wafer's place in the report's wafer list (by time - the same on a remake); key_1..key_4 hold the wafer's key columns in derive.report.wafer.key order, plain cells - what the report's edges to wafers are declared from. Written by the chain only.",
         "business_key": "wafer_key",
         "composite_key_source": [
             "request_id",
-            "wafer"
+            "seq"
         ],
         "composite_key_separator": "|",
         "column_types": {
             "wafer_key": "string",
             "request_id": "string",
-            "wafer": "string",
+            "seq": "number",
             "key_1": "string",
             "key_2": "string",
             "key_3": "string",
@@ -401,7 +401,7 @@ PRODUCT_TABLES = {
         "display_columns": [
             "wafer_key",
             "request_id",
-            "wafer",
+            "seq",
             "key_1",
             "key_2",
             "key_3",
