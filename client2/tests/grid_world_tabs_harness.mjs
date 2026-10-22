@@ -912,7 +912,7 @@ const MUTANTS = [
   { id: 'G31', what: 'a broadcast delete leaves the row\'s staged edit - the code before', catches: 'W25', file: 'websocket.js',
     mutate: (t) => swap(t, '${droppedText(dropStagedEditsOf(rowIds))}', '') },
   { id: 'G32', what: 'a row Apply\'s read no longer finds keeps its edit', catches: 'W25', file: 'api.js',
-    mutate: (t) => swap(t, '  return dropStagedEditsOf(ids.filter((id) => !found.has(id)));', '  return 0;') },
+    mutate: (t) => swap(t, '  return dropStagedEdits(again.gone);', '  return 0;') },
   { id: 'G19', what: 'Take server still sends the conflicted cell', catches: 'W16', file: 'api.js',
     mutate: (t) => swap(t, '      delete state.pendingTxEdits[key];\n    }\n    state.gridApi.refreshCells({ force: true });\n', '    }\n    state.gridApi.refreshCells({ force: true });\n') },
   { id: 'G20', what: 'the server value compared with the staged one, not the one the edit was made over', catches: 'W14', file: 'api.js',

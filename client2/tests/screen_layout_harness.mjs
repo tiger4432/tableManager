@@ -224,10 +224,22 @@ const DECL_REFUSED = { on: false };
 const PIVOT = { on: false };
 const PIVOT_DECL = { column: 'b_wy', value: 'dt_index' };
 const PIVOT_ITEMS = ['THK_CENTER', 'THK_EDGE', 'BOW', 'WARP', 'TTV', 'SORI', 'THICKNESS_VARIATION_EDGE_EXCL_3MM', 'FLATNESS_SFQR_MAX_26X8'];
+const pivotValue = (i, k) => Number((10 + ((i * 7 + k * 3) % 50) / 7).toFixed(2));
+// Apply's read again in pivot view (lead 10-23 ㄱ): each long row asked by id («pv-<group>-<item>») at its value, moved by
+// one since the edit, or gone - as PIVOT_LONG.mode says. A group id finds nothing.
+const PIVOT_LONG = { mode: 'same' };
+const pivotLongRows = (filters) => ((filters.row_id || {}).conditions || [])
+  .map((c) => /^pv-(\d+)-(\d+)$/.exec(String(c.filter))).filter((m) => m && PIVOT_LONG.mode !== 'gone')
+  .map(([id, i, k]) => ({ row_id: id, data: { dt_job: { value: `JOB-${String(Math.floor(i / 8) + 1).padStart(3, '0')}` }, b_wx: { value: i % 8 },
+    b_wy: { value: PIVOT_ITEMS[k] }, dt_index: { value: pivotValue(Number(i), Number(k)) + (PIVOT_LONG.mode === 'moved' ? 1 : 0) } } }));
 const pivotAnswer = (u) => {
   if (u.pathname === '/tables/dt_log/schema') {
     const a = ANSWERS['/tables/dt_log/schema'];
     return { ...a, body: { ...bodyOf(a), pivot: PIVOT_DECL } };
+  }
+  if (u.pathname === '/tables/dt_log/data' && u.searchParams.get('pivot') !== 'true') {
+    const filters = JSON.parse(u.searchParams.get('filters') || '{}');
+    if (filters.row_id) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, data: pivotLongRows(filters) } };
   }
   if (u.searchParams.get('pivot') !== 'true') return null;
   if (u.pathname === '/tables/dt_log/data/count') return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: 40 } };
@@ -235,7 +247,7 @@ const pivotAnswer = (u) => {
   const skip = Number(u.searchParams.get('skip') || 0);
   const limit = Number(u.searchParams.get('limit') || 1000);
   const groups = Array.from({ length: 40 }, (_, i) => ({ dt_job: `JOB-${String(Math.floor(i / 8) + 1).padStart(3, '0')}`, b_wx: i % 8,
-    cells: Object.fromEntries(PIVOT_ITEMS.map((item, k) => [item, { value: Number((10 + ((i * 7 + k * 3) % 50) / 7).toFixed(2)), row_id: `pv-${i}-${k}` }])
+    cells: Object.fromEntries(PIVOT_ITEMS.map((item, k) => [item, { value: pivotValue(i, k), row_id: `pv-${i}-${k}` }])
       .filter((_, k) => (i + k) % 9 !== 0)) }));
   return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, skip, limit,
     pivot: { ...PIVOT_DECL, keys: ['dt_job', 'b_wx'], items: PIVOT_ITEMS, items_more: 3 }, data: groups.slice(skip, skip + limit) } };
@@ -273,6 +285,34 @@ const answerOf = (u) => {
   const got = a && a.same_as ? ANSWERS[a.same_as] : a || null;
   return got && PHOTOS.on && u.pathname === '/api/ledger/subgraph' ? withPhotos(got) : got;
 };
+// One pivot item cell edited with Tx on and applied (lead 10-23 ㄱ), Apply's read again answered as `mode` says; a staged
+// edit left by the state before is discarded first. Ends when Apply has said how it ended.
+async function pivotEditApplied(c, mode) {
+  await evaluate(c, `(() => { const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Discard' && !b.disabled);
+    if (d) d.click(); return true; })()`);
+  await sleep(900);
+  PIVOT_LONG.mode = mode;
+  await evaluate(c, `(() => {
+    const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell[col-id^="item:"]');
+    if (!cell) return false;
+    const r = cell.getBoundingClientRect();
+    const o = { bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 5, view: window };
+    for (const type of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(type, o));
+    cell.dispatchEvent(new MouseEvent('dblclick', { ...o, detail: 2 }));
+    return true; })()`);
+  await until(c, "!!document.querySelector('.ag-cell-inline-editing input')");
+  await evaluate(c, `(() => {
+    const input = document.querySelector('.ag-cell-inline-editing input');
+    input.value = '12.5'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+    return true; })()`);
+  await until(c, "/pending/.test((document.querySelector('#performance-log') || {}).textContent || '')");
+  await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Apply' && !x.disabled);
+    if (b) b.click(); return Boolean(b); })()`);
+  await until(c, "!/Checking|pending/.test((document.querySelector('#performance-log') || {}).textContent || '')"
+    + " || getComputedStyle(document.getElementById('tx-conflict-line')).display !== 'none'");
+  await sleep(900);
+}
 // Cells one screen asks of itself after one of its states, at every size; each answers null or why it is red.
 const CELLS = [
   // The declaration form is one grid (lead 10-21, form D): on the sample page a 40-letter name three levels down is
@@ -723,6 +763,21 @@ CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot writes', at: '
   if (!add || !add.disabled || add.getAttribute('title') !== 'Rows are added and deleted with Pivot off') return 'Add Row: ' + (add ? add.disabled + ' «' + add.getAttribute('title') + '»' : 'none');
   const tx = document.getElementById('tx-mode-toggle');
   return tx && !tx.disabled ? null : 'the transaction toggle is shut in pivot view';
+})()` });
+// lead 10-23 ㄱ: Apply in pivot view with Tx on writes the long row; a long row changed since asks; one gone drops the edit.
+CELLS.push({ entry: 'index.html', after: 'Pivot, an edit applied', rule: 'pivot apply writes', at: 'pivot', expr: `(() => {
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  return /^Applied batch updates .*\\(1 cells updated\\)/.test(said) ? null : 'Apply ended «' + said + '»';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Pivot, an edit over a changed row', rule: 'pivot apply asks', at: 'pivot', expr: `(() => {
+  const line = document.getElementById('tx-conflict-line');
+  const text = (document.getElementById('tx-conflict-text') || {}).textContent || '';
+  return line && getComputedStyle(line).display !== 'none' && text === '1 cell changed on the server since you edited' ? null
+    : 'no question - «' + text + '» · ' + ((document.getElementById('performance-log') || {}).textContent || '');
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Pivot, an edit of a gone row', rule: 'pivot apply drops', at: 'pivot', expr: `(() => {
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  return said === 'Nothing applied · 1 staged edit dropped (row deleted)' ? null : 'Apply ended «' + said + '»';
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 'pivot', expr: `(() => {
   const add = document.getElementById('add-row-btn');
@@ -1206,6 +1261,12 @@ async function servePage(chrome, dist) {
       log.outside.add(u.origin);
       if (request.method === 'GET') chrome.send('Fetch.continueRequest', { requestId }).catch(() => {});
       else chrome.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {});
+      return;
+    }
+    if (PIVOT.on && request.method === 'PUT' && u.pathname === '/tables/dt_log/data/updates') {
+      // Apply's save in pivot view (lead 10-23 ㄱ): answered with how many of its updates name a long row - a group id is none.
+      const sent = JSON.parse(request.postData || '{}').updates || [];
+      reply(200, 'application/json', JSON.stringify({ change_count: sent.filter((x) => /^pv-/.test(String(x.row_id || ''))).length }));
       return;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') { log.refused.push(`${request.method} ${u.pathname}`); chrome.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {}); return; }
@@ -2022,6 +2083,11 @@ const DRIVE = {
       await until(c, GRID_LOADED);
       await until(c, "document.querySelectorAll('.ag-header-cell[col-id^=\"item:\"]').length > 0");
     }],
+    // Apply in pivot view with Tx on - the default path (lead 10-23 ㄱ): an item cell edited and applied, its long row read
+    // again first; then the same over a long row changed since the edit, and over one gone.
+    ['Pivot, an edit applied', (c) => pivotEditApplied(c, 'same')],
+    ['Pivot, an edit over a changed row', (c) => pivotEditApplied(c, 'moved')],
+    ['Pivot, an edit of a gone row', (c) => pivotEditApplied(c, 'gone')],
     ['Pivot off', async (c, log) => {
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
       await sleep(900);
@@ -2030,6 +2096,7 @@ const DRIVE = {
     }],
     ['Pivot left, the first table again', async (c, log) => {
       PIVOT.on = false;
+      PIVOT_LONG.mode = 'same';
       for (const to of ['ledger_events', '__pivotFrom']) {
         await evaluate(c, `(() => { const sel = document.getElementById('table-select'); const to = ${JSON.stringify(to)} === '__pivotFrom' ? window.__pivotFrom : ${JSON.stringify(to)};
           if (!sel || !to || sel.value === to) return true; sel.value = to; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
@@ -2293,6 +2360,8 @@ const MUTANTS = [
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },
   { name: 'Pivot refused while Tx is merely on (it is on by default)', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
     file: 'src/api.js', edits: [['  if (Object.keys(state.pendingTxEdits).length) { elements.performanceLog', '  if (state.txModeActive) { elements.performanceLog']] },
+  { name: 'Apply reads a pivot group id again', entry: 'index.html', rule: 'pivot apply writes', at: 'pivot',
+    file: 'src/grid_pivot.js', edits: [['  if (!view) return [...new Set(edits.map((edit) => edit.rowId))];\n', '  return [...new Set(edits.map((edit) => edit.rowId))];\n']] },
   { name: 'rows are not refused in pivot view', entry: 'index.html', rule: 'pivot writes', at: 'pivot',
     file: 'src/write_guard.js', edits: [["const ROW_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'smartPasteBtn'];", 'const ROW_CONTROLS = [];']] },
   { name: 'the footer counts rows in pivot view', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',

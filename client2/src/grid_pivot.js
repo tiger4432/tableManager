@@ -25,6 +25,41 @@ export function pivotWire(view, updates, rowOf) {
     .map(([colId, value]) => ({ ...rest, ...pivotUpdate(view, rowOf(rowId), colId, value) })));
 }
 
+const longIdOf = (rowData, colId) => {
+  const cell = rowData && rowData.data && rowData.data[colId];
+  return cell && cell.row_id ? cell.row_id : null;
+};
+
+/** The rows Apply reads again for the staged edits (pendingTxEdits' values): each edit's row - with a pivot view the
+ *  long row its cell is, a blank cell none (lead 10-23 ㄱ: a group id is no row of the table). */
+export function stagedReadIds(view, edits, rowOf) {
+  if (!view) return [...new Set(edits.map((edit) => edit.rowId))];
+  return [...new Set(edits.map((edit) => longIdOf(rowOf(edit.rowId), edit.colId)).filter(Boolean))];
+}
+
+/** Apply's read again as grid rows, and the keys of the staged edits whose row it no longer finds. With a pivot view a
+ *  group comes back as the grid holds it, each staged cell at its long row's value - an edit is dropped only when its
+ *  own long row is gone. */
+export function stagedReadRows(view, staged, rowOf, read) {
+  const found = new Map(read.map((row) => [row.row_id, row]));
+  const entries = Object.entries(staged);
+  if (!view) return { rows: read, gone: entries.filter(([, edit]) => !found.has(edit.rowId)).map(([key]) => key) };
+  const groups = new Map();
+  const gone = [];
+  for (const [key, edit] of entries) {
+    const held = rowOf(edit.rowId);
+    const id = longIdOf(held, edit.colId);
+    if (!id) continue;
+    const long = found.get(id);
+    if (!long) { gone.push(key); continue; }
+    const group = groups.get(edit.rowId) || { ...held, data: { ...held.data } };
+    const cell = long.data && long.data[view.value];
+    if (cell) group.data[edit.colId] = { ...group.data[edit.colId], value: cell.value };
+    groups.set(edit.rowId, group);
+  }
+  return { rows: [...groups.values()], gone };
+}
+
 /** The columns a pivot view shows: its keys, then its items. Before its first answer, the declaration's keys. */
 export function pivotColumns(view, pivot, keySources) {
   if (view) return [...view.keys, ...view.items.map(itemColId)];

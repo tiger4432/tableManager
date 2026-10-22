@@ -1,10 +1,10 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld, pivotShown, rowUnit } from './state.js';
-import { pivotRows, itemColId, rememberedPivot, rememberPivot } from './grid_pivot.js';
+import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, stagedReadRows } from './grid_pivot.js';
 import { notANumber, unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, applyWriteGuards, rowWriteRefusal, wireUpdates } from './write_guard.js';
+import { refuseWrite, applyWriteGuards, rowWriteRefusal, wireUpdates, gridRowOf } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
@@ -780,7 +780,9 @@ export function overlayStagedEdits(rows) {
  *  Apply would send them to no row (lead QA 10-12). Returns how many; `droppedText` is the bottom line's words. */
 export function dropStagedEditsOf(rowIds) {
   const gone = new Set(rowIds);
-  const keys = Object.keys(state.pendingTxEdits).filter((key) => gone.has(state.pendingTxEdits[key].rowId));
+  return dropStagedEdits(Object.keys(state.pendingTxEdits).filter((key) => gone.has(state.pendingTxEdits[key].rowId)));
+}
+function dropStagedEdits(keys) {
   for (const key of keys) delete state.pendingTxEdits[key];
   if (keys.length) {
     updateTxModeUI();
@@ -850,7 +852,8 @@ export function txToggled() {
  *  their edits. One read per REREAD_CHUNK rows - the ids ride in the url. Returns how many edits were dropped. */
 const REREAD_CHUNK = 50;
 async function rereadStagedRows() {
-  const ids = [...new Set(Object.values(state.pendingTxEdits).map((edit) => edit.rowId))];
+  const view = pivotShown() ? state.pivotView : null;
+  const ids = stagedReadIds(view, Object.values(state.pendingTxEdits), gridRowOf);
   // One deadline for the whole read, its bodies too - the one time cap a read that holds a screen gets (queue_poll.js
   // timedRead, the Queue tab's): past it Apply stops (lead 10-13 4, 6).
   const rows = await timedRead(async (signal) => {
@@ -865,16 +868,16 @@ async function rereadStagedRows() {
     }
     return read;
   });
-  const onGrid = overlayStagedEdits(rows).filter((row) => state.gridApi.getRowNode(row.row_id));
+  const again = stagedReadRows(view, state.pendingTxEdits, gridRowOf, rows);
+  const onGrid = overlayStagedEdits(again.rows).filter((row) => state.gridApi.getRowNode(row.row_id));
   if (onGrid.length) state.gridApi.applyTransaction({ update: onGrid });
   // The cached pages take the server's rows too - a page drawn from a stale cache would claim a conflict with a value
   // already gone (18766: a silent write, Take server, another page and back -> «conflict» with the old value).
-  const fresh = new Map(rows.map((row) => [row.row_id, row]));
+  const fresh = new Map(again.rows.map((row) => [row.row_id, row]));
   for (const cached of state.pageCache.values()) {
     cached.data = cached.data.map((row) => (fresh.has(row.row_id) ? copyRow(fresh.get(row.row_id)) : row));
   }
-  const found = new Set(fresh.keys());
-  return dropStagedEditsOf(ids.filter((id) => !found.has(id)));
+  return dropStagedEdits(again.gone);
 }
 
 /** Apply the staged edits. Conflicted cells are not sent unasked: without `choice` Apply stops and asks; 'mine' sends

@@ -68,10 +68,13 @@ export function refusePivotKeys(items) {
 /** The grid's updates as PUT /data/updates takes them - every grid write sends through here: in pivot view a group's
  *  cells become their long rows' updates (lead 10-22 ②), otherwise the updates as they are. */
 export function wireUpdates(updates) {
-  return pivotWire(pivotShown() ? state.pivotView : null, updates, (rowId) => {
-    const node = state.gridApi && state.gridApi.getRowNode(rowId);
-    return node && node.data;
-  });
+  return pivotWire(pivotShown() ? state.pivotView : null, updates, gridRowOf);
+}
+
+/** The grid row a row id is - in pivot view a group, whose cells carry their long rows. */
+export function gridRowOf(rowId) {
+  const node = state.gridApi && state.gridApi.getRowNode(rowId);
+  return node && node.data;
 }
 
 /**
