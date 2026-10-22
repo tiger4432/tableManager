@@ -333,27 +333,27 @@ def map_enrichment_dedup(db, payloads, rule=None):
                  ⚰️ 종전에는 `rule["enrichment"]`였다. 같은 함수가 두 칸에 «같은 것»을
                  적고 있었고, 다른 기본틀은 전부 `params`를 읽는다 (소유자: 「같은 io」)
     """
+    return built(rule, read_decide(db, payloads, rule))
+
+
+def read_decide(db, payloads, rule=None) -> dict:
+    """The decide's read half (총괄 78eec1ec1): the decision keys `payloads` touch - and the keys a row left - with
+    their counts read from the source table, and which of the empty ones no source row holds. `{"result": ...}`
+    when that is already the answer."""
     if not payloads:
-        return _result([], 0, 0)
+        return {"result": _result([], 0, 0)}
     enrich = (rule or {}).get("params")
     if not enrich:
         logger.error("[Enrichment] chain rule carries no declaration in 'params'; skipping batch")
-        return _result([], 0, 0)
+        return {"result": _result([], 0, 0)}
 
     from database import crud
 
     source_table = enrich["source_table"]
-    derived_table = enrich["derived_table"]
     decision_key = enrich["decision_key"]
     target_fields = set(enrich.get("target_fields", []))
     list_columns = enrich.get("list_columns", [])
     aggregations = enrich.get("aggregations", {})
-
-    derived_cfg = crud.TABLE_CONFIG.get(derived_table, {})
-    derived_cols = set(derived_cfg.get("column_types", {}).keys())
-    comp_src = derived_cfg.get("composite_key_source")
-    comp_sep = derived_cfg.get("composite_key_separator", "_")
-    bk_col = derived_cfg.get("business_key")
     source_col_types = crud.TABLE_CONFIG.get(source_table, {}).get("column_types", {})
 
     # 1) 배치에서 decision_key 유니크 조합 추출 (증분 — payload의 변경 행만)
@@ -421,7 +421,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
     for key in left:     # recounted like any key - and asked how many source rows it still has
         groups[key] = {"reps": {}}
     if not groups:
-        return _result([], skipped, 0)
+        return {"result": _result([], skipped, 0)}
 
     # 2) 집계 — 영향 키 한정 재계산(멱등: 재인제션에도 이중 카운트 없음)
     #    🔴 모집단은 «그 키의 커밋된 소스 행 전체»다 (S-129 ②) — 배치는 「어느 키를」만
@@ -439,6 +439,26 @@ def map_enrichment_dedup(db, payloads, rule=None):
     # others, and the row goes only when no source row holds its identity. One that still has some writes nothing.
     empty = {key for key in left if not (aggregated.get(key) or {}).get(_SOURCE_ROWS)}
     gone = _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty, gates)
+    return {"handed": len(payloads), "enrich": enrich, "groups": groups, "aggregated": aggregated,
+            "empty": empty, "gone": gone, "skipped": skipped}
+
+
+def built(rule, got) -> dict:
+    """The derived rows `read_decide` read for - one a decision key, nothing read here."""
+    if "result" in got:
+        return got["result"]
+    from chain import enrichment
+    from database import crud
+
+    enrich, groups, aggregated = got["enrich"], got["groups"], got["aggregated"]
+    empty, gone, skipped = got["empty"], got["gone"], got["skipped"]
+    derived_table, decision_key = enrich["derived_table"], enrich["decision_key"]
+    target_fields, aggregations = set(enrich.get("target_fields", [])), enrich.get("aggregations", {})
+    derived_cfg = crud.TABLE_CONFIG.get(derived_table, {})
+    derived_cols = set(derived_cfg.get("column_types", {}).keys())
+    comp_src = derived_cfg.get("composite_key_source")
+    comp_sep = derived_cfg.get("composite_key_separator", "_")
+    bk_col = derived_cfg.get("business_key")
 
     # 3) 키당 1행 upsert 아이템 구성 — target_fields 는 같은 이름의 집계만 쓴다. 빈 집계는 «withdraw» 에.
     #    기존 키: decision/list 컬럼 값이 동일하면 has_changed=False로 무변경 처리되고,
@@ -546,7 +566,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
             f"do not change this: the table says its identity is those columns."
         )
     logger.info(
-        f"[Enrichment:{enrich.get('name')}] {len(payloads)} source row(s) -> "
+        f"[Enrichment:{enrich.get('name')}] {got['handed']} source row(s) -> "
         f"{len(updates)} unique decision key(s) built for '{derived_table}' "
         f"({partial_keys} of them on a PARTIAL decision key)"
     )

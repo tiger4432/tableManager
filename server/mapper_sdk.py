@@ -775,8 +775,9 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                 % (getattr(fn, "__name__", "?"),
                    ", ".join(p.name for p in _positional) or "no arguments"))
 
-        @functools.wraps(fn)
-        def run(db, payloads, rule=None):
+        def handed(db, payloads, rule=None):
+            """The read half (`rule_run.FETCH`, 총괄 78eec1ec1): `(table, rows_in, left)` - the rows handed, and the
+            whole maps they are in or left when the rule answers for whole maps (`_with_the_whole_maps`)."""
             table = (rule or {}).get("target_table") or target_table
             if not table:
                 raise MapperContractError(
@@ -790,6 +791,11 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
             left = ()
             if chain_bindings.removes_whole_maps(rule):
                 rows_in, left = _with_the_whole_maps(db, rule, table, payloads, rows_in)
+            return table, rows_in, left
+
+        @functools.wraps(fn)
+        def run(db, payloads, rule=None, fetched=None):
+            table, rows_in, left = handed(db, payloads, rule) if fetched is None else fetched
             if "row_id" in rows_in.columns:
                 rows_in[ORIGIN_MARK] = rows_in["row_id"]
             out = fn(rows_in, db)
@@ -805,6 +811,7 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                 return {"updates": []}
             return _stamped_updates(out, table, source_name=source_name,
                                     updated_by=updated_by or fn.__name__)
+        run.fetch = handed
         setattr(run, _MADE_BY_SDK, True)
         # 🔴 REGISTERED UNDER THE AUTHOR'S FUNCTION NAME unless one is given. The name a
         # rule writes has to be a name the author can see in their own file; a generated

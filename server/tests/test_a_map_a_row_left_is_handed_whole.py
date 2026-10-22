@@ -8,6 +8,7 @@ emptied. A map no row holds any more is still named, and its batch empties it.
   in        an edit inside a map, a key moved on: the map the row is in comes whole too (총괄 f2 10-21)
   gone      a map with no row now: named, nothing written - its batch empties it
   plain     a rule without the two flags reads nothing again
+  fetched   the whole map is read by the fetch seat - the mapper's call reads nothing (총괄 78eec1ec1)
 
 On a real chain worker and a real watcher's file replace - measured on a scratch schema (박스 판).
 """
@@ -21,6 +22,7 @@ from sqlalchemy.orm import sessionmaker
 import chain_bindings
 import mapper_sdk
 from chain import ingestion_worker as worker
+from chain import rule_run
 from database import crud, models, schemas
 from database.database import Base
 
@@ -144,3 +146,14 @@ def test_a_rule_without_the_flags_reads_nothing_again(db):
     envelope = mapper_sdk.MAPPER_REGISTRY["left_build"](db, [_edited(db, "T2", "J-B", "1", {"job": "J-A"})],
                                                         rule=_rule())
     assert SEEN == [[("T2", "J-B", "1")]] and "batches" not in envelope and len(envelope["updates"]) == 1
+
+
+def test_the_whole_map_is_read_by_the_fetch_seat(db, monkeypatch, caplog):
+    import logging
+
+    monkeypatch.setattr(rule_run, "_SAID_READING", set())
+    caplog.set_level(logging.INFO)
+    edited = _edited(db, "T2", "J-A", "3", {"qty": "1"})
+    envelope = rule_run.run_rule(db, _rule(allow_replace_map=True), payloads=[edited])
+    assert SEEN == [[("T1", "J-A", "2"), ("T2", "J-A", "3")]] and _maps(envelope) == {"J-A": 5}
+    assert not [r for r in caplog.records if "reads outside the fetch" in r.getMessage()]

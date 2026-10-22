@@ -59,8 +59,9 @@ def _row_ids(payload) -> list:
             if isinstance(row, dict) and row.get("row_id")]
 
 
-def _join(db, payload, rule=None):
-    """`derive: {kind: "join"}` as an ordinary mapper. The body is `join_into.propose`.
+def _join(db, payload, rule=None, fetched=None):
+    """`derive: {kind: "join"}` as an ordinary mapper. The body is `join_into.answer` over what the fetch seat read
+    (`_read_join`, 총괄 78eec1ec1).
 
     ⚰️ [판정 567 · 총괄 2026-09-23] THIS CALLED `join_into.run`, which proposed AND wrote.
        The write is the seat's now. `join_into` carries the tombstone that says what comes
@@ -68,11 +69,21 @@ def _join(db, payload, rule=None):
     """
     from chain import join_into
 
-    return join_into.propose(db, rule, _row_ids(payload), join_into.old_keys(rule, payload))
+    return join_into.answer(db, rule, _read_join(db, payload, rule) if fetched is None else fetched)
+
+
+def _read_join(db, payload, rule=None):
+    """The join's read half - both sides of its key, for the rows handed."""
+    from chain import join_into
+
+    return join_into.read(db, rule, _row_ids(payload), join_into.old_keys(rule, payload))
+
+
+_join.fetch = _read_join
 
 
 
-def _auto_confirm(db, payload, rule=None):
+def _auto_confirm(db, payload, rule=None, fetched=None):
     """`derive: {kind: "decide"}` as an ordinary mapper.
 
     🔴 THE BODY MOVED HERE FROM THE KIND TABLE (판정 563: 「auto_confirm 의 «확정하는 로직»
@@ -89,27 +100,13 @@ def _auto_confirm(db, payload, rule=None):
     """
     from chain import enrichment
 
-    rows = _row_ids(payload)
-    # 🔴 [판정 525 ②] EVERY ZERO EXIT SAYS WHY — and these are different repairs: nothing
-    #   arrived / nothing is switched on / nothing was waiting. Two of the three are not
-    #   even a problem, and 「0」 alone cannot tell them apart.
-    table = str((rule or {}).get("target_table") or "")
-    if not table or not rows:
-        return {"updates": [], "confirmed": 0, "refused": 0,
-                "refusal": "확정을 시도할 행이 넘어오지 않았습니다"}
-
-    declared = (rule or {}).get("params") or None
-    collector = enrichment.candidates.AutoConfirmCollector(
-        table, rules=[declared] if isinstance(declared, dict) else None)
-    if not collector.active:
-        return {"updates": [], "confirmed": 0, "refused": 0,
-                "refusal": "이 표에 켜진 자동확정 규칙이 없습니다"}
-
-    collector.collect_rows(db, rows)
+    fetched = _read_auto_confirm(db, payload, rule) if fetched is None else fetched
+    if "answer" in fetched:
+        return fetched["answer"]
     # ⚠️ NOT `written`. The seat adds that cell to its own count, so reporting it here while
     #   the seat ALSO writes these items would count every confirmed row twice.
     proposed = []
-    stats = collector.flush(db, propose_into=proposed) or {}
+    stats = fetched["collector"].flush(db, propose_into=proposed, read=fetched["read"] or {}) or {}
     confirmed = stats.get("confirmed") or 0
     refused = sum((stats.get("refused") or {}).values())
     refusal = None
@@ -118,6 +115,33 @@ def _auto_confirm(db, payload, rule=None):
                    "확정을 기다리는 행이 없습니다")
     return {"updates": proposed, "confirmed": confirmed, "refused": refused,
             "refusal": refusal, "source_name": enrichment.candidates.SOURCE_NAME}
+
+
+def _read_auto_confirm(db, payload, rule=None):
+    """The auto-confirm's read half: the derived rows handed, and what confirming them reads - or `{"answer": ...}`
+    when that is already the answer."""
+    from chain import enrichment
+
+    rows = _row_ids(payload)
+    # 🔴 [판정 525 ②] EVERY ZERO EXIT SAYS WHY — and these are different repairs: nothing
+    #   arrived / nothing is switched on / nothing was waiting. Two of the three are not
+    #   even a problem, and 「0」 alone cannot tell them apart.
+    table = str((rule or {}).get("target_table") or "")
+    if not table or not rows:
+        return {"answer": {"updates": [], "confirmed": 0, "refused": 0,
+                           "refusal": "확정을 시도할 행이 넘어오지 않았습니다"}}
+
+    declared = (rule or {}).get("params") or None
+    collector = enrichment.candidates.AutoConfirmCollector(
+        table, rules=[declared] if isinstance(declared, dict) else None)
+    if not collector.active:
+        return {"answer": {"updates": [], "confirmed": 0, "refused": 0,
+                           "refusal": "이 표에 켜진 자동확정 규칙이 없습니다"}}
+    collector.collect_rows(db, rows)
+    return {"collector": collector, "read": collector.read_for_flush(db)}
+
+
+_auto_confirm.fetch = _read_auto_confirm
 
 
 
@@ -131,7 +155,7 @@ def _auto_confirm(db, payload, rule=None):
 #    grammar that carried it is gone and nobody can read it off the source any more.
 
 
-def _enrich(db, payload, rule=None):
+def _enrich(db, payload, rule=None, fetched=None):
     """`derive.decide` 선언의 «파생행» 반쪽 — the body is `map_enrichment_dedup`.
 
     🔴 [소유자 2026-09-17 「@mapper 를 굳이 할 필요는 없고 체인 프로세스에서 «똑같은 인자»로
@@ -160,7 +184,17 @@ def _enrich(db, payload, rule=None):
     """
     from chain.enrichment import mapper
 
-    return mapper.map_enrichment_dedup(db, payload, rule)
+    return mapper.built(rule, _read_decide(db, payload, rule) if fetched is None else fetched)
+
+
+def _read_decide(db, payload, rule=None):
+    """The decide's read half - the keys handed and their counts (`mapper.read_decide`)."""
+    from chain.enrichment import mapper
+
+    return mapper.read_decide(db, payload, rule)
+
+
+_enrich.fetch = _read_decide
 
 
 #: 🔴 [판정 562] THE FACTS THAT ARE REAL, DECLARED WHERE THE TEMPLATE IS.
