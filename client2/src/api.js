@@ -337,7 +337,8 @@ export function drawPivot() {
  *  item's are not a long row's), the choice kept for this table. */
 export async function setGridPivot(on) {
   if (!state.currentPivot || !state.currentTable) return;
-  if (state.txModeActive) { elements.performanceLog.textContent = 'Turn transaction mode off first'; return; }
+  // staged edits are keyed by the rows of the view they were made in (Tx itself is on by default and works in both)
+  if (Object.keys(state.pendingTxEdits).length) { elements.performanceLog.textContent = 'Apply or discard the staged edits first'; return; }
   state.pivotOn = on;
   state.pivotView = null;
   rememberPivot(browserStore(), state.currentTable, on);

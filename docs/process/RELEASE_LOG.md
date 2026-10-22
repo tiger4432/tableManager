@@ -523,7 +523,7 @@
 - **무엇** — 소유자 10-22. pivot 을 선언한 표에서 바닥줄 Gallery 옆 «Pivot» 을 누르면 그리드가 키 묶음마다 한 줄, item 값마다 한 칸이 됩니다. 다시 누르면 원래 그리드입니다. 선언 안 한 표에는 버튼이 없습니다.
 - **선언** — 서버 착지 그대로(`table_config.json` 의 `pivot`). 화면 쪽 선언은 없습니다.
 - **화면에서** — item 칸 머리는 item 값만. 바닥줄 수의 단위는 «groups». 펼친 칸 상한을 넘으면 그리드 위에 «N more items not shown». 거르기 · 정렬 · 검색 · Load All 은 그리드 그대로 묶음 단위. 가상 칸 · 원장 칸은 피벗 보기에 없습니다. 누른 상태는 표마다 이 브라우저에 남습니다.
-- **고치기** — 그리드처럼: 한 칸 · 붙여넣기 · 채우기(Ctrl+Enter) · 지우기 · 트랜잭션. 있는 칸은 그 행의 값을, 빈 칸은 그 키 · item 의 행을 새로 만들고, 저장 뒤 쪽을 다시 읽습니다. 키 칸에 닿는 붙여넣기 · 채우기 · 지우기는 그 한 번을 통째로 «Key columns cannot be changed in pivot view» 로 거절합니다(아무것도 안 씀). 행 추가 · 행 삭제 · 스마트 붙여넣기는 «Rows are added and deleted with Pivot off». 트랜잭션 모드가 켜져 있으면 Pivot 이 «Turn transaction mode off first» 로 거절합니다.
+- **고치기** — 그리드처럼: 한 칸 · 붙여넣기 · 채우기(Ctrl+Enter) · 지우기 · 트랜잭션. 있는 칸은 그 행의 값을, 빈 칸은 그 키 · item 의 행을 새로 만들고, 저장 뒤 쪽을 다시 읽습니다. 키 칸에 닿는 붙여넣기 · 채우기 · 지우기는 그 한 번을 통째로 «Key columns cannot be changed in pivot view» 로 거절합니다(아무것도 안 씀). 행 추가 · 행 삭제 · 스마트 붙여넣기는 «Rows are added and deleted with Pivot off». 트랜잭션에 쌓인 고침이 있으면 Pivot 이 «Apply or discard the staged edits first» 로 거절합니다(쌓인 고침은 그 보기의 행에 붙어 있음).
 - **바뀐 동작** — Pivot 을 켜고 끌 때 그리드 필터 · 정렬이 풀립니다(칸이 바뀝니다).
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만, 서버 피벗 착지 위).
 - **자세히** — 시험 `grid_pivot_harness.mjs`(3×3 붙여넣기 = update 9) · 화면 검사기 칸 «pivot drawn» · «pivot writes» · «pivot undone» · «pivot only where declared».
