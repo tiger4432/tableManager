@@ -1849,6 +1849,28 @@ const DRIVE = {
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
+    // The page opened again with its declaration read refused: the header's label reads it once, at the start - first, and
+    // the page opened again with it read, so the states after it (the Ledger column, the edits Replay chain shows) have it.
+    ['declaration refused, page opened again', async (c, log) => {
+      DECL_REFUSED.on = true;
+      log.opening = true;
+      await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
+      await sleep(1500);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, GRID_LOADED, 15000);
+      await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label.is-unknown'))");
+      DECL_REFUSED.on = false;
+    }],
+    ['declaration read, page opened again', async (c, log) => {
+      log.opening = true;
+      await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
+      await sleep(1500);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, GRID_LOADED, 15000);
+      await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label')) && !document.querySelector('#grid-source-label-host .is-unknown, #grid-source-label-host .is-pending')");
+    }],
     // The gallery's board (lead 3589216b9) on dt_log with its picture column: Rows by c_bn, Columns by core_lot (12 values).
     ['Gallery, rows by columns', async (c, log) => {
       GALLERY.on = true;
@@ -1989,18 +2011,6 @@ const DRIVE = {
       await sleep(900);
       await settle(c, log);
       await until(c, GRID_LOADED);
-    }],
-    // The page opened again with its declaration read refused: the header's label reads it once, at the start.
-    ['declaration refused, page opened again', async (c, log) => {
-      DECL_REFUSED.on = true;
-      log.opening = true;
-      await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
-      await sleep(1500);
-      await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
-      await until(c, GRID_LOADED, 15000);
-      await until(c, "Boolean(document.querySelector('#grid-source-label-host .grid-source-label.is-unknown'))");
-      DECL_REFUSED.on = false;
     }],
   ],
   'admin.html': [
