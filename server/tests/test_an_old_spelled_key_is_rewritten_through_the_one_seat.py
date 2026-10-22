@@ -33,6 +33,13 @@ TABLES = {
 WHEN = "2026-10-03 12:00:00"
 
 
+def _key(lot, wafer):
+    """The key a row of (lot, wafer, WHEN) is rebuilt to - its time part spelled by the one key speller (b3a6e64f7)."""
+    import map_overlay
+
+    return "%s_%s_%s" % (lot, wafer, map_overlay.canonical_key_value(WHEN, "datetime"))
+
+
 @pytest.fixture(name="db")
 def fixture_db(pg_engine):
     with pg_engine.connect() as conn:
@@ -115,17 +122,16 @@ def test_an_old_spelled_row_is_rewritten_and_the_same_data_lands_on_it(db, table
     assert [row_id for row_id, _key in plan["pending"]] == [old_row[0]]
     assert plan["stat"]["collides"] == 1 and plan["moved_by"] == {"datetime + number": 2}
     (skipped, holder, key), = plan["collide_sample"]
-    assert key == "L2_2_2026-10-03 12:00:00" and skipped != holder
+    assert key == _key("L2", 2) and skipped != holder
 
     assert rekey.apply_rekeys(db["db"], table, plan["pending"], "tester") == 1
-    assert _rows(db, table, "L1") == [(old_row[0], "L1_1_2026-10-03 12:00:00",
-                                       "L1_1_2026-10-03 12:00:00")]   # both key cells
+    assert _rows(db, table, "L1") == [(old_row[0], _key("L1", 1), _key("L1", 1))]   # both key cells
     with db["engine"].connect() as conn:
         audit = conn.execute(text('SELECT old_value, new_value, updated_by FROM "%s".audit_logs '
                                   "WHERE table_name = :t AND source_name = :s"
                                   % PG_TEST_SCHEMA), {"t": table, "s": rekey.REKEY_SOURCE}).all()
     assert [tuple(map(str, a)) for a in audit] == [
-        ("L1_1.0_2026-10-03 12:00", "L1_1_2026-10-03 12:00:00", "tester")]
+        ("L1_1.0_2026-10-03 12:00", _key("L1", 1), "tester")]
 
     _write(db["db"], table, {"lot": "L1", "wafer": "1.0", "t": "2026-10-03 12:00", "v": "again"})
     assert len(_rows(db, table, "L1")) == 1                         # found, not a new row
@@ -192,7 +198,7 @@ def test_three_rows_that_rebuild_to_one_key_come_together(db, table):
     with db["engine"].begin() as conn:                                 # only the new row goes old
         conn.execute(text('UPDATE "%s"."%s" SET business_key_val = :k WHERE lot = :l '
                           "AND business_key_val = :n" % (PG_TEST_SCHEMA, table)),
-                     {"k": "L3_1_2026-10-03 12:00", "l": "L3", "n": "L3_1_2026-10-03 12:00:00"})
+                     {"k": "L3_1_2026-10-03 12:00", "l": "L3", "n": _key("L3", 1)})
     _write(db["db"], table, {"lot": "L3", "wafer": "1", "t": WHEN, "v": "c"})
     assert len(_rows(db, table, "L3")) == 3
 
@@ -222,10 +228,10 @@ def test_with_no_holder_the_first_row_id_holds_and_the_rest_merge_into_it(db, ta
     with db["engine"].begin() as conn:                                 # the second goes old too
         conn.execute(text('UPDATE "%s"."%s" SET business_key_val = :k WHERE lot = :l '
                           "AND business_key_val = :n" % (PG_TEST_SCHEMA, table)),
-                     {"k": "L5_1_2026-10-03 12:00", "l": "L5", "n": "L5_1_2026-10-03 12:00:00"})
+                     {"k": "L5_1_2026-10-03 12:00", "l": "L5", "n": _key("L5", 1)})
     first = min(r[0] for r in _rows(db, table, "L5"))
     _apply(db, table)
-    assert [(r[0], r[1]) for r in _rows(db, table, "L5")] == [(first, "L5_1_2026-10-03 12:00:00")]
+    assert [(r[0], r[1]) for r in _rows(db, table, "L5")] == [(first, _key("L5", 1))]
 
 
 @pytest.mark.parametrize("table", [T_ONLY, T_KEY])
