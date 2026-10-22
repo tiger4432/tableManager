@@ -61,8 +61,11 @@ def test_the_writer_and_the_sweeper_read_the_same_names(db_session):
 
     sweeper = inspect.getsource(worker.sweep_undelivered_broadcasts)
     writer = inspect.getsource(internal_event_client.record_undelivered_notification)
+    # the sweeper asks the one 「미전달」 clause (총괄 10-22: the watcher's count asks it too), and that clause the names
+    assert "undelivered_clause(" in sweeper, "the sweeper spells the undelivered shape by hand again"
+    clause = inspect.getsource(event_constants._undelivered_when)
     for name in ("UNDELIVERED_MARKER_PROCESSED_CHAIN", "UNDELIVERED_MARKER_STATUS"):
-        assert name in sweeper, "the sweeper spells %s by hand again" % name
+        assert name in clause, "the undelivered clause spells %s by hand again" % name
     assert "UNDELIVERED_MARKER_STATUS" in writer, "the writer spells the status by hand again"
 
 

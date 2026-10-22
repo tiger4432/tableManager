@@ -350,7 +350,8 @@ def cancelled_columns():
 def _undelivered_when():
     """「미전달」 — ONE definition (총괄 ac3039494). `broadcast_state_of` reads it in Python and
     `undelivered_clause` in SQL; `idx_outbox_undelivered` indexes the same three columns."""
-    return {"processed_chain": True, "status": UNDELIVERED_MARKER_STATUS, "broadcast_at": None}
+    return {"processed_chain": UNDELIVERED_MARKER_PROCESSED_CHAIN, "status": UNDELIVERED_MARKER_STATUS,
+            "broadcast_at": None}
 
 
 def undelivered_clause(outbox):

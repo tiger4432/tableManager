@@ -3355,9 +3355,7 @@ async def sweep_undelivered_broadcasts(db, rules, db_session_factory):
     # independently, so a change to either made the sweeper silently stop collecting what
     # the writer still produced - see the note in `event_constants`.
     stale = db.query(DatabaseOutbox).filter(
-        DatabaseOutbox.processed_chain == event_constants.UNDELIVERED_MARKER_PROCESSED_CHAIN,
-        DatabaseOutbox.status == event_constants.UNDELIVERED_MARKER_STATUS,
-        DatabaseOutbox.broadcast_at.is_(None),
+        event_constants.undelivered_clause(DatabaseOutbox),
         DatabaseOutbox.created_at < func.now() - text("interval '5 seconds'"),
     ).order_by(DatabaseOutbox.id.asc()).limit(500).all()
 

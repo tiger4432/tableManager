@@ -541,6 +541,11 @@ def poll_pending_retries():
                 workspace_watcher.retry_waiting = (len(pending_logs) if len(pending_logs) < reread.max_files()
                                                    else db.query(models.FileIngestionLog).filter(
                                                        models.FileIngestionLog.status == "PENDING_RETRY").count())
+                # its notifications not delivered yet - the markers the chain's sweep collects (총괄 10-22)
+                import event_constants
+                workspace_watcher.notify_waiting = db.query(models.DatabaseOutbox).filter(
+                    event_constants.undelivered_clause(models.DatabaseOutbox),
+                    models.DatabaseOutbox.event_type == event_constants.EVENT_BROADCAST_RECOVERY).count()
                 workspace_watcher.record_state_lap()
 
             for log in pending_logs:

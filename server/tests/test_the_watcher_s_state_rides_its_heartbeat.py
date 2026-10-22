@@ -82,6 +82,16 @@ def test_the_lap_says_what_the_sweep_line_says(tmp_path):
         assert said["started_at"] <= time.time() and "retry_waiting" in said
         with sqlite3.connect(str(db)) as c:
             assert c.execute("SELECT filename FROM file_ingestion_logs").fetchall() == [("a.csv",)]
+        # the API is unreachable: its notifications not delivered, the markers the chain's sweep would collect
+        # waiting - counted by the sweep's own clause (총괄 10-22)
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not (lap().get("notifications") or {}).get("waiting"):
+            time.sleep(0.5)
+        with sqlite3.connect(str(db)) as c:
+            markers = c.execute("SELECT count(*) FROM database_outbox WHERE event_type = 'BROADCAST_RECOVERY' "
+                                "AND broadcast_at IS NULL").fetchone()[0]
+        assert markers > 0, "CANARY: the unreachable API left its markers"
+        assert lap().get("notifications") == {"delivered": False, "waiting": markers}, lap().get("notifications")
     finally:
         watcher.kill()
         watcher.wait(30)

@@ -54,6 +54,11 @@ def api_may_send() -> bool:
     return _REFUSED_AT[0] is None or time.monotonic() - _REFUSED_AT[0] >= SWEEP_INTERVAL
 
 
+def api_takes() -> bool:
+    """Did the API take the last notification this process sent - the state `api_took` says once when it changes."""
+    return _API_TAKES[0]
+
+
 def api_took(ok, waiting, logger, said_as) -> bool:
     """`ok` of the notification just sent, as given - the one judgement every sender asks after its message (B
     2af64170d: a batch of 50 map messages to an API that took none held a chain slot ~100 s). A refusal opens the

@@ -4196,7 +4196,7 @@ class WorkspaceWatcher:
         self._external_unmatched_said = set()       # source ids told «none matched» while that lasts
         # the «sources» lap (record_state_lap): the sentences the sources were refused with, the last sweep's words,
         # the PENDING_RETRY rows the retry poller last counted, when this process started
-        self._external_refused, self._sweep_said, self.retry_waiting = [], None, None
+        self._external_refused, self._sweep_said, self.retry_waiting, self.notify_waiting = [], None, None, None
         self._started_at = time.time()
         self._lap_lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -4340,6 +4340,8 @@ class WorkspaceWatcher:
         words, the read-files fill, the retries waiting, when the process started - what it already holds, nothing
         measured for it. 🔴 An observer: a failure here is one line and nothing else stops."""
         try:
+            import internal_event_client
+
             with self._lap_lock:
                 heartbeat.record_lap(
                     HEARTBEAT_NAME, "sources", started_at=round(self._started_at, 3),
@@ -4347,7 +4349,8 @@ class WorkspaceWatcher:
                                          "reachable": self._external_availability.get(source_id)}
                              for source_id, target in list(self.external_targets.items())},
                     refused=list(self._external_refused), sweep=self._sweep_said, fill=read_files_fill_said(),
-                    retry_waiting=self.retry_waiting)
+                    retry_waiting=self.retry_waiting,
+                    notifications={"delivered": internal_event_client.api_takes(), "waiting": self.notify_waiting})
         except Exception as exc:                                    # noqa: BLE001
             logger.warning("[Watcher] the state lap was not recorded (%s: %s) - the watcher is unaffected",
                            type(exc).__name__, told(exc))

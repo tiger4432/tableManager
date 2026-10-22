@@ -102,8 +102,7 @@ def test_nothing_marks_an_event_processed_except_this_function():
                     and isinstance(v, ast.Constant) and v.value is True
                     for k, v in zip(node.keys, node.values)):
                 found.append(where(node))
-    # `_undelivered_when` is the READ side (「미전달」, 총괄 ac3039494) - the one other place
-    # the pair is spelled, and it writes nothing.
-    assert sorted(found) == [("event_constants.py", "_undelivered_when"),
-                             ("event_constants.py", "processed_columns")], found
+    # `_undelivered_when` - the READ side (「미전달」, 총괄 ac3039494) - spells it by the marker's constant since
+    # 2026-10-22 (the sweeper and the watcher's count both ask it), so it is no longer a literal here.
+    assert sorted(found) == [("event_constants.py", "processed_columns")], found
     assert worker.mark_processed is event_constants.mark_processed
