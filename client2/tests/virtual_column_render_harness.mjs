@@ -565,9 +565,10 @@ async function suite(sources) {
   check('3a row-number column still leads', defs[0].headerName, '#');
   check('3b column order: stored, then virtual',
     defs.slice(1).map(d => d.field), STORED.concat(['wafer_id', 'yield_pct']));
-  check('3c checkbox still on the first STORED column',
-    [defOf(defs, 'pkg_id').checkboxSelection, !!defOf(defs, 'wafer_id').checkboxSelection],
-    [true, false]);
+  // the row checkbox is the grid's own selection column (9c3834c5e), so no column - stored or virtual - carries it
+  check('3c no column carries the row checkbox, the virtual ones included',
+    [!!defOf(defs, 'pkg_id').checkboxSelection, !!defOf(defs, 'wafer_id').checkboxSelection],
+    [false, false]);
   check('3d virtual defs are not editable',
     [defOf(defs, 'wafer_id').editable, defOf(defs, 'yield_pct').editable], [false, false]);
   check('3e stored data column stays editable', defOf(defs, 'bond_count').editable, true);
