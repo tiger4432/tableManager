@@ -227,3 +227,43 @@
 - **견본 줄** — 엑셀 양식에서 `{{table:yield_by}}` 줄 바로 밑 줄들의 첫 칸에 `{{info}}` · `{{picture}}` · `{{item}}` 을 적고, 그 줄들의 이름 칸(첫 칸)과 값 칸(둘째 칸)을 칠해 둔다. 우리 표의 그 종류 칸이 같은 class · style 을 받고(머리줄은 `{{table:yield_by}}` 줄의 서식), 견본 줄들은 표 하나가 든 칸으로 바뀐다. 견본 줄이 없는 종류는 `{{item}}` 줄의 서식을 받는다. 조건부 서식 색은 견본 서식 위에 칠해진다.
 - **한글 낱말** — 파일에 나오는 고정 낱말은 전부 `labels` 를 지난다. 안 적은 이름은 영어 기본값으로 나온다. 모르는 이름은 저장 줄에 알림이 뜬다. `control` 은 묶음 이름이라 report_wafer 의 set_name 과 모델 문맥에도 같은 글이 간다.
 - 붙여 넣은 양식의 charset 줄(엑셀은 `ks_c_5601-1987` 같은 것을 적는다)은 빠지고, 파일에는 utf-8 한 줄만 남는다.
+
+## 계측 → 리포트 자동 — 요약표가 바뀌면 그 평가의 리포트가 돈다 (A, 10-23)
+
+규칙 넷을 체인 창에 적는다. 제품 코드는 없다. 아래는 진짜 프로세스 판에서 제품 로더가 읽어 넷 다 running 으로 선 선언 그대로다 — 표 이름(gs_…)은 판의 것이니 자기 표로 바꾼다.
+
+1. 조인 — 웨이퍼 표의 평가를 요약표에 쓴다. 요약표 선언에 `request_id` · `eval_id` 두 칸(string)을 더해 둔다.
+```json
+{"name": "gs_eval", "on": {"table": "gs_wafer"}, "into": {"table": "gs_summary"},
+ "derive": {"kind": "join", "join": {
+   "on": [{"left": "wafer_id", "right": "wafer_id"}, {"left": "version", "right": "version"}],
+   "take": [{"from": "eval_id", "into": "request_id"}, "eval_id"]}}}
+```
+2. 결정 — 요약표에서 평가마다 요청 행 하나를 세운다(요청 키 = 평가).
+```json
+{"name": "gs_ask", "on": {"table": "gs_summary", "require": ["request_id"]},
+ "into": {"table": "report_request"}, "allow_chain_trigger": true,
+ "derive": {"kind": "decide", "decide": {"key": ["request_id"], "fields": ["note"], "list_columns": ["eval_id"]}}}
+```
+3. 리포트 규칙 — 요청 행에 깨어난다. `derive.report` 는 위 절들 그대로.
+```json
+{"name": "gs_report", "on": {"table": "report_request"}, "into": {"table": "report"}, "allow_chain_trigger": true,
+ "derive": {"kind": "report", "report": {"wafer": {"…": "…"}, "summary": {"…": "…"}}}}
+```
+4. 소유자 맵퍼 자리 — 리포트가 done 이 되면 소유자 맵퍼(`server/mappers/<모듈>.py`)가 불린다. 맵퍼는 `payload["data"]["file_path"]["value"]` 로 파일 경로를 받는다(보내기 · 복사는 맵퍼 몫).
+```json
+{"name": "gs_send", "on": {"table": "report", "require": [{"state": ["done"]}]},
+ "into": {"table": "gs_sent"}, "allow_chain_trigger": true,
+ "derive": {"kind": "mapper", "mapper": {"mapper_module": "mappers.<모듈>", "mapper_function": "<함수>"}}}
+```
+```python
+def send(db, payload, rule=None):
+    path = payload["data"]["file_path"]["value"]      # <데이터 루트>/reports/<평가>.html
+    ...                                               # 중계 PC 로 보내기 등
+    return {"updates": []}
+```
+
+- 잰 것(박스, 평가 하나 20 열): 요약이 한 저장에 들어오면 요청 행 쓰기 1 · 리포트 1 판 · 마지막 요약 반영 · 4 초.
+- ⚠️ 한계: 한 평가의 요약이 웨이퍼마다 따로 저장되면 리포트는 «첫 저장 뒤 한 판»만 돌고 뒤의 요약은 안 담긴다. 운영은 인제션이 대상 파일을 한 커밋으로 넣어 «한 번에» 들어온다(소유자 10-23).
+- ⚠️ 이미지 표가 반쪽으로 들어온 때에 리포트가 돌면 리포트 이미지도 반쪽이다 — 조사 중.
+- 다시 만들기는 지금처럼 요청 행 고치기(note 등) — 그 쓰기에 리포트 규칙이 다시 돈다.
