@@ -1767,6 +1767,44 @@ def _count_collector_backfill(db, params, scan_limit):
     }
 
 
+def _count_retype_column(db, params, scan_limit):
+    from sqlalchemy import text
+    from admin import retype
+
+    table, column = params["table"], params["column"]
+    physical = retype.family(db.get_bind(), table, column)
+    cell = retype.CELLS.get((physical, params["type"]))
+    values = retype.bad_values(db, table, column, cell) if cell else None
+    do, said = retype.verdict(params["type"], physical, values, retype.key_uses(table, column) if cell else ())
+    rows = db.execute(text('SELECT count(*) FROM "%s"' % table.replace('"', '""'))).scalar() if physical else 0
+    return {
+        "affected": rows if do == retype.CONVERT else 0,
+        "absence": None if do == retype.CONVERT else ABSENCE_TRULY_NONE,
+        "affected_label": "rows to convert",
+        "count_kind": COUNT_EXACT,
+        "scanned": rows,
+        "scan_limit": scan_limit,
+        "truncated": False,
+        "detail": ("%s.%s is %s in the database; declared %s. %s" % (
+            table, column, physical, params["type"],
+            said or ("The column is converted with its indexes in one transaction, est. lock %s s (box rate)"
+                     % retype.lock_estimate(db, table) if do == retype.CONVERT else "Nothing to convert."))),
+        "extra": {"family": physical, "verdict": do, "bad_values": list(values or ())},
+    }
+
+
+def _retype_types():
+    from admin import retype
+
+    return sorted({declared for _family, declared in retype.CELLS})
+
+
+def _run_retype_column(db, params, log, control=None):
+    from admin import retype
+
+    return retype.convert(db, params["table"], params["column"], params["type"], log, _checkpoint(control))
+
+
 def _run_collector_backfill(db, params, log, control=None):
     """One day at a time: fill the script with that day's window, run it, wait until its
     file has passed the ingestion queue, then the next day. A day whose file fails stops
@@ -2491,6 +2529,27 @@ OPERATIONS = {
         "commit_granularity": ("one day at a time - the day's file is ingested (the file "
                                "checkpoint says DONE) before the next day runs; a stop lands "
                                "between days, and a failed day stops the run and names it"),
+        "cli_only": [],
+    },
+    "retype_column": {
+        "label": "Convert a column's type",
+        "what_is_missing": "a column the table declaration names a number that the database still holds as text",
+        "downstream_note": ("The table is locked while it converts; afterwards the declaration says the new type "
+                            "and every process reads the column as it"),
+        "params": [_p("table"), _p("column"),
+                   _p("type", help="the declared type", choices=lambda: sorted(_retype_types()))],
+        "count": _count_retype_column,
+        "run": _run_retype_column,
+        "judge": _judge_table,
+        "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
+                "'retype_column', {'table': '<table>', 'column': '<column>', 'type': 'number'})\""),
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one transaction - the values checked, the indexes reading the column dropped, "
+                               "the column converted, those indexes built again; then the declaration's one cell. A "
+                               "stop lands before the transaction begins; once it has, it ends"),
         "cli_only": [],
     },
 }

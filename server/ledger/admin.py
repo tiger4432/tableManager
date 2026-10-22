@@ -266,6 +266,16 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
             "config_not_object", "table_config.json",
             "table_config.json is not a JSON object")
 
+    # A column declared a type the database does not hold yet keeps the database's type in the file; its conversion,
+    # queued below, writes the declared one when the column holds it (admin.retype, lead aa8ff1af5).
+    from admin import retype
+    from database.database import engine
+    try:
+        declaration, held = retype.hold(engine, table, declaration)
+    except retype.RetypeRefused as refused:
+        raise _table_config_refusal("retype_refused", f"tables.{table}.column_types.{refused.column}",
+                                    str(refused)) from None
+
     merged = dict(document)
     merged[table] = declaration
     # The whole result, through the product's OWN parse rules, before anything is written.
@@ -277,8 +287,22 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
             f"It holds a value that cannot be saved: {exc}") from exc
 
     backup = _atomic_write(path, merged)
+    retypes = [retype.queue(table, *one) for one in held]
     return {"ok": True, "table": table, "base": file_fingerprint(path),
-            "backup": backup, "tables": len(merged)}
+            "backup": backup, "tables": len(merged), "retypes": retypes,
+            "note": " · ".join(one["said"] for one in retypes)}
+
+
+def set_column_type(table: str, column: str, declared: str) -> str:
+    """The column conversion's one write to table_config.json (admin.retype): the file read again, that ONE cell set,
+    the save's atomic write - every other cell is the file's as it is now. Returns the backup path."""
+    path = table_config_path()
+    document = _read_json(path, {})
+    entry = document.get(table) if isinstance(document, dict) else None
+    if not isinstance(entry, dict):
+        raise ValueError("table_config.json declares no table %r" % table)
+    entry.setdefault("column_types", {})[column] = declared
+    return _atomic_write(path, document)
 
 
 def _table_config_refusal(code: str, path: str, message: str):

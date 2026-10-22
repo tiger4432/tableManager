@@ -341,6 +341,8 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     # The marks carry no event; the end withdrawal queues retroactive-channel ones, which wake no rule (총괄 10-11).
     fold_units = notes.pop("fold_units")
     assert fold_units.startswith("No chain rule wakes") and "retroactive-channel edit events" in fold_units
+    # A column converted under a lock, then declared - every process reads it as its new type (총괄 aa8ff1af5).
+    assert notes.pop("retype_column").startswith("The table is locked while it converts")
     assert notes and set(notes.values()) == {retroactive.DOWNSTREAM_NOTE}
 
 
