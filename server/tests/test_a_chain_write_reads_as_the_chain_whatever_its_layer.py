@@ -336,6 +336,9 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     assert notes.pop("fold_duplicate_rows").startswith("Each deleted row reaches the chain as a deletion")
     # The shells go the same door, and the deletion wakes no rule (총괄 5eee501eb).
     assert notes.pop("remove_shell_rows").startswith("Each deleted row reaches the chain as a deletion")
+    # Every row of a table, the same door (총괄 4435b9b29) - the file checklist kept.
+    every_row = notes.pop("delete_every_row")
+    assert every_row.startswith("Each deleted row reaches the chain as a deletion") and "checklist" in every_row
     # Its collapsed events run as the row-by-row ones would have, every rule (총괄 eddf9e38e ②).
     assert notes.pop("fold_withdrawal_events").startswith("The chain runs the collapsed events")
     # The marks carry no event; the end withdrawal queues retroactive-channel ones, which wake no rule (총괄 10-11).

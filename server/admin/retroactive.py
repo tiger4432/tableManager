@@ -2337,9 +2337,9 @@ OPERATIONS = {
                                "(crud.delete_rows_batch); a stop "
                                "lands between pages and a re-run finds only what is left"),
         "cli_only": [],
-        "downstream_note": ("The deletions go out on the retroactive channel, which wakes no rule - replay "
-                            "the rules that take deletions from this table if their tables should follow. "
-                            "The file checklist is not touched"),
+        "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
+                            "taken back; the deletion wakes no rule - replay the rules that take deletions "
+                            "from this table if their tables should follow. The file checklist is not touched"),
     },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",
