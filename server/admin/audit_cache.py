@@ -116,10 +116,6 @@ RECENT_DEFAULTS = {
     # column list, and `/audit_logs/transaction/{id}` falls back to the database
     # for anything deeper, so this is a convenience cache, not the record.
     "recent_logs_per_group": 500,
-    # Above this many new rows, a delta merge stops being cheaper than a
-    # rebuild: the merge validates every new row in Python (~47 us each), while
-    # a rebuild is bounded by `recent_max_scan_rows` regardless of the delta.
-    "recent_refresh_max_delta_rows": 2_000,
 }
 
 
@@ -531,64 +527,59 @@ class AuditLogCache:
 
         The audit cache belongs to the API process, while chain replay and file
         ingestion write from workers. A primary-key MAX probe keeps the common
-        read path cheap; when it advances, the delta is merged rather than the
-        whole projection rebuilt - a one-row replay must not wait on the entire
-        history, and `test_audit_cache_cross_process` pins that.
-
-        A delta is only cheaper than a rebuild while it is SMALL, because the
-        merge models every new row in Python. Past
-        `recent_refresh_max_delta_rows` it is not, and an ingestion's delta is
-        not small - so above the threshold this falls through to the bounded
-        rebuild, whose cost depends on `recent_max_scan_rows` and nothing else.
+        read path cheap; when it advances, the delta is merged - whatever its size (총괄 10-22: a rebuild per
+        2,000-row file re-read up to 30,500 rows each time, 94 % of it the database's). Its cost is the groups it
+        touched, not its rows: each group's count by one GROUP BY over the id range, and the newest
+        `recent_logs_per_group` rows of each of the newest `limit_groups` groups it touched. A group's count is
+        cumulative - what was there plus what came, less what a notification already claimed (`_absorb`).
+        A rebuild or another refresh that moved the watermark meanwhile leaves this merge out: the next read starts
+        from the watermark it left.
         """
-        latest_id = db.query(func.max(models.AuditLog.id)).scalar() or 0
+        m = models.AuditLog
+        latest_id = db.query(func.max(m.id)).scalar() or 0
         settings = resolve_recent_settings()
         with self._lock:
             if not self.is_loaded or latest_id <= (self._db_max_id or 0):
                 return False
             previous_id = self._db_max_id or 0
 
-        if latest_id - previous_id > settings["recent_refresh_max_delta_rows"]:
-            # Not a replay - a bulk load. Rebuild, bounded.
-            self.load_initial(db, limit_groups, force=True, refresh_above=latest_id)
-            return True
-
-        # Ascending id order preserves each transaction's newest log at the
-        # top as it is merged, and the primary-key range is independent of the
-        # total size of historic audit data.
-        rows = db.query(models.AuditLog)\
-                 .filter(models.AuditLog.id > previous_id,
-                         models.AuditLog.id <= latest_id)\
-                 .order_by(models.AuditLog.id.asc()).all()
+        in_range = (m.id > previous_id, m.id <= latest_id)
+        counted = {}
+        for tid, n, newest in (db.query(m.transaction_id, func.count(m.id), func.max(m.id))
+                               .filter(*in_range).group_by(m.transaction_id)):
+            key = group_of(tid)
+            had = counted.get(key, (0, 0))
+            counted[key] = (had[0] + n, max(had[1], newest))
+        touched = sorted(counted, key=lambda key: counted[key][1], reverse=True)[:limit_groups]
         per_group = settings["recent_logs_per_group"]
+        fresh = {}
+        for key in touched:
+            logs = []
+            for obj in (db.query(m).filter(*in_range, in_group(m.transaction_id, key))
+                        .order_by(m.id.desc()).limit(per_group)):
+                log_dict = obj.__dict__.copy()
+                log_dict["business_key"] = obj.business_key
+                logs.append(schemas.AuditLogResponse.model_validate(log_dict))
+            fresh[key] = logs
+
         popped = False
         with self._lock:
-            for log_obj in rows:
-                if log_obj.id <= (self._db_max_id or 0):
-                    continue                    # a rebuild swapped in meanwhile already holds it
-                log_dict = log_obj.__dict__.copy()
-                log_dict["business_key"] = log_obj.business_key
-                log_model = schemas.AuditLogResponse.model_validate(log_dict)
-                tid = group_of(log_obj.transaction_id)
-                for group in self.groups:
-                    if group["transaction_id"] == tid:
-                        # 🔴 ABSORB, DO NOT ADD, WHAT AN EVENT ALREADY CLAIMED.
-                        # `add_logs_batch` cannot advance the watermark (its log
-                        # dicts carry id 0), so these very rows were merged once
-                        # already. Counting them again is how 300 rows read 600.
-                        _absorb_one(group)
-                        if len(group["logs"]) < per_group:
-                            group["logs"].insert(0, log_model)
-                        if self.groups.index(group) > 0:
-                            self.groups.remove(group)
-                            self.groups.insert(0, group)
-                        break
-                else:
-                    self.groups.insert(0, {
-                        "transaction_id": tid,
-                        "logs": [log_model],
-                        "total_count": 1,
-                    })
+            if (self._db_max_id or 0) != previous_id:
+                return False
+            for key in reversed(touched):           # the newest ends on top
+                count, logs = counted[key][0], fresh[key]
+                group = next((g for g in self.groups if g["transaction_id"] == key), None)
+                if group is None:
+                    self.groups.insert(0, {"transaction_id": key, "logs": logs, "total_count": count})
+                    continue
+                # 🔴 ABSORB, DO NOT ADD, WHAT AN EVENT ALREADY CLAIMED.
+                # `add_logs_batch` cannot advance the watermark (its log
+                # dicts carry id 0), so these very rows were merged once
+                # already. Counting them again is how 300 rows read 600.
+                _absorb(group, count)
+                group["logs"] = (logs + group["logs"])[:per_group]
+                self.groups.remove(group)
+                self.groups.insert(0, group)
             while len(self.groups) > limit_groups:
                 self.groups.pop()
                 popped = True
@@ -601,8 +592,8 @@ class AuditLogCache:
                 self.next_cursor = None
             # A row committed between the MAX probe and range query is left
             # above this watermark and is safely picked up by the next read.
-            self._db_max_id = max(self._db_max_id or 0, latest_id)
-        return bool(rows)
+            self._db_max_id = latest_id
+        return bool(counted)
 
     # ------------------------------------------------------------------
     # Live merges (WebSocket / in-process writes)
@@ -765,13 +756,12 @@ def _claim(group: dict, contribution: int):
     group["_event_credit"] = group.get("_event_credit", 0) + contribution
 
 
-def _absorb_one(group: dict):
-    """One row read back from the database: absorb against credit, else add."""
+def _absorb(group: dict, count: int):
+    """`count` rows read back from the database: absorbed against credit, the rest added."""
     credit = group.get("_event_credit", 0)
-    if credit > 0:
-        group["_event_credit"] = credit - 1
-        return
-    group["total_count"] = group.get("total_count", 0) + 1
+    taken = min(credit, count)
+    group["_event_credit"] = credit - taken
+    group["total_count"] = group.get("total_count", 0) + count - taken
 
 
 def _cursor_token(cursor) -> Optional[str]:

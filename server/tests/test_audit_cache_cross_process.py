@@ -89,35 +89,36 @@ def test_rows_an_event_already_merged_are_not_counted_a_second_time(db_session):
         "the refresh read the same ten rows and added them a second time"
 
 
-def test_a_bulk_delta_rebuilds_instead_of_modelling_every_new_row(db_session,
-                                                                 monkeypatch):
-    """ALARM FOR: the unbounded delta merge coming back.
+def test_a_bulk_delta_is_merged_not_rebuilt_and_models_only_what_a_group_keeps(db_session, monkeypatch):
+    """ALARM FOR: the unbounded delta merge coming back - and for the rebuild coming back in its place.
 
-    A delta merge is only the cheap option while the delta is SMALL - it runs a
-    pydantic validation and a linear group scan per new row (~40 us each,
-    measured). An ingestion's delta is not small: 100,000 new rows cost 4,010 ms
-    that way against c723585. Above the threshold the projection must fall back
-    to the bounded rebuild, whose cost depends on `recent_max_scan_rows` and
-    nothing else.
-    """
-    monkeypatch.setattr(audit_history, "load_config",
-                        lambda *a, **k: {"recent_refresh_max_delta_rows": 3})
+    Until 2026-10-22 a delta past `recent_refresh_max_delta_rows` (2,000) fell back to the bounded rebuild, because
+    the merge modelled every new row (~40 us each, 100,000 rows 4,010 ms against c723585). The lead's freeze
+    measurement reversed that ruling (총괄 10-22, rebuild debt ㄱ): with a 2,000-row file every 2 s the rebuild ran
+    every ~6 s and re-read up to 30,500 rows each time, 94 % of it the database's. Now a delta of any size is merged:
+    its count by one GROUP BY, its logs the newest `recent_logs_per_group` of the group - so it models no more rows
+    than the group keeps, and no rebuild runs."""
+    from database import schemas
+
+    monkeypatch.setattr(audit_history, "load_config", lambda *a, **k: {"recent_logs_per_group": 5})
     cache = AuditLogCache()
     db_session.add(_audit("bulk-seed", "seed"))
     db_session.commit()
     cache.load_initial(db_session)
 
     for i in range(12):
-        db_session.add(_audit("bulk-tx", f"row-{i}"))
+        db_session.add(_audit("bulk-tx", f"row-{i:02d}"))
     db_session.commit()
 
-    rebuilt = []
-    real_load_initial = cache.load_initial
     monkeypatch.setattr(cache, "load_initial",
-                        lambda *a, **k: (rebuilt.append(1),
-                                         real_load_initial(*a, **k))[1])
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("a bulk delta must not rebuild")))
+    modelled = []
+    real_validate = schemas.AuditLogResponse.model_validate
+    monkeypatch.setattr(schemas.AuditLogResponse, "model_validate",
+                        lambda *a, **k: (modelled.append(1), real_validate(*a, **k))[1])
 
     assert cache.refresh_if_stale(db_session) is True
-    assert rebuilt, "a 12-row delta above a 3-row threshold must rebuild"
     group = next(g for g in cache.groups if g["transaction_id"] == "bulk-tx")
     assert group["total_count"] == 12
+    assert [log.row_id for log in group["logs"]] == ["row-11", "row-10", "row-09", "row-08", "row-07"]
+    assert len(modelled) == 5, "the merge modelled %d rows for a group that keeps 5" % len(modelled)
