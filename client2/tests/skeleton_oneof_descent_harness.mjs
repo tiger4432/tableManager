@@ -239,7 +239,7 @@ function suite(M) {
        === show(['name', 'name', 'values', 'values', '', '']),
       'S9 a mapping is the map branch keyed by name; a list is in no branch, not the index map',
       show(['ok', undefined, { status: ['SCRAP'] }, {}, ['x'], true].map((v) => M.shapeBranch(GATE, v, {}))));
-    // The shipped shape-picked oneOfs hold a leaf and a record, no map: a mapping still picks the record.
+    // Every shipped shape-picked oneOf: a mapping picks its record branch, or B's name-keyed values map.
     const shipped = [];
     const census = (n, defs) => {
       if (!n || typeof n !== 'object') return;
@@ -250,10 +250,11 @@ function suite(M) {
     census(LEDGER, LEDGER.defs);
     const notRecord = shipped.filter(([n, defs]) => {
       const key = M.shapeBranch(n, { a: 1 }, defs);
-      return !key || (M.shapeAt({ kind: 'record', fields: [{ key: 'x', node: n.branches[key] }] }, ['x'], defs) || {}).kind !== 'record';
+      const b = key && (M.shapeAt({ kind: 'record', fields: [{ key: 'x', node: n.branches[key] }] }, ['x'], defs) || {});
+      return !b || !(b.kind === 'record' || (b.kind === 'map' && b.keyed_by === 'name'));
     });
     ok(shipped.length > 0 && notRecord.length === 0,
-      `S10 every shipped shape-picked oneOf (${shipped.length}) still reads a mapping as its record branch`,
+      `S10 every shipped shape-picked oneOf (${shipped.length}) reads a mapping as its record or its name-keyed map`,
       show(notRecord.map(([n]) => Object.keys(n.branches))));
   }
 

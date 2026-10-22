@@ -953,7 +953,7 @@ const DEFECTS = [
   ['api.js: the kind is not recorded at all', 'api',
     s => s.replace("    state.currentTableKind = typeof data.kind === 'string' ? data.kind : '';\n", '')],
   ['grid.js: edit entry is offered on a view again', 'grid',
-    s => s.replace('      editable: !isSystem && !viewTable,', '      editable: !isSystem,')],
+    s => s.replace('      editable: !isSystem && !viewTable && ', '      editable: !isSystem && ')],
   ['clipboard.js: the paste guard is gone', 'clipboard',
     s => s.replace('    if (refuseWrite()) { e.preventDefault(); return; }\n', '')],
   ['clipboard.js: the clear guard is gone', 'clipboard',
@@ -985,7 +985,7 @@ const DEFECTS = [
     s => s.replace("  if (state.gridApi) state.gridApi.setGridOption('rowData', []);\n", '')],
   // 🔴 C-102. Four ways the owner's click gets back to the server, or its answer gets lost.
   ['api.js: the add-row funnel is unguarded again', 'api',
-    s => s.replace('  if (refuseWrite()) return;\n', '')],
+    s => s.replace('  if (refuseWrite(rowWriteRefusal())) return;\n', '')],
   ['api.js: the controls are never told the table changed', 'api',
     s => s.replace('  applyWriteGuards();\n', '')],
   // ⚰️ C-120. TWO MUTANTS MOVED, THEY DID NOT DIE. 「the guard eats the words the markup
@@ -1030,7 +1030,7 @@ const DEFECTS = [
   ['api.js: rows the broadcast took are removed again', 'api',
     s => s.replace('      const left = rowIds.filter((rowId) => state.gridApi.getRowNode(rowId));', '      const left = rowIds;')],
   ['api.js: the delete button stays off after the answer', 'api',
-    s => s.replace('    setDisabledReason(elements.deleteRowBtn, writeRefusal());\n', '')],
+    s => s.replace('    setDisabledReason(elements.deleteRowBtn, rowWriteRefusal());\n', '')],
   ['api.js: the delete refusal is ours, not the server`s', 'api',
     s => s.replace("      refused = await refusalText(res, 'Delete failed');", "      refused = 'Delete failed';")],
   ['api.js: a delete refusal leaves no next step', 'api',
@@ -1051,7 +1051,7 @@ const DEFECTS = [
   ['api.js: Load All keeps the page place - «4001 - 4003» for every row from the first', 'api',
     s => s.replace('  state.hasMoreData = false;\n  state.currentSkip = 0;\n', '  state.hasMoreData = false;\n')],
   ['api.js: Load All counts every chunk', 'api',
-    s => s.replace('const chunk = (await read(rows.length, true)).data || [];', 'const chunk = (await read(rows.length, false)).data || [];')],
+    s => s.replace('const chunk = rowsOf(await read(rows.length, true));', 'const chunk = rowsOf(await read(rows.length, false));')],
   ['api.js: Load All says a percent against 10,000+', 'api',
     s => s.replace('const exact = count.total !== null && !count.capped ? count.total : null;', 'const exact = count.total;')],
   ['api.js: the export refusal is today\'s generic line', 'api',
@@ -1094,7 +1094,7 @@ const DEFECTS = [
 const CONTROLS = [
   ['grid.js: a local rename', 'grid',
     s => s.replace('  const viewTable = Boolean(writeRefusal());', '  const isAView = Boolean(writeRefusal());')
-          .replace('      editable: !isSystem && !viewTable,', '      editable: !isSystem && !isAView,')],
+          .replace('      editable: !isSystem && !viewTable && ', '      editable: !isSystem && !isAView && ')],
   ['state.js: comments stripped', 'state',
     s => s.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')],
 ];
