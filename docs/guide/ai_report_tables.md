@@ -285,4 +285,4 @@ python scripts/chain_replay_cli.py replay gs_send --apply       # done 인 리�
 - 리플레이는 이어지는 규칙을 깨우지 않는다(소유자 09-26 판정) — 그래서 보내기도 리플레이 한 줄이다.
 - 폴더 조용함(B b15d6b66e)이 착지하면 자동 시작을 다시 켤 수 있다 — 리포트 규칙에 `"allow_chain_trigger": true` 한 칸.
 - ⚠️ 한 평가의 요약이 웨이퍼마다 따로 저장되면 요청 행은 첫 저장에 서고 그 뒤로 안 바뀐다 — 리플레이는 그때의 표를 읽으므로 리플레이 시점에 다 들어와 있으면 된다.
-- ⚠️ 이미지 표가 반쪽일 때 리플레이하면 리포트 이미지도 반쪽이다 — 조사 중.
+- ⚠️ 이미지 표가 반쪽일 때 리플레이하면 리포트 이미지도 반쪽이다 — 외부 저장소 항목에 `stability_interval_seconds` 를 적으면 폴더가 조용해진 뒤 읽음(9095c4e25). 그래도 반쪽이면 다시 읽기 문(`POST /admin/file-ingestion/retry-failed` statuses=SUCCESS) 뒤 리플레이.
