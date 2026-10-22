@@ -495,10 +495,15 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
         if rule_run.rule_label(candidate) == "join":
             from chain.enrichment import config as enrichment_config
             from database import crud
+            # 소유자 10-22 「ㅇㅇ」: refused only when the join WRITES a key column - a wider key alone writes fine (d99d329e7)
+            target_cfg = crud.TABLE_CONFIG.get(target) or {}
+            key = target_cfg.get("composite_key_source") or [target_cfg.get("business_key")]
+            writes_key = sorted({into for _right, into in join_into.takes(candidate)} & set(key))
             left = [column for column, _right, _fold in join_into.pairs(candidate)]
-            why = enrichment_config.key_contract_refusal(
-                crud.TABLE_CONFIG.get(target), left, key_name="the join's on[].left columns")
+            why = writes_key and enrichment_config.key_contract_refusal(
+                target_cfg, left, key_name="the join's on[].left columns")
             if why:
+                why += " - the join writes key column(s) %s" % writes_key
                 issues.append(validation.DeclarationValidationError(
                     "join_key_contract", path + ".params.on", why))
 

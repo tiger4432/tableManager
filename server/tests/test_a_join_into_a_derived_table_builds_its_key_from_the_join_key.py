@@ -6,7 +6,7 @@ Incident: a derived table's key was declared wider than the join key; the join w
 columns, every row of the rule failed on the unique key for one reason, and the failed
 bundle was halved into hundreds of one-row pieces. Reproduced (d99d329e7): PostgreSQL
 refuses the write only when `take` writes a key column; a wider key alone writes fine - and
-the owner chose to refuse the wider key on a derived table regardless.
+the owner chose to refuse the wider key on a derived table regardless - narrowed 10-22 to a join that writes a key column.
 
 🔴 ONE JUDGE, THREE DOORS. `chain_bindings.rule_refusals` is what the loader, the save gate
 and the Declarations report call, so every cell below asks all three and expects one verdict
@@ -52,7 +52,8 @@ INFO = [{"from": "info", "into": "info"}]
 CELLS = [
     ("key inside the join key", join(DERIVED, ["lot", "slot", "extra"], INFO), True),
     ("key equal to the join key", join(DERIVED, ["lot", "slot"], INFO), True),
-    ("key wider, take into a non-key column", join(DERIVED, ["lot"], INFO), False),
+    # 소유자 10-22 «ㅇㅇ»: a wider key alone stands - only a join that writes a key column is refused
+    ("key wider, take into a non-key column", join(DERIVED, ["lot"], INFO), True),
     ("key wider, take into a key column (the incident)",
      join(DERIVED, ["lot"], [{"from": "slot2", "into": "slot"}]), False),
     ("key wider, target is not a derived table (lookup join)", join(PLAIN, ["lot"], INFO), True),

@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다](#2026-10-22--파생표로-가는-조인은-키-칸을-쓸-때만-키-계약으로-거절한다) — 적는 곳 chain_rules.json 의 `derive.join.take`
 - 2026-10-22 [체인 «데이터 받기» — 규칙이 읽는 것은 그룹의 규칙이 돌기 전에 한 번에 읽혀 건네진다 · group_by 규칙은 그 키의 행 전체를 받는다](#2026-10-22--체인-데이터-받기--규칙이-읽는-것은-그룹의-규칙이-돌기-전에-한-번에-읽혀-건네진다--group_by-규칙은-그-키의-행-전체를-받는다) — 보는 곳 chain_worker.log «[ChainRule] rule=<규칙> reads outside the fetch» · [ChainRule] rows_in
 - 2026-10-22 [체인이 잠금을 기다려도 «멈춘 프로세스»로 안 보인다 — 그룹 밖 DB 일도 박동하며 단계 이름과 잡은 쪽을 말한다](#2026-10-22--체인이-잠금을-기다려도-멈춘-프로세스로-안-보인다--그룹-밖-db-일도-박동하며-단계-이름과-잡은-쪽을-말한다) — 보는 곳 /health problems «is beating but its work has not progressed … waiting … on pid» · chain_worker.log «tried again next turn»
 - 2026-10-22 [체인 그룹 하나의 쓰기가 한 커밋 — 어디서 꺼져도 다 됨 또는 하나도 안 됨](#2026-10-22--체인-그룹-하나의-쓰기가-한-커밋--어디서-꺼져도-다-됨-또는-하나도-안-됨) — 적는 곳 ingestion_settings.json 의 `save_lock_timeout_seconds` · 보는 곳 체인 대기열 «deadlock with a save» · chain_worker.log «origin unknown»
@@ -510,6 +511,14 @@
 
 
 
+
+## 2026-10-22 · 파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다
+
+- **무엇** — 소유자 「비즈니스키가 a,b 이고 조인키가 a 면 무슨 일이 일어남?」 → 「ㅇㅇ」. 조인 대상이 파생표일 때 «파생표 키 ⊆ 조인 키»(09-26)를 어기면 조인이 키 칸을 안 써도 저장이 거절됐습니다. 키가 넓기만 하고 키 칸을 안 쓰면 쓰기는 됩니다(d99d329e7 재현).
+- **선언** — 바뀐 것 없음. 체인 선언의 `derive.join.take` 의 `into` 가 대상 표의 키 칸(composite_key_source, 없으면 business_key)을 적을 때만 계약을 봅니다.
+- **바뀐 동작** — 조인 키 a · 파생표 키 (a, b) · take 가 키 아닌 칸만 씀 → 저장됨. a 가 같은 파생 행 전부가 같은 값을 받습니다. take 가 b 같은 키 칸을 쓰면 지금처럼 거절, 문장 끝에 «- the join writes key column(s) ['b']». 저장 · 리로드 · Declarations 셋이 같은 판단.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `chain_bindings` 의 조인 키 계약 자리 · 시험 `test_a_join_into_a_derived_table_builds_its_key_from_the_join_key.py`.
 
 ## 2026-10-22 · 체인 «데이터 받기» — 규칙이 읽는 것은 그룹의 규칙이 돌기 전에 한 번에 읽혀 건네진다 · group_by 규칙은 그 키의 행 전체를 받는다
 
