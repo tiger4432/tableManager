@@ -560,9 +560,12 @@ async def _run_batch(key, run, rules, seen):
     try:
         # the reload reads the database too: a dropped connection there is this batch's, said and run again - outside
         # this try it ended the slot, and the slot's end set its whole line aside (C five stages 8, 총괄 6deeb723e)
-        changed, seen = ingestion_worker.reload_at_boundary(system_reload.CHAIN_WORKER, seen)
+        # both on a thread, beating - a lock or a slow read here stopped the slot's beat (총괄 10-22 wedge)
+        changed, seen = await ingestion_worker._step_beating(db, "reload", ingestion_worker.reload_at_boundary,
+                                                             system_reload.CHAIN_WORKER, seen)
         rules = ingestion_worker.loaded_chain_rules() if changed else rules
-        events = ingestion_worker.pending_chain_events(db, line=key, run=run)
+        events = await ingestion_worker._step_beating(db, "line read", ingestion_worker.pending_chain_events, db,
+                                                      line=key, run=run)
         if not events:
             return DRAINED, rules, seen
         failed = await ingestion_worker.drain_events(db, events, rules, SessionLocal, batch_wake_ts=started)

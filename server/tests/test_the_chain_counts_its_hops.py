@@ -174,7 +174,7 @@ def test_the_refused_row_is_finished_not_left_pending():
     loop = inspect.getsource(worker.drain_events)
     head = loop.split("[Chain Depth]", 1)[1][:600]
     assert "mark_processed(event" in head
-    assert "db.commit()" in loop.split("[Chain Depth]", 1)[1][:1200]
+    assert "_commit_after" in loop.split("[Chain Depth]", 1)[1][:1200]     # committed on a beating thread
 
 
 def test_the_static_cycle_check_is_untouched():

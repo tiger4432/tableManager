@@ -2744,6 +2744,23 @@ def _said_timeout(error, stage, ran_seconds):
 #    chain's own batch (`_rows_cap` at the row budget).
 
 
+async def _step_beating(db, stage, step, *args, **kwargs):
+    """A step outside a group that touches the database, run as the group is (`_await_group_beating` over
+    `to_thread`) under a work claim named `stage` (총괄 10-22): a lock or a slow read it waits on keeps its process
+    beating and says the step - on the loop it stopped the beat, and the process read «wedged»."""
+    def claimed():
+        with heartbeat.work_claim(GROUP_BEAT, stage, note=_worker_note(), owner=id(db)):
+            heartbeat.progress(stage)
+            return step(*args, **kwargs)
+    return await _await_group_beating(asyncio.to_thread(claimed), db)
+
+
+def _commit_after(work, db, *args):
+    """`work(db, *args)`, then the commit that keeps it - one step for `_step_beating`."""
+    work(db, *args)
+    db.commit()
+
+
 async def _await_group_beating(group, db):
     """Wait for a group while beating «alive» every `HEARTBEAT_SLICE_SECONDS`, and say once
     per episode what a group that stopped moving is waiting on (fc1c0781d ③④).
@@ -3130,7 +3147,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         event.status = "RETRYING"            # tried again, its attempts as they were
                         event.payload = dict(get_payload_dict(event) or {},
                                              **{event_constants.LAST_FAILURE: error_reason})
-                    db.commit()
+                    await _step_beating(db, "rewind marks", db.commit)
                 logger.warning("[Chain] tx '%s': %s - rewound, runs again; its %d event(s) stay queued",
                                tx_id, error_reason, len(events_in_tx))
                 break
@@ -3244,9 +3261,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                                                                              None)})
                         retrying_count += 1
 
-                _retract_deleted_rows(db, _deleted_rows_of(events_in_tx) if isolate_group else {})
                 with alignment_batch_counts.stage("commit"):
-                    db.commit()
+                    await _step_beating(db, "failure marks", _commit_after, _retract_deleted_rows, db,
+                                        _deleted_rows_of(events_in_tx) if isolate_group else {})
 
                 if failed_permanently_count > 0:
                     logger.error(
@@ -4321,8 +4338,9 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
         normalized_events.append(event)
 
     if depth_refused:
-        _retract_deleted_rows(db, _deleted_rows_of(depth_refused))
-        db.commit()          # the FAILED marks, so they are not re-read
+        # the FAILED marks, so they are not re-read
+        await _step_beating(db, "depth refusal", _commit_after, _retract_deleted_rows, db,
+                            _deleted_rows_of(depth_refused))
 
     if not normalized_events:
         # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and
@@ -4337,7 +4355,7 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
     last_tx_id = last_event._parsed_payload.get("transaction_id") if isinstance(last_event._parsed_payload, dict) else None
     if last_tx_id:
         current_ids = {e.id for e in normalized_events}
-        candidates = db.query(DatabaseOutbox).filter(
+        candidates = await _step_beating(db, "transaction completion", lambda: db.query(DatabaseOutbox).filter(
             DatabaseOutbox.processed_chain == False,
             ~DatabaseOutbox.id.in_(current_ids),
             # [Reliability F3] .as_string()은 CAST(payload -> 'transaction_id' AS VARCHAR)로 컴파일되어
@@ -4345,7 +4363,7 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
             # payload를 JSONB로 type_coerce 후 .astext를 쓰면 ->> 로 컴파일되어 인덱스와 정확히 일치한다.
             # (컬럼 타입이 JSON().with_variant(JSONB)라 ORM 레벨 제네릭 JSON엔 .astext가 없어 직접 호출은 불가.)
             type_coerce(DatabaseOutbox.payload, JSONB)['transaction_id'].astext == last_tx_id
-        ).limit(20000).all()
+        ).limit(20000).all())
 
         extra_events = []
         for e in candidates:
