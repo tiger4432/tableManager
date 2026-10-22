@@ -1,3 +1,23 @@
+# 🔴 [구현자 A · 클라] **AI 리포트 둘째 — 회사 엑셀 양식을 붙여 넣어 쓰기 · 대조군을 AI 가 최근 평가에서 고르기** (소유자 10-23 새벽 「표 스타일 커스텀 · 회사 양식 엑셀 · 클립보드에 html」 · 「현 평가 말고 기존 다른 랏 트렌드도 대조군으로」 · 「스플릿 테이블 보고 이상한 평가 웨이퍼는 거르고 평범한 거, 그리고 유사 평가 — 최신 것들 내에서」, 총괄)
+
+도착 — 두 줄
+```
+운영에서는 엑셀 양식을 복사해 리포트 선언의 «Paste template» 에 붙이고, 들어갈 칸에 {{summary}} · {{table:yield_by}} · {{images}} · {{table:trend}} 같은 표시를 적으면 그 양식으로 나온다
+대조군은 AI 가 «최근 평가들»의 스플릿 표를 보고 평범한 웨이퍼 · 유사 평가를 골라 요약 표 · 트렌드에 묶음으로 붙인다 — 최근 범위 · 고를 수는 선언
+```
+1. 양식 (A 서버 · 클라 화면)
+- 선언 derive.report.template: 붙여 넣은 HTML 글(엑셀이 클립보드에 두는 text/html 그대로, mso 스타일 포함). 비우면 지금 기본 모양
+- 표시: {{<text 자리 이름>}} · {{table:<yield_by|pareto|trend>}} · {{images}} · {{meta}} · {{title}} — 표시가 든 «칸»(td)을 그 내용으로 바꿈, 표는 그 칸 안에 우리 표를 넣음. 우리 표의 th · td 에 정해진 class(rpt-head · rpt-group · rpt-item · rpt-cell)를 달아 양식 CSS 가 꾸밀 수 있게
+- 양식에 없는 표시 · 양식에만 있는 모르는 표시는 저장 거절(이름 대고). 양식 HTML 은 그대로 파일에 들어감 — <script> · 바깥 src/href 는 저장 거절(파일은 바깥 요청 0 유지)
+- [클라] 선언 창 report 칸에 «Paste template» 버튼: 클립보드 text/html 을 읽어 template 칸에 넣음(평문 붙여넣기는 표가 깨짐). 운영 평문 HTTP 라 navigator.clipboard 대신 paste 이벤트의 clipboardData(clipboard_write.js 와 같은 자리 원칙). 미리보기 버튼은 이번 범위 밖
+2. 대조군 (A 서버)
+- 새 읽기 하나 candidates(): «최근 범위»(선언 control.recent: {"days": N} 또는 {"evaluations": N}) 안의 평가들 — 평가마다 스플릿(조건 칸) 요약 · 웨이퍼 수 · 시간. 이번 평가는 뺌
+- 모델은 그것을 보고 «평범한 웨이퍼 · 유사 평가»를 고름(기준 글 = 선언 prompts.control). 고른 것은 compare({evaluations, wafers}) 로 — 고를 수 상한 control.max_wafers(기본 30) · control.max_evaluations(기본 3), 최근 범위 밖 · 이번 평가는 거절
+- 고른 대조군은 요약 표 · 트렌드에 묶음(«control» + 평가 이름)으로 가로에 붙음. 사람이 적은 비교 묶음(sets)은 그대로 함께
+- 문맥: candidates 는 [4] 처럼 접어서(평가마다 한 줄 «eval · 날짜 · 웨이퍼 n · split 요약»), 넘치면 최근 순으로 자름
+게이트: 양식 — 엑셀에서 복사한 실제 꼴의 HTML 픽스처(mso 스타일 · colspan · 빈 칸) + 표시 다섯 → 파일에 양식 그대로 · 표시 칸이 채워짐 · 바깥 요청 0 · <script> 거절 / 대조군 — 가짜 LLM 이 candidates 를 보고 고른 평가 · 웨이퍼가 요약 표 · 트렌드 가로에 묶음으로 · 범위 밖 · 상한 넘음 거절 / 변이 둘
+RUN.md · RELEASE_LOG · 가이드 ai_report_tables.md 에 «엑셀 양식 붙이는 법» 절
+
 # 🔴 [구현자 A] **AI 리포트 체인 — 웨이퍼 조건별 수율 · 파레토 · 트렌드 · 이미지 · 유사 평가 비교를 HTML 한 파일로, 원본은 서버 · 표 · 노드** (소유자 10-22 저녁, 10-23 착수, 총괄)
 
 소유자 문장
