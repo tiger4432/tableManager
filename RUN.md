@@ -11,7 +11,7 @@
 >           health work.stage «auto-confirm · page i of n» — 큰 단위가 도는 동안 멈춘 프로세스로 안 보임
 >           «… NOT probed - they stay in the worklist» 줄은 더 안 나옴(나오면 옛 코드가 돌고 있음)
 > 판(박스)  키 1,000 한 단위: 첫 실행 뒤 빈 칸 800 -> 0 · 키 20,000: 빈 칸 0 · PG 15.3 초(쪽 100, 원천 job 인덱스는 내가 만듦 · 클라 Chrome 판과 겹침), sqlite 53.5 초
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> 되돌리기  git revert 4ba92b4cf -> 런처 재기동
 > ```
 >
 > ## [10-22] **파생표로 가는 조인은 키 칸을 쓸 때만 키 계약으로 거절 (소유자 「ㅇㅇ」, d3bbf9371)**
