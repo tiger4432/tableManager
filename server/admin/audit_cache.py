@@ -160,6 +160,9 @@ class AuditLogCache:
         self.groups: List[Dict] = []
         self.is_loaded = False
         self._lock = threading.Lock()
+        # One rebuild at a time, and not under `_lock` (총괄 10-22 굳음 측정: a rebuild held `_lock` up to 5.2 s and
+        # every notification's `add_logs_batch` waited on it, up to 4.4 s).
+        self._build_lock = threading.Lock()
         self._db_max_id = None
         # [P2 #10] 다중 tx 혼재 배치 경고 1회 게이트 (핫패스 로그 홍수 방지)
         self._multi_tx_warned = False
@@ -475,14 +478,26 @@ class AuditLogCache:
         decided a rebuild was needed. It exists so that N threads that all see
         the same new write collapse into ONE rebuild instead of N: whoever gets
         the lock second finds the watermark already past that stamp and leaves.
-        """
-        with self._lock:
-            if self.is_loaded and not force:
-                return
-            if (refresh_above is not None and self.is_loaded
-                    and (self._db_max_id or 0) >= refresh_above):
-                return
 
+        The walk runs OUTSIDE `_lock` - only the swap is inside - so live merges never wait on it; one builder at a
+        time (`_build_lock`), and while one builds, a loaded projection is answered as it is. What a merge adds to the
+        old groups during the walk goes with them at the swap: each of its rows is at or under the walk's watermark (in
+        the walk) or above it (the next refresh merges it).
+        """
+        def done():
+            return self.is_loaded and (not force or (
+                refresh_above is not None and (self._db_max_id or 0) >= refresh_above))
+
+        with self._lock:
+            if done():
+                return
+            loaded = self.is_loaded
+        if not self._build_lock.acquire(blocking=not loaded):
+            return                              # another request builds; this one answers the projection there is
+        try:
+            with self._lock:
+                if done():
+                    return
             settings = resolve_recent_settings()
             # 🔴 The watermark is read BEFORE the walk, not after. A row
             # committed WHILE the walk runs is not in the walk's result; if the
@@ -493,19 +508,23 @@ class AuditLogCache:
 
             order, counts, tops, bottom, truncated, cursor, scanned = \
                 self._discover_groups(db, limit_groups, settings)
-            self.groups = self._hydrate(db, order, counts, tops, bottom, watermark,
-                                        settings["recent_logs_per_group"])
-            self.is_loaded = True
-            self._db_max_id = watermark
-            self.truncated = truncated
-            self.next_cursor = cursor
-            self.scanned_rows = scanned
+            groups = self._hydrate(db, order, counts, tops, bottom, watermark,
+                                   settings["recent_logs_per_group"])
+            with self._lock:
+                self.groups = groups
+                self.is_loaded = True
+                self._db_max_id = watermark
+                self.truncated = truncated
+                self.next_cursor = cursor
+                self.scanned_rows = scanned
+        finally:
+            self._build_lock.release()
 
-            if truncated and len(order) < limit_groups:
-                print(f"[AuditCache] recent scan gave up after {scanned:,} rows with "
-                      f"{len(order)}/{limit_groups} transaction groups "
-                      f"(recent_max_scan_rows={settings['recent_max_scan_rows']:,}). "
-                      f"The response is marked truncated.")
+        if truncated and len(order) < limit_groups:
+            print(f"[AuditCache] recent scan gave up after {scanned:,} rows with "
+                  f"{len(order)}/{limit_groups} transaction groups "
+                  f"(recent_max_scan_rows={settings['recent_max_scan_rows']:,}). "
+                  f"The response is marked truncated.")
 
     def refresh_if_stale(self, db: Session, limit_groups: int = 100) -> bool:
         """Merge audit rows committed by a separate process.
@@ -545,6 +564,8 @@ class AuditLogCache:
         popped = False
         with self._lock:
             for log_obj in rows:
+                if log_obj.id <= (self._db_max_id or 0):
+                    continue                    # a rebuild swapped in meanwhile already holds it
                 log_dict = log_obj.__dict__.copy()
                 log_dict["business_key"] = log_obj.business_key
                 log_model = schemas.AuditLogResponse.model_validate(log_dict)
@@ -580,7 +601,7 @@ class AuditLogCache:
                 self.next_cursor = None
             # A row committed between the MAX probe and range query is left
             # above this watermark and is safely picked up by the next read.
-            self._db_max_id = latest_id
+            self._db_max_id = max(self._db_max_id or 0, latest_id)
         return bool(rows)
 
     # ------------------------------------------------------------------
