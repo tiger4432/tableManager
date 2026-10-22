@@ -333,5 +333,7 @@ def _say_on_the_claim(rule_run):
 
         heartbeat.note_work(rule_run=rule_run)
     except Exception as exc:                                     # noqa: BLE001
-        logger.warning("[ChainRule] the rule run was not put on its group's beat - the queue line and /health "
-                       "do not show it: %s", told(exc))
+        from chain.rule_run import RULE_LOG_TAG
+
+        logger.warning("[%s] the rule run was not put on its group's beat - the queue line and /health "
+                       "do not show it: %s", RULE_LOG_TAG, told(exc))

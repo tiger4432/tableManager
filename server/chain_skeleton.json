@@ -109,13 +109,37 @@
           "keyed_by": "index",
           "member": "column",
           "of": {
-            "kind": "leaf",
-            "hint": "ref",
-            "section": "columns",
-            "table_from": [
-              "trigger_table",
-              "on.table"
-            ]
+            "kind": "oneOf",
+            "hint": "choice",
+            "pick": "shape",
+            "branches": {
+              "name": {
+                "kind": "leaf",
+                "hint": "ref",
+                "section": "columns",
+                "table_from": [
+                  "trigger_table",
+                  "on.table"
+                ]
+              },
+              "values": {
+                "kind": "map",
+                "keyed_by": "name",
+                "member": "column",
+                "of": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "value",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              }
+            },
+            "empty": {
+              "name": ""
+            }
           }
         }
       },
@@ -127,13 +151,37 @@
           "keyed_by": "index",
           "member": "column",
           "of": {
-            "kind": "leaf",
-            "hint": "ref",
-            "section": "columns",
-            "table_from": [
-              "trigger_table",
-              "on.table"
-            ]
+            "kind": "oneOf",
+            "hint": "choice",
+            "pick": "shape",
+            "branches": {
+              "name": {
+                "kind": "leaf",
+                "hint": "ref",
+                "section": "columns",
+                "table_from": [
+                  "trigger_table",
+                  "on.table"
+                ]
+              },
+              "values": {
+                "kind": "map",
+                "keyed_by": "name",
+                "member": "column",
+                "of": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "value",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              }
+            },
+            "empty": {
+              "name": ""
+            }
           }
         }
       },
@@ -524,13 +572,37 @@
                 "keyed_by": "index",
                 "member": "column",
                 "of": {
-                  "kind": "leaf",
-                  "hint": "ref",
-                  "section": "columns",
-                  "table_from": [
-                    "trigger_table",
-                    "on.table"
-                  ]
+                  "kind": "oneOf",
+                  "hint": "choice",
+                  "pick": "shape",
+                  "branches": {
+                    "name": {
+                      "kind": "leaf",
+                      "hint": "ref",
+                      "section": "columns",
+                      "table_from": [
+                        "trigger_table",
+                        "on.table"
+                      ]
+                    },
+                    "values": {
+                      "kind": "map",
+                      "keyed_by": "name",
+                      "member": "column",
+                      "of": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "value",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    }
+                  },
+                  "empty": {
+                    "name": ""
+                  }
                 }
               }
             },
@@ -542,13 +614,37 @@
                 "keyed_by": "index",
                 "member": "column",
                 "of": {
-                  "kind": "leaf",
-                  "hint": "ref",
-                  "section": "columns",
-                  "table_from": [
-                    "trigger_table",
-                    "on.table"
-                  ]
+                  "kind": "oneOf",
+                  "hint": "choice",
+                  "pick": "shape",
+                  "branches": {
+                    "name": {
+                      "kind": "leaf",
+                      "hint": "ref",
+                      "section": "columns",
+                      "table_from": [
+                        "trigger_table",
+                        "on.table"
+                      ]
+                    },
+                    "values": {
+                      "kind": "map",
+                      "keyed_by": "name",
+                      "member": "column",
+                      "of": {
+                        "kind": "map",
+                        "keyed_by": "index",
+                        "member": "value",
+                        "of": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    }
+                  },
+                  "empty": {
+                    "name": ""
+                  }
                 }
               }
             }

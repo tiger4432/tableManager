@@ -300,7 +300,8 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
     # `require` columns ride along so the seat below can judge them (총괄 2276e38cf ③).
     payload_cols = list(dict.fromkeys(
         decision_key + [c for c in rule.get("list_columns", []) if c in src_cols]
-        + [c for gate in chain_bindings.ROW_GATE_KEYS for c in rule.get(gate) or () if c in src_cols]
+        + [c for gate in chain_bindings.ROW_GATE_KEYS for c in chain_bindings.gate_columns(rule.get(gate))
+           if c in src_cols]
     ))
 
     # `scan_limit` picks the resolver, not a preference: it is exactly the signal

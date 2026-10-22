@@ -1098,7 +1098,7 @@ def wake_columns(rule) -> list:
     if not wanted:
         return []
     # an `exclude` column set or emptied moves a row in or out the same way (총괄 016a766af)
-    gates = [c for key in chain_bindings.ROW_GATE_KEYS for c in rule.get(key) or ()]
+    gates = [c for key in chain_bindings.ROW_GATE_KEYS for c in chain_bindings.gate_columns(rule.get(key))]
     return wanted + [c for c in dict.fromkeys(gates) if c not in wanted]
 
 

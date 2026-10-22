@@ -24,6 +24,8 @@ read. The raw function goes into the same registry with its `params`.
 """
 from __future__ import annotations
 
+import json
+
 NAME = "copy_rows_with_hold"
 #: what each argument must be - a list written as text was read a letter at a time (총괄 67dffd619)
 PARAMS = {"key_columns": list, "columns": list, "hold_column": str, "source_table": str}
@@ -151,15 +153,16 @@ def _paired(rules) -> list:
     stamps = chain_bindings.SOURCE_GATE_KEYS
 
     def gated(rule):
-        return tuple((gate, tuple(rule.get(gate) or ())) for gate in chain_bindings.ROW_GATE_KEYS)
+        # the items spelled as one text each - a {column: [values]} item (총괄 9a5206e0b) is not hashable
+        return tuple((gate, json.dumps(rule.get(gate) or [], sort_keys=True)) for gate in chain_bindings.ROW_GATE_KEYS)
 
     copies = {}
     for rule in rules:
         if not _holds_only(rule):
             copies.setdefault((rule.get("trigger_table"), rule.get("target_table")), []).append(rule)
-            for gate, columns in gated(rule):
-                if columns:
-                    rule[stamps[gate]] = list(columns)
+            for gate in chain_bindings.ROW_GATE_KEYS:
+                if rule.get(gate):
+                    rule[stamps[gate]] = list(rule[gate])
     refused = []
     for rule in rules:
         if not _holds_only(rule):
@@ -170,11 +173,11 @@ def _paired(rules) -> list:
             refused.append((rule, "its copy rules into %s require or exclude by different columns %s - the "
                                   "hold count cannot know which; write the same require and exclude on every "
                                   "copy rule" % (rule.get("target_table"),
-                                                 [{gate: list(columns) for gate, columns in s} for s in said])))
+                                                 [{gate: json.loads(items) for gate, items in s} for s in said])))
         elif said:
-            for gate, columns in said[0]:
-                if columns:
-                    rule[stamps[gate]] = list(columns)
+            for gate, items in said[0]:
+                if json.loads(items):
+                    rule[stamps[gate]] = json.loads(items)
     return refused
 
 

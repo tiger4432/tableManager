@@ -374,25 +374,27 @@ def _missing(spec: dict, left_table: str, left_model, right_model) -> str:
                 right_col, spec.get("right_table"))
         if not hasattr(left_model, into_col):
             return "target column %r does not exist on %r" % (into_col, left_table)
-    for word, columns in (("require", _required(spec)), ("exclude", _excluded(spec))):
-        for column in columns:
+    for word, items in (("require", _required(spec)), ("exclude", _excluded(spec))):
+        for column in chain_bindings.gate_columns(items):
             if not hasattr(right_model, column):
                 return "%s column %r does not exist on %r" % (word, column, spec.get("right_table"))
     return ""
 
 
 def _required(spec: dict) -> list:
-    """The value-table columns an answer row must have filled (`on.require`)."""
+    """The value-table row's `on.require` items - a column it must have filled, or {column: [values]} it must have
+    one of (`chain_bindings.gate_items`)."""
     import chain_bindings
 
-    return [str(column) for column in spec.get(chain_bindings.REQUIRE_KEY) or ()]
+    return list(spec.get(chain_bindings.REQUIRE_KEY) or ())
 
 
 def _excluded(spec: dict) -> list:
-    """The value-table columns an answer row must have empty (`on.exclude`, 총괄 016a766af)."""
+    """The value-table row's `on.exclude` items - a column it must have empty, or {column: [values]} it must have none
+    of (총괄 016a766af · 23fb6060d)."""
     import chain_bindings
 
-    return [str(column) for column in spec.get(chain_bindings.EXCLUDE_KEY) or ()]
+    return list(spec.get(chain_bindings.EXCLUDE_KEY) or ())
 
 
 class _Answer:

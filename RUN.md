@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **체인 규칙의 require · exclude 가 «값»을 받는다 — 칸 이름 대신 {칸: [값, …]} (소유자 10-21 「체인 행 내 특정 값일 때 제외하는 거는」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      require · exclude 항목은 칸 이름(빈가 · 찼나)만 받았음. 이제 {칸: [값, …]} 도 받음 — 그 값들 중 하나인가로 거름
+> 적는 법    chain_rules.json 규칙의 "exclude": [{"status": ["SCRAP"]}] -> SCRAP 행만 규칙에 안 넘어감
+>           통합 선언은 on.exclude · on.require 에 같은 모양. 칸 이름 항목과 섞어 적어도 됨
+> 견주는 법   값과 칸을 키 철자 하나로 — 칸 선언 타입대로. 숫자 칸의 1 · 1.0 · 001 은 한 값, "" 는 빈 칸
+> 이미 넘어간 행  값을 새로 적은 뒤 이미 넘어간 행에 맞추려면 그 규칙 소급 한 번 — 재기동 뒤
+> 보이는 것  chain_worker.log «… not handed over - excluding value(s) found: status [SCRAP]=<건수>»
+>           require 값 항목은 «required value(s) missing: status [OK]=<건수>». 칸 이름 항목의 줄은 전과 같음
+>           로드 거절 «bad_exclude» · «bad_require» — 빈 목록 · 목록 아닌 값 · 값에 목록 · 사전 · 참거짓
+>           «unknown_exclude_column» · «unknown_require_column» — 트리거 표에 없는 칸
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동. 값 항목을 적은 규칙은 되돌린 코드에서 로드 거절되니 값 항목부터 지움
+> ```
+>
 > ## [10-22] **main 의 B 빨강 묶음 — 시험 일곱 칸 · 순서 탓 셋 초록, 줄 하나 더함 (총괄 10-22)** — git pull · 런처 재기동
 >
 > ```

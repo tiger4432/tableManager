@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [체인 규칙의 require · exclude 가 값을 받는다 — 특정 값인 행만 막거나 넘기기](#2026-10-22--체인-규칙의-require--exclude-가-값을-받는다--특정-값인-행만-막거나-넘기기) — require · exclude 항목에 {칸: [값, …]}
 - 2026-10-22 [오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것](#2026-10-22--오토컨펌이-한-단위의-키를-전부-본다--200-개-넘는-키가-빈-칸으로-남던-것) — 보는 곳 chain_worker.log «[Enrichment:<규칙>] page i of n» · 적는 곳 ingestion_settings.json 의 enrichment_auto_confirm_max_keys
 - 2026-10-22 [파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다](#2026-10-22--파생표로-가는-조인은-키-칸을-쓸-때만-키-계약으로-거절한다) — 적는 곳 chain_rules.json 의 `derive.join.take`
 - 2026-10-22 [체인 «데이터 받기» — 규칙이 읽는 것은 그룹의 규칙이 돌기 전에 한 번에 읽혀 건네진다 · group_by 규칙은 그 키의 행 전체를 받는다](#2026-10-22--체인-데이터-받기--규칙이-읽는-것은-그룹의-규칙이-돌기-전에-한-번에-읽혀-건네진다--group_by-규칙은-그-키의-행-전체를-받는다) — 보는 곳 chain_worker.log «[ChainRule] rule=<규칙> reads outside the fetch» · [ChainRule] rows_in
@@ -514,6 +515,17 @@
 
 
 
+
+## 2026-10-22 · 체인 규칙의 require · exclude 가 값을 받는다 — 특정 값인 행만 막거나 넘기기
+
+- **무엇** — 소유자 10-21 「체인 행 내 특정 값일 때 제외하는 거는」. `require` · `exclude` 항목은 칸 이름만 받아 «빈가 · 찼나»로만 걸렀습니다. 상태 칸이 SCRAP 인 행만 막는 식의 선언을 적을 자리가 없었습니다.
+- **선언** — `chain_rules.json` 규칙(통합 선언은 `on.require` · `on.exclude`)의 항목에 `{칸: [값, …]}` 을 적습니다. 예: `"exclude": [{"status": ["SCRAP"]}]`. 칸 이름 항목과 섞어 적을 수 있습니다.
+- **바뀐 동작** — 값 항목은 «이 값들 중 하나인가»로 거릅니다. 값과 칸은 키 철자 하나로, 칸 선언 타입대로 견줍니다(숫자 칸의 1 · 1.0 · 001 은 한 값, `""` 는 빈 칸). 라이브 · 리플레이 · 보류 셈 · 보강 백필 · 조인 값 표가 같은 판정을 지납니다. 값 항목이 막은 행은 로그에 «excluding value(s) found» · «required value(s) missing» 로 적힙니다. 칸 이름 항목의 줄은 전과 같습니다.
+- **이미 넘어간 행** — 값을 새로 적은 뒤에는 그 규칙의 소급을 한 번 돌립니다.
+- **보는 곳** — chain_worker.log «excluding value(s) found: status [SCRAP]=N» · 로드 거절 `bad_exclude` · `bad_require`.
+- **아직 안 되는 것** — 온톨로지 탐색기 폼에서 값 항목을 고르기는 클라 착지 뒤입니다. 그 전에는 선언 글(왼쪽)로 적으면 저장됩니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_a_rule_gate_takes_values.py` · 가이드 `docs/guide/config/chain_rules.md` 의 require · exclude 줄.
 
 ## 2026-10-22 · 메인 그리드 피벗(서버) — 긴 표를 키 묶음마다 한 줄, item 마다 한 칸으로 읽는다
 
