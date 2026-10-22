@@ -15,6 +15,28 @@ results = json.load(open(os.path.join(runs, "gen_results.json"), encoding="utf-8
 chosen, _ = G.cases()
 assert len(chosen) == 46, len(chosen)                       # canary: the fetch column, not the write one
 
+#: the «after» column: FETCH_AFTER_RUNS · FETCH_AFTER_HASH - the verdict there, and what moved against the baseline
+#: (target rows · layers with a row's id folded · events)
+after_runs, after_hash = os.environ.get("FETCH_AFTER_RUNS"), os.environ.get("FETCH_AFTER_HASH")
+after = json.load(open(os.path.join(after_runs, "gen_results.json"), encoding="utf-8")) if after_runs else {}
+after_reasons = collections.Counter()
+
+
+def after_cell(name, base):
+    r = after.get(name)
+    if not r:
+        return ""
+    v = r["verdict"] if r["verdict"].startswith("BOARD ERROR") else G.verdict(r["final"], r["kill"])
+    after_reasons.update(p.split(" (R ")[0].split(" (W ")[0] for p in v.replace("RED: ", "").split(", "))
+    x, y = (base or {}).get("final", {}), r["final"]
+    moved = [n for n, p, q in (
+        ("rows", (x.get("snapshot") or {}).get("dst"), (y.get("snapshot") or {}).get("dst")),
+        ("layers", (G.same_run(x.get("snapshot")) or {}).get("layers_by_source"),
+         (G.same_run(y.get("snapshot")) or {}).get("layers_by_source")),
+        ("events", x.get("events"), y.get("events"))) if p != q]
+    return "%s · R %s · %s" % (v, y.get("reads", {}).get("R", "-"), "same" if not moved else "moved " + "/".join(moved))
+
+
 rows, reasons = [], collections.Counter()
 for i, c in enumerate(chosen):
     r = results.get("g%02d" % i)
@@ -24,9 +46,9 @@ for i, c in enumerate(chosen):
     reads = (r or {}).get("final", {}).get("reads") or {}
     for part in verdict.replace("RED: ", "").split(", "):
         reasons[part.split(" (R ")[0].split(" (W ")[0]] += 1
-    rows.append("| g%02d | %s | %s | %s | %s | R %s · W %s · D %s | |" % (
+    rows.append("| g%02d | %s | %s | %s | %s | R %s · W %s · D %s | %s |" % (
         i, c["board.shape"], c["board.path"], c["board.fetch_target"], verdict,
-        reads.get("R", "-"), reads.get("W", "-"), reads.get("D", "-")))
+        reads.get("R", "-"), reads.get("W", "-"), reads.get("D", "-"), after_cell("g%02d" % i, r)))
 
 head = [
     "# 체인 계약판 «받기» 열 — 기준 판 (응용 C, 2026-10-22)",
@@ -39,11 +61,12 @@ head = [
     "둘 다 0 이어야 초록 (총괄 10-22). 맵퍼 자신의 `sql()` 판(own sql)은 R 이 남고 «reads outside the fetch» 줄로 판정.",
     "group_by 의 끝 값 = 그 키의 행 «전체»로 센 수 (소유자 10-22 넓힘 승인 — 기준에서 빨강, 착지 뒤 초록).",
     "",
-    "## 요약 — 판정 낱말별 판 수",
+    "## 요약 — 판정 낱말별 판 수" + (" (착지 뒤 = `%s`)" % after_hash if after_hash else ""),
     "",
-    "| 낱말 | 판 |",
-    "|---|---|",
-] + ["| %s | %d |" % (k, n) for k, n in sorted(reasons.items(), key=lambda x: -x[1])] + [
+    "| 낱말 | 기준 | 착지 뒤 |",
+    "|---|---|---|",
+] + ["| %s | %d | %s |" % (k, reasons.get(k, 0), after_reasons.get(k, 0) if after else "")
+     for k in sorted(set(reasons) | set(after_reasons), key=lambda x: -reasons.get(x, 0))] + [
     "",
     "## 판마다",
     "",
