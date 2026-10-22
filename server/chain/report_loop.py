@@ -237,12 +237,12 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
             continue
         asked = {"evaluation": request.eval_id, "note": request.note,
                  "sets": [s.strip() for s in str(request.compare_sets or "").split(",") if s.strip()]}
-        made = datetime.datetime.now().astimezone()
         try:
             report = report_reads.Report(db, spec, str(request.eval_id))
             out = run(report, spec, asked, ask=ask, clock=clock)
         except report_reads.ReadRefused as refused:
             report, out = None, {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
+        made = datetime.datetime.now().astimezone()
         cells = {"request_id": request.request_id, "setting": request.setting, "state": out["state"],
                  "reason": out["reason"], "made_at": made.isoformat()}
         if report is not None:
