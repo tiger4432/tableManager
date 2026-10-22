@@ -137,12 +137,16 @@ export function shapeAt(node, steps, defs) {
 
 /** The names a `ref` leaf is offered, and for a column the table they are columns of (form D, B 5d5b99fac). A ref
  *  naming `table_from` (paths from the declaration's root; the first that holds a value names the table) offers that
- *  table's columns from `tables` (T -> {columns}); any other ref offers `sections[section]`.
+ *  table's columns from `tables` (T -> {columns}); any other ref offers `sections[section]`. A `*` step in a path is
+ *  the cell's own step there (lead 10-22: «picture_rows.*.table» is the table of the cell's own row).
+ * @param {string} [at] the cell's address from the declaration's root, members as `[i]`
  * @returns {{table: string, names: string[]}} */
-export function refNames(sections, tables, node, document) {
+export function refNames(sections, tables, node, document, at = '') {
   if (!node || node.hint !== 'ref') return { table: '', names: [] };
   if (Array.isArray(node.table_from)) {
-    const dig = (at) => String(at).split('.').reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), document);
+    const own = String(at).replace(/\[(\d+)\]/g, '.$1').split('.');
+    const dig = (path) => String(path).split('.').map((k, i) => (k === '*' ? own[i] : k))
+      .reduce((v, k) => (v && typeof v === 'object' ? v[k] : undefined), document);
     const table = node.table_from.map(dig).find((v) => typeof v === 'string' && v) || '';
     const columns = table && tables && tables[table] ? tables[table].columns : null;
     return { table, names: columns && typeof columns === 'object' ? Object.keys(columns) : [] };

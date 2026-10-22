@@ -2333,7 +2333,7 @@ function removeButton(at, what, action = 'form-remove', word = 'Remove') {
 /** The names a cell is offered: a ref cell its section, a role cell the roles near it, else what the file uses. */
 function offered(context, node, path) {
   if (!node) return [];
-  return node.hint === 'ref' ? context.refOf(node).names
+  return node.hint === 'ref' ? context.refOf(node, path).names
     : node.hint === 'role' ? context.rolesNear(path, node.from)
       : context.usedElsewhere(context.absolute(path));
 }
@@ -2502,6 +2502,50 @@ export function adderInput(event) {
   return Boolean(go);
 }
 
+/** A paste with no HTML on the clipboard (lead 10-22): the cell is left as it was. */
+export const HTML_NONE_NOTE = 'The clipboard holds no HTML - copy the cells from Excel';
+
+/** A `hint: html` cell (lead 10-22): its size, not its text (the raw JSON shows that), and «Paste HTML» - pressed, then
+ *  Ctrl+V. The value goes through the cell's own `edit-shape` box, so both windows write it by the door they have. */
+function renderHtmlLeaf(context, path, text) {
+  const cell = h('span', 'oe-html-cell');
+  const size = new TextEncoder().encode(text).length;
+  cell.append(h('span', 'oe-value oe-box' + (size ? '' : ' is-none'),
+    size ? `${(Math.ceil(size / 102.4) / 10).toFixed(1)} KB HTML` : 'No HTML'));
+  if (context.readOnly) return cell;
+  const box = h('input', 'oe-html-cell__value');
+  box.type = 'hidden';
+  box.value = text;
+  box.dataset.action = 'edit-shape';
+  box.dataset.value = path;
+  const paste = button('Paste HTML', 'paste-html', path, 'ctl-small');
+  paste.title = 'Press it, then Ctrl+V';
+  cell.append(box, paste, h('span', 'oe-html-cell__note'));
+  return cell;
+}
+
+/** A paste on a «Paste HTML» button: the clipboard's text/html into its cell, or the note when it holds none. True when
+ *  it took the event. */
+export function htmlPaste(event) {
+  const el = event && event.target;
+  if (!el || !el.dataset || el.dataset.action !== 'paste-html') return false;
+  if (event.preventDefault) event.preventDefault();
+  const cell = el.closest ? el.closest('.oe-html-cell') : null;
+  const box = cell ? cell.querySelector('.oe-html-cell__value') : null;
+  const note = cell ? cell.querySelector('.oe-html-cell__note') : null;
+  const html = event.clipboardData ? String(event.clipboardData.getData('text/html') || '') : '';
+  if (!html.trim()) {
+    if (note) note.textContent = HTML_NONE_NOTE;
+    return true;
+  }
+  if (note) note.textContent = '';
+  if (!box) return true;
+  box.value = html;
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  box.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+}
+
 /** A leaf row. The control itself is unchanged -- only the chrome around it is new. */
 function renderTreeLeaf(context, node, path, value, depth, label, required = undefined) {
   const planned = node ? context.planRow(path) : null;
@@ -2552,6 +2596,9 @@ function spelledValue(value) {
 // instead (see `renderTreeLeaf`) -- that row is the only thing carrying candidates,
 // refusals and grounds, so the skeleton fills exactly what the plan cannot see.
 function renderSkeletonLeaf(context, node, path, value) {
+  if (node.hint === 'html' && (typeof value === 'string' || value === undefined || value === null)) {
+    return renderHtmlLeaf(context, path, value || '');
+  }
   // Reading shows the value; writing shows the control. Same renderer, same rows, same
   // folding -- 「읽기에서는 편집 컨트롤 대신 값이 그려질 뿐, 무엇이 있는지 보이는 것은 같다」.
   if (context.readOnly) {
@@ -2628,7 +2675,7 @@ function renderSkeletonLeaf(context, node, path, value) {
   // Suggestions only -- the input keeps taking anything typed, because a zone nobody has
   // used yet has to stay possible.
   const control = withList(context, input, path, offered(context, node, path));
-  const table = node.hint === 'ref' ? context.refOf(node).table : '';
+  const table = node.hint === 'ref' ? context.refOf(node, path).table : '';
   if (!table) return control;
   const column = h('span', 'oe-form-column');
   column.append(h('span', 'oe-form-column__table', `${table}.`), control);
@@ -2984,7 +3031,7 @@ function renderAuthoring(state) {
     usedElsewhere,
     deref: (node) => (node && node.use ? (skeleton.defs || {})[node.use] : node),
     // Form D: what a ref cell is offered comes from the schema's sections and tables (B 5d5b99fac), as in the panel.
-    refOf: (node) => refNames(state.authoringSchema?.sections, state.authoringSchema?.tables, node, draftRaw),
+    refOf: (node, at) => refNames(state.authoringSchema?.sections, state.authoringSchema?.tables, node, draftRaw, at),
     rolesNear,
     // 🔴 THE ROLES A CLAIM DEFINED A MOMENT AGO ARE OFFERED BEFORE IT IS SAVED. The plan
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among

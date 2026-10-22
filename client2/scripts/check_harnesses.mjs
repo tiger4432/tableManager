@@ -1790,7 +1790,7 @@ const FLOORS = new Map([
   ['skeleton_value_fit_harness.mjs', 27],
   // Form D (lead f3639d4a2, owner 10-20): one renderer for the three declarations - chips, tables, the fold row, the
   // gate switch, the adder, a choice of one - scored per module on a skeleton that names no declaration's word.
-  ['declaration_form_harness.mjs', 22],
+  ['declaration_form_harness.mjs', 38],
   // New 2026-09-24 with the list skeleton (90b9f443). In the owner's Chrome the chain window's lists
   // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real
