@@ -626,7 +626,9 @@ def _with_the_whole_maps(db, rule, table, payloads, rows_in):
     answers for whole maps is handed the whole map whichever way its rows came (총괄 c67aa93bb ㄱ-a; f2 10-21: an edit
     inside a map handed that row alone, and the map was replaced by it). A row comes once: an incoming row is not read
     again. A map no row holds now adds none, and is still named (`left`, to `_removal_batches`): its batch then empties
-    it. -> `(rows_in, left)`."""
+    it. A row that left (a deletion: no data, its old values) is not a row of the map now - it names the map it left, and
+    the frame keeps the trigger table's columns when no row is left in it (C 10-22 g04 · g13: a map deleted whole was
+    handed rows with no map column, and the batch refused). -> `(rows_in, left)`."""
     import event_constants
     import outbox_expand
     from sqlalchemy import tuple_
@@ -636,18 +638,22 @@ def _with_the_whole_maps(db, rule, table, payloads, rows_in):
     listed = [payloads] if isinstance(payloads, dict) else list(payloads or ())
     left = {key for key in (event_constants.key_left(p, came_as) for p in listed if isinstance(p, dict))
             if key is not None and not any(crud.is_blank_value(v) for v in key)}
+    model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
+    if model is not None:
+        rows_in = payloads_to_df([p for p in listed if not isinstance(p, dict) or p.get("data")
+                                  or not event_constants.old_values_of(p)])
+        names = outbox_expand._data_columns(model)
+        rows_in = rows_in.reindex(columns=list(dict.fromkeys(["row_id", *rows_in.columns, *names])))
     held = set()
     if all(column in rows_in.columns for column in came_as):
         held = {key for key in rows_in[list(came_as)].astype(object).itertuples(index=False, name=None)
                 if all(_present(v) for v in key)}
-    model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
     if not (left or held) or model is None:
         return rows_in, left
     seen = set(rows_in["row_id"].dropna()) if "row_id" in rows_in.columns else set()
     columns = [getattr(model, column) for column in came_as]
     target = columns[0] if len(columns) == 1 else tuple_(*columns)
     values = sorted({key[0] for key in left | held} if len(columns) == 1 else left | held, key=str)
-    names = outbox_expand._data_columns(model)
     more = []
     for i in range(0, len(values), 1000):
         for row in db.query(model).filter(target.in_(values[i:i + 1000])):

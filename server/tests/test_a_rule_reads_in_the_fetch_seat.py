@@ -29,6 +29,32 @@ def _said_afresh(monkeypatch, caplog):
     caplog.set_level(logging.INFO)
 
 
+@pytest.fixture(name="in_the_run")
+def fixture_in_the_run(monkeypatch):
+    """The SELECTs run while `run_rule` runs - the contract board's R (C 10-22): what is read after the fetch seat."""
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    counted, inside = [], [False]
+    real = rule_run.run_rule
+
+    def run_rule(*a, **k):
+        inside[0] = True
+        try:
+            return real(*a, **k)
+        finally:
+            inside[0] = False
+
+    def count(conn, cursor, statement, parameters, context, executemany):
+        if inside[0] and statement.lstrip().upper().startswith(("SELECT", "WITH")):
+            counted.append(statement)
+
+    monkeypatch.setattr(rule_run, "run_rule", run_rule)
+    event.listen(Engine, "before_cursor_execute", count)
+    yield counted
+    event.remove(Engine, "before_cursor_execute", count)
+
+
 def _said(caplog):
     return [r.getMessage() for r in caplog.records if LINE in r.getMessage()]
 
@@ -41,7 +67,7 @@ def _register(monkeypatch, name, call, fetch=None):
             "mapper": name}
 
 
-def test_a_join_reads_nothing_in_its_call(db, caplog):
+def test_a_join_reads_nothing_in_its_call(db, caplog, in_the_run):
     rules = rule_shape.expand_declaration(
         {"name": "fetch_join", "on": {"table": DST}, "into": {"table": SRC},
          "derive": {"kind": "join", "join": {
@@ -49,10 +75,10 @@ def test_a_join_reads_nothing_in_its_call(db, caplog):
         crud.TABLE_CONFIG)[0]
     _run(db, "join", rules, SRC)
     assert _values(db, SRC, "lot_confirmed") == ["LOT"] * ROWS
-    assert _said(caplog) == []
+    assert _said(caplog) == [] and in_the_run == []
 
 
-def test_a_decide_and_its_auto_confirm_read_nothing_in_their_calls(db, caplog):
+def test_a_decide_and_its_auto_confirm_read_nothing_in_their_calls(db, caplog, in_the_run):
     rules = rule_shape.expand_declaration(
         {"name": "fetch_confirm", "on": {"table": SRC}, "into": {"table": DST},
          "derive": {"kind": "decide", "decide": {
@@ -65,10 +91,10 @@ def test_a_decide_and_its_auto_confirm_read_nothing_in_their_calls(db, caplog):
     _run(db, "dedup", [dedup], SRC)
     _run(db, "confirm", [confirm], DST)
     assert _values(db, DST, "grade") == ["LOT"]
-    assert _said(caplog) == []
+    assert _said(caplog) == [] and in_the_run == []
 
 
-def test_a_mapper_that_reads_in_its_call_is_said_once(db, caplog, monkeypatch):
+def test_a_mapper_that_reads_in_its_call_is_said_once(db, caplog, monkeypatch, in_the_run):
     def reads(db, payload, rule=None):
         db.query(models.DYNAMIC_TABLES[SRC]).count()
         return {"updates": []}
@@ -77,6 +103,7 @@ def test_a_mapper_that_reads_in_its_call_is_said_once(db, caplog, monkeypatch):
     _run(db, "reads-1", [rule], SRC)
     _run(db, "reads-2", [rule], SRC)
     assert len(_said(caplog)) == 1 and "rule=fetch_reads" in _said(caplog)[0]
+    assert len(in_the_run) == 2                     # the canary: the count sees a read in the run
 
 
 def test_every_rule_of_a_group_is_fetched_before_the_first_is_called(db, monkeypatch):

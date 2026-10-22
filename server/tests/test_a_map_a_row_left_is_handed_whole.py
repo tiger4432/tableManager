@@ -158,3 +158,22 @@ def test_the_whole_map_is_read_by_the_fetch_seat(db, monkeypatch, caplog):
     envelope = rule_run.run_rule(db, _rule(allow_replace_map=True), payloads=[edited])
     assert SEEN == [[("T1", "J-A", "2"), ("T2", "J-A", "3")]] and _maps(envelope) == {"J-A": 5}
     assert not [r for r in caplog.records if "reads outside the fetch" in r.getMessage()]
+
+
+def _copy(df, db):
+    """The board's copy (C 10-22 g04 · g13): the columns there are, nothing guarded."""
+    return df[[c for c in ("job", "cell", "v", mapper_sdk.ORIGIN_MARK) if c in df.columns]].copy()
+
+
+@pytest.mark.parametrize("flag", ["allow_replace_map", "allow_retraction"])
+def test_a_map_deleted_whole_is_handed_with_its_key_column(db, flag):
+    """C 10-22 g04 · g13: every row of a map deleted - its rows were handed with no map column, and the batch refused
+    («removes by ['job'] … has no ['job']»). The rows that left are not rows of the map now; it is named and emptied."""
+    mapper_sdk.mapper(name="left_copy")(_copy)
+    try:
+        envelope = mapper_sdk.MAPPER_REGISTRY["left_copy"](
+            db, [_deleted("T8", "J-Z"), _deleted("T7", "J-Z")], rule=_rule(mapper="left_copy", **{flag: True}))
+    finally:
+        mapper_sdk.MAPPER_REGISTRY.pop("left_copy", None)
+        mapper_sdk.MAPPER_PARAMS.pop("left_copy", None)
+    assert _maps(envelope, flag == "allow_retraction") == {"J-Z": 0}

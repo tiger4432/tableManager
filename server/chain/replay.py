@@ -1819,8 +1819,9 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             part, at, n = in_order[at:at + n], at + n, min(n * 2, FOLD_UNITS_GROUPS)
             ids = sorted(row_id for key in part for row_id in keyed[key])
             _model, found = outbox_expand.load_rows_by_ids(db, params["unit_table"], ids)
-            answer = rule_run.run_rule(db, rule, payloads=[
-                outbox_expand._synthesize_payload(found[row_id], columns, {}) for row_id in ids if row_id in found])
+            # the fetch seat first, as the group path asks it (총괄 78eec1ec1): the rule runs on what was read
+            answer = rule_run.run_rule(db, rule, prepared=rule_run.prepare(db, rule, payloads=[
+                outbox_expand._synthesize_payload(found[row_id], columns, {}) for row_id in ids if row_id in found]))
             answers.append(answer)
             step("rule", stats["pages"] + 1, None, len(ids))
             yield answer["updates"]
