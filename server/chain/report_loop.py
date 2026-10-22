@@ -1,7 +1,8 @@
 """The AI report's loop - one rule runs one report to its end (owner 10-22 ㄱ): at most `loop.steps` steps, `loop.seconds`,
 and a context under `loop.context_tokens`. Each step hands the model [1]..[7] (guide `ai_report_tables.md` «에이전트
-문맥») and reads one JSON object back: a call to one of the reads (`report_reads.Report`), or the report's texts.
-Nothing here writes - `run` answers what the report's mapper keeps.
+문맥») and reads one JSON object back: a call to one of the reads (`report_reads.Report`), or done - read enough.
+Then one write call (owner 10-23 ㄱ) hands it every table read and takes the texts - also when a step or time cap
+ended the reading, so the report says what was read. Nothing here writes - `run` answers what the mapper keeps.
 
   [1] instructions   prompts.role · rules · functions.<read>.about (blank: the text below) + the answer's form, the
                      reads and their arguments, the step cap and this step
@@ -29,7 +30,11 @@ CHARS_PER_TOKEN = 4.0
 ROLE = ("You write a short report on a test evaluation from the reads below. Every number comes from a read; "
         "you never compute or invent one.")
 RULES = ("Pick the wafers by their conditions. Call one read per step. When you have read what the report needs, "
-         "answer done with a text for every text slot.")
+         "answer done.")
+#: The write call's own line: what it is for and the answer's form.
+WRITE = ("Write the report from the tables read below - every number as a table says it. Answer one JSON object: "
+         '{"done": {%s}}')
+STOP_NO_TEXT = "the write call answered no text"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
     "yield_by": "the summary table - items down, wafers across by time, each cell x% (F/N); by: a condition whose "
@@ -92,16 +97,14 @@ def _instructions(spec, step, cap):
         about = (functions.get(read) or {}).get(report_shape.ABOUT_CELL) or ABOUT[read]
         lines.append("  %s(%s) - %s" % (read, ", ".join(ARGS[read]), about))
     lines.append("  " + WAFERS_SAID)
-    slots = ", ".join('"%s": "<text>"' % slot for slot in text_slots(spec))
-    lines.append('Answer one JSON object: {"call": "<read>", "args": {...}} or {"done": {%s}}' % slots)
+    lines.append('Answer one JSON object: {"call": "<read>", "args": {...}} or {"done": {}} when you have read enough')
     lines.append("This is step %d of %d." % (step, cap))
     return lines
 
 
-def _prompts(spec):
+def _prompts(spec, cells=("select", "style", "compare", "control")):
     prompts = (spec or {}).get("prompts") or {}
-    return ["%s: %s" % (cell.capitalize(), prompts[cell]) for cell in ("select", "style", "compare", "control")
-            if prompts.get(cell)]
+    return ["%s: %s" % (cell.capitalize(), prompts[cell]) for cell in cells if prompts.get(cell)]
 
 
 def _request(request):
@@ -135,6 +138,30 @@ def compose(spec, request, conditions, steps, previous, budget, step, cap):
             cut["4"] = len(rows4)
         else:
             return None, cut
+
+
+def compose_write(spec, request, reads, budget):
+    """The write call's prompt - role · rules · the write line · style · compare · control · the request · every table
+    read (`reads`: [(step, call, lines)]) - and what was cut, or (None, cut) when the tables at no rows do not fit.
+    Over budget the oldest read loses half its rows first (lead 10-23)."""
+    prompts = (spec or {}).get("prompts") or {}
+    slots = ", ".join('"%s": "<text>"' % slot for slot in text_slots(spec))
+    head = ([prompts.get("role") or ROLE] + ([prompts["rules"]] if prompts.get("rules") else []) + [WRITE % slots]
+            + _prompts(spec, ("style", "compare", "control")) + _request(request) + ["Tables read:"])
+    kept = [list(lines) for _step, _call, lines in reads]
+    cut = {}
+    while True:
+        body = list(head)
+        for (step, call, _lines), lines in zip(reads, kept):
+            body += ["step %d: %s" % (step, call)] + lines
+        text = "\n".join(body)
+        if budget.tokens(text) <= budget.cap:
+            return text, cut
+        at = next((n for n, lines in enumerate(kept) if lines), None)
+        if at is None:
+            return None, cut
+        kept[at] = kept[at][:len(kept[at]) // 2]
+        cut["step %d %s" % (reads[at][0], reads[at][1])] = len(kept[at])
 
 
 def _ask(prompt, ask):
@@ -176,6 +203,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         report.compare(request.get("sets"))
     conditions = report.conditions()["context"].splitlines()
     steps, previous, seen, tables = [], [], {}, {}
+    reads = [(0, "conditions()", conditions)]                # what the write call is handed - the folded conditions first
     out = {"state": STOPPED, "reason": STOP_STEPS % caps["steps"], "steps": steps, "texts": {}, "tables": tables}
     for step in range(1, caps["steps"] + 1):
         if clock() - started >= caps["seconds"]:
@@ -195,7 +223,6 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         budget.correct(prompt, counted)
         record = {"step": step, "tokens": counted or budget.tokens(prompt), "cut": cut}
         if isinstance(said.get("done"), dict):
-            out["texts"] = {slot: str(said["done"].get(slot) or "") for slot in text_slots(spec)}
             record.update(call="done", summary="done", seconds=clock() - began, refused=None)
             steps.append(record)
             out.update(state=DONE, reason=None)
@@ -207,11 +234,40 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             if said["call"] in report_shape.TABLE_FILLS:
                 tables[said["call"]] = answer["html"]
             previous = answer["context"].splitlines()
+            reads.append((step, record["call"], previous))
         else:
             previous = ["refused: " + refused]
         record["summary"] = (previous[0] if previous else "")[:200]
         steps.append(record)
+    if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
+        _write(spec, request, reads, budget, ask, clock, out)
     return out
+
+
+def _write(spec, request, reads, budget, ask, clock, out):
+    """The one write call: every table read -> the texts. A cap that ended the reading stays the reason."""
+    from utils import llm
+
+    prompt, cut = compose_write(spec, request, reads, budget)
+    if prompt is None:
+        out.update(state=STOPPED, reason=STOP_CONTEXT)
+        return
+    began = clock()
+    try:
+        said, counted = _ask(prompt, ask)
+    except llm.LlmRefused as refused:
+        out.update(state=STOPPED, reason=STOP_MODEL % refused)
+        return
+    budget.correct(prompt, counted)
+    texts = said.get("done") if isinstance(said.get("done"), dict) else None
+    out["steps"].append({"step": len(out["steps"]) + 1, "tokens": counted or budget.tokens(prompt), "cut": cut,
+                         "call": "write", "seconds": clock() - began, "refused": None if texts else STOP_NO_TEXT,
+                         "summary": "%d text(s) from %d table(s) read" % (len(texts or {}), len(reads))})
+    if texts is None:
+        if out["state"] == DONE:
+            out.update(state=STOPPED, reason=STOP_NO_TEXT)
+        return
+    out["texts"] = {slot: str(texts.get(slot) or "") for slot in text_slots(spec)}
 
 
 def _steps_text(out, report):

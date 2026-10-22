@@ -7,8 +7,10 @@ that order, reads one JSON object back, and the loop stops at its step cap, its 
               result as the read summed it up · [7] the budget line - in that order
   budget      [6]'s rows are cut first, then [4]'s; past both the report stops «context over budget»; the counted
               tokens a gateway says correct the reckoning
-  stops       steps · seconds · the model refused - each said in the reason; done ends with the texts
+  stops       steps · seconds · the model refused - each said in the reason; done ends the reading
   refused     the same call twice · a read that is not one · an argument it does not take - told back to the model
+  write       (owner 10-23 ㄱ) one write call after the reading - done or a step or time cap - hands every table read
+              (oldest cut first) and takes the texts; no text from it is said
 """
 import pytest
 
@@ -43,6 +45,10 @@ SPEC = {"prompts": {"role": "ROLE-TEXT", "select": "pick split A", "functions": 
 REQUEST = {"evaluation": "E1", "sets": ["baseline"], "note": "look at particle"}
 
 
+#: The write call's answer when a test does not give one.
+WRITTEN = {"done": {"summary": "WRITTEN"}}
+
+
 class Model:
     """Answers in turn; keeps every prompt and says it counted `counted` prompt tokens."""
 
@@ -53,7 +59,7 @@ class Model:
         self.prompts.append(prompt)
         if self.counted is not None:
             usage["prompt_tokens"] = self.counted
-        answer = self.answers.pop(0)
+        answer = self.answers.pop(0) if self.answers else WRITTEN
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -69,13 +75,13 @@ class Clock:
 
 
 def test_each_step_hands_the_context_in_its_order_and_done_ends_it():
-    model = Model({"call": "yield_by", "args": {"wafers": "all"}}, {"done": {"summary": "Particle rose."}})
+    model = Model({"call": "yield_by", "args": {"wafers": "all"}}, {"done": {}}, {"done": {"summary": "Particle rose."}})
     report = FakeReport()
     out = report_loop.run(report, SPEC, REQUEST, ask=model, clock=Clock())
     assert (out["state"], out["reason"], out["texts"]) == ("done", None, {"summary": "Particle rose."})
     assert report.compared == ["baseline"]
     second = model.prompts[1]
-    marks = ["ROLE-TEXT", "TREND-ABOUT", '{"done": {"summary": "<text>"}}', "This is step 2 of 4.",
+    marks = ["ROLE-TEXT", "TREND-ABOUT", '{"done": {}} when you have read enough', "This is step 2 of 4.",
              "Select: pick split A", "Evaluation: E1", "Note: look at particle", "split: value 1",
              "Last result, step 1: yield_by", "row 2 | 1.0% (1/100)", "used ~"]
     places = [second.index(mark) for mark in marks]
@@ -83,7 +89,7 @@ def test_each_step_hands_the_context_in_its_order_and_done_ends_it():
     assert report_loop.RULES in second and report_loop.ABOUT["yield_by"] in second, "blank cells: the product's text"
     assert "row 50" not in second, "[6] is the read's summary - its whole table goes to the HTML only"
     assert out["tables"]["yield_by"]["rows"][50] == "row 50 | 1.0% (1/100)"
-    assert [s["call"] for s in out["steps"]] == ['yield_by({"wafers": "all"})', "done"]
+    assert [s["call"] for s in out["steps"]] == ['yield_by({"wafers": "all"})', "done", "write"]
 
 
 def test_earlier_steps_are_a_line_each():
@@ -150,3 +156,45 @@ def test_a_reads_refusal_is_the_models_next_context():
     out = report_loop.run(FakeReport(), SPEC, REQUEST, ask=model, clock=Clock())
     assert out["steps"][0]["refused"].startswith("a pareto adds fail chips")
     assert "refused: a pareto adds fail chips" in model.prompts[1]
+
+
+def test_the_write_call_hands_every_table_read_and_takes_the_texts():
+    report = FakeReport()
+    report.trend = lambda wafers=None, items=None: {"context": "particle: first 3.00% last 9.00%", "html": None}
+    model = Model({"call": "yield_by", "args": {}}, {"call": "trend", "args": {}}, {"done": {}},
+                  {"done": {"summary": "Particle rose to 9%."}})
+    spec = dict(SPEC, prompts=dict(SPEC["prompts"], rules="RULES-IN-KOREAN", style="STYLE-TEXT"))
+    out = report_loop.run(report, spec, REQUEST, ask=model, clock=Clock())
+    write = model.prompts[-1]
+    for mark in ("ROLE-TEXT", "RULES-IN-KOREAN", '{"done": {"summary": "<text>"}}', "STYLE-TEXT", "Evaluation: E1",
+                 "step 0: conditions()", "split: value 1", "step 1: yield_by()", "row 2 | 1.0% (1/100)",
+                 "step 2: trend()", "particle: first 3.00% last 9.00%"):
+        assert mark in write, mark
+    assert "Select: pick split A" not in write and "TREND-ABOUT" not in write, "no reads list, no select"
+    assert (out["state"], out["texts"]) == ("done", {"summary": "Particle rose to 9%."})
+    assert out["steps"][-1]["call"] == "write" and out["steps"][-1]["summary"] == "1 text(s) from 3 table(s) read"
+
+
+@pytest.mark.parametrize("loop, calls, reason", [({"steps": 2, "seconds": 300}, 2, "step cap 2"),
+                                                 ({"steps": 8, "seconds": 3}, 1, "time cap 3 s")])
+def test_a_cap_still_writes_what_was_read(loop, calls, reason):
+    spec = dict(SPEC, loop=dict(loop, context_tokens=16000))
+    model = Model(*[{"call": "yield_by", "args": {}}, {"call": "conditions", "args": {"keyword": "A"}}][:calls])
+    out = report_loop.run(FakeReport(), spec, REQUEST, ask=model, clock=Clock())
+    assert (out["state"], out["reason"], out["texts"]) == ("stopped", reason, {"summary": "WRITTEN"})
+    assert "row 2 | 1.0% (1/100)" in model.prompts[-1]
+
+
+def test_the_write_call_cuts_the_oldest_read_first_then_stops():
+    reads = [(0, "conditions()", ["split: value %d" % n for n in range(60)]),
+             (1, "yield_by()", ["row %d | 1.0%% (1/100)" % n for n in range(4)])]
+    prompt, cut = report_loop.compose_write(SPEC, REQUEST, reads, report_loop.Budget(250))
+    assert list(cut) == ["step 0 conditions()"] and 0 < cut["step 0 conditions()"] < 60, cut
+    assert "row 3 | 1.0% (1/100)" in prompt, "the newer read stands whole"
+    starved = report_loop.compose_write(SPEC, REQUEST, [(1, "yield_by()", ["x"] * 9)], report_loop.Budget(20))
+    assert starved == (None, {"step 1 yield_by()": 0})
+
+
+def test_a_write_call_without_texts_is_said():
+    out = report_loop.run(FakeReport(), SPEC, REQUEST, ask=Model({"done": {}}, {"call": "yield_by"}), clock=Clock())
+    assert (out["state"], out["reason"], out["texts"]) == ("stopped", "the write call answered no text", {})
