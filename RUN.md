@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-21] **파일 결과 칸이 버전 거절을 말한다 (총괄, a166d8a2e)** — git pull · 서버 · 와처 재기동
+>
+> ```
+> 보는 곳   파일 화면 결과 칸 · watcher.log «[Ingest] <표> FILE <파일>: ... · 1 map refused: version_older»
+> 뜻      N map(s) refused: version_older -> 그 파일 맵이 저장된 맵보다 옛 버전 -> 맵 그대로(정상)
+>          N row(s) refused: version_same -> 같은 버전을 다시 읽음. «version_same_content_differs» 가 같이 있으면
+>          내용이 바뀌었는데 버전을 안 올린 것 -> 파일 쪽 버전을 올림
+> 되돌리기  git revert a166d8a2e -> 서버 · 와처 재기동 (그 뒤 거절된 행이 다시 unchanged 로 세어지고 결과 칸은 수만)
+> ```
+>
+> ---
+>
 > ## [10-22] **체인 «데이터 받기» — 규칙 맵퍼가 읽는 것을 그룹의 규칙이 돌기 «전»에 한 번에 읽어 건넴 · group_by 규칙은 그 키의 행 전체를 받음 (총괄 78eec1ec1 안 1, 소유자 10-22 「ㅇㅇ 넓혀」)** — git pull · 런처 재기동
 >
 > ```
