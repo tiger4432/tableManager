@@ -435,7 +435,7 @@ ingestion_settings.json 외장 소스 항목에 "max_depth": N — 적은 path �
 - 키 칸 바꾸기를 짓는 것은 따로 판정(바꾼 뒤 business_key_val 다시 짓기 · 겹침 검사 · 아래로 이어지는 소급 수를 미리 보임)
 게이트 더함: 시간 칸 문자 → datetime(견본 셋 꼴) 바뀜, 파일로 같은 글자를 새로 넣은 값과 같음 · 키 칸(숫자 · 시간) 저장 거절, 표 그대로 읽힘. 변이 하나(키 검사 뺌 → 키 칸이 바뀌어 빨강)
 
-# [구현자 B] **체인 행 거르기가 «값»으로도 거른다 — require · exclude 항목이 값 목록을 받는다** (소유자 10-21 「체인 행 내 특정 값일 때 제외하는 거는」 → 안 ㄱ, 총괄) — bce8d755a(take fn) «다음», a7b67be28 ㄴ «앞»
+# [구현자 B] **체인 행 거르기가 «값»으로도 거른다 — require · exclude 항목이 값 목록을 받는다** (소유자 10-21 「체인 행 내 특정 값일 때 제외하는 거는」 → 안 ㄱ, 총괄) — 🔁 자리 바뀜(소유자 10-22 「체인 선언 when 에 값 넣는 거 됨?」 · 「join 도 되어야 함」): «받기»(78eec1ec1) 착지 «바로 다음», 이름 없는 규칙 «앞». 조인 on.require · on.exclude 도 같은 꼴 — join_into 의 값 표 거르기(_read_once 의 not_blank/blank 조건 사본)를 gate_conditions 를 부르게 접어 «판단 한 쌍»이 조인까지
 
 지금: `require` · `exclude` 는 칸 이름 목록뿐이고 판단은 «비었나» 하나(`rule_run.gate_misses` · SQL 짝 `gate_conditions`)
 도착 — 두 줄
