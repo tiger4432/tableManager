@@ -111,4 +111,6 @@ def test_the_schema_route_moved_nothing_else(client, monkeypatch):
 
     name = next(iter(use_committed_catalogue(monkeypatch)))     # the shipped catalogue, not this box's
     assert set(client.get(f"/tables/{name}/schema").json()) == (
-        SCHEMA_KEYS_BEFORE | {"kind", "smart_paste"})       # smart_paste: 총괄 12cc7dd1f ⓪
+        SCHEMA_KEYS_BEFORE | {"kind", "smart_paste",         # smart_paste: 총괄 12cc7dd1f ⓪
+                              "column_indexes",                   # the header's index mark: 13ddbdbb9 (owner 10-15)
+                              "pivot"})                           # a long table's item key: 9638397f2

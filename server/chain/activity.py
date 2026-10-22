@@ -23,8 +23,13 @@ empty.
 """
 
 import contextlib
+import logging
 import threading
 import time
+
+from error_said import told
+
+logger = logging.getLogger(__name__)
 
 
 class ChainActivityRegistry:
@@ -327,5 +332,6 @@ def _say_on_the_claim(rule_run):
         from utils import heartbeat
 
         heartbeat.note_work(rule_run=rule_run)
-    except Exception:                                            # noqa: BLE001
-        pass
+    except Exception as exc:                                     # noqa: BLE001
+        logger.warning("[ChainRule] the rule run was not put on its group's beat - the queue line and /health "
+                       "do not show it: %s", told(exc))

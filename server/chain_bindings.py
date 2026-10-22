@@ -469,7 +469,7 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
     # `require` would hand over no row and `exclude` would hold none back - refused by name, the
     # way an unknown `trigger_columns` entry is named. `target_columns` names the TARGET table's (총괄 a7b67be28 ㄱ).
     for key in (*ROW_GATE_KEYS, TARGET_COLUMNS_KEY):
-        table = candidate.get("target_table" if key == TARGET_COLUMNS_KEY else "trigger_table")
+        table = candidate.get(_LIST_CELLS[key][1]["table_from"][0])        # its column cell's table
         if key not in candidate:
             continue
         written = candidate.get(key)

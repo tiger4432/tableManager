@@ -102,22 +102,20 @@ CREATE TABLE lot_lineage (
 #: offers one, because it reads its instant from a BASIS and so can never miss an
 #: `occurred_at` column.
 #:
-#: `process_param_num_measure` is the shipped source that gives both, and the two come from
-#: the DECLARATION rather than from anything invented here: its identity is the column
-#: `param_id` (blank -> `no_identity`) and its `occurred_at` is the column `eventtime`
-#: (blank -> a missing instant). Two blanks, two reasons, one run.
-PROCESS_PARAM_DDL = """
-CREATE TABLE process_param_num (
-    param_id  TEXT PRIMARY KEY,
-    row_id    TEXT,
-    wafer_id  TEXT,
-    step      TEXT,
-    param     TEXT,
-    value     DOUBLE PRECISION,
-    role      TEXT,
-    eqp_id    TEXT,
-    eventtime TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT now()
+#: `die_inspection` is the shipped source that gives both, and the two come from the
+#: DECLARATION rather than from anything invented here: its entity key is the column
+#: `base_wafer_id` (blank -> `no_identity`) and its `occurred_at` is the column `observed_at`
+#: (blank -> a missing instant). Two blanks, two reasons, one run. (`process_param_num_measure`
+#: gave both until it left the sample with the view sources, c193986a8.)
+INSPECTION_RUN_DDL = """
+CREATE TABLE inspection_run (
+    run_uid       TEXT PRIMARY KEY,
+    row_id        TEXT,
+    base_wafer_id TEXT,
+    base_x        DOUBLE PRECISION,
+    base_y        DOUBLE PRECISION,
+    observed_at   TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ DEFAULT now()
 )
 """
 
@@ -149,38 +147,37 @@ def _seed(connection, rows):
     connection.commit()
 
 
-def _seed_process_param(connection, rows):
-    """Seed `process_param_num`. A row per measurement, one molecule each."""
+def _seed_inspection_run(connection, rows):
+    """Seed `inspection_run`. A row per inspected die, one molecule each."""
     with connection.cursor() as cursor:
-        cursor.execute("TRUNCATE process_param_num")
+        cursor.execute("TRUNCATE inspection_run")
         for index, r in enumerate(rows):
             cursor.execute(
-                "INSERT INTO process_param_num (param_id, row_id, wafer_id, step, param, "
-                "value, role, eqp_id, eventtime) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (r["param_id"], f"p{index}", r.get("wafer_id"), r.get("step"),
-                 r.get("param"), r.get("value"), r.get("role"), r.get("eqp_id"),
-                 r.get("eventtime")))
+                "INSERT INTO inspection_run (run_uid, row_id, base_wafer_id, base_x, base_y, observed_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                (r["run_uid"], f"i{index}", r.get("base_wafer_id"), r.get("base_x"), r.get("base_y"),
+                 r.get("observed_at")))
     connection.commit()
 
 
-def param(param_id, *, wafer_id="WF-1", step="CMP", name="pressure", value=1.5,
-          role="measured", eqp_id="EQP-9", eventtime="2026-05-03T02:17:00+00:00"):
-    """One `process_param_num` row. Blank `param_id` or `eventtime` makes it refusable."""
-    return {"param_id": param_id, "wafer_id": wafer_id, "step": step, "param": name,
-            "value": value, "role": role, "eqp_id": eqp_id, "eventtime": eventtime}
+def inspection(run_uid, *, base_wafer_id="WF-1", base_x=3, base_y=4,
+               observed_at="2026-05-03T02:17:00+00:00"):
+    """One `inspection_run` row. Blank `base_wafer_id` or `observed_at` makes it refusable."""
+    return {"run_uid": run_uid, "base_wafer_id": base_wafer_id, "base_x": base_x, "base_y": base_y,
+            "observed_at": observed_at}
 
 
 #: Two good rows, one with no identity, one with no instant: two reasons, one run.
 #:
-#: 🔴 THE BLANK IS `wafer_id`, NOT `param_id`, AND THAT DISTINCTION IS THE WHOLE FIXTURE.
-#: `param_id` is this source's identity AND its cursor AND its order_by, so blanking it is
+#: 🔴 THE BLANK IS `base_wafer_id`, NOT `run_uid`, AND THAT DISTINCTION IS THE WHOLE FIXTURE.
+#: `run_uid` is this source's identity AND its cursor AND its order_by, so blanking it is
 #: refused at the BASE FRAME - `driver identity/group_by value is missing` - which
 #: aborts the whole batch before molecules exist and is counted under no reason at all.
-#: `wafer_id` is an entity KEY the molecule check reads (`_required_entity_columns`), so
+#: `base_wafer_id` is an entity KEY the molecule check reads (`_required_entity_columns`), so
 #: blanking it refuses ONE molecule, by name, and the rest of the batch still lands.
-PARAM_ROWS = [param("P-1"), param("P-2")]
-PARAM_NO_IDENTITY = param("P-3", wafer_id="")
-PARAM_NO_INSTANT = param("P-4", eventtime=None)
+INSPECTION_ROWS = [inspection("I-1"), inspection("I-2")]
+INSPECTION_NO_IDENTITY = inspection("I-3", base_wafer_id="")
+INSPECTION_NO_INSTANT = inspection("I-4", observed_at=None)
 
 
 def _seed_lot_lineage(connection, rows):
@@ -269,7 +266,7 @@ def pg():
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
             conn.execute(text(LOT_LINEAGE_DDL))
-            conn.execute(text(PROCESS_PARAM_DDL))
+            conn.execute(text(INSPECTION_RUN_DDL))
             conn.execute(text(DESTINATION_INVENTORY_DDL))
         # 🔴 [총괄 f8f9eaa46] The follow-up writes its receipt through the product's write path
         # into `audit_logs`. Without it here the unqualified INSERT fell through the search
@@ -305,7 +302,7 @@ def ledger(pg):
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.LEDGER_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.CURSOR_TABLE} CASCADE")
                 cursor.execute(f"DROP TABLE IF EXISTS {schema.ROW_REF_TABLE} CASCADE")
-                cursor.execute("TRUNCATE process_param_num")
+                cursor.execute("TRUNCATE inspection_run")
                 cursor.execute("TRUNCATE destination_inventory")
             connection.commit()
             _seed(connection, BASE_ROWS)
@@ -910,11 +907,11 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     two DIFFERENT reasons, in one run, each counted, with the rest of the batch landing.
 
     ⚠️ BOTH REASONS COME FROM THE DECLARATION, not from anything invented here.
-    `process_param_num_measure` is a shipped row source whose identity is a column and whose
+    `die_inspection` is a shipped row source whose entity key is a column and whose
     `occurred_at` is a column, so it can miss either - and `dt_job` cannot miss the second,
     because it reads its instant from a BASIS.
 
-    🔴 AND THE BLANK IS `wafer_id`, NOT `param_id`. `param_id` is identity AND cursor AND
+    🔴 AND THE BLANK IS `base_wafer_id`, NOT `run_uid`. `run_uid` is identity AND cursor AND
     order_by, so blanking it is refused at the BASE FRAME - "driver identity/group_by value
     is missing", as the identity - which aborts the whole batch before any molecule exists and is counted
     under no reason at all. An entity KEY is what the molecule check reads, so blanking that
@@ -923,13 +920,13 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     """
     connection = ledger.raw_connection()
     try:
-        _seed_process_param(connection,
-                            PARAM_ROWS + [PARAM_NO_IDENTITY, PARAM_NO_INSTANT])
+        _seed_inspection_run(connection,
+                             INSPECTION_ROWS + [INSPECTION_NO_IDENTITY, INSPECTION_NO_INSTANT])
     finally:
         connection.close()
 
     with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
-        result = run(ledger, source="process_param_num_measure")
+        result = run(ledger, source="die_inspection")
 
     assert result["rows_read"] == 4
     assert result["refused_total"] == 2, (
@@ -941,7 +938,7 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     assert gate.REFUSE_MISSING_OCCURRED_AT in said, said[:400]
     # ⛔ AND THE COLUMN IS NAMED IN EACH. "two were refused" sends an operator looking; the
     # address is what they open.
-    assert "wafer_id" in said and "eventtime" in said, said[:400]
+    assert "base_wafer_id" in said and "observed_at" in said, said[:400]
 
 
 # ---------------------------------------------------------------- S-113 ⓑ-1: the registry row
@@ -1044,14 +1041,14 @@ def test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row(ledger):
 
     connection = ledger.raw_connection()
     try:
-        _seed_process_param(connection, PARAM_ROWS + [PARAM_NO_IDENTITY, PARAM_NO_INSTANT])
+        _seed_inspection_run(connection, INSPECTION_ROWS + [INSPECTION_NO_IDENTITY, INSPECTION_NO_INSTANT])
     finally:
         connection.close()
 
-    result = run(ledger, source="process_param_num_measure")
+    result = run(ledger, source="die_inspection")
     assert result["refused_total"] == 2, result
 
-    row = read_cursor_row(ledger, "process_param_num_measure")
+    row = read_cursor_row(ledger, "die_inspection")
     assert row is not None, (
         "the refusal write must create the row too: since S-76 nothing else does, so an "
         "UPDATE would land nowhere for a source declared today")

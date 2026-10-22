@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **main 의 B 빨강 묶음 — 시험 일곱 칸 · 순서 탓 셋 초록, 줄 하나 더함 (총괄 10-22)** — git pull · 런처 재기동
+>
+> ```
+> 새 줄     chain_worker.log «[ChainRule] the rule run was not put on its group's beat - the queue line and /health do not show it: <사유>»
+>             규칙 실행을 그룹의 박동에 못 적음 — 그 규칙은 돌지만 대기열 줄 · /health 에 «지금 도는 규칙»이 안 보임. 예전엔 조용히 넘어갔음
+>             드물어야 함. 자주 나오면 <사유>를 총괄께
+> 나머지     시험만 바뀜(시험 공유 스키마의 큐를 hold world 가 비움 · 칸 일곱의 기대값) — 운영 동작 변화 없음
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
 > ## [10-22] **피벗 보기 검색 · 화면이 Pivot 버튼을 그릴 칸 (소유자 「피벗 보기 검색 필요」, f3f566d32)** — git pull · 서버 재기동
 >
 > ```
