@@ -30,8 +30,9 @@ def test_the_slots_come_in_layout_order_and_say_what_is_missing():
 
 def test_the_summary_table_heads_each_group_over_its_wafers():
     page = _page()
-    assert '<th colspan="2">E1</th><th colspan="1">baseline</th>' in page
-    assert "<th>W1</th><th>W2</th><th>W0</th>" in page
+    assert '<th class="rpt-group" colspan="2">E1</th><th class="rpt-group" colspan="1">baseline</th>' in page
+    assert '<th class="rpt-head">W1</th><th class="rpt-head">W2</th><th class="rpt-head">W0</th>' in page
+    assert '<td class="rpt-item">&lt;script&gt;' in page and '<td class="rpt-cell">3.0% (3/100)</td>' in page
     assert "Left out - two summary rows for one wafer and item: W9" in page
 
 

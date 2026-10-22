@@ -36,11 +36,16 @@ TABLES = {
                "column_types": {"set_name": "string", "member": "string", "kind": "string"}},
 }
 WAFERS = [("W2", "L1", "E1", "2026-10-02", "A"), ("W1", "L1", "E1", "2026-10-01", "A"),
-          ("W3", "L2", "E1", "2026-10-03", "B"), ("W0", "L0", "E0", "2026-09-01", "A")]
+          ("W3", "L2", "E1", "2026-10-03", "B"), ("W0", "L0", "E0", "2026-09-01", "A"),
+          # recent evaluations before E1's latest wafer (10-03): E3 · E2 within 60 days; E9 too old; E4 after it
+          ("W5", "L5", "E2", "2026-09-20", "A"), ("W6", "L5", "E2", "2026-09-19", "B"),
+          ("W7", "L6", "E3", "2026-09-25", "A"), ("W8", "L7", "E4", "2026-10-10", "A"),
+          ("W9", "L8", "E9", "2026-05-01", "A")]
 #: wafer, item, F, N, the summary's own rate in percent - W1 particle's 2.5 is not 3/100, so a cell that says 2.5 read it
 SUMMARY = [("W1", "particle", 3, 100, 2.5), ("W1", "scratch", 1, 100, 1.0), ("W2", "particle", 10, 200, 5.0),
            ("W2", "scratch", 0, 200, 0.0), ("W3", "particle", 0, 400, 0.0), ("W3", "scratch", 40, 400, 10.0),
-           ("W0", "particle", 50, 100, 50.0)]
+           ("W0", "particle", 50, 100, 50.0), ("W5", "particle", 2, 100, 2.0), ("W6", "particle", 4, 100, 4.0),
+           ("W7", "particle", 6, 100, 6.0)]
 SPEC = {
     "wafer": {"table": "rr_wafer", "key": "wafer_id", "time": "measured_at", "lot": "lot_id", "evaluation": "eval_id",
               "conditions": ["split"]},
@@ -51,6 +56,7 @@ SPEC = {
     "sets": {"table": "rr_set", "name": "set_name", "member": "member", "kind": "kind", "default": ["baseline"],
              "kinds": {"evaluation": "EV", "lot": "LT"}},
     "rows": ["particle", "scratch"], "digits": 1,
+    "control": {"recent": {"days": 60}, "max_wafers": 2, "max_evaluations": 2},
 }
 
 
@@ -136,6 +142,52 @@ def test_a_declared_rate_is_read_not_made(report, db_session):
     assert alone.trend(items=["particle"])["context"] == (
         "particle: first 2.50% last 0.00% least 0.00% most 5.00% over 3 wafers")
     assert list(alone.images()["html"]) == ["particle"], "occurred = a rate above 0 when the summary holds a rate only"
+
+
+def test_candidates_are_the_recent_evaluations_folded_newest_first(report, db_session):
+    from chain import report_reads
+
+    assert report.candidates()["context"].splitlines() == [
+        "recent evaluations, newest first (E1 left out):", "E3 · 2026-09-25 · 1 wafers · split A 1",
+        "E2 · 2026-09-20 · 2 wafers · split A 1, B 1", "E0 · 2026-09-01 · 1 wafers · split A 1"]
+    spec = json.loads(json.dumps(SPEC))
+    spec["control"]["recent"] = {"days": 60, "evaluations": 2}
+    both = report_reads.Report(db_session, spec, "E1").candidates()["context"].splitlines()
+    assert [line.split(" · ")[0] for line in both[1:]] == ["E3", "E2"], "days and evaluations both narrow"
+    del spec["control"]
+    with pytest.raises(report_reads.ReadRefused, match="candidates need derive.report.control.recent"):
+        report_reads.Report(db_session, spec, "E1").candidates()
+
+
+def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
+    assert report.compare(evaluations=["E2"])["context"] == "control E2: 2 wafers (W6, W5)"
+    table = report.yield_by()["html"]
+    assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("control E2", ["W6", "W5"])]
+    assert table["rows"][0][1][-2:] == ["4.0% (4/100)", "2.0% (2/100)"]
+    trend = report.trend(items=["particle"])
+    assert trend["html"]["groups"][-1] == ("control E2", ["W6", "W5"])
+    assert trend["context"].splitlines() == [
+        "particle: first 3.00% last 0.00% least 0.00% most 5.00% over 3 wafers",
+        "particle [control E2]: first 4.00% last 2.00% least 2.00% most 4.00% over 2 wafers"]
+    report.compare(wafers=["W7"])
+    assert [name for name in report.groups] == ["E1", "control E3"], "a new pick replaces the control"
+    report.yield_by()
+    assert report.used[("W7",)] == "control E3", "a table read on the control keeps its wafers for report_wafer"
+
+
+@pytest.mark.parametrize("said, refused", [
+    ({"evaluations": ["E1"]}, "E1 is this evaluation - a control comes from another"),
+    ({"evaluations": ["E9"]}, "E9 is not a recent evaluation - candidates() lists them"),
+    ({"evaluations": ["E4"]}, "E4 is not a recent evaluation"),
+    ({"wafers": ["W1"]}, "W1 is not a wafer of a recent evaluation"),
+    ({"evaluations": ["E2", "E3", "E0"]}, "3 evaluations - control.max_evaluations is 2"),
+    ({"evaluations": ["E2", "E3"]}, "3 wafers - control.max_wafers is 2; name fewer wafers"),
+])
+def test_a_control_out_of_range_or_over_its_limits_is_refused(report, said, refused):
+    from chain import report_reads
+
+    with pytest.raises(report_reads.ReadRefused, match=refused.replace("(", r"\(").replace(")", r"\)")):
+        report.compare(**said)
 
 
 def test_pareto_and_trend(report):

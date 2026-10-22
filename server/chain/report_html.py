@@ -42,36 +42,33 @@ def _e(value) -> str:
     return html.escape("" if value is None else str(value))
 
 
+#: The classes a template's CSS can style the report's tables by (lead 10-23).
+HEAD, GROUP, ITEM, CELL = "rpt-head", "rpt-group", "rpt-item", "rpt-cell"
+#: A wide table scrolls inside its own box - a template's fixed-width cell does not grow (lead 10-23).
+WRAP = '<div class="scroll" style="overflow-x:auto;max-width:100%%">%s</div>'
+
+
 def _summary_table(table) -> str:
-    """yield_by's table: a head row of group names over their columns, then a row per item."""
-    head = "".join('<th colspan="%d">%s</th>' % (len(columns), _e(name)) for name, columns in table["groups"])
-    columns = "".join("<th>%s</th>" % _e(c) for _name, cols in table["groups"] for c in cols)
-    rows = "".join("<tr><td>%s</td>%s</tr>" % (_e(item), "".join("<td>%s</td>" % _e(c) for c in cells))
-                   for item, cells in table["rows"])
+    """yield_by's and trend's table: a head row of group names over their columns, then a row per item."""
+    head = "".join('<th class="%s" colspan="%d">%s</th>' % (GROUP, len(columns), _e(name))
+                   for name, columns in table["groups"])
+    columns = "".join('<th class="%s">%s</th>' % (HEAD, _e(c)) for _name, cols in table["groups"] for c in cols)
+    rows = "".join('<tr><td class="%s">%s</td>%s</tr>' % (ITEM, _e(item), "".join(
+        '<td class="%s">%s</td>' % (CELL, _e(c)) for c in cells)) for item, cells in table["rows"])
     note = ('<p class="note">Left out - %s: %s</p>' % (report_reads.LEFT_OUT, _e(", ".join(table["left_out"])))
             if table.get("left_out") else "")
-    return ('<div class="scroll"><table><thead><tr><th></th>%s</tr><tr><th>Item</th>%s</tr></thead>'
-            "<tbody>%s</tbody></table></div>%s" % (head, columns, rows, note))
+    return WRAP % ('<table><thead><tr><th class="%s"></th>%s</tr><tr><th class="%s">Item</th>%s</tr></thead>'
+                   "<tbody>%s</tbody></table>" % (GROUP, head, HEAD, columns, rows)) + note
 
 
 def _plain_table(table) -> str:
-    head = "".join("<th>%s</th>" % _e(c) for c in table["columns"])
-    rows = "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % _e(c) for c in row) for row in table["rows"])
-    return '<div class="scroll"><table><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>' % (head, rows)
+    head = "".join('<th class="%s">%s</th>' % (HEAD, _e(c)) for c in table["columns"])
+    rows = "".join("<tr>%s</tr>" % "".join('<td class="%s">%s</td>' % (ITEM if at == 0 else CELL, _e(c))
+                                           for at, c in enumerate(row)) for row in table["rows"])
+    return WRAP % ("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (head, rows))
 
 
-def _trend_table(table) -> str:
-    wafers = []
-    for _item, shares in table["series"]:
-        for wafer, _share in shares:
-            if wafer not in wafers:
-                wafers.append(wafer)
-    rows = [[item] + ["%.2f%%" % dict(shares)[w] if w in dict(shares) else "" for w in wafers]
-            for item, shares in table["series"]]
-    return _plain_table({"columns": ["Item"] + wafers, "rows": rows})
-
-
-TABLES = {"yield_by": _summary_table, "pareto": _plain_table, "trend": _trend_table}
+TABLES = {"yield_by": _summary_table, "pareto": _plain_table, "trend": _summary_table}
 
 
 def _images(embedded) -> str:
@@ -88,23 +85,36 @@ def _images(embedded) -> str:
     return "".join(out)
 
 
-def build(title, meta, layout, tables, embedded, texts) -> str:
-    """The file: `layout`'s slots in order. `tables`: read name -> its last whole table; `embedded`: item ->
-    pictures; `texts`: slot name -> what the model wrote. A slot with nothing to show says so."""
+def _table(fill, tables):
+    table = tables.get(fill)
+    return TABLES[fill](table) if table is not None and fill in TABLES else \
+        '<p class="note">%s was not read.</p>' % _e(fill)
+
+
+def _text(slot, texts):
+    said = texts.get(slot)
+    return '<div class="text">%s</div>' % _e(said) if said else '<p class="note">Nothing was written for %s.</p>' % _e(
+        slot)
+
+
+def build(title, meta, layout, tables, embedded, texts, template=None) -> str:
+    """The file: `layout`'s slots in order - or, with a company `template`, the template with each mark cell
+    filled (`report_template`). `tables`: read name -> its last whole table; `embedded`: item -> pictures; `texts`:
+    slot name -> what the model wrote. A slot with nothing to show says so."""
+    if isinstance(template, str) and template.strip():
+        from chain import report_shape, report_template
+
+        contents = {"title": _e(title), "meta": _e(meta), "images": _images(embedded)}
+        contents.update({report_template.TABLE_PREFIX + fill: _table(fill, tables)
+                         for fill in report_shape.TABLE_FILLS})
+        contents.update({str(slot.get("slot")): _text(slot.get("slot"), texts) for slot in layout or ()
+                         if slot.get("kind") == "text"})
+        return report_template.fill(template, contents)
     sections = []
     for slot in layout or ():
         kind = slot.get("kind")
-        if kind == "table":
-            fill = slot.get("fill")
-            table = tables.get(fill)
-            body = TABLES[fill](table) if table is not None and fill in TABLES else \
-                '<p class="note">%s was not read.</p>' % _e(fill)
-        elif kind == "image":
-            body = _images(embedded)
-        else:
-            said = texts.get(slot.get("slot"))
-            body = '<div class="text">%s</div>' % _e(said) if said else \
-                '<p class="note">Nothing was written for %s.</p>' % _e(slot.get("slot"))
+        body = (_table(slot.get("fill"), tables) if kind == "table" else _images(embedded) if kind == "image"
+                else _text(slot.get("slot"), texts))
         sections.append("<section>%s</section>" % body)
     return ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
             "content=\"width=device-width, initial-scale=1\"><title>%s</title><style>%s</style></head>"

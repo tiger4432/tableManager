@@ -655,6 +655,12 @@ def unknown_report_cells(internal: dict) -> list:
     return report_shape.unknown_cells(derive.get("report")) if derive.get("kind") == "report" else []
 
 
+def report_notes(internal: dict) -> list:
+    """What a report declaration loses on the way without being refused (`report_shape.notes`)."""
+    derive = internal.get("derive") or {}
+    return report_shape.notes(derive.get("report")) if derive.get("kind") == "report" else []
+
+
 def unknown_decide_cells(internal: dict) -> list:
     """Sub-cells of `derive.decide` this product does not read. NAMED, never refused."""
     derive = internal.get("derive") or {}
@@ -845,6 +851,7 @@ def expand_declaration(declaration, table_config=None,
                     "%s: derive.%s cell(s) this product does not read — %s. The rule "
                     "runs; check the spelling if it was meant to do something."
                     % (name, kind, ", ".join(unknown)))
+        notes += ["%s: %s" % (name, said) for said in report_notes(internal)]
         stood = [as_chain_rule(internal)] + companion_rules(internal)
 
     # 🔴 [판정 640] EVERY RULE THIS DECLARATION STANDS, WITHOUT ASKING WHICH KIND IT IS.

@@ -103,6 +103,10 @@ def _with(path, value):
     (("images", "px"), 0, "derive.report.images.px must be a whole number from 1"),
     (("loop", "steps"), "8", "derive.report.loop.steps must be a whole number from 1"),
     (("prompts", "functions"), {"sql": {"about": "x"}}, "derive.report.prompts.functions.sql - one of conditions"),
+    (("control",), {"max_wafers": 5}, "derive.report.control.recent says how far back"),
+    (("control",), {"recent": {"weeks": 2}}, "derive.report.control.recent says how far back"),
+    (("control",), {"recent": {"days": 30}, "max_wafers": 0}, "derive.report.control.max_wafers must be a whole number"),
+    (("template",), "<table><tr><td>{{nope}}</td></tr></table>", "{{nope}} is not a mark this report fills"),
 ])
 def test_what_cannot_make_a_report_is_refused_by_its_path(path, value, said):
     """(Each row changes one cell of a declaration that stands.)"""
@@ -157,3 +161,6 @@ def test_the_form_draws_the_report_from_the_skeleton():
     assert summary["fail"] == chain_bindings.column_ref(("derive.report.summary.table",)), \
         "a role's columns are its own table's"
     assert summary["rate_scale"] == {"kind": "leaf", "hint": "number"}
+    assert fields["template"]["node"] == {"kind": "leaf", "hint": "free"}, "the form pastes the clipboard HTML at derive.report.template"
+    control = {f["key"]: f["node"] for f in fields["control"]["node"]["fields"]}
+    assert set(control) == {"recent", "max_wafers", "max_evaluations"}

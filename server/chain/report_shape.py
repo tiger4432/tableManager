@@ -27,15 +27,19 @@ SLOT_KINDS = ("table", "image", "text")
 #: The reads whose answer a table slot draws (`report_html.TABLES` draws each).
 TABLE_FILLS = ("yield_by", "pareto", "trend")
 #: The cells of `derive.report`, in the form's order.
-REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop")
+REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control")
 #: The prompts: what the model is and its rules (blank: the product's sample text, `report_loop`), and the three the
 #: guide names - how it picks wafers, how it writes, what it compares (lead 10-22 «에이전트 문맥» [1] · [2]).
-PROMPT_CELLS = ("role", "rules", "select", "style", "compare")
+PROMPT_CELLS = ("role", "rules", "select", "style", "compare", "control")
 #: `prompts.functions.<read>.about`: a read's line in the model's instructions, when the product's is not the one.
 FUNCTIONS_CELL, ABOUT_CELL = "functions", "about"
 #: The reads the model calls by name (`report_reads.Report`), in the order its instructions list them.
-READS = ("conditions", "yield_by", "pareto", "trend", "images", "compare")
+READS = ("conditions", "candidates", "yield_by", "pareto", "trend", "images", "compare")
 LOOP_CELLS = ("steps", "seconds", "context_tokens")
+#: `control`: how far back the model may pick a control group from (`recent`: days and/or evaluations before this
+#: evaluation's latest wafer, both narrowing when both are written) and how much it may pick (owner 10-23).
+RECENT_CELLS = ("days", "evaluations")
+CONTROL_LIMITS = {"max_wafers": 30, "max_evaluations": 3}
 NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
@@ -83,6 +87,11 @@ def skeleton_node():
         {"key": "layout", "required": False, "node": chain_bindings.list_node("slot", _record(
             ("kind", "fill", "slot"), "free"))},
         {"key": "loop", "required": False, "node": _record(LOOP_CELLS, "number")},
+        # the HTML Excel puts on the clipboard - the form pastes it (`report_template`)
+        {"key": "template", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": "control", "required": False, "node": {"kind": "record", "fields": [
+            {"key": "recent", "required": False, "node": _record(RECENT_CELLS, "number")}]
+            + _record(tuple(CONTROL_LIMITS), "number")["fields"]}},
     ]
     return {"kind": "record", "fields": fields}
 
@@ -183,4 +192,27 @@ def refusal(spec) -> str | None:
                                                                                  " · ".join(TABLE_FILLS))
         if kind == "text" and not str(slot.get("slot") or "").strip():
             return "derive.report.layout[%d].slot names no text - the name the model writes it under" % at
-    return None
+    control = spec.get("control")
+    if control is not None:
+        recent = control.get("recent") if isinstance(control, dict) else None
+        if not isinstance(recent, dict) or not set(recent) & set(RECENT_CELLS) or set(recent) - set(RECENT_CELLS):
+            return ('derive.report.control.recent says how far back - {"days": <n>} and/or {"evaluations": <n>}, '
+                    "got %r" % (recent,))
+        for cell, value in list(recent.items()) + [(c, control[c]) for c in CONTROL_LIMITS if c in control]:
+            if not _whole(value, 1):
+                return "derive.report.control.%s must be a whole number from 1, got %r" % (cell, value)
+    from chain import report_template
+
+    return report_template.refusal(spec)
+
+
+def control_limit(spec, cell) -> int:
+    return ((spec or {}).get("control") or {}).get(cell) or CONTROL_LIMITS[cell]
+
+
+def notes(spec) -> list:
+    """What a report declaration loses without being refused - said at save and load."""
+    from chain import report_template
+
+    said = report_template.note(spec)
+    return [said] if said else []

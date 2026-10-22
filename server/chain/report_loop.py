@@ -37,10 +37,12 @@ ABOUT = {
     "pareto": "the items by fail chips over the wafers, with the cumulative share",
     "trend": "each item's share wafer by wafer in time order - first, last, least, most",
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
-    "compare": "the compare sets' wafers, read beside this evaluation's in every table after it",
+    "candidates": "the recent evaluations a control group may come from - name, date, wafers, conditions",
+    "compare": "the compare sets' wafers (sets), or a control group from the recent evaluations (evaluations, wafers), "
+               "read beside this evaluation's in every table after it",
 }
 ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by"), "pareto": ("wafers",), "trend": ("wafers", "items"),
-        "images": ("wafers", "items"), "compare": ("sets",)}
+        "images": ("wafers", "items"), "candidates": (), "compare": ("sets", "evaluations", "wafers")}
 WAFERS_SAID = 'wafers: a list of wafer names, "all", or {"where": {"<condition>": "<value>"}}'
 
 STOP_STEPS = "step cap %d"
@@ -91,7 +93,7 @@ def _instructions(spec, step, cap):
 
 def _prompts(spec):
     prompts = (spec or {}).get("prompts") or {}
-    return ["%s: %s" % (cell.capitalize(), prompts[cell]) for cell in ("select", "style", "compare")
+    return ["%s: %s" % (cell.capitalize(), prompts[cell]) for cell in ("select", "style", "compare", "control")
             if prompts.get(cell)]
 
 
@@ -248,7 +250,7 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
         if report is not None:
             page = report_html.build("%s report" % request.eval_id, "%s · %s · %s" % (
                 request.request_id, name, made.isoformat(timespec="seconds")), spec.get("layout") or (),
-                out["tables"], report.embedded, out["texts"])
+                out["tables"], report.embedded, out["texts"], spec.get("template"))
             cells["file_path"], cells["file_hash"] = report_html.keep(str(request.request_id), page)
             cells["steps"] = _steps_text(out, report)
             for seq, wafer in enumerate(report._ordered(list(report.used)), 1):

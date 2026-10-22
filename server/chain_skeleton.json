@@ -1441,6 +1441,14 @@
                         }
                       },
                       {
+                        "key": "control",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
                         "key": "functions",
                         "required": false,
                         "node": {
@@ -1448,6 +1456,23 @@
                           "fields": [
                             {
                               "key": "conditions",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": "candidates",
                               "required": false,
                               "node": {
                                 "kind": "record",
@@ -1616,6 +1641,64 @@
                       },
                       {
                         "key": "context_tokens",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "template",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "control",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "recent",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "days",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            },
+                            {
+                              "key": "evaluations",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": "max_wafers",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
+                        "key": "max_evaluations",
                         "required": false,
                         "node": {
                           "kind": "leaf",
