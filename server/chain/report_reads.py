@@ -94,6 +94,7 @@ class Report:
                                 if role.get("evaluation") else None)
         self.groups[evaluation] = self._ordered(here)
         self.embedded = {}                       # what images() embedded - for the HTML only
+        self.used = {}                           # wafer -> the group it stood in, for every wafer a read answered on
 
     # ---- the wafer table -------------------------------------------------------------------------------------
     def _wafer_rows(self, where):
@@ -223,6 +224,8 @@ class Report:
     def yield_by(self, wafers=None, by=None):
         groups = self._column_groups(self.pick(wafers), by)
         everyone = [w for _name, columns in groups for _col, members in columns for w in members]
+        for name, columns in groups:
+            self._use(name, [w for _col, members in columns for w in members])
         found, twice = self._summary(everyone)
         items = self._items(found)
         header = [(name, [col for col, _m in columns]) for name, columns in groups]
@@ -256,8 +259,13 @@ class Report:
                 out.append((name, [(label(w), [w]) for w in members]))
         return out
 
+    def _use(self, group, wafers):
+        for wafer in wafers:
+            self.used.setdefault(wafer, group)
+
     def pareto(self, wafers=None):
         picked = self.pick(wafers)
+        self._use(self.evaluation, picked)
         if not self.spec["summary"].get("fail"):
             raise ReadRefused("a pareto adds fail chips - derive.report.summary.fail is not declared")
         found, _twice = self._summary(picked)
@@ -276,6 +284,7 @@ class Report:
 
     def trend(self, wafers=None, items=None):
         picked = self._ordered(self.pick(wafers))
+        self._use(self.evaluation, picked)
         found, _twice = self._summary(picked)
         names = [str(i) for i in items] if items else self._items(found)
         lines, rows = [], []
@@ -300,6 +309,7 @@ class Report:
         outside = [label(w) for w in picked if w not in set(self.groups[self.evaluation])]
         if outside:
             raise ReadRefused("images are this evaluation's only - %s is not" % ", ".join(outside[:5]))
+        self._use(self.evaluation, picked)
         found, _twice = self._summary(picked)
         said = "fail" if self.spec["summary"].get("fail") else "rate"
         occurred = {pair for pair, row in found.items() if (row.get(said) or 0) > 0}
@@ -354,7 +364,7 @@ class Report:
         return {"context": "\n".join(lines), "html": None}
 
 
-READS = ("conditions", "yield_by", "pareto", "trend", "images", "compare")
+READS = report_shape.READS
 
 
 def _count(value):

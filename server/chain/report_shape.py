@@ -28,7 +28,13 @@ SLOT_KINDS = ("table", "image", "text")
 TABLE_FILLS = ("yield_by", "pareto", "trend")
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop")
-PROMPT_CELLS = ("select", "style", "compare")
+#: The prompts: what the model is and its rules (blank: the product's sample text, `report_loop`), and the three the
+#: guide names - how it picks wafers, how it writes, what it compares (lead 10-22 «에이전트 문맥» [1] · [2]).
+PROMPT_CELLS = ("role", "rules", "select", "style", "compare")
+#: `prompts.functions.<read>.about`: a read's line in the model's instructions, when the product's is not the one.
+FUNCTIONS_CELL, ABOUT_CELL = "functions", "about"
+#: The reads the model calls by name (`report_reads.Report`), in the order its instructions list them.
+READS = ("conditions", "yield_by", "pareto", "trend", "images", "compare")
 LOOP_CELLS = ("steps", "seconds", "context_tokens")
 NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
@@ -71,7 +77,9 @@ def skeleton_node():
     fields += [
         {"key": "rows", "required": False, "node": chain_bindings.list_node("item", {"kind": "leaf", "hint": "free"})},
         {"key": "digits", "required": False, "node": {"kind": "leaf", "hint": "number"}},
-        {"key": "prompts", "required": False, "node": _record(PROMPT_CELLS, "free")},
+        {"key": "prompts", "required": False, "node": {"kind": "record", "fields": _record(PROMPT_CELLS, "free")[
+            "fields"] + [{"key": FUNCTIONS_CELL, "required": False, "node": {"kind": "record", "fields": [
+                {"key": read, "required": False, "node": _record((ABOUT_CELL,), "free")} for read in READS]}}]}},
         {"key": "layout", "required": False, "node": chain_bindings.list_node("slot", _record(
             ("kind", "fill", "slot"), "free"))},
         {"key": "loop", "required": False, "node": _record(LOOP_CELLS, "number")},
@@ -157,6 +165,10 @@ def refusal(spec) -> str | None:
         if unread:
             return ("derive.report.sets.kinds.%s needs derive.report.wafer.%s - the wafer column it picks by"
                     % (unread[0], unread[0]))
+    functions = (spec.get("prompts") or {}).get(FUNCTIONS_CELL) or {}
+    unknown = sorted(str(name) for name in functions if name not in READS) if isinstance(functions, dict) else ["?"]
+    if unknown:
+        return "derive.report.prompts.functions.%s - one of %s" % (unknown[0], " · ".join(READS))
     if "digits" in spec and not _whole(spec["digits"], 0):
         return "derive.report.digits must be a whole number from 0, got %r" % (spec["digits"],)
     for cell in LOOP_CELLS:

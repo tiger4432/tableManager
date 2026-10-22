@@ -1401,6 +1401,22 @@
                     "kind": "record",
                     "fields": [
                       {
+                        "key": "role",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "rules",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
                         "key": "select",
                         "required": false,
                         "node": {
@@ -1422,6 +1438,117 @@
                         "node": {
                           "kind": "leaf",
                           "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "functions",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "conditions",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": "yield_by",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": "pareto",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": "trend",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": "images",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": "compare",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
                         }
                       }
                     ]
