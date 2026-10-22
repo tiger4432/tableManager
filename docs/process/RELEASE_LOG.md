@@ -13,6 +13,8 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [AI 리포트 셋째 — 요약 표에 정보 줄 · 그림 줄 · 조건부 서식 · 항목 계층 · 두 단 머리 · 엑셀 견본 서식 · 한글 낱말](#2026-10-23--ai-리포트-셋째--요약-표에-정보-줄--그림-줄--조건부-서식--항목-계층--두-단-머리--엑셀-견본-서식--한글-낱말) — 적는 곳 derive.report 의 info · picture_rows · formats · item_sep · labels · 보는 곳 리포트 파일의 요약 표
+- 2026-10-23 [AI 리포트 둘째 — 회사 엑셀 양식을 붙여 넣어 쓰기 · 대조군을 모델이 최근 평가에서 고르기](#2026-10-23--ai-리포트-둘째--회사-엑셀-양식을-붙여-넣어-쓰기--대조군을-모델이-최근-평가에서-고르기) — 적는 곳 derive.report 의 template · control · 보는 곳 리포트 파일 · report_wafer 의 «control <평가>»
 - 2026-10-23 [AI 리포트 — 요청 행 하나가 체인 규칙 하나를 깨워 HTML 리포트 한 파일을 만든다](#2026-10-23--ai-리포트--요청-행-하나가-체인-규칙-하나를-깨워-html-리포트-한-파일을-만든다) — 적는 곳 chain_rules.json 의 derive.kind report · 보는 곳 report 표 · <데이터 루트>/reports/<요청>.html
 - 2026-10-22 [체인 규칙의 require · exclude 가 값을 받는다 — 특정 값인 행만 막거나 넘기기](#2026-10-22--체인-규칙의-require--exclude-가-값을-받는다--특정-값인-행만-막거나-넘기기) — require · exclude 항목에 {칸: [값, …]}
 - 2026-10-22 [오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것](#2026-10-22--오토컨펌이-한-단위의-키를-전부-본다--200-개-넘는-키가-빈-칸으로-남던-것) — 보는 곳 chain_worker.log «[Enrichment:<규칙>] page i of n» · 적는 곳 ingestion_settings.json 의 enrichment_auto_confirm_max_keys
@@ -517,6 +519,53 @@
 
 
 
+
+## 2026-10-23 · AI 리포트 셋째 — 요약 표에 정보 줄 · 그림 줄 · 조건부 서식 · 항목 계층 · 두 단 머리 · 엑셀 견본 서식 · 한글 낱말
+
+**무엇** — 요약 표 머리줄 밑에 정보 표의 줄(자재 · 평가 정보)과 열마다 그림 한 장(합성맵)이 서고, 값 칸은 항목마다 적은 규칙으로 칠해진다. 항목 이름 «a.b.c» 는 줄 머리 여러 칸으로 나뉘어 같은 앞부분이 합쳐지고, 웨이퍼 키가 (웨이퍼, 버전)이면 머리가 두 단이 된다. 엑셀 양식에 칠해 둔 견본 줄의 서식을 우리 표가 받고, 파일의 고정 낱말은 선언한 한글로 나온다.
+
+**선언 예시** — `derive.report` 에 칸 다섯 (전체: [ai_report_tables.md «요약 표 꾸미기»](../guide/ai_report_tables.md)).
+```json
+"info": {"table": "<정보 표>", "wafer": ["wafer_id", "version"], "item": "name", "value": "value"},
+"picture_rows": [{"label": "합성맵", "table": "<그림 표>", "wafer": ["wafer_id", "version"], "image": "path"}],
+"formats": {"결함.입자.대": [{"vs": "control", "times": 2, "fill": "#ffcccc"}, {"when": ">=", "value": 5, "fill": "#ffffcc"}]},
+"item_sep": ".",
+"labels": {"item": "항목", "control": "대조", "report": "리포트"}
+```
+
+**보이는 것**
+- 리포트 파일의 요약 표: 정보 줄(class rpt-info) · 그림 줄(rpt-picture) · 칠한 값 칸 · rowspan 으로 합친 항목 머리 · 두 단 웨이퍼 머리
+- 저장 거절 «derive.report.formats.<항목>[n].fill is a colour #rrggbb» · «… holds this evaluation against the others' F sum / N sum - derive.report.summary needs fail and total» · «derive.report.picture_rows[n] needs label, wafer and image» · «{{info}} is a sample row's first cell - put it in a row right under {{table:yield_by}}'s row»
+- 저장 알림 «derive.report.labels.<이름> is not a word the report says»
+- 모델 문맥에 «info <이름> | 값 …» 줄과 «<그림 줄 이름>: n of m columns» 줄
+
+**바뀐 동작**
+- 대조 묶음 이름이 `labels.control` 을 따름(기본 «control») — report_wafer 의 set_name · 모델 문맥도 같은 글
+- 표 밑 제외 줄 낱말: «Left out - two summary rows for one wafer and item» → «Left out - two rows for one wafer and name»(정보 · 그림 줄의 두 행도 같은 줄)
+- 문맥 토큰 어림: ASCII 아닌 글자는 한 글자를 한 토큰으로(전에는 4 자에 한 토큰 — 한글이 적게 잡힘)
+- 붙여 넣은 양식의 charset 줄은 파일에서 빠지고 utf-8 한 줄만 남음
+
+## 2026-10-23 · AI 리포트 둘째 — 회사 엑셀 양식을 붙여 넣어 쓰기 · 대조군을 모델이 최근 평가에서 고르기
+
+**무엇** — 리포트 규칙에 엑셀에서 복사한 양식(HTML)을 붙이면 그 양식 그대로 리포트가 나오고 `{{…}}` 표시 칸에 표 · 글 · 이미지가 들어간다. 모델이 최근 평가들의 조건 요약을 보고 대조군(평가 · 웨이퍼)을 골라 요약 표 · 트렌드 가로에 «control <평가>» 묶음으로 붙인다.
+
+**선언 예시** — 리포트 규칙의 `derive.report` 에 두 칸 (전체: [ai_report_tables.md «엑셀 양식 붙이는 법» · «대조군»](../guide/ai_report_tables.md)).
+```json
+"template": "<엑셀에서 복사한 HTML — 어드민의 Paste template 이 넣음>",
+"control": {"recent": {"days": 90, "evaluations": 10}, "max_wafers": 30, "max_evaluations": 3}
+```
+
+**화면에서** — 어드민 Chain 탭 리포트 규칙의 **Paste template**(클라 착지 뒤).
+
+**보이는 것**
+- 저장 줄 «derive.report.template: image(s) dropped: N - Excel puts pictures on the clipboard as local file paths» — 엑셀 그림 · 살림 링크는 빠짐
+- 저장 거절 «{{x}} is not a mark this report fills» · «{{x}} stands alone in its cell» · «… is fetched from outside the file» · «… has no {{x}}»
+- 리포트 표의 칸 class: rpt-group · rpt-head · rpt-item · rpt-cell
+
+**바뀐 동작**
+- 트렌드 표 · 트렌드 문맥이 이번 평가만이 아니라 비교 묶음 · 대조군까지 가로로 — 머리에 묶음 이름 줄(문맥 줄은 «item [묶음]: …»)
+- 리포트 표가 가로 스크롤 상자(overflow-x)에 들어감 — 양식 칸이 늘어나지 않음
+- 읽기 `candidates` 가 모델의 함수 목록에 더해짐 · `compare` 가 `evaluations` · `wafers` 도 받음
 
 ## 2026-10-23 · AI 리포트 — 요청 행 하나가 체인 규칙 하나를 깨워 HTML 리포트 한 파일을 만든다
 

@@ -1374,6 +1374,78 @@
                   }
                 },
                 {
+                  "key": "info",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "table",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "tables"
+                        }
+                      },
+                      {
+                        "key": "wafer",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.info.table"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "key": "item",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.info.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "value",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.info.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "rows",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "name",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
                   "key": "rows",
                   "required": false,
                   "node": {
@@ -1441,6 +1513,14 @@
                         }
                       },
                       {
+                        "key": "control",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
                         "key": "functions",
                         "required": false,
                         "node": {
@@ -1448,6 +1528,23 @@
                           "fields": [
                             {
                               "key": "conditions",
+                              "required": false,
+                              "node": {
+                                "kind": "record",
+                                "fields": [
+                                  {
+                                    "key": "about",
+                                    "required": false,
+                                    "node": {
+                                      "kind": "leaf",
+                                      "hint": "free"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": "candidates",
                               "required": false,
                               "node": {
                                 "kind": "record",
@@ -1623,6 +1720,296 @@
                         }
                       }
                     ]
+                  }
+                },
+                {
+                  "key": "template",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "control",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "recent",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "days",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            },
+                            {
+                              "key": "evaluations",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": "max_wafers",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
+                        "key": "max_evaluations",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "formats",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "name",
+                    "member": "item",
+                    "of": {
+                      "kind": "map",
+                      "keyed_by": "index",
+                      "member": "rule",
+                      "of": {
+                        "kind": "record",
+                        "fields": [
+                          {
+                            "key": "when",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          },
+                          {
+                            "key": "value",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "number"
+                            }
+                          },
+                          {
+                            "key": "vs",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          },
+                          {
+                            "key": "times",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "number"
+                            }
+                          },
+                          {
+                            "key": "fill",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          },
+                          {
+                            "key": "color",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "key": "item_sep",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                },
+                {
+                  "key": "labels",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "report",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "item",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "left_out",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "not_read",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "nothing_written",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "no_image",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "pareto_item",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "pareto_fail",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "pareto_cumulative",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "control",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "mixed",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "picture_rows",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "index",
+                    "member": "row",
+                    "of": {
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "key": "label",
+                          "required": true,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        },
+                        {
+                          "key": "table",
+                          "required": true,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "tables"
+                          }
+                        },
+                        {
+                          "key": "wafer",
+                          "required": true,
+                          "node": {
+                            "kind": "map",
+                            "keyed_by": "index",
+                            "member": "column",
+                            "of": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          }
+                        },
+                        {
+                          "key": "image",
+                          "required": true,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        },
+                        {
+                          "key": "px",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "number"
+                          }
+                        }
+                      ]
+                    }
                   }
                 }
               ]
