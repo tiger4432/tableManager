@@ -8,7 +8,8 @@ import re
 from chain import report_html, report_shape
 
 TABLE = {"groups": [("E1", ["W1", "W2"]), ("baseline", ["W0"])],
-         "rows": [("<script>alert(1)</script>", ["3.0% (3/100)", "5.0% (10/200)", "50.0% (50/100)"])],
+         "rows": [("<script>alert(1)</script>", [{"text": "3.0% (3/100)"}, {"text": "5.0% (10/200)"},
+                                                 {"text": "50.0% (50/100)"}])],
          "left_out": ["W9"]}
 EMBEDDED = {"particle": [{"wafer": "W1", "src": "data:image/png;base64,AAAA"},
                          {"wafer": "W2", "refused": "image source 'pics' is not declared"}]}
@@ -17,7 +18,7 @@ LAYOUT = [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_
 
 
 def _page():
-    return report_html.build("E1 report", "R-1 · eval_summary", LAYOUT, {"yield_by": TABLE}, EMBEDDED,
+    return report_html.build("E1 report", "R-1 · eval_summary", {"layout": LAYOUT}, {"yield_by": TABLE}, EMBEDDED,
                              {"summary": "Particle rose on W2.", "conclusion": ""})
 
 
@@ -33,7 +34,7 @@ def test_the_summary_table_heads_each_group_over_its_wafers():
     assert '<th class="rpt-group" colspan="2">E1</th><th class="rpt-group" colspan="1">baseline</th>' in page
     assert '<th class="rpt-head">W1</th><th class="rpt-head">W2</th><th class="rpt-head">W0</th>' in page
     assert '<td class="rpt-item">&lt;script&gt;' in page and '<td class="rpt-cell">3.0% (3/100)</td>' in page
-    assert "Left out - two summary rows for one wafer and item: W9" in page
+    assert "Left out - two rows for one wafer and name: W9" in page
 
 
 def test_every_text_is_escaped_and_nothing_is_fetched():

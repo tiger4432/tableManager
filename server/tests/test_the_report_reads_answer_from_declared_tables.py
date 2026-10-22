@@ -103,6 +103,11 @@ def report(db_session, tmp_path, monkeypatch):
             retire_dynamic_model(name)
 
 
+def _texts(rows):
+    """A table's rows as the file shows them - each cell's text (a cell also carries its share, F and N)."""
+    return [(item, [cell["text"] for cell in cells]) for item, cells in rows]
+
+
 def test_this_evaluations_wafers_are_in_time_order(report):
     assert report.groups == {"E1": [("W1",), ("W2",), ("W3",)]}
 
@@ -116,13 +121,13 @@ def test_conditions_fold_to_wafer_counts_and_a_keyword_picks_wafers(report):
 def test_the_summary_table_is_items_down_and_wafers_across_by_time(report):
     answer = report.yield_by()
     assert answer["html"]["groups"] == [("E1", ["W1", "W2", "W3"])]
-    assert answer["html"]["rows"] == [
+    assert _texts(answer["html"]["rows"]) == [
         ("particle", ["3.0% (3/100)", "5.0% (10/200)", "0.0% (0/400)"]),
         ("scratch", ["1.0% (1/100)", "0.0% (0/200)", "10.0% (40/400)"])]
     assert answer["context"].splitlines()[1] == "particle | 3.0% (3/100) | 5.0% (10/200) | 0.0% (0/400)"
     by_split = report.yield_by(by="split")["html"]
     assert by_split["groups"] == [("E1", ["A", "B"])]
-    assert by_split["rows"][0] == ("particle", ["4.3% (13/300)", "0.0% (0/400)"]), "A adds W1's and W2's F and N"
+    assert _texts(by_split["rows"])[0] == ("particle", ["4.3% (13/300)", "0.0% (0/400)"]), "A adds W1's and W2's F and N"
     picked = report.yield_by({"where": {"split": "B"}})["html"]
     assert picked["groups"] == [("E1", ["W3"])]
 
@@ -132,9 +137,9 @@ def test_a_declared_rate_is_read_not_made(report, db_session):
 
     both = report_reads.Report(db_session, _with_summary(fail="fail_chips", total="total_chips", rate="loss_pct",
                                                          rate_scale=100), "E1")
-    assert both.yield_by()["html"]["rows"][0] == ("particle", ["2.5% (3/100)", "5.0% (10/200)", "0.0% (0/400)"])
+    assert _texts(both.yield_by()["html"]["rows"])[0] == ("particle", ["2.5% (3/100)", "5.0% (10/200)", "0.0% (0/400)"])
     alone = report_reads.Report(db_session, _with_summary(rate="loss_pct", rate_scale=100), "E1")
-    assert alone.yield_by()["html"]["rows"][1] == ("scratch", ["1.0%", "0.0%", "10.0%"])
+    assert _texts(alone.yield_by()["html"]["rows"])[1] == ("scratch", ["1.0%", "0.0%", "10.0%"])
     with pytest.raises(report_reads.ReadRefused, match="several wafers in one column need derive.report.summary.fail"):
         alone.yield_by(by="split")
     with pytest.raises(report_reads.ReadRefused, match="a pareto adds fail chips"):
@@ -163,7 +168,7 @@ def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
     assert report.compare(evaluations=["E2"])["context"] == "control E2: 2 wafers (W6, W5)"
     table = report.yield_by()["html"]
     assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("control E2", ["W6", "W5"])]
-    assert table["rows"][0][1][-2:] == ["4.0% (4/100)", "2.0% (2/100)"]
+    assert _texts(table["rows"])[0][1][-2:] == ["4.0% (4/100)", "2.0% (2/100)"]
     trend = report.trend(items=["particle"])
     assert trend["html"]["groups"][-1] == ("control E2", ["W6", "W5"])
     assert trend["context"].splitlines() == [
@@ -216,8 +221,8 @@ def test_a_compare_set_is_a_second_group_of_columns(report):
     assert report.compare()["context"] == "baseline: 1 wafers (E0)"
     table = report.yield_by()["html"]
     assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("baseline", ["W0"]), ("keylots", ["W0"])]
-    assert table["rows"][0][1][-1] == "50.0% (50/100)"
-    assert table["rows"][1][1][-1] == "—", "W0 has no scratch row"
+    assert _texts(table["rows"])[0][1][-1] == "50.0% (50/100)"
+    assert _texts(table["rows"])[1][1][-1] == "—", "W0 has no scratch row"
 
 
 def test_a_wafer_and_item_two_rows_say_is_left_out_by_name(report, db_session):
@@ -226,8 +231,8 @@ def test_a_wafer_and_item_two_rows_say_is_left_out_by_name(report, db_session):
                                    total_chips=400))
     db_session.commit()
     table = report.yield_by()["html"]
-    assert table["left_out"] == ["W3 particle"] and table["rows"][0][1][-1] == "—"
-    assert table["rows"][1][1][-1] == "10.0% (40/400)", "W3's other item stands"
+    assert table["left_out"] == ["W3 particle"] and _texts(table["rows"])[0][1][-1] == "—"
+    assert _texts(table["rows"])[1][1][-1] == "10.0% (40/400)", "W3's other item stands"
 
 
 def test_what_the_reads_cannot_answer_is_refused_by_name(report, monkeypatch):
@@ -270,7 +275,7 @@ def test_a_wafer_of_two_columns_is_read_column_for_column(report, db_session):
         two = report_reads.Report(db_session, spec, "E1")
         table = two.yield_by(["A/2", "B/1"])["html"]
         assert table["groups"] == [("E1", ["A/2", "B/1"])]
-        assert table["rows"] == [("particle", ["5.0% (5/100)", "7.0% (7/100)"])]
+        assert _texts(table["rows"]) == [("particle", ["5.0% (5/100)", "7.0% (7/100)"])]
     finally:
         db_session.rollback()
         for name in pair:

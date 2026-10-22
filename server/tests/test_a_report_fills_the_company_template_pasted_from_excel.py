@@ -90,13 +90,14 @@ href="file:///C:/Users/me/AppData/Local/Temp/msohtmlclip1/01/clip_themedata.thmx
 </html>
 """
 SPEC = {"layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}], "template": EXCEL}
-TABLE = {"groups": [("E1", ["W1", "W2"])], "rows": [("particle", ["3.0% (3/100)", "5.0% (10/200)"])]}
+TABLE = {"groups": [("E1", ["W1", "W2"])],
+         "rows": [("particle", [{"text": "3.0% (3/100)"}, {"text": "5.0% (10/200)"}])]}
 EMBEDDED = {"particle": [{"wafer": "W1", "src": "data:image/png;base64,AAAA"}]}
 
 
 def _page(template=EXCEL):
-    return report_html.build("E1 report", "R-1 · eval_summary", SPEC["layout"], {"yield_by": TABLE, "trend": TABLE},
-                             EMBEDDED, {"summary": "Particle rose on W2."}, template)
+    return report_html.build("E1 report", "R-1 · eval_summary", dict(SPEC, template=template),
+                             {"yield_by": TABLE, "trend": TABLE}, EMBEDDED, {"summary": "Particle rose on W2."})
 
 
 def test_the_template_stands_and_says_the_pictures_it_drops():

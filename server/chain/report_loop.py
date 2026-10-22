@@ -62,6 +62,13 @@ def text_slots(spec) -> list:
     return [str(slot["slot"]) for slot in (spec or {}).get("layout") or () if slot.get("kind") == "text"]
 
 
+def reckon(text) -> float:
+    """Tokens before a gateway counts: ASCII at CHARS_PER_TOKEN a token, any other character a token of its own
+    (lead 10-23: Korean reckoned at 4 a token came out under the English of the same sense)."""
+    wide = sum(1 for ch in text if ord(ch) > 127)
+    return (len(text) - wide) / CHARS_PER_TOKEN + wide
+
+
 class Budget:
     """Tokens reckoned from characters, the ratio corrected by each call's counted prompt tokens."""
 
@@ -69,10 +76,10 @@ class Budget:
         self.cap, self.ratio = cap, 1.0
 
     def tokens(self, text) -> int:
-        return int(math.ceil(len(text) / CHARS_PER_TOKEN * self.ratio))
+        return int(math.ceil(reckon(text) * self.ratio))
 
     def correct(self, text, counted):
-        reckoned = len(text) / CHARS_PER_TOKEN
+        reckoned = reckon(text)
         if counted and reckoned:
             self.ratio = counted / reckoned
 
@@ -248,9 +255,9 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
         cells = {"request_id": request.request_id, "setting": request.setting, "state": out["state"],
                  "reason": out["reason"], "made_at": made.isoformat()}
         if report is not None:
-            page = report_html.build("%s report" % request.eval_id, "%s · %s · %s" % (
-                request.request_id, name, made.isoformat(timespec="seconds")), spec.get("layout") or (),
-                out["tables"], report.embedded, out["texts"], spec.get("template"))
+            page = report_html.build("%s %s" % (request.eval_id, report_shape.word(spec, "report")), "%s · %s · %s" % (
+                request.request_id, name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded,
+                out["texts"])
             cells["file_path"], cells["file_hash"] = report_html.keep(str(request.request_id), page)
             cells["steps"] = _steps_text(out, report)
             for seq, wafer in enumerate(report._ordered(list(report.used)), 1):
