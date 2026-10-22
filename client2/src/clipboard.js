@@ -2,7 +2,7 @@ import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state, isVirtualColumn, isDataColumn, pivotShown, rowUnit } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
-import { refuseWrite, refusePivotKeys, wireUpdates } from './write_guard.js';
+import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped } from './write_guard.js';
 import { newPivotRows } from './grid_pivot.js';
 import { fetchData } from './api.js';
 import { elements } from './dom.js';
@@ -667,8 +667,7 @@ export function setupClipboardHandlers() {
       }
     } catch (err) {
       console.error('Failed to paste updates', err);
-      alert(`Paste save failed: ${err.message}`);
-      elements.performanceLog.textContent = '❌ Smart paste failed to save';
+      sayStopped(`Paste save failed: ${err.message}`);
     }
   });
 
@@ -916,7 +915,6 @@ export async function clearSelectedCells() {
     }
   } catch (err) {
     console.error('Failed to clear cells', err);
-    alert(`Clear failed: ${err.message}`);
-    elements.performanceLog.textContent = '❌ Cell clearing failed';
+    sayStopped(`Clear failed: ${err.message}`);
   }
 }

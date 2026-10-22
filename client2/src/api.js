@@ -5,7 +5,7 @@ import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, st
   groupFilters, strayLongRow } from './grid_pivot.js';
 import { notANumber, unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf } from './write_guard.js';
+import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
@@ -81,13 +81,12 @@ async function refusalSaid(res) {
  * ⚠️ 개수는 «0 이 아니라 모름»입니다. 세러 간 적이 없습니다 — 0 은 「없다」는 측정입니다.
  */
 function showReadRefusal(why) {
-  setBadge(elements.performanceLog, why);
+  sayStopped(why);
   // 격자를 «비웁니다» — 앞 표의 행이 남아 있으면 그것을 «이 표의 데이터»로 읽습니다.
   if (state.gridApi) state.gridApi.setGridOption('rowData', []);
   updateLoadedCount(0);
   setMatchCount(elements.totalRowsCount, null);
   updatePaginationUI(null);
-  try { showToast(why, 'error'); } catch (err) { console.error('[toast] refusal', err); }
 }
 
 // Check backend server status
@@ -101,7 +100,7 @@ export async function checkServerHealth() {
     // programming error inside this function were indistinguishable in the console.
     console.error('[health] server health check failed', err);
     setBadge(elements.serverStatus, 'API: OFFLINE', 'status-badge offline');
-    setBadge(elements.performanceLog, 'Error connecting to database server');
+    sayStopped('Error connecting to database server');
   }
 }
 
@@ -459,7 +458,7 @@ export async function loadSchema(tableName) {
     }
   } catch (err) {
     console.error('Failed to load schema', err);
-    elements.performanceLog.textContent = 'Schema load error';
+    sayStopped('Schema load error');
   }
 }
 
@@ -724,7 +723,7 @@ export async function fetchData(resetSkip = true, key = null) {
     // cut by a newer read - its end, not a failure
     if (stale()) return;
     console.error('Failed to fetch data', err);
-    elements.performanceLog.textContent = 'Data fetch failed';
+    sayStopped('Data fetch failed');
     state.isLoadingMore = false;
   }
 }
@@ -886,7 +885,7 @@ async function rereadStagedRows() {
 let applying = false;
 export async function applyPendingEdits(choice = null) {
   // A second click while the first Apply is on the wire would send the same edits twice (lead QA 10-12) - and it says so.
-  if (applying) { elements.performanceLog.textContent = 'Already applying'; return; }
+  if (applying) { sayStopped('Already applying'); return; }
   applying = true;
   try {
     const handingOver = closeOpenEditor();
@@ -927,14 +926,14 @@ async function applyStaged(choice) {
   } catch (err) {
     // The edits are still staged: Tx comes back on if it was turned off to apply them (lead re-QA F4).
     keepTxOn();
-    elements.performanceLog.textContent = `Apply stopped: ${err instanceof QueueReadTimeout
-      ? `the staged rows did not answer in ${QUEUE_READ_TIMEOUT_MS / 1000} s` : err.message}`;
+    sayStopped(`Apply stopped: ${err instanceof QueueReadTimeout
+      ? `the staged rows did not answer in ${QUEUE_READ_TIMEOUT_MS / 1000} s` : err.message}`);
     return;
   }
   if (Object.keys(state.pendingTxEdits).length === 0) {
     closeQuestion();
     settleTx();
-    elements.performanceLog.textContent = `Nothing applied${droppedText(dropped)}`;
+    sayStopped(`Nothing applied${droppedText(dropped)}`);
     return;
   }
   const conflicted = conflictedEdits();
@@ -1058,9 +1057,8 @@ async function applyStaged(choice) {
     // Not saved: the edits are still staged, so Tx comes back on (lead 10-13 3 - the read's F4, for the save).
     keepTxOn();
     console.error('Batch apply failed', err);
-    alert(`Apply failed: ${err instanceof QueueReadTimeout
+    sayStopped(`Apply failed: ${err instanceof QueueReadTimeout
       ? `the save did not answer in ${QUEUE_READ_TIMEOUT_MS / 1000} s - Apply again reads the rows first` : err.message}`);
-    elements.performanceLog.textContent = '❌ Batch apply failed';
   }
 }
 
@@ -1137,7 +1135,7 @@ async function editCell(event) {
     } else {
       const parsedVal = Number(newValue);
       if (isNaN(parsedVal)) {
-        alert(notANumber(colId, newValue));
+        sayStopped(notANumber(colId, newValue));
         // Rollback grid value & overwrite status
         const latestNode = state.gridApi.getRowNode(rowId);
         const latestData = latestNode ? latestNode.data : data;
@@ -1148,7 +1146,6 @@ async function editCell(event) {
           latestData.data[colId].priority_source = oldPrioritySource;
         }
         state.gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
-        elements.performanceLog.textContent = '❌ Invalid number format';
         return;
       }
       finalValue = parsedVal;
@@ -1263,8 +1260,7 @@ async function editCell(event) {
     }
   } catch (err) {
     console.error('Cell update failed', err);
-    alert(`Save failed: ${err.message}`);
-    elements.performanceLog.textContent = '❌ Edit failed to save';
+    sayStopped(`Save failed: ${err.message}`);
 
     // Rollback grid value & overwrite status
     const latestNode = state.gridApi.getRowNode(rowId);
@@ -1316,8 +1312,7 @@ export async function addRows(count) {
     // 서버에 «닿지 못한» 것은 서버가 낸 사유가 없는 자리라 이 문장이 화면의 것입니다.
     refused = 'Add-row request did not reach the server (network)';
   }
-  setBadge(elements.performanceLog, refused);
-  showToast(refused, 'error');
+  sayStopped(refused);
 }
 
 /** The long rows of pivot groups, by their keys - every item, shown or not (owner 10-23). A read that brings a row of
@@ -1425,6 +1420,5 @@ export async function deleteSelectedRows() {
   }
   if (!refused) return;
   const line = `${refused} — reload the table to see which rows remain`;
-  setBadge(elements.performanceLog, line);
-  showToast(line, 'error');
+  sayStopped(line);
 }
