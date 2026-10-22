@@ -1,6 +1,6 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
-import { refuseWrite, refusePivotKeys, wireUpdates } from './write_guard.js';
+import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped } from './write_guard.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
 import { updateGridSortState } from './grid.js';
@@ -294,8 +294,7 @@ export async function applyValueToSelectedRange(newValue) {
     }
   } catch (err) {
     console.error('Bulk cell update failed', err);
-    alert(`Range save failed: ${err.message}`);
-    elements.performanceLog.textContent = '❌ Range edit failed to save';
+    sayStopped(`Range save failed: ${err.message}`);
   }
 }
 

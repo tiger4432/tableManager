@@ -15,7 +15,7 @@ import { narrowingTail } from './narrowing.js';
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
 import { state, isDataColumn, pivotShown } from './state.js';
 import { NONE, unitText } from './ui_words.js';
-import { writeRefusal } from './write_guard.js';
+import { writeRefusal, sayStopped } from './write_guard.js';
 import { elements } from './dom.js';
 import { placeUnder } from './dropdown.js';
 import {
@@ -835,7 +835,7 @@ function setupEventListeners() {
         }
       } catch (err) {
         console.error('File ingestion failed', err);
-        elements.performanceLog.textContent = `❌ Ingestion failed for [${file.name}]`;
+        sayStopped(`❌ Ingestion failed for [${file.name}]`);
         failed += 1;
       }
     }
@@ -1104,8 +1104,7 @@ function setupEventListeners() {
         state.isLoadingMore = false;
       } catch (err) {
         console.error('Failed to load all rows sequentially', err);
-        elements.performanceLog.textContent = '❌ Failed to load all rows';
-        showToast('❌ Load all failed', 'error');
+        sayStopped('❌ Load all failed');
         state.isLoadingMore = false;
       }
     });
@@ -1188,8 +1187,7 @@ function setupEventListeners() {
       try {
         const opened = await openExport(url);
         if (opened.refused) {
-          elements.performanceLog.textContent = opened.refused;
-          showToast(opened.refused, 'error');
+          sayStopped(opened.refused);
           return;
         }
         const response = opened.res;
@@ -1260,8 +1258,7 @@ function setupEventListeners() {
         if (writableStream) {
           try { await writableStream.abort(); } catch (e) { }
         }
-        elements.performanceLog.textContent = '❌ CSV Download Failed';
-        showToast('❌ CSV download failed', 'error');
+        sayStopped('❌ CSV download failed');
       }
     });
   }
@@ -1441,7 +1438,7 @@ function setupDragAndDrop() {
         }
       } catch (err) {
         console.error('File ingestion failed', err);
-        elements.performanceLog.textContent = `❌ Ingestion failed for [${file.name}]`;
+        sayStopped(`❌ Ingestion failed for [${file.name}]`);
       }
     }
   });
@@ -1575,7 +1572,7 @@ async function refreshSourcesList() {
             }
           } catch (err) {
             console.error(err);
-            elements.performanceLog.textContent = '❌ Failed to pin source';
+            sayStopped('❌ Failed to pin source');
           }
         });
 
@@ -1600,7 +1597,7 @@ async function refreshSourcesList() {
             }
           } catch (err) {
             console.error(err);
-            elements.performanceLog.textContent = '❌ Failed to delete cell source';
+            sayStopped('❌ Failed to delete cell source');
           }
         });
 
@@ -1697,7 +1694,7 @@ async function refreshSourcesList() {
             }
           } catch (err) {
             console.error(err);
-            elements.performanceLog.textContent = '❌ Failed to batch pin source';
+            sayStopped('❌ Failed to batch pin source');
           }
         });
 
@@ -1727,7 +1724,7 @@ async function refreshSourcesList() {
             }
           } catch (err) {
             console.error(err);
-            elements.performanceLog.textContent = '❌ Failed to batch delete source';
+            sayStopped('❌ Failed to batch delete source');
           }
         });
 
@@ -1820,8 +1817,7 @@ async function uploadSmartPastePayload(selectedText, selectedType, byOrder = fal
     return;
   }
   if (!selectedText || !selectedText.trim()) {
-    elements.performanceLog.textContent = '📋 Smart paste: clipboard held no text';
-    showToast('Clipboard is empty · copy, then try again', 'error');
+    sayStopped('Clipboard is empty · copy, then try again');
     return;
   }
 
@@ -1849,15 +1845,13 @@ async function uploadSmartPastePayload(selectedText, selectedType, byOrder = fal
     } else {
       const detail = await res.text().catch(() => '');
       console.error('Smart paste upload rejected', res.status, detail);
-      elements.performanceLog.textContent = `❌ Smart paste upload rejected (HTTP ${res.status})`;
-      showToast(`Server refused the smart paste (HTTP ${res.status})`, 'error');
+      sayStopped(`Server refused the smart paste (HTTP ${res.status})`);
     }
   } catch (err) {
     // A transport failure, not a clipboard failure - say so, or the user reads it as the
     // clipboard bug again.
     console.error('Smart paste upload failed', err);
-    elements.performanceLog.textContent = '❌ Smart paste upload failed to reach the server';
-    showToast('Not sent to the server · check the network', 'error');
+    sayStopped('Not sent to the server · check the network');
   }
 }
 
@@ -1868,29 +1862,20 @@ async function smartPasteFromPasteEvent(e) {
   closeSmartPasteBox();
 
   if (state.smartPasteArmedTable !== state.currentTable) {
-    elements.performanceLog.textContent = '❌ Smart paste: table changed after arming';
-    showToast(
-      `Cancelled · the table changed [${state.smartPasteArmedTable}] → [${state.currentTable}] · run it again`,
-      'error'
-    );
+    sayStopped(`Cancelled · the table changed [${state.smartPasteArmedTable}] → [${state.currentTable}] · run it again`);
     return;
   }
 
   const dt = e.clipboardData;
   if (!dt) {
-    elements.performanceLog.textContent = '❌ Smart paste: paste event carried no clipboardData';
-    showToast('No clipboard data · try again', 'error');
+    sayStopped('No clipboard data · try again');
     return;
   }
 
   const allTypes = Array.from(dt.types || []);
   const textTypes = pickTextTypes(allTypes);
   if (textTypes.length === 0) {
-    elements.performanceLog.textContent = '❌ Smart paste: no text-bearing format on the clipboard';
-    showToast(
-      `No text format on the clipboard (found: ${allTypes.length ? allTypes.join(', ') : NONE})`,
-      'error'
-    );
+    sayStopped(`No text format on the clipboard (found: ${allTypes.length ? allTypes.join(', ') : NONE})`);
     return;
   }
 

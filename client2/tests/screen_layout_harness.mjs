@@ -263,6 +263,10 @@ const pivotAnswer = (u) => {
     const a = ANSWERS['/tables/dt_log/schema'];
     return { ...a, body: { ...bodyOf(a), pivot: PIVOT_DECL } };
   }
+  // Apply's read again of the staged rows (by row_id, not a pivot read): refused, so Apply stops and says why.
+  if (APPLY_REFUSE.on && u.pathname === '/tables/dt_log/data' && /"row_id"/.test(u.searchParams.get('filters') || '')) {
+    return { status: 503, type: 'application/json', body: { detail: { message: APPLY_REFUSED } } };
+  }
   if (u.pathname === '/tables/dt_log/data' && u.searchParams.get('pivot') !== 'true') {
     const filters = JSON.parse(u.searchParams.get('filters') || '{}');
     if (filters.row_id) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, data: pivotLongRows(filters) } };
@@ -279,6 +283,9 @@ const pivotAnswer = (u) => {
   return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, skip, limit,
     pivot: { ...PIVOT_DECL, keys: ['dt_job', 'b_wx'], items: PIVOT_ITEMS, items_more: 3 }, data: groups.slice(skip, skip + limit) } };
 };
+// Its read refused only while «Apply stopped in pivot view» runs - the pivot Apply states before it read it.
+const APPLY_REFUSE = { on: false };
+const APPLY_REFUSED = 'The staged rows could not be read again: the table is being re-translated - press Apply again in a minute';
 const DECL_SENTENCE = 'The declaration could not be read: no ledger configuration at C:/assy/config/ledger_config.json - fix the declaration and reload';
 const DT_LOG_ROWS = '/tables/dt_log/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true';
 const galleryAnswer = (u) => {
@@ -895,6 +902,12 @@ CELLS.push({ entry: 'index.html', after: 'Pivot refused over a staged edit', rul
   const whole = [...document.querySelectorAll('.toast')].find((n) => n.textContent.includes(said) && n.getBoundingClientRect().width > 0
     && n.scrollWidth <= n.clientWidth + 1);
   return whole ? null : 'the refusal is nowhere on screen whole';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Apply stopped in pivot view', rule: 'failure read whole', at: 'pivot', expr: `(() => {
+  const said = 'Apply stopped: ' + ${JSON.stringify(APPLY_REFUSED)};
+  const whole = [...document.querySelectorAll('.toast')].find((n) => n.textContent.includes(said) && n.getBoundingClientRect().width > 0
+    && n.scrollWidth <= n.clientWidth + 1);
+  return whole ? null : 'the Apply failure is nowhere on screen whole';
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 'pivot', expr: `(() => {
   const add = document.getElementById('add-row-btn');
@@ -2352,6 +2365,14 @@ const DRIVE = {
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
       await sleep(600);
     }],
+    // An Apply failure read whole (lead 10-23): the edit still staged, Apply pressed, its read again refused.
+    ['Apply stopped in pivot view', async (c, log) => {
+      APPLY_REFUSE.on = true;
+      await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Apply' && !x.disabled);
+        if (b) b.click(); return Boolean(b); })()`);
+      await until(c, "/Apply stopped/.test((document.querySelector('#performance-log') || {}).textContent || '')").finally(() => { APPLY_REFUSE.on = false; });
+      await sleep(600);
+    }],
     ['Pivot off', async (c, log) => {
       await evaluate(c, `(() => { const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Discard' && !b.disabled);
         if (d) d.click(); return Boolean(d); })()`);
@@ -2726,7 +2747,9 @@ const MUTANTS = [
   { name: 'a key pasted over a saved pivot row goes through', entry: 'index.html', rule: 'pivot key paste', at: 'pivot',
     file: 'src/write_guard.js', edits: [['  if (why) return refuseWrite(why);\n', '']] },
   { name: 'a refusal only in the one-line badge', entry: 'index.html', rule: 'refusal read whole', at: 'pivot',
-    file: 'src/write_guard.js', edits: [["  showToast(why, 'error');\n", '']] },
+    file: 'src/write_guard.js', edits: [["  try { showToast(why, 'error'); } catch (err) { console.error('[toast] stopped', err); }\n", '']] },
+  { name: 'an Apply failure only in the one-line badge', entry: 'index.html', rule: 'failure read whole', at: 'pivot',
+    file: 'src/api.js', edits: [['    sayStopped(`Apply stopped:', '    void (elements.performanceLog.textContent = `Apply stopped:']] },
   { name: 'the footer counts rows in pivot view', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
     file: 'src/api.js', edits: [['elements.totalRowsCount.dataset.unit = rowUnit();', "elements.totalRowsCount.dataset.unit = 'row';"]] },
   // The checkboxes back on the schema's first column (owner 10-22): hidden from the column selector, they go with it.

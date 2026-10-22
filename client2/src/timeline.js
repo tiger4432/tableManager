@@ -2,6 +2,7 @@ import { API_BASE, pageLimit } from './config.js';
 import { ABSENT, isCount } from './absent.js';
 import { LOADING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
+import { sayStopped } from './write_guard.js';
 import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
 import { state, gridFetch } from './state.js';
@@ -633,7 +634,7 @@ export function createGlobalTimelineItemDom(group) {
         if (baseLog.row_id !== '_BATCH_') {
           navigateToLog(baseLog);
         } else {
-          elements.performanceLog.textContent = '⚠️ Batch operations do not support cell positioning';
+          sayStopped('⚠️ Batch operations do not support cell positioning');
         }
       }
     });
@@ -1241,8 +1242,7 @@ export function appendHistoryLocally(log, skipRender = false) {
 async function openLedgerReceipt(log) {
   const tx = log.transaction_id;
   if (!tx || tx === NO_TRANSACTION_BUCKET) {
-    elements.performanceLog.textContent =
-      `Ledger batch · ${log.table_name} · no transaction to show — a backfill or retroactive batch`;
+    sayStopped(`Ledger batch · ${log.table_name} · no transaction to show — a backfill or retroactive batch`);
     return;
   }
   if (state.currentTable !== log.table_name) {
@@ -1263,7 +1263,7 @@ export async function navigateToLog(log) {
   // Every click path (the row tabs, the global tab's single and grouped lines) reaches here.
   if (log && log.column_name === LEDGER_BATCH_COLUMN) return openLedgerReceipt(log);
   if (state.isNavigating) {
-    elements.performanceLog.textContent = '⚠️ Already navigating, please wait...';
+    sayStopped('⚠️ Already navigating, please wait...');
     return;
   }
 
@@ -1480,7 +1480,5 @@ export function releaseNavigationGuard(errorMessage = '') {
     clearTimeout(state.navigationWatchdog);
     state.navigationWatchdog = null;
   }
-  if (errorMessage) {
-    elements.performanceLog.textContent = errorMessage;
-  }
+  if (errorMessage) sayStopped(errorMessage);
 }
