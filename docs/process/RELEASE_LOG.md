@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-22 [체인이 잠금을 기다려도 «멈춘 프로세스»로 안 보인다 — 그룹 밖 DB 일도 박동하며 단계 이름과 잡은 쪽을 말한다](#2026-10-22--체인이-잠금을-기다려도-멈춘-프로세스로-안-보인다--그룹-밖-db-일도-박동하며-단계-이름과-잡은-쪽을-말한다) — 보는 곳 /health problems «is beating but its work has not progressed … waiting … on pid» · chain_worker.log «tried again next turn»
 - 2026-10-22 [체인 그룹 하나의 쓰기가 한 커밋 — 어디서 꺼져도 다 됨 또는 하나도 안 됨](#2026-10-22--체인-그룹-하나의-쓰기가-한-커밋--어디서-꺼져도-다-됨-또는-하나도-안-됨) — 적는 곳 ingestion_settings.json 의 `save_lock_timeout_seconds` · 보는 곳 체인 대기열 «deadlock with a save» · chain_worker.log «origin unknown»
 - 2026-10-22 [끊긴 리플레이를 끊긴 쪽 다음부터 이어 한다 — 대기열의 «Interrupted · Resume», 거두기는 이어 간 끝에 한 번](#2026-10-22--끊긴-리플레이를-끊긴-쪽-다음부터-이어-한다--대기열의-interrupted--resume-거두기는-이어-간-끝에-한-번) — 보는 곳 대기열 interrupted_runs · run 줄 pages · POST /admin/retroactive/runs/<id>/resume
 - 2026-10-21 [소급과 체인이 서로를 묶지 않는다 — 같은 표 줄은 디스패처가 막고, 표 잠금 대기에 상한, 소급 자식이 페이지 사이에 선언을 다시 읽고, 리플레이 사건이 남은 동안 소급 게이트가 닫힌다](#2026-10-21--소급과-체인이-서로를-묶지-않는다--같은-표-줄은-디스패처가-막고-표-잠금-대기에-상한-소급-자식이-페이지-사이에-선언을-다시-읽고-리플레이-사건이-남은-동안-소급-게이트가-닫힌다) — 보는 곳 chain_worker.log «rewound» · retroactive.log «read again at a page boundary» · 소급 거절 «still wait in the chain queue»
@@ -507,6 +508,15 @@
 
 
 
+
+## 2026-10-22 · 체인이 잠금을 기다려도 «멈춘 프로세스»로 안 보인다 — 그룹 밖 DB 일도 박동하며 단계 이름과 잡은 쪽을 말한다
+
+- **무엇** — 총괄 10-22 wedge. 그룹 밖에서 DB 를 만지는 자리(교착 되감기 표시 · 실패 표시 · 깊이 거절 · 마지막 트랜잭션 채우기 · 슬롯의 설정 다시 읽기 · 줄 읽기)와 디스패처의 죽은 슬롯 치우기가 루프 위에서 돌아, 잠금 하나를 60 초 넘게 기다리면 그 프로세스가 «no progress»(wedged)로 보였습니다.
+- **선언** — 바뀐 것 없음. 죽은 슬롯 치우기는 체인 문장 한도(`chain_statement_timeout_seconds`)를 따릅니다.
+- **바뀐 동작** — 그 자리들이 그룹처럼 스레드에서 돌고 루프가 박동을 이어 가며, health 의 work 에 단계 이름이 보입니다. 300 초를 넘으면 stalled 와 함께 잡고 있는 연결(pid · 질의)을 말합니다. 죽은 슬롯 치우기가 한도를 넘으면 롤백하고 다음 회차에 다시 하며, 그동안 그 슬롯은 새로 뜨지 않습니다.
+- **보는 곳** — /health problems «… is beating but its work has not progressed for Ns (threshold 300.0s): <단계> - … waiting <잠금> on pid Q (…): <질의>» · chain_worker.log «… setting it aside ran past the chain statement limit of N s; tried again next turn».
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_a_step_outside_a_group_keeps_its_process_beating.py`.
 
 ## 2026-10-22 · 체인 그룹 하나의 쓰기가 한 커밋 — 어디서 꺼져도 다 됨 또는 하나도 안 됨
 

@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-22] **체인이 잠금을 기다려도 «멈춘 프로세스»로 안 보임 — 그룹 밖 DB 일도 박동하며 단계 이름을 말함 (총괄 10-22 wedge)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      그룹 밖에서 DB 를 만지는 자리 여섯(교착 되감기 표시 · 실패 표시 · 깊이 거절 · 마지막 트랜잭션 채우기 · 슬롯의 설정 다시 읽기 · 줄 읽기)과
+>           디스패처의 죽은 슬롯 치우기가 그룹처럼 스레드에서 돌고, 그동안 프로세스 박동이 이어지며 단계 이름이 health 의 work 에 보임
+> 뜻이 바뀐 줄 (/health · problems)
+>           «worker 'chain…' has made no progress for Ns (threshold 60s)» (status wedged/stale)
+>              전: 잠금 하나를 60 초 넘게 기다려도 떴음  ->  후: 그 프로세스의 루프가 정말 안 돎(죽음 · 멈춤). 프로세스부터 본다
+>           «… is beating but its work has not progressed for Ns (threshold 300.0s): <단계> - stalled 300 s in <단계> (… db pid P) - waiting <잠금> on pid Q (…): <Q 의 질의>»
+>              살아 있고 <단계>에서 300 초 넘게 못 나감. Q 가 잡은 쪽 — 그 연결(누가 · 무슨 질의)을 먼저 본다
+>           300 초 전에는 status ok 이고 work.stage 에 단계 이름만 보임(그룹 안 잠금은 120 초 문장 한도가 먼저 끊고 다시 돎)
+> 죽은 슬롯  chain_worker.log «[Chain] slot pid N ended (exit C) before finishing line L - setting it aside ran past the chain statement limit of 120.0 s; tried again next turn»
+>              죽은 슬롯의 줄을 치우려는데 그 행을 다른 연결이 잡고 있음. 다음 회차에 다시 함 — 잠금이 풀리면 «… set aside; run them again with rerun_set_aside»
+>           그동안 그 슬롯은 새로 안 뜸(슬롯이 하나 줄어 돎) · health 에 «worker 'chain-slot-<n>' has made no progress …» 가 남음 = 죽은 슬롯의 줄을 치우는 중, 잠금 풀리면 새로 뜸
+> 판(박스)  깊이 거절 행을 다른 연결이 잡음: 전 60 초에 «chain-slot-1 … no progress» -> 후 박동 이어짐, 300 초에 stalled + 잡은 pid · 질의
+>           잡은 채 슬롯 죽임: 전 디스패처 박동 118 초 멎음 -> 후 안 멎음(나이 최대 16.7 초), 120 초 뒤 다시 시도 한 줄, 풀린 뒤 치워짐
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동
+> ```
+>
 > ## [10-22] **체인 그룹 하나의 쓰기가 «한 커밋» — 꺼지면 다 됨 또는 하나도 안 됨 (소유자 10-21 «ㄱ 쓰기», 총괄 09f58844f)** — git pull · 런처 재기동
 >
 > ```

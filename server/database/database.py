@@ -138,8 +138,8 @@ def _set_statement_time_limits(session, transaction, connection):
     10-07 ③) - on every transaction begun on the file channel, which only the watcher's work
     claims open. A chain group's statement runs at most `chain_statement_timeout_seconds` (소유자
     10-08 「체인 타임아웃 걸어」) - on every transaction begun inside a group, whatever channel
-    its writes take (a replay's group writes on the retroactive one), and on the one a group finds
-    open (`ingestion_worker._claimed_group_sync` calls this). A grid read's statement runs at most
+    its writes take (a replay's group writes on the retroactive one) and the dispatcher's reaping of a dead slot,
+    and on the one either finds open (`ingestion_worker._claim_the_open_transaction` calls this). A grid read's statement runs at most
     `grid_read_timeout_seconds` (총괄 d16033b63) - on every transaction begun inside `read_limit`. Any other
     transaction over HTTP waits for a lock at most `save_lock_timeout_seconds` (총괄 09f58844f ②) - a person's save
     behind a chain group's write stage is refused, not held.

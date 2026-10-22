@@ -228,13 +228,13 @@ class SlotPool:
         return any(slot.line is not None and not slot.ready for slot in self.slots.values())
 
     def tick(self, db, rules, notified=False):
-        """Answers read, dead slots reaped, the pool sized, then - not paused - each slot that is
-        free, or ready after a batch, given what it runs next. -> how many batches were asked."""
+        """Answers read, the pool sized, then - not paused - each slot that is free, or ready after
+        a batch, given what it runs next. -> how many batches were asked. Dead slots are `reap`ed
+        before it, off the loop (총괄 10-22)."""
         from chain import control
 
         self.woken.clear()
         answered = self._read_answers(db)
-        self._reap(db)
         self._size(chain_slots())
         open_slots = [slot for _i, slot in sorted(self.slots.items())
                       if not slot.leaving and (slot.line is None or slot.ready)]
@@ -324,25 +324,44 @@ class SlotPool:
         if per_cycle and rest and self._batches[key] % per_cycle == 0:
             self._resting[key] = now + rest
 
-    def _reap(self, db):
-        """A slot that ended holding a line ended before finishing it: what of the line still
-        waits is set aside, its database connections are ended, and the line is not given again."""
-        from chain import set_aside
+    def dead(self):
+        """-> [(index, slot, exit code)] of the slots whose process ended."""
+        ended = ((index, slot, slot.proc.poll()) for index, slot in sorted(self.slots.items()))
+        return [(index, slot, code) for index, slot, code in ended if code is not None]
 
-        for index, slot in sorted(self.slots.items()):
-            code = slot.proc.poll()
-            if code is None:
-                continue
+    def reap(self, db):
+        """A slot that ended holding a line ended before finishing it: what of the line still
+        waits is set aside, its database connections are ended, and the line is not given again.
+        Under the chain statement limit (총괄 10-22): a row it must mark that another connection
+        holds stopped the dispatcher for as long as it was held - past the limit it is said and
+        tried again next turn, the slot kept until then."""
+        from chain import set_aside
+        from chain.ingestion_worker import QUERY_CANCELED, _claim_the_open_transaction
+        from database.context import chain_group
+        from parsers.directory_watcher import chain_statement_timeout
+        from sqlalchemy.exc import OperationalError
+
+        for index, slot, code in self.dead():
+            if slot.line is not None:
+                why = "slot pid %d ended (exit %s) before finishing" % (slot.pid, code)
+                try:
+                    with chain_group():
+                        _claim_the_open_transaction(db)
+                        end_connections(db, index)
+                        done = set_aside.set_aside_line(db, slot.line["line"], CHAIN_WORKER, run=slot.line["run"],
+                                                        reason=why)
+                except OperationalError as error:
+                    if QUERY_CANCELED not in str(error):
+                        raise
+                    db.rollback()
+                    logger.warning("[Chain] %s line %s - setting it aside ran past the chain statement limit of "
+                                   "%s s; tried again next turn", why, slot.line["line"], chain_statement_timeout())
+                    continue
+                logger.warning("[Chain] %s line %s - %d waiting event(s) set aside; run them again with "
+                               "rerun_set_aside", why, slot.line["line"], done["marked"])
             del self.slots[index]
             if index > self._wanted:
                 _remove_beat(beat_name(index))           # not started again - its file would read stale
-            if slot.line is None:
-                continue
-            end_connections(db, index)
-            why = "slot pid %d ended (exit %s) before finishing" % (slot.pid, code)
-            done = set_aside.set_aside_line(db, slot.line["line"], CHAIN_WORKER, run=slot.line["run"], reason=why)
-            logger.warning("[Chain] %s line %s - %d waiting event(s) set aside; run them again with "
-                           "rerun_set_aside", why, slot.line["line"], done["marked"])
 
     def _size(self, wanted):
         now = time.monotonic()
@@ -560,9 +579,12 @@ async def _run_batch(key, run, rules, seen):
     try:
         # the reload reads the database too: a dropped connection there is this batch's, said and run again - outside
         # this try it ended the slot, and the slot's end set its whole line aside (C five stages 8, 총괄 6deeb723e)
-        changed, seen = ingestion_worker.reload_at_boundary(system_reload.CHAIN_WORKER, seen)
+        # both on a thread, beating - a lock or a slow read here stopped the slot's beat (총괄 10-22 wedge)
+        changed, seen = await ingestion_worker._step_beating(db, "reload", ingestion_worker.reload_at_boundary,
+                                                             system_reload.CHAIN_WORKER, seen)
         rules = ingestion_worker.loaded_chain_rules() if changed else rules
-        events = ingestion_worker.pending_chain_events(db, line=key, run=run)
+        events = await ingestion_worker._step_beating(db, "line read", ingestion_worker.pending_chain_events, db,
+                                                      line=key, run=run)
         if not events:
             return DRAINED, rules, seen
         failed = await ingestion_worker.drain_events(db, events, rules, SessionLocal, batch_wake_ts=started)

@@ -32,7 +32,6 @@ QUIET_KEPT = {
     "server/bonding_plan.py": {"parse": 1, "probe": 1, "elsewhere": 1},
     "server/chain/activity.py": {"hot": 2},
     "server/chain/enrichment/config.py": {"probe": 3, "elsewhere": 1},
-    "server/chain/ingestion_worker.py": {"probe": 1},
     "server/chain/join_key_index.py": {"probe": 2},
     "server/chain/slots.py": {"probe": 1, "elsewhere": 1},
     "server/chain/unique_key.py": {"cleanup": 4},

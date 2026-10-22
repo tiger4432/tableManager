@@ -370,6 +370,7 @@ class _Dispatcher:
             session = sessionmaker(bind=self.engine)()
             asked = 0
             try:
+                self.pool.reap(session)
                 asked = self.pool.tick(session, RULES)
             except Exception as exc:                                  # noqa: BLE001
                 self.errors.append(exc)

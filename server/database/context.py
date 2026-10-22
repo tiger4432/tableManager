@@ -106,7 +106,8 @@ def read_limit(seconds):
 
 
 def chain_group():
-    """Context manager: the transactions begun inside are a chain group's (소유자 10-08)."""
+    """Context manager: the transactions begun inside are a chain group's (소유자 10-08) - or the dispatcher's
+    reaping of a dead slot, which takes their statement limit (총괄 10-22)."""
     return _for_the_block(request_chain_group, True)
 
 

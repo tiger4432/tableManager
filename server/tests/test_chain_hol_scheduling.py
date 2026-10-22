@@ -37,6 +37,9 @@ class FakeDB:
     def rollback(self):
         self.rollbacks += 1
 
+    def in_transaction(self):
+        return False
+
 
 def _the_claim_marks(events, messages):
     """What a group's claim does with its success since 총괄 09f58844f - the marks are its one commit's

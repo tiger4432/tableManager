@@ -123,7 +123,7 @@ def test_the_drain_has_no_rule_loop_left():
     assert "_retract" not in body, "the withdrawal is behind the ledger again"
     # 총괄 09f58844f: in the commit that ends them - the group's claim (SUCCESS) and the quarantine
     assert inspect.getsource(worker._claimed_group_sync).count("_retract_deleted_rows(db, deleted)") == 1
-    assert inspect.getsource(worker.process_pending_groups).count("_retract_deleted_rows(db, _deleted_rows_of(") == 1
+    assert inspect.getsource(worker.process_pending_groups).count("_commit_after, _retract_deleted_rows, db,") == 1
 
 
 def test_the_collector_is_handed_its_rule_rather_than_finding_it(monkeypatch):

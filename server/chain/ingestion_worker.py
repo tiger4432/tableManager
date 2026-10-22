@@ -2604,7 +2604,6 @@ def _claimed_group_sync(tx_id, events, db, rules):
     what = "tx %s · %d row(s) of %s" % (
         tx_id, rows, ", ".join(sorted({str(e.table_name) for e in events})))
     from database.context import chain_group
-    from database.database import _set_statement_time_limits
 
     with heartbeat.work_claim(GROUP_BEAT, what, note=_worker_note(), acted_on=True, owner=id(db)), \
             alignment_batch_counts.interrupt_at_stages(chain_control.raise_if_paused), \
@@ -2614,14 +2613,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
         #    saw it - the group's reads, its first write and a retraction with no write before it run
         #    there. Not a commit: that expires the session, and every event of every group was read
         #    again, one SELECT each.
-        if db.in_transaction():
-            _set_statement_time_limits(db, None, db.connection())
-        # The backend is read here once; a later transaction notes its own (database.py).
-        try:
-            heartbeat.note_work(
-                db_session=id(db), db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
-        except Exception:                                   # noqa: BLE001 - SQLite has none
-            pass
+        _claim_the_open_transaction(db)
         # its first and last event too: a set-aside asks whether this group holds its events, and
         # cuts this group's query only then (`chain.control.cancel_running_group`, 총괄 10-08)
         ids = [e.id for e in events if getattr(e, "id", None) is not None]
@@ -2742,6 +2734,36 @@ def _said_timeout(error, stage, ran_seconds):
 # ⚰️ `_queue_operation_runs` stood here - a `run_in: operation` rule's rows queued as `rule_rows`
 #    operation runs, a second road beside the chain (총괄 72f419bd1). `rows_per_run` now cuts the
 #    chain's own batch (`_rows_cap` at the row budget).
+
+
+def _claim_the_open_transaction(db):
+    """The transaction already open on `db` as a claim (or a `chain_group`) opens - begun before it, so the
+    `after_begin` listeners never saw it: they run on it where it stands - its statement limit, and its backend noted
+    onto this thread's claims, so a stall names who holds it (총괄 10-22). A later transaction notes its own."""
+    from database.database import _note_the_backend, _set_statement_time_limits
+
+    if db.in_transaction():
+        connection = db.connection()
+        _set_statement_time_limits(db, None, connection)
+        _note_the_backend(db, None, connection)
+
+
+async def _step_beating(db, stage, step, *args, **kwargs):
+    """A step outside a group that touches the database, run as the group is (`_await_group_beating` over
+    `to_thread`) under a work claim named `stage` (총괄 10-22): a lock or a slow read it waits on keeps its process
+    beating and says the step - on the loop it stopped the beat, and the process read «wedged»."""
+    def claimed():
+        with heartbeat.work_claim(GROUP_BEAT, stage, note=_worker_note(), owner=id(db)):
+            _claim_the_open_transaction(db)
+            heartbeat.progress(stage)
+            return step(*args, **kwargs)
+    return await _await_group_beating(asyncio.to_thread(claimed), db)
+
+
+def _commit_after(work, db, *args):
+    """`work(db, *args)`, then the commit that keeps it - one step for `_step_beating`."""
+    work(db, *args)
+    db.commit()
 
 
 async def _await_group_beating(group, db):
@@ -3130,7 +3152,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         event.status = "RETRYING"            # tried again, its attempts as they were
                         event.payload = dict(get_payload_dict(event) or {},
                                              **{event_constants.LAST_FAILURE: error_reason})
-                    db.commit()
+                    await _step_beating(db, "rewind marks", db.commit)
                 logger.warning("[Chain] tx '%s': %s - rewound, runs again; its %d event(s) stay queued",
                                tx_id, error_reason, len(events_in_tx))
                 break
@@ -3244,9 +3266,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                                                                              None)})
                         retrying_count += 1
 
-                _retract_deleted_rows(db, _deleted_rows_of(events_in_tx) if isolate_group else {})
                 with alignment_batch_counts.stage("commit"):
-                    db.commit()
+                    await _step_beating(db, "failure marks", _commit_after, _retract_deleted_rows, db,
+                                        _deleted_rows_of(events_in_tx) if isolate_group else {})
 
                 if failed_permanently_count > 0:
                     logger.error(
@@ -4321,8 +4343,9 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
         normalized_events.append(event)
 
     if depth_refused:
-        _retract_deleted_rows(db, _deleted_rows_of(depth_refused))
-        db.commit()          # the FAILED marks, so they are not re-read
+        # the FAILED marks, so they are not re-read
+        await _step_beating(db, "depth refusal", _commit_after, _retract_deleted_rows, db,
+                            _deleted_rows_of(depth_refused))
 
     if not normalized_events:
         # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and
@@ -4337,7 +4360,7 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
     last_tx_id = last_event._parsed_payload.get("transaction_id") if isinstance(last_event._parsed_payload, dict) else None
     if last_tx_id:
         current_ids = {e.id for e in normalized_events}
-        candidates = db.query(DatabaseOutbox).filter(
+        candidates = await _step_beating(db, "transaction completion", lambda: db.query(DatabaseOutbox).filter(
             DatabaseOutbox.processed_chain == False,
             ~DatabaseOutbox.id.in_(current_ids),
             # [Reliability F3] .as_string()은 CAST(payload -> 'transaction_id' AS VARCHAR)로 컴파일되어
@@ -4345,7 +4368,7 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
             # payload를 JSONB로 type_coerce 후 .astext를 쓰면 ->> 로 컴파일되어 인덱스와 정확히 일치한다.
             # (컬럼 타입이 JSON().with_variant(JSONB)라 ORM 레벨 제네릭 JSON엔 .astext가 없어 직접 호출은 불가.)
             type_coerce(DatabaseOutbox.payload, JSONB)['transaction_id'].astext == last_tx_id
-        ).limit(20000).all()
+        ).limit(20000).all())
 
         extra_events = []
         for e in candidates:
@@ -4759,6 +4782,8 @@ async def start_chain_ingestion_worker(db_session_factory):
                 #    it may run (`chain.slots`), reaps a slot that died and sizes the pool. It runs
                 #    no group itself - a big line no longer holds every line behind it. A NOTIFY
                 #    (new rows) reads the lines now; otherwise at most once a second.
+                if pool.dead():
+                    await _step_beating(db, "slot reaping", pool.reap, db)
                 given = pool.tick(db, rules, notified=loop_wake_ts is not None)
                 loop_wake_ts = None
                 head = pending_chain_events(db, limit=1)
