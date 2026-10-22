@@ -494,10 +494,17 @@ def run_one(F, i, name, case, kill, base, ledger):
                                                           "--tables", trig, "--apply"])[:2])
             b.settle(quiet=6, limit=600)
         if killed and path == "r2":
-            # the operator's withdraw command died - its recovery is the same command again (the kill hook fires once)
+            # the operator's withdraw command died - its recovery: the run row it held is released once its heartbeat is
+            # stale (60 s) by the screen's own cancel door, then the same command again (the kill hook fires once). No
+            # process is ended by number - a just-dead pid can be another process's on this box
             aside = aside or 1
-            F.say("r2 again", *b.cli(["python", "scripts/chain_replay_cli.py", "withdraw", tgt, "chain_ingestion",
-                                      "--apply"])[:2])
+            time.sleep(65)
+            F.say("r2 release", *b.cli(["python", "-c", "from database.database import SessionLocal; from admin import "
+                                        "retroactive as r; db = SessionLocal(); "
+                                        "print([r.request_cancel(db, x.run_id)['state'] for x in r.in_flight_rows(db).all()])"]))
+            secs, code, tail = b.cli(["python", "scripts/chain_replay_cli.py", "withdraw", tgt, "chain_ingestion",
+                                      "--apply"])
+            F.say("r2 again", secs, code, *(tail[-6:] if code else ()))
             b.settle(quiet=6, limit=600)
         out = look("after %s" % path)
         out["human_recovery"] = bool(aside)
