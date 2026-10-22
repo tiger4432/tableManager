@@ -703,7 +703,11 @@ CELLS.push({ entry: 'index.html', after: 'a row picked under the Queue tab', rul
 // back said, «Pivot» pressed - and all of it undone when it is pressed again; no «Pivot» on a table that declares none.
 CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot drawn', at: 'pivot', expr: `(() => {
   const heads = [...document.querySelectorAll('.ag-header-row-column .ag-header-cell[col-id^="item:"]')];
-  if (heads.length !== ${PIVOT_ITEMS.length}) return heads.length + ' item columns, not ${PIVOT_ITEMS.length}';
+  // the grid draws the columns in view only - the item columns drawn, each one of the answer's items
+  const items = ${JSON.stringify(PIVOT_ITEMS)};
+  if (!heads.length) return 'no item column';
+  const stray = heads.find((h) => !items.includes(h.getAttribute('col-id').slice(5)));
+  if (stray) return 'an item column not in the answer: ' + stray.getAttribute('col-id');
   const named = heads.find((h) => (h.querySelector('.ag-header-cell-text') || h).textContent.trim() !== h.getAttribute('col-id').slice(5));
   if (named) return 'an item header says «' + named.textContent.trim() + '»';
   const total = (document.getElementById('total-rows') || {}).textContent || '';
