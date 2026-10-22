@@ -2401,6 +2401,8 @@ class IngestionHandler(FileSystemEventHandler):
                    "(said at the 1st, 10th, 100th ...)", self.table_name, folder, files, why,
                    then.format(look=subfolder_recheck_seconds(), sweep=PERIODIC_SWEEP_INTERVAL_SECONDS), nth)
 
+    # os.stat per file, NOT the listing's DirEntry.stat: on NTFS the listing keeps a file's size 0 and its first mtime
+    # while a handle is writing it, so a file still being written would read as finished (B probe, 10-23).
     @staticmethod
     def _snapshot_tree(abs_dir: str):
         """Comparable snapshot of a directory tree: {(kind, relpath): (size, mtime)}.
