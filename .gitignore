@@ -49,6 +49,8 @@ Desktop.ini
 *.log
 *.log.*
 server/*.log
+# the AI report's kept HTML files (<data root>/reports, chain/report_html.py)
+server/reports/
 
 # 빌드 결과물
 desktop/build/

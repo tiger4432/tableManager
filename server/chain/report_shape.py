@@ -26,6 +26,8 @@ LIST_COLUMNS = {("wafer", "key"), ("wafer", "conditions"), ("fail", WAFER_CELL),
                 ("images", WAFER_CELL)}
 #: What a layout slot holds.
 SLOT_KINDS = ("table", "image", "text")
+#: The reads whose answer a table slot draws (`report_html.TABLES` draws each).
+TABLE_FILLS = ("yield_by", "pareto", "trend")
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop")
 PROMPT_CELLS = ("select", "style", "compare")
@@ -131,4 +133,9 @@ def refusal(spec) -> str | None:
         kind = slot.get("kind") if isinstance(slot, dict) else None
         if kind not in SLOT_KINDS:
             return "derive.report.layout[%d].kind %r - one of %s" % (at, kind, " · ".join(SLOT_KINDS))
+        if kind == "table" and slot.get("fill") not in TABLE_FILLS:
+            return "derive.report.layout[%d].fill %r - a table is one of %s" % (at, slot.get("fill"),
+                                                                                 " · ".join(TABLE_FILLS))
+        if kind == "text" and not str(slot.get("slot") or "").strip():
+            return "derive.report.layout[%d].slot names no text - the name the model writes it under" % at
     return None

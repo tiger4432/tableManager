@@ -36,7 +36,7 @@ REPORT = {
                "per_item": 3, "px": 320},
     "rows": ["particle", "scratch"], "digits": 1,
     "prompts": {"select": "pick the split", "style": "short", "compare": "against baseline"},
-    "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "summary_table"}],
+    "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
     "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000},
 }
 
@@ -84,6 +84,8 @@ def _with(path, value):
     (("fail", "wafer"), ["wafer_id", "slot"], "derive.report.fail.wafer names 2 column(s) and derive.report.wafer.key 1"),
     (("wafer", "key"), [], "derive.report.wafer.key names no column"),
     (("layout",), [{"kind": "chart"}], "derive.report.layout[0].kind 'chart' - one of table · image · text"),
+    (("layout",), [{"kind": "table", "fill": "summary"}], "derive.report.layout[0].fill 'summary' - a table is one of"),
+    (("layout",), [{"kind": "text"}], "derive.report.layout[0].slot names no text"),
     (("digits",), 1.5, "derive.report.digits must be a whole number from 0"),
     (("images", "px"), 0, "derive.report.images.px must be a whole number from 1"),
     (("loop", "steps"), "8", "derive.report.loop.steps must be a whole number from 1"),
