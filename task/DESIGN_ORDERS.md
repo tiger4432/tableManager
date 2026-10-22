@@ -1,3 +1,17 @@
+# 🔴 [구현자 A] **AI 리포트 셋째 덧 둘 — 회사용이라 한글: 표의 고정 낱말을 선언으로 · 한글 토큰 어림 · 양식 charset** (소유자 10-23 「그림 한글 지원 체크해 이거는 회사용이라 한글 써야 함」, 총괄 — 셋째(4c51fb05e · 8a72d6618)와 같은 착지)
+
+총괄이 잰 것(origin/main 8a72d6618 · 제품 함수 import, DB 없음)
+```
+되는 것   build() 파일 utf-8 + <meta charset="utf-8"> · 한글 항목 · 웨이퍼 키 · 결론 글 그대로 남음 · LLM 로그 utf-8 · 호출 json ensure_ascii=False
+안 되는 것 리포트 안의 고정 낱말이 영어로 박힘 — report_html: «Item» · «Left out - …» · «… was not read» · «Nothing was written for …» ·
+          «No image of an occurred defect» · 파레토 머리 «item · fail chips · cumulative» · 대조 묶음 이름 «control …»
+          토큰 어림: 같은 뜻 영어 64자 → 16 · 한글 32자 → 8 (CHARS_PER_TOKEN 4 한 값). 한글이 적게 잡힘 — 실제 Gemma 비율은 안 쟀다
+```
+1. 고정 낱말 = 선언 derive.report.labels (이름 → 글). 제품은 지금 영어를 «기본값»으로만 쥠, 운영자가 한글로 적음. 리포트 «파일»에 나가는 낱말 전부가 이 한 칸을 지남(빈 칸 · 모르는 이름은 저장 거절 아님 — 기본값 · unknown_cells 처럼 이름만 알림)
+2. 토큰 어림: ASCII 아닌 글자는 한 글자 = 토큰 하나로 따로 셈(영어는 지금 4자). 걸음마다 게이트웨이 수로 보정하는 것은 그대로 — 첫 걸음이 넘치지 않게 하는 것
+3. 양식(둘째): 붙여 넣은 HTML 의 <meta … charset=…> · <meta http-equiv=Content-Type …> 는 저장 때 빼고, 파일은 우리 <meta charset="utf-8"> 하나. 엑셀이 무슨 charset 을 적는지는 기억이니 픽스처에 ks_c_5601-1987 한 벌
+게이트: 한글 씨앗 — 항목 · 웨이퍼 키 · 조건 값 · 정보 값 · 이미지 경로(한글 폴더 이름) · 가짜 LLM 답(한글 글 · 한글 JSON 값) · labels 한글 → 파일을 utf-8 로 다시 읽어 한글 그대로 · 영어 기본 낱말 0(labels 적은 것) · charset meta 하나 / 어림: 같은 문맥 한글이 영어보다 덜 잡히지 않음 / 변이 하나(labels 안 지나는 낱말 하나)
+
 # 🔴 [구현자 A] **AI 리포트 셋째 덧 — 항목 이름 계층 → 줄 머리 여러 칸 · 같은 앞부분 rowspan** (소유자 10-23 「아이템 이름을 계층화해서 행 이름을 계층화할 수 있나? a.b.c, a.b.d 면 a, b rowspan, c, d 독립」, 총괄 — 셋째(4c51fb05e)와 같은 착지)
 
 도착 — 한 줄
