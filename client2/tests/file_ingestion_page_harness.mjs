@@ -212,7 +212,7 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   ok('P5 two parts in one page keep to their own div', byClass(one, 'fi-group').length === 2 && byClass(two, 'fi-group').length === 0 && texts(one, 'fi-meta')[0] === 'one');
 
   // W - the watcher's state (총괄 10-21): /health's verdict and claim, the «sources» lap's words
-  const lap = { started_at: 1761000000, retry_waiting: 3, refused: ['External source config rejected: nobody is not a table'],
+  const lap = { started_at: 1761000000, retry_waiting: 3, notifications: { delivered: false, waiting: 4 }, refused: ['External source config rejected: nobody is not a table'],
     fill: { running: false, line: '[Watcher] read files stamped 5 · left for re-read 0 (failed 0 · changed since read 0)' },
     sources: { s1: { table: 'ta', root: 'X:\\share', reachable: true }, s2: { table: 'ta', root: 'X:\\gone', reachable: false },
       s3: { table: 'tb', root: 'X:\\new', reachable: true } },
@@ -233,6 +233,10 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   ok('W3 the watcher\'s facts: the last sweep\'s seconds and state, the fill\'s own line, the retries waiting; none - ABSENT',
     facts[M.WORDS.lastSweep].endsWith(' · 12 s · done') && facts[M.WORDS.fill] === lap.fill.line && facts[M.WORDS.retriesWaiting] === '3'
       && M.watcherFacts(null).every(([, v]) => v === ABSENT), JSON.stringify(facts));
+  ok('W3b the notifications: not delivered and the markers waiting; delivered with none waiting',
+    facts[M.WORDS.notifications] === 'not delivered · 4 waiting'
+      && Object.fromEntries(M.watcherFacts({ notifications: { delivered: true, waiting: 0 } }))[M.WORDS.notifications] === 'delivered · 0 waiting',
+    facts[M.WORDS.notifications]);
   const wHost = doc.createElement('div');
   doc.body.append(wHost);
   new Q.WatcherPart(wHost, { doc }).render({ worker: { status: 'stalled', age_seconds: 2, work: { what: 'ingest b.csv', held_seconds: 400 } },
@@ -298,6 +302,8 @@ const MUTANTS = [
   { name: 'zeros said too', catches: ['W2'], file: 'model', mutate: swap("word !== 'first not listed' && n)", "word !== 'first not listed')") },
   { name: 'a root not reached read as swept', catches: ['W2'], file: 'model', mutate: swap('source.reachable === false ? [WORDS.notReached] : ', '') },
   { name: 'the fill\'s line not said', catches: ['W3'], file: 'model', mutate: swap('l.fill ? l.fill.line || ', 'l.fill ? ') },
+  { name: 'not delivered read as delivered', catches: ['W3b'], file: 'model', mutate: swap("told.delivered ? 'delivered' : 'not delivered'", "'delivered'") },
+  { name: 'the markers waiting not said', catches: ['W3b'], file: 'model', mutate: swap('WORDS.waiting(numberOr(told.waiting) || 0)', 'WORDS.waiting(0)') },
   { name: 'a refusal not shown', catches: ['W4'], file: 'parts', mutate: swap('for (const sentence of (view.lap && view.lap.refused) || [])', 'for (const sentence of [])') },
   { name: 'Read now hides why the watcher did not', catches: ['P6a'], file: 'parts', mutate: swap("owner.why_not.length ? owner.why_not.join(' · ') : WORDS.taken", 'WORDS.taken') },
   { name: 'Read now hands the first owner', catches: ['P6a'], file: 'parts', mutate: swap('this.deps.onRead(this.answer.path, owner.table)', 'this.deps.onRead(this.answer.path, this.answer.owners[0].table)') },

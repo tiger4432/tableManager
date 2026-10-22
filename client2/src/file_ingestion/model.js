@@ -26,7 +26,7 @@ export const WORDS = Object.freeze({
   waiting: (n) => `${count(n)} waiting`,
   watcher: 'Watcher', idle: 'idle', noBeat: 'No beat from the watcher', notReached: 'root not reached',
   notSwept: 'not swept yet', looked: (n) => `${count(n)} looked`, started: 'Started', lastSweep: 'Last sweep',
-  fill: 'Read files fill', retriesWaiting: 'Retries waiting', refused: 'Refused',
+  fill: 'Read files fill', retriesWaiting: 'Retries waiting', refused: 'Refused', notifications: 'Notifications',
   groupSummary: (n, failed, waiting) => `${count(n)} file${n === 1 ? '' : 's'} · ${count(failed)} failed${waiting ? ` · ${count(waiting)} waiting` : ''}`,
   shown: (n, groups, match) => `${count(n)} file${n === 1 ? '' : 's'}${groups ? ` in ${count(groups)} group${groups === 1 ? '' : 's'}` : ''} shown · ${match} match`,
 });
@@ -102,14 +102,19 @@ export function watcherSources(lap) {
   });
 }
 
-/** The whole watcher's facts from the same lap: when it started, the last sweep, the fill's last line, the retries. */
+/** The whole watcher's facts from the same lap: when it started, the last sweep, the fill's last line, the retries,
+ * and its notifications (총괄 10-22) - whether the API took the last one, and the markers the chain's sweep has not
+ * collected yet. */
 export function watcherFacts(lap) {
   const l = lap || {};
   const sweep = l.sweep;
+  const told = l.notifications;
   return [[WORDS.started, atText(l.started_at)],
     [WORDS.lastSweep, sweep ? `${atText(sweep.began_at)} · ${secondsText(sweep.seconds)} · ${sweep.state}` : ABSENT],
     [WORDS.fill, l.fill ? l.fill.line || (l.fill.running ? 'running' : ABSENT) : ABSENT],
-    [WORDS.retriesWaiting, numberOr(l.retry_waiting) === null ? ABSENT : count(l.retry_waiting)]];
+    [WORDS.retriesWaiting, numberOr(l.retry_waiting) === null ? ABSENT : count(l.retry_waiting)],
+    [WORDS.notifications, !told ? ABSENT
+      : `${told.delivered ? 'delivered' : 'not delivered'} · ${WORDS.waiting(numberOr(told.waiting) || 0)}`]];
 }
 
 /** «0.4 s»; none timed (a skip, a tier-1 copy) - ABSENT. */
