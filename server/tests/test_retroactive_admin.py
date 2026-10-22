@@ -215,11 +215,12 @@ class TestInventory:
         # ⚰️ `reread_files` (976defaac) retired the same night - the retry door reads them (a4d135a06).
         # `remove_shell_rows` the same night - rows left with only the chain's keys (5eee501eb).
         # `fold_units` joined on 2026-10-11 - a fold rule's answer written by pages (fold-units).
+        # `delete_every_row` joined on 2026-10-22 - every row of a table, the file checklist kept (4435b9b29).
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
             "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation",
-            "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events",
+            "ledger_catch_up", "rule_rows", "fold_duplicate_rows", "fold_withdrawal_events", "delete_every_row",
             "remove_shell_rows", "fold_units"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):

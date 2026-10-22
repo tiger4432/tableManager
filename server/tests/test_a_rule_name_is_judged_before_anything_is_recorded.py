@@ -136,6 +136,7 @@ NAME_OPS = {
     "fold_file_layers": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "fold_written_notation": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "remove_shell_rows": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
+    "delete_every_row": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "fold_duplicate_rows": ({"table": "no_such_table", "keys": "part_no", "order": "note"},
                             {"table": "retro_test_target", "keys": "part_no", "order": "note"}),
     "withdraw": ({"table": "no_such_table", "source": "retro_src"},

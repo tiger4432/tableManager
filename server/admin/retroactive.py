@@ -1459,6 +1459,46 @@ def _count_remove_shell_rows(db, params, scan_limit):
     }
 
 
+def _count_delete_every_row(db, params, scan_limit):
+    import chain_bindings
+    from chain import cell_layer, replay
+    from database import models
+
+    table = params["table"]
+    s = replay.delete_every_row(db, table, log=lambda m: logger.debug(m))
+    kept = (db.query(models.CellSource.row_id).filter(models.CellSource.table_name == table,
+                                                      models.CellSource.source_name.in_(cell_layer.PROTECTED_SOURCES))
+            .distinct().count())
+    taking = sorted("%s -> %s" % (rule.get("name"), rule.get("target_table")) for rule in replay.load_rules()
+                    if rule.get("trigger_table") == table and chain_bindings.takes_deletions(rule))
+    return {
+        "affected": s["rows_to_delete"],
+        "absence": ABSENCE_TRULY_NONE if not s["rows_to_delete"] else None,
+        "affected_label": "rows to delete",
+        "count_kind": COUNT_EXACT,
+        "scanned": s["rows_read"],
+        "scan_limit": scan_limit,
+        "truncated": False,
+        "detail": (f"Every row of '{table}' - {s['rows_to_delete']} - goes as a grid delete does: its layers and a "
+                   f"history line with each; {kept} of them hold a person's value, which goes too. Cannot be undone. "
+                   f"The file checklist is kept - to read the files again use 'Read all again' on the file page. "
+                   + (f"Rules that take deletions from '{table}' do not run on these: {', '.join(taking)} - "
+                      f"replay them afterwards if their tables should follow." if taking
+                      else f"No rule takes deletions from '{table}'.")),
+        "extra": {"rows_read": s["rows_read"], "rows_to_delete": s["rows_to_delete"], "rows_with_person": kept,
+                  "rules_taking_deletions": taking, "sample": s["sample"]},
+    }
+
+
+def _run_delete_every_row(db, params, log, control=None):
+    from chain import replay
+
+    s = replay.delete_every_row(db, params["table"], apply=True, pace=params.get("pace"), log=log,
+                                checkpoint=_checkpoint(control))
+    _final_progress(control, s["rows_deleted"], s)
+    return {key: s[key] for key in ("rows_deleted", "rows_to_delete", "rows_read", "pages", "stopped")}
+
+
 def _run_remove_shell_rows(db, params, log, control=None):
     from chain import replay
 
@@ -2240,6 +2280,26 @@ OPERATIONS = {
         "downstream_note": ("No chain rule wakes - the marks carry no event and no screen is told of them; "
                             "withdrawing old marks queues retroactive-channel edit events, which wake no rule. "
                             "Replay the copy rule next (setup step 6)"),
+    },
+    "delete_every_row": {
+        "label": "Delete every row of a table",
+        "what_is_missing": "a table to start again - every row goes; reading its files again is «Read all again»",
+        "params": [_p("table"), _pace_param()],
+        "count": _count_delete_every_row,
+        "run": _run_delete_every_row,
+        "judge": _judge_table,
+        "cli": "server/scripts/chain_replay_cli.py delete-every-row <table> [--pace slow] --apply",
+        # 총괄 4435b9b29 (소유자 10-21 「다시 로드랑 지우기 분리해」): remove_shell_rows' paging, judged «every row».
+        "deletes": "every row of the table, with its cell layers and a history line each",
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
+                               "lands between pages and a re-run finds only what is left"),
+        "cli_only": [],
+        "downstream_note": ("The deletions go out on the retroactive channel, which wakes no rule - replay "
+                            "the rules that take deletions from this table if their tables should follow. "
+                            "The file checklist is not touched"),
     },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",

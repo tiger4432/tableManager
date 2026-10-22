@@ -1597,6 +1597,48 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
     keys = cell_layer.key_columns(table_name)
     shown_blank = and_(true(), *[crud.blank_sql_condition(crud.column_text_sql(getattr(model, column)))
                                  for column in col_types if column not in keys])
+
+    def judged(read):
+        page = [row_id for row_id, blank in read if blank]
+        return page, (cell_layer.shells(db, table_name, page) if page else [])
+    stats = _delete_by_pages(db, table_name, model, keys, [shown_blank.label("shown_blank")], judged,
+                             cell_layer.SHELL_DELETER, "remove-shells", apply, pace, log, checkpoint)
+    log(f"[remove-shells] '{table_name}' {stats['mode']}: {stats['rows_read']} row(s) show nothing outside "
+        f"their keys, {stats['rows_to_delete']} of them only the chain's keys left, {stats['rows_deleted']} deleted")
+    return stats
+
+
+#: Who the history says deleted a row the «Delete every row of a table» op took (총괄 4435b9b29).
+EVERY_ROW_DELETER = "delete_every_row"
+
+
+def delete_every_row(db, table_name: str, apply: bool = False, pace: str = None, log=logger.info,
+                     checkpoint=None) -> dict:
+    """Every row of `table_name` deleted through the grid's door, `crud.delete_rows_batch`, a page at a time -
+    each row's layers and a history line go with it, and each deletion reaches the chain as the grid's does
+    (소유자 10-21 「테이블 하나 다 지우는 법」 · 「다시 로드랑 지우기 분리해」, 총괄 4435b9b29). The file
+    checklist is not touched: reading the files again is its own op. The same paging as `remove_shell_rows`,
+    judged «every row»; a stop lands between pages and a re-run finds only what is left."""
+    from chain import cell_layer
+
+    model, _col_types = cell_layer.resolve_target(table_name)
+    keys = cell_layer.key_columns(table_name)
+
+    def judged(read):
+        page = [row[0] for row in read]
+        return page, page
+    stats = _delete_by_pages(db, table_name, model, keys, [], judged, EVERY_ROW_DELETER, "delete-every-row",
+                             apply, pace, log, checkpoint)
+    log(f"[delete-every-row] '{table_name}' {stats['mode']}: {stats['rows_to_delete']} row(s), "
+        f"{stats['rows_deleted']} deleted")
+    return stats
+
+
+def _delete_by_pages(db, table_name, model, keys, columns, judged, deleter, tag, apply, pace, log, checkpoint):
+    """The paged delete both ops above run: `judged(read page)` -> (rows looked at, rows to delete), deleted
+    through `crud.delete_rows_batch` under `deleter`, a commit a write page, a stop between pages."""
+    from database import crud
+
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "rows_read": 0,
              "rows_to_delete": 0, "rows_deleted": 0, "pages": 0, "stopped": False, "sample": []}
@@ -1608,19 +1650,17 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
     def stop():
         if apply and checkpoint is not None and checkpoint(stats["rows_deleted"], None):
             stats["stopped"] = True
-            log(f"[remove-shells] stopped by request after {stats['rows_deleted']} rows")
+            log(f"[{tag}] stopped by request after {stats['rows_deleted']} rows")
         return stats["stopped"]
-    for read in keyset_scan.iter_pages(db, model, columns=[shown_blank.label("shown_blank")],
-                                       chunk_size=SHELL_PAGE, size=size):
+    for read in keyset_scan.iter_pages(db, model, columns=columns, chunk_size=SHELL_PAGE, size=size):
         reads += 1
         step("read", reads, None, len(read))
         if stop():
             break
-        page = [row_id for row_id, blank in read if blank]
+        page, gone = judged(read)
         if not page:
             continue
         stats["rows_read"] += len(page)
-        gone = cell_layer.shells(db, table_name, page)
         stats["rows_to_delete"] += len(gone)
         if len(stats["sample"]) < SHELL_SAMPLE and gone:
             stats["sample"] += [{key: getattr(row, key, None) for key in sorted(keys)} for row in db.query(model)
@@ -1628,14 +1668,12 @@ def remove_shell_rows(db, table_name: str, apply: bool = False, pace: str = None
         while apply and gone and not (stats["pages"] and stop()):
             n = write.next()
             piece, gone = gone[:n], gone[n:]
-            stats["rows_deleted"] += crud.delete_rows_batch(db, table_name, piece, cell_layer.SHELL_DELETER)
+            stats["rows_deleted"] += crud.delete_rows_batch(db, table_name, piece, deleter)
             stats["pages"] += 1
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 write.rest(rest_seconds)
         if stats["stopped"]:
             break
-    log(f"[remove-shells] '{table_name}' {stats['mode']}: {stats['rows_read']} row(s) show nothing outside "
-        f"their keys, {stats['rows_to_delete']} of them only the chain's keys left, {stats['rows_deleted']} deleted")
     return stats
 
 
