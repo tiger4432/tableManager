@@ -283,13 +283,18 @@ def _refused(status, built, error, asked=None):
     return LlmRefused(said)
 
 
-def ask_json(prompt, *, system=None):
+#: The token counts a gateway answer may say (`ask_json(usage=)`).
+USAGE_CELLS = ("prompt_tokens", "completion_tokens", "total_tokens")
+
+
+def ask_json(prompt, *, system=None, usage=None):
     """One call -> the JSON object the model answered. Refused by name when the file refuses, the
     call fails or the answer is not a JSON object (`_refused` says which class). `from None` keeps the
     client's own exception - which may quote the key - out of every traceback. No answer (`_no_answer`) and a 429
     are tried again after CALL_RETRY_WAITS (a 429 after its Retry-After) while the next try starts within
     CALL_RETRY_WINDOW_S of the first failure - a gateway back within about 55 s passes; a longer stop, or a
-    Retry-After over the window, is `LlmCallFailed` (총괄 10-13 ④)."""
+    Retry-After over the window, is `LlmCallFailed` (총괄 10-13 ④). `usage`: a dict filled with the token counts
+    the gateway said (`prompt_tokens` · `completion_tokens` · `total_tokens`), left empty when it said none."""
     cells = settings()
     key = cells["api_key"]
     messages = ([{"role": "system", "content": system}] if system else []) + [
@@ -311,7 +316,12 @@ def ask_json(prompt, *, system=None):
                   "proxy": proxy}, key)
             raw = client.chat.completions.with_raw_response.create(**payload)
             back.update(status=raw.status_code, answer=_body(raw.text))
-            content = raw.parse().choices[0].message.content
+            parsed = raw.parse()
+            content = parsed.choices[0].message.content
+            if usage is not None:
+                said_usage = getattr(parsed, "usage", None)
+                usage.update({name: getattr(said_usage, name) for name in USAGE_CELLS
+                              if isinstance(getattr(said_usage, name, None), int)})
         except Exception as exc:                                       # noqa: BLE001
             if client is None:
                 # no sent line - where it was going, from the file (총괄 93570a1ea)

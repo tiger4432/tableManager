@@ -1339,7 +1339,7 @@ def _validate_chain_cascade_graph(rules) -> list:
         # `metadata_target_table` cannot be borrowed for it - in `dt_metadata_to_dt_inventory`
         # that same key names the mapper's SOURCE. The one place the metadata actually
         # lands is `map_meta_registrar.META_TABLE`, so that is what the edge points at.
-        for dst in (rule.get("target_table"),
+        for dst in (*chain_bindings.rule_tables(rule, chain_bindings.TABLE_ROLE_WRITE),
                     map_meta_registrar.META_TABLE if rule.get("allow_map_metadata_upsert") else None):
             if dst:
                 graph[src].add(dst)
@@ -1528,9 +1528,7 @@ def _group_target_tables(events_in_tx, rules):
     for r in rules:
         if (r.get("trigger_table") in trigger_tables
                 and any(wakes(r, e) for e in events_in_tx)):
-            tgt = r.get("target_table")
-            if tgt:
-                targets.add(tgt)
+            targets |= chain_bindings.rule_tables(r, chain_bindings.TABLE_ROLE_WRITE)
     return targets
 
 class _NextPage:

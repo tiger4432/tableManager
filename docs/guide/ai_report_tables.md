@@ -129,3 +129,52 @@
 - 체인 일꾼 3 — 운영 설정 `chain_slots: 3` 은 소유자가 바꿈(재기동)
 - 수율 같은 집계는 소유자가 «아이템별 요약 표»로 미리 만들어 둠 — 함수는 계산하지 않고 선언이 가리키는 요약 표 · 칸을 읽음. 모든 표 · 칸 이름은 선언으로
 - 문맥 길이 모름 — 기본 16,000 토큰으로 시작
+
+## 운영에서 적는 것 — 지은 뒤 (A, 10-23)
+
+리포트 설정 = `chain_rules.json` 의 규칙 하나(어드민 Chain 탭 «derive kind: report»). 아래는 이 모양 그대로 진짜 프로세스 게이트에서 돈 선언입니다 — 표 · 칸 이름만 운영 것으로.
+
+```json
+{
+  "name": "eval_summary",
+  "on": {"table": "report_request", "require": [{"setting": ["eval_summary"]}]},
+  "into": {"table": "report"},
+  "derive": {"kind": "report", "report": {
+    "wafer":   {"table": "<웨이퍼 표>", "key": "wafer_id", "time": "measured_at", "lot": "lot_id",
+                "evaluation": "eval_id", "conditions": ["split", "recipe"]},
+    "summary": {"table": "<아이템별 요약 표>", "wafer": "wafer_id", "item": "defect_item",
+                "fail": "fail_chips", "total": "total_chips", "rate": "fail_rate", "rate_scale": 100},
+    "images":  {"table": "<이미지 표>", "wafer": "wafer_id", "item": "defect_item", "image": "image_path",
+                "per_item": 3, "px": 320},
+    "sets":    {"table": "<비교 묶음 표>", "name": "set_name", "member": "member", "kind": "kind",
+                "kinds": {"evaluation": "eval", "lot": "lot"}, "default": ["baseline"]},
+    "rows": ["particle", "scratch"], "digits": 1,
+    "prompts": {"select": "…", "style": "…", "compare": "…", "role": "", "rules": "",
+                "functions": {"yield_by": {"about": ""}}},
+    "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"},
+               {"kind": "image", "fill": "images"}, {"kind": "text", "slot": "conclusion"}],
+    "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000}
+  }}
+}
+```
+
+- `on.require` 의 `{"setting": ["<규칙 이름>"]}` — 요청 행의 setting 이 이 규칙 이름인 것만 이 규칙이 받음(설정이 여럿이면 규칙도 여럿).
+- `summary` — 웨이퍼 × 아이템 한 행. `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 = 0~1, 100 = 0~100, rate 를 적으면 필수). rate 만 적으면 칸은 «x%» — 이때 «조건별 묶은 열»과 파레토는 F · N 을 더해야 하므로 거절. 같은 (웨이퍼, 아이템)이 두 행이면 더하지 않고 표 밑에 이름이 남음.
+- `wafer` 키는 칸 하나 또는 목록(최대 4) — 모든 역할이 같은 순서 · 같은 길이.
+- `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어감.
+- 규칙은 결과 표(report) 옆에 `report_step` · `report_wafer` 도 씀 — 규칙의 `writes` 칸(제품이 채움, 규칙 목록 · 부팅 줄에 보임). 같은 요청을 다시 만들면 두 표의 그 요청 행이 «통째로» 바뀜.
+- 리포트는 한 번에 하나 — 결과 · 걸음 · 웨이퍼 표를 리포트끼리 같이 쓰므로 밀린 요청은 차례로 돔.
+
+원장 — 리포트 → 쓴 웨이퍼 엣지 (ledger_config.json, 짧은 꼴)
+
+```json
+"entities":   {"report@1": {"keys": ["request_id"]}},
+"vocabulary": {"reports_on@1": {"status": "active", "subjects": ["report@1"],
+               "object": {"kind": "entity_ref", "types": ["<웨이퍼 엔티티>"],
+                          "qualifiers": {"required": [], "optional": []}}}},
+"sources":    {"report_wafer": {"table": "report_wafer", "sentences": [{
+                 "sentence": "report-reads-wafer", "predicate": "reports_on@1",
+                 "subject": {"node": "report@1", "keys": {"request_id": "request_id"}},
+                 "target":  {"node": "<웨이퍼 엔티티>", "keys": {"<키 이름>": "key_1"}}}]}}
+```
+- `key_1` · `key_2` … 는 리포트 선언 `wafer.key` 의 순서. 웨이퍼 키가 두 칸이면 target keys 에 둘.

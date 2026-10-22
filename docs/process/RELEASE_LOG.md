@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [AI 리포트 — 요청 행 하나가 체인 규칙 하나를 깨워 HTML 리포트 한 파일을 만든다](#2026-10-23--ai-리포트--요청-행-하나가-체인-규칙-하나를-깨워-html-리포트-한-파일을-만든다) — 적는 곳 chain_rules.json 의 derive.kind report · 보는 곳 report 표 · <데이터 루트>/reports/<요청>.html
 - 2026-10-22 [체인 규칙의 require · exclude 가 값을 받는다 — 특정 값인 행만 막거나 넘기기](#2026-10-22--체인-규칙의-require--exclude-가-값을-받는다--특정-값인-행만-막거나-넘기기) — require · exclude 항목에 {칸: [값, …]}
 - 2026-10-22 [오토컨펌이 한 단위의 키를 전부 본다 — 200 개 넘는 키가 빈 칸으로 남던 것](#2026-10-22--오토컨펌이-한-단위의-키를-전부-본다--200-개-넘는-키가-빈-칸으로-남던-것) — 보는 곳 chain_worker.log «[Enrichment:<규칙>] page i of n» · 적는 곳 ingestion_settings.json 의 enrichment_auto_confirm_max_keys
 - 2026-10-22 [파생표로 가는 조인은 키 칸을 «쓸 때만» 키 계약으로 거절한다](#2026-10-22--파생표로-가는-조인은-키-칸을-쓸-때만-키-계약으로-거절한다) — 적는 곳 chain_rules.json 의 `derive.join.take`
@@ -516,6 +517,33 @@
 
 
 
+
+## 2026-10-23 · AI 리포트 — 요청 행 하나가 체인 규칙 하나를 깨워 HTML 리포트 한 파일을 만든다
+
+**무엇** — `report_request` 에 요청 행을 쓰면, setting 이 그 이름인 리포트 규칙이 깨어나 모델과 최대 8 걸음 · 5 분 동안 표를 읽고(SQL 없음, 숫자는 함수가 냄) 데이터 · 이미지가 다 들어간 HTML 한 파일을 서버에 남긴다. 결과 행(`report`) · 걸음 행(`report_step`) · 쓴 웨이퍼 행(`report_wafer`)이 같이 남는다.
+
+**선언 예시** — `chain_rules.json` 규칙 하나(어드민 Chain 탭 «derive kind: report»). 전체 모양은 [ai_report_tables.md «운영에서 적는 것»](../guide/ai_report_tables.md).
+```json
+{"name": "eval_summary",
+ "on": {"table": "report_request", "require": [{"setting": ["eval_summary"]}]},
+ "into": {"table": "report"},
+ "derive": {"kind": "report", "report": {
+   "wafer":   {"table": "<웨이퍼 표>", "key": "wafer_id", "time": "measured_at", "evaluation": "eval_id", "conditions": ["split"]},
+   "summary": {"table": "<아이템별 요약 표>", "wafer": "wafer_id", "item": "defect_item", "fail": "fail_chips", "total": "total_chips"},
+   "layout":  [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}]}}}
+```
+
+**필요한 조건** — `config/llm_config.json`(게이트웨이) · `ingestion_settings.json` 의 `chain_slots: 3`(리포트가 도는 동안 일꾼 하나를 씀) · 재기동.
+
+**보이는 것**
+- `report` 행: state `done` / `stopped` + reason(«step cap N» · «time cap N s» · «context over budget» · «the language model call was refused: …») · file_path · file_hash · steps(걸음마다 한 줄)
+- 같은 요청 행을 고치면 다시 만들어지고, 그 요청의 걸음 · 웨이퍼 행은 통째로 바뀐다
+- 리포트는 한 번에 하나 — 밀린 요청은 대기열에서 차례로(다른 규칙은 다른 일꾼에서 계속 돎)
+- 부팅 줄 `[ChainRules]` 에 `writes=['report_step', 'report_wafer']`
+
+**바뀐 동작** — 체인 규칙이 `writes` 칸(표 목록)을 가질 수 있다: 그 표들도 규칙이 쓰는 표로 잠금 · 순서 · 고리 검사 · 그림에 들어가고, 그 표로 가는 맵 교체 배치가 받아진다. 리포트 규칙은 제품이 채운다.
+
+**자세히** — [ai_report_tables.md](../guide/ai_report_tables.md) · 요약 표 읽기(fail · total · rate · rate_scale) · 원장 «리포트 → 웨이퍼» 소스 예시.
 
 ## 2026-10-22 · 메인 그리드의 체크 칸 — 행 체크와 전체 선택이 늘 왼쪽 끝에, 첫 칸을 숨겨도
 

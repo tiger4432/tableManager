@@ -302,8 +302,10 @@ def test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean(grid, m
 
     client, _made = grid
     monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: 0.05)
-    slow = main.apply_column_filters
-    monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
+    import grid_read
+
+    slow = grid_read.apply_column_filters
+    monkeypatch.setattr(grid_read, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
         text("(SELECT true FROM pg_sleep(0.5))")))
     answer = client.get("/tables/%s/data?q=K1" % TABLE)
     assert answer.status_code == 503 and answer.json()["detail"]["reason"] == "grid_read_stopped"
@@ -321,12 +323,12 @@ def test_a_read_past_the_limit_is_stopped_said_and_the_next_one_is_clean(grid, m
         plain = client.get("/tables/%s/data/count" % TABLE)
     assert plain.status_code == 200 and plain.json()["total"] == 2000, plain.text
     monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: None)
-    monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
+    monkeypatch.setattr(grid_read, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
         text("(SELECT pg_cancel_backend(pg_backend_pid())) AND (SELECT true FROM pg_sleep(0.5))")))
     cancelled = client.get("/tables/%s/data?defer_total=true" % TABLE)              # a page: the count above is cached
     assert cancelled.status_code == 503 and cancelled.json()["detail"]["message"] == \
         "Read was cancelled by the database", cancelled.text
-    monkeypatch.setattr(main, "apply_column_filters", slow)
+    monkeypatch.setattr(grid_read, "apply_column_filters", slow)
     assert client.get("/tables/%s/data/count?q=K1" % TABLE).json()["total"] == 1111      # K1 · K10-19 · K100-199 · K1000-1999
 
 
@@ -341,14 +343,16 @@ def test_a_narrowed_count_runs_under_the_limit_whatever_narrows_it(grid, monkeyp
 
     client, _made = grid
     monkeypatch.setattr(directory_watcher, "grid_read_timeout", lambda settings=None: 0.05)
-    slow = main.apply_column_filters
-    monkeypatch.setattr(main, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
+    import grid_read
+
+    slow = grid_read.apply_column_filters
+    monkeypatch.setattr(grid_read, "apply_column_filters", lambda query, *a, **k: slow(query, *a, **k).filter(
         text("(SELECT true FROM pg_sleep(0.5))")))
     equal = {"filters": '{"n": {"filterType": "number", "type": "equals", "filter": 5}}'}
     counted = client.get("/tables/%s/data/count" % TABLE, params=equal)
     rows = client.get("/tables/%s/data?defer_total=true" % TABLE, params=equal)
     page = client.get("/tables/%s/data" % TABLE, params=equal)
-    monkeypatch.setattr(main, "apply_column_filters", slow)
+    monkeypatch.setattr(grid_read, "apply_column_filters", slow)
     after = client.get("/tables/%s/data/count" % TABLE, params=equal)
 
     assert counted.status_code == 200, counted.text

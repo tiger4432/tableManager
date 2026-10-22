@@ -83,6 +83,14 @@ _join.fetch = _read_join
 
 
 
+def _report(db, payload, rule=None):
+    """`derive: {kind: "report"}` as an ordinary mapper - `report_loop.answer` over the request rows handed. No read
+    half: what it reads is what the model asks for, step by step."""
+    from chain import report_loop
+
+    return report_loop.answer(db, rule or {}, _row_ids(payload))
+
+
 def _auto_confirm(db, payload, rule=None, fetched=None):
     """`derive: {kind: "decide"}` as an ordinary mapper.
 
@@ -256,6 +264,7 @@ def _install_templates():
     """Bind the templates to the names stored rules already use."""
     from chain import enrichment
     from chain import join_into
+    from chain import report_shape
 
     TEMPLATES[join_into.JOIN_INTO_MAPPER] = _join
     TEMPLATES[enrichment.config.AUTO_CONFIRM_MAPPER] = _auto_confirm
@@ -284,6 +293,9 @@ def _install_templates():
     TEMPLATE_FACTS[enrichment.config.AUTO_CONFIRM_MAPPER] = {
         "label": "decide", "stamps_origin": False,
         "params": None}
+    TEMPLATES[report_shape.REPORT_MAPPER] = _report
+    # its report row and step and wafer rows carry the request row they came from
+    TEMPLATE_FACTS[report_shape.REPORT_MAPPER] = {"label": "report", "stamps_origin": True, "params": None}
     TEMPLATES[enrichment.config.DEDUP_MAPPER] = _enrich
     # ⚠️ `stamps_origin` False is measured (`origin_row_id` × 0 in `enrichment/mapper.py`),
     #    not assumed.

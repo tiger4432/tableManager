@@ -188,6 +188,9 @@ RULE_TABLE_KEYS = {
 #: 위 키들로 «표현 못 하는» 읽기를 담는 일반 슬롯 — 예: `load_map_meta` 가 여는
 #: `wafer_map_metadata`. ⛔ 목적마다 새 키를 만들지 않는다. 새 목적은 여기 «값»으로 적힌다.
 READS_KEY = "reads"
+#: Its twin for writes: the tables a rule writes besides `target_table` - each written by a scoped batch, replaced
+#: map by map (`dt_map_derivation.normalize_scoped_batch`; lead 10-22 widens 2dd93d4a9 for the AI report's tables).
+WRITES_KEY = "writes"
 
 
 #: 실행 «시점»에 정해지되 «집합»은 선언인 표 — `reference_spec` 이 이름 댈 수 있는 전부.
@@ -318,7 +321,7 @@ RULE_ROUTING_OPTIONAL = tuple(
     "mapper", "params",
     "mapper_module", "mapper_function",
     # 위 키로 표현 못 하는 읽기와, 실행 시점에 정해지는 참조 블록
-    READS_KEY, REFERENCE_BLOCK,
+    READS_KEY, WRITES_KEY, REFERENCE_BLOCK,
 )
 
 
@@ -492,6 +495,19 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
                     "'%s' is not a column of trigger table '%s' - a name that matches "
                     "nothing would put the whole table in one group"
                     % (missing, candidate.get("trigger_table"))))
+
+    # A table a rule also writes is a declared one - a name the catalogue does not know has no rows to write.
+    if WRITES_KEY in candidate:
+        written = candidate.get(WRITES_KEY)
+        if not isinstance(written, list) or len(written_tables(candidate)) != len(written):
+            issues.append(validation.DeclarationValidationError(
+                "bad_writes", path + "." + WRITES_KEY,
+                "writes is a list of table names, got %r" % (written,)))
+        for name in written_tables(candidate):
+            if declared_columns(name) is None:
+                issues.append(validation.DeclarationValidationError(
+                    "unknown_writes_table", path + "." + WRITES_KEY,
+                    "'%s' is not a declared table - name one of table_config" % name))
 
     # 총괄 49052cbdd: `require` names trigger-table columns a row must have filled - and `exclude`
     # (016a766af) columns it must have empty. A name the table does not have is never filled, so
@@ -755,7 +771,8 @@ _LIST_CELLS = {"trigger_columns": ("column", column_ref(TRIGGER_TABLE_AT)),
                GROUP_BY_KEY: ("column", column_ref(TRIGGER_TABLE_AT)),
                EXCLUDE_KEY: ("column", gate_item_node(TRIGGER_TABLE_AT)),
                **{key: ("column", {"kind": "leaf", "hint": "free"}) for key in SOURCE_GATE_KEYS.values()},
-               READS_KEY: ("table", table_ref())}
+               READS_KEY: ("table", table_ref()),
+               WRITES_KEY: ("table", table_ref())}
 
 
 def skeleton():
@@ -909,9 +926,11 @@ def _unified_root():
     dangling name would not have been. This choice is reported, not assumed - if the ruling
     goes the other way it is one cell to add.
     """
-    from chain import join_into, rule_shape
+    from chain import join_into, report_shape, rule_shape
 
     derive_branches = {
+        # the AI report's settings (owner 10-22): tables and columns picked by name, as a join's
+        "report": report_shape.skeleton_node(),
         # A list or a flag drawn as a value is a BLANK BOX (09-22 owner report). The shape of
         # each cell that is not one value lives beside the list the reader consults.
         "join": _record(*[_field(cell, join_into.JOIN_CELL_SHAPES.get(cell) or _leaf(cell))
@@ -990,6 +1009,13 @@ def reference_tables(rule):
     return {name.strip()} if isinstance(name, str) and name.strip() else set()
 
 
+def written_tables(rule):
+    """The tables a rule's `writes` cell names, in its order."""
+    declared = (rule or {}).get(WRITES_KEY)
+    return [name.strip() for name in declared if isinstance(name, str) and name.strip()] if isinstance(
+        declared, (list, tuple)) else []
+
+
 def rule_tables(rule, role):
     """이 규칙이 그 역할로 «이름 댄» 표들 — 저자는 위 열거 «하나»다.
 
@@ -1004,6 +1030,8 @@ def rule_tables(rule, role):
         name = rule.get(key)
         if isinstance(name, str) and name.strip():
             out.add(name.strip())
+    if role == TABLE_ROLE_WRITE:
+        out |= set(written_tables(rule))
     if role == TABLE_ROLE_READ:
         # 판정 65: 실행 시점에 «고르는» 표도 «집합»은 선언이라 합집합으로 든다.
         # 과잉 미룸은 안전한 방향이고, 안 들면 그 읽기가 순서에 다시 안 보인다.
