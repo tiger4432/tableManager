@@ -96,7 +96,7 @@ EMBEDDED = {"particle": [{"wafer": "W1", "src": "data:image/png;base64,AAAA"}]}
 
 
 def _page(template=EXCEL):
-    return report_html.build("E1 report", "R-1 · eval_summary", dict(SPEC, template=template),
+    return report_html.page("E1 report", "R-1 · eval_summary", dict(SPEC, template=template),
                              {"yield_by": TABLE, "trend": TABLE}, EMBEDDED, {"summary": "Particle rose on W2."})
 
 

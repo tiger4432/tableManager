@@ -17,7 +17,8 @@ module through the ONE seat (`rule_run.resolve`):
     decide 파생행    derive: {kind: "decide"}, the dedup half    -> declared:enrich
     decide 오토컨펌  the same declaration's other half           -> declared:decide
     mapper          mapper_module / mapper_function             -> the operator's module
-    virtual_join    virtual_join_rules.json, materialize: true  -> declared:virtual_join
+    report          derive: {kind: "report"}                   -> declared:report (owner 10-22)
+(virtual_join retired with its file - 판정 652.)
 """
 import json
 import os
@@ -220,6 +221,103 @@ def test_a_file_mapper_declaration_writes_what_it_returned(db, tmp_path, monkeyp
 #    `test_a_join_declaration_writes_the_taken_column` 이 그것을 잽니다.
 
 
+REPORT_TABLES = {
+    "kinds_wafer": {"business_key": "wafer", "composite_key_source": ["wafer"],
+                    "column_types": {"wafer": "string", "ev": "string", "at": "string"}},
+    "kinds_sum": {"composite_key_source": ["wafer", "item"],
+                  "column_types": {"wafer": "string", "item": "string", "fail": "number", "total": "number"}},
+}
+
+
+@pytest.fixture(name="reported")
+def fixture_reported(db, tmp_path, monkeypatch):
+    """The report kind's tables - its own two and the product's four - a request row written, the file kept in
+    `tmp_path`. Yields the declaration's rules."""
+    import paths
+    import product_tables
+    from conftest import retire_dynamic_model
+
+    tables = dict(REPORT_TABLES, **{name: product_tables.PRODUCT_TABLES[name] for name in (
+        product_tables.REPORT_REQUEST_TABLE, product_tables.REPORT_TABLE, product_tables.REPORT_STEP_TABLE,
+        product_tables.REPORT_WAFER_TABLE)})
+    # SQLite refuses a text bind for a DateTime column through the write door (made_at); PG takes it - the gates
+    # measured made_at there. Here the column is text so the kind can run in memory.
+    tables[product_tables.REPORT_TABLE] = dict(tables[product_tables.REPORT_TABLE], column_types=dict(
+        tables[product_tables.REPORT_TABLE]["column_types"], made_at="string"))
+    models.init_dynamic_models(tables)
+    crud.TABLE_CONFIG.update(tables)
+    for name in tables:
+        models.DYNAMIC_TABLES[name].__table__.create(bind=db.get_bind())
+    monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
+    for table, rows in (("kinds_wafer", [{"wafer": "W1", "ev": "E1", "at": "1"}, {"wafer": "W2", "ev": "E1", "at": "2"}]),
+                        ("kinds_sum", [{"wafer": "W1", "item": "particle", "fail": 1, "total": 100},
+                                       {"wafer": "W2", "item": "particle", "fail": 3, "total": 100}]),
+                        ("report_request", [{"request_id": "R1", "eval_id": "E1"}])):
+        crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in rows]))
+    db.commit()
+    rules = rule_shape.expand_declaration(
+        {"name": "kinds_report", "on": {"table": "report_request"}, "into": {"table": "report"},
+         "derive": {"kind": "report", "report": {
+             "wafer": {"table": "kinds_wafer", "key": "wafer", "time": "at", "evaluation": "ev"},
+             "summary": {"table": "kinds_sum", "wafer": "wafer", "item": "item", "fail": "fail", "total": "total"},
+             "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
+             "loop": {"steps": 3, "seconds": 60, "context_tokens": 16000}}}},
+        crud.TABLE_CONFIG)[0]
+    try:
+        yield rules
+    finally:
+        db.rollback()
+        for name in tables:
+            models.DYNAMIC_TABLES[name].__table__.drop(bind=db.get_bind())
+            crud.TABLE_CONFIG.pop(name, None)
+            retire_dynamic_model(name)
+
+
+def _report_rows(db):
+    model = models.DYNAMIC_TABLES
+    return ([(r.request_id, r.state, r.reason, r.file_path) for r in db.query(model["report"]).all()],
+            db.query(model["report_step"]).count(), sorted(r.key_1 for r in db.query(model["report_wafer"]).all()))
+
+
+def test_a_report_declaration_writes_its_report_steps_and_wafers(db, reported, monkeypatch):
+    """The model stands in (no gateway in a test): it reads the summary table, says done, writes - the rows the
+    report kind leaves are its report row done with the file, a step row each, the wafers it read."""
+    from utils import llm
+
+    def model(prompt, usage=None):
+        if "Tables read:" in prompt:
+            return {"done": {"summary": "W2 is worse."}}
+        return {"call": "yield_by", "args": {}} if "This is step 1 of" in prompt else {"done": {}}
+
+    monkeypatch.setattr(llm, "ask_json", model)
+    [rule] = reported
+
+    assert rule["mapper"] == "declared:report"
+    assert _door(rule) == "chain.dynamic_mappers._report"
+
+    _run(db, "report", reported, "report_request")
+
+    [(request, state, reason, path)], steps, wafers = _report_rows(db)
+    assert (request, state, reason) == ("R1", "done", None)
+    assert "W2 is worse." in open(path, encoding="utf-8").read()
+    assert steps == 3 and wafers == ["W1", "W2"], "yield_by · done · write; the two wafers it read"
+
+
+def test_a_report_without_a_model_leaves_its_row_stopped_with_why(db, reported, monkeypatch):
+    from utils import llm
+
+    def refused(prompt, usage=None):
+        raise llm.LlmRefused("no gateway in this test")
+
+    monkeypatch.setattr(llm, "ask_json", refused)
+    _run(db, "report-refused", reported, "report_request")
+
+    [(request, state, reason, _path)], steps, wafers = _report_rows(db)
+    assert (request, state, reason) == ("R1", "stopped", "the language model call was refused: no gateway in this test")
+    assert steps == 0 and wafers == []
+
+
 def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
     """⚠️ THE CONTROL ON THIS FILE ITSELF. The names above are built by
     `dynamic_mappers`; if a fifth template appears, the tests above still pass and this file
@@ -228,4 +326,4 @@ def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
     mapper_sdk.discover()
 
     assert sorted(dynamic_mappers.TEMPLATES) == [
-        "declared:decide", "declared:enrich", "declared:join"]
+        "declared:decide", "declared:enrich", "declared:join", "declared:report"]

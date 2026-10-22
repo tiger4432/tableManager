@@ -18,7 +18,7 @@ LAYOUT = [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_
 
 
 def _page():
-    return report_html.build("E1 report", "R-1 · eval_summary", {"layout": LAYOUT}, {"yield_by": TABLE}, EMBEDDED,
+    return report_html.page("E1 report", "R-1 · eval_summary", {"layout": LAYOUT}, {"yield_by": TABLE}, EMBEDDED,
                              {"summary": "Particle rose on W2.", "conclusion": ""})
 
 

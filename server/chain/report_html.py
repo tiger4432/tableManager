@@ -227,7 +227,7 @@ def _text(slot, texts, spec):
         report_shape.word(spec, "nothing_written") % slot)
 
 
-def build(title, meta, spec, tables, embedded, texts) -> str:
+def page(title, meta, spec, tables, embedded, texts) -> str:
     """The file: `spec.layout`'s slots in order - or, with a company `spec.template`, the template with each mark
     cell filled (`report_template`), the summary table dressed by its sample block. `tables`: read name -> its last
     whole table; `embedded`: item -> pictures; `texts`: slot name -> what the model wrote. A slot with nothing to

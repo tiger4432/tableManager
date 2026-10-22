@@ -202,7 +202,7 @@ def test_the_sample_rows_lend_their_formats_and_become_one_cell(report):
 
     spec = dict(SPEC, template=TEMPLATE)
     assert report_template.refusal(spec) is None
-    page = report_html.build("E1 리포트", "R-1", spec, {"yield_by": report.yield_by()["html"]}, {}, {"summary": "요약"})
+    page = report_html.page("E1 리포트", "R-1", spec, {"yield_by": report.yield_by()["html"]}, {}, {"summary": "요약"})
     assert "{{" not in page and "xl72 colspan=2>" not in page, "the sample rows are gone"
     assert '<tr height=20><td colspan="6"><div class="scroll"' in page, "one cell spanning the sample's first row"
     assert '<th class="rpt-group xl70" colspan="3"></th><th class="rpt-group xl71" colspan="4">E1</th>' in page, \
@@ -229,9 +229,9 @@ def test_a_sample_mark_outside_the_sample_rows_is_refused(where):
 def test_every_fixed_word_of_the_file_passes_the_labels(report):
     from chain import report_html, report_shape
 
-    page = report_html.build("E1 리포트", "R-1", SPEC, {"yield_by": report.yield_by()["html"],
+    page = report_html.page("E1 리포트", "R-1", SPEC, {"yield_by": report.yield_by()["html"],
                                                        "pareto": {"rows": [("기타", "1", "100.0%")]}}, {}, {})
-    page += report_html.build("E1", "R-1", dict(SPEC, layout=[{"kind": "image"}, {"kind": "table", "fill": "trend"}]),
+    page += report_html.page("E1", "R-1", dict(SPEC, layout=[{"kind": "image"}, {"kind": "table", "fill": "trend"}]),
                               {}, {}, {})
     for name, english in report_shape.LABELS.items():
         stem = english.split("%")[0].strip()
