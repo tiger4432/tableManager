@@ -25,7 +25,7 @@
 
 import { ABSENT, countText, isBlank } from './absent.js';
 import { CHOOSE } from './ui_words.js';
-import { renderSkeletonForm, adderInput, lineRow } from './ontology_explorer_view.js';
+import { renderSkeletonForm, adderInput, htmlPaste, lineRow } from './ontology_explorer_view.js';
 import { emptyOf, leafValue, missingRequired, pickBranch, refNames, shapeAt } from './ontology_skeleton.js';
 // The grid's own reader of pasted sheet text (lead f382dacfb: no second parser).
 import { parseTsv, serializeTsv } from './tsv.js';
@@ -216,8 +216,8 @@ function formContext(skeleton, lists, spec, held, expanded, hot = [], listPrefix
     // 🔴 C-101 ②. 참조 칸의 제안 목록. 스켈레톤이 «칸마다» 다른 절을 댈 수 있으므로 그 이름이
     //    먼저이고, 안 대면 등록부가 댄 이름입니다 — 위 `deref` 와 «같은 규율»입니다.
     // Form D: a column cell offers its table's columns (`table_columns`, the schema's tables) - `refNames`, the explorer's.
-    refOf: (node) => refNames(lists, (lists || {}).table_columns,
-      node && !node.section && !node.table_from ? { ...node, section: refList } : node, held),
+    refOf: (node, at) => refNames(lists, (lists || {}).table_columns,
+      node && !node.section && !node.table_from ? { ...node, section: refList } : node, held, at),
     // 🔴 C-101 ③. 「이 고르개가 지금 무엇을 골랐나」가 «이 칸 하나»로 안 답해질 수 있습니다 —
     //    한 사실을 두 칸으로 적는 문법이 있고, 그때 이 칸은 비어 있는데 규칙은 그것을 «듭니다».
     //    번역은 등록부의 것이고(`join`), 이 자리는 그 함수를 부를 뿐입니다.
@@ -980,7 +980,7 @@ export class RawRegistryPanel {
           if (typed) typed.value = '';
         };
         box.addEventListener('click', act);
-        box.addEventListener('paste', adderInput);
+        box.addEventListener('paste', (event) => adderInput(event) || htmlPaste(event));
       }
       formBox = box;
       this._redraw = draw;

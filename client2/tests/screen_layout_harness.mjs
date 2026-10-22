@@ -223,6 +223,21 @@ const withPhotos = (a) => {
 const GALLERY = { on: false };
 // The declaration read refused the way the server refuses it (lead 06d7ca89e): 503, its sentence in detail.message.
 const DECL_REFUSED = { on: false };
+// An html cell (lead 10-22 «Paste HTML»): while its states run, the captured dt_log_to_dt_map rule carries a field the
+// skeleton marks `hint: html`, holding about 2 KB of a table.
+const PASTE_HTML = { on: false };
+const HTML_HELD = '<table>' + '<tr><td>x</td></tr>'.repeat(110) + '</table>';
+const pasteHtmlAnswer = (u) => {
+  const at = '/admin/chain/rules/raw?name=dt_log_to_dt_map';
+  if (u.pathname + u.search !== at) return null;
+  const a = ANSWERS[at];
+  const b = bodyOf(a);
+  const field = { key: 'html_probe', required: false, node: { kind: 'leaf', hint: 'html' } };
+  const withField = (root) => (root && root.kind === 'record' ? { ...root, fields: [...root.fields, field] } : root);
+  const declaration = { ...b.declaration, html_probe: HTML_HELD };
+  return { ...a, body: { ...b, declaration, raw: JSON.stringify(declaration, null, 2),
+    skeleton: { ...b.skeleton, root: withField(b.skeleton.root), unified_root: withField(b.skeleton.unified_root) } } };
+};
 // The main grid pivoted (owner 10-22): while its states run, dt_log declares a pivot (item column b_wy, value dt_index)
 // and a pivot read answers 40 key groups of eight items - two long names, three more held back, some cells blank.
 const PIVOT = { on: false };
@@ -308,6 +323,7 @@ const fileSourcesAnswer = () => {
 const answerOf = (u) => {
   if (FILE_SOURCES.on && u.pathname === '/admin/file-ingestion/tables') return fileSourcesAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
+  if (PASTE_HTML.on) { const v = pasteHtmlAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
@@ -884,6 +900,30 @@ CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 
 CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'pivot only where declared', at: 'pivot', expr: `(() => {
   const b = document.getElementById('pivot-toggle-btn');
   return b && b.hidden ? null : 'Pivot is drawn on a table that declares none';
+})()` });
+// An html cell (lead 10-22): its size, not its text; a paste with no HTML leaves it and says so; one with HTML writes it.
+const HTML_CELL = `document.querySelector('.oe-html-cell')`;
+CELLS.push({ entry: 'admin.html', after: 'Chain, an html cell', rule: 'html cell', at: 'html', expr: `(() => {
+  const cell = ${HTML_CELL}; if (!cell) return 'no html cell';
+  const size = (cell.querySelector('.oe-value') || {}).textContent || '';
+  if (size !== '2.1 KB HTML') return 'the cell says «' + size + '»';
+  if ([...document.querySelectorAll('.oe-value')].some((n) => n.textContent.includes('<table'))) return 'the HTML is drawn as text';
+  const b = cell.querySelector('button[data-action="paste-html"]');
+  return b && b.textContent.trim() === 'Paste HTML' ? null : 'no «Paste HTML»';
+})()` });
+CELLS.push({ entry: 'admin.html', after: 'Chain, a paste with no HTML', rule: 'html refused', at: 'html', expr: `(() => {
+  const cell = ${HTML_CELL}; if (!cell) return 'no html cell';
+  const note = (cell.querySelector('.oe-html-cell__note') || {}).textContent || '';
+  if (note !== 'The clipboard holds no HTML - copy the cells from Excel') return 'the note says «' + note + '»';
+  const size = (cell.querySelector('.oe-value') || {}).textContent || '';
+  return size === '2.1 KB HTML' ? null : 'the cell changed to «' + size + '»';
+})()` });
+CELLS.push({ entry: 'admin.html', after: 'Chain, HTML pasted', rule: 'html written', at: 'html', expr: `(() => {
+  const cell = ${HTML_CELL}; if (!cell) return 'no html cell';
+  const size = (cell.querySelector('.oe-value') || {}).textContent || '';
+  if (size !== '0.1 KB HTML') return 'the cell says «' + size + '»';
+  const raw = [...document.querySelectorAll('textarea')].map((a) => a.value).join('');
+  return raw.includes('<td>pasted</td>') ? null : 'the declaration text does not hold the pasted HTML';
 })()` });
 // A refused declaration read: the header's label says the server's sentence, not «server refused (503)» (lead 06d7ca89e).
 CELLS.push({ entry: 'index.html', after: 'declaration refused, page opened again', rule: 'server sentence said', at: 'grid-source-label', expr: `(() => {
@@ -2489,6 +2529,29 @@ const DRIVE = {
       await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .chain-queue-resume');
         at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
+    // An html cell (lead 10-22): its size and «Paste HTML»; a paste with plain text only, then one with HTML.
+    ['Chain, an html cell', async (c) => {
+      PASTE_HTML.on = true;
+      await evaluate(c, "location.hash = '#chain'; true");
+      await until(c, "!!document.querySelector('select.chain-rule-picker')");
+      await choose(c, 'select.chain-rule-picker', [0, "x.value === 'take_record_probe'"]);
+      await until(c, "!!document.querySelector('[data-path=\"derive.join.take\"]')");
+      await choose(c, 'select.chain-rule-picker', [0, "x.value === 'dt_log_to_dt_map'"]);
+      await until(c, "!!document.querySelector('button[data-action=\"paste-html\"]')");
+      PASTE_HTML.on = false;
+      await evaluate(c, `(() => { const at = document.querySelector('button[data-action="paste-html"]');
+        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    ['Chain, a paste with no HTML', (c) => evaluate(c, `(() => {
+      const btn = document.querySelector('button[data-action="paste-html"]'); if (!btn) return false;
+      const dt = new DataTransfer(); dt.setData('text/plain', 'a\tb');
+      btn.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      return true; })()`).then(() => sleep(400))],
+    ['Chain, HTML pasted', (c) => evaluate(c, `(() => {
+      const btn = document.querySelector('button[data-action="paste-html"]'); if (!btn) return false;
+      const dt = new DataTransfer(); dt.setData('text/html', '<table><tr><td>pasted</td></tr></table>'); dt.setData('text/plain', 'pasted');
+      btn.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      return true; })()`).then(() => sleep(800))],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
@@ -2613,6 +2676,9 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 const MUTANTS = [
   { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',
     file: 'src/file_ingestion/parts.js', edits: [["el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')"]] },
+  // «Paste HTML» (lead 10-22).
+  { name: 'a paste on «Paste HTML» is not taken', entry: 'admin.html', rule: 'html written', at: 'html',
+    file: 'src/ontology_explorer_view.js', edits: [["  if (!el || !el.dataset || el.dataset.action !== 'paste-html') return false;", '  return false;']] },
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },

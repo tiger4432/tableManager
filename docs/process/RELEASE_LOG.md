@@ -416,6 +416,7 @@
 - 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
 - 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
 - 2026-10-23 [끊긴 체인 소급을 화면에서 이어 한다 — 대기열 줄의 Resume, 미리 세기의 «Resumes from page N»](#2026-10-23--끊긴-체인-소급을-화면에서-이어-한다--대기열-줄의-resume-미리-세기의-resumes-from-page-n) — 누르는 곳 어드민 Chain 대기열의 끊긴 줄 «Resume» · Retroactive 탭 chain_replay 의 Count
+- 2026-10-23 [선언 폼 — HTML 칸에 «Paste HTML», 목록 줄의 열 칸은 그 줄의 표에서 고른다](#2026-10-23--선언-폼--html-칸에-paste-html-목록-줄의-열-칸은-그-줄의-표에서-고른다) — 누르는 곳 어드민 Chain 탭 · 온톨로지 탐색기의 선언 폼
 - 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
 - 2026-10-21 [Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도](#2026-10-21--read-all-again--표--폴더의-파일을-통째로-다시-읽힌다-상한은-거절이-아니라-속도) — 누르는 곳 파일 화면 폴더 줄 · Files 머리의 «Read all again»
 - 2026-10-21 [Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께](#2026-10-21--read-now--경로-하나를-와처가-본-것처럼-지금-읽힌다-왜-안-집었는지와-함께) — 누르는 곳 파일 화면 «Read a file now» · 명령 `replay_ingestion.py --now`
@@ -1175,6 +1176,14 @@ python server/scripts/chain_replay_cli.py delete-every-row official_dt --how ful
 - **은퇴** — `server/scripts/empty_table.py`. RUN.md 의 그 명령 줄 · BACKFILL_GUIDE §0 의 표 줄은 새 명령으로 바뀌었습니다.
 - **자세히** — 시험 `test_a_table_is_emptied_whole_with_what_it_carried.py`
 
+## 2026-10-23 · 선언 폼 — HTML 칸에 «Paste HTML», 목록 줄의 열 칸은 그 줄의 표에서 고른다
+
+- **무엇** — 총괄 10-22. 스켈레톤이 hint "html" 로 낸 칸(체인 report 의 template)은 폼에 크기(«N KB HTML»)와 «Paste HTML» 버튼으로 그려집니다. 버튼을 누르고 Ctrl+V 를 치면 클립보드의 HTML(엑셀에서 복사한 칸)이 그 칸에 들어갑니다. 원문은 왼쪽 JSON 에서 봅니다.
+- **목록 줄의 열 칸** — table_from 경로의 `*` 는 그 칸 자신의 줄 번호입니다. 그래서 report 의 picture_rows 줄마다 wafer · image 가 그 줄의 table 칸의 열에서 고르는 목록이 됩니다.
+- **선언** — 바뀐 것 없음. 칸의 성질은 서버 스켈레톤이 정합니다(hint "html", "derive.report.picture_rows.*.table").
+- **거절** — 클립보드에 HTML 이 없으면(글만 있으면) 칸을 그대로 두고 «The clipboard holds no HTML - copy the cells from Excel».
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 서버 몫은 이미 들어가 있어야 합니다.
+- **자세히** — 시험 declaration_form H1~H4 · S3, 화면 검사기 칸 «html cell» · «html refused» · «html written».
 ## 2026-10-23 · 외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것
 
 - **무엇** — 소유자 10-23 「폴더 전송 중에 읽어버린다」. voids.json 이 먼저 도착하면 와처가 1 초 뒤 바로 읽어, 아직 복사 중인 이미지가 목록에서 빠졌습니다. 그 뒤 스윕도 같은 파일이라 다시 읽지 않아 반쪽이 남았습니다.

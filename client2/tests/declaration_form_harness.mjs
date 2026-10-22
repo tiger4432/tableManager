@@ -100,7 +100,40 @@ function viewContext(M, over = {}) {
   };
 }
 
+function htmlSuite(M) {
+  // lead 10-22: a `hint: html` cell shows its size and «Paste HTML»; a paste puts the clipboard's text/html through the
+  // cell's own edit-shape box, or says the clipboard holds none and leaves the cell
+  const TPL = { kind: 'record', fields: [{ key: 'tpl', node: { kind: 'leaf', hint: 'html' } }] };
+  const drawn = (value, over) => M.view.renderSkeletonForm(viewContext(M, over), TPL, '', value, 0, 't');
+  const full = drawn({ tpl: '<table>' + 'x'.repeat(2033) + '</table>' });
+  const sizeOf = (form) => String((walk(form).find((n) => has(n, 'oe-value')) || {}).textContent);
+  const pasteOf = (form) => walk(form).find((n) => attr(n, 'data-action') === 'paste-html' || (n.dataset && n.dataset.action === 'paste-html'));
+  ok(sizeOf(full) === '2.0 KB HTML' && sizeOf(drawn({ tpl: '<b>x</b>' })) === '0.1 KB HTML' && sizeOf(drawn({})) === 'No HTML'
+     && Boolean(pasteOf(full))
+     && !pasteOf(drawn({ tpl: '<b>x</b>' }, { readOnly: true })),
+    `H1 an html cell is its size or «No HTML», with «Paste HTML» to write it (none to read) [${sizeOf(full)} | ${sizeOf(drawn({}))}]`);
+  const pasteWith = (types) => {
+    const form = drawn({ tpl: '<i>old</i>' });
+    const btn = pasteOf(form);
+    const box = walk(form).find((n) => has(n, 'oe-html-cell__value'));
+    const fired = [];
+    box.dispatchEvent = (e) => fired.push(e.type);
+    const took = M.view.htmlPaste({ target: btn, preventDefault() {}, clipboardData: { getData: (t) => types[t] || '' } });
+    const note = String((walk(form).find((n) => has(n, 'oe-html-cell__note')) || {}).textContent || '');
+    return { took, value: box.value, fired, note };
+  };
+  const html = pasteWith({ 'text/html': '<table><tr><td>1</td></tr></table>', 'text/plain': '1' });
+  const plain = pasteWith({ 'text/plain': '1' });
+  ok(html.took && html.value === '<table><tr><td>1</td></tr></table>' && same(html.fired, ['input', 'change']) && html.note === '',
+    `H2 a paste with HTML writes the HTML through the cell's box (input, change) [${JSON.stringify(html)}]`);
+  ok(plain.took && plain.value === '<i>old</i>' && plain.fired.length === 0 && plain.note === M.view.HTML_NONE_NOTE,
+    `H3 a paste with no HTML leaves the cell and says so [${JSON.stringify(plain)}]`);
+  ok(M.view.htmlPaste({ target: makeNode(doc, 'input'), clipboardData: { getData: () => '<b/>' } }) === false,
+    'H4 a paste anywhere else is not taken');
+}
+
 function viewSuite(M) {
+  htmlSuite(M);
   const form = M.view.renderSkeletonForm(viewContext(M), FIX.root, '', DOC, 0, 'alpha');
   const words = boxAt(form, 'words');
   ok(same(chipsIn(words), ['n1']) && walk(words || makeNode(doc, 'div')).some((n) => has(n, 'oe-form-adder')),
@@ -236,6 +269,13 @@ function skelSuite(M) {
   const names = M.skel.refNames(LISTS, LISTS.table_columns, { kind: 'leaf', hint: 'ref', section: 'names' }, DOC);
   ok(col.table === 'T' && same(col.names, ['c1', 'c2']) && same(names, { table: '', names: ['n1', 'n2'] }),
     `S2 refNames: the first table_from holding a value names the table; else the section [${JSON.stringify([col, names])}]`);
+  // lead 10-22: «*» is the cell's own step - each row's column cell offers its own row's table
+  const TABS = { T: { columns: { c1: 'string' } }, U: { columns: { u1: 'string', u2: 'string' } } };
+  const own = { kind: 'leaf', hint: 'ref', table_from: ['pics.*.table'] };
+  const PICS = { pics: [{ table: 'T', cols: ['c1'] }, { table: 'U', cols: ['u1'] }] };
+  const rowsOwn = ['pics[0].cols[0]', 'pics[1].cols[0]', 'pics[2].cols[0]'].map((at) => M.skel.refNames({}, TABS, own, PICS, at));
+  ok(same(rowsOwn.map((r) => [r.table, r.names]), [['T', ['c1']], ['U', ['u1', 'u2']], ['', []]]),
+    `S3 a «*» in table_from is the cell's own row: row 0 offers T's columns, row 1 U's, a row not there none [${JSON.stringify(rowsOwn)}]`);
 }
 
 // ── P: the panel, as the table and chain windows seat it ─────────────────────────────────────────────────────────
@@ -545,13 +585,18 @@ const DEFECTS = [
     (s) => s.replace("      const gone = line && ` ${line.className || ''} `.includes(' is-refusal ') ? line : tag;", '      const gone = tag;')],
   ['panel', 'a refused cell stays folded shut',
     (s) => s.replace('[refusedAt(view, spec), ...missingRequired(root, value, this._defs)].filter(Boolean)', '[]')],
-  ['panel', 'a paste at an adder is a plain paste', (s) => s.replace("        box.addEventListener('paste', adderInput);\n", '')],
+  ['panel', 'a paste at an adder is a plain paste', (s) => s.replace("        box.addEventListener('paste', (event) => adderInput(event) || htmlPaste(event));\n", '')],
   ['view', 'a name map\'s Enter does nothing', (s) => s.replace("    input.dataset.for = path;\n    input.dataset.enter = 'form-name';\n", '    input.dataset.for = path;\n')],
   ['view', 'a paste at a name map splits into names', (s) => s.replace("    if (!chips) return false;\n", '')],
+  ['view', 'a paste with no HTML writes the plain text over the cell',
+    (s) => s.replace("String(event.clipboardData.getData('text/html') || '')", "String(event.clipboardData.getData('text/html') || event.clipboardData.getData('text/plain') || '')")],
+  ['view', 'an html cell is drawn as its text again', (s) => s.replace("  if (node.hint === 'html' && ", '  if (false && ')],
   ['panel', 'the adder keeps what it took', (s) => s.replace("          if (typed) typed.value = '';\n", '')],
   ['panel', 'the panel never switches a gate', (s) => s.replace('          updated = switched.document;\n', '')],
   ['panel', 'the head says Unsaved only on the next draw', (s) => s.replace('    this.draftOf = String(key || \'\');\n    this._sayUnsaved();\n', '    this.draftOf = String(key || \'\');\n')],
-  ['skel', 'a number leaf writes its text again', (s) => s.replace('    return Number.isFinite(n) ? n : undefined;', '    return text;')],
+  ['skel', 'a «*» in table_from is read as a key, so no row offers its table',
+    (s) => s.replace("map((k, i) => (k === '*' ? own[i] : k))", 'map((k) => k)')],
+  ['skel', 'a number leaf writes its text again',(s) => s.replace('    return Number.isFinite(n) ? n : undefined;', '    return text;')],
   ['panel', 'the panel writes what the box holds again',
     (s) => s.replace("action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);", "action === 'edit-shape-flag' ? Boolean(el.checked) : el.value) && (action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);")],
   ['panel', 'a + row is born without the lists', (s) => s.replace("named ? named.value : '', this.lists, el.dataset.branch || '');", "named ? named.value : '');")],

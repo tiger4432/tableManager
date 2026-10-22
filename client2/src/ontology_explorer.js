@@ -8,7 +8,7 @@ import {
   // 791c0f45e: whether the draft moved a leaf the plan marks as shaping the form.
   draftReshapesPlan,
 } from './ontology_explorer_store.js';
-import { renderOntologyExplorer, nodeTrail, placePopover, declarationView, adderInput } from './ontology_explorer_view.js';
+import { renderOntologyExplorer, nodeTrail, placePopover, declarationView, adderInput, htmlPaste } from './ontology_explorer_view.js';
 import { editDeclaration, refusalIssues, BAR_WORDS } from './ledger_declaration_bar.js';
 import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
@@ -1561,7 +1561,7 @@ No effect`;
     void reshapeIfMoved();
   });
   root.addEventListener('click', () => { void reshapeIfMoved(); });
-  root.addEventListener('paste', adderInput);
+  root.addEventListener('paste', (event) => adderInput(event) || htmlPaste(event));
 
   root.addEventListener('input', (event) => {
     typing = TYPED_BOXES.has(event.target.dataset.action);
