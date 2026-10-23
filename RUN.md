@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **decide 를 적은 이름으로 리플레이한다 — R1 의 «not found» 거절** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 의 rule 에 decide 선언에 적은 이름 그대로(enrichment_dedup: 없이)
+> 뜻      실행이 잡히고 파생 표에 행이 생김 -> 이 착지(그 선언의 dedup 반쪽이 돎)
+>          «chain rule '<이름>' not found or disabled; available: …» 에 적은 이름이 보임 -> 서버가 옛 코드(재기동 전)
+>          auto_confirm 까지 다시 하려면 R1 을 한 번 더: enrichment_auto_confirm:<이름> (리플레이는 다른 규칙을 안 깨움)
+> 끄기    없음. enrichment_dedup:<이름> 으로 적던 것도 그대로 됨
+> 재기동 뒤  chain_worker.log 에 enrichment_dedup:<이름> 의 처리 줄
+> ```
+>
 > ## [10-24] **표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다** — git pull · 런처 재기동
 >
 > ```

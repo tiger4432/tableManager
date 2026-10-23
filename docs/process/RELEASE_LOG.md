@@ -283,6 +283,7 @@
 
 ### 소급
 
+- 2026-10-24 [decide 를 적은 이름으로 리플레이한다 — R1 이 «not found» 로 거절하던 것](#2026-10-24--decide-를-적은-이름으로-리플레이한다--r1-이-not-found-로-거절하던-것) — 적는 곳 소급 탭 R1 의 rule · 보는 곳 chain_worker.log
 - 2026-10-23 [리플레이가 뒤로 갈수록 느려지지 않는다 — 체인 대기열이 줄을 사건 내용 대신 칸 셋으로 읽는다](#2026-10-23--리플레이가-뒤로-갈수록-느려지지-않는다--체인-대기열이-줄을-사건-내용-대신-칸-셋으로-읽는다) — 체인 대기열이 줄을 칸 셋으로 읽음
 - 2026-10-23 [어드민 도움말(서버) — 하려는 일을 적으면 도구 하나 · 채운 칸 · 몇 행이 바뀌나, 실행은 운영자가](#2026-10-23--어드민-도움말서버--하려는-일을-적으면-도구-하나--채운-칸--몇-행이-바뀌나-실행은-운영자가) — 명령 `python server/scripts/help_bench.py` · 보는 곳 `POST /admin/help/ask` (화면은 클라 라운드)
 - 2026-10-23 [중복 접기는 «Fold duplicate rows» 하나로 — 층 많은 행 남기기 · 값이 다른 키 건너뛰기 · 미리보기가 다른 칸과 값을 보임 (dedupe_business_key_rows.py 은퇴)](#2026-10-23--중복-접기는-fold-duplicate-rows-하나로--층-많은-행-남기기--값이-다른-키-건너뛰기--미리보기가-다른-칸과-값을-보임-dedupe_business_key_rowspy-은퇴) — 누르는 곳 소급 탭 «Fold duplicate rows» 의 keep · only_identical
@@ -552,6 +553,13 @@
 
 
 
+
+## 2026-10-24 · decide 를 적은 이름으로 리플레이한다 — R1 이 «not found» 로 거절하던 것
+
+- **무엇** — decide 선언은 로더가 `enrichment_dedup:<이름>` · `enrichment_auto_confirm:<이름>` 두 규칙으로 세웁니다. R1 · 리플레이 CLI 가 운영자가 적은 이름을 찾지 못해 «not found or disabled» 로 거절했고, 그 줄의 목록에도 적은 이름이 없었습니다. 이제 적은 이름이면 그 선언이 세운 첫 규칙(dedup 반쪽)을 돌리고, 거절 목록에 적은 이름도 같이 나옵니다. 꺼진 선언도 같습니다.
+- **바뀐 동작** — 리플레이의 쓰기는 다른 규칙을 깨우지 않으므로(소유자 09-26) auto_confirm 반쪽은 `enrichment_auto_confirm:<이름>` 으로 따로 돌립니다. 실제 프로세스(체인 워커 + 소급 실행 프로세스, sqlite)로 꺼진 decide 를 적은 이름으로 R1 → 7.3 초 안에 쌍 행 셋.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — [BACKFILL_GUIDE](../guide/BACKFILL_GUIDE.md) ⓐ R1 줄 · 시험 `test_a_decide_is_replayed_by_its_declared_name.py`.
 
 ## 2026-10-24 · 표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다
 
