@@ -451,6 +451,17 @@ COMPANION_SUFFIX = ":target"
 COMPANION_CELL = chain_bindings.COMPANION_CELL_NAME
 
 
+#: `origin` of a rule the loader stands from a declaration under other names - «synthesized:<declaration>» (a decide's
+#: two halves, `enrichment.config.chain_rules_for`). One spelling: written there, read by `stood_for`.
+SYNTHESIZED = "synthesized:"
+
+
+def stood_for(rule: dict) -> str:
+    """The declaration a rule was stood from under another name (its `origin`), or "" - a rule named as declared."""
+    origin = str((rule or {}).get("origin") or "")
+    return origin[len(SYNTHESIZED):] if origin.startswith(SYNTHESIZED) else ""
+
+
 def declaration_of(rule: dict) -> str:
     """The declaration this rule stands for - a companion names its own (the cell above), any
     other rule is its own declaration. A declaration is not woken by its own writes (총괄

@@ -58,7 +58,7 @@
 
 ## 2. 도는 것
 
-- 파일 배치(소유자 10-23 «글 및 이미지가 좌측, 표가 우측»): layout 의 text · image 칸은 왼쪽, table 칸은 오른쪽에 놓이고, 각 쪽 안에서는 layout 순서를 따른다. 좁은 화면(900px 아래)에서는 왼쪽이 위로 오는 한 줄로 접힌다. 배치는 코드에 있다(`chain/report_html.py` SIDES) — 운영자가 적는 칸은 아직 없다. 표 안에서 숫자 칸은 오른쪽, 글자 칸은 왼쪽.
+- 파일 배치(소유자 10-23 «배치 그냥 원래대로 세로 나열해» · «핵심 요약 표 이미지 상세 설명»): layout 칸이 적힌 차례로 위에서 아래로 — 보통 text summary → table yield_by → image → text conclusion. 페이지는 창 폭을 다 쓰고, 열이 많은 표는 표 상자 안에서 가로로 넘긴다(웨이퍼 10 × leg 2 = 열 20 개, 1440 폭에서 페이지는 안 넘고 표만 넘김). 글은 72 글자 폭. 표 안에서 숫자 칸은 오른쪽, 글자 칸은 왼쪽.
 - 리포트 표에 행이 들어오면(그 묶음) 웨이퍼마다 리포트 한 판 — 파일 경로가 그 웨이퍼의 리포트 표 행에 써진다. 요약표 · 조건표 · 이미지표에는 아무것도 안 쓴다.
 - file = `<데이터 루트>/reports/<웨이퍼>.html`. 멈춘 리포트도 파일은 남고, 파일 끝 Evidence 첫 줄이 «stopped - <사유>». 읽을 웨이퍼가 없으면 파일 없이 `chain_worker.log` 의 `[Report]` 줄에만.
 - 한 웨이퍼의 leg 가 여러 평가에 걸치면 «wafer <웨이퍼> is in N evaluations (…)» 로 멈춤.
@@ -136,6 +136,19 @@
 
 ## 요약 표 꾸미기 — 정보 표 · 그림 줄 · 조건부 서식 · 항목 계층 · 견본 줄 · 한글 낱말 (A, 10-23)
 
+- **키 칸 (소유자 10-23 «키 칸을 리스트로 받게»)** — 리포트가 읽는 표들의 키 칸을 `keys` 한 곳에 이름으로 적고, 칸마다 하는 일을 낱말로 적는다. 표마다 `wafer` 에는 «그 표가 가진 키 칸 이름»을 적는다 — 일부만(조건표에 tkout 없음) · 더 많이(이미지표에 x · y · layer) 가진 표도 된다.
+
+```json
+"wafer":  {"table": "wafer_summary", "key": ["wafer", "tkout_time", "leg"]},
+"keys":   {"wafer": ["unit"], "tkout_time": ["latest"], "leg": [], "x": [], "y": [], "layer": ["fold"], "extracted_at": ["fold"]},
+"summary":    {"table": "wafer_summary", "wafer": ["wafer", "tkout_time", "leg"], …},
+"conditions": {"table": "wafer_condition", "wafer": ["wafer", "leg"], …},
+"images":     {"table": "chip_image", "wafer": ["wafer", "tkout_time", "leg", "x", "y", "extracted_at", "layer"], …}
+```
+- 낱말 셋: `unit` — 리포트 하나의 단위(리포트 표의 키 칸과 같아야 함, 안 적으면 리포트 표에서 읽음) · `latest` — 리포트마다 이 칸이 가장 늦은 행만(시각으로 읽음, 대조 웨이퍼도 각자의 가장 늦은 것) · `fold` — 이 칸만 다른 행들은 하나(칩의 층들 → 그림 한 장, `keys` 에 적은 차례로 가장 작은 값의 행 — 숫자는 크기, 글자는 철자). 낱말 없음(`[]`)은 정체의 한 칸.
+- 늦은 계측이 들어와도 리포트는 저절로 다시 안 만들어진다 — R1 리플레이(소유자 10-23 ㄴ).
+- 거절(이름을 댐): `wafer` 목록에 키 칸 아닌 이름 «'<칸>' is not a key column» · latest 인데 unit 없음 · unit 이 리포트 표의 키 칸과 다름 · fold 가 웨이퍼 키 칸.
+
 - **비교 표 (소유자 10-23 그림)** — 요약 표 하나가 비교 표다. 열은 리포트 웨이퍼와 모델이 `compare` 로 고른 대조 웨이퍼(못 고르면 리포트 웨이퍼 하나), 행은 조건 · 수율 · 불량:
 
 ```json
@@ -146,6 +159,7 @@
          {"table": "wafer_yield", "wafer": ["wafer", "leg"], "value": "yield", "label": "수율"}]
 ```
 - `columns` — 열 머리 단, 위에서부터. 웨이퍼 키 칸 이름 · `"time"`(웨이퍼의 날 — leg 시각 중 가장 늦은 것, 제품 시간대) · `"group"`(리포트 / 대조 묶음 이름). 적으면 열이 그 단 차례로 오름차순(날짜 오름)으로 서고, 위 단이 같은 이웃 칸은 한 칸으로 합쳐진다. 안 적으면 `["group", 키 칸…]` — 지금까지의 머리 그대로.
+- 머리 단 이름 — 단마다 왼쪽 칸에 그 단 이름(소유자 그림 DATE · WAFER · LEG). 기본은 키 칸 이름 그대로 · time 은 «Date» · group 은 빈칸, `labels.columns` 로 바꾼다: `"labels": {"columns": {"time": "DATE", "wafer": "WAFER", "leg": "LEG"}}`. 전에 맨 아랫단 왼쪽에 있던 «Item» 은 없다(라벨 `item` 은 은퇴 — 적혀 있으면 저장 줄 알림).
 - `label` — summary · info 표의 줄들이 서는 머리(불량 › D1…). item 없는 넓은 표는 그 한 줄의 이름(yield → 수율). 이름 위에 서려면 `item_sep` 이 있어야 한다.
 - `choose: true` — 그 info 표의 줄은 모델이 `yield_by` 의 `rows` 로 고른다(이름 하나가 그 밑 이름들을 다 고름 — `COND1` 이면 `COND1.SUB1` · `COND1.SUB2`). 안 고르거나 맞는 이름이 없으면 전부. 수율 · 불량은 choose 를 안 적어 늘 전부.
 - 항목 이름의 `.` 이 행 머리 단이다(깊이 제한 없음, 같은 앞마디는 한 칸) — `item_sep`.
@@ -167,7 +181,7 @@
 "formats": {"결함.입자.대": [{"vs": "control", "times": 2, "fill": "#ffcccc"},
                           {"when": ">=", "value": 5, "fill": "#ffffcc", "color": "#000000"}]},
 "item_sep": ".",
-"labels": {"report": "리포트", "item": "항목", "control": "대조", "mixed": "섞임 (%d)",
+"labels": {"report": "리포트", "control": "대조", "mixed": "섞임 (%d)",
            "left_out": "제외 - 같은 웨이퍼 · 이름 두 행", "not_read": "%s 안 읽음", "nothing_written": "%s 글 없음",
            "no_image": "이미지 없음", "pareto_item": "항목", "pareto_fail": "불량 칩", "pareto_cumulative": "누적"}
 ```

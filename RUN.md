@@ -1,5 +1,69 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **decide 를 적은 이름으로 리플레이한다 — R1 의 «not found» 거절** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 의 rule 에 decide 선언에 적은 이름 그대로(enrichment_dedup: 없이)
+> 뜻      실행이 잡히고 파생 표에 행이 생김 -> 이 착지(그 선언의 dedup 반쪽이 돎)
+>          «chain rule '<이름>' not found or disabled; available: …» 에 적은 이름이 보임 -> 서버가 옛 코드(재기동 전)
+>          auto_confirm 까지 다시 하려면 R1 을 한 번 더: enrichment_auto_confirm:<이름> (리플레이는 다른 규칙을 안 깨움)
+> 끄기    없음. enrichment_dedup:<이름> 으로 적던 것도 그대로 됨
+> 재기동 뒤  chain_worker.log 에 enrichment_dedup:<이름> 의 처리 줄
+> ```
+>
+> ## [10-24] **표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 어드민에서 표에 칸 하나 저장 -> 곧바로 그 칸을 쓰는 체인 규칙 저장
+> 뜻      규칙이 저장됨 -> 이 착지
+>          규칙이 «모르는 칸»으로 거절 -> 서버가 옛 코드(재기동 전)
+>          표 저장이 1 초를 넘김 -> 표 수가 많아 스키마 맞추기가 길어진 것(표 100 개에서 0.8 초) - 수를 총괄에게
+> 끄기    없음
+> 재기동 뒤  api 로그, 저장마다 «[Config] table_config.json changed - read again in this process» 한 줄
+> ```
+>
+> ## [10-24] **표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 어드민에서 표 하나 저장(새 이름) -> 몇 초 뒤 ingestion_workspace/<표>/raws/ 확인 -> CSV 하나
+> 뜻      raws/ 가 몇 초 안에 생기고 CSV 가 적재됨 -> 이 착지
+>          raws/ 가 안 생김 -> 와처가 옛 코드(재기동 전) 이거나 watcher.log 의 «the tables' raws/ were not looked at again» 줄
+>          raws/ 는 생겼는데 안 읽힘 -> 이 착지 밖(표의 물리 테이블 · 파일 헤더) - 파일 카드의 사유를 본다
+> 끄기    없음. 예전처럼 Reload 버튼도 그대로 됨
+> 재기동 뒤  watcher.log «Auto-provisioned ingestion workspace structure for table(s): ['<표>']» · «Runtime workspace sync: 1 new raws/ folder(s) now being watched.»
+> ```
+>
+> ## [10-24] **AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름 DATE · WAFER · LEG · 표는 창 폭** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> (단 이름을 바꿀 때) 리포트 규칙 labels 에 "columns": {"time": "DATE", "wafer": "WAFER", "leg": "LEG"}
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      파일이 layout 차례로 위에서 아래(요약 → 표 → 그림 → 상세) -> 이 착지. 좌우로 갈림 -> 착지 전 파일
+>          표 머리 단마다 왼쪽 칸에 단 이름(안 적으면 칸 이름 · time 은 Date). 표가 창보다 넓으면 표 안에서만 가로로 넘김
+>          저장 줄 «derive.report.labels.item is not a word the report says …» -> 은퇴한 라벨 item, 지우면 됨(규칙은 섬)
+> 끄기    없음(배치는 코드). 단 이름은 labels.columns 를 지우면 기본
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ## [10-23] **AI 리포트 키 칸 — keys 한 곳(unit · latest · fold): 가장 늦은 계측만 · 칩 하나 그림 한 장(가장 작은 층)** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙에
+>            "wafer": {"table": "wafer_summary", "key": ["wafer", "tkout_time", "leg"]},
+>            "keys": {"wafer": ["unit"], "tkout_time": ["latest"], "leg": [], "x": [], "y": [], "layer": ["fold"], "extracted_at": ["fold"]}
+>            역할마다 "wafer" = 그 표가 가진 키 칸 이름 (요약 · 수율 · 합성 [wafer, tkout_time, leg] · 조건 [wafer, leg] · 이미지 + x · y · extracted_at · layer)
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      두 번 계측된 웨이퍼의 «Left out - two rows …» 줄이 사라짐 -> 가장 늦은 계측만 읽음
+>          디펙마다 그림이 칩 하나에 한 장(가장 작은 층) -> fold 가 듦. 같은 칩의 층 여러 장 -> keys 에 fold 가 없음
+>          «… .wafer '<칸>' is not a key column …» -> 그 표의 wafer 목록에 keys · wafer.key 에 없는 이름
+>          «derive.report.keys latest needs a unit column …» -> keys 에 unit 이 없음
+>          늦은 계측이 들어와도 리포트는 그대로 -> R1 리플레이로 다시 만듦(소유자 10-23)
+> 끄기    keys 를 지우고 역할 목록을 옛 키 칸만으로 -> 옛 모양(계측 둘이면 Left out)
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ---
+>
 > ## [10-23] **체인 규칙 창에서 조인 take 항목을 기록으로 · exclude 값 칸 (소유자 「from, to → take 로 가는 길이 없음」 · 「폼에서 값 칸으로 가는 법이 없는데」)** — git pull · 화면 새로 고침
 >
 > ```
@@ -30,7 +94,7 @@
 > 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
 > ```
 >
-> ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · 글 · 그림 왼쪽 / 표 오른쪽 · 대조 후보 표 · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
+> ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · (배치는 10-24 세로로 되돌림) · (후보 표는 은퇴) · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 에 수율 decide 규칙 이름(로드된 이름 enrichment_dedup:<이름>) -> R1 에 리포트 규칙 이름

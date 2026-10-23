@@ -48,9 +48,17 @@ COLUMNS, COLUMN_TIME, COLUMN_GROUP = "columns", "time", "group"
 #: `label` (info tables, summary): the head a table's rows stand under - a wide info table's one row its name.
 #: `choose` (info tables): the model keeps which rows (yield_by's rows) - owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택».
 LABEL, CHOOSE = "label", "choose"
+#: `labels.columns`: the word left of each column head tier ({tier: word}) - `column_word`.
+LABEL_COLUMNS = "columns"
+#: `keys`: every key column of the report's tables, by name, and what it does (owner 10-23 «키 칸을 리스트로 받게»):
+#: KEY_UNIT one report a value (the report table's columns), KEY_LATEST only each report's latest value (read as a
+#: time), KEY_FOLD rows that differ only there are one (a chip's layers - the smallest drawn, keys' order). A column
+#: of no word is a plain part of a row's identity. A role's `wafer` names the key columns its table has.
+KEYS, KEY_UNIT, KEY_LATEST, KEY_FOLD = "keys", "unit", "latest", "fold"
+KEY_WORDS = (KEY_UNIT, KEY_LATEST, KEY_FOLD)
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
-                                     "formats", "item_sep", "columns", "labels", "info", "picture_rows", "results", "send_to")
+                                     "formats", "item_sep", "columns", "keys", "labels", "info", "picture_rows", "results", "send_to")
 #: `results`: the report table's column a report's file path goes in, on the wafer's row - the operator names it
 #: (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»). A report's state and why are its Evidence and the
 #: chain log; `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
@@ -92,7 +100,7 @@ FORMAT_VS = "control"
 FORMAT_CELLS = ("when", "value", "vs", "times", "fill", "color")
 FORMAT_COLOURS = ("fill", "color")
 #: The fixed words the report file says - a declaration's `labels` says them otherwise (owner 10-23: in Korean).
-LABELS = {"report": "report", "item": "Item", "left_out": "Left out - two rows for one wafer and name",
+LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and name",
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
           "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence"}
@@ -168,7 +176,11 @@ def skeleton_node():
                                                       else "free"}} for cell in FORMAT_CELLS]})}},
         {"key": "item_sep", "required": False, "node": {"kind": "leaf", "hint": "free"}},
         {"key": COLUMNS, "required": False, "node": chain_bindings.list_node("head", {"kind": "leaf", "hint": "free"})},
-        {"key": "labels", "required": False, "node": _record(tuple(LABELS), "free")},
+        {"key": KEYS, "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "column",
+                                                  "of": chain_bindings.list_node("word", {"kind": "leaf", "hint": "free"})}},
+        {"key": "labels", "required": False, "node": {"kind": "record", "fields": _record(tuple(LABELS), "free")[
+            "fields"] + [{"key": LABEL_COLUMNS, "required": False, "node": {
+                "kind": "map", "keyed_by": "name", "member": "head", "of": {"kind": "leaf", "hint": "free"}}}]}},
         # «*»: the form fills it with the cell's own row number - a row's columns are its own table's (lead 10-23)
         {"key": INFO, "required": False, "node": chain_bindings.list_node("table", {"kind": "record", "fields": [
             {"key": "table", "required": True, "node": chain_bindings.table_ref()},
@@ -209,8 +221,9 @@ def _whole(value, least):
     return isinstance(value, int) and not isinstance(value, bool) and value >= least
 
 
-def _table_refusal(path, written, cells, lists, numbers, key_length):
-    """A role (or a picture row): its table declared, each column its table's, a wafer key of the wafer table's length."""
+def _table_refusal(path, written, cells, lists, numbers, key_names):
+    """A role (or a picture row): its table declared, each column its table's, its wafer columns key columns by name -
+    one of the wafer key's at least, the unit's all (`key_names`: (the wafer key, every key column, the unit))."""
     if not isinstance(written, dict):
         return "%s is a table and its columns, got %r" % (path, written)
     table = written.get("table")
@@ -227,12 +240,53 @@ def _table_refusal(path, written, cells, lists, numbers, key_length):
         for name in names:
             if name not in known:
                 return "%s.%s %r is not a column of %r - name one of its columns" % (path, cell, name, table)
-        if cell == WAFER_CELL and len(names) != key_length:
-            return ("%s.wafer names %d column(s) and derive.report.wafer.key %d - the same wafer, column for column"
-                    % (path, len(names), key_length))
+        if cell == WAFER_CELL:
+            wafer_key, every, unit = key_names
+            stray = [name for name in names if name not in every]
+            if stray:
+                return ("%s.wafer %r is not a key column - the key columns a table has, by name: derive.report.wafer.key "
+                        "(%s) and derive.report.keys" % (path, stray[0], ", ".join(wafer_key)))
+            missing = [c for c in unit if c not in names]
+            if not any(name in wafer_key for name in names) or missing:
+                return ("%s.wafer names none of the report's wafer (%s) - a table is read by the wafer key columns it has"
+                        % (path, ", ".join(missing or wafer_key)))
     for cell in numbers:
         if cell in written and not _whole(written[cell], 1):
             return "%s.%s must be a whole number from 1, got %r" % (path, cell, written[cell])
+    return None
+
+
+def key_words(spec) -> dict:
+    """`keys` as {column: [word, ...]} - none written, {}."""
+    keys = (spec or {}).get(KEYS)
+    return {str(c): list(words) for c, words in keys.items()} if isinstance(keys, dict) else {}
+
+
+def unit_columns(spec) -> list:
+    """The key columns a report is one of (KEY_UNIT), in the wafer key's order - [] when `keys` says none."""
+    said = key_words(spec)
+    return [c for c in wafer_columns(((spec or {}).get("wafer") or {}).get("key")) if KEY_UNIT in said.get(c, ())]
+
+
+def _keys_refusal(spec, wafer_key):
+    keys = spec.get(KEYS)
+    if keys is None:
+        return None
+    if not isinstance(keys, dict) or not all(isinstance(words, list) and all(w in KEY_WORDS for w in words)
+                                             for words in keys.values()):
+        return ("derive.report.keys is {key column: [what it does]} - each word one of %s, [] for a plain part; got %r"
+                % (" · ".join(KEY_WORDS), keys))
+    for column, words in keys.items():
+        if (KEY_UNIT in words or KEY_LATEST in words) and column not in wafer_key:
+            return ("derive.report.keys.%s %s is a wafer key column's - derive.report.wafer.key (%s)"
+                    % (column, " · ".join(w for w in words if w != KEY_FOLD), ", ".join(wafer_key)))
+        if KEY_FOLD in words and column in wafer_key:
+            return ("derive.report.keys.%s fold is a column beyond the wafer key - the rows that differ only there are "
+                    "one (a chip's layers)" % column)
+        if KEY_UNIT in words and KEY_LATEST in words:
+            return "derive.report.keys.%s is the unit or the latest of it, not both" % column
+    if any(KEY_LATEST in words for words in keys.values()) and not unit_columns(spec):
+        return "derive.report.keys latest needs a unit column - the latest is each report's"
     return None
 
 
@@ -266,6 +320,13 @@ def _columns_refusal(spec):
 
 
 def report_key(spec, table) -> list:
+    """The unit (`keys`) when written - else read off the report table, below."""
+    if unit_columns(spec):
+        return unit_columns(spec)
+    return _report_table_key(spec, table)
+
+
+def _report_table_key(spec, table) -> list:
     """The report table's wafer: the columns of `wafer.key` that `table` declares, in that order - a report table keyed
     by the wafer alone reads every row of it the wafer table holds (owner 10-23 «리포트는 wafer 하나지, leg 는 리포트
     내용에»). [] when it declares none."""
@@ -287,14 +348,18 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     missing = [role for role in REQUIRED_ROLES if not isinstance(spec.get(role), dict)]
     if missing:
         return "derive.report needs %s - each a table and its columns" % ", ".join(missing)
-    key_length = len(wafer_columns(spec["wafer"].get("key")))
-    if not key_length:
+    wafer_key = wafer_columns(spec["wafer"].get("key"))
+    if not wafer_key:
         return "derive.report.wafer.key names no column - the column (or columns) a wafer is known by"
+    said = _keys_refusal(spec, wafer_key)
+    if said:
+        return said
+    key_names = (wafer_key, wafer_key + [c for c in key_words(spec) if c not in wafer_key], unit_columns(spec))
     for role, cells in ROLE_COLUMNS.items():
         if spec.get(role) is not None:
             said = _table_refusal("derive.report.%s" % role, spec[role], cells,
                                   {c for at, c in LIST_COLUMNS if at == role}, {c for at, c in NUMBER_CELLS if at == role},
-                                  key_length)
+                                  key_names)
             if said:
                 return said
     info = spec.get(INFO)
@@ -302,7 +367,7 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
         return "derive.report.info is a table and its columns, or a list of them, got %r" % (info,)
     for at, row in enumerate(info_rows(spec)):
         path = "derive.report.info" if isinstance(info, dict) else "derive.report.info[%d]" % at
-        said = _table_refusal(path, row, (WAFER_CELL,) + INFO_COLUMNS, {WAFER_CELL}, set(), key_length)
+        said = _table_refusal(path, row, (WAFER_CELL,) + INFO_COLUMNS, {WAFER_CELL}, set(), key_names)
         if said:
             return said
         if not row.get(WAFER_CELL) or not row.get("value"):
@@ -320,7 +385,7 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
         return "derive.report.%s is a list of picture rows, got %r" % (PICTURE_ROWS, rows)
     for at, row in enumerate(rows or ()):
         path = "derive.report.%s[%d]" % (PICTURE_ROWS, at)
-        said = _table_refusal(path, row, PICTURE_COLUMNS, {WAFER_CELL}, {"px"}, key_length)
+        said = _table_refusal(path, row, PICTURE_COLUMNS, {WAFER_CELL}, {"px"}, key_names)
         if said:
             return said
         missing = [cell for cell in ("label",) + PICTURE_COLUMNS if not row.get(cell)]
@@ -341,6 +406,11 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
                 "(derive.report.wafer.key) and its file column (derive.report.results.file); the summary table %r is read, "
                 "never written"
                 % table)
+    if report_table is not None and unit_columns(spec) and set(unit_columns(spec)) != set(
+            _report_table_key(spec, report_table)):
+        return ("derive.report.keys unit (%s) is the report table's wafer - %r holds %s of the wafer key"
+                % (", ".join(unit_columns(spec)), report_table,
+                   ", ".join(_report_table_key(spec, report_table)) or "none"))
     if report_table is not None and not report_key(spec, report_table):
         return ("%r has none of derive.report.wafer.key's columns (%s) - a report table is one row a wafer, its wafer "
                 "column among them" % (report_table, ", ".join(wafer_columns(spec["wafer"].get("key")))))
@@ -424,6 +494,9 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
         return "derive.report.item_sep is the text an item name splits at, got %r" % (spec["item_sep"],)
     if "labels" in spec and not isinstance(spec["labels"], dict):
         return "derive.report.labels is {name: text}, got %r" % (spec["labels"],)
+    said = (spec.get("labels") or {}).get(LABEL_COLUMNS)
+    if said is not None and not (isinstance(said, dict) and all(isinstance(v, str) for v in said.values())):
+        return "derive.report.labels.columns is {column head: the word left of it}, got %r" % (said,)
     from chain import report_template
 
     return report_template.refusal(spec)
@@ -466,6 +539,15 @@ def word(spec, name) -> str:
     return said if isinstance(said, str) and said.strip() else LABELS[name]
 
 
+def column_word(spec, tier) -> str:
+    """The word left of a column head tier (owner 10-23: DATE · WAFER · LEG) - `labels.columns`, else the key column's
+    own name, «Date» for the wafer's day, nothing for the group."""
+    said = ((spec or {}).get("labels") or {}).get(LABEL_COLUMNS) or {}
+    if tier in said:
+        return str(said[tier])
+    return {COLUMN_TIME: "Date", COLUMN_GROUP: ""}.get(tier, "" if tier is None else str(tier))
+
+
 def control_limit(spec, cell) -> int:
     return ((spec or {}).get("control") or {}).get(cell) or CONTROL_LIMITS[cell]
 
@@ -476,7 +558,8 @@ def notes(spec) -> list:
 
     said = report_template.note(spec)
     out = [said] if said else []
-    unknown = sorted(str(name) for name in ((spec or {}).get("labels") or {}) if name not in LABELS)
+    unknown = sorted(str(name) for name in ((spec or {}).get("labels") or {})
+                     if name not in LABELS and name != LABEL_COLUMNS)
     if unknown:
         out.append("derive.report.labels.%s is not a word the report says - one of %s"
                    % (unknown[0], " · ".join(LABELS)))

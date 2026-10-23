@@ -32,6 +32,9 @@ def fixture_table(pg_engine, tmp_path, monkeypatch):
     path = tmp_path / "table_config.json"
     path.write_text(json.dumps({T: OLD}), encoding="utf-8")
     monkeypatch.setattr(crud, "CONFIG_PATH", str(path))
+    # the save's own reload is the server seat's, which `_reload` drives below per seat (lead 10-24)
+    from database import config_watcher
+    monkeypatch.setattr(config_watcher, "changed", lambda *a, **k: None)
     retire_dynamic_model(T)
     models.init_dynamic_models({T: OLD})
     crud.TABLE_CONFIG[T] = OLD
