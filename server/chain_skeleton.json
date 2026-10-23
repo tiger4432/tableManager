@@ -1333,6 +1333,22 @@
                           "kind": "leaf",
                           "hint": "number"
                         }
+                      },
+                      {
+                        "key": "item_sep",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "source",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
                       }
                     ]
                   }
@@ -1496,6 +1512,89 @@
                             "kind": "leaf",
                             "hint": "free"
                           }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "conditions",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "table",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "tables"
+                        }
+                      },
+                      {
+                        "key": "wafer",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.conditions.table"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "key": "name",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.conditions.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "value",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.conditions.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "time",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.conditions.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "title",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.conditions.table"
+                          ]
                         }
                       }
                     ]
@@ -2108,18 +2207,6 @@
                     "kind": "record",
                     "fields": [
                       {
-                        "key": "state",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "derive.report.summary.table"
-                          ]
-                        }
-                      },
-                      {
                         "key": "file",
                         "required": true,
                         "node": {
@@ -2127,19 +2214,7 @@
                           "hint": "ref",
                           "section": "columns",
                           "table_from": [
-                            "derive.report.summary.table"
-                          ]
-                        }
-                      },
-                      {
-                        "key": "reason",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "derive.report.summary.table"
+                            "into.table"
                           ]
                         }
                       }

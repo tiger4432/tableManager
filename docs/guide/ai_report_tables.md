@@ -1,37 +1,41 @@
-# AI 리포트 — 요약표에 리포트 규칙 하나 (소유자 10-23)
+# AI 리포트 — 리포트 표 하나 + 거기에 리포트 규칙 하나 (소유자 10-23)
 
 ```
-운영에서는 요약표에 결과 칸 셋을 더하고, 요약표에 리포트 규칙 하나(send_to = 중계 PC 주소)를 적으면
-계측 요약이 들어올 때 웨이퍼마다 리포트가 만들어져 메일 중계로 간다. 제품이 만드는 보조표는 0
+운영에서는 리포트 표(웨이퍼 칸 · 파일 경로 칸)를 만들고, 그 표에 리포트 규칙 하나를 적으면
+리포트 표에 웨이퍼 행이 들어올 때 웨이퍼마다 리포트가 만들어져 파일 경로가 그 행에 써지고, send_to 가 있으면 중계로 간다
 ```
 
-> 소유자 10-23 「너무 복잡한데」 · 「보조표가 너무 많아」 · 「리포트는 웨이퍼당 하나지」. 요청 · 결과 · 걸음 · 웨이퍼 제품 표 넷과 요약표의 request_id · eval_id 칸, 조인 · decide · 보내기 규칙은 은퇴했다.
-> 시범 동안(소유자 10-23 「막아」): 규칙을 `"enabled": false` 로 두면 요약 행이 들어와도 안 돈다. 소급 탭 «Replay chain rules over old data (R1)» 에 이 규칙 이름을 적은 리플레이만 돈다 — 모든 규칙이 같은 뜻이다.
+> 소유자 10-23 「요약표가 wafer, leg, item_id, value 모양인데 … 리포트용 표가 따로 있어야지」 · 「요약표는 그냥 데이터 표일 뿐이야, 거기에 뭐 정리하려고 하지 마」 · 「그냥 wafer, 보고서 파일 경로 이 두 개가 최종 출력이어야 해」. 요약표 · 조건표 · 이미지표는 «읽기만» 한다 — 칸을 더하지 않는다.
+> 시범 동안(소유자 10-23 「막아」): 규칙을 `"enabled": false` 로 두면 리포트 표에 행이 들어와도 안 돈다. 소급 탭 «Replay chain rules over old data (R1)» 에 이 규칙 이름을 적은 리플레이만 돈다 — 모든 규칙이 같은 뜻이다.
 
 ## 1. 적는 것
 
-- 요약표 선언에 결과 칸 셋(string) — 이름은 운영자가 정한다. 예: `report_state` · `report_file` · `report_reason`
-- 어드민 Chain 탭에 리포트 규칙 하나 — `on` 과 `into` 가 요약표, `derive.report.results` 가 그 세 칸, `limits.group_by` 가 요약표의 웨이퍼 칸(리플레이가 웨이퍼 하나를 한 번에 — 안 적으면 행마다 따로 만들 수 있음)
+- **리포트 표** — 웨이퍼 칸(이름은 `derive.report.wafer.key` 의 칸과 같게)과 파일 경로 칸(string), 웨이퍼당 한 행. 웨이퍼 키가 (wafer, leg) 여도 리포트 표는 웨이퍼 칸 하나 — 리포트 한 판이 그 웨이퍼의 leg 를 다 읽어 열로 놓는다.
+- **리포트 표의 행** — 손으로 넣거나, 요약표에서 웨이퍼마다 한 행을 만드는 decide 규칙 하나(아래). 제품은 리포트 표 행을 만들지 않는다.
+- **리포트 규칙** — 어드민 Chain 탭에 하나: `on` 과 `into` 가 리포트 표, `derive.report.results.file` 이 파일 경로 칸.
 - `ingestion_settings.json` 의 `"chain_slots"` 3 이상 — 리포트가 도는 동안(≤ 8 걸음 · ≤ 5 분) 체인 일꾼 하나를 쓴다
 
+소유자 표 넷 그대로 (요약 · 조건 · 이미지 · 리포트):
+
+```json
+{"name": "wafer_report_rows", "on": {"table": "wafer_summary"}, "into": {"table": "wafer_report"},
+ "derive": {"kind": "decide", "decide": {"key": ["wafer"]}}}
+```
 ```json
 {
-  "name": "wafer_report",
-  "on": {"table": "<요약표>"}, "into": {"table": "<요약표>"},
-  "limits": {"group_by": ["wafer_id"]},
+  "name": "wafer_report", "enabled": false,
+  "on": {"table": "wafer_report"}, "into": {"table": "wafer_report"},
   "derive": {"kind": "report", "report": {
-    "wafer":   {"table": "<웨이퍼 표>", "key": "wafer_id", "time": "measured_at", "lot": "lot_id",
-                "evaluation": "<평가 칸>", "conditions": ["split", "recipe"]},
-    "summary": {"table": "<요약표>", "wafer": "wafer_id", "item": "defect_item",
-                "fail": "fail_chips", "total": "total_chips"},
-    "results": {"state": "report_state", "file": "report_file", "reason": "report_reason"},
-    "send_to": "http://<중계 PC>:8765/reports",
-    "images":  {"table": "<이미지 표>", "wafer": "wafer_id", "item": "defect_item", "image": "image_path",
-                "per_item": 3, "px": 320},
-    "sets":    {"table": "<비교 묶음 표>", "name": "set_name", "member": "member", "kind": "kind",
-                "kinds": {"evaluation": "eval", "lot": "lot"}, "default": ["baseline"]},
-    "rows": ["particle", "scratch"], "digits": 1,
-    "prompts": {"select": "…", "style": "…", "compare": "…"},
+    "wafer":      {"table": "wafer_summary", "key": ["wafer", "leg"]},
+    "summary":    {"table": "wafer_summary", "wafer": ["wafer", "leg"], "item": "defect_kind",
+                   "fail": "defective_chip_count", "total": "total_chip_count"},
+    "conditions": {"table": "wafer_condition", "wafer": ["wafer", "leg"], "name": "condition_id", "value": "value",
+                   "time": "date", "title": "title"},
+    "images":     {"table": "chip_image", "wafer": ["wafer", "leg"], "item": "including_defects", "image": "img_path",
+                   "item_sep": ",", "source": "<이미지 소스>", "per_item": 3, "px": 320},
+    "results":    {"file": "report_path"},
+    "send_to":    "http://<중계 PC>:8765/reports",
+    "control":    {"recent": {"evaluations": 10}},
     "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"},
                {"kind": "image", "fill": "images"}, {"kind": "text", "slot": "conclusion"}],
     "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000}
@@ -39,20 +43,28 @@
 }
 ```
 
+- **wafer** — 웨이퍼 하나를 이루는 칸. 넓은 웨이퍼 표가 없으면 요약표를 그대로 적는다(시간 · 평가 칸 없이). 웨이퍼 표가 있으면 `time` · `lot` · `evaluation` · `conditions`(넓은 조건 칸 목록)도.
+- **conditions** — 조건마다 한 행인 긴 표: 이름 칸 · 값 칸 · (있으면) 시각 · 제목. 행이 없는 웨이퍼는 «기본 조건»(default conditions)으로 모델에게 간다. 웨이퍼 역할에 시각이 없으면 이 `time` 이 웨이퍼의 시각이다.
+- **images** — 칩 하나의 이미지 한 행. `item_sep` 을 적으면 아이템 칸의 «defect_type_1, defect_type_2» 를 나눠 그 칩 이미지를 디펙마다 놓는다. `source` 를 적으면 이미지 칸의 경로를 그 이미지 소스(`image_sources.json`, folder 종류)로 읽는다 — 절대 경로면 그 소스의 root 밑이어야 한다.
+- **대조 후보** — 웨이퍼 역할에 `evaluation` 이 없으면 후보는 웨이퍼 하나씩: 날짜 최근 순(날짜 없는 웨이퍼는 그 뒤), 줄마다 제목 · 조건(없으면 default conditions). 모델이 «같은 평가 · 기본 조건»을 그 줄로 짐작한다 — 규칙으로 고르지 않는다. 평가 없이 웨이퍼를 골라 묶는 `compare` 는 아직 평가 단위다.
+- decide 는 키만 든 행을 만든다(`fields` · `aggregations` 없이) — 리포트 표의 두 칸 그대로.
+- 리포트 규칙이 decide 가 만든 행에 «저절로» 돌려면 `"enabled": true` 와 `"extra": {"allow_chain_trigger": true}` — 체인이 쓴 행은 기본으로 규칙을 안 깨운다. 시범 동안은 꺼 두고 R1 리플레이.
 - `send_to` 를 안 적으면 보내지 않는다(파일만 서버에).
-- `wafer` 키는 칸 하나 또는 목록 — 모든 역할이 같은 순서 · 같은 길이.
+- `wafer` 키는 칸 하나 또는 목록 — 모든 역할이 같은 순서 · 같은 길이. 리포트 표는 그중 «자기가 가진 칸»으로 웨이퍼를 고른다.
 - `summary` — `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 또는 100). rate 만이면 «조건별 묶은 열»과 파레토는 거절.
 - `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어간다.
-- 옛 모양(요청 표 위의 규칙)은 로드에서 거절된다 — «derive.report.results names …» · «the report rule stands on its summary table …».
+- 거절(저장 · 로드, 이름을 댐): 요약표 위의 규칙 «the report rule stands on a report table of its own - …; the summary table '<표>' is read, never written» · 웨이퍼 칸 없는 표 «'<표>' has none of derive.report.wafer.key's columns (…)» · `on` ≠ `into` · `results.file` 이 리포트 표 칸이 아님.
+- `results` 의 `state` · `reason` 은 안 쓴다 — 적혀 있으면 저장 줄 «derive.report.results.state · reason is not written - …», 규칙은 선다.
 
 ## 2. 도는 것
 
-- 요약 행이 들어오면 그 묶음(파일 하나)의 웨이퍼마다 리포트 한 판. 한 웨이퍼의 행 전부에 같은 결과가 써진다.
-- 결과 칸: state = `done` · `stopped`(+ reason) · send_to 가 있으면 `sending` → `done`, 세 번 실패면 `send failed` + reason. file = `<데이터 루트>/reports/<웨이퍼>.html`(키가 여러 칸이면 «_» 로 이음).
-- 보내기는 체인 일꾼 밖 — 체인 워커의 유지보수 자리가 5 초마다 `sending` 을 찾아 `<send_to>/<파일 이름>` 으로 POST(`tools/report_receiver/receive.py`). 한 번에 규칙마다 20 파일.
-- 걸음 기록: 파일 끝 접힌 «Evidence»(걸음마다 한 줄 — 부른 것 · 돌아온 것) + `chain_worker.log` 의 `[Report]` 줄.
-- 같은 웨이퍼의 요약이 여러 파일로 들어오면 들어올 때마다 그 웨이퍼 리포트를 다시 만든다(같은 파일을 덮음).
-- 다시 만들기: 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름.
+- 리포트 표에 행이 들어오면(그 묶음) 웨이퍼마다 리포트 한 판 — 파일 경로가 그 웨이퍼의 리포트 표 행에 써진다. 요약표 · 조건표 · 이미지표에는 아무것도 안 쓴다.
+- file = `<데이터 루트>/reports/<웨이퍼>.html`. 멈춘 리포트도 파일은 남고, 파일 끝 Evidence 첫 줄이 «stopped - <사유>». 읽을 웨이퍼가 없으면 파일 없이 `chain_worker.log` 의 `[Report]` 줄에만.
+- 한 웨이퍼의 leg 가 여러 평가에 걸치면 «wafer <웨이퍼> is in N evaluations (…)» 로 멈춤.
+- 보내기: `send_to` 가 있으면 다 만든 리포트 옆에 `<웨이퍼>.html.send` 표시 파일. 체인 워커의 유지보수 자리가 5 초마다 POST(`tools/report_receiver/receive.py`) — 받으면 표시를 지우고 «[Report] <규칙> sent <파일>». 세 번 실패면 `<웨이퍼>.html.send_failed`(안에 규칙 · 사유) + «[Report] <규칙> send failed …». 한 번에 규칙마다 20 파일.
+- 다시 보내기 · 다시 만들기: 소급 탭 R1 에 규칙 이름 + 그 웨이퍼의 리포트 표 행 — 파일을 다시 만들고 `.send` 를 다시 놓는다(`.send_failed` 는 지워짐).
+- 보내기 실패는 화면에 안 보인다 — 리포트 폴더의 `.send_failed` · `chain_worker.log` `[Report]` 줄.
+- 걸음 기록: 파일 끝 접힌 «Evidence»(첫 줄 상태 · 사유, 그다음 걸음마다 한 줄) + `chain_worker.log` 의 `[Report]` 줄.
 
 ## 3. 읽는 표 — 이름은 선언으로
 

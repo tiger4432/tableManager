@@ -1,8 +1,8 @@
 """The AI report's settings ARE its chain declaration - `derive.report` (owner 10-22, lead: one concept, one more
 declaration kind). Its cells, the form's shape of each, and what the save refuses: a table or column the catalogue
 does not declare, wafer keys of another length than the wafer table's, a layout slot of an unknown kind, a rule
-that does not stand on its summary table (owner 10-23: one rule on the summary table, a report a wafer, its results
-in three of that table's columns).
+that does not stand on a report table of its own (owner 10-23 «리포트용 표가 따로 있어야지»: the operator's table, one
+row a wafer, its results in three of its columns; «요약표는 그냥 데이터 표»: the summary table is read, never written).
 
 A wafer is named by one column or a list of them in every role, matched across roles in list order (owner 10-22
 «키도 복수로»); the form draws each as a list - one column is a list of one."""
@@ -23,12 +23,22 @@ ROLE_COLUMNS = {
     "sets": ("name", "member", "kind"),
     # a long table of what a wafer is - material, evaluation facts - shown under the summary table's head (owner 10-23)
     "info": (WAFER_CELL, "item", "value"),
+    # a long table of a wafer's conditions, a row a condition - mostly written only when it is out of the ordinary
+    # (owner 10-23): a wafer without rows is at the default conditions. Read as the wafer's {name: value}, its time
+    # and title when the wafer role names none.
+    "conditions": (WAFER_CELL, "name", "value", "time", "title"),
 }
+#: `images.item_sep`: the image row's item column names several items, split by it (owner 10-23 «including_defects 는
+#: "defect_type_1, defect_type_2"») - an image is the chip's, shown for each item it holds.
+ITEM_SEP = "item_sep"
+#: `images.source`: the image source (image_sources.json) an image column's plain path is read through - the path
+#: written as it is, `<source>:<path>` made here (owner 10-23: img_path is an absolute path).
+IMAGE_SOURCE = "source"
 #: The roles a report cannot be made without.
 REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
 LIST_COLUMNS = {("wafer", "key"), ("wafer", "conditions"), ("summary", WAFER_CELL), ("images", WAFER_CELL),
-                ("info", WAFER_CELL)}
+                ("info", WAFER_CELL), ("conditions", WAFER_CELL)}
 #: What a layout slot holds.
 SLOT_KINDS = ("table", "image", "text")
 #: The reads whose answer a table slot draws (`report_html.TABLES` draws each).
@@ -36,9 +46,11 @@ TABLE_FILLS = ("yield_by", "pareto", "trend")
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
                                      "formats", "item_sep", "labels", "picture_rows", "results", "send_to")
-#: `results`: the summary table's columns a report's state, file and reason go in - the operator names them (owner
-#: 10-23), every row of the wafer the same.
-RESULTS_CELL, RESULT_CELLS = "results", ("state", "file", "reason")
+#: `results`: the report table's column a report's file path goes in, on the wafer's row - the operator names it
+#: (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»). A report's state and why are its Evidence and the
+#: chain log; `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
+RESULTS_CELL, RESULT_CELLS = "results", ("file",)
+UNWRITTEN_RESULTS = ("state", "reason")
 #: `send_to`: where a made report's file is POSTed (tools/report_receiver/receive.py - <send_to>/<name>.html).
 SEND_TO = "send_to"
 #: `picture_rows`: rows of one picture a column in the summary table (owner 10-23 «열마다 한 장») - each a table, its
@@ -99,6 +111,9 @@ def _role_node(role):
         fields.append({"key": cell, "required": False, "node": node})
     fields += [{"key": cell, "required": False, "node": {"kind": "leaf", "hint": "number"}}
                for (at, cell) in sorted(NUMBER_CELLS | {("summary", RATE_SCALE)}) if at == role]
+    if role == "images":
+        fields += [{"key": cell, "required": False, "node": {"kind": "leaf", "hint": "free"}}
+                   for cell in (ITEM_SEP, IMAGE_SOURCE)]
     if role == "info":
         fields.append({"key": "rows", "required": False,
                        "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})})
@@ -146,7 +161,8 @@ def skeleton_node():
             {"key": "image", "required": True, "node": PICTURE_COLUMN},
             {"key": "px", "required": False, "node": {"kind": "leaf", "hint": "number"}}]})},
         {"key": RESULTS_CELL, "required": True, "node": {"kind": "record", "fields": [
-            {"key": cell, "required": True, "node": _column("summary")} for cell in RESULT_CELLS]}},
+            {"key": cell, "required": True, "node": chain_bindings.column_ref(("into.table",))}
+            for cell in RESULT_CELLS]}},
         {"key": SEND_TO, "required": False, "node": {"kind": "leaf", "hint": "free"}},
     ]
     return {"kind": "record", "fields": fields}
@@ -195,15 +211,24 @@ def _table_refusal(path, written, cells, lists, numbers, key_length):
     return None
 
 
+def report_key(spec, table) -> list:
+    """The report table's wafer: the columns of `wafer.key` that `table` declares, in that order - a report table keyed
+    by the wafer alone reads every row of it the wafer table holds (owner 10-23 «리포트는 wafer 하나지, leg 는 리포트
+    내용에»). [] when it declares none."""
+    known = chain_bindings.declared_columns(str(table or "")) or ()
+    return [c for c in wafer_columns(((spec or {}).get("wafer") or {}).get("key")) if c in known]
+
+
 def result_columns(rule) -> list:
-    """The summary table columns a report rule writes - `results`, in RESULT_CELLS order."""
+    """The report table columns a report rule writes - `results`, in RESULT_CELLS order."""
     results = ((rule or {}).get("params") or {}).get(RESULTS_CELL) or {}
     return [str(results[cell]) for cell in RESULT_CELLS if isinstance(results, dict) and results.get(cell)]
 
 
 def refusal(spec, on_table=None, into_table=None) -> str | None:
     """Why this `derive.report` cannot be made, or None - the first reason, path first. `on_table` · `into_table`: the
-    rule's, both the summary table (a declaration of the old shape, on a request table, is refused here by name)."""
+    rule's, one report table (`report_key`); the summary table or a table without the wafer's column is refused by
+    name. None: not checked."""
     spec = spec if isinstance(spec, dict) else {}
     missing = [role for role in REQUIRED_ROLES if not isinstance(spec.get(role), dict)]
     if missing:
@@ -232,22 +257,30 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     results = spec.get(RESULTS_CELL)
     if not isinstance(results, dict) or not all(isinstance(results.get(c), str) and results[c].strip()
                                                 for c in RESULT_CELLS):
-        return ("derive.report.results names the summary table's columns a report's %s go in - "
-                '{"state": "<column>", "file": "<column>", "reason": "<column>"}' % " · ".join(RESULT_CELLS))
+        return ('derive.report.results names the report table\'s column a report\'s file path goes in - '
+                '{"file": "<column>"}')
     table = spec["summary"].get("table")
-    for path, said in (("on.table", on_table), ("into.table", into_table)):
-        if said is not None and said != table:
-            return ("the report rule stands on its summary table - %s is derive.report.summary.table %r, got %r"
-                    % (path, table, said))
+    if on_table is not None and into_table is not None and on_table != into_table:
+        return ("the report rule stands on its report table - on.table and into.table are one table, got %r and %r"
+                % (on_table, into_table))
+    report_table = into_table if into_table is not None else on_table
+    if report_table is not None and report_table == table:
+        return ("the report rule stands on a report table of its own - one row a wafer, its wafer column "
+                "(derive.report.wafer.key) and its file column (derive.report.results.file); the summary table %r is read, "
+                "never written"
+                % table)
+    if report_table is not None and not report_key(spec, report_table):
+        return ("%r has none of derive.report.wafer.key's columns (%s) - a report table is one row a wafer, its wafer "
+                "column among them" % (report_table, ", ".join(wafer_columns(spec["wafer"].get("key")))))
     send_to = spec.get(SEND_TO)
     if send_to is not None and not (isinstance(send_to, str) and send_to.startswith(("http://", "https://"))):
         return "derive.report.send_to is the address a report is POSTed to (http://...), got %r" % (send_to,)
     summary = spec["summary"]
-    known = chain_bindings.declared_columns(str(table or "")) or ()
+    known = chain_bindings.declared_columns(str(report_table or "")) or ()
     unknown = [results[c] for c in RESULT_CELLS if results[c] not in known]
-    if unknown:
-        return ("derive.report.results %r is not a column of %r - add it to the summary table's declaration"
-                % (unknown[0], table))
+    if report_table is not None and unknown:
+        return ("derive.report.results %r is not a column of %r - add it to the report table's declaration"
+                % (unknown[0], report_table))
     if not summary.get("item"):
         return "derive.report.summary.item names no column - the item a row is about"
     if bool(summary.get("fail")) != bool(summary.get("total")):
@@ -375,4 +408,8 @@ def notes(spec) -> list:
     if unknown:
         out.append("derive.report.labels.%s is not a word the report says - one of %s"
                    % (unknown[0], " · ".join(LABELS)))
+    unwritten = [c for c in UNWRITTEN_RESULTS if ((spec or {}).get(RESULTS_CELL) or {}).get(c)]
+    if unwritten and isinstance(spec.get(RESULTS_CELL), dict):
+        out.append("derive.report.results.%s is not written - a report writes its file path; its state and why are "
+                   "the file's Evidence and chain_worker.log [Report]" % " · ".join(unwritten))
     return out

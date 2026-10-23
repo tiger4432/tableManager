@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만](#2026-10-23--ai-리포트는-리포트-표에-건-규칙-하나--요약표--조건표--이미지표는-소유자-모양-그대로-읽기만) — 적는 곳 chain_rules.json 의 derive.report(on = into = 리포트 표 · results.file · conditions · images.item_sep · images.source) · 보는 곳 리포트 표의 파일 경로 · 파일의 Evidence
 - 2026-10-23 [조인 take 의 from 에 칸 목록 — 함수가 행마다 {칸: 값} 을 받는다](#2026-10-23--조인-take-의-from-에-칸-목록--함수가-행마다-칸-값-을-받는다) — 적는 곳 chain_rules.json 의 join take 의 from · 보는 곳 함수가 받는 values
 - 2026-10-23 [AI 리포트는 요약표에 건 규칙 하나 — 웨이퍼마다 한 판, 결과는 요약표 칸 셋, send_to 로 중계 PC 에](#2026-10-23--ai-리포트는-요약표에-건-규칙-하나--웨이퍼마다-한-판-결과는-요약표-칸-셋-send_to-로-중계-pc-에) — 적는 곳 chain_rules.json 의 derive.report 의 results · send_to · control.same · 보는 곳 요약표의 결과 칸 셋 · 리포트 파일의 Evidence
 - 2026-10-23 [값이 안 바뀐 행은 사건을 안 낸다 — 셀 메뉴의 층 지우기 · 핀이 그 표의 규칙을 깨우지 않는다](#2026-10-23--값이-안-바뀐-행은-사건을-안-낸다--셀-메뉴의-층-지우기--핀이-그-표의-규칙을-깨우지-않는다) — 보는 곳 chain_worker.log 의 그 규칙 줄 · database_outbox 의 EDIT
@@ -540,6 +541,15 @@
 
 
 
+
+## 2026-10-23 · AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만
+
+- **무엇** — 소유자 10-23 「요약표가 wafer, leg, item_id, value 모양인데 여기에 결과를 더하면 … 리포트용 표가 따로 있어야지」 · 「요약표는 그냥 데이터 표일 뿐이야」 · 「그냥 wafer, 보고서 파일 경로 이 두 개가 최종 출력이어야 해」. 오전 착지는 규칙을 요약표에 세우고 결과 칸 셋을 요약표에 요구했습니다.
+- **선언** — 리포트 표(웨이퍼 칸 · 파일 경로 칸)에 `on` = `into`, `results` 는 `{"file": "<칸>"}` 하나. 조건이 긴 표면 `conditions` 역할(이름 · 값 · 시각 · 제목), 이미지 행이 디펙을 쉼표로 적으면 `images.item_sep`, 경로를 이미지 소스로 읽으면 `images.source`. 웨이퍼 표가 없으면 `wafer` 에 요약표를 적습니다.
+- **바뀐 동작** — 리포트 표의 웨이퍼 행마다 한 판, 그 웨이퍼의 leg 는 리포트 안 열. 요약표에는 아무것도 안 씁니다. 상태 · 사유는 파일의 Evidence 첫 줄과 `[Report]` 줄. 보낼 것은 리포트 옆 `.send` 표시 파일, 세 번 실패면 `.send_failed`. 평가 칸이 없으면 대조 후보는 웨이퍼 하나씩 — 날짜 · 제목 · 조건(없으면 default conditions)을 모델이 읽습니다.
+- **판정 바뀜** — decide 가 «키만 든 행»을 만듭니다(전엔 「'target_fields' is empty, so 'aggregations' must be declared …」로 거절). 리포트 표의 두 칸이 그대로 됩니다.
+- **필요한 조건** — git pull · 선언 고침(요약표의 결과 칸 · 요약표 위 규칙을 지우고 리포트 표 + 규칙) · 런처 재기동.
+- **자세히** — 가이드 `docs/guide/ai_report_tables.md` · 시험 `test_every_declared_kind_runs_and_leaves_rows.py` · `test_a_report_is_declared_as_a_chain_rule.py` · `test_a_decide_with_no_fields_stands_on_its_aggregations.py` · RUN.md 같은 날 항목.
 
 ## 2026-10-23 · 피벗 보기에서 줄 더하기 · 줄 지우기 · 맨 아래 붙여넣기 — Pivot 을 끄지 않는다
 

@@ -737,10 +737,8 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     target_fields = raw.get("target_fields")
     if target_fields is None or target_fields == []:
         # 소유자 10-11 (총괄 ㄴ): a row per key that carries only its key and its aggregations
-        # is a decide too - nothing for a person to fill, so it is never in the queue.
-        if not raw.get("aggregations"):
-            return None, ("'target_fields' is empty, so 'aggregations' must be declared - "
-                          "a derived row with neither carries nothing but its key")
+        # is a decide too - nothing for a person to fill, so it is never in the queue. And one that carries only
+        # its key (소유자 10-23 「wafer, 보고서 파일 경로 이 두 개가 최종 출력」: a report table's row a wafer).
         target_fields = []
     elif not _is_str_list(target_fields):
         return None, "'target_fields' must be a list of column names"

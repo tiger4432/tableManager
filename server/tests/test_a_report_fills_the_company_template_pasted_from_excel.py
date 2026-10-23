@@ -148,9 +148,9 @@ def test_the_save_names_the_dropped_pictures_and_refuses_by_the_template(monkeyp
                                                                        "st": "string", "fl": "string", "why": "string"}})
     report = {"wafer": {"table": "w", "key": "k"}, "summary": {"table": "s", "wafer": "k", "item": "i", "rate": "f",
                                                                 "rate_scale": 1},
-              "results": {"state": "st", "file": "fl", "reason": "why"}}
+              "results": {"file": "fl"}}
     report.update(copy.deepcopy(SPEC))
-    declaration = {"name": "rep", "on": {"table": "s"}, "into": {"table": "s"},
+    declaration = {"name": "rep", "on": {"table": "w"}, "into": {"table": "w"},
                    "derive": {"kind": "report", "report": report}}
     rules, refusal, notes = rule_shape.expand_declaration(declaration)
     assert refusal is None and len(rules) == 1
