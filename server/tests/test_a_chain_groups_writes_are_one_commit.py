@@ -9,7 +9,8 @@ processed mark are ONE commit, its holder's (`session_contract.hold_commit` · `
           page (before the write stage) it is as before
           ⑥ the edit withdrawal's columns come from what was written · ⑦ an output row its mapper left without its
           source row gets it by key, the plain layer it sat on goes, a deleted source leaves no old value · several
-          matches: «origin unknown» once by the rule's name
+          matches: «origin unknown» once by the rule's name · a join's item writing only its `fn` cells is not counted,
+          its plain take's unmatched item and another mapper's are
           a deadlock with a save rewinds, says how many times
   PG      a save over HTTP waits for a held row at most `save_lock_timeout_seconds`, then is told to save again
 """
@@ -282,6 +283,35 @@ def test_several_matches_leave_it_without_and_say_so_once(db, caplog):
     said = [r.getMessage() for r in caplog.records if "origin unknown - rule oc_first" in r.getMessage()]
     assert len(said) == 1 and "2 of 2 row(s)" in said[0]
     assert [layer[3] for layer in _layers(db)] == [None]
+
+
+def test_a_joins_gathered_cells_are_no_unknown_origin_and_any_other_unmatched_row_is(monkeypatch):
+    """총괄 10-23: a join mixing a plain take and `fn` takes. What its gather writes - the `fn` cells, or nothing but
+    their withdrawal - came from no one row: not counted. Its plain take's item that matches no handed row, and the
+    same items proposed by another mapper, are."""
+    from chain import cell_layer, dynamic_mappers, join_into, rule_run
+
+    dynamic_mappers.install()
+    monkeypatch.setattr(cell_layer, "key_columns", lambda table: {"lot"})
+    join = {"name": "lot_sum", "mapper": join_into.JOIN_INTO_MAPPER, "target_table": "lot_summary",
+            "params": {"right_table": "wafer_qty", "on": {"lot": "lot"},
+                       "take": ["grade", {"from": "qty", "into": "total_qty", "fn": "sum"},
+                                {"from": "qty", "into": "n", "fn": "count"}]}}
+    other = dict(join, name="lot_copy", mapper="oc_copy", params={})
+    handed = [{"row_id": "w1", "lot": "L1", "qty": 3}, {"row_id": "w2", "lot": "L1", "qty": 4}]
+    assert sorted(dynamic_mappers.gathered_columns(join["mapper"], join)) == ["n", "total_qty"]
+
+    def items():
+        return [{"row_id": "s1", "updates": {"total_qty": 7, "n": 2}, "withdraw": []},       # the gather
+                {"row_id": "s2", "updates": {}, "withdraw": ["total_qty", "n"]},             # a key left with no row
+                {"row_id": "s3", "updates": {"grade": "A", "lot": "L9"}}]                    # matches no handed row
+
+    said = {}
+    for rule in (join, other):
+        missed = [0, 0]
+        rule_run.origin_by_key(rule, handed, items(), missed)
+        said[rule["name"]] = missed
+    assert said == {"lot_sum": [1, 1], "lot_copy": [3, 3]}
 
 
 def test_the_edit_withdrawal_takes_its_columns_from_what_was_written(db):

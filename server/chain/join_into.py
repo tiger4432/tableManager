@@ -399,6 +399,11 @@ def take_targets(rule) -> list:
     return [into for _right, into in _takes(join_spec(rule))]
 
 
+def gathered_targets(rule) -> list:
+    """Of those, the ones a `take ... fn` writes - one value gathered from a key's rows, so from no one row."""
+    return list(_fn_takes(join_spec(rule)))
+
+
 def _folded(column, fold, zone=None):
     """The key expression, folded and NULL-safe - the SAME shape the unique index has.
 
