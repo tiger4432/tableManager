@@ -329,6 +329,7 @@
 - 2026-10-20 [파일 완료 기록에 그 파일의 transaction_id · 폴더 Retry 를 그 표로 좁히는 read_by](#2026-10-20--파일-완료-기록에-그-파일의-transaction_id--폴더-retry-를-그-표로-좁히는-read_by) — 누르는 곳 파일 적재 화면 · 명령 `retry-failed?read_by=`
 - 2026-10-20 [설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는 것](#2026-10-20--설정--플러그인을-고치면-그-표의-실패-파일을-와처가-스스로-다시-읽는-것) — 보는 곳 watcher.log 의 «its reading changed» 줄
   - 2026-10-22 [와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만 — 선언 밖은 «not taken» 으로 세고, 재기동 때 선언 밖 대기 줄을 지운다](#2026-10-22--와처가-스스로-다시-읽는-파일은-지금-선언에-맞는-것만--선언-밖은-not-taken-으로-세고-재기동-때-선언-밖-대기-줄을-지운다) — 보는 곳 watcher.log 의 «not taken now» · «does not take - deleted» 줄 · 적을 것 없음
+  - 2026-10-23 [와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 — 소스 없는 옛 행은 놓인 자리로 판정, 꺼진 · 거절된 소스 행은 남김](#2026-10-23--와처-시작이-지금-선언이-안-받는-체크리스트-행을-상태와-상관없이-지운다--소스-없는-옛-행은-놓인-자리로-판정-꺼진--거절된-소스-행은-남김) — 보는 곳 watcher.log «[Watcher] checklist cleanup done in N s»
 - 2026-10-20 [파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map](#2026-10-20--파일-인제션도-맵-단위-통째-교체--표-설정-allow_replace_map) — 적는 곳 `table_config.json`
 - 2026-10-20 [외부 저장소도 표준 파서 — raws/ 와 같은 규칙](#2026-10-20--외부-저장소도-표준-파서--raws-와-같은-규칙) — 적는 곳 `ingestion_settings.json` 의 `external_sources` · `table_config.json` 의 `std_parse`
 - 2026-10-13 [큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다](#2026-10-13--큰-표-검색--표-선언의-검색-색인-그리드-읽기는-10-초에-끊고-다음-할-일을-말한다) — 적는 곳 `table_config.json` · `ingestion_settings.json`
@@ -525,6 +526,19 @@
 
 
 
+
+## 2026-10-23 · 와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 — 소스 없는 옛 행은 놓인 자리로 판정, 꺼진 · 거절된 소스 행은 남김
+
+소유자 10-22 «그냥 자동으로 선언 안 맞는 리스트 지워» · «재기동시» → 10-23 «체크리스트에 패턴 안 맞는 거 남아 있는데? 내가 지우라고 했었잖아 재기동 시» (총괄 53e78f5d0). 「와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만」(10-22)을 넓힌다.
+
+- **무엇** — 와처가 뜰 때, 지금 선언(소스의 root · glob/filename · max_depth)이 받지 않는 체크리스트 행(file_ingestion_logs)을 상태(SUCCESS · FAILED · PENDING_RETRY)와 상관없이 지운다. 전에는 기다리는 행(PENDING_RETRY)만 지웠다.
+- **소스 없는 옛 행** — 10-20 전 행처럼 source 가 비었거나, source 가 지금 없는 루트(루트를 옮긴 경우)를 가리키면, 그 파일이 놓인 소스로 판정한다. 어느 소스 밑도 아니고 표의 작업 폴더(raws · archives · err) 밑이면 raws 행으로 남긴다. 어디 밑도 아니면 «outside the root» 로 지운다. 묶음 Retry · 선언 바뀜 넘겨주기도 같은 판정을 쓴다.
+- **남기는 것** — ingestion_settings.json 에 적혀 있지만 꺼진(enabled:false) 소스, 검사에서 거절된 소스(예: 플러그인 로드 실패)의 행은 지우지 않고 세기만 한다 — 다시 켜면 그 행이 그대로 체크리스트로 쓰인다. raws 행(raws 는 폴더의 파일을 전부 읽음)도 남는다.
+- **데이터** — 지우는 것은 체크리스트 행과 그 다시 읽기 표시뿐이다. 표의 행 · 층은 그대로.
+- **바뀐 동작** — 지운 파일이 지금 선언에 다시 맞게 되면 새 파일로 읽힌다. 시작 정리는 자기 스레드에서 돈다 — 재시도 폴러 · 선언 바뀜 듣기는 기다리지 않는다. 정리 중에 폴러가 집어 간 대기 행은 지우지 않는다(판정한 상태 그대로인 행만 지움).
+- **시간** — 박스 sqlite 판 20 만 행(안 맞는 10 만 · 맞는 10 만)에서 47.8 초, 행당 약 0.24 ms. 체크리스트 전체를 훑으므로 행이 많을수록 길다.
+- **보는 곳** — watcher.log «[Watcher] checklist cleanup started - …» · «[Watcher] <표>: N checklist row(s) the declaration does not take - deleted (name not matched a · outside the root b · …)» · «[Watcher] <표>: N checklist row(s) of a source switched off or refused - left for their source (source switched off a · source refused b)» · «[Watcher] checklist cleanup done in N s - N deleted · M left for their source».
+- **필요한 조건** — git pull · 와처 재기동(런처 재기동).
 
 ## 2026-10-23 · 중복 접기는 «Fold duplicate rows» 하나로 — 층 많은 행 남기기 · 값이 다른 키 건너뛰기 · 미리보기가 다른 칸과 값을 보임 (dedupe_business_key_rows.py 은퇴)
 

@@ -44,7 +44,9 @@ def _write(path, text):
 
 
 def _row(db, table, path, status="SUCCESS", file_stat=None, at=None):
+    # A raws row; one with no source is judged by where its file lies (총괄 10-23).
     row = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
+                                  source="raws",
                                   retry_count=0, file_mtime=file_stat[0] if file_stat else None,
                                   file_size=file_stat[1] if file_stat else None)
     if at is not None:

@@ -42,6 +42,13 @@ STOOD_BY_REREAD = "STOOD"
 OUTSIDE_SOURCES = "outside the table's source folders"
 NOT_MATCHED = "not matched by the source's glob or filename"
 BEING_READ = "being read now"
+#: Why a row is not taken now that the watcher's start still leaves (총괄 10-23 가): its source is written in
+#: ingestion_settings.json but switched off, or refused by the validation - its rows wait for it.
+SOURCE_OFF = "source switched off"
+SOURCE_REFUSED = "source refused"
+KEPT_AT_START = (SOURCE_OFF, SOURCE_REFUSED)
+#: File log rows one page of the watcher's start cleanup reads and deletes.
+START_PAGE = 5000
 
 
 #: The table_config cells that do not change how a table's files are read (lead 10-20 ab951f09b): the schema screen,
@@ -186,67 +193,123 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
     return picked
 
 
-def taken_now(picked):
-    """`picked` [(log, rel)] kept to the files the declaration takes now (소유자 10-22 「지금 선언이랑 안 맞는 거 빼면 안
-    됨?」): a row read under one of its table's external sources (its `source`) is asked `source_taking` as a sweep asks
-    it, and one naming a source its table no longer declares is not taken ("source not declared"); a raws row passes.
-    THE filter the hand-off on a changed reading, a bulk Retry and the watcher's start ask - a Read now and a one-file
-    Retry do not. Rows are not touched.
-    -> (kept, {why_not_taken: count}, the first names not taken)."""
-    from directory_watcher import _safe_relative_path, _written_relative_path, one_sweep, source_taking, why_not_taken
+def _table_judge(table):
+    """(its declared external sources by root, its workspace folder, [(root, why)] of its sources written in
+    ingestion_settings.json but switched off or refused) - what `not_taken_why` judges a table's rows by."""
+    from directory_watcher import load_ingestion_settings
 
-    kept, not_taken, names, specs_of = [], {}, [], {}
+    if not table:
+        return {}, None, []
+    raws, specs = table_sources(table)
+    declared = {os.path.normcase(os.path.abspath(spec["root"])): spec for spec in specs}
+    held = []
+    for raw in load_ingestion_settings().get("external_sources") or []:
+        if not (isinstance(raw, dict) and raw.get("table_name") == table and isinstance(raw.get("path"), str)):
+            continue
+        root = os.path.abspath(os.path.expandvars(os.path.expanduser(raw["path"].strip())))
+        if not raw["path"].strip() or os.path.normcase(os.path.realpath(root)) in declared:
+            continue
+        held.append((root, SOURCE_OFF if raw.get("enabled", True) is False else SOURCE_REFUSED))
+    return declared, os.path.dirname(raws), held
+
+
+def not_taken_why(log, tables):
+    """Why the declaration does not take `log`'s file now (`why_not_taken`'s words), or None - taken (소유자 10-22
+    「지금 선언이랑 안 맞는 거 빼면 안 됨?」). A row read under one of its table's external sources (its `source`) is asked
+    `source_taking` as a sweep asks it. One whose source is no declared root - empty (written before 10-20) or a root
+    moved - is judged by the declared source its path is under; under none: a raws row when under its table's
+    workspace (raws takes every file there), else `SOURCE_OFF` / `SOURCE_REFUSED` when under a source written but not
+    declared, else "source not declared" (a source named) or "outside the root" (총괄 10-23 가). A raws row and a row
+    with no path are taken. Inside `one_sweep`; `tables` holds each table's `_table_judge` and, per (table, folder),
+    where that folder lies - the same for every file in it, asked once (a start reads every row)."""
+    from directory_watcher import _safe_relative_path, _written_relative_path, source_taking, why_not_taken
+
+    def under(path, root):
+        return _written_relative_path(path, root) or _safe_relative_path(path, root)
+
+    if not log.filepath or log.source == "raws":
+        return None
+    if log.table_name not in tables:
+        tables[log.table_name] = _table_judge(log.table_name)
+    specs, workspace, held = tables[log.table_name]
+    path = os.path.abspath(log.filepath)
+    spec = specs.get(os.path.normcase(os.path.abspath(log.source))) if log.source else None
+    if spec is None:
+        folder = (log.table_name, os.path.dirname(path))
+        if folder not in tables:
+            found = source_taking(list(specs.values()), path, named=False)
+            lies = (None if found
+                    else "raws" if workspace is not None and under(path, workspace) is not None
+                    else next((why for root, why in held if under(path, root) is not None), None))
+            tables[folder] = (found[0] if found else None, lies)
+        spec, lies = tables[folder]
+        if spec is None:
+            return None if lies == "raws" else lies or (
+                why_not_taken(None, path, None) if log.source else "outside the root")
+    if source_taking([spec], path) is not None:
+        return None
+    below = under(path, spec["root"])
+    return (why_not_taken(spec, path, below) if below is not None else None) or "outside the root"
+
+
+def taken_now(picked):
+    """`picked` [(log, rel)] kept to the files the declaration takes now (`not_taken_why`). THE filter the hand-off on
+    a changed reading, a bulk Retry and the watcher's start ask - a Read now and a one-file Retry do not. Rows are not
+    touched. -> (kept, {why_not_taken: count}, the first names not taken)."""
+    from directory_watcher import one_sweep
+
+    kept, not_taken, names, tables = [], {}, [], {}
     with one_sweep():
         for log, rel in picked:
-            if log.table_name not in specs_of:
-                specs_of[log.table_name] = {os.path.normcase(os.path.abspath(spec["root"])): spec
-                                            for spec in (table_sources(log.table_name)[1] if log.table_name else ())}
-            if not (log.source and log.source != "raws" and log.filepath):
+            why = not_taken_why(log, tables)
+            if why is None:
                 kept.append((log, rel))
                 continue
-            path = os.path.abspath(log.filepath)
-            spec = specs_of[log.table_name].get(os.path.normcase(os.path.abspath(log.source)))
-            if spec is not None and source_taking([spec], path) is not None:
-                kept.append((log, rel))
-                continue
-            below = (None if spec is None
-                     else _written_relative_path(path, spec["root"]) or _safe_relative_path(path, spec["root"]))
-            why = why_not_taken(spec, path, below) if spec is None or below is not None else None
-            why = why or "outside the root"
             not_taken[why] = not_taken.get(why, 0) + 1
             names.append(log.filename)
     return kept, dict(sorted(not_taken.items())), names[:5]
 
 
-def delete_not_taken(db):
-    """The waiting rows (`REREAD_STATUS`) the declaration does not take now (`taken_now`), deleted with their marks -
-    the watcher's start (소유자 10-22 「그냥 자동으로 선언 안 맞는 리스트 지워」 · 「재기동시」). A row claimed meanwhile is no longer
-    waiting and is not touched: each page deletes only rows still waiting. -> [(table, deleted, {why: count})]."""
+def delete_not_taken(db, page=START_PAGE):
+    """Every file log row the declaration does not take now (`not_taken_why`), whatever its state, deleted with its
+    marks - the watcher's start (소유자 10-22 「그냥 자동으로 선언 안 맞는 리스트 지워」 · 「재기동시」, 10-23). A row of a
+    source switched off or refused (`KEPT_AT_START`) is counted and left. Only the checklist: the table's rows and
+    layers stay. A page of `page` rows at a time, each deleted in its own commit - a row only in the state it was
+    judged in: the retry poller runs meanwhile, and a waiting row it claimed is its own.
+    -> [(table, {why: deleted}, {why: left})]."""
     from sqlalchemy import exists
 
     from database import models
+    from directory_watcher import one_sweep
 
     model = models.FileIngestionLog
-    by_table = {}
-    for log, rel in select_logs(db, (REREAD_STATUS,)):
-        by_table.setdefault(log.table_name, []).append((log, rel))
-    said = []
-    for table, picked in sorted(by_table.items(), key=lambda item: str(item[0])):
-        kept, not_taken, _names = taken_now(picked)
-        kept_ids = {log.id for log, _rel in kept}
-        ids = [log.id for log, _rel in picked if log.id not in kept_ids]
-        deleted = 0
-        for start in range(0, len(ids), MARK_PAGE):
-            page = ids[start:start + MARK_PAGE]
-            deleted += (db.query(model).filter(model.id.in_(page), model.status == REREAD_STATUS)
-                        .delete(synchronize_session=False))
-            (db.query(models.FileRereadMark)
-             .filter(models.FileRereadMark.log_id.in_(page), ~exists().where(model.id == models.FileRereadMark.log_id))
-             .delete(synchronize_session=False))
-            db.commit()
-        if ids:
-            said.append((table, deleted, not_taken))
-    return said
+    deleted, left, tables, last = {}, {}, {}, 0
+    while True:
+        rows = (db.query(model.id, model.table_name, model.source, model.filepath, model.filename, model.status)
+                .filter(model.id > last).order_by(model.id.asc()).limit(page).all())
+        if not rows:
+            break
+        last, ids = rows[-1].id, {}
+        with one_sweep():
+            for row in rows:
+                why = not_taken_why(row, tables)
+                if why is None:
+                    continue
+                counts = (left if why in KEPT_AT_START else deleted).setdefault(row.table_name, {})
+                counts[why] = counts.get(why, 0) + 1
+                if why not in KEPT_AT_START:
+                    ids.setdefault(row.status, []).append(row.id)
+        for status, judged in ids.items():
+            for start in range(0, len(judged), MARK_PAGE):
+                chunk = judged[start:start + MARK_PAGE]
+                db.query(model).filter(model.id.in_(chunk), model.status == status).delete(synchronize_session=False)
+                (db.query(models.FileRereadMark)
+                 .filter(models.FileRereadMark.log_id.in_(chunk),
+                         ~exists().where(model.id == models.FileRereadMark.log_id))
+                 .delete(synchronize_session=False))
+        db.commit()
+    return [(table, dict(sorted(deleted.get(table, {}).items())), dict(sorted(left.get(table, {}).items())))
+            for table in sorted(set(deleted) | set(left), key=str)]
 
 
 def reading_of(table, entry, sources, scripts_dir):

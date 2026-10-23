@@ -30,8 +30,9 @@ def tree(tmp_path, db_session, monkeypatch):
         path = str(base.joinpath(*rel.split("/")))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         open(path, "w").close()                                   # a re-read of a file that went in needs the file
+        # A raws row; one with no source is judged by where its file lies (총괄 10-23).
         db_session.add(models.FileIngestionLog(filename=os.path.basename(path), filepath=path,
-                                               table_name="t", status=status))
+                                               table_name="t", status=status, source="raws"))
     for rel in ("A/x/f1.csv", "A/x/f2.csv", "A/f3.csv", "B/g1.csv", "AB/h1.csv", "A_1/k1.csv"):
         add(rel)
     add("A/ok.csv", "SUCCESS")
