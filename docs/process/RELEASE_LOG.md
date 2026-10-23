@@ -527,11 +527,11 @@
 ## 2026-10-23 · 고침 — 피벗 보기에서 Tx 를 켠 채 Apply 하면 고친 값이 써진다
 
 - **무엇** — 총괄 10-23. 피벗 보기에서 Tx(기본으로 켜짐)를 켠 채 item 칸을 고치고 Apply 를 누르면, Apply 가 보내기 전에 쌓인 행을 다시 읽을 때 «묶음 줄»의 id 로 긴 표를 물었습니다. 그 id 의 행은 없으니 고침이 «지워진 행»으로 버려지고 «Nothing applied · 1 staged edit dropped (row deleted)» 로 끝났습니다. 서버에는 아무것도 써지지 않았습니다. 이제 칸마다 그 칸의 긴 행을 다시 읽습니다.
-- **화면에서** — 그 사이 다른 곳에서 그 긴 행의 값이 바뀌었으면 피벗이 아닐 때와 같은 질문(«N cell changed on the server since you edited»)이 뜹니다. 그 긴 행이 지워졌으면 그 칸의 고침만 버려집니다. 빈 칸(아직 행이 없는 칸)은 다시 읽을 것이 없어 그대로 갑니다.
+- **화면에서** — 그 사이 다른 곳에서 그 긴 행의 값이 바뀌었으면 피벗이 아닐 때와 같은 질문(«N cell changed on the server since you edited»)이 뜹니다. 그 긴 행이 지워졌으면 그 칸의 고침만 버려집니다. 빈 칸(아직 행이 없는 칸)은 다시 읽을 것이 없어 그대로 가서 긴 행 하나를 만듭니다 — 소유자 10-23 「피벗 상태 빈 값에서 값 추가도 안 되네」가 이것이었습니다(고치기 전 Tx 켬 0 행, 고친 뒤 칸 저장 · 붙여넣기 · 채우기 모두 1 행, 실제 API 로 잼). 그때 끝 줄의 «N cells updated» 는 새 행의 칸 수(키 + 항목 + 값)라 값 하나여도 1 이 아닙니다.
 - **고치기 전 우회** — Tx 를 끄고 고치면 바로 써졌습니다.
 - **선언** — 바뀐 것 없음.
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
-- **자세히** — `grid_pivot.stagedReadIds` · `stagedReadRows` · 화면 검사기 칸 «pivot apply writes» · «pivot apply asks» · «pivot apply drops».
+- **자세히** — `grid_pivot.stagedReadIds` · `stagedReadRows` · 화면 검사기 칸 «pivot apply writes» · «pivot apply asks» · «pivot apply drops» · «pivot blank writes».
 
 ## 2026-10-23 · 외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것
 

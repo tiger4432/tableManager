@@ -287,13 +287,13 @@ const answerOf = (u) => {
 };
 // One pivot item cell edited with Tx on and applied (lead 10-23 ㄱ), Apply's read again answered as `mode` says; a staged
 // edit left by the state before is discarded first. Ends when Apply has said how it ended.
-async function pivotEditApplied(c, mode) {
+async function pivotEditApplied(c, mode, at = '.ag-row[row-index="1"] .ag-cell[col-id^="item:"]') {
   await evaluate(c, `(() => { const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Discard' && !b.disabled);
     if (d) d.click(); return true; })()`);
   await sleep(900);
   PIVOT_LONG.mode = mode;
   await evaluate(c, `(() => {
-    const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell[col-id^="item:"]');
+    const cell = document.querySelector('.ag-center-cols-container ' + ${JSON.stringify(at)});
     if (!cell) return false;
     const r = cell.getBoundingClientRect();
     const o = { bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 5, view: window };
@@ -779,6 +779,11 @@ CELLS.push({ entry: 'index.html', after: 'Pivot, an edit of a gone row', rule: '
   const said = (document.getElementById('performance-log') || {}).textContent || '';
   return said === 'Nothing applied · 1 staged edit dropped (row deleted)' ? null : 'Apply ended «' + said + '»';
 })()` });
+// owner 10-23: a blank pivot cell applied with Tx on goes out as a new long row - its keys and its item.
+CELLS.push({ entry: 'index.html', after: 'Pivot, a blank cell applied', rule: 'pivot blank writes', at: 'pivot', expr: `(() => {
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  return /^Applied batch updates .*\\(1 cells updated\\)$/.test(said) ? null : 'Apply ended «' + said + '»';
+})()` });
 CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 'pivot', expr: `(() => {
   const add = document.getElementById('add-row-btn');
   if (add && add.getAttribute('title') === 'Rows are added and deleted with Pivot off') return 'Add Row still says the pivot';
@@ -1220,7 +1225,10 @@ async function openChrome() {
   let target;
   for (let i = 0; i < 75 && !target; i += 1) {
     await sleep(200);
-    if (!port && existsSync(written)) port = Number(readFileSync(written, 'utf8').split(/\r?\n/)[0]) || null;
+    // Chrome may still hold the file it is writing (EBUSY, 10-23 build2 died here) - read again on the next turn.
+    if (!port && existsSync(written)) {
+      try { port = Number(readFileSync(written, 'utf8').split(/\r?\n/)[0]) || null; } catch (err) { if (err.code !== 'EBUSY') throw err; }
+    }
     if (!port) continue;
     try { target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === 'page'); } catch { /* not up yet */ }
   }
@@ -1264,9 +1272,11 @@ async function servePage(chrome, dist) {
       return;
     }
     if (PIVOT.on && request.method === 'PUT' && u.pathname === '/tables/dt_log/data/updates') {
-      // Apply's save in pivot view (lead 10-23 ㄱ): answered with how many of its updates name a long row - a group id is none.
+      // Apply's save in pivot view (lead 10-23 ㄱ): answered with how many of its updates name a long row - a group id is none -
+      // or, for a blank cell, carry no row id and every key and the item (owner 10-23).
       const sent = JSON.parse(request.postData || '{}').updates || [];
-      reply(200, 'application/json', JSON.stringify({ change_count: sent.filter((x) => /^pv-/.test(String(x.row_id || ''))).length }));
+      const blankRow = (x) => !x.row_id && ['dt_job', 'b_wx', PIVOT_DECL.column].every((k) => x.updates && x.updates[k] != null);
+      reply(200, 'application/json', JSON.stringify({ change_count: sent.filter((x) => /^pv-/.test(String(x.row_id || '')) || blankRow(x)).length }));
       return;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') { log.refused.push(`${request.method} ${u.pathname}`); chrome.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {}); return; }
@@ -2088,6 +2098,8 @@ const DRIVE = {
     ['Pivot, an edit applied', (c) => pivotEditApplied(c, 'same')],
     ['Pivot, an edit over a changed row', (c) => pivotEditApplied(c, 'moved')],
     ['Pivot, an edit of a gone row', (c) => pivotEditApplied(c, 'gone')],
+    // A blank cell - no long row yet (owner 10-23 «빈 값에서 값 추가도 안 되네»): applied, it writes one.
+    ['Pivot, a blank cell applied', (c) => pivotEditApplied(c, 'same', '.ag-row[row-index="0"] .ag-cell[col-id="item:THK_CENTER"]')],
     ['Pivot off', async (c, log) => {
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
       await sleep(900);
@@ -2362,6 +2374,8 @@ const MUTANTS = [
     file: 'src/api.js', edits: [['  if (Object.keys(state.pendingTxEdits).length) { elements.performanceLog', '  if (state.txModeActive) { elements.performanceLog']] },
   { name: 'Apply reads a pivot group id again', entry: 'index.html', rule: 'pivot apply writes', at: 'pivot',
     file: 'src/grid_pivot.js', edits: [['  if (!view) return [...new Set(edits.map((edit) => edit.rowId))];\n', '  return [...new Set(edits.map((edit) => edit.rowId))];\n']] },
+  { name: 'Apply drops a blank pivot cell', entry: 'index.html', rule: 'pivot blank writes', at: 'pivot',
+    file: 'src/grid_pivot.js', edits: [['    if (!id) continue;\n', '    if (!id) { gone.push(key); continue; }\n']] },
   { name: 'rows are not refused in pivot view', entry: 'index.html', rule: 'pivot writes', at: 'pivot',
     file: 'src/write_guard.js', edits: [["const ROW_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'smartPasteBtn'];", 'const ROW_CONTROLS = [];']] },
   { name: 'the footer counts rows in pivot view', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
