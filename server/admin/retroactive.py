@@ -2113,10 +2113,14 @@ def _judge_ledger_rescope(params):
 #: screen that offered cancel anyway would show a button that does nothing.
 #: `judge` is the operation's own params judgment, asked by `validate` before anything
 #: is recorded. None: the run is the first to judge them.
+#: `examples` (the admin help's catalog, with `what_is_missing` and `next`) are the operator's own questions, an input
+#: sample rendered nowhere - a screen that shows them as hints needs English samples beside them (총괄 10-23).
 OPERATIONS = {
     "chain_replay": {
         "label": "Replay chain rules over old data (R1)",
         "what_is_missing": "data older than the rule has never been seen by that rule",
+        "examples": ["체인 룰을 새로 만들었거나 고쳤는데 옛날 행에는 반영이 안 됐다", "조인을 고쳤는데 옛 행의 칸이 비어 있어", "이 규칙 예전 데이터에 다시 돌려줘"],
+        "next": ["chain_replay of each rule that reads this rule's table, one by one - a replay wakes no rule (owner 09-26)"],
         "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)"),
                    _p("business_keys", required=False, kind="csv",
                       help="replay only these rows, by business_key_val; omit for the "
@@ -2161,6 +2165,8 @@ OPERATIONS = {
     "withdraw": {
         "label": "Withdraw a stale source (R2)",
         "what_is_missing": "a wrong value an old rule wrote still wins the priority stack",
+        "examples": ["옛 룰이 만든 틀린 값이 아직 이기고 있다", "이 소스가 쓴 값 다 빼줘"],
+        "next": ["chain_replay of the rule that should hold the value - the withdrawal already shows what the layers left decide and removes the rows it emptied"],
         "params": [_p("table"), _p("source"),
                    _p("columns", required=False, kind="csv",
                       help="comma-separated column allowlist"),
@@ -2183,6 +2189,8 @@ OPERATIONS = {
     "set_aside": {
         "label": "Set queued chain events aside",
         "what_is_missing": "the chain queue holds work that must not run now",
+        "examples": ["사고 중 체인 대기열에 지금 돌면 안 되는 일이 쌓였다", "이 표 사건 지금 돌리지 마"],
+        "next": ["rerun_set_aside when they should run"],
         "params": [_p("tables", required=False, kind="csv",
                       help="only events on these tables"),
                    _p("rules", required=False, kind="csv",
@@ -2207,6 +2215,8 @@ OPERATIONS = {
     "rerun_set_aside": {
         "label": "Run set-aside events again",
         "what_is_missing": "events set aside during an incident never ran",
+        "examples": ["치워 둔 사건을 이제 돌려", "사고 끝났으니 밀린 거 실행"],
+        "next": ["chain_replay of the rules below them, one by one - this wakes none"],
         "params": [_p("tables", required=False, kind="csv",
                       help="only events set aside on these tables"),
                    _p("rules", required=False, kind="csv",
@@ -2231,6 +2241,9 @@ OPERATIONS = {
         "label": "Run a rule's queued rows (retired)",
         "what_is_missing": ("rows a run_in: operation rule's group queued before run_in was retired - "
                             "rules run in the chain now"),
+        "examples": [],
+        "next": [],
+        "retired": True,
         "params": [_p("rule", help="the chain rule"),
                    _p("transaction", help="the transaction whose group queued the rows"),
                    _p("events", kind="csv", help="the outbox events that named the rows"),
@@ -2255,6 +2268,8 @@ OPERATIONS = {
     "resolve": {
         "label": "Recompute shown values from stored layers (R3)",
         "what_is_missing": "a cell shows a value its own stored layers no longer pick",
+        "examples": ["칸에 여러 소스가 쌓여 있는데 옛 층이 표시되고 있다", "소스 창엔 맞는 값인데 셀은 옛 값이야"],
+        "next": [],
         "params": [_p("table"),
                    _p("columns", required=False, kind="csv",
                       help="comma-separated column allowlist"),
@@ -2284,6 +2299,8 @@ OPERATIONS = {
         "what_is_missing": ("a \"write\" column keeps the spellings stored before it was declared, "
                             "a text column keeps numbers stored before text took them, and a row keyed "
                             "by a number keeps the key spelling it was stored with («1.0» · «001»)"),
+        "examples": ["표기 write 칸을 선언했는데 그 전에 저장된 값이 옛 철자다", "1.0 이랑 1 이 다른 값으로 잡혀"],
+        "next": ["fold_file_layers, then python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - the folded layers that now repeat go, and the space comes back"],
         "params": [_p("table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
@@ -2313,6 +2330,8 @@ OPERATIONS = {
         "label": "Fold layers that repeat another",
         "what_is_missing": ("a cell re-delivered file after file keeps one layer per file; the chain's "
                             "layer is one per source row"),
+        "examples": ["칸마다 파일 층이 여러 겹 쌓여 있다", "소스 창에 같은 값이 수십 줄이야"],
+        "next": ["python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - gives the space back"],
         "params": [_p("table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
@@ -2340,6 +2359,8 @@ OPERATIONS = {
     "fold_duplicate_rows": {
         "label": "Fold duplicate rows",
         "what_is_missing": "rows that should be one per key went in more than once",
+        "examples": ["키마다 한 행이어야 하는데 같은 키의 행이 여럿 들어갔다", "같은 키 행 중 층 많은 것만 남기고 값이 다른 키는 건드리지 마"],
+        "next": [],
         "params": [_p("table"),
                    _p("keys", kind="csv",
                       help="the columns whose values make a key; rows sharing them fold to one; "
@@ -2390,6 +2411,8 @@ OPERATIONS = {
     "fold_units": {
         "label": "Mark the losing units' rows (fold rule)",
         "what_is_missing": "per group one unit wins; the other units' rows are not marked yet",
+        "examples": ["웨이퍼마다 이긴 잡 하나만 남겨야 하는데 진 잡의 로그 행이 표시 안 됐다", "접기 규칙 빨리 돌려줘"],
+        "next": ["chain_replay of the copy rule - the marks wake no rule (setup step 6)"],
         "params": [_p("rule", help="the fold_by_unit chain rule on the unit table (GET /admin/chain/rules)"),
                    _pace_param()],
         "count": _count_fold_units,
@@ -2413,6 +2436,8 @@ OPERATIONS = {
     "delete_every_row": {
         "label": "Delete every row of a table",
         "what_is_missing": "a table to start again - every row goes; reading its files again is «Read all again»",
+        "examples": ["표 하나를 통째로 다시 지어야 한다", "이 표 싹 비우고 처음부터 다시 읽고 싶어"],
+        "next": ["Read all again on the file page - the file checklist is kept", "row by row: chain_replay of the rules that take deletions from this table, if their tables should follow"],
         "params": [_p("table"), _pace_param(),
                    _p("how", required=False, choices=[
                        {"value": "by_row", "label": "Row by row",
@@ -2446,6 +2471,8 @@ OPERATIONS = {
     "remove_shell_rows": {
         "label": "Remove rows with no source left",
         "what_is_missing": "rows the chain filled whose sources are all gone - only the chain's keys are left",
+        "examples": ["원본이 다 지워졌는데 공식 표에 키만 남은 행이 쌓여 있다", "값 없이 키만 있는 행 지워줘"],
+        "next": [],
         "params": [_p("table"), _pace_param()],
         "count": _count_remove_shell_rows,
         "run": _run_remove_shell_rows,
@@ -2467,6 +2494,8 @@ OPERATIONS = {
     "fold_withdrawal_events": {
         "label": "Fold row-by-row withdrawal events",
         "what_is_missing": "withdrawals queued one chain event per row before they wrote collapsed ones",
+        "examples": ["회수가 행마다 사건을 낸 채 쌓여 체인이 느리다", "거둔 뒤로 대기열이 안 줄어"],
+        "next": [],
         "params": [],
         "count": _count_fold_withdrawal_events,
         "run": _run_fold_withdrawal_events,
@@ -2486,6 +2515,8 @@ OPERATIONS = {
     "ledger_backfill": {
         "label": "Translate the rows not yet in the ledger",
         "what_is_missing": "the declaration reads this source, but some of its rows are not in the ledger yet",
+        "examples": ["원장에 이 소스의 원자가 없거나 도중에 멈춰 있다", "새 소스를 선언했는데 걷기에 안 나와"],
+        "next": [],
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
                    _pace_param(),
                    _p("fetch_rows", required=False, kind="int", form=False,
@@ -2514,6 +2545,8 @@ OPERATIONS = {
         "label": "Catch a ledger world up",
         "what_is_missing": ("the world did not follow its tables live for a while, so rows "
                             "made, edited or deleted meanwhile are not in its ledger"),
+        "examples": ["원장이 못 본 수정이 있다 — 표 값이 바뀌었는데 원자가 옛 값 그대로", "가지를 다시 켰는데 옛 값이야"],
+        "next": ["python -m ledger census --source <source> - the source panel keeps the numbers it measured until a census runs again"],
         "params": [_p("world", help="a ledger world by name (GET /admin/ontology-explorer/worlds)"),
                    _pace_param()],
         "count": _count_ledger_catch_up,
@@ -2532,6 +2565,8 @@ OPERATIONS = {
     "ledger_rescope": {
         "label": "Re-translate a ledger scope",
         "what_is_missing": "corrected input never reached the ledger, so that scope alone holds stale values",
+        "examples": ["원장 해석을 고쳤는데 이미 적재된 원자는 옛 해석 그대로다", "이 랏만 원장 다시 번역해줘"],
+        "next": [],
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
                    _p("scope_column", required=False,
                       help="a column this source's read declares; anything else is "
@@ -2565,6 +2600,8 @@ OPERATIONS = {
     "enrichment_backfill": {
         "label": "Create enrichment derived rows",
         "what_is_missing": "the derived rows were never created at all",
+        "examples": ["파생 테이블에 행 자체가 없다", "워크리스트에도 안 떠"],
+        "next": ["enrichment_confirm when the new rows' target cell stays empty"],
         "params": [_p("rule", help="enrichment rule name (chain_rules.json)"),
                    _p("limit", required=False, kind="int", form=False,
                       help="caps NEW identities, not the scan"),
@@ -2587,6 +2624,8 @@ OPERATIONS = {
     "enrichment_confirm": {
         "label": "Auto-confirm single candidates",
         "what_is_missing": "the derived rows exist but the target cell is empty",
+        "examples": ["파생 행은 있는데 타깃 칸이 비어 있다", "후보가 하나뿐인데 왜 안 채워져"],
+        "next": [],
         "params": [_p("rule", help="enrichment rule name (chain_rules.json)"),
                    _p("limit", required=False, kind="int", form=False,
                       help="cap the number of rows examined"),
@@ -2613,6 +2652,8 @@ OPERATIONS = {
         "what_is_missing": "a source added today has no data for the days before it",
         "downstream_note": ("The files it collects are ingested as usual, and the chain runs "
                             "on them"),
+        "examples": ["오늘 붙인 수집기에 지난 날들의 데이터가 없다", "지난주 것도 가져와"],
+        "next": ["collector_backfill again from the line's next_start when it stopped short"],
         "params": [_p("collector", help="<table>/<script.py> of a collector that declares "
                                          "'# window:'"),
                    _p("start", help="first day, KST - YYYY-MM-DD (that day's 00:00) or "
@@ -2638,6 +2679,8 @@ OPERATIONS = {
         "what_is_missing": "a column the table declaration names a number that the database still holds as text",
         "downstream_note": ("The table is locked while it converts; afterwards the declaration says the new type "
                             "and every process reads the column as it"),
+        "examples": ["숫자 칸인데 DB 엔 글자로 들어가 있다", "칸 타입 바꿨는데 정렬이 글자처럼 돼"],
+        "next": [],
         "params": [_p("table"), _p("column"),
                    _p("type", help="the declared type", choices=lambda: sorted(_retype_types()))],
         "count": _count_retype_column,
@@ -2653,6 +2696,27 @@ OPERATIONS = {
                                "the column converted, those indexes built again; then the declaration's one cell. A "
                                "stop lands before the transaction begins; once it has, it ends"),
         "cli_only": [],
+    },
+}
+
+#: The upkeep doors outside this tab, in the catalog's cells - what the operator means to do, their questions, and
+#: the door to call next (소유자 10-23 ㄴ). Not runs: each door is its own route or command, named in `doors`.
+DOORS_OUTSIDE = {
+    "read_files_again": {
+        "label": "Read files again",
+        "what_is_missing": "files already read keep the parse they had - the parser or the table's reading changed since",
+        "examples": ["파서(또는 칸 선언)를 고쳤는데 이미 들어간 파일의 행은 옛 해석 그대로다", "이 파일 지금 다시 읽어줘",
+                     "이 폴더 실패한 파일만 다시"],
+        "doors": [
+            {"name": "now", "how": ("the file page's Retry · Read all again · Retry failed files under a folder "
+                                    "(POST /admin/file-ingestion/retry-failed) · Read now"),
+             "when": ("the rows the file log names, picked by state, folder and time, read where the log says they "
+                      "are; a file gone from there is not handed")},
+            {"name": "next sweep", "how": "python server/scripts/replay_ingestion.py --path <file> [--table <table>] --apply",
+             "when": ("a file still where its source's sweep looks - its log row's stamp emptied, the next sweep "
+                      "reads it as the source's pattern takes it; a file moved away is not read")}],
+        "next": [("a failed row from before 10-20 carries no source, and Retry hands it without asking today's "
+                  "pattern - B fixes that after the replay leak (84c3c4c63)")],
     },
 }
 

@@ -364,7 +364,7 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                 "%s renders Korean in the browser: %r" % (cell, said))
 
 
-    def test_no_string_this_module_hands_the_screen_is_korean(self):
+    def test_no_string_this_module_hands_the_screen_is_korean(self, client):
         """🔴 소유자 2026-08-31 「UI 무조건 영어로」 · 2026-09-23 「UI에 한국어 쓰지 말라고」.
 
         ⚠️ A TEXT ORACLE, DECLARED AS ONE. The subject here IS the text - 「what words does
@@ -378,6 +378,10 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
            here, this case is where the carve-out gets written - deliberately, once.
         ⚠️ Docstrings are excluded. They are for whoever edits this file, and 소유자's rule
            is about what renders.
+        ⚠️ ONE CELL IS OUT, BY NAME: the catalog's `examples` - the operator's own questions, an input
+           sample that renders nowhere (총괄 10-23). That it renders nowhere is asserted below on the
+           route that hands this registry to the screen; nothing else outside this module reads a spec
+           whole (running.py reads its label).
         """
         import ast
         import inspect
@@ -399,6 +403,13 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                         and isinstance(body[0].value.value, str)):
                     docstrings.add(id(body[0].value))
 
+        examples = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values):
+                    if isinstance(key, ast.Constant) and key.value == "examples":
+                        examples.update(id(piece) for piece in ast.walk(value))
+
         # f-string pieces are Constants of their own; count the joined text once.
         in_fstring = set()
         for node in ast.walk(tree):
@@ -416,7 +427,8 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
                     said.append((node.lineno, text))
             elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
                   and hangul.search(node.value)
-                  and id(node) not in docstrings and id(node) not in in_fstring):
+                  and id(node) not in docstrings and id(node) not in in_fstring
+                  and id(node) not in examples):
                 said.append((node.lineno, node.value))
 
         # canary: the instrument can see this module's strings at all
@@ -424,6 +436,9 @@ class TestCountsDoNotLieAboutWhatTheyCounted:
 
         assert not said, "%d string(s) render Korean: %r" % (
             len(said), [(ln, t[:60]) for ln, t in sorted(said)[:8]])
+        assert examples, "canary: the carve-out found the catalog's examples"
+        shown = client.get("/admin/retroactive/operations").text
+        assert '"examples"' not in shown and not hangul.search(shown)
 
 
     def test_a_count_writes_nothing(self, client, retro_env):
