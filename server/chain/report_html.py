@@ -36,7 +36,13 @@ figure { margin: 0; display: grid; gap: 4px; }
 figcaption { color: var(--muted); font-size: 12px; }
 .text { white-space: pre-wrap; max-width: 72ch; }
 .note { color: var(--muted); font-size: 12px; }
+.sides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.side { display: grid; gap: 24px; min-width: 0; align-self: start; }
+@media (max-width: 900px) { .sides { grid-template-columns: minmax(0, 1fr); } }
 """
+#: Where a layout slot's kind stands (owner 10-23 «글 및 이미지가 좌측, 표가 우측») - the slots keep their order on
+#: their side; a narrow screen folds the two into one column, the left first.
+SIDES = {"text": "left", "image": "left", "table": "right"}
 
 
 def _e(value) -> str:
@@ -174,7 +180,7 @@ def _summary_table(table, spec, lent=None):
             row_head = "".join(_cell("td", name_class, dress.get("name"), text=_e(part), rowspan=rowspan,
                                      colspan=colspan if colspan and colspan > 1 else None)
                                for part, rowspan, colspan in parts)
-            values = "".join(_cell("td", value_class, dress.get("value"),
+            values = "".join(_cell("td", _aligned(value_class, cell, kind), dress.get("value"),
                                    _colour(formats.get(name), cell, at < here, baseline) if kind == "item" else None,
                                    _value(cell, name, columns[at] if at < len(columns) else ""))
                              for at, cell in enumerate(cells))
@@ -182,6 +188,13 @@ def _summary_table(table, spec, lent=None):
     note = ('<p class="note">%s: %s</p>' % (_e(report_shape.word(spec, "left_out")), _e(", ".join(table["left_out"])))
             if table.get("left_out") else "")
     return WRAP % ("<table><thead>%s</thead><tbody>%s</tbody></table>" % ("".join(out), "".join(body))) + note
+
+
+def _aligned(cls, cell, kind):
+    """An info cell that says a number stands as the numbers do - right, tabular; its words stand left (lead 10-23)."""
+    from expression import number_of
+
+    return CELL if kind == "info" and number_of(cell.get("text")) is not None else cls
 
 
 def _value(cell, name, column):
@@ -254,12 +267,14 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
         filled = report_template.fill(template, contents)
         at = filled.lower().rfind("</body>")
         return filled[:at] + folded + filled[at:] if at >= 0 else filled + folded
-    sections = []
+    sides = {"left": [], "right": []}
     for slot in layout:
         kind = slot.get("kind")
         body = (_table(slot.get("fill"), tables, spec) if kind == "table" else _images(embedded, spec)
                 if kind == "image" else _text(slot.get("slot"), texts, spec))
-        sections.append("<section>%s</section>" % body)
+        sides[SIDES[kind]].append("<section>%s</section>" % body)
+    sections = ['<div class="sides">%s</div>' % "".join(
+        '<div class="side">%s</div>' % "".join(sides[side]) for side in ("left", "right") if sides[side])]
     return ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
             "content=\"width=device-width, initial-scale=1\"><title>%s</title><style>%s</style></head>"
             "<body><main><h1>%s</h1><p class=\"meta\">%s</p>%s%s</main></body></html>"

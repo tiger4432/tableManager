@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽](#2026-10-23--ai-리포트-파일--글--그림-왼쪽-표-오른쪽) — 보는 곳 리포트 파일(server/reports/<웨이퍼>.html)
 - 2026-10-23 [AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄](#2026-10-23--ai-리포트-요약-표의-info-가-표-목록--넓은-표-한-행수율도-한-줄) — 적는 곳 chain_rules.json 의 derive.report.info(목록) · 보는 곳 리포트 요약 표 머리 밑 줄
 - 2026-10-23 [AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만](#2026-10-23--ai-리포트는-리포트-표에-건-규칙-하나--요약표--조건표--이미지표는-소유자-모양-그대로-읽기만) — 적는 곳 chain_rules.json 의 derive.report(on = into = 리포트 표 · results.file · conditions · images.item_sep · images.source) · 보는 곳 리포트 표의 파일 경로 · 파일의 Evidence
 - 2026-10-23 [조인 take 의 from 에 칸 목록 — 함수가 행마다 {칸: 값} 을 받는다](#2026-10-23--조인-take-의-from-에-칸-목록--함수가-행마다-칸-값-을-받는다) — 적는 곳 chain_rules.json 의 join take 의 from · 보는 곳 함수가 받는 values
@@ -542,6 +543,13 @@
 
 
 
+
+## 2026-10-23 · AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽
+
+- **무엇** — 소유자 10-23 「글 및 이미지가 좌측, 표가 우측 차지하게 배치 바꿔」. layout 의 text · image 칸은 왼쪽, table 칸은 오른쪽이고, 각 쪽은 layout 순서를 따릅니다. 900px 아래에서는 한 줄로 접힙니다.
+- **함께** — 요약 표 머리 밑 info 줄에서 숫자 값은 디펙 칸처럼 오른쪽, 글자 값은 왼쪽에 놓입니다(총괄 10-23).
+- **필요한 조건** — git pull · 런처 재기동 · 리포트 다시 만들기(R1 에 규칙 이름).
+- **자세히** — 시험 `test_the_report_html_embeds_everything_in_layout_order.py` · `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
 
 ## 2026-10-23 · AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄
 

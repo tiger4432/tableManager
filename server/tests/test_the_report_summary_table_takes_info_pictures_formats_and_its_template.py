@@ -146,7 +146,7 @@ def test_info_rows_stand_under_the_head_from_the_info_table(report, db_session):
 def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_session):
     """Lead 10-23: the yield is the owner's own table [wafer, leg] · yield, made by a chain rule - one info row named
     by its column, under the long info table's rows; one table written alone reads as before."""
-    from chain import report_reads, report_shape
+    from chain import report_html, report_reads, report_shape
 
     spec = json.loads(json.dumps(SPEC))
     spec["info"] = [SPEC["info"], {"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "yield"}]
@@ -156,6 +156,9 @@ def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_
                                      ("yield", ["52.0", "60.0", "88.0", ""])], "W3 has no yield row: a blank"
     assert table["left_out"] == ["W2/v1 평가자"]
     assert _texts(report.yield_by()["html"]["info"]) == _texts(table["info"])[:2], "one table alone: as it was"
+    page = report_html._summary_table(table, spec)
+    assert '<td class="rpt-cell">52.0</td>' in page and '<td class="rpt-info">A-lot</td>' in page, \
+        "a number stands right as the item cells do, a word left (lead 10-23)"
 
 
 def test_a_picture_row_holds_a_picture_a_column_by_the_one_function(report, db_session):

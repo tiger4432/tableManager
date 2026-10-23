@@ -23,10 +23,14 @@ def _page():
 
 
 def test_the_slots_come_in_layout_order_and_say_what_is_missing():
+    """Owner 10-23 «글 및 이미지가 좌측, 표가 우측»: the text and image slots on the left, the tables on the right,
+    each side in layout order."""
     page = _page()
-    order = [page.index(mark) for mark in ("Particle rose on W2.", "3.0% (3/100)", "data:image/png;base64,AAAA",
-                                           "pareto was not read.", "Nothing was written for conclusion.")]
-    assert order == sorted(order)
+    left = [page.index(mark) for mark in ("Particle rose on W2.", "data:image/png;base64,AAAA",
+                                          "Nothing was written for conclusion.")]
+    right = [page.index(mark) for mark in ("3.0% (3/100)", "pareto was not read.")]
+    assert left == sorted(left) and right == sorted(right)
+    assert page.count('<div class="side">') == 2 and max(left) < min(right)
 
 
 def test_the_summary_table_heads_each_group_over_its_wafers():
