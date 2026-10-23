@@ -1634,6 +1634,69 @@ def delete_every_row(db, table_name: str, apply: bool = False, pace: str = None,
     return stats
 
 
+#: The history's source on a full reset's one summary line.
+FULL_RESET_SOURCE = "full_reset"
+
+
+def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = False, by: str = EVERY_ROW_DELETER,
+               setup=None, rules=None, log=logger.info) -> dict:
+    """«Delete every row of a table» as a full reset (소유자 10-23 「완전 초기화 목적」 - was scripts/empty_table.py,
+    총괄 35b76ba92): the rows, the table's cell layers and pins in ONE transaction with one summary history line, then
+    every ledger source reading the table re-read whole, so the atoms of the rows it lost go. A raw DELETE - the
+    grid's door is ~2.5 s per 10,000 rows, too slow for a million - so no outbox event: no chain rule is told, and a
+    person's values go too. The dry run says what goes; `apply` takes `confirm_rows`, the rows the dry run said,
+    and refuses a table that moved since."""
+    from chain.ingestion_worker import loaded_chain_rules, watches_table
+    from database import crud, models
+    from ledger import backfill, followup, schema
+    from ledger.setup import load_setup
+
+    try:
+        crud.refuse_write_to_view(table_name)
+    except crud.ReadOnlyRelation as exc:
+        raise ReplayRefused(str(exc)) from exc
+    if table_name not in models.DYNAMIC_TABLES:
+        raise ReplayRefused("'%s' is not a declared table (table_config)" % table_name)
+    setup = load_setup() if setup is None else setup
+    rules = loaded_chain_rules() if rules is None else rules
+    layers = dict(db.execute(text(
+        "SELECT source_name, count(*) FROM cell_sources WHERE table_name = :t GROUP BY source_name"),
+        {"t": table_name}).fetchall())
+    found = {
+        "mode": "apply" if apply else "dry-run", "table": table_name,
+        "rows": db.execute(text('SELECT count(*) FROM "%s"' % table_name)).scalar(),
+        "layers": sum(layers.values()),
+        "user_layers": sum(n for name, n in layers.items() if crud.layer_writer(name) == crud.USER_SOURCE),
+        "overwrites": db.execute(text("SELECT count(*) FROM cell_overwrites WHERE table_name = :t"),
+                                 {"t": table_name}).scalar(),
+        "ledger_atoms": {source: db.execute(text("SELECT count(*) FROM %s WHERE source_who = :s"
+                                                 % schema.LEDGER_TABLE), {"s": source}).scalar()
+                         for source in followup.sources_for_table(setup, table_name)},
+        "chain_rules": sorted(rule["name"] for rule in rules if watches_table(rule, table_name)),
+    }
+    if not apply:
+        return found
+    if confirm_rows is None or int(confirm_rows) != found["rows"]:
+        raise ReplayRefused("'%s' has %d row(s) now, not %s - read the preview again and give its count"
+                            % (table_name, found["rows"], confirm_rows))
+    tx = "%s_%s" % (FULL_RESET_SOURCE, uuid.uuid4().hex[:8])
+    found["rows_deleted"] = db.execute(text('DELETE FROM "%s"' % table_name)).rowcount
+    found["layers_deleted"] = db.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
+                                         {"t": table_name}).rowcount
+    found["overwrites_deleted"] = db.execute(text("DELETE FROM cell_overwrites WHERE table_name = :t"),
+                                             {"t": table_name}).rowcount
+    crud.create_audit_log(db, table_name, "*", "*", found["rows"], 0, FULL_RESET_SOURCE, by, transaction_id=tx)
+    db.commit()
+    found["transaction_id"] = tx
+    found["ledger_withdrawn"] = {
+        source: backfill.rescope(db.get_bind(), setup, source, None, (), apply=True, whole_source=True,
+                                 world=schema.DEFAULT_WORLD).get("gone_withdrawn", 0)
+        for source in found["ledger_atoms"]}
+    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['layers_deleted']} layer(s), "
+        f"{found['overwrites_deleted']} pin(s) deleted in {tx}; ledger atoms withdrawn {found['ledger_withdrawn']}")
+    return found
+
+
 def _delete_by_pages(db, table_name, model, keys, columns, judged, deleter, tag, apply, pace, log, checkpoint):
     """The paged delete both ops above run: `judged(read page)` -> (rows looked at, rows to delete), deleted
     through `crud.delete_rows_batch` under `deleter`, a commit a write page, a stop between pages."""

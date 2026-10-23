@@ -67,13 +67,9 @@ def _official(world):
 
 
 def test_the_owners_three_steps_empty_the_official_fold_the_log_and_refill_by_the_copy_rule(world):
-    """총괄 10-09 (소유자 「공식 표 다 지우고 다시 할게, 원자도 다 지워져야 해」): ① empty_table on the official
+    """총괄 10-09 (소유자 「공식 표 다 지우고 다시 할게, 원자도 다 지워져야 해」): ① a full reset of the official
     table - its rows, layers and the atoms of the ledger source reading it; ② fold the log; ③ the copy
     rule's replay refills the official table and the ledger follows."""
-    if os.path.join(SERVER_DIR, "scripts") not in sys.path:
-        sys.path.append(os.path.join(SERVER_DIR, "scripts"))                     # after tests/: scripts has a support too
-    import empty_table
-
     db = world["db"]
     hw.push(world, [{"log_id": "A1", **hw.KEY, "netdie": 7},
                     {"log_id": "A2", **hw.KEY, "netdie": 8},
@@ -81,9 +77,9 @@ def test_the_owners_three_steps_empty_the_official_fold_the_log_and_refill_by_th
     hw.settle(world)
     assert hw.said(world) == [("J2", "5.0")]                                      # canary: atoms to take
 
-    found = empty_table.report(db, world["setup"], hw.OFFICIAL, world["rules"])     # ①
-    empty_table.empty(db, world["engine"], world["setup"], hw.OFFICIAL, world["rules"],
-                      confirm_rows=found["rows"], by="operator")
+    found = replay.full_reset(db, hw.OFFICIAL, setup=world["setup"], rules=world["rules"])    # ①
+    replay.full_reset(db, hw.OFFICIAL, confirm_rows=found["rows"], apply=True, by="operator",
+                      setup=world["setup"], rules=world["rules"])
     assert _official(world) == {} and hw.said(world) == []                         # the source's atoms: 0
 
     folded = replay.fold_duplicate_rows(db, hw.LOG, hw.KEYS, "log_id", apply=True,   # ②

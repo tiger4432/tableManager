@@ -271,6 +271,7 @@
 
 - 2026-10-22 [표 선언에서 칸 타입을 바꾸면 소급 대기열 한 줄이 DB 칸을 바꾼다 — 문자 → 숫자 · 문자 → 시간 · 시간 → 문자](#2026-10-22--표-선언에서-칸-타입을-바꾸면-소급-대기열-한-줄이-db-칸을-바꾼다--문자--숫자--문자--시간--시간--문자) — 보는 곳 저장 줄 · 소급 대기열
 - 2026-10-22 [표 하나의 행을 전부 지운다 — 소급 탭 «Delete every row of a table», 파일 체크리스트는 그대로](#2026-10-22--표-하나의-행을-전부-지운다--소급-탭-delete-every-row-of-a-table-파일-체크리스트는-그대로) — 누르는 곳 소급 탭 «Delete every row of a table» · 명령 `chain_replay_cli.py delete-every-row`
+  - 2026-10-23 [표 비우기가 문 하나로 — «Delete every row of a table» 에 Full reset 칸 (empty_table.py 은퇴)](#2026-10-23--표-비우기가-문-하나로--delete-every-row-of-a-table-에-full-reset-칸-empty_tablepy-은퇴) — 명령 `chain_replay_cli.py delete-every-row <표> --how full_reset` · 누르는 곳 소급 탭 how = Full reset
 - 2026-10-20 [옛 철자로 적힌 행 키를 다시 적고 · 같은 키가 된 행과 같은 키를 둘이 가진 행을 합친다 — 그 뒤 키 유일 인덱스](#2026-10-20--옛-철자로-적힌-행-키를-다시-적고--같은-키가-된-행과-같은-키를-둘이-가진-행을-합친다--그-뒤-키-유일-인덱스) — 누르는 곳 소급 탭 «Fold stored values into the declared spelling»
 - 2026-10-14 [원장 다시 번역 — 통계 없는 원장 파티션을 스스로 분석하고, 회수는 쪽마다 한 번, 실행이 지금 단계를 5 초마다 말한다](#2026-10-14--원장-다시-번역--통계-없는-원장-파티션을-스스로-분석하고-회수는-쪽마다-한-번-실행이-지금-단계를-5-초마다-말한다) — 적는 곳 `ingestion_settings.json` · 누르는 곳 소급 탭
   - 2026-10-14 [원장 다시 번역이 쪽마다 제가 쓴 파티션을 다시 분석하고, 디버그면 원자 쓰기의 디스크 · 캐시 블록을 말한다](#2026-10-14--원장-다시-번역이-쪽마다-제가-쓴-파티션을-다시-분석하고-디버그면-원자-쓰기의-디스크--캐시-블록을-말한다) — 적는 곳 `ingestion_settings.json`
@@ -309,7 +310,7 @@
 - 2026-10-11 [소급 강제 종료 — 더블클릭 한 번](#2026-10-11--소급-강제-종료--더블클릭-한-번) — 명령 `stop_retroactive.bat`
 - 2026-10-10 [원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 읽지 않게](#2026-10-10--원장-ref-해시-인덱스--거두기-한-장이-원장-전체를-읽지-않게) — 명령 `python server/scripts/build_ledger_ref_index.py`
 - 2026-10-03 [table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다](#2026-10-03--table_config-를-다시-쓰는-스크립트-둘이-운영자가-적은-칸을-지우지-않는다) — 명령 `python server/scripts/install_product_tables.py --overwrite-drift` · `python server/scripts/table_config_from_schema.py --merge`
-- 2026-10-02 [표 통째로 비우기 — 행 · 칸 층 · 원장 원자를 한 번에](#2026-10-02--표-통째로-비우기--행--칸-층--원장-원자를-한-번에) — 명령 `python server/scripts/empty_table.py`
+- 2026-10-02 [표 통째로 비우기 — 행 · 칸 층 · 원장 원자를 한 번에](#2026-10-02--표-통째로-비우기--행--칸-층--원장-원자를-한-번에) — 명령 `python server/scripts/empty_table.py` (10-23 은퇴 → `delete-every-row --how full_reset`)
   - 2026-10-08 [고침 — 표 비우기 도구가 명령으로 돌 때 모든 표를 거절하던 것](#2026-10-08--고침--표-비우기-도구가-명령으로-돌-때-모든-표를-거절하던-것) — 명령 `python server/scripts/empty_table.py`
 
 ### 설정 파일
@@ -522,6 +523,22 @@
 
 
 
+
+## 2026-10-23 · 표 비우기가 문 하나로 — «Delete every row of a table» 에 Full reset 칸 (empty_table.py 은퇴)
+
+- **무엇** — 소유자 10-23 「다 비우는 거 맞음 — 완전 초기화 목적」. 표 하나를 비우는 문이 둘(소급 탭 «Delete every row of a table» · `server/scripts/empty_table.py`)이었고 체인 동작이 반대였습니다. 이제 소급 탭의 그 작업 하나에 칸 `how` 가 있습니다.
+- **고르는 칸**
+  - `Row by row`(비워 두면 이것) — 지금까지의 그 작업. 그리드 삭제처럼 쪽마다 지우고, 그 행이 먹인 것을 체인이 거둡니다.
+  - `Full reset` — 옛 empty_table.py 그대로. 행 · 칸 층 · pin 을 한 트랜잭션에 지우고 이력 한 줄, 체인 규칙은 아무것도 안 깨고 사람이 고친 값도 같이 가며, 그 표를 읽는 원장 소스의 원자를 거둡니다. 100만 행처럼 큰 표용입니다.
+- **선언 예시** — 소급 탭에서 table · how = Full reset 로 미리보기 → 미리보기가 말한 행 수를 `confirm_rows` 에 적고 실행. 명령으로는
+```
+python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset
+python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset --confirm-rows <위의 행 수> --apply
+```
+- **보이는 것** — 미리보기 「Full reset of '<표>': N row(s), … a person's … pin(s) … No chain rule is told … Ledger atoms taken back …」 · 이력의 출처 `full_reset`
+- **바뀐 동작** — 비우기가 소급 실행이 되어 소급 대기열의 «한 번에 하나»를 탑니다. `confirm_rows` 가 지금 행 수와 다르거나 비었으면 거절합니다. `--by` 는 없어졌고 이력의 누가 칸은 실행 id 입니다.
+- **은퇴** — `server/scripts/empty_table.py`. RUN.md 의 그 명령 줄 · BACKFILL_GUIDE §0 의 표 줄은 새 명령으로 바뀌었습니다.
+- **자세히** — 시험 `test_a_table_is_emptied_whole_with_what_it_carried.py`
 
 ## 2026-10-23 · 외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것
 

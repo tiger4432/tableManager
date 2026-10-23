@@ -65,7 +65,6 @@ QUIET_KEPT = {
     "server/scripts/diagnose_db_health.py": {"cleanup": 2, "probe": 1},
     "server/scripts/diagnose_slow_after_ingest.py": {"cleanup": 1, "probe": 1, "elsewhere": 2, "stream": 1},
     "server/scripts/diagnose_wal_headroom.py": {"cleanup": 1, "elsewhere": 1, "stream": 1},
-    "server/scripts/empty_table.py": {"stream": 1},
     "server/scripts/install_product_tables.py": {"stream": 1},
     "server/scripts/list_undeclared_tables.py": {"elsewhere": 1, "stream": 1},
     "server/scripts/load_mechanism_edge_rows.py": {"import": 1},

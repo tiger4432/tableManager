@@ -1492,6 +1492,27 @@ def _count_delete_every_row(db, params, scan_limit):
     from database import models
 
     table = params["table"]
+    if params.get("how") == FULL_RESET:
+        try:
+            s = replay.full_reset(db, table, log=lambda m: logger.debug(m))
+        except replay.ReplayRefused as e:
+            raise RetroactiveRefused(str(e)) from None
+        atoms = "; ".join("%s %d" % item for item in sorted(s["ledger_atoms"].items())) or "no source reads it"
+        return {
+            "affected": s["rows"],
+            "absence": ABSENCE_TRULY_NONE if not s["rows"] else None,
+            "affected_label": "rows to delete",
+            "count_kind": COUNT_EXACT,
+            "scanned": s["rows"],
+            "scan_limit": scan_limit,
+            "truncated": False,
+            "detail": (f"Full reset of '{table}': {s['rows']} row(s), {s['layers']} cell layer(s) - {s['user_layers']} "
+                       f"of them a person's - and {s['overwrites']} pin(s) go in one transaction. Cannot be undone. "
+                       f"No chain rule is told: {', '.join(s['chain_rules']) or 'none reads it'}. Ledger atoms taken "
+                       f"back afterwards: {atoms}. Run it with confirm_rows {s['rows']}."),
+            "extra": {key: s[key] for key in ("rows", "layers", "user_layers", "overwrites", "ledger_atoms",
+                                              "chain_rules")},
+        }
     s = replay.delete_every_row(db, table, log=lambda m: logger.debug(m))
     kept = (db.query(models.CellSource.row_id).filter(models.CellSource.table_name == table,
                                                       models.CellSource.source_name.in_(cell_layer.PROTECTED_SOURCES))
@@ -1520,6 +1541,16 @@ def _count_delete_every_row(db, params, scan_limit):
 def _run_delete_every_row(db, params, log, control=None):
     from chain import replay
 
+    if params.get("how") == FULL_RESET:
+        try:
+            s = replay.full_reset(db, params["table"], confirm_rows=params.get("confirm_rows"), apply=True,
+                                  by=getattr(control, "run_id", None) or replay.EVERY_ROW_DELETER, log=log)
+        except replay.ReplayRefused as e:
+            raise RetroactiveRefused(str(e)) from None
+        _final_progress(control, s["rows_deleted"], s)
+        return {"rows_deleted": s["rows_deleted"], "layers_deleted": s["layers_deleted"],
+                "overwrites_deleted": s["overwrites_deleted"],
+                "ledger_atoms_withdrawn": sum(s["ledger_withdrawn"].values())}
     s = replay.delete_every_row(db, params["table"], apply=True, pace=params.get("pace"), log=log,
                                 checkpoint=_checkpoint(control))
     _final_progress(control, s["rows_deleted"], s)
@@ -1981,6 +2012,18 @@ def _judge_table(params):
         raise RetroactiveRefused(str(e)) from None
 
 
+#: «Delete every row of a table»'s `how` for the one-transaction reset (소유자 10-23).
+FULL_RESET = "full_reset"
+
+
+def _judge_delete_every_row(params):
+    """The table, and `confirm_rows` with a full reset only. The preview is judged here too, so a full reset's
+    missing `confirm_rows` is the run's refusal (`replay.full_reset`), not this one."""
+    _judge_table(params)
+    if "confirm_rows" in params and params.get("how") != FULL_RESET:
+        raise RetroactiveRefused("'delete_every_row' takes confirm_rows with how full_reset only")
+
+
 def _ledger_world(params):
     """The ledger world a job runs in, by name (총괄 3b6dacd2f). A job stored before worlds
     carries the root it read instead: the default root IS the default world - by name,
@@ -2350,11 +2393,21 @@ OPERATIONS = {
     "delete_every_row": {
         "label": "Delete every row of a table",
         "what_is_missing": "a table to start again - every row goes; reading its files again is «Read all again»",
-        "params": [_p("table"), _pace_param()],
+        "params": [_p("table"), _pace_param(),
+                   _p("how", required=False, choices=[
+                       {"value": "by_row", "label": "Row by row",
+                        "when": "the grid's delete, a page at a time - what the rows fed is taken back by the chain"},
+                       {"value": FULL_RESET, "label": "Full reset",
+                        "when": "one transaction, for a table of millions - no chain rule is told, a person's "
+                                "values go too, the ledger atoms of the sources reading the table are taken back"}],
+                      help="row by row when left empty"),
+                   _p("confirm_rows", required=False, kind="int",
+                      help="full reset only: the rows the preview said - refused when the table has moved since")],
         "count": _count_delete_every_row,
         "run": _run_delete_every_row,
-        "judge": _judge_table,
-        "cli": "server/scripts/chain_replay_cli.py delete-every-row <table> [--pace slow] --apply",
+        "judge": _judge_delete_every_row,
+        "cli": ("server/scripts/chain_replay_cli.py delete-every-row <table> [--pace slow] "
+                "[--how full_reset --confirm-rows N] --apply"),
         # 총괄 4435b9b29 (소유자 10-21 「다시 로드랑 지우기 분리해」): remove_shell_rows' paging, judged «every row».
         "deletes": "every row of the table, with its cell layers and a history line each",
         "reads_as": "number",
@@ -2362,11 +2415,13 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
                                "(crud.delete_rows_batch); a stop "
-                               "lands between pages and a re-run finds only what is left"),
+                               "lands between pages and a re-run finds only what is left. A full reset is one "
+                               "transaction - a stop does not land inside it"),
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
                             "taken back; the deletion wakes no rule - replay the rules that take deletions "
-                            "from this table if their tables should follow. The file checklist is not touched"),
+                            "from this table if their tables should follow. A full reset tells the chain "
+                            "nothing. The file checklist is not touched"),
     },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",

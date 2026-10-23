@@ -233,6 +233,9 @@ def main(argv=None):
     p = sub.add_parser("delete-every-row")
     p.add_argument("table")
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--how", default=None, choices=("by_row", "full_reset"),
+                   help="full_reset: one transaction, no chain rule told, a person's values too (owner 10-23)")
+    p.add_argument("--confirm-rows", type=int, default=None, help="with --how full_reset --apply: the preview's row count")
     p.add_argument("--apply", action="store_true")
 
     args = parser.parse_args(argv)
@@ -324,13 +327,22 @@ def main(argv=None):
                 print("\n" + retroactive.count(db, "remove_shell_rows", params)["detail"] + "\n-> add --apply to delete")
         elif args.cmd == "delete-every-row":
             params = {"table": args.table, "pace": args.pace}
-            if args.apply:
+            full = args.how == retroactive.FULL_RESET
+            if args.how:
+                params["how"] = args.how
+            if full and args.apply:
+                s = written("delete_every_row", dict(params, confirm_rows=args.confirm_rows))
+                print(f"\ndelete-every-row '{args.table}' full reset: {s['rows_deleted']} row(s), "
+                      f"{s['layers_deleted']} layer(s), {s['overwrites_deleted']} pin(s) deleted; ledger atoms "
+                      f"withdrawn {s['ledger_withdrawn']}; no chain rule told")
+            elif args.apply:
                 s = written("delete_every_row", params)
                 print(f"\ndelete-every-row '{args.table}': {s['rows_deleted']} of {s['rows_to_delete']} row(s) deleted "
                       f"in {s['pages']} page(s)"
                       + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
             else:
-                print("\n" + retroactive.count(db, "delete_every_row", params)["detail"] + "\n-> add --apply to delete")
+                print("\n" + retroactive.count(db, "delete_every_row", params)["detail"] + "\n-> add --apply to delete"
+                      + (" (with --confirm-rows <the rows above>)" if full else ""))
         elif args.cmd == "fold-withdraw-events":
             if args.apply:
                 from chain import cell_layer

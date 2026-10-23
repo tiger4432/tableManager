@@ -5028,7 +5028,7 @@
 > ## [10-08] **표 비우기 도구가 모든 표를 «선언된 표가 아닙니다»로 거절하던 것 고침 — 이주 «없음» · 재기동 «불필요»(스크립트)**
 >
 > ```
-> 무엇     python server/scripts/empty_table.py <표> 가 명령으로 돌 때 table_config 의 표를 스스로 등록한다 — 전엔 0 개라 모든 표를 거절
+> 무엇     표 비우기가 명령으로 돌 때 table_config 의 표를 스스로 등록한다 — 전엔 0 개라 모든 표를 거절. 10-23 부터 그 명령은 python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset
 > 할 일     git pull 만. 「공식 표 다시 채우기」 6 · 7 은 명령 그대로 — 먼저 등록하고 부르는 우회가 필요 없다
 > 볼 줄     6 의 첫 줄  표 official_dt — 행 N · 칸 층 … = 고쳐졌다
 >          거절: 'official_dt' 는 선언된 표가 아닙니다 (table_config) = pull 이 안 됐거나 table_config.json 에 그 표가 없다
@@ -6006,11 +6006,11 @@
 > 5 앱 켬       run_app.bat 전체 — 3 · 4 를 한 번에 읽는다
 >               확인: SELECT count(*) FROM information_schema.columns WHERE table_name = 'official_dt' AND column_name = 'hold'
 >               뜻: 1 = hold 칸이 섰음 · 0 = 3 이 안 들어감(표 설정 파일 · 저장 위치를 다시 봄). 그리드 official_dt 에도 HOLD 칸이 보인다
-> 6 비우기 보고   python server/scripts/empty_table.py official_dt
->               뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 같이 감) · 덮어쓰기 · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
-> 7 비우기       python server/scripts/empty_table.py official_dt --apply --confirm-rows <6 의 행 수> --by <이름>
->               뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 6 부터 다시
->                  「비움」 줄 뒤 「원자 거둠」 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
+> 6 비우기 보고   python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset   (소급 탭 «Delete every row of a table» · how = Full reset 의 미리보기와 같음)
+>               뜻: 「Full reset of 'official_dt': N row(s), 칸 층 · 사람 층(비우면 사람이 고친 값도 같이 감) · pin · 규칙 · 원장 원자」. 아무것도 안 씀
+> 7 비우기       python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset --confirm-rows <6 의 행 수> --apply
+>               뜻: 「… full reset: N row(s) … ledger atoms withdrawn … no chain rule told」. 「REFUSED: … has K row(s) now」이면 그 사이 표가 움직임 — 6 부터 다시
+>                  행을 지운 뒤 원자 거둠 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
 >               시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 1.03 s -> 100만 어림 103 s (운영은 안 쟀다)
 > 8 체인 규칙 둘  config/chain_rules.json 에 RELEASE_LOG 「보류 포함 행 복사」의 두 규칙(둘 다 "is_batch": true) — 다시 세기 규칙 official_dt_hold_recount 에는 "enabled": false
 >               까닭: 켜 두면 복사가 공식 행에 쓸 때마다 다시 세기가 한 번 더 돈다(세기 질의가 한 번씩 더) — 다시 채우기 내내
@@ -6031,16 +6031,16 @@
 
 ---
 
-> ## [10-02 밤] **표 통째로 비우기 — server/scripts/empty_table.py (총괄 35b76ba92) — 이주 «불필요» · 재기동 «불필요»(새 명령)**
+> ## [10-02 밤] **표 통째로 비우기 (총괄 35b76ba92) — 10-23 부터 «Delete every row of a table» 의 Full reset — 이주 «불필요» · 재기동 «불필요»**
 >
 > ```
 > 무엇          표 하나의 행 · 그 표의 칸 층 · 덮어쓰기를 한 트랜잭션에 지우고, 그 표를 읽는 원장 소스의 원자를 거둔다. 아웃박스 이벤트 0
 >              내일 공식 표 다시 채우기의 «순서 전부»는 다음 착지(복사 맵퍼 묶음)의 RUN.md 에 들어간다
-> 보고          python server/scripts/empty_table.py <표>
->              뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 감) · 덮어쓰기 · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
-> 비우기        python server/scripts/empty_table.py <표> --apply --confirm-rows <보고의 행 수> --by <이름>
->              뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 보고부터 다시
->                 「비움」 줄 뒤 「원자 거둠」 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
+> 보고          python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset   (소급 탭: how = Full reset 의 미리보기)
+>              뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 감) · pin · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
+> 비우기        python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset --confirm-rows <보고의 행 수> --apply   (소급 탭: confirm_rows 칸)
+>              뜻: 「… full reset: N row(s) … ledger atoms withdrawn … no chain rule told」. 「REFUSED: … has K row(s) now」이면 그 사이 표가 움직임 — 보고부터 다시
+>                 행을 지운 뒤 원자 거둠 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
 >              시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 0.99 s -> 100만 어림 99 s
 > 급할 때       없음 — --apply 전에는 아무것도 안 쓴다
 > ```
