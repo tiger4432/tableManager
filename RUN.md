@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **고침 — 피벗 보기에서 Tx 를 켠 채 Apply 하면 써진다 · 빈 칸 값 넣기도 (소유자 「빈 값에서 값 추가도 안 되네」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          pivot 을 선언한 표 -> «Pivot» -> item 칸 하나 고침, 또는 빈 칸에 값 -> Apply
+> 뜻      «Applied batch updates … (N cells updated)»          -> 착지됨, 긴 행에 써짐
+>          빈 칸이면 긴 행이 하나 «생기고» N 은 그 새 행의 칸 수(키 + 항목 + 값) -> 정상, 값 하나여도 1 이 아님
+>          «Nothing applied · N staged edit dropped (row deleted)» -> 아직 옛 화면(새로 고침 안 됨) - 또는 그 긴 행이 정말 지워짐
+>          «N cell changed on the server since you edited»     -> 그 사이 다른 곳에서 그 값이 바뀜, Keep mine / Take server 로 답함
+> 우회     옛 화면에서는 Tx 를 끄고 고침(바로 쓰기) - 그 길은 고치기 전에도 써졌음
+> 되돌리기  git revert 7b6a83e94 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-23] **메인 그리드 피벗 — 화면 몫 ①·② (소유자 10-22, d45ba4aa1)** — git pull · 화면 새로 고침
 >
 > ```
