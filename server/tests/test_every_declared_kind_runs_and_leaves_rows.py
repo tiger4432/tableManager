@@ -222,19 +222,39 @@ def test_a_file_mapper_declaration_writes_what_it_returned(db, tmp_path, monkeyp
 
 
 REPORT_TABLES = {
-    "kinds_wafer": {"business_key": "wafer", "composite_key_source": ["wafer"],
-                    "column_types": {"wafer": "string", "ev": "string", "at": "string", "grp": "string"}},
-    "kinds_sum": {"composite_key_source": ["wafer", "item"],
-                  "column_types": {"wafer": "string", "item": "string", "fail": "number", "total": "number",
-                                   "st": "string", "fl": "string", "why": "string"}},
+    "kinds_wafer": {"composite_key_source": ["wafer", "leg"],
+                    "column_types": {"wafer": "string", "leg": "string", "ev": "string", "at": "string",
+                                     "grp": "string"}},
+    "kinds_sum": {"composite_key_source": ["wafer", "leg", "item"],
+                  "column_types": {"wafer": "string", "leg": "string", "item": "string", "fail": "number",
+                                   "total": "number"}},
+    # the operator's report table - one row a wafer, its file path (owner 10-23 «리포트용 표가 따로» · «wafer, 보고서
+    # 파일 경로 이 두 개가 최종 출력»)
+    "kinds_rep": {"business_key": "wafer", "composite_key_source": ["wafer"],
+                  "column_types": {"wafer": "string", "fl": "string"}},
 }
+SUMMARY_ROWS = [{"wafer": "W1", "leg": "L1", "item": "particle", "fail": 1, "total": 100},
+                {"wafer": "W1", "leg": "L2", "item": "particle", "fail": 2, "total": 100},
+                {"wafer": "W1", "leg": "L1", "item": "scratch", "fail": 0, "total": 100},
+                {"wafer": "W2", "leg": "L1", "item": "particle", "fail": 3, "total": 100}]
+
+
+def _report_declaration(**over):
+    return dict({"name": "kinds_report", "on": {"table": "kinds_rep"}, "into": {"table": "kinds_rep"},
+                 "derive": {"kind": "report", "report": {
+                     "wafer": {"table": "kinds_wafer", "key": ["wafer", "leg"], "time": "at", "evaluation": "ev"},
+                     "summary": {"table": "kinds_sum", "wafer": ["wafer", "leg"], "item": "item", "fail": "fail",
+                                 "total": "total"},
+                     "results": {"file": "fl"},
+                     "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
+                     "loop": {"steps": 3, "seconds": 60, "context_tokens": 16000}}}}, **over)
 
 
 @pytest.fixture(name="reported")
 def fixture_reported(db, tmp_path, monkeypatch):
-    """The report kind's two tables, the summary rows written as a file writes them - one event naming them all,
-    W1 with two items - the files kept in `tmp_path`. Yields the declaration's rules - one, on the summary table
-    (owner 10-23)."""
+    """The report kind's tables - wafers of two legs (W1: L1 · L2), the summary by (wafer, leg, item), the report table
+    by wafer alone, its rows written as a file writes them (one event naming both) - the files kept in `tmp_path`.
+    Yields the declaration's rules - one, on the report table."""
     import event_constants
     import paths
     from database.context import outbox_mode
@@ -245,23 +265,16 @@ def fixture_reported(db, tmp_path, monkeypatch):
     for name in REPORT_TABLES:
         models.DYNAMIC_TABLES[name].__table__.create(bind=db.get_bind())
     monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
-    for table, rows in (("kinds_wafer", [{"wafer": "W1", "ev": "E1", "at": "1"}, {"wafer": "W2", "ev": "E1", "at": "2"}]),
-                        ("kinds_sum", [{"wafer": "W1", "item": "particle", "fail": 1, "total": 100},
-                                       {"wafer": "W1", "item": "scratch", "fail": 0, "total": 100},
-                                       {"wafer": "W2", "item": "particle", "fail": 3, "total": 100}])):
+    for table, rows in (("kinds_wafer", [{"wafer": "W1", "leg": "L1", "ev": "E1", "at": "1"},
+                                         {"wafer": "W1", "leg": "L2", "ev": "E1", "at": "1"},
+                                         {"wafer": "W2", "leg": "L1", "ev": "E1", "at": "2"}]),
+                        ("kinds_sum", SUMMARY_ROWS),
+                        ("kinds_rep", [{"wafer": "W1"}, {"wafer": "W2"}])):
         with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
             crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
                 schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in rows]))
     db.commit()
-    rules = rule_shape.expand_declaration(
-        {"name": "kinds_report", "on": {"table": "kinds_sum"}, "into": {"table": "kinds_sum"},
-         "derive": {"kind": "report", "report": {
-             "wafer": {"table": "kinds_wafer", "key": "wafer", "time": "at", "evaluation": "ev"},
-             "summary": {"table": "kinds_sum", "wafer": "wafer", "item": "item", "fail": "fail", "total": "total"},
-             "results": {"state": "st", "file": "fl", "reason": "why"},
-             "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
-             "loop": {"steps": 3, "seconds": 60, "context_tokens": 16000}}}},
-        crud.TABLE_CONFIG)[0]
+    rules = rule_shape.expand_declaration(_report_declaration(), crud.TABLE_CONFIG)[0]
     try:
         yield rules
     finally:
@@ -274,12 +287,26 @@ def fixture_reported(db, tmp_path, monkeypatch):
 
 def _report_rows(db):
     db.expire_all()
-    return sorted((r.wafer, r.st, r.why, r.fl) for r in db.query(models.DYNAMIC_TABLES["kinds_sum"]).all())
+    return sorted((r.wafer, r.fl) for r in db.query(models.DYNAMIC_TABLES["kinds_rep"]).all())
 
 
-def test_a_report_declaration_writes_a_report_a_wafer_into_its_summary_rows(db, reported, monkeypatch):
-    """The model stands in (no gateway in a test): it reads the summary table, says done, writes - each wafer's
-    summary rows say done and name their own file, and the file ends with the steps it took (Evidence)."""
+def _summary(db):
+    db.expire_all()
+    model = models.DYNAMIC_TABLES["kinds_sum"]
+    return sorted((r.wafer, r.leg, r.item, r.fail, r.total) for r in db.query(model).all())
+
+
+def _done_model(monkeypatch):
+    from utils import llm
+
+    monkeypatch.setattr(llm, "ask_json", lambda prompt, usage=None: (
+        {"done": {"summary": "particle is low."}} if "Tables read:" in prompt else {"done": {}}))
+
+
+def test_a_report_declaration_writes_a_report_a_wafer_into_its_report_table(db, reported, monkeypatch):
+    """The model stands in (no gateway in a test): it reads the summary table, says done, writes - each wafer's report
+    row names its own file, one file a wafer whatever its legs (owner 10-23 «리포트는 wafer 하나지, leg 는 리포트
+    내용에»), and the file ends with the steps it took (Evidence). The summary table is not written."""
     from utils import llm
 
     def model(prompt, usage=None):
@@ -292,87 +319,84 @@ def test_a_report_declaration_writes_a_report_a_wafer_into_its_summary_rows(db, 
 
     assert rule["mapper"] == "declared:report"
     assert _door(rule) == "chain.dynamic_mappers._report"
+    before = _summary(db)
 
-    _run(db, "report", reported, "kinds_sum")
+    _run(db, "report", reported, "kinds_rep")
 
     rows = _report_rows(db)
-    assert [(w, st, why) for w, st, why, _fl in rows] == [("W1", "done", None)] * 2 + [("W2", "done", None)]
-    assert len({fl for *_rest, fl in rows}) == 2, "a file a wafer - one event named both wafers' rows"
-    for wafer, _st, _why, fl in rows:
-        text = open(fl, encoding="utf-8").read()
-        assert wafer in text and "particle is low." in text
-        evidence = text[text.index('<details class="evidence">'):]
-        assert "1 yield_by" in evidence and "2 done" in evidence and "3 write" in evidence, evidence
+    assert [w for w, _fl in rows] == ["W1", "W2"] and all(fl for _w, fl in rows), rows
+    assert [os.path.basename(fl) for _w, fl in rows] == ["W1.html", "W2.html"], "a file a wafer, not a leg"
+    w1, w2 = (open(fl, encoding="utf-8").read() for _w, fl in rows)
+    assert "L1" in w1 and "L2" in w1 and "L2" not in w2, "W1's report holds both its legs as columns"
+    assert "particle is low." in w1
+    evidence = w1[w1.index('<details class="evidence">'):]
+    assert "1 yield_by" in evidence and "2 done" in evidence and "3 write" in evidence, evidence
+    assert '\n    particle | 1.0% (1/100) | 2.0% (2/100)' in evidence, \
+        "each step's read under its line, not its head alone (lead 10-23)"
+    assert _summary(db) == before, "the summary table is read, never written"
 
 
-def test_a_report_without_a_model_leaves_its_rows_stopped_with_why(db, reported, monkeypatch):
+def test_a_report_without_a_model_writes_its_file_and_says_why_in_it(db, reported, monkeypatch):
     from utils import llm
 
     def refused(prompt, usage=None):
         raise llm.LlmRefused("no gateway in this test")
 
     monkeypatch.setattr(llm, "ask_json", refused)
-    _run(db, "report-refused", reported, "kinds_sum")
+    _run(db, "report-refused", reported, "kinds_rep")
 
     rows = _report_rows(db)
     why = "the language model call was refused: no gateway in this test"
-    assert [(w, st, r) for w, st, r, _fl in rows] == [("W1", "stopped", why)] * 2 + [("W2", "stopped", why)]
+    assert [w for w, _fl in rows] == ["W1", "W2"]
+    assert all(why in open(fl, encoding="utf-8").read() for _w, fl in rows), "the file says why it stopped"
 
 
 def _sent_reports(db, reported, monkeypatch, answers):
     """Both wafers' reports made with `send_to`, then the upkeep's sweep run once a list of answers: the post
-    answers each in turn (None: taken). -> (the rows after each sweep, the files posted)."""
+    answers each in turn (None: taken). -> (the marker files after each sweep, the files posted)."""
     from chain import report_loop
-    from utils import llm
 
-    def model(prompt, usage=None):
-        return {"done": {"summary": "ok"}} if "Tables read:" in prompt else {"done": {}}
-
-    monkeypatch.setattr(llm, "ask_json", model)
+    _done_model(monkeypatch)
     [rule] = reported
     rule["params"]["send_to"] = "http://relay.test/reports"
-    _run(db, "report-send", reported, "kinds_sum")
-    posted, tries, after = [], {}, [_report_rows(db)]
+    _run(db, "report-send", reported, "kinds_rep")
+    posted, after = [], [_marks(db)]
     for said in answers:
         def post(send_to, file_, said=said):
             posted.append((send_to, os.path.basename(file_)))
             return said
-        report_loop.send_waiting([rule], lambda: _Kept(db), tries, post=post)
-        after.append(_report_rows(db))
+        report_loop.send_waiting([rule], post=post)
+        after.append(_marks(db))
     return after, posted
 
 
-class _Kept:
-    """The test's one session, handed to the sweep as its own - closing it is not the sweep's to do here."""
-
-    def __init__(self, session):
-        self._session = session
-
-    def close(self):
-        pass
-
-    def __getattr__(self, name):
-        return getattr(self._session, name)
+def _marks(db):
+    folder = os.path.dirname(_report_rows(db)[0][1])
+    return sorted(name for name in os.listdir(folder) if not name.endswith(".html"))
 
 
 def test_a_made_report_is_sent_to_its_address_by_the_upkeep(db, reported, monkeypatch):
     after, posted = _sent_reports(db, reported, monkeypatch, [None])
-    assert [st for _w, st, _why, _fl in after[0]] == ["sending"] * 3, "made, not sent yet"
-    assert [(st, why) for _w, st, why, _fl in after[1]] == [("done", None)] * 3
+    assert after[0] == ["W1.html.send", "W2.html.send"], "made, not sent yet"
+    assert after[1] == []
     assert sorted(posted) == [("http://relay.test/reports", "W1.html"), ("http://relay.test/reports", "W2.html")]
-    sends = [e for e in _events(db, "kinds_sum") if "st" in json.dumps(e.payload)][-1:]
-    [rule] = reported
-    assert sends and worker.fire_refusal(rule, sends[0]) == worker.FIRE_REFUSED_CHAIN, \
-        "the sweep writes on the chain's channel - the report rule is not woken by its own state"
 
 
-def test_a_send_that_fails_three_times_says_send_failed_and_why(db, reported, monkeypatch):
+def test_a_send_that_fails_three_times_leaves_its_failure_beside_the_file(db, reported, monkeypatch):
+    import json
+
     from chain import report_loop
 
     after, posted = _sent_reports(db, reported, monkeypatch, ["relay down"] * report_loop.SEND_TRIES)
-    assert [st for _w, st, _why, _fl in after[report_loop.SEND_TRIES - 1]] == ["sending"] * 3, "tried again"
-    assert [(st, why) for _w, st, why, _fl in after[-1]] == [("send failed", "relay down")] * 3
+    assert after[report_loop.SEND_TRIES - 1] == ["W1.html.send", "W2.html.send"], "tried again"
+    assert after[-1] == ["W1.html.send_failed", "W2.html.send_failed"]
+    folder = os.path.dirname(_report_rows(db)[0][1])
+    assert json.load(open(os.path.join(folder, "W1.html.send_failed"), encoding="utf-8")) == {
+        "rule": "kinds_report", "why": "relay down"}
     assert len(posted) == 2 * report_loop.SEND_TRIES
+    _run_again = report_loop._mark                                   # a replay remakes the report: its marker again
+    _run_again(os.path.join(folder, "W1.html"), "kinds_report")
+    assert sorted(n for n in os.listdir(folder) if n.startswith("W1.html.")) == ["W1.html.send"]
 
 
 def test_a_stopped_report_is_not_sent(db, reported, monkeypatch):
@@ -385,10 +409,10 @@ def test_a_stopped_report_is_not_sent(db, reported, monkeypatch):
     monkeypatch.setattr(llm, "ask_json", refused)
     [rule] = reported
     rule["params"]["send_to"] = "http://relay.test/reports"
-    _run(db, "report-stopped", reported, "kinds_sum")
+    _run(db, "report-stopped", reported, "kinds_rep")
     posted = []
-    report_loop.send_waiting([rule], lambda: _Kept(db), {}, post=lambda *a: posted.append(a))
-    assert posted == [] and {st for _w, st, _why, _fl in _report_rows(db)} == {"stopped"}
+    report_loop.send_waiting([rule], post=lambda *a: posted.append(a))
+    assert posted == [] and _marks(db) == []
 
 
 def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
@@ -404,31 +428,28 @@ def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
 
 def test_a_switched_off_report_makes_nothing_by_itself_and_one_report_a_wafer_by_a_replay_naming_it(
         db, reported, monkeypatch):
-    """Owner 10-23 «자동 시작은 막고 리플레이로» · «막아»: `enabled: false` is «nothing wakes it» - the summary rows'
+    """Owner 10-23 «자동 시작은 막고 리플레이로» · «막아»: `enabled: false` is «nothing wakes it» - the report rows'
     event makes no report; a replay naming the rule (its events carry `only_rule`) makes one a wafer."""
-    from utils import llm
     from database.database import stage_collapsed_event
 
-    monkeypatch.setattr(llm, "ask_json", lambda prompt, usage=None: (
-        {"done": {"summary": "particle is low."}} if "Tables read:" in prompt else {"done": {}}))
-    declaration = {"name": "kinds_report", "enabled": False, "on": {"table": "kinds_sum"},
-                   "into": {"table": "kinds_sum"}, "derive": {"kind": "report", "report": reported[0]["params"]}}
+    _done_model(monkeypatch)
+    declaration = _report_declaration(enabled=False)
+    declaration["derive"]["report"] = reported[0]["params"]
     stood, refusal, notes = rule_shape.expand_declaration(declaration, crud.TABLE_CONFIG)
     assert refusal is None and [r["enabled"] for r in stood] == [False], (refusal, notes)
     assert "nothing wakes it" in notes[0]
 
-    _run(db, "report-off", stood, "kinds_sum")
-    assert {st for _w, st, _why, _fl in _report_rows(db)} == {None}
+    _run(db, "report-off", stood, "kinds_rep")
+    assert {fl for _w, fl in _report_rows(db)} == {None}
 
-    model = models.DYNAMIC_TABLES["kinds_sum"]
-    for event in _events(db, "kinds_sum"):
+    model = models.DYNAMIC_TABLES["kinds_rep"]
+    for event in _events(db, "kinds_rep"):
         db.delete(event)
-    stage_collapsed_event(db, "EDIT", "kinds_sum", [r.row_id for r in db.query(model).all()],
+    stage_collapsed_event(db, "EDIT", "kinds_rep", [r.row_id for r in db.query(model).all()],
                           only_rule="kinds_report", replay=True)
     db.commit()
-    _run(db, "report-replayed", stood, "kinds_sum")
-    rows = _report_rows(db)
-    assert [(w, st) for w, st, _why, _fl in rows] == [("W1", "done")] * 2 + [("W2", "done")]
+    _run(db, "report-replayed", stood, "kinds_rep")
+    assert [(w, os.path.basename(fl or "")) for w, fl in _report_rows(db)] == [("W1", "W1.html"), ("W2", "W2.html")]
 
 
 def test_control_same_keeps_the_candidates_that_share_those_columns(db, reported):
@@ -439,18 +460,108 @@ def test_control_same_keeps_the_candidates_that_share_those_columns(db, reported
     model = models.DYNAMIC_TABLES["kinds_wafer"]
     crud.apply_batch_updates(db, "kinds_wafer", schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds")
-        for row in ({"wafer": "W1", "at": "2026-10-20 10:00:00", "grp": "A"},
-                    {"wafer": "W2", "at": "2026-10-20 11:00:00", "grp": "A"},
-                    {"wafer": "P1", "ev": "E0", "at": "2026-10-10 10:00:00", "grp": "A"},
-                    {"wafer": "Q1", "ev": "E9", "at": "2026-10-11 10:00:00", "grp": "B"})]))
+        for row in ({"wafer": "W1", "leg": "L1", "at": "2026-10-20 10:00:00", "grp": "A"},
+                    {"wafer": "W1", "leg": "L2", "at": "2026-10-20 10:00:00", "grp": "A"},
+                    {"wafer": "W2", "leg": "L1", "at": "2026-10-20 11:00:00", "grp": "A"},
+                    {"wafer": "P1", "leg": "L1", "ev": "E0", "at": "2026-10-10 10:00:00", "grp": "A"},
+                    {"wafer": "Q1", "leg": "L1", "ev": "E9", "at": "2026-10-11 10:00:00", "grp": "B"})]))
     db.commit()
-    assert db.query(model).count() == 4
+    assert db.query(model).count() == 5
     spec = dict(reported[0]["params"], control={"recent": {"evaluations": 5}})
-    lines = report_reads.Report(db, spec, None, only=("W1",)).candidates()["context"]
+    lines = report_reads.Report(db, spec, None, only={"wafer": "W1"}).candidates()["context"]
     assert "E0" in lines and "E9" in lines                            # canary: both are candidates unfiltered
     spec["control"]["same"] = ["grp"]
-    assert report_shape.refusal(spec, "kinds_sum", "kinds_sum") is None
-    lines = report_reads.Report(db, spec, None, only=("W1",)).candidates()["context"]
+    assert report_shape.refusal(spec, "kinds_rep", "kinds_rep") is None
+    lines = report_reads.Report(db, spec, None, only={"wafer": "W1"}).candidates()["context"]
     assert "E0" in lines and "E9" not in lines
     assert "not a column" in report_shape.refusal(dict(spec, control={"recent": {"days": 1}, "same": ["nope"]}),
-                                                  "kinds_sum", "kinds_sum")
+                                                  "kinds_rep", "kinds_rep")
+
+
+def test_a_wafer_in_two_evaluations_is_refused_by_name(db, reported):
+    from chain import report_reads
+
+    crud.apply_batch_updates(db, "kinds_wafer", schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        updates={"wafer": "W1", "leg": "L2", "ev": "E2"}, source_name="seed", updated_by="kinds")]))
+    db.commit()
+    with pytest.raises(report_reads.ReadRefused, match=r"wafer W1 is in 2 evaluations \(E1, E2\)"):
+        report_reads.Report(db, reported[0]["params"], None, only={"wafer": "W1"})
+
+
+def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, reported, tmp_path, monkeypatch):
+    """Owner 10-23 box sample: conditions a row a condition (written only when out of the ordinary), a chip image row
+    naming its defects «a, b», no evaluation column - the model reads each wafer's conditions or «default conditions»,
+    a candidate is a wafer of the report table (its legs together), and a chip image is shown for each defect it holds."""
+    from chain import report_html, report_reads
+    from conftest import retire_dynamic_model
+
+    more = {"kinds_cond": {"composite_key_source": ["wafer", "leg", "condition_id"],
+                           "column_types": {"date": "string", "title": "string", "wafer": "string", "leg": "string",
+                                            "condition_id": "string", "value": "string"}},
+            "kinds_img": {"composite_key_source": ["wafer", "leg", "x", "y"],
+                          "column_types": {"wafer": "string", "leg": "string", "x": "string", "y": "string",
+                                           "img_path": "string", "including_defects": "string"}}}
+    models.init_dynamic_models(more)
+    crud.TABLE_CONFIG.update(more)
+    for name in more:
+        models.DYNAMIC_TABLES[name].__table__.create(bind=db.get_bind())
+    try:
+        # W2/L1: a condition named, its value not written (the owner's trap wafer), on a date written with its offset
+        for table, rows in (("kinds_cond", [{"date": "2026-10-22 10:00:00", "title": "split eval", "wafer": "W1",
+                                             "leg": "L1", "condition_id": "anneal", "value": "450C"},
+                                            {"date": "2026-10-22T00:00:00+09:00", "title": "trap", "wafer": "W2",
+                                             "leg": "L1", "condition_id": "bond", "value": ""},
+                                            # W3/L1 later than W1, W3/L2 of no row: W3 one candidate, whole
+                                            {"date": "2026-10-23 09:00:00", "title": "later", "wafer": "W3",
+                                             "leg": "L1", "condition_id": "bond", "value": "300"}]),
+                            ("kinds_img", [{"wafer": "W1", "leg": "L1", "x": "3", "y": "4", "img_path": "c.png",
+                                            "including_defects": "particle, scratch"},
+                                           {"wafer": "W1", "leg": "L1", "x": "5", "y": "5", "img_path": "d.png",
+                                            "including_defects": "particle"},
+                                           {"wafer": "W1", "leg": "L2", "x": "1", "y": "1", "img_path": "e.png",
+                                            "including_defects": "particle"}]),
+                            # both defects occurred on W1/L1 (a defect of no failing chip gets no image)
+                            ("kinds_sum", [{"wafer": "W1", "leg": "L1", "item": "scratch", "fail": 2},
+                                           {"wafer": "W2", "leg": "L2", "item": "scratch", "fail": 1},
+                                           {"wafer": "W3", "leg": "L1", "item": "scratch", "fail": 1},
+                                           {"wafer": "W3", "leg": "L2", "item": "scratch", "fail": 1}])):
+            crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
+                schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in rows]))
+        db.commit()
+        spec = dict(reported[0]["params"], wafer={"table": "kinds_sum", "key": ["wafer", "leg"]},
+                    conditions={"table": "kinds_cond", "wafer": ["wafer", "leg"], "name": "condition_id",
+                                "value": "value", "time": "date", "title": "title"},
+                    images={"table": "kinds_img", "wafer": ["wafer", "leg"], "item": "including_defects",
+                            "image": "img_path", "item_sep": ",", "source": "nowhere"},
+                    control={"recent": {"evaluations": 5}})
+        assert report_shape.refusal(spec, "kinds_rep", "kinds_rep") is None
+        report = report_reads.Report(db, spec, None, only={"wafer": "W1"})
+        assert report.evaluation == "W1", "no evaluation column: the report's own group is named by its wafer"
+        said = report.conditions()["context"]
+        assert "anneal: 450C 1" in said and "default conditions (no condition row): 1 wafers" in said, said
+        lines = report.candidates()["context"].splitlines()
+        assert lines[1:] == ["W3 · 2026-10-23 · 2 rows · title later · W3/L1: bond=300 · W3/L2: default conditions",
+                             "W2 · 2026-10-22 · 2 rows · title trap · W2/L1: bond=(empty) · "
+                             "W2/L2: default conditions"], \
+            "a candidate is the report table's wafer, its legs together; its day the product zone's; a blank value " \
+            "said; W3 later than W1 a candidate too (owner «빼지 마»), its legs one row of one date (lead 10-23)"
+        assert report.candidates()["html"] is None and "candidates" not in report_shape.TABLE_FILLS, \
+            "the candidates list table retired (owner 10-23 «CANDIDATE, DATE 이거»): the model's and the Evidence's"
+        head = report_html._summary_table(report.yield_by()["html"], spec)
+        assert head.count(">W1</th>") == 1 and '<th class="rpt-head">L1</th>' in head, \
+            "a report of one wafer names it once over its legs (lead 10-23)"
+        chosen = report.images()["html"]
+        assert sorted(chosen) == ["particle", "scratch"], "the chip's image under each defect it holds"
+        assert "image source 'nowhere' is not declared" in chosen["particle"][0]["refused"], \
+            "read through the declared source - «<source>:<path>»"
+        monkeypatch.setattr(report_reads, "_picture", lambda ref, px: {"src": ref})
+        spec["images"] = dict(spec["images"], per_item=1)
+        shown = report_reads.Report(db, spec, None, only={"wafer": "W1"}).images()["html"]
+        assert [p["wafer"] for p in shown["particle"]] == ["W1/L1", "W1/L2"], \
+            "per_item a leg - L2's chip too (lead 10-23: all three were L1's)"
+    finally:
+        db.rollback()
+        for name in more:
+            models.DYNAMIC_TABLES[name].__table__.drop(bind=db.get_bind())
+            crud.TABLE_CONFIG.pop(name, None)
+            retire_dynamic_model(name)

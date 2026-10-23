@@ -33,6 +33,8 @@ TABLES = {
     "rk_info": {"composite_key_source": ["wafer_id", "version", "name", "n"],
                 "column_types": {"wafer_id": "string", "version": "string", "name": "string", "n": "string",
                                  "value": "string"}},
+    "rk_yield": {"composite_key_source": ["wafer_id", "version"],
+                 "column_types": {"wafer_id": "string", "version": "string", "yield": "number"}},
     "rk_map": {"composite_key_source": ["wafer_id", "version", "n"],
                "column_types": {"wafer_id": "string", "version": "string", "n": "string", "path": "string"}},
 }
@@ -47,6 +49,8 @@ SUMMARY = [("W1", "v1", BIG, 2, 100), ("W1", "v2", BIG, 10, 100), ("W2", "v1", B
 INFO = [("W1", "v1", "자재", "A-lot"), ("W1", "v2", "자재", "B-lot"), ("W2", "v1", "자재", "A-lot"),
         ("W3", "v1", "자재", "A-lot"), ("W1", "v1", "평가자", "김"), ("W2", "v1", "평가자", "이"),
         ("W2", "v1", "평가자", "박")]
+#: a wide table, a row a wafer (lead 10-23: the yield table [wafer, leg] · yield) - W3 has none
+YIELDS = [("W1", "v1", 52.0), ("W1", "v2", 60.0), ("W2", "v1", 88.0)]
 MAPS = [("W1", "v1", "맵/a.png"), ("W1", "v2", "맵/b.png"), ("W2", "v1", "맵/c.png"), ("W3", "v1", "맵/없음.png")]
 LABELS = {"report": "리포트", "item": "항목", "left_out": "제외 - 같은 웨이퍼 · 이름 두 행", "not_read": "%s 안 읽음",
           "nothing_written": "%s 글 없음", "no_image": "이미지 없음", "pareto_item": "항목", "pareto_fail": "불량 칩",
@@ -83,6 +87,8 @@ def report(db_session, tmp_path, monkeypatch):
         db_session.add(m["rk_summary"](row_id="s%d" % n, wafer_id=w, version=v, item=item, fail=fail, total=total))
     for n, (w, v, name, value) in enumerate(INFO):
         db_session.add(m["rk_info"](row_id="i%d" % n, wafer_id=w, version=v, name=name, n=str(n), value=value))
+    for n, (w, v, share) in enumerate(YIELDS):
+        db_session.add(m["rk_yield"](row_id="y%d" % n, wafer_id=w, version=v, **{"yield": share}))
     root = tmp_path / "그림"
     (root / "맵").mkdir(parents=True)
     for n, (w, v, path) in enumerate(MAPS):
@@ -135,6 +141,77 @@ def test_info_rows_stand_under_the_head_from_the_info_table(report, db_session):
     spec["info"]["rows"] = ["없는정보", "자재"]
     narrowed = report_reads.Report(db_session, spec, "E1").yield_by()["html"]
     assert [name for name, _c in narrowed["info"]] == ["자재"], "a name with no row for these wafers stands not"
+
+
+def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_session):
+    """Lead 10-23: the yield is the owner's own table [wafer, leg] · yield, made by a chain rule - one info row named
+    by its column, under the long info table's rows; one table written alone reads as before."""
+    from chain import report_html, report_reads, report_shape
+
+    spec = json.loads(json.dumps(SPEC))
+    spec["info"] = [SPEC["info"], {"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "yield"}]
+    assert report_shape.refusal(spec) is None
+    table = report_reads.Report(db_session, spec, "E1").yield_by()["html"]
+    assert _texts(table["info"]) == [("자재", ["A-lot", "B-lot", "A-lot", "A-lot"]), ("평가자", ["김", "", "", ""]),
+                                     ("yield", ["52.0", "60.0", "88.0", ""])], "W3 has no yield row: a blank"
+    assert table["left_out"] == ["W2/v1 평가자"]
+    assert _texts(report.yield_by()["html"]["info"]) == _texts(table["info"])[:2], "one table alone: as it was"
+    page = report_html._summary_table(table, spec)
+    assert '<td class="rpt-cell">52.0</td>' in page and '<td class="rpt-info">A-lot</td>' in page, \
+        "a number stands right as the item cells do, a word left (lead 10-23)"
+
+
+def test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_under_labels(report, db_session):
+    """Owner 10-23 (the drawn table, lead f685e9224 · 51b68848f): columns DATE › WAFER › LEG, oldest first, the same
+    value one cell - the report's wafers and the control the model picked side by side; rows under their labels
+    (the defects under «불량», the yield table's one row «수율»), the model keeping which info rows (`choose`). The
+    colours' «vs control» still reads the control's column wherever it stands."""
+    from chain import report_html, report_reads, report_shape
+
+    m = models.DYNAMIC_TABLES["rk_wafer"]
+    for row in db_session.query(m).filter(m.wafer_id == "W1"):       # a time the product reads (expression._instant)
+        row.measured_at = "2026-10-01 0%s:00:00" % row.version[-1]
+    db_session.flush()
+    spec = json.loads(json.dumps(SPEC))
+    spec.update(columns=["time", "wafer_id", "version"], summary=dict(SPEC["summary"], label="불량"),
+                info=[dict(SPEC["info"], choose=True),
+                      {"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "yield", "label": "수율"}])
+    assert report_shape.refusal(spec) is None
+    report = report_reads.Report(db_session, spec, "E1")
+    report.compare(evaluations=["E0"])
+    table = report.yield_by()["html"]
+    assert table["heads"] == [["2026-09-20", "C1", "v1"], ["2026-10-01", "W1", "v1"], ["2026-10-01", "W1", "v2"],
+                              ["2026-10-02", "W2", "v1"], ["2026-10-03", "W3", "v1"]], "oldest first, the control too"
+    assert table["own"] == [False, True, True, True, True]
+    assert report_html.head_tiers(table["heads"]) == [
+        [("2026-09-20", 1), ("2026-10-01", 2), ("2026-10-02", 1), ("2026-10-03", 1)],
+        [("C1", 1), ("W1", 2), ("W2", 1), ("W3", 1)], [("v1", 1), ("v1", 1), ("v2", 1), ("v1", 1), ("v1", 1)]]
+    assert [name for name, _c in table["info"]] == ["자재", "평가자", "수율"]
+    page = report_html._summary_table(table, spec)
+    assert '<th class="rpt-group" colspan="2">2026-10-01</th>' in page and \
+        '<th class="rpt-head" colspan="2">W1</th>' in page, "the same day · the same wafer one cell"
+    assert '<td class="rpt-item">불량</td>' in page and '<td class="rpt-info" colspan="4">수율</td>' in page
+    assert 'style="background:#ffcccc">10.0% (10/100)' in page, "W1/v2 against C1's 2.0% - the control read by flag"
+    kept = report.yield_by(rows=["자재"])["html"]
+    assert [name for name, _c in kept["info"]] == ["자재", "수율"], "the model keeps 자재; the yield table always"
+    assert [name for name, _c in report.yield_by(rows=["없음"])["html"]["info"]] == ["자재", "평가자", "수율"], \
+        "none kept: every row"
+    bad = dict(spec, columns=["time", "lot"])
+    assert "derive.report.columns lists the column heads" in report_shape.refusal(bad)
+    assert "summary.label stands over the names" in report_shape.refusal(dict(spec, item_sep=None))
+
+
+def test_a_picture_row_reads_its_path_through_its_source(report, db_session, monkeypatch):
+    """Owner 10-23: the composite picture a wafer × leg (WAFER · LEG · IMG) is a picture row - its path read
+    through `source` as images' is («<source>:<path>»)."""
+    from chain import report_reads
+
+    asked = []
+    monkeypatch.setattr(report_reads, "_picture", lambda ref, px: asked.append(ref) or {"src": "data:x"})
+    spec = json.loads(json.dumps(SPEC))
+    spec["picture_rows"] = [dict(SPEC["picture_rows"][0], source="maps")]
+    report_reads.Report(db_session, spec, "E1").yield_by()
+    assert asked and all(ref.startswith("maps:pics:") for ref in asked), asked
 
 
 def test_a_picture_row_holds_a_picture_a_column_by_the_one_function(report, db_session):
@@ -256,7 +333,11 @@ def test_a_character_past_ascii_is_a_token_of_its_own():
     ("formats", {BIG: [{"when": ">=", "value": 1, "fill": "red"}]}, "fill is a colour #rrggbb"),
     ("formats", {BIG: [{"when": "==", "value": 1}]}, '"when": one of'),
     ("formats", {BIG: [{"vs": "lot", "times": 2}]}, '"vs": "control"'),
-    ("info", {"table": "rk_info", "wafer": ["wafer_id", "version"], "item": "name"}, "info names item and value"),
+    ("info", {"table": "rk_info", "wafer": ["wafer_id", "version"], "item": "name"}, "info names wafer and value"),
+    ("info", [{"table": "rk_yield", "wafer": ["wafer_id"], "value": "yield"}], "info[0].wafer names 1 column(s)"),
+    ("info", [{"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "good"}],
+     "info[0].value 'good' is not a column of 'rk_yield'"),
+    ("info", "rk_info", "info is a table and its columns, or a list of them"),
     ("picture_rows", [{"label": "맵", "table": "rk_map", "wafer": ["wafer_id"], "image": "path"}],
      "picture_rows[0].wafer names 1 column(s)"),
     ("picture_rows", [{"table": "rk_map", "wafer": ["wafer_id", "version"], "image": "path"}], "needs label"),

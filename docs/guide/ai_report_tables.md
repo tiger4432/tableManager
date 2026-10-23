@@ -1,37 +1,41 @@
-# AI 리포트 — 요약표에 리포트 규칙 하나 (소유자 10-23)
+# AI 리포트 — 리포트 표 하나 + 거기에 리포트 규칙 하나 (소유자 10-23)
 
 ```
-운영에서는 요약표에 결과 칸 셋을 더하고, 요약표에 리포트 규칙 하나(send_to = 중계 PC 주소)를 적으면
-계측 요약이 들어올 때 웨이퍼마다 리포트가 만들어져 메일 중계로 간다. 제품이 만드는 보조표는 0
+운영에서는 리포트 표(웨이퍼 칸 · 파일 경로 칸)를 만들고, 그 표에 리포트 규칙 하나를 적으면
+리포트 표에 웨이퍼 행이 들어올 때 웨이퍼마다 리포트가 만들어져 파일 경로가 그 행에 써지고, send_to 가 있으면 중계로 간다
 ```
 
-> 소유자 10-23 「너무 복잡한데」 · 「보조표가 너무 많아」 · 「리포트는 웨이퍼당 하나지」. 요청 · 결과 · 걸음 · 웨이퍼 제품 표 넷과 요약표의 request_id · eval_id 칸, 조인 · decide · 보내기 규칙은 은퇴했다.
-> 시범 동안(소유자 10-23 「막아」): 규칙을 `"enabled": false` 로 두면 요약 행이 들어와도 안 돈다. 소급 탭 «Replay chain rules over old data (R1)» 에 이 규칙 이름을 적은 리플레이만 돈다 — 모든 규칙이 같은 뜻이다.
+> 소유자 10-23 「요약표가 wafer, leg, item_id, value 모양인데 … 리포트용 표가 따로 있어야지」 · 「요약표는 그냥 데이터 표일 뿐이야, 거기에 뭐 정리하려고 하지 마」 · 「그냥 wafer, 보고서 파일 경로 이 두 개가 최종 출력이어야 해」. 요약표 · 조건표 · 이미지표는 «읽기만» 한다 — 칸을 더하지 않는다.
+> 시범 동안(소유자 10-23 「막아」): 규칙을 `"enabled": false` 로 두면 리포트 표에 행이 들어와도 안 돈다. 소급 탭 «Replay chain rules over old data (R1)» 에 이 규칙 이름을 적은 리플레이만 돈다 — 모든 규칙이 같은 뜻이다.
 
 ## 1. 적는 것
 
-- 요약표 선언에 결과 칸 셋(string) — 이름은 운영자가 정한다. 예: `report_state` · `report_file` · `report_reason`
-- 어드민 Chain 탭에 리포트 규칙 하나 — `on` 과 `into` 가 요약표, `derive.report.results` 가 그 세 칸, `limits.group_by` 가 요약표의 웨이퍼 칸(리플레이가 웨이퍼 하나를 한 번에 — 안 적으면 행마다 따로 만들 수 있음)
+- **리포트 표** — 웨이퍼 칸(이름은 `derive.report.wafer.key` 의 칸과 같게)과 파일 경로 칸(string), 웨이퍼당 한 행. 웨이퍼 키가 (wafer, leg) 여도 리포트 표는 웨이퍼 칸 하나 — 리포트 한 판이 그 웨이퍼의 leg 를 다 읽어 열로 놓는다.
+- **리포트 표의 행** — 손으로 넣거나, 요약표에서 웨이퍼마다 한 행을 만드는 decide 규칙 하나(아래). 제품은 리포트 표 행을 만들지 않는다.
+- **리포트 규칙** — 어드민 Chain 탭에 하나: `on` 과 `into` 가 리포트 표, `derive.report.results.file` 이 파일 경로 칸.
 - `ingestion_settings.json` 의 `"chain_slots"` 3 이상 — 리포트가 도는 동안(≤ 8 걸음 · ≤ 5 분) 체인 일꾼 하나를 쓴다
 
+소유자 표 넷 그대로 (요약 · 조건 · 이미지 · 리포트):
+
+```json
+{"name": "wafer_report_rows", "on": {"table": "wafer_summary"}, "into": {"table": "wafer_report"},
+ "derive": {"kind": "decide", "decide": {"key": ["wafer"]}}}
+```
 ```json
 {
-  "name": "wafer_report",
-  "on": {"table": "<요약표>"}, "into": {"table": "<요약표>"},
-  "limits": {"group_by": ["wafer_id"]},
+  "name": "wafer_report", "enabled": false,
+  "on": {"table": "wafer_report"}, "into": {"table": "wafer_report"},
   "derive": {"kind": "report", "report": {
-    "wafer":   {"table": "<웨이퍼 표>", "key": "wafer_id", "time": "measured_at", "lot": "lot_id",
-                "evaluation": "<평가 칸>", "conditions": ["split", "recipe"]},
-    "summary": {"table": "<요약표>", "wafer": "wafer_id", "item": "defect_item",
-                "fail": "fail_chips", "total": "total_chips"},
-    "results": {"state": "report_state", "file": "report_file", "reason": "report_reason"},
-    "send_to": "http://<중계 PC>:8765/reports",
-    "images":  {"table": "<이미지 표>", "wafer": "wafer_id", "item": "defect_item", "image": "image_path",
-                "per_item": 3, "px": 320},
-    "sets":    {"table": "<비교 묶음 표>", "name": "set_name", "member": "member", "kind": "kind",
-                "kinds": {"evaluation": "eval", "lot": "lot"}, "default": ["baseline"]},
-    "rows": ["particle", "scratch"], "digits": 1,
-    "prompts": {"select": "…", "style": "…", "compare": "…"},
+    "wafer":      {"table": "wafer_summary", "key": ["wafer", "leg"]},
+    "summary":    {"table": "wafer_summary", "wafer": ["wafer", "leg"], "item": "defect_kind",
+                   "fail": "defective_chip_count", "total": "total_chip_count"},
+    "conditions": {"table": "wafer_condition", "wafer": ["wafer", "leg"], "name": "condition_id", "value": "value",
+                   "time": "date", "title": "title"},
+    "images":     {"table": "chip_image", "wafer": ["wafer", "leg"], "item": "including_defects", "image": "img_path",
+                   "item_sep": ",", "source": "<이미지 소스>", "per_item": 3, "px": 320},
+    "results":    {"file": "report_path"},
+    "send_to":    "http://<중계 PC>:8765/reports",
+    "control":    {"recent": {"evaluations": 10}},
     "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"},
                {"kind": "image", "fill": "images"}, {"kind": "text", "slot": "conclusion"}],
     "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000}
@@ -39,20 +43,30 @@
 }
 ```
 
+- **wafer** — 웨이퍼 하나를 이루는 칸. 넓은 웨이퍼 표가 없으면 요약표를 그대로 적는다(시간 · 평가 칸 없이). 웨이퍼 표가 있으면 `time` · `lot` · `evaluation` · `conditions`(넓은 조건 칸 목록)도.
+- **conditions** — 조건마다 한 행인 긴 표: 이름 칸 · 값 칸 · (있으면) 시각 · 제목. 행이 없는 웨이퍼는 «기본 조건»(default conditions)으로 모델에게 간다. 웨이퍼 역할에 시각이 없으면 이 `time` 이 웨이퍼의 시각이다.
+- **images** — 칩 하나의 이미지 한 행. `item_sep` 을 적으면 아이템 칸의 «defect_type_1, defect_type_2» 를 나눠 그 칩 이미지를 디펙마다 놓는다. `source` 를 적으면 이미지 칸의 경로를 그 이미지 소스(`image_sources.json`, folder 종류)로 읽는다 — 절대 경로면 그 소스의 root 밑이어야 한다.
+- **대조 후보** — 웨이퍼 역할에 `evaluation` 이 없으면 후보는 웨이퍼 하나씩: 날짜 최근 순(날짜 없는 웨이퍼는 그 뒤), 줄마다 제목 · 조건(없으면 default conditions). 모델이 «같은 평가 · 기본 조건»을 그 줄로 짐작한다 — 규칙으로 고르지 않는다. 평가 없이 웨이퍼를 골라 묶는 `compare` 는 아직 평가 단위다. 후보 하나는 리포트 표의 웨이퍼 하나다 — leg 둘이 한 후보(총괄 10-23). 후보의 날짜는 그 leg 시각 중 가장 늦은 것 하나다(리포트 웨이퍼의 기준 시각과 같은 접기). 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 후보다(소유자 10-23 «빼지 마») — 최근 순, `control.recent.evaluations` 개까지. 후보 목록은 모델 입력과 Evidence 에만 있다 — 파일의 후보 목록 표는 은퇴(소유자 10-23 «CANDIDATE, DATE 이거»), 모델이 compare 로 고른 대조가 비교 표의 열로 선다. 늦은 계측이 들어와도 리포트는 저절로 다시 안 만들어진다 — R1 리플레이(소유자 10-23 ㄴ).
+- decide 는 키만 든 행을 만든다(`fields` · `aggregations` 없이) — 리포트 표의 두 칸 그대로.
+- 리포트 규칙이 decide 가 만든 행에 «저절로» 돌려면 `"enabled": true` 와 `"extra": {"allow_chain_trigger": true}` — 체인이 쓴 행은 기본으로 규칙을 안 깨운다. 시범 동안은 꺼 두고 R1 리플레이.
 - `send_to` 를 안 적으면 보내지 않는다(파일만 서버에).
-- `wafer` 키는 칸 하나 또는 목록 — 모든 역할이 같은 순서 · 같은 길이.
+- `wafer` 키는 칸 하나 또는 목록 — 모든 역할이 같은 순서 · 같은 길이. 리포트 표는 그중 «자기가 가진 칸»으로 웨이퍼를 고른다.
 - `summary` — `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 또는 100). rate 만이면 «조건별 묶은 열»과 파레토는 거절.
 - `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어간다.
-- 옛 모양(요청 표 위의 규칙)은 로드에서 거절된다 — «derive.report.results names …» · «the report rule stands on its summary table …».
+- 거절(저장 · 로드, 이름을 댐): 요약표 위의 규칙 «the report rule stands on a report table of its own - …; the summary table '<표>' is read, never written» · 웨이퍼 칸 없는 표 «'<표>' has none of derive.report.wafer.key's columns (…)» · `on` ≠ `into` · `results.file` 이 리포트 표 칸이 아님.
+- `results` 의 `state` · `reason` 은 안 쓴다 — 적혀 있으면 저장 줄 «derive.report.results.state · reason is not written - …», 규칙은 선다.
 
 ## 2. 도는 것
 
-- 요약 행이 들어오면 그 묶음(파일 하나)의 웨이퍼마다 리포트 한 판. 한 웨이퍼의 행 전부에 같은 결과가 써진다.
-- 결과 칸: state = `done` · `stopped`(+ reason) · send_to 가 있으면 `sending` → `done`, 세 번 실패면 `send failed` + reason. file = `<데이터 루트>/reports/<웨이퍼>.html`(키가 여러 칸이면 «_» 로 이음).
-- 보내기는 체인 일꾼 밖 — 체인 워커의 유지보수 자리가 5 초마다 `sending` 을 찾아 `<send_to>/<파일 이름>` 으로 POST(`tools/report_receiver/receive.py`). 한 번에 규칙마다 20 파일.
-- 걸음 기록: 파일 끝 접힌 «Evidence»(걸음마다 한 줄 — 부른 것 · 돌아온 것) + `chain_worker.log` 의 `[Report]` 줄.
-- 같은 웨이퍼의 요약이 여러 파일로 들어오면 들어올 때마다 그 웨이퍼 리포트를 다시 만든다(같은 파일을 덮음).
-- 다시 만들기: 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름.
+- 파일 배치(소유자 10-23 «글 및 이미지가 좌측, 표가 우측»): layout 의 text · image 칸은 왼쪽, table 칸은 오른쪽에 놓이고, 각 쪽 안에서는 layout 순서를 따른다. 좁은 화면(900px 아래)에서는 왼쪽이 위로 오는 한 줄로 접힌다. 배치는 코드에 있다(`chain/report_html.py` SIDES) — 운영자가 적는 칸은 아직 없다. 표 안에서 숫자 칸은 오른쪽, 글자 칸은 왼쪽.
+- 리포트 표에 행이 들어오면(그 묶음) 웨이퍼마다 리포트 한 판 — 파일 경로가 그 웨이퍼의 리포트 표 행에 써진다. 요약표 · 조건표 · 이미지표에는 아무것도 안 쓴다.
+- file = `<데이터 루트>/reports/<웨이퍼>.html`. 멈춘 리포트도 파일은 남고, 파일 끝 Evidence 첫 줄이 «stopped - <사유>». 읽을 웨이퍼가 없으면 파일 없이 `chain_worker.log` 의 `[Report]` 줄에만.
+- 한 웨이퍼의 leg 가 여러 평가에 걸치면 «wafer <웨이퍼> is in N evaluations (…)» 로 멈춤.
+- 보내기: `send_to` 가 있으면 다 만든 리포트 옆에 `<웨이퍼>.html.send` 표시 파일. 체인 워커의 유지보수 자리가 5 초마다 POST(`tools/report_receiver/receive.py`) — 받으면 표시를 지우고 «[Report] <규칙> sent <파일>». 세 번 실패면 `<웨이퍼>.html.send_failed`(안에 규칙 · 사유) + «[Report] <규칙> send failed …». 한 번에 규칙마다 20 파일.
+- 다시 보내기 · 다시 만들기: 소급 탭 R1 에 규칙 이름 + 그 웨이퍼의 리포트 표 행 — 파일을 다시 만들고 `.send` 를 다시 놓는다(`.send_failed` 는 지워짐).
+- 보내기 실패는 화면에 안 보인다 — 리포트 폴더의 `.send_failed` · `chain_worker.log` `[Report]` 줄.
+- 걸음 기록: 파일 끝 접힌 «Evidence»(첫 줄 상태 · 사유, 그다음 걸음마다 한 줄과 그 걸음이 읽은 나머지 줄을 들여 써서) + `chain_worker.log` 의 `[Report]` 줄(걸음마다 첫 줄만).
+- 칩 그림: `images.per_item` 은 웨이퍼 행(leg) 하나마다 — leg 가 둘이면 디펙마다 leg 별로 그만큼.
 
 ## 3. 읽는 표 — 이름은 선언으로
 
@@ -62,7 +76,7 @@
 | summary | 웨이퍼 × 디펙 아이템 | F(fail) · N(total) 또는 rate — 리포트 칸 «x% (F/N)» · 파레토 |
 | images | 이미지 한 장 | 웨이퍼 · 아이템 · 이미지 위치 — 이번 웨이퍼에서 «발생한» 디펙만 |
 | sets | 비교 묶음 × 멤버 | 묶음 이름 · 멤버 · 종류(평가 · 랏) — 사람이 적음 |
-| info | 웨이퍼 × 정보 이름 | 값 — 요약 표 머리 밑에 한 줄씩 |
+| info | 웨이퍼 × 정보 이름, 또는 웨이퍼 한 행(넓은 표) | 값 — 요약 표 머리 밑에 한 줄씩. 표 하나 또는 목록 |
 | picture_rows | 웨이퍼 그림 | 열마다 그림 한 장 |
 
 ## 에이전트 문맥 — 한 걸음에 모델에게 넘기는 것 (총괄 설계 10-22 밤, 소유자께 보임, 토큰 수는 어림)
@@ -122,9 +136,34 @@
 
 ## 요약 표 꾸미기 — 정보 표 · 그림 줄 · 조건부 서식 · 항목 계층 · 견본 줄 · 한글 낱말 (A, 10-23)
 
+- **비교 표 (소유자 10-23 그림)** — 요약 표 하나가 비교 표다. 열은 리포트 웨이퍼와 모델이 `compare` 로 고른 대조 웨이퍼(못 고르면 리포트 웨이퍼 하나), 행은 조건 · 수율 · 불량:
+
 ```json
-"info": {"table": "<정보 표>", "wafer": ["wafer_id", "version"], "item": "name", "value": "value", "rows": ["자재", "평가자"]},
-"picture_rows": [{"label": "합성맵", "table": "<그림 표>", "wafer": ["wafer_id", "version"], "image": "path", "px": 160}],
+"columns": ["time", "wafer", "leg"],
+"item_sep": ".",
+"summary": {"table": "wafer_summary", "wafer": ["wafer", "leg"], "item": "defect_kind", "fail": "defective_chip_count", "total": "total_chip_count", "label": "불량"},
+"info": [{"table": "wafer_condition", "wafer": ["wafer", "leg"], "item": "condition_id", "value": "value", "choose": true},
+         {"table": "wafer_yield", "wafer": ["wafer", "leg"], "value": "yield", "label": "수율"}]
+```
+- `columns` — 열 머리 단, 위에서부터. 웨이퍼 키 칸 이름 · `"time"`(웨이퍼의 날 — leg 시각 중 가장 늦은 것, 제품 시간대) · `"group"`(리포트 / 대조 묶음 이름). 적으면 열이 그 단 차례로 오름차순(날짜 오름)으로 서고, 위 단이 같은 이웃 칸은 한 칸으로 합쳐진다. 안 적으면 `["group", 키 칸…]` — 지금까지의 머리 그대로.
+- `label` — summary · info 표의 줄들이 서는 머리(불량 › D1…). item 없는 넓은 표는 그 한 줄의 이름(yield → 수율). 이름 위에 서려면 `item_sep` 이 있어야 한다.
+- `choose: true` — 그 info 표의 줄은 모델이 `yield_by` 의 `rows` 로 고른다(이름 하나가 그 밑 이름들을 다 고름 — `COND1` 이면 `COND1.SUB1` · `COND1.SUB2`). 안 고르거나 맞는 이름이 없으면 전부. 수율 · 불량은 choose 를 안 적어 늘 전부.
+- 항목 이름의 `.` 이 행 머리 단이다(깊이 제한 없음, 같은 앞마디는 한 칸) — `item_sep`.
+- `picture_rows[].source` — 그림 칸의 경로를 그 이미지 소스로 읽는다(images.source 와 같은 풀이). 합성 그림(WAFER · LEG · IMG)이 한 줄.
+
+- **info 는 표 하나 또는 목록** (총괄 10-23) — `item` 을 적으면 긴 표(이름 칸 · 값 칸), 안 적으면 넓은 표 한 행(웨이퍼마다 한 행, `value` 칸이 그 줄이고 줄 이름은 칸 이름). 수율은 소유자 정의 «디펙이 하나도 없는 칩의 비율» — 칩 표에서 체인 decide 하나로 수율 표에 쓰고 info 로 읽는다(제품은 웨이퍼 값을 다시 만들지 않는다):
+
+```json
+{"name": "wafer_yield_from_chips", "on": {"table": "chip_image"}, "into": {"table": "wafer_yield"},
+ "derive": {"kind": "decide", "decide": {"key": ["wafer", "leg"],
+   "aggregations": {"yield": "Round(100 * Sum(If([including_defects] Is Null, 1, 0)) / Count(), 1)"}}}}
+```
+- 요약표의 디펙별 칩 수는 한 칩이 디펙 둘이면 두 번 세므로 수율을 못 낸다.
+
+```json
+"info": [{"table": "<정보 표>", "wafer": ["wafer_id", "version"], "item": "name", "value": "value", "rows": ["자재", "평가자"]},
+         {"table": "<수율 표>", "wafer": ["wafer_id", "version"], "value": "yield"}],
+"picture_rows": [{"label": "합성맵", "table": "<그림 표>", "wafer": ["wafer_id", "version"], "image": "path", "px": 160, "source": "<이미지 소스>"}],
 "formats": {"결함.입자.대": [{"vs": "control", "times": 2, "fill": "#ffcccc"},
                           {"when": ">=", "value": 5, "fill": "#ffffcc", "color": "#000000"}]},
 "item_sep": ".",

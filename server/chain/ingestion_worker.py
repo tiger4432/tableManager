@@ -4610,8 +4610,8 @@ async def start_chain_ingestion_worker(db_session_factory):
     #   (통지처럼 기아가 문제되는 경로가 아님 — 늦게 완료돼도 무해·멱등). done 가드로 중복 실행을 방지한다.
     last_purge_ts = None
     purge_task = None
-    # the AI report's files waiting for their rule's send_to (`report_loop.send_waiting`) - and each file's tries
-    last_send_ts, send_task, send_tries = 0.0, None, {}
+    # the AI report's files waiting for their rule's send_to (`report_loop.send_waiting` - each a marker file)
+    last_send_ts, send_task = 0.0, None
 
     # [Latency Fix #4] LISTEN 전용 커넥션을 워커 수명 동안 상시 유지(대기마다 재등록하던 레이스 제거).
     listener = OutboxListener(db_session_factory, event_constants.OUTBOX_NOTIFY_CHANNEL)
@@ -4857,7 +4857,7 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                         last_send_ts = maint_ts
                         send_task = asyncio.create_task(asyncio.to_thread(
-                            report_loop.send_waiting, list(rules or ()), db_session_factory, send_tries))
+                            report_loop.send_waiting, list(rules or ())))
                 except Exception as maint_err:                       # noqa: BLE001
                     # 유지보수의 실패가 «일»의 오류를 덮지 않게 한다. 이 finally 는 예외 경로에서도
                     # 돌고, 거기서 새 예외를 던지면 원래 예외가 사라진다.

@@ -14,6 +14,15 @@
 ### 체인 규칙
 
 - 2026-10-23 [체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름](#2026-10-23--체인-규칙-창에서-조인-take-항목을-기록으로--record-from-칸-목록-친-칸-이름) — 누르는 곳 체인 규칙 창 → derive join → take 칩 끝의 «+ record»
+
+- 2026-10-23 [AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg · 행 조건 · 수율 · 불량 (소유자 그림)](#2026-10-23--ai-리포트-비교-표--열-날짜--웨이퍼--leg--행-조건--수율--불량-소유자-그림) — 적는 곳 derive.report.columns · label · choose · picture_rows.source · 보는 곳 리포트 파일 오른쪽 표
+- 2026-10-23 [AI 리포트 대조 후보 — 웨이퍼 하나에 날짜 하나 · 늦은 웨이퍼도 후보 · 칸 이름 Rows](#2026-10-23--ai-리포트-대조-후보--웨이퍼-하나에-날짜-하나--늦은-웨이퍼도-후보--칸-이름-rows) — 보는 곳 리포트 파일의 후보 표
+- 2026-10-23 [AI 리포트 — 칩 그림은 leg 마다 · Evidence 는 걸음이 읽은 줄 전부](#2026-10-23--ai-리포트--칩-그림은-leg-마다--evidence-는-걸음이-읽은-줄-전부) — 보는 곳 리포트 파일의 그림 · Evidence
+- 2026-10-23 [AI 리포트 — 후보 날짜는 제품 시간대의 날 · 빈 조건 값은 (empty) · 웨이퍼 이름은 머리에 한 번](#2026-10-23--ai-리포트--후보-날짜는-제품-시간대의-날--빈-조건-값은-empty--웨이퍼-이름은-머리에-한-번) — 보는 곳 리포트 파일의 후보 표 · 요약 표 머리
+- 2026-10-23 [AI 리포트 대조 후보 — 웨이퍼 하나가 후보 하나, 파일에 후보 표](#2026-10-23--ai-리포트-대조-후보--웨이퍼-하나가-후보-하나-파일에-후보-표) — 적는 곳 derive.report.layout 의 candidates 칸 · 보는 곳 리포트 파일 오른쪽
+- 2026-10-23 [AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽](#2026-10-23--ai-리포트-파일--글--그림-왼쪽-표-오른쪽) — 보는 곳 리포트 파일(server/reports/<웨이퍼>.html)
+- 2026-10-23 [AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄](#2026-10-23--ai-리포트-요약-표의-info-가-표-목록--넓은-표-한-행수율도-한-줄) — 적는 곳 chain_rules.json 의 derive.report.info(목록) · 보는 곳 리포트 요약 표 머리 밑 줄
+- 2026-10-23 [AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만](#2026-10-23--ai-리포트는-리포트-표에-건-규칙-하나--요약표--조건표--이미지표는-소유자-모양-그대로-읽기만) — 적는 곳 chain_rules.json 의 derive.report(on = into = 리포트 표 · results.file · conditions · images.item_sep · images.source) · 보는 곳 리포트 표의 파일 경로 · 파일의 Evidence
 - 2026-10-23 [조인 take 의 from 에 칸 목록 — 함수가 행마다 {칸: 값} 을 받는다](#2026-10-23--조인-take-의-from-에-칸-목록--함수가-행마다-칸-값-을-받는다) — 적는 곳 chain_rules.json 의 join take 의 from · 보는 곳 함수가 받는 values
 - 2026-10-23 [AI 리포트는 요약표에 건 규칙 하나 — 웨이퍼마다 한 판, 결과는 요약표 칸 셋, send_to 로 중계 PC 에](#2026-10-23--ai-리포트는-요약표에-건-규칙-하나--웨이퍼마다-한-판-결과는-요약표-칸-셋-send_to-로-중계-pc-에) — 적는 곳 chain_rules.json 의 derive.report 의 results · send_to · control.same · 보는 곳 요약표의 결과 칸 셋 · 리포트 파일의 Evidence
 - 2026-10-23 [값이 안 바뀐 행은 사건을 안 낸다 — 셀 메뉴의 층 지우기 · 핀이 그 표의 규칙을 깨우지 않는다](#2026-10-23--값이-안-바뀐-행은-사건을-안-낸다--셀-메뉴의-층-지우기--핀이-그-표의-규칙을-깨우지-않는다) — 보는 곳 chain_worker.log 의 그 규칙 줄 · database_outbox 의 EDIT
@@ -552,6 +561,65 @@
 - **선언** — 바뀐 것 없음.
 - **자세히** — `ontology_path.addMember`(가지 이름 · shape 로 고르는 항목의 낱말) · `ontology_explorer_view` 칩의 «+ <가지>» · 하니스 declaration_form V11 · A2c · P11.
 
+## 2026-10-23 · AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg · 행 조건 · 수율 · 불량 (소유자 그림)
+
+- **무엇** — 소유자 10-23 그림: 웨이퍼를 옆으로 늘어놓는 비교 표. 열 머리 세 단(날짜 › 웨이퍼 › leg, 같은 값 한 칸, 날짜 오름차순), 행 머리 두 단(조건 › 항목) · 수율 · 불량 › 디펙. 오른쪽 후보 목록 표는 은퇴했습니다(소유자 «CANDIDATE, DATE 이거»).
+- **선언** — `derive.report.columns`(열 머리 단 — 키 칸 · time · group), summary · info 의 `label`(줄들이 서는 머리, 넓은 표는 그 줄 이름), info 의 `choose`(모델이 yield_by 의 rows 로 고름), picture_rows 의 `source`. 새 표 종류가 아니라 yield_by 를 넓혔습니다 — 웨이퍼 하나짜리 표는 열이 리포트 웨이퍼뿐인 경우이고, columns 를 안 적은 선언은 지금 머리 그대로입니다.
+- **바뀐 동작** — 열은 리포트 웨이퍼 + 모델이 compare 로 고른 대조입니다. «대조 대비» 색칠은 자리가 아니라 열마다의 «리포트 웨이퍼인가»로 셉니다. 늦은 계측 뒤에는 R1 리플레이로 다시 만듭니다(소유자 ㄴ).
+- **필요한 조건** — git pull · 런처 재기동 · 리포트 규칙 layout 에서 candidates 칸을 빼기(남아 있으면 규칙 로드 거절) · 규칙에 columns · label · choose · R1 다시.
+- **자세히** — 가이드 «비교 표» · 시험 `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py::test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_under_labels`.
+
+## 2026-10-23 · AI 리포트 대조 후보 — 웨이퍼 하나에 날짜 하나 · 늦은 웨이퍼도 후보 · 칸 이름 Rows
+
+- **무엇** — 박스(총괄 10-23): W2310-13 의 후보에 W2310-15 가 L2 만 나왔습니다. 15/L1 은 13 보다 늦어 빠졌고, 15/L2 는 시각이 없어 그 걸름을 안 받았습니다.
+- **바뀐 동작** — 후보를 웨이퍼로 먼저 묶고, 날짜는 leg 시각 중 가장 늦은 것 하나로 접은 뒤 걸러 정렬합니다. 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 빼지 않습니다(소유자 «빼지 마»). 평가 칸이 있는 선언은 그대로 이 평가 뒤의 평가를 뺍니다. `control.recent.evaluations` 상한은 그대로입니다.
+- **낱말** — 후보 표 칸 «Wafers» 는 «Rows», 모델 줄 «N wafers» 는 «N rows»(웨이퍼 표의 행 수). 라벨 칸 이름 `wafers` 는 `rows` 입니다.
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시. labels 에 `wafers` 를 적었다면 `rows` 로.
+- **자세히** — 가이드 «대조 후보» · 시험 `test_every_declared_kind_runs_and_leaves_rows.py`.
+
+## 2026-10-23 · AI 리포트 — 칩 그림은 leg 마다 · Evidence 는 걸음이 읽은 줄 전부
+
+- **무엇** — 박스 20 장(총괄 10-23): 디펙마다 그림 셋이 다 L1 이었고, Evidence 는 걸음마다 첫 줄만 적어 대조 후보가 «비어» 보였습니다.
+- **바뀐 동작** — `images.per_item` 은 웨이퍼 행(leg) 하나마다 셉니다. Evidence 는 걸음 줄 밑에 그 걸음이 읽은 나머지 줄을 들여 씁니다. `chain_worker.log` 의 `[Report]` 줄은 그대로 첫 줄입니다.
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시.
+- **자세히** — 시험 `test_every_declared_kind_runs_and_leaves_rows.py`.
+
+## 2026-10-23 · AI 리포트 — 후보 날짜는 제품 시간대의 날 · 빈 조건 값은 (empty) · 웨이퍼 이름은 머리에 한 번
+
+- **무엇** — 박스 20 장에서 A 가 본 것(총괄 10-23): 후보 날짜가 하루 일렀습니다(2026-10-22T00:00+09:00 이 10-21 로). 리포트가 시각을 UTC 로 읽고 날짜를 잘랐습니다. 이제 제품의 시각 읽기 하나(`expression._instant`, `expression_time_zone`)를 지납니다. 리포트 안에서 날짜를 자르는 자리는 후보 줄 하나였고, 같은 값이 모델 줄과 파일 표로 갑니다.
+- **함께** — 값이 빈 조건 행(이름만 있음)은 «bond_temp=(empty)» 로 읽힙니다(전엔 «None»). 빈 값 판정은 `crud.is_blank_value` 하나입니다. 웨이퍼 하나의 leg 들을 담은 요약 표는 웨이퍼 이름을 머리에 한 번만 적습니다(전엔 두 줄).
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시.
+- **자세히** — 시험 `test_every_declared_kind_runs_and_leaves_rows.py::test_the_owners_long_conditions_and_chip_images_are_read_as_they_are`.
+
+## 2026-10-23 · AI 리포트 대조 후보 — 웨이퍼 하나가 후보 하나, 파일에 후보 표
+
+- **무엇** — 총괄 10-23: 소유자가 함정 웨이퍼를 대 보려면 후보가 파일에 보여야 합니다. 평가 칸이 없을 때 후보는 리포트 표의 웨이퍼 하나이고, leg 는 그 후보 안에 함께 있습니다(전엔 leg 마다 후보 하나).
+- **선언** — layout 에 `{"kind": "table", "fill": "candidates"}`. 파일 오른쪽에 후보 · 날짜 · 행 수 · 제목 · 조건 표가 그려집니다. 낱말은 `labels` 의 candidate · date · wafers · title · conditions 입니다.
+- **필요한 조건** — git pull · 런처 재기동 · 규칙의 layout 에 그 칸 · R1 다시.
+- **자세히** — 가이드 «대조 후보» · 시험 `test_every_declared_kind_runs_and_leaves_rows.py::test_the_owners_long_conditions_and_chip_images_are_read_as_they_are`.
+
+## 2026-10-23 · AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽
+
+- **무엇** — 소유자 10-23 「글 및 이미지가 좌측, 표가 우측 차지하게 배치 바꿔」. layout 의 text · image 칸은 왼쪽, table 칸은 오른쪽이고, 각 쪽은 layout 순서를 따릅니다. 900px 아래에서는 한 줄로 접힙니다.
+- **함께** — 요약 표 머리 밑 info 줄에서 숫자 값은 디펙 칸처럼 오른쪽, 글자 값은 왼쪽에 놓입니다(총괄 10-23).
+- **필요한 조건** — git pull · 런처 재기동 · 리포트 다시 만들기(R1 에 규칙 이름).
+- **자세히** — 시험 `test_the_report_html_embeds_everything_in_layout_order.py` · `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-23 · AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄
+
+- **무엇** — 총괄 10-23: 리포트에 leg 별 수율 한 줄. 수율은 «디펙이 하나도 없는 칩의 비율»(소유자)이고 칩 표에서 체인 decide 가 수율 표([wafer, leg] · yield)에 씁니다.
+- **선언** — `derive.report.info` 에 표 목록. `item` 없는 표는 `value` 칸이 그 줄입니다. 표 하나로 적은 옛 선언은 그대로 읽힙니다. 폼은 목록으로 그립니다.
+- **자세히** — 가이드 `docs/guide/ai_report_tables.md` «요약 표 꾸미기» · 시험 `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-23 · AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만
+
+- **무엇** — 소유자 10-23 「요약표가 wafer, leg, item_id, value 모양인데 여기에 결과를 더하면 … 리포트용 표가 따로 있어야지」 · 「요약표는 그냥 데이터 표일 뿐이야」 · 「그냥 wafer, 보고서 파일 경로 이 두 개가 최종 출력이어야 해」. 오전 착지는 규칙을 요약표에 세우고 결과 칸 셋을 요약표에 요구했습니다.
+- **선언** — 리포트 표(웨이퍼 칸 · 파일 경로 칸)에 `on` = `into`, `results` 는 `{"file": "<칸>"}` 하나. 조건이 긴 표면 `conditions` 역할(이름 · 값 · 시각 · 제목), 이미지 행이 디펙을 쉼표로 적으면 `images.item_sep`, 경로를 이미지 소스로 읽으면 `images.source`. 웨이퍼 표가 없으면 `wafer` 에 요약표를 적습니다.
+- **바뀐 동작** — 리포트 표의 웨이퍼 행마다 한 판, 그 웨이퍼의 leg 는 리포트 안 열. 요약표에는 아무것도 안 씁니다. 상태 · 사유는 파일의 Evidence 첫 줄과 `[Report]` 줄. 보낼 것은 리포트 옆 `.send` 표시 파일, 세 번 실패면 `.send_failed`. 평가 칸이 없으면 대조 후보는 웨이퍼 하나씩 — 날짜 · 제목 · 조건(없으면 default conditions)을 모델이 읽습니다.
+- **판정 바뀜** — decide 가 «키만 든 행»을 만듭니다(전엔 「'target_fields' is empty, so 'aggregations' must be declared …」로 거절). 리포트 표의 두 칸이 그대로 됩니다.
+- **필요한 조건** — git pull · 선언 고침(요약표의 결과 칸 · 요약표 위 규칙을 지우고 리포트 표 + 규칙) · 런처 재기동.
+- **자세히** — 가이드 `docs/guide/ai_report_tables.md` · 시험 `test_every_declared_kind_runs_and_leaves_rows.py` · `test_a_report_is_declared_as_a_chain_rule.py` · `test_a_decide_with_no_fields_stands_on_its_aggregations.py` · RUN.md 같은 날 항목.
+
 ## 2026-10-23 · 피벗 보기에서 줄 더하기 · 줄 지우기 · 맨 아래 붙여넣기 — Pivot 을 끄지 않는다
 
 - **무엇** — 소유자 10-23 「피벗 상태에서는 행 추가가 안 되네」. 전에는 피벗 보기에서 행 추가 · 삭제가 «Rows are added and deleted with Pivot off» 로 막혀 있었습니다. 이제 셋 다 됩니다. 셋 다 그리드의 쓰기 문을 그대로 지나고, 서버 문은 새로 생기지 않았습니다.
@@ -624,8 +692,8 @@
 - **파일 화면** — 목록 · 상태 칩 수 · 폴더 묶음의 failed/waiting 이 모두 체크리스트에서 나온다(파일당 한 줄, 지금 상태). 한 파일의 읽기 이력은 목록에 없다 — 기록 표에 남는다. 줄의 사유 · 읽은 행 수 · 걸린 초는 그 파일의 가장 새 기록에서 온다. 줄의 `id` 는 가장 새 기록 id, `checklist_id` 가 새로 붙는다.
 - **리트라이 문** — 다시 읽으면 기록 행을 고쳐 쓰지 않고 새 기록을 한 줄 쓴다(created_at 이 새 시각). 넘기기 전 상태(취소가 되돌릴 것)는 체크리스트 행의 `status_before` 에 산다(file_reread_marks 는 더 쓰지 않음). 와처 줄의 번호도 체크리스트 행이다 — «Retry succeeded for checklist row #N (파일).»
 - **처음 한 번** — 와처가 뜰 때 첫 훑기 «전»에 기록에서 체크리스트를 만든다(파일마다 가장 새 기록, 대기 행은 그 표시의 전 상태). 줄 «[Watcher] checklist made from the records: N file(s) in S s», 표시 파일 config/watcher_checklist_filled. 실패하면 다음 기동에 다시 한다.
-- **외부 훑기** — 파일마다 이름 · 깊이를 먼저 보고, 맞는 것만 디스크 경로 판정 · stat 을 한다(답은 같다). 훑기가 끝난 뒤 쉬는 초는 ingestion_settings.json 의 `sweep_interval_seconds`(기본 300). `external_full_walk_every` 에 N 을 적으면 수정 시각이 그대로인 폴더는 목록을 안 읽고 지나가고, N 번째 훑기마다 전체를 걷는다 — 제자리에서 다시 쓴 파일은 폴더 수정 시각을 안 바꾸므로 그 N 번째에 잡힌다. 비우면 지금처럼 매번 전체. N 을 적은 소스는 그 사이 훑기에서 파일도 폴더 목록이 주는 크기 · 수정 시각으로 체크리스트와 견주고, 다를 때만 디스크에서 다시 본다(os.stat) — 바뀐 것 없는 훑기에 파일 stat 이 없다. N 번째 훑기는 폴더도 파일도 전부 디스크에서 본다. 늦게 보는 것: 쓰는 중인 파일(닫힐 때까지), 다른 하드 링크 이름으로 고친 파일(N 번째까지).
-- **보는 곳** — 와처 시작 줄 · 훑기 줄의 «folders unchanged N» · 파일 화면.
+- **외부 훑기** — 파일마다 이름 · 깊이를 먼저 보고, 맞는 것만 디스크 경로 판정 · stat 을 한다(답은 같다). 훑기가 끝난 뒤 쉬는 초는 ingestion_settings.json 의 `sweep_interval_seconds`(기본 300). `external_full_walk_every` 에 N 을 적은 소스는 그 사이 훑기에서 파일을 폴더 목록이 주는 크기 · 수정 시각으로 체크리스트와 견주고, 다를 때만 디스크에서 다시 본다(os.stat). N 번째 훑기는 파일까지 전부 디스크에서 본다. 폴더는 훑기마다 전부 읽는다. 늦게 보는 것은 다른 하드 링크 이름으로 고친 파일 하나(N 번째에) — 쓰는 중인 파일은 닫힌 뒤 다음 훑기에. 비우면 지금처럼 파일마다 os.stat.
+- **보는 곳** — 와처 시작 줄 · 훑기 줄 · 파일 화면.
 - **필요한 조건** — git pull · 서버 재기동 · 와처 재기동(첫 기동에 한 번 만듦).
 
 ## 2026-10-23 · 와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기

@@ -7,11 +7,10 @@ records stay one per read. And the external sweep's walk does less for the same 
   name first      every path of a board: the name and depth judged before the path on the disk - the same reason or
                   none as the whole judgement first (filename and glob sources, max_depth, a case, a junction out of
                   the root, a junction inside it whose real path is below max_depth)
-  folder memory   external_full_walk_every 3: sweep 0 walks all; sweep 1 lists no unchanged folder; a new file moves
-                  its folder - that folder listed, a file written in place is not; sweep 3 walks all again; a sweep for
-                  files just unchecked (`walk_all`, a changed reading) walks all; a binding retired and back (its
-                  glob changed) walks all on its first sweep; a folder's mtime is its own os.stat - the parent's
-                  listing (NTFS) does not move when a file is added in it
+  every folder    every sweep lists every folder - a folder is never chosen by its mtime (the canary: on NTFS the
+                  parent's listing does not show a folder a file was added in); with external_full_walk_every 3 a file
+                  written again in place, one added right after that and one added elsewhere are each seen at the next
+                  sweep, files just unchecked too; a binding retired and back stats every file at its first sweep
   the listing     with external_full_walk_every, between the full looks a file is stamped by its folder's listing,
                   os.stat only for what the checklist does not clear: a file open for writing waits until it is
                   closed, one changed through another hard link until the Nth sweep, one read while open is not read
@@ -21,7 +20,6 @@ records stay one per read. And the external sweep's walk does less for the same 
 import json
 import os
 import sys
-import time
 
 import pytest
 
@@ -138,49 +136,57 @@ def test_the_name_is_judged_first_and_the_answers_are_the_same(tmp_path, monkeyp
     assert outside == ((2 if max_depth is not None else 1) if os.name == "nt" else 0), "CANARY: the junctions"
 
 
-def test_an_unchanged_folder_is_not_listed_until_every_nth_sweep(tmp_path, monkeypatch):
+def _checklist_of(read):
+    """The checklist the sweep asks: read at these stamps {path: stamp}."""
+    def checked(self, entries):
+        entries = list(entries)
+        return Checked({path for path, stamp in entries if read.get(path) == stamp},
+                       {path: "changed" for path, stamp in entries if read.get(path) != stamp})
+    return checked
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the NTFS listing is what this measures")
+def test_every_folder_is_listed_and_a_change_is_seen_at_the_next_sweep(tmp_path, monkeypatch):
     root = tmp_path / "share"
-    for w in range(3):
+    first = {}
+    for w in range(2):
         for k in range(2):
-            _write(str(root / ("W%d" % w) / ("K%d" % k) / "voids.json"))
+            first[(w, k)] = _write(str(root / ("W%d" % w) / ("K%d" % k) / "a.json"), "a" * 100)
             _write(str(root / ("W%d" % w) / ("K%d" % k) / "img.png"))
-    spec = {"path": str(root), "table_name": "ta", "options": {"filename": "voids.json"}}
+    spec = {"path": str(root), "table_name": "ta", "options": {"glob": ["**/*.json"]}}
     w = _watcher(tmp_path, monkeypatch, [spec], external_full_walk_every=3)
-    monkeypatch.setattr(IngestionHandler, "_handle_event", lambda self, path: None)
-    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: Checked())
     (source_id, _target), = w.external_targets.items()
-    looked = []
-    real = w._external_pages
+    dispatched = []
+    monkeypatch.setattr(IngestionHandler, "_handle_event", lambda self, path: dispatched.append(
+        os.path.relpath(path, str(root)).replace(os.sep, "/")))
+    read = {os.path.abspath(path): checkpoint.read_file_stat(path) for path in first.values()}
+    monkeypatch.setattr(IngestionHandler, "already_checked", _checklist_of(read))
 
-    def pages(sid, target, why, said, *rest):
-        yield from real(sid, target, why, said, *rest)
-        looked.append((why["looked"], why["folders unchanged"]))
+    def sweep():
+        dispatched.clear()
+        w.sweep_external_sources()
+        return sorted(dispatched)
 
-    monkeypatch.setattr(w, "_external_pages", pages)
-    w.sweep_external_sources()
-    assert looked[-1] == (12, 0)                                   # sweep 0: all, both files of 6 folders
-    w.sweep_external_sources()
-    assert looked[-1] == (0, 10)                                   # sweep 1: root, 3 wafers, 6 works unchanged
-    _write(str(root / "W1" / "K0" / "new.png"))                    # a new file moves W1/K0
-    if os.name == "nt":                                            # CANARY: and not W1/K0 in its parent's listing
-        with os.scandir(str(root / "W1")) as it:
-            listed = {e.name: e.stat().st_mtime_ns for e in it}["K0"]
-        assert listed != os.stat(str(root / "W1" / "K0")).st_mtime_ns
-    _write(str(root / "W2" / "K1" / "voids.json"), "written again in place")
-    w.sweep_external_sources()
-    assert looked[-1] == (3, 9)                                    # sweep 2: W1/K0 listed; W2/K1 not
-    w.sweep_external_sources()
-    assert looked[-1] == (13, 0)                                   # sweep 3: all again
-    w.sweep_external_sources(walk_all=True)
-    assert looked[-1] == (13, 0)                                   # files just unchecked: all, whatever the turn
-    w.sweep_external_sources()
-    assert looked[-1] == (0, 10)                                   # sweep 5: the memory skips again
-    w.sweep_external_sources()
-    assert looked[-1] == (13, 0)                                   # sweep 6: all - so sweep 7 would skip
+    assert sweep() == []                                           # sweep 0: a full look, nothing changed
+    linked = first[(1, 0)]
+    os.link(linked, linked + ".link")
+    with open(linked + ".link", "r+b") as f:
+        f.write(b"y" * 200)
+    assert _listed(linked) == read[os.path.abspath(linked)], "CANARY: the listing lags the link's change"
+    assert sweep() == []                                           # sweep 1: between - the link lags
     w._retire_external(source_id, "changed")
     w._register_external_sources(directory_watcher.load_global_table_config())
-    w.sweep_external_sources()
-    assert looked[-1] == (13, 0)                                   # back as a new binding: all
+    assert sweep() == ["W1/K0/a.json"]                             # back: its sweep 0 again - every file stat'd
+    with open(first[(0, 0)], "r+b") as f:
+        f.write(b"x" * 300)                                        # written again in place
+    _write(str(root / "W0" / "K0" / "b.json"))                     # added right after that, in its folder
+    _write(str(root / "W1" / "K1" / "c.json"))                     # added elsewhere
+    with os.scandir(str(root / "W1")) as it:                       # CANARY: what a folder chosen by a listing
+        listed = {e.name: e.stat().st_mtime_ns for e in it}["K1"]  # value would have passed
+    assert listed != os.stat(str(root / "W1" / "K1")).st_mtime_ns
+    assert sweep() == ["W0/K0/a.json", "W0/K0/b.json", "W1/K1/c.json"]    # sweep 1: between - each seen
+    read.clear()                                                   # the files unchecked (a changed reading)
+    assert len(sweep()) == 6                                       # sweep 2: between - every json read again
 
 
 def test_the_sweep_period_is_a_setting():
@@ -189,13 +195,6 @@ def test_the_sweep_period_is_a_setting():
     assert directory_watcher.full_walk_every({}) is None and directory_watcher.full_walk_every(
         {"external_full_walk_every": 6}) == 6
     assert json.dumps(directory_watcher.full_walk_every({"external_full_walk_every": "6"})) == "null"
-
-
-def _nudge(folder):
-    """The folder's mtime moved on - so a sweep between the full looks lists its files. Set, not by adding a file: on
-    NTFS an add right after an in-place rewrite in that folder is closed does not always move it (A's board, 10-23)."""
-    _nudge.at = getattr(_nudge, "at", time.time_ns()) + 10 ** 9
-    os.utime(folder, ns=(_nudge.at, _nudge.at))
 
 
 def _listed(path):
@@ -240,8 +239,6 @@ def test_between_full_looks_a_file_is_stamped_by_its_listing(tmp_path, monkeypat
     other.write(b"z" * 300)
     other.flush()
     read[os.path.abspath(read_open)] = checkpoint.read_file_stat(read_open)      # the read stamps what os.stat says
-    for folder in ("W0", "W1", "W2"):
-        _nudge(str(root / folder))
     try:
         # CANARY: on this disk the listing lags all three
         assert _listed(held) == read[os.path.abspath(held)] != checkpoint.read_file_stat(held)
@@ -254,7 +251,5 @@ def test_between_full_looks_a_file_is_stamped_by_its_listing(tmp_path, monkeypat
     finally:
         writer.close()
         other.close()
-    for folder in ("W0", "W1", "W2"):
-        _nudge(str(root / folder))
     assert sweep() == ["W0"]                                       # sweep 2: closed - seen; the link still lags
     assert sweep() == ["W0", "W1"]                                 # sweep 3: the full look - every file os.stat'd
