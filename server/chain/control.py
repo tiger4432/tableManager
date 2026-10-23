@@ -147,7 +147,7 @@ def stop_line(db, key, by, must_be_run=False):
                 "slot_pid": None}
     run = run is not None
     answer = {"run": retroactive.request_cancel(db, key)["state"]} if run else {}
-    done = set_aside.set_aside_line(db, key, by, run=run)
+    done = set_aside.set_aside_line(db, key, by)
     slot_pid = slots.stop_slot(db, key)
     if slot_pid == slots.UNREAD:                      # said, not a silent null (총괄 10-09)
         slot_pid, answer["slot_not_found"] = None, slots.SLOT_NOT_FOUND

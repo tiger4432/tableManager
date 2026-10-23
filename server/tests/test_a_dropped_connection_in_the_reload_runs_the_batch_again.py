@@ -35,7 +35,7 @@ def test_a_dropped_connection_in_the_reload_runs_the_batch_again(monkeypatch, ca
     monkeypatch.setattr(heartbeat, "record_lap", lambda *a, **k: None)
 
     with caplog.at_level(logging.ERROR):
-        outcome, rules, seen = asyncio.run(slots._run_batch("line-1", False, ["rule"], 7))
+        outcome, rules, seen = asyncio.run(slots._run_batch("line-1", ["rule"], 7))
 
     assert (outcome, rules, seen) == (slots.FAILED, ["rule"], 7)
     assert any("a batch of line line-1 raised - its events wait as they were and run again" in r.getMessage()

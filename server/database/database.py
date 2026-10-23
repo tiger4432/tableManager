@@ -644,8 +644,11 @@ def row_event(event_type, table_name, data_row, old=None) -> dict:
         payload[RUN_KEY] = run_id
     if old:
         payload[OLD_VALUES_KEY] = old
+    from .models import outbox_line_columns
+
     return {"event_uuid": str(uuid.uuid4()), "event_type": event_type,
-            "table_name": table_name or "unknown", "payload": payload, "status": "PENDING"}
+            "table_name": table_name or "unknown", "payload": payload, "status": "PENDING",
+            **outbox_line_columns(payload)}
 
 
 

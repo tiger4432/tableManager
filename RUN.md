@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **리플레이가 뒤로 갈수록 느려지던 것 — 체인 대기열이 줄을 payload 대신 outbox 칸 셋으로 읽는다 (총괄 c0e6906f1, 소유자 「ㄱ」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      리플레이 쪽 사건(1,000 행이면 ~40 KB)과 그 쪽이 쓴 사건이 같은 실행 줄에 쌓이는데,
+>           슬롯은 묶음마다 · 배정자는 빈 슬롯이 있으면 1 초마다 대기 사건 전부의 payload 를 풀었음 — 쪽이 갈수록 느려짐
+>           판(버리는 DB · 런처 그대로 · 쪽 119 · 쪽당 대상 1만 행):
+>             전  쪽 8.4 -> 12.7 s · 대기 146 -> 1,184 · 줄 목록 읽기 0.022 -> 0.234 s · 줄 창 읽기 0.097 -> 0.312 s
+>             후  쪽 8.3 -> 13.3 s · 대기 146 -> 1,180 · 줄 목록 읽기 0.005 -> 0.006 s · 줄 창 읽기 0.130 -> 0.203 s(200 행에서 멈춤)
+>           고친 두 읽기는 평평. 이 판의 쪽 시간 기울기(+50%)는 그대로 — 이 깊이에서 두 읽기는 쪽당 0.2~0.5 s 뿐
+>           대기가 수천 이상일 때 이 몫이 주(대기 2만: 줄 목록 3.9 s · 줄 창 2.3 s 였음). 남은 기울기는 아직 안 잼
+> 재기동 뒤 볼 줄 (첫 재기동 한 번)
+>           server.log · watcher.log · chain_worker.log 중 하나에 «[Schema Sync] added column 'run_id' to 'database_outbox'»
+>             — transaction_id · row_count 도. 먼저 뜬 프로세스가 더함
+>           나머지 둘에 «… was added by another process starting with this one» 이 나와도 정상
+>           chain_worker.log  «[Chain] outbox line columns: N of M waiting event(s) without them filled» — 재기동 전에 쌓여 있던 대기 사건
+>           auto_update.log   «[Indexes] idx_outbox_line built in X s»
+>           auto_update.log 에 «Failed to query initial SYSTEM_RELOAD outbox id … run_id» 가 한 번 나올 수 있음 —
+>             스케줄러가 서버보다 먼저 outbox 를 읽은 것. 그 뒤 설정 다시 읽기를 한 번 더 할 뿐 계속 돎
+> 실패일 때  server.log · chain_worker.log «[Schema Sync] column 'run_id' was not added to 'database_outbox' - another session held the table past 20s …»
+>           그 뒤 체인 · 스케줄러 로그가 «UndefinedColumn … database_outbox.run_id» 를 계속 찍음 — 쓰기 · 체인이 서 있음
+>           -> 앱을 끄고(run_app.bat 닫기) 재기동 한 번. outbox 를 쥔 다른 세션(SQL 창 등)이 있으면 먼저 닫음
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동. 칸 셋은 남아 있어도 됨(옛 코드는 안 읽음)
+> ```
+>
 > ## [10-23] **voids 표가 끝없이 읽힐 때 — 대기 중인 다시 읽기를 되돌린다 (있는 문 cancel-reread, 코드 바뀜 없음)** — 재기동 없음
 >
 > ```

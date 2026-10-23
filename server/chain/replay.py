@@ -843,7 +843,7 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
             if run is not None and run.state in ("queued", "running", "cancel_requested"):
                 db.rollback()
                 continue
-            narrow, line = event_constants.queue_line_rows(outbox, run_id, run=True)
+            narrow, line = event_constants.queue_line_rows(outbox, run_id)
             # whatever its state: a run released or cancelled with pages still waiting is judged once they ran - it may be
             # cut then, its tally kept for Resume (board: a dead worker's run released with 2 pages waiting lost its tally)
             if run is not None and db.query(outbox.id).filter(
@@ -1016,7 +1016,7 @@ def interrupted_runs(db, run_id=None, rule=None):
         if rule is not None and params.get("rule") != rule:
             continue
         # its own pages, as the gate reads them (`retroactive._replay_still_waiting`) - not what their writes woke
-        narrow, line = event_constants.queue_line_rows(outbox, run, run=True)
+        narrow, line = event_constants.queue_line_rows(outbox, run)
         if db.query(outbox.id).filter(outbox.processed_chain == False, narrow, line,  # noqa: E712
                                       outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True).first() is not None:  # noqa: E712
             continue

@@ -102,7 +102,7 @@ def line_of(db, line):
     from chain import ingestion_worker
     from utils.payload_helper import get_payload_dict
 
-    events = ingestion_worker.pending_chain_events(db, limit=WINDOW_ROWS, line=line.key, run=bool(line.run))
+    events = ingestion_worker.pending_chain_events(db, limit=WINDOW_ROWS, line=line.key)
     return {"line": line.key, "run": bool(line.run), "events": events,
             "orders": not line.run and any(not event_constants.is_collapsed_payload(get_payload_dict(e) or {})
                                            for e in events)}
@@ -348,8 +348,7 @@ class SlotPool:
                     with chain_group():
                         _claim_the_open_transaction(db)
                         end_connections(db, index)
-                        done = set_aside.set_aside_line(db, slot.line["line"], CHAIN_WORKER, run=slot.line["run"],
-                                                        reason=why)
+                        done = set_aside.set_aside_line(db, slot.line["line"], CHAIN_WORKER, reason=why)
                 except OperationalError as error:
                     if QUERY_CANCELED not in str(error):
                         raise
@@ -557,14 +556,14 @@ async def _serve(index, answers):
             continue
         heartbeat.record_lap(name, HOLDS, line=ask["line"])
         heartbeat.beat(name, note=ingestion_worker._worker_note(), force=True)
-        outcome, rules, seen = await _run_batch(ask["line"], bool(ask.get("run")), rules, seen)
+        outcome, rules, seen = await _run_batch(ask["line"], rules, seen)
         if outcome != RAN:
             heartbeat.record_lap(name, HOLDS)
             heartbeat.beat(name, note=ingestion_worker._worker_note(), force=True)
         answers.write(json.dumps({"line": ask["line"], "outcome": outcome}) + "\n")
 
 
-async def _run_batch(key, run, rules, seen):
+async def _run_batch(key, rules, seen):
     """One batch of the line's waiting events, through the chain's batch body."""
     from chain import activity, control, ingestion_worker
     from database.database import SessionLocal
@@ -584,7 +583,7 @@ async def _run_batch(key, run, rules, seen):
                                                              system_reload.CHAIN_WORKER, seen)
         rules = ingestion_worker.loaded_chain_rules() if changed else rules
         events = await ingestion_worker._step_beating(db, "line read", ingestion_worker.pending_chain_events, db,
-                                                      line=key, run=run)
+                                                      line=key)
         if not events:
             return DRAINED, rules, seen
         failed = await ingestion_worker.drain_events(db, events, rules, SessionLocal, batch_wake_ts=started)

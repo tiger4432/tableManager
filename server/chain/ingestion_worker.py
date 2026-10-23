@@ -4418,9 +4418,9 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
     return await process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts=batch_wake_ts)
 
 
-def pending_chain_events(db, limit: int = 200, line=None, run=False) -> list:
+def pending_chain_events(db, limit: int = 200, line=None) -> list:
     """The waiting rows THIS loop can consume, oldest first (S-252) - of one chain queue line
-    when `line` names it (a slot's, 총괄 19f6a9277; `run` = the key is a retroactive run's).
+    when `line` names it (a slot's, 총괄 19f6a9277).
 
     🔴 ANOTHER DAEMON'S ROW IS NOT THIS LOOP'S QUEUE. A CONTROL row is addressed to
     `run_auto_update.py` (`SCHEDULER_OWNED_EVENT_TYPES`), and this loop has always skipped
@@ -4450,7 +4450,7 @@ def pending_chain_events(db, limit: int = 200, line=None, run=False) -> list:
     return db.query(DatabaseOutbox).filter(
         DatabaseOutbox.processed_chain == False,          # noqa: E712
         ~DatabaseOutbox.event_type.in_(tuple(event_constants.CONTROL_EVENT_TYPES)),
-        *(() if line is None else event_constants.queue_line_rows(DatabaseOutbox, line, run=run))
+        *(() if line is None else event_constants.queue_line_rows(DatabaseOutbox, line))
     ).order_by(DatabaseOutbox.id.asc()).limit(limit).all()
 
 
@@ -4517,6 +4517,8 @@ def _sync_dynamic_tables_schema_sync(db_session_factory):
         db.close()
     models.sync_dynamic_tables_schema(engine)
     logger.info("Dynamic database models and schema sync completed.")
+    # the waiting rows written before the outbox's line columns: filled before the dispatcher reads a line
+    models.fill_outbox_line_columns(engine, say=logger.info)
 
 
 def _starting(steps, step):

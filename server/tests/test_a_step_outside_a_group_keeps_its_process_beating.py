@@ -23,7 +23,7 @@ SLOW = 0.6
 def test_a_slow_line_read_keeps_the_slot_beating_and_names_its_step(monkeypatch):
     beats, seen_stage = [], []
 
-    def slow_read(db, line=None, run=False):
+    def slow_read(db, line=None):
         time.sleep(SLOW)
         seen_stage.extend(c["stage"] for c in heartbeat.open_claims() if c["name"] == worker.GROUP_BEAT)
         return []
@@ -48,7 +48,7 @@ def test_a_slow_line_read_keeps_the_slot_beating_and_names_its_step(monkeypatch)
                         real_beat(name, **k))
 
     started = time.monotonic()
-    outcome, _rules, _seen = asyncio.run(slots._run_batch("line-k", False, [], 0))
+    outcome, _rules, _seen = asyncio.run(slots._run_batch("line-k", [], 0))
     assert outcome == slots.DRAINED
     during = [at for name, at in beats if name == worker.GROUP_BEAT and started + 0.1 < at < started + SLOW]
     assert len(during) >= 3, "the loop did not beat while the read ran: %d" % len(during)
@@ -61,7 +61,7 @@ def test_a_dead_slot_whose_line_the_limit_stopped_setting_aside_is_kept_and_trie
 
     asked = []
 
-    def set_aside_line(db, key, by, run=False, reason=None):
+    def set_aside_line(db, key, by, reason=None):
         asked.append(key)
         if len(asked) == 1:
             raise OperationalError("UPDATE database_outbox", {}, Exception("QueryCanceled: statement timeout"))

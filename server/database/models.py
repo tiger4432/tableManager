@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint, Float
+from sqlalchemy import event as sa_event
 from sqlalchemy.sql import func
 from .database import Base, is_sqlite
 
@@ -285,6 +286,11 @@ class DatabaseOutbox(Base):
     #: The ledger's mark (총괄 bb9b1c19c (가)): NULL = yet to follow, 'done', or 'failed: <why>'.
     #: `ledger.followup.drain_outbox_once` takes and marks; migrations/add_outbox_ledger_state.py.
     ledger_state = Column(String, nullable=True)
+    #: The payload's run, transaction and row count as columns (총괄 c0e6906f1): the queue's lines are read off these,
+    #: not off a payload of ~40 KB per waiting event. Written from the payload by `outbox_line_columns`, the one seat.
+    run_id = Column(String, nullable=True)
+    transaction_id = Column(String, nullable=True)
+    row_count = Column(Integer, nullable=True)
 
     # [핵심] Outbox 폴링 스캔 최적화 색인 일람.
     # 부분 인덱스(postgresql_where)는 PostgreSQL에서만 조건이 적용되고 SQLite에서는 조건이 무시된
@@ -323,6 +329,10 @@ class DatabaseOutbox(Base):
         Index("idx_outbox_ledger_pending", "id",
               postgresql_where=text("processed_chain = true AND ledger_state IS NULL"),
               info={"purpose": "run events the ledger has not followed yet", "serves": "ledger follow-up"}),
+        Index("idx_outbox_line", text("(coalesce(run_id, transaction_id))"), "id",
+              postgresql_where=text("processed_chain = false"),
+              info={"purpose": "waiting events of one queue line, oldest first",
+                    "serves": "a slot's line window, the queue x, set-aside by line"}),
     ]
     if not is_sqlite:
         _outbox_index_list.append(
@@ -341,6 +351,61 @@ class DatabaseOutbox(Base):
         """
         from utils.payload_helper import get_payload_dict
         return get_payload_dict(self.payload)
+
+
+def outbox_line_columns(payload) -> dict:
+    """{run_id, transaction_id, row_count} of an outbox payload, as `payload->>'run_id'` · `->>'transaction_id'` ·
+    `->'row_count'` read it - ONE RULE: every insert (`_outbox_line_columns` below, `database.row_event`) and the
+    waiting rows written before the columns (`fill_outbox_line_columns`). A payload stored as a JSON string (a
+    scheduler trigger's `json.dumps`) has no keys, as the SQL reads it."""
+    import json
+
+    if not isinstance(payload, dict):
+        return {"run_id": None, "transaction_id": None, "row_count": None}
+
+    def as_text(value):
+        return value if value is None or isinstance(value, str) else json.dumps(value)
+
+    count = payload.get("row_count")
+    return {"run_id": as_text(payload.get("run_id")), "transaction_id": as_text(payload.get("transaction_id")),
+            "row_count": count if isinstance(count, int) and not isinstance(count, bool) else None}
+
+
+@sa_event.listens_for(DatabaseOutbox, "before_insert")
+def _outbox_line_columns(_mapper, _connection, target):
+    for name, value in outbox_line_columns(target.payload).items():
+        setattr(target, name, value)
+
+
+#: Waiting rows read per page by `fill_outbox_line_columns`.
+OUTBOX_FILL_PAGE = 1000
+
+
+def fill_outbox_line_columns(engine, say=logger.info):
+    """The waiting outbox rows written before the line columns existed, given them by `outbox_line_columns` - the
+    chain's startup, after the schema sync added the columns and before its dispatcher reads a line. A waiting row
+    whose three are all empty is read again (most have no run or transaction: a control event's); one with any is
+    not. -> rows filled."""
+    from sqlalchemy import select, update
+
+    outbox = DatabaseOutbox.__table__
+    empty = (outbox.c.processed_chain == False, outbox.c.run_id.is_(None),   # noqa: E712 - the index's spelling
+             outbox.c.transaction_id.is_(None), outbox.c.row_count.is_(None))
+    after, read, filled = 0, 0, 0
+    while True:
+        with engine.begin() as conn:
+            page = conn.execute(select(outbox.c.id, outbox.c.payload).where(*empty, outbox.c.id > after)
+                                .order_by(outbox.c.id).limit(OUTBOX_FILL_PAGE)).fetchall()
+            if not page:
+                break
+            after, read = page[-1][0], read + len(page)
+            for row_id, payload in page:
+                values = outbox_line_columns(payload)
+                if any(value is not None for value in values.values()):
+                    conn.execute(update(outbox).where(outbox.c.id == row_id).values(**values))
+                    filled += 1
+    say("[Chain] outbox line columns: %d of %d waiting event(s) without them filled" % (filled, read))
+    return filled
 
 
 def path_key(column):
@@ -632,7 +697,7 @@ class FileIngestionCheckpoint(Base):
 #: System tables the boot schema sync (`sync_dynamic_tables_schema`) also adds a declared column to - a column added to
 #: one of these later reaches a database that never ran its SQL (총괄 10-20: a pulled server reading a column the
 #: database lacked failed every file list and every watcher record with UndefinedColumn).
-SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog, FileIngestionCheckpoint)
+SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog, FileIngestionCheckpoint, DatabaseOutbox)
 
 
 def schema_synced_tables() -> dict:
@@ -1519,6 +1584,10 @@ def init_dynamic_models(config_dict: dict, engine=None):
         engine.clear_compiled_cache()
 
 
+#: PostgreSQL's duplicate_column - the column a sync meant to add is there.
+DUPLICATE_COLUMN = "42701"
+
+
 def sync_dynamic_tables_schema(engine):
     """
     DYNAMIC_TABLES의 정의와 실제 DB 물리 테이블의 스키마를 비교하여,
@@ -1610,6 +1679,11 @@ def sync_dynamic_tables_schema(engine):
                     logger.info("[Schema Sync] added column '%s' to '%s'",
                                 col_name, table_name)
                 except Exception as err:
+                    if getattr(getattr(err, "orig", None), "pgcode", None) == DUPLICATE_COLUMN:
+                        # the server, the watcher and the chain worker sync at the same start; one added it first
+                        logger.info("[Schema Sync] column '%s' on '%s' was added by another process starting with "
+                                    "this one", col_name, table_name)
+                        continue
                     if db_safety.waited_past_the_lock_timeout(err):
                         # Waited out, not wrong: the process goes on and the next start or
                         # config save adds it. Until then the table itself fails - every SELECT

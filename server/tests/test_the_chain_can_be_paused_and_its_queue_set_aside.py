@@ -803,7 +803,7 @@ def test_a_runs_line_rows_are_found_by_its_key(db_q):
     _write(db, PB, [{"k": "K3", "n": "0"}])
     outbox = models.DatabaseOutbox
     found = [row.id for row in db.query(outbox.id).filter(
-        outbox.processed_chain.is_(False), *event_constants.queue_line_rows(outbox, RUN, run=True))]
+        outbox.processed_chain.is_(False), *event_constants.queue_line_rows(outbox, RUN))]
     assert found == _runs_waiting(db) and len(found) == 2
 
 

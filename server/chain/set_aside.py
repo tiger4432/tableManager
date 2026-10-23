@@ -136,7 +136,7 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
     return out
 
 
-def set_aside_line(db, key, by, run=False, reason=None):
+def set_aside_line(db, key, by, reason=None):
     """One chain queue line's waiting chain events set aside - a stop's second step, and again
     where a stopped run lands (총괄 e2b5b6f35). One audit line per table says who and how many it
     MARKED - none for a table it marked none of (총괄 10-09: a × that waited for a group's commit
@@ -148,7 +148,7 @@ def set_aside_line(db, key, by, run=False, reason=None):
 
     waiting = (db.query(outbox.id, outbox.event_type)
                .filter(outbox.processed_chain == False,  # noqa: E712 - 부분 인덱스의 술어 철자
-                       *event_constants.queue_line_rows(outbox, key, run=run)).all())
+                       *event_constants.queue_line_rows(outbox, key)).all())
     chain_ids = [row.id for row in waiting if row.event_type in event_constants.CHAIN_OWNED_EVENT_TYPES]
     done = (set_aside(db, ids=chain_ids, apply=True, reason=reason)
             if chain_ids else {"marked": 0, "marked_by_table": {}})
