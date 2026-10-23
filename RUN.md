@@ -4339,8 +4339,8 @@
 > 답의 뜻      "released": true, "state": "failed" -> 주인 프로세스가 죽은 줄을 놓음, 스케줄러 다음 틱에 뒤 줄이 돎
 >             "released": false, "state": "cancel_requested" -> 10-09 빌드의 자식이 살아서 감시기를 기다리는 중 — 3 초마다 멈춤을 읽고
 >             받은 파일의 상태를 되돌린 뒤 cancelled. 1 분 뒤 «읽기만» 줄을 다시
-> 최후 수단    curl 이 거절할 때만(4xx · 5xx) 운영 DB 에서:
->             UPDATE retroactive_runs SET state='failed', finished_at=now(), error='released by hand' WHERE run_id='<id>' AND state IN ('running','cancel_requested');
+> 최후 수단    curl 이 거절할 때만(4xx · 5xx): stop_retroactive.bat <run_id> (server/scripts/stop_retroactive.py) — 이 호스트의 그 실행
+>             프로세스를 끄고, 남은 줄은 같은 UPDATE(state failed · 사유 «released by hand (stop_retroactive)»)로 놓는다 — 손 SQL 대신
 > ```
 >
 > ---
