@@ -10,12 +10,18 @@ records stay one per read. And the external sweep's walk does less for the same 
   folder memory   external_full_walk_every 3: sweep 0 walks all; sweep 1 lists no unchanged folder; a new file moves
                   its folder - that folder listed, a file written in place is not; sweep 3 walks all again; a sweep for
                   files just unchecked (`walk_all`, a changed reading) walks all; a binding retired and back (its
-                  glob changed) walks all on its first sweep
+                  glob changed) walks all on its first sweep; a folder's mtime is its own os.stat - the parent's
+                  listing (NTFS) does not move when a file is added in it
+  the listing     with external_full_walk_every, between the full looks a file is stamped by its folder's listing,
+                  os.stat only for what the checklist does not clear: a file open for writing waits until it is
+                  closed, one changed through another hard link until the Nth sweep, one read while open is not read
+                  again; without it, every sweep os.stats every file - the same answers as before
   the period      sweep_interval_seconds read as declared, the constant when absent
 """
 import json
 import os
 import sys
+import time
 
 import pytest
 
@@ -156,6 +162,10 @@ def test_an_unchanged_folder_is_not_listed_until_every_nth_sweep(tmp_path, monke
     w.sweep_external_sources()
     assert looked[-1] == (0, 10)                                   # sweep 1: root, 3 wafers, 6 works unchanged
     _write(str(root / "W1" / "K0" / "new.png"))                    # a new file moves W1/K0
+    if os.name == "nt":                                            # CANARY: and not W1/K0 in its parent's listing
+        with os.scandir(str(root / "W1")) as it:
+            listed = {e.name: e.stat().st_mtime_ns for e in it}["K0"]
+        assert listed != os.stat(str(root / "W1" / "K0")).st_mtime_ns
     _write(str(root / "W2" / "K1" / "voids.json"), "written again in place")
     w.sweep_external_sources()
     assert looked[-1] == (3, 9)                                    # sweep 2: W1/K0 listed; W2/K1 not
@@ -179,3 +189,72 @@ def test_the_sweep_period_is_a_setting():
     assert directory_watcher.full_walk_every({}) is None and directory_watcher.full_walk_every(
         {"external_full_walk_every": 6}) == 6
     assert json.dumps(directory_watcher.full_walk_every({"external_full_walk_every": "6"})) == "null"
+
+
+def _nudge(folder):
+    """The folder's mtime moved on - so a sweep between the full looks lists its files. Set, not by adding a file: on
+    NTFS an add right after an in-place rewrite in that folder is closed does not always move it (A's board, 10-23)."""
+    _nudge.at = getattr(_nudge, "at", time.time_ns()) + 10 ** 9
+    os.utime(folder, ns=(_nudge.at, _nudge.at))
+
+
+def _listed(path):
+    with os.scandir(os.path.dirname(path)) as it:
+        return next(checkpoint.stamp_of(e.stat()) for e in it if e.name == os.path.basename(path))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the NTFS listing's lag is what this measures")
+@pytest.mark.parametrize("every", [None, 3])
+def test_between_full_looks_a_file_is_stamped_by_its_listing(tmp_path, monkeypatch, every):
+    root = tmp_path / "share"
+    held = _write(str(root / "W0" / "voids.json"), "a" * 100)          # written again in place, its handle open
+    linked = _write(str(root / "W1" / "voids.json"), "b" * 100)        # changed through another hard link
+    read_open = _write(str(root / "W2" / "voids.json"), "c" * 100)     # read while its writer still holds it
+    spec = {"path": str(root), "table_name": "ta", "options": {"filename": "voids.json"}}
+    w = _watcher(tmp_path, monkeypatch, [spec], **({"external_full_walk_every": every} if every else {}))
+    dispatched = []
+    monkeypatch.setattr(IngestionHandler, "_handle_event",
+                        lambda self, path: dispatched.append(os.path.basename(os.path.dirname(path))))
+    read = {os.path.abspath(path): checkpoint.read_file_stat(path) for path in (held, linked, read_open)}
+
+    def checked(self, entries):                                   # the checklist: read at these stamps
+        entries = list(entries)
+        return Checked({path for path, stamp in entries if read.get(path) == stamp},
+                       {path: "changed" for path, stamp in entries if read.get(path) != stamp})
+
+    monkeypatch.setattr(IngestionHandler, "already_checked", checked)
+
+    def sweep():
+        dispatched.clear()
+        w.sweep_external_sources()
+        return sorted(dispatched)
+
+    assert sweep() == []                                           # sweep 0: a full look, nothing changed
+    writer = open(held, "r+b")
+    writer.write(b"x" * 300)
+    writer.flush()
+    os.link(linked, linked + ".link")
+    with open(linked + ".link", "r+b") as f:
+        f.write(b"y" * 200)
+    other = open(read_open, "r+b")
+    other.write(b"z" * 300)
+    other.flush()
+    read[os.path.abspath(read_open)] = checkpoint.read_file_stat(read_open)      # the read stamps what os.stat says
+    for folder in ("W0", "W1", "W2"):
+        _nudge(str(root / folder))
+    try:
+        # CANARY: on this disk the listing lags all three
+        assert _listed(held) == read[os.path.abspath(held)] != checkpoint.read_file_stat(held)
+        assert _listed(linked) == read[os.path.abspath(linked)] != checkpoint.read_file_stat(linked)
+        assert _listed(read_open) != read[os.path.abspath(read_open)]
+        if every is None:
+            assert sweep() == ["W0", "W1"]                         # as before: os.stat sees both changed
+            return
+        assert sweep() == []                                       # sweep 1: open waits · link lags · read stays read
+    finally:
+        writer.close()
+        other.close()
+    for folder in ("W0", "W1", "W2"):
+        _nudge(str(root / folder))
+    assert sweep() == ["W0"]                                       # sweep 2: closed - seen; the link still lags
+    assert sweep() == ["W0", "W1"]                                 # sweep 3: the full look - every file os.stat'd

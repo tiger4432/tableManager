@@ -497,9 +497,12 @@ SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
 SUBFOLDER_RECHECK_DEFAULT = 30.0
 #: Seconds the periodic sweep rests after one ends (총괄 64b264610 ②) - the default is PERIODIC_SWEEP_INTERVAL_SECONDS.
 SWEEP_INTERVAL_SETTING = "sweep_interval_seconds"
-#: An external sweep lists a folder whose mtime is what it was at its last listing no more - its sub-folders as then,
-#: its files not looked at - and every Nth sweep of the source walks it all (총괄 64b264610 ②). A file written again in
-#: place moves no folder's mtime: it is read at that Nth sweep. Absent, 0 or not a whole number: every sweep walks all.
+#: Between a source's full looks an external sweep lists a folder whose mtime is what it was at its last listing no
+#: more - its sub-folders as then, its files not looked at - and stamps a file by its folder's listing, os.stat only
+#: when the checklist does not clear that; every Nth sweep walks it all and os.stats every file (총괄 64b264610 ②, 10-23).
+#: Seen late, at that Nth sweep: a file written again in place (moves no folder's mtime), a file changed through
+#: another hard link (its listing keeps the old stamp on NTFS). A file open for writing waits until it is closed.
+#: Absent, 0 or not a whole number: every sweep walks all and os.stats every file.
 FULL_WALK_EVERY_SETTING = "external_full_walk_every"
 
 
@@ -589,7 +592,7 @@ def sweep_interval_seconds(settings=None) -> float:
 
 
 def full_walk_every(settings=None):
-    """`FULL_WALK_EVERY_SETTING`, or None - every sweep walks all."""
+    """`FULL_WALK_EVERY_SETTING`, or None - every sweep walks all and os.stats every file."""
     settings = load_ingestion_settings() if settings is None else settings
     value = settings.get(FULL_WALK_EVERY_SETTING)
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
@@ -4276,9 +4279,11 @@ def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_
 
 
 def _walk_remembering(root, folders, skip_unchanged, unlisted, why):
-    """`os.walk(root)` top-down - the caller prunes the yielded sub-folder list - remembering each folder listed as
-    {folder: (mtime_ns, sub-folders)} in `folders` (None: nothing remembered, no folder stat'd); with `skip_unchanged`,
-    a folder whose mtime is what it was is not listed: its sub-folders as then, no files (`why["folders unchanged"]`).
+    """`os.walk(root)` top-down - the caller prunes the yielded sub-folder list; the files come as the listing's
+    `os.DirEntry`s - remembering each folder listed as {folder: (mtime_ns, sub-folders)} in `folders` (None: nothing
+    remembered, no folder stat'd); with `skip_unchanged`, a folder whose mtime is what it was is not listed: its
+    sub-folders as then, no files (`why["folders unchanged"]`). A folder's mtime is its own os.stat, never its parent's
+    listing: on NTFS that does not move when a file is added in it (총괄 10-23, A's board).
     A symbolic link to a folder is listed, not entered, as os.walk does. A folder that cannot be read goes to
     `unlisted`."""
     stack = [root]
@@ -4294,7 +4299,7 @@ def _walk_remembering(root, folders, skip_unchanged, unlisted, why):
             held = folders.get(top)
         if skip_unchanged and held is not None and held[0] == mtime:
             why["folders unchanged"] += 1
-            dirnames, filenames, enter = list(held[1]), [], set(held[1])
+            dirnames, files, enter = list(held[1]), [], set(held[1])
         else:
             try:
                 with os.scandir(top) as it:
@@ -4302,21 +4307,21 @@ def _walk_remembering(root, folders, skip_unchanged, unlisted, why):
             except OSError as e:
                 unlisted.append(e)
                 continue
-            dirnames, filenames, enter = [], [], set()
+            dirnames, files, enter = [], [], set()
             for entry in entries:
                 try:
                     is_dir = entry.is_dir()
                 except OSError:
                     is_dir = False
                 if not is_dir:
-                    filenames.append(entry.name)
+                    files.append(entry)
                     continue
                 dirnames.append(entry.name)
                 if not os.path.islink(entry.path):
                     enter.add(entry.name)
             if folders is not None:
                 folders[top] = (mtime, [name for name in dirnames if name in enter])
-        yield top, dirnames, filenames
+        yield top, dirnames, files
         stack.extend(os.path.join(top, name) for name in reversed(dirnames) if name in enter)
 
 
@@ -4789,11 +4794,22 @@ class WorkspaceWatcher:
                         live.remove(source_id)          # walked to its end, or retired while this sweep ran
                         continue
                     handler = self.external_targets[source_id]["handler"]
-                    cleared = handler.already_checked([(abs_path, file_stat) for _m, abs_path, file_stat in page])
-                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s in page if abs_path in cleared)
+                    cleared = handler.already_checked([(abs_path, stamp) for _m, abs_path, stamp, _l in page])
+                    # A listing's stamp the checklist does not clear is looked at on the disk once (총괄 10-23): the
+                    # listing lags a file still open for writing, and the read stamped what os.stat said
+                    again = [(abs_path, ingestion.checkpoint.read_file_stat(abs_path))
+                             for _m, abs_path, _s, listed in page if listed and abs_path not in cleared]
+                    gone = {abs_path for abs_path, stamp in again if stamp is None}
+                    why_not[source_id]["stat failed"] += len(gone)
+                    if len(gone) < len(again):
+                        more = handler.already_checked([item for item in again if item[1] is not None])
+                        cleared |= more
+                        cleared.why.update(more.why)
+                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s, _l in page if abs_path in cleared)
                     turns.append([(source_id, handler, abs_path, cleared.why.get(abs_path,
                                                                                   ingestion.checkpoint.WHY_UNREAD))
-                                  for _m, abs_path, _s in _dispatch_order(page) if abs_path not in cleared])
+                                  for _m, abs_path, _s, _l in _dispatch_order(page)
+                                  if abs_path not in cleared and abs_path not in gone])
                 for turn in itertools.zip_longest(*turns):
                     for item in turn:
                         if item is None or self._stop_event.is_set():
@@ -4827,8 +4843,10 @@ class WorkspaceWatcher:
     def _external_pages(self, source_id, target, why, said, walk_all=False):
         """A source's files, walked as its pattern and max_depth allow (the folders no file of it can be in are not
         entered) and stat'd once - in pages of the checklist's batch, each yielded as soon as it is walked. `why`
-        counts what was not handed on; `said` is called as the walk goes. An unchanged folder is passed unlisted
-        (`full_walk_every`) unless `walk_all` - files just unchecked lie in folders that did not change."""
+        counts what was not handed on; `said` is called as the walk goes. Between the full looks (`full_walk_every`)
+        an unchanged folder is passed unlisted and a file is stamped by its folder's listing - each page item says
+        which, and the sweep looks again on the disk at what the checklist does not clear. Unless `walk_all`: files
+        just unchecked lie in folders that did not change."""
         spec = target["spec"]
         root, options = spec["root"], spec.get("options") or {}
         unlisted, page, page_began = [], [], time.monotonic()
@@ -4837,8 +4855,8 @@ class WorkspaceWatcher:
         folders = self._external_folders.setdefault(source_id, {}) if every is not None else None
         if every is None:
             self._external_folders.pop(source_id, None)
-        skip = every is not None and sweeps % every != 0 and not walk_all
-        for dirpath, dirnames, filenames in _walk_remembering(root, folders, skip, unlisted, why):
+        between = every is not None and sweeps % every != 0 and not walk_all
+        for dirpath, dirnames, files in _walk_remembering(root, folders, between, unlisted, why):
             rel = os.path.relpath(dirpath, root)
             base = "" if rel == "." else rel.replace(os.sep, "/") + "/"
             if dirnames and not _within_depth(spec, base.count("/") + 1):
@@ -4847,8 +4865,8 @@ class WorkspaceWatcher:
             kept = [name for name in dirnames if _folder_may_hold(options, base + name)]
             why["folders not matching"] += len(dirnames) - len(kept)
             dirnames[:] = kept
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
+            for entry in files:
+                filename, file_path = entry.name, os.path.join(dirpath, entry.name)
                 why["looked"] += 1
                 said()
                 # The name and depth first, the path on the disk after (총괄 64b264610 ②: 1.9 million images were each
@@ -4860,15 +4878,15 @@ class WorkspaceWatcher:
                     why[reason] = why.get(reason, 0) + 1
                     continue
                 try:
-                    stat = os.stat(file_path)            # one look at the file on a share - its kind is in it
+                    # one look at the file on a share - its kind is in it; between the full looks, the listing's
+                    stat = entry.stat() if between else os.stat(file_path)
                 except OSError:
                     why["stat failed"] += 1
                     continue
                 if not _stat.S_ISREG(stat.st_mode):
                     why["not a file"] += 1
                     continue
-                page.append((stat.st_mtime, os.path.abspath(file_path),
-                             stamp_of(stat)))
+                page.append((stat.st_mtime, os.path.abspath(file_path), stamp_of(stat), between))
                 if (len(page) >= ingestion.checkpoint.CHECKED_BATCH_SIZE
                         or time.monotonic() - page_began >= SWEEP_PAGE_SECONDS):
                     yield page
