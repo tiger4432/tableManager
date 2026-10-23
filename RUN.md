@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 (968316ac9)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언 바뀜 없음
+> 첫 재기동  패턴 · 폴더가 안 맞는 체크리스트 행(약 10 만)을 지운다 — 자기 스레드라 그 동안 와처의 다른 일(스윕 · 재시도 · 선언 바뀜 듣기)은 돈다
+>          표의 행 · 층은 안 건드림, 체크리스트 행과 다시 읽기 표시만
+> 답의 뜻   watcher.log
+>          [Watcher] checklist cleanup started - rows the declaration does not take now are deleted          시작
+>          [Watcher] <표>: N checklist row(s) the declaration does not take - deleted (name not matched a · …)  표마다 지운 수와 사유
+>            name not matched  glob/filename 이 안 받음     below max_depth  깊이 밖     outside the root  어느 소스 · 작업 폴더 밑도 아님
+>            source not declared  행이 가리킨 소스가 ingestion_settings.json 에 아예 없음
+>          [Watcher] <표>: N checklist row(s) of a source switched off or refused - left for their source (…)   지우지 않고 남긴 수
+>            source switched off  enabled:false 인 소스 — 다시 켜면 그 행이 그대로 체크리스트로 쓰임
+>            source refused       검사에서 거절된 소스(플러그인 로드 실패 등) — watcher.log 의 «External source config rejected» 줄이 사유
+>          [Watcher] checklist cleanup done in N s - N deleted · M left for their source                       끝. 박스에서 20 만 행 48 초
+> 바뀐 것   지운 파일이 나중에 선언에 다시 맞게 되면 새 파일로 읽힘
+>          소스 없는 옛 행(10-20 전)도 그 파일이 놓인 소스로 판정해 같이 지움 · 표 작업 폴더 밑이면 raws 행으로 남김
+> 급할 때   되돌리기 전까지 끌 스위치는 없음 — 지운 것은 체크리스트뿐이라 다음 스윕이 선언에 맞는 파일만 읽음
+> 되돌리기  git revert 968316ac9 -> 런처 재기동 (지운 행은 안 돌아옴, 다음부터 대기 줄만 지움)
+> ```
+>
+
+---
+
 > ## [10-23] **표 선언을 바꿔 풀린 «읽음» 도장을 읽지 않고 되돌리기 — 체크리스트 첫 시작 채우기를 한 번 더 (코드 바뀜 없음)** — 런처 재기동
 >
 > ```
