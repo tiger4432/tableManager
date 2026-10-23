@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **체크리스트가 파일당 한 행 (file_checklist) — 파일 화면은 파일당 한 줄 · 외부 훑기 이름 먼저 · 바뀐 폴더만 (daafb2214)** — git pull · 서버 재기동 · 와처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동 -> 와처 재기동. 와처가 첫 훑기 «전»에 기록에서 체크리스트를 한 번 만든다
+> 볼 줄     [Watcher] checklist made from the records: N file(s) in S s     처음 한 번. 표시 파일 config/watcher_checklist_filled
+>          이 줄 대신 «the checklist was not made from the records» 면 -> 그 기동의 훑기는 체크리스트에 행이 없는 파일을
+>          «new» 로 «다시 읽음». 와처를 내리고 그 줄의 사유를 고친 뒤 다시 띄움(표시 파일이 없으면 다시 만듦)
+> 답의 뜻   파일 화면 목록 = 파일당 한 줄(지금 상태). 한 파일의 읽기 이력은 목록에 없고 기록 표(file_ingestion_logs)에 남음
+>          칩 수 · 폴더 묶음의 failed / waiting 도 같은 표에서 - 칩으로 거른 줄 수와 칩의 수가 같음
+>          리트라이 문(Read all again · Retry · Read now)이 읽으면 기록이 «새로 한 줄» 생김(created_at 새 시각)
+>          그 줄의 번호는 체크리스트 행: «Detected PENDING_RETRY checklist row #N (파일)» · «Retry succeeded for
+>          checklist row #N (파일).» (전에는 «log ID #N»)
+> 외부 훑기  훑기가 끝나고 쉬는 초 = ingestion_settings.json 의 sweep_interval_seconds (없으면 300)
+>          external_full_walk_every: N 을 적으면 수정 시각이 그대로인 폴더는 목록을 안 읽고 지나감 - 훑기 줄 «folders
+>          unchanged M». N 번째 훑기마다 전체를 걸음. 🔴 제자리에서 다시 쓴 파일은 폴더 수정 시각을 안 바꿈 -> 그 N 번째
+>          훑기에 잡힘. 공유에서 폴더 수정 시각이 언제 움직이는지는 이 박스에서 못 잼 - 켜기 전 한 폴더로 확인 권함
+>          (파일 하나를 추가해 보고, 다음 훑기 줄에서 그 폴더가 다시 읽히는지)
+> 급할 때   external_full_walk_every 를 지우면 매번 전체(지금까지와 같음). 체크리스트는 끌 수 없음 - 되돌리기는 아래
+> 되돌리기  git revert daafb2214 -> 서버 · 와처 재기동. 기록 표는 안 건드렸으므로 옛 코드가 그대로 읽음.
+>          다시 앞으로 오려면 config/watcher_checklist_filled 를 지우고 file_checklist 표를 비운 뒤 재기동(그 사이 읽기 반영)
+> ```
+>
+
+---
+
 > ## [10-23] **AI 리포트 — 요약표에 리포트 규칙 하나 · 웨이퍼마다 한 판 · 결과는 요약표 칸 셋 · send_to 로 중계 PC 에 (소유자 10-23 「너무 복잡」 · 「보조표 너무 많아」 · 「리포트는 웨이퍼당 하나」, 총괄 d337be901 · 5efb406e4)** — git pull · 선언 고침 · 런처 재기동
 >
 > ```
@@ -70,7 +95,7 @@
 >   new           기록 없는 파일 - 처음 보는 것. 다 읽힌 폴더에서 계속 나오면 그 경로의 기록이 지워진 것(시작 정리 줄을 봄)
 >   changed       읽은 때와 수정 시각 · 크기가 다름 - 원천이 파일을 다시 씀. 같은 파일이 계속 나오면 원천이 계속 쓰는 것
 >   unstamped     기록은 있는데 도장 없음 - 스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨, 또는 잠금 대기로 끝난 읽기
->   read again    읽었던 파일을 Read all again · Read now 로 넘김 - 리트라이 문이 읽음(기록 행을 고쳐 씀, created_at 그대로)
+>   read again    읽었던 파일을 Read all again · Read now 로 넘김 - 리트라이 문이 읽음(기록 새 한 줄)
 >   retry         실패 파일을 다시 넘김(Retry · 읽기 바뀜)
 >   read now      기록 없던 파일을 Read now 로 넘김
 >   checklist not read   체크리스트를 못 읽어 일단 읽음 - 그 앞 WARNING 줄이 사유
@@ -132,7 +157,7 @@
 >            0 이 아니고 줄어드는 중   -> 리트라이 문이 넘겨진 파일 더미를 하나씩 읽는 중. 이 블록의 문이 멈춤
 >            0 인데도 계속 읽음       -> 🔴 이 문이 아님. 와처 줄 «File to read (<낱말>): ...voids.json» 이 같은 경로로
 >                                       되풀이되는지 한 줄만 봄 (판에서는 재현 안 됨 - 원인 열림)
-> 리트라이 문으로 읽으면 기록 행을 «고쳐 씀» - created_at 은 그대로, updated_at 만 새 시각. 새 행이 안 보여도 읽는 중일 수 있음
+> 리트라이 문으로 읽으면 기록이 새로 한 줄 생김(체크리스트 접기 뒤). 대기 수는 파일 화면 칩(체크리스트)에서
 >
 > 돌릴 것 (관리 토큰, 화면 단추는 클라 착지 뒤)
 >   미리보기  curl.exe --noproxy "*" -X POST -G "http://127.0.0.1:8080/admin/file-ingestion/cancel-reread" -H "X-Admin-Token: <토큰>" --data-urlencode "folder=<voids 외부 루트>" --data-urlencode "preview=true"
@@ -1039,7 +1064,7 @@
 > 무엇     Retry 가 잡은(PENDING) 뒤 첫 체크포인트 전에 와처가 멈추면 그 행은 PENDING 에 영영 섰다
 >          (되돌리기가 «체크포인트 없음»은 일부러 건너뛰고, 화면 Retry 는 FAILED 만 집음) -> 이제 와처 기동이 다시 넘김
 > 확인     재기동 직후 watcher.log 에 한 번 «[Retry] N retry claim(s) left by the last run handed again» (N = 서 있던 수)
->          그다음 «Detected PENDING_RETRY log ID #…» · «Retry succeeded for log ID #…» 가 그 행마다
+>          그다음 «Detected PENDING_RETRY checklist row #…» · «Retry succeeded for checklist row #… (<파일>)» 가 그 행마다
 >          줄이 없음 -> 서 있던 PENDING 이 0 이었음(정상)
 > 전제     와처는 설치마다 하나 — 기동하는 와처가 파일 로그의 PENDING 을 «앞선 실행이 남긴 것»으로 읽음.
 >          와처를 둘 띄우면 다른 와처가 읽는 중인 행을 다시 넘김
@@ -1889,7 +1914,7 @@
 >          «more than 100000 files under … - narrow the folder»   폴더를 좁힌다
 >          «N files - over the limit M; … reread_max_files …»      좁히거나 ingestion_settings.json 의 reread_max_files 를 올린다
 >          «a re-read into a table needs the watcher process»      와쳐가 따로 도는 런처로 띄운다(운영 모드)
-> 재기동 뒤 watcher 로그  «Retry succeeded for log ID #<id>.»  — 표 이름은 Admin 목록의 Target Table
+> 재기동 뒤 watcher 로그  «Retry succeeded for checklist row #<id> (<파일>).»  — 표 이름은 Admin 목록의 Target Table
 > 확인(읽기만)  SELECT l.id, l.table_name, l.status FROM file_reread_marks m JOIN file_ingestion_logs l ON l.id = m.log_id
 >              WHERE m.status_before = 'STOOD';      아직 안 집힌, 이번 다시 읽기가 세운 기록
 > 급할 때  POST /admin/file-ingestion/cancel-reread?folder=<폴더>&preview=true 로 수를 보고, preview 없이 한 번 더(화면 단추 없음)
@@ -4740,7 +4765,7 @@
 > 답의 뜻         count = 넘길 파일 · by_state = 상태별 · by_folder = 바로 아래 폴더별
 >                missing = 기록이 말하는 자리에 없어 안 넘긴 수 · missing_files = 그 앞 다섯 이름
 >                실행 답 «N file(s) handed to the watcher» = 요청 안에서 PENDING_RETRY 로 표시함 (기다리지 않는다)
-> 볼 줄          watcher.log: Detected PENDING_RETRY log ID #<id> (<파일>). Processing... -> File processed: <파일> (SUCCESS) for <표>. -> Retry succeeded for log ID #<id>.
+> 볼 줄          watcher.log: Detected PENDING_RETRY checklist row #<id> (<파일>). Processing... -> File processed: <파일> (SUCCESS) for <표>. -> Retry succeeded for checklist row #<id> (<파일>).
 >                화면에는 보통 인제션과 같은 토스트 (다시 읽기는 [resume-abort] … 재처리(force) 문장을 같이 싣는다)
 > 관문           소급 관문을 안 잡는다 — replay 가 돌아도 바로 표시되고, 다시 읽기가 replay 를 안 막는다
 > statuses 없음   오늘과 같은 실패 재시도(FAILED 만, 자리에 없는 파일도 넘김)
