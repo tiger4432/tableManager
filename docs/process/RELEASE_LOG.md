@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름](#2026-10-23--체인-규칙-창에서-조인-take-항목을-기록으로--record-from-칸-목록-친-칸-이름) — 누르는 곳 체인 규칙 창 → derive join → take 칩 끝의 «+ record»
 - 2026-10-23 [조인 take 의 from 에 칸 목록 — 함수가 행마다 {칸: 값} 을 받는다](#2026-10-23--조인-take-의-from-에-칸-목록--함수가-행마다-칸-값-을-받는다) — 적는 곳 chain_rules.json 의 join take 의 from · 보는 곳 함수가 받는 values
 - 2026-10-23 [AI 리포트는 요약표에 건 규칙 하나 — 웨이퍼마다 한 판, 결과는 요약표 칸 셋, send_to 로 중계 PC 에](#2026-10-23--ai-리포트는-요약표에-건-규칙-하나--웨이퍼마다-한-판-결과는-요약표-칸-셋-send_to-로-중계-pc-에) — 적는 곳 chain_rules.json 의 derive.report 의 results · send_to · control.same · 보는 곳 요약표의 결과 칸 셋 · 리포트 파일의 Evidence
 - 2026-10-23 [값이 안 바뀐 행은 사건을 안 낸다 — 셀 메뉴의 층 지우기 · 핀이 그 표의 규칙을 깨우지 않는다](#2026-10-23--값이-안-바뀐-행은-사건을-안-낸다--셀-메뉴의-층-지우기--핀이-그-표의-규칙을-깨우지-않는다) — 보는 곳 chain_worker.log 의 그 규칙 줄 · database_outbox 의 EDIT
@@ -540,6 +541,16 @@
 
 
 
+
+## 2026-10-23 · 체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름
+
+- **무엇** — 소유자 10-23 「from, to → take 로 가는 길이 없음, 강제로 파일 바꾸면 되긴 하는데」. take 항목이 전부 칸 이름이면 창이 그것을 칩으로 그렸고, 칩에는 항목을 기록(from · into · fn · separator · ref · row)으로 바꿀 길이 없었습니다. 파일에 기록이 이미 있을 때만 줄로 그려졌습니다.
+- **이제** — take 칩 끝의 «+ record» 를 누르면 빈 기록 항목이 더해지고 목록이 줄 모양이 됩니다. 줄마다 name · record 고르개가 있어 어느 항목이든 바꿀 수 있습니다. 기록 안의 from 은 name · list 고르개 — list 면 칸 이름을 여럿 적습니다(쉼표로 한 번에도). 파일에 적힌 기록 take 는 그대로 그려집니다(목록에 없는 fn 값도 그대로 보임).
+- **함께 고친 것** — take 칩 입력에 칸 이름을 치고 Enter 를 누르면 그 이름이 아니라 빈 항목 «""» 이 들어갔습니다. 이제 친 이름이 들어갑니다.
+- **잰 것** — 진짜 API 프로세스 · 스크래치 sqlite, 1920x950: 칩에 «value» 입력 → take ["value"] · «+ record» → ["value", {}] · fn count · from list 로 바꾸고 «value, item» → {"fn": "count", "from": ["value", "item"]} · 저장(fn count, from 한 칸) → 파일 그대로 · 다시 열면 기록 줄 그대로. 서버 거절은 그 칸 옆에 서버 문장으로: join_fn 폴더에 .py 가 없으면 «<file>.<function>» fn 이 거절되고, 내장 fn 에 from 목록은 «only a function … takes one» 으로 거절.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
+- **선언** — 바뀐 것 없음.
+- **자세히** — `ontology_path.addMember`(가지 이름 · shape 로 고르는 항목의 낱말) · `ontology_explorer_view` 칩의 «+ <가지>» · 하니스 declaration_form V11 · A2c · P11.
 
 ## 2026-10-23 · 피벗 보기에서 줄 더하기 · 줄 지우기 · 맨 아래 붙여넣기 — Pivot 을 끄지 않는다
 

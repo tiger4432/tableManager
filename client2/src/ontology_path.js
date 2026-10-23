@@ -16,7 +16,7 @@
 // sides is the property being kept here; being right about dotted ids is a separate fix and
 // belongs in the server first.
 
-import { asList, emptyOf, valueFits, shapeAt, shapeBranch, leafValue } from './ontology_skeleton.js';
+import { asList, emptyOf, valueFits, shapeAt, shapeBranch, pickBranch, leafValue } from './ontology_skeleton.js';
 
 const PATH_STEP = /([^.[\]]+)|\[(\d+)\]/g;
 
@@ -188,20 +188,24 @@ export function deleteAtPath(document, steps) {
  *  Index map: appended, born at `path[n]`. Name map: `name` is required; born at `path.name`.
  *  Returns null when nothing may be written, the same as the other writers here.
  */
-export function addMember(document, relative, node, defs, name = '', lists = null) {
+export function addMember(document, relative, node, defs, name = '', lists = null, branch = '') {
   const at = getAtPath(document, splitBundlePath(relative));
   // A shape-picked oneOf is the branch its value is in - the one the form drew (a take's from as a list, B a44dd01af).
   if (node && node.kind === 'oneOf' && node.pick === 'shape') node = shapeAt((node.branches || {})[shapeBranch(node, at, defs)], [], defs);
   if (!node || node.kind !== 'map') return null;
   const held = asList(node, at);
   if (!valueFits(node, held)) return null;
-  const seed = emptyOf(node.of, defs, 0, lists);
+  // `branch`: a member of a shape-picked item born in that branch - a take's «+ record» beside its chips (lead 10-23 ㄴ).
+  const seed = branch ? pickBranch(shapeAt(node.of, [], defs), branch, undefined, defs, lists) : emptyOf(node.of, defs, 0, lists);
+  if (branch && seed === undefined) return null;
   if (node.keyed_by === 'index') {
     const list = Array.isArray(held) ? held : [];
     // Form D: a list of words takes what was typed at its adder - split on commas, line breaks and tabs (a paste of a
     // column of names) - each a member; nothing typed appends one empty member, as before.
-    const item = shapeAt(node, ['0'], defs);
-    const words = item && item.kind === 'leaf' ? String(name || '').split(/[,\n\t]/).map((w) => w.trim()).filter(Boolean) : [];
+    // a member picked by shape takes its words in its word branch - a take's column typed at its chips (it was '')
+    const member = shapeAt(node, ['0'], defs);
+    const item = member && member.pick === 'shape' ? shapeAt((member.branches || {})[shapeBranch(member, '', defs)], [], defs) : member;
+    const words = !branch && item && item.kind === 'leaf' ? String(name || '').split(/[,\n\t]/).map((w) => w.trim()).filter(Boolean) : [];
     const added = words.length
       ? words.map((w) => leafValue(item, w)).filter((v) => v !== undefined && v !== null) : [seed];
     const written = writeShapeAtPath(document, relative, [...list, ...added]);

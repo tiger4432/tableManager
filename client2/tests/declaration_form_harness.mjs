@@ -53,6 +53,10 @@ function ok(cond, name) {
 
 const LEAF = { kind: 'leaf', hint: 'free' };
 const RECORD_LIST = (fields) => ({ kind: 'map', keyed_by: 'index', member: 'row', of: { kind: 'record', fields } });
+// a join's take (chain skeleton): a list whose member is a column name or a record, picked by shape
+const TAKE_LIST = { kind: 'map', keyed_by: 'index', member: 'column', of: { kind: 'oneOf', hint: 'choice', pick: 'shape',
+  empty: { name: '' }, branches: { name: LEAF,
+    record: { kind: 'record', fields: [{ key: 'from', required: false, node: LEAF }, { key: 'fn', required: false, node: LEAF }] } } } };
 const FIX = { skeleton_version: 1, root: { kind: 'record', fields: [
   { key: 'name', required: true, node: LEAF },
   { key: 'words', required: false, node: { kind: 'map', keyed_by: 'index', member: 'word',
@@ -132,6 +136,12 @@ function viewSuite(M) {
     .map((n) => (has(n, 'oe-form-suggested') ? n.children.find((k) => k.tagName === 'INPUT') : n));
   ok(controls.length >= 4 && controls.every((n) => n && has(n, 'oe-box')),
     `V10 every control in a row's value cell is the value box [${controls.map((n) => (n ? `${n.tagName}:${has(n, 'oe-box')}` : '-')).join(' ')}]`);
+  const takeForm = M.view.renderSkeletonForm(viewContext(M), { kind: 'record', fields: [{ key: 'take', required: false,
+    node: TAKE_LIST }] }, '', { take: ['a'] }, 0, 't');
+  const plusRecord = walk(takeForm).filter((n) => attr(n, 'data-action') === 'form-append' && attr(n, 'data-value') === 'take');
+  ok(same(chipsIn(boxAt(takeForm, 'take')), ['a']) && same(plusRecord.map((n) => attr(n, 'data-branch')), ['record'])
+     && String(plusRecord[0].textContent) === '+ record',
+    `V11 a take's chips carry a «+ record» for its record branch, none for its word branch [${plusRecord.map((n) => n.textContent)}]`);
   const folded = M.view.renderAuthoringRow({ path: 'p', label: 'P', state: 'answered', tier: 'constrained_input',
     value: ['run_uid', 'lot'], refusals: [], candidates: null }, [], null, true);
   const shown = walk(folded).filter((n) => has(n, 'oe-folded-value')).map((n) => String(n.textContent));
@@ -152,6 +162,12 @@ function pathSuite(M) {
   const listed = M.path.addMember({ from: ['value'] }, 'from', from, {}, 'item');
   ok(listed && same(listed.document.from, ['value', 'item']) && M.path.addMember({ from: 'value' }, 'from', from, {}, 'item') === null,
     `A2b a list under a shape-picked oneOf takes the adder's member; a name there takes none [${listed && JSON.stringify(listed.document.from)}]`);
+  const typedTake = M.path.addMember({ take: ['a'] }, 'take', TAKE_LIST, {}, 'b, c');
+  const asRecord = M.path.addMember({ take: ['a'] }, 'take', TAKE_LIST, {}, '', null, 'record');
+  ok(typedTake && same(typedTake.document.take, ['a', 'b', 'c']) && asRecord && same(asRecord.document.take, ['a', {}])
+     && M.path.addMember({ take: ['a'] }, 'take', TAKE_LIST, {}, '', null, 'nope') === null,
+    `A2c a take's adder: typed columns go in as its words, «+ record» a record, a branch it has not nothing `
+    + `[${JSON.stringify([typedTake && typedTake.document.take, asRecord && asRecord.document.take])}]`);
   const step = (before, at, value, stash) => {
     const after = M.path.writeShapeAtPath(before, at, value);
     return M.path.switchGated(before, after, at, FIX.root, {}, stash);
@@ -280,6 +296,23 @@ function panelSuite(M) {
   if (plus) plus.dispatch('click', {});
   const rows = w.held().rows || [];
   ok(rows.length === 2 && same(rows[1], { pick: 'only' }), `P7 + row is born holding the choice of one [${JSON.stringify(rows)}]`);
+
+  // a take's chips and its «+ record» (lead 10-23 ㄴ): a member born a record, the list then rows with their pickers
+  const TAKE = copy(FIX);
+  TAKE.root.fields.push({ key: 'take', required: false, node: TAKE_LIST });
+  const tk = panelOf(M, TAKE, { ...copy(DOC), take: ['a'] });
+  const takeAdder = () => walk(tk.host).find((n) => has(n, 'oe-form-new-id') && attr(n, 'data-for') === 'take');
+  takeAdder().value = 'b';
+  takeAdder().dispatch('change', {});
+  const typed = copy(tk.held().take);
+  const toRecord = walk(tk.host).find((n) => attr(n, 'data-action') === 'form-append' && attr(n, 'data-value') === 'take'
+    && attr(n, 'data-branch') === 'record');
+  if (toRecord) toRecord.dispatch('click', {});
+  const pickers = walk(tk.host).filter((n) => attr(n, 'data-action') === 'edit-shape-branch'
+    && /^take\[\d\]$/.test(attr(n, 'data-value') || attr(n, 'data-path') || ''));
+  ok(same(typed, ['a', 'b']) && Boolean(toRecord) && same(tk.held().take, ['a', 'b', {}]) && pickers.length === 3,
+    `P11 a take's chips: a typed column is a chip, «+ record» adds a record member and the list is rows, a picker each `
+    + `[${JSON.stringify([typed, tk.held().take, pickers.length])}]`);
 
   // the head says Unsaved as the text moves, not on the next draw
   const u = panelOf(M, FIX, copy(DOC));
@@ -426,6 +459,13 @@ const DEFECTS = [
   ['view', "a plan row's folded list is its JSON again",
     (s) => s.replace("words ? words.map(String).join(', ')", 'words ? JSON.stringify(words)')],
   ['path', "the adder's words go in as one member", (s) => s.replace('.split(/[,\\n\\t]/)', '.split(/\\u0000/)')],
+  ['view', "a take's chips carry no «+ record» - its record is reached by editing the file alone (lead 10-23 ㄴ)",
+    (s) => s.replace("  if (item && item.pick === 'shape') {\n    for (const key of Object.keys(item.branches || {})) {",
+      "  if (false) {\n    for (const key of Object.keys(item.branches || {})) {")],
+  ['path', "«+ record» is born a word - the branch it names is not read",
+    (s) => s.replace("  const seed = branch ? pickBranch(", "  const seed = false ? pickBranch(")],
+  ['path', "a column typed at a take's chips goes in as an empty member",
+    (s) => s.replace("const item = member && member.pick === 'shape' ?", "const item = false ?")],
   ['path', "a list under a shape-picked oneOf takes no member - a take's from list adds nothing (B a44dd01af)",
     (s) => s.replace("  if (node && node.kind === 'oneOf' && node.pick === 'shape') node =", '  if (false) node =')],
   ['path', 'a switched gate forgets what was typed', (s) => s.replace('      kept[at] = record[field.key];\n', '')],
@@ -449,7 +489,7 @@ const DEFECTS = [
   ['skel', 'a number leaf writes its text again', (s) => s.replace('    return Number.isFinite(n) ? n : undefined;', '    return text;')],
   ['panel', 'the panel writes what the box holds again',
     (s) => s.replace("action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);", "action === 'edit-shape-flag' ? Boolean(el.checked) : el.value) && (action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);")],
-  ['panel', 'a + row is born without the lists', (s) => s.replace("named ? named.value : '', this.lists);", "named ? named.value : '');")],
+  ['panel', 'a + row is born without the lists', (s) => s.replace("named ? named.value : '', this.lists, el.dataset.branch || '');", "named ? named.value : '');")],
 ];
 const CONTROLS = [
   ['panel', 'a local rename', (s) => s.replace(/\bheld2\b/g, 'parsedDoc')],
