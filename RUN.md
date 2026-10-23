@@ -38,16 +38,15 @@
 
 ---
 
-> ## [10-23] **external_full_walk_every 를 적은 소스는 그 사이 훑기에서 파일도 폴더 목록 값으로 견줌 (0f0698a6b)** — git pull · 와처 재기동
+> ## [10-23] **external_full_walk_every N: N 번째 훑기는 파일까지 전부 stat, 그 사이는 폴더 목록 값으로 견줌 (0f0698a6b · 6be702854)** — git pull · 와처 재기동
 >
 > ```
 > 적는 법   voids 처럼 폴더 · 파일이 많고 거의 안 바뀌는 공유 소스에만: ingestion_settings.json 에 "external_full_walk_every": 6
->          가장 늦게 보는 시간 = sweep_interval_seconds × N (300 초 × 6 = 30 분). 비우면 전과 같음(매번 전부 · 파일마다 os.stat)
-> 늦게 보나  N 번째 훑기에 잡히는 것: 제자리에서 다시 쓴 파일 · 다른 하드 링크 이름으로 고친 파일 ·
->          제자리 고침을 닫은 «직후» 같은 폴더에 생긴 새 파일(NTFS 가 그 추가에 폴더 수정 시각을 안 옮기는 경우를 이 박스에서 봄)
->          새로 복사돼 들어오는 파일은 늦지 않음(폴더 수정 시각이 움직여 다음 훑기가 읽음)
-> 볼 줄     훑기 줄 «folders unchanged M» — 그 사이 훑기에서 M 이 폴더 수에 가까우면 켜진 것. N 번째 훑기는 M 이 0
-> 급할 때   칸을 지우면 다음 훑기부터 매번 전부(재기동 없음 — 설정 파일이 바뀌면 다음 훑기가 새 값을 씀)
+>          비우면 전과 같음(훑기마다 파일마다 os.stat). 폴더는 어느 쪽이든 훑기마다 전부 읽음
+> 늦게 보나  하나뿐 — 다른 하드 링크 이름으로 고친 파일: N 번째 훑기에(가장 늦게 sweep_interval_seconds × N, 300 초 × 6 = 30 분)
+>          쓰는 중인 파일은 닫힌 뒤 다음 훑기에
+> 얼마나   200 만 판(이 박스, 폴더 목록 · stat 왕복마다 지연) 6 번 훑기 합: 1 ms 2,508 -> 1,547 초 · 5 ms 6,948 -> 4,246 초
+> 급할 때   칸을 지우면 다음 훑기부터 파일마다 os.stat(재기동 없음 — 설정 파일이 바뀌면 다음 훑기가 새 값을 씀)
 > ```
 >
 
@@ -66,11 +65,8 @@
 >          그 줄의 번호는 체크리스트 행: «Detected PENDING_RETRY checklist row #N (파일)» · «Retry succeeded for
 >          checklist row #N (파일).» (전에는 «log ID #N»)
 > 외부 훑기  훑기가 끝나고 쉬는 초 = ingestion_settings.json 의 sweep_interval_seconds (없으면 300)
->          external_full_walk_every: N 을 적으면 수정 시각이 그대로인 폴더는 목록을 안 읽고 지나감 - 훑기 줄 «folders
->          unchanged M». N 번째 훑기마다 전체를 걸음. 🔴 제자리에서 다시 쓴 파일은 폴더 수정 시각을 안 바꿈 -> 그 N 번째
->          훑기에 잡힘. 공유에서 폴더 수정 시각이 언제 움직이는지는 이 박스에서 못 잼 - 켜기 전 한 폴더로 확인 권함
->          (파일 하나를 추가해 보고, 다음 훑기 줄에서 그 폴더가 다시 읽히는지)
-> 급할 때   external_full_walk_every 를 지우면 매번 전체(지금까지와 같음). 체크리스트는 끌 수 없음 - 되돌리기는 아래
+>          external_full_walk_every: N 을 적으면 그 사이 훑기는 파일을 폴더 목록 값으로 견줌 - 바로 위 블록
+> 급할 때   external_full_walk_every 를 지우면 훑기마다 파일마다 os.stat(지금까지와 같음). 체크리스트는 끌 수 없음 - 되돌리기는 아래
 > 되돌리기  git revert daafb2214 -> 서버 · 와처 재기동. 기록 표는 안 건드렸으므로 옛 코드가 그대로 읽음.
 >          다시 앞으로 오려면 config/watcher_checklist_filled 를 지우고 file_checklist 표를 비운 뒤 재기동(그 사이 읽기 반영)
 > ```
