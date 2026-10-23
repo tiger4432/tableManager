@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **AI 리포트 키 칸 — keys 한 곳(unit · latest · fold): 가장 늦은 계측만 · 칩 하나 그림 한 장(가장 작은 층)** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙에
+>            "wafer": {"table": "wafer_summary", "key": ["wafer", "tkout_time", "leg"]},
+>            "keys": {"wafer": ["unit"], "tkout_time": ["latest"], "leg": [], "x": [], "y": [], "layer": ["fold"], "extracted_at": ["fold"]}
+>            역할마다 "wafer" = 그 표가 가진 키 칸 이름 (요약 · 수율 · 합성 [wafer, tkout_time, leg] · 조건 [wafer, leg] · 이미지 + x · y · extracted_at · layer)
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      두 번 계측된 웨이퍼의 «Left out - two rows …» 줄이 사라짐 -> 가장 늦은 계측만 읽음
+>          디펙마다 그림이 칩 하나에 한 장(가장 작은 층) -> fold 가 듦. 같은 칩의 층 여러 장 -> keys 에 fold 가 없음
+>          «… .wafer '<칸>' is not a key column …» -> 그 표의 wafer 목록에 keys · wafer.key 에 없는 이름
+>          «derive.report.keys latest needs a unit column …» -> keys 에 unit 이 없음
+>          늦은 계측이 들어와도 리포트는 그대로 -> R1 리플레이로 다시 만듦(소유자 10-23)
+> 끄기    keys 를 지우고 역할 목록을 옛 키 칸만으로 -> 옛 모양(계측 둘이면 Left out)
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
 > ## [10-23] **AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg, 행 조건 · 수율 · 불량 (소유자 그림) · 후보 목록 표 은퇴** — git pull · 체인 워커 재기동 · R1
 >
 > ```

@@ -57,16 +57,17 @@ def _equals_any(column, values):
             "conditions": [{"filterType": "text", "type": "equals", "filter": value} for value in values]}
 
 
-def _rows(db, role, columns, wafers=None, where=None, newest=None):
+def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
     """`columns` of the role's table for these wafers (None: every row) - through the grid read path. Rows past
-    READ_ROW_CAP are refused - or, with `newest` (a column), the newest READ_ROW_CAP by it are the answer."""
+    READ_ROW_CAP are refused - or, with `newest` (a column), the newest READ_ROW_CAP by it are the answer. `keys`: the
+    key columns `wafers` are spelled in, `columns` first (default the role's own)."""
     import grid_read
     from fastapi import HTTPException
 
     table = role["table"]
     model = _model(table)
     filters = dict(where or {})
-    keys = report_shape.wafer_columns(role.get("wafer", role.get("key")))
+    keys = keys if keys is not None else report_shape.wafer_columns(role.get("wafer", role.get("key")))
     if wafers is not None:
         if not wafers:
             return []
@@ -106,7 +107,9 @@ class Report:
         self.long = spec.get("conditions") if isinstance(spec.get("conditions"), dict) else None
         self.wafers = {}                         # wafer -> {"time", "lot", "evaluation", "conditions": {col: value}}
         self.groups = {}                         # group name -> [wafer, ...] - this evaluation first
-        self.picked_by = list(only or ())        # the report table's wafer columns - a candidate is one of those
+        # the report's unit - `keys` unit, or the report table's wafer columns; a candidate is one of those
+        self.picked_by = report_shape.unit_columns(spec) or list(only or ())
+        self.key_words = report_shape.key_words(spec)
         if only is not None:
             only = {c: None if v is None else str(v) for c, v in only.items()}
             here = [w for w in self._wafer_rows({c: _equals_any(c, [v]) for c, v in only.items()})
@@ -133,9 +136,10 @@ class Report:
         extra = [role.get(cell) for cell in ("time", "lot", "evaluation")]
         columns = self.keys + [c for c in extra if c] + self.conditions_at
         columns += [c for c in self.same_at if c not in columns]
+        read = [(tuple(None if p is None else str(p) for p in row[:len(self.keys)]), row)
+                for row in _rows(self.db, role, columns, where=where, newest=role.get("time") if newest else None)]
         out = []
-        for row in _rows(self.db, role, columns, where=where, newest=role.get("time") if newest else None):
-            wafer = tuple(None if p is None else str(p) for p in row[:len(self.keys)])
+        for wafer, row in self._latest(read):
             values = dict(zip(columns, row))
             self.wafers[wafer] = {"time": values.get(role.get("time")), "lot": values.get(role.get("lot")),
                                   "evaluation": values.get(role.get("evaluation")),
@@ -151,21 +155,51 @@ class Report:
         self.overlaps = {name: wafers for name, wafers in self.named.items() if len(wafers) > 1}
         return out
 
+    def _latest(self, read):
+        """Each unit's rows of its latest value in every `keys` latest column (owner 10-23 «TKOUT_TIME 도 키에», the
+        report from the latest measurement) - read as a time by the one reader; a unit of no time keeps its rows."""
+        for column in [c for c in self.keys if report_shape.KEY_LATEST in self.key_words.get(c, ())]:
+            at, unit = self.keys.index(column), [self.keys.index(c) for c in self.picked_by]
+            best = {}
+            for wafer, _row in read:
+                when = _instant(wafer[at])
+                mine = tuple(wafer[i] for i in unit)
+                if when is not None and (best.get(mine) is None or when > best[mine]):
+                    best[mine] = when
+            read = [(wafer, row) for wafer, row in read
+                    if best.get(tuple(wafer[i] for i in unit)) is None or _instant(wafer[at]) == best[tuple(
+                        wafer[i] for i in unit)]]
+        return read
+
+    def _matched(self, role, columns, wafers):
+        """[(wafer, values)] - the role's rows of these wafers, matched by the key columns the role's table has, by name
+        (owner 10-23 «키 칸을 리스트로»): a table without some of the wafer key's (a condition of every measurement)
+        answers each wafer it matches; `values` are `columns`, then the table's key columns beyond the wafer key."""
+        names = report_shape.wafer_columns(role["wafer"])
+        shared = [c for c in names if c in self.keys]
+        beyond = [c for c in names if c not in self.keys]
+        at = [self.keys.index(c) for c in shared]
+        by = {}
+        for wafer in dict.fromkeys(wafers):                 # a wafer in two groups is read once
+            by.setdefault(tuple(wafer[i] for i in at), []).append(wafer)
+        out = []
+        for row in _rows(self.db, role, shared + columns + beyond, list(by), keys=shared):
+            for wafer in by.get(tuple(None if p is None else str(p) for p in row[:len(shared)]), ()):
+                out.append((wafer, row[len(shared):]))
+        return out
+
     def _long_conditions(self, wafers):
         """The conditions role's rows of these wafers into their {name: value} - and their time and title, when the
         wafer role names none (the long table's first row's). A wafer with no row keeps {} - the default conditions."""
         role = self.long
         extra = [c for c in ("time", "title") if role.get(c)]
-        width = len(report_shape.wafer_columns(role["wafer"]))
-        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + [role["name"], role["value"]]
-                         + [role[c] for c in extra], sorted(set(wafers), key=label)):
-            facts = self.wafers.get(tuple(None if p is None else str(p) for p in row[:width]))
-            if facts is None:
-                continue
-            facts["conditions"][str(row[width])] = row[width + 1]
+        for wafer, row in self._matched(role, [role["name"], role["value"]] + [role[c] for c in extra],
+                                        sorted(set(wafers), key=label)):
+            facts = self.wafers[wafer]
+            facts["conditions"][str(row[0])] = row[1]
             for at, cell in enumerate(extra):
                 if facts.get(cell) is None:
-                    facts[cell] = row[width + 2 + at]
+                    facts[cell] = row[2 + at]
 
     def _ordered(self, wafers):
         """By time, a wafer without one last, then by its key."""
@@ -198,17 +232,16 @@ class Report:
     def _pairs(self, role, columns, wafers, name=None):
         """(wafer, name) -> the role's `columns` of its row, from a long table a row a wafer and name (the summary,
         the info; a picture row is one `name`, a row a wafer) - a pair two rows say is left out, named."""
-        width = len(self.keys)
         named = [role["item"]] if name is None else []
         found, twice = {}, set()
-        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + named + columns, wafers):
-            said = row[width] if name is None else name
+        for wafer, row in self._matched(role, named + columns, wafers):
+            said = row[0] if name is None else name
             if said is None:
                 continue
-            pair = (tuple(None if p is None else str(p) for p in row[:width]), str(said))
+            pair = (wafer, str(said))
             if pair in found:
                 twice.add(pair)
-            found[pair] = row[width + len(named):]
+            found[pair] = row[len(named):len(named) + len(columns)]
         for pair in twice:
             del found[pair]
         return found, sorted("%s %s" % (label(wafer), item) for wafer, item in twice)
@@ -480,16 +513,25 @@ class Report:
         said = "fail" if self.spec["summary"].get("fail") else "rate"
         occurred = {pair for pair, row in found.items() if (row.get(said) or 0) > 0}
         wanted = {str(i) for i in items} if items else None
-        width = len(self.keys)
         per_item, px = role.get("per_item", 3), role.get("px", 320)
         sep, source = role.get(report_shape.ITEM_SEP), role.get(report_shape.IMAGE_SOURCE)
-        chosen, counts = {}, {}
-        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + [role["item"], role["image"]], picked):
-            wafer = tuple(None if p is None else str(p) for p in row[:width])
-            ref = "%s:%s" % (source, row[width + 1]) if source and row[width + 1] else row[width + 1]
-            for item in ([part.strip() for part in str(row[width]).split(sep)] if sep else [str(row[width])]):
+        beyond = [c for c in report_shape.wafer_columns(role["wafer"]) if c not in self.keys]
+        fold = [beyond.index(c) for c in self.key_words if c in beyond
+                and report_shape.KEY_FOLD in self.key_words[c]]
+        chip = [at for at, c in enumerate(beyond) if at not in fold]
+        rows = self._matched(role, [role["item"], role["image"]], picked)
+        # a chip's rows (owner 10-23: a layer a row, the chip seen through) - the smallest fold values first, keys' order
+        rows.sort(key=lambda pair: [_ordinal(pair[1][2 + at]) for at in fold])
+        chosen, counts, seen = {}, {}, set()
+        for wafer, row in rows:
+            ref = "%s:%s" % (source, row[1]) if source and row[1] else row[1]
+            whose = (wafer, tuple(row[2 + at] for at in chip))
+            for item in ([part.strip() for part in str(row[0]).split(sep)] if sep else [str(row[0])]):
                 if (wafer, item) not in occurred or (wanted and item not in wanted) or not ref:
                     continue
+                if fold and (item, whose) in seen:              # one picture a chip and defect - the first layer
+                    continue
+                seen.add((item, whose))
                 # per_item a wafer row - each leg of a wafer its own (lead 10-23: all three were L1's)
                 if counts.get((item, wafer), 0) >= per_item:
                     continue
@@ -663,6 +705,14 @@ def _instant(value):
     import expression
 
     return expression._instant(value)
+
+
+def _ordinal(value):
+    """A fold column's value in its order - a number by its size, a text by its spelling, none last."""
+    from expression import number_of
+
+    number = number_of(value)
+    return (value is None, number is None, number if number is not None else 0, "" if value is None else str(value))
 
 
 def _shown(value) -> str:

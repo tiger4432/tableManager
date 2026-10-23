@@ -1977,6 +1977,24 @@
                   }
                 },
                 {
+                  "key": "keys",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "name",
+                    "member": "column",
+                    "of": {
+                      "kind": "map",
+                      "keyed_by": "index",
+                      "member": "word",
+                      "of": {
+                        "kind": "leaf",
+                        "hint": "free"
+                      }
+                    }
+                  }
+                },
+                {
                   "key": "labels",
                   "required": false,
                   "node": {

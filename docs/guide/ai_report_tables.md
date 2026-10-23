@@ -136,6 +136,19 @@
 
 ## 요약 표 꾸미기 — 정보 표 · 그림 줄 · 조건부 서식 · 항목 계층 · 견본 줄 · 한글 낱말 (A, 10-23)
 
+- **키 칸 (소유자 10-23 «키 칸을 리스트로 받게»)** — 리포트가 읽는 표들의 키 칸을 `keys` 한 곳에 이름으로 적고, 칸마다 하는 일을 낱말로 적는다. 표마다 `wafer` 에는 «그 표가 가진 키 칸 이름»을 적는다 — 일부만(조건표에 tkout 없음) · 더 많이(이미지표에 x · y · layer) 가진 표도 된다.
+
+```json
+"wafer":  {"table": "wafer_summary", "key": ["wafer", "tkout_time", "leg"]},
+"keys":   {"wafer": ["unit"], "tkout_time": ["latest"], "leg": [], "x": [], "y": [], "layer": ["fold"], "extracted_at": ["fold"]},
+"summary":    {"table": "wafer_summary", "wafer": ["wafer", "tkout_time", "leg"], …},
+"conditions": {"table": "wafer_condition", "wafer": ["wafer", "leg"], …},
+"images":     {"table": "chip_image", "wafer": ["wafer", "tkout_time", "leg", "x", "y", "extracted_at", "layer"], …}
+```
+- 낱말 셋: `unit` — 리포트 하나의 단위(리포트 표의 키 칸과 같아야 함, 안 적으면 리포트 표에서 읽음) · `latest` — 리포트마다 이 칸이 가장 늦은 행만(시각으로 읽음, 대조 웨이퍼도 각자의 가장 늦은 것) · `fold` — 이 칸만 다른 행들은 하나(칩의 층들 → 그림 한 장, `keys` 에 적은 차례로 가장 작은 값의 행 — 숫자는 크기, 글자는 철자). 낱말 없음(`[]`)은 정체의 한 칸.
+- 늦은 계측이 들어와도 리포트는 저절로 다시 안 만들어진다 — R1 리플레이(소유자 10-23 ㄴ).
+- 거절(이름을 댐): `wafer` 목록에 키 칸 아닌 이름 «'<칸>' is not a key column» · latest 인데 unit 없음 · unit 이 리포트 표의 키 칸과 다름 · fold 가 웨이퍼 키 칸.
+
 - **비교 표 (소유자 10-23 그림)** — 요약 표 하나가 비교 표다. 열은 리포트 웨이퍼와 모델이 `compare` 로 고른 대조 웨이퍼(못 고르면 리포트 웨이퍼 하나), 행은 조건 · 수율 · 불량:
 
 ```json

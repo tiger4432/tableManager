@@ -97,7 +97,7 @@ def _with(path, value):
     (("summary", "total"), None, "derive.report.summary names fail and total together"),
     (("wafer", "conditions"), ["split", "recipe"], "derive.report.wafer.conditions 'recipe' is not a column"),
     (("summary", "wafer"), ["wafer_id", "slot"],
-     "derive.report.summary.wafer names 2 column(s) and derive.report.wafer.key 1"),
+     "derive.report.summary.wafer 'slot' is not a key column"),
     (("wafer", "key"), [], "derive.report.wafer.key names no column"),
     (("layout",), [{"kind": "chart"}], "derive.report.layout[0].kind 'chart' - one of table · image · text"),
     (("layout",), [{"kind": "table", "fill": "summary"}], "derive.report.layout[0].fill 'summary' - a table is one of"),

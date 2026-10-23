@@ -334,12 +334,13 @@ def test_a_character_past_ascii_is_a_token_of_its_own():
     ("formats", {BIG: [{"when": "==", "value": 1}]}, '"when": one of'),
     ("formats", {BIG: [{"vs": "lot", "times": 2}]}, '"vs": "control"'),
     ("info", {"table": "rk_info", "wafer": ["wafer_id", "version"], "item": "name"}, "info names wafer and value"),
-    ("info", [{"table": "rk_yield", "wafer": ["wafer_id"], "value": "yield"}], "info[0].wafer names 1 column(s)"),
+    ("info", [{"table": "rk_yield", "wafer": ["wafer_id", "yield"], "value": "yield"}],
+     "info[0].wafer 'yield' is not a key column"),
     ("info", [{"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "good"}],
      "info[0].value 'good' is not a column of 'rk_yield'"),
     ("info", "rk_info", "info is a table and its columns, or a list of them"),
-    ("picture_rows", [{"label": "맵", "table": "rk_map", "wafer": ["wafer_id"], "image": "path"}],
-     "picture_rows[0].wafer names 1 column(s)"),
+    ("picture_rows", [{"label": "맵", "table": "rk_map", "wafer": ["wafer_id", "n"], "image": "path"}],
+     "picture_rows[0].wafer 'n' is not a key column"),
     ("picture_rows", [{"table": "rk_map", "wafer": ["wafer_id", "version"], "image": "path"}], "needs label"),
 ])
 def test_what_the_save_refuses(report, cell, value, refused):

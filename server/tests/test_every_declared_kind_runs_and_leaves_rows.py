@@ -488,6 +488,87 @@ def test_a_wafer_in_two_evaluations_is_refused_by_name(db, reported):
         report_reads.Report(db, reported[0]["params"], None, only={"wafer": "W1"})
 
 
+def test_the_keys_say_what_each_key_column_does_the_latest_measurement_and_a_chip_seen_through(db, monkeypatch):
+    """Owner 10-23 «키 칸을 리스트로 받게» (lead): one `keys` - wafer the unit, tkout the latest (a measurement read
+    twice: the report reads its latest), layer a fold (a chip seen through its layers: one picture, the smallest
+    layer). A table names the key columns it has - the conditions table has no tkout and answers every measurement;
+    the image table has x · y · layer beyond the wafer key."""
+    from chain import report_reads
+    from conftest import retire_dynamic_model
+
+    more = {"kt_sum": {"composite_key_source": ["wafer", "tkout", "leg", "item"],
+                       "column_types": {"wafer": "string", "tkout": "string", "leg": "string", "item": "string",
+                                        "fail": "number", "total": "number"}},
+            "kt_cond": {"composite_key_source": ["wafer", "leg", "condition_id"],
+                        "column_types": {"wafer": "string", "leg": "string", "condition_id": "string",
+                                         "value": "string", "date": "string"}},
+            "kt_img": {"composite_key_source": ["wafer", "tkout", "leg", "x", "y", "layer"],
+                       "column_types": {"wafer": "string", "tkout": "string", "leg": "string", "x": "number",
+                                        "y": "number", "layer": "string", "img": "string", "defects": "string"}},
+            "kt_rep": {"business_key": "wafer", "composite_key_source": ["wafer"],
+                       "column_types": {"wafer": "string", "fl": "string"}}}
+    models.init_dynamic_models(more)
+    crud.TABLE_CONFIG.update(more)
+    for name in more:
+        models.DYNAMIC_TABLES[name].__table__.create(bind=db.get_bind())
+    try:
+        old, new, other = "2026-10-20T10:00:00+09:00", "2026-10-22T10:00:00+09:00", "2026-10-21T10:00:00+09:00"
+        rows = {"kt_sum": [{"wafer": "W1", "tkout": old, "leg": "L1", "item": "particle", "fail": 5, "total": 100},
+                           {"wafer": "W1", "tkout": new, "leg": "L1", "item": "particle", "fail": 1, "total": 100},
+                           {"wafer": "W1", "tkout": new, "leg": "L2", "item": "particle", "fail": 2, "total": 100},
+                           {"wafer": "W2", "tkout": other, "leg": "L1", "item": "particle", "fail": 3, "total": 100}],
+                "kt_cond": [{"wafer": "W1", "leg": "L1", "condition_id": "bond", "value": "350",
+                             "date": "2026-10-22 10:00:00"}],
+                "kt_img": [{"wafer": "W1", "tkout": new, "leg": "L1", "x": 1, "y": 1, "layer": "10", "img": "11b",
+                            "defects": "particle"},
+                           {"wafer": "W1", "tkout": new, "leg": "L1", "x": 1, "y": 1, "layer": "9", "img": "11a",
+                            "defects": "particle"},
+                           {"wafer": "W1", "tkout": new, "leg": "L1", "x": 1, "y": 2, "layer": "3", "img": "12c",
+                            "defects": "particle"},
+                           {"wafer": "W1", "tkout": old, "leg": "L1", "x": 9, "y": 9, "layer": "L01", "img": "old",
+                            "defects": "particle"}]}
+        for table, written in rows.items():
+            crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
+                schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in written]))
+        db.commit()
+        spec = {"wafer": {"table": "kt_sum", "key": ["wafer", "tkout", "leg"]},
+                "keys": {"wafer": ["unit"], "tkout": ["latest"], "leg": [], "x": [], "y": [], "layer": ["fold"]},
+                "summary": {"table": "kt_sum", "wafer": ["wafer", "tkout", "leg"], "item": "item", "fail": "fail",
+                            "total": "total"},
+                "conditions": {"table": "kt_cond", "wafer": ["wafer", "leg"], "name": "condition_id",
+                               "value": "value", "time": "date"},
+                "images": {"table": "kt_img", "wafer": ["wafer", "tkout", "leg", "x", "y", "layer"],
+                           "item": "defects", "image": "img", "per_item": 3},
+                "control": {"recent": {"evaluations": 5}},
+                "results": {"file": "fl"}}
+        assert report_shape.refusal(spec, "kt_rep", "kt_rep") is None
+        report = report_reads.Report(db, spec, None, only={"wafer": "W1"})
+        assert report.groups[report.evaluation] == [("W1", new, "L1"), ("W1", new, "L2")], "the latest measurement"
+        table = report.yield_by()["html"]
+        assert [[c["text"] for c in cells] for _i, cells in table["rows"]] == [["1.0% (1/100)", "2.0% (2/100)"]]
+        assert not table["left_out"], "the older measurement is not read beside it"
+        assert report.wafers[("W1", new, "L1")]["conditions"] == {"bond": "350"}, "a table without tkout answers it"
+        monkeypatch.setattr(report_reads, "_picture", lambda ref, px: {"src": ref})
+        assert sorted(p["src"] for p in report.images()["html"]["particle"]) == ["11a", "12c"], \
+            "a chip one picture - its smallest layer (9 before 10: a number by its size); the older " \
+            "measurement's chip not read"
+        assert "W2" in report.candidates()["context"]
+        refused = [report_shape.refusal(dict(spec, keys=dict(spec["keys"], **keys)), "kt_rep", "kt_rep") for keys in (
+            {"wafer": []}, {"wafer": [], "leg": ["unit"]}, {"leg": ["fold"]}, {"tkout": ["newest"]})]
+        assert "latest needs a unit column" in refused[0]
+        assert "keys unit (leg) is the report table's wafer" in refused[1]
+        assert "keys.leg fold is a column beyond the wafer key" in refused[2]
+        assert "each word one of unit · latest · fold" in refused[3]
+        assert "images.wafer 'img' is not a key column" in report_shape.refusal(
+            dict(spec, images=dict(spec["images"], wafer=["wafer", "img"])), "kt_rep", "kt_rep")
+    finally:
+        db.rollback()
+        for name in more:
+            models.DYNAMIC_TABLES[name].__table__.drop(bind=db.get_bind())
+            crud.TABLE_CONFIG.pop(name, None)
+            retire_dynamic_model(name)
+
+
 def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, reported, tmp_path, monkeypatch):
     """Owner 10-23 box sample: conditions a row a condition (written only when out of the ordinary), a chip image row
     naming its defects «a, b», no evaluation column - the model reads each wafer's conditions or «default conditions»,
