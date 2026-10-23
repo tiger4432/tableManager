@@ -1,5 +1,36 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **표 선언을 바꿔 풀린 «읽음» 도장을 읽지 않고 되돌리기 — 체크리스트 첫 시작 채우기를 한 번 더 (코드 바뀜 없음)** — 런처 재기동
+>
+> ```
+> 왜       표 선언(또는 그 표의 외부 저장소 · 플러그인)이 바뀌면 그 표의 읽은 파일 도장이 풀려, 외부 저장소 스윕이 전부 처음부터 읽음
+>          지금 그 외부 소스를 enabled:false 로 멈춰 두었다면, 다시 켜기 «전»에 아래 순서로
+> 순서      1. 런처를 끈다
+>          2. server/config/watcher_read_files_stamped 파일을 지운다 (ASSY_DATA_ROOT 를 쓰면 그 밑 config/)
+>          3. ingestion_settings.json 에서 그 외부 소스를 enabled:true 로 되돌린다 — 🔴 2 보다 늦게 켜면 안 됨:
+>             꺼진 소스는 첫 스윕이 안 보므로, 채우기가 그 소스 없이 끝나고 켜는 순간 다시 전부 읽음
+>          4. 런처를 켠다
+>          5. watcher.log 에서 아래 줄을 본다
+> 답의 뜻   [Watcher] read files are stamped by the first sweep (the checklist's first start)   채우기가 켜짐(기동 때 한 번)
+>          [Watcher] read files stamped N · left for re-read M (failed F · changed since read C)  끝남 — 파일이 다시 쓰여 다음부터는 안 돎
+>            N  도장만 다시 찍고 «안 읽은» 파일 수 (풀린 뒤 안 바뀐 파일)
+>            M  그래도 읽히는 파일 수 = F + C
+>            F  실패했던 파일 — 도장이 같이 풀렸으므로 한 번씩 다시 읽힘
+>            C  풀린 «뒤»에 내용이 바뀐 파일 — 읽혀야 맞음
+>            M 이 크면  F 가 크면 그 표에 실패 파일이 많은 것 · C 가 크면 풀린 뒤 실제로 바뀐 파일이 많은 것
+>          [Watcher] read files stamped N so far - the next sweep goes on (a source was not reached)   소스 하나가 안 닿음 — 다음 스윕이 이어감
+>          [Watcher] read files stamped N so far - the next sweep goes on (a batch was not stamped)     한 묶음이 DB 오류로 못 찍힘 — 다음 스윕이 이어감
+> 창 둘     풀리기 «직전»(한 스윕 주기 안)에 바뀌었는데 아직 안 읽힌 파일은 «안 바뀐 것»으로 도장이 찍혀 안 읽힘
+>          — 풀 때 행의 갱신 시각이 그 순간으로 밀려, 그보다 이른 변경을 못 가름. 그런 파일은 Retry 로 하나씩
+>          실패 파일은 위 F 처럼 한 번씩 다시 읽힘 (원래는 도장 있는 실패 파일은 다시 안 읽음)
+> 지운 행   체크리스트 행(file_ingestion_logs)을 SQL 로 지운 파일은 도장을 찍을 행이 없어 «새 파일»로 읽힘
+> 급할 때   이 순서를 안 하면 예전 그대로 — 소스를 켜는 순간 도장 빈 파일을 전부 다시 읽음
+> 되돌리기  해당 없음 — 코드 · 선언 바뀜 없음. 표지 파일은 채우기가 끝날 때 다시 생김
+> ```
+>
+
+---
+
 > ## [10-23] **중복 접기 · 철자 접기는 소급 탭 하나씩 — dedupe_business_key_rows.py · fold_comp_id.bat 은퇴 (04971d08b · b6d25136a)** — git pull · 런처 재기동
 >
 > ```
