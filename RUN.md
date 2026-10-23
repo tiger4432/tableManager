@@ -35,7 +35,7 @@
 >          chain_worker.log «[ChainRules] <규칙>: enabled=false — nothing wakes it; a replay that names it runs it.»
 >            꺼진 규칙이 선 줄. 리플레이 대상 목록(그리드 배너 · /admin/chain/rules/replayable)에는 안 보임 — 소급 탭에 이름을 적음
 > 급할 때   그 규칙 "enabled": false (저장 즉시) - 새 리포트를 안 만듦. 이미 sending 인 것은 보냄 — 보내기까지 멈추려면 send_to 를 지움
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동. 되돌린 코드는 요청 표 모양을 읽으므로 새 규칙을 끄고 옛 규칙 넷 · 제품 표 넷을 다시 적음
+> 되돌리기  git revert be0420f9b -> 런처 재기동. 되돌린 코드는 요청 표 모양을 읽으므로 새 규칙을 끄고 옛 규칙 넷 · 제품 표 넷을 다시 적음
 > ```
 >
 
