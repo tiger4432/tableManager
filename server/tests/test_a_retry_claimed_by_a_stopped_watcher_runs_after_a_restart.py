@@ -71,7 +71,7 @@ def _run(tmp, db, api, until, seconds=120):
 
 
 def _states(c):
-    return c.execute("SELECT status FROM file_ingestion_logs ORDER BY id").fetchall()
+    return c.execute("SELECT status FROM file_checklist ORDER BY id").fetchall()
 
 
 def test_a_retry_claimed_by_a_stopped_watcher_runs_after_a_restart(tmp_path):
@@ -93,7 +93,7 @@ def test_a_retry_claimed_by_a_stopped_watcher_runs_after_a_restart(tmp_path):
         _run(tmp_path, db, url, lambda c: _states(c) == [("SUCCESS",)])
         with sqlite3.connect(str(db)) as c:
             assert _states(c) == [("SUCCESS",)]
-            c.execute("UPDATE file_ingestion_logs SET status = 'PENDING', updated_at = '2026-01-01 00:00:00'")
+            c.execute("UPDATE file_checklist SET status = 'PENDING', updated_at = '2026-01-01 00:00:00'")
             assert c.execute("SELECT count(*) FROM file_ingestion_checkpoints WHERE status = 'IN_PROGRESS'"
                              ).fetchone() == (0,)
 
@@ -102,6 +102,6 @@ def test_a_retry_claimed_by_a_stopped_watcher_runs_after_a_restart(tmp_path):
         with sqlite3.connect(str(db)) as c:
             assert _states(c) == [("SUCCESS",)], said[-3000:]
         assert "[Retry] 1 retry claim(s) left by the last run handed again" in said
-        assert "Retry succeeded for log ID #1." in said
+        assert "Retry succeeded for checklist row #1 (e0.csv)." in said
     finally:
         api.shutdown()

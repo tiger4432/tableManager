@@ -448,10 +448,8 @@ class FileIngestionLog(Base):
     # The transaction the file's read wrote under (총괄 10-20) - every audit log row of that read carries it; a re-read
     # writes its own. Null on rows written before it and on files skipped without a read.
     transaction_id = Column(String(64), nullable=True)
-    # The file as it was when this row's read came to its answer (소유자 10-21 체크리스트): a row with the file's
-    # (mtime, size) checks it - `checkpoint.checked`. Null = not checked: a read that waited out a lock, a row written
-    # before these, a table whose plugins or external source changed (`reread.hand_on_a_changed_reading` empties its
-    # rows - a table_config change alone does not).
+    # The file as it was when this row's read came to its answer - copied to its file's checklist row
+    # (`FileChecklist`, which checks it - 총괄 64b264610 ②). Null: a read that waited out a lock, a row written before.
     file_mtime = Column(DateTime(timezone=True), nullable=True)
     file_size = Column(BigInteger, nullable=True)
 
@@ -472,6 +470,43 @@ class FileIngestionLog(Base):
         Index("ix_file_ingestion_logs_status_id", "status", "id",
               info={"purpose": "the newest ingestion log rows in one state, without sorting the state's rows",
                     "serves": "admin file ingestion list and its failed list (owner 10-16: 10 s)"}),
+    )
+
+
+class FileChecklist(Base):
+    """The checklist (소유자 10-21 · 10-23 「파일당 한 행」, 총괄 64b264610 ②): ONE row per (table, file) - its state
+    now (the last read's SUCCESS / FAILED, or the retry door's PENDING_RETRY / PENDING), its stamp (the file's (mtime,
+    size) as its last read found it - Null: not checked) and its newest record (`log_id`). `file_ingestion_logs` keeps
+    the records, one per read. Written by `ingestion.checkpoint.note_file` and the checklist's own moves."""
+    __tablename__ = "file_checklist"
+
+    id = Column(Integer, primary_key=True)
+    table_name = Column(String, nullable=False)
+    # The path as `path_key` folds it, written by that SQL function - the one spelling the key and the search compare.
+    path_key = Column(String, nullable=False)
+    filepath = Column(String, nullable=False)
+    filename = Column(String)
+    source = Column(String, nullable=True)
+    # `file_ingestion_status.FILE_INGESTION_STATUS_VOCABULARY`
+    status = Column(String(20), nullable=False)
+    # While it waits (PENDING_RETRY): the state it had before it was handed (`reread.STOOD_BY_REREAD` - stood by the
+    # re-read, no state) - what «cancel» puts back and the retry door's word says (총괄 10-11 ㄱ).
+    status_before = Column(String(20), nullable=True)
+    file_mtime = Column(DateTime(timezone=True), nullable=True)
+    file_size = Column(BigInteger, nullable=True)
+    log_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("table_name", "path_key", name="uq_file_checklist_table_path",
+                         info={"purpose": "one row per (table, file)", "serves": "the checklist's every ask"}),
+        Index("ix_file_checklist_folder", "path_key", postgresql_ops={"path_key": "text_pattern_ops"},
+              info={"purpose": "checklist rows under one folder", "serves": "file search by folder, re-read"}),
+        Index("ix_file_checklist_status", "status",
+              info={"purpose": "checklist rows in one state", "serves": "watcher retries (PENDING, PENDING_RETRY)"}),
+        Index("ix_file_checklist_filename", "filename",
+              info={"purpose": "checklist rows of one file name", "serves": "a re-read into a table's lookup"}),
     )
 
 
@@ -598,9 +633,8 @@ FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged"
 
 
 class FileRereadMark(Base):
-    """A log row the re-read handed to the watcher, and the state it had then (총괄 10-11 ㄱ, 소유자 「다시 읽기 잘못
-    걸었다가 파일 너무 많아서 서버 뻗었어」) - what «cancel» puts back while the row still waits. A table of its own,
-    not a column on `file_ingestion_logs`, for FileIngestionCheckpoint's reason ①: create_all makes it, no ALTER order."""
+    """⚰️ 총괄 64b264610 ②: the state before a hand-over lives on the checklist row (`FileChecklist.status_before`).
+    Read once, by `checkpoint.fill_checklist`, for the rows waiting when the checklist was made; nothing writes it."""
     __tablename__ = "file_reread_marks"
 
     log_id = Column(Integer, primary_key=True)
@@ -2724,6 +2758,8 @@ def ensure_ingestion_checkpoint_table(engine):
     워처 프로세스 부팅(run_watcher)·핫리로드(refresh_dynamic_models)에서 호출한다.
     #7 패턴 준용: information_schema 게이트 + checkfirst + engine 단위 독립 트랜잭션.
 
+    The file checklist (`FileChecklist`, 총괄 64b264610 ②) too - the watcher writes it from its first read.
+
     반환: 새로 CREATE한 테이블명 리스트.
     """
     from sqlalchemy import inspect
@@ -2736,17 +2772,16 @@ def ensure_ingestion_checkpoint_table(engine):
             print(f"[Ingestion Schema] Failed to inspect database for checkpoint table: {told(err)}")
             return created
 
-        table_name = FileIngestionCheckpoint.__tablename__
-        try:
-            if inspector.has_table(table_name):
-                return created
-            Base.metadata.create_all(
-                bind=engine, tables=[FileIngestionCheckpoint.__table__], checkfirst=True
-            )
-            created.append(table_name)
-            print(f"[Ingestion Schema] Created ingestion checkpoint table '{table_name}'.")
-        except Exception as err:
-            print(f"[Ingestion Schema] Failed to create table '{table_name}': {told(err)}")
+        for model in (FileIngestionCheckpoint, FileChecklist):
+            table_name = model.__tablename__
+            try:
+                if inspector.has_table(table_name):
+                    continue
+                Base.metadata.create_all(bind=engine, tables=[model.__table__], checkfirst=True)
+                created.append(table_name)
+                print(f"[Ingestion Schema] Created ingestion checkpoint table '{table_name}'.")
+            except Exception as err:
+                print(f"[Ingestion Schema] Failed to create table '{table_name}': {told(err)}")
     return created
 
 

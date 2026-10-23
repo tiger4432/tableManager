@@ -52,7 +52,7 @@ def test_a_path_is_read_now_under_the_source_that_owns_its_folder(tmp_path):
     def rows():
         try:
             with sqlite3.connect(str(db)) as c:
-                return c.execute("SELECT id, filename, table_name, status FROM file_ingestion_logs ORDER BY id").fetchall()
+                return c.execute("SELECT id, filename, table_name, status FROM file_checklist ORDER BY id").fetchall()
         except sqlite3.Error:
             return []
 
@@ -99,7 +99,7 @@ def test_a_path_is_read_now_under_the_source_that_owns_its_folder(tmp_path):
         for path in (notes, deep):                                      # the source's layer, as the watcher names it
             assert "external:workspace:" + os.path.realpath(path) in layers, layers
         text = log_path.read_text(encoding="utf-8", errors="replace")
-        assert len(re.findall(r"Retry succeeded for log ID #1\.", text)) == 1      # raws/r.csv: its own row again
+        assert len(re.findall(r"Retry succeeded for checklist row #1 \(r\.csv\)\.", text)) == 1   # raws/r.csv: its own row
     finally:
         watcher.kill()
         watcher.wait(30)

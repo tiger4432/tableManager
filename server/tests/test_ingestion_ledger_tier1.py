@@ -210,7 +210,7 @@ def test_a_log_row_without_a_stamp_checks_nothing(env):
     env["process"](p)
     db = env["SessionLocal"]()
     try:
-        for row in db.query(models.FileIngestionLog).all():
+        for row in db.query(models.FileChecklist).all():
             row.file_mtime = None
             row.file_size = None
         db.commit()
@@ -395,9 +395,8 @@ def test_admin_retry_stamps_the_file_it_read(env):
 
     db = env["SessionLocal"]()
     try:
-        log = models.FileIngestionLog(filename="a.csv", filepath=os.path.abspath(p),
-                                      table_name=TABLE, status="FAILED", retry_count=0)
-        db.add(log)
+        log = ingestion.checkpoint.note_file(db, TABLE, os.path.abspath(p), status="FAILED", file_mtime=None,
+                                             file_size=None)
         db.commit()
         assert env["handler"].process_archived_file_sync(log, db) is True
         log_id = log.id
@@ -407,7 +406,7 @@ def test_admin_retry_stamps_the_file_it_read(env):
     st = ingestion.checkpoint.read_file_stat(os.path.abspath(p))
     db = env["SessionLocal"]()
     try:
-        assert db.query(models.FileIngestionLog).filter_by(id=log_id).one().file_size == st[1]
+        assert db.query(models.FileChecklist).filter_by(id=log_id).one().file_size == st[1]
         # 행동으로: 이 도장으로 체크리스트가 실제로 적중하는가 (저장된 시각은 백엔드마다 다른 객체로 돌아온다)
         assert ingestion.checkpoint.checked(db, TABLE, [(os.path.abspath(p), st)]) == {os.path.abspath(p): "SUCCESS"}
     finally:

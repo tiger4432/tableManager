@@ -12,6 +12,7 @@ import os
 import pytest
 
 from database import models
+from ingestion import checkpoint
 
 URL = "/admin/file-ingestion/retry-failed"
 
@@ -24,8 +25,7 @@ def tree(tmp_path, db_session, monkeypatch):
     def add(rel, status="FAILED"):
         path = str(base.joinpath(*rel.split("/")))
         # A raws row; one with no source is judged by where its file lies (총괄 10-23).
-        db_session.add(models.FileIngestionLog(filename=os.path.basename(path), filepath=path,
-                                               table_name="t", status=status, source="raws"))
+        checkpoint.note_file(db_session, "t", path, status=status, source="raws")
 
     for rel in ("A/x/f1.csv", "A/x/f2.csv", "A/f3.csv", "B/g1.csv", "B/g2.csv", "AB/h1.csv"):
         add(rel)
@@ -37,7 +37,7 @@ def tree(tmp_path, db_session, monkeypatch):
 
 def _statuses(db_session):
     db_session.expire_all()
-    return {log.filename: log.status for log in db_session.query(models.FileIngestionLog).all()}
+    return {row.filename: row.status for row in db_session.query(models.FileChecklist).all()}
 
 
 def test_the_preview_counts_what_is_under_the_folder_and_writes_nothing(client, db_session, tree):
@@ -93,8 +93,7 @@ def test_read_by_takes_only_the_failed_files_that_table_read(client, db_session,
     """총괄 10-20: two tables' failed files under one folder - `read_by` takes one table's; the preview's count is the
     count handed over, and `table` (read from the disk into a table) with it is refused."""
     path = str(tree / "A" / "x" / "u1.csv")
-    db_session.add(models.FileIngestionLog(filename="u1.csv", filepath=path, table_name="u", status="FAILED",
-                                           source="raws"))
+    checkpoint.note_file(db_session, "u", path, status="FAILED", source="raws")
     db_session.commit()
     folder = str(tree / "A")
 

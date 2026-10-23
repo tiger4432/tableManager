@@ -234,6 +234,9 @@ SYSTEM_TABLE_COLUMNS = {
     # file_mtime · file_size: the boot schema sync (SCHEMA_SYNCED_SYSTEM_TABLES) adds them; by hand
     # migrations/add_file_ingestion_log_stamp.sql (the checklist, 4492b8813)
     "file_ingestion_logs": ('created_at', 'error_message', 'failed_at', 'file_mtime', 'file_size', 'filename', 'filepath', 'id', 'reader', 'reason', 'retry_count', 'rows_changed', 'rows_new', 'rows_read', 'rows_refused', 'rows_unchanged', 'source', 'status', 'table_name', 'took_seconds', 'transaction_id', 'updated_at'),
+    # new table (총괄 64b264610 ②, 10-23) - created whole by create_all / ensure_ingestion_checkpoint_table
+    "file_checklist": ('created_at', 'file_mtime', 'file_size', 'filename', 'filepath', 'id', 'log_id', 'path_key',
+                       'source', 'status', 'status_before', 'table_name', 'updated_at'),
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_assumed: migrations/add_frame_confirmation.py (spec MAP_ALIGNMENT 9a - which
     # confirmations rest on a borrowed wafer spec)

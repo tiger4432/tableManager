@@ -5468,17 +5468,19 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         raise HTTPException(status_code=400, detail=str(e))
     if group not in (None, "", "folder", "reason", "status"):
         raise HTTPException(status_code=400, detail=f"group is folder, reason or status, not {group!r}")
+    # 🔴 ONE LINE PER FILE (총괄 64b264610 ② 가): the checklist's rows, their state now - the chips' counts and the
+    #    lines they filter come from one table. A line's result cells are its file's newest record's; a file's earlier
+    #    reads stay in the records (file_ingestion_logs), not on this list.
+    model, record = models.FileChecklist, models.FileIngestionLog
     query = reread.logs_query(db, None if status == "ALL" else (status,), table, folder, since_at, until_at,
-                              name=name).order_by(models.FileIngestionLog.id.desc())
-
-    # 🔴 STOPS PAST COUNT_CAP (owner 10-16: the failed list took 10 s) - the log table only grows, and a count of all
-    #    its failed rows held a connection the other admin routes waited on. Past it the screen says «10,000+».
-    counted = query.order_by(None).limit(COUNT_CAP + 1).count()
+                              name=name)
+    # 🔴 STOPS PAST COUNT_CAP (owner 10-16: the failed list took 10 s) - a count of every failed file held a connection
+    #    the other admin routes waited on. Past it the screen says «10,000+».
+    counted = query.limit(COUNT_CAP + 1).count()
     total, capped = min(counted, COUNT_CAP), counted > COUNT_CAP
     start = (page - 1) * limit
-    model, spelled = models.FileIngestionLog, models.path_key(models.FileIngestionLog.filepath)
-    page_rows = query.add_columns(spelled).offset(start).limit(limit).all()
-    logs = [log for log, _spelled in page_rows]
+    query = query.outerjoin(record, record.id == model.log_id).order_by(model.updated_at.desc(), model.id.desc())
+    page_rows = query.add_entity(record).offset(start).limit(limit).all()
     roots = () if crud.is_blank_value(folder) else reread.folder_roots(folder)
 
     def key_of(filepath, spelled_path, state, reason):
@@ -5489,28 +5491,31 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         return key, key
 
     result_list = []
-    for log in logs:
+    for row, log in page_rows:
+        read_at = (log.created_at if log is not None else None) or row.created_at
         result_list.append({
-            "id": log.id,
-            "filename": log.filename,
-            "filepath": log.filepath,
-            "folder": reread.folder_of(log.filepath),
-            "table_name": log.table_name,
-            "status": log.status,
-            "error_message": log.error_message,
-            "retry_count": log.retry_count,
-            **{column: getattr(log, column) for column in models.FILE_RESULT_COLUMNS},
-            "created_at": log.created_at.isoformat() if log.created_at else None,
-            "updated_at": log.updated_at.isoformat() if log.updated_at else None
+            "id": row.log_id,                       # its newest record: a one-file Retry names it
+            "checklist_id": row.id,
+            "filename": row.filename,
+            "filepath": row.filepath,
+            "folder": reread.folder_of(row.filepath),
+            "table_name": row.table_name,
+            "status": row.status,
+            "error_message": log.error_message if log is not None else None,
+            "retry_count": (log.retry_count if log is not None else None) or 0,
+            **{column: getattr(log, column) if log is not None else None for column in models.FILE_RESULT_COLUMNS},
+            "source": row.source,
+            "created_at": read_at.isoformat() if read_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None
         })
-        
+
     said = {"status": "success", "total": total, "capped": capped, "page": page, "limit": limit, "data": result_list}
     if group:
         groups = {}
-        for row, (log, spelled_path) in zip(result_list, page_rows):
-            row["group_key"] = key_of(log.filepath, spelled_path, log.status, log.reason)[0]
+        for line, (row, log) in zip(result_list, page_rows):
+            line["group_key"] = key_of(row.filepath, row.path_key, row.status, log.reason if log else None)[0]
         for filepath, spelled_path, state, reason in query.with_entities(
-                model.filepath, spelled, model.status, model.reason).limit(COUNT_CAP + 1):
+                model.filepath, model.path_key, model.status, record.reason).limit(COUNT_CAP + 1):
             key, label = key_of(filepath, spelled_path, state, reason)
             entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0,   # its first row's
                                             "waiting": 0})
@@ -5533,10 +5538,11 @@ def _checklist_rows(db):
 
 @app.get("/admin/file-ingestion/tables", dependencies=[Depends(require_admin_token)])
 def get_file_ingestion_tables(db: Session = Depends(get_db)):
-    """표마다 파일 기록 수 — 전체 · 상태별 · 마지막 시각 (총괄 e390600d6). 한 질의(GROUP BY table_name, status), 정확한 수."""
+    """표마다 파일 수 — 전체 · 상태별 · 마지막 시각 (총괄 e390600d6), 체크리스트(파일당 한 행, 총괄 64b264610 ②)에서.
+    한 질의(GROUP BY table_name, status), 정확한 수."""
     from sqlalchemy import func
 
-    model = models.FileIngestionLog
+    model = models.FileChecklist
     at = func.max(func.coalesce(model.updated_at, model.created_at))
     tables = {}
     for table_name, state, n, last in db.query(model.table_name, model.status, func.count(model.id), at).group_by(
@@ -7372,7 +7378,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         if states != reread.RETRY_STATUSES:
             # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
             # Failed files keep today's answer.
-            picked, missing = await asyncio.to_thread(lambda: reread.split_missing(reread.one_per_file(picked)))
+            picked, missing = await asyncio.to_thread(lambda: reread.split_missing(picked))
         if log_id is None:
             # 총괄 dd0f2818c: a bulk Retry picks what the declaration takes now; one file named by its row is read as asked
             picked, not_taken, not_taken_files = await asyncio.to_thread(reread.taken_now, picked)
@@ -7407,8 +7413,8 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
     if os.getenv("DECOUPLED") == "True":
         def _hand(failed_logs=failed_logs):
             if chosen is not None:
-                failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"], folder=folder)
-            reread.mark_for_reread(db, failed_logs, folder=folder if by_folder_asked else None)
+                failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"])
+            reread.mark_for_reread(db, failed_logs)
             return failed_logs
 
         failed_logs = await asyncio.to_thread(_hand)

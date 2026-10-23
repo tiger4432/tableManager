@@ -59,8 +59,6 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, or_
-
 logger = logging.getLogger("Watcher.IngestionCheckpoint")
 
 # 시그니처 해시 스트리밍 읽기 단위
@@ -266,8 +264,7 @@ def _same_path(recorded: str, filepath: str) -> bool:
     return os.path.normcase(os.path.abspath(recorded)) == os.path.normcase(filepath)
 
 
-#: Files one `checked` query asks about - the OR of (path, mtime, size) clauses. 500 is the top of the flat band
-#: measured for the same OR shape on the ledger (2026-08-13: ms/file flat from 50 to 500, 3x worse at 2,000).
+#: Files one `checked` query asks about - one IN over the checklist's (table, path) key.
 CHECKED_BATCH_SIZE = 500
 
 
@@ -278,15 +275,26 @@ WHY_RETRY, WHY_READ_AGAIN, WHY_READ_NOW = "retry", "read again", "read now"
 WHY_UNREAD = "checklist not read"
 
 
-def checked(db, table_name: str, entries, words=None) -> dict:
-    """The checklist (소유자 10-21): `{filepath: status}` for the `(filepath, file_stat)` entries a file log row of
-    `table_name` checks - the same path as `path_key` spells it (both sides folded in SQL, one spelling), the same
-    (mtime, size). Its status is the newest such row's (SUCCESS, FAILED, or PENDING once handed to the retry door).
-    A path absent is not checked: it is read - and `words`, when given, gets why for each such path, off its file's
-    newest row (`newest_of_its_file`): WHY_NEW none · WHY_UNSTAMPED no stamp · WHY_CHANGED another stamp."""
+def _keys(db, filepaths):
+    """The paths as `path_key` folds them - in SQL, the one spelling the checklist's key was written in."""
     from sqlalchemy import literal, select
 
-    from database.models import FileIngestionLog as Log, path_key
+    from database.models import path_key
+
+    return db.execute(select(*[path_key(literal(filepath)) for filepath in filepaths])).one() if filepaths else ()
+
+
+def _utc(value):
+    return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
+
+
+def checked(db, table_name: str, entries, words=None) -> dict:
+    """The checklist (소유자 10-21 · 10-23 「파일당 한 행」): `{filepath: status}` for the `(filepath, file_stat)` entries
+    whose row of `table_name` (`FileChecklist`, the path as `path_key` folds it) carries that stamp (mtime, size) - its
+    status (SUCCESS, FAILED, or PENDING_RETRY / PENDING once handed to the retry door). A path absent is not checked: it
+    is read - and `words`, when given, gets why for each such path: WHY_NEW no row · WHY_UNSTAMPED no stamp ·
+    WHY_CHANGED another stamp."""
+    from database.models import FileChecklist as Row
 
     if not table_name:
         return {}
@@ -294,46 +302,49 @@ def checked(db, table_name: str, entries, words=None) -> dict:
     found = {}
     for start in range(0, len(items), CHECKED_BATCH_SIZE):
         chunk = items[start:start + CHECKED_BATCH_SIZE]
-        keys = db.execute(select(*[path_key(literal(filepath)) for filepath, _stat in chunk])).one()
-        asked = {}
+        keys = _keys(db, [filepath for filepath, _stat in chunk])
+        rows = {key: (_utc(mtime), size, status) for key, mtime, size, status in db.query(
+            Row.path_key, Row.file_mtime, Row.file_size, Row.status).filter(Row.table_name == table_name,
+                                                                            Row.path_key.in_(list(set(keys))))}
         for (filepath, file_stat), key in zip(chunk, keys):
-            asked.setdefault((key, file_stat[0], file_stat[1]), []).append(filepath)
-        rows = db.query(path_key(Log.filepath), Log.file_mtime, Log.file_size, Log.status).filter(
-            Log.table_name == table_name,
-            or_(*[and_(path_key(Log.filepath) == key, Log.file_mtime == file_stat[0], Log.file_size == file_stat[1])
-                  for (_filepath, file_stat), key in zip(chunk, keys)]),
-        ).order_by(Log.id.desc()).all()
-        by_key = {}
-        for key, _mtime, size, status in rows:
-            by_key.setdefault((key, size), status)
-        for (key, _mtime, size), paths in asked.items():
-            if (key, size) in by_key:
-                for filepath in paths:
-                    found[filepath] = by_key[(key, size)]
-    if words is not None:
-        _why_not_checked(db, table_name, [filepath for filepath, _stat in items if filepath not in found], words)
+            row = rows.get(key)
+            if row is not None and row[0] is not None and (row[0], row[1]) == (_utc(file_stat[0]), file_stat[1]):
+                found[filepath] = row[2]
+            elif words is not None:
+                words[filepath] = WHY_NEW if row is None else WHY_CHANGED if row[0] is not None else WHY_UNSTAMPED
     return found
 
 
-def _why_not_checked(db, table_name, filepaths, words):
-    """`checked`'s words for the paths it did not check - only those: one query a batch over their newest rows."""
-    from sqlalchemy import literal, select
+def note_file(db, table_name, filepath, **cells):
+    """THE checklist's writer for a file's read (총괄 64b264610 ②): its row of (table, file) - made when there is none -
+    takes `cells` (status · source · file_mtime · file_size · log_id · status_before) and the path as now spelled. In
+    the caller's transaction: its record and its row commit together. -> the row."""
+    from database.models import FileChecklist as Row
 
-    from database.models import FileIngestionLog as Log, path_key
+    (key,) = _keys(db, [filepath])
+    row = db.query(Row).filter(Row.table_name == table_name, Row.path_key == key).one_or_none()
+    if row is None:
+        row = Row(table_name=table_name, path_key=key, filepath=filepath, filename=os.path.basename(filepath),
+                  status=cells.get("status") or STATUS_FAILED)
+        if db.get_bind().dialect.name == "postgresql":
+            from sqlalchemy.exc import IntegrityError
 
-    for start in range(0, len(filepaths), CHECKED_BATCH_SIZE):
-        chunk = filepaths[start:start + CHECKED_BATCH_SIZE]
-        keys = db.execute(select(*[path_key(literal(filepath)) for filepath in chunk])).one()
-        stamped = dict(db.query(path_key(Log.filepath), Log.file_mtime.isnot(None)).filter(
-            Log.table_name == table_name, path_key(Log.filepath).in_(list(keys)), newest_of_its_file(Log)))
-        for filepath, key in zip(chunk, keys):
-            words[filepath] = (WHY_NEW if key not in stamped else WHY_CHANGED if stamped[key] else WHY_UNSTAMPED)
+            try:                                  # the API's Read now and the watcher's read of one new file at once
+                with db.begin_nested():
+                    db.add(row)
+            except IntegrityError:
+                row = db.query(Row).filter(Row.table_name == table_name, Row.path_key == key).one()
+        else:
+            db.add(row)
+    row.filepath, row.filename = filepath, os.path.basename(filepath)
+    for column, value in cells.items():
+        setattr(row, column, value)
+    return row
 
 
 def newest_of_its_file(Log):
-    """SQL: the row is its file's newest - no row of the same table and path (`path_key`) after it. A re-read writes a
-    new row and leaves the older ones as they were, so «the checklist» is the newest row of each (table, path) (소유자
-    10-21; 총괄 10-23: the progress count and the first-start stamping ask this one condition)."""
+    """SQL: the log row is its file's newest - no row of the same table and path (`path_key`) after it. What
+    `fill_checklist` takes from the records written before the checklist was a table of its own."""
     from sqlalchemy import exists
     from sqlalchemy.orm import aliased
 
@@ -344,20 +355,42 @@ def newest_of_its_file(Log):
                            newer.id > Log.id)
 
 
+def fill_checklist(db):
+    """The checklist made from the records once (총괄 64b264610 ②): each (table, file)'s newest record
+    (`newest_of_its_file`) is its row - state, stamp, source, times - and a waiting one keeps the state its re-read mark
+    says it had (`file_reread_marks`); a file the checklist already has a row for (a Read now before this) keeps it.
+    One statement: it is all there or none. -> rows made."""
+    from sqlalchemy import case, exists, insert, select
+
+    from database.models import FileChecklist as Row, FileIngestionLog as Log, FileRereadMark as Mark, path_key
+
+    columns = ["table_name", "path_key", "filepath", "filename", "source", "status", "status_before", "file_mtime",
+               "file_size", "log_id", "created_at", "updated_at"]
+    chosen = (select(Log.table_name, path_key(Log.filepath), Log.filepath, Log.filename, Log.source, Log.status,
+                     case((Log.status == "PENDING_RETRY", Mark.status_before), else_=None), Log.file_mtime,
+                     Log.file_size, Log.id, Log.created_at, Log.updated_at)
+              .select_from(Log).outerjoin(Mark, Mark.log_id == Log.id)
+              .where(Log.table_name.isnot(None), Log.filepath.isnot(None), Log.status.isnot(None),
+                     newest_of_its_file(Log),
+                     ~exists().where(Row.table_name == Log.table_name, Row.path_key == path_key(Log.filepath))))
+    made = db.execute(insert(Row).from_select([getattr(Row, name) for name in columns], chosen)).rowcount
+    db.commit()
+    return made
+
+
 def read_progress(db) -> list:
-    """The checklist's progress (소유자 10-23 「몇 개 중 몇 개 읽고 있는지」): per (table, source) its files - the newest row
-    of each (`newest_of_its_file`) - `total`, `read` (stamped: checked, not read again) and `left` (no stamp: waiting,
-    being read, failed and let go, or unchecked) by state. A file no row names yet (not reached by a sweep) is in no
-    count. One GROUP BY. -> [{"table_name", "source", "total", "read", "left", "left_by_status"}]."""
+    """The checklist's progress (소유자 10-23 「몇 개 중 몇 개 읽고 있는지」): per (table, source) its files - `total`,
+    `read` (stamped: checked, not read again) and `left` (no stamp: waiting, being read, failed and let go, or
+    unchecked) by state. A file no row names yet (not reached by a sweep) is in no count. One GROUP BY.
+    -> [{"table_name", "source", "total", "read", "left", "left_by_status"}]."""
     from sqlalchemy import func
 
-    from database.models import FileIngestionLog as Log
+    from database.models import FileChecklist as Row
 
-    stamped = Log.file_mtime.isnot(None)
+    stamped = Row.file_mtime.isnot(None)
     out = {}
-    for table, source, status, read, n in (db.query(Log.table_name, Log.source, Log.status, stamped, func.count(Log.id))
-                                           .filter(newest_of_its_file(Log))
-                                           .group_by(Log.table_name, Log.source, Log.status, stamped)):
+    for table, source, status, read, n in (db.query(Row.table_name, Row.source, Row.status, stamped, func.count(Row.id))
+                                           .group_by(Row.table_name, Row.source, Row.status, stamped)):
         entry = out.setdefault((table, source), {"table_name": table, "source": source, "total": 0, "read": 0,
                                                   "left": 0, "left_by_status": {}})
         entry["total"] += n
@@ -370,45 +403,36 @@ def read_progress(db) -> list:
 
 
 def stamp_read_files(db, table_name: str, entries) -> dict:
-    """The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): a log row from before it carries no
+    """The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): a row from before it carries no
     stamp, so every file a sweep looks at would be read again. For the `(filepath, file_stat)` entries a sweep has just
-    stat'd - the disk is not looked at again - the newest row of each (table, path) with no stamp: SUCCESS and written
-    at or after the file's mtime (unchanged since that read) gets the file's stamp; FAILED is not stamped (read once
-    more). -> {"stamped", "failed", "changed"}: the log row ids - a file asked again (its read's own ask) is one."""
-    from sqlalchemy import literal, select
-
-    from database.models import FileIngestionLog as Log, path_key
+    stat'd - the disk is not looked at again - each file's row with no stamp: SUCCESS and written at or after the
+    file's mtime (unchanged since that read) gets the file's stamp; FAILED is not stamped (read once more).
+    -> {"stamped", "failed", "changed"}: the row ids - a file asked again (its read's own ask) is one."""
+    from database.models import FileChecklist as Row
 
     said = {"stamped": [], "failed": [], "changed": []}
     items = list({filepath: (filepath, file_stat) for filepath, file_stat in entries if filepath and file_stat}.values())
     for start in range(0, len(items), CHECKED_BATCH_SIZE):
         chunk = items[start:start + CHECKED_BATCH_SIZE]
-        keys = db.execute(select(*[path_key(literal(filepath)) for filepath, _stat in chunk])).one()
+        keys = _keys(db, [filepath for filepath, _stat in chunk])
         stat_of = dict(zip(keys, (file_stat for _filepath, file_stat in chunk)))
-        newest = {}
-        for row in db.query(Log.id, path_key(Log.filepath), Log.status, Log.updated_at, Log.created_at,
-                            Log.file_mtime).filter(Log.table_name == table_name,
-                                                   path_key(Log.filepath).in_(list(stat_of)), newest_of_its_file(Log)):
-            newest[row[1]] = row
         stamps = []
-        for log_id, key, status, updated, created, stamped in newest.values():
-            if stamped is not None:
-                continue
+        for row_id, key, status, updated, created in db.query(
+                Row.id, Row.path_key, Row.status, Row.updated_at, Row.created_at).filter(
+                Row.table_name == table_name, Row.path_key.in_(list(stat_of)), Row.file_mtime.is_(None)):
             if status == STATUS_FAILED:
-                said["failed"].append(log_id)
+                said["failed"].append(row_id)
                 continue
             if status != "SUCCESS":
                 continue
-            when = updated or created
-            if when is not None and when.tzinfo is None:
-                when = when.replace(tzinfo=timezone.utc)
+            when = _utc(updated or created)
             mtime, size = stat_of[key]
             if when is not None and when >= mtime:
-                stamps.append({"id": log_id, "file_mtime": mtime, "file_size": size})
+                stamps.append({"id": row_id, "file_mtime": mtime, "file_size": size})
             else:
-                said["changed"].append(log_id)
+                said["changed"].append(row_id)
         if stamps:
-            db.bulk_update_mappings(Log, stamps)
+            db.bulk_update_mappings(Row, stamps)
             db.commit()
         said["stamped"] += [stamp["id"] for stamp in stamps]
     return said

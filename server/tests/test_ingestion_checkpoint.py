@@ -529,11 +529,9 @@ def test_admin_retry_path_bypasses_dedup_and_reingests(p2_env):
 
     db = p2_env["SessionLocal"]()
     try:
-        log_entry = models.FileIngestionLog(
-            filename="retry.csv", filepath=archived, table_name=TABLE,
-            status="PENDING", error_message=None, retry_count=0,
-        )
-        db.add(log_entry)
+        from ingestion import checkpoint as checklist
+
+        log_entry = checklist.note_file(db, TABLE, archived, status="PENDING")      # the retry door's claimed row
         db.commit()
         with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
             ok = handler.process_archived_file_sync(log_entry, db)

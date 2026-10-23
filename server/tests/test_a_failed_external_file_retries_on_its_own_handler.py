@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 import directory_watcher
 import run_watcher
 from database import crud, models
+from ingestion import checkpoint
 from database.database import Base
 from directory_watcher import WorkspaceWatcher
 from tests.test_external_source_watcher import VOID_INFO, _write_voids
@@ -73,20 +74,23 @@ def env(tmp_path, monkeypatch):
 def _log(Session, filename):
     db = Session()
     try:
-        return db.query(models.FileIngestionLog).filter_by(filename=filename).one().id
+        return db.query(models.FileChecklist).filter_by(filename=filename).one().id
     finally:
         db.close()
 
 
 def _retry(Session, log_id):
-    """As the poller does it: claim the row, then `retry_one`."""
+    """As the poller does it: claim the checklist row, then `retry_one` -> its state after, its newest record's
+    message."""
     db = Session()
     try:
-        log = db.get(models.FileIngestionLog, log_id)
+        log = db.get(models.FileChecklist, log_id)
         log.status = "PENDING"
         db.commit()
         run_watcher.retry_one(db, log)
-        return log.status, log.error_message
+        db.expire_all()
+        log = db.get(models.FileChecklist, log_id)
+        return log.status, db.get(models.FileIngestionLog, log.log_id).error_message
     finally:
         db.close()
 
@@ -108,7 +112,7 @@ def test_an_external_file_fixed_by_its_options_goes_in_on_retry_with_its_folder(
     handler.process_with_retry(str(path), delay=0.01)
     log_id = _log(env["Session"], "voids.json")
     db = env["Session"]()
-    assert db.get(models.FileIngestionLog, log_id).status == "FAILED"
+    assert db.get(models.FileChecklist, log_id).status == "FAILED"
     db.close()
 
     env["watcher"]({"unit": "um"})           # the operator fixes the source, the watcher restarts
@@ -130,7 +134,7 @@ def test_a_managed_raws_file_retries_as_it_did(env):
     w.handlers_by_raw_path[raws].process_with_retry(bad, delay=0.01)
     log_id = _log(env["Session"], "parts.csv")
     db = env["Session"]()
-    where = db.get(models.FileIngestionLog, log_id).filepath
+    where = db.get(models.FileChecklist, log_id).filepath
     db.close()
     with open(where, "w", encoding="utf-8", newline="") as f:
         f.write("part_no,category,stock_qty\nP-1,Cap,5\n")
@@ -146,9 +150,7 @@ def test_a_managed_raws_file_retries_as_it_did(env):
 def test_a_table_the_watcher_does_not_run_fails_by_name(env):
     env["watcher"]({})
     db = env["Session"]()
-    log = models.FileIngestionLog(filename="x.csv", filepath="C:/nowhere/x.csv",
-                                  table_name="no_such_table", status="PENDING_RETRY")
-    db.add(log)
+    log = checkpoint.note_file(db, "no_such_table", "C:/nowhere/x.csv", status="PENDING_RETRY")
     db.commit()
     log_id = log.id
     db.close()
@@ -160,8 +162,7 @@ def test_a_table_the_watcher_does_not_run_fails_by_name(env):
 
 def test_nothing_is_claimed_before_the_watcher_holds_its_handlers(env, monkeypatch):
     db = env["Session"]()
-    db.add(models.FileIngestionLog(filename="y.csv", filepath="C:/y.csv", table_name="rt_parts",
-                                   status="PENDING_RETRY"))
+    checkpoint.note_file(db, "rt_parts", "C:/y.csv", status="PENDING_RETRY")
     db.commit()
     monkeypatch.setattr(run_watcher, "workspace_watcher", None)
     assert run_watcher.pending_retries(db) == []

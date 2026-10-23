@@ -155,8 +155,7 @@ def test_the_retry_path_holds_its_own_claim(hb_dir, handler, monkeypatch, tmp_pa
     class _Log:
         filepath = str(src)
         status = "PENDING"
-        error_message = None
-        retry_count = 0
+        status_before = None
         source = None
 
     assert handler.process_archived_file_sync(_Log(), _FakeSession()) is False

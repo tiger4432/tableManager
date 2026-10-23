@@ -30,10 +30,10 @@ def _write(path, text):
 
 
 def _row(db, table, path, status="SUCCESS", file_stat=None):
-    row = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
-                                  source="raws", retry_count=0, file_mtime=file_stat[0] if file_stat else None,
-                                  file_size=file_stat[1] if file_stat else None)
-    db.add(row)
+    """The file's checklist row, as a read leaves it."""
+    row = checkpoint.note_file(db, table, path, status=status, source="raws",
+                               file_mtime=file_stat[0] if file_stat else None,
+                               file_size=file_stat[1] if file_stat else None)
     db.commit()
     return row
 
@@ -57,7 +57,7 @@ def test_the_retry_door_says_why_it_reads(db_session, tmp_path):
     reread.mark_for_reread(db_session, [was_read, failed])
     _logs, (stood,) = reread.stand_rows(db_session, "ta", [(None, None, str(tmp_path / "c.csv"))])
     db_session.commit()
-    assert [reread.why_handed(db_session, log) for log in (was_read, failed, stood)] == [
+    assert [reread.why_handed(row) for row in (was_read, failed, stood)] == [
         checkpoint.WHY_READ_AGAIN, checkpoint.WHY_RETRY, checkpoint.WHY_READ_NOW]
 
 
@@ -92,10 +92,10 @@ def test_a_real_watcher_says_why_on_its_lines_and_its_lap(tmp_path):
     assert sweep["looked"] == 3 and sweep["seconds"] is not None, sweep
 
     with Session(engine) as s:                                                           # Read all again: one file
-        reread.mark_for_reread(s, s.query(models.FileIngestionLog).filter(
-            models.FileIngestionLog.filepath.like("%S2.csv")).all())
+        reread.mark_for_reread(s, s.query(models.FileChecklist).filter(
+            models.FileChecklist.filepath.like("%S2.csv")).all())
     said = _run(tmp_path, db, lambda c: c.execute(
-        "SELECT count(*) FROM file_ingestion_logs WHERE status = 'PENDING_RETRY'").fetchone()[0] == 0)
+        "SELECT count(*) FROM file_checklist WHERE status = 'PENDING_RETRY'").fetchone()[0] == 0)
     assert re.search(r"File to read \(read again\): \S+S2\.csv", said), said[-3000:]
     with Session(engine) as s:                                   # every file's newest row checked again
         assert [(p["total"], p["left"]) for p in checkpoint.read_progress(s)] == [(3, 0)]

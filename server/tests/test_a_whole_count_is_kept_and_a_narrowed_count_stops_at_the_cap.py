@@ -268,11 +268,14 @@ def test_the_export_past_its_cap_says_more_than_the_cap(client, monkeypatch):
 
 @pytest.mark.parametrize("failed, cap, said", [(3, 2, (2, True)), (3, 3, (3, False)), (0, 2, (0, False))])
 def test_the_file_ingestion_list_counts_its_state_up_to_the_cap(db_session, monkeypatch, failed, cap, said):
-    """Owner 10-16: the failed list took 10 s - the log table only grows and every failed row was counted."""
+    """Owner 10-16: the failed list took 10 s - the log table only grows and every failed row was counted. The list
+    is the checklist's since 10-23 (one row per file); its count still stops at the cap."""
     monkeypatch.setattr(main_mod, "COUNT_CAP", cap)
+    from ingestion import checkpoint
+
     for i in range(failed):
-        db_session.add(models.FileIngestionLog(filename="f%d.csv" % i, table_name=TABLE, status="FAILED"))
-    db_session.add(models.FileIngestionLog(filename="ok.csv", table_name=TABLE, status="SUCCESS"))
+        checkpoint.note_file(db_session, TABLE, "C:/raws/f%d.csv" % i, status="FAILED")
+    checkpoint.note_file(db_session, TABLE, "C:/raws/ok.csv", status="SUCCESS")
     db_session.commit()
     seen = _counts_by_thread(monkeypatch)
 

@@ -386,16 +386,10 @@ def test_file_ingestion_callback_direct(db_session, tmp_path, monkeypatch):
     with open(dummy_file_path, "w", encoding="utf-8") as f:
         f.write("part_no,category\nTEST_PART_DIR,TestCategoryWS\n")
 
-    # Create failed log
-    failed_log = models.FileIngestionLog(
-        filename="test_direct_callback.csv",
-        filepath=dummy_file_path,
-        table_name="inventory_master",
-        status="FAILED",
-        error_message="Simulated failure",
-        retry_count=0
-    )
-    db_session.add(failed_log)
+    # The failed file's checklist row - what the retry door takes
+    from ingestion import checkpoint
+
+    failed_log = checkpoint.note_file(db_session, "inventory_master", dummy_file_path, status="FAILED")
     db_session.commit()
 
     called_back = []

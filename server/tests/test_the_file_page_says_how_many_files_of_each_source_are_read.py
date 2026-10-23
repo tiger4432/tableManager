@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """The checklist's progress (소유자 10-23 「몇 개 중 몇 개 읽고 있는지」, 총괄 07a16f238): GET /admin/file-ingestion/tables
-says per table, per source, files read / total / left by state - a file being its newest row (`newest_of_its_file`),
+says per table, per source, files read / total / left by state - a file being its checklist row (file_checklist),
 counted by the whole counter, not by the request.
 
   board                                         total   read   left
@@ -29,8 +29,12 @@ STAMP = {"file_mtime": datetime(2026, 10, 23), "file_size": 10}
 
 
 def _log(db, table, path, status, source="raws", stamped=False):
-    db.add(models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
-                                   source=source, retry_count=0, **(STAMP if stamped else {})))
+    stamp = STAMP if stamped else {"file_mtime": None, "file_size": None}
+    record = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
+                                     source=source, retry_count=0, **stamp)
+    db.add(record)
+    db.flush()
+    checkpoint.note_file(db, table, path, status=status, source=source, log_id=record.id, **stamp)
     db.flush()
 
 
@@ -100,7 +104,7 @@ def test_the_tables_say_read_total_and_left_per_source(client, db_session, monke
     assert swept[("quiet", r"D:\q")]["state"] == "rested" and tables["quiet"]["total"] == 0
     assert all(s["left"] == s["total"] - s["read"] for t in said["data"] for s in t["sources"])
     assert said["progress"]["counted_at"] and said["progress"]["failed"] is None
-    assert (tables["insp"]["total"], tables["insp"]["by_status"]["SUCCESS"]) == (8, 4)   # rows, as before
+    assert (tables["insp"]["total"], tables["insp"]["by_status"]["SUCCESS"]) == (6, 3)   # files: a · b · F
 
     # a file read since: counted again on the next ask past its pacing
     _log(db_session, "insp", r"C:\raws\insp\b.csv", "SUCCESS", stamped=True)

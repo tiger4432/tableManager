@@ -367,6 +367,7 @@
 
 ### 어드민 화면
 
+- 2026-10-23 [체크리스트가 파일당 한 행 — 파일 화면은 파일당 한 줄, 외부 훑기가 이름 먼저 거르고 바뀐 폴더만 볼 수 있다](#2026-10-23--체크리스트가-파일당-한-행--파일-화면은-파일당-한-줄-외부-훑기가-이름-먼저-거르고-바뀐-폴더만-볼-수-있다) — 적는 곳 ingestion_settings.json 의 sweep_interval_seconds · external_full_walk_every · 보는 곳 파일 화면 · 와처 시작 줄
 - 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
 - 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
 - 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
@@ -581,6 +582,18 @@
 - **선언** — 바뀐 것 없음.
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
 - **자세히** — `grid_pivot.stagedReadIds` · `stagedReadRows` · 화면 검사기 칸 «pivot apply writes» · «pivot apply asks» · «pivot apply drops» · «pivot blank writes».
+
+## 2026-10-23 · 체크리스트가 파일당 한 행 — 파일 화면은 파일당 한 줄, 외부 훑기가 이름 먼저 거르고 바뀐 폴더만 볼 수 있다
+
+소유자 10-23 「좀 한방에 제대로 끝내 · 질질 끌면서 3 일째」(voids.json 표), 총괄 64b264610 ②.
+
+- **무엇** — «이미 읽었나»를 답하는 체크리스트가 기록 표(file_ingestion_logs)에서 떨어져 자기 표 `file_checklist` 가 됐다. (표, 파일) 당 한 행: 지금 상태(SUCCESS · FAILED · 대기 PENDING_RETRY · 읽는 중 PENDING) · 도장(수정 시각 · 크기) · 가장 새 기록. 기록 표는 읽기마다 한 줄 쌓는 기록만 한다.
+- **파일 화면** — 목록 · 상태 칩 수 · 폴더 묶음의 failed/waiting 이 모두 체크리스트에서 나온다(파일당 한 줄, 지금 상태). 한 파일의 읽기 이력은 목록에 없다 — 기록 표에 남는다. 줄의 사유 · 읽은 행 수 · 걸린 초는 그 파일의 가장 새 기록에서 온다. 줄의 `id` 는 가장 새 기록 id, `checklist_id` 가 새로 붙는다.
+- **리트라이 문** — 다시 읽으면 기록 행을 고쳐 쓰지 않고 새 기록을 한 줄 쓴다(created_at 이 새 시각). 넘기기 전 상태(취소가 되돌릴 것)는 체크리스트 행의 `status_before` 에 산다(file_reread_marks 는 더 쓰지 않음). 와처 줄의 번호도 체크리스트 행이다 — «Retry succeeded for checklist row #N (파일).»
+- **처음 한 번** — 와처가 뜰 때 첫 훑기 «전»에 기록에서 체크리스트를 만든다(파일마다 가장 새 기록, 대기 행은 그 표시의 전 상태). 줄 «[Watcher] checklist made from the records: N file(s) in S s», 표시 파일 config/watcher_checklist_filled. 실패하면 다음 기동에 다시 한다.
+- **외부 훑기** — 파일마다 이름 · 깊이를 먼저 보고, 맞는 것만 디스크 경로 판정 · stat 을 한다(답은 같다). 훑기가 끝난 뒤 쉬는 초는 ingestion_settings.json 의 `sweep_interval_seconds`(기본 300). `external_full_walk_every` 에 N 을 적으면 수정 시각이 그대로인 폴더는 목록을 안 읽고 지나가고, N 번째 훑기마다 전체를 걷는다 — 제자리에서 다시 쓴 파일은 폴더 수정 시각을 안 바꾸므로 그 N 번째에 잡힌다. 비우면 지금처럼 매번 전체.
+- **보는 곳** — 와처 시작 줄 · 훑기 줄의 «folders unchanged N» · 파일 화면.
+- **필요한 조건** — git pull · 서버 재기동 · 와처 재기동(첫 기동에 한 번 만듦).
 
 ## 2026-10-23 · 와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기
 

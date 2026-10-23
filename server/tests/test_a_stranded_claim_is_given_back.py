@@ -42,9 +42,7 @@ OLD = datetime.now(timezone.utc) - timedelta(seconds=100_000)
 
 
 def claimed_row(db, *, table="dt_map", filename="a.csv", updated_at=OLD):
-    row = models.FileIngestionLog(filename=filename, filepath="/tmp/" + filename,
-                                  table_name=table, status="PENDING")
-    db.add(row)
+    row = ingestion.checkpoint.note_file(db, table, "/tmp/" + filename, status="PENDING")
     db.flush()
     row.updated_at = updated_at            # after flush: onupdate would stamp `now`
     db.flush()

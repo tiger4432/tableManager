@@ -53,9 +53,13 @@ def test_the_server_s_admin_retry_takes_the_table_s_file_lock(client, db_session
     monkeypatch.setattr(directory_watcher.IngestionHandler, "process_archived_file_sync",
                         lambda self, log, db, uploader="system": held.append(
                             directory_watcher.get_workspace_serial_lock(self.workspace_path).locked()) or True)
+    from ingestion import checkpoint
+
     log = models.FileIngestionLog(filename="f.csv", filepath=str(workspace / "raws" / "f.csv"), table_name="t",
                                   status="FAILED")
     db_session.add(log)
+    db_session.flush()
+    checkpoint.note_file(db_session, "t", log.filepath, status="FAILED", log_id=log.id)
     db_session.commit()
 
     client.post("/admin/file-ingestion/retry-failed", params={"log_id": log.id})
