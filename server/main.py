@@ -5558,8 +5558,25 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     sources = {}
     for row in (held or {}).get("total") or ():
         sources.setdefault(row["table_name"], []).append({k: v for k, v in row.items() if k != "table_name"})
+    # each external source's last sweep, off the watcher's heartbeat (총괄 64b264610): joined on (table, source)
+    from utils import heartbeat
+
+    laps = (heartbeat.read_all().get(directory_watcher.HEARTBEAT_NAME) or {}).get("laps") or {}
+    for name, lap in sorted(laps.items()):
+        if not name.startswith(directory_watcher.SWEEP_LAP_PREFIX):
+            continue
+        entries = sources.setdefault(lap.get("table"), [])
+        entry = next((e for e in entries if e["source"] == lap.get("source")), None)
+        if entry is None:
+            entry = {"source": lap.get("source"), "total": 0, "read": 0, "left": 0, "left_by_status": {}}
+            entries.append(entry)
+        entry["sweep"] = {k: lap.get(k) for k in ("state", "age_seconds", "seconds", "looked", "already_read",
+                                                   "dispatched", "why")}
     for entry in data:
         entry["sources"] = sources.get(entry["table_name"], [])
+    seen = {entry["table_name"] for entry in data}
+    data += [{"table_name": table, "total": 0, "by_status": {}, "last_at": None, "sources": entries}
+             for table, entries in sorted(sources.items(), key=lambda item: str(item[0])) if table not in seen]
     progress = {"counting": held is None, "counted_at": (held or {}).get("counted_at"),
                 "count_seconds": (held or {}).get("count_seconds"), "failed": (held or {}).get("failed")}
     return {"status": "success", "data": data, "progress": progress}

@@ -367,7 +367,7 @@ def test_a_checked_file_is_not_moved_while_another_thread_owns_it(env):
 
 
 def test_new_file_is_said_only_for_a_file_actually_read(env, caplog):
-    """(from test_sweep_tier1_hoist, retired 10-21; S-128) «New file detected» sits past the checklist: a checked file
+    """(from test_sweep_tier1_hoist, retired 10-21; S-128) «File to read (<why>)» sits past the checklist: a checked file
     is passed in silence, a file read is announced."""
     import logging
 
@@ -375,10 +375,10 @@ def test_new_file_is_said_only_for_a_file_actually_read(env, caplog):
     p = _write(env["raws"] / "a.csv", _csv(3))
     with caplog.at_level(logging.INFO):
         env["process"](p)
-        first = [r.getMessage() for r in caplog.records if "New file detected" in r.getMessage()]
+        first = [r.getMessage() for r in caplog.records if "File to read (new)" in r.getMessage()]
         caplog.clear()
         env["process"](p)
-        again = [r.getMessage() for r in caplog.records if "New file detected" in r.getMessage()]
+        again = [r.getMessage() for r in caplog.records if "File to read (new)" in r.getMessage()]
     assert len(first) == 2 and all("a.csv" in line for line in first), first
     assert again == [], again
 

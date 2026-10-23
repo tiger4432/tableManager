@@ -652,6 +652,18 @@ def split_missing(picked):
     return present, missing
 
 
+def why_handed(db, log):
+    """The retry door's word for a row it reads (총괄 64b264610): its mark's state before it was handed - a read file
+    (Read all again) WHY_READ_AGAIN, a file the re-read stood WHY_READ_NOW, anything else (a failed file) WHY_RETRY."""
+    from database import models
+    from ingestion import checkpoint
+
+    mark = db.get(models.FileRereadMark, log.id)
+    before = mark.status_before if mark is not None else None
+    return (checkpoint.WHY_READ_AGAIN if before == "SUCCESS" else checkpoint.WHY_READ_NOW if before == STOOD_BY_REREAD
+            else checkpoint.WHY_RETRY)
+
+
 def mark_for_reread(db, logs, page=MARK_PAGE, folder=None):
     """Hand `logs` to the watcher: PENDING_RETRY, a page a commit, each row's state before it kept in
     `file_reread_marks` (a row already waiting keeps the state it had first). -> [(id, the state it had)]."""

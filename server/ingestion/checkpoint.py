@@ -271,11 +271,19 @@ def _same_path(recorded: str, filepath: str) -> bool:
 CHECKED_BATCH_SIZE = 500
 
 
-def checked(db, table_name: str, entries) -> dict:
+#: Why a file is read (총괄 64b264610 «보낼 때마다 왜를 하나»): the checklist's words (`checked(words=)`), then the
+#: retry door's (`reread.why_handed`). The watcher's line and the file page's counts say these, and only these.
+WHY_NEW, WHY_CHANGED, WHY_UNSTAMPED = "new", "changed", "unstamped"
+WHY_RETRY, WHY_READ_AGAIN, WHY_READ_NOW = "retry", "read again", "read now"
+WHY_UNREAD = "checklist not read"
+
+
+def checked(db, table_name: str, entries, words=None) -> dict:
     """The checklist (소유자 10-21): `{filepath: status}` for the `(filepath, file_stat)` entries a file log row of
     `table_name` checks - the same path as `path_key` spells it (both sides folded in SQL, one spelling), the same
     (mtime, size). Its status is the newest such row's (SUCCESS, FAILED, or PENDING once handed to the retry door).
-    A path absent is not checked: it is read."""
+    A path absent is not checked: it is read - and `words`, when given, gets why for each such path, off its file's
+    newest row (`newest_of_its_file`): WHY_NEW none · WHY_UNSTAMPED no stamp · WHY_CHANGED another stamp."""
     from sqlalchemy import literal, select
 
     from database.models import FileIngestionLog as Log, path_key
@@ -302,7 +310,24 @@ def checked(db, table_name: str, entries) -> dict:
             if (key, size) in by_key:
                 for filepath in paths:
                     found[filepath] = by_key[(key, size)]
+    if words is not None:
+        _why_not_checked(db, table_name, [filepath for filepath, _stat in items if filepath not in found], words)
     return found
+
+
+def _why_not_checked(db, table_name, filepaths, words):
+    """`checked`'s words for the paths it did not check - only those: one query a batch over their newest rows."""
+    from sqlalchemy import literal, select
+
+    from database.models import FileIngestionLog as Log, path_key
+
+    for start in range(0, len(filepaths), CHECKED_BATCH_SIZE):
+        chunk = filepaths[start:start + CHECKED_BATCH_SIZE]
+        keys = db.execute(select(*[path_key(literal(filepath)) for filepath in chunk])).one()
+        stamped = dict(db.query(path_key(Log.filepath), Log.file_mtime.isnot(None)).filter(
+            Log.table_name == table_name, path_key(Log.filepath).in_(list(keys)), newest_of_its_file(Log)))
+        for filepath, key in zip(chunk, keys):
+            words[filepath] = (WHY_NEW if key not in stamped else WHY_CHANGED if stamped[key] else WHY_UNSTAMPED)
 
 
 def newest_of_its_file(Log):

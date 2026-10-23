@@ -365,6 +365,7 @@
 
 ### 어드민 화면
 
+- 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
 - 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
 - 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
 - 2026-10-21 [Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도](#2026-10-21--read-all-again--표--폴더의-파일을-통째로-다시-읽힌다-상한은-거절이-아니라-속도) — 누르는 곳 파일 화면 폴더 줄 · Files 머리의 «Read all again»
@@ -561,6 +562,18 @@
 - **선언** — 바뀐 것 없음.
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
 - **자세히** — `grid_pivot.stagedReadIds` · `stagedReadRows` · 화면 검사기 칸 «pivot apply writes» · «pivot apply asks» · «pivot apply drops» · «pivot blank writes».
+
+## 2026-10-23 · 와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기
+
+소유자 10-23 「이 표 한 번 다 읽은 건데 죄다 뉴 파일이래」 · 「좀 한방에 제대로 끝내 · 다 알게 하든 뭐든」 (총괄 64b264610 ①).
+
+- **무엇** — 와처 줄 «New file detected: <경로>» 가 «File to read (<낱말>): <경로>» 로 바뀐다. 전의 줄은 바뀐 파일 · 체크 해제된 파일도 «New» 라고 말했다.
+- **낱말** — 체크리스트가 답한다(훑기 · 이벤트 · 트리 읽기 모두): `new` 기록 없음 · `changed` 읽은 때와 수정 시각 · 크기가 다름 · `unstamped` 기록은 있는데 도장이 없음(스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨 · 잠금 대기로 끝난 읽기). 리트라이 문이 답한다: `read again` 읽었던 파일을 넘김(Read all again) · `retry` 실패 파일을 넘김 · `read now` Read now 로 처음 넘김. 체크리스트를 못 읽으면 `checklist not read`.
+- **훑기 줄** — «External source <표>@<루트>: N file(s) looked at - … dispatched M (changed 1 · new 2)» 처럼 보낸 수에 낱말별 수가 붙는다. raws/ 훑기 줄도 같다.
+- **폴더째 읽는 표** — `stability_interval_seconds` 를 적은 소스는 «📂 folder settled after N s: <폴더> - <방아쇠 파일> handed on» 한 줄을 남긴다.
+- **파일 화면** — `GET /admin/file-ingestion/tables` 의 sources[] 각 줄에 `sweep`: state(sweeping · rested · unavailable) · age_seconds(지난 기록 뒤 초) · seconds(훑기에 걸린 초) · looked · already_read · dispatched · why(낱말별 수). 와처 heartbeat 의 랩으로 오므로 와처가 박동해야 새로 고쳐진다. 화면 줄은 클라 착지 뒤.
+- **바뀐 동작** — 읽을지 말지는 그대로다. 말만 바뀐다. «New file detected» 를 찾던 사람 · 스크립트는 «File to read» 로 찾는다.
+- **필요한 조건** — git pull · 와처 재기동(서버 재기동은 화면 칸 때문에).
 
 ## 2026-10-23 · 파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다
 

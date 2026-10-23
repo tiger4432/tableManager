@@ -2369,11 +2369,15 @@ class IngestionHandler(FileSystemEventHandler):
         """An external trigger file, read once its folder went quiet (`_wait_tree_quiescent`) - or after the max wait,
         with what was there, said (총괄 b15d6b66e)."""
         try:
+            began = time.monotonic()
             quiet, still = self._wait_tree_quiescent(abs_dir, lambda written: 0, interval)
             if not quiet and still is not None:
                 self.say_what_a_folder_left(abs_dir, "read_while_changing", (
                     f"{len(still)} file(s) still changing after {FLATTEN_STABILITY_MAX_WAIT_SECONDS}s "
                     f"(still changing: {_named(still)})"))
+            elif quiet:
+                logger.info(f"[{self.table_name}] 📂 folder settled after {time.monotonic() - began:.0f} s: {abs_dir} "
+                            f"- {os.path.basename(abs_path)} handed on")
             self._handle_now(abs_path)
         except Exception:
             import traceback
@@ -2836,13 +2840,14 @@ class IngestionHandler(FileSystemEventHandler):
         if file_stat is None:
             logger.debug(f"File vanished before processing: {file_path}")
             return
-        if self.already_checked([(abs_path, file_stat)]):
+        answer = self.already_checked([(abs_path, file_stat)])
+        if abs_path in answer:
             return
 
-        # 🔴 PAST THE CHECKLIST, SO THE WORD 「New」 IS TRUE (S-128). A checked file is passed in silence: one line
-        # per file every sweep on an unarchived source buries the events somebody is looking for.
-        logger.info(f"New file detected: {abs_path}")
-        logger.info(f"[{t_name or self.table_name}] 📥 New file detected: {basename}")
+        # 🔴 PAST THE CHECKLIST, WITH ITS WORD (S-128; 총괄 64b264610 - the line said «New» for a changed or unchecked
+        # file too). A checked file is passed in silence: one line per file every sweep on an unarchived source buries
+        # the events somebody is looking for.
+        self._say_file_to_read(t_name, abs_path, answer.why.get(abs_path, ingestion.checkpoint.WHY_UNREAD))
 
         # Initial debounce to allow file copy to finish
         if copy_wait_needed(abs_path):
@@ -3040,24 +3045,26 @@ class IngestionHandler(FileSystemEventHandler):
         already read at that (mtime, size) - not dispatched, not read. EVERY seat asks here: the raws/ sweep, the
         external sweep, the tree walk and the event (one entry). Unreadable checklist -> nothing checked: the files go
         on to be read (availability first)."""
+        unread = {filepath: ingestion.checkpoint.WHY_UNREAD for filepath, _stat in entries}
         if not entries:
-            return set()
+            return Checked()
         t_name, _table_info = self._snapshot_table_context()
         if not t_name:
-            return set()
+            return Checked(why=unread)
         db = SessionLocal()
+        words = {}
         try:
             if not self._stamp_read_files(db, t_name, entries):
-                return {filepath for filepath, _stat in entries}
-            statuses = ingestion.checkpoint.checked(db, t_name, entries)
+                return Checked({filepath for filepath, _stat in entries})
+            statuses = ingestion.checkpoint.checked(db, t_name, entries, words=words)
         except Exception as e:
             logger.warning(f"[{t_name}] The checklist could not be read for {len(entries)} file(s) - they are read: "
                            f"{told(e)}", exc_info=e)
-            return set()
+            return Checked(why=unread)
         finally:
             db.close()
         self._settle_terminal_hits(statuses)
-        return set(statuses)
+        return Checked(statuses, words)
 
     def _settle_terminal_hits(self, statuses: dict):
         """The move a checked file still in raws/ owes (its move failed when it was read), done once per batch.
@@ -3300,9 +3307,17 @@ class IngestionHandler(FileSystemEventHandler):
             return self._process_archived_file_sync(log_entry, db, uploader,
                                                     filepath, t_name, table_info)
 
+    def _say_file_to_read(self, t_name, abs_path, why):
+        """The line every read says before it reads (총괄 64b264610): why, by `checkpoint`'s word."""
+        logger.info(f"File to read ({why}): {abs_path}")
+        logger.info(f"[{t_name or self.table_name}] 📥 File to read ({why}): {os.path.basename(abs_path)}")
+
     def _process_archived_file_sync(self, log_entry, db, uploader, filepath,
                                     t_name, table_info):
+        from ingestion import reread
+
         began, parse_meta, tally, skipped_no_key = time.monotonic(), {}, None, 0
+        self._say_file_to_read(t_name, os.path.abspath(filepath), reread.why_handed(db, log_entry))
         # The door reads without asking the checklist - a person chose this file - and its row then checks it.
         file_stat = read_file_stat(os.path.abspath(filepath))
         try:
@@ -4156,6 +4171,23 @@ class IngestionHandler(FileSystemEventHandler):
             raise refused
         return dropped
 
+class Checked(set):
+    """`already_checked`'s answer: the paths checked, and `why` - the checklist's word for each path it did not check
+    (`checkpoint.checked(words=)`)."""
+
+    def __init__(self, paths=(), why=None):
+        super().__init__(paths)
+        self.why = why or {}
+
+
+def said_why(words) -> str:
+    """« (new 2 · changed 1)» for a dispatch count - the words as `checkpoint` spells them, or nothing."""
+    counts = {}
+    for word in words:
+        counts[word] = counts.get(word, 0) + 1
+    return " (%s)" % " · ".join("%s %d" % item for item in sorted(counts.items())) if counts else ""
+
+
 class ExternalSourceEventHandler(FileSystemEventHandler):
     """Read-only watchdog adapter for one external root/table binding."""
 
@@ -4201,6 +4233,21 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
         # The handler's processing lock and the checklist (a changed stamp) absorb duplicate event bursts.
         if not event.is_directory:
             self.dispatch_path(event.src_path)
+
+
+#: The heartbeat lap a source's sweep leaves (총괄 64b264610 - the file page's line per store): «sweep:<table>@<root>».
+SWEEP_LAP_PREFIX = "sweep:"
+
+
+def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_read=None, words=()):
+    """One external source's sweep, as the watcher's heartbeat carries it to the API (`heartbeat.record_lap`): sweeping
+    · rested · unavailable, its seconds, files looked at, already read, dispatched and why by word."""
+    counts = {}
+    for word in words:
+        counts[word] = counts.get(word, 0) + 1
+    heartbeat.record_lap(HEARTBEAT_NAME, SWEEP_LAP_PREFIX + spec["source_id"], seconds=seconds, state=state,
+                         table=spec["table_name"], source=spec["root"], looked=looked, already_read=already_read,
+                         dispatched=dispatched, why=counts)
 
 
 def _say_what_stalled_files_wait_on():
@@ -4567,16 +4614,18 @@ class WorkspaceWatcher:
 
             candidates.sort(key=lambda c: c[0])
 
-            cleared = set()
+            cleared, why = set(), {}
             by_handler = {}
             for _m, _fp, abs_fp, handler, fstat in candidates:
                 by_handler.setdefault(handler, []).append((abs_fp, fstat))
             for handler, entries in by_handler.items():
                 if self._stop_event.is_set():
                     break  # shutdown: the dispatch loop below breaks too
-                cleared |= handler.already_checked(entries)
+                answer = handler.already_checked(entries)
+                cleared |= answer
+                why.update(answer.why)
 
-            processed = 0
+            processed, words = 0, []
             for _mtime, fp, abs_fp, handler, _fstat in candidates:
                 if self._stop_event.is_set():
                     break
@@ -4584,11 +4633,12 @@ class WorkspaceWatcher:
                     continue
                 handler._handle_event(fp)
                 processed += 1
+                words.append(why.get(abs_fp, ingestion.checkpoint.WHY_UNREAD))
             if processed or cleared:
                 logger.info(
                     f"🧹 Sweep: {len(candidates)} candidate file(s) in raws/ — "
                     f"{len(cleared)} already read, "
-                    f"{processed} dispatched."
+                    f"{processed} dispatched{said_why(words)}."
                 )
             return processed
 
@@ -4617,6 +4667,7 @@ class WorkspaceWatcher:
                             f"External source unavailable during sweep; it will be "
                             f"retried: {root} -> {spec['table_name']}")
                     self._external_availability[source_id] = False
+                    _sweep_lap(spec, "unavailable")
                     continue
                 if self._external_availability.get(source_id) is False:
                     logger.info(
@@ -4630,6 +4681,12 @@ class WorkspaceWatcher:
                 pages[source_id] = self._external_pages(source_id, target, why_not[source_id], lambda: said())
 
             began = said_at = time.monotonic()
+            words = {source_id: [] for source_id in why_not}
+
+            def lap(state, source_id):
+                _sweep_lap(self.external_targets[source_id]["spec"], state, seconds=time.monotonic() - began,
+                           looked=why_not[source_id]["looked"], dispatched=why_not[source_id]["dispatched"],
+                           already_read=why_not[source_id]["already read"], words=words[source_id])
 
             def said(force=False):
                 """Every SWEEP_PROGRESS_SECONDS: each source's looked · dispatched · seconds - running or stuck."""
@@ -4638,8 +4695,13 @@ class WorkspaceWatcher:
                     return
                 for source_id, why in why_not.items():
                     logger.info(f"External sweep in progress: {source_id} looked {why['looked']} · dispatched "
-                                f"{why['dispatched']} · {time.monotonic() - began:.0f} s")
+                                f"{why['dispatched']}{said_why(words[source_id])} · {time.monotonic() - began:.0f} s")
+                    if source_id in self.external_targets:
+                        lap("sweeping", source_id)
                 said_at = time.monotonic()
+
+            for source_id in why_not:
+                lap("sweeping", source_id)
 
             # Sources in turn, file by file (소유자 10-20: one share's thousands of old files held every source behind
             # it for minutes) - over a page of each, handed on as soon as it is walked (총괄 10-21: a deep share's whole
@@ -4655,17 +4717,19 @@ class WorkspaceWatcher:
                     handler = self.external_targets[source_id]["handler"]
                     cleared = handler.already_checked([(abs_path, file_stat) for _m, abs_path, file_stat in page])
                     why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s in page if abs_path in cleared)
-                    turns.append([(source_id, handler, abs_path) for _m, abs_path, _s in _dispatch_order(page)
-                                  if abs_path not in cleared])
+                    turns.append([(source_id, handler, abs_path, cleared.why.get(abs_path,
+                                                                                  ingestion.checkpoint.WHY_UNREAD))
+                                  for _m, abs_path, _s in _dispatch_order(page) if abs_path not in cleared])
                 for turn in itertools.zip_longest(*turns):
                     for item in turn:
                         if item is None or self._stop_event.is_set():
                             continue
-                        source_id, handler, abs_path = item
+                        source_id, handler, abs_path, word = item
                         if source_id not in self.external_targets:
                             continue                    # retired while this sweep ran (총괄 10-21)
                         handler._handle_event(abs_path)
                         why_not[source_id]["dispatched"] += 1
+                        words[source_id].append(word)
                         said()
             processed = sum(why["dispatched"] for why in why_not.values())
             already = sum(why["already read"] for why in why_not.values())
@@ -4680,7 +4744,10 @@ class WorkspaceWatcher:
                 reasons = " · ".join(f"{name} {n}" for name, n in why.items()
                                      if name not in ("looked", "first not listed"))
                 logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons}"
+                            f"{said_why(words[source_id])}"
                             + (f" (first not listed: {why['first not listed']})" if "first not listed" in why else ""))
+                if source_id in self.external_targets:
+                    lap("rested", source_id)
             return processed
 
     def _external_pages(self, source_id, target, why, said):
