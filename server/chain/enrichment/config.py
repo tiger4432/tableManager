@@ -1994,7 +1994,10 @@ def _queue_spec_condition(table_model, rule: dict, col: str, spec: dict):
     """
     import column_filter
 
-    cond = column_filter.get_column_filter_condition(table_model, col, spec)
+    try:
+        cond = column_filter.get_column_filter_condition(table_model, col, spec)
+    except column_filter.FilterRefused as refused:
+        raise QueuePredicateError(f"filter for column '{col}' on table '{rule['derived_table']}': {refused}") from None
     if cond is None:
         raise QueuePredicateError(
             f"filter for column '{col}' could not be translated on table "

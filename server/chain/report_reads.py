@@ -57,6 +57,7 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None):
     """`columns` of the role's table for these wafers (None: every row) - through the grid read path. Rows past
     READ_ROW_CAP are refused - or, with `newest` (a column), the newest READ_ROW_CAP by it are the answer."""
     import grid_read
+    from fastapi import HTTPException
 
     table = role["table"]
     model = _model(table)
@@ -67,7 +68,10 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None):
             return []
         for at, column in enumerate(keys):
             filters[column] = _equals_any(column, sorted({str(w[at]) for w in wafers if w[at] is not None}))
-    query, _key = grid_read.narrowed_table_query(db, table, model, filters=json.dumps(filters) if filters else None)
+    try:
+        query, _key = grid_read.narrowed_table_query(db, table, model, filters=json.dumps(filters) if filters else None)
+    except HTTPException as refused:                       # a filter the table cannot take, by name (S-71)
+        raise ReadRefused(str(refused.detail)) from None
     if newest:
         query = query.order_by(getattr(model, newest).desc())
     found = query.with_entities(*(getattr(model, c) for c in columns)).limit(READ_ROW_CAP + 1).all()

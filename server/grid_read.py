@@ -6,7 +6,7 @@ import logging
 from fastapi import HTTPException
 
 import grid_pivot
-from column_filter import ROW_ID_FILTER_NAMES, get_column_filter_condition, model_has_row_id
+from column_filter import ROW_ID_FILTER_NAMES, FilterRefused, get_column_filter_condition, model_has_row_id
 from database import crud, models
 
 logger = logging.getLogger("Server")
@@ -119,6 +119,12 @@ def total_order_keys(table_model, table_name):
                 "table_config.json." % table_name))
 
 
+def filter_refused(table_name, item, refused):
+    """The 422 a filter that cannot narrow the rows answers (`column_filter.FilterRefused`) - by its item's name."""
+    return HTTPException(status_code=422, detail=f"The filter for '{table_name}' cannot be built (item '{item}'): "
+                                                 f"{refused}. Nothing is returned rather than the unfiltered table.")
+
+
 def apply_column_filters(query, table_model, table_name, filters):
     """`?filters=` (AG-Grid filter model) -> query. Shared by the grid and the export."""
     if not filters:
@@ -144,6 +150,8 @@ def apply_column_filters(query, table_model, table_name, filters):
         # A deliberate refusal must not be swallowed by the catch-all below and turned
         # back into the silent 200 it exists to prevent.
         raise
+    except FilterRefused as refused:
+        raise filter_refused(table_name, failing_item, refused) from refused
     except Exception as e:
         # 🔴 A FILTER THAT CANNOT BE BUILT IS REFUSED, NOT DROPPED (S-71). This used to log
         # and fall through, and the response then carried the WHOLE table while still
@@ -340,7 +348,10 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
     key_filters, items = grid_pivot.split_filters(filters, pivot) if pivot else (filters, {})
     query = apply_column_filters(query, table_model, table_name, key_filters)
     if pivot:
-        query = grid_pivot.narrow(query, table_model, pivot, items)
+        try:
+            query = grid_pivot.narrow(query, table_model, pivot, items)
+        except FilterRefused as refused:
+            raise filter_refused(table_name, pivot.value, refused) from refused
 
     # [2026-08-05] 이름 붙은 큐 술어 (일반 필터 DSL이 표현할 수 없는 컬럼 간 OR)
     query = apply_enrichment_queue_predicate(query, table_model, table_name,

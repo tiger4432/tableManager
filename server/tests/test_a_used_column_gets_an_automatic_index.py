@@ -160,12 +160,13 @@ def test_a_slow_grid_read_wants_its_sort_and_its_ordered_filters(client, monkeyp
     wanted = []
     monkeypatch.setattr(directory_watcher, "grid_auto_index_after", lambda settings=None: 1e-9)
     monkeypatch.setattr(index_wants, "want", lambda table, columns, why, seconds, bind: wanted.append((table, columns, why)))
-    filters = json.dumps({"EQP_ID": {"filterType": "text", "type": "equals", "filter": "X"},
-                          "LOT_ID": {"filterType": "text", "type": "contains", "filter": "Y"}})
-    assert client.get("/tables/raw_table_1/data", params={"order_by": "EQP_ID", "filters": filters}).status_code == 200
-    client.get("/tables/raw_table_1/data", params={"order_by": "updated_at"})
-    assert wanted == [("raw_table_1", ["EQP_ID"], "slow sort"), ("raw_table_1", ["EQP_ID"], "slow filter"),
-                      ("raw_table_1", ["LOT_ID"], models.AUTO_SLOW_SEARCH)], wanted
+    # two columns the table has - a filter on one it lacks is refused (S-71, 총괄 10-23), it once read the whole table
+    filters = json.dumps({"part_no": {"filterType": "text", "type": "equals", "filter": "X"},
+                          "category": {"filterType": "text", "type": "contains", "filter": "Y"}})
+    assert client.get("/tables/inventory_master/data", params={"order_by": "part_no", "filters": filters}).status_code == 200
+    client.get("/tables/inventory_master/data", params={"order_by": "updated_at"})
+    assert wanted == [("inventory_master", ["part_no"], "slow sort"), ("inventory_master", ["part_no"], "slow filter"),
+                      ("inventory_master", ["category"], models.AUTO_SLOW_SEARCH)], wanted
 
 
 def test_a_read_cancelled_at_its_limit_asks_too(monkeypatch):
