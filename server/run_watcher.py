@@ -485,7 +485,7 @@ def sweep_a_table_now(watcher, raws, sources, line):
         if raws:
             dispatched += watcher.sweep_existing_files(raws)
         if sources:
-            dispatched += watcher.sweep_external_sources(sources, walk_all=True)
+            dispatched += watcher.sweep_external_sources(sources)
         logger.info("%s - %d dispatched to be read again", line, dispatched)
     except Exception as e:                                         # noqa: BLE001 - the periodic sweep reads them
         logger.warning("%s - its sweep failed, the next periodic sweep reads them: %s", line, told(e), exc_info=e)
