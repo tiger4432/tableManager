@@ -489,8 +489,8 @@ def test_a_wafer_in_two_evaluations_is_refused_by_name(db, reported):
 def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, reported, tmp_path):
     """Owner 10-23 box sample: conditions a row a condition (written only when out of the ordinary), a chip image row
     naming its defects «a, b», no evaluation column - the model reads each wafer's conditions or «default conditions»,
-    a candidate is a wafer, and a chip image is shown for each defect it holds."""
-    from chain import report_reads
+    a candidate is a wafer of the report table (its legs together), and a chip image is shown for each defect it holds."""
+    from chain import report_html, report_reads
     from conftest import retire_dynamic_model
 
     more = {"kinds_cond": {"composite_key_source": ["wafer", "leg", "condition_id"],
@@ -509,7 +509,8 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
                             ("kinds_img", [{"wafer": "W1", "leg": "L1", "x": "3", "y": "4", "img_path": "c.png",
                                             "including_defects": "particle, scratch"}]),
                             # both defects occurred on W1/L1 (a defect of no failing chip gets no image)
-                            ("kinds_sum", [{"wafer": "W1", "leg": "L1", "item": "scratch", "fail": 2}])):
+                            ("kinds_sum", [{"wafer": "W1", "leg": "L1", "item": "scratch", "fail": 2},
+                                           {"wafer": "W2", "leg": "L2", "item": "scratch", "fail": 1}])):
             crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
                 schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in rows]))
         db.commit()
@@ -525,7 +526,13 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         said = report.conditions()["context"]
         assert "anneal: 450C 1" in said and "default conditions (no condition row): 1 wafers" in said, said
         lines = report.candidates()["context"].splitlines()
-        assert lines[1:] == ["W2/L1 · no date · 1 wafers · W2/L1: default conditions"], lines
+        assert lines[1:] == ["W2 · no date · 2 wafers · W2/L1: default conditions · W2/L2: default conditions"], \
+            "a candidate is the report table's wafer, its legs together (lead 10-23)"
+        drawn = report_html.page("W1", "", dict(spec, layout=[{"kind": "table", "fill": "candidates"}]),
+                                 {"candidates": report.candidates()["html"]}, {}, {})
+        assert ('<td class="rpt-item">W2</td><td class="rpt-item">no date</td><td class="rpt-cell">2</td>'
+                '<td class="rpt-item"></td><td class="rpt-item">W2/L1: default conditions<br>W2/L2: default conditions'
+                '</td>' in drawn), "the candidates the model read, drawn on the file (lead 10-23)"
         chosen = report.images()["html"]
         assert sorted(chosen) == ["particle", "scratch"], "the chip's image under each defect it holds"
         assert "image source 'nowhere' is not declared" in chosen["particle"][0]["refused"], \

@@ -102,6 +102,7 @@ class Report:
         self.long = spec.get("conditions") if isinstance(spec.get("conditions"), dict) else None
         self.wafers = {}                         # wafer -> {"time", "lot", "evaluation", "conditions": {col: value}}
         self.groups = {}                         # group name -> [wafer, ...] - this evaluation first
+        self.picked_by = list(only or ())        # the report table's wafer columns - a candidate is one of those
         if only is not None:
             only = {c: None if v is None else str(v) for c, v in only.items()}
             here = [w for w in self._wafer_rows({c: _equals_any(c, [v]) for c, v in only.items()})
@@ -471,7 +472,7 @@ class Report:
             if at is not None and anchor is not None and recent.get("days") \
                     and anchor - at > datetime.timedelta(days=recent["days"]):
                 continue
-            entry = by.setdefault(label(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
+            entry = by.setdefault(self._report_wafer(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
             entry["latest"] = max(entry["latest"], at) if entry["latest"] is not None and at is not None else \
                 entry["latest"] or at
             entry["wafers"].append(wafer)
@@ -482,11 +483,17 @@ class Report:
         self._candidates = {name: dict(by[name], wafers=self._ordered(by[name]["wafers"])) for name in newest}
         return self._candidates
 
+    def _report_wafer(self, wafer) -> str:
+        """The wafer as the report table names it - its legs one candidate (lead 10-23), every column without `only`."""
+        parts = dict(zip(self.keys, wafer))
+        return label(tuple(parts[c] for c in self.picked_by) if self.picked_by else wafer)
+
     def candidates(self):
         """The recent evaluations a control group may come from - one line each, newest first: name · date · wafers
         · each condition's values with their wafer counts."""
         found = self._recent()
         lines = ["recent evaluations, newest first (%s left out):" % self.evaluation]
+        rows = []
         for name, entry in found.items():
             folded = []
             for column in self.conditions_at:
@@ -496,16 +503,19 @@ class Report:
                     counts[value] = counts.get(value, 0) + 1
                 folded.append("%s %s" % (column, ", ".join("%s %d" % (v, n) for v, n in
                                                            sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))))
+            titles = []
             if self.long:
                 folded = ["%s: %s" % (label(w), ", ".join("%s=%s" % kv for kv in sorted(self.wafers[w]["conditions"].items()))
                                       or "default conditions") for w in entry["wafers"]]
                 titles = sorted({str(self.wafers[w].get("title")) for w in entry["wafers"] if self.wafers[w].get("title")})
-                folded = (["title " + " | ".join(titles)] if titles else []) + folded
-            lines.append(" · ".join([name, entry["latest"].date().isoformat() if entry["latest"] else "no date",
-                                     "%d wafers" % len(entry["wafers"])] + folded))
+            date = entry["latest"].date().isoformat() if entry["latest"] else "no date"
+            lines.append(" · ".join([name, date, "%d wafers" % len(entry["wafers"])]
+                                    + (["title " + " | ".join(titles)] if titles else []) + folded))
+            rows.append({"name": name, "date": date, "wafers": len(entry["wafers"]), "title": " | ".join(titles),
+                         "conditions": folded})
         if len(lines) == 1:
             lines.append("none in range")
-        return {"context": "\n".join(lines), "html": None}
+        return {"context": "\n".join(lines), "html": {"rows": rows}}
 
     def _control(self, evaluations, wafers):
         """Control groups «control <evaluation>» from the recent evaluations - the evaluations named (all their wafers)

@@ -211,7 +211,20 @@ def _pareto_table(table, spec, lent=None):
     return WRAP % ("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (head, rows))
 
 
-TABLES = {"yield_by": _summary_table, "pareto": _pareto_table, "trend": _summary_table}
+def _candidates_table(table, spec, lent=None):
+    """candidates()' rows - the control candidates the model read, a row each, newest first (lead 10-23: the owner
+    holds them against the trap wafers)."""
+    words = ("candidate", "date", "wafers", "title", "conditions")
+    head = "".join(_cell("th", HEAD, text=_e(report_shape.word(spec, word))) for word in words)
+    rows = "".join("<tr>%s</tr>" % "".join((
+        _cell("td", ITEM, text=_e(row["name"])), _cell("td", ITEM, text=_e(row["date"])),
+        _cell("td", CELL, text=_e(row["wafers"])), _cell("td", ITEM, text=_e(row["title"])),
+        _cell("td", ITEM, text="<br>".join(_e(c) for c in row["conditions"])))) for row in table["rows"])
+    return WRAP % ("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (head, rows))
+
+
+TABLES = {"yield_by": _summary_table, "pareto": _pareto_table, "trend": _summary_table,
+          "candidates": _candidates_table}
 
 
 def _images(embedded, spec) -> str:

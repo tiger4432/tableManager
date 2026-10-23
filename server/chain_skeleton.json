@@ -2056,6 +2056,46 @@
                           "kind": "leaf",
                           "hint": "free"
                         }
+                      },
+                      {
+                        "key": "candidate",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "date",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "wafers",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "title",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "conditions",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
                       }
                     ]
                   }

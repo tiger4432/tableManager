@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [AI 리포트 대조 후보 — 웨이퍼 하나가 후보 하나, 파일에 후보 표](#2026-10-23--ai-리포트-대조-후보--웨이퍼-하나가-후보-하나-파일에-후보-표) — 적는 곳 derive.report.layout 의 candidates 칸 · 보는 곳 리포트 파일 오른쪽
 - 2026-10-23 [AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽](#2026-10-23--ai-리포트-파일--글--그림-왼쪽-표-오른쪽) — 보는 곳 리포트 파일(server/reports/<웨이퍼>.html)
 - 2026-10-23 [AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄](#2026-10-23--ai-리포트-요약-표의-info-가-표-목록--넓은-표-한-행수율도-한-줄) — 적는 곳 chain_rules.json 의 derive.report.info(목록) · 보는 곳 리포트 요약 표 머리 밑 줄
 - 2026-10-23 [AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만](#2026-10-23--ai-리포트는-리포트-표에-건-규칙-하나--요약표--조건표--이미지표는-소유자-모양-그대로-읽기만) — 적는 곳 chain_rules.json 의 derive.report(on = into = 리포트 표 · results.file · conditions · images.item_sep · images.source) · 보는 곳 리포트 표의 파일 경로 · 파일의 Evidence
@@ -543,6 +544,13 @@
 
 
 
+
+## 2026-10-23 · AI 리포트 대조 후보 — 웨이퍼 하나가 후보 하나, 파일에 후보 표
+
+- **무엇** — 총괄 10-23: 소유자가 함정 웨이퍼를 대 보려면 후보가 파일에 보여야 합니다. 평가 칸이 없을 때 후보는 리포트 표의 웨이퍼 하나이고, leg 는 그 후보 안에 함께 있습니다(전엔 leg 마다 후보 하나).
+- **선언** — layout 에 `{"kind": "table", "fill": "candidates"}`. 파일 오른쪽에 후보 · 날짜 · 행 수 · 제목 · 조건 표가 그려집니다. 낱말은 `labels` 의 candidate · date · wafers · title · conditions 입니다.
+- **필요한 조건** — git pull · 런처 재기동 · 규칙의 layout 에 그 칸 · R1 다시.
+- **자세히** — 가이드 «대조 후보» · 시험 `test_every_declared_kind_runs_and_leaves_rows.py::test_the_owners_long_conditions_and_chip_images_are_read_as_they_are`.
 
 ## 2026-10-23 · AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽
 
