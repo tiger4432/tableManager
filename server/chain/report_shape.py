@@ -89,7 +89,7 @@ LABELS = {"report": "report", "item": "Item", "left_out": "Left out - two rows f
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
           "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence",
-          "candidate": "Candidate", "date": "Date", "wafers": "Wafers", "title": "Title", "conditions": "Conditions"}
+          "candidate": "Candidate", "date": "Date", "rows": "Rows", "title": "Title", "conditions": "Conditions"}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
 RATE_SCALE = "rate_scale"

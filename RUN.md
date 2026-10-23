@@ -10,6 +10,7 @@
 >                      layout 에 {"kind": "table", "fill": "candidates"}
 > 뜻      파일 머리 밑 «yield» 줄이 leg 마다 -> 수율 표가 읽힘. 줄이 없음 -> 수율 표가 비었거나 info 목록에 없음
 >          후보 표의 날짜 = 조건 표 date 의 한국 날(expression_time_zone). 하루 이르면 -> 이 착지 전 파일, R1 다시
+>          후보 = 웨이퍼 하나 · 날짜 하나(leg 중 가장 늦은 것) · Rows = 웨이퍼 표 행 수. 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 실림 -> 후보가 모자라면 control.recent.evaluations 숫자를 올림
 >          «bond_temp=(empty)» -> 조건 행은 있는데 값이 비었음(제품은 판정 안 함, 모델이 읽음)
 >          Evidence 의 걸음 줄 밑 들여 쓴 줄 = 그 걸음이 읽은 것. chain_worker.log [Report] 줄은 첫 줄만
 >          «derive.report.info[1].value 'x' is not a column of '<표>'» -> 수율 표 칸 이름이 다름, 저장 안 됨

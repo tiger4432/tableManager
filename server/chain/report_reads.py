@@ -475,15 +475,20 @@ class Report:
             facts = self.wafers[wafer]
             at, evaluation = _instant(facts["time"]), facts["evaluation"]
             if (wafer in own if each else at is None or evaluation in (None, self.evaluation)) \
-                    or facts["same"] not in alike or (at is not None and anchor is not None and at > anchor):
-                continue
-            if at is not None and anchor is not None and recent.get("days") \
-                    and anchor - at > datetime.timedelta(days=recent["days"]):
+                    or facts["same"] not in alike:
                 continue
             entry = by.setdefault(self._report_wafer(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
             entry["latest"] = max(entry["latest"], at) if entry["latest"] is not None and at is not None else \
                 entry["latest"] or at
             entry["wafers"].append(wafer)
+        # a candidate's time is its rows' latest - the anchor's own fold - and it stands or falls whole (lead 10-23:
+        # a leg later than the report's wafer was left out, its other leg of no time stood a candidate alone). A wafer
+        # later than this report's is a candidate too when no evaluation column says one (owner 10-23 «빼지 마»)
+        for name in list(by):
+            at = by[name]["latest"]
+            if at is not None and anchor is not None and (at > anchor and not each or recent.get("days") and
+                                                          anchor - at > datetime.timedelta(days=recent["days"])):
+                del by[name]
         newest = sorted(by, key=lambda name: (by[name]["latest"] is not None, by[name]["latest"] or datetime.datetime.min,
                                               name), reverse=True)
         if recent.get("evaluations"):
@@ -517,9 +522,9 @@ class Report:
                                       or "default conditions") for w in entry["wafers"]]
                 titles = sorted({str(self.wafers[w].get("title")) for w in entry["wafers"] if self.wafers[w].get("title")})
             date = entry["latest"].date().isoformat() if entry["latest"] else "no date"
-            lines.append(" · ".join([name, date, "%d wafers" % len(entry["wafers"])]
+            lines.append(" · ".join([name, date, "%d rows" % len(entry["wafers"])]
                                     + (["title " + " | ".join(titles)] if titles else []) + folded))
-            rows.append({"name": name, "date": date, "wafers": len(entry["wafers"]), "title": " | ".join(titles),
+            rows.append({"name": name, "date": date, "rows": len(entry["wafers"]), "title": " | ".join(titles),
                          "conditions": folded})
         if len(lines) == 1:
             lines.append("none in range")

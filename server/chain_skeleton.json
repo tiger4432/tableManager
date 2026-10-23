@@ -2074,7 +2074,7 @@
                         }
                       },
                       {
-                        "key": "wafers",
+                        "key": "rows",
                         "required": false,
                         "node": {
                           "kind": "leaf",

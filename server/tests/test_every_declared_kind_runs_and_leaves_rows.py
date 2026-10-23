@@ -510,7 +510,10 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         for table, rows in (("kinds_cond", [{"date": "2026-10-22 10:00:00", "title": "split eval", "wafer": "W1",
                                              "leg": "L1", "condition_id": "anneal", "value": "450C"},
                                             {"date": "2026-10-22T00:00:00+09:00", "title": "trap", "wafer": "W2",
-                                             "leg": "L1", "condition_id": "bond", "value": ""}]),
+                                             "leg": "L1", "condition_id": "bond", "value": ""},
+                                            # W3/L1 later than W1, W3/L2 of no row: W3 one candidate, whole
+                                            {"date": "2026-10-23 09:00:00", "title": "later", "wafer": "W3",
+                                             "leg": "L1", "condition_id": "bond", "value": "300"}]),
                             ("kinds_img", [{"wafer": "W1", "leg": "L1", "x": "3", "y": "4", "img_path": "c.png",
                                             "including_defects": "particle, scratch"},
                                            {"wafer": "W1", "leg": "L1", "x": "5", "y": "5", "img_path": "d.png",
@@ -519,7 +522,9 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
                                             "including_defects": "particle"}]),
                             # both defects occurred on W1/L1 (a defect of no failing chip gets no image)
                             ("kinds_sum", [{"wafer": "W1", "leg": "L1", "item": "scratch", "fail": 2},
-                                           {"wafer": "W2", "leg": "L2", "item": "scratch", "fail": 1}])):
+                                           {"wafer": "W2", "leg": "L2", "item": "scratch", "fail": 1},
+                                           {"wafer": "W3", "leg": "L1", "item": "scratch", "fail": 1},
+                                           {"wafer": "W3", "leg": "L2", "item": "scratch", "fail": 1}])):
             crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
                 schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in rows]))
         db.commit()
@@ -535,10 +540,11 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         said = report.conditions()["context"]
         assert "anneal: 450C 1" in said and "default conditions (no condition row): 1 wafers" in said, said
         lines = report.candidates()["context"].splitlines()
-        assert lines[1:] == ["W2 · 2026-10-22 · 2 wafers · title trap · W2/L1: bond=(empty) · "
+        assert lines[1:] == ["W3 · 2026-10-23 · 2 rows · title later · W3/L1: bond=300 · W3/L2: default conditions",
+                             "W2 · 2026-10-22 · 2 rows · title trap · W2/L1: bond=(empty) · "
                              "W2/L2: default conditions"], \
             "a candidate is the report table's wafer, its legs together; its day the product zone's; a blank value " \
-            "said (lead 10-23)"
+            "said; W3 later than W1 a candidate too (owner «빼지 마»), its legs one row of one date (lead 10-23)"
         drawn = report_html.page("W1", "", dict(spec, layout=[{"kind": "table", "fill": "candidates"}]),
                                  {"candidates": report.candidates()["html"]}, {}, {})
         assert ('<td class="rpt-item">W2</td><td class="rpt-item">2026-10-22</td><td class="rpt-cell">2</td>'
