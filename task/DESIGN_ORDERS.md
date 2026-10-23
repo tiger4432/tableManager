@@ -5,12 +5,12 @@
 #1 요약표    wafer · leg · defect_kind · defective_chip_count · total_chip_count · loss
 #2 조건표    date · wafer · leg · condition_id · value          (긴 표 — 조건마다 한 행)
 #3 이미지표  wafer · x · y · leg · img_path · including_defects  (칩 하나의 이미지, 그 안의 디펙 목록)
-리포트 표   wafer · report_file                                (운영자가 만듦, 웨이퍼당 한 행 — 최종 출력 두 칸)
+#4 보고서표 wafer · report_path                                (운영자가 만듦, 웨이퍼당 한 행 — 최종 출력 두 칸)
 ```
 지금 코드와 어긋나는 자리(총괄이 report_shape 로 읽음): wafer 역할은 «넓은 웨이퍼 표»(key · time · lot · evaluation · conditions 칸 목록)를 요구 — 조건이 긴 표인 #2 를 못 읽음 / images 역할은 «행마다 item 하나» — #3 의 including_defects(목록) · x · y 를 못 읽음 / evaluation 칸이 없음 → 대조군 «최근 평가»의 축이 없음
 도착 — 두 줄
 ```
-운영에서는 리포트 표(wafer · report_file)를 만들고 거기에 리포트 규칙 하나를 걸어, 역할마다 «어느 표의 어느 칸»만 적으면 위 세 표를 그대로 읽어 웨이퍼마다 리포트가 나온다
+운영에서는 리포트 표(wafer · report_path)를 만들고 거기에 리포트 규칙 하나를 걸어, 역할마다 «어느 표의 어느 칸»만 적으면 위 세 표를 그대로 읽어 웨이퍼마다 리포트가 나온다
 박스에 그 세 표 · 리포트 표 · 가상 데이터 · decide(요약 → 리포트 표 행) · 리포트 규칙이 서서, 소유자가 R1 리플레이 한 번에 리포트가 나오는 것을 본다
 ```
 1. 짓기 전 한 번 멈춤(한 메시지): 역할 ↔ 소유자 칸 대응 표 — 조건(긴 표: 이름 칸 · 값 칸 · 시각 칸) · 이미지(목록 칸 · 좌표) · leg(웨이퍼 안의 열) · 시각 · 대조군 축(evaluation 이 없으니 무엇으로 — date? 없앨지)을 «선언 칸»으로 어떻게 적나. 새 역할 칸은 넓히기(옛 넓은 모양도 계속 읽음), 코드에 도메인 낱말 없음
