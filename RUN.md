@@ -13,7 +13,7 @@
 >           ref     "ref" 에 적은 표 통째 {표: [{칸: 값}, ...]} — 묶음마다 한 번 읽음(take 둘이 같은 표면 한 번)
 > 스펙을 바꾼 뒤  자동으로 다시 판정 안 함 -> 그 규칙을 리플레이(소급 탭 «Replay chain rules over old data», rule = 그 선언 이름)
 > 확인 줄    저장이 거절하면 그 문장에 이유: «take '<칸>' fn 'x.y' - …» · «take '<칸>' ref 'spec' - not a table table_config declares» · «take '<칸>' row 'grade' - not a column of …»
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동. "fn" 에 함수를 적은 선언은 되돌린 코드에서 «take '<칸>' fn 'spec_out.s_o' - one of count · min · max · unique_concat» 로 거절됨 — 그 take 를 지움
+> 되돌리기  git revert 6bc123ff7 -> 런처 재기동. "fn" 에 함수를 적은 선언은 되돌린 코드에서 «take '<칸>' fn 'spec_out.s_o' - one of count · min · max · unique_concat» 로 거절됨 — 그 take 를 지움
 > ```
 >
 > ## [10-23] **리플레이가 뒤로 갈수록 느려지던 것 — 체인 대기열이 줄을 payload 대신 outbox 칸 셋으로 읽는다 (총괄 c0e6906f1, 소유자 「ㄱ」)** — git pull · 런처 재기동
