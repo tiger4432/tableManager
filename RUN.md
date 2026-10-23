@@ -1,5 +1,31 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **와처가 읽을 때마다 «왜»를 말한다 — «New file detected» 는 «File to read (<낱말>)» 로 (11618814f)** — git pull · 와처 재기동 · 서버 재기동
+>
+> ```
+> 돌릴 것   git pull -> 와처 재기동(줄) · 서버 재기동(파일 화면 칸). 선언 바뀜 없음
+> 볼 줄     File to read (<낱말>): <경로>                  읽기 하나마다 한 줄 - 전에는 무엇이든 «New file detected» 였음
+>          External source <표>@<루트>: N file(s) looked at - ... dispatched M (changed 1 · new 2)
+>          📂 folder settled after N s: <폴더> - voids.json handed on      stability_interval_seconds 를 적은 소스
+> 낱말의 뜻과 할 일
+>   new           기록 없는 파일 - 처음 보는 것. 다 읽힌 폴더에서 계속 나오면 그 경로의 기록이 지워진 것(시작 정리 줄을 봄)
+>   changed       읽은 때와 수정 시각 · 크기가 다름 - 원천이 파일을 다시 씀. 같은 파일이 계속 나오면 원천이 계속 쓰는 것
+>   unstamped     기록은 있는데 도장 없음 - 스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨, 또는 잠금 대기로 끝난 읽기
+>   read again    읽었던 파일을 Read all again · Read now 로 넘김 - 리트라이 문이 읽음(기록 행을 고쳐 씀, created_at 그대로)
+>   retry         실패 파일을 다시 넘김(Retry · 읽기 바뀜)
+>   read now      기록 없던 파일을 Read now 로 넘김
+>   checklist not read   체크리스트를 못 읽어 일단 읽음 - 그 앞 WARNING 줄이 사유
+> 🔴 voids 표가 끝없이 읽히면  이 줄의 낱말 하나로 갈림: read again · retry 가 계속이면 아래 «대기 중인 다시 읽기를 되돌린다» 블록,
+>          changed 면 원천이 voids.json 을 다시 씀, new 면 기록이 사라지는 것, unstamped 면 체크 해제가 되풀이되는 것
+> 파일 화면  GET /admin/file-ingestion/tables 의 sources[].sweep - state(sweeping · rested · unavailable) · age_seconds(지난 기록
+>          뒤 초) · seconds(훑기에 걸린 초) · looked · already_read · dispatched · why. 화면 줄은 클라 착지 뒤
+> 급할 때   끄는 스위치 없음 - 읽을지 말지는 그대로, 말만 바뀜
+> 되돌리기  git revert 11618814f -> 와처 · 서버 재기동
+> ```
+>
+
+---
+
 > ## [10-23] **조인 take 의 fn 에 파이썬 함수 — 키마다 f(values, row, ref) 로 S/O 같은 판정 값 (소유자 10-23 「spec 표의 spec 으로 참조해서 s/o 여부를 판정」, 총괄 f14181fbd · 650a23f9c)** — git pull · 런처 재기동
 >
 > ```
@@ -45,7 +71,7 @@
 > ```
 > 먼저 볼 것  파일 화면의 voids 표 PENDING_RETRY(대기) 수
 >            0 이 아니고 줄어드는 중   -> 리트라이 문이 넘겨진 파일 더미를 하나씩 읽는 중. 이 블록의 문이 멈춤
->            0 인데도 계속 읽음       -> 🔴 이 문이 아님. 와처 줄 «New file detected: ...voids.json» 이 같은 경로로
+>            0 인데도 계속 읽음       -> 🔴 이 문이 아님. 와처 줄 «File to read (<낱말>): ...voids.json» 이 같은 경로로
 >                                       되풀이되는지 한 줄만 봄 (판에서는 재현 안 됨 - 원인 열림)
 > 리트라이 문으로 읽으면 기록 행을 «고쳐 씀» - created_at 은 그대로, updated_at 만 새 시각. 새 행이 안 보여도 읽는 중일 수 있음
 >
@@ -4087,7 +4113,7 @@
 > 안 적으면     그대로 — options.filename(안 적으면 voids.json) 이름 하나
 > 적으면       glob 이 filename 대신 정한다. 단 parser voids_json 은 이름을 filename 으로 따로 본다 -> 다르면 FAILED 행
 > 순서        pull -> 선언 -> 수집기 재기동(따로 띄우면 run_watcher, 아니면 서버) — external_sources 는 재기동에만 반영
-> 볼 것        맞는 새 파일은 수집 기록(File Ingestion) 행이 생긴다 · 안 맞는 파일은 행도 «New file detected» 줄도 없다
+> 볼 것        맞는 새 파일은 수집 기록(File Ingestion) 행이 생긴다 · 안 맞는 파일은 행도 «File to read» 줄도 없다
 > 거절 줄      수집기 로그 ERROR, 그 항목만 빠짐:
 >            external_sources[i].options.glob must be one glob string or a list of them, none empty, got <값>.
 >            / 로 시작 · 끝나는 패턴은 거절 없이 아무 파일도 안 받는다
@@ -8118,7 +8144,7 @@
 > ```
 > 칸        server/config/ingestion_settings.json 의 "heavy_lane_workers" — 1 이상 정수, 없으면 1 (= 전과 같음)
 >           감시자 재기동 때 읽음. 값은 운영자가 적음 (박스 설정에 아무도 안 채움)
-> 확인      다른 표의 큰 파일 둘을 거의 같이 올림 -> 감시자 로그의 「📥 New file detected: <파일>」 (처리 시작) 두 줄의 시각
+> 확인      다른 표의 큰 파일 둘을 거의 같이 올림 -> 감시자 로그의 「📥 File to read (<낱말>): <파일>」 (처리 시작) 두 줄의 시각
 > 답의 뜻   워커 1: 둘째 표는 첫째가 끝난 뒤 시작                          그대로 (칸이 없거나 1)
 >           워커 N>1: 둘째 표가 첫째가 도는 동안 시작 · 같은 표 둘째 파일은 첫째 뒤   새 코드 + 칸 읽음
 >           N>1 인데 둘째 표가 기다림                                    감시자가 옛 코드이거나 재기동 전
@@ -8134,7 +8160,7 @@
 > ```
 > 확인      문턱(ingestion_settings 의 heavy_file_mb, 기본 10 MB) 이상인 파일을 화면에서 업로드 -> 감시자 로그
 > 답의 뜻   「🐘 Routed to heavy lane queue (… B): user(…)_…」            새 코드
->           그 줄 없이 「New file detected」 뒤 바로 처리                    API 가 옛 코드 (재기동 안 먹음)
+>           그 줄 없이 「File to read」 뒤 바로 처리                    API 가 옛 코드 (재기동 안 먹음)
 > 남는 것   표 작업공간 폴더(raws/ 의 부모)에 「.upload.<hex>」 파일이 남아 있으면 — 쓰다가 프로세스가 죽은 것. 지워도 됨(감시자는 안 봄)
 > 그대로    탐색기·네트워크 복사로 raws/ 에 직접 넣는 큰 파일은 지금처럼 크기를 생긴 순간에 재서 인라인으로 갈 수 있음 (내용은 맞게 들어감)
 > 되돌리기  git revert. 쓰는 것 없음 — 파일이 raws/ 에 «나타나는 방식»만 바뀜
