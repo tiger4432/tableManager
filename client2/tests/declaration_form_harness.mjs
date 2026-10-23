@@ -168,6 +168,23 @@ function pathSuite(M) {
      && M.path.addMember({ take: ['a'] }, 'take', TAKE_LIST, {}, '', null, 'nope') === null,
     `A2c a take's adder: typed columns go in as its words, «+ record» a record, a branch it has not nothing `
     + `[${JSON.stringify([typedTake && typedTake.document.take, asRecord && asRecord.document.take])}]`);
+  // On the server's own chain skeleton (owner 10-23 on.exclude «폼에서 값 칸으로 가는 법이 없는데 그리고 아무거나 쳐도
+  // 그냥 빈 값으로 접힘»; from the retired 955232d41, lead 10-23 ㄱ): a word typed lands, the value branch is reached.
+  const chain = JSON.parse(readFileSync(path.join(SERVER, 'chain_skeleton.json'), 'utf8'));
+  const root = chain.unified_root, cdefs = chain.defs || {};
+  const at = (d, where) => where.split('.').reduce((v, k) => (v == null ? v : v[k]), d);
+  for (const where of ['on.exclude', 'on.require', 'derive.join.take']) {
+    const node = M.skel.shapeAt(root, where.split('.'), cdefs);
+    const added = M.path.addMember({ on: {}, derive: { join: {} } }, where, node, cdefs, 'status');
+    ok(added && same(at(added.document, where), ['status']),
+      `X1 ${where}: a word typed at the list's adder goes in as itself [${added && JSON.stringify(at(added.document, where))}]`);
+  }
+  const gates = M.path.addMember({ on: {} }, 'on.exclude', M.skel.shapeAt(root, ['on', 'exclude'], cdefs), cdefs, '', null, 'values');
+  const valueGate = M.path.addMember({ on: { exclude: [{}] } }, 'on.exclude[0]', M.skel.shapeAt(root, ['on', 'exclude', '0'], cdefs),
+    cdefs, 'status');
+  ok(gates && same(gates.document.on.exclude, [{}]) && valueGate && same(valueGate.document.on.exclude, [{ status: [] }]),
+    `X6 «+ values» adds a value gate, and «+ column» on it adds the column [${JSON.stringify([gates && gates.document.on.exclude,
+      valueGate && valueGate.document.on.exclude])}]`);
   const step = (before, at, value, stash) => {
     const after = M.path.writeShapeAtPath(before, at, value);
     return M.path.switchGated(before, after, at, FIX.root, {}, stash);
