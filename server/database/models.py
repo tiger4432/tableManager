@@ -440,6 +440,10 @@ class FileIngestionLog(Base):
     rows_changed = Column(Integer, nullable=True)
     rows_unchanged = Column(Integer, nullable=True)
     rows_refused = Column(Integer, nullable=True)
+    # Which columns the read changed, on how many rows - {column: rows} as JSON text, most first (총괄 10-23 ㄷ: a
+    # re-read that says «Changed» says of what). From the write's own changed cells; a new row's are not counted.
+    # Null: none changed, or not counted.
+    columns_changed = Column(String, nullable=True)
     reader = Column(String(300), nullable=True)
     source = Column(String, nullable=True)
     reason = Column(String(500), nullable=True)
@@ -628,8 +632,8 @@ _RUN_COLUMNS = weakref.WeakSet()
 
 
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
-FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "reader", "source",
-                       "reason", "failed_at", "took_seconds", "transaction_id")
+FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "columns_changed",
+                       "reader", "source", "reason", "failed_at", "took_seconds", "transaction_id")
 
 
 class FileRereadMark(Base):

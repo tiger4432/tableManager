@@ -43,11 +43,21 @@ export function statusTone(status) {
   return tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warn';
 }
 
-/** The counts a read came to, the ones the server wrote (rows_* null: not counted - the line says nothing of them). */
+/** The counts a read came to, the ones the server wrote (rows_* null: not counted - the line says nothing of them);
+ * under Changed, each column it changed and on how many rows (columns_changed, most first). */
 export function resultCounts(log) {
-  const rows = [['Rows read', log.rows_read], ['New', log.rows_new], ['Changed', log.rows_changed], ['Unchanged', log.rows_unchanged],
-    ['Refused', log.rows_refused]];
+  const rows = [['Rows read', log.rows_read], ['New', log.rows_new], ['Changed', log.rows_changed],
+    ...Object.entries(columnsChanged(log)).map(([column, n]) => [`Changed in ${column}`, n]),
+    ['Unchanged', log.rows_unchanged], ['Refused', log.rows_refused]];
   return rows.filter(([, v]) => numberOr(v) !== null).map(([label, v]) => ({ label, value: count(v) }));
+}
+
+/** columns_changed as {column: rows}; none written or not JSON - {}. */
+function columnsChanged(log) {
+  try {
+    const said = JSON.parse(log.columns_changed || '{}');
+    return said && typeof said === 'object' && !Array.isArray(said) ? said : {};
+  } catch { return {}; }
 }
 
 /** A failure's one line: the server's reason, else the first line of its message. */
