@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **중복 접기 · 철자 접기는 소급 탭 하나씩 — dedupe_business_key_rows.py · fold_comp_id.bat 은퇴 (04971d08b · b6d25136a)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(소급 탭이 새 칸을 보이게). 선언 바뀜 없음
+> 중복 접기  소급 탭 «Fold duplicate rows» — 옛 dedupe 와 같은 일: keys = 표의 키 칸들 · keep = most_layers · only_identical 켬 · order 비움
+>          명령  python server/scripts/chain_replay_cli.py fold-rows <표> --keys <키 칸들> --keep most_layers --only-identical   (보고만)
+>                같은 명령에 --apply
+> 같은 답?  옛 dedupe 는 저장된 business_key_val 로 묶었고, 지금은 적은 키 칸으로 묶음 — keys 에 표의 키 칸
+>          (composite_key_source, 없으면 business_key)을 적으면, 행의 칸이 저장된 키를 그대로 철자하는 한 같다
+>          옛 철자로 저장된 키(1.0 · 001 · 옛 구분자)가 남은 표는 칸으로는 한 키, 저장 키로는 둘 — 먼저 소급 «Fold stored
+>          values into the declared spelling»(키를 다시 적고 합침)을 돌리면 둘이 같아진다 (코드로 읽음, 표마다 재지 않음)
+> 답의 뜻   미리보기 「N key(s) hold rows whose values differ - by column … For example …」  값이 다른 키 · 칸 · 앞 다섯의 값
+>            only_identical 켬  -> 그 키는 그대로 남음      끔(기본) -> 그 키도 keep 규칙으로 접히고 진 행의 값은 사라짐
+>          빈 글자와 NULL 은 같은 빈 값 — 옛 dedupe 는 둘을 달리 봐서 그런 키를 건너뛰었음
+>          옛 --dump 파일은 없어짐 — 미리보기가 다른 칸과 값을 보임
+> 철자 접기  fold_comp_id.bat 대신 소급 탭 «Fold stored values into the declared spelling» (table) — 같은 씨앗에서 같은 답을 쟀음
+> 급할 때   쓰지 않으면 아무 일 없음
+> 되돌리기  git revert 04971d08b (중복 접기) · git revert b6d25136a (철자 접기) -> 런처 재기동 (옛 스크립트가 돌아옴)
+> ```
+>
+
+---
+
 > ## [10-23] **표 비우기는 문 하나 — 소급 탭 «Delete every row of a table» 의 how = Full reset (empty_table.py 은퇴, 6d3ec98cc)** — git pull · 런처 재기동
 >
 > ```
