@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 어드민에서 표 하나 저장(새 이름) -> 몇 초 뒤 ingestion_workspace/<표>/raws/ 확인 -> CSV 하나
+> 뜻      raws/ 가 몇 초 안에 생기고 CSV 가 적재됨 -> 이 착지
+>          raws/ 가 안 생김 -> 와처가 옛 코드(재기동 전) 이거나 watcher.log 의 «the tables' raws/ were not looked at again» 줄
+>          raws/ 는 생겼는데 안 읽힘 -> 이 착지 밖(표의 물리 테이블 · 파일 헤더) - 파일 카드의 사유를 본다
+> 끄기    없음. 예전처럼 Reload 버튼도 그대로 됨
+> 재기동 뒤  watcher.log «Auto-provisioned ingestion workspace structure for table(s): ['<표>']» · «Runtime workspace sync: 1 new raws/ folder(s) now being watched.»
+> ```
+>
 > ## [10-24] **AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름 DATE · WAFER · LEG · 표는 창 폭** — git pull · 체인 워커 재기동 · R1
 >
 > ```

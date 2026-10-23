@@ -53,7 +53,7 @@ server/ingestion_workspace/<table 또는 workspace_name>/
 └── raws/  archives/  err/  auto_update/  scripts/  config/
 ```
 
-- **생성 시점**: ① 워처 부팅 시(`discover_and_watch`) ② `SYSTEM_RELOAD` 시(`sync_new_workspaces` — watchdog 런타임 `schedule()`로 **재기동 없이** 즉시 감시 시작).
+- **생성 시점**: ① 워처 부팅 시(`discover_and_watch`) ② `SYSTEM_RELOAD` 시(`sync_new_workspaces` — watchdog 런타임 `schedule()`로 **재기동 없이** 즉시 감시 시작) ③ 🆕 10-24 `table_config.json` 이 저장되어 표 이름이 바뀌었을 때 — 와처가 3 초마다 자기가 읽은 표 이름을 견주고 다르면 ②와 같은 `sync_new_workspaces`. Reload 버튼 없이 새 표의 raws/ 가 생기고 감시된다(실제 와처로 표 추가 → CSV 적재까지 3~7.5 초).
 - **폴더명**: 기본은 테이블명, 테이블 항목에 `workspace_name` 별칭이 있으면 그 이름으로 생성합니다.
 - **기존 파일·설정은 변경하지 않음(누락 폴더만 보충)**: 없는 폴더만 새로 만들며 기존 내용은 절대 덮어쓰지 않습니다. [Deprecated 2026-07-25] 워크스페이스 `config.json`은 **더 이상 생성하지 않습니다** (§1.5 참조).
 - 시스템 내부 테이블은 제외 목록(`directory_watcher.AUTO_PROVISION_EXCLUDED_TABLES`, 현재 `wafer_map_metadata`)으로 관리합니다.
