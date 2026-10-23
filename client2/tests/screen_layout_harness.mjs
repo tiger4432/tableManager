@@ -724,6 +724,15 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rul
   const held = document.querySelector('select[data-value="derive.join.take[1].fn"]').value;
   return held === 'unique_concat' ? null : 'take[1].fn holds ' + held;
 })()` });
+// From the chips (owner 10-23, lead ㄴ): «+ record» opens a take entry as a record - the list then rows, its picker record.
+CELLS.push({ entry: 'admin.html', after: 'Chain, + record from the take chips', rule: 'contents', at: 'derive.join.take', expr: `(() => {
+  let held = null;
+  try { held = JSON.parse(document.querySelector('.chain-rule-raw').value); } catch (e) { return 'the raw text is not JSON'; }
+  const take = JSON.stringify((((held || {}).derive || {}).join || {}).take);
+  if (take !== '["value",{}]') return 'take holds ' + take;
+  const p = document.querySelector('select[data-action="edit-shape-branch"][data-value="derive.join.take[1]"]');
+  return p && p.value === 'record' ? null : 'the row picker says ' + (p ? p.value : 'nothing');
+})()` });
 // The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
@@ -2360,6 +2369,8 @@ const DRIVE = {
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
     ['Chain, a join whose take holds a record', async (c) => {
+      // the rule as recorded: a draft is kept across reloads (C-106 ④), and the states below leave one at the size before
+      await evaluate(c, "Object.keys(localStorage).filter((k) => /^assy\\.draft\\..*\\.take_record_probe$/.test(k)).forEach((k) => localStorage.removeItem(k)); true");
       await evaluate(c, "location.hash = '#chain'; true");
       await until(c, "!!document.querySelector('select.chain-rule-picker')");
       await choose(c, 'select.chain-rule-picker', [0, "x.value === 'take_record_probe'"]);
@@ -2381,6 +2392,26 @@ const DRIVE = {
       await until(c, "!!document.querySelector('select[data-action=\"edit-shape-branch\"][data-value=\"derive.join.take[2]\"]')");
       await choose(c, 'select[data-action="edit-shape-branch"][data-value="derive.join.take[2]"]', [0, "x.value === 'record'"]);
       await until(c, "!!document.querySelector('[data-value=\"derive.join.take[2].fn\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
+        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    // From the chips (owner 10-23, lead ㄴ): the rule open (a unified join) given a take of one name in its text - a chip
+    // list; then «+ record». A new rule is not used: its recorded answer is an older server's, with no unified grammar;
+    // and that recording's exclude member is a word, so «+ values» is met in declaration_form X6 on today's skeleton.
+    ['Chain, + record from the take chips', async (c) => {
+      await evaluate(c, `(() => { const raw = document.querySelector('.chain-rule-raw'); if (!raw) return false;
+        const doc = JSON.parse(raw.value); doc.derive.join.take = ['value'];
+        raw.value = JSON.stringify(doc, null, 2); raw.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      const unfold = (at) => evaluate(c, `(() => {
+        const fold = document.querySelector('button[data-action="toggle-field"][data-value="${at}"]');
+        if (fold && /folded/.test(fold.className)) fold.click(); return Boolean(fold); })()`);
+      await unfold('derive.join.take');
+      const branch = (at, key) => evaluate(c, `(() => {
+        const b = document.querySelector('button[data-action="form-append"][data-value="${at}"][data-branch="${key}"]');
+        if (b) b.click(); return Boolean(b); })()`);
+      await until(c, "!!document.querySelector('button[data-action=\"form-append\"][data-value=\"derive.join.take\"][data-branch=\"record\"]')");
+      await branch('derive.join.take', 'record');
+      await until(c, "!!document.querySelector('[data-value=\"derive.join.take[1].fn\"]')");
       await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
@@ -2558,6 +2589,9 @@ const MUTANTS = [
         ':where(.reason-lines) { display: block;'],
       ['  overflow: hidden; white-space: normal; overflow-wrap: anywhere; min-width: 0; }',
         '  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }']] },
+  { name: 'the chips carry no «+ <branch>» - a take record only by editing the file', entry: 'admin.html',
+    rule: 'contents', at: 'derive.join.take', file: 'src/ontology_explorer_view.js',
+    edits: [["  if (item && item.pick === 'shape') {", '  if (false) {']] },
   { name: 'the admin queue why held to one line again', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
     file: 'admin.html', edits: [['    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }',
       '    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }\n    .chain-queue-table .queue-line-state-why { -webkit-line-clamp: 1; line-clamp: 1; }']] },
