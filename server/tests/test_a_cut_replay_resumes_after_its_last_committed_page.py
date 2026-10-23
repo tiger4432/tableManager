@@ -189,6 +189,10 @@ async def test_a_cut_run_is_one_that_ended_short_with_nothing_waiting(db, state,
     assert [f["run_id"] for f in found] == (["x1"] if cut else [])
     if cut:
         assert found[0]["pages"] == {"done": commit, "staged": 4, "rows_done": 3 * commit}
+        row = db.query(models.RetroactiveRun).filter_by(run_id="x1").one()
+        assert (found[0]["op"], found[0]["cursor_end"], found[0]["total_rows"]) \
+            == ("chain_replay", _cursor(db, "x1")[1], row.total_rows)
+        assert found[0]["cursor_end"] is not None, "canary: a cut run has a committed page's end"
 
 
 @pytest.mark.anyio
@@ -388,11 +392,15 @@ async def test_the_queue_says_a_replays_pages_and_lists_cut_runs_with_resume_and
     assert line["pages"] == {"done": 1, "staged": 3, "rows_done": 3}
     assert answer["interrupted_runs"] == []
     _set_aside(db, pages[2] + pages[3])
+    db.query(models.RetroactiveRun).filter_by(run_id="q1").update({"total_rows": 9})
+    db.commit()
     answer = client.get("/admin/chain/queue").json()
     [cut] = answer["interrupted_runs"]
-    assert {k: cut[k] for k in ("run_id", "rule", "state", "pages", "resume", "cancel")} == {
-        "run_id": "q1", "rule": RULE, "state": "done", "pages": {"done": 1, "staged": 3, "rows_done": 3},
+    assert {k: cut[k] for k in ("run_id", "op", "rule", "state", "pages", "total_rows", "resume", "cancel")} == {
+        "run_id": "q1", "op": "chain_replay", "rule": RULE, "state": "done",
+        "pages": {"done": 1, "staged": 3, "rows_done": 3}, "total_rows": 9,
         "resume": {"run_id": "q1"}, "cancel": {"key": "q1"}}
+    assert cut["cursor_end"] == _cursor(db, "q1")[1] is not None          # the run row's own, never empty here
     resumed = client.post("/admin/retroactive/runs/q1/resume")
     assert resumed.status_code == 200 and resumed.json()["from_page"] == 2
     refused = client.post("/admin/retroactive/runs/q1/resume")

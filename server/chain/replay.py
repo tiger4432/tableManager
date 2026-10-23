@@ -996,20 +996,22 @@ def interrupted_runs(db, run_id=None, rule=None):
     """The replay runs cut short (총괄 fc1e1e385) - ONE JUDGEMENT, asked by the queue, Resume, × and the sweep: a run
     with a cursor, ended (done · cancelled · failed), not continued, and either cut while staging or with a page
     staged after its cursor - and none of its events waiting (those still run). A run staged before the cursor
-    existed has none and is never one. -> `[{"run_id", "rule", "state", "pages", "finished_at", "params"}]`."""
+    existed has none and is never one. -> `[{"run_id", "op", "rule", "state", "pages", "cursor_end", "total_rows",
+    "finished_at", "params"}]` - `cursor_end` the last committed page's end key, `total_rows` None when not known."""
     import json
     from database import models
 
     if not models.ensure_run_columns(db.get_bind(), add=False):
         return []                                  # no replay has staged a page here since the cursor existed
     rows = db.execute(text(
-        "SELECT run_id, params, state, cursor_page, staged_page, cursor_rows, finished_at FROM retroactive_runs "
+        "SELECT run_id, op, params, state, cursor_page, staged_page, cursor_rows, cursor_end, total_rows, finished_at "
+        "FROM retroactive_runs "
         "WHERE op = 'chain_replay' AND cursor_page IS NOT NULL AND continued_by IS NULL "
         "AND state IN ('done', 'cancelled', 'failed') AND (state <> 'done' OR cursor_page < staged_page)"
         + (" AND run_id = :run" if run_id else "") + " ORDER BY finished_at"),
         {"run": run_id} if run_id else {}).fetchall()
     outbox, found = models.DatabaseOutbox, []
-    for run, params, state, done, staged, rows_done, finished_at in rows:
+    for run, op, params, state, done, staged, rows_done, cursor_end, total_rows, finished_at in rows:
         params = json.loads(params) if params else {}
         if rule is not None and params.get("rule") != rule:
             continue
@@ -1018,9 +1020,9 @@ def interrupted_runs(db, run_id=None, rule=None):
         if db.query(outbox.id).filter(outbox.processed_chain == False, narrow, line,  # noqa: E712
                                       outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True).first() is not None:  # noqa: E712
             continue
-        found.append({"run_id": run, "rule": params.get("rule"), "state": state, "params": params,
+        found.append({"run_id": run, "op": op, "rule": params.get("rule"), "state": state, "params": params,
                       "pages": {"done": done, "staged": staged, "rows_done": rows_done},
-                      "finished_at": finished_at})
+                      "cursor_end": cursor_end, "total_rows": total_rows, "finished_at": finished_at})
     return found
 
 
@@ -1341,6 +1343,21 @@ FOLD_ROWS_BY = "fold_duplicate_rows"
 FOLD_ROWS_PAGE = 1000
 #: Keys the dry run shows, and rows of each.
 FOLD_ROWS_SAMPLE_KEYS, FOLD_ROWS_SAMPLE_ROWS = 3, 4
+#: Keys whose rows differ that the dry run shows, with the values.
+FOLD_ROWS_DIFFERING_KEYS = 5
+#: «keep» by the row's cell layers - the most stays, a tie the smaller row id (was dedupe_business_key_rows.py, 소유자
+#: 10-23 ㄴ).
+FOLD_KEEP_MOST_LAYERS = "most_layers"
+
+
+def _layer_count(model, table_name):
+    """How many cell layers the row holds - `keep` most_layers ranks by it."""
+    from sqlalchemy import func, select
+
+    from database import models
+
+    cs = models.CellSource
+    return select(func.count()).where(cs.table_name == table_name, cs.row_id == model.row_id).scalar_subquery()
 
 
 def _blank_key(model, keys):
@@ -1373,25 +1390,35 @@ def _holds(model, pair):
     return cast(getattr(model, pair[0]), String).icontains(pair[1], autoescape=True)
 
 
-def _ranked_duplicates(model, keys, order, keep, prefer=None, among=(), judged=()):
+def _ranked_duplicates(model, keys, order, keep, prefer=None, among=(), judged=(), compared=(), by=None):
     """Every row that meets `among` (what is read), with `ranks` - a value in each key part and every labelled
     condition of `judged` met, each carried as its own column - and its place among the ranking rows of its key
     (`n`, 1 = kept), the row kept (`kept`) and how many rank (`c`): first a row whose `prefer` column holds its text
     (any case), then by `order` - `min` earliest, `max` latest - a blank `order` last; a tie, the smaller row_id
     kept. A key is its columns as stored (`p0` …), so an index on them can hand the rows over in order, and a row
-    that does not rank is read in the same pass - the fold counted those apart in four more reads (총괄 5ad030347)."""
-    from sqlalchemy import String, and_, case, cast, false, func, literal, not_, select
+    that does not rank is read in the same pass - the fold counted those apart in four more reads (총괄 5ad030347).
+    `by` ranks in place of the `order` column (most first unless `keep` is min). Each `compared` column says whether
+    the key's ranking rows differ in it (`d0` …, `differs` any) - a blank is no value - and carries its text (`v0` …)."""
+    from sqlalchemy import String, and_, case, cast, false, func, literal, not_, null, or_, select
 
     from database import crud
 
     parts = [getattr(model, k) for k in keys]
-    by = getattr(model, order)
+    by = getattr(model, order) if by is None else by
     blank = _blank_key(model, keys)
     ranks = and_(not_(blank), *[condition.element for condition in judged])
     preferred = _holds(model, prefer) if prefer else false()
     ranked = [case((ranks, 0), else_=1), case((preferred, 0), else_=1),
               case((crud.blank_sql_condition(cast(by, String)), 1), else_=0),
               by.asc() if keep == "min" else by.desc(), model.row_id.asc()]
+    texts = [case((crud.blank_sql_condition(cast(getattr(model, column), String)), null()),
+                  else_=cast(getattr(model, column), String)) for column in compared]
+
+    def over_key(aggregate):
+        return aggregate.filter(ranks).over(partition_by=parts)
+    differ = [or_(over_key(func.min(t)).is_distinct_from(over_key(func.max(t))),
+                  and_(over_key(func.count(t)) > 0, over_key(func.count(t)) < over_key(func.count())))
+              for t in texts]
     return select(model.row_id.label("row_id"), by.label("order_value"),
                   (getattr(model, prefer[0]) if prefer else literal(None)).label("prefer_value"),
                   case((preferred, 1), else_=0).label("preferred"),
@@ -1400,7 +1427,10 @@ def _ranked_duplicates(model, keys, order, keep, prefer=None, among=(), judged=(
                   blank.label("blank_key"), ranks.label("ranks"), *judged,
                   func.count().filter(ranks).over(partition_by=parts, order_by=ranked, rows=(None, 0)).label("n"),
                   func.first_value(model.row_id).over(partition_by=parts, order_by=ranked).label("kept"),
-                  func.count().filter(ranks).over(partition_by=parts).label("c")).where(*among).subquery()
+                  func.count().filter(ranks).over(partition_by=parts).label("c"),
+                  (or_(*differ) if differ else false()).label("differs"),
+                  *[d.label("d%d" % i) for i, d in enumerate(differ)],
+                  *[t.label("v%d" % i) for i, t in enumerate(texts)]).where(*among).subquery()
 
 
 def fold_target(table_name, keys, order, keep="min", prefer_column=None, prefer_text=None,
@@ -1412,12 +1442,17 @@ def fold_target(table_name, keys, order, keep="min", prefer_column=None, prefer_
     keys = [k for k in (keys or []) if k]
     if not keys:
         raise ReplayRefused("name at least one key column - the rows that fold share its values")
-    if keep not in ("min", "max"):
-        raise ReplayRefused(f"keep is 'min' (the earliest {order}) or 'max' (the latest), not '{keep}'")
+    if keep not in ("min", "max", FOLD_KEEP_MOST_LAYERS):
+        raise ReplayRefused(f"keep is 'min' (the earliest order), 'max' (the latest) or '{FOLD_KEEP_MOST_LAYERS}' "
+                            f"(the row with the most cell layers), not '{keep}'")
+    order = None if crud.is_blank_value(order) else str(order).strip()
+    if (keep == FOLD_KEEP_MOST_LAYERS) == bool(order):
+        raise ReplayRefused(f"keep '{FOLD_KEEP_MOST_LAYERS}' ranks by cell layers - leave order empty"
+                            if order else "name the order column - it picks the row to keep")
     prefer = _prefer_of(prefer_column, prefer_text)
     scope = _prefer_of(only_column, only_text, ("only_column", "only_text"))
     mark = None if crud.is_blank_value(mark_column) else str(mark_column).strip()
-    model, col_types = resolve_target(table_name, list(keys) + [order] + ([prefer[0]] if prefer else [])
+    model, col_types = resolve_target(table_name, list(keys) + ([order] if order else []) + ([prefer[0]] if prefer else [])
                                       + ([scope[0]] if scope else []) + ([mark] if mark else []))
     if mark and col_types.get(mark) != "string":
         raise ReplayRefused(f"mark_column '{mark}' is a {col_types.get(mark)} column - the mark is text, "
@@ -1428,8 +1463,8 @@ def fold_target(table_name, keys, order, keep="min", prefer_column=None, prefer_
 def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min",
                         apply: bool = False, pace: str = None, log=logger.info,
                         checkpoint=None, prefer_column=None, prefer_text=None,
-                        mark_column=None, only_column=None, only_text=None) -> dict:
-    """Per key one row stays - the first by `order` (`_ranked_duplicates`; a row whose
+                        mark_column=None, only_column=None, only_text=None, only_identical=False) -> dict:
+    """Per key one row stays - the first by `order`, or by its cell layers with keep most_layers (`_ranked_duplicates`; a row whose
     `prefer_column` holds `prefer_text` before the rest; a row with a blank key part is not
     touched, `_blank_key`) - and the rest are
     deleted through the product's delete door, `crud.delete_rows_batch`, a page at a time, so
@@ -1443,6 +1478,10 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     `only_rule` · EDIT): it is not handed them any more, so what they fed is taken back (`edited`).
     A marked row ranks no more. `only_column` · `only_text` (83c05cfbb): only rows whose column holds
     the text rank - the rest stay as they are, counted.
+
+    A key whose ranking rows differ in a declared column outside the keys is counted, by column, with the first keys'
+    values - whether it folds or not; `only_identical` (소유자 10-23, was dedupe_business_key_rows.py's default) leaves
+    those keys as they are.
     """
     from sqlalchemy import String, cast, false, func, not_, select
 
@@ -1454,7 +1493,14 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     judged = [func.coalesce(_holds(model, scope), false()).label("in_scope")] if scope else []
     if mark:
         judged.append(not_(crud.not_blank_sql_condition(cast(getattr(model, mark), String))).label("unmarked"))
-    ranked = _ranked_duplicates(model, keys, order, keep, prefer, judged=judged)
+    # the declared columns but the fold's keys, the mark and the table's own key - each row's identity, as row_id is
+    config = crud.TABLE_CONFIG.get(table_name) or {}
+    identity = set(config.get("composite_key_source") or []) | {config.get("business_key")}
+    compared = [column for column in config.get("column_types") or {} if column in model.__table__.columns
+                and column not in keys and column != mark and column not in identity]
+    ranked = _ranked_duplicates(model, keys, order, keep, prefer, judged=judged, compared=compared,
+                                by=_layer_count(model, table_name) if keep == FOLD_KEEP_MOST_LAYERS else None)
+    said_as = order or "layers"
     woken = _excluding_by(table_name, mark) if mark else []
     recounts = _recounting(woken, mark) if woken else []
     found = _key_index(db, table_name, keys)
@@ -1465,31 +1511,48 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
              "rows_kept": 0, "rows_blank_key": 0, "rows_out_of_scope": 0, "rows_already_marked": 0,
              "rows_marked" if mark else "rows_deleted": 0, "pages": 0, "stopped": False, "sample": [],
              "rules_woken": [rule.get("name") for rule in woken], "rules_recounting": [
-                 rule.get("name") for rule in recounts], "key_index": index}
+                 rule.get("name") for rule in recounts], "key_index": index,
+             "only_identical": bool(only_identical), "keys_differing": 0, "rows_differing": 0,
+             "differing_columns": {}, "differing_sample": []}
     to_go, done = ("rows_to_mark", "rows_marked") if mark else ("rows_to_delete", "rows_deleted")
     # 🔴 ONE READ OF THE TABLE (총괄 5ad030347 · 2e8c6ac9c): the counts, the sample and the rows to go come out of
     #    one pass in key order - five passes before the first line, 10.58 s at 1M. Without an index on the keys
     #    the table is sorted before the first row; the line says so before the sort starts.
     log(f"[fold-rows] '{table_name}': reading its rows by ({', '.join(keys)}) - index on the keys: {index}"
         + ("" if found else "; the first row comes after the sort"))
-    losers, shown = [], []
-    for row in db.execute(_fold_read(keys, ranked, scope, mark, losers=apply).execution_options(yield_per=FOLD_ROWS_PAGE)):
+    losers, shown, differing = [], [], []
+    for row in db.execute(_fold_read(keys, ranked, scope, mark, losers=apply, compared=len(compared),
+                                     only_identical=only_identical).execution_options(yield_per=FOLD_ROWS_PAGE)):
         # by place, not by name: 800,000 rows to go read by name were 5 s of a 13 s read (box 1M, by place 8 s)
         part = row[0]
         if part == 1:
             losers.append((row[1], row[2]))
         elif part == 0:
             stats.update(rows=row.a0, rows_blank_key=row.a1, rows_out_of_scope=row.a2, rows_already_marked=row.a3,
-                         keys_folded=row.a5, keys_preferred=row.a6, **{to_go: row.a4})
+                         keys_folded=row.a5, keys_preferred=row.a6, keys_differing=row.a7, rows_differing=row.a8,
+                         differing_columns={column: getattr(row, "a%d" % (9 + i)) for i, column in enumerate(compared)
+                                            if getattr(row, "a%d" % (9 + i))}, **{to_go: row.a4})
+        elif part == 3:
+            differing.append(row)
         else:
             shown.append(row)
+    for row in sorted(differing, key=lambda row: (*[getattr(row, "k%d" % i) for i in range(len(keys))], row.n)):
+        key = tuple(getattr(row, "k%d" % i) for i in range(len(keys)))
+        if not stats["differing_sample"] or stats["differing_sample"][-1]["key"] != dict(zip(keys, key)):
+            if len(stats["differing_sample"]) == FOLD_ROWS_DIFFERING_KEYS:
+                break
+            stats["differing_sample"].append({"key": dict(zip(keys, key)), "rows": [], "columns": [
+                column for i, column in enumerate(compared) if getattr(row, "d%d" % i)]})
+        one = stats["differing_sample"][-1]
+        one["rows"].append({"row_id": row.row_id, **{column: getattr(row, "v%d" % compared.index(column))
+                                                     for column in one["columns"]}})
     sample = {}
     for row in sorted(shown, key=lambda row: row.a0):
         key = tuple(getattr(row, "k%d" % i) for i in range(len(keys)))
         if key not in sample and len(sample) == FOLD_ROWS_SAMPLE_KEYS:
             break
         one = sample.setdefault(key, {"key": dict(zip(keys, key)), "rows": row.c, "kept": None, "deleted": []})
-        seen = {"row_id": row.row_id, order: row.order_value, **({prefer[0]: row.prefer_value} if prefer else {})}
+        seen = {"row_id": row.row_id, said_as: row.order_value, **({prefer[0]: row.prefer_value} if prefer else {})}
         if row.n == 1:
             one["kept"] = seen
         else:
@@ -1516,8 +1579,8 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
     log(f"[fold-rows] '{table_name}' {stats['mode']}: {stats['keys_folded']} key(s) of ({', '.join(keys)}) "
         f"hold more than one row - keep "
         + (f"a row whose {prefer[0]} holds '{prefer[1]}' ({stats['keys_preferred']} key(s)), then " if prefer else "")
-        + f"the {'earliest' if keep == 'min' else 'latest'} {order}, "
-        f"{stats[to_go]} row(s) to {'mark' if mark else 'delete'}, {stats[done]} {'marked' if mark else 'deleted'}, "
+        + ("the most cell layers, " if keep == FOLD_KEEP_MOST_LAYERS else f"the {'earliest' if keep == 'min' else 'latest'} {order}, ")
+        + f"{stats[to_go]} row(s) to {'mark' if mark else 'delete'}, {stats[done]} {'marked' if mark else 'deleted'}, "
         f"{stats['rows_blank_key']} row(s) with a blank key part"
         + (f", {stats['rows_out_of_scope']} out of scope" if scope else "")
         + (f", {stats['rows_already_marked']} marked before" if mark else "") + " left as they are")
@@ -1525,41 +1588,52 @@ def fold_duplicate_rows(db, table_name: str, keys, order: str, keep: str = "min"
 
 
 
-def _fold_read(keys, ranked, scope, mark, losers=True):
+def _fold_read(keys, ranked, scope, mark, losers=True, compared=0, only_identical=False):
     """The fold's one read: `ranked` once (a CTE, read three times) - one row of counts (`part` 0: rows, blank key,
     out of scope, marked before, to go, keys folded, keys preferred - `a0` … `a6`), the rows to go when `losers`
     (`part` 1, the row kept beside each) and the preview's rows (`part` 2: the first by the key's text and place, as it always
     chose them; `a0` their order). The counts and the order stay in the database - every row through the client,
-    sorted, was slower than the five reads it replaced (box, 1M: 27.6 s to the first page against 8.9 s)."""
+    sorted, was slower than the five reads it replaced (box, 1M: 27.6 s to the first page against 8.9 s).
+    The keys whose ranking rows differ are counted (`a7` keys, `a8` rows to go, `a9` … per compared column) and their
+    first rows read (`part` 3); `only_identical` folds none of them."""
     from sqlalchemy import BigInteger, and_, cast, func, literal, not_, null, select, union_all
     from sqlalchemy.types import NullType
 
     r = select(ranked).cte("fold_ranked")
     c = r.c
     keyed = not_(c.blank_key)
-    kept = and_(c.ranks, c.n == 1, c.c > 1)
+    folds = and_(c.ranks, not_(c.differs)) if only_identical else c.ranks
+    kept = and_(folds, c.n == 1, c.c > 1)
+    leads = and_(c.ranks, c.n == 1, c.c > 1, c.differs)
     counts = [func.count(), func.count().filter(c.blank_key),
               func.count().filter(and_(keyed, not_(c.in_scope))) if scope else literal(0),
               func.count().filter(and_(keyed, *([c.in_scope] if scope else []), not_(c.unmarked))) if mark else literal(0),
-              func.count().filter(and_(c.ranks, c.n > 1)), func.count().filter(kept),
-              func.count().filter(and_(kept, c.preferred == 1))]
+              func.count().filter(and_(folds, c.n > 1)), func.count().filter(kept),
+              func.count().filter(and_(kept, c.preferred == 1)),
+              func.count().filter(leads), func.count().filter(and_(c.ranks, c.n > 1, c.differs)),
+              *[func.count().filter(and_(leads, c["d%d" % i])) for i in range(compared)]]
     labels = [c["k%d" % i] for i in range(len(keys))]
-    shape = [c.row_id, c.kept, c.n, c.c, c.preferred, c.order_value, c.prefer_value, *labels]
+    shape = [c.row_id, c.kept, c.n, c.c, c.preferred, c.order_value, c.prefer_value, *labels,
+             *[c["d%d" % i] for i in range(compared)], *[c["v%d" % i] for i in range(compared)]]
 
     def blank(col):
         return (null() if isinstance(col.type, NullType) else cast(null(), col.type)).label(col.name)
     head = select(literal(0).label("part"), *[blank(col) for col in shape],
                   *[cast(n, BigInteger).label("a%d" % i) for i, n in enumerate(counts)]).select_from(r)
     togo = select(literal(1).label("part"), c.row_id, c.kept, *[blank(col) for col in shape[2:]],
-                  *[cast(null(), BigInteger).label("a%d" % i) for i in range(len(counts))]).where(c.ranks, c.n > 1)
-    shown = (select(*shape).where(c.ranks, c.c > 1, c.n <= FOLD_ROWS_SAMPLE_ROWS)
+                  *[cast(null(), BigInteger).label("a%d" % i) for i in range(len(counts))]).where(folds, c.n > 1)
+    shown = (select(*shape).where(folds, c.c > 1, c.n <= FOLD_ROWS_SAMPLE_ROWS)
              .order_by(*labels, c.n).limit(FOLD_ROWS_SAMPLE_KEYS * FOLD_ROWS_SAMPLE_ROWS).subquery())
     # numbered above the LIMIT: under it the window sorted every row whole (box 1M, 800k rows: 1.5 s more)
     sample = select(literal(2).label("part"), *[shown.c[col.name] for col in shape],
                     func.row_number().over(order_by=[*[shown.c[col.name] for col in labels], shown.c.n]).label("a0"),
                     *[cast(null(), BigInteger).label("a%d" % i) for i in range(1, len(counts))])
+    differ = (select(*shape).where(c.ranks, c.c > 1, c.differs, c.n <= FOLD_ROWS_SAMPLE_ROWS)
+              .order_by(*labels, c.n).limit(FOLD_ROWS_DIFFERING_KEYS * FOLD_ROWS_SAMPLE_ROWS).subquery())
+    differing = select(literal(3).label("part"), *[differ.c[col.name] for col in shape],
+                       *[cast(null(), BigInteger).label("a%d" % i) for i in range(len(counts))])
     # a dry run and the preview count the rows to go and take none of them (1M: 800,000 rows, 총괄 59c0bfb8c 3)
-    return union_all(head, togo, sample) if losers else union_all(head, sample)
+    return union_all(head, togo, sample, differing) if losers else union_all(head, sample, differing)
 
 def _key_index(db, table_name, keys):
     """The index the table's own declaration («indexes» in table_config.json) has on `keys` in their order, as
@@ -1632,6 +1706,69 @@ def delete_every_row(db, table_name: str, apply: bool = False, pace: str = None,
     log(f"[delete-every-row] '{table_name}' {stats['mode']}: {stats['rows_to_delete']} row(s), "
         f"{stats['rows_deleted']} deleted")
     return stats
+
+
+#: The history's source on a full reset's one summary line.
+FULL_RESET_SOURCE = "full_reset"
+
+
+def full_reset(db, table_name: str, confirm_rows: int = None, apply: bool = False, by: str = EVERY_ROW_DELETER,
+               setup=None, rules=None, log=logger.info) -> dict:
+    """«Delete every row of a table» as a full reset (소유자 10-23 「완전 초기화 목적」 - was scripts/empty_table.py,
+    총괄 35b76ba92): the rows, the table's cell layers and pins in ONE transaction with one summary history line, then
+    every ledger source reading the table re-read whole, so the atoms of the rows it lost go. A raw DELETE - the
+    grid's door is ~2.5 s per 10,000 rows, too slow for a million - so no outbox event: no chain rule is told, and a
+    person's values go too. The dry run says what goes; `apply` takes `confirm_rows`, the rows the dry run said,
+    and refuses a table that moved since."""
+    from chain.ingestion_worker import loaded_chain_rules, watches_table
+    from database import crud, models
+    from ledger import backfill, followup, schema
+    from ledger.setup import load_setup
+
+    try:
+        crud.refuse_write_to_view(table_name)
+    except crud.ReadOnlyRelation as exc:
+        raise ReplayRefused(str(exc)) from exc
+    if table_name not in models.DYNAMIC_TABLES:
+        raise ReplayRefused("'%s' is not a declared table (table_config)" % table_name)
+    setup = load_setup() if setup is None else setup
+    rules = loaded_chain_rules() if rules is None else rules
+    layers = dict(db.execute(text(
+        "SELECT source_name, count(*) FROM cell_sources WHERE table_name = :t GROUP BY source_name"),
+        {"t": table_name}).fetchall())
+    found = {
+        "mode": "apply" if apply else "dry-run", "table": table_name,
+        "rows": db.execute(text('SELECT count(*) FROM "%s"' % table_name)).scalar(),
+        "layers": sum(layers.values()),
+        "user_layers": sum(n for name, n in layers.items() if crud.layer_writer(name) == crud.USER_SOURCE),
+        "overwrites": db.execute(text("SELECT count(*) FROM cell_overwrites WHERE table_name = :t"),
+                                 {"t": table_name}).scalar(),
+        "ledger_atoms": {source: db.execute(text("SELECT count(*) FROM %s WHERE source_who = :s"
+                                                 % schema.LEDGER_TABLE), {"s": source}).scalar()
+                         for source in followup.sources_for_table(setup, table_name)},
+        "chain_rules": sorted(rule["name"] for rule in rules if watches_table(rule, table_name)),
+    }
+    if not apply:
+        return found
+    if confirm_rows is None or int(confirm_rows) != found["rows"]:
+        raise ReplayRefused("'%s' has %d row(s) now, not %s - read the preview again and give its count"
+                            % (table_name, found["rows"], confirm_rows))
+    tx = "%s_%s" % (FULL_RESET_SOURCE, uuid.uuid4().hex[:8])
+    found["rows_deleted"] = db.execute(text('DELETE FROM "%s"' % table_name)).rowcount
+    found["layers_deleted"] = db.execute(text("DELETE FROM cell_sources WHERE table_name = :t"),
+                                         {"t": table_name}).rowcount
+    found["overwrites_deleted"] = db.execute(text("DELETE FROM cell_overwrites WHERE table_name = :t"),
+                                             {"t": table_name}).rowcount
+    crud.create_audit_log(db, table_name, "*", "*", found["rows"], 0, FULL_RESET_SOURCE, by, transaction_id=tx)
+    db.commit()
+    found["transaction_id"] = tx
+    found["ledger_withdrawn"] = {
+        source: backfill.rescope(db.get_bind(), setup, source, None, (), apply=True, whole_source=True,
+                                 world=schema.DEFAULT_WORLD).get("gone_withdrawn", 0)
+        for source in found["ledger_atoms"]}
+    log(f"[full-reset] '{table_name}': {found['rows_deleted']} row(s), {found['layers_deleted']} layer(s), "
+        f"{found['overwrites_deleted']} pin(s) deleted in {tx}; ledger atoms withdrawn {found['ledger_withdrawn']}")
+    return found
 
 
 def _delete_by_pages(db, table_name, model, keys, columns, judged, deleter, tag, apply, pace, log, checkpoint):

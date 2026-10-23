@@ -96,3 +96,21 @@ def test_a_file_under_a_junction_leading_outside_is_still_outside(tmp_path, monk
     monkeypatch.setattr(reread, "_newest_rows_of", lambda db, table, walked: {})
     got = reread.select_files(None, "t", str(raws))
     assert got["picked"] == [] and got["not_taken"] == {reread.OUTSIDE_SOURCES: 1}, got
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows spellings - drive letters, UNC, case folding")
+def test_below_is_the_filesystems_comparison_spelled_once():
+    """총괄 10-23: one prefix test under both functions - commonpath + relpath were most of a start's checklist cleanup
+    and of a sweep's judging. Case and separators as the filesystem reads them, a folder never takes its neighbour
+    whose name it begins, the root itself is "" (no file below), another drive is outside. A source rooted at a share's
+    top (a UNC host and share alone) takes what is under it - the long way never did (its common prefix ends in a
+    separator)."""
+    from directory_watcher import _below, _written_relative_path
+
+    assert _below(r"C:\data\A\x\f.csv", r"c:\DATA\a") == "x/f.csv"
+    assert _below(r"C:\data\AB\f.csv", r"C:\data\A") is None
+    assert _below(r"C:\data\A", r"C:\data\A") == "" and _written_relative_path("C:/data/A/", r"C:\data\A") is None
+    assert _below(r"C:\f.csv", "C:" + os.sep) == "f.csv" and _below(r"D:\data\f.csv", r"C:\data") is None
+    assert _written_relative_path("C:/data/a/./x/../f.csv", r"C:\Data\A") == "f.csv"
+    assert _written_relative_path(r"\\HOST\share\d\f.csv", r"\\host\share") == "d/f.csv"
+    assert _written_relative_path(r"\\host\other\f.csv", r"\\host\share") is None

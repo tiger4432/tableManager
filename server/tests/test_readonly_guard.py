@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""The read-only pre-flight of all SEVEN operator scripts, and its one home.
+"""The read-only pre-flight of the operator scripts (seven; six since dedupe_business_key_rows retired 10-23), and its one home.
 
 THE PROPERTY NOW HAS ONE DEFINITION - `server/db_safety.py`
     It had three spellings across seven scripts, one of them wrong, and the
@@ -94,26 +94,24 @@ import migrations.add_business_key_unique_index as mig
 import migrations.drop_redundant_layering_indexes as dropidx
 import scripts.audit_schema_canon as canon
 import scripts.check_missing_business_key as checkbk
-import scripts.dedupe_business_key_rows as dedupe
 import scripts.dev_env.snapshot_db as snapshot
 import scripts.rebuild_blank_business_keys as rebuild
 
-#: The three modules that re-export the whole four-name surface. Kept as a
+#: The modules that re-export the whole four-name surface. Kept as a
 #: parameter set because the stub-level claims are about the shared functions and
 #: these are the modules a caller reaches them through by name.
 GUARDS = [
     pytest.param(mig, id="add_business_key_unique_index"),
     pytest.param(rebuild, id="rebuild_blank_business_keys"),
-    pytest.param(dedupe, id="dedupe_business_key_rows"),
 ]
 
-#: 🔴 ALL SEVEN. Every script that needs "this pass cannot write", with the door
+#: 🔴 ALL SIX. Every script that needs "this pass cannot write", with the door
 #: it actually opens - not a re-creation of it here. `opener(url)` returns
 #: `(engine, connection)`; whatever the script does to get a proven-read-only
 #: connection is what gets tested, so a script that quietly stops using the
 #: shared home fails these rather than passing a test of the home.
 #:
-#: THE SEVENTH IS NOT LIKE THE OTHER SIX AND THAT IS THE POINT. `audit_schema
+#: THE LAST IS NOT LIKE THE OTHER FIVE AND THAT IS THE POINT. `audit_schema
 #: _canon` takes an engine it did not build (`--url`, or the application's pooled
 #: engine), so it cannot arm at connect time and uses `PER_TRANSACTION`. It is in
 #: the same table under the same assertions: the mode differs, the property does
@@ -141,7 +139,6 @@ DOORS = [
     pytest.param(_door_connect_time(mig), id="add_business_key_unique_index"),
     pytest.param(_door_connect_time(dropidx), id="drop_redundant_layering_indexes"),
     pytest.param(_door_connect_time(rebuild), id="rebuild_blank_business_keys"),
-    pytest.param(_door_connect_time(dedupe), id="dedupe_business_key_rows"),
     pytest.param(_door_connect_time(checkbk), id="check_missing_business_key"),
     pytest.param(_door_snapshot, id="dev_env.snapshot_db"),
     pytest.param(_door_audit, id="audit_schema_canon"),
@@ -159,7 +156,6 @@ CONSOLIDATED = [
     pytest.param(mig, id="add_business_key_unique_index"),
     pytest.param(dropidx, id="drop_redundant_layering_indexes"),
     pytest.param(rebuild, id="rebuild_blank_business_keys"),
-    pytest.param(dedupe, id="dedupe_business_key_rows"),
     pytest.param(checkbk, id="check_missing_business_key"),
     pytest.param(snapshot, id="dev_env.snapshot_db"),
     pytest.param(canon, id="audit_schema_canon"),
@@ -777,7 +773,7 @@ def test_injecting_spelling_c_into_the_home_turns_every_door_red(
                         _spelling_c_connection)
     # The scripts import the names directly, so the module-level bindings have to
     # be redirected too - which is itself a check that they ARE the home's object.
-    for module in (mig, dropidx, rebuild, dedupe, checkbk):
+    for module in (mig, dropidx, rebuild, checkbk):
         if hasattr(module, "open_readonly_connection"):
             monkeypatch.setattr(module, "open_readonly_connection",
                                 _spelling_c_connection)

@@ -47,6 +47,11 @@ ROW_ID_FILTER_NAMES = ("row_id", "id")
 TEXT_PATTERNS = {"contains": "%{}%", "startsWith": "{}%", "endsWith": "%{}"}
 
 
+class FilterRefused(ValueError):
+    """A filter that cannot narrow the rows - a column the table does not have, a value its number column cannot
+    read: refused by name, never dropped into the whole table (S-71, 총괄 10-23)."""
+
+
 def model_has_row_id(table_model) -> bool:
     """Does this relation's MODEL carry a `row_id` column (lead d692af408)? Every table does; a
     `kind: view` is built from its column_types, so only a view that declares `row_id` has one.
@@ -124,7 +129,10 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
         col_expr = table_model.row_id
     else:
         if not hasattr(table_model, col_name):
-            return None
+            from sqlalchemy import inspect
+
+            raise FilterRefused("'%s' has no column '%s' - a filter on it cannot narrow the rows"
+                                % (inspect(table_model).mapper.local_table.name, col_name))
         raw_col = getattr(table_model, col_name)
         from sqlalchemy.sql.sqltypes import Numeric, Float, Integer
         is_numeric = isinstance(raw_col.type, (Numeric, Float, Integer))
@@ -174,12 +182,13 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
                 val_to = float(f_info.get("filterTo"))
                 return and_(col_expr >= val_from, col_expr <= val_to)
             except (ValueError, TypeError):
-                return None
+                raise FilterRefused("%r to %r is not a number range for '%s'"
+                                    % (f_info.get("filter"), f_info.get("filterTo"), col_name)) from None
         else:
             try:
                 val = float(f_val)
             except (ValueError, TypeError):
-                return None
+                raise FilterRefused("%r is not a number for '%s'" % (f_val, col_name)) from None
             
             if f_type == "equals":
                 return col_expr == val

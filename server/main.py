@@ -16,6 +16,7 @@ import uuid
 import os
 import io
 import csv
+import functools
 import threading
 import time
 from fastapi import UploadFile, File, Body, HTTPException, BackgroundTasks, Response, Query
@@ -58,6 +59,7 @@ from admin import audit_history  # keyset paging + config ceiling for row/cell /
 # enumerates the app's routes and fails if a new one ever misses.
 from admin.auth import require_admin_token, require_admin_token_strict, require_worker_token
 from admin import auth
+from admin import help as admin_help  # the admin help: a question -> one tool, its fields and count (owner 10-23)
 from admin import sso  # company sign-in (총괄 2095014ee): off unless auth_config.json turns it on
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logger.info(f"[paths] {paths.describe()}")
@@ -1009,7 +1011,7 @@ COUNT_CAP = 10_000
 #: comes back counted; a large one's is said `counting`, or its last count with its time.
 COUNT_WAIT_SECONDS = 0.5
 _WHOLE = {}                     # whole key -> {"total", "counted_at", "count_seconds", "began", "asked", "failed"}
-_DUE = {}                       # whole key -> (table_name, world, bind) to count (again) - on the request's database
+_DUE = {}                       # whole key -> (count(db), bind) to count (again) - on the request's database
 _COUNT_COND = threading.Condition()
 _COUNTER = [None]
 _NOW = [None]                   # (whole key, asked) the worker is counting - a first count is not in _WHOLE yet
@@ -1046,15 +1048,11 @@ def _whole_counter():
                     break
                 waits = [pacing - (now - _WHOLE[key]["began"]) for key in _DUE if key in _WHOLE]
                 _COUNT_COND.wait(max(min(waits), 0.05) if waits else None)
-        began, total, failed = time.monotonic(), None, None
-        table_name, world, bind = asked
+        began, counted, failed = time.monotonic(), None, None
+        count, bind = asked
         db = Session(bind=bind)
         try:
-            model = grid_model(table_name, world)
-            # 🔴 STOPS PAST COUNT_CAP TOO (owner 10-16): a whole count of a bloated table held a connection for its
-            #    whole read; the grid says «10,000+» past it, as it does a narrowed count
-            total = (narrowed_table_query(db, table_name, model)[0].order_by(None).limit(COUNT_CAP + 1).count()
-                     if model is not None else 0)
+            counted = count(db)
         except Exception as exc:                                    # noqa: BLE001 - one line, the next count goes on
             logger.error("[Count] the whole count of %s was not counted: %s: %s", key, type(exc).__name__, told(exc))
             failed = {"reason": ("%s: %s" % (type(exc).__name__, told(exc).strip().split("\n")[0]))[:200],
@@ -1065,12 +1063,41 @@ def _whole_counter():
             # a failed count keeps the last one and is paced as a count (총괄 0fd18ae19 2) - asked again, it is due again
             kept = _WHOLE.get(key) or {"total": None, "capped": False, "counted_at": None, "count_seconds": None}
             if failed is None:
-                kept = {"total": min(total, COUNT_CAP), "capped": total > COUNT_CAP,
-                        "count_seconds": round(time.monotonic() - began, 3),
-                        "counted_at": datetime.now(timezone.utc).isoformat()}
+                kept = dict(counted, count_seconds=round(time.monotonic() - began, 3),
+                            counted_at=datetime.now(timezone.utc).isoformat())
             _WHOLE[key] = dict(kept, began=began, asked=asked, failed=failed)
             _NOW[0] = None
             _COUNT_COND.notify_all()
+
+
+def _table_rows(table_name, world, db):
+    """A table's whole count - what the whole counter counts for a table's key."""
+    model = grid_model(table_name, world)
+    # 🔴 STOPS PAST COUNT_CAP TOO (owner 10-16): a whole count of a bloated table held a connection for its whole read;
+    #    the grid says «10,000+» past it, as it does a narrowed count
+    total = (narrowed_table_query(db, table_name, model)[0].order_by(None).limit(COUNT_CAP + 1).count()
+             if model is not None else 0)
+    return {"total": min(total, COUNT_CAP), "capped": total > COUNT_CAP}
+
+
+def _kept_count(db, key, count, oldest):
+    """What the whole counter last counted for `key` - asked of it again when never counted, failed, or older than
+    `oldest` seconds; a request waits COUNT_WAIT_SECONDS for one due now. -> the kept entry, or None (counting)."""
+    from parsers import directory_watcher
+
+    now = time.monotonic()
+    with _COUNT_COND:
+        held = _WHOLE.get(key)
+        if held is None or held["failed"] or (oldest is not None and now - held["began"] >= oldest):
+            _DUE.setdefault(key, (count, db.get_bind()))
+        if _COUNTER[0] is None:
+            _COUNTER[0] = threading.Thread(target=_whole_counter, name="whole-counter", daemon=True)
+            _COUNTER[0].start()
+        _COUNT_COND.notify_all()
+        if key in _DUE and _due_now(key, directory_watcher.count_recount_seconds(), time.monotonic()):
+            began = (_WHOLE.get(key) or {}).get("began")
+            _COUNT_COND.wait_for(lambda: (_WHOLE.get(key) or {}).get("began") != began, COUNT_WAIT_SECONDS)
+        return _WHOLE.get(key)
 
 
 def table_total(db, table_name, world, model, query, cache_key, cap=None, here=False):
@@ -1113,19 +1140,8 @@ def table_total(db, table_name, world, model, query, cache_key, cap=None, here=F
                 "counted_at": datetime.fromtimestamp(at, timezone.utc).isoformat(),
                 "count_seconds": None if seconds is None else round(seconds, 3), "counting": False, "failed": None}
 
-    oldest, now = directory_watcher.count_max_age_seconds(), time.monotonic()
-    with _COUNT_COND:
-        held = _WHOLE.get(cache_key)
-        if held is None or held["failed"] or (oldest and now - held["began"] >= oldest):
-            _DUE.setdefault(cache_key, (table_name, world, db.get_bind()))
-        if _COUNTER[0] is None:
-            _COUNTER[0] = threading.Thread(target=_whole_counter, name="whole-counter", daemon=True)
-            _COUNTER[0].start()
-        _COUNT_COND.notify_all()
-        if cache_key in _DUE and _due_now(cache_key, directory_watcher.count_recount_seconds(), time.monotonic()):
-            began = (_WHOLE.get(cache_key) or {}).get("began")
-            _COUNT_COND.wait_for(lambda: (_WHOLE.get(cache_key) or {}).get("began") != began, COUNT_WAIT_SECONDS)
-        held = _WHOLE.get(cache_key)
+    held = _kept_count(db, cache_key, functools.partial(_table_rows, table_name, world),
+                       directory_watcher.count_max_age_seconds())
     if held is None:
         return {"total": None, "capped": False, "counted_at": None, "count_seconds": None, "counting": True,
                 "failed": None}
@@ -5010,7 +5026,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
                                    "capped": len(recent_failures) > _RECENT_FAILURES_CAP},
         # cut replays - no events wait, so no line above: «Interrupted · Resume», × closes (총괄 fc1e1e385)
         "interrupted_runs": [
-            {"run_id": cut["run_id"], "rule": cut["rule"], "state": cut["state"], "pages": cut["pages"],
+            {"run_id": cut["run_id"], "op": cut["op"], "rule": cut["rule"], "state": cut["state"],
+             "pages": cut["pages"], "cursor_end": cut["cursor_end"], "total_rows": cut["total_rows"],
              "cut_at": to_local_str(cut["finished_at"]) if cut["finished_at"] is not None else None,
              "resume": {"run_id": cut["run_id"]}, "cancel": {"key": cut["run_id"]}}
             for cut in chain_replay.interrupted_runs(db)],
@@ -5504,6 +5521,16 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
     return said
 
 
+#: The file checklist's progress is the whole counter's too (총괄 10-23): no table is named "" (`count_cache_table_of`).
+CHECKLIST_COUNT_KEY = COUNT_CACHE_KEY_SEP + "file checklist"
+
+
+def _checklist_rows(db):
+    from ingestion import checkpoint
+
+    return {"total": checkpoint.read_progress(db), "capped": False}
+
+
 @app.get("/admin/file-ingestion/tables", dependencies=[Depends(require_admin_token)])
 def get_file_ingestion_tables(db: Session = Depends(get_db)):
     """표마다 파일 기록 수 — 전체 · 상태별 · 마지막 시각 (총괄 e390600d6). 한 질의(GROUP BY table_name, status), 정확한 수."""
@@ -5522,7 +5549,20 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     data = sorted(tables.values(), key=lambda e: str(e["table_name"]))
     for entry in data:
         entry["last_at"] = entry["last_at"].isoformat() if hasattr(entry["last_at"], "isoformat") else entry["last_at"]
-    return {"status": "success", "data": data}
+    # 🔴 THE CHECKLIST'S PROGRESS (소유자 10-23 「몇 개 중 몇 개 읽고 있는지」, 총괄 07a16f238): per table, per source, files
+    #    read / total / left - counted by the whole counter, at most once per count_recount_seconds; never counted yet ->
+    #    `counting`. 3,000,000 log rows took 6 s on a throwaway PG (총괄 10-23) - not in the request.
+    from parsers import directory_watcher
+
+    held = _kept_count(db, CHECKLIST_COUNT_KEY, _checklist_rows, directory_watcher.count_recount_seconds())
+    sources = {}
+    for row in (held or {}).get("total") or ():
+        sources.setdefault(row["table_name"], []).append({k: v for k, v in row.items() if k != "table_name"})
+    for entry in data:
+        entry["sources"] = sources.get(entry["table_name"], [])
+    progress = {"counting": held is None, "counted_at": (held or {}).get("counted_at"),
+                "count_seconds": (held or {}).get("count_seconds"), "failed": (held or {}).get("failed")}
+    return {"status": "success", "data": data, "progress": progress}
 
 
 @app.get("/admin/file-ingestion/failed", dependencies=[Depends(require_admin_token)])
@@ -7110,11 +7150,13 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
     body = payload if isinstance(payload, dict) else {}
     params = body.get("params") if isinstance(body.get("params"), dict) else {}
     try:
-        return retroactive.publish(db, op, params,
-                                   # 🔴 없으면 «안 적습니다». "admin" 은 사람 이름처럼
-                                   # 읽히는 글자라, 그것을 남기면 「누가 걸었나」에
-                                   # 아무도 말하지 않은 답을 «적어 두는» 것입니다.
-                                   requested_by=body.get("requested_by") or None)
+        queued = retroactive.publish(db, op, params,
+                                     # 🔴 없으면 «안 적습니다». "admin" 은 사람 이름처럼
+                                     # 읽히는 글자라, 그것을 남기면 「누가 걸었나」에
+                                     # 아무도 말하지 않은 답을 «적어 두는» 것입니다.
+                                     requested_by=body.get("requested_by") or None)
+        admin_help.mark_run(db, body.get("help_id"), queued)    # the help's answer the form opened it from
+        return queued
     except retroactive.RetroactiveRefused as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -7122,6 +7164,21 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
         db.rollback()
         logger.error(f"[Retroactive] failed to queue op={op}: {e}")
         raise HTTPException(status_code=500, detail=f"The run request could not be queued: {e}")
+
+
+@app.post("/admin/help/ask", dependencies=[Depends(require_admin_token)])
+def ask_admin_help(request: Request, payload: dict = Body(default=None), db: Session = Depends(get_db)):
+    """The admin help (소유자 10-23, 총괄 e33713863): `{"question"}` -> one tool of the catalog, its fields and its
+    count, with the `help_id` the form carries into the run. Runs nothing. 400 with the reason when nothing is asked;
+    a model that cannot be asked is said on the answer's `refused`."""
+    from admin import retroactive
+
+    body = payload if isinstance(payload, dict) else {}
+    try:
+        return admin_help.ask(db, body.get("question"), asked_by=sso.who(request, None))
+    except retroactive.RetroactiveRefused as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/admin/retroactive/runs", dependencies=[Depends(require_admin_token)])

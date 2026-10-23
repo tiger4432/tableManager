@@ -983,16 +983,31 @@ def _real_folder(folder: str) -> str:
     return known[folder]
 
 
+def _below(absolute: str, top: str) -> str | None:
+    """`absolute` below `top` - both absolute and normalized - compared as the filesystem compares (`normcase`): the
+    POSIX path after `top`, "" for `top` itself, or None. One prefix test (총괄 10-23: commonpath + relpath were most of
+    a start's checklist cleanup and of a sweep's judging); a name whose case folding changes its length is asked the
+    long way."""
+    folded, folded_top = os.path.normcase(absolute), os.path.normcase(top)
+    if len(folded) != len(absolute) or len(folded_top) != len(top):
+        try:
+            if os.path.normcase(os.path.commonpath((absolute, top))) != folded_top:
+                return None
+        except ValueError:
+            return None
+        rel = os.path.relpath(absolute, top)
+        return "" if rel == os.curdir else rel.replace(os.sep, "/")
+    stem = folded_top.rstrip(os.sep)
+    if folded == stem or folded == folded_top:
+        return ""
+    if not folded.startswith(stem + os.sep):
+        return None
+    return absolute[len(stem) + 1:].replace(os.sep, "/")
+
+
 def _written_relative_path(path: str, root: str) -> str | None:
     """The POSIX path below `root` as `path` is spelled (`normcase` compared, nothing resolved), or ``None``."""
-    absolute, top = os.path.abspath(path), os.path.abspath(root)
-    try:
-        if os.path.normcase(os.path.commonpath((absolute, top))) != os.path.normcase(top):
-            return None
-    except ValueError:
-        return None
-    rel = os.path.relpath(absolute, top)
-    return None if rel == os.curdir else rel.replace(os.sep, "/")
+    return _below(os.path.abspath(path), os.path.abspath(root)) or None
 
 
 def _safe_relative_path(path: str, root: str) -> str | None:
@@ -1008,17 +1023,11 @@ def _safe_relative_path(path: str, root: str) -> str | None:
     """
     try:
         absolute = os.path.abspath(path)
-        real_path = os.path.join(_real_folder(os.path.dirname(absolute)), os.path.basename(absolute))
-        real_root = _real_folder(root)
-        if (os.path.normcase(os.path.commonpath((real_path, real_root)))
-                != os.path.normcase(real_root)):
-            return None
-        rel = os.path.relpath(real_path, real_root)
+        rel = _below(os.path.join(_real_folder(os.path.dirname(absolute)), os.path.basename(absolute)),
+                     _real_folder(root))
     except (OSError, TypeError, ValueError):
         return None
-    if os.path.isabs(rel) or rel == os.pardir or rel.startswith(os.pardir + os.sep):
-        return None
-    return rel.replace(os.sep, "/")
+    return None if rel is None else rel or os.curdir
 
 
 _GLOB_FLAGS = re.IGNORECASE if os.path.normcase("A") == "a" else 0

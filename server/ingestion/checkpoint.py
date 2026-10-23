@@ -305,6 +305,45 @@ def checked(db, table_name: str, entries) -> dict:
     return found
 
 
+def newest_of_its_file(Log):
+    """SQL: the row is its file's newest - no row of the same table and path (`path_key`) after it. A re-read writes a
+    new row and leaves the older ones as they were, so «the checklist» is the newest row of each (table, path) (소유자
+    10-21; 총괄 10-23: the progress count and the first-start stamping ask this one condition)."""
+    from sqlalchemy import exists
+    from sqlalchemy.orm import aliased
+
+    from database.models import path_key
+
+    newer = aliased(Log)
+    return ~exists().where(newer.table_name == Log.table_name, path_key(newer.filepath) == path_key(Log.filepath),
+                           newer.id > Log.id)
+
+
+def read_progress(db) -> list:
+    """The checklist's progress (소유자 10-23 「몇 개 중 몇 개 읽고 있는지」): per (table, source) its files - the newest row
+    of each (`newest_of_its_file`) - `total`, `read` (stamped: checked, not read again) and `left` (no stamp: waiting,
+    being read, failed and let go, or unchecked) by state. A file no row names yet (not reached by a sweep) is in no
+    count. One GROUP BY. -> [{"table_name", "source", "total", "read", "left", "left_by_status"}]."""
+    from sqlalchemy import func
+
+    from database.models import FileIngestionLog as Log
+
+    stamped = Log.file_mtime.isnot(None)
+    out = {}
+    for table, source, status, read, n in (db.query(Log.table_name, Log.source, Log.status, stamped, func.count(Log.id))
+                                           .filter(newest_of_its_file(Log))
+                                           .group_by(Log.table_name, Log.source, Log.status, stamped)):
+        entry = out.setdefault((table, source), {"table_name": table, "source": source, "total": 0, "read": 0,
+                                                  "left": 0, "left_by_status": {}})
+        entry["total"] += n
+        if read:
+            entry["read"] += n
+        else:
+            entry["left"] += n
+            entry["left_by_status"][status] = entry["left_by_status"].get(status, 0) + n
+    return sorted(out.values(), key=lambda e: (str(e["table_name"]), str(e["source"])))
+
+
 def stamp_read_files(db, table_name: str, entries) -> dict:
     """The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): a log row from before it carries no
     stamp, so every file a sweep looks at would be read again. For the `(filepath, file_stat)` entries a sweep has just
@@ -324,8 +363,8 @@ def stamp_read_files(db, table_name: str, entries) -> dict:
         newest = {}
         for row in db.query(Log.id, path_key(Log.filepath), Log.status, Log.updated_at, Log.created_at,
                             Log.file_mtime).filter(Log.table_name == table_name,
-                                                   path_key(Log.filepath).in_(list(stat_of))).order_by(Log.id.desc()):
-            newest.setdefault(row[1], row)
+                                                   path_key(Log.filepath).in_(list(stat_of)), newest_of_its_file(Log)):
+            newest[row[1]] = row
         stamps = []
         for log_id, key, status, updated, created, stamped in newest.values():
             if stamped is not None:

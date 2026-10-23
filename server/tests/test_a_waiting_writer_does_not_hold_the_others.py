@@ -3,8 +3,8 @@
 
   ⑤ a retroactive run reads changed declarations at its page boundaries - the slot's own boundary reload
     (`ingestion_worker.reload_at_boundary`), its child watching the files as a slot does
-  ② the retroactive gate stays closed while a replay's staged events wait in the chain queue, and the two writers
-    outside it (`fold_comp_id`, `backfill --drifted --apply`) pass it
+  ② the retroactive gate stays closed while a replay's staged events wait in the chain queue, and the writer
+    outside it (`backfill --drifted --apply`) passes it
   ④ a group waits for a table at most the chain statement limit, then is rewound - not set aside, not charged - and
     the rest of its batch waits with it
 """
@@ -109,18 +109,6 @@ def test_the_gate_stays_closed_while_a_replays_events_wait(retro_env):
     assert "every retroactive run, on any table, waits" in said
     with pytest.raises(retroactive.RetroactiveRefused, match="r-wait"):
         retroactive.claim(op="probe_op", params={})
-
-
-def test_fold_comp_id_asks_the_gate(retro_env):
-    import sys
-    sys.path.insert(0, "scripts")
-    import fold_comp_id
-
-    _waiting(retro_env, "r-wait")
-    said = []
-    with retro_env.get_bind().connect() as conn:
-        assert fold_comp_id.fold(conn, "retro_test_source", ask=lambda q: "n", say=said.append) == 1
-    assert any("holds the queue" in line and "run_id=r-wait" in line for line in said), said
 
 
 def test_drifted_apply_goes_through_the_rescope_run(monkeypatch):

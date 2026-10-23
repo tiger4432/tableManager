@@ -36,6 +36,7 @@ conda run -n assy_manager python scripts/<이름>.py
 | 스크립트 | 언제 |
 |---|---|
 | `check_schema_drift.py` | 코드가 요구하는 스키마와 실제 DB가 어긋났나 |
+| `help_bench.py` | 어드민 도움말이 카탈로그의 운영자 물음마다 자기 도구를 고르나 · 게이트웨이 응답 시간 (DB 안 건드림) |
 | `check_external_sources.py` | **외부 디렉터리 인제션**이 등록됐나, 거절이면 왜 |
 | `check_source_ordering.py` | 백필 **전에** 소스 정렬이 실제 표와 맞나 |
 | `check_missing_business_key.py` | 업무키가 빈 행 — 그리고 채울 수 있는지 |
@@ -50,7 +51,6 @@ conda run -n assy_manager python scripts/<이름>.py
 | 스크립트 | 쓰기 | 언제 |
 |---|---|---|
 | `replay_ingestion.py` | **드라이런** | 파일 여럿을 다음 훑기가 **다시 읽게** 한다 — 체크리스트 키 해제(`reread.uncheck`, 10-21). 파일은 안 건드리고 로그 행의 도장만 비운다 |
-| `dedupe_business_key_rows.py` | **드라이런** | 한 업무키에 여러 행 → 한 행으로 접는다 |
 | `backfill_enrichment.py` | **보고 후 선택** | 소급 enrichment 백필 |
 | `rebuild_blank_business_keys.py` | 쓴다 | 빈 컴포넌트가 든 업무키를 원본 컬럼에서 다시 조립 |
 | `ops_purge_outbox_backlog.py` | 쓴다 | `database_outbox` 백로그 수동 정리 |

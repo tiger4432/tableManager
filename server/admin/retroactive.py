@@ -1346,16 +1346,24 @@ def _fold_args(params):
 def _count_fold_duplicate_rows(db, params, scan_limit):
     from chain import replay
 
-    s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params["order"],
+    s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params.get("order"),
                                    keep=params.get("keep", "min"), log=lambda m: logger.debug(m),
-                                   **_fold_args(params))
-    _keys, _model, prefer, scope, mark = replay.fold_target(params["table"], params["keys"], params["order"],
+                                   only_identical=bool(params.get("only_identical")), **_fold_args(params))
+    _keys, _model, prefer, scope, mark = replay.fold_target(params["table"], params["keys"], params.get("order"),
                                                             params.get("keep", "min"), **_fold_args(params))
-    which = "earliest" if params.get("keep", "min") == "min" else "latest"
+    keep = params.get("keep", "min")
+    by = params.get("order") or "layers"
+    which = ("the row with the most cell layers" if keep == replay.FOLD_KEEP_MOST_LAYERS
+             else "the %s %s" % ("earliest" if keep == "min" else "latest", params["order"]))
     losers = s["rows_to_mark" if mark else "rows_to_delete"]
 
     def said(row):
-        return "%s%s" % (row.get(params["order"]), " (%s=%s)" % (prefer[0], row.get(prefer[0])) if prefer else "")
+        return "%s%s" % (row.get(by), " (%s=%s)" % (prefer[0], row.get(prefer[0])) if prefer else "")
+    differing = "; ".join(
+        "%s: %s" % (", ".join("%s=%s" % pair for pair in one["key"].items()),
+                    " | ".join(", ".join("%s=%s" % (column, row.get(column)) for column in one["columns"])
+                               for row in one["rows"]))
+        for one in s["differing_sample"])
     shown = "; ".join(
         "%s: keeps %s, %s %s%s" % (
             ", ".join("%s=%s" % pair for pair in one["key"].items()),
@@ -1377,13 +1385,18 @@ def _count_fold_duplicate_rows(db, params, scan_limit):
             f"hold more than one row: {losers} row(s) {'are marked' if mark else 'go'}, {s['rows_kept']} stay. Per key "
             + (f"a row whose {prefer[0]} holds '{prefer[1]}' (any case) stays first - {s['keys_preferred']} "
                f"key(s) keep one - then " if prefer else "")
-            + f"the {which} {params['order']} stays (a blank one last, a tie the smaller row id). "
+            + f"{which} stays (a blank one last, a tie the smaller row id). "
             f"{s['rows_blank_key']} row(s) with a blank key part are left as they are. Index on the keys: "
             f"{s['key_index']}."
             + (f" Only rows whose {scope[0]} holds '{scope[1]}' (any case) fold - {s['rows_out_of_scope']} "
                f"row(s) outside are left as they are." if scope else "")
             + (f" {s['rows_already_marked']} row(s) marked before rank no more." if mark else "")
             + (f" For example {shown}." if shown else "")
+            + (f" {s['keys_differing']} key(s) hold rows whose values differ - by column "
+               f"{', '.join('%s %d' % item for item in s['differing_columns'].items())}: "
+               + ("they are left as they are (only_identical)." if s["only_identical"] else
+                  f"they fold too, {s['rows_differing']} row(s) and their values go - only_identical leaves them.")
+               + f" For example {differing}." if s["keys_differing"] else " No key's rows differ in their values.")
             + (f" Each is marked «{replay.FOLD_MARK % '<the row kept>'}» in {mark} - nothing is deleted - and "
                f"the rules that exclude by {mark} ({', '.join(s['rules_woken']) or 'none'}) run on them and take "
                f"back what they fed; "
@@ -1395,7 +1408,8 @@ def _count_fold_duplicate_rows(db, params, scan_limit):
                "the chain takes back what it fed. Cannot be undone.")),
         "extra": {key: s[key] for key in ("keys_folded", "keys_preferred", "rows_kept", "rows_blank_key",
                                           "rows_out_of_scope", "rows_already_marked", "rules_woken",
-                                          "rules_recounting", "sample")
+                                          "rules_recounting", "sample", "keys_differing", "rows_differing",
+                                          "differing_columns", "differing_sample")
                   } | {"rows_to_mark" if mark else "rows_to_delete": losers},
     }
 
@@ -1403,22 +1417,22 @@ def _count_fold_duplicate_rows(db, params, scan_limit):
 def _run_fold_duplicate_rows(db, params, log, control=None):
     from chain import replay
 
-    s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params["order"],
+    s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params.get("order"),
                                    keep=params.get("keep", "min"), apply=True,
                                    pace=params.get("pace"), log=log, checkpoint=_checkpoint(control),
-                                   **_fold_args(params))
+                                   only_identical=bool(params.get("only_identical")), **_fold_args(params))
     done = "rows_marked" if "rows_marked" in s else "rows_deleted"
     _final_progress(control, s[done], s)
     return {key: s[key] for key in (done, "rows_to_mark" if done == "rows_marked" else "rows_to_delete",
                                     "keys_folded", "keys_preferred", "rows_blank_key", "rows_out_of_scope",
-                                    "pages", "stopped", "key_index")}
+                                    "keys_differing", "pages", "stopped", "key_index")}
 
 
 def _judge_fold_duplicate_rows(params):
     from chain import cell_layer, replay
 
     try:
-        replay.fold_target(params["table"], params["keys"], params["order"], params.get("keep", "min"),
+        replay.fold_target(params["table"], params["keys"], params.get("order"), params.get("keep", "min"),
                            **_fold_args(params))
     except cell_layer.ReplayRefused as e:
         raise RetroactiveRefused(str(e)) from None
@@ -1492,6 +1506,27 @@ def _count_delete_every_row(db, params, scan_limit):
     from database import models
 
     table = params["table"]
+    if params.get("how") == FULL_RESET:
+        try:
+            s = replay.full_reset(db, table, log=lambda m: logger.debug(m))
+        except replay.ReplayRefused as e:
+            raise RetroactiveRefused(str(e)) from None
+        atoms = "; ".join("%s %d" % item for item in sorted(s["ledger_atoms"].items())) or "no source reads it"
+        return {
+            "affected": s["rows"],
+            "absence": ABSENCE_TRULY_NONE if not s["rows"] else None,
+            "affected_label": "rows to delete",
+            "count_kind": COUNT_EXACT,
+            "scanned": s["rows"],
+            "scan_limit": scan_limit,
+            "truncated": False,
+            "detail": (f"Full reset of '{table}': {s['rows']} row(s), {s['layers']} cell layer(s) - {s['user_layers']} "
+                       f"of them a person's - and {s['overwrites']} pin(s) go in one transaction. Cannot be undone. "
+                       f"No chain rule is told: {', '.join(s['chain_rules']) or 'none reads it'}. Ledger atoms taken "
+                       f"back afterwards: {atoms}. Run it with confirm_rows {s['rows']}."),
+            "extra": {key: s[key] for key in ("rows", "layers", "user_layers", "overwrites", "ledger_atoms",
+                                              "chain_rules")},
+        }
     s = replay.delete_every_row(db, table, log=lambda m: logger.debug(m))
     kept = (db.query(models.CellSource.row_id).filter(models.CellSource.table_name == table,
                                                       models.CellSource.source_name.in_(cell_layer.PROTECTED_SOURCES))
@@ -1520,6 +1555,16 @@ def _count_delete_every_row(db, params, scan_limit):
 def _run_delete_every_row(db, params, log, control=None):
     from chain import replay
 
+    if params.get("how") == FULL_RESET:
+        try:
+            s = replay.full_reset(db, params["table"], confirm_rows=params.get("confirm_rows"), apply=True,
+                                  by=getattr(control, "run_id", None) or replay.EVERY_ROW_DELETER, log=log)
+        except replay.ReplayRefused as e:
+            raise RetroactiveRefused(str(e)) from None
+        _final_progress(control, s["rows_deleted"], s)
+        return {"rows_deleted": s["rows_deleted"], "layers_deleted": s["layers_deleted"],
+                "overwrites_deleted": s["overwrites_deleted"],
+                "ledger_atoms_withdrawn": sum(s["ledger_withdrawn"].values())}
     s = replay.delete_every_row(db, params["table"], apply=True, pace=params.get("pace"), log=log,
                                 checkpoint=_checkpoint(control))
     _final_progress(control, s["rows_deleted"], s)
@@ -1981,6 +2026,18 @@ def _judge_table(params):
         raise RetroactiveRefused(str(e)) from None
 
 
+#: «Delete every row of a table»'s `how` for the one-transaction reset (소유자 10-23).
+FULL_RESET = "full_reset"
+
+
+def _judge_delete_every_row(params):
+    """The table, and `confirm_rows` with a full reset only. The preview is judged here too, so a full reset's
+    missing `confirm_rows` is the run's refusal (`replay.full_reset`), not this one."""
+    _judge_table(params)
+    if "confirm_rows" in params and params.get("how") != FULL_RESET:
+        raise RetroactiveRefused("'delete_every_row' takes confirm_rows with how full_reset only")
+
+
 def _ledger_world(params):
     """The ledger world a job runs in, by name (총괄 3b6dacd2f). A job stored before worlds
     carries the root it read instead: the default root IS the default world - by name,
@@ -2056,10 +2113,14 @@ def _judge_ledger_rescope(params):
 #: screen that offered cancel anyway would show a button that does nothing.
 #: `judge` is the operation's own params judgment, asked by `validate` before anything
 #: is recorded. None: the run is the first to judge them.
+#: `examples` (the admin help's catalog, with `what_is_missing` and `next`) are the operator's own questions, an input
+#: sample rendered nowhere - a screen that shows them as hints needs English samples beside them (총괄 10-23).
 OPERATIONS = {
     "chain_replay": {
         "label": "Replay chain rules over old data (R1)",
         "what_is_missing": "data older than the rule has never been seen by that rule",
+        "examples": ["체인 룰을 새로 만들었거나 고쳤는데 옛날 행에는 반영이 안 됐다", "조인을 고쳤는데 옛 행의 칸이 비어 있어", "이 규칙 예전 데이터에 다시 돌려줘"],
+        "next": ["chain_replay of each rule that reads this rule's table, one by one - a replay wakes no rule (owner 09-26)"],
         "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)"),
                    _p("business_keys", required=False, kind="csv",
                       help="replay only these rows, by business_key_val; omit for the "
@@ -2104,6 +2165,8 @@ OPERATIONS = {
     "withdraw": {
         "label": "Withdraw a stale source (R2)",
         "what_is_missing": "a wrong value an old rule wrote still wins the priority stack",
+        "examples": ["옛 룰이 만든 틀린 값이 아직 이기고 있다", "이 소스가 쓴 값 다 빼줘"],
+        "next": ["chain_replay of the rule that should hold the value - the withdrawal already shows what the layers left decide and removes the rows it emptied"],
         "params": [_p("table"), _p("source"),
                    _p("columns", required=False, kind="csv",
                       help="comma-separated column allowlist"),
@@ -2126,6 +2189,8 @@ OPERATIONS = {
     "set_aside": {
         "label": "Set queued chain events aside",
         "what_is_missing": "the chain queue holds work that must not run now",
+        "examples": ["사고 중 체인 대기열에 지금 돌면 안 되는 일이 쌓였다", "이 표 사건 지금 돌리지 마"],
+        "next": ["rerun_set_aside when they should run"],
         "params": [_p("tables", required=False, kind="csv",
                       help="only events on these tables"),
                    _p("rules", required=False, kind="csv",
@@ -2150,6 +2215,8 @@ OPERATIONS = {
     "rerun_set_aside": {
         "label": "Run set-aside events again",
         "what_is_missing": "events set aside during an incident never ran",
+        "examples": ["치워 둔 사건을 이제 돌려", "사고 끝났으니 밀린 거 실행"],
+        "next": ["chain_replay of the rules below them, one by one - this wakes none"],
         "params": [_p("tables", required=False, kind="csv",
                       help="only events set aside on these tables"),
                    _p("rules", required=False, kind="csv",
@@ -2174,6 +2241,9 @@ OPERATIONS = {
         "label": "Run a rule's queued rows (retired)",
         "what_is_missing": ("rows a run_in: operation rule's group queued before run_in was retired - "
                             "rules run in the chain now"),
+        "examples": [],
+        "next": [],
+        "retired": True,
         "params": [_p("rule", help="the chain rule"),
                    _p("transaction", help="the transaction whose group queued the rows"),
                    _p("events", kind="csv", help="the outbox events that named the rows"),
@@ -2198,6 +2268,8 @@ OPERATIONS = {
     "resolve": {
         "label": "Recompute shown values from stored layers (R3)",
         "what_is_missing": "a cell shows a value its own stored layers no longer pick",
+        "examples": ["칸에 여러 소스가 쌓여 있는데 옛 층이 표시되고 있다", "소스 창엔 맞는 값인데 셀은 옛 값이야"],
+        "next": [],
         "params": [_p("table"),
                    _p("columns", required=False, kind="csv",
                       help="comma-separated column allowlist"),
@@ -2227,6 +2299,8 @@ OPERATIONS = {
         "what_is_missing": ("a \"write\" column keeps the spellings stored before it was declared, "
                             "a text column keeps numbers stored before text took them, and a row keyed "
                             "by a number keeps the key spelling it was stored with («1.0» · «001»)"),
+        "examples": ["표기 write 칸을 선언했는데 그 전에 저장된 값이 옛 철자다", "1.0 이랑 1 이 다른 값으로 잡혀"],
+        "next": ["fold_file_layers, then python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - the folded layers that now repeat go, and the space comes back"],
         "params": [_p("table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
@@ -2256,6 +2330,8 @@ OPERATIONS = {
         "label": "Fold layers that repeat another",
         "what_is_missing": ("a cell re-delivered file after file keeps one layer per file; the chain's "
                             "layer is one per source row"),
+        "examples": ["칸마다 파일 층이 여러 겹 쌓여 있다", "소스 창에 같은 값이 수십 줄이야"],
+        "next": ["python server/scripts/tune_layer_tables.py --table cell_sources --vacuum - gives the space back"],
         "params": [_p("table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
@@ -2283,15 +2359,23 @@ OPERATIONS = {
     "fold_duplicate_rows": {
         "label": "Fold duplicate rows",
         "what_is_missing": "rows that should be one per key went in more than once",
+        "examples": ["키마다 한 행이어야 하는데 같은 키의 행이 여럿 들어갔다", "같은 키 행 중 층 많은 것만 남기고 값이 다른 키는 건드리지 마"],
+        "next": [],
         "params": [_p("table"),
                    _p("keys", kind="csv",
                       help="the columns whose values make a key; rows sharing them fold to one; "
                            "a row with a blank key part is left as it is"),
-                   _p("order", help="the column that picks the row to keep"),
+                   _p("order", required=False,
+                      help="the column that picks the row to keep - with keep earliest or latest"),
                    _p("keep", required=False,
                       choices=[{"value": "min", "label": "Keep the earliest"},
-                               {"value": "max", "label": "Keep the latest"}],
+                               {"value": "max", "label": "Keep the latest"},
+                               {"value": "most_layers", "label": "Keep the row with the most layers",
+                                "when": "no order - the row with the most cell layers stays, a tie the smaller row id"}],
                       help="which row of a key stays, by order; earliest when not given"),
+                   _p("only_identical", required=False, kind="bool",
+                      help="leave a key whose rows differ in their values as it is - the preview names the "
+                           "columns and values either way"),
                    _p("prefer_column", required=False,
                       help="a column whose text puts a row first among its key's rows; with prefer_text"),
                    _p("prefer_text", required=False,
@@ -2306,9 +2390,9 @@ OPERATIONS = {
         "count": _count_fold_duplicate_rows,
         "run": _run_fold_duplicate_rows,
         "judge": _judge_fold_duplicate_rows,
-        "cli": ("server/scripts/chain_replay_cli.py fold-rows <table> --keys <a,b> --order <column> "
-                "[--keep min|max] [--prefer-column <column> --prefer-text <text>] [--mark-column <column>] "
-                "[--only-column <column> --only-text <text>] [--pace slow] --apply"),
+        "cli": ("server/scripts/chain_replay_cli.py fold-rows <table> --keys <a,b> [--order <column>] "
+                "[--keep min|max|most_layers] [--only-identical] [--prefer-column <column> --prefer-text <text>] "
+                "[--mark-column <column>] [--only-column <column> --only-text <text>] [--pace slow] --apply"),
         # 총괄 d72dc0283: through crud.delete_rows_batch, the grid's delete - each row's layers
         # and history line go with it and the chain takes back what it fed. With mark_column
         # (016a766af) nothing is deleted.
@@ -2327,6 +2411,8 @@ OPERATIONS = {
     "fold_units": {
         "label": "Mark the losing units' rows (fold rule)",
         "what_is_missing": "per group one unit wins; the other units' rows are not marked yet",
+        "examples": ["웨이퍼마다 이긴 잡 하나만 남겨야 하는데 진 잡의 로그 행이 표시 안 됐다", "접기 규칙 빨리 돌려줘"],
+        "next": ["chain_replay of the copy rule - the marks wake no rule (setup step 6)"],
         "params": [_p("rule", help="the fold_by_unit chain rule on the unit table (GET /admin/chain/rules)"),
                    _pace_param()],
         "count": _count_fold_units,
@@ -2350,11 +2436,23 @@ OPERATIONS = {
     "delete_every_row": {
         "label": "Delete every row of a table",
         "what_is_missing": "a table to start again - every row goes; reading its files again is «Read all again»",
-        "params": [_p("table"), _pace_param()],
+        "examples": ["표 하나를 통째로 다시 지어야 한다", "이 표 싹 비우고 처음부터 다시 읽고 싶어"],
+        "next": ["Read all again on the file page - the file checklist is kept", "row by row: chain_replay of the rules that take deletions from this table, if their tables should follow"],
+        "params": [_p("table"), _pace_param(),
+                   _p("how", required=False, choices=[
+                       {"value": "by_row", "label": "Row by row",
+                        "when": "the grid's delete, a page at a time - what the rows fed is taken back by the chain"},
+                       {"value": FULL_RESET, "label": "Full reset",
+                        "when": "one transaction, for a table of millions - no chain rule is told, a person's "
+                                "values go too, the ledger atoms of the sources reading the table are taken back"}],
+                      help="row by row when left empty"),
+                   _p("confirm_rows", required=False, kind="int",
+                      help="full reset only: the rows the preview said - refused when the table has moved since")],
         "count": _count_delete_every_row,
         "run": _run_delete_every_row,
-        "judge": _judge_table,
-        "cli": "server/scripts/chain_replay_cli.py delete-every-row <table> [--pace slow] --apply",
+        "judge": _judge_delete_every_row,
+        "cli": ("server/scripts/chain_replay_cli.py delete-every-row <table> [--pace slow] "
+                "[--how full_reset --confirm-rows N] --apply"),
         # 총괄 4435b9b29 (소유자 10-21 「다시 로드랑 지우기 분리해」): remove_shell_rows' paging, judged «every row».
         "deletes": "every row of the table, with its cell layers and a history line each",
         "reads_as": "number",
@@ -2362,15 +2460,19 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": ("one commit per page of up to 1,000 rows, sized to the page time "
                                "(crud.delete_rows_batch); a stop "
-                               "lands between pages and a re-run finds only what is left"),
+                               "lands between pages and a re-run finds only what is left. A full reset is one "
+                               "transaction - a stop does not land inside it"),
         "cli_only": [],
         "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
                             "taken back; the deletion wakes no rule - replay the rules that take deletions "
-                            "from this table if their tables should follow. The file checklist is not touched"),
+                            "from this table if their tables should follow. A full reset tells the chain "
+                            "nothing. The file checklist is not touched"),
     },
     "remove_shell_rows": {
         "label": "Remove rows with no source left",
         "what_is_missing": "rows the chain filled whose sources are all gone - only the chain's keys are left",
+        "examples": ["원본이 다 지워졌는데 공식 표에 키만 남은 행이 쌓여 있다", "값 없이 키만 있는 행 지워줘"],
+        "next": [],
         "params": [_p("table"), _pace_param()],
         "count": _count_remove_shell_rows,
         "run": _run_remove_shell_rows,
@@ -2392,6 +2494,8 @@ OPERATIONS = {
     "fold_withdrawal_events": {
         "label": "Fold row-by-row withdrawal events",
         "what_is_missing": "withdrawals queued one chain event per row before they wrote collapsed ones",
+        "examples": ["회수가 행마다 사건을 낸 채 쌓여 체인이 느리다", "거둔 뒤로 대기열이 안 줄어"],
+        "next": [],
         "params": [],
         "count": _count_fold_withdrawal_events,
         "run": _run_fold_withdrawal_events,
@@ -2411,6 +2515,8 @@ OPERATIONS = {
     "ledger_backfill": {
         "label": "Translate the rows not yet in the ledger",
         "what_is_missing": "the declaration reads this source, but some of its rows are not in the ledger yet",
+        "examples": ["원장에 이 소스의 원자가 없거나 도중에 멈춰 있다", "새 소스를 선언했는데 걷기에 안 나와"],
+        "next": [],
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
                    _pace_param(),
                    _p("fetch_rows", required=False, kind="int", form=False,
@@ -2439,6 +2545,8 @@ OPERATIONS = {
         "label": "Catch a ledger world up",
         "what_is_missing": ("the world did not follow its tables live for a while, so rows "
                             "made, edited or deleted meanwhile are not in its ledger"),
+        "examples": ["원장이 못 본 수정이 있다 — 표 값이 바뀌었는데 원자가 옛 값 그대로", "가지를 다시 켰는데 옛 값이야"],
+        "next": ["python -m ledger census --source <source> - the source panel keeps the numbers it measured until a census runs again"],
         "params": [_p("world", help="a ledger world by name (GET /admin/ontology-explorer/worlds)"),
                    _pace_param()],
         "count": _count_ledger_catch_up,
@@ -2457,6 +2565,8 @@ OPERATIONS = {
     "ledger_rescope": {
         "label": "Re-translate a ledger scope",
         "what_is_missing": "corrected input never reached the ledger, so that scope alone holds stale values",
+        "examples": ["원장 해석을 고쳤는데 이미 적재된 원자는 옛 해석 그대로다", "이 랏만 원장 다시 번역해줘"],
+        "next": [],
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
                    _p("scope_column", required=False,
                       help="a column this source's read declares; anything else is "
@@ -2490,6 +2600,8 @@ OPERATIONS = {
     "enrichment_backfill": {
         "label": "Create enrichment derived rows",
         "what_is_missing": "the derived rows were never created at all",
+        "examples": ["파생 테이블에 행 자체가 없다", "워크리스트에도 안 떠"],
+        "next": ["enrichment_confirm when the new rows' target cell stays empty"],
         "params": [_p("rule", help="enrichment rule name (chain_rules.json)"),
                    _p("limit", required=False, kind="int", form=False,
                       help="caps NEW identities, not the scan"),
@@ -2512,6 +2624,8 @@ OPERATIONS = {
     "enrichment_confirm": {
         "label": "Auto-confirm single candidates",
         "what_is_missing": "the derived rows exist but the target cell is empty",
+        "examples": ["파생 행은 있는데 타깃 칸이 비어 있다", "후보가 하나뿐인데 왜 안 채워져"],
+        "next": [],
         "params": [_p("rule", help="enrichment rule name (chain_rules.json)"),
                    _p("limit", required=False, kind="int", form=False,
                       help="cap the number of rows examined"),
@@ -2538,6 +2652,8 @@ OPERATIONS = {
         "what_is_missing": "a source added today has no data for the days before it",
         "downstream_note": ("The files it collects are ingested as usual, and the chain runs "
                             "on them"),
+        "examples": ["오늘 붙인 수집기에 지난 날들의 데이터가 없다", "지난주 것도 가져와"],
+        "next": ["collector_backfill again from the line's next_start when it stopped short"],
         "params": [_p("collector", help="<table>/<script.py> of a collector that declares "
                                          "'# window:'"),
                    _p("start", help="first day, KST - YYYY-MM-DD (that day's 00:00) or "
@@ -2563,6 +2679,8 @@ OPERATIONS = {
         "what_is_missing": "a column the table declaration names a number that the database still holds as text",
         "downstream_note": ("The table is locked while it converts; afterwards the declaration says the new type "
                             "and every process reads the column as it"),
+        "examples": ["숫자 칸인데 DB 엔 글자로 들어가 있다", "칸 타입 바꿨는데 정렬이 글자처럼 돼"],
+        "next": [],
         "params": [_p("table"), _p("column"),
                    _p("type", help="the declared type", choices=lambda: sorted(_retype_types()))],
         "count": _count_retype_column,
@@ -2578,6 +2696,28 @@ OPERATIONS = {
                                "the column converted, those indexes built again; then the declaration's one cell. A "
                                "stop lands before the transaction begins; once it has, it ends"),
         "cli_only": [],
+    },
+}
+
+#: The upkeep doors outside this tab, in the catalog's cells - what the operator means to do, their questions, and
+#: the door to call next (소유자 10-23 ㄴ). Not runs: each door is its own route or command, named in `doors`.
+DOORS_OUTSIDE = {
+    "read_files_again": {
+        "label": "Read files again",
+        "what_is_missing": "files already read keep the parse they had - the parser or the table's reading changed since",
+        "examples": ["파서(또는 칸 선언)를 고쳤는데 이미 들어간 파일의 행은 옛 해석 그대로다", "이 파일 지금 다시 읽어줘",
+                     "이 폴더 실패한 파일만 다시", "표 선언에 칸을 더했는데 이미 들어간 파일에는 그 칸이 비어 있다"],
+        "doors": [
+            {"name": "now", "how": ("the file page's Retry · Read all again · Retry failed files under a folder "
+                                    "(POST /admin/file-ingestion/retry-failed) · Read now"),
+             "when": ("the rows the file log names, picked by state, folder and time, read where the log says they "
+                      "are; a file gone from there is not handed")},
+            {"name": "next sweep", "how": "python server/scripts/replay_ingestion.py --path <file> [--table <table>] --apply",
+             "when": ("a file still where its source's sweep looks - its log row's stamp emptied, the next sweep "
+                      "reads it as the source's pattern takes it; a file moved away is not read")}],
+        "next": [("after a table_config change (a column added) the watcher keeps the read files as read and hands "
+                  "the failed ones only - Read all again on the file page reads the rest with the new declaration "
+                  "(owner 10-23)")],
     },
 }
 

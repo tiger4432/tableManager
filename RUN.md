@@ -15,6 +15,186 @@
 >
 > ---
 >
+> ## [10-23] **파일 화면 — 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» (23c35a768)** — git pull · 서버 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동. 선언 바뀜 없음. 화면은 클라 착지 뒤
+> 보는 것   GET /admin/file-ingestion/tables 의 표마다 sources[]: total · read · left · left_by_status
+>           맨 위 progress: counted_at · count_seconds · counting · failed
+> 답의 뜻   read      도장 있는 파일 — 다음 훑기가 다시 안 읽음
+>          left      도장 없는 파일 — 대기 · 읽는 중 · 실패 · 체크 해제. 와처가 읽을수록 줄어듦
+>          total     기록 행이 있는 파일 수(파일 = 그 경로의 가장 새 행). 🔴 훑기가 아직 닿지 않은 새 파일은 없음
+>          counting  아직 한 번도 안 셈 — 잠시 뒤 다시 열면 수가 옴
+>          counted_at 이 오래돼도 수는 그 시각의 것. 다시 세는 박자 = ingestion_settings.json 의
+>          count_recount_seconds (기본 30 초) — 그리드 전체 수와 같은 일꾼 · 같은 박자
+>          left 가 줄지 않고 그대로면 와처가 그 파일을 읽지 못하고 있는 것 — 그 표의 left_by_status 를 봄
+> 급할 때   끄는 스위치 없음 — 세는 일은 요청 밖 일꾼 하나가 한 번에 하나. 운영 기록 행 수는 모름(300 만 행 6 초)
+> 되돌리기  git revert 23c35a768 -> 서버 재기동
+> ```
+>
+
+---
+
+> ## [10-23] **표에 없는 칸 · 숫자 칸에 숫자 아닌 값으로 거르면 이름 대고 거절 (5f5db4a2d)** — git pull · 서버 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동. 선언 바뀜 없음
+> 바뀐 것   전에는 그런 거르기를 빼고 표 «전체»를 답했음(그리드 쪽 · 수 · CSV · 피벗 · AI 리포트) — 이제 422 와 문장
+> 답의 뜻   화면에 «The filter for '<표>' cannot be built (item '<칸>'): '<표>' has no column '<칸>' - ...» 가 보이면
+>            그 화면이 보낸 칸 이름이 그 표의 선언에 없는 것 — 화면의 선언(맵 키 · split registry · 보강 규칙 ·
+>            R&D 보드 contrast_run.world · 리포트 where)이나 table_config 의 칸 이름을 맞춤
+>          «'abc' is not a number for '<칸>'»                      숫자 칸에 숫자 아닌 값 — 그 값을 고침
+> 급할 때   끄는 스위치 없음 — 거절 문장이 가리키는 칸 이름을 선언에 맞추면 그 화면이 다시 읽힘
+> 되돌리기  git revert 5f5db4a2d -> 서버 재기동 (다시 조용히 표 전체를 답함)
+> ```
+>
+
+---
+
+> ## [10-23] **어드민 도움말 서버 몫 — 하려는 일을 적으면 도구 하나 · 칸 · 셈 (801268406)** — git pull · 서버 재기동 · 맞춘 수 한 번
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동 (admin_help_asks 표는 기동 때 만들어짐). 화면은 클라 라운드 뒤
+> 맞춘 수   python server/scripts/help_bench.py
+>          카탈로그의 운영자 물음 전부를 config/llm_config.json 의 게이트웨이에 한 번씩 물음 (DB 안 건드림, 물음 43 개 — 틀린 것은 한 번 더)
+> 답의 뜻   MISS  <도구>  <물음>  ->  <고른 도구 또는 거절 사유>      그 물음에 다른 도구를 골랐거나 칸이 틀려 두 번 다 거절됨
+>            칸이 꼭 있어야 하는 도구(table · rule 등)는 물음에 그 값이 없으면 거절되는 게 맞음 — 도구 이름이 맞는지만 봄
+>          named their own tool: H of N                                   맞춘 수
+>          gateway seconds per ask: median a · max b · k asks             게이트웨이 응답 시간 — 화면에서 한 번 묻기가 대략 이 시간(틀리면 두 배)
+> 급할 때   쓰지 않으면 아무 일 없음. 라우트는 실행을 안 함
+> 되돌리기  git revert 801268406 -> 서버 재기동 (admin_help_asks 표는 남음, 아무도 안 읽음)
+> ```
+>
+
+---
+
+> ## [10-23] **표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만, 반영은 Read all again (53d547bbb)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언 바뀜 없음
+> 바뀐 것   table_config.json 의 그 표 항목만 바꾸면(칸 더함 등) 와처는 실패 파일만 다시 넘기고, 읽은 파일은 그대로 둠
+>          플러그인 스크립트 · 외부 소스 칸이 바뀌면(표 선언과 같이 바뀌어도) 지금처럼 읽은 파일을 다시 읽음
+> 답의 뜻   watcher.log
+>          [Watcher] <표>: its reading changed (table_config) - N read file(s) kept as read (Read all again on the file page applies the change to them), M failed file(s) handed again
+>            N  다시 읽지 않고 둔 파일 수 — 새 선언(예: 더한 칸)은 이 파일들의 행에 아직 안 들어감
+>            M  다시 넘긴 실패 파일 수
+>          [Watcher] <표>: its reading changed (scripts\<파일>.py ...) - N read file(s) unchecked, ...        전과 같음 — 다시 읽음
+> 반영할 때  파일 화면에서 그 표 · 폴더를 골라 «Read all again» -> 미리보기 수 확인 -> 실행
+> 되돌리기  git revert 53d547bbb -> 런처 재기동 (표 선언이 바뀌면 다시 전부 다시 읽음)
+> ```
+>
+
+---
+
+> ## [10-23] **파일이 소스 밑인지 가르는 판정이 빨라짐 (df2e41ab5)** — 위 블록과 같은 git pull · 런처 재기동에 같이 들어감
+>
+> ```
+> 바뀐 것   스윕의 파일 판정 · 시작 정리가 약 2~4 배 빨라짐(박스: 판정 10 만 개 10.8 → 2.8 초, 시작 정리 20 만 행 47.8 → 26.7 초). 답은 그대로
+> 바뀐 답   루트가 공유 최상위 그 자체(\\host\share)인 외부 소스만 — 전에는 그 밑 파일을 하나도 안 받았고, 이제 받음
+>          ingestion_settings.json 의 path 가 \\host\share\폴더 처럼 한 단계라도 더 들어가 있으면 바뀜 없음
+> 보는 곳   watcher.log «[Watcher] checklist cleanup done in N s» 의 N
+> 되돌리기  git revert df2e41ab5 -> 런처 재기동
+> ```
+>
+
+---
+
+> ## [10-23] **와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 (968316ac9)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언 바뀜 없음
+> 첫 재기동  패턴 · 폴더가 안 맞는 체크리스트 행(약 10 만)을 지운다 — 자기 스레드라 그 동안 와처의 다른 일(스윕 · 재시도 · 선언 바뀜 듣기)은 돈다
+>          표의 행 · 층은 안 건드림, 체크리스트 행과 다시 읽기 표시만
+> 답의 뜻   watcher.log
+>          [Watcher] checklist cleanup started - rows the declaration does not take now are deleted          시작
+>          [Watcher] <표>: N checklist row(s) the declaration does not take - deleted (name not matched a · …)  표마다 지운 수와 사유
+>            name not matched  glob/filename 이 안 받음     below max_depth  깊이 밖     outside the root  어느 소스 · 작업 폴더 밑도 아님
+>            source not declared  행이 가리킨 소스가 ingestion_settings.json 에 아예 없음
+>          [Watcher] <표>: N checklist row(s) of a source switched off or refused - left for their source (…)   지우지 않고 남긴 수
+>            source switched off  enabled:false 인 소스 — 다시 켜면 그 행이 그대로 체크리스트로 쓰임
+>            source refused       검사에서 거절된 소스(플러그인 로드 실패 등) — watcher.log 의 «External source config rejected» 줄이 사유
+>          [Watcher] checklist cleanup done in N s - N deleted · M left for their source                       끝. 박스에서 20 만 행 48 초
+> 바뀐 것   지운 파일이 나중에 선언에 다시 맞게 되면 새 파일로 읽힘
+>          소스 없는 옛 행(10-20 전)도 그 파일이 놓인 소스로 판정해 같이 지움 · 표 작업 폴더 밑이면 raws 행으로 남김
+> 급할 때   되돌리기 전까지 끌 스위치는 없음 — 지운 것은 체크리스트뿐이라 다음 스윕이 선언에 맞는 파일만 읽음
+> 되돌리기  git revert 968316ac9 -> 런처 재기동 (지운 행은 안 돌아옴, 다음부터 대기 줄만 지움)
+> ```
+>
+
+---
+
+> ## [10-23] **표 선언을 바꿔 풀린 «읽음» 도장을 읽지 않고 되돌리기 — 체크리스트 첫 시작 채우기를 한 번 더 (코드 바뀜 없음)** — 런처 재기동
+>
+> ```
+> 왜       표 선언(또는 그 표의 외부 저장소 · 플러그인)이 바뀌면 그 표의 읽은 파일 도장이 풀려, 외부 저장소 스윕이 전부 처음부터 읽음
+>          지금 그 외부 소스를 enabled:false 로 멈춰 두었다면, 다시 켜기 «전»에 아래 순서로
+> 순서      1. 런처를 끈다
+>          2. server/config/watcher_read_files_stamped 파일을 지운다 (ASSY_DATA_ROOT 를 쓰면 그 밑 config/)
+>          3. ingestion_settings.json 에서 그 외부 소스를 enabled:true 로 되돌린다 — 🔴 2 보다 늦게 켜면 안 됨:
+>             꺼진 소스는 첫 스윕이 안 보므로, 채우기가 그 소스 없이 끝나고 켜는 순간 다시 전부 읽음
+>          4. 런처를 켠다
+>          5. watcher.log 에서 아래 줄을 본다
+> 답의 뜻   [Watcher] read files are stamped by the first sweep (the checklist's first start)   채우기가 켜짐(기동 때 한 번)
+>          [Watcher] read files stamped N · left for re-read M (failed F · changed since read C)  끝남 — 파일이 다시 쓰여 다음부터는 안 돎
+>            N  도장만 다시 찍고 «안 읽은» 파일 수 (풀린 뒤 안 바뀐 파일)
+>            M  그래도 읽히는 파일 수 = F + C
+>            F  실패했던 파일 — 도장이 같이 풀렸으므로 한 번씩 다시 읽힘
+>            C  풀린 «뒤»에 내용이 바뀐 파일 — 읽혀야 맞음
+>            M 이 크면  F 가 크면 그 표에 실패 파일이 많은 것 · C 가 크면 풀린 뒤 실제로 바뀐 파일이 많은 것
+>          [Watcher] read files stamped N so far - the next sweep goes on (a source was not reached)   소스 하나가 안 닿음 — 다음 스윕이 이어감
+>          [Watcher] read files stamped N so far - the next sweep goes on (a batch was not stamped)     한 묶음이 DB 오류로 못 찍힘 — 다음 스윕이 이어감
+> 창 둘     풀리기 «직전»(한 스윕 주기 안)에 바뀌었는데 아직 안 읽힌 파일은 «안 바뀐 것»으로 도장이 찍혀 안 읽힘
+>          — 풀 때 행의 갱신 시각이 그 순간으로 밀려, 그보다 이른 변경을 못 가름. 그런 파일은 Retry 로 하나씩
+>          실패 파일은 위 F 처럼 한 번씩 다시 읽힘 (원래는 도장 있는 실패 파일은 다시 안 읽음)
+> 지운 행   체크리스트 행(file_ingestion_logs)을 SQL 로 지운 파일은 도장을 찍을 행이 없어 «새 파일»로 읽힘
+> 급할 때   이 순서를 안 하면 예전 그대로 — 소스를 켜는 순간 도장 빈 파일을 전부 다시 읽음
+> 되돌리기  해당 없음 — 코드 · 선언 바뀜 없음. 표지 파일은 채우기가 끝날 때 다시 생김
+> ```
+>
+
+---
+
+> ## [10-23] **중복 접기 · 철자 접기는 소급 탭 하나씩 — dedupe_business_key_rows.py · fold_comp_id.bat 은퇴 (04971d08b · b6d25136a)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(소급 탭이 새 칸을 보이게). 선언 바뀜 없음
+> 중복 접기  소급 탭 «Fold duplicate rows» — 옛 dedupe 와 같은 일: keys = 표의 키 칸들 · keep = most_layers · only_identical 켬 · order 비움
+>          명령  python server/scripts/chain_replay_cli.py fold-rows <표> --keys <키 칸들> --keep most_layers --only-identical   (보고만)
+>                같은 명령에 --apply
+> 같은 답?  옛 dedupe 는 저장된 business_key_val 로 묶었고, 지금은 적은 키 칸으로 묶음 — keys 에 표의 키 칸
+>          (composite_key_source, 없으면 business_key)을 적으면, 행의 칸이 저장된 키를 그대로 철자하는 한 같다
+>          옛 철자로 저장된 키(1.0 · 001 · 옛 구분자)가 남은 표는 칸으로는 한 키, 저장 키로는 둘 — 먼저 소급 «Fold stored
+>          values into the declared spelling»(키를 다시 적고 합침)을 돌리면 둘이 같아진다 (코드로 읽음, 표마다 재지 않음)
+> 답의 뜻   미리보기 「N key(s) hold rows whose values differ - by column … For example …」  값이 다른 키 · 칸 · 앞 다섯의 값
+>            only_identical 켬  -> 그 키는 그대로 남음      끔(기본) -> 그 키도 keep 규칙으로 접히고 진 행의 값은 사라짐
+>          빈 글자와 NULL 은 같은 빈 값 — 옛 dedupe 는 둘을 달리 봐서 그런 키를 건너뛰었음
+>          옛 --dump 파일은 없어짐 — 미리보기가 다른 칸과 값을 보임
+> 철자 접기  fold_comp_id.bat 대신 소급 탭 «Fold stored values into the declared spelling» (table) — 같은 씨앗에서 같은 답을 쟀음
+> 급할 때   쓰지 않으면 아무 일 없음
+> 되돌리기  git revert 04971d08b (중복 접기) · git revert b6d25136a (철자 접기) -> 런처 재기동 (옛 스크립트가 돌아옴)
+> ```
+>
+
+---
+
+> ## [10-23] **표 비우기는 문 하나 — 소급 탭 «Delete every row of a table» 의 how = Full reset (empty_table.py 은퇴, 6d3ec98cc)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(소급 탭이 새 칸을 보이게). 선언 바뀜 없음
+> 쓰는 법   소급 탭 «Delete every row of a table» -> table · how = Full reset -> 미리보기 -> 그 행 수를 confirm_rows 에 -> 실행
+>          명령  python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset
+>                python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset --confirm-rows <위의 행 수> --apply
+> 답의 뜻   미리보기 「Full reset of '<표>': N row(s) … No chain rule is told …」   아무것도 안 씀
+>          「… full reset: N row(s) … ledger atoms withdrawn …」                     비움 끝. 체인은 안 깸 — 필요하면 Read all again
+>          「REFUSED: … has K row(s) now, not M」                                     그 사이 표가 움직였거나 confirm_rows 를 안 적음 -> 미리보기부터
+>          how 를 비우면 예전 그대로 Row by row(그리드 삭제처럼 쪽마다 · 체인이 먹인 것을 거둠)
+> 급할 때   쓰지 않으면 아무 일 없음. 옛 명령 empty_table.py 는 없어짐
+> 되돌리기  git revert 6d3ec98cc -> 런처 재기동 (empty_table.py 가 돌아옴)
+> ```
+>
+
+---
+
 > ## [10-23] **메인 그리드 피벗 — 화면 몫 ①·② (소유자 10-22, d45ba4aa1)** — git pull · 화면 새로 고침
 >
 > ```
@@ -540,7 +720,7 @@
 >           ⑤ 소급 자식(admin.retroactive_run)이 페이지 경계마다 바뀐 선언(chain_rules · 맵퍼)과 Reload 버튼 행을 읽음
 >             op 지역 rule dict 는 안 바뀜 — 도는 소급이 시작 때 읽은 그 규칙은 그 판 끝까지 그대로
 >           ② 리플레이 판은 페이지를 올리면 done 인데, 그 사건이 체인 대기열에 남은 동안 소급 게이트가 닫힘 (어느 표의 소급이든)
->             원장 backfill --drifted --apply 와 scripts/fold_comp_id.py 도 같은 게이트를 지남
+>             원장 backfill --drifted --apply 도 같은 게이트를 지남 (scripts/fold_comp_id.py 는 10-23 은퇴 — 소급 탭 «Fold stored values into the declared spelling»)
 > 보이는 것  chain_worker.log «[Chain] tx '<tx>': table not held: <표> within <s> s (another group holds it) - rewound, runs again; its N event(s) stay queued»
 >           retroactive.log «[Retroactive] declarations read again at a page boundary»
 >           소급 거절 «run_id=<id> chain_replay has staged its pages, and N of its event(s) on <표> still wait in the chain queue - ...»
@@ -4313,8 +4493,8 @@
 > 답의 뜻      "released": true, "state": "failed" -> 주인 프로세스가 죽은 줄을 놓음, 스케줄러 다음 틱에 뒤 줄이 돎
 >             "released": false, "state": "cancel_requested" -> 10-09 빌드의 자식이 살아서 감시기를 기다리는 중 — 3 초마다 멈춤을 읽고
 >             받은 파일의 상태를 되돌린 뒤 cancelled. 1 분 뒤 «읽기만» 줄을 다시
-> 최후 수단    curl 이 거절할 때만(4xx · 5xx) 운영 DB 에서:
->             UPDATE retroactive_runs SET state='failed', finished_at=now(), error='released by hand' WHERE run_id='<id>' AND state IN ('running','cancel_requested');
+> 최후 수단    curl 이 거절할 때만(4xx · 5xx): stop_retroactive.bat <run_id> (server/scripts/stop_retroactive.py) — 이 호스트의 그 실행
+>             프로세스를 끄고, 남은 줄은 같은 UPDATE(state failed · 사유 «released by hand (stop_retroactive)»)로 놓는다 — 손 SQL 대신
 > ```
 >
 > ---
@@ -5043,7 +5223,7 @@
 > ## [10-08] **표 비우기 도구가 모든 표를 «선언된 표가 아닙니다»로 거절하던 것 고침 — 이주 «없음» · 재기동 «불필요»(스크립트)**
 >
 > ```
-> 무엇     python server/scripts/empty_table.py <표> 가 명령으로 돌 때 table_config 의 표를 스스로 등록한다 — 전엔 0 개라 모든 표를 거절
+> 무엇     표 비우기가 명령으로 돌 때 table_config 의 표를 스스로 등록한다 — 전엔 0 개라 모든 표를 거절. 10-23 부터 그 명령은 python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset
 > 할 일     git pull 만. 「공식 표 다시 채우기」 6 · 7 은 명령 그대로 — 먼저 등록하고 부르는 우회가 필요 없다
 > 볼 줄     6 의 첫 줄  표 official_dt — 행 N · 칸 층 … = 고쳐졌다
 >          거절: 'official_dt' 는 선언된 표가 아닙니다 (table_config) = pull 이 안 됐거나 table_config.json 에 그 표가 없다
@@ -5869,7 +6049,7 @@
 >              박스 오늘: 키를 선언한 표 32 · 겹친 키 그룹 0 · 이 병의 행 0
 > 뜻           0 이 아니면 그 행은 키 없이 남은 것 — 고치는 것은 소유자가 돌린다(지우거나 접는 명령, 기본은 읽기만):
 >                 python server/scripts/rebuild_blank_business_keys.py --table <표>            (키를 다시 조립 — 부딪히는 키는 collides 로 냄)
->                 python server/scripts/dedupe_business_key_rows.py --table <표>               (그다음 겹친 행 접기 — 값이 다른 그룹은 건너뜀)
+>                 python server/scripts/chain_replay_cli.py fold-rows <표> --keys <키 칸들> --keep most_layers --only-identical   (그다음 겹친 행 접기 — 값이 다른 키는 건너뜀 · 10-23 부터 dedupe_business_key_rows.py 대신)
 >              각각 --apply 를 붙여야 쓴다. 순서는 rebuild 먼저
 > 급할 때       git revert <이 커밋> -> 재기동 (되돌릴 이주 없음)
 > ```
@@ -6021,11 +6201,11 @@
 > 5 앱 켬       run_app.bat 전체 — 3 · 4 를 한 번에 읽는다
 >               확인: SELECT count(*) FROM information_schema.columns WHERE table_name = 'official_dt' AND column_name = 'hold'
 >               뜻: 1 = hold 칸이 섰음 · 0 = 3 이 안 들어감(표 설정 파일 · 저장 위치를 다시 봄). 그리드 official_dt 에도 HOLD 칸이 보인다
-> 6 비우기 보고   python server/scripts/empty_table.py official_dt
->               뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 같이 감) · 덮어쓰기 · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
-> 7 비우기       python server/scripts/empty_table.py official_dt --apply --confirm-rows <6 의 행 수> --by <이름>
->               뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 6 부터 다시
->                  「비움」 줄 뒤 「원자 거둠」 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
+> 6 비우기 보고   python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset   (소급 탭 «Delete every row of a table» · how = Full reset 의 미리보기와 같음)
+>               뜻: 「Full reset of 'official_dt': N row(s), 칸 층 · 사람 층(비우면 사람이 고친 값도 같이 감) · pin · 규칙 · 원장 원자」. 아무것도 안 씀
+> 7 비우기       python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset --confirm-rows <6 의 행 수> --apply
+>               뜻: 「… full reset: N row(s) … ledger atoms withdrawn … no chain rule told」. 「REFUSED: … has K row(s) now」이면 그 사이 표가 움직임 — 6 부터 다시
+>                  행을 지운 뒤 원자 거둠 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
 >               시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 1.03 s -> 100만 어림 103 s (운영은 안 쟀다)
 > 8 체인 규칙 둘  config/chain_rules.json 에 RELEASE_LOG 「보류 포함 행 복사」의 두 규칙(둘 다 "is_batch": true) — 다시 세기 규칙 official_dt_hold_recount 에는 "enabled": false
 >               까닭: 켜 두면 복사가 공식 행에 쓸 때마다 다시 세기가 한 번 더 돈다(세기 질의가 한 번씩 더) — 다시 채우기 내내
@@ -6046,16 +6226,16 @@
 
 ---
 
-> ## [10-02 밤] **표 통째로 비우기 — server/scripts/empty_table.py (총괄 35b76ba92) — 이주 «불필요» · 재기동 «불필요»(새 명령)**
+> ## [10-02 밤] **표 통째로 비우기 (총괄 35b76ba92) — 10-23 부터 «Delete every row of a table» 의 Full reset — 이주 «불필요» · 재기동 «불필요»**
 >
 > ```
 > 무엇          표 하나의 행 · 그 표의 칸 층 · 덮어쓰기를 한 트랜잭션에 지우고, 그 표를 읽는 원장 소스의 원자를 거둔다. 아웃박스 이벤트 0
 >              내일 공식 표 다시 채우기의 «순서 전부»는 다음 착지(복사 맵퍼 묶음)의 RUN.md 에 들어간다
-> 보고          python server/scripts/empty_table.py <표>
->              뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 감) · 덮어쓰기 · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
-> 비우기        python server/scripts/empty_table.py <표> --apply --confirm-rows <보고의 행 수> --by <이름>
->              뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 보고부터 다시
->                 「비움」 줄 뒤 「원자 거둠」 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
+> 보고          python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset   (소급 탭: how = Full reset 의 미리보기)
+>              뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 감) · pin · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
+> 비우기        python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset --confirm-rows <보고의 행 수> --apply   (소급 탭: confirm_rows 칸)
+>              뜻: 「… full reset: N row(s) … ledger atoms withdrawn … no chain rule told」. 「REFUSED: … has K row(s) now」이면 그 사이 표가 움직임 — 보고부터 다시
+>                 행을 지운 뒤 원자 거둠 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
 >              시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 0.99 s -> 100만 어림 99 s
 > 급할 때       없음 — --apply 전에는 아무것도 안 쓴다
 > ```

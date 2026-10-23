@@ -202,8 +202,11 @@ def main(argv=None):
     p = sub.add_parser("fold-rows")
     p.add_argument("table")
     p.add_argument("--keys", required=True, help="comma-separated key columns")
-    p.add_argument("--order", required=True, help="the column that picks the row to keep")
-    p.add_argument("--keep", default="min", choices=["min", "max"], help="min (earliest, default) | max")
+    p.add_argument("--order", default=None, help="the column that picks the row to keep (with min | max)")
+    p.add_argument("--keep", default="min", choices=["min", "max", "most_layers"],
+                   help="min (earliest, default) | max | most_layers (the most cell layers, no --order)")
+    p.add_argument("--only-identical", action="store_true",
+                   help="leave a key whose rows differ in their values as it is (owner 10-23)")
     p.add_argument("--prefer-column", default=None, help="with --prefer-text: a row whose column holds it stays first")
     p.add_argument("--prefer-text", default=None, help="the text (any case) --prefer-column holds")
     # 총괄 016a766af · 83c05cfbb: mark instead of delete, and only the rows of one kind
@@ -233,6 +236,9 @@ def main(argv=None):
     p = sub.add_parser("delete-every-row")
     p.add_argument("table")
     p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--how", default=None, choices=("by_row", "full_reset"),
+                   help="full_reset: one transaction, no chain rule told, a person's values too (owner 10-23)")
+    p.add_argument("--confirm-rows", type=int, default=None, help="with --how full_reset --apply: the preview's row count")
     p.add_argument("--apply", action="store_true")
 
     args = parser.parse_args(argv)
@@ -291,7 +297,7 @@ def main(argv=None):
                 print(_report_replay(s))
         elif args.cmd == "fold-rows":
             params = {"table": args.table, "keys": args.keys, "order": args.order,
-                      "keep": args.keep, "pace": args.pace,
+                      "keep": args.keep, "pace": args.pace, "only_identical": args.only_identical,
                       **{cell: getattr(args, cell) for cell in ("prefer_column", "prefer_text", "mark_column",
                                                                  "only_column", "only_text")
                          if getattr(args, cell) is not None}}
@@ -304,6 +310,7 @@ def main(argv=None):
                          f"'{args.prefer_text}')" if args.prefer_column else "")
                       + f", {s['rows_blank_key']} row(s) with a blank key part"
                       + (f" and {s['rows_out_of_scope']} out of scope" if args.only_column else "")
+                      + (f", {s['keys_differing']} key(s) whose rows differ" if args.only_identical else "")
                       + " left as they are"
                       + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
             else:
@@ -324,13 +331,22 @@ def main(argv=None):
                 print("\n" + retroactive.count(db, "remove_shell_rows", params)["detail"] + "\n-> add --apply to delete")
         elif args.cmd == "delete-every-row":
             params = {"table": args.table, "pace": args.pace}
-            if args.apply:
+            full = args.how == retroactive.FULL_RESET
+            if args.how:
+                params["how"] = args.how
+            if full and args.apply:
+                s = written("delete_every_row", dict(params, confirm_rows=args.confirm_rows))
+                print(f"\ndelete-every-row '{args.table}' full reset: {s['rows_deleted']} row(s), "
+                      f"{s['layers_deleted']} layer(s), {s['overwrites_deleted']} pin(s) deleted; ledger atoms "
+                      f"withdrawn {s['ledger_withdrawn']}; no chain rule told")
+            elif args.apply:
                 s = written("delete_every_row", params)
                 print(f"\ndelete-every-row '{args.table}': {s['rows_deleted']} of {s['rows_to_delete']} row(s) deleted "
                       f"in {s['pages']} page(s)"
                       + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
             else:
-                print("\n" + retroactive.count(db, "delete_every_row", params)["detail"] + "\n-> add --apply to delete")
+                print("\n" + retroactive.count(db, "delete_every_row", params)["detail"] + "\n-> add --apply to delete"
+                      + (" (with --confirm-rows <the rows above>)" if full else ""))
         elif args.cmd == "fold-withdraw-events":
             if args.apply:
                 from chain import cell_layer

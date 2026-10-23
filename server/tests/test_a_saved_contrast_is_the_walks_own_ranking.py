@@ -450,10 +450,21 @@ def test_the_package_walk_at_start_does_not_import_the_route():
     assert done.stdout.split()[-2:] == ["True", "False"], done.stdout + done.stderr
 
 
-def test_the_answer_carries_the_walk_cards_of_its_seeds(db):
+def test_the_answer_carries_the_walk_cards_of_its_seeds(db, tmp_path, monkeypatch):
     """a0ca0428c: the walk's answer carries the branch summary and the declared-but-missing edges at its seeds - the
-    agent walk's own card functions on this answer, the contrast's signs counting each branch's far nodes."""
+    agent walk's own card functions on this answer, the contrast's signs counting each branch's far nodes.
+    The declaration is the repo sample's, never the box's own."""
+    import shutil
+
+    import paths
     from ledger import walk_cards
+
+    config = tmp_path / "config"
+    (config / "ontology").mkdir(parents=True)
+    shutil.copy(os.path.join(SAMPLE, "table_config.json.sample"), config / "table_config.json")
+    shutil.copy(os.path.join(SAMPLE, "ledger_config.json.sample"),
+                config / "ontology" / "ledger_config.json")
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(config))
 
     positive, negative = [_lot("P1"), _lot("P2")], [_lot("N1")]
     answer = trace_router.evidence_subgraph(

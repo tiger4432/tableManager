@@ -383,7 +383,8 @@ class FileIngestionLog(Base):
     transaction_id = Column(String(64), nullable=True)
     # The file as it was when this row's read came to its answer (소유자 10-21 체크리스트): a row with the file's
     # (mtime, size) checks it - `checkpoint.checked`. Null = not checked: a read that waited out a lock, a row written
-    # before these, a table whose reading changed (`reread.hand_on_a_changed_reading` empties its rows).
+    # before these, a table whose plugins or external source changed (`reread.hand_on_a_changed_reading` empties its
+    # rows - a table_config change alone does not).
     file_mtime = Column(DateTime(timezone=True), nullable=True)
     file_size = Column(BigInteger, nullable=True)
 
@@ -539,6 +540,25 @@ class FileRereadMark(Base):
     status_before = Column(String(20), nullable=False)
     folder = Column(String, nullable=True)
     marked_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AdminHelpAsk(Base):
+    """One question to the admin help and what it answered (소유자 10-23, 총괄 e33713863 - `admin.help`): the tool, its
+    fields, the count, a refusal, the asks it took, and the run the form opened from it. An operations record, not
+    source data - nothing reads it into the ledger. A table of its own: create_all makes it."""
+    __tablename__ = "admin_help_asks"
+
+    id = Column(String(12), primary_key=True)                      # the help_id the form carries back
+    asked_at = Column(DateTime(timezone=True), server_default=func.now())
+    asked_by = Column(String, nullable=True)                       # the signed-in name, else none
+    question = Column(String, nullable=False)
+    op = Column(String, nullable=True)
+    params = Column(String, nullable=True)                         # JSON text
+    why = Column(String, nullable=True)
+    affected = Column(BigInteger, nullable=True)
+    refused = Column(String, nullable=True)
+    tries = Column(Integer, nullable=False, default=0)
+    run_id = Column(String(64), nullable=True)
 
 
 class FileIngestionCheckpoint(Base):

@@ -269,8 +269,12 @@
 
 ### 소급
 
+- 2026-10-23 [어드민 도움말(서버) — 하려는 일을 적으면 도구 하나 · 채운 칸 · 몇 행이 바뀌나, 실행은 운영자가](#2026-10-23--어드민-도움말서버--하려는-일을-적으면-도구-하나--채운-칸--몇-행이-바뀌나-실행은-운영자가) — 명령 `python server/scripts/help_bench.py` · 보는 곳 `POST /admin/help/ask` (화면은 클라 라운드)
+- 2026-10-23 [중복 접기는 «Fold duplicate rows» 하나로 — 층 많은 행 남기기 · 값이 다른 키 건너뛰기 · 미리보기가 다른 칸과 값을 보임 (dedupe_business_key_rows.py 은퇴)](#2026-10-23--중복-접기는-fold-duplicate-rows-하나로--층-많은-행-남기기--값이-다른-키-건너뛰기--미리보기가-다른-칸과-값을-보임-dedupe_business_key_rowspy-은퇴) — 누르는 곳 소급 탭 «Fold duplicate rows» 의 keep · only_identical
+- 2026-10-23 [철자 접기는 소급 탭 하나로 — fold_comp_id.bat 은퇴](#2026-10-23--철자-접기는-소급-탭-하나로--fold_comp_idbat-은퇴) — 누르는 곳 소급 탭 «Fold stored values into the declared spelling»
 - 2026-10-22 [표 선언에서 칸 타입을 바꾸면 소급 대기열 한 줄이 DB 칸을 바꾼다 — 문자 → 숫자 · 문자 → 시간 · 시간 → 문자](#2026-10-22--표-선언에서-칸-타입을-바꾸면-소급-대기열-한-줄이-db-칸을-바꾼다--문자--숫자--문자--시간--시간--문자) — 보는 곳 저장 줄 · 소급 대기열
 - 2026-10-22 [표 하나의 행을 전부 지운다 — 소급 탭 «Delete every row of a table», 파일 체크리스트는 그대로](#2026-10-22--표-하나의-행을-전부-지운다--소급-탭-delete-every-row-of-a-table-파일-체크리스트는-그대로) — 누르는 곳 소급 탭 «Delete every row of a table» · 명령 `chain_replay_cli.py delete-every-row`
+  - 2026-10-23 [표 비우기가 문 하나로 — «Delete every row of a table» 에 Full reset 칸 (empty_table.py 은퇴)](#2026-10-23--표-비우기가-문-하나로--delete-every-row-of-a-table-에-full-reset-칸-empty_tablepy-은퇴) — 명령 `chain_replay_cli.py delete-every-row <표> --how full_reset` · 누르는 곳 소급 탭 how = Full reset
 - 2026-10-20 [옛 철자로 적힌 행 키를 다시 적고 · 같은 키가 된 행과 같은 키를 둘이 가진 행을 합친다 — 그 뒤 키 유일 인덱스](#2026-10-20--옛-철자로-적힌-행-키를-다시-적고--같은-키가-된-행과-같은-키를-둘이-가진-행을-합친다--그-뒤-키-유일-인덱스) — 누르는 곳 소급 탭 «Fold stored values into the declared spelling»
 - 2026-10-14 [원장 다시 번역 — 통계 없는 원장 파티션을 스스로 분석하고, 회수는 쪽마다 한 번, 실행이 지금 단계를 5 초마다 말한다](#2026-10-14--원장-다시-번역--통계-없는-원장-파티션을-스스로-분석하고-회수는-쪽마다-한-번-실행이-지금-단계를-5-초마다-말한다) — 적는 곳 `ingestion_settings.json` · 누르는 곳 소급 탭
   - 2026-10-14 [원장 다시 번역이 쪽마다 제가 쓴 파티션을 다시 분석하고, 디버그면 원자 쓰기의 디스크 · 캐시 블록을 말한다](#2026-10-14--원장-다시-번역이-쪽마다-제가-쓴-파티션을-다시-분석하고-디버그면-원자-쓰기의-디스크--캐시-블록을-말한다) — 적는 곳 `ingestion_settings.json`
@@ -309,7 +313,7 @@
 - 2026-10-11 [소급 강제 종료 — 더블클릭 한 번](#2026-10-11--소급-강제-종료--더블클릭-한-번) — 명령 `stop_retroactive.bat`
 - 2026-10-10 [원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 읽지 않게](#2026-10-10--원장-ref-해시-인덱스--거두기-한-장이-원장-전체를-읽지-않게) — 명령 `python server/scripts/build_ledger_ref_index.py`
 - 2026-10-03 [table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다](#2026-10-03--table_config-를-다시-쓰는-스크립트-둘이-운영자가-적은-칸을-지우지-않는다) — 명령 `python server/scripts/install_product_tables.py --overwrite-drift` · `python server/scripts/table_config_from_schema.py --merge`
-- 2026-10-02 [표 통째로 비우기 — 행 · 칸 층 · 원장 원자를 한 번에](#2026-10-02--표-통째로-비우기--행--칸-층--원장-원자를-한-번에) — 명령 `python server/scripts/empty_table.py`
+- 2026-10-02 [표 통째로 비우기 — 행 · 칸 층 · 원장 원자를 한 번에](#2026-10-02--표-통째로-비우기--행--칸-층--원장-원자를-한-번에) — 명령 `python server/scripts/empty_table.py` (10-23 은퇴 → `delete-every-row --how full_reset`)
   - 2026-10-08 [고침 — 표 비우기 도구가 명령으로 돌 때 모든 표를 거절하던 것](#2026-10-08--고침--표-비우기-도구가-명령으로-돌-때-모든-표를-거절하던-것) — 명령 `python server/scripts/empty_table.py`
 
 ### 설정 파일
@@ -326,6 +330,9 @@
 - 2026-10-20 [파일 완료 기록에 그 파일의 transaction_id · 폴더 Retry 를 그 표로 좁히는 read_by](#2026-10-20--파일-완료-기록에-그-파일의-transaction_id--폴더-retry-를-그-표로-좁히는-read_by) — 누르는 곳 파일 적재 화면 · 명령 `retry-failed?read_by=`
 - 2026-10-20 [설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는 것](#2026-10-20--설정--플러그인을-고치면-그-표의-실패-파일을-와처가-스스로-다시-읽는-것) — 보는 곳 watcher.log 의 «its reading changed» 줄
   - 2026-10-22 [와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만 — 선언 밖은 «not taken» 으로 세고, 재기동 때 선언 밖 대기 줄을 지운다](#2026-10-22--와처가-스스로-다시-읽는-파일은-지금-선언에-맞는-것만--선언-밖은-not-taken-으로-세고-재기동-때-선언-밖-대기-줄을-지운다) — 보는 곳 watcher.log 의 «not taken now» · «does not take - deleted» 줄 · 적을 것 없음
+  - 2026-10-23 [와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 — 소스 없는 옛 행은 놓인 자리로 판정, 꺼진 · 거절된 소스 행은 남김](#2026-10-23--와처-시작이-지금-선언이-안-받는-체크리스트-행을-상태와-상관없이-지운다--소스-없는-옛-행은-놓인-자리로-판정-꺼진--거절된-소스-행은-남김) — 보는 곳 watcher.log «[Watcher] checklist cleanup done in N s»
+    - 2026-10-23 [고침 — 파일이 소스 밑인지 가르는 판정이 빨라짐, 공유 최상위를 루트로 둔 소스가 그 밑을 받음](#2026-10-23--고침--파일이-소스-밑인지-가르는-판정이-빨라짐-공유-최상위를-루트로-둔-소스가-그-밑을-받음) — 적을 것 없음
+  - 2026-10-23 [표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만 넘기고, 반영은 Read all again](#2026-10-23--표-선언만-바뀌면-이미-읽은-파일은-다시-읽지-않는다--실패-파일만-넘기고-반영은-read-all-again) — 보는 곳 watcher.log «kept as read» · 누르는 곳 파일 화면 Read all again
 - 2026-10-20 [파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map](#2026-10-20--파일-인제션도-맵-단위-통째-교체--표-설정-allow_replace_map) — 적는 곳 `table_config.json`
 - 2026-10-20 [외부 저장소도 표준 파서 — raws/ 와 같은 규칙](#2026-10-20--외부-저장소도-표준-파서--raws-와-같은-규칙) — 적는 곳 `ingestion_settings.json` 의 `external_sources` · `table_config.json` 의 `std_parse`
 - 2026-10-13 [큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다](#2026-10-13--큰-표-검색--표-선언의-검색-색인-그리드-읽기는-10-초에-끊고-다음-할-일을-말한다) — 적는 곳 `table_config.json` · `ingestion_settings.json`
@@ -356,6 +363,7 @@
 
 ### 어드민 화면
 
+- 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
 - 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
 - 2026-10-21 [Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도](#2026-10-21--read-all-again--표--폴더의-파일을-통째로-다시-읽힌다-상한은-거절이-아니라-속도) — 누르는 곳 파일 화면 폴더 줄 · Files 머리의 «Read all again»
 - 2026-10-21 [Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께](#2026-10-21--read-now--경로-하나를-와처가-본-것처럼-지금-읽힌다-왜-안-집었는지와-함께) — 누르는 곳 파일 화면 «Read a file now» · 명령 `replay_ingestion.py --now`
@@ -472,6 +480,7 @@
 
 ### 그 밖 (위 주제에 안 드는 것)
 
+- 2026-10-23 [표에 없는 칸 · 숫자 칸에 숫자 아닌 값으로 거르면 이름 대고 거절 — 표 전체가 오던 것](#2026-10-23--표에-없는-칸--숫자-칸에-숫자-아닌-값으로-거르면-이름-대고-거절--표-전체가-오던-것) — 보는 곳 거절 문장(응답 detail) · 적을 것 없음
 - 2026-10-22 [최근 이력을 다시 짓는 동안 워커 통지가 기다리지 않는다 — «notifications not delivered» 와 화면이 안 바뀌던 몇 초](#2026-10-22--최근-이력을-다시-짓는-동안-워커-통지가-기다리지-않는다--notifications-not-delivered-와-화면이-안-바뀌던-몇-초) — 보는 곳 chain_worker.log · watcher.log «notifications not delivered» · 적을 것 없음
   - 2026-10-22 [고침 — 최근 이력은 새 행을 이어 붙이고 처음부터 다시 짓지 않는다, 최근 이력 화면이 1 초 안](#2026-10-22--고침--최근-이력은-새-행을-이어-붙이고-처음부터-다시-짓지-않는다-최근-이력-화면이-1-초-안) — 보는 곳 최근 이력 화면 · 적을 것 없음(`recent_refresh_max_delta_rows` 은퇴)
 - 2026-10-21 [API 가 통지를 안 받으면 5 초 동안 아무도 다시 안 보낸다 — 와처도](#2026-10-21--api-가-통지를-안-받으면-5-초-동안-아무도-다시-안-보낸다--와처도) — 보는 곳 watcher.log · chain_worker.log «notifications not delivered»
@@ -532,6 +541,110 @@
 - **선언** — 바뀐 것 없음.
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
 - **자세히** — `grid_pivot.stagedReadIds` · `stagedReadRows` · 화면 검사기 칸 «pivot apply writes» · «pivot apply asks» · «pivot apply drops» · «pivot blank writes».
+
+## 2026-10-23 · 파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다
+
+소유자 10-23 「몇 개 중 몇 개 읽고 있는지」 (총괄 07a16f238). 서버 반쪽 — 화면은 클라 레인.
+
+- **무엇** — `GET /admin/file-ingestion/tables` 의 표마다 `sources` 목록: 소스(raws 또는 외부 저장소 경로)마다 `total`(파일 수) · `read`(도장이 있는 파일 — 다시 안 읽음) · `left`(도장 없음 — 대기 · 읽는 중 · 실패 · 체크 해제) · `left_by_status`(남은 것의 상태별 수). 답 맨 위 `progress` 에 `counted_at` · `count_seconds` · `counting`(아직 한 번도 안 셈) · `failed`.
+- **세는 단위** — 파일 하나 = 그 (표, 경로)의 «가장 새 기록 행». 다시 읽기는 행을 하나 더 쓰므로 행 수가 아니라 파일 수다. 첫 기동의 도장 찍기(stamp_read_files)와 같은 조건 하나를 부른다.
+- **언제 세나** — 요청이 세지 않는다. 그리드 전체 수를 세는 일꾼이 같이 센다 — 한 번에 하나, `count_recount_seconds`(기본 30 초) 마다 많아야 한 번. 화면은 «counted N s ago».
+- **«전체»에 없는 것** — 훑기가 아직 닿지 않은 새 파일은 기록 행이 없어서 어느 수에도 없다.
+- **크기** — 기록 300 만 행을 버리는 PG 에서 세면 6 초. 운영 기록 행 수는 모름.
+- **보는 곳** — 파일 화면(클라 착지 뒤) · 위 라우트의 답.
+- **필요한 조건** — git pull · 서버 재기동. 적을 것 없음.
+
+## 2026-10-23 · 표에 없는 칸 · 숫자 칸에 숫자 아닌 값으로 거르면 이름 대고 거절 — 표 전체가 오던 것
+
+클라가 피벗 줄 지우기(키로 읽어 row_id 를 모아 지우기)를 짓다 찾음 (총괄 10-23). 판정 S-71(2026-09-08) «만들 수 없는 거르기는 버리지 말고 거절»이 놓친 두 자리.
+
+- **무엇** — 거르기(`?filters=`)가 표에 없는 칸을 이름으로 대거나, 숫자 칸에 숫자로 안 읽히는 값(equals «abc» · inRange 의 끝값)을 주면, 그 거르기를 빼고 «표 전체»를 답하던 것을 422 와 이름 붙은 문장으로 거절한다 — «The filter for '<표>' cannot be built (item '<칸>'): '<표>' has no column '<칸>' - a filter on it cannot narrow the rows» · «'abc' is not a number for 'qty'».
+- **어디서** — 그리드 쪽 · 수(`/data/count`) · CSV 내보내기 · 피벗의 item 거르기 · AI 리포트 읽기(리포트가 그 문장으로 실패) · 보강 큐(전에도 거절, 이제 사유를 붙임).
+- **그대로인 것** — 값이 빈 거르기(입력 중)와 조건이 빈 복합 거르기는 «조건 없음».
+- **바뀐 동작** — 선언의 칸 이름으로 거르기를 보내는 화면(맵 에디터의 맵 키 · split registry · valid die, 보강 큐, R&D 보드의 contrast_run.world, AI 리포트의 where)이 그 칸이 없는 설치에서 지금까지는 조용히 표 전체를 받았고, 이제 거절 문장을 보인다. 그리드 자체의 거르기 칸은 스키마의 칸이고 숫자 칸 입력은 숫자만 받아 화면에서 이 거절이 나올 일은 드물다.
+- **보는 곳** — 그 화면의 거절 문장 · 응답 detail.
+- **필요한 조건** — git pull · 서버 재기동.
+
+## 2026-10-23 · 어드민 도움말(서버) — 하려는 일을 적으면 도구 하나 · 채운 칸 · 몇 행이 바뀌나, 실행은 운영자가
+
+소유자 10-23 「추천대로」 (총괄 423af9e68 · e33713863 — 한 번 묻기 · run_id 는 폼이 실어 잇기 · 묻는 사람은 SSO 이름 아니면 비움). 화면(소급 탭 위 도움말 칸)은 클라 라운드.
+
+- **무엇** — `POST /admin/help/ask {"question": "..."}` 이 소급 · 정비 도구 카탈로그 전부(도구마다 하는 일 · 운영자 물음 · 칸 · 다음 문)를 한 번에 사내 LLM 에 넘겨 도구 하나와 칸을 고르게 하고, 그 도구의 검사(폼과 같은 validate)로 판정한 뒤 그 도구의 셈(미리보기와 같은 count)을 붙여 돌려준다. 실행은 하지 않는다.
+- **틀리면** — 목록 밖 도구나 틀린 칸은 거절 사유를 붙여 한 번 더 묻는다. 그래도 아니면 op 없이 «refused» 와 목록 안의 비슷한 도구 셋까지.
+- **기록** — 물음마다 `admin_help_asks` 한 줄(물은 시각 · 묻는 사람(SSO 이름, 없으면 비움) · 물음 · 도구 · 칸 · 이유 · 셈 · 거절 · 몇 번 물었나 · 실행). 답의 `help_id` 를 폼이 실행 요청(`POST /admin/retroactive/<op>/run` 의 `help_id`)에 실어 보내면 그 줄에 run_id 가 적힌다. help_id 없는 실행은 전과 같다.
+- **카탈로그를 고칠 때** — 도구를 더하거나 바꾸면 그 도구의 what_is_missing · examples(운영자 물음 둘 이상) · next 를 같은 커밋에 — 없으면 시험이 빨갛다.
+- **맞춘 수 재기** — `python server/scripts/help_bench.py` 가 카탈로그의 물음 전부를 운영 LLM 에 물어 «자기 도구를 고른 수 / 전체» 와 게이트웨이 응답 시간(중앙 · 최대)을 찍는다. DB 는 안 건드림.
+- **필요한 조건** — git pull · 서버 재기동(`admin_help_asks` 는 기동 때 만들어짐) · config/llm_config.json 이 사내 게이트웨이를 가리킴.
+
+## 2026-10-23 · 표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만 넘기고, 반영은 Read all again
+
+소유자 10-23 「아까 파일은 리트라이가 아니라 처음부터 다시 읽고 있네」 · 「운영 너무 느려짐」 → A 의 안 셋 중 「다로 해」 (총괄 f0df976e4). 「설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는 것」(10-20)의 표 선언 몫을 좁힌다.
+
+- **무엇** — table_config.json 의 그 표 항목만 바뀌면(칸 더함 · 키 · 우선순위 등) 와처는 그 표의 실패 파일만 다시 넘기고, 이미 읽은 파일의 체크는 풀지 않는다. 반영하려면 파일 화면에서 그 표 · 폴더로 «Read all again» 을 누른다.
+- **그대로인 것** — 그 표의 플러그인 스크립트가 바뀌었거나 외부 소스 칸이 바뀌었으면(표 선언과 같이 바뀐 때도) 지금처럼 읽은 파일의 체크를 풀어 다시 읽는다(소유자 10-21 「스크립트 바뀌면 그 테이블 키만 체크 해제」).
+- **바뀐 동작** — 전에는 표 선언의 어느 칸이든 바뀌면(화면 · 검색 · 우선순위 칸 빼고) 그 표의 읽은 파일 전부를 처음부터 다시 읽었다.
+- **보는 곳** — watcher.log «[Watcher] <표>: its reading changed (table_config) - N read file(s) kept as read (Read all again on the file page applies the change to them), M failed file(s) handed again - 0 dispatched to be read again». 플러그인 · 소스가 바뀐 때는 전과 같이 «N read file(s) unchecked».
+- **필요한 조건** — git pull · 런처 재기동.
+
+## 2026-10-23 · 고침 — 파일이 소스 밑인지 가르는 판정이 빨라짐, 공유 최상위를 루트로 둔 소스가 그 밑을 받음
+
+총괄 10-23 (「와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다」의 시간).
+
+- **무엇** — 파일이 소스 루트(또는 폴더) 밑인지 가르는 판정을 경로 앞머리 비교 한 번으로 한다. 스윕 · 다시 읽기 미리보기 · 폴더 Retry · 시작 정리가 다 이 판정을 쓴다. 답은 그대로다(대소문자 · 구분자 무시, A 폴더는 AB 를 안 받음, 정션으로 밖에 닿는 파일은 밖).
+- **바뀐 동작** — 박스 판: 스윕의 파일 판정 10 만 개 10.8 → 2.8 초, 시작 정리 20 만 행 47.8 → 26.7 초.
+- **바뀐 답 하나** — 루트가 공유 최상위 그 자체(`\\host\share`)인 소스는 전에는 그 밑 파일을 하나도 받지 않았다. 이제 받는다. 루트가 `\\host\share\폴더` 이면 전과 같다.
+- **필요한 조건** — git pull · 런처 재기동.
+
+## 2026-10-23 · 와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 — 소스 없는 옛 행은 놓인 자리로 판정, 꺼진 · 거절된 소스 행은 남김
+
+소유자 10-22 «그냥 자동으로 선언 안 맞는 리스트 지워» · «재기동시» → 10-23 «체크리스트에 패턴 안 맞는 거 남아 있는데? 내가 지우라고 했었잖아 재기동 시» (총괄 53e78f5d0). 「와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만」(10-22)을 넓힌다.
+
+- **무엇** — 와처가 뜰 때, 지금 선언(소스의 root · glob/filename · max_depth)이 받지 않는 체크리스트 행(file_ingestion_logs)을 상태(SUCCESS · FAILED · PENDING_RETRY)와 상관없이 지운다. 전에는 기다리는 행(PENDING_RETRY)만 지웠다.
+- **소스 없는 옛 행** — 10-20 전 행처럼 source 가 비었거나, source 가 지금 없는 루트(루트를 옮긴 경우)를 가리키면, 그 파일이 놓인 소스로 판정한다. 어느 소스 밑도 아니고 표의 작업 폴더(raws · archives · err) 밑이면 raws 행으로 남긴다. 어디 밑도 아니면 «outside the root» 로 지운다. 묶음 Retry · 선언 바뀜 넘겨주기도 같은 판정을 쓴다.
+- **남기는 것** — ingestion_settings.json 에 적혀 있지만 꺼진(enabled:false) 소스, 검사에서 거절된 소스(예: 플러그인 로드 실패)의 행은 지우지 않고 세기만 한다 — 다시 켜면 그 행이 그대로 체크리스트로 쓰인다. raws 행(raws 는 폴더의 파일을 전부 읽음)도 남는다.
+- **데이터** — 지우는 것은 체크리스트 행과 그 다시 읽기 표시뿐이다. 표의 행 · 층은 그대로.
+- **바뀐 동작** — 지운 파일이 지금 선언에 다시 맞게 되면 새 파일로 읽힌다. 시작 정리는 자기 스레드에서 돈다 — 재시도 폴러 · 선언 바뀜 듣기는 기다리지 않는다. 정리 중에 폴러가 집어 간 대기 행은 지우지 않는다(판정한 상태 그대로인 행만 지움).
+- **시간** — 박스 sqlite 판 20 만 행(안 맞는 10 만 · 맞는 10 만)에서 47.8 초, 행당 약 0.24 ms. 체크리스트 전체를 훑으므로 행이 많을수록 길다.
+- **보는 곳** — watcher.log «[Watcher] checklist cleanup started - …» · «[Watcher] <표>: N checklist row(s) the declaration does not take - deleted (name not matched a · outside the root b · …)» · «[Watcher] <표>: N checklist row(s) of a source switched off or refused - left for their source (source switched off a · source refused b)» · «[Watcher] checklist cleanup done in N s - N deleted · M left for their source».
+- **필요한 조건** — git pull · 와처 재기동(런처 재기동).
+
+## 2026-10-23 · 중복 접기는 «Fold duplicate rows» 하나로 — 층 많은 행 남기기 · 값이 다른 키 건너뛰기 · 미리보기가 다른 칸과 값을 보임 (dedupe_business_key_rows.py 은퇴)
+
+- **무엇** — 소유자 10-23 ㄴ(겹친 문 접기). 같은 키 행을 접는 문이 둘(소급 탭 «Fold duplicate rows» · `dedupe_business_key_rows.py`)이었고 남길 행을 고르는 규칙이 달랐습니다. 이제 소급 탭 하나에 칸 둘이 더 있습니다.
+- **선언(칸)**
+  - `keep` = `most_layers` — 칸 층이 가장 많은 행이 남고, 같으면 row id 가 작은 행. 이때는 `order` 를 비웁니다(옛 스크립트의 규칙)
+  - `only_identical` — 같은 키 행들의 값이 하나라도 다르면 그 키는 접지 않고 그대로 둡니다. 기본은 끔(소유자 10-09 「최소 시간으로 접기」는 값이 다른 행을 접는 일이라)
+- **선언 예시** — 옛 dedupe 와 같은 일:
+```
+python server/scripts/chain_replay_cli.py fold-rows <표> --keys <키 칸들> --keep most_layers --only-identical
+```
+- **보이는 것** — 미리보기가 켜고 끔과 상관없이 「N key(s) hold rows whose values differ - by column … For example …」 — 값이 다른 키 수 · 칸별 수 · 앞 다섯 키의 행별 값. 비교하는 칸은 선언 칸에서 접는 키 · 표 마크 칸 · 표 자신의 키 칸을 뺀 것
+- **바뀐 동작** — 빈 글자와 NULL 을 같은 «빈 값»으로 봅니다(제품 규칙). 옛 스크립트는 둘을 다르게 봐서 그런 키를 건너뛰었습니다 — 같은 씨앗에서 다른 것은 이 한 곳이었습니다(남긴 행 · 건너뛴 키 · 지운 줄 나머지는 같음)
+- **은퇴** — `server/scripts/dedupe_business_key_rows.py`. `--dump` 은 없어짐 — 미리보기가 다른 칸과 값을 보입니다. 묶는 키는 저장된 business_key_val 대신 적은 키 칸들입니다(RUN.md 에 같은 답이 나오는 조건)
+- **자세히** — 시험 `test_duplicate_rows_fold_to_one_per_key.py`
+
+## 2026-10-23 · 철자 접기는 소급 탭 하나로 — fold_comp_id.bat 은퇴
+
+- **무엇** — 소유자 10-23 ㄴ(겹친 문 접기). comp_id 한 칸의 철자를 SQL 로 접던 `fold_comp_id.bat`(10-12)과 소급 탭 «Fold stored values into the declared spelling» 이 같은 일을 했습니다. 같은 씨앗의 쌍둥이 표에서 둘을 돌려 보이는 값 · 칸 층 · 이력 줄이 모두 같았습니다(접힌 칸 8).
+- **쓰는 곳** — 소급 탭 «Fold stored values into the declared spelling»(table) — 표기 `write` 를 선언한 칸 전부를 접고, 키 칸이면 키도 다시 적습니다. 그 bat 는 comp_id 한 칸만 했고 키 · 사람 덮어쓰기가 있으면 거절했습니다.
+- **은퇴** — `fold_comp_id.bat` · `server/scripts/fold_comp_id.py` · `server/scripts/sql/notation_fold_comp_id.sql`. 속도는 견주지 않았습니다.
+- **자세히** — 시험 `test_a_spelling_the_retired_comp_id_script_folded_is_folded_by_the_notation_op.py`
+
+## 2026-10-23 · 표 비우기가 문 하나로 — «Delete every row of a table» 에 Full reset 칸 (empty_table.py 은퇴)
+
+- **무엇** — 소유자 10-23 「다 비우는 거 맞음 — 완전 초기화 목적」. 표 하나를 비우는 문이 둘(소급 탭 «Delete every row of a table» · `server/scripts/empty_table.py`)이었고 체인 동작이 반대였습니다. 이제 소급 탭의 그 작업 하나에 칸 `how` 가 있습니다.
+- **고르는 칸**
+  - `Row by row`(비워 두면 이것) — 지금까지의 그 작업. 그리드 삭제처럼 쪽마다 지우고, 그 행이 먹인 것을 체인이 거둡니다.
+  - `Full reset` — 옛 empty_table.py 그대로. 행 · 칸 층 · pin 을 한 트랜잭션에 지우고 이력 한 줄, 체인 규칙은 아무것도 안 깨고 사람이 고친 값도 같이 가며, 그 표를 읽는 원장 소스의 원자를 거둡니다. 100만 행처럼 큰 표용입니다.
+- **선언 예시** — 소급 탭에서 table · how = Full reset 로 미리보기 → 미리보기가 말한 행 수를 `confirm_rows` 에 적고 실행. 명령으로는
+```
+python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset
+python server/scripts/chain_replay_cli.py delete-every-row official_dt --how full_reset --confirm-rows <위의 행 수> --apply
+```
+- **보이는 것** — 미리보기 「Full reset of '<표>': N row(s), … a person's … pin(s) … No chain rule is told … Ledger atoms taken back …」 · 이력의 출처 `full_reset`
+- **바뀐 동작** — 비우기가 소급 실행이 되어 소급 대기열의 «한 번에 하나»를 탑니다. `confirm_rows` 가 지금 행 수와 다르거나 비었으면 거절합니다. `--by` 는 없어졌고 이력의 누가 칸은 실행 id 입니다.
+- **은퇴** — `server/scripts/empty_table.py`. RUN.md 의 그 명령 줄 · BACKFILL_GUIDE §0 의 표 줄은 새 명령으로 바뀌었습니다.
+- **자세히** — 시험 `test_a_table_is_emptied_whole_with_what_it_carried.py`
 
 ## 2026-10-23 · 외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것
 

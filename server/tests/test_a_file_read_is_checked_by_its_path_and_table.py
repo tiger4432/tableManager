@@ -44,7 +44,9 @@ def _write(path, text):
 
 
 def _row(db, table, path, status="SUCCESS", file_stat=None, at=None):
+    # A raws row; one with no source is judged by where its file lies (총괄 10-23).
     row = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
+                                  source="raws",
                                   retry_count=0, file_mtime=file_stat[0] if file_stat else None,
                                   file_size=file_stat[1] if file_stat else None)
     if at is not None:
@@ -92,6 +94,33 @@ def test_a_changed_reading_unchecks_its_own_table_in_place_only(db_session, tmp_
     assert rf.status == reread.REREAD_STATUS and rf.file_size is not None     # the retry door owns it, still checked
     assert rb.file_size is not None                                            # another table is not touched
     assert rm.file_size is not None                                            # moved: 소유자 「옮겨진 건 하지 마」
+
+
+@pytest.mark.parametrize("parts, unchecks", [
+    ({"table_config": "1"}, False),
+    ({"table_config": "1", "scripts\\p.py": [1, 1]}, True),
+    ({"table_config": "1", "external source": "1"}, True)])
+def test_a_table_config_change_alone_keeps_the_read_files_read(db_session, tmp_path, parts, unchecks):
+    """소유자 10-23 「다로 해」: only the table's declaration changed -> its failed files are handed, its read files stay
+    checked and are counted for «Read all again»; a plugin or a source changed with it -> unchecked as before."""
+    raws = tmp_path / "ta" / "raws"
+    a, f = (_write(raws / name, "x") for name in ("a.csv", "f.csv"))
+    ra = _row(db_session, "ta", a, "SUCCESS", checkpoint.read_file_stat(a))
+    rf = _row(db_session, "ta", f, "FAILED", checkpoint.read_file_stat(f))
+
+    line = reread.hand_on_a_changed_reading(db_session, "ta", parts, {part: "2" for part in parts},
+                                            folders=[str(raws)])
+
+    db_session.expire_all()
+    assert rf.status == reread.REREAD_STATUS
+    changed = ", ".join(sorted(parts))
+    if unchecks:
+        assert (ra.file_mtime, ra.file_size) == (None, None)
+        assert line == f"[Watcher] ta: its reading changed ({changed}) - 1 read file(s) unchecked, 1 failed file(s) handed again"
+    else:
+        assert ra.file_size is not None and checkpoint.checked(db_session, "ta", [(a, checkpoint.read_file_stat(a))])
+        assert line == ("[Watcher] ta: its reading changed (table_config) - 1 read file(s) kept as read (Read all again "
+                        "on the file page applies the change to them), 1 failed file(s) handed again")
 
 
 def test_named_files_are_let_go_by_the_same_uncheck(db_session, tmp_path):

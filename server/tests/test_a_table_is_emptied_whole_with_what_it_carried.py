@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""총괄 35b76ba92 — 표 하나를 통째로 비운다 (소유자 10-02 「100만 행인데 어케 지움」 · 「ㄹ로 내가 내일 할게」).
+"""총괄 35b76ba92 — 표 하나를 통째로 비운다 (소유자 10-02 「100만 행인데 어케 지움」), 소유자 10-23 부터
+«Delete every row of a table» 의 full reset (was scripts/empty_table.py).
 
-`scripts/empty_table.py` on PostgreSQL, on the hold-copy world: the report says what goes; the
-apply takes the rows, the table's cell layers and overwrites in one transaction with one summary
-audit line, withdraws the ledger atoms of every source reading the table through `rescope`, and
-leaves no outbox event. It refuses a count that moved and a view.
+On PostgreSQL, on the hold-copy world: the dry run says what goes; the apply takes the rows, the
+table's cell layers and overwrites in one transaction with one summary audit line, withdraws the
+ledger atoms of every source reading the table through `rescope`, and leaves no outbox event. It
+refuses a count that moved and a view; the op takes confirm_rows with a full reset and only then.
 """
 import os
 import sys
@@ -13,11 +14,11 @@ import pytest
 from sqlalchemy import text
 
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-for path in (SERVER_DIR, os.path.join(SERVER_DIR, "scripts")):
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if SERVER_DIR not in sys.path:
+    sys.path.insert(0, SERVER_DIR)
 
-import empty_table                                                   # noqa: E402
+from admin import retroactive                                        # noqa: E402
+from chain import replay                                             # noqa: E402
 from database import crud, models, schemas                           # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
 
@@ -48,10 +49,16 @@ def _count(world, sql, **params):
     return world["db"].execute(text(sql), params).scalar()
 
 
-def test_main_run_as_a_script_registers_the_declared_tables_itself(world, monkeypatch, tmp_path, pg_engine, capsys):
-    """총괄 151688c2b (소유자 10-08): run as a script, nothing has registered the tables yet - main() must
-    read table_config and register them, as the other entry points do. Here the world's tables are taken
-    out of DYNAMIC_TABLES first, and main() is handed only what a fresh process would read."""
+def _reset(world, **kw):
+    return replay.full_reset(world["db"], hw.OFFICIAL, setup=world["setup"], rules=world["rules"], **kw)
+
+
+def test_the_command_line_registers_the_declared_tables_itself(world, monkeypatch, pg_engine, capsys):
+    """총괄 151688c2b (소유자 10-08): run as a command, nothing has registered the tables yet - the command
+    must register them from table_config, as the other entry points do."""
+    if os.path.join(SERVER_DIR, "scripts") not in sys.path:
+        sys.path.append(os.path.join(SERVER_DIR, "scripts"))                 # after tests/: scripts has a support too
+    import chain_replay_cli
     from sqlalchemy.orm import sessionmaker
     from conftest import retire_dynamic_model
     from database import database
@@ -61,23 +68,21 @@ def test_main_run_as_a_script_registers_the_declared_tables_itself(world, monkey
     before = set(models.DYNAMIC_TABLES)
     for name in hw.TABLES:
         retire_dynamic_model(name)
-    monkeypatch.setattr(crud, "CONFIG_PATH", str(tmp_path / "table_config.json"))    # the world's table_config
     monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=pg_engine))
-    monkeypatch.setattr(database, "engine", pg_engine)
     monkeypatch.setattr(ledger_setup, "load_setup", lambda: world["setup"])
     try:
-        code = empty_table.main([hw.OFFICIAL])
+        code = chain_replay_cli.main(["delete-every-row", hw.OFFICIAL, "--how", "full_reset"])
     finally:
-        for name in set(models.DYNAMIC_TABLES) - before:              # what main registered beyond the world
+        for name in set(models.DYNAMIC_TABLES) - before:
             retire_dynamic_model(name)
     said = capsys.readouterr().out
-    assert code == 0 and "선언된 표가 아닙니다" not in said, said
-    assert said.startswith("표 %s — 행 2 " % hw.OFFICIAL), said
+    assert code == 0 and "not a declared table" not in said, said
+    assert "Full reset of '%s': 2 row(s)" % hw.OFFICIAL in said, said
 
 
-def test_the_report_says_what_goes_and_writes_nothing(world):
+def test_the_dry_run_says_what_goes_and_writes_nothing(world):
     _seeded(world)
-    found = empty_table.report(world["db"], world["setup"], hw.OFFICIAL, world["rules"])
+    found = _reset(world)
     assert (found["rows"], found["user_layers"], found["ledger_atoms"], found["chain_rules"]) \
         == (2, 1, {hw.SOURCE: 2}, [hw.RECOUNT["name"]])
     assert found["layers"] > found["user_layers"] and found["overwrites"] > 0
@@ -88,11 +93,12 @@ def test_apply_takes_rows_layers_overwrites_and_atoms_and_wakes_nothing(world):
     _seeded(world)
     log_layers = _count(world, "SELECT count(*) FROM cell_sources WHERE table_name = :t", t=hw.LOG)
     outbox = _count(world, "SELECT coalesce(max(id), 0) FROM database_outbox")
-    result = empty_table.empty(world["db"], world["engine"], world["setup"], hw.OFFICIAL,
-                               world["rules"], confirm_rows=2, by="tester")
+    history = "SELECT count(*) FROM audit_logs WHERE table_name = :t AND source_name = :s"
+    lines = _count(world, history, t=hw.OFFICIAL, s=replay.FULL_RESET_SOURCE)
+    result = _reset(world, confirm_rows=2, apply=True, by="tester")
 
-    assert result["done"]["rows"] == 2
-    assert result["done"]["ledger_withdrawn"] == {hw.SOURCE: 2}
+    assert result["rows_deleted"] == 2
+    assert result["ledger_withdrawn"] == {hw.SOURCE: 2}
     for sql in ('SELECT count(*) FROM "%s"' % hw.OFFICIAL,
                 "SELECT count(*) FROM cell_sources WHERE table_name = '%s'" % hw.OFFICIAL,
                 "SELECT count(*) FROM cell_overwrites WHERE table_name = '%s'" % hw.OFFICIAL,
@@ -101,15 +107,14 @@ def test_apply_takes_rows_layers_overwrites_and_atoms_and_wakes_nothing(world):
     assert hw.said(world) == []
     assert _count(world, "SELECT count(*) FROM cell_sources WHERE table_name = :t", t=hw.LOG) \
         == log_layers                                                 # the other table untouched
-    assert _count(world, "SELECT count(*) FROM audit_logs WHERE table_name = :t AND source_name = :s",
-                  t=hw.OFFICIAL, s=empty_table.SOURCE) == 1
+    assert _count(world, history, t=hw.OFFICIAL, s=replay.FULL_RESET_SOURCE) == lines + 1
 
 
 def test_a_count_that_moved_is_refused_and_nothing_goes(world):
     _seeded(world)
-    with pytest.raises(empty_table.Refused):
-        empty_table.empty(world["db"], world["engine"], world["setup"], hw.OFFICIAL,
-                          world["rules"], confirm_rows=3, by="tester")
+    for confirm in (3, None):
+        with pytest.raises(replay.ReplayRefused):
+            _reset(world, confirm_rows=confirm, apply=True)
     assert _count(world, 'SELECT count(*) FROM "%s"' % hw.OFFICIAL) == 2
     assert len(hw.said(world)) == 2
 
@@ -117,5 +122,23 @@ def test_a_count_that_moved_is_refused_and_nothing_goes(world):
 def test_a_view_is_refused(world, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, hw.OFFICIAL, {**crud.TABLE_CONFIG[hw.OFFICIAL],
                                                          "kind": "view"})
-    with pytest.raises(empty_table.Refused):
-        empty_table.report(world["db"], world["setup"], hw.OFFICIAL, world["rules"])
+    with pytest.raises(replay.ReplayRefused):
+        _reset(world)
+
+
+def test_the_op_takes_confirm_rows_with_a_full_reset_only_and_its_run_needs_it(world, monkeypatch):
+    from chain import ingestion_worker
+    from ledger import setup as ledger_setup
+
+    _seeded(world)
+    monkeypatch.setattr(ledger_setup, "load_setup", lambda: world["setup"])
+    monkeypatch.setattr(ingestion_worker, "loaded_chain_rules", lambda: world["rules"])
+    base = {"table": hw.OFFICIAL}
+    for params in ({"confirm_rows": 2}, {"how": "by_row", "confirm_rows": 2}):
+        with pytest.raises(retroactive.RetroactiveRefused):
+            retroactive.validate("delete_every_row", dict(base, **params))
+    for params in ({}, {"how": retroactive.FULL_RESET}, {"how": retroactive.FULL_RESET, "confirm_rows": 2}):
+        assert retroactive.validate("delete_every_row", dict(base, **params)) == dict(base, **params)
+    with pytest.raises(retroactive.RetroactiveRefused):
+        retroactive._run_delete_every_row(world["db"], dict(base, how=retroactive.FULL_RESET), log=lambda m: None)
+    assert _count(world, 'SELECT count(*) FROM "%s"' % hw.OFFICIAL) == 2

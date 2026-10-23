@@ -74,8 +74,9 @@ def _add_logs(Session, paths, status="SUCCESS", table="rt_parts", created_at=Non
     db = Session()
     try:
         for path in paths:
+            # A raws row; one with no source is judged by where its file lies (총괄 10-23).
             db.add(models.FileIngestionLog(filename=os.path.basename(str(path)), filepath=str(path),
-                                           table_name=table, status=status,
+                                           table_name=table, status=status, source="raws",
                                            **({"created_at": created_at} if created_at else {})))
         db.commit()
     finally:

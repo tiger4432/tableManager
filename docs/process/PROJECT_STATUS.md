@@ -104,7 +104,7 @@
    시연 뒤   층 순위 — merged_layer_name 이 «행 층»과 «합치기 층» 두 뜻(905235e5c) · 틀린 뜻 하나 은퇴
    시연 뒤   시각 format 미리 채우기(요청 안 스캔 문제) · expand 인자 은퇴 · already/already_processed 말 정리 · 맵퍼가 필요한 인덱스 선언 자리(복사 key_columns) · 옆 패널 접기 · subgraph_view 하니스 9 분
    응용 QA   test_ledger_l1_pg 둘이 main 에서 빨강(shipped 선언에 소스 없음) — 판정 재료 · b2fe1f02f 운영 모양 QA
-   소유자(운영)  공식 표 다시 하기: pull + 재기동 -> 옛 줄 빼 두기 -> empty_table 공식 표 -> fold-rows 로그 표(dt_wafer_id · 최소 시간) -> 복사 규칙 replay(--business-keys) -> 원장 backfill --whole-source
+   소유자(운영)  공식 표 다시 하기: pull + 재기동 -> 옛 줄 빼 두기 -> 공식 표 비우기(delete_every_row --how full_reset, 6d3ec98cc) -> fold-rows 로그 표(dt_wafer_id · 최소 시간) -> 복사 규칙 replay(--business-keys) -> 원장 backfill --whole-source
                 · LLM: 선언 파일 착지 뒤 llm_config.json 적기(규칙에서 run_in 지우고 rows_per_run 1)
                 · 상태 칸 클라 착지 뒤 pull + 재기동(서버 · 체인 워커) · RUN.md 의 빼 둔 행 broadcast_at SQL 한 번 · chain_statement_timeout_seconds 0(소급 묶음엔 2 분이 짧았음 — 총괄 판단 착오)
                 · 인덱스 idx_sources_by_origin · idx_audit_user_recorrection · 원본 표 키 복합 인덱스 확인 · IT 에 /auth/signed-out 등록(나중)

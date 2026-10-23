@@ -262,7 +262,7 @@ def run(table: str, apply: bool, by: str = REKEY_BY) -> dict:
         from database.database import engine as _app_engine
         write_engine = _app_engine
         # 🔴 PROVE THE APPLY PATH BEFORE THE COUNTING PASS, NOT AFTER IT. The trap is
-        # already recorded in the sibling `dedupe_business_key_rows.py`: its read-only
+        # recorded in the retired sibling `dedupe_business_key_rows.py`: its read-only
         # pass was raw SQL while its write path needed `models.init_dynamic_models`, so
         # the check ran clean and only `--apply` died. The general shape is "the check
         # exercised less setup than the apply needs". Here that setup is the assembler

@@ -449,3 +449,63 @@ def test_a_dry_run_and_the_preview_read_no_row_to_go(pgdb, monkeypatch):
     done = _fold(pgdb)
     assert parts == [0, 0, 5]
     assert (dry["rows_to_delete"], preview["affected"], done["rows_deleted"]) == (5, 5, 5)
+
+
+# ---------------------------------------------------------------- 소유자 10-23 ㄴ: was dedupe_business_key_rows.py
+def _layer(db, log_id, source, **cells):
+    """One more source's layer on the row - a row that holds more layers."""
+    crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        row_id=_row_id(db, log_id), updates=cells, source_name=source, updated_by="fold")]))
+    db.commit()
+
+
+def _layers(db, log_id):
+    return db.query(models.CellSource).filter_by(table_name=TABLE, row_id=_row_id(db, log_id)).count()
+
+
+def test_keep_most_layers_keeps_the_row_holding_the_most_and_a_tie_the_smaller_row_id(db):
+    _seed(db, [{"log_id": "a1", "wafer": "W1", "ts": "1"}, {"log_id": "a2", "wafer": "W1", "ts": "1"},
+               {"log_id": "b1", "wafer": "W2", "ts": "1"}, {"log_id": "b2", "wafer": "W2", "ts": "1"}])
+    _layer(db, "a2", "f02.csv", job="x")
+    assert _layers(db, "a2") > _layers(db, "a1")                                  # canary: a2 holds more
+    tie = "b1" if _row_id(db, "b1") < _row_id(db, "b2") else "b2"
+    done = replay.fold_duplicate_rows(db, TABLE, ["wafer"], None, keep=replay.FOLD_KEEP_MOST_LAYERS, apply=True,
+                                      log=lambda m: None)
+    assert done["rows_deleted"] == 2 and _left(db) == sorted(["a2", tie])
+
+
+@pytest.mark.parametrize("order, keep", [("ts", replay.FOLD_KEEP_MOST_LAYERS), (None, "min"), ("", "max")])
+def test_most_layers_takes_no_order_and_earliest_or_latest_needs_one(db, order, keep):
+    with pytest.raises(replay.ReplayRefused):
+        replay.fold_target(TABLE, ["wafer"], order, keep)
+
+
+def _differing(db):
+    """W1's rows differ in lot and ts, W2's are alike but for the table's own key, W3's in job - a value and a blank."""
+    _seed(db, [{"log_id": "a1", "wafer": "W1", "lot": "L1", "ts": "1"},
+               {"log_id": "a2", "wafer": "W1", "lot": "L2", "ts": "2"},
+               {"log_id": "b1", "wafer": "W2", "lot": "L1", "ts": "1"},
+               {"log_id": "b2", "wafer": "W2", "lot": "L1", "ts": "1"},
+               {"log_id": "c1", "wafer": "W3", "lot": "L1", "job": "j", "ts": "1"},
+               {"log_id": "c2", "wafer": "W3", "lot": "L1", "job": "", "ts": "1"}])
+
+
+def test_the_preview_names_the_keys_whose_rows_differ_with_their_columns_and_values(db):
+    _differing(db)
+    params = retroactive.validate("fold_duplicate_rows", {"table": TABLE, "keys": "wafer", "order": "ts"})
+    said = retroactive.OPERATIONS["fold_duplicate_rows"]["count"](db, params, 1000)
+    extra = said["extra"]
+    assert (extra["keys_differing"], extra["differing_columns"]) == (2, {"lot": 1, "ts": 1, "job": 1})
+    assert (extra["rows_differing"], said["affected"]) == (2, 3)                 # they fold too - the default
+    first = extra["differing_sample"][0]
+    assert first["key"] == {"wafer": "W1"} and first["columns"] == ["lot", "ts"]
+    assert [row["lot"] for row in first["rows"]] == ["L1", "L2"]
+    assert "2 key(s) hold rows whose values differ" in said["detail"] and "lot=L2" in said["detail"], said["detail"]
+
+
+def test_only_identical_leaves_a_key_whose_rows_differ_and_folds_the_rest(db):
+    _differing(db)
+    done = replay.fold_duplicate_rows(db, TABLE, ["wafer"], "ts", apply=True, only_identical=True,
+                                      log=lambda m: None)
+    assert (done["rows_deleted"], done["keys_folded"], done["keys_differing"]) == (1, 1, 2)
+    assert {"a1", "a2", "c1", "c2"} <= set(_left(db)) and len(_left(db)) == 5

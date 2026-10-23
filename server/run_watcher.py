@@ -279,26 +279,50 @@ def hand_back_claimed_retries():
     """The file log's PENDING rows when the watcher starts, handed to the retry door again (총괄 18a3bc5b7 ㄱ). Only
     `claim_retry` writes PENDING there, and this process reads nothing yet - so the run that claimed them is gone. A
     claim it left before its first checkpoint is one `reclaim_stranded_claims` skips by design: it stood PENDING for
-    good. One watcher per install. Then every waiting row the declaration does not take now is deleted
-    (`reread.delete_not_taken`, 소유자 10-22 「재기동시」) - a Read now or Retry of such a file is read only before the next
-    start. -> how many handed."""
-    from ingestion import reread
-
+    good. One watcher per install. -> how many handed."""
     db = SessionLocal()
     try:
         handed = (db.query(models.FileIngestionLog)
                   .filter(models.FileIngestionLog.status == "PENDING")
                   .update({"status": "PENDING_RETRY"}, synchronize_session=False))
         db.commit()
-        deleted = reread.delete_not_taken(db)
     finally:
         db.close()
     if handed:
         logger.warning("[Retry] %d retry claim(s) left by the last run handed again", handed)
-    for table, count, why in deleted:
-        logger.warning("[Watcher] %s: %d waiting file(s) the declaration does not take - deleted (%s)", table, count,
-                       " · ".join("%s %d" % item for item in why.items()))
     return handed
+
+
+def clean_the_checklist():
+    """The watcher's start, on its own thread (총괄 10-23 - the poller and the readings do not wait): every file log row
+    the declaration does not take now, whatever its state, is deleted - a source switched off or refused keeps its rows
+    (`reread.delete_not_taken`, 소유자 10-22 「재기동시」, 10-23) - and a Read now or Retry of such a file is read only
+    before the next start. One line per table and why, one with the seconds it took."""
+    from ingestion import reread
+
+    began = time.monotonic()
+    logger.info("[Watcher] checklist cleanup started - rows the declaration does not take now are deleted")
+    db = SessionLocal()
+    try:
+        said = reread.delete_not_taken(db)
+    except Exception as e:                                         # noqa: BLE001 - the next start goes on
+        logger.warning("[Watcher] checklist cleanup stopped after %.1f s - what it deleted stays deleted, the next "
+                       "start goes on: %s", time.monotonic() - began, told(e), exc_info=e)
+        return None
+    finally:
+        db.close()
+    totals = [0, 0]
+    for table, gone, kept in said:
+        for at, (count, what, done) in enumerate(((gone, "the declaration does not take", "deleted"),
+                                                  (kept, "of a source switched off or refused",
+                                                   "left for their source"))):
+            if count:
+                totals[at] += sum(count.values())
+                logger.warning("[Watcher] %s: %d checklist row(s) %s - %s (%s)", table, sum(count.values()), what,
+                               done, " · ".join("%s %d" % item for item in count.items()))
+    logger.info("[Watcher] checklist cleanup done in %.1f s - %d deleted · %d left for their source",
+                time.monotonic() - began, *totals)
+    return said
 
 
 def pending_retries(db):
@@ -587,6 +611,7 @@ def main():
     watcher.discover_and_watch()
     stamp_read_files_once(watcher)
     hand_back_claimed_retries()
+    threading.Thread(target=clean_the_checklist, name="watcher-checklist-cleanup", daemon=True).start()
 
     # Start retry poller thread - after the stamp fill, which rewrites the readings it keeps
     poller_thread = threading.Thread(target=poll_pending_retries, daemon=True)
