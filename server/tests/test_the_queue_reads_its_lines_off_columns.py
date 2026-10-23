@@ -209,6 +209,8 @@ def test_a_waiting_row_written_before_the_columns_is_given_them_once(db):
     assert models.fill_outbox_line_columns(db.get_bind(), say=said.append) == len(carrying)
     assert {i: c for i, c in _columns(db).items() if i in waiting} == {i: want[i] for i in waiting}
     assert models.fill_outbox_line_columns(db.get_bind(), say=said.append) == 0
+    # a first start on an empty database: the chain worker can come up before the web server makes the outbox
+    assert models.fill_outbox_line_columns(create_engine("sqlite://"), say=said.append) == 0
     assert said[0] == ("[Chain] outbox line columns: %d of %d waiting event(s) without them filled"
                        % (len(carrying), len(waiting)))
 

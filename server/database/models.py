@@ -386,9 +386,11 @@ def fill_outbox_line_columns(engine, say=logger.info):
     chain's startup, after the schema sync added the columns and before its dispatcher reads a line. A waiting row
     whose three are all empty is read again (most have no run or transaction: a control event's); one with any is
     not. -> rows filled."""
-    from sqlalchemy import select, update
+    from sqlalchemy import inspect, select, update
 
     outbox = DatabaseOutbox.__table__
+    if not inspect(engine).has_table(outbox.name):
+        return 0                     # a first start before the web server made the tables: nothing waits
     empty = (outbox.c.processed_chain == False, outbox.c.run_id.is_(None),   # noqa: E712 - the index's spelling
              outbox.c.transaction_id.is_(None), outbox.c.row_count.is_(None))
     after, read, filled = 0, 0, 0
