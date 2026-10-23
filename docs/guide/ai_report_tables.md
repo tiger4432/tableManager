@@ -65,7 +65,8 @@
 - 보내기: `send_to` 가 있으면 다 만든 리포트 옆에 `<웨이퍼>.html.send` 표시 파일. 체인 워커의 유지보수 자리가 5 초마다 POST(`tools/report_receiver/receive.py`) — 받으면 표시를 지우고 «[Report] <규칙> sent <파일>». 세 번 실패면 `<웨이퍼>.html.send_failed`(안에 규칙 · 사유) + «[Report] <규칙> send failed …». 한 번에 규칙마다 20 파일.
 - 다시 보내기 · 다시 만들기: 소급 탭 R1 에 규칙 이름 + 그 웨이퍼의 리포트 표 행 — 파일을 다시 만들고 `.send` 를 다시 놓는다(`.send_failed` 는 지워짐).
 - 보내기 실패는 화면에 안 보인다 — 리포트 폴더의 `.send_failed` · `chain_worker.log` `[Report]` 줄.
-- 걸음 기록: 파일 끝 접힌 «Evidence»(첫 줄 상태 · 사유, 그다음 걸음마다 한 줄) + `chain_worker.log` 의 `[Report]` 줄.
+- 걸음 기록: 파일 끝 접힌 «Evidence»(첫 줄 상태 · 사유, 그다음 걸음마다 한 줄과 그 걸음이 읽은 나머지 줄을 들여 써서) + `chain_worker.log` 의 `[Report]` 줄(걸음마다 첫 줄만).
+- 칩 그림: `images.per_item` 은 웨이퍼 행(leg) 하나마다 — leg 가 둘이면 디펙마다 leg 별로 그만큼.
 
 ## 3. 읽는 표 — 이름은 선언으로
 

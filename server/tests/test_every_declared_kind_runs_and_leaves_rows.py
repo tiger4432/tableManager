@@ -331,6 +331,8 @@ def test_a_report_declaration_writes_a_report_a_wafer_into_its_report_table(db, 
     assert "particle is low." in w1
     evidence = w1[w1.index('<details class="evidence">'):]
     assert "1 yield_by" in evidence and "2 done" in evidence and "3 write" in evidence, evidence
+    assert '\n    particle | 1.0% (1/100) | 2.0% (2/100)' in evidence, \
+        "each step's read under its line, not its head alone (lead 10-23)"
     assert _summary(db) == before, "the summary table is read, never written"
 
 
@@ -486,7 +488,7 @@ def test_a_wafer_in_two_evaluations_is_refused_by_name(db, reported):
         report_reads.Report(db, reported[0]["params"], None, only={"wafer": "W1"})
 
 
-def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, reported, tmp_path):
+def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, reported, tmp_path, monkeypatch):
     """Owner 10-23 box sample: conditions a row a condition (written only when out of the ordinary), a chip image row
     naming its defects «a, b», no evaluation column - the model reads each wafer's conditions or «default conditions»,
     a candidate is a wafer of the report table (its legs together), and a chip image is shown for each defect it holds."""
@@ -510,7 +512,11 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
                                             {"date": "2026-10-22T00:00:00+09:00", "title": "trap", "wafer": "W2",
                                              "leg": "L1", "condition_id": "bond", "value": ""}]),
                             ("kinds_img", [{"wafer": "W1", "leg": "L1", "x": "3", "y": "4", "img_path": "c.png",
-                                            "including_defects": "particle, scratch"}]),
+                                            "including_defects": "particle, scratch"},
+                                           {"wafer": "W1", "leg": "L1", "x": "5", "y": "5", "img_path": "d.png",
+                                            "including_defects": "particle"},
+                                           {"wafer": "W1", "leg": "L2", "x": "1", "y": "1", "img_path": "e.png",
+                                            "including_defects": "particle"}]),
                             # both defects occurred on W1/L1 (a defect of no failing chip gets no image)
                             ("kinds_sum", [{"wafer": "W1", "leg": "L1", "item": "scratch", "fail": 2},
                                            {"wafer": "W2", "leg": "L2", "item": "scratch", "fail": 1}])):
@@ -545,6 +551,11 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         assert sorted(chosen) == ["particle", "scratch"], "the chip's image under each defect it holds"
         assert "image source 'nowhere' is not declared" in chosen["particle"][0]["refused"], \
             "read through the declared source - «<source>:<path>»"
+        monkeypatch.setattr(report_reads, "_picture", lambda ref, px: {"src": ref})
+        spec["images"] = dict(spec["images"], per_item=1)
+        shown = report_reads.Report(db, spec, None, only={"wafer": "W1"}).images()["html"]
+        assert [p["wafer"] for p in shown["particle"]] == ["W1/L1", "W1/L2"], \
+            "per_item a leg - L2's chip too (lead 10-23: all three were L1's)"
     finally:
         db.rollback()
         for name in more:

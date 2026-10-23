@@ -433,14 +433,18 @@ class Report:
             for item in ([part.strip() for part in str(row[width]).split(sep)] if sep else [str(row[width])]):
                 if (wafer, item) not in occurred or (wanted and item not in wanted) or not ref:
                     continue
-                if counts.get(item, 0) >= per_item:
+                # per_item a wafer row - each leg of a wafer its own (lead 10-23: all three were L1's)
+                if counts.get((item, wafer), 0) >= per_item:
                     continue
                 picture = _picture(ref, px)
                 chosen.setdefault(item, []).append(dict(picture, wafer=label(wafer)))
                 if "src" in picture:
-                    counts[item] = counts.get(item, 0) + 1
+                    counts[(item, wafer)] = counts.get((item, wafer), 0) + 1
         self.embedded.update(chosen)
-        text = ", ".join("%s %d" % (item, n) for item, n in sorted(counts.items())) or "no image of an occurred defect"
+        each = {}
+        for (item, _wafer), n in counts.items():
+            each[item] = each.get(item, 0) + n
+        text = ", ".join("%s %d" % (item, n) for item, n in sorted(each.items())) or "no image of an occurred defect"
         return {"context": "images picked: " + text, "html": chosen}
 
     def _recent(self):

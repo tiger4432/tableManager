@@ -250,6 +250,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         else:
             previous = ["refused: " + refused]
         record["summary"] = (previous[0] if previous else "")[:200]
+        record["read"] = previous[1:]                       # the Evidence's lines under it (lead 10-23)
         steps.append(record)
     if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
         _write(spec, request, reads, budget, ask, clock, out)
@@ -283,9 +284,12 @@ def _write(spec, request, reads, budget, ask, clock, out):
 
 
 def _steps_text(out, report):
-    """The Evidence: the report's state and why first (no column holds them, owner 10-23), then a line a step."""
+    """The Evidence: the report's state and why first (no column holds them, owner 10-23), then each step - its first
+    line, and what else it read under it (lead 10-23: the candidates were there, the Evidence said only the head)."""
     lines = [out["state"] + (" - %s" % out["reason"] if out["reason"] else "")]
-    lines += ["%d %s - %s" % (s["step"], s["call"], s.get("refused") or s["summary"]) for s in out["steps"]]
+    for s in out["steps"]:
+        lines.append("%d %s - %s" % (s["step"], s["call"], s.get("refused") or s["summary"]))
+        lines += ["    " + line for line in s.get("read") or ()]
     if report.overlaps:
         lines.append("names two wafers share: %s" % ", ".join(sorted(report.overlaps)))
     return "\n".join(lines)
