@@ -2975,8 +2975,11 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     identity. A supplied key is kept instead - see 판정 191 below.
 
     It always sets the framework-owned `update_item.business_key_val`. When the table
-    ALSO declares a physical `business_key` column, it keeps the historical second
-    side effect and writes the key back into `updates[key_col]` when absent. A
+    ALSO declares a physical `business_key` column - one of its `loadable_columns` - it keeps the
+    historical second side effect and writes the key back into `updates[key_col]` when absent; a
+    `business_key` that names no column gets nothing written (the guide: «물리 칸이 없으면
+    business_key_val 에만»), else every row made by its keys counted a drop the table's own
+    declaration caused (총괄 10-23). A
     source-owned schema may instead declare only `composite_key_source`; in that form
     no synthetic source column is invented and the assembled identity lives only in
     the framework's `business_key_val` column.
@@ -3030,7 +3033,7 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
         # `clean_str_value`, the spelling a key is stored under and the prefetch asks
         update_item._supplied_business_key_val = clean_str_value(supplied)
     update_item.business_key_val = computed_key
-    if key_col and key_col not in update_item.updates:
+    if key_col in loadable_columns(config) and key_col not in update_item.updates:
         update_item.updates[key_col] = computed_key
     return True
 

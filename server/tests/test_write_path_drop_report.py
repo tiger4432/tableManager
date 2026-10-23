@@ -575,3 +575,59 @@ def test_a_row_that_lost_one_key_and_kept_another_is_still_counted(db):
     assert report["reported_only_for_drops"] == 0, (
         "this row changed, so it is not one of the report-only rows")
     assert len(results) - report["reported_only_for_drops"] == 1
+
+
+# ---------------------------------------------------------------------------
+# A composite key's own column: written only when it is a column (총괄 10-23)
+# ---------------------------------------------------------------------------
+
+KEYED = "dropreport_test_keyed"
+KEYED_SHAPES = {
+    "business_key names no column": {"business_key": "bk", "composite_key_source": ["lot", "wafer"],
+                                     "column_types": {"lot": "string", "wafer": "string", "value": "number"}},
+    "business_key left out": {"composite_key_source": ["lot", "wafer"],
+                              "column_types": {"lot": "string", "wafer": "string", "value": "number"}},
+}
+
+
+@pytest.mark.parametrize("door", ["grid save", "ingestion", "chain write"])
+@pytest.mark.parametrize("shape", sorted(KEYED_SHAPES))
+def test_a_row_made_by_its_composite_key_drops_nothing_the_table_did_not_send(db_session, client, monkeypatch,
+                                                                              shape, door):
+    """KILLS: writing the assembled key into `updates[business_key]` when that names no column - every row made by
+    its keys then counted a drop and logged «not declared ... DROPPED» for a cell no sender sent. A cell the sender
+    did send that is not declared is still counted (the canary)."""
+    from conftest import retire_dynamic_model
+
+    entry = KEYED_SHAPES[shape]
+    for name in ("_undeclared_column_drops", "_undeclared_column_warned", "_undeclared_column_drops_over_budget"):
+        monkeypatch.setattr(crud, name, {})
+    models.init_dynamic_models({KEYED: entry})
+    crud.TABLE_CONFIG[KEYED] = entry
+    model = models.DYNAMIC_TABLES[KEYED]
+    model.__table__.create(bind=db_session.get_bind())
+    try:
+        dropped = {}
+        for cells in ({"lot": "L1", "wafer": "W1", "value": 1.0}, {"lot": "L1", "wafer": "W2", "valeu": 2.0}):
+            if door == "grid save":
+                answer = client.put("/tables/%s/data/updates" % KEYED, json={"updates": [
+                    {"updates": cells, "source_name": "user", "updated_by": "probe"}]})
+                assert answer.status_code == 200, answer.text
+                said = answer.json().get("dropped") or {}
+                dropped.update({column: dropped.get(column, 0) + 1 for column in said.get("columns") or ()})
+            else:
+                source = crud.CHAIN_SOURCE if door == "chain write" else "pipeline_parser"
+                report = {}
+                _push(db_session, KEYED, [_item(updates=dict(cells), source_name=source)], report)
+                db_session.commit()
+                for column, n in (report.get("by_column") or {}).items():
+                    dropped[column] = dropped.get(column, 0) + n
+        keys = sorted(row.business_key_val for row in db_session.query(model))
+        assert keys == ["L1_W1", "L1_W2"], "CANARY: both rows made, each by its key"
+        assert crud.undeclared_column_drops() == {(KEYED, "valeu"): 1}
+        assert dropped == {"valeu": 1}
+    finally:
+        db_session.rollback()
+        model.__table__.drop(bind=db_session.get_bind())
+        retire_dynamic_model(KEYED)
+        crud.TABLE_CONFIG.pop(KEYED, None)
