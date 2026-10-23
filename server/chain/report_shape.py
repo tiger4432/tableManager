@@ -48,6 +48,8 @@ COLUMNS, COLUMN_TIME, COLUMN_GROUP = "columns", "time", "group"
 #: `label` (info tables, summary): the head a table's rows stand under - a wide info table's one row its name.
 #: `choose` (info tables): the model keeps which rows (yield_by's rows) - owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택».
 LABEL, CHOOSE = "label", "choose"
+#: `labels.columns`: the word left of each column head tier ({tier: word}) - `column_word`.
+LABEL_COLUMNS = "columns"
 #: `keys`: every key column of the report's tables, by name, and what it does (owner 10-23 «키 칸을 리스트로 받게»):
 #: KEY_UNIT one report a value (the report table's columns), KEY_LATEST only each report's latest value (read as a
 #: time), KEY_FOLD rows that differ only there are one (a chip's layers - the smallest drawn, keys' order). A column
@@ -98,7 +100,7 @@ FORMAT_VS = "control"
 FORMAT_CELLS = ("when", "value", "vs", "times", "fill", "color")
 FORMAT_COLOURS = ("fill", "color")
 #: The fixed words the report file says - a declaration's `labels` says them otherwise (owner 10-23: in Korean).
-LABELS = {"report": "report", "item": "Item", "left_out": "Left out - two rows for one wafer and name",
+LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and name",
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
           "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence"}
@@ -176,7 +178,9 @@ def skeleton_node():
         {"key": COLUMNS, "required": False, "node": chain_bindings.list_node("head", {"kind": "leaf", "hint": "free"})},
         {"key": KEYS, "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "column",
                                                   "of": chain_bindings.list_node("word", {"kind": "leaf", "hint": "free"})}},
-        {"key": "labels", "required": False, "node": _record(tuple(LABELS), "free")},
+        {"key": "labels", "required": False, "node": {"kind": "record", "fields": _record(tuple(LABELS), "free")[
+            "fields"] + [{"key": LABEL_COLUMNS, "required": False, "node": {
+                "kind": "map", "keyed_by": "name", "member": "head", "of": {"kind": "leaf", "hint": "free"}}}]}},
         # «*»: the form fills it with the cell's own row number - a row's columns are its own table's (lead 10-23)
         {"key": INFO, "required": False, "node": chain_bindings.list_node("table", {"kind": "record", "fields": [
             {"key": "table", "required": True, "node": chain_bindings.table_ref()},
@@ -490,6 +494,9 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
         return "derive.report.item_sep is the text an item name splits at, got %r" % (spec["item_sep"],)
     if "labels" in spec and not isinstance(spec["labels"], dict):
         return "derive.report.labels is {name: text}, got %r" % (spec["labels"],)
+    said = (spec.get("labels") or {}).get(LABEL_COLUMNS)
+    if said is not None and not (isinstance(said, dict) and all(isinstance(v, str) for v in said.values())):
+        return "derive.report.labels.columns is {column head: the word left of it}, got %r" % (said,)
     from chain import report_template
 
     return report_template.refusal(spec)
@@ -532,6 +539,15 @@ def word(spec, name) -> str:
     return said if isinstance(said, str) and said.strip() else LABELS[name]
 
 
+def column_word(spec, tier) -> str:
+    """The word left of a column head tier (owner 10-23: DATE · WAFER · LEG) - `labels.columns`, else the key column's
+    own name, «Date» for the wafer's day, nothing for the group."""
+    said = ((spec or {}).get("labels") or {}).get(LABEL_COLUMNS) or {}
+    if tier in said:
+        return str(said[tier])
+    return {COLUMN_TIME: "Date", COLUMN_GROUP: ""}.get(tier, "" if tier is None else str(tier))
+
+
 def control_limit(spec, cell) -> int:
     return ((spec or {}).get("control") or {}).get(cell) or CONTROL_LIMITS[cell]
 
@@ -542,7 +558,8 @@ def notes(spec) -> list:
 
     said = report_template.note(spec)
     out = [said] if said else []
-    unknown = sorted(str(name) for name in ((spec or {}).get("labels") or {}) if name not in LABELS)
+    unknown = sorted(str(name) for name in ((spec or {}).get("labels") or {})
+                     if name not in LABELS and name != LABEL_COLUMNS)
     if unknown:
         out.append("derive.report.labels.%s is not a word the report says - one of %s"
                    % (unknown[0], " · ".join(LABELS)))

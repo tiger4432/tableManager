@@ -22,7 +22,7 @@ STYLE = """
 :root { --ink: #1d2433; --muted: #5b6475; --line: #d9dee8; --head: #eef2f8; --ground: #ffffff; }
 body { margin: 0; padding: 24px 16px; background: var(--ground); color: var(--ink);
        font: 14px/1.5 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
-main { max-width: 1200px; margin: 0 auto; display: grid; gap: 24px; }
+main { margin: 0 auto; display: grid; gap: 24px; min-width: 0; }
 h1 { font-size: 20px; margin: 0; }
 .meta { color: var(--muted); }
 section { display: grid; gap: 8px; }
@@ -36,13 +36,8 @@ figure { margin: 0; display: grid; gap: 4px; }
 figcaption { color: var(--muted); font-size: 12px; }
 .text { white-space: pre-wrap; max-width: 72ch; }
 .note { color: var(--muted); font-size: 12px; }
-.sides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
-.side { display: grid; gap: 24px; min-width: 0; align-self: start; }
-@media (max-width: 900px) { .sides { grid-template-columns: minmax(0, 1fr); } }
+section { min-width: 0; }
 """
-#: Where a layout slot's kind stands (owner 10-23 «글 및 이미지가 좌측, 표가 우측») - the slots keep their order on
-#: their side; a narrow screen folds the two into one column, the left first.
-SIDES = {"text": "left", "image": "left", "table": "right"}
 
 
 def _e(value) -> str:
@@ -133,7 +128,7 @@ def _baseline(cells, own):
 
 
 def head_tiers(heads):
-    """The columns' heads (a text a tier, each column) -> the tiers to draw, [(text, span), ...] each: a column
+    """The columns' heads (a text a tier, each column) -> the tiers to draw, [(tier, [(text, span), ...])]: a column
     whose text and every text above are its left neighbour's joins its cell (owner 10-23: date › wafer › leg, the
     same value one cell); a blank never joins. A tier that repeats the one above is left out, the last never."""
     depth = len(heads[0]) if heads else 0
@@ -146,7 +141,7 @@ def head_tiers(heads):
             else:
                 cells.append((texts[level], 1))
         tiers.append(cells)
-    return [tier for at, tier in enumerate(tiers) if at == 0 or at == len(tiers) - 1 or tier != tiers[at - 1]]
+    return [(at, tier) for at, tier in enumerate(tiers) if at == 0 or at == len(tiers) - 1 or tier != tiers[at - 1]]
 
 
 def _summary_table(table, spec, lent=None):
@@ -161,13 +156,13 @@ def _summary_table(table, spec, lent=None):
                       for name, cells in table.get(key) or []]) for kind, key in BLOCKS]
     depth, drawn = row_heads([[name for name, _c, _r in rows] for _k, rows in blocks], sep)
     corner = depth if depth > 1 else None
-    tiers = head_tiers(table["heads"])
+    tiers, named = head_tiers(table["heads"]), table.get("tiers") or ()
     out = []
-    for level, tier in enumerate(tiers):
-        last, cls = level == len(tiers) - 1, GROUP if level == 0 else HEAD
+    for level, (at, tier) in enumerate(tiers):
+        cls = GROUP if level == 0 else HEAD
         out.append("<tr>%s%s</tr>" % (
-            _cell("th", cls, head.get("name"), text=_e(report_shape.word(spec, "item")) if last else "",
-                  colspan=corner),
+            _cell("th", cls, head.get("name"), text=_e(report_shape.column_word(spec, named[at]))
+                  if at < len(named) else "", colspan=corner),
             "".join(_cell("th", cls, head.get("value"), text=_e(text),
                           colspan=span if level == 0 or span > 1 else None) for text, span in tier)))
     columns = [c for _n, cols in table["groups"] for c in cols]
@@ -271,14 +266,14 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
         filled = report_template.fill(template, contents)
         at = filled.lower().rfind("</body>")
         return filled[:at] + folded + filled[at:] if at >= 0 else filled + folded
-    sides = {"left": [], "right": []}
+    # one under another, in layout's order (owner 10-23 «배치 그냥 원래대로 세로 나열해»); a table the page's width,
+    # wider ones scrolled inside it
+    sections = []
     for slot in layout:
         kind = slot.get("kind")
         body = (_table(slot.get("fill"), tables, spec) if kind == "table" else _images(embedded, spec)
                 if kind == "image" else _text(slot.get("slot"), texts, spec))
-        sides[SIDES[kind]].append("<section>%s</section>" % body)
-    sections = ['<div class="sides">%s</div>' % "".join(
-        '<div class="side">%s</div>' % "".join(sides[side]) for side in ("left", "right") if sides[side])]
+        sections.append("<section>%s</section>" % body)
     return ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
             "content=\"width=device-width, initial-scale=1\"><title>%s</title><style>%s</style></head>"
             "<body><main><h1>%s</h1><p class=\"meta\">%s</p>%s%s</main></body></html>"

@@ -388,7 +388,7 @@ class Report:
         spans = [members for _name, _col, members in columns]
         info, info_twice = self._info(spans, rows)
         pictures, pictures_twice = self._pictures([[] if by else members for members in spans])
-        table = dict(self._columns_of(columns, heads), info=info, pictures=pictures, rows=out,
+        table = dict(self._columns_of(columns, heads, by), info=info, pictures=pictures, rows=out,
                      item_label=self.spec["summary"].get("label"),
                      left_out=sorted(twice + info_twice + pictures_twice))
         return {"context": _table_text(table), "html": table}
@@ -397,8 +397,7 @@ class Report:
         """Each column's head, a text a tier, and its order - `derive.report.columns` (owner 10-23: date › wafer ›
         leg): "time" the wafer's day (its rows' latest, the candidates' fold), "group" its group, a key column its
         part. Undeclared: the group, then the key. A column of a condition value: the group, then the value."""
-        tiers = ([report_shape.COLUMN_GROUP, None] if by else
-                 self.spec.get(report_shape.COLUMNS) or [report_shape.COLUMN_GROUP] + self.keys)
+        tiers = self._tiers(by)
         named = list(dict.fromkeys(name for name, _col, _members in columns))
         out = []
         for name, col, members in columns:
@@ -422,7 +421,13 @@ class Report:
             out.append((texts, order))
         return out
 
-    def _columns_of(self, columns, heads):
+    def _tiers(self, by=None):
+        """The column head tiers - `columns`, else the group then the key; a column of a condition value: the group,
+        then the condition (None to the heads: the column's label)."""
+        return ([report_shape.COLUMN_GROUP, None] if by else
+                self.spec.get(report_shape.COLUMNS) or [report_shape.COLUMN_GROUP] + self.keys)
+
+    def _columns_of(self, columns, heads, by=None):
         """The table's columns: the groups in the columns' order (the model reads them), each column's head texts,
         and whether it is this report's own (the colours' «vs control» reads the others)."""
         groups = []
@@ -432,6 +437,7 @@ class Report:
             else:
                 groups.append((name, [col]))
         return {"groups": groups, "heads": [texts for texts, _order in heads],
+                "tiers": [by if tier is None else tier for tier in self._tiers(by)],
                 "own": [name == self.evaluation for name, _col, _members in columns]}
 
     def _day(self, wafer):

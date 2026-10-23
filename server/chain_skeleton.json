@@ -2009,14 +2009,6 @@
                         }
                       },
                       {
-                        "key": "item",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
                         "key": "left_out",
                         "required": false,
                         "node": {
@@ -2094,6 +2086,19 @@
                         "node": {
                           "kind": "leaf",
                           "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "columns",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "head",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
                         }
                       }
                     ]

@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭](#2026-10-24--ai-리포트-파일--다시-세로-나열--머리-단-이름date--wafer--leg--표는-창-폭) — 적는 곳 derive.report.labels.columns · 보는 곳 리포트 파일
 - 2026-10-23 [AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름](#2026-10-23--ai-리포트-키-칸--keys-한-곳unit--latest--fold-표마다-가진-키-칸-이름) — 적는 곳 derive.report.keys · 역할의 wafer 목록 · 보는 곳 리포트 파일
 - 2026-10-23 [AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg · 행 조건 · 수율 · 불량 (소유자 그림)](#2026-10-23--ai-리포트-비교-표--열-날짜--웨이퍼--leg--행-조건--수율--불량-소유자-그림) — 적는 곳 derive.report.columns · label · choose · picture_rows.source · 보는 곳 리포트 파일 오른쪽 표
 - 2026-10-23 [AI 리포트 대조 후보 — 웨이퍼 하나에 날짜 하나 · 늦은 웨이퍼도 후보 · 칸 이름 Rows](#2026-10-23--ai-리포트-대조-후보--웨이퍼-하나에-날짜-하나--늦은-웨이퍼도-후보--칸-이름-rows) — 보는 곳 리포트 파일의 후보 표
@@ -549,6 +550,13 @@
 
 
 
+
+## 2026-10-24 · AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭
+
+- **무엇** — 소유자 10-23 «배치 그냥 원래대로 세로 나열해. 표가 가로로 길어서 좌우 배치 힘들어 보이네» · «핵심 요약 표 이미지 상세 설명». d219fc286 의 좌우 배치(글 · 그림 왼쪽 / 표 오른쪽)를 거뒀습니다 — layout 차례대로 위에서 아래로.
+- **바뀐 동작** — 페이지 폭 상한(1200px)이 없어 표가 창 폭을 다 씁니다. 열이 더 많으면 표 상자 안에서 가로로 넘깁니다(열 20 개 · 1440 폭: 페이지는 안 넘고 표만). 비교 표의 머리 단마다 왼쪽 칸에 단 이름 — 키 칸 이름 · time 은 «Date» · `labels.columns` 로 바꿈. 맨 아랫단 왼쪽의 «Item» 은 없어졌습니다(라벨 `item` 은퇴).
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시. 단 이름을 바꾸려면 규칙 labels 에 `"columns": {"time": "DATE", …}`.
+- **자세히** — 가이드 «도는 것» · «비교 표» · 시험 `test_the_report_html_embeds_everything_in_layout_order.py` · `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
 
 ## 2026-10-23 · AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름
 

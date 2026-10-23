@@ -52,7 +52,7 @@ INFO = [("W1", "v1", "자재", "A-lot"), ("W1", "v2", "자재", "B-lot"), ("W2",
 #: a wide table, a row a wafer (lead 10-23: the yield table [wafer, leg] · yield) - W3 has none
 YIELDS = [("W1", "v1", 52.0), ("W1", "v2", 60.0), ("W2", "v1", 88.0)]
 MAPS = [("W1", "v1", "맵/a.png"), ("W1", "v2", "맵/b.png"), ("W2", "v1", "맵/c.png"), ("W3", "v1", "맵/없음.png")]
-LABELS = {"report": "리포트", "item": "항목", "left_out": "제외 - 같은 웨이퍼 · 이름 두 행", "not_read": "%s 안 읽음",
+LABELS = {"report": "리포트", "left_out": "제외 - 같은 웨이퍼 · 이름 두 행", "not_read": "%s 안 읽음",
           "nothing_written": "%s 글 없음", "no_image": "이미지 없음", "pareto_item": "항목", "pareto_fail": "불량 칩",
           "pareto_cumulative": "누적", "control": "대조", "mixed": "섞임 (%d)"}
 SPEC = {
@@ -184,14 +184,19 @@ def test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_und
                               ["2026-10-02", "W2", "v1"], ["2026-10-03", "W3", "v1"]], "oldest first, the control too"
     assert table["own"] == [False, True, True, True, True]
     assert report_html.head_tiers(table["heads"]) == [
-        [("2026-09-20", 1), ("2026-10-01", 2), ("2026-10-02", 1), ("2026-10-03", 1)],
-        [("C1", 1), ("W1", 2), ("W2", 1), ("W3", 1)], [("v1", 1), ("v1", 1), ("v2", 1), ("v1", 1), ("v1", 1)]]
+        (0, [("2026-09-20", 1), ("2026-10-01", 2), ("2026-10-02", 1), ("2026-10-03", 1)]),
+        (1, [("C1", 1), ("W1", 2), ("W2", 1), ("W3", 1)]), (2, [("v1", 1), ("v1", 1), ("v2", 1), ("v1", 1), ("v1", 1)])]
     assert [name for name, _c in table["info"]] == ["자재", "평가자", "수율"]
     page = report_html._summary_table(table, spec)
     assert '<th class="rpt-group" colspan="2">2026-10-01</th>' in page and \
         '<th class="rpt-head" colspan="2">W1</th>' in page, "the same day · the same wafer one cell"
     assert '<td class="rpt-item">불량</td>' in page and '<td class="rpt-info" colspan="4">수율</td>' in page
     assert 'style="background:#ffcccc">10.0% (10/100)' in page, "W1/v2 against C1's 2.0% - the control read by flag"
+    assert ['<th class="rpt-group" colspan="4">Date</th>', '<th class="rpt-head" colspan="4">wafer_id</th>',
+            '<th class="rpt-head" colspan="4">version</th>'] == re.findall(r'<th class="rpt-\w+" colspan="4">[^<]*</th>', page), \
+        "each tier's name left of it (owner 10-23 DATE · WAFER · LEG): «Date», a key column its own name"
+    named = report_html._summary_table(table, dict(spec, labels={"columns": {"time": "DATE", "wafer_id": "WAFER"}}))
+    assert ">DATE</th>" in named and ">WAFER</th>" in named and ">version</th>" in named
     kept = report.yield_by(rows=["자재"])["html"]
     assert [name for name, _c in kept["info"]] == ["자재", "수율"], "the model keeps 자재; the yield table always"
     assert [name for name, _c in report.yield_by(rows=["없음"])["html"]["info"]] == ["자재", "평가자", "수율"], \
@@ -315,7 +320,7 @@ def test_every_fixed_word_of_the_file_passes_the_labels(report):
     for name, english in report_shape.LABELS.items():
         stem = english.split("%")[0].strip()
         assert not stem or stem not in page.replace("rpt-item", ""), "%s says %r in English" % (name, english)
-    assert "항목" in page and "글 없음" in page and "이미지 없음" in page and "trend 안 읽음" in page
+    assert "글 없음" in page and "이미지 없음" in page and "trend 안 읽음" in page
     report.compare(evaluations=["E0"])
     assert "대조 E0" in report.groups and "대조 E0" in report.yield_by()["context"], "one name: groups and context"
     assert report_shape.notes(dict(SPEC, labels={"teim": "x"}))[0].startswith("derive.report.labels.teim is not")

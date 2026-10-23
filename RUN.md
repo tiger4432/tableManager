@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름 DATE · WAFER · LEG · 표는 창 폭** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> (단 이름을 바꿀 때) 리포트 규칙 labels 에 "columns": {"time": "DATE", "wafer": "WAFER", "leg": "LEG"}
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      파일이 layout 차례로 위에서 아래(요약 → 표 → 그림 → 상세) -> 이 착지. 좌우로 갈림 -> 착지 전 파일
+>          표 머리 단마다 왼쪽 칸에 단 이름(안 적으면 칸 이름 · time 은 Date). 표가 창보다 넓으면 표 안에서만 가로로 넘김
+>          저장 줄 «derive.report.labels.item is not a word the report says …» -> 은퇴한 라벨 item, 지우면 됨(규칙은 섬)
+> 끄기    없음(배치는 코드). 단 이름은 labels.columns 를 지우면 기본
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
 > ## [10-23] **AI 리포트 키 칸 — keys 한 곳(unit · latest · fold): 가장 늦은 계측만 · 칩 하나 그림 한 장(가장 작은 층)** — git pull · 체인 워커 재기동 · R1
 >
 > ```
@@ -32,7 +44,7 @@
 > 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
 > ```
 >
-> ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · 글 · 그림 왼쪽 / 표 오른쪽 · 대조 후보 표 · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
+> ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · (배치는 10-24 세로로 되돌림) · (후보 표는 은퇴) · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 에 수율 decide 규칙 이름(로드된 이름 enrichment_dedup:<이름>) -> R1 에 리포트 규칙 이름
