@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **합성키 표에서 키로 새 행을 만들 때 business_key 칸 «버림» 경고가 안 남 (4cba88ea5)** — git pull · 서버 · 와처 · 체인 워커 재기동
+>
+> ```
+> 볼 줄     «[Schema] Column '<business_key>' is not declared in column_types for table '<표>' and was DROPPED»
+> 답의 뜻   business_key 를 적었지만 column_types 에 없는 합성키 표(가이드: 그런 표는 business_key_val 에만 키를 둠)에서
+>          새 행마다 나던 이 줄 · /health 의 버림 수가 이제 안 늘어남. 행의 키(business_key_val)는 그대로
+>          이 줄이 «남으면» 보내는 쪽이 정말 선언 안 된 칸을 보낸 것 — 그 칸 이름을 column_types 에 적거나 보내는 쪽을 고침
+> ```
+>
+
+---
+
 > ## [10-23] **take … fn 이 있는 조인의 «origin unknown» 경고가 모은 칸을 안 셈 (6531004fb)** — git pull · 체인 워커 재기동
 >
 > ```
