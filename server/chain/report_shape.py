@@ -21,8 +21,6 @@ ROLE_COLUMNS = {
     "summary": (WAFER_CELL, "item", "fail", "total", "rate"),
     "images": (WAFER_CELL, "item", "image"),
     "sets": ("name", "member", "kind"),
-    # a long table of what a wafer is - material, evaluation facts - shown under the summary table's head (owner 10-23)
-    "info": (WAFER_CELL, "item", "value"),
     # a long table of a wafer's conditions, a row a condition - mostly written only when it is out of the ordinary
     # (owner 10-23): a wafer without rows is at the default conditions. Read as the wafer's {name: value}, its time
     # and title when the wafer role names none.
@@ -38,14 +36,14 @@ IMAGE_SOURCE = "source"
 REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
 LIST_COLUMNS = {("wafer", "key"), ("wafer", "conditions"), ("summary", WAFER_CELL), ("images", WAFER_CELL),
-                ("info", WAFER_CELL), ("conditions", WAFER_CELL)}
+                ("conditions", WAFER_CELL)}
 #: What a layout slot holds.
 SLOT_KINDS = ("table", "image", "text")
 #: The reads whose answer a table slot draws (`report_html.TABLES` draws each).
 TABLE_FILLS = ("yield_by", "pareto", "trend")
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
-                                     "formats", "item_sep", "labels", "picture_rows", "results", "send_to")
+                                     "formats", "item_sep", "labels", "info", "picture_rows", "results", "send_to")
 #: `results`: the report table's column a report's file path goes in, on the wafer's row - the operator names it
 #: (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»). A report's state and why are its Evidence and the
 #: chain log; `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
@@ -57,6 +55,11 @@ SEND_TO = "send_to"
 #: wafer columns and picture column, the row's label and the picture's width (PICTURE_PX: columns × pictures make the
 #: file, so smaller than images.px).
 PICTURE_ROWS = "picture_rows"
+#: `info`: tables of what a wafer is, shown under the summary table's head (owner 10-23) - a long one (`item` the
+#: name a row is about, `value` what it says) or a wide one (no `item`: its `value` column is the row, named by it -
+#: a yield table [wafer, leg] · yield, lead 10-23). One table or a list of them.
+INFO, INFO_COLUMNS = "info", ("item", "value")
+INFO_COLUMN = chain_bindings.column_ref(("derive.report.%s.*.table" % INFO,))
 PICTURE_COLUMNS = (WAFER_CELL, "image")
 PICTURE_PX = 160
 #: The prompts: what the model is and its rules (blank: the product's sample text, `report_loop`), and the three the
@@ -97,6 +100,12 @@ SETS_KINDS = "kinds"
 KIND_ROLES = ("evaluation", "lot")
 
 
+def info_rows(spec) -> list:
+    """`derive.report.info` as a list of its tables - one written alone is a list of one."""
+    info = (spec or {}).get(INFO)
+    return [info] if isinstance(info, dict) else list(info) if isinstance(info, list) else []
+
+
 def _column(role):
     return chain_bindings.column_ref(("derive.report.%s.table" % role,))
 
@@ -114,9 +123,6 @@ def _role_node(role):
     if role == "images":
         fields += [{"key": cell, "required": False, "node": {"kind": "leaf", "hint": "free"}}
                    for cell in (ITEM_SEP, IMAGE_SOURCE)]
-    if role == "info":
-        fields.append({"key": "rows", "required": False,
-                       "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})})
     if role == "sets":
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})
@@ -154,6 +160,12 @@ def skeleton_node():
         {"key": "item_sep", "required": False, "node": {"kind": "leaf", "hint": "free"}},
         {"key": "labels", "required": False, "node": _record(tuple(LABELS), "free")},
         # «*»: the form fills it with the cell's own row number - a row's columns are its own table's (lead 10-23)
+        {"key": INFO, "required": False, "node": chain_bindings.list_node("table", {"kind": "record", "fields": [
+            {"key": "table", "required": True, "node": chain_bindings.table_ref()},
+            {"key": WAFER_CELL, "required": True, "node": chain_bindings.list_node("column", INFO_COLUMN)},
+            {"key": "item", "required": False, "node": INFO_COLUMN},
+            {"key": "value", "required": True, "node": INFO_COLUMN},
+            {"key": "rows", "required": False, "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})}]})},
         {"key": PICTURE_ROWS, "required": False, "node": chain_bindings.list_node("row", {"kind": "record", "fields": [
             {"key": "label", "required": True, "node": {"kind": "leaf", "hint": "free"}},
             {"key": "table", "required": True, "node": chain_bindings.table_ref()},
@@ -243,6 +255,19 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
                                   key_length)
             if said:
                 return said
+    info = spec.get(INFO)
+    if info is not None and not isinstance(info, (dict, list)):
+        return "derive.report.info is a table and its columns, or a list of them, got %r" % (info,)
+    for at, row in enumerate(info_rows(spec)):
+        path = "derive.report.info" if isinstance(info, dict) else "derive.report.info[%d]" % at
+        said = _table_refusal(path, row, (WAFER_CELL,) + INFO_COLUMNS, {WAFER_CELL}, set(), key_length)
+        if said:
+            return said
+        if not row.get(WAFER_CELL) or not row.get("value"):
+            return ("%s names wafer and value - the wafer columns and what a row says (item: the name a row is "
+                    "about; none: the value column is the row)" % path)
+        if "rows" in row and not (isinstance(row["rows"], list) and all(isinstance(r, str) for r in row["rows"])):
+            return "%s.rows is a list of names, got %r" % (path, row["rows"])
     rows = spec.get(PICTURE_ROWS)
     if rows is not None and not isinstance(rows, list):
         return "derive.report.%s is a list of picture rows, got %r" % (PICTURE_ROWS, rows)
@@ -339,12 +364,6 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
             if unknown:
                 return "derive.report.control.same %r is not a column of %r - name one of its columns" % (
                     unknown[0], table)
-    info = spec.get("info")
-    if isinstance(info, dict):
-        if not info.get("item") or not info.get("value"):
-            return "derive.report.info names item and value - the name a row is about and what it says"
-        if "rows" in info and not (isinstance(info["rows"], list) and all(isinstance(r, str) for r in info["rows"])):
-            return "derive.report.info.rows is a list of names, got %r" % (info["rows"],)
     said = _formats_refusal(spec)
     if said:
         return said

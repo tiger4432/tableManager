@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-23 [AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄](#2026-10-23--ai-리포트-요약-표의-info-가-표-목록--넓은-표-한-행수율도-한-줄) — 적는 곳 chain_rules.json 의 derive.report.info(목록) · 보는 곳 리포트 요약 표 머리 밑 줄
 - 2026-10-23 [AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만](#2026-10-23--ai-리포트는-리포트-표에-건-규칙-하나--요약표--조건표--이미지표는-소유자-모양-그대로-읽기만) — 적는 곳 chain_rules.json 의 derive.report(on = into = 리포트 표 · results.file · conditions · images.item_sep · images.source) · 보는 곳 리포트 표의 파일 경로 · 파일의 Evidence
 - 2026-10-23 [조인 take 의 from 에 칸 목록 — 함수가 행마다 {칸: 값} 을 받는다](#2026-10-23--조인-take-의-from-에-칸-목록--함수가-행마다-칸-값-을-받는다) — 적는 곳 chain_rules.json 의 join take 의 from · 보는 곳 함수가 받는 values
 - 2026-10-23 [AI 리포트는 요약표에 건 규칙 하나 — 웨이퍼마다 한 판, 결과는 요약표 칸 셋, send_to 로 중계 PC 에](#2026-10-23--ai-리포트는-요약표에-건-규칙-하나--웨이퍼마다-한-판-결과는-요약표-칸-셋-send_to-로-중계-pc-에) — 적는 곳 chain_rules.json 의 derive.report 의 results · send_to · control.same · 보는 곳 요약표의 결과 칸 셋 · 리포트 파일의 Evidence
@@ -541,6 +542,12 @@
 
 
 
+
+## 2026-10-23 · AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄
+
+- **무엇** — 총괄 10-23: 리포트에 leg 별 수율 한 줄. 수율은 «디펙이 하나도 없는 칩의 비율»(소유자)이고 칩 표에서 체인 decide 가 수율 표([wafer, leg] · yield)에 씁니다.
+- **선언** — `derive.report.info` 에 표 목록. `item` 없는 표는 `value` 칸이 그 줄입니다. 표 하나로 적은 옛 선언은 그대로 읽힙니다. 폼은 목록으로 그립니다.
+- **자세히** — 가이드 `docs/guide/ai_report_tables.md` «요약 표 꾸미기» · 시험 `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
 
 ## 2026-10-23 · AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만
 

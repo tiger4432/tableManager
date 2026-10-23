@@ -1446,78 +1446,6 @@
                   }
                 },
                 {
-                  "key": "info",
-                  "required": false,
-                  "node": {
-                    "kind": "record",
-                    "fields": [
-                      {
-                        "key": "table",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "tables"
-                        }
-                      },
-                      {
-                        "key": "wafer",
-                        "required": false,
-                        "node": {
-                          "kind": "map",
-                          "keyed_by": "index",
-                          "member": "column",
-                          "of": {
-                            "kind": "leaf",
-                            "hint": "ref",
-                            "section": "columns",
-                            "table_from": [
-                              "derive.report.info.table"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "key": "item",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "derive.report.info.table"
-                          ]
-                        }
-                      },
-                      {
-                        "key": "value",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "derive.report.info.table"
-                          ]
-                        }
-                      },
-                      {
-                        "key": "rows",
-                        "required": false,
-                        "node": {
-                          "kind": "map",
-                          "keyed_by": "index",
-                          "member": "name",
-                          "of": {
-                            "kind": "leaf",
-                            "hint": "free"
-                          }
-                        }
-                      }
-                    ]
-                  }
-                },
-                {
                   "key": "conditions",
                   "required": false,
                   "node": {
@@ -2130,6 +2058,83 @@
                         }
                       }
                     ]
+                  }
+                },
+                {
+                  "key": "info",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "index",
+                    "member": "table",
+                    "of": {
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "key": "table",
+                          "required": true,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "tables"
+                          }
+                        },
+                        {
+                          "key": "wafer",
+                          "required": true,
+                          "node": {
+                            "kind": "map",
+                            "keyed_by": "index",
+                            "member": "column",
+                            "of": {
+                              "kind": "leaf",
+                              "hint": "ref",
+                              "section": "columns",
+                              "table_from": [
+                                "derive.report.info.*.table"
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "key": "item",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.info.*.table"
+                            ]
+                          }
+                        },
+                        {
+                          "key": "value",
+                          "required": true,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.info.*.table"
+                            ]
+                          }
+                        },
+                        {
+                          "key": "rows",
+                          "required": false,
+                          "node": {
+                            "kind": "map",
+                            "keyed_by": "index",
+                            "member": "name",
+                            "of": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          }
+                        }
+                      ]
+                    }
                   }
                 },
                 {

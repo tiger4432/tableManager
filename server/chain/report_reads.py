@@ -219,23 +219,25 @@ class Report:
 
     def _info(self, columns):
         """The info rows under the summary table's head (owner 10-23): [(name, [cell, ...])] over the table's columns
-        (each a list of wafers) - one value said shows it, several «mixed (n)», none a blank - and the pairs left out."""
-        role = self.spec.get("info")
-        if not role:
-            return [], []
-        found, twice = self._pairs(role, [role["value"]], [w for members in columns for w in members])
-        present = {name for _w, name in found}
-        names = [str(n) for n in role.get("rows") or ()] or sorted(present)
+        (each a list of wafers), each info table in turn - one value said shows it, several «mixed (n)», none a blank
+        - and the pairs left out. A table of no `item` is one row, its value column's name."""
+        rows, left_out = [], []
         mixed = report_shape.word(self.spec, "mixed")
-        rows = []
-        for name in [n for n in names if n in present]:
-            cells = []
-            for members in columns:
-                said = sorted({str(found[(w, name)][0]) for w in members
-                               if (w, name) in found and found[(w, name)][0] is not None})
-                cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
-            rows.append((name, cells))
-        return rows, twice
+        everyone = [w for members in columns for w in members]
+        for role in report_shape.info_rows(self.spec):
+            found, twice = self._pairs(role, [role["value"]], everyone,
+                                       name=None if role.get("item") else str(role["value"]))
+            present = {name for _w, name in found}
+            names = [str(n) for n in role.get("rows") or ()] or sorted(present)
+            for name in [n for n in names if n in present]:
+                cells = []
+                for members in columns:
+                    said = sorted({str(found[(w, name)][0]) for w in members
+                                   if (w, name) in found and found[(w, name)][0] is not None})
+                    cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
+                rows.append((name, cells))
+            left_out += twice
+        return rows, left_out
 
     def _pictures(self, columns):
         """The picture rows (owner 10-23 «열마다 한 장»): [(label, [cell, ...])] - a column of one wafer its picture

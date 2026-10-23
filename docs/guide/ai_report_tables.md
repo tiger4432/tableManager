@@ -74,7 +74,7 @@
 | summary | 웨이퍼 × 디펙 아이템 | F(fail) · N(total) 또는 rate — 리포트 칸 «x% (F/N)» · 파레토 |
 | images | 이미지 한 장 | 웨이퍼 · 아이템 · 이미지 위치 — 이번 웨이퍼에서 «발생한» 디펙만 |
 | sets | 비교 묶음 × 멤버 | 묶음 이름 · 멤버 · 종류(평가 · 랏) — 사람이 적음 |
-| info | 웨이퍼 × 정보 이름 | 값 — 요약 표 머리 밑에 한 줄씩 |
+| info | 웨이퍼 × 정보 이름, 또는 웨이퍼 한 행(넓은 표) | 값 — 요약 표 머리 밑에 한 줄씩. 표 하나 또는 목록 |
 | picture_rows | 웨이퍼 그림 | 열마다 그림 한 장 |
 
 ## 에이전트 문맥 — 한 걸음에 모델에게 넘기는 것 (총괄 설계 10-22 밤, 소유자께 보임, 토큰 수는 어림)
@@ -134,8 +134,18 @@
 
 ## 요약 표 꾸미기 — 정보 표 · 그림 줄 · 조건부 서식 · 항목 계층 · 견본 줄 · 한글 낱말 (A, 10-23)
 
+- **info 는 표 하나 또는 목록** (총괄 10-23) — `item` 을 적으면 긴 표(이름 칸 · 값 칸), 안 적으면 넓은 표 한 행(웨이퍼마다 한 행, `value` 칸이 그 줄이고 줄 이름은 칸 이름). 수율은 소유자 정의 «디펙이 하나도 없는 칩의 비율» — 칩 표에서 체인 decide 하나로 수율 표에 쓰고 info 로 읽는다(제품은 웨이퍼 값을 다시 만들지 않는다):
+
 ```json
-"info": {"table": "<정보 표>", "wafer": ["wafer_id", "version"], "item": "name", "value": "value", "rows": ["자재", "평가자"]},
+{"name": "wafer_yield_from_chips", "on": {"table": "chip_image"}, "into": {"table": "wafer_yield"},
+ "derive": {"kind": "decide", "decide": {"key": ["wafer", "leg"],
+   "aggregations": {"yield": "Round(100 * Sum(If([including_defects] Is Null, 1, 0)) / Count(), 1)"}}}}
+```
+- 요약표의 디펙별 칩 수는 한 칩이 디펙 둘이면 두 번 세므로 수율을 못 낸다.
+
+```json
+"info": [{"table": "<정보 표>", "wafer": ["wafer_id", "version"], "item": "name", "value": "value", "rows": ["자재", "평가자"]},
+         {"table": "<수율 표>", "wafer": ["wafer_id", "version"], "value": "yield"}],
 "picture_rows": [{"label": "합성맵", "table": "<그림 표>", "wafer": ["wafer_id", "version"], "image": "path", "px": 160}],
 "formats": {"결함.입자.대": [{"vs": "control", "times": 2, "fill": "#ffcccc"},
                           {"when": ">=", "value": 5, "fill": "#ffffcc", "color": "#000000"}]},
