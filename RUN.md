@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · 글 · 그림 왼쪽 / 표 오른쪽 · 대조 후보 표 · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 에 수율 decide 규칙 이름(로드된 이름 enrichment_dedup:<이름>) -> R1 에 리포트 규칙 이름
+>          수율: 칩 표에서 decide 하나가 수율 표([wafer, leg] · yield)에 씀 — aggregations
+>                {"yield": "Round(100 * Sum(If([<디펙 칸>] Is Null, 1, 0)) / Count(), 1)"}
+>          리포트 규칙: "info": [<조건 표 {item, value}>, {"table": "<수율 표>", "wafer": [...], "value": "yield"}]
+>                      layout 에 {"kind": "table", "fill": "candidates"}
+> 뜻      파일 머리 밑 «yield» 줄이 leg 마다 -> 수율 표가 읽힘. 줄이 없음 -> 수율 표가 비었거나 info 목록에 없음
+>          후보 표의 날짜 = 조건 표 date 의 한국 날(expression_time_zone). 하루 이르면 -> 이 착지 전 파일, R1 다시
+>          «bond_temp=(empty)» -> 조건 행은 있는데 값이 비었음(제품은 판정 안 함, 모델이 읽음)
+>          Evidence 의 걸음 줄 밑 들여 쓴 줄 = 그 걸음이 읽은 것. chain_worker.log [Report] 줄은 첫 줄만
+>          «derive.report.info[1].value 'x' is not a column of '<표>'» -> 수율 표 칸 이름이 다름, 저장 안 됨
+> 끄기    리포트 규칙 enabled false(기본) — R1 에 이름을 적을 때만 돎
+> 재기동 뒤  chain_worker.log 의 «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
 > ## [10-23] **피벗 보기에서 줄 더하기 · 지우기 · 맨 아래 붙여넣기 (소유자 「피벗 상태에서는 행 추가가 안 되네」)** — git pull · 화면 새로 고침
 >
 > ```
