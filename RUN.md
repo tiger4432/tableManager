@@ -129,7 +129,7 @@
 >           칸 목록: «take '<칸>' from is a list - only a function «<file>.<function>» takes one …» -> fn 에 함수 이름
 >                   «take from [...] - a list of columns needs an into» -> into 를 적음
 >                   «take '<칸>' from '<이름>' - not a column of <원천 표>» -> 원천 표 칸 이름으로 고침
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동: from 칸 목록만 빠짐 — 목록을 적은 take 를 먼저 지움
+> 되돌리기  git revert a44dd01af -> 런처 재기동: from 칸 목록만 빠짐 — 목록을 적은 take 를 먼저 지움
 >           fn 함수까지 통째: git revert 6bc123ff7 도. "fn" 에 함수를 적은 take 를 지움
 > ```
 >
