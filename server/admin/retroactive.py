@@ -2119,7 +2119,9 @@ OPERATIONS = {
     "chain_replay": {
         "label": "Replay chain rules over old data (R1)",
         "what_is_missing": "data older than the rule has never been seen by that rule",
-        "examples": ["체인 룰을 새로 만들었거나 고쳤는데 옛날 행에는 반영이 안 됐다", "조인을 고쳤는데 옛 행의 칸이 비어 있어", "이 규칙 예전 데이터에 다시 돌려줘"],
+        "examples": ["체인 룰을 새로 만들었거나 고쳤는데 옛날 행에는 반영이 안 됐다", "조인을 고쳤는데 옛 행의 칸이 비어 있어", "이 규칙 예전 데이터에 다시 돌려줘",
+                     "꺼 둔 규칙을 이름 대고 이 웨이퍼만 한 번 돌려 보고 싶어", "리포트가 send failed 로 남았어, 중계 PC 고쳤으니 다시 보내줘",
+                     "스펙 표를 바꿨는데 조인 fn 으로 매긴 S/O 판정이 옛 값 그대로야"],
         "next": ["chain_replay of each rule that reads this rule's table, one by one - a replay wakes no rule (owner 09-26)"],
         "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)"),
                    _p("business_keys", required=False, kind="csv",
@@ -2718,6 +2720,18 @@ DOORS_OUTSIDE = {
         "next": [("after a table_config change (a column added) the watcher keeps the read files as read and hands "
                   "the failed ones only - Read all again on the file page reads the rest with the new declaration "
                   "(owner 10-23)")],
+    },
+    "cancel_reread": {
+        "label": "Cancel waiting re-reads",
+        "what_is_missing": "files handed to be read again still wait, and that read should not happen now",
+        "examples": ["리트라이 대기 취소해줘", "다시 읽기로 넘긴 파일이 너무 많이 쌓였어, 도로 물려",
+                     "Read all again 을 잘못 눌렀어, 아직 안 읽은 건 원래대로 돌려"],
+        "doors": [
+            {"name": "now", "how": ("the file page's Cancel waiting re-reads (coming) · "
+                                    "POST /admin/file-ingestion/cancel-reread [?folder=<folder>] [&preview=true]"),
+             "when": ("files still waiting go back to the state they had before; a file the watcher already "
+                      "took is not touched; preview counts and writes nothing")}],
+        "next": ["read_files_again of the files that should be read, when they should be"],
     },
 }
 
