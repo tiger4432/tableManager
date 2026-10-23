@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **take … fn 이 있는 조인의 «origin unknown» 경고가 모은 칸을 안 셈 (6531004fb)** — git pull · 체인 워커 재기동
+>
+> ```
+> 볼 줄     chain_worker.log 의 «[ChainRetract] origin unknown - rule <조인 이름>: N of M row(s) …»
+> 답의 뜻   fn 칸만 쓰는 항목(키의 행을 모은 값)은 이제 안 셈 — 한 행에서 온 값이 아니라서. 그 조인에 이 줄이 «남으면»
+>          fn 아닌 take 의 항목이 넘겨받은 행 어느 것과도 키가 안 맞은 것 — 그 행을 지우거나 고쳐도 그 칸은 안 거둬짐
+> ```
+>
+
+---
+
 > ## [10-23] **external_full_walk_every 를 적은 소스는 그 사이 훑기에서 파일도 폴더 목록 값으로 견줌 (0f0698a6b)** — git pull · 와처 재기동
 >
 > ```
