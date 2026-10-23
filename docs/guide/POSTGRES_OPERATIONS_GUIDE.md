@@ -86,13 +86,13 @@ WHERE tablename = 'data_rows';
 
 #### 읽기 전용 가드 — 집은 하나이고, 모드가 둘입니다 (2026-08-13 `1260c9b` · 종전 `b1dd2f0`)
 
-아래 스크립트들의 **사전점검**(플래그 없는 호출)은 아무것도 쓰지 않습니다. **그리고 이제 그것은 의도가 아니라 «PostgreSQL이 되읽어 준» 성질입니다** — 일곱 개 전부가 같은 집을 씁니다.
+아래 스크립트들의 **사전점검**(플래그 없는 호출)은 아무것도 쓰지 않습니다. **그리고 이제 그것은 의도가 아니라 «PostgreSQL이 되읽어 준» 성질입니다** — 여섯 개 전부가 같은 집을 씁니다(10-23 dedupe_business_key_rows.py 은퇴).
 
 🔴 **집은 `server/db_safety.py` 하나입니다.** `open_readonly_engine` / `open_readonly_connection` / `readonly_state` / `assert_readonly` / `assert_writable` / `close_readonly_connection`. **스크립트 안에서 이 성질의 철자를 다시 만들지 마십시오** — 이 정리가 벌어진 이유가 「사본은 원본이 틀린 것을 그대로 나른다」이고, 실제로 스크립트 셋이 **각자 발명한 것이 아니라 문서가 옳다고 가르친 철자를 복사**했습니다.
 
 | 모드 | 어떻게 | 누가 쓰나 |
 |---|---|---|
-| **`CONNECT_TIME`** | `-c default_transaction_read_only=on`을 **연결 옵션**으로, `NullPool` 엔진에. 서버가 이 세션의 첫 트랜잭션이 생기기 **전에** 적용하고 이후 모든 트랜잭션에 다시 적용합니다 — **격리 수준과 무관**해서 가장 강합니다. 대신 **엔진을 우리가 만들어야** 합니다 | 스크립트 여섯 — `migrations/add_business_key_unique_index.py` · `migrations/drop_redundant_layering_indexes.py` · `scripts/dedupe_business_key_rows.py` · `scripts/rebuild_blank_business_keys.py` · `scripts/check_missing_business_key.py` · `scripts/dev_env/snapshot_db.py` |
+| **`CONNECT_TIME`** | `-c default_transaction_read_only=on`을 **연결 옵션**으로, `NullPool` 엔진에. 서버가 이 세션의 첫 트랜잭션이 생기기 **전에** 적용하고 이후 모든 트랜잭션에 다시 적용합니다 — **격리 수준과 무관**해서 가장 강합니다. 대신 **엔진을 우리가 만들어야** 합니다 | 스크립트 다섯 — `migrations/add_business_key_unique_index.py` · `migrations/drop_redundant_layering_indexes.py` · `scripts/rebuild_blank_business_keys.py` · `scripts/check_missing_business_key.py` · `scripts/dev_env/snapshot_db.py` |
 | **`PER_TRANSACTION`** | `postgresql_readonly=True`(SQLAlchemy 자체 옵션)로 트랜잭션마다 플래그를 세웁니다. **남에게서 받은 엔진**에도 걸립니다(두 번째 엔진도 두 번째 풀도 안 만듭니다) | `scripts/audit_schema_canon.py` — 진입점이 **호출자에게서 엔진을 받으므로** 이쪽이 아니면 안 됩니다 |
 
 🔴 **모드를 잘못 고르는 것은 구멍이 아니라 «거절»입니다.** 안 맞는 모드는 무장 안 된 연결을 낳고 `assert_readonly`가 그것을 거절합니다 — **평결은 어느 갈래가 돌았는지가 아니라 서버가 `SHOW transaction_read_only`로 답한 값에서 나옵니다.** 답하지 못하는 연결도 거절입니다. 쓰기용 짝(`assert_writable`)은 `--apply` 갈래 **안에서만** 열리므로 점검만 하는 실행은 쓰기 가능한 연결을 프로세스 어디에도 만들지 않습니다.
@@ -103,7 +103,7 @@ WHERE tablename = 'data_rows';
 
 ⚠️ **저장소 전체는 아직 아닙니다.** `scripts/diagnose_db_health.py`는 `SET TRANSACTION READ ONLY`를 씁니다 — **첫 트랜잭션만** 덮으므로 실측에서 롤백 뒤 `off`이고 **CREATE가 통과**했는데, docstring은 여전히 「세션이 고정된다」고 말합니다. **운영자가 실 DB에 겨눌 수 있는 진단 도구**입니다. `diagnose_slow_after_ingest.py`·`diagnose_wal_headroom.py`는 기전은 맞지만 **되읽지 않고** 이 집을 공유하지 않습니다.
 
-채점: `server/tests/test_readonly_guard.py`(실서버 대상 — 문 일곱을 각 스크립트가 여는 방식 그대로 열어 플래그 되읽기 + CREATE/INSERT/UPDATE 거절 + **명시적 롤백 뒤에도 거절** + 같은 엔진의 두 번째 연결도 거절, 그리고 **쓰기 가능 엔진에서 같은 세 문장이 성공하고 UPDATE 값이 되읽히는 대조군**. 대조군이 없으면 「가드가 막았다」와 「쓰기 자체가 깨졌다」를 구별할 수 없습니다). 🔴 **주입은 단계별입니다** — 되읽기만 제거하면 **14개가 통과**(연결 옵션이 여전히 무장), 연결 핀만 제거하면 문 7 중 6 빨강, 둘 다 제거하되 한쪽 팔만 고장 내면 23 실패인데 **감사 스크립트는 초록**(다른 갈래이기 때문). 재사용 관점은 [PRIMITIVES §6](../architecture/PRIMITIVES.md).
+채점: `server/tests/test_readonly_guard.py`(실서버 대상 — 문 여섯을 각 스크립트가 여는 방식 그대로 열어 플래그 되읽기 + CREATE/INSERT/UPDATE 거절 + **명시적 롤백 뒤에도 거절** + 같은 엔진의 두 번째 연결도 거절, 그리고 **쓰기 가능 엔진에서 같은 세 문장이 성공하고 UPDATE 값이 되읽히는 대조군**. 대조군이 없으면 「가드가 막았다」와 「쓰기 자체가 깨졌다」를 구별할 수 없습니다). 🔴 **주입은 단계별입니다** — 되읽기만 제거하면 **14개가 통과**(연결 옵션이 여전히 무장), 연결 핀만 제거하면 문 7 중 6 빨강, 둘 다 제거하되 한쪽 팔만 고장 내면 23 실패인데 **감사 스크립트는 초록**(다른 갈래이기 때문). 재사용 관점은 [PRIMITIVES §6](../architecture/PRIMITIVES.md).
 
 #### 업무 키 UNIQUE 인덱스 (`uq_bk_<table>`) — 2026-08-07 D3
 

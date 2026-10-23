@@ -202,8 +202,11 @@ def main(argv=None):
     p = sub.add_parser("fold-rows")
     p.add_argument("table")
     p.add_argument("--keys", required=True, help="comma-separated key columns")
-    p.add_argument("--order", required=True, help="the column that picks the row to keep")
-    p.add_argument("--keep", default="min", choices=["min", "max"], help="min (earliest, default) | max")
+    p.add_argument("--order", default=None, help="the column that picks the row to keep (with min | max)")
+    p.add_argument("--keep", default="min", choices=["min", "max", "most_layers"],
+                   help="min (earliest, default) | max | most_layers (the most cell layers, no --order)")
+    p.add_argument("--only-identical", action="store_true",
+                   help="leave a key whose rows differ in their values as it is (owner 10-23)")
     p.add_argument("--prefer-column", default=None, help="with --prefer-text: a row whose column holds it stays first")
     p.add_argument("--prefer-text", default=None, help="the text (any case) --prefer-column holds")
     # 총괄 016a766af · 83c05cfbb: mark instead of delete, and only the rows of one kind
@@ -294,7 +297,7 @@ def main(argv=None):
                 print(_report_replay(s))
         elif args.cmd == "fold-rows":
             params = {"table": args.table, "keys": args.keys, "order": args.order,
-                      "keep": args.keep, "pace": args.pace,
+                      "keep": args.keep, "pace": args.pace, "only_identical": args.only_identical,
                       **{cell: getattr(args, cell) for cell in ("prefer_column", "prefer_text", "mark_column",
                                                                  "only_column", "only_text")
                          if getattr(args, cell) is not None}}
@@ -307,6 +310,7 @@ def main(argv=None):
                          f"'{args.prefer_text}')" if args.prefer_column else "")
                       + f", {s['rows_blank_key']} row(s) with a blank key part"
                       + (f" and {s['rows_out_of_scope']} out of scope" if args.only_column else "")
+                      + (f", {s['keys_differing']} key(s) whose rows differ" if args.only_identical else "")
                       + " left as they are"
                       + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
             else:

@@ -269,6 +269,7 @@
 
 ### 소급
 
+- 2026-10-23 [중복 접기는 «Fold duplicate rows» 하나로 — 층 많은 행 남기기 · 값이 다른 키 건너뛰기 · 미리보기가 다른 칸과 값을 보임 (dedupe_business_key_rows.py 은퇴)](#2026-10-23--중복-접기는-fold-duplicate-rows-하나로--층-많은-행-남기기--값이-다른-키-건너뛰기--미리보기가-다른-칸과-값을-보임-dedupe_business_key_rowspy-은퇴) — 누르는 곳 소급 탭 «Fold duplicate rows» 의 keep · only_identical
 - 2026-10-23 [철자 접기는 소급 탭 하나로 — fold_comp_id.bat 은퇴](#2026-10-23--철자-접기는-소급-탭-하나로--fold_comp_idbat-은퇴) — 누르는 곳 소급 탭 «Fold stored values into the declared spelling»
 - 2026-10-22 [표 선언에서 칸 타입을 바꾸면 소급 대기열 한 줄이 DB 칸을 바꾼다 — 문자 → 숫자 · 문자 → 시간 · 시간 → 문자](#2026-10-22--표-선언에서-칸-타입을-바꾸면-소급-대기열-한-줄이-db-칸을-바꾼다--문자--숫자--문자--시간--시간--문자) — 보는 곳 저장 줄 · 소급 대기열
 - 2026-10-22 [표 하나의 행을 전부 지운다 — 소급 탭 «Delete every row of a table», 파일 체크리스트는 그대로](#2026-10-22--표-하나의-행을-전부-지운다--소급-탭-delete-every-row-of-a-table-파일-체크리스트는-그대로) — 누르는 곳 소급 탭 «Delete every row of a table» · 명령 `chain_replay_cli.py delete-every-row`
@@ -524,6 +525,21 @@
 
 
 
+
+## 2026-10-23 · 중복 접기는 «Fold duplicate rows» 하나로 — 층 많은 행 남기기 · 값이 다른 키 건너뛰기 · 미리보기가 다른 칸과 값을 보임 (dedupe_business_key_rows.py 은퇴)
+
+- **무엇** — 소유자 10-23 ㄴ(겹친 문 접기). 같은 키 행을 접는 문이 둘(소급 탭 «Fold duplicate rows» · `dedupe_business_key_rows.py`)이었고 남길 행을 고르는 규칙이 달랐습니다. 이제 소급 탭 하나에 칸 둘이 더 있습니다.
+- **선언(칸)**
+  - `keep` = `most_layers` — 칸 층이 가장 많은 행이 남고, 같으면 row id 가 작은 행. 이때는 `order` 를 비웁니다(옛 스크립트의 규칙)
+  - `only_identical` — 같은 키 행들의 값이 하나라도 다르면 그 키는 접지 않고 그대로 둡니다. 기본은 끔(소유자 10-09 「최소 시간으로 접기」는 값이 다른 행을 접는 일이라)
+- **선언 예시** — 옛 dedupe 와 같은 일:
+```
+python server/scripts/chain_replay_cli.py fold-rows <표> --keys <키 칸들> --keep most_layers --only-identical
+```
+- **보이는 것** — 미리보기가 켜고 끔과 상관없이 「N key(s) hold rows whose values differ - by column … For example …」 — 값이 다른 키 수 · 칸별 수 · 앞 다섯 키의 행별 값. 비교하는 칸은 선언 칸에서 접는 키 · 표 마크 칸 · 표 자신의 키 칸을 뺀 것
+- **바뀐 동작** — 빈 글자와 NULL 을 같은 «빈 값»으로 봅니다(제품 규칙). 옛 스크립트는 둘을 다르게 봐서 그런 키를 건너뛰었습니다 — 같은 씨앗에서 다른 것은 이 한 곳이었습니다(남긴 행 · 건너뛴 키 · 지운 줄 나머지는 같음)
+- **은퇴** — `server/scripts/dedupe_business_key_rows.py`. `--dump` 은 없어짐 — 미리보기가 다른 칸과 값을 보입니다. 묶는 키는 저장된 business_key_val 대신 적은 키 칸들입니다(RUN.md 에 같은 답이 나오는 조건)
+- **자세히** — 시험 `test_duplicate_rows_fold_to_one_per_key.py`
 
 ## 2026-10-23 · 철자 접기는 소급 탭 하나로 — fold_comp_id.bat 은퇴
 

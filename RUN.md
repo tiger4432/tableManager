@@ -5872,7 +5872,7 @@
 >              박스 오늘: 키를 선언한 표 32 · 겹친 키 그룹 0 · 이 병의 행 0
 > 뜻           0 이 아니면 그 행은 키 없이 남은 것 — 고치는 것은 소유자가 돌린다(지우거나 접는 명령, 기본은 읽기만):
 >                 python server/scripts/rebuild_blank_business_keys.py --table <표>            (키를 다시 조립 — 부딪히는 키는 collides 로 냄)
->                 python server/scripts/dedupe_business_key_rows.py --table <표>               (그다음 겹친 행 접기 — 값이 다른 그룹은 건너뜀)
+>                 python server/scripts/chain_replay_cli.py fold-rows <표> --keys <키 칸들> --keep most_layers --only-identical   (그다음 겹친 행 접기 — 값이 다른 키는 건너뜀 · 10-23 부터 dedupe_business_key_rows.py 대신)
 >              각각 --apply 를 붙여야 쓴다. 순서는 rebuild 먼저
 > 급할 때       git revert <이 커밋> -> 재기동 (되돌릴 이주 없음)
 > ```
