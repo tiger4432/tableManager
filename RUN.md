@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **체인 규칙 창에서 조인 take 항목을 기록으로 · exclude 값 칸 (소유자 「from, to → take 로 가는 길이 없음」 · 「폼에서 값 칸으로 가는 법이 없는데」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          체인 규칙 창 -> derive join -> take 칩 끝 «+ record» -> 새 줄의 from · into · fn
+>          on.exclude · on.require 칩 끝 «+ values» -> 칸 이름 -> «+ column» -> 값
+> 뜻      take 칩에 친 칸 이름이 그대로 들어감 (전엔 "" 가 들어갔음)
+>          fn 고르개 = 서버가 준 목록. 내장 넷만 보이면 server/mappers/join_fn 에 .py 가 없는 것 (.sample 은 안 셈)
+>          저장 거절 «… or «<file>.<function>» of a file in …join_fn»  -> 그 파일 · 함수가 없음
+>          저장 거절 «from is a list - only a function … takes one»  -> 칸 목록 from 은 함수 fn 하고만
+> 되돌리기  git revert b7ffcb3c0 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-23] **AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg, 행 조건 · 수율 · 불량 (소유자 그림) · 후보 목록 표 은퇴** — git pull · 체인 워커 재기동 · R1
 >
 > ```
