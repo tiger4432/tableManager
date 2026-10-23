@@ -146,6 +146,12 @@ function pathSuite(M) {
     `A1 the adder's words split on commas, line breaks and tabs [${added && JSON.stringify(added.document.words)}]`);
   const blank = M.path.addMember({ words: [] }, 'words', words, {}, '');
   ok(blank && same(blank.document.words, ['']), 'A2 nothing typed appends one empty member, as before');
+  // A take's from (B a44dd01af): a name, or a list of columns - the adder of the list the form drew takes a member.
+  const from = { kind: 'oneOf', hint: 'choice', pick: 'shape', branches: { name: { kind: 'leaf', hint: 'ref' },
+    list: { kind: 'map', keyed_by: 'index', member: 'column', of: { kind: 'leaf', hint: 'ref' } } } };
+  const listed = M.path.addMember({ from: ['value'] }, 'from', from, {}, 'item');
+  ok(listed && same(listed.document.from, ['value', 'item']) && M.path.addMember({ from: 'value' }, 'from', from, {}, 'item') === null,
+    `A2b a list under a shape-picked oneOf takes the adder's member; a name there takes none [${listed && JSON.stringify(listed.document.from)}]`);
   const step = (before, at, value, stash) => {
     const after = M.path.writeShapeAtPath(before, at, value);
     return M.path.switchGated(before, after, at, FIX.root, {}, stash);
@@ -420,6 +426,8 @@ const DEFECTS = [
   ['view', "a plan row's folded list is its JSON again",
     (s) => s.replace("words ? words.map(String).join(', ')", 'words ? JSON.stringify(words)')],
   ['path', "the adder's words go in as one member", (s) => s.replace('.split(/[,\\n\\t]/)', '.split(/\\u0000/)')],
+  ['path', "a list under a shape-picked oneOf takes no member - a take's from list adds nothing (B a44dd01af)",
+    (s) => s.replace("  if (node && node.kind === 'oneOf' && node.pick === 'shape') node =", '  if (false) node =')],
   ['path', 'a switched gate forgets what was typed', (s) => s.replace('      kept[at] = record[field.key];\n', '')],
   ['path', 'a switched gate keeps the shut branch in the document', (s) => s.replace('      delete record[field.key];\n', '')],
   ['skel', 'a choice of one is left for the person',

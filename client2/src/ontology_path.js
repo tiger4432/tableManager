@@ -16,7 +16,7 @@
 // sides is the property being kept here; being right about dotted ids is a separate fix and
 // belongs in the server first.
 
-import { asList, emptyOf, valueFits, shapeAt, leafValue } from './ontology_skeleton.js';
+import { asList, emptyOf, valueFits, shapeAt, shapeBranch, leafValue } from './ontology_skeleton.js';
 
 const PATH_STEP = /([^.[\]]+)|\[(\d+)\]/g;
 
@@ -189,8 +189,11 @@ export function deleteAtPath(document, steps) {
  *  Returns null when nothing may be written, the same as the other writers here.
  */
 export function addMember(document, relative, node, defs, name = '', lists = null) {
+  const at = getAtPath(document, splitBundlePath(relative));
+  // A shape-picked oneOf is the branch its value is in - the one the form drew (a take's from as a list, B a44dd01af).
+  if (node && node.kind === 'oneOf' && node.pick === 'shape') node = shapeAt((node.branches || {})[shapeBranch(node, at, defs)], [], defs);
   if (!node || node.kind !== 'map') return null;
-  const held = asList(node, getAtPath(document, splitBundlePath(relative)));
+  const held = asList(node, at);
   if (!valueFits(node, held)) return null;
   const seed = emptyOf(node.of, defs, 0, lists);
   if (node.keyed_by === 'index') {
