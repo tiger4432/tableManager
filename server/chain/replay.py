@@ -996,20 +996,22 @@ def interrupted_runs(db, run_id=None, rule=None):
     """The replay runs cut short (총괄 fc1e1e385) - ONE JUDGEMENT, asked by the queue, Resume, × and the sweep: a run
     with a cursor, ended (done · cancelled · failed), not continued, and either cut while staging or with a page
     staged after its cursor - and none of its events waiting (those still run). A run staged before the cursor
-    existed has none and is never one. -> `[{"run_id", "rule", "state", "pages", "finished_at", "params"}]`."""
+    existed has none and is never one. -> `[{"run_id", "op", "rule", "state", "pages", "cursor_end", "total_rows",
+    "finished_at", "params"}]` - `cursor_end` the last committed page's end key, `total_rows` None when not known."""
     import json
     from database import models
 
     if not models.ensure_run_columns(db.get_bind(), add=False):
         return []                                  # no replay has staged a page here since the cursor existed
     rows = db.execute(text(
-        "SELECT run_id, params, state, cursor_page, staged_page, cursor_rows, finished_at FROM retroactive_runs "
+        "SELECT run_id, op, params, state, cursor_page, staged_page, cursor_rows, cursor_end, total_rows, finished_at "
+        "FROM retroactive_runs "
         "WHERE op = 'chain_replay' AND cursor_page IS NOT NULL AND continued_by IS NULL "
         "AND state IN ('done', 'cancelled', 'failed') AND (state <> 'done' OR cursor_page < staged_page)"
         + (" AND run_id = :run" if run_id else "") + " ORDER BY finished_at"),
         {"run": run_id} if run_id else {}).fetchall()
     outbox, found = models.DatabaseOutbox, []
-    for run, params, state, done, staged, rows_done, finished_at in rows:
+    for run, op, params, state, done, staged, rows_done, cursor_end, total_rows, finished_at in rows:
         params = json.loads(params) if params else {}
         if rule is not None and params.get("rule") != rule:
             continue
@@ -1018,9 +1020,9 @@ def interrupted_runs(db, run_id=None, rule=None):
         if db.query(outbox.id).filter(outbox.processed_chain == False, narrow, line,  # noqa: E712
                                       outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True).first() is not None:  # noqa: E712
             continue
-        found.append({"run_id": run, "rule": params.get("rule"), "state": state, "params": params,
+        found.append({"run_id": run, "op": op, "rule": params.get("rule"), "state": state, "params": params,
                       "pages": {"done": done, "staged": staged, "rows_done": rows_done},
-                      "finished_at": finished_at})
+                      "cursor_end": cursor_end, "total_rows": total_rows, "finished_at": finished_at})
     return found
 
 

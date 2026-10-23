@@ -5010,7 +5010,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
                                    "capped": len(recent_failures) > _RECENT_FAILURES_CAP},
         # cut replays - no events wait, so no line above: «Interrupted · Resume», × closes (총괄 fc1e1e385)
         "interrupted_runs": [
-            {"run_id": cut["run_id"], "rule": cut["rule"], "state": cut["state"], "pages": cut["pages"],
+            {"run_id": cut["run_id"], "op": cut["op"], "rule": cut["rule"], "state": cut["state"],
+             "pages": cut["pages"], "cursor_end": cut["cursor_end"], "total_rows": cut["total_rows"],
              "cut_at": to_local_str(cut["finished_at"]) if cut["finished_at"] is not None else None,
              "resume": {"run_id": cut["run_id"]}, "cancel": {"key": cut["run_id"]}}
             for cut in chain_replay.interrupted_runs(db)],
