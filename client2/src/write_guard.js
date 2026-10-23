@@ -18,7 +18,7 @@
 //    배지도 같은 글자를 씁니다 — 같은 사실에 두 문구를 쓰면 그 둘은 언젠가 갈라집니다.
 
 import { state, tableIsView, VIEW_READ_ONLY_NOTE, pivotShown } from './state.js';
-import { PIVOT_ROWS_NOTE, PIVOT_KEY_NOTE, keyColumnsIn, pivotWire } from './grid_pivot.js';
+import { pivotWriteRefusal, holdNewRowKeys, pivotWire } from './grid_pivot.js';
 import { elements } from './dom.js';
 // 🔴 C-120. 「꺼짐 + 왜」를 그리는 «몸통»은 이제 여기 있지 않습니다. 이 파일이 답하는 것은
 //    「이 표에 쓸 수 있나」이고, 「행을 골랐나」 같은 «다른 물음»이 같은 기제를 쓰기 때문입니다.
@@ -26,16 +26,16 @@ import { elements } from './dom.js';
 import { setDisabledReason } from './disabled_reason.js';
 
 /**
- * 이 화면에서 «쓰는» 컨트롤들. 실측 2026-09-13: 여섯 다 `state.currentTable` 에 씁니다 —
- * 행 추가/삭제는 그 표의 행을, 트랜잭션 적용은 그 표의 셀을, 나머지 셋은
- * `POST /tables/<현재 표>/upload` 로 «그 표»에 인제션합니다(스마트 붙여넣기 포함).
+ * 이 화면에서 «쓰는» 컨트롤들. 실측 2026-09-13: 다 `state.currentTable` 에 씁니다 —
+ * 행 추가/삭제는 그 표의 행을, 트랜잭션 적용은 그 표의 셀을, 나머지 둘은
+ * `POST /tables/<현재 표>/upload` 로 «그 표»에 인제션합니다.
  *
  * 🔴 이름으로 듭니다 — `elements` 는 게터라 «부를 때» 문서를 봅니다. 목록에 이름만 더하면
  *    새 컨트롤이 이 규칙 안으로 들어옵니다.
  */
 const WRITE_CONTROLS = [
   'addRowBtn', 'deleteRowBtn', 'txApplyBtn',
-  'smartPasteBtn', 'ingestFileBtn', 'folderUploadBtn',
+  'ingestFileBtn', 'folderUploadBtn',
 ];
 
 /**
@@ -48,21 +48,14 @@ export function writeRefusal() {
   return tableIsView() ? VIEW_READ_ONLY_NOTE : '';
 }
 
-/** A row added or deleted, or rows pasted in as a table: the table's refusal, or in pivot view the pivot's. */
-export function rowWriteRefusal() {
-  return writeRefusal() || (pivotShown() ? PIVOT_ROWS_NOTE : '');
-}
-
-// The controls a pivot view refuses with rows; the file uploads write the table, not the view.
-const ROW_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'smartPasteBtn'];
-
-/** In pivot view, a paste, fill or clear that reaches a key column: the line said and true - nothing of it is written
- *  or staged (lead 10-22 ②). `items` are the grid's updates ({updates} each). */
+/** In pivot view, an edit, paste, fill or clear (owner 10-23, lead 10-22 ②): refused - its line said and true, nothing
+ *  of it written or staged - or it goes, a new row's key cells moved onto that row first. `items` are {rowNode, updates}. */
 export function refusePivotKeys(items) {
-  if (!pivotShown() || keyColumnsIn(items).length === 0) return false;
-  const el = elements.performanceLog;
-  if (el) el.textContent = PIVOT_KEY_NOTE;
-  return true;
+  if (!pivotShown()) return false;
+  const why = pivotWriteRefusal(state.pivotView, items);
+  if (why) return refuseWrite(why);
+  if (holdNewRowKeys(state.pivotView, items)) state.gridApi.refreshCells({ force: true });
+  return false;
 }
 
 /** The grid's updates as PUT /data/updates takes them - every grid write sends through here: in pivot view a group's
@@ -101,7 +94,7 @@ export function refuseWrite(why = writeRefusal()) {
 export function applyWriteGuards() {
   const why = writeRefusal();
   for (const handle of WRITE_CONTROLS) {
-    setDisabledReason(elements[handle], ROW_CONTROLS.includes(handle) ? rowWriteRefusal() : why);
+    setDisabledReason(elements[handle], why);
   }
   // 🔴 C-107. 그리고 «표 자체»가 그 사실을 말합니다. 종전에는 뷰라는 것이 화면에 «없었고»,
   //    쓰려고 해야 알 수 있었습니다 — 잠긴 컨트롤의 «이유»가 눌러 보기 전에는 안 보입니다.

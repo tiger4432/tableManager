@@ -790,11 +790,11 @@ function suite(out, sent) {
     [null, [100, 0], true, ['ledger_atom_rows@0']]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
     out.left.atOnce, { value: 28, is_overwrite: false, priority_source: null });
-  eq('W9 census: the grid\'s reads of the open table go through the seat - api 6 (schema, data, count, Apply\'s read of the '
-    + 'staged rows, load all, export - the last two moved from main for the count ㄱ-1), main 0, timeline 1 (row jump), '
-    + 'value_suggest 1 (column values)',
+  eq('W9 census: the grid\'s reads of the open table go through the seat - api 7 (schema, data, count, Apply\'s read of the '
+    + 'staged rows, load all, export - the last two moved from main for the count ㄱ-1 - and a pivot delete\'s read of its '
+    + 'groups\' rows, owner 10-23), main 0, timeline 1 (row jump), value_suggest 1 (column values)',
     { api: callsIn('api.js'), main: callsIn('main.js'), timeline: callsIn('timeline.js'), suggest: callsIn('value_suggest.js') },
-    { api: 6, main: 0, timeline: 1, suggest: 1 });
+    { api: 7, main: 0, timeline: 1, suggest: 1 });
   return { ran: names.length, names, failures };
 }
 

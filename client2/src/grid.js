@@ -1,7 +1,7 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
-import { pivotColumns, itemOf } from './grid_pivot.js';
+import { pivotColumns, itemOf, isNewPivotRow } from './grid_pivot.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
 import { writeRefusal } from './write_guard.js';
@@ -911,8 +911,9 @@ export function buildColumnDefs() {
       headerTooltip: indexWords.length ? `${headerLabel} · index: ${indexWords.join(', ')}` : headerLabel,
       field: col,
       // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
-      // a pivot view's keys name a group, not a row (owner 10-22): its items are written, its keys are not
-      editable: !isSystem && !viewTable && !(pivotShown() && itemOf(col) === null),
+      // a pivot view's keys name a group, not a row (owner 10-22): its items are written, its keys are typed only on a new
+      // row (owner 10-23)
+      editable: !isSystem && !viewTable && (pivotShown() && itemOf(col) === null ? (params) => isNewPivotRow(params.data && params.data.row_id) : true),
       sortable: true,
       // A system column is not editable and, except ROW_ID, not filterable either.
       // `filter: false` is what AG-Grid reads to skip the floating row, and
@@ -1190,6 +1191,7 @@ export function buildColumnDefs() {
     headerName: '#',
     headerTooltip: 'Row Number',
     valueGetter: (params) => {
+      if (isNewPivotRow(params.data && params.data.row_id)) return 'not saved';
       const skip = (state.viewMode === 'pagination' && !state.allDataLoaded) ? state.currentSkip : 0;
       return skip + params.node.rowIndex + 1;
     },

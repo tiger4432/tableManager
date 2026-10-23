@@ -425,7 +425,7 @@ async function suite(M) {
   //    click it. The judgement was already single (`tableIsView`); what was copied five times
   //    was ASKING it. A list in one place is what stops an eighth from being forgotten.
   const CONTROLS = ['add-row-btn', 'delete-row-btn', 'tx-apply-btn',
-                    'smart-paste-btn', 'ingest-file-btn', 'folder-upload-btn'];
+                    'ingest-file-btn', 'folder-upload-btn'];
   const controls = () => CONTROLS.map((id) => document.getElementById(id));
   realState.currentTableKind = 'view';
   for (const btn of controls()) { btn.disabled = false; delete btn.dataset.titleWas; }
@@ -985,7 +985,7 @@ const DEFECTS = [
     s => s.replace("  if (state.gridApi) state.gridApi.setGridOption('rowData', []);\n", '')],
   // 🔴 C-102. Four ways the owner's click gets back to the server, or its answer gets lost.
   ['api.js: the add-row funnel is unguarded again', 'api',
-    s => s.replace('  if (refuseWrite(rowWriteRefusal())) return;\n', '')],
+    s => s.replace('  if (refuseWrite()) return;\n', '')],
   ['api.js: the controls are never told the table changed', 'api',
     s => s.replace('  applyWriteGuards();\n', '')],
   // ⚰️ C-120. TWO MUTANTS MOVED, THEY DID NOT DIE. 「the guard eats the words the markup
@@ -1030,7 +1030,7 @@ const DEFECTS = [
   ['api.js: rows the broadcast took are removed again', 'api',
     s => s.replace('      const left = rowIds.filter((rowId) => state.gridApi.getRowNode(rowId));', '      const left = rowIds;')],
   ['api.js: the delete button stays off after the answer', 'api',
-    s => s.replace('    setDisabledReason(elements.deleteRowBtn, rowWriteRefusal());\n', '')],
+    s => s.replace('    setDisabledReason(elements.deleteRowBtn, writeRefusal());\n', '')],
   ['api.js: the delete refusal is ours, not the server`s', 'api',
     s => s.replace("      refused = await refusalText(res, 'Delete failed');", "      refused = 'Delete failed';")],
   ['api.js: a delete refusal leaves no next step', 'api',

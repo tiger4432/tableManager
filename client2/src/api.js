@@ -1,10 +1,11 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld, pivotShown, rowUnit } from './state.js';
-import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, stagedReadRows } from './grid_pivot.js';
+import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, stagedReadRows, newPivotRows, isNewPivotRow,
+  groupFilters, strayLongRow } from './grid_pivot.js';
 import { notANumber, unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, applyWriteGuards, rowWriteRefusal, wireUpdates, gridRowOf } from './write_guard.js';
+import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
@@ -983,6 +984,11 @@ async function applyStaged(choice) {
     }
     grouped[edit.rowId][edit.colId] = edit.newValue;
   });
+  // A new pivot row's keys cleared after its value was staged: refused here too, the edits kept (owner 10-23).
+  if (refusePivotKeys(Object.keys(grouped).map((rowId) => ({ rowNode: state.gridApi.getRowNode(rowId) || { data: {} }, updates: { ...grouped[rowId] } })))) {
+    keepTxOn();
+    return;
+  }
 
   const updates = Object.keys(grouped).map(rowId => ({
     row_id: rowId,
@@ -1149,6 +1155,20 @@ async function editCell(event) {
     }
   }
 
+  // In pivot view (owner 10-23): a new row's key cell stays on that row, unwritten; a value there with a key blank is
+  // refused and the cell goes back.
+  if (pivotShown()) {
+    const node = state.gridApi.getRowNode(rowId);
+    const item = { rowNode: node || { data }, updates: { [colId]: finalValue } };
+    if (refusePivotKeys([item])) {
+      ensureCellObject(item.rowNode.data, colId);
+      item.rowNode.data.data[colId].value = oldValue;
+      state.gridApi.refreshCells({ rowNodes: [node].filter(Boolean), columns: [colId], force: true });
+      return;
+    }
+    if (!Object.keys(item.updates).length) return;
+  }
+
   // Intercept and stage if Tx Mode is active
   if (state.txModeActive) {
     const key = `${rowId}_${colId}`;
@@ -1265,7 +1285,15 @@ export async function addRows(count) {
   // 🔴 C-102 ①. 네 번째 깔때기. 붙여넣기·지우기·일괄채우기가 이미 이 모양이고, 이것만
   //    빠져 있어서 뷰에서 «서버까지» 갔습니다. 거절이 깔때기에 있어야 버튼이 아닌 다른
   //    경로로 불려도 같은 답이 납니다 (criterion ④).
-  if (refuseWrite(rowWriteRefusal())) return;
+  if (refuseWrite()) return;
+  // In pivot view a new row is the screen's until a value is written on it (owner 10-23) - no empty long row is made. At
+  // the bottom, so lines pasted from it go on into more new rows.
+  if (pivotShown()) {
+    state.gridApi.applyTransaction({ add: newPivotRows(count) });
+    state.gridApi.ensureIndexVisible(state.gridApi.getDisplayedRowCount() - 1);
+    setBadge(elements.performanceLog, `${count} empty row(s) added`);
+    return;
+  }
   setBadge(elements.performanceLog, `Creating ${count} empty row(s)...`);
   // 🔴 C-102 ②. 거절의 «사유»는 서버의 것입니다 — 이 파일이 이미 그렇게 하는 자리가 있고
   //    (:528 `errData.detail`), 이 한 자리만 `Error('Create failed')` 로 접고 있었습니다.
@@ -1292,6 +1320,31 @@ export async function addRows(count) {
   showToast(refused, 'error');
 }
 
+/** The long rows of pivot groups, by their keys - every item, shown or not (owner 10-23). A read that brings a row of
+ *  other keys did not narrow, and the delete stops on it before anything is deleted (lead 10-23). */
+const GROUP_READ_PAGE = 1000;
+async function groupLongIds(groups) {
+  const view = state.pivotView;
+  const ids = [];
+  for (const node of groups) {
+    const filters = encodeURIComponent(JSON.stringify(groupFilters(view, node.data)));
+    for (let skip = 0; ; skip += GROUP_READ_PAGE) {
+      const res = await gridFetch(`${API_BASE}/tables/${state.currentTable}/data?skip=${skip}&limit=${GROUP_READ_PAGE}`
+        + `&defer_total=true&filters=${filters}`);
+      if (!res.ok) throw new Error(await refusalText(res, 'The rows of the selected keys could not be read'));
+      const rows = (await res.json()).data || [];
+      const stray = strayLongRow(view, node.data, rows);
+      if (stray) {
+        throw new Error(`Delete stopped - nothing deleted: ${state.currentTable} answered a row with ${stray.key} = ${stray.got} `
+          + `for ${stray.key} = ${stray.want}`);
+      }
+      ids.push(...rows.map((row) => row.row_id));
+      if (rows.length < GROUP_READ_PAGE) break;
+    }
+  }
+  return ids;
+}
+
 // Delete selected rows batch
 //
 // 🔴 a0ae05b60 (소유자 「ㄱ, 한 1만행」). 기다림이 «보입니다» — 지우기 버튼은 사유와 함께 꺼지고
@@ -1299,17 +1352,34 @@ export async function addRows(count) {
 //    행동 하나를 붙입니다 — 커밋 뒤 방송에서 실패할 수도 있어 「안 지워졌다」고는 말하지 않습니다.
 export async function deleteSelectedRows() {
   if (!state.gridApi || state.isDeletingRows) return;
-  if (refuseWrite(rowWriteRefusal())) return;
+  if (refuseWrite()) return;
   const selectedNodes = state.gridApi.getSelectedNodes();
   if (selectedNodes.length === 0) {
     alert('No rows selected for deletion');
     return;
   }
 
-  const rowIds = selectedNodes.map(node => node.data.row_id).filter(Boolean);
+  // In pivot view a selected row is a group: its long rows are read by its keys (owner 10-23), new rows never saved go
+  // from the screen alone.
+  const groups = pivotShown() ? selectedNodes.filter((node) => !isNewPivotRow(node.data.row_id)) : [];
+  if (pivotShown()) {
+    const fresh = selectedNodes.filter((node) => isNewPivotRow(node.data.row_id));
+    if (fresh.length) state.gridApi.applyTransaction({ remove: fresh.map((node) => node.data) });
+    if (!groups.length) return;
+  }
+  let rowIds;
+  try {
+    rowIds = pivotShown() ? await groupLongIds(groups) : selectedNodes.map(node => node.data.row_id).filter(Boolean);
+  } catch (err) {
+    setBadge(elements.performanceLog, err.message);
+    showToast(err.message, 'error');
+    return;
+  }
   if (rowIds.length === 0) return;
 
-  if (!confirm(`Are you sure you want to permanently delete the selected ${unitText(rowIds.length, 'row')}?`)) return;
+  const what = pivotShown() ? `${unitText(rowIds.length, 'row')} of ${unitText(groups.length, 'selected key')}, items not shown included`
+    : `the selected ${unitText(rowIds.length, 'row')}`;
+  if (!confirm(`Are you sure you want to permanently delete ${what}?`)) return;
 
   state.isDeletingRows = true;
   const startedAt = Date.now();
@@ -1339,7 +1409,9 @@ export async function deleteSelectedRows() {
       const left = rowIds.filter((rowId) => state.gridApi.getRowNode(rowId));
       if (left.length) state.gridApi.applyTransaction({ remove: left.map((rowId) => ({ row_id: rowId })) });
       updateLoadedCount();
-      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} · ${seconds()} s${droppedText(dropStagedEditsOf(rowIds))}`;
+      const dropped = droppedText(dropStagedEditsOf([...rowIds, ...groups.map((node) => node.data.row_id)]));
+      if (pivotShown()) await fetchData(false);
+      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} · ${seconds()} s${dropped}`;
     } else {
       refused = await refusalText(res, 'Delete failed');
     }
@@ -1349,7 +1421,7 @@ export async function deleteSelectedRows() {
   } finally {
     clearInterval(timer);
     state.isDeletingRows = false;
-    setDisabledReason(elements.deleteRowBtn, rowWriteRefusal());
+    setDisabledReason(elements.deleteRowBtn, writeRefusal());
   }
   if (!refused) return;
   const line = `${refused} — reload the table to see which rows remain`;

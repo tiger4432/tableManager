@@ -3,6 +3,7 @@ import { state, isVirtualColumn, isDataColumn, pivotShown, rowUnit } from './sta
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
 import { refuseWrite, refusePivotKeys, wireUpdates } from './write_guard.js';
+import { newPivotRows } from './grid_pivot.js';
 import { fetchData } from './api.js';
 import { elements } from './dom.js';
 import { ensureCellObject, markCellOverwritten, updateGridSortState, isSystemColumn } from './grid.js';
@@ -513,6 +514,9 @@ export function setupClipboardHandlers() {
         }
 
         if (anchorRow === Infinity || anchorColVisibleIdx === -1) return;
+        // In pivot view the lines pasted past the last row are new rows (owner 10-23): their keys and values go on them.
+        const short = pivotShown() ? anchorRow + parsedMatrix.length - state.gridApi.getDisplayedRowCount() : 0;
+        if (short > 0) state.gridApi.applyTransaction({ add: newPivotRows(short) });
 
         parsedMatrix.forEach((rowValues, rOffset) => {
           const targetRowIndex = anchorRow + rOffset;

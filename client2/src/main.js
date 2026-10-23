@@ -856,13 +856,6 @@ function setupEventListeners() {
     elements.folderUploadBtn.addEventListener('click', () => elements.toolbarFolderInput.click());
   }
 
-  // Smart Paste Button
-  if (elements.smartPasteBtn) {
-    elements.smartPasteBtn.addEventListener('click', () => {
-      smartPasteViaIngestion();
-    });
-  }
-
   // Sort Toggle
   elements.sortLatestToggle.addEventListener('change', () => {
     localStorage.setItem('sortLatest', elements.sortLatestToggle.checked);

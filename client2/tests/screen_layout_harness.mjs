@@ -232,6 +232,13 @@ const pivotLongRows = (filters) => ((filters.row_id || {}).conditions || [])
   .map((c) => /^pv-(\d+)-(\d+)$/.exec(String(c.filter))).filter((m) => m && PIVOT_LONG.mode !== 'gone')
   .map(([id, i, k]) => ({ row_id: id, data: { dt_job: { value: `JOB-${String(Math.floor(i / 8) + 1).padStart(3, '0')}` }, b_wx: { value: i % 8 },
     b_wy: { value: PIVOT_ITEMS[k] }, dt_index: { value: pivotValue(Number(i), Number(k)) + (PIVOT_LONG.mode === 'moved' ? 1 : 0) } } }));
+// A group's long rows read by its keys (owner 10-23, a group deleted): its items drawn and three not shown («pvh-»).
+const pivotGroupRows = (filters) => {
+  const i = (Number(String(filters.dt_job.filter).slice(4)) - 1) * 8 + Number(filters.b_wx.filter);
+  const keys = { dt_job: { value: filters.dt_job.filter }, b_wx: { value: Number(filters.b_wx.filter) } };
+  return [...PIVOT_ITEMS.map((item, k) => ((i + k) % 9 !== 0 ? { row_id: `pv-${i}-${k}`, data: { ...keys, b_wy: { value: item } } } : null)).filter(Boolean),
+    ...[1, 2, 3].map((n) => ({ row_id: `pvh-${i}-${n}`, data: { ...keys, b_wy: { value: `HIDDEN_${n}` } } }))];
+};
 const pivotAnswer = (u) => {
   if (u.pathname === '/tables/dt_log/schema') {
     const a = ANSWERS['/tables/dt_log/schema'];
@@ -240,6 +247,7 @@ const pivotAnswer = (u) => {
   if (u.pathname === '/tables/dt_log/data' && u.searchParams.get('pivot') !== 'true') {
     const filters = JSON.parse(u.searchParams.get('filters') || '{}');
     if (filters.row_id) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, data: pivotLongRows(filters) } };
+    if (filters.dt_job && filters.b_wx) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, data: pivotGroupRows(filters) } };
   }
   if (u.searchParams.get('pivot') !== 'true') return null;
   if (u.pathname === '/tables/dt_log/data/count') return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: 40 } };
@@ -760,7 +768,7 @@ CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot drawn', at: 'p
 // Part ② (lead 10-22): in pivot view cells are written many at a time and the transaction is open; rows are not.
 CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot writes', at: 'pivot', expr: `(() => {
   const add = document.getElementById('add-row-btn');
-  if (!add || !add.disabled || add.getAttribute('title') !== 'Rows are added and deleted with Pivot off') return 'Add Row: ' + (add ? add.disabled + ' «' + add.getAttribute('title') + '»' : 'none');
+  if (!add || add.disabled) return 'Add Row is shut in pivot view';
   const tx = document.getElementById('tx-mode-toggle');
   return tx && !tx.disabled ? null : 'the transaction toggle is shut in pivot view';
 })()` });
@@ -784,9 +792,26 @@ CELLS.push({ entry: 'index.html', after: 'Pivot, a blank cell applied', rule: 'p
   const said = (document.getElementById('performance-log') || {}).textContent || '';
   return /^Applied batch updates .*\\(1 cells updated\\)$/.test(said) ? null : 'Apply ended «' + said + '»';
 })()` });
+// owner 10-23: rows in pivot view - a new row's keys and value make its long row, a saved row's key opens no editor; a
+// group deleted takes every long row of its keys, items not shown included; a key pasted over a saved row is refused.
+CELLS.push({ entry: 'index.html', after: 'Pivot, a new row applied', rule: 'pivot new row', at: 'pivot', expr: `(() => {
+  if (window.__savedKeyEditor !== false) return 'a saved row key cell opened an editor';
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  return /^Applied batch updates .*\\(1 cells updated\\)$/.test(said) ? null : 'Apply ended «' + said + '»';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Pivot, a group deleted', rule: 'pivot delete', at: 'pivot', expr: `(() => {
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  const asked = (window.__confirms || [])[0] || '';
+  return said.startsWith('Deleted 11 rows') && asked.includes('11 rows of 1 selected key') ? null
+    : 'asked «' + asked + '» · said «' + said + '» · ' + window.__deleteCell + ' · ' + window.__beforeDelete + ' · alerts '
+      + JSON.stringify(window.__alerts || []);
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Pivot, a key pasted over a saved row', rule: 'pivot key paste', at: 'pivot', expr: `(() => {
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  return said === 'Key columns cannot be changed in pivot view' ? null : 'the paste ended «' + said + '» · ' + window.__pasteAt;
+})()` });
 CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 'pivot', expr: `(() => {
   const add = document.getElementById('add-row-btn');
-  if (add && add.getAttribute('title') === 'Rows are added and deleted with Pivot off') return 'Add Row still says the pivot';
   if (document.querySelector('.ag-header-cell[col-id^="item:"]')) return 'an item column is left';
   const total = (document.getElementById('total-rows') || {}).textContent || '';
   if (total.includes(' group')) return 'the footer still says «' + total + '»';
@@ -1277,6 +1302,11 @@ async function servePage(chrome, dist) {
       const sent = JSON.parse(request.postData || '{}').updates || [];
       const blankRow = (x) => !x.row_id && ['dt_job', 'b_wx', PIVOT_DECL.column].every((k) => x.updates && x.updates[k] != null);
       reply(200, 'application/json', JSON.stringify({ change_count: sent.filter((x) => /^pv-/.test(String(x.row_id || '')) || blankRow(x)).length }));
+      return;
+    }
+    if (PIVOT.on && request.method === 'POST' && u.pathname === '/tables/dt_log/rows/batch_delete') {
+      // A group deleted in pivot view (owner 10-23): answered with how many long rows it named.
+      reply(200, 'application/json', JSON.stringify({ deleted_count: (JSON.parse(request.postData || '{}').row_ids || []).length }));
       return;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') { log.refused.push(`${request.method} ${u.pathname}`); chrome.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {}); return; }
@@ -2100,6 +2130,88 @@ const DRIVE = {
     ['Pivot, an edit of a gone row', (c) => pivotEditApplied(c, 'gone')],
     // A blank cell - no long row yet (owner 10-23 «빈 값에서 값 추가도 안 되네»): applied, it writes one.
     ['Pivot, a blank cell applied', (c) => pivotEditApplied(c, 'same', '.ag-row[row-index="0"] .ag-cell[col-id="item:THK_CENTER"]')],
+    // Rows in pivot view (owner 10-23): a new row's keys and a value applied - a saved row's key cell opening no editor;
+    // a group deleted - every long row of its keys; a key pasted over a saved row - refused whole.
+    ['Pivot, a new row applied', async (c) => {
+      await evaluate(c, `(() => { window.prompt = () => '1';
+        const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Discard' && !b.disabled); if (d) d.click(); return true; })()`);
+      await sleep(900);
+      const open = (row, col) => evaluate(c, `(() => {
+        const cell = document.querySelector('.ag-row[row-index="' + ${row} + '"] .ag-cell[col-id="${col}"]');
+        if (!cell) return false;
+        const r = cell.getBoundingClientRect();
+        const o = { bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 5, view: window };
+        for (const type of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(type, o));
+        cell.dispatchEvent(new MouseEvent('dblclick', { ...o, detail: 2 }));
+        return true; })()`);
+      const type = (value) => evaluate(c, `(() => { const input = document.querySelector('.ag-cell-inline-editing input');
+        if (!input) return false;
+        input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+        return true; })()`);
+      const found = await open(1, 'dt_job');
+      await sleep(600);
+      await evaluate(c, "window.__savedKeyEditor = " + (found ? "!!document.querySelector('.ag-cell-inline-editing')" : "'no saved key cell'") + "; document.querySelector('.ag-cell-inline-editing input') && document.querySelector('.ag-cell-inline-editing input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true })); true");
+      await evaluate(c, "document.getElementById('add-row-btn').click(); true");
+      await until(c, "[...document.querySelectorAll('.ag-pinned-left-cols-container .ag-cell[col-id=\"#\"]')].some((x) => x.textContent.trim() === 'not saved')");
+      const at = await evaluate(c, "[...document.querySelectorAll('.ag-pinned-left-cols-container .ag-cell[col-id=\"#\"]')].find((x) => x.textContent.trim() === 'not saved').closest('.ag-row').getAttribute('row-index')");
+      for (const [col, value] of [['dt_job', 'JOB-900'], ['b_wx', '9'], ['item:THK_CENTER', '12.5']]) {
+        await open(at, col);
+        await until(c, "!!document.querySelector('.ag-cell-inline-editing input')");
+        await type(value);
+        await sleep(400);
+      }
+      await until(c, "/pending/.test((document.querySelector('#performance-log') || {}).textContent || '')");
+      await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Apply' && !x.disabled);
+        if (b) b.click(); return Boolean(b); })()`);
+      await until(c, "!/Checking|pending/.test((document.querySelector('#performance-log') || {}).textContent || '')");
+      await sleep(900);
+    }],
+    ['Pivot, a group deleted', async (c) => {
+      // Add Row scrolled to the new row at the bottom: back to the top, where row 1 is drawn
+      await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
+      await until(c, "!!document.querySelector('.ag-row[row-index=\"1\"] .ag-cell[col-id=\"#\"]')").catch(() => null);
+      // a press on the row's # cell picks it (enableClickSelection)
+      await evaluate(c, `(() => { window.__confirms = []; window.confirm = (m) => { window.__confirms.push(m); return true; };
+        window.__alerts = []; window.alert = (m) => { window.__alerts.push(m); };
+        const cell = document.querySelector('.ag-row[row-index="1"] .ag-cell[col-id="#"]');
+        window.__deleteCell = cell ? 'cell ' + cell.textContent.trim() : 'no # cell on row 1 of ' + document.querySelectorAll('.ag-row').length + ' rows';
+        if (!cell) return false;
+        const r = cell.getBoundingClientRect();
+        const o = { bubbles: true, cancelable: true, clientX: r.x + 5, clientY: r.y + 5, view: window };
+        for (const type of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(type, o));
+        return true; })()`);
+      await sleep(400);
+      await evaluate(c, `(() => { const b = document.getElementById('delete-row-btn');
+        window.__beforeDelete = [...new Set([...document.querySelectorAll('.ag-row-selected')].map((r) => r.getAttribute('row-index')))].join(',')
+          + ' picked · button ' + (b.disabled ? 'off «' + b.title + '»' : 'on');
+        b.click(); return true; })()`);
+      await until(c, "/^Deleted|Delete stopped/.test((document.querySelector('#performance-log') || {}).textContent || '')").catch(() => null);
+      await sleep(900);
+    }],
+    ['Pivot, a key pasted over a saved row', async (c) => {
+      await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
+      await until(c, "!!document.querySelector('.ag-row[row-index=\"2\"] .ag-cell[col-id=\"dt_job\"]')").catch(() => null);
+      const at = await evaluate(c, `(() => {
+        const cell = document.querySelector('.ag-row[row-index="2"] .ag-cell[col-id="dt_job"]');
+        window.__pasteAt = cell ? 'cell ' + cell.textContent.trim() : 'no dt_job cell on row 2';
+        if (!cell) return null;
+        const r = cell.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+      // a real press: a dispatched mousedown picks no cell (measured on 18843 - the paste then has no target, says nothing)
+      if (at) {
+        for (const type of ['mousePressed', 'mouseReleased']) {
+          await c.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 });
+        }
+      }
+      await sleep(300);
+      await evaluate(c, `(() => {
+        if (!${Boolean(at)}) return false;
+        const dt = new DataTransfer(); dt.setData('text/plain', 'JOB-X\t3');
+        document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+        return true; })()`);
+      await sleep(1200);
+    }],
     ['Pivot off', async (c, log) => {
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
       await sleep(900);
@@ -2376,8 +2488,13 @@ const MUTANTS = [
     file: 'src/grid_pivot.js', edits: [['  if (!view) return [...new Set(edits.map((edit) => edit.rowId))];\n', '  return [...new Set(edits.map((edit) => edit.rowId))];\n']] },
   { name: 'Apply drops a blank pivot cell', entry: 'index.html', rule: 'pivot blank writes', at: 'pivot',
     file: 'src/grid_pivot.js', edits: [['    if (!id) continue;\n', '    if (!id) { gone.push(key); continue; }\n']] },
-  { name: 'rows are not refused in pivot view', entry: 'index.html', rule: 'pivot writes', at: 'pivot',
-    file: 'src/write_guard.js', edits: [["const ROW_CONTROLS = ['addRowBtn', 'deleteRowBtn', 'smartPasteBtn'];", 'const ROW_CONTROLS = [];']] },
+  { name: 'a key cell editable on every pivot row', entry: 'index.html', rule: 'pivot new row', at: 'pivot',
+    file: 'src/grid.js', edits: [['(params) => isNewPivotRow(params.data && params.data.row_id)', '() => true']] },
+  { name: 'a pivot delete takes the shown cells only', entry: 'index.html', rule: 'pivot delete', at: 'pivot',
+    file: 'src/api.js', edits: [['pivotShown() ? await groupLongIds(groups) :',
+      'pivotShown() ? groups.flatMap((node) => Object.values(node.data.data).map((cell) => cell.row_id).filter(Boolean)) :']] },
+  { name: 'a key pasted over a saved pivot row goes through', entry: 'index.html', rule: 'pivot key paste', at: 'pivot',
+    file: 'src/write_guard.js', edits: [['  if (why) return refuseWrite(why);\n', '']] },
   { name: 'the footer counts rows in pivot view', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
     file: 'src/api.js', edits: [['elements.totalRowsCount.dataset.unit = rowUnit();', "elements.totalRowsCount.dataset.unit = 'row';"]] },
   // The checkboxes back on the schema's first column (owner 10-22): hidden from the column selector, they go with it.

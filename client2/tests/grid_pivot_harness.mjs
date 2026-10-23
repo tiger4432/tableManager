@@ -8,7 +8,8 @@
 //   memory   per table, and a storage that throws keeps nothing and breaks nothing
 //
 // Run: node client2/tests/grid_pivot_harness.mjs
-import { pivotRows, pivotColumns, pivotUpdate, pivotWire, keyColumnsIn, itemColId, itemOf, rememberedPivot, rememberPivot } from '../src/grid_pivot.js';
+import { pivotRows, pivotColumns, pivotUpdate, pivotWire, keyColumnsIn, itemColId, itemOf, rememberedPivot, rememberPivot,
+  newPivotRows, isNewPivotRow, pivotWriteRefusal, holdNewRowKeys, groupFilters, strayLongRow, PIVOT_KEY_NOTE, PIVOT_NEW_KEYS_NOTE } from '../src/grid_pivot.js';
 import { narrowingParams } from '../src/narrowing.js';
 import { matchCountText } from '../src/match_count.js';
 
@@ -66,6 +67,33 @@ eq('P3 no pivot view: the updates as they are', pivotWire(null, paste, rowOf) ==
 eq('K1 a write reaching a key column names it; items alone name none',
   [keyColumnsIn([{ updates: { 'item:a': 1, lot: 'x' } }, { updates: { lot: 'y', wafer: 'z' } }]), keyColumnsIn(paste)],
   [['lot', 'wafer'], []]);
+
+console.log('-- new rows and deleted groups (owner 10-23) --');
+const [fresh] = newPivotRows(1, 5);
+const item = (row, updates) => ({ rowNode: { data: row }, updates });
+eq('R1 a new row is the screen\'s: its own id, nothing in it, no group\'s id', [isNewPivotRow(fresh.row_id), fresh.data,
+  isNewPivotRow(rows3[0].row_id)], [true, {}, false]);
+const keysOnly = item(fresh, { lot: 'L9', wafer: 'W9' });
+eq('R2 its keys go, and are held on it - not written', [pivotWriteRefusal(VIEW, [keysOnly]), holdNewRowKeys(VIEW, [keysOnly]),
+  keysOnly.updates, fresh.data], ['', true, {}, { lot: { value: 'L9' }, wafer: { value: 'W9' } }]);
+const [halfKeyed] = newPivotRows(1, 6);
+eq('R3 a value on a new row with a key blank is refused - the keys this write brings counted',
+  [pivotWriteRefusal(VIEW, [item(halfKeyed, { lot: 'L9', 'item:a': 1 })]),
+    pivotWriteRefusal(VIEW, [item(halfKeyed, { lot: 'L9', wafer: ' ', 'item:a': 1 })]),
+    pivotWriteRefusal(VIEW, [item(halfKeyed, { lot: 'L9', wafer: 'W9', 'item:a': 1 })])],
+  [PIVOT_NEW_KEYS_NOTE, PIVOT_NEW_KEYS_NOTE, '']);
+eq('R4 a saved group\'s key cell refuses the whole write, a new row\'s beside it too',
+  pivotWriteRefusal(VIEW, [item(rows3[0], { lot: 'X' }), item(fresh, { lot: 'L8' })]), PIVOT_KEY_NOTE);
+const heldWire = pivotWire(VIEW, [{ row_id: fresh.row_id, updates: { 'item:b': 3 } }], () => fresh);
+eq('R5 its value goes as a blank cell\'s: its held keys, its item, the value', heldWire.map((u) => u.updates),
+  [{ lot: 'L9', wafer: 'W9', itemid: 'b', value: 3 }]);
+eq('D1 a group\'s long rows are read by its keys - a blank key by blank', [groupFilters(VIEW, rows3[0]),
+  groupFilters(VIEW, { data: { lot: { value: 'L1' }, wafer: { value: '' } } })],
+  [{ lot: { type: 'equals', filter: 'L1' }, wafer: { type: 'equals', filter: 'W1' } }, { lot: { type: 'equals', filter: 'L1' }, wafer: { type: 'blank' } }]);
+const longRow = (lot, wafer) => ({ row_id: `${lot}${wafer}`, data: { lot: { value: lot }, wafer: { value: wafer }, itemid: { value: 'z' } } });
+eq('D2 a read that brings another group\'s row is caught, naming the key, what was asked and what came',
+  [strayLongRow(VIEW, rows3[0], [longRow('L1', 'W1'), longRow('L1', 'W1')]), strayLongRow(VIEW, rows3[0], [longRow('L1', 'W1'), longRow('L1', 'W2')])],
+  [null, { key: 'wafer', want: 'W1', got: 'W2' }]);
 
 console.log('-- narrowing and the footer --');
 eq('N1 pivot=true rides the one narrowing', narrowingParams({ pivot: true }).get('pivot'), 'true');

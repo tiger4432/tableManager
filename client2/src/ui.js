@@ -212,7 +212,7 @@ export async function applyValueToSelectedRange(newValue) {
           latestData.data[colId].value = item.updates[colId];
         }
       });
-    } else {
+    } else if (Object.keys(item.updates).length) {
       updatesArray.push({
         row_id: rowId,
         updates: item.updates,

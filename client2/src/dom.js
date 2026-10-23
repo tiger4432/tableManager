@@ -57,7 +57,6 @@ export const elements = {
   get traceBtn() { return document.getElementById('trace-btn'); },
   get menuTrace() { return document.getElementById('menu-trace'); },
   get ingestFileBtn() { return document.getElementById('ingest-file-btn'); },
-  get smartPasteBtn() { return document.getElementById('smart-paste-btn'); },
   get toolbarFileInput() { return document.getElementById('toolbar-file-input'); },
   get toolbarFolderInput() { return document.getElementById('toolbar-folder-input'); },
   get folderUploadBtn() { return document.getElementById('folder-upload-btn'); },

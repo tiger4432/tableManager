@@ -205,7 +205,6 @@
 >          바닥줄이 «N groups», item 칸이 item 이름 -> 착지됨
 >          «N more items not shown»               -> 펼친 칸이 pivot_max_columns 를 넘음(서버 설정)
 >          붙여넣기에 «Key columns cannot be changed in pivot view» -> 범위가 키 칸에 닿음, 아무것도 안 씀
->          «Rows are added and deleted with Pivot off» -> 행 추가 · 삭제 · 스마트 붙여넣기는 Pivot 을 끄고
 > 끄기     «Pivot» 을 다시 누름 (표마다 이 브라우저에 기억됨)
 > 되돌리기  git revert 9e223c3ff 와 피벗 커밋들 (dist 커밋 먼저) -> 화면 새로 고침
 > ```
