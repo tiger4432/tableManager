@@ -80,7 +80,7 @@ def test_a_rule_saved_off_is_not_said_to_run(tmp_path, monkeypatch):
     """총괄 10-11 ②: the save judged a copy switched on and answered that copy's notes."""
     out = _save(tmp_path, monkeypatch, dict(DECIDE, enabled=False, zzz_cell=1))
 
-    assert out["notes"] == ["agg_form: enabled=false — no rule stands for it.",
+    assert out["notes"] == ["agg_form: enabled=false — nothing wakes it; a replay that names it runs it.",
                             "agg_form: top-level cell this product does not read — zzz_cell."], out
 
 

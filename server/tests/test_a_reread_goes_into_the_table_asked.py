@@ -21,6 +21,7 @@ import main
 import paths
 import run_watcher
 from database import crud, models
+from ingestion import checkpoint
 from database.database import Base
 from directory_watcher import WorkspaceWatcher
 from ingestion import reread
@@ -83,8 +84,8 @@ def _ask(Session, **params):
 def _logs(Session):
     db = Session()
     try:
-        return sorted((log.table_name, log.filename, log.status)
-                      for log in db.query(models.FileIngestionLog).all())
+        return sorted((row.table_name, row.filename, row.status)
+                      for row in db.query(models.FileChecklist).all())
     finally:
         db.close()
 
@@ -186,8 +187,7 @@ def test_the_file_s_newest_row_is_found_by_its_name_and_its_path(env):
     try:
         for path, status in ((env["voids"], "FAILED"), (env["voids"], "SUCCESS"),
                              (env["share"] / "elsewhere" / "voids.json", "FAILED")):
-            db.add(models.FileIngestionLog(filename="voids.json", filepath=os.path.abspath(str(path)), table_name=B,
-                                           status=status))
+            checkpoint.note_file(db, B, os.path.abspath(str(path)), status=status)
             db.commit()
     finally:
         db.close()

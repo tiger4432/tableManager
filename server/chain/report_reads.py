@@ -90,32 +90,44 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None):
 class Report:
     """One report's reads - its declaration, this evaluation, and what it has read so far."""
 
-    def __init__(self, db, spec, evaluation):
+    def __init__(self, db, spec, evaluation, only=None):
+        """`only`: one wafer - this report's own group is it alone, and its evaluation is the wafer's (a report a
+        wafer, owner 10-23 - 🔴 the reading waits for the owner's answer, `report_loop._this_wafer`)."""
         self.db, self.spec, self.evaluation = db, spec, evaluation
         role = spec["wafer"]
         self.keys = report_shape.wafer_columns(role["key"])
         self.conditions_at = [c for c in report_shape.wafer_columns(role.get("conditions")) if c]
+        self.same_at = [c for c in (spec.get("control") or {}).get(report_shape.CONTROL_SAME) or () if c]
         self.wafers = {}                         # wafer -> {"time", "lot", "evaluation", "conditions": {col: value}}
         self.groups = {}                         # group name -> [wafer, ...] - this evaluation first
-        here = self._wafer_rows({role["evaluation"]: _equals_any(role["evaluation"], [evaluation])}
-                                if role.get("evaluation") else None)
+        if only is not None:
+            only = tuple(None if part is None else str(part) for part in only)
+            here = [w for w in self._wafer_rows({c: _equals_any(c, [v]) for c, v in zip(self.keys, only)})
+                    if w == only]
+            if not here:
+                raise ReadRefused("wafer %s is not in %s" % (label(only), role["table"]))
+            self.evaluation = evaluation = self.wafers[only]["evaluation"]
+        else:
+            here = self._wafer_rows({role["evaluation"]: _equals_any(role["evaluation"], [evaluation])}
+                                    if role.get("evaluation") else None)
         self.groups[evaluation] = self._ordered(here)
         self.embedded = {}                       # what images() embedded - for the HTML only
         self._candidates = None                  # the recent evaluations, read once (`_recent`)
-        self.used = {}                           # wafer -> the group it stood in, for every wafer a read answered on
 
     # ---- the wafer table -------------------------------------------------------------------------------------
     def _wafer_rows(self, where, newest=False):
         role = self.spec["wafer"]
         extra = [role.get(cell) for cell in ("time", "lot", "evaluation")]
         columns = self.keys + [c for c in extra if c] + self.conditions_at
+        columns += [c for c in self.same_at if c not in columns]
         out = []
         for row in _rows(self.db, role, columns, where=where, newest=role.get("time") if newest else None):
             wafer = tuple(None if p is None else str(p) for p in row[:len(self.keys)])
             values = dict(zip(columns, row))
             self.wafers[wafer] = {"time": values.get(role.get("time")), "lot": values.get(role.get("lot")),
                                   "evaluation": values.get(role.get("evaluation")),
-                                  "conditions": {c: values.get(c) for c in self.conditions_at}}
+                                  "conditions": {c: values.get(c) for c in self.conditions_at},
+                                  "same": tuple(values.get(c) for c in self.same_at)}
             out.append(wafer)
         self.named = {}                          # the name a model says -> the wafers it names
         for wafer in self.wafers:
@@ -282,8 +294,6 @@ class Report:
     def yield_by(self, wafers=None, by=None):
         groups = self._column_groups(self.pick(wafers), by)
         everyone = [w for _name, columns in groups for _col, members in columns for w in members]
-        for name, columns in groups:
-            self._use(name, [w for _col, members in columns for w in members])
         found, twice = self._summary(everyone)
         items = self._items(found)
         header = [(name, [col for col, _m in columns]) for name, columns in groups]
@@ -323,13 +333,8 @@ class Report:
                 out.append((name, [(label(w), [w]) for w in members]))
         return out
 
-    def _use(self, group, wafers):
-        for wafer in wafers:
-            self.used.setdefault(wafer, group)
-
     def pareto(self, wafers=None):
         picked = self.pick(wafers)
-        self._use(self.evaluation, picked)
         if not self.spec["summary"].get("fail"):
             raise ReadRefused("a pareto adds fail chips - derive.report.summary.fail is not declared")
         found, _twice = self._summary(picked)
@@ -351,8 +356,6 @@ class Report:
         and control group beside them (owner 10-23: other lots' trends as a control)."""
         groups = [(self.evaluation, self._ordered(self.pick(wafers)))] + [
             (name, members) for name, members in self.groups.items() if name != self.evaluation]
-        for name, members in groups:
-            self._use(name, members)
         found, twice = self._summary([w for _name, members in groups for w in members])
         names = [str(i) for i in items] if items else self._items(found)
         lines, rows = [], []
@@ -380,7 +383,6 @@ class Report:
         outside = [label(w) for w in picked if w not in set(self.groups[self.evaluation])]
         if outside:
             raise ReadRefused("images are this evaluation's only - %s is not" % ", ".join(outside[:5]))
-        self._use(self.evaluation, picked)
         found, _twice = self._summary(picked)
         said = "fail" if self.spec["summary"].get("fail") else "rate"
         occurred = {pair for pair, row in found.items() if (row.get(said) or 0) > 0}
@@ -420,11 +422,13 @@ class Report:
         if not here:
             raise ReadRefused("%s's wafers say no time - recent is counted back from its latest" % self.evaluation)
         anchor = max(here)
+        # `control.same`: a candidate shares those columns' values with this report's wafers
+        alike = {self.wafers[w]["same"] for w in self.groups[self.evaluation]}
         by = {}
         for wafer in self._wafer_rows(None, newest=True):
             facts = self.wafers[wafer]
             at, evaluation = _instant(facts["time"]), facts["evaluation"]
-            if at is None or evaluation in (None, self.evaluation) or at > anchor:
+            if at is None or evaluation in (None, self.evaluation) or at > anchor or facts["same"] not in alike:
                 continue
             if recent.get("days") and anchor - at > datetime.timedelta(days=recent["days"]):
                 continue

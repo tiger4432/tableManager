@@ -223,10 +223,10 @@ def reclaim_stranded_claims(db):
     grace = ingestion.checkpoint.reclaim_after_seconds(reclaim_grace_setting())
     cutoff = now - timedelta(seconds=grace)
 
-    claimed = (db.query(models.FileIngestionLog)
-               .filter(models.FileIngestionLog.status == "PENDING",
-                       models.FileIngestionLog.updated_at < cutoff)
-               .order_by(models.FileIngestionLog.id.asc()).all())
+    claimed = (db.query(models.FileChecklist)
+               .filter(models.FileChecklist.status == "PENDING",
+                       models.FileChecklist.updated_at < cutoff)
+               .order_by(models.FileChecklist.id.asc()).all())
     if not claimed:
         return 0, 0
 
@@ -246,7 +246,7 @@ def reclaim_stranded_claims(db):
         # ⚠️ Named, with the age, one line per row. A silent reclaim would hide how often
         # this happens - the class this whole day was spent removing.
         logger.warning(
-            "[Reclaim] log #%s (%s / %s) was claimed %.0fs ago and its checkpoint has not "
+            "[Reclaim] checklist row #%s (%s / %s) was claimed %.0fs ago and its checkpoint has not "
             "moved; returning it to PENDING_RETRY so it runs again.",
             log.id, log.table_name, log.filename, (now - stamped).total_seconds())
         log.status = "PENDING_RETRY"
@@ -266,8 +266,8 @@ def reclaim_stranded_claims(db):
 def claim_retry(db, log):
     """PENDING_RETRY -> PENDING in one statement, only while the row still is (총괄 49792d3f6 B): a row a cancel put
     back after the list was read is not read, and the cancel's count is what it put back. -> True when claimed."""
-    claimed = (db.query(models.FileIngestionLog)
-               .filter(models.FileIngestionLog.id == log.id, models.FileIngestionLog.status == "PENDING_RETRY")
+    claimed = (db.query(models.FileChecklist)
+               .filter(models.FileChecklist.id == log.id, models.FileChecklist.status == "PENDING_RETRY")
                .update({"status": "PENDING"}, synchronize_session=False))
     db.commit()
     if claimed:
@@ -282,8 +282,8 @@ def hand_back_claimed_retries():
     good. One watcher per install. -> how many handed."""
     db = SessionLocal()
     try:
-        handed = (db.query(models.FileIngestionLog)
-                  .filter(models.FileIngestionLog.status == "PENDING")
+        handed = (db.query(models.FileChecklist)
+                  .filter(models.FileChecklist.status == "PENDING")
                   .update({"status": "PENDING_RETRY"}, synchronize_session=False))
         db.commit()
     finally:
@@ -333,9 +333,9 @@ def pending_retries(db):
 
     if workspace_watcher is None:
         return []
-    return (db.query(models.FileIngestionLog)
-            .filter(models.FileIngestionLog.status == "PENDING_RETRY")
-            .order_by(models.FileIngestionLog.id.asc()).limit(reread.max_files()).all())
+    return (db.query(models.FileChecklist)
+            .filter(models.FileChecklist.status == "PENDING_RETRY")
+            .order_by(models.FileChecklist.id.asc()).limit(reread.max_files()).all())
 
 
 def retry_one(db, log):
@@ -362,20 +362,60 @@ def retry_one(db, log):
         with get_workspace_serial_lock(handler.workspace_path):
             res = handler.process_archived_file_sync(log, db)
         if res:
-            logger.info(f"Retry succeeded for log ID #{log.id}.")
+            logger.info(f"Retry succeeded for checklist row #{log.id} ({log.filename}).")
         else:
-            logger.warning(f"Retry failed for log ID #{log.id}.")
+            logger.warning(f"Retry failed for checklist row #{log.id} ({log.filename}).")
     except Exception as e:
         import traceback
+
+        import ingestion.checkpoint
+
         logger.error(f"Exception during retry: {e}\n{traceback.format_exc()}")
-        log.status = "FAILED"
-        log.error_message = traceback.format_exc()
+        db.rollback()
+        record = models.FileIngestionLog(filename=log.filename, filepath=log.filepath, table_name=table_name,
+                                         status="FAILED", error_message=traceback.format_exc(), retry_count=0,
+                                         source=log.source)
+        db.add(record)
+        db.flush()
+        ingestion.checkpoint.note_file(db, table_name, log.filepath, status="FAILED", log_id=record.id,
+                                       file_mtime=None, file_size=None, status_before=None)
         db.commit()
         trigger_ws_file_processed(table_name, log.filepath or log.filename, "FAILED", str(e))
 
 
 #: Written once the read files' log rows were stamped (`stamp_read_files_once`) - beside the reading stamps.
 READ_FILES_STAMPED_FILENAME = "watcher_read_files_stamped"
+#: Written once the checklist was made from the records (`fill_the_checklist_once`).
+CHECKLIST_FILLED_FILENAME = "watcher_checklist_filled"
+
+
+def fill_the_checklist_once():
+    """🔴 Before the first sweep asks it (총괄 64b264610 ②): the checklist made from the records, once - each file's
+    newest record its row (`checkpoint.fill_checklist`). Said with its rows and seconds; the marker beside the reading
+    stamps is written only when it is done, so a failure is tried again at the next start - and meanwhile the sweeps
+    read every file the checklist has no row for."""
+    import ingestion.checkpoint
+    import paths
+
+    marker = paths.config_path(CHECKLIST_FILLED_FILENAME)
+    if os.path.exists(marker):
+        return None
+    began = time.monotonic()
+    db = SessionLocal()
+    try:
+        made = ingestion.checkpoint.fill_checklist(db)
+    except Exception as e:                                                  # noqa: BLE001 - said; the next start
+        db.rollback()
+        logger.error("[Watcher] the checklist was not made from the records - every file it has no row for is read "
+                     "again; the next start tries again: %s", told(e), exc_info=e)
+        return None
+    finally:
+        db.close()
+    with open(marker, "w", encoding="utf-8") as handle:
+        handle.write("%d\n" % made)
+    line = "[Watcher] checklist made from the records: %d file(s) in %.1f s" % (made, time.monotonic() - began)
+    logger.info(line)
+    return line
 
 
 def readings_now(watcher, stamps):
@@ -445,7 +485,7 @@ def sweep_a_table_now(watcher, raws, sources, line):
         if raws:
             dispatched += watcher.sweep_existing_files(raws)
         if sources:
-            dispatched += watcher.sweep_external_sources(sources)
+            dispatched += watcher.sweep_external_sources(sources, walk_all=True)
         logger.info("%s - %d dispatched to be read again", line, dispatched)
     except Exception as e:                                         # noqa: BLE001 - the periodic sweep reads them
         logger.warning("%s - its sweep failed, the next periodic sweep reads them: %s", line, told(e), exc_info=e)
@@ -562,7 +602,7 @@ def poll_pending_retries():
             pending_logs = pending_retries(db)
 
             for log in pending_logs:
-                logger.info(f"Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")
+                logger.info(f"Detected PENDING_RETRY checklist row #{log.id} ({log.filename}). Processing...")
 
                 if not claim_retry(db, log):
                     logger.info(f"Log ID #{log.id} ({log.filename}) is no longer PENDING_RETRY - not read")
@@ -608,6 +648,7 @@ def main():
         on_progress_callback=trigger_ws_progress,
         on_ingestion_state_callback=trigger_ws_ingestion_state
     )
+    fill_the_checklist_once()
     watcher.discover_and_watch()
     stamp_read_files_once(watcher)
     hand_back_claimed_retries()

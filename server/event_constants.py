@@ -290,22 +290,20 @@ def queue_line_key(outbox):
     and the worker's running group all ask it, so a key one hands out the others find."""
     from sqlalchemy import String, cast, func, literal
 
-    return func.coalesce(outbox.payload["run_id"].as_string(),
-                         outbox.payload["transaction_id"].as_string(),
+    return func.coalesce(outbox.run_id, outbox.transaction_id,
                          literal(QUEUE_ROW_KEY_PREFIX).concat(cast(outbox.id, String)))
 
 
-def queue_line_rows(outbox, key, run=False):
+def queue_line_rows(outbox, key):
     """SQL criteria for the rows of the queue line `key` names: the key expression itself, behind
-    an indexed narrowing - the primary key for a row's key, `idx_outbox_txid` otherwise - so a ×
-    reads that line's rows and not the whole waiting queue (소유자 10-08).
-    A retroactive run's key (`run`) is narrowed by the run itself - the transaction narrowing found
-    none of its rows - and has no index: asked with `processed_chain` false it reads the waiting
-    rows through `idx_outbox_unprocessed` (총괄 e2b5b6f35)."""
+    an indexed narrowing - the primary key for a row's key, `idx_outbox_line` (its run or transaction,
+    asked with `processed_chain` false) otherwise - so a × and a slot's window read that line's rows and
+    not the whole waiting queue (소유자 10-08, 총괄 c0e6906f1)."""
+    from sqlalchemy import func
+
     row = key[len(QUEUE_ROW_KEY_PREFIX):] if key.startswith(QUEUE_ROW_KEY_PREFIX) else None
-    narrow = (outbox.payload["run_id"].as_string() == key if run
-              else outbox.id == int(row) if row is not None and row.isdigit()
-              else outbox.payload["transaction_id"].as_string() == key)
+    narrow = (outbox.id == int(row) if row is not None and row.isdigit()
+              else func.coalesce(outbox.run_id, outbox.transaction_id) == key)
     return narrow, queue_line_key(outbox) == key
 
 

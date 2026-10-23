@@ -232,6 +232,7 @@ CHAIN_LOG_TAGS = {
     "Enrichment": "the enrich declaration - the declaration reader and its two halves",
     "Enrichment:%s": "the same, naming which declaration",
     "LayerHealth": "the layering check",
+    "Report": "the AI report - a wafer's steps, its outcome and its file sent (owner 10-23)",
     "Ledger": "the ledger follow-up",
     "LedgerCensus": "the retroactive census",
     "LedgerFollowUp": "the ledger's own lap",

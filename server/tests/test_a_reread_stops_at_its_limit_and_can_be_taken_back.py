@@ -11,7 +11,7 @@ import os
 import pytest
 
 from database import models
-from ingestion import reread
+from ingestion import checkpoint, reread
 
 URL = "/admin/file-ingestion/retry-failed"
 CANCEL = "/admin/file-ingestion/cancel-reread"
@@ -30,9 +30,8 @@ def tree(tmp_path, db_session, monkeypatch):
         path = str(base.joinpath(*rel.split("/")))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         open(path, "w").close()                                   # a re-read of a file that went in needs the file
-        # A raws row; one with no source is judged by where its file lies (총괄 10-23).
-        db_session.add(models.FileIngestionLog(filename=os.path.basename(path), filepath=path,
-                                               table_name="t", status=status, source="raws"))
+        # The file's checklist row, a raws one (총괄 64b264610 ②; 10-23: judged by where its file lies).
+        checkpoint.note_file(db_session, "t", path, status=status, source="raws")
     for rel in ("A/x/f1.csv", "A/x/f2.csv", "A/f3.csv", "B/g1.csv", "AB/h1.csv", "A_1/k1.csv"):
         add(rel)
     add("A/ok.csv", "SUCCESS")
@@ -42,7 +41,7 @@ def tree(tmp_path, db_session, monkeypatch):
 
 def _statuses(db_session):
     db_session.expire_all()
-    return {log.filename: log.status for log in db_session.query(models.FileIngestionLog).all()}
+    return {log.filename: log.status for log in db_session.query(models.FileChecklist).all()}
 
 
 def test_over_the_limit_the_watcher_gets_them_all_and_reads_the_cap_a_turn(client, db_session, tree, monkeypatch):
@@ -82,7 +81,7 @@ def test_cancel_puts_the_waiting_rows_back_and_leaves_a_claimed_one(client, db_s
     client.post(URL, params={"folder": folder, "statuses": "SUCCESS"})
     assert sorted(n for n, s in _statuses(db_session).items() if s == "PENDING_RETRY") == [
         "f1.csv", "f2.csv", "f3.csv", "ok.csv"], "CANARY: four handed over"
-    claimed = db_session.query(models.FileIngestionLog).filter_by(filename="f1.csv").one()
+    claimed = db_session.query(models.FileChecklist).filter_by(filename="f1.csv").one()
     claimed.status = "PENDING"                                   # the watcher's claim
     db_session.commit()
     preview = client.post(CANCEL, params={"folder": folder, "preview": True}).json()
@@ -91,7 +90,9 @@ def test_cancel_puts_the_waiting_rows_back_and_leaves_a_claimed_one(client, db_s
     after = _statuses(db_session)
     assert (after["f1.csv"], after["f2.csv"], after["f3.csv"], after["ok.csv"]) == ("PENDING", "FAILED", "FAILED",
                                                                                    "SUCCESS")
-    assert db_session.query(models.FileRereadMark).count() == 1, "the claimed row's mark is the one left"
+    db_session.expire_all()
+    assert [row.filename for row in db_session.query(models.FileChecklist).filter(
+        models.FileChecklist.status_before.isnot(None))] == ["f1.csv"], "the claimed row's state before is the one left"
 
 
 @pytest.mark.parametrize("spelled", ["A", "a", "A/", "A_1"], ids=["as-is", "case", "trailing-separator", "underscore"])
@@ -99,10 +100,10 @@ def test_the_folder_narrowed_in_sql_is_the_filesystem_judgement(db_session, tree
     from directory_watcher import _safe_relative_path
 
     folder = os.path.join(str(tree["base"]), *spelled.rstrip("/").split("/")) + ("/" if spelled.endswith("/") else "")
-    every = db_session.query(models.FileIngestionLog).all()
+    every = db_session.query(models.FileChecklist).all()
     judged = sorted(log.id for log in every if _safe_relative_path(log.filepath, folder) is not None)
-    narrowed = sorted(log.id for log in db_session.query(models.FileIngestionLog).filter(
-        reread._under_folder(models.FileIngestionLog.filepath, folder)))
+    narrowed = sorted(log.id for log in db_session.query(models.FileChecklist).filter(
+        reread._under_folder(models.FileChecklist.path_key, folder)))
     assert judged, "CANARY: the folder holds rows"
     assert narrowed == judged
     assert sorted(log.id for log, _rel in reread.select_logs(db_session, ("FAILED", "SUCCESS"), folder=folder)) == judged

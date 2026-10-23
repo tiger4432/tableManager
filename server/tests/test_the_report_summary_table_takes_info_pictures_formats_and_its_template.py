@@ -28,7 +28,8 @@ TABLES = {
                                   "measured_at": "string", "bond": "string"}},
     "rk_summary": {"composite_key_source": ["wafer_id", "version", "item"],
                    "column_types": {"wafer_id": "string", "version": "string", "item": "string",
-                                    "fail": "number", "total": "number"}},
+                                    "fail": "number", "total": "number", "rs_state": "string",
+                                    "rs_file": "string", "rs_reason": "string"}},
     "rk_info": {"composite_key_source": ["wafer_id", "version", "name", "n"],
                 "column_types": {"wafer_id": "string", "version": "string", "name": "string", "n": "string",
                                  "value": "string"}},
@@ -62,6 +63,7 @@ SPEC = {
     "formats": {BIG: [{"vs": "control", "times": 2, "fill": "#ffcccc"}, {"when": ">=", "value": 1, "fill": "#ffffcc"}]},
     "labels": LABELS,
     "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
+    "results": {"state": "rs_state", "file": "rs_file", "reason": "rs_reason"},
 }
 
 

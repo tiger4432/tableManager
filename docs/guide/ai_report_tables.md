@@ -1,113 +1,69 @@
-# AI 리포트 — 운영에서 지을 표 (소유자 10-22 저녁, 10-23 아침 착수)
+# AI 리포트 — 요약표에 리포트 규칙 하나 (소유자 10-23)
 
-> 지시서: `task/DESIGN_ORDERS.md` 맨 위 «AI 리포트 체인» (cd4eb98d0 외). 짓는 사람: 표 = 소유자(운영), 체인 · 함수 · HTML = 구현자 A.
-> 칸 이름은 예시입니다. 실제 이름은 «리포트 설정 파일»에서 이 칸들에 이어 줍니다. 키 칸은 문자(시간 타입 금지).
+```
+운영에서는 요약표에 결과 칸 셋을 더하고, 요약표에 리포트 규칙 하나(send_to = 중계 PC 주소)를 적으면
+계측 요약이 들어올 때 웨이퍼마다 리포트가 만들어져 메일 중계로 간다. 제품이 만드는 보조표는 0
+```
 
-## 1. 웨이퍼 표 — 웨이퍼 한 장에 한 행
+> 소유자 10-23 「너무 복잡한데」 · 「보조표가 너무 많아」 · 「리포트는 웨이퍼당 하나지」. 요청 · 결과 · 걸음 · 웨이퍼 제품 표 넷과 요약표의 request_id · eval_id 칸, 조인 · decide · 보내기 규칙은 은퇴했다.
+> 시범 동안(소유자 10-23 「막아」): 규칙을 `"enabled": false` 로 두면 요약 행이 들어와도 안 돈다. 소급 탭 «Replay chain rules over old data (R1)» 에 이 규칙 이름을 적은 리플레이만 돈다 — 모든 규칙이 같은 뜻이다.
 
-| 칸 | 타입 | 뜻 |
+## 1. 적는 것
+
+- 요약표 선언에 결과 칸 셋(string) — 이름은 운영자가 정한다. 예: `report_state` · `report_file` · `report_reason`
+- 어드민 Chain 탭에 리포트 규칙 하나 — `on` 과 `into` 가 요약표, `derive.report.results` 가 그 세 칸, `limits.group_by` 가 요약표의 웨이퍼 칸(리플레이가 웨이퍼 하나를 한 번에 — 안 적으면 행마다 따로 만들 수 있음)
+- `ingestion_settings.json` 의 `"chain_slots"` 3 이상 — 리포트가 도는 동안(≤ 8 걸음 · ≤ 5 분) 체인 일꾼 하나를 쓴다
+
+```json
+{
+  "name": "wafer_report",
+  "on": {"table": "<요약표>"}, "into": {"table": "<요약표>"},
+  "limits": {"group_by": ["wafer_id"]},
+  "derive": {"kind": "report", "report": {
+    "wafer":   {"table": "<웨이퍼 표>", "key": "wafer_id", "time": "measured_at", "lot": "lot_id",
+                "evaluation": "<평가 칸>", "conditions": ["split", "recipe"]},
+    "summary": {"table": "<요약표>", "wafer": "wafer_id", "item": "defect_item",
+                "fail": "fail_chips", "total": "total_chips"},
+    "results": {"state": "report_state", "file": "report_file", "reason": "report_reason"},
+    "send_to": "http://<중계 PC>:8765/reports",
+    "images":  {"table": "<이미지 표>", "wafer": "wafer_id", "item": "defect_item", "image": "image_path",
+                "per_item": 3, "px": 320},
+    "sets":    {"table": "<비교 묶음 표>", "name": "set_name", "member": "member", "kind": "kind",
+                "kinds": {"evaluation": "eval", "lot": "lot"}, "default": ["baseline"]},
+    "rows": ["particle", "scratch"], "digits": 1,
+    "prompts": {"select": "…", "style": "…", "compare": "…"},
+    "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"},
+               {"kind": "image", "fill": "images"}, {"kind": "text", "slot": "conclusion"}],
+    "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000}
+  }}
+}
+```
+
+- `send_to` 를 안 적으면 보내지 않는다(파일만 서버에).
+- `wafer` 키는 칸 하나 또는 목록 — 모든 역할이 같은 순서 · 같은 길이.
+- `summary` — `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 또는 100). rate 만이면 «조건별 묶은 열»과 파레토는 거절.
+- `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어간다.
+- 옛 모양(요청 표 위의 규칙)은 로드에서 거절된다 — «derive.report.results names …» · «the report rule stands on its summary table …».
+
+## 2. 도는 것
+
+- 요약 행이 들어오면 그 묶음(파일 하나)의 웨이퍼마다 리포트 한 판. 한 웨이퍼의 행 전부에 같은 결과가 써진다.
+- 결과 칸: state = `done` · `stopped`(+ reason) · send_to 가 있으면 `sending` → `done`, 세 번 실패면 `send failed` + reason. file = `<데이터 루트>/reports/<웨이퍼>.html`(키가 여러 칸이면 «_» 로 이음).
+- 보내기는 체인 일꾼 밖 — 체인 워커의 유지보수 자리가 5 초마다 `sending` 을 찾아 `<send_to>/<파일 이름>` 으로 POST(`tools/report_receiver/receive.py`). 한 번에 규칙마다 20 파일.
+- 걸음 기록: 파일 끝 접힌 «Evidence»(걸음마다 한 줄 — 부른 것 · 돌아온 것) + `chain_worker.log` 의 `[Report]` 줄.
+- 같은 웨이퍼의 요약이 여러 파일로 들어오면 들어올 때마다 그 웨이퍼 리포트를 다시 만든다(같은 파일을 덮음).
+- 다시 만들기: 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름.
+
+## 3. 읽는 표 — 이름은 선언으로
+
+| 역할 | 한 행 | 칸 |
 |---|---|---|
-| `wafer_id` | 키 | 웨이퍼 |
-| `lot_id` | string | 랏 — «주요 랏» 고를 때 |
-| `eval_id` | string | 평가 이름 — 이번 평가 / 타 평가를 이것으로 가름 |
-| `measured_at` | datetime | 표 가로 시간순 · 트렌드 |
-| `total_chips` | number | 모수 N |
-| `good_chips` | number | 수율 = good_chips / total_chips |
-| 조건 칸들 (`split` · `recipe` · `tool` …) | string | AI 가 읽고 웨이퍼를 고르는 조건. 몇 칸이든 |
-
-## 2. 디펙 집계표 — 웨이퍼 × 디펙 아이템 한 행 (긴 표, 피벗으로도 봄)
-
-| 칸 | 타입 | 뜻 |
-|---|---|---|
-| `wafer_id` + `defect_item` | 키 둘 | |
-| `fail_chips` | number | F — 그 디펙으로 fail 된 칩 수 |
-
-- 리포트 칸 «x% (F/N)» = 이 표 `fail_chips` ÷ 웨이퍼 표 `total_chips`. 파레토도 이 표에서.
-- 피벗으로 보려면 표 선언에 `"pivot": {"column": "defect_item", "value": "fail_chips"}`.
-
-## 3. 디펙 이미지 표 — 이미지 한 장에 한 행
-
-| 칸 | 타입 | 뜻 |
-|---|---|---|
-| `image_id` | 키 | |
-| `wafer_id` · `defect_item` | string | 이번 평가에서 «발생한» 디펙만 고를 때 |
-| `chip_x` · `chip_y` | number | 칩 좌표 (갤러리 배치에도) |
-| `image_path` | string | 이미지 파일 위치 — HTML 에 넣을 때 서버가 읽음 |
-
-- 갤러리가 쓰는 이미지 표가 이미 이 칸들을 가지면 그것을 그대로 써도 됩니다.
-
-## 4. 비교 묶음 표 — 타 평가 · 주요 랏을 사람이 적는 곳
-
-| 칸 | 타입 | 뜻 |
-|---|---|---|
-| `set_name` + `member` | 키 둘 | 예: `baseline` + `EVAL_0915`, `baseline` + `LOT1234` |
-| `kind` | string | `eval` 또는 `lot` |
-
-- 리포트는 설정 · 요청에 적힌 묶음 이름을 읽어 그 웨이퍼들을 표 가로에 같이 놓습니다(머리에서 묶음이 구분됨).
-
-## 5. 리포트 요청 표 — 요청 한 번에 한 행 (이 행이 체인을 깨움)
-
-| 칸 | 타입 | 뜻 |
-|---|---|---|
-| `request_id` | 키 | |
-| `eval_id` | string | 이번 평가 |
-| `setting` | string | 어느 리포트 설정으로 |
-| `compare_sets` | string | 비교 묶음 이름들(쉼표). 비우면 설정의 기본값 |
-| `note` | string | 요청 메모 — AI 에게 같이 감 |
-
-## 6. 리포트 결과 표 — 제품이 씀 (표 선언만)
-
-| 칸 | 타입 | 뜻 |
-|---|---|---|
-| `request_id` | 키 | |
-| `file_path` · `file_hash` | string | 서버에 저장된 HTML |
-| `state` · `reason` | string | `done` / `stopped` + 사유(걸음 상한 · 5 분 · 문맥 초과 · 함수 거절) |
-| `steps` | string | 걸음 요약 |
-| `made_at` | datetime | 만든 시각 |
-
-- 5 · 6 을 원장 노드로 세우는 선언(리포트 → 쓴 웨이퍼 엣지)은 A 가 짓기 전 보고에 예시로 드립니다.
-
-## 리포트 모양 (정한 것)
-
-- 요약 표: **가로 = 웨이퍼 시간순**(이번 평가 + 비교 묶음, 묶음 이름 줄로 구분) · **세로 = 디펙 아이템**(고른 항목) · 칸 = **x% (F/N)**
-- 이미지: 이번 평가 웨이퍼에서 실제 발생한 디펙만
-- AI(Gemma 4 70B): SQL 안 씀 · 조건표를 읽고 웨이퍼를 골라 함수를 «JSON 한 줄»로 부름 · 숫자는 함수가 냄 · 최대 8 걸음 · 5 분 · 문맥 예산 기본 16,000 토큰(설정)
-- 설정 파일: 표 · 칸 연결 · 고를 항목 · 프롬프트(선택 기준 · 작성 스타일 · 비교 관점) · 양식 자리(표 · 이미지 · 글의 순서)
-- 저장: HTML 한 파일(데이터 · 이미지 임베딩) 서버 · 결과 표 행 · 노드 · 리포트 목록 화면(시간순, 눌러서 열기)
-- 메일: 첫 판 밖 — SMTP 알려 주시면 붙임
-
-## 아침에 확인할 것
-
-1. 수율을 `good_chips / total_chips` 로 — 이미 수율 칸이 있으면 그것
-2. ✅ 소유자 10-22: «모수 · 발생 칩»을 정리하는 비슷한 표를 운영에서 만드는 중 — 1 · 2 번 표 대신 그 표를 씀. 아침에 그 표의 칸(웨이퍼 · 디펙 아이템 · 모수 · 발생 칩 · 시간)만 알려 주시면 설정을 그것에 맞춤. 한 표에 모수와 발생 칩이 같이 있으면 2 번 표 없이 됨
-3. Gemma 4 70B 문맥 길이 — 알면 예산 기본값을 그것에 맞춤
-
-## 짓는 방법 — 구현자 A 의 짓기 전 보고 (10-22 밤, 지은 것 없음)
-
-**추천 ㄱ: 체인 규칙 하나가 리포트 한 건을 처음부터 끝까지(최대 8 걸음 · 5 분) 돌림**
-- 리포트 요청 행 하나 → 규칙 하나가 깨어나 8 걸음을 돌고, 결과 행 · 걸음 기록 행 · HTML 파일을 한 번에 저장합니다
-- 좋은 점: 지금 있는 «걷기 에이전트»와 같은 꼴 · 규칙 하나 · 멈춘 사유(걸음 · 시간 · 문맥 초과)가 결과 행 한 칸에 남음
-- 위험: 체인 일꾼(슬롯) 둘 중 하나를 리포트 한 건이 최대 5 분 붙잡습니다 — 그동안 다른 체인은 일꾼 하나로 돎. 저장 전에는 진행이 «running» 으로만 보임
-- 다른 안: ㄴ 걸음마다 체인 한 번(진행이 보이지만 8 걸음이면 체인 깊이 한도 8 을 16 으로 올려야 하고 그 한도는 모든 규칙에 걸림) · ㄷ 따로 도는 일꾼(실행기가 하나 더 생김, 가장 큼)
-
-**설정 파일 모양** (`config/report_config.json`) — 표 · 칸 연결 · 행에 올 디펙 · 자릿수 · 이미지(디펙당 장 수 · 크기) · 비교(평가 · 랏 · AI 가 더 고를지) · 프롬프트(고르는 기준 · 글 스타일 · 비교 관점) · 양식 자리 순서 · 상한(8 걸음 · 300 초 · 16,000 토큰)
-
-**총괄이 정한 것(기술)**
-- 그리드 읽기 경로를 체인이 부를 수 있는 모듈로 «옮김»(사본 아님) — 함수 여섯이 그리드와 같은 읽기를 지나게
-- 문맥 예산 = 글자 수로 토큰을 어림하고, 게이트웨이가 돌려준 실제 토큰 수로 걸음마다 보정
-- 웨이퍼 목록 거르기는 지금 필터 문법(같음의 OR)으로 — 새 필터 종류 안 만듦
-- 요청 · 결과 · 걸음 기록 표는 제품 표(걷기 에이전트 표와 같은 자리)
-- 원장 선언은 제품이 «샘플»을 싣고, 실제 선언은 운영자가 웨이퍼 엔티티에 맞춰 적음
-
-**아침에 여쭐 것(소유자 몫)**
-4. 안 ㄱ 으로 갈지
-5. ㄱ 이면 «리포트가 도는 5 분 동안 체인 일꾼 하나가 줄어듦»을 받을지, 일꾼 수 설정(chain_slots)을 2 → 3 으로 올릴지
-
-**소유자 10-22 밤 더함**
-- 「저런 표 설정은 내가 넣을 수 있게」 — 리포트 설정(표 · 칸 · 행 · 프롬프트 · 양식 · 상한)은 어드민의 선언 창에서 적음: 다른 선언과 같은 «왼쪽 글 + 오른쪽 폼», 스켈레톤에서 폼이 나옴, 표 · 칸 칸은 고르기(이름 제안). 저장 관문이 모르는 표 · 칸을 이름 대고 거절
-- 「키도 복수로」 — 웨이퍼를 가리키는 칸은 모든 역할(wafer · fail · total · images)에서 한 칸 또는 칸 목록(예: `["lot_id", "wafer_no"]`). 역할끼리 잇는 것은 그 목록 «순서대로» 같은 값
-- 쓴 웨이퍼를 한 줄씩 적는 제품 표 `report_wafer`(요청 키 · 웨이퍼 키 칸들)를 하나 더 둠 — 리포트 → 웨이퍼 엣지를 원장 선언으로 세우려면 필요(분자 하나 → 원자 하나 규칙)
-- 설정이 사는 곳(총괄 판정): 따로 된 설정 파일이 아니라 «체인 선언의 한 종류» — 체인 규칙 창에서 `derive.kind = "report"` 를 고르면 리포트 칸(표 · 칸 · 행 · 이미지 · 비교 · 프롬프트 · 양식 · 상한)이 폼에 뜸. 조인 · decide 와 같은 창 · 같은 저장 관문
+| wafer | 웨이퍼 하나 | 키 · 시간 · 랏 · 평가 · 조건 칸들(모델이 읽고 고름) |
+| summary | 웨이퍼 × 디펙 아이템 | F(fail) · N(total) 또는 rate — 리포트 칸 «x% (F/N)» · 파레토 |
+| images | 이미지 한 장 | 웨이퍼 · 아이템 · 이미지 위치 — 이번 웨이퍼에서 «발생한» 디펙만 |
+| sets | 비교 묶음 × 멤버 | 묶음 이름 · 멤버 · 종류(평가 · 랏) — 사람이 적음 |
+| info | 웨이퍼 × 정보 이름 | 값 — 요약 표 머리 밑에 한 줄씩 |
+| picture_rows | 웨이퍼 그림 | 열마다 그림 한 장 |
 
 ## 에이전트 문맥 — 한 걸음에 모델에게 넘기는 것 (총괄 설계 10-22 밤, 소유자께 보임, 토큰 수는 어림)
 
@@ -130,65 +86,10 @@
            + 읽은 표 전부: step 0 conditions() 접힘, 그다음 읽기마다 «step k: 부른 꼴» + 그 결과 그대로
              (같은 읽기를 다른 인자로 두 번 부르면 둘 다)
 ```
-- 예산을 넘으면 «오래된 읽기부터» 행을 반씩 줄이고, 그 걸음 기록(report_step 의 write 줄)에 «step k <읽기>: 남긴 줄 수»가 남는다. 다 줄여도 넘으면 «context over budget».
+- 예산을 넘으면 «오래된 읽기부터» 행을 반씩 줄이고, 그 걸음 기록(Evidence 의 write 줄)에 «step k <읽기>: 남긴 줄 수»가 남는다. 다 줄여도 넘으면 «context over budget».
 - 쓰기 호출이 글 없이 대답하면 «the write call answered no text».
-- 쓰기 호출은 report_step 한 줄(call write)이고 걸음 상한에는 안 센다. 시간 상한에 닿은 리포트는 쓰기 호출 하나만큼 상한을 넘긴다.
+- 쓰기 호출은 Evidence 한 줄(write)이고 걸음 상한에는 안 센다. 시간 상한에 닿은 리포트는 쓰기 호출 하나만큼 상한을 넘긴다.
 - 잰 크기(박스): 20 열 + 대조 2 열 · 항목 10 · 정보 줄 3 에서 읽은 표 전부 ~7,000 자 · 어림 ~1,950 토큰. 게이트(항목 3 · 정보 줄 2)의 쓰기 호출은 2,445 자 · ~692.
-
-## 소유자 답 (10-22 밤)
-- 짓는 방법 ㄱ — 규칙 하나가 리포트 한 건을 끝까지(≤ 8 걸음 · ≤ 5 분)
-- 체인 일꾼 3 — 운영 설정 `chain_slots: 3` 은 소유자가 바꿈(재기동)
-- 수율 같은 집계는 소유자가 «아이템별 요약 표»로 미리 만들어 둠 — 함수는 계산하지 않고 선언이 가리키는 요약 표 · 칸을 읽음. 모든 표 · 칸 이름은 선언으로
-- 문맥 길이 모름 — 기본 16,000 토큰으로 시작
-
-## 운영에서 적는 것 — 지은 뒤 (A, 10-23)
-
-리포트 설정 = `chain_rules.json` 의 규칙 하나(어드민 Chain 탭 «derive kind: report»). 아래는 이 모양 그대로 진짜 프로세스 게이트에서 돈 선언입니다 — 표 · 칸 이름만 운영 것으로.
-
-```json
-{
-  "name": "eval_summary",
-  "on": {"table": "report_request", "require": [{"setting": ["eval_summary"]}]},
-  "into": {"table": "report"},
-  "derive": {"kind": "report", "report": {
-    "wafer":   {"table": "<웨이퍼 표>", "key": "wafer_id", "time": "measured_at", "lot": "lot_id",
-                "evaluation": "eval_id", "conditions": ["split", "recipe"]},
-    "summary": {"table": "<아이템별 요약 표>", "wafer": "wafer_id", "item": "defect_item",
-                "fail": "fail_chips", "total": "total_chips", "rate": "fail_rate", "rate_scale": 100},
-    "images":  {"table": "<이미지 표>", "wafer": "wafer_id", "item": "defect_item", "image": "image_path",
-                "per_item": 3, "px": 320},
-    "sets":    {"table": "<비교 묶음 표>", "name": "set_name", "member": "member", "kind": "kind",
-                "kinds": {"evaluation": "eval", "lot": "lot"}, "default": ["baseline"]},
-    "rows": ["particle", "scratch"], "digits": 1,
-    "prompts": {"select": "…", "style": "…", "compare": "…", "role": "", "rules": "",
-                "functions": {"yield_by": {"about": ""}}},
-    "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"},
-               {"kind": "image", "fill": "images"}, {"kind": "text", "slot": "conclusion"}],
-    "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000}
-  }}
-}
-```
-
-- `on.require` 의 `{"setting": ["<규칙 이름>"]}` — 요청 행의 setting 이 이 규칙 이름인 것만 이 규칙이 받음(설정이 여럿이면 규칙도 여럿).
-- `summary` — 웨이퍼 × 아이템 한 행. `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 = 0~1, 100 = 0~100, rate 를 적으면 필수). rate 만 적으면 칸은 «x%» — 이때 «조건별 묶은 열»과 파레토는 F · N 을 더해야 하므로 거절. 같은 (웨이퍼, 아이템)이 두 행이면 더하지 않고 표 밑에 이름이 남음.
-- `wafer` 키는 칸 하나 또는 목록(최대 4) — 모든 역할이 같은 순서 · 같은 길이.
-- `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어감.
-- 규칙은 결과 표(report) 옆에 `report_step` · `report_wafer` 도 씀 — 규칙의 `writes` 칸(제품이 채움, 규칙 목록 · 부팅 줄에 보임). 같은 요청을 다시 만들면 두 표의 그 요청 행이 «통째로» 바뀜.
-- 리포트는 한 번에 하나 — 결과 · 걸음 · 웨이퍼 표를 리포트끼리 같이 쓰므로 밀린 요청은 차례로 돔.
-
-원장 — 리포트 → 쓴 웨이퍼 엣지 (ledger_config.json, 짧은 꼴)
-
-```json
-"entities":   {"report@1": {"keys": ["request_id"]}},
-"vocabulary": {"reports_on@1": {"status": "active", "subjects": ["report@1"],
-               "object": {"kind": "entity_ref", "types": ["<웨이퍼 엔티티>"],
-                          "qualifiers": {"required": [], "optional": []}}}},
-"sources":    {"report_wafer": {"table": "report_wafer", "sentences": [{
-                 "sentence": "report-reads-wafer", "predicate": "reports_on@1",
-                 "subject": {"node": "report@1", "keys": {"request_id": "request_id"}},
-                 "target":  {"node": "<웨이퍼 엔티티>", "keys": {"<키 이름>": "key_1"}}}]}}
-```
-- `key_1` · `key_2` … 는 리포트 선언 `wafer.key` 의 순서. 웨이퍼 키가 두 칸이면 target keys 에 둘.
 
 ## 엑셀 양식 붙이는 법 (A, 10-23)
 
@@ -214,7 +115,8 @@
 ```
 - `recent` — 이번 평가의 «가장 늦은 웨이퍼 시각»부터 거꾸로 `days` 일 안 · 최신 `evaluations` 개(둘 다 적으면 둘 다 걸림). 그보다 늦은 평가는 안 들어감(다시 만들어도 같은 답).
 - 모델은 `candidates()` 로 평가마다 한 줄(이름 · 날짜 · 웨이퍼 수 · 조건 값별 수)을 보고, `compare({"evaluations": [...], "wafers": [...]})` 로 고른다 — 평가를 적으면 그 평가 웨이퍼 전부, 웨이퍼를 적으면 그것만.
-- 고른 것은 «control <평가>» 묶음으로 요약 표 · 트렌드 가로에 붙고, report_wafer 에 set_name «control <평가>» 로 남는다. 사람이 적은 비교 묶음(sets)도 그대로 함께.
+- «이번 평가»는 리포트 웨이퍼의 평가이고 후보에서 빠진다. `"same": ["<웨이퍼 표의 칸>"]`(예: 제품군 칸)을 적으면 그 칸 값이 리포트 웨이퍼와 같은 후보만 남는다. 비우면 거르지 않는다.
+- 고른 것은 «control <평가>» 묶음으로 요약 표 · 트렌드 가로에 붙는다. 사람이 적은 비교 묶음(sets)도 그대로 함께.
 - 거절: 이번 평가 · 범위 밖 평가 · 상한(`max_evaluations` 기본 3 · `max_wafers` 기본 30)을 넘는 고르기 — 사유가 모델의 다음 문맥으로 간다.
 - 트렌드는 이제 이번 평가 + 모든 묶음(비교 · 대조)을 가로로 — 머리에 묶음 이름 줄.
 
@@ -236,53 +138,5 @@
 - **항목 계층** — `item_sep` 를 적으면 «결함.입자.대» 가 줄 머리 세 칸이 되고, 같은 앞부분은 한 칸으로 합쳐진다(rowspan). 같은 앞부분끼리는 처음 나온 자리로 모인다. 서식 · `rows` · 모델 문맥은 이름 전체를 쓴다.
 - **두 단 머리** — 웨이퍼 키가 두 칸 이상이면 머리가 «웨이퍼 / 나머지» 두 단이 되고, 한 웨이퍼의 열들 위에 웨이퍼 이름이 한 칸으로 선다.
 - **견본 줄** — 엑셀 양식에서 `{{table:yield_by}}` 줄 바로 밑 줄들의 첫 칸에 `{{info}}` · `{{picture}}` · `{{item}}` 을 적고, 그 줄들의 이름 칸(첫 칸)과 값 칸(둘째 칸)을 칠해 둔다. 우리 표의 그 종류 칸이 같은 class · style 을 받고(머리줄은 `{{table:yield_by}}` 줄의 서식), 견본 줄들은 표 하나가 든 칸으로 바뀐다. 견본 줄이 없는 종류는 `{{item}}` 줄의 서식을 받는다. 조건부 서식 색은 견본 서식 위에 칠해진다.
-- **한글 낱말** — 파일에 나오는 고정 낱말은 전부 `labels` 를 지난다. 안 적은 이름은 영어 기본값으로 나온다. 모르는 이름은 저장 줄에 알림이 뜬다. `control` 은 묶음 이름이라 report_wafer 의 set_name 과 모델 문맥에도 같은 글이 간다.
+- **한글 낱말** — 파일에 나오는 고정 낱말은 전부 `labels` 를 지난다. 안 적은 이름은 영어 기본값으로 나온다. 모르는 이름은 저장 줄에 알림이 뜬다. `control` 은 묶음 이름이라 모델 문맥에도 같은 글이 간다.
 - 붙여 넣은 양식의 charset 줄(엑셀은 `ks_c_5601-1987` 같은 것을 적는다)은 빠지고, 파일에는 utf-8 한 줄만 남는다.
-
-## 계측 → 리포트 — 요청 행은 저절로, 리포트 · 보내기는 리플레이로 (A, 10-23)
-
-요약표가 들어오면 «리포트가 필요한 평가»마다 요청 행이 저절로 선다. 리포트와 보내기는 운영자가 리플레이로 돌린다(소유자 10-23 「자동 시작은 막고 리플레이로」 — 이미지 표가 반쪽으로 들어오는 건 때문). 제품 코드는 없다. 아래 규칙 넷은 진짜 프로세스 판에서 제품 로더가 읽어 넷 다 running 으로 선 선언 그대로다 — 표 이름(gs_…)은 판의 것이니 자기 표로 바꾼다.
-
-1. 조인 — 웨이퍼 표의 평가를 요약표에 쓴다. 요약표 선언에 `request_id` · `eval_id` 두 칸(string)을 더해 둔다.
-```json
-{"name": "gs_eval", "on": {"table": "gs_wafer"}, "into": {"table": "gs_summary"},
- "derive": {"kind": "join", "join": {
-   "on": [{"left": "wafer_id", "right": "wafer_id"}, {"left": "version", "right": "version"}],
-   "take": [{"from": "eval_id", "into": "request_id"}, "eval_id"]}}}
-```
-2. 결정 — 요약표에서 평가마다 요청 행 하나를 세운다(요청 키 = 평가).
-```json
-{"name": "gs_ask", "on": {"table": "gs_summary", "require": ["request_id"]},
- "into": {"table": "report_request"}, "allow_chain_trigger": true,
- "derive": {"kind": "decide", "decide": {"key": ["request_id"], "fields": ["note"], "list_columns": ["eval_id"]}}}
-```
-3. 리포트 규칙 — `allow_chain_trigger` 를 «적지 않는다». 체인이 세운 요청 행으로는 안 돌고 리플레이로만 돈다. `derive.report` 는 위 절들 그대로.
-```json
-{"name": "gs_report", "on": {"table": "report_request"}, "into": {"table": "report"},
- "derive": {"kind": "report", "report": {"wafer": {"…": "…"}, "summary": {"…": "…"}}}}
-```
-4. 보내기 — 소유자 맵퍼(`server/mappers/<모듈>.py`)가 done 인 report 행마다 불려 `payload["data"]["file_path"]["value"]` 로 파일 경로를 받는다.
-```json
-{"name": "gs_send", "on": {"table": "report", "require": [{"state": ["done"]}]},
- "into": {"table": "gs_sent"}, "allow_chain_trigger": true,
- "derive": {"kind": "mapper", "mapper": {"mapper_module": "mappers.<모듈>", "mapper_function": "<함수>"}}}
-```
-```python
-def send(db, payload, rule=None):
-    path = payload["data"]["file_path"]["value"]      # <데이터 루트>/reports/<평가>.html
-    ...                                               # 중계 PC 로 보내기 등
-    return {"updates": []}
-```
-
-돌리는 법 — 두 줄, 순서대로(`server` 에서). 화면은 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름만.
-```
-python scripts/chain_replay_cli.py replay gs_report --apply     # 요청 행마다 리포트 한 판
-python scripts/chain_replay_cli.py replay gs_send --apply       # done 인 리포트마다 보내기 한 번
-```
-- 잰 것(박스, 평가 둘 · 각 20 열): 요약 저장 → 요청 행 둘 · 리포트 0 판 / 리포트 리플레이 → 2 판(37 s, 가짜 LLM) · 파일에 마지막 요약 / 보내기 리플레이 → done 인 것만 한 번(stopped 는 안 불림, 5 s).
-- 다시 돌리면 다시 한다 — 리포트 리플레이는 모든 요청을 다시 만들어 같은 파일을 덮고, 보내기 리플레이는 이미 보낸 것도 다시 보낸다. 하나만 다시 하려면 `--row-ids <행>`.
-- 사람이 report_request 에 손으로 넣은 행은 바로 돈다(사람 쓰기는 체인 쓰기가 아님). 보내기는 그때도 리플레이로.
-- 리플레이는 이어지는 규칙을 깨우지 않는다(소유자 09-26 판정) — 그래서 보내기도 리플레이 한 줄이다.
-- 폴더 조용함(B b15d6b66e)이 착지하면 자동 시작을 다시 켤 수 있다 — 리포트 규칙에 `"allow_chain_trigger": true` 한 칸.
-- ⚠️ 한 평가의 요약이 웨이퍼마다 따로 저장되면 요청 행은 첫 저장에 서고 그 뒤로 안 바뀐다 — 리플레이는 그때의 표를 읽으므로 리플레이 시점에 다 들어와 있으면 된다.
-- ⚠️ 이미지 표가 반쪽일 때 리플레이하면 리포트 이미지도 반쪽이다 — 외부 저장소 항목에 `stability_interval_seconds` 를 적으면 폴더가 조용해진 뒤 읽음(9095c4e25). 그래도 반쪽이면 다시 읽기 문(`POST /admin/file-ingestion/retry-failed` statuses=SUCCESS) 뒤 리플레이.

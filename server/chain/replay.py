@@ -164,8 +164,17 @@ def load_rules() -> list:
 
 
 def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> dict:
+    """The rule a replay NAMES - off ones too (owner 10-23 「자동 시작은 막고 리플레이로」): off is «nothing wakes
+    it», and naming it is the one way it runs. The lists (`load_rules`) keep only the rules that are on."""
+    from chain import rule_shape
+    from chain.ingestion_worker import loaded_chain_rules
+
+    named = rules is None
     rules = rules if rules is not None else load_rules()
     rule = next((r for r in rules if r.get("name") == rule_name), None)
+    if rule is None and named:
+        rule = next((r for r in loaded_chain_rules()
+                     if r.get("name") == rule_name and rule_shape.is_switched_off(r)), None)
     if rule is None:
         available = ", ".join(sorted(r.get("name", "?") for r in rules)) or "<none>"
         raise ReplayRefused(f"chain rule '{rule_name}' not found or disabled; available: {available}")
@@ -843,7 +852,7 @@ def sweep_finished_replays(log=logger.info, session_factory=None):
             if run is not None and run.state in ("queued", "running", "cancel_requested"):
                 db.rollback()
                 continue
-            narrow, line = event_constants.queue_line_rows(outbox, run_id, run=True)
+            narrow, line = event_constants.queue_line_rows(outbox, run_id)
             # whatever its state: a run released or cancelled with pages still waiting is judged once they ran - it may be
             # cut then, its tally kept for Resume (board: a dead worker's run released with 2 pages waiting lost its tally)
             if run is not None and db.query(outbox.id).filter(
@@ -1016,7 +1025,7 @@ def interrupted_runs(db, run_id=None, rule=None):
         if rule is not None and params.get("rule") != rule:
             continue
         # its own pages, as the gate reads them (`retroactive._replay_still_waiting`) - not what their writes woke
-        narrow, line = event_constants.queue_line_rows(outbox, run, run=True)
+        narrow, line = event_constants.queue_line_rows(outbox, run)
         if db.query(outbox.id).filter(outbox.processed_chain == False, narrow, line,  # noqa: E712
                                       outbox.payload[event_constants.REPLAY_KEY].as_boolean() == True).first() is not None:  # noqa: E712
             continue

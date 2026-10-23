@@ -4261,7 +4261,7 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
             # row reads cancelled. Who stopped it is on no column of the row, so the reason says
             # only that it was cancelled. Brought back by `rerun_set_aside`.
             from chain import set_aside
-            set_aside.set_aside_line(db, run_id, set_aside.OPERATOR, run=True,
+            set_aside.set_aside_line(db, run_id, set_aside.OPERATOR,
                                      reason="run %s cancelled" % run_id)
             _mark_run(run_id, state=RUN_CANCELLED, finished=True, result=out["result"])
             log(f"[Retroactive] run_id={run_id} op={op} CANCELLED: {out['result']}")

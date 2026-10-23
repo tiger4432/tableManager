@@ -158,7 +158,8 @@ def test_old_files_are_read_in_turn_without_waiting(tmp_path):
                            for r in (logs[0], logs[-1]))
         print("files per second: %.2f (45 files in %.0f s)" % (45 / max(last - first, 1), last - first))
         assert last - first < 0.5 * 45, "a file waited for a copy that cannot be running"
-        progress = re.findall(r"External sweep in progress: (big@\S+) looked (\d+) · dispatched (\d+) · \d+ s", said)
+        progress = re.findall(r"External sweep in progress: (big@\S+) looked (\d+) · dispatched (\d+)(?: \([^)]*\))? · "
+                              r"\d+ s", said)
         assert progress, said[-3000:]
 
         # run 2: a restart; s0.csv written again with the same bytes at its own path
@@ -174,12 +175,12 @@ def test_old_files_are_read_in_turn_without_waiting(tmp_path):
         assert swept, said[-3000:]
         with sqlite3.connect(str(db)) as c:          # s0.csv saved again: read again (소유자 10-21 체크리스트), the rest not
             assert len(_logs(c)) == 46 and _logs(c)[45][1] == "small", [r[1:4] for r in _logs(c)[45:]]
-        assert re.search(r"New file detected: \S+s0\.csv", said), "s0.csv was not looked at again"
+        assert re.search(r"File to read \(changed\): \S+s0\.csv", said), "s0.csv was not looked at again"
         ended, *later = re.findall(r"External sweep: (\d+) candidate binding\(s\) - (\d+) already read, (\d+) dispatched",
                                    said)
         print("after the restart: %s candidates, %s already read, %s dispatched" % ended)
         assert ended == ("45", "44", "1"), ended                         # s0.csv only - it was written again
         assert later and set(later) == {("45", "45", "0")}, later        # then every sweep: all already read
-        assert not re.findall(r"New file detected: \S+bmap\.csv", said)
+        assert not re.findall(r"File to read \(\w+\): \S+bmap\.csv", said)
     finally:
         api.shutdown()

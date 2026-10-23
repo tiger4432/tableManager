@@ -206,7 +206,9 @@ SYSTEM_TABLE_COLUMNS = {
     "retroactive_runs": ('error', 'finished_at', 'last_progress_at', 'op', 'params', 'processed_rows', 'queued_at', 'requested_by', 'result', 'run_id', 'runner', 'started_at', 'state', 'total_rows'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event
     # ledger_state:     migrations/add_outbox_ledger_state.py  (총괄 bb9b1c19c (가))
-    "database_outbox": ('broadcast_at', 'created_at', 'event_type', 'event_uuid', 'id', 'ledger_state', 'payload', 'processed_at', 'processed_chain', 'retry_count', 'status', 'table_name'),
+    # run_id, transaction_id, row_count: the boot schema sync (models.SCHEMA_SYNCED_SYSTEM_TABLES) adds them, and the
+    #   chain's startup fills the waiting rows written before them (models.fill_outbox_line_columns, 총괄 c0e6906f1 (가))
+    "database_outbox": ('broadcast_at', 'created_at', 'event_type', 'event_uuid', 'id', 'ledger_state', 'payload', 'processed_at', 'processed_chain', 'retry_count', 'row_count', 'run_id', 'status', 'table_name', 'transaction_id'),
     # file_mtime, file_size:
     #   migrations/add_ingestion_ledger_path_stat.sql [2026-08-13]. Promoting `filepath`
     #   from a stored marker to a LOOKUP KEY (SCHEMA_CANON R6 names this exact column as
@@ -232,6 +234,9 @@ SYSTEM_TABLE_COLUMNS = {
     # file_mtime · file_size: the boot schema sync (SCHEMA_SYNCED_SYSTEM_TABLES) adds them; by hand
     # migrations/add_file_ingestion_log_stamp.sql (the checklist, 4492b8813)
     "file_ingestion_logs": ('created_at', 'error_message', 'failed_at', 'file_mtime', 'file_size', 'filename', 'filepath', 'id', 'reader', 'reason', 'retry_count', 'rows_changed', 'rows_new', 'rows_read', 'rows_refused', 'rows_unchanged', 'source', 'status', 'table_name', 'took_seconds', 'transaction_id', 'updated_at'),
+    # new table (총괄 64b264610 ②, 10-23) - created whole by create_all / ensure_ingestion_checkpoint_table
+    "file_checklist": ('created_at', 'file_mtime', 'file_size', 'filename', 'filepath', 'id', 'log_id', 'path_key',
+                       'source', 'status', 'status_before', 'table_name', 'updated_at'),
     # new table this round - created whole by create_all, no ordering hazard
     # geometry_assumed: migrations/add_frame_confirmation.py (spec MAP_ALIGNMENT 9a - which
     # confirmations rest on a borrowed wafer spec)

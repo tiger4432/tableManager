@@ -71,7 +71,7 @@ def _table_config(data, tables):
 
 def _states(c):
     out = {}
-    for table, status, n in c.execute("SELECT table_name, status, count(*) FROM file_ingestion_logs GROUP BY 1, 2"):
+    for table, status, n in c.execute("SELECT table_name, status, count(*) FROM file_checklist GROUP BY 1, 2"):
         out.setdefault(table, {})[status] = n
     return out
 

@@ -138,8 +138,9 @@ def test_a_new_declaration_saves_armed_but_not_firing(client, rules_file):
 
     assert answer.status_code == 200, answer.text
     assert _saved(rules_file)["s244_new"]["enabled"] is False
-    assert [r.get("name") for r in worker.load_chain_rules()] == [], (
-        "a declaration saved OFF stands no rule"
+    stood = worker.load_chain_rules()
+    assert stood and all(r.get("enabled") is False for r in stood), (
+        "a declaration saved OFF stands its rules off - nothing wakes them (owner 10-23 「막아」)"
     )
 
 

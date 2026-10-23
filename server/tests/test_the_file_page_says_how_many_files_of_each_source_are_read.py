@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """The checklist's progress (소유자 10-23 「몇 개 중 몇 개 읽고 있는지」, 총괄 07a16f238): GET /admin/file-ingestion/tables
-says per table, per source, files read / total / left by state - a file being its newest row (`newest_of_its_file`),
+says per table, per source, files read / total / left by state - a file being its checklist row (file_checklist),
 counted by the whole counter, not by the request.
 
   board                                         total   read   left
@@ -29,8 +29,12 @@ STAMP = {"file_mtime": datetime(2026, 10, 23), "file_size": 10}
 
 
 def _log(db, table, path, status, source="raws", stamped=False):
-    db.add(models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
-                                   source=source, retry_count=0, **(STAMP if stamped else {})))
+    stamp = STAMP if stamped else {"file_mtime": None, "file_size": None}
+    record = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
+                                     source=source, retry_count=0, **stamp)
+    db.add(record)
+    db.flush()
+    checkpoint.note_file(db, table, path, status=status, source=source, log_id=record.id, **stamp)
     db.flush()
 
 
@@ -62,7 +66,16 @@ def _progress(client):
 def test_the_tables_say_read_total_and_left_per_source(client, db_session, monkeypatch):
     from parsers import directory_watcher
 
+    from utils import heartbeat
+
     monkeypatch.setattr(directory_watcher, "count_recount_seconds", lambda settings=None: 0.0)
+    sweep = {"state": "rested", "age_seconds": 4.0, "seconds": 1.5, "looked": 9, "already_read": 7, "dispatched": 2,
+             "why": {"changed": 1, "new": 1}}
+    laps = {directory_watcher.SWEEP_LAP_PREFIX + "insp@share": dict(sweep, table="insp", source=r"\\share\lots"),
+            directory_watcher.SWEEP_LAP_PREFIX + "quiet@q": dict(sweep, table="quiet", source=r"D:\q", looked=0,
+                                                                 dispatched=0, why={}),
+            "replay_sweep": {"seconds": 1}}
+    monkeypatch.setattr(heartbeat, "read_all", lambda **kw: {directory_watcher.HEARTBEAT_NAME: {"laps": laps}})
     _log(db_session, "insp", r"C:\raws\insp\a.csv", "SUCCESS")                    # read before, then again
     _log(db_session, "insp", r"C:\raws\insp\a.csv", "SUCCESS", stamped=True)
     _log(db_session, "insp", r"C:\raws\insp\b.csv", "SUCCESS")                    # unchecked
@@ -81,11 +94,17 @@ def test_the_tables_say_read_total_and_left_per_source(client, db_session, monke
     assert got == {
         ("insp", "raws"): [5, 1, {"SUCCESS": 1, "FAILED": 1, "PENDING_RETRY": 1, "PROCESSING": 1}],
         ("insp", r"\\share\lots"): [1, 1, {}],
-        ("voids", "raws"): [1, 0, {"PENDING_RETRY": 1}]}
-    assert {k: [v[0], v[1], v[2]] for k, v in _newest_per_file(db_session).items()} == got
+        ("voids", "raws"): [1, 0, {"PENDING_RETRY": 1}],
+        ("quiet", r"D:\q"): [0, 0, {}]}                       # a source swept, no file of it read yet
+    assert {k: [v[0], v[1], v[2]] for k, v in _newest_per_file(db_session).items()} == {
+        k: v for k, v in got.items() if k[0] != "quiet"}
+    # each external source's last sweep rides on its own line (the watcher's heartbeat lap), joined on (table, source)
+    swept = {(table, s["source"]): s.get("sweep") for table, t in tables.items() for s in t["sources"]}
+    assert swept[("insp", r"\\share\lots")] == sweep and swept[("insp", "raws")] is None
+    assert swept[("quiet", r"D:\q")]["state"] == "rested" and tables["quiet"]["total"] == 0
     assert all(s["left"] == s["total"] - s["read"] for t in said["data"] for s in t["sources"])
     assert said["progress"]["counted_at"] and said["progress"]["failed"] is None
-    assert (tables["insp"]["total"], tables["insp"]["by_status"]["SUCCESS"]) == (8, 4)   # rows, as before
+    assert (tables["insp"]["total"], tables["insp"]["by_status"]["SUCCESS"]) == (6, 3)   # files: a · b · F
 
     # a file read since: counted again on the next ask past its pacing
     _log(db_session, "insp", r"C:\raws\insp\b.csv", "SUCCESS", stamped=True)

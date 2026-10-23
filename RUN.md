@@ -15,6 +15,226 @@
 >
 > ---
 >
+> ## [10-23] **합성키 표에서 키로 새 행을 만들 때 business_key 칸 «버림» 경고가 안 남 (4cba88ea5)** — git pull · 서버 · 와처 · 체인 워커 재기동
+>
+> ```
+> 볼 줄     «[Schema] Column '<business_key>' is not declared in column_types for table '<표>' and was DROPPED»
+> 답의 뜻   business_key 를 적었지만 column_types 에 없는 합성키 표(가이드: 그런 표는 business_key_val 에만 키를 둠)에서
+>          새 행마다 나던 이 줄 · /health 의 버림 수가 이제 안 늘어남. 행의 키(business_key_val)는 그대로
+>          이 줄이 «남으면» 보내는 쪽이 정말 선언 안 된 칸을 보낸 것 — 그 칸 이름을 column_types 에 적거나 보내는 쪽을 고침
+> ```
+>
+
+---
+
+> ## [10-23] **take … fn 이 있는 조인의 «origin unknown» 경고가 모은 칸을 안 셈 (6531004fb)** — git pull · 체인 워커 재기동
+>
+> ```
+> 볼 줄     chain_worker.log 의 «[ChainRetract] origin unknown - rule <조인 이름>: N of M row(s) …»
+> 답의 뜻   fn 칸만 쓰는 항목(키의 행을 모은 값)은 이제 안 셈 — 한 행에서 온 값이 아니라서. 그 조인에 이 줄이 «남으면»
+>          fn 아닌 take 의 항목이 넘겨받은 행 어느 것과도 키가 안 맞은 것 — 그 행을 지우거나 고쳐도 그 칸은 안 거둬짐
+> ```
+>
+
+---
+
+> ## [10-23] **external_full_walk_every 를 적은 소스는 그 사이 훑기에서 파일도 폴더 목록 값으로 견줌 (0f0698a6b)** — git pull · 와처 재기동
+>
+> ```
+> 적는 법   voids 처럼 폴더 · 파일이 많고 거의 안 바뀌는 공유 소스에만: ingestion_settings.json 에 "external_full_walk_every": 6
+>          가장 늦게 보는 시간 = sweep_interval_seconds × N (300 초 × 6 = 30 분). 비우면 전과 같음(매번 전부 · 파일마다 os.stat)
+> 늦게 보나  N 번째 훑기에 잡히는 것: 제자리에서 다시 쓴 파일 · 다른 하드 링크 이름으로 고친 파일 ·
+>          제자리 고침을 닫은 «직후» 같은 폴더에 생긴 새 파일(NTFS 가 그 추가에 폴더 수정 시각을 안 옮기는 경우를 이 박스에서 봄)
+>          새로 복사돼 들어오는 파일은 늦지 않음(폴더 수정 시각이 움직여 다음 훑기가 읽음)
+> 볼 줄     훑기 줄 «folders unchanged M» — 그 사이 훑기에서 M 이 폴더 수에 가까우면 켜진 것. N 번째 훑기는 M 이 0
+> 급할 때   칸을 지우면 다음 훑기부터 매번 전부(재기동 없음 — 설정 파일이 바뀌면 다음 훑기가 새 값을 씀)
+> ```
+>
+
+---
+
+> ## [10-23] **체크리스트가 파일당 한 행 (file_checklist) — 파일 화면은 파일당 한 줄 · 외부 훑기 이름 먼저 · 바뀐 폴더만 (daafb2214)** — git pull · 서버 재기동 · 와처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동 -> 와처 재기동. 와처가 첫 훑기 «전»에 기록에서 체크리스트를 한 번 만든다
+> 볼 줄     [Watcher] checklist made from the records: N file(s) in S s     처음 한 번. 표시 파일 config/watcher_checklist_filled
+>          이 줄 대신 «the checklist was not made from the records» 면 -> 그 기동의 훑기는 체크리스트에 행이 없는 파일을
+>          «new» 로 «다시 읽음». 와처를 내리고 그 줄의 사유를 고친 뒤 다시 띄움(표시 파일이 없으면 다시 만듦)
+> 답의 뜻   파일 화면 목록 = 파일당 한 줄(지금 상태). 한 파일의 읽기 이력은 목록에 없고 기록 표(file_ingestion_logs)에 남음
+>          칩 수 · 폴더 묶음의 failed / waiting 도 같은 표에서 - 칩으로 거른 줄 수와 칩의 수가 같음
+>          리트라이 문(Read all again · Retry · Read now)이 읽으면 기록이 «새로 한 줄» 생김(created_at 새 시각)
+>          그 줄의 번호는 체크리스트 행: «Detected PENDING_RETRY checklist row #N (파일)» · «Retry succeeded for
+>          checklist row #N (파일).» (전에는 «log ID #N»)
+> 외부 훑기  훑기가 끝나고 쉬는 초 = ingestion_settings.json 의 sweep_interval_seconds (없으면 300)
+>          external_full_walk_every: N 을 적으면 수정 시각이 그대로인 폴더는 목록을 안 읽고 지나감 - 훑기 줄 «folders
+>          unchanged M». N 번째 훑기마다 전체를 걸음. 🔴 제자리에서 다시 쓴 파일은 폴더 수정 시각을 안 바꿈 -> 그 N 번째
+>          훑기에 잡힘. 공유에서 폴더 수정 시각이 언제 움직이는지는 이 박스에서 못 잼 - 켜기 전 한 폴더로 확인 권함
+>          (파일 하나를 추가해 보고, 다음 훑기 줄에서 그 폴더가 다시 읽히는지)
+> 급할 때   external_full_walk_every 를 지우면 매번 전체(지금까지와 같음). 체크리스트는 끌 수 없음 - 되돌리기는 아래
+> 되돌리기  git revert daafb2214 -> 서버 · 와처 재기동. 기록 표는 안 건드렸으므로 옛 코드가 그대로 읽음.
+>          다시 앞으로 오려면 config/watcher_checklist_filled 를 지우고 file_checklist 표를 비운 뒤 재기동(그 사이 읽기 반영)
+> ```
+>
+
+---
+
+> ## [10-23] **AI 리포트 — 요약표에 리포트 규칙 하나 · 웨이퍼마다 한 판 · 결과는 요약표 칸 셋 · send_to 로 중계 PC 에 (소유자 10-23 「너무 복잡」 · 「보조표 너무 많아」 · 「리포트는 웨이퍼당 하나」, 총괄 d337be901 · 5efb406e4)** — git pull · 선언 고침 · 런처 재기동
+>
+> ```
+> 적을 것   요약표 선언에 결과 칸 셋(string), 이름은 마음대로 - 예: report_state · report_file · report_reason
+>          어드민 Chain 탭 리포트 규칙 하나: on = into = 요약표 · derive.report.results = {"state", "file", "reason"} 그 세 칸
+>            · limits.group_by = 요약표의 웨이퍼 칸 (리플레이가 웨이퍼 하나를 한 번에 - 안 적으면 행마다 다시 만들 수 있음)
+>            · send_to = "http://<중계 PC>:8765/reports" (안 적으면 파일만 서버에) · 나머지 칸은 전과 같음
+>            예시 docs/guide/ai_report_tables.md «1. 적는 것»
+>          ingestion_settings.json "chain_slots" 3 이상 (리포트가 도는 동안 일꾼 하나를 씀)
+>          옛 것은 지움: 규칙 넷(조인 · decide · 리포트 · 보내기) · 요약표의 request_id · eval_id 칸
+>            · table_config 의 report_request · report · report_step · report_wafer (아무도 안 읽고 안 씀)
+>            · ledger_config 의 report_wafer 소스
+>          대조군을 같은 제품군에서만: derive.report.control.same = ["<웨이퍼 표의 제품군 칸>"] (비우면 안 거름)
+> 도는 때   요약 행이 들어오면 그 파일의 웨이퍼마다 한 판
+>          시범 동안: 규칙을 "enabled": false 로 두면 요약 행이 들어와도 안 돎 — 이름을 댄 리플레이만 돎(모든 규칙이 같음)
+>          다시 만들기 · 시범 한 판: 어드민 소급 탭 «Replay chain rules over old data (R1)» rule = 그 규칙 이름 (row_ids 로 웨이퍼 행만)
+> 확인     요약표의 그 웨이퍼 행 전부 같은 값: state done (send_to 가 있으면 sending -> done)
+>            file = <데이터 루트>/reports/<웨이퍼>.html, 파일 끝 «Evidence» 를 펴면 걸음마다 한 줄
+>          chain_worker.log  «[Report] <규칙> wafer <웨이퍼> step k <읽기> - <돌아온 것>» · «[Report] <규칙> wafer <웨이퍼>: done»
+>                            «[Report] <규칙> sent <파일>»
+> 답의 뜻   state stopped 의 reason
+>            step cap N               모델이 상한까지 done 을 안 함 -> loop.steps 늘림 · prompts.rules 다듬음
+>            time cap N s             loop.seconds 안에 못 끝냄 -> 게이트웨이 응답 시간 · loop.seconds
+>            context over budget      줄여도 문맥이 loop.context_tokens 를 넘음 -> 조건 칸을 줄이거나 예산을 늘림
+>            the write call answered no text   쓰기 호출이 글 대신 다른 것을 답함 -> rules 에 «글로 답하라» 한 줄
+>            the language model call was refused: ...   게이트웨이 · llm_config.json - 사유 그대로
+>            wafer <웨이퍼> is not in <웨이퍼 표>   요약에는 있는데 웨이퍼 표에 그 웨이퍼가 없음
+>          state sending 이 남음        중계 PC 가 아직 안 받음 - chain_worker.log «send <파일>, try k of 3: <사유>»
+>          state send failed + reason   세 번 다 실패. 중계 PC 를 고친 뒤 그 웨이퍼 행을 리플레이 (다시 만들고 보냄)
+>          저장 거절 «derive.report.results names …» · «the report rule stands on its summary table …»   옛 모양 선언 -> «적을 것»
+>          저장 거절 «… is not a mark this report fills» · «… is fetched from outside the file»   엑셀 양식의 표시 · 바깥 주소
+>          같은 웨이퍼가 여러 파일로 들어옴   들어올 때마다 다시 만들고 같은 파일을 덮음
+>          chain_worker.log «[ChainRules] <규칙>: enabled=false — nothing wakes it; a replay that names it runs it.»
+>            꺼진 규칙이 선 줄. 리플레이 대상 목록(그리드 배너 · /admin/chain/rules/replayable)에는 안 보임 — 소급 탭에 이름을 적음
+> 급할 때   그 규칙 "enabled": false (저장 즉시) - 새 리포트를 안 만듦. 이미 sending 인 것은 보냄 — 보내기까지 멈추려면 send_to 를 지움
+> 되돌리기  git revert be0420f9b -> 런처 재기동. 되돌린 코드는 요청 표 모양을 읽으므로 새 규칙을 끄고 옛 규칙 넷 · 제품 표 넷을 다시 적음
+> ```
+>
+
+---
+
+> ## [10-23] **값이 안 바뀐 행은 사건을 안 낸다 — 셀 메뉴의 층 지우기 · 핀이 보이는 값을 안 옮기면 규칙이 안 돈다 (총괄 f5ff1e3e9)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언 바뀜 없음
+> 바뀐 것   행에 이미 가진 값을 다시 넣은 쓰기가 아웃박스에 EDIT 을 내던 것 - 칸 이름 없는 EDIT 이라 그 표의 규칙이 «다» 깼음
+>          셀 메뉴 «층 지우기»(POST /tables/<표>/cells/sources/delete/batch) · «핀»(PUT .../priority) 이 지는 층을 지우거나
+>            보이는 층을 핀하면 보이는 값이 그대로 - 이제 사건 0, chain_worker.log 에 그 규칙 줄 없음
+> 확인     층 지우기 뒤 보이는 값이 바뀐 칸: database_outbox 에 EDIT 하나, payload 의 old 에 그 칸 이름(전과 같음)
+>          값이 그대로인 칸: 그 행의 새 사건 없음. 셀 메뉴의 층 목록은 전처럼 바로 바뀜(화면 알림은 그대로)
+> 답의 뜻   층을 지웠는데 규칙이 안 돎   보이는 값이 안 바뀐 것 - 맞는 동작. 규칙을 그 값으로 다시 돌리려면 소급 탭 리플레이
+>          층을 지웠더니 규칙이 돎     보이는 값이 바뀐 것 - 그 칸이 old 에 실림
+> 급할 때   끄는 스위치 없음
+> 되돌리기  git revert b74b23766 -> 런처 재기동
+> ```
+>
+
+---
+
+> ## [10-23] **와처가 읽을 때마다 «왜»를 말한다 — «New file detected» 는 «File to read (<낱말>)» 로 (11618814f)** — git pull · 와처 재기동 · 서버 재기동
+>
+> ```
+> 돌릴 것   git pull -> 와처 재기동(줄) · 서버 재기동(파일 화면 칸). 선언 바뀜 없음
+> 볼 줄     File to read (<낱말>): <경로>                  읽기 하나마다 한 줄 - 전에는 무엇이든 «New file detected» 였음
+>          External source <표>@<루트>: N file(s) looked at - ... dispatched M (changed 1 · new 2)
+>          📂 folder settled after N s: <폴더> - voids.json handed on      stability_interval_seconds 를 적은 소스
+> 낱말의 뜻과 할 일
+>   new           기록 없는 파일 - 처음 보는 것. 다 읽힌 폴더에서 계속 나오면 그 경로의 기록이 지워진 것(시작 정리 줄을 봄)
+>   changed       읽은 때와 수정 시각 · 크기가 다름 - 원천이 파일을 다시 씀. 같은 파일이 계속 나오면 원천이 계속 쓰는 것
+>   unstamped     기록은 있는데 도장 없음 - 스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨, 또는 잠금 대기로 끝난 읽기
+>   read again    읽었던 파일을 Read all again · Read now 로 넘김 - 리트라이 문이 읽음(기록 새 한 줄)
+>   retry         실패 파일을 다시 넘김(Retry · 읽기 바뀜)
+>   read now      기록 없던 파일을 Read now 로 넘김
+>   checklist not read   체크리스트를 못 읽어 일단 읽음 - 그 앞 WARNING 줄이 사유
+> 🔴 voids 표가 끝없이 읽히면  이 줄의 낱말 하나로 갈림: read again · retry 가 계속이면 아래 «대기 중인 다시 읽기를 되돌린다» 블록,
+>          changed 면 원천이 voids.json 을 다시 씀, new 면 기록이 사라지는 것, unstamped 면 체크 해제가 되풀이되는 것
+> 파일 화면  GET /admin/file-ingestion/tables 의 sources[].sweep - state(sweeping · rested · unavailable) · age_seconds(지난 기록
+>          뒤 초) · seconds(훑기에 걸린 초) · looked · already_read · dispatched · why. 화면 줄은 클라 착지 뒤
+> 급할 때   끄는 스위치 없음 - 읽을지 말지는 그대로, 말만 바뀜
+> 되돌리기  git revert 11618814f -> 와처 · 서버 재기동
+> ```
+>
+
+---
+
+> ## [10-23] **조인 take 의 fn 에 파이썬 함수 — 키마다 f(values, row, ref) 로 S/O 같은 판정 값 · from 에 칸 목록이면 행마다 {칸: 값} (소유자 10-23 「spec 표의 spec 으로 참조해서 s/o 여부를 판정」 · 「넓히기는 저렇게」, 총괄 f14181fbd · 650a23f9c · ff3fed5fb)** — git pull · 런처 재기동
+>
+> ```
+> 적는 법    server/mappers/join_fn/spec_out.py.sample 을 같은 폴더에 spec_out.py 로 복사(어드민 Editor 의 Mappers 에 join_fn/spec_out.py 로 보임)
+>           이미 복사해 쓰고 있으면 새 함수 s_o_by_item 만 그 파일에 옮겨 붙임
+>           조인 선언의 take 항목: {"from": "<원천 값 칸>", "into": "<판정 칸>", "fn": "spec_out.s_o", "ref": ["<스펙 표>"], "row": ["<대상 행 칸>"]}
+>           한 키에 항목이 여럿 섞이면 from 에 칸 목록: {"from": ["value", "item"], "into": "<판정 칸>", "fn": "spec_out.s_o_by_item", "ref": ["<스펙 표>"], "row": ["<대상 행 칸>"]}
+>           스펙 버전도 남기려면 take 하나 더: {"from": "<원천 값 칸>", "into": "<버전 칸>", "fn": "spec_out.spec_hash", "ref": ["<스펙 표>"]}
+>           예시 함수의 표 이름 · 칸 이름(spec · value · item · grade · lower · upper)은 그 표에 맞게 고침
+> 함수 모양  f(values, row, ref) -> 값 하나
+>           values  그 키 원천 행들의 from 값 — from 이 칸 하나면 값 목록(빈 값 뺌), 칸 목록이면 행마다 {칸: 값}(적은 칸이 전부 빈 행만 뺌)
+>           row     대상 행의 조인 키 칸 + "row" 에 적은 칸 {칸: 값}
+>           ref     "ref" 에 적은 표 통째 {표: [{칸: 값}, ...]} — 묶음마다 한 번 읽음(take 둘이 같은 표면 한 번)
+>           원천 표는 칸 목록이어도 묶음마다 같은 한 번 읽기에 칸만 더 실림
+> 스펙을 바꾼 뒤  자동으로 다시 판정 안 함 -> 그 규칙을 리플레이(소급 탭 «Replay chain rules over old data», rule = 그 선언 이름)
+> 확인 줄    저장이 거절하면 그 문장에 이유: «take '<칸>' fn 'x.y' - …» · «take '<칸>' ref 'spec' - not a table table_config declares» · «take '<칸>' row 'grade' - not a column of …»
+>           칸 목록: «take '<칸>' from is a list - only a function «<file>.<function>» takes one …» -> fn 에 함수 이름
+>                   «take from [...] - a list of columns needs an into» -> into 를 적음
+>                   «take '<칸>' from '<이름>' - not a column of <원천 표>» -> 원천 표 칸 이름으로 고침
+> 되돌리기  git revert a44dd01af -> 런처 재기동: from 칸 목록만 빠짐 — 목록을 적은 take 를 먼저 지움
+>           fn 함수까지 통째: git revert 6bc123ff7 도. "fn" 에 함수를 적은 take 를 지움
+> ```
+>
+> ## [10-23] **리플레이가 뒤로 갈수록 느려지던 것 — 체인 대기열이 줄을 payload 대신 outbox 칸 셋으로 읽는다 (총괄 c0e6906f1, 소유자 「ㄱ」)** — git pull · 런처 재기동
+>
+> ```
+> 무엇      리플레이 쪽 사건(1,000 행이면 ~40 KB)과 그 쪽이 쓴 사건이 같은 실행 줄에 쌓이는데,
+>           슬롯은 묶음마다 · 배정자는 빈 슬롯이 있으면 1 초마다 대기 사건 전부의 payload 를 풀었음 — 쪽이 갈수록 느려짐
+>           판(버리는 DB · 런처 그대로 · 쪽 119 · 쪽당 대상 1만 행):
+>             전  쪽 8.4 -> 12.7 s · 대기 146 -> 1,184 · 줄 목록 읽기 0.022 -> 0.234 s · 줄 창 읽기 0.097 -> 0.312 s
+>             후  쪽 8.3 -> 13.3 s · 대기 146 -> 1,180 · 줄 목록 읽기 0.005 -> 0.006 s · 줄 창 읽기 0.130 -> 0.203 s(200 행에서 멈춤)
+>           고친 두 읽기는 평평. 이 판의 쪽 시간 기울기(+50%)는 그대로 — 이 깊이에서 두 읽기는 쪽당 0.2~0.5 s 뿐
+>           대기가 수천 이상일 때 이 몫이 주(대기 2만: 줄 목록 3.9 s · 줄 창 2.3 s 였음). 남은 기울기는 아직 안 잼
+> 재기동 뒤 볼 줄 (첫 재기동 한 번)
+>           server.log · watcher.log · chain_worker.log 중 하나에 «[Schema Sync] added column 'run_id' to 'database_outbox'»
+>             — transaction_id · row_count 도. 먼저 뜬 프로세스가 더함
+>           나머지 둘에 «… was added by another process starting with this one» 이 나와도 정상
+>           chain_worker.log  «[Chain] outbox line columns: N of M waiting event(s) without them filled» — 재기동 전에 쌓여 있던 대기 사건
+>           auto_update.log   «[Indexes] idx_outbox_line built in X s»
+>           auto_update.log 에 «Failed to query initial SYSTEM_RELOAD outbox id … run_id» 가 한 번 나올 수 있음 —
+>             스케줄러가 서버보다 먼저 outbox 를 읽은 것. 그 뒤 설정 다시 읽기를 한 번 더 할 뿐 계속 돎
+> 실패일 때  server.log · chain_worker.log «[Schema Sync] column 'run_id' was not added to 'database_outbox' - another session held the table past 20s …»
+>           그 뒤 체인 · 스케줄러 로그가 «UndefinedColumn … database_outbox.run_id» 를 계속 찍음 — 쓰기 · 체인이 서 있음
+>           -> 앱을 끄고(run_app.bat 닫기) 재기동 한 번. outbox 를 쥔 다른 세션(SQL 창 등)이 있으면 먼저 닫음
+> 되돌리기  git revert f7cd84eb4 -> 런처 재기동. 칸 셋은 남아 있어도 됨(옛 코드는 안 읽음)
+> ```
+>
+> ## [10-23] **voids 표가 끝없이 읽힐 때 — 대기 중인 다시 읽기를 되돌린다 (있는 문 cancel-reread, 코드 바뀜 없음)** — 재기동 없음
+>
+> ```
+> 먼저 볼 것  파일 화면의 voids 표 PENDING_RETRY(대기) 수
+>            0 이 아니고 줄어드는 중   -> 리트라이 문이 넘겨진 파일 더미를 하나씩 읽는 중. 이 블록의 문이 멈춤
+>            0 인데도 계속 읽음       -> 🔴 이 문이 아님. 와처 줄 «File to read (<낱말>): ...voids.json» 이 같은 경로로
+>                                       되풀이되는지 한 줄만 봄 (판에서는 재현 안 됨 - 원인 열림)
+> 리트라이 문으로 읽으면 기록이 새로 한 줄 생김(체크리스트 접기 뒤). 대기 수는 파일 화면 칩(체크리스트)에서
+>
+> 돌릴 것 (관리 토큰, 화면 단추는 클라 착지 뒤)
+>   미리보기  curl.exe --noproxy "*" -X POST -G "http://127.0.0.1:8080/admin/file-ingestion/cancel-reread" -H "X-Admin-Token: <토큰>" --data-urlencode "folder=<voids 외부 루트>" --data-urlencode "preview=true"
+>   되돌리기  같은 줄에서 preview 칸만 뺌
+>
+> 답의 뜻   count     되돌릴(되돌린) 대기 행 수 - 와처가 아직 안 집은 것만. 지금 읽는 중인 행은 안 건드림
+>          by_state  그 행들이 넘겨지기 전 상태별 수 (SUCCESS = 읽었던 파일 · FAILED = 실패였던 파일) - 그 상태로 돌아감
+>          removed   다시 읽기가 세운 기록 행(전엔 행이 없던 파일) - 지워짐
+>          unmarked  넘긴 표시 없이 대기인 행 - 안 건드리고 셈만
+> 🔴 «표» 칸이 없음 - folder 밑의 대기 행이면 표와 상관없이 돌아감. 같은 루트를 다른 표도 읽으면 그 표의 대기도 같이 돌아감
+> 되돌린 뒤  SUCCESS 로 돌아간 행은 도장이 있으면 다음 훑기가 다시 안 읽음. 도장 없는 행(체크 해제됐던 것)은 훑기가 한 번 읽음
+> 되돌리기  다시 넘기려면 파일 화면 Read all again
+> ```
+>
+
+---
+
 > ## [10-23] **고침 — 피벗 보기에서 Tx 를 켠 채 Apply 하면 써진다 · 빈 칸 값 넣기도 (소유자 「빈 값에서 값 추가도 안 되네」)** — git pull · 화면 새로 고침
 >
 > ```
@@ -244,81 +464,6 @@
 > 되돌리기  git revert 9095c4e25 -> 런처 재기동. 칸을 적은 항목은 되돌린 코드에서 칸이 무시되고 1 초 뒤 읽음
 > ```
 >
-> ## [10-23] **AI 리포트 — 글은 «읽은 표 전부»를 받은 쓰기 호출에서 (소유자 10-23 ㄱ, 955bc93aa)** — git pull · 런처 재기동
->
-> ```
-> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로 (prompts.rules 의 쓰기 규칙은 쓰기 호출에도 실림)
-> 확인     리포트 하나 만든 뒤 report_step 마지막 줄 call = write · «N text(s) from M table(s) read»
->          리포트 글에 요약 표 · 파레토 · 트렌드의 숫자가 표 그대로
-> 답의 뜻   write 줄의 cut 에 «step k <읽기>: n»       예산을 넘어 오래된 읽기부터 n 줄만 남김 -> loop.context_tokens 를 올리거나 둠
->          reason «the write call answered no text»   쓰기 호출에 모델이 글 대신 다른 것을 답함 -> rules 에 «글로 답하라» 한 줄
->          step cap · time cap 인데 글이 있음         정상 — 상한까지 읽은 만큼으로 씀
->          시간 상한에 닿은 리포트                     쓰기 호출 하나만큼 상한을 넘긴다
-> 급할 때   그 리포트 규칙 "enabled": false
-> 되돌리기  git revert 955bc93aa -> 런처 재기동 (글이 다시 done 걸음에서 나옴)
-> ```
->
-
-> ## [10-23] **AI 리포트 — 요청 행은 저절로, 리포트 · 보내기는 리플레이로 (소유자 10-23 「자동 시작은 막고 리플레이로」, 선언만)** — 코드 없음 · 체인 창에 규칙 넷
->
-> ```
-> 적을 것   요약표 선언에 request_id · eval_id 두 칸(string) 더하기
->          체인 창에 규칙 넷 — docs/guide/ai_report_tables.md «계측 → 리포트» 의 예시 그대로, 표 이름만 자기 것으로
->            1 join     웨이퍼 표 -> 요약표 : take eval_id 를 request_id 와 eval_id 로
->            2 decide   요약표 -> report_request : key [request_id] · on.require [request_id] · allow_chain_trigger
->            3 리포트   report_request -> report : allow_chain_trigger 를 «적지 않음» (리플레이로만 돎)
->            4 보내기   report -> (보낸 기록 표) : on.require [{"state": ["done"]}] · allow_chain_trigger · 소유자 맵퍼
-> 돌릴 것   (server 에서, 순서대로)
->          python scripts/chain_replay_cli.py replay <리포트 규칙> --apply     요청 행마다 리포트 한 판
->          python scripts/chain_replay_cli.py replay <보내기 규칙> --apply     done 인 리포트마다 보내기 한 번
->          화면: 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름만
-> 확인     요약 들어온 뒤: report_request 에 평가 행 · report 는 아직 없음
->          리포트 리플레이 뒤: report 행 done (또는 stopped + 사유) · <데이터 루트>/reports/<평가>.html
->          보내기 리플레이 뒤: 소유자 맵퍼가 done 행마다 한 번 (stopped 는 안 불림)
-> 답의 뜻   report_request 행이 안 섬          요약표 request_id 가 빔 -> 조인이 웨이퍼 표에서 평가를 못 찾음
->          리플레이 했는데 report 행이 없음     규칙 이름 철자 · 리플레이 줄 «rows handed over» 가 0 인지
->          보내기 리플레이에 맵퍼가 안 불림     report 행이 done 이 아님 · require 철자
->          다시 돌리면                          리포트는 다시 만들어 같은 파일을 덮고, 보내기는 이미 보낸 것도 다시 보냄
->                                              하나만: --row-ids <행>
->          손으로 넣은 요청 행                  바로 돎 (사람 쓰기) — 보내기는 그때도 리플레이로
->          리포트 이미지가 반쪽                 이미지 표가 반쪽일 때 돈 것 — 외부 저장소 항목에 stability_interval_seconds 를 적으면 폴더가 조용해진 뒤 읽음(9095c4e25, 이 파일 맨 위) · 반쪽이면 다시 읽기 문 뒤 리플레이
-> 자동으로  폴더 조용함(B b15d6b66e) 착지 뒤 리포트 규칙에 "allow_chain_trigger": true 한 칸이면 다시 저절로 돎
-> 급할 때   규칙 2(decide) 또는 3(리포트)의 "enabled": false
-> 되돌리기  코드 변경 없음 — 규칙 넷을 지우거나 끈다
-> ```
->
-
-> ## [10-23] **AI 리포트 둘째 · 셋째 — 엑셀 양식 · 대조군 · 요약 표 꾸미기 · 한글 낱말 (소유자 10-23, 0c60ef94c)** — git pull · 런처 재기동 · 처음 한 번 하는 일
->
-> ```
-> 돌릴 것   git pull -> 런처 재기동. 리포트 첫째의 설정(chain_slots 3 · 리포트 규칙)은 그대로
-> 처음 한 번 하는 일 — 순서대로 (시범은 이 목록대로)
->   1. 표 선언: 웨이퍼 표 · 요약표는 있어야 함. 쓰면 정보 표 · 그림 표 · 디펙 이미지 표 · 비교 묶음 표
->      제품 표 넷(report_request · report · report_step · report_wafer)은 table_config.json.sample 의 것을 그대로
->   2. image_sources.json 에 그림 폴더 소스 (합성맵 · 디펙 이미지)
->   3. llm_config.json 게이트웨이(운영에 이미 있음) · ingestion_settings.json "chain_slots" 3 이상
->   4. 어드민 Chain 탭에 리포트 규칙 하나: on report_request (require setting) · into report ·
->      derive.report 에 역할(wafer · summary · info · picture_rows · images · sets) · rows · item_sep ·
->      formats · labels(한글) · control · layout · prompts   (예시: docs/guide/ai_report_tables.md)
->   5. 엑셀 양식: 들어갈 칸에 {{title}} · {{summary}} · {{table:yield_by}} 같은 표시, {{table:yield_by}} 밑에
->      견본 줄 {{info}} · {{picture}} · {{item}} 을 칠함 -> 복사 -> Paste template (클라 버튼 착지 뒤)
->   6. (쓰면) ledger_config.json 에 report_wafer 소스 — 리포트 -> 웨이퍼 엣지
->   7. 요청: report_request 에 한 행 (request_id · eval_id · setting). 계측 뒤 저절로 서게 하는 것은 다음 일
-> 확인     저장 줄에 그 규칙이 running · 양식이 그림을 뺐으면 «derive.report.template: image(s) dropped: N»
->          report 행 state done -> 파일을 열면 양식 그대로, 표시 칸에 표 · 글 · 그림
->          요약 표: 정보 줄 · 그림 줄 · 칠한 칸 · 묶음 «대조 <평가>»(labels.control 을 적었으면 그 글)
-> 답의 뜻   저장 거절 «… is not a mark this report fills»          양식의 표시 이름이 틀림 -> 거절 문장의 목록에서 고름
->          «… is fetched from outside the file»                 양식에 바깥 주소(http · //) -> 그 그림 · 링크를 지우고 다시 복사
->          «{{info}} is a sample row's first cell …»           견본 줄이 {{table:yield_by}} 줄 바로 밑이 아님
->          «… needs fail and total»                             vs control 규칙인데 요약표가 rate 만 -> 고정 기준 규칙으로
->          그림 칸에 «no file … in image source …»             그 웨이퍼의 그림 파일이 없음 (리포트는 done)
->          리포트 글자가 영어                                    labels 에 그 이름을 안 적음 -> 저장 알림의 이름 목록
-> 급할 때   그 규칙 "enabled": false (저장 즉시)
-> 되돌리기  git revert 0c60ef94c -> 런처 재기동. template · control · info · picture_rows · formats · labels 를
->          쓴 리포트 규칙은 되돌린 코드에서 «모르는 칸» 알림만 내고 그 칸을 안 읽음
-> ```
->
-
 > ## [10-23] **리포트 HTML 받는 곳 — 메일 중계 PC 에서 띄움 (소유자 10-23 「fastapi 로 html 파일 받는 함수 하나」)**
 >
 > ```
@@ -331,31 +476,9 @@
 > 받은 것  inbox/<이름>.html - 다 받은 뒤에만 이 이름으로 바뀜(받는 중엔 .part). 같은 이름은 덮어씀
 > 끄기     uvicorn 창에서 Ctrl+C
 > 자리     receive.py 의 allowed(request) = 보내는 쪽 확인(False -> 403, 아무것도 안 씀) · deliver(path) = 받은 파일을 메일로(터지면 502, 파일은 남음)
->          둘 다 소유자가 채움 - 비워 두면 누구나 올리고, 받기만 함. 우리 서버가 보내는 쪽은 소유자 맵퍼(server/mappers) 몫
+>          둘 다 소유자가 채움 - 비워 두면 누구나 올리고, 받기만 함. 우리 서버가 보내는 쪽은 리포트 규칙의 send_to (체인 워커가 보냄)
 > ```
 
-> ## [10-23] **AI 리포트 — 요청 행 하나가 리포트 규칙 하나를 깨워 HTML 한 파일을 만든다 (소유자 10-22 ㄱ, 223649fa5)** — git pull · 설정 · 런처 재기동
->
-> ```
-> 돌릴 것   git pull
->          ingestion_settings.json 의 "chain_slots": 3 -> 런처 재기동 (리포트가 도는 동안 일꾼 하나를 씀)
->          chain_rules.json 에 리포트 규칙 하나 (어드민 Chain 탭 derive kind: report) - 예시 docs/guide/ai_report_tables.md «운영에서 적는 것»
->             on.require [{"setting": ["<규칙 이름>"]}] · summary 에 아이템별 요약 표 · 칸
->          ledger_config.json 에 report_wafer 소스 한 줄 (같은 문서의 원장 예시)
->          report_request 에 행 하나: request_id · eval_id · setting(규칙 이름) · note
-> 확인     부팅 줄 [ChainRules] 에 <규칙 이름>[decl,report] ... writes=['report_step', 'report_wafer']
->          report 행 state done · file_path 가 <데이터 루트>/reports/<request_id>.html · file_hash 가 그 파일의 sha256
-> 뜻      state stopped 의 reason
->             step cap N                  걸음 상한까지 모델이 done 을 안 함 -> loop.steps 를 늘리거나 prompts.rules 를 다듬음
->             time cap N s                loop.seconds 안에 못 끝냄 -> 게이트웨이 응답 시간 확인, loop.seconds 늘림
->             context over budget         지난 결과 · 조건표를 줄여도 문맥이 loop.context_tokens 를 넘음 -> 조건 칸 수를 줄이거나 예산을 늘림
->             the language model call was refused: ...   게이트웨이 · llm_config.json 문제 - 사유 문장 그대로
->          결과 행이 안 생김             setting 이 규칙 이름과 다름 -> chain_worker.log «required value(s) missing: setting»
->          둘째 요청이 늦게 끝남          정상 - 리포트는 한 번에 하나, 밀린 요청은 대기열에서 차례로
-> 급할 때   규칙 "enabled": false (저장 즉시) - 다른 체인은 그대로
-> 되돌리기  git revert 223649fa5 -> 런처 재기동. 리포트 규칙 · writes 칸을 쓴 규칙은 되돌린 코드에서 로드 거절되니 그 규칙부터 지움
-> ```
->
 > ## [10-22] **메인 그리드 체크 칸 · 파일 인제션 컨트롤 · 선언 읽기 거절 문장 (클라, 9c3834c5e)** — git pull · 화면 새로 고침
 >
 > ```
@@ -1000,7 +1123,7 @@
 > 무엇     Retry 가 잡은(PENDING) 뒤 첫 체크포인트 전에 와처가 멈추면 그 행은 PENDING 에 영영 섰다
 >          (되돌리기가 «체크포인트 없음»은 일부러 건너뛰고, 화면 Retry 는 FAILED 만 집음) -> 이제 와처 기동이 다시 넘김
 > 확인     재기동 직후 watcher.log 에 한 번 «[Retry] N retry claim(s) left by the last run handed again» (N = 서 있던 수)
->          그다음 «Detected PENDING_RETRY log ID #…» · «Retry succeeded for log ID #…» 가 그 행마다
+>          그다음 «Detected PENDING_RETRY checklist row #…» · «Retry succeeded for checklist row #… (<파일>)» 가 그 행마다
 >          줄이 없음 -> 서 있던 PENDING 이 0 이었음(정상)
 > 전제     와처는 설치마다 하나 — 기동하는 와처가 파일 로그의 PENDING 을 «앞선 실행이 남긴 것»으로 읽음.
 >          와처를 둘 띄우면 다른 와처가 읽는 중인 행을 다시 넘김
@@ -1850,7 +1973,7 @@
 >          «more than 100000 files under … - narrow the folder»   폴더를 좁힌다
 >          «N files - over the limit M; … reread_max_files …»      좁히거나 ingestion_settings.json 의 reread_max_files 를 올린다
 >          «a re-read into a table needs the watcher process»      와쳐가 따로 도는 런처로 띄운다(운영 모드)
-> 재기동 뒤 watcher 로그  «Retry succeeded for log ID #<id>.»  — 표 이름은 Admin 목록의 Target Table
+> 재기동 뒤 watcher 로그  «Retry succeeded for checklist row #<id> (<파일>).»  — 표 이름은 Admin 목록의 Target Table
 > 확인(읽기만)  SELECT l.id, l.table_name, l.status FROM file_reread_marks m JOIN file_ingestion_logs l ON l.id = m.log_id
 >              WHERE m.status_before = 'STOOD';      아직 안 집힌, 이번 다시 읽기가 세운 기록
 > 급할 때  POST /admin/file-ingestion/cancel-reread?folder=<폴더>&preview=true 로 수를 보고, preview 없이 한 번 더(화면 단추 없음)
@@ -4036,7 +4159,7 @@
 > 안 적으면     그대로 — options.filename(안 적으면 voids.json) 이름 하나
 > 적으면       glob 이 filename 대신 정한다. 단 parser voids_json 은 이름을 filename 으로 따로 본다 -> 다르면 FAILED 행
 > 순서        pull -> 선언 -> 수집기 재기동(따로 띄우면 run_watcher, 아니면 서버) — external_sources 는 재기동에만 반영
-> 볼 것        맞는 새 파일은 수집 기록(File Ingestion) 행이 생긴다 · 안 맞는 파일은 행도 «New file detected» 줄도 없다
+> 볼 것        맞는 새 파일은 수집 기록(File Ingestion) 행이 생긴다 · 안 맞는 파일은 행도 «File to read» 줄도 없다
 > 거절 줄      수집기 로그 ERROR, 그 항목만 빠짐:
 >            external_sources[i].options.glob must be one glob string or a list of them, none empty, got <값>.
 >            / 로 시작 · 끝나는 패턴은 거절 없이 아무 파일도 안 받는다
@@ -4701,7 +4824,7 @@
 > 답의 뜻         count = 넘길 파일 · by_state = 상태별 · by_folder = 바로 아래 폴더별
 >                missing = 기록이 말하는 자리에 없어 안 넘긴 수 · missing_files = 그 앞 다섯 이름
 >                실행 답 «N file(s) handed to the watcher» = 요청 안에서 PENDING_RETRY 로 표시함 (기다리지 않는다)
-> 볼 줄          watcher.log: Detected PENDING_RETRY log ID #<id> (<파일>). Processing... -> File processed: <파일> (SUCCESS) for <표>. -> Retry succeeded for log ID #<id>.
+> 볼 줄          watcher.log: Detected PENDING_RETRY checklist row #<id> (<파일>). Processing... -> File processed: <파일> (SUCCESS) for <표>. -> Retry succeeded for checklist row #<id> (<파일>).
 >                화면에는 보통 인제션과 같은 토스트 (다시 읽기는 [resume-abort] … 재처리(force) 문장을 같이 싣는다)
 > 관문           소급 관문을 안 잡는다 — replay 가 돌아도 바로 표시되고, 다시 읽기가 replay 를 안 막는다
 > statuses 없음   오늘과 같은 실패 재시도(FAILED 만, 자리에 없는 파일도 넘김)
@@ -8067,7 +8190,7 @@
 > ```
 > 칸        server/config/ingestion_settings.json 의 "heavy_lane_workers" — 1 이상 정수, 없으면 1 (= 전과 같음)
 >           감시자 재기동 때 읽음. 값은 운영자가 적음 (박스 설정에 아무도 안 채움)
-> 확인      다른 표의 큰 파일 둘을 거의 같이 올림 -> 감시자 로그의 「📥 New file detected: <파일>」 (처리 시작) 두 줄의 시각
+> 확인      다른 표의 큰 파일 둘을 거의 같이 올림 -> 감시자 로그의 「📥 File to read (<낱말>): <파일>」 (처리 시작) 두 줄의 시각
 > 답의 뜻   워커 1: 둘째 표는 첫째가 끝난 뒤 시작                          그대로 (칸이 없거나 1)
 >           워커 N>1: 둘째 표가 첫째가 도는 동안 시작 · 같은 표 둘째 파일은 첫째 뒤   새 코드 + 칸 읽음
 >           N>1 인데 둘째 표가 기다림                                    감시자가 옛 코드이거나 재기동 전
@@ -8083,7 +8206,7 @@
 > ```
 > 확인      문턱(ingestion_settings 의 heavy_file_mb, 기본 10 MB) 이상인 파일을 화면에서 업로드 -> 감시자 로그
 > 답의 뜻   「🐘 Routed to heavy lane queue (… B): user(…)_…」            새 코드
->           그 줄 없이 「New file detected」 뒤 바로 처리                    API 가 옛 코드 (재기동 안 먹음)
+>           그 줄 없이 「File to read」 뒤 바로 처리                    API 가 옛 코드 (재기동 안 먹음)
 > 남는 것   표 작업공간 폴더(raws/ 의 부모)에 「.upload.<hex>」 파일이 남아 있으면 — 쓰다가 프로세스가 죽은 것. 지워도 됨(감시자는 안 봄)
 > 그대로    탐색기·네트워크 복사로 raws/ 에 직접 넣는 큰 파일은 지금처럼 크기를 생긴 순간에 재서 인라인으로 갈 수 있음 (내용은 맞게 들어감)
 > 되돌리기  git revert. 쓰는 것 없음 — 파일이 raws/ 에 «나타나는 방식»만 바뀜

@@ -6,15 +6,20 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from database import models
-from ingestion import reread
+from ingestion import checkpoint, reread
 
 
 def _log(db, table, path, status, reason=None, at=None):
+    """A read: its record and its file's checklist row (총괄 64b264610 ②) -> the record."""
     row = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
                                   reason=reason, retry_count=0)
     if at is not None:
         row.created_at = row.updated_at = at
     db.add(row)
+    db.flush()
+    line = checkpoint.note_file(db, table, path, status=status, log_id=row.id)
+    if at is not None:
+        line.created_at = line.updated_at = at
     return row
 
 
@@ -59,7 +64,8 @@ def test_the_list_finds_groups_and_the_tables_count(client, db_session, tmp_path
 
     # the re-read and the search take the same rows for the same words
     picked = reread.select_logs(db_session, ("SUCCESS", "FAILED"), table="insp", folder=str(lot_a))
-    assert sorted(log.id for log, _rel in picked) == sorted(r["id"] for r in ask(table="insp", folder=str(lot_a))["data"])
+    assert sorted(log.id for log, _rel in picked) == sorted(r["checklist_id"] for r in ask(table="insp",
+                                                                                          folder=str(lot_a))["data"])
 
     assert client.get("/admin/file-ingestion/logs", params={"group": "day"}).status_code == 400
     assert client.get("/admin/file-ingestion/logs", params={"since": "yesterday"}).status_code == 400

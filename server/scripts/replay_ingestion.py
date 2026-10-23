@@ -45,14 +45,14 @@ def main(argv=None) -> int:
     from sqlalchemy import literal
 
     from database.database import SessionLocal
-    from database.models import FileIngestionLog as Log, path_key
+    from database.models import FileChecklist as Log, path_key
     from ingestion import reread
 
     paths = [os.path.abspath(path) for path in args.path]
     db = SessionLocal()
     try:
         query = db.query(Log).filter(Log.file_mtime.isnot(None),
-                                     path_key(Log.filepath).in_([path_key(literal(path)) for path in paths]))
+                                     Log.path_key.in_([path_key(literal(path)) for path in paths]))
         if args.table:
             query = query.filter(Log.table_name == args.table)
         rows = query.order_by(Log.id).all()

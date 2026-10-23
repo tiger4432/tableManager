@@ -189,7 +189,7 @@ def test_a_timestamptz_column_and_a_text_column_declared_datetime_meet_and_the_j
     pg.commit()
     spec = {"right_table": T_RIGHT, "on": [{"left": "t", "right": "t"}]}
     left_model, right_model = models.DYNAMIC_TABLES[T_LEFT], models.DYNAMIC_TABLES[T_RIGHT]
-    left_rows, answers, _empty = join_into._read_once(pg, spec, left_model, right_model,
+    left_rows, answers, _empty, _rows = join_into._read_once(pg, spec, left_model, right_model,
                                                       [left_model.row_id.isnot(None)], T_LEFT)
     assert {key for _row, key in left_rows} == {(KEY,)} and list(answers) == [(KEY,)], (left_rows, answers)
 

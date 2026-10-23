@@ -289,14 +289,12 @@ def as_chain_rule(internal: dict) -> dict:
         if internal.get(KEY_CELL):
             out[KEY_CELL] = dict(internal[KEY_CELL])
     if derive.get("kind") == "report" and "table" in into:
-        # the report's settings ride as its mapper's arguments; one request a group - the model's time is the group's
+        # the report's settings ride as its mapper's arguments; it writes its results into the summary rows it stands
+        # on, a report a wafer of the rows handed (owner 10-23)
         out["mapper"] = report_shape.REPORT_MAPPER
         out["params"] = dict(derive.get("report") or {})
-        out[chain_bindings.ROWS_PER_RUN_KEY] = 1
-        # its step and wafer rows are written beside the report, a request's whole set replaced on a remake (lead 10-22)
-        import product_tables
-        out[chain_bindings.WRITES_KEY] = [product_tables.REPORT_STEP_TABLE, product_tables.REPORT_WAFER_TABLE]
-        out["allow_replace_map"] = True
+        # the group's rows in one call, so a wafer's rows make one report (판정 506, as the join's)
+        out["is_batch"] = True
     out.update(derive.get("mapper") or {})
     return with_declared_cells(out, internal)
 
@@ -493,6 +491,9 @@ def companion_rules(internal: dict) -> list:
     #    target table; what wakes this side is its own join key (a new row, a changed key).
     target_key = [str(pair["left"]) for pair in (derive.get("join") or {}).get("on") or ()
                   if isinstance(pair, dict) and pair.get("left")]
+    # and the target columns a function take is handed (`row`): a changed one is a changed answer
+    target_key += [str(name) for item in (derive.get("join") or {}).get("take") or () if isinstance(item, dict)
+                   for name in item.get(join_into.TAKE_ROW) or () if str(name) not in target_key]
     companion.pop("trigger_columns", None)
     companion.pop(chain_bindings.ALLOW_DELETE_TRIGGER_KEY, None)     # a target row's deletion feeds no key
     # `on.require` is about the SOURCE rows this half never receives (총괄 49052cbdd).
@@ -774,6 +775,14 @@ def expand_declaration(declaration, table_config=None,
 
     internal = from_declaration(declaration)
     if is_switched_off(internal):
+        # [owner 10-23, ruling 399 widened] OFF STANDS ITS RULES OFF, as a flat off
+        #    rule always has: nothing wakes them (`ingestion_worker.fire_refusal`), a replay that names one runs it.
+        #    Judged as written on - the save gate's judgement; one that would not stand stands nothing, as before.
+        on, refusal, notes = expand_declaration(dict(declaration, enabled=True), table_config)
+        if on and not refusal:
+            return ([dict(rule, enabled=False) for rule in on], None,
+                    ["%s: enabled=false \u2014 nothing wakes it; a replay that names it runs it." % name]
+                    + [note.replace(" The rule runs.", "") for note in notes])
         # a rule that is off is still read for its cells (\ucd1d\uad04 6c6d76924 \u2460)
         return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name] + unread
                 + ["%s: derive.%s cell this product does not read \u2014 %s." % (name, kind, ", ".join(cells))
@@ -818,11 +827,13 @@ def expand_declaration(declaration, table_config=None,
         if blank:
             return ([], "%s: %s" % (name, blank), unread)
         gathered = join_into.take_refusal((internal.get("derive") or {}).get("join") or {}, internal.get(KEY_CELL),
-                                          (internal.get("on") or {}).get("table"))
+                                          (internal.get("on") or {}).get("table"),
+                                          str((internal.get("into") or {}).get("table") or ""))
         if gathered:
             return ([], "%s: %s" % (name, gathered), unread)
     if (internal.get("derive") or {}).get("kind") == "report":
-        refused = report_shape.refusal((internal.get("derive") or {}).get("report"))
+        refused = report_shape.refusal((internal.get("derive") or {}).get("report"),
+                                       (internal.get("on") or {}).get("table"), (internal.get("into") or {}).get("table"))
         if refused:
             return ([], "%s: %s" % (name, refused), unread)
 

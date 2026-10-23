@@ -2975,8 +2975,11 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     identity. A supplied key is kept instead - see 판정 191 below.
 
     It always sets the framework-owned `update_item.business_key_val`. When the table
-    ALSO declares a physical `business_key` column, it keeps the historical second
-    side effect and writes the key back into `updates[key_col]` when absent. A
+    ALSO declares a physical `business_key` column - one of its `loadable_columns` - it keeps the
+    historical second side effect and writes the key back into `updates[key_col]` when absent; a
+    `business_key` that names no column gets nothing written (the guide: «물리 칸이 없으면
+    business_key_val 에만»), else every row made by its keys counted a drop the table's own
+    declaration caused (총괄 10-23). A
     source-owned schema may instead declare only `composite_key_source`; in that form
     no synthetic source column is invented and the assembled identity lives only in
     the framework's `business_key_val` column.
@@ -3030,7 +3033,7 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
         # `clean_str_value`, the spelling a key is stored under and the prefetch asks
         update_item._supplied_business_key_val = clean_str_value(supplied)
     update_item.business_key_val = computed_key
-    if key_col and key_col not in update_item.updates:
+    if key_col in loadable_columns(config) and key_col not in update_item.updates:
         update_item.updates[key_col] = computed_key
     return True
 
@@ -6224,7 +6227,10 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
 
         old_val = getattr(row, col_name, None)
         new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name)
-        setattr(row, col_name, new_val)
+        moved = values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
+            "column_types") or {}).get(col_name, "string"))
+        if moved:                       # the value it already shows is not written again - no event (총괄 f5ff1e3e9)
+            setattr(row, col_name, new_val)
 
         is_overwrite = ("user" in sources_dict) or (manual_pin is not None)
         ow_key = (table_name, r_id, col_name)
@@ -6246,8 +6252,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
                 cell_overwrites_to_delete.add(ow_key)
                 cell_overwrites_to_upsert.pop(ow_key, None)
 
-        if values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
-                "column_types") or {}).get(col_name, "string")):
+        if moved:
             log_dict = create_audit_log(
                 db, table_name, r_id, col_name, old_val, new_val,
                 f"delete_source:{source_name}", "system",
@@ -6380,7 +6385,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
 
         old_val = getattr(row, col_name, None)
         new_val, top_src = compute_priority_value(sources_dict, effective_source, table_name)
-        setattr(row, col_name, new_val)
+        moved = values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
+            "column_types") or {}).get(col_name, "string"))
+        if moved:                       # the value it already shows is not written again - no event (총괄 f5ff1e3e9)
+            setattr(row, col_name, new_val)
 
         is_overwrite = ("user" in sources_dict) or (effective_source is not None)
         ow_key = (table_name, r_id, col_name)
@@ -6402,8 +6410,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                 cell_overwrites_to_delete.add(ow_key)
                 cell_overwrites_to_upsert.pop(ow_key, None)
 
-        if values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
-                "column_types") or {}).get(col_name, "string")):
+        if moved:
             log_dict = create_audit_log(
                 db, table_name, r_id, col_name, old_val, new_val,
                 f"set_priority:{effective_source}", updated_by,

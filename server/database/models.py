@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint, Float
+from sqlalchemy import event as sa_event
 from sqlalchemy.sql import func
 from .database import Base, is_sqlite
 
@@ -285,6 +286,11 @@ class DatabaseOutbox(Base):
     #: The ledger's mark (총괄 bb9b1c19c (가)): NULL = yet to follow, 'done', or 'failed: <why>'.
     #: `ledger.followup.drain_outbox_once` takes and marks; migrations/add_outbox_ledger_state.py.
     ledger_state = Column(String, nullable=True)
+    #: The payload's run, transaction and row count as columns (총괄 c0e6906f1): the queue's lines are read off these,
+    #: not off a payload of ~40 KB per waiting event. Written from the payload by `outbox_line_columns`, the one seat.
+    run_id = Column(String, nullable=True)
+    transaction_id = Column(String, nullable=True)
+    row_count = Column(Integer, nullable=True)
 
     # [핵심] Outbox 폴링 스캔 최적화 색인 일람.
     # 부분 인덱스(postgresql_where)는 PostgreSQL에서만 조건이 적용되고 SQLite에서는 조건이 무시된
@@ -323,6 +329,10 @@ class DatabaseOutbox(Base):
         Index("idx_outbox_ledger_pending", "id",
               postgresql_where=text("processed_chain = true AND ledger_state IS NULL"),
               info={"purpose": "run events the ledger has not followed yet", "serves": "ledger follow-up"}),
+        Index("idx_outbox_line", text("(coalesce(run_id, transaction_id))"), "id",
+              postgresql_where=text("processed_chain = false"),
+              info={"purpose": "waiting events of one queue line, oldest first",
+                    "serves": "a slot's line window, the queue x, set-aside by line"}),
     ]
     if not is_sqlite:
         _outbox_index_list.append(
@@ -341,6 +351,63 @@ class DatabaseOutbox(Base):
         """
         from utils.payload_helper import get_payload_dict
         return get_payload_dict(self.payload)
+
+
+def outbox_line_columns(payload) -> dict:
+    """{run_id, transaction_id, row_count} of an outbox payload, as `payload->>'run_id'` · `->>'transaction_id'` ·
+    `->'row_count'` read it - ONE RULE: every insert (`_outbox_line_columns` below, `database.row_event`) and the
+    waiting rows written before the columns (`fill_outbox_line_columns`). A payload stored as a JSON string (a
+    scheduler trigger's `json.dumps`) has no keys, as the SQL reads it."""
+    import json
+
+    if not isinstance(payload, dict):
+        return {"run_id": None, "transaction_id": None, "row_count": None}
+
+    def as_text(value):
+        return value if value is None or isinstance(value, str) else json.dumps(value)
+
+    count = payload.get("row_count")
+    return {"run_id": as_text(payload.get("run_id")), "transaction_id": as_text(payload.get("transaction_id")),
+            "row_count": count if isinstance(count, int) and not isinstance(count, bool) else None}
+
+
+@sa_event.listens_for(DatabaseOutbox, "before_insert")
+def _outbox_line_columns(_mapper, _connection, target):
+    for name, value in outbox_line_columns(target.payload).items():
+        setattr(target, name, value)
+
+
+#: Waiting rows read per page by `fill_outbox_line_columns`.
+OUTBOX_FILL_PAGE = 1000
+
+
+def fill_outbox_line_columns(engine, say=logger.info):
+    """The waiting outbox rows written before the line columns existed, given them by `outbox_line_columns` - the
+    chain's startup, after the schema sync added the columns and before its dispatcher reads a line. A waiting row
+    whose three are all empty is read again (most have no run or transaction: a control event's); one with any is
+    not. -> rows filled."""
+    from sqlalchemy import inspect, select, update
+
+    outbox = DatabaseOutbox.__table__
+    if not inspect(engine).has_table(outbox.name):
+        return 0                     # a first start before the web server made the tables: nothing waits
+    empty = (outbox.c.processed_chain == False, outbox.c.run_id.is_(None),   # noqa: E712 - the index's spelling
+             outbox.c.transaction_id.is_(None), outbox.c.row_count.is_(None))
+    after, read, filled = 0, 0, 0
+    while True:
+        with engine.begin() as conn:
+            page = conn.execute(select(outbox.c.id, outbox.c.payload).where(*empty, outbox.c.id > after)
+                                .order_by(outbox.c.id).limit(OUTBOX_FILL_PAGE)).fetchall()
+            if not page:
+                break
+            after, read = page[-1][0], read + len(page)
+            for row_id, payload in page:
+                values = outbox_line_columns(payload)
+                if any(value is not None for value in values.values()):
+                    conn.execute(update(outbox).where(outbox.c.id == row_id).values(**values))
+                    filled += 1
+    say("[Chain] outbox line columns: %d of %d waiting event(s) without them filled" % (filled, read))
+    return filled
 
 
 def path_key(column):
@@ -381,10 +448,8 @@ class FileIngestionLog(Base):
     # The transaction the file's read wrote under (총괄 10-20) - every audit log row of that read carries it; a re-read
     # writes its own. Null on rows written before it and on files skipped without a read.
     transaction_id = Column(String(64), nullable=True)
-    # The file as it was when this row's read came to its answer (소유자 10-21 체크리스트): a row with the file's
-    # (mtime, size) checks it - `checkpoint.checked`. Null = not checked: a read that waited out a lock, a row written
-    # before these, a table whose plugins or external source changed (`reread.hand_on_a_changed_reading` empties its
-    # rows - a table_config change alone does not).
+    # The file as it was when this row's read came to its answer - copied to its file's checklist row
+    # (`FileChecklist`, which checks it - 총괄 64b264610 ②). Null: a read that waited out a lock, a row written before.
     file_mtime = Column(DateTime(timezone=True), nullable=True)
     file_size = Column(BigInteger, nullable=True)
 
@@ -405,6 +470,43 @@ class FileIngestionLog(Base):
         Index("ix_file_ingestion_logs_status_id", "status", "id",
               info={"purpose": "the newest ingestion log rows in one state, without sorting the state's rows",
                     "serves": "admin file ingestion list and its failed list (owner 10-16: 10 s)"}),
+    )
+
+
+class FileChecklist(Base):
+    """The checklist (소유자 10-21 · 10-23 「파일당 한 행」, 총괄 64b264610 ②): ONE row per (table, file) - its state
+    now (the last read's SUCCESS / FAILED, or the retry door's PENDING_RETRY / PENDING), its stamp (the file's (mtime,
+    size) as its last read found it - Null: not checked) and its newest record (`log_id`). `file_ingestion_logs` keeps
+    the records, one per read. Written by `ingestion.checkpoint.note_file` and the checklist's own moves."""
+    __tablename__ = "file_checklist"
+
+    id = Column(Integer, primary_key=True)
+    table_name = Column(String, nullable=False)
+    # The path as `path_key` folds it, written by that SQL function - the one spelling the key and the search compare.
+    path_key = Column(String, nullable=False)
+    filepath = Column(String, nullable=False)
+    filename = Column(String)
+    source = Column(String, nullable=True)
+    # `file_ingestion_status.FILE_INGESTION_STATUS_VOCABULARY`
+    status = Column(String(20), nullable=False)
+    # While it waits (PENDING_RETRY): the state it had before it was handed (`reread.STOOD_BY_REREAD` - stood by the
+    # re-read, no state) - what «cancel» puts back and the retry door's word says (총괄 10-11 ㄱ).
+    status_before = Column(String(20), nullable=True)
+    file_mtime = Column(DateTime(timezone=True), nullable=True)
+    file_size = Column(BigInteger, nullable=True)
+    log_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("table_name", "path_key", name="uq_file_checklist_table_path",
+                         info={"purpose": "one row per (table, file)", "serves": "the checklist's every ask"}),
+        Index("ix_file_checklist_folder", "path_key", postgresql_ops={"path_key": "text_pattern_ops"},
+              info={"purpose": "checklist rows under one folder", "serves": "file search by folder, re-read"}),
+        Index("ix_file_checklist_status", "status",
+              info={"purpose": "checklist rows in one state", "serves": "watcher retries (PENDING, PENDING_RETRY)"}),
+        Index("ix_file_checklist_filename", "filename",
+              info={"purpose": "checklist rows of one file name", "serves": "a re-read into a table's lookup"}),
     )
 
 
@@ -531,9 +633,8 @@ FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged"
 
 
 class FileRereadMark(Base):
-    """A log row the re-read handed to the watcher, and the state it had then (총괄 10-11 ㄱ, 소유자 「다시 읽기 잘못
-    걸었다가 파일 너무 많아서 서버 뻗었어」) - what «cancel» puts back while the row still waits. A table of its own,
-    not a column on `file_ingestion_logs`, for FileIngestionCheckpoint's reason ①: create_all makes it, no ALTER order."""
+    """⚰️ 총괄 64b264610 ②: the state before a hand-over lives on the checklist row (`FileChecklist.status_before`).
+    Read once, by `checkpoint.fill_checklist`, for the rows waiting when the checklist was made; nothing writes it."""
     __tablename__ = "file_reread_marks"
 
     log_id = Column(Integer, primary_key=True)
@@ -632,7 +733,7 @@ class FileIngestionCheckpoint(Base):
 #: System tables the boot schema sync (`sync_dynamic_tables_schema`) also adds a declared column to - a column added to
 #: one of these later reaches a database that never ran its SQL (총괄 10-20: a pulled server reading a column the
 #: database lacked failed every file list and every watcher record with UndefinedColumn).
-SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog, FileIngestionCheckpoint)
+SCHEMA_SYNCED_SYSTEM_TABLES = (FileIngestionLog, FileIngestionCheckpoint, DatabaseOutbox)
 
 
 def schema_synced_tables() -> dict:
@@ -1519,6 +1620,10 @@ def init_dynamic_models(config_dict: dict, engine=None):
         engine.clear_compiled_cache()
 
 
+#: PostgreSQL's duplicate_column - the column a sync meant to add is there.
+DUPLICATE_COLUMN = "42701"
+
+
 def sync_dynamic_tables_schema(engine):
     """
     DYNAMIC_TABLES의 정의와 실제 DB 물리 테이블의 스키마를 비교하여,
@@ -1610,6 +1715,11 @@ def sync_dynamic_tables_schema(engine):
                     logger.info("[Schema Sync] added column '%s' to '%s'",
                                 col_name, table_name)
                 except Exception as err:
+                    if getattr(getattr(err, "orig", None), "pgcode", None) == DUPLICATE_COLUMN:
+                        # the server, the watcher and the chain worker sync at the same start; one added it first
+                        logger.info("[Schema Sync] column '%s' on '%s' was added by another process starting with "
+                                    "this one", col_name, table_name)
+                        continue
                     if db_safety.waited_past_the_lock_timeout(err):
                         # Waited out, not wrong: the process goes on and the next start or
                         # config save adds it. Until then the table itself fails - every SELECT
@@ -2648,6 +2758,8 @@ def ensure_ingestion_checkpoint_table(engine):
     워처 프로세스 부팅(run_watcher)·핫리로드(refresh_dynamic_models)에서 호출한다.
     #7 패턴 준용: information_schema 게이트 + checkfirst + engine 단위 독립 트랜잭션.
 
+    The file checklist (`FileChecklist`, 총괄 64b264610 ②) too - the watcher writes it from its first read.
+
     반환: 새로 CREATE한 테이블명 리스트.
     """
     from sqlalchemy import inspect
@@ -2660,17 +2772,16 @@ def ensure_ingestion_checkpoint_table(engine):
             print(f"[Ingestion Schema] Failed to inspect database for checkpoint table: {told(err)}")
             return created
 
-        table_name = FileIngestionCheckpoint.__tablename__
-        try:
-            if inspector.has_table(table_name):
-                return created
-            Base.metadata.create_all(
-                bind=engine, tables=[FileIngestionCheckpoint.__table__], checkfirst=True
-            )
-            created.append(table_name)
-            print(f"[Ingestion Schema] Created ingestion checkpoint table '{table_name}'.")
-        except Exception as err:
-            print(f"[Ingestion Schema] Failed to create table '{table_name}': {told(err)}")
+        for model in (FileIngestionCheckpoint, FileChecklist):
+            table_name = model.__tablename__
+            try:
+                if inspector.has_table(table_name):
+                    continue
+                Base.metadata.create_all(bind=engine, tables=[model.__table__], checkfirst=True)
+                created.append(table_name)
+                print(f"[Ingestion Schema] Created ingestion checkpoint table '{table_name}'.")
+            except Exception as err:
+                print(f"[Ingestion Schema] Failed to create table '{table_name}': {told(err)}")
     return created
 
 

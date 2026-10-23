@@ -5468,17 +5468,19 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         raise HTTPException(status_code=400, detail=str(e))
     if group not in (None, "", "folder", "reason", "status"):
         raise HTTPException(status_code=400, detail=f"group is folder, reason or status, not {group!r}")
+    # 🔴 ONE LINE PER FILE (총괄 64b264610 ② 가): the checklist's rows, their state now - the chips' counts and the
+    #    lines they filter come from one table. A line's result cells are its file's newest record's; a file's earlier
+    #    reads stay in the records (file_ingestion_logs), not on this list.
+    model, record = models.FileChecklist, models.FileIngestionLog
     query = reread.logs_query(db, None if status == "ALL" else (status,), table, folder, since_at, until_at,
-                              name=name).order_by(models.FileIngestionLog.id.desc())
-
-    # 🔴 STOPS PAST COUNT_CAP (owner 10-16: the failed list took 10 s) - the log table only grows, and a count of all
-    #    its failed rows held a connection the other admin routes waited on. Past it the screen says «10,000+».
-    counted = query.order_by(None).limit(COUNT_CAP + 1).count()
+                              name=name)
+    # 🔴 STOPS PAST COUNT_CAP (owner 10-16: the failed list took 10 s) - a count of every failed file held a connection
+    #    the other admin routes waited on. Past it the screen says «10,000+».
+    counted = query.limit(COUNT_CAP + 1).count()
     total, capped = min(counted, COUNT_CAP), counted > COUNT_CAP
     start = (page - 1) * limit
-    model, spelled = models.FileIngestionLog, models.path_key(models.FileIngestionLog.filepath)
-    page_rows = query.add_columns(spelled).offset(start).limit(limit).all()
-    logs = [log for log, _spelled in page_rows]
+    query = query.outerjoin(record, record.id == model.log_id).order_by(model.updated_at.desc(), model.id.desc())
+    page_rows = query.add_entity(record).offset(start).limit(limit).all()
     roots = () if crud.is_blank_value(folder) else reread.folder_roots(folder)
 
     def key_of(filepath, spelled_path, state, reason):
@@ -5489,28 +5491,31 @@ def get_file_ingestion_logs(status: str = "ALL", page: int = 1, limit: int = 10,
         return key, key
 
     result_list = []
-    for log in logs:
+    for row, log in page_rows:
+        read_at = (log.created_at if log is not None else None) or row.created_at
         result_list.append({
-            "id": log.id,
-            "filename": log.filename,
-            "filepath": log.filepath,
-            "folder": reread.folder_of(log.filepath),
-            "table_name": log.table_name,
-            "status": log.status,
-            "error_message": log.error_message,
-            "retry_count": log.retry_count,
-            **{column: getattr(log, column) for column in models.FILE_RESULT_COLUMNS},
-            "created_at": log.created_at.isoformat() if log.created_at else None,
-            "updated_at": log.updated_at.isoformat() if log.updated_at else None
+            "id": row.log_id,                       # its newest record: a one-file Retry names it
+            "checklist_id": row.id,
+            "filename": row.filename,
+            "filepath": row.filepath,
+            "folder": reread.folder_of(row.filepath),
+            "table_name": row.table_name,
+            "status": row.status,
+            "error_message": log.error_message if log is not None else None,
+            "retry_count": (log.retry_count if log is not None else None) or 0,
+            **{column: getattr(log, column) if log is not None else None for column in models.FILE_RESULT_COLUMNS},
+            "source": row.source,
+            "created_at": read_at.isoformat() if read_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None
         })
-        
+
     said = {"status": "success", "total": total, "capped": capped, "page": page, "limit": limit, "data": result_list}
     if group:
         groups = {}
-        for row, (log, spelled_path) in zip(result_list, page_rows):
-            row["group_key"] = key_of(log.filepath, spelled_path, log.status, log.reason)[0]
+        for line, (row, log) in zip(result_list, page_rows):
+            line["group_key"] = key_of(row.filepath, row.path_key, row.status, log.reason if log else None)[0]
         for filepath, spelled_path, state, reason in query.with_entities(
-                model.filepath, spelled, model.status, model.reason).limit(COUNT_CAP + 1):
+                model.filepath, model.path_key, model.status, record.reason).limit(COUNT_CAP + 1):
             key, label = key_of(filepath, spelled_path, state, reason)
             entry = groups.setdefault(key, {"key": key, "label": label, "count": 0, "failed": 0,   # its first row's
                                             "waiting": 0})
@@ -5533,10 +5538,11 @@ def _checklist_rows(db):
 
 @app.get("/admin/file-ingestion/tables", dependencies=[Depends(require_admin_token)])
 def get_file_ingestion_tables(db: Session = Depends(get_db)):
-    """표마다 파일 기록 수 — 전체 · 상태별 · 마지막 시각 (총괄 e390600d6). 한 질의(GROUP BY table_name, status), 정확한 수."""
+    """표마다 파일 수 — 전체 · 상태별 · 마지막 시각 (총괄 e390600d6), 체크리스트(파일당 한 행, 총괄 64b264610 ②)에서.
+    한 질의(GROUP BY table_name, status), 정확한 수."""
     from sqlalchemy import func
 
-    model = models.FileIngestionLog
+    model = models.FileChecklist
     at = func.max(func.coalesce(model.updated_at, model.created_at))
     tables = {}
     for table_name, state, n, last in db.query(model.table_name, model.status, func.count(model.id), at).group_by(
@@ -5558,8 +5564,25 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     sources = {}
     for row in (held or {}).get("total") or ():
         sources.setdefault(row["table_name"], []).append({k: v for k, v in row.items() if k != "table_name"})
+    # each external source's last sweep, off the watcher's heartbeat (총괄 64b264610): joined on (table, source)
+    from utils import heartbeat
+
+    laps = (heartbeat.read_all().get(directory_watcher.HEARTBEAT_NAME) or {}).get("laps") or {}
+    for name, lap in sorted(laps.items()):
+        if not name.startswith(directory_watcher.SWEEP_LAP_PREFIX):
+            continue
+        entries = sources.setdefault(lap.get("table"), [])
+        entry = next((e for e in entries if e["source"] == lap.get("source")), None)
+        if entry is None:
+            entry = {"source": lap.get("source"), "total": 0, "read": 0, "left": 0, "left_by_status": {}}
+            entries.append(entry)
+        entry["sweep"] = {k: lap.get(k) for k in ("state", "age_seconds", "seconds", "looked", "already_read",
+                                                   "dispatched", "why")}
     for entry in data:
         entry["sources"] = sources.get(entry["table_name"], [])
+    seen = {entry["table_name"] for entry in data}
+    data += [{"table_name": table, "total": 0, "by_status": {}, "last_at": None, "sources": entries}
+             for table, entries in sorted(sources.items(), key=lambda item: str(item[0])) if table not in seen]
     progress = {"counting": held is None, "counted_at": (held or {}).get("counted_at"),
                 "count_seconds": (held or {}).get("count_seconds"), "failed": (held or {}).get("failed")}
     return {"status": "success", "data": data, "progress": progress}
@@ -6440,7 +6463,8 @@ def get_chain_rules():
         print(f"Error reading chain rules: {read['error']}")
         return {"status": "error", "message": read["error"], "data": []}
 
-    standing = worker.loaded_chain_rules()
+    # an off rule stands for a replay that names it (owner 10-23 「막아」) and does not run - 판정 656's other pixel
+    standing = [rule for rule in worker.loaded_chain_rules() if not rule_shape.is_switched_off(rule)]
     listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING)
               for rule in standing]
     standing_names = {rule.get("name") for rule in standing}
@@ -6455,6 +6479,10 @@ def get_chain_rules():
         # (`unresolvable_mapper`), so only the loader knows whether it really runs.
         # Measured: asking the grammar alone dropped a refused rule off the list entirely.
         expanded, refusal, notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
+        if expanded and rule_shape.is_switched_off(raw):
+            listed.append(dict(raw, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+                               rule_state_detail=notes[0] if notes else "enabled=false"))
+            continue
         # 🔴 [Q-191] PER STANDING RULE, NOT PER DECLARATION. One declaration can stand TWO
         # rules under DIFFERENT names, and the loader drops BY NAME
         # (`name_claimed_twice`), so exactly one half can fall. Asking 「did anything from
@@ -7350,7 +7378,7 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         if states != reread.RETRY_STATUSES:
             # 총괄 a4d135a06: files that went in - a file once (its newest row), a gone file not handed.
             # Failed files keep today's answer.
-            picked, missing = await asyncio.to_thread(lambda: reread.split_missing(reread.one_per_file(picked)))
+            picked, missing = await asyncio.to_thread(lambda: reread.split_missing(picked))
         if log_id is None:
             # 총괄 dd0f2818c: a bulk Retry picks what the declaration takes now; one file named by its row is read as asked
             picked, not_taken, not_taken_files = await asyncio.to_thread(reread.taken_now, picked)
@@ -7385,8 +7413,8 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
     if os.getenv("DECOUPLED") == "True":
         def _hand(failed_logs=failed_logs):
             if chosen is not None:
-                failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"], folder=folder)
-            reread.mark_for_reread(db, failed_logs, folder=folder if by_folder_asked else None)
+                failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"])
+            reread.mark_for_reread(db, failed_logs)
             return failed_logs
 
         failed_logs = await asyncio.to_thread(_hand)
@@ -7719,6 +7747,12 @@ def list_admin_scripts():
                     "path": f"mappers/{name}",
                     "type": "mapper"
                 })
+        # a join take's functions, beside the mappers they are not
+        from chain import join_into
+        join_fn_dir = join_into.JOIN_FN_DIR
+        for name in sorted(os.listdir(join_fn_dir)) if os.path.isdir(join_fn_dir) else ():
+            if name.endswith(".py"):
+                mappers.append({"filename": f"join_fn/{name}", "path": f"mappers/join_fn/{name}", "type": "mapper"})
                 
     ingestions = []
     auto_updates = []

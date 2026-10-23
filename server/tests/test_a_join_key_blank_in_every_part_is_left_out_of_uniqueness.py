@@ -144,7 +144,7 @@ def test_the_index_stands_over_blank_keys_and_the_join_and_the_gate_read_through
 
     for plan in gate + join:
         assert name in plan and "Seq Scan" not in plan, plan
-    pairs, answers, _empty = answer["read"]
+    pairs, answers, _empty, _rows = answer["read"]
     assert len(pairs) == 2000 and len(answers) == 2000
     assert all(key and not crud.every_key_part_blank(key) for key in answers)
 

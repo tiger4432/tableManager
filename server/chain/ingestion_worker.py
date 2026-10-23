@@ -1254,7 +1254,8 @@ def fire_refusal(rule, event):
     only = event_constants.only_rule_of(get_payload_dict(event))
     if only is not None and rule.get("name") != only:
         return "another rule's replay"
-    if rule_shape.is_switched_off(rule):
+    # 🔴 [owner 10-23 「막아」 · 「리플레이로」] OFF IS «NOTHING WAKES IT» - a replay that names this rule runs it.
+    if rule_shape.is_switched_off(rule) and only is None:
         return "switched off"
     if rule.get("trigger_table") != event.table_name:
         return "another table"
@@ -1429,7 +1430,7 @@ def _rule_outcome_before_running(rule, events):
        둘 다 `fire_refusal` «하나»를 지난다(총괄 2a1be19e9).
     ⚠️ 꺼짐이 안 걸림을 «이긴다». 둘 다 참일 때 운영자가 고칠 수 있는 쪽이 그것이다.
     """
-    if rule_shape.is_switched_off(rule):
+    if rule_shape.is_switched_off(rule) and all(fire_refusal(rule, e) is not None for e in events):
         return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false"
     refused = set()
     for e in events:
@@ -4418,9 +4419,9 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
     return await process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts=batch_wake_ts)
 
 
-def pending_chain_events(db, limit: int = 200, line=None, run=False) -> list:
+def pending_chain_events(db, limit: int = 200, line=None) -> list:
     """The waiting rows THIS loop can consume, oldest first (S-252) - of one chain queue line
-    when `line` names it (a slot's, 총괄 19f6a9277; `run` = the key is a retroactive run's).
+    when `line` names it (a slot's, 총괄 19f6a9277).
 
     🔴 ANOTHER DAEMON'S ROW IS NOT THIS LOOP'S QUEUE. A CONTROL row is addressed to
     `run_auto_update.py` (`SCHEDULER_OWNED_EVENT_TYPES`), and this loop has always skipped
@@ -4450,7 +4451,7 @@ def pending_chain_events(db, limit: int = 200, line=None, run=False) -> list:
     return db.query(DatabaseOutbox).filter(
         DatabaseOutbox.processed_chain == False,          # noqa: E712
         ~DatabaseOutbox.event_type.in_(tuple(event_constants.CONTROL_EVENT_TYPES)),
-        *(() if line is None else event_constants.queue_line_rows(DatabaseOutbox, line, run=run))
+        *(() if line is None else event_constants.queue_line_rows(DatabaseOutbox, line))
     ).order_by(DatabaseOutbox.id.asc()).limit(limit).all()
 
 
@@ -4517,6 +4518,8 @@ def _sync_dynamic_tables_schema_sync(db_session_factory):
         db.close()
     models.sync_dynamic_tables_schema(engine)
     logger.info("Dynamic database models and schema sync completed.")
+    # the waiting rows written before the outbox's line columns: filled before the dispatcher reads a line
+    models.fill_outbox_line_columns(engine, say=logger.info)
 
 
 def _starting(steps, step):
@@ -4607,6 +4610,8 @@ async def start_chain_ingestion_worker(db_session_factory):
     #   (통지처럼 기아가 문제되는 경로가 아님 — 늦게 완료돼도 무해·멱등). done 가드로 중복 실행을 방지한다.
     last_purge_ts = None
     purge_task = None
+    # the AI report's files waiting for their rule's send_to (`report_loop.send_waiting`) - and each file's tries
+    last_send_ts, send_task, send_tries = 0.0, None, {}
 
     # [Latency Fix #4] LISTEN 전용 커넥션을 워커 수명 동안 상시 유지(대기마다 재등록하던 레이스 제거).
     listener = OutboxListener(db_session_factory, event_constants.OUTBOX_NOTIFY_CHANNEL)
@@ -4844,6 +4849,15 @@ async def start_chain_ingestion_worker(db_session_factory):
                         # deleted rows stays in its log line.
                         heartbeat.record_lap("chain", "outbox_purge",
                                              pace=OUTBOX_PURGE_INTERVAL)
+
+                    # the AI report's waiting sends (lead 10-23 ㄱ) - the purge's shape: a thread this loop does
+                    # not await, one at a time, at the sweep's interval, so a big file never holds a slot or a tick
+                    if (send_task is None or send_task.done()) and maint_ts - last_send_ts >= SWEEP_INTERVAL:
+                        from chain import report_loop
+
+                        last_send_ts = maint_ts
+                        send_task = asyncio.create_task(asyncio.to_thread(
+                            report_loop.send_waiting, list(rules or ()), db_session_factory, send_tries))
                 except Exception as maint_err:                       # noqa: BLE001
                     # 유지보수의 실패가 «일»의 오류를 덮지 않게 한다. 이 finally 는 예외 경로에서도
                     # 돌고, 거기서 새 예외를 던지면 원래 예외가 사라진다.

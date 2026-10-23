@@ -495,6 +495,15 @@ AUTO_INDEX_PER_TABLE_DEFAULT = 10
 #: Seconds between two looks at every raws/ subfolder (총괄 2f487efb5). Not a positive number: the default.
 SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
 SUBFOLDER_RECHECK_DEFAULT = 30.0
+#: Seconds the periodic sweep rests after one ends (총괄 64b264610 ②) - the default is PERIODIC_SWEEP_INTERVAL_SECONDS.
+SWEEP_INTERVAL_SETTING = "sweep_interval_seconds"
+#: Between a source's full looks an external sweep lists a folder whose mtime is what it was at its last listing no
+#: more - its sub-folders as then, its files not looked at - and stamps a file by its folder's listing, os.stat only
+#: when the checklist does not clear that; every Nth sweep walks it all and os.stats every file (총괄 64b264610 ②, 10-23).
+#: Seen late, at that Nth sweep: a file written again in place (moves no folder's mtime), a file changed through
+#: another hard link (its listing keeps the old stamp on NTFS). A file open for writing waits until it is closed.
+#: Absent, 0 or not a whole number: every sweep walks all and os.stats every file.
+FULL_WALK_EVERY_SETTING = "external_full_walk_every"
 
 
 def _timeout_seconds(settings, cell, absent):
@@ -575,6 +584,18 @@ def grid_read_timeout(settings=None):
 def subfolder_recheck_seconds(settings=None) -> float:
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, SUBFOLDER_RECHECK_SETTING, None) or SUBFOLDER_RECHECK_DEFAULT
+
+
+def sweep_interval_seconds(settings=None) -> float:
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, SWEEP_INTERVAL_SETTING, None) or PERIODIC_SWEEP_INTERVAL_SECONDS
+
+
+def full_walk_every(settings=None):
+    """`FULL_WALK_EVERY_SETTING`, or None - every sweep walks all and os.stats every file."""
+    settings = load_ingestion_settings() if settings is None else settings
+    value = settings.get(FULL_WALK_EVERY_SETTING)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
 #: A file neither written nor created for this many seconds cannot be mid-copy: it is read without the one-second
@@ -2369,11 +2390,15 @@ class IngestionHandler(FileSystemEventHandler):
         """An external trigger file, read once its folder went quiet (`_wait_tree_quiescent`) - or after the max wait,
         with what was there, said (총괄 b15d6b66e)."""
         try:
+            began = time.monotonic()
             quiet, still = self._wait_tree_quiescent(abs_dir, lambda written: 0, interval)
             if not quiet and still is not None:
                 self.say_what_a_folder_left(abs_dir, "read_while_changing", (
                     f"{len(still)} file(s) still changing after {FLATTEN_STABILITY_MAX_WAIT_SECONDS}s "
                     f"(still changing: {_named(still)})"))
+            elif quiet:
+                logger.info(f"[{self.table_name}] 📂 folder settled after {time.monotonic() - began:.0f} s: {abs_dir} "
+                            f"- {os.path.basename(abs_path)} handed on")
             self._handle_now(abs_path)
         except Exception:
             import traceback
@@ -2408,7 +2433,7 @@ class IngestionHandler(FileSystemEventHandler):
         files = sum(len(names) for _d, _s, names in os.walk(abs_dir))
         logger.log(level, "[%s] 📂 '%s': %d file(s) left - %s - %s - #%d for this folder and reason "
                    "(said at the 1st, 10th, 100th ...)", self.table_name, folder, files, why,
-                   then.format(look=subfolder_recheck_seconds(), sweep=PERIODIC_SWEEP_INTERVAL_SECONDS), nth)
+                   then.format(look=subfolder_recheck_seconds(), sweep=sweep_interval_seconds()), nth)
 
     # os.stat per file, NOT the listing's DirEntry.stat: on NTFS the listing keeps a file's size 0 and its first mtime
     # while a handle is writing it, so a file still being written would read as finished (B probe, 10-23).
@@ -2836,13 +2861,14 @@ class IngestionHandler(FileSystemEventHandler):
         if file_stat is None:
             logger.debug(f"File vanished before processing: {file_path}")
             return
-        if self.already_checked([(abs_path, file_stat)]):
+        answer = self.already_checked([(abs_path, file_stat)])
+        if abs_path in answer:
             return
 
-        # 🔴 PAST THE CHECKLIST, SO THE WORD 「New」 IS TRUE (S-128). A checked file is passed in silence: one line
-        # per file every sweep on an unarchived source buries the events somebody is looking for.
-        logger.info(f"New file detected: {abs_path}")
-        logger.info(f"[{t_name or self.table_name}] 📥 New file detected: {basename}")
+        # 🔴 PAST THE CHECKLIST, WITH ITS WORD (S-128; 총괄 64b264610 - the line said «New» for a changed or unchecked
+        # file too). A checked file is passed in silence: one line per file every sweep on an unarchived source buries
+        # the events somebody is looking for.
+        self._say_file_to_read(t_name, abs_path, answer.why.get(abs_path, ingestion.checkpoint.WHY_UNREAD))
 
         # Initial debounce to allow file copy to finish
         if copy_wait_needed(abs_path):
@@ -3040,24 +3066,26 @@ class IngestionHandler(FileSystemEventHandler):
         already read at that (mtime, size) - not dispatched, not read. EVERY seat asks here: the raws/ sweep, the
         external sweep, the tree walk and the event (one entry). Unreadable checklist -> nothing checked: the files go
         on to be read (availability first)."""
+        unread = {filepath: ingestion.checkpoint.WHY_UNREAD for filepath, _stat in entries}
         if not entries:
-            return set()
+            return Checked()
         t_name, _table_info = self._snapshot_table_context()
         if not t_name:
-            return set()
+            return Checked(why=unread)
         db = SessionLocal()
+        words = {}
         try:
             if not self._stamp_read_files(db, t_name, entries):
-                return {filepath for filepath, _stat in entries}
-            statuses = ingestion.checkpoint.checked(db, t_name, entries)
+                return Checked({filepath for filepath, _stat in entries})
+            statuses = ingestion.checkpoint.checked(db, t_name, entries, words=words)
         except Exception as e:
             logger.warning(f"[{t_name}] The checklist could not be read for {len(entries)} file(s) - they are read: "
                            f"{told(e)}", exc_info=e)
-            return set()
+            return Checked(why=unread)
         finally:
             db.close()
         self._settle_terminal_hits(statuses)
-        return set(statuses)
+        return Checked(statuses, words)
 
     def _settle_terminal_hits(self, statuses: dict):
         """The move a checked file still in raws/ owes (its move failed when it was read), done once per batch.
@@ -3147,7 +3175,8 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _log_ingestion_record(self, original_path: str, archived_path: str, t_name: str,
                               status: str, message: str = None, retry_count: int = 0, result: dict = None):
-        """FileIngestionLog 1행 기록 (성공/실패/스킵 공용).
+        """FileIngestionLog 1행 기록 (성공/실패/스킵 공용) - and its file's checklist row (`checkpoint.note_file`) in the
+        same commit (총괄 64b264610 ②).
 
         `error_message`는 FAILED에서는 오류 트레이스, SUCCESS/SKIPPED에서는 **detail 슬롯**이다
         (main.py의 file-processed SUCCESS detail 관례와 동일 — 페이로드/스키마 불변)."""
@@ -3164,6 +3193,8 @@ class IngestionHandler(FileSystemEventHandler):
                 **(result or {}),
             )
             db.add(log_obj)
+            db.flush()
+            _note_the_read(db, log_obj)
             db.commit()
             logger.info(f"[{t_name}] 📝 Logged file ingestion {status.lower()} to database.")
         except Exception as e:
@@ -3211,14 +3242,17 @@ class IngestionHandler(FileSystemEventHandler):
         from database.models import FileIngestionLog
 
         try:
-            db.add(FileIngestionLog(
+            log_obj = FileIngestionLog(
                 filename=os.path.basename(original_path),
                 filepath=os.path.abspath(archived_path),
                 table_name=t_name or "unknown",
                 status=status,
                 error_message=self.REDUCED_RECORD_NOTE,
                 retry_count=0,
-            ))
+            )
+            db.add(log_obj)
+            db.flush()
+            _note_the_read(db, log_obj)
             db.commit()
             logger.warning(
                 "[%s] Wrote a reduced %s ingestion log row for %s so the file can still be "
@@ -3300,9 +3334,17 @@ class IngestionHandler(FileSystemEventHandler):
             return self._process_archived_file_sync(log_entry, db, uploader,
                                                     filepath, t_name, table_info)
 
+    def _say_file_to_read(self, t_name, abs_path, why):
+        """The line every read says before it reads (총괄 64b264610): why, by `checkpoint`'s word."""
+        logger.info(f"File to read ({why}): {abs_path}")
+        logger.info(f"[{t_name or self.table_name}] 📥 File to read ({why}): {os.path.basename(abs_path)}")
+
     def _process_archived_file_sync(self, log_entry, db, uploader, filepath,
                                     t_name, table_info):
+        from ingestion import reread
+
         began, parse_meta, tally, skipped_no_key = time.monotonic(), {}, None, 0
+        self._say_file_to_read(t_name, os.path.abspath(filepath), reread.why_handed(log_entry))
         # The door reads without asking the checklist - a person chose this file - and its row then checks it.
         file_stat = read_file_stat(os.path.abspath(filepath))
         try:
@@ -3333,15 +3375,12 @@ class IngestionHandler(FileSystemEventHandler):
                     table_info=table_info, checkpoint=plan, tally=tally)
             self._finalize_checkpoint(plan, effective_total)
 
-            # If successful, update the log entry to SUCCESS
+            # A new record - and with it the file's checklist row (총괄 64b264610 ②: the records are one per read)
             detail = self._compose_detail(skipped_no_key, plan, has_rows,
                                           self._grid_refusal(), dropped)  # [F1] + [P2] + 0행
-            log_entry.status = "SUCCESS"
-            log_entry.error_message = detail
-            for column, value in _file_result(began, tally, skipped_no_key, parse_meta,
-                                              file_stat=file_stat).items():
-                setattr(log_entry, column, value)
-            db.commit()
+            self._log_ingestion_record(filepath, filepath, t_name, "SUCCESS", detail,
+                                       result=_file_result(began, tally, skipped_no_key, parse_meta,
+                                                           file_stat=file_stat))
             self._tell_processed(t_name, filepath, "SUCCESS", detail)
             return True
         except Exception as e:
@@ -3349,13 +3388,9 @@ class IngestionHandler(FileSystemEventHandler):
             error_msg = (str(e) if isinstance(e, (crud.CellRefused, crud.NothingWritten))
                          else traceback.format_exc())
             logger.error(f"[{t_name}] ❌ Error retrying file {os.path.basename(filepath)}: {error_msg}")
-            log_entry.status = "FAILED"
-            log_entry.error_message = error_msg
-            log_entry.retry_count += 1
-            for column, value in _file_result(began, tally, skipped_no_key, parse_meta, e,
-                                              file_stat=file_stat).items():
-                setattr(log_entry, column, value)
-            db.commit()
+            self._log_ingestion_record(filepath, filepath, t_name, "FAILED", error_msg,
+                                       result=_file_result(began, tally, skipped_no_key, parse_meta, e,
+                                                           file_stat=file_stat))
             self._tell_processed(t_name, filepath, "FAILED", str(e))
             return False
 
@@ -4156,6 +4191,31 @@ class IngestionHandler(FileSystemEventHandler):
             raise refused
         return dropped
 
+def _note_the_read(db, log):
+    """A read's record told to its file's checklist row (`checkpoint.note_file`): the record's state, source and stamp,
+    the record itself - and no longer waiting."""
+    ingestion.checkpoint.note_file(db, log.table_name, log.filepath, status=log.status, source=log.source,
+                                   file_mtime=log.file_mtime, file_size=log.file_size, log_id=log.id,
+                                   status_before=None)
+
+
+class Checked(set):
+    """`already_checked`'s answer: the paths checked, and `why` - the checklist's word for each path it did not check
+    (`checkpoint.checked(words=)`)."""
+
+    def __init__(self, paths=(), why=None):
+        super().__init__(paths)
+        self.why = why or {}
+
+
+def said_why(words) -> str:
+    """« (new 2 · changed 1)» for a dispatch count - the words as `checkpoint` spells them, or nothing."""
+    counts = {}
+    for word in words:
+        counts[word] = counts.get(word, 0) + 1
+    return " (%s)" % " · ".join("%s %d" % item for item in sorted(counts.items())) if counts else ""
+
+
 class ExternalSourceEventHandler(FileSystemEventHandler):
     """Read-only watchdog adapter for one external root/table binding."""
 
@@ -4201,6 +4261,68 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
         # The handler's processing lock and the checklist (a changed stamp) absorb duplicate event bursts.
         if not event.is_directory:
             self.dispatch_path(event.src_path)
+
+
+#: The heartbeat lap a source's sweep leaves (총괄 64b264610 - the file page's line per store): «sweep:<table>@<root>».
+SWEEP_LAP_PREFIX = "sweep:"
+
+
+def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_read=None, words=()):
+    """One external source's sweep, as the watcher's heartbeat carries it to the API (`heartbeat.record_lap`): sweeping
+    · rested · unavailable, its seconds, files looked at, already read, dispatched and why by word."""
+    counts = {}
+    for word in words:
+        counts[word] = counts.get(word, 0) + 1
+    heartbeat.record_lap(HEARTBEAT_NAME, SWEEP_LAP_PREFIX + spec["source_id"], seconds=seconds, state=state,
+                         table=spec["table_name"], source=spec["root"], looked=looked, already_read=already_read,
+                         dispatched=dispatched, why=counts)
+
+
+def _walk_remembering(root, folders, skip_unchanged, unlisted, why):
+    """`os.walk(root)` top-down - the caller prunes the yielded sub-folder list; the files come as the listing's
+    `os.DirEntry`s - remembering each folder listed as {folder: (mtime_ns, sub-folders)} in `folders` (None: nothing
+    remembered, no folder stat'd); with `skip_unchanged`, a folder whose mtime is what it was is not listed: its
+    sub-folders as then, no files (`why["folders unchanged"]`). A folder's mtime is its own os.stat, never its parent's
+    listing: on NTFS that does not move when a file is added in it (총괄 10-23, A's board).
+    A symbolic link to a folder is listed, not entered, as os.walk does. A folder that cannot be read goes to
+    `unlisted`."""
+    stack = [root]
+    while stack:
+        top = stack.pop()
+        mtime = held = None
+        if folders is not None:
+            try:
+                mtime = os.stat(top).st_mtime_ns
+            except OSError as e:
+                unlisted.append(e)
+                continue
+            held = folders.get(top)
+        if skip_unchanged and held is not None and held[0] == mtime:
+            why["folders unchanged"] += 1
+            dirnames, files, enter = list(held[1]), [], set(held[1])
+        else:
+            try:
+                with os.scandir(top) as it:
+                    entries = list(it)
+            except OSError as e:
+                unlisted.append(e)
+                continue
+            dirnames, files, enter = [], [], set()
+            for entry in entries:
+                try:
+                    is_dir = entry.is_dir()
+                except OSError:
+                    is_dir = False
+                if not is_dir:
+                    files.append(entry)
+                    continue
+                dirnames.append(entry.name)
+                if not os.path.islink(entry.path):
+                    enter.add(entry.name)
+            if folders is not None:
+                folders[top] = (mtime, [name for name in dirnames if name in enter])
+        yield top, dirnames, files
+        stack.extend(os.path.join(top, name) for name in reversed(dirnames) if name in enter)
 
 
 def _say_what_stalled_files_wait_on():
@@ -4249,6 +4371,8 @@ class WorkspaceWatcher:
         self._external_sweep_lock = threading.Lock()
         self._external_availability = {}
         self._external_unmatched_said = set()       # source ids told «none matched» while that lasts
+        self._external_folders = {}                 # source id -> {folder: (mtime_ns, sub-folders)} as last listed
+        self._external_sweeps = {}                  # source id -> its sweeps - every `full_walk_every`th walks all
         self._stop_event = threading.Event()
         self._periodic_sweep_thread = None
         self._subfolder_recheck_thread = None
@@ -4306,6 +4430,7 @@ class WorkspaceWatcher:
             except Exception as e:                                  # noqa: BLE001 - the handler no longer takes them
                 logger.warning(f"External source {source_id}: its watch was not unscheduled: {told(e)}")
         self._external_unmatched_said.discard(source_id)
+        self._external_sweeps.pop(source_id, None)             # back, its first sweep walks all (full_walk_every)
         logger.warning(f"External source {why} - no longer read as it was: {spec['root']} -> {spec['table_name']} "
                        f"({spec.get('options') or {}}); a file being read finishes")
 
@@ -4567,16 +4692,18 @@ class WorkspaceWatcher:
 
             candidates.sort(key=lambda c: c[0])
 
-            cleared = set()
+            cleared, why = set(), {}
             by_handler = {}
             for _m, _fp, abs_fp, handler, fstat in candidates:
                 by_handler.setdefault(handler, []).append((abs_fp, fstat))
             for handler, entries in by_handler.items():
                 if self._stop_event.is_set():
                     break  # shutdown: the dispatch loop below breaks too
-                cleared |= handler.already_checked(entries)
+                answer = handler.already_checked(entries)
+                cleared |= answer
+                why.update(answer.why)
 
-            processed = 0
+            processed, words = 0, []
             for _mtime, fp, abs_fp, handler, _fstat in candidates:
                 if self._stop_event.is_set():
                     break
@@ -4584,15 +4711,16 @@ class WorkspaceWatcher:
                     continue
                 handler._handle_event(fp)
                 processed += 1
+                words.append(why.get(abs_fp, ingestion.checkpoint.WHY_UNREAD))
             if processed or cleared:
                 logger.info(
                     f"🧹 Sweep: {len(candidates)} candidate file(s) in raws/ — "
                     f"{len(cleared)} already read, "
-                    f"{processed} dispatched."
+                    f"{processed} dispatched{said_why(words)}."
                 )
             return processed
 
-    def sweep_external_sources(self, source_ids=None) -> int:
+    def sweep_external_sources(self, source_ids=None, walk_all=False) -> int:
         """Recursively poll configured read-only sources and dispatch changed files.
 
         The cache key includes the binding id, not only the absolute filename:
@@ -4617,6 +4745,7 @@ class WorkspaceWatcher:
                             f"External source unavailable during sweep; it will be "
                             f"retried: {root} -> {spec['table_name']}")
                     self._external_availability[source_id] = False
+                    _sweep_lap(spec, "unavailable")
                     continue
                 if self._external_availability.get(source_id) is False:
                     logger.info(
@@ -4625,11 +4754,18 @@ class WorkspaceWatcher:
                 self._try_schedule_external(target)
                 why_not[source_id] = dict.fromkeys(
                     ("looked", "outside the root", "name not matched", "not a file", "stat failed",
-                     "folders not matching", "folders below max_depth", "folders not listed", "already read",
-                     "dispatched"), 0)
-                pages[source_id] = self._external_pages(source_id, target, why_not[source_id], lambda: said())
+                     "folders not matching", "folders below max_depth", "folders not listed", "folders unchanged",
+                     "already read", "dispatched"), 0)
+                pages[source_id] = self._external_pages(source_id, target, why_not[source_id], lambda: said(),
+                                                        walk_all)
 
             began = said_at = time.monotonic()
+            words = {source_id: [] for source_id in why_not}
+
+            def lap(state, source_id):
+                _sweep_lap(self.external_targets[source_id]["spec"], state, seconds=time.monotonic() - began,
+                           looked=why_not[source_id]["looked"], dispatched=why_not[source_id]["dispatched"],
+                           already_read=why_not[source_id]["already read"], words=words[source_id])
 
             def said(force=False):
                 """Every SWEEP_PROGRESS_SECONDS: each source's looked · dispatched · seconds - running or stuck."""
@@ -4638,8 +4774,13 @@ class WorkspaceWatcher:
                     return
                 for source_id, why in why_not.items():
                     logger.info(f"External sweep in progress: {source_id} looked {why['looked']} · dispatched "
-                                f"{why['dispatched']} · {time.monotonic() - began:.0f} s")
+                                f"{why['dispatched']}{said_why(words[source_id])} · {time.monotonic() - began:.0f} s")
+                    if source_id in self.external_targets:
+                        lap("sweeping", source_id)
                 said_at = time.monotonic()
+
+            for source_id in why_not:
+                lap("sweeping", source_id)
 
             # Sources in turn, file by file (소유자 10-20: one share's thousands of old files held every source behind
             # it for minutes) - over a page of each, handed on as soon as it is walked (총괄 10-21: a deep share's whole
@@ -4653,19 +4794,32 @@ class WorkspaceWatcher:
                         live.remove(source_id)          # walked to its end, or retired while this sweep ran
                         continue
                     handler = self.external_targets[source_id]["handler"]
-                    cleared = handler.already_checked([(abs_path, file_stat) for _m, abs_path, file_stat in page])
-                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s in page if abs_path in cleared)
-                    turns.append([(source_id, handler, abs_path) for _m, abs_path, _s in _dispatch_order(page)
-                                  if abs_path not in cleared])
+                    cleared = handler.already_checked([(abs_path, stamp) for _m, abs_path, stamp, _l in page])
+                    # A listing's stamp the checklist does not clear is looked at on the disk once (총괄 10-23): the
+                    # listing lags a file still open for writing, and the read stamped what os.stat said
+                    again = [(abs_path, ingestion.checkpoint.read_file_stat(abs_path))
+                             for _m, abs_path, _s, listed in page if listed and abs_path not in cleared]
+                    gone = {abs_path for abs_path, stamp in again if stamp is None}
+                    why_not[source_id]["stat failed"] += len(gone)
+                    if len(gone) < len(again):
+                        more = handler.already_checked([item for item in again if item[1] is not None])
+                        cleared |= more
+                        cleared.why.update(more.why)
+                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s, _l in page if abs_path in cleared)
+                    turns.append([(source_id, handler, abs_path, cleared.why.get(abs_path,
+                                                                                  ingestion.checkpoint.WHY_UNREAD))
+                                  for _m, abs_path, _s, _l in _dispatch_order(page)
+                                  if abs_path not in cleared and abs_path not in gone])
                 for turn in itertools.zip_longest(*turns):
                     for item in turn:
                         if item is None or self._stop_event.is_set():
                             continue
-                        source_id, handler, abs_path = item
+                        source_id, handler, abs_path, word = item
                         if source_id not in self.external_targets:
                             continue                    # retired while this sweep ran (총괄 10-21)
                         handler._handle_event(abs_path)
                         why_not[source_id]["dispatched"] += 1
+                        words[source_id].append(word)
                         said()
             processed = sum(why["dispatched"] for why in why_not.values())
             already = sum(why["already read"] for why in why_not.values())
@@ -4680,17 +4834,29 @@ class WorkspaceWatcher:
                 reasons = " · ".join(f"{name} {n}" for name, n in why.items()
                                      if name not in ("looked", "first not listed"))
                 logger.info(f"External source {source_id}: {why['looked']} file(s) looked at - {reasons}"
+                            f"{said_why(words[source_id])}"
                             + (f" (first not listed: {why['first not listed']})" if "first not listed" in why else ""))
+                if source_id in self.external_targets:
+                    lap("rested", source_id)
             return processed
 
-    def _external_pages(self, source_id, target, why, said):
+    def _external_pages(self, source_id, target, why, said, walk_all=False):
         """A source's files, walked as its pattern and max_depth allow (the folders no file of it can be in are not
         entered) and stat'd once - in pages of the checklist's batch, each yielded as soon as it is walked. `why`
-        counts what was not handed on; `said` is called as the walk goes."""
+        counts what was not handed on; `said` is called as the walk goes. Between the full looks (`full_walk_every`)
+        an unchanged folder is passed unlisted and a file is stamped by its folder's listing - each page item says
+        which, and the sweep looks again on the disk at what the checklist does not clear. Unless `walk_all`: files
+        just unchecked lie in folders that did not change."""
         spec = target["spec"]
         root, options = spec["root"], spec.get("options") or {}
         unlisted, page, page_began = [], [], time.monotonic()
-        for dirpath, dirnames, filenames in os.walk(root, onerror=unlisted.append):
+        every = full_walk_every()
+        sweeps = self._external_sweeps[source_id] = self._external_sweeps.get(source_id, -1) + 1
+        folders = self._external_folders.setdefault(source_id, {}) if every is not None else None
+        if every is None:
+            self._external_folders.pop(source_id, None)
+        between = every is not None and sweeps % every != 0 and not walk_all
+        for dirpath, dirnames, files in _walk_remembering(root, folders, between, unlisted, why):
             rel = os.path.relpath(dirpath, root)
             base = "" if rel == "." else rel.replace(os.sep, "/") + "/"
             if dirnames and not _within_depth(spec, base.count("/") + 1):
@@ -4699,25 +4865,28 @@ class WorkspaceWatcher:
             kept = [name for name in dirnames if _folder_may_hold(options, base + name)]
             why["folders not matching"] += len(dirnames) - len(kept)
             dirnames[:] = kept
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
+            for entry in files:
+                filename, file_path = entry.name, os.path.join(dirpath, entry.name)
                 why["looked"] += 1
                 said()
-                if not target["event_handler"].accepted_path(file_path):
-                    # Which way it was refused - for the line only; the judgement is `accepted_path`'s.
-                    reason = why_not_taken(spec, file_path, base + filename) or "outside the root"
+                # The name and depth first, the path on the disk after (총괄 64b264610 ②: 1.9 million images were each
+                # judged whole) - one judgement, its cheap part first: `accepted_path` decides what passes them.
+                reason = why_not_taken(spec, file_path, base + filename)
+                if reason is None and not target["event_handler"].accepted_path(file_path):
+                    reason = "outside the root"
+                if reason is not None:
                     why[reason] = why.get(reason, 0) + 1
                     continue
                 try:
-                    stat = os.stat(file_path)            # one look at the file on a share - its kind is in it
+                    # one look at the file on a share - its kind is in it; between the full looks, the listing's
+                    stat = entry.stat() if between else os.stat(file_path)
                 except OSError:
                     why["stat failed"] += 1
                     continue
                 if not _stat.S_ISREG(stat.st_mode):
                     why["not a file"] += 1
                     continue
-                page.append((stat.st_mtime, os.path.abspath(file_path),
-                             stamp_of(stat)))
+                page.append((stat.st_mtime, os.path.abspath(file_path), stamp_of(stat), between))
                 if (len(page) >= ingestion.checkpoint.CHECKED_BATCH_SIZE
                         or time.monotonic() - page_began >= SWEEP_PAGE_SECONDS):
                     yield page
@@ -4773,7 +4942,7 @@ class WorkspaceWatcher:
         return t
 
     def _periodic_sweep_loop(self):
-        """Sweep every `PERIODIC_SWEEP_INTERVAL_SECONDS`, beat every slice of the wait.
+        """Sweep `sweep_interval_seconds` after the last one ended, beat every slice of the wait.
 
         🔴 ONE THREAD, TWO CADENCES (S-142 ①). The sweep's rarity is deliberate -- it is
         the safety net under the filesystem events, not the work -- and the beat's
@@ -4787,7 +4956,8 @@ class WorkspaceWatcher:
         """
         waited = 0.0
         while True:
-            remaining = PERIODIC_SWEEP_INTERVAL_SECONDS - waited
+            interval = sweep_interval_seconds()
+            remaining = interval - waited
             if self._stop_event.wait(max(min(HEARTBEAT_SLICE_SECONDS, remaining), 0.0)):
                 return
             waited += min(HEARTBEAT_SLICE_SECONDS, remaining)
@@ -4797,7 +4967,7 @@ class WorkspaceWatcher:
             # exactly as the split-mode poller's does.
             heartbeat.beat(HEARTBEAT_NAME)
             _say_what_stalled_files_wait_on()
-            if waited >= PERIODIC_SWEEP_INTERVAL_SECONDS:
+            if waited >= interval:
                 waited = 0.0
                 self._sweep_safely(None, "periodic")
 
@@ -4822,7 +4992,7 @@ class WorkspaceWatcher:
                 if handler.say_a_tree_still_running(fp):
                     continue
                 snapshot, last = handler._snapshot_tree(fp), self._subfolder_seen.get(key)
-                if last and last[0] == snapshot and time.monotonic() - last[1] < PERIODIC_SWEEP_INTERVAL_SECONDS:
+                if last and last[0] == snapshot and time.monotonic() - last[1] < sweep_interval_seconds():
                     continue
                 if handler.request_tree_ingest(fp) is not None:
                     self._subfolder_seen[key] = (snapshot, time.monotonic())

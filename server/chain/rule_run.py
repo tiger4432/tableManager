@@ -327,9 +327,13 @@ def origin_by_key(rule, handed, items, unmatched=None):
     """⑦ (총괄 09f58844f): an item its mapper left without the row it came from - its frame cut to the columns it
     writes drops `mapper_sdk.ORIGIN_MARK` - gets the handed row whose values in the target's key columns
     (`cell_layer.key_columns`) are the item's, when exactly ONE handed row has them. None or several: left without,
-    and counted in `unmatched` [rows, of]. A rule whose mapper declares it stamps nothing (an aggregate) is not asked."""
-    items = [item for item in items if not item_cell(item, "origin_row_id")]
-    if not items or dynamic_mappers.stamps_origin((rule or {}).get("mapper"), rule) is False:
+    and counted in `unmatched` [rows, of]. A rule whose mapper declares it stamps nothing (an aggregate) is not asked,
+    nor an item writing only the cells its mapper gathers from many rows (a join's `take ... fn`, 총괄 10-23)."""
+    mapper = (rule or {}).get("mapper")
+    gathered = dynamic_mappers.gathered_columns(mapper, rule)
+    items = [item for item in items if not item_cell(item, "origin_row_id")
+             and not (gathered and set(item_cell(item, "updates") or ()) <= gathered)]
+    if not items or dynamic_mappers.stamps_origin(mapper, rule) is False:
         return
     from chain import cell_layer
 

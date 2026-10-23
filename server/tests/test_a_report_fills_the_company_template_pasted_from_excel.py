@@ -144,13 +144,13 @@ def test_what_would_fetch_run_or_go_nowhere_is_refused_by_name(change, said):
 
 def test_the_save_names_the_dropped_pictures_and_refuses_by_the_template(monkeypatch):
     for name in ("w", "s"):
-        monkeypatch.setitem(crud.TABLE_CONFIG, name, {"column_types": {"k": "string", "i": "string", "f": "number"}})
-    monkeypatch.setitem(crud.TABLE_CONFIG, "report_request", {"column_types": {"request_id": "string"}})
-    monkeypatch.setitem(crud.TABLE_CONFIG, "report", {"column_types": {"request_id": "string"}})
+        monkeypatch.setitem(crud.TABLE_CONFIG, name, {"column_types": {"k": "string", "i": "string", "f": "number",
+                                                                       "st": "string", "fl": "string", "why": "string"}})
     report = {"wafer": {"table": "w", "key": "k"}, "summary": {"table": "s", "wafer": "k", "item": "i", "rate": "f",
-                                                                "rate_scale": 1}}
+                                                                "rate_scale": 1},
+              "results": {"state": "st", "file": "fl", "reason": "why"}}
     report.update(copy.deepcopy(SPEC))
-    declaration = {"name": "rep", "on": {"table": "report_request"}, "into": {"table": "report"},
+    declaration = {"name": "rep", "on": {"table": "s"}, "into": {"table": "s"},
                    "derive": {"kind": "report", "report": report}}
     rules, refusal, notes = rule_shape.expand_declaration(declaration)
     assert refusal is None and len(rules) == 1

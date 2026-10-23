@@ -203,11 +203,12 @@ def test_one_half_falling_does_not_hide_behind_the_other(declared, tmp_path, mon
         "떨어진 반쪽에 «다른 말»이 사유로 붙었습니다")
 
 
-def test_a_switched_off_flat_rule_is_unchanged(declared):
-    """⚠️ 회귀 칸. 평면은 로더가 오늘도 «들고 나옵니다» — 이쪽을 건드리지 않았습니다."""
+def test_a_switched_off_flat_rule_is_listed_as_the_unified_one_is(declared):
+    """The loader stands both off (owner 10-23 「막아」 - a replay naming it runs it), and neither runs: one pixel,
+    declared_only (판정 656). It was «running» while only the flat one stood."""
     row = _listing()["r644_flat_off"]
 
-    assert row["rule_state"] == event_constants.RULE_STATE_RUNNING
+    assert row["rule_state"] == event_constants.RULE_STATE_DECLARED_ONLY
     assert row.get("enabled") is False, (
         "「목록에 있다」와 「돈다」는 다른 사실이고, 그 구분은 `enabled` 가 계속 나릅니다")
 

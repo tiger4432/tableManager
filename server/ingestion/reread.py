@@ -82,15 +82,12 @@ def folder_roots(folder):
                   key=lambda root: (-len(root), root))
 
 
-def _under_folder(column, folder):
-    """SQL: the stored path starts with one of `folder_roots`. A superset of `_safe_relative_path`'s answer, which
-    still decides each row read."""
+def _under_folder(spelled, folder):
+    """SQL: the path as `path_key` spells it (`FileChecklist.path_key`) starts with one of `folder_roots`. A superset of
+    `_safe_relative_path`'s answer, which still decides each row read."""
     from sqlalchemy import or_
 
-    from database.models import path_key
-
-    stored = path_key(column)
-    return or_(*[stored.like(root.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%", escape="!")
+    return or_(*[spelled.like(root.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%", escape="!")
                  for root in folder_roots(folder)])
 
 
@@ -129,29 +126,31 @@ def times_of(since, until):
 
 
 def logs_query(db, statuses=None, table=None, folder=None, since=None, until=None, log_id=None, name=None):
-    """The file log rows a re-read or a search names - one filter for both (총괄 e390600d6). `statuses` None: any;
-    `folder` as `_under_folder` reads it; `name` a part of the file's path, any case - an external file's name is often
-    the same everywhere (voids.json) and what tells it apart is a folder (소유자 10-21 「경로는 인식 못 하나?」)."""
+    """The checklist rows (`FileChecklist`, one per file, its state now - 총괄 64b264610 ②) a re-read or a search names
+    - one filter for both (총괄 e390600d6). `statuses` None: any; `since` · `until` its last change; `log_id` the file
+    whose newest record it is; `folder` as `_under_folder` reads it; `name` a part of the file's path, any case - an
+    external file's name is often the same everywhere (voids.json) and what tells it apart is a folder (소유자 10-21
+    「경로는 인식 못 하나?」)."""
     from database import crud, models
 
-    model = models.FileIngestionLog
+    model = models.FileChecklist
     query = db.query(model)
     if statuses is not None:
         query = query.filter(model.status.in_(list(statuses)))
     if log_id is not None:
-        query = query.filter(model.id == log_id)
+        query = query.filter(model.log_id == log_id)
     if not crud.is_blank_value(table):
         query = query.filter(model.table_name == table)
     if since is not None:
-        query = query.filter(model.created_at >= since)
+        query = query.filter(model.updated_at >= since)
     if until is not None:
-        query = query.filter(model.created_at < until)
+        query = query.filter(model.updated_at < until)
     if not crud.is_blank_value(folder):
-        query = query.filter(_under_folder(model.filepath, folder))   # not the whole table into memory (총괄 10-11)
+        query = query.filter(_under_folder(model.path_key, folder))   # not the whole table into memory (총괄 10-11)
     if not crud.is_blank_value(name):
         other = "/" if os.sep == "\\" else "\\"
         part = str(name).strip().lower().replace(other, os.sep).replace("!", "!!").replace("%", "!%").replace("_", "!_")
-        query = query.filter(models.path_key(model.filepath).like("%" + part + "%", escape="!"))
+        query = query.filter(model.path_key.like("%" + part + "%", escape="!"))
     return query
 
 
@@ -180,7 +179,7 @@ def select_logs(db, statuses, table=None, folder=None, since=None, until=None, l
     from database import crud, models
     from directory_watcher import _safe_relative_path, one_sweep
 
-    model = models.FileIngestionLog
+    model = models.FileChecklist
     logs = logs_query(db, statuses, table, folder, since, until, log_id).order_by(model.id.asc()).all()
     if crud.is_blank_value(folder):
         return [(log, None) for log in logs]
@@ -271,18 +270,16 @@ def taken_now(picked):
 
 
 def delete_not_taken(db, page=START_PAGE):
-    """Every file log row the declaration does not take now (`not_taken_why`), whatever its state, deleted with its
-    marks - the watcher's start (소유자 10-22 「그냥 자동으로 선언 안 맞는 리스트 지워」 · 「재기동시」, 10-23). A row of a
-    source switched off or refused (`KEPT_AT_START`) is counted and left. Only the checklist: the table's rows and
+    """Every checklist row the declaration does not take now (`not_taken_why`), whatever its state, deleted - the
+    watcher's start (소유자 10-22 「그냥 자동으로 선언 안 맞는 리스트 지워」 · 「재기동시」, 10-23). A row of a source
+    switched off or refused (`KEPT_AT_START`) is counted and left. Only the checklist: the records, the table's rows and
     layers stay. A page of `page` rows at a time, each deleted in its own commit - a row only in the state it was
     judged in: the retry poller runs meanwhile, and a waiting row it claimed is its own.
     -> [(table, {why: deleted}, {why: left})]."""
-    from sqlalchemy import exists
-
     from database import models
     from directory_watcher import one_sweep
 
-    model = models.FileIngestionLog
+    model = models.FileChecklist
     deleted, left, tables, last = {}, {}, {}, 0
     while True:
         rows = (db.query(model.id, model.table_name, model.source, model.filepath, model.filename, model.status)
@@ -303,10 +300,6 @@ def delete_not_taken(db, page=START_PAGE):
             for start in range(0, len(judged), MARK_PAGE):
                 chunk = judged[start:start + MARK_PAGE]
                 db.query(model).filter(model.id.in_(chunk), model.status == status).delete(synchronize_session=False)
-                (db.query(models.FileRereadMark)
-                 .filter(models.FileRereadMark.log_id.in_(chunk),
-                         ~exists().where(model.id == models.FileRereadMark.log_id))
-                 .delete(synchronize_session=False))
         db.commit()
     return [(table, dict(sorted(deleted.get(table, {}).items())), dict(sorted(left.get(table, {}).items())))
             for table in sorted(set(deleted) | set(left), key=str)]
@@ -350,14 +343,14 @@ def uncheck(db, table=None, paths=None, folders=None, apply=True):
 
     from database import models
 
-    model = models.FileIngestionLog
+    model = models.FileChecklist
     query = db.query(model).filter(model.file_mtime.isnot(None), model.status != REREAD_STATUS)
     if table is not None:
         query = query.filter(model.table_name == table)
     if paths is not None:
-        query = query.filter(models.path_key(model.filepath).in_([models.path_key(literal(path)) for path in paths]))
+        query = query.filter(model.path_key.in_([models.path_key(literal(path)) for path in paths]))
     if folders is not None:
-        query = query.filter(or_(*[_under_folder(model.filepath, folder) for folder in folders]))
+        query = query.filter(or_(*[_under_folder(model.path_key, folder) for folder in folders]))
     if not apply:
         return query.count()
     unchecked = query.update({model.file_mtime: None, model.file_size: None}, synchronize_session=False)
@@ -509,38 +502,27 @@ def select_files(db, table, folder, limit=None):
 
 
 def _newest_rows_of(db, table, files):
-    """{a path as the filesystem compares it: the table's newest row for it} for the rows named as `files` are - looked up
-    by name (`ix_file_ingestion_logs_filename`), the caller matching the path: a path filter on the table's whole
-    history read every row of it (총괄 f5280f794)."""
+    """{a path as the filesystem compares it: the table's checklist row for it} for the rows named as `files` are -
+    looked up by name (`ix_file_checklist_filename`), the caller matching the path (총괄 f5280f794)."""
     from database import models
-    from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
 
-    model = models.FileIngestionLog
+    model = models.FileChecklist
     names = sorted({os.path.basename(path) for path in files})
     rows = {}
     for start in range(0, len(names), MARK_PAGE):
-        for log in (db.query(model).filter(model.table_name == table, model.filename.in_(names[start:start + MARK_PAGE]),
-                                           model.status.in_(list(FILE_INGESTION_STATUS_VOCABULARY)))
-                    .order_by(model.id.asc())):
-            rows[os.path.normcase(os.path.abspath(log.filepath or ""))] = log   # oldest first: the newest stays
+        for row in db.query(model).filter(model.table_name == table, model.filename.in_(names[start:start + MARK_PAGE])):
+            rows[os.path.normcase(os.path.abspath(row.filepath or ""))] = row
     return rows
 
 
-def stand_rows(db, table, picked, folder=None):
-    """A row for each picked file the table has none for - PENDING_RETRY at once, its mark saying the re-read stood it
+def stand_rows(db, table, picked):
+    """A checklist row for each picked file the table has none for - PENDING_RETRY at once, stood by the re-read
     (`STOOD_BY_REREAD` - «cancel» deletes it). -> (the table's rows the picked files had, the rows stood)."""
-    from database import models
+    from ingestion import checkpoint
 
     logs = [log for log, _rel, _path in picked if log is not None]
-    stood = []
-    for _log, _rel, path in (item for item in picked if item[0] is None):
-        row = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table,
-                                      status=REREAD_STATUS)
-        db.add(row)
-        stood.append(row)
-    db.flush()
-    for row in stood:
-        db.add(models.FileRereadMark(log_id=row.id, status_before=STOOD_BY_REREAD, folder=folder))
+    stood = [checkpoint.note_file(db, table, path, status=REREAD_STATUS, status_before=STOOD_BY_REREAD)
+             for _log, _rel, path in (item for item in picked if item[0] is None)]
     db.commit()
     return logs, stood
 
@@ -606,12 +588,11 @@ def read_now(db, path, table=None, apply=False):
     if "outside the root" in owner["why_not"]:
         raise RereadRefused(f"{path} is outside the root of {owner['source']} by its real path (a junction or link "
                             "leads out) - read it from where it really is")
-    model = models.FileIngestionLog
-    row = (db.query(model).filter(model.table_name == owner["table"],
-                                  models.path_key(model.filepath) == models.path_key(literal(path)))
-           .order_by(model.id.desc()).first())
+    model = models.FileChecklist
+    row = db.query(model).filter(model.table_name == owner["table"],
+                                 model.path_key == models.path_key(literal(path))).one_or_none()
     if row is not None and row.status == "PENDING":
-        raise RereadRefused(f"{path} is being read now (log #{row.id})")
+        raise RereadRefused(f"{path} is being read now (checklist row #{row.id})")
     if row is None:
         _logs, (row,) = stand_rows(db, owner["table"], [(None, None, path)])
     else:
@@ -636,14 +617,6 @@ def by_top_folder(picked):
     return dict(sorted(out.items()))
 
 
-def one_per_file(picked):
-    """The newest row of each (table, file) - a file read twice has two rows, and is read again once."""
-    newest = {}
-    for log, rel in picked:
-        newest[(log.table_name, os.path.normcase(os.path.abspath(log.filepath or "")))] = (log, rel)
-    return sorted(newest.values(), key=lambda pair: pair[0].id)
-
-
 def split_missing(picked):
     """-> (rows whose file is where the row says, rows whose file is gone)."""
     present, missing = [], []
@@ -652,17 +625,26 @@ def split_missing(picked):
     return present, missing
 
 
-def mark_for_reread(db, logs, page=MARK_PAGE, folder=None):
-    """Hand `logs` to the watcher: PENDING_RETRY, a page a commit, each row's state before it kept in
-    `file_reread_marks` (a row already waiting keeps the state it had first). -> [(id, the state it had)]."""
-    from database import models
+def why_handed(row):
+    """The retry door's word for a checklist row it reads (총괄 64b264610): the state it had before it was handed - a
+    read file (Read all again) WHY_READ_AGAIN, a file the re-read stood WHY_READ_NOW, anything else (a failed file)
+    WHY_RETRY."""
+    from ingestion import checkpoint
 
+    before = row.status_before
+    return (checkpoint.WHY_READ_AGAIN if before == "SUCCESS" else checkpoint.WHY_READ_NOW if before == STOOD_BY_REREAD
+            else checkpoint.WHY_RETRY)
+
+
+def mark_for_reread(db, logs, page=MARK_PAGE):
+    """Hand the checklist rows `logs` to the watcher: PENDING_RETRY, a page a commit, each row's state before it kept
+    on it (`status_before` - a row already waiting keeps the state it had first). -> [(id, the state it had)]."""
     marked = []
     for start in range(0, len(logs), page):
         for log in logs[start:start + page]:
             marked.append((log.id, log.status))
-            if log.status != REREAD_STATUS or db.get(models.FileRereadMark, log.id) is None:
-                db.merge(models.FileRereadMark(log_id=log.id, status_before=log.status, folder=folder))
+            if log.status != REREAD_STATUS or log.status_before is None:
+                log.status_before = log.status
             log.status = REREAD_STATUS
         db.commit()
     return marked
@@ -673,12 +655,8 @@ def cancel_reread(db, folder=None, apply=False):
     the re-read handed them over; a row the watcher has claimed is no longer waiting and is not touched, and a waiting
     row with no mark is left and counted; a row the re-read stood itself (`STOOD_BY_REREAD`) is deleted - it had no
     state. -> {"count" (put back), "removed" (stood rows deleted), "by_state", "unmarked"}."""
-    from database import models
-
     waiting = [log for log, _rel in select_logs(db, (REREAD_STATUS,), folder=folder)]
-    marks = {mark.log_id: mark for mark in db.query(models.FileRereadMark).filter(
-        models.FileRereadMark.log_id.in_([log.id for log in waiting]))} if waiting else {}
-    back = [(log, marks[log.id].status_before) for log in waiting if log.id in marks]
+    back = [(log, log.status_before) for log in waiting if log.status_before is not None]
     by_state = {}
     for _log, state in back:
         if state != STOOD_BY_REREAD:
@@ -689,8 +667,7 @@ def cancel_reread(db, folder=None, apply=False):
                 if state == STOOD_BY_REREAD:
                     db.delete(log)
                 else:
-                    log.status = state
-                db.delete(marks[log.id])
+                    log.status, log.status_before = state, None
             db.commit()
     removed = sum(1 for _log, state in back if state == STOOD_BY_REREAD)
     return {"count": len(back) - removed, "removed": removed, "by_state": dict(sorted(by_state.items())),

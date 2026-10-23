@@ -398,11 +398,13 @@ class MyEquipmentLogParser(BasePipelineParser):
 인제션 파이프라인의 실행 결과는 터미널 로그를 통해 직관적으로 확인할 수 있습니다.
 
 ```text
-[my_table] 📥 New file detected: equipment_A_2026.csv
+[my_table] 📥 File to read (new): equipment_A_2026.csv
 [my_table] 🚀 Pipeline Matched: MyEquipmentLogParser in my_custom_parser.py
 [my_table] 💾 Local batch update success (100 rows). Changed cells: 300
 [my_table] ✅ Successfully processed and archived: equipment_A_2026.csv
 ```
+
+괄호 안 낱말이 «왜 읽나»입니다: new(기록 없음) · changed(읽은 뒤 바뀜) · unstamped(도장 없음 — 스크립트 · 외부 소스 칸이 바뀌어 체크 해제됨, 또는 잠금 대기로 끝난 읽기) · retry(실패 파일을 다시 넘김) · read again(읽은 파일을 Read all again 으로 넘김) · read now(Read now 로 처음 넘김) · checklist not read(체크리스트를 못 읽어 일단 읽음).
 
 파이프라인이 정상적으로 매칭되었는지, 성공적으로 적재(Changed cells) 되었는지 위 로그들을 통해 즉각적인 파악이 가능합니다.
 

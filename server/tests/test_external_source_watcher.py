@@ -19,6 +19,7 @@ from database import crud
 from ingestion.checkpoint import read_file_stat
 from directory_watcher import (
     ExternalSourceEventHandler,
+    Checked,
     IngestionHandler,
     WorkspaceWatcher,
     validate_external_source_specs,
@@ -266,7 +267,7 @@ def test_recursive_sweep_dispatches_same_file_once_per_table_and_keeps_source(
 
     monkeypatch.setattr(IngestionHandler, "_handle_event", a_read)
     monkeypatch.setattr(IngestionHandler, "already_checked",
-                        lambda self, entries: {p for p, stat in entries if (self.table_name, p, stat) in read})
+                        lambda self, entries: Checked({p for p, stat in entries if (self.table_name, p, stat) in read}))
 
     watcher = WorkspaceWatcher(str(workspace))
     watcher.discover_and_watch()
@@ -512,7 +513,7 @@ def test_disabled_entries_are_counted_at_registration(tmp_path, monkeypatch, cap
     settings = _specs(external)
     settings["external_sources"][1]["enabled"] = False
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings", lambda: settings)
-    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: set())
+    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: Checked())
 
     watcher = WorkspaceWatcher(str(workspace))
     with caplog.at_level("INFO", logger="Watcher.DirectoryWatcher"):

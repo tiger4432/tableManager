@@ -14,6 +14,7 @@ import time
 import uuid
 
 from admin import retroactive
+from error_said import told
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ def ask(db, question, asked_by=None, ask_json=None):
             got["count"] = retroactive.count(db, got["op"], got["params"])
         except Exception as e:                                       # noqa: BLE001 - said on the answer
             db.rollback()
-            got["count_refused"] = "The count for this operation cannot be computed: %s" % e
+            got["count_refused"] = "The count for this operation cannot be computed: %s" % told(e)
     affected = (got["count"] or {}).get("affected")
     db.add(models.AdminHelpAsk(id=got["help_id"], asked_by=asked_by or None, question=question, op=got["op"],
                                params=json.dumps(got["params"], default=str), why=got["why"],
@@ -141,4 +142,5 @@ def mark_run(db, help_id, queued):
         db.commit()
     except Exception as e:                                           # noqa: BLE001 - the run stands
         db.rollback()
-        logger.warning("[Help] run %s was not written on help %s: %s", queued.get("run_id"), help_id, e)
+        logger.warning("[Help] run %s was not written on help %s: %s", queued.get("run_id"), help_id, told(e),
+                       exc_info=e)

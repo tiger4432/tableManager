@@ -84,7 +84,7 @@ _join.fetch = _read_join
 
 
 def _report(db, payload, rule=None):
-    """`derive: {kind: "report"}` as an ordinary mapper - `report_loop.answer` over the request rows handed. No read
+    """`derive: {kind: "report"}` as an ordinary mapper - `report_loop.answer` over the summary rows handed. No read
     half: what it reads is what the model asks for, step by step."""
     from chain import report_loop
 
@@ -219,6 +219,7 @@ _enrich.fetch = _read_decide
 #:   stamps_origin  whether what it writes can be WITHDRAWN when its input row is deleted
 #:                  (판정 434 ④: a retraction aims with `cell_sources.origin_row_id`)
 #:   columns        rule -> the columns it writes, when a run proposed nothing (`columns_declared_for`)
+#:   gathered       rule -> those of them written as one value gathered from many rows (`gathered_columns`)
 TEMPLATE_FACTS = {}
 
 
@@ -241,6 +242,13 @@ def columns_declared_for(rule):
     that proposed nothing still knows what it owns)."""
     facts = _facts((rule or {}).get("mapper"))
     return facts["columns"](rule) if facts.get("columns") else None
+
+
+def gathered_columns(name, rule=None) -> set:
+    """The columns this mapper writes as one value gathered from many rows (the join's `take ... fn`) - an item writing
+    only these came from no one row. Empty when it says none."""
+    value = _facts(name).get("gathered")
+    return set(value(rule or {})) if callable(value) else set()
 
 
 def stamps_origin(name, rule=None):
@@ -283,6 +291,7 @@ def _install_templates():
     #   rule whose cells that file owns. An empty tuple would refuse all of them.
     TEMPLATE_FACTS[join_into.JOIN_INTO_MAPPER] = {
         "label": "join", "stamps_origin": True, "columns": join_into.take_targets,
+        "gathered": join_into.gathered_targets,
         # ⚰️ `join_into.JOIN_CELLS` WAS PUT HERE AND TAKEN BACK OUT. Declaring the list
         #    makes the loader REFUSE a cell outside it - and 판정 397 settled the
         #    opposite: an unknown join cell is NAMED and the rule still runs,
@@ -294,8 +303,9 @@ def _install_templates():
         "label": "decide", "stamps_origin": False,
         "params": None}
     TEMPLATES[report_shape.REPORT_MAPPER] = _report
-    # its report row and step and wafer rows carry the request row they came from
-    TEMPLATE_FACTS[report_shape.REPORT_MAPPER] = {"label": "report", "stamps_origin": True, "params": None}
+    # its result cells carry the summary row they are written on, and it says the columns (`results`)
+    TEMPLATE_FACTS[report_shape.REPORT_MAPPER] = {"label": "report", "stamps_origin": True,
+                                                  "columns": report_shape.result_columns, "params": None}
     TEMPLATES[enrichment.config.DEDUP_MAPPER] = _enrich
     # ⚠️ `stamps_origin` False is measured (`origin_row_id` × 0 in `enrichment/mapper.py`),
     #    not assumed.

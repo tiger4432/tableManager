@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """The checklist (소유자 10-21 「(파일, 돌려야 할 테이블) 을 키로 넣고 체크리스트 하면 되잖아」 · 「테이블 스크립트 바뀌면 그 테이블
 키만 체크 해제하고」): «already read?» is one answer - a log row of the same (path, table) carrying the file's (mtime,
-size) - asked by every seat through `checkpoint.checked`.
+size) - asked by every seat through `checkpoint.checked`. Since 총괄 64b264610 ② that row is the file's one checklist
+row (`FileChecklist`); the records stay one per read.
 
   path spelling       stored C:\\X\\a.csv, asked c:/x/a.csv                     -> checked
   stamp spelling      a read's row stamped through _file_result                  -> the same file asked again is checked
@@ -43,7 +44,8 @@ def _write(path, text):
     return str(path)
 
 
-def _row(db, table, path, status="SUCCESS", file_stat=None, at=None):
+def _record(db, table, path, status="SUCCESS", file_stat=None, at=None):
+    """A read's record only - a row from before the checklist was a table of its own (`fill_checklist` takes it)."""
     # A raws row; one with no source is judged by where its file lies (총괄 10-23).
     row = models.FileIngestionLog(filename=os.path.basename(path), filepath=path, table_name=table, status=status,
                                   source="raws",
@@ -56,14 +58,24 @@ def _row(db, table, path, status="SUCCESS", file_stat=None, at=None):
     return row
 
 
+def _row(db, table, path, status="SUCCESS", file_stat=None, at=None):
+    """A read as the watcher writes it: its record and its checklist row (`checkpoint.note_file`) -> the checklist row."""
+    record = _record(db, table, path, status, file_stat, at)
+    row = checkpoint.note_file(db, table, path, status=status, source="raws", file_mtime=record.file_mtime,
+                               file_size=record.file_size, log_id=record.id)
+    if at is not None:
+        row.created_at = row.updated_at = at
+    db.commit()
+    return row
+
+
 def test_a_file_is_checked_by_its_path_and_table_and_stamp(db_session, tmp_path):
     a = _write(tmp_path / "X" / "a.csv", "lot,val\nL1,v\n")
     stat = checkpoint.read_file_stat(a)
     from parsers.directory_watcher import _file_result
     result = _file_result(time.monotonic(), None, 0, {}, file_stat=stat)
-    row = models.FileIngestionLog(filename="a.csv", filepath=a, table_name="ta", status="SUCCESS", retry_count=0,
-                                  **result)
-    db_session.add(row)
+    checkpoint.note_file(db_session, "ta", a, status="SUCCESS", file_mtime=result["file_mtime"],
+                         file_size=result["file_size"])
     db_session.commit()
 
     assert checkpoint.checked(db_session, "ta", [(a, checkpoint.read_file_stat(a))]) == {a: "SUCCESS"}
@@ -255,7 +267,7 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
     with Session(engine) as session:
         for table, path, status in (("ta", a1, "SUCCESS"), ("ta", a2, "SUCCESS"), ("ta", af, "FAILED"),
                                     ("tb", b1, "SUCCESS")):
-            _row(session, table, path, status, at=later)
+            _record(session, table, path, status, at=later)
     engine.dispose()
 
     api = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Stub)
@@ -313,7 +325,7 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
         assert reads() == {("ta", "a1.csv"): 2, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 2, ("tb", "b1.csv"): 2,
                            ("tb", "rb.csv"): 1}                             # moved: not again (소유자 「옮겨진 건 하지 마」)
         with sqlite3.connect(str(db)) as c:
-            stamp = c.execute("SELECT file_size FROM file_ingestion_logs WHERE filename = 'rb.csv'").fetchone()[0]
+            stamp = c.execute("SELECT file_size FROM file_checklist WHERE filename = 'rb.csv'").fetchone()[0]
         assert stamp, "a moved file was unchecked"
         assert said("its reading changed (scripts\\p.py) - 1 read file(s) unchecked, 0 failed file(s) handed again "
                     "- 1 dispatched to be read again")
@@ -367,7 +379,7 @@ def test_a_fill_that_fails_holds_its_files_and_the_next_sweep_stamps_them(tmp_pa
     engine = create_engine("sqlite:///" + db.as_posix())
     models.FileIngestionLog.__table__.create(engine)
     with Session(engine) as session:
-        _row(session, "ta", a1, at=datetime.now(timezone.utc) + timedelta(seconds=5))
+        _record(session, "ta", a1, at=datetime.now(timezone.utc) + timedelta(seconds=5))
     engine.dispose()
 
     api = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Stub)
@@ -405,8 +417,9 @@ def test_a_fill_that_fails_holds_its_files_and_the_next_sweep_stamps_them(tmp_pa
                                   "read 0)"))
         assert marker.exists()
         with sqlite3.connect(str(db)) as c:
-            rows = c.execute("SELECT count(*), max(file_size) FROM file_ingestion_logs").fetchone()
-        assert rows == (1, os.path.getsize(a1))                                       # not read again, stamped
+            records = c.execute("SELECT count(*) FROM file_ingestion_logs").fetchone()[0]
+            stamp = c.execute("SELECT file_size FROM file_checklist").fetchall()
+        assert (records, stamp) == (1, [(os.path.getsize(a1),)])                       # not read again, stamped
     finally:
         watcher.kill()
         watcher.wait(30)

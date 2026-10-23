@@ -15,7 +15,7 @@ for path in (SERVER_DIR, os.path.join(SERVER_DIR, "parsers"), os.path.dirname(__
         sys.path.insert(0, path)
 
 import directory_watcher                                         # noqa: E402
-from directory_watcher import WorkspaceWatcher, IngestionHandler, _safe_relative_path, one_sweep   # noqa: E402
+from directory_watcher import WorkspaceWatcher, IngestionHandler, Checked, _safe_relative_path, one_sweep   # noqa: E402
 from ingestion import reread                                     # noqa: E402
 
 FOLDERS, PER_FOLDER = 5, 40
@@ -65,7 +65,7 @@ def test_the_external_sweep_resolves_each_folder_once(tmp_path, monkeypatch):
     _tree(str(external), name="x%02d.json")
     monkeypatch.setattr(directory_watcher, "load_ingestion_settings", lambda: _specs(external))
     monkeypatch.setattr(IngestionHandler, "_handle_event", lambda self, path: None)
-    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: set())
+    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: Checked())
     watcher = WorkspaceWatcher(str(workspace))
     watcher.discover_and_watch()
     calls = _counted(monkeypatch)

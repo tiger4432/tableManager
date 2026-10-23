@@ -7,7 +7,7 @@
   a source switched off · refused by the validation                                its rows left and counted
   a row naming a root moved away                                                    judged by the source it lies under
   a waiting row the retry poller claims meanwhile (the cleanup has its own thread)  left - the poller's
-Only the checklist: its marks go with it, nothing else is touched. Read a page at a time - any page size, one answer.
+Only the checklist (file_checklist): the records are not touched. Read a page at a time - any page size, one answer.
 """
 import json
 import logging
@@ -23,7 +23,7 @@ import paths
 import run_watcher
 from database import crud, models
 from database.database import Base
-from ingestion import reread
+from ingestion import checkpoint, reread
 
 TABLES = {"ta": {"business_key": "lot", "column_types": {"lot": "string", "val": "string"}}}
 STATES = ("SUCCESS", "FAILED", "PENDING_RETRY")
@@ -80,12 +80,11 @@ def _seed(env):
     db = env["Session"]()
     try:
         for name, (state, source, path, _why) in rows.items():
-            row = models.FileIngestionLog(filename=name, filepath=str(path), table_name="ta", status=state,
-                                          source=source)
-            db.add(row)
+            checkpoint.note_file(db, "ta", str(path), status=state, source=source,
+                                 status_before="FAILED" if state == "PENDING_RETRY" else None)
+            db.add(models.FileIngestionLog(filename=name, filepath=str(path), table_name="ta", status=state,
+                                           source=source))
             db.flush()
-            if state == "PENDING_RETRY":
-                db.add(models.FileRereadMark(log_id=row.id, status_before="FAILED", folder=None))
         db.commit()
     finally:
         db.close()
@@ -100,14 +99,15 @@ def test_the_start_deletes_what_the_declaration_does_not_take_and_leaves_the_res
     db = env["Session"]()
     try:
         said = reread.delete_not_taken(db)
-        left = {log.filename for log in db.query(models.FileIngestionLog)}
-        marked = {mark.log_id for mark in db.query(models.FileRereadMark)}
-        ids = {log.id for log in db.query(models.FileIngestionLog)}
+        left = {row.filename for row in db.query(models.FileChecklist)}
+        marked = {row.filename for row in db.query(models.FileChecklist) if row.status_before}
+        records = db.query(models.FileIngestionLog).count()
     finally:
         db.close()
     gone = {name for name, why in expected.items() if why is not None and why not in reread.KEPT_AT_START}
     assert gone and left == set(expected) - gone
-    assert marked <= ids and marked, "the deleted rows' marks went with them, the kept ones stayed"
+    assert marked == {name for name in left if "PENDING_RETRY" in name}, "a waiting row kept keeps what it was"
+    assert records == len(expected), "the records are not the checklist"
     count = {}
     for why in (why for name, why in expected.items() if name in gone):
         count[why] = count.get(why, 0) + 1
@@ -141,7 +141,7 @@ def test_a_waiting_row_the_poller_claims_meanwhile_is_not_deleted(env, monkeypat
         if row.filename == claimed:
             other = env["Session"]()
             try:
-                other.query(models.FileIngestionLog).filter(models.FileIngestionLog.filename == claimed).update(
+                other.query(models.FileChecklist).filter(models.FileChecklist.filename == claimed).update(
                     {"status": "PENDING"}, synchronize_session=False)
                 other.commit()
             finally:
@@ -152,7 +152,7 @@ def test_a_waiting_row_the_poller_claims_meanwhile_is_not_deleted(env, monkeypat
     db = env["Session"]()
     try:
         reread.delete_not_taken(db)
-        left = {log.filename: log.status for log in db.query(models.FileIngestionLog)}
+        left = {row.filename: row.status for row in db.query(models.FileChecklist)}
     finally:
         db.close()
     assert left.get(claimed) == "PENDING"
@@ -163,8 +163,8 @@ def test_a_bulk_retry_judges_an_empty_source_row_by_where_it_lies(env):
     _seed(env)
     db = env["Session"]()
     try:
-        picked = [(log, None) for log in db.query(models.FileIngestionLog).filter(
-            models.FileIngestionLog.source.is_(None))]
+        picked = [(row, None) for row in db.query(models.FileChecklist).filter(
+            models.FileChecklist.source.is_(None))]
         kept, not_taken, _names = reread.taken_now(picked)
     finally:
         db.close()

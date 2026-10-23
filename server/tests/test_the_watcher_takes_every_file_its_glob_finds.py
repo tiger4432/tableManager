@@ -14,7 +14,7 @@ import re
 import pytest
 
 import directory_watcher
-from directory_watcher import IngestionHandler, WorkspaceWatcher
+from directory_watcher import Checked, IngestionHandler, WorkspaceWatcher
 from tests.test_external_source_watcher import TABLES  # noqa: F401 - the autouse table config below
 from tests.test_external_source_watcher import canonical_void_config  # noqa: F401
 
@@ -66,7 +66,7 @@ def test_every_file_the_glob_finds_is_handed_on_or_named(tmp_path, monkeypatch, 
     handed = []
     monkeypatch.setattr(IngestionHandler, "_handle_event",
                         lambda self, path: handed.append((self.table_name, os.path.normcase(os.path.abspath(path)))))
-    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: set())
+    monkeypatch.setattr(IngestionHandler, "already_checked", lambda self, entries: Checked())
     (tmp_path / "ingestion_workspace").mkdir()
     watcher = WorkspaceWatcher(str(tmp_path / "ingestion_workspace"))
     watcher.discover_and_watch()

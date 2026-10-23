@@ -28,12 +28,12 @@ def waiting_lines(db, cap):
 
     outbox = models.DatabaseOutbox
     waiting_only = (outbox.processed_chain == False)  # noqa: E712 - 부분 인덱스의 술어 철자
-    run_of = outbox.payload["run_id"].as_string()
+    run_of = outbox.run_id
     line_key = event_constants.queue_line_key(outbox)
     pairs = (_select(line_key.label("key"), _f.max(run_of).label("run"), outbox.table_name,
                      outbox.event_type, _f.count().label("events"),
                      # 묶인 이벤트는 «몇 행»을 싣는지 들고 있다(`row_count`); 행 하나짜리는 1
-                     _f.sum(_f.coalesce(outbox.payload["row_count"].as_integer(), 1)).label("rows"),
+                     _f.sum(_f.coalesce(outbox.row_count, 1)).label("rows"),
                      _f.min(outbox.id).label("first_id"), _f.min(outbox.created_at).label("created_at"),
                      _f.max(outbox.retry_count).label("max_retry"),
                      _f.max(_case((outbox.status == "RETRYING", 1), else_=0)).label("retrying"))

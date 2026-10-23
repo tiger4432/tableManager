@@ -29,6 +29,7 @@ import run_watcher
 from admin import retroactive
 from conftest import retire_dynamic_model
 from database import crud, models
+from ingestion import checkpoint
 from tests.test_a_failed_external_file_retries_on_its_own_handler import (  # noqa: F401
     NO_UNIT, TABLES, _cells, env)
 from tests.test_external_source_watcher import _write_voids
@@ -65,7 +66,7 @@ def _the_watcher_reads(Session):
 def _states(Session):
     db = Session()
     try:
-        return {log.filename: log.status for log in db.query(models.FileIngestionLog).all()}
+        return {row.filename: row.status for row in db.query(models.FileChecklist).all()}
     finally:
         db.close()
 
@@ -75,9 +76,13 @@ def _add_logs(Session, paths, status="SUCCESS", table="rt_parts", created_at=Non
     try:
         for path in paths:
             # A raws row; one with no source is judged by where its file lies (총괄 10-23).
-            db.add(models.FileIngestionLog(filename=os.path.basename(str(path)), filepath=str(path),
-                                           table_name=table, status=status, source="raws",
-                                           **({"created_at": created_at} if created_at else {})))
+            at = {"created_at": created_at} if created_at else {}
+            record = models.FileIngestionLog(filename=os.path.basename(str(path)), filepath=str(path),
+                                             table_name=table, status=status, source="raws", **at)
+            db.add(record)
+            db.flush()
+            checkpoint.note_file(db, table, str(path), status=status, source="raws", log_id=record.id,
+                                 **({"updated_at": created_at} if created_at else {}))
         db.commit()
     finally:
         db.close()
@@ -210,10 +215,10 @@ def test_a_file_read_twice_goes_once_and_a_gone_file_is_not_handed(env, tmp_path
     assert (done["count"], done["missing"]) == (1, 1)
     db = env["Session"]()
     try:
-        states = sorted((log.filename, log.status) for log in db.query(models.FileIngestionLog))
+        states = sorted((row.filename, row.status) for row in db.query(models.FileChecklist))
     finally:
         db.close()
-    assert states == [("gone.csv", "SUCCESS"), ("here.csv", "PENDING_RETRY"), ("here.csv", "SUCCESS")]
+    assert states == [("gone.csv", "SUCCESS"), ("here.csv", "PENDING_RETRY")]
 
 
 def test_since_leaves_the_older_row_and_a_word_that_is_no_state_is_refused(env, tmp_path):

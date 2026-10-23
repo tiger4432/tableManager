@@ -78,7 +78,7 @@ def test_retry_reads_it(env):
     env["handler"].process_with_retry(a, delay=0.01)
     db = env["p2"]["SessionLocal"]()
     try:
-        entry = db.query(models.FileIngestionLog).filter_by(filename="a.csv").one()
+        entry = db.query(models.FileChecklist).filter_by(filename="a.csv").one()
         env["handler"].process_archived_file_sync(entry, db)
     finally:
         db.close()

@@ -288,7 +288,11 @@ def auto_stage_database_outbox(session, flush_context, instances):
                 insp = inspect(obj)
                 dirty_cols = [attr.key for attr in insp.attrs if attr.history.has_changes()]
             except Exception:
-                dirty_cols = []
+                dirty_cols = None                       # unknown - staged below with no columns, as before
+            # 🔴 [총괄 f5ff1e3e9] A row handed the value it already held is dirty with no changed column: no event.
+            #    Staged, it named no columns - 「모른다」, so it woke every rule on the table (a cell menu's layer delete).
+            if dirty_cols == []:
+                continue
 
             # 변경 항목이 오직 그래프 동기화 메타 컬럼(is_graph_synced 등)뿐이면 Outbox 발행 생략
             if dirty_cols:
@@ -644,8 +648,11 @@ def row_event(event_type, table_name, data_row, old=None) -> dict:
         payload[RUN_KEY] = run_id
     if old:
         payload[OLD_VALUES_KEY] = old
+    from .models import outbox_line_columns
+
     return {"event_uuid": str(uuid.uuid4()), "event_type": event_type,
-            "table_name": table_name or "unknown", "payload": payload, "status": "PENDING"}
+            "table_name": table_name or "unknown", "payload": payload, "status": "PENDING",
+            **outbox_line_columns(payload)}
 
 
 
