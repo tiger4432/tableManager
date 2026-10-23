@@ -34,6 +34,10 @@ class ReadRefused(ValueError):
     """A call the reads cannot answer - said back to the model as the reason."""
 
 
+#: A condition row whose value is blank (owner 10-23 trap wafer: a condition named, its value not written).
+EMPTY = "(empty)"
+
+
 def label(wafer) -> str:
     return WAFER_SEP.join("" if part is None else str(part) for part in wafer)
 
@@ -314,7 +318,7 @@ class Report:
         folded = {c: {} for c in self.conditions_at}
         for w in here:
             for c, v in self.wafers[w]["conditions"].items():
-                folded.setdefault(c, {})[str(v)] = folded.get(c, {}).get(str(v), 0) + 1
+                folded.setdefault(c, {})[_shown(v)] = folded.get(c, {}).get(_shown(v), 0) + 1
         lines = ["%d wafers in %s" % (len(here), self.evaluation)] + [
             "%s: %s" % (c, ", ".join("%s %d" % (v, n) for v, n in sorted(values.items(), key=lambda kv: -kv[1])))
             for c, values in folded.items()]
@@ -359,7 +363,7 @@ class Report:
                     raise ReadRefused("%r is not a condition - one of %s" % (by, ", ".join(self.conditions_at)))
                 values = {}
                 for w in members:
-                    values.setdefault(str(self.wafers[w]["conditions"].get(by)), []).append(w)
+                    values.setdefault(_shown(self.wafers[w]["conditions"].get(by)), []).append(w)
                 out.append((name, sorted(values.items())))
             else:
                 out.append((name, [(label(w), [w]) for w in members]))
@@ -499,13 +503,13 @@ class Report:
             for column in self.conditions_at:
                 counts = {}
                 for wafer in entry["wafers"]:
-                    value = str(self.wafers[wafer]["conditions"].get(column))
+                    value = _shown(self.wafers[wafer]["conditions"].get(column))
                     counts[value] = counts.get(value, 0) + 1
                 folded.append("%s %s" % (column, ", ".join("%s %d" % (v, n) for v, n in
                                                            sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))))
             titles = []
             if self.long:
-                folded = ["%s: %s" % (label(w), ", ".join("%s=%s" % kv for kv in sorted(self.wafers[w]["conditions"].items()))
+                folded = ["%s: %s" % (label(w), ", ".join("%s=%s" % (k, _shown(v)) for k, v in sorted(self.wafers[w]["conditions"].items()))
                                       or "default conditions") for w in entry["wafers"]]
                 titles = sorted({str(self.wafers[w].get("title")) for w in entry["wafers"] if self.wafers[w].get("title")})
             date = entry["latest"].date().isoformat() if entry["latest"] else "no date"
@@ -591,17 +595,18 @@ READS = report_shape.READS
 
 
 def _instant(value):
-    """A time cell as a naive UTC instant to compare, or None - a datetime or an ISO string."""
-    if isinstance(value, str):
-        try:
-            value = datetime.datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
-        value = datetime.datetime(value.year, value.month, value.day)
-    if not isinstance(value, datetime.datetime):
-        return None
-    return value.astimezone(datetime.timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+    """A time cell on the product's wall clock (`expression_time_zone`), or None - the one reader of a time, so a
+    candidate's date is the day the operator wrote (lead 10-23: a UTC cut said 10-21 for 10-22T00:00+09:00)."""
+    import expression
+
+    return expression._instant(value)
+
+
+def _shown(value) -> str:
+    """A condition value as the model and the file read it - a blank one (`crud.is_blank_value`) said EMPTY."""
+    from database import crud
+
+    return EMPTY if crud.is_blank_value(value) else str(value)
 
 
 def _count(value):

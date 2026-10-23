@@ -160,7 +160,8 @@ def _summary_table(table, spec, lent=None):
     out = ["<tr>%s%s</tr>" % (_cell("th", GROUP, head.get("name"), colspan=corner), "".join(
         _cell("th", GROUP, head.get("value"), text=_e(name), colspan=len(columns)) for name, columns in table["groups"]))]
     columns = tiers[1] if tiers else [c for _n, cols in table["groups"] for c in cols]
-    if tiers:
+    # a group that is one wafer - a report of a wafer's legs (owner 10-23) - says its name once, over its legs
+    if tiers and tiers[0] != [(name, len(cols)) for name, cols in table["groups"]]:
         out.append("<tr>%s%s</tr>" % (_cell("th", HEAD, head.get("name"), colspan=corner), "".join(
             _cell("th", HEAD, head.get("value"), text=_e(part), colspan=span if span > 1 else None)
             for part, span in tiers[0])))

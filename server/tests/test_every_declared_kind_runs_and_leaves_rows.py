@@ -504,8 +504,11 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
     for name in more:
         models.DYNAMIC_TABLES[name].__table__.create(bind=db.get_bind())
     try:
+        # W2/L1: a condition named, its value not written (the owner's trap wafer), on a date written with its offset
         for table, rows in (("kinds_cond", [{"date": "2026-10-22 10:00:00", "title": "split eval", "wafer": "W1",
-                                             "leg": "L1", "condition_id": "anneal", "value": "450C"}]),
+                                             "leg": "L1", "condition_id": "anneal", "value": "450C"},
+                                            {"date": "2026-10-22T00:00:00+09:00", "title": "trap", "wafer": "W2",
+                                             "leg": "L1", "condition_id": "bond", "value": ""}]),
                             ("kinds_img", [{"wafer": "W1", "leg": "L1", "x": "3", "y": "4", "img_path": "c.png",
                                             "including_defects": "particle, scratch"}]),
                             # both defects occurred on W1/L1 (a defect of no failing chip gets no image)
@@ -526,13 +529,18 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         said = report.conditions()["context"]
         assert "anneal: 450C 1" in said and "default conditions (no condition row): 1 wafers" in said, said
         lines = report.candidates()["context"].splitlines()
-        assert lines[1:] == ["W2 · no date · 2 wafers · W2/L1: default conditions · W2/L2: default conditions"], \
-            "a candidate is the report table's wafer, its legs together (lead 10-23)"
+        assert lines[1:] == ["W2 · 2026-10-22 · 2 wafers · title trap · W2/L1: bond=(empty) · "
+                             "W2/L2: default conditions"], \
+            "a candidate is the report table's wafer, its legs together; its day the product zone's; a blank value " \
+            "said (lead 10-23)"
         drawn = report_html.page("W1", "", dict(spec, layout=[{"kind": "table", "fill": "candidates"}]),
                                  {"candidates": report.candidates()["html"]}, {}, {})
-        assert ('<td class="rpt-item">W2</td><td class="rpt-item">no date</td><td class="rpt-cell">2</td>'
-                '<td class="rpt-item"></td><td class="rpt-item">W2/L1: default conditions<br>W2/L2: default conditions'
+        assert ('<td class="rpt-item">W2</td><td class="rpt-item">2026-10-22</td><td class="rpt-cell">2</td>'
+                '<td class="rpt-item">trap</td><td class="rpt-item">W2/L1: bond=(empty)<br>W2/L2: default conditions'
                 '</td>' in drawn), "the candidates the model read, drawn on the file (lead 10-23)"
+        head = report_html._summary_table(report.yield_by()["html"], spec)
+        assert head.count(">W1</th>") == 1 and '<th class="rpt-head">L1</th>' in head, \
+            "a report of one wafer names it once over its legs (lead 10-23)"
         chosen = report.images()["html"]
         assert sorted(chosen) == ["particle", "scratch"], "the chip's image under each defect it holds"
         assert "image source 'nowhere' is not declared" in chosen["particle"][0]["refused"], \
