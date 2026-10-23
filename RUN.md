@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **파일 화면 — 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» (23c35a768)** — git pull · 서버 재기동
+>
+> ```
+> 돌릴 것   git pull -> 서버 재기동. 선언 바뀜 없음. 화면은 클라 착지 뒤
+> 보는 것   GET /admin/file-ingestion/tables 의 표마다 sources[]: total · read · left · left_by_status
+>           맨 위 progress: counted_at · count_seconds · counting · failed
+> 답의 뜻   read      도장 있는 파일 — 다음 훑기가 다시 안 읽음
+>          left      도장 없는 파일 — 대기 · 읽는 중 · 실패 · 체크 해제. 와처가 읽을수록 줄어듦
+>          total     기록 행이 있는 파일 수(파일 = 그 경로의 가장 새 행). 🔴 훑기가 아직 닿지 않은 새 파일은 없음
+>          counting  아직 한 번도 안 셈 — 잠시 뒤 다시 열면 수가 옴
+>          counted_at 이 오래돼도 수는 그 시각의 것. 다시 세는 박자 = ingestion_settings.json 의
+>          count_recount_seconds (기본 30 초) — 그리드 전체 수와 같은 일꾼 · 같은 박자
+>          left 가 줄지 않고 그대로면 와처가 그 파일을 읽지 못하고 있는 것 — 그 표의 left_by_status 를 봄
+> 급할 때   끄는 스위치 없음 — 세는 일은 요청 밖 일꾼 하나가 한 번에 하나. 운영 기록 행 수는 모름(300 만 행 6 초)
+> 되돌리기  git revert 23c35a768 -> 서버 재기동
+> ```
+>
+
+---
+
 > ## [10-23] **표에 없는 칸 · 숫자 칸에 숫자 아닌 값으로 거르면 이름 대고 거절 (5f5db4a2d)** — git pull · 서버 재기동
 >
 > ```
