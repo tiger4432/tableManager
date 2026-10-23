@@ -6224,7 +6224,10 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
 
         old_val = getattr(row, col_name, None)
         new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name)
-        setattr(row, col_name, new_val)
+        moved = values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
+            "column_types") or {}).get(col_name, "string"))
+        if moved:                       # the value it already shows is not written again - no event (총괄 f5ff1e3e9)
+            setattr(row, col_name, new_val)
 
         is_overwrite = ("user" in sources_dict) or (manual_pin is not None)
         ow_key = (table_name, r_id, col_name)
@@ -6246,8 +6249,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
                 cell_overwrites_to_delete.add(ow_key)
                 cell_overwrites_to_upsert.pop(ow_key, None)
 
-        if values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
-                "column_types") or {}).get(col_name, "string")):
+        if moved:
             log_dict = create_audit_log(
                 db, table_name, r_id, col_name, old_val, new_val,
                 f"delete_source:{source_name}", "system",
@@ -6380,7 +6382,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
 
         old_val = getattr(row, col_name, None)
         new_val, top_src = compute_priority_value(sources_dict, effective_source, table_name)
-        setattr(row, col_name, new_val)
+        moved = values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
+            "column_types") or {}).get(col_name, "string"))
+        if moved:                       # the value it already shows is not written again - no event (총괄 f5ff1e3e9)
+            setattr(row, col_name, new_val)
 
         is_overwrite = ("user" in sources_dict) or (effective_source is not None)
         ow_key = (table_name, r_id, col_name)
@@ -6402,8 +6407,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                 cell_overwrites_to_delete.add(ow_key)
                 cell_overwrites_to_upsert.pop(ow_key, None)
 
-        if values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
-                "column_types") or {}).get(col_name, "string")):
+        if moved:
             log_dict = create_audit_log(
                 db, table_name, r_id, col_name, old_val, new_val,
                 f"set_priority:{effective_source}", updated_by,
