@@ -21,7 +21,8 @@
 // Run: node client2/tests/chain_queue_panel_harness.mjs
 import { readFileSync } from 'node:fs';
 import { queueView, formatAge, failedSince, MINUTE_SECONDS, ChainQueuePanel } from '../src/chain_queue_panel.js';
-import { ABSENT } from '../src/absent.js';
+import { ABSENT, countText } from '../src/absent.js';
+import { unitText } from '../src/ui_words.js';
 import { localShort, localStamp } from '../src/server_time.js';
 
 let pass = 0;
@@ -1009,6 +1010,42 @@ async function xSuite(m, say) {
   const cut = (h) => byClass(byClass(h, 'chain-queue-failures')[0] || { children: [] }, 'chain-queue-truncated').map((n) => n.textContent);
   say('W6 a capped failure list says so above it; an uncapped one says nothing', same(cut(capped.host),
     ['Showing the newest 20 (cap 20).']) && same(cut(listed.host), []), JSON.stringify(cut(capped.host)));
+
+  // Z: a cut replay (owner 10-23 «체인 소급 이어하기 · 마지막 커서») - one line after the waiting ones, where it resumes,
+  //    Resume beside its ×. The key and the total are said only when the server sends them.
+  const CUT = { run_id: 'cut-1', rule: 'rule_r', state: 'cancelled', op: 'chain_replay',
+    pages: { done: 3, staged: 5, rows_done: 300 }, cursor_end: 'K-0300', total_rows: 1000, cut_at: '2026-10-23 09:00:00',
+    resume: { run_id: 'cut-1' }, cancel: { key: 'cut-1' } };
+  const resumed = [];
+  const seatR = (body) => {
+    const d = makeDoc();
+    const host = d.createElement('div');
+    new m.ChainQueuePanel(host, { doc: d, confirm: () => true, onResume: (id) => resumed.push(id) }).render(body);
+    return host;
+  };
+  const whyOf = (tr) => (tr ? byClass(tr, 'queue-line-state-why').map((n) => n.textContent)[0] || '' : '');
+  const rh = seatR({ ...BODY, interrupted_runs: [CUT] });
+  const rr = rowsOf(rh);
+  const cutLine = rr[rr.length - 1];
+  say('Z1 a cut replay is a line after the waiting ones: «interrupted», where it resumes, after which key, of the total, when cut',
+    rr.length === 4 && cutLine.getAttribute('data-line-id') === 'cut-1'
+      && (byClass(cutLine, 'tag')[0] || {}).textContent === 'interrupted'
+      && whyOf(cutLine) === `Resumes from page 4 · after K-0300 · 300 of ${unitText(countText(1000), 'row')} · cut 2026-10-23 09:00:00`,
+    JSON.stringify([rr.length, whyOf(cutLine)]));
+  const cutBare = rowsOf(seatR({ ...BODY, interrupted_runs: [{ ...CUT, cursor_end: undefined, total_rows: null }] }));
+  say('Z2 without the key and the total (a server before them) the line says the page and the cut alone',
+    whyOf(cutBare[cutBare.length - 1]) === 'Resumes from page 4 · cut 2026-10-23 09:00:00', JSON.stringify(whyOf(cutBare[cutBare.length - 1])));
+  const goes = byClass(rh, 'chain-queue-resume');
+  (goes[0] && goes[0].listeners.click || []).forEach((fn) => fn());
+  say('Z3 Resume stands on the cut line alone, beside its ×, and hands the page the run to resume',
+    goes.length === 1 && byClass(cutLine, 'chain-queue-resume').length === 1 && byClass(cutLine, 'running-x').length === 1
+      && same(resumed, ['cut-1']), JSON.stringify([goes.length, resumed]));
+  say('Z4 the Retroactive count finds the cut run of its op and rule - not another op, not one the server names no op for',
+    m.cutRunFor({ interrupted_runs: [CUT] }, 'chain_replay', 'rule_r') === CUT
+      && m.cutRunFor({ interrupted_runs: [CUT] }, 'recompute', 'rule_r') === null
+      && m.cutRunFor({ interrupted_runs: [{ ...CUT, op: undefined }] }, 'chain_replay', 'rule_r') === null);
+  say('Z5 an answer with no cut runs draws the list it drew, and no Resume',
+    rowsOf(seatR(BODY)).length === 3 && !byClass(seatR(BODY), 'chain-queue-resume').length);
 }
 const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
 const refreshed = [];
@@ -1029,7 +1066,7 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'XM4', what: 'the question does not say how many', catches: 'X2',
       mutate: swap("`Skip ${unitText(countText(events), 'event')}?`", "'Skip this line?'") },
     { id: 'XM5', what: 'the × column always stands', catches: 'X7',
-      mutate: swap('const act = rows.some((r) => r.skip);', 'const act = true;') },
+      mutate: swap('const act = rows.some((r) => r.skip || r.resume);', 'const act = true;') },
     { id: 'XM6', what: 'the POST carries no key', catches: 'X8', mutate: swap('body: JSON.stringify({ key })', 'body: JSON.stringify({})') },
     { id: 'XM7', what: 'a refusal says a fixed word, not the server\'s sentence', catches: 'X9',
       mutate: swap('line: await retroFailureLine(res, failureFactOf(res), CANCEL_REFUSED)', 'line: CANCEL_REFUSED') },
@@ -1082,6 +1119,15 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'WM10', what: 'the failure table is never drawn', catches: 'W4',
       mutate: swap('    if (view.recentFailures.length) this.root.appendChild(this._failures(view));\n', '') },
     { id: 'WM11', what: 'a press copies the short label', catches: 'W5', mutate: swap("this.copy(f.id, 'Transaction ID')", "this.copy(f.label, 'Transaction ID')") },
+    { id: 'ZM1', what: 'a cut replay draws no line', catches: 'Z1',
+      mutate: swap('  const cutRows = Array.isArray(payload.interrupted_runs) ? payload.interrupted_runs.map(interruptedRow) : [];', '  const cutRows = [];') },
+    { id: 'ZM2', what: 'the key is not said', catches: 'Z1',
+      mutate: swap("    key !== null && key !== undefined && key !== '' ? `after", "    false ? `after") },
+    { id: 'ZM3', what: 'Resume on every line', catches: 'Z3', mutate: swap('        if (r.resume) {\n', '        if (true) {\n') },
+    { id: 'ZM4', what: 'Resume goes nowhere', catches: 'Z3',
+      mutate: swap("go.addEventListener('click', () => this.onResume(r.resume));", '') },
+    { id: 'ZM5', what: 'a cut run of any op matches the count', catches: 'Z4',
+      mutate: swap('c && c.op != null && String(c.op) === String(op) && ', 'c && ') },
     { id: 'WM12', what: 'a capped failure list says nothing', catches: 'W6',
       mutate: swap('    if (view.recentCut) box.appendChild(this._line(\'chain-queue-truncated\', view.recentCut));\n', '') },
   ];

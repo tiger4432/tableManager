@@ -91,6 +91,68 @@ export async function skipLine(key, { adminFetch, apiBase = '' }) {
   }
 }
 
+const RESUME_REFUSED = 'Resume refused';
+
+/** Resume on a cut replay: POST /admin/retroactive/runs/{run_id}/resume (총괄 fc1e1e385). `{ok: true, runId}` - the new
+ *  run - or the refusal's line, the server's sentence first, through the same seat as a ×. */
+export async function resumeRun(runId, { adminFetch, apiBase = '' }) {
+  try {
+    const res = await adminFetch(`${apiBase}/admin/retroactive/runs/${encodeURIComponent(runId)}/resume`, { method: 'POST' });
+    if (res.ok) {
+      const said = await res.json().catch(() => null);
+      return { ok: true, runId: said && said.run_id ? String(said.run_id) : '' };
+    }
+    return { ok: false, line: await retroFailureLine(res, failureFactOf(res), RESUME_REFUSED) };
+  } catch (e) {
+    return { ok: false, line: fetchFailureLine(null, RESUME_REFUSED) };
+  }
+}
+
+/** Where a cut replay resumes, in words (owner 10-23 «마지막 커서»): «Resumes from page N · after <key> · R of T rows».
+ *  The key and the total are said only when the server sends them. The one place these words are made - the queue's
+ *  line and the Retroactive count both read it. */
+export function resumeLine(cut) {
+  const c = cut && typeof cut === 'object' ? cut : {};
+  const p = c.pages && typeof c.pages === 'object' ? c.pages : {};
+  const key = c.cursor_end;
+  return [
+    isCount(p.done) ? `Resumes from page ${countOf(Number(p.done) + 1)}` : '',
+    key !== null && key !== undefined && key !== '' ? `after ${typeof key === 'object' ? JSON.stringify(key) : String(key)}` : '',
+    isCount(p.rows_done) && isCount(c.total_rows) ? `${countOf(p.rows_done)} of ${unitText(countOf(c.total_rows), 'row')}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/** The cut replay of this operation and rule in a queue answer, or null - matched on the op and the rule the server
+ *  names on the line (an answer without `op` matches none). */
+export function cutRunFor(payload, op, rule) {
+  const cuts = payload && Array.isArray(payload.interrupted_runs) ? payload.interrupted_runs : [];
+  return cuts.find((c) => c && c.op != null && String(c.op) === String(op) && String(c.rule) === String(rule)) || null;
+}
+
+/** A cut replay as one line of the list (owner 10-23): its run, its rule, its rows, the state «interrupted» with where it
+ *  resumes and when it was cut, Resume and its ×. */
+export function interruptedRow(cut) {
+  const c = cut && typeof cut === 'object' ? cut : {};
+  const p = c.pages && typeof c.pages === 'object' ? c.pages : {};
+  const resume = c.resume && c.resume.run_id ? String(c.resume.run_id) : null;
+  return Object.freeze({
+    ...lineName({ run_id: c.run_id, op: c.op }),
+    rows: countOf(p.rows_done),
+    eventsNote: '',
+    tables: c.rule == null || c.rule === '' ? ABSENT : String(c.rule),
+    eventTypes: Object.freeze([]),
+    age: '',
+    owners: Object.freeze([]),
+    rules: null,
+    at: '',
+    maxRetry: '',
+    skip: skipOf(cancelOf(c.cancel)),
+    resume,
+    chainState: { state: 'interrupted', why: { resumes: resumeLine(c), cut: c.cut_at ? `cut ${c.cut_at}` : '' } },
+    slotPid: null,
+  });
+}
+
 // 🔴 총괄 8e331ca17 — each item carries `state` (running · orphaned · unknown), the server's one
 //    judgment (utils/heartbeat.runner_state). The ONE place this file asks it: the count, the
 //    longest and a line's motion all go through `isRunningItem`. An item without the key is an
@@ -167,7 +229,7 @@ export function formatAge(seconds) {
 // 🔴 248ae20cd — a queue line's chain state is the server's `{state, why}` (one function there), drawn ONE way
 //    in both queues, the admin's lines and the grid's rows: the token as it comes, on the base layer's tag, and
 //    its why as one line. The tone is colour only; the stylesheet draws these three and nothing else.
-const STATE_TONE = Object.freeze({ running: 'ok', retrying: 'warn', stalled: 'warn', failed: 'danger' });
+const STATE_TONE = Object.freeze({ running: 'ok', retrying: 'warn', stalled: 'warn', failed: 'danger', interrupted: 'warn' });
 
 /** A chain state's one line: its `why` fields in the order the lead wrote them, '' where it says nothing. A
  *  waiting state's seconds are not said - they are the age the line already shows beside it; a waiting or done
@@ -188,6 +250,7 @@ export function chainStateWhy(chainState) {
     failed: [w.stage, w.failure],
     waiting: [w.unexpected_status && `status ${w.unexpected_status}`],
     done: [w.unexpected_status && `status ${w.unexpected_status}`],
+    interrupted: [w.resumes, w.cut],
   }[s.state] || [];
   return parts.filter((p) => p !== null && p !== undefined && p !== '').map(String).join(' · ');
 }
@@ -506,6 +569,9 @@ export function queueView(payload, opts = {}) {
     slotPid: t.slot_pid ?? null,
   }));
 
+  // Cut replays (총괄 fc1e1e385): no event waits for them, so no line above - one line each, after the waiting ones.
+  const cutRows = Array.isArray(payload.interrupted_runs) ? payload.interrupted_runs.map(interruptedRow) : [];
+
   // ── rule ④: a cut list says it was cut ──
   const listed = payload.listed && typeof payload.listed === 'object' ? payload.listed : null;
   const truncated = listed && listed.capped
@@ -559,7 +625,7 @@ export function queueView(payload, opts = {}) {
     byOwner: Object.freeze(byOwner),
     splitByOwner,
     pickup: pickup ? Object.freeze(pickup) : null,
-    rows: Object.freeze(rows),
+    rows: Object.freeze([...rows, ...cutRows]),
     truncated,
     recentFailures: Object.freeze(recentFailures),
     recentCut,
@@ -586,6 +652,8 @@ export class ChainQueuePanel {
     this.mount.appendChild(this.root);
     // A × asks once (`confirm`), then hands the page the line's cancel - {key} or {runId}; the page owns the route.
     this.onCancel = deps.onCancel || (() => {});
+    // Resume on a cut replay's line hands the page its run id; the page owns the route (owner 10-23).
+    this.onResume = deps.onResume || (() => {});
     this.confirm = deps.confirm || ((text) => globalThis.confirm(text));
     // A line's id is drawn short; a press hands the page the full id to copy (lead 421191402).
     this.copy = deps.copy || (() => {});
@@ -783,7 +851,7 @@ export class ChainQueuePanel {
     thead.className = 'table-header';
     const hr = doc.createElement('tr');
     // The × column stands only when a line has a × - a server before the queue's × draws the table it drew; so does Rules.
-    const act = rows.some((r) => r.skip);
+    const act = rows.some((r) => r.skip || r.resume);
     const rules = rows.some((r) => r.rules);
     for (const [label, col] of [['Job / Transaction', 'tx'], [WAITING, 'age'], ['Tables', 'tables'],
                                 ...(rules ? [['Rules', 'rules']] : []),
@@ -855,6 +923,13 @@ export class ChainQueuePanel {
       tr.appendChild(tdOwners);
       if (act) {
         const tdAct = this._td('', 'act');
+        if (r.resume) {
+          const go = doc.createElement('button');
+          go.className = 'admin-btn chain-queue-resume';
+          go.textContent = 'Resume';
+          go.addEventListener('click', () => this.onResume(r.resume));
+          tdAct.appendChild(go);
+        }
         if (r.skip) tdAct.appendChild(this._x(r.skip));
         tr.appendChild(tdAct);
       }

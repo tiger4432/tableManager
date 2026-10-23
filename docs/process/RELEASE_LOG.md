@@ -372,6 +372,7 @@
 - 2026-10-23 [체크리스트가 파일당 한 행 — 파일 화면은 파일당 한 줄, 외부 훑기가 이름 먼저 거르고 바뀐 폴더만 볼 수 있다](#2026-10-23--체크리스트가-파일당-한-행--파일-화면은-파일당-한-줄-외부-훑기가-이름-먼저-거르고-바뀐-폴더만-볼-수-있다) — 적는 곳 ingestion_settings.json 의 sweep_interval_seconds · external_full_walk_every · 보는 곳 파일 화면 · 와처 시작 줄
 - 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
 - 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
+- 2026-10-23 [끊긴 체인 소급을 화면에서 이어 한다 — 대기열 줄의 Resume, 미리 세기의 «Resumes from page N»](#2026-10-23--끊긴-체인-소급을-화면에서-이어-한다--대기열-줄의-resume-미리-세기의-resumes-from-page-n) — 누르는 곳 어드민 Chain 대기열의 끊긴 줄 «Resume» · Retroactive 탭 chain_replay 의 Count
 - 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
 - 2026-10-21 [Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도](#2026-10-21--read-all-again--표--폴더의-파일을-통째로-다시-읽힌다-상한은-거절이-아니라-속도) — 누르는 곳 파일 화면 폴더 줄 · Files 머리의 «Read all again»
 - 2026-10-21 [Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께](#2026-10-21--read-now--경로-하나를-와처가-본-것처럼-지금-읽힌다-왜-안-집었는지와-함께) — 누르는 곳 파일 화면 «Read a file now» · 명령 `replay_ingestion.py --now`
@@ -541,6 +542,14 @@
 
 
 
+
+## 2026-10-23 · 끊긴 체인 소급을 화면에서 이어 한다 — 대기열 줄의 Resume, 미리 세기의 «Resumes from page N»
+
+- **무엇** — 소유자 10-23 「체인 소급 이어하기는 안 되는 건가? 테스트런할 때 마지막 커서가 떴으면 좋겠는데」. 서버는 끊긴 리플레이를 마지막으로 커밋한 쪽 다음부터 새 run 으로 잇습니다(POST /admin/retroactive/runs/{run_id}/resume, 총괄 fc1e1e385). 그런데 화면에 그 버튼이 없었습니다.
+- **화면에서** — 어드민 Chain 대기열에 끊긴 run 마다 한 줄이 섭니다. 상태 낱말은 «interrupted»이고 «Resumes from page N · after <마지막 키> · R of T rows · cut <시각>» 가 붙습니다. 그 줄에 «Resume» 과 × 가 있습니다. 끊기지 않은 줄에는 Resume 이 없습니다. Retroactive 탭에서 chain_replay 의 Count 를 누르면, 그 규칙에 끊긴 run 이 있을 때 결과 밑에 같은 «Resumes from page N · after <키>» 와 Resume 이 섭니다. 거절은 서버 문장 그대로 토스트로 나옵니다.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 마지막 키 · 전체 대비 · Count 쪽 줄은 서버가 interrupted_runs 항목에 cursor_end · total_rows · op 를 실은 뒤부터 나옵니다(A 착지). 그 전에는 쪽과 끊긴 시각만 나옵니다.
+- **선언** — 바뀐 것 없음.
+- **자세히** — `chain_queue_panel.interruptedRow` · `resumeLine` · `cutRunFor` · `resumeRun` · 하니스 chain_queue_panel 절 Z · 화면 검사기 상태 «Chain queue, a cut run».
 
 ## 2026-10-23 · AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만
 

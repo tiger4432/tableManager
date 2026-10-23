@@ -282,11 +282,19 @@ const galleryAnswer = (u) => {
   if (u.pathname.endsWith('/count')) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: Object.keys(filters).length ? rows.length : bodyOf(ANSWERS['/tables/dt_log/data/count']).total } };
   return { ...a, body: { ...b, data: rows } };
 };
+// A cut replay on the chain queue (owner 10-23 «체인 소급 이어하기 · 마지막 커서»): while its state runs, the queue's answer
+// carries one, with a long key - its line, where it resumes, Resume and ×.
+const CUT_RUN = { on: false, entry: { run_id: 'cutrun-0001', op: 'chain_replay', rule: 'dt_log_to_dt_map', state: 'cancelled',
+  pages: { done: 12, staged: 20, rows_done: 12000 }, cursor_end: 'LOT-2026-10-23-000123|WAFER-07|DIE-0042', total_rows: 40000,
+  cut_at: '2026-10-23 09:00:00', resume: { run_id: 'cutrun-0001' }, cancel: { key: 'cutrun-0001' } } };
 const answerOf = (u) => {
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
+  }
+  if (CUT_RUN.on && u.pathname === '/admin/chain/queue') {
+    return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], interrupted_runs: [CUT_RUN.entry] } };
   }
   for (const [p, body] of Object.entries(QUEUE)) if (u.pathname === p) return { status: 200, type: 'application/json', body };
   const a = ANSWERS[u.pathname + u.search];
@@ -727,6 +735,17 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rul
 // The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
+// owner 10-23: a cut replay's line - «interrupted», where it resumes after which key, of the total, Resume beside its ×.
+CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'contents', at: 'chain-queue', expr: `(() => {
+  const line = document.querySelector('#chain-queue-mount tr[data-line-id="cutrun-0001"]');
+  if (!line) return 'no line for the cut run';
+  const tag = line.querySelector('.queue-line-state .tag');
+  if (!tag || tag.textContent !== 'interrupted') return 'its state says ' + (tag ? tag.textContent : 'nothing');
+  const why = (line.querySelector('.queue-line-state-why') || {}).textContent || '';
+  if (!why.startsWith('Resumes from page 13 · after LOT-2026-10-23-000123|WAFER-07|DIE-0042 · 12000 of ')) return 'it says ' + why;
+  const go = line.querySelector('.chain-queue-resume');
+  return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
+})()` });
 // The row checkboxes and the header's select-all at the grid's left edge with the first data column hidden (owner 10-22).
 CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'select all at the left', at: 'ag-header', expr: `(() => {
   const gone = window.__hiddenFirst;
@@ -2383,6 +2402,16 @@ const DRIVE = {
       await until(c, "!!document.querySelector('[data-value=\"derive.join.take[2].fn\"]')");
       await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    // A cut replay on the chain queue (owner 10-23): the queue read again with one in it.
+    ['Chain queue, a cut run', async (c) => {
+      CUT_RUN.on = true;
+      await evaluate(c, "location.hash = '#chain'; true");
+      await until(c, "!!document.querySelector('#chain-queue-mount .chain-queue-refresh')");
+      await evaluate(c, "document.querySelector('#chain-queue-mount .chain-queue-refresh').click(); true");
+      await until(c, "!!document.querySelector('#chain-queue-mount .chain-queue-resume')");
+      await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .chain-queue-resume');
+        at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
