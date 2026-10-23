@@ -1,5 +1,46 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **AI 리포트 — 요약표에 리포트 규칙 하나 · 웨이퍼마다 한 판 · 결과는 요약표 칸 셋 · send_to 로 중계 PC 에 (소유자 10-23 「너무 복잡」 · 「보조표 너무 많아」 · 「리포트는 웨이퍼당 하나」, 총괄 d337be901 · 5efb406e4)** — git pull · 선언 고침 · 런처 재기동
+>
+> ```
+> 적을 것   요약표 선언에 결과 칸 셋(string), 이름은 마음대로 - 예: report_state · report_file · report_reason
+>          어드민 Chain 탭 리포트 규칙 하나: on = into = 요약표 · derive.report.results = {"state", "file", "reason"} 그 세 칸
+>            · limits.group_by = 요약표의 웨이퍼 칸 (리플레이가 웨이퍼 하나를 한 번에 - 안 적으면 행마다 다시 만들 수 있음)
+>            · send_to = "http://<중계 PC>:8765/reports" (안 적으면 파일만 서버에) · 나머지 칸은 전과 같음
+>            예시 docs/guide/ai_report_tables.md «1. 적는 것»
+>          ingestion_settings.json "chain_slots" 3 이상 (리포트가 도는 동안 일꾼 하나를 씀)
+>          옛 것은 지움: 규칙 넷(조인 · decide · 리포트 · 보내기) · 요약표의 request_id · eval_id 칸
+>            · table_config 의 report_request · report · report_step · report_wafer (아무도 안 읽고 안 씀)
+>            · ledger_config 의 report_wafer 소스
+>          대조군을 같은 제품군에서만: derive.report.control.same = ["<웨이퍼 표의 제품군 칸>"] (비우면 안 거름)
+> 도는 때   요약 행이 들어오면 그 파일의 웨이퍼마다 한 판
+>          시범 동안: 규칙을 "enabled": false 로 두면 요약 행이 들어와도 안 돎 — 이름을 댄 리플레이만 돎(모든 규칙이 같음)
+>          다시 만들기 · 시범 한 판: 어드민 소급 탭 «Replay chain rules over old data (R1)» rule = 그 규칙 이름 (row_ids 로 웨이퍼 행만)
+> 확인     요약표의 그 웨이퍼 행 전부 같은 값: state done (send_to 가 있으면 sending -> done)
+>            file = <데이터 루트>/reports/<웨이퍼>.html, 파일 끝 «Evidence» 를 펴면 걸음마다 한 줄
+>          chain_worker.log  «[Report] <규칙> wafer <웨이퍼> step k <읽기> - <돌아온 것>» · «[Report] <규칙> wafer <웨이퍼>: done»
+>                            «[Report] <규칙> sent <파일>»
+> 답의 뜻   state stopped 의 reason
+>            step cap N               모델이 상한까지 done 을 안 함 -> loop.steps 늘림 · prompts.rules 다듬음
+>            time cap N s             loop.seconds 안에 못 끝냄 -> 게이트웨이 응답 시간 · loop.seconds
+>            context over budget      줄여도 문맥이 loop.context_tokens 를 넘음 -> 조건 칸을 줄이거나 예산을 늘림
+>            the write call answered no text   쓰기 호출이 글 대신 다른 것을 답함 -> rules 에 «글로 답하라» 한 줄
+>            the language model call was refused: ...   게이트웨이 · llm_config.json - 사유 그대로
+>            wafer <웨이퍼> is not in <웨이퍼 표>   요약에는 있는데 웨이퍼 표에 그 웨이퍼가 없음
+>          state sending 이 남음        중계 PC 가 아직 안 받음 - chain_worker.log «send <파일>, try k of 3: <사유>»
+>          state send failed + reason   세 번 다 실패. 중계 PC 를 고친 뒤 그 웨이퍼 행을 리플레이 (다시 만들고 보냄)
+>          저장 거절 «derive.report.results names …» · «the report rule stands on its summary table …»   옛 모양 선언 -> «적을 것»
+>          저장 거절 «… is not a mark this report fills» · «… is fetched from outside the file»   엑셀 양식의 표시 · 바깥 주소
+>          같은 웨이퍼가 여러 파일로 들어옴   들어올 때마다 다시 만들고 같은 파일을 덮음
+>          chain_worker.log «[ChainRules] <규칙>: enabled=false — nothing wakes it; a replay that names it runs it.»
+>            꺼진 규칙이 선 줄. 리플레이 대상 목록(그리드 배너 · /admin/chain/rules/replayable)에는 안 보임 — 소급 탭에 이름을 적음
+> 급할 때   그 규칙 "enabled": false (저장 즉시) - 새 리포트를 안 만듦. 이미 sending 인 것은 보냄 — 보내기까지 멈추려면 send_to 를 지움
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동. 되돌린 코드는 요청 표 모양을 읽으므로 새 규칙을 끄고 옛 규칙 넷 · 제품 표 넷을 다시 적음
+> ```
+>
+
+---
+
 > ## [10-23] **값이 안 바뀐 행은 사건을 안 낸다 — 셀 메뉴의 층 지우기 · 핀이 보이는 값을 안 옮기면 규칙이 안 돈다 (총괄 f5ff1e3e9)** — git pull · 런처 재기동
 >
 > ```
@@ -339,81 +380,6 @@
 > 되돌리기  git revert 9095c4e25 -> 런처 재기동. 칸을 적은 항목은 되돌린 코드에서 칸이 무시되고 1 초 뒤 읽음
 > ```
 >
-> ## [10-23] **AI 리포트 — 글은 «읽은 표 전부»를 받은 쓰기 호출에서 (소유자 10-23 ㄱ, 955bc93aa)** — git pull · 런처 재기동
->
-> ```
-> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로 (prompts.rules 의 쓰기 규칙은 쓰기 호출에도 실림)
-> 확인     리포트 하나 만든 뒤 report_step 마지막 줄 call = write · «N text(s) from M table(s) read»
->          리포트 글에 요약 표 · 파레토 · 트렌드의 숫자가 표 그대로
-> 답의 뜻   write 줄의 cut 에 «step k <읽기>: n»       예산을 넘어 오래된 읽기부터 n 줄만 남김 -> loop.context_tokens 를 올리거나 둠
->          reason «the write call answered no text»   쓰기 호출에 모델이 글 대신 다른 것을 답함 -> rules 에 «글로 답하라» 한 줄
->          step cap · time cap 인데 글이 있음         정상 — 상한까지 읽은 만큼으로 씀
->          시간 상한에 닿은 리포트                     쓰기 호출 하나만큼 상한을 넘긴다
-> 급할 때   그 리포트 규칙 "enabled": false
-> 되돌리기  git revert 955bc93aa -> 런처 재기동 (글이 다시 done 걸음에서 나옴)
-> ```
->
-
-> ## [10-23] **AI 리포트 — 요청 행은 저절로, 리포트 · 보내기는 리플레이로 (소유자 10-23 「자동 시작은 막고 리플레이로」, 선언만)** — 코드 없음 · 체인 창에 규칙 넷
->
-> ```
-> 적을 것   요약표 선언에 request_id · eval_id 두 칸(string) 더하기
->          체인 창에 규칙 넷 — docs/guide/ai_report_tables.md «계측 → 리포트» 의 예시 그대로, 표 이름만 자기 것으로
->            1 join     웨이퍼 표 -> 요약표 : take eval_id 를 request_id 와 eval_id 로
->            2 decide   요약표 -> report_request : key [request_id] · on.require [request_id] · allow_chain_trigger
->            3 리포트   report_request -> report : allow_chain_trigger 를 «적지 않음» (리플레이로만 돎)
->            4 보내기   report -> (보낸 기록 표) : on.require [{"state": ["done"]}] · allow_chain_trigger · 소유자 맵퍼
-> 돌릴 것   (server 에서, 순서대로)
->          python scripts/chain_replay_cli.py replay <리포트 규칙> --apply     요청 행마다 리포트 한 판
->          python scripts/chain_replay_cli.py replay <보내기 규칙> --apply     done 인 리포트마다 보내기 한 번
->          화면: 어드민 소급 탭 «Replay chain rules over old data (R1)» 에 규칙 이름만
-> 확인     요약 들어온 뒤: report_request 에 평가 행 · report 는 아직 없음
->          리포트 리플레이 뒤: report 행 done (또는 stopped + 사유) · <데이터 루트>/reports/<평가>.html
->          보내기 리플레이 뒤: 소유자 맵퍼가 done 행마다 한 번 (stopped 는 안 불림)
-> 답의 뜻   report_request 행이 안 섬          요약표 request_id 가 빔 -> 조인이 웨이퍼 표에서 평가를 못 찾음
->          리플레이 했는데 report 행이 없음     규칙 이름 철자 · 리플레이 줄 «rows handed over» 가 0 인지
->          보내기 리플레이에 맵퍼가 안 불림     report 행이 done 이 아님 · require 철자
->          다시 돌리면                          리포트는 다시 만들어 같은 파일을 덮고, 보내기는 이미 보낸 것도 다시 보냄
->                                              하나만: --row-ids <행>
->          손으로 넣은 요청 행                  바로 돎 (사람 쓰기) — 보내기는 그때도 리플레이로
->          리포트 이미지가 반쪽                 이미지 표가 반쪽일 때 돈 것 — 외부 저장소 항목에 stability_interval_seconds 를 적으면 폴더가 조용해진 뒤 읽음(9095c4e25, 이 파일 맨 위) · 반쪽이면 다시 읽기 문 뒤 리플레이
-> 자동으로  폴더 조용함(B b15d6b66e) 착지 뒤 리포트 규칙에 "allow_chain_trigger": true 한 칸이면 다시 저절로 돎
-> 급할 때   규칙 2(decide) 또는 3(리포트)의 "enabled": false
-> 되돌리기  코드 변경 없음 — 규칙 넷을 지우거나 끈다
-> ```
->
-
-> ## [10-23] **AI 리포트 둘째 · 셋째 — 엑셀 양식 · 대조군 · 요약 표 꾸미기 · 한글 낱말 (소유자 10-23, 0c60ef94c)** — git pull · 런처 재기동 · 처음 한 번 하는 일
->
-> ```
-> 돌릴 것   git pull -> 런처 재기동. 리포트 첫째의 설정(chain_slots 3 · 리포트 규칙)은 그대로
-> 처음 한 번 하는 일 — 순서대로 (시범은 이 목록대로)
->   1. 표 선언: 웨이퍼 표 · 요약표는 있어야 함. 쓰면 정보 표 · 그림 표 · 디펙 이미지 표 · 비교 묶음 표
->      제품 표 넷(report_request · report · report_step · report_wafer)은 table_config.json.sample 의 것을 그대로
->   2. image_sources.json 에 그림 폴더 소스 (합성맵 · 디펙 이미지)
->   3. llm_config.json 게이트웨이(운영에 이미 있음) · ingestion_settings.json "chain_slots" 3 이상
->   4. 어드민 Chain 탭에 리포트 규칙 하나: on report_request (require setting) · into report ·
->      derive.report 에 역할(wafer · summary · info · picture_rows · images · sets) · rows · item_sep ·
->      formats · labels(한글) · control · layout · prompts   (예시: docs/guide/ai_report_tables.md)
->   5. 엑셀 양식: 들어갈 칸에 {{title}} · {{summary}} · {{table:yield_by}} 같은 표시, {{table:yield_by}} 밑에
->      견본 줄 {{info}} · {{picture}} · {{item}} 을 칠함 -> 복사 -> Paste template (클라 버튼 착지 뒤)
->   6. (쓰면) ledger_config.json 에 report_wafer 소스 — 리포트 -> 웨이퍼 엣지
->   7. 요청: report_request 에 한 행 (request_id · eval_id · setting). 계측 뒤 저절로 서게 하는 것은 다음 일
-> 확인     저장 줄에 그 규칙이 running · 양식이 그림을 뺐으면 «derive.report.template: image(s) dropped: N»
->          report 행 state done -> 파일을 열면 양식 그대로, 표시 칸에 표 · 글 · 그림
->          요약 표: 정보 줄 · 그림 줄 · 칠한 칸 · 묶음 «대조 <평가>»(labels.control 을 적었으면 그 글)
-> 답의 뜻   저장 거절 «… is not a mark this report fills»          양식의 표시 이름이 틀림 -> 거절 문장의 목록에서 고름
->          «… is fetched from outside the file»                 양식에 바깥 주소(http · //) -> 그 그림 · 링크를 지우고 다시 복사
->          «{{info}} is a sample row's first cell …»           견본 줄이 {{table:yield_by}} 줄 바로 밑이 아님
->          «… needs fail and total»                             vs control 규칙인데 요약표가 rate 만 -> 고정 기준 규칙으로
->          그림 칸에 «no file … in image source …»             그 웨이퍼의 그림 파일이 없음 (리포트는 done)
->          리포트 글자가 영어                                    labels 에 그 이름을 안 적음 -> 저장 알림의 이름 목록
-> 급할 때   그 규칙 "enabled": false (저장 즉시)
-> 되돌리기  git revert 0c60ef94c -> 런처 재기동. template · control · info · picture_rows · formats · labels 를
->          쓴 리포트 규칙은 되돌린 코드에서 «모르는 칸» 알림만 내고 그 칸을 안 읽음
-> ```
->
-
 > ## [10-23] **리포트 HTML 받는 곳 — 메일 중계 PC 에서 띄움 (소유자 10-23 「fastapi 로 html 파일 받는 함수 하나」)**
 >
 > ```
@@ -426,31 +392,9 @@
 > 받은 것  inbox/<이름>.html - 다 받은 뒤에만 이 이름으로 바뀜(받는 중엔 .part). 같은 이름은 덮어씀
 > 끄기     uvicorn 창에서 Ctrl+C
 > 자리     receive.py 의 allowed(request) = 보내는 쪽 확인(False -> 403, 아무것도 안 씀) · deliver(path) = 받은 파일을 메일로(터지면 502, 파일은 남음)
->          둘 다 소유자가 채움 - 비워 두면 누구나 올리고, 받기만 함. 우리 서버가 보내는 쪽은 소유자 맵퍼(server/mappers) 몫
+>          둘 다 소유자가 채움 - 비워 두면 누구나 올리고, 받기만 함. 우리 서버가 보내는 쪽은 리포트 규칙의 send_to (체인 워커가 보냄)
 > ```
 
-> ## [10-23] **AI 리포트 — 요청 행 하나가 리포트 규칙 하나를 깨워 HTML 한 파일을 만든다 (소유자 10-22 ㄱ, 223649fa5)** — git pull · 설정 · 런처 재기동
->
-> ```
-> 돌릴 것   git pull
->          ingestion_settings.json 의 "chain_slots": 3 -> 런처 재기동 (리포트가 도는 동안 일꾼 하나를 씀)
->          chain_rules.json 에 리포트 규칙 하나 (어드민 Chain 탭 derive kind: report) - 예시 docs/guide/ai_report_tables.md «운영에서 적는 것»
->             on.require [{"setting": ["<규칙 이름>"]}] · summary 에 아이템별 요약 표 · 칸
->          ledger_config.json 에 report_wafer 소스 한 줄 (같은 문서의 원장 예시)
->          report_request 에 행 하나: request_id · eval_id · setting(규칙 이름) · note
-> 확인     부팅 줄 [ChainRules] 에 <규칙 이름>[decl,report] ... writes=['report_step', 'report_wafer']
->          report 행 state done · file_path 가 <데이터 루트>/reports/<request_id>.html · file_hash 가 그 파일의 sha256
-> 뜻      state stopped 의 reason
->             step cap N                  걸음 상한까지 모델이 done 을 안 함 -> loop.steps 를 늘리거나 prompts.rules 를 다듬음
->             time cap N s                loop.seconds 안에 못 끝냄 -> 게이트웨이 응답 시간 확인, loop.seconds 늘림
->             context over budget         지난 결과 · 조건표를 줄여도 문맥이 loop.context_tokens 를 넘음 -> 조건 칸 수를 줄이거나 예산을 늘림
->             the language model call was refused: ...   게이트웨이 · llm_config.json 문제 - 사유 문장 그대로
->          결과 행이 안 생김             setting 이 규칙 이름과 다름 -> chain_worker.log «required value(s) missing: setting»
->          둘째 요청이 늦게 끝남          정상 - 리포트는 한 번에 하나, 밀린 요청은 대기열에서 차례로
-> 급할 때   규칙 "enabled": false (저장 즉시) - 다른 체인은 그대로
-> 되돌리기  git revert 223649fa5 -> 런처 재기동. 리포트 규칙 · writes 칸을 쓴 규칙은 되돌린 코드에서 로드 거절되니 그 규칙부터 지움
-> ```
->
 > ## [10-22] **메인 그리드 체크 칸 · 파일 인제션 컨트롤 · 선언 읽기 거절 문장 (클라, 9c3834c5e)** — git pull · 화면 새로 고침
 >
 > ```

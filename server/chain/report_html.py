@@ -227,12 +227,19 @@ def _text(slot, texts, spec):
         report_shape.word(spec, "nothing_written") % slot)
 
 
-def page(title, meta, spec, tables, embedded, texts) -> str:
+def _evidence(lines, spec):
+    """The report's steps, folded at its end - what each read and what came back, a line each (owner 10-23)."""
+    return ('<details class="evidence"><summary>%s</summary><pre>%s</pre></details>'
+            % (_e(report_shape.word(spec, "evidence")), _e("\n".join(lines or ()))))
+
+
+def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
     """The file: `spec.layout`'s slots in order - or, with a company `spec.template`, the template with each mark
     cell filled (`report_template`), the summary table dressed by its sample block. `tables`: read name -> its last
     whole table; `embedded`: item -> pictures; `texts`: slot name -> what the model wrote. A slot with nothing to
-    show says so."""
+    show says so. `evidence`: the steps' lines, folded at the end."""
     spec = spec or {}
+    folded = _evidence(evidence, spec) if evidence is not None else ""
     layout, template = spec.get("layout") or (), spec.get("template")
     if isinstance(template, str) and template.strip():
         from chain import report_template
@@ -244,7 +251,9 @@ def page(title, meta, spec, tables, embedded, texts) -> str:
             for fill in report_shape.TABLE_FILLS})
         contents.update({str(slot.get("slot")): _text(slot.get("slot"), texts, spec) for slot in layout
                          if slot.get("kind") == "text"})
-        return report_template.fill(template, contents)
+        filled = report_template.fill(template, contents)
+        at = filled.lower().rfind("</body>")
+        return filled[:at] + folded + filled[at:] if at >= 0 else filled + folded
     sections = []
     for slot in layout:
         kind = slot.get("kind")
@@ -253,16 +262,16 @@ def page(title, meta, spec, tables, embedded, texts) -> str:
         sections.append("<section>%s</section>" % body)
     return ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
             "content=\"width=device-width, initial-scale=1\"><title>%s</title><style>%s</style></head>"
-            "<body><main><h1>%s</h1><p class=\"meta\">%s</p>%s</main></body></html>"
-            % (_e(title), STYLE, _e(title), _e(meta), "".join(sections)))
+            "<body><main><h1>%s</h1><p class=\"meta\">%s</p>%s%s</main></body></html>"
+            % (_e(title), STYLE, _e(title), _e(meta), "".join(sections), folded))
 
 
-def keep(request_id, text) -> tuple:
-    """Write the file -> (its path, sha256 of its bytes)."""
+def keep(name, text) -> tuple:
+    """Write the file `<name>.html` -> (its path, sha256 of its bytes)."""
     data = text.encode("utf-8")
     folder = os.path.join(paths.DATA_ROOT, REPORTS_DIRNAME)
     os.makedirs(folder, exist_ok=True)
-    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in str(request_id)) or "report"
+    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in str(name)) or "report"
     path = os.path.join(folder, safe + ".html")
     with open(path + ".tmp", "wb") as handle:
         handle.write(data)

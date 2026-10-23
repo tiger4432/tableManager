@@ -6457,7 +6457,8 @@ def get_chain_rules():
         print(f"Error reading chain rules: {read['error']}")
         return {"status": "error", "message": read["error"], "data": []}
 
-    standing = worker.loaded_chain_rules()
+    # an off rule stands for a replay that names it (owner 10-23 「막아」) and does not run - 판정 656's other pixel
+    standing = [rule for rule in worker.loaded_chain_rules() if not rule_shape.is_switched_off(rule)]
     listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING)
               for rule in standing]
     standing_names = {rule.get("name") for rule in standing}
@@ -6472,6 +6473,10 @@ def get_chain_rules():
         # (`unresolvable_mapper`), so only the loader knows whether it really runs.
         # Measured: asking the grammar alone dropped a refused rule off the list entirely.
         expanded, refusal, notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
+        if expanded and rule_shape.is_switched_off(raw):
+            listed.append(dict(raw, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+                               rule_state_detail=notes[0] if notes else "enabled=false"))
+            continue
         # 🔴 [Q-191] PER STANDING RULE, NOT PER DECLARATION. One declaration can stand TWO
         # rules under DIFFERENT names, and the loader drops BY NAME
         # (`name_claimed_twice`), so exactly one half can fall. Asking 「did anything from

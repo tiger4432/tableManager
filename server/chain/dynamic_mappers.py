@@ -84,7 +84,7 @@ _join.fetch = _read_join
 
 
 def _report(db, payload, rule=None):
-    """`derive: {kind: "report"}` as an ordinary mapper - `report_loop.answer` over the request rows handed. No read
+    """`derive: {kind: "report"}` as an ordinary mapper - `report_loop.answer` over the summary rows handed. No read
     half: what it reads is what the model asks for, step by step."""
     from chain import report_loop
 
@@ -294,8 +294,9 @@ def _install_templates():
         "label": "decide", "stamps_origin": False,
         "params": None}
     TEMPLATES[report_shape.REPORT_MAPPER] = _report
-    # its report row and step and wafer rows carry the request row they came from
-    TEMPLATE_FACTS[report_shape.REPORT_MAPPER] = {"label": "report", "stamps_origin": True, "params": None}
+    # its result cells carry the summary row they are written on, and it says the columns (`results`)
+    TEMPLATE_FACTS[report_shape.REPORT_MAPPER] = {"label": "report", "stamps_origin": True,
+                                                  "columns": report_shape.result_columns, "params": None}
     TEMPLATES[enrichment.config.DEDUP_MAPPER] = _enrich
     # ⚠️ `stamps_origin` False is measured (`origin_row_id` × 0 in `enrichment/mapper.py`),
     #    not assumed.

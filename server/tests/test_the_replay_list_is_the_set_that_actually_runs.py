@@ -110,7 +110,8 @@ def test_a_switched_off_declaration_never_reaches_the_list(loaded):
     keeps only enabled rules, so re-asking here would be a second answer to 「is it on」."""
     import inspect
 
-    assert _stood(dict(JOIN, enabled=False)) == [], "an off declaration stands no rule"
+    stood = _stood(dict(JOIN, enabled=False))
+    assert stood and all(rule["enabled"] is False for rule in stood), "an off declaration stands its rules off"
     assert "is_switched_off(" in inspect.getsource(replay.load_rules)
 
 

@@ -164,8 +164,17 @@ def load_rules() -> list:
 
 
 def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> dict:
+    """The rule a replay NAMES - off ones too (owner 10-23 「자동 시작은 막고 리플레이로」): off is «nothing wakes
+    it», and naming it is the one way it runs. The lists (`load_rules`) keep only the rules that are on."""
+    from chain import rule_shape
+    from chain.ingestion_worker import loaded_chain_rules
+
+    named = rules is None
     rules = rules if rules is not None else load_rules()
     rule = next((r for r in rules if r.get("name") == rule_name), None)
+    if rule is None and named:
+        rule = next((r for r in loaded_chain_rules()
+                     if r.get("name") == rule_name and rule_shape.is_switched_off(r)), None)
     if rule is None:
         available = ", ".join(sorted(r.get("name", "?") for r in rules)) or "<none>"
         raise ReplayRefused(f"chain rule '{rule_name}' not found or disabled; available: {available}")

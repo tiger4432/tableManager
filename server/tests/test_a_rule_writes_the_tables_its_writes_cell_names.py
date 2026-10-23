@@ -8,7 +8,6 @@ Every seat that asks «what does this rule write» asks `chain_bindings.rule_tab
                 still refused, and a trigger write-back still plain updates only
   the group     its tables are the group's targets - held and ordered like the target
   the cycle     a loop closed by a writes table is seen
-  the report    a report rule names report_step and report_wafer there, with allow_replace_map
 """
 import types
 
@@ -64,18 +63,6 @@ def test_a_loop_closed_by_a_writes_table_is_seen():
     found = worker._validate_chain_cascade_graph([RULE, back])
     assert found and "w2" in found[0]
     assert worker._validate_chain_cascade_graph([dict(RULE, writes=None), back]) == [], "the control: no writes, no loop"
-
-
-def test_a_report_rule_writes_its_step_and_wafer_tables():
-    import product_tables
-    from chain import rule_shape
-
-    rule = rule_shape.as_chain_rule({"name": "rep", "on": {"table": "report_request"}, "into": {"table": "report"},
-                                     "derive": {"kind": "report", "report": {}}})
-    assert rule["writes"] == [product_tables.REPORT_STEP_TABLE, product_tables.REPORT_WAFER_TABLE]
-    assert rule["allow_replace_map"] is True
-    for table in rule["writes"]:
-        assert product_tables.PRODUCT_TABLES[table]["map_key_columns"] == ["request_id"], "replaced by request"
 
 
 def test_the_census_photographs_the_writes_tables():

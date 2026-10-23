@@ -36,7 +36,7 @@ if SERVER_DIR not in sys.path:
 import mapper_sdk                                                     # noqa: E402
 from chain import ingestion_worker as worker                          # noqa: E402
 from chain import dynamic_mappers                                     # noqa: E402
-from chain import rule_run, rule_shape                                # noqa: E402
+from chain import report_shape, rule_run, rule_shape                  # noqa: E402
 from database.database import Base                                    # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
 
@@ -223,44 +223,42 @@ def test_a_file_mapper_declaration_writes_what_it_returned(db, tmp_path, monkeyp
 
 REPORT_TABLES = {
     "kinds_wafer": {"business_key": "wafer", "composite_key_source": ["wafer"],
-                    "column_types": {"wafer": "string", "ev": "string", "at": "string"}},
+                    "column_types": {"wafer": "string", "ev": "string", "at": "string", "grp": "string"}},
     "kinds_sum": {"composite_key_source": ["wafer", "item"],
-                  "column_types": {"wafer": "string", "item": "string", "fail": "number", "total": "number"}},
+                  "column_types": {"wafer": "string", "item": "string", "fail": "number", "total": "number",
+                                   "st": "string", "fl": "string", "why": "string"}},
 }
 
 
 @pytest.fixture(name="reported")
 def fixture_reported(db, tmp_path, monkeypatch):
-    """The report kind's tables - its own two and the product's four - a request row written, the file kept in
-    `tmp_path`. Yields the declaration's rules."""
+    """The report kind's two tables, the summary rows written as a file writes them - one event naming them all,
+    W1 with two items - the files kept in `tmp_path`. Yields the declaration's rules - one, on the summary table
+    (owner 10-23)."""
+    import event_constants
     import paths
-    import product_tables
+    from database.context import outbox_mode
     from conftest import retire_dynamic_model
 
-    tables = dict(REPORT_TABLES, **{name: product_tables.PRODUCT_TABLES[name] for name in (
-        product_tables.REPORT_REQUEST_TABLE, product_tables.REPORT_TABLE, product_tables.REPORT_STEP_TABLE,
-        product_tables.REPORT_WAFER_TABLE)})
-    # SQLite refuses a text bind for a DateTime column through the write door (made_at); PG takes it - the gates
-    # measured made_at there. Here the column is text so the kind can run in memory.
-    tables[product_tables.REPORT_TABLE] = dict(tables[product_tables.REPORT_TABLE], column_types=dict(
-        tables[product_tables.REPORT_TABLE]["column_types"], made_at="string"))
-    models.init_dynamic_models(tables)
-    crud.TABLE_CONFIG.update(tables)
-    for name in tables:
+    models.init_dynamic_models(REPORT_TABLES)
+    crud.TABLE_CONFIG.update(REPORT_TABLES)
+    for name in REPORT_TABLES:
         models.DYNAMIC_TABLES[name].__table__.create(bind=db.get_bind())
     monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
     for table, rows in (("kinds_wafer", [{"wafer": "W1", "ev": "E1", "at": "1"}, {"wafer": "W2", "ev": "E1", "at": "2"}]),
                         ("kinds_sum", [{"wafer": "W1", "item": "particle", "fail": 1, "total": 100},
-                                       {"wafer": "W2", "item": "particle", "fail": 3, "total": 100}]),
-                        ("report_request", [{"request_id": "R1", "eval_id": "E1"}])):
-        crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
-            schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in rows]))
+                                       {"wafer": "W1", "item": "scratch", "fail": 0, "total": 100},
+                                       {"wafer": "W2", "item": "particle", "fail": 3, "total": 100}])):
+        with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+            crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[
+                schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds") for row in rows]))
     db.commit()
     rules = rule_shape.expand_declaration(
-        {"name": "kinds_report", "on": {"table": "report_request"}, "into": {"table": "report"},
+        {"name": "kinds_report", "on": {"table": "kinds_sum"}, "into": {"table": "kinds_sum"},
          "derive": {"kind": "report", "report": {
              "wafer": {"table": "kinds_wafer", "key": "wafer", "time": "at", "evaluation": "ev"},
              "summary": {"table": "kinds_sum", "wafer": "wafer", "item": "item", "fail": "fail", "total": "total"},
+             "results": {"state": "st", "file": "fl", "reason": "why"},
              "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
              "loop": {"steps": 3, "seconds": 60, "context_tokens": 16000}}}},
         crud.TABLE_CONFIG)[0]
@@ -268,26 +266,25 @@ def fixture_reported(db, tmp_path, monkeypatch):
         yield rules
     finally:
         db.rollback()
-        for name in tables:
+        for name in REPORT_TABLES:
             models.DYNAMIC_TABLES[name].__table__.drop(bind=db.get_bind())
             crud.TABLE_CONFIG.pop(name, None)
             retire_dynamic_model(name)
 
 
 def _report_rows(db):
-    model = models.DYNAMIC_TABLES
-    return ([(r.request_id, r.state, r.reason, r.file_path) for r in db.query(model["report"]).all()],
-            db.query(model["report_step"]).count(), sorted(r.key_1 for r in db.query(model["report_wafer"]).all()))
+    db.expire_all()
+    return sorted((r.wafer, r.st, r.why, r.fl) for r in db.query(models.DYNAMIC_TABLES["kinds_sum"]).all())
 
 
-def test_a_report_declaration_writes_its_report_steps_and_wafers(db, reported, monkeypatch):
-    """The model stands in (no gateway in a test): it reads the summary table, says done, writes - the rows the
-    report kind leaves are its report row done with the file, a step row each, the wafers it read."""
+def test_a_report_declaration_writes_a_report_a_wafer_into_its_summary_rows(db, reported, monkeypatch):
+    """The model stands in (no gateway in a test): it reads the summary table, says done, writes - each wafer's
+    summary rows say done and name their own file, and the file ends with the steps it took (Evidence)."""
     from utils import llm
 
     def model(prompt, usage=None):
         if "Tables read:" in prompt:
-            return {"done": {"summary": "W2 is worse."}}
+            return {"done": {"summary": "particle is low."}}
         return {"call": "yield_by", "args": {}} if "This is step 1 of" in prompt else {"done": {}}
 
     monkeypatch.setattr(llm, "ask_json", model)
@@ -296,26 +293,102 @@ def test_a_report_declaration_writes_its_report_steps_and_wafers(db, reported, m
     assert rule["mapper"] == "declared:report"
     assert _door(rule) == "chain.dynamic_mappers._report"
 
-    _run(db, "report", reported, "report_request")
+    _run(db, "report", reported, "kinds_sum")
 
-    [(request, state, reason, path)], steps, wafers = _report_rows(db)
-    assert (request, state, reason) == ("R1", "done", None)
-    assert "W2 is worse." in open(path, encoding="utf-8").read()
-    assert steps == 3 and wafers == ["W1", "W2"], "yield_by · done · write; the two wafers it read"
+    rows = _report_rows(db)
+    assert [(w, st, why) for w, st, why, _fl in rows] == [("W1", "done", None)] * 2 + [("W2", "done", None)]
+    assert len({fl for *_rest, fl in rows}) == 2, "a file a wafer - one event named both wafers' rows"
+    for wafer, _st, _why, fl in rows:
+        text = open(fl, encoding="utf-8").read()
+        assert wafer in text and "particle is low." in text
+        evidence = text[text.index('<details class="evidence">'):]
+        assert "1 yield_by" in evidence and "2 done" in evidence and "3 write" in evidence, evidence
 
 
-def test_a_report_without_a_model_leaves_its_row_stopped_with_why(db, reported, monkeypatch):
+def test_a_report_without_a_model_leaves_its_rows_stopped_with_why(db, reported, monkeypatch):
     from utils import llm
 
     def refused(prompt, usage=None):
         raise llm.LlmRefused("no gateway in this test")
 
     monkeypatch.setattr(llm, "ask_json", refused)
-    _run(db, "report-refused", reported, "report_request")
+    _run(db, "report-refused", reported, "kinds_sum")
 
-    [(request, state, reason, _path)], steps, wafers = _report_rows(db)
-    assert (request, state, reason) == ("R1", "stopped", "the language model call was refused: no gateway in this test")
-    assert steps == 0 and wafers == []
+    rows = _report_rows(db)
+    why = "the language model call was refused: no gateway in this test"
+    assert [(w, st, r) for w, st, r, _fl in rows] == [("W1", "stopped", why)] * 2 + [("W2", "stopped", why)]
+
+
+def _sent_reports(db, reported, monkeypatch, answers):
+    """Both wafers' reports made with `send_to`, then the upkeep's sweep run once a list of answers: the post
+    answers each in turn (None: taken). -> (the rows after each sweep, the files posted)."""
+    from chain import report_loop
+    from utils import llm
+
+    def model(prompt, usage=None):
+        return {"done": {"summary": "ok"}} if "Tables read:" in prompt else {"done": {}}
+
+    monkeypatch.setattr(llm, "ask_json", model)
+    [rule] = reported
+    rule["params"]["send_to"] = "http://relay.test/reports"
+    _run(db, "report-send", reported, "kinds_sum")
+    posted, tries, after = [], {}, [_report_rows(db)]
+    for said in answers:
+        def post(send_to, file_, said=said):
+            posted.append((send_to, os.path.basename(file_)))
+            return said
+        report_loop.send_waiting([rule], lambda: _Kept(db), tries, post=post)
+        after.append(_report_rows(db))
+    return after, posted
+
+
+class _Kept:
+    """The test's one session, handed to the sweep as its own - closing it is not the sweep's to do here."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def close(self):
+        pass
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+
+def test_a_made_report_is_sent_to_its_address_by_the_upkeep(db, reported, monkeypatch):
+    after, posted = _sent_reports(db, reported, monkeypatch, [None])
+    assert [st for _w, st, _why, _fl in after[0]] == ["sending"] * 3, "made, not sent yet"
+    assert [(st, why) for _w, st, why, _fl in after[1]] == [("done", None)] * 3
+    assert sorted(posted) == [("http://relay.test/reports", "W1.html"), ("http://relay.test/reports", "W2.html")]
+    sends = [e for e in _events(db, "kinds_sum") if "st" in json.dumps(e.payload)][-1:]
+    [rule] = reported
+    assert sends and worker.fire_refusal(rule, sends[0]) == worker.FIRE_REFUSED_CHAIN, \
+        "the sweep writes on the chain's channel - the report rule is not woken by its own state"
+
+
+def test_a_send_that_fails_three_times_says_send_failed_and_why(db, reported, monkeypatch):
+    from chain import report_loop
+
+    after, posted = _sent_reports(db, reported, monkeypatch, ["relay down"] * report_loop.SEND_TRIES)
+    assert [st for _w, st, _why, _fl in after[report_loop.SEND_TRIES - 1]] == ["sending"] * 3, "tried again"
+    assert [(st, why) for _w, st, why, _fl in after[-1]] == [("send failed", "relay down")] * 3
+    assert len(posted) == 2 * report_loop.SEND_TRIES
+
+
+def test_a_stopped_report_is_not_sent(db, reported, monkeypatch):
+    from chain import report_loop
+    from utils import llm
+
+    def refused(prompt, usage=None):
+        raise llm.LlmRefused("no gateway in this test")
+
+    monkeypatch.setattr(llm, "ask_json", refused)
+    [rule] = reported
+    rule["params"]["send_to"] = "http://relay.test/reports"
+    _run(db, "report-stopped", reported, "kinds_sum")
+    posted = []
+    report_loop.send_waiting([rule], lambda: _Kept(db), {}, post=lambda *a: posted.append(a))
+    assert posted == [] and {st for _w, st, _why, _fl in _report_rows(db)} == {"stopped"}
 
 
 def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
@@ -327,3 +400,57 @@ def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
 
     assert sorted(dynamic_mappers.TEMPLATES) == [
         "declared:decide", "declared:enrich", "declared:join", "declared:report"]
+
+
+def test_a_switched_off_report_makes_nothing_by_itself_and_one_report_a_wafer_by_a_replay_naming_it(
+        db, reported, monkeypatch):
+    """Owner 10-23 «자동 시작은 막고 리플레이로» · «막아»: `enabled: false` is «nothing wakes it» - the summary rows'
+    event makes no report; a replay naming the rule (its events carry `only_rule`) makes one a wafer."""
+    from utils import llm
+    from database.database import stage_collapsed_event
+
+    monkeypatch.setattr(llm, "ask_json", lambda prompt, usage=None: (
+        {"done": {"summary": "particle is low."}} if "Tables read:" in prompt else {"done": {}}))
+    declaration = {"name": "kinds_report", "enabled": False, "on": {"table": "kinds_sum"},
+                   "into": {"table": "kinds_sum"}, "derive": {"kind": "report", "report": reported[0]["params"]}}
+    stood, refusal, notes = rule_shape.expand_declaration(declaration, crud.TABLE_CONFIG)
+    assert refusal is None and [r["enabled"] for r in stood] == [False], (refusal, notes)
+    assert "nothing wakes it" in notes[0]
+
+    _run(db, "report-off", stood, "kinds_sum")
+    assert {st for _w, st, _why, _fl in _report_rows(db)} == {None}
+
+    model = models.DYNAMIC_TABLES["kinds_sum"]
+    for event in _events(db, "kinds_sum"):
+        db.delete(event)
+    stage_collapsed_event(db, "EDIT", "kinds_sum", [r.row_id for r in db.query(model).all()],
+                          only_rule="kinds_report", replay=True)
+    db.commit()
+    _run(db, "report-replayed", stood, "kinds_sum")
+    rows = _report_rows(db)
+    assert [(w, st) for w, st, _why, _fl in rows] == [("W1", "done")] * 2 + [("W2", "done")]
+
+
+def test_control_same_keeps_the_candidates_that_share_those_columns(db, reported):
+    """Owner 10-23 «제품군도 필터링»: `control.same` names wafer-table columns a control candidate shares with the
+    report's wafer - another value's evaluation leaves the candidates; empty filters nothing."""
+    from chain import report_reads
+
+    model = models.DYNAMIC_TABLES["kinds_wafer"]
+    crud.apply_batch_updates(db, "kinds_wafer", schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates=row, source_name="seed", updated_by="kinds")
+        for row in ({"wafer": "W1", "at": "2026-10-20 10:00:00", "grp": "A"},
+                    {"wafer": "W2", "at": "2026-10-20 11:00:00", "grp": "A"},
+                    {"wafer": "P1", "ev": "E0", "at": "2026-10-10 10:00:00", "grp": "A"},
+                    {"wafer": "Q1", "ev": "E9", "at": "2026-10-11 10:00:00", "grp": "B"})]))
+    db.commit()
+    assert db.query(model).count() == 4
+    spec = dict(reported[0]["params"], control={"recent": {"evaluations": 5}})
+    lines = report_reads.Report(db, spec, None, only=("W1",)).candidates()["context"]
+    assert "E0" in lines and "E9" in lines                            # canary: both are candidates unfiltered
+    spec["control"]["same"] = ["grp"]
+    assert report_shape.refusal(spec, "kinds_sum", "kinds_sum") is None
+    lines = report_reads.Report(db, spec, None, only=("W1",)).candidates()["context"]
+    assert "E0" in lines and "E9" not in lines
+    assert "not a column" in report_shape.refusal(dict(spec, control={"recent": {"days": 1}, "same": ["nope"]}),
+                                                  "kinds_sum", "kinds_sum")

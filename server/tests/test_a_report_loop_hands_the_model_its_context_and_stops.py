@@ -21,7 +21,7 @@ class FakeReport:
     """The reads the loop calls - a table whose `context` is three lines and whose whole is a hundred."""
 
     def __init__(self, condition_lines=3):
-        self.overlaps, self.embedded, self.used, self.compared = {}, {}, {}, None
+        self.overlaps, self.embedded, self.compared = {}, {}, None
         self._conditions = ["3 wafers in E1"] + ["split: value %d" % n for n in range(condition_lines - 1)]
 
     def conditions(self, keyword=None):

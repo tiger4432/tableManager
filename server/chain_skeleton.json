@@ -1794,6 +1794,23 @@
                         }
                       },
                       {
+                        "key": "same",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.wafer.table"
+                            ]
+                          }
+                        }
+                      },
+                      {
                         "key": "max_wafers",
                         "required": false,
                         "node": {
@@ -1980,6 +1997,14 @@
                           "kind": "leaf",
                           "hint": "free"
                         }
+                      },
+                      {
+                        "key": "evidence",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
                       }
                     ]
                   }
@@ -2050,6 +2075,59 @@
                         }
                       ]
                     }
+                  }
+                },
+                {
+                  "key": "results",
+                  "required": true,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "state",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.summary.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "file",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.summary.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "reason",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.summary.table"
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "send_to",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
                   }
                 }
               ]

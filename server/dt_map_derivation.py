@@ -331,7 +331,7 @@ def join_rule(db, name: str) -> dict:
             # where a switched-off declaration says so.
             withheld = str(refusal) if refusal else "; ".join(str(n) for n in notes)
         for rule in stood or ():
-            if rule.get("name") != name:
+            if rule.get("name") != name or rule_shape.is_switched_off(rule):
                 continue
             # 🪦 [판정 498 ④] THIS COMPARED `rule["mapper"]` TO AN IMPORTED CONSTANT.
             # The seat answers now. Measured equivalent rather than assumed: the rules walked

@@ -1,6 +1,8 @@
 """The AI report's settings ARE its chain declaration - `derive.report` (owner 10-22, lead: one concept, one more
 declaration kind). Its cells, the form's shape of each, and what the save refuses: a table or column the catalogue
-does not declare, wafer keys of another length than the wafer table's, a layout slot of an unknown kind.
+does not declare, wafer keys of another length than the wafer table's, a layout slot of an unknown kind, a rule
+that does not stand on its summary table (owner 10-23: one rule on the summary table, a report a wafer, its results
+in three of that table's columns).
 
 A wafer is named by one column or a list of them in every role, matched across roles in list order (owner 10-22
 «키도 복수로»); the form draws each as a list - one column is a list of one."""
@@ -33,7 +35,12 @@ SLOT_KINDS = ("table", "image", "text")
 TABLE_FILLS = ("yield_by", "pareto", "trend")
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
-                                     "formats", "item_sep", "labels", "picture_rows")
+                                     "formats", "item_sep", "labels", "picture_rows", "results", "send_to")
+#: `results`: the summary table's columns a report's state, file and reason go in - the operator names them (owner
+#: 10-23), every row of the wafer the same.
+RESULTS_CELL, RESULT_CELLS = "results", ("state", "file", "reason")
+#: `send_to`: where a made report's file is POSTed (tools/report_receiver/receive.py - <send_to>/<name>.html).
+SEND_TO = "send_to"
 #: `picture_rows`: rows of one picture a column in the summary table (owner 10-23 «열마다 한 장») - each a table, its
 #: wafer columns and picture column, the row's label and the picture's width (PICTURE_PX: columns × pictures make the
 #: file, so smaller than images.px).
@@ -51,6 +58,9 @@ LOOP_CELLS = ("steps", "seconds", "context_tokens")
 #: `control`: how far back the model may pick a control group from (`recent`: days and/or evaluations before this
 #: evaluation's latest wafer, both narrowing when both are written) and how much it may pick (owner 10-23).
 RECENT_CELLS = ("days", "evaluations")
+#: `control.same`: the wafer table's columns a control candidate shares with this report's wafers - the operator names
+#: them (a product group, say; owner 10-23 「제품군도 필터링」). Empty or absent filters nothing.
+CONTROL_SAME = "same"
 CONTROL_LIMITS = {"max_wafers": 30, "max_evaluations": 3}
 NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
 #: `formats`: item -> rules, the first that holds colours the cell - a fixed bar on the cell's share (`when`, `value`
@@ -63,7 +73,7 @@ FORMAT_COLOURS = ("fill", "color")
 LABELS = {"report": "report", "item": "Item", "left_out": "Left out - two rows for one wafer and name",
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
-          "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)"}
+          "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence"}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
 RATE_SCALE = "rate_scale"
@@ -119,7 +129,8 @@ def skeleton_node():
         # the HTML Excel puts on the clipboard - the form pastes it (`report_template`)
         {"key": "template", "required": False, "node": {"kind": "leaf", "hint": "html"}},
         {"key": "control", "required": False, "node": {"kind": "record", "fields": [
-            {"key": "recent", "required": False, "node": _record(RECENT_CELLS, "number")}]
+            {"key": "recent", "required": False, "node": _record(RECENT_CELLS, "number")},
+            {"key": CONTROL_SAME, "required": False, "node": chain_bindings.list_node("column", _column("wafer"))}]
             + _record(tuple(CONTROL_LIMITS), "number")["fields"]}},
         {"key": "formats", "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "item",
                                                        "of": chain_bindings.list_node("rule", {"kind": "record", "fields": [
@@ -134,6 +145,9 @@ def skeleton_node():
             {"key": WAFER_CELL, "required": True, "node": chain_bindings.list_node("column", PICTURE_COLUMN)},
             {"key": "image", "required": True, "node": PICTURE_COLUMN},
             {"key": "px", "required": False, "node": {"kind": "leaf", "hint": "number"}}]})},
+        {"key": RESULTS_CELL, "required": True, "node": {"kind": "record", "fields": [
+            {"key": cell, "required": True, "node": _column("summary")} for cell in RESULT_CELLS]}},
+        {"key": SEND_TO, "required": False, "node": {"kind": "leaf", "hint": "free"}},
     ]
     return {"kind": "record", "fields": fields}
 
@@ -181,8 +195,15 @@ def _table_refusal(path, written, cells, lists, numbers, key_length):
     return None
 
 
-def refusal(spec) -> str | None:
-    """Why this `derive.report` cannot be made, or None - the first reason, path first."""
+def result_columns(rule) -> list:
+    """The summary table columns a report rule writes - `results`, in RESULT_CELLS order."""
+    results = ((rule or {}).get("params") or {}).get(RESULTS_CELL) or {}
+    return [str(results[cell]) for cell in RESULT_CELLS if isinstance(results, dict) and results.get(cell)]
+
+
+def refusal(spec, on_table=None, into_table=None) -> str | None:
+    """Why this `derive.report` cannot be made, or None - the first reason, path first. `on_table` · `into_table`: the
+    rule's, both the summary table (a declaration of the old shape, on a request table, is refused here by name)."""
     spec = spec if isinstance(spec, dict) else {}
     missing = [role for role in REQUIRED_ROLES if not isinstance(spec.get(role), dict)]
     if missing:
@@ -190,10 +211,6 @@ def refusal(spec) -> str | None:
     key_length = len(wafer_columns(spec["wafer"].get("key")))
     if not key_length:
         return "derive.report.wafer.key names no column - the column (or columns) a wafer is known by"
-    import product_tables
-    if key_length > len(product_tables.REPORT_WAFER_KEYS):
-        return ("derive.report.wafer.key names %d columns - a report keeps a wafer's key in at most %d"
-                % (key_length, len(product_tables.REPORT_WAFER_KEYS)))
     for role, cells in ROLE_COLUMNS.items():
         if spec.get(role) is not None:
             said = _table_refusal("derive.report.%s" % role, spec[role], cells,
@@ -212,7 +229,25 @@ def refusal(spec) -> str | None:
         missing = [cell for cell in ("label",) + PICTURE_COLUMNS if not row.get(cell)]
         if missing or not isinstance(row["label"], str):
             return "%s needs label, wafer and image - the row's name, the wafer columns, the picture column" % path
+    results = spec.get(RESULTS_CELL)
+    if not isinstance(results, dict) or not all(isinstance(results.get(c), str) and results[c].strip()
+                                                for c in RESULT_CELLS):
+        return ("derive.report.results names the summary table's columns a report's %s go in - "
+                '{"state": "<column>", "file": "<column>", "reason": "<column>"}' % " · ".join(RESULT_CELLS))
+    table = spec["summary"].get("table")
+    for path, said in (("on.table", on_table), ("into.table", into_table)):
+        if said is not None and said != table:
+            return ("the report rule stands on its summary table - %s is derive.report.summary.table %r, got %r"
+                    % (path, table, said))
+    send_to = spec.get(SEND_TO)
+    if send_to is not None and not (isinstance(send_to, str) and send_to.startswith(("http://", "https://"))):
+        return "derive.report.send_to is the address a report is POSTed to (http://...), got %r" % (send_to,)
     summary = spec["summary"]
+    known = chain_bindings.declared_columns(str(table or "")) or ()
+    unknown = [results[c] for c in RESULT_CELLS if results[c] not in known]
+    if unknown:
+        return ("derive.report.results %r is not a column of %r - add it to the summary table's declaration"
+                % (unknown[0], table))
     if not summary.get("item"):
         return "derive.report.summary.item names no column - the item a row is about"
     if bool(summary.get("fail")) != bool(summary.get("total")):
@@ -261,6 +296,16 @@ def refusal(spec) -> str | None:
         for cell, value in list(recent.items()) + [(c, control[c]) for c in CONTROL_LIMITS if c in control]:
             if not _whole(value, 1):
                 return "derive.report.control.%s must be a whole number from 1, got %r" % (cell, value)
+        same = control.get(CONTROL_SAME)
+        if same is not None:
+            table = (spec.get("wafer") or {}).get("table")
+            known = chain_bindings.declared_columns(str(table or "")) or ()
+            if not isinstance(same, list) or not all(isinstance(name, str) for name in same):
+                return "derive.report.control.same is a list of the wafer table's columns, got %r" % (same,)
+            unknown = [name for name in same if name not in known]
+            if unknown:
+                return "derive.report.control.same %r is not a column of %r - name one of its columns" % (
+                    unknown[0], table)
     info = spec.get("info")
     if isinstance(info, dict):
         if not info.get("item") or not info.get("value"):

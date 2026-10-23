@@ -112,7 +112,7 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
         #    file's refusals, so a unified declaration that was refused looked to a
         #    reader exactly like one that was never written. The sentence is the
         #    expander's own - this only carries it to the list the caller brought.
-        if refusal or not stood:
+        if refusal or not stood or rule_shape.is_switched_off(stood[0]):
             if refusal and rejections is not None:
                 rejections.append({"scope": "rule", "subject": name,
                                    "detail": str(refusal)})

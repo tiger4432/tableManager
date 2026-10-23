@@ -129,14 +129,11 @@ def test_every_required_cell_is_present_in_every_shipped_rule(sample_rules):
     for raw in sample_rules:
         stood, refusal, _notes = rule_shape.expand_declaration(raw, None)
         assert not refusal, (raw.get("name"), refusal)
-        if not stood:
-            assert raw.get("enabled") is False, (
-                raw.get("name"), "stands no rule and is not switched off")
+        if rule_shape.is_switched_off(raw):
+            # off stands its rules off (owner 10-23 「막아」) - scored as the product stands them
+            assert stood and all(rule["enabled"] is False for rule in stood), (
+                raw.get("name"), "a switched-off declaration stands its rules off")
             switched_off.append(raw.get("name"))
-            stood, refusal, _notes = rule_shape.expand_declaration(
-                dict(raw, enabled=True), None)
-            assert not refusal, (raw.get("name"), "refused once switched on", refusal)
-            assert stood, (raw.get("name"), "stands nothing even switched on")
         for rule in stood:
             for key in chain_bindings.RULE_ROUTING_REQUIRED:
                 assert key in rule, (raw.get("name"), rule.get("name"), key)

@@ -176,8 +176,6 @@ def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
         "particle [control E2]: first 4.00% last 2.00% least 2.00% most 4.00% over 2 wafers"]
     report.compare(wafers=["W7"])
     assert [name for name in report.groups] == ["E1", "control E3"], "a new pick replaces the control"
-    report.yield_by()
-    assert report.used[("W7",)] == "control E3", "a table read on the control keeps its wafers for report_wafer"
 
 
 @pytest.mark.parametrize("said, refused", [

@@ -201,10 +201,11 @@ def test_a_declaration_is_off_where_the_old_shell_reads_it_off():
     assert not off({**UNIFIED, "enabled": 1}), "truthy is ON, as the old shell reads it"
 
 
-def test_a_disabled_declaration_stands_no_rule_and_touches_no_database(load, monkeypatch):
+def test_a_disabled_declaration_stands_its_rules_off_and_touches_no_database(load, monkeypatch):
     """⛔ 판정 399 ③′, AND THE DIFFERENCE BETWEEN A SWITCH AND A FILTER. 「stands it and drops
     it later」 is what let an operator turn everything off and watch it keep erroring - the
-    switch has to stop the work, not label it.
+    switch has to stop the work, not label it. Since owner 10-23 「막아」 · 「리플레이로」 an off declaration stands its
+    rules OFF, as a flat one always has - nothing wakes them, a replay naming one runs it - and still touches nothing.
 
     🔴 SCORED BY CALL COUNT, NOT BY LOG. A log line saying OFF is exactly what a half-switch
     also prints (ASSY_VJOIN_AUTO_INDEX printed one while still probing the database)."""
@@ -216,7 +217,8 @@ def test_a_disabled_declaration_stands_no_rule_and_touches_no_database(load, mon
 
     kept = load([{**UNIFIED, "enabled": False}])
 
-    assert [r.get("name") for r in kept if "s239" in str(r.get("name"))] == []
+    off = [r for r in kept if "s239" in str(r.get("name"))]
+    assert off and all(r.get("enabled") is False for r in off), off
     assert touched == [], "the loader reached the database for a declaration that is OFF"
 
 
