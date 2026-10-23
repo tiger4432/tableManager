@@ -543,7 +543,7 @@
 >           ⑤ 소급 자식(admin.retroactive_run)이 페이지 경계마다 바뀐 선언(chain_rules · 맵퍼)과 Reload 버튼 행을 읽음
 >             op 지역 rule dict 는 안 바뀜 — 도는 소급이 시작 때 읽은 그 규칙은 그 판 끝까지 그대로
 >           ② 리플레이 판은 페이지를 올리면 done 인데, 그 사건이 체인 대기열에 남은 동안 소급 게이트가 닫힘 (어느 표의 소급이든)
->             원장 backfill --drifted --apply 와 scripts/fold_comp_id.py 도 같은 게이트를 지남
+>             원장 backfill --drifted --apply 도 같은 게이트를 지남 (scripts/fold_comp_id.py 는 10-23 은퇴 — 소급 탭 «Fold stored values into the declared spelling»)
 > 보이는 것  chain_worker.log «[Chain] tx '<tx>': table not held: <표> within <s> s (another group holds it) - rewound, runs again; its N event(s) stay queued»
 >           retroactive.log «[Retroactive] declarations read again at a page boundary»
 >           소급 거절 «run_id=<id> chain_replay has staged its pages, and N of its event(s) on <표> still wait in the chain queue - ...»

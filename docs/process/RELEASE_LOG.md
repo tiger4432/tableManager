@@ -269,6 +269,7 @@
 
 ### 소급
 
+- 2026-10-23 [철자 접기는 소급 탭 하나로 — fold_comp_id.bat 은퇴](#2026-10-23--철자-접기는-소급-탭-하나로--fold_comp_idbat-은퇴) — 누르는 곳 소급 탭 «Fold stored values into the declared spelling»
 - 2026-10-22 [표 선언에서 칸 타입을 바꾸면 소급 대기열 한 줄이 DB 칸을 바꾼다 — 문자 → 숫자 · 문자 → 시간 · 시간 → 문자](#2026-10-22--표-선언에서-칸-타입을-바꾸면-소급-대기열-한-줄이-db-칸을-바꾼다--문자--숫자--문자--시간--시간--문자) — 보는 곳 저장 줄 · 소급 대기열
 - 2026-10-22 [표 하나의 행을 전부 지운다 — 소급 탭 «Delete every row of a table», 파일 체크리스트는 그대로](#2026-10-22--표-하나의-행을-전부-지운다--소급-탭-delete-every-row-of-a-table-파일-체크리스트는-그대로) — 누르는 곳 소급 탭 «Delete every row of a table» · 명령 `chain_replay_cli.py delete-every-row`
   - 2026-10-23 [표 비우기가 문 하나로 — «Delete every row of a table» 에 Full reset 칸 (empty_table.py 은퇴)](#2026-10-23--표-비우기가-문-하나로--delete-every-row-of-a-table-에-full-reset-칸-empty_tablepy-은퇴) — 명령 `chain_replay_cli.py delete-every-row <표> --how full_reset` · 누르는 곳 소급 탭 how = Full reset
@@ -523,6 +524,13 @@
 
 
 
+
+## 2026-10-23 · 철자 접기는 소급 탭 하나로 — fold_comp_id.bat 은퇴
+
+- **무엇** — 소유자 10-23 ㄴ(겹친 문 접기). comp_id 한 칸의 철자를 SQL 로 접던 `fold_comp_id.bat`(10-12)과 소급 탭 «Fold stored values into the declared spelling» 이 같은 일을 했습니다. 같은 씨앗의 쌍둥이 표에서 둘을 돌려 보이는 값 · 칸 층 · 이력 줄이 모두 같았습니다(접힌 칸 8).
+- **쓰는 곳** — 소급 탭 «Fold stored values into the declared spelling»(table) — 표기 `write` 를 선언한 칸 전부를 접고, 키 칸이면 키도 다시 적습니다. 그 bat 는 comp_id 한 칸만 했고 키 · 사람 덮어쓰기가 있으면 거절했습니다.
+- **은퇴** — `fold_comp_id.bat` · `server/scripts/fold_comp_id.py` · `server/scripts/sql/notation_fold_comp_id.sql`. 속도는 견주지 않았습니다.
+- **자세히** — 시험 `test_a_spelling_the_retired_comp_id_script_folded_is_folded_by_the_notation_op.py`
 
 ## 2026-10-23 · 표 비우기가 문 하나로 — «Delete every row of a table» 에 Full reset 칸 (empty_table.py 은퇴)
 
