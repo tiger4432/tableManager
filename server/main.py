@@ -7719,6 +7719,12 @@ def list_admin_scripts():
                     "path": f"mappers/{name}",
                     "type": "mapper"
                 })
+        # a join take's functions, beside the mappers they are not
+        from chain import join_into
+        join_fn_dir = join_into.JOIN_FN_DIR
+        for name in sorted(os.listdir(join_fn_dir)) if os.path.isdir(join_fn_dir) else ():
+            if name.endswith(".py"):
+                mappers.append({"filename": f"join_fn/{name}", "path": f"mappers/join_fn/{name}", "type": "mapper"})
                 
     ingestions = []
     auto_updates = []

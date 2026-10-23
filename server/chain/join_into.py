@@ -34,8 +34,10 @@ one way and the index folds another does not fail; it stops matching the index.
 from __future__ import annotations
 
 import logging
+import os
 
 import chain_bindings
+import paths
 
 logger = logging.getLogger("Chain.JoinInto")
 
@@ -103,6 +105,12 @@ BLANK_WORDS = (BLANK_SKIP,)
 TAKE_FN = "fn"
 #: The closed list a take's `fn` picks from - its members ride the chain rule answer (`ledger.admin`) under this name.
 TAKE_FN_LIST = "aggregation_functions"
+#: A function take's other two inputs (owner 10-23 S/O): `ref` the tables it is handed whole, `row` the target row's
+#: columns it is handed beside the join key.
+TAKE_REF, TAKE_ROW = "ref", "row"
+#: Where a take's `fn` «<file>.<function>» lives - `f(values, row, ref)` -> one value. Not a package: the mapper walk
+#: (`mapper_sdk._walk`) does not enter it.
+JOIN_FN_DIR = os.path.join(paths.SERVER_DIR, "mappers", "join_fn")
 
 #: The skeleton node of each join cell that is NOT one value - read by `_pairs` (`on`: a list
 #: of {left, right}) and `_takes` (`take`: a list of names, or of records {from, into, fn, separator}).
@@ -118,7 +126,10 @@ JOIN_CELL_SHAPES = {
             {"key": "from", "required": False, "node": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)},
             {"key": "into", "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)},
             {"key": TAKE_FN, "required": False, "node": {"kind": "leaf", "hint": "choice", "list": TAKE_FN_LIST}},
-            {"key": "separator", "required": False, "node": {"kind": "leaf", "hint": "free"}}]}},
+            {"key": "separator", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+            {"key": TAKE_REF, "required": False, "node": chain_bindings.list_node("table", chain_bindings.table_ref())},
+            {"key": TAKE_ROW, "required": False,
+             "node": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT))}]}},
         "empty": {"name": ""}}),
 }
 
@@ -200,8 +211,9 @@ def _fn_takes(spec: dict) -> dict:
             record = {"fn": item[TAKE_FN]}
             if item[TAKE_FN] != "count":
                 record["column"] = str(item["from"])
-            if "separator" in item:
-                record["separator"] = item["separator"]
+            for cell in ("separator", TAKE_REF, TAKE_ROW):
+                if cell in item:
+                    record[cell] = item[cell]
             out[str(item.get("into") or item["from"])] = (str(item["from"]), record)
     return out
 
@@ -212,10 +224,60 @@ def gathers(spec: dict) -> bool:
     return bool(_fn_takes(spec))
 
 
-def take_refusal(join: dict, key: dict, right_table: str):
+def take_functions() -> list:
+    """What a take's `fn` may name: the gap fill's four, then «<file>.<function>» for each top-level function of a
+    `JOIN_FN_DIR` file, read as text (none is run here) - the list the declaration's screen offers."""
+    import ast
+
+    from chain.enrichment import config
+
+    out = list(config.AGGREGATION_FUNCTIONS)
+    try:
+        names = sorted(name for name in os.listdir(JOIN_FN_DIR) if name.endswith(".py"))
+    except OSError:
+        return out
+    for name in names:
+        try:
+            with open(os.path.join(JOIN_FN_DIR, name), encoding="utf-8") as f:
+                body = ast.parse(f.read(), filename=name).body
+        except (OSError, SyntaxError, ValueError):
+            continue
+        out += ["%s.%s" % (name[:-3], node.name) for node in body
+                if isinstance(node, ast.FunctionDef) and not node.name.startswith("_")]
+    return out
+
+
+def take_function(fn):
+    """(the function a take's `fn` names, why not) - (None, None) for one of the gap fill's four. «<file>.<function>»
+    is `JOIN_FN_DIR/<file>.py`, run fresh at each ask: a batch asks once (`read`), a declaration's check once."""
+    import importlib.util
+
+    from chain.enrichment import config
+
+    if fn in config.AGGREGATION_FUNCTIONS:
+        return None, None
+    file, _dot, name = str(fn).rpartition(".")
+    path = os.path.join(JOIN_FN_DIR, file + ".py")
+    if not file or not name or os.sep in file or "/" in file or not os.path.isfile(path):
+        return None, "fn %r - one of %s, or «<file>.<function>» of a file in %s" % (
+            fn, " · ".join(config.AGGREGATION_FUNCTIONS), JOIN_FN_DIR)
+    try:
+        spec = importlib.util.spec_from_file_location("join_fn_%s" % file, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception as exc:                                        # noqa: BLE001 - the author's file, said
+        return None, "fn %r - %s.py could not be loaded: %s: %s" % (fn, file, type(exc).__name__, exc)
+    function = getattr(module, name, None)
+    if not callable(function):
+        return None, "fn %r - %s.py has no function %r" % (fn, file, name)
+    return function, None
+
+
+def take_refusal(join: dict, key: dict, right_table: str, left_table: str = ""):
     """Why this join's `take ... fn` cannot stand, by name - or None."""
     import map_overlay
     from chain.enrichment import config
+    from database import crud
 
     fns = _fn_takes(join or {})
     if fns and (key or {}).get("unique"):
@@ -223,8 +285,22 @@ def take_refusal(join: dict, key: dict, right_table: str):
                 "a key has one row" % ", ".join(sorted(fns)))
     for into, (column, record) in sorted(fns.items()):
         fn = record["fn"]
-        if fn not in config.AGGREGATION_FUNCTIONS:
-            return "take %r fn %r - one of %s" % (into, fn, " · ".join(config.AGGREGATION_FUNCTIONS))
+        function, why = take_function(fn)
+        if why:
+            return "take %r %s" % (into, why)
+        if function is None and (TAKE_REF in record or TAKE_ROW in record):
+            return "take %r ref and row are a function's - fn %r takes neither" % (into, fn)
+        if function is not None:
+            if "separator" in record:
+                return "take %r separator - only %s takes one" % (into, " · ".join(config.AGGREGATION_SEPARATOR_DEFAULTS))
+            for table in record.get(TAKE_REF) or ():
+                if table not in crud.TABLE_CONFIG:
+                    return "take %r ref %r - not a table table_config declares" % (into, table)
+            declared = chain_bindings.declared_columns(left_table) if left_table else None
+            for name in record.get(TAKE_ROW) or ():
+                if declared is not None and name not in declared:
+                    return "take %r row %r - not a column of %s" % (into, name, left_table)
+            continue
         if "separator" in record and fn not in config.AGGREGATION_SEPARATOR_DEFAULTS:
             return "take %r separator - only %s takes one" % (into, " · ".join(config.AGGREGATION_SEPARATOR_DEFAULTS))
         kind = map_overlay.declared_column_type(right_table, column)
@@ -234,11 +310,13 @@ def take_refusal(join: dict, key: dict, right_table: str):
     return None
 
 
-def _gathered(spec: dict, found) -> dict:
+def _gathered(spec: dict, found, row=None, ref=None, functions=None) -> dict:
     """{left column: value} of the `fn` takes over ONE key's value-table rows `found` ([(row id, take values)], what
     `_read_once` read - the join's key, blank and require). Each by the gap fill's calculation: the expression its
-    record becomes (`config.aggregation_record` -> `expression`), else its `unique_concat` join (`mapper._joined`). A key
-    with no row has no value - its cell is taken back, never written 0 (lead 10-20)."""
+    record becomes (`config.aggregation_record` -> `expression`), else its `unique_concat` join (`mapper._joined`); a
+    function take's function (`functions`, resolved once a batch by `read`) with the values left blank-free, the target
+    row's key and `row` columns from `row`, and its `ref` tables from `ref`. A key with no row has no value - its cell is
+    taken back, never written 0 (lead 10-20)."""
     fns = _fn_takes(spec)
     if not fns or not found:
         return dict.fromkeys(fns)
@@ -252,6 +330,12 @@ def _gathered(spec: dict, found) -> dict:
     out = {}
     for into, (column, record) in fns.items():
         values = [take[at[into]] for _row_id, take in found]
+        function = (functions or {}).get(into)
+        if function is not None:
+            mine = {name: (row or {}).get(name) for name in _row_columns(spec, record)}
+            out[into] = function([value for value in values if not crud.is_blank_value(value)], mine,
+                                 {table: (ref or {}).get(table, []) for table in record.get(TAKE_REF) or ()})
+            continue
         types = {column: map_overlay.declared_column_type(right_table, column)}
         said, _why = config.aggregation_record(record, types)
         if isinstance(said, str):
@@ -417,9 +501,16 @@ def _say_empty_keys(rule, side: str, count: int) -> None:
                     (rule or {}).get("name") or "join", count, side)
 
 
+def _row_columns(spec: dict, record: dict) -> list:
+    """The target row's columns a function take is handed: the join key's, then its `row` cell's."""
+    keys = [left for left, _right, _fold in _pairs(spec)]
+    return keys + [str(name) for name in record.get(TAKE_ROW) or () if str(name) not in keys]
+
+
 def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     """Everything the answer depends on, read ONCE: -> (sorted [(left row_id, key)],
-    {key: [(right row_id, take values)]}, left rows whose every key part is blank - left out).
+    {key: [(right row_id, take values)]}, left rows whose every key part is blank - left out,
+    {left row_id: {column: value}} of the columns a function take is handed - `_row_columns`, in the same select).
 
     🔴 [총괄 529fc7ce8 ②] BEFORE ANY WRITE, BECAUSE THE PAGES ARE WRITTEN IN BETWEEN. The seat
     writes a page before it asks the next, and a rule before this one in the group may already
@@ -435,15 +526,22 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     pairs = _pairs(spec, left_table)
     left_key = [_folded(getattr(left_model, left_col), fold, _zone(left_table, left_col))
                 for left_col, _r, fold in pairs]
-    left = {}
+    handed = list(dict.fromkeys(name for _into, (_c, record) in _fn_takes(spec).items()
+                                if _is_function(record) for name in _row_columns(spec, record)))
+    left, rows = {}, {}
+    width = len(left_key)
     for where in wheres:
-        for row in db.execute(select(left_model.row_id, *left_key).where(where)):
-            left[row[0]] = tuple(row[1:])
+        for row in db.execute(select(left_model.row_id, *left_key, *[getattr(left_model, name) for name in handed])
+                              .where(where)):
+            left[row[0]] = tuple(row[1:1 + width])
+            if handed:
+                rows[row[0]] = dict(zip(handed, row[1 + width:]))
     # 🔴 [총괄 534f375f8, 소유자 「키가 여러 컬럼이면 모든 칼럼 null이면 무시, 일부 null은 허용」] crud's one judgement;
     #    the parts arrive folded, blank as `''`
     empty = [row_id for row_id, key in left.items() if crud.every_key_part_blank(key)]
     for row_id in empty:
         del left[row_id]
+        rows.pop(row_id, None)
     right_key = [_folded(getattr(right_model, right_col), fold, _zone(spec.get("right_table"), right_col))
                  for _l, right_col, fold in pairs]
     takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
@@ -460,7 +558,43 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
                               .where(tuple_(*right_key).in_(chunk), *filled)):
             answers.setdefault(tuple(row[1:1 + width]), []).append(
                 (row[0], tuple(row[1 + width:])))
-    return sorted(left.items()), answers, len(empty)
+    return sorted(left.items()), answers, len(empty), rows
+
+
+def _is_function(record: dict) -> bool:
+    """Does this fn take name a `JOIN_FN_DIR` function, not one of the gap fill's four?"""
+    from chain.enrichment import config
+
+    return record.get("fn") not in config.AGGREGATION_FUNCTIONS
+
+
+def _functions_and_ref(db, spec: dict):
+    """({into: function}, {table: [row]}) for this batch - each function resolved once (`take_function`), each `ref`
+    table read once, whole, whichever takes name it (owner 10-23: under 100 rows, changed once a quarter).
+    -> (..., why not) - a function that cannot be resolved, or a ref table with no model."""
+    from sqlalchemy import select
+
+    from database import crud, models
+
+    functions, wanted = {}, []
+    for into, (_column, record) in _fn_takes(spec).items():
+        if not _is_function(record):
+            continue
+        function, why = take_function(record["fn"])
+        if why:
+            return {}, {}, "take %r %s" % (into, why)
+        functions[into] = function
+        wanted += [table for table in record.get(TAKE_REF) or () if table not in wanted]
+    ref = {}
+    for table in wanted:
+        model = models.DYNAMIC_TABLES.get(table)
+        if model is None:
+            return {}, {}, "ref %r - no such table here" % table
+        names = ["row_id", "business_key_val"] + [name for name in (crud.TABLE_CONFIG.get(table) or {}).get(
+            "column_types", {}) if hasattr(model, name) and name not in ("row_id", "business_key_val")]
+        ref[table] = [dict(zip(names, row)) for row in db.execute(
+            select(*[getattr(model, name) for name in names]).order_by(model.row_id))]
+    return functions, ref, None
 
 
 def _update_items(db, left_table: str, rows, spec, source_name: str):
@@ -560,7 +694,7 @@ def answer(db, rule: dict, got: dict):
     if "answer" in got:
         return got["answer"]
     return _page(db, rule, got["spec"], got["left_table"], got["left_rows"], got["answers"], 0, got["handed"],
-                 got["side"])
+                 got["side"], got.get("handed_to_functions"))
 
 
 def read(db, rule: dict, row_ids=None, keys_left=()) -> dict:
@@ -603,15 +737,21 @@ def read(db, rule: dict, row_ids=None, keys_left=()) -> dict:
     #    no beat. The left rows are read ONCE - asking the key filter again per page re-walks
     #    the table from the cursor (measured: a page past the last match read 9,999 rows for 0)
     #    - and each page answers only its own rows. The seat writes a page, then asks the next.
-    left_rows, answers, empty = _read_once(db, spec, left_model, right_model, wheres,
-                                           left_table)
+    functions, ref, why = _functions_and_ref(db, spec)
+    if why:
+        return {"answer": {"updates": [], "refusal": why}}
+    left_rows, answers, empty, rows = _read_once(db, spec, left_model, right_model, wheres,
+                                                 left_table)
     _say_empty_keys(rule, "target", empty)
     return {"spec": spec, "left_table": left_table, "left_rows": left_rows, "answers": answers,
-            "handed": len(rows_in), "side": "reference" if reference_side else "target"}
+            "handed": len(rows_in), "side": "reference" if reference_side else "target",
+            "handed_to_functions": (rows, ref, functions)}
 
 
-def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
-    """One page of left rows answered from what was read once - and the call for the next."""
+def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, handed_to_functions=None):
+    """One page of left rows answered from what was read once - and the call for the next.
+    `handed_to_functions`: (target rows, ref tables, functions) as `read` read them for this batch."""
+    rows_of, ref, functions = handed_to_functions or ({}, {}, {})
     from chain import keyset_scan
 
     page, after, pages = keyset_scan.pages(left_rows, start)
@@ -629,7 +769,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
         #    origins); the recount is its one author, and a key left with no row takes back what this rule wrote
         #    (`withdraw` -> `_withdraw_blanks`).
         for row_id, key in page:
-            gathered = _gathered(spec, answers.get(key) or ())
+            gathered = _gathered(spec, answers.get(key) or (), rows_of.get(row_id), ref, functions)
             updates.append({"row_id": row_id, "source_name": CHAIN_LAYER,
                             "updated_by": str((rule or {}).get("name") or ""),
                             "updates": {c: v for c, v in gathered.items() if not crud.is_blank_value(v)},
@@ -674,7 +814,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
                    "matched %d row(s) - every value was already the same" % len(rows))
     answer = {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
               "next_page": (lambda: _page(db, rule, spec, left_table, left_rows, answers,
-                                          after, handed, side))
+                                          after, handed, side, handed_to_functions))
               if more else None}
     if not start:
         answer["rows_total"], answer["pages"] = total, pages

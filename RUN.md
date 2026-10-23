@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **조인 take 의 fn 에 파이썬 함수 — 키마다 f(values, row, ref) 로 S/O 같은 판정 값 (소유자 10-23 「spec 표의 spec 으로 참조해서 s/o 여부를 판정」, 총괄 f14181fbd · 650a23f9c)** — git pull · 런처 재기동
+>
+> ```
+> 적는 법    server/mappers/join_fn/spec_out.py.sample 을 같은 폴더에 spec_out.py 로 복사(어드민 Editor 의 Mappers 에 join_fn/spec_out.py 로 보임)
+>           조인 선언의 take 항목: {"from": "<원천 값 칸>", "into": "<판정 칸>", "fn": "spec_out.s_o", "ref": ["<스펙 표>"], "row": ["<대상 행 칸>"]}
+>           스펙 버전도 남기려면 take 하나 더: {"from": "<원천 값 칸>", "into": "<버전 칸>", "fn": "spec_out.spec_hash", "ref": ["<스펙 표>"]}
+>           예시 함수의 표 이름 · 칸 이름(spec · item · grade · lower · upper)은 그 표에 맞게 고침
+> 함수 모양  f(values, row, ref) -> 값 하나
+>           values  그 키 원천 행들의 from 칸 값(빈 값 뺌)
+>           row     대상 행의 조인 키 칸 + "row" 에 적은 칸 {칸: 값}
+>           ref     "ref" 에 적은 표 통째 {표: [{칸: 값}, ...]} — 묶음마다 한 번 읽음(take 둘이 같은 표면 한 번)
+> 스펙을 바꾼 뒤  자동으로 다시 판정 안 함 -> 그 규칙을 리플레이(소급 탭 «Replay chain rules over old data», rule = 그 선언 이름)
+> 확인 줄    저장이 거절하면 그 문장에 이유: «take '<칸>' fn 'x.y' - …» · «take '<칸>' ref 'spec' - not a table table_config declares» · «take '<칸>' row 'grade' - not a column of …»
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동. "fn" 에 함수를 적은 선언은 되돌린 코드에서 «take '<칸>' fn 'spec_out.s_o' - one of count · min · max · unique_concat» 로 거절됨 — 그 take 를 지움
+> ```
+>
 > ## [10-23] **리플레이가 뒤로 갈수록 느려지던 것 — 체인 대기열이 줄을 payload 대신 outbox 칸 셋으로 읽는다 (총괄 c0e6906f1, 소유자 「ㄱ」)** — git pull · 런처 재기동
 >
 > ```

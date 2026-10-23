@@ -1,0 +1,28 @@
+"""A join take's functions - copy to spec_out.py and name one in the take: "fn": "spec_out.s_o".
+
+Each is f(values, row, ref) -> one value, called once a key:
+  values  the key's source rows' take values, blank ones left out
+  row     the target row's join key columns, then the take's "row" columns - {column: value}
+  ref     the take's "ref" tables, whole - {table: [{column: value}, ...]}, read once a batch
+A spec table changed later is not judged again by itself: replay the rule.
+"""
+import hashlib
+import json
+
+SPEC = "spec"
+
+
+def s_o(values, row, ref):
+    """"S/O" when a value lies outside its item's lower..upper in the spec table, "OK" when none does."""
+    spec = next((r for r in ref.get(SPEC, ()) if r.get("item") == row.get("item")
+                 and r.get("grade") == row.get("grade")), None)
+    if spec is None or not values:
+        return None
+    lower, upper = float(spec["lower"]), float(spec["upper"])
+    return "S/O" if any(not lower <= float(value) <= upper for value in values) else "OK"
+
+
+def spec_hash(values, row, ref):
+    """Which spec the judgement read - a fingerprint of the spec table's rows."""
+    rows = sorted((r.get("item"), r.get("grade"), r.get("lower"), r.get("upper")) for r in ref.get(SPEC, ()))
+    return hashlib.sha1(json.dumps(rows, default=str).encode("utf-8")).hexdigest()[:12]

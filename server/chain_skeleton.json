@@ -778,6 +778,38 @@
                                 "kind": "leaf",
                                 "hint": "free"
                               }
+                            },
+                            {
+                              "key": "ref",
+                              "required": false,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "table",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "ref",
+                                  "section": "tables"
+                                }
+                              }
+                            },
+                            {
+                              "key": "row",
+                              "required": false,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "column",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "ref",
+                                  "section": "columns",
+                                  "table_from": [
+                                    "target_table",
+                                    "into.table"
+                                  ]
+                                }
+                              }
                             }
                           ]
                         }

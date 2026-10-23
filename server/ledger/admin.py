@@ -350,9 +350,8 @@ def grammar_of(rule):
 def _chain_lists() -> dict:
     """{list name: members} of the chain skeleton's `choice` leaves - from the readers' own constants."""
     from chain import join_into
-    from chain.enrichment import config
 
-    return {join_into.TAKE_FN_LIST: list(config.AGGREGATION_FUNCTIONS)}
+    return {join_into.TAKE_FN_LIST: join_into.take_functions()}
 
 
 def chain_rule_raw_view(name: str = None) -> dict:

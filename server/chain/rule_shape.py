@@ -493,6 +493,9 @@ def companion_rules(internal: dict) -> list:
     #    target table; what wakes this side is its own join key (a new row, a changed key).
     target_key = [str(pair["left"]) for pair in (derive.get("join") or {}).get("on") or ()
                   if isinstance(pair, dict) and pair.get("left")]
+    # and the target columns a function take is handed (`row`): a changed one is a changed answer
+    target_key += [str(name) for item in (derive.get("join") or {}).get("take") or () if isinstance(item, dict)
+                   for name in item.get(join_into.TAKE_ROW) or () if str(name) not in target_key]
     companion.pop("trigger_columns", None)
     companion.pop(chain_bindings.ALLOW_DELETE_TRIGGER_KEY, None)     # a target row's deletion feeds no key
     # `on.require` is about the SOURCE rows this half never receives (총괄 49052cbdd).
@@ -818,7 +821,8 @@ def expand_declaration(declaration, table_config=None,
         if blank:
             return ([], "%s: %s" % (name, blank), unread)
         gathered = join_into.take_refusal((internal.get("derive") or {}).get("join") or {}, internal.get(KEY_CELL),
-                                          (internal.get("on") or {}).get("table"))
+                                          (internal.get("on") or {}).get("table"),
+                                          str((internal.get("into") or {}).get("table") or ""))
         if gathered:
             return ([], "%s: %s" % (name, gathered), unread)
     if (internal.get("derive") or {}).get("kind") == "report":
