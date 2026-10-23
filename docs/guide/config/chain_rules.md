@@ -177,7 +177,7 @@ return {"batches": [{"target_table": "dt_map",
 
 `server/mappers/join_fn/<파일>.py` 에 함수 `f(values, row, ref)` 를 두고 take 의 `fn` 에 `"<파일>.<함수>"` 를 적습니다. 키마다 한 번 불리고, 돌려준 값 하나가 왼쪽 칸에 들어갑니다(빈 값이면 그 칸을 비웁니다).
 
-- `values` — 그 키 원천 행들의 `from` 칸 값 목록(빈 값은 뺌)
+- `values` — 그 키 원천 행들의 `from` 칸 값 목록(빈 값은 뺌). `from` 이 칸 목록(`["value", "item"]`)이면 행마다 `{칸: 값}` 의 목록이고, 적은 칸이 전부 빈 행만 뺍니다 — 원천 표는 같은 한 번 읽기에 칸만 더 실립니다(🆕 10-23)
 - `row` — 대상 행의 조인 키 칸, 그다음 take 의 `"row": [칸…]` 에 적은 칸 `{칸: 값}`
 - `ref` — take 의 `"ref": [표…]` 에 적은 표의 행 통째 `{표: [{칸: 값}, …]}`. 묶음마다 한 번 읽고, 같은 표를 적은 take 가 여럿이어도 한 번입니다
 
@@ -186,9 +186,9 @@ return {"batches": [{"target_table": "dt_map",
 { "from": "value", "into": "spec_version", "fn": "spec_out.spec_hash", "ref": ["spec"] }
 ```
 
-- 예시 `server/mappers/join_fn/spec_out.py.sample` — 스펙 표에서 항목으로 하한 · 상한을 찾아 하나라도 벗어나면 `"S/O"`, 그리고 스펙 표의 지문(어느 스펙으로 판정했나). `.py` 로 복사해 씁니다. 어드민 Editor 의 Mappers 목록에 `join_fn/<파일>.py` 로 보입니다
+- 예시 `server/mappers/join_fn/spec_out.py.sample` — 스펙 표에서 항목으로 하한 · 상한을 찾아 하나라도 벗어나면 `"S/O"`, `s_o_by_item` 은 칸 목록 `from` 으로 행마다 그 행의 항목 스펙에 대어 판정, 그리고 스펙 표의 지문(어느 스펙으로 판정했나). `.py` 로 복사해 씁니다. 어드민 Editor 의 Mappers 목록에 `join_fn/<파일>.py` 로 보입니다
 - 원천 행이 오고 · 바뀌고 · 떠나면, 대상 행이 오거나 조인 키 · `row` 칸이 바뀌면 그 키를 다시 판정합니다. 참조 표가 바뀌어도 스스로 다시 판정하지 않습니다 — 그 규칙을 리플레이합니다
-- 로드에서 이름 대어 거절: 없는 파일 · 그 파일에 없는 함수 · 읽다 터지는 파일 · `table_config` 에 없는 `ref` 표 · 대상 표에 없는 `row` 칸 · 네 함수(`count` …)에 적은 `ref` · `row`
+- 로드에서 이름 대어 거절: 없는 파일 · 그 파일에 없는 함수 · 읽다 터지는 파일 · `table_config` 에 없는 `ref` 표 · 대상 표에 없는 `row` 칸 · 네 함수(`count` …)에 적은 `ref` · `row` · 함수 아닌 take 의 칸 목록 `from` · `into` 없는 칸 목록 · 원천 표에 없는 칸
 
 ## 1. 언제 이 파일을 만지는가
 

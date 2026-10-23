@@ -38,6 +38,7 @@ import os
 
 import chain_bindings
 import paths
+from error_said import told
 
 logger = logging.getLogger("Chain.JoinInto")
 
@@ -123,7 +124,10 @@ JOIN_CELL_SHAPES = {
     "take": chain_bindings.list_node("column", {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
         "name": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT),
         "record": {"kind": "record", "fields": [
-            {"key": "from", "required": False, "node": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT)},
+            {"key": "from", "required": False, "node": {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
+                "name": chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT),
+                "list": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.SOURCE_TABLE_AT))},
+                "empty": {"name": "", "list": []}}},
             {"key": "into", "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)},
             {"key": TAKE_FN, "required": False, "node": {"kind": "leaf", "hint": "choice", "list": TAKE_FN_LIST}},
             {"key": "separator", "required": False, "node": {"kind": "leaf", "hint": "free"}},
@@ -171,8 +175,8 @@ def pairs(rule: dict) -> list:
 
 
 def takes(rule: dict) -> list:
-    """이 규칙의 `take` — `(오른쪽 컬럼, 왼쪽에 적히는 이름)` 들. `pairs` 와 같은 이유로 공개다."""
-    return _takes(join_spec(rule))
+    """이 규칙의 `take` — `(오른쪽 컬럼, 왼쪽에 적히는 이름)` 들, 칸 목록인 from 은 칸마다. `pairs` 와 같은 이유로 공개다."""
+    return [(column, into) for right, into in _takes(join_spec(rule)) for column in _columns(right)]
 
 
 def right_key(rule: dict) -> tuple:
@@ -192,14 +196,27 @@ def right_key(rule: dict) -> tuple:
             [fold for _left, _right, fold in on])
 
 
+def _from(item: dict):
+    """A take record's `from`: one column name, or a tuple of names when it is a list (owner 10-23 «from 이 여러 개») -
+    the one reader of its shape. A function take's values follow it: a value a row, or {column: value} a row."""
+    said = item.get("from")
+    return tuple(str(name) for name in said) if isinstance(said, list) else str(said)
+
+
+def _columns(right) -> tuple:
+    """The value-table columns one take reads - its `from` as `_from` gives it."""
+    return right if isinstance(right, tuple) else (right,)
+
+
 def _takes(spec: dict) -> list:
-    """`take` as (right column, left column). `into` defaults to the right column's name."""
+    """`take` as (right column - a tuple of them for a list `from`, left column). `into` defaults to the right
+    column's name."""
     out = []
     for item in spec.get("take") or ():
         if isinstance(item, str):
             out.append((item, item))
         elif isinstance(item, dict) and item.get("from"):
-            out.append((str(item["from"]), str(item.get("into") or item["from"])))
+            out.append((_from(item), str(item.get("into") or item["from"])))
     return out
 
 
@@ -210,11 +227,11 @@ def _fn_takes(spec: dict) -> dict:
         if isinstance(item, dict) and item.get("from") and item.get(TAKE_FN):
             record = {"fn": item[TAKE_FN]}
             if item[TAKE_FN] != "count":
-                record["column"] = str(item["from"])
+                record["column"] = _from(item)
             for cell in ("separator", TAKE_REF, TAKE_ROW):
                 if cell in item:
                     record[cell] = item[cell]
-            out[str(item.get("into") or item["from"])] = (str(item["from"]), record)
+            out[str(item.get("into") or item["from"])] = (_from(item), record)
     return out
 
 
@@ -266,7 +283,7 @@ def take_function(fn):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     except Exception as exc:                                        # noqa: BLE001 - the author's file, said
-        return None, "fn %r - %s.py could not be loaded: %s: %s" % (fn, file, type(exc).__name__, exc)
+        return None, "fn %r - %s.py could not be loaded: %s" % (fn, file, told(exc))
     function = getattr(module, name, None)
     if not callable(function):
         return None, "fn %r - %s.py has no function %r" % (fn, file, name)
@@ -279,6 +296,23 @@ def take_refusal(join: dict, key: dict, right_table: str, left_table: str = ""):
     from chain.enrichment import config
     from database import crud
 
+    for item in (join or {}).get("take") or ():
+        said = item.get("from") if isinstance(item, dict) else None
+        if not isinstance(said, list):
+            continue
+        into = item.get("into") or said
+        if not said or not all(isinstance(name, str) and name.strip() for name in said):
+            return "take %r from - a column name, or a list of column names" % (into,)
+        if not item.get("into"):
+            return "take from %r - a list of columns needs an into" % (said,)
+        fn = item.get(TAKE_FN)
+        if not fn or fn in config.AGGREGATION_FUNCTIONS:
+            return ("take %r from is a list - only a function «<file>.<function>» takes one; %s take one column"
+                    % (into, " · ".join(config.AGGREGATION_FUNCTIONS) if fn else "a take without fn and"))
+        declared = chain_bindings.declared_columns(right_table)
+        for name in said:
+            if declared is not None and name not in declared:
+                return "take %r from %r - not a column of %s" % (into, name, right_table)
     fns = _fn_takes(join or {})
     if fns and (key or {}).get("unique"):
         return ("key.unique and take fn (%s) cannot stand together - fn gathers every row of a key, key.unique says "
@@ -333,8 +367,9 @@ def _gathered(spec: dict, found, row=None, ref=None, functions=None) -> dict:
         function = (functions or {}).get(into)
         if function is not None:
             mine = {name: (row or {}).get(name) for name in _row_columns(spec, record)}
-            out[into] = function([value for value in values if not crud.is_blank_value(value)], mine,
-                                 {table: (ref or {}).get(table, []) for table in record.get(TAKE_REF) or ()})
+            kept = [value for value in values if not (all(map(crud.is_blank_value, value.values()))
+                                                      if isinstance(value, dict) else crud.is_blank_value(value))]
+            out[into] = function(kept, mine, {table: (ref or {}).get(table, []) for table in record.get(TAKE_REF) or ()})
             continue
         types = {column: map_overlay.declared_column_type(right_table, column)}
         said, _why = config.aggregation_record(record, types)
@@ -452,10 +487,11 @@ def _missing(spec: dict, left_table: str, left_model, right_model) -> str:
         if not hasattr(right_model, right_col):
             return "right column %r does not exist on %r" % (
                 right_col, spec.get("right_table"))
-    for right_col, into_col in _takes(spec):
-        if not hasattr(right_model, right_col):
-            return "take column %r does not exist on %r" % (
-                right_col, spec.get("right_table"))
+    for right, into_col in _takes(spec):
+        for right_col in _columns(right):
+            if not hasattr(right_model, right_col):
+                return "take column %r does not exist on %r" % (
+                    right_col, spec.get("right_table"))
         if not hasattr(left_model, into_col):
             return "target column %r does not exist on %r" % (into_col, left_table)
     for word, items in (("require", _required(spec)), ("exclude", _excluded(spec))):
@@ -544,7 +580,8 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
         rows.pop(row_id, None)
     right_key = [_folded(getattr(right_model, right_col), fold, _zone(spec.get("right_table"), right_col))
                  for _l, right_col, fold in pairs]
-    takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
+    shapes = [right for right, _into in _takes(spec)]
+    takes = [getattr(right_model, column) for right in shapes for column in _columns(right)]
     # 🔴 [총괄 2276e38cf] A value row with an empty `require` column is not an answer, from
     #   whichever side the join woke - the rule's row gates' one judgement (`rule_run.gate_conditions`, 총괄 23fb6060d).
     from chain import rule_run
@@ -557,8 +594,18 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
         for row in db.execute(select(right_model.row_id, *right_key, *takes)
                               .where(tuple_(*right_key).in_(chunk), *filled)):
             answers.setdefault(tuple(row[1:1 + width]), []).append(
-                (row[0], tuple(row[1 + width:])))
+                (row[0], _shaped(shapes, row[1 + width:])))
     return sorted(left.items()), answers, len(empty), rows
+
+
+def _shaped(shapes, flat) -> tuple:
+    """A value row's take values, one per take: a column's value, or {column: value} for a list `from`."""
+    out, at = [], 0
+    for right in shapes:
+        names = _columns(right)
+        out.append(dict(zip(names, flat[at:at + len(names)])) if isinstance(right, tuple) else flat[at])
+        at += len(names)
+    return tuple(out)
 
 
 def _is_function(record: dict) -> bool:

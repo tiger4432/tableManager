@@ -110,20 +110,27 @@
 
 ---
 
-> ## [10-23] **조인 take 의 fn 에 파이썬 함수 — 키마다 f(values, row, ref) 로 S/O 같은 판정 값 (소유자 10-23 「spec 표의 spec 으로 참조해서 s/o 여부를 판정」, 총괄 f14181fbd · 650a23f9c)** — git pull · 런처 재기동
+> ## [10-23] **조인 take 의 fn 에 파이썬 함수 — 키마다 f(values, row, ref) 로 S/O 같은 판정 값 · from 에 칸 목록이면 행마다 {칸: 값} (소유자 10-23 「spec 표의 spec 으로 참조해서 s/o 여부를 판정」 · 「넓히기는 저렇게」, 총괄 f14181fbd · 650a23f9c · ff3fed5fb)** — git pull · 런처 재기동
 >
 > ```
 > 적는 법    server/mappers/join_fn/spec_out.py.sample 을 같은 폴더에 spec_out.py 로 복사(어드민 Editor 의 Mappers 에 join_fn/spec_out.py 로 보임)
+>           이미 복사해 쓰고 있으면 새 함수 s_o_by_item 만 그 파일에 옮겨 붙임
 >           조인 선언의 take 항목: {"from": "<원천 값 칸>", "into": "<판정 칸>", "fn": "spec_out.s_o", "ref": ["<스펙 표>"], "row": ["<대상 행 칸>"]}
+>           한 키에 항목이 여럿 섞이면 from 에 칸 목록: {"from": ["value", "item"], "into": "<판정 칸>", "fn": "spec_out.s_o_by_item", "ref": ["<스펙 표>"], "row": ["<대상 행 칸>"]}
 >           스펙 버전도 남기려면 take 하나 더: {"from": "<원천 값 칸>", "into": "<버전 칸>", "fn": "spec_out.spec_hash", "ref": ["<스펙 표>"]}
->           예시 함수의 표 이름 · 칸 이름(spec · item · grade · lower · upper)은 그 표에 맞게 고침
+>           예시 함수의 표 이름 · 칸 이름(spec · value · item · grade · lower · upper)은 그 표에 맞게 고침
 > 함수 모양  f(values, row, ref) -> 값 하나
->           values  그 키 원천 행들의 from 칸 값(빈 값 뺌)
+>           values  그 키 원천 행들의 from 값 — from 이 칸 하나면 값 목록(빈 값 뺌), 칸 목록이면 행마다 {칸: 값}(적은 칸이 전부 빈 행만 뺌)
 >           row     대상 행의 조인 키 칸 + "row" 에 적은 칸 {칸: 값}
 >           ref     "ref" 에 적은 표 통째 {표: [{칸: 값}, ...]} — 묶음마다 한 번 읽음(take 둘이 같은 표면 한 번)
+>           원천 표는 칸 목록이어도 묶음마다 같은 한 번 읽기에 칸만 더 실림
 > 스펙을 바꾼 뒤  자동으로 다시 판정 안 함 -> 그 규칙을 리플레이(소급 탭 «Replay chain rules over old data», rule = 그 선언 이름)
 > 확인 줄    저장이 거절하면 그 문장에 이유: «take '<칸>' fn 'x.y' - …» · «take '<칸>' ref 'spec' - not a table table_config declares» · «take '<칸>' row 'grade' - not a column of …»
-> 되돌리기  git revert 6bc123ff7 -> 런처 재기동. "fn" 에 함수를 적은 선언은 되돌린 코드에서 «take '<칸>' fn 'spec_out.s_o' - one of count · min · max · unique_concat» 로 거절됨 — 그 take 를 지움
+>           칸 목록: «take '<칸>' from is a list - only a function «<file>.<function>» takes one …» -> fn 에 함수 이름
+>                   «take from [...] - a list of columns needs an into» -> into 를 적음
+>                   «take '<칸>' from '<이름>' - not a column of <원천 표>» -> 원천 표 칸 이름으로 고침
+> 되돌리기  git revert REVERT_HASH -> 런처 재기동: from 칸 목록만 빠짐 — 목록을 적은 take 를 먼저 지움
+>           fn 함수까지 통째: git revert 6bc123ff7 도. "fn" 에 함수를 적은 take 를 지움
 > ```
 >
 > ## [10-23] **리플레이가 뒤로 갈수록 느려지던 것 — 체인 대기열이 줄을 payload 대신 outbox 칸 셋으로 읽는다 (총괄 c0e6906f1, 소유자 「ㄱ」)** — git pull · 런처 재기동

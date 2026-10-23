@@ -1,7 +1,8 @@
 """A join take's functions - copy to spec_out.py and name one in the take: "fn": "spec_out.s_o".
 
 Each is f(values, row, ref) -> one value, called once a key:
-  values  the key's source rows' take values, blank ones left out
+  values  the key's source rows' take values, blank ones left out - a value a row, or {column: value} a row when the
+          take's "from" is a list of columns (a row whose every listed column is blank left out)
   row     the target row's join key columns, then the take's "row" columns - {column: value}
   ref     the take's "ref" tables, whole - {table: [{column: value}, ...]}, read once a batch
 A spec table changed later is not judged again by itself: replay the rule.
@@ -20,6 +21,21 @@ def s_o(values, row, ref):
         return None
     lower, upper = float(spec["lower"]), float(spec["upper"])
     return "S/O" if any(not lower <= float(value) <= upper for value in values) else "OK"
+
+
+def s_o_by_item(values, row, ref):
+    """"S/O" when any row's value lies outside the spec of ITS OWN item - "from": ["value", "item"], each value
+    {"value": .., "item": ..} (name your table's columns); "OK" when none does, nothing when no row has a spec."""
+    judged = False
+    for value in values:
+        spec = next((r for r in ref.get(SPEC, ()) if r.get("item") == value.get("item")
+                     and r.get("grade") == row.get("grade")), None)
+        if spec is None or value.get("value") is None:
+            continue
+        judged = True
+        if not float(spec["lower"]) <= float(value["value"]) <= float(spec["upper"]):
+            return "S/O"
+    return "OK" if judged else None
 
 
 def spec_hash(values, row, ref):

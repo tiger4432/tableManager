@@ -741,12 +741,36 @@
                               "key": "from",
                               "required": false,
                               "node": {
-                                "kind": "leaf",
-                                "hint": "ref",
-                                "section": "columns",
-                                "table_from": [
-                                  "on.table"
-                                ]
+                                "kind": "oneOf",
+                                "hint": "choice",
+                                "pick": "shape",
+                                "branches": {
+                                  "name": {
+                                    "kind": "leaf",
+                                    "hint": "ref",
+                                    "section": "columns",
+                                    "table_from": [
+                                      "on.table"
+                                    ]
+                                  },
+                                  "list": {
+                                    "kind": "map",
+                                    "keyed_by": "index",
+                                    "member": "column",
+                                    "of": {
+                                      "kind": "leaf",
+                                      "hint": "ref",
+                                      "section": "columns",
+                                      "table_from": [
+                                        "on.table"
+                                      ]
+                                    }
+                                  }
+                                },
+                                "empty": {
+                                  "name": "",
+                                  "list": []
+                                }
                               }
                             },
                             {

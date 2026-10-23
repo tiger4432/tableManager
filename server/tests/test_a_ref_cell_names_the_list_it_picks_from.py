@@ -94,7 +94,9 @@ def test_the_chain_table_and_column_cells_name_their_lists():
     take = _field(unified, "derive", "join", "take")["of"]["branches"]
     columns(take["name"], ["on.table"])
     record = {f["key"]: f["node"] for f in take["record"]["fields"]}
-    columns(record["from"], ["on.table"])
+    said = record["from"]["branches"]                       # a column, or a list of them (lead ff3fed5fb)
+    columns(said["name"], ["on.table"])
+    columns(said["list"]["of"], ["on.table"])
     columns(record["into"], ["target_table", "into.table"])
     columns(_field(unified, "key", "columns")["of"], ["on.table"])
     columns(_field(flat, "group_by")["of"], ["trigger_table", "on.table"])

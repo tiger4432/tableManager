@@ -10,6 +10,8 @@ batch body (`drain_events`) over the rules the loader stands from the declaratio
   one batch                 the spec table read once, whichever takes name it
   the spec table changes    nothing is judged again by itself - a replay is
   refused                   a file, a function, a ref table, a row column; ref and row on one of the four
+  from a list of columns    values are {column: value} a row (owner 10-23 「넓히기는 저렇게」, lead ff3fed5fb) - a row
+                            whose every listed column is blank left out; the value table read in as many statements
 """
 import asyncio
 import json
@@ -38,8 +40,9 @@ from utils import heartbeat                                           # noqa: E4
 
 SAMPLE = os.path.join(SERVER_DIR, "mappers", "join_fn", "spec_out.py.sample")
 TABLES = {"jf_meas": {"business_key": "rid", "composite_key_source": ["rid"],
-                      "column_types": {"rid": "string", "lot": "string", "item": "string", "v": "number"},
-                      "display_columns": ["rid", "lot", "item", "v"]},
+                      "column_types": {"rid": "string", "lot": "string", "item": "string", "v": "number",
+                                       "value": "number"},
+                      "display_columns": ["rid", "lot", "item", "v", "value"]},
           "spec": {"business_key": "sid", "composite_key_source": ["sid"],
                    "column_types": {"sid": "string", "item": "string", "grade": "string", "lower": "number",
                                     "upper": "number"},
@@ -55,10 +58,9 @@ SPEC_ROWS = [{"sid": "s1", "item": "A", "grade": "g1", "lower": 0, "upper": 10},
              {"sid": "s3", "item": "A", "grade": "g2", "lower": 0, "upper": 3}]
 
 
-def _declaration(take):
+def _declaration(take, on=("lot", "item")):
     return {"name": "jf", "on": {"table": "jf_meas"}, "into": {"table": "jf_tgt"},
-            "derive": {"kind": "join", "join": {"on": [{"left": "lot", "right": "lot"},
-                                                       {"left": "item", "right": "item"}], "take": take}}}
+            "derive": {"kind": "join", "join": {"on": [{"left": c, "right": c} for c in on], "take": take}}}
 
 
 class _NoClose:
@@ -108,9 +110,9 @@ def fixture_db(tmp_path, monkeypatch, functions):
             crud.TABLE_CONFIG.pop(name, None)
 
 
-def _rules(tmp_path, monkeypatch, take=TAKE):
+def _rules(tmp_path, monkeypatch, take=TAKE, on=("lot", "item")):
     path = tmp_path / "chain_rules.json"
-    path.write_text(json.dumps({"rules": [_declaration(take)]}), encoding="utf-8")
+    path.write_text(json.dumps({"rules": [_declaration(take, on)]}), encoding="utf-8")
     monkeypatch.setattr(worker, "RULES_PATH", str(path))
     rules = [r for r in worker.load_chain_rules() if str(r.get("name") or "").startswith("jf")]
     assert len(rules) == 2, "the declaration stood both halves - else this measures nothing"
@@ -229,6 +231,11 @@ def test_a_changed_spec_is_judged_again_only_by_a_replay(db, tmp_path, monkeypat
     ([{"from": "v", "into": "so", "fn": "spec_out.s_o", "ref": ["nosuch"]}], "ref 'nosuch' - not a table"),
     ([{"from": "v", "into": "so", "fn": "spec_out.s_o", "row": ["nosuch"]}], "row 'nosuch' - not a column of jf_tgt"),
     ([{"from": "v", "into": "so", "fn": "max", "ref": ["spec"]}], "ref and row are a function's"),
+    ([{"from": ["value", "item"], "into": "so"}], "only a function"),
+    ([{"from": ["value", "item"], "into": "so", "fn": "max"}], "only a function"),
+    ([{"from": ["value", "item"], "fn": "spec_out.s_o_by_item"}], "needs an into"),
+    ([{"from": ["value", "nosuch"], "into": "so", "fn": "spec_out.s_o_by_item"}], "from 'nosuch' - not a column of jf_meas"),
+    ([{"from": [], "into": "so", "fn": "spec_out.s_o_by_item"}], "a list of column names"),
 ])
 def test_a_function_take_that_cannot_stand_is_refused_by_name(db, take, words):
     _rules_, refusal, _notes = rule_shape.expand_declaration(_declaration(take))
@@ -240,7 +247,54 @@ def test_the_declarations_screen_offers_the_folders_functions(functions, client)
 
     offered = admin._chain_lists()[join_into.TAKE_FN_LIST]
     assert offered[:4] == ["count", "min", "max", "unique_concat"]
-    assert offered[4:] == ["spec_out.s_o", "spec_out.spec_hash"]
+    assert offered[4:] == ["spec_out.s_o", "spec_out.s_o_by_item", "spec_out.spec_hash"]
     # the Editor's Mappers list opens the file
     listed = client.get("/admin/scripts/list").json()["data"]["mappers"]
     assert {"filename": "join_fn/spec_out.py", "path": "mappers/join_fn/spec_out.py", "type": "mapper"} in listed
+
+
+def test_a_take_from_a_list_hands_one_record_a_row_and_judges_each_rows_own_item(db, functions, tmp_path, monkeypatch):
+    """The key is the lot alone, so one key holds rows of two items - each judged against its own item's spec."""
+    (functions / "probe.py").write_text("import json\n\ndef seen(values, row, ref):\n"
+                                         "    return json.dumps(sorted(values, key=json.dumps))\n", encoding="utf-8")
+    take = [{"from": ["value", "item"], "into": "so", "fn": "spec_out.s_o_by_item", "ref": ["spec"], "row": ["grade"]},
+            {"from": ["value", "item"], "into": "spec_ver", "fn": "probe.seen"}]
+    rules = _rules(tmp_path, monkeypatch, take, on=("lot",))
+    _put(db, "spec", SPEC_ROWS)
+    _put(db, "jf_tgt", [{"tid": "t1", "lot": "L1", "grade": "g1"}, {"tid": "t3", "lot": "L2", "grade": "g2"}])
+    _put(db, "jf_meas", [{"rid": "m1", "lot": "L1", "item": "A", "value": 3},
+                         {"rid": "m4", "lot": "L1", "item": "B", "value": 6},
+                         {"rid": "m5", "lot": "L2", "item": "A", "value": 2}, {"rid": "m8", "lot": "L2"},
+                         {"rid": "m9", "lot": "L2", "item": "A"}])
+    _drain(db, rules)
+    judged = {lot: (so, json.loads(seen)) for (lot, _item), (so, seen) in _judged(db).items()}
+    assert judged["L1"][0] == "S/O", "B's 6 is past g1's upper 5 for B - A's spec (upper 10) would pass it"
+    assert judged["L2"] == ("OK", [{"item": "A", "value": 2.0}, {"item": "A", "value": None}]), (
+        "a record a row; the row with both listed columns blank (m8) is left out, one with a value is kept")
+
+
+def test_a_list_take_reads_the_value_table_in_as_many_statements_as_one_column(db, tmp_path, monkeypatch):
+    _seed(db)
+    _drain(db, _rules(tmp_path, monkeypatch))
+    engine = db.get_bind()
+
+    def reads(take, rid):
+        statements = []
+
+        def count(_conn, _cursor, statement, *_rest):
+            if "FROM jf_meas" in statement:
+                statements.append(statement)
+
+        rules = _rules(tmp_path, monkeypatch, take)
+        _put(db, "jf_meas", [{"rid": rid, "lot": "L1", "item": "A", "v": 3, "value": 3}])
+        event.listen(engine, "before_cursor_execute", count)
+        try:
+            _drain(db, rules)
+        finally:
+            event.remove(engine, "before_cursor_execute", count)
+        return len(statements)
+
+    one = reads([{"from": "v", "into": "so", "fn": "spec_out.s_o", "ref": ["spec"], "row": ["grade"]}], "r1")
+    listed = reads([{"from": ["value", "item"], "into": "so", "fn": "spec_out.s_o_by_item", "ref": ["spec"],
+                     "row": ["grade"]}], "r2")
+    assert one and listed == one, (one, listed)
