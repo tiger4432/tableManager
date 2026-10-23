@@ -31,7 +31,11 @@ LONG = {("L1", "W1"): {"a": 1.0, "b": 5.0, "c": 9.0},
 
 
 @pytest.fixture
-def grid(db_session, client):
+def grid(db_session, client, monkeypatch):
+    # its own drop counts: a row made by its keys drops `bk` (not a declared column) into the process-wide registry
+    # the chain worker's heartbeat note reads - left there, a later file's «clean worker» is not (총괄 10-23, B)
+    for name in ("_undeclared_column_drops", "_undeclared_column_warned", "_undeclared_column_drops_over_budget"):
+        monkeypatch.setattr(crud, name, {})
     models.init_dynamic_models({TABLE: ENTRY})
     crud.TABLE_CONFIG[TABLE] = ENTRY
     models.DYNAMIC_TABLES[TABLE].__table__.create(bind=db_session.get_bind())
