@@ -21,7 +21,7 @@
 > 실패일 때  server.log · chain_worker.log «[Schema Sync] column 'run_id' was not added to 'database_outbox' - another session held the table past 20s …»
 >           그 뒤 체인 · 스케줄러 로그가 «UndefinedColumn … database_outbox.run_id» 를 계속 찍음 — 쓰기 · 체인이 서 있음
 >           -> 앱을 끄고(run_app.bat 닫기) 재기동 한 번. outbox 를 쥔 다른 세션(SQL 창 등)이 있으면 먼저 닫음
-> 되돌리기  git revert REVERT_HASH -> 런처 재기동. 칸 셋은 남아 있어도 됨(옛 코드는 안 읽음)
+> 되돌리기  git revert f7cd84eb4 -> 런처 재기동. 칸 셋은 남아 있어도 됨(옛 코드는 안 읽음)
 > ```
 >
 > ## [10-23] **voids 표가 끝없이 읽힐 때 — 대기 중인 다시 읽기를 되돌린다 (있는 문 cancel-reread, 코드 바뀜 없음)** — 재기동 없음
