@@ -3,11 +3,12 @@
 소유자 운영 표 (이 모양을 «바꾸지 않고» 읽는다 — 소유자 「요약표는 그냥 데이터 표일 뿐, 거기에 뭐 정리하려 하지 마」)
 ```
 #1 요약표    wafer · leg · defect_kind · defective_chip_count · total_chip_count · loss
-#2 조건표    date · wafer · leg · condition_id · value          (긴 표 — 조건마다 한 행)
+#2 조건표    date · title · wafer · leg · condition_id · value  (긴 표 — 조건마다 한 행)
 #3 이미지표  wafer · x · y · leg · img_path · including_defects  (칩 하나의 이미지, 그 안의 디펙 목록)
 #4 보고서표 wafer · report_path                                (운영자가 만듦, 웨이퍼당 한 행 — 최종 출력 두 칸)
 ```
-가상 데이터 규칙 (소유자 10-23) — including_defects 는 «defect_type_1, defect_type_2» 처럼 칩 하나에 든 디펙을 쉼표로 적은 글 · 요약표는 디펙 유형마다 발생 칩 수와 웨이퍼 안 칩 수 · 수율 = 아무 디펙도 없는 칩의 비율 · 그래서 요약표의 수는 이미지표의 칩에서 «맞아떨어지게» 짓는다 (loss 칸에 무엇을 적는지는 짓기 전 멈춤에 물음으로)
+가상 데이터 규칙 (소유자 10-23) — including_defects 는 «defect_type_1, defect_type_2» 처럼 칩 하나에 든 디펙을 쉼표로 적은 글 · 요약표는 디펙 유형마다 발생 칩 수와 웨이퍼 안 칩 수 · 수율 = 아무 디펙도 없는 칩의 비율 · 그래서 요약표의 수는 이미지표의 칩에서 «맞아떨어지게» 짓는다 · loss = 그 디펙 유형이 난 칩 수 ÷ 웨이퍼 칩 수
+대조군 (소유자 10-23) — «같은 평가»를 title 로 유추하지만 title 은 정확하지 않다 → condition_id 별 value 를 보고 추정해야 한다. 누가 추정하나(대조 후보를 고르는 규칙 / AI 에게 후보들의 조건을 싣기) · 그것을 «선언 칸»으로 어떻게 적나를 짓기 전 멈춤의 대응 표에 안으로
 지금 코드와 어긋나는 자리(총괄이 report_shape 로 읽음): wafer 역할은 «넓은 웨이퍼 표»(key · time · lot · evaluation · conditions 칸 목록)를 요구 — 조건이 긴 표인 #2 를 못 읽음 / images 역할은 «행마다 item 하나» — #3 의 including_defects(목록) · x · y 를 못 읽음 / evaluation 칸이 없음 → 대조군 «최근 평가»의 축이 없음
 도착 — 두 줄
 ```
