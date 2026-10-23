@@ -58,6 +58,7 @@ from admin import audit_history  # keyset paging + config ceiling for row/cell /
 # enumerates the app's routes and fails if a new one ever misses.
 from admin.auth import require_admin_token, require_admin_token_strict, require_worker_token
 from admin import auth
+from admin import help as admin_help  # the admin help: a question -> one tool, its fields and count (owner 10-23)
 from admin import sso  # company sign-in (총괄 2095014ee): off unless auth_config.json turns it on
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logger.info(f"[paths] {paths.describe()}")
@@ -7111,11 +7112,13 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
     body = payload if isinstance(payload, dict) else {}
     params = body.get("params") if isinstance(body.get("params"), dict) else {}
     try:
-        return retroactive.publish(db, op, params,
-                                   # 🔴 없으면 «안 적습니다». "admin" 은 사람 이름처럼
-                                   # 읽히는 글자라, 그것을 남기면 「누가 걸었나」에
-                                   # 아무도 말하지 않은 답을 «적어 두는» 것입니다.
-                                   requested_by=body.get("requested_by") or None)
+        queued = retroactive.publish(db, op, params,
+                                     # 🔴 없으면 «안 적습니다». "admin" 은 사람 이름처럼
+                                     # 읽히는 글자라, 그것을 남기면 「누가 걸었나」에
+                                     # 아무도 말하지 않은 답을 «적어 두는» 것입니다.
+                                     requested_by=body.get("requested_by") or None)
+        admin_help.mark_run(db, body.get("help_id"), queued)    # the help's answer the form opened it from
+        return queued
     except retroactive.RetroactiveRefused as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -7123,6 +7126,21 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
         db.rollback()
         logger.error(f"[Retroactive] failed to queue op={op}: {e}")
         raise HTTPException(status_code=500, detail=f"The run request could not be queued: {e}")
+
+
+@app.post("/admin/help/ask", dependencies=[Depends(require_admin_token)])
+def ask_admin_help(request: Request, payload: dict = Body(default=None), db: Session = Depends(get_db)):
+    """The admin help (소유자 10-23, 총괄 e33713863): `{"question"}` -> one tool of the catalog, its fields and its
+    count, with the `help_id` the form carries into the run. Runs nothing. 400 with the reason when nothing is asked;
+    a model that cannot be asked is said on the answer's `refused`."""
+    from admin import retroactive
+
+    body = payload if isinstance(payload, dict) else {}
+    try:
+        return admin_help.ask(db, body.get("question"), asked_by=sso.who(request, None))
+    except retroactive.RetroactiveRefused as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/admin/retroactive/runs", dependencies=[Depends(require_admin_token)])

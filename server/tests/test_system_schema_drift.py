@@ -221,6 +221,8 @@ SYSTEM_TABLE_COLUMNS = {
     #   real here too - a full-entity SELECT raised UndefinedColumn on file_mtime.
     # file_reread_marks: 총괄 10-11 ㄱ - the re-read's state before, a table of its own (create_all, no ALTER)
     "file_reread_marks": ('folder', 'log_id', 'marked_at', 'status_before'),
+    "admin_help_asks": ('affected', 'asked_at', 'asked_by', 'id', 'op', 'params', 'question', 'refused', 'run_id',
+                        'tries', 'why'),
     # transaction_id (both): migrations/add_file_ingestion_transaction_id.sql [총괄 10-20] - and the boot schema sync
     #   adds it without it (models.SCHEMA_SYNCED_SYSTEM_TABLES)
     "file_ingestion_checkpoints": ('chunk_index', 'file_mtime', 'file_signature', 'file_size', 'filename', 'filepath', 'id', 'note', 'processed_rows', 'source_kind', 'started_at', 'status', 'table_name', 'total_rows', 'transaction_id', 'updated_at'),

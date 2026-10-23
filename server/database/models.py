@@ -542,6 +542,25 @@ class FileRereadMark(Base):
     marked_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class AdminHelpAsk(Base):
+    """One question to the admin help and what it answered (소유자 10-23, 총괄 e33713863 - `admin.help`): the tool, its
+    fields, the count, a refusal, the asks it took, and the run the form opened from it. An operations record, not
+    source data - nothing reads it into the ledger. A table of its own: create_all makes it."""
+    __tablename__ = "admin_help_asks"
+
+    id = Column(String(12), primary_key=True)                      # the help_id the form carries back
+    asked_at = Column(DateTime(timezone=True), server_default=func.now())
+    asked_by = Column(String, nullable=True)                       # the signed-in name, else none
+    question = Column(String, nullable=False)
+    op = Column(String, nullable=True)
+    params = Column(String, nullable=True)                         # JSON text
+    why = Column(String, nullable=True)
+    affected = Column(BigInteger, nullable=True)
+    refused = Column(String, nullable=True)
+    tries = Column(Integer, nullable=False, default=0)
+    run_id = Column(String(64), nullable=True)
+
+
 class FileIngestionCheckpoint(Base):
     """[P2] 파일 인제션 오프셋 체크포인트 — 이어 읽기(재개)의 원장.
 
