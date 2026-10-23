@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만, 반영은 Read all again (53d547bbb)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언 바뀜 없음
+> 바뀐 것   table_config.json 의 그 표 항목만 바꾸면(칸 더함 등) 와처는 실패 파일만 다시 넘기고, 읽은 파일은 그대로 둠
+>          플러그인 스크립트 · 외부 소스 칸이 바뀌면(표 선언과 같이 바뀌어도) 지금처럼 읽은 파일을 다시 읽음
+> 답의 뜻   watcher.log
+>          [Watcher] <표>: its reading changed (table_config) - N read file(s) kept as read (Read all again on the file page applies the change to them), M failed file(s) handed again
+>            N  다시 읽지 않고 둔 파일 수 — 새 선언(예: 더한 칸)은 이 파일들의 행에 아직 안 들어감
+>            M  다시 넘긴 실패 파일 수
+>          [Watcher] <표>: its reading changed (scripts\<파일>.py ...) - N read file(s) unchecked, ...        전과 같음 — 다시 읽음
+> 반영할 때  파일 화면에서 그 표 · 폴더를 골라 «Read all again» -> 미리보기 수 확인 -> 실행
+> 되돌리기  git revert 53d547bbb -> 런처 재기동 (표 선언이 바뀌면 다시 전부 다시 읽음)
+> ```
+>
+
+---
+
 > ## [10-23] **파일이 소스 밑인지 가르는 판정이 빨라짐 (df2e41ab5)** — 위 블록과 같은 git pull · 런처 재기동에 같이 들어감
 >
 > ```
