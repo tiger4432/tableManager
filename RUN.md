@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **표 비우기는 문 하나 — 소급 탭 «Delete every row of a table» 의 how = Full reset (empty_table.py 은퇴, 6d3ec98cc)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(소급 탭이 새 칸을 보이게). 선언 바뀜 없음
+> 쓰는 법   소급 탭 «Delete every row of a table» -> table · how = Full reset -> 미리보기 -> 그 행 수를 confirm_rows 에 -> 실행
+>          명령  python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset
+>                python server/scripts/chain_replay_cli.py delete-every-row <표> --how full_reset --confirm-rows <위의 행 수> --apply
+> 답의 뜻   미리보기 「Full reset of '<표>': N row(s) … No chain rule is told …」   아무것도 안 씀
+>          「… full reset: N row(s) … ledger atoms withdrawn …」                     비움 끝. 체인은 안 깸 — 필요하면 Read all again
+>          「REFUSED: … has K row(s) now, not M」                                     그 사이 표가 움직였거나 confirm_rows 를 안 적음 -> 미리보기부터
+>          how 를 비우면 예전 그대로 Row by row(그리드 삭제처럼 쪽마다 · 체인이 먹인 것을 거둠)
+> 급할 때   쓰지 않으면 아무 일 없음. 옛 명령 empty_table.py 는 없어짐
+> 되돌리기  git revert 6d3ec98cc -> 런처 재기동 (empty_table.py 가 돌아옴)
+> ```
+>
+
+---
+
 > ## [10-23] **메인 그리드 피벗 — 화면 몫 ①·② (소유자 10-22, d45ba4aa1)** — git pull · 화면 새로 고침
 >
 > ```
