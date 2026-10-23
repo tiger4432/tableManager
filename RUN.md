@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **피벗 보기에서 줄 더하기 · 지우기 · 맨 아래 붙여넣기 (소유자 「피벗 상태에서는 행 추가가 안 되네」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          피벗 켬 -> Add Row -> 맨 아래 «not saved» 줄의 키 칸 -> 항목 칸 값 (Tx 켬이면 Apply)
+>          줄 고름 -> Delete -> 확인창의 수를 보고 OK
+> 뜻      «Fill every key column of the new row first»  -> 새 줄의 키가 비었음, 아무것도 안 씀
+>          확인창 «N rows of M selected keys, items not shown included» -> N 은 긴 표에서 지울 행 수(안 펼친 항목 포함)
+>          «Delete stopped - nothing deleted: … answered a row with <키> = …» -> 서버가 키 거르기를 안 먹음, 아무것도 안 지움 — 총괄에게
+>          «Key columns cannot be changed in pivot view» -> 저장된 줄의 키를 붙여넣기로 바꾸려 함, 아무것도 안 씀
+> 되돌리기  git revert 8f953e279 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-23] **고침 — 피벗 보기에서 Tx 를 켠 채 Apply 하면 써진다 · 빈 칸 값 넣기도 (소유자 「빈 값에서 값 추가도 안 되네」)** — git pull · 화면 새로 고침
 >
 > ```
