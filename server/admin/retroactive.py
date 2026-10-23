@@ -2706,7 +2706,7 @@ DOORS_OUTSIDE = {
         "label": "Read files again",
         "what_is_missing": "files already read keep the parse they had - the parser or the table's reading changed since",
         "examples": ["파서(또는 칸 선언)를 고쳤는데 이미 들어간 파일의 행은 옛 해석 그대로다", "이 파일 지금 다시 읽어줘",
-                     "이 폴더 실패한 파일만 다시"],
+                     "이 폴더 실패한 파일만 다시", "표 선언에 칸을 더했는데 이미 들어간 파일에는 그 칸이 비어 있다"],
         "doors": [
             {"name": "now", "how": ("the file page's Retry · Read all again · Retry failed files under a folder "
                                     "(POST /admin/file-ingestion/retry-failed) · Read now"),
@@ -2715,8 +2715,9 @@ DOORS_OUTSIDE = {
             {"name": "next sweep", "how": "python server/scripts/replay_ingestion.py --path <file> [--table <table>] --apply",
              "when": ("a file still where its source's sweep looks - its log row's stamp emptied, the next sweep "
                       "reads it as the source's pattern takes it; a file moved away is not read")}],
-        "next": [("a failed row from before 10-20 carries no source, and Retry hands it without asking today's "
-                  "pattern - B fixes that after the replay leak (84c3c4c63)")],
+        "next": [("after a table_config change (a column added) the watcher keeps the read files as read and hands "
+                  "the failed ones only - Read all again on the file page reads the rest with the new declaration "
+                  "(owner 10-23)")],
     },
 }
 

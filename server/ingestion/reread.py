@@ -341,10 +341,11 @@ def reading_of(table, entry, sources, scripts_dir):
     return parts
 
 
-def uncheck(db, table=None, paths=None, folders=None):
+def uncheck(db, table=None, paths=None, folders=None, apply=True):
     """The checklist's keys let go (소유자 10-21): the rows of `table` (any table when None) - of `paths`, or under
     `folders` (as `_under_folder` reads them) - lose their stamp, so the sweeps read those files again where they look.
-    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it. -> rows unchecked."""
+    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it. -> rows unchecked
+    (`apply` False: the rows it would let go, counted, none touched)."""
     from sqlalchemy import literal, or_
 
     from database import models
@@ -357,6 +358,8 @@ def uncheck(db, table=None, paths=None, folders=None):
         query = query.filter(models.path_key(model.filepath).in_([models.path_key(literal(path)) for path in paths]))
     if folders is not None:
         query = query.filter(or_(*[_under_folder(model.filepath, folder) for folder in folders]))
+    if not apply:
+        return query.count()
     unchecked = query.update({model.file_mtime: None, model.file_size: None}, synchronize_session=False)
     db.commit()
     return unchecked
@@ -367,17 +370,21 @@ def hand_on_a_changed_reading(db, table, before, now, folders=()):
     handed to the retry door (`mark_for_reread`) - those the declaration takes now (`taken_now`; the rest are
     counted, not handed) - whatever folder holds them, and its read files still in place - under
     `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
-    「옮겨진 건 하지 마」). No cap: the watcher reads at its own pace. Other tables are not touched. -> the line to say
-    (the caller adds what its sweeps dispatched), or None."""
+    「옮겨진 건 하지 마」). Only its table_config changed: the read files stay checked and are counted - Read all again
+    on the file page applies the change to them (소유자 10-23 「다로 해」). No cap: the watcher reads at its own pace.
+    Other tables are not touched. -> the line to say (the caller adds what its sweeps dispatched), or None."""
     changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
     if not changed:
         return None
     kept, not_taken, _names = taken_now(select_logs(db, RETRY_STATUSES, table=table))
     logs = [log for log, _rel in kept]
     mark_for_reread(db, logs)
-    unchecked = uncheck(db, table=table, folders=list(folders)) if folders else 0
-    return ("[Watcher] %s: its reading changed (%s) - %d read file(s) unchecked, %d failed file(s) handed again%s"
-            % (table, ", ".join(changed), unchecked, len(logs),
+    declaration_only = changed == ["table_config"]
+    read = uncheck(db, table=table, folders=list(folders), apply=not declaration_only) if folders else 0
+    said = ("%d read file(s) kept as read (Read all again on the file page applies the change to them)"
+            if declaration_only else "%d read file(s) unchecked") % read
+    return ("[Watcher] %s: its reading changed (%s) - %s, %d failed file(s) handed again%s"
+            % (table, ", ".join(changed), said, len(logs),
                "".join(" · not taken now: %s %d" % item for item in not_taken.items())))
 
 

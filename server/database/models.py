@@ -383,7 +383,8 @@ class FileIngestionLog(Base):
     transaction_id = Column(String(64), nullable=True)
     # The file as it was when this row's read came to its answer (소유자 10-21 체크리스트): a row with the file's
     # (mtime, size) checks it - `checkpoint.checked`. Null = not checked: a read that waited out a lock, a row written
-    # before these, a table whose reading changed (`reread.hand_on_a_changed_reading` empties its rows).
+    # before these, a table whose plugins or external source changed (`reread.hand_on_a_changed_reading` empties its
+    # rows - a table_config change alone does not).
     file_mtime = Column(DateTime(timezone=True), nullable=True)
     file_size = Column(BigInteger, nullable=True)
 
