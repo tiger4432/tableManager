@@ -125,64 +125,67 @@ def _colour(rules, cell, here, baseline):
     return None
 
 
-def _baseline(cells, here):
+def _baseline(cells, own):
     """The other groups' cells of one item as one share: their F sum over their N sum, or None."""
-    rest = [c for c in cells[here:] if c.get("fail") is not None and c.get("total")]
+    rest = [c for c, mine in zip(cells, own) if not mine and c.get("fail") is not None and c.get("total")]
     total = sum(c["total"] for c in rest)
     return 100.0 * sum(c["fail"] for c in rest) / total if total else None
 
 
-def _two_tiers(table):
-    parts = table.get("parts")
-    if not parts or any(p is None or len(p) < 2 for group in parts for p in group):
-        return None
-    top, low = [], []
-    for group in parts:
-        for at, wafer in enumerate(group):
-            if at and group[at - 1][0] == wafer[0]:
-                top[-1] = (top[-1][0], top[-1][1] + 1)
+def head_tiers(heads):
+    """The columns' heads (a text a tier, each column) -> the tiers to draw, [(text, span), ...] each: a column
+    whose text and every text above are its left neighbour's joins its cell (owner 10-23: date › wafer › leg, the
+    same value one cell); a blank never joins. A tier that repeats the one above is left out, the last never."""
+    depth = len(heads[0]) if heads else 0
+    tiers = []
+    for level in range(depth):
+        cells = []
+        for at, texts in enumerate(heads):
+            if at and texts[level] and heads[at - 1][:level + 1] == texts[:level + 1]:
+                cells[-1] = (cells[-1][0], cells[-1][1] + 1)
             else:
-                top.append((wafer[0], 1))
-            low.append(report_reads.label(wafer[1:]))
-    return top, low
+                cells.append((texts[level], 1))
+        tiers.append(cells)
+    return [tier for at, tier in enumerate(tiers) if at == 0 or at == len(tiers) - 1 or tier != tiers[at - 1]]
 
 
 def _summary_table(table, spec, lent=None):
-    """yield_by's and trend's table: a head row of group names over their columns (a wafer key of several columns in
-    two tiers - its first column merged over the rest), then the info · picture · item rows, each head split by
-    `item_sep`, each value cell coloured by `formats`."""
+    """yield_by's and trend's table: the columns' heads in tiers (`head_tiers` - the first the group row), then the
+    info · picture · item rows, each head split by `item_sep` (the items under the summary's `label`), each value
+    cell coloured by `formats`."""
     lent = lent or {}
     head = lent.get("head") or {}
-    blocks = [(kind, table.get(key) or []) for kind, key in BLOCKS]
-    depth, drawn = row_heads([[name for name, _c in rows] for _k, rows in blocks], spec.get("item_sep") or "")
+    sep = spec.get("item_sep") or ""
+    under = table.get("item_label")
+    blocks = [(kind, [(under + sep + name if kind == "item" and under else name, cells, name)
+                      for name, cells in table.get(key) or []]) for kind, key in BLOCKS]
+    depth, drawn = row_heads([[name for name, _c, _r in rows] for _k, rows in blocks], sep)
     corner = depth if depth > 1 else None
-    tiers = _two_tiers(table)
-    out = ["<tr>%s%s</tr>" % (_cell("th", GROUP, head.get("name"), colspan=corner), "".join(
-        _cell("th", GROUP, head.get("value"), text=_e(name), colspan=len(columns)) for name, columns in table["groups"]))]
-    columns = tiers[1] if tiers else [c for _n, cols in table["groups"] for c in cols]
-    # a group that is one wafer - a report of a wafer's legs (owner 10-23) - says its name once, over its legs
-    if tiers and tiers[0] != [(name, len(cols)) for name, cols in table["groups"]]:
-        out.append("<tr>%s%s</tr>" % (_cell("th", HEAD, head.get("name"), colspan=corner), "".join(
-            _cell("th", HEAD, head.get("value"), text=_e(part), colspan=span if span > 1 else None)
-            for part, span in tiers[0])))
-    out.append("<tr>%s%s</tr>" % (_cell("th", HEAD, head.get("name"), text=_e(report_shape.word(spec, "item")),
-                                        colspan=corner),
-                                  "".join(_cell("th", HEAD, head.get("value"), text=_e(c)) for c in columns)))
-    here = len(table["groups"][0][1]) if table["groups"] else 0
+    tiers = head_tiers(table["heads"])
+    out = []
+    for level, tier in enumerate(tiers):
+        last, cls = level == len(tiers) - 1, GROUP if level == 0 else HEAD
+        out.append("<tr>%s%s</tr>" % (
+            _cell("th", cls, head.get("name"), text=_e(report_shape.word(spec, "item")) if last else "",
+                  colspan=corner),
+            "".join(_cell("th", cls, head.get("value"), text=_e(text),
+                          colspan=span if level == 0 or span > 1 else None) for text, span in tier)))
+    columns = [c for _n, cols in table["groups"] for c in cols]
+    own = table["own"]
     formats = spec.get("formats") or {}
     body = []
     for (kind, rows), heads in zip(blocks, drawn):
         dress = lent.get(kind) or lent.get("item") or {}
-        cells_of = dict(rows)
+        cells_of = {name: (cells, raw) for name, cells, raw in rows}
         name_class, value_class = KIND_CLASS.get(kind, ITEM), KIND_CLASS.get(kind, CELL)
         for name, parts in heads:
-            cells = cells_of[name]
-            baseline = _baseline(cells, here) if kind == "item" else None
+            cells, raw = cells_of[name]
+            baseline = _baseline(cells, own) if kind == "item" else None
             row_head = "".join(_cell("td", name_class, dress.get("name"), text=_e(part), rowspan=rowspan,
                                      colspan=colspan if colspan and colspan > 1 else None)
                                for part, rowspan, colspan in parts)
             values = "".join(_cell("td", _aligned(value_class, cell, kind), dress.get("value"),
-                                   _colour(formats.get(name), cell, at < here, baseline) if kind == "item" else None,
+                                   _colour(formats.get(raw), cell, own[at], baseline) if kind == "item" else None,
                                    _value(cell, name, columns[at] if at < len(columns) else ""))
                              for at, cell in enumerate(cells))
             body.append("<tr>%s%s</tr>" % (row_head, values))
@@ -212,20 +215,7 @@ def _pareto_table(table, spec, lent=None):
     return WRAP % ("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (head, rows))
 
 
-def _candidates_table(table, spec, lent=None):
-    """candidates()' rows - the control candidates the model read, a row each, newest first (lead 10-23: the owner
-    holds them against the trap wafers)."""
-    words = ("candidate", "date", "rows", "title", "conditions")
-    head = "".join(_cell("th", HEAD, text=_e(report_shape.word(spec, word))) for word in words)
-    rows = "".join("<tr>%s</tr>" % "".join((
-        _cell("td", ITEM, text=_e(row["name"])), _cell("td", ITEM, text=_e(row["date"])),
-        _cell("td", CELL, text=_e(row["rows"])), _cell("td", ITEM, text=_e(row["title"])),
-        _cell("td", ITEM, text="<br>".join(_e(c) for c in row["conditions"])))) for row in table["rows"])
-    return WRAP % ("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (head, rows))
-
-
-TABLES = {"yield_by": _summary_table, "pareto": _pareto_table, "trend": _summary_table,
-          "candidates": _candidates_table}
+TABLES = {"yield_by": _summary_table, "pareto": _pareto_table, "trend": _summary_table}
 
 
 def _images(embedded, spec) -> str:

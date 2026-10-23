@@ -8,6 +8,7 @@ import re
 from chain import report_html, report_shape
 
 TABLE = {"groups": [("E1", ["W1", "W2"]), ("baseline", ["W0"])],
+         "heads": [["E1", "W1"], ["E1", "W2"], ["baseline", "W0"]], "own": [True, True, False],
          "rows": [("<script>alert(1)</script>", [{"text": "3.0% (3/100)"}, {"text": "5.0% (10/200)"},
                                                  {"text": "50.0% (50/100)"}])],
          "left_out": ["W9"]}

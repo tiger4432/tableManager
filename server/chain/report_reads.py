@@ -4,7 +4,7 @@ declaration (`derive.report`, `report_shape`); every read passes the grid read p
 with the grid filter's own conditions. Each answers {"context": <the model's short text>, "html": <the whole table>}.
 
   conditions(keyword?)       condition value -> wafers; with a keyword, the wafers whose condition holds it
-  yield_by(wafers, by?)      rows = items, columns = wafers by time (or condition values), cell «x% (F/N)» read
+  yield_by(wafers, by?, rows?) rows = items, columns = wafers (or condition values), cell «x% (F/N)» read
                              off the owner's summary table - wafers in one column add their F and N
   pareto(wafers)             items by fail chips added over the wafers, cumulative share
   trend(wafers, items)       each item's share in time order, first · last · least · most
@@ -222,25 +222,31 @@ class Report:
         return {pair: {cell: None if value is None else float(value) for cell, value in zip(cells, row)}
                 for pair, row in found.items()}, twice
 
-    def _info(self, columns):
+    def _info(self, columns, chosen=None):
         """The info rows under the summary table's head (owner 10-23): [(name, [cell, ...])] over the table's columns
         (each a list of wafers), each info table in turn - one value said shows it, several «mixed (n)», none a blank
-        - and the pairs left out. A table of no `item` is one row, its value column's name."""
+        - and the pairs left out. A table of no `item` is one row, its value column's name or its `label`; a long
+        table's names stand under its `label`; a table that says `choose` keeps the names `chosen` (yield_by)."""
         rows, left_out = [], []
         mixed = report_shape.word(self.spec, "mixed")
+        sep = self.spec.get("item_sep") or ""
+        chosen = [str(name) for name in chosen or ()]
         everyone = [w for members in columns for w in members]
         for role in report_shape.info_rows(self.spec):
             found, twice = self._pairs(role, [role["value"]], everyone,
                                        name=None if role.get("item") else str(role["value"]))
             present = {name for _w, name in found}
-            names = [str(n) for n in role.get("rows") or ()] or sorted(present)
-            for name in [n for n in names if n in present]:
+            names = [n for n in [str(n) for n in role.get("rows") or ()] or sorted(present) if n in present]
+            kept = [n for n in names if any(n == c or (sep and n.startswith(c + sep)) for c in chosen)]
+            head = role.get("label")
+            for name in kept if role.get("choose") and kept else names:
                 cells = []
                 for members in columns:
                     said = sorted({str(found[(w, name)][0]) for w in members
                                    if (w, name) in found and found[(w, name)][0] is not None})
                     cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
-                rows.append((name, cells))
+                drawn = name if not head else head if not role.get("item") else head + sep + name
+                rows.append((drawn, cells))
             left_out += twice
         return rows, left_out
 
@@ -254,8 +260,10 @@ class Report:
             found, twice = self._pairs(role, [role["image"]], [members[0] for members in columns
                                                                 if len(members) == 1], name=name)
             px = role.get("px") or report_shape.PICTURE_PX
+            source = role.get(report_shape.IMAGE_SOURCE)
             cells = [{"text": "—"} if len(members) != 1 else
-                     _picture(found[(members[0], name)][0], px) if found.get((members[0], name), (None,))[0]
+                     _picture("%s:%s" % (source, found[(members[0], name)][0]) if source else
+                              found[(members[0], name)][0], px) if found.get((members[0], name), (None,))[0]
                      else {"text": ""} for members in columns]
             rows.append((name, cells))
             left_out += twice
@@ -327,29 +335,78 @@ class Report:
             lines.append("default conditions (no condition row): %d wafers" % len(default))
         return {"context": "\n".join(lines), "html": None}
 
-    def yield_by(self, wafers=None, by=None):
-        groups = self._column_groups(self.pick(wafers), by)
-        everyone = [w for _name, columns in groups for _col, members in columns for w in members]
+    def yield_by(self, wafers=None, by=None, rows=None):
+        """`rows`: the names the model keeps of an info table that says `choose` (owner 10-23 «COND 쪽 넣을 항목은 AI
+        가 선택») - a name keeps the names under it; none kept, or none said: every row."""
+        columns = [(name, col, members) for name, cols in self._column_groups(self.pick(wafers), by)
+                   for col, members in cols]
+        heads = self._heads(columns, by)
+        if self.spec.get(report_shape.COLUMNS) and not by:
+            order = sorted(range(len(columns)), key=lambda at: heads[at][1])
+            columns, heads = [columns[at] for at in order], [heads[at] for at in order]
+        everyone = [w for _name, _col, members in columns for w in members]
         found, twice = self._summary(everyone)
         items = self._items(found)
-        header = [(name, [col for col, _m in columns]) for name, columns in groups]
-        rows = []
+        out = []
         for item in items:
-            cells = []
-            for _name, columns in groups:
-                for _col, members in columns:
-                    row = (found.get((members[0], item)) if len(members) == 1
-                           else self._summed([found.get((w, item)) for w in members]))
-                    cells.append(self._cell(row))
-            rows.append((item, cells))
-        spans = [members for _name, columns in groups for _col, members in columns]
-        info, info_twice = self._info(spans)
+            out.append((item, [self._cell(found.get((members[0], item)) if len(members) == 1
+                                          else self._summed([found.get((w, item)) for w in members]))
+                               for _name, _col, members in columns]))
+        spans = [members for _name, _col, members in columns]
+        info, info_twice = self._info(spans, rows)
         pictures, pictures_twice = self._pictures([[] if by else members for members in spans])
-        table = {"groups": header, "parts": [[None if by else members[0] for _col, members in columns]
-                                             for _name, columns in groups],
-                 "info": info, "pictures": pictures, "rows": rows,
-                 "left_out": sorted(twice + info_twice + pictures_twice)}
+        table = dict(self._columns_of(columns, heads), info=info, pictures=pictures, rows=out,
+                     item_label=self.spec["summary"].get("label"),
+                     left_out=sorted(twice + info_twice + pictures_twice))
         return {"context": _table_text(table), "html": table}
+
+    def _heads(self, columns, by=None):
+        """Each column's head, a text a tier, and its order - `derive.report.columns` (owner 10-23: date › wafer ›
+        leg): "time" the wafer's day (its rows' latest, the candidates' fold), "group" its group, a key column its
+        part. Undeclared: the group, then the key. A column of a condition value: the group, then the value."""
+        tiers = ([report_shape.COLUMN_GROUP, None] if by else
+                 self.spec.get(report_shape.COLUMNS) or [report_shape.COLUMN_GROUP] + self.keys)
+        named = list(dict.fromkeys(name for name, _col, _members in columns))
+        out = []
+        for name, col, members in columns:
+            one = members[0] if len(members) == 1 else None
+            parts = dict(zip(self.keys, one)) if one else {}
+            texts, order = [], []
+            for tier in tiers:
+                if tier == report_shape.COLUMN_GROUP:
+                    texts.append(name)
+                    order.append((named.index(name), ""))
+                elif tier == report_shape.COLUMN_TIME:
+                    day = self._day(one) if one else None
+                    texts.append(day or "")
+                    order.append((day is None, day or ""))
+                elif tier is None or one is None:
+                    texts.append(col)
+                    order.append((False, col))
+                else:
+                    texts.append("" if parts.get(tier) is None else parts[tier])
+                    order.append((parts.get(tier) is None, parts.get(tier) or ""))
+            out.append((texts, order))
+        return out
+
+    def _columns_of(self, columns, heads):
+        """The table's columns: the groups in the columns' order (the model reads them), each column's head texts,
+        and whether it is this report's own (the colours' «vs control» reads the others)."""
+        groups = []
+        for name, col, _members in columns:
+            if groups and groups[-1][0] == name:
+                groups[-1][1].append(col)
+            else:
+                groups.append((name, [col]))
+        return {"groups": groups, "heads": [texts for texts, _order in heads],
+                "own": [name == self.evaluation for name, _col, _members in columns]}
+
+    def _day(self, wafer):
+        """The wafer's day: the latest time of the rows of its report wafer, on the product's wall clock, or None."""
+        mine = self._report_wafer(wafer)
+        times = [at for at in (_instant(facts["time"]) for w, facts in self.wafers.items()
+                               if self._report_wafer(w) == mine) if at is not None]
+        return max(times).date().isoformat() if times else None
 
     def _column_groups(self, wafers, by):
         """[(group name, [(column label, [wafer, ...]), ...])] - this evaluation's picked wafers, then each compare
@@ -407,8 +464,8 @@ class Report:
                         item, "" if name == self.evaluation else " [%s]" % name, said[0], said[-1], min(said),
                         max(said), len(said)))
             rows.append((item, cells))
-        table = {"groups": [(name, [label(w) for w in members]) for name, members in groups],
-                 "parts": [list(members) for _name, members in groups], "rows": rows, "left_out": twice}
+        columns = [(name, label(w), [w]) for name, members in groups for w in members]
+        table = dict(self._columns_of(columns, self._heads(columns)), rows=rows, left_out=twice)
         return {"context": "\n".join(lines) or "no item has a share", "html": table}
 
     def images(self, wafers=None, items=None):
@@ -506,7 +563,6 @@ class Report:
         · each condition's values with their wafer counts."""
         found = self._recent()
         lines = ["recent evaluations, newest first (%s left out):" % self.evaluation]
-        rows = []
         for name, entry in found.items():
             folded = []
             for column in self.conditions_at:
@@ -524,11 +580,9 @@ class Report:
             date = entry["latest"].date().isoformat() if entry["latest"] else "no date"
             lines.append(" · ".join([name, date, "%d rows" % len(entry["wafers"])]
                                     + (["title " + " | ".join(titles)] if titles else []) + folded))
-            rows.append({"name": name, "date": date, "rows": len(entry["wafers"]), "title": " | ".join(titles),
-                         "conditions": folded})
         if len(lines) == 1:
             lines.append("none in range")
-        return {"context": "\n".join(lines), "html": {"rows": rows}}
+        return {"context": "\n".join(lines), "html": None}
 
     def _control(self, evaluations, wafers):
         """Control groups «control <evaluation>» from the recent evaluations - the evaluations named (all their wafers)

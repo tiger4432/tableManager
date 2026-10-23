@@ -41,8 +41,8 @@ WRITE = ("Write the report from the tables read below - every number as a table 
 STOP_NO_TEXT = "the write call answered no text"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
-    "yield_by": "the summary table - items down, wafers across by time, each cell x% (F/N); by: a condition whose "
-                "values become the columns",
+    "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: a condition whose values "
+                "become the columns; rows: the condition rows to show (a name keeps the names under it), all if none",
     "pareto": "the items by fail chips over the wafers, with the cumulative share",
     "trend": "each item's share wafer by wafer in time order - first, last, least, most",
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
@@ -50,7 +50,7 @@ ABOUT = {
     "compare": "the compare sets' wafers (sets), or a control group from the recent evaluations (evaluations, wafers), "
                "read beside this evaluation's in every table after it",
 }
-ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by"), "pareto": ("wafers",), "trend": ("wafers", "items"),
+ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by", "rows"), "pareto": ("wafers",), "trend": ("wafers", "items"),
         "images": ("wafers", "items"), "candidates": (), "compare": ("sets", "evaluations", "wafers")}
 WAFERS_SAID = 'wafers: a list of wafer names, "all", or {"where": {"<condition>": "<value>"}}'
 

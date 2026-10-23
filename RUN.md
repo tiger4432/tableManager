@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg, 행 조건 · 수율 · 불량 (소유자 그림) · 후보 목록 표 은퇴** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   (먼저) 리포트 규칙 layout 에서 {"kind": "table", "fill": "candidates"} 를 뺌 — 남아 있으면 규칙 로드 거절
+>          git pull -> 런처 재기동 -> 규칙에 "columns": ["time", "wafer", "leg"] · "item_sep": "." · summary.label · info[].label · info[].choose
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      파일 오른쪽 표의 열 = 리포트 웨이퍼 + 모델이 고른 대조, 날짜 오름차순. 열이 하나뿐 -> 모델이 compare 를 안 부름(대조 없음)
+>          «derive.report.layout[n].fill 'candidates' - a table is one of yield_by · pareto · trend» -> layout 에 candidates 칸이 남음
+>          «derive.report.columns lists the column heads …» -> columns 에 키 칸 아닌 이름 · 두 번 적은 이름
+>          «…label stands over the names - derive.report.item_sep …» -> label 을 썼는데 item_sep 이 없음
+>          늦은 계측이 들어와도 리포트는 그대로 -> R1 리플레이로 다시 만듦(소유자 10-23)
+> 끄기    columns 를 지우면 옛 머리(묶음 › 키)
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
 > ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · 글 · 그림 왼쪽 / 표 오른쪽 · 대조 후보 표 · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
 >
 > ```

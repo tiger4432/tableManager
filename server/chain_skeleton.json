@@ -1258,6 +1258,14 @@
                           "kind": "leaf",
                           "hint": "number"
                         }
+                      },
+                      {
+                        "key": "label",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
                       }
                     ]
                   }
@@ -1956,6 +1964,19 @@
                   }
                 },
                 {
+                  "key": "columns",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "index",
+                    "member": "head",
+                    "of": {
+                      "kind": "leaf",
+                      "hint": "free"
+                    }
+                  }
+                },
+                {
                   "key": "labels",
                   "required": false,
                   "node": {
@@ -2056,46 +2077,6 @@
                           "kind": "leaf",
                           "hint": "free"
                         }
-                      },
-                      {
-                        "key": "candidate",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
-                        "key": "date",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
-                        "key": "rows",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
-                        "key": "title",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
-                        "key": "conditions",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
                       }
                     ]
                   }
@@ -2172,6 +2153,22 @@
                               "hint": "free"
                             }
                           }
+                        },
+                        {
+                          "key": "label",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        },
+                        {
+                          "key": "choose",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "flag"
+                          }
                         }
                       ]
                     }
@@ -2239,6 +2236,14 @@
                           "node": {
                             "kind": "leaf",
                             "hint": "number"
+                          }
+                        },
+                        {
+                          "key": "source",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
                           }
                         }
                       ]

@@ -161,6 +161,59 @@ def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_
         "a number stands right as the item cells do, a word left (lead 10-23)"
 
 
+def test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_under_labels(report, db_session):
+    """Owner 10-23 (the drawn table, lead f685e9224 · 51b68848f): columns DATE › WAFER › LEG, oldest first, the same
+    value one cell - the report's wafers and the control the model picked side by side; rows under their labels
+    (the defects under «불량», the yield table's one row «수율»), the model keeping which info rows (`choose`). The
+    colours' «vs control» still reads the control's column wherever it stands."""
+    from chain import report_html, report_reads, report_shape
+
+    m = models.DYNAMIC_TABLES["rk_wafer"]
+    for row in db_session.query(m).filter(m.wafer_id == "W1"):       # a time the product reads (expression._instant)
+        row.measured_at = "2026-10-01 0%s:00:00" % row.version[-1]
+    db_session.flush()
+    spec = json.loads(json.dumps(SPEC))
+    spec.update(columns=["time", "wafer_id", "version"], summary=dict(SPEC["summary"], label="불량"),
+                info=[dict(SPEC["info"], choose=True),
+                      {"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "yield", "label": "수율"}])
+    assert report_shape.refusal(spec) is None
+    report = report_reads.Report(db_session, spec, "E1")
+    report.compare(evaluations=["E0"])
+    table = report.yield_by()["html"]
+    assert table["heads"] == [["2026-09-20", "C1", "v1"], ["2026-10-01", "W1", "v1"], ["2026-10-01", "W1", "v2"],
+                              ["2026-10-02", "W2", "v1"], ["2026-10-03", "W3", "v1"]], "oldest first, the control too"
+    assert table["own"] == [False, True, True, True, True]
+    assert report_html.head_tiers(table["heads"]) == [
+        [("2026-09-20", 1), ("2026-10-01", 2), ("2026-10-02", 1), ("2026-10-03", 1)],
+        [("C1", 1), ("W1", 2), ("W2", 1), ("W3", 1)], [("v1", 1), ("v1", 1), ("v2", 1), ("v1", 1), ("v1", 1)]]
+    assert [name for name, _c in table["info"]] == ["자재", "평가자", "수율"]
+    page = report_html._summary_table(table, spec)
+    assert '<th class="rpt-group" colspan="2">2026-10-01</th>' in page and \
+        '<th class="rpt-head" colspan="2">W1</th>' in page, "the same day · the same wafer one cell"
+    assert '<td class="rpt-item">불량</td>' in page and '<td class="rpt-info" colspan="4">수율</td>' in page
+    assert 'style="background:#ffcccc">10.0% (10/100)' in page, "W1/v2 against C1's 2.0% - the control read by flag"
+    kept = report.yield_by(rows=["자재"])["html"]
+    assert [name for name, _c in kept["info"]] == ["자재", "수율"], "the model keeps 자재; the yield table always"
+    assert [name for name, _c in report.yield_by(rows=["없음"])["html"]["info"]] == ["자재", "평가자", "수율"], \
+        "none kept: every row"
+    bad = dict(spec, columns=["time", "lot"])
+    assert "derive.report.columns lists the column heads" in report_shape.refusal(bad)
+    assert "summary.label stands over the names" in report_shape.refusal(dict(spec, item_sep=None))
+
+
+def test_a_picture_row_reads_its_path_through_its_source(report, db_session, monkeypatch):
+    """Owner 10-23: the composite picture a wafer × leg (WAFER · LEG · IMG) is a picture row - its path read
+    through `source` as images' is («<source>:<path>»)."""
+    from chain import report_reads
+
+    asked = []
+    monkeypatch.setattr(report_reads, "_picture", lambda ref, px: asked.append(ref) or {"src": "data:x"})
+    spec = json.loads(json.dumps(SPEC))
+    spec["picture_rows"] = [dict(SPEC["picture_rows"][0], source="maps")]
+    report_reads.Report(db_session, spec, "E1").yield_by()
+    assert asked and all(ref.startswith("maps:pics:") for ref in asked), asked
+
+
 def test_a_picture_row_holds_a_picture_a_column_by_the_one_function(report, db_session):
     from chain import report_reads
 

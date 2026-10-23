@@ -545,11 +545,8 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
                              "W2/L2: default conditions"], \
             "a candidate is the report table's wafer, its legs together; its day the product zone's; a blank value " \
             "said; W3 later than W1 a candidate too (owner «빼지 마»), its legs one row of one date (lead 10-23)"
-        drawn = report_html.page("W1", "", dict(spec, layout=[{"kind": "table", "fill": "candidates"}]),
-                                 {"candidates": report.candidates()["html"]}, {}, {})
-        assert ('<td class="rpt-item">W2</td><td class="rpt-item">2026-10-22</td><td class="rpt-cell">2</td>'
-                '<td class="rpt-item">trap</td><td class="rpt-item">W2/L1: bond=(empty)<br>W2/L2: default conditions'
-                '</td>' in drawn), "the candidates the model read, drawn on the file (lead 10-23)"
+        assert report.candidates()["html"] is None and "candidates" not in report_shape.TABLE_FILLS, \
+            "the candidates list table retired (owner 10-23 «CANDIDATE, DATE 이거»): the model's and the Evidence's"
         head = report_html._summary_table(report.yield_by()["html"], spec)
         assert head.count(">W1</th>") == 1 and '<th class="rpt-head">L1</th>' in head, \
             "a report of one wafer names it once over its legs (lead 10-23)"

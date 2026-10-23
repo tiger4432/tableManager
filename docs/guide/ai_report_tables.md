@@ -46,7 +46,7 @@
 - **wafer** — 웨이퍼 하나를 이루는 칸. 넓은 웨이퍼 표가 없으면 요약표를 그대로 적는다(시간 · 평가 칸 없이). 웨이퍼 표가 있으면 `time` · `lot` · `evaluation` · `conditions`(넓은 조건 칸 목록)도.
 - **conditions** — 조건마다 한 행인 긴 표: 이름 칸 · 값 칸 · (있으면) 시각 · 제목. 행이 없는 웨이퍼는 «기본 조건»(default conditions)으로 모델에게 간다. 웨이퍼 역할에 시각이 없으면 이 `time` 이 웨이퍼의 시각이다.
 - **images** — 칩 하나의 이미지 한 행. `item_sep` 을 적으면 아이템 칸의 «defect_type_1, defect_type_2» 를 나눠 그 칩 이미지를 디펙마다 놓는다. `source` 를 적으면 이미지 칸의 경로를 그 이미지 소스(`image_sources.json`, folder 종류)로 읽는다 — 절대 경로면 그 소스의 root 밑이어야 한다.
-- **대조 후보** — 웨이퍼 역할에 `evaluation` 이 없으면 후보는 웨이퍼 하나씩: 날짜 최근 순(날짜 없는 웨이퍼는 그 뒤), 줄마다 제목 · 조건(없으면 default conditions). 모델이 «같은 평가 · 기본 조건»을 그 줄로 짐작한다 — 규칙으로 고르지 않는다. 평가 없이 웨이퍼를 골라 묶는 `compare` 는 아직 평가 단위다. 후보 하나는 리포트 표의 웨이퍼 하나다 — leg 둘이 한 후보(총괄 10-23). 후보의 날짜는 그 leg 시각 중 가장 늦은 것 하나다(리포트 웨이퍼의 기준 시각과 같은 접기). 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 후보다(소유자 10-23 «빼지 마») — 최근 순, `control.recent.evaluations` 개까지. layout 에 `{"kind": "table", "fill": "candidates"}` 를 적으면 모델이 읽은 후보가 파일 오른쪽에 표로 그려진다(후보 · 날짜 · 행 수(Rows) · 제목 · 조건).
+- **대조 후보** — 웨이퍼 역할에 `evaluation` 이 없으면 후보는 웨이퍼 하나씩: 날짜 최근 순(날짜 없는 웨이퍼는 그 뒤), 줄마다 제목 · 조건(없으면 default conditions). 모델이 «같은 평가 · 기본 조건»을 그 줄로 짐작한다 — 규칙으로 고르지 않는다. 평가 없이 웨이퍼를 골라 묶는 `compare` 는 아직 평가 단위다. 후보 하나는 리포트 표의 웨이퍼 하나다 — leg 둘이 한 후보(총괄 10-23). 후보의 날짜는 그 leg 시각 중 가장 늦은 것 하나다(리포트 웨이퍼의 기준 시각과 같은 접기). 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 후보다(소유자 10-23 «빼지 마») — 최근 순, `control.recent.evaluations` 개까지. 후보 목록은 모델 입력과 Evidence 에만 있다 — 파일의 후보 목록 표는 은퇴(소유자 10-23 «CANDIDATE, DATE 이거»), 모델이 compare 로 고른 대조가 비교 표의 열로 선다. 늦은 계측이 들어와도 리포트는 저절로 다시 안 만들어진다 — R1 리플레이(소유자 10-23 ㄴ).
 - decide 는 키만 든 행을 만든다(`fields` · `aggregations` 없이) — 리포트 표의 두 칸 그대로.
 - 리포트 규칙이 decide 가 만든 행에 «저절로» 돌려면 `"enabled": true` 와 `"extra": {"allow_chain_trigger": true}` — 체인이 쓴 행은 기본으로 규칙을 안 깨운다. 시범 동안은 꺼 두고 R1 리플레이.
 - `send_to` 를 안 적으면 보내지 않는다(파일만 서버에).
@@ -136,6 +136,21 @@
 
 ## 요약 표 꾸미기 — 정보 표 · 그림 줄 · 조건부 서식 · 항목 계층 · 견본 줄 · 한글 낱말 (A, 10-23)
 
+- **비교 표 (소유자 10-23 그림)** — 요약 표 하나가 비교 표다. 열은 리포트 웨이퍼와 모델이 `compare` 로 고른 대조 웨이퍼(못 고르면 리포트 웨이퍼 하나), 행은 조건 · 수율 · 불량:
+
+```json
+"columns": ["time", "wafer", "leg"],
+"item_sep": ".",
+"summary": {"table": "wafer_summary", "wafer": ["wafer", "leg"], "item": "defect_kind", "fail": "defective_chip_count", "total": "total_chip_count", "label": "불량"},
+"info": [{"table": "wafer_condition", "wafer": ["wafer", "leg"], "item": "condition_id", "value": "value", "choose": true},
+         {"table": "wafer_yield", "wafer": ["wafer", "leg"], "value": "yield", "label": "수율"}]
+```
+- `columns` — 열 머리 단, 위에서부터. 웨이퍼 키 칸 이름 · `"time"`(웨이퍼의 날 — leg 시각 중 가장 늦은 것, 제품 시간대) · `"group"`(리포트 / 대조 묶음 이름). 적으면 열이 그 단 차례로 오름차순(날짜 오름)으로 서고, 위 단이 같은 이웃 칸은 한 칸으로 합쳐진다. 안 적으면 `["group", 키 칸…]` — 지금까지의 머리 그대로.
+- `label` — summary · info 표의 줄들이 서는 머리(불량 › D1…). item 없는 넓은 표는 그 한 줄의 이름(yield → 수율). 이름 위에 서려면 `item_sep` 이 있어야 한다.
+- `choose: true` — 그 info 표의 줄은 모델이 `yield_by` 의 `rows` 로 고른다(이름 하나가 그 밑 이름들을 다 고름 — `COND1` 이면 `COND1.SUB1` · `COND1.SUB2`). 안 고르거나 맞는 이름이 없으면 전부. 수율 · 불량은 choose 를 안 적어 늘 전부.
+- 항목 이름의 `.` 이 행 머리 단이다(깊이 제한 없음, 같은 앞마디는 한 칸) — `item_sep`.
+- `picture_rows[].source` — 그림 칸의 경로를 그 이미지 소스로 읽는다(images.source 와 같은 풀이). 합성 그림(WAFER · LEG · IMG)이 한 줄.
+
 - **info 는 표 하나 또는 목록** (총괄 10-23) — `item` 을 적으면 긴 표(이름 칸 · 값 칸), 안 적으면 넓은 표 한 행(웨이퍼마다 한 행, `value` 칸이 그 줄이고 줄 이름은 칸 이름). 수율은 소유자 정의 «디펙이 하나도 없는 칩의 비율» — 칩 표에서 체인 decide 하나로 수율 표에 쓰고 info 로 읽는다(제품은 웨이퍼 값을 다시 만들지 않는다):
 
 ```json
@@ -148,7 +163,7 @@
 ```json
 "info": [{"table": "<정보 표>", "wafer": ["wafer_id", "version"], "item": "name", "value": "value", "rows": ["자재", "평가자"]},
          {"table": "<수율 표>", "wafer": ["wafer_id", "version"], "value": "yield"}],
-"picture_rows": [{"label": "합성맵", "table": "<그림 표>", "wafer": ["wafer_id", "version"], "image": "path", "px": 160}],
+"picture_rows": [{"label": "합성맵", "table": "<그림 표>", "wafer": ["wafer_id", "version"], "image": "path", "px": 160, "source": "<이미지 소스>"}],
 "formats": {"결함.입자.대": [{"vs": "control", "times": 2, "fill": "#ffcccc"},
                           {"when": ">=", "value": 5, "fill": "#ffffcc", "color": "#000000"}]},
 "item_sep": ".",
