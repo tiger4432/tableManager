@@ -214,3 +214,35 @@ def test_one_column_written_reads_that_columns_layers_only(world):
     assert stored == 20 * 8, "canary: a layer in each of the eight columns (keys included) of 20 rows"
     # the batch writes a and the four key columns (the key is assembled into `k`)
     assert sum(read) == 20 * 5, read
+
+
+def _moved_grid(world):
+    """A 4 x 4 map whose every row's key parts move by -1 in ONE batch, as a join that writes x, y does: each lands on
+    a neighbour's key (a merge a row, chained), the neighbours holding layers of three sources and a person's pin. ->
+    (before, after) dumps."""
+    db = world["db"]
+    _clean(world)
+    _write(db, [_item(_at("G", x, y, a=x * 10 + y, c="c%d%d" % (x, y)), "chain:g") for x in range(4) for y in range(4)])
+    _write(db, [_item(_at("G", x, y, b="u%d%d" % (x, y)), "user") for x in range(4) for y in range(0, 4, 2)])
+    ids = _ids(world)
+    crud.set_cell_manual_priority_batch(db, TABLE, [{"row_id": ids["G/2/2"], "column_name": "b"}], "user")
+    db.commit()
+    before = _dump(world, ids)
+    _write(db, [_item({"x": x - 1, "y": y - 1, "lot": "L . %d" % x}, "chain:join",
+                      row_id=ids["G/%d/%d" % (x, y)]) for x in range(4) for y in range(4)])
+    return before, _dump(world, {**ids, **_ids(world)})
+
+
+def test_a_grid_moved_by_one_merges_as_the_batch_did_without_its_row_index(world, monkeypatch):
+    """총괄 be730e1e7 ㄱ: a merge reads the moved row's pending keys from the containers' own index (`crud.ByRow`),
+    not a walk of the batch - the same DB as plain containers walked."""
+    before, product = _moved_grid(world)
+    assert len(before["rows"]) == 16 and len(product["rows"]) < 16, ("canary: the moved keys merged", len(product["rows"]))
+    assert len(_audit(product, "<G/0/0>", source_name="collision_merge")) >= 2, "canary: a chain of merges"
+    assert any("chain:g (G_" in line for line in product["cell_sources"]), "canary: layers moved under merged names"
+    assert any(" . " not in str(r["lot"]) and r["lot"] for r in product["rows"].values()), "canary: written lot folded"
+    monkeypatch.setattr(crud, "ByRow", dict)
+    monkeypatch.setattr(crud, "ByRowSet", set)
+    monkeypatch.setattr(crud, "ByRowLogs", list)
+    _before, oracle = _moved_grid(world)
+    assert product == oracle
