@@ -60,10 +60,12 @@ def _equals_any(column, values):
 
 
 def _part(value):
-    """A wafer key part as compared - blank (`crud.is_blank_value`: None, «», spaces, NaN) is None, else its text."""
+    """A wafer key part as compared - blank (`crud.fold_key_value`: None, «», spaces, NaN) is None, else spelled as a
+    key is (`crud.clean_str_value`: 1.0 and «1» one part - lead 10-24, a key column stored as a number in one table and
+    as text in another)."""
     from database import crud
 
-    return None if crud.is_blank_value(value) else str(value)
+    return None if crud.is_blank_key_part(value) else crud.clean_str_value(value)
 
 
 def _parts(row):
@@ -173,18 +175,22 @@ class Report:
 
     def _latest(self, read):
         """Each unit's rows of its latest value in every `keys` latest column (owner 10-23 «TKOUT_TIME 도 키에», the
-        report from the latest measurement) - read as a time by the one reader; a unit of no time keeps its rows."""
+        report from the latest measurement) - read as a time by the one reader, or as its text when one of the unit's
+        values is not a time the reader knows (lead 10-24: 20261001123000 · 2026/10/01 · 2026.10.01 sort as text); a
+        unit of no value keeps its rows."""
         for column in [c for c in self.keys if report_shape.KEY_LATEST in self.key_words.get(c, ())]:
             at, unit = self.keys.index(column), [self.keys.index(c) for c in self.picked_by]
-            best = {}
+            said = {}
             for wafer, _row in read:
-                when = _instant(wafer[at])
-                mine = tuple(wafer[i] for i in unit)
-                if when is not None and (best.get(mine) is None or when > best[mine]):
-                    best[mine] = when
-            read = [(wafer, row) for wafer, row in read
-                    if best.get(tuple(wafer[i] for i in unit)) is None or _instant(wafer[at]) == best[tuple(
-                        wafer[i] for i in unit)]]
+                if wafer[at] is not None:
+                    said.setdefault(tuple(wafer[i] for i in unit), set()).add(wafer[at])
+            best = {}
+            for mine, values in said.items():
+                order = _instant if all(_instant(v) is not None for v in values) else str
+                best[mine] = (order, max(order(v) for v in values))
+            read = [(wafer, row) for wafer, row in read if tuple(wafer[i] for i in unit) not in best
+                    or wafer[at] is not None and best[tuple(wafer[i] for i in unit)][0](wafer[at]) == best[
+                        tuple(wafer[i] for i in unit)][1]]
         return read
 
     def _matched(self, role, columns, wafers):
@@ -692,7 +698,7 @@ class Report:
         return {"context": "\n".join(lines), "html": None}
 
     def _sets(self, sets):
-        role = self.spec.get("sets")
+        role = report_shape.sets_role(self.spec)
         names = [str(s) for s in (sets or (role or {}).get(report_shape.SETS_DEFAULT) or ())]
         if not names:
             raise ReadRefused("no compare set named - and this report declares no default")

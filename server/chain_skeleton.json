@@ -1446,7 +1446,7 @@
                       },
                       {
                         "key": "name",
-                        "required": true,
+                        "required": false,
                         "node": {
                           "kind": "leaf",
                           "hint": "ref",
@@ -1458,7 +1458,7 @@
                       },
                       {
                         "key": "member",
-                        "required": true,
+                        "required": false,
                         "node": {
                           "kind": "leaf",
                           "hint": "ref",
@@ -1470,7 +1470,7 @@
                       },
                       {
                         "key": "kind",
-                        "required": true,
+                        "required": false,
                         "node": {
                           "kind": "leaf",
                           "hint": "ref",

@@ -1,15 +1,14 @@
 # 지금 돌리면 되는 것
 
-> ## [10-24] **AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐** — git pull · 런처 재기동
+> ## [10-24] **AI 리포트 — layout 안 적으면 기본 배치 · sets 칸 빠지면 비교 묶음 없이 · latest 는 글자로도 · 키 1.0 = 1** — git pull · 런처 재기동
 >
 > ```
-> 돌릴 것   git pull -> 런처 재기동
-> 볼 줄    체인 규칙 창 저장 · chain_worker.log 로드 줄의 리포트 규칙 거절 문구
->          derive.report.layout names no slot - ...   -> layout 칸에 자리를 적는다(text summary · table yield_by · image) 또는 template
->          derive.report.sets.<칸> names no column - ...  -> sets 에 name · member · kind 세 칸을 다 적는다(안 쓰면 sets 블록째 지움)
-> 뜻      전에는 저장되고 layout 없음 = 제목 · Evidence 뿐인 빈 파일, sets 칸 빠짐 = 비교 묶음 읽는 순간 KeyError 로 리포트 실패
->          재기동 뒤 리포트 규칙이 거절로 서면 그 선언이 위 둘 중 하나였던 것 — 문구대로 적으면 다시 돈다
-> 되돌리기  git revert $(git log -1 --format=%h --grep='layout names no slot' origin/main) -> 런처 재기동
+> 돌릴 것   git pull -> 런처 재기동 (7e01af4c8 의 layout · sets 거절은 거둠)
+> 볼 것    리포트 파일 — layout 안 적은 선언: 요약 글 · 표 · 그림 · 결론 글 넷이 나오면 고쳐진 것 (전: 제목 · Evidence 뿐)
+>          chain_worker.log 로드 줄 «derive.report.sets names no … - read as no compare set» -> 비교 묶음 없이 돎, 쓰려면 sets 에 name · member · kind
+>          같은 웨이퍼의 tkout_time 이 여럿이면 가장 늦은 것만 파일에 (글자로 된 시각도) — 여럿이 보이면 latest 칸이 keys 에 없음
+>          leg 같은 키가 한 표는 숫자 · 한 표는 글자여도 칸이 «—» 가 아니면 고쳐진 것
+> 되돌리기  git revert $(git log -1 --format=%h --grep='read as no compare set' origin/main) -> 런처 재기동
 > ```
 
 ---

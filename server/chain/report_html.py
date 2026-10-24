@@ -252,7 +252,7 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
     show says so. `evidence`: the steps' lines, folded at the end."""
     spec = spec or {}
     folded = _evidence(evidence, spec) if evidence is not None else ""
-    layout, template = spec.get("layout") or (), spec.get("template")
+    layout, template = report_shape.layout(spec), spec.get("template")
     if isinstance(template, str) and template.strip():
         from chain import report_template
 

@@ -14,7 +14,7 @@
 ### 체인 규칙
 
 - 2026-10-24 [AI 리포트가 키 조각이 빈 웨이퍼에도 수를 읽는다](#2026-10-24--ai-리포트가-키-조각이-빈-웨이퍼에도-수를-읽는다) — 적을 것 없음 · 보는 곳 리포트 결과
-- 2026-10-24 [AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐](#2026-10-24--ai-리포트-저장이-빈-파일--비교-묶음-실패를-미리-거절--layout-없음--sets-칸-빠짐) — 적는 곳 derive.report.layout · derive.report.sets · 보는 곳 체인 규칙 창 저장 거절 문구
+- 2026-10-24 [AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐](#2026-10-24--ai-리포트--layout-안-적으면-기본-배치--sets-칸-빠지면-비교-묶음-없이--latest-는-글자로도--키-10--1) — 적는 곳 없음(안 적어도 됨) · 보는 곳 리포트 파일 · 체인 규칙 창 저장 줄
 - 2026-10-24 [AI 리포트가 운영 데이터의 빈 칸 · 한 웨이퍼의 오류에 서지 않는다](#2026-10-24--ai-리포트가-운영-데이터의-빈-칸--한-웨이퍼의-오류에-서지-않는다) — 적을 것 없음 · 보는 곳 체인 워커 «[Report] … failed»
 - 2026-10-24 [키 조각을 바꾸는 쓰기가 행² 으로 느려지지 않는다 — 병합이 묶음 전체를 훑던 것](#2026-10-24--키-조각을-바꾸는-쓰기가-행²-으로-느려지지-않는다--병합이-묶음-전체를-훑던-것) — 적을 것 없음 · 보는 곳 체인 워커 «[Chain] group … INSIDE THE WRITE · row build»
 - 2026-10-24 [같은 체인 실패는 접고, 10 번 내리 실패한 규칙은 꺼진다 — 목록 · 터미널 · 자동 끄기](#2026-10-24--같은-체인-실패는-접고-10-번-내리-실패한-규칙은-꺼진다--목록--터미널--자동-끄기) — 보는 곳 체인 워커 터미널 · 실패 목록(by_cause) · 적는 곳 chain_rules.json 맨 위 `rule_off_after_failures`
@@ -581,15 +581,15 @@
 - **바뀐 동작** — 빈 조각이 있는 웨이퍼만 달라집니다. 조각이 다 찬 웨이퍼의 읽기는 같습니다.
 - **필요한 조건** — git pull · 런처 재기동.
 - **자세히** — `chain/report_reads.py` 의 `_part` · `_parts`(조각을 견주는 자리가 이것을 지남) · `_equals_any`(None 은 그리드의 blank 조건).
-## 2026-10-24 · AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐
+## 2026-10-24 · AI 리포트 — layout 안 적으면 기본 배치 · sets 칸 빠지면 비교 묶음 없이 · latest 는 글자로도 · 키 1.0 = 1
 
-- 무엇: 리포트 선언을 저장(· 로드)할 때 둘을 이름 대어 거절한다.
-  - `layout` 도 `template` 도 없음 → `derive.report.layout names no slot - the file is the slots in order, e.g. [...] (or a template)`. 전에는 저장되고, 파일이 제목 · Evidence 뿐이었고 모델이 쓸 글 자리도 없었다.
-  - `sets` 를 적었는데 `name` · `member` · `kind` 중 빈 칸 → `derive.report.sets.<칸> names no column - a compare set is read by name · member · kind`. 전에는 저장되고, 비교 묶음을 읽는 순간(기본 묶음 `default` 이 있거나 모델이 compare 를 부를 때) KeyError 로 리포트가 실패했다.
-- 선언 예시(chain_rules.json 의 derive.report): `"layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}, {"kind": "image"}]` · `"sets": {"table": "<묶음 표>", "name": "<묶음 이름 칸>", "member": "<멤버 칸>", "kind": "<종류 칸>", "kinds": {"evaluation": "<값>"}}`
-- 화면에서: 체인 규칙 창 폼의 sets 밑 name · member · kind 가 필수 칸으로 그려진다.
-- 바뀐 동작: 이미 로드된 리포트 규칙이 둘 중 하나에 걸리면 재기동 · 다시 읽기 때 그 규칙이 거절 문구와 함께 선다(전에는 돌고 빈 파일 · 실패).
-- 자세히: `server/chain/report_shape.py` 의 `refusal` · [AI 리포트 표](../guide/ai_report_tables.md).
+- 무엇: 운영자 선언이 덜 적혀도 리포트가 선다(소유자 «제대로 동기화 할거 아니면 화면 선언 막지마» · «레이아웃은 알아서 하는거지?»). 7e01af4c8 의 두 거절은 같은 날 거둠.
+  - `layout` 도 `template` 도 없음 → 기본 배치 text `summary` → table `yield_by` → image(`images` 를 적었을 때만) → text `conclusion`. 모델이 summary · conclusion 두 글을 쓴다. 전: 제목 · Evidence 뿐인 빈 파일.
+  - `sets` 에 `name` · `member` · `kind` 중 빈 칸 → 비교 묶음 없이 감. 저장 · 로드에 한 줄 `derive.report.sets names no <칸> - read as no compare set …`. 전: 비교 묶음을 읽는 순간 KeyError 로 그 웨이퍼 리포트 실패.
+  - `keys` 의 latest 칸(예 tkout_time)을 제품 시각으로 못 읽는 값이 한 웨이퍼에 하나라도 있으면 그 웨이퍼는 «글자 순서»로 최신을 고른다(20261001123000 · 2026/10/01 · 2026.10.01). 전: 못 읽으면 측정 여럿이 한 리포트에 섞였다.
+  - 웨이퍼 키 조각은 키 철자로 견준다 — 한 표는 숫자 1.0, 다른 표는 글자 «1» 이어도 같은 웨이퍼. 전: 그 표의 행이 조용히 빠져 칸 «—».
+- 선언 예시: 적을 것 없음. 기본 배치를 바꾸려면 chain_rules.json 의 derive.report.layout 에 `[{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}]` 처럼 적는다.
+- 자세히: `server/chain/report_shape.py` 의 `layout` · `sets_role`, `report_reads.Report._latest` · `_part` · [AI 리포트 표](../guide/ai_report_tables.md).
 
 ## 2026-10-24 · AI 리포트가 운영 데이터의 빈 칸 · 한 웨이퍼의 오류에 서지 않는다
 

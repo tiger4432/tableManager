@@ -113,8 +113,29 @@ SETS_DEFAULT = "default"
 #: the wafer table's own cells of that name are what it picks by (lead 10-22: no such word in code).
 SETS_KINDS = "kinds"
 KIND_ROLES = ("evaluation", "lot")
-#: The columns a compare set is read by (`report_reads.Report._sets`) - each a sets block must name.
+#: The columns a compare set is read by (`report_reads.Report._sets`) - a sets block naming fewer is read as none
+#: (`sets_role`), said at save and load (`notes`); lead 10-24, owner «제대로 동기화 할거 아니면 화면 선언 막지마».
 SETS_COLUMNS = ROLE_COLUMNS["sets"]
+#: The file's slots when a declaration writes neither `layout` nor `template` (owner 10-24 «레이아웃은 알아서 하는거지?»)
+#: - the image slot only when the images role is declared (`layout`).
+DEFAULT_LAYOUT = ({"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}, {"kind": "image"},
+                  {"kind": "text", "slot": "conclusion"})
+
+
+def layout(spec) -> list:
+    """The file's slots in order - `layout` as written; with neither layout nor template, DEFAULT_LAYOUT. The page,
+    the model's text slots and the template's marks all read this."""
+    spec = spec if isinstance(spec, dict) else {}
+    template = spec.get("template")
+    if spec.get("layout") or (isinstance(template, str) and template.strip()):
+        return list(spec.get("layout") or ())
+    return [dict(slot) for slot in DEFAULT_LAYOUT if slot["kind"] != "image" or isinstance(spec.get("images"), dict)]
+
+
+def sets_role(spec):
+    """The compare set role when it names every column it is read by (SETS_COLUMNS), else None - read as no sets."""
+    sets = (spec or {}).get("sets")
+    return sets if isinstance(sets, dict) and all(sets.get(cell) for cell in SETS_COLUMNS) else None
 
 
 def info_rows(spec) -> list:
@@ -148,8 +169,6 @@ def _role_node(role):
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})
         fields.append({"key": SETS_KINDS, "required": True, "node": _record(KIND_ROLES, "free")})
-        for field in fields:
-            field["required"] = field["required"] or field["key"] in SETS_COLUMNS
     return {"kind": "record", "fields": fields}
 
 
@@ -503,12 +522,8 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     if summary.get("rate") and not (_whole(summary.get(RATE_SCALE), 1) and summary[RATE_SCALE] in RATE_SCALES):
         return "derive.report.summary.rate_scale: 1 or 100 - what a full rate reads as, got %r" % (
             summary.get(RATE_SCALE),)
-    sets = spec.get("sets")
-    if isinstance(sets, dict):
-        unnamed = [cell for cell in SETS_COLUMNS if not sets.get(cell)]
-        if unnamed:
-            return ("derive.report.sets.%s names no column - a compare set is read by %s"
-                    % (unnamed[0], " · ".join(SETS_COLUMNS)))
+    sets = sets_role(spec)
+    if sets is not None:
         kinds = sets.get(SETS_KINDS)
         said = {role: value for role, value in (kinds.items() if isinstance(kinds, dict) else ())
                 if isinstance(value, str) and value.strip()}
@@ -528,11 +543,6 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     for cell in LOOP_CELLS:
         if cell in (spec.get("loop") or {}) and not _whole(spec["loop"][cell], 1):
             return "derive.report.loop.%s must be a whole number from 1, got %r" % (cell, spec["loop"][cell])
-    template = spec.get("template")
-    if not spec.get("layout") and not (isinstance(template, str) and template.strip()):
-        return ("derive.report.layout names no slot - the file is the slots in order, e.g. "
-                '[{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}, {"kind": "image"}] '
-                "(or a template)")
     for at, slot in enumerate(spec.get("layout") or ()):
         kind = slot.get("kind") if isinstance(slot, dict) else None
         if kind not in SLOT_KINDS:
@@ -637,6 +647,10 @@ def notes(spec) -> list:
     if unknown:
         out.append("derive.report.labels.%s is not a word the report says - one of %s"
                    % (unknown[0], " · ".join(LABELS)))
+    sets = (spec or {}).get("sets")
+    if isinstance(sets, dict) and sets_role(spec) is None:
+        out.append("derive.report.sets names no %s - read as no compare set (a compare set is read by %s)"
+                   % (" · ".join(c for c in SETS_COLUMNS if not sets.get(c)), " · ".join(SETS_COLUMNS)))
     unwritten = [c for c in UNWRITTEN_RESULTS if ((spec or {}).get(RESULTS_CELL) or {}).get(c)]
     if unwritten and isinstance(spec.get(RESULTS_CELL), dict):
         out.append("derive.report.results.%s is not written - a report writes its file path; its state and why are "

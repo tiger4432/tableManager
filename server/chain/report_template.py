@@ -172,7 +172,7 @@ def read(text):
 def known_marks(spec) -> set:
     from chain import report_shape
 
-    texts = {str(slot.get("slot")) for slot in (spec or {}).get("layout") or ()
+    texts = {str(slot.get("slot")) for slot in report_shape.layout(spec)
              if isinstance(slot, dict) and slot.get("kind") == "text"}
     return set(FIXED_MARKS) | {TABLE_PREFIX + fill for fill in report_shape.TABLE_FILLS} | texts
 

@@ -76,7 +76,7 @@ def limits(spec) -> dict:
 
 
 def text_slots(spec) -> list:
-    return [str(slot["slot"]) for slot in (spec or {}).get("layout") or () if slot.get("kind") == "text"]
+    return [str(slot["slot"]) for slot in report_shape.layout(spec) if slot.get("kind") == "text"]
 
 
 def reckon(text) -> float:
@@ -214,7 +214,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
     caps = limits(spec)
     budget = Budget(caps["context_tokens"])
     started = clock()
-    if request.get("sets") or ((spec or {}).get("sets") or {}).get(report_shape.SETS_DEFAULT):
+    if request.get("sets") or (report_shape.sets_role(spec) or {}).get(report_shape.SETS_DEFAULT):
         report.compare(request.get("sets"))
     conditions = report.conditions()["context"].splitlines()
     steps, previous, seen, tables = [], [], {}, {}
