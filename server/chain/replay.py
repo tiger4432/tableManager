@@ -2370,8 +2370,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 plan["key"] = numbered and respelled_key(table_name, row, parts_of_key) or None
                 continue
             before, after = (
-                None if any(crud.is_blank_key_part(p) for p in parts)
-                else crud.compose_business_key(table_name, parts, parts_of_key)
+                None if crud.every_key_part_blank(parts)        # a blank part among filled ones is a part
+                else crud.compose_business_key(table_name, [crud.fold_key_value(table_name, c, p)
+                                                            for c, p in zip(parts_of_key, parts)], parts_of_key)
                 for parts in ([getattr(row, c, None) for c in parts_of_key],
                               [cells[c][1] if c in cells else getattr(row, c, None)
                                for c in parts_of_key]))

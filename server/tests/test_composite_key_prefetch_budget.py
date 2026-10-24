@@ -247,10 +247,11 @@ def test_source_exact_composite_key_still_refuses_an_incomplete_tuple(key_db):
      "an explicit row_id already names the row"),
     ({"updates": {"base": "A", "x": "1"}},
      "a source column is missing entirely"),
-    ({"updates": {"base": "A", "x": "1", "y": ""}},
-     "a source column is blank"),
-    ({"updates": {"base": "A", "x": "1", "y": "   "}},
-     "a source column is blank after cleaning"),
+    # a blank part among filled ones is a part (총괄 242f4a43a) - only every part blank refuses
+    ({"updates": {"base": "", "x": None, "y": ""}},
+     "every source column is blank"),
+    ({"updates": {"base": " ", "x": "  ", "y": "   "}},
+     "every source column is blank after cleaning"),
 ])
 def test_the_guard_refuses_to_assemble(key_db, item, why):
     """Every arm of the guard, on the function itself.
@@ -334,7 +335,7 @@ def test_an_incomplete_composite_source_still_writes_the_row_unkeyed(key_db):
     coexist. See `crud._update_row_business_key` and `data_model.md` §3.1-bis.
     """
     crud.apply_batch_updates(key_db, DECLARED, _batch([
-        {"updates": {"base": "A", "x": "1", "leg": "L"}, "source_name": "user"}]))
+        {"updates": {"base": "", "x": "", "leg": "L"}, "source_name": "user"}]))
 
     row = key_db.query(_model(DECLARED)).one()
     assert row.leg == "L"

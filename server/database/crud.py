@@ -2946,18 +2946,16 @@ def key_part(table_name: str, column: str, value):
 
 
 def rebuilt_business_key(table_name: str, row) -> Optional[str]:
-    """The key this row's own parts compose to, or None when a part is blank - what both seats
-    that rebuild a key ask: the write's (`apply_row_update_internal` «2.») and the pin's
-    (`set_cell_manual_priority_batch`) (총괄 a61d32f4f ㄱ). The write's fallback for a new row
-    with blank parts stays the write's.
+    """The key this row's own parts compose to, or None when every part is blank (a blank part among filled ones is
+    a part, `_unfilled_composite_parts`) - what both seats that rebuild a key ask: the write's
+    (`apply_row_update_internal` «2.») and the pin's (`set_cell_manual_priority_batch`) (총괄 a61d32f4f ㄱ).
 
-    🔴 `is_blank_key_part`, because this MAKES an identity: NaN passes `is_blank_value`, becomes
-    the text 'nan' through `clean_str_value`, and rows missing different things collide on one
-    key (2026-09-04).
+    🔴 `fold_key_value` / `is_blank_key_part`, because this MAKES an identity: NaN passes `is_blank_value`, becomes
+    the text 'nan' through `clean_str_value`, and rows missing different things collide on one key (2026-09-04).
     """
     parts = TABLE_CONFIG.get(table_name, {}).get("composite_key_source") or ()
-    values = [getattr(row, column, None) for column in parts]
-    if not values or any(is_blank_key_part(v) for v in values):
+    values = [fold_key_value(table_name, column, getattr(row, column, None)) for column in parts]
+    if not values or every_key_part_blank(values):
         return None
     return compose_business_key(table_name, values, parts)
 
@@ -3030,7 +3028,8 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
 
     # The blank check above is THIS caller's policy; the join below is everyone's.
     computed_key = compose_business_key(
-        table_name, [update_item.updates.get(col) for col in composite_src], composite_src)
+        table_name, [fold_key_value(table_name, col, update_item.updates.get(col)) for col in composite_src],
+        composite_src)
 
     # 🔴 판정 191. THE SUPPLIED KEY MOVES ASIDE; IT IS NOT DISCARDED. 190 made the
     # assembled key the identity, and the line below overwrites whatever the caller sent.
@@ -3241,12 +3240,17 @@ def _unfilled_composite_parts(composite_src, updates) -> list:
     and those must be THE SAME QUESTION or a gate would refuse rows the writer would have
     keyed (or, worse, pass rows it will not).
 
-    Blankness is `is_blank_value`, i.e. the `clean_str_value(x) == ""` this function
-    replaced verbatim; `contracts/blank_predicate` pins the two as equivalent.
+    Blankness is `is_blank_key_part` (`is_blank_value` plus a non-finite float).
+
+    🔴 A BLANK PART AMONG FILLED ONES IS A PART (소유자 10-24 «a,빈값 a,빈값 같은거로 처리하라고 지금 키충돌나면
+    접잖아», 총괄 242f4a43a): it composes as blank, so (a, blank) twice is one key - folded by the door a key
+    collision folds by, as the join, its unique index, the write gate and decide already read it. A part the payload
+    does not carry, or EVERY part blank (`every_key_part_blank`), is still no key.
     """
     updates = updates or {}
-    return [col for col in composite_src
-            if col not in updates or is_blank_key_part(updates.get(col))]
+    unfilled = [col for col in composite_src if col not in updates or is_blank_key_part(updates.get(col))]
+    keyless = len(unfilled) == len(composite_src) or any(col not in updates for col in composite_src)
+    return unfilled if keyless else []
 
 
 def unfilled_key_columns(table_name: str, update_item) -> list:
@@ -4296,10 +4300,11 @@ def apply_row_update_internal(
         # existing row, and that path's collision merge is still needed.
         if is_src_changed:
             new_bk_val = rebuilt_business_key(table_name, row)
-            if new_bk_val is None and is_new:
-                # 조각이 빈 새 행은 이 쓰기가 넘긴 키를 지킨다 - business_key_val 이든 키 칸이든, 위
-                # `_update_row_business_key` 가 이미 행에 올렸다(총괄 10-14: 키 칸으로 넘긴 키가 None 에 덮였음).
-                # 기존 행의 조각 비움은 키 NULL 그대로(a61d32f4f).
+            if is_new and (new_bk_val is None or _unfilled_composite_parts(composite_src, update_item.updates)):
+                # 이 쓰기가 키를 지을 조각을 안 실은 새 행(조각이 모두 비었거나 안 실림)은 이 쓰기가 준 키를 지킨다 -
+                # 위 `_update_row_business_key` 가 이미 행에 올렸다. 안 실린 조각을 NULL 로 읽어 지으면 조립(판정 190 B)과
+                # 갈라져 같은 키의 새 행이 여럿 생긴다. 실린 빈 조각은 조각이라 조립 키가 준 키를 이긴다(총괄 242f4a43a
+                # ㄱ2 — 총괄 10-14 (b) 는 «안 실린» 조각에만 남는다).
                 new_bk_val = getattr(row, "business_key_val", None)
 
             current_bk = getattr(row, "business_key_val", None)

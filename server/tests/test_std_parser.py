@@ -224,13 +224,14 @@ def test_blank_business_key_rows_skipped_and_counted(tmp_path):
     assert [r["part_no"] for r in rows] == ["P-1", "P-2"]
 
 
-def test_composite_partial_blank_source_rows_skipped(tmp_path):
-    """composite 소스 중 하나만 공백이어도 키 조립이 불가하므로 스킵된다."""
-    p = _write(tmp_path / "map.csv", "base,x,y,leg\nB1,1,2,L\nB2,,3,L\n")
+def test_composite_partial_blank_source_rows_kept_every_blank_skipped(tmp_path):
+    """composite 소스 중 하나만 공백인 행은 키다 — 빈 조각은 조각(소유자 10-24 «a,빈값 a,빈값 같은거로 처리»,
+    총괄 242f4a43a). 조각이 «모두» 빈 행만 스킵된다."""
+    p = _write(tmp_path / "map.csv", "base,x,y,leg\nB1,1,2,L\nB2,,3,L\n,,,L\n")
     rows_iter, total, skipped = parse_std_file(p, COMPOSITE_INFO, "bonding_map")
     rows = list(rows_iter)
-    assert total == 1 and skipped == 1
-    assert rows[0]["base"] == "B1"
+    assert total == 2 and skipped == 1
+    assert [r["base"] for r in rows] == ["B1", "B2"]
 
 
 def test_key_groups_bk_or_composite_either_suffices(tmp_path):
@@ -241,11 +242,11 @@ def test_key_groups_bk_or_composite_either_suffices(tmp_path):
     )
     # 1행: bk 공백이지만 composite 전체 존재 → 유지 (crud가 키 조립)
     # 2행: composite 일부(x) 공백이지만 bk 존재 → 유지
-    # 3행: bk 공백 + composite 일부(base) 공백 → 스킵
+    # 3행: bk 공백 + composite 일부(base) 공백 → 유지 (빈 조각은 조각, 총괄 242f4a43a)
     rows_iter, total, skipped = parse_std_file(p, COMPOSITE_INFO, "bonding_map")
     rows = list(rows_iter)
-    assert total == 2 and skipped == 1
-    assert rows[0]["base"] == "B1" and rows[1]["pkg_id"] == "PK9"
+    assert total == 3 and skipped == 0
+    assert rows[0]["base"] == "B1" and rows[1]["pkg_id"] == "PK9" and rows[2]["x"] in ("5", 5)
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **키 조각 하나가 빈 행은 같은 키로 접힌다 — (a, 빈값) 두 행이 한 행** — git pull · 런처 재기동 · 표마다 재키잉 한 번
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 조합 키 표마다:
+>            python server/scripts/rebuild_blank_business_keys.py --table <표>          (읽기 전용 미리보기)
+>            python server/scripts/rebuild_blank_business_keys.py --table <표> --apply  (쓰기)
+> 뜻      rebuildable N  -> 빈 조각 · 준 키로 저장돼 조립 키와 다른 행 N 개를 조립 키로 옮김(층 · 사람 값은 행 그대로 따라감)
+>          collides N     -> 옮기면 다른 행과 같은 키가 되는 행 N 개 - --apply 가 그 키를 가진 행에 합침(되돌릴 수 없음)
+>          no_material N  -> 조각이 모두 빔 - 키 없이 남음(그대로가 맞음)
+>          0 · 0          -> 할 일 없음
+> 안 돌리면  옛 행은 다음 파일의 같은 키 행과 안 접힘 - 조인 유일 인덱스 표에서는 그 파일 행이 «unique_violated» 로 거절
+> 되돌리기  git revert <이 커밋> -> 런처 재기동 (이미 --apply 한 키 · 합침은 안 돌아감)
+> ```
+>
 > ## [10-24] **자동읽기 끄고 파일 하나 돌려 보기 — 꺼진 외부 소스도 Read now · Retry 로 읽힌다 (총괄 19ccab56f, 7328c8d51)** — git pull · 런처 재기동
 >
 > ```

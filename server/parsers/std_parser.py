@@ -120,7 +120,7 @@ def _resolve_key_groups(table_info: dict, known: set, table_name: str = None) ->
 
     [F1] 키 셀이 공백인 행이 무음 적재되면 `_get_or_create_row`가
     business_key_val=None 항목을 **매번 신규 행**으로 만들어 재드롭 때마다 고아 행이
-    누적된다(업서트 불가). 그룹 중 하나라도 값이 전부 채워져 있으면 keyed로 판정:
+    누적된다(업서트 불가). 그룹 중 하나라도 조각이 모두 비지 않았으면 keyed로 판정(`_row_has_key`):
       - (business_key,) — 단일 bk 직접 제공
       - tuple(composite_key_source) — crud가 키를 조립할 수 있는 소스 전체
     """
@@ -135,8 +135,11 @@ def _resolve_key_groups(table_info: dict, known: set, table_name: str = None) ->
 
 
 def _row_has_key(row: dict, key_groups: list) -> bool:
-    """어느 한 키 그룹의 컬럼 값이 전부 존재하면 True (공백/결측은 _map_record에서 None 정규화됨)."""
-    return any(all(row.get(c) is not None for c in grp) for grp in key_groups)
+    """어느 한 키 그룹에 값이 하나라도 있으면 True — 빈 조각은 조각이다, 조각이 «모두» 비어야 키가 없다
+    (`crud.every_key_part_blank`, 소유자 10-24 «a,빈값 a,빈값 같은거로 처리», 총괄 242f4a43a)."""
+    from database import crud
+
+    return any(not crud.every_key_part_blank([row.get(c) for c in grp]) for grp in key_groups)
 
 
 def _map_record(record: list, header_map: list, passthrough=()) -> dict | None:
