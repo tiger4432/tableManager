@@ -52,9 +52,22 @@ def _model(table):
 
 
 def _equals_any(column, values):
-    """One column's grid filter: equal to any of `values` (equals joined by OR)."""
+    """One column's grid filter: equal to any of `values` (equals joined by OR); a None among them (a blank key part,
+    `_part`) is the grid's «blank» - blank meets blank (owner 10-24: ops wafers with a blank part had no numbers)."""
     return {"filterType": "text", "operator": "OR",
-            "conditions": [{"filterType": "text", "type": "equals", "filter": value} for value in values]}
+            "conditions": [{"filterType": "text", "type": "blank"} if value is None else
+                           {"filterType": "text", "type": "equals", "filter": value} for value in values]}
+
+
+def _part(value):
+    """A wafer key part as compared - blank (`crud.is_blank_value`: None, «», spaces, NaN) is None, else its text."""
+    from database import crud
+
+    return None if crud.is_blank_value(value) else str(value)
+
+
+def _parts(row):
+    return tuple(_part(value) for value in row)
 
 
 def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
@@ -73,7 +86,7 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
             return []
         for at, column in enumerate(keys):
             filters[report_shape.column_of(role, column)] = _equals_any(
-                column, sorted({str(w[at]) for w in wafers if w[at] is not None}))
+                column, sorted({_part(w[at]) for w in wafers}, key=lambda v: (v is not None, v or "")))
     try:
         query, _key = grid_read.narrowed_table_query(db, table, model, filters=json.dumps(filters) if filters else None)
     except HTTPException as refused:                       # a filter the table cannot take, by name (S-71)
@@ -88,10 +101,10 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
         raise ReadRefused("%s holds over %d rows for these wafers - pick fewer" % (table, READ_ROW_CAP))
     if wafers is None:
         return [tuple(row) for row in found]
-    wanted = {tuple(None if p is None else str(p) for p in w) for w in wafers}
+    wanted = {_parts(w) for w in wafers}
     width = len(keys)
     return [tuple(row) for row in found
-            if tuple(None if p is None else str(p) for p in row[:width]) in wanted]
+            if _parts(row[:width]) in wanted]
 
 
 class Report:
@@ -114,7 +127,7 @@ class Report:
         self.picked_by = report_shape.unit_columns(spec) or list(only or ())
         self.key_words = report_shape.key_words(spec)
         if only is not None:
-            only = {c: None if v is None else str(v) for c, v in only.items()}
+            only = {c: _part(v) for c, v in only.items()}
             here = [w for w in self._wafer_rows({c: _equals_any(c, [v]) for c, v in only.items()})
                     if all(dict(zip(self.keys, w)).get(c) == v for c, v in only.items())]
             said = label(tuple(only.values()))
@@ -139,7 +152,7 @@ class Report:
         extra = [role.get(cell) for cell in ("time", "lot", "evaluation")]
         columns = self.keys + [c for c in extra if c] + self.conditions_at
         columns += [c for c in self.same_at if c not in columns]
-        read = [(tuple(None if p is None else str(p) for p in row[:len(self.keys)]), row)
+        read = [(_parts(row[:len(self.keys)]), row)
                 for row in _rows(self.db, role, columns, where=where, newest=role.get("time") if newest else None)]
         out = []
         for wafer, row in self._latest(read):
@@ -184,10 +197,10 @@ class Report:
         at = [self.keys.index(c) for c in shared]
         by = {}
         for wafer in dict.fromkeys(wafers):                 # a wafer in two groups is read once
-            by.setdefault(tuple(wafer[i] for i in at), []).append(wafer)
+            by.setdefault(_parts(wafer[i] for i in at), []).append(wafer)
         out = []
         for row in _rows(self.db, role, shared + columns + beyond, list(by), keys=shared):
-            for wafer in by.get(tuple(None if p is None else str(p) for p in row[:len(shared)]), ()):
+            for wafer in by.get(_parts(row[:len(shared)]), ()):
                 out.append((wafer, row[len(shared):]))
         return out
 
