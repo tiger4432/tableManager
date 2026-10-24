@@ -1705,6 +1705,19 @@
                           "kind": "leaf",
                           "hint": "free"
                         }
+                      },
+                      {
+                        "key": "skip",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "name",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
                       }
                     ]
                   }

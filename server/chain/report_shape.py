@@ -43,6 +43,9 @@ TIME_ITEM = "time_item"
 #: `conditions.title_item`: the condition item whose value is the unit's title (owner 10-24 «컨디션 아이템에 타이틀도
 #: 있는데 이것도 받게 해») - the title the model reads of a candidate, not a condition row.
 TITLE_ITEM = "title_item"
+#: `conditions.skip`: condition names that are never a condition row (owner 10-24 «wfid, lotid 뽑지 말라는데 계속
+#: 뽑아») - matched without case and surrounding spaces; the wafer key columns and wafer.lot are skipped anyway.
+CONDITION_SKIP = "skip"
 #: `summary.yield_item`: the summary rows (an item name, or a list) that are the unit's yield, not a defect (owner 10-24
 #: «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로 리포트하네») - read as every row (rate, or F and N),
 #: drawn as the matrix's yield rows, left out of the defect rows, the pareto, the trend and the images.
@@ -224,6 +227,8 @@ def _role_node(role):
     if role == "conditions":
         fields.append({"key": TIME_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
         fields.append({"key": TITLE_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
+        fields.append({"key": CONDITION_SKIP, "required": False,
+                       "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})})
     if role == "sets":
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})

@@ -430,10 +430,14 @@ class Report:
         # the time_item condition is the date head's, not a condition row (owner 10-24)
         timed = None if self.spec["wafer"].get("time") else (self.long or {}).get(report_shape.TIME_ITEM)
         titled = (self.long or {}).get(report_shape.TITLE_ITEM)     # the title_item is the wafer's title, no row
+        # never a condition row: the date and title items, the wafer key and lot columns, conditions.skip (owner 10-24
+        # «wfid, lotid 뽑지 말라는데 계속 뽑아» - an id differs on every wafer, so it always stood as a row)
+        never = {report_shape.name(n).lower() for n in
+                 [timed, titled, self.spec["wafer"].get("lot")] + list(self.keys)
+                 + list((self.long or {}).get(report_shape.CONDITION_SKIP) or ()) if n}
         names = [n for n in dict.fromkeys(str(n) for members in columns for w in members
                                           for n in self.wafers[w]["conditions"])
-                 if (timed is None or report_shape.name(n) != report_shape.name(timed))
-                 and (titled is None or report_shape.name(n) != report_shape.name(titled))]
+                 if report_shape.name(n).lower() not in never]
         kept = [n for n in names if n in [str(c) for c in chosen or ()]]
         rows = []
         for name in names:
