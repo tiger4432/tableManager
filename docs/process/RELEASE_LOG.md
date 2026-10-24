@@ -660,7 +660,7 @@
 ## 2026-10-24 · AI 리포트 역할 표가 웨이퍼 키를 다른 이름으로 적어도 된다 — 제 키 칸이면 같은 차례로 맞춤 · rename
 
 - **무엇** — 소유자 10-24 «키 컬럼 맞음» · «제대로 동기화 할거 아니면 화면 선언 막지마» · «의미적으로 wafer,leg == wafer_id,leg» · «매칭 알아서». 역할(summary · images · conditions · info · picture_rows) 표가 웨이퍼 키를 다른 이름으로 가지면(예: 리포트 `wafer.key` 가 [wafer, leg], 조건표는 [wafer_id, leg]) 규칙을 «'<칸>' is not a key column» 으로 거절했습니다.
-- **바뀐 동작** — 역할 `wafer` 목록에 그 표 «제» 키 칸(table_config 의 `composite_key_source` · `business_key`)을 `wafer.key` 와 «같은 차례»로 적으면, i 번째 칸이 `wafer.key` 의 i 번째로 맞춰져 읽힙니다 — `keys` 에 더 적을 것이 없습니다. 차례로 안 맞으면 역할에 `rename` {리포트 키 이름: 그 표 칸}을 적습니다(적은 것이 차례 맞춤을 이깁니다).
+- **바뀐 동작** — 역할 `wafer` 목록에 그 표 «제» 키 칸(table_config 의 `composite_key_source` · `business_key`)을 `wafer.key` 와 «같은 차례»로 적으면, i 번째 칸이 `wafer.key` 의 i 번째로 맞춰져 읽힙니다 — `keys` 에 더 적을 것이 없습니다. 차례로 안 맞으면 역할에 `rename` {리포트 키 이름: 그 표 칸}을 적습니다(적은 것이 차례 맞춤을 이깁니다). 🆕 `d6815fa37`: 차례 맞춤은 목록이 `wafer.key` 와 «길이가 같을 때만»입니다 — 짧은 목록(시각 칸 없는 그림 표 [wafer_id, leg_no] — 리포트 키와 이름이 다른 칸)이 자리로 맞춰져 leg 가 시각 자리에 앉고 그림이 «No image of an occurred defect» 로 비던 것. 짧은 목록은 `rename` 을 적습니다. 대소문자만 다른 제 키 칸(WAFER)은 그대로 그 키입니다.
 - **그대로인 것** — 키 칸이 아닌 값 칸을 목록에 넣으면 전처럼 거절합니다. 표에 없는 칸이면 «… is not a column of '<표>' - name one of its columns, or <역할>.rename {'<키>': <its column>}» 으로 거절합니다.
 - **필요한 조건** — git pull · 런처 재기동. 선언은 바꿀 것 없음(이름이 다른 표만 위처럼).
 - **자세히** — `chain/report_shape.py` 의 `matched` · `_by_position` · `column_of` · `_table_refusal`, `chain/report_reads.py` 의 `_rows` (`b6b370203` · `6724000a7`, 시험 `1dec19168`).
