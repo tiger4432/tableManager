@@ -5462,6 +5462,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 replace_report["in_scope"] = len(replace_scope_row_ids)
                 replace_report["reason"] = (
                     "declared_map_key_columns" if use_diff
+                    else "file_replace" if getattr(batch, "_file_replace", False)
                     else "legacy_column_derivation" if not _cfg.get("map_key_columns")
                     else "unresolvable_row_identity"
                 )

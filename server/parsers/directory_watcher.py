@@ -3798,13 +3798,8 @@ class IngestionHandler(FileSystemEventHandler):
     def _map_batches(t_name, rows, map_columns, declared_by_lower, skipped_no_key=0):
         """The file's rows as one list per map - [(file row, row), ...] in file order, maps in the order they first
         appear - grouped by the one key speller (`crud.key_part`), so «1» and «1.0» rows are one map. A row whose map
-        key is blank refuses the file (`crud.CellRefused`, its file row): nothing is written, so nothing is purged -
-        and so do rows the parser already skipped for a missing key (`skipped_no_key`): a map replaced without them
-        would lose their dies quietly."""
-        if skipped_no_key:
-            raise crud.CellRefused(map_columns[0], "",
-                                   "a key on every row (allow_replace_map replaces each map of the file whole; %d "
-                                   "row(s) had a blank key and were skipped, so nothing was written)" % skipped_no_key)
+        key is blank names no map: it is skipped and counted on one warning line, the file goes on (소유자 10-24 «빈거
+        들어오면 접으면 되잖아 어차피 쓰레기 값인데» · «왜 다 에러가 뜨냐고»)."""
         maps, blank = {}, []
         for file_row, row in enumerate(rows, start=1):
             cells = {declared_by_lower.get(str(key).lower()): value for key, value in row.items()}
@@ -3817,11 +3812,10 @@ class IngestionHandler(FileSystemEventHandler):
                 key.append(crud.clean_str_value(crud.key_part(t_name, column, value)))
             else:
                 maps.setdefault(tuple(key), []).append((file_row, row))
-        if blank:
-            file_row, column, value = blank[0]
-            raise crud.CellRefused(column, "" if value is None else value,
-                                   "a map key (allow_replace_map replaces each map of the file whole; %d row(s) "
-                                   "have none, so nothing was written)" % len(blank), row=file_row)
+        if blank or skipped_no_key:
+            logger.warning("[Ingest] %s: %d row(s) with a blank map key %s skipped - they name no map (first at file "
+                           "row %s)", t_name, len(blank) + (skipped_no_key or 0), map_columns,
+                           blank[0][0] if blank else "?")
         return list(maps.values())
 
     def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None,
