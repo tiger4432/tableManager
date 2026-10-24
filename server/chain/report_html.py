@@ -230,12 +230,30 @@ def _images(embedded, spec) -> str:
     out = []
     for item, pictures in embedded.items():
         figures = "".join(
+            _stack(item, p) if len(p.get("layers") or ()) > 1 else
             '<figure><img src="%s" alt="%s on %s"><figcaption>%s</figcaption></figure>'
             % (p["src"], _e(item), _e(p["wafer"]), _e(p["wafer"])) if p.get("src") else
             '<figure><figcaption>%s - %s</figcaption></figure>' % (_e(p["wafer"]), _e(p.get("refused")))
             for p in pictures)
         out.append("<h3>%s</h3><div class=\"gallery\">%s</div>" % (_e(item), figures))
-    return "".join(out)
+    return "".join(out) + (STACK_SCRIPT if 'class="stack"' in "".join(out) else "")
+
+
+#: a chip's layers one figure - the wheel over it turns them (owner 10-24 «슬라이드쇼 느낌으로 각 이미지 패치»)
+STACK_SCRIPT = ("<script>document.querySelectorAll('figure.stack').forEach(function(f){"
+                "var im=f.querySelectorAll('img'),cap=f.querySelector('.layer'),i=0;"
+                "f.addEventListener('wheel',function(e){e.preventDefault();im[i].hidden=true;"
+                "i=(i+(e.deltaY>0?1:-1)+im.length)%im.length;im[i].hidden=false;"
+                "cap.textContent=im[i].dataset.layer+' ('+(i+1)+'/'+im.length+')';},{passive:false});});</script>")
+
+
+def _stack(item, picture):
+    layers = picture["layers"]
+    images = "".join('<img src="%s" alt="%s on %s" data-layer="%s"%s>' % (
+        p["src"], _e(item), _e(picture["wafer"]), _e(p.get("layer")), "" if at == 0 else " hidden")
+        for at, p in enumerate(layers))
+    return ('<figure class="stack" title="wheel: layers">%s<figcaption>%s · <span class="layer">%s (1/%d)</span>'
+            '</figcaption></figure>' % (images, _e(picture["wafer"]), _e(layers[0].get("layer")), len(layers)))
 
 
 def _table(fill, tables, spec, lent=None):

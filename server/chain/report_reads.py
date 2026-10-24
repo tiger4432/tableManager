@@ -708,7 +708,7 @@ class Report:
         # and no summary item is named shows under itself, after a line naming it (lead 10-24: no silent drop)
         match, items = report_shape.image_match(self.spec), {report_shape.name(item) for _w, item in found}
         unpaired = {}
-        chosen, counts, seen = {}, {}, set()
+        chosen, counts, stacks = {}, {}, {}
         for wafer, row in rows:
             ref = _ref(source, row[1])
             whose = (wafer, tuple(row[2 + at] for at in chip))
@@ -719,14 +719,23 @@ class Report:
                     continue
                 if alone:
                     unpaired.setdefault(kind, [])
-                if fold and (item, whose) in seen:              # one picture a chip and defect - the first layer
+                layer = "/".join(str(row[2 + at]) for at in fold) if fold else None
+                if fold and (item, whose) in stacks:
+                    # every layer of a chip and defect, one stack the wheel turns (owner 10-24 «디펙별 이미지 모든 레이어
+                    # · 마우스 휠로 레이어 바꿔 볼 수 있게»)
+                    picture = _picture(ref, px)
+                    if "src" in picture:
+                        stacks[(item, whose)]["layers"].append(dict(picture, layer=layer))
                     continue
-                seen.add((item, whose))
                 # per_item a wafer row - each leg of a wafer its own (lead 10-23: all three were L1's)
                 if counts.get((item, wafer), 0) >= per_item:
                     continue
                 picture = _picture(ref, px)
-                (unpaired[kind] if alone else chosen.setdefault(item, [])).append(dict(picture, wafer=self.said(wafer)))
+                entry = dict(picture, wafer=self.said(wafer))
+                if fold:
+                    entry["layers"] = [dict(picture, layer=layer)] if "src" in picture else []
+                    stacks[(item, whose)] = entry
+                (unpaired[kind] if alone else chosen.setdefault(item, [])).append(entry)
                 if "src" in picture:
                     counts[(item, wafer)] = counts.get((item, wafer), 0) + 1
         if unpaired:
