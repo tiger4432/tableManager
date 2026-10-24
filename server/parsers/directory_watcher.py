@@ -4377,7 +4377,8 @@ class RereadStops:
 
 def _rereads_left(db, table, source, any_left=False):
     """A pair's checklist rows still to re-read: (waiting - handed to the retry door, unchecked - a sweep reads them).
-    `any_left`: whether there is one at all."""
+    `any_left`: whether there is one at all. Each shape implies ix_file_checklist_rereads_left's WHERE - a condition
+    that stops implying it reads the whole checklist (총괄 10-24)."""
     from sqlalchemy import or_
 
     from database import models

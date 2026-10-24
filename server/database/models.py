@@ -511,6 +511,12 @@ class FileChecklist(Base):
               info={"purpose": "checklist rows in one state", "serves": "watcher retries (PENDING, PENDING_RETRY)"}),
         Index("ix_file_checklist_filename", "filename",
               info={"purpose": "checklist rows of one file name", "serves": "a re-read into a table's lookup"}),
+        # the WHERE is `directory_watcher._rereads_left`'s condition word for word - the planner uses a partial index
+        # only for a query whose condition implies it
+        Index("ix_file_checklist_rereads_left", "table_name", "source",
+              postgresql_where=text("status IN ('PENDING_RETRY', 'PENDING') OR file_mtime IS NULL"),
+              info={"purpose": "a source's rows a re-read has left (waiting or unchecked)",
+                    "serves": "the re-read stop's settle, each poller turn"}),
     )
 
 

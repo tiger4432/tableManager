@@ -506,6 +506,7 @@
 
 ### 그 밖 (위 주제에 안 드는 것)
 
+- 2026-10-24 [다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스](#2026-10-24--다시-읽기-멈춤의-남은-파일-있나가-체크리스트를-다-훑지-않는다--부분-인덱스) — 보는 곳 auto_update.log «[Indexes]» 줄 · GET /admin/indexes
 - 2026-10-23 [표에 없는 칸 · 숫자 칸에 숫자 아닌 값으로 거르면 이름 대고 거절 — 표 전체가 오던 것](#2026-10-23--표에-없는-칸--숫자-칸에-숫자-아닌-값으로-거르면-이름-대고-거절--표-전체가-오던-것) — 보는 곳 거절 문장(응답 detail) · 적을 것 없음
 - 2026-10-22 [최근 이력을 다시 짓는 동안 워커 통지가 기다리지 않는다 — «notifications not delivered» 와 화면이 안 바뀌던 몇 초](#2026-10-22--최근-이력을-다시-짓는-동안-워커-통지가-기다리지-않는다--notifications-not-delivered-와-화면이-안-바뀌던-몇-초) — 보는 곳 chain_worker.log · watcher.log «notifications not delivered» · 적을 것 없음
   - 2026-10-22 [고침 — 최근 이력은 새 행을 이어 붙이고 처음부터 다시 짓지 않는다, 최근 이력 화면이 1 초 안](#2026-10-22--고침--최근-이력은-새-행을-이어-붙이고-처음부터-다시-짓지-않는다-최근-이력-화면이-1-초-안) — 보는 곳 최근 이력 화면 · 적을 것 없음(`recent_refresh_max_delta_rows` 은퇴)
@@ -568,6 +569,13 @@
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 수는 서버에 A 의 23c35a768 · 11618814f · daafb2214 가 있어야 나옵니다.
 - **선언** — 바뀐 것 없음.
 - **자세히** — `file_ingestion/model.js`(sourceLines · sweepText · PROGRESS_COLUMNS · cancelAsk · countedText) · `parts.js` · `main.js`.
+
+## 2026-10-24 · 다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스
+
+- **무엇** — 총괄 10-24. 다시 읽기 멈춤은 와처 폴러 차례(3 초)마다 열린 (표, 저장소) 쌍마다 «남은 파일 있나»를 묻는데, 받쳐 줄 인덱스가 없어 체크리스트 전체를 훑었습니다(100 만 행 박스 판 0.13 s). 부분 인덱스 `ix_file_checklist_rereads_left` — (table_name, source), 조건 `status IN ('PENDING_RETRY', 'PENDING') OR file_mtime IS NULL` — 를 모델에 선언했습니다. 같은 판에서 0.0007~0.0023 s, EXPLAIN 이 그 인덱스를 탑니다.
+- **바뀐 동작** — 답은 같습니다. 인덱스는 스케줄러가 기동 때 선언된 인덱스 작업으로 CONCURRENTLY 세웁니다(`build_missing_indexes`, 쓰기를 막지 않음). 서기 전에는 지금처럼 전체를 훑습니다 — 느릴 뿐 답은 같습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_the_server_names_and_builds_the_indexes_its_models_declare.py` 의 `test_the_re_read_stops_question_reads_its_partial_index`.
 
 ## 2026-10-24 · 다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것
 

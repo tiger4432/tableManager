@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 인덱스는 스케줄러가 기동 때 CONCURRENTLY 로 세움 (손 SQL 없음)
+> 뜻      auto_update.log «[Indexes] ix_file_checklist_rereads_left built in N s» -> 섬
+>          «… failed …» -> 안 섬. 멈춤은 그대로 돎(전체 훑기라 느릴 뿐 같은 답). 다음 기동에 다시 세움
+> 되돌리기  DROP INDEX CONCURRENTLY IF EXISTS ix_file_checklist_rereads_left;
+>          (선언이 남아 있는 한 다음 기동에 다시 섬 - 안 세우려면 ingestion_settings.json "build_missing_indexes": false - 선언 인덱스 전부가 안 섬)
+> ```
+>
 > ## [10-24] **다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다** — git pull · 런처 재기동
 >
 > ```

@@ -178,6 +178,41 @@ def test_the_folder_index_is_built_as_the_folder_search_reads_it(scratch):
 
 
 @pytest.mark.pg
+def test_the_re_read_stops_question_reads_its_partial_index(scratch):
+    """총괄 10-24: settle asks each poller turn whether a pair has a re-read left - without an index it read the whole
+    checklist (0.13 s at 1,000,000 rows). The statements `_rereads_left` itself sends, explained: the planner takes a
+    partial index only when the query's condition implies its WHERE."""
+    from sqlalchemy import event
+    from parsers import directory_watcher
+
+    sent = []
+
+    def heard(_conn, _cursor, statement, parameters, _context, _many):
+        if "file_checklist" in statement:
+            sent.append((statement, parameters))
+
+    session = sessionmaker(bind=scratch)()
+    event.listen(scratch, "before_cursor_execute", heard)
+    try:
+        session.execute(text("SET LOCAL enable_seqscan = off"))
+        directory_watcher._rereads_left(session, "ta", "C:/share", any_left=True)
+        directory_watcher._rereads_left(session, "ta", "C:/share")
+        event.remove(scratch, "before_cursor_execute", heard)
+        cursor = session.connection().connection.cursor()
+        plans = []
+        for statement, parameters in sent:
+            cursor.execute("EXPLAIN " + statement, parameters)
+            plans.append(" / ".join(row[0] for row in cursor.fetchall()))
+    finally:
+        if event.contains(scratch, "before_cursor_execute", heard):
+            event.remove(scratch, "before_cursor_execute", heard)
+        session.rollback()
+        session.close()
+    assert len(plans) == 3, sent                    # any left · waiting · unchecked
+    assert ["ix_file_checklist_rereads_left" in plan for plan in plans] == [True, True, True], plans
+
+
+@pytest.mark.pg
 def test_the_route_shows_each_declared_index_beside_the_database(scratch):
     import main
     from fastapi.testclient import TestClient
