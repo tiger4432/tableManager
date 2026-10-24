@@ -247,11 +247,15 @@ class Report:
         """The conditions role's rows of these wafers into their {name: value} - and their time and title, when the
         wafer role names none (the long table's first row's). A wafer with no row keeps {} - the default conditions."""
         role = self.long
-        extra = [c for c in ("time", "title") if role.get(c)]
+        # conditions.time_item: that item's value is the unit's time when the wafer role names no time column
+        time_item = None if self.spec["wafer"].get("time") else role.get(report_shape.TIME_ITEM)
+        extra = [c for c in ("time", "title") if role.get(c) and not (c == "time" and time_item)]
         for wafer, row in self._matched(role, [role["name"], role["value"]] + [role[c] for c in extra],
                                         sorted(set(wafers), key=label)):
             facts = self.wafers[wafer]
             facts["conditions"][str(row[0])] = row[1]
+            if time_item and str(row[0]) == str(time_item) and facts.get("time") is None:
+                facts["time"] = row[1]
             for at, cell in enumerate(extra):
                 if facts.get(cell) is None:
                     facts[cell] = row[2 + at]
@@ -660,7 +664,8 @@ class Report:
         # judge «the same evaluation · the default conditions» (lead: the model judges, no rule picks); a wafer of no
         # time comes after the dated ones
         each = not role.get("evaluation")
-        if not (role.get("time") or (self.long or {}).get("time")) or not (each or role.get("time")):
+        if not (role.get("time") or (self.long or {}).get("time") or (self.long or {}).get(report_shape.TIME_ITEM)) \
+                or not (each or role.get("time")):
             raise ReadRefused("candidates need derive.report.wafer.time and evaluation, or conditions.time")
         own = set(self.groups[self.evaluation])
         here = [at for at in (_instant(self.wafers[w]["time"]) for w in own) if at is not None]

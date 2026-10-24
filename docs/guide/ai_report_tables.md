@@ -58,6 +58,7 @@
 
 ## 2. 도는 것
 
+- 🆕 10-24 `conditions.time_item` — 웨이퍼 시각이 칸이 아니라 조건 표의 한 항목일 때: `"time_item": "tkout"`. wafer 역할에 time 칸이 없으면 그 항목 값이 웨이퍼 시각(정렬 · 날짜 · 대조 후보). 웨이퍼만으로 키 된 조건 표면 그 웨이퍼의 leg 모두에.
 - 🆕 10-24 `wafer.exclude` — 무시할 행: `"exclude": [{"leg": ["*_T", "*TEST*"]}]` (체인 on.exclude 와 같은 문법, `*` 아무 글자들 · `?` 한 글자, 대소문자 그대로). 걸린 웨이퍼 표 행은 유닛이 아니다 — 리포트 · 비교 · 표 어디에도 없다.
 - 🆕 10-24 `images.match` — 요약표의 항목 이름과 그림 표의 종류 이름이 다를 때 짝: `"match": {"typeA": ["void", "signal"]}` (종류 하나면 글자 하나도 됨). 짝 없는 종류는 버리지 않고 맨 뒤에 «Image kinds no summary item matches (images.match): …» 줄 밑에 제 이름으로. match 를 안 적으면 오늘처럼 같은 이름끼리.
 - 🆕 10-24 표 칸(yield_by · pareto · trend)과 그림 칸은 «제품»이 채운다 — 모델이 그 읽기를 안 불렀어도, 게이트웨이가 거절해도. 모델은 글 칸만 쓴다. Evidence 에 «product <읽기>()» 한 줄씩. `layout` 을 규칙 맨 위나 `derive` 밑에 적으면 안 읽히고 저장 · 로드 줄이 «layout is read under derive.report» 라고 말한다(그때는 기본 배치).

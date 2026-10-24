@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   chain_rules.json 의 derive.report.conditions 에  "time_item": "<시각이 든 조건 항목 이름>"
+>          (derive.report.wafer 에 time 칸이 있으면 그것이 이김 — 조건 항목을 쓰려면 wafer.time 을 지움)
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    표 열이 그 시각 순서 · DATE 머리에 날짜 · Evidence candidates 에 대조 평가가 나오면 고쳐진 것
+>          «candidates need derive.report.wafer.time and evaluation, or conditions.time» -> time_item 이 안 적힘 또는 wafer.evaluation 없음
+>          DATE 머리가 비면 그 값이 시각으로 안 읽히는 철자 (순서만 글자로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='conditions.time_item' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)** — git pull · 런처 재기동
 >
 > ```

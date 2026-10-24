@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item](#2026-10-24--ai-리포트-웨이퍼-시각을-조건-항목에서--conditionstime_item) — 적는 곳 derive.report.conditions.time_item · 보는 곳 리포트 열 순서 · 날짜 · 대조 후보
 - 2026-10-24 [행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)](#2026-10-24--행-게이트-값에----패턴--onrequire--onexclude-와-ai-리포트-waferexclude-무시할-leg) — 적는 곳 on.require · on.exclude · derive.report.wafer.exclude · 보는 곳 리포트 · 체인 줄
 - 2026-10-24 [AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)](#2026-10-24--ai-리포트-그림-짝--imagesmatch-로-그림-표의-종류를-요약-항목에-void-signal---typea) — 적는 곳 derive.report.images.match · 보는 곳 리포트 그림
 - 2026-10-24 [AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다](#2026-10-24--ai-리포트-표에-대조-웨이퍼와-조건-묶음--선언된-비교controlrecent--setsdefault를-제품이-읽는다) — 적는 곳 derive.report.control.recent · sets.default · 보는 곳 리포트 표
@@ -581,6 +582,15 @@
 
 
 
+
+## 2026-10-24 · AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item
+
+- 무엇: 운영의 웨이퍼 시각은 칸이 아니라 조건 표(이름 · 값)의 한 항목이다(소유자 10-24).
+  - `conditions.time_item`: 그 항목 이름. wafer 역할에 time 칸이 없으면 그 값이 웨이퍼 시각 — 열 순서, 날짜 머리, 대조 후보(control.recent)가 읽는다. 웨이퍼만으로 키 된 조건 표면 그 웨이퍼의 leg 모두에. wafer.time 이 있으면 그것이 이긴다.
+  - 시각으로 못 읽는 값(20261001123000 같은)은 순서만 글자로 정해지고, 날짜 머리 · 대조 후보의 날 계산에는 안 들어간다.
+  - 저장 거절: 글자가 아님 «derive.report.conditions.time_item is the condition item whose value is the wafer's time, e.g. "tkout_time"; got …»
+- 선언 예시(chain_rules.json 의 derive.report.conditions): `"time_item": "tkout_time"`
+- 자세히: `server/chain/report_reads.py` 의 `Report._long_conditions`, `report_shape.TIME_ITEM`.
 
 ## 2026-10-24 · 행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)
 

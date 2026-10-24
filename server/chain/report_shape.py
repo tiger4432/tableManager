@@ -36,6 +36,10 @@ IMAGE_SOURCE = "source"
 #: (owner 10-24 «void, signal -> typeA»: {"typeA": ["void", "signal"]}). Undeclared, a picture is its summary item by
 #: the same name.
 IMAGE_MATCH = "match"
+#: `conditions.time_item`: the condition item whose value is the unit's time when the wafer role names no time column
+#: (owner 10-24: the wafer's time is a conditions row, not a column) - a table keyed by the wafer alone gives it to
+#: every leg, as every condition.
+TIME_ITEM = "time_item"
 #: The roles a report cannot be made without.
 REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
@@ -187,6 +191,8 @@ def _role_node(role):
             "of": chain_bindings.list_node("kind", {"kind": "leaf", "hint": "free"})}})
     if role == "summary":
         fields.append({"key": LABEL, "required": False, "node": {"kind": "leaf", "hint": "free"}})
+    if role == "conditions":
+        fields.append({"key": TIME_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
     if role == "sets":
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})
@@ -419,7 +425,8 @@ def _columns_refusal(spec):
             or len(set(heads)) != len(heads):
         return ("derive.report.columns lists the column heads, top first, each once - a key column (%s), %r or %r; "
                 "got %r" % (", ".join(keys), COLUMN_TIME, COLUMN_GROUP, heads))
-    if COLUMN_TIME in heads and not (spec["wafer"].get("time") or (spec.get("conditions") or {}).get("time")):
+    if COLUMN_TIME in heads and not (spec["wafer"].get("time") or (spec.get("conditions") or {}).get("time")
+                                     or (spec.get("conditions") or {}).get(TIME_ITEM)):
         return ("derive.report.columns %r is the wafer's day - derive.report.wafer.time or conditions.time names the "
                 "column it is read from" % COLUMN_TIME)
     return None
@@ -484,6 +491,10 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
             for kinds in match.values())):
         return ('derive.report.images.match is {summary item: image kind or [image kinds]}, e.g. '
                 '{"typeA": ["void", "signal"]}; got %r' % (match,))
+    time_item = (spec.get("conditions") or {}).get(TIME_ITEM) if isinstance(spec.get("conditions"), dict) else None
+    if time_item is not None and not (isinstance(time_item, str) and time_item.strip()):
+        return ("derive.report.conditions.time_item is the condition item whose value is the wafer's time, e.g. "
+                '"tkout_time"; got %r' % (time_item,))
     info = spec.get(INFO)
     if info is not None and not isinstance(info, (dict, list)):
         return "derive.report.info is a table and its columns, or a list of them, got %r" % (info,)

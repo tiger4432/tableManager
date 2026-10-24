@@ -1676,6 +1676,14 @@
                             "derive.report.conditions.table"
                           ]
                         }
+                      },
+                      {
+                        "key": "time_item",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
                       }
                     ]
                   }

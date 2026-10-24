@@ -34,6 +34,8 @@ TABLES = {
                                   "image_path": "string"}},
     "rr_set": {"composite_key_source": ["set_name", "member"],
                "column_types": {"set_name": "string", "member": "string", "kind": "string"}},
+    "rr_cond": {"composite_key_source": ["wafer_id", "cname"],
+                "column_types": {"wafer_id": "string", "cname": "string", "cvalue": "string"}},
 }
 WAFERS = [("W2", "L1", "E1", "2026-10-02", "A"), ("W1", "L1", "E1", "2026-10-01", "A"),
           ("W3", "L2", "E1", "2026-10-03", "B"), ("W0", "L0", "E0", "2026-09-01", "A"),
@@ -252,6 +254,31 @@ def test_a_wafer_row_the_exclude_gate_holds_is_no_unit(report, db_session):
     assert [c for _n, cols in gated.yield_by()["html"]["groups"] for c in cols] == ["wafer_id W1", "wafer_id W2"]
     assert report_shape.refusal(dict(spec, wafer=dict(spec["wafer"], exclude=[{"nope": ["*"]}]))) == (
         "derive.report.wafer.exclude 'nope' is not a column of 'rr_wafer' - name one of its columns")
+
+
+def test_a_condition_item_is_the_wafers_time_when_the_wafer_role_names_none(report, db_session):
+    """derive.report.conditions.time_item (owner 10-24: the wafer's time is a conditions row, not a column): that item's
+    value is each wafer's time - the order and the day read it; a wafer role naming a time column keeps its own."""
+    from chain import report_reads, report_shape
+
+    m = models.DYNAMIC_TABLES
+    for n, (w, name, value) in enumerate([("W1", "tkout", "2026-10-05 10:00:00"), ("W2", "tkout", "2026-10-03 09:00:00"),
+                                          ("W1", "recipe", "R1")]):
+        db_session.add(m["rr_cond"](row_id="c%d" % n, wafer_id=w, cname=name, cvalue=value))
+    db_session.commit()
+    spec = json.loads(json.dumps(SPEC))
+    spec["conditions"] = {"table": "rr_cond", "wafer": "wafer_id", "name": "cname", "value": "cvalue",
+                          "time_item": "tkout"}
+    del spec["wafer"]["time"]
+    timed = report_reads.Report(db_session, spec, "E1")
+    assert [timed.wafers[w]["time"] for w in [("W1",), ("W2",), ("W3",)]] == [
+        "2026-10-05 10:00:00", "2026-10-03 09:00:00", None]
+    assert timed.groups["E1"] == [("W2",), ("W1",), ("W3",)], "by that time, a wafer without one last"
+    spec["wafer"]["time"] = "measured_at"
+    own = report_reads.Report(db_session, spec, "E1")
+    assert own.wafers[("W1",)]["time"] == "2026-10-01", "the wafer role's time column stands"
+    assert report_shape.refusal(dict(spec, conditions=dict(spec["conditions"], time_item=3))).startswith(
+        "derive.report.conditions.time_item is the condition item whose value is the wafer's time")
 
 
 def test_a_compare_set_is_a_second_group_of_columns(report):
