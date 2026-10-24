@@ -156,15 +156,15 @@ def fixture_scratch(pg_engine):
 
 @pytest.mark.pg
 def test_the_folder_index_is_built_as_the_folder_search_reads_it(scratch):
-    """총괄 e390600d6: ix_file_ingestion_logs_folder's separator is one backslash on a server that reads a string as
-    written - compiled with a bare dialect it was two, and the folder search never used the index."""
+    """총괄 e390600d6: the folder search's «starts with» reads its index - since daafb2214 the checklist's own path_key
+    (ix_file_checklist_folder); the search's backslashes compiled by the connected dialect, as the server reads them."""
     from ingestion import reread
 
     with scratch.connect():
         pass                                        # the dialect learns how this server reads a backslash
-    item = {name: item for _table, name, item in models.declared_indexes()}["ix_file_ingestion_logs_folder"]
+    item = {name: item for _table, name, item in models.declared_indexes()}["ix_file_checklist_folder"]
     statement = models.model_index_ddl(item, scratch.dialect)
-    _ddl(scratch, "DROP INDEX IF EXISTS ix_file_ingestion_logs_folder", statement.replace(" CONCURRENTLY", "", 1))
+    _ddl(scratch, "DROP INDEX IF EXISTS ix_file_checklist_folder", statement.replace(" CONCURRENTLY", "", 1))
     session = sessionmaker(bind=scratch)()
     try:
         query = reread.logs_query(session, None, None, r"\\fab-share\inspection\LOT_0042")
@@ -174,7 +174,7 @@ def test_the_folder_index_is_built_as_the_folder_search_reads_it(scratch):
     finally:
         session.rollback()
         session.close()
-    assert "ix_file_ingestion_logs_folder" in plan, plan
+    assert "ix_file_checklist_folder" in plan, plan
 
 
 @pytest.mark.pg

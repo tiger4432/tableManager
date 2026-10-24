@@ -411,8 +411,9 @@ def fill_outbox_line_columns(engine, say=logger.info):
 
 
 def path_key(column):
-    """A stored path as the filesystem compares it - lower case, one separator. THE one spelling: the folder search
-    (`reread._under_folder`) and the index that serves it (`ix_file_ingestion_logs_folder`) must say the same."""
+    """A stored path as the filesystem compares it - lower case, one separator. THE one spelling: the checklist's
+    `path_key` is written in it, the folder search (`reread._under_folder`) reads that, and
+    `ix_file_ingestion_logs_folder` indexes the log rows in it."""
     other = "/" if os.sep == "\\" else "\\"
     return func.lower(func.replace(column, other, os.sep))
 
