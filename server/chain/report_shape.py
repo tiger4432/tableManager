@@ -129,7 +129,9 @@ PICTURE_COLUMN = chain_bindings.column_ref(("derive.report.%s.*.table" % PICTURE
 
 
 def _role_node(role):
-    fields = [{"key": "table", "required": True, "node": chain_bindings.table_ref()}]
+    fields = [{"key": "table", "required": True, "node": chain_bindings.table_ref()},
+              {"key": RENAME, "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "column",
+                                                          "of": _column(role)}}]
     for cell in ROLE_COLUMNS[role]:
         node = chain_bindings.list_node("column", _column(role)) if (role, cell) in LIST_COLUMNS else _column(role)
         fields.append({"key": cell, "required": False, "node": node})
@@ -210,6 +212,59 @@ def unknown_cells(spec) -> list:
     return sorted(str(key) for key in (spec or {}) if key not in REPORT_CELLS)
 
 
+#: A role's `rename`: {the report's key column: this table's column} - a table that spells the wafer's key by another
+#: name (소유자 10-24 «컨디션 wf 컬럼 이름 다르면 안됨?»). Every other cell of the role is in the report's names.
+RENAME = "rename"
+
+
+def column_of(role, name):
+    """`name` (the report's spelling) as the role's table spells it - its `rename`, else itself."""
+    renamed = (role or {}).get(RENAME) if isinstance(role, dict) else None
+    return str(renamed.get(name, name)) if isinstance(renamed, dict) else name
+
+
+def _by_position(role, wafer_key, every):
+    """A role's wafer list matched to the report's wafer key by POSITION (소유자 10-24 «의미적으로 wafer,leg ==
+    wafer_id,leg» · «매칭 알아서»): its i-th column, when it is not a report key name, is the report key's i-th -
+    the role then reads in the report's names and `rename` says its own."""
+    if not isinstance(role, dict) or WAFER_CELL not in role:
+        return role
+    names = wafer_columns(role[WAFER_CELL])
+    renamed = dict(role.get(RENAME) or {}) if isinstance(role.get(RENAME), dict) else {}
+    from database import crud
+    own = crud.TABLE_CONFIG.get(str(role.get("table") or ""), {}) or {}
+    own_keys = set(own.get("composite_key_source") or ()) | ({own["business_key"]} if own.get("business_key") else set())
+    out = []
+    for at, name in enumerate(names):
+        # only a KEY column of the role's own table stands in by position - a value column put in the list is still
+        # refused by name
+        if at < len(wafer_key) and name not in every and name in own_keys and wafer_key[at] not in names:
+            renamed.setdefault(wafer_key[at], name)
+            out.append(wafer_key[at])
+        else:
+            out.append(name)
+    return role if out == names else dict(role, **{WAFER_CELL: out, RENAME: renamed})
+
+
+def matched(spec):
+    """`spec` with every role's wafer list matched by position (`_by_position`) - what the save and the reads see."""
+    if not isinstance(spec, dict) or not isinstance(spec.get("wafer"), dict):
+        return spec
+    wafer_key = wafer_columns(spec["wafer"].get("key"))
+    every = wafer_key + [c for c in key_words(spec) if c not in wafer_key]
+    out = dict(spec)
+    for role in ROLE_COLUMNS:
+        if isinstance(spec.get(role), dict):
+            out[role] = _by_position(spec[role], wafer_key, every)
+    for cell in (INFO, PICTURE_ROWS):
+        value = spec.get(cell)
+        if isinstance(value, dict):
+            out[cell] = _by_position(value, wafer_key, every)
+        elif isinstance(value, list):
+            out[cell] = [_by_position(row, wafer_key, every) for row in value]
+    return out
+
+
 def wafer_columns(value) -> list:
     """A wafer cell as its list of columns - one column is a list of one."""
     if isinstance(value, str):
@@ -238,15 +293,17 @@ def _table_refusal(path, written, cells, lists, numbers, key_names):
         if names is None:
             return "%s.%s is a column name, got %r" % (path, cell, written[cell])
         for name in names:
-            if name not in known:
-                return "%s.%s %r is not a column of %r - name one of its columns" % (path, cell, name, table)
+            if column_of(written, name) not in known:
+                return "%s.%s %r is not a column of %r - name one of its columns%s" % (
+                    path, cell, column_of(written, name), table,
+                    ", or %s.%s {%r: <its column>}" % (path, RENAME, name) if cell == WAFER_CELL else "")
         if cell == WAFER_CELL:
             wafer_key, every, unit = key_names
             # 소유자 10-24 «키 컬럼 맞음» · «제대로 동기화 할거 아니면 화면 선언 막지마»: the table's own key columns pass too
             from database import crud
             own = crud.TABLE_CONFIG.get(str(table), {}) or {}
             own_keys = set(own.get("composite_key_source") or ()) | ({own["business_key"]} if own.get("business_key") else set())
-            stray = [name for name in names if name not in every and name not in own_keys]
+            stray = [name for name in names if name not in every and column_of(written, name) not in own_keys]
             if stray:
                 return ("%s.wafer %r is not a key column - the key columns a table has, by name: derive.report.wafer.key "
                         "(%s) and derive.report.keys" % (path, stray[0], ", ".join(wafer_key)))
@@ -348,7 +405,7 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     """Why this `derive.report` cannot be made, or None - the first reason, path first. `on_table` · `into_table`: the
     rule's, one report table (`report_key`); the summary table or a table without the wafer's column is refused by
     name. None: not checked."""
-    spec = spec if isinstance(spec, dict) else {}
+    spec = matched(spec) if isinstance(spec, dict) else {}
     missing = [role for role in REQUIRED_ROLES if not isinstance(spec.get(role), dict)]
     if missing:
         return "derive.report needs %s - each a table and its columns" % ", ".join(missing)

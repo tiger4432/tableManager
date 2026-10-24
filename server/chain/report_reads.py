@@ -72,14 +72,16 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
         if not wafers:
             return []
         for at, column in enumerate(keys):
-            filters[column] = _equals_any(column, sorted({str(w[at]) for w in wafers if w[at] is not None}))
+            filters[report_shape.column_of(role, column)] = _equals_any(
+                column, sorted({str(w[at]) for w in wafers if w[at] is not None}))
     try:
         query, _key = grid_read.narrowed_table_query(db, table, model, filters=json.dumps(filters) if filters else None)
     except HTTPException as refused:                       # a filter the table cannot take, by name (S-71)
         raise ReadRefused(str(refused.detail)) from None
     if newest:
-        query = query.order_by(getattr(model, newest).desc())
-    found = query.with_entities(*(getattr(model, c) for c in columns)).limit(READ_ROW_CAP + 1).all()
+        query = query.order_by(getattr(model, report_shape.column_of(role, newest)).desc())
+    found = query.with_entities(*(getattr(model, report_shape.column_of(role, c)) for c in columns)).limit(
+        READ_ROW_CAP + 1).all()
     if newest:
         found = found[:READ_ROW_CAP]
     elif len(found) > READ_ROW_CAP:
@@ -99,6 +101,7 @@ class Report:
         """`only`: one wafer as {column: value} - its report table's wafer columns (`report_shape.report_key`); this
         report's own group is the wafer table's rows of it (every leg of a wafer keyed by more columns, owner 10-23),
         and its evaluation is theirs."""
+        spec = report_shape.matched(spec)        # a role's wafer list by position (owner 10-24)
         self.db, self.spec, self.evaluation = db, spec, evaluation
         role = spec["wafer"]
         self.keys = report_shape.wafer_columns(role["key"])
