@@ -81,6 +81,10 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, ca
     import grid_read
     from fastapi import HTTPException
 
+    if capped and wafers is not None and len(wafers) > 1:
+        # a picture table is read wafer by wafer, each to the cap - one cap over them all kept the first wafers' rows
+        # and dropped every other wafer (owner 10-24 «10000rows 때문에 다른 wf 안나오는거 아니냐»)
+        return [row for wafer in wafers for row in _rows(db, role, columns, [wafer], where, newest, keys, capped)]
     table = role["table"]
     model = _model(table)
     filters = dict(where or {})
