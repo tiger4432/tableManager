@@ -42,7 +42,6 @@ figcaption { color: var(--muted); font-size: 12px; white-space: nowrap; overflow
 .text { white-space: pre-wrap; }
 .note { color: var(--muted); font-size: 12px; }
 section { min-width: 0; }
-.rpt-own { background: #ffe0b2; }
 th.rpt-own { background: #ffcc80; }
 """
 #: the report's own wafers' columns - orange (owner 10-24 «리포트 요청한 웨이퍼는 주황색으로 하이라이트»)
