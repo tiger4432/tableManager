@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐](#2026-10-24--ai-리포트-저장이-빈-파일--비교-묶음-실패를-미리-거절--layout-없음--sets-칸-빠짐) — 적는 곳 derive.report.layout · derive.report.sets · 보는 곳 체인 규칙 창 저장 거절 문구
 - 2026-10-24 [AI 리포트가 운영 데이터의 빈 칸 · 한 웨이퍼의 오류에 서지 않는다](#2026-10-24--ai-리포트가-운영-데이터의-빈-칸--한-웨이퍼의-오류에-서지-않는다) — 적을 것 없음 · 보는 곳 체인 워커 «[Report] … failed»
 - 2026-10-24 [키 조각을 바꾸는 쓰기가 행² 으로 느려지지 않는다 — 병합이 묶음 전체를 훑던 것](#2026-10-24--키-조각을-바꾸는-쓰기가-행²-으로-느려지지-않는다--병합이-묶음-전체를-훑던-것) — 적을 것 없음 · 보는 곳 체인 워커 «[Chain] group … INSIDE THE WRITE · row build»
 - 2026-10-24 [같은 체인 실패는 접고, 10 번 내리 실패한 규칙은 꺼진다 — 목록 · 터미널 · 자동 끄기](#2026-10-24--같은-체인-실패는-접고-10-번-내리-실패한-규칙은-꺼진다--목록--터미널--자동-끄기) — 보는 곳 체인 워커 터미널 · 실패 목록(by_cause) · 적는 곳 chain_rules.json 맨 위 `rule_off_after_failures`
@@ -572,6 +573,16 @@
 
 
 
+
+## 2026-10-24 · AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐
+
+- 무엇: 리포트 선언을 저장(· 로드)할 때 둘을 이름 대어 거절한다.
+  - `layout` 도 `template` 도 없음 → `derive.report.layout names no slot - the file is the slots in order, e.g. [...] (or a template)`. 전에는 저장되고, 파일이 제목 · Evidence 뿐이었고 모델이 쓸 글 자리도 없었다.
+  - `sets` 를 적었는데 `name` · `member` · `kind` 중 빈 칸 → `derive.report.sets.<칸> names no column - a compare set is read by name · member · kind`. 전에는 저장되고, 비교 묶음을 읽는 순간(기본 묶음 `default` 이 있거나 모델이 compare 를 부를 때) KeyError 로 리포트가 실패했다.
+- 선언 예시(chain_rules.json 의 derive.report): `"layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}, {"kind": "image"}]` · `"sets": {"table": "<묶음 표>", "name": "<묶음 이름 칸>", "member": "<멤버 칸>", "kind": "<종류 칸>", "kinds": {"evaluation": "<값>"}}`
+- 화면에서: 체인 규칙 창 폼의 sets 밑 name · member · kind 가 필수 칸으로 그려진다.
+- 바뀐 동작: 이미 로드된 리포트 규칙이 둘 중 하나에 걸리면 재기동 · 다시 읽기 때 그 규칙이 거절 문구와 함께 선다(전에는 돌고 빈 파일 · 실패).
+- 자세히: `server/chain/report_shape.py` 의 `refusal` · [AI 리포트 표](../guide/ai_report_tables.md).
 
 ## 2026-10-24 · AI 리포트가 운영 데이터의 빈 칸 · 한 웨이퍼의 오류에 서지 않는다
 

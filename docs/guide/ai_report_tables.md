@@ -53,7 +53,7 @@
 - `wafer` 키는 칸 하나 또는 목록 — 모든 역할이 같은 순서 · 같은 길이. 리포트 표는 그중 «자기가 가진 칸»으로 웨이퍼를 고른다.
 - `summary` — `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 또는 100). rate 만이면 «조건별 묶은 열»과 파레토는 거절.
 - `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어간다.
-- 거절(저장 · 로드, 이름을 댐): 요약표 위의 규칙 «the report rule stands on a report table of its own - …; the summary table '<표>' is read, never written» · 웨이퍼 칸 없는 표 «'<표>' has none of derive.report.wafer.key's columns (…)» · `on` ≠ `into` · `results.file` 이 리포트 표 칸이 아님.
+- 거절(저장 · 로드, 이름을 댐): 요약표 위의 규칙 «the report rule stands on a report table of its own - …; the summary table '<표>' is read, never written» · 웨이퍼 칸 없는 표 «'<표>' has none of derive.report.wafer.key's columns (…)» · `on` ≠ `into` · `results.file` 이 리포트 표 칸이 아님. · 🆕 10-24 `layout` 도 `template` 도 없음 «derive.report.layout names no slot - …» (전엔 저장되고 제목 · Evidence 뿐인 빈 파일) · `sets` 에 `name` · `member` · `kind` 중 빠진 칸 «derive.report.sets.<칸> names no column - …» (전엔 저장되고 비교 묶음을 읽는 순간 KeyError 로 리포트 실패).
 - `results` 의 `state` · `reason` 은 안 쓴다 — 적혀 있으면 저장 줄 «derive.report.results.state · reason is not written - …», 규칙은 선다.
 
 ## 2. 도는 것

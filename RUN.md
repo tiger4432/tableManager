@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 줄    체인 규칙 창 저장 · chain_worker.log 로드 줄의 리포트 규칙 거절 문구
+>          derive.report.layout names no slot - ...   -> layout 칸에 자리를 적는다(text summary · table yield_by · image) 또는 template
+>          derive.report.sets.<칸> names no column - ...  -> sets 에 name · member · kind 세 칸을 다 적는다(안 쓰면 sets 블록째 지움)
+> 뜻      전에는 저장되고 layout 없음 = 제목 · Evidence 뿐인 빈 파일, sets 칸 빠짐 = 비교 묶음 읽는 순간 KeyError 로 리포트 실패
+>          재기동 뒤 리포트 규칙이 거절로 서면 그 선언이 위 둘 중 하나였던 것 — 문구대로 적으면 다시 돈다
+> 되돌리기  git revert $(git log -1 --format=%h --grep='layout names no slot' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **AI 리포트가 요약 칸의 글자(«», «N/A») · 한 웨이퍼의 오류에 서지 않는다 (be72facbb)** — git pull · 런처 재기동
 >
 > ```

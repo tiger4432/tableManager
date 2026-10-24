@@ -113,6 +113,8 @@ SETS_DEFAULT = "default"
 #: the wafer table's own cells of that name are what it picks by (lead 10-22: no such word in code).
 SETS_KINDS = "kinds"
 KIND_ROLES = ("evaluation", "lot")
+#: The columns a compare set is read by (`report_reads.Report._sets`) - each a sets block must name.
+SETS_COLUMNS = ROLE_COLUMNS["sets"]
 
 
 def info_rows(spec) -> list:
@@ -146,6 +148,8 @@ def _role_node(role):
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})
         fields.append({"key": SETS_KINDS, "required": True, "node": _record(KIND_ROLES, "free")})
+        for field in fields:
+            field["required"] = field["required"] or field["key"] in SETS_COLUMNS
     return {"kind": "record", "fields": fields}
 
 
@@ -501,6 +505,10 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
             summary.get(RATE_SCALE),)
     sets = spec.get("sets")
     if isinstance(sets, dict):
+        unnamed = [cell for cell in SETS_COLUMNS if not sets.get(cell)]
+        if unnamed:
+            return ("derive.report.sets.%s names no column - a compare set is read by %s"
+                    % (unnamed[0], " · ".join(SETS_COLUMNS)))
         kinds = sets.get(SETS_KINDS)
         said = {role: value for role, value in (kinds.items() if isinstance(kinds, dict) else ())
                 if isinstance(value, str) and value.strip()}
@@ -520,6 +528,11 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     for cell in LOOP_CELLS:
         if cell in (spec.get("loop") or {}) and not _whole(spec["loop"][cell], 1):
             return "derive.report.loop.%s must be a whole number from 1, got %r" % (cell, spec["loop"][cell])
+    template = spec.get("template")
+    if not spec.get("layout") and not (isinstance(template, str) and template.strip()):
+        return ("derive.report.layout names no slot - the file is the slots in order, e.g. "
+                '[{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}, {"kind": "image"}] '
+                "(or a template)")
     for at, slot in enumerate(spec.get("layout") or ()):
         kind = slot.get("kind") if isinstance(slot, dict) else None
         if kind not in SLOT_KINDS:
