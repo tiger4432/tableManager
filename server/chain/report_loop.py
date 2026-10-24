@@ -200,6 +200,9 @@ def _call(report, said, seen):
         return getattr(report, call)(**args), None
     except report_reads.ReadRefused as refused:
         return None, str(refused)
+    except Exception as exc:                                        # noqa: BLE001 - one read's data, said to the model
+        logger.error("[Report] %s failed: %s: %s", call, type(exc).__name__, exc, exc_info=exc)
+        return None, "the read failed: %s: %s" % (type(exc).__name__, exc)
 
 
 def run(report, spec, request, ask=None, clock=time.monotonic):
@@ -335,6 +338,10 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
             out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": []}, ask=ask, clock=clock)
         except report_reads.ReadRefused as refused:
             out = {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
+        except Exception as exc:                                    # noqa: BLE001 - this wafer stops, the others go on
+            logger.error("[Report] %s wafer %s failed: %s: %s", name, said, type(exc).__name__, exc, exc_info=exc)
+            out = {"state": STOPPED, "reason": "%s: %s" % (type(exc).__name__, exc), "steps": [], "texts": {},
+                   "tables": {}}
         for s in out["steps"]:
             logger.info("[Report] %s wafer %s step %d %s - %s", name, said, s["step"], s["call"],
                         s.get("refused") or s["summary"])

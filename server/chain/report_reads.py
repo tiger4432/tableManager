@@ -252,7 +252,7 @@ class Report:
         role = self.spec["summary"]
         cells = [cell for cell in SUMMARY_CELLS if role.get(cell)]
         found, twice = self._pairs(role, [role[cell] for cell in cells], wafers)
-        return {pair: {cell: None if value is None else float(value) for cell, value in zip(cells, row)}
+        return {pair: {cell: _number(value) for cell, value in zip(cells, row)}
                 for pair, row in found.items()}, twice
 
     def _info(self, columns, chosen=None):
@@ -726,6 +726,16 @@ def _shown(value) -> str:
     from database import crud
 
     return EMPTY if crud.is_blank_value(value) else str(value)
+
+
+def _number(value):
+    """A summary cell as a number - None for a blank or a text that is none («», «N/A»: ops data, owner 10-24 «빈값 등은
+    당연히 있는데»), so one cell cannot stop a report."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number == number and abs(number) != float("inf") else None
 
 
 def _count(value):
