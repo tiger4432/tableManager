@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 표 · 그림은 제품이 채운다 — 모델이 안 불러도, 엉뚱한 자리의 layout 은 이름 댐** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이 (리포트 표 행 하나로 충분)
+> 볼 것    리포트 파일에 표 · 그림이 나오면 고쳐진 것 (전: 제목 · Evidence 뿐)
+>          Evidence 첫 줄 «done» -> 모델이 글도 씀
+>          «stopped - the language model call was refused: <사유>» -> 게이트웨이 문제(llm_config.json 주소 · 키 · 프록시). 표 · 그림은 그래도 나옴
+>          «N product yield_by() - …» -> 제품이 채운 표. «refused: …» 면 그 사유가 표가 빈 이유
+>          chain_worker.log 로드 줄 «layout is read under derive.report» -> layout 을 derive.report 안으로 옮김 (그 전엔 기본 배치)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='read by the product' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 역할 표가 웨이퍼 키를 다른 이름으로 적어도 된다 — 제 키 칸이면 같은 차례로 맞춤 · rename (b6b370203 · 6724000a7)** — git pull · 런처 재기동
 >
 > ```

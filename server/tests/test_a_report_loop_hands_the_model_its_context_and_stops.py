@@ -109,7 +109,8 @@ def test_the_budget_cuts_the_last_result_then_the_conditions_then_stops():
     assert out["steps"][1]["cut"]["6"] < 4 and out["steps"][1]["cut"]["4"] < 40
     starved = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 100})
     out = report_loop.run(FakeReport(), starved, REQUEST, ask=Model(), clock=Clock())
-    assert (out["state"], out["reason"], out["steps"]) == ("stopped", "context over budget", [])
+    assert (out["state"], out["reason"]) == ("stopped", "context over budget")
+    assert [s["call"] for s in out["steps"]] == ["product yield_by()"], "the layout's table is read by the product"
 
 
 def test_what_a_gateway_counted_corrects_the_reckoning():

@@ -255,9 +255,48 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         record["summary"] = (previous[0] if previous else "")[:200]
         record["read"] = previous[1:]                       # the Evidence's lines under it (lead 10-23)
         steps.append(record)
+    _product_reads(report, spec, tables, reads, steps, clock)
     if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
         _write(spec, request, reads, budget, ask, clock, out)
     return out
+
+
+def filled_slots(spec) -> tuple:
+    """(the table reads, whether the images) the file shows - the layout's slots, or a template's marks."""
+    from chain import report_template
+
+    template = (spec or {}).get("template")
+    if isinstance(template, str) and template.strip():
+        marks = {name for _s, _e, name in report_template.read(template).slots}
+        return ([fill for fill in report_shape.TABLE_FILLS if report_template.TABLE_PREFIX + fill in marks],
+                "images" in marks)
+    slots = report_shape.layout(spec)
+    return ([slot.get("fill") for slot in slots if slot.get("kind") == "table"],
+            any(slot.get("kind") == "image" for slot in slots))
+
+
+def _product_reads(report, spec, tables, reads, steps, clock):
+    """The file's tables and images the model did not read, read by the product with no arguments - this evaluation's
+    wafers and every group beside them (owner: AI makes rules, the product does the work; lead 10-24 - the model
+    writes only the text slots). A step each in the Evidence, «product <read>()», and the write call reads them."""
+    fills, image = filled_slots(spec)
+    calls = [fill for fill in dict.fromkeys(fills) if fill not in tables]
+    if image and not report.embedded and (spec or {}).get("images"):
+        calls.append("images")
+    for call in calls:
+        began = clock()
+        try:
+            answer, refused = getattr(report, call)(), None
+        except report_reads.ReadRefused as said:
+            answer, refused = None, str(said)
+        lines = answer["context"].splitlines() if answer else ["refused: " + refused]
+        name = "product %s()" % call
+        if answer:
+            if call in report_shape.TABLE_FILLS:
+                tables[call] = answer["html"]
+            reads.append((len(steps) + 1, name, lines))
+        steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": name, "seconds": clock() - began,
+                      "refused": refused, "summary": (lines[0] if lines else "")[:200], "read": lines[1:]})
 
 
 def _write(spec, request, reads, budget, ask, clock, out):

@@ -698,6 +698,16 @@ def unread_cells(declaration: dict) -> list:
     return [(where, cells) for where, cells in (("top-level", top), ("derive", under)) if cells]
 
 
+def _report_home(declaration, cells) -> str:
+    """A report's cell written outside `derive.report` - where it is read (lead 10-24: an ops layout written beside
+    derive.report was not read and the file came out empty)."""
+    derive = declaration.get("derive") or {}
+    if derive.get("kind") != "report" and not isinstance(derive.get("report"), dict):
+        return ""
+    home = [cell for cell in cells if cell in report_shape.REPORT_CELLS]
+    return " %s is read under derive.report." % ", ".join(home) if home else ""
+
+
 def flat_cell_notes(rule) -> list:
     """The loader's 「still written flat」 line for one rule (`chain_bindings.rule_warnings`), as a note - said where
     the other cells a rule does not read are said, so the save answers it too (총괄 10-11 ③)."""
@@ -769,7 +779,8 @@ def expand_declaration(declaration, table_config=None,
     #    return below carries them, so the save's refusal and the loader's line name what it does not read.
     unified = isinstance(declaration, dict) and isinstance(declaration.get("derive"), dict)
     name = declaration.get("name") if isinstance(declaration, dict) else None
-    unread = ["%s: %s cell this product does not read \u2014 %s." % (name, where, ", ".join(cells))
+    unread = ["%s: %s cell this product does not read \u2014 %s.%s" % (name, where, ", ".join(cells),
+                                                                      _report_home(declaration, cells))
               for where, cells in unread_cells(declaration)] if unified else flat_cell_notes(declaration)
     flags = chain_bindings.flag_refusals(declaration)
     if flags:
