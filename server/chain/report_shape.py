@@ -126,7 +126,8 @@ RECENT_CELLS = ("days", "evaluations")
 #: `control.same`: the wafer table's columns a control candidate shares with this report's wafers - the operator names
 #: them (a product group, say; owner 10-23 「제품군도 필터링」). Empty or absent filters nothing.
 CONTROL_SAME = "same"
-CONTROL_LIMITS = {"max_wafers": 30, "max_evaluations": 3}
+#: wider by default - three was too few to compare (owner 10-24 «웨이퍼 리스트는 좀 더 충분히 · 많은데도 3 개만»)
+CONTROL_LIMITS = {"max_wafers": 100, "max_evaluations": 12}
 NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
 #: `formats`: item -> rules, the first that holds colours the cell - a fixed bar on the cell's share (`when`, `value`
 #: in percent) or this evaluation against the other groups' F sum / N sum (`vs` control, `times`) (owner 10-23).

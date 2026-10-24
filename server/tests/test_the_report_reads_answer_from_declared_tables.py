@@ -177,6 +177,9 @@ def test_candidates_are_the_recent_evaluations_folded_newest_first(report, db_se
 
 
 def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
+    # the named evaluation alone here - the neighbours (just before / after this report's latest) are measured below
+    report._recent()
+    anchor, report._anchor = report._anchor, None
     assert report.compare(evaluations=["E2"])["context"] == "compare E2: 2 wafers (wafer_id W6, wafer_id W5)"
     table = report.yield_by()["html"]
     assert table["groups"] == [("compare E2", ["wafer_id W6", "wafer_id W5"]),
@@ -191,6 +194,11 @@ def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
         "particle [compare E2]: first 4.00% last 2.00% least 2.00% most 4.00% over 2 wafers"]
     report.compare(wafers=["W7"])
     assert [name for name in report.groups] == ["E1", "compare E3"], "a new pick replaces the compare wafers"
+    # the candidate just before this report's latest wafer is taken beside the one named, past the limits
+    # (owner 10-24 «날짜상 직전, 직후는 무조건 뽑아»); E3 is the latest before E1's, so naming E2 takes E3 too
+    report._anchor = anchor
+    report.compare(evaluations=["E2"])
+    assert set(report.groups) == {"E1", "compare E2", "compare E3"}
 
 
 @pytest.mark.parametrize("said, refused", [

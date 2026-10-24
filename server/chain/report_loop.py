@@ -49,7 +49,7 @@ ABOUT = {
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
     "candidates": "the recent evaluations compare wafers may come from - name, date, wafers, conditions",
     "compare": "the compare sets' wafers (sets), or compare wafers from the recent evaluations (evaluations, wafers), "
-               "read beside this evaluation's in every table after it; why: the candidates you took and why",
+               "read beside this evaluation's in every table after it; why: the candidates you took and why; take enough for a trend",
 }
 ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by", "rows"), "pareto": ("wafers",), "trend": ("wafers", "items"),
         "images": ("wafers", "items"), "candidates": (), "compare": ("sets", "evaluations", "wafers")}

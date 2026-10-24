@@ -819,6 +819,7 @@ class Report:
         if not here and not each:
             raise ReadRefused("%s's wafers say no time - recent is counted back from its latest" % self.evaluation)
         anchor = max(here) if here else None
+        self._anchor = anchor
         # `control.same`: a candidate shares those columns' values with this report's wafers
         alike = {self.wafers[w]["same"] for w in own}
         by = {}
@@ -978,6 +979,14 @@ class Report:
             self.spec, "max_wafers")
         if total > most:
             raise ReadRefused("%d wafers - control.max_wafers is %d; name fewer wafers" % (total, most))
+        # the candidate just before this report's latest wafer and the one just after it, always (owner 10-24 «날짜상
+        # 직전, 직후는 무조건 뽑아»)
+        anchor = getattr(self, "_anchor", None)
+        dated = [(entry["latest"], name) for name, entry in found.items() if entry["latest"] is not None]
+        for near in ((max((d for d in dated if d[0] <= anchor), default=None),
+                      min((d for d in dated if d[0] > anchor), default=None)) if anchor is not None else ()):
+            if near and near[1] not in chosen:
+                groups[near[1]] = self._ordered(found[near[1]]["wafers"])   # past the limits
         control = report_shape.word(self.spec, "control")
         for name in [n for n in self.groups if n.startswith(control + " ")]:
             del self.groups[name]
