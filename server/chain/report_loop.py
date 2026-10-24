@@ -251,6 +251,8 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             seen[record["call"]] = step
             if said["call"] in report_shape.TABLE_FILLS:
                 tables[said["call"]] = answer["html"]
+                drawn = report.__dict__.setdefault("drawn", {})     # its args and the groups it was drawn with
+                drawn[said["call"]] = (said.get("args") or {}, tuple(report.groups))
             previous = answer["context"].splitlines()
             reads.append((step, record["call"], previous))
         else:
@@ -283,6 +285,23 @@ def _product_reads(report, spec, tables, reads, steps, clock):
     wafers and every group beside them (owner: AI makes rules, the product does the work; lead 10-24 - the model
     writes only the text slots). A step each in the Evidence, «product <read>()», and the write call reads them."""
     fills, image = filled_slots(spec)
+    # a table the model drew before it picked the compare wafers is drawn again with them (owner 10-24 «wf pick 이라고
+    # 있는데 표에 없음») - the same args, every group now read
+    for call, (args, groups) in list(report.__dict__.get("drawn", {}).items()):
+        if call in tables and tuple(report.groups) != groups:
+            began = clock()
+            try:
+                answer, refused = getattr(report, call)(**args), None
+            except report_reads.ReadRefused as said:
+                logger.warning("[report] %s() again refused: %s", call, said, exc_info=said)
+                answer, refused = None, str(said)
+            lines = answer["context"].splitlines() if answer else ["refused: " + refused]
+            if answer:
+                tables[call] = answer["html"]
+                reads.append((len(steps) + 1, "product %s() again" % call, lines))
+            steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product %s() again" % call,
+                          "seconds": clock() - began, "refused": refused, "summary": (lines[0] if lines else "")[:200],
+                          "read": lines[1:]})
     calls = [fill for fill in dict.fromkeys(fills) if fill not in tables]
     if image and not report.embedded and (spec or {}).get("images"):
         calls.append("images")
