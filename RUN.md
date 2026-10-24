@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 역할의 wafer 목록에 그 표 자신의 키 칸도 된다 — keys 에 안 적어도 됨 (b6b370203)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+> 무엇     역할(summary · images · conditions · info · picture_rows)의 wafer 목록에 적은 칸이
+>          그 표의 키 칸(table_config composite_key_source · business_key)이면 통과
+>          (전: wafer.key · keys 에 없으면 «'<칸>' is not a key column» 으로 규칙 거절)
+> 볼 곳    체인 규칙 창에서 그 리포트 규칙 저장 -> 거절 없이 저장되면 고쳐진 것
+> 아직 거절  «… is not a key column»  -> 그 칸이 표의 키 칸도 아님. 표 키 칸으로 바꾸거나 keys 에 적기
+>          «… names none of the report's wafer (…)»  -> 목록에 wafer.key 칸이 하나도 없음(또는 keys 의 unit 칸이 빠짐)
+> 끄기    없음
+> ```
+
+---
+
 > ## [10-24] **키 조각(x · y)을 바꾸는 소급이 행² 으로 느려지지 않는다 — 병합이 묶음 전체를 훑던 것 (총괄 be730e1e7, 4f32e0ce7)** — git pull · 런처 재기동
 >
 > ```

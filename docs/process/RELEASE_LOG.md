@@ -18,8 +18,10 @@
 - 2026-10-24 [체인 실패 줄이 «어디서»를 말한다 — 맵퍼 파일:줄 · 함수](#2026-10-24--체인-실패-줄이-어디서를-말한다--맵퍼-파일줄--함수) — 보는 곳 chain_worker.log «원인:» 줄 · 대기열 Recent failures
   - 2026-10-24 [체인 실패 트레이스백이 터미널에 — 영구 실패 줄 바로 밑에 전체](#2026-10-24--체인-실패-트레이스백이-터미널에--영구-실패-줄-바로-밑에-전체) — 보는 곳 런처 터미널(체인 워커 줄) — .log 파일 · 어드민 화면 필요 없음
 - 2026-10-24 [뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것](#2026-10-24--뭉치기-조인이-키마다-한-번-계산한다--함수--내장-fn-이-대상-행마다-돌던-것) — 적는 곳 없음(선언 그대로) · 보는 곳 chain_worker.log [Latency]
+- 2026-10-24 [AI 리포트 역할의 wafer 목록에 그 표 자신의 키 칸도 된다 — keys 에 안 적어도 «not a key column» 거절 안 함](#2026-10-24--ai-리포트-역할의-wafer-목록에-그-표-자신의-키-칸도-된다--keys-에-안-적어도-not-a-key-column-거절-안-함) — 적는 곳 없음(table_config 의 composite_key_source · business_key) · 보는 곳 체인 규칙 창 저장
 - 2026-10-24 [AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭](#2026-10-24--ai-리포트-파일--다시-세로-나열--머리-단-이름date--wafer--leg--표는-창-폭) — 적는 곳 derive.report.labels.columns · 보는 곳 리포트 파일
 - 2026-10-23 [AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름](#2026-10-23--ai-리포트-키-칸--keys-한-곳unit--latest--fold-표마다-가진-키-칸-이름) — 적는 곳 derive.report.keys · 역할의 wafer 목록 · 보는 곳 리포트 파일
+  - ⚠️ 부분 은퇴: «다른 이름이면 not a key column 거절» — 그 표 자신의 키 칸이면 통과 — 2026-10-24 [AI 리포트 역할의 wafer 목록에 그 표 자신의 키 칸도 된다 — keys 에 안 적어도 «not a key column» 거절 안 함](#2026-10-24--ai-리포트-역할의-wafer-목록에-그-표-자신의-키-칸도-된다--keys-에-안-적어도-not-a-key-column-거절-안-함)
 - 2026-10-23 [체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름](#2026-10-23--체인-규칙-창에서-조인-take-항목을-기록으로--record-from-칸-목록-친-칸-이름) — 누르는 곳 체인 규칙 창 → derive join → take 칩 끝의 «+ record»
 - 2026-10-23 [AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg · 행 조건 · 수율 · 불량 (소유자 그림)](#2026-10-23--ai-리포트-비교-표--열-날짜--웨이퍼--leg--행-조건--수율--불량-소유자-그림) — 적는 곳 derive.report.columns · label · choose · picture_rows.source · 보는 곳 리포트 파일 오른쪽 표
 - 2026-10-23 [AI 리포트 대조 후보 — 웨이퍼 하나에 날짜 하나 · 늦은 웨이퍼도 후보 · 칸 이름 Rows](#2026-10-23--ai-리포트-대조-후보--웨이퍼-하나에-날짜-하나--늦은-웨이퍼도-후보--칸-이름-rows) — 보는 곳 리포트 파일의 후보 표
@@ -721,6 +723,13 @@
 - **함께** — 하위 폴더 다시 보기 스레드가 `subfolder_recheck_seconds` 를 기다리는지 시험 칸(스윕 주기를 기다리는 변이가 빨강).
 - **필요한 조건** — git pull · 런처 재기동(와처 새 코드).
 - **자세히** — [INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) «생성 시점» · 시험 `test_a_table_added_while_the_watcher_runs_reads_its_raws.py`.
+
+## 2026-10-24 · AI 리포트 역할의 wafer 목록에 그 표 자신의 키 칸도 된다 — keys 에 안 적어도 «not a key column» 거절 안 함
+
+- **무엇** — 소유자 10-24 «키 컬럼 맞음» · «제대로 동기화 할거 아니면 화면 선언 막지마». 역할(summary · images · conditions · info · picture_rows)의 `wafer` 목록에 적은 칸이 웨이퍼 키(`wafer.key`)에도 `keys` 에도 없으면 규칙을 «'<칸>' is not a key column» 으로 거절했습니다. 이제 그 칸이 그 역할 표 자신의 키 칸(table_config 의 `composite_key_source` · `business_key`)이면 통과합니다 — `keys` 에 한 줄 더 적을 필요가 없습니다.
+- **그대로인 것** — 표의 키 칸도 아니고 `wafer.key` · `keys` 에도 없는 칸은 전처럼 거절합니다. 목록에 웨이퍼 키 칸이 하나도 없거나 `keys` 의 unit 칸이 빠지면 «names none of the report's wafer» 로 거절합니다.
+- **필요한 조건** — git pull · 런처 재기동(API). 선언은 바꿀 것 없음.
+- **자세히** — `chain/report_shape.py` 의 `_table_refusal` (`b6b370203`, 시험 `1dec19168`).
 
 ## 2026-10-24 · AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭
 
