@@ -600,13 +600,21 @@ class Report:
         rows = self._matched(role, [role["item"], role["image"]], picked)
         # a chip's rows (owner 10-23: a layer a row, the chip seen through) - the smallest fold values first, keys' order
         rows.sort(key=lambda pair: [_ordinal(pair[1][2 + at]) for at in fold])
+        # images.match: an image kind is its summary item's picture; with match declared, a kind it pairs with nothing
+        # and no summary item is named shows under itself, after a line naming it (lead 10-24: no silent drop)
+        match, items = report_shape.image_match(self.spec), {item for _w, item in found}
+        unpaired = {}
         chosen, counts, seen = {}, {}, set()
         for wafer, row in rows:
             ref = "%s:%s" % (source, row[1]) if source and row[1] else row[1]
             whose = (wafer, tuple(row[2 + at] for at in chip))
-            for item in ([part.strip() for part in str(row[0]).split(sep)] if sep else [str(row[0])]):
-                if (wafer, item) not in occurred or (wanted and item not in wanted) or not ref:
+            for kind in ([part.strip() for part in str(row[0]).split(sep)] if sep else [str(row[0])]):
+                item = match.get(kind, kind)
+                alone = bool(match) and kind not in match and kind not in items and kind != "None"
+                if not alone and (wafer, item) not in occurred or (wanted and item not in wanted) or not ref:
                     continue
+                if alone:
+                    unpaired.setdefault(kind, [])
                 if fold and (item, whose) in seen:              # one picture a chip and defect - the first layer
                     continue
                 seen.add((item, whose))
@@ -614,9 +622,13 @@ class Report:
                 if counts.get((item, wafer), 0) >= per_item:
                     continue
                 picture = _picture(ref, px)
-                chosen.setdefault(item, []).append(dict(picture, wafer=self.said(wafer)))
+                (unpaired[kind] if alone else chosen.setdefault(item, [])).append(dict(picture, wafer=self.said(wafer)))
                 if "src" in picture:
                     counts[(item, wafer)] = counts.get((item, wafer), 0) + 1
+        if unpaired:
+            # the line, then each unpaired kind under itself - after the paired items
+            chosen[report_shape.word(self.spec, "unpaired") % ", ".join(sorted(unpaired))] = []
+            chosen.update(sorted(unpaired.items()))
         self.embedded.update(chosen)
         each = {}
         for (item, _wafer), n in counts.items():

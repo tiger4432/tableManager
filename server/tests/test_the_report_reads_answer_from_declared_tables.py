@@ -212,6 +212,34 @@ def test_images_are_this_evaluations_occurred_defects_embedded_not_told(report):
         report.images(["W0"])
 
 
+def test_image_kinds_are_paired_with_a_summary_item_by_match(report, db_session, tmp_path):
+    """images.match (owner 10-24 «void, signal -> typeA»): the image table's kinds void and signal are particle's
+    pictures; dust, paired with nothing and no summary item, shows under itself after a line naming it. Without
+    match the three are not pictures of an occurred item - today's same-name rule."""
+    m = models.DYNAMIC_TABLES
+    for n, kind in enumerate(["void", "signal", "dust"], start=10):
+        (tmp_path / "pics" / ("p%d.png" % n)).write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([n]))
+        db_session.add(m["rr_image"](row_id="i%d" % n, image_id="i%d" % n, wafer_id="W1", defect_item=kind,
+                                     image_path="pics:p%d.png" % n))
+    db_session.commit()
+    report.spec["images"]["per_item"] = 9
+    assert [(item, len(pictures)) for item, pictures in report.images()["html"].items()] == [("particle", 2)]
+    report.embedded = {}
+    report.spec["images"]["match"] = {"particle": ["void", "signal"]}
+    unpaired = "Image kinds no summary item matches (images.match): dust"
+    assert [(item, len(pictures)) for item, pictures in report.images()["html"].items()] == [
+        ("particle", 4), (unpaired, 0), ("dust", 1)]
+    assert list(report.embedded) == ["particle", unpaired, "dust"], "the file draws them in that order"
+    report.spec["images"]["match"] = {"particle": "void"}
+    assert [item for item in report.images()["html"]] == [
+        "particle", "Image kinds no summary item matches (images.match): dust, signal", "dust", "signal"], \
+        "a kind written alone is a list of one"
+    from chain import report_shape
+
+    refused = report_shape.refusal(dict(SPEC, images=dict(SPEC["images"], match={"particle": 3})))
+    assert refused.startswith("derive.report.images.match is {summary item: image kind or [image kinds]}"), refused
+
+
 def test_a_compare_set_is_a_second_group_of_columns(report):
     """The kind column's values are the declaration's (sets.kinds) - «eval» written there is not one of them."""
     assert report.compare(["baseline", "keylots"])["context"].splitlines() == [

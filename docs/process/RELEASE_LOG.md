@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)](#2026-10-24--ai-리포트-그림-짝--imagesmatch-로-그림-표의-종류를-요약-항목에-void-signal---typea) — 적는 곳 derive.report.images.match · 보는 곳 리포트 그림
 - 2026-10-24 [AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다](#2026-10-24--ai-리포트-표에-대조-웨이퍼와-조건-묶음--선언된-비교controlrecent--setsdefault를-제품이-읽는다) — 적는 곳 derive.report.control.recent · sets.default · 보는 곳 리포트 표
 - 2026-10-24 [AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기](#2026-10-24--ai-리포트--키-조각마다-칸-이름wafer-w1--leg-l1-웨이퍼-밑에-leg-묶기) — 적는 곳 derive.report.labels.columns(선택) · 보는 곳 리포트 글 · 표 열 이름 · Evidence
 - 2026-10-24 [AI 리포트 표 · 그림은 제품이 채운다 — 모델이 안 불러도, 엉뚱한 자리의 layout 은 이름 댐](#2026-10-24--ai-리포트-표--그림은-제품이-채운다--모델이-안-불러도-엉뚱한-자리의-layout-은-이름-댐) — 적을 것 없음 · 보는 곳 리포트 파일 · Evidence · 체인 규칙 창 저장 줄
@@ -579,6 +580,17 @@
 
 
 
+
+## 2026-10-24 · AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)
+
+- 무엇: 요약표가 정리한 종류와 그림 표가 쓰는 종류의 철자가 달라 그림이 항목 밑에 하나도 안 붙었다(소유자 «이거 정리하는 kind랑 이미지에 쓰는 kind랑 달라»).
+  - `images.match`: {요약 항목: 그림 종류 또는 [그림 종류들]}. 짝 지은 종류의 그림은 그 요약 항목 밑에(그 항목이 그 웨이퍼에 났을 때, per_item 안).
+  - match 를 적었는데 어떤 짝에도 없고 요약 항목 이름도 아닌 종류는 맨 뒤에 한 줄 «Image kinds no summary item matches (images.match): <종류들>» 과 그 밑에 제 이름으로 — 조용히 안 버림.
+  - match 를 안 적으면 오늘처럼 같은 이름끼리.
+  - 저장 거절: 값이 글자나 글자 목록이 아님 «derive.report.images.match is {summary item: image kind or [image kinds]}, e.g. {"typeA": ["void", "signal"]}; got …»
+- 선언 예시(chain_rules.json 의 derive.report.images): `"match": {"typeA": ["void", "signal"]}`
+- 화면에서: 체인 규칙 창 폼의 images 밑 match — 항목 이름마다 종류 목록.
+- 자세히: `server/chain/report_shape.py` 의 `image_match`, `report_reads.Report.images`.
 
 ## 2026-10-24 · AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다
 

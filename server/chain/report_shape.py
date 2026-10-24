@@ -32,6 +32,10 @@ ITEM_SEP = "item_sep"
 #: `images.source`: the image source (image_sources.json) an image column's plain path is read through - the path
 #: written as it is, `<source>:<path>` made here (owner 10-23: img_path is an absolute path).
 IMAGE_SOURCE = "source"
+#: `images.match`: {summary item: image kind or [image kinds]} - the image table's kinds a summary item's pictures are
+#: (owner 10-24 «void, signal -> typeA»: {"typeA": ["void", "signal"]}). Undeclared, a picture is its summary item by
+#: the same name.
+IMAGE_MATCH = "match"
 #: The roles a report cannot be made without.
 REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
@@ -104,7 +108,7 @@ LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
           "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence",
-          "conditions": "Conditions",
+          "conditions": "Conditions", "unpaired": "Image kinds no summary item matches (images.match): %s",
           "no_control": "This report's wafers only - no compare set default or control.recent is declared."}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
@@ -140,6 +144,16 @@ def sets_role(spec):
     return sets if isinstance(sets, dict) and all(sets.get(cell) for cell in SETS_COLUMNS) else None
 
 
+def image_match(spec) -> dict:
+    """`images.match` as {image kind: summary item} - a kind written alone a list of one; {} undeclared."""
+    match = ((spec or {}).get("images") or {}).get(IMAGE_MATCH)
+    out = {}
+    for item, kinds in (match.items() if isinstance(match, dict) else ()):
+        for kind in [kinds] if isinstance(kinds, str) else kinds if isinstance(kinds, list) else ():
+            out.setdefault(str(kind), str(item))
+    return out
+
+
 def info_rows(spec) -> list:
     """`derive.report.info` as a list of its tables - one written alone is a list of one."""
     info = (spec or {}).get(INFO)
@@ -165,6 +179,9 @@ def _role_node(role):
     if role == "images":
         fields += [{"key": cell, "required": False, "node": {"kind": "leaf", "hint": "free"}}
                    for cell in (ITEM_SEP, IMAGE_SOURCE)]
+        fields.append({"key": IMAGE_MATCH, "required": False, "node": {
+            "kind": "map", "keyed_by": "name", "member": "item",
+            "of": chain_bindings.list_node("kind", {"kind": "leaf", "hint": "free"})}})
     if role == "summary":
         fields.append({"key": LABEL, "required": False, "node": {"kind": "leaf", "hint": "free"}})
     if role == "sets":
@@ -448,6 +465,12 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
                                   key_names)
             if said:
                 return said
+    match = (spec.get("images") or {}).get(IMAGE_MATCH) if isinstance(spec.get("images"), dict) else None
+    if match is not None and not (isinstance(match, dict) and all(
+            isinstance(kinds, str) or isinstance(kinds, list) and all(isinstance(k, str) for k in kinds)
+            for kinds in match.values())):
+        return ('derive.report.images.match is {summary item: image kind or [image kinds]}, e.g. '
+                '{"typeA": ["void", "signal"]}; got %r' % (match,))
     info = spec.get(INFO)
     if info is not None and not isinstance(info, (dict, list)):
         return "derive.report.info is a table and its columns, or a list of them, got %r" % (info,)

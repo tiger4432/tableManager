@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   chain_rules.json 의 derive.report.images 에  "match": {"typeA": ["void", "signal"]}
+>          (요약 항목 이름: 그 항목으로 볼 그림 표의 종류들. 하나면 "typeA": "void")
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    그림이 요약 항목 이름 밑에 붙으면 고쳐진 것
+>          맨 뒤 «Image kinds no summary item matches (images.match): A, B» -> A, B 를 match 의 어느 항목에 넣는다 (그 전엔 제 이름 밑에 그대로 나옴)
+>          저장 거절 «derive.report.images.match is {summary item: image kind or [image kinds]} …» -> 값을 글자 또는 글자 목록으로
+> 되돌리기  git revert $(git log -1 --format=%h --grep='images.match pairs' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다** — git pull · 런처 재기동
 >
 > ```

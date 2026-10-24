@@ -1408,6 +1408,24 @@
                           "kind": "leaf",
                           "hint": "free"
                         }
+                      },
+                      {
+                        "key": "match",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "item",
+                          "of": {
+                            "kind": "map",
+                            "keyed_by": "index",
+                            "member": "kind",
+                            "of": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          }
+                        }
                       }
                     ]
                   }
@@ -2167,6 +2185,30 @@
                       },
                       {
                         "key": "evidence",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "conditions",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "unpaired",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "no_control",
                         "required": false,
                         "node": {
                           "kind": "leaf",
