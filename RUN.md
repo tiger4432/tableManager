@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **이미지 칸의 온전한 경로 — 그림 파일은 그대로 읽힌다 · 공유 경로 \\\\ 도 (5374f21aa)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. image_sources.json 은 그대로 (그림 파일은 folder 소스가 없어도 됨)
+> 무엇     칸 값이 C:\…\a.png · \\server\share\a.png 처럼 그림 파일의 온전한 경로면 그 경로 그대로 읽음
+>          공유 경로를 \\\\server\\share\\a.png (역슬래시 모두 겹) · //server/share/a.png 로 적어도 같은 경로
+>          (전: «… is under no folder source of image_sources.json …» 404)
+> 볼 곳    리포트 그림 · 그리드 이미지 칸 -> 그림이 나오면 고쳐진 것
+> 아직 «no file '<경로>' - this server cannot see it (…)»
+>          -> 서버 프로세스가 그 공유에 로그온 안 됐거나 다른 PC 의 경로. 서버 PC 에서 그 경로가 열리는지부터
+> 아직 «… is under no folder source …»  -> 그림 확장자(png · jpg · jpeg · bmp · gif · tif · tiff · webp)가 아닌 파일
+> 끄기    없음
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 조건 — 한 웨이퍼의 같은 조건 두 값은 둘 다(300 / 320), 시각 항목은 조건 줄에서 숨김, 이름 앞뒤 공백 무시** — git pull · 런처 재기동
 >
 > ```
@@ -17,7 +33,7 @@
 > ```
 > 돌릴 것   git pull -> 런처 재기동
 > 이미지    칸 값이 C:\… · \\server\… 처럼 온전한 경로면, 그 경로를 품은 root 의 folder 소스로 읽음
->          root 를 server/config/image_sources.json 에 한 번:  {"pics": {"kind": "folder", "root": "D:/images"}}
+>          root 를 server/config/image_sources.json 에 한 번:  {"pics": {"kind": "folder", "root": "D:/images"}}  (🆕 그림 파일은 이것 없이도 — 맨 위 블록)
 >          (전: «image source 'C' is not declared» 로 거절)
 > 볼 곳    리포트 그림 · 그리드 이미지 칸 -> 그림이 나오면 고쳐진 것
 > 아직 «'<경로>' is under no folder source of image_sources.json - add one whose root holds it (e.g. {…})»

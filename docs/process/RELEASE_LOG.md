@@ -602,6 +602,7 @@
 - **무엇** — 소유자 10-24 «이미지 경로를 절대 경로로 했더니 인식을 못하네». 이미지 칸 값이 온전한 경로(`C:\…` · `\\server\…`)이면 «image source 'C' is not declared» 로 거절했습니다. 이제 image_sources.json 의 folder 소스 중 그 경로를 품은 root 의 소스로 읽습니다.
 - **선언 예시** — root 를 image_sources.json 에 한 번 적습니다: `{"pics": {"kind": "folder", "root": "D:/images"}}`. 그 밑의 `D:/images/a/b.png` 같은 경로가 그대로 읽힙니다.
 - **그대로인 것** — 읽을 수 있는 폴더는 여전히 선언된 folder 소스뿐입니다. 어느 root 밑도 아니면 404 «'<경로>' is under no folder source of image_sources.json - add one whose root holds it (e.g. {"<name>": {"kind": "folder", "root": "<그 경로의 폴더>"}})». `<소스>:<경로>` 꼴은 전과 같습니다.
+- **🆕 같은 날 넓힘(`5374f21aa`)** — 소유자 «이미지 절대경로 여전히 안되고» · «공유폴더고 \\ 네개 붙여놈». 그림 파일(png · jpg · jpeg · bmp · gif · tif · tiff · webp)은 folder 소스 없이도 그 경로 그대로 읽습니다 — 위 root 선언은 그림이 아닌 파일에만 필요합니다. 공유 경로를 `\\\\server\\share`(역슬래시를 모두 겹으로, 머리 넷)나 `//server/share` 로 적어도 한 경로로 읽습니다. 이 서버가 그 파일을 못 보면 404 «no file '<경로>' - this server cannot see it (a share it is not logged on to, or a path of another machine)».
 - **필요한 조건** — git pull · 런처 재기동.
 - **자세히** — `server/image_sources.py` 의 `resolve` (`765d4c34c`).
 
