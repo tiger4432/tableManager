@@ -113,9 +113,15 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, ca
     if newest or capped:              # capped: the first READ_ROW_CAP rows, as read (a picture table, owner 10-24)
         found = found[:READ_ROW_CAP]
     elif len(found) > READ_ROW_CAP:
-        logger.warning("[report] read %s REFUSED: over %d rows for %s wafers (filters %s)", table, READ_ROW_CAP,
-                       "every" if wafers is None else len(wafers), sorted(filters))
-        raise ReadRefused("%s holds over %d rows for these wafers - pick fewer" % (table, READ_ROW_CAP))
+        # what was read, for whom, by which filter, and why the cap - the refusal and the terminal say it whole
+        # (owner 10-24 «뭘 했는데 뭐가 안 됐다 · 왜 10만인지 적어야지»)
+        said = ("%s: over %d rows (READ_ROW_CAP, the most one report read takes) reading %s for %s wafers%s - "
+                "filters %s" % (table, READ_ROW_CAP, ", ".join(map(str, columns)),
+                                "every" if wafers is None else len(wafers),
+                                " (%s ...)" % ", ".join(map(str, wafers[:3])) if wafers else "",
+                                {c: len((f or {}).get("conditions") or [f]) for c, f in filters.items()}))
+        logger.warning("[report] read REFUSED %s", said, stack_info=True)
+        raise ReadRefused("%s - pick fewer" % said)
     if _said:
         logger.warning("[report] read %s: %d rows for %s wafers%s (filters %s)", table, len(found),
                        "every" if wafers is None else len(wafers),
@@ -164,6 +170,8 @@ class Report:
             here = self._wafer_rows({role["evaluation"]: _equals_any(role["evaluation"], [evaluation])}
                                     if role.get("evaluation") else None)
         self.groups[evaluation] = self._ordered(here)
+        logger.warning("[report] start %s: %d wafers - %s", evaluation, len(here), "; ".join(
+            "%s @ %r" % (self.said(w), self.wafers[w]["time"]) for w in self.groups[evaluation]) or "none")
         self.embedded = {}                       # what images() embedded - for the HTML only
         self._candidates = None                  # the recent evaluations, read once (`_recent`)
 
@@ -182,7 +190,7 @@ class Report:
         gated = [c for c in chain_bindings.gate_columns(gates[chain_bindings.EXCLUDE_KEY]) if c not in columns]
         read = [(_parts(row[:len(self.keys)]), row)
                 for row in _rows(self.db, role, columns + gated, where=where,
-                                 newest=role.get("time") if newest else None)
+                                 newest=role.get("time") if newest else None, capped=where is None)
                 if not gates[chain_bindings.EXCLUDE_KEY] or not rule_run.gate_misses(
                     gates, dict(zip(columns + gated, row)), role["table"])]
         out = []
@@ -274,6 +282,7 @@ class Report:
         where = {report_shape.column_of(role, role["name"]): {"filterType": "text", "type": "contains",
                                                               "filter": report_shape.name(time_item)}} \
             if only_time and time_item else None
+        seen_names = {}
         for wafer, row in self._matched(role, [role["name"], role["value"]] + [role[c] for c in extra],
                                         sorted(set(wafers), key=label), where=where):
             facts = self.wafers[wafer]
@@ -286,9 +295,22 @@ class Report:
                 facts["conditions"][name] = "%s%s%s" % (said, BOTH, row[1])
             if time_item and report_shape.name(row[0]) == report_shape.name(time_item) and facts.get("time") is None:
                 facts["time"] = row[1]
+            if time_item:
+                seen_names[report_shape.name(row[0])] = seen_names.get(report_shape.name(row[0]), 0) + 1
             for at, cell in enumerate(extra):
                 if facts.get(cell) is None:
                     facts[cell] = row[2 + at]
+
+        if time_item:
+            # what the time item read - each wafer's value and the day it is taken as (owner 10-24 «날짜 뭐 읽었는지 다
+            # 로그 띄워 · Bonding Date 를 못 읽는 거 같아»)
+            timed = [w for w in set(wafers) if self.wafers[w].get("time") is not None]
+            logger.warning("[report] time_item %r (%s.%s): %d of %d wafers have it; names read: %s", time_item,
+                           role["table"], role["name"], len(timed), len(set(wafers)),
+                           ", ".join("%r x%d" % kv for kv in sorted(seen_names.items())[:30]) or "none")
+            for w in sorted(set(wafers), key=label):
+                logger.warning("[report]   %s: %s %r -> %s", self.said(w), time_item, self.wafers[w].get("time"),
+                               _instant(self.wafers[w].get("time")))
 
     def _ordered(self, wafers):
         """By time, a wafer without one last, then by its key."""
@@ -774,7 +796,18 @@ class Report:
                        "%d with a time, latest %s; recent %s -> %d candidates: %s", len(self.wafers), timed,
                        role.get("time") or (self.long or {}).get("time") or
                        "conditions.time_item %s" % (self.long or {}).get(report_shape.TIME_ITEM),
-                       len(own), len(here), anchor, recent, len(newest), ", ".join(newest[:10]) or "none")
+                       len(own), len(here), anchor, recent, len(newest), "; ".join(
+                           "%s @ %s (%d)" % (n, by[n]["latest"], len(by[n]["wafers"])) for n in newest) or "none")
+        # every wafer read and why it is no candidate - the owner reads the terminal (owner 10-24 «로그가 짧음»)
+        for wafer in self.wafers:
+            facts = self.wafers[wafer]
+            name = self._report_wafer(wafer) if each else str(facts["evaluation"])
+            logger.warning("[report]   wafer %s: time %r (day %s) -> %s", self.said(wafer), facts["time"],
+                           _instant(facts["time"]),
+                           "this report" if wafer in own else "candidate" if name in newest else
+                           "no time" if _instant(facts["time"]) is None else
+                           "other same %s" % (facts["same"],) if facts["same"] not in alike else
+                           "outside recent %s of %s" % (recent, anchor))
         if self.long:                      # the conditions of this report's wafers and the candidates kept - only
             self._long_conditions(list(own) + [w for name in newest for w in by[name]["wafers"]])
         self._candidates = {name: dict(by[name], wafers=self._ordered(by[name]["wafers"])) for name in newest}

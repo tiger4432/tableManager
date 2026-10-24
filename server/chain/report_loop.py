@@ -200,6 +200,7 @@ def _call(report, said, seen):
     try:
         return getattr(report, call)(**args), None
     except report_reads.ReadRefused as refused:
+        logger.warning("[report] %s(%s) refused: %s", call, args, refused, exc_info=refused)
         return None, str(refused)
     except Exception as exc:                                        # noqa: BLE001 - one read's data, said to the model
         logger.error("[Report] %s failed: %s: %s", call, type(exc).__name__, exc, exc_info=exc)
@@ -290,6 +291,7 @@ def _product_reads(report, spec, tables, reads, steps, clock):
         try:
             lines, refused = report.declared_compare(), None
         except report_reads.ReadRefused as said:
+            logger.warning("[report] compare() refused: %s", said, exc_info=said)
             lines, refused, alone = ["refused: %s" % said], str(said), True
         reads.append((len(steps) + 1, "product compare()", lines))
         steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product compare()",
@@ -300,6 +302,7 @@ def _product_reads(report, spec, tables, reads, steps, clock):
         try:
             answer, refused = getattr(report, call)(), None
         except report_reads.ReadRefused as said:
+            logger.warning("[report] %s() refused: %s", call, said, exc_info=said)
             answer, refused = None, str(said)
         lines = answer["context"].splitlines() if answer else ["refused: " + refused]
         name = "product %s()" % call
@@ -389,6 +392,7 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
             report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
             out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": []}, ask=ask, clock=clock)
         except report_reads.ReadRefused as refused:
+            logger.error("[Report] %s wafer %s stopped: %s", name, said, refused, exc_info=refused)
             out = {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
         except Exception as exc:                                    # noqa: BLE001 - this wafer stops, the others go on
             logger.error("[Report] %s wafer %s failed: %s: %s", name, said, type(exc).__name__, exc, exc_info=exc)
