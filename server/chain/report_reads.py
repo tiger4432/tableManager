@@ -168,7 +168,7 @@ class Report:
         self._candidates = None                  # the recent evaluations, read once (`_recent`)
 
     # ---- the wafer table -------------------------------------------------------------------------------------
-    def _wafer_rows(self, where, newest=False):
+    def _wafer_rows(self, where, newest=False, only_time=False):
         role = self.spec["wafer"]
         extra = [role.get(cell) for cell in ("time", "lot", "evaluation")]
         columns = self.keys + [c for c in extra if c] + self.conditions_at
@@ -194,7 +194,7 @@ class Report:
                                   "same": tuple(values.get(c) for c in self.same_at), "title": None}
             out.append(wafer)
         if self.long and out:
-            self._long_conditions(out)
+            self._long_conditions(out, only_time=only_time)
         self.named = {}                          # the name a model says -> the wafers it names
         for wafer in self.wafers:
             for name in dict.fromkeys((label(wafer), self.said(wafer))):
@@ -245,7 +245,7 @@ class Report:
                         tuple(wafer[i] for i in unit)][1]]
         return read
 
-    def _matched(self, role, columns, wafers, capped=False):
+    def _matched(self, role, columns, wafers, capped=False, where=None):
         """[(wafer, values)] - the role's rows of these wafers, matched by the key columns the role's table has, by name
         (owner 10-23 «키 칸을 리스트로»): a table without some of the wafer key's (a condition of every measurement)
         answers each wafer it matches; `values` are `columns`, then the table's key columns beyond the wafer key."""
@@ -257,20 +257,25 @@ class Report:
         for wafer in dict.fromkeys(wafers):                 # a wafer in two groups is read once
             by.setdefault(_parts(wafer[i] for i in at), []).append(wafer)
         out = []
-        for row in _rows(self.db, role, shared + columns + beyond, list(by), keys=shared, capped=capped):
+        for row in _rows(self.db, role, shared + columns + beyond, list(by), where=where, keys=shared, capped=capped):
             for wafer in by.get(_parts(row[:len(shared)]), ()):
                 out.append((wafer, row[len(shared):]))
         return out
 
-    def _long_conditions(self, wafers):
+    def _long_conditions(self, wafers, only_time=False):
         """The conditions role's rows of these wafers into their {name: value} - and their time and title, when the
         wafer role names none (the long table's first row's). A wafer with no row keeps {} - the default conditions."""
         role = self.long
         # conditions.time_item: that item's value is the unit's time when the wafer role names no time column
         time_item = None if self.spec["wafer"].get("time") else role.get(report_shape.TIME_ITEM)
         extra = [c for c in ("time", "title") if role.get(c) and not (c == "time" and time_item)]
+        # only_time: the time_item rows alone, one a wafer - what picking candidates needs (owner 10-24 «10만행 읽을게
+        # 없잖아»: every wafer's every condition was read before the days cut)
+        where = {report_shape.column_of(role, role["name"]): {"filterType": "text", "type": "contains",
+                                                              "filter": report_shape.name(time_item)}} \
+            if only_time and time_item else None
         for wafer, row in self._matched(role, [role["name"], role["value"]] + [role[c] for c in extra],
-                                        sorted(set(wafers), key=label)):
+                                        sorted(set(wafers), key=label), where=where):
             facts = self.wafers[wafer]
             # two rows of one wafer and name (a key part beyond the wafer's): both values, distinct, in the rows' order
             # «300 / 320» - none silently wins (owner 10-24)
@@ -742,7 +747,7 @@ class Report:
         # `control.same`: a candidate shares those columns' values with this report's wafers
         alike = {self.wafers[w]["same"] for w in own}
         by = {}
-        for wafer in self._wafer_rows(None, newest=bool(role.get("time"))):
+        for wafer in self._wafer_rows(None, newest=bool(role.get("time")), only_time=True):
             facts = self.wafers[wafer]
             at, evaluation = _instant(facts["time"]), facts["evaluation"]
             if (wafer in own if each else at is None or evaluation in (None, self.evaluation)) \
@@ -770,6 +775,8 @@ class Report:
                        role.get("time") or (self.long or {}).get("time") or
                        "conditions.time_item %s" % (self.long or {}).get(report_shape.TIME_ITEM),
                        len(own), len(here), anchor, recent, len(newest), ", ".join(newest[:10]) or "none")
+        if self.long:                      # the conditions of this report's wafers and the candidates kept - only
+            self._long_conditions(list(own) + [w for name in newest for w in by[name]["wafers"]])
         self._candidates = {name: dict(by[name], wafers=self._ordered(by[name]["wafers"])) for name in newest}
         return self._candidates
 
