@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **끊긴 체인 소급을 화면에서 이어 하기 — 대기열 줄의 Resume (소유자 「체인 소급 이어하기는 안 되는 건가? … 마지막 커서가 떴으면」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 Chain 탭 대기열 -> «interrupted» 줄의 «Resume»
+>          또는 Retroactive 탭 chain_replay -> Count -> 결과 밑 «Resumes from page N» 옆 «Resume»
+> 뜻      «Resumes from page N · after <키> · R of T rows · cut <시각>»  = 마지막으로 커밋한 쪽 다음부터 새 run 으로 이어 감
+>          쪽과 시각만 나오고 키 · 전체가 없음  = 서버가 cursor_end · total_rows 를 아직 안 실음 (그래도 Resume 은 됨)
+>          토스트의 거절 문장  = 서버 사유 그대로 (그 run 을 이을 수 없는 까닭)
+> 되돌리기  git revert 8a87d7652 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-23] **파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수 (소유자 「몇 개 중 몇 개 읽고 있는지」)** — git pull · 화면 새로 고침
 >
 > ```
