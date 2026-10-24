@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **파일의 맵 교체는 맵을 통째로 지우고 쓴다 — 체인 층 · 사람 값도 같이, 맵 키가 빈 행은 건너뜀 (856f2bb67 · 6f9f1f5fb)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 무엇     allow_replace_map 표에 파일이 오면 그 파일의 맵마다 행 전부 + 모든 소스 층(체인 층 · 사람이 고친 값도)을 지우고 파일을 씀
+>          (전: 다시 온 행은 층째 둠 -> 체인 층이 파일 값을 이겨 교체가 안 보였음)
+> 볼 줄    와처 줄 «[Ingest] <표> FILE <파일>: …» 끝 (터미널 · watcher.log)
+>          replaced K map(s), deleted M row(s) · replace on by [칸…] · purge/file_replace K
+>            M = 그 K 개 맵의 옛 행 전부 (0 = 그 맵들에 옛 행이 없었음)
+>          [Ingest] <표>: N row(s) with a blank map key [칸…] skipped - they name no map (first at file row R)
+>            -> 맵 키가 빈 행 N 개만 건너뜀, 파일은 들어감 (전: 파일 전체 FAILED)
+> 안 바뀜   맵 편집기 push · 체인 규칙의 allow_replace_map 은 그대로 차집합(다시 온 행은 두고 빠진 행만 지움)
+> 끄기    없음 (표의 allow_replace_map 을 false 로 하면 맵 교체 자체가 꺼짐)
+> ```
+
+---
+
 > ## [10-24] **실패 파일은 저절로 다시 안 읽고, 파일 줄이 맵 통째 교체를 말한다 (dd5f221ef · ea9fef6fb)** — git pull · 런처 재기동
 >
 > ```
@@ -12,7 +29,7 @@
 >          replace off (allow_replace_map is not true in table_config for <표>) -> 그 표의 allow_replace_map 이 안 보임. table_config 의 그 표 항목을 본다
 >          replace on by [칸…] · <mode>/<reason> N -> 맵 키 칸 [칸…] 로 맵마다 바꿈, 방식별 맵 수
 >          rows in scope 0 N -> 맵 N 개가 옛 행을 범위에서 못 찾음. 맵 키 값이 옛 행과 다른지 본다
->          deleted 0 row(s) 인데 rows in scope 0 이 없음 -> 옛 행을 이 파일이 전부 다시 받음. 지울 것이 없었음
+>          deleted N row(s) -> 파일 교체는 맵을 통째로 지움(맨 위 블록): N = 그 맵들의 행 전부. «0 = 전부 다시 받음» 은 맵 편집기 · 체인의 맵 교체(차집합)에만
 > 끄기    없음
 > ```
 

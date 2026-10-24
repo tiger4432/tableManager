@@ -361,6 +361,7 @@
   - 2026-10-23 [표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만 넘기고, 반영은 Read all again](#2026-10-23--표-선언만-바뀌면-이미-읽은-파일은-다시-읽지-않는다--실패-파일만-넘기고-반영은-read-all-again) — 보는 곳 watcher.log «kept as read» · 누르는 곳 파일 화면 Read all again
   - ⚠️ 은퇴: 읽는 법이 바뀌면 실패 파일을 스스로 다시 넘기기 — 2026-10-24 [실패 파일은 저절로 다시 읽지 않는다 — Retry · Read now · Read all again 으로만, 지워진 파일은 안 읽음](#2026-10-24--실패-파일은-저절로-다시-읽지-않는다--retry--read-now--read-all-again-으로만-지워진-파일은-안-읽음)
 - 2026-10-20 [파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map](#2026-10-20--파일-인제션도-맵-단위-통째-교체--표-설정-allow_replace_map) — 적는 곳 `table_config.json`
+  - ⚠️ 부분 은퇴: 다시 온 행은 그대로(차집합) · 맵 키가 빈 행이면 파일 FAILED — 2026-10-24 [파일의 맵 교체는 맵을 통째로 지우고 쓴다 — 체인 층 · 사람 값도 같이, 맵 키가 빈 행은 건너뜀](#2026-10-24--파일의-맵-교체는-맵을-통째로-지우고-쓴다--체인-층--사람-값도-같이-맵-키가-빈-행은-건너뜀) — 보는 곳 와처 줄 «purge/file_replace N» · «N row(s) with a blank map key … skipped»
   - 2026-10-24 [파일 줄이 맵 통째 교체를 «했나 · 어떻게» 말한다 — replace off · replace on by · rows in scope 0](#2026-10-24--파일-줄이-맵-통째-교체를-했나--어떻게-말한다--replace-off--replace-on-by--rows-in-scope-0) — 보는 곳 와처 줄 «[Ingest] <표> FILE <파일>: …» 끝 (터미널 · watcher.log)
 - 2026-10-20 [외부 저장소도 표준 파서 — raws/ 와 같은 규칙](#2026-10-20--외부-저장소도-표준-파서--raws-와-같은-규칙) — 적는 곳 `ingestion_settings.json` 의 `external_sources` · `table_config.json` 의 `std_parse`
 - 2026-10-13 [큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다](#2026-10-13--큰-표-검색--표-선언의-검색-색인-그리드-읽기는-10-초에-끊고-다음-할-일을-말한다) — 적는 곳 `table_config.json` · `ingestion_settings.json`
@@ -570,6 +571,16 @@
 
 
 
+## 2026-10-24 · 파일의 맵 교체는 맵을 통째로 지우고 쓴다 — 체인 층 · 사람 값도 같이, 맵 키가 빈 행은 건너뜀
+
+- **무엇** — 소유자 10-24 «그냥 소스 통째로 걷기로 했잖아» · «기존 맵 아예 지우고 하니 제대로 들어옴» · «체인 안거두나보네» · «빈거 들어오면 접으면 되잖아». `allow_replace_map` 표에 파일이 들어오면 그 파일에 있는 맵마다 행 전부와 모든 소스의 층(체인 층도)을 지운 뒤 파일을 씁니다 — 맵을 손으로 지우고 넣던 것과 같습니다. 전에는 다시 온 행을 다른 층과 함께 두어서 체인 층이 파일 값을 이겼고, 교체가 화면에 안 보였습니다(같은 좌표에 옛 값, 갱신 시각 그대로).
+- **같이 지워지는 것** — 그 맵에서 사람이 고친 값도 지워집니다.
+- **파일 줄** — 끝에 «replace on by [칸…] · purge/file_replace N» · «replaced N map(s), deleted M row(s)» — M 은 그 맵들의 옛 행 전부입니다(0 이면 옛 행이 없던 맵).
+- **맵 키가 빈 행** — 파일 전체를 거절(FAILED)하던 것을 그만두고, 그 행만 건너뛰고 한 줄 남깁니다: «[Ingest] <표>: N row(s) with a blank map key [칸…] skipped - they name no map (first at file row R)». 파서가 키 없어 건너뛴 행도 그 수에 듭니다.
+- **안 바뀐 것** — 맵 편집기 push 와 체인 규칙의 `allow_replace_map` 은 전처럼 다시 온 행은 두고 빠진 행만 지웁니다(차집합).
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `GeneralUpdateBatch._file_replace` → `crud` 의 `use_diff = False` · reason «file_replace» · `directory_watcher._map_batches` (`856f2bb67` · `6f9f1f5fb`, 시험 `00e54557f`).
+
 ## 2026-10-24 · 파일 줄이 맵 통째 교체를 «했나 · 어떻게» 말한다 — replace off · replace on by · rows in scope 0
 
 - **무엇** — 소유자 10-24 «중간에 리플레이스 경로 로그를 다 찍어주든». `allow_replace_map` 표에 파일이 들어왔을 때 그 파일이 맵을 통째로 바꿨는지, 바꿨다면 어떻게 바꿨는지가 파일 줄 끝에 붙습니다(바꾼 맵 · 지운 행 · 거절된 맵 옆).
@@ -577,7 +588,7 @@
   - «replace off (allow_replace_map is not true in table_config for <표>)» — 그 표의 `allow_replace_map` 이 안 보입니다. table_config.json 의 그 표 항목을 봅니다.
   - «replace on by [칸…] · <mode>/<reason> N» — 맵 키 칸 [칸…] 로 맵마다 바꿨고, 그 방식별 맵 수입니다.
   - «rows in scope 0 N» — 맵 N 개가 바꿀 범위에서 옛 행을 못 찾았습니다(맵 키 값이 옛 행과 다른지 봅니다).
-  - «deleted 0 row(s)» 인데 rows in scope 0 이 없으면 — 옛 행을 이 파일이 전부 다시 받아 지울 것이 없었습니다.
+  - «deleted N row(s)» — 🆕 파일 교체는 [위 항목](#2026-10-24--파일의-맵-교체는-맵을-통째로-지우고-쓴다--체인-층--사람-값도-같이-맵-키가-빈-행은-건너뜀)부터 맵을 통째로 지우므로 N = 그 맵들의 행 전부입니다. «다시 받아 지울 것이 없었다»(deleted 0)는 맵 편집기 · 체인의 맵 교체(차집합)에만 맞습니다.
 - **필요한 조건** — git pull · 런처 재기동.
 - **자세히** — `directory_watcher._FileTally.replace_by` · `map_ways`, `crud` 의 `replace_report["in_scope"]` (`ea9fef6fb`).
 
