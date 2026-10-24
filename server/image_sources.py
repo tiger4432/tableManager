@@ -81,11 +81,19 @@ def _read_sources(path):
         return json.load(fh)
 
 
+#: What a full path may name and be read as it is - an image file, never another kind of file.
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp")
+
+
 def resolve(ref, sources=None, _hops=0):
     """-> ("file", path) | ("bytes", data, media type)."""
     text = str(ref or "").strip()
     if _ADDRESS.match(text):
         return _fetch("%r" % text, text)
+    if text[:2] in ("\\\\", "//"):
+        # a share path as a table may hold it - every backslash doubled, or written with /: one spelling, \\server\share\..
+        # (소유자 10-24 «이미지 공유폴더고 \\\\ 이렇게 되어있음»)
+        text = "\\\\" + re.sub(r"[\\/]+", lambda m: "\\", text.lstrip("\\/"))
     if os.path.isabs(text) or text.startswith("\\\\"):
         # 소유자 10-24 «이미지 경로를 절대 경로로 했더니 인식을 못하네»: a full path is read from the folder source whose
         # root holds it - the folders a report may read stay the ones image_sources.json declares
@@ -96,6 +104,12 @@ def resolve(ref, sources=None, _hops=0):
             root = str((source or {}).get("root") or "") if isinstance(source, dict) else ""
             if (source or {}).get("kind") == "folder" and root and _safe_relative_path(text, root) is not None:
                 return _folder(name, source, text)
+        if os.path.splitext(text)[1].lower() in IMAGE_SUFFIXES:
+            # 소유자 10-24 «이미지 절대경로 여전히 안되고»: an image file named by its full path is read as it is
+            if os.path.isfile(text):
+                return ("file", os.path.realpath(text))
+            raise ImageRefused(404, "no file %r - this server cannot see it (a share it is not logged on to, or a path "
+                                    "of another machine)" % text)
         raise ImageRefused(404, "%r is under no folder source of image_sources.json - add one whose root holds it "
                                 '(e.g. {"<name>": {"kind": "folder", "root": "%s"}})'
                            % (text, os.path.dirname(text).replace("\\", "/")))
