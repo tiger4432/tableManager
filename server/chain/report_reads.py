@@ -12,7 +12,7 @@ with the grid filter's own conditions. Each answers {"context": <the model's sho
   compare(sets)              the compare sets' wafers beside this evaluation's, the same table
 
 Read by the product before the write, when `derive.report.causes` is declared (owner 10-25):
-  defect_kinds()             the ledger's nodes of `causes.seed_type` - the names the model picks seeds from
+  seed_nodes()             the ledger's nodes of `causes.seed_type` - the names the model picks seeds from
   causes(seeds)              a static walk from those nodes - the candidate factors and each one's path
 
 A wafer is its key - one column or several (`report_shape.wafer_columns`), said to the model as the parts joined
@@ -1076,7 +1076,7 @@ class Report:
                               "seeds are picked from")
         return causes
 
-    def defect_kinds(self):
+    def seed_nodes(self):
         """The ledger's nodes of `causes.seed_type` - the walk's own described seeds, no step taken.
         -> {"context": its head and a name a line, "nodes": {name: node id}}."""
         kind = self._causes()["seed_type"]
@@ -1091,7 +1091,7 @@ class Report:
         return {"context": "\n".join([head] + list(nodes)), "nodes": nodes}
 
     def causes(self, seeds):
-        """A static walk from the picked `defect_kinds` nodes (names or ids) along `causes.follow` - blank: the
+        """A static walk from the picked `seed_nodes` nodes (names or ids) along `causes.follow` - blank: the
         predicates between two static types (`trace_router._static_step_predicates`) - keeping `causes.collect`.
         -> {"context": its head and a candidate a line with its path, "candidates": [{id, type, label, path}]}."""
         from ledger import trace_router
@@ -1100,7 +1100,7 @@ class Report:
         said = [seeds] if isinstance(seeds, str) else [str(s) for s in seeds or () if str(s).strip()]
         kinds = getattr(self, "_kinds", None)
         if kinds is None:
-            kinds = self.defect_kinds()["nodes"]
+            kinds = self.seed_nodes()["nodes"]
         if not said:
             raise ReadRefused("no seed picked - one or more of the %s nodes: %s" % (causes["seed_type"],
                                                                                    ", ".join(kinds)))

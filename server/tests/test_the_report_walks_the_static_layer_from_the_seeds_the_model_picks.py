@@ -3,7 +3,7 @@
 type's nodes, the model picks the seed(s) and says why by the tables read, the product walks the static layer from
 them with the walk route's own function in process, and the candidates and their paths go to the write call.
 
-  defect_kinds  the walk's described seeds of `causes.seed_type`, no step - a name a line
+  seed_nodes  the walk's described seeds of `causes.seed_type`, no step - a name a line
   causes        names (or ids) of those nodes -> one walk along `follow` (blank: the declaration's static-to-static
                 predicates), keeping `collect`, `hops` the walk's own when blank; a candidate a line with its path
   refused       not declared · no seed · a seed not of the type · no follow and none static · the route's refusal,
@@ -47,7 +47,7 @@ class Reads:
     """The report's own two cause reads on a stand-in for the table reads."""
 
     _causes = report_reads.Report._causes
-    defect_kinds = report_reads.Report.defect_kinds
+    seed_nodes = report_reads.Report.seed_nodes
     causes = report_reads.Report.causes
 
     def __init__(self, causes=CAUSES):
@@ -77,16 +77,16 @@ def walks(monkeypatch):
     return asked
 
 
-def test_defect_kinds_are_the_declared_types_nodes_a_name_a_line(walks):
-    said = Reads().defect_kinds()
+def test_seed_nodes_are_the_declared_types_nodes_a_name_a_line(walks):
+    said = Reads().seed_nodes()
     assert walks == [("derive.report.causes.seed_type", {"seed_type": "defect_kind", "hops": 0, "propagation": False})]
     assert said["context"] == "2 defect_kind node(s)\ndelam\nvoid"
     assert said["nodes"] == {"delam": DELAM, "void": VOID}
 
 
-def test_defect_kinds_say_how_many_the_seed_cap_left_out(monkeypatch):
+def test_seed_nodes_say_how_many_the_seed_cap_left_out(monkeypatch):
     monkeypatch.setattr(report_reads, "_walk", lambda db, cell, **a: dict(KINDS, truncated={"seeds": 3}))
-    assert Reads().defect_kinds()["context"].splitlines()[0] == "2 defect_kind node(s) - 3 more not listed"
+    assert Reads().seed_nodes()["context"].splitlines()[0] == "2 defect_kind node(s) - 3 more not listed"
 
 
 def test_causes_walk_from_the_named_seeds_and_keep_each_candidates_path(walks):
@@ -126,7 +126,7 @@ def test_a_seed_not_of_the_type_is_refused_by_name(walks, seeds, said):
 
 
 def test_undeclared_the_reads_are_refused_naming_the_cell(walks):
-    for read in (lambda r: r.defect_kinds(), lambda r: r.causes(["void"])):
+    for read in (lambda r: r.seed_nodes(), lambda r: r.causes(["void"])):
         with pytest.raises(report_reads.ReadRefused, match="derive.report.causes is not declared"):
             read(Reads(causes=None))
     assert walks == []
@@ -182,7 +182,7 @@ def test_the_seed_call_comes_before_the_write_and_the_candidates_go_to_it(walks,
     with caplog.at_level(logging.WARNING, logger="Chain"):
         out = report_loop.run(report, SPEC, REQUEST, ask=model, clock=_clock())
     assert (out["state"], out["texts"]) == ("done", {"summary": "S"})
-    assert [s["call"] for s in out["steps"]] == ["done", "product pareto()", "product defect_kinds()",
+    assert [s["call"] for s in out["steps"]] == ["done", "product pareto()", "product seed_nodes()",
                                                  'causes({"seeds": ["void"]})', "write"]
     seed = model.prompts[1]
     assert report_loop.SEEDS % "defect_kind" in seed

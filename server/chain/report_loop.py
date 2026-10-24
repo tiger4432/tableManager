@@ -43,7 +43,7 @@ WRITE = ("Write the report from the tables read below - every number as a table 
          "the seeds, when given, ground the detailed analysis. Answer one JSON object: "
          '{"done": {%s}}')
 STOP_NO_TEXT = "the write call answered no text"
-#: The seed call's line, over the nodes it picks from (`report_reads.Report.defect_kinds`).
+#: The seed call's line, over the nodes it picks from (`report_reads.Report.seed_nodes`).
 SEEDS = ("Pick the seed node(s) of a cause walk from the %s nodes below, by the tables read below. Answer one JSON "
          'object: {"seeds": ["<name>", ...], "why": "..."}')
 ABOUT = {
@@ -372,11 +372,11 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps):
 
     began = clock()
     try:
-        kinds = report.defect_kinds()["context"].splitlines()
+        kinds = report.seed_nodes()["context"].splitlines()
     except report_reads.ReadRefused as said:
-        logger.warning("[report] defect_kinds() refused: %s", said, exc_info=said)
-        return step("product defect_kinds()", began, [], str(said))
-    step("product defect_kinds()", began, kinds)
+        logger.warning("[report] seed_nodes() refused: %s", said, exc_info=said)
+        return step("product seed_nodes()", began, [], str(said))
+    step("product seed_nodes()", began, kinds)
     tables = [read for read in reads if read[1].replace("product ", "").split("(")[0] in report_shape.TABLE_FILLS]
     line = "\n".join([SEEDS % spec[report_shape.CAUSES]["seed_type"]] + kinds[1:])
     began = clock()
