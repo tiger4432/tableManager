@@ -117,7 +117,10 @@ def _instructions(spec, step, cap):
 
 def _prompts(spec, cells=("select", "style", "compare", "control")):
     prompts = (spec or {}).get("prompts") or {}
-    return ["%s: %s" % (cell.capitalize(), prompts[cell]) for cell in cells if prompts.get(cell)]
+    said = ["%s: %s" % (cell.capitalize(), prompts[cell]) for cell in cells if prompts.get(cell)]
+    # the analyst's words win over the product's rules (owner 10-24 «select 프롬프트 내가 쓴 게 전혀 안 들어먹는데 ·
+    # 너가 너무 강하게 적어 넣은 듯»)
+    return ["Analyst (wins over the rules):"] + said if said else []
 
 
 def _request(request):

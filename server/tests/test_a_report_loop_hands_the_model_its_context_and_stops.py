@@ -103,7 +103,7 @@ def test_earlier_steps_are_a_line_each():
 
 
 def test_the_budget_cuts_the_last_result_then_the_conditions_then_stops():
-    tight = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 400})
+    tight = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 410})
     model = Model({"call": "yield_by", "args": {}}, {"done": {"summary": ""}})
     out = report_loop.run(FakeReport(condition_lines=40), tight, REQUEST, ask=model, clock=Clock())
     first = out["steps"][0]["cut"]
