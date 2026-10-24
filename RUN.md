@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 그림이 «No image of an occurred defect» 로 비던 것 — 짧은 wafer 목록은 차례로 안 맞춤 (d6815fa37)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 다시
+> 무엇     역할 wafer 목록이 wafer.key 보다 짧으면(예: 그림 표 [wafer_id, leg_no] · wafer.key [wafer, tkout_time, leg])
+>          자리로 맞추지 않음 (전: leg 가 tkout_time 자리에 앉아 그림을 못 찾음)
+>          짧은 목록에서 이름이 다른 칸은 그 역할에 "rename": {"<wafer.key 칸>": "<그 표 칸>"}
+>          WAFER 처럼 대소문자만 다른 그 표의 키 칸은 그대로 wafer 로 읽음
+> 볼 곳    리포트 파일의 그림 칸 -> 그림이 나오면 고쳐진 것
+> 아직 «No image of an occurred defect»  -> 그림 표 wafer 목록의 이름이 wafer.key 와 다름. rename 을 적기
+> 끄기    없음
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item** — git pull · 런처 재기동
 >
 > ```
@@ -88,7 +103,7 @@
 > ```
 > 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
 > 무엇     역할(summary · images · conditions · info · picture_rows)의 wafer 목록에 그 표의 키 칸
->          (table_config composite_key_source · business_key)을 wafer.key 와 같은 차례로 적으면 이름이 달라도 맞춤
+>          (table_config composite_key_source · business_key)을 wafer.key 와 같은 차례로 적으면 이름이 달라도 맞춤  (🆕 길이가 같을 때만 — 맨 위 블록)
 >            예  wafer.key [wafer, leg]  ·  조건표 wafer [wafer_id, leg]  -> wafer_id = wafer
 >          차례가 안 맞으면 역할에  "rename": {"wafer": "wafer_id"}
 >          (전: «'<칸>' is not a key column» 으로 규칙 거절)
