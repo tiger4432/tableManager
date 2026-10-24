@@ -286,10 +286,17 @@ def _by_position(role, wafer_key, every):
     own = crud.TABLE_CONFIG.get(str(role.get("table") or ""), {}) or {}
     own_keys = set(own.get("composite_key_source") or ()) | ({own["business_key"]} if own.get("business_key") else set())
     out = []
+    by_case = {key.lower(): key for key in wafer_key}
     for at, name in enumerate(names):
-        # only a KEY column of the role's own table stands in by position - a value column put in the list is still
-        # refused by name
-        if at < len(wafer_key) and name not in every and name in own_keys and wafer_key[at] not in names:
+        same = by_case.get(name.lower())
+        # a name that differs only in case is the report key it spells (WAFER = wafer); by POSITION only when the list
+        # is as long as the wafer key - a shorter list (an image table with no time) would shift every part after the
+        # gap (lead 10-24: L landed on tkout_time). Only a KEY column of the role's own table stands in.
+        if name not in every and name in own_keys and same and same not in names:
+            renamed.setdefault(same, name)
+            out.append(same)
+        elif (len(names) == len(wafer_key) and name not in every and name in own_keys
+              and wafer_key[at] not in names):
             renamed.setdefault(wafer_key[at], name)
             out.append(wafer_key[at])
         else:
