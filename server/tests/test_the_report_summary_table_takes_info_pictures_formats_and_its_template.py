@@ -344,8 +344,8 @@ def test_a_character_past_ascii_is_a_token_of_its_own():
     ("info", [{"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "good"}],
      "info[0].value 'good' is not a column of 'rk_yield'"),
     ("info", "rk_info", "info is a table and its columns, or a list of them"),
-    ("picture_rows", [{"label": "맵", "table": "rk_map", "wafer": ["wafer_id", "n"], "image": "path"}],
-     "picture_rows[0].wafer 'n' is not a key column"),
+    ("picture_rows", [{"label": "맵", "table": "rk_map", "wafer": ["wafer_id", "path"], "image": "path"}],
+     "picture_rows[0].wafer 'path' is not a key column"),
     ("picture_rows", [{"table": "rk_map", "wafer": ["wafer_id", "version"], "image": "path"}], "needs label"),
 ])
 def test_what_the_save_refuses(report, cell, value, refused):
