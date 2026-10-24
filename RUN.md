@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 역할 표가 웨이퍼 키를 다른 이름으로 적어도 된다 — 제 키 칸이면 같은 차례로 맞춤 · rename (b6b370203 · 6724000a7)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+> 무엇     역할(summary · images · conditions · info · picture_rows)의 wafer 목록에 그 표의 키 칸
+>          (table_config composite_key_source · business_key)을 wafer.key 와 같은 차례로 적으면 이름이 달라도 맞춤
+>            예  wafer.key [wafer, leg]  ·  조건표 wafer [wafer_id, leg]  -> wafer_id = wafer
+>          차례가 안 맞으면 역할에  "rename": {"wafer": "wafer_id"}
+>          (전: «'<칸>' is not a key column» 으로 규칙 거절)
+> 볼 곳    체인 규칙 창에서 그 리포트 규칙 저장 -> 거절 없이 저장되면 고쳐진 것
+> 아직 거절  «… is not a key column»  -> 그 칸이 표의 키 칸이 아님(값 칸). 키 칸으로 바꾸기
+>          «… is not a column of '<표>' … or <역할>.rename {…}»  -> 표에 없는 칸. rename 으로 그 표 칸을 대기
+> 끄기    없음
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 저장이 빈 파일 · 비교 묶음 실패를 미리 거절 — layout 없음 · sets 칸 빠짐** — git pull · 런처 재기동
 >
 > ```
