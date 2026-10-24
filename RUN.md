@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **자동읽기 끄고 파일 하나 돌려 보기 — 꺼진 외부 소스도 Read now · Retry 로 읽힌다 (총괄 19ccab56f, 7328c8d51)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(이 코드를 싣는 한 번)
+>          그 뒤: ingestion_settings.json 에서 그 소스를 "enabled": false 로 «저장만» (재기동 없음)
+>          파일 화면 «Read a file now» 에 파일 경로 -> Check -> Read now (몇 번이든). 파일 한 줄 Retry 도 같음
+> 볼 줄    watcher 터미널에 그 파일의 읽기 줄 — Read now 한 번마다 하나
+> 뜻      자동으로는 안 읽힘(새 파일 이벤트 · 훑기 · Read all again). 손으로 고른 파일만 그 소스 선언대로 읽힘
+>          다시 켜면 꺼진 동안 온 파일을 훑어 읽음(전과 같음)
+> 이상할 때  Read now 가 «No table reads …» · Retry 가 «the source … is not in ingestion_settings.json» -> 이 코드가 안 실림(재기동 확인)
+> 되돌리기  git revert 7328c8d51 -> 런처 재기동 (꺼진 소스는 손으로도 못 읽던 때로)
+> ```
+
+---
+
 > ## [10-24] **체인 실패 트레이스백이 터미널에 — 실패 줄 바로 밑에 전체 (331661db4, beec46570 와 같이)** — git pull · 런처 재기동
 >
 > ```
