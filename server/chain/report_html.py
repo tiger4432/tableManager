@@ -22,7 +22,7 @@ STYLE = """
 :root { --ink: #1d2433; --muted: #5b6475; --line: #d9dee8; --head: #eef2f8; --ground: #ffffff; }
 body { margin: 0; padding: 24px 16px; background: var(--ground); color: var(--ink);
        font: 14px/1.5 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
-main { margin: 0 auto; display: grid; gap: 24px; min-width: 0; }
+main { margin: 0 auto; display: grid; gap: 24px; min-width: 0; width: 100%; max-width: 1280px; }
 h1 { font-size: 20px; margin: 0; }
 .meta { color: var(--muted); }
 section { display: grid; gap: 8px; }
@@ -34,7 +34,7 @@ th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-
 .gallery { display: flex; flex-wrap: wrap; gap: 12px; }
 figure { margin: 0; display: grid; gap: 4px; }
 figcaption { color: var(--muted); font-size: 12px; }
-.text { white-space: pre-wrap; max-width: 72ch; }
+.text { white-space: pre-wrap; }
 .note { color: var(--muted); font-size: 12px; }
 section { min-width: 0; }
 """
