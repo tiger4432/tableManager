@@ -31,6 +31,8 @@ table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: normal;
          overflow-wrap: anywhere; vertical-align: top; }
 th { background: var(--head); }
+thead th { text-align: center; vertical-align: middle; }
+thead th:first-child { text-align: left; }
 th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
 .gallery { display: flex; flex-wrap: wrap; gap: 12px; }
 figure { margin: 0; display: grid; gap: 4px; }
