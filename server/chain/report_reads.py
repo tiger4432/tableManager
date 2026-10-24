@@ -18,8 +18,12 @@ from __future__ import annotations
 import base64
 import datetime
 import json
+import logging
 
 from chain import report_shape
+
+#: the report's reads said on the terminal (owner 10-24 «해결 못하면 로그라도 찍어야 내가 보고 알려주지»)
+logger = logging.getLogger("Chain")
 
 #: The most rows one read takes - past it the read is refused by name (narrow the wafers).
 READ_ROW_CAP = 100_000
@@ -74,7 +78,7 @@ def _parts(row):
     return tuple(_part(value) for value in row)
 
 
-def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, capped=False):
+def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, capped=False, _said=True):
     """`columns` of the role's table for these wafers (None: every row) - through the grid read path. Rows past
     READ_ROW_CAP are refused - or, with `newest` (a column), the newest READ_ROW_CAP by it are the answer. `keys`: the
     key columns `wafers` are spelled in, `columns` first (default the role's own)."""
@@ -84,7 +88,10 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, ca
     if capped and wafers is not None and len(wafers) > 1:
         # a picture table is read wafer by wafer, each to the cap - one cap over them all kept the first wafers' rows
         # and dropped every other wafer (owner 10-24 «10000rows 때문에 다른 wf 안나오는거 아니냐»)
-        return [row for wafer in wafers for row in _rows(db, role, columns, [wafer], where, newest, keys, capped)]
+        out = [row for wafer in wafers for row in _rows(db, role, columns, [wafer], where, newest, keys, capped, _said=False)]
+        logger.warning("[report] read %s: %d rows for %d wafers (wafer by wafer, %d each at most)",
+                       role["table"], len(out), len(wafers), READ_ROW_CAP)
+        return out
     table = role["table"]
     model = _model(table)
     filters = dict(where or {})
@@ -106,7 +113,13 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, ca
     if newest or capped:              # capped: the first READ_ROW_CAP rows, as read (a picture table, owner 10-24)
         found = found[:READ_ROW_CAP]
     elif len(found) > READ_ROW_CAP:
+        logger.warning("[report] read %s REFUSED: over %d rows for %s wafers (filters %s)", table, READ_ROW_CAP,
+                       "every" if wafers is None else len(wafers), sorted(filters))
         raise ReadRefused("%s holds over %d rows for these wafers - pick fewer" % (table, READ_ROW_CAP))
+    if _said:
+        logger.warning("[report] read %s: %d rows for %s wafers%s (filters %s)", table, len(found),
+                       "every" if wafers is None else len(wafers),
+                       " - cut at %d" % READ_ROW_CAP if len(found) >= READ_ROW_CAP else "", sorted(filters))
     if wafers is None:
         return [tuple(row) for row in found]
     wanted = {_parts(w) for w in wafers}
@@ -751,6 +764,12 @@ class Report:
                                               name), reverse=True)
         if recent.get("evaluations"):
             newest = newest[:recent["evaluations"]]
+        timed = sum(1 for w in self.wafers if _instant(self.wafers[w]["time"]) is not None)
+        logger.warning("[report] candidates: %d wafers read, %d with a time (time from %s); this report's %d wafers, "
+                       "%d with a time, latest %s; recent %s -> %d candidates: %s", len(self.wafers), timed,
+                       role.get("time") or (self.long or {}).get("time") or
+                       "conditions.time_item %s" % (self.long or {}).get(report_shape.TIME_ITEM),
+                       len(own), len(here), anchor, recent, len(newest), ", ".join(newest[:10]) or "none")
         self._candidates = {name: dict(by[name], wafers=self._ordered(by[name]["wafers"])) for name in newest}
         return self._candidates
 
