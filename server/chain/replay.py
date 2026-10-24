@@ -2116,7 +2116,8 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
         judged = [item for item in batch.updates if item.row_id in plain]
         counts["rows_gone"] += len(batch.updates) - len(judged)
         batch_now = crud.batch_write_instant(db)
-        history, layers, ow_put, ow_gone, folded, moved, door = [], {}, {}, set(), set(), {}, []
+        history, layers, ow_put, ow_gone = crud.ByRowLogs(), crud.ByRow(), crud.ByRow(), crud.ByRowSet()
+        folded, moved, door = set(), {}, []
         for item in judged:
             business_key, old, _key = plain[item.row_id]
             cell = (item.row_id, mark)

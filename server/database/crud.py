@@ -2746,6 +2746,76 @@ class ProbedIdentity(NamedTuple):
     business_keys: frozenset
 
 
+class ByRow(dict):
+    """A batch's pending layers or marks keyed (table, row_id, ...) that also knows each row's keys, in the order they
+    came - so a collision merge moves one row's keys without walking the batch (owner 10-24 «소급 3천행에 10분», 총괄
+    be730e1e7: every merge walked every pending key, a group cost rows² × columns - 529 rows of 40 columns, 172 s)."""
+
+    def __init__(self):
+        super().__init__()
+        self.rows = {}
+
+    def __setitem__(self, key, value):
+        if key not in self:
+            self.rows.setdefault(key[1], {})[key] = None
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        _forget_row_key(self.rows, key)
+
+    def pop(self, key, *default):
+        if key in self:
+            _forget_row_key(self.rows, key)
+        return super().pop(key, *default)
+
+
+class ByRowSet(set):
+    """`ByRow` for a batch's pending set of keys (the overwrite marks it deletes)."""
+
+    def __init__(self):
+        super().__init__()
+        self.rows = {}
+
+    def add(self, key):
+        if key not in self:
+            self.rows.setdefault(key[1], {})[key] = None
+        super().add(key)
+
+    def discard(self, key):
+        if key in self:
+            _forget_row_key(self.rows, key)
+        super().discard(key)
+
+
+class ByRowLogs(list):
+    """`ByRow` for a batch's audit lines: each row's lines, so a merge re-aims one row's lines."""
+
+    def __init__(self):
+        super().__init__()
+        self.rows = {}
+
+    def append(self, log):
+        self.rows.setdefault(log.get("row_id"), []).append(log)
+        super().append(log)
+
+
+def _forget_row_key(rows, key):
+    keys = rows.get(key[1])
+    if keys is not None:
+        keys.pop(key, None)
+        if not keys:
+            del rows[key[1]]
+
+
+def row_keys(container, row_id):
+    """The keys of `row_id` in a batch's pending container - its own index (`ByRow`), else a walk."""
+    rows = getattr(container, "rows", None)
+    if rows is not None:
+        return list(rows.get(row_id, ()))
+    return [key for key in container if key[1] == row_id]
+
+
 class LayersRead:
     """The cells whose stored layers and overwrites a batch READ up front - so a miss in its caches is proven absent,
     by (row, column) (총괄 10-24): `rows` were read for `columns` only (the columns the batch writes - box board B read
@@ -3703,8 +3773,8 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                 layers_read=layers_read
             )
             existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
-            for (t, r, c, s_name) in (cell_sources_to_upsert or {}).keys():
-                if t == table_name and r == row.row_id and c == col_name:
+            for (t, _r, c, s_name) in row_keys(cell_sources_to_upsert or {}, row.row_id):
+                if t == table_name and c == col_name:
                     existing_names.add(s_name)
 
             # user 간 충돌 시 기존의 standard "user" 값을 "user (old_exist_xyz)"로 백업하여 원천에 기존 user값을 보존
@@ -3775,8 +3845,9 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                 }
 
     # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
+    gone_id = row_to_delete.row_id
     if cell_sources_to_upsert is not None:
-        keys_to_migrate = [k for k in cell_sources_to_upsert.keys() if k[1] == row_to_delete.row_id]
+        keys_to_migrate = row_keys(cell_sources_to_upsert, gone_id)
         for k in keys_to_migrate:
             src_data = cell_sources_to_upsert.pop(k)
             new_k = (k[0], row.row_id, k[2], k[3])
@@ -3784,7 +3855,7 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
             cell_sources_to_upsert[new_k] = src_data
 
     if cell_overwrites_to_upsert is not None:
-        keys_to_migrate = [k for k in cell_overwrites_to_upsert.keys() if k[1] == row_to_delete.row_id]
+        keys_to_migrate = row_keys(cell_overwrites_to_upsert, gone_id)
         for k in keys_to_migrate:
             ow_data = cell_overwrites_to_upsert.pop(k)
             new_k = (k[0], row.row_id, k[2])
@@ -3792,18 +3863,22 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
             cell_overwrites_to_upsert[new_k] = ow_data
 
     if cell_overwrites_to_delete is not None:
-        keys_to_migrate = [k for k in cell_overwrites_to_delete if k[1] == row_to_delete.row_id]
+        keys_to_migrate = row_keys(cell_overwrites_to_delete, gone_id)
         for k in keys_to_migrate:
             cell_overwrites_to_delete.discard(k)
             cell_overwrites_to_delete.add((k[0], row.row_id, k[2]))
 
     if logs_to_cache is not None:
-        for log in logs_to_cache:
-            if log.get("row_id") == row_to_delete.row_id:
-                log["row_id"] = row.row_id
+        by_row = getattr(logs_to_cache, "rows", None)
+        moved = by_row.pop(gone_id, []) if by_row is not None else [
+            log for log in logs_to_cache if log.get("row_id") == gone_id]
+        for log in moved:
+            log["row_id"] = row.row_id
+        if by_row is not None and moved:
+            by_row.setdefault(row.row_id, []).extend(moved)
 
     for obj in db.new:
-        if isinstance(obj, models.AuditLog) and obj.row_id == row_to_delete.row_id:
+        if isinstance(obj, models.AuditLog) and obj.row_id == gone_id:
             obj.row_id = row.row_id
 
     # 5. 무의미한 껍데기 행을 DB 세션 및 메모리 캐시에서 완전 소거
@@ -3837,7 +3912,7 @@ def merge_into_key_holders(db: Session, table_name: str, pairs, *, source_name: 
     person's value. The audit lines, layers and marks are written; the caller commits. Returns
     the merged rows' ids. Not undone. (rebuild_blank_business_keys --apply, the notation backfill)"""
     model = models.DYNAMIC_TABLES[table_name]
-    sources, overwrites, overwrites_gone, logs, merged = {}, {}, set(), [], []
+    sources, overwrites, overwrites_gone, logs, merged = ByRow(), ByRow(), ByRowSet(), ByRowLogs(), []
     for row_id, holder_id in pairs:
         shell = db.query(model).filter(model.row_id == row_id).one()
         holder = db.query(model).filter(model.row_id == holder_id).one()
@@ -5648,12 +5723,12 @@ def _apply_batch_updates_once(db: Session, table_name: str,
 
         unique_results = {}
         total_changed_cells = []
-        logs_to_cache = []
+        logs_to_cache = ByRowLogs()
         
         # Batch containers for bulk operations (deduplicated early via dict/set)
-        cell_sources_to_upsert = {}
-        cell_overwrites_to_upsert = {}
-        cell_overwrites_to_delete = set()
+        cell_sources_to_upsert = ByRow()                  # each knows its rows (`ByRow`)
+        cell_overwrites_to_upsert = ByRow()
+        cell_overwrites_to_delete = ByRowSet()
         cell_sources_to_delete = set()
         deleted_row_ids = []
 
@@ -6398,12 +6473,12 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     # 2. 인메모리 연산 루프
     changed_rows = []
     tx_id = str(uuid6.uuid7())
-    logs_to_cache = []
+    logs_to_cache = ByRowLogs()
     deleted_row_ids = []
     
-    cell_overwrites_to_upsert = {}
-    cell_overwrites_to_delete = set()
-    cell_sources_to_upsert = {}
+    cell_overwrites_to_upsert = ByRow()
+    cell_overwrites_to_delete = ByRowSet()
+    cell_sources_to_upsert = ByRow()
     
     for item in updates:
         r_id = item["row_id"]
