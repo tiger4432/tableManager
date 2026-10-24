@@ -896,7 +896,7 @@ class Report:
         chosen = {}
         for name in [str(e) for e in evaluations or ()]:
             if name == self.evaluation:
-                raise ReadRefused("%s is this evaluation - a control comes from another" % name)
+                raise ReadRefused("%s is this evaluation - compare wafers come from another" % name)
             if name not in found:
                 raise ReadRefused("%s is not a recent evaluation - candidates() lists them" % name)
             chosen[name] = []

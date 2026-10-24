@@ -128,7 +128,7 @@ FORMAT_COLOURS = ("fill", "color")
 LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and name",
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
-          "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence",
+          "pareto_cumulative": "cumulative", "control": "compare", "mixed": "mixed (%d)", "evidence": "Evidence",
           "conditions": "Conditions", "yield": "Yield", "unpaired": "Image kinds no summary item matches (images.match): %s",
           "no_control": "This report's wafers only - no compare set default or control.recent is declared."}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its

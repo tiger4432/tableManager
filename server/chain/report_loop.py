@@ -47,8 +47,8 @@ ABOUT = {
     "pareto": "the items by fail chips over the wafers, with the cumulative share",
     "trend": "each item's share wafer by wafer in time order - first, last, least, most",
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
-    "candidates": "the recent evaluations a control group may come from - name, date, wafers, conditions",
-    "compare": "the compare sets' wafers (sets), or a control group from the recent evaluations (evaluations, wafers), "
+    "candidates": "the recent evaluations compare wafers may come from - name, date, wafers, conditions",
+    "compare": "the compare sets' wafers (sets), or compare wafers from the recent evaluations (evaluations, wafers), "
                "read beside this evaluation's in every table after it",
 }
 ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by", "rows"), "pareto": ("wafers",), "trend": ("wafers", "items"),
