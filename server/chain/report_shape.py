@@ -96,7 +96,7 @@ KEY_WORDS = (KEY_UNIT, KEY_LATEST, KEY_FOLD)
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
                                      "formats", "item_sep", "sizes", "columns", "keys", "labels", "info", "picture_rows", "results",
-                                     "send_to")
+                                     "send_to", "causes")
 #: `results`: the report table's column a report's file path goes in, on the wafer's row - the operator names it
 #: (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»). A report's state and why are its Evidence and the
 #: chain log; `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
@@ -104,6 +104,10 @@ RESULTS_CELL, RESULT_CELLS = "results", ("file",)
 UNWRITTEN_RESULTS = ("state", "reason")
 #: `send_to`: where a made report's file is POSTed (tools/report_receiver/receive.py - <send_to>/<name>.html).
 SEND_TO = "send_to"
+#: `causes`: the cause walk before the write (owner 10-25) - the entity type whose nodes the model picks seeds from,
+#: the predicates the walk follows (blank: every predicate between two static types), the types it keeps, its hops
+#: (blank: the walk's own). Names the operator writes; the walk route refuses one the ledger does not declare.
+CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops")
 #: `picture_rows`: rows of one picture a column in the summary table (owner 10-23 «열마다 한 장») - each a table, its
 #: wafer columns and picture column, the row's label and the picture's width (PICTURE_PX: columns × pictures make the
 #: file, so smaller than images.px).
@@ -291,6 +295,13 @@ def skeleton_node():
             {"key": cell, "required": True, "node": chain_bindings.column_ref(("into.table",))}
             for cell in RESULT_CELLS]}},
         {"key": SEND_TO, "required": False, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": CAUSES, "required": False, "node": {"kind": "record", "fields": [
+            {"key": "seed_type", "required": True, "node": {"kind": "leaf", "hint": "free"}},
+            {"key": "follow", "required": False, "node": chain_bindings.list_node(
+                "predicate", {"kind": "leaf", "hint": "free"})},
+            {"key": "collect", "required": False, "node": chain_bindings.list_node(
+                "type", {"kind": "leaf", "hint": "free"})},
+            {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}},
     ]
     return {"kind": "record", "fields": fields}
 
@@ -602,6 +613,9 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     if report_table is not None and not report_key(spec, report_table):
         return ("%r has none of derive.report.wafer.key's columns (%s) - a report table is one row a wafer, its wafer "
                 "column among them" % (report_table, ", ".join(wafer_columns(spec["wafer"].get("key")))))
+    said = _causes_refusal(spec.get(CAUSES))
+    if said:
+        return said
     send_to = spec.get(SEND_TO)
     if send_to is not None and not (isinstance(send_to, str) and send_to.startswith(("http://", "https://"))):
         return "derive.report.send_to is the address a report is POSTed to (http://...), got %r" % (send_to,)
@@ -694,6 +708,22 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     from chain import report_template
 
     return report_template.refusal(spec)
+
+
+def _names(value) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value)
+
+
+def _causes_refusal(causes):
+    if causes is None:
+        return None
+    if not isinstance(causes, dict) or set(causes) - set(CAUSES_CELLS) or not (
+            isinstance(causes.get("seed_type"), str) and causes["seed_type"].strip()) or any(
+            cell in causes and not _names(causes[cell]) for cell in ("follow", "collect")) or (
+            "hops" in causes and not _whole(causes["hops"], 0)):
+        return ('derive.report.causes is {"seed_type": "<entity>", "follow": ["<predicate or class:<word>>", ...], '
+                '"collect": ["<entity>", ...], "hops": <n>} - seed_type written, the rest optional; got %r' % (causes,))
+    return None
 
 
 def _number(value):

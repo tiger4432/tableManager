@@ -58,6 +58,7 @@
 
 ## 2. 도는 것
 
+- 🆕 10-25 `causes` — 상세 분석을 쓰기 «전»에 원인 후보를 정적으로 걷는다: `"causes": {"seed_type": "defect_kind", "collect": ["quantity"], "hops": 6}`. 제품이 원장에서 seed_type 노드 목록을 읽고(`defect_kinds()`), 모델이 그 목록과 이미 읽은 표(yield_by · pareto · trend)를 보고 씨앗을 고른다(`{"seeds": [...], "why": "..."}`). 제품이 그 씨앗에서 걷기 라우트 함수를 프로세스 안에서 불러 걷고(`causes(seeds)`), 후보와 길(`void <-leads_to- wetting_deficit`)이 글쓰기 호출에 표와 같이 간다. `follow` 를 안 적으면 양 끝이 둘 다 정적인 술어(선언의 `class: static`), `hops` 를 안 적으면 걷기 기본값. Evidence 에 «product defect_kinds()» · «causes({"seeds": [...]})» 와 그 밑 why · 후보 줄, 터미널에 `[report] causes …` 세 줄. 선언 안 된 타입 · 술어는 걷기 라우트가 이름 대어 거절하고 그 걸음의 거절로 남는다 — 리포트는 후보 없이 써진다. 데이터 대조 걷기는 아직 없다(정적만).
 - 🆕 10-24 `summary.yield_item` — 요약표에 수율을 한 항목(예 YIELD)으로 넣었을 때: `"yield_item": "YIELD"`(목록도 됨). 그 행은 표의 «Yield» 줄로(불량 칸과 같은 읽기 — rate 또는 F/N), 불량 행 · 파레토 · 트렌드 · 그림에서는 빠진다.
 - 🆕 10-24 `conditions.time_item` — 웨이퍼 시각이 칸이 아니라 조건 표의 한 항목일 때: `"time_item": "tkout"`. wafer 역할에 time 칸이 없으면 그 항목 값이 웨이퍼 시각(정렬 · 날짜 · 대조 후보). 웨이퍼만으로 키 된 조건 표면 그 웨이퍼의 leg 모두에.
 - 🆕 10-24 `wafer.exclude` — 무시할 행: `"exclude": [{"leg": ["*_T", "*TEST*"]}]` (체인 on.exclude 와 같은 문법, `*` 아무 글자들 · `?` 한 글자, 대소문자 그대로). 걸린 웨이퍼 표 행은 유닛이 아니다 — 리포트 · 비교 · 표 어디에도 없다.

@@ -11,6 +11,10 @@ with the grid filter's own conditions. Each answers {"context": <the model's sho
   images(wafers, items?)     defect images of this evaluation's wafers where the item occurred - embedded, not told
   compare(sets)              the compare sets' wafers beside this evaluation's, the same table
 
+Read by the product before the write, when `derive.report.causes` is declared (owner 10-25):
+  defect_kinds()             the ledger's nodes of `causes.seed_type` - the names the model picks seeds from
+  causes(seeds)              a static walk from those nodes - the candidate factors and each one's path
+
 A wafer is its key - one column or several (`report_shape.wafer_columns`), said to the model as the parts joined
 by «/»."""
 from __future__ import annotations
@@ -1063,6 +1067,103 @@ class Report:
             self.groups[name] = self._ordered(wafers)
             lines.append("%s: %d wafers (%s)" % (name, len(self.groups[name]), ", ".join(m for m, _k in members)))
         return lines
+
+    # ---- the cause walk (owner 10-25 «디펙 카인드 노드 리스트 제공하고 ... 정적으로 걸어서 후보 인자») ----------
+    def _causes(self):
+        causes = self.spec.get(report_shape.CAUSES)
+        if not isinstance(causes, dict):
+            raise ReadRefused('derive.report.causes is not declared - {"seed_type": "<entity>"} names the nodes the '
+                              "seeds are picked from")
+        return causes
+
+    def defect_kinds(self):
+        """The ledger's nodes of `causes.seed_type` - the walk's own described seeds, no step taken.
+        -> {"context": its head and a name a line, "nodes": {name: node id}}."""
+        kind = self._causes()["seed_type"]
+        answer = _walk(self.db, "derive.report.causes.seed_type", seed_type=kind, hops=0, propagation=False)
+        nodes = {}
+        for node in answer.get("nodes") or ():
+            nodes.setdefault(str(node.get("label") or node["id"]), node["id"])
+        more = (answer.get("truncated") or {}).get("seeds") or 0
+        self._kinds = nodes
+        head = "%d %s node(s)%s" % (len(nodes), kind, " - %d more not listed" % more if more else "")
+        logger.warning("[report] causes: %s - %s", head, ", ".join(nodes) or "none")
+        return {"context": "\n".join([head] + list(nodes)), "nodes": nodes}
+
+    def causes(self, seeds):
+        """A static walk from the picked `defect_kinds` nodes (names or ids) along `causes.follow` - blank: the
+        predicates between two static types (`trace_router._static_step_predicates`) - keeping `causes.collect`.
+        -> {"context": its head and a candidate a line with its path, "candidates": [{id, type, label, path}]}."""
+        from ledger import trace_router
+
+        causes = self._causes()
+        said = [seeds] if isinstance(seeds, str) else [str(s) for s in seeds or () if str(s).strip()]
+        kinds = getattr(self, "_kinds", None)
+        if kinds is None:
+            kinds = self.defect_kinds()["nodes"]
+        if not said:
+            raise ReadRefused("no seed picked - one or more of the %s nodes: %s" % (causes["seed_type"],
+                                                                                   ", ".join(kinds)))
+        unknown = [s for s in said if s not in kinds and s not in kinds.values()]
+        if unknown:
+            raise ReadRefused("%s is not a %s node - one of %s" % (unknown[0], causes["seed_type"], ", ".join(kinds)))
+        ids = list(dict.fromkeys(kinds.get(s, s) for s in said))
+        follow = causes.get("follow") or sorted(trace_router._static_step_predicates())
+        if not follow:
+            raise ReadRefused("derive.report.causes.follow is blank and the ledger declares no predicate between two "
+                              "static types - name the predicates the walk follows")
+        asked = {"node_id": ids[0], "positive": ids[1:] or None, "follow": follow,
+                 "collect": causes.get("collect") or None, "propagation": True}
+        if causes.get("hops") is not None:
+            asked["hops"] = causes["hops"]
+        answer = _walk(self.db, "derive.report.causes", **asked)
+        edges = {(edge.get("source"), edge.get("target")) for edge in answer.get("edges") or ()}
+        ranked = (answer.get("propagation") or {}).get("ranked") or []
+        trails = {item["id"]: ((item.get("evidence") or [{}])[0].get("hops") or []) for item in ranked}
+        candidates = [{"id": node["id"], "type": node.get("type"), "label": node.get("label"),
+                       "path": _path(trails.get(node["id"]) or (), edges)}
+                      for node in answer.get("nodes") or () if node["id"] not in ids]
+        named = [name for name, at in kinds.items() if at in ids]
+        cut = (answer.get("truncated") or {}).get("reason")
+        head = "%s: %d node(s) reached along %s, %d candidate(s) kept%s%s" % (
+            ", ".join(named), len(ranked), ", ".join(follow), len(candidates),
+            " (collect: %s)" % ", ".join(causes["collect"]) if causes.get("collect") else "",
+            " - the walk was cut: %s" % cut if cut else "")
+        logger.warning("[report] causes walk from %s", head)
+        lines = ["%s %s: %s" % (c["type"], c["label"], c["path"]) for c in candidates]
+        return {"context": "\n".join([head] + lines), "candidates": candidates}
+
+
+def _path(hops, edges) -> str:
+    """A walk trail seed first, each hop's predicates pointed the way its edge runs: «void <-leads_to- gap»."""
+    said = []
+    for at, hop in enumerate(hops):
+        if at:
+            near, predicates = hops[at - 1]["id"], ",".join(hop.get("predicates") or ()) or "?"
+            said.append("-%s->" % predicates if (near, hop["id"]) in edges else
+                        "<-%s-" % predicates if (hop["id"], near) in edges else "-%s-" % predicates)
+        said.append(str(hop.get("label") or hop["id"]))
+    return " ".join(said)
+
+
+def _walk(db, cell, **asked):
+    """The walk route's own function in process, as `mappers/contrast_walk.py` calls it - every argument the route's
+    default but `asked` (a direct call leaves FastAPI's `Query` sentinels in anything left out). The route's refusal
+    (an undeclared type or predicate, by name) is said under `cell`."""
+    import inspect
+
+    from fastapi import HTTPException
+
+    from ledger import trace_router
+
+    route = trace_router.evidence_subgraph
+    args = {name: getattr(p.default, "default", p.default) for name, p in inspect.signature(route).parameters.items()}
+    args.update(asked, db=db)
+    try:
+        return route(**args)
+    except HTTPException as refused:
+        detail = refused.detail
+        raise ReadRefused("%s: %s" % (cell, detail.get("message") if isinstance(detail, dict) else detail)) from refused
 
 
 READS = report_shape.READS
