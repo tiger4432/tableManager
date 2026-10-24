@@ -438,6 +438,10 @@ class Report:
                 said = sorted({_shown(self.wafers[w]["conditions"].get(name)) for w in members
                                if self.wafers[w]["conditions"].get(name) is not None})
                 cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
+            others = [cell for cell, members in zip(cells, columns)
+                      if not set(members) <= set(self.groups[self.evaluation])]
+            if others and all(not cell["text"] for cell in others):
+                continue
             if name in kept or not kept and _differs(cells, len(columns)):
                 rows.append((head + sep + name if sep else name, cells))
         return rows
@@ -536,7 +540,7 @@ class Report:
         columns = [(name, col, members) for name, cols in self._column_groups(self.pick(wafers), by)
                    for col, members in cols]
         heads = self._heads(columns, by)
-        if self.spec.get(report_shape.COLUMNS) and not by:
+        if not by:                         # by the heads: the date first (owner 10-24 «날짜순으로 표 나열»)
             order = sorted(range(len(columns)), key=lambda at: heads[at][1])
             columns, heads = [columns[at] for at in order], [heads[at] for at in order]
         everyone = [w for _name, _col, members in columns for w in members]
@@ -575,7 +579,10 @@ class Report:
                     texts.append(name)
                     order.append((named.index(name), ""))
                 elif tier == report_shape.COLUMN_TIME:
-                    day = self._day(one) if one else None
+                    # the day of the head under it (date > wafer > leg: the wafer's, every leg one date - owner 10-24
+                    # «같은 웨이퍼 다른 레그인데 왜 병합 안 돼»)
+                    under = [k for k in tiers[tiers.index(tier) + 1:-1] if k in self.keys]
+                    day = self._day(one, under) if one else None
                     texts.append(day or "")
                     order.append((day is None, day or ""))
                 elif tier is None or one is None:
@@ -591,7 +598,7 @@ class Report:
         """The column head tiers - `columns`, else the group then the key; a column of a condition value: the group,
         then the condition (None to the heads: the column's label)."""
         return ([report_shape.COLUMN_GROUP, None] if by else
-                self.spec.get(report_shape.COLUMNS) or [report_shape.COLUMN_GROUP] + self.keys)
+                self.spec.get(report_shape.COLUMNS) or [report_shape.COLUMN_TIME] + self.keys)
 
     def _columns_of(self, columns, heads, by=None):
         """The table's columns: the groups in the columns' order (the model reads them), each column's head texts,
@@ -606,11 +613,14 @@ class Report:
                 "tiers": [by if tier is None else tier for tier in self._tiers(by)],
                 "own": [name == self.evaluation for name, _col, _members in columns]}
 
-    def _day(self, wafer):
-        """The wafer's day: the latest time of the rows of its report wafer, on the product's wall clock, or None."""
-        mine = self._report_wafer(wafer)
+    def _day(self, wafer, under=None):
+        """The wafer's day: the latest time of the rows of its report wafer - or, `under` (key columns), of every wafer
+        of those parts - on the product's wall clock, or None."""
+        at = [self.keys.index(k) for k in under or ()]
+        unit = (lambda w: tuple(w[i] for i in at)) if at else self._report_wafer
+        mine = unit(wafer)
         times = [at for at in (_instant(facts["time"]) for w, facts in self.wafers.items()
-                               if self._report_wafer(w) == mine) if at is not None]
+                               if unit(w) == mine) if at is not None]
         return max(times).date().isoformat() if times else None
 
     def _column_groups(self, wafers, by):

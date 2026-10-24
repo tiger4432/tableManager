@@ -28,7 +28,9 @@ h1 { font-size: 20px; margin: 0; }
 section { display: grid; gap: 8px; }
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: nowrap; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: normal;
+         overflow-wrap: anywhere; width: 7em; min-width: 7em; max-width: 7em; vertical-align: top; }
+td.rpt-item, td.rpt-info, td.rpt-picture, th:first-child { width: 12em; min-width: 12em; max-width: 12em; }
 th { background: var(--head); }
 th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
 .gallery { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -37,7 +39,11 @@ figcaption { color: var(--muted); font-size: 12px; }
 .text { white-space: pre-wrap; }
 .note { color: var(--muted); font-size: 12px; }
 section { min-width: 0; }
+.rpt-own { background: #ffe0b2; }
+th.rpt-own { background: #ffcc80; }
 """
+#: the report's own wafers' columns - orange (owner 10-24 «리포트 요청한 웨이퍼는 주황색으로 하이라이트»)
+OWN = "rpt-own"
 
 
 def _e(value) -> str:
@@ -157,16 +163,20 @@ def _summary_table(table, spec, lent=None):
     depth, drawn = row_heads([[name for name, _c, _r in rows] for _k, rows in blocks], sep)
     corner = depth if depth > 1 else None
     tiers, named = head_tiers(table["heads"]), table.get("tiers") or ()
+    own = table["own"]
     out = []
     for level, (at, tier) in enumerate(tiers):
         cls = GROUP if level == 0 else HEAD
+        cells, first = [], 0
+        for text, span in tier:
+            mine = bool(own[first:first + span]) and all(own[first:first + span])
+            cells.append(_cell("th", cls + (" " + OWN if mine else ""), head.get("value"), text=_e(text),
+                               colspan=span if level == 0 or span > 1 else None))
+            first += span
         out.append("<tr>%s%s</tr>" % (
             _cell("th", cls, head.get("name"), text=_e(report_shape.column_word(spec, named[at]))
-                  if at < len(named) else "", colspan=corner),
-            "".join(_cell("th", cls, head.get("value"), text=_e(text),
-                          colspan=span if level == 0 or span > 1 else None) for text, span in tier)))
+                  if at < len(named) else "", colspan=corner), "".join(cells)))
     columns = [c for _n, cols in table["groups"] for c in cols]
-    own = table["own"]
     formats = spec.get("formats") or {}
     body = []
     for (kind, rows), heads in zip(blocks, drawn):
@@ -179,7 +189,8 @@ def _summary_table(table, spec, lent=None):
             row_head = "".join(_cell("td", name_class, dress.get("name"), text=_e(part), rowspan=rowspan,
                                      colspan=colspan if colspan and colspan > 1 else None)
                                for part, rowspan, colspan in parts)
-            values = "".join(_cell("td", _aligned(value_class, cell, kind), dress.get("value"),
+            values = "".join(_cell("td", _aligned(value_class, cell, kind) + (" " + OWN if own[at] else ""),
+                                   dress.get("value"),
                                    _colour(formats.get(raw), cell, own[at], baseline) if kind == "item" else None,
                                    _value(cell, name, columns[at] if at < len(columns) else ""))
                              for at, cell in enumerate(cells))
