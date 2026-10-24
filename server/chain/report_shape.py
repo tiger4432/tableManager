@@ -85,10 +85,15 @@ LABEL_COLUMNS = "columns"
 #: time), KEY_FOLD rows that differ only there are one (a chip's layers - the smallest drawn, keys' order). A column
 #: of no word is a plain part of a row's identity. A role's `wafer` names the key columns its table has.
 KEYS, KEY_UNIT, KEY_LATEST, KEY_FOLD = "keys", "unit", "latest", "fold"
+#: `sizes`: the summary table's font and column widths in px (owner 10-24 «컬럼 폭 · 폰트 크기 선언으로 할 수 있게») -
+#: each written one holds, the others SIZE_DEFAULTS.
+SIZES = "sizes"
+SIZE_DEFAULTS = {"font_px": 10, "name_px": 185, "value_px": 100}
 KEY_WORDS = (KEY_UNIT, KEY_LATEST, KEY_FOLD)
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
-                                     "formats", "item_sep", "columns", "keys", "labels", "info", "picture_rows", "results", "send_to")
+                                     "formats", "item_sep", "sizes", "columns", "keys", "labels", "info", "picture_rows", "results",
+                                     "send_to")
 #: `results`: the report table's column a report's file path goes in, on the wafer's row - the operator names it
 #: (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»). A report's state and why are its Evidence and the
 #: chain log; `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
@@ -253,6 +258,7 @@ def skeleton_node():
             {"key": cell, "required": False, "node": {"kind": "leaf", "hint": "number" if cell in ("value", "times")
                                                       else "free"}} for cell in FORMAT_CELLS]})}},
         {"key": "item_sep", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": SIZES, "required": False, "node": _record(tuple(SIZE_DEFAULTS), "number")},
         {"key": COLUMNS, "required": False, "node": chain_bindings.list_node("head", {"kind": "leaf", "hint": "free"})},
         {"key": KEYS, "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "column",
                                                   "of": chain_bindings.list_node("word", {"kind": "leaf", "hint": "free"})}},
@@ -666,6 +672,12 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     said = _formats_refusal(spec)
     if said:
         return said
+    sizes = spec.get(SIZES)
+    if sizes is not None and not (isinstance(sizes, dict) and all(
+            k in SIZE_DEFAULTS and isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+            for k, v in sizes.items())):
+        return "derive.report.%s is {%s} - px numbers above 0, got %r" % (
+            SIZES, ", ".join('"%s": %s' % kv for kv in SIZE_DEFAULTS.items()), sizes)
     if "item_sep" in spec and not isinstance(spec["item_sep"], str):
         return "derive.report.item_sep is the text an item name splits at, got %r" % (spec["item_sep"],)
     if "labels" in spec and not isinstance(spec["labels"], dict):

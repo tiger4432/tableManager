@@ -27,10 +27,9 @@ h1 { font-size: 20px; margin: 0; }
 .meta { color: var(--muted); }
 section { display: grid; gap: 8px; }
 .scroll { overflow-x: auto; }
-table { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 10px; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: normal;
-         overflow-wrap: anywhere; width: 100px; min-width: 100px; max-width: 100px; vertical-align: top; }
-td.rpt-item, td.rpt-info, td.rpt-picture, th:first-child { width: 185px; min-width: 185px; max-width: 185px; }
+         overflow-wrap: anywhere; vertical-align: top; }
 th { background: var(--head); }
 th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
 .gallery { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -44,8 +43,6 @@ th.rpt-own { background: #ffcc80; }
 """
 #: the report's own wafers' columns - orange (owner 10-24 «리포트 요청한 웨이퍼는 주황색으로 하이라이트»)
 OWN = "rpt-own"
-#: the summary table's column widths (owner 10-24: row heads 185px, values 100px)
-NAME_PX, VALUE_PX = 185, 100
 
 
 def _e(value) -> str:
@@ -222,12 +219,14 @@ def _summary_table(table, spec, lent=None):
     note = ('<p class="note">%s: %s</p>' % (_e(report_shape.word(spec, "left_out")), _e(", ".join(table["left_out"])))
             if table.get("left_out") else "")
     # widths held by the columns themselves - a cell's max-width does not hold a table column (owner 10-24 «표 컬럼폭
-    # 100으로»): the row heads NAME_PX, each value column VALUE_PX, a long text wraps
-    heads_at = max(depth, 1)
-    cols = "<colgroup>%s%s</colgroup>" % ('<col style="width:%dpx">' % NAME_PX * heads_at,
-                                          '<col style="width:%dpx">' % VALUE_PX * len(columns))
-    return WRAP % ('<table style="table-layout:fixed;width:%dpx">%s<thead>%s</thead><tbody>%s</tbody></table>' % (
-        NAME_PX * heads_at + VALUE_PX * len(columns), cols, "".join(out), "".join(body))) + note
+    # 100으로»): derive.report.sizes, a long text wraps
+    sizes = dict(report_shape.SIZE_DEFAULTS, **(spec.get(report_shape.SIZES) or {}))   # derive.report.sizes
+    name_px, value_px, heads_at = sizes["name_px"], sizes["value_px"], max(depth, 1)
+    cols = "<colgroup>%s%s</colgroup>" % ('<col style="width:%gpx">' % name_px * heads_at,
+                                          '<col style="width:%gpx">' % value_px * len(columns))
+    return WRAP % ('<table style="table-layout:fixed;width:%gpx;font-size:%gpx">%s<thead>%s</thead><tbody>%s</tbody>'
+                   '</table>' % (name_px * heads_at + value_px * len(columns), sizes["font_px"], cols, "".join(out),
+                                 "".join(body))) + note
 
 
 def _aligned(cls, cell, kind):
