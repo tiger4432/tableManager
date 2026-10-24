@@ -5,7 +5,9 @@ through the chain's door: a replace_map batch per map -> apply_batch_updates -> 
 file does not hold is untouched; a row whose map key is blank refuses the file before anything is written; without
 the cell a file is an upsert, as before.
 
-  file 1 = map A 10 rows · map B 5 rows    file 2 = map A 7 rows    ->  A 7 (3 deleted: event · history) · B 5
+  file 1 = map A 10 rows · map B 5 rows    file 2 = map A 7 rows    ->  A 7 · B 5
+Owner 10-24 «그냥 소스 통째로 걷기로 했잖아»: each map the file holds is purged whole - all 10 rows of A, every
+source's layer with them (the chain's too) - and written from the file; a blank map key row is skipped, not refused.
 and the lines say it (총괄 10-21, 소유자 「로그 띄워 지워진 것」): the map's line its written and removed rows with the
 removed dies' keys inside the map, the file's line its maps replaced and rows deleted.
 """
@@ -101,17 +103,16 @@ def test_a_file_replaces_the_maps_it_holds_and_leaves_the_others(load, caplog):
     assert " · replaced 2 map(s), deleted 0 row(s)" in caplog.text, caplog.text[-2000:]
     before = rows()
     assert _shape(before) == {("A", "a1"): 10, ("B", "b1"): 5}, before                        # canary
-    gone = {r[3] for r in before if r[0] == "A" and r[1] > 7}
-    kept = {r[3] for r in before if r[0] == "A" and r[1] <= 7}
+    gone = {r[3] for r in before if r[0] == "A"}
     caplog.clear()
     with caplog.at_level(logging.INFO):
         load_file(FILE_2, name="maps2.csv")
-    [removed] = re.findall(r"\[Map Diff\] Table: 'zz_file_map_replace' .*Written: 7 \| Removed: 3 \((.*)\)", caplog.text)
-    assert sorted(removed.split(", ")) == ["die_no=10", "die_no=8", "die_no=9"], removed
-    assert " · replaced 1 map(s), deleted 3 row(s)" in caplog.text, caplog.text[-2000:]
+    assert re.search(r"\[Map Replace Executed\] Table: 'zz_file_map_replace' .*Mode: purge .*Purged Old Rows: 10",
+                     caplog.text), caplog.text[-2000:]
+    assert " · replaced 1 map(s), deleted 10 row(s)" in caplog.text, caplog.text[-2000:]
+    assert "purge/file_replace 1" in caplog.text, caplog.text[-2000:]
     after = rows()
     assert _shape(after) == {("A", "a2"): 7, ("B", "b1"): 5}, after
-    assert {r[3] for r in after if r[0] == "A"} == kept, "the 7 dies written again keep their rows"
     with engine.connect() as conn:
         events = conn.execute(text("SELECT payload FROM database_outbox WHERE table_name = :t AND event_type = "
                                    "'DELETE'"), {"t": T}).all()
@@ -120,28 +121,26 @@ def test_a_file_replaces_the_maps_it_holds_and_leaves_the_others(load, caplog):
                                     "AND row_id = ANY(:ids)"),
                                {"t": T, "c": crud.ROW_DELETION_COLUMN, "ids": list(gone)}).scalar()
     assert gone <= said, (gone, said)
-    assert history == 3
+    assert history == 10
 
 
 @pytest.mark.pg
-def test_a_row_without_its_map_key_refuses_the_file_and_nothing_is_deleted(load):
+def test_a_row_without_its_map_key_is_skipped_and_the_file_goes_on(load, caplog):
     load_file, rows, _engine = load
     load_file(FILE_1)
-    before = rows()
-    with pytest.raises(crud.CellRefused) as refused:            # the parser skips it - the key is blank
+    with caplog.at_level(logging.WARNING):
         load_file("map_id,die_no,v\nA,1,x\n,2,y\nA,3,z\n", name="blank.csv")
-    assert "map_id" in str(refused.value) and "1 row(s) had a blank key" in str(refused.value), str(refused.value)
-    assert rows() == before
+    assert "with a blank map key ['map_id'] skipped" in caplog.text, caplog.text[-2000:]
+    assert _shape(rows()) == {("A", "x"): 1, ("A", "z"): 1, ("B", "b1"): 5}, rows()
 
 
 def test_a_row_reaching_the_write_without_its_map_key_names_its_file_row():
-    """A parser that hands the row over (a plugin's rows): refused at the write, by the file's row."""
+    """A parser that hands the row over (a plugin's rows): skipped - it names no map."""
     from parsers import directory_watcher as dw
 
     rows = [{"map_id": "A", "die_no": 1}, {"map_id": " ", "die_no": 2}]
-    with pytest.raises(crud.CellRefused) as refused:
-        dw.IngestionHandler._map_batches(T, rows, ["map_id"], {"map_id": "map_id", "die_no": "die_no"})
-    assert refused.value.row == 2 and "map_id" in str(refused.value), str(refused.value)
+    batches = dw.IngestionHandler._map_batches(T, rows, ["map_id"], {"map_id": "map_id", "die_no": "die_no"})
+    assert [[file_row for file_row, _row in batch] for batch in batches] == [[1]]
 
 
 @pytest.mark.pg
@@ -181,9 +180,9 @@ def _cells(engine):
 
 @pytest.mark.pg
 def test_a_blank_cell_a_replacing_file_names_is_emptied(load):
-    """총괄 10-21 (소유자 「기존 값 그대로 있음」): in a map the file replaces, a cell its row names blank is emptied by
-    that file's layer - as the chain's replace does; a person's value stays above it, and a cell the file does not
-    name (the chain's c) is not touched."""
+    """총괄 10-21 (소유자 「기존 값 그대로 있음」) · 소유자 10-24 «그냥 소스 통째로 걷기로 했잖아»: a map the file
+    replaces is purged whole and written from the file - a cell its row names blank is empty, and the chain's c and
+    the person's w go with the old rows."""
     load_file, _rows, engine = load
     load_file("map_id,die_no,v,w\nA,1,a1,x1\nA,2,a1,x1\nA,3,a1,x1\n")
     _write(engine, crud.CHAIN_SOURCE, 1, c="chain1")
@@ -191,7 +190,7 @@ def test_a_blank_cell_a_replacing_file_names_is_emptied(load):
     assert [tuple(r) for r in _cells(engine)] == [(1, "a1", "x1", "chain1"), (2, "a1", "human", None),
                                                  (3, "a1", "x1", None)]               # canary
     load_file("map_id,die_no,v,w\nA,1,,x2\nA,2,a2,\n", name="maps2.csv")
-    assert [tuple(r) for r in _cells(engine)] == [(1, None, "x2", "chain1"), (2, "a2", "human", None)]
+    assert [tuple(r) for r in _cells(engine)] == [(1, None, "x2", None), (2, "a2", None, None)]
 
 
 @pytest.mark.pg
