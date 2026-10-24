@@ -74,7 +74,7 @@ def _parts(row):
     return tuple(_part(value) for value in row)
 
 
-def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
+def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, capped=False):
     """`columns` of the role's table for these wafers (None: every row) - through the grid read path. Rows past
     READ_ROW_CAP are refused - or, with `newest` (a column), the newest READ_ROW_CAP by it are the answer. `keys`: the
     key columns `wafers` are spelled in, `columns` first (default the role's own)."""
@@ -99,7 +99,7 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
         query = query.order_by(getattr(model, report_shape.column_of(role, newest)).desc())
     found = query.with_entities(*(getattr(model, report_shape.column_of(role, c)) for c in columns)).limit(
         READ_ROW_CAP + 1).all()
-    if newest:
+    if newest or capped:              # capped: the first READ_ROW_CAP rows, as read (a picture table, owner 10-24)
         found = found[:READ_ROW_CAP]
     elif len(found) > READ_ROW_CAP:
         raise ReadRefused("%s holds over %d rows for these wafers - pick fewer" % (table, READ_ROW_CAP))
@@ -228,7 +228,7 @@ class Report:
                         tuple(wafer[i] for i in unit)][1]]
         return read
 
-    def _matched(self, role, columns, wafers):
+    def _matched(self, role, columns, wafers, capped=False):
         """[(wafer, values)] - the role's rows of these wafers, matched by the key columns the role's table has, by name
         (owner 10-23 «키 칸을 리스트로»): a table without some of the wafer key's (a condition of every measurement)
         answers each wafer it matches; `values` are `columns`, then the table's key columns beyond the wafer key."""
@@ -240,7 +240,7 @@ class Report:
         for wafer in dict.fromkeys(wafers):                 # a wafer in two groups is read once
             by.setdefault(_parts(wafer[i] for i in at), []).append(wafer)
         out = []
-        for row in _rows(self.db, role, shared + columns + beyond, list(by), keys=shared):
+        for row in _rows(self.db, role, shared + columns + beyond, list(by), keys=shared, capped=capped):
             for wafer in by.get(_parts(row[:len(shared)]), ()):
                 out.append((wafer, row[len(shared):]))
         return out
@@ -296,12 +296,12 @@ class Report:
         return [self.named[str(each)][0] for each in said]
 
     # ---- the numbers -----------------------------------------------------------------------------------------
-    def _pairs(self, role, columns, wafers, name=None):
+    def _pairs(self, role, columns, wafers, name=None, capped=False):
         """(wafer, name) -> the role's `columns` of its row, from a long table a row a wafer and name (the summary,
         the info; a picture row is one `name`, a row a wafer) - a pair two rows say is left out, named."""
         named = [role["item"]] if name is None else []
         found, twice = {}, set()
-        for wafer, row in self._matched(role, named + columns, wafers):
+        for wafer, row in self._matched(role, named + columns, wafers, capped=capped):
             said = row[0] if name is None else name
             if said is None:
                 continue
@@ -405,8 +405,10 @@ class Report:
         rows, left_out = [], []
         for role in self.spec.get(report_shape.PICTURE_ROWS) or ():
             name = str(role["label"])
+            # a picture table of many rows (chip patches) is read to its cap, never refused (owner 10-24 «컴페어 patches
+            # 1만개 이상이라고 멈추네»)
             found, twice = self._pairs(role, [role["image"]], [members[0] for members in columns
-                                                                if len(members) == 1], name=name)
+                                                                if len(members) == 1], name=name, capped=True)
             px = role.get("px") or report_shape.PICTURE_PX
             source = role.get(report_shape.IMAGE_SOURCE)
             cells = [{"text": "—"} if len(members) != 1 else
@@ -646,7 +648,7 @@ class Report:
         fold = [beyond.index(c) for c in self.key_words if c in beyond
                 and report_shape.KEY_FOLD in self.key_words[c]]
         chip = [at for at, c in enumerate(beyond) if at not in fold]
-        rows = self._matched(role, [role["item"], role["image"]], picked)
+        rows = self._matched(role, [role["item"], role["image"]], picked, capped=True)   # capped, not refused
         # a chip's rows (owner 10-23: a layer a row, the chip seen through) - the smallest fold values first, keys' order
         rows.sort(key=lambda pair: [_ordinal(pair[1][2 + at]) for at in fold])
         # images.match: an image kind is its summary item's picture; with match declared, a kind it pairs with nothing
