@@ -384,9 +384,9 @@ function lineName(t) {
  * ⚠️ `total` 이 수가 아니면 «못 읽음»입니다. `|| 0` 으로 채우면 없는 수가 「실패 없음」이 됩니다.
  */
 export function failedSince(outbox) {
-  // 🔴 총괄 e573a6edf — the rows the summary counts, when the answer carries it: the Overview's Chain
-  //    line and the failure section read the same answer. `total` (transaction groups) otherwise.
-  const lines = outbox && Array.isArray(outbox.summary) ? outbox.summary : null;
+  // 🔴 총괄 e573a6edf — the rows the failure lines count (by_cause, owner 10-24), when the answer carries them: the
+  //    Overview's Chain line and the failure section read the same answer. `total` (transaction groups) otherwise.
+  const lines = outbox && Array.isArray(outbox.by_cause) ? outbox.by_cause : null;
   const total = lines ? lines.reduce((n, l) => n + (isCount(l && l.count) ? Number(l.count) : 0), 0)
     : outbox && isCount(outbox.total) ? Number(outbox.total) : null;
   const cell = countWithAbsence(total === null ? { unread: UNKNOWN }

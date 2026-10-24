@@ -116,6 +116,9 @@ const QUEUE = {
         { table_name: 'dt_wafer', event_type: 'EDIT', day: '2026-10-21', count: 19000, first_at: '2026-10-21T16:50:00+09:00',
           last_at: at, retry_max: 1, last_failure: TIMEOUT },
         { table_name: 'dt_log', event_type: 'CREATE', day: '2026-10-20', count: 2, first_at: at, last_at: at, retry_max: 0 }],
+      by_cause: [
+        { rules: ['lot_slot_join'], cause: TIMEOUT, count: 19000, first_at: '2026-10-21T16:50:00+09:00', last_at: at },
+        { rules: ['dt_log_to_dt_map'], cause: '', count: 2, first_at: at, last_at: at }],
       data: [{ transaction_id: 'tx-timeout-0000-0000', table_names: ['dt_wafer'], event_types: ['EDIT'], retry_count: 1,
         attempts_this_round: 1, failed_at: at, events: [{ id: 1, event_uuid: 'e-1', event_type: 'EDIT', table_name: 'dt_wafer',
           payload: { transaction_id: 'tx-timeout-0000-0000', error_log: record }, status: 'FAILED', retry_count: 1,
@@ -288,6 +291,16 @@ const galleryAnswer = (u) => {
 };
 // A cut replay on the chain queue (owner 10-23 «체인 소급 이어하기 · 마지막 커서»): while its state runs, the queue's answer
 // carries one, with a long key - its line, where it resumes, Resume and ×.
+// A rule the chain switched off itself and the failures folded by cause (owner 10-24 «연속 10회 오류면 자동 disable» ·
+// «똑같은 에러면 접든가», A 06b1fd297): while on, the rules list's first rule is declared_only with the server's line and
+// the failure answers carry by_cause - two long sentences, so their whole text is measured.
+const RULE_OFF = { on: false,
+  line: 'Switched off after 10 failures in a row since 2026-10-24 09:00:00 · 1,234 changes skipped since · '
+    + 'KeyError: wafer_id - the mapper dt_log_to_dt_map.map_rows read a column the trigger row does not carry',
+  causes: [{ rules: ['dt_log_to_dt_map'], count: 1000000, first_at: '2026-10-24T09:00:00+09:00', last_at: '2026-10-24T17:40:00+09:00',
+    cause: 'KeyError: wafer_id - the mapper dt_log_to_dt_map.map_rows read a column the trigger row does not carry; '
+      + 'the group was set aside after 2 attempts (chain_statement_timeout_seconds not reached)' },
+  { rules: [], count: 3, first_at: '2026-10-20T08:00:00+09:00', last_at: '2026-10-20T08:00:00+09:00', cause: 'relation dt_old does not exist' }] };
 const CUT_RUN = { on: false, entry: { run_id: 'cutrun-0001', op: 'chain_replay', rule: 'dt_log_to_dt_map', state: 'cancelled',
   pages: { done: 12, staged: 20, rows_done: 12000 }, cursor_end: 'LOT-2026-10-23-000123|WAFER-07|DIE-0042', total_rows: 40000,
   cut_at: '2026-10-23 09:00:00', resume: { run_id: 'cutrun-0001' }, cancel: { key: 'cutrun-0001' } } };
@@ -311,6 +324,22 @@ const answerOf = (u) => {
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
+  }
+  if (RULE_OFF.on && u.pathname === '/admin/chain/rules') {
+    // the recorded answer is the server's 500 text - the rules list was never read when it was captured
+    const rule = (name, more) => ({ name, kind: 'join', trigger_table: 'dt_log', target_table: 'dt_map', is_batch: true, ...more });
+    return { status: 200, type: 'application/json', body: { status: 'ok', data: [
+      rule('dt_log_to_dt_map', { rule_state: 'declared_only', rule_state_detail: RULE_OFF.line }),
+      rule('dt_log_to_dt_wafer', { target_table: 'dt_wafer', rule_state: 'running' })] } };
+  }
+  if (RULE_OFF.on && u.pathname === '/admin/outbox/failed') {   // recorded as the server's 500 text too
+    const [first, last] = [RULE_OFF.causes[0].first_at, RULE_OFF.causes[0].last_at];
+    // one line's rows (A b7503191e): its cause and comma-joined rules - a row named for what it was asked by
+    const asked = u.searchParams.get('cause') === RULE_OFF.causes[0].cause && u.searchParams.get('rules') === 'dt_log_to_dt_map';
+    const data = asked ? [{ transaction_id: 'tx-cause-0001', table_names: ['dt_log'], event_types: ['EDIT'], retry_count: 2,
+      attempts_this_round: 2, failed_at: last, events: [] }] : [];
+    return { status: 200, type: 'application/json', body: { data, total: asked ? 1 : 1000003, day_zone: 'Asia/Seoul', by_cause: RULE_OFF.causes,
+      summary: [{ table_name: 'dt_log', event_type: 'EDIT', day: '2026-10-24', count: 1000003, first_at: first, last_at: last, retry_max: 2 }] } };
   }
   if (CUT_RUN.on && u.pathname === '/admin/chain/queue') {
     return { status: 200, type: 'application/json', body: { ...QUEUE['/admin/chain/queue'], interrupted_runs: [CUT_RUN.entry] } };
@@ -764,6 +793,22 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + record from the take chips', 
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
 // owner 10-23: a cut replay's line - «interrupted», where it resumes after which key, of the total, Resume beside its ×.
+// owner 10-24: a rule the chain switched off is DISABLED and says the server's line; the failures fold to a line per cause.
+CELLS.push({ entry: 'admin.html', after: 'Chain, a rule switched off and failures by cause', rule: 'contents', at: 'chain-list-body', expr: `(() => {
+  const row = document.querySelector('#chain-list-body tr');
+  if (!row) return 'no rule row';
+  const badge = [...row.querySelectorAll('.badge')].map((b) => b.textContent);
+  if (!badge.includes('DISABLED') || badge.includes('ACTIVE')) return 'the switched-off rule says ' + badge.join(' ');
+  if (![...row.querySelectorAll('.chain-state-note')].some((n) => n.textContent === ${JSON.stringify(RULE_OFF.line)})) return 'its line is not drawn';
+  const lines = [...document.querySelectorAll('#chain-fail-summary-mount .fail-summary__line')];
+  const texts = lines.map((n) => n.textContent);
+  if (texts.length !== 2 || !texts[0].startsWith('dt_log_to_dt_map 1000000 · ') || !texts[1].startsWith('Rule not recorded 3 · ')) return 'cause lines ' + JSON.stringify(texts);
+  const said = lines[0].nextElementSibling;
+  if (!said || !said.classList.contains('fail-summary__reason') || said.textContent !== ${JSON.stringify(RULE_OFF.causes[0].cause)}) return 'the cause sentence is not under its line';
+  const rows = said.nextElementSibling;
+  return lines[0].getAttribute('aria-expanded') === 'true' && rows && rows.querySelector('tr[data-txid="tx-cause-0001"]') ? null
+    : 'the pressed cause line did not unfold its own rows';
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'contents', at: 'chain-queue', expr: `(() => {
   const line = document.querySelector('#chain-queue-mount tr[data-line-id="cutrun-0001"]');
   if (!line) return 'no line for the cut run';
@@ -2489,6 +2534,19 @@ const DRIVE = {
       await evaluate(c, `(() => { const at = document.querySelector('#chain-queue-mount .chain-queue-resume');
         at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
+    // A rule the chain switched off and the failures by cause (owner 10-24): the Chain tab read again with both.
+    ['Chain, a rule switched off and failures by cause', async (c) => {
+      RULE_OFF.on = true;
+      await evaluate(c, "location.hash = '#tables'; true");
+      await sleep(400);
+      await evaluate(c, "location.hash = '#chain'; true");
+      await until(c, "!!document.querySelector('#chain-fail-summary-mount .fail-summary__line') && /Switched off after/.test((document.getElementById('chain-list-body') || {}).textContent || '')");
+      await evaluate(c, "document.querySelector('#chain-fail-summary-mount .fail-summary__line').click(); true");
+      await until(c, "!!document.querySelector('#chain-fail-summary-mount tr[data-txid=\"tx-cause-0001\"]')").catch(() => null)
+        .finally(() => { RULE_OFF.on = false; });
+      await evaluate(c, `(() => { const at = document.querySelector('#chain-fail-summary-mount');
+        at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
   ],
 };
@@ -2611,6 +2669,12 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  { name: 'a rule the chain switched off drawn ACTIVE', entry: 'admin.html', rule: 'contents', at: 'chain-list-body',
+    file: 'src/admin.js', edits: [[" && rule.rule_state !== 'declared_only';", ';']] },
+  { name: 'the failures folded by table · kind · day again', entry: 'admin.html', rule: 'contents', at: 'chain-list-body',
+    file: 'src/failure_summary.js', edits: [['Array.isArray(body.by_cause) ? body.by_cause : null', 'Array.isArray(body.summary) ? body.summary : null']] },
+  { name: 'a cause line unfolding without its cause', entry: 'admin.html', rule: 'contents', at: 'chain-list-body',
+    file: 'src/admin.js', edits: [['`&cause=${encodeURIComponent(outboxFilter.cause)}', '`&causes=${encodeURIComponent(outboxFilter.cause)}']] },
   { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',
     file: 'src/file_ingestion/parts.js', edits: [["el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')"]] },
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
@@ -2701,7 +2765,7 @@ const MUTANTS = [
   { name: 'a recent failure breaks its words anywhere', entry: 'admin.html', rule: 'words', at: 'td > div.refusal.reason-lines',
     file: 'admin.html', edits: [['    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }', '    .chain-queue-table .chain-queue-failure { }']] },
   { name: 'the failed line says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
-    file: 'src/failure_summary.js', edits: [["l.last_failure.trim() : '';", "(l.last_failure.match(/\\d+ s/) || [''])[0] : '';"]] },
+    file: 'src/failure_summary.js', edits: [["l.cause.trim() : '';", "(l.cause.match(/\\d+ s/) || [''])[0] : '';"]] },
   { name: 'a recent failure says the seconds of its sentence alone', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
     file: 'src/chain_queue_panel.js', edits: [["const said = this._line('refusal reason-lines chain-queue-failure', f.failure);",
       "const said = this._line('refusal reason-lines chain-queue-failure', (f.failure.match(/\\d+ s/) || [''])[0]);"]] },

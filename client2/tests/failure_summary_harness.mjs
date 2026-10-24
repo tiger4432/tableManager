@@ -1,11 +1,11 @@
-// failure_summary_harness — the failure section is one line per (table · kind · day), and an open
-// line seats the page's row table under it (lead e573a6edf · 2f2a2f570).
+// failure_summary_harness — the failure section is one line per (rules · failure sentence), and an open
+// line seats the page's row table under it (lead e573a6edf · 2f2a2f570; by cause, owner 10-24, lead ㄷ).
 //
-//   A  a line says table kind count · span · attempts, from the server's summary as sent
-//   B  the section's count is the rows the summary folded
-//   C  a day cut in another zone than the one sent says whose day it is
+//   A  a line says rules count · span, from the server's by_cause as sent; it unfolds by its cause and rules
+//   B  the section's count is the rows the lines folded
+//   C  a record that names no rule says so
 //   D  the open line — and only it — gets the row table; pressing it again folds it
-//   E  no summary is unread, not 「no failures」
+//   E  no by_cause is unread, not 「no failures」 - an answer with the retired summary alone too
 //   F  two instances on one page do not touch each other
 //   G  a line carries its newest failure sentence as the server sent it, drawn under the line (lead 903053c14)
 import path from 'node:path';
@@ -24,11 +24,9 @@ const LAST = '2026-09-23T00:39:00+09:00';
 // The worker's statement-limit sentence (_said_timeout), as a failed group's record carries it.
 const REASON = '[rules=lot_slot_join target=dt_wafer] statement timeout · 600 s · stage write:dt_wafer - one statement '
   + 'of this group ran past chain_statement_timeout_seconds (ingestion_settings.json); the database stopped it';
-const BODY = { day_zone: 'Asia/Seoul', summary: [
-  { table_name: 'dt_inventory', event_type: 'EDIT', day: '2026-09-23', count: 33,
-    first_at: FIRST, last_at: LAST, retry_max: 1, last_failure: REASON },
-  { table_name: 'wafer', event_type: 'CREATE', day: '2026-09-22', count: 2,
-    first_at: FIRST, last_at: FIRST, retry_max: 0 },
+const BODY = { day_zone: 'Asia/Seoul', by_cause: [
+  { rules: ['lot_slot_join', 'wafer_join'], cause: REASON, count: 33, first_at: FIRST, last_at: LAST },
+  { rules: [], cause: '', count: 2, first_at: FIRST, last_at: FIRST },
 ] };
 
 async function suite(mod) {
@@ -39,9 +37,8 @@ async function suite(mod) {
     const g = JSON.stringify(got); const w = JSON.stringify(want);
     if (g !== w) failures.push(`${name}: got ${g}, want ${w}`);
   };
-  const view = mod.failureSummaryView(BODY, 'Asia/Seoul');
-  eq('A1 a line is table kind count · span · attempts', view.lines[0].text,
-    `dt_inventory EDIT 33 · ${localSpan(FIRST, LAST)} · attempts 1`);
+  const view = mod.failureSummaryView(BODY);
+  eq('A1 a line is its rules and count · span', view.lines[0].text, `lot_slot_join, wafer_join 33 · ${localSpan(FIRST, LAST)}`);
   // R -- one failure's RECORD, read (order 45f5da3f5). The worker's shape (_failure_record).
   const cells = (log) => Object.fromEntries(mod.failureRecordCells(log));
   eq('R1 a record says rule · table · rows · row · reason as written',
@@ -65,13 +62,13 @@ async function suite(mod) {
     ['relation x does not exist', JSON.stringify(record).slice(0, 40), '[1]', '{"rows": 6}', null]
       .map((t) => mod.failureRecordOf(t)), [null, null, null, null, null]);
   eq('A2 each line keeps its own numbers', view.lines.map((l) => l.count), [33, 2]);
-  eq('A3 a line carries the key the unfold asks by', view.lines[0].filter,
-    { table: 'dt_inventory', event_type: 'EDIT', day: '2026-09-23' });
+  eq('A3 a line carries the cause and the comma-joined rules the unfold asks by', view.lines[0].filter,
+    { cause: REASON, rules: 'lot_slot_join,wafer_join' });
   eq('B1 the section counts the rows the summary folded', view.rows, 35);
-  const foreign = mod.failureSummaryView(BODY, 'Europe/Paris');
-  eq('C1 a day cut in another zone says whose day', /2026-09-23 \(Asia\/Seoul day\)/.test(foreign.lines[0].text), true);
-  eq('C2 ...and the viewer\'s own day does not', /day\)/.test(view.lines[0].text), false);
-  eq('E1 no summary is unread, not no failures', [mod.failureSummaryView(null).read, mod.failureSummaryView({}).read], [false, false]);
+  eq('C1 a record that names no rule says so', view.lines[1].text, `Rule not recorded 2 · ${localSpan(FIRST, FIRST)}`);
+  eq('E1 no by_cause is unread, not no failures - the retired summary alone too',
+    [mod.failureSummaryView(null).read, mod.failureSummaryView({}).read, mod.failureSummaryView({ summary: [{ count: 3 }] }).read],
+    [false, false, false]);
 
   const doc = makeDoc();
   const mount = doc.createElement('div');
@@ -91,7 +88,7 @@ async function suite(mod) {
   eq('D3 with nothing open no line holds the table', byClass(mount, 'rows-box').length, 0);
 
   const mount2 = doc.createElement('div');
-  new mod.FailureSummary(mount2, { doc }).render(mod.failureSummaryView({ summary: [BODY.summary[0]] }, ''));
+  new mod.FailureSummary(mount2, { doc }).render(mod.failureSummaryView({ by_cause: [BODY.by_cause[0]] }));
   eq('F1 a second instance draws only its own lines, the first keeps its own',
     [byClass(mount2, 'fail-summary__line').length, byClass(mount, 'fail-summary__line').length], [1, 2]);
   eq('G1 a line carries its newest failure sentence whole, as sent; a line the server gave none has none',
@@ -111,12 +108,12 @@ console.log(`  ${result.ran.length - result.failures.length} passed, ${result.fa
 result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 
 const MUTANTS = [
-  { id: 'Y1', what: 'the attempts are read off the wrong field', catches: ['A1'],
-    mutate: (s) => s.replace('parts.push(`attempts ${Number(l && l.retry_max) || 0}`);', 'parts.push(`attempts ${Number(l && l.count) || 0}`);') },
+  { id: 'Y1', what: 'a line names one rule of its rules', catches: ['A1'],
+    mutate: (s) => s.replace("rules.length ? rules.join(', ') :", 'rules.length ? rules[0] :') },
   { id: 'Y2', what: 'the section count is the number of lines, not the rows', catches: ['B1'],
     mutate: (s) => s.replace('rows: out.reduce((n, l) => n + l.count, 0) };', 'rows: out.length };') },
-  { id: 'Y3', what: 'a foreign day goes unsaid', catches: ['C1'],
-    mutate: (s) => s.replace("const foreignDay = Boolean(zone) && zone !== sentZone;", 'const foreignDay = false;') },
+  { id: 'Y3', what: 'a line naming no rule draws an empty name', catches: ['C1'],
+    mutate: (s) => s.replace(': `Rule ${NOT_RECORDED}`}', ": ''}") },
   { id: 'Y4', what: 'every line gets the row table', catches: ['D1'],
     mutate: (s) => s.replace('if (open && opts.rowsBody)', 'if (opts.rowsBody)') },
   { id: 'Y5', what: 'pressing the open line opens it again instead of folding it', catches: ['D2'],
@@ -132,9 +129,13 @@ const MUTANTS = [
   { id: 'Y10', what: 'a record stored as JSON is never read back', catches: ['R6'],
     mutate: (s) => s.replace('  try { record = JSON.parse(errorText); } catch { return null; }', '  return null;') },
   { id: 'Y11', what: 'the reason drawn as its seconds alone (the owner\'s red «600 s»)', catches: ['G1'],
-    mutate: (s) => s.replace("l.last_failure.trim() : '';", "(l.last_failure.match(/\\d+ s/) || [''])[0] : '';") },
+    mutate: (s) => s.replace("l.cause.trim() : '';", "(l.cause.match(/\\d+ s/) || [''])[0] : '';") },
   { id: 'Y12', what: 'the reason never drawn', catches: ['G2'],
     mutate: (s) => s.replace('      if (line.reason) {', '      if (false) {') },
+  { id: 'Y13', what: 'the unfold asks by rules joined as drawn, not as the route reads them', catches: ['A3'],
+    mutate: (s) => s.replace("rules: rules.join(',') } };", "rules: rules.join(', ') } };") },
+  { id: 'Y14', what: 'an answer with the retired summary alone read as lines', catches: ['E1'],
+    mutate: (s) => s.replace('Array.isArray(body.by_cause) ? body.by_cause : null', 'Array.isArray(body.by_cause) ? body.by_cause : body && Array.isArray(body.summary) ? body.summary : null') },
 ];
 console.log('');
 console.log('-- defect mutants (each must be CAUGHT by its named line) -----------');

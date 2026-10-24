@@ -1,14 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// FAILURE SUMMARY — the Chain tab's failure section folds to one line per (table · kind · day)
-// (owner 「ㄴ 요약 한 줄」, lead 36dff3b6a · e573a6edf · e6e5a08ee).
+// FAILURE SUMMARY — the Chain tab's failure section folds to one line per (rules · failure sentence)
+// (owner 10-24 「묶음이 100만개라고」 · 「똑같은 에러면 접든가」, lead ㄷ; the table · kind · day lines retired).
 //
-//   「dt_inventory EDIT 33 · 09-23 00:14–00:39 · attempts 1」
+//   「lot_slot_join 19000 · 10-21 16:50–17:00」 and the sentence whole under it
 //
-// 🔴 THE LINE IS THE SERVER'S GROUP BY; THIS FILE COUNTS NOTHING. `summary` arrives with every
-//    `/admin/outbox/failed` answer (unfiltered), and the unfold asks the same route for that
-//    line's rows by (table · event_type · day) — the filter goes through the same failure clause
-//    and day expression the summary grouped by (lead 2f2a2f570), so a line cannot unfold to
-//    anything but what it counted.
+// 🔴 THE LINE IS THE SERVER'S GROUP BY; THIS FILE COUNTS NOTHING. `by_cause` arrives with every
+//    `/admin/outbox/failed` answer (unfiltered, A 06b1fd297), and the unfold asks the same route
+//    for that line's rows by its cause and rules (A b7503191e) — the keys that line folded, so a
+//    line cannot unfold to anything but what it counted.
 // 🔴 THE ROWS ARE THE PAGE'S. Opening a line moves the page's own row table (per-row Retry,
 //    diagnostics, pager) under it — the way the Overview board takes page-owned bodies. This
 //    part owns the lines only; two instances on one page do not share anything.
@@ -57,32 +56,26 @@ export function failureRecordOf(errorText) {
     && Object.prototype.hasOwnProperty.call(record, 'reason') ? record : null;
 }
 
-/** The key of one line — what the unfold asks the route for. */
+/** The key of one line — its rules (comma-joined, as the route reads them) and its cause. */
 export function lineKey(line) {
   const l = line || {};
-  return [l.table_name, l.event_type, l.day].map((v) => String(v == null ? '' : v)).join('\u0000');
+  return [(Array.isArray(l.rules) ? l.rules : []).map(String).join(','), l.cause == null ? '' : String(l.cause)].join('\u0000');
 }
 
 /**
  * `/admin/outbox/failed` answer -> the lines. Pure.
  * @param {object|null} body
- * @param {string} [sentZone] the zone the request sent (`viewerZone()`); the answer's `day_zone`
- *   differs only when the server could not read it, and then the line says whose day it is.
  */
-export function failureSummaryView(body, sentZone = '') {
-  const lines = body && Array.isArray(body.summary) ? body.summary : null;
+export function failureSummaryView(body) {
+  const lines = body && Array.isArray(body.by_cause) ? body.by_cause : null;
   if (!lines) return { read: false, lines: [], rows: 0 };
-  const zone = body && typeof body.day_zone === 'string' ? body.day_zone : '';
-  const foreignDay = Boolean(zone) && zone !== sentZone;
   const out = lines.map((l) => {
     const count = Number(l && l.count) || 0;
-    const parts = [`${l.table_name} ${l.event_type} ${count}`, localSpan(l.first_at, l.last_at)];
-    if (foreignDay) parts.push(`${l.day} (${zone} day)`);
-    parts.push(`attempts ${Number(l && l.retry_max) || 0}`);
-    // The line's newest failure sentence, the server's (`last_failure`, lead 903053c14 · 3de34d292) - as sent, '' when it sends none.
-    const reason = typeof (l && l.last_failure) === 'string' ? l.last_failure.trim() : '';
-    return { key: lineKey(l), text: parts.join(' · '), reason, count,
-             filter: { table: String(l.table_name), event_type: String(l.event_type), day: String(l.day) } };
+    const rules = Array.isArray(l && l.rules) ? l.rules.map(String) : [];
+    // The failure sentence is the server's, whole (lead 903053c14) - as sent, '' when it sends none.
+    const reason = typeof (l && l.cause) === 'string' ? l.cause.trim() : '';
+    return { key: lineKey(l), text: [`${rules.length ? rules.join(', ') : `Rule ${NOT_RECORDED}`} ${count}`, localSpan(l.first_at, l.last_at)].join(' · '),
+             reason, count, filter: { cause: l.cause == null ? '' : String(l.cause), rules: rules.join(',') } };
   });
   return { read: true, lines: out, rows: out.reduce((n, l) => n + l.count, 0) };
 }

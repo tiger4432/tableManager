@@ -208,7 +208,7 @@ let outboxPage = 1;
 let outboxLimit = 10;
 let outboxData = [];
 let outboxTotal = 0;
-// The open failure summary line — `{table, event_type, day, key}`, or null when all are folded.
+// The open failure line — `{cause, rules, key}`, or null when all are folded.
 let outboxFilter = null;
 let failureSummary = null;
 
@@ -938,14 +938,13 @@ async function fetchData(options = {}) {
       void refreshChainGraph();
       // ⚠️ 대기열은 «따로» 받는다. 같이 묶어 던지면, 이 라우트가 없는 옛 서버 프로세스에서
       //    Chain 탭 «전체»가 안 뜬다 — 계측기 하나가 자기가 진단하려던 화면을 끄는 것이다.
-      // 🔴 총괄 e573a6edf · 2f2a2f570 — the section's answer is UNFILTERED (summary · the queue's
-      //    Failed cell · the count), and an open line's rows are a SECOND ask by that line's key.
-      //    The viewer's zone rides on both, so a day is the viewer's day.
+      // 🔴 총괄 e573a6edf · 2f2a2f570 — the section's answer is UNFILTERED (by_cause · the queue's
+      //    Failed cell · the count), and an open line's rows are a SECOND ask by that line's cause and rules
+      //    (A b7503191e). The viewer's zone rides on both, so a time is the viewer's.
       const zone = encodeURIComponent(viewerZone());
       const lineRows = outboxFilter
         ? adminFetch(`${API_BASE}/admin/outbox/failed?page=${outboxPage}&limit=${outboxLimit}&tz=${zone}`
-          + `&table=${encodeURIComponent(outboxFilter.table)}&event_type=${encodeURIComponent(outboxFilter.event_type)}`
-          + `&day=${encodeURIComponent(outboxFilter.day)}`).catch(() => null)
+          + `&cause=${encodeURIComponent(outboxFilter.cause)}&rules=${encodeURIComponent(outboxFilter.rules)}`).catch(() => null)
         : Promise.resolve(null);
       const pauseReads = chainPauseReads();
       const [obRes, rulesRes, mapRes, queueRes, rowsRes] = await Promise.all([
@@ -1606,7 +1605,7 @@ async function sendChainPause({ path, body }) {
   return { ok: true };
 }
 
-// 🔴 총괄 e573a6edf — the section folds to the summary's lines. The count is the rows the summary
+// 🔴 총괄 e573a6edf — the section folds to a line per cause (owner 10-24). The count is the rows the lines
 //    folded (the same answer the Overview's Chain line reads), and an open line gets the row
 //    table below — the page's own table, moved, not a second one.
 function renderFailureSummary(ob) {
@@ -1619,7 +1618,7 @@ function renderFailureSummary(ob) {
       fetchData();
     } });
   }
-  const view = failureSummaryView(ob, viewerZone());
+  const view = failureSummaryView(ob);
   // A line the answer no longer has (it was retried away) cannot stay open.
   if (outboxFilter && !view.lines.some((l) => l.key === outboxFilter.key)) outboxFilter = null;
   const rowsBox = byId('outbox-rows-box');
@@ -1928,8 +1927,10 @@ function renderWorkspaceTable() {
 }
 
 // Chain 탭 §현황: Chain Rules
+// The list's rule_state (server event_constants.RULE_STATE_*): declared_only does not run - refused, enabled=false,
+// or switched off by the chain after failing in a row (owner 10-24); rule_state_detail says which.
 function chainRuleIsActive(rule) {
-  return rule && rule.enabled !== false && rule.active !== false;
+  return rule && rule.enabled !== false && rule.active !== false && rule.rule_state !== 'declared_only';
 }
 
 function chainRuleCapabilities(rule) {
@@ -1988,6 +1989,8 @@ function renderChainTable() {
     //    그립니다(S-20). 여기서 두 번 그리면 한 사실에 두 자리가 생깁니다.
     const outcomeBits = [outcome.reason, outcome.age === null ? '' : `${ageText(outcome.age)} ago`]
       .filter(Boolean).map(escapeHtml);
+    const stateDetail = rule.rule_state_detail
+      ? `<span class="chain-state-note">${escapeHtml(rule.rule_state_detail)}</span>` : '';
     const outcomeNote = outcomeBits.length
       ? `<span class="chain-state-note">${outcomeBits.join(' · ')}</span>` : '';
     const mapper = [rule.mapper_module, rule.mapper_function].filter(Boolean).join('.');
@@ -2006,7 +2009,7 @@ function renderChainTable() {
         rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
         !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
       ].join('')}</div></td>
-      <td><div class="chain-state">${activeBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
+      <td><div class="chain-state">${activeBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${stateDetail}${outcomeNote}</div></td>
     `;
 
     row.addEventListener('click', () => {
