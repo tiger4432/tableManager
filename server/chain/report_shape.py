@@ -387,7 +387,8 @@ def _table_refusal(path, written, cells, lists, numbers, key_names):
             own = crud.TABLE_CONFIG.get(str(table), {}) or {}
             own_keys = set(own.get("composite_key_source") or ()) | ({own["business_key"]} if own.get("business_key") else set())
             stray = [name for name in names if name not in every and column_of(written, name) not in own_keys]
-            if stray:
+            # the images' rows are told apart by any column - a chip's x, y, its layer (owner 10-24 «x, y 이거 키 못 넣는대»)
+            if stray and not str(path).endswith(".images"):
                 return ("%s.wafer %r is not a key column - the key columns a table has, by name: derive.report.wafer.key "
                         "(%s) and derive.report.keys" % (path, stray[0], ", ".join(wafer_key)))
             missing = [c for c in unit if c not in names]
