@@ -492,6 +492,11 @@ GRID_AUTO_INDEX_DEFAULT = 1.0
 #: How many automatic indexes one table may hold - past it none is built, one line says so. 0: none.
 AUTO_INDEX_PER_TABLE_SETTING = "auto_index_per_table"
 AUTO_INDEX_PER_TABLE_DEFAULT = 10
+#: A re-read of a (table, source) stops after this many failed files with none read since it began (owner 10-24
+#: «연속 파일 3 번 에러 나면 멈추면 안 됨?» · «근본 불량 파일들도 있네»: a wrong parser fails every file, bad files only
+#: some). A whole number; 0 - never stops.
+REREAD_STOP_SETTING = "reread_stop_after_failures"
+REREAD_STOP_DEFAULT = 3
 #: Seconds between two looks at every raws/ subfolder (총괄 2f487efb5). Not a positive number: the default.
 SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
 SUBFOLDER_RECHECK_DEFAULT = 30.0
@@ -579,6 +584,10 @@ def grid_read_timeout(settings=None):
     `chain_statement_timeout`, set by the same listener (총괄 d16033b63: a search no row matches reads the whole table)."""
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, GRID_READ_TIMEOUT_SETTING, GRID_READ_TIMEOUT_DEFAULT)
+
+
+def reread_stop_after(settings=None) -> int:
+    return _whole_number(settings, REREAD_STOP_SETTING, REREAD_STOP_DEFAULT, 0)
 
 
 def subfolder_recheck_seconds(settings=None) -> float:
@@ -2148,6 +2157,15 @@ class IngestionHandler(FileSystemEventHandler):
         # External roots are read-only contexts for this handler.  They affect
         # parser metadata only; ownership remains raws/-only (`is_managed_source`).
         self._external_sources = {}
+        # abs path -> why it is being read (`_say_file_to_read`), taken by its record (`_log_ingestion_record`)
+        self._read_why = {}
+
+    def source_of(self, abs_path):
+        """«raws», the external root `abs_path` lies under, or None - the record's `source`, the re-read stop's pair."""
+        if self.relative_source_path(abs_path, os.path.abspath(self.raws_path)) is not None:
+            return "raws"
+        context = self.external_source_context(abs_path)
+        return context["source_root"] if context else None
 
     def unregister_external_source(self, source_id: str):
         """Detach one external-source context - the watcher retired it (switched off, removed or changed)."""
@@ -3090,7 +3108,11 @@ class IngestionHandler(FileSystemEventHandler):
         finally:
             db.close()
         self._settle_terminal_hits(statuses)
-        return Checked(statuses, words)
+        # a stopped re-read's let-go files are left where they are (총괄 10-24) - checked here, so no seat reads them
+        stopped = {source for table, source in REREAD_STOPS.stopped_pairs() if table == t_name}
+        held = ({path for path, word in words.items()
+                 if word == ingestion.checkpoint.WHY_UNSTAMPED and self.source_of(path) in stopped} if stopped else ())
+        return Checked(set(statuses) | set(held), {path: word for path, word in words.items() if path not in held})
 
     def _settle_terminal_hits(self, statuses: dict):
         """The move a checked file still in raws/ owes (its move failed when it was read), done once per batch.
@@ -3202,6 +3224,12 @@ class IngestionHandler(FileSystemEventHandler):
             _note_the_read(db, log_obj)
             db.commit()
             logger.info(f"[{t_name}] 📝 Logged file ingestion {status.lower()} to database.")
+            why = self._read_why.pop(os.path.abspath(original_path), None)
+            try:
+                REREAD_STOPS.heard(db, log_obj.table_name, log_obj.source, why, status, log_obj.reason)
+            except Exception as stop_error:                          # noqa: BLE001 - the record stands
+                logger.warning("[%s] the re-read stop did not count %s: %s", t_name,
+                               os.path.basename(original_path), told(stop_error))
         except Exception as e:
             # 🔴 NAME THE FILE. This line used to say only that "a" log write failed, so an
             # operator reading it could not tell WHICH file had no record - and a file with
@@ -3341,6 +3369,7 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _say_file_to_read(self, t_name, abs_path, why):
         """The line every read says before it reads (총괄 64b264610): why, by `checkpoint`'s word."""
+        self._read_why[os.path.abspath(abs_path)] = why
         logger.info(f"File to read ({why}): {abs_path}")
         logger.info(f"[{t_name or self.table_name}] 📥 File to read ({why}): {os.path.basename(abs_path)}")
 
@@ -4270,6 +4299,100 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
 
 #: The heartbeat lap a source's sweep leaves (총괄 64b264610 - the file page's line per store): «sweep:<table>@<root>».
 SWEEP_LAP_PREFIX = "sweep:"
+#: The lap a (table, source)'s re-read stop leaves - «reread:<table>@<source>», its `stopped` the sentence, none when
+#: let go - read by the file page's line beside the sweep's.
+REREAD_LAP_PREFIX = "reread:"
+#: The reads a re-read makes: the retry door's three words, and a sweep's file whose stamp was let go (`reread.uncheck`).
+REREAD_WHYS = frozenset({ingestion.checkpoint.WHY_RETRY, ingestion.checkpoint.WHY_READ_AGAIN,
+                         ingestion.checkpoint.WHY_READ_NOW, ingestion.checkpoint.WHY_UNSTAMPED})
+
+
+class RereadStops:
+    """This watcher's re-reads by (table, source) (총괄 10-24): one opens at its first re-read; failed
+    `reread_stop_after` times with none read, it stops - the poller's pick and every checklist ask leave its files,
+    its waiting and unchecked rows as they are (nothing written). It closes when none of it is left to re-read
+    (`settle`); a stop is let go by a press (SYSTEM_RELOAD `reread_released`), its table's reading changing, a
+    restart."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._open = {}        # (table, source) -> {"failed": n, "read": bool}
+        self._stopped = {}     # (table, source) -> its sentence
+
+    def heard(self, db, table, source, why, status, reason):
+        """One file's record. A re-read's (`REREAD_WHYS`) read or failure counted for its pair - a lock waited out
+        says nothing of the reading. -> the stop's sentence when this record stopped it, else None."""
+        if why not in REREAD_WHYS or not table or not source or status not in ("SUCCESS", "FAILED"):
+            return None
+        reason = str(reason or "").strip()
+        if status == "FAILED" and reason.startswith(LOCK_WAITED_OUT_PREFIX):
+            return None
+        limit, pair = reread_stop_after(), (table, source)
+        with self._lock:
+            if pair in self._stopped:
+                return None
+            state = self._open.setdefault(pair, {"failed": 0, "read": False})
+            if status == "SUCCESS":
+                state["read"] = True
+                return None
+            state["failed"] += 1
+            if state["read"] or not limit or state["failed"] < limit:
+                return None
+            said = "Stopped: %d failed in a row - %s" % (state["failed"], reason.splitlines()[0] if reason else "?")
+            self._stopped[pair] = said
+            self._open.pop(pair, None)
+        waiting, unchecked = _rereads_left(db, table, source)
+        logger.warning("[Watcher] %s · %s: %s - waiting %d · unchecked %d left as they are", table, source, said,
+                       waiting, unchecked)
+        heartbeat.record_lap(HEARTBEAT_NAME, REREAD_LAP_PREFIX + "%s@%s" % pair, table=table, source=source,
+                             stopped=said)
+        return said
+
+    def stopped_pairs(self):
+        with self._lock:
+            return list(self._stopped)
+
+    def release(self, pairs=None, table=None, why="let go"):
+        """Let the stops of `pairs` (and of `table`, any source) go. -> the pairs let go."""
+        with self._lock:
+            gone = [pair for pair in self._stopped if pair in set(pairs or ()) or pair[0] == table]
+            for pair in gone:
+                self._stopped.pop(pair)
+            for pair in [pair for pair in self._open if pair in set(pairs or ()) or pair[0] == table]:
+                self._open.pop(pair)
+        for pair in gone:
+            logger.info("[Watcher] %s · %s: the re-read stop let go (%s)", pair[0], pair[1], why)
+            heartbeat.record_lap(HEARTBEAT_NAME, REREAD_LAP_PREFIX + "%s@%s" % pair, table=pair[0], source=pair[1])
+        return gone
+
+    def settle(self, db):
+        """The open re-reads none of whose files is left - nothing waiting, claimed or unchecked - closed."""
+        with self._lock:
+            open_pairs = list(self._open)
+        for pair in open_pairs:
+            if not _rereads_left(db, *pair, any_left=True):
+                with self._lock:
+                    self._open.pop(pair, None)
+
+
+def _rereads_left(db, table, source, any_left=False):
+    """A pair's checklist rows still to re-read: (waiting - handed to the retry door, unchecked - a sweep reads them).
+    `any_left`: whether there is one at all."""
+    from sqlalchemy import or_
+
+    from database import models
+
+    row = models.FileChecklist
+    of = db.query(row.id).filter(row.table_name == table, row.source == source)
+    waiting = row.status.in_(("PENDING_RETRY", "PENDING"))
+    unchecked = row.file_mtime.is_(None) & row.status.notin_(("PENDING_RETRY", "PENDING"))
+    if any_left:
+        return of.filter(or_(waiting, unchecked)).first() is not None
+    return of.filter(waiting).count(), of.filter(unchecked).count()
+
+
+#: The one in this process - the watcher's (the poller and the handlers ask it).
+REREAD_STOPS = RereadStops()
 
 
 def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_read=None, words=()):

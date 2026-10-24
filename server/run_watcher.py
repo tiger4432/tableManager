@@ -333,9 +333,14 @@ def pending_retries(db):
 
     if workspace_watcher is None:
         return []
-    return (db.query(models.FileChecklist)
-            .filter(models.FileChecklist.status == "PENDING_RETRY")
-            .order_by(models.FileChecklist.id.asc()).limit(reread.max_files()).all())
+    from directory_watcher import REREAD_STOPS
+
+    row = models.FileChecklist
+    query = db.query(row).filter(row.status == "PENDING_RETRY")
+    # a stopped re-read's waiting rows stay waiting and are not picked - its many must not hold the others (총괄 10-24)
+    for table, source in REREAD_STOPS.stopped_pairs():
+        query = query.filter(row.table_name.is_distinct_from(table) | row.source.is_distinct_from(source))
+    return query.order_by(row.id.asc()).limit(reread.max_files()).all()
 
 
 def retry_one(db, log):
@@ -508,6 +513,8 @@ def hear_changed_readings(db, stamps):
     for table, reading in changed.items():
         if table not in stamps:
             continue
+        from directory_watcher import REREAD_STOPS
+        REREAD_STOPS.release(table=table, why="its reading changed")
         raws, sources = folders_of(workspace_watcher, table, table_config)
         line = reread.hand_on_a_changed_reading(
             db, table, stamps[table], reading,
@@ -555,7 +562,11 @@ def poll_pending_retries():
             if latest_reload is not None:
                 last_reload_event_id = latest_reload.id
 
-            reload_work = system_reload.reload_for(system_reload.WATCHER, new_reloads)
+            released = []
+            reload_work = system_reload.reload_for(system_reload.WATCHER, new_reloads, released=released)
+            if released:
+                from directory_watcher import REREAD_STOPS
+                REREAD_STOPS.release(pairs=released, why="a person asked a re-read")
             if reload_work == system_reload.SCOPE_JOIN_KEYS:
                 # the index line built or took back a join unique index: this writer's gate learns it again
                 from chain import synthesis
@@ -620,7 +631,9 @@ def poll_pending_retries():
                     logger.info(f"Log ID #{log.id} ({log.filename}) is no longer PENDING_RETRY - not read")
                     continue
                 retry_one(db, log)
-                    
+            from directory_watcher import REREAD_STOPS
+            REREAD_STOPS.settle(db)
+
         except Exception as e:
             logger.error(f"Error in retry poller loop: {told(e)}")
         finally:

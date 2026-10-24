@@ -163,7 +163,7 @@ export function sourceLines(tables) {
   return (tables || []).flatMap((t) => (t.sources || []).map((s) => {
     const waiting = numberOr((s.left_by_status || {}).PENDING_RETRY) || 0;
     return { table: t.table_name, source: s.source, read: numberOr(s.read), total: numberOr(s.total), left: numberOr(s.left),
-      done: !numberOr(s.left), sweep: s.sweep || null,
+      done: !numberOr(s.left), sweep: s.sweep || null, stopped: s.stopped || null, waiting,
       // its waiting re-reads put back, under its root - an external source's (a sweep of its own) with some waiting
       cancel: s.sweep && waiting > 0 ? s.source : null };
   }));
@@ -188,7 +188,8 @@ export const PROGRESS_COLUMNS = Object.freeze([
   { head: 'Source', cls: 'fi-mono fi-path', cell: (s) => s.source, wrap: true },
   { head: 'Files', cls: 'fi-num cell-fit', cell: (s) => `${count(s.read)} / ${count(s.total)} read · ${count(s.left)} left`,
     title: 'files a sweep has not reached yet are not in the total' },
-  { head: 'Last sweep', cls: 'fi-meta', cell: (s) => sweepText(s.sweep) },
+  // a re-read the watcher stopped (B 10-24) says so here, with what still waits - else the sweep
+  { head: 'Last sweep', cls: 'fi-meta', cell: (s) => (s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep)) },
 ]);
 
 /** The ask before waiting re-reads are put back (A's preview: count · by_state): the server's line, the states they go

@@ -257,6 +257,11 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
       && M.cancelAsk({ message: '2 waiting file(s) under X to put back', by_state: { FAILED: 1, SUCCESS: 1 } })
         === '2 waiting file(s) under X to put back\nBack to: Failed 1 · Success 1\nOther tables reading this folder have their waiting files put back too',
     JSON.stringify(srcLines.map((l) => l.cancel)));
+  const [stopped] = M.sourceLines([{ table_name: 'inspection_run', sources: [{ source: 'raws', total: 9, read: 0, left: 9,
+    left_by_status: { PENDING_RETRY: 7 }, stopped: 'Stopped: 3 failed in a row - KeyError: lot' }] }]);
+  ok('M11 a re-read the watcher stopped says it in the line, with the files still waiting (B 10-24)',
+    M.PROGRESS_COLUMNS[3].cell(stopped) === 'Stopped: 3 failed in a row - KeyError: lot · waiting 7'
+      && M.PROGRESS_COLUMNS[3].cell(srcLines[2]) === M.sweepText(SWEEP), M.PROGRESS_COLUMNS[3].cell(stopped));
   const pHost = doc.createElement('div');
   doc.body.append(pHost);
   const cancels = [];
@@ -339,6 +344,7 @@ const MUTANTS = [
   { name: 'the left count is the total', catches: ['M8'], file: 'model', mutate: swap('read · ${count(s.left)} left', 'read · ${count(s.total)} left') },
   { name: 'the total\'s limit not said', catches: ['P7'], file: 'parts', mutate: swap('      if (c.title) th.title = c.title;\n', '') },
   { name: 'a sweep sends without its words', catches: ['M9'], file: 'model', mutate: swap("${why.length ? ` (${why.join(' · ')})` : ''}", '') },
+  { name: 'a stopped re-read not said', catches: ['M11'], file: 'model', mutate: swap('(s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep))', 'sweepText(s.sweep)') },
   { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
   { name: 'the ask hides the other tables', catches: ['M10'], file: 'model', mutate: swap(", 'Other tables reading this folder have their waiting files put back too']", ']') },
   { name: 'Cancel hands nothing', catches: ['P9'], file: 'parts', mutate: swap('this.deps.onCancel(line.cancel)', 'this.deps.onCancel(null)') },

@@ -5568,16 +5568,21 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     from utils import heartbeat
 
     laps = (heartbeat.read_all().get(directory_watcher.HEARTBEAT_NAME) or {}).get("laps") or {}
+    # and each (table, source) re-read the watcher stopped, off the same heartbeat (총괄 10-24) - its sentence
     for name, lap in sorted(laps.items()):
-        if not name.startswith(directory_watcher.SWEEP_LAP_PREFIX):
+        sweep = name.startswith(directory_watcher.SWEEP_LAP_PREFIX)
+        if not sweep and not (name.startswith(directory_watcher.REREAD_LAP_PREFIX) and lap.get("stopped")):
             continue
         entries = sources.setdefault(lap.get("table"), [])
         entry = next((e for e in entries if e["source"] == lap.get("source")), None)
         if entry is None:
             entry = {"source": lap.get("source"), "total": 0, "read": 0, "left": 0, "left_by_status": {}}
             entries.append(entry)
-        entry["sweep"] = {k: lap.get(k) for k in ("state", "age_seconds", "seconds", "looked", "already_read",
-                                                   "dispatched", "why")}
+        if sweep:
+            entry["sweep"] = {k: lap.get(k) for k in ("state", "age_seconds", "seconds", "looked", "already_read",
+                                                       "dispatched", "why")}
+        else:
+            entry["stopped"] = lap["stopped"]
     for entry in data:
         entry["sources"] = sources.get(entry["table_name"], [])
     seen = {entry["table_name"] for entry in data}
@@ -7316,6 +7321,10 @@ def read_file_now(path: str, table: str = None, preview: bool = False, db: Sessi
     except reread.RereadRefused as refused:
         raise HTTPException(status_code=409, detail=str(refused))
     owner = said["owner"]
+    if owner is not None and not preview and said.get("log_id"):
+        # its (table, source) re-read stop let go by the watcher (system_reload.SCOPE_REREAD_RELEASED)
+        system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED,
+                                     pairs=[(owner["table"], owner["source"])])
     return {"status": "preview" if preview else "success", **said,
             "message": (f"{len(said['owners'])} tables read it - choose one" if owner is None
                         else f"{os.path.basename(said['path'])} handed to the watcher for {owner['table']}" if not preview
@@ -7415,6 +7424,9 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
             if chosen is not None:
                 failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"])
             reread.mark_for_reread(db, failed_logs)
+            # the watcher lets these (table, source) re-read stops go - at every press (system_reload.SCOPE_REREAD_RELEASED)
+            system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED, pairs=sorted(
+                {(log.table_name, log.source) for log in failed_logs}, key=str))
             return failed_logs
 
         failed_logs = await asyncio.to_thread(_hand)

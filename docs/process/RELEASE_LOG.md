@@ -336,6 +336,7 @@
 
 ### 설정 파일
 
+- 2026-10-24 [다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것](#2026-10-24--다시-읽기가-파일마다-실패하면-그-표-저장소만-멈춘다--잘못된-파서로-오류만-내며-돌던-것) — 적는 곳 ingestion_settings.json reread_stop_after_failures · 보는 곳 파일 화면 진행 줄 · watcher.log
 - 2026-10-24 [표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다](#2026-10-24--표-저장이-그-자리에서-서버에-읽힌다--바로-뒤-규칙-저장이-새-칸을-안다) — 적을 것 없음 · 보는 곳 저장 응답 시간
 - 2026-10-24 [표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이](#2026-10-24--표를-더하면-와처가-그-raws-를-바로-만들고-본다--reload-없이) — 적을 것 없음 · 보는 곳 watcher.log
 - 2026-10-23 [외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것](#2026-10-23--외부-저장소-방아쇠-파일은-그-폴더가-조용해진-뒤-읽는다--이미지-목록이-반쪽으로-들어가던-것) — 외부 저장소 항목에 stability_interval_seconds
@@ -567,6 +568,13 @@
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 수는 서버에 A 의 23c35a768 · 11618814f · daafb2214 가 있어야 나옵니다.
 - **선언** — 바뀐 것 없음.
 - **자세히** — `file_ingestion/model.js`(sourceLines · sweepText · PROGRESS_COLUMNS · cancelAsk · countedText) · `parts.js` · `main.js`.
+
+## 2026-10-24 · 다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것
+
+- **무엇** — 소유자 10-24 «외부 저장소 다시 읽을 때 연속 파일 3 번 에러 나면 멈추면 안 됨?» · «잘못된 파서로 계속 에러만 띄우면서 돌잖아» · «근데 근본 불량 파일들도 있네». 다시 읽기가 한 (표, 저장소)에서 읽힌 파일 없이 3 번(설정 `reread_stop_after_failures`) 실패하면 그 쌍만 멈춥니다. 하나라도 읽히면 끝까지 갑니다(불량 파일은 지금처럼 하나씩 실패로 남음). 와처 전체는 안 멈춥니다.
+- **바뀐 동작** — 멈춘 쌍의 기다리는 파일 · 체크 해제된 파일은 그대로 두고(DB 쓰기 없음) 와처의 다시 읽기 줄과 훑기가 건너뜁니다. 많이 기다려도 다른 쌍의 다시 읽기는 돕니다. 파일 화면 진행 줄에 «Stopped: 3 failed in a row - <오류 첫 줄> · waiting N», 와처 로그에 «… - waiting N · unchecked M left as they are». 풀림: 그 쌍에 Read all again · Retry · Read now(API 가 SYSTEM_RELOAD «reread_released» 한 줄) · 그 표의 스크립트나 table_config 변경 · 와처 재기동. 잠금 대기는 안 셉니다. raws 도 같습니다.
+- **필요한 조건** — git pull · 런처 재기동. 안 적으면 3.
+- **자세히** — [ingestion_settings](../guide/config/ingestion_settings.md) `reread_stop_after_failures` · 시험 `test_a_reread_that_fails_file_after_file_stops_for_its_source.py`.
 
 ## 2026-10-24 · 파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»
 

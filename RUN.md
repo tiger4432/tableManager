@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> (기본 3 이 아니면) ingestion_settings.json 에 "reread_stop_after_failures": N
+> 뜻      파일 화면 진행 줄 Last sweep 에 «Stopped: 3 failed in a row - <첫 줄> · waiting N» -> 그 쌍의 다시 읽기를 와처가 멈춤
+>            파서를 고치면(스크립트 변경) 풀리고 다시 읽음. 고치지 않고 Read all again · Retry · Read now 를 누르면 풀리되 3 개 뒤 다시 멈춤
+>            기다리는 파일을 아예 물리려면 그 행의 Cancel waiting re-reads
+>          파일이 여럿 실패하는데 안 멈춤 -> 그 다시 읽기에서 읽힌 파일이 하나라도 있었음(불량 파일 몇 개 - 지금처럼 하나씩 실패)
+> 끄기    ingestion_settings.json "reread_stop_after_failures": 0
+> 재기동 뒤  watcher.log «[Watcher] <표> · <저장소>: Stopped: 3 failed in a row - … - waiting N · unchecked M left as they are» · 풀릴 때 «the re-read stop let go (…)»
+> ```
+>
 > ## [10-24] **뭉치기 조인(take 에 fn)이 키마다 한 번 계산 — 대상 행마다 돌던 것 (소유자 「함수가 그룹별로 안 돌고 행별로 다 도나 봐」, 2105ce042)** — git pull · 런처 재기동
 >
 > ```
