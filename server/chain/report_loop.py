@@ -327,7 +327,7 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     results = spec[report_shape.RESULTS_CELL]
     by_wafer = {}
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
-        wafer = tuple(None if getattr(row, c) is None else str(getattr(row, c)) for c in keys)
+        wafer = report_reads._parts(getattr(row, c) for c in keys)
         if not all(crud.is_blank_value(part) for part in wafer):
             by_wafer.setdefault(wafer, []).append(row.row_id)
     updates = []
@@ -347,12 +347,18 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
                         s.get("refused") or s["summary"])
         cells = {results["file"]: None}
         if report is not None:
-            made = datetime.datetime.now().astimezone()
-            page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
-                name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
-                evidence=_steps_text(out, report).splitlines())
-            cells[results["file"]], _sha = report_html.keep(said, page)
-            _mark(cells[results["file"]], name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
+            try:
+                made = datetime.datetime.now().astimezone()
+                page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
+                    name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
+                    evidence=_steps_text(out, report).splitlines())
+                cells[results["file"]], _sha = report_html.keep(said, page)
+                _mark(cells[results["file"]], name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
+            except Exception as exc:                                # noqa: BLE001 - this wafer's page, the others go on
+                logger.error("[Report] %s wafer %s page failed: %s: %s", name, said, type(exc).__name__, exc,
+                             exc_info=exc)
+                cells = {results["file"]: None}
+                out = dict(out, state=STOPPED, reason="the page failed: %s: %s" % (type(exc).__name__, exc))
         logger.info("[Report] %s wafer %s: %s%s", name, said, out["state"], " - %s" % out["reason"] if out["reason"] else "")
         for row_id in rows:
             updates.append({"row_id": row_id, "source_name": crud.CHAIN_SOURCE, "updated_by": name,
