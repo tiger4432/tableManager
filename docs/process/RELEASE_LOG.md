@@ -382,6 +382,7 @@
 
 ### 어드민 화면
 
+- 2026-10-23 [파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수, 지난 훑기, 기다리는 다시 읽기 취소](#2026-10-23--파일-화면-맨-위에-읽기-진행--표--저장소마다-읽음--전체--남은-수-지난-훑기-기다리는-다시-읽기-취소) — 누르는 곳 어드민 File Ingestion 탭 맨 위 READ PROGRESS · «Cancel waiting re-reads»
 - 2026-10-23 [체크리스트가 파일당 한 행 — 파일 화면은 파일당 한 줄, 외부 훑기가 이름 먼저 거르고 바뀐 폴더만 볼 수 있다](#2026-10-23--체크리스트가-파일당-한-행--파일-화면은-파일당-한-줄-외부-훑기가-이름-먼저-거르고-바뀐-폴더만-볼-수-있다) — 적는 곳 ingestion_settings.json 의 sweep_interval_seconds · external_full_walk_every · 보는 곳 파일 화면 · 와처 시작 줄
 - 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
 - 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
@@ -554,6 +555,16 @@
 
 
 
+
+## 2026-10-23 · 파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수, 지난 훑기, 기다리는 다시 읽기 취소
+
+- **무엇** — 소유자 10-23 「몇 개 중 몇 개 읽고 있는지」. 서버는 표마다 저장소별 수를 내고 있었지만(A 23c35a768 · 11618814f) 화면이 그리지 않았습니다.
+- **이제** — 파일 화면 맨 위 READ PROGRESS 표: 표 × 저장소 한 줄. Files «읽음 / 전체 read · 남은 left», Last sweep(지난 훑기 몇 초 전 · 걸린 시간 · 본 수 · 보낸 수와 그 까닭, 훑는 중이면 «sweeping»), 오른쪽 위 «counted N s ago». 다 읽은 줄은 흐립니다. 외부 저장소에 기다리는 다시 읽기가 있으면 «Cancel waiting re-reads» — 서버 미리보기 문장과 되돌아갈 상태를 먼저 묻습니다.
+- **함께** — 체크리스트가 파일당 한 행이 되어(A daafb2214) 줄을 checklist_id 로 찾고 고릅니다. 한 번도 안 읽은 파일은 기록이 없어 Retry 가 꺼지고 «Not read yet - its read is waiting» 이라고 말합니다.
+- **잰 것** — 화면 검사기 file_ingestion.html 1920 · 1536 · 1280 37/0, 변이(다 읽은 줄이 안 흐림) 빨강 · 페이지 하니스 34/0. 기록된 응답 위의 수입니다.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 수는 서버에 A 의 23c35a768 · 11618814f · daafb2214 가 있어야 나옵니다.
+- **선언** — 바뀐 것 없음.
+- **자세히** — `file_ingestion/model.js`(sourceLines · sweepText · PROGRESS_COLUMNS · cancelAsk · countedText) · `parts.js` · `main.js`.
 
 ## 2026-10-24 · decide 를 적은 이름으로 리플레이한다 — R1 이 «not found» 로 거절하던 것
 
