@@ -64,7 +64,7 @@ def main() -> int:
     print()
     print(f"=== 워처가 받아들인 것: {len(specs)}개 ===")
     for spec in specs:
-        print(f"  ✔ {spec['table_name']:18s} {spec['root']}")
+        print(f"  ✔ {spec['table_name']:18s} {spec['root']}" + ("  (off - Read now / Retry only)" if spec.get("off") else ""))
         # parser=None means the declaration omitted `parser` and the watcher
         # resolved it from that table's workspace scripts/ folder.
         print(f"      parser={spec['parser'] or '(워크스페이스 scripts/ 플러그인)'}  "

@@ -1,5 +1,99 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **체인 실패 트레이스백이 터미널에 — 실패 줄 바로 밑에 전체 (331661db4, beec46570 와 같이)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 보이는 줄  체인이 영구 실패하면 런처 터미널에 둘, 실패한 그룹마다 한 번
+>          ① Transaction <tx> permanently failed: … 원인: <오류> at <파일>:<줄> in <함수>
+>          ② Transaction <tx> traceback:   (다음 줄부터 트레이스백 전체)
+> 뜻      ① 의 at 이 mappers\<파일>.py 면 그 파일 그 줄 · 제품 파일이면 맵퍼가 넘긴 값 · 선언을 본다 (아래 블록)
+>          ② 가 없다 -> 사유에 트레이스백이 없는 거절 문장. ① 의 문장이 사유
+> .log · 화면  필요 없음 (같은 문장이 대기열 Recent failures 에도)
+> 끄기    없음 (줄만 늘어남)
+> ```
+>
+> ## [10-24] **체인 실패 줄이 «어디서»를 말한다 — «at <파일>:<줄> in <함수>»** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 뜻      chain_worker.log «… permanently failed … 원인: <오류> at mappers\<파일>.py:<줄> in <함수>» -> 맵퍼 안에서 터짐. 그 파일 그 줄을 연다
+>          «at <제품 파일>.py:<줄> in <함수>» (mappers 밖) -> 제품 쪽에서 터짐. 맵퍼가 넘긴 값 · 선언을 본다 (예: mapper_sdk.py - 맵퍼가 DataFrame 이 아닌 것을 돌려줌)
+>          at 없음 -> 트레이스백 없는 거절 문장. 그 문장이 사유
+> 같은 자리  대기열 Recent failures · retrying 줄 · 실패 목록이 같은 문장 (이미 쌓인 실패도)
+> 끄기    없음 (문장만 길어짐)
+> ```
+>
+> ## [10-24] **쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것 (총괄, 5e842aafc)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+>          칸이 많은 표에 칸 하나를 바꾸는 쓰기(체인 · 파일 · 그리드 아무거나)
+> 볼 줄    chain_worker.log «[Chain] group … INSIDE THE WRITE · … · prefetch X s · …» (느린 그룹에만 찍힘)
+>          watcher.log 청크 줄의 같은 «INSIDE THE WRITE» 칸
+> 뜻      prefetch 가 전보다 짧음 = 쓰는 칸의 층만 읽음. 줄어드는 몫은 표의 칸 수에 비례
+>          (박스 40 칸 표, 1,000 행에 칸 하나: prefetch 0.67 -> 0.07 s, 쪽 1.4~1.5 -> 0.8~1.0 s)
+>          이 줄들의 초는 이제 perf_counter. 전엔 윈도우에서 0.0156 s 의 배수로만 찍혔음(단계마다 ±16 ms)
+> 이상할 때  키를 바꿔 두 행이 합쳐진(병합) 뒤 합쳐진 행의 다른 칸 층 · 사람 값이 빠졌다 -> 바로 되돌리기
+>          (병합은 두 행의 모든 칸 층을 한 질의로 먼저 읽게 되어 있음. 빠지면 그 자리가 틀린 것)
+> 되돌리기  git revert 5e842aafc -> 런처 재기동 (전처럼 행의 모든 칸 층을 읽음)
+> ```
+
+---
+
+> ## [10-24] **다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 인덱스는 스케줄러가 기동 때 CONCURRENTLY 로 세움 (손 SQL 없음)
+> 뜻      auto_update.log «[Indexes] ix_file_checklist_rereads_left built in N s» -> 섬
+>          «… failed …» -> 안 섬. 멈춤은 그대로 돎(전체 훑기라 느릴 뿐 같은 답). 다음 기동에 다시 세움
+> 되돌리기  DROP INDEX CONCURRENTLY IF EXISTS ix_file_checklist_rereads_left;
+>          (선언이 남아 있는 한 다음 기동에 다시 섬 - 안 세우려면 ingestion_settings.json "build_missing_indexes": false - 선언 인덱스 전부가 안 섬)
+> 안 잰 것  file_mtime 만 바뀌는 체크리스트 갱신은 HOT 이 아님 — 파일 읽기마다 한 번, 안 잼
+> ```
+>
+> ## [10-24] **다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> (기본 3 이 아니면) ingestion_settings.json 에 "reread_stop_after_failures": N
+> 뜻      파일 화면 진행 줄 Last sweep 에 «Stopped: 3 failed in a row - <첫 줄> · waiting N» -> 그 쌍의 다시 읽기를 와처가 멈춤
+>            파서를 고치면(스크립트 변경) 풀리고 다시 읽음. 고치지 않고 Read all again · Retry · Read now 를 누르면 풀리되 3 개 뒤 다시 멈춤
+>            기다리는 파일을 아예 물리려면 그 행의 Cancel waiting re-reads
+>          파일이 여럿 실패하는데 안 멈춤 -> 그 다시 읽기에서 읽힌 파일이 하나라도 있었음(불량 파일 몇 개 - 지금처럼 하나씩 실패)
+> 끄기    ingestion_settings.json "reread_stop_after_failures": 0
+> 재기동 뒤  watcher.log «[Watcher] <표> · <저장소>: Stopped: 3 failed in a row - … - waiting N · unchecked M left as they are» · 풀릴 때 «the re-read stop let go (…)»
+> ```
+>
+> ## [10-24] **뭉치기 조인(take 에 fn)이 키마다 한 번 계산 — 대상 행마다 돌던 것 (소유자 「함수가 그룹별로 안 돌고 행별로 다 도나 봐」, 2105ce042)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+>          그 조인의 원천 표 행 몇 개를 고치거나, 소급 탭 «Replay chain rules over old data» rule = 그 조인 이름
+> 볼 줄    chain_worker.log «[Latency] tx=… wake=… mapper=…ms commit=… total=…ms»  -> 그룹마다 한 줄, 전보다 mapper 가 짧음
+>          «[ChainRule] rule=<조인> … rows_in=N rows_out=M … elapsed=…s»  -> elapsed 가 계산 몫(키마다 한 번)
+> 뜻      rows_out 은 전과 같음 = 대상 행마다 쓰기 하나는 그대로(값을 받는 행이라서)
+>          계산 수는 «키 수» (파일 함수에 "row" 를 적었으면 키 × 그 칸 값 묶음 수)
+>          그룹이 여전히 느리면 대부분 쓰기 몫 — 박스 판: 그룹 2.73 s 중 쓰기 2.05 s (대상 행 2,000 · 규칙 2). 이번에 안 줄임
+> 이상할 때  대상 행마다 판정이 달라야 하는데 같게 나옴 -> 그 칸을 take 의 "row" 에 적었는지 (row 에 없는 칸은 함수가 못 봄)
+> 되돌리기  git revert 2105ce042 -> 런처 재기동 (전처럼 대상 행마다 계산)
+> ```
+
+---
+
+> ## [10-23] **끊긴 체인 소급을 화면에서 이어 하기 — 대기열 줄의 Resume (소유자 「체인 소급 이어하기는 안 되는 건가? … 마지막 커서가 떴으면」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 Chain 탭 대기열 -> «interrupted» 줄의 «Resume»
+>          또는 Retroactive 탭 chain_replay -> Count -> 결과 밑 «Resumes from page N» 옆 «Resume»
+> 뜻      «Resumes from page N · after <키> · R of T rows · cut <시각>»  = 마지막으로 커밋한 쪽 다음부터 새 run 으로 이어 감
+>          쪽과 시각만 나오고 키 · 전체가 없음  = 서버가 cursor_end · total_rows 를 아직 안 실음 (그래도 Resume 은 됨)
+>          토스트의 거절 문장  = 서버 사유 그대로 (그 run 을 이을 수 없는 까닭)
+> 되돌리기  git revert 8a87d7652 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-23] **파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수 (소유자 「몇 개 중 몇 개 읽고 있는지」)** — git pull · 화면 새로 고침
 >
 > ```
@@ -14,6 +108,17 @@
 > ```
 >
 > ---
+>
+> ## [10-24] **파일 기록이 바뀐 칸 이름을 말한다 — «Changed in <칸> N»** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(부팅이 file_ingestion_logs 에 columns_changed 칸을 더함) -> 값 하나 바꾼 파일을 다시 읽기 -> 파일 화면에서 그 파일 열기
+> 뜻      Result 의 Changed 밑에 «Changed in <칸> N» -> 이 착지
+>          Changed 는 있는데 그 밑 줄이 없음 -> 이 착지 전에 읽힌 파일(비어 있음) 이거나 서버가 옛 코드
+>          부팅 로그에 file_ingestion_logs 칸 추가 실패 -> 손으로 server/migrations/add_file_ingestion_log_columns_changed.sql
+> 끄기    없음. 칸을 빼려면 add_file_ingestion_log_columns_changed_reverse.sql (그 전에 이 착지를 되돌림)
+> 재기동 뒤  파일 화면 Result
+> ```
 >
 > ## [10-24] **decide 를 적은 이름으로 리플레이한다 — R1 의 «not found» 거절** — git pull · 런처 재기동
 >
@@ -7895,7 +8000,7 @@
 > 무엇이 바뀌나  @mapper 맵퍼를 쓰는 규칙에 allow_retraction / allow_replace_map 이 적혀 있으면 착지 «뒤 첫 실행부터» 지움
 >              (전에는 그 칸이 아무 일도 안 했음 — 덮어쓰기만)
 > 재기동 뒤     chain_worker.log "[ChainRules] <규칙>: @mapper removes by job - …" 또는 "… map by map - …" — 그런 규칙마다 한 줄
->              거절 "[ChainRules] <규칙> refused …: sdk_two_removals · sdk_removal_needs_batch · sdk_map_key_not_on_trigger · sdk_job_column"
+>              거절 "[ChainRules] <규칙> refused …: sdk_two_removals · sdk_removal_needs_batch · sdk_job_column" (sdk_map_key_not_on_trigger 는 10-24 은퇴)
 >              뜻: 그 규칙은 안 돎 — 문장이 다음 행동을 적음("is_batch": true 등)
 > 절반 가드     이번에 한 행도 안 낸 잡이 가진 행이 20 이상이면 "[DtMapRetraction] … DECLINED … Next, to remove them on purpose: …"
 >              뜻: 아무것도 안 지움. 정말 지우려면 그 줄이 적은 대로 그리드에서 그 잡의 행을 지움

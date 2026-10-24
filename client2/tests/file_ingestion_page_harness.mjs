@@ -72,6 +72,12 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
       reason: '1 map refused: version_older' })) === '1 row · 1 refused · 1 map refused: version_older',
     M.resultText(log(5, { rows_read: 1, rows_new: 0, rows_changed: 0, rows_unchanged: 0, rows_refused: 1,
       reason: '1 map refused: version_older' })));
+  const counted = M.resultCounts(log(6, { rows_changed: 3, columns_changed: '{"l": 3, "s": 1}' }));
+  ok('M1d the counts say each column a read changed, under Changed, most first (총괄 10-23 ㄷ)',
+    counted.map((c) => `${c.label} ${c.value}`).join(' | ')
+      === 'Rows read 400 | New 12 | Changed 3 | Changed in l 3 | Changed in s 1 | Unchanged 388 | Refused 0'
+      && M.resultCounts(log(7)).every((c) => !c.label.startsWith('Changed in')),
+    counted.map((c) => `${c.label} ${c.value}`).join(' | '));
   ok('M2 Took in seconds; none timed - ABSENT', M.tookText(0.4) === '0.4 s' && M.tookText(null) === ABSENT && M.tookText(12.6) === '13 s', `${M.tookText(0.4)} ${M.tookText(12.6)}`);
 
   const q = M.queryOf({ table: 't', status: '', name: ' bmap ', folder: '', from: '2026-10-19', to: '2026-10-20', group: 'folder' }, { page: 2 });
@@ -166,7 +172,7 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   detail.render({ ...log(15, { status: 'PENDING_RETRY', rows_read: null }), id: null });
   const shut = byClass(dHost, 'fi-btn--primary')[0];
   ok('P2d a file not read yet: its Retry is shut and says why', shut && shut.disabled === true
-    && shut.title === M.WORDS.notReadYet, `${shut && shut.disabled} «${shut && shut.title}»`);
+    && shut.getAttribute('title') === M.WORDS.notReadYet, `${shut && shut.disabled} «${shut && shut.getAttribute('title')}»`);
   // two such files are two lines - one picked is that one alone
   const pending = new Q.FilesPart(doc.createElement('div'), { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder() {} });
   pending.render({ groups: [{ key: null, head: false, files: [{ ...log(16), id: null }, { ...log(17), id: null }] }], shown: 'p', picked: 1017, more: false });
@@ -251,6 +257,11 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
       && M.cancelAsk({ message: '2 waiting file(s) under X to put back', by_state: { FAILED: 1, SUCCESS: 1 } })
         === '2 waiting file(s) under X to put back\nBack to: Failed 1 · Success 1\nOther tables reading this folder have their waiting files put back too',
     JSON.stringify(srcLines.map((l) => l.cancel)));
+  const [stopped] = M.sourceLines([{ table_name: 'inspection_run', sources: [{ source: 'raws', total: 9, read: 0, left: 9,
+    left_by_status: { PENDING_RETRY: 7 }, stopped: 'Stopped: 3 failed in a row - KeyError: lot' }] }]);
+  ok('M11 a re-read the watcher stopped says it in the line, with the files still waiting (B 10-24)',
+    M.PROGRESS_COLUMNS[3].cell(stopped) === 'Stopped: 3 failed in a row - KeyError: lot · waiting 7'
+      && M.PROGRESS_COLUMNS[3].cell(srcLines[2]) === M.sweepText(SWEEP), M.PROGRESS_COLUMNS[3].cell(stopped));
   const pHost = doc.createElement('div');
   doc.body.append(pHost);
   const cancels = [];
@@ -305,6 +316,7 @@ const MUTANTS = [
   { name: 'zeros said too', catches: ['M1a'], file: 'model', mutate: swap('    if (numberOr(v)) parts.push', '    if (numberOr(v) !== null) parts.push') },
   { name: 'a read\'s refusal not said', catches: ['M1c'], file: 'model', mutate: swap('  if (!isBlank(log.reason)) parts.push(String(log.reason));', '') },
   { name: 'a failure said by its counts', catches: ['M1b'], file: 'model', mutate: swap("  if (isFailedStatus(log.status)) return reasonOf(log) || ABSENT;", '') },
+  { name: 'the changed columns not said', catches: ['M1d'], file: 'model', mutate: swap("    ...Object.entries(columnsChanged(log))", "    ...Object.entries({})") },
   { name: 'Took without its unit', catches: ['M2'], file: 'model', mutate: swap("Math.round(s).toLocaleString('en-US')} s`", "Math.round(s).toLocaleString('en-US')}`") },
   { name: 'the To day left out (until = To)', catches: ['M3'], file: 'model', mutate: swap('      day.setDate(day.getDate() + 1);\n', '') },
   { name: 'the head count not the server\'s', catches: ['M4a'], file: 'model', mutate: swap('count: numberOr(c.count)', 'count: null') },
@@ -332,10 +344,11 @@ const MUTANTS = [
   { name: 'the left count is the total', catches: ['M8'], file: 'model', mutate: swap('read · ${count(s.left)} left', 'read · ${count(s.total)} left') },
   { name: 'the total\'s limit not said', catches: ['P7'], file: 'parts', mutate: swap('      if (c.title) th.title = c.title;\n', '') },
   { name: 'a sweep sends without its words', catches: ['M9'], file: 'model', mutate: swap("${why.length ? ` (${why.join(' · ')})` : ''}", '') },
+  { name: 'a stopped re-read not said', catches: ['M11'], file: 'model', mutate: swap('(s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep))', 'sweepText(s.sweep)') },
   { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
   { name: 'the ask hides the other tables', catches: ['M10'], file: 'model', mutate: swap(", 'Other tables reading this folder have their waiting files put back too']", ']') },
   { name: 'Cancel hands nothing', catches: ['P9'], file: 'parts', mutate: swap('this.deps.onCancel(line.cancel)', 'this.deps.onCancel(null)') },
-  { name: 'a file not read yet offers Retry - log_id null', catches: ['P2d'], file: 'parts', mutate: swap('if (log.id == null) { act.disabled = true;', 'if (false) { act.disabled = true;') },
+  { name: 'a file not read yet offers Retry - log_id null', catches: ['P2d'], file: 'parts', mutate: swap('if (log.id == null) setDisabledReason(', 'if (false) setDisabledReason(') },
   { name: 'a line is its record id again - two files not read yet are one', catches: ['P1h'], file: 'parts',
     mutate: swap('view.picked === log.checklist_id', 'view.picked === log.id') },
   { name: 'counted said without its age', catches: ['M8'], file: 'model', mutate: swap('return `counted ${', 'return `counted${') },

@@ -34,7 +34,7 @@ import {
 import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
-import { ChainQueuePanel, skipLine } from './chain_queue_panel.js';
+import { ChainQueuePanel, skipLine, resumeRun, resumeLine, cutRunFor } from './chain_queue_panel.js';
 import { pollBeat, pollQueue, timedRead, readAgeWords, QueueReadTimeout } from './queue_poll.js';
 import { ChainPauseControl, chainPauseView } from './chain_pause.js';
 // 시안 A ② Status — 줄 판정은 `overview_status` 한 자리, 판은 그리기만 한다.
@@ -1535,6 +1535,7 @@ function renderChainQueue(payload, opts) {
     chainQueuePanels = ['chain-queue-mount', 'overview-queue-mount']
       .map((id) => byId(id)).filter(Boolean)
       .map((mount) => new ChainQueuePanel(mount, { onCancel: (cancel) => cancelQueueLine(cancel),
+        onResume: (runId) => resumeCutRun(runId),
         copy: (id, label) => copyFullId(id, label), onRefresh: () => { void refreshQueue(); } }));
   }
   // Both queue reads pass here — the chain rule form learns which rules file the worker holds.
@@ -3017,6 +3018,16 @@ async function cancelQueueLine(cancel) {
   void refreshQueue();
 }
 
+/** Resume on a cut replay (owner 10-23): the queue's line and the Retroactive count press here. A refusal is the
+ *  server's sentence in a toast; the new run is said, and the queue read again shows it. */
+async function resumeCutRun(runId) {
+  const got = await resumeRun(runId, { adminFetch, apiBase: API_BASE });
+  if (!got.ok) { showToast(got.line, 'error'); return; }
+  showToast(`Resumed · run ${got.runId}`, 'info');
+  if (queueRead) await queueRead.catch(() => null);
+  void refreshQueue();
+}
+
 // 🔴 총괄 a274c90f0 · 78ebdcfc0 — the line is ONE part (`RunLines`), mounted here and, next, in the
 //    top queue's RUNNING. The page only decides where it sits and what a × and a result box do.
 let runLines = null;
@@ -3482,6 +3493,15 @@ function retroCountEl(cached, stale) {
   // 않는 것이 핵심이다 — 더하면 「쓰기 연산」의 수에 「절대 쓰지 않는 것」의 수가 섞인다.
   // 쌍마다 자기 상자를 갖는다: 구분자 없는 한 줄에서는 값이 다음 라벨에 붙어 읽힌다.
   retroExtraBoxes(view.extras).forEach((line) => box.appendChild(line));
+  if (cached.cut && !stale) {
+    const resume = cfgEl('div', 'cfg-row-head retro-resume');
+    resume.appendChild(cfgEl('span', 'cfg-detail', resumeLine(cached.cut)));
+    const go = cfgEl('button', 'admin-btn cfg-btn', 'Resume');
+    go.type = 'button';
+    go.addEventListener('click', () => resumeCutRun(cached.cut.resume.run_id));
+    resume.appendChild(go);
+    box.appendChild(resume);
+  }
   return box;
 }
 
@@ -3542,7 +3562,12 @@ async function runRetroactiveCount(op) {
         failure: await retroFailureLine(res, failure, RETRO_CHROME.COUNT_FAILED),
       };
     } else {
-      state.count = { ok: true, view: buildCountView(await res.json()), paramsKey: measuredKey };
+      const view = buildCountView(await res.json());
+      // A cut replay of this rule says where Resume would start (owner 10-23); the queue's answer names it - the
+      // entry's `rule` is the run's `rule` parameter. The queue's one read, joined when one is on its way.
+      const rule = entries.find((e) => e.key === 'rule');
+      const cut = rule ? cutRunFor((await readQueue()).body, op.op, rule.value) : null;
+      state.count = { ok: true, view, paramsKey: measuredKey, cut };
     }
   } catch (e) {
     console.error('[Retroactive] count failed', op.op, failure, e);

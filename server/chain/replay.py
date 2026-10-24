@@ -2144,7 +2144,7 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
                 if name)]
             rows = {row.row_id: row for row in db.query(model).options(load_only(*loaded)).filter(
                 model.row_id == any_(bindparam("door", [item.row_id for item in door], type_=ARRAY(String))))}
-            row_cache, prefetched = {}, set(rows)
+            row_cache, layers_read = {}, crud.LayersRead(rows, [mark])     # the page read the mark's cells
             for row in rows.values():
                 row_cache[row.row_id] = row
                 if row.business_key_val:
@@ -2158,7 +2158,7 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
                         overwrites_cache=overwrites, transaction_id=tx_id, logs_to_cache=history,
                         cell_sources_to_upsert=layers, cell_overwrites_to_upsert=ow_put,
                         cell_overwrites_to_delete=ow_gone, deleted_row_ids=[], version_stats=version_stats,
-                        prefetched_row_ids=prefetched, probed_identity=probed, drop_stats=crud._new_drop_stats(),
+                        layers_read=layers_read, probed_identity=probed, drop_stats=crud._new_drop_stats(),
                         batch_now=batch_now, cell_sources_to_delete=folded)
                     layer = layers.get((table_name, item.row_id, mark, item.source_name))
                     if layer is None:

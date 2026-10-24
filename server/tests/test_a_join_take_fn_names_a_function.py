@@ -12,6 +12,8 @@ batch body (`drain_events`) over the rules the loader stands from the declaratio
   refused                   a file, a function, a ref table, a row column; ref and row on one of the four
   from a list of columns    values are {column: value} a row (owner 10-23 「넓히기는 저렇게」, lead ff3fed5fb) - a row
                             whose every listed column is blank left out; the value table read in as many statements
+  once a key                a function called once a key and `row` values, every target row still written; one of the
+                            four compiled once a batch (owner 10-24 「함수가 그룹별로 안 돌고 행별로 다 도나 봐」, lead)
 """
 import asyncio
 import json
@@ -298,3 +300,50 @@ def test_a_list_take_reads_the_value_table_in_as_many_statements_as_one_column(d
     listed = reads([{"from": ["value", "item"], "into": "so", "fn": "spec_out.s_o_by_item", "ref": ["spec"],
                      "row": ["grade"]}], "r2")
     assert one and listed == one, (one, listed)
+
+
+def _by_target(db):
+    db.expire_all()
+    return {r.tid: r.so for r in db.query(models.DYNAMIC_TABLES["jf_tgt"]).all()}
+
+
+def test_a_function_runs_once_a_key_and_row_values_and_every_target_row_is_still_written(db, functions, tmp_path,
+                                                                                       monkeypatch):
+    """Four target rows of one key: three hand grade g1, one g2 - two calls for that key, not four, and the g2 row keeps
+    its own answer (a judgement per target row must not fold into one a key)."""
+    calls = tmp_path / "calls.txt"
+    (functions / "probe.py").write_text(
+        "def seen(values, row, ref):\n"
+        "    with open(%r, 'a', encoding='utf-8') as f:\n"
+        "        f.write('%%s %%s %%s\\n' %% (row['lot'], row['item'], row['grade']))\n"
+        "    return '%%s:%%d' %% (row['grade'], len(values))\n" % str(calls), encoding="utf-8")
+    rules = _rules(tmp_path, monkeypatch, [{"from": "v", "into": "so", "fn": "probe.seen", "row": ["grade"]}])
+    _put(db, "jf_tgt", [{"tid": "t1", "lot": "L1", "item": "A", "grade": "g1"},
+                        {"tid": "t2", "lot": "L1", "item": "A", "grade": "g1"},
+                        {"tid": "t5", "lot": "L1", "item": "A", "grade": "g1"},
+                        {"tid": "t3", "lot": "L1", "item": "A", "grade": "g2"},
+                        {"tid": "t4", "lot": "L2", "item": "A", "grade": "g1"}])
+    _drain(db, rules)
+    _put(db, "jf_meas", [{"rid": "m1", "lot": "L1", "item": "A", "v": 3}, {"rid": "m2", "lot": "L1", "item": "A", "v": 7},
+                         {"rid": "m5", "lot": "L2", "item": "A", "v": 2}])
+    calls.write_text("", encoding="utf-8")
+    _drain(db, rules)
+    assert _by_target(db) == {"t1": "g1:2", "t2": "g1:2", "t5": "g1:2", "t3": "g2:2", "t4": "g1:1"}
+    assert sorted(calls.read_text(encoding="utf-8").splitlines()) == ["L1 A g1", "L1 A g2", "L2 A g1"], (
+        "once a key and row values - five target rows, three calls")
+
+
+def test_one_of_the_four_is_compiled_once_a_batch_not_once_a_target_row(db, tmp_path, monkeypatch):
+    import expression
+
+    rules = _rules(tmp_path, monkeypatch, [{"from": "v", "into": "so", "fn": "max"}])
+    _put(db, "jf_tgt", [{"tid": "t%d" % n, "lot": "L%d" % (n % 2), "item": "A", "grade": "g1"} for n in range(6)])
+    _drain(db, rules)
+    _put(db, "jf_meas", [{"rid": "m1", "lot": "L0", "item": "A", "v": 3}, {"rid": "m2", "lot": "L1", "item": "A", "v": 7}])
+    compiled = []
+    real = expression.compile
+    monkeypatch.setattr(expression, "compile", lambda said, *a, **k: compiled.append(said) or real(said, *a, **k))
+    _drain(db, rules)
+    assert set(_by_target(db).values()) == {"3", "7"} and len(_by_target(db)) == 6, (
+        "six target rows written - else this measures nothing")
+    assert len([said for said in compiled if "Max(" in said]) == 1, compiled

@@ -13,6 +13,9 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [체인 실패 줄이 «어디서»를 말한다 — 맵퍼 파일:줄 · 함수](#2026-10-24--체인-실패-줄이-어디서를-말한다--맵퍼-파일줄--함수) — 보는 곳 chain_worker.log «원인:» 줄 · 대기열 Recent failures
+  - 2026-10-24 [체인 실패 트레이스백이 터미널에 — 영구 실패 줄 바로 밑에 전체](#2026-10-24--체인-실패-트레이스백이-터미널에--영구-실패-줄-바로-밑에-전체) — 보는 곳 런처 터미널(체인 워커 줄) — .log 파일 · 어드민 화면 필요 없음
+- 2026-10-24 [뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것](#2026-10-24--뭉치기-조인이-키마다-한-번-계산한다--함수--내장-fn-이-대상-행마다-돌던-것) — 적는 곳 없음(선언 그대로) · 보는 곳 chain_worker.log [Latency]
 - 2026-10-24 [AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭](#2026-10-24--ai-리포트-파일--다시-세로-나열--머리-단-이름date--wafer--leg--표는-창-폭) — 적는 곳 derive.report.labels.columns · 보는 곳 리포트 파일
 - 2026-10-23 [AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름](#2026-10-23--ai-리포트-키-칸--keys-한-곳unit--latest--fold-표마다-가진-키-칸-이름) — 적는 곳 derive.report.keys · 역할의 wafer 목록 · 보는 곳 리포트 파일
 - 2026-10-23 [체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름](#2026-10-23--체인-규칙-창에서-조인-take-항목을-기록으로--record-from-칸-목록-친-칸-이름) — 누르는 곳 체인 규칙 창 → derive join → take 칩 끝의 «+ record»
@@ -335,6 +338,7 @@
 
 ### 설정 파일
 
+- 2026-10-24 [다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것](#2026-10-24--다시-읽기가-파일마다-실패하면-그-표-저장소만-멈춘다--잘못된-파서로-오류만-내며-돌던-것) — 적는 곳 ingestion_settings.json reread_stop_after_failures · 보는 곳 파일 화면 진행 줄 · watcher.log
 - 2026-10-24 [표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다](#2026-10-24--표-저장이-그-자리에서-서버에-읽힌다--바로-뒤-규칙-저장이-새-칸을-안다) — 적을 것 없음 · 보는 곳 저장 응답 시간
 - 2026-10-24 [표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이](#2026-10-24--표를-더하면-와처가-그-raws-를-바로-만들고-본다--reload-없이) — 적을 것 없음 · 보는 곳 watcher.log
 - 2026-10-23 [외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것](#2026-10-23--외부-저장소-방아쇠-파일은-그-폴더가-조용해진-뒤-읽는다--이미지-목록이-반쪽으로-들어가던-것) — 외부 저장소 항목에 stability_interval_seconds
@@ -343,6 +347,7 @@
 - 2026-10-21 [와처가 가볍게 선다 · 외장 소스에 max_depth · 훑기마다 소스별로 «왜 안 넘겼나»](#2026-10-21--와처가-가볍게-선다--외장-소스에-max_depth--훑기마다-소스별로-왜-안-넘겼나) — 적는 곳 `ingestion_settings.json` 외장 소스 항목 `max_depth` · 보는 곳 watcher.log
 - 2026-10-21 [칸 타입을 바꾼 선언이 재기동 없이 쓰기에 닿는다 — 리로드가 바뀐 칸의 모델 타입도 바꾼다](#2026-10-21--칸-타입을-바꾼-선언이-재기동-없이-쓰기에-닿는다--리로드가-바뀐-칸의-모델-타입도-바꾼다) — 적는 곳 table_config.json 의 column_types
 - 2026-10-21 [파일은 한 번 읽는다 — (경로, 표) 체크리스트, 표 스크립트가 바뀌면 그 표만 다시](#2026-10-21--파일은-한-번-읽는다--경로-표-체크리스트-표-스크립트가-바뀌면-그-표만-다시) — 보는 곳 와처 로그 · 적을 것 없음(`dedup_by_signature` · `dedup_by_path_stat` 은퇴)
+- 2026-10-24 [꺼진 외부 소스의 파일도 손으로 읽는다 — Read now · Retry 는 그 선언대로](#2026-10-24--꺼진-외부-소스의-파일도-손으로-읽는다--read-now--retry-는-그-선언대로) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목 `enabled: false`
 - 2026-10-21 [외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 — enabled · filename/glob · path](#2026-10-21--외부-소스-하나를-끄거나-바꾸면-재기동-없이-그-소스에만-먹는다--enabled--filenameglob--path) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목
 - 2026-10-20 [선언 폼의 추천 목록이 선언에서 나오고 표 설정에도 스켈레톤이 생김 (서버 몫)](#2026-10-20--선언-폼의-추천-목록이-선언에서-나오고-표-설정에도-스켈레톤이-생김-서버-몫) — 적는 곳 선언 폼(클라 착지 뒤) · `table_config.json`
 - 2026-10-20 [체인 규칙의 key.columns · group_by 를 목록으로 — 폼이 줄로 그리고 글자 key.columns 는 거절](#2026-10-20--체인-규칙의-keycolumns--group_by-를-목록으로--폼이-줄로-그리고-글자-keycolumns-는-거절) — 적는 곳 체인 규칙 선언 창 · `chain_rules.json`
@@ -382,10 +387,12 @@
 
 ### 어드민 화면
 
+- 2026-10-24 [파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»](#2026-10-24--파일-기록이-바뀐-칸-이름을-말한다--changed-밑에-changed-in-칸-n) — 적을 것 없음 · 보는 곳 파일 화면 Result
 - 2026-10-23 [파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수, 지난 훑기, 기다리는 다시 읽기 취소](#2026-10-23--파일-화면-맨-위에-읽기-진행--표--저장소마다-읽음--전체--남은-수-지난-훑기-기다리는-다시-읽기-취소) — 누르는 곳 어드민 File Ingestion 탭 맨 위 READ PROGRESS · «Cancel waiting re-reads»
 - 2026-10-23 [체크리스트가 파일당 한 행 — 파일 화면은 파일당 한 줄, 외부 훑기가 이름 먼저 거르고 바뀐 폴더만 볼 수 있다](#2026-10-23--체크리스트가-파일당-한-행--파일-화면은-파일당-한-줄-외부-훑기가-이름-먼저-거르고-바뀐-폴더만-볼-수-있다) — 적는 곳 ingestion_settings.json 의 sweep_interval_seconds · external_full_walk_every · 보는 곳 파일 화면 · 와처 시작 줄
 - 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
 - 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
+- 2026-10-23 [끊긴 체인 소급을 화면에서 이어 한다 — 대기열 줄의 Resume, 미리 세기의 «Resumes from page N»](#2026-10-23--끊긴-체인-소급을-화면에서-이어-한다--대기열-줄의-resume-미리-세기의-resumes-from-page-n) — 누르는 곳 어드민 Chain 대기열의 끊긴 줄 «Resume» · Retroactive 탭 chain_replay 의 Count
 - 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
 - 2026-10-21 [Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도](#2026-10-21--read-all-again--표--폴더의-파일을-통째로-다시-읽힌다-상한은-거절이-아니라-속도) — 누르는 곳 파일 화면 폴더 줄 · Files 머리의 «Read all again»
 - 2026-10-21 [Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께](#2026-10-21--read-now--경로-하나를-와처가-본-것처럼-지금-읽힌다-왜-안-집었는지와-함께) — 누르는 곳 파일 화면 «Read a file now» · 명령 `replay_ingestion.py --now`
@@ -503,6 +510,8 @@
 
 ### 그 밖 (위 주제에 안 드는 것)
 
+- 2026-10-24 [쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것](#2026-10-24--쓰기가-쓰는-칸의-층만-읽는다--행의-모든-칸-층을-잠그고-읽던-것) — 적는 곳 없음 · 보는 곳 chain_worker.log · watcher.log 의 INSIDE THE WRITE prefetch
+- 2026-10-24 [다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스](#2026-10-24--다시-읽기-멈춤의-남은-파일-있나가-체크리스트를-다-훑지-않는다--부분-인덱스) — 보는 곳 auto_update.log «[Indexes]» 줄 · GET /admin/indexes
 - 2026-10-23 [표에 없는 칸 · 숫자 칸에 숫자 아닌 값으로 거르면 이름 대고 거절 — 표 전체가 오던 것](#2026-10-23--표에-없는-칸--숫자-칸에-숫자-아닌-값으로-거르면-이름-대고-거절--표-전체가-오던-것) — 보는 곳 거절 문장(응답 detail) · 적을 것 없음
 - 2026-10-22 [최근 이력을 다시 짓는 동안 워커 통지가 기다리지 않는다 — «notifications not delivered» 와 화면이 안 바뀌던 몇 초](#2026-10-22--최근-이력을-다시-짓는-동안-워커-통지가-기다리지-않는다--notifications-not-delivered-와-화면이-안-바뀌던-몇-초) — 보는 곳 chain_worker.log · watcher.log «notifications not delivered» · 적을 것 없음
   - 2026-10-22 [고침 — 최근 이력은 새 행을 이어 붙이고 처음부터 다시 짓지 않는다, 최근 이력 화면이 1 초 안](#2026-10-22--고침--최근-이력은-새-행을-이어-붙이고-처음부터-다시-짓지-않는다-최근-이력-화면이-1-초-안) — 보는 곳 최근 이력 화면 · 적을 것 없음(`recent_refresh_max_delta_rows` 은퇴)
@@ -556,6 +565,40 @@
 
 
 
+## 2026-10-24 · 꺼진 외부 소스의 파일도 손으로 읽는다 — Read now · Retry 는 그 선언대로
+
+- **무엇** — 소유자 10-24 «외부 저장소 자동읽기 끊어놓고 파일 하나 찍어서 돌려가면서 디버깅 하는법» · «타겟팅 돌리기만 제대로 만들어도 디버깅 다함». `"enabled": false` 인 외부 소스는 «자동으로»만 안 읽습니다(새 파일 이벤트 · 훑기 · Read all again). 파일 화면에서 손으로 고른 파일(Read now · 파일 한 줄 Retry)은 그 소스의 선언(parser · options · path)대로 읽습니다 — 몇 번이든, 재기동 없이.
+- **전엔** — 꺼진 소스는 선언 검증에서 통째로 빠져, Read now 가 «No table reads …» 로 거절하고 Retry 는 «the source … is not in ingestion_settings.json» 으로 실패했습니다.
+- **해 보기** — ingestion_settings.json 에서 그 소스를 `"enabled": false` 로 저장 → 파일 화면 «Read a file now» 에 파일 경로 → Read now. 다시 켜면 꺼진 동안 온 파일을 훑어 읽습니다(전과 같음).
+- **필요한 조건** — git pull · 런처 재기동(이 코드를 싣는 한 번). 그 뒤 끄고 켜기는 저장만.
+- **자세히** — `parsers/directory_watcher.py` 의 `validate_external_source_specs` 가 꺼진 항목도 검증해 `off` 표시로 남깁니다(선언을 아는 자리 하나). 그 표시를 묻는 자리: 와처 등록(자동 문) · `reread.table_sources`(Read all again) · 겹침 검사 · 손으로 읽을 때 `_parse_meta_for`.
+
+## 2026-10-24 · 체인 실패 트레이스백이 터미널에 — 영구 실패 줄 바로 밑에 전체
+
+- **무엇** — 소유자 10-24 «언제 어드민 들어가서 클릭해서 보내» · «트레이스백 넣는게 어렵냐» · «나 터미널 보고 일하니까 이대로 지어». 체인이 영구 실패하면 터미널의 실패 줄 «바로 밑»에 트레이스백 전체가 나옵니다. 어드민 화면을 열거나 .log 파일을 찾을 필요가 없습니다.
+- **터미널에 보이는 것** — 실패한 그룹마다 한 번(재시도마다가 아님):
+  1. «Transaction <tx> permanently failed: N event(s), M row(s) -> FAILED [rules=… tables=… row=…]. 원인: <오류> at <파일>:<줄> in <함수>» — 끝의 «at …» 는 [바로 아래 항목](#2026-10-24--체인-실패-줄이-어디서를-말한다--맵퍼-파일줄--함수)(`beec46570`): 맵퍼 파일이면 그 파일 그 줄을 엽니다.
+  2. «Transaction <tx> traceback:» 다음 줄부터 트레이스백 전체 — 기록된 사유 그대로.
+- **안 나오는 때** — 사유에 트레이스백이 없는 거절 문장(쓰기 거절 등)은 1 의 한 줄만 나옵니다(그 문장이 사유).
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `chain/ingestion_worker.py` 의 영구 실패 줄 다음 한 줄(`331661db4`) · 시험 `test_a_chain_failure_says_where_it_broke.py`(실제 체인 워커 출력에 맵퍼 파일 프레임이 든 트레이스백).
+
+## 2026-10-24 · 체인 실패 줄이 «어디서»를 말한다 — 맵퍼 파일:줄 · 함수
+
+- **무엇** — 소유자 10-24 «딸랑 이거 나오는데 어쩌라는 거임» → «2 해». 맵퍼 안 pandas 오류의 실패 줄이 «원인: ValueError: cannot insert tkout_time, already exists» 뿐이라 운영자가 손댈 곳을 몰랐습니다. 이제 사유 문장 끝에 «at <파일>:<줄> in <함수>»가 붙습니다 — 트레이스백에서 맵퍼 파일(mappers 패키지 폴더, join_fn/ 포함)의 가장 안쪽 프레임, 없으면 제품 파일의 가장 안쪽 프레임.
+- **바뀐 동작** — 사유 문장을 짓는 한 함수(`event_constants.failure_cause`)에서 붙이므로 그것을 읽는 자리 다섯이 모두 같은 문장입니다: chain_worker.log 의 «permanently failed … 원인:» 줄, 대기열 줄의 retrying `last_failure`, 체인 상태의 FAILED, 대기열의 Recent failures, 실패 목록의 last_failure. 격리 기록(error_log)의 reason 은 전과 같이 트레이스백 전체입니다. 트레이스백이 없는 거절 문장(쓰기 거절 등)은 그대로입니다. 이미 쌓인 실패 기록도 다시 읽을 때 같은 문장이 됩니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_a_chain_failure_says_where_it_broke.py`(실제 API + 체인 워커).
+
+## 2026-10-24 · 쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것
+
+- **무엇** — 체인 · 파일 · 사람 쓰기가 모두 지나는 쓰기 문(apply_batch_updates)이 묶음의 행마다 «모든 칸»의 층 (cell_sources)과 덮어쓰기를 잠그고 읽었습니다. 칸 하나를 써도 칸 수만큼 읽었습니다(판 B 6 칸: 1,000 행에 층 6,000 행).
+- **바뀐 동작** — 묶음이 «쓰는 칸»의 층만 읽습니다. 「캐시에 없음 = 표에 없음」의 증명은 (행, 칸) 단위입니다(`crud.LayersRead`). 읽지 않은 칸은 DB 에 묻습니다. 키를 바꿔 다른 행에 합쳐질 때(병합)는 두 행의 모든 칸 층을 한 질의로 먼저 읽습니다(`prime_merge_cells`, 전에는 합쳐지는 행의 칸마다 한 질의). fold-units 도 같은 증명을 씁니다. 쓰는 값 · 층 · 이력 · 알림은 그대로입니다.
+- **잰 것** — 박스, 같은 묶음을 옛 · 새 쓰기 문에 넣고 롤백, 두 판씩. 40 칸 표(2,000 행 · 층 80,000)에 칸 하나: 쪽(1,000 행)마다 층 읽기 40,000 → 1,000 행, 미리 읽기 0.67 · 0.63 → 0.07 · 0.07 s, 쪽 1.52 · 1.36 → 0.98 · 0.81 s. 판 B(6 칸, 4 쪽): 층 6,000 → 1,000 행/쪽, 미리 읽기 0.17~0.19 → 0.05~0.06 s/쪽, 둘째~넷째 쪽 합 2.00 · 1.71 → 1.58 · 1.54 s. 칸이 많은 표일수록 큽니다.
+- **같이** — 그룹 줄 · 청크 줄의 «INSIDE THE WRITE» 시계가 perf_counter 입니다. 윈도우의 monotonic 은 15.6 ms 눈금이라 단계마다 ±16 ms 로 찍혔습니다. 줄의 문장은 그대로입니다.
+- **필요한 조건** — git pull · 런처 재기동. 선언은 바꿀 것 없음.
+- **자세히** — `database/crud.py` 의 `LayersRead` · `_load_metadata_row_cell` · `prime_merge_cells` · 미리 읽기 · `chain/replay.py` 의 `_fold_units_page` · 시험 `test_a_batch_reads_the_layers_of_the_columns_it_writes.py`.
+
 ## 2026-10-23 · 파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수, 지난 훑기, 기다리는 다시 읽기 취소
 
 - **무엇** — 소유자 10-23 「몇 개 중 몇 개 읽고 있는지」. 서버는 표마다 저장소별 수를 내고 있었지만(A 23c35a768 · 11618814f) 화면이 그리지 않았습니다.
@@ -565,6 +608,27 @@
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 수는 서버에 A 의 23c35a768 · 11618814f · daafb2214 가 있어야 나옵니다.
 - **선언** — 바뀐 것 없음.
 - **자세히** — `file_ingestion/model.js`(sourceLines · sweepText · PROGRESS_COLUMNS · cancelAsk · countedText) · `parts.js` · `main.js`.
+
+## 2026-10-24 · 다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스
+
+- **무엇** — 총괄 10-24. 다시 읽기 멈춤은 와처 폴러 차례(3 초)마다 열린 (표, 저장소) 쌍마다 «남은 파일 있나»를 묻는데, 받쳐 줄 인덱스가 없어 체크리스트 전체를 훑었습니다(100 만 행 박스 판 0.13 s). 부분 인덱스 `ix_file_checklist_rereads_left` — (table_name, source), 조건 `status IN ('PENDING_RETRY', 'PENDING') OR file_mtime IS NULL` — 를 모델에 선언했습니다. 같은 판에서 0.0007~0.0023 s, EXPLAIN 이 그 인덱스를 탑니다.
+- **바뀐 동작** — 답은 같습니다. 인덱스는 스케줄러가 기동 때 선언된 인덱스 작업으로 CONCURRENTLY 세웁니다(`build_missing_indexes`, 쓰기를 막지 않음). 서기 전에는 지금처럼 전체를 훑습니다 — 느릴 뿐 답은 같습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_the_server_names_and_builds_the_indexes_its_models_declare.py` 의 `test_the_re_read_stops_question_reads_its_partial_index`.
+
+## 2026-10-24 · 다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것
+
+- **무엇** — 소유자 10-24 «외부 저장소 다시 읽을 때 연속 파일 3 번 에러 나면 멈추면 안 됨?» · «잘못된 파서로 계속 에러만 띄우면서 돌잖아» · «근데 근본 불량 파일들도 있네». 다시 읽기가 한 (표, 저장소)에서 읽힌 파일 없이 3 번(설정 `reread_stop_after_failures`) 실패하면 그 쌍만 멈춥니다. 하나라도 읽히면 끝까지 갑니다(불량 파일은 지금처럼 하나씩 실패로 남음). 와처 전체는 안 멈춥니다.
+- **바뀐 동작** — 멈춘 쌍의 기다리는 파일 · 체크 해제된 파일은 그대로 두고(DB 쓰기 없음) 와처의 다시 읽기 줄과 훑기가 건너뜁니다. 많이 기다려도 다른 쌍의 다시 읽기는 돕니다. 파일 화면 진행 줄에 «Stopped: 3 failed in a row - <오류 첫 줄> · waiting N», 와처 로그에 «… - waiting N · unchecked M left as they are». 풀림: 그 쌍에 Read all again · Retry · Read now(API 가 SYSTEM_RELOAD «reread_released» 한 줄) · 그 표의 스크립트나 table_config 변경 · 와처 재기동. 잠금 대기는 안 셉니다. raws 도 같습니다.
+- **필요한 조건** — git pull · 런처 재기동. 안 적으면 3.
+- **자세히** — [ingestion_settings](../guide/config/ingestion_settings.md) `reread_stop_after_failures` · 시험 `test_a_reread_that_fails_file_after_file_stops_for_its_source.py`.
+
+## 2026-10-24 · 파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»
+
+- **무엇** — 파일을 다시 읽어 «Changed 3» 이 나와도 무엇이 바뀌었는지 몰랐습니다. 이제 파일 기록에 칸마다 바뀐 행 수를 적고(`file_ingestion_logs.columns_changed`, 많은 것부터), 파일 화면의 Result 가 Changed 밑에 «Changed in <칸> N» 을 칸마다 보여 줍니다.
+- **바뀐 동작** — 쓰기가 이미 아는 «바뀐 칸»에서 셉니다(질의 추가 없음). 새 행의 칸은 안 셉니다. 바뀐 칸이 없거나 세지 못한 읽기는 비어 있습니다(줄 없음). 체크리스트는 그대로입니다.
+- **필요한 조건** — git pull · 런처 재기동(부팅 스키마 맞추기가 칸을 더함). 손으로는 `server/migrations/add_file_ingestion_log_columns_changed.sql`(되돌리기 `_reverse.sql`). 이 착지 전에 읽힌 파일은 비어 있습니다.
+- **자세히** — 시험 `test_a_files_completion_record_says_what_its_read_came_to.py` · 하니스 `file_ingestion_page_harness.mjs` M1d.
 
 ## 2026-10-24 · decide 를 적은 이름으로 리플레이한다 — R1 이 «not found» 로 거절하던 것
 
@@ -594,6 +658,14 @@
 - **바뀐 동작** — 페이지 폭 상한(1200px)이 없어 표가 창 폭을 다 씁니다. 열이 더 많으면 표 상자 안에서 가로로 넘깁니다(열 20 개 · 1440 폭: 페이지는 안 넘고 표만). 비교 표의 머리 단마다 왼쪽 칸에 단 이름 — 키 칸 이름 · time 은 «Date» · `labels.columns` 로 바꿈. 맨 아랫단 왼쪽의 «Item» 은 없어졌습니다(라벨 `item` 은퇴).
 - **필요한 조건** — git pull · 런처 재기동 · R1 다시. 단 이름을 바꾸려면 규칙 labels 에 `"columns": {"time": "DATE", …}`.
 - **자세히** — 가이드 «도는 것» · «비교 표» · 시험 `test_the_report_html_embeds_everything_in_layout_order.py` · `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-24 · 뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것
+
+- **무엇** — 소유자 10-24 «이거 뭉치기 조인 너무 느린데» · «함수가 그룹별로 안 돌고 행별로 다 도나 봐». 맞았습니다: take 에 fn 이 있는 조인이 «대상 행마다» 계산했습니다(박스 판: 키 100 × 대상 20 행에 함수 2,000 번).
+- **바뀐 동작** — 계산은 (조인 키, 함수에 넘기는 row 값) 마다 한 번이고, 같은 묶음의 대상 행들이 그 답을 나눠 씁니다. 내장 fn(count · min · max · unique_concat)은 row 를 안 받으니 키마다 한 번, 파일 함수는 "row" 를 안 적었으면 키마다, 적었으면 그 칸 값 묶음마다 한 번입니다 — row 값이 다른 대상 행은 제 답을 받습니다. 내장 fn 의 식은 묶음마다 한 번 컴파일합니다(전엔 대상 행마다). 쓰기는 전과 같이 대상 행마다입니다.
+- **잰 것** — 박스 판 B(키 100 · 원천 1,000 · 대상 2,000), 같은 행을 건넨 프로세스 안 읽기 · 답: 계산 2,000 → 100 번, 함수 호출 2,000 → 100 번, 쓰기 항목 2,000 그대로, 내장 fn 답 0.47 → 0.07 s. 그룹 시간의 대부분은 쓰기입니다(진짜 워커, 같은 판: 그룹 2.73 s 중 쓰기 2.05 s) — 쓰기 줄이기는 이번에 하지 않습니다.
+- **필요한 조건** — git pull · 런처 재기동. 선언은 바꿀 것 없음.
+- **자세히** — `chain/join_into.py` 의 `_page`(묶음의 한 번 계산) · `_functions_and_ref`(take 마다 계산 준비) · 시험 `test_a_join_take_fn_names_a_function.py::test_a_function_runs_once_a_key_and_row_values_and_every_target_row_is_still_written` · `::test_one_of_the_four_is_compiled_once_a_batch_not_once_a_target_row`.
 
 ## 2026-10-23 · AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름
 
@@ -663,6 +735,14 @@
 - **무엇** — 총괄 10-23: 리포트에 leg 별 수율 한 줄. 수율은 «디펙이 하나도 없는 칩의 비율»(소유자)이고 칩 표에서 체인 decide 가 수율 표([wafer, leg] · yield)에 씁니다.
 - **선언** — `derive.report.info` 에 표 목록. `item` 없는 표는 `value` 칸이 그 줄입니다. 표 하나로 적은 옛 선언은 그대로 읽힙니다. 폼은 목록으로 그립니다.
 - **자세히** — 가이드 `docs/guide/ai_report_tables.md` «요약 표 꾸미기» · 시험 `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-23 · 끊긴 체인 소급을 화면에서 이어 한다 — 대기열 줄의 Resume, 미리 세기의 «Resumes from page N»
+
+- **무엇** — 소유자 10-23 「체인 소급 이어하기는 안 되는 건가? 테스트런할 때 마지막 커서가 떴으면 좋겠는데」. 서버는 끊긴 리플레이를 마지막으로 커밋한 쪽 다음부터 새 run 으로 잇습니다(POST /admin/retroactive/runs/{run_id}/resume, 총괄 fc1e1e385). 그런데 화면에 그 버튼이 없었습니다.
+- **화면에서** — 어드민 Chain 대기열에 끊긴 run 마다 한 줄이 섭니다. 상태 낱말은 «interrupted»이고 «Resumes from page N · after <마지막 키> · R of T rows · cut <시각>» 가 붙습니다. 그 줄에 «Resume» 과 × 가 있습니다. 끊기지 않은 줄에는 Resume 이 없습니다. Retroactive 탭에서 chain_replay 의 Count 를 누르면, 그 규칙에 끊긴 run 이 있을 때 결과 밑에 같은 «Resumes from page N · after <키>» 와 Resume 이 섭니다. 거절은 서버 문장 그대로 토스트로 나옵니다.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 마지막 키 · 전체 대비 · Count 쪽 줄은 서버가 interrupted_runs 항목에 cursor_end · total_rows · op 를 실은 뒤부터 나옵니다(A 착지). 그 전에는 쪽과 끊긴 시각만 나옵니다.
+- **선언** — 바뀐 것 없음.
+- **자세히** — `chain_queue_panel.interruptedRow` · `resumeLine` · `cutRunFor` · `resumeRun` · 하니스 chain_queue_panel 절 Z · 화면 검사기 상태 «Chain queue, a cut run».
 
 ## 2026-10-23 · AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만
 

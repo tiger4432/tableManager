@@ -1161,24 +1161,13 @@ def sdk_mapper_refusals(rule) -> list:
             except ColumnBindingRefused as refused:
                 why.append(("sdk_job_column", str(refused)))
     else:
+        # ⚰️ sdk_map_key_not_on_trigger (소유자 10-24 「체인 내부에서 맵 키 생성할 수도 있잖아」 · 「그냥 제약 빼」):
+        #    a trigger table without the target's map key columns is no refusal - the maps replaced are then the ones
+        #    the result wrote (`mapper_sdk._removal_batches`), and a map that produced nothing is left as it is.
         try:
-            keys = dt_map_derivation.identity_columns(target)
+            dt_map_derivation.identity_columns(target)
         except dt_map_derivation.DerivationRefused as refused:
             why.append(("sdk_map_key", str(refused)))
-        else:
-            known = declared_columns(trigger)
-            missing = [k for k in keys if known is None or k not in known]
-            if missing:
-                # 소유자 「allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다」 - a map
-                # that produced nothing this time must still be named, and only the incoming
-                # rows can name it (replace_map ㄱ).
-                why.append(("sdk_map_key_not_on_trigger",
-                            "rule '%s' replaces map by map, and '%s' names a map by %s - trigger "
-                            "table '%s' has no %s under those names, so a map that produced "
-                            "nothing this time could not be named and would be left standing. "
-                            "Next: return replace_map batches from a hand-written (db, payloads, "
-                            "rule) mapper, or ask the owner for a cell that maps the names."
-                            % (name, target, keys, trigger or "?", missing)))
     return why
 
 

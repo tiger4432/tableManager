@@ -3280,6 +3280,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         ",".join(failure["tables"] or ()) or "(unknown)",
                         ",".join(failure["row"] or ()) or ROW_NOT_GIVEN,
                         failure_cause(error_reason))
+                    if "Traceback (most recent call last):" in str(error_reason or ""):
+                        # the whole traceback on the terminal, under the line (owner 10-24)
+                        logger.error("Transaction %s traceback:\n%s", tx_id, str(error_reason).rstrip())
                 if retrying_count > 0:
                     logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
 

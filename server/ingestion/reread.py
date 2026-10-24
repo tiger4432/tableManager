@@ -444,7 +444,7 @@ def table_sources(table):
 
     config, specs = validated_sources()
     raws = os.path.abspath(os.path.join(resolve_workspace_root(paths.WORKSPACE_DIR, table, config), "raws"))
-    return raws, [spec for spec in specs if spec["table_name"] == table]
+    return raws, [spec for spec in specs if spec["table_name"] == table and not spec.get("off")]
 
 
 def select_files(db, table, folder, limit=None):

@@ -45,11 +45,21 @@ export function statusTone(status) {
   return tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warn';
 }
 
-/** The counts a read came to, the ones the server wrote (rows_* null: not counted - the line says nothing of them). */
+/** The counts a read came to, the ones the server wrote (rows_* null: not counted - the line says nothing of them);
+ * under Changed, each column it changed and on how many rows (columns_changed, most first). */
 export function resultCounts(log) {
-  const rows = [['Rows read', log.rows_read], ['New', log.rows_new], ['Changed', log.rows_changed], ['Unchanged', log.rows_unchanged],
-    ['Refused', log.rows_refused]];
+  const rows = [['Rows read', log.rows_read], ['New', log.rows_new], ['Changed', log.rows_changed],
+    ...Object.entries(columnsChanged(log)).map(([column, n]) => [`Changed in ${column}`, n]),
+    ['Unchanged', log.rows_unchanged], ['Refused', log.rows_refused]];
   return rows.filter(([, v]) => numberOr(v) !== null).map(([label, v]) => ({ label, value: count(v) }));
+}
+
+/** columns_changed as {column: rows}; none written or not JSON - {}. */
+function columnsChanged(log) {
+  try {
+    const said = JSON.parse(log.columns_changed || '{}');
+    return said && typeof said === 'object' && !Array.isArray(said) ? said : {};
+  } catch { return {}; }
 }
 
 /** A failure's one line: the server's reason, else the first line of its message. */
@@ -153,7 +163,7 @@ export function sourceLines(tables) {
   return (tables || []).flatMap((t) => (t.sources || []).map((s) => {
     const waiting = numberOr((s.left_by_status || {}).PENDING_RETRY) || 0;
     return { table: t.table_name, source: s.source, read: numberOr(s.read), total: numberOr(s.total), left: numberOr(s.left),
-      done: !numberOr(s.left), sweep: s.sweep || null,
+      done: !numberOr(s.left), sweep: s.sweep || null, stopped: s.stopped || null, waiting,
       // its waiting re-reads put back, under its root - an external source's (a sweep of its own) with some waiting
       cancel: s.sweep && waiting > 0 ? s.source : null };
   }));
@@ -178,7 +188,8 @@ export const PROGRESS_COLUMNS = Object.freeze([
   { head: 'Source', cls: 'fi-mono fi-path', cell: (s) => s.source, wrap: true },
   { head: 'Files', cls: 'fi-num cell-fit', cell: (s) => `${count(s.read)} / ${count(s.total)} read · ${count(s.left)} left`,
     title: 'files a sweep has not reached yet are not in the total' },
-  { head: 'Last sweep', cls: 'fi-meta', cell: (s) => sweepText(s.sweep) },
+  // a re-read the watcher stopped (B 10-24) says so here, with what still waits - else the sweep
+  { head: 'Last sweep', cls: 'fi-meta', cell: (s) => (s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep)) },
 ]);
 
 /** The ask before waiting re-reads are put back (A's preview: count · by_state): the server's line, the states they go

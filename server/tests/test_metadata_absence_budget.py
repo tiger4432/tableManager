@@ -1,14 +1,14 @@
 """[P2] "Not in the prefetch cache" must mean "has no metadata", not "unknown".
 
-`apply_batch_updates` prefetches every `cell_sources`/`cell_overwrites` row for the
-rows the batch resolves up front, with NO column filter. `_load_metadata_row_cell`
+`apply_batch_updates` prefetches the `cell_sources`/`cell_overwrites` rows of the
+rows the batch resolves up front, in the columns it writes (총괄 10-24 - every column, before). `_load_metadata_row_cell`
 then treated a missing cache key as "I do not know" and issued two SELECTs per
 cell - so writing a column that has never been written before cost two round
 trips per row to be told, every time, that there is nothing there.
 
-🔴 THE GUARD IS PER-ROW MEMBERSHIP IN THE PREFETCHED SET, NOT "the row exists".
-The equivalence is only bought by the prefetch's lack of a column filter, and it
-is only bought for the rows that prefetch actually covered. A row can be resolved
+🔴 THE GUARD IS MEMBERSHIP IN THE CELLS READ (`LayersRead`), NOT "the row exists".
+The equivalence is only bought for the (row, column) cells that prefetch actually
+covered. A row can be resolved
 mid-batch and never have been prefetched, and answering "empty" for it would
 silently discard its stored `user` layer.
 
