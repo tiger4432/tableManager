@@ -360,8 +360,8 @@ def uncheck(db, table=None, paths=None, folders=None, apply=True):
 
 def hand_on_a_changed_reading(db, table, before, now, folders=()):
     """The table's reading changed (소유자 10-21 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」): its failed files are
-    handed to the retry door (`mark_for_reread`) - those the declaration takes now (`taken_now`; the rest are
-    counted, not handed) - whatever folder holds them, and its read files still in place - under
+    NOT handed - a failed file is read again only by hand, Retry · Read now · Read all again (소유자 10-24 «에러파일
+    자동으로 읽는건 안끄냐» · «err에서 삭제된 파일도 읽을라 그러네»), and its read files still in place - under
     `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
     「옮겨진 건 하지 마」). Only its table_config changed: the read files stay checked and are counted - Read all again
     on the file page applies the change to them (소유자 10-23 「다로 해」). No cap: the watcher reads at its own pace.
@@ -369,16 +369,12 @@ def hand_on_a_changed_reading(db, table, before, now, folders=()):
     changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
     if not changed:
         return None
-    kept, not_taken, _names = taken_now(select_logs(db, RETRY_STATUSES, table=table))
-    logs = [log for log, _rel in kept]
-    mark_for_reread(db, logs)
     declaration_only = changed == ["table_config"]
     read = uncheck(db, table=table, folders=list(folders), apply=not declaration_only) if folders else 0
     said = ("%d read file(s) kept as read (Read all again on the file page applies the change to them)"
             if declaration_only else "%d read file(s) unchecked") % read
-    return ("[Watcher] %s: its reading changed (%s) - %s, %d failed file(s) handed again%s"
-            % (table, ", ".join(changed), said, len(logs),
-               "".join(" · not taken now: %s %d" % item for item in not_taken.items())))
+    return ("[Watcher] %s: its reading changed (%s) - %s, failed files are not read again by themselves (Retry on "
+            "the file page)" % (table, ", ".join(changed), said))
 
 
 def load_reading_stamps():

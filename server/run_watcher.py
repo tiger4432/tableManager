@@ -356,6 +356,21 @@ def retry_one(db, log):
     name. A process DEATH is the reclaim sweep's half.
     """
     table_name = log.table_name or "unknown"
+    if log.filepath and not os.path.isfile(log.filepath):
+        # 소유자 10-24 «err에서 삭제된 파일도 읽을라 그러네»: a file gone from the disk is not read - one line, no traceback
+        import ingestion.checkpoint
+
+        logger.warning("Retry skipped for checklist row #%s (%s): the file is not on the disk any more - %s",
+                       log.id, log.filename, log.filepath)
+        record = models.FileIngestionLog(filename=log.filename, filepath=log.filepath, table_name=table_name,
+                                         status="FAILED", error_message="the file is not on the disk any more",
+                                         retry_count=0, source=log.source)
+        db.add(record)
+        db.flush()
+        ingestion.checkpoint.note_file(db, table_name, log.filepath, status="FAILED", log_id=record.id,
+                                       file_mtime=None, file_size=None, status_before=None)
+        db.commit()
+        return
     try:
         from directory_watcher import get_workspace_serial_lock
         handler = workspace_watcher.handlers_by_raw_path.get(
