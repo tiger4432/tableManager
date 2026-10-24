@@ -965,6 +965,42 @@ def get_image(ref: str, px: int | None = Query(None, ge=_IMAGE_PX_MIN, le=_IMAGE
     response.headers["Cache-Control"] = image_sources.CACHE_CONTROL
     return response
 
+
+def _reports_folder():
+    import paths
+    from chain import report_html
+
+    return os.path.join(paths.DATA_ROOT, report_html.REPORTS_DIRNAME)
+
+
+@app.get("/reports/{name}")
+def get_report(name: str):
+    """One AI report file as a page - to open, or to embed elsewhere in an iframe (owner 10-24 «report 서빙하는 거 서버에
+    달아줘 · 다른 데에 iframe 으로 첨부하게»). Only a <name>.html straight under the reports folder; never cached, a
+    report written again is read again."""
+    folder = _reports_folder()
+    path = os.path.join(folder, os.path.basename(name))
+    if os.path.basename(name) != name or not name.lower().endswith(".html") or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="no report %r - GET /reports lists them" % name)
+    return FileResponse(path, media_type="text/html; charset=utf-8",
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/reports")
+def list_reports():
+    """The report files, newest first - each a link to its page (GET /reports/<name>)."""
+    from fastapi.responses import HTMLResponse
+    import html as _html
+
+    folder = _reports_folder()
+    names = sorted((n for n in (os.listdir(folder) if os.path.isdir(folder) else ()) if n.lower().endswith(".html")),
+                   key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
+    rows = "".join('<li><a href="/reports/%s">%s</a> <small>%s</small></li>' % (
+        _html.escape(n), _html.escape(n), time.strftime("%Y-%m-%d %H:%M", time.localtime(
+            os.path.getmtime(os.path.join(folder, n))))) for n in names)
+    return HTMLResponse('<!doctype html><meta charset="utf-8"><title>Reports</title><h1>Reports</h1><ul>%s</ul>'
+                        % (rows or "<li>No report yet</li>"), headers={"Cache-Control": "no-store"})
+
 import time
 
 # [성능 최적화] 테이블별 count 캐시. 키는 `build_count_cache_key`가 만들고
