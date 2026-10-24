@@ -285,6 +285,22 @@ def _product_reads(report, spec, tables, reads, steps, clock):
     wafers and every group beside them (owner: AI makes rules, the product does the work; lead 10-24 - the model
     writes only the text slots). A step each in the Evidence, «product <read>()», and the write call reads them."""
     fills, image = filled_slots(spec)
+    calls = [fill for fill in dict.fromkeys(fills) if fill not in tables]
+    if image and not report.embedded and (spec or {}).get("images"):
+        calls.append("images")
+    alone = False
+    if len(report.groups) == 1:          # the model compared nothing - the declaration's comparison, tables drawn
+        # or not (owner 10-24 «표 여전한데 전처럼 왜 안 돼»: a model that drew every table skipped it)
+        began = clock()
+        try:
+            lines, refused = report.declared_compare(), None
+        except report_reads.ReadRefused as said:
+            logger.warning("[report] compare() refused: %s", said, exc_info=said)
+            lines, refused, alone = ["refused: %s" % said], str(said), True
+        reads.append((len(steps) + 1, "product compare()", lines))
+        steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product compare()",
+                      "seconds": clock() - began, "refused": refused, "summary": lines[0][:200] if lines else "",
+                      "read": lines[1:]})
     # a table the model drew before it picked the compare wafers is drawn again with them (owner 10-24 «wf pick 이라고
     # 있는데 표에 없음») - the same args, every group now read
     for call, (args, groups) in list(report.__dict__.get("drawn", {}).items()):
@@ -302,21 +318,6 @@ def _product_reads(report, spec, tables, reads, steps, clock):
             steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product %s() again" % call,
                           "seconds": clock() - began, "refused": refused, "summary": (lines[0] if lines else "")[:200],
                           "read": lines[1:]})
-    calls = [fill for fill in dict.fromkeys(fills) if fill not in tables]
-    if image and not report.embedded and (spec or {}).get("images"):
-        calls.append("images")
-    alone = False
-    if calls and len(report.groups) == 1:                  # the model compared nothing - the declaration's comparison
-        began = clock()
-        try:
-            lines, refused = report.declared_compare(), None
-        except report_reads.ReadRefused as said:
-            logger.warning("[report] compare() refused: %s", said, exc_info=said)
-            lines, refused, alone = ["refused: %s" % said], str(said), True
-        reads.append((len(steps) + 1, "product compare()", lines))
-        steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product compare()",
-                      "seconds": clock() - began, "refused": refused, "summary": lines[0][:200] if lines else "",
-                      "read": lines[1:]})
     for call in calls:
         began = clock()
         try:
