@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **같은 체인 실패는 접히고, 10 번 내리 실패한 규칙은 꺼진다 (총괄 ef69603d6 · 8906edc07, 06b1fd297)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 값을 바꾸려면 chain_rules.json 맨 위 "rule_off_after_failures": 10 (0 이면 안 끔)
+> 볼 줄    체인 워커 터미널
+>          처음 한 번   «Transaction … permanently failed … 원인: …» + 트레이스백
+>          그 뒤       «Transaction … same failure as above: <규칙> ×N in <초> s. 원인: …» (60 초에 한 줄)
+>          10 번 내리   «[Chain] rule <이름> switched off after 10 failures in a row …»
+>          고쳐 저장    «[Chain] rule <이름> switched on again - a declaration was saved (off since …)»
+> 뜻      꺼진 규칙은 건너뜀(같은 표의 다른 규칙은 돎). 꺼진 동안의 변경은 그 규칙 리플레이로 따라잡음
+>          체인 규칙 목록에 «Switched off after N failures in a row since … · N changes skipped since · 원인»
+> 급할 때  config/chain_control.json 의 "rules_off" 를 {} 로 저장 -> 다음 묶음부터 다시 돎
+> 되돌리기  git revert 06b1fd297 -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **키 조각 하나가 빈 행은 같은 키로 접힌다 — (a, 빈값) 두 행이 한 행** — git pull · 런처 재기동 · 표마다 재키잉 한 번
 >
 > ```
