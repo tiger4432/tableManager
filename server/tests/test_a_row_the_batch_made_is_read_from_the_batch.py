@@ -154,7 +154,7 @@ def test_a_row_the_batch_made_reads_what_the_database_would_say(world, monkeypat
 
     def asks_the_database(db, table_name, row_id, col_name, is_new, sources_cache,
                           overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert,
-                          prefetched_row_ids=None):
+                          layers_read=None):
         return real(db, table_name, row_id, col_name, is_new, sources_cache, overwrites_cache,
                     cell_sources_to_upsert, cell_overwrites_to_upsert, None)
     monkeypatch.setattr(crud, "_load_metadata_row_cell", asks_the_database)

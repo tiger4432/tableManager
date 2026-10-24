@@ -272,9 +272,9 @@ def test_both_collision_sites_go_through_the_one_helper():
     import inspect
 
     module = inspect.getsource(crud)
-    assert module.count("prime_merge_overwrites(db, table_name, merge_ow,") == 1
+    assert module.count("prime_merge_cells(db, table_name, merge_ow,") == 1
     merge = inspect.getsource(crud._merge_into_key_holder)
-    assert "prime_merge_overwrites(" in merge
+    assert "prime_merge_cells(" in merge
     # Scoped to the merge function: `column_name ==` is still correct elsewhere (the chunked
     # delete builds an `or_()` of exactly those comparisons), so asserting its absence
     # module-wide would assert something untrue about other code.
@@ -282,4 +282,4 @@ def test_both_collision_sites_go_through_the_one_helper():
     for fn in (crud.apply_row_update_internal, crud.set_cell_manual_priority_batch):
         body = inspect.getsource(fn)
         assert "_merge_into_key_holder(" in body
-        assert "prime_merge_overwrites(" not in body
+        assert "prime_merge_cells(" not in body
