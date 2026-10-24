@@ -787,7 +787,7 @@ class Report:
             if (wafer in own or at is None if each else at is None or evaluation in (None, self.evaluation)) \
                     or facts["same"] not in alike:
                 continue
-            entry = by.setdefault(self._report_wafer(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
+            entry = by.setdefault(self._unit(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
             entry["latest"] = max(entry["latest"], at) if entry["latest"] is not None and at is not None else \
                 entry["latest"] or at
             entry["wafers"].append(wafer)
@@ -813,7 +813,7 @@ class Report:
         # every wafer read and why it is no candidate - the owner reads the terminal (owner 10-24 «로그가 짧음»)
         for wafer in self.wafers:
             facts = self.wafers[wafer]
-            name = self._report_wafer(wafer) if each else str(facts["evaluation"])
+            name = self._unit(wafer) if each else str(facts["evaluation"])
             logger.warning("[report]   wafer %s: time %r (day %s) -> %s", self.said(wafer), facts["time"],
                            _instant(facts["time"]),
                            "this report" if wafer in own else "candidate" if name in newest else
@@ -824,6 +824,12 @@ class Report:
             self._long_conditions(list(own) + [w for name in newest for w in by[name]["wafers"]])
         self._candidates = {name: dict(by[name], wafers=self._ordered(by[name]["wafers"])) for name in newest}
         return self._candidates
+
+    def _unit(self, wafer) -> str:
+        """A candidate - the unit its date is of: the time_item table's key parts (a wafer, every leg one - owner 10-24
+        «날짜는 wf 단위인데 leg 까지 보는 건 토큰 낭비»), else the report wafer."""
+        at = getattr(self, "_date_unit", None)
+        return label(tuple(wafer[i] for i in at)) if at else self._report_wafer(wafer)
 
     def _dated(self, own, anchor, recent):
         """The wafer table filter of the wafers dated within `recent` by `conditions.time_item` - the conditions
@@ -845,6 +851,7 @@ class Report:
                 key = _parts(row[:len(shared)])
                 dates[key] = max(dates[key], at) if key in dates else at
         mine = [self.keys.index(col) for col in shared]
+        self._date_unit = mine
         anchor = max([dates[k] for k in (_parts(w[i] for i in mine) for w in own) if k in dates] or [anchor]) \
             if anchor is None else anchor
         days = recent.get("days")
