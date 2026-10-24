@@ -102,7 +102,8 @@ def resolve(ref, sources=None, _hops=0):
 
         for name, source in sorted(sources.items()):
             root = str((source or {}).get("root") or "") if isinstance(source, dict) else ""
-            if (source or {}).get("kind") == "folder" and root and _safe_relative_path(text, root) is not None:
+            # an entry that is not a source (a comment line, a string) is skipped (owner 10-24 «str object no attr get»)
+            if isinstance(source, dict) and source.get("kind") == "folder" and root and _safe_relative_path(text, root) is not None:
                 return _folder(name, source, text)
         if os.path.splitext(text)[1].lower() in IMAGE_SUFFIXES:
             # 소유자 10-24 «이미지 절대경로 여전히 안되고»: an image file named by its full path is read as it is
