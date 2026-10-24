@@ -44,6 +44,8 @@ th.rpt-own { background: #ffcc80; }
 """
 #: the report's own wafers' columns - orange (owner 10-24 «리포트 요청한 웨이퍼는 주황색으로 하이라이트»)
 OWN = "rpt-own"
+#: the summary table's column widths (owner 10-24: row heads 185px, values 100px)
+NAME_PX, VALUE_PX = 185, 100
 
 
 def _e(value) -> str:
@@ -126,6 +128,25 @@ def _colour(rules, cell, here, baseline):
     return None
 
 
+def _scaled(cells, better_high):
+    """A row's cells coloured by their share across it, when no format rule colours them (owner 10-24 «수율은 높은 게
+    하늘색 낮은 게 붉은색 · 나머지 디펙들은 반대로»): the row's best end sky, its worst red, the middle plain."""
+    shares = [c.get("share") for c in cells if c.get("share") is not None]
+    if len(shares) < 2 or max(shares) == min(shares):
+        return [None] * len(cells)
+    low, high = min(shares), max(shares)
+    out = []
+    for cell in cells:
+        share = cell.get("share")
+        if share is None:
+            out.append(None)
+            continue
+        good = (share - low) / (high - low) if better_high else (high - share) / (high - low)
+        out.append("background:rgba(135,206,250,%.2f)" % ((good - 0.5) * 2 * 0.8) if good > 0.5 else
+                   "background:rgba(239,83,80,%.2f)" % ((0.5 - good) * 2 * 0.6) if good < 0.5 else None)
+    return out
+
+
 def _baseline(cells, own):
     """The other groups' cells of one item as one share: their F sum over their N sum, or None."""
     rest = [c for c, mine in zip(cells, own) if not mine and c.get("fail") is not None and c.get("total")]
@@ -186,18 +207,27 @@ def _summary_table(table, spec, lent=None):
         for name, parts in heads:
             cells, raw = cells_of[name]
             baseline = _baseline(cells, own) if kind == "item" else None
+            scaled = (_scaled(cells, False) if kind == "item" and not formats.get(raw) else
+                      _scaled(cells, True) if any(c.get("higher") == "better" for c in cells) else [None] * len(cells))
             row_head = "".join(_cell("td", name_class, dress.get("name"), text=_e(part), rowspan=rowspan,
                                      colspan=colspan if colspan and colspan > 1 else None)
                                for part, rowspan, colspan in parts)
             values = "".join(_cell("td", _aligned(value_class, cell, kind) + (" " + OWN if own[at] else ""),
                                    dress.get("value"),
-                                   _colour(formats.get(raw), cell, own[at], baseline) if kind == "item" else None,
+                                   _colour(formats.get(raw), cell, own[at], baseline) if kind == "item" and
+                                   formats.get(raw) else scaled[at],
                                    _value(cell, name, columns[at] if at < len(columns) else ""))
                              for at, cell in enumerate(cells))
             body.append("<tr>%s%s</tr>" % (row_head, values))
     note = ('<p class="note">%s: %s</p>' % (_e(report_shape.word(spec, "left_out")), _e(", ".join(table["left_out"])))
             if table.get("left_out") else "")
-    return WRAP % ("<table><thead>%s</thead><tbody>%s</tbody></table>" % ("".join(out), "".join(body))) + note
+    # widths held by the columns themselves - a cell's max-width does not hold a table column (owner 10-24 «표 컬럼폭
+    # 100으로»): the row heads NAME_PX, each value column VALUE_PX, a long text wraps
+    heads_at = max(depth, 1)
+    cols = "<colgroup>%s%s</colgroup>" % ('<col style="width:%dpx">' % NAME_PX * heads_at,
+                                          '<col style="width:%dpx">' % VALUE_PX * len(columns))
+    return WRAP % ('<table style="table-layout:fixed;width:%dpx">%s<thead>%s</thead><tbody>%s</tbody></table>' % (
+        NAME_PX * heads_at + VALUE_PX * len(columns), cols, "".join(out), "".join(body))) + note
 
 
 def _aligned(cls, cell, kind):

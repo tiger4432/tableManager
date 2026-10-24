@@ -327,11 +327,9 @@ class Report:
         if said in (None, "all", []):
             return list(here)
         if isinstance(said, dict):
-            where = said.get("where") or said
-            unknown = [c for c in where if c not in self.conditions_at]
-            if unknown:
-                raise ReadRefused("%s is not a condition - one of %s" % (", ".join(unknown), ", ".join(self.conditions_at)))
-            return [w for w in here if all(str(self.wafers[w]["conditions"].get(c)) == str(v) for c, v in where.items())]
+            where = {self._condition(c): v for c, v in (said.get("where") or said).items()}
+            return [w for w in here if all(str(self.wafers[w]["conditions"].get(c)).strip() == str(v).strip()
+                                           for c, v in where.items())]
         if not isinstance(said, list):
             raise ReadRefused("wafers is a list of wafer names, «all», or {\"where\": {condition: value}}")
         unknown = [str(each) for each in said if str(each) not in self.named]
@@ -388,7 +386,7 @@ class Report:
             cells = [self._cell(found.get((members[0], item)) if len(members) == 1
                                 else self._summed([found.get((w, item)) for w in members])) for members in columns]
             rows.append((head if len(named) == 1 else head + sep + item if sep else item,
-                         [{"text": cell["text"]} for cell in cells]))
+                         [{"text": cell["text"], "share": cell["share"], "higher": "better"} for cell in cells]))
         return rows, twice
 
     def _info(self, columns, chosen=None):
@@ -644,6 +642,17 @@ class Report:
                                if unit(w) == mine) if at is not None]
         return max(times).date().isoformat() if times else None
 
+    def _condition(self, said):
+        """The condition a call names - a wafer table condition column or a conditions table item (owner 10-24 «read
+        refused 컨디션 one of 가 아니래»: the long table's items were not known), matched without case and surrounding
+        spaces; one of none is refused with the names there are."""
+        known = list(dict.fromkeys(list(self.conditions_at) + [n for f in self.wafers.values() for n in f["conditions"]]))
+        by_name = {report_shape.name(n).lower(): n for n in known}
+        found = by_name.get(report_shape.name(said).lower())
+        if found is None:
+            raise ReadRefused("%r is not a condition - one of %s" % (said, ", ".join(map(str, known))))
+        return found
+
     def _column_groups(self, wafers, by):
         """[(group name, [(column label, [wafer, ...]), ...])] - this evaluation's picked wafers, then each compare
         set; a column a wafer, or a condition value when `by` names one."""
@@ -652,8 +661,7 @@ class Report:
         for name, members in self.groups.items():
             members = [w for w in members if name != self.evaluation or w in picked]
             if by:
-                if by not in self.conditions_at:
-                    raise ReadRefused("%r is not a condition - one of %s" % (by, ", ".join(self.conditions_at)))
+                by = self._condition(by)
                 values = {}
                 for w in members:
                     values.setdefault(_shown(self.wafers[w]["conditions"].get(by)), []).append(w)
