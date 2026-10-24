@@ -172,7 +172,7 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   detail.render({ ...log(15, { status: 'PENDING_RETRY', rows_read: null }), id: null });
   const shut = byClass(dHost, 'fi-btn--primary')[0];
   ok('P2d a file not read yet: its Retry is shut and says why', shut && shut.disabled === true
-    && shut.title === M.WORDS.notReadYet, `${shut && shut.disabled} «${shut && shut.title}»`);
+    && shut.getAttribute('title') === M.WORDS.notReadYet, `${shut && shut.disabled} «${shut && shut.getAttribute('title')}»`);
   // two such files are two lines - one picked is that one alone
   const pending = new Q.FilesPart(doc.createElement('div'), { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder() {} });
   pending.render({ groups: [{ key: null, head: false, files: [{ ...log(16), id: null }, { ...log(17), id: null }] }], shown: 'p', picked: 1017, more: false });
@@ -348,7 +348,7 @@ const MUTANTS = [
   { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
   { name: 'the ask hides the other tables', catches: ['M10'], file: 'model', mutate: swap(", 'Other tables reading this folder have their waiting files put back too']", ']') },
   { name: 'Cancel hands nothing', catches: ['P9'], file: 'parts', mutate: swap('this.deps.onCancel(line.cancel)', 'this.deps.onCancel(null)') },
-  { name: 'a file not read yet offers Retry - log_id null', catches: ['P2d'], file: 'parts', mutate: swap('if (log.id == null) { act.disabled = true;', 'if (false) { act.disabled = true;') },
+  { name: 'a file not read yet offers Retry - log_id null', catches: ['P2d'], file: 'parts', mutate: swap('if (log.id == null) setDisabledReason(', 'if (false) setDisabledReason(') },
   { name: 'a line is its record id again - two files not read yet are one', catches: ['P1h'], file: 'parts',
     mutate: swap('view.picked === log.checklist_id', 'view.picked === log.id') },
   { name: 'counted said without its age', catches: ['M8'], file: 'model', mutate: swap('return `counted ${', 'return `counted${') },

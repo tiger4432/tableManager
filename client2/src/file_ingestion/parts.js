@@ -2,6 +2,7 @@
 // (grouped under a folder or a reason), one file's detail. Each owns its div and is handed its doc and what it calls; the
 // page seats them and holds the query.
 import { ABSENT } from '../absent.js';
+import { setDisabledReason } from '../disabled_reason.js';
 import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
 import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
 
@@ -396,7 +397,7 @@ export class DetailPart {
     const act = el('button', 'fi-btn fi-btn--primary', isFailedStatus(log.status) ? WORDS.retryFile : WORDS.readAgain);
     act.type = 'button';
     // no record yet (A daafb2214: a file whose only line is its waiting read) - nothing for the Retry door to name
-    if (log.id == null) { act.disabled = true; act.title = WORDS.notReadYet; }
+    if (log.id == null) setDisabledReason(act, WORDS.notReadYet);
     act.addEventListener('click', () => this.deps.onAct(log));
     acts.append(act);
     const rows = rowsAddress(log);
