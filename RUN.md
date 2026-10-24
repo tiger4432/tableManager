@@ -15,6 +15,17 @@
 >
 > ---
 >
+> ## [10-24] **파일 기록이 바뀐 칸 이름을 말한다 — «Changed in <칸> N»** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(부팅이 file_ingestion_logs 에 columns_changed 칸을 더함) -> 값 하나 바꾼 파일을 다시 읽기 -> 파일 화면에서 그 파일 열기
+> 뜻      Result 의 Changed 밑에 «Changed in <칸> N» -> 이 착지
+>          Changed 는 있는데 그 밑 줄이 없음 -> 이 착지 전에 읽힌 파일(비어 있음) 이거나 서버가 옛 코드
+>          부팅 로그에 file_ingestion_logs 칸 추가 실패 -> 손으로 server/migrations/add_file_ingestion_log_columns_changed.sql
+> 끄기    없음. 칸을 빼려면 add_file_ingestion_log_columns_changed_reverse.sql (그 전에 이 착지를 되돌림)
+> 재기동 뒤  파일 화면 Result
+> ```
+>
 > ## [10-24] **decide 를 적은 이름으로 리플레이한다 — R1 의 «not found» 거절** — git pull · 런처 재기동
 >
 > ```

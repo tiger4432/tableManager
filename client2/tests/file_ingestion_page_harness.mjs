@@ -72,6 +72,12 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
       reason: '1 map refused: version_older' })) === '1 row · 1 refused · 1 map refused: version_older',
     M.resultText(log(5, { rows_read: 1, rows_new: 0, rows_changed: 0, rows_unchanged: 0, rows_refused: 1,
       reason: '1 map refused: version_older' })));
+  const counted = M.resultCounts(log(6, { rows_changed: 3, columns_changed: '{"l": 3, "s": 1}' }));
+  ok('M1d the counts say each column a read changed, under Changed, most first (총괄 10-23 ㄷ)',
+    counted.map((c) => `${c.label} ${c.value}`).join(' | ')
+      === 'Rows read 400 | New 12 | Changed 3 | Changed in l 3 | Changed in s 1 | Unchanged 388 | Refused 0'
+      && M.resultCounts(log(7)).every((c) => !c.label.startsWith('Changed in')),
+    counted.map((c) => `${c.label} ${c.value}`).join(' | '));
   ok('M2 Took in seconds; none timed - ABSENT', M.tookText(0.4) === '0.4 s' && M.tookText(null) === ABSENT && M.tookText(12.6) === '13 s', `${M.tookText(0.4)} ${M.tookText(12.6)}`);
 
   const q = M.queryOf({ table: 't', status: '', name: ' bmap ', folder: '', from: '2026-10-19', to: '2026-10-20', group: 'folder' }, { page: 2 });
@@ -305,6 +311,7 @@ const MUTANTS = [
   { name: 'zeros said too', catches: ['M1a'], file: 'model', mutate: swap('    if (numberOr(v)) parts.push', '    if (numberOr(v) !== null) parts.push') },
   { name: 'a read\'s refusal not said', catches: ['M1c'], file: 'model', mutate: swap('  if (!isBlank(log.reason)) parts.push(String(log.reason));', '') },
   { name: 'a failure said by its counts', catches: ['M1b'], file: 'model', mutate: swap("  if (isFailedStatus(log.status)) return reasonOf(log) || ABSENT;", '') },
+  { name: 'the changed columns not said', catches: ['M1d'], file: 'model', mutate: swap("    ...Object.entries(columnsChanged(log))", "    ...Object.entries({})") },
   { name: 'Took without its unit', catches: ['M2'], file: 'model', mutate: swap("Math.round(s).toLocaleString('en-US')} s`", "Math.round(s).toLocaleString('en-US')}`") },
   { name: 'the To day left out (until = To)', catches: ['M3'], file: 'model', mutate: swap('      day.setDate(day.getDate() + 1);\n', '') },
   { name: 'the head count not the server\'s', catches: ['M4a'], file: 'model', mutate: swap('count: numberOr(c.count)', 'count: null') },

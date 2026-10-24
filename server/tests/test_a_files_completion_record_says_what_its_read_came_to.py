@@ -3,7 +3,8 @@
 refused, the reader, the source, and for a failure its one-line reason and the frame it broke in. A real watcher on a
 scratch root, a sqlite file and a stub API, started on a file_ingestion_logs WITHOUT those columns: the boot schema
 sync adds them, the records carry them, and the file list route reads them.
-  tp  standard reader: 3 rows + 1 with a blank key, then the file again with one value changed
+  tp  standard reader: 3 rows + 1 with a blank key, then the file again with one value changed and a new row - the
+      record names the changed column and its rows, the new row's columns not counted (총괄 10-23 ㄷ)
   tf  a plugin that raises -> FAILED, reason and «p.py:<line>»"""
 import http.server
 import json
@@ -40,7 +41,7 @@ OLD_SHAPE = ('CREATE TABLE file_ingestion_logs (id INTEGER PRIMARY KEY, filename
              'created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)')
 TABLE = {"business_key": "lot", "column_types": {"lot": "string", "val": "string"}, "display_columns": ["lot", "val"]}
 RESULT = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "reader", "source", "reason",
-          "failed_at", "took_seconds")
+          "failed_at", "took_seconds", "columns_changed")
 
 
 class _Stub(http.server.BaseHTTPRequestHandler):
@@ -122,6 +123,7 @@ def test_a_files_completion_record_says_what_its_read_came_to(tmp_path):
         by_table = {r[0]: r for r in records}
         assert by_table["tp"][1:11] == ("SUCCESS", 3, 3, 0, 0, 1, "standard", str(share), None, None), by_table["tp"]
         assert 0 <= by_table["tp"][11] < 30 and 0 <= by_table["tf"][11] < 30, (by_table["tp"], by_table["tf"])
+        assert by_table["tp"][12] is None and by_table["tf"][12] is None, "all new / failed: no column changed"
         status, *result = by_table["tf"][1:]
         assert (status, result[:5]) == ("FAILED", [None] * 5), by_table["tf"]
         assert result[5:9] == ["p.py::P", str(failing),
@@ -130,11 +132,12 @@ def test_a_files_completion_record_says_what_its_read_came_to(tmp_path):
 
         # the file again, one value changed: a new record of new · changed · unchanged
         time.sleep(1.1)
-        (share / "good.csv").write_text("lot,val\nL1,a\nL2,B\nL3,c\n,d\n", encoding="utf-8")
+        (share / "good.csv").write_text("lot,val\nL1,a\nL2,B\nL3,c\n,d\nL4,e\n", encoding="utf-8")
         _run(tmp_path, db, url, lambda c: len([r for r in _records(c) if r[0] == "tp"]) >= 2)
         with sqlite3.connect(str(db)) as c:
             again = [r for r in _records(c) if r[0] == "tp"][-1]
-        assert again[1:7] == ("SUCCESS", 3, 0, 1, 2, 1), again
+        assert again[1:7] == ("SUCCESS", 4, 1, 1, 2, 1), again
+        assert json.loads(again[12]) == {"val": 1}, again
     finally:
         api.shutdown()
 

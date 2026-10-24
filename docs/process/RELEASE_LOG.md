@@ -382,6 +382,7 @@
 
 ### 어드민 화면
 
+- 2026-10-24 [파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»](#2026-10-24--파일-기록이-바뀐-칸-이름을-말한다--changed-밑에-changed-in-칸-n) — 적을 것 없음 · 보는 곳 파일 화면 Result
 - 2026-10-23 [파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수, 지난 훑기, 기다리는 다시 읽기 취소](#2026-10-23--파일-화면-맨-위에-읽기-진행--표--저장소마다-읽음--전체--남은-수-지난-훑기-기다리는-다시-읽기-취소) — 누르는 곳 어드민 File Ingestion 탭 맨 위 READ PROGRESS · «Cancel waiting re-reads»
 - 2026-10-23 [체크리스트가 파일당 한 행 — 파일 화면은 파일당 한 줄, 외부 훑기가 이름 먼저 거르고 바뀐 폴더만 볼 수 있다](#2026-10-23--체크리스트가-파일당-한-행--파일-화면은-파일당-한-줄-외부-훑기가-이름-먼저-거르고-바뀐-폴더만-볼-수-있다) — 적는 곳 ingestion_settings.json 의 sweep_interval_seconds · external_full_walk_every · 보는 곳 파일 화면 · 와처 시작 줄
 - 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
@@ -565,6 +566,13 @@
 - **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 수는 서버에 A 의 23c35a768 · 11618814f · daafb2214 가 있어야 나옵니다.
 - **선언** — 바뀐 것 없음.
 - **자세히** — `file_ingestion/model.js`(sourceLines · sweepText · PROGRESS_COLUMNS · cancelAsk · countedText) · `parts.js` · `main.js`.
+
+## 2026-10-24 · 파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»
+
+- **무엇** — 파일을 다시 읽어 «Changed 3» 이 나와도 무엇이 바뀌었는지 몰랐습니다. 이제 파일 기록에 칸마다 바뀐 행 수를 적고(`file_ingestion_logs.columns_changed`, 많은 것부터), 파일 화면의 Result 가 Changed 밑에 «Changed in <칸> N» 을 칸마다 보여 줍니다.
+- **바뀐 동작** — 쓰기가 이미 아는 «바뀐 칸»에서 셉니다(질의 추가 없음). 새 행의 칸은 안 셉니다. 바뀐 칸이 없거나 세지 못한 읽기는 비어 있습니다(줄 없음). 체크리스트는 그대로입니다.
+- **필요한 조건** — git pull · 런처 재기동(부팅 스키마 맞추기가 칸을 더함). 손으로는 `server/migrations/add_file_ingestion_log_columns_changed.sql`(되돌리기 `_reverse.sql`). 이 착지 전에 읽힌 파일은 비어 있습니다.
+- **자세히** — 시험 `test_a_files_completion_record_says_what_its_read_came_to.py` · 하니스 `file_ingestion_page_harness.mjs` M1d.
 
 ## 2026-10-24 · decide 를 적은 이름으로 리플레이한다 — R1 이 «not found» 로 거절하던 것
 

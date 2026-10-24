@@ -732,6 +732,7 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
     reason and the frame it broke in («p.py:7 in parse»). Counts are None when nothing was read yet or the tally
     stopped counting. `file_stat` - the file as this read found it - checks it (`checkpoint.checked`); a read that
     came to no answer about the file (it waited out a lock) passes none and stays unchecked."""
+    import json
     import traceback
 
     meta = parse_meta or {}
@@ -742,7 +743,7 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
                    else kind.split(":")[1] if kind.startswith("external:") else None),
         "source": external["source_root"] if external else ("raws" if meta.get("rel_path") is not None else None),
         "rows_read": None, "rows_new": None, "rows_changed": None, "rows_unchanged": None, "rows_refused": None,
-        "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
+        "columns_changed": None, "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
         "transaction_id": tally.transaction_id if tally is not None else None,
         "file_mtime": file_stat[0] if file_stat else None, "file_size": file_stat[1] if file_stat else None,
     }
@@ -750,7 +751,8 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
         written = tally.new + tally.changed + tally.unchanged
         result.update(rows_read=tally.rows, rows_new=tally.new, rows_changed=tally.changed,
                       rows_unchanged=tally.unchanged, rows_refused=(skipped_no_key or 0) + tally.rows - written,
-                      reason=tally.refused_text() or None)
+                      columns_changed=json.dumps(dict(sorted(tally.columns.items(), key=lambda kv: (-kv[1], kv[0]))))
+                      if tally.columns else None, reason=tally.refused_text() or None)
     if error is not None:
         said = (str(error) if isinstance(error, (crud.CellRefused, crud.NothingWritten))
                 else traceback.format_exception_only(type(error), error)[-1])
@@ -769,6 +771,7 @@ class _FileTally:
     def __init__(self):
         self.started = time.monotonic()
         self.rows = self.new = self.changed = self.unchanged = self.cells = 0
+        self.columns = {}                       # {column: rows it changed on} - the record's columns_changed
         self.stages, self.steps, self.counts = {}, {}, {}
         self.samples = self.lock_samples = 0
         self.sampled = False
@@ -819,6 +822,8 @@ class _FileTally:
             raise ValueError("the new rows of a chunk could not be read")
         self.rows += rows
         changed_ids = {row_id for row_id, _column in changed_cells} - new_ids
+        for _row_id, column in {cell for cell in changed_cells if cell[0] in changed_ids}:
+            self.columns[column] = self.columns.get(column, 0) + 1
         self.new += len(new_ids)
         self.changed += len(changed_ids)
         self.unchanged += sent - len(new_ids) - len(changed_ids)
