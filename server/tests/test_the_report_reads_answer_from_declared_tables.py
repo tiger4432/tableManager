@@ -110,6 +110,11 @@ def _texts(rows):
     return [(item, [cell["text"] for cell in cells]) for item, cells in rows]
 
 
+def _by_column(table, cells):
+    """A row's cell texts by their column - (group, label): the columns stand by date, not by group (owner 10-24)."""
+    return dict(zip([(name, col) for name, cols in table["groups"] for col in cols], [cell["text"] for cell in cells]))
+
+
 def test_this_evaluations_wafers_are_in_time_order(report):
     assert report.groups == {"E1": [("W1",), ("W2",), ("W3",)]}
 
@@ -168,21 +173,24 @@ def test_candidates_are_the_recent_evaluations_folded_newest_first(report, db_se
 
 
 def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
-    assert report.compare(evaluations=["E2"])["context"] == "control E2: 2 wafers (wafer_id W6, wafer_id W5)"
+    assert report.compare(evaluations=["E2"])["context"] == "compare E2: 2 wafers (wafer_id W6, wafer_id W5)"
     table = report.yield_by()["html"]
-    assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("control E2", ["wafer_id W6", "wafer_id W5"])]
-    assert _texts(table["rows"])[0][1][-2:] == ["4.0% (4/100)", "2.0% (2/100)"]
+    assert table["groups"] == [("compare E2", ["wafer_id W6", "wafer_id W5"]),
+                               ("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"])], "columns by date (owner 10-24)"
+    particle = _by_column(table, table["rows"][0][1])
+    assert (particle[("compare E2", "wafer_id W6")], particle[("compare E2", "wafer_id W5")]) == (
+        "4.0% (4/100)", "2.0% (2/100)")
     trend = report.trend(items=["particle"])
-    assert trend["html"]["groups"][-1] == ("control E2", ["wafer_id W6", "wafer_id W5"])
+    assert trend["html"]["groups"][-1] == ("compare E2", ["wafer_id W6", "wafer_id W5"])
     assert trend["context"].splitlines() == [
         "particle: first 3.00% last 0.00% least 0.00% most 5.00% over 3 wafers",
-        "particle [control E2]: first 4.00% last 2.00% least 2.00% most 4.00% over 2 wafers"]
+        "particle [compare E2]: first 4.00% last 2.00% least 2.00% most 4.00% over 2 wafers"]
     report.compare(wafers=["W7"])
-    assert [name for name in report.groups] == ["E1", "control E3"], "a new pick replaces the control"
+    assert [name for name in report.groups] == ["E1", "compare E3"], "a new pick replaces the compare wafers"
 
 
 @pytest.mark.parametrize("said, refused", [
-    ({"evaluations": ["E1"]}, "E1 is this evaluation - a control comes from another"),
+    ({"evaluations": ["E1"]}, "E1 is this evaluation - compare wafers come from another"),
     ({"evaluations": ["E9"]}, "E9 is not a recent evaluation - candidates() lists them"),
     ({"evaluations": ["E4"]}, "E4 is not a recent evaluation"),
     ({"wafers": ["W1"]}, "W1 is not a wafer of a recent evaluation"),
@@ -327,13 +335,14 @@ def test_a_compare_set_is_a_second_group_of_columns(report):
     assert report.compare(["baseline", "keylots"])["context"].splitlines() == [
         "baseline: 1 wafers (E0)", "keylots: 1 wafers (L0, L9)"]
     assert report.groups["keylots"] == [("W0",)], "the lot member picks by the wafer table's lot column"
-    assert report.compare()["context"].splitlines() == ["baseline: 1 wafers (E0)", "control E3: 1 wafers (wafer_id W7)"], \
+    assert report.compare()["context"].splitlines() == ["baseline: 1 wafers (E0)", "compare E3: 1 wafers (wafer_id W7)"], \
         "no arguments: the declaration's comparison - sets.default and the newest control.recent"
     table = report.yield_by()["html"]
-    assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("baseline", ["wafer_id W0"]), ("keylots", ["wafer_id W0"]),
-                              ("control E3", ["wafer_id W7"])]
-    assert _texts(table["rows"])[0][1][-2] == "50.0% (50/100)"
-    assert _texts(table["rows"])[1][1][-1] == "—", "W0 has no scratch row"
+    assert table["groups"] == [("baseline", ["wafer_id W0"]), ("keylots", ["wafer_id W0"]), ("compare E3", ["wafer_id W7"]),
+                               ("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"])], "columns by date (owner 10-24)"
+    particle, scratch = (_by_column(table, cells) for _item, cells in table["rows"])
+    assert particle[("keylots", "wafer_id W0")] == particle[("baseline", "wafer_id W0")] == "50.0% (50/100)"
+    assert scratch[("compare E3", "wafer_id W7")] == scratch[("keylots", "wafer_id W0")] == "—", "W0 · W7: no scratch row"
 
 
 def test_a_wafer_and_item_two_rows_say_is_left_out_by_name(report, db_session):

@@ -114,7 +114,7 @@ def test_each_mark_cell_is_filled_and_every_other_byte_stays():
     assert '<td class=xl66 colspan=4 width=256 style=\'width:192pt\'>R-1 · eval_summary</td>' in page
     assert re.search(r"<td height=20 colspan=8 style='height:15\.0pt'><div class=\"scroll\" style=\"overflow-x:auto;"
                      r"max-width:100%\"><table><thead><tr><th class=\"rpt-group\">", page)
-    assert '<td class="rpt-cell">5.0% (10/200)</td>' in page and '<td class="rpt-item">particle</td>' in page
+    assert '<td class="rpt-cell rpt-own">5.0% (10/200)</td>' in page and '<td class="rpt-item">particle</td>' in page
     style = EXCEL[EXCEL.index("<style>"):EXCEL.index("</style>")]
     assert style in page and "<col width=64 span=8 style='width:48pt'>" in page, "the template's own bytes stay"
     assert "<td class=xl66></td>" in page and "&nbsp;</td>" in page, "empty cells stay empty"
