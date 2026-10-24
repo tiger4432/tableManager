@@ -168,10 +168,33 @@ class Report:
             self._long_conditions(out)
         self.named = {}                          # the name a model says -> the wafers it names
         for wafer in self.wafers:
-            self.named.setdefault(label(wafer), []).append(wafer)
+            for name in dict.fromkeys((label(wafer), self.said(wafer))):
+                self.named.setdefault(name, []).append(wafer)
         # names two key spellings share (lot «A/B» + «1», «A» + «B/1») - counted once per list, for the step record
         self.overlaps = {name: wafers for name, wafers in self.named.items() if len(wafers) > 1}
         return out
+
+    def said(self, wafer) -> str:
+        """A unit as the model, the Evidence and the file read it - each key part by its column's word
+        (`report_shape.column_word`: labels.columns, else the column), «WAFER W1 · LEG L1» (owner 10-24: the model
+        wrote each leg as a wafer of its own reading «W1/L1»)."""
+        return " · ".join("%s %s" % (report_shape.column_word(self.spec, column), "" if part is None else part)
+                          for column, part in zip(self.keys, wafer))
+
+    def _units(self, wafers) -> list:
+        """A line a report unit (`picked_by`) - its key parts, then its units' other parts (owner 10-24 «wafer W1: legs
+        L1, L2»); [] when the unit is the whole key."""
+        unit = [self.keys.index(c) for c in self.picked_by if c in self.keys]
+        rest = [at for at in range(len(self.keys)) if at not in unit]
+        if not unit or not rest:
+            return []
+        word = lambda at, part: "%s %s" % (report_shape.column_word(self.spec, self.keys[at]), "" if part is None else part)
+        by = {}
+        for wafer in wafers:
+            by.setdefault(tuple(wafer[at] for at in unit), []).append(wafer)
+        return ["%s: %s" % (" · ".join(word(at, part) for at, part in zip(unit, key)),
+                            ", ".join(" · ".join(word(at, wafer[at]) for at in rest) for wafer in members))
+                for key, members in by.items()]
 
     def _latest(self, read):
         """Each unit's rows of its latest value in every `keys` latest column (owner 10-23 «TKOUT_TIME 도 키에», the
@@ -266,7 +289,7 @@ class Report:
             found[pair] = row[len(named):len(named) + len(columns)]
         for pair in twice:
             del found[pair]
-        return found, sorted("%s %s" % (label(wafer), item) for wafer, item in twice)
+        return found, sorted("%s %s" % (self.said(wafer), item) for wafer, item in twice)
 
     def _summary(self, wafers):
         """(wafer, item) -> {"fail", "total", "rate"} as the owner's summary table holds them (owner 10-22: the
@@ -376,13 +399,15 @@ class Report:
         if keyword not in (None, ""):
             word = str(keyword).lower()
             found = [w for w in here if any(word in str(v).lower() for v in self.wafers[w]["conditions"].values())]
-            return {"context": "wafers whose condition holds %r: %s" % (keyword, ", ".join(map(label, found)) or "none"),
+            return {"context": "wafers whose condition holds %r: %s" % (keyword, ", ".join(map(self.said, found)) or "none"),
                     "html": None, "wafers": found}
         folded = {c: {} for c in self.conditions_at}
         for w in here:
             for c, v in self.wafers[w]["conditions"].items():
                 folded.setdefault(c, {})[_shown(v)] = folded.get(c, {}).get(_shown(v), 0) + 1
-        lines = ["%d wafers in %s" % (len(here), self.evaluation)] + [
+        units = self._units(here)
+        lines = ["%d wafers in %s" % (len(here), self.evaluation)] + (
+            ["units - a report unit, then its parts:"] + ["  " + line for line in units] if units else []) + [
             "%s: %s" % (c, ", ".join("%s %d" % (v, n) for v, n in sorted(values.items(), key=lambda kv: -kv[1])))
             for c, values in folded.items()]
         if self.long:
@@ -484,7 +509,7 @@ class Report:
                     values.setdefault(_shown(self.wafers[w]["conditions"].get(by)), []).append(w)
                 out.append((name, sorted(values.items())))
             else:
-                out.append((name, [(label(w), [w]) for w in members]))
+                out.append((name, [(self.said(w), [w]) for w in members]))
         return out
 
     def pareto(self, wafers=None):
@@ -525,7 +550,7 @@ class Report:
                         item, "" if name == self.evaluation else " [%s]" % name, said[0], said[-1], min(said),
                         max(said), len(said)))
             rows.append((item, cells))
-        columns = [(name, label(w), [w]) for name, members in groups for w in members]
+        columns = [(name, self.said(w), [w]) for name, members in groups for w in members]
         table = dict(self._columns_of(columns, self._heads(columns)), rows=rows, left_out=twice)
         return {"context": "\n".join(lines) or "no item has a share", "html": table}
 
@@ -534,7 +559,7 @@ class Report:
         if not role:
             raise ReadRefused("this report declares no images")
         picked = self.pick(wafers)
-        outside = [label(w) for w in picked if w not in set(self.groups[self.evaluation])]
+        outside = [self.said(w) for w in picked if w not in set(self.groups[self.evaluation])]
         if outside:
             raise ReadRefused("images are this evaluation's only - %s is not" % ", ".join(outside[:5]))
         found, _twice = self._summary(picked)
@@ -564,7 +589,7 @@ class Report:
                 if counts.get((item, wafer), 0) >= per_item:
                     continue
                 picture = _picture(ref, px)
-                chosen.setdefault(item, []).append(dict(picture, wafer=label(wafer)))
+                chosen.setdefault(item, []).append(dict(picture, wafer=self.said(wafer)))
                 if "src" in picture:
                     counts[(item, wafer)] = counts.get((item, wafer), 0) + 1
         self.embedded.update(chosen)
@@ -644,7 +669,7 @@ class Report:
                                                            sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))))
             titles = []
             if self.long:
-                folded = ["%s: %s" % (label(w), ", ".join("%s=%s" % (k, _shown(v)) for k, v in sorted(self.wafers[w]["conditions"].items()))
+                folded = ["%s: %s" % (self.said(w), ", ".join("%s=%s" % (k, _shown(v)) for k, v in sorted(self.wafers[w]["conditions"].items()))
                                       or "default conditions") for w in entry["wafers"]]
                 titles = sorted({str(self.wafers[w].get("title")) for w in entry["wafers"] if self.wafers[w].get("title")})
             date = entry["latest"].date().isoformat() if entry["latest"] else "no date"
@@ -666,7 +691,7 @@ class Report:
                 raise ReadRefused("%s is not a recent evaluation - candidates() lists them" % name)
             chosen[name] = []
         for said in [str(w) for w in wafers or ()]:
-            owner = next((name for name, entry in found.items() for w in entry["wafers"] if label(w) == said), None)
+            owner = next((name for name, entry in found.items() for w in entry["wafers"] if said in (label(w), self.said(w))), None)
             if owner is None:
                 raise ReadRefused("%s is not a wafer of a recent evaluation - candidates() lists them" % said)
             chosen.setdefault(owner, []).append(self.named[said][0])

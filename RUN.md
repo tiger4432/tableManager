@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    Evidence 의 conditions 줄 밑 «units - a report unit, then its parts:» 와 «WAFER W1: LEG L1, LEG L2»
+>          표 열 이름 · 그림 밑 이름이 «WAFER W1 · LEG L1» -> 고쳐진 것 (전: W1/L1)
+>          글이 leg 를 웨이퍼처럼 따로 쓰면 그 Evidence 를 총괄에게 (units 줄이 없으면 keys unit 이 없는 선언)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='named part by part' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 표 · 그림은 제품이 채운다 — 모델이 안 불러도, 엉뚱한 자리의 layout 은 이름 댐** — git pull · 런처 재기동
 >
 > ```

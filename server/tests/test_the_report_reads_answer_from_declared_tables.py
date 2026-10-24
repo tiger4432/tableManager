@@ -120,7 +120,7 @@ def test_conditions_fold_to_wafer_counts_and_a_keyword_picks_wafers(report):
 
 def test_the_summary_table_is_items_down_and_wafers_across_by_time(report):
     answer = report.yield_by()
-    assert answer["html"]["groups"] == [("E1", ["W1", "W2", "W3"])]
+    assert answer["html"]["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"])]
     assert _texts(answer["html"]["rows"]) == [
         ("particle", ["3.0% (3/100)", "5.0% (10/200)", "0.0% (0/400)"]),
         ("scratch", ["1.0% (1/100)", "0.0% (0/200)", "10.0% (40/400)"])]
@@ -129,7 +129,7 @@ def test_the_summary_table_is_items_down_and_wafers_across_by_time(report):
     assert by_split["groups"] == [("E1", ["A", "B"])]
     assert _texts(by_split["rows"])[0] == ("particle", ["4.3% (13/300)", "0.0% (0/400)"]), "A adds W1's and W2's F and N"
     picked = report.yield_by({"where": {"split": "B"}})["html"]
-    assert picked["groups"] == [("E1", ["W3"])]
+    assert picked["groups"] == [("E1", ["wafer_id W3"])]
 
 
 def test_a_declared_rate_is_read_not_made(report, db_session):
@@ -167,10 +167,10 @@ def test_candidates_are_the_recent_evaluations_folded_newest_first(report, db_se
 def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
     assert report.compare(evaluations=["E2"])["context"] == "control E2: 2 wafers (W6, W5)"
     table = report.yield_by()["html"]
-    assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("control E2", ["W6", "W5"])]
+    assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("control E2", ["wafer_id W6", "wafer_id W5"])]
     assert _texts(table["rows"])[0][1][-2:] == ["4.0% (4/100)", "2.0% (2/100)"]
     trend = report.trend(items=["particle"])
-    assert trend["html"]["groups"][-1] == ("control E2", ["W6", "W5"])
+    assert trend["html"]["groups"][-1] == ("control E2", ["wafer_id W6", "wafer_id W5"])
     assert trend["context"].splitlines() == [
         "particle: first 3.00% last 0.00% least 0.00% most 5.00% over 3 wafers",
         "particle [control E2]: first 4.00% last 2.00% least 2.00% most 4.00% over 2 wafers"]
@@ -203,11 +203,11 @@ def test_images_are_this_evaluations_occurred_defects_embedded_not_told(report):
     answer = report.images()
     assert list(answer["html"]) == ["particle"], "W2's scratch image: scratch never occurred on W2"
     [only] = answer["html"]["particle"]
-    assert only["wafer"] == "W1" and only["src"].startswith("data:image/png;base64,"), "per_item 1"
+    assert only["wafer"] == "wafer_id W1" and only["src"].startswith("data:image/png;base64,"), "per_item 1"
     assert "base64" not in answer["context"] and answer["context"] == "images picked: particle 1"
     report.compare()
     from chain.report_reads import ReadRefused
-    with pytest.raises(ReadRefused, match="images are this evaluation's only - W0"):
+    with pytest.raises(ReadRefused, match="images are this evaluation's only - wafer_id W0"):
         report.images(["W0"])
 
 
@@ -218,7 +218,7 @@ def test_a_compare_set_is_a_second_group_of_columns(report):
     assert report.groups["keylots"] == [("W0",)], "the lot member picks by the wafer table's lot column"
     assert report.compare()["context"] == "baseline: 1 wafers (E0)"
     table = report.yield_by()["html"]
-    assert table["groups"] == [("E1", ["W1", "W2", "W3"]), ("baseline", ["W0"]), ("keylots", ["W0"])]
+    assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("baseline", ["wafer_id W0"]), ("keylots", ["wafer_id W0"])]
     assert _texts(table["rows"])[0][1][-1] == "50.0% (50/100)"
     assert _texts(table["rows"])[1][1][-1] == "—", "W0 has no scratch row"
 
@@ -229,7 +229,7 @@ def test_a_wafer_and_item_two_rows_say_is_left_out_by_name(report, db_session):
                                    total_chips=400))
     db_session.commit()
     table = report.yield_by()["html"]
-    assert table["left_out"] == ["W3 particle"] and _texts(table["rows"])[0][1][-1] == "—"
+    assert table["left_out"] == ["wafer_id W3 particle"] and _texts(table["rows"])[0][1][-1] == "—"
     assert _texts(table["rows"])[1][1][-1] == "10.0% (40/400)", "W3's other item stands"
 
 
@@ -272,7 +272,7 @@ def test_a_wafer_of_two_columns_is_read_column_for_column(report, db_session):
                             "fail": "fail_chips", "total": "total_chips"}}
         two = report_reads.Report(db_session, spec, "E1")
         table = two.yield_by(["A/2", "B/1"])["html"]
-        assert table["groups"] == [("E1", ["A/2", "B/1"])]
+        assert table["groups"] == [("E1", ["wafer_id A · slot 2", "wafer_id B · slot 1"])]
         assert _texts(table["rows"]) == [("particle", ["5.0% (5/100)", "7.0% (7/100)"])]
     finally:
         db_session.rollback()

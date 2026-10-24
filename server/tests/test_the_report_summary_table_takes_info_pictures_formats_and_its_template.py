@@ -118,7 +118,7 @@ def test_a_version_is_a_column_and_the_key_heads_in_two_tiers(report):
     from chain import report_html
 
     table = report.yield_by()["html"]
-    assert table["groups"] == [("E1", ["W1/v1", "W1/v2", "W2/v1", "W3/v1"])]
+    assert table["groups"] == [("E1", ["wafer_id W1 · version v1", "wafer_id W1 · version v2", "wafer_id W2 · version v1", "wafer_id W3 · version v1"])]
     assert _texts(table["rows"]) == [(BIG, ["2.0% (2/100)", "10.0% (10/100)", "1.0% (1/100)", "0.0% (0/100)"])]
     page = report_html._summary_table(table, SPEC)
     assert ('<th class="rpt-head" colspan="2">W1</th><th class="rpt-head">W2</th><th class="rpt-head">W3</th>'
@@ -133,7 +133,7 @@ def test_info_rows_stand_under_the_head_from_the_info_table(report, db_session):
 
     table = report.yield_by()["html"]
     assert _texts(table["info"]) == [("자재", ["A-lot", "B-lot", "A-lot", "A-lot"]), ("평가자", ["김", "", "", ""])]
-    assert table["left_out"] == ["W2/v1 평가자"], "two rows of one wafer and name are left out, named"
+    assert table["left_out"] == ["wafer_id W2 · version v1 평가자"], "two rows of one wafer and name are left out, named"
     assert "info 자재 | A-lot | B-lot | A-lot | A-lot" in report.yield_by()["context"]
     by = report.yield_by(by="bond")["html"]
     assert _texts(by["info"])[0] == ("자재", ["섞임 (2)", "A-lot"]), "고온 holds B-lot and A-lot; 저온 A-lot alone"
@@ -154,7 +154,7 @@ def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_
     table = report_reads.Report(db_session, spec, "E1").yield_by()["html"]
     assert _texts(table["info"]) == [("자재", ["A-lot", "B-lot", "A-lot", "A-lot"]), ("평가자", ["김", "", "", ""]),
                                      ("yield", ["52.0", "60.0", "88.0", ""])], "W3 has no yield row: a blank"
-    assert table["left_out"] == ["W2/v1 평가자"]
+    assert table["left_out"] == ["wafer_id W2 · version v1 평가자"]
     assert _texts(report.yield_by()["html"]["info"]) == _texts(table["info"])[:2], "one table alone: as it was"
     page = report_html._summary_table(table, spec)
     assert '<td class="rpt-cell">52.0</td>' in page and '<td class="rpt-info">A-lot</td>' in page, \
@@ -235,7 +235,7 @@ def test_a_picture_row_holds_a_picture_a_column_by_the_one_function(report, db_s
                                                    path="pics:맵/a.png"))
     db_session.commit()
     table = report_reads.Report(db_session, json.loads(json.dumps(SPEC)), "E1").yield_by()["html"]
-    assert "W2/v1 합성맵" in table["left_out"] and table["pictures"][0][1][2] == {"text": ""}
+    assert "wafer_id W2 · version v1 합성맵" in table["left_out"] and table["pictures"][0][1][2] == {"text": ""}
 
 
 def test_the_first_rule_that_holds_colours_the_cell(report):

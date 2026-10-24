@@ -34,7 +34,8 @@ CHARS_PER_TOKEN = 4.0
 ROLE = ("You write a short report on a test evaluation from the reads below. Every number comes from a read; "
         "you never compute or invent one.")
 RULES = ("Pick the wafers by their conditions. Call one read per step. When you have read what the report needs, "
-         "answer done.")
+         "answer done. A unit is named by its key columns; a units line lists one report unit and its parts - "
+         "write about it as one.")
 #: The write call's own line: what it is for and the answer's form.
 WRITE = ("Write the report from the tables read below - every number as a table says it. Answer one JSON object: "
          '{"done": {%s}}')
