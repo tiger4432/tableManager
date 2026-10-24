@@ -446,7 +446,8 @@ class Report:
                       if not set(members) <= set(self.groups[self.evaluation])]
             if others and all(not cell["text"] for cell in others):
                 continue
-            if name in kept or not kept and _differs(cells, len(columns)):
+            # kept (the model's, the texts') and every one that differs (owner 10-24 «글에 쓴 조건이 표에 없음»)
+            if name in kept or _differs(cells, len(columns)):
                 rows.append((head + sep + name if sep else name, cells))
         return rows
 
@@ -641,6 +642,10 @@ class Report:
         times = [at for at in (_instant(facts["time"]) for w, facts in self.wafers.items()
                                if unit(w) == mine) if at is not None]
         return max(times).date().isoformat() if times else None
+
+    def condition_names(self) -> list:
+        """Every condition there is: the wafer table's condition columns, then the conditions table's items."""
+        return list(dict.fromkeys(list(self.conditions_at) + [n for f in self.wafers.values() for n in f["conditions"]]))
 
     def _condition(self, said):
         """The condition a call names - a wafer table condition column or a conditions table item (owner 10-24 «read

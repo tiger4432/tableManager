@@ -259,9 +259,23 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         record["summary"] = (previous[0] if previous else "")[:200]
         record["read"] = previous[1:]                       # the Evidence's lines under it (lead 10-23)
         steps.append(record)
+        if refused is None and said.get("call") == "yield_by":   # the condition rows the model kept, for the file's
+            rows = (said.get("args") or {}).get("rows")
+            report.kept_rows = list(dict.fromkeys(getattr(report, "kept_rows", []) +
+                                                  ([rows] if isinstance(rows, str) else list(rows or []))))
     _product_reads(report, spec, tables, reads, steps, clock)
     if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
         _write(spec, request, reads, budget, ask, clock, out)
+        # the conditions the texts name stand in the table too (owner 10-24 «리포트에 글로 명시한 조건값이 표에는 반영
+        # 안 되어 있음 · 동기화되게») - the yield_by table drawn again with them
+        written = " ".join(out["texts"].values())
+        named = [n for n in getattr(report, "condition_names", list)() if str(n).strip() and str(n).strip() in written]
+        if "yield_by" in tables and any(n not in getattr(report, "kept_rows", []) for n in named):
+            report.kept_rows = list(dict.fromkeys(getattr(report, "kept_rows", []) + named))
+            try:
+                tables["yield_by"] = report.yield_by(rows=report.kept_rows)["html"]
+            except report_reads.ReadRefused as said:
+                logger.warning("[report] yield_by with the written conditions refused: %s", said, exc_info=said)
     return out
 
 
@@ -303,7 +317,8 @@ def _product_reads(report, spec, tables, reads, steps, clock):
     for call in calls:
         began = clock()
         try:
-            answer, refused = getattr(report, call)(), None
+            answer, refused = (report.yield_by(rows=report.kept_rows) if call == "yield_by" and
+                               getattr(report, "kept_rows", None) else getattr(report, call)()), None
         except report_reads.ReadRefused as said:
             logger.warning("[report] %s() refused: %s", call, said, exc_info=said)
             answer, refused = None, str(said)
