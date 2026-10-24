@@ -379,8 +379,9 @@ def _table_refusal(path, written, cells, lists, numbers, key_names):
                         "(%s) and derive.report.keys" % (path, stray[0], ", ".join(wafer_key)))
             missing = [c for c in unit if c not in names]
             if not any(name in wafer_key for name in names) or missing:
-                return ("%s.wafer names none of the report's wafer (%s) - a table is read by the wafer key columns it has"
-                        % (path, ", ".join(missing or wafer_key)))
+                return ("%s.wafer names none of the report's wafer (%s) - a table is read by the wafer key columns it has; "
+                        "a column spelled otherwise: %s.%s {%r: <its column>}"
+                        % (path, ", ".join(missing or wafer_key), path, RENAME, (missing or wafer_key)[0]))
     for cell in numbers:
         if cell in written and not _whole(written[cell], 1):
             return "%s.%s must be a whole number from 1, got %r" % (path, cell, written[cell])

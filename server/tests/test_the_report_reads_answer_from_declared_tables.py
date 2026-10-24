@@ -168,7 +168,7 @@ def test_candidates_are_the_recent_evaluations_folded_newest_first(report, db_se
 
 
 def test_a_control_group_stands_beside_this_evaluation_in_the_tables(report):
-    assert report.compare(evaluations=["E2"])["context"] == "control E2: 2 wafers (W6, W5)"
+    assert report.compare(evaluations=["E2"])["context"] == "control E2: 2 wafers (wafer_id W6, wafer_id W5)"
     table = report.yield_by()["html"]
     assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("control E2", ["wafer_id W6", "wafer_id W5"])]
     assert _texts(table["rows"])[0][1][-2:] == ["4.0% (4/100)", "2.0% (2/100)"]
@@ -308,7 +308,7 @@ def test_a_compare_set_is_a_second_group_of_columns(report):
     assert report.compare(["baseline", "keylots"])["context"].splitlines() == [
         "baseline: 1 wafers (E0)", "keylots: 1 wafers (L0, L9)"]
     assert report.groups["keylots"] == [("W0",)], "the lot member picks by the wafer table's lot column"
-    assert report.compare()["context"].splitlines() == ["baseline: 1 wafers (E0)", "control E3: 1 wafers (W7)"], \
+    assert report.compare()["context"].splitlines() == ["baseline: 1 wafers (E0)", "control E3: 1 wafers (wafer_id W7)"], \
         "no arguments: the declaration's comparison - sets.default and the newest control.recent"
     table = report.yield_by()["html"]
     assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("baseline", ["wafer_id W0"]), ("keylots", ["wafer_id W0"]),

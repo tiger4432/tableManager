@@ -797,7 +797,7 @@ class Report:
         lines = []
         for name, members in groups.items():
             self.groups["%s %s" % (control, name)] = members
-            lines.append("%s %s: %d wafers (%s)" % (control, name, len(members), ", ".join(map(label, members[:10]))))
+            lines.append("%s %s: %d wafers (%s)" % (control, name, len(members), ", ".join(map(self.said, members[:10]))))
         return lines
 
     def compare(self, sets=None, evaluations=None, wafers=None):
