@@ -420,7 +420,7 @@ class Report:
             left_out += twice
         return rows, left_out
 
-    def _condition_rows(self, columns, chosen=None):
+    def _condition_rows(self, columns, chosen=None, also=None):
         """The condition group (owner «조건도 안나오고»): a row a condition of the columns' wafers (wafer.conditions,
         the conditions role) - the names the model kept (yield_by rows, owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택»),
         else those whose value differs between the columns, every one when there is one column."""
@@ -453,7 +453,10 @@ class Report:
             # kept (the model's, the texts') and every one that differs (owner 10-24 «글에 쓴 조건이 표에 없음»)
             # two values or more where it is said - a condition the same wherever it is said is no row, kept or not
             # (owner 10-24 «너무 일정한 조건도 뽑아 버리는데»; a blank is no value)
-            if len(columns) <= 1 or len({cell["text"] for cell in cells if cell["text"] not in ("", EMPTY)}) > 1:
+            # the rows the model selected (prompts.select) are the rows - the others only when it selected none; the
+            # conditions the texts name (`also`) stand too (owner 10-24 «스킵 말고 프롬프트로는 제어 못 해?»)
+            varies = len(columns) <= 1 or len({cell["text"] for cell in cells if cell["text"] not in ("", EMPTY)}) > 1
+            if varies and (name in kept or not kept or name in [str(a) for a in also or ()]):
                 rows.append((head + sep + name if sep else name, cells))
         return rows
 
@@ -545,7 +548,7 @@ class Report:
             lines.append("default conditions (no condition row): %d wafers" % len(default))
         return {"context": "\n".join(lines), "html": None}
 
-    def yield_by(self, wafers=None, by=None, rows=None):
+    def yield_by(self, wafers=None, by=None, rows=None, also=None):
         """`rows`: the names the model keeps of an info table that says `choose` (owner 10-23 «COND 쪽 넣을 항목은 AI
         가 선택») - a name keeps the names under it; none kept, or none said: every row."""
         columns = [(name, col, members) for name, cols in self._column_groups(self.pick(wafers), by)
@@ -565,7 +568,7 @@ class Report:
         spans = [members for _name, _col, members in columns]
         info, info_twice = self._info(spans, rows)
         if not by and not any(role.get(report_shape.CHOOSE) for role in report_shape.info_rows(self.spec)):
-            info = self._condition_rows(spans, rows) + info
+            info = self._condition_rows(spans, rows, also) + info
         yields, yield_twice = self._yield_rows(spans)
         info, info_twice = info + yields, info_twice + yield_twice
         pictures, pictures_twice = self._pictures([[] if by else members for members in spans])

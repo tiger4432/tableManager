@@ -280,7 +280,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         written = " ".join(out["texts"].values())
         named = [n for n in getattr(report, "condition_names", list)() if str(n).strip() and str(n).strip() in written]
         if "yield_by" in tables and any(n not in getattr(report, "kept_rows", []) for n in named):
-            report.kept_rows = list(dict.fromkeys(getattr(report, "kept_rows", []) + named))
+            report.written_rows = named
             try:
                 tables["yield_by"] = report.yield_by(**_args(report, "yield_by"))["html"]
             except report_reads.ReadRefused as said:
@@ -308,6 +308,8 @@ def _args(report, call):
     args = dict(report.__dict__.get("chosen", {}).get(call) or {})
     if call == "yield_by" and getattr(report, "kept_rows", None):
         args["rows"] = report.kept_rows
+    if call == "yield_by" and getattr(report, "written_rows", None):
+        args["also"] = report.written_rows
     return args
 
 
