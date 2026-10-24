@@ -447,7 +447,9 @@ class Report:
             if name not in kept and others and all(not cell["text"] for cell in others):
                 continue
             # kept (the model's, the texts') and every one that differs (owner 10-24 «글에 쓴 조건이 표에 없음»)
-            if name in kept or _differs(cells, len(columns)):
+            # two values or more where it is said - a condition the same wherever it is said is no row, kept or not
+            # (owner 10-24 «너무 일정한 조건도 뽑아 버리는데»; a blank is no value)
+            if len(columns) <= 1 or len({cell["text"] for cell in cells if cell["text"] not in ("", EMPTY)}) > 1:
                 rows.append((head + sep + name if sep else name, cells))
         return rows
 
