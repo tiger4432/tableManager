@@ -30,7 +30,7 @@ section { display: grid; gap: 8px; }
 table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: normal;
          overflow-wrap: anywhere; width: 7em; min-width: 7em; max-width: 7em; vertical-align: top; }
-td.rpt-item, td.rpt-info, td.rpt-picture, th:first-child { width: 6em; min-width: 6em; max-width: 6em; }
+td.rpt-item, td.rpt-info, td.rpt-picture, th:first-child { width: 185px; min-width: 185px; max-width: 185px; }
 th { background: var(--head); }
 th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
 .gallery { display: flex; flex-wrap: wrap; gap: 12px; }
