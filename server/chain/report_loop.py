@@ -39,7 +39,8 @@ RULES = ("Pick the wafers by their conditions. Call one read per step. When you 
          "answer done. A unit is named by its key columns; a units line lists one report unit and its parts - "
          "write about it as one.")
 #: The write call's own line: what it is for and the answer's form.
-WRITE = ("Write the report from the tables read below - every number as a table says it. Answer one JSON object: "
+WRITE = ("Write the report from the tables read below - every number as a table says it; candidate factors walked from "
+         "the seeds, when given, ground the detailed analysis. Answer one JSON object: "
          '{"done": {%s}}')
 STOP_NO_TEXT = "the write call answered no text"
 #: The seed call's line, over the nodes it picks from (`report_reads.Report.defect_kinds`).

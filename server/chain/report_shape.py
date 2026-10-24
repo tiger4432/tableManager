@@ -108,6 +108,8 @@ SEND_TO = "send_to"
 #: the predicates the walk follows (blank: every predicate between two static types), the types it keeps, its hops
 #: (blank: the walk's own). Names the operator writes; the walk route refuses one the ledger does not declare.
 CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops")
+#: the walk route's own cap - the report walks in process, past the route's check, so the save holds it
+CAUSES_HOPS_MOST = 40
 #: `picture_rows`: rows of one picture a column in the summary table (owner 10-23 «열마다 한 장») - each a table, its
 #: wafer columns and picture column, the row's label and the picture's width (PICTURE_PX: columns × pictures make the
 #: file, so smaller than images.px).
@@ -720,9 +722,10 @@ def _causes_refusal(causes):
     if not isinstance(causes, dict) or set(causes) - set(CAUSES_CELLS) or not (
             isinstance(causes.get("seed_type"), str) and causes["seed_type"].strip()) or any(
             cell in causes and not _names(causes[cell]) for cell in ("follow", "collect")) or (
-            "hops" in causes and not _whole(causes["hops"], 0)):
+            "hops" in causes and not (_whole(causes["hops"], 0) and causes["hops"] <= CAUSES_HOPS_MOST)):
         return ('derive.report.causes is {"seed_type": "<entity>", "follow": ["<predicate or class:<word>>", ...], '
-                '"collect": ["<entity>", ...], "hops": <n>} - seed_type written, the rest optional; got %r' % (causes,))
+                '"collect": ["<entity>", ...], "hops": <n up to %d>} - seed_type written, the rest optional; got %r'
+                % (CAUSES_HOPS_MOST, causes))
     return None
 
 
