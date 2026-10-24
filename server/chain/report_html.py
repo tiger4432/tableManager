@@ -27,8 +27,9 @@ h1 { font-size: 20px; margin: 0; }
 .meta { color: var(--muted); }
 section { display: grid; gap: 8px; }
 .scroll { overflow-x: auto; }
-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: center; white-space: normal;
+table { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums;
+        border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+th, td { border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: center; white-space: normal;
          overflow-wrap: anywhere; vertical-align: top; }
 th { background: var(--head); }
 thead th { text-align: center; vertical-align: middle; }
