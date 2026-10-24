@@ -444,7 +444,7 @@ class Report:
                 cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
             others = [cell for cell, members in zip(cells, columns)
                       if not set(members) <= set(self.groups[self.evaluation])]
-            if others and all(not cell["text"] for cell in others):
+            if name not in kept and others and all(not cell["text"] for cell in others):
                 continue
             # kept (the model's, the texts') and every one that differs (owner 10-24 «글에 쓴 조건이 표에 없음»)
             if name in kept or _differs(cells, len(columns)):
