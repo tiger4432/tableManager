@@ -34,8 +34,8 @@ TABLES = {
                                   "image_path": "string"}},
     "rr_set": {"composite_key_source": ["set_name", "member"],
                "column_types": {"set_name": "string", "member": "string", "kind": "string"}},
-    "rr_cond": {"composite_key_source": ["wafer_id", "cname"],
-                "column_types": {"wafer_id": "string", "cname": "string", "cvalue": "string"}},
+    "rr_cond": {"composite_key_source": ["wafer_id", "cname", "step"],
+                "column_types": {"wafer_id": "string", "cname": "string", "step": "string", "cvalue": "string"}},
 }
 WAFERS = [("W2", "L1", "E1", "2026-10-02", "A"), ("W1", "L1", "E1", "2026-10-01", "A"),
           ("W3", "L2", "E1", "2026-10-03", "B"), ("W0", "L0", "E0", "2026-09-01", "A"),
@@ -262,8 +262,8 @@ def test_a_condition_item_is_the_wafers_time_when_the_wafer_role_names_none(repo
     from chain import report_reads, report_shape
 
     m = models.DYNAMIC_TABLES
-    for n, (w, name, value) in enumerate([("W1", "tkout", "2026-10-05 10:00:00"), ("W2", "tkout", "2026-10-03 09:00:00"),
-                                          ("W1", "recipe", "R1")]):
+    for n, (w, name, value) in enumerate([("W1", "tkout", "2026-10-05 10:00:00"), ("W2", "tkout ", "2026-10-03 09:00:00"),
+                                          ("W1", "recipe", "R1"), ("W2", "recipe", "R2")]):
         db_session.add(m["rr_cond"](row_id="c%d" % n, wafer_id=w, cname=name, cvalue=value))
     db_session.commit()
     spec = json.loads(json.dumps(SPEC))
@@ -274,6 +274,9 @@ def test_a_condition_item_is_the_wafers_time_when_the_wafer_role_names_none(repo
     assert [timed.wafers[w]["time"] for w in [("W1",), ("W2",), ("W3",)]] == [
         "2026-10-05 10:00:00", "2026-10-03 09:00:00", None]
     assert timed.groups["E1"] == [("W2",), ("W1",), ("W3",)], "by that time, a wafer without one last"
+    rows = [name for name, _cells in timed.yield_by()["html"]["info"]]
+    assert [r for r in rows if r.strip() == "tkout"] == [] and "recipe" in rows, (
+        "the time item is the date's, not a condition row (owner 10-24); «tkout » in the data is «tkout»")
     spec["wafer"]["time"] = "measured_at"
     own = report_reads.Report(db_session, spec, "E1")
     assert own.wafers[("W1",)]["time"] == "2026-10-01", "the wafer role's time column stands"
@@ -301,6 +304,22 @@ def test_a_yield_item_of_the_summary_is_the_yield_not_a_defect(report, db_sessio
     assert all(item != "YIELD" for item, _cells in table["rows"])
     assert report_shape.refusal(dict(SPEC, summary=dict(SPEC["summary"], yield_item=[]))).startswith(
         "derive.report.summary.yield_item is the summary item (or items) that is the yield")
+
+
+def test_two_values_of_one_wafers_condition_are_both_said(report, db_session):
+    """A conditions table keyed beyond the wafer (a step) holds two rows of one wafer and name: both values, distinct, in
+    the rows' order - «300 / 320», in the table and the model's context; none silently wins (owner 10-24)."""
+    from chain import report_reads
+
+    m = models.DYNAMIC_TABLES
+    for n, value in enumerate(["300", "320", "300"]):
+        db_session.add(m["rr_cond"](row_id="d%d" % n, wafer_id="W1", cname="temp", step=str(n), cvalue=value))
+    db_session.commit()
+    spec = json.loads(json.dumps(SPEC))
+    spec["conditions"] = {"table": "rr_cond", "wafer": "wafer_id", "name": "cname", "value": "cvalue"}
+    both = report_reads.Report(db_session, spec, "E1")
+    assert both.wafers[("W1",)]["conditions"]["temp"] == "300 / 320"
+    assert "temp: 300 / 320 1" in both.conditions()["context"]
 
 
 def test_a_compare_set_is_a_second_group_of_columns(report):

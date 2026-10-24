@@ -34,6 +34,8 @@ class ReadRefused(ValueError):
     """A call the reads cannot answer - said back to the model as the reason."""
 
 
+#: Two values one wafer's condition holds, said together (`Report._long_conditions`).
+BOTH = " / "
 #: A condition row whose value is blank (owner 10-23 trap wafer: a condition named, its value not written).
 EMPTY = "(empty)"
 
@@ -253,8 +255,14 @@ class Report:
         for wafer, row in self._matched(role, [role["name"], role["value"]] + [role[c] for c in extra],
                                         sorted(set(wafers), key=label)):
             facts = self.wafers[wafer]
-            facts["conditions"][str(row[0])] = row[1]
-            if time_item and str(row[0]) == str(time_item) and facts.get("time") is None:
+            # two rows of one wafer and name (a key part beyond the wafer's): both values, distinct, in the rows' order
+            # «300 / 320» - none silently wins (owner 10-24)
+            name, said = str(row[0]), facts["conditions"].get(str(row[0]))
+            if said is None:
+                facts["conditions"][name] = row[1]
+            elif row[1] is not None and str(row[1]) not in str(said).split(BOTH):
+                facts["conditions"][name] = "%s%s%s" % (said, BOTH, row[1])
+            if time_item and report_shape.name(row[0]) == report_shape.name(time_item) and facts.get("time") is None:
                 facts["time"] = row[1]
             for at, cell in enumerate(extra):
                 if facts.get(cell) is None:
@@ -314,8 +322,9 @@ class Report:
         named = report_shape.yield_items(self.spec)
         cells = [cell for cell in SUMMARY_CELLS if role.get(cell)]
         found, twice = self._pairs(role, [role[cell] for cell in cells], wafers)
-        return {pair: {cell: _number(value) for cell, value in zip(cells, row)}
-                for pair, row in found.items() if (pair[1] in named) == yields}, \
+        return {((pair[0], report_shape.name(pair[1])) if yields else pair): {
+            cell: _number(value) for cell, value in zip(cells, row)}
+                for pair, row in found.items() if (report_shape.name(pair[1]) in named) == yields}, \
             [said for said in twice if any(said.endswith(" " + item) for item in named) == yields]
 
     def _yield_rows(self, columns):
@@ -372,7 +381,11 @@ class Report:
         mixed = report_shape.word(self.spec, "mixed")
         sep = self.spec.get("item_sep") or ""
         head = report_shape.word(self.spec, "conditions")
-        names = list(dict.fromkeys(str(n) for members in columns for w in members for n in self.wafers[w]["conditions"]))
+        # the time_item condition is the date head's, not a condition row (owner 10-24)
+        timed = None if self.spec["wafer"].get("time") else (self.long or {}).get(report_shape.TIME_ITEM)
+        names = [n for n in dict.fromkeys(str(n) for members in columns for w in members
+                                          for n in self.wafers[w]["conditions"])
+                 if timed is None or report_shape.name(n) != report_shape.name(timed)]
         kept = [n for n in names if n in [str(c) for c in chosen or ()]]
         rows = []
         for name in names:
@@ -625,7 +638,7 @@ class Report:
             raise ReadRefused("images are this evaluation's only - %s is not" % ", ".join(outside[:5]))
         found, _twice = self._summary(picked)
         said = "fail" if self.spec["summary"].get("fail") else "rate"
-        occurred = {pair for pair, row in found.items() if (row.get(said) or 0) > 0}
+        occurred = {(w, report_shape.name(item)) for (w, item), row in found.items() if (row.get(said) or 0) > 0}
         wanted = {str(i) for i in items} if items else None
         per_item, px = role.get("per_item", 3), role.get("px", 320)
         sep, source = role.get(report_shape.ITEM_SEP), role.get(report_shape.IMAGE_SOURCE)
@@ -638,13 +651,13 @@ class Report:
         rows.sort(key=lambda pair: [_ordinal(pair[1][2 + at]) for at in fold])
         # images.match: an image kind is its summary item's picture; with match declared, a kind it pairs with nothing
         # and no summary item is named shows under itself, after a line naming it (lead 10-24: no silent drop)
-        match, items = report_shape.image_match(self.spec), {item for _w, item in found}
+        match, items = report_shape.image_match(self.spec), {report_shape.name(item) for _w, item in found}
         unpaired = {}
         chosen, counts, seen = {}, {}, set()
         for wafer, row in rows:
             ref = "%s:%s" % (source, row[1]) if source and row[1] else row[1]
             whose = (wafer, tuple(row[2 + at] for at in chip))
-            for kind in ([part.strip() for part in str(row[0]).split(sep)] if sep else [str(row[0])]):
+            for kind in ([part.strip() for part in str(row[0]).split(sep)] if sep else [report_shape.name(row[0])]):
                 item = match.get(kind, kind)
                 alone = bool(match) and kind not in match and kind not in items and kind != "None"
                 if not alone and (wafer, item) not in occurred or (wanted and item not in wanted) or not ref:

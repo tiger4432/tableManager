@@ -47,9 +47,16 @@ YIELD_ITEM = "yield_item"
 
 
 def yield_items(spec) -> set:
-    """`summary.yield_item` as a set of item names - one written alone a set of one; empty undeclared."""
+    """`summary.yield_item` as a set of item names - one written alone a set of one; empty undeclared. Names are
+    compared without surrounding spaces (`name`)."""
     said = ((spec or {}).get("summary") or {}).get(YIELD_ITEM)
-    return {said} if isinstance(said, str) else {str(s) for s in said} if isinstance(said, list) else set()
+    return {name(said)} if isinstance(said, str) else {name(s) for s in said} if isinstance(said, list) else set()
+
+
+def name(value) -> str:
+    """An item or condition name as the declaration and the data are compared - without surrounding spaces, a space
+    inside it kept (lead 10-24: «TKOUT DATE » in the data is «TKOUT DATE» declared)."""
+    return str(value).strip()
 #: The roles a report cannot be made without.
 REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
@@ -164,7 +171,7 @@ def image_match(spec) -> dict:
     out = {}
     for item, kinds in (match.items() if isinstance(match, dict) else ()):
         for kind in [kinds] if isinstance(kinds, str) else kinds if isinstance(kinds, list) else ():
-            out.setdefault(str(kind), str(item))
+            out.setdefault(name(kind), name(item))
     return out
 
 
