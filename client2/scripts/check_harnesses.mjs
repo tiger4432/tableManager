@@ -318,7 +318,7 @@ const FLOORS = new Map([
   // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
   // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
   // already stopped says what became of it (XA, XM10).
-  ['chain_queue_panel_harness.mjs', 257],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
+  ['chain_queue_panel_harness.mjs', 267],   // 239 -> 257: a group's rules, rows, stage and the newest failed groups - W1-W6 and their twelve mutants (lead 903053c14)
   // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
   // 76 -> 83: the Queue tab's one read - fifty broadcasts on a read read twice, off the tab none, a failed read frees it -
   //    PQ1-PQ3, PM7-PM10; PL3 restated on the one read (lead 10-12).
@@ -615,7 +615,7 @@ const FLOORS = new Map([
   ['m4_symbol_extractability_probe.mjs', 15],
   // 🔴 C-76 raised this from 116: 판정 284 의 두 줄과 «합성 키가 안 움직인다»는 단언들.
   // 이 파일이 벡터를 안 읽고 자기 표를 드는 것이 이음매가 갈려도 초록이던 이유였다.
-  ['map_key_canonical_harness.mjs', 129],
+  ['map_key_canonical_harness.mjs', 137],
   // New 2026-08-04 with the marker-shape + wafer-anchor round (the overlay marker follows its
   // cell's own proportions instead of the shorter axis; the wafer, not the grid, anchors the
   // canvas scale). Floor is the count it reports on the commit that introduces it -- there is
@@ -958,7 +958,7 @@ const FLOORS = new Map([
   // 16 -> 19 (W6-W8, lead 115134f12): a switched-off field holding an empty list is not drawn.
   // 19 -> 21 (P7 W9, lead 810d0044b ① ④): an owed row's state word; the map's here row is a word.
   // 21 -> 27 (N0-N3 K6 K7, lead 10-11 small two: a folded row and a shut branch say the plan's note once; the stale refusal's retry).
-  ['explorer_form_grammar_harness.mjs', 27],
+  ['explorer_form_grammar_harness.mjs', 33],
   // New with lead a5720d9d8: the screen's one blank rule (absent.js isBlank) - the contract's scalar
   // rows, the rule beyond scalars, and the seats that fold into it asking the same function.
   ['blank_rule_harness.mjs', 4],
@@ -1040,7 +1040,7 @@ const FLOORS = new Map([
   // New with lead f0e668bb8: File Ingestion's retry under a folder. The number on Retry is the
   // server's preview count, a changed folder needs a new preview, 0 is off with the server's words.
   // 17 -> 18 (E3, lead a30c55a13): the suggested folders are the FAILED rows' only.
-  ['folder_retry_harness.mjs', 23],   // + F1-F5: «Include files that went in» (lead a4d135a06)
+  ['folder_retry_harness.mjs', 29],   // + F1-F5: «Include files that went in» (lead a4d135a06)
   //
   // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
   // sends, Pause asking once, two instances and a re-read.
@@ -1238,7 +1238,7 @@ const FLOORS = new Map([
   // NEW 2026-10-22 (owner, lead ㄱ ①): the main grid's pivot - rows, columns, one cell's write, the narrowing, the footer's
   // unit, the memory. Mutants by hand: a cell with a row written as blank (W1), pivot dropped from the narrowing (N1),
   // the footer's unit ignored (N3) - each red alone.
-  ['grid_pivot_harness.mjs', 22],
+  ['grid_pivot_harness.mjs', 29],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no
   // reader. Each is checked in THREE states, not two -- true, false, and 'the server did
   // not say' -- because an older build sends neither key and a two-state test passes
@@ -1418,7 +1418,7 @@ const FLOORS = new Map([
   // 77 -> 87: the lead's check of c3a3fd5cb (10-13) - W32 Take server drops every cell asked (one back at its pre-edit
   //    value too), W33 Tx turned off to apply keeps a mid-PUT edit staged, W34 a refused PUT turns Tx back on, W35 the PUT
   //    under the cap; V1 measures the cut, W28 a timer later; G45-G50.
-  ['grid_world_tabs_harness.mjs', 87],
+  ['grid_world_tabs_harness.mjs', 92],
   // 0 -> 44: the visual testbed (lead aca803a7a, d1b3c1b7f, 5835e6714) - T1-T17 (the reduces against contracts/walk_aggregate,
   //    the one filter, hubs, the two kinds, the root part, two parts on one page, a kind added, save and reopen, the census,
   //    the bundle); M1-M23.
@@ -1428,16 +1428,16 @@ const FLOORS = new Map([
   //    T21 one seedsOf, T22 no colour in testbed.css, T23 each kind's title; M14b M17b M22b M25-M34.
   // 66 -> 74: the Spotfire standard (lead b72a0ea4f) - T25 the tokens hold the measured values, T26 the palette read off a
   //    document (a short hex mixed as its long one); T22 over spotfire.css too; M35-M40, M9 M30 re-aimed.
-  ['testbed_harness.mjs', 140],   // -> 140: T43 a slot of days, T44 (Multiple), T45 one order of categories, T46-T50 images (lead-board-14) and their mutants; -> 110: T40-T42 the marks (lead-board-13 ②), M60-M65, M10 retired; -> 102: T39 rows not a time said with not a number, M59; -> 100: T36-T38 a slot's scale, the scatter and the picker's chips by it, a continuous Color by (lead-board-13 ①), M53-M58; -> 91: T34 the picker's «time» (lead 10-14 ③), M50 M51; T35 a cross table's empty cell pill UniqueCount(rows), M52; 74 -> 72: the fold's three mutants moved to the calculator; -> 78: expression slots T27, Custom expression T28, a condition on one T29, with their mutants (lead 10-13 plan a); -> 81: T30 a text an operator cannot take, M44 M45
-  ['board_layout_harness.mjs', 145],   // the Board: layout, markings, chain, root base set, Sheet on the root (the count it reports 10-14)
+  ['testbed_harness.mjs', 156],   // -> 140: T43 a slot of days, T44 (Multiple), T45 one order of categories, T46-T50 images (lead-board-14) and their mutants; -> 110: T40-T42 the marks (lead-board-13 ②), M60-M65, M10 retired; -> 102: T39 rows not a time said with not a number, M59; -> 100: T36-T38 a slot's scale, the scatter and the picker's chips by it, a continuous Color by (lead-board-13 ①), M53-M58; -> 91: T34 the picker's «time» (lead 10-14 ③), M50 M51; T35 a cross table's empty cell pill UniqueCount(rows), M52; 74 -> 72: the fold's three mutants moved to the calculator; -> 78: expression slots T27, Custom expression T28, a condition on one T29, with their mutants (lead 10-13 plan a); -> 81: T30 a text an operator cannot take, M44 M45
+  ['board_layout_harness.mjs', 199],   // the Board: layout, markings, chain, root base set, Sheet on the root (the count it reports 10-14)
   ['sheet_kind_harness.mjs', 40],   // the Sheet's visible area: grid, formats, key, formula bar, #MANY #NAME? #CYCLE, SM1-SM12 (lead 10-14 ㄱ)
-  ['expression_vectors_harness.mjs', 311],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]; -> 311: the sheet O[sheet.*] O[node.*] E5-E7 X32-X36
+  ['expression_vectors_harness.mjs', 337],   // the screen calculator on contracts/expression/vectors.json (lead 10-13 plan a); -> 270: O[text.arithmetic], E1, X22 X23 (lead 10-13 ①); -> 293: V[time.*] six, X30 X31 (lead 10-13 types); -> 294: V[time.max.bare.number]; -> 311: the sheet O[sheet.*] O[node.*] E5-E7 X32-X36
   // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
   // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
-  ['walk_worlds_harness.mjs', 18],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
+  ['walk_worlds_harness.mjs', 26],   // + V9 · X1 and W7 · W8: a world picked walks again on the page (lead 10-09)
   // New with lead bc63378e5: the start baskets - + puts the picked node in, x takes it out, + on the other moves it,
   // Walk asks them as they are, an empty Positive keeps Walk off, Ctrl/Shift on Walk mark nothing. Floor = first run.
-  ['start_baskets_harness.mjs', 27],   // -> 27: B14 + Add start shuts on a click outside and Escape, BM12 BM13 (lead 10-13, 18766); -> 24: said beside + Add - B13, BM11 (lead b5cdcbc75)
+  ['start_baskets_harness.mjs', 33],   // -> 27: B14 + Add start shuts on a click outside and Escape, BM12 BM13 (lead 10-13, 18766); -> 24: said beside + Add - B13, BM11 (lead b5cdcbc75)
   // New with lead bccbdd601: PICK A NODE by first letters - the search box part, the wire, the walk page that seats it.
   ['node_search_harness.mjs', 45],   // -> 45: a key the ledger holds no node of, letter for letter - T25 T26, HM2-HM5 (lead b5cdcbc75)
   // New with lead 5cf5c3401: the side by side table as a formula - groups, rows, columns (P, a), cells - on any scheme.
@@ -1492,7 +1492,7 @@ const FLOORS = new Map([
   // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
   // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   // The runner passes --control too (lead 10-09): 239 + one per mutant subset run on unmutated code.
-  ['subgraph_view_harness.mjs', 348],   // 338 -> 348: handed answers drawn, a lump's step, the cap - Y8 OT4 FC1, Y8m Y9m OTm5 FCm1; M11 OTm1 re-aimed (lead 10-11 G-2)
+  ['subgraph_view_harness.mjs', 369],   // 338 -> 348: handed answers drawn, a lump's step, the cap - Y8 OT4 FC1, Y8m Y9m OTm5 FCm1; M11 OTm1 re-aimed (lead 10-11 G-2)
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's pure half - what a value reads as, the one start-branch
   // question, a lump's answer and the points its page step's Trend reads (lead 10-11 E2b) - its Route a Next from its
   // owner's, its points the same in the edge and the event scheme (lead 10-11 E2c) - the one drawing.
@@ -1539,8 +1539,8 @@ const FLOORS = new Map([
   // New (owner 10-13 via the lead): the main grid's menu - «Board» opens testbed.html as Walk opens walk.html, and every
   // page the menu names is one the build writes (read through vite's own config loader).
   ['main_menu_harness.mjs', 6],
-  ['walk_layout_harness.mjs', 38],   // -> 38: Control · B walked once more - LD1 LD2, LDm1 LDm2 (lead 99ed68cb7 D)
-  ['walk_route_fill_harness.mjs', 80],
+  ['walk_layout_harness.mjs', 41],   // -> 38: Control · B walked once more - LD1 LD2, LDm1 LDm2 (lead 99ed68cb7 D)
+  ['walk_route_fill_harness.mjs', 81],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
@@ -1550,7 +1550,7 @@ const FLOORS = new Map([
   // record/map/oneOf). Floor is the count it reports on the commit that introduces it. 🔴 IT
   // READS THE SHIPPED CHAIN SKELETON for the descent today's screens take, and a hand fixture
   // for a oneOf nested under a oneOf, which nothing shipped nests yet.
-  ['skeleton_oneof_descent_harness.mjs', 33],
+  ['skeleton_oneof_descent_harness.mjs', 34],
   // New 2026-09-08 with C-41 (the ten-user driver). Floor is the count it reports on the
   // commit that introduces it. 🔴 A LOAD DRIVER'S DEFECTS ALL LOOK LIKE GOOD NEWS -- a lane
   // sharing another's table is fast because a cache answered, ten lanes run one after another
@@ -1610,7 +1610,7 @@ const FLOORS = new Map([
   // the banner that offers a re-run, and what it refuses to offer one for
   // 53 -> 57 (lead ece405110): the click replay sends cascade, the hand-off to the tab does not.
   // 57 -> 58 (lead QA 0056ebc9d): the panel placeUnder moved to the body is one panel however often it is drawn (L1, M20).
-  ['redo_banner_harness.mjs', 58],
+  ['redo_banner_harness.mjs', 60],
   // the board part: composition
   // 42 -> 44 (lead 09-30, H10): the head's marking 1 place says the board's question.
   // -> 46 (lead dcd159739, T6): a cell holding only spaces is absent, by the screen's one blank rule.
@@ -1628,7 +1628,7 @@ const FLOORS = new Map([
   // the board part: the walk box
   // 87 -> 99: RC1-RC11, the loop chips (lead 5d5b8d750). 99 -> 98 (lead 10-06): B8, the two-screen
   // follow compare, leaves until the board follows the walk page; H3 scores this box only.
-  ['rnd_board_walk_box_harness.mjs', 104],   // RC12-RC14's three mutants moved with the search to paths_harness PM1-PM3 (lead df11f9e81)
+  ['rnd_board_walk_box_harness.mjs', 109],   // RC12-RC14's three mutants moved with the search to paths_harness PM1-PM3 (lead df11f9e81)
   // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
   // with the run row's own computed facts (Not computed yet / factors N · computed HH:MM, one read),
   // two instances on one screen, the real chain's run rows through the real route (J), and the
@@ -1790,12 +1790,12 @@ const FLOORS = new Map([
   ['skeleton_value_fit_harness.mjs', 27],
   // Form D (lead f3639d4a2, owner 10-20): one renderer for the three declarations - chips, tables, the fold row, the
   // gate switch, the adder, a choice of one - scored per module on a skeleton that names no declaration's word.
-  ['declaration_form_harness.mjs', 38],
+  ['declaration_form_harness.mjs', 46],
   // New 2026-09-24 with the list skeleton (90b9f443). In the owner's Chrome the chain window's lists
   // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real
   // panel on the shipped skeleton, by the click path, with the writer both screens now share.
-  ['chain_list_edit_harness.mjs', 20],
+  ['chain_list_edit_harness.mjs', 27],
   // New 2026-09-25 (lead f3bc02f6e, owner 「at the end」). The grid's Ledger column takes the source
   // label's ONE answer to 「is this table a ledger source」, scored through the real label, the real
   // buildColumnDefs and the write funnels' seat; a refused source and a half-refused table included.
@@ -1849,7 +1849,7 @@ const FLOORS = new Map([
   ['auth_sso_harness.mjs', 30],
   // New 2026-10-14 (lead 4c7b42b0a, owner 10-14). The ledger declaration window as sentence bars: its edits on the
   // short form, its drawing, the test run as its table, the explorer handing it the draft, its chips, the column lists.
-  ['ledger_declaration_bar_harness.mjs', 64],
+  ['ledger_declaration_bar_harness.mjs', 67],
   // New 2026-10-20 (lead 9075f6605, owner 10-20 «일단 ㄱ»). The test bed draws what is in view: the table's window of lines
   // (and a drag past it), a filter's most counted values with a search box.
   ['testbed_draw_window_harness.mjs', 10],
@@ -1859,7 +1859,7 @@ const FLOORS = new Map([
   ['file_folder_harness.mjs', 8],
   // New 2026-10-20 (lead, owner 10-20 «ㅇㅇ 일케 해»). The file ingestion page: a read's result and time, the query, the groups
   // under the folder above, the table list's counts, and its four parts.
-  ['file_ingestion_page_harness.mjs', 27],   // 20 -> 26: Read now P6a-b, Read all again P1e-g, a read's refusal M1c (A 10-21); 27: the changed columns M1d (B 10-23)
+  ['file_ingestion_page_harness.mjs', 36],   // 20 -> 26: Read now P6a-b, Read all again P1e-g, a read's refusal M1c (A 10-21); 27: the changed columns M1d (B 10-23)
   // New 2026-10-20 (lead 77ffe5cb6). The main grid's gallery: groups, blank images, the image box, «N of total loaded»,
   // drawn again from the grid's rows, only the lines in view, the tile's side panel, the choices kept per table.
   // 12 -> 18 (owner 10-20 «갤러리 1,2,3,5»): the caption column, the group order, the side panel's keys, its shown columns, two galleries.
