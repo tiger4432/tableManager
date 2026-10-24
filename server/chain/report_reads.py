@@ -769,10 +769,12 @@ class Report:
         # `control.same`: a candidate shares those columns' values with this report's wafers
         alike = {self.wafers[w]["same"] for w in own}
         by = {}
-        for wafer in self._wafer_rows(None, newest=bool(role.get("time")), only_time=True):
+        where = self._dated(own, anchor, recent)
+        for wafer in [] if where == {} else self._wafer_rows(where, newest=bool(role.get("time")), only_time=True):
             facts = self.wafers[wafer]
             at, evaluation = _instant(facts["time"]), facts["evaluation"]
-            if (wafer in own if each else at is None or evaluation in (None, self.evaluation)) \
+            # a wafer of no time is no candidate (owner 10-24 «날짜 없는 웨이퍼 후보 빼»)
+            if (wafer in own or at is None if each else at is None or evaluation in (None, self.evaluation)) \
                     or facts["same"] not in alike:
                 continue
             entry = by.setdefault(self._report_wafer(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
@@ -812,6 +814,39 @@ class Report:
             self._long_conditions(list(own) + [w for name in newest for w in by[name]["wafers"]])
         self._candidates = {name: dict(by[name], wafers=self._ordered(by[name]["wafers"])) for name in newest}
         return self._candidates
+
+    def _dated(self, own, anchor, recent):
+        """The wafer table filter of the wafers dated within `recent` by `conditions.time_item` - the conditions
+        table's time_item rows alone are read, every wafer's (owner 10-24 «조건 표에서 날짜 컬럼만 필터하고 날짜 구간
+        내 웨이퍼 고르고»): None when the wafer table names the time (every wafer row is read), {} when none is dated
+        within it."""
+        role, long = self.spec["wafer"], self.long or {}
+        time_item = None if role.get("time") else long.get(report_shape.TIME_ITEM)
+        if not time_item:
+            return None
+        shared = [c for c in report_shape.wafer_columns(long["wafer"]) if c in self.keys]
+        rows = _rows(self.db, long, shared + [long["name"], long["value"]], keys=shared, capped=True, where={
+            report_shape.column_of(long, long["name"]): {"filterType": "text", "type": "contains",
+                                                        "filter": report_shape.name(time_item)}})
+        dates = {}
+        for row in rows:
+            at = _instant(row[len(shared) + 1])
+            if report_shape.name(row[len(shared)]) == report_shape.name(time_item) and at is not None:
+                key = _parts(row[:len(shared)])
+                dates[key] = max(dates[key], at) if key in dates else at
+        mine = [self.keys.index(col) for col in shared]
+        anchor = max([dates[k] for k in (_parts(w[i] for i in mine) for w in own) if k in dates] or [anchor]) \
+            if anchor is None else anchor
+        days = recent.get("days")
+        kept = [k for k, at in dates.items() if anchor is None or not days or
+                abs(anchor - at) <= datetime.timedelta(days=days)]
+        logger.warning("[report] dated by %r: %d time_item rows, %d wafers dated, latest of this report %s, "
+                       "%d within %s", time_item, len(rows), len(dates), anchor, len(kept), recent)
+        if not kept:
+            return {}
+        return {report_shape.column_of(role, col): _equals_any(col, sorted({k[at] for k in kept},
+                                                                     key=lambda v: (v is not None, v or "")))
+                for at, col in enumerate(shared)}
 
     def _report_wafer(self, wafer) -> str:
         """The wafer as the report table names it - its legs one candidate (lead 10-23), every column without `only`."""
