@@ -501,7 +501,7 @@ def parse_version_key(raw: Any, col_type: str):
 def _same_source_content_differs(db, table_name, row, update_item, config, version_col,
                                  is_new, sources_cache, overwrites_cache,
                                  cell_sources_to_upsert, cell_overwrites_to_upsert,
-                                 prefetched_row_ids=None):
+                                 layers_read=None):
     """Columns whose incoming value differs from what THIS SAME SOURCE last wrote.
 
     🔴 Measured against the source's own previous value, not against the displayed cell.
@@ -534,7 +534,7 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
             continue
         col_srcs, _ow = _load_metadata_row_cell(
             db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache,
-            cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids)
+            cell_sources_to_upsert, cell_overwrites_to_upsert, layers_read)
         prev = next((s.value for s in col_srcs if s.source_name == update_item.source_name),
                     None)
         # The source has never written this cell: that is a NEW field appearing at an
@@ -2720,8 +2720,8 @@ class ProbedIdentity(NamedTuple):
     row is new. Measured on a 100,000-row map file: 200,000 of the run's 301,222
     statements were those two probes.
 
-    🔴 THIS IS NOT `prefetched_row_ids`, and confusing the two is a data-loss bug
-    rather than a slow path. That set is the ids that came BACK (rows that exist, and
+    🔴 THIS IS NOT `LayersRead`, and confusing the two is a data-loss bug
+    rather than a slow path. That one is the cells that came BACK (rows that exist, and
     whose cell metadata is consequently in the caches). This one is the values that
     came back EMPTY. They are complements, and each is only sound for its own question.
 
@@ -2744,6 +2744,22 @@ class ProbedIdentity(NamedTuple):
     """
     row_ids: frozenset
     business_keys: frozenset
+
+
+class LayersRead:
+    """The cells whose stored layers and overwrites a batch READ up front - so a miss in its caches is proven absent,
+    by (row, column) (총괄 10-24): `rows` were read for `columns` only (the columns the batch writes - box board B read
+    six columns' 6,000 layers to write one column of 1,000 rows), `whole` holds rows the batch made (none stored in any
+    column). A cell outside is not proven and is asked. `_load_metadata_row_cell` is the one reader."""
+    __slots__ = ("rows", "columns", "whole")
+
+    def __init__(self, rows, columns):
+        self.rows = set(rows)
+        self.columns = frozenset(columns)
+        self.whole = set()
+
+    def knows(self, row_id, column) -> bool:
+        return row_id in self.whole or (row_id in self.rows and column in self.columns)
 
 
 def _absence_is_proven(value: Any, probed: frozenset) -> bool:
@@ -3374,30 +3390,31 @@ def _update_row_business_key(row: Any, key_col: str, update_item: schemas.Genera
         existing_val = getattr(row, key_col)
         _apply(existing_val.get("value") if isinstance(existing_val, dict) else existing_val)
 
-def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name: str, is_new: bool, sources_cache: dict, overwrites_cache: dict, cell_sources_to_upsert: dict, cell_overwrites_to_upsert: dict, prefetched_row_ids: set = None) -> tuple[list, Any]:
+def _load_metadata_row_cell(db: Session, table_name: str, row_id: str, col_name: str, is_new: bool, sources_cache: dict, overwrites_cache: dict, cell_sources_to_upsert: dict, cell_overwrites_to_upsert: dict, layers_read: "LayersRead" = None) -> tuple[list, Any]:
     """해당 셀의 CellSource 리스트와 CellOverwrite 객체를 캐시 혹은 DB로부터 획득합니다.
 
-    prefetched_row_ids: the row ids `apply_batch_updates` loaded metadata for up front.
+    layers_read: the cells `apply_batch_updates` loaded metadata for up front (`LayersRead`).
     """
     key = (row_id, col_name)
 
-    # [P2] A cache miss means "this cell has no stored metadata" - but ONLY for a row
-    # the batch prefetched. That prefetch selects every cell_sources/cell_overwrites
-    # row for those ids with NO column filter, so for them "not in the cache" and "not
-    # in the table" are the same statement, and a column being written for the first
-    # time no longer costs two SELECTs per row to be told it is empty.
+    # [P2] A cache miss means "this cell has no stored metadata" - but ONLY for a CELL
+    # the batch read. The prefetch selects the cell_sources/cell_overwrites rows of its
+    # rows in the columns the batch writes (총괄 10-24 - every column, before), so for
+    # those cells "not in the cache" and "not in the table" are the same statement, and
+    # a column being written for the first time costs no SELECT to be told it is empty.
+    # Another column of the same row was not read: it is asked (a collision merge reads
+    # every column, and primes them first - `prime_merge_cells`).
     #
-    # 🔴 THE PREDICATE IS MEMBERSHIP IN THE PREFETCHED SET, NOT "the row exists".
+    # 🔴 THE PREDICATE IS MEMBERSHIP IN THE CELLS READ, NOT "the row exists".
     # Substituting the latter is a data-loss bug, not an optimisation: a row can be
     # resolved AFTER the prefetch filter was built - `apply_row_update_internal`
     # assembles a composite business key out of column values and looks the row up, and
     # a collision merge switches onto a conflict row found the same way. Those rows
     # exist and were never read, so claiming they have no sources would drop their
     # stored `user` layer out of the priority computation and delete the overwrite
-    # marker with it. Unknown rows must still be queried; that is what `is not None and
-    # row_id in ...` buys, and why every caller outside the batch path passes None.
-    absence_is_known = is_new or (prefetched_row_ids is not None
-                                  and row_id in prefetched_row_ids)
+    # marker with it. Unknown cells must still be queried; that is what `is not None and
+    # knows(...)` buys, and why every caller outside the batch path passes None.
+    absence_is_known = is_new or (layers_read is not None and layers_read.knows(row_id, col_name))
 
     # CellSource 로드
     #
@@ -3532,7 +3549,7 @@ def batch_write_instant(db):
 
 def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, explicit,
                            human_columns, source_name, updated_by, transaction_id, changed_cols,
-                           overwrites_cache=None, sources_cache=None, prefetched_row_ids=None,
+                           overwrites_cache=None, sources_cache=None, layers_read=None,
                            cell_sources_to_upsert=None, cell_overwrites_to_upsert=None,
                            cell_overwrites_to_delete=None, logs_to_cache=None,
                            deleted_row_ids=None, row_cache=None):
@@ -3560,9 +3577,8 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
     # 컬럼 수만큼 왕복했다. `overwrites_cache` 가 None 인 호출자를 위해 지역
     # dict 로 떨어지므로 «판정은 한 글자도 바뀌지 않는다».
     merge_ow = overwrites_cache if overwrites_cache is not None else {}
-    prime_merge_overwrites(db, table_name, merge_ow,
-                           [row.row_id, row_to_delete.row_id],
-                           columns_to_merge)
+    prime_merge_cells(db, table_name, merge_ow, sources_cache if cell_sources_to_upsert is not None else None,
+                      [row.row_id, row_to_delete.row_id], columns_to_merge)
     for col_name in columns_to_merge:
         if col_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
             continue
@@ -3665,13 +3681,13 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                 overwrites_cache=overwrites_cache,
                 cell_sources_to_upsert=cell_sources_to_upsert,
                 cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                prefetched_row_ids=prefetched_row_ids
+                layers_read=layers_read
             )
 
             # 대상 행(row)에 이미 등록되어 있거나 upsert 대기 중인 소스명 목록 추출
             # [P2] `row` here is the CONFLICT row this merge switched onto,
             # found by business key inside this loop. It is routinely absent
-            # from the prefetched set, and the membership test below is what
+            # from the cells read, and the membership test below is what
             # keeps it being read instead of assumed empty.
             target_srcs, _ = _load_metadata_row_cell(
                 db, table_name, row.row_id, col_name,
@@ -3680,7 +3696,7 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                 overwrites_cache=overwrites_cache,
                 cell_sources_to_upsert=cell_sources_to_upsert,
                 cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                prefetched_row_ids=prefetched_row_ids
+                layers_read=layers_read
             )
             existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
             for (t, r, c, s_name) in (cell_sources_to_upsert or {}).keys():
@@ -3849,13 +3865,13 @@ def apply_row_update_internal(
     cell_overwrites_to_delete: set = None,
     deleted_row_ids: list = None,
     version_stats: dict = None,
-    # [P2] Row ids the caller prefetched cell metadata for, with no column filter.
-    # For these - and only these - a cache miss is a proven absence rather than an
-    # unknown. See `_load_metadata_row_cell` for why "the row exists" is not the
+    # [P2] The cells the caller prefetched cell metadata for (`LayersRead`, by row and
+    # column). For these - and only these - a cache miss is a proven absence rather than
+    # an unknown. See `_load_metadata_row_cell` for why "the row exists" is not the
     # same predicate and must not be substituted.
-    prefetched_row_ids: set = None,
+    layers_read: "LayersRead" = None,
     # [P3] The identity values the caller's prefetch ASKED about - see `ProbedIdentity`.
-    # Distinct from `prefetched_row_ids` (the ids that came back). None everywhere
+    # Distinct from `layers_read` (the cells that came back). None everywhere
     # outside the batch path, which keeps every other caller's query count unchanged.
     probed_identity: "ProbedIdentity" = None,
     # [Drop report] Per-batch accumulator for update keys this row DISCARDED
@@ -3915,7 +3931,7 @@ def apply_row_update_internal(
             differing = _same_source_content_differs(
                 db, table_name, row, update_item, config,
                 config.get("version_column"), is_new, sources_cache, overwrites_cache,
-                cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids)
+                cell_sources_to_upsert, cell_overwrites_to_upsert, layers_read)
             if differing:
                 counts[NOTE_SAME_VERSION_CONTENT_DIFFERS] = \
                     counts.get(NOTE_SAME_VERSION_CONTENT_DIFFERS, 0) + 1
@@ -3972,7 +3988,7 @@ def apply_row_update_internal(
             continue
 
         key = (row.row_id, col_name)
-        col_srcs, ow = _load_metadata_row_cell(db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, prefetched_row_ids)
+        col_srcs, ow = _load_metadata_row_cell(db, table_name, row.row_id, col_name, is_new, sources_cache, overwrites_cache, cell_sources_to_upsert, cell_overwrites_to_upsert, layers_read)
 
         # 3. 소스 데이터 upsert
         col_type = (config.get("column_types") or {}).get(col_name, "string")
@@ -4314,7 +4330,7 @@ def apply_row_update_internal(
                             source_name=update_item.source_name,
                             updated_by=update_item.updated_by, transaction_id=transaction_id,
                             changed_cols=changed_cols, overwrites_cache=overwrites_cache,
-                            sources_cache=sources_cache, prefetched_row_ids=prefetched_row_ids,
+                            sources_cache=sources_cache, layers_read=layers_read,
                             cell_sources_to_upsert=cell_sources_to_upsert,
                             cell_overwrites_to_upsert=cell_overwrites_to_upsert,
                             cell_overwrites_to_delete=cell_overwrites_to_delete,
@@ -4384,8 +4400,11 @@ def row_update_line(db, table_name, row_id, changed_cols, new_values, old_values
                             add_to_cache=add_to_cache)
 
 
-def prime_merge_overwrites(db, table_name: str, overwrites_cache: dict, row_ids, columns):
-    """Every overwrite these rows carry, in ONE query, with the ABSENCES cached too.
+def prime_merge_cells(db, table_name: str, overwrites_cache: dict, sources_cache, row_ids, columns):
+    """Every overwrite these rows carry, in ONE query, with the ABSENCES cached too - and, given a
+    `sources_cache`, every layer of theirs not cached yet, in one more: a merge reads every column and
+    the batch read only the columns it writes (`LayersRead`, 총괄 10-24). A cell already cached is the
+    batch's own, written to in this pass, and is kept.
 
     🔴 A CACHE MISS AND AN ABSENT OVERWRITE WERE THE SAME VALUE. The collision-merge
     loop asked with `.get(...)` and treated a falsy answer as "not loaded", so every
@@ -4408,6 +4427,18 @@ def prime_merge_overwrites(db, table_name: str, overwrites_cache: dict, row_ids,
     if overwrites_cache is None or not row_ids or not columns:
         return 0
     ids = [r for r in dict.fromkeys(row_ids) if r]
+    unread = [r for r in ids if sources_cache is not None and any((r, c) not in sources_cache for c in columns)]
+    if unread:
+        layers = {}
+        cs = models.CellSource
+        for layer in (db.query(cs.table_name, cs.row_id, cs.column_name, cs.source_name, cs.value, cs.updated_by,
+                               cs.ingested_at, cs.origin_row_id)
+                      .filter(cs.table_name == table_name, cs.row_id.in_(unread))
+                      .order_by(cs.row_id, cs.column_name, cs.source_name.asc())):
+            layers.setdefault((layer[1], layer[2]), []).append(LightCellSource(*layer))
+        for r in unread:
+            for c in columns:
+                sources_cache.setdefault((r, c), layers.get((r, c), []))
     unprimed = [r for r in ids
                 if any((r, c) not in overwrites_cache for c in columns)]
     if not unprimed:
@@ -5456,7 +5487,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # composite-keyed rows - grid edits, file re-ingestion, chain writes, enrichment
         # - where the same 200-cell batch goes from 2,604 statements to 406.
         # Closing the insert case needs a business-key equivalent of
-        # `prefetched_row_ids`: the prefetch PROVES those rows are absent, and
+        # `layers_read`: the prefetch PROVES those rows are absent, and
         # `_get_or_create_row` does not read that proof. That is a separate correctness
         # argument and is deliberately not made here.
         #
@@ -5522,13 +5553,14 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 
             all_row_ids = list(set(r.row_id for r in existing_rows_list))
 
-            # [P2] Exactly the ids the two prefetch queries below cover. Handed to
-            # `apply_row_update_internal` so a cache miss on one of THESE rows is read as a
-            # proven absence instead of an unknown. It is a snapshot of the ids, not of the
-            # rows: any row resolved later in the loop (composite key assembled from column
-            # values, collision-merge conflict row) is correctly outside the set and is
-            # still read from the database.
-            prefetched_row_ids = set(all_row_ids)
+            # [P2] Exactly the cells the two prefetch queries below cover: these rows, in the
+            # columns this batch writes. Handed to `apply_row_update_internal` so a cache miss
+            # on one of THESE cells is read as a proven absence instead of an unknown. It is a
+            # snapshot of the ids, not of the rows: any row resolved later in the loop
+            # (composite key assembled from column values, collision-merge conflict row) is
+            # correctly outside and is still read from the database.
+            written_columns = sorted({col for u in batch.updates for col in u.updates})
+            layers_read = LayersRead(all_row_ids, written_columns)
 
             # [P3] The identity values the prefetch ASKED about MINUS the ones it brought
             # back - i.e. exactly the values PROVEN not to exist in the table.
@@ -5557,7 +5589,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             sources_cache = {}
             overwrites_cache = {}
 
-            if all_row_ids:
+            if all_row_ids and written_columns:
                 all_sources = db.query(
                     models.CellSource.table_name,
                     models.CellSource.row_id,
@@ -5569,7 +5601,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     models.CellSource.origin_row_id
                 ).filter(
                     models.CellSource.table_name == table_name,
-                    models.CellSource.row_id.in_(all_row_ids)
+                    models.CellSource.row_id.in_(all_row_ids),
+                    models.CellSource.column_name.in_(written_columns)
                 ).order_by(models.CellSource.row_id, models.CellSource.column_name,
                            models.CellSource.source_name.asc()).with_for_update().all()
                 for t_name, r_id, col_name, src_name, val, upd_by, ing_at, origin in all_sources:
@@ -5588,7 +5621,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     models.CellOverwrite.manual_priority_source
                 ).filter(
                     models.CellOverwrite.table_name == table_name,
-                    models.CellOverwrite.row_id.in_(all_row_ids)
+                    models.CellOverwrite.row_id.in_(all_row_ids),
+                    models.CellOverwrite.column_name.in_(written_columns)
                 ).all()
                 for t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin in all_overwrites:
                     overwrites_cache[(r_id, col_name)] = LightCellOverwrite(t_name, r_id, col_name, is_ow, upd_by, upd_at, man_pin)
@@ -5649,7 +5683,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                         cell_overwrites_to_delete=cell_overwrites_to_delete,
                         deleted_row_ids=deleted_row_ids,
                         version_stats=version_stats,
-                        prefetched_row_ids=prefetched_row_ids,
+                        layers_read=layers_read,
                         probed_identity=probed_identity,
                         drop_stats=drop_stats,
                         batch_now=batch_now,
@@ -5664,8 +5698,9 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     # flushed inside this loop. Its later items (a copy rule's value, then
                     # its hold) read the caches like a prefetched row's instead of one
                     # SELECT per cell: ~2,000 of them for a 1,000-row chain group, measured.
+                    # Every column of it - nothing is stored in any.
                     if is_new:
-                        prefetched_row_ids.add(row.row_id)
+                        layers_read.whole.add(row.row_id)
 
                     if changed_cols:
                         rows_with_content.add(row.row_id)

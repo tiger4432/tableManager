@@ -8,7 +8,8 @@
 
 - the mapper returns a DataFrame; the product builds one retract batch per job or one replace_map
   batch per map, naming the jobs and maps the INCOMING rows carry too (a zero-row source)
-- refused at load: both flags · a flag without is_batch · a map key the trigger table lacks
+- refused at load: both flags · a flag without is_batch (a map key the trigger table lacks is NOT refused since
+  10-24 - the mapper may make it; the maps replaced are then the result's)
 - refused at run: the result has no job column / map key column
 - the half guard still judges a zero-row job, and its refusal names the way to delete on purpose
 """
@@ -55,6 +56,12 @@ def _build(df, db):
     return pd.DataFrame(rows, columns=["job", "cell", "v"])
 
 
+def _build_from_lot(df, db):
+    """A mapper that MAKES the map key - the trigger table (BARE) has no `job`, only `lot`."""
+    rows = [{"job": "J-" + str(r["lot"]), "cell": "c0", "v": "new"} for _, r in df.iterrows() if r["lot"] != "none"]
+    return pd.DataFrame(rows, columns=["job", "cell", "v"])
+
+
 def _build_without_job(df, db):
     return _build(df, db).drop(columns=["job"])
 
@@ -70,11 +77,12 @@ def _build_unread(df, db):
 def _mappers_and_tables():
     mapper_sdk.mapper(name="sdkm_build")(_build)
     mapper_sdk.mapper(name="sdkm_build_nojob")(_build_without_job)
+    mapper_sdk.mapper(name="sdkm_build_from_lot")(_build_from_lot)
     mapper_sdk.mapper(name="sdkm_build_unread")(_build_unread)
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
     yield
-    for name in ("sdkm_build", "sdkm_build_nojob", "sdkm_build_unread"):
+    for name in ("sdkm_build", "sdkm_build_nojob", "sdkm_build_unread", "sdkm_build_from_lot"):
         mapper_sdk.MAPPER_REGISTRY.pop(name, None)
         mapper_sdk.MAPPER_PARAMS.pop(name, None)
     for name in TABLES:
@@ -156,8 +164,8 @@ def test_the_envelope_for_every_flag_and_shape(flags, shape):
 LOAD = {
     "both flags": (_rule(allow_retraction=True, allow_replace_map=True), "sdk_two_removals"),
     "not a batch rule": (_rule(allow_retraction=True, is_batch=False), "sdk_removal_needs_batch"),
-    "map key not on the trigger": (_rule(trigger_table=BARE, allow_replace_map=True),
-                                   "sdk_map_key_not_on_trigger"),
+    # ⚰️ sdk_map_key_not_on_trigger (소유자 10-24 «그냥 제약 빼») - it loads now
+    "map key not on the trigger": (_rule(trigger_table=BARE, allow_replace_map=True), None),
     "a clean retraction": (_rule(allow_retraction=True), None),
     "a clean replacement": (_rule(allow_replace_map=True), None),
 }
@@ -319,3 +327,17 @@ def test_of_three_jobs_the_unread_one_keeps_its_old_cells_and_the_two_are_retrac
     _run(db, _rule("sdkm_build_unread", allow_retraction=True), path)
 
     assert _left(db) == [("J-A", "c0"), ("J-A", "c1"), ("J-C", "c0"), ("J-C", "c1"), ("J-C", "c2")]
+
+
+
+def test_a_map_key_the_mapper_makes_replaces_the_maps_it_wrote():
+    """소유자 10-24 «체인 내부에서 맵 키 생성할 수도 있잖아» · «그냥 제약 빼»: the trigger table carries no `job`; the
+    mapper makes it from `lot`. The rule runs, each map the result wrote is replaced whole, and a row that produced
+    nothing names no map (its old rows are left as they are)."""
+    rule = _rule("sdkm_build_from_lot", trigger_table=BARE, allow_replace_map=True)
+    payloads = [{"row_id": tk, "data": {"tk": {"value": tk}, "lot": {"value": lot}}}
+                for tk, lot in (("T1", "A"), ("T2", "B"), ("T3", "none"))]
+    envelope = mapper_sdk.MAPPER_REGISTRY["sdkm_build_from_lot"](_db(), payloads, rule=rule)
+    got = sorted((batch["scope"]["job"], len(batch["updates"])) for batch in envelope["batches"])
+    assert all(batch["replace_map"] is True for batch in envelope["batches"])
+    assert got == [("J-A", 1), ("J-B", 1)], got

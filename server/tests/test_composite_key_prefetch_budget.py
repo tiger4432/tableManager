@@ -31,7 +31,7 @@ TWO THINGS THIS DELIBERATELY DOES NOT FIX, pinned so the numbers are executable:
     `_get_or_create_row` does not read that proof. That includes a `replace_map`
     push, which purges first and therefore inserts.
   * The collision-merge conflict row is still resolved mid-batch and still outside
-    the prefetched set, which is what keeps `prefetched_row_ids` load-bearing.
+    the cells read, which is what keeps `LayersRead` load-bearing.
 """
 
 import pytest
@@ -134,7 +134,7 @@ def test_an_update_batch_resolves_every_row_in_one_select(key_db):
 
 def test_the_metadata_prefetch_now_covers_those_rows_too(key_db):
     """The larger half of the saving, and it is a consequence rather than a second
-    change: `prefetched_row_ids` is built from the rows the prefetch resolved, so
+    change: `LayersRead` is built from the rows the prefetch resolved, so
     while these rows were invisible to it, EVERY cell of every row also paid two
     metadata SELECTs to be told it had none. Five columns x 200 rows x 2."""
     crud.apply_batch_updates(key_db, DECLARED, _batch(_cells("L0")))
@@ -461,7 +461,7 @@ def test_collision_merge_still_reads_the_conflict_rows_metadata(key_db):
     row with its own query and merges onto it.
 
     That conflict row is resolved AFTER the prefetch filter was built - its key was
-    never in the payload - so it is outside `prefetched_row_ids` and its stored
+    never in the payload - so it is outside `LayersRead` and its stored
     metadata must still be read. This is the case that keeps P2's guard load-bearing
     now that the ordinary composite payload is prefetched, and it is the collision
     path P6 could have broken.

@@ -56,7 +56,8 @@ class _Counts:
         self.view_builds = 0
         self.reference_resolutions = 0
         self.maps: set = set()
-        self.started = time.monotonic()
+        # perf_counter, every layer of the line: monotonic ticks 15.6 ms on Windows - each step read ±16 ms (총괄 10-24)
+        self.started = time.perf_counter()
         self.phases: dict = {}
         self.stages: dict = {}
         self.write_steps: dict = {}
@@ -67,7 +68,7 @@ class _Counts:
             "view_builds": self.view_builds,
             "reference_resolutions": self.reference_resolutions,
             "distinct_maps": len(self.maps),
-            "wall_seconds": round(time.monotonic() - self.started, 3),
+            "wall_seconds": round(time.perf_counter() - self.started, 3),
             "phases": {name: round(seconds, 3)
                        for name, seconds in sorted(self.phases.items())},
             "stages": {name: round(seconds, 3)
@@ -113,11 +114,11 @@ def phase(name: str):
     if counts is None:
         yield
         return
-    started = time.monotonic()
+    started = time.perf_counter()
     try:
         yield
     finally:
-        counts.phases[name] = counts.phases.get(name, 0.0) + (time.monotonic() - started)
+        counts.phases[name] = counts.phases.get(name, 0.0) + (time.perf_counter() - started)
 
 
 @contextlib.contextmanager
@@ -152,11 +153,11 @@ def stage(name: str, said: str = None):
     check = _INTERRUPT.get()
     if check is not None:
         check()
-    started = time.monotonic()
+    started = time.perf_counter()
     try:
         yield
     finally:
-        counts.stages[name] = counts.stages.get(name, 0.0) + (time.monotonic() - started)
+        counts.stages[name] = counts.stages.get(name, 0.0) + (time.perf_counter() - started)
 
 
 @contextlib.contextmanager
@@ -184,7 +185,7 @@ def write_step(name: str, unit: str = "rows"):
     if counts is None:
         yield _not_counting
         return
-    started = time.monotonic()
+    started = time.perf_counter()
 
     def count(n):
         tally = counts.write_counts.setdefault(name, [0, unit])
@@ -193,7 +194,7 @@ def write_step(name: str, unit: str = "rows"):
         yield count
     finally:
         counts.write_steps[name] = counts.write_steps.get(name, 0.0) + (
-            time.monotonic() - started)
+            time.perf_counter() - started)
 
 
 def _not_counting(n):
