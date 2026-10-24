@@ -5296,32 +5296,48 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     }
 
 
-def failures_by_cause(db):
-    """One line per (rules, failure sentence) over every failed row (owner 10-24 «똑같은 에러면 접든가», 총괄
-    ef69603d6): rules · cause · count · first · last, the most recent first. One GROUP BY on the quarantine record's
-    rules and `cause` (a row from before the cause was written: its reason), folded once more by `failure_cause`."""
+def _cause_columns(db):
+    """(the quarantine record's rules as text, the key its failure is grouped by) - the record's `cause`; a row from
+    before the cause was written: its reason's last line on PostgreSQL (one group a sentence, not one a row - each
+    reason names its own rows), its whole reason elsewhere."""
     from sqlalchemy import func
 
     outbox = models.DatabaseOutbox
-    rules = outbox.payload[("error_log", "rules")].as_string()
-    said = func.coalesce(outbox.payload[("error_log", "cause")].as_string(),
-                         outbox.payload[("error_log", "reason")].as_string())
+    reason = outbox.payload[("error_log", "reason")].as_string()
+    if db.get_bind().dialect.name == "postgresql":
+        reason = func.regexp_replace(func.rtrim(reason, " \n\r\t"), r"^.*\n", "")
+    return (outbox.payload[("error_log", "rules")].as_string(),
+            func.coalesce(outbox.payload[("error_log", "cause")].as_string(), reason))
+
+
+def failures_by_cause(db, keep_keys=False):
+    """One line per (rules, failure sentence) over every failed row (owner 10-24 «똑같은 에러면 접든가», 총괄
+    ef69603d6): rules · cause · count · first · last, the most recent first. One GROUP BY (`_cause_columns`), each group
+    folded once more by `failure_cause` of one of its reasons. `keep_keys`: each line also carries the SQL keys it
+    folded - what the list filters one line's rows by."""
+    from sqlalchemy import func
+
+    outbox = models.DatabaseOutbox
+    rules, said = _cause_columns(db)
+    sample = func.max(outbox.payload[("error_log", "reason")].as_string())
     folded = {}
-    for rule_text, text, n, first, last in (db.query(rules, said, func.count(), func.min(outbox.processed_at),
-                                                     func.max(outbox.processed_at))
-                                            .filter(event_constants.failure_clause(outbox)).group_by(rules, said)):
+    for rule_text, key, cause, reason, n, first, last in (
+            db.query(rules, said, func.max(outbox.payload[("error_log", "cause")].as_string()), sample, func.count(),
+                     func.min(outbox.processed_at), func.max(outbox.processed_at))
+            .filter(event_constants.failure_clause(outbox)).group_by(rules, said)):
         try:
             names = json.loads(rule_text) if rule_text else None
         except ValueError:
             names = [rule_text]
-        key = (tuple(names or ()), event_constants.failure_cause(text))
-        line = folded.setdefault(key, [0, first, last])
+        line = folded.setdefault((tuple(names or ()), cause or event_constants.failure_cause(reason)),
+                                 [0, first, last, []])
         line[0] += int(n)
         line[1] = min(t for t in (line[1], first) if t is not None) if (line[1] or first) else None
         line[2] = max(t for t in (line[2], last) if t is not None) if (line[2] or last) else None
-    out = [{"rules": list(names), "cause": cause, "count": n, "first_at": to_local_str(first) if first else None,
-            "last_at": to_local_str(last) if last else None}
-           for (names, cause), (n, first, last) in folded.items()]
+        line[3].append((rule_text, key))
+    out = [dict({"rules": list(names), "cause": cause, "count": n, "first_at": to_local_str(first) if first else None,
+                 "last_at": to_local_str(last) if last else None}, **({"keys": keys} if keep_keys else {}))
+           for (names, cause), (n, first, last, keys) in folded.items()]
     out.sort(key=lambda line: line["last_at"] or "", reverse=True)
     return out
 
@@ -5329,11 +5345,13 @@ def failures_by_cause(db):
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
                              table: str = None, event_type: str = None, day: str = None,
+                             cause: str = None, rules: str = None,
                              db: Session = Depends(get_db)):
-    """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
+    """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다.
+    `cause` (+ `rules`, comma-joined): one `by_cause` line's rows (총괄 06b1fd297 follow-up)."""
     from zoneinfo import ZoneInfo
 
-    from sqlalchemy import func, literal
+    from sqlalchemy import and_, func, literal, or_
 
     # The day is the VIEWER's day (총괄 eca1f36b2): `tz` is the screen's zone name. A missing
     # or unreadable one cuts UTC days, and `day_zone` says which zone cut them.
@@ -5355,6 +5373,12 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
         query = query.filter(outbox.event_type == event_type)
     if not crud.is_blank_value(day):
         query = query.filter(day_of == day)
+    if not crud.is_blank_value(cause):
+        keys = [key for line in failures_by_cause(db, keep_keys=True) if line["cause"] == cause
+                and (crud.is_blank_value(rules) or ",".join(line["rules"]) == rules) for key in line["keys"]]
+        rule_column, key_column = _cause_columns(db)
+        query = query.filter(or_(*[and_(rule_column.is_(None) if rule is None else rule_column == rule, key_column == key)
+                                   for rule, key in keys]) if keys else literal(False))
     # 🔴 GROUPED IN SQL, A PAGE AT A TIME (owner 10-24 «묶음이 100만개», 총괄 ef69603d6): every failed row with its
     #    payload was loaded to group them here. One GROUP BY by the transaction (a row without one is its own group),
     #    newest group first; only the page's groups' rows are read.
