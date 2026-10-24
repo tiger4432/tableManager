@@ -34,7 +34,9 @@
 >          짧은 목록에서 이름이 다른 칸은 그 역할에 "rename": {"<wafer.key 칸>": "<그 표 칸>"}
 >          WAFER 처럼 대소문자만 다른 그 표의 키 칸은 그대로 wafer 로 읽음
 > 볼 곳    리포트 파일의 그림 칸 -> 그림이 나오면 고쳐진 것
-> 아직 «No image of an occurred defect»  -> 그림 표 wafer 목록의 이름이 wafer.key 와 다름. rename 을 적기
+> 아직 «No image of an occurred defect - N image row(s) of <표> … (matched by …); their kinds: …; defects that occurred: …»  (🆕 619e94100 부터 이유가 붙음)
+>          image row(s) 0 -> 그 웨이퍼의 그림 행을 못 찾음: matched by 의 «키=그 표 칸» 을 보고 rename 고치기 (또는 그림 표에 그 웨이퍼 행이 없음)
+>          rows 는 있는데 kinds 와 defects 가 안 겹침 -> images.match 에 {요약 항목: [그림 kind]} 을 적기
 > 끄기    없음
 > ```
 
