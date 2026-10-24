@@ -249,10 +249,9 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
                       why=str(said.get("why") or "").strip() or None)
         if refused is None:
             seen[record["call"]] = step
-            if said["call"] in report_shape.TABLE_FILLS:
-                tables[said["call"]] = answer["html"]
-                drawn = report.__dict__.setdefault("drawn", {})     # its args and the groups it was drawn with
-                drawn[said["call"]] = (said.get("args") or {}, tuple(report.groups))
+            # the model's reads are its own - the file's tables are the product's, drawn after the loop with every
+            # group (owner 10-24 «컨디션도 안 나와 · 이상한 아이템 헤더로 들어가 있고»: a yield_by by a condition
+            # the model read became the file's table)
             previous = answer["context"].splitlines()
             reads.append((step, record["call"], previous))
         else:
@@ -301,23 +300,6 @@ def _product_reads(report, spec, tables, reads, steps, clock):
         steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product compare()",
                       "seconds": clock() - began, "refused": refused, "summary": lines[0][:200] if lines else "",
                       "read": lines[1:]})
-    # a table the model drew before it picked the compare wafers is drawn again with them (owner 10-24 «wf pick 이라고
-    # 있는데 표에 없음») - the same args, every group now read
-    for call, (args, groups) in list(report.__dict__.get("drawn", {}).items()):
-        if call in tables and tuple(report.groups) != groups:
-            began = clock()
-            try:
-                answer, refused = getattr(report, call)(**args), None
-            except report_reads.ReadRefused as said:
-                logger.warning("[report] %s() again refused: %s", call, said, exc_info=said)
-                answer, refused = None, str(said)
-            lines = answer["context"].splitlines() if answer else ["refused: " + refused]
-            if answer:
-                tables[call] = answer["html"]
-                reads.append((len(steps) + 1, "product %s() again" % call, lines))
-            steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product %s() again" % call,
-                          "seconds": clock() - began, "refused": refused, "summary": (lines[0] if lines else "")[:200],
-                          "read": lines[1:]})
     for call in calls:
         began = clock()
         try:

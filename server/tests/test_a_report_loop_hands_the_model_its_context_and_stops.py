@@ -90,7 +90,8 @@ def test_each_step_hands_the_context_in_its_order_and_done_ends_it():
     assert report_loop.RULES in second and report_loop.ABOUT["yield_by"] in second, "blank cells: the product's text"
     assert "row 50" not in second, "[6] is the read's summary - its whole table goes to the HTML only"
     assert out["tables"]["yield_by"]["rows"][50] == "row 50 | 1.0% (1/100)"
-    assert [s["call"] for s in out["steps"]] == ['yield_by({"wafers": "all"})', "done", "write"]
+    # the file's table is the product's, drawn after the loop - the model's read is its own (owner 10-24)
+    assert [s["call"] for s in out["steps"]] == ['yield_by({"wafers": "all"})', "done", "product yield_by()", "write"]
 
 
 def test_earlier_steps_are_a_line_each():
@@ -174,7 +175,7 @@ def test_the_write_call_hands_every_table_read_and_takes_the_texts():
         assert mark in write, mark
     assert "Select: pick split A" not in write and "TREND-ABOUT" not in write, "no reads list, no select"
     assert (out["state"], out["texts"]) == ("done", {"summary": "Particle rose to 9%."})
-    assert out["steps"][-1]["call"] == "write" and out["steps"][-1]["summary"] == "1 text(s) from 3 table(s) read"
+    assert out["steps"][-1]["call"] == "write" and out["steps"][-1]["summary"] == "1 text(s) from 4 table(s) read"
 
 
 @pytest.mark.parametrize("loop, calls, reason", [({"steps": 2, "seconds": 300}, 2, "step cap 2"),
