@@ -153,8 +153,8 @@ def test_candidates_are_the_recent_evaluations_folded_newest_first(report, db_se
     from chain import report_reads
 
     assert report.candidates()["context"].splitlines() == [
-        "recent evaluations, newest first (E1 left out):", "E3 · 2026-09-25 · 1 wafers · split A 1",
-        "E2 · 2026-09-20 · 2 wafers · split A 1, B 1", "E0 · 2026-09-01 · 1 wafers · split A 1"]
+        "recent evaluations, newest first (E1 left out):", "E3 · 2026-09-25 · 1 rows · split A 1",
+        "E2 · 2026-09-20 · 2 rows · split A 1, B 1", "E0 · 2026-09-01 · 1 rows · split A 1"]
     spec = json.loads(json.dumps(SPEC))
     spec["control"]["recent"] = {"days": 60, "evaluations": 2}
     both = report_reads.Report(db_session, spec, "E1").candidates()["context"].splitlines()

@@ -529,6 +529,8 @@ def poll_pending_retries():
     reading_stamps = reread.load_reading_stamps()
     from ingestion import settings as ingestion_settings
     sources_seen = ingestion_settings.read_ingestion_settings().get("external_sources")
+    from database import crud
+    tables_seen = set(crud.TABLE_CONFIG)
 
     while True:
         # [B1/B2] Liveness beat. This loop does real work every ~3 s (a database
@@ -599,6 +601,16 @@ def poll_pending_retries():
                     workspace_watcher.refresh_external_sources()
                 except Exception as refresh_error:                     # noqa: BLE001 - the retries below go on
                     logger.warning("[Watcher] the external sources were not read again: %s", told(refresh_error))
+
+            # table_config.json saved with a new table: its raws/ is made and watched, no Reload (lead 10-24) - the
+            # names this process holds, which this process's config watcher has just read
+            tables_now = set(crud.TABLE_CONFIG)
+            if tables_now != tables_seen and workspace_watcher is not None:
+                tables_seen = tables_now
+                try:
+                    workspace_watcher.sync_new_workspaces()
+                except Exception as sync_error:                        # noqa: BLE001 - the retries below go on
+                    logger.warning("[Watcher] the tables' raws/ were not looked at again: %s", told(sync_error))
             pending_logs = pending_retries(db)
 
             for log in pending_logs:

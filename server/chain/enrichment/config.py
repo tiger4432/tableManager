@@ -1013,7 +1013,7 @@ def chain_rules_for(rule: dict) -> list:
     # The cell that lets ONE loader answer per-file counts (판정 293-b). The graph used
     # to keep a second reader so it could tell written rules from synthesized ones;
     # that reader was the 「같은 기능 두 경로」, and this cell is what replaces it.
-    origin = "synthesized:" + rule["name"]
+    origin = rule_shape.SYNTHESIZED + rule["name"]
     chain_rules.append({
         "name": dedup_name,
         "trigger_table": rule["source_table"],

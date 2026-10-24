@@ -146,7 +146,7 @@ def test_what_cannot_be_called_is_told_back_and_the_loop_goes_on():
     refused = [s["refused"] for s in out["steps"]]
     assert refused[1] == "the same call as step 1 - its result is above; call another read or answer done"
     assert refused[2].startswith("'sql' is not a read - one of conditions")
-    assert refused[3] == "colour is not an argument of yield_by - one of wafers, by"
+    assert refused[3] == "colour is not an argument of yield_by - one of wafers, by, rows"
     assert "refused: the same call as step 1" in model.prompts[2]
     assert out["reason"] == "step cap 4"
 

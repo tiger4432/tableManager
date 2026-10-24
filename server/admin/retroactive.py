@@ -2125,7 +2125,8 @@ OPERATIONS = {
         "next": ["chain_replay of each rule that reads this rule's table, one by one - a replay wakes no rule (owner 09-26)",
                  "a report left <wafer>.html.send_failed in the reports folder: chain_replay of the report rule with "
                  "that wafer's report-table row - the file is made again and sent again"],
-        "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)"),
+        "params": [_p("rule", help="chain rule name (GET /admin/chain/rules), or the declared name of a decide - "
+                                   "its enrichment_dedup half"),
                    _p("business_keys", required=False, kind="csv",
                       help="replay only these rows, by business_key_val; omit for the "
                            "whole rule. This selects WHICH rows - `limit` still bounds "

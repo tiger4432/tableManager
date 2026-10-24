@@ -287,7 +287,22 @@ const galleryAnswer = (u) => {
 const CUT_RUN = { on: false, entry: { run_id: 'cutrun-0001', op: 'chain_replay', rule: 'dt_log_to_dt_map', state: 'cancelled',
   pages: { done: 12, staged: 20, rows_done: 12000 }, cursor_end: 'LOT-2026-10-23-000123|WAFER-07|DIE-0042', total_rows: 40000,
   cut_at: '2026-10-23 09:00:00', resume: { run_id: 'cutrun-0001' }, cancel: { key: 'cutrun-0001' } } };
+// The file page's read progress (owner 10-23 «몇 개 중 몇 개»): while on, /tables carries per table and source what the
+// checklist counted (A 23c35a768) - one source not done, one long external path, one done - counted 12 s before.
+const FILE_SOURCES = { on: false };
+const fileSourcesAnswer = () => {
+  const a = ANSWERS['/admin/file-ingestion/tables'];
+  const b = bodyOf(a);
+  const sources = { bonding_log: [{ source: 'raws', total: 4488, read: 4483, left: 5 },
+    { source: '\\\\nas-fab-07\\equipment_exports\\bonding\\line_03\\recipe_archive_2026\\void_inspection', total: 12000, read: 3400, left: 8600,
+    left_by_status: { PENDING_RETRY: 40, FAILED: 3 }, sweep: { state: 'rested', age_seconds: 38, seconds: 2.4, looked: 12000, already_read: 11997,
+      dispatched: 3, why: { new: 2, changed: 1 } } }],
+  bonding_map: [{ source: 'raws', total: 3216, read: 3216, left: 0 }] };
+  return { ...a, body: { ...b, data: b.data.map((t) => ({ ...t, sources: sources[t.table_name] || [] })),
+    progress: { counting: false, failed: null, count_seconds: 0.4, counted_at: new Date(Date.now() - 12000).toISOString() } } };
+};
 const answerOf = (u) => {
+  if (FILE_SOURCES.on && u.pathname === '/admin/file-ingestion/tables') return fileSourcesAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
@@ -732,6 +747,15 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rul
   const held = document.querySelector('select[data-value="derive.join.take[1].fn"]').value;
   return held === 'unique_concat' ? null : 'take[1].fn holds ' + held;
 })()` });
+// From the chips (owner 10-23, lead ㄴ): «+ record» opens a take entry as a record - the list then rows, its picker record.
+CELLS.push({ entry: 'admin.html', after: 'Chain, + record from the take chips', rule: 'contents', at: 'derive.join.take', expr: `(() => {
+  let held = null;
+  try { held = JSON.parse(document.querySelector('.chain-rule-raw').value); } catch (e) { return 'the raw text is not JSON'; }
+  const take = JSON.stringify((((held || {}).derive || {}).join || {}).take);
+  if (take !== '["value",{}]') return 'take holds ' + take;
+  const p = document.querySelector('select[data-action="edit-shape-branch"][data-value="derive.join.take[1]"]');
+  return p && p.value === 'record' ? null : 'the row picker says ' + (p ? p.value : 'nothing');
+})()` });
 // The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
@@ -745,6 +769,20 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
   if (!why.startsWith('Resumes from page 13 · after LOT-2026-10-23-000123|WAFER-07|DIE-0042 · 12000 of ')) return 'it says ' + why;
   const go = line.querySelector('.chain-queue-resume');
   return go && go.getClientRects().length && line.querySelector('.running-x') ? null : 'no Resume beside its ×';
+})()` });
+// owner 10-23: the file page's read progress - a row per table and source «K / N read · M left», nothing left dimmed,
+// when it was counted in its head.
+CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule: 'read progress', at: 'fi-progress', expr: `(() => {
+  const rows = [...document.querySelectorAll('#fi-progress tr[data-table]')];
+  const files = (tr) => (tr.cells[2] || {}).textContent || '';
+  if (rows.length !== 3) return rows.length + ' rows';
+  if (files(rows[0]) !== '4,483 / 4,488 read · 5 left') return 'the first row says «' + files(rows[0]) + '»';
+  if (!rows[2].classList.contains('fi-dim') || rows[0].classList.contains('fi-dim')) return 'the done source not dimmed alone';
+  const buttons = [...document.querySelectorAll('#fi-progress button')];
+  if (buttons.length !== 1 || !rows[1].contains(buttons[0])) return buttons.length + ' Cancel buttons, not one on the external source';
+  if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\)$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
+  const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
+  return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
 })()` });
 // The row checkboxes and the header's select-all at the grid's left edge with the first data column hidden (owner 10-22).
 CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'select all at the left', at: 'ag-header', expr: `(() => {
@@ -1769,6 +1807,18 @@ const openAgain = async (c, log) => {
   await evaluate(c, `(${screensLib})(${TOL})`);
 };
 const DRIVE = {
+  // The read progress counted (owner 10-23): the page's next beat reads /tables with its sources.
+  'file_ingestion.html': [
+    ['Read progress counted', async (c) => {
+      FILE_SOURCES.on = true;
+      await until(c, "document.querySelectorAll('#fi-progress tr[data-table]').length === 3", 15000);
+    }],
+    ['Read progress, the fixture again', async (c) => {
+      FILE_SOURCES.on = false;
+      await sleep(300);
+      return c;
+    }],
+  ],
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
       await choose(c, '.wk-select', [0, "x.textContent.trim() === 'wafer'"]);
@@ -2379,6 +2429,8 @@ const DRIVE = {
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
     ['Chain, a join whose take holds a record', async (c) => {
+      // the rule as recorded: a draft is kept across reloads (C-106 ④), and the states below leave one at the size before
+      await evaluate(c, "Object.keys(localStorage).filter((k) => /^assy\\.draft\\..*\\.take_record_probe$/.test(k)).forEach((k) => localStorage.removeItem(k)); true");
       await evaluate(c, "location.hash = '#chain'; true");
       await until(c, "!!document.querySelector('select.chain-rule-picker')");
       await choose(c, 'select.chain-rule-picker', [0, "x.value === 'take_record_probe'"]);
@@ -2400,6 +2452,26 @@ const DRIVE = {
       await until(c, "!!document.querySelector('select[data-action=\"edit-shape-branch\"][data-value=\"derive.join.take[2]\"]')");
       await choose(c, 'select[data-action="edit-shape-branch"][data-value="derive.join.take[2]"]', [0, "x.value === 'record'"]);
       await until(c, "!!document.querySelector('[data-value=\"derive.join.take[2].fn\"]')");
+      await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
+        if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
+    }],
+    // From the chips (owner 10-23, lead ㄴ): the rule open (a unified join) given a take of one name in its text - a chip
+    // list; then «+ record». A new rule is not used: its recorded answer is an older server's, with no unified grammar;
+    // and that recording's exclude member is a word, so «+ values» is met in declaration_form X6 on today's skeleton.
+    ['Chain, + record from the take chips', async (c) => {
+      await evaluate(c, `(() => { const raw = document.querySelector('.chain-rule-raw'); if (!raw) return false;
+        const doc = JSON.parse(raw.value); doc.derive.join.take = ['value'];
+        raw.value = JSON.stringify(doc, null, 2); raw.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      const unfold = (at) => evaluate(c, `(() => {
+        const fold = document.querySelector('button[data-action="toggle-field"][data-value="${at}"]');
+        if (fold && /folded/.test(fold.className)) fold.click(); return Boolean(fold); })()`);
+      await unfold('derive.join.take');
+      const branch = (at, key) => evaluate(c, `(() => {
+        const b = document.querySelector('button[data-action="form-append"][data-value="${at}"][data-branch="${key}"]');
+        if (b) b.click(); return Boolean(b); })()`);
+      await until(c, "!!document.querySelector('button[data-action=\"form-append\"][data-value=\"derive.join.take\"][data-branch=\"record\"]')");
+      await branch('derive.join.take', 'record');
+      await until(c, "!!document.querySelector('[data-value=\"derive.join.take[1].fn\"]')");
       await evaluate(c, `(() => { const at = document.querySelector('[data-path="derive.join.take"]');
         if (at) at.scrollIntoView({ block: 'center' }); return true; })()`);
     }],
@@ -2508,6 +2580,8 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',
+    file: 'src/file_ingestion/parts.js', edits: [["el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')"]] },
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },
@@ -2587,6 +2661,9 @@ const MUTANTS = [
         ':where(.reason-lines) { display: block;'],
       ['  overflow: hidden; white-space: normal; overflow-wrap: anywhere; min-width: 0; }',
         '  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }']] },
+  { name: 'the chips carry no «+ <branch>» - a take record only by editing the file', entry: 'admin.html',
+    rule: 'contents', at: 'derive.join.take', file: 'src/ontology_explorer_view.js',
+    edits: [["  if (item && item.pick === 'shape') {", '  if (false) {']] },
   { name: 'the admin queue why held to one line again', entry: 'admin.html', rule: 'reason whole', at: 'fail-summary__reason',
     file: 'admin.html', edits: [['    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }',
       '    .chain-queue-table .chain-queue-failure { overflow-wrap: break-word; }\n    .chain-queue-table .queue-line-state-why { -webkit-line-clamp: 1; line-clamp: 1; }']] },

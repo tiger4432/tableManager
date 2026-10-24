@@ -1,5 +1,132 @@
 # 지금 돌리면 되는 것
 
+> ## [10-23] **파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수 (소유자 「몇 개 중 몇 개 읽고 있는지」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 File Ingestion 탭 -> 맨 위 READ PROGRESS
+> 뜻      «4,483 / 4,488 read · 5 left»  = 그 저장소에서 체크리스트가 센 파일 중 읽은 것 / 전체 · 남은 것
+>          전체에는 훑기가 아직 못 닿은 파일이 안 들어감 -> 외부 저장소는 훑을수록 전체가 늘 수 있음
+>          Last sweep «—»  = raws (훑기 없음) · «unavailable» = 그 저장소를 못 읽음
+>          «count failed» (오른쪽 위)  = 세기 응답이 실패 -> 화면 위 문장이 서버 사유
+>          Retry 가 꺼지고 «Not read yet»  = 그 파일은 아직 한 번도 안 읽힘 (기다리는 중)
+> 되돌리기  git revert d7534ad9c (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-24] **decide 를 적은 이름으로 리플레이한다 — R1 의 «not found» 거절** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 의 rule 에 decide 선언에 적은 이름 그대로(enrichment_dedup: 없이)
+> 뜻      실행이 잡히고 파생 표에 행이 생김 -> 이 착지(그 선언의 dedup 반쪽이 돎)
+>          «chain rule '<이름>' not found or disabled; available: …» 에 적은 이름이 보임 -> 서버가 옛 코드(재기동 전)
+>          auto_confirm 까지 다시 하려면 R1 을 한 번 더: enrichment_auto_confirm:<이름> (리플레이는 다른 규칙을 안 깨움)
+> 끄기    없음. enrichment_dedup:<이름> 으로 적던 것도 그대로 됨
+> 재기동 뒤  chain_worker.log 에 enrichment_dedup:<이름> 의 처리 줄
+> ```
+>
+> ## [10-24] **표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 어드민에서 표에 칸 하나 저장 -> 곧바로 그 칸을 쓰는 체인 규칙 저장
+> 뜻      규칙이 저장됨 -> 이 착지
+>          규칙이 «모르는 칸»으로 거절 -> 서버가 옛 코드(재기동 전)
+>          표 저장이 1 초를 넘김 -> 표 수가 많아 스키마 맞추기가 길어진 것(표 100 개에서 0.8 초) - 수를 총괄에게
+> 끄기    없음
+> 재기동 뒤  api 로그, 저장마다 «[Config] table_config.json changed - read again in this process» 한 줄
+> ```
+>
+> ## [10-24] **표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 어드민에서 표 하나 저장(새 이름) -> 몇 초 뒤 ingestion_workspace/<표>/raws/ 확인 -> CSV 하나
+> 뜻      raws/ 가 몇 초 안에 생기고 CSV 가 적재됨 -> 이 착지
+>          raws/ 가 안 생김 -> 와처가 옛 코드(재기동 전) 이거나 watcher.log 의 «the tables' raws/ were not looked at again» 줄
+>          raws/ 는 생겼는데 안 읽힘 -> 이 착지 밖(표의 물리 테이블 · 파일 헤더) - 파일 카드의 사유를 본다
+> 끄기    없음. 예전처럼 Reload 버튼도 그대로 됨
+> 재기동 뒤  watcher.log «Auto-provisioned ingestion workspace structure for table(s): ['<표>']» · «Runtime workspace sync: 1 new raws/ folder(s) now being watched.»
+> ```
+>
+> ## [10-24] **AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름 DATE · WAFER · LEG · 표는 창 폭** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> (단 이름을 바꿀 때) 리포트 규칙 labels 에 "columns": {"time": "DATE", "wafer": "WAFER", "leg": "LEG"}
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      파일이 layout 차례로 위에서 아래(요약 → 표 → 그림 → 상세) -> 이 착지. 좌우로 갈림 -> 착지 전 파일
+>          표 머리 단마다 왼쪽 칸에 단 이름(안 적으면 칸 이름 · time 은 Date). 표가 창보다 넓으면 표 안에서만 가로로 넘김
+>          저장 줄 «derive.report.labels.item is not a word the report says …» -> 은퇴한 라벨 item, 지우면 됨(규칙은 섬)
+> 끄기    없음(배치는 코드). 단 이름은 labels.columns 를 지우면 기본
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ## [10-23] **AI 리포트 키 칸 — keys 한 곳(unit · latest · fold): 가장 늦은 계측만 · 칩 하나 그림 한 장(가장 작은 층)** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙에
+>            "wafer": {"table": "wafer_summary", "key": ["wafer", "tkout_time", "leg"]},
+>            "keys": {"wafer": ["unit"], "tkout_time": ["latest"], "leg": [], "x": [], "y": [], "layer": ["fold"], "extracted_at": ["fold"]}
+>            역할마다 "wafer" = 그 표가 가진 키 칸 이름 (요약 · 수율 · 합성 [wafer, tkout_time, leg] · 조건 [wafer, leg] · 이미지 + x · y · extracted_at · layer)
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      두 번 계측된 웨이퍼의 «Left out - two rows …» 줄이 사라짐 -> 가장 늦은 계측만 읽음
+>          디펙마다 그림이 칩 하나에 한 장(가장 작은 층) -> fold 가 듦. 같은 칩의 층 여러 장 -> keys 에 fold 가 없음
+>          «… .wafer '<칸>' is not a key column …» -> 그 표의 wafer 목록에 keys · wafer.key 에 없는 이름
+>          «derive.report.keys latest needs a unit column …» -> keys 에 unit 이 없음
+>          늦은 계측이 들어와도 리포트는 그대로 -> R1 리플레이로 다시 만듦(소유자 10-23)
+> 끄기    keys 를 지우고 역할 목록을 옛 키 칸만으로 -> 옛 모양(계측 둘이면 Left out)
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ---
+>
+> ## [10-23] **체인 규칙 창에서 조인 take 항목을 기록으로 · exclude 값 칸 (소유자 「from, to → take 로 가는 길이 없음」 · 「폼에서 값 칸으로 가는 법이 없는데」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          체인 규칙 창 -> derive join -> take 칩 끝 «+ record» -> 새 줄의 from · into · fn
+>          on.exclude · on.require 칩 끝 «+ values» -> 칸 이름 -> «+ column» -> 값
+> 뜻      take 칩에 친 칸 이름이 그대로 들어감 (전엔 "" 가 들어갔음)
+>          fn 고르개 = 서버가 준 목록. 내장 넷만 보이면 server/mappers/join_fn 에 .py 가 없는 것 (.sample 은 안 셈)
+>          저장 거절 «… or «<file>.<function>» of a file in …join_fn»  -> 그 파일 · 함수가 없음
+>          저장 거절 «from is a list - only a function … takes one»  -> 칸 목록 from 은 함수 fn 하고만
+> 되돌리기  git revert b7ffcb3c0 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-23] **AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg, 행 조건 · 수율 · 불량 (소유자 그림) · 후보 목록 표 은퇴** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   (먼저) 리포트 규칙 layout 에서 {"kind": "table", "fill": "candidates"} 를 뺌 — 남아 있으면 규칙 로드 거절
+>          git pull -> 런처 재기동 -> 규칙에 "columns": ["time", "wafer", "leg"] · "item_sep": "." · summary.label · info[].label · info[].choose
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      파일 오른쪽 표의 열 = 리포트 웨이퍼 + 모델이 고른 대조, 날짜 오름차순. 열이 하나뿐 -> 모델이 compare 를 안 부름(대조 없음)
+>          «derive.report.layout[n].fill 'candidates' - a table is one of yield_by · pareto · trend» -> layout 에 candidates 칸이 남음
+>          «derive.report.columns lists the column heads …» -> columns 에 키 칸 아닌 이름 · 두 번 적은 이름
+>          «…label stands over the names - derive.report.item_sep …» -> label 을 썼는데 item_sep 이 없음
+>          늦은 계측이 들어와도 리포트는 그대로 -> R1 리플레이로 다시 만듦(소유자 10-23)
+> 끄기    columns 를 지우면 옛 머리(묶음 › 키)
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · (배치는 10-24 세로로 되돌림) · (후보 표는 은퇴) · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 에 수율 decide 규칙 이름(로드된 이름 enrichment_dedup:<이름>) -> R1 에 리포트 규칙 이름
+>          수율: 칩 표에서 decide 하나가 수율 표([wafer, leg] · yield)에 씀 — aggregations
+>                {"yield": "Round(100 * Sum(If([<디펙 칸>] Is Null, 1, 0)) / Count(), 1)"}
+>          리포트 규칙: "info": [<조건 표 {item, value}>, {"table": "<수율 표>", "wafer": [...], "value": "yield"}]
+>                      layout 에 {"kind": "table", "fill": "candidates"}
+> 뜻      파일 머리 밑 «yield» 줄이 leg 마다 -> 수율 표가 읽힘. 줄이 없음 -> 수율 표가 비었거나 info 목록에 없음
+>          후보 표의 날짜 = 조건 표 date 의 한국 날(expression_time_zone). 하루 이르면 -> 이 착지 전 파일, R1 다시
+>          후보 = 웨이퍼 하나 · 날짜 하나(leg 중 가장 늦은 것) · Rows = 웨이퍼 표 행 수. 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 실림 -> 후보가 모자라면 control.recent.evaluations 숫자를 올림
+>          «bond_temp=(empty)» -> 조건 행은 있는데 값이 비었음(제품은 판정 안 함, 모델이 읽음)
+>          Evidence 의 걸음 줄 밑 들여 쓴 줄 = 그 걸음이 읽은 것. chain_worker.log [Report] 줄은 첫 줄만
+>          «derive.report.info[1].value 'x' is not a column of '<표>'» -> 수율 표 칸 이름이 다름, 저장 안 됨
+> 끄기    리포트 규칙 enabled false(기본) — R1 에 이름을 적을 때만 돎
+> 재기동 뒤  chain_worker.log 의 «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
 > ## [10-23] **피벗 보기에서 줄 더하기 · 지우기 · 맨 아래 붙여넣기 (소유자 「피벗 상태에서는 행 추가가 안 되네」)** — git pull · 화면 새로 고침
 >
 > ```

@@ -291,6 +291,9 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
             f"It holds a value that cannot be saved: {exc}") from exc
 
     backup = _atomic_write(path, merged)
+    from database import config_watcher
+
+    config_watcher.changed(path)                   # this process reads the table it saved now (lead 10-24)
     retypes = [retype.queue(table, *one) for one in held]
     return {"ok": True, "table": table, "base": file_fingerprint(path),
             "backup": backup, "tables": len(merged), "retypes": retypes,

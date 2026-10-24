@@ -90,7 +90,7 @@ href="file:///C:/Users/me/AppData/Local/Temp/msohtmlclip1/01/clip_themedata.thmx
 </html>
 """
 SPEC = {"layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}], "template": EXCEL}
-TABLE = {"groups": [("E1", ["W1", "W2"])],
+TABLE = {"groups": [("E1", ["W1", "W2"])], "heads": [["E1", "W1"], ["E1", "W2"]], "own": [True, True],
          "rows": [("particle", [{"text": "3.0% (3/100)"}, {"text": "5.0% (10/200)"}])]}
 EMBEDDED = {"particle": [{"wafer": "W1", "src": "data:image/png;base64,AAAA"}]}
 

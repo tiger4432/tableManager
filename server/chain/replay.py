@@ -171,12 +171,14 @@ def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> d
 
     named = rules is None
     rules = rules if rules is not None else load_rules()
-    rule = next((r for r in rules if r.get("name") == rule_name), None)
-    if rule is None and named:
-        rule = next((r for r in loaded_chain_rules()
-                     if r.get("name") == rule_name and rule_shape.is_switched_off(r)), None)
+    looked = rules + ([r for r in loaded_chain_rules() if rule_shape.is_switched_off(r)] if named else [])
+    # its own name, else the first rule the declaration of that name stands - a decide's dedup half; its confirm half
+    # is replayed by its own name, a replay's writes waking no rule (owner 09-26) (lead 10-24)
+    rule = (next((r for r in looked if r.get("name") == rule_name), None)
+            or next((r for r in looked if rule_shape.stood_for(r) == rule_name), None))
     if rule is None:
-        available = ", ".join(sorted(r.get("name", "?") for r in rules)) or "<none>"
+        available = ", ".join(sorted({r.get("name", "?") for r in rules}
+                                     | {rule_shape.stood_for(r) for r in rules} - {""})) or "<none>"
         raise ReplayRefused(f"chain rule '{rule_name}' not found or disabled; available: {available}")
     # ⛔ [S-242, narrowed by S-270] A COMPANION IS NOT A WHOLE-TABLE BACKFILL SUBJECT. The
     # declaration and its companion recompute the same answer from two sides, so replaying

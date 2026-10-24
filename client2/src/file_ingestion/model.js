@@ -16,11 +16,13 @@ export const WORDS = Object.freeze({
   groupBy: 'Group by', files: 'Files read', file: 'File', path: 'Path', copyPath: 'Copy path', copyFolder: 'Copy folder',
   readBy: 'Read by', source: 'Source', readAt: 'Read at', result: 'Result', whyFailed: 'Why it failed',
   retryFile: 'Retry this file', readAgain: 'Read again', showRows: 'Show its rows in the grid',
+  notReadYet: 'Not read yet - its read is waiting',
   readNowTitle: 'Read a file now', readNowPath: 'File path', check: 'Check', readNow: 'Read now', notRead: 'Not read',
   taken: 'the watcher takes it', readNowAsk: (path, table) => `Read ${path} now into ${table}?`,
   retryFailed: (n) => `Retry ${count(n)} failed`, retryAsk: (n, folder) => `Retry ${count(n)} failed file${n === 1 ? '' : 's'} under ${folder}?`, showMore: 'Show more', noReason: '(No reason)',
   readAll: 'Read all again', readAllAsk: (n, where) => `Read ${count(n)} file${n === 1 ? '' : 's'} of ${where} again?`,
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
+  progress: 'Read progress', noSources: 'No source counted yet', cancelReread: 'Cancel waiting re-reads',
   heads: ['File · folder', 'Status', 'Result', 'Read at', 'Took'],
   last: (at) => `last ${at}`, ok: (n) => `${n} ok`, failed: (n) => `${n} failed`, running: (n) => `${n} running`,
   waiting: (n) => `${count(n)} waiting`,
@@ -143,6 +145,57 @@ export function tableLines(tables, active = []) {
     running: count(running.get(t.table_name)), last: t.last_at ? localShort(t.last_at) : ABSENT,
     waiting: (t.by_status || {}).PENDING_RETRY || 0,
   }));
+}
+
+/** The checklist's progress (owner 10-23 «몇 개 중 몇 개 읽고 있는지»): a line per table and source, from /tables'
+ *  `sources` (A 23c35a768). `done` - nothing left. */
+export function sourceLines(tables) {
+  return (tables || []).flatMap((t) => (t.sources || []).map((s) => {
+    const waiting = numberOr((s.left_by_status || {}).PENDING_RETRY) || 0;
+    return { table: t.table_name, source: s.source, read: numberOr(s.read), total: numberOr(s.total), left: numberOr(s.left),
+      done: !numberOr(s.left), sweep: s.sweep || null,
+      // its waiting re-reads put back, under its root - an external source's (a sweep of its own) with some waiting
+      cancel: s.sweep && waiting > 0 ? s.source : null };
+  }));
+}
+
+/** An external source's last sweep (A 11618814f): «last sweep 40 s ago, took 3 s · looked 1,200 · sent 3 (new 2 ·
+ *  changed 1)»; sweeping now - «sweeping · …»; none (raws) - ABSENT. */
+export function sweepText(sweep) {
+  if (!sweep) return ABSENT;
+  if (sweep.state === 'unavailable') return 'unavailable';
+  const why = Object.entries(sweep.why || {}).filter(([, n]) => numberOr(n)).map(([word, n]) => `${word} ${count(n)}`);
+  const sent = `looked ${count(sweep.looked)} · sent ${count(sweep.dispatched)}${why.length ? ` (${why.join(' · ')})` : ''}`;
+  if (sweep.state === 'sweeping') return `sweeping · ${sent}`;
+  const age = numberOr(sweep.age_seconds);
+  const took = numberOr(sweep.seconds);
+  return `last sweep ${age === null ? ABSENT : `${Math.round(age)} s`} ago${took === null ? '' : `, took ${tookText(took)}`} · ${sent}`;
+}
+
+/** The progress table's columns, each one entry - a column more is an entry more. */
+export const PROGRESS_COLUMNS = Object.freeze([
+  { head: 'Table', cls: 'fi-mono cell-fit', cell: (s) => s.table },
+  { head: 'Source', cls: 'fi-mono fi-path', cell: (s) => s.source, wrap: true },
+  { head: 'Files', cls: 'fi-num cell-fit', cell: (s) => `${count(s.read)} / ${count(s.total)} read · ${count(s.left)} left`,
+    title: 'files a sweep has not reached yet are not in the total' },
+  { head: 'Last sweep', cls: 'fi-meta', cell: (s) => sweepText(s.sweep) },
+]);
+
+/** The ask before waiting re-reads are put back (A's preview: count · by_state): the server's line, the states they go
+ *  back to, and that the folder's other tables are put back too. */
+export function cancelAsk(preview) {
+  const back = Object.entries(preview.by_state || {}).map(([state, n]) => `${statusWord(state)} ${count(n)}`);
+  return [preview.message, back.length ? `Back to: ${back.join(' · ')}` : '', 'Other tables reading this folder have their waiting files put back too']
+    .filter(Boolean).join('\n');
+}
+
+/** When the progress was counted: «counted 12 s ago»; not yet - «counting»; a count that failed - «count failed». */
+export function countedText(progress, now = Date.now()) {
+  if (!progress) return '';
+  if (progress.failed) return 'count failed';
+  const at = progress.counted_at ? Date.parse(progress.counted_at) : NaN;
+  if (progress.counting || Number.isNaN(at)) return 'counting';
+  return `counted ${Math.max(0, Math.round((now - at) / 1000))} s ago`;
 }
 
 /** The grid opened on the rows a file wrote (the grid's address: its table, its read's transaction); none without a tx. */
