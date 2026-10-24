@@ -1,12 +1,14 @@
 # 지금 돌리면 되는 것
 
-> ## [10-24] **이미지 칸의 온전한 경로 — 그림 파일은 그대로 읽힌다 · 공유 경로 \\\\ 도 (5374f21aa)** — git pull · 런처 재기동
+> ## [10-24] **이미지 칸의 온전한 경로 — 그림 파일은 그대로 읽힌다 · 공유 경로 \\\\ 도 (5374f21aa · 03e267e96)** — git pull · 런처 재기동
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동. image_sources.json 은 그대로 (그림 파일은 folder 소스가 없어도 됨)
 > 무엇     칸 값이 C:\…\a.png · \\server\share\a.png 처럼 그림 파일의 온전한 경로면 그 경로 그대로 읽음
 >          공유 경로를 \\\\server\\share\\a.png (역슬래시 모두 겹) · //server/share/a.png 로 적어도 같은 경로
 >          (전: «… is under no folder source of image_sources.json …» 404)
+>          리포트 images 역할에 "source" 를 적었어도 칸 값이 온전한 경로면 그 경로 그대로 (🆕 03e267e96 —
+>            전: 소스 이름이 붙어 그 소스 root 밑으로 이어져 «그 폴더 밑에 그림 없음»)
 > 볼 곳    리포트 그림 · 그리드 이미지 칸 -> 그림이 나오면 고쳐진 것
 > 아직 «no file '<경로>' - this server cannot see it (…)»
 >          -> 서버 프로세스가 그 공유에 로그온 안 됐거나 다른 PC 의 경로. 서버 PC 에서 그 경로가 열리는지부터
