@@ -77,13 +77,17 @@ def test_a_folder_reference_is_served_from_inside_its_root(client, pics):
 
 
 @pytest.mark.parametrize("escape", ["../outside.png", "..\\outside.png", "sub/../../outside.png",
-                                    "ABSOLUTE"])
+                                    ])
 def test_a_path_that_climbs_out_of_the_root_is_refused(client, pics, escape):
-    if escape == "ABSOLUTE":
-        escape = str(pics.parent / "outside.png")
     answer = client.get("/api/image", params={"ref": "pics:" + escape})
     assert answer.status_code == 400 and b"secret" not in answer.content
     assert "outside the root" in answer.json()["detail"]
+
+
+def test_a_source_named_before_a_full_path_reads_that_full_path(client, pics):
+    # owner 10-24 «satpatches 아래에 이미지가 없대잖아»: <source>:<full path> is that full path, as a bare full path is
+    answer = client.get("/api/image", params={"ref": "pics:" + str(pics.parent / "outside.png")})
+    assert answer.status_code == 200
 
 
 def test_a_missing_file_is_a_404_that_names_it(client, pics):

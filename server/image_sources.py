@@ -118,6 +118,12 @@ def resolve(ref, sources=None, _hops=0):
         raise ImageRefused(400, "%r is neither an http(s) address nor <source>:<path or key>" % text)
     sources = load_sources() if sources is None else sources
     source = sources.get(name)
+    folder_path = rest.strip()
+    if (folder_path[:2] in ("\\\\", "//") or os.path.isabs(folder_path)) and \
+            (not isinstance(source, dict) or source.get("kind") == "folder"):
+        # 소유자 10-24 «절대경로 안 먹는다고 · satpatches 아래에 이미지가 없대잖아»: <source>:<a full path> is that full
+        # path - read as a bare full path is (the share spellings folded), not joined under the source's root
+        return resolve(folder_path, sources, _hops)
     if not isinstance(source, dict):
         raise ImageRefused(404, "image source %r is not declared in image_sources.json" % name)
     kind = source.get("kind")
