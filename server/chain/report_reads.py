@@ -895,6 +895,21 @@ class Report:
                                                                      key=lambda v: (v is not None, v or "")))
                 for at, col in enumerate(shared)}
 
+    def pick_basis(self) -> list:
+        """The Evidence's wafer pick: the candidates within `recent` (each with its date and wafers) and the groups the
+        report read beside its own (owner 10-24 «기간 내 뭐뭐 있었고 그중에 이걸 뽑았다») - [] when none was looked at."""
+        if self._candidates is None:
+            return []
+        recent = (self.spec.get("control") or {}).get("recent")
+        lines = ["wafer pick - within %s: %d candidates" % (recent, len(self._candidates))]
+        lines += ["    %s @ %s: %s" % (name, entry["latest"].date() if entry["latest"] else "-",
+                                       ", ".join(map(self.said, entry["wafers"])))
+                  for name, entry in self._candidates.items()]
+        taken = [(name, members) for name, members in self.groups.items() if name != self.evaluation]
+        lines.append("wafer pick - taken: %s" % ("; ".join("%s (%s)" % (name, ", ".join(map(self.said, members)))
+                                                           for name, members in taken) or "none"))
+        return lines
+
     def _report_wafer(self, wafer) -> str:
         """The wafer as the report table names it - its legs one candidate (lead 10-23), every column without `only`."""
         parts = dict(zip(self.keys, wafer))

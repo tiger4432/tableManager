@@ -49,7 +49,7 @@ ABOUT = {
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
     "candidates": "the recent evaluations compare wafers may come from - name, date, wafers, conditions",
     "compare": "the compare sets' wafers (sets), or compare wafers from the recent evaluations (evaluations, wafers), "
-               "read beside this evaluation's in every table after it",
+               "read beside this evaluation's in every table after it; why: the candidates you took and why",
 }
 ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by", "rows"), "pareto": ("wafers",), "trend": ("wafers", "items"),
         "images": ("wafers", "items"), "candidates": (), "compare": ("sets", "evaluations", "wafers")}
@@ -110,7 +110,7 @@ def _instructions(spec, step, cap):
         about = (functions.get(read) or {}).get(report_shape.ABOUT_CELL) or ABOUT[read]
         lines.append("  %s(%s) - %s" % (read, ", ".join(ARGS[read]), about))
     lines.append("  " + WAFERS_SAID)
-    lines.append('Answer one JSON object: {"call": "<read>", "args": {...}} or {"done": {}} when you have read enough')
+    lines.append('Answer one JSON object: {"call": "<read>", "args": {...}, "why": "..."} or {"done": {}} when you have read enough')
     lines.append("This is step %d of %d." % (step, cap))
     return lines
 
@@ -245,7 +245,8 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             out.update(state=DONE, reason=None)
             break
         answer, refused = _call(report, said, seen)
-        record.update(call=_said(said.get("call"), said.get("args")), seconds=clock() - began, refused=refused)
+        record.update(call=_said(said.get("call"), said.get("args")), seconds=clock() - began, refused=refused,
+                      why=str(said.get("why") or "").strip() or None)
         if refused is None:
             seen[record["call"]] = step
             if said["call"] in report_shape.TABLE_FILLS:
@@ -347,9 +348,12 @@ def _steps_text(out, report):
     lines = [out["state"] + (" - %s" % out["reason"] if out["reason"] else "")]
     for s in out["steps"]:
         lines.append("%d %s - %s" % (s["step"], s["call"], s.get("refused") or s["summary"]))
+        if s.get("why"):                   # the model's reason for the call (owner 10-24 «웨이퍼 리스트 뽑은 근거 대라고 해»)
+            lines.append("    why: " + s["why"])
         lines += ["    " + line for line in s.get("read") or ()]
     if report.overlaps:
         lines.append("names two wafers share: %s" % ", ".join(sorted(report.overlaps)))
+    lines += report.pick_basis()
     return "\n".join(lines)
 
 
