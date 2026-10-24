@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것](#2026-10-24--뭉치기-조인이-키마다-한-번-계산한다--함수--내장-fn-이-대상-행마다-돌던-것) — 적는 곳 없음(선언 그대로) · 보는 곳 chain_worker.log [Latency]
 - 2026-10-24 [AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭](#2026-10-24--ai-리포트-파일--다시-세로-나열--머리-단-이름date--wafer--leg--표는-창-폭) — 적는 곳 derive.report.labels.columns · 보는 곳 리포트 파일
 - 2026-10-23 [AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름](#2026-10-23--ai-리포트-키-칸--keys-한-곳unit--latest--fold-표마다-가진-키-칸-이름) — 적는 곳 derive.report.keys · 역할의 wafer 목록 · 보는 곳 리포트 파일
 - 2026-10-23 [체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름](#2026-10-23--체인-규칙-창에서-조인-take-항목을-기록으로--record-from-칸-목록-친-칸-이름) — 누르는 곳 체인 규칙 창 → derive join → take 칩 끝의 «+ record»
@@ -602,6 +603,14 @@
 - **바뀐 동작** — 페이지 폭 상한(1200px)이 없어 표가 창 폭을 다 씁니다. 열이 더 많으면 표 상자 안에서 가로로 넘깁니다(열 20 개 · 1440 폭: 페이지는 안 넘고 표만). 비교 표의 머리 단마다 왼쪽 칸에 단 이름 — 키 칸 이름 · time 은 «Date» · `labels.columns` 로 바꿈. 맨 아랫단 왼쪽의 «Item» 은 없어졌습니다(라벨 `item` 은퇴).
 - **필요한 조건** — git pull · 런처 재기동 · R1 다시. 단 이름을 바꾸려면 규칙 labels 에 `"columns": {"time": "DATE", …}`.
 - **자세히** — 가이드 «도는 것» · «비교 표» · 시험 `test_the_report_html_embeds_everything_in_layout_order.py` · `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-24 · 뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것
+
+- **무엇** — 소유자 10-24 «이거 뭉치기 조인 너무 느린데» · «함수가 그룹별로 안 돌고 행별로 다 도나 봐». 맞았습니다: take 에 fn 이 있는 조인이 «대상 행마다» 계산했습니다(박스 판: 키 100 × 대상 20 행에 함수 2,000 번).
+- **바뀐 동작** — 계산은 (조인 키, 함수에 넘기는 row 값) 마다 한 번이고, 같은 묶음의 대상 행들이 그 답을 나눠 씁니다. 내장 fn(count · min · max · unique_concat)은 row 를 안 받으니 키마다 한 번, 파일 함수는 "row" 를 안 적었으면 키마다, 적었으면 그 칸 값 묶음마다 한 번입니다 — row 값이 다른 대상 행은 제 답을 받습니다. 내장 fn 의 식은 묶음마다 한 번 컴파일합니다(전엔 대상 행마다). 쓰기는 전과 같이 대상 행마다입니다.
+- **잰 것** — 박스 판 B(키 100 · 원천 1,000 · 대상 2,000), 같은 행을 건넨 프로세스 안 읽기 · 답: 계산 2,000 → 100 번, 함수 호출 2,000 → 100 번, 쓰기 항목 2,000 그대로, 내장 fn 답 0.47 → 0.07 s. 그룹 시간의 대부분은 쓰기입니다(진짜 워커, 같은 판: 그룹 2.73 s 중 쓰기 2.05 s) — 쓰기 줄이기는 이번에 하지 않습니다.
+- **필요한 조건** — git pull · 런처 재기동. 선언은 바꿀 것 없음.
+- **자세히** — `chain/join_into.py` 의 `_page`(묶음의 한 번 계산) · `_functions_and_ref`(take 마다 계산 준비) · 시험 `test_a_join_take_fn_names_a_function.py::test_a_function_runs_once_a_key_and_row_values_and_every_target_row_is_still_written` · `::test_one_of_the_four_is_compiled_once_a_batch_not_once_a_target_row`.
 
 ## 2026-10-23 · AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름
 

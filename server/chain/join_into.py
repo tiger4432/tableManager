@@ -348,34 +348,30 @@ def _gathered(spec: dict, found, row=None, ref=None, functions=None) -> dict:
     """{left column: value} of the `fn` takes over ONE key's value-table rows `found` ([(row id, take values)], what
     `_read_once` read - the join's key, blank and require). Each by the gap fill's calculation: the expression its
     record becomes (`config.aggregation_record` -> `expression`), else its `unique_concat` join (`mapper._joined`); a
-    function take's function (`functions`, resolved once a batch by `read`) with the values left blank-free, the target
-    row's key and `row` columns from `row`, and its `ref` tables from `ref`. A key with no row has no value - its cell is
-    taken back, never written 0 (lead 10-20)."""
+    function take's function with the values left blank-free, the target row's key and `row` columns from `row`, and
+    its `ref` tables from `ref`. How each take is computed is `functions`, made once a batch by `_functions_and_ref`. A
+    key with no row has no value - its cell is taken back, never written 0 (lead 10-20)."""
     fns = _fn_takes(spec)
     if not fns or not found:
         return dict.fromkeys(fns)
     import expression
-    import map_overlay
-    from chain.enrichment import config, mapper
+    from chain.enrichment import mapper
     from database import crud
 
     at = {into: index for index, (_right, into) in enumerate(_takes(spec))}
-    right_table = str(spec.get("right_table") or "")
     out = {}
     for into, (column, record) in fns.items():
         values = [take[at[into]] for _row_id, take in found]
-        function = (functions or {}).get(into)
-        if function is not None:
+        how = functions[into]
+        if _is_function(record):
             mine = {name: (row or {}).get(name) for name in _row_columns(spec, record)}
             kept = [value for value in values if not (all(map(crud.is_blank_value, value.values()))
                                                       if isinstance(value, dict) else crud.is_blank_value(value))]
-            out[into] = function(kept, mine, {table: (ref or {}).get(table, []) for table in record.get(TAKE_REF) or ()})
+            out[into] = how(kept, mine, {table: (ref or {}).get(table, []) for table in record.get(TAKE_REF) or ()})
             continue
-        types = {column: map_overlay.declared_column_type(right_table, column)}
-        said, _why = config.aggregation_record(record, types)
-        if isinstance(said, str):
-            out[into] = expression.run(expression.compile(said), [{column: value} for value in values],
-                                       types).get("value")
+        compiled, types = how
+        if compiled is not None:
+            out[into] = expression.run(compiled, [{column: value} for value in values], types).get("value")
         else:
             out[into] = mapper._joined(record, {value for value in values if not crud.is_blank_value(value)})
     return out
@@ -621,16 +617,24 @@ def _is_function(record: dict) -> bool:
 
 
 def _functions_and_ref(db, spec: dict):
-    """({into: function}, {table: [row]}) for this batch - each function resolved once (`take_function`), each `ref`
-    table read once, whole, whichever takes name it (owner 10-23: under 100 rows, changed once a quarter).
-    -> (..., why not) - a function that cannot be resolved, or a ref table with no model."""
+    """({into: how}, {table: [row]}) for this batch - each take's calculation made once: a function resolved
+    (`take_function`), one of the four's expression compiled (`(compiled or None for unique_concat, types)`, lead
+    10-24 - it was compiled again a target row); each `ref` table read once, whole, whichever takes name it (owner
+    10-23: under 100 rows, changed once a quarter). -> (..., why not) - a function that cannot be resolved, or a ref
+    table with no model."""
     from sqlalchemy import select
 
+    import expression
+    import map_overlay
+    from chain.enrichment import config
     from database import crud, models
 
     functions, wanted = {}, []
-    for into, (_column, record) in _fn_takes(spec).items():
+    for into, (column, record) in _fn_takes(spec).items():
         if not _is_function(record):
+            types = {column: map_overlay.declared_column_type(str(spec.get("right_table") or ""), column)}
+            said, _why = config.aggregation_record(record, types)
+            functions[into] = (expression.compile(said) if isinstance(said, str) else None, types)
             continue
         function, why = take_function(record["fn"])
         if why:
@@ -797,13 +801,13 @@ def read(db, rule: dict, row_ids=None, keys_left=()) -> dict:
     _say_empty_keys(rule, "target", empty)
     return {"spec": spec, "left_table": left_table, "left_rows": left_rows, "answers": answers,
             "handed": len(rows_in), "side": "reference" if reference_side else "target",
-            "handed_to_functions": (rows, ref, functions)}
+            "handed_to_functions": (rows, ref, functions, {})}
 
 
 def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, handed_to_functions=None):
     """One page of left rows answered from what was read once - and the call for the next.
-    `handed_to_functions`: (target rows, ref tables, functions) as `read` read them for this batch."""
-    rows_of, ref, functions = handed_to_functions or ({}, {}, {})
+    `handed_to_functions`: (target rows, ref tables, functions, answers so far) as `read` made them for this batch."""
+    rows_of, ref, functions, once = handed_to_functions or ({}, {}, {}, {})
     from chain import keyset_scan
 
     page, after, pages = keyset_scan.pages(left_rows, start)
@@ -820,8 +824,15 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
         #    of its key for a source, so no one row's deletion or move may take it back (`_retract_deleted_rows` aims at
         #    origins); the recount is its one author, and a key left with no row takes back what this rule wrote
         #    (`withdraw` -> `_withdraw_blanks`).
+        # 🔴 [lead 10-24, owner 「함수가 그룹별로 안 돌고 행별로 다 도나 봐」] ONE CALCULATION A KEY AND THE ROW VALUES IT
+        #    IS HANDED, shared by the batch's pages: target rows of one key that hand the same `row` values share it;
+        #    each still gets its own write. Measured: 100 keys × 20 target rows called the function 2,000 times.
         for row_id, key in page:
-            gathered = _gathered(spec, answers.get(key) or (), rows_of.get(row_id), ref, functions)
+            mine = rows_of.get(row_id) or {}
+            asked = (key, tuple(mine.values()))
+            if asked not in once:
+                once[asked] = _gathered(spec, answers.get(key) or (), mine, ref, functions)
+            gathered = once[asked]
             updates.append({"row_id": row_id, "source_name": CHAIN_LAYER,
                             "updated_by": str((rule or {}).get("name") or ""),
                             "updates": {c: v for c, v in gathered.items() if not crud.is_blank_value(v)},
