@@ -282,7 +282,22 @@ const galleryAnswer = (u) => {
   if (u.pathname.endsWith('/count')) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: Object.keys(filters).length ? rows.length : bodyOf(ANSWERS['/tables/dt_log/data/count']).total } };
   return { ...a, body: { ...b, data: rows } };
 };
+// The file page's read progress (owner 10-23 «몇 개 중 몇 개»): while on, /tables carries per table and source what the
+// checklist counted (A 23c35a768) - one source not done, one long external path, one done - counted 12 s before.
+const FILE_SOURCES = { on: false };
+const fileSourcesAnswer = () => {
+  const a = ANSWERS['/admin/file-ingestion/tables'];
+  const b = bodyOf(a);
+  const sources = { bonding_log: [{ source: 'raws', total: 4488, read: 4483, left: 5 },
+    { source: '\\\\nas-fab-07\\equipment_exports\\bonding\\line_03\\recipe_archive_2026\\void_inspection', total: 12000, read: 3400, left: 8600,
+    left_by_status: { PENDING_RETRY: 40, FAILED: 3 }, sweep: { state: 'rested', age_seconds: 38, seconds: 2.4, looked: 12000, already_read: 11997,
+      dispatched: 3, why: { new: 2, changed: 1 } } }],
+  bonding_map: [{ source: 'raws', total: 3216, read: 3216, left: 0 }] };
+  return { ...a, body: { ...b, data: b.data.map((t) => ({ ...t, sources: sources[t.table_name] || [] })),
+    progress: { counting: false, failed: null, count_seconds: 0.4, counted_at: new Date(Date.now() - 12000).toISOString() } } };
+};
 const answerOf = (u) => {
+  if (FILE_SOURCES.on && u.pathname === '/admin/file-ingestion/tables') return fileSourcesAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
@@ -727,6 +742,20 @@ CELLS.push({ entry: 'admin.html', after: 'Chain, + then record on the take', rul
 // The gallery's board (lead 3589216b9): a line's cells add up to its total and the totals to the rows held; a cell opened
 // lays out as many tiles as its rows with a picture; Filter grid to this cell puts the line's and the column's columns on
 // the grid's filter.
+// owner 10-23: the file page's read progress - a row per table and source «K / N read · M left», nothing left dimmed,
+// when it was counted in its head.
+CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule: 'read progress', at: 'fi-progress', expr: `(() => {
+  const rows = [...document.querySelectorAll('#fi-progress tr[data-table]')];
+  const files = (tr) => (tr.cells[2] || {}).textContent || '';
+  if (rows.length !== 3) return rows.length + ' rows';
+  if (files(rows[0]) !== '4,483 / 4,488 read · 5 left') return 'the first row says «' + files(rows[0]) + '»';
+  if (!rows[2].classList.contains('fi-dim') || rows[0].classList.contains('fi-dim')) return 'the done source not dimmed alone';
+  const buttons = [...document.querySelectorAll('#fi-progress button')];
+  if (buttons.length !== 1 || !rows[1].contains(buttons[0])) return buttons.length + ' Cancel buttons, not one on the external source';
+  if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\)$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
+  const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
+  return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
+})()` });
 // The row checkboxes and the header's select-all at the grid's left edge with the first data column hidden (owner 10-22).
 CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'select all at the left', at: 'ag-header', expr: `(() => {
   const gone = window.__hiddenFirst;
@@ -1750,6 +1779,18 @@ const openAgain = async (c, log) => {
   await evaluate(c, `(${screensLib})(${TOL})`);
 };
 const DRIVE = {
+  // The read progress counted (owner 10-23): the page's next beat reads /tables with its sources.
+  'file_ingestion.html': [
+    ['Read progress counted', async (c) => {
+      FILE_SOURCES.on = true;
+      await until(c, "document.querySelectorAll('#fi-progress tr[data-table]').length === 3", 15000);
+    }],
+    ['Read progress, the fixture again', async (c) => {
+      FILE_SOURCES.on = false;
+      await sleep(300);
+      return c;
+    }],
+  ],
   'walk.html': [
     ['a wafer walked, Table', async (c) => {
       await choose(c, '.wk-select', [0, "x.textContent.trim() === 'wafer'"]);
@@ -2479,6 +2520,8 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',
+    file: 'src/file_ingestion/parts.js', edits: [["el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')"]] },
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },

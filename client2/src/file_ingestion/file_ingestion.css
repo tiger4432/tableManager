@@ -49,6 +49,7 @@
 .fi-between .fi-input { width: auto; }
 
 .fi-scroll { overflow-x: auto; }
+.fi-progress__scroll { max-height: 30vh; overflow-y: auto; }
 .fi-list { width: 100%; border-collapse: collapse; font-size: var(--fs-h5); }
 .fi-list th { text-align: left; padding: var(--space-2); font-size: var(--fs-label); font-weight: 500; color: var(--text-dim); text-transform: none; letter-spacing: 0; }
 .fi-list th:first-child, .fi-list td:first-child { padding-left: var(--space-4); }

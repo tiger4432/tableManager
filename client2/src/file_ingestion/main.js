@@ -11,13 +11,14 @@ import { fileRetryAsk, fileRetryToast } from '../retry_verdict.js';
 import { INCLUDE_STATUSES } from '../folder_retry.js';
 import { countNumberText } from '../match_count.js';
 import { initTheme } from '../theme.js';
-import { WORDS, groupFiles, queryOf, tableLines } from './model.js';
-import { DetailPart, FilesPart, ReadNowPart, SearchPart, TableListPart } from './parts.js';
+import { pollBeat, pollQueue, oneRead, timedRead } from '../queue_poll.js';
+import { WORDS, cancelAsk, countedText, groupFiles, queryOf, sourceLines, tableLines } from './model.js';
+import { DetailPart, FilesPart, ProgressPart, ReadNowPart, SearchPart, TableListPart } from './parts.js';
 
 const NO_TOKEN = 'Admin token needed - open Admin once on this browser';
 
-async function read(path) {
-  const res = await adminFetch(`${API_BASE}${path}`);
+async function read(path, signal) {
+  const res = await adminFetch(`${API_BASE}${path}`, signal ? { signal } : undefined);
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).detail || ''; } catch (e) { /* not JSON */ }
@@ -39,6 +40,21 @@ export function seatFileIngestionPage(doc = document) {
   const query = { table: new URLSearchParams(doc.defaultView.location.search).get('table') || '', status: 'ALL', name: '', folder: '', from: '', to: '', group: 'folder' };
   const view = { lines: [], rows: [], groups: [], chips: [], total: null, page: 1, picked: null };
   const say = (text) => { byId('fi-said').textContent = text || ''; };
+  // «Cancel waiting re-reads» on a source (A 11618814f): the preview's count asked first, then put back, the progress read again
+  const progress = new ProgressPart(byId('fi-progress'), {
+    doc,
+    onCancel: async (folder) => {
+      const at = `/admin/file-ingestion/cancel-reread?${new URLSearchParams({ folder })}`;
+      try {
+        const seen = await act(`${at}&preview=true`, true);
+        if (!seen.count && !seen.removed) { showToast(seen.message || 'Nothing waiting', 'info'); return; }
+        if (!doc.defaultView.confirm(cancelAsk(seen))) return;
+        const done = await act(at, true);
+        showToast(done.message, 'success');
+        progressRead.ask();
+      } catch (e) { showToast(`❌ ${e.message}`, 'error'); }
+    },
+  });
   const tables = new TableListPart(byId('fi-tables'), { doc, onPick: (name) => { query.table = name; search(); } });
   const searchPart = new SearchPart(byId('fi-search'), { doc, onChange: (patch) => { Object.assign(query, patch); search(); } });
   const files = new FilesPart(byId('fi-files'), {
@@ -95,7 +111,8 @@ export function seatFileIngestionPage(doc = document) {
         if (!res.ok) throw new Error(`retry ${res.status}`);
         const result = await res.json().catch(() => ({}));
         await list(false);
-        const now = view.rows.find((r) => r.id === log.id);
+        // a file is its checklist row; its record id is new after each read (A daafb2214)
+        const now = view.rows.find((r) => r.checklist_id === log.checklist_id);
         const said = fileRetryToast(result, now ? now.status : null, log);
         showToast(said.text, said.tone);
       } catch (e) {
@@ -105,13 +122,13 @@ export function seatFileIngestionPage(doc = document) {
   });
 
   function draw() {
-    const picked = view.picked && view.rows.find((r) => r.id === view.picked.id);
+    const picked = view.picked && view.rows.find((r) => r.checklist_id === view.picked.checklist_id);
     view.picked = picked || null;
     tables.render(view.lines, query.table);
     searchPart.render(query, view.chips);
     const groups = groupFiles(view.rows, query.group, view.groups, query.folder);
     const match = view.total ? countNumberText(view.total) : '0';
-    files.render({ groups, picked: view.picked ? view.picked.id : null, more: !!view.total && view.rows.length < view.total.total,
+    files.render({ groups, picked: view.picked ? view.picked.checklist_id : null, more: !!view.total && view.rows.length < view.total.total,
       table: query.table,
       shown: WORDS.shown(view.rows.length, groups.filter((g) => g.head).length, match) });
     detail.render(view.picked);
@@ -139,9 +156,18 @@ export function seatFileIngestionPage(doc = document) {
     await list(false);
   }
 
+  // The checklist's progress (owner 10-23): /tables again on the queues' beat - the server answers what its counter last
+  // counted, so a read adds no count.
+  const drawProgress = (answer) => progress.render(sourceLines(answer.data), countedText(answer.progress));
+  const progressRead = oneRead(async () => {
+    try { drawProgress(await timedRead((signal) => read('/admin/file-ingestion/tables', signal))); } catch (e) { say(e.message); }
+  });
+  pollQueue(() => pollBeat({ onScreen: () => !doc.hidden, busy: progressRead.busy, read: progressRead.ask }));
+
   async function start() {
     try {
       const [t, a] = await Promise.all([read('/admin/file-ingestion/tables'), read('/admin/file-ingestion/active')]);
+      drawProgress(t);
       view.lines = tableLines(t.data, a.data);
       if (!query.table && view.lines.length) query.table = view.lines[0].name;
       byId('fi-as-of').textContent = `as of ${new Date().toLocaleTimeString('en-GB')}`;

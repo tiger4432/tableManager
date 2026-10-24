@@ -3,7 +3,7 @@
 // page seats them and holds the query.
 import { ABSENT } from '../absent.js';
 import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
-import { GROUPS, WORDS, folderLine, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
+import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
 
 function maker(doc) {
   return (tag, cls, text) => {
@@ -21,6 +21,62 @@ const boxHead = (el, words, side) => {
   if (side !== undefined) h.append(el('span', 'fi-meta', side));
   return h;
 };
+
+export class ProgressPart {
+  /** The checklist's progress (owner 10-23): a row per table and source, its columns PROGRESS_COLUMNS; a source with
+   *  nothing left dimmed; «Cancel waiting re-reads» on an external source with some waiting.
+   *  @param {{doc, onCancel: (folder) => void}} deps */
+  constructor(mount, deps) {
+    this.mount = mount;
+    this.deps = deps;
+    this.el = maker(deps.doc || mount.ownerDocument);
+  }
+
+  render(lines, counted) {
+    const el = this.el;
+    const root = el('section', 'fi-box fi-progress');
+    root.append(boxHead(el, WORDS.progress, counted));
+    if (!lines.length) {
+      root.append(el('div', 'fi-say fi-pad', WORDS.noSources));
+      this.mount.replaceChildren(root);
+      return;
+    }
+    const table = el('table', 'fi-list');
+    const head = el('tr');
+    for (const c of PROGRESS_COLUMNS) {
+      const th = el('th', c.cls, c.head);
+      if (c.title) th.title = c.title;
+      head.append(th);
+    }
+    head.append(el('th', 'cell-fit'));
+    const body = el('tbody');
+    for (const line of lines) {
+      const tr = el('tr', line.done ? 'fi-dim' : '');
+      tr.dataset.table = line.table;
+      for (const c of PROGRESS_COLUMNS) {
+        const td = el('td', c.cls, c.cell(line));
+        if (c.wrap) td.dataset.wrapOk = '';
+        tr.append(td);
+      }
+      const act = el('td', 'cell-fit');
+      if (line.cancel) {
+        const b = el('button', 'fi-btn', WORDS.cancelReread);
+        b.type = 'button';
+        b.addEventListener('click', () => this.deps.onCancel(line.cancel));
+        act.append(b);
+      }
+      tr.append(act);
+      body.append(tr);
+    }
+    const thead = el('thead');
+    thead.append(head);
+    table.append(thead, body);
+    const scroll = el('div', 'fi-scroll fi-progress__scroll');
+    scroll.append(table);
+    root.append(scroll);
+    this.mount.replaceChildren(root);
+  }
+}
 
 export class ReadNowPart {
   /** «Read now» (총괄 aaf19d0ca): a path, who reads it and why the watcher did not - the server's words - and a button
@@ -263,8 +319,8 @@ export class FilesPart {
         body.append(tr);
       }
       for (const log of g.files) {
-        const tr = el('tr', `fi-file${view.picked === log.id ? ' is-picked' : ''}`);
-        tr.dataset.log = String(log.id);
+        const tr = el('tr', `fi-file${view.picked === log.checklist_id ? ' is-picked' : ''}`);
+        tr.dataset.log = String(log.checklist_id);
         const name = el('td');
         name.append(el('span', 'fi-mono fi-block', log.filename));
         const folder = folderLine(log);
@@ -339,6 +395,8 @@ export class DetailPart {
     const acts = el('div', 'fi-actions');
     const act = el('button', 'fi-btn fi-btn--primary', isFailedStatus(log.status) ? WORDS.retryFile : WORDS.readAgain);
     act.type = 'button';
+    // no record yet (A daafb2214: a file whose only line is its waiting read) - nothing for the Retry door to name
+    if (log.id == null) { act.disabled = true; act.title = WORDS.notReadYet; }
     act.addEventListener('click', () => this.deps.onAct(log));
     acts.append(act);
     const rows = rowsAddress(log);

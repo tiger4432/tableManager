@@ -16,6 +16,8 @@
 //   P3 the search line: All counts every status, the picked chip marked, a field's change hands its one key
 //   P4 the table list: Find table narrows, the picked one marked, a press hands its name
 //   P5 two of each part in one page do not touch each other's div
+//   M8 · P7 · P8 the checklist's progress (owner 10-23): a row per table and source «K / N read · M left», nothing left
+//      dimmed, the total's limit in the Files tooltip, «counted N s ago» · «counting» · «count failed»; none - its line
 // Imports only (the probe copies a module whole); each defect must go red at its line.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +51,8 @@ async function load(m) {
 
 const BS = '\\';
 const P = (...segs) => segs.join(BS);
-const log = (id, over = {}) => ({ id, filename: 'bmap.txt', filepath: P('', '', 'fab', 'LOT', 'STEP_01', `W${id}`, 'bmap.txt'), folder: P('', '', 'fab', 'LOT', 'STEP_01', `W${id}`),
+// a line is a file - its checklist row (A daafb2214); `id` is its newest record, null before its first read
+const log = (id, over = {}) => ({ id, checklist_id: id + 1000, filename: 'bmap.txt', filepath: P('', '', 'fab', 'LOT', 'STEP_01', `W${id}`, 'bmap.txt'), folder: P('', '', 'fab', 'LOT', 'STEP_01', `W${id}`),
   table_name: 'inspection_run', status: 'SUCCESS', rows_read: 400, rows_new: 12, rows_changed: 0, rows_unchanged: 388, rows_refused: 0,
   reader: 'standard', source: 'raws', reason: null, failed_at: null, took_seconds: 0.4, created_at: '2026-10-20T10:00:00+00:00', updated_at: '2026-10-20T10:00:00+00:00', ...over });
 const texts = (root, cls) => byClass(root, cls).map((n) => n.textContent);
@@ -113,7 +116,7 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   const readAlls = [];
   const files = new Q.FilesPart(host, { doc, onPick: (l) => picks.push(l.id), onMore: () => { mores += 1; }, onDrill: (k) => drills.push(k),
     onRetryFolder: (g) => retries.push(g.folder), onReadAll: (f) => readAlls.push(f) });
-  files.render({ groups: byFolder, shown: 'x', picked: 12, more: true });
+  files.render({ groups: byFolder, shown: 'x', picked: 1012, more: true });
   const fileRows = walk(host).filter((n) => n.tagName === 'TR' && String(n.className).includes('fi-file'));
   const folderSpan = walk(fileRows[0]).find((n) => n.tagName === 'SPAN' && n.title);
   fileRows[1].dispatch('click');
@@ -159,6 +162,17 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   ok('P2a a failure: its reason and frame, «Retry this file», Copy folder copies the folder, only the counts written',
     why && why.textContent.includes('line 3: bad') && why.textContent.includes('p.py:7 in parse') && main.textContent === M.WORDS.retryFile && JSON.stringify(acts) === '[12]'
       && copies[0] === P('', '', 'fab', 'LOT', 'STEP_01', 'W12', '') && JSON.stringify(countLabels) === '["Rows read"]', `${why && why.textContent} ${main.textContent} ${copies} ${countLabels}`);
+  // a file not read yet - only its waiting read (A daafb2214): no record to retry, so the press is shut and says why
+  detail.render({ ...log(15, { status: 'PENDING_RETRY', rows_read: null }), id: null });
+  const shut = byClass(dHost, 'fi-btn--primary')[0];
+  ok('P2d a file not read yet: its Retry is shut and says why', shut && shut.disabled === true
+    && shut.title === M.WORDS.notReadYet, `${shut && shut.disabled} «${shut && shut.title}»`);
+  // two such files are two lines - one picked is that one alone
+  const pending = new Q.FilesPart(doc.createElement('div'), { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder() {} });
+  pending.render({ groups: [{ key: null, head: false, files: [{ ...log(16), id: null }, { ...log(17), id: null }] }], shown: 'p', picked: 1017, more: false });
+  const marked = walk(pending.mount).filter((n) => n.tagName === 'TR' && String(n.className).includes('is-picked'));
+  ok('P1h two files not read yet are two lines - the picked one alone is marked', marked.length === 1 && marked[0].dataset.log === '1017',
+    `${marked.length} ${marked.map((n) => n.dataset.log)}`);
   detail.render(log(13));
   ok('P2b a success: «Read again», no reason box; no tx - no «Show its rows»', byClass(dHost, 'fi-why').length === 0 && byClass(dHost, 'fi-btn--primary')[0].textContent === M.WORDS.readAgain
     && byClass(dHost, 'fi-btn--link').length === 0);
@@ -211,6 +225,51 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   new Q.FilesPart(two, { doc, onPick() {}, onMore() {}, onDrill() {}, onRetryFolder() {} }).render({ groups: none, shown: 'two', picked: null, more: false });
   ok('P5 two parts in one page keep to their own div', byClass(one, 'fi-group').length === 2 && byClass(two, 'fi-group').length === 0 && texts(one, 'fi-meta')[0] === 'one');
 
+  // M8 · P7 - the checklist's progress (owner 10-23): a line per table and source, nothing left dimmed, when it was counted
+  //   and an external source's last sweep, «Cancel waiting re-reads» where it has some waiting (A 11618814f)
+  const NAS = P('', '', 'nas', 'void');
+  const SWEEP = { state: 'rested', age_seconds: 40.2, seconds: 3, looked: 1200, already_read: 1197, dispatched: 3, why: { new: 2, changed: 1, retry: 0 } };
+  const TABLES = [{ table_name: 'inspection_run', sources: [{ source: 'raws', total: 5, read: 3, left: 2, left_by_status: { PENDING_RETRY: 2 } },
+    { source: NAS, total: 4, read: 4, left: 0, sweep: { ...SWEEP, dispatched: 0, why: {} } },
+    { source: P('', '', 'nas', 'bond'), total: 9, read: 6, left: 3, left_by_status: { PENDING_RETRY: 2, FAILED: 1 }, sweep: SWEEP }] },
+    { table_name: 'dt_log', sources: [] }];
+  const srcLines = M.sourceLines(TABLES);
+  const at = Date.parse('2026-10-23T05:00:00Z');
+  ok('M8 a line per table and source, done when nothing is left; counted N s ago - counting before the first count, a failed count said',
+    srcLines.length === 3 && srcLines[0].table === 'inspection_run' && !srcLines[0].done && srcLines[1].done
+      && M.countedText({ counted_at: '2026-10-23T04:59:48Z' }, at) === 'counted 12 s ago' && M.countedText({ counting: true }, at) === 'counting'
+      && M.countedText({ failed: 'timeout', counted_at: '2026-10-23T04:59:48Z' }, at) === 'count failed'
+      && M.PROGRESS_COLUMNS.map((c) => c.cell(srcLines[0])).join(' | ') === `inspection_run | raws | 3 / 5 read · 2 left | ${ABSENT}`, JSON.stringify(srcLines));
+  ok('M9 a sweep said: when, how long, looked, sent and why by word (none sent - no words); sweeping now; unavailable',
+    M.sweepText(SWEEP) === 'last sweep 40 s ago, took 3.0 s · looked 1,200 · sent 3 (new 2 · changed 1)'
+      && M.sweepText({ ...SWEEP, dispatched: 0, why: {} }) === 'last sweep 40 s ago, took 3.0 s · looked 1,200 · sent 0'
+      && M.sweepText({ ...SWEEP, state: 'sweeping' }) === 'sweeping · looked 1,200 · sent 3 (new 2 · changed 1)'
+      && M.sweepText({ state: 'unavailable' }) === 'unavailable', M.sweepText(SWEEP));
+  ok('M10 Cancel waiting re-reads only on an external source with some waiting, its folder its root; the ask says the count, '
+    + 'the states they go back to and that other tables are put back too',
+    JSON.stringify(srcLines.map((l) => l.cancel)) === JSON.stringify([null, null, P('', '', 'nas', 'bond')])
+      && M.cancelAsk({ message: '2 waiting file(s) under X to put back', by_state: { FAILED: 1, SUCCESS: 1 } })
+        === '2 waiting file(s) under X to put back\nBack to: Failed 1 · Success 1\nOther tables reading this folder have their waiting files put back too',
+    JSON.stringify(srcLines.map((l) => l.cancel)));
+  const pHost = doc.createElement('div');
+  doc.body.append(pHost);
+  const cancels = [];
+  new Q.ProgressPart(pHost, { doc, onCancel: (folder) => cancels.push(folder) }).render(srcLines, 'counted 12 s ago');
+  const pRows = walk(pHost).filter((n) => n.tagName === 'TR' && n.dataset && n.dataset.table);
+  const pCells = (tr) => walk(tr).filter((n) => n.tagName === 'TD').map((n) => n.textContent);
+  const filesHead = walk(pHost).filter((n) => n.tagName === 'TH').find((n) => n.textContent === 'Files');
+  ok('P7 a row per source «K / N read · M left», nothing left dimmed, the total\'s limit in the Files tooltip, when counted in the head',
+    pRows.length === 3 && pCells(pRows[0])[2] === '3 / 5 read · 2 left' && pRows[1].className === 'fi-dim' && pRows[0].className !== 'fi-dim'
+      && filesHead && filesHead.title === 'files a sweep has not reached yet are not in the total' && texts(pHost, 'fi-meta')[0] === 'counted 12 s ago',
+    JSON.stringify(pRows.map(pCells)));
+  const pButtons = walk(pHost).filter((n) => n.tagName === 'BUTTON');
+  (pButtons[0] && pButtons[0].listeners.click || []).forEach((fn) => fn());
+  ok('P9 one Cancel waiting re-reads, on its row, handing its folder', pButtons.length === 1 && walk(pRows[2]).includes(pButtons[0])
+    && JSON.stringify(cancels) === JSON.stringify([P('', '', 'nas', 'bond')]), JSON.stringify(cancels));
+  const pNone = doc.createElement('div');
+  new Q.ProgressPart(pNone, { doc }).render([], 'counting');
+  ok('P8 none counted yet - its line', texts(pNone, 'fi-say')[0] === M.WORDS.noSources);
+
   // P6 - Read now: who reads the path and why the watcher did not (the server's words), a button per owner
   const rHost = doc.createElement('div');
   doc.body.append(rHost);
@@ -260,7 +319,7 @@ const MUTANTS = [
   { name: 'a blank reason said blank', catches: ['M4b'], file: 'model', mutate: swap("label: label || (group === 'reason' ? WORDS.noReason : ABSENT)", 'label: label') },
   { name: 'running not counted per table', catches: ['M5'], file: 'model', mutate: swap('running: count(running.get(t.table_name))', 'running: count(0)') },
   { name: 'a waiting retry drawn as a failure', catches: ['M6'], file: 'model', mutate: swap("return tone === 'ok' ? 'ok' : tone === 'danger' ? 'danger' : 'warn';", "return tone === 'ok' ? 'ok' : 'danger';") },
-  { name: 'the picked line not marked', catches: ['P1a'], file: 'parts', mutate: swap("`fi-file${view.picked === log.id ? ' is-picked' : ''}`", "'fi-file'") },
+  { name: 'the picked line not marked', catches: ['P1a'], file: 'parts', mutate: swap("`fi-file${view.picked === log.checklist_id ? ' is-picked' : ''}`", "'fi-file'") },
   { name: 'Show more always', catches: ['P1b'], file: 'parts', mutate: swap('    if (view.more) {', '    if (true) {') },
   { name: 'Read now hides why the watcher did not', catches: ['P6a'], file: 'parts', mutate: swap("owner.why_not.length ? owner.why_not.join(' · ') : WORDS.taken", 'WORDS.taken') },
   { name: 'Read now hands the first owner', catches: ['P6a'], file: 'parts', mutate: swap('this.deps.onRead(this.answer.path, owner.table)', 'this.deps.onRead(this.answer.path, this.answer.owners[0].table)') },
@@ -269,6 +328,17 @@ const MUTANTS = [
   { name: 'All counts nothing', catches: ['P3'], file: 'parts', mutate: swap("[{ key: 'ALL', count: total }", "[{ key: 'ALL', count: 0 }") },
   { name: 'the rows link without its tx', catches: ['P2c'], file: 'model', mutate: swap('tx: String(log.transaction_id)', "tx: ''") },
   { name: 'the address opens a table the list lacks', catches: ['G1'], file: 'narrowing', mutate: swap("(tables || []).includes(p.get('table')) ? p.get('table') : null", "p.get('table')") },
+  { name: 'a source with nothing left not dimmed', catches: ['P7'], file: 'parts', mutate: swap("el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')") },
+  { name: 'the left count is the total', catches: ['M8'], file: 'model', mutate: swap('read · ${count(s.left)} left', 'read · ${count(s.total)} left') },
+  { name: 'the total\'s limit not said', catches: ['P7'], file: 'parts', mutate: swap('      if (c.title) th.title = c.title;\n', '') },
+  { name: 'a sweep sends without its words', catches: ['M9'], file: 'model', mutate: swap("${why.length ? ` (${why.join(' · ')})` : ''}", '') },
+  { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
+  { name: 'the ask hides the other tables', catches: ['M10'], file: 'model', mutate: swap(", 'Other tables reading this folder have their waiting files put back too']", ']') },
+  { name: 'Cancel hands nothing', catches: ['P9'], file: 'parts', mutate: swap('this.deps.onCancel(line.cancel)', 'this.deps.onCancel(null)') },
+  { name: 'a file not read yet offers Retry - log_id null', catches: ['P2d'], file: 'parts', mutate: swap('if (log.id == null) { act.disabled = true;', 'if (false) { act.disabled = true;') },
+  { name: 'a line is its record id again - two files not read yet are one', catches: ['P1h'], file: 'parts',
+    mutate: swap('view.picked === log.checklist_id', 'view.picked === log.id') },
+  { name: 'counted said without its age', catches: ['M8'], file: 'model', mutate: swap('return `counted ${', 'return `counted${') },
   { name: 'Find table narrows nothing', catches: ['P4'], file: 'parts', mutate: swap('.filter((t) => !want || String(t.name).toLowerCase().includes(want))', '') },
 ];
 
