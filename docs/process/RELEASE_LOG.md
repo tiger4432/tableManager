@@ -359,7 +359,9 @@
   - 2026-10-23 [와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 — 소스 없는 옛 행은 놓인 자리로 판정, 꺼진 · 거절된 소스 행은 남김](#2026-10-23--와처-시작이-지금-선언이-안-받는-체크리스트-행을-상태와-상관없이-지운다--소스-없는-옛-행은-놓인-자리로-판정-꺼진--거절된-소스-행은-남김) — 보는 곳 watcher.log «[Watcher] checklist cleanup done in N s»
     - 2026-10-23 [고침 — 파일이 소스 밑인지 가르는 판정이 빨라짐, 공유 최상위를 루트로 둔 소스가 그 밑을 받음](#2026-10-23--고침--파일이-소스-밑인지-가르는-판정이-빨라짐-공유-최상위를-루트로-둔-소스가-그-밑을-받음) — 적을 것 없음
   - 2026-10-23 [표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만 넘기고, 반영은 Read all again](#2026-10-23--표-선언만-바뀌면-이미-읽은-파일은-다시-읽지-않는다--실패-파일만-넘기고-반영은-read-all-again) — 보는 곳 watcher.log «kept as read» · 누르는 곳 파일 화면 Read all again
+  - ⚠️ 은퇴: 읽는 법이 바뀌면 실패 파일을 스스로 다시 넘기기 — 2026-10-24 [실패 파일은 저절로 다시 읽지 않는다 — Retry · Read now · Read all again 으로만, 지워진 파일은 안 읽음](#2026-10-24--실패-파일은-저절로-다시-읽지-않는다--retry--read-now--read-all-again-으로만-지워진-파일은-안-읽음)
 - 2026-10-20 [파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map](#2026-10-20--파일-인제션도-맵-단위-통째-교체--표-설정-allow_replace_map) — 적는 곳 `table_config.json`
+  - 2026-10-24 [파일 줄이 맵 통째 교체를 «했나 · 어떻게» 말한다 — replace off · replace on by · rows in scope 0](#2026-10-24--파일-줄이-맵-통째-교체를-했나--어떻게-말한다--replace-off--replace-on-by--rows-in-scope-0) — 보는 곳 와처 줄 «[Ingest] <표> FILE <파일>: …» 끝 (터미널 · watcher.log)
 - 2026-10-20 [외부 저장소도 표준 파서 — raws/ 와 같은 규칙](#2026-10-20--외부-저장소도-표준-파서--raws-와-같은-규칙) — 적는 곳 `ingestion_settings.json` 의 `external_sources` · `table_config.json` 의 `std_parse`
 - 2026-10-13 [큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다](#2026-10-13--큰-표-검색--표-선언의-검색-색인-그리드-읽기는-10-초에-끊고-다음-할-일을-말한다) — 적는 곳 `table_config.json` · `ingestion_settings.json`
   - 2026-10-13 [고침 — 칸 필터로 끊겨도 색인할 칸을 대고, «색인 있음»은 DB 가 지은 것만 말한다](#2026-10-13--고침--칸-필터로-끊겨도-색인할-칸을-대고-색인-있음은-db-가-지은-것만-말한다) — 적는 곳 `table_config.json`
@@ -567,6 +569,26 @@
 
 
 
+
+## 2026-10-24 · 파일 줄이 맵 통째 교체를 «했나 · 어떻게» 말한다 — replace off · replace on by · rows in scope 0
+
+- **무엇** — 소유자 10-24 «중간에 리플레이스 경로 로그를 다 찍어주든». `allow_replace_map` 표에 파일이 들어왔을 때 그 파일이 맵을 통째로 바꿨는지, 바꿨다면 어떻게 바꿨는지가 파일 줄 끝에 붙습니다(바꾼 맵 · 지운 행 · 거절된 맵 옆).
+- **보이는 것과 뜻** —
+  - «replace off (allow_replace_map is not true in table_config for <표>)» — 그 표의 `allow_replace_map` 이 안 보입니다. table_config.json 의 그 표 항목을 봅니다.
+  - «replace on by [칸…] · <mode>/<reason> N» — 맵 키 칸 [칸…] 로 맵마다 바꿨고, 그 방식별 맵 수입니다.
+  - «rows in scope 0 N» — 맵 N 개가 바꿀 범위에서 옛 행을 못 찾았습니다(맵 키 값이 옛 행과 다른지 봅니다).
+  - «deleted 0 row(s)» 인데 rows in scope 0 이 없으면 — 옛 행을 이 파일이 전부 다시 받아 지울 것이 없었습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `directory_watcher._FileTally.replace_by` · `map_ways`, `crud` 의 `replace_report["in_scope"]` (`ea9fef6fb`).
+
+## 2026-10-24 · 실패 파일은 저절로 다시 읽지 않는다 — Retry · Read now · Read all again 으로만, 지워진 파일은 안 읽음
+
+- **무엇** — 소유자 10-24 «에러파일 자동으로 읽는건 안끄냐» · «err에서 삭제된 파일도 읽을라 그러네». 표의 읽는 법(파서 스크립트 · table_config 항목 · 외부 원천 항목)이 바뀌어도 실패한 파일은 FAILED 그대로 둡니다 — 전에는 와처가 스스로 다시 읽기에 넘겼습니다. 훑기 밑의 읽은 파일을 다시 읽는 것(체크 해제)은 전과 같습니다.
+- **화면에서** — 실패 파일을 다시 읽는 것은 파일 화면의 **Retry** · **Read now** · **Read all again** 뿐입니다.
+- **지워진 파일** — 디스크에서 지운 파일은 Retry 해도 읽지 않습니다. 와처 줄 «Retry skipped for checklist row #N (<파일>): the file is not on the disk any more - <경로>» 한 줄(트레이스백 없음), 기록은 FAILED «the file is not on the disk any more».
+- **로그 줄** — «[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, failed files are not read again by themselves (Retry on the file page)».
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `reread.hand_on_a_changed_reading` · `run_watcher.retry_one` (`dd5f221ef`). 은퇴한 것: [2026-10-20 설정 · 플러그인을 고치면 …](#2026-10-20--설정--플러그인을-고치면-그-표의-실패-파일을-와처가-스스로-다시-읽는-것) 의 실패 파일 넘기기.
 
 ## 2026-10-24 · 같은 체인 실패는 접고, 10 번 내리 실패한 규칙은 꺼진다 — 목록 · 터미널 · 자동 끄기
 
