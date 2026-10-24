@@ -27,7 +27,10 @@
 // every width is measured in another face.
 // --mutate: the five that leaked on 10-08/09, and the ledger table's hand widths (owner 10-09), are built back one at a
 // time (vite, a temp folder) and each must be red.
-//   node client2/tests/screen_layout_harness.mjs [--mutate] [--only <entry.html>] [--shots <dir>]
+// --touched (owner 10-24 «ㄱ», lead): only the entries whose module graph in this run's build holds a file changed since
+// this tree left origin/main - base and mutants both; a shared file is in every graph. Nothing touched, nothing runs;
+// only the checker or its recorded answers changed, every screen. The whole round runs at night, without it.
+//   node client2/tests/screen_layout_harness.mjs [--mutate] [--touched] [--only <entry.html>] [--shots <dir>]
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -64,6 +67,7 @@ const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.index
 const only = argOf('--only');
 const shots = argOf('--shots');
 const MUTATE = process.argv.includes('--mutate');
+const TOUCHED = process.argv.includes('--touched') && !only;
 // A made-up admin token so the admin page reads one and asks the answers below; it never leaves this Chrome.
 const TOKEN = 'screens-test';
 
@@ -2460,8 +2464,8 @@ const DRIVE = {
   ],
 };
 
-async function runScreens(dist, label, one = only) {
-  const entries = readdirSync(dist).filter((n) => n.endsWith('.html')).sort().filter((n) => !one || n === one);
+async function runScreens(dist, label, some = only ? [only] : null) {
+  const entries = readdirSync(dist).filter((n) => n.endsWith('.html')).sort().filter((n) => !some || some.includes(n));
   const found = [];
   const chrome = await openChrome();
   try {
@@ -2530,8 +2534,35 @@ async function runScreens(dist, label, one = only) {
 let ran = 0;
 let failed = 0;
 const t0 = Date.now();
-const source = await buildBundle('screens-source-');
-const { entries, found } = await runScreens(source, 'source');
+// --touched: each entry's modules as this build bundled them (its chunk and every chunk it imports), against the files
+// changed since the merge base with origin/main - committed, staged, unstaged and new.
+const graph = new Map();
+const source = await buildBundle('screens-source-', TOUCHED ? [{ name: 'screens-graph', generateBundle(o, bundle) {
+  const reach = (file, into) => { const c = bundle[file]; if (!c || c.type !== 'chunk' || into.has(file)) return; into.add(file);
+    for (const f of [...c.imports, ...c.dynamicImports]) reach(f, into); };
+  for (const [file, c] of Object.entries(bundle)) {
+    if (c.type !== 'chunk' || !c.isEntry || !/\.html$/.test(c.facadeModuleId || '')) continue;
+    const files = new Set();
+    reach(file, files);
+    graph.set(path.basename(c.facadeModuleId), new Set([c.facadeModuleId, ...[...files].flatMap((f) => bundle[f].moduleIds)]
+      .map((id) => id.split('?')[0].replace(/\\/g, '/').toLowerCase())));
+  }
+} }] : []);
+let picked = null;
+if (TOUCHED) {
+  const git = (...a) => execFileSync('git', a, { cwd: CLIENT, encoding: 'utf8' }).split('\n').filter(Boolean);
+  const top = git('rev-parse', '--show-toplevel')[0];
+  const base = git('merge-base', 'HEAD', 'origin/main')[0];
+  const changed = [...git('-C', top, 'diff', '--name-only', base), ...git('-C', top, 'ls-files', '--others', '--exclude-standard')]
+    .map((f) => `${top}/${f}`.replace(/\\/g, '/').toLowerCase());
+  const checker = ['tests/screen_layout_harness.mjs', 'tests/fixtures/screens_answers.json.gz', 'tests/fixtures/chain_states.json']
+    .map((f) => `${CLIENT}/${f}`.replace(/\\/g, '/').toLowerCase());
+  picked = [...graph].filter(([, ids]) => changed.some((f) => ids.has(f))).map(([entry]) => entry).sort();
+  if (!picked.length && changed.some((f) => checker.includes(f))) picked = null;
+  console.log(picked === null ? 'narrowed: every screen - only the checker or its recorded answers changed'
+    : picked.length ? `narrowed: ${picked.join(', ')}` : 'narrowed: no screen touched - nothing runs');
+}
+const { entries, found } = picked && !picked.length ? { entries: [], found: [] } : await runScreens(source, 'source', picked || undefined);
 for (const entry of entries) {
   for (const [w, h] of sizesOf(entry)) {
     const cells = CELLS.filter((c) => c.entry === entry && (!c.sizes || c.sizes.includes(`${w}x${h}`)));
@@ -2786,10 +2817,11 @@ async function buildMutant(m) {
 if (MUTATE) {
   for (const m of MUTANTS) {
     if (only && m.entry !== only) continue;   // --only names the mutants' entry too
+    if (picked && !picked.includes(m.entry)) continue;   // and --touched
     ran += 1;
     const out = await buildMutant(m);
     try {
-      const got = (await runScreens(out, 'mutant', m.entry)).found
+      const got = (await runScreens(out, 'mutant', [m.entry])).found
         .filter((f) => f.rule === m.rule && f.path.includes(m.at) && (!m.says || m.says.test(f.what)));
       if (!got.length) failed += 1;
       console.log(`${got.length ? '✓' : '✗'} mutant «${m.name}» ${got.length ? `red: ${got[0].path} · ${got[0].what}` : `ESCAPED - no ${m.rule} line at ${m.at}`}`);

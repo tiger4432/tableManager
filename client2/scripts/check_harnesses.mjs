@@ -2104,7 +2104,9 @@ const shrank = [];      // came in UNDER its ceiling ― good; re-baseline when 
 // 🔴 ONE RULE (lead c4ccdeec3): a harness that reads --mutate runs here WITH it. Mutants kept behind
 //    a flag the gate never passed never ran here, and their anchors died with nobody seeing (10-06).
 //    The same for --control (lead 10-09: subgraph_view_harness's unmutated subsets).
-const FLAGS = ['--mutate', '--control'];
+// --touched (owner 10-24, lead): the screen checker's base and mutants on the screens this tree touched; the whole
+//    round runs at night, outside this gate.
+const FLAGS = ['--mutate', '--control', '--touched'];
 const flagsOf = (name) => {
   const text = readFileSync(path.join(TESTS_DIR, name), 'utf8');
   return FLAGS.filter((f) => text.includes(`process.argv.includes('${f}')`));
@@ -2152,11 +2154,13 @@ for (const name of harnesses) {
     ? ' ― every assertion it counted PASSED, so the red verdict came from scoring this count '
       + 'does not carry; its own output below says which'
     : '';
-  const floor = FLOORS.get(name);
+  // A narrowed run (its «narrowed:» line) scores the screens it touched - the whole run's floor is not its floor.
+  const narrowed = /^narrowed: (?!every screen)/m.test(run.stdout || '');
+  const floor = narrowed ? undefined : FLOORS.get(name);
 
   // Floor bookkeeping runs BEFORE the ceiling verdict below, which can `continue`. A harness
   // that breached its ceiling is still a harness whose coverage we want recorded.
-  if (floor === undefined && !known) unfloored.push(name);
+  if (floor === undefined && !known && !narrowed) unfloored.push(name);
   if (floor !== undefined && counts && counts.ran > floor) rose.push({ name, was: floor, now: counts.ran });
 
   // Checked before the ceiling: a harness that could not load did not report a ceiling
