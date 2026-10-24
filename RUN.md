@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **선언 폼에서 비운 칸은 저장에서 빠진다 — 비게 된 선택 블록(derive.report.sets 등)도 같이** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 Chain 탭 -> 리포트 규칙 -> 폼에서 sets 칸을 적었다 지우고 왼쪽 JSON 을 본다
+> 뜻      JSON 에 "sets" 가 없음  = 고쳐짐
+>          "sets": {"table": ""} 이 남음  = 화면이 옛 번들 -> 강력 새로 고침
+> 이미 저장된 규칙  "sets": {"table": ""} 이 남은 규칙은 그 칸을 폼에서 지우고 다시 저장하면 빠짐
+> 되돌리기  git revert $(git log -2 --format=%h --grep='a cleared form cell leaves the declaration' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-24] **AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율** — git pull · 런처 재기동
 >
 > ```

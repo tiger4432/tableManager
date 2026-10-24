@@ -120,6 +120,25 @@ export function writeShapeAtPath(document, relative, value) {
   return setAtPath(raw, steps, value);
 }
 
+/**
+ * After a delete at `steps`: a parent left as `{}` that is an OPTIONAL field of its record leaves too, and so on up
+ * (owner 10-24: an emptied `derive.report.sets` stayed as `{}` and the save was refused for the cells inside it). A
+ * required container stays - an empty one is a value the grammar asks for. -> the document, pruned or as it was.
+ */
+export function pruneEmptyOptional(document, steps, root, defs) {
+  let next = document;
+  for (let depth = steps.length - 1; depth > 0; depth -= 1) {
+    const at = steps.slice(0, depth);
+    const held = getAtPath(next, at);
+    if (!held || typeof held !== 'object' || Array.isArray(held) || Object.keys(held).length) break;
+    const parent = shapeAt(root, at.slice(0, -1), defs);
+    const field = parent && parent.kind === 'record' ? (parent.fields || []).find((f) => f.key === at[at.length - 1]) : null;
+    if (!field || field.required === true) break;
+    next = deleteAtPath(next, at) || next;
+  }
+  return next;
+}
+
 // `class[0]` on a file holding `"class": "Lot"`: the form drew that word as a one-item list
 // (`asList`), so an index step landing on a single value lifts it into its list first. The
 // file keeps the word until somebody edits the list; from then on it holds the list.

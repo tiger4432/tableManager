@@ -1033,7 +1033,7 @@ const DEFECTS = [
   ['the registry`s translation is ignored, so a file function writes the wrong cell',
     s => s.replace('        const spread = group.split(value);', '        const spread = null;')],
   ['the one-cell spelling is left behind, so the document names a mapper twice',
-    s => s.replace('            if (val === null) {', '            if (false) {')],
+    s => s.replace("            if (val === null || (at === String(path) && typeof val === 'string' && isBlank(val))) {", '            if (false) {')],
   ['the dropdown cannot say what a two-cell rule holds',
     s => s.replace('        return group.join(held && typeof held === \'object\' ? held : {});',
                    '        return \'\';')],

@@ -23,7 +23,7 @@
 //
 // ⛔ 삭제는 없습니다. 얕은 병합이 남의 등록을 지키는 장치이고, 지우는 것은 반경이 다릅니다.
 
-import { ABSENT, countText } from './absent.js';
+import { ABSENT, countText, isBlank } from './absent.js';
 import { CHOOSE } from './ui_words.js';
 import { renderSkeletonForm, adderInput, lineRow } from './ontology_explorer_view.js';
 import { emptyOf, leafValue, missingRequired, pickBranch, refNames, shapeAt } from './ontology_skeleton.js';
@@ -34,7 +34,7 @@ import { writeClipboardRich } from './clipboard_write.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { DeclarationSplit } from './declaration_split.js';
 import {
-  writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember, switchGated,
+  writeShapeAtPath, deleteAtPath, pruneEmptyOptional, splitBundlePath, getAtPath, addMember, switchGated,
 } from './ontology_path.js';
 import { reduceFieldFold } from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
@@ -904,10 +904,12 @@ export class RawRegistryPanel {
           //    그 철자의 칸들로 펴지고, 이 칸은 비워집니다 — 두 컨트롤을 오갈 일이 없습니다.
           let updated = held2;
           for (const [at, val] of this._cells(String(path), next, held2)) {
-            if (val === null) {
+            // A blank word in the cell the operator cleared is absence (lead a5720d9d8): it leaves, and a block it
+            // emptied with it. The blanks a chosen member fills in (C-106 ⑤) stay to be filled.
+            if (val === null || (at === String(path) && typeof val === 'string' && isBlank(val))) {
               // 없는 칸을 지우는 것은 «성공»입니다 — 그 자리는 이미 비어 있습니다.
               const gone = deleteAtPath(updated, splitBundlePath(at));
-              if (gone !== null) updated = gone;
+              if (gone !== null) updated = pruneEmptyOptional(gone, splitBundlePath(at), root, (payload.skeleton || {}).defs);
               continue;
             }
             const written = writeShapeAtPath(updated, at, val);
@@ -952,6 +954,7 @@ export class RawRegistryPanel {
           let next = null;
           if (action === 'form-remove' || action === 'form-clear') {
             next = deleteAtPath(held3, splitBundlePath(path));
+            if (next !== null) next = pruneEmptyOptional(next, splitBundlePath(path), root, (payload.skeleton || {}).defs);
           } else {
             const node = shapeAt(root, splitBundlePath(path), (payload.skeleton || {}).defs);
             const named = action === 'form-name'

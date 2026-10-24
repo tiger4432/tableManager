@@ -185,6 +185,14 @@ function pathSuite(M) {
   ok(gates && same(gates.document.on.exclude, [{}]) && valueGate && same(valueGate.document.on.exclude, [{ status: [] }]),
     `X6 «+ values» adds a value gate, and «+ column» on it adds the column [${JSON.stringify([gates && gates.document.on.exclude,
       valueGate && valueGate.document.on.exclude])}]`);
+  // An emptied optional block leaves (owner 10-24: derive.report.sets left as {} refused the save for its inner cells).
+  const pruned = M.path.pruneEmptyOptional({ derive: { report: { wafer: { x: 'w' }, sets: {} } } },
+    ['derive', 'report', 'sets', 'table'], root, cdefs);
+  ok(same(pruned, { derive: { report: { wafer: { x: 'w' } } } }),
+    `X7 an optional block a delete emptied leaves, and its parent holding more stays [${JSON.stringify(pruned)}]`);
+  const REQ = { kind: 'record', fields: [{ key: 'need', required: true, node: { kind: 'record', fields: [{ key: 'inner', required: false, node: { kind: 'leaf' } }] } }] };
+  const kept = M.path.pruneEmptyOptional({ need: {} }, ['need', 'inner'], REQ, {});
+  ok(same(kept, { need: {} }), `X8 an emptied required block stays [${JSON.stringify(kept)}]`);
   const step = (before, at, value, stash) => {
     const after = M.path.writeShapeAtPath(before, at, value);
     return M.path.switchGated(before, after, at, FIX.root, {}, stash);
@@ -239,6 +247,20 @@ function panelOf(M, skeleton, declaration, opts = {}) {
 }
 
 function panelSuite(M) {
+  // A cell cleared is absence, and the optional block it emptied leaves with it; a required block stays (owner 10-24:
+  // an emptied derive.report.sets stayed as {"table": ""} and the save was refused for the cells inside it).
+  const leaf = { kind: 'leaf', hint: 'free' };
+  const OPT = { root: { kind: 'record', fields: [
+    { key: 'keep', required: false, node: leaf },
+    { key: 'opt', required: false, node: { kind: 'record', fields: [{ key: 'inner', required: true, node: leaf }] } },
+    { key: 'need', required: true, node: { kind: 'record', fields: [{ key: 'inner', required: false, node: leaf }] } }] }, defs: {} };
+  const optDoc = { keep: 'k', opt: { inner: 'x' }, need: { inner: 'y' } };
+  const o = panelOf(M, OPT, optDoc);
+  o.panel._formFold = { expandedFields: new Proxy({}, { get: () => true, has: () => true }) };
+  o.panel.render(payloadFor(OPT, optDoc));
+  const cleared = [o.set('opt.inner', ''), o.set('need.inner', ' ')];
+  ok(same(cleared, [true, true]) && same(o.held(), { keep: 'k', need: {} }),
+    `P13 a cleared cell leaves; the optional block it emptied leaves too, a required one stays [${JSON.stringify([cleared, o.held()])}]`);
   // two forms on one screen
   const a = panelOf(M, FIX, copy(DOC));
   const b = panelOf(M, FIX, copy(DOC));
@@ -485,6 +507,11 @@ const DEFECTS = [
     (s) => s.replace("const item = member && member.pick === 'shape' ?", "const item = false ?")],
   ['path', "a list under a shape-picked oneOf takes no member - a take's from list adds nothing (B a44dd01af)",
     (s) => s.replace("  if (node && node.kind === 'oneOf' && node.pick === 'shape') node =", '  if (false) node =')],
+  ['path', 'an emptied optional block stays as {}', (s) => s.replace('    next = deleteAtPath(next, at) || next;\n', '    break;\n')],
+  ['path', 'an emptied required block is taken out too', (s) => s.replace('    if (!field || field.required === true) break;\n', '    if (!field) break;\n')],
+  ['panel', 'a cleared cell is written as an empty word', (s) => s.replace("if (val === null || (at === String(path) && typeof val === 'string' && isBlank(val))) {", 'if (val === null) {')],
+  ['panel', 'a cleared cell leaves its block behind',
+    (s) => s.replace('if (gone !== null) updated = pruneEmptyOptional(gone, splitBundlePath(at), root, (payload.skeleton || {}).defs);', 'if (gone !== null) updated = gone;')],
   ['path', 'a switched gate forgets what was typed', (s) => s.replace('      kept[at] = record[field.key];\n', '')],
   ['path', 'a switched gate keeps the shut branch in the document', (s) => s.replace('      delete record[field.key];\n', '')],
   ['skel', 'a choice of one is left for the person',
