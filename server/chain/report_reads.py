@@ -305,14 +305,34 @@ class Report:
             del found[pair]
         return found, sorted("%s %s" % (self.said(wafer), item) for wafer, item in twice)
 
-    def _summary(self, wafers):
+    def _summary(self, wafers, yields=False):
         """(wafer, item) -> {"fail", "total", "rate"} as the owner's summary table holds them (owner 10-22: the
-        product does not make a wafer's value again)."""
+        product does not make a wafer's value again) - its defect rows, or with `yields` the rows of
+        `summary.yield_item` (the unit's yield, owner 10-24): every reader of a defect reads this, so the yield is in
+        none of them."""
         role = self.spec["summary"]
+        named = report_shape.yield_items(self.spec)
         cells = [cell for cell in SUMMARY_CELLS if role.get(cell)]
         found, twice = self._pairs(role, [role[cell] for cell in cells], wafers)
         return {pair: {cell: _number(value) for cell, value in zip(cells, row)}
-                for pair, row in found.items()}, twice
+                for pair, row in found.items() if (pair[1] in named) == yields}, \
+            [said for said in twice if any(said.endswith(" " + item) for item in named) == yields]
+
+    def _yield_rows(self, columns):
+        """The matrix's yield rows (`summary.yield_item`): a row an item, a column's cell read as a defect's is - «x%
+        (F/N)», several wafers summed - under labels.yield «Yield»."""
+        named = report_shape.yield_items(self.spec)
+        if not named:
+            return [], []
+        found, twice = self._summary([w for members in columns for w in members], yields=True)
+        head, sep = report_shape.word(self.spec, "yield"), self.spec.get("item_sep") or ""
+        rows = []
+        for item in sorted(named):
+            cells = [self._cell(found.get((members[0], item)) if len(members) == 1
+                                else self._summed([found.get((w, item)) for w in members])) for members in columns]
+            rows.append((head if len(named) == 1 else head + sep + item if sep else item,
+                         [{"text": cell["text"]} for cell in cells]))
+        return rows, twice
 
     def _info(self, columns, chosen=None):
         """The info rows under the summary table's head (owner 10-23): [(name, [cell, ...])] over the table's columns
@@ -473,6 +493,8 @@ class Report:
         info, info_twice = self._info(spans, rows)
         if not by and not any(role.get(report_shape.CHOOSE) for role in report_shape.info_rows(self.spec)):
             info = self._condition_rows(spans, rows) + info
+        yields, yield_twice = self._yield_rows(spans)
+        info, info_twice = info + yields, info_twice + yield_twice
         pictures, pictures_twice = self._pictures([[] if by else members for members in spans])
         table = dict(self._columns_of(columns, heads, by), info=info, pictures=pictures, rows=out,
                      item_label=self.spec["summary"].get("label"),

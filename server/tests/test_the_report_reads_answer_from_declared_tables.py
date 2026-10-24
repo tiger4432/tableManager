@@ -281,6 +281,28 @@ def test_a_condition_item_is_the_wafers_time_when_the_wafer_role_names_none(repo
         "derive.report.conditions.time_item is the condition item whose value is the wafer's time")
 
 
+def test_a_yield_item_of_the_summary_is_the_yield_not_a_defect(report, db_session):
+    """derive.report.summary.yield_item (owner 10-24 «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로
+    리포트하네»): those rows are the matrix's yield row, read as a defect's cell is, and in no defect read."""
+    from chain import report_shape
+
+    m = models.DYNAMIC_TABLES
+    for n, (w, fail) in enumerate([("W1", 95), ("W2", 90)]):
+        db_session.add(m["rr_summary"](row_id="y%d" % n, wafer_id=w, defect_item="YIELD", n="1", fail_chips=fail,
+                                       total_chips=100))
+    db_session.commit()
+    assert "YIELD" in [row[0] for row in report.pareto()["html"]["rows"]], "undeclared: a defect, as before"
+    report.spec["summary"]["yield_item"] = "YIELD"
+    assert "YIELD" not in [row[0] for row in report.pareto()["html"]["rows"]]
+    table = report.yield_by()["html"]
+    assert [(name, [c["text"] for c in cells]) for name, cells in table["info"]][-1] == (
+        "Yield", ["95.0% (95/100)", "90.0% (90/100)", "—"]), "W1 W2 W3 by time; W3 has no yield row"
+    assert "info Yield | 95.0% (95/100)" in report.yield_by()["context"], "the model reads it as the yield"
+    assert all(item != "YIELD" for item, _cells in table["rows"])
+    assert report_shape.refusal(dict(SPEC, summary=dict(SPEC["summary"], yield_item=[]))).startswith(
+        "derive.report.summary.yield_item is the summary item (or items) that is the yield")
+
+
 def test_a_compare_set_is_a_second_group_of_columns(report):
     """The kind column's values are the declaration's (sets.kinds) - «eval» written there is not one of them."""
     assert report.compare(["baseline", "keylots"])["context"].splitlines() == [

@@ -621,9 +621,9 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         said = report.conditions()["context"]
         assert "anneal: 450C 1" in said and "default conditions (no condition row): 1 wafers" in said, said
         lines = report.candidates()["context"].splitlines()
-        assert lines[1:] == ["W3 · 2026-10-23 · 2 rows · title later · W3/L1: bond=300 · W3/L2: default conditions",
-                             "W2 · 2026-10-22 · 2 rows · title trap · W2/L1: bond=(empty) · "
-                             "W2/L2: default conditions"], \
+        assert lines[1:] == ["W3 · 2026-10-23 · 2 rows · title later · wafer W3 · leg L1: bond=300 · wafer W3 · leg L2: default conditions",
+                             "W2 · 2026-10-22 · 2 rows · title trap · wafer W2 · leg L1: bond=(empty) · "
+                             "wafer W2 · leg L2: default conditions"], \
             "a candidate is the report table's wafer, its legs together; its day the product zone's; a blank value " \
             "said; W3 later than W1 a candidate too (owner «빼지 마»), its legs one row of one date (lead 10-23)"
         assert report.candidates()["html"] is None and "candidates" not in report_shape.TABLE_FILLS, \
@@ -638,7 +638,7 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         monkeypatch.setattr(report_reads, "_picture", lambda ref, px: {"src": ref})
         spec["images"] = dict(spec["images"], per_item=1)
         shown = report_reads.Report(db, spec, None, only={"wafer": "W1"}).images()["html"]
-        assert [p["wafer"] for p in shown["particle"]] == ["W1/L1", "W1/L2"], \
+        assert [p["wafer"] for p in shown["particle"]] == ["wafer W1 · leg L1", "wafer W1 · leg L2"], \
             "per_item a leg - L2's chip too (lead 10-23: all three were L1's)"
     finally:
         db.rollback()

@@ -40,6 +40,16 @@ IMAGE_MATCH = "match"
 #: (owner 10-24: the wafer's time is a conditions row, not a column) - a table keyed by the wafer alone gives it to
 #: every leg, as every condition.
 TIME_ITEM = "time_item"
+#: `summary.yield_item`: the summary rows (an item name, or a list) that are the unit's yield, not a defect (owner 10-24
+#: «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로 리포트하네») - read as every row (rate, or F and N),
+#: drawn as the matrix's yield rows, left out of the defect rows, the pareto, the trend and the images.
+YIELD_ITEM = "yield_item"
+
+
+def yield_items(spec) -> set:
+    """`summary.yield_item` as a set of item names - one written alone a set of one; empty undeclared."""
+    said = ((spec or {}).get("summary") or {}).get(YIELD_ITEM)
+    return {said} if isinstance(said, str) else {str(s) for s in said} if isinstance(said, list) else set()
 #: The roles a report cannot be made without.
 REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
@@ -112,7 +122,7 @@ LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
           "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence",
-          "conditions": "Conditions", "unpaired": "Image kinds no summary item matches (images.match): %s",
+          "conditions": "Conditions", "yield": "Yield", "unpaired": "Image kinds no summary item matches (images.match): %s",
           "no_control": "This report's wafers only - no compare set default or control.recent is declared."}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
@@ -191,6 +201,8 @@ def _role_node(role):
             "of": chain_bindings.list_node("kind", {"kind": "leaf", "hint": "free"})}})
     if role == "summary":
         fields.append({"key": LABEL, "required": False, "node": {"kind": "leaf", "hint": "free"}})
+        fields.append({"key": YIELD_ITEM, "required": False,
+                       "node": chain_bindings.list_node("item", {"kind": "leaf", "hint": "free"})})
     if role == "conditions":
         fields.append({"key": TIME_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
     if role == "sets":
@@ -498,6 +510,11 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
             for kinds in match.values())):
         return ('derive.report.images.match is {summary item: image kind or [image kinds]}, e.g. '
                 '{"typeA": ["void", "signal"]}; got %r' % (match,))
+    said = spec["summary"].get(YIELD_ITEM)
+    if said is not None and not (isinstance(said, str) and said.strip() or isinstance(said, list) and said and all(
+            isinstance(s, str) and s.strip() for s in said)):
+        return ('derive.report.summary.yield_item is the summary item (or items) that is the yield, e.g. "YIELD"; got %r'
+                % (said,))
     time_item = (spec.get("conditions") or {}).get(TIME_ITEM) if isinstance(spec.get("conditions"), dict) else None
     if time_item is not None and not (isinstance(time_item, str) and time_item.strip()):
         return ("derive.report.conditions.time_item is the condition item whose value is the wafer's time, e.g. "

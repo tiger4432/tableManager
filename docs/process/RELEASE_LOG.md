@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율](#2026-10-24--ai-리포트-수율-행--summaryyield_item-은-불량-유형이-아니라-수율) — 적는 곳 derive.report.summary.yield_item · 보는 곳 리포트 표 Yield 줄 · 파레토
 - 2026-10-24 [AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item](#2026-10-24--ai-리포트-웨이퍼-시각을-조건-항목에서--conditionstime_item) — 적는 곳 derive.report.conditions.time_item · 보는 곳 리포트 열 순서 · 날짜 · 대조 후보
 - 2026-10-24 [행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)](#2026-10-24--행-게이트-값에----패턴--onrequire--onexclude-와-ai-리포트-waferexclude-무시할-leg) — 적는 곳 on.require · on.exclude · derive.report.wafer.exclude · 보는 곳 리포트 · 체인 줄
 - 2026-10-24 [AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)](#2026-10-24--ai-리포트-그림-짝--imagesmatch-로-그림-표의-종류를-요약-항목에-void-signal---typea) — 적는 곳 derive.report.images.match · 보는 곳 리포트 그림
@@ -582,6 +583,15 @@
 
 
 
+
+## 2026-10-24 · AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율
+
+- 무엇: 요약표에 수율을 자유 항목(YIELD 같은)으로 넣었더니 리포트가 불량 유형으로 다뤘다(소유자 «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로 리포트하네»).
+  - `summary.yield_item`: 그 항목 이름(또는 목록). 그 행은 표의 «Yield» 줄(labels.yield) — 불량 칸과 같은 읽기(rate, 또는 F/N), 열에 웨이퍼가 여럿이면 합. 모델은 «info Yield | …» 로 읽는다.
+  - 불량 행 · 파레토 · 트렌드 · 그림(난 불량)에서는 빠진다. 안 적으면 오늘처럼.
+  - 저장 거절: 빈 값 · 글자 아님 «derive.report.summary.yield_item is the summary item (or items) that is the yield, e.g. "YIELD"; got …»
+- 선언 예시(chain_rules.json 의 derive.report.summary): `"yield_item": "YIELD"`
+- 자세히: `server/chain/report_reads.py` 의 `Report._summary(yields=)` · `_yield_rows`, `report_shape.yield_items`.
 
 ## 2026-10-24 · AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item
 

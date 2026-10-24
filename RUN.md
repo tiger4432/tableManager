@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   chain_rules.json 의 derive.report.summary 에  "yield_item": "<요약표에서 수율 행의 항목 이름>"  (여럿이면 목록)
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    표에 «Yield» 줄이 생기고 불량 행 · 파레토에서 그 항목이 사라지면 고쳐진 것
+>          Yield 줄이 «—» 뿐 -> 항목 이름 철자가 요약표 값과 다름 (대소문자 그대로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='summary.yield_item' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 그림이 «No image of an occurred defect» 로 비던 것 — 짧은 wafer 목록은 차례로 안 맞춤 (d6815fa37)** — git pull · 런처 재기동
 >
 > ```
