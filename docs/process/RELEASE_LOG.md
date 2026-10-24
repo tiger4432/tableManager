@@ -330,6 +330,7 @@
 
 ### 명령
 
+- 2026-10-24 [착지 빌드의 화면 검사는 바꾼 화면만 — 전체 판은 밤에](#2026-10-24--착지-빌드의-화면-검사는-바꾼-화면만--전체-판은-밤에) — 명령 `npm run build` (prebuild 안의 화면 검사기가 --touched)
 - 2026-10-11 [소급 강제 종료 — 더블클릭 한 번](#2026-10-11--소급-강제-종료--더블클릭-한-번) — 명령 `stop_retroactive.bat`
 - 2026-10-10 [원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 읽지 않게](#2026-10-10--원장-ref-해시-인덱스--거두기-한-장이-원장-전체를-읽지-않게) — 명령 `python server/scripts/build_ledger_ref_index.py`
 - 2026-10-03 [table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다](#2026-10-03--table_config-를-다시-쓰는-스크립트-둘이-운영자가-적은-칸을-지우지-않는다) — 명령 `python server/scripts/install_product_tables.py --overwrite-drift` · `python server/scripts/table_config_from_schema.py --merge`
@@ -564,6 +565,14 @@
 
 
 
+
+## 2026-10-24 · 착지 빌드의 화면 검사는 바꾼 화면만 — 전체 판은 밤에
+
+- **무엇** — 소유자 10-24 「너무 오래 걸리는데」 → 총괄 안 «ㄱ». 착지 빌드(prebuild)의 화면 검사기가 화면 아홉을 크기 · 상태 · 변이 67 개마다 다시 빌드하고 다시 열어, 10-24 아침 판이 84 분을 넘겨 거뒀습니다.
+- **이제** — 화면 검사기가 자기가 굽는 빌드의 모듈 그래프에서, origin/main 과 갈라진 뒤 바뀐 파일을 가진 화면만 엽니다(base · 변이 둘 다). 공용 파일(tokens.css 등)은 모든 화면의 그래프에 있어 전부가 됩니다. 검사기나 기록된 응답만 바뀌면 전부, 아무 화면도 안 닿으면 0 입니다. 첫 줄이 «narrowed: …» 로 어느 쪽인지 말합니다.
+- **잰 것** — 파일 화면 파일 한 줄 → «narrowed: file_ingestion.html» 50 초(37/0) · 아무것도 안 바뀜 → «no screen touched - nothing runs» 5 초 · tokens.css 한 줄 → 아홉 화면 · 기록된 응답만 → «every screen». 임시 클론에서 잰 수입니다.
+- **필요한 조건** — 없음(시험 도구만 바뀜). 전체 판: `node client2/tests/screen_layout_harness.mjs --mutate` (밤, 소유자 자리 비움 때).
+- **자세히** — `client2/tests/screen_layout_harness.mjs` (--touched) · `client2/scripts/check_harnesses.mjs` (FLAGS, 좁힌 판은 바닥 307 대신 그 판의 수) · ui-design-system §8.
 
 ## 2026-10-24 · 꺼진 외부 소스의 파일도 손으로 읽는다 — Read now · Retry 는 그 선언대로
 

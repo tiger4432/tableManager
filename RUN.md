@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **착지 빌드의 화면 검사는 바꾼 화면만 · 전체 판은 밤에 (소유자 「너무 오래 걸리는데」 → «ㄱ»)** — 돌릴 것 없음
+>
+> ```
+> 돌릴 것   없음 (시험 도구만 바뀜, 서버 · 화면 그대로)
+>          밤 전체 판 (소유자 자리 비움 때, 총괄이 알리면 클라가 띄움):
+>          cd client2 && node tests/screen_layout_harness.mjs --mutate
+> 뜻      착지 빌드 로그 첫 줄 «narrowed: <화면들>»  = 그 화면만 열었음
+>          «narrowed: no screen touched - nothing runs»  = 바뀐 파일이 어느 화면에도 안 닿음
+>          «narrowed: every screen - …»  = 검사기나 기록된 응답만 바뀌어 전부 엶
+> 끄기     check_harnesses.mjs 의 FLAGS 에서 '--touched' 를 빼면 예전처럼 전부
+> ```
+>
+> ---
+>
 > ## [10-24] **체인 실패 트레이스백이 터미널에 — 실패 줄 바로 밑에 전체 (331661db4, beec46570 와 같이)** — git pull · 런처 재기동
 >
 > ```
