@@ -242,7 +242,11 @@ def _table_refusal(path, written, cells, lists, numbers, key_names):
                 return "%s.%s %r is not a column of %r - name one of its columns" % (path, cell, name, table)
         if cell == WAFER_CELL:
             wafer_key, every, unit = key_names
-            stray = [name for name in names if name not in every]
+            # 소유자 10-24 «키 컬럼 맞음» · «제대로 동기화 할거 아니면 화면 선언 막지마»: the table's own key columns pass too
+            from database import crud
+            own = crud.TABLE_CONFIG.get(str(table), {}) or {}
+            own_keys = set(own.get("composite_key_source") or ()) | ({own["business_key"]} if own.get("business_key") else set())
+            stray = [name for name in names if name not in every and name not in own_keys]
             if stray:
                 return ("%s.wafer %r is not a key column - the key columns a table has, by name: derive.report.wafer.key "
                         "(%s) and derive.report.keys" % (path, stray[0], ", ".join(wafer_key)))
