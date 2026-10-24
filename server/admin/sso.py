@@ -49,7 +49,9 @@ ASYMMETRIC_ALGORITHM_FAMILIES = ("RS", "PS", "ES")
 ERROR_DESCRIPTION_CHARS = 200
 COOKIE_NAME = "assy_session"
 SIGNED_OUT_PATH = "/auth/signed-out"
-OPEN_PREFIXES = ("/auth/", "/internal/")
+#: «/shared/report/»: a report page by its signed link - the route checks the link's key (owner 10-24 «SSO 땜에 첨부
+#: 안 될 듯» · 서명 링크)
+OPEN_PREFIXES = ("/auth/", "/internal/", "/shared/report/")
 OPEN_PATHS = ("/health",)
 #: What this gate's refusals name in WWW-Authenticate, as the token gate names X-Admin-Token.
 SESSION_CHALLENGE = "Session"

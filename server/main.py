@@ -973,6 +973,34 @@ def _reports_folder():
     return os.path.join(paths.DATA_ROOT, report_html.REPORTS_DIRNAME)
 
 
+def _report_link_key(name):
+    """The signed link's key of a report name - HMAC-SHA256 under a secret kept beside the reports (made once)."""
+    import hashlib
+    import hmac
+    import secrets
+
+    folder = _reports_folder()
+    os.makedirs(folder, exist_ok=True)
+    secret_path = os.path.join(folder, ".link_secret")
+    if not os.path.isfile(secret_path):
+        with open(secret_path, "w", encoding="ascii") as handle:
+            handle.write(secrets.token_hex(32))
+    with open(secret_path, encoding="ascii") as handle:
+        secret = handle.read().strip().encode()
+    return hmac.new(secret, name.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+
+@app.get("/shared/report/{name}")
+def get_shared_report(name: str, k: str = ""):
+    """A report page by its signed link, no sign-in - to embed in another site's iframe (owner 10-24 «SSO 땜에 첨부 안 될
+    듯» · 서명 링크). Only a key this server made for that name opens it; GET /reports gives each report's link."""
+    import hmac
+
+    if not k or not hmac.compare_digest(k, _report_link_key(os.path.basename(name))):
+        raise HTTPException(status_code=403, detail="this link is not a report's signed link - copy it from GET /reports")
+    return get_report(name)
+
+
 @app.get("/reports/{name}")
 def get_report(name: str):
     """One AI report file as a page - to open, or to embed elsewhere in an iframe (owner 10-24 «report 서빙하는 거 서버에
@@ -995,9 +1023,10 @@ def list_reports():
     folder = _reports_folder()
     names = sorted((n for n in (os.listdir(folder) if os.path.isdir(folder) else ()) if n.lower().endswith(".html")),
                    key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
-    rows = "".join('<li><a href="/reports/%s">%s</a> <small>%s</small></li>' % (
-        _html.escape(n), _html.escape(n), time.strftime("%Y-%m-%d %H:%M", time.localtime(
-            os.path.getmtime(os.path.join(folder, n))))) for n in names)
+    rows = "".join('<li><a href="/reports/%s">%s</a> <small>%s</small> · <a href="/shared/report/%s?k=%s">Share link</a>'
+                   '</li>' % (_html.escape(n), _html.escape(n), time.strftime("%Y-%m-%d %H:%M", time.localtime(
+                       os.path.getmtime(os.path.join(folder, n)))), _html.escape(n), _report_link_key(n))
+                   for n in names)
     return HTMLResponse('<!doctype html><meta charset="utf-8"><title>Reports</title><h1>Reports</h1><ul>%s</ul>'
                         % (rows or "<li>No report yet</li>"), headers={"Cache-Control": "no-store"})
 
