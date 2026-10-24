@@ -464,7 +464,7 @@ class FileIngestionLog(Base):
         # (count 5.5 s) without it, an index scan (0.12 s) with it. text_pattern_ops: a LIKE prefix under any collation.
         Index("ix_file_ingestion_logs_folder", path_key(filepath).label("path_key"),
               postgresql_ops={"path_key": "text_pattern_ops"},
-              info={"purpose": "ingestion log rows under one folder", "serves": "file search by folder, re-read"}),
+              info={"purpose": "ingestion log rows of one path", "serves": "checkpoint.fill_checklist: a file's newest record by path_key"}),
         Index("ix_file_ingestion_logs_filename", "filename",
               info={"purpose": "ingestion log rows of one file name", "serves": "ingestion log lookups"}),
         Index("ix_file_ingestion_logs_table_name", "table_name",
