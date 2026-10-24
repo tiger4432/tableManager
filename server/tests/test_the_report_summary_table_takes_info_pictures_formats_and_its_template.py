@@ -195,7 +195,7 @@ def test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_und
     page = report_html._summary_table(table, spec)
     assert '<th class="rpt-group rpt-own" colspan="2">2026-10-01</th>' in page and \
         '<th class="rpt-head rpt-own" colspan="2">W1</th>' in page, "the same day · the same wafer one cell"
-    assert '<td class="rpt-item">불량</td>' in page and '<td class="rpt-info" colspan="4">수율</td>' in page
+    assert '<td class="rpt-item rpt-name">불량</td>' in page and '<td class="rpt-info rpt-name" colspan="4">수율</td>' in page
     assert 'style="background:#ffcccc">10.0% (10/100)' in page, "W1/v2 against C1's 2.0% - the control read by flag"
     assert ['<th class="rpt-group" colspan="4">Date</th>', '<th class="rpt-head" colspan="4">wafer_id</th>',
             '<th class="rpt-head" colspan="4">version</th>'] == re.findall(r'<th class="rpt-\w+" colspan="4">[^<]*</th>', page), \
@@ -338,8 +338,8 @@ def test_the_sample_rows_lend_their_formats_and_become_one_cell(report):
     assert '<tr height=20><td colspan="6"><div class="scroll"' in page, "one cell spanning the sample's first row"
     assert ('<th class="rpt-group xl70" colspan="3">Date</th><th class="rpt-group rpt-own xl71" colspan="2">2026-10-01</th>'
             in page), "the head's name cell spans the row head's three cells (결함 · 입자 · 대)"
-    assert '<td class="rpt-info xl72" colspan="3">자재</td><td class="rpt-info rpt-own xl73">A-lot</td>' in page
-    assert ('<td class="rpt-picture xl74" colspan="3">합성맵</td><td class="rpt-picture rpt-own xl75"><img src="data:'
+    assert '<td class="rpt-info rpt-name xl72" colspan="3">자재</td><td class="rpt-info rpt-own xl73">A-lot</td>' in page
+    assert ('<td class="rpt-picture rpt-name xl74" colspan="3">합성맵</td><td class="rpt-picture rpt-own xl75"><img src="data:'
             in page)
     assert ('<td class="rpt-item xl76" style="border:.5pt solid windowtext">결함</td>'
             '<td class="rpt-item xl76" style="border:.5pt solid windowtext">입자</td>'

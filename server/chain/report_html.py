@@ -28,12 +28,12 @@ h1 { font-size: 20px; margin: 0; }
 section { display: grid; gap: 8px; }
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: normal;
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: center; white-space: normal;
          overflow-wrap: anywhere; vertical-align: top; }
 th { background: var(--head); }
 thead th { text-align: center; vertical-align: middle; }
 thead th:first-child { text-align: left; }
-th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
+th:first-child, td.rpt-name { text-align: left; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, var(--px, 320px)); gap: 12px; }
 .gallery figure img { width: var(--px, 320px); height: var(--px, 320px); object-fit: contain; display: block;
                       background: var(--head); }
@@ -209,7 +209,7 @@ def _summary_table(table, spec, lent=None):
             baseline = _baseline(cells, own) if kind == "item" else None
             scaled = (_scaled(cells, False) if kind == "item" and not formats.get(raw) else
                       _scaled(cells, True) if any(c.get("higher") == "better" for c in cells) else [None] * len(cells))
-            row_head = "".join(_cell("td", name_class, dress.get("name"), text=_e(part), rowspan=rowspan,
+            row_head = "".join(_cell("td", name_class + " rpt-name", dress.get("name"), text=_e(part), rowspan=rowspan,
                                      colspan=colspan if colspan and colspan > 1 else None)
                                for part, rowspan, colspan in parts)
             values = "".join(_cell("td", _aligned(value_class, cell, kind) + (" " + OWN if own[at] else ""),

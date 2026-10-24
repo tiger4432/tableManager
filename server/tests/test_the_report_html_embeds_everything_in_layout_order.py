@@ -37,7 +37,7 @@ def test_the_summary_table_heads_each_group_over_its_wafers():
     page = _page()
     assert '<th class="rpt-group rpt-own" colspan="2">E1</th><th class="rpt-group" colspan="1">baseline</th>' in page
     assert '<th class="rpt-head rpt-own">W1</th><th class="rpt-head rpt-own">W2</th><th class="rpt-head">W0</th>' in page
-    assert '<td class="rpt-item">&lt;script&gt;' in page and '<td class="rpt-cell rpt-own">3.0% (3/100)</td>' in page
+    assert '<td class="rpt-item rpt-name">&lt;script&gt;' in page and '<td class="rpt-cell rpt-own">3.0% (3/100)</td>' in page
     assert '<td class="rpt-cell">50.0% (50/100)</td>' in page, "this report's columns orange (rpt-own), the others not"
     assert "Left out - two rows for one wafer and name: W9" in page
 
