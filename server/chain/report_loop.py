@@ -259,6 +259,12 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         record["summary"] = (previous[0] if previous else "")[:200]
         record["read"] = previous[1:]                       # the Evidence's lines under it (lead 10-23)
         steps.append(record)
+        if refused is None and said.get("call") in report_shape.TABLE_FILLS:
+            # what the model selected (prompts.select) is the file's table too - its wafers, rows, items; only `by`
+            # stays the model's own, the heads stay date > wafer > leg (owner 10-24 «select 프롬프트 내가 쓴 게 전혀
+            # 안 들어먹는데»: 3b02c7efe drew every table with no args)
+            report.__dict__.setdefault("chosen", {})[said["call"]] = {
+                k: v for k, v in (said.get("args") or {}).items() if k != "by"}
         if refused is None and said.get("call") == "yield_by":   # the condition rows the model kept, for the file's
             rows = (said.get("args") or {}).get("rows")
             report.kept_rows = list(dict.fromkeys(getattr(report, "kept_rows", []) +
@@ -273,7 +279,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         if "yield_by" in tables and any(n not in getattr(report, "kept_rows", []) for n in named):
             report.kept_rows = list(dict.fromkeys(getattr(report, "kept_rows", []) + named))
             try:
-                tables["yield_by"] = report.yield_by(rows=report.kept_rows)["html"]
+                tables["yield_by"] = report.yield_by(**_args(report, "yield_by"))["html"]
             except report_reads.ReadRefused as said:
                 logger.warning("[report] yield_by with the written conditions refused: %s", said, exc_info=said)
     return out
@@ -291,6 +297,15 @@ def filled_slots(spec) -> tuple:
     slots = report_shape.layout(spec)
     return ([slot.get("fill") for slot in slots if slot.get("kind") == "table"],
             any(slot.get("kind") == "image" for slot in slots))
+
+
+def _args(report, call):
+    """The args the file's table is drawn with - the model's selection for it (no `by`), the yield_by rows with every
+    condition kept or written."""
+    args = dict(report.__dict__.get("chosen", {}).get(call) or {})
+    if call == "yield_by" and getattr(report, "kept_rows", None):
+        args["rows"] = report.kept_rows
+    return args
 
 
 def _product_reads(report, spec, tables, reads, steps, clock):
@@ -317,8 +332,7 @@ def _product_reads(report, spec, tables, reads, steps, clock):
     for call in calls:
         began = clock()
         try:
-            answer, refused = (report.yield_by(rows=report.kept_rows) if call == "yield_by" and
-                               getattr(report, "kept_rows", None) else getattr(report, call)()), None
+            answer, refused = getattr(report, call)(**_args(report, call)), None
         except report_reads.ReadRefused as said:
             logger.warning("[report] %s() refused: %s", call, said, exc_info=said)
             answer, refused = None, str(said)
