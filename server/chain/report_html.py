@@ -37,6 +37,7 @@ th:first-child, td.rpt-name { text-align: left; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, var(--px, 320px)); gap: 12px; }
 .gallery figure img { width: var(--px, 320px); height: var(--px, 320px); object-fit: contain; display: block;
                       background: var(--head); }
+.gallery figure img[hidden] { display: none; }
 figure { margin: 0; display: grid; gap: 4px; }
 figcaption { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .text { white-space: pre-wrap; }
