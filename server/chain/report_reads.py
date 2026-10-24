@@ -665,11 +665,25 @@ class Report:
             # the line, then each unpaired kind under itself - after the paired items
             chosen[report_shape.word(self.spec, "unpaired") % ", ".join(sorted(unpaired))] = []
             chosen.update(sorted(unpaired.items()))
-        self.embedded.update(chosen)
         each = {}
         for (item, _wafer), n in counts.items():
             each[item] = each.get(item, 0) + n
-        text = ", ".join("%s %d" % (item, n) for item, n in sorted(each.items())) or "no image of an occurred defect"
+        if not chosen:
+            # 소유자 10-24 «아직도 no image of an occurred defect»: the page says why - what was found, what occurred
+            kinds = sorted({str(row[0]) for _w, row in rows})
+            why = ("No image of an occurred defect - %d image row(s) of %s for these wafers (matched by %s); their "
+                   "kinds: %s; defects that occurred: %s%s" % (
+                       len(rows), role["table"], ", ".join("%s=%s" % (c, report_shape.column_of(role, c))
+                                                           for c in report_shape.wafer_columns(role["wafer"])),
+                       ", ".join(kinds[:12]) or "-", ", ".join(sorted({i for _w, i in occurred})[:12]) or "-",
+                       "; images.match: %s" % match if match else ""))
+            chosen = {} if self.embedded else {why: []}     # said only while the page has no picture at all
+            self._image_why = why
+        elif getattr(self, "_image_why", None):
+            self.embedded.pop(self._image_why, None)          # a later read found pictures - the reason goes
+            self._image_why = None
+        self.embedded.update(chosen)
+        text = ", ".join("%s %d" % (item, n) for item, n in sorted(each.items())) or next(iter(chosen), "")
         return {"context": "images picked: " + text, "html": chosen}
 
     def _recent(self):
