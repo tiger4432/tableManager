@@ -131,8 +131,12 @@ def test_the_summary_table_is_items_down_and_wafers_across_by_time(report):
     assert _texts(answer["html"]["rows"]) == [
         ("particle", ["3.0% (3/100)", "5.0% (10/200)", "0.0% (0/400)"]),
         ("scratch", ["1.0% (1/100)", "0.0% (0/200)", "10.0% (40/400)"])]
-    assert answer["context"].splitlines()[1] == "info split | A | A | B", "the condition group - its values differ"
-    assert answer["context"].splitlines()[2] == "particle | 3.0% (3/100) | 5.0% (10/200) | 0.0% (0/400)"
+    lines = answer["context"].splitlines()
+    assert "info split | A | A | B" in lines, "the condition group - its values differ"
+    # the model reads the heads the page draws, a line a tier, and whose each column is (owner 10-24)
+    assert "wafer_id | W1 | W2 | W3" in lines and lines[0].startswith("time | ")
+    assert "group | E1 (this report) | E1 (this report) | E1 (this report)" in lines
+    assert "particle | 3.0% (3/100) | 5.0% (10/200) | 0.0% (0/400)" in answer["context"].splitlines()
     by_split = report.yield_by(by="split")["html"]
     assert by_split["groups"] == [("E1", ["A", "B"])]
     assert _texts(by_split["rows"])[0] == ("particle", ["4.3% (13/300)", "0.0% (0/400)"]), "A adds W1's and W2's F and N"

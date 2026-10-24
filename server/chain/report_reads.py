@@ -1119,9 +1119,14 @@ def _image_bytes(answer):
 
 def _table_text(table):
     """The summary table as the model reads it: a head line per group, then a line per item - the same «x% (F/N)»."""
+    # the heads as the page draws them, a line a tier, then whose each column is - the cells below are in this order
+    # (owner 10-24 «모델이 표 헤더 항목을 못 읽음»: a head line a group lost the dates and titles, and the groups interleave)
     lines = []
-    for name, columns in table["groups"]:
-        lines.append("[%s] %s" % (name, " | ".join(columns)))
+    for at, tier in enumerate(table.get("tiers") or ()):
+        lines.append("%s | %s" % (tier, " | ".join(str(texts[at]) for texts in table["heads"])))
+    lines.append("group | %s" % " | ".join("%s%s" % (name, " (this report)" if mine else "")
+                                         for (name, cols), mine in zip(
+                                             [(n, c) for n, cs in table["groups"] for c in cs], table["own"])))
     for name, cells in table.get("info") or ():
         lines.append("info %s | %s" % (name, " | ".join(cell["text"] for cell in cells)))
     for name, cells in table.get("pictures") or ():
