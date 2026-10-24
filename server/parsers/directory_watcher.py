@@ -4062,6 +4062,7 @@ class IngestionHandler(FileSystemEventHandler):
                             replace_map=bool(map_columns),      # the map's scope: its key, from its rows
                         )
                         batch_obj._file_origin = file_origin
+                        batch_obj._file_replace = bool(map_columns)   # purged whole (owner 10-24)
                         # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.
                         # crud.apply_batch_updates가 내부에서 commit하므로, 그 호출 '이전'에
                         # 같은 세션으로 UPDATE를 발행해야 한 번의 커밋으로 함께 확정된다.

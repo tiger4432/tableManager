@@ -5423,6 +5423,12 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             # now, but the diff stays on composite-keyed maps - all seven shipped map
             # tables declare one, so this excludes no real map.
             use_diff = bool(_cfg.get("map_key_columns")) and bool(_cfg.get("composite_key_source"))
+            # 🔴 소유자 10-24 «그냥 소스 통째로 걷기로 했잖아» · «기존 맵 아예 지우고 하니 제대로 들어옴»: a FILE that
+            #    replaces its maps purges each map whole - every row, every source's layer (the chain's too) - and
+            #    writes the file. The diff kept re-sent rows with their chain layers, which outrank every file.
+            if getattr(batch, "_file_replace", False):
+                use_diff = False
+
 
             # [adopt] The ids this write DECLARED it was operating on - the whole scope,
             # whether or not it is about to be purged. Both the removal set and the

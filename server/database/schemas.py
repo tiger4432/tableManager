@@ -269,6 +269,7 @@ class GeneralUpdateBatch(BaseModel):
     # (file signature, the first time that file was ingested) when the batch comes from a
     # FILE - the rest of a `nokey` key (총괄 4311a51ed). Set by the watcher, never sent.
     _file_origin: Optional[tuple] = PrivateAttr(default=None)
+    _file_replace: bool = PrivateAttr(default=False)   # a file replacing its maps: purged whole (owner 10-24)
     # What the door's `nokey` fill did to this batch: {"filled": {col: n}, "unfilled": {col: n}}.
     _nokey: Optional[dict] = PrivateAttr(default=None)
     transaction_id: Optional[str] = None # [Phase 75] 외부에서 주입하는 트랜잭션 ID 지원
