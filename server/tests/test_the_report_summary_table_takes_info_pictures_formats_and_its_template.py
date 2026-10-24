@@ -25,7 +25,7 @@ from database import crud, models
 TABLES = {
     "rk_wafer": {"composite_key_source": ["wafer_id", "version"],
                  "column_types": {"wafer_id": "string", "version": "string", "eval_id": "string",
-                                  "measured_at": "string", "bond": "string"}},
+                                  "measured_at": "string", "bond": "string", "lot": "string"}},
     "rk_summary": {"composite_key_source": ["wafer_id", "version", "item"],
                    "column_types": {"wafer_id": "string", "version": "string", "item": "string",
                                     "fail": "number", "total": "number", "rs_state": "string",
@@ -38,7 +38,7 @@ TABLES = {
     "rk_map": {"composite_key_source": ["wafer_id", "version", "n"],
                "column_types": {"wafer_id": "string", "version": "string", "n": "string", "path": "string"}},
 }
-WAFERS = [("W1", "v1", "E1", "2026-10-01T00", "저온"), ("W1", "v2", "E1", "2026-10-01T01", "고온"),
+WAFERS = [("W1", "v1", "E1", "2026-10-01 00:00:00", "저온"), ("W1", "v2", "E1", "2026-10-01 01:00:00", "고온"),
           ("W2", "v1", "E1", "2026-10-02", "저온"), ("W3", "v1", "E1", "2026-10-03", "고온"),
           ("C1", "v1", "E0", "2026-09-20", "저온")]
 BIG = "결함.입자.대"
@@ -122,11 +122,13 @@ def test_a_version_is_a_column_and_the_key_heads_in_two_tiers(report):
     assert table["groups"] == [("E1", ["wafer_id W1 · version v1", "wafer_id W1 · version v2", "wafer_id W2 · version v1", "wafer_id W3 · version v1"])]
     assert _texts(table["rows"]) == [(BIG, ["2.0% (2/100)", "10.0% (10/100)", "1.0% (1/100)", "0.0% (0/100)"])]
     page = report_html._summary_table(table, SPEC)
-    assert ('<th class="rpt-head" colspan="2">W1</th><th class="rpt-head">W2</th><th class="rpt-head">W3</th>'
-            in page), "the wafer merged over its versions"
-    assert '<th class="rpt-head">v1</th><th class="rpt-head">v2</th><th class="rpt-head">v1</th>' in page
+    assert ('<th class="rpt-head rpt-own" colspan="2">W1</th><th class="rpt-head rpt-own">W2</th>'
+            '<th class="rpt-head rpt-own">W3</th>' in page), "the wafer merged over its versions"
+    assert ('<th class="rpt-head rpt-own">v1</th><th class="rpt-head rpt-own">v2</th><th class="rpt-head rpt-own">v1</th>'
+            in page)
     by = report_html._summary_table(report.yield_by(by="bond")["html"], SPEC)
-    assert '<th class="rpt-head">고온</th><th class="rpt-head">저온</th>' in by, "a condition value's column: one tier"
+    assert ('<th class="rpt-head rpt-own">고온</th><th class="rpt-head rpt-own">저온</th>' in by), \
+        "a condition value's column: one tier"
 
 
 def test_info_rows_stand_under_the_head_from_the_info_table(report, db_session):
@@ -160,7 +162,7 @@ def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_
     assert table["left_out"] == ["wafer_id W2 · version v1 평가자"]
     assert _texts(report.yield_by()["html"]["info"]) == _texts(table["info"])[:3], "one table alone: as it was"
     page = report_html._summary_table(table, spec)
-    assert '<td class="rpt-cell">52.0</td>' in page and '<td class="rpt-info">A-lot</td>' in page, \
+    assert '<td class="rpt-cell rpt-own">52.0</td>' in page and '<td class="rpt-info rpt-own">A-lot</td>' in page, \
         "a number stands right as the item cells do, a word left (lead 10-23)"
 
 
@@ -191,8 +193,8 @@ def test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_und
         (1, [("C1", 1), ("W1", 2), ("W2", 1), ("W3", 1)]), (2, [("v1", 1), ("v1", 1), ("v2", 1), ("v1", 1), ("v1", 1)])]
     assert [name for name, _c in table["info"]] == ["자재", "평가자", "수율"]
     page = report_html._summary_table(table, spec)
-    assert '<th class="rpt-group" colspan="2">2026-10-01</th>' in page and \
-        '<th class="rpt-head" colspan="2">W1</th>' in page, "the same day · the same wafer one cell"
+    assert '<th class="rpt-group rpt-own" colspan="2">2026-10-01</th>' in page and \
+        '<th class="rpt-head rpt-own" colspan="2">W1</th>' in page, "the same day · the same wafer one cell"
     assert '<td class="rpt-item">불량</td>' in page and '<td class="rpt-info" colspan="4">수율</td>' in page
     assert 'style="background:#ffcccc">10.0% (10/100)' in page, "W1/v2 against C1's 2.0% - the control read by flag"
     assert ['<th class="rpt-group" colspan="4">Date</th>', '<th class="rpt-head" colspan="4">wafer_id</th>',
@@ -207,6 +209,44 @@ def test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_und
     bad = dict(spec, columns=["time", "lot"])
     assert "derive.report.columns lists the column heads" in report_shape.refusal(bad)
     assert "summary.label stands over the names" in report_shape.refusal(dict(spec, item_sep=None))
+
+
+def test_undeclared_heads_are_date_wafer_leg_a_wafers_legs_one_date_by_date_own_orange(report, db_session):
+    """Owner 10-24 (546c1fd02): no `columns` - the heads date › wafer › leg; a wafer's legs under the wafer's one date
+    (its latest row), merged; the columns by date, the compare wafer between this report's; this report's th and td
+    «rpt-own» (orange); a condition blank in every other column no row."""
+    from chain import report_html, report_reads
+
+    m = models.DYNAMIC_TABLES["rk_wafer"]
+    for row in db_session.query(m):
+        if (row.wafer_id, row.version) == ("W1", "v2"):
+            row.measured_at = "2026-10-04 00:00:00"        # W1's legs: 10-01 and 10-04 - the wafer's day is 10-04
+        if row.wafer_id == "C1":
+            row.measured_at = "2026-10-03 12:00:00"        # the compare wafer between W2 and W1
+        if row.eval_id == "E1":
+            row.lot = "L1"                                 # the compare wafer's lot blank
+    db_session.flush()
+    spec = json.loads(json.dumps(SPEC))
+    spec["wafer"]["conditions"] = ["bond", "lot"]
+    report = report_reads.Report(db_session, spec, "E1")
+    report.compare(evaluations=["E0"])
+    table = report.yield_by()["html"]
+    assert table["heads"] == [["2026-10-02", "W2", "v1"], ["2026-10-03", "C1", "v1"], ["2026-10-03", "W3", "v1"],
+                              ["2026-10-04", "W1", "v1"], ["2026-10-04", "W1", "v2"]], "by date; W1 v1 under 10-04"
+    assert table["own"] == [True, False, True, True, True]
+    assert report_html.head_tiers(table["heads"])[0] == (0, [("2026-10-02", 1), ("2026-10-03", 2), ("2026-10-04", 2)])
+    page = report_html._summary_table(table, spec)
+    assert '<th class="rpt-group rpt-own" colspan="2">2026-10-04</th>' in page, "the wafer's legs one date cell"
+    assert '<th class="rpt-group" colspan="2">2026-10-03</th>' in page, "a date over a compare wafer too: not orange"
+    assert '<th class="rpt-head rpt-own" colspan="2">W1</th>' in page and '<th class="rpt-head">C1</th>' in page
+    assert [bool(own) for own in re.findall(r'<td class="rpt-cell( rpt-own)?"', page)] == table["own"]
+    names = [name for name, _cells in table["info"]]
+    assert "조건.bond" in names and "조건.lot" not in names, "lot: L1 in this report's columns, blank in C1's"
+    db_session.query(m).filter(m.wafer_id == "C1").update({"lot": "L0"})
+    db_session.flush()
+    again = report_reads.Report(db_session, spec, "E1")
+    again.compare(evaluations=["E0"])
+    assert "조건.lot" in [name for name, _cells in again.yield_by()["html"]["info"]], "C1 says a lot: the row stands"
 
 
 def test_a_picture_row_reads_its_path_through_its_source(report, db_session, monkeypatch):
@@ -244,15 +284,19 @@ def test_a_picture_row_holds_a_picture_a_column_by_the_one_function(report, db_s
 def test_the_first_rule_that_holds_colours_the_cell(report):
     from chain import report_html
 
-    alone = report_html._summary_table(report.yield_by()["html"], SPEC)
-    cells = re.findall(r'<td class="rpt-cell"(?: style="([^"]*)")?>([^<]*)</td>', alone)
-    assert cells == [("background:#ffffcc", "2.0% (2/100)"), ("background:#ffffcc", "10.0% (10/100)"),
-                     ("background:#ffffcc", "1.0% (1/100)"), ("", "0.0% (0/100)")], "no control: the fixed bar"
+    def styles(table):
+        """The item cells' (style, text) by their column's head (wafer, version) - columns stand by date (owner 10-24)."""
+        page = report_html._summary_table(table, SPEC)
+        cells = re.findall(r'<td class="rpt-cell(?: rpt-own)?"(?: style="([^"]*)")?>([^<]*)</td>', page)
+        return dict(zip([tuple(head[1:]) for head in table["heads"]], cells))
+
+    assert styles(report.yield_by()["html"]) == {
+        ("W1", "v1"): ("background:#ffffcc", "2.0% (2/100)"), ("W1", "v2"): ("background:#ffffcc", "10.0% (10/100)"),
+        ("W2", "v1"): ("background:#ffffcc", "1.0% (1/100)"), ("W3", "v1"): ("", "0.0% (0/100)")}, "no control: the fixed bar"
     report.compare(evaluations=["E0"])
-    against = report_html._summary_table(report.yield_by()["html"], SPEC)
-    cells = re.findall(r'<td class="rpt-cell"(?: style="([^"]*)")?>([^<]*)</td>', against)
-    assert [style for style, _t in cells] == ["background:#ffffcc", "background:#ffcccc", "background:#ffffcc", "",
-                                              "background:#ffffcc"], \
+    against = {head: style for head, (style, _t) in styles(report.yield_by()["html"]).items()}
+    assert against == {("C1", "v1"): "background:#ffffcc", ("W1", "v1"): "background:#ffffcc",
+                       ("W1", "v2"): "background:#ffcccc", ("W2", "v1"): "background:#ffffcc", ("W3", "v1"): ""}, \
         "10% is twice the control's 2% - the first rule; the control's own cell holds by the fixed bar"
 
 
@@ -292,14 +336,15 @@ def test_the_sample_rows_lend_their_formats_and_become_one_cell(report):
     page = report_html.page("E1 리포트", "R-1", spec, {"yield_by": report.yield_by()["html"]}, {}, {"summary": "요약"})
     assert "{{" not in page and "xl72 colspan=2>" not in page, "the sample rows are gone"
     assert '<tr height=20><td colspan="6"><div class="scroll"' in page, "one cell spanning the sample's first row"
-    assert '<th class="rpt-group xl70" colspan="3"></th><th class="rpt-group xl71" colspan="4">E1</th>' in page, \
-        "the head's name cell spans the row head's three cells (결함 · 입자 · 대)"
-    assert '<td class="rpt-info xl72" colspan="3">자재</td><td class="rpt-info xl73">A-lot</td>' in page
-    assert '<td class="rpt-picture xl74" colspan="3">합성맵</td><td class="rpt-picture xl75"><img src="data:' in page
+    assert ('<th class="rpt-group xl70" colspan="3">Date</th><th class="rpt-group rpt-own xl71" colspan="2">2026-10-01</th>'
+            in page), "the head's name cell spans the row head's three cells (결함 · 입자 · 대)"
+    assert '<td class="rpt-info xl72" colspan="3">자재</td><td class="rpt-info rpt-own xl73">A-lot</td>' in page
+    assert ('<td class="rpt-picture xl74" colspan="3">합성맵</td><td class="rpt-picture rpt-own xl75"><img src="data:'
+            in page)
     assert ('<td class="rpt-item xl76" style="border:.5pt solid windowtext">결함</td>'
             '<td class="rpt-item xl76" style="border:.5pt solid windowtext">입자</td>'
             '<td class="rpt-item xl76" style="border:.5pt solid windowtext">대</td>') in page
-    assert '<td class="rpt-cell xl77" style="background:#EEEEEE;background:#ffffcc">2.0% (2/100)</td>' in page, \
+    assert '<td class="rpt-cell rpt-own xl77" style="background:#EEEEEE;background:#ffffcc">2.0% (2/100)</td>' in page, \
         "a format's colour over the sample's"
     assert page.count("charset") == 1 and '<head><meta charset="utf-8">' in page.replace("\n", "")[:200]
 
