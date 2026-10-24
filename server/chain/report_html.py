@@ -252,7 +252,7 @@ def _stack(item, picture):
     images = "".join('<img src="%s" alt="%s on %s" data-layer="%s"%s>' % (
         p["src"], _e(item), _e(picture["wafer"]), _e(p.get("layer")), "" if at == 0 else " hidden")
         for at, p in enumerate(layers))
-    return ('<figure class="stack" title="wheel: layers">%s<figcaption>%s · <span class="layer">%s (1/%d)</span>'
+    return ('<figure class="stack" title="wheel: layers">%s<figcaption>%s &middot; <span class="layer">%s (1/%d)</span>'
             '</figcaption></figure>' % (images, _e(picture["wafer"]), _e(layers[0].get("layer")), len(layers)))
 
 
