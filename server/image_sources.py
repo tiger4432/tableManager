@@ -86,6 +86,19 @@ def resolve(ref, sources=None, _hops=0):
     text = str(ref or "").strip()
     if _ADDRESS.match(text):
         return _fetch("%r" % text, text)
+    if os.path.isabs(text) or text.startswith("\\\\"):
+        # 소유자 10-24 «이미지 경로를 절대 경로로 했더니 인식을 못하네»: a full path is read from the folder source whose
+        # root holds it - the folders a report may read stay the ones image_sources.json declares
+        sources = load_sources() if sources is None else sources
+        from parsers.directory_watcher import _safe_relative_path
+
+        for name, source in sorted(sources.items()):
+            root = str((source or {}).get("root") or "") if isinstance(source, dict) else ""
+            if (source or {}).get("kind") == "folder" and root and _safe_relative_path(text, root) is not None:
+                return _folder(name, source, text)
+        raise ImageRefused(404, "%r is under no folder source of image_sources.json - add one whose root holds it "
+                                '(e.g. {"<name>": {"kind": "folder", "root": "%s"}})'
+                           % (text, os.path.dirname(text).replace("\\", "/")))
     name, colon, rest = text.partition(":")
     if not (colon and name and rest):
         raise ImageRefused(400, "%r is neither an http(s) address nor <source>:<path or key>" % text)
