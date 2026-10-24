@@ -34,6 +34,8 @@ th { background: var(--head); }
 thead th { text-align: center; vertical-align: middle; }
 thead th:first-child { text-align: left; }
 th:first-child, td.rpt-name { text-align: left; }
+td.rpt-name { position: sticky; left: 0; z-index: 1; background: var(--ground); }
+thead th:first-child { position: sticky; left: 0; z-index: 2; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, var(--px, 320px)); gap: 12px; }
 .gallery figure img { width: var(--px, 320px); height: var(--px, 320px); object-fit: contain; display: block;
                       background: var(--head); }
@@ -178,6 +180,7 @@ def _summary_table(table, spec, lent=None):
     cell coloured by `formats`."""
     lent = lent or {}
     head = lent.get("head") or {}
+    sizes = dict(report_shape.SIZE_DEFAULTS, **(spec.get(report_shape.SIZES) or {}))   # derive.report.sizes
     sep = spec.get("item_sep") or ""
     under = table.get("item_label")
     blocks = [(kind, [(under + sep + name if kind == "item" and under else name, cells, name)
@@ -210,9 +213,15 @@ def _summary_table(table, spec, lent=None):
             baseline = _baseline(cells, own) if kind == "item" else None
             scaled = (_scaled(cells, False) if kind == "item" and not formats.get(raw) else
                       _scaled(cells, True) if any(c.get("higher") == "better" for c in cells) else [None] * len(cells))
-            row_head = "".join(_cell("td", name_class + " rpt-name", dress.get("name"), text=_e(part), rowspan=rowspan,
-                                     colspan=colspan if colspan and colspan > 1 else None)
-                               for part, rowspan, colspan in parts)
+            # each row-head cell held at its column's left while the values scroll (owner 10-24 «좌측 헤더열 스크롤
+            # 우측해도 보이게») - its level counted from the row's last cell, which ends at the depth
+            lefts, at = [], max(depth, 1)
+            for _part, _rowspan, colspan in reversed(parts):
+                at -= colspan or 1
+                lefts.insert(0, "left:%gpx" % (sizes["name_px"] * at) if at else None)
+            row_head = "".join(_cell("td", name_class + " rpt-name", dress.get("name"), left, text=_e(part),
+                                     rowspan=rowspan, colspan=colspan if colspan and colspan > 1 else None)
+                               for (part, rowspan, colspan), left in zip(parts, lefts))
             values = "".join(_cell("td", _aligned(value_class, cell, kind) + (" " + OWN if own[at] else ""),
                                    dress.get("value"),
                                    _colour(formats.get(raw), cell, own[at], baseline) if kind == "item" and
@@ -224,7 +233,6 @@ def _summary_table(table, spec, lent=None):
             if table.get("left_out") else "")
     # widths held by the columns themselves - a cell's max-width does not hold a table column (owner 10-24 «표 컬럼폭
     # 100으로»): derive.report.sizes, a long text wraps
-    sizes = dict(report_shape.SIZE_DEFAULTS, **(spec.get(report_shape.SIZES) or {}))   # derive.report.sizes
     name_px, value_px, heads_at = sizes["name_px"], sizes["value_px"], max(depth, 1)
     cols = "<colgroup>%s%s</colgroup>" % ('<col style="width:%gpx">' % name_px * heads_at,
                                           '<col style="width:%gpx">' % value_px * len(columns))

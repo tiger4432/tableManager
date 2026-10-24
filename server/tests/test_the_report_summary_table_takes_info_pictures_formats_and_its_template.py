@@ -342,8 +342,8 @@ def test_the_sample_rows_lend_their_formats_and_become_one_cell(report):
     assert ('<td class="rpt-picture rpt-name xl74" colspan="3">합성맵</td><td class="rpt-picture rpt-own xl75"><img src="data:'
             in page)
     assert ('<td class="rpt-item rpt-name xl76" style="border:.5pt solid windowtext">결함</td>'
-            '<td class="rpt-item rpt-name xl76" style="border:.5pt solid windowtext">입자</td>'
-            '<td class="rpt-item rpt-name xl76" style="border:.5pt solid windowtext">대</td>') in page
+            '<td class="rpt-item rpt-name xl76" style="border:.5pt solid windowtext;left:185px">입자</td>'
+            '<td class="rpt-item rpt-name xl76" style="border:.5pt solid windowtext;left:370px">대</td>') in page
     assert '<td class="rpt-cell rpt-own xl77" style="background:#EEEEEE;background:#ffffcc">2.0% (2/100)</td>' in page, \
         "a format's colour over the sample's"
     assert page.count("charset") == 1 and '<head><meta charset="utf-8">' in page.replace("\n", "")[:200]
