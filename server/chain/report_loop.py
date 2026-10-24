@@ -41,8 +41,8 @@ WRITE = ("Write the report from the tables read below - every number as a table 
 STOP_NO_TEXT = "the write call answered no text"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
-    "yield_by": "the summary table - items down, wafers across by time, each cell x% (F/N); by: a condition whose "
-                "values become the columns",
+    "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: a condition whose values "
+                "become the columns; rows: the condition rows to show (a name keeps the names under it), all if none",
     "pareto": "the items by fail chips over the wafers, with the cumulative share",
     "trend": "each item's share wafer by wafer in time order - first, last, least, most",
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
@@ -50,7 +50,7 @@ ABOUT = {
     "compare": "the compare sets' wafers (sets), or a control group from the recent evaluations (evaluations, wafers), "
                "read beside this evaluation's in every table after it",
 }
-ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by"), "pareto": ("wafers",), "trend": ("wafers", "items"),
+ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by", "rows"), "pareto": ("wafers",), "trend": ("wafers", "items"),
         "images": ("wafers", "items"), "candidates": (), "compare": ("sets", "evaluations", "wafers")}
 WAFERS_SAID = 'wafers: a list of wafer names, "all", or {"where": {"<condition>": "<value>"}}'
 
@@ -59,8 +59,9 @@ STOP_SECONDS = "time cap %d s"
 STOP_CONTEXT = "context over budget"
 STOP_MODEL = "the language model call was refused: %s"
 DONE, STOPPED = "done", "stopped"
-#: A done report a rule's `send_to` has not taken yet, and one it would not take (`send_waiting`).
-SENDING, SEND_FAILED = "sending", "send failed"
+#: What is still to send: a marker beside a done report whose rule has `send_to` - {"rule", "tries"} - and one the
+#: address would not take, {"rule", "why"} (`send_waiting`; owner 10-23: no state column, no table).
+SEND_MARK, SEND_FAILED_MARK = ".send", ".send_failed"
 #: A file is POSTed at most this many times, one try a sweep (owner 10-23 «3 번 다시»).
 SEND_TRIES = 3
 SEND_TIMEOUT_SECONDS = 60
@@ -249,6 +250,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         else:
             previous = ["refused: " + refused]
         record["summary"] = (previous[0] if previous else "")[:200]
+        record["read"] = previous[1:]                       # the Evidence's lines under it (lead 10-23)
         steps.append(record)
     if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
         _write(spec, request, reads, budget, ask, clock, out)
@@ -282,14 +284,20 @@ def _write(spec, request, reads, budget, ask, clock, out):
 
 
 def _steps_text(out, report):
-    lines = ["%d %s - %s" % (s["step"], s["call"], s.get("refused") or s["summary"]) for s in out["steps"]]
+    """The Evidence: the report's state and why first (no column holds them, owner 10-23), then each step - its first
+    line, and what else it read under it (lead 10-23: the candidates were there, the Evidence said only the head)."""
+    lines = [out["state"] + (" - %s" % out["reason"] if out["reason"] else "")]
+    for s in out["steps"]:
+        lines.append("%d %s - %s" % (s["step"], s["call"], s.get("refused") or s["summary"]))
+        lines += ["    " + line for line in s.get("read") or ()]
     if report.overlaps:
         lines.append("names two wafers share: %s" % ", ".join(sorted(report.overlaps)))
     return "\n".join(lines)
 
 
 def _this_wafer(db, spec, wafer):
-    """The wafer alone in this report's own group, its evaluation the one a control group leaves out (owner 10-23
+    """The wafer ({column: value}, its report table's wafer columns) in this report's own group, its evaluation the one
+    a control group leaves out (owner 10-23
     «최근 평가인데 스플릿 테이블 보고 고르게»: the recent evaluations' split summaries, `control.same` narrowing them).
     -> (the reads, that evaluation)."""
     report = report_reads.Report(db, spec, None, only=wafer)
@@ -297,10 +305,11 @@ def _this_wafer(db, spec, wafer):
 
 
 def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
-    """The report rule's mapper: the summary rows handed, by wafer (`summary.wafer`) -> one report a wafer, its state,
-    file and reason written on each of that wafer's rows handed (`results`, owner 10-23). The file is kept before
-    anything is proposed; its steps are its Evidence and a chain log line each. A done report with `send_to` is
-    «sending» - the chain worker's upkeep POSTs it (`send_waiting`)."""
+    """The report rule's mapper: its report table's rows handed, by wafer (`report_shape.report_key`) -> one report a
+    wafer, its file path written on that wafer's row (`results.file`, owner 10-23 «리포트용 표가 따로» · «wafer, 보고서
+    파일 경로 이 두 개가 최종 출력»; the summary table is only read). The file is kept before anything is proposed; its
+    state, why and steps are its Evidence and a chain log line each. A done report with `send_to` leaves its marker
+    (`SEND_MARK`) - the chain worker's upkeep POSTs it (`send_waiting`)."""
     import datetime
 
     from chain import report_html
@@ -308,10 +317,10 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
 
     model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
     if model is None or not row_ids:
-        return {"updates": [], "refusal": "no summary row reached this mapper"}
+        return {"updates": [], "refusal": "no report table row reached this mapper"}
     spec = rule.get("params") or {}
     name = str(rule.get("name") or "")
-    keys = report_shape.wafer_columns(spec["summary"]["wafer"])
+    keys = report_shape.report_key(spec, rule.get("trigger_table"))
     results = spec[report_shape.RESULTS_CELL]
     by_wafer = {}
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
@@ -322,24 +331,22 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     for wafer, rows in sorted(by_wafer.items(), key=lambda pair: report_reads.label(pair[0])):
         said, report = report_reads.label(wafer), None
         try:
-            report, evaluation = _this_wafer(db, spec, wafer)
+            report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
             out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": []}, ask=ask, clock=clock)
         except report_reads.ReadRefused as refused:
             out = {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
         for s in out["steps"]:
             logger.info("[Report] %s wafer %s step %d %s - %s", name, said, s["step"], s["call"],
                         s.get("refused") or s["summary"])
-        cells = {results["state"]: out["state"], results["file"]: None, results["reason"]: out["reason"]}
+        cells = {results["file"]: None}
         if report is not None:
             made = datetime.datetime.now().astimezone()
             page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
                 name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
                 evidence=_steps_text(out, report).splitlines())
             cells[results["file"]], _sha = report_html.keep(said, page)
-        if out["state"] == DONE and spec.get(report_shape.SEND_TO):
-            cells[results["state"]] = SENDING
-        logger.info("[Report] %s wafer %s: %s%s", name, said, cells[results["state"]],
-                    " - %s" % out["reason"] if out["reason"] else "")
+            _mark(cells[results["file"]], name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
+        logger.info("[Report] %s wafer %s: %s%s", name, said, out["state"], " - %s" % out["reason"] if out["reason"] else "")
         for row_id in rows:
             updates.append({"row_id": row_id, "source_name": crud.CHAIN_SOURCE, "updated_by": name,
                             "origin_row_id": row_id,
@@ -371,65 +378,62 @@ def _post(send_to, path):
         return "%s: %s" % (url, told(exc))
 
 
-def send_waiting(rules, session_factory, tries, post=None):
-    """The made reports a rule's `send_to` has not taken yet (state «sending»), POSTed - off the chain's slots, from
-    the chain worker's upkeep beside the undelivered-broadcast sweep (lead 10-23 ㄱ). Sent -> done; a try that failed
-    is tried again the next sweep, SEND_TRIES in all (`tries`: {(table, file): tries so far}, the caller's), then
-    «send failed» and why. -> (files sent, files failed)."""
-    from database import models
-    from error_said import told
+def _mark(path, rule):
+    """A made report's send marker: `rule` - to send for that rule, tries 0 (a remade report sends again, an earlier
+    failure taken away); None - nothing to send."""
+    import json
+
+    for stale in (path + SEND_MARK, path + SEND_FAILED_MARK):
+        if os.path.exists(stale):
+            os.remove(stale)
+    if rule:
+        with open(path + SEND_MARK, "w", encoding="utf-8") as handle:
+            json.dump({"rule": rule, "tries": 0}, handle)
+
+
+def send_waiting(rules, post=None):
+    """The made reports a rule's `send_to` has not taken yet (their `SEND_MARK`), POSTed - off the chain's slots, from
+    the chain worker's upkeep beside the undelivered-broadcast sweep (lead 10-23 ㄱ). Sent -> its marker goes; a try
+    that failed is tried again the next sweep, SEND_TRIES in all (the marker counts), then `SEND_FAILED_MARK` and why.
+    SEND_PAGE files a rule a sweep. -> (files sent, files failed)."""
+    import glob
+    import json
+
+    import paths
+    from chain import report_html
 
     post = post or _post
+    marks = {}
+    for mark in sorted(glob.glob(os.path.join(paths.DATA_ROOT, report_html.REPORTS_DIRNAME, "*" + SEND_MARK))):
+        try:
+            with open(mark, encoding="utf-8") as handle:
+                said = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        marks.setdefault(str(said.get("rule") or ""), []).append((mark, int(said.get("tries") or 0)))
     sent = failed = 0
     for rule in rules or ():
         spec = rule.get("params") or {}
-        results = spec.get(report_shape.RESULTS_CELL) or {}
-        model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
-        if (rule.get("mapper") != report_shape.REPORT_MAPPER or not spec.get(report_shape.SEND_TO) or model is None
-                or not all(results.get(cell) for cell in report_shape.RESULT_CELLS)):
+        name = str(rule.get("name") or "")
+        if rule.get("mapper") != report_shape.REPORT_MAPPER or not spec.get(report_shape.SEND_TO):
             continue
-        db = session_factory()
-        try:
-            done, lost = _send_rule(db, rule, model, results, post, tries)
-            sent, failed = sent + done, failed + lost
-        except Exception as exc:                                   # noqa: BLE001 - a thread nobody awaits says it here
-            db.rollback()
-            logger.error("[Report] %s: the waiting sends were not swept - %s", rule.get("name"), told(exc))
-        finally:
-            db.close()
-    return sent, failed
-
-
-def _send_rule(db, rule, model, results, post, tries):
-    """One rule's waiting files (`send_waiting`). Its state is written through the write door on the chain's
-    channel, so the report rule is not woken by it. -> (sent, failed)."""
-    import event_constants
-    from database import crud, schemas
-    from database.context import channel
-
-    name, table = str(rule.get("name") or ""), str(rule.get("trigger_table") or "")
-    send_to = rule["params"][report_shape.SEND_TO]
-    state, file_ = getattr(model, results["state"]), getattr(model, results["file"])
-    sent = failed = 0
-    for (path,) in db.query(file_).filter(state == SENDING).distinct().limit(SEND_PAGE).all():
-        if not path:
-            continue
-        why, key = post(send_to, path), (table, path)
-        if why is None:
-            tries.pop(key, None)
-            cells, sent = {results["state"]: DONE}, sent + 1
-            logger.info("[Report] %s sent %s", name, path)
-        else:
-            tries[key] = tries.get(key, 0) + 1
-            logger.warning("[Report] %s send %s, try %d of %d: %s", name, path, tries[key], SEND_TRIES, why)
-            if tries[key] < SEND_TRIES:
+        for mark, tries in marks.get(name, [])[:SEND_PAGE]:
+            path = mark[:-len(SEND_MARK)]
+            why = post(spec[report_shape.SEND_TO], path)
+            if why is None:
+                os.remove(mark)
+                sent += 1
+                logger.info("[Report] %s sent %s", name, path)
                 continue
-            tries.pop(key, None)
-            cells, failed = {results["state"]: SEND_FAILED, results["reason"]: why}, failed + 1
-        rows = [r for (r,) in db.query(model.row_id).filter(file_ == path, state == SENDING).all()]
-        with channel(event_constants.CHANNEL_CHAIN):
-            crud.apply_batch_updates(db, table, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
-                row_id=r, updates=cells, source_name=crud.CHAIN_SOURCE, updated_by=name, origin_row_id=r)
-                for r in rows]))
-        db.commit()
+            tries += 1
+            logger.warning("[Report] %s send %s, try %d of %d: %s", name, path, tries, SEND_TRIES, why)
+            if tries < SEND_TRIES:
+                with open(mark, "w", encoding="utf-8") as handle:
+                    json.dump({"rule": name, "tries": tries}, handle)
+                continue
+            with open(path + SEND_FAILED_MARK, "w", encoding="utf-8") as handle:
+                json.dump({"rule": name, "why": why}, handle)
+            os.remove(mark)
+            failed += 1
+            logger.warning("[Report] %s send failed %s: %s - replay the wafer to make and send it again", name, path, why)
     return sent, failed

@@ -8,6 +8,7 @@ import re
 from chain import report_html, report_shape
 
 TABLE = {"groups": [("E1", ["W1", "W2"]), ("baseline", ["W0"])],
+         "heads": [["E1", "W1"], ["E1", "W2"], ["baseline", "W0"]], "own": [True, True, False],
          "rows": [("<script>alert(1)</script>", [{"text": "3.0% (3/100)"}, {"text": "5.0% (10/200)"},
                                                  {"text": "50.0% (50/100)"}])],
          "left_out": ["W9"]}
@@ -23,10 +24,13 @@ def _page():
 
 
 def test_the_slots_come_in_layout_order_and_say_what_is_missing():
+    """Owner 10-23 «배치 그냥 원래대로 세로 나열해» (the left/right sides of d219fc286 retired): every slot one under
+    another in layout's order - and the page as wide as the window, a wide table scrolled inside its box."""
     page = _page()
     order = [page.index(mark) for mark in ("Particle rose on W2.", "3.0% (3/100)", "data:image/png;base64,AAAA",
                                            "pareto was not read.", "Nothing was written for conclusion.")]
-    assert order == sorted(order)
+    assert order == sorted(order) and 'class="side' not in page
+    assert "max-width: 1200px" not in page and 'class="scroll" style="overflow-x:auto;max-width:100%"' in page
 
 
 def test_the_summary_table_heads_each_group_over_its_wafers():

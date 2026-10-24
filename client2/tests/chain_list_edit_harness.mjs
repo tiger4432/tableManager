@@ -256,7 +256,7 @@ const DEFECTS = [
   [PATHS, suitePaths, 'the shared writer writes over a value that is not a list',
     (s) => s.replace('  if (!valueFits(node, held)) return null;\n', '')],
   [PATHS, suitePaths, '"+" reads the held word as no list, so the word is lost',
-    (s) => s.replace('const held = asList(node, getAtPath(', 'const held = ((n, v) => v)(node, getAtPath(')],
+    (s) => s.replace('const held = asList(node, at);', 'const held = ((n, v) => v)(node, at);')],
   [PATHS, suitePaths, 'an index step into a word is not lifted, so edit and "-" do nothing',
     (s) => s.replace('    next = setAtPath(next, steps.slice(0, depth), [held]) || next;\n', '')],
   [CHAIN, suiteFirst, 'target_columns back under Advanced',

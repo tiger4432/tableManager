@@ -4,7 +4,7 @@ declaration (`derive.report`, `report_shape`); every read passes the grid read p
 with the grid filter's own conditions. Each answers {"context": <the model's short text>, "html": <the whole table>}.
 
   conditions(keyword?)       condition value -> wafers; with a keyword, the wafers whose condition holds it
-  yield_by(wafers, by?)      rows = items, columns = wafers by time (or condition values), cell «x% (F/N)» read
+  yield_by(wafers, by?, rows?) rows = items, columns = wafers (or condition values), cell «x% (F/N)» read
                              off the owner's summary table - wafers in one column add their F and N
   pareto(wafers)             items by fail chips added over the wafers, cumulative share
   trend(wafers, items)       each item's share in time order, first · last · least · most
@@ -34,6 +34,10 @@ class ReadRefused(ValueError):
     """A call the reads cannot answer - said back to the model as the reason."""
 
 
+#: A condition row whose value is blank (owner 10-23 trap wafer: a condition named, its value not written).
+EMPTY = "(empty)"
+
+
 def label(wafer) -> str:
     return WAFER_SEP.join("" if part is None else str(part) for part in wafer)
 
@@ -53,16 +57,17 @@ def _equals_any(column, values):
             "conditions": [{"filterType": "text", "type": "equals", "filter": value} for value in values]}
 
 
-def _rows(db, role, columns, wafers=None, where=None, newest=None):
+def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None):
     """`columns` of the role's table for these wafers (None: every row) - through the grid read path. Rows past
-    READ_ROW_CAP are refused - or, with `newest` (a column), the newest READ_ROW_CAP by it are the answer."""
+    READ_ROW_CAP are refused - or, with `newest` (a column), the newest READ_ROW_CAP by it are the answer. `keys`: the
+    key columns `wafers` are spelled in, `columns` first (default the role's own)."""
     import grid_read
     from fastapi import HTTPException
 
     table = role["table"]
     model = _model(table)
     filters = dict(where or {})
-    keys = report_shape.wafer_columns(role.get("wafer", role.get("key")))
+    keys = keys if keys is not None else report_shape.wafer_columns(role.get("wafer", role.get("key")))
     if wafers is not None:
         if not wafers:
             return []
@@ -91,22 +96,33 @@ class Report:
     """One report's reads - its declaration, this evaluation, and what it has read so far."""
 
     def __init__(self, db, spec, evaluation, only=None):
-        """`only`: one wafer - this report's own group is it alone, and its evaluation is the wafer's (a report a
-        wafer, owner 10-23 - 🔴 the reading waits for the owner's answer, `report_loop._this_wafer`)."""
+        """`only`: one wafer as {column: value} - its report table's wafer columns (`report_shape.report_key`); this
+        report's own group is the wafer table's rows of it (every leg of a wafer keyed by more columns, owner 10-23),
+        and its evaluation is theirs."""
         self.db, self.spec, self.evaluation = db, spec, evaluation
         role = spec["wafer"]
         self.keys = report_shape.wafer_columns(role["key"])
         self.conditions_at = [c for c in report_shape.wafer_columns(role.get("conditions")) if c]
         self.same_at = [c for c in (spec.get("control") or {}).get(report_shape.CONTROL_SAME) or () if c]
+        self.long = spec.get("conditions") if isinstance(spec.get("conditions"), dict) else None
         self.wafers = {}                         # wafer -> {"time", "lot", "evaluation", "conditions": {col: value}}
         self.groups = {}                         # group name -> [wafer, ...] - this evaluation first
+        # the report's unit - `keys` unit, or the report table's wafer columns; a candidate is one of those
+        self.picked_by = report_shape.unit_columns(spec) or list(only or ())
+        self.key_words = report_shape.key_words(spec)
         if only is not None:
-            only = tuple(None if part is None else str(part) for part in only)
-            here = [w for w in self._wafer_rows({c: _equals_any(c, [v]) for c, v in zip(self.keys, only)})
-                    if w == only]
+            only = {c: None if v is None else str(v) for c, v in only.items()}
+            here = [w for w in self._wafer_rows({c: _equals_any(c, [v]) for c, v in only.items()})
+                    if all(dict(zip(self.keys, w)).get(c) == v for c, v in only.items())]
+            said = label(tuple(only.values()))
             if not here:
-                raise ReadRefused("wafer %s is not in %s" % (label(only), role["table"]))
-            self.evaluation = evaluation = self.wafers[only]["evaluation"]
+                raise ReadRefused("wafer %s is not in %s" % (said, role["table"]))
+            evaluations = sorted({str(self.wafers[w]["evaluation"]) for w in here})
+            if len(evaluations) > 1:
+                raise ReadRefused("wafer %s is in %d evaluations (%s) - a report is one evaluation's"
+                                  % (said, len(evaluations), ", ".join(evaluations)))
+            # a wafer role of no evaluation column: the report's own group is named by the wafer
+            self.evaluation = evaluation = self.wafers[here[0]]["evaluation"] or said
         else:
             here = self._wafer_rows({role["evaluation"]: _equals_any(role["evaluation"], [evaluation])}
                                     if role.get("evaluation") else None)
@@ -120,21 +136,70 @@ class Report:
         extra = [role.get(cell) for cell in ("time", "lot", "evaluation")]
         columns = self.keys + [c for c in extra if c] + self.conditions_at
         columns += [c for c in self.same_at if c not in columns]
+        read = [(tuple(None if p is None else str(p) for p in row[:len(self.keys)]), row)
+                for row in _rows(self.db, role, columns, where=where, newest=role.get("time") if newest else None)]
         out = []
-        for row in _rows(self.db, role, columns, where=where, newest=role.get("time") if newest else None):
-            wafer = tuple(None if p is None else str(p) for p in row[:len(self.keys)])
+        for wafer, row in self._latest(read):
             values = dict(zip(columns, row))
             self.wafers[wafer] = {"time": values.get(role.get("time")), "lot": values.get(role.get("lot")),
                                   "evaluation": values.get(role.get("evaluation")),
                                   "conditions": {c: values.get(c) for c in self.conditions_at},
-                                  "same": tuple(values.get(c) for c in self.same_at)}
+                                  "same": tuple(values.get(c) for c in self.same_at), "title": None}
             out.append(wafer)
+        if self.long and out:
+            self._long_conditions(out)
         self.named = {}                          # the name a model says -> the wafers it names
         for wafer in self.wafers:
             self.named.setdefault(label(wafer), []).append(wafer)
         # names two key spellings share (lot «A/B» + «1», «A» + «B/1») - counted once per list, for the step record
         self.overlaps = {name: wafers for name, wafers in self.named.items() if len(wafers) > 1}
         return out
+
+    def _latest(self, read):
+        """Each unit's rows of its latest value in every `keys` latest column (owner 10-23 «TKOUT_TIME 도 키에», the
+        report from the latest measurement) - read as a time by the one reader; a unit of no time keeps its rows."""
+        for column in [c for c in self.keys if report_shape.KEY_LATEST in self.key_words.get(c, ())]:
+            at, unit = self.keys.index(column), [self.keys.index(c) for c in self.picked_by]
+            best = {}
+            for wafer, _row in read:
+                when = _instant(wafer[at])
+                mine = tuple(wafer[i] for i in unit)
+                if when is not None and (best.get(mine) is None or when > best[mine]):
+                    best[mine] = when
+            read = [(wafer, row) for wafer, row in read
+                    if best.get(tuple(wafer[i] for i in unit)) is None or _instant(wafer[at]) == best[tuple(
+                        wafer[i] for i in unit)]]
+        return read
+
+    def _matched(self, role, columns, wafers):
+        """[(wafer, values)] - the role's rows of these wafers, matched by the key columns the role's table has, by name
+        (owner 10-23 «키 칸을 리스트로»): a table without some of the wafer key's (a condition of every measurement)
+        answers each wafer it matches; `values` are `columns`, then the table's key columns beyond the wafer key."""
+        names = report_shape.wafer_columns(role["wafer"])
+        shared = [c for c in names if c in self.keys]
+        beyond = [c for c in names if c not in self.keys]
+        at = [self.keys.index(c) for c in shared]
+        by = {}
+        for wafer in dict.fromkeys(wafers):                 # a wafer in two groups is read once
+            by.setdefault(tuple(wafer[i] for i in at), []).append(wafer)
+        out = []
+        for row in _rows(self.db, role, shared + columns + beyond, list(by), keys=shared):
+            for wafer in by.get(tuple(None if p is None else str(p) for p in row[:len(shared)]), ()):
+                out.append((wafer, row[len(shared):]))
+        return out
+
+    def _long_conditions(self, wafers):
+        """The conditions role's rows of these wafers into their {name: value} - and their time and title, when the
+        wafer role names none (the long table's first row's). A wafer with no row keeps {} - the default conditions."""
+        role = self.long
+        extra = [c for c in ("time", "title") if role.get(c)]
+        for wafer, row in self._matched(role, [role["name"], role["value"]] + [role[c] for c in extra],
+                                        sorted(set(wafers), key=label)):
+            facts = self.wafers[wafer]
+            facts["conditions"][str(row[0])] = row[1]
+            for at, cell in enumerate(extra):
+                if facts.get(cell) is None:
+                    facts[cell] = row[2 + at]
 
     def _ordered(self, wafers):
         """By time, a wafer without one last, then by its key."""
@@ -167,17 +232,16 @@ class Report:
     def _pairs(self, role, columns, wafers, name=None):
         """(wafer, name) -> the role's `columns` of its row, from a long table a row a wafer and name (the summary,
         the info; a picture row is one `name`, a row a wafer) - a pair two rows say is left out, named."""
-        width = len(self.keys)
         named = [role["item"]] if name is None else []
         found, twice = {}, set()
-        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + named + columns, wafers):
-            said = row[width] if name is None else name
+        for wafer, row in self._matched(role, named + columns, wafers):
+            said = row[0] if name is None else name
             if said is None:
                 continue
-            pair = (tuple(None if p is None else str(p) for p in row[:width]), str(said))
+            pair = (wafer, str(said))
             if pair in found:
                 twice.add(pair)
-            found[pair] = row[width + len(named):]
+            found[pair] = row[len(named):len(named) + len(columns)]
         for pair in twice:
             del found[pair]
         return found, sorted("%s %s" % (label(wafer), item) for wafer, item in twice)
@@ -191,25 +255,33 @@ class Report:
         return {pair: {cell: None if value is None else float(value) for cell, value in zip(cells, row)}
                 for pair, row in found.items()}, twice
 
-    def _info(self, columns):
+    def _info(self, columns, chosen=None):
         """The info rows under the summary table's head (owner 10-23): [(name, [cell, ...])] over the table's columns
-        (each a list of wafers) - one value said shows it, several «mixed (n)», none a blank - and the pairs left out."""
-        role = self.spec.get("info")
-        if not role:
-            return [], []
-        found, twice = self._pairs(role, [role["value"]], [w for members in columns for w in members])
-        present = {name for _w, name in found}
-        names = [str(n) for n in role.get("rows") or ()] or sorted(present)
+        (each a list of wafers), each info table in turn - one value said shows it, several «mixed (n)», none a blank
+        - and the pairs left out. A table of no `item` is one row, its value column's name or its `label`; a long
+        table's names stand under its `label`; a table that says `choose` keeps the names `chosen` (yield_by)."""
+        rows, left_out = [], []
         mixed = report_shape.word(self.spec, "mixed")
-        rows = []
-        for name in [n for n in names if n in present]:
-            cells = []
-            for members in columns:
-                said = sorted({str(found[(w, name)][0]) for w in members
-                               if (w, name) in found and found[(w, name)][0] is not None})
-                cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
-            rows.append((name, cells))
-        return rows, twice
+        sep = self.spec.get("item_sep") or ""
+        chosen = [str(name) for name in chosen or ()]
+        everyone = [w for members in columns for w in members]
+        for role in report_shape.info_rows(self.spec):
+            found, twice = self._pairs(role, [role["value"]], everyone,
+                                       name=None if role.get("item") else str(role["value"]))
+            present = {name for _w, name in found}
+            names = [n for n in [str(n) for n in role.get("rows") or ()] or sorted(present) if n in present]
+            kept = [n for n in names if any(n == c or (sep and n.startswith(c + sep)) for c in chosen)]
+            head = role.get("label")
+            for name in kept if role.get("choose") and kept else names:
+                cells = []
+                for members in columns:
+                    said = sorted({str(found[(w, name)][0]) for w in members
+                                   if (w, name) in found and found[(w, name)][0] is not None})
+                    cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
+                drawn = name if not head else head if not role.get("item") else head + sep + name
+                rows.append((drawn, cells))
+            left_out += twice
+        return rows, left_out
 
     def _pictures(self, columns):
         """The picture rows (owner 10-23 «열마다 한 장»): [(label, [cell, ...])] - a column of one wafer its picture
@@ -221,8 +293,10 @@ class Report:
             found, twice = self._pairs(role, [role["image"]], [members[0] for members in columns
                                                                 if len(members) == 1], name=name)
             px = role.get("px") or report_shape.PICTURE_PX
+            source = role.get(report_shape.IMAGE_SOURCE)
             cells = [{"text": "—"} if len(members) != 1 else
-                     _picture(found[(members[0], name)][0], px) if found.get((members[0], name), (None,))[0]
+                     _picture("%s:%s" % (source, found[(members[0], name)][0]) if source else
+                              found[(members[0], name)][0], px) if found.get((members[0], name), (None,))[0]
                      else {"text": ""} for members in columns]
             rows.append((name, cells))
             left_out += twice
@@ -285,35 +359,93 @@ class Report:
         folded = {c: {} for c in self.conditions_at}
         for w in here:
             for c, v in self.wafers[w]["conditions"].items():
-                folded[c][str(v)] = folded[c].get(str(v), 0) + 1
+                folded.setdefault(c, {})[_shown(v)] = folded.get(c, {}).get(_shown(v), 0) + 1
         lines = ["%d wafers in %s" % (len(here), self.evaluation)] + [
             "%s: %s" % (c, ", ".join("%s %d" % (v, n) for v, n in sorted(values.items(), key=lambda kv: -kv[1])))
             for c, values in folded.items()]
+        if self.long:
+            default = [w for w in here if not self.wafers[w]["conditions"]]
+            lines.append("default conditions (no condition row): %d wafers" % len(default))
         return {"context": "\n".join(lines), "html": None}
 
-    def yield_by(self, wafers=None, by=None):
-        groups = self._column_groups(self.pick(wafers), by)
-        everyone = [w for _name, columns in groups for _col, members in columns for w in members]
+    def yield_by(self, wafers=None, by=None, rows=None):
+        """`rows`: the names the model keeps of an info table that says `choose` (owner 10-23 «COND 쪽 넣을 항목은 AI
+        가 선택») - a name keeps the names under it; none kept, or none said: every row."""
+        columns = [(name, col, members) for name, cols in self._column_groups(self.pick(wafers), by)
+                   for col, members in cols]
+        heads = self._heads(columns, by)
+        if self.spec.get(report_shape.COLUMNS) and not by:
+            order = sorted(range(len(columns)), key=lambda at: heads[at][1])
+            columns, heads = [columns[at] for at in order], [heads[at] for at in order]
+        everyone = [w for _name, _col, members in columns for w in members]
         found, twice = self._summary(everyone)
         items = self._items(found)
-        header = [(name, [col for col, _m in columns]) for name, columns in groups]
-        rows = []
+        out = []
         for item in items:
-            cells = []
-            for _name, columns in groups:
-                for _col, members in columns:
-                    row = (found.get((members[0], item)) if len(members) == 1
-                           else self._summed([found.get((w, item)) for w in members]))
-                    cells.append(self._cell(row))
-            rows.append((item, cells))
-        spans = [members for _name, columns in groups for _col, members in columns]
-        info, info_twice = self._info(spans)
+            out.append((item, [self._cell(found.get((members[0], item)) if len(members) == 1
+                                          else self._summed([found.get((w, item)) for w in members]))
+                               for _name, _col, members in columns]))
+        spans = [members for _name, _col, members in columns]
+        info, info_twice = self._info(spans, rows)
         pictures, pictures_twice = self._pictures([[] if by else members for members in spans])
-        table = {"groups": header, "parts": [[None if by else members[0] for _col, members in columns]
-                                             for _name, columns in groups],
-                 "info": info, "pictures": pictures, "rows": rows,
-                 "left_out": sorted(twice + info_twice + pictures_twice)}
+        table = dict(self._columns_of(columns, heads, by), info=info, pictures=pictures, rows=out,
+                     item_label=self.spec["summary"].get("label"),
+                     left_out=sorted(twice + info_twice + pictures_twice))
         return {"context": _table_text(table), "html": table}
+
+    def _heads(self, columns, by=None):
+        """Each column's head, a text a tier, and its order - `derive.report.columns` (owner 10-23: date › wafer ›
+        leg): "time" the wafer's day (its rows' latest, the candidates' fold), "group" its group, a key column its
+        part. Undeclared: the group, then the key. A column of a condition value: the group, then the value."""
+        tiers = self._tiers(by)
+        named = list(dict.fromkeys(name for name, _col, _members in columns))
+        out = []
+        for name, col, members in columns:
+            one = members[0] if len(members) == 1 else None
+            parts = dict(zip(self.keys, one)) if one else {}
+            texts, order = [], []
+            for tier in tiers:
+                if tier == report_shape.COLUMN_GROUP:
+                    texts.append(name)
+                    order.append((named.index(name), ""))
+                elif tier == report_shape.COLUMN_TIME:
+                    day = self._day(one) if one else None
+                    texts.append(day or "")
+                    order.append((day is None, day or ""))
+                elif tier is None or one is None:
+                    texts.append(col)
+                    order.append((False, col))
+                else:
+                    texts.append("" if parts.get(tier) is None else parts[tier])
+                    order.append((parts.get(tier) is None, parts.get(tier) or ""))
+            out.append((texts, order))
+        return out
+
+    def _tiers(self, by=None):
+        """The column head tiers - `columns`, else the group then the key; a column of a condition value: the group,
+        then the condition (None to the heads: the column's label)."""
+        return ([report_shape.COLUMN_GROUP, None] if by else
+                self.spec.get(report_shape.COLUMNS) or [report_shape.COLUMN_GROUP] + self.keys)
+
+    def _columns_of(self, columns, heads, by=None):
+        """The table's columns: the groups in the columns' order (the model reads them), each column's head texts,
+        and whether it is this report's own (the colours' «vs control» reads the others)."""
+        groups = []
+        for name, col, _members in columns:
+            if groups and groups[-1][0] == name:
+                groups[-1][1].append(col)
+            else:
+                groups.append((name, [col]))
+        return {"groups": groups, "heads": [texts for texts, _order in heads],
+                "tiers": [by if tier is None else tier for tier in self._tiers(by)],
+                "own": [name == self.evaluation for name, _col, _members in columns]}
+
+    def _day(self, wafer):
+        """The wafer's day: the latest time of the rows of its report wafer, on the product's wall clock, or None."""
+        mine = self._report_wafer(wafer)
+        times = [at for at in (_instant(facts["time"]) for w, facts in self.wafers.items()
+                               if self._report_wafer(w) == mine) if at is not None]
+        return max(times).date().isoformat() if times else None
 
     def _column_groups(self, wafers, by):
         """[(group name, [(column label, [wafer, ...]), ...])] - this evaluation's picked wafers, then each compare
@@ -327,7 +459,7 @@ class Report:
                     raise ReadRefused("%r is not a condition - one of %s" % (by, ", ".join(self.conditions_at)))
                 values = {}
                 for w in members:
-                    values.setdefault(str(self.wafers[w]["conditions"].get(by)), []).append(w)
+                    values.setdefault(_shown(self.wafers[w]["conditions"].get(by)), []).append(w)
                 out.append((name, sorted(values.items())))
             else:
                 out.append((name, [(label(w), [w]) for w in members]))
@@ -371,8 +503,8 @@ class Report:
                         item, "" if name == self.evaluation else " [%s]" % name, said[0], said[-1], min(said),
                         max(said), len(said)))
             rows.append((item, cells))
-        table = {"groups": [(name, [label(w) for w in members]) for name, members in groups],
-                 "parts": [list(members) for _name, members in groups], "rows": rows, "left_out": twice}
+        columns = [(name, label(w), [w]) for name, members in groups for w in members]
+        table = dict(self._columns_of(columns, self._heads(columns)), rows=rows, left_out=twice)
         return {"context": "\n".join(lines) or "no item has a share", "html": table}
 
     def images(self, wafers=None, items=None):
@@ -387,22 +519,37 @@ class Report:
         said = "fail" if self.spec["summary"].get("fail") else "rate"
         occurred = {pair for pair, row in found.items() if (row.get(said) or 0) > 0}
         wanted = {str(i) for i in items} if items else None
-        width = len(self.keys)
         per_item, px = role.get("per_item", 3), role.get("px", 320)
-        chosen, counts = {}, {}
-        for row in _rows(self.db, role, report_shape.wafer_columns(role["wafer"]) + [role["item"], role["image"]], picked):
-            wafer = tuple(None if p is None else str(p) for p in row[:width])
-            item, ref = str(row[width]), row[width + 1]
-            if (wafer, item) not in occurred or (wanted and item not in wanted) or not ref:
-                continue
-            if counts.get(item, 0) >= per_item:
-                continue
-            picture = _picture(ref, px)
-            chosen.setdefault(item, []).append(dict(picture, wafer=label(wafer)))
-            if "src" in picture:
-                counts[item] = counts.get(item, 0) + 1
+        sep, source = role.get(report_shape.ITEM_SEP), role.get(report_shape.IMAGE_SOURCE)
+        beyond = [c for c in report_shape.wafer_columns(role["wafer"]) if c not in self.keys]
+        fold = [beyond.index(c) for c in self.key_words if c in beyond
+                and report_shape.KEY_FOLD in self.key_words[c]]
+        chip = [at for at, c in enumerate(beyond) if at not in fold]
+        rows = self._matched(role, [role["item"], role["image"]], picked)
+        # a chip's rows (owner 10-23: a layer a row, the chip seen through) - the smallest fold values first, keys' order
+        rows.sort(key=lambda pair: [_ordinal(pair[1][2 + at]) for at in fold])
+        chosen, counts, seen = {}, {}, set()
+        for wafer, row in rows:
+            ref = "%s:%s" % (source, row[1]) if source and row[1] else row[1]
+            whose = (wafer, tuple(row[2 + at] for at in chip))
+            for item in ([part.strip() for part in str(row[0]).split(sep)] if sep else [str(row[0])]):
+                if (wafer, item) not in occurred or (wanted and item not in wanted) or not ref:
+                    continue
+                if fold and (item, whose) in seen:              # one picture a chip and defect - the first layer
+                    continue
+                seen.add((item, whose))
+                # per_item a wafer row - each leg of a wafer its own (lead 10-23: all three were L1's)
+                if counts.get((item, wafer), 0) >= per_item:
+                    continue
+                picture = _picture(ref, px)
+                chosen.setdefault(item, []).append(dict(picture, wafer=label(wafer)))
+                if "src" in picture:
+                    counts[(item, wafer)] = counts.get((item, wafer), 0) + 1
         self.embedded.update(chosen)
-        text = ", ".join("%s %d" % (item, n) for item, n in sorted(counts.items())) or "no image of an occurred defect"
+        each = {}
+        for (item, _wafer), n in counts.items():
+            each[item] = each.get(item, 0) + n
+        text = ", ".join("%s %d" % (item, n) for item, n in sorted(each.items())) or "no image of an occurred defect"
         return {"context": "images picked: " + text, "html": chosen}
 
     def _recent(self):
@@ -415,31 +562,49 @@ class Report:
         if not recent:
             raise ReadRefused('candidates need derive.report.control.recent - {"days": <n>} and/or '
                               '{"evaluations": <n>}')
-        if not role.get("time") or not role.get("evaluation"):
-            raise ReadRefused("candidates need derive.report.wafer.time and evaluation")
-        here = [_instant(self.wafers[w]["time"]) for w in self.groups[self.evaluation]]
-        here = [at for at in here if at is not None]
-        if not here:
+        # no evaluation column (owner 10-23): a candidate is a wafer, its title and conditions what the model reads to
+        # judge «the same evaluation · the default conditions» (lead: the model judges, no rule picks); a wafer of no
+        # time comes after the dated ones
+        each = not role.get("evaluation")
+        if not (role.get("time") or (self.long or {}).get("time")) or not (each or role.get("time")):
+            raise ReadRefused("candidates need derive.report.wafer.time and evaluation, or conditions.time")
+        own = set(self.groups[self.evaluation])
+        here = [at for at in (_instant(self.wafers[w]["time"]) for w in own) if at is not None]
+        if not here and not each:
             raise ReadRefused("%s's wafers say no time - recent is counted back from its latest" % self.evaluation)
-        anchor = max(here)
+        anchor = max(here) if here else None
         # `control.same`: a candidate shares those columns' values with this report's wafers
-        alike = {self.wafers[w]["same"] for w in self.groups[self.evaluation]}
+        alike = {self.wafers[w]["same"] for w in own}
         by = {}
-        for wafer in self._wafer_rows(None, newest=True):
+        for wafer in self._wafer_rows(None, newest=bool(role.get("time"))):
             facts = self.wafers[wafer]
             at, evaluation = _instant(facts["time"]), facts["evaluation"]
-            if at is None or evaluation in (None, self.evaluation) or at > anchor or facts["same"] not in alike:
+            if (wafer in own if each else at is None or evaluation in (None, self.evaluation)) \
+                    or facts["same"] not in alike:
                 continue
-            if recent.get("days") and anchor - at > datetime.timedelta(days=recent["days"]):
-                continue
-            entry = by.setdefault(str(evaluation), {"latest": at, "wafers": []})
-            entry["latest"] = max(entry["latest"], at)
+            entry = by.setdefault(self._report_wafer(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
+            entry["latest"] = max(entry["latest"], at) if entry["latest"] is not None and at is not None else \
+                entry["latest"] or at
             entry["wafers"].append(wafer)
-        newest = sorted(by, key=lambda name: (by[name]["latest"], name), reverse=True)
+        # a candidate's time is its rows' latest - the anchor's own fold - and it stands or falls whole (lead 10-23:
+        # a leg later than the report's wafer was left out, its other leg of no time stood a candidate alone). A wafer
+        # later than this report's is a candidate too when no evaluation column says one (owner 10-23 «빼지 마»)
+        for name in list(by):
+            at = by[name]["latest"]
+            if at is not None and anchor is not None and (at > anchor and not each or recent.get("days") and
+                                                          anchor - at > datetime.timedelta(days=recent["days"])):
+                del by[name]
+        newest = sorted(by, key=lambda name: (by[name]["latest"] is not None, by[name]["latest"] or datetime.datetime.min,
+                                              name), reverse=True)
         if recent.get("evaluations"):
             newest = newest[:recent["evaluations"]]
         self._candidates = {name: dict(by[name], wafers=self._ordered(by[name]["wafers"])) for name in newest}
         return self._candidates
+
+    def _report_wafer(self, wafer) -> str:
+        """The wafer as the report table names it - its legs one candidate (lead 10-23), every column without `only`."""
+        parts = dict(zip(self.keys, wafer))
+        return label(tuple(parts[c] for c in self.picked_by) if self.picked_by else wafer)
 
     def candidates(self):
         """The recent evaluations a control group may come from - one line each, newest first: name · date · wafers
@@ -451,12 +616,18 @@ class Report:
             for column in self.conditions_at:
                 counts = {}
                 for wafer in entry["wafers"]:
-                    value = str(self.wafers[wafer]["conditions"].get(column))
+                    value = _shown(self.wafers[wafer]["conditions"].get(column))
                     counts[value] = counts.get(value, 0) + 1
                 folded.append("%s %s" % (column, ", ".join("%s %d" % (v, n) for v, n in
                                                            sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))))
-            lines.append(" · ".join([name, entry["latest"].date().isoformat(), "%d wafers" % len(entry["wafers"])]
-                                    + folded))
+            titles = []
+            if self.long:
+                folded = ["%s: %s" % (label(w), ", ".join("%s=%s" % (k, _shown(v)) for k, v in sorted(self.wafers[w]["conditions"].items()))
+                                      or "default conditions") for w in entry["wafers"]]
+                titles = sorted({str(self.wafers[w].get("title")) for w in entry["wafers"] if self.wafers[w].get("title")})
+            date = entry["latest"].date().isoformat() if entry["latest"] else "no date"
+            lines.append(" · ".join([name, date, "%d rows" % len(entry["wafers"])]
+                                    + (["title " + " | ".join(titles)] if titles else []) + folded))
         if len(lines) == 1:
             lines.append("none in range")
         return {"context": "\n".join(lines), "html": None}
@@ -535,17 +706,26 @@ READS = report_shape.READS
 
 
 def _instant(value):
-    """A time cell as a naive UTC instant to compare, or None - a datetime or an ISO string."""
-    if isinstance(value, str):
-        try:
-            value = datetime.datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if isinstance(value, datetime.date) and not isinstance(value, datetime.datetime):
-        value = datetime.datetime(value.year, value.month, value.day)
-    if not isinstance(value, datetime.datetime):
-        return None
-    return value.astimezone(datetime.timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+    """A time cell on the product's wall clock (`expression_time_zone`), or None - the one reader of a time, so a
+    candidate's date is the day the operator wrote (lead 10-23: a UTC cut said 10-21 for 10-22T00:00+09:00)."""
+    import expression
+
+    return expression._instant(value)
+
+
+def _ordinal(value):
+    """A fold column's value in its order - a number by its size, a text by its spelling, none last."""
+    from expression import number_of
+
+    number = number_of(value)
+    return (value is None, number is None, number if number is not None else 0, "" if value is None else str(value))
+
+
+def _shown(value) -> str:
+    """A condition value as the model and the file read it - a blank one (`crud.is_blank_value`) said EMPTY."""
+    from database import crud
+
+    return EMPTY if crud.is_blank_value(value) else str(value)
 
 
 def _count(value):

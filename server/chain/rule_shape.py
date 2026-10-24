@@ -289,8 +289,8 @@ def as_chain_rule(internal: dict) -> dict:
         if internal.get(KEY_CELL):
             out[KEY_CELL] = dict(internal[KEY_CELL])
     if derive.get("kind") == "report" and "table" in into:
-        # the report's settings ride as its mapper's arguments; it writes its results into the summary rows it stands
-        # on, a report a wafer of the rows handed (owner 10-23)
+        # the report's settings ride as its mapper's arguments; it writes its results into the report table rows it
+        # stands on, a report a wafer of the rows handed (owner 10-23 «리포트용 표가 따로»)
         out["mapper"] = report_shape.REPORT_MAPPER
         out["params"] = dict(derive.get("report") or {})
         # the group's rows in one call, so a wafer's rows make one report (판정 506, as the join's)
@@ -449,6 +449,17 @@ COMPANION_SUFFIX = ":target"
 #: A permanent warning is how a real one stops being read, and two spellings of the name is
 #: how only one of them gets fixed.
 COMPANION_CELL = chain_bindings.COMPANION_CELL_NAME
+
+
+#: `origin` of a rule the loader stands from a declaration under other names - «synthesized:<declaration>» (a decide's
+#: two halves, `enrichment.config.chain_rules_for`). One spelling: written there, read by `stood_for`.
+SYNTHESIZED = "synthesized:"
+
+
+def stood_for(rule: dict) -> str:
+    """The declaration a rule was stood from under another name (its `origin`), or "" - a rule named as declared."""
+    origin = str((rule or {}).get("origin") or "")
+    return origin[len(SYNTHESIZED):] if origin.startswith(SYNTHESIZED) else ""
 
 
 def declaration_of(rule: dict) -> str:

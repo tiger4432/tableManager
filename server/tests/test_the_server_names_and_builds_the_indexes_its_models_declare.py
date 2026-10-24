@@ -312,6 +312,8 @@ def test_a_save_refuses_an_unknown_column_an_empty_or_twice_declared_index_and_a
     monkeypatch.setattr(admin, "table_config_path", lambda: str(path))
     monkeypatch.setattr(admin, "_atomic_write", lambda p, merged: path.write_text(
         _json.dumps(merged), encoding="utf-8"))
+    from database import config_watcher
+    monkeypatch.setattr(config_watcher, "changed", lambda *a, **k: None)   # the save's own reload: this process's config
 
     def refused(declaration):
         with pytest.raises(HTTPException) as caught:

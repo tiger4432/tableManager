@@ -3,7 +3,7 @@
 its aggregations - no field for a person - stands, writes a row per key with its counts, and queues nothing.
 
   fields [] or none + aggregations     stands; one row per key, die_count = the rows of that key
-  fields [] + no aggregations          refused by name: 'aggregations' must be declared
+  fields [] + no aggregations          stands too - a row per key, its key alone (owner 10-23: a report table's rows)
   the queue                            no row of a fields-less rule is work for a person; resolved = every row"""
 import os
 import sys
@@ -70,9 +70,10 @@ def test_no_fields_with_aggregations_stands(db, fields):
     assert [r for r in rules if r["name"].startswith("enrichment_dedup:")], [r["name"] for r in rules]
 
 
-def test_no_fields_and_no_aggregations_is_refused_by_name(db):
-    rules, refusal = _declared({"key": KEY, "fields": []})[:2]
-    assert not rules and "'aggregations' must be declared" in str(refusal), refusal
+def test_no_fields_and_no_aggregations_writes_a_row_per_key_its_key_alone(db):
+    pair = _seed_and_run(db, {"key": KEY, "fields": []})
+    rows = sorted((r.bonded_wafer, r.core_wafer, r.die_count) for r in db.query(pair).all())
+    assert rows == [("W1", "C1", None), ("W1", "C2", None), ("W2", "C1", None)]
 
 
 def _seed_and_run(db, decide=None):

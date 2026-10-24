@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
 """Owner 10-22 (lead: the report's settings ARE its chain declaration): `derive.kind "report"` - the window's form
 draws it from the skeleton, the save refuses a table or column the catalogue does not declare, and a declaration
-stands as one rule on its summary table naming the report mapper with the settings as its arguments (owner 10-23:
-one rule on the summary table, its results in three of that table's columns, no tables of its own).
+stands as one rule on a report table of the operator's own naming the report mapper with the settings as its
+arguments (owner 10-23 «리포트용 표가 따로» · «wafer, 보고서 파일 경로 이 두 개가 최종 출력»: one row a wafer, its file path;
+the summary table only read).
 
-  stands    summary -> summary, mapper declared:report, the settings as params; no rows-per-run cut, no writes
-            cell; the result columns are what the mapper says it writes
+  stands    report table -> report table, mapper declared:report, the settings as params; no rows-per-run cut, no
+            writes cell; the file column is what the mapper says it writes; state · reason named are said, not written
   wafer     one column or a list in every role - one column reads as a list of one; lengths must agree
   refused   a role missing · an undeclared table · an undeclared column · a wafer of another length ·
             a layout slot of an unknown kind · digits not a whole number · a summary saying neither F and N nor
-            a rate · a rate without rate_scale 1 or 100 · results missing or not the summary table's columns · a rule
-            not standing on its summary table (the old shape, on a request table) · send_to not an address
+            a rate · a rate without rate_scale 1 or 100 · results.file missing or not the report table's column · a
+            rule on the summary table, on a table without the wafer's column, on one table into another · send_to
+            not an address
   named     a cell the product does not read is said, and the rule still stands
   form      the skeleton's report record: tables by name, columns of the role's own table, wafer keys as lists
 """
@@ -25,9 +27,8 @@ TABLES = {
     "wafer": {"column_types": {"wafer_id": "string", "slot": "string", "lot_id": "string", "eval_id": "string",
                                "measured_at": "datetime", "split": "string", "total_chips": "number"}},
     "defect_summary": {"column_types": {"wafer_id": "string", "slot": "string", "defect_item": "string",
-                                        "fail_chips": "number", "total_chips": "number", "loss_rate": "number",
-                                        "report_state": "string", "report_file": "string",
-                                        "report_reason": "string"}},
+                                        "fail_chips": "number", "total_chips": "number", "loss_rate": "number"}},
+    "wafer_report": {"column_types": {"wafer_id": "string", "report_file": "string"}},
     "defect_image": {"column_types": {"wafer_id": "string", "slot": "string", "defect_item": "string",
                                       "image_path": "string"}},
     "compare_set": {"column_types": {"set_name": "string", "member": "string", "kind": "string"}},
@@ -45,15 +46,15 @@ REPORT = {
     "prompts": {"select": "pick the split", "style": "short", "compare": "against baseline"},
     "layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}],
     "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000},
-    "results": {"state": "report_state", "file": "report_file", "reason": "report_reason"},
+    "results": {"file": "report_file"},
     "send_to": "http://relay:8765/reports",
 }
 
 
-def _declaration(report=None, table="defect_summary"):
+def _declaration(report=None, table="wafer_report", into=None):
     return {"name": "eval_summary", "on": {"table": table},
             "derive": {"kind": "report", "report": copy.deepcopy(REPORT if report is None else report)},
-            "into": {"table": table}}
+            "into": {"table": into or table}}
 
 
 @pytest.fixture(autouse=True)
@@ -67,11 +68,11 @@ def test_a_report_stands_as_one_rule_naming_its_mapper_with_its_settings():
     assert refusal is None and notes == [], (refusal, notes)
     [rule] = rules
     assert (rule["trigger_table"], rule["target_table"], rule["mapper"]) == (
-        "defect_summary", "defect_summary", report_shape.REPORT_MAPPER)
+        "wafer_report", "wafer_report", report_shape.REPORT_MAPPER)
     assert rule["params"] == REPORT
     assert not {"rows_per_run", "writes", "allow_replace_map"} & set(rule), rule
     assert rule["is_batch"] is True, "the group's rows in one call - a wafer's rows make one report"
-    assert report_shape.result_columns(rule) == ["report_state", "report_file", "report_reason"]
+    assert report_shape.result_columns(rule) == ["report_file"]
     assert rule_shape.from_declaration({"derive": {"report": REPORT}})["derive"]["kind"] == "report", \
         "a derive naming only its report cell is a report"
 
@@ -96,7 +97,7 @@ def _with(path, value):
     (("summary", "total"), None, "derive.report.summary names fail and total together"),
     (("wafer", "conditions"), ["split", "recipe"], "derive.report.wafer.conditions 'recipe' is not a column"),
     (("summary", "wafer"), ["wafer_id", "slot"],
-     "derive.report.summary.wafer names 2 column(s) and derive.report.wafer.key 1"),
+     "derive.report.summary.wafer 'slot' is not a key column"),
     (("wafer", "key"), [], "derive.report.wafer.key names no column"),
     (("layout",), [{"kind": "chart"}], "derive.report.layout[0].kind 'chart' - one of table · image · text"),
     (("layout",), [{"kind": "table", "fill": "summary"}], "derive.report.layout[0].fill 'summary' - a table is one of"),
@@ -105,9 +106,9 @@ def _with(path, value):
     (("sets", "kinds"), None, "derive.report.sets.kinds says what the kind column holds for evaluation · lot"),
     (("sets", "kinds"), {"run": "R"}, "derive.report.sets.kinds says what the kind column holds"),
     (("wafer", "lot"), None, "derive.report.sets.kinds.lot needs derive.report.wafer.lot"),
-    (("results",), None, "derive.report.results names the summary table's columns a report's state · file · reason"),
-    (("results", "file"), None, "derive.report.results names the summary table's columns"),
-    (("results", "file"), "report_path", "derive.report.results 'report_path' is not a column of 'defect_summary'"),
+    (("results",), None, "derive.report.results names the report table's column a report's file path goes in"),
+    (("results", "file"), None, "derive.report.results names the report table's column"),
+    (("results", "file"), "report_path", "derive.report.results 'report_path' is not a column of 'wafer_report'"),
     (("send_to",), "relay:8765", "derive.report.send_to is the address a report is POSTed to"),
     (("images", "px"), 0, "derive.report.images.px must be a whole number from 1"),
     (("loop", "steps"), "8", "derive.report.loop.steps must be a whole number from 1"),
@@ -148,15 +149,30 @@ def test_a_wafer_of_two_columns_stands_when_every_role_names_two():
     assert report_shape.wafer_columns("wafer_id") == ["wafer_id"] and report_shape.wafer_columns(["a", "b"]) == ["a", "b"]
 
 
-def test_a_declaration_of_the_old_shape_is_refused_by_the_new_cells(monkeypatch):
-    """On a request table into a report table (before 10-23): refused, naming where it stands now."""
-    monkeypatch.setitem(crud.TABLE_CONFIG, "report_request", {"column_types": {"request_id": "string"}})
+def test_a_declaration_of_an_old_shape_is_refused_saying_the_report_table(monkeypatch):
+    """On the summary table (10-23 morning), on a request table (before), on one table into another: refused, each
+    naming the report table it stands on now - one row a wafer, its wafer column, its file column."""
+    rules, refusal, _notes = rule_shape.expand_declaration(_declaration(table="defect_summary"))
+    assert rules == [] and ("the report rule stands on a report table of its own - one row a wafer, its wafer column "
+                            "(derive.report.wafer.key)") in refusal and \
+        "the summary table 'defect_summary' is read, never written" in refusal, refusal
+    monkeypatch.setitem(crud.TABLE_CONFIG, "report_request", {"column_types": {"request_id": "string",
+                                                                               "report_file": "string"}})
     rules, refusal, _notes = rule_shape.expand_declaration(_declaration(table="report_request"))
-    said = "the report rule stands on its summary table - on.table is derive.report.summary.table 'defect_summary'"
-    assert rules == [] and said + ", got 'report_request'" in refusal, refusal
-    old = {k: v for k, v in REPORT.items() if k != "results"}
-    rules, refusal, _notes = rule_shape.expand_declaration(_declaration(old, table="report_request"))
-    assert rules == [] and "derive.report.results names the summary table's columns" in refusal, refusal
+    assert rules == [] and "'report_request' has none of derive.report.wafer.key's columns (wafer_id)" in refusal, \
+        refusal
+    rules, refusal, _notes = rule_shape.expand_declaration(_declaration(into="defect_summary"))
+    assert rules == [] and "on.table and into.table are one table, got 'wafer_report' and 'defect_summary'" in \
+        refusal, refusal
+
+
+def test_a_state_or_reason_column_named_is_said_and_the_rule_stands():
+    """Owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»: a declaration of the three-column shape stands - its
+    state and reason are not written, and the save says so."""
+    rules, refusal, notes = rule_shape.expand_declaration(_declaration(dict(REPORT, results={
+        "file": "report_file", "state": "report_state", "reason": "report_reason"})))
+    assert refusal is None and len(rules) == 1, refusal
+    assert any("derive.report.results.state · reason is not written" in note for note in notes), notes
 
 
 def test_a_cell_the_product_does_not_read_is_named_and_the_rule_stands():
@@ -175,8 +191,7 @@ def test_the_form_draws_the_report_from_the_skeleton():
     assert [key for key in fields] == list(report_shape.REPORT_CELLS)
     assert {key for key, f in fields.items() if f["required"]} == {"wafer", "summary", "results"}
     results = {f["key"]: f["node"] for f in fields["results"]["node"]["fields"]}
-    assert results == {cell: chain_bindings.column_ref(("derive.report.summary.table",))
-                       for cell in ("state", "file", "reason")}, "the result columns are the summary table's"
+    assert results == {"file": chain_bindings.column_ref(("into.table",))}, "the file column is the report table's"
     assert fields["send_to"]["node"] == {"kind": "leaf", "hint": "free"}
     wafer = {f["key"]: f["node"] for f in fields["wafer"]["node"]["fields"]}
     assert wafer["table"] == chain_bindings.table_ref()
