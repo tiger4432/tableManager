@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다](#2026-10-24--ai-리포트-표에-대조-웨이퍼와-조건-묶음--선언된-비교controlrecent--setsdefault를-제품이-읽는다) — 적는 곳 derive.report.control.recent · sets.default · 보는 곳 리포트 표
 - 2026-10-24 [AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기](#2026-10-24--ai-리포트--키-조각마다-칸-이름wafer-w1--leg-l1-웨이퍼-밑에-leg-묶기) — 적는 곳 derive.report.labels.columns(선택) · 보는 곳 리포트 글 · 표 열 이름 · Evidence
 - 2026-10-24 [AI 리포트 표 · 그림은 제품이 채운다 — 모델이 안 불러도, 엉뚱한 자리의 layout 은 이름 댐](#2026-10-24--ai-리포트-표--그림은-제품이-채운다--모델이-안-불러도-엉뚱한-자리의-layout-은-이름-댐) — 적을 것 없음 · 보는 곳 리포트 파일 · Evidence · 체인 규칙 창 저장 줄
 - 2026-10-24 [AI 리포트가 키 조각이 빈 웨이퍼에도 수를 읽는다](#2026-10-24--ai-리포트가-키-조각이-빈-웨이퍼에도-수를-읽는다) — 적을 것 없음 · 보는 곳 리포트 결과
@@ -578,6 +579,15 @@
 
 
 
+
+## 2026-10-24 · AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다
+
+- 무엇: 제품이 채운 표가 리포트 웨이퍼 하나뿐이고 조건 줄이 없었다(소유자 «근데 표 다른 웨이퍼 안불러오네» · «조건도 안나오고»).
+  - 선언된 비교 = `sets.default` + `control.recent` 의 가장 최근 평가들(`max_evaluations` 기본 3 · `max_wafers` 기본 30 안에서). 모델의 compare() 인자 없음과 제품의 표가 같은 함수(`Report.declared_compare`)를 읽는다.
+  - 모델이 아무 비교도 안 했으면 제품이 표를 읽기 전에 선언된 비교를 붙인다 — Evidence «product compare()». 비교가 선언 안 됐으면 표 밑에 한 줄 «This report's wafers only - no compare set default or control.recent is declared.»
+  - 조건 묶음: 표 맨 위에 «Conditions.<조건>» 줄(wafer.conditions · conditions 역할의 값). 모델이 yield_by 의 rows 로 고른 조건이 있으면 그것, 없으면 열 사이에 값이 다른 조건만, 열이 하나면 전부. info 표가 choose 를 말하면 그 표가 조건 묶음이고 같은 규칙(고른 것 / 다른 것).
+- 선언 예시: chain_rules.json 의 derive.report `"control": {"recent": {"evaluations": 20}}` (box 선언 그대로). 낱말은 labels.conditions · labels.no_control.
+- 자세히: `server/chain/report_reads.py` 의 `declared_compare` · `_condition_rows` · `_differs`, `report_loop._product_reads`.
 
 ## 2026-10-24 · AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기
 

@@ -103,7 +103,9 @@ FORMAT_COLOURS = ("fill", "color")
 LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and name",
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
-          "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence"}
+          "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence",
+          "conditions": "Conditions",
+          "no_control": "This report's wafers only - no compare set default or control.recent is declared."}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
 RATE_SCALE = "rate_scale"

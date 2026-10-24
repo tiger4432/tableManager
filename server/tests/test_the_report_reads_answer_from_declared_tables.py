@@ -124,7 +124,8 @@ def test_the_summary_table_is_items_down_and_wafers_across_by_time(report):
     assert _texts(answer["html"]["rows"]) == [
         ("particle", ["3.0% (3/100)", "5.0% (10/200)", "0.0% (0/400)"]),
         ("scratch", ["1.0% (1/100)", "0.0% (0/200)", "10.0% (40/400)"])]
-    assert answer["context"].splitlines()[1] == "particle | 3.0% (3/100) | 5.0% (10/200) | 0.0% (0/400)"
+    assert answer["context"].splitlines()[1] == "info split | A | A | B", "the condition group - its values differ"
+    assert answer["context"].splitlines()[2] == "particle | 3.0% (3/100) | 5.0% (10/200) | 0.0% (0/400)"
     by_split = report.yield_by(by="split")["html"]
     assert by_split["groups"] == [("E1", ["A", "B"])]
     assert _texts(by_split["rows"])[0] == ("particle", ["4.3% (13/300)", "0.0% (0/400)"]), "A adds W1's and W2's F and N"
@@ -216,10 +217,12 @@ def test_a_compare_set_is_a_second_group_of_columns(report):
     assert report.compare(["baseline", "keylots"])["context"].splitlines() == [
         "baseline: 1 wafers (E0)", "keylots: 1 wafers (L0, L9)"]
     assert report.groups["keylots"] == [("W0",)], "the lot member picks by the wafer table's lot column"
-    assert report.compare()["context"] == "baseline: 1 wafers (E0)"
+    assert report.compare()["context"].splitlines() == ["baseline: 1 wafers (E0)", "control E3: 1 wafers (W7)"], \
+        "no arguments: the declaration's comparison - sets.default and the newest control.recent"
     table = report.yield_by()["html"]
-    assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("baseline", ["wafer_id W0"]), ("keylots", ["wafer_id W0"])]
-    assert _texts(table["rows"])[0][1][-1] == "50.0% (50/100)"
+    assert table["groups"] == [("E1", ["wafer_id W1", "wafer_id W2", "wafer_id W3"]), ("baseline", ["wafer_id W0"]), ("keylots", ["wafer_id W0"]),
+                              ("control E3", ["wafer_id W7"])]
+    assert _texts(table["rows"])[0][1][-2] == "50.0% (50/100)"
     assert _texts(table["rows"])[1][1][-1] == "—", "W0 has no scratch row"
 
 

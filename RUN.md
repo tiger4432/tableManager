@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    표 가로에 리포트 웨이퍼 + «control <평가>» 열들, 맨 위에 Conditions 줄 -> 고쳐진 것
+>          Evidence «N product compare() - control <평가>: K wafers (…)» -> 제품이 붙인 대조
+>          표 밑 «This report's wafers only - no compare set default or control.recent is declared.» -> 선언에 control.recent 를 적는다
+>          «product compare() - refused: candidates need derive.report.wafer.time …» -> wafer.time(또는 conditions.time) 를 적는다
+>          조건 줄이 하나도 없으면: 대조와 값이 같은 조건뿐이거나 wafer.conditions · conditions 역할이 안 적힘
+> 되돌리기  git revert $(git log -1 --format=%h --grep='declared comparison' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기** — git pull · 런처 재기동
 >
 > ```

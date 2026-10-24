@@ -284,6 +284,17 @@ def _product_reads(report, spec, tables, reads, steps, clock):
     calls = [fill for fill in dict.fromkeys(fills) if fill not in tables]
     if image and not report.embedded and (spec or {}).get("images"):
         calls.append("images")
+    alone = False
+    if calls and len(report.groups) == 1:                  # the model compared nothing - the declaration's comparison
+        began = clock()
+        try:
+            lines, refused = report.declared_compare(), None
+        except report_reads.ReadRefused as said:
+            lines, refused, alone = ["refused: %s" % said], str(said), True
+        reads.append((len(steps) + 1, "product compare()", lines))
+        steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product compare()",
+                      "seconds": clock() - began, "refused": refused, "summary": lines[0][:200] if lines else "",
+                      "read": lines[1:]})
     for call in calls:
         began = clock()
         try:
@@ -294,7 +305,8 @@ def _product_reads(report, spec, tables, reads, steps, clock):
         name = "product %s()" % call
         if answer:
             if call in report_shape.TABLE_FILLS:
-                tables[call] = answer["html"]
+                tables[call] = dict(answer["html"], note=report_shape.word(spec, "no_control")) if alone and \
+                    isinstance(answer["html"], dict) else answer["html"]
             reads.append((len(steps) + 1, name, lines))
         steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": name, "seconds": clock() - began,
                       "refused": refused, "summary": (lines[0] if lines else "")[:200], "read": lines[1:]})

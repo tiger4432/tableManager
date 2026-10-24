@@ -229,8 +229,10 @@ def _images(embedded, spec) -> str:
 
 def _table(fill, tables, spec, lent=None):
     table = tables.get(fill)
-    return TABLES[fill](table, spec, lent) if table is not None and fill in TABLES else \
-        '<p class="note">%s</p>' % _e(report_shape.word(spec, "not_read") % fill)
+    if table is None or fill not in TABLES:
+        return '<p class="note">%s</p>' % _e(report_shape.word(spec, "not_read") % fill)
+    note = table.get("note") if isinstance(table, dict) else None
+    return TABLES[fill](table, spec, lent) + ('<p class="note">%s</p>' % _e(note) if note else "")
 
 
 def _text(slot, texts, spec):

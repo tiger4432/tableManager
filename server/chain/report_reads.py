@@ -317,16 +317,39 @@ class Report:
             names = [n for n in [str(n) for n in role.get("rows") or ()] or sorted(present) if n in present]
             kept = [n for n in names if any(n == c or (sep and n.startswith(c + sep)) for c in chosen)]
             head = role.get("label")
-            for name in kept if role.get("choose") and kept else names:
+            drawn_rows = []
+            for name in names:
                 cells = []
                 for members in columns:
                     said = sorted({str(found[(w, name)][0]) for w in members
                                    if (w, name) in found and found[(w, name)][0] is not None})
                     cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
                 drawn = name if not head else head if not role.get("item") else head + sep + name
-                rows.append((drawn, cells))
+                drawn_rows.append((name, drawn, cells))
+            rows += [(drawn, cells) for name, drawn, cells in drawn_rows
+                     if not role.get("choose") or name in kept or not kept and _differs(cells, len(columns))]
             left_out += twice
         return rows, left_out
+
+    def _condition_rows(self, columns, chosen=None):
+        """The condition group (owner «조건도 안나오고»): a row a condition of the columns' wafers (wafer.conditions,
+        the conditions role) - the names the model kept (yield_by rows, owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택»),
+        else those whose value differs between the columns, every one when there is one column."""
+        mixed = report_shape.word(self.spec, "mixed")
+        sep = self.spec.get("item_sep") or ""
+        head = report_shape.word(self.spec, "conditions")
+        names = list(dict.fromkeys(str(n) for members in columns for w in members for n in self.wafers[w]["conditions"]))
+        kept = [n for n in names if n in [str(c) for c in chosen or ()]]
+        rows = []
+        for name in names:
+            cells = []
+            for members in columns:
+                said = sorted({_shown(self.wafers[w]["conditions"].get(name)) for w in members
+                               if self.wafers[w]["conditions"].get(name) is not None})
+                cells.append({"text": said[0] if len(said) == 1 else mixed % len(said) if said else ""})
+            if name in kept or not kept and _differs(cells, len(columns)):
+                rows.append((head + sep + name if sep else name, cells))
+        return rows
 
     def _pictures(self, columns):
         """The picture rows (owner 10-23 «열마다 한 장»): [(label, [cell, ...])] - a column of one wafer its picture
@@ -434,6 +457,8 @@ class Report:
                                for _name, _col, members in columns]))
         spans = [members for _name, _col, members in columns]
         info, info_twice = self._info(spans, rows)
+        if not by and not any(role.get(report_shape.CHOOSE) for role in report_shape.info_rows(self.spec)):
+            info = self._condition_rows(spans, rows) + info
         pictures, pictures_twice = self._pictures([[] if by else members for members in spans])
         table = dict(self._columns_of(columns, heads, by), info=info, pictures=pictures, rows=out,
                      item_label=self.spec["summary"].get("label"),
@@ -715,12 +740,35 @@ class Report:
     def compare(self, sets=None, evaluations=None, wafers=None):
         """Compare sets the declaration names (sets, or its default) and/or a control group from the recent
         evaluations (evaluations, wafers) - each a group of columns beside this evaluation's in the tables after it."""
+        if sets is None and not (evaluations or wafers):
+            return {"context": "\n".join(self.declared_compare()), "html": None}
         lines = []
         if sets is not None or not (evaluations or wafers):
             lines += self._sets(sets)
         if evaluations or wafers:
             lines += self._control(evaluations, wafers)
         return {"context": "\n".join(lines), "html": None}
+
+    def declared_compare(self) -> list:
+        """The comparison the declaration gives - `sets.default`, and the newest `control.recent` evaluations within
+        `max_evaluations` · `max_wafers` - beside this report's group. The model's compare() with no arguments and the
+        product's table read this one (lead 10-24, owner «근데 표 다른 웨이퍼 안불러오네»)."""
+        lines = []
+        if (report_shape.sets_role(self.spec) or {}).get(report_shape.SETS_DEFAULT):
+            lines += self._sets(None)
+        if (self.spec.get("control") or {}).get("recent"):
+            picked, total = [], 0
+            for name, entry in self._recent().items():
+                if len(picked) >= report_shape.control_limit(self.spec, "max_evaluations") or \
+                        total + len(entry["wafers"]) > report_shape.control_limit(self.spec, "max_wafers"):
+                    break
+                picked.append(name)
+                total += len(entry["wafers"])
+            lines += self._control(picked, None) if picked else ["control: no recent evaluation in range"]
+        if not lines:
+            raise ReadRefused("no compare set named - and this report declares no default (sets.default) and no "
+                              "control.recent")
+        return lines
 
     def _sets(self, sets):
         role = report_shape.sets_role(self.spec)
@@ -766,6 +814,11 @@ def _ordinal(value):
 
     number = number_of(value)
     return (value is None, number is None, number if number is not None else 0, "" if value is None else str(value))
+
+
+def _differs(cells, columns) -> bool:
+    """A row the product keeps by itself - its value differs between the columns, or there is one column."""
+    return columns <= 1 or len({cell["text"] for cell in cells}) > 1
 
 
 def _shown(value) -> str:

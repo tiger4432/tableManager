@@ -54,7 +54,8 @@ YIELDS = [("W1", "v1", 52.0), ("W1", "v2", 60.0), ("W2", "v1", 88.0)]
 MAPS = [("W1", "v1", "맵/a.png"), ("W1", "v2", "맵/b.png"), ("W2", "v1", "맵/c.png"), ("W3", "v1", "맵/없음.png")]
 LABELS = {"report": "리포트", "left_out": "제외 - 같은 웨이퍼 · 이름 두 행", "not_read": "%s 안 읽음",
           "nothing_written": "%s 글 없음", "no_image": "이미지 없음", "pareto_item": "항목", "pareto_fail": "불량 칩",
-          "pareto_cumulative": "누적", "control": "대조", "mixed": "섞임 (%d)"}
+          "pareto_cumulative": "누적", "control": "대조", "mixed": "섞임 (%d)", "conditions": "조건",
+          "no_control": "대조 없음"}
 SPEC = {
     "wafer": {"table": "rk_wafer", "key": ["wafer_id", "version"], "time": "measured_at", "evaluation": "eval_id",
               "conditions": ["bond"]},
@@ -132,7 +133,8 @@ def test_info_rows_stand_under_the_head_from_the_info_table(report, db_session):
     from chain import report_reads
 
     table = report.yield_by()["html"]
-    assert _texts(table["info"]) == [("자재", ["A-lot", "B-lot", "A-lot", "A-lot"]), ("평가자", ["김", "", "", ""])]
+    assert _texts(table["info"]) == [("조건.bond", ["저온", "고온", "저온", "고온"]),
+                                  ("자재", ["A-lot", "B-lot", "A-lot", "A-lot"]), ("평가자", ["김", "", "", ""])]
     assert table["left_out"] == ["wafer_id W2 · version v1 평가자"], "two rows of one wafer and name are left out, named"
     assert "info 자재 | A-lot | B-lot | A-lot | A-lot" in report.yield_by()["context"]
     by = report.yield_by(by="bond")["html"]
@@ -140,7 +142,7 @@ def test_info_rows_stand_under_the_head_from_the_info_table(report, db_session):
     spec = json.loads(json.dumps(SPEC))
     spec["info"]["rows"] = ["없는정보", "자재"]
     narrowed = report_reads.Report(db_session, spec, "E1").yield_by()["html"]
-    assert [name for name, _c in narrowed["info"]] == ["자재"], "a name with no row for these wafers stands not"
+    assert [name for name, _c in narrowed["info"]] == ["조건.bond", "자재"], "a name with no row for these wafers stands not"
 
 
 def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_session):
@@ -152,10 +154,11 @@ def test_info_is_a_list_of_tables_and_a_wide_one_is_its_value_column(report, db_
     spec["info"] = [SPEC["info"], {"table": "rk_yield", "wafer": ["wafer_id", "version"], "value": "yield"}]
     assert report_shape.refusal(spec) is None
     table = report_reads.Report(db_session, spec, "E1").yield_by()["html"]
-    assert _texts(table["info"]) == [("자재", ["A-lot", "B-lot", "A-lot", "A-lot"]), ("평가자", ["김", "", "", ""]),
+    assert _texts(table["info"]) == [("조건.bond", ["저온", "고온", "저온", "고온"]),
+                                  ("자재", ["A-lot", "B-lot", "A-lot", "A-lot"]), ("평가자", ["김", "", "", ""]),
                                      ("yield", ["52.0", "60.0", "88.0", ""])], "W3 has no yield row: a blank"
     assert table["left_out"] == ["wafer_id W2 · version v1 평가자"]
-    assert _texts(report.yield_by()["html"]["info"]) == _texts(table["info"])[:2], "one table alone: as it was"
+    assert _texts(report.yield_by()["html"]["info"]) == _texts(table["info"])[:3], "one table alone: as it was"
     page = report_html._summary_table(table, spec)
     assert '<td class="rpt-cell">52.0</td>' in page and '<td class="rpt-info">A-lot</td>' in page, \
         "a number stands right as the item cells do, a word left (lead 10-23)"

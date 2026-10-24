@@ -22,6 +22,7 @@ class FakeReport:
 
     def __init__(self, condition_lines=3):
         self.overlaps, self.embedded, self.compared = {}, {}, None
+        self.groups = {"E1": [], "control E0": []}           # compared - the product reads no comparison
         self._conditions = ["3 wafers in E1"] + ["split: value %d" % n for n in range(condition_lines - 1)]
 
     def conditions(self, keyword=None):
