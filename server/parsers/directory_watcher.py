@@ -1242,6 +1242,9 @@ def validate_external_source_specs(settings: dict, table_config: dict,
 
     Invalid entries are excluded but named; one bad optional share must not stop
     every managed ``raws/`` workspace.  The caller logs every error at ERROR.
+    A switched-off entry (``"enabled": false``) is judged the same and kept, marked ``"off": True``: only the
+    automatic doors (events, sweeps, Read all again) skip it; a file picked by hand (Read now, a Retry) is read
+    under it (owner 10-24 «외부 저장소 자동읽기 끊어놓고 파일 하나 찍어서 돌려가면서 디버깅»).
     """
     raw_specs = settings.get("external_sources", []) if isinstance(settings, dict) else []
     if raw_specs is None:
@@ -1260,8 +1263,6 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         why = validation.flag_refusal("enabled", enabled)
         if why:
             errors.append(f"{where}: {why}")
-            continue
-        if not enabled:
             continue
 
         source_path = raw.get("path")
@@ -1385,6 +1386,8 @@ def validate_external_source_specs(settings: dict, table_config: dict,
             "max_depth": max_depth,
             "options": {**options, "filename": filename},
         }
+        if not enabled:
+            spec["off"] = True
         valid.append(spec)
 
     # The same root MAY feed two tables (void_obs + inspection_run).  Within one
@@ -1393,7 +1396,7 @@ def validate_external_source_specs(settings: dict, table_config: dict,
     for spec in valid:
         conflict = None
         for prior in accepted:
-            if prior["table_name"] != spec["table_name"]:
+            if prior["table_name"] != spec["table_name"] or prior.get("off") != spec.get("off"):
                 continue
             try:
                 common = os.path.commonpath((prior["root"], spec["root"]))
@@ -2211,6 +2214,17 @@ class IngestionHandler(FileSystemEventHandler):
             named = [spec["source_id"] for spec in self._external_sources.values()
                      if os.path.normcase(spec["root"]) == os.path.normcase(os.path.abspath(source))]
             context = self.external_source_context(abs_path, named[0], named=False) if named else None
+            if not named:                           # switched off: picked by hand, read under its declaration
+                from ingestion import reread
+                off = [spec for spec in reread.validated_sources()[1]
+                       if spec.get("off") and spec["table_name"] == self.table_name
+                       and os.path.normcase(spec["root"]) == os.path.normcase(os.path.abspath(source))]
+                taken = source_taking(off[:1], abs_path, named=False) if off else None
+                if taken is not None:
+                    spec, rel_path = taken
+                    return {"rel_path": rel_path, "external_source": {
+                        "source_id": spec["source_id"], "source_root": spec["root"], "rel_path": rel_path,
+                        "parser": spec["parser"], "options": dict(spec.get("options") or {})}}
             if context is None:                     # 총괄 10-21: never read as raws under no source
                 owners = [spec["root"] for spec in self._external_sources.values()
                           if _safe_relative_path(abs_path, spec["root"]) is not None]
@@ -4566,6 +4580,7 @@ class WorkspaceWatcher:
         settings = load_ingestion_settings()
         specs, errors = validate_external_source_specs(
             settings, table_config, self.base_dir)
+        specs = [spec for spec in specs if not spec.get("off")]         # switched off: read by hand only
 
         # A disabled entry is neither accepted nor refused, so without this line
         # "declared but switched off" and "never declared" look identical in the

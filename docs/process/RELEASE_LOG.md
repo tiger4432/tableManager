@@ -347,6 +347,7 @@
 - 2026-10-21 [와처가 가볍게 선다 · 외장 소스에 max_depth · 훑기마다 소스별로 «왜 안 넘겼나»](#2026-10-21--와처가-가볍게-선다--외장-소스에-max_depth--훑기마다-소스별로-왜-안-넘겼나) — 적는 곳 `ingestion_settings.json` 외장 소스 항목 `max_depth` · 보는 곳 watcher.log
 - 2026-10-21 [칸 타입을 바꾼 선언이 재기동 없이 쓰기에 닿는다 — 리로드가 바뀐 칸의 모델 타입도 바꾼다](#2026-10-21--칸-타입을-바꾼-선언이-재기동-없이-쓰기에-닿는다--리로드가-바뀐-칸의-모델-타입도-바꾼다) — 적는 곳 table_config.json 의 column_types
 - 2026-10-21 [파일은 한 번 읽는다 — (경로, 표) 체크리스트, 표 스크립트가 바뀌면 그 표만 다시](#2026-10-21--파일은-한-번-읽는다--경로-표-체크리스트-표-스크립트가-바뀌면-그-표만-다시) — 보는 곳 와처 로그 · 적을 것 없음(`dedup_by_signature` · `dedup_by_path_stat` 은퇴)
+- 2026-10-24 [꺼진 외부 소스의 파일도 손으로 읽는다 — Read now · Retry 는 그 선언대로](#2026-10-24--꺼진-외부-소스의-파일도-손으로-읽는다--read-now--retry-는-그-선언대로) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목 `enabled: false`
 - 2026-10-21 [외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 — enabled · filename/glob · path](#2026-10-21--외부-소스-하나를-끄거나-바꾸면-재기동-없이-그-소스에만-먹는다--enabled--filenameglob--path) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목
 - 2026-10-20 [선언 폼의 추천 목록이 선언에서 나오고 표 설정에도 스켈레톤이 생김 (서버 몫)](#2026-10-20--선언-폼의-추천-목록이-선언에서-나오고-표-설정에도-스켈레톤이-생김-서버-몫) — 적는 곳 선언 폼(클라 착지 뒤) · `table_config.json`
 - 2026-10-20 [체인 규칙의 key.columns · group_by 를 목록으로 — 폼이 줄로 그리고 글자 key.columns 는 거절](#2026-10-20--체인-규칙의-keycolumns--group_by-를-목록으로--폼이-줄로-그리고-글자-keycolumns-는-거절) — 적는 곳 체인 규칙 선언 창 · `chain_rules.json`
@@ -563,6 +564,14 @@
 
 
 
+
+## 2026-10-24 · 꺼진 외부 소스의 파일도 손으로 읽는다 — Read now · Retry 는 그 선언대로
+
+- **무엇** — 소유자 10-24 «외부 저장소 자동읽기 끊어놓고 파일 하나 찍어서 돌려가면서 디버깅 하는법» · «타겟팅 돌리기만 제대로 만들어도 디버깅 다함». `"enabled": false` 인 외부 소스는 «자동으로»만 안 읽습니다(새 파일 이벤트 · 훑기 · Read all again). 파일 화면에서 손으로 고른 파일(Read now · 파일 한 줄 Retry)은 그 소스의 선언(parser · options · path)대로 읽습니다 — 몇 번이든, 재기동 없이.
+- **전엔** — 꺼진 소스는 선언 검증에서 통째로 빠져, Read now 가 «No table reads …» 로 거절하고 Retry 는 «the source … is not in ingestion_settings.json» 으로 실패했습니다.
+- **해 보기** — ingestion_settings.json 에서 그 소스를 `"enabled": false` 로 저장 → 파일 화면 «Read a file now» 에 파일 경로 → Read now. 다시 켜면 꺼진 동안 온 파일을 훑어 읽습니다(전과 같음).
+- **필요한 조건** — git pull · 런처 재기동(이 코드를 싣는 한 번). 그 뒤 끄고 켜기는 저장만.
+- **자세히** — `parsers/directory_watcher.py` 의 `validate_external_source_specs` 가 꺼진 항목도 검증해 `off` 표시로 남깁니다(선언을 아는 자리 하나). 그 표시를 묻는 자리: 와처 등록(자동 문) · `reread.table_sources`(Read all again) · 겹침 검사 · 손으로 읽을 때 `_parse_meta_for`.
 
 ## 2026-10-24 · 체인 실패 트레이스백이 터미널에 — 영구 실패 줄 바로 밑에 전체
 
