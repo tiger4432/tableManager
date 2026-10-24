@@ -591,6 +591,12 @@ class Report:
                     day = self._day(one, under) if one else None
                     texts.append(day or "")
                     order.append((day is None, day or ""))
+                elif tier == report_shape.COLUMN_TITLE:
+                    # the title of the head under it - a wafer's legs one title (owner 10-24 «헤더 시간 타이틀 웨이퍼 레그»)
+                    under = [k for k in tiers[tiers.index(tier) + 1:-1] if k in self.keys]
+                    title = self._title(one, under) if one else None
+                    texts.append(title or "")
+                    order.append((title is None, title or ""))
                 elif tier is None or one is None:
                     texts.append(col)
                     order.append((False, col))
@@ -603,8 +609,9 @@ class Report:
     def _tiers(self, by=None):
         """The column head tiers - `columns`, else the group then the key; a column of a condition value: the group,
         then the condition (None to the heads: the column's label)."""
-        return ([report_shape.COLUMN_GROUP, None] if by else
-                self.spec.get(report_shape.COLUMNS) or [report_shape.COLUMN_TIME] + self.keys)
+        titled = (self.long or {}).get(report_shape.TITLE_ITEM) or (self.long or {}).get("title")
+        return ([report_shape.COLUMN_GROUP, None] if by else self.spec.get(report_shape.COLUMNS) or
+                [report_shape.COLUMN_TIME] + ([report_shape.COLUMN_TITLE] if titled else []) + self.keys)
 
     def _columns_of(self, columns, heads, by=None):
         """The table's columns: the groups in the columns' order (the model reads them), each column's head texts,
@@ -618,6 +625,14 @@ class Report:
         return {"groups": groups, "heads": [texts for texts, _order in heads],
                 "tiers": [by if tier is None else tier for tier in self._tiers(by)],
                 "own": [name == self.evaluation for name, _col, _members in columns]}
+
+    def _title(self, wafer, under):
+        """The title of the wafer's unit (`under`: key columns, as `_day`) - its first wafer's that says one."""
+        at = [self.keys.index(k) for k in under or ()]
+        unit = (lambda w: tuple(w[i] for i in at)) if at else self._report_wafer
+        mine = unit(wafer)
+        said = [str(f["title"]) for w, f in self.wafers.items() if unit(w) == mine and f.get("title") not in (None, "")]
+        return said[0] if said else None
 
     def _day(self, wafer, under=None):
         """The wafer's day: the latest time of the rows of its report wafer - or, `under` (key columns), of every wafer

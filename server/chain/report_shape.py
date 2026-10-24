@@ -73,6 +73,8 @@ TABLE_FILLS = ("yield_by", "pareto", "trend")
 #: key column, COLUMN_TIME (the wafer's day) or COLUMN_GROUP (this report's or a control's). Declared, the columns
 #: stand in the heads' order; undeclared, the group then the key, in the groups' order.
 COLUMNS, COLUMN_TIME, COLUMN_GROUP = "columns", "time", "group"
+#: the wafer's title as a head tier (owner 10-24 «헤더 시간 타이틀 웨이퍼 레그»)
+COLUMN_TITLE = "title"
 #: `label` (info tables, summary): the head a table's rows stand under - a wide info table's one row its name.
 #: `choose` (info tables): the model keeps which rows (yield_by's rows) - owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택».
 LABEL, CHOOSE = "label", "choose"
@@ -451,11 +453,11 @@ def _columns_refusal(spec):
     if heads is None:
         return None
     keys = wafer_columns(spec["wafer"].get("key"))
-    known = keys + [COLUMN_TIME, COLUMN_GROUP]
+    known = keys + [COLUMN_TIME, COLUMN_GROUP, COLUMN_TITLE]
     if not isinstance(heads, list) or not heads or any(not isinstance(h, str) or h not in known for h in heads) \
             or len(set(heads)) != len(heads):
         return ("derive.report.columns lists the column heads, top first, each once - a key column (%s), %r or %r; "
-                "got %r" % (", ".join(keys), COLUMN_TIME, COLUMN_GROUP, heads))
+                "got %r" % (", ".join(keys), COLUMN_TIME, COLUMN_GROUP, heads) + " (or %r)" % COLUMN_TITLE)
     if COLUMN_TIME in heads and not (spec["wafer"].get("time") or (spec.get("conditions") or {}).get("time")
                                      or (spec.get("conditions") or {}).get(TIME_ITEM)):
         return ("derive.report.columns %r is the wafer's day - derive.report.wafer.time or conditions.time names the "
@@ -718,7 +720,7 @@ def column_word(spec, tier) -> str:
     said = ((spec or {}).get("labels") or {}).get(LABEL_COLUMNS) or {}
     if tier in said:
         return str(said[tier])
-    return {COLUMN_TIME: "Date", COLUMN_GROUP: ""}.get(tier, "" if tier is None else str(tier))
+    return {COLUMN_TIME: "Date", COLUMN_GROUP: "", COLUMN_TITLE: "Title"}.get(tier, "" if tier is None else str(tier))
 
 
 def control_limit(spec, cell) -> int:
