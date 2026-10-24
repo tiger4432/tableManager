@@ -416,8 +416,7 @@ class Report:
             px = role.get("px") or report_shape.PICTURE_PX
             source = role.get(report_shape.IMAGE_SOURCE)
             cells = [{"text": "—"} if len(members) != 1 else
-                     _picture("%s:%s" % (source, found[(members[0], name)][0]) if source else
-                              found[(members[0], name)][0], px) if found.get((members[0], name), (None,))[0]
+                     _picture(_ref(source, found[(members[0], name)][0]), px) if found.get((members[0], name), (None,))[0]
                      else {"text": ""} for members in columns]
             rows.append((name, cells))
             left_out += twice
@@ -661,7 +660,7 @@ class Report:
         unpaired = {}
         chosen, counts, seen = {}, {}, set()
         for wafer, row in rows:
-            ref = "%s:%s" % (source, row[1]) if source and row[1] else row[1]
+            ref = _ref(source, row[1])
             whose = (wafer, tuple(row[2 + at] for at in chip))
             for kind in ([part.strip() for part in str(row[0]).split(sep)] if sep else [report_shape.name(row[0])]):
                 item = match.get(kind, kind)
@@ -922,6 +921,14 @@ def _number(value):
 
 def _count(value):
     return str(int(value)) if float(value).is_integer() else "%g" % value
+
+
+def _ref(source, value):
+    """The image ref the grid hands /api/image for this cell - its value as written when it already names a source
+    (owner 10-24 «api 에서 들고오는 문 그대로»: «sat_patches:\\..» was prefixed a second time), else `source:value`."""
+    if not source or not value or str(value).startswith(str(source) + ":"):
+        return value
+    return "%s:%s" % (source, value)
 
 
 def _picture(ref, px):
