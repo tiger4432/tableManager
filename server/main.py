@@ -6451,7 +6451,7 @@ def get_ingestion_workspaces():
 def _switched_off_line(db, rule, off):
     """The rules list's line for a rule the chain switched off (총괄 8906edc07): since when, the changes it skipped
     since - its trigger table's outbox rows from then - and why."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     from sqlalchemy import func
 
@@ -6459,7 +6459,7 @@ def _switched_off_line(db, rule, off):
     try:
         since = datetime.strptime(str(off.get("at")), "%Y-%m-%dT%H:%M:%S")
         skipped = db.query(func.count(outbox.id)).filter(outbox.table_name == rule.get("trigger_table"),
-                                                         outbox.created_at >= since.astimezone()).scalar()
+                                                         outbox.created_at >= since.astimezone(timezone.utc)).scalar()
     except (TypeError, ValueError):
         skipped = None
     return "Switched off after %s failures in a row since %s · %s changes skipped since · %s" % (
