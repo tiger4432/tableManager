@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [AI 리포트 페이지 폭 최대 1280px — 글도 페이지 폭을 다 씀](#2026-10-24--ai-리포트-페이지-폭-최대-1280px--글도-페이지-폭을-다-씀) — 적을 것 없음 · 보는 곳 리포트 파일
 - 2026-10-24 [AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율](#2026-10-24--ai-리포트-수율-행--summaryyield_item-은-불량-유형이-아니라-수율) — 적는 곳 derive.report.summary.yield_item · 보는 곳 리포트 표 Yield 줄 · 파레토
 - 2026-10-24 [AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item](#2026-10-24--ai-리포트-웨이퍼-시각을-조건-항목에서--conditionstime_item) — 적는 곳 derive.report.conditions.time_item · 보는 곳 리포트 열 순서 · 날짜 · 대조 후보
 - 2026-10-24 [행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)](#2026-10-24--행-게이트-값에----패턴--onrequire--onexclude-와-ai-리포트-waferexclude-무시할-leg) — 적는 곳 on.require · on.exclude · derive.report.wafer.exclude · 보는 곳 리포트 · 체인 줄
@@ -353,6 +354,7 @@
 
 ### 설정 파일
 
+- 2026-10-24 [이미지 칸에 온전한 경로(C:\… · \\server\…)를 적어도 읽힌다 — 그 경로를 품은 folder 소스로](#2026-10-24--이미지-칸에-온전한-경로c--server를-적어도-읽힌다--그-경로를-품은-folder-소스로) — 적는 곳 server/config/image_sources.json 의 folder 소스 root · 보는 곳 리포트 그림 · 그리드 이미지 칸
 - 2026-10-24 [다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것](#2026-10-24--다시-읽기가-파일마다-실패하면-그-표-저장소만-멈춘다--잘못된-파서로-오류만-내며-돌던-것) — 적는 곳 ingestion_settings.json reread_stop_after_failures · 보는 곳 파일 화면 진행 줄 · watcher.log
 - 2026-10-24 [표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다](#2026-10-24--표-저장이-그-자리에서-서버에-읽힌다--바로-뒤-규칙-저장이-새-칸을-안다) — 적을 것 없음 · 보는 곳 저장 응답 시간
 - 2026-10-24 [표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이](#2026-10-24--표를-더하면-와처가-그-raws-를-바로-만들고-본다--reload-없이) — 적을 것 없음 · 보는 곳 watcher.log
@@ -584,6 +586,21 @@
 
 
 
+
+## 2026-10-24 · 이미지 칸에 온전한 경로(C:\… · \\server\…)를 적어도 읽힌다 — 그 경로를 품은 folder 소스로
+
+- **무엇** — 소유자 10-24 «이미지 경로를 절대 경로로 했더니 인식을 못하네». 이미지 칸 값이 온전한 경로(`C:\…` · `\\server\…`)이면 «image source 'C' is not declared» 로 거절했습니다. 이제 image_sources.json 의 folder 소스 중 그 경로를 품은 root 의 소스로 읽습니다.
+- **선언 예시** — root 를 image_sources.json 에 한 번 적습니다: `{"pics": {"kind": "folder", "root": "D:/images"}}`. 그 밑의 `D:/images/a/b.png` 같은 경로가 그대로 읽힙니다.
+- **그대로인 것** — 읽을 수 있는 폴더는 여전히 선언된 folder 소스뿐입니다. 어느 root 밑도 아니면 404 «'<경로>' is under no folder source of image_sources.json - add one whose root holds it (e.g. {"<name>": {"kind": "folder", "root": "<그 경로의 폴더>"}})». `<소스>:<경로>` 꼴은 전과 같습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `server/image_sources.py` 의 `resolve` (`765d4c34c`).
+
+## 2026-10-24 · AI 리포트 페이지 폭 최대 1280px — 글도 페이지 폭을 다 씀
+
+- **무엇** — 소유자 10-24 «좌우로 좀 넓혀줘 너무 좁게 되어 있다 1280으로». 기본 페이지 폭이 최대 1280px 이고, 글은 페이지 폭을 다 씁니다(전 72ch).
+- **알아둘 것** — 모양은 파일을 만들 때 그 파일 안에 박힙니다. 이미 만든 파일은 리포트를 다시 만들 때(리플레이)까지 옛 폭입니다.
+- **필요한 조건** — git pull · 런처 재기동 · 리포트 다시 만들기.
+- **자세히** — `server/chain/report_html.py` 의 `STYLE` (`fc5351f2c`).
 
 ## 2026-10-24 · 선언 폼에서 칸을 비우면 그 칸은 저장에서 빠진다 — 그 칸으로 비게 된 선택 블록도 같이
 

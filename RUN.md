@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **이미지 칸의 온전한 경로가 읽힌다 · AI 리포트 페이지 폭 1280px (765d4c34c · fc5351f2c)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 이미지    칸 값이 C:\… · \\server\… 처럼 온전한 경로면, 그 경로를 품은 root 의 folder 소스로 읽음
+>          root 를 server/config/image_sources.json 에 한 번:  {"pics": {"kind": "folder", "root": "D:/images"}}
+>          (전: «image source 'C' is not declared» 로 거절)
+> 볼 곳    리포트 그림 · 그리드 이미지 칸 -> 그림이 나오면 고쳐진 것
+> 아직 «'<경로>' is under no folder source of image_sources.json - add one whose root holds it (e.g. {…})»
+>          -> 그 경로를 품은 root 가 없음. 문구의 예시대로 folder 소스를 하나 적기
+> 페이지    리포트 파일 폭 최대 1280px, 글도 페이지 폭
+>          이미 만든 파일은 옛 폭 그대로 -> 리포트를 다시 만들면(리플레이) 새 폭
+> 끄기    없음
+> ```
+
+---
+
 > ## [10-24] **선언 폼에서 비운 칸은 저장에서 빠진다 — 비게 된 선택 블록(derive.report.sets 등)도 같이** — git pull · 화면 새로 고침
 >
 > ```
