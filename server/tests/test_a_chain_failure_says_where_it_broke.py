@@ -173,3 +173,7 @@ def test_a_chain_failure_says_where_it_broke(tmp_path):
     drawn = {item.get("failure") for item in queue.get("recent_failures") or ()}
     assert {said["r_boom"][0], bad} <= drawn, (drawn, queue.get("recent_failures"))
     assert event_constants.failure_cause(said["r_boom"][0]) == said["r_boom"][0]      # a sentence reads as itself
+    # the terminal: the whole traceback under the line, the mapper's frame in it (owner 10-24 «나 터미널 보고 일하니까»)
+    text = COLOUR.sub("", worker_log.read_text(encoding="utf-8", errors="replace"))
+    tail = text[text.index(" traceback:"):]
+    assert "Traceback (most recent call last):" in tail and 'boom.py", line %d, in _fold' % line in tail, tail[:3000]
