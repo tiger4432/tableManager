@@ -12,7 +12,7 @@ the summary table only read).
             a layout slot of an unknown kind · digits not a whole number · a summary saying neither F and N nor
             a rate · a rate without rate_scale 1 or 100 · results.file missing or not the report table's column · a
             rule on the summary table, on a table without the wafer's column, on one table into another · send_to
-            not an address
+            not an address · causes not {seed_type, follow, collect, hops}
   named     a cell the product does not read is said, and the rule still stands
   form      the skeleton's report record: tables by name, columns of the role's own table, wafer keys as lists
 """
@@ -48,6 +48,7 @@ REPORT = {
     "loop": {"steps": 8, "seconds": 300, "context_tokens": 16000},
     "results": {"file": "report_file"},
     "send_to": "http://relay:8765/reports",
+    "causes": {"seed_type": "defect_kind", "follow": ["leads_to"], "collect": ["quantity"], "hops": 4},
 }
 
 
@@ -117,6 +118,14 @@ def _with(path, value):
     (("control",), {"recent": {"weeks": 2}}, "derive.report.control.recent says how far back"),
     (("control",), {"recent": {"days": 30}, "max_wafers": 0}, "derive.report.control.max_wafers must be a whole number"),
     (("template",), "<table><tr><td>{{nope}}</td></tr></table>", "{{nope}} is not a mark this report fills"),
+    (("causes", "seed_type"), None, "derive.report.causes is {"),
+    (("causes", "seed_type"), " ", "derive.report.causes is {"),
+    (("causes", "follow"), "leads_to", "derive.report.causes is {"),
+    (("causes", "collect"), [""], "derive.report.causes is {"),
+    (("causes", "hops"), -1, "derive.report.causes is {"),
+    (("causes", "hops"), 2.5, "derive.report.causes is {"),
+    (("causes", "walk"), "static", "derive.report.causes is {"),
+    (("causes",), ["defect_kind"], "derive.report.causes is {"),
 ])
 def test_what_cannot_make_a_report_is_refused_by_its_path(path, value, said):
     """(Each row changes one cell of a declaration that stands.)"""

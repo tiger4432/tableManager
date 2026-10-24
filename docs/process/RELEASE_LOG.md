@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-25 [AI 리포트 원인 후보 — 불량 종류 노드에서 모델이 씨앗을 고르고 제품이 정적으로 걷는다](#2026-10-25--ai-리포트-원인-후보--불량-종류-노드에서-모델이-씨앗을-고르고-제품이-정적으로-걷는다) — 적는 곳 derive.report.causes · 보는 곳 리포트 Evidence · 터미널 [report] causes
 - 2026-10-24 [AI 리포트 조건 — 한 웨이퍼의 같은 조건 두 값은 둘 다(300 / 320), 시각 항목은 조건 줄에서 숨김, 이름 앞뒤 공백 무시](#2026-10-24--ai-리포트-조건--한-웨이퍼의-같은-조건-두-값은-둘-다300--320-시각-항목은-조건-줄에서-숨김-이름-앞뒤-공백-무시) — 적을 것 없음 · 보는 곳 리포트 표 조건 줄 · Evidence
 - 2026-10-24 [AI 리포트 페이지 폭 최대 1280px — 글도 페이지 폭을 다 씀](#2026-10-24--ai-리포트-페이지-폭-최대-1280px--글도-페이지-폭을-다-씀) — 적을 것 없음 · 보는 곳 리포트 파일
 - 2026-10-24 [AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율](#2026-10-24--ai-리포트-수율-행--summaryyield_item-은-불량-유형이-아니라-수율) — 적는 곳 derive.report.summary.yield_item · 보는 곳 리포트 표 Yield 줄 · 파레토
@@ -588,6 +589,16 @@
 
 
 
+
+## 2026-10-25 · AI 리포트 원인 후보 — 불량 종류 노드에서 모델이 씨앗을 고르고 제품이 정적으로 걷는다
+
+- **무엇** — 상세 분석 글쓰기 «직전»에 한 단계. 제품이 원장에서 선언된 타입의 노드 목록을 읽고, 모델이 그 목록과 이미 읽은 표를 보고 씨앗과 이유를 답하고, 제품이 그 씨앗에서 정적 층을 걸어 후보 인자와 길을 글쓰기 호출에 넘긴다(소유자 10-25).
+- **선언** — `chain_rules.json` 의 리포트 규칙 `derive.report.causes`: `{"seed_type": "defect_kind", "follow": ["leads_to"], "collect": ["quantity"], "hops": 6}`. seed_type 만 꼭. follow 없으면 양 끝이 둘 다 정적인 술어, hops 없으면 걷기 기본값. 모양이 틀리면 저장 · 로드가 «derive.report.causes is {...}» 로 거절.
+- **보는 곳** — 리포트 파일 Evidence: «product defect_kinds()» 와 노드 이름들, «causes({"seeds": ["void"]})» 와 why · 후보 줄(«quantity bond_temp: void <-leads_to- wetting_deficit <-leads_to- bond_temp»). 터미널 `[report] causes: …` · `[report] causes seeds …` · `[report] causes walk from …`.
+- **잰 것** — 박스 원장(읽기만): defect_kind 2 (delam · void), void 에서 leads_to 6 홉 — 닿은 노드 20 · 후보 quantity 19. 박스 리포트 규칙에 칸을 메모리로 더해 report_loop.run 을 대역 모델로 끝까지 돌림(파일 · DB 안 씀).
+- **필요한 조건** — git pull · 체인 워커 재기동.
+- **바뀐 동작** — 칸이 없으면 전과 같다(씨앗 호출 · 걷기 없음).
+- **자세히** — `report_reads.Report.defect_kinds` · `causes` · `_walk`(걷기 라우트 함수 `trace_router.evidence_subgraph` 를 프로세스 안에서) · `report_loop._causes`.
 
 ## 2026-10-24 · 선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 — keys · images.match 등
 

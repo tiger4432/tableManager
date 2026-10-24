@@ -2552,6 +2552,57 @@
                     "kind": "leaf",
                     "hint": "free"
                   }
+                },
+                {
+                  "key": "causes",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "seed_type",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "follow",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "predicate",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      {
+                        "key": "collect",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "type",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      {
+                        "key": "hops",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      }
+                    ]
+                  }
                 }
               ]
             }

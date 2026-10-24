@@ -3,6 +3,8 @@ and a context under `loop.context_tokens`. Each step hands the model [1]..[7] (g
 문맥») and reads one JSON object back: a call to one of the reads (`report_reads.Report`), or done - read enough.
 Then one write call (owner 10-23 ㄱ) hands it every table read and takes the texts - also when a step or time cap
 ended the reading, so the report says what was read. Nothing here writes - `run` answers what the mapper keeps.
+With `derive.report.causes` (owner 10-25), before the write: the model picks seeds from the declared type's nodes by the
+tables read, the product walks the static layer from them, and the candidates go to the write call with the tables.
 
   [1] instructions   prompts.role · rules · functions.<read>.about (blank: the text below) + the answer's form, the
                      reads and their arguments, the step cap and this step
@@ -40,6 +42,9 @@ RULES = ("Pick the wafers by their conditions. Call one read per step. When you 
 WRITE = ("Write the report from the tables read below - every number as a table says it. Answer one JSON object: "
          '{"done": {%s}}')
 STOP_NO_TEXT = "the write call answered no text"
+#: The seed call's line, over the nodes it picks from (`report_reads.Report.defect_kinds`).
+SEEDS = ("Pick the seed node(s) of a cause walk from the %s nodes below, by the tables read below. Answer one JSON "
+         'object: {"seeds": ["<name>", ...], "why": "..."}')
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
     "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: a condition whose values "
@@ -156,13 +161,13 @@ def compose(spec, request, conditions, steps, previous, budget, step, cap):
             return None, cut
 
 
-def compose_write(spec, request, reads, budget):
-    """The write call's prompt - role · rules · the write line · style · compare · control · the request · every table
-    read (`reads`: [(step, call, lines)]) - and what was cut, or (None, cut) when the tables at no rows do not fit.
-    Over budget the oldest read loses half its rows first (lead 10-23)."""
+def compose_write(spec, request, reads, budget, line=None):
+    """The write call's prompt - role · rules · the write line (`line`: the seed call's) · style · compare · control ·
+    the request · every table read (`reads`: [(step, call, lines)]) - and what was cut, or (None, cut) when the tables
+    at no rows do not fit. Over budget the oldest read loses half its rows first (lead 10-23)."""
     prompts = (spec or {}).get("prompts") or {}
     slots = ", ".join('"%s": "<text>"' % slot for slot in text_slots(spec))
-    head = ([prompts.get("role") or ROLE] + ([prompts["rules"]] if prompts.get("rules") else []) + [WRITE % slots]
+    head = ([prompts.get("role") or ROLE] + ([prompts["rules"]] if prompts.get("rules") else []) + [line or WRITE % slots]
             + _prompts(spec, ("style", "compare", "control")) + _request(request) + ["Tables read:"])
     kept = [list(lines) for _step, _call, lines in reads]
     cut = {}
@@ -274,6 +279,8 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
                                                   ([rows] if isinstance(rows, str) else list(rows or []))))
     _product_reads(report, spec, tables, reads, steps, clock)
     if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
+        if (spec or {}).get(report_shape.CAUSES) is not None:
+            _causes(report, spec, request, reads, budget, ask, clock, out["steps"])
         _write(spec, request, reads, budget, ask, clock, out)
         # the conditions the texts name stand in the table too (owner 10-24 «리포트에 글로 명시한 조건값이 표에는 반영
         # 안 되어 있음 · 동기화되게») - the yield_by table drawn again with them
@@ -350,6 +357,49 @@ def _product_reads(report, spec, tables, reads, steps, clock):
             reads.append((len(steps) + 1, name, lines))
         steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": name, "seconds": clock() - began,
                       "refused": refused, "summary": (lines[0] if lines else "")[:200], "read": lines[1:]})
+
+
+def _causes(report, spec, request, reads, budget, ask, clock, steps):
+    """The cause walk before the write: the declared type's nodes and the tables read -> the model's seeds and why ->
+    the product's static walk from them -> its candidates, a read the write call is handed. A refusal on the way is a
+    step's, and the report is written without the candidates."""
+    from utils import llm
+
+    def step(call, began, lines, refused=None, **more):
+        steps.append(dict({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": call, "seconds": clock() - began,
+                           "refused": refused, "summary": (lines[0] if lines else "")[:200], "read": lines[1:]}, **more))
+
+    began = clock()
+    try:
+        kinds = report.defect_kinds()["context"].splitlines()
+    except report_reads.ReadRefused as said:
+        logger.warning("[report] defect_kinds() refused: %s", said, exc_info=said)
+        return step("product defect_kinds()", began, [], str(said))
+    step("product defect_kinds()", began, kinds)
+    tables = [read for read in reads if read[1].replace("product ", "").split("(")[0] in report_shape.TABLE_FILLS]
+    line = "\n".join([SEEDS % spec[report_shape.CAUSES]["seed_type"]] + kinds[1:])
+    began = clock()
+    prompt, cut = compose_write(spec, request, tables, budget, line=line)
+    if prompt is None:
+        return step("causes()", began, [], STOP_CONTEXT, cut=cut)
+    try:
+        said, counted = _ask(prompt, ask)
+    except llm.LlmRefused as refused:
+        return step("causes()", began, [], STOP_MODEL % refused)
+    budget.correct(prompt, counted)
+    seeds = said.get("seeds")
+    seeds = [seeds] if isinstance(seeds, str) else [str(s) for s in seeds or () if str(s).strip()]
+    why = str(said.get("why") or "").strip() or None
+    logger.warning("[report] causes seeds %s - %s", ", ".join(seeds) or "none", why or "no why given")
+    call = _said("causes", {"seeds": seeds})
+    try:
+        lines, refused = report.causes(seeds)["context"].splitlines(), None
+    except report_reads.ReadRefused as refused_:
+        logger.warning("[report] %s refused: %s", call, refused_, exc_info=refused_)
+        lines, refused = [], str(refused_)
+    step(call, began, lines, refused, tokens=counted or budget.tokens(prompt), cut=cut, why=why)
+    if refused is None:
+        reads.append((steps[-1]["step"], call, lines))
 
 
 def _write(spec, request, reads, budget, ask, clock, out):
