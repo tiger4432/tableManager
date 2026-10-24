@@ -281,6 +281,43 @@ def test_a_wafer_of_two_columns_is_read_column_for_column(report, db_session):
             retire_dynamic_model(name)
 
 
+def test_a_wafer_whose_key_part_is_blank_reads_its_rows(report, db_session):
+    """Wafer (A, blank slot) - its summary row spells the blank «» where the wafer table holds NULL; blank meets blank
+    (owner 10-24: ops wafers with a blank part had no numbers). (A, 1) must not count."""
+    from chain import report_reads
+
+    pair = {"rr_blank": {"composite_key_source": ["wafer_id", "slot"], "column_types": {
+                "wafer_id": "string", "slot": "string", "eval_id": "string", "measured_at": "string"}},
+            "rr_blank_summary": {"composite_key_source": ["wafer_id", "slot", "defect_item"], "column_types": {
+                "wafer_id": "string", "slot": "string", "defect_item": "string", "fail_chips": "number",
+                "total_chips": "number"}}}
+    models.init_dynamic_models(pair)
+    m = models.DYNAMIC_TABLES
+    try:
+        for name, entry in pair.items():
+            crud.TABLE_CONFIG[name] = entry
+            m[name].__table__.create(bind=db_session.get_bind())
+        for n, (w, s, at) in enumerate([("A", "1", "1"), ("A", None, "2"), ("B", "1", "3")]):
+            db_session.add(m["rr_blank"](row_id="s%d" % n, wafer_id=w, slot=s, eval_id="E1", measured_at=at))
+        for n, (w, s, chips) in enumerate([("A", "1", 90), ("A", "", 5), ("B", "1", 7)]):
+            db_session.add(m["rr_blank_summary"](row_id="d%d" % n, wafer_id=w, slot=s, defect_item="particle",
+                                                 fail_chips=chips, total_chips=100))
+        db_session.commit()
+        spec = {"wafer": {"table": "rr_blank", "key": ["wafer_id", "slot"], "time": "measured_at",
+                          "evaluation": "eval_id"},
+                "summary": {"table": "rr_blank_summary", "wafer": ["wafer_id", "slot"], "item": "defect_item",
+                            "fail": "fail_chips", "total": "total_chips"}}
+        two = report_reads.Report(db_session, spec, "E1")
+        assert ("A", None) in two.wafers
+        table = two.yield_by(["A/", "B/1"])["html"]
+        assert _texts(table["rows"]) == [("particle", ["5.0% (5/100)", "7.0% (7/100)"])]
+    finally:
+        db_session.rollback()
+        for name in pair:
+            m[name].__table__.drop(bind=db_session.get_bind())
+            retire_dynamic_model(name)
+
+
 def test_a_name_two_wafers_share_is_refused_and_counted(report, db_session):
     """Lot «A/B» slot «1» and lot «A» slot «B/1» are both said «A/B/1» to the model (lead 10-22 안 1)."""
     from chain import report_reads
