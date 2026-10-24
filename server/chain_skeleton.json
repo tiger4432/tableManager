@@ -1116,6 +1116,47 @@
                         }
                       },
                       {
+                        "key": "exclude",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "oneOf",
+                            "hint": "choice",
+                            "pick": "shape",
+                            "branches": {
+                              "name": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "columns",
+                                "table_from": [
+                                  "derive.report.wafer.table"
+                                ]
+                              },
+                              "values": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "column",
+                                "of": {
+                                  "kind": "map",
+                                  "keyed_by": "index",
+                                  "member": "value",
+                                  "of": {
+                                    "kind": "leaf",
+                                    "hint": "free"
+                                  }
+                                }
+                              }
+                            },
+                            "empty": {
+                              "name": ""
+                            }
+                          }
+                        }
+                      },
+                      {
                         "key": "key",
                         "required": false,
                         "node": {

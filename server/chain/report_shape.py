@@ -171,6 +171,9 @@ def _role_node(role):
     fields = [{"key": "table", "required": True, "node": chain_bindings.table_ref()},
               {"key": RENAME, "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "column",
                                                           "of": _column(role)}}]
+    if role == "wafer":
+        fields.append({"key": chain_bindings.EXCLUDE_KEY, "required": False, "node": chain_bindings.list_node(
+            "column", chain_bindings.gate_item_node(("derive.report.wafer.table",)))})
     for cell in ROLE_COLUMNS[role]:
         node = chain_bindings.list_node("column", _column(role)) if (role, cell) in LIST_COLUMNS else _column(role)
         fields.append({"key": cell, "required": False, "node": node})
@@ -457,6 +460,16 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     said = _keys_refusal(spec, wafer_key)
     if said:
         return said
+    exclude = spec["wafer"].get(chain_bindings.EXCLUDE_KEY)
+    if exclude is not None:
+        known = chain_bindings.declared_columns(str(spec["wafer"].get("table") or "")) or ()
+        if not isinstance(exclude, list) or any(chain_bindings.gate_item_refused(item) for item in exclude):
+            return ('derive.report.wafer.exclude is a list of {column: [values]} - a value with * or ? a pattern, e.g. '
+                    '[{"leg": ["*_T", "*TEST*"]}]; got %r' % (exclude,))
+        unknown = [c for c in chain_bindings.gate_columns(exclude) if c not in known]
+        if unknown:
+            return "derive.report.wafer.exclude %r is not a column of %r - name one of its columns" % (
+                unknown[0], spec["wafer"].get("table"))
     key_names = (wafer_key, wafer_key + [c for c in key_words(spec) if c not in wafer_key], unit_columns(spec))
     for role, cells in ROLE_COLUMNS.items():
         if spec.get(role) is not None:

@@ -240,6 +240,20 @@ def test_image_kinds_are_paired_with_a_summary_item_by_match(report, db_session,
     assert refused.startswith("derive.report.images.match is {summary item: image kind or [image kinds]}"), refused
 
 
+def test_a_wafer_row_the_exclude_gate_holds_is_no_unit(report, db_session):
+    """derive.report.wafer.exclude (owner 10-24 «무시해야하는 leg 스타일이 있는데»): the chain's row gate, a value with * or
+    ? a pattern - a wafer row it holds back is not reported, compared or drawn."""
+    from chain import report_reads, report_shape
+
+    spec = json.loads(json.dumps(SPEC))
+    spec["wafer"]["exclude"] = [{"wafer_id": ["*3", "W?X"]}]
+    gated = report_reads.Report(db_session, spec, "E1")
+    assert gated.groups["E1"] == [("W1",), ("W2",)], "W3 matches *3"
+    assert [c for _n, cols in gated.yield_by()["html"]["groups"] for c in cols] == ["wafer_id W1", "wafer_id W2"]
+    assert report_shape.refusal(dict(spec, wafer=dict(spec["wafer"], exclude=[{"nope": ["*"]}]))) == (
+        "derive.report.wafer.exclude 'nope' is not a column of 'rr_wafer' - name one of its columns")
+
+
 def test_a_compare_set_is_a_second_group_of_columns(report):
     """The kind column's values are the declaration's (sets.kinds) - «eval» written there is not one of them."""
     assert report.compare(["baseline", "keylots"])["context"].splitlines() == [

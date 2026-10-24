@@ -154,8 +154,18 @@ class Report:
         extra = [role.get(cell) for cell in ("time", "lot", "evaluation")]
         columns = self.keys + [c for c in extra if c] + self.conditions_at
         columns += [c for c in self.same_at if c not in columns]
+        # wafer.exclude (owner 10-24 «무시해야하는 leg 스타일»): a row the gate holds back is no unit - not reported,
+        # compared or drawn; judged by the chain's one row gate (`rule_run.gate_misses`, * ? a pattern)
+        import chain_bindings
+        from chain import rule_run
+
+        gates ={chain_bindings.EXCLUDE_KEY: role.get(chain_bindings.EXCLUDE_KEY) or []}
+        gated = [c for c in chain_bindings.gate_columns(gates[chain_bindings.EXCLUDE_KEY]) if c not in columns]
         read = [(_parts(row[:len(self.keys)]), row)
-                for row in _rows(self.db, role, columns, where=where, newest=role.get("time") if newest else None)]
+                for row in _rows(self.db, role, columns + gated, where=where,
+                                 newest=role.get("time") if newest else None)
+                if not gates[chain_bindings.EXCLUDE_KEY] or not rule_run.gate_misses(
+                    gates, dict(zip(columns + gated, row)), role["table"])]
         out = []
         for wafer, row in self._latest(read):
             values = dict(zip(columns, row))

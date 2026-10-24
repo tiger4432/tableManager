@@ -270,6 +270,16 @@ def gate_items(written) -> list:
     return out
 
 
+#: A gate value holding one of these is a glob pattern - `fnmatch`, case as written (owner 10-24 «무시해야하는 leg
+#: 스타일이 있는데», lead: widen the gate, not a second one). `rule_run.gate_misses` · `gate_conditions` judge it.
+GLOB_CHARS = "*?"
+
+
+def gate_pattern(value) -> bool:
+    """Is this gate value a glob pattern (`GLOB_CHARS`)?"""
+    return isinstance(value, str) and any(ch in value for ch in GLOB_CHARS)
+
+
 def gate_columns(written) -> list:
     """The columns a row gate's items name, in order, once each (`gate_items`)."""
     return list(dict.fromkeys(column for column, _values in gate_items(written)))

@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-24] **행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)** — git pull · 런처 재기동
+>
+> ```
+> 먼저 셀 것  운영 chain_rules.json 의 게이트 값에 * ? 가 이미 있나 — 있으면 그 규칙이 이제 패턴으로 거름
+>          python -c "import json;d=json.load(open('server/config/chain_rules.json',encoding='utf-8'));r=d.get('rules',d);print([(x.get('name'),v) for x in r for h in (x,x.get('on') or {}) for g in ('require','exclude') for i in h.get(g) or () if isinstance(i,dict) for vs in i.values() for v in vs if isinstance(v,str) and ('*' in v or '?' in v)])"
+>          [] -> 바뀌는 규칙 없음
+> 적을 것   chain_rules.json 의 derive.report.wafer 에  "exclude": [{"leg": ["*_T", "*TEST*"]}]
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    그 leg 가 표 열 · units 줄 · 그림에서 사라지면 고쳐진 것
+>          저장 거절 «derive.report.wafer.exclude '<칸>' is not a column of '<표>'» -> 웨이퍼 표의 칸 이름으로
+> 되돌리기  git revert $(git log -1 --format=%h --grep='glob pattern in the one row gate' origin/main) -> 런처 재기동
+> ```
+
+---
+
 > ## [10-24] **AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)** — git pull · 런처 재기동
 >
 > ```

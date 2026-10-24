@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)](#2026-10-24--행-게이트-값에----패턴--onrequire--onexclude-와-ai-리포트-waferexclude-무시할-leg) — 적는 곳 on.require · on.exclude · derive.report.wafer.exclude · 보는 곳 리포트 · 체인 줄
 - 2026-10-24 [AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)](#2026-10-24--ai-리포트-그림-짝--imagesmatch-로-그림-표의-종류를-요약-항목에-void-signal---typea) — 적는 곳 derive.report.images.match · 보는 곳 리포트 그림
 - 2026-10-24 [AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다](#2026-10-24--ai-리포트-표에-대조-웨이퍼와-조건-묶음--선언된-비교controlrecent--setsdefault를-제품이-읽는다) — 적는 곳 derive.report.control.recent · sets.default · 보는 곳 리포트 표
 - 2026-10-24 [AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기](#2026-10-24--ai-리포트--키-조각마다-칸-이름wafer-w1--leg-l1-웨이퍼-밑에-leg-묶기) — 적는 곳 derive.report.labels.columns(선택) · 보는 곳 리포트 글 · 표 열 이름 · Evidence
@@ -580,6 +581,16 @@
 
 
 
+
+## 2026-10-24 · 행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)
+
+- 무엇: 특정 철자의 leg 를 리포트에서 빼야 했다(소유자 «무시해야하는 leg 스타일이 있는데»). 새 문법 대신 체인의 행 게이트를 넓혔다.
+  - `{칸: [값]}` 게이트 값에 `*` 나 `?` 가 있으면 패턴: `*` 아무 글자들, `?` 한 글자, 대소문자 그대로, 빈 칸은 어떤 패턴에도 안 걸림. 파이썬 판정(`rule_run.gate_misses`)과 SQL 판정(`gate_conditions` — PostgreSQL LIKE, SQLite GLOB)이 같은 행을 고른다.
+  - AI 리포트 `derive.report.wafer.exclude`: 같은 게이트로 웨이퍼 표 행을 거른다. 걸린 행은 유닛이 아니다 — 리포트 안 함 · 비교 안 함 · 표에 없음.
+  - 저장 거절: «derive.report.wafer.exclude is a list of {column: [values]} …» · «derive.report.wafer.exclude '<칸>' is not a column of '<표>' …»
+- 바뀐 동작: 이미 적힌 게이트 값에 `*` `?` 가 있으면 그 값은 이제 패턴이다. 박스 chain_rules.json 에는 값 게이트가 0 개라 확인할 값이 없었다 — 운영 선언은 RUN.md 의 줄로 확인.
+- 선언 예시: chain_rules.json 의 derive.report.wafer `"exclude": [{"leg": ["*_T", "*TEST*"]}]` · 체인 규칙 `"on": {"exclude": [{"status": ["SC*"]}]}`
+- 자세히: `server/chain_bindings.py` 의 `gate_pattern`, `server/chain/rule_run.py` 의 `gate_misses` · `_one_of_sql` · `_GlobMatch`.
 
 ## 2026-10-24 · AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)
 
