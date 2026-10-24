@@ -4,7 +4,9 @@ with their rows in and out; for a line to be tried again, the stage it broke in;
 stage · rows in · rows out · the failure's one sentence · when. From the seats that already hold them: the group's
 claim (the stage), the rule's activity record (the [ChainRule] line's numbers), `failure_cause`, `failure_clause`.
 """
+import inspect
 import logging
+import os
 
 import pytest
 
@@ -57,6 +59,15 @@ def _raises(monkeypatch, text):
     monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, MAPPER, answer)
 
 
+def _said(text):
+    """The sentence of a failure `_raises` makes - its last line and where: the raise in this file, a product file
+    (`event_constants.failure_place`), said from the server folder."""
+    lines, first = inspect.getsourcelines(_raises)
+    line = first + next(i for i, source in enumerate(lines) if "raise ValueError" in source)
+    here = os.path.relpath(os.path.abspath(__file__), os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return "ValueError: %s at %s:%d in answer" % (text, here, line)
+
+
 async def _run(db, tx, events, caplog):
     with caplog.at_level(logging.INFO):
         await ciw.process_pending_groups(db, [tx], {tx: events}, RULES, None)
@@ -81,14 +92,14 @@ async def test_a_failed_group_says_its_stage_and_its_rules_rows_and_the_queue_li
 
     [failure] = _queue(client)["recent_failures"]
     assert failure == {"transaction_id": "tx-f", "rules": [RULE], "tables": [DST], "stage": MAPPER_STAGE,
-                       "rows_in": 5, "rows_out": None, "rows": 5, "failure": "ValueError: every row broke",
+                       "rows_in": 5, "rows_out": None, "rows": 5, "failure": _said("every row broke"),
                        "failed_at": failure["failed_at"]} and failure["failed_at"]
     assert _queue(client)["recent_failures_listed"] == {"cap": 20, "capped": False}
     [summary] = client.get("/admin/outbox/failed").json()["summary"]
     assert summary["last_failure"] == failure["failure"], "the failed list's line says the sentence another way"
     row = db.query(DatabaseOutbox).get(events[0].id)
     assert event_constants.chain_state_of(row.processed_chain, row.status, payload=row.payload)["why"] == {
-        "failure": "ValueError: every row broke", "stage": MAPPER_STAGE}
+        "failure": _said("every row broke"), "stage": MAPPER_STAGE}
 
 
 @pytest.mark.anyio
@@ -115,7 +126,7 @@ async def test_a_line_to_be_tried_again_says_the_stage_it_broke_in_and_its_rules
     [line] = [line for line in _queue(client)["waiting_transactions"] if line["transaction_id"] == "tx-r"]
     assert line["chain_state"]["state"] == event_constants.CHAIN_STATE_RETRYING
     assert (line["chain_state"]["why"]["stage"], line["chain_state"]["why"]["last_failure"]) == (
-        MAPPER_STAGE, "ValueError: broke once")
+        MAPPER_STAGE, _said("broke once"))
     assert line["rules"] == [{"rule": RULE, "rows_in": 4, "rows_out": None, "running_seconds": None}]
     assert _queue(client)["recent_failures"] == [], "a group still to be tried is not a failure"
 

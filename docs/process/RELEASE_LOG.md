@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-24 [체인 실패 줄이 «어디서»를 말한다 — 맵퍼 파일:줄 · 함수](#2026-10-24--체인-실패-줄이-어디서를-말한다--맵퍼-파일줄--함수) — 보는 곳 chain_worker.log «원인:» 줄 · 대기열 Recent failures
 - 2026-10-24 [뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것](#2026-10-24--뭉치기-조인이-키마다-한-번-계산한다--함수--내장-fn-이-대상-행마다-돌던-것) — 적는 곳 없음(선언 그대로) · 보는 곳 chain_worker.log [Latency]
 - 2026-10-24 [AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭](#2026-10-24--ai-리포트-파일--다시-세로-나열--머리-단-이름date--wafer--leg--표는-창-폭) — 적는 곳 derive.report.labels.columns · 보는 곳 리포트 파일
 - 2026-10-23 [AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름](#2026-10-23--ai-리포트-키-칸--keys-한-곳unit--latest--fold-표마다-가진-키-칸-이름) — 적는 곳 derive.report.keys · 역할의 wafer 목록 · 보는 곳 리포트 파일
@@ -561,6 +562,13 @@
 
 
 
+
+## 2026-10-24 · 체인 실패 줄이 «어디서»를 말한다 — 맵퍼 파일:줄 · 함수
+
+- **무엇** — 소유자 10-24 «딸랑 이거 나오는데 어쩌라는 거임» → «2 해». 맵퍼 안 pandas 오류의 실패 줄이 «원인: ValueError: cannot insert tkout_time, already exists» 뿐이라 운영자가 손댈 곳을 몰랐습니다. 이제 사유 문장 끝에 «at <파일>:<줄> in <함수>»가 붙습니다 — 트레이스백에서 맵퍼 파일(mappers 패키지 폴더, join_fn/ 포함)의 가장 안쪽 프레임, 없으면 제품 파일의 가장 안쪽 프레임.
+- **바뀐 동작** — 사유 문장을 짓는 한 함수(`event_constants.failure_cause`)에서 붙이므로 그것을 읽는 자리 다섯이 모두 같은 문장입니다: chain_worker.log 의 «permanently failed … 원인:» 줄, 대기열 줄의 retrying `last_failure`, 체인 상태의 FAILED, 대기열의 Recent failures, 실패 목록의 last_failure. 격리 기록(error_log)의 reason 은 전과 같이 트레이스백 전체입니다. 트레이스백이 없는 거절 문장(쓰기 거절 등)은 그대로입니다. 이미 쌓인 실패 기록도 다시 읽을 때 같은 문장이 됩니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_a_chain_failure_says_where_it_broke.py`(실제 API + 체인 워커).
 
 ## 2026-10-24 · 쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것
 
