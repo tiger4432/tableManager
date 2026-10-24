@@ -130,6 +130,23 @@ def _the_loaded_chain_rules_are_forgotten():
         worker.forget_loaded_chain_rules()
 
 
+@pytest.fixture(autouse=True)
+def _the_chains_failure_memory_is_forgotten():
+    """A failure one test said or counted must not fold the next test's line, nor switch its rule off (총괄 ef69603d6 ·
+    8906edc07): the terminal's said failures and the control file's streaks and rules switched off, each test."""
+    from chain import control
+
+    def fresh():
+        worker = sys.modules.get("chain.ingestion_worker")
+        if worker is not None:
+            worker._FAILURES_SAID.clear()
+        control.release_rules()
+
+    fresh()
+    yield
+    fresh()
+
+
 # ===========================================================================
 # A test starts no chain slot process unless it asks  [총괄 19f6a9277]
 # ===========================================================================

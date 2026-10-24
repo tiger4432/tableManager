@@ -582,11 +582,16 @@ async def _run_batch(key, rules, seen):
         changed, seen = await ingestion_worker._step_beating(db, "reload", ingestion_worker.reload_at_boundary,
                                                              system_reload.CHAIN_WORKER, seen)
         rules = ingestion_worker.loaded_chain_rules() if changed else rules
+        if changed:                                 # a rule or a mapper file saved: what the chain switched off runs
+            for name, off in control.release_rules().items():
+                logger.warning("[Chain] rule %s switched on again - a declaration was saved (off since %s)",
+                               name, off.get("at"))
         events = await ingestion_worker._step_beating(db, "line read", ingestion_worker.pending_chain_events, db,
                                                       line=key)
         if not events:
             return DRAINED, rules, seen
-        failed = await ingestion_worker.drain_events(db, events, rules, SessionLocal, batch_wake_ts=started)
+        failed = await ingestion_worker.drain_events(db, events, control.with_rules_off(rules), SessionLocal,
+                                                     batch_wake_ts=started)
     except Exception as exc:                                            # noqa: BLE001
         # The chain loop's own contract, kept: a batch that raised is said and tried again, its
         # events as they were - a set-aside cutting a group's wait for a table lands here. Raised

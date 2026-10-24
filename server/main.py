@@ -5296,6 +5296,36 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     }
 
 
+def failures_by_cause(db):
+    """One line per (rules, failure sentence) over every failed row (owner 10-24 «똑같은 에러면 접든가», 총괄
+    ef69603d6): rules · cause · count · first · last, the most recent first. One GROUP BY on the quarantine record's
+    rules and `cause` (a row from before the cause was written: its reason), folded once more by `failure_cause`."""
+    from sqlalchemy import func
+
+    outbox = models.DatabaseOutbox
+    rules = outbox.payload[("error_log", "rules")].as_string()
+    said = func.coalesce(outbox.payload[("error_log", "cause")].as_string(),
+                         outbox.payload[("error_log", "reason")].as_string())
+    folded = {}
+    for rule_text, text, n, first, last in (db.query(rules, said, func.count(), func.min(outbox.processed_at),
+                                                     func.max(outbox.processed_at))
+                                            .filter(event_constants.failure_clause(outbox)).group_by(rules, said)):
+        try:
+            names = json.loads(rule_text) if rule_text else None
+        except ValueError:
+            names = [rule_text]
+        key = (tuple(names or ()), event_constants.failure_cause(text))
+        line = folded.setdefault(key, [0, first, last])
+        line[0] += int(n)
+        line[1] = min(t for t in (line[1], first) if t is not None) if (line[1] or first) else None
+        line[2] = max(t for t in (line[2], last) if t is not None) if (line[2] or last) else None
+    out = [{"rules": list(names), "cause": cause, "count": n, "first_at": to_local_str(first) if first else None,
+            "last_at": to_local_str(last) if last else None}
+           for (names, cause), (n, first, last) in folded.items()]
+    out.sort(key=lambda line: line["last_at"] or "", reverse=True)
+    return out
+
+
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
                              table: str = None, event_type: str = None, day: str = None,
@@ -5303,7 +5333,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
     """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
     from zoneinfo import ZoneInfo
 
-    from sqlalchemy import func
+    from sqlalchemy import func, literal
 
     # The day is the VIEWER's day (총괄 eca1f36b2): `tz` is the screen's zone name. A missing
     # or unreadable one cuts UTC days, and `day_zone` says which zone cut them.
@@ -5325,42 +5355,34 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
         query = query.filter(outbox.event_type == event_type)
     if not crud.is_blank_value(day):
         query = query.filter(day_of == day)
-    query = query.order_by(outbox.id.desc())
+    # 🔴 GROUPED IN SQL, A PAGE AT A TIME (owner 10-24 «묶음이 100만개», 총괄 ef69603d6): every failed row with its
+    #    payload was loaded to group them here. One GROUP BY by the transaction (a row without one is its own group),
+    #    newest group first; only the page's groups' rows are read.
+    group_key = func.coalesce(outbox.payload["transaction_id"].as_string(), literal("single_") + outbox.event_uuid)
+    grouped = query.with_entities(group_key.label("tx"), func.max(outbox.id).label("newest"))\
+        .group_by(group_key).subquery()
+    total = db.query(func.count()).select_from(grouped).scalar() or 0
+    page_keys = [tx for (tx,) in db.query(grouped.c.tx).order_by(grouped.c.newest.desc())
+                 .offset((page - 1) * limit).limit(limit).all()]
+    groups = {tx: [] for tx in page_keys}
+    if page_keys:
+        for e in query.filter(group_key.in_(page_keys)).order_by(outbox.id.desc()).all():
+            groups[get_payload_dict(e).get("transaction_id") or f"single_{e.event_uuid}"].append(e)
 
-    all_failed = query.all()
-    
-    from collections import defaultdict
-    groups = defaultdict(list)
-    for e in all_failed:
-        tx_id = get_payload_dict(e).get("transaction_id")
-        if not tx_id:
-            tx_id = f"single_{e.event_uuid}"
-        groups[tx_id].append(e)
-        
-    # Sort transaction groups by the newest event's ID inside each group descending
-    sorted_groups = sorted(
-        groups.items(),
-        key=lambda item: max(e.id for e in item[1]),
-        reverse=True
-    )
-    
-    total = len(sorted_groups)
-    start = (page - 1) * limit
-    end = start + limit
-    paginated_groups = sorted_groups[start:end]
-    
     result_list = []
-    for tx_id, events in paginated_groups:
+    for tx_id, events in groups.items():
+        if not events:
+            continue
         table_names = list(set(e.table_name for e in events))
         event_types = list(set(e.event_type for e in events))
         max_retry = max(e.retry_count for e in events)
-        
+
         # When it last FAILED - `processed_at`, stamped by `mark_processed` at the failure and
         # again at a failure after a retry. `created_at` was when the row was born, so a retry
         # that failed again kept the old time under this name (총괄 e573a6edf ④).
         failed_list = [e.processed_at for e in events if e.processed_at]
         failed_at = max(failed_list).isoformat() if failed_list else None
-        
+
         event_details = []
         for e in events:
             event_details.append({
@@ -5375,7 +5397,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
                 "processed_at": e.processed_at.isoformat() if e.processed_at else None
             })
-            
+
         result_list.append({
             "transaction_id": tx_id,
             "table_names": table_names,
@@ -5390,22 +5412,10 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
             "events": event_details
         })
 
-    # ── 「언제부터 실패하고 있나」 ──────────────────────────────────────────────
-    # 🔴 행마다 실린 `failed_at` 은 그 그룹의 «MAX» 라 이 질문에 답할 수 없다. 그룹은
-    # 최신순이고 각 그룹의 시각은 그 그룹이 «마지막»으로 실패한 때이므로, 「1분 전 하나」와
-    # 「나흘째 스물」이 어느 페이지에서도 같은 모양이 된다 (클라 실측 2026-09-04).
-    # 그래서 «집합 전체»의 MIN 을 한 칸으로 낸다 — 페이지를 넘겨도 답이 같아야 한다.
-    #
-    # 질의를 «더 하지 않는다»: 이 라우트는 이미 실패 행 전부를 메모리에 들고 있고(`all_failed`),
-    # 그 위의 min 은 공짜다. 같은 수를 SQL 로 다시 물으면 스캔이 하나 더 늘 뿐이다.
-    #
-    # 🔴 실패가 «없으면» null 이다. 0 도 «지금»도 아니다 — 화면이 「없다」와 「모른다」를
-    # 가를 수 있어야 하고, 그 둘을 한 픽셀로 만드는 것이 오늘 하루 내내 잡던 병이다.
-    # 🔴 THE SAME COLUMN AS EACH GROUP'S `failed_at` - `processed_at`, when it last failed
-    #    (총괄 f063c948e). It was `created_at`, so one response said 「when failed」 two ways.
-    stamped = [e.processed_at for e in all_failed if e.processed_at]
-    # 같은 응답의 다른 시각 칸들과 «같은 모양»(isoformat). 여기서 형식을 새로 만들지 않는다.
-    oldest_failed_at = min(stamped).isoformat() if stamped else None
+    # ── 「언제부터 실패하고 있나」 — 집합 전체의 MIN, 페이지를 넘겨도 같은 답. 실패가 없으면 null ──
+    # 🔴 THE SAME COLUMN AS EACH GROUP'S `failed_at` - `processed_at`, when it last failed (총괄 f063c948e).
+    oldest = query.with_entities(func.min(outbox.processed_at)).scalar()
+    oldest_failed_at = oldest.isoformat() if oldest is not None else None
 
     # 🔴 ONE LINE PER (TABLE · KIND · DAY) (소유자 「ㄴ」, 총괄 36dff3b6a) — the Chain tab's list
     #    and the Overview's Chain line both read THIS answer: 81 rows of one burst were 81
@@ -5436,6 +5446,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
         "limit": limit,
         "oldest_failed_at": oldest_failed_at,
         "summary": summary,
+        "by_cause": failures_by_cause(db),
         "day_zone": day_zone,
         # 🔴 이 목록의 상태가 아니라 이 «계열이 쓸 수 있는» 상태 어휘다.
         #    화면의 필터 목록이 여기서 나온다 — 그래서 «로드 때 이미 부르는» 이
@@ -6437,8 +6448,26 @@ def get_ingestion_workspaces():
             
     return {"status": "success", "data": workspaces}
 
+def _switched_off_line(db, rule, off):
+    """The rules list's line for a rule the chain switched off (총괄 8906edc07): since when, the changes it skipped
+    since - its trigger table's outbox rows from then - and why."""
+    from datetime import datetime
+
+    from sqlalchemy import func
+
+    outbox = models.DatabaseOutbox
+    try:
+        since = datetime.strptime(str(off.get("at")), "%Y-%m-%dT%H:%M:%S")
+        skipped = db.query(func.count(outbox.id)).filter(outbox.table_name == rule.get("trigger_table"),
+                                                         outbox.created_at >= since.astimezone()).scalar()
+    except (TypeError, ValueError):
+        skipped = None
+    return "Switched off after %s failures in a row since %s · %s changes skipped since · %s" % (
+        off.get("failures"), off.get("at"), "?" if skipped is None else skipped, off.get("cause") or "")
+
+
 @app.get("/admin/chain/rules", dependencies=[Depends(require_admin_token)])
-def get_chain_rules():
+def get_chain_rules(db: Session = Depends(get_db)):
     """등록된 모든 체인 인제션 룰 목록을 반환합니다.
 
     🔴 THE FILE IS OPENED IN ONE PLACE (S-201, 판정 316). This route read
@@ -6470,7 +6499,12 @@ def get_chain_rules():
 
     # an off rule stands for a replay that names it (owner 10-23 「막아」) and does not run - 판정 656's other pixel
     standing = [rule for rule in worker.loaded_chain_rules() if not rule_shape.is_switched_off(rule)]
-    listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING)
+    from chain import control as chain_control
+
+    off = chain_control.rules_off()
+    listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING) if rule.get("name") not in off else
+              dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+                   rule_state_detail=_switched_off_line(db, rule, off[rule.get("name")]))
               for rule in standing]
     standing_names = {rule.get("name") for rule in standing}
     for raw in (read["rules"] or ()):

@@ -30,14 +30,18 @@ def control_path():
     return paths.config_path(CONTROL_FILENAME)
 
 
-def paused():
-    """`{"by", "at", "reason"}` while the chain is paused, else `None`. Read every time."""
+def _read():
     try:
         with open(control_path(), encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
-        return None
-    state = data.get("paused") if isinstance(data, dict) else None
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def paused():
+    """`{"by", "at", "reason"}` while the chain is paused, else `None`. Read every time."""
+    state = _read().get("paused")
     return state if isinstance(state, dict) else None
 
 
@@ -53,12 +57,74 @@ def _write(data):
 def pause(by, reason):
     state = {"by": str(by or "operator"), "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
              "reason": str(reason or "")}
-    _write({"paused": state})
+    _write(dict(_read(), paused=state))
     return state
 
 
 def resume():
-    _write({"paused": None})
+    _write(dict(_read(), paused=None))
+
+
+# ── A rule the chain switched off itself (owner 10-24 «연속 10회 오류면 자동 disable», 총괄 8906edc07) ──
+# Its batches failed for good this many times in a row with none run: it is read as `enabled: false` (skipped, the other
+# rules on its table run on) until its rule or a mapper file is saved - the owner's chain_rules.json is not written.
+RULES_OFF = "rules_off"
+FAILURE_STREAKS = "failure_streaks"
+
+
+def rules_off():
+    """{rule: {"at", "failures", "cause"}} - the rules the chain switched off itself. Read every time."""
+    off = _read().get(RULES_OFF)
+    return off if isinstance(off, dict) else {}
+
+
+def failure_streaks():
+    """{rule: failed for good in a row} - read every time."""
+    streaks = _read().get(FAILURE_STREAKS)
+    return streaks if isinstance(streaks, dict) else {}
+
+
+def with_rules_off(rules):
+    """`rules` with each the chain switched off read as `enabled: false` (a copy of that rule, saying since when)."""
+    off = rules_off()
+    if not off:
+        return rules
+    return [dict(rule, enabled=False, switched_off=off[rule.get("name")]) if rule.get("name") in off else rule
+            for rule in rules]
+
+
+def count_outcome(names, failed, cause=None, cap=10):
+    """One group's end for its rules: failed for good adds one to each rule's streak, run sets it back to 0. A rule
+    whose streak reaches `cap` (0: never) is switched off. -> the rules switched off now."""
+    data = _read()
+    streaks = data.get(FAILURE_STREAKS) if isinstance(data.get(FAILURE_STREAKS), dict) else {}
+    names = [name for name in names if name]
+    if not failed:
+        if not any(name in streaks for name in names):
+            return []
+        for name in names:
+            streaks.pop(name, None)
+        _write(dict(data, **{FAILURE_STREAKS: streaks}))
+        return []
+    off = data.get(RULES_OFF) if isinstance(data.get(RULES_OFF), dict) else {}
+    now_off = []
+    for name in names:
+        streaks[name] = int(streaks.get(name) or 0) + 1
+        if cap and streaks[name] >= cap and name not in off:
+            off[name] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "failures": streaks[name], "cause": str(cause or "")}
+            now_off.append(name)
+    _write(dict(data, **{FAILURE_STREAKS: streaks, RULES_OFF: off}))
+    return now_off
+
+
+def release_rules():
+    """A rule or mapper file saved: every rule the chain switched off runs again, its streak from 0. -> released."""
+    data = _read()
+    off = data.get(RULES_OFF) if isinstance(data.get(RULES_OFF), dict) else {}
+    if not off and not data.get(FAILURE_STREAKS):
+        return {}
+    _write(dict(data, **{RULES_OFF: {}, FAILURE_STREAKS: {}}))
+    return off
 
 
 def raise_if_paused():

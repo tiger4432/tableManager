@@ -719,6 +719,19 @@ def max_chain_depth(rules):
     return declared
 
 
+#: Failed for good this many times in a row with none run, a rule is switched off (owner 10-24 «연속 10회 오류면 자동
+#: disable»); the chain_rules.json top-level `rule_off_after_failures` says otherwise, 0 never.
+DEFAULT_RULE_OFF_AFTER_FAILURES = 10
+
+
+def rule_off_after_failures(rules):
+    """The declared streak a rule is switched off at (`chain.control.count_outcome`), or the default."""
+    declared = rules.get("rule_off_after_failures") if isinstance(rules, dict) else None
+    if isinstance(declared, bool) or not isinstance(declared, int) or declared < 0:
+        return DEFAULT_RULE_OFF_AFTER_FAILURES
+    return declared
+
+
 #: 🔴 [S-279, 판정 431] WHAT THE AUDIT WRITES WHEN THE CALLER DID NOT SAY WHO. It was
 #: `"system"`, as a DEFAULT ARGUMENT on the delete functions, which is not an absence - it is a
 #: false author: the history said 「system 이 했다」 about a deletion a person asked for. An

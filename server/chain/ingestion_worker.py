@@ -606,6 +606,39 @@ def rules_of_line(tables, rules, only_rule=None):
 #: The one sentence of a recorded failure - its seat is beside the chain state (총괄 248ae20cd).
 failure_cause = event_constants.failure_cause
 
+#: The same failure folded on the terminal (owner 10-24 «똑같은 에러면 접든가»): (rules, `failure_cause`) said in full once
+#: in this process, its repeats counted and said in one line at most every this many seconds.
+SAME_FAILURE_SAY_SECONDS = 60.0
+#: (rules, cause) -> [repeats not said yet, when last said] - this process's.
+_FAILURES_SAID = {}
+
+
+def say_failure(tx_id, failure, events, error_reason):
+    """The terminal's lines for a group that failed for good: the first of its (rules, cause) in this process - the
+    line and the whole traceback (331661db4); a repeat is counted and said as «same failure as above» once a period."""
+    rules = ",".join(failure["rules"] or ()) or "(unknown)"
+    key = (rules, failure["cause"])
+    now = time.monotonic()
+    said = _FAILURES_SAID.get(key)
+    if said is not None:
+        said[0] += 1
+        if now - said[1] >= SAME_FAILURE_SAY_SECONDS:
+            logger.error("Transaction %s same failure as above: %s ×%d in %.0f s. 원인: %s",
+                         tx_id, rules, said[0], now - said[1], failure["cause"])
+            said[:] = [0, now]
+        return
+    _FAILURES_SAID[key] = [0, now]
+    logger.error(
+        "Transaction %s permanently failed: %d event(s), %d row(s) -> FAILED "
+        "[rules=%s tables=%s row=%s]. 원인: %s",
+        tx_id, events, failure["rows"], rules,
+        ",".join(failure["tables"] or ()) or "(unknown)",
+        ",".join(failure["row"] or ()) or ROW_NOT_GIVEN,
+        failure["cause"])
+    if "Traceback (most recent call last):" in str(error_reason or ""):
+        # the whole traceback on the terminal, under the line (owner 10-24)
+        logger.error("Transaction %s traceback:\n%s", tx_id, str(error_reason).rstrip())
+
 
 class NamedFailure(str):
     """A failure reason that also carries whose it is - `rules` / `tables`, None when unknown - and, from its group's
@@ -653,10 +686,13 @@ def _failure_record(events, error_reason, tx_id, attempts_cap) -> dict:
             row_ids.append(str(payload["row_id"]))
     text = str(error_reason or "")
     named = [rid for rid in dict.fromkeys(row_ids) if rid in text][:10]
+    reason = str(error_reason or ("Mapper execution failed in tx group %s after %d "
+                                  "attempt(s)." % (tx_id, attempts_cap)))
     return {
         "failed_at": datetime.now().isoformat(),
-        "reason": str(error_reason or ("Mapper execution failed in tx group %s after %d "
-                                       "attempt(s)." % (tx_id, attempts_cap))),
+        "reason": reason,
+        # the one sentence the same failure is folded by - terminal and failure list (owner 10-24 «똑같은 에러면 접든가»)
+        "cause": failure_cause(reason),
         "rules": getattr(error_reason, "rules", None),
         "tables": getattr(error_reason, "tables", None),
         "stage": getattr(error_reason, "stage", None),
@@ -3162,6 +3198,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # committed by the group, inside its tables' hold (`_claimed_group_sync`, 총괄 09f58844f)
                 _ROWS_NOT_VISIBLE_DEFERS.pop(tx_id, None)
                 _DEADLOCK_REWINDS.pop(tx_id, None)
+                if chain_control.failure_streaks():         # a run sets its rules' failure streaks back to 0
+                    chain_control.count_outcome(_rules_for_group(events_in_tx, rules), False)
                 t_commit_done = time.monotonic()
                 t_mapper_done = t_commit_done - alignment_summary()["stages"].get("commit", 0.0)
                 has_messages = bool(broadcast_messages)
@@ -3272,17 +3310,14 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                                         _deleted_rows_of(events_in_tx) if isolate_group else {})
 
                 if failed_permanently_count > 0:
-                    logger.error(
-                        "Transaction %s permanently failed: %d event(s), %d row(s) -> FAILED "
-                        "[rules=%s tables=%s row=%s]. 원인: %s",
-                        tx_id, failed_permanently_count, failure["rows"],
-                        ",".join(failure["rules"] or ()) or "(unknown)",
-                        ",".join(failure["tables"] or ()) or "(unknown)",
-                        ",".join(failure["row"] or ()) or ROW_NOT_GIVEN,
-                        failure_cause(error_reason))
-                    if "Traceback (most recent call last):" in str(error_reason or ""):
-                        # the whole traceback on the terminal, under the line (owner 10-24)
-                        logger.error("Transaction %s traceback:\n%s", tx_id, str(error_reason).rstrip())
+                    say_failure(tx_id, failure, failed_permanently_count, error_reason)
+                    for name in chain_control.count_outcome(
+                            failure["rules"] or _rules_for_group(events_in_tx, rules), True, failure["cause"],
+                            event_constants.rule_off_after_failures(_RULES_DOCUMENT)):
+                        logger.error("[Chain] rule %s switched off after %d failures in a row - its batches are "
+                                     "skipped, the other rules on its table run on, until the rule or a mapper file "
+                                     "is saved. 원인: %s", name,
+                                     event_constants.rule_off_after_failures(_RULES_DOCUMENT), failure["cause"])
                 if retrying_count > 0:
                     logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
 
