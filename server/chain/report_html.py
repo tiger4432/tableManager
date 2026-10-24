@@ -27,9 +27,9 @@ h1 { font-size: 20px; margin: 0; }
 .meta { color: var(--muted); }
 section { display: grid; gap: 8px; }
 .scroll { overflow-x: auto; }
-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 10px; }
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: normal;
-         overflow-wrap: anywhere; width: 7em; min-width: 7em; max-width: 7em; vertical-align: top; }
+         overflow-wrap: anywhere; width: 100px; min-width: 100px; max-width: 100px; vertical-align: top; }
 td.rpt-item, td.rpt-info, td.rpt-picture, th:first-child { width: 185px; min-width: 185px; max-width: 185px; }
 th { background: var(--head); }
 th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
