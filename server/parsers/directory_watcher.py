@@ -788,6 +788,9 @@ class _FileTally:
         self.transaction_id = None    # the transaction the file's rows were written under (총괄 10-20)
         self.time_left = {}           # verdict -> values a `time` rule left as written
         self.maps = self.map_deleted = 0  # allow_replace_map: maps replaced, rows they deleted (총괄 10-21)
+        # 소유자 10-24 «중간에 리플레이스 경로 로그를 다 찍어주든»: whether this file replaced at all, and how each map did
+        self.replace_by = False           # False = not judged · None = off · [columns] = on
+        self.map_ways = {}                # «mode/reason» -> maps, «rows in scope 0» among them
         # whole maps and rows the write refused, by the write's word (version_older · ...) - 총괄 10-21
         self.maps_refused, self.rows_refused = {}, {}
 
@@ -812,6 +815,10 @@ class _FileTally:
             elif replaced is not None:
                 self.maps += 1
                 self.map_deleted += replaced.get("deleted", 0)
+                way = "%s/%s" % (replaced.get("mode"), replaced.get("reason"))
+                self.map_ways[way] = self.map_ways.get(way, 0) + 1
+                if not replaced.get("in_scope"):
+                    self.map_ways["rows in scope 0"] = self.map_ways.get("rows in scope 0", 0) + 1
         except Exception as exc:                                    # noqa: BLE001
             self.silenced = "%s: %s" % (type(exc).__name__, told(exc))
             logger.warning("[Ingest] %s file line stops counting (%s) - the ingestion is "
@@ -881,6 +888,11 @@ class _FileTally:
                 if self.time_left else "",
                 # allow_replace_map (총괄 10-21): the maps the file replaced and the rows they deleted
                 (" · replaced %d map(s), deleted %d row(s)" % (self.maps, self.map_deleted) if self.maps else "")
+                + ("" if self.replace_by is False
+                   else " · replace off (allow_replace_map is not true in table_config for %s)" % table
+                   if self.replace_by is None
+                   else " · replace on by %s%s" % (self.replace_by, "".join(
+                       " · %s %d" % item for item in sorted(self.map_ways.items()))))
                 + (" · " + self.refused_text() if self.refused_text() else ""),
                 "".join(" · %s %.3f s" % item for item in sorted(self.stages.items()))
                 or " (none named)",
@@ -3978,6 +3990,7 @@ class IngestionHandler(FileSystemEventHandler):
         _outbox_token = request_outbox_mode.set(OUTBOX_MODE_COLLAPSED)
         file_tally = tally if tally is not None else _FileTally()
         file_tally.transaction_id = file_tx_id
+        file_tally.replace_by = map_columns or None
 
         try:
             while True:

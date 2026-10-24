@@ -5453,6 +5453,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                 # this write is allowed to use. `legacy_column_derivation` is the honest
                 # answer to "why did this table not get the diff".
                 replace_report["mode"] = "diff" if use_diff else "purge"
+                replace_report["in_scope"] = len(replace_scope_row_ids)
                 replace_report["reason"] = (
                     "declared_map_key_columns" if use_diff
                     else "legacy_column_derivation" if not _cfg.get("map_key_columns")
