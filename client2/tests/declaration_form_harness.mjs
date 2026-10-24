@@ -120,6 +120,16 @@ function viewSuite(M) {
   ok(caret && attr(caret, 'aria-expanded') === 'false' && attr(caret, 'aria-label') === 'Open k1'
      && said && String(said.textContent) === 'x v · 2',
     `V5 a folded record is a caret and «cells · count» [${caret && attr(caret, 'aria-label')} | ${said && said.textContent}]`);
+  // a name map of records or lists: its box's Enter presses its own +; a paste there is a plain paste (lead 10-24)
+  const namer = walk(boxAt(form, 'deep') || makeNode(doc, 'div')).find((n) => has(n, 'oe-form-new-id') && attr(n, 'data-for') === 'deep');
+  const plus = namer ? walk(namer.parentNode).find((n) => attr(n, 'data-action') === 'form-name' && attr(n, 'data-value') === 'deep') : null;
+  let pressed = 0;
+  if (plus) plus.click = () => { pressed += 1; };
+  if (namer) namer.value = 'k2';
+  const took = namer ? [M.view.adderInput({ type: 'change', target: namer }),
+    M.view.adderInput({ type: 'paste', target: namer, clipboardData: { getData: () => 'a, b' }, preventDefault() {} })] : [];
+  ok(same(took, [true, false]) && pressed === 1 && namer.value === 'k2',
+    `V12 a name map's Enter presses its +, and a paste there is left to the box [${JSON.stringify([took, pressed])}]`);
   const ids = walk(form).filter((n) => n.tagName === 'DATALIST').map((n) => attr(n, 'id'));
   ok(ids.length > 0 && ids.every((id) => String(id).startsWith('pfx-dl-')),
     `V6 every datalist id carries the form's prefix [${ids.join(' ')}]`);
@@ -330,6 +340,15 @@ function panelSuite(M) {
   ok(same(afterEnter, ['n1', 'n2']) && same(w.held().words, ['n1', 'n2', 'a', 'b', 'c']) && adder().value === '',
     `P6 Enter adds the word, a paste adds each of its words, and the adder empties [${JSON.stringify(w.held().words)}]`);
 
+  // a name map of records or lists (keys, images.match): Enter adds the name; a paste there is one name (lead 10-24)
+  const namer = () => walk(w.host).find((n) => has(n, 'oe-form-new-id') && attr(n, 'data-for') === 'deep');
+  namer().value = 'k2';
+  namer().dispatch('change', {});
+  const named = Object.keys(w.held().deep);
+  namer().dispatch('paste', { clipboardData: { getData: () => 'a, b' }, preventDefault() {} });
+  ok(same(named, ['k1', 'k2']) && same(Object.keys(w.held().deep), ['k1', 'k2']) && namer().value === '',
+    `P14 a name map's Enter adds the name and its box empties; a paste there adds nothing [${JSON.stringify(w.held().deep)}]`);
+
   // + row is born with a choice of one
   const plus = walk(w.host).find((n) => attr(n, 'data-action') === 'form-append' && attr(n, 'data-value') === 'rows');
   if (plus) plus.dispatch('click', {});
@@ -527,6 +546,8 @@ const DEFECTS = [
   ['panel', 'a refused cell stays folded shut',
     (s) => s.replace('[refusedAt(view, spec), ...missingRequired(root, value, this._defs)].filter(Boolean)', '[]')],
   ['panel', 'a paste at an adder is a plain paste', (s) => s.replace("        box.addEventListener('paste', adderInput);\n", '')],
+  ['view', 'a name map\'s Enter does nothing', (s) => s.replace("    input.dataset.for = path;\n    input.dataset.enter = 'form-name';\n", '    input.dataset.for = path;\n')],
+  ['view', 'a paste at a name map splits into names', (s) => s.replace("    if (!chips) return false;\n", '')],
   ['panel', 'the adder keeps what it took', (s) => s.replace("          if (typed) typed.value = '';\n", '')],
   ['panel', 'the panel never switches a gate', (s) => s.replace('          updated = switched.document;\n', '')],
   ['panel', 'the head says Unsaved only on the next draw', (s) => s.replace('    this.draftOf = String(key || \'\');\n    this._sayUnsaved();\n', '    this.draftOf = String(key || \'\');\n')],

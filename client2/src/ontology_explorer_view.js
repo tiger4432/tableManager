@@ -2271,6 +2271,7 @@ function renderSkeletonMap(context, node, path, value, depth) {
     input.type = 'text';
     input.placeholder = node.member || 'Name';
     input.dataset.for = path;
+    input.dataset.enter = 'form-name';
     input.setAttribute('aria-label', (node.member || path) + ' new name');
     naming.append(input, button('+ ' + (node.member || 'Item'), 'form-name', path,
                                 'oe-form-add'));
@@ -2480,19 +2481,22 @@ function leafControl(context, node, path, value, planned = node ? context.planRo
   return renderSkeletonLeaf(context, node, path, value);
 }
 
-/** A chip adder's Enter (its `change`) or a paste: the words go in through the adder's own `+` (`form-name`) - the door
- *  both windows already route. A paste keeps its line breaks (a text box drops them). True when it took the event. */
+/** A chip adder's or a name map's Enter (its `change`), or a paste at a chip adder: the words go in through the box's
+ *  own `+` (`form-name`) - the door both windows already route. A paste keeps its line breaks (a text box drops them);
+ *  a name map's box takes one name, so a paste there is a plain paste. True when it took the event. */
 export function adderInput(event) {
   const el = event && event.target;
   if (!el || !el.dataset || el.dataset.enter !== 'form-name') return false;
+  const chips = el.closest ? el.closest('.oe-form-adder') : null;
+  const row = chips || (el.closest ? el.closest('.oe-form-new') : null);
   if (event.type === 'paste') {
+    if (!chips) return false;
     const text = event.clipboardData ? String(event.clipboardData.getData('text') || '') : '';
     if (!/[,\n\t]/.test(text)) return false;
     if (event.preventDefault) event.preventDefault();
     el.value = [String(el.value || ''), text].filter(Boolean).join(',');
   }
   if (!String(el.value || '').trim()) return false;
-  const row = el.closest ? el.closest('.oe-form-adder') : null;
   const go = row ? [...row.querySelectorAll('[data-action="form-name"]')].find((b) => b.dataset.value === el.dataset.for) : null;
   if (go) go.click();
   return Boolean(go);
