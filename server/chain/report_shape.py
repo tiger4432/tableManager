@@ -40,6 +40,9 @@ IMAGE_MATCH = "match"
 #: (owner 10-24: the wafer's time is a conditions row, not a column) - a table keyed by the wafer alone gives it to
 #: every leg, as every condition.
 TIME_ITEM = "time_item"
+#: `conditions.title_item`: the condition item whose value is the unit's title (owner 10-24 «컨디션 아이템에 타이틀도
+#: 있는데 이것도 받게 해») - the title the model reads of a candidate, not a condition row.
+TITLE_ITEM = "title_item"
 #: `summary.yield_item`: the summary rows (an item name, or a list) that are the unit's yield, not a defect (owner 10-24
 #: «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로 리포트하네») - read as every row (rate, or F and N),
 #: drawn as the matrix's yield rows, left out of the defect rows, the pareto, the trend and the images.
@@ -212,6 +215,7 @@ def _role_node(role):
                        "node": chain_bindings.list_node("item", {"kind": "leaf", "hint": "free"})})
     if role == "conditions":
         fields.append({"key": TIME_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
+        fields.append({"key": TITLE_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
     if role == "sets":
         fields.append({"key": SETS_DEFAULT, "required": False,
                        "node": chain_bindings.list_node("set", {"kind": "leaf", "hint": "free"})})
@@ -527,6 +531,10 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     if time_item is not None and not (isinstance(time_item, str) and time_item.strip()):
         return ("derive.report.conditions.time_item is the condition item whose value is the wafer's time, e.g. "
                 '"tkout_time"; got %r' % (time_item,))
+    title_item = (spec.get("conditions") or {}).get(TITLE_ITEM) if isinstance(spec.get("conditions"), dict) else None
+    if title_item is not None and not (isinstance(title_item, str) and title_item.strip()):
+        return ("derive.report.conditions.title_item is the condition item whose value is the wafer's title, e.g. "
+                '"Title"; got %r' % (title_item,))
     info = spec.get(INFO)
     if info is not None and not isinstance(info, (dict, list)):
         return "derive.report.info is a table and its columns, or a list of them, got %r" % (info,)

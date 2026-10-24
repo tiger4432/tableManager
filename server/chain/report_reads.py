@@ -276,7 +276,9 @@ class Report:
         role = self.long
         # conditions.time_item: that item's value is the unit's time when the wafer role names no time column
         time_item = None if self.spec["wafer"].get("time") else role.get(report_shape.TIME_ITEM)
-        extra = [c for c in ("time", "title") if role.get(c) and not (c == "time" and time_item)]
+        title_item = role.get(report_shape.TITLE_ITEM)
+        extra = [c for c in ("time", "title") if role.get(c) and not (c == "time" and time_item)
+                 and not (c == "title" and title_item)]
         # only_time: the time_item rows alone, one a wafer - what picking candidates needs (owner 10-24 «10만행 읽을게
         # 없잖아»: every wafer's every condition was read before the days cut)
         where = {report_shape.column_of(role, role["name"]): {"filterType": "text", "type": "contains",
@@ -295,6 +297,8 @@ class Report:
                 facts["conditions"][name] = "%s%s%s" % (said, BOTH, row[1])
             if time_item and report_shape.name(row[0]) == report_shape.name(time_item) and facts.get("time") is None:
                 facts["time"] = row[1]
+            if title_item and report_shape.name(row[0]) == report_shape.name(title_item) and facts.get("title") is None:
+                facts["title"] = row[1]
             if time_item:
                 seen_names[report_shape.name(row[0])] = seen_names.get(report_shape.name(row[0]), 0) + 1
             for at, cell in enumerate(extra):
@@ -427,9 +431,11 @@ class Report:
         head = report_shape.word(self.spec, "conditions")
         # the time_item condition is the date head's, not a condition row (owner 10-24)
         timed = None if self.spec["wafer"].get("time") else (self.long or {}).get(report_shape.TIME_ITEM)
+        titled = (self.long or {}).get(report_shape.TITLE_ITEM)     # the title_item is the wafer's title, no row
         names = [n for n in dict.fromkeys(str(n) for members in columns for w in members
                                           for n in self.wafers[w]["conditions"])
-                 if timed is None or report_shape.name(n) != report_shape.name(timed)]
+                 if (timed is None or report_shape.name(n) != report_shape.name(timed))
+                 and (titled is None or report_shape.name(n) != report_shape.name(titled))]
         kept = [n for n in names if n in [str(c) for c in chosen or ()]]
         rows = []
         for name in names:
