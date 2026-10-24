@@ -354,7 +354,7 @@ def test_what_the_reads_cannot_answer_is_refused_by_name(report, monkeypatch):
     with pytest.raises(report_reads.ReadRefused, match="'tool' is not a condition"):
         report.yield_by(by="tool")
     monkeypatch.setattr(report_reads, "READ_ROW_CAP", 2)
-    with pytest.raises(report_reads.ReadRefused, match="rr_summary holds over 2 rows"):
+    with pytest.raises(report_reads.ReadRefused, match="rr_summary: over 2 rows"):
         report.pareto()
 
 
