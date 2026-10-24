@@ -34,9 +34,11 @@ th { background: var(--head); }
 thead th { text-align: center; vertical-align: middle; }
 thead th:first-child { text-align: left; }
 th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
-.gallery { display: flex; flex-wrap: wrap; gap: 12px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, var(--px, 320px)); gap: 12px; }
+.gallery figure img { width: var(--px, 320px); height: var(--px, 320px); object-fit: contain; display: block;
+                      background: var(--head); }
 figure { margin: 0; display: grid; gap: 4px; }
-figcaption { color: var(--muted); font-size: 12px; }
+figcaption { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .text { white-space: pre-wrap; }
 .note { color: var(--muted); font-size: 12px; }
 section { min-width: 0; }
@@ -266,7 +268,10 @@ def _images(embedded, spec) -> str:
             % (p["src"], _e(item), _e(p["wafer"]), _e(p["wafer"])) if p.get("src") else
             '<figure><figcaption>%s - %s</figcaption></figure>' % (_e(p["wafer"]), _e(p.get("refused")))
             for p in pictures)
-        out.append("<h3>%s</h3><div class=\"gallery\">%s</div>" % (_e(item), figures))
+        # every patch one box of images.px, the picture fitted inside it - one grid, no ragged row (owner 10-24 «이미지
+        # 패치들 정렬 일정하게 해 · 지금 삐뚤빼뚤함»)
+        px = ((spec or {}).get("images") or {}).get("px", 320)
+        out.append("<h3>%s</h3><div class=\"gallery\" style=\"--px:%dpx\">%s</div>" % (_e(item), px, figures))
     return "".join(out) + (STACK_SCRIPT if 'class="stack"' in "".join(out) else "")
 
 
