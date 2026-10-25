@@ -429,8 +429,6 @@ class Report:
         the conditions role) - the names the model kept (yield_by rows, owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택»),
         else those whose value differs between the columns, every one when there is one column."""
         mixed = report_shape.word(self.spec, "mixed")
-        sep = self.spec.get("item_sep") or ""
-        head = report_shape.word(self.spec, "conditions")
         # the time_item condition is the date head's, not a condition row (owner 10-24)
         timed = None if self.spec["wafer"].get("time") else (self.long or {}).get(report_shape.TIME_ITEM)
         titled = (self.long or {}).get(report_shape.TITLE_ITEM)     # the title_item is the wafer's title, no row
@@ -461,7 +459,7 @@ class Report:
             # conditions the texts name (`also`) stand too (owner 10-24 «스킵 말고 프롬프트로는 제어 못 해?»)
             varies = len(columns) <= 1 or len({cell["text"] for cell in cells if cell["text"] not in ("", EMPTY)}) > 1
             if varies and (name in kept or not kept or name in [str(a) for a in also or ()]):
-                rows.append((head + sep + name if sep else name, cells))
+                rows.append((self.condition_label(name), cells))
         return rows
 
     def _pictures(self, columns):
@@ -659,6 +657,16 @@ class Report:
     def condition_names(self) -> list:
         """Every condition there is: the wafer table's condition columns, then the conditions table's items."""
         return list(dict.fromkeys(list(self.conditions_at) + [n for f in self.wafers.values() for n in f["conditions"]]))
+
+    def condition_label(self, name) -> str:
+        """A condition's row name in the yield_by table - under the conditions word when `item_sep` heads names."""
+        sep = self.spec.get("item_sep") or ""
+        return report_shape.word(self.spec, "conditions") + sep + name if sep else name
+
+    def values_here(self, name) -> list:
+        """A condition's values on this report's own wafers, each once - a blank one is no value."""
+        return sorted({_shown(f["conditions"].get(name)) for f in (self.wafers[w] for w in self.groups[self.evaluation])
+                       if f["conditions"].get(name) is not None} - {EMPTY})
 
     def _condition(self, said):
         """The condition a call names - a wafer table condition column or a conditions table item (owner 10-24 «read
