@@ -150,7 +150,8 @@ LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
           "pareto_cumulative": "cumulative", "control": "compare", "mixed": "mixed (%d)", "evidence": "Evidence",
           "conditions": "Conditions", "yield": "Yield", "unpaired": "Image kinds no summary item matches (images.match): %s",
-          "no_control": "This report's wafers only - no compare set default or control.recent is declared."}
+          "no_control": "This report's wafers only - no compare set default or control.recent is declared.",
+          "to_fill": "no value on these wafers - to be filled (measured/recorded)"}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
 RATE_SCALE = "rate_scale"

@@ -4,7 +4,9 @@ and a context under `loop.context_tokens`. Each step hands the model [1]..[7] (g
 Then one write call (owner 10-23 ㄱ) hands it every table read and takes the texts - also when a step or time cap
 ended the reading, so the report says what was read. Nothing here writes - `run` answers what the mapper keeps.
 With `derive.report.causes` (owner 10-25), before the write: the model picks seeds from the declared type's nodes by the
-tables read, the product walks the static layer from them, and the candidates go to the write call with the tables.
+tables read, the product walks the static layer from them, and the candidates go to the write call with the tables;
+then the model relates them to the report's conditions, those stand as yield_by rows, and each candidate is said
+with its conditions' values per column - or as to be filled when none has a value on the report's wafers.
 
   [1] instructions   prompts.role · rules · functions.<read>.about (blank: the text below) + the answer's form, the
                      reads and their arguments, the step cap and this step
@@ -46,6 +48,10 @@ STOP_NO_TEXT = "the write call answered no text"
 #: The seed call's line, over the nodes it picks from (`report_reads.Report.seed_nodes`).
 SEEDS = ("Pick the seed node(s) of a cause walk from the %s nodes below, by the tables read below. Answer one JSON "
          'object: {"seeds": ["<name>", ...], "why": "..."}')
+#: The relate call's line, over the report's condition names (`report_reads.Report.condition_names`).
+RELATE = ("Relate each candidate factor below to the report's conditions that are it or set it - names from the list, "
+          'none if none. Answer one JSON object: {"conditions": {"<candidate>": ["<condition>", ...]}, "why": "..."}')
+RELATED_CALL = "candidate conditions"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
     "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: a condition whose values "
@@ -281,14 +287,15 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
     _product_reads(report, spec, tables, reads, steps, clock)
     if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
         if (spec or {}).get(report_shape.CAUSES) is not None:
-            _causes(report, spec, request, reads, budget, ask, clock, out["steps"])
+            _causes(report, spec, request, reads, budget, ask, clock, out["steps"], tables)
         _write(spec, request, reads, budget, ask, clock, out)
         # the conditions the texts name stand in the table too (owner 10-24 «리포트에 글로 명시한 조건값이 표에는 반영
         # 안 되어 있음 · 동기화되게») - the yield_by table drawn again with them
         written = " ".join(out["texts"].values())
         named = [n for n in getattr(report, "condition_names", list)() if str(n).strip() and str(n).strip() in written]
-        if "yield_by" in tables and any(n not in getattr(report, "kept_rows", []) for n in named):
-            report.written_rows = named
+        also = list(getattr(report, "written_rows", None) or ())        # the candidates' conditions, when related
+        if "yield_by" in tables and any(n not in getattr(report, "kept_rows", []) + also for n in named):
+            report.written_rows = list(dict.fromkeys(also + named))
             try:
                 tables["yield_by"] = report.yield_by(**_args(report, "yield_by"))["html"]
             except report_reads.ReadRefused as said:
@@ -360,7 +367,7 @@ def _product_reads(report, spec, tables, reads, steps, clock):
                       "refused": refused, "summary": (lines[0] if lines else "")[:200], "read": lines[1:]})
 
 
-def _causes(report, spec, request, reads, budget, ask, clock, steps):
+def _causes(report, spec, request, reads, budget, ask, clock, steps, tables):
     """The cause walk before the write: the declared type's nodes and the tables read -> the model's seeds and why ->
     the product's static walk from them -> its candidates, a read the write call is handed. A refusal on the way is a
     step's, and the report is written without the candidates."""
@@ -377,10 +384,10 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps):
         logger.warning("[report] seed_nodes() refused: %s", said, exc_info=said)
         return step("product seed_nodes()", began, [], str(said))
     step("product seed_nodes()", began, kinds)
-    tables = [read for read in reads if read[1].replace("product ", "").split("(")[0] in report_shape.TABLE_FILLS]
+    tables_read = [read for read in reads if read[1].replace("product ", "").split("(")[0] in report_shape.TABLE_FILLS]
     line = "\n".join([SEEDS % spec[report_shape.CAUSES]["seed_type"]] + kinds[1:])
     began = clock()
-    prompt, cut = compose_write(spec, request, tables, budget, line=line)
+    prompt, cut = compose_write(spec, request, tables_read, budget, line=line)
     if prompt is None:
         return step("causes()", began, [], STOP_CONTEXT, cut=cut)
     try:
@@ -394,13 +401,90 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps):
     logger.warning("[report] causes seeds %s - %s", ", ".join(seeds) or "none", why or "no why given")
     call = _said("causes", {"seeds": seeds})
     try:
-        lines, refused = report.causes(seeds)["context"].splitlines(), None
+        walked, refused = report.causes(seeds), None
     except report_reads.ReadRefused as refused_:
         logger.warning("[report] %s refused: %s", call, refused_, exc_info=refused_)
-        lines, refused = [], str(refused_)
+        walked, refused = None, str(refused_)
+    lines = walked["context"].splitlines() if walked else []
     step(call, began, lines, refused, tokens=counted or budget.tokens(prompt), cut=cut, why=why)
     if refused is None:
         reads.append((steps[-1]["step"], call, lines))
+        if walked["candidates"]:
+            _related(report, spec, request, budget, ask, clock, steps, reads, tables, walked["candidates"])
+
+
+def _related(report, spec, request, budget, ask, clock, steps, reads, tables, candidates):
+    """The candidates' conditions (owner 10-25 «조건표에서 디펙 카인드와 연관된 인자를 찾아서 언급하거나 표에 추가»): one
+    model call over the walk's read and the report's condition names - the ledger links no candidate to a condition
+    (the conditions are the report's tables, not the ledger's), so there is no walk to it; a name not a condition is
+    dropped and said. The related conditions stand as yield_by rows (`written_rows` -> `also`; a constant one still
+    drops) and each candidate is said with its conditions' values per column, or as to be filled when none has a value
+    on the report's wafers (owner 10-25 «값이 없으면 채워야 한다는 코멘트»)."""
+    from utils import llm
+
+    def step(lines, refused=None, **more):
+        steps.append(dict({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": RELATED_CALL,
+                           "seconds": clock() - began, "refused": refused, "summary": (lines[0] if lines else "")[:200],
+                           "read": lines[1:]}, **more))
+
+    names = [str(n) for n in report.condition_names()]
+    labels = list(dict.fromkeys(str(c["label"]) for c in candidates))
+    began = clock()
+    prompt, cut = compose_write(spec, request, reads[-1:], budget,
+                                line="\n".join([RELATE, "Conditions: " + (", ".join(names) or "none")]))
+    if prompt is None:
+        return step([], STOP_CONTEXT, cut=cut)
+    try:
+        said, counted = _ask(prompt, ask)
+    except llm.LlmRefused as refused:
+        return step([], STOP_MODEL % refused)
+    budget.correct(prompt, counted)
+    why = str(said.get("why") or "").strip() or None
+    related, dropped = {}, []
+    picked = said.get("conditions") if isinstance(said.get("conditions"), dict) else {}
+    for label, conditions in picked.items():
+        if str(label) not in labels:
+            dropped.append(str(label))
+            continue
+        for name in [conditions] if isinstance(conditions, str) else conditions or ():
+            try:
+                related.setdefault(str(label), []).append(report._condition(str(name)))
+            except report_reads.ReadRefused:
+                dropped.append(str(name))
+    rows = list(dict.fromkeys(name for label in labels for name in related.get(label, ())))
+    drawn = {}
+    if rows:
+        report.written_rows = list(dict.fromkeys(list(getattr(report, "written_rows", None) or ()) + rows))
+        try:
+            table = report.yield_by(**_args(report, "yield_by"))["html"]
+            if "yield_by" in tables:
+                tables["yield_by"] = table
+            drawn = {label: [cell["text"] for cell in cells] for label, cells in table.get("info") or ()}
+        except report_reads.ReadRefused as said_:
+            logger.warning("[report] yield_by with the candidates' conditions refused: %s", said_, exc_info=said_)
+    to_fill = report_shape.word(spec, "to_fill")
+    lines, unfilled = ["%d of %d candidate(s) related to the conditions%s" % (
+        len([label for label in labels if related.get(label)]), len(labels),
+        " - not conditions, dropped: %s" % ", ".join(dropped) if dropped else "")], []
+    for label in labels:
+        valued = False
+        for name in dict.fromkeys(related.get(label, ())):
+            values = report.values_here(name)
+            cells = " | ".join(drawn.get(report.condition_label(name)) or ())
+            valued = valued or bool(values)
+            lines.append("%s -> %s: %s" % (label, name, (cells or "%s in every column" % " / ".join(values)) if values
+                                           else to_fill + (" - the other columns: %s" % cells if cells else "")))
+        if not related.get(label):
+            lines.append("%s: %s" % (label, to_fill))
+        if not valued:
+            unfilled.append(label)
+    logger.warning("[report] causes conditions: %s%s", "; ".join(
+        "%s -> %s" % (label, ", ".join(related[label])) for label in labels if related.get(label)) or "none",
+        " (dropped %s)" % ", ".join(dropped) if dropped else "")
+    if unfilled:
+        logger.warning("[report] causes to fill: %s", ", ".join(unfilled))
+    step(lines, tokens=counted or budget.tokens(prompt), cut=cut, why=why)
+    reads.append((steps[-1]["step"], RELATED_CALL, lines))
 
 
 def _write(spec, request, reads, budget, ask, clock, out):

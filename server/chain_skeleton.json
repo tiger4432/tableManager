@@ -2340,6 +2340,14 @@
                         }
                       },
                       {
+                        "key": "to_fill",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
                         "key": "columns",
                         "required": false,
                         "node": {

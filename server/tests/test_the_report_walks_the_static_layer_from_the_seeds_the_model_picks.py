@@ -10,6 +10,9 @@ them with the walk route's own function in process, and the candidates and their
                 each said under derive.report.causes
   run           seed call between the product's reads and the write; its why and the candidates in the Evidence;
                 absent cell: no seed call, no walk; a refused seed: the report is written without candidates
+  relate        (owner 10-25) one model call relates the candidates to the report's conditions - a name not a
+                condition, or not a candidate, dropped and said; the related ones stand as yield_by rows (`also`)
+                beside the ones the texts name; each said with its values per column, or to be filled (labels.to_fill)
 """
 import functools
 import inspect
@@ -49,11 +52,26 @@ class Reads:
     _causes = report_reads.Report._causes
     seed_nodes = report_reads.Report.seed_nodes
     causes = report_reads.Report.causes
+    condition_names = report_reads.Report.condition_names
+    _condition = report_reads.Report._condition
+    values_here = report_reads.Report.values_here
+    condition_label = report_reads.Report.condition_label
 
     def __init__(self, causes=CAUSES):
         self.spec = {"causes": dict(causes)} if causes is not None else {}
         self.db, self.overlaps, self.embedded = "DB", {}, {}
-        self.groups = {"E1": [], "control E0": []}
+        self.evaluation, self.groups = "E1", {"E1": ["w1"], "control E0": ["w0"]}
+        self.conditions_at = []
+        self.wafers = {"w1": {"conditions": {"bond_temp": "350", "anneal": None}},
+                       "w0": {"conditions": {"bond_temp": "300", "anneal": "on", "chuck": "B"}}}
+        self.drawn = []
+
+    def yield_by(self, wafers=None, by=None, rows=None, also=None):
+        """Draws the conditions `also` names, a cell a wafer column - the rows the declaration's path adds."""
+        self.drawn.append(list(also or ()))
+        info = [(name, [{"text": str(self.wafers[w]["conditions"].get(name) or "")} for w in ("w1", "w0")])
+                for name in also or ()]
+        return {"context": "yield_by", "html": {"info": info, "rows": []}}
 
     def conditions(self, keyword=None):
         return {"context": "1 wafer in E1", "html": None}
@@ -177,18 +195,19 @@ def _clock():
 
 
 def test_the_seed_call_comes_before_the_write_and_the_candidates_go_to_it(walks, caplog):
-    model = Model({"done": {}}, {"seeds": ["void"], "why": "void tops the pareto"}, {"done": {"summary": "S"}})
+    model = Model({"done": {}}, {"seeds": ["void"], "why": "void tops the pareto"}, {"conditions": {}},
+                  {"done": {"summary": "S"}})
     report = Reads()
     with caplog.at_level(logging.WARNING, logger="Chain"):
         out = report_loop.run(report, SPEC, REQUEST, ask=model, clock=_clock())
     assert (out["state"], out["texts"]) == ("done", {"summary": "S"})
     assert [s["call"] for s in out["steps"]] == ["done", "product pareto()", "product seed_nodes()",
-                                                 'causes({"seeds": ["void"]})', "write"]
+                                                 'causes({"seeds": ["void"]})', "candidate conditions", "write"]
     seed = model.prompts[1]
     assert report_loop.SEEDS % "defect_kind" in seed
     assert seed.index("delam\nvoid") < seed.index("Tables read:") < seed.index("void 9 (cum 90.0%)")
     assert "Write the report" not in seed
-    write = model.prompts[2]
+    write = model.prompts[3]
     assert "\n".join(['step 4: causes({"seeds": ["void"]})',
                       "void: 2 node(s) reached along leads_to, 2 candidate(s) kept (collect: quantity)"]
                      + CANDIDATES) in write
@@ -200,7 +219,7 @@ def test_the_seed_call_comes_before_the_write_and_the_candidates_go_to_it(walks,
     assert said == ["[report] causes: 2 defect_kind node(s) - delam, void",
                     "[report] causes seeds void - void tops the pareto",
                     "[report] causes walk from void: 2 node(s) reached along leads_to, 2 candidate(s) kept "
-                    "(collect: quantity)"]
+                    "(collect: quantity)", "[report] causes conditions: none", "[report] causes to fill: wetting, bond_temp"]
 
 
 def test_without_the_cell_there_is_no_seed_call_and_no_walk(walks):
@@ -218,3 +237,45 @@ def test_a_refused_seed_is_its_steps_and_the_report_is_written_without_candidate
     assert walked["refused"] == "particle is not a defect_kind node - one of delam, void"
     assert (out["state"], out["steps"][-1]["call"]) == ("done", "write")
     assert "causes(" not in model.prompts[2]
+
+
+WITH_TABLE = dict(SPEC, layout=SPEC["layout"] + [{"kind": "table", "fill": "yield_by"}])
+TO_FILL = "no value on these wafers - to be filled (measured/recorded)"
+RELATED = {"conditions": {"bond_temp": ["Bond_Temp ", "bake"], "wetting": ["anneal"], "ghost": ["x"]}, "why": "W"}
+
+
+def test_the_candidates_conditions_stand_as_table_rows_and_are_said_with_their_values(walks, caplog):
+    model = Model({"done": {}}, {"seeds": ["void"], "why": "v"}, RELATED, {"done": {"summary": "S"}})
+    report = Reads()
+    with caplog.at_level(logging.WARNING, logger="Chain"):
+        out = report_loop.run(report, WITH_TABLE, REQUEST, ask=model, clock=_clock())
+    relate, write = model.prompts[2], model.prompts[3]
+    assert report_loop.RELATE in relate and "Conditions: bond_temp, anneal, chuck" in relate
+    assert relate.index("Tables read:") < relate.index(CANDIDATES[1]), "the walk's read is what it relates"
+    assert report.written_rows == ["anneal", "bond_temp"] and report.drawn == [[], ["anneal", "bond_temp"]]
+    assert [label for label, _cells in out["tables"]["yield_by"]["info"]] == ["anneal", "bond_temp"]
+    lines = ["2 of 2 candidate(s) related to the conditions - not conditions, dropped: bake, ghost",
+             "wetting -> anneal: %s - the other columns:  | on" % TO_FILL,
+             "bond_temp -> bond_temp: 350 | 300"]
+    related = out["steps"][5]
+    assert (related["call"], related["why"], [related["summary"]] + related["read"]) == (
+        "candidate conditions", "W", lines)
+    assert "\n".join(["step 6: candidate conditions"] + lines) in write
+    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[report] causes ")][-2:]
+    assert said == ["[report] causes conditions: wetting -> anneal; bond_temp -> bond_temp (dropped bake, ghost)",
+                    "[report] causes to fill: wetting"]
+
+
+def test_the_conditions_the_texts_name_join_the_related_ones_in_the_table(walks):
+    model = Model({"done": {}}, {"seeds": ["void"]}, RELATED, {"done": {"summary": "chuck B mattered"}})
+    report = Reads()
+    out = report_loop.run(report, WITH_TABLE, REQUEST, ask=model, clock=_clock())
+    assert report.drawn[-1] == ["anneal", "bond_temp", "chuck"]
+    assert [label for label, _cells in out["tables"]["yield_by"]["info"]] == ["anneal", "bond_temp", "chuck"]
+
+
+def test_a_candidate_related_to_nothing_is_to_be_filled_in_the_declarations_word(walks):
+    model = Model({"done": {}}, {"seeds": ["void"]}, {"conditions": {"bond_temp": ["bond_temp"]}},
+                  {"done": {"summary": "S"}})
+    out = report_loop.run(Reads(), dict(WITH_TABLE, labels={"to_fill": "TO MEASURE"}), REQUEST, ask=model, clock=_clock())
+    assert out["steps"][5]["read"] == ["wetting: TO MEASURE", "bond_temp -> bond_temp: 350 | 300"]
