@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-26 [AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다](#2026-10-26--ai-리포트--모델-답이-json-이-아니어도-안-멈춘다-글-속-json-을-꺼내고-한-번-다시-묻고-그래도-아니면-읽은-것으로-쓴다) — 적을 것 없음 · 보는 곳 리포트 Evidence · chain_worker.log «[report] the answer held no JSON object»
 - 2026-10-26 [AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열](#2026-10-26--ai-리포트--by--where-에는-conditions-가-내준-조건-이름을-by-를-빼면-웨이퍼가-열) — 적을 것 없음 · 보는 곳 리포트 Evidence 의 걸음 줄
 - 2026-10-26 [AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다](#2026-10-26--ai-리포트-후보--날짜-있는-웨이퍼의-날짜-없는-leg-도-그-후보에-같이-선다) — 적을 것 없음 · 보는 곳 리포트 후보 줄 · chain_worker.log «[report]   wafer …»
 - 2026-10-26 [AI 리포트 원인 걷기 — 온톨로지에 없는 씨앗은 빼고 나머지로 걷고, 뺀 것은 한 줄씩 말한다](#2026-10-26--ai-리포트-원인-걷기--온톨로지에-없는-씨앗은-빼고-나머지로-걷고-뺀-것은-한-줄씩-말한다) — 적을 것 없음(낱말은 labels.no_seed) · 보는 곳 리포트 Evidence 의 causes 단계
@@ -611,6 +612,14 @@
 
 
 
+## 2026-10-26 · AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다
+
+- 무엇: 소유자 «응답이 json 이 아니어서 멈추는 경우는 어떻게 할지» — 안 ㄱ. 전: 모델 답이 JSON 이 아니면 읽기가 끊기고 글 0, 리포트는 멈춤.
+  - 꺼내기: 답 앞뒤에 설명 글이 붙거나 펜스가 둘이어도 그 안의 첫 «통째 { … }» 객체를 읽는다. 언어 모델을 부르는 모든 자리(리포트 · 도움말 · 사전 제안 · 글 링크 · 에이전트 걷기)가 같이 받는다. 로그 «[LLM] answer had text around its JSON - read the object (N character(s) left)».
+  - 한 번 다시: 그래도 객체가 없으면 같은 프롬프트 끝에 «Your last answer was not one JSON object: <앞 200 자>. Answer one JSON object only.» 를 붙여 한 번 더 묻는다. 연결 실패 등 게이트웨이가 답을 안 준 것은 다시 안 묻는다.
+  - 이어 쓰기: 읽는 중에 그래도 아니면 읽기만 거기서 접고(걸음 상한과 같은 길) 표 · 원인 걷기 · 글쓰기로 간다. 이유 «the model answered no JSON at step N: <앞 200 자>», Evidence 에 그 걸음(answer). 글쓰기에서 그래도 아니면 멈춤, 이유에 앞 200 자.
+- 자세히: `server/utils/llm.py` 의 `_object` · `_first_object` · `LlmNotAnObject`, `server/chain/report_loop.py` 의 `_ask` · `AGAIN_JSON` · `STOP_NO_JSON`. 시험 `test_a_report_goes_on_when_the_model_answers_no_json.py`.
+
 ## 2026-10-26 · AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열
 
 - 무엇: 운영 리포트에 «'units' is not a condition - one of …» 거절이 났다. 모델이 yield_by(by="units") 나 where {"units": …} 를 불렀다 — 제품 규칙의 units 낱말과 «by: a condition …» 글이 모델을 그쪽으로 끌었다.
@@ -649,6 +658,7 @@
   - `derive.report.conditions.most` 숫자 한 칸(1 이상). 비우면 제한 없음.
   - 모델이 yield_by 의 rows 로 고른 조건을 «모델이 낸 순서» 그대로 그리고 앞 most 개. 전: 데이터 순.
   - 모델이 아무것도 안 고르면 달라지는 조건 행 전부를 데이터 순으로 앞 most 개.
+  - 덧붙임(10-26, 소유자 «컨디션을 충분히 선택하지 않는데» · 안 ㄱ): 모델이 고른 것«만» 그리지 않는다 — 고른 것을 모델 순서로 앞에, 그 뒤로 값이 다른 나머지 조건을 데이터 순으로, 합쳐 most 개까지. most 를 비우면 값이 다른 조건 전부(고른 것 먼저). 모델은 순서, 개수는 선언.
   - 글에 쓴 조건(also)은 자르지 않는다 — most 넘어서도 선다.
   - 모델에게 주는 yield_by 설명에 «the ones most related to the wafers' titles first», most 가 있으면 «rows: N at most». Analyst 프롬프트가 이긴다는 머리줄은 그대로.
   - 덤: causes 거절 문장이 worlds 칸도 말한다.

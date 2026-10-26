@@ -426,8 +426,9 @@ class Report:
 
     def _condition_rows(self, columns, chosen=None, also=None):
         """The condition group (owner «조건도 안나오고»): a row a condition of the columns' wafers (wafer.conditions,
-        the conditions role) - the names the model kept (yield_by rows, owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택»),
-        else those whose value differs between the columns, every one when there is one column."""
+        the conditions role) whose value differs between the columns, every one when there is one column - the names the
+        model kept first, in its order (yield_by rows, owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택»), then the others in
+        the data's order (owner 10-26 «컨디션을 충분히 선택하지 않는데»: the model orders, the declaration counts)."""
         mixed = report_shape.word(self.spec, "mixed")
         # the time_item condition is the date head's, not a condition row (owner 10-24)
         timed = None if self.spec["wafer"].get("time") else (self.long or {}).get(report_shape.TIME_ITEM)
@@ -457,14 +458,14 @@ class Report:
             # kept (the model's, the texts') and every one that differs (owner 10-24 «글에 쓴 조건이 표에 없음»)
             # two values or more where it is said - a condition the same wherever it is said is no row, kept or not
             # (owner 10-24 «너무 일정한 조건도 뽑아 버리는데»; a blank is no value)
-            # the rows the model selected (prompts.select) are the rows - the others only when it selected none; the
-            # conditions the texts name (`also`) stand too (owner 10-24 «스킵 말고 프롬프트로는 제어 못 해?»)
+            # the rows the model selected (prompts.select) stand first; the conditions the texts name (`also`) stand
+            # too (owner 10-24 «스킵 말고 프롬프트로는 제어 못 해?»)
             varies = len(columns) <= 1 or len({cell["text"] for cell in cells if cell["text"] not in ("", EMPTY)}) > 1
             if varies:
                 drawn[name] = cells
-        # conditions.most cuts the picks (or, none picked, the differing rows); the texts' conditions stand past it
+        # the picks, then the other differing rows, cut at conditions.most; the texts' conditions stand past it
         most = (self.long or {}).get(report_shape.CONDITION_MOST)
-        shown = [n for n in (kept or names) if n in drawn][:most]
+        shown = [n for n in kept + [n for n in names if n not in kept] if n in drawn][:most]
         shown += [n for n in names if n in told and n in drawn and n not in shown]
         return [(self.condition_label(name), drawn[name]) for name in shown]
 

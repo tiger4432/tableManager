@@ -65,7 +65,7 @@
 - 🆕 10-24 `summary.yield_item` — 요약표에 수율을 한 항목(예 YIELD)으로 넣었을 때: `"yield_item": "YIELD"`(목록도 됨). 그 행은 표의 «Yield» 줄로(불량 칸과 같은 읽기 — rate 또는 F/N), 불량 행 · 파레토 · 트렌드 · 그림에서는 빠진다.
 - 🆕 10-24 `conditions.time_item` — 웨이퍼 시각이 칸이 아니라 조건 표의 한 항목일 때: `"time_item": "tkout"`. wafer 역할에 time 칸이 없으면 그 항목 값이 웨이퍼 시각(정렬 · 날짜 · 대조 후보). 웨이퍼만으로 키 된 조건 표면 그 웨이퍼의 leg 모두에.
 - 🆕 10-24 `conditions.skip` — 조건 행으로 안 그릴 조건 이름: `"skip": ["recipe_id", "operator"]`(대소문자 · 앞뒤 빈칸 무시). 웨이퍼 키 칸 · `wafer.lot` · time_item · title_item 은 적지 않아도 언제나 빠진다 — 웨이퍼마다 다른 id 는 늘 «값이 다른 조건»이라 행으로 섰다.
-- 🆕 10-26 `conditions.most` — 표의 조건 행을 몇 개까지: `"most": 5`(1 이상, 안 적으면 상한 없음). 모델이 고른 조건이 있으면 고른 차례로 앞 most 개, 안 골랐으면 값이 다른 조건을 데이터 차례로 앞 most 개. 글에 이름이 나온 조건은 상한 밖으로 더 선다. 모델에게도 «rows: N at most» 로 알린다. 열 사이에 값이 하나뿐인 조건은 어느 경우든 안 그린다.
+- 🆕 10-26 `conditions.most` — 표의 조건 행을 몇 개까지: `"most": 5`(1 이상, 안 적으면 상한 없음). 모델이 고른 조건을 고른 차례로 앞에, 그 뒤로 값이 다른 나머지 조건을 데이터 차례로 — 합쳐 앞 most 개(모델은 차례, 개수는 이 칸). 글에 이름이 나온 조건은 상한 밖으로 더 선다. 모델에게도 «rows: N at most» 로 알린다. 열 사이에 값이 하나뿐인 조건은 어느 경우든 안 그린다.
 - 🆕 10-24 `wafer.exclude` — 무시할 행: `"exclude": [{"leg": ["*_T", "*TEST*"]}]` (체인 on.exclude 와 같은 문법, `*` 아무 글자들 · `?` 한 글자, 대소문자 그대로). 걸린 웨이퍼 표 행은 유닛이 아니다 — 리포트 · 비교 · 표 어디에도 없다.
 - 🆕 10-24 `images.match` — 요약표의 항목 이름과 그림 표의 종류 이름이 다를 때 짝: `"match": {"typeA": ["void", "signal"]}` (종류 하나면 글자 하나도 됨). 짝 없는 종류는 버리지 않고 맨 뒤에 «Image kinds no summary item matches (images.match): …» 줄 밑에 제 이름으로. match 를 안 적으면 오늘처럼 같은 이름끼리.
 - 🆕 10-24 표 칸(yield_by · pareto · trend)과 그림 칸은 «제품»이 채운다 — 모델이 그 읽기를 안 불렀어도, 게이트웨이가 거절해도. 모델은 글 칸만 쓴다. Evidence 에 «product <읽기>()» 한 줄씩. `layout` 을 규칙 맨 위나 `derive` 밑에 적으면 안 읽히고 저장 · 로드 줄이 «layout is read under derive.report» 라고 말한다(그때는 기본 배치).

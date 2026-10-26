@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다** · 조건 행은 모델 것 먼저 · 나머지로 most 까지 — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    chain_worker.log «[LLM] answer had text around its JSON» -> 설명 붙은 답을 꺼내 읽음 (정상)
+>          «[report] the answer held no JSON object - asked once more» -> 한 번 다시 물음
+>          리포트 상태 «stopped - the model answered no JSON at step N: …» 인데 글이 있음 -> 읽은 것으로 씀 (정상)
+>          «stopped - the language model call was refused: the answer is not JSON: …» -> 글쓰기 답이 두 번 다 JSON 아님 -> 앞 200 자로 모델 쪽을 봄
+>          조건 행 -> 모델이 2~3 개만 골라도 conditions.most 개까지 차면 고쳐진 것
+> 되돌리기  git revert $(git log -1 --format=%h --grep='answers no JSON' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열** — git pull · 런처 재기동
 >
 > ```

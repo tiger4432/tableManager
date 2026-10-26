@@ -55,8 +55,8 @@ RELATED_CALL = "candidate conditions"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
     "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: one condition name exactly as "
-                "conditions() lists it - leave by out for a column a wafer; rows: the condition rows to show, the ones most related to the wafers' titles "
-                "first (a name keeps the names under it), all if none",
+                "conditions() lists it - leave by out for a column a wafer; rows: the condition rows to put first, the ones most related to the "
+                "wafers' titles first (a name keeps the names under it) - the other differing rows follow",
     "pareto": "the items by fail chips over the wafers, with the cumulative share",
     "trend": "each item's share wafer by wafer in time order - first, last, least, most",
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
@@ -74,6 +74,10 @@ STOP_STEPS = "step cap %d"
 STOP_SECONDS = "time cap %d s"
 STOP_CONTEXT = "context over budget"
 STOP_MODEL = "the language model call was refused: %s"
+#: an answer that held no JSON object, asked once more with it (owner 10-26 «응답이 json 이 아니어서 멈추는 경우» 안 ㄱ)
+AGAIN_JSON = "\n\nYour last answer was not one JSON object: %s. Answer one JSON object only."
+#: still none: the reading ends there and what was read is written, as at the step cap
+STOP_NO_JSON = "the model answered no JSON at step %d: %s"
 DONE, STOPPED = "done", "stopped"
 #: What is still to send: a marker beside a done report whose rule has `send_to` - {"rule", "tries"} - and one the
 #: address would not take, {"rule", "why"} (`send_waiting`; owner 10-23: no state column, no table).
@@ -197,9 +201,17 @@ def compose_write(spec, request, reads, budget, line=None):
 
 
 def _ask(prompt, ask):
-    """-> (the answer, the prompt tokens the gateway counted or None)."""
+    """-> (the answer, the prompt tokens the gateway counted or None). An answer with no JSON object is asked once more,
+    told what it said (`AGAIN_JSON`); a call that failed is not."""
+    from utils import llm
+
     usage = {}
-    said = ask(prompt, usage=usage)
+    try:
+        said = ask(prompt, usage=usage)
+    except llm.LlmNotAnObject as refused:
+        logger.warning("[report] the answer held no JSON object - asked once more: %s", refused)
+        usage = {}
+        said = ask(prompt + AGAIN_JSON % refused.answer, usage=usage)
     return said, usage.get("prompt_tokens")
 
 
@@ -241,6 +253,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
     steps, previous, seen, tables = [], [], {}, {}
     reads = [(0, "conditions()", conditions)]                # what the write call is handed - the folded conditions first
     out = {"state": STOPPED, "reason": STOP_STEPS % caps["steps"], "steps": steps, "texts": {}, "tables": tables}
+    no_json = None
     for step in range(1, caps["steps"] + 1):
         if clock() - started >= caps["seconds"]:
             out["reason"] = STOP_SECONDS % caps["seconds"]
@@ -253,6 +266,11 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
         began = clock()
         try:
             said, counted = _ask(prompt, ask)
+        except llm.LlmNotAnObject as refused:
+            out["reason"] = no_json = STOP_NO_JSON % (step, refused.answer)
+            steps.append({"step": step, "tokens": budget.tokens(prompt), "cut": cut, "call": "answer",
+                          "seconds": clock() - began, "refused": no_json, "why": None, "summary": "", "read": []})
+            break
         except llm.LlmRefused as refused:
             out["reason"] = STOP_MODEL % refused
             break
@@ -289,7 +307,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             report.kept_rows = list(dict.fromkeys(getattr(report, "kept_rows", []) +
                                                   ([rows] if isinstance(rows, str) else list(rows or []))))
     _product_reads(report, spec, tables, reads, steps, clock)
-    if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"]):
+    if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"], no_json):
         if (spec or {}).get(report_shape.CAUSES) is not None:
             _causes(report, spec, request, reads, budget, ask, clock, out["steps"], tables)
         _write(spec, request, reads, budget, ask, clock, out)

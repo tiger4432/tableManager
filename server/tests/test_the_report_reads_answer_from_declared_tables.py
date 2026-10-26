@@ -343,39 +343,38 @@ def test_two_values_of_one_wafers_condition_are_both_said(report, db_session):
 
 
 @pytest.mark.parametrize("most, rows, also, shown", [
-    (None, None, None, "all"),                     # nothing picked: every differing row, the data's order - as before
-    (None, ["C", "A", "B"], None, ["C", "A", "B"]),     # the same rows, the model's order
-    (2, ["C", "A", "B"], None, ["C", "A"]),        # the model's first two
-    (2, None, None, "first 2"),                    # nothing picked: the data's first two
-    (2, ["C", "A", "B"], ["B"], ["C", "A", "B"])])  # a condition the texts name stands past the cap
-def test_the_condition_rows_are_the_models_in_its_order_up_to_most(report, db_session, most, rows, also, shown):
-    """conditions.most (owner 10-26 «컨디션 아이템 뽑는 항목 개수 제한 · title 과 연관된 아이템 순», 안 ㄱ: the model
-    orders them) - the model's picks in its order, cut at most; none picked, the differing rows in the data's order;
-    the conditions the texts name (`also`) never cut (owner 10-24 «글에 쓴 조건이 표에 없음»)."""
+    (4, ["C", "A"], None, "picks, then the rest"),     # the model's two first, the other differing rows fill to most
+    (None, ["C", "A"], None, "picks, then the rest"),  # no most: every differing row, the picks first
+    (4, None, None, "picks, then the rest"),           # nothing picked: the data's first four
+    (None, None, None, "picks, then the rest"),        # nothing picked, no most: every differing row - as before
+    (2, ["C", "A"], ["E"], ["C", "A", "E"])])          # a condition the texts name stands past the cap
+def test_the_condition_rows_are_the_models_first_then_the_rest_up_to_most(report, db_session, most, rows, also, shown):
+    """conditions.most (owner 10-26 «컨디션 아이템 뽑는 항목 개수 제한 · title 과 연관된 아이템 순» · «컨디션을 충분히
+    선택하지 않는데», 안 ㄱ: the model orders, the declaration counts) - the model's picks first in its order, then the
+    other differing rows in the data's order, cut at most; the conditions the texts name (`also`) never cut (owner
+    10-24 «글에 쓴 조건이 표에 없음»)."""
     from chain import report_reads
 
     m = models.DYNAMIC_TABLES
     for wafer, values in (("W1", "147"), ("W2", "258"), ("W3", "369")):
-        for name, value in zip("ABC", values):                   # each condition differs over the wafers
+        for name, value in zip("ABCDE", values + values[:2]):    # each condition differs over the wafers
             db_session.add(m["rr_cond"](row_id=wafer + name, wafer_id=wafer, cname=name, step="1", cvalue=value))
     db_session.commit()
     spec = json.loads(json.dumps(SPEC))
     spec["conditions"] = {"table": "rr_cond", "wafer": "wafer_id", "name": "cname", "value": "cvalue"}
 
-    def drawn(most):
+    def drawn(most, rows):
         said = report_reads.Report(db_session, dict(spec, conditions=dict(spec["conditions"], **(
             {"most": most} if most else {}))), "E1")
         labels = {said.condition_label(name): name for name in said.condition_names()}
         return [labels[label] for label, _cells in said.yield_by(rows=rows, also=also)["html"]["info"]
                 if label in labels]
 
-    every = drawn(None) if rows is None else None       # the fixture's own conditions too, in the data's order
-    if shown == "all":
-        assert [n for n in every if n in "ABC"] == ["A", "B", "C"] and len(every) > 3, every
-    elif shown == "first 2":
-        assert drawn(most) == every[:2], every
-    else:
-        assert drawn(most) == shown
+    every = drawn(None, None)                           # the fixture's own conditions too, in the data's order
+    assert [n for n in every if n in "ABCDE"] == list("ABCDE") and len(every) > 5, every
+    if shown == "picks, then the rest":
+        shown = ((rows or []) + [n for n in every if n not in (rows or [])])[:most]
+    assert drawn(most, rows) == shown, every
 
 
 def test_a_compare_set_is_a_second_group_of_columns(report):
