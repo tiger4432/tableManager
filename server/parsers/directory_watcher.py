@@ -1194,8 +1194,8 @@ def finish_read_files_fill(reached_all: bool):
         with open(marker, "w", encoding="utf-8") as handle:
             handle.write(datetime.now().astimezone().isoformat())
         _READ_FILES_FILL["marker"] = None
-    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d)"
-            % (said["stamped"], said["failed"] + said["changed"], said["failed"], said["changed"]))
+    line = ("[Watcher] read files stamped %d · failed files stamped %d (read again only by Retry on the file page) · "
+            "left for re-read %d (changed since read)" % (said["stamped"], said["failed"], said["changed"]))
     logger.info(line)
     return line
 

@@ -415,6 +415,7 @@
 
 ### 어드민 화면
 
+- 2026-10-26 [실패 파일은 정말로 저절로 다시 안 읽힌다 — 읽는 법이 바뀌어도 · 기동해도. 꺼진 저장소도 glob 으로 골라 읽고, Read these 는 맞는 파일 전부](#2026-10-26--실패-파일은-정말로-저절로-다시-안-읽힌다--읽는-법이-바뀌어도--기동해도-꺼진-저장소도-glob-으로-골라-읽고-read-these-는-맞는-파일-전부) — 적을 것 없음 · 보는 곳 watcher.log «its reading changed» · «read files stamped» 줄, 파일 화면 Retry
 - 2026-10-26 [저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에](#2026-10-26--저장소-안-파일을-glob-으로-골라-읽는다--읽었든-안-읽었든-목록-고른-것만-와처에) — 적을 것 없음 · 누르는 곳 파일 화면의 저장소 glob (클라 착지 뒤) · 보는 곳 서버 로그 «[Reread] glob»
 - 2026-10-24 [선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 — keys · images.match 등](#2026-10-24--선언-폼에서-이름으로-새-칸을-여는-입력도-enter-로-들어간다--keys--imagesmatch-등) — 누르는 곳 어드민 선언 폼 · 온톨로지 탐색기 폼
 - 2026-10-24 [선언 폼에서 칸을 비우면 그 칸은 저장에서 빠진다 — 그 칸으로 비게 된 선택 블록도 같이](#2026-10-24--선언-폼에서-칸을-비우면-그-칸은-저장에서-빠진다--그-칸으로-비게-된-선택-블록도-같이) — 누르는 곳 어드민 선언 폼(Chain · Tables · Ledger)
@@ -596,6 +597,17 @@
 
 
 
+
+## 2026-10-26 · 실패 파일은 정말로 저절로 다시 안 읽힌다 — 읽는 법이 바뀌어도 · 기동해도. 꺼진 저장소도 glob 으로 골라 읽고, Read these 는 맞는 파일 전부
+
+- 무엇: 10-24 «실패 파일은 Retry 로만» 이 실제 와처에서 새던 두 자리를 막고, 골라 읽기 둘을 넓힘.
+  - 읽는 법(스크립트 · 외장 소스 항목)이 바뀌면 «읽은» 파일만 도장을 비운다. 실패 파일의 도장은 그대로라 훑기가 안 집는다. 전: 실패 행의 도장도 비워 다음 훑기가 저절로 읽음 — 줄은 «not read again» 이라 말하면서. 줄의 수도 이제 읽은 파일만.
+  - 체크리스트 첫 채우기(기동 때 옛 행에 도장)도 실패 행에 도장을 찍고 실패로 둔다. 전: «left for re-read» 로 한 번 다시 읽음. 줄 `[Watcher] read files stamped N · failed files stamped K (read again only by Retry on the file page) · left for re-read C (changed since read)`.
+  - 두 자리는 같은 판단 하나를 지난다: `checkpoint.BY_HAND_ONLY` (FAILED).
+  - 꺼진 외부 저장소(`enabled: false`)도 glob 목록 · Read these 가 된다(전: 400). 꺼짐은 자동 읽기만 멈춘다(10-24).
+  - Read these 를 paths 없이 누르면 목록의 앞 5,000 개가 아니라 패턴에 맞는 «전부»를 넘긴다. 답 «N of M file(s) handed to the watcher».
+  - 넘기는 데 드는 시간(이 박스 · sqlite, 절반은 읽은 파일): 1만 개 22 s · 10만 개 168 s — 그동안 Read these 의 답을 기다림(서버의 다른 요청은 답함).
+- 자세히: `server/ingestion/checkpoint.py` 의 `BY_HAND_ONLY` · `stamp_read_files`, `server/ingestion/reread.py` 의 `uncheck(keep_by_hand=)` · `hand_on_a_changed_reading` · `storage_of` · `glob_matched`. 게이트 `test_a_fixed_plugin_leaves_its_failed_files_to_retry.py` (실제 와처 + API: 고쳐도 FAILED · Retry 하면 SUCCESS · 기동해도 그대로), `test_a_file_read_is_checked_by_its_path_and_table.py`, `test_a_storage_glob_lists_and_reads_files_by_hand.py`.
 
 ## 2026-10-26 · 저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에
 

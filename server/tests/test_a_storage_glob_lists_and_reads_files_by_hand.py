@@ -6,8 +6,10 @@ A real watcher process and a real API process on a scratch data root and a sqlit
 on before two new files and after five old ones (12f46f32f: the old ones are read by hand only):
   list      GET /admin/file-ingestion/glob - old/x*.csv: the three, BEFORE_SWITCH_ON, never read; read or not,
             new/n1.csv: SUCCESS and when (총괄 10-26 «이미 읽었나(언제)»)
-  read      POST read-now with the glob - the three handed, read by the watcher; /read-now/left counts them down and
-            says each one's state and read time; a file that fails says its error's first line («넘긴 뒤 결과»)
+  read      POST read-now with the glob - the three handed though the list shows two (its cap set to 2 here: «every
+            match», 총괄 10-26), read by the watcher; /read-now/left counts them down and says each one's state and
+            read time; a file that fails says its reason («넘긴 뒤 결과»)
+  off       a source switched off is listed and read by hand (7328c8d51: off stops only the automatic reads)
   again     a read file picked by the glob is read again (a second log row)
   refused   a glob that leaves the root (.. · an absolute path) 400; a storage the table has not 404
 """
@@ -43,7 +45,9 @@ import sys
 import uvicorn
 import main
 from admin import auth
+from ingestion import reread
 main.app.dependency_overrides[auth.require_admin_token] = lambda: None
+reread.GLOB_LIST_LIMIT = 2              # the list's cap, so Read these is seen to hand every match past it
 uvicorn.run(main.app, host="127.0.0.1", port=int(sys.argv[1]), log_level="warning")
 '''
 PLUGIN = '''
@@ -98,21 +102,24 @@ def _wait(what, until, seconds=120):
 
 
 def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
-    data, share = tmp_path / "data", str(tmp_path / "share")
+    data, share, off = tmp_path / "data", str(tmp_path / "share"), str(tmp_path / "off")
     (data / "config").mkdir(parents=True)
     scripts = data / "ingestion_workspace" / "gt" / "scripts"
     scripts.mkdir(parents=True)
     (scripts / "p.py").write_text(PLUGIN, encoding="utf-8")
     (data / "config" / "table_config.json").write_text(json.dumps({"gt": TABLE}), encoding="utf-8")
     (data / "config" / "ingestion_settings.json").write_text(json.dumps(
-        {"external_sources": [{"path": share, "table_name": "gt", "options": {"glob": "**/*.csv"}}]}), encoding="utf-8")
+        {"external_sources": [{"path": share, "table_name": "gt", "options": {"glob": "**/*.csv"}},
+                              {"path": off, "table_name": "gt", "enabled": False, "options": {"glob": "*.csv"}}]}),
+        encoding="utf-8")
     switched_on = time.time() - 60
     old = ["x1", "x2", "x3", "y1", "y2", "z1"]
     for lot in old:
         _csv(os.path.join(share, "old", lot + ".csv"), lot, mtime=switched_on - 3600)
     for lot in ("n1", "n2"):
         _csv(os.path.join(share, "new", lot + ".csv"), lot)
-    source_id = "gt@" + os.path.normcase(os.path.abspath(share))
+    _csv(os.path.join(off, "o1.csv"), "o1")
+    source_id = "gt@" + os.path.normcase(os.path.realpath(share))
     (data / "config" / "watcher_switched_on.json").write_text(json.dumps({source_id: switched_on}), encoding="utf-8")
 
     db = tmp_path / "box.db"
@@ -141,8 +148,9 @@ def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
             return c.execute("SELECT count(*) FROM file_ingestion_logs WHERE filename = ? AND status = 'SUCCESS'",
                              (name,)).fetchone()[0]
 
-    def glob(pattern, source=share):
-        query = urllib.parse.urlencode({"table": "gt", "source": source, "pattern": pattern})
+    def glob(pattern, source=share, limit=100):
+        query = urllib.parse.urlencode({"table": "gt", "source": source, "pattern": pattern, "limit": limit})
+        assert api.poll() is None, "the API process is gone - another may hold its port"
         return _ask(opener, base + "/glob?" + query)
 
     try:
@@ -157,9 +165,12 @@ def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
         assert n1["by_status"] == {"SUCCESS": 1}, "read or not - a read file is listed too"
         assert n1["files"][0]["read_at"], n1
 
+        capped = glob("old/x*.csv", limit=0)[1]
+        assert (capped["matched"], len(capped["files"]), capped["truncated"]) == (3, 2, True), capped
         query = urllib.parse.urlencode({"table": "gt", "source": share, "pattern": "old/x*.csv"})
         status, handed = _ask(opener, base + "/read-now?" + query, body={})
         assert status == 200 and handed["handed"] == 3, handed
+        assert handed["message"] == "3 of 3 file(s) handed to the watcher", handed
         _wait("the three read by the watcher", lambda: lots() == ["n1", "n2", "x1", "x2", "x3"])
         status, left = _ask(opener, base + "/read-now/left", body={"ids": handed["ids"]})
         assert (status, left["handed"], left["left"], left["read"]) == (200, 3, 0, 3), left
@@ -180,6 +191,13 @@ def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
         status, again = _ask(opener, base + "/read-now?" + query, body={})
         assert status == 200 and again["handed"] == 1, again
         _wait("n1 read again", lambda: reads_of("n1.csv") == 2)
+
+        status, listed = glob("*.csv", source=off)
+        assert status == 200 and [(f["rel"], f["read_at"]) for f in listed["files"]] == [("o1.csv", None)], listed
+        query = urllib.parse.urlencode({"table": "gt", "source": off, "pattern": "*.csv"})
+        status, handed = _ask(opener, base + "/read-now?" + query, body={})
+        assert status == 200 and handed["handed"] == 1, handed
+        _wait("o1 read by hand from the off source", lambda: "o1" in lots())
 
         assert glob("../share/*.csv")[0] == 400
         assert glob("C:/data/*.csv")[0] == 400

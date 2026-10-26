@@ -104,6 +104,10 @@ def test_a_real_watcher_never_walks_below_max_depth(tmp_path):
     source = {"path": str(share), "table_name": "ta", "options": {"glob": "*.csv"}}
     settings = data / "config" / "ingestion_settings.json"
     settings.write_text(json.dumps({"external_sources": [dict(source, max_depth=1)]}), encoding="utf-8")
+    # cut at the epoch - this measures the depth, not the switch-on cut (23fd41a2c: a source on is cut from when the
+    # watcher first sees it, so files already there would be held for a hand)
+    (data / "config" / "watcher_switched_on.json").write_text(json.dumps(
+        {"ta@" + os.path.normcase(os.path.realpath(str(share))): 0.0}), encoding="utf-8")
     for n, rel in enumerate(("d0.csv", "a/d1.csv", "a/b/d2.csv", "a/b/c/d3.csv")):
         _write(share / rel, "lot,val\nL%d,v\n" % n)
 
@@ -145,7 +149,7 @@ def test_a_real_watcher_never_walks_below_max_depth(tmp_path):
         assert re.search(r"External source ta@[^\n]*: 2 file\(s\) looked at - outside the root 0 · name not matched 0 · "
                          r"not a file 0 · stat failed 0 · folders not matching 0 · folders below max_depth 1 · "
                          r"folders not listed 0 · "
-                         r"already read 0 · dispatched 2", text()), text()[-3000:]
+                         r"already read 0 · before switch-on 0 · dispatched 2", text()), text()[-3000:]
         opened = {os.path.normcase(p) for p in listed.read_text(encoding="utf-8").splitlines()}
         assert os.path.normcase(str(share / "a")) in opened                              # the recorder records
         assert not [p for p in opened if p.startswith(os.path.normcase(str(share / "a" / "b")))]

@@ -9,12 +9,14 @@ row (`FileChecklist`); the records stay one per read.
   table               the same file, another table                              -> not checked
   file changed        another size                                              -> not checked
   no stamp            a read that waited out a lock writes none                  -> not checked
-  reading changed     table ta: its read rows unchecked, its failed handed; tb   -> untouched
+  reading changed     table ta: its read rows unchecked, its failed stay FAILED (Retry only, 10-24); tb
+                                                                                 -> untouched
   enabled             switching a source off and on                             -> no new reading
-  the fill            off the stat a sweep took: unchanged SUCCESS stamped; failed / changed told; a path or table
-                      not asked untouched; once more                             -> nothing
-  a real watcher      rows from before the checklist + their files in place -> started: none read, the failed one read
-                      once, the first sweep's line says the fill; a file saved again -> read; tb's plugin changed -> tb's files read again, ta's not;
+  the fill            off the stat a sweep took: unchanged SUCCESS and FAILED stamped (FAILED kept failed, 소유자
+                      10-24); changed told; a path or table not asked untouched; once more -> nothing
+  a real watcher      rows from before the checklist + their files in place -> started: none read, the failed one
+                      stamped and kept failed, the first sweep's line says the fill; a file saved again -> read; tb's plugin changed -> tb's files read again, ta's not;
+                      ta's plugin changed -> its read files again, its failed file not (소유자 10-24);
                       restarted -> nothing read
   a fill that fails   its first batch raises -> the watcher stands, the line says it, those files not read; the next
                       sweep stamps them and writes the marker
@@ -35,6 +37,9 @@ from database import models
 from ingestion import checkpoint, reread
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+NOT_AGAIN = "failed files are not read again by themselves (Retry on the file page)"     # 소유자 10-24
+FILL = ("[Watcher] read files stamped %d · failed files stamped %d (read again only by Retry on the file page) · "
+        "left for re-read %d (changed since read)")
 
 
 def _write(path, text):
@@ -101,9 +106,9 @@ def test_a_changed_reading_unchecks_its_own_table_in_place_only(db_session, tmp_
                                             folders=[str(raws)])
 
     db_session.expire_all()
-    assert line == "[Watcher] ta: its reading changed (scripts\\p.py) - 1 read file(s) unchecked, 1 failed file(s) handed again"
+    assert line == "[Watcher] ta: its reading changed (scripts\\p.py) - 1 read file(s) unchecked, " + NOT_AGAIN
     assert (ra.file_mtime, ra.file_size) == (None, None)
-    assert rf.status == reread.REREAD_STATUS and rf.file_size is not None     # the retry door owns it, still checked
+    assert rf.status == "FAILED" and rf.file_size is not None     # 소유자 10-24: read again by hand only
     assert rb.file_size is not None                                            # another table is not touched
     assert rm.file_size is not None                                            # moved: 소유자 「옮겨진 건 하지 마」
 
@@ -113,8 +118,9 @@ def test_a_changed_reading_unchecks_its_own_table_in_place_only(db_session, tmp_
     ({"table_config": "1", "scripts\\p.py": [1, 1]}, True),
     ({"table_config": "1", "external source": "1"}, True)])
 def test_a_table_config_change_alone_keeps_the_read_files_read(db_session, tmp_path, parts, unchecks):
-    """소유자 10-23 「다로 해」: only the table's declaration changed -> its failed files are handed, its read files stay
-    checked and are counted for «Read all again»; a plugin or a source changed with it -> unchecked as before."""
+    """소유자 10-23 「다로 해」: only the table's declaration changed -> its read files stay checked and are counted for
+    «Read all again»; a plugin or a source changed with it -> unchecked as before. Its failed files stay FAILED either
+    way (소유자 10-24: read again by hand only)."""
     raws = tmp_path / "ta" / "raws"
     a, f = (_write(raws / name, "x") for name in ("a.csv", "f.csv"))
     ra = _row(db_session, "ta", a, "SUCCESS", checkpoint.read_file_stat(a))
@@ -124,15 +130,15 @@ def test_a_table_config_change_alone_keeps_the_read_files_read(db_session, tmp_p
                                             folders=[str(raws)])
 
     db_session.expire_all()
-    assert rf.status == reread.REREAD_STATUS
+    assert rf.status == "FAILED"
     changed = ", ".join(sorted(parts))
     if unchecks:
         assert (ra.file_mtime, ra.file_size) == (None, None)
-        assert line == f"[Watcher] ta: its reading changed ({changed}) - 1 read file(s) unchecked, 1 failed file(s) handed again"
+        assert line == f"[Watcher] ta: its reading changed ({changed}) - 1 read file(s) unchecked, " + NOT_AGAIN
     else:
         assert ra.file_size is not None and checkpoint.checked(db_session, "ta", [(a, checkpoint.read_file_stat(a))])
         assert line == ("[Watcher] ta: its reading changed (table_config) - 1 read file(s) kept as read (Read all again "
-                        "on the file page applies the change to them), 1 failed file(s) handed again")
+                        "on the file page applies the change to them), " + NOT_AGAIN)
 
 
 def test_named_files_are_let_go_by_the_same_uncheck(db_session, tmp_path):
@@ -174,9 +180,10 @@ def test_the_rows_from_before_the_checklist_are_stamped_once(db_session, tmp_pat
 
     db_session.expire_all()
     assert said == {"stamped": [rows[0].id], "failed": [rows[1].id], "changed": [rows[2].id]}
-    assert [row.file_size is not None for row in rows] == [True, False, False, False, False]
+    assert [row.file_size is not None for row in rows] == [True, True, False, False, False]
     assert checkpoint.checked(db_session, "ta", [(same, checkpoint.read_file_stat(same))]) == {same: "SUCCESS"}
-    assert checkpoint.stamp_read_files(db_session, "ta", asked) == {"stamped": [], "failed": [rows[1].id],
+    assert checkpoint.checked(db_session, "ta", [(failed, checkpoint.read_file_stat(failed))]) == {failed: "FAILED"}
+    assert checkpoint.stamp_read_files(db_session, "ta", asked) == {"stamped": [], "failed": [],
                                                                      "changed": [rows[2].id]}
 
 
@@ -253,6 +260,11 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
     with open(data / "config" / "ingestion_settings.json", "w", encoding="utf-8") as f:
         json.dump({"external_sources": [{"path": str(share_a), "table_name": "ta", "options": {"glob": "*.csv"}},
                                         {"path": str(share_b), "table_name": "tb", "options": {"glob": "*.csv"}}]}, f)
+    # cut at the epoch - this measures the checklist, not the switch-on cut (23fd41a2c: a source on is cut from when
+    # the watcher first sees it, so a file unchecked later would be held for a hand)
+    with open(data / "config" / "watcher_switched_on.json", "w", encoding="utf-8") as f:
+        json.dump({"%s@%s" % (table, os.path.normcase(os.path.realpath(str(root)))): 0.0
+                   for table, root in (("ta", share_a), ("tb", share_b))}, f)
     a1 = _write(share_a / "a1.csv", "lot,val\nA1,v\n")
     a2 = _write(share_a / "a2.csv", "lot,val\nA2,v\n")
     af = _write(share_a / "af.csv", "lot,val\nAF,v\n")
@@ -308,12 +320,10 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
 
     watcher, log = start()
     try:
-        assert until(lambda: reads().get(("ta", "af.csv")) == 2, watcher), reads()        # the failed one, once
-        assert until(lambda: said("[Watcher] read files stamped 3 · left for re-read 1 (failed 1 · changed since read 0)"),
-                     watcher)
+        assert until(lambda: said(FILL % (3, 1, 0)), watcher)              # the failed one stamped, kept failed
         assert until(lambda: reads().get(("tb", "rb.csv")) == 1, watcher), reads()
         time.sleep(5)
-        assert reads() == {("ta", "a1.csv"): 1, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 2, ("tb", "b1.csv"): 1,
+        assert reads() == {("ta", "a1.csv"): 1, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 1, ("tb", "b1.csv"): 1,
                            ("tb", "rb.csv"): 1}
 
         _write(a1, "lot,val\nA1,changed\n")                                                 # saved again
@@ -322,13 +332,22 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
         (data / "ingestion_workspace" / "tb" / "scripts" / "p.py").write_text(PLUGIN + "\n# fixed\n", encoding="utf-8")
         assert until(lambda: reads().get(("tb", "b1.csv")) == 2, watcher), reads()        # tb's file again
         time.sleep(5)
-        assert reads() == {("ta", "a1.csv"): 2, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 2, ("tb", "b1.csv"): 2,
+        assert reads() == {("ta", "a1.csv"): 2, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 1, ("tb", "b1.csv"): 2,
                            ("tb", "rb.csv"): 1}                             # moved: not again (소유자 「옮겨진 건 하지 마」)
         with sqlite3.connect(str(db)) as c:
             stamp = c.execute("SELECT file_size FROM file_checklist WHERE filename = 'rb.csv'").fetchone()[0]
         assert stamp, "a moved file was unchecked"
-        assert said("its reading changed (scripts\\p.py) - 1 read file(s) unchecked, 0 failed file(s) handed again "
-                    "- 1 dispatched to be read again")
+        assert said("its reading changed (scripts\\p.py) - 1 read file(s) unchecked, " + NOT_AGAIN
+                    + " - 1 dispatched to be read again")
+
+        # ta's plugin changed: its read files again, its failed file not - it would read now (소유자 10-24)
+        (data / "ingestion_workspace" / "ta" / "scripts" / "p.py").write_text(PLUGIN + "\n# changed\n", encoding="utf-8")
+        assert until(lambda: reads().get(("ta", "a2.csv")) == 2, watcher), reads()
+        time.sleep(5)
+        assert reads() == {("ta", "a1.csv"): 3, ("ta", "a2.csv"): 2, ("ta", "af.csv"): 1, ("tb", "b1.csv"): 2,
+                           ("tb", "rb.csv"): 1}
+        assert said("[Watcher] ta: its reading changed (scripts\\p.py) - 2 read file(s) unchecked, " + NOT_AGAIN
+                    + " - 2 dispatched to be read again")
     finally:
         watcher.kill()
         watcher.wait(30)
@@ -338,7 +357,7 @@ def test_a_real_watcher_reads_each_file_once_and_again_only_when_asked(tmp_path)
     try:
         assert until(lambda: said("External sweep:") or said("Started observer"), watcher)
         time.sleep(8)
-        assert reads() == {("ta", "a1.csv"): 2, ("ta", "a2.csv"): 1, ("ta", "af.csv"): 2, ("tb", "b1.csv"): 2,
+        assert reads() == {("ta", "a1.csv"): 3, ("ta", "a2.csv"): 2, ("ta", "af.csv"): 1, ("tb", "b1.csv"): 2,
                            ("tb", "rb.csv"): 1}
         assert log_path.read_text(encoding="utf-8", errors="replace").count("read files stamped") == 1
     finally:
@@ -413,8 +432,7 @@ def test_a_fill_that_fails_holds_its_files_and_the_next_sweep_stamps_them(tmp_pa
         assert until(lambda: said("[Watcher] read files stamped 0 so far - the next sweep goes on (a batch was not "
                                   "stamped)"))
         assert not marker.exists()
-        assert until(lambda: said("[Watcher] read files stamped 1 · left for re-read 0 (failed 0 · changed since "
-                                  "read 0)"))
+        assert until(lambda: said(FILL % (1, 0, 0)))
         assert marker.exists()
         with sqlite3.connect(str(db)) as c:
             records = c.execute("SELECT count(*) FROM file_ingestion_logs").fetchone()[0]

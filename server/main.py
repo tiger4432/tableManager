@@ -7465,8 +7465,9 @@ def read_file_now(path: str = None, table: str = None, preview: bool = False, so
                   body: Optional[ReadNowFiles] = Body(None), db: Session = Depends(get_db)):
     """One file read now as if the watcher saw it (총괄 aaf19d0ca, 소유자 「그냥 와처 인식한 걸로 하면 되잖아」): the table
     that owns its folder, its row handed to the Retry door under that source. `preview`: who owns it and why the
-    watcher did not pick it - nothing written. With `source` and `pattern` instead of `path`: the files of that
-    storage's glob list (the body's `paths` of them, or all it shows) handed the same way (소유자 10-26)."""
+    watcher did not pick it - nothing written. With `source` and `pattern` instead of `path`: the files that
+    storage's glob takes (the body's `paths` of them, or every one - not only the list's first 5,000) handed the same
+    way (소유자 10-26)."""
     from ingestion import reread
 
     table = None if crud.is_blank_value(table) else str(table).strip()
@@ -7491,7 +7492,8 @@ def read_file_now(path: str = None, table: str = None, preview: bool = False, so
 
 
 def _read_glob_now(db, table, source, pattern, chosen):
-    """A storage's glob list handed to the watcher (`reread.hand_files`) - all it shows, or the `chosen` files of it."""
+    """A storage's glob handed to the watcher (`reread.hand_files`) - every file it takes, not only the list's first
+    5,000 (총괄 10-26: the retry line paces them), or the `chosen` files of it."""
     from ingestion import reread
 
     if os.getenv("DECOUPLED") != "True":
@@ -7500,12 +7502,12 @@ def _read_glob_now(db, table, source, pattern, chosen):
         raise HTTPException(status_code=400, detail="a glob is read from one storage - give table and source")
     source = str(source).strip()
     try:
-        listed = reread.list_glob(db, table, source, pattern)
+        _root, _spec, matched, _walked = reread.glob_matched(table, source, pattern)
     except reread.StorageUnknown as unknown:
         raise HTTPException(status_code=404, detail=str(unknown))
     except reread.RereadRefused as refused:
         raise HTTPException(status_code=400, detail=str(refused))
-    files = [f["path"] for f in listed["files"]]
+    files = [path for _rel, path in matched]
     if chosen is not None:
         wanted = {os.path.normcase(os.path.abspath(str(p))) for p in chosen}
         files = [f for f in files if os.path.normcase(os.path.abspath(f)) in wanted]
@@ -7514,8 +7516,8 @@ def _read_glob_now(db, table, source, pattern, chosen):
         # its (table, source) re-read stop let go by the watcher (system_reload.SCOPE_REREAD_RELEASED)
         system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED, pairs=[(table, source)])
     return {"status": "success", "table": table, "source": source, "pattern": pattern, "handed": len(handed["ids"]),
-            "being_read": len(handed["being_read"]), "ids": handed["ids"], "matched": listed["matched"],
-            "message": "%d file(s) handed to the watcher" % len(handed["ids"])
+            "being_read": len(handed["being_read"]), "ids": handed["ids"], "matched": len(matched),
+            "message": "%d of %d file(s) handed to the watcher" % (len(handed["ids"]), len(matched))
                        + (" · %d being read now, left" % len(handed["being_read"]) if handed["being_read"] else "")}
 
 

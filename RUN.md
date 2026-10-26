@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **실패 파일은 정말로 Retry 로만 · 꺼진 저장소도 골라 읽기 · Read these 는 맞는 파일 전부** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    표 스크립트를 고친 뒤 watcher.log «<표>: its reading changed (...) - N read file(s) unchecked, failed files are not
+>          read again by themselves» -> 그 표의 FAILED 는 파일 화면에 FAILED 로 남음 = 고쳐진 것. 읽히려면 Retry
+>          (전: 줄은 그렇게 말하고 실패 파일이 저절로 읽혀 SUCCESS 가 됨)
+>          기동 한 번 «read files stamped N · failed files stamped K (...)» -> 첫 기동만. 이미 채운 박스엔 안 나옴
+>          Read these 답 «N of M file(s) handed» -> M 이 패턴에 맞는 전부. N < M 이면 나머지는 지금 읽는 중
+>          꺼진 저장소에 glob -> 목록이 나오면 고쳐진 것 (전: «switched off» 400)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='read again only by hand' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에** — git pull · 런처 재기동
 >
 > ```

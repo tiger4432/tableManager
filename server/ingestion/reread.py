@@ -347,17 +347,21 @@ def reading_of(table, entry, sources, scripts_dir):
     return parts
 
 
-def uncheck(db, table=None, paths=None, folders=None, apply=True):
+def uncheck(db, table=None, paths=None, folders=None, apply=True, keep_by_hand=False):
     """The checklist's keys let go (소유자 10-21): the rows of `table` (any table when None) - of `paths`, or under
     `folders` (as `_under_folder` reads them) - lose their stamp, so the sweeps read those files again where they look.
-    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it. -> rows unchecked
-    (`apply` False: the rows it would let go, counted, none touched)."""
+    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it; with `keep_by_hand`
+    a failed row too (`checkpoint.BY_HAND_ONLY` - read again only by hand). -> rows unchecked (`apply` False: the rows
+    it would let go, counted, none touched)."""
     from sqlalchemy import literal, or_
 
     from database import models
+    from ingestion import checkpoint
 
     model = models.FileChecklist
     query = db.query(model).filter(model.file_mtime.isnot(None), model.status != REREAD_STATUS)
+    if keep_by_hand:
+        query = query.filter(model.status.notin_(checkpoint.BY_HAND_ONLY))
     if table is not None:
         query = query.filter(model.table_name == table)
     if paths is not None:
@@ -373,8 +377,9 @@ def uncheck(db, table=None, paths=None, folders=None, apply=True):
 
 def hand_on_a_changed_reading(db, table, before, now, folders=()):
     """The table's reading changed (소유자 10-21 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」): its failed files are
-    NOT handed - a failed file is read again only by hand, Retry · Read now · Read all again (소유자 10-24 «에러파일
-    자동으로 읽는건 안끄냐» · «err에서 삭제된 파일도 읽을라 그러네»), and its read files still in place - under
+    NOT handed and keep their stamp - a failed file is read again only by hand, Retry · Read now · Read all again
+    (`checkpoint.BY_HAND_ONLY`, 소유자 10-24 «에러파일 자동으로 읽는건 안끄냐» · «err에서 삭제된 파일도 읽을라 그러네»),
+    and its read files still in place - under
     `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
     「옮겨진 건 하지 마」). Only its table_config changed: the read files stay checked and are counted - Read all again
     on the file page applies the change to them (소유자 10-23 「다로 해」). No cap: the watcher reads at its own pace.
@@ -383,7 +388,8 @@ def hand_on_a_changed_reading(db, table, before, now, folders=()):
     if not changed:
         return None
     declaration_only = changed == ["table_config"]
-    read = uncheck(db, table=table, folders=list(folders), apply=not declaration_only) if folders else 0
+    read = (uncheck(db, table=table, folders=list(folders), apply=not declaration_only, keep_by_hand=True)
+            if folders else 0)
     said = ("%d read file(s) kept as read (Read all again on the file page applies the change to them)"
             if declaration_only else "%d read file(s) unchecked") % read
     return ("[Watcher] %s: its reading changed (%s) - %s, failed files are not read again by themselves (Retry on "
@@ -644,8 +650,8 @@ def glob_refusal(pattern):
 
 def storage_of(table, source):
     """(the root, its external source spec or None) of the storage the tables screen names (table, source): the table's
-    raws folder (`RAWS`) or one of its external sources by its root. StorageUnknown when there is none such; a source
-    switched off is refused (RereadRefused)."""
+    raws folder (`RAWS`) or one of its external sources by its root - one switched off too (7328c8d51: off stops only
+    the automatic reads). StorageUnknown when there is none such."""
     from database import crud
 
     if table not in crud.TABLE_CONFIG:
@@ -657,21 +663,14 @@ def storage_of(table, source):
     wanted = os.path.normcase(os.path.abspath(str(source or "")))
     for spec in specs:
         if spec["table_name"] == table and os.path.normcase(os.path.abspath(spec["root"])) == wanted:
-            if spec.get("off"):
-                raise RereadRefused(f"{source} is switched off for {table} - switch it on in ingestion_settings.json")
             return spec["root"], spec
     raise StorageUnknown(f"{table} has no storage {source} - {RAWS} or the root of one of its external sources")
 
 
-def list_glob(db, table, source, pattern, limit=GLOB_LIST_LIMIT):
-    """The files below the storage (table, source) the glob `pattern` takes - read or not (소유자 10-26): the watcher's
-    glob (`_glob_regex`, its folders pruned as a source's sweep prunes them), each file's state - its checklist row's,
-    NOT_READ, or BEFORE_SWITCH_ON (no row, modified before the source was switched on). -> {"root", "matched", "limit",
-    "truncated", "by_status" (every match), "files" (the first `limit` by path: path · rel · modified_at · status ·
-    read_at - its newest read, None when never read),
-    "walked", "seconds"}."""
-    from datetime import datetime
-
+def glob_matched(table, source, pattern):
+    """(root, its source spec or None, [(rel, path)] sorted, files walked) - the files below the storage (table, source)
+    the glob `pattern` takes: the watcher's glob (`_glob_regex`), its folders pruned as a source's sweep prunes them.
+    RereadRefused for a glob that leaves the root, StorageUnknown for no such storage."""
     from directory_watcher import _glob_regex, _glob_segments, _segments_may_go_on
 
     refused = glob_refusal(pattern)
@@ -680,7 +679,6 @@ def list_glob(db, table, source, pattern, limit=GLOB_LIST_LIMIT):
     root, spec = storage_of(table, source)
     pattern = str(pattern).strip().replace("\\", "/")
     regex, segments = _glob_regex(pattern), _glob_segments(pattern)
-    began = time.perf_counter()
     matched, walked = [], 0
     for top, dirs, names in os.walk(root):
         rel_dir = os.path.relpath(top, root).replace(os.sep, "/")
@@ -691,7 +689,20 @@ def list_glob(db, table, source, pattern, limit=GLOB_LIST_LIMIT):
             rel = "/".join(folders + (name,))
             if regex.fullmatch(rel):
                 matched.append((rel, os.path.join(top, name)))
-    matched.sort()
+    return root, spec, sorted(matched), walked
+
+
+def list_glob(db, table, source, pattern, limit=GLOB_LIST_LIMIT):
+    """The files below the storage (table, source) the glob `pattern` takes (`glob_matched`) - read or not (소유자
+    10-26), each file's state - its checklist row's,
+    NOT_READ, or BEFORE_SWITCH_ON (no row, modified before the source was switched on). -> {"root", "matched", "limit",
+    "truncated", "by_status" (every match), "files" (the first `limit` by path: path · rel · modified_at · status ·
+    read_at - its newest read, None when never read),
+    "walked", "seconds"}."""
+    from datetime import datetime
+
+    began = time.perf_counter()
+    root, spec, matched, walked = glob_matched(table, source, pattern)
     rows = _newest_rows_of(db, table, [path for _rel, path in matched])
     switched_on = load_reading_stamps(SWITCHED_ON_FILENAME).get(spec["source_id"]) if spec else None
     shown_keys = (os.path.normcase(os.path.abspath(path)) for _rel, path in matched[:limit])

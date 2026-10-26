@@ -7,7 +7,8 @@ ta reads share_a (10 files), tb share_b (2), each with its plugin; reread_max_fi
   ta's plugin broken             its read files unchecked, the sweep reads 3, fails them, stops - the rest unchecked
   Read all again on share_a      the press lets the stop go; the retry door fails 3 and stops - 7 still waiting
   Read all again on share_b      read while ta's 7 wait - more of them than one turn picks
-  ta's plugin fails f6-f9        the reading change lets go; read files come first - no stop, every file read
+  ta's plugin fails f6-f9        the reading change lets go; read files come first - no stop, every waiting file
+                                 read; the three that failed before stay failed (소유자 10-24: Retry only)
 """
 import json
 import os
@@ -102,6 +103,12 @@ def _until(holds, seconds, *processes):
     return False
 
 
+def _failed_files(db, table):
+    with sqlite3.connect(str(db)) as c:
+        return sorted(os.path.basename(path) for (path,) in c.execute(
+            "SELECT filepath FROM file_checklist WHERE table_name = ? AND status = 'FAILED'", (table,)))
+
+
 def test_a_reread_that_fails_file_after_file_stops_for_its_source(tmp_path):
     data = tmp_path / "data"
     (data / "config").mkdir(parents=True)
@@ -118,6 +125,11 @@ def test_a_reread_that_fails_file_after_file_stops_for_its_source(tmp_path):
         "reread_max_files": 2, "external_sources": [
             {"path": str(shares["share_a"]), "table_name": "ta", "options": {"glob": "*.csv"}},
             {"path": str(shares["share_b"]), "table_name": "tb", "options": {"glob": "*.csv"}}]}), encoding="utf-8")
+    # cut at the epoch - this measures the re-read's stop, not the switch-on cut (23fd41a2c: a source on is cut from
+    # when the watcher first sees it, so files already there would be held for a hand)
+    (data / "config" / "watcher_switched_on.json").write_text(json.dumps(
+        {"%s@%s" % (table, os.path.normcase(os.path.realpath(str(shares[name])))): 0.0
+         for table, name in (("ta", "share_a"), ("tb", "share_b"))}), encoding="utf-8")
     _plugin(data, "ta", GOOD)
     _plugin(data, "tb", GOOD)
     db = tmp_path / "box.db"
@@ -184,6 +196,8 @@ def test_a_reread_that_fails_file_after_file_stops_for_its_source(tmp_path):
         assert _records(db, "ta")[before:] == ["FAILED"] * 3, _records(db, "ta")[before:]
         assert _checklist(db, "ta")["waiting"] == 7, _checklist(db, "ta")
         assert "waiting 7 " in stops()[1] and "unchecked 0 left as they are" in stops()[1], stops()
+        failed_before = _failed_files(db, "ta")
+        assert len(failed_before) == 3, failed_before
 
         # 3 ta's 7 waiting - older than tb's rows, more than one turn's 2 - do not hold tb's
         assert read_all_again(shares["share_b"])["status"] == "success"
@@ -192,15 +206,13 @@ def test_a_reread_that_fails_file_after_file_stops_for_its_source(tmp_path):
         assert _checklist(db, "ta")["waiting"] == 7, "ta's still wait"
 
         # 4 bad files among good ones (owner «근본 불량 파일들도 있네»): the plugin fails f6-f9 - the change lets go,
-        #   the files read first keep it going to the end: every file read, the four bad ones failed
+        #   the files read first keep it going to the end: every waiting file read, the four bad ones failed; the
+        #   three that failed in 2 are not read again by the change (소유자 10-24: Retry only)
         _plugin(data, "ta", SOME_BAD)
 
         def ta_done():
-            with sqlite3.connect(str(db)) as c:
-                states = dict(c.execute("SELECT filepath, status FROM file_checklist WHERE table_name = 'ta'"))
             return (_checklist(db, "ta") == {"waiting": 0, "unchecked": 0}
-                    and sorted(os.path.basename(p) for p, s in states.items() if s == "FAILED")
-                    == ["f6.csv", "f7.csv", "f8.csv", "f9.csv"] and len(states) == 10)
+                    and _failed_files(db, "ta") == sorted(set(failed_before) | {"f6.csv", "f7.csv", "f8.csv", "f9.csv"}))
         assert _until(ta_done, 120, api, watcher), "the re-read did not go to the end: %s %s" % (
             _checklist(db, "ta"), _records(db, "ta")[-12:])
         assert len(stops()) == 2, stops()
