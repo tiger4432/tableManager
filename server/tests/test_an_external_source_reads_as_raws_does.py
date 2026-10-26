@@ -89,6 +89,11 @@ def _settings(data, tables, bindings):
     with open(os.path.join(data, "config", "ingestion_settings.json"), "w", encoding="utf-8") as f:
         json.dump({"external_sources": [{"path": root, "table_name": table, "options": {"glob": glob}}
                                         for table, root, glob in bindings]}, f)
+    # every source cut at the epoch - this measures the reading, not the switch-on cut (owner 10-26: a source on is
+    # cut from when the watcher first sees it, so files already there would be held for a hand)
+    with open(os.path.join(data, "config", "watcher_switched_on.json"), "w", encoding="utf-8") as f:
+        json.dump({"%s@%s" % (table, os.path.normcase(os.path.realpath(root))): 0.0
+                   for table, root, _glob in bindings}, f)
 
 
 def _run(tmp, db, until, seconds=150):
@@ -147,9 +152,7 @@ def test_an_external_source_reads_as_raws_does(tmp_path):
     with sqlite3.connect(str(db)) as c:
         assert _vals(c, "ta") == [("S0", "plugin"), ("S1", "plugin")]
 
-    # run 2: the restart with the new tables - over files already there, so the switch-on times start again (a source
-    # newly declared reads only what comes after it - owner 10-26 - and this measures the reading, not the cut)
-    os.remove(str(data / "config" / "watcher_switched_on.json"))
+    # run 2: the restart with the new tables - `_settings` cuts every source at the epoch again
     tables ={name: TABLE for name in ("ta", "tb", "td", "te", "tf", "tg", "th")}
     tables["tc"] = dict(TABLE, std_parse=False)
     _plugin(str(data), "td", DECLINING)

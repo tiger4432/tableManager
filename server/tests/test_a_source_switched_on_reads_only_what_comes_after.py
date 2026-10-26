@@ -57,12 +57,14 @@ def test_only_files_after_the_switch_on_are_read_by_themselves(tmp_path, monkeyp
     monkeypatch.setattr(IngestionHandler, "_handle_event", lambda self, path: read.add(os.path.abspath(path)))
     state = reread.load_reading_stamps
 
-    # the first start that keeps the times: the source already on is kept with no cut, its old files are read
+    # the first start: a source already on is cut from now too (owner 10-26 «기존 저장소고 뭐고 즉시 적용되게»),
+    # its old files are left to a hand
     watcher = WorkspaceWatcher(str(workspace))
     watcher.discover_and_watch()
     on_id, off_id = (f"void_obs@{os.path.normcase(os.path.realpath(r))}" for r in (on, off))
-    assert state(reread.SWITCHED_ON_FILENAME) == {on_id: None}
-    assert watcher.sweep_external_sources() == 2 and read == set(old_on)
+    on_cut = state(reread.SWITCHED_ON_FILENAME)[on_id]
+    assert on_cut is not None and abs(on_cut - time.time()) < 60
+    assert watcher.sweep_external_sources() == 0 and not read & set(old_on)
 
     # switched on: stamped and said; its old files are left to a hand, counted on the sweep's line
     sources[1]["enabled"] = True
@@ -88,10 +90,10 @@ def test_only_files_after_the_switch_on_are_read_by_themselves(tmp_path, monkeyp
     again = WorkspaceWatcher(str(workspace))
     again.discover_and_watch()
     again._ensure_observer_running = lambda: None
-    assert state(reread.SWITCHED_ON_FILENAME) == {on_id: None, off_id: cut}
+    assert state(reread.SWITCHED_ON_FILENAME) == {on_id: on_cut, off_id: cut}
     assert again.sweep_external_sources() == 1 and not read & set(old_off)       # the event's new file, not the old
 
     # switched off: its time is let go, so the next switch-on stamps anew
     sources[1]["enabled"] = False
     again.refresh_external_sources()
-    assert state(reread.SWITCHED_ON_FILENAME) == {on_id: None}
+    assert state(reread.SWITCHED_ON_FILENAME) == {on_id: on_cut}

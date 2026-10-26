@@ -1426,10 +1426,17 @@ def validate_external_source_specs(settings: dict, table_config: dict,
     return accepted, errors
 
 
+def _iso(at) -> str:
+    """A time as the terminal says it - the product's wall clock, seconds (a datetime or epoch seconds)."""
+    if isinstance(at, (int, float)):
+        at = datetime.fromtimestamp(at, timezone.utc)
+    return at.astimezone().isoformat("T", "seconds") if isinstance(at, datetime) else str(at)
+
+
 def stamp_switched_on(specs):
     """Each on spec's `switched_on_at` from the kept times: one not kept is switched on now - stamped and said; an off
-    one is let go, so its next switch-on stamps anew; one not in `specs` (removed or refused) keeps its time. No file
-    yet: every source on is kept with None. The automatic reads take only files modified at/after it
+    one is let go, so its next switch-on stamps anew; one not in `specs` (removed or refused) keeps its time. A source on
+    with no time (none kept, or a kept None) is stamped now. The automatic reads take only files modified at/after it
     (`already_checked`); Read now · Retry · Read all again read the older ones."""
     from ingestion import reread
 
@@ -1439,16 +1446,23 @@ def stamp_switched_on(specs):
     for spec in specs:
         source_id = spec["source_id"]
         if spec.get("off"):
-            now.pop(source_id, None)
+            if now.pop(source_id, "absent") != "absent":
+                logger.warning(f"External source switched off: {spec['root']} -> {spec['table_name']} - its next "
+                               f"switch-on sets a new cut")
             continue
-        if source_id not in now:
-            now[source_id] = None if kept is None else time.time()
+        if now.get(source_id) is None:
+            # every on source is cut from when this first sees it - sources already on too, no restart or switch
+            # needed (owner 10-26 «기존 저장소고 뭐고 즉시 적용되게 했어야지»; a kept None was «on before the cut»)
+            now[source_id] = time.time()
             if now[source_id] is not None:
                 logger.warning(f"External source switched on: {spec['root']} -> {spec['table_name']} - files "
                                f"modified from {datetime.fromtimestamp(now[source_id]).astimezone().isoformat('T', 'seconds')}"
                                f" on are read; older ones by hand only (Read now · Read all again)")
         if now[source_id] is not None:
             spec["switched_on_at"] = now[source_id]
+        # every on source said with its cut at each start and settings save (owner 10-26 «저장소 활성화 시간 로그»)
+        logger.warning(f"[switch-on] {spec['root']} -> {spec['table_name']}: cut "
+                       f"{_iso(now[source_id])}")
     if now != kept:
         try:
             reread.keep_reading_stamps(now, reread.SWITCHED_ON_FILENAME)
@@ -3181,13 +3195,27 @@ class IngestionHandler(FileSystemEventHandler):
         """Of `[(abs_path, file_stat), ...]`, the paths whose external source was switched on after their mtime."""
         cuts = {spec["source_id"]: datetime.fromtimestamp(spec["switched_on_at"], timezone.utc)
                 for spec in self._external_sources.values() if spec.get("switched_on_at") is not None}
-        if not cuts:
-            return set()
-        before = set()
+        before, said = set(), {}
         for path, stat in entries:
             taken = source_taking(self._external_sources.values(), path)
-            if taken is not None and taken[0]["source_id"] in cuts and stat[0] < cuts[taken[0]["source_id"]]:
+            if taken is None:
+                continue
+            source_id = taken[0]["source_id"]
+            cut = cuts.get(source_id)
+            old = cut is not None and stat[0] < cut
+            if old:
                 before.add(path)
+            # every unread file of a source said with its mtime and the cut it met (owner 10-26 «여전히 옛날 거
+            # 읽어 · 저장소 활성화 시간, 인식한 파일 수정 시간 다 로그 띄워»): each one read by itself a line; the ones
+            # held back counted, the first three named
+            if old:
+                said.setdefault(source_id, [cut, []])[1].append((path, stat[0]))
+            else:
+                logger.info(f"[switch-on] {path}: modified {_iso(stat[0])} - source cut "
+                            f"{_iso(cut) if cut else 'none (on before the cut existed)'} -> read by itself")
+        for source_id, (cut, held) in said.items():
+            logger.info(f"[switch-on] {source_id}: {len(held)} file(s) modified before its cut {_iso(cut)} held for a "
+                        f"hand - e.g. " + ", ".join(f"{p} ({_iso(m)})" for p, m in held[:3]))
         return before
 
     def _settle_terminal_hits(self, statuses: dict):
