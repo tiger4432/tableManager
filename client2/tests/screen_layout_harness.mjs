@@ -325,7 +325,8 @@ const fileSourcesAnswer = () => {
     { source: '\\\\nas-fab-07\\equipment_exports\\bonding\\line_03\\recipe_archive_2026\\void_inspection', total: 12000, read: 3400, left: 8600,
     left_by_status: { PENDING_RETRY: 40, FAILED: 3 }, sweep: { state: 'rested', age_seconds: 38, seconds: 2.4, looked: 12000, already_read: 11997,
       dispatched: 3, why: { new: 2, changed: 1 }, before_switch_on: 1500 } }],
-  bonding_map: [{ source: 'raws', total: 3216, read: 3216, left: 0 }] };
+  // a storage switched off and never read (B b5ee3f42a: /tables lists every declared storage, with off)
+  bonding_map: [{ source: 'raws', total: 3216, read: 3216, left: 0 }, { source: 'X:/nas-fab-07/bonding_map_retired', total: 0, read: 0, left: 0, off: true }] };
   return { ...a, body: { ...b, data: b.data.map((t) => ({ ...t, sources: sources[t.table_name] || [] })),
     progress: { counting: false, failed: null, count_seconds: 0.4, counted_at: new Date(Date.now() - 12000).toISOString() } } };
 };
@@ -821,12 +822,13 @@ CELLS.push({ entry: 'admin.html', after: 'Chain queue, a cut run', rule: 'conten
 CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule: 'read progress', at: 'fi-progress', expr: `(() => {
   const rows = [...document.querySelectorAll('#fi-progress tr[data-table]')];
   const files = (tr) => (tr.cells[2] || {}).textContent || '';
-  if (rows.length !== 3) return rows.length + ' rows';
+  if (rows.length !== 4) return rows.length + ' rows';
   if (files(rows[0]) !== '4,483 / 4,488 read · 5 left') return 'the first row says «' + files(rows[0]) + '»';
   if (!rows[2].classList.contains('fi-dim') || rows[0].classList.contains('fi-dim')) return 'the done source not dimmed alone';
   const buttons = [...document.querySelectorAll('#fi-progress button')].filter((b) => b.textContent === 'Cancel waiting re-reads');
   if (buttons.length !== 1 || !rows[1].contains(buttons[0])) return buttons.length + ' Cancel buttons, not one on the external source';
-  if (document.querySelectorAll('#fi-progress button[aria-expanded]').length !== 3) return 'not a Pick files on every source';
+  if (document.querySelectorAll('#fi-progress button[aria-expanded]').length !== 4) return 'not a Pick files on every source';
+  if (((rows[3].cells[3] || {}).textContent || '') !== 'off') return 'the switched-off source says «' + (rows[3].cells[3] || {}).textContent + '»';
   if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\) · 1,500 before switch on$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
   const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
   return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
@@ -1950,7 +1952,7 @@ const DRIVE = {
   'file_ingestion.html': [
     ['Read progress counted', async (c) => {
       FILE_SOURCES.on = true;
-      await until(c, "document.querySelectorAll('#fi-progress tr[data-table]').length === 3", 15000);
+      await until(c, "document.querySelectorAll('#fi-progress tr[data-table]').length === 4", 15000);
     }],
     // Pick files under the external source, a pattern listed (owner 10-26)
     ['Pick files listed', async (c) => {

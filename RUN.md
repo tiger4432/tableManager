@@ -3,13 +3,15 @@
 > ## [10-26] **파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files (+ Paste HTML · 잘리지 않는 거절 문장 · N before switch on)** — git pull · 화면 새로 고침
 >
 > ```
-> 돌릴 것   git pull -> 브라우저 새로 고침 (서버는 861bc45ab 이후면 재기동 필요 없음, 클라 파일만)
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버는 b5ee3f42a 이후면 재기동 필요 없음, 클라 파일만)
 >          File Ingestion 탭 -> READ PROGRESS 저장소 줄의 Pick files -> Pattern 에 old/*.csv -> List
 > 뜻      줄마다 Read before · After 가 나옴 -> 화면이 새 번들
 >          Pick files 가 없음 -> 옛 번들. 강력 새로 고침
 >          체크 -> Read these (N) -> After 가 Pending retry 에서 Success  = 와처가 읽음 (watcher.log 에 그 파일 읽기 줄)
 >          After 가 Pending retry 에 머묾 -> 와처 프로세스 · Retry 줄 (한 바퀴 reread_max_files 개, 기본 25)
 >          «409 …» 토스트 -> 와처 프로세스가 없음 (DECOUPLED 런처로 띄웠는지)
+>          줄이 «Lost track · no Read these … it restarted since» -> 서버 재기동. 넘긴 파일은 그대로 읽힘, 진행 표로 봄
+>          꺼진 저장소 줄의 Last sweep 이 «off» -> 그 저장소도 Pick files 로 골라 읽힘
 > 같이     체인 규칙 창 HTML 칸의 Paste HTML · 메인 그리드 거절 문장이 토스트로 다 보임 · Last sweep 의 «N before switch on»
 > 되돌리기  (Pick files 만) git revert $(git log --format=%h -i --grep='pick files by pattern' origin/main) -> 화면 새로 고침
 > ```

@@ -23,7 +23,7 @@ export const WORDS = Object.freeze({
   readAll: 'Read all again', readAllAsk: (n, where) => `Read ${count(n)} file${n === 1 ? '' : 's'} of ${where} again?`,
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
   progress: 'Read progress', noSources: 'No source counted yet', cancelReread: 'Cancel waiting re-reads',
-  pickFiles: 'Pick files', pattern: 'Pattern', list: 'List', listing: 'Listing', prev: 'Prev', next: 'Next', reading: 'Reading', readDone: 'Read',
+  pickFiles: 'Pick files', pattern: 'Pattern', list: 'List', listing: 'Listing', prev: 'Prev', next: 'Next', reading: 'Reading', readDone: 'Read', handingWord: 'Handing', lostWord: 'Lost track', sourceOff: 'off',
   pickHeads: ['Path', 'Modified', 'Read before', 'After'], tickAll: 'Tick every listed file', tickOne: (name) => `Tick ${name}`,
   listedAgo: (s) => `listed ${count(Math.round(s))} s ago`, pageOf: (i, n) => `page ${count(i)} of ${count(n)}`,
   readThese: (n) => `Read these (${count(n)})`, noneTicked: (n) => `nothing ticked = all ${count(n)} matched`,
@@ -169,7 +169,7 @@ export function tableLines(tables, active = []) {
 export function sourceLines(tables) {
   return (tables || []).flatMap((t) => (t.sources || []).map((s) => {
     const waiting = numberOr((s.left_by_status || {}).PENDING_RETRY) || 0;
-    return { table: t.table_name, source: s.source, read: numberOr(s.read), total: numberOr(s.total), left: numberOr(s.left),
+    return { table: t.table_name, source: s.source, off: Boolean(s.off), read: numberOr(s.read), total: numberOr(s.total), left: numberOr(s.left),
       done: !numberOr(s.left), sweep: s.sweep || null, stopped: s.stopped || null, waiting,
       // its waiting re-reads put back, under its root - an external source's (a sweep of its own) with some waiting
       cancel: s.sweep && waiting > 0 ? s.source : null };
@@ -199,7 +199,7 @@ export const PROGRESS_COLUMNS = Object.freeze([
   { head: 'Files', cls: 'fi-num cell-fit', cell: (s) => `${count(s.read)} / ${count(s.total)} read · ${count(s.left)} left`,
     title: 'files a sweep has not reached yet are not in the total' },
   // a re-read the watcher stopped (B 10-24) says so here, with what still waits - else the sweep
-  { head: 'Last sweep', cls: 'fi-meta', cell: (s) => (s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep)) },
+  { head: 'Last sweep', cls: 'fi-meta', cell: (s) => (s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : s.off ? WORDS.sourceOff : sweepText(s.sweep)) },
 ]);
 
 // -- Pick files by pattern (owner 10-26 «읽은 거 무관하게 glob 리스트»; B's /glob · /read-now?pattern · /read-now/left) --
@@ -238,10 +238,6 @@ export function readCount(answer, ticked) {
   return matched === null ? ((answer && answer.files) || []).length : matched;
 }
 
-/** The handed files' states are read on the page's beat; past this many ids, once in this long (lead 10-26 ㄱ, until
- *  read-now/left counts by one hand-off id). */
-export const LEFT_MANY = 5000;
-export const LEFT_MANY_EVERY_MS = 30000;
 
 /** A listed file's state when it was listed (owner 10-26 «이미 읽은 거 여부»): read - «read · <when>»; else the state's word.
  *  -> {status, words} - the status for the pill's tone. */
@@ -261,7 +257,10 @@ export function readAfter(file, handed, now) {
 
 /** The handed files' states (B's /read-now/left): «1,500 handed · 1,212 left · 284 read · 4 failed». */
 export function leftText(c) {
-  return `${count(c.handed)} handed · ${count(c.left)} left · ${count(c.read)} read · ${count(c.failed)} failed`;
+  // a Read these job (B b5ee3f42a): of how many it matched (none until walked), and why its handing stopped
+  const matched = numberOr(c.matched);
+  return `${count(c.handed)}${matched === null ? '' : ` of ${count(matched)}`} handed · ${count(c.left)} left · ${count(c.read)} read · ${count(c.failed)} failed`
+    + (c.not_handed ? ` · not handed: ${c.not_handed}` : '');
 }
 
 /** The ask before waiting re-reads are put back (A's preview: count · by_state): the server's line, the states they go

@@ -264,8 +264,11 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
     JSON.stringify(srcLines.map((l) => l.cancel)));
   const [stopped] = M.sourceLines([{ table_name: 'inspection_run', sources: [{ source: 'raws', total: 9, read: 0, left: 9,
     left_by_status: { PENDING_RETRY: 7 }, stopped: 'Stopped: 3 failed in a row - KeyError: lot' }] }]);
-  ok('M11 a re-read the watcher stopped says it in the line, with the files still waiting (B 10-24)',
+  const [off] = M.sourceLines([{ table_name: 'inspection_run', sources: [{ source: 'X:/nas/old', total: 0, read: 0, left: 0, off: true }] }]);
+  ok('M11 a re-read the watcher stopped says it in the line, with the files still waiting (B 10-24); a source switched off says '
+    + '«off» there (B b5ee3f42a: /tables lists it)',
     M.PROGRESS_COLUMNS[3].cell(stopped) === 'Stopped: 3 failed in a row - KeyError: lot · waiting 7'
+      && off.off === true && M.PROGRESS_COLUMNS[3].cell(off) === 'off' && srcLines[2].off === false
       && M.PROGRESS_COLUMNS[3].cell(srcLines[2]) === M.sweepText(SWEEP), M.PROGRESS_COLUMNS[3].cell(stopped));
   const pHost = doc.createElement('div');
   doc.body.append(pHost);
@@ -342,7 +345,9 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
       && M.readCount(LISTED, new Set()) === 12431 && M.readCount(LISTED, new Set([FILES250[0].path])) === 1
       && M.readCount({ files: FILES250 }, new Set()) === 250
       && JSON.stringify(M.pickBody(LISTED, new Set([FILES250[9].path, FILES250[2].path]))) === JSON.stringify({ paths: [FILES250[2].path, FILES250[9].path] })
-      && M.leftText({ handed: 1500, left: 1212, read: 284, failed: 4 }) === '1,500 handed · 1,212 left · 284 read · 4 failed',
+      && M.leftText({ handed: 1500, left: 1212, read: 284, failed: 4 }) === '1,500 handed · 1,212 left · 284 read · 4 failed'
+      && M.leftText({ handed: 2, left: 0, read: 2, failed: 0, matched: 5, not_handed: 'the folder is gone' })
+        === '2 of 5 handed · 0 left · 2 read · 0 failed · not handed: the folder is gone',
     JSON.stringify([pg3, M.pickMeta(LISTED, 3)]).slice(0, 200));
 
   const kHost = doc.createElement('div');
@@ -379,8 +384,8 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   let leftAnswer = { handed: 1, left: 1, read: 0, failed: 0 };
   const sp = new Q.PickFilesPart(sMount, { doc,
     onList: async (line, pattern) => { listCalls.push([line.table, pattern]); if (refuseList) throw new Error(refuseList); return LISTED; },
-    onRead: async (line, pattern, body, n) => { readCalls.push([pattern, body, n]); return { ids: [41, 42], handed: n }; },
-    onLeft: async (ids) => { leftCalls.push(ids.join(',')); return leftAnswer; } });
+    onRead: async (line, pattern, body, n) => { readCalls.push([pattern, body, n]); return { job: 'j1', message: 'the files are being handed to the watcher' }; },
+    onLeft: async (job, paths) => { leftCalls.push([job, paths.length]); return leftAnswer; } });
   sp.open(srcLines[2]);
   const patternBox = () => walk(sMount).find((n) => n.tagName === 'INPUT' && String(n.className).includes('fi-input'));
   const submit = async (text) => {
@@ -428,7 +433,7 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   ok('P12 Read these hands the ticked paths and their count; the handed ids\' states read on the beat - «Reading» while some are '
     + 'left, Read these off; none left - «Read», Read these back; After: a handed file Pending, then its state and why, in its '
     + 'own line; a file not handed «—»',
-    JSON.stringify(readCalls) === JSON.stringify([['2026-09/*.csv', { paths: [FILES250[105].path] }, 1]]) && leftCalls[0] === '41,42'
+    JSON.stringify(readCalls) === JSON.stringify([['2026-09/*.csv', { paths: [FILES250[105].path] }, 1]]) && JSON.stringify(leftCalls[0]) === JSON.stringify(['j1', 1])
       && JSON.stringify(whileReading) === JSON.stringify(['Reading1 handed · 1 left · 0 read · 0 failed', true, 'Pending', ABSENT])
       && JSON.stringify(afterReading) === JSON.stringify(['Read1 handed · 0 left · 0 read · 1 failed', false, 'FailedKeyError: lot', ABSENT]),
     JSON.stringify([readCalls, leftCalls, whileReading, afterReading]));
@@ -467,39 +472,68 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
     listedWhileLeft === 'Reading1 handed · 1 left · 0 read · 0 failed' && listedWhenDone === undefined,
     JSON.stringify([listedWhileLeft, listedWhenDone]));
 
-  // B 861bc45ab: none ticked hands every match, and slowly (10,000 in 22 s) - said while handing; many ids not asked every beat
+  // B b5ee3f42a: Read these answers at once with its job and hands after; the beat asks the job with the shown page's handed
+  // paths only (never every id), and a job the server lost (restarted) is said once and not asked again
   const hMount = doc.createElement('div');
   doc.body.append(hMount);
-  let release = null;
   const hRead = [];
   const hLeft = [];
+  const lostSaid = 'no Read these j2 in this server - it restarted since; the files handed before stay handed';
+  const hAnswers = [
+    { handing: true, matched: null, handed: 3000, left: 3000, read: 0, failed: 0, not_handed: null, files: [] },
+    { handing: false, matched: 12431, handed: 12431, left: 12000, read: 431, failed: 0, not_handed: null,
+      files: [{ id: 1, path: FILES250[0].path, status: 'SUCCESS', read_at: '2026-10-26T05:00:00Z', error: null }] },
+    { handing: false, matched: 12431, handed: 12431, left: 0, read: 12431, failed: 0, not_handed: null, files: [] },
+    { handing: false, matched: 12431, handed: 12431, left: 0, read: 12431, failed: 0, not_handed: null, files: [] },
+  ];
   const hp = new Q.PickFilesPart(hMount, { doc,
     onList: async () => LISTED,
-    onRead: async (line, pattern, body, n, started) => {
-      hRead.push([body, n]);
-      started();
-      await new Promise((r) => { release = r; });
-      return { ids: Array.from({ length: 6000 }, (_, i) => i), handed: n };
-    },
-    onLeft: async (ids) => { hLeft.push(ids.length); return { handed: 12431, left: 12000, read: 431, failed: 0 }; } });
+    onRead: async (line, pattern, body, n) => { hRead.push([body, n]); return { job: 'j2', message: 'the files are being handed to the watcher' }; },
+    onLeft: async (job, paths) => {
+      hLeft.push([job, paths.length]);
+      const next = hAnswers.shift();
+      if (next) return next;
+      const lost = new Error(lostSaid);
+      lost.status = 404;
+      throw lost;
+    } });
   hp.open(srcLines[2]);
   walk(hMount).find((n) => n.tagName === 'INPUT' && String(n.className).includes('fi-input')).value = '2026-09/*.csv';
   walk(hMount).find((n) => n.tagName === 'FORM').dispatch('submit', { preventDefault() {} });
   await new Promise((r) => setTimeout(r, 0));
   const hGo = () => byClass(hMount, 'fi-btn--primary')[0] || { textContent: '', disabled: null, dispatch() {} };
+  const hLine = () => (byClass(hMount, 'fi-pick__reading')[0] || {}).textContent;
+  const hNext = () => (walk(hMount).find((n) => n.tagName === 'BUTTON' && n.textContent === M.WORDS.next) || { dispatch() {} }).dispatch('click');
+  const hAfter0 = () => { const tr = walk(hMount).filter((n) => n.tagName === 'TR' && n.className === 'fi-file')[0];
+    return tr ? walk(tr).filter((n) => n.tagName === 'TD').map((n) => n.textContent)[4] : null; };
   hGo().dispatch('click');
   await new Promise((r) => setTimeout(r, 0));
-  const whileHanding = [Boolean(hGo().disabled), texts(hMount, 'fi-meta').includes(M.WORDS.handing(12431))];
-  if (release) release();
   await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 0));
-  const afterHanded = texts(hMount, 'fi-meta').includes(M.WORDS.handing(12431));
+  const handing = [Boolean(hGo().disabled), texts(hMount, 'fi-meta').includes(M.WORDS.handing(12431)), hLine()];
+  const callsBefore = hLeft.length;
+  await Promise.all([hp.tick(), hp.tick()]);
+  const oneAsk = hLeft.length - callsBefore;
+  const reading = [Boolean(hGo().disabled), hLine(), hAfter0()];
   await hp.tick();
-  ok('P16 none ticked: Read these asks for every match, no body - while handing, Read these off and «Handing N files to the '
-    + 'watcher»; past 5,000 handed ids their states are read once in 30 s, not on every beat',
-    JSON.stringify(hRead) === JSON.stringify([[null, 12431]]) && JSON.stringify(whileHanding) === JSON.stringify([true, true])
-      && afterHanded === false && JSON.stringify(hLeft) === JSON.stringify([6000]),
-    JSON.stringify([hRead, whileHanding, afterHanded, hLeft]));
+  const done = [Boolean(hGo().disabled), hLine()];
+  await hp.tick();
+  const quietCalls = hLeft.length;
+  hNext();
+  await hp.tick();
+  hNext();
+  await hp.tick();
+  const lost = hLine();
+  await hp.tick();
+  ok('P16 none ticked: Read these asks for every match, no body, and gets a job; while handing Read these is off and «Handing N '
+    + 'files to the watcher»; the line says of how many matched; two beats at once ask once; each beat asks the job with the shown page\'s handed paths only; '
+    + 'done - asked again only for a page not asked yet; a lost job\'s sentence said, not asked again',
+    JSON.stringify(hRead) === JSON.stringify([[null, 12431]])
+      && JSON.stringify(handing) === JSON.stringify([true, true, 'Handing3,000 handed · 3,000 left · 0 read · 0 failed'])
+      && JSON.stringify(reading) === JSON.stringify([true, 'Reading12,431 of 12,431 handed · 12,000 left · 431 read · 0 failed', 'Success'])
+      && JSON.stringify(done) === JSON.stringify([false, 'Read12,431 of 12,431 handed · 0 left · 12,431 read · 0 failed'])
+      && oneAsk === 1 && quietCalls === 3 && lost === M.WORDS.lostWord + lostSaid
+      && JSON.stringify(hLeft) === JSON.stringify([['j2', 100], ['j2', 100], ['j2', 100], ['j2', 100], ['j2', 50]]),
+    JSON.stringify([hRead, handing, oneAsk, reading, done, quietCalls, lost, hLeft]));
 
   const typedBox = patternBox();
   typedBox.value = 'half typed';
@@ -556,27 +590,33 @@ const MUTANTS = [
   { name: 'Read these sends every path when none is ticked', catches: ['M13'], file: 'model', mutate: swap('return ticked.size ? { paths:', 'return listed.length ? { paths:') },
   { name: 'a beat rebuilds the progress rows under the panel', catches: ['P10'], file: 'parts', mutate: swap('if (this.drawn && this.drawn.keys === keys) { this.update(lines, counted); return; }', '') },
   { name: 'the panel at the table\'s end, not under its source', catches: ['P10'], file: 'parts', mutate: swap('        body.append(under);\n', '        table.append(under);\n') },
-  { name: 'the handed states never read again', catches: ['P12'], file: 'parts', mutate: swap('const got = await this.deps.onLeft(this.reading.ids);', 'const got = this.reading.counts;') },
+  { name: 'the handed states never read again', catches: ['P12', 'P16'], file: 'parts', mutate: swap('const got = await this.deps.onLeft(r.job, shown);', 'const got = r.counts;') },
+  { name: 'every handed path asked, not the shown page', catches: ['P16'], file: 'parts', mutate: swap('const got = await this.deps.onLeft(r.job, shown);', 'const got = await this.deps.onLeft(r.job, [...r.handed]);') },
+  { name: 'the handing flag ignored', catches: ['P16'], file: 'parts', mutate: swap('r.handing = Boolean(got.handing);', 'r.handing = false;') },
+  { name: 'two asks at once', catches: ['P16'], file: 'parts', mutate: swap('      if (this.asking) return;\n', '') },
+  { name: 'a lost job asked again', catches: ['P16'], file: 'parts', mutate: swap('if (e.status === 404) r.lost = e.message;', '') },
+  { name: 'a page not asked after the end', catches: ['P16'], file: 'parts', mutate: swap('(this.going() || shown.some((p) => !r.now.has(p)))', 'this.going()') },
+  { name: 'handing not said', catches: ['P16'], file: 'parts', mutate: swap('r.handing ? WORDS.handing(r.counts.matched ?? r.n) : WORDS.readingWait', 'r.handing ? WORDS.readingWait(r.counts.left) : WORDS.readingWait') },
+  { name: 'the line drops how many matched', catches: ['M13', 'P16'], file: 'model', mutate: swap("${matched === null ? '' : ` of ${count(matched)}`}", '') },
+  { name: 'the line drops why handing stopped', catches: ['M13'], file: 'model', mutate: swap("+ (c.not_handed ? ` · not handed: ${c.not_handed}` : '')", "+ ''") },
+  { name: 'an off source drawn as its sweep', catches: ['M11'], file: 'model', mutate: swap(': s.off ? WORDS.sourceOff : sweepText(s.sweep)', ': sweepText(s.sweep)') },
   { name: 'After says Pending whatever the answer', catches: ['M14', 'P12'], file: 'model', mutate: swap("const status = got ? String(got.status || '') : 'PENDING';", "const status = 'PENDING';") },
   { name: 'After drops why it failed', catches: ['M14', 'P12'], file: 'model', mutate: swap("why: got && got.error ? String(got.error) : ''", "why: ''") },
   { name: 'Read before says Success without when', catches: ['M14'], file: 'model', mutate: swap('words: `read · ${localShort(file.read_at)}`', 'words: statusWord(status)') },
   { name: 'After on a file not handed', catches: ['M14', 'P12'], file: 'model', mutate: swap('if (!handed || !handed.has(file.path)) return null;', 'if (!handed) return null;') },
-  { name: 'Read these on while some are left', catches: ['P12'], file: 'parts', mutate: swap('    else if (left > 0) setDisabledReason(go, WORDS.readingWait(left));\n', '') },
+  { name: 'Read these on while some are left', catches: ['P12', 'P16'], file: 'parts', mutate: swap('    else if (wait) setDisabledReason(go, wait);\n', '') },
   { name: 'a beat redraws the pattern box', catches: ['P13'], file: 'parts', mutate: swap('    this.sayAge();\n  }\n\n  sayAge() {', '    this.open(this.line);\n  }\n\n  sayAge() {') },
   { name: 'a beat rebuilds the row buttons', catches: ['P10'], file: 'parts', mutate: swap('if (row.cancel !== line.cancel) { row.act', 'if (true) { row.act') },
-  { name: 'a List keeps a read that came to its end', catches: ['P15'], file: 'parts', mutate: swap('ticked: new Set(), reading: going });', 'ticked: new Set() });') },
-  { name: 'a List drops a read with files left', catches: ['P15'], file: 'parts', mutate: swap('ticked: new Set(), reading: going });', 'ticked: new Set(), reading: null });') },
+  { name: 'a List keeps a read that came to its end', catches: ['P15'], file: 'parts', mutate: swap('reading: this.going() ? this.reading : null });', 'reading: this.reading });') },
+  { name: 'a List drops a read with files left', catches: ['P15'], file: 'parts', mutate: swap('reading: this.going() ? this.reading : null });', 'reading: null });') },
   { name: 'Read these counts the list, not every match', catches: ['M13', 'P11', 'P16'], file: 'model', mutate: swap('return matched === null ? ((answer && answer.files) || []).length : matched;', 'return ((answer && answer.files) || []).length;') },
   { name: 'all ticked sends no body', catches: ['M13'], file: 'model', mutate: swap('return ticked.size ? { paths:', 'return ticked.size && ticked.size < listed.length ? { paths:') },
-  { name: 'Read these on while handing', catches: ['P16'], file: 'parts', mutate: swap('    else if (this.handing) setDisabledReason(go, WORDS.handing(this.handing));\n', '') },
-  { name: 'handing not said', catches: ['P16'], file: 'parts', mutate: swap('this.handing ? WORDS.handing(this.handing) : left > 0', 'left > 0') },
-  { name: 'many ids asked on every beat', catches: ['P16'], file: 'parts', mutate: swap('      if (r.ids.length > LEFT_MANY && Date.now() - r.askedAt < LEFT_MANY_EVERY_MS) { this.sayAge(); return; }\n', '') },
   { name: 'a quiet beat redraws the list', catches: ['P14'], file: 'parts', mutate: swap('    this.sayAge();\n  }\n\n  sayAge() {', '    this.drawBody();\n  }\n\n  sayAge() {') },
   { name: 'a redraw scrolls the list to its top', catches: ['P14'], file: 'parts', mutate: swap('    if (now) now.scrollTop = top;\n', '') },
   { name: 'a redraw drops the focus', catches: ['P14'], file: 'parts', mutate: swap('    if (back) back.focus();\n', '') },
   { name: 'a row tick does not name its file', catches: ['P14'], file: 'parts', mutate: swap('WORDS.tickOne(f.rel || f.path)', "WORDS.tickOne('this file')") },
   { name: 'a refused pattern not said', catches: ['P13'], file: 'parts', mutate: swap("    if (this.refused) {\n      const why = el('div', 'fi-why');", "    if (false) {\n      const why = el('div', 'fi-why');") },
-  { name: 'a stopped re-read not said', catches: ['M11'], file: 'model', mutate: swap('(s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep))', 'sweepText(s.sweep)') },
+  { name: 'a stopped re-read not said', catches: ['M11'], file: 'model', mutate: swap('(s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : s.off ?', '(s.off ?') },
   { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
   { name: 'the ask hides the other tables', catches: ['M10'], file: 'model', mutate: swap(", 'Other tables reading this folder have their waiting files put back too']", ']') },
   { name: 'Cancel hands nothing', catches: ['P9'], file: 'parts', mutate: swap('this.deps.onCancel(line.cancel)', 'this.deps.onCancel(null)') },

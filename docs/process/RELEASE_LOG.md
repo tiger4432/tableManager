@@ -623,12 +623,13 @@
 ## 2026-10-26 · 파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files, 읽기 전 상태와 넘긴 뒤 결과
 
 - **무엇** — 소유자 10-26. 「저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에」의 화면입니다. READ PROGRESS 의 저장소 줄마다 «Pick files» 가 있고, 누르면 그 줄 바로 밑에 칸이 열립니다(한 번에 하나, 다시 누르면 닫힘).
-- **쓰는 법** — Pattern 에 저장소 루트에서의 경로 glob(`*` · `?` · `**`)을 적고 List(또는 Enter). 한 쪽 100 줄(Prev · Next), 위에 «first 5,000 of 12,431» 처럼 전체 수. 체크한 것만 «Read these (N)» 로 와처에 넘깁니다(머리 체크 = 목록 전부). 아무것도 체크 안 했으면 패턴에 맞는 전부 — 목록의 5,000 밖까지(«Read these (12,431)», 서버 861bc45ab). 넘기기 전에 확인 창, 넘기는 동안 «Handing N files…»(이 박스에서 1만 개 22 s · 10만 개 168 s, B 잼).
+- **쓰는 법** — Pattern 에 저장소 루트에서의 경로 glob(`*` · `?` · `**`)을 적고 List(또는 Enter). 한 쪽 100 줄(Prev · Next), 위에 «first 5,000 of 12,431» 처럼 전체 수. 체크한 것만 «Read these (N)» 로 와처에 넘깁니다(머리 체크 = 목록 전부). 아무것도 체크 안 했으면 패턴에 맞는 전부 — 목록의 5,000 밖까지(«Read these (12,431)»). 넘기기 전에 확인 창. 서버는 바로 답하고 뒤에서 넘깁니다(b5ee3f42a). 그동안 Read these 는 꺼지고 줄은 «Handing 3,000 of 6,000 handed · …».
 - **Read before** — 목록을 받은 때의 상태. 읽었으면 «read · <시각>», 아니면 Before switch on · Not read · Failed 같은 서버 상태.
-- **After** — 넘긴 파일만. 화면 박동마다 제자리에서 Pending retry → Success / Failed(실패면 사유 한 줄). 넘기지 않은 줄은 «—». 밑 줄 «Reading 3 handed · 1 left · 2 read · 0 failed», 다 끝나면 «Read». 남은 동안 Read these 는 꺼짐. 끝난 뒤 새로 List 하면 그 줄은 사라집니다. 넘긴 파일이 5,000 개를 넘으면 이 상태는 30 초에 한 번 읽습니다.
+- **After** — 넘긴 파일만. 화면 박동마다 제자리에서 Pending retry → Success / Failed(실패면 사유 한 줄). 넘기지 않은 줄은 «—». 밑 줄 «Reading 3 handed · 1 left · 2 read · 0 failed», 다 끝나면 «Read». 남은 동안 Read these 는 꺼짐. 끝난 뒤 새로 List 하면 그 줄은 사라집니다. 박동마다 그 넘김 전체의 수와, 보이는 쪽의 넘긴 행(최대 100)의 상태를 묻습니다. 서버가 재기동돼 그 넘김을 모르면 «Lost track» 과 서버 문장.
 - **거절** — 빈 패턴 · `..` · 절대 경로는 서버 문장이 칸 밑에. 와처 프로세스가 없으면 409 문장이 토스트로.
-- **잰 것(이 박스, sqlite, 실제 와처 + API 가 이 빌드를 서빙)** — 낡은 5 · 새 2 에서 `old/*.csv` 의 x1~x3 체크 → Read these → 셋 Success(표에 행 셋). 이미 읽은 `new/n1.csv` 다시 → Success(읽기 기록 둘). 켜기 전 6,000 개 `big/*.csv`: 답 + 100 줄 그리기 334~444 ms(세 번). 박동 · 체크 뒤에도 목록 스크롤과 포커스가 그대로. 861bc45ab 위에서 체크 없이 `big/*.csv` → «Read these (6,000)» → 넘기는 14.5 s 동안 «Handing 6,000 files to the watcher», 넘긴 뒤 상태는 30 초마다.
-- **필요한 조건** — 서버 861bc45ab 이후 · git pull · 화면 새로 고침.
+- **꺼진 저장소** — 선언된 저장소는 꺼져 있어도 READ PROGRESS 에 줄이 있고(Last sweep 칸 «off»), Pick files 로 골라 읽을 수 있습니다(서버 b5ee3f42a).
+- **잰 것(이 박스, sqlite, 실제 와처 + API 가 이 빌드를 서빙)** — 낡은 5 · 새 2 에서 `old/*.csv` 의 x1~x3 체크 → Read these → 셋 Success(표에 행 셋). 이미 읽은 `new/n1.csv` 다시 → Success(읽기 기록 둘). 켜기 전 6,000 개 `big/*.csv`: 답 + 100 줄 그리기 334~444 ms(세 번). 박동 · 체크 뒤에도 목록 스크롤과 포커스가 그대로. b5ee3f42a 위에서 체크 없이 `big/*.csv` 6,000: 줄이 Handing 0 → 3,000 of 6,000 → 11 s 에 Reading 6,000 of 6,000, 그동안 Read these 꺼짐. 꺼진 저장소(파일 셋) 줄은 «off», 거기서 `*.csv` → 셋 Success.
+- **필요한 조건** — 서버 b5ee3f42a 이후 · git pull · 화면 새로 고침.
 - **자세히** — `client2/src/file_ingestion/parts.js` 의 `PickFilesPart` · `ProgressPart`, `model.js` 의 `pickQuery` · `pickBody` · `readBefore` · `readAfter`. 시험 file_ingestion_page_harness M13 · M14 · P10~P15, 화면 검사기 «Pick files listed» · «pick files» · 새 규칙 «cover»(버튼 · 상자가 옆 글 위에 놓이면 빨강).
 
 ## 2026-10-26 · 파일 화면 지난 훑기 줄이 켜기 전 파일 수를 따로 말한다 — N before switch on

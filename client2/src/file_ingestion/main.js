@@ -33,7 +33,11 @@ async function act(path, sentence = false, { method = 'POST', send } = {}) {
   const res = await adminFetch(`${API_BASE}${path}`, init);
   const body = await res.json().catch(() => ({}));
   const detail = body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : '';
-  if (!res.ok) throw new Error(res.status === 401 ? NO_TOKEN : sentence && detail ? detail : `${res.status}${detail ? ` · ${detail}` : ''}`);
+  if (!res.ok) {
+    const refused = new Error(res.status === 401 ? NO_TOKEN : sentence && detail ? detail : `${res.status}${detail ? ` · ${detail}` : ''}`);
+    refused.status = res.status;
+    throw refused;
+  }
   return body;
 }
 
@@ -47,9 +51,8 @@ export function seatFileIngestionPage(doc = document) {
   const pick = new PickFilesPart(doc.createElement('div'), {
     doc,
     onList: (line, pattern) => act(`/admin/file-ingestion/glob?${pickQuery(line, pattern)}`, true, { method: 'GET' }),
-    onRead: async (line, pattern, body, n, started) => {
+    onRead: async (line, pattern, body, n) => {
       if (!doc.defaultView.confirm(WORDS.readTheseAsk(n, line.source))) return null;
-      started();
       try {
         const done = await act(`/admin/file-ingestion/read-now?${pickQuery(line, pattern)}`, true, body ? { send: body } : {});
         showToast(done.message, 'success');
@@ -57,7 +60,7 @@ export function seatFileIngestionPage(doc = document) {
         return done;
       } catch (e) { showToast(`❌ ${e.message}`, 'error'); return null; }
     },
-    onLeft: (ids) => act('/admin/file-ingestion/read-now/left', true, { send: { ids } }),
+    onLeft: (job, paths) => act('/admin/file-ingestion/read-now/left', true, { send: { job, paths } }),
   });
   // «Cancel waiting re-reads» on a source (A 11618814f): the preview's count asked first, then put back, the progress read again
   const progress = new ProgressPart(byId('fi-progress'), {

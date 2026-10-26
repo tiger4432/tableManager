@@ -5,7 +5,7 @@ import { ABSENT } from '../absent.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
 import { localShort } from '../server_time.js';
-import { GROUPS, LEFT_MANY, LEFT_MANY_EVERY_MS, PROGRESS_COLUMNS, WORDS, folderLine, leftText, pickBody, pickKey, pickMeta, pickPage, readAfter, readAtText, readBefore, readCount, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
+import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, leftText, pickBody, pickKey, pickMeta, pickPage, readAfter, readAtText, readBefore, readCount, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
 
 function maker(doc) {
   return (tag, cls, text) => {
@@ -154,8 +154,8 @@ export class PickFilesPart {
   /** Pick files by pattern under one source (owner 10-26): a pattern, the files it matches read or not (a page at a time,
    *  each ticked or not; the head's tick = every listed one), Read these, and the handed files' states on the page's beat.
    *  The pattern box is drawn once per source - a beat redraws the list under it only while files are being read, never the box.
-   *  @param {{doc, onList: (line, pattern) => Promise<answer>, onRead: (line, pattern, body, n) => Promise<{ids, handed}|null>,
-   *           onLeft: (ids) => Promise<{handed, left, read, failed}>}} deps */
+   *  @param {{doc, onList: (line, pattern) => Promise<answer>, onRead: (line, pattern, body, n) => Promise<{job}|null>,
+   *           onLeft: (job, paths) => Promise<{handed, left, read, failed, matched, handing, not_handed, files}>}} deps */
   constructor(mount, deps) {
     this.mount = mount;
     this.deps = deps;
@@ -165,7 +165,7 @@ export class PickFilesPart {
 
   /** Open under a source's line (none: closed). */
   open(line) {
-    Object.assign(this, { line, pattern: '', answer: null, listedAt: 0, refused: '', page: 1, ticked: new Set(), reading: null, busy: false, handing: 0 });
+    Object.assign(this, { line, pattern: '', answer: null, listedAt: 0, refused: '', page: 1, ticked: new Set(), reading: null, busy: false });
     if (!line) { this.mount.replaceChildren(); return; }
     const el = this.el;
     const form = el('form', 'fi-pick__form');
@@ -193,8 +193,7 @@ export class PickFilesPart {
     try {
       this.answer = await this.deps.onList(this.line, this.pattern);
       // a read that came to its end is the last list's; one with files left stays said until they are read
-      const going = this.reading && this.reading.counts.left > 0 ? this.reading : null;
-      Object.assign(this, { refused: '', listedAt: Date.now(), page: 1, ticked: new Set(), reading: going });
+      Object.assign(this, { refused: '', listedAt: Date.now(), page: 1, ticked: new Set(), reading: this.going() ? this.reading : null });
     } catch (e) {
       Object.assign(this, { answer: null, refused: e.message });
     }
@@ -205,28 +204,50 @@ export class PickFilesPart {
   async read() {
     const body = pickBody(this.answer, this.ticked);
     const n = readCount(this.answer, this.ticked);
-    // asked and said yes: handing many takes long (B: 10,000 in 22 s) - Read these off and said until the answer
-    const handed = await this.deps.onRead(this.line, this.answer.pattern || this.pattern, body, n, () => { this.handing = n; this.drawBody(); });
-    this.handing = 0;
-    if (!handed) { this.drawBody(); return; }
+    // answered at once with its job; the server hands the files after (B b5ee3f42a) and the beat asks how far it came
+    const job = await this.deps.onRead(this.line, this.answer.pattern || this.pattern, body, n);
+    if (!job) return;
     const paths = body ? body.paths : this.answer.files.map((f) => f.path);
-    this.reading = { ids: handed.ids || [], handed: new Set(paths), now: new Map(), counts: { handed: handed.handed, left: handed.handed, read: 0, failed: 0 }, askedAt: 0 };
+    this.reading = { job: job.job, n, handed: new Set(paths), now: new Map(), counts: { handed: 0, left: 0, read: 0, failed: 0, matched: null },
+      handing: true, lost: '' };
     this.drawBody();
     await this.tick();
   }
 
-  /** The page's beat: the handed files' states read again while some are left; the list's age said again. */
+  /** A Read these still moving: handing, or handed files left to read - and the server still knows its job. */
+  going() {
+    const r = this.reading;
+    return Boolean(r) && !r.lost && (r.handing || r.counts.left > 0);
+  }
+
+  /** The handed files on the page shown - the only ones whose states the beat asks (After), at most a page. */
+  shownHanded() {
+    return pickPage(this.answer.files || [], this.page).rows.map((f) => f.path).filter((p) => this.reading.handed.has(p));
+  }
+
+  /** The page's beat: the job asked while it moves, or once for a page whose handed files were not asked yet; the
+   *  list's age said again. */
   async tick() {
     if (!this.line) return;
-    if (this.reading && this.reading.counts.left > 0 && this.reading.ids.length) {
-      const r = this.reading;
-      if (r.ids.length > LEFT_MANY && Date.now() - r.askedAt < LEFT_MANY_EVERY_MS) { this.sayAge(); return; }
-      r.askedAt = Date.now();
+    const r = this.reading;
+    const shown = r && this.answer ? this.shownHanded() : [];
+    if (r && !r.lost && (this.going() || shown.some((p) => !r.now.has(p)))) {
+      // one ask at a time - Read these, the progress beat and its re-read after a hand-off each call this, and an older
+      // answer landing after a newer one would draw the job backwards
+      if (this.asking) return;
+      this.asking = true;
       try {
-        const got = await this.deps.onLeft(this.reading.ids);
-        this.reading.counts = got;
-        this.reading.now = new Map((got.files || []).map((f) => [f.path, f]));
-      } catch (e) { /* the next beat reads again */ }
+        const got = await this.deps.onLeft(r.job, shown);
+        r.counts = got;
+        r.handing = Boolean(got.handing);
+        for (const p of shown) if (!r.now.has(p)) r.now.set(p, null);
+        for (const f of got.files || []) r.now.set(f.path, f);
+      } catch (e) {
+        // the server restarted since and knows no such job - its sentence said, not asked again; else the next beat asks
+        if (e.status === 404) r.lost = e.message;
+      } finally {
+        this.asking = false;
+      }
       this.drawBody();
       return;
     }
@@ -327,16 +348,18 @@ export class PickFilesPart {
     const go = el('button', 'fi-btn fi-btn--primary', WORDS.readThese(n));
     go.type = 'button';
     go.dataset.pick = 'read';
-    const left = this.reading ? this.reading.counts.left : 0;
+    const r = this.reading;
+    const going = this.going();
+    const wait = !going ? '' : r.handing ? WORDS.handing(r.counts.matched ?? r.n) : WORDS.readingWait(r.counts.left);
     if (!files.length) go.disabled = true;
-    else if (this.handing) setDisabledReason(go, WORDS.handing(this.handing));
-    else if (left > 0) setDisabledReason(go, WORDS.readingWait(left));
+    else if (wait) setDisabledReason(go, wait);
     go.addEventListener('click', () => this.read());
-    acts.append(go, el('span', 'fi-meta', this.handing ? WORDS.handing(this.handing) : left > 0 ? WORDS.readingWait(left) : this.ticked.size ? '' : WORDS.noneTicked(n)));
+    acts.append(go, el('span', 'fi-meta', wait || (this.ticked.size ? '' : WORDS.noneTicked(n))));
     const out = [meta, scroll, acts];
-    if (this.reading) {
+    if (r) {
       const line = el('div', 'fi-pick__reading');
-      line.append(el('span', 'fi-pick__reading-word', left > 0 ? WORDS.reading : WORDS.readDone), el('span', 'fi-num', leftText(this.reading.counts)));
+      const word = r.lost ? WORDS.lostWord : r.handing ? WORDS.handingWord : r.counts.left > 0 ? WORDS.reading : WORDS.readDone;
+      line.append(el('span', 'fi-pick__reading-word', word), el('span', 'fi-num', r.lost || leftText(r.counts)));
       out.push(line);
     }
     return out;
