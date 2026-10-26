@@ -322,7 +322,7 @@ const fileSourcesAnswer = () => {
   const sources = { bonding_log: [{ source: 'raws', total: 4488, read: 4483, left: 5 },
     { source: '\\\\nas-fab-07\\equipment_exports\\bonding\\line_03\\recipe_archive_2026\\void_inspection', total: 12000, read: 3400, left: 8600,
     left_by_status: { PENDING_RETRY: 40, FAILED: 3 }, sweep: { state: 'rested', age_seconds: 38, seconds: 2.4, looked: 12000, already_read: 11997,
-      dispatched: 3, why: { new: 2, changed: 1 } } }],
+      dispatched: 3, why: { new: 2, changed: 1 }, before_switch_on: 1500 } }],
   bonding_map: [{ source: 'raws', total: 3216, read: 3216, left: 0 }] };
   return { ...a, body: { ...b, data: b.data.map((t) => ({ ...t, sources: sources[t.table_name] || [] })),
     progress: { counting: false, failed: null, count_seconds: 0.4, counted_at: new Date(Date.now() - 12000).toISOString() } } };
@@ -807,7 +807,7 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule:
   if (!rows[2].classList.contains('fi-dim') || rows[0].classList.contains('fi-dim')) return 'the done source not dimmed alone';
   const buttons = [...document.querySelectorAll('#fi-progress button')];
   if (buttons.length !== 1 || !rows[1].contains(buttons[0])) return buttons.length + ' Cancel buttons, not one on the external source';
-  if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\)$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
+  if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\) · 1,500 before switch-on$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
   const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
   return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
 })()` });
