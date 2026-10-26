@@ -598,9 +598,9 @@
 - **무엇** — 소유자 10-26 «외부 저장소 활성화하였을 때 그 시점 이후로 새로 들어오는 거만 자동으로 받고 기존 거는 수동 소급 눌러야 되게». 외부 소스를 켜면(`enabled` false → true, 또는 새로 적음) 와처가 그 시각을 남기고, 감시 사건 · 훑기 · 기동 훑기는 수정 시각이 그 뒤인 파일만 읽습니다. 그 전 파일은 파일 화면의 Read now · Retry · Read all again 으로만 읽습니다.
 - **전엔** — 켜는 순간 그 폴더의 옛 파일을 전부 훑어 읽었습니다.
 - **해 보기** — ingestion_settings.json 에서 꺼 둔 소스를 `"enabled": true` 로 저장 → watcher.log 에 `External source switched on: <경로> -> <표> - files modified from <시각> on are read; older ones by hand only (Read now · Read all again)` → 훑기 줄 `External source <표>@<경로>: … already read N · before switch-on M · dispatched K`. M 이 손으로 읽을 옛 파일 수입니다.
-- **필요한 조건** — git pull · 런처 재기동(이 코드를 싣는 한 번). 그 첫 기동에 이미 켜져 있는 소스는 «자르지 않음»으로 남아 지금처럼 읽습니다. 재기동은 시각을 다시 찍지 않고, 끄면 시각을 버려 다시 켤 때 새로 찍습니다.
+- **필요한 조건** — git pull · 런처 재기동(이 코드를 싣는 한 번). ~~그 첫 기동에 이미 켜져 있는 소스는 «자르지 않음»으로 남아 지금처럼 읽습니다~~ — 🆕 `23fd41a2c` 부터 이미 켜져 있던 소스도 와처가 처음 본 때로 찍습니다(재기동 · 끄고 켜기 없이). 기동 · 설정 저장마다 watcher.log 에 소스마다 `[switch-on] <경로> -> <표>: cut <시각>`. 재기동은 시각을 다시 찍지 않고, 끄면 시각을 버려 다시 켤 때 새로 찍습니다.
 - **바뀐 동작** — 시각은 파일의 «수정 시각»입니다. 수정 시각을 그대로 두는 복사로 켠 뒤에 들어온 파일은 «그 전»으로 보고 안 읽습니다. 표 읽기가 바뀌어 체크가 풀린 옛 파일도 저절로는 다시 안 읽습니다.
-- **자세히** — 시각은 `config/watcher_switched_on.json`(소스 id → 시각, null = 자르지 않음, 읽기 도장 파일 옆). 자르는 자리는 자동 문이 모두 묻는 체크리스트 한 곳 `IngestionHandler.already_checked` 이고, 손 문(재시도 문 `retry_one`)은 거길 지나지 않습니다. 시각을 찍는 자리는 소스 등록 `_register_external_sources` → `stamp_switched_on`. 파일 화면 API 의 소스 훑기 칸에 `before_switch_on` 이 실립니다(화면이 그리는 것은 클라 착지 뒤).
+- **자세히** — 시각은 `config/watcher_switched_on.json`(소스 id → 시각, ~~null = 자르지 않음~~(🆕 `23fd41a2c` 부터 적힌 null 도 처음 본 때로 찍힘), 읽기 도장 파일 옆). 자르는 자리는 자동 문이 모두 묻는 체크리스트 한 곳 `IngestionHandler.already_checked` 이고, 손 문(재시도 문 `retry_one`)은 거길 지나지 않습니다. 시각을 찍는 자리는 소스 등록 `_register_external_sources` → `stamp_switched_on`. 파일 화면 API 의 소스 훑기 칸에 `before_switch_on` 이 실립니다(화면이 그리는 것은 클라 착지 뒤).
 
 ## 2026-10-25 · AI 리포트 원인 후보와 조건 — 맺어진 조건은 표 줄로, 값이 없으면 채울 것이라고
 
