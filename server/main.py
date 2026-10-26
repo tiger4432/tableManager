@@ -7481,8 +7481,9 @@ def read_now_left(body: ReadNowFiles = Body(...), db: Session = Depends(get_db))
     said = body.model_dump() if hasattr(body, "model_dump") else body.dict()
     job = reread.hand_job(said["job"]) if said.get("job") else None
     if said.get("job") and job is None:
-        raise HTTPException(status_code=404, detail="no Read these %s in this server - it restarted since; the files "
-                                                    "handed before stay handed" % said["job"])
+        raise HTTPException(status_code=404, detail="no Read these %s in this server - the server restarted since, "
+                                                    "or it is older than the newest 20; the files handed before stay "
+                                                    "handed" % said["job"])
     if job is None:
         left = reread.left_of(db, said.get("ids") or [], paths=said.get("paths"))
     else:

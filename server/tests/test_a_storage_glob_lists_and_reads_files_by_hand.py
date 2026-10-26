@@ -66,6 +66,7 @@ class P(BasePipelineParser):
         with open(path, newline="") as f:
             return list(csv.DictReader(f))
 '''
+GONE = "the server restarted since, or it is older than the newest 20"      # a job the server has not, either way
 TABLE = {"business_key": "lot", "column_types": {"lot": "string", "val": "string"}, "display_columns": ["lot", "val"]}
 
 
@@ -117,7 +118,7 @@ def test_the_newest_twenty_jobs_are_kept(client, monkeypatch):
         _wait("job %s done" % jobs[-1], lambda: reread.hand_job(jobs[-1])["done"], seconds=10)
     assert reread.hand_job(jobs[0]) is None and all(reread.hand_job(job) for job in jobs[1:])
     said = client.post("/admin/file-ingestion/read-now/left", json={"job": jobs[0]})
-    assert said.status_code == 404 and "it restarted since" in said.json()["detail"], said.text
+    assert said.status_code == 404 and "%s;" % GONE in said.json()["detail"], said.text
 
 
 def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
@@ -216,7 +217,7 @@ def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
         said = left(job, ids=[said["files"][0]["id"]])
         assert (said["read"], [os.path.basename(f["path"]) for f in said["files"]]) == (3, ["x1.csv"]), said
         status, gone = _ask(opener, base + "/read-now/left", body={"job": "nope"})
-        assert status == 404 and "restarted" in gone["detail"], gone
+        assert status == 404 and "%s;" % GONE in gone["detail"], gone
         assert glob("old/*.csv")[1]["by_status"] == {"BEFORE_SWITCH_ON": 3, "SUCCESS": 3}, "y1 · y2 · z1 by hand"
 
         job = read_these("old/z1.csv")

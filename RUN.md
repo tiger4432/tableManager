@@ -4,7 +4,7 @@
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동
-> 볼 것    Read these 를 20 번 넘게 누른 뒤 옛 진행 표시가 404 «… it restarted since …» -> 그 번호가 버려진 것. 파일은 읽힘
+> 볼 것    Read these 를 20 번 넘게 누른 뒤 옛 진행 표시가 404 «… the server restarted since, or it is older than the newest 20 …» -> 그 번호가 버려진 것. 파일은 읽힘
 > 되돌리기  git revert $(git log -1 --format=%h --grep='newest 20 Read these jobs' origin/main) -> 런처 재기동
 > ```
 >
@@ -17,7 +17,7 @@
 > 볼 것    Read these 를 누르면 답이 바로 옴(«the files are being handed to the watcher»)
 >          서버 로그 «[Reread] glob <glob> under <루트> for <표>: N of M file(s) handed to the watcher» -> 다 넘김
 >          «… was not handed: <까닭>» -> 넘기다 멈춤. 그때까지 넘긴 것은 읽힘, 나머지는 다시 Read these
->          read-now/left 가 404 «it restarted since» -> 서버가 재기동됨. 넘긴 파일은 그대로 읽힘 — 화면을 새로 고침
+>          read-now/left 가 404 «… the server restarted since, or it is older than the newest 20 …» -> 서버가 재기동됐거나 최근 20 개보다 오래된 번호. 넘긴 파일은 그대로 읽힘 — 화면을 새로 고침
 >          파일 화면에 꺼진 외부 저장소 줄이 off 로 보임 -> 고쳐진 것 (전: 읽힌 파일 없으면 줄 없음)
 > 되돌리기  git revert $(git log -1 --format=%h --grep='handed off the request' origin/main) -> 런처 재기동
 > ```

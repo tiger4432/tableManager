@@ -613,7 +613,7 @@
   - 넘기기는 1,000 개 묶음마다 커밋 한 번(`mark_for_reread` · `stand_rows` 에 `commit=False` — 커밋은 부르는 쪽). 전: 커밋마다 세션의 행이 만료돼 하나씩 다시 읽힘. 이 박스 10만 168 s → 60 s.
   - 그래도 요청 안에서 하지 않는다: POST read-now (pattern) 는 거절(400 · 404 · 409)만 그 자리에서 하고 넘김 번호(job)로 즉시 답(이 박스 10만 0.01~0.03 s). 걷기와 넘기기는 API 프로세스의 스레드가 한다.
   - read-now/left 에 job 을 주면 그 넘김의 handed · left · read · failed 를 SQL 로 세고(이 박스 10만 0.3~0.4 s), matched(걷기 전엔 없음) · handing(아직 넘기는 중) · not_handed(멈춘 까닭)도. 파일 칸은 화면이 보이는 행만 paths 나 ids 로 물을 때만. ids 로만 묻는 갈래는 그대로.
-  - 서버가 재기동되면 그 번호는 없다(404 «it restarted since»). 이미 넘긴 파일은 넘긴 대로 읽힌다.
+  - 서버가 재기동되면 그 번호는 없다(404 «the server restarted since, or it is older than the newest 20» — 🆕 최근 20 개보다 오래된 번호도 같은 문장, 699c94fd4 뒤). 이미 넘긴 파일은 넘긴 대로 읽힌다.
   - /admin/file-ingestion/tables 가 선언된 저장소 전부를 줄로 낸다 — 표마다 raws, 외부 소스마다 하나, 꺼진 것도. 줄마다 off. 전: 읽힌 파일이 있거나 와처가 훑은 저장소만 → 꺼지고 읽힌 적 없는 저장소는 화면에서 고를 길이 없었다.
 - 자세히: `server/ingestion/reread.py` 의 `hand_glob_later` · `hand_job` · `hand_files` · `left_of`, `server/main.py` 의 `read_now_left` · `get_file_ingestion_tables`. 게이트 `test_a_storage_glob_lists_and_reads_files_by_hand.py` (실제 와처 + API).
 
