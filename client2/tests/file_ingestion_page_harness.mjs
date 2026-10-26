@@ -251,6 +251,11 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
       && M.sweepText({ ...SWEEP, dispatched: 0, why: {} }) === 'last sweep 40 s ago, took 3.0 s · looked 1,200 · sent 0'
       && M.sweepText({ ...SWEEP, state: 'sweeping' }) === 'sweeping · looked 1,200 · sent 3 (new 2 · changed 1)'
       && M.sweepText({ state: 'unavailable' }) === 'unavailable', M.sweepText(SWEEP));
+  const HELD = { ...SWEEP, before_switch_on: 1500 };
+  ok('M12 files before the source\'s switch-on said apart from the sent and its words; none - not said (owner 10-26)',
+    M.sweepText(HELD) === 'last sweep 40 s ago, took 3.0 s · looked 1,200 · sent 3 (new 2 · changed 1) · 1,500 before switch-on'
+      && M.sweepText({ ...HELD, state: 'sweeping' }) === 'sweeping · looked 1,200 · sent 3 (new 2 · changed 1) · 1,500 before switch-on'
+      && M.sweepText({ ...SWEEP, before_switch_on: 0 }) === M.sweepText(SWEEP), M.sweepText(HELD));
   ok('M10 Cancel waiting re-reads only on an external source with some waiting, its folder its root; the ask says the count, '
     + 'the states they go back to and that other tables are put back too',
     JSON.stringify(srcLines.map((l) => l.cancel)) === JSON.stringify([null, null, P('', '', 'nas', 'bond')])
@@ -344,6 +349,8 @@ const MUTANTS = [
   { name: 'the left count is the total', catches: ['M8'], file: 'model', mutate: swap('read · ${count(s.left)} left', 'read · ${count(s.total)} left') },
   { name: 'the total\'s limit not said', catches: ['P7'], file: 'parts', mutate: swap('      if (c.title) th.title = c.title;\n', '') },
   { name: 'a sweep sends without its words', catches: ['M9'], file: 'model', mutate: swap("${why.length ? ` (${why.join(' · ')})` : ''}", '') },
+  { name: 'files before switch-on not said', catches: ['M12'], file: 'model', mutate: swap("(before ? ` · ${count(before)} before switch-on` : '')", "''") },
+  { name: 'none before switch-on said as 0', catches: ['M12'], file: 'model', mutate: swap('(before ? ` ·', '(before !== null ? ` ·') },
   { name: 'a stopped re-read not said', catches: ['M11'], file: 'model', mutate: swap('(s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep))', 'sweepText(s.sweep)') },
   { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
   { name: 'the ask hides the other tables', catches: ['M10'], file: 'model', mutate: swap(", 'Other tables reading this folder have their waiting files put back too']", ']') },
