@@ -1,3 +1,21 @@
+## 🔴 B — 모델 답이 JSON 이 아닐 때 리포트가 멈추지 않게 (소유자 10-26)
+
+소유자 말 (그대로): 「응답이 json 이 아니어서 멈추는 경우는 어떻게 할지」 · 안 ㄱ(꺼내기 + 한 번 다시 + 이어 쓰기) 골름
+지금: llm._object 가 본문 전체를 json.loads -> 실패면 LlmRefused «the answer is not JSON» -> report_loop.run 이 읽기를 break(STOP_MODEL),
+      그 뒤 causes · write 는 DONE · 걸음/시간 상한일 때만이라 글 0 · _write 도 STOPPED
+```
+① 꺼내기  llm._object 한 곳 — 본문 전체가 JSON 이 아니면 그 안의 첫 «균형 잡힌 { … }» 객체를 읽는다(앞뒤 설명 글 · 펜스 둘 이상).
+          모든 ask_json 호출자가 같이 받는다(문 하나). 그래도 없을 때만 지금 거절
+② 한 번 다시  report_loop._ask 한 곳 — LlmRefused 가 «not JSON / not an object» 일 때만, 같은 프롬프트 끝에
+          «Your last answer was not one JSON object: <앞 200 자>. Answer one JSON object only.» 를 붙여 한 번 더. 게이트웨이 실패(연결 등)는 다시 안 묻는다
+③ 이어 쓰기  읽기 루프에서 ② 뒤에도 JSON 이 아니면: 읽기만 거기서 접고(걸음 상한과 같은 갈래) product 읽기 · causes · write 로 간다 —
+          읽은 것으로 표와 글이 남는다. reason 은 «the model answered no JSON at step N: <앞 200 자>», Evidence 에 그 걸음
+          write 가 ② 뒤에도 아니면 지금처럼 STOPPED, 단 reason 에 앞 200 자
+```
+- 로그: ① 로 꺼냈을 때 한 줄 «[report] answer had text around its JSON - read the object» (몇 자 버렸나), ② 할 때 한 줄
+- 게이트: 앞뒤 설명 붙은 답 -> 그 걸음 그대로 진행 · 첫 답 산문 둘째 답 JSON -> 진행(호출 수 +1) · 둘 다 산문 -> 읽기 접고 리포트 파일이 써짐 · write 둘 다 산문 -> STOPPED + 앞 200 자 · 연결 실패 -> 다시 안 묻고 지금처럼. 변이 ①(꺼내기 끔) · ③(break 되살림) 각각 빨강
+- 같은 커밋: RELEASE_LOG · llm 머리 주석의 «not JSON» 문장
+
 ## 🔴 B — 리포트 결과: 부분별 글을 리포트 표 칸에 (소유자 10-26)
 
 소유자 말 (그대로): 「리포트는 각 부분별 작성 내용 출력 가능? filename 뿐만 아니라 summary 내용 등」 · 안 ㄱ(글 칸마다 컬럼) 골름
