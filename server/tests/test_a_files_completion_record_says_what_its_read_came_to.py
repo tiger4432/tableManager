@@ -109,6 +109,11 @@ def test_a_files_completion_record_says_what_its_read_came_to(tmp_path):
     with open(data / "config" / "ingestion_settings.json", "w", encoding="utf-8") as f:
         json.dump({"external_sources": [{"path": str(share), "table_name": "tp", "options": {"glob": "*.csv"}},
                                         {"path": str(failing), "table_name": "tf", "options": {"glob": "*.csv"}}]}, f)
+    # every source cut at the epoch - this measures the read's record, not the switch-on cut (23fd41a2c: a source on is
+    # cut from when the watcher first sees it, so the files already there would be held for a hand)
+    with open(data / "config" / "watcher_switched_on.json", "w", encoding="utf-8") as f:
+        json.dump({"%s@%s" % (table, os.path.normcase(os.path.realpath(str(root)))): 0.0
+                   for table, root in (("tp", share), ("tf", failing))}, f)
     db = tmp_path / "box.db"
     with sqlite3.connect(str(db)) as c:
         c.execute(OLD_SHAPE)                                   # a database from before the columns

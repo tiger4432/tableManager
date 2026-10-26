@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **시험만 — 파일 기록 시험이 켠 시각(23fd41a2c)에 막히던 것** — 운영에서 할 일 없음
+>
+> ```
+> 무엇     test_a_files_completion_record_says_what_its_read_came_to 가 와처 기동 전에 둔 파일을 «켠 시각 앞»으로 잡혀 손 대기로 남겨 빨강
+>         -> 동작이 맞음(켠 시각 앞 옛 파일은 손으로만). 시험이 소스마다 켠 시각을 epoch 로 적고 읽기 기록만 잰다
+> 손 문    Read now · Retry · Read these 는 켠 시각 앞 파일도 읽음 (test_a_storage_glob_lists_and_reads_files_by_hand 초록)
+> ```
+>
+> ---
+>
 > ## [10-26] **AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다** — git pull · 런처 재기동
 >
 > ```
