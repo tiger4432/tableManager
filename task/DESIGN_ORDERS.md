@@ -1,3 +1,27 @@
+## 🔴 B — 리포트: 원인 걷기가 닿은 quantity 의 웨이퍼별 계측값을 조건 표에 (소유자 10-26)
+
+소유자 말 (그대로): 「걷기 해서 모델링 상 닿는 퀀티티의 각 wf 자재들 매칭해서 표에 추가 가능? 만약 직접 값이 없다면 특정 ref 공장 스텝의 같은 랏인 wf 들 중 계측값 있는 거로 걸어야 함」 · 안 ㄱ(리포트가 걸어서) 골름
+배경: 모델링 노드 셋(physical_quantity · physical_process · physical_object)과 공장 계측 (step, item_id) 은 맵핑 표 -> 원장 엣지로 이어진다(소유자 10-11). 리포트 causes 는 seed_nodes -> causes(seeds) -> _related 까지 있다
+```
+0 먼저 걸어 본다 (짓기 전, 보고 먼저)
+   박스에 운영 모양을 만든다: 웨이퍼 · 랏 · (step,item) 계측 · 맵핑 표 -> physical_quantity. 박스 수라고 밝힌다
+   «웨이퍼들을 씨앗으로, 선언한 술어로 걸어 physical_quantity 까지 닿고 값이 실리나» — 지금 걷기 라우트(evidence_subgraph) 그대로
+   닿으면 1 로. 끊기면 «어디서 · 몇 홉에서 · 무엇이 없어서»를 수로 적어 올리고 멈춘다 (새 술어 · 새 기제를 짓지 않는다)
+1 선언  derive.report.causes.values
+        "values": {"follow": ["<술어>", ...],                  웨이퍼 -> 계측 -> quantity 로 걷는 술어
+                   "fallback": {"step": "<ref step>"}}          같은 랏 · 그 step 에서 그 item 을 잰 웨이퍼들
+        랏은 wafer.lot 칸(이미 선언됨)으로 안다. 빈 값이면 대체 없음. 원장에 없는 술어 · step 은 저장 때 거절(지금 causes 거절과 같은 꼴)
+2 읽기  causes 가 낸 후보 중 physical_quantity 만, 리포트 웨이퍼 + 비교 웨이퍼 전부를 «한 번의 걷기» 씨앗으로(웨이퍼마다 걷지 않는다)
+        직접 값 없으면 fallback: 같은 랏 · ref step 웨이퍼들의 그 item 값 — 하나면 그 값, 여럿이면 평균 + n. 칸에 «lot ref»
+        대체도 없으면 빈 칸 + 그 quantity 는 to_fill 줄(지금 «채워야 함» 과 같은 자리)
+3 표    조건 표에 quantity 마다 행 하나(이름 = 노드 label). conditions.most 와 같은 줄에 선다(고른 것 · also 처럼 글에 쓴 것은 안 잘림)
+        값이 어디서나 같으면 빠지는 규칙도 같이 받는다
+4 말    _related 가 받는 읽기에 quantity 마다 «<label>: W1 12.3 · W2 12.1 (lot ref, 3 wf) · W3 -» 한 줄. Evidence 에도
+```
+- 운영 규격: 웨이퍼 ~수십 · quantity ~수십. 걷기 한 번 시간 · 원자 수를 재서 보고(박스)
+- 게이트: 직접 값 · lot ref(1 개 · 3 개 평균) · 둘 다 없음 -> to_fill · fallback 없음 선언 -> 빈 칸 · 걷기 1 회(호출 수 단언). 변이(fallback 끔)로 lot ref 칸 빨강
+- 같은 커밋: RELEASE_LOG · 가이드(ai_report_tables.md) · 스켈레톤
+
 ## 🔴 B — 리포트 조건 행: 모델이 고른 것 먼저, 나머지로 most 까지 채운다 (소유자 10-26)
 
 소유자 말 (그대로): 「컨디션을 충분히 선택하지 않는데 왜 이래」 · 안 ㄱ(모델 것 먼저 + 나머지로 채움) 골름
