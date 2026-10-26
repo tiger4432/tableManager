@@ -95,8 +95,7 @@ def limits(spec) -> dict:
     return {cell: written.get(cell) or DEFAULT_LOOP[cell] for cell in DEFAULT_LOOP}
 
 
-def text_slots(spec) -> list:
-    return [str(slot["slot"]) for slot in report_shape.layout(spec) if slot.get("kind") == "text"]
+text_slots = report_shape.text_slots
 
 
 def reckon(text) -> float:
@@ -579,7 +578,7 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     spec = rule.get("params") or {}
     name = str(rule.get("name") or "")
     keys = report_shape.report_key(spec, rule.get("trigger_table"))
-    results = spec[report_shape.RESULTS_CELL]
+    written = report_shape.result_cells(spec)                 # the file's column, then each named text's
     by_wafer = {}
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
         wafer = report_reads._parts(getattr(row, c) for c in keys)
@@ -601,19 +600,21 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
         for s in out["steps"]:
             logger.info("[Report] %s wafer %s step %d %s - %s", name, said, s["step"], s["call"],
                         s.get("refused") or s["summary"])
-        cells = {results["file"]: None}
+        cells = {column: None for _cell, column in written}
         if report is not None:
             try:
                 made = datetime.datetime.now().astimezone()
                 page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
                     name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
                     evidence=_steps_text(out, report).splitlines())
-                cells[results["file"]], _sha = report_html.keep(said, page)
-                _mark(cells[results["file"]], name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
+                kept, _sha = report_html.keep(said, page)
+                wrote = dict(out["texts"], file=kept)       # a text the report did not write is withdrawn, as a file
+                cells = {column: wrote.get(cell) or None for cell, column in written}
+                _mark(kept, name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
             except Exception as exc:                                # noqa: BLE001 - this wafer's page, the others go on
                 logger.error("[Report] %s wafer %s page failed: %s: %s", name, said, type(exc).__name__, exc,
                              exc_info=exc)
-                cells = {results["file"]: None}
+                cells = {column: None for _cell, column in written}
                 out = dict(out, state=STOPPED, reason="the page failed: %s: %s" % (type(exc).__name__, exc))
         logger.info("[Report] %s wafer %s: %s%s", name, said, out["state"], " - %s" % out["reason"] if out["reason"] else "")
         for row_id in rows:

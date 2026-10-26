@@ -54,6 +54,7 @@
 - `summary` — `fail` · `total` 을 적으면 칸이 «x% (F/N)», `rate` 를 적으면 x 는 그 값(`rate_scale` 1 또는 100). rate 만이면 «조건별 묶은 열»과 파레토는 거절.
 - `prompts.role` · `rules` · `functions.<읽기>.about` 을 비우면 제품 글이 들어간다.
 - 거절(저장 · 로드, 이름을 댐): 요약표 위의 규칙 «the report rule stands on a report table of its own - …; the summary table '<표>' is read, never written» · 웨이퍼 칸 없는 표 «'<표>' has none of derive.report.wafer.key's columns (…)» · `on` ≠ `into` · `results.file` 이 리포트 표 칸이 아님.. 🆕 10-24 거절 «아님»: `layout` 도 `template` 도 없으면 기본 배치(text summary → table yield_by → image(images 를 적었을 때만) → text conclusion), `sets` 에 `name` · `member` · `kind` 중 빈 칸이 있으면 비교 묶음 없이 감 — 저장 · 로드에 한 줄 «derive.report.sets names no … - read as no compare set». keys latest 칸은 제품 시각으로 못 읽는 값이 한 웨이퍼에 하나라도 있으면 그 웨이퍼는 글자 순서로 최신(20261001123000 · 2026/10/01 · 2026.10.01). 표마다 키 칸이 숫자 · 글자로 달라도(1.0 · «1») 한 키.
+- 🆕 10-26 `results` 에 layout 의 text slot 이름으로 컬럼을 더 적으면(`"summary": "report_summary"`) 그 글이 웨이퍼 행의 그 칸에 그대로 써진다. 리포트가 멈춰 글이 없으면 그 칸은 비워진다. layout 에 없는 이름 · 표에 없는 컬럼은 저장 때 거절.
 - `results` 의 `state` · `reason` 은 안 쓴다 — 적혀 있으면 저장 줄 «derive.report.results.state · reason is not written - …», 규칙은 선다.
 
 ## 2. 도는 것

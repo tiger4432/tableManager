@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-26 [AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다](#2026-10-26--ai-리포트-결과--부분별-글summary--conclusion-을-리포트-표-칸에-멈춘-리포트는-그-칸을-비운다) — 적을 것 `derive.report.results` 에 «글 칸 이름: 컬럼» · 보는 곳 리포트 표의 그 칸
 - 2026-10-26 [AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다](#2026-10-26--ai-리포트--모델-답이-json-이-아니어도-안-멈춘다-글-속-json-을-꺼내고-한-번-다시-묻고-그래도-아니면-읽은-것으로-쓴다) — 적을 것 없음 · 보는 곳 리포트 Evidence · chain_worker.log «[report] the answer held no JSON object»
 - 2026-10-26 [AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열](#2026-10-26--ai-리포트--by--where-에는-conditions-가-내준-조건-이름을-by-를-빼면-웨이퍼가-열) — 적을 것 없음 · 보는 곳 리포트 Evidence 의 걸음 줄
 - 2026-10-26 [AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다](#2026-10-26--ai-리포트-후보--날짜-있는-웨이퍼의-날짜-없는-leg-도-그-후보에-같이-선다) — 적을 것 없음 · 보는 곳 리포트 후보 줄 · chain_worker.log «[report]   wafer …»
@@ -614,6 +615,16 @@
 
 
 
+
+## 2026-10-26 · AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다
+
+- 무엇: 소유자 «리포트는 각 부분별 작성 내용 출력 가능? filename 뿐만 아니라 summary 내용 등» — 안 ㄱ(글 칸마다 컬럼).
+  - `results` 에 layout 의 text slot 이름으로 컬럼을 적는다: `{"file": "report_path", "summary": "report_summary", "conclusion": "report_conclusion"}`. file 은 지금처럼 필수, 나머지는 쓰는 것만.
+  - 리포트가 그 웨이퍼 행에 경로와 함께 글을 그대로 쓴다. 리포트가 멈춰 글이 없으면 그 칸을 비운다(거둠), 페이지를 못 쓰면 파일 칸도.
+  - 저장 때 거절: layout 에 없는 이름 «derive.report.results.<이름> is not a text slot of the layout - one of file · …», 표에 없는 컬럼 «derive.report.results '<컬럼>' is not a column of '<표>'».
+  - 폼: results 가 «이름: 컬럼» 칸이 되어 글 칸 이름을 적을 수 있다(chain_skeleton.json 다시 생성).
+  - 덤(같은 문의 빈 칸): 체인의 «빈 값 거두기»가 규칙이 «자기 행에서» 찍은 층(`chain_ingestion (<그 행>)`)을 못 찾아, 리포트가 withdraw 를 내도 아무것도 안 거둬졌다 — 파일 칸도. 이제 찾는다. 조인처럼 다른 행에서 찍은 층은 지금처럼 안 건드린다.
+- 자세히: `server/chain/report_shape.py` 의 `text_slots` · `result_cells` · `result_columns`, `server/chain/report_loop.py` 의 `answer`, `server/chain/cell_layer.py` 의 `cells_written_by`. 가이드 `docs/guide/ai_report_tables.md`.
 
 ## 2026-10-26 · 버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다
 

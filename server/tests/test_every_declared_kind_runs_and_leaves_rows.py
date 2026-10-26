@@ -231,7 +231,7 @@ REPORT_TABLES = {
     # the operator's report table - one row a wafer, its file path (owner 10-23 «리포트용 표가 따로» · «wafer, 보고서
     # 파일 경로 이 두 개가 최종 출력»)
     "kinds_rep": {"business_key": "wafer", "composite_key_source": ["wafer"],
-                  "column_types": {"wafer": "string", "fl": "string"}},
+                  "column_types": {"wafer": "string", "fl": "string", "sm": "string", "cn": "string"}},
 }
 SUMMARY_ROWS = [{"wafer": "W1", "leg": "L1", "item": "particle", "fail": 1, "total": 100},
                 {"wafer": "W1", "leg": "L2", "item": "particle", "fail": 2, "total": 100},
@@ -352,6 +352,53 @@ def test_a_report_without_a_model_writes_its_file_and_says_why_in_it(db, reporte
     why = "the language model call was refused: no gateway in this test"
     assert [w for w, _fl in rows] == ["W1", "W2"]
     assert all(why in open(fl, encoding="utf-8").read() for _w, fl in rows), "the file says why it stopped"
+
+
+def _texts_declared(reported):
+    [rule] = reported
+    rule["params"]["layout"] = [{"kind": "text", "slot": "summary"}, {"kind": "text", "slot": "conclusion"},
+                                {"kind": "table", "fill": "yield_by"}]
+    rule["params"]["results"] = {"file": "fl", "summary": "sm", "conclusion": "cn"}
+    return rule
+
+
+def _texts_rows(db):
+    db.expire_all()
+    return sorted((r.wafer, bool(r.fl), r.sm, r.cn) for r in db.query(models.DYNAMIC_TABLES["kinds_rep"]).all())
+
+
+def test_a_report_writes_its_texts_into_the_report_table_columns_results_names(db, reported, monkeypatch):
+    """Owner 10-26 «filename 뿐만 아니라 summary 내용 등» (안 ㄱ): results names a column for each text slot - the
+    wafer's row holds its file path and each text as written; a stopped report withdraws them, as its file; the
+    columns are the rule's own, a run that wrote nothing still owns them."""
+    from chain import dynamic_mappers, rule_run
+    from utils import llm
+
+    rule = _texts_declared(reported)
+    monkeypatch.setattr(llm, "ask_json", lambda prompt, usage=None: (
+        {"done": {"summary": "particle is low.", "conclusion": "keep the split."}} if "Tables read:" in prompt
+        else {"done": {}}))
+    _run(db, "report-texts", reported, "kinds_rep")
+    assert _texts_rows(db) == [("W1", True, "particle is low.", "keep the split."),
+                               ("W2", True, "particle is low.", "keep the split.")]
+    assert dynamic_mappers.columns_declared_for(rule) == ["fl", "sm", "cn"]
+    assert rule_run.columns_a_rule_writes(rule, []) == {"fl", "sm", "cn"}, "what a run that wrote nothing withdraws"
+
+    def refused(prompt, usage=None):
+        raise llm.LlmRefused("no gateway in this test")
+
+    monkeypatch.setattr(llm, "ask_json", refused)
+    _run(db, "report-texts-stopped", reported, "kinds_rep")
+    assert _texts_rows(db) == [("W1", True, None, None), ("W2", True, None, None)], "no text: its cell withdrawn"
+
+    from chain import report_html
+
+    def broken(said, page):
+        raise OSError("the disk is full")
+
+    monkeypatch.setattr(report_html, "keep", broken)
+    _run(db, "report-texts-no-page", reported, "kinds_rep")
+    assert _texts_rows(db) == [("W1", False, None, None), ("W2", False, None, None)], "no page: its file withdrawn"
 
 
 def _sent_reports(db, reported, monkeypatch, answers):

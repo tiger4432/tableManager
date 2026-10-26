@@ -28,7 +28,7 @@ TABLES = {
                                "measured_at": "datetime", "split": "string", "total_chips": "number"}},
     "defect_summary": {"column_types": {"wafer_id": "string", "slot": "string", "defect_item": "string",
                                         "fail_chips": "number", "total_chips": "number", "loss_rate": "number"}},
-    "wafer_report": {"column_types": {"wafer_id": "string", "report_file": "string"}},
+    "wafer_report": {"column_types": {"wafer_id": "string", "report_file": "string", "report_summary": "string"}},
     "defect_image": {"column_types": {"wafer_id": "string", "slot": "string", "defect_item": "string",
                                       "image_path": "string"}},
     "compare_set": {"column_types": {"set_name": "string", "member": "string", "kind": "string"}},
@@ -74,6 +74,8 @@ def test_a_report_stands_as_one_rule_naming_its_mapper_with_its_settings():
     assert not {"rows_per_run", "writes", "allow_replace_map"} & set(rule), rule
     assert rule["is_batch"] is True, "the group's rows in one call - a wafer's rows make one report"
     assert report_shape.result_columns(rule) == ["report_file"]
+    texts = rule_shape.expand_declaration(_declaration(_with(("results", "summary"), "report_summary")))[0]
+    assert report_shape.result_columns(texts[0]) == ["report_file", "report_summary"], "the file's, then a text's"
     assert rule_shape.from_declaration({"derive": {"report": REPORT}})["derive"]["kind"] == "report", \
         "a derive naming only its report cell is a report"
 
@@ -110,6 +112,10 @@ def _with(path, value):
     (("results",), None, "derive.report.results names the report table's column a report's file path goes in"),
     (("results", "file"), None, "derive.report.results names the report table's column"),
     (("results", "file"), "report_path", "derive.report.results 'report_path' is not a column of 'wafer_report'"),
+    (("results", "headline"), "report_summary",
+     "derive.report.results.headline is not a text slot of the layout - one of file · summary"),
+    (("results", "summary"), "report_text", "derive.report.results 'report_text' is not a column of 'wafer_report'"),
+    (("results", "summary"), " ", "derive.report.results.summary names the report table's column its text goes in"),
     (("send_to",), "relay:8765", "derive.report.send_to is the address a report is POSTed to"),
     (("images", "px"), 0, "derive.report.images.px must be a whole number from 1"),
     (("loop", "steps"), "8", "derive.report.loop.steps must be a whole number from 1"),
@@ -199,8 +205,8 @@ def test_the_form_draws_the_report_from_the_skeleton():
     fields = {f["key"]: f for f in report["fields"]}
     assert [key for key in fields] == list(report_shape.REPORT_CELLS)
     assert {key for key, f in fields.items() if f["required"]} == {"wafer", "summary", "results"}
-    results = {f["key"]: f["node"] for f in fields["results"]["node"]["fields"]}
-    assert results == {"file": chain_bindings.column_ref(("into.table",))}, "the file column is the report table's"
+    assert fields["results"]["node"] == {"kind": "map", "keyed_by": "name", "member": "slot",
+                                         "of": chain_bindings.column_ref(("into.table",))},         "file and each text slot a column of the report table's (owner 10-26)"
     assert fields["send_to"]["node"] == {"kind": "leaf", "hint": "free"}
     wafer = {f["key"]: f["node"] for f in fields["wafer"]["node"]["fields"]}
     assert wafer["table"] == chain_bindings.table_ref()

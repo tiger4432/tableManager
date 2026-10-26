@@ -2552,21 +2552,17 @@
                   "key": "results",
                   "required": true,
                   "node": {
-                    "kind": "record",
-                    "fields": [
-                      {
-                        "key": "file",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "into.table"
-                          ]
-                        }
-                      }
-                    ]
+                    "kind": "map",
+                    "keyed_by": "name",
+                    "member": "slot",
+                    "of": {
+                      "kind": "leaf",
+                      "hint": "ref",
+                      "section": "columns",
+                      "table_from": [
+                        "into.table"
+                      ]
+                    }
                   }
                 },
                 {

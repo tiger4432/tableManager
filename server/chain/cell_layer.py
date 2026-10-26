@@ -281,9 +281,10 @@ STAMPED_BY_EACH_ORIGIN = text(
 def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
     """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - on these cells `(row_id, column)`, the plain
     chain layer one of `declarations` wrote last (총괄 bc9710454 가-1 ㄱ: the layer row's `updated_by` is the rule that
-    wrote it), and an `enrichment_backfill` layer - the backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a
-    join's (its layer is named per source row), nor a rule's that wrote the cell after it. READ ONLY, the shape
-    `cells_stamped_by` answers."""
+    wrote it), the layer it wrote from the cell's own row (`chain_ingestion (<its row>)` - a report's results, lead
+    10-26: a report that stopped withdrew nothing), and an `enrichment_backfill` layer - the backfill's old name for
+    that write (총괄 가 옛 백필 ㄱ). Not a join's (its layer is named per source row, another row), nor a rule's that
+    wrote the cell after it. READ ONLY, the shape `cells_stamped_by` answers."""
     from sqlalchemy import and_, or_, tuple_
     from chain.enrichment import backfill
     from database import crud, models
@@ -296,7 +297,10 @@ def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int =
             db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id)
             .filter(S.table_name == table_name, tuple_(S.row_id, S.column_name).in_(wanted[i:i + chunk_size]),
                     or_(and_(S.source_name == crud.CHAIN_SOURCE, S.updated_by.in_(list(declarations))),
-                        S.source_name == backfill.SOURCE_NAME)).all()))
+                        and_(S.origin_row_id == S.row_id, S.updated_by.in_(list(declarations))),
+                        S.source_name == backfill.SOURCE_NAME)).all())
+            if row[3] in (crud.CHAIN_SOURCE, backfill.SOURCE_NAME) or row[3] == crud.merged_layer_name(
+                crud.CHAIN_SOURCE, row[4]))
     return found
 
 

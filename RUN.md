@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   리포트 표에 글 칸(예 report_summary) -> 리포트 규칙 results 에 "summary": "report_summary" -> 저장
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    리포트 표 웨이퍼 행의 그 칸에 글 = 고쳐진 것
+>          모델이 멈춘 웨이퍼 -> 그 칸이 빔(전: 앞 판 글이 남았음) · 파일 칸은 멈춘 리포트 파일
+>          저장 거절 «… is not a text slot of the layout - one of file · …» -> layout 의 text slot 이름으로 적음
+> 되돌리기  git revert $(git log -1 --format=%h --grep='texts into the report table' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다** — git pull · 런처 재기동
 >
 > ```

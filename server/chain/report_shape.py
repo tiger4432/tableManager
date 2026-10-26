@@ -101,9 +101,10 @@ KEY_WORDS = (KEY_UNIT, KEY_LATEST, KEY_FOLD)
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
                                      "formats", "item_sep", "sizes", "columns", "keys", "labels", "info", "picture_rows", "results",
                                      "send_to", "causes")
-#: `results`: the report table's column a report's file path goes in, on the wafer's row - the operator names it
-#: (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»). A report's state and why are its Evidence and the
-#: chain log; `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
+#: `results`: the report table's columns a report writes on the wafer's row - the operator names them: `file` its file
+#: path (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»), and a layout text slot's name its text (owner 10-26
+#: «filename 뿐만 아니라 summary 내용 등»). A report's state and why are its Evidence and the chain log;
+#: `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
 RESULTS_CELL, RESULT_CELLS = "results", ("file",)
 UNWRITTEN_RESULTS = ("state", "reason")
 #: `send_to`: where a made report's file is POSTed (tools/report_receiver/receive.py - <send_to>/<name>.html).
@@ -301,9 +302,8 @@ def skeleton_node():
             {"key": "image", "required": True, "node": PICTURE_COLUMN},
             {"key": "px", "required": False, "node": {"kind": "leaf", "hint": "number"}},
             {"key": IMAGE_SOURCE, "required": False, "node": {"kind": "leaf", "hint": "free"}}]})},
-        {"key": RESULTS_CELL, "required": True, "node": {"kind": "record", "fields": [
-            {"key": cell, "required": True, "node": chain_bindings.column_ref(("into.table",))}
-            for cell in RESULT_CELLS]}},
+        {"key": RESULTS_CELL, "required": True, "node": {"kind": "map", "keyed_by": "name", "member": "slot",
+                                                         "of": chain_bindings.column_ref(("into.table",))}},
         {"key": SEND_TO, "required": False, "node": {"kind": "leaf", "hint": "free"}},
         {"key": CAUSES, "required": False, "node": {"kind": "record", "fields": [
             {"key": "seed_type", "required": True, "node": {"kind": "leaf", "hint": "free"}},
@@ -516,10 +516,24 @@ def _report_table_key(spec, table) -> list:
     return [c for c in wafer_columns(((spec or {}).get("wafer") or {}).get("key")) if c in known]
 
 
+def text_slots(spec) -> list:
+    """The layout's text slots, in its order - what the write call fills (`report_loop`), what `results` may name."""
+    return [str(slot["slot"]) for slot in layout(spec) if slot.get("kind") == "text" and slot.get("slot")]
+
+
+def result_cells(spec) -> list:
+    """[(cell, column)] a report writes on its wafer's row - `results.file`, then each text slot `results` names, in the
+    layout's order."""
+    results = (spec or {}).get(RESULTS_CELL)
+    if not isinstance(results, dict):
+        return []
+    return [(cell, results[cell]) for cell in RESULT_CELLS + tuple(text_slots(spec))
+            if isinstance(results.get(cell), str) and results[cell].strip()]
+
+
 def result_columns(rule) -> list:
-    """The report table columns a report rule writes - `results`, in RESULT_CELLS order."""
-    results = ((rule or {}).get("params") or {}).get(RESULTS_CELL) or {}
-    return [str(results[cell]) for cell in RESULT_CELLS if isinstance(results, dict) and results.get(cell)]
+    """The report table columns a report rule writes (`result_cells`) - a run that wrote nothing still owns them."""
+    return [column for _cell, column in result_cells((rule or {}).get("params"))]
 
 
 def refusal(spec, on_table=None, into_table=None) -> str | None:
@@ -607,6 +621,14 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
                                                 for c in RESULT_CELLS):
         return ('derive.report.results names the report table\'s column a report\'s file path goes in - '
                 '{"file": "<column>"}')
+    named = RESULT_CELLS + tuple(text_slots(spec))
+    odd = [cell for cell in results if cell not in named + UNWRITTEN_RESULTS]
+    if odd:
+        return "derive.report.results.%s is not a text slot of the layout - one of %s" % (odd[0], " · ".join(named))
+    blank = [cell for cell in named if cell in results and not (isinstance(results[cell], str) and results[cell].strip())]
+    if blank:
+        return ("derive.report.results.%s names the report table's column its text goes in, got %r"
+                % (blank[0], results[blank[0]]))
     table = spec["summary"].get("table")
     if on_table is not None and into_table is not None and on_table != into_table:
         return ("the report rule stands on its report table - on.table and into.table are one table, got %r and %r"
@@ -633,7 +655,7 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
         return "derive.report.send_to is the address a report is POSTed to (http://...), got %r" % (send_to,)
     summary = spec["summary"]
     known = chain_bindings.declared_columns(str(report_table or "")) or ()
-    unknown = [results[c] for c in RESULT_CELLS if results[c] not in known]
+    unknown = [column for _cell, column in result_cells(spec) if column not in known]
     if report_table is not None and unknown:
         return ("derive.report.results %r is not a column of %r - add it to the report table's declaration"
                 % (unknown[0], report_table))
