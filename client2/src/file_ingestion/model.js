@@ -24,7 +24,7 @@ export const WORDS = Object.freeze({
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
   progress: 'Read progress', noSources: 'No source counted yet', cancelReread: 'Cancel waiting re-reads',
   pickFiles: 'Pick files', pattern: 'Pattern', list: 'List', listing: 'Listing', prev: 'Prev', next: 'Next', reading: 'Reading', readDone: 'Read',
-  pickHeads: ['Path', 'Modified', 'Status'], tickAll: 'Tick every listed file', tickOne: 'Tick this file',
+  pickHeads: ['Path', 'Modified', 'Read before', 'After'], tickAll: 'Tick every listed file', tickOne: 'Tick this file',
   listedAgo: (s) => `listed ${count(Math.round(s))} s ago`, pageOf: (i, n) => `page ${count(i)} of ${count(n)}`,
   readThese: (n) => `Read these (${count(n)})`, noneTicked: (n) => `nothing ticked = all ${count(n)} listed`,
   readTheseAsk: (n, source) => `Read ${count(n)} file${n === 1 ? '' : 's'} under ${source} now, read before or not?`,
@@ -228,6 +228,22 @@ export function pickMeta(answer, ticked) {
 export function pickBody(answer, ticked) {
   const listed = (answer && answer.files) || [];
   return ticked.size && ticked.size < listed.length ? { paths: listed.map((f) => f.path).filter((p) => ticked.has(p)) } : null;
+}
+
+/** A listed file's state when it was listed (owner 10-26 «이미 읽은 거 여부»): read - «read · <when>»; else the state's word.
+ *  -> {status, words} - the status for the pill's tone. */
+export function readBefore(file) {
+  const status = String(file.status || '');
+  return status === 'SUCCESS' && file.read_at ? { status, words: `read · ${localShort(file.read_at)}` } : { status, words: statusWord(status) };
+}
+
+/** A listed file after Read these (owner 10-26 «읽은 후 상태»): not handed - null; handed, no answer yet - Pending; else
+ *  its state now and, failed, the first line of why (B's /read-now/left files). -> null | {status, words, why} */
+export function readAfter(file, handed, now) {
+  if (!handed || !handed.has(file.path)) return null;
+  const got = now ? now.get(file.path) : null;
+  const status = got ? String(got.status || '') : 'PENDING';
+  return { status, words: statusWord(status), why: got && got.error ? String(got.error) : '' };
 }
 
 /** The handed files' states (B's /read-now/left): «1,500 handed · 1,212 left · 284 read · 4 failed». */

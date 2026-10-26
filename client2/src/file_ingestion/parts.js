@@ -5,7 +5,7 @@ import { ABSENT } from '../absent.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
 import { localShort } from '../server_time.js';
-import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, leftText, pickBody, pickKey, pickMeta, pickPage, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
+import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, leftText, pickBody, pickKey, pickMeta, pickPage, readAfter, readAtText, readBefore, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
 
 function maker(doc) {
   return (tag, cls, text) => {
@@ -16,7 +16,7 @@ function maker(doc) {
   };
 }
 
-const pill = (el, status) => { const p = el('span', 'fi-pill', statusWord(status)); p.dataset.tone = statusTone(status); return p; };
+const pill = (el, status, words) => { const p = el('span', 'fi-pill', words === undefined ? statusWord(status) : words); p.dataset.tone = statusTone(status); return p; };
 const boxHead = (el, words, side) => {
   const h = el('div', 'fi-box-head');
   h.append(el('span', 'fi-box-title', words));
@@ -203,7 +203,8 @@ export class PickFilesPart {
     const body = pickBody(this.answer, this.ticked);
     const handed = await this.deps.onRead(this.line, this.answer.pattern || this.pattern, body, body ? body.paths.length : this.answer.files.length);
     if (!handed) return;
-    this.reading = { ids: handed.ids || [], counts: { handed: handed.handed, left: handed.handed, read: 0, failed: 0 } };
+    const paths = body ? body.paths : this.answer.files.map((f) => f.path);
+    this.reading = { ids: handed.ids || [], handed: new Set(paths), now: new Map(), counts: { handed: handed.handed, left: handed.handed, read: 0, failed: 0 } };
     this.drawBody();
     await this.tick();
   }
@@ -212,7 +213,11 @@ export class PickFilesPart {
   async tick() {
     if (!this.line) return;
     if (this.reading && this.reading.counts.left > 0 && this.reading.ids.length) {
-      try { this.reading.counts = await this.deps.onLeft(this.reading.ids); } catch (e) { /* the next beat reads again */ }
+      try {
+        const got = await this.deps.onLeft(this.reading.ids);
+        this.reading.counts = got;
+        this.reading.now = new Map((got.files || []).map((f) => [f.path, f]));
+      } catch (e) { /* the next beat reads again */ }
     }
     this.drawBody();
   }
@@ -258,7 +263,7 @@ export class PickFilesPart {
     all.addEventListener('change', () => { this.ticked = all.checked ? new Set(files.map((f) => f.path)) : new Set(); this.drawBody(); });
     const corner = el('th', 'cell-fit');
     corner.append(all);
-    head.append(corner, ...WORDS.pickHeads.map((h) => el('th', h === 'Path' ? '' : 'cell-fit', h)));
+    head.append(corner, ...WORDS.pickHeads.map((h) => el('th', h === 'Path' || h === 'After' ? '' : 'cell-fit', h)));
     const tbody = el('tbody');
     for (const f of rows) {
       const tr = el('tr', 'fi-file');
@@ -272,9 +277,16 @@ export class PickFilesPart {
       const path = el('td', 'fi-mono fi-path', f.rel || f.path);
       path.title = f.path;
       path.dataset.wrapOk = '';
-      const state = el('td', 'cell-fit');
-      state.append(pill(el, f.status));
-      tr.append(tick, path, el('td', 'fi-meta fi-num cell-fit', f.modified_at ? localShort(f.modified_at) : ABSENT), state);
+      const before = readBefore(f);
+      const was = el('td', 'cell-fit');
+      was.append(pill(el, before.status, before.words));
+      const after = this.reading ? readAfter(f, this.reading.handed, this.reading.now) : null;
+      const now = el('td', after ? 'fi-pick__after' : 'fi-meta cell-fit', after ? undefined : ABSENT);
+      if (after) {
+        now.append(pill(el, after.status, after.words));
+        if (after.why) { const why = el('div', 'fi-result', after.why); why.dataset.wrapOk = ''; now.append(why); }
+      }
+      tr.append(tick, path, el('td', 'fi-meta fi-num cell-fit', f.modified_at ? localShort(f.modified_at) : ABSENT), was, now);
       tbody.append(tr);
     }
     const thead = el('thead');

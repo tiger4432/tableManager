@@ -107,3 +107,4 @@
 .fi-pick__acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .fi-pick__reading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--accent); background: var(--accent-weak); font-size: var(--fs-h5); }
 .fi-pick__reading-word { font-weight: 500; }
+.fi-pick__after .fi-result { margin-top: var(--space-1); }

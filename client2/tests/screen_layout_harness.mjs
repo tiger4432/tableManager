@@ -15,6 +15,8 @@
 //             half its width empty (owner 10-09: a narrow Source beside a wide Last)
 //   words     a word broken between two of its letters (lead 10-09: a rule name in four pieces); data-wrap-ok on text
 //             broken on purpose. A break after - or / is the browser's own, and letters outside a-z 0-9 _ are not read
+//   cover     a button or a box lying over the words of an element outside it (lead 10-26: a flex table cell's buttons
+//             over the next cell's sentence); what floats (absolute · fixed) and data-clip-ok are left out
 //   answers   a GET the fixtures do not answer, or a screen that could not be driven
 //   cells     what one screen asks of itself after one of its states (CELLS): the grid's header message - a press on
 //             the button beside it reaches the button, and its title is its whole sentence (lead 10-09)
@@ -58,7 +60,7 @@ const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'tes
 // Chrome and ends unsettled - not chased (lead 10-14 «그 밖의 1024 결함은 찾아 나서지 말 것»).
 const FIRST_STATE_ONLY = { 'index.html': ['1024x768'] };
 const sizesOf = (entry) => [...SIZES, ...(ENTRY_SIZES[entry] || [])];
-const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'centre', 'heights', 'columns', 'words', 'built now'];
+const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'centre', 'heights', 'columns', 'words', 'cover', 'built now'];
 // This run's mark on every bundle it builds (lead 10-22 ㄴ): a page without it was built by someone else - the committed
 // dist a build behind its source (prebuild runs before vite) or another run's.
 const STAMP = `${process.pid}-${Date.now()}`;
@@ -1754,6 +1756,46 @@ function screensLib(TOL) {
         break;
       }
     }
+    // cover: a button or a box lying over the words of an element outside it (lead 10-26: a flex table cell left the table's
+    // layout and its buttons lay over the next cell's sentence) - what floats (absolute · fixed) is drawn over on purpose
+    const floats = (el) => { for (let n = el; n && n !== document.body; n = n.parentElement) if (/absolute|fixed/.test(css(n).position)) return true; return false; };
+    // what is seen of a rect: cut by every box around it that clips or scrolls (a list scrolled out of its box is not seen)
+    const clipOf = new Map();
+    const window0 = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
+    const clipAt = (el) => {
+      if (!el || el === document.body) return window0;
+      if (!clipOf.has(el)) {
+        const up = clipAt(el.parentElement);
+        const s = css(el);
+        const c = s.overflowX !== 'visible' || s.overflowY !== 'visible' ? el.getBoundingClientRect() : null;
+        clipOf.set(el, c ? { left: Math.max(up.left, c.left), top: Math.max(up.top, c.top), right: Math.min(up.right, c.right), bottom: Math.min(up.bottom, c.bottom) } : up);
+      }
+      return clipOf.get(el);
+    };
+    const seen = (el, r) => {
+      const c = clipAt(el);
+      const v = { left: Math.max(c.left, r.left), top: Math.max(c.top, r.top), right: Math.min(c.right, r.right), bottom: Math.min(c.bottom, r.bottom) };
+      return v.right - v.left > 1 && v.bottom - v.top > 1 ? v : null;
+    };
+    const boxes = [...scope.querySelectorAll('button, input, select, textarea')]
+      .filter((b) => b.type !== 'hidden' && shown(b) && !b.closest('[data-clip-ok]') && !floats(b));
+    if (boxes.length) {
+      const said = [];
+      const tw = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+      for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+        const p = n.parentElement;
+        if (!n.textContent.trim() || !shown(p) || p.closest('button, select, textarea, [data-clip-ok]') || floats(p)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        for (const r of range.getClientRects()) { const q = r.width > 1 && r.height > 1 ? seen(p, r) : null; if (q) said.push({ q, p }); }
+      }
+      for (const b of boxes) {
+        const k = seen(b.parentElement, b.getBoundingClientRect());
+        const hit = k && said.find(({ q, p }) => !b.contains(p)
+          && Math.min(k.right, q.right) - Math.max(k.left, q.left) > 2 && Math.min(k.bottom, q.bottom) - Math.max(k.top, q.top) > 2);
+        if (hit) lines.push({ rule: 'cover', path: pathOf(b), what: `«${label(b)}» lies over «${hit.p.textContent.trim().replace(/\s+/g, ' ').slice(0, 40)}»` });
+      }
+    }
     // words: in a text that runs over lines, two letters of one word on two lines
     const letter = /\w/;
     const texts = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
@@ -2762,6 +2804,8 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  { name: 'the progress row\'s buttons in a flex cell again, over the Last sweep sentence', entry: 'file_ingestion.html', rule: 'cover', at: 'fi-progress',
+    file: 'src/file_ingestion/file_ingestion.css', edits: [['.fi-progress__acts { display: flex;', 'td:has(> .fi-progress__acts) { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }\n.fi-progress__acts { display: flex;']] },
   { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',
     file: 'src/file_ingestion/parts.js', edits: [["el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')"]] },
   // «Paste HTML» (lead 10-22).

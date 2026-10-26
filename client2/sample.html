@@ -32,6 +32,7 @@
     /* A phone: a part's title takes two lines, and the 44 px theme button its own row beside no smaller words. */
     @media (max-width: 600px) {
       .sample-sf .sf-part__t { white-space: normal; }
+      .sample-sf .sf-part { grid-template-rows: minmax(var(--sf-title-h), auto) auto minmax(0, 1fr); }
       .sample-head .sample-theme { margin-left: 0; flex-basis: 100%; }
     }
     .sample-sf-cat1-ink { color: var(--sf-cat-1); }
