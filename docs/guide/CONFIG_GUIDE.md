@@ -50,10 +50,10 @@
 | 경로 | 무엇 | 누가 읽나 |
 |---|---|---|
 | **`server/pacing.json`** | 페이싱 프로파일 `fast`·`slow`·`trickle`(각 `label`·`when`·`units_per_cycle`·`rest_seconds`) — 긴 작업이 옆 질의를 굶기지 않게 «쉬는 리듬» | **셋.** 원장 백필(단위 = **페이지**, 이름은 `ledger_backfill` 의 `pace` 가 고른다) · **체인 재적용 R1**(단위 = **페이지**, 2026-09-02 합류) · 파일 인제션(단위 = **청크**, 이름은 **`ingestion_settings.json` 의 `ingestion_pace`** 가 고른다). ⚠️ 종전 이 자리가 「둘」이라 SSOT §5 와 갈려 있었다 — **수의 정본은 [backend §4](../architecture/backend.md)** 이고 이 표는 사본이다 |
-| **`server/ledger/gap_names.json`** | 결측 질문의 **이름과 뜻**(`pairs`·`subject_sides`·`object_sides`) — 찾는 것은 코드가 어휘를 순회해서 하고, 부르는 이름은 이 표가 준다. `_source` 가 그 이름을 정한 명세를 가리킨다 | `server/ledger/gaps.py` → `GET /api/ledger/gaps` |
+| ~~**`server/ledger/gap_names.json`**~~ → 🆕 **`server/config/gap_names.json`**(없으면 sample `config/sample/gap_names.json.sample`, 10-27 `cd210579f`) | 결측 질문의 **이름과 뜻**(`pairs`·`subject_sides`·`object_sides`) — 찾는 것은 코드가 어휘를 순회해서 하고, 부르는 이름은 이 표가 준다. `_source` 가 그 이름을 정한 명세를 가리킨다 | `server/ledger/gaps.py` → `GET /api/ledger/gaps` |
 
 - ⚠️ **`ingestion_pace` 는 `ingestion_settings.json` 에 있고 값은 `pacing.json` 이 정의한다** — 두 파일을 함께 봐야 뜻이 완성된다. 프로파일 이름을 지우면 그것을 고른 인제션이 «경고 후 전속력»으로 떨어지고, 백필은 **거절**한다(같은 오타에 반응이 다르다).
-- ⚠️ **`gap_names.json` 과 원장 선언이 어긋나면 라우트가 «양방향으로» 거절한다** — 이름 없는 질문도, 질문 없는 이름도 오류다. 술어를 선언에서 지우면 이 표에서도 지워야 한다.
+- ⚠️ ~~**`gap_names.json` 과 원장 선언이 어긋나면 라우트가 «양방향으로» 거절한다** — 이름 없는 질문도, 질문 없는 이름도 오류다.~~ 🆕 [10-27 `cd210579f`] 이름 없는 질문은 «<술어> · <타입> (no name)» 날 낱말로 나오고 수가 `unnamed` 에 — 술어를 더해도 라우트가 안 선다. 표가 선언에 없는 술어를 대면 여전히 503 — 술어를 선언에서 지우면 이 표에서도 지워야 한다.
 - ⚠️ **읽기 시점**: 페이싱은 **실행 시작마다 한 번**(도는 중 편집은 그 실행에 안 듣고, 재기동은 필요 없다). 결측 이름 표는 요청마다 읽는다.
 - 상세는 [backend §4.1](../architecture/backend.md)(페이싱) · [backend §2](../architecture/backend.md)(`/api/ledger/gaps`).
 
