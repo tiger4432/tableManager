@@ -434,6 +434,8 @@
 - 2026-10-26 [실패 파일은 정말로 저절로 다시 안 읽힌다 — 읽는 법이 바뀌어도 · 기동해도. 꺼진 저장소도 glob 으로 골라 읽고, Read these 는 맞는 파일 전부](#2026-10-26--실패-파일은-정말로-저절로-다시-안-읽힌다--읽는-법이-바뀌어도--기동해도-꺼진-저장소도-glob-으로-골라-읽고-read-these-는-맞는-파일-전부) — 적을 것 없음 · 보는 곳 watcher.log «its reading changed» · «read files stamped» 줄, 파일 화면 Retry
   - ⚠️ 부분 은퇴: Read these 의 답 «N of M file(s) handed to the watcher» — 답은 즉시 넘김 번호, 수는 read-now/left — 2026-10-26 [Read these 는 즉시 답하고 뒤에서 넘긴다 — 넘김 번호로 진행을 세고, 파일 화면에 선언된 저장소가 전부(꺼진 것도) 줄로](#2026-10-26--read-these-는-즉시-답하고-뒤에서-넘긴다--넘김-번호로-진행을-세고-파일-화면에-선언된-저장소가-전부꺼진-것도-줄로)
 - 2026-10-26 [저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에](#2026-10-26--저장소-안-파일을-glob-으로-골라-읽는다--읽었든-안-읽었든-목록-고른-것만-와처에) — 적을 것 없음 · 누르는 곳 파일 화면의 저장소 glob (클라 착지 뒤) · 보는 곳 서버 로그 «[Reread] glob»
+  - 2026-10-26 [파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files, 읽기 전 상태와 넘긴 뒤 결과](#2026-10-26--파일-화면에서-패턴으로-파일을-골라-읽는다--pick-files-읽기-전-상태와-넘긴-뒤-결과) — 누르는 곳 File Ingestion 탭 READ PROGRESS 저장소 줄의 «Pick files»
+- 2026-10-26 [파일 화면 지난 훑기 줄이 켜기 전 파일 수를 따로 말한다 — N before switch on](#2026-10-26--파일-화면-지난-훑기-줄이-켜기-전-파일-수를-따로-말한다--n-before-switch-on) — 적을 것 없음 · 보는 곳 File Ingestion 탭 READ PROGRESS 의 Last sweep
 - 2026-10-24 [선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 — keys · images.match 등](#2026-10-24--선언-폼에서-이름으로-새-칸을-여는-입력도-enter-로-들어간다--keys--imagesmatch-등) — 누르는 곳 어드민 선언 폼 · 온톨로지 탐색기 폼
 - 2026-10-24 [선언 폼에서 칸을 비우면 그 칸은 저장에서 빠진다 — 그 칸으로 비게 된 선택 블록도 같이](#2026-10-24--선언-폼에서-칸을-비우면-그-칸은-저장에서-빠진다--그-칸으로-비게-된-선택-블록도-같이) — 누르는 곳 어드민 선언 폼(Chain · Tables · Ledger)
 - 2026-10-24 [파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»](#2026-10-24--파일-기록이-바뀐-칸-이름을-말한다--changed-밑에-changed-in-칸-n) — 적을 것 없음 · 보는 곳 파일 화면 Result
@@ -617,6 +619,23 @@
 
 
 
+
+## 2026-10-26 · 파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files, 읽기 전 상태와 넘긴 뒤 결과
+
+- **무엇** — 소유자 10-26. 「저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에」의 화면입니다. READ PROGRESS 의 저장소 줄마다 «Pick files» 가 있고, 누르면 그 줄 바로 밑에 칸이 열립니다(한 번에 하나, 다시 누르면 닫힘).
+- **쓰는 법** — Pattern 에 저장소 루트에서의 경로 glob(`*` · `?` · `**`)을 적고 List(또는 Enter). 한 쪽 100 줄(Prev · Next), 위에 «first 5,000 of 12,431» 처럼 전체 수. 체크한 것만 «Read these (N)» 로 와처에 넘깁니다(머리 체크 = 목록 전부). 아무것도 체크 안 했으면 패턴에 맞는 전부 — 목록의 5,000 밖까지(«Read these (12,431)», 서버 861bc45ab). 넘기기 전에 확인 창, 넘기는 동안 «Handing N files…»(이 박스에서 1만 개 22 s · 10만 개 168 s, B 잼).
+- **Read before** — 목록을 받은 때의 상태. 읽었으면 «read · <시각>», 아니면 Before switch on · Not read · Failed 같은 서버 상태.
+- **After** — 넘긴 파일만. 화면 박동마다 제자리에서 Pending retry → Success / Failed(실패면 사유 한 줄). 넘기지 않은 줄은 «—». 밑 줄 «Reading 3 handed · 1 left · 2 read · 0 failed», 다 끝나면 «Read». 남은 동안 Read these 는 꺼짐. 끝난 뒤 새로 List 하면 그 줄은 사라집니다. 넘긴 파일이 5,000 개를 넘으면 이 상태는 30 초에 한 번 읽습니다.
+- **거절** — 빈 패턴 · `..` · 절대 경로는 서버 문장이 칸 밑에. 와처 프로세스가 없으면 409 문장이 토스트로.
+- **잰 것(이 박스, sqlite, 실제 와처 + API 가 이 빌드를 서빙)** — 낡은 5 · 새 2 에서 `old/*.csv` 의 x1~x3 체크 → Read these → 셋 Success(표에 행 셋). 이미 읽은 `new/n1.csv` 다시 → Success(읽기 기록 둘). 켜기 전 6,000 개 `big/*.csv`: 답 + 100 줄 그리기 334~444 ms(세 번). 박동 · 체크 뒤에도 목록 스크롤과 포커스가 그대로.
+- **필요한 조건** — 서버 861bc45ab 이후 · git pull · 화면 새로 고침.
+- **자세히** — `client2/src/file_ingestion/parts.js` 의 `PickFilesPart` · `ProgressPart`, `model.js` 의 `pickQuery` · `pickBody` · `readBefore` · `readAfter`. 시험 file_ingestion_page_harness M13 · M14 · P10~P15, 화면 검사기 «Pick files listed» · «pick files» · 새 규칙 «cover»(버튼 · 상자가 옆 글 위에 놓이면 빨강).
+
+## 2026-10-26 · 파일 화면 지난 훑기 줄이 켜기 전 파일 수를 따로 말한다 — N before switch on
+
+- **무엇** — 총괄 10-26, 서버 12f46f32f 의 sweep.before_switch_on. Last sweep 줄이 «looked 1,200 · sent 3 (new 2) · 1,500 before switch on» 처럼 켜기 전에 수정돼 저절로 안 읽는 파일 수를 따로 말합니다. 0 이면 안 씁니다.
+- **필요한 조건** — git pull · 화면 새로 고침.
+- **자세히** — `client2/src/file_ingestion/model.js` 의 `sweepText`, 시험 file_ingestion_page_harness M12.
 
 ## 2026-10-26 · AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다
 

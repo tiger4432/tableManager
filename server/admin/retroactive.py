@@ -2712,12 +2712,19 @@ DOORS_OUTSIDE = {
         "what_is_missing": "files already read keep the parse they had - the parser or the table's reading changed since",
         "examples": ["파서(또는 칸 선언)를 고쳤는데 이미 들어간 파일의 행은 옛 해석 그대로다", "이 파일 지금 다시 읽어줘",
                      "이 폴더 실패한 파일만 다시", "표 선언에 칸을 더했는데 이미 들어간 파일에는 그 칸이 비어 있다",
-                     "다시 읽기가 Stopped: 3 failed in a row 로 멈췄어"],
+                     "다시 읽기가 Stopped: 3 failed in a row 로 멈췄어",
+                     "소스 켜기 전의 옛날 파일 중 2026-09 폴더 것만 경로로 골라 읽혀줘",
+                     "이 패턴에 걸리는 파일이 읽혔는지 언제 읽혔는지 보고 골라서 읽고 싶어"],
         "doors": [
             {"name": "now", "how": ("the file page's Retry · Read all again · Retry failed files under a folder "
                                     "(POST /admin/file-ingestion/retry-failed) · Read now"),
              "when": ("the rows the file log names, picked by state, folder and time, read where the log says they "
                       "are; a file gone from there is not handed")},
+            {"name": "by pattern", "how": ("the file page's Pick files on a source's progress line - a pattern "
+                                           "(* ? **), the files it matches, ticked, Read these "
+                                           "(GET /admin/file-ingestion/glob · POST /admin/file-ingestion/read-now)"),
+             "when": ("files under the source picked by path, read or not - each with its state and when it was "
+                      "last read; the ones from before the source was switched on are read only this way")},
             {"name": "next sweep", "how": "python server/scripts/replay_ingestion.py --path <file> [--table <table>] --apply",
              "when": ("a file still where its source's sweep looks - its log row's stamp emptied, the next sweep "
                       "reads it as the source's pattern takes it; a file moved away is not read")}],
