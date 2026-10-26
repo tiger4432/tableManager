@@ -1,3 +1,19 @@
+## 🔴 B — 리포트 결과: 부분별 글을 리포트 표 칸에 (소유자 10-26)
+
+소유자 말 (그대로): 「리포트는 각 부분별 작성 내용 출력 가능? filename 뿐만 아니라 summary 내용 등」 · 안 ㄱ(글 칸마다 컬럼) 골름
+지금: derive.report.results 는 file 하나(report_shape.RESULT_CELLS) — report_loop.answer 가 그 웨이퍼 행에 파일 경로만 쓴다
+```
+선언  results 에 «글 칸 이름: 컬럼» — 글 칸 이름은 그 선언 layout 의 text slot 이름(기본 summary · conclusion)
+      "results": {"file": "report_path", "summary": "report_summary", "conclusion": "report_conclusion"}
+      file 은 지금처럼 필수, 나머지는 쓰는 것만. layout 에 없는 이름 · 표에 없는 컬럼은 저장 때 거절(지금 file 거절과 같은 문장 모양)
+쓰기  answer 의 cells 에 out["texts"][slot] 를 그대로. 리포트가 멈춰 글이 없으면 그 칸은 withdraw(지금 file 과 같은 길)
+같은 문  rule 이 쓰는 컬럼 목록(report_shape 의 results 컬럼 함수 :520)을 넓혀 글 컬럼도 든다 — 체인이 «내가 쓴 칸»으로 알아야 자기 자신을 다시 깨우지 않는다
+폼    스켈레톤의 results record 가 고정 필드(file)만이면 글 칸 이름을 적을 자리가 없다 — 폼에서 적을 수 있는 모양으로(chain_skeleton.json 다시 생성)
+```
+- state · reason 은 지금처럼 칸이 아니다(UNWRITTEN_RESULTS, 10-23 판정) — 건드리지 않는다
+- 게이트: summary · conclusion 을 선언한 리포트 한 번 -> 그 웨이퍼 행에 경로 · 두 글이 그대로 · 리포트 멈춤 -> 글 칸 비워짐 · layout 에 없는 이름 거절 · 리포트 표 행이 바뀌어도 리포트가 다시 안 돎. 변이(글 칸 안 씀)로 첫 칸 빨강
+- 같은 커밋: RELEASE_LOG · 가이드(ai_report_tables.md) 한 줄 · 스켈레톤
+
 ## 🔴 B — 버전 칼럼: 같은 버전이면 나중에 들어온 것이 이긴다 (소유자 10-26)
 
 소유자 말 (그대로): 「버전 리플레이 버전이 같아도 들어온 새 걸로 업데이트되게」 · 안 ㄱ(모든 읽기) 골름
