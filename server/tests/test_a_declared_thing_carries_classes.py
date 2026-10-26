@@ -162,7 +162,8 @@ def test_the_static_judgement_still_reads_a_single_word(monkeypatch):
     document = _sample()
     document["entities"]["recipe@1"]["class"] = ["static"]
     monkeypatch.setattr(ledger_config, "load", lambda *_args, **_kwargs: document)
-    assert trace_router._static_types() == {"quantity", "defect_kind", "recipe"}
+    assert trace_router._static_types() == {"quantity", "defect_kind", "recipe", "product_structure", "process_step",
+                                            "physical_object", "physical_process", "physical_quantity"}
 
 
 # ---------------------------------------------------------------------- the declaration window

@@ -38,14 +38,9 @@ NAMES = {
 }
 
 
-def test_a_question_the_declaration_asks_and_nobody_named_is_refused_not_guessed():
-    """🔴 THE DIRECTION THAT CANNOT BE SEEN IN THE OUTPUT.
-
-    A detector that quietly answered a smaller question than the declaration asks would
-    print a complete-looking screen with a whole kind of gap missing from it. Nothing
-    downstream can notice that, so it has to be a refusal here - and the refusal has to
-    NAME the combination, or the person reading it cannot go and name it in the spec.
-    """
+def test_a_question_the_declaration_asks_and_nobody_named_is_asked_in_its_own_words():
+    """An unnamed question is not refused and not given a neighbour's name: it is asked as «<predicate> ·
+    <type> (no name)» (owner 10-27 «안 막고 날 낱말로», which replaced the refusal)."""
     declared = declaration({
         "x@1": edge(["a@1"], ["b@1"]),
         "y@1": edge(["c@1"], ["b@1"]),
@@ -55,10 +50,21 @@ def test_a_question_the_declaration_asks_and_nobody_named_is_refused_not_guessed
         "z@1": edge(["d@1"], ["e@1"]),
         "w@1": edge(["e@1"], ["d@1"]),
     })
-    with pytest.raises(gaps.GapTableMismatch) as caught:
-        gaps.questions(declared, names=NAMES)
-    assert "z@1" in str(caught.value)
-    assert "APPLICATION_GAP_SPEC" in str(caught.value)
+    unnamed = [q for q in gaps.questions(declared, names=NAMES) if q.get("unnamed")]
+    said = {q["name"] for q in unnamed}
+    assert {"z · d (no name)", "z · e (no name)"} <= said
+    assert all(q["action"] is None and not q["vacuous"] for q in unnamed)
+    assert not any("x" in q["name"] or "y" in q["name"] for q in unnamed), "a named one stays named"
+
+
+def test_the_operators_config_table_wins_and_the_shipped_sample_stands_in_without_it(tmp_path, monkeypatch):
+    import paths
+
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(tmp_path))
+    shipped = gaps.load_names()
+    assert shipped["pairs"], "no config file: the tracked sample is read"
+    (tmp_path / "gap_names.json").write_text('{"pairs": [], "subject_sides": [], "object_sides": []}', encoding="utf-8")
+    assert gaps.load_names() == {"pairs": [], "subject_sides": [], "object_sides": []}
 
 
 def test_a_table_row_whose_predicate_the_declaration_retired_is_refused_too():

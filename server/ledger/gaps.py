@@ -10,15 +10,16 @@ would go stale without anybody noticing.
 objects are nodes, which predicate names a type its only way into existence - and what it
 CALLS things comes from the table. Neither is a literal in this file.
 
-🔴 THE TWO ARE CHECKED AGAINST EACH OTHER IN BOTH DIRECTIONS, and that is the brief's S1
-made into code rather than a note. A question the declaration can ask and the table has no
-name for would otherwise be reported under a neighbour's name; a table row whose predicate
-the declaration no longer has would quietly stop being asked. Either way somebody reads a
-screen that is missing something and looks complete.
+🔴 THE TWO ARE CHECKED AGAINST EACH OTHER. A question the declaration asks and the table has not named is asked
+in its own words, «<predicate> · <type> (no name)», and counted - owner 10-27 «안 막고 날 낱말로» replaced S1's
+refusal, so a predicate the operator adds never stops the walk routes. A table row whose predicate the
+declaration does not have is still refused. The table is the operator's `config/gap_names.json`, else the
+tracked sample.
 """
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 #: Ruled by the spec §1 exclusion ③ and not derivable from the declaration: the predicate
@@ -26,7 +27,19 @@ from pathlib import Path
 #: decided here; this is the only predicate named in this file.
 SPEC_EXCLUDED = ("observed",)
 
-NAMES_PATH = Path(__file__).with_name("gap_names.json")
+NAMES_FILE = "gap_names.json"
+
+
+def names_path():
+    """The operator's `config/gap_names.json`, else the shipped sample - the table is the operator's to write
+    (owner 10-27)."""
+    import paths
+
+    live = paths.config_path(NAMES_FILE)
+    # the TRACKED sample, not the data root's: an isolated root has no sample folder, and the table was read from the
+    # code tree before it moved
+    shipped = os.path.join(paths.SERVER_DIR, "config", paths.CONFIG_SAMPLE_DIRNAME, NAMES_FILE + ".sample")
+    return live if os.path.exists(live) else shipped
 
 
 from declaration_names import bare_name as _bare_name
@@ -50,7 +63,7 @@ _bare = _bare_name
 
 
 def load_names(path=None):
-    return json.loads(Path(path or NAMES_PATH).read_text(encoding="utf-8"))
+    return json.loads(Path(path or names_path()).read_text(encoding="utf-8"))
 
 
 def _vocabulary(declaration):
@@ -160,18 +173,17 @@ def questions(declaration, names=None):
                     "action": "없음 — 목적이 노드가 아니라 가리킬 것이 없습니다",
                     "vacuous": True})
 
-    _refuse_unnamed(declaration, live, out)
+    for form, predicate, entity_type in _unnamed(declaration, live, out):
+        out.append({"form": form, "type": entity_type, "present": [], "absent": [predicate],
+                    "name": "%s · %s (no name)" % (_bare(predicate), _bare(entity_type)), "action": None,
+                    "vacuous": False, "unnamed": True})
     return out
 
 
-def _refuse_unnamed(declaration, live, named):
-    """🔴 The other direction of S1: a question the declaration can ask and nobody named.
-
-    Without this the detector silently answers a smaller question than the declaration
-    asks, and the screen looks complete while a whole kind of gap is invisible. It is the
-    direction that cannot be noticed by reading the output, which is why it is a refusal
-    rather than a log line.
-    """
+def _unnamed(declaration, live, named):
+    """[(form, predicate, type)] - the questions the declaration asks and the table has not named. They are asked in
+    their own words, not refused (owner 10-27 «안 막고 날 낱말로», which replaced S1's refusal): a predicate the
+    operator adds keeps the walk routes up and shows as «<predicate> · <type> (no name)» until they name it."""
     covered = {(item["type"], tuple(sorted(item["absent"]))) for item in named}
     vacuous = {(_bare(p), t) for p, t in vacuous_types(declaration)}
     missing = []
@@ -195,21 +207,14 @@ def _refuse_unnamed(declaration, live, named):
             if (entity_type, (name,)) not in covered and not any(
                     entity_type == item_type and name in absent
                     for item_type, absent in covered):
-                missing.append(f"subject side of {name} on {entity_type}")
+                missing.append(("subject_side", name, entity_type))
         for entity_type in targets:
             if (_bare(name), entity_type) in vacuous:
                 continue
             if not any(entity_type == item_type and name in absent
                        for item_type, absent in covered):
-                missing.append(f"object side of {name} on {entity_type}")
-    if missing:
-        raise GapTableMismatch(
-            "the declaration asks questions the spec has not named: "
-            + "; ".join(sorted(set(missing)))
-            + ". Name them in docs/spec/APPLICATION_GAP_SPEC.md and add the rows to "
-              "gap_names.json - do not name them here. Or, if the declaration should not ask "
-              "them, take that type out of the predicate's subjects (object types) in "
-              "ledger_config.json.")
+                missing.append(("object_side", name, entity_type))
+    return sorted(set(missing))
 
 
 #: How many distinct nodes one question examines before it calls itself a sample. Small on

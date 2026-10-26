@@ -1122,9 +1122,9 @@ def ledger_gap_catalogue(name: str = Query(None),
     그래서 목록은 공짜로 주고 «펼 때» 값을 냅니다.
 
     🔴 이름은 여기서 짓지 «않습니다». `docs/spec/APPLICATION_GAP_SPEC.md` 가 정본이고
-    `ledger/gap_names.json` 이 그 기계 판형입니다. 선언과 표가 어긋나면 이 라우트는
-    «거절»합니다 — 이름 없는 결측을 «이웃 이름»으로 답하면 화면이 멀쩡해 보이면서
-    한 종류가 통째로 빠지고, 그건 출력을 봐서는 못 알아챕니다.
+    `config/gap_names.json`(없으면 sample) 이 그 기계 판형입니다. 표가 이름을 안 준 물음은
+    «<술어> · <타입> (no name)» 날 낱말로 답하고 그 수를 `unnamed` 칸에 둡니다 (소유자 10-27
+    «안 막고 날 낱말로»). 표가 선언에 없는 술어를 물으면 여전히 503 입니다.
 
     🔴 수마다 «어떤 수인지»가 붙습니다. 표본은 「가장 오래된 것들」이 «아니라고» 말하고,
     성립하지 않는 질문은 «0이 아니라» 수를 안 냅니다.
@@ -1147,7 +1147,8 @@ def ledger_gap_catalogue(name: str = Query(None),
 
         if crud.is_blank_value(name):
             asked = _gaps.questions(declared)
-            return {"mode": "names", "count": len(asked), "gaps": asked}
+            return {"mode": "names", "count": len(asked), "gaps": asked,
+                    "unnamed": sum(1 for item in asked if item.get("unnamed"))}
         from database.database import engine
         return {"mode": "measured", "count": 1,
                 "gaps": _gaps.measure(engine, declared, only=name,
