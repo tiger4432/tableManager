@@ -5680,7 +5680,7 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
             entries.append(entry)
         if sweep:
             entry["sweep"] = {k: lap.get(k) for k in ("state", "age_seconds", "seconds", "looked", "already_read",
-                                                       "dispatched", "why")}
+                                                       "dispatched", "why", "before_switch_on")}
         else:
             entry["stopped"] = lap["stopped"]
     for entry in data:

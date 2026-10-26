@@ -69,8 +69,8 @@ def test_the_tables_say_read_total_and_left_per_source(client, db_session, monke
     from utils import heartbeat
 
     monkeypatch.setattr(directory_watcher, "count_recount_seconds", lambda settings=None: 0.0)
-    sweep = {"state": "rested", "age_seconds": 4.0, "seconds": 1.5, "looked": 9, "already_read": 7, "dispatched": 2,
-             "why": {"changed": 1, "new": 1}}
+    sweep = {"state": "rested", "age_seconds": 4.0, "seconds": 1.5, "looked": 9, "already_read": 4, "dispatched": 2,
+             "why": {"changed": 1, "new": 1}, "before_switch_on": 3}
     laps = {directory_watcher.SWEEP_LAP_PREFIX + "insp@share": dict(sweep, table="insp", source=r"\\share\lots"),
             directory_watcher.SWEEP_LAP_PREFIX + "quiet@q": dict(sweep, table="quiet", source=r"D:\q", looked=0,
                                                                  dispatched=0, why={}),

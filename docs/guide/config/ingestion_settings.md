@@ -46,7 +46,7 @@
    ```
 
    `heavy_file_mb`는 **양수 숫자만**(bool·문자열·0 이하는 경고 1회 후 기본 10), **나머지 boolean 4개는 JSON boolean만**(문자열 `"false"`는 경고 1회 후 기본값 — 오타가 스위치를 조용히 뒤집지 않습니다).
-4. 저장 — 수치·boolean 노브는 **다음 작업 단위부터** 반영됩니다. 단위는 키마다 다르지만 한 작업 단위 안에서는 값이 갈리지 않습니다: `heavy_file_mb`·`archive_processed_files`·`resume_from_checkpoint`는 **다음 파일 이벤트**, `flatten_nested_dirs`는 **다음 폴더 트리거**, `enrichment_auto_confirm_*`은 **다음 체인 트랜잭션 그룹**. `external_sources`는 저장하면 와처가 재기동 없이 그 항목만 다시 세웁니다(edb82082f) — `"enabled": false` 로 끄고, `options` · `parser` · `path` 를 바꾸면 옛 연결을 빼고 새 모양으로 섭니다. 파서 · 옵션이 바뀐 표는 체크리스트가 그 표 키만 해제합니다(`enabled` 는 아님).
+4. 저장 — 수치·boolean 노브는 **다음 작업 단위부터** 반영됩니다. 단위는 키마다 다르지만 한 작업 단위 안에서는 값이 갈리지 않습니다: `heavy_file_mb`·`archive_processed_files`·`resume_from_checkpoint`는 **다음 파일 이벤트**, `flatten_nested_dirs`는 **다음 폴더 트리거**, `enrichment_auto_confirm_*`은 **다음 체인 트랜잭션 그룹**. `external_sources`는 저장하면 와처가 재기동 없이 그 항목만 다시 세웁니다(edb82082f) — `"enabled": false` 로 끄고(다시 켜면 켠 시각 뒤에 수정된 파일만 저절로 읽고 그 전 것은 손으로 — [INGESTION_GUIDE §1.12-bis](../INGESTION_GUIDE.md), 소유자 10-26), `options` · `parser` · `path` 를 바꾸면 옛 연결을 빼고 새 모양으로 섭니다. 파서 · 옵션이 바뀐 표는 체크리스트가 그 표 키만 해제합니다(`enabled` 는 아님).
 
 ## 3. 반영 확인
 

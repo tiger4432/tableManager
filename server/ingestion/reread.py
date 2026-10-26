@@ -57,6 +57,9 @@ NOT_READING = ("display_columns", "search_columns", "source_priority")
 #: Each table's last reading, kept across the watcher's restarts beside the scheduler's status file - so a plugin fixed
 #: while the watcher was down still hands its table's failed files at the start (lead 10-20).
 READING_STAMPS_FILENAME = "watcher_reading_stamps.json"
+#: Each external source's switch-on time beside them (소유자 10-26 «활성화하였을 때 그 시점 이후로 새로 들어오는 거만 자동으로
+#: 받고 기존 거는 수동»): {source_id: epoch seconds, or None - on before it was kept, no cut} (`stamp_switched_on`).
+SWITCHED_ON_FILENAME = "watcher_switched_on.json"
 
 
 def max_files():
@@ -377,27 +380,28 @@ def hand_on_a_changed_reading(db, table, before, now, folders=()):
             "the file page)" % (table, ", ".join(changed), said))
 
 
-def load_reading_stamps():
-    """{table: reading} as last kept, {} when there is none or it cannot be read."""
+def load_reading_stamps(filename=READING_STAMPS_FILENAME):
+    """{table: reading} as last kept, {} when there is none or it cannot be read. `filename`: another dict the watcher
+    keeps beside it (`SWITCHED_ON_FILENAME`)."""
     import json
 
     import paths
 
     try:
-        with open(paths.config_path(READING_STAMPS_FILENAME), encoding="utf-8") as handle:
+        with open(paths.config_path(filename), encoding="utf-8") as handle:
             kept = json.load(handle)
         return kept if isinstance(kept, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
-def keep_reading_stamps(stamps):
+def keep_reading_stamps(stamps, filename=READING_STAMPS_FILENAME):
     """Write {table: reading} whole (a temporary file, then a replace)."""
     import json
 
     import paths
 
-    path = paths.config_path(READING_STAMPS_FILENAME)
+    path = paths.config_path(filename)
     with open(path + ".tmp", "w", encoding="utf-8") as handle:
         json.dump(stamps, handle, ensure_ascii=False, sort_keys=True)
     os.replace(path + ".tmp", path)

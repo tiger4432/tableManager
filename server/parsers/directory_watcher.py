@@ -9,7 +9,7 @@ import contextlib
 import contextvars
 import itertools
 import stat as _stat
-from datetime import datetime
+from datetime import datetime, timezone
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -1424,6 +1424,36 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         else:
             accepted.append(spec)
     return accepted, errors
+
+
+def stamp_switched_on(specs):
+    """Each on spec's `switched_on_at` from the kept times: one not kept is switched on now - stamped and said; an off
+    one is let go, so its next switch-on stamps anew; one not in `specs` (removed or refused) keeps its time. No file
+    yet: every source on is kept with None. The automatic reads take only files modified at/after it
+    (`already_checked`); Read now · Retry · Read all again read the older ones."""
+    from ingestion import reread
+
+    path = paths.config_path(reread.SWITCHED_ON_FILENAME)
+    kept = reread.load_reading_stamps(reread.SWITCHED_ON_FILENAME) if os.path.exists(path) else None
+    now = dict(kept or {})
+    for spec in specs:
+        source_id = spec["source_id"]
+        if spec.get("off"):
+            now.pop(source_id, None)
+            continue
+        if source_id not in now:
+            now[source_id] = None if kept is None else time.time()
+            if now[source_id] is not None:
+                logger.warning(f"External source switched on: {spec['root']} -> {spec['table_name']} - files "
+                               f"modified from {datetime.fromtimestamp(now[source_id]).astimezone().isoformat('T', 'seconds')}"
+                               f" on are read; older ones by hand only (Read now · Read all again)")
+        if now[source_id] is not None:
+            spec["switched_on_at"] = now[source_id]
+    if now != kept:
+        try:
+            reread.keep_reading_stamps(now, reread.SWITCHED_ON_FILENAME)
+        except OSError as e:
+            logger.warning(f"The switch-on times were not kept in {path} - a restart stamps them again: {told(e)}")
 
 
 def warn_invalid_heavy_threshold_once(value):
@@ -3130,15 +3160,35 @@ class IngestionHandler(FileSystemEventHandler):
         except Exception as e:
             logger.warning(f"[{t_name}] The checklist could not be read for {len(entries)} file(s) - they are read: "
                            f"{told(e)}", exc_info=e)
-            return Checked(why=unread)
+            before = self._before_switch_on(entries)
+            return Checked(before, {path: word for path, word in unread.items() if path not in before},
+                           before_switch_on=before)
         finally:
             db.close()
         self._settle_terminal_hits(statuses)
         # a stopped re-read's let-go files are left where they are (총괄 10-24) - checked here, so no seat reads them
         stopped = {source for table, source in REREAD_STOPS.stopped_pairs() if table == t_name}
         held = ({path for path, word in words.items()
-                 if word == ingestion.checkpoint.WHY_UNSTAMPED and self.source_of(path) in stopped} if stopped else ())
-        return Checked(set(statuses) | set(held), {path: word for path, word in words.items() if path not in held})
+                 if word == ingestion.checkpoint.WHY_UNSTAMPED and self.source_of(path) in stopped} if stopped else set())
+        # an unread file older than its source's switch-on is left to a hand (소유자 10-26) - checked here, so no
+        # automatic seat reads it
+        before = self._before_switch_on([(path, stat) for path, stat in entries if path in words and path not in held])
+        held |= before
+        return Checked(set(statuses) | held, {path: word for path, word in words.items() if path not in held},
+                       before_switch_on=before)
+
+    def _before_switch_on(self, entries):
+        """Of `[(abs_path, file_stat), ...]`, the paths whose external source was switched on after their mtime."""
+        cuts = {spec["source_id"]: datetime.fromtimestamp(spec["switched_on_at"], timezone.utc)
+                for spec in self._external_sources.values() if spec.get("switched_on_at") is not None}
+        if not cuts:
+            return set()
+        before = set()
+        for path, stat in entries:
+            taken = source_taking(self._external_sources.values(), path)
+            if taken is not None and taken[0]["source_id"] in cuts and stat[0] < cuts[taken[0]["source_id"]]:
+                before.add(path)
+        return before
 
     def _settle_terminal_hits(self, statuses: dict):
         """The move a checked file still in raws/ owes (its move failed when it was read), done once per batch.
@@ -4259,9 +4309,10 @@ class Checked(set):
     """`already_checked`'s answer: the paths checked, and `why` - the checklist's word for each path it did not check
     (`checkpoint.checked(words=)`)."""
 
-    def __init__(self, paths=(), why=None):
+    def __init__(self, paths=(), why=None, before_switch_on=()):
         super().__init__(paths)
         self.why = why or {}
+        self.before_switch_on = set(before_switch_on)      # of the paths, those held by their source's switch-on
 
 
 def said_why(words) -> str:
@@ -4418,15 +4469,17 @@ def _rereads_left(db, table, source, any_left=False):
 REREAD_STOPS = RereadStops()
 
 
-def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_read=None, words=()):
+def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_read=None, words=(),
+               before_switch_on=None):
     """One external source's sweep, as the watcher's heartbeat carries it to the API (`heartbeat.record_lap`): sweeping
-    · rested · unavailable, its seconds, files looked at, already read, dispatched and why by word."""
+    · rested · unavailable, its seconds, files looked at, already read, dispatched and why by word, and the unread
+    files older than its switch-on (`stamp_switched_on`) - read by hand only."""
     counts = {}
     for word in words:
         counts[word] = counts.get(word, 0) + 1
     heartbeat.record_lap(HEARTBEAT_NAME, SWEEP_LAP_PREFIX + spec["source_id"], seconds=seconds, state=state,
                          table=spec["table_name"], source=spec["root"], looked=looked, already_read=already_read,
-                         dispatched=dispatched, why=counts)
+                         dispatched=dispatched, why=counts, before_switch_on=before_switch_on)
 
 
 def _walk_entries(root, unlisted):
@@ -4588,6 +4641,7 @@ class WorkspaceWatcher:
         settings = load_ingestion_settings()
         specs, errors = validate_external_source_specs(
             settings, table_config, self.base_dir)
+        stamp_switched_on(specs)                                        # before `wanted`: a kept time is the same spec
         specs = [spec for spec in specs if not spec.get("off")]         # switched off: read by hand only
 
         # A disabled entry is neither accepted nor refused, so without this line
@@ -4888,7 +4942,7 @@ class WorkspaceWatcher:
                 why_not[source_id] = dict.fromkeys(
                     ("looked", "outside the root", "name not matched", "not a file", "stat failed",
                      "folders not matching", "folders below max_depth", "folders not listed",
-                     "already read", "dispatched"), 0)
+                     "already read", "before switch-on", "dispatched"), 0)
                 pages[source_id] = self._external_pages(source_id, target, why_not[source_id], lambda: said())
 
             began = said_at = time.monotonic()
@@ -4897,7 +4951,8 @@ class WorkspaceWatcher:
             def lap(state, source_id):
                 _sweep_lap(self.external_targets[source_id]["spec"], state, seconds=time.monotonic() - began,
                            looked=why_not[source_id]["looked"], dispatched=why_not[source_id]["dispatched"],
-                           already_read=why_not[source_id]["already read"], words=words[source_id])
+                           already_read=why_not[source_id]["already read"], words=words[source_id],
+                           before_switch_on=why_not[source_id]["before switch-on"])
 
             def said(force=False):
                 """Every SWEEP_PROGRESS_SECONDS: each source's looked · dispatched · seconds - running or stuck."""
@@ -4937,7 +4992,10 @@ class WorkspaceWatcher:
                         more = handler.already_checked([item for item in again if item[1] is not None])
                         cleared |= more
                         cleared.why.update(more.why)
-                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s, _l in page if abs_path in cleared)
+                        cleared.before_switch_on |= more.before_switch_on
+                    why_not[source_id]["before switch-on"] += len(cleared.before_switch_on)
+                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s, _l in page if abs_path in cleared
+                                                              and abs_path not in cleared.before_switch_on)
                     turns.append([(source_id, handler, abs_path, cleared.why.get(abs_path,
                                                                                   ingestion.checkpoint.WHY_UNREAD))
                                   for _m, abs_path, _s, _l in _dispatch_order(page)

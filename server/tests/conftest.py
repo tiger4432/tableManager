@@ -388,6 +388,19 @@ def _heartbeats_never_touch_the_live_tree(tmp_path_factory):
         heartbeat.heartbeat_path = orig_path
 
 
+@pytest.fixture(autouse=True)
+def _switch_on_times_never_touch_the_live_tree(tmp_path_factory, monkeypatch):
+    """Every source registration keeps the switch-on times (`directory_watcher.stamp_switched_on`); a run in the live
+    tree would leave the file there and the live watcher's first start would cut every source on (소유자 10-26).
+    An absolute name: `paths.config_path` joins it as it is."""
+    from ingestion import reread
+    path = os.path.join(str(tmp_path_factory.getbasetemp()), reread.SWITCHED_ON_FILENAME)
+    monkeypatch.setattr(reread, "SWITCHED_ON_FILENAME", path)
+    yield
+    if os.path.exists(path):
+        os.remove(path)
+
+
 @pytest.fixture(scope="function")
 def db_session():
     # Initialize dynamic models with test configuration (SQLite compatible)
