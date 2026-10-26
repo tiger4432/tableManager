@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **기본 세계에서 소스 하나 거두기 — 가지 세계에도 같은 소스가 있을 때(공정 이벤트를 ai_model 같은 세계로만)** — 코드 안 바뀜, 명령만
+>
+> ```
+> 순서     1) 기본 세계 선언(config/ontology/ledger_config.json)의 sources 에서 그 소스를 지움 (가지 세계 선언은 그대로)
+>          2) 미리보기 (아무것도 안 씀):
+>             python -m ledger.backfill --source <소스> --whole-source
+>          3) 수가 맞으면:
+>             python -m ledger.backfill --source <소스> --whole-source --apply
+> 수의 뜻   미리보기 줄 [Ledger] {...}
+>          relation_rows None   = 선언이 그 소스를 더는 안 읽음 (1) 이 됨). 숫자면 아직 선언돼 있음 -> 1) 부터
+>          stale_atoms N        = 거둘 원자 수 — 기본 세계의 그 소스 원자 «전부»여야 함
+>          stale_tables         = {표: {술어: 수}} — 그 소스가 쓴 술어별
+>          gone_rows/gone_atoms = 표가 잃은 행 — 여기선 0
+>          --apply 줄 stale_withdrawn N · stale_forgotten N = 거둔 원자 · 잊은 행 색인. 미리보기의 stale_atoms 와 같아야 함
+>          stale_atoms 0        = 거둘 것 없음 (소스가 아직 선언돼 있거나 이미 거둠)
+> 가지는    --world 를 안 붙이면 운영 세계(보통 기본)만. 가지 세계의 같은 소스 원자는 그대로 (박스: 기본 18 -> 0, 가지 18 -> 18)
+> 되돌리기  1) 의 소스를 다시 적고:  python -m ledger.backfill --source <소스>   (다시 번역 — 다른 길 없음)
+>          확인: --whole-source 미리보기가 relation_rows = 표 행 수 · stale_atoms 0
+> 박스 실측 10-27: 버리는 DB · 표 18 행 · 같은 선언의 기본 + 가지(lab) -> 미리보기 stale_atoms 18 · relation_rows None
+>          -> --apply stale_withdrawn 18 · stale_forgotten 18 · 기본 0 / 가지 18 -> 다시 선언 + 번역 18 / 18
+> ```
+>
+> ---
+>
 > ## [10-27] **AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정** — git pull · 런처 재기동
 >
 > ```
