@@ -1,3 +1,17 @@
+## 🔴 B — 버전 칼럼: 같은 버전이면 나중에 들어온 것이 이긴다 (소유자 10-26)
+
+소유자 말 (그대로): 「버전 리플레이 버전이 같아도 들어온 새 걸로 업데이트되게」 · 안 ㄱ(모든 읽기) 골름
+지금: crud._version_order 가 incoming == stored 면 (False, REASON_VERSION_SAME) — 행 단위(version_gate_verdict)와 맵 교체(map_version_verdict)가 이 한 함수를 지난다
+```
+바꿈   같음 -> 덮는다. 더 낮은 버전만 버린다(version_older 그대로). 한 함수의 같음 갈래만 — 두 호출자는 안 만진다
+지키는 것  사람 칸(user)은 지금처럼 칸마다 compute_priority_value 가 지킨다 — test_human_correction_survives_a_newer_version 류가 같은 버전에서도 초록이어야
+은퇴   REASON_VERSION_SAME · NOTE_SAME_VERSION_CONTENT_DIFFERS · _same_source_content_differs 와 그 호출 자리 · 설명 문장 — 같은 버전은 이제 거절이 아니다
+       그 약속을 든 자리 전수: crud 머리 주석(:355~) · 집계 주석(:289) · RUN.md · table_config.md 가이드 · CODE_MAP 은 C · 시험 둘
+```
+- 재서 보고: 같은 파일(같은 버전 · 같은 내용)을 다시 읽으면 칸 · 층 · 이력 · 체인 아웃박스에 무엇이 생기나 — «값이 같으면 아무것도 안 생김»이어야 한다(소급 비용). 생기면 그것부터 올린다
+- 게이트: 같은 버전 · 다른 내용 -> 덮임 · 같은 버전 · 같은 내용 -> 변화 0 · 낮은 버전 -> 버림 · 맵 교체 같은 버전 -> 교체됨 · 사람 칸은 같은 버전에서 안 덮임. 변이(같음을 다시 거절)로 첫 칸 빨강
+- 같은 커밋: RELEASE_LOG · RUN.md(blob 바이트에서) · 가이드 문장
+
 ## 🔴 B — 리포트 원인 걷기: 온톨로지에 없는 씨앗은 빼고 나머지를 걷는다 (소유자 10-26)
 
 소유자 말 (그대로): 「디펙카인드 없는 거 아예 에러 나는데」 · 안 ㄱ(빼고 나머지 걷기 + 코멘트) 골름
