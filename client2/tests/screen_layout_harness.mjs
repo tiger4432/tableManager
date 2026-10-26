@@ -807,7 +807,7 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule:
   if (!rows[2].classList.contains('fi-dim') || rows[0].classList.contains('fi-dim')) return 'the done source not dimmed alone';
   const buttons = [...document.querySelectorAll('#fi-progress button')];
   if (buttons.length !== 1 || !rows[1].contains(buttons[0])) return buttons.length + ' Cancel buttons, not one on the external source';
-  if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\) · 1,500 before switch-on$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
+  if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\) · 1,500 before switch on$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
   const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
   return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
 })()` });
