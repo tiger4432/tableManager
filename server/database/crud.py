@@ -286,14 +286,11 @@ def _refused_row_counts(drop_stats: dict, version_stats: Optional[dict]) -> dict
     here is the word for why」; publishing them under two keys would make the screen ask
     which list it is looking at, and a third refusal would add a third key.
 
-    ⚠️ DO NOT SUM THESE VALUES. `NOTE_SAME_VERSION_CONTENT_DIFFERS` is counted IN ADDITION
-    TO `REASON_VERSION_SAME` for the same row - it is an annotation on that refusal ("and
-    the content actually changed, so check the upstream version management"), not a
-    separate one. `NOTE_ROW_VERSION_ABSENT` is excluded outright because it names rows the
-    gate APPLIED, and a refusal count that includes accepted rows is worse than no count.
+    `VERSION_NOTES_APPLIED` are excluded outright because they name rows the gate APPLIED, and a refusal count that
+    includes accepted rows is worse than no count.
     """
     counts = {k: v for k, v in (version_stats or {}).get("counts", {}).items()
-              if v and k not in (NOTE_ROW_VERSION_ABSENT,)}
+              if v and k not in VERSION_NOTES_APPLIED}
     for refusal in drop_stats.get("row_refusals") or ():
         reason = refusal.get("reason") or DROP_UNIQUE_VIOLATED
         counts[reason] = counts.get(reason, 0) + 1
@@ -356,9 +353,12 @@ def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
 # ---------------------------------------------------------------------------
 # A table whose single business key must always hold the LATEST row declares
 # `version_column` in table_config.json. A machine write against an EXISTING row of such
-# a table is applied only when the incoming version is strictly GREATER than the one the
-# row already holds. Without it this path is last-write-wins, so re-dropping a superseded
-# file makes current state regress with no record of any kind.
+# a table is applied unless the incoming version is LOWER than the one the row already
+# holds. Without it this path is last-write-wins, so re-dropping a superseded file makes
+# current state regress with no record of any kind. The SAME version is taken (owner 10-26
+# «버전이 같아도 들어온 새 걸로 업데이트되게»): a row whose cells are the same writes nothing
+# by itself, and a map judged at the same version is written only when it would change
+# something (`_map_unchanged`) - a map file read again does not purge and rewrite its map.
 #
 # 🔴 The gate is a VETO, never a promotion. A row that passes still goes cell by cell
 # through `compute_priority_value`, where `user` (0) outranks every machine source. That
@@ -381,13 +381,15 @@ def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
 REASON_VERSION_MISSING = "version_missing"
 REASON_VERSION_UNORDERABLE = "version_unorderable"
 REASON_VERSION_OLDER = "version_older"
-REASON_VERSION_SAME = "version_same"
 # Not a refusal: the row is applied. Named anyway because it happens exactly once per row
 # and only while a table is adopting the gate.
 NOTE_ROW_VERSION_ABSENT = "row_version_absent"
-# A no-op that is a genuine upstream defect: the version did not move but the content
-# this same source writes did.
-NOTE_SAME_VERSION_CONTENT_DIFFERS = "version_same_content_differs"
+# A map at the stored map's version (lead 10-26 ㄱ): the same content is left as it is - nothing to write, not a
+# refusal - and a different one is applied.
+NOTE_MAP_UNCHANGED = "unchanged"
+NOTE_MAP_SAME_APPLIED = "applied"
+#: the notes that name rows the gate APPLIED - never counted as refused
+VERSION_NOTES_APPLIED = (NOTE_ROW_VERSION_ABSENT, NOTE_MAP_SAME_APPLIED)
 
 # table_name -> {reasons already announced at WARNING in this process}. Bounded by the
 # constant set of reason names above, so unlike the undeclared-column registry it needs
@@ -395,12 +397,8 @@ NOTE_SAME_VERSION_CONTENT_DIFFERS = "version_same_content_differs"
 # reaching the branch.
 _version_gate_announced = {}
 
-# How many differing column names ride in the per-batch summary. The names come from the
-# payload, so a malformed file could otherwise put a full schema in one log line.
-MAX_VERSION_DIFF_COLUMNS_REPORTED = 8
-
 # What each outcome MEANS, in the log, in one sentence. Two of these outcomes APPLY the
-# row and four refuse it; a single generic sentence would describe the applied ones as
+# row, one leaves an unchanged map and three refuse it; a single generic sentence would describe the applied ones as
 # refusals, which is how a diagnostic starts lying.
 _VERSION_OUTCOME_EXPLANATION = {
     REASON_VERSION_MISSING:
@@ -412,12 +410,12 @@ _VERSION_OUTCOME_EXPLANATION = {
     REASON_VERSION_OLDER:
         "the incoming version is LOWER than the stored one, so this is a superseded file "
         "arriving late - the stored row is kept",
-    REASON_VERSION_SAME:
-        "the incoming version equals the stored one, so the write is a no-op",
-    NOTE_SAME_VERSION_CONTENT_DIFFERS:
-        "the version did NOT move but the content this source writes DID. The write was "
-        "dropped; check version management upstream, because this is how a real change "
-        "gets silently discarded",
+    NOTE_MAP_UNCHANGED:
+        "the map is at the stored map's version and its content is the same, so nothing is "
+        "written - the map stays as it was (not a refusal)",
+    NOTE_MAP_SAME_APPLIED:
+        "the map is at the stored map's version and its content differs, so it is applied - "
+        "the same version is taken",
     NOTE_ROW_VERSION_ABSENT:
         "the stored row had no usable version, so the incoming one was ADOPTED and the "
         "row WAS written. Expected while a table takes up version gating; it should stop",
@@ -506,17 +504,12 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
 
     🔴 Measured against the source's own previous value, not against the displayed cell.
     A human correction makes the displayed value differ from the file permanently, so
-    comparing against the cell would put a false "version management is broken" warning on
-    every single re-drop - and a warning that is always there is a warning nobody reads.
+    comparing against the cell would call every re-read of an unchanged file «changed».
     Against the source's own history the predicate is exact: same version, different
     content, same writer.
 
-    Reads come from the batch-preloaded caches (`_load_metadata_row_cell` is cache-first),
-    so on the batch path this costs a dict lookup per payload cell for any row the batch
-    prefetched - including cells with no stored metadata at all, which used to be the one
-    case that fell through to a per-cell SELECT. A row resolved after the prefetch (a
-    composite key assembled mid-batch) is still read from the database, as it must be. It
-    only runs on the equal-version arm, which is the re-drop case.
+    Reads come from the caches (`_load_metadata_row_cell` is cache-first) - `_map_unchanged` fills them for the whole
+    map in one read. It only runs on the equal-version arm of a map's verdict, which is the re-read case.
     """
     # The same loadable answer as the write itself; the dict beside it answers a
     # DIFFERENT question (what type is this column), which is not a filter.
@@ -580,8 +573,9 @@ def version_gate_verdict(table_name, config, row, is_new, update_item):
     return _version_order(incoming, parse_version_key(getattr(row, version_col, None), col_type))
 
 
-def _version_order(incoming, stored):
-    """`(applied, reason)` for two `parse_version_key` keys - a row's, or a map's (its rows' greatest)."""
+def _version_order(incoming, stored, unchanged=None):
+    """`(applied, reason)` for two `parse_version_key` keys - a row's, or a map's (its rows' greatest). The same version
+    is taken (owner 10-26); a map's `unchanged()` says first whether it would write anything."""
     if stored is None:
         # Adoption. A row written before the column existed has nothing to regress to,
         # and refusing it would wedge the table behind a manual backfill forever. Named
@@ -593,14 +587,17 @@ def _version_order(incoming, stored):
     if incoming[1] > stored[1]:
         return True, None
     if incoming[1] == stored[1]:
-        return False, REASON_VERSION_SAME
+        if unchanged is None:
+            return True, None
+        return (False, NOTE_MAP_UNCHANGED) if unchanged() else (True, NOTE_MAP_SAME_APPLIED)
     return False, REASON_VERSION_OLDER
 
 
-def map_version_verdict(config, items, stored_values):
+def map_version_verdict(config, items, stored_values, unchanged=None):
     """Per-MAP verdict for a map replace (소유자 10-21 「맵교체랑 섞이면 맵단위로 버전관리」): `(applied, reason)`.
     A map's version is the greatest of its rows' - the incoming items', the stored rows' (`stored_values`). Not
-    asked: a table with no version column · a batch with no item (a scope emptied) · a person's batch."""
+    asked: a table with no version column · a batch with no item (a scope emptied) · a person's batch. At the same
+    version, `unchanged()` (`_map_unchanged`) decides: the same content is left, a different one applied."""
     version_col = config.get("version_column")
     if not version_col or not items or all(item.source_name == "user" for item in items):
         return True, None
@@ -616,7 +613,37 @@ def map_version_verdict(config, items, stored_values):
         return True, NOTE_ROW_VERSION_ABSENT if stored_values else None
     if len({key[0] for key in stored}) > 1:
         return False, REASON_VERSION_UNORDERABLE
-    return _version_order(max(incoming), max(stored))
+    return _version_order(max(incoming), max(stored), unchanged)
+
+
+def _map_unchanged(db, table_name, config, items, row_ids) -> bool:
+    """True when a map at the stored map's version would write nothing (lead 10-26 ㄱ): the stored rows `row_ids` are
+    the items' rows one for one by key, and no item's column differs from what its source last wrote there
+    (`_same_source_content_differs`). The map's layers are read once, its rows' and its sources'."""
+    table_model = models.DYNAMIC_TABLES[table_name]
+    rows = db.query(table_model).filter(table_model.row_id.in_(list(row_ids))).all() if row_ids else []
+    if len(rows) != len(items):
+        return False
+    by_key = {clean_str_value(row.business_key_val): row for row in rows}
+    key_col = config.get("business_key")
+    sources_cache = {}
+    for layer in db.query(models.CellSource).filter(
+            models.CellSource.table_name == table_name, models.CellSource.row_id.in_([row.row_id for row in rows]),
+            models.CellSource.source_name.in_(sorted({item.source_name for item in items}))):
+        sources_cache.setdefault((layer.row_id, layer.column_name), []).append(layer)
+    read = LayersRead([row.row_id for row in rows], {col for item in items for col in item.updates})
+    seen = set()
+    for item in items:
+        assemble_composite_business_key(table_name, item)
+        key = clean_str_value(item.business_key_val or (item.updates.get(key_col) if key_col else None))
+        row = by_key.get(key) if key else None
+        if row is None or row.row_id in seen:
+            return False
+        seen.add(row.row_id)
+        if _same_source_content_differs(db, table_name, row, item, config, config.get("version_column"), False,
+                                        sources_cache, {}, None, None, read):
+            return False
+    return True
 
 
 def log_version_gate_summary(table_name, version_col, source_name, stats):
@@ -637,30 +664,22 @@ def log_version_gate_summary(table_name, version_col, source_name, stats):
         return
 
     announced = _version_gate_announced.setdefault(table_name, set())
-    diff_cols = sorted(stats.get("differing_columns", set()))[:MAX_VERSION_DIFF_COLUMNS_REPORTED]
     for reason in sorted(counts):
         if reason in announced:
             continue
         announced.add(reason)
-        detail = ""
-        if reason == NOTE_SAME_VERSION_CONTENT_DIFFERS and diff_cols:
-            detail = (f" Differing column(s): {', '.join(diff_cols)}.")
         logger.warning(
             f"[VersionGate] '{table_name}' is version-gated on column '{version_col}': "
             f"outcome '{reason}' seen for the first time in this process (source "
             f"'{source_name}'), {counts[reason]} row(s) in this batch - "
             f"{_VERSION_OUTCOME_EXPLANATION.get(reason, 'no explanation registered')}."
-            f"{detail} Repeats are reported at INFO, once per batch."
+            f" Repeats are reported at INFO, once per batch."
         )
 
     named = ", ".join(f"{reason}={counts[reason]}" for reason in sorted(counts))
-    detail = ""
-    if NOTE_SAME_VERSION_CONTENT_DIFFERS in counts and diff_cols:
-        capped = " (list capped)" if len(stats.get("differing_columns", ())) > len(diff_cols) else ""
-        detail = f" Differing column(s): {', '.join(diff_cols)}{capped}."
     logger.info(
         f"[VersionGate] '{table_name}' version column '{version_col}', source "
-        f"'{source_name}': {named} out of {stats.get('rows', 0)} row(s) in this batch.{detail}"
+        f"'{source_name}': {named} out of {stats.get('rows', 0)} row(s) in this batch."
     )
 
 
@@ -4006,15 +4025,6 @@ def apply_row_update_internal(
     if gate_reason is not None and version_stats is not None:
         counts = version_stats.setdefault("counts", {})
         counts[gate_reason] = counts.get(gate_reason, 0) + 1
-        if gate_reason == REASON_VERSION_SAME:
-            differing = _same_source_content_differs(
-                db, table_name, row, update_item, config,
-                config.get("version_column"), is_new, sources_cache, overwrites_cache,
-                cell_sources_to_upsert, cell_overwrites_to_upsert, layers_read)
-            if differing:
-                counts[NOTE_SAME_VERSION_CONTENT_DIFFERS] = \
-                    counts.get(NOTE_SAME_VERSION_CONTENT_DIFFERS, 0) + 1
-                version_stats.setdefault("differing_columns", set()).update(differing)
     if not gate_applied:
         return row, is_new, changed_cols
 
@@ -5465,13 +5475,15 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             purged_row_ids = [r[0] for r in matching_rows if r[0]]
             # 🔴 The map is one version (소유자 10-21): judged here, before the purge or the diff deletes anything.
             #    Refused, the map is neither written nor deleted - the VersionGate line says it in its words.
-            map_applied, map_note = map_version_verdict(_cfg, batch.updates, [r[1] for r in matching_rows]
-                                                        if map_version_col else [])
+            map_applied, map_note = map_version_verdict(
+                _cfg, batch.updates, [r[1] for r in matching_rows] if map_version_col else [],
+                lambda: _map_unchanged(db, table_name, _cfg, batch.updates, purged_row_ids))
             if not map_applied:
                 log_version_gate_summary(table_name, map_version_col, source_val,
                                          {"rows": len(batch.updates), "counts": {map_note: len(batch.updates)}})
-                if replace_report is not None:
-                    replace_report.update(filters=scope_filters, deleted=0, mode="refused", reason=map_note)
+                if replace_report is not None:          # a map the same as stored is left, not refused
+                    replace_report.update(filters=scope_filters, deleted=0, in_scope=len(purged_row_ids), reason=map_note,
+                                          mode=NOTE_MAP_UNCHANGED if map_note == NOTE_MAP_UNCHANGED else "refused")
                 from session_contract import end_step
                 end_step(db)
                 return [], [], [], []

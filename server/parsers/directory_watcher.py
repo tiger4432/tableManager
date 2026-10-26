@@ -805,15 +805,13 @@ class _FileTally:
             by_word = {replaced["reason"]: sent} if refused else (dropped or {}).get("rows_refused") or {}
             for word, n in ({} if refused else by_word).items():      # a refused map is said as the map
                 self.rows_refused[word] = self.rows_refused.get(word, 0) + n
-            self._add_chunk(summary, rows, sent - sum(n for word, n in by_word.items()
-                                                      if word != crud.NOTE_SAME_VERSION_CONTENT_DIFFERS),
-                            new_ids, changed_cells, sampler)
+            self._add_chunk(summary, rows, sent - sum(by_word.values()), new_ids, changed_cells, sampler)
             for verdict, n in (time_left or {}).items():
                 self.time_left[verdict] = self.time_left.get(verdict, 0) + n
             if refused:
                 self.maps_refused[replaced["reason"]] = self.maps_refused.get(replaced["reason"], 0) + 1
             elif replaced is not None:
-                self.maps += 1
+                self.maps += replaced.get("mode") != crud.NOTE_MAP_UNCHANGED     # the same as stored: left, not replaced
                 self.map_deleted += replaced.get("deleted", 0)
                 way = "%s/%s" % (replaced.get("mode"), replaced.get("reason"))
                 self.map_ways[way] = self.map_ways.get(way, 0) + 1
@@ -859,11 +857,7 @@ class _FileTally:
         """«1 map refused: version_older · 3 rows refused: version_older» - the write's own words; "" when none."""
         def said(counts, unit, verb):
             return ["%d %s%s %s%s" % (n, unit, "" if n == 1 else "s", verb, word) for word, n in sorted(counts.items())]
-        return " · ".join(said(self.maps_refused, "map", "refused: ")
-                          + said({w: n for w, n in self.rows_refused.items()
-                                  if w != crud.NOTE_SAME_VERSION_CONTENT_DIFFERS}, "row", "refused: ")
-                          + said({w: n for w, n in self.rows_refused.items()
-                                  if w == crud.NOTE_SAME_VERSION_CONTENT_DIFFERS}, "row", ""))
+        return " · ".join(said(self.maps_refused, "map", "refused: ") + said(self.rows_refused, "row", "refused: "))
 
     #: What each lane's wait covers - the same word means a different span on each lane.
     WAITED_SPANS = {"heavy": "queue + table lock", "normal": "table lock"}

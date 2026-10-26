@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 버전 칸을 적은 표에서 같은 버전 파일을 Retry · Read now 로 다시 읽어 봄
+> 볼 것    값이 바뀐 파일 -> 결과 칸 changed N · 그 칸이 새 값 (사람이 고친 칸은 그대로) = 고쳐진 것
+>          같은 맵 파일 -> 결과 칸 unchanged N · new 0 · [VersionGate] 줄 «unchanged=N» -> 맵을 안 지움 (정상)
+>          [VersionGate] «applied=N» -> 같은 버전 · 다른 내용의 맵을 덮음
+>          «version_older» -> 지금처럼 옛 버전 거절 · «version_same» 이 보이면 옛 코드가 돌고 있음
+> 되돌리기  git revert $(git log -1 --format=%h --grep='the same version is taken' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다** · 조건 행은 모델 것 먼저 · 나머지로 most 까지 — git pull · 런처 재기동
 >
 > ```
@@ -1261,8 +1274,8 @@
 > ```
 > 보는 곳   파일 화면 결과 칸 · watcher.log «[Ingest] <표> FILE <파일>: ... · 1 map refused: version_older»
 > 뜻      N map(s) refused: version_older -> 그 파일 맵이 저장된 맵보다 옛 버전 -> 맵 그대로(정상)
->          N row(s) refused: version_same -> 같은 버전을 다시 읽음. «version_same_content_differs» 가 같이 있으면
->          내용이 바뀌었는데 버전을 안 올린 것 -> 파일 쪽 버전을 올림
+>          (10-26 부터 같은 버전은 받음 - version_same 은 더 안 나옴. 같은 버전 · 같은 내용의 맵은 안 씀)
+>          같은 버전 · 다른 내용 -> 새 값으로 덮임 (사람이 고친 칸은 그대로)
 > 되돌리기  git revert a166d8a2e -> 서버 · 와처 재기동 (그 뒤 거절된 행이 다시 unchanged 로 세어지고 결과 칸은 수만)
 > ```
 >
@@ -1585,7 +1598,7 @@
 > 닿는 표  table_config 에 version_column 과 allow_replace_map 을 같이 적은 표 · 체인 규칙 allow_replace_map 의 타깃이 version_column 을 적은 표
 > 볼 줄    와처 · 체인 로그: [VersionGate] '<표>' version column '<칸>', source '<파일>': version_older=N out of N row(s)
 > 뜻      version_older -> 그 파일의 맵이 저장된 맵보다 옛 버전 -> 맵 그대로(정상)
->          version_same -> 같은 버전을 다시 읽음 -> 맵 그대로. 내용이 바뀐 파일인데 버전을 안 올렸으면 파일 쪽 버전을 올림
+>          unchanged -> 같은 버전 · 같은 내용의 맵을 다시 읽음 -> 쓸 것 없음, 맵 그대로(정상) · applied -> 같은 버전 · 다른 내용 -> 덮음 (10-26)
 >          version_missing -> 파일의 그 맵 행에 버전 값이 하나도 없음 -> 파일 · 맵퍼가 그 칸을 채우는지 봄
 >          row_version_absent -> 저장된 맵에 버전이 없어 받아들임(칸을 나중에 적은 표, 한 번)
 > 되돌리기  git revert 4d76641f7 -> 서버 · 와처 · 체인 워커 재기동 (그 뒤 옛 파일이 다시 맵을 덮음)
