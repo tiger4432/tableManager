@@ -327,8 +327,22 @@ const fileSourcesAnswer = () => {
   return { ...a, body: { ...b, data: b.data.map((t) => ({ ...t, sources: sources[t.table_name] || [] })),
     progress: { counting: false, failed: null, count_seconds: 0.4, counted_at: new Date(Date.now() - 12000).toISOString() } } };
 };
+// Pick files by pattern (owner 10-26): B's /glob answer past its limit - 5,000 of 12,431, names some very long, every state.
+const PICK_GLOB = { on: false };
+const pickGlobAnswer = () => {
+  const states = ['BEFORE_SWITCH_ON', 'NOT_READ', 'SUCCESS', 'FAILED', 'PENDING_RETRY'];
+  const files = Array.from({ length: 5000 }, (_, i) => {
+    const day = String(1 + (i % 30)).padStart(2, '0');
+    const rel = `2026-09/${day}/${i % 97 ? '' : 'rework/second_pass/'}void_inspection_L03_${String(i).padStart(5, '0')}${i % 7 ? '' : '_with_the_operator_note_written_into_the_file_name'}.csv`;
+    return { path: `X:/nas-fab-07/void_inspection/${rel}`, rel, modified_at: new Date(Date.UTC(2026, 8, 1 + (i % 30), 6, i % 60)).toISOString(), status: states[i % 5] };
+  });
+  return { status: 200, type: 'application/json', body: { status: 'success', table: 'bonding_log', source: 'X:/nas-fab-07/void_inspection',
+    root: 'X:/nas-fab-07/void_inspection', pattern: '2026-09/**/*.csv', matched: 12431, limit: 5000, truncated: true,
+    by_status: { BEFORE_SWITCH_ON: 2487, NOT_READ: 2486, SUCCESS: 2486, FAILED: 2486, PENDING_RETRY: 2486 }, files, walked: 12431, seconds: 1.8 } };
+};
 const answerOf = (u) => {
   if (FILE_SOURCES.on && u.pathname === '/admin/file-ingestion/tables') return fileSourcesAnswer();
+  if (PICK_GLOB.on && u.pathname === '/admin/file-ingestion/glob') return pickGlobAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PASTE_HTML.on) { const v = pasteHtmlAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
@@ -808,11 +822,25 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule:
   if (rows.length !== 3) return rows.length + ' rows';
   if (files(rows[0]) !== '4,483 / 4,488 read · 5 left') return 'the first row says «' + files(rows[0]) + '»';
   if (!rows[2].classList.contains('fi-dim') || rows[0].classList.contains('fi-dim')) return 'the done source not dimmed alone';
-  const buttons = [...document.querySelectorAll('#fi-progress button')];
+  const buttons = [...document.querySelectorAll('#fi-progress button')].filter((b) => b.textContent === 'Cancel waiting re-reads');
   if (buttons.length !== 1 || !rows[1].contains(buttons[0])) return buttons.length + ' Cancel buttons, not one on the external source';
+  if (document.querySelectorAll('#fi-progress button[aria-expanded]').length !== 3) return 'not a Pick files on every source';
   if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\) · 1,500 before switch on$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
   const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
   return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
+})()` });
+// owner 10-26: Pick files under the external source - its panel right under its row, a page of 100 of the 5,000 listed
+// (of 12,431 matched), Read these the whole list while none is ticked.
+CELLS.push({ entry: 'file_ingestion.html', after: 'Pick files listed', rule: 'pick files', at: 'fi-progress', expr: `(() => {
+  const rows = [...document.querySelectorAll('#fi-progress tr[data-table]')];
+  const under = document.querySelector('#fi-progress tr.fi-progress__pick');
+  if (!under || under.previousElementSibling !== rows[1]) return 'the panel is not right under the external source';
+  const lines = under.querySelectorAll('tr.fi-file');
+  if (lines.length !== 100) return lines.length + ' lines, not a page of 100';
+  const meta = [...under.querySelectorAll('.fi-meta')].map((n) => n.textContent);
+  if (!meta.includes('first 5,000 of 12,431') || !meta.includes('page 1 of 50')) return 'its lines say ' + JSON.stringify(meta);
+  const go = under.querySelector('.fi-btn--primary');
+  return go && go.textContent === 'Read these (5,000)' ? null : 'Read these says «' + (go && go.textContent) + '»';
 })()` });
 // The row checkboxes and the header's select-all at the grid's left edge with the first data column hidden (owner 10-22).
 CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'select all at the left', at: 'ag-header', expr: `(() => {
@@ -1882,8 +1910,22 @@ const DRIVE = {
       FILE_SOURCES.on = true;
       await until(c, "document.querySelectorAll('#fi-progress tr[data-table]').length === 3", 15000);
     }],
+    // Pick files under the external source, a pattern listed (owner 10-26)
+    ['Pick files listed', async (c) => {
+      PICK_GLOB.on = true;
+      await evaluate(c, `(() => {
+        const row = [...document.querySelectorAll('#fi-progress tr[data-table]')][1];
+        [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Pick files').click();
+        const form = document.querySelector('#fi-progress .fi-pick__form');
+        form.querySelector('input').value = '2026-09/**/*.csv';
+        form.requestSubmit();
+        return true;
+      })()`);
+      await until(c, "document.querySelectorAll('#fi-progress tr.fi-file').length === 100", 15000);
+    }],
     ['Read progress, the fixture again', async (c) => {
       FILE_SOURCES.on = false;
+      PICK_GLOB.on = false;
       await sleep(300);
       return c;
     }],

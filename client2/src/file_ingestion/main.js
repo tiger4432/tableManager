@@ -12,8 +12,8 @@ import { INCLUDE_STATUSES } from '../folder_retry.js';
 import { countNumberText } from '../match_count.js';
 import { initTheme } from '../theme.js';
 import { pollBeat, pollQueue, oneRead, timedRead } from '../queue_poll.js';
-import { WORDS, cancelAsk, countedText, groupFiles, queryOf, sourceLines, tableLines } from './model.js';
-import { DetailPart, FilesPart, ProgressPart, ReadNowPart, SearchPart, TableListPart } from './parts.js';
+import { WORDS, cancelAsk, countedText, groupFiles, pickQuery, queryOf, sourceLines, tableLines } from './model.js';
+import { DetailPart, FilesPart, PickFilesPart, ProgressPart, ReadNowPart, SearchPart, TableListPart } from './parts.js';
 
 const NO_TOKEN = 'Admin token needed - open Admin once on this browser';
 
@@ -27,8 +27,10 @@ async function read(path, signal) {
   return res.json();
 }
 
-async function act(path, sentence = false) {
-  const res = await adminFetch(`${API_BASE}${path}`, { method: 'POST' });
+// `send`: a JSON body (the pick list's ticked paths, the handed ids); `method` GET: a read whose refusal is a sentence
+async function act(path, sentence = false, { method = 'POST', send } = {}) {
+  const init = send === undefined ? { method } : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(send) };
+  const res = await adminFetch(`${API_BASE}${path}`, init);
   const body = await res.json().catch(() => ({}));
   const detail = body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : '';
   if (!res.ok) throw new Error(res.status === 401 ? NO_TOKEN : sentence && detail ? detail : `${res.status}${detail ? ` · ${detail}` : ''}`);
@@ -40,9 +42,27 @@ export function seatFileIngestionPage(doc = document) {
   const query = { table: new URLSearchParams(doc.defaultView.location.search).get('table') || '', status: 'ALL', name: '', folder: '', from: '', to: '', group: 'folder' };
   const view = { lines: [], rows: [], groups: [], chips: [], total: null, page: 1, picked: null };
   const say = (text) => { byId('fi-said').textContent = text || ''; };
+  // Pick files by pattern under a source (owner 10-26, B's routes): listed read or not; Read these hands the ticked ones
+  // (none: all listed) to the Read now door; the handed ids' states read again on the progress beat
+  const pick = new PickFilesPart(doc.createElement('div'), {
+    doc,
+    onList: (line, pattern) => act(`/admin/file-ingestion/glob?${pickQuery(line, pattern)}`, true, { method: 'GET' }),
+    onRead: async (line, pattern, body, n) => {
+      if (!doc.defaultView.confirm(WORDS.readTheseAsk(n, line.source))) return null;
+      try {
+        const done = await act(`/admin/file-ingestion/read-now?${pickQuery(line, pattern)}`, true, body ? { send: body } : {});
+        showToast(done.message, 'success');
+        progressRead.ask();
+        return done;
+      } catch (e) { showToast(`❌ ${e.message}`, 'error'); return null; }
+    },
+    onLeft: (ids) => act('/admin/file-ingestion/read-now/left', true, { send: { ids } }),
+  });
   // «Cancel waiting re-reads» on a source (A 11618814f): the preview's count asked first, then put back, the progress read again
   const progress = new ProgressPart(byId('fi-progress'), {
     doc,
+    pickMount: pick.mount,
+    onPick: (line) => pick.open(line),
     onCancel: async (folder) => {
       const at = `/admin/file-ingestion/cancel-reread?${new URLSearchParams({ folder })}`;
       try {
@@ -161,6 +181,7 @@ export function seatFileIngestionPage(doc = document) {
   const drawProgress = (answer) => progress.render(sourceLines(answer.data), countedText(answer.progress));
   const progressRead = oneRead(async () => {
     try { drawProgress(await timedRead((signal) => read('/admin/file-ingestion/tables', signal))); } catch (e) { say(e.message); }
+    await pick.tick();
   });
   pollQueue(() => pollBeat({ onScreen: () => !doc.hidden, busy: progressRead.busy, read: progressRead.ask }));
 

@@ -313,6 +313,121 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   await rn.check();
   ok('P6b a refusal: the server\'s sentence where the owners were, no button', byClass(rHost, 'fi-why')[0]?.textContent === M.WORDS.notRead + refuse
     && byClass(rHost, 'fi-readnow__owner').length === 0, byClass(rHost, 'fi-why')[0]?.textContent);
+
+  // M13 · P10-P13 - pick files by pattern (owner 10-26): the list's page, its count line, what Read these sends; the panel
+  // in a row under its source; the handed files' states on the beat; the pattern box a beat never redraws
+  const name3 = (i) => `2026-09/f${String(i).padStart(3, '0')}.csv`;
+  const FILES250 = Array.from({ length: 250 }, (_, i) => ({ path: `X:/nas/bond/${name3(i)}`, rel: name3(i), modified_at: '2026-09-01T06:14:00Z',
+    status: i % 2 ? 'NOT_READ' : 'BEFORE_SWITCH_ON' }));
+  const LISTED = { pattern: '2026-09/*.csv', matched: 12431, truncated: true, files: FILES250 };
+  const pg3 = M.pickPage(FILES250, 3);
+  const pg9 = M.pickPage(FILES250, 9);
+  ok('M13 a page is 100 files, the last holds the rest, a page past the end is the last; «first N of M» past the server\'s limit, '
+    + 'else the count, and the ticked; Read these sends the ticked paths in the list\'s order - none or all ticked: no body (every listed file)',
+    pg3.page === 3 && pg3.pages === 3 && pg3.rows.length === 50 && pg9.page === 3
+      && M.pickMeta(LISTED, 0) === 'first 250 of 12,431' && M.pickMeta(LISTED, 3) === 'first 250 of 12,431 · 3 ticked'
+      && M.pickMeta({ matched: 1, truncated: false, files: [FILES250[0]] }, 0) === '1 file'
+      && M.pickBody(LISTED, new Set()) === null && M.pickBody(LISTED, new Set(FILES250.map((f) => f.path))) === null
+      && JSON.stringify(M.pickBody(LISTED, new Set([FILES250[9].path, FILES250[2].path]))) === JSON.stringify({ paths: [FILES250[2].path, FILES250[9].path] })
+      && M.leftText({ handed: 1500, left: 1212, read: 284, failed: 4 }) === '1,500 handed · 1,212 left · 284 read · 4 failed',
+    JSON.stringify([pg3, M.pickMeta(LISTED, 3)]).slice(0, 200));
+
+  const kHost = doc.createElement('div');
+  doc.body.append(kHost);
+  const kMount = doc.createElement('div');
+  const panelPicks = [];
+  const kp = new Q.ProgressPart(kHost, { doc, onCancel() {}, pickMount: kMount, onPick: (l) => panelPicks.push(l ? l.source : null) });
+  kp.render(srcLines, 'counted 12 s ago');
+  const pickButtons = () => walk(kHost).filter((n) => n.tagName === 'BUTTON' && n.textContent === M.WORDS.pickFiles);
+  const pickCount = pickButtons().length;
+  pickButtons()[2].dispatch('click');
+  const underRow = () => walk(kHost).find((n) => n.tagName === 'TR' && n.className === 'fi-progress__pick');
+  const placed = underRow();
+  const kRows = () => walk(kHost).filter((n) => n.tagName === 'TR' && n.dataset && n.dataset.table);
+  const kids = (tr) => tr.parentNode.children;
+  const rightUnder = Boolean(placed) && placed.parentNode === kRows()[2].parentNode && kids(placed).indexOf(kRows()[2]) + 1 === kids(placed).indexOf(placed);
+  kp.render(srcLines.map((l, i) => (i === 2 ? { ...l, read: 7, left: 2 } : l)), 'counted 1 s ago');
+  const stayed = underRow() === placed && walk(placed).includes(kMount);
+  const written = pCells(kRows()[2])[2];
+  pickButtons()[2].dispatch('click');
+  ok('P10 «Pick files» on every source; pressed, its panel stands in a row right under it; a beat with the same rows writes them '
+    + 'in place and the panel stays where it is; pressed again, it closes',
+    pickCount === 3 && rightUnder && stayed && written === '7 / 9 read · 2 left' && !underRow()
+      && JSON.stringify(panelPicks) === JSON.stringify([srcLines[2].source, null]), JSON.stringify([pickCount, rightUnder, stayed, written, panelPicks]));
+
+  const sMount = doc.createElement('div');
+  doc.body.append(sMount);
+  const listCalls = [];
+  const readCalls = [];
+  const leftCalls = [];
+  let refuseList = '';
+  let leftAnswer = { handed: 1, left: 1, read: 0, failed: 0 };
+  const sp = new Q.PickFilesPart(sMount, { doc,
+    onList: async (line, pattern) => { listCalls.push([line.table, pattern]); if (refuseList) throw new Error(refuseList); return LISTED; },
+    onRead: async (line, pattern, body, n) => { readCalls.push([pattern, body, n]); return { ids: [41, 42], handed: n }; },
+    onLeft: async (ids) => { leftCalls.push(ids.join(',')); return leftAnswer; } });
+  sp.open(srcLines[2]);
+  const patternBox = () => walk(sMount).find((n) => n.tagName === 'INPUT' && String(n.className).includes('fi-input'));
+  const submit = async (text) => {
+    patternBox().value = text;
+    walk(sMount).find((n) => n.tagName === 'FORM').dispatch('submit', { preventDefault() {} });
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  await submit(' 2026-09/*.csv ');
+  const sRows = () => walk(sMount).filter((n) => n.tagName === 'TR' && n.className === 'fi-file');
+  const sCells = (tr) => walk(tr).filter((n) => n.tagName === 'TD').map((n) => n.textContent);
+  const boxes = () => sRows().map((tr) => walk(tr).find((n) => n.tagName === 'INPUT'));
+  const tickIt = (box) => { box.checked = !box.checked; box.dispatch('change'); };
+  const metaLine = () => texts(sMount, 'fi-meta').find((t) => t.startsWith('first'));
+  const goButton = () => byClass(sMount, 'fi-btn--primary')[0] || { textContent: '', disabled: null, dispatch() {} };
+  const firstLine = sCells(sRows()[0]);
+  const onPage = sRows().length;
+  tickIt(boxes()[0]);
+  tickIt(boxes()[1]);
+  const twoTicked = [metaLine(), goButton().textContent];
+  walk(sMount).find((n) => n.tagName === 'BUTTON' && n.textContent === M.WORDS.next).dispatch('click');
+  const page2 = sCells(sRows()[0])[1];
+  const headBox = () => walk(sMount).find((n) => n.tagName === 'INPUT' && n.getAttribute('aria-label') === M.WORDS.tickAll);
+  tickIt(headBox());
+  const allTicked = goButton().textContent;
+  tickIt(headBox());
+  const noneTicked = [metaLine(), texts(sMount, 'fi-meta').includes(M.WORDS.noneTicked(250))];
+  ok('P11 List asks the trimmed pattern under its source; a page of 100 lines «path · modified · status»; ticks counted in the line '
+    + 'and on Read these; Next turns the page; the head ticks every listed file, and clears them (none ticked: every listed one)',
+    JSON.stringify(listCalls) === JSON.stringify([['inspection_run', '2026-09/*.csv']]) && onPage === 100
+      && firstLine[1] === name3(0) && firstLine[3] === 'Before switch on'
+      && JSON.stringify(twoTicked) === JSON.stringify(['first 250 of 12,431 · 2 ticked', 'Read these (2)'])
+      && page2 === name3(100) && allTicked === 'Read these (250)' && JSON.stringify(noneTicked) === JSON.stringify(['first 250 of 12,431', true]),
+    JSON.stringify([listCalls, onPage, firstLine, twoTicked, page2, allTicked, noneTicked]));
+
+  tickIt(boxes()[5]);
+  goButton().dispatch('click');
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  const readingLine = () => (byClass(sMount, 'fi-pick__reading')[0] || {}).textContent;
+  const whileReading = [readingLine(), Boolean(goButton().disabled)];
+  leftAnswer = { handed: 1, left: 0, read: 1, failed: 0 };
+  await sp.tick();
+  const afterReading = [readingLine(), Boolean(goButton().disabled)];
+  ok('P12 Read these hands the ticked paths and their count; the handed ids\' states read on the beat - «Reading» while some are '
+    + 'left, Read these off; none left - «Read», Read these back',
+    JSON.stringify(readCalls) === JSON.stringify([['2026-09/*.csv', { paths: [FILES250[105].path] }, 1]]) && leftCalls[0] === '41,42'
+      && JSON.stringify(whileReading) === JSON.stringify(['Reading1 handed · 1 left · 0 read · 0 failed', true])
+      && JSON.stringify(afterReading) === JSON.stringify(['Read1 handed · 0 left · 1 read · 0 failed', false]),
+    JSON.stringify([readCalls, leftCalls, whileReading, afterReading]));
+
+  const typedBox = patternBox();
+  typedBox.value = 'half typed';
+  await sp.tick();
+  const kept = patternBox() === typedBox && typedBox.value === 'half typed';
+  refuseList = 'The pattern leaves the source folder: ..';
+  await submit('../x');
+  const refusal = byClass(sMount, 'fi-why')[0];
+  ok('P13 a beat redraws the list, never the pattern box (what is typed stays); a refused pattern - the server\'s sentence under '
+    + 'it as an alert, the box marked, no list',
+    kept && refusal && refusal.getAttribute('role') === 'alert' && refusal.textContent === M.WORDS.notRead + refuseList
+      && patternBox().getAttribute('aria-invalid') === 'true' && sRows().length === 0,
+    JSON.stringify([kept, refusal && refusal.textContent, sRows().length]));
   return { ran, failed: failed.slice() };
 }
 
@@ -351,6 +466,15 @@ const MUTANTS = [
   { name: 'a sweep sends without its words', catches: ['M9'], file: 'model', mutate: swap("${why.length ? ` (${why.join(' · ')})` : ''}", '') },
   { name: 'files before switch on not said', catches: ['M12'], file: 'model', mutate: swap("(before ? ` · ${count(before)} before switch on` : '')", "''") },
   { name: 'none before switch on said as 0', catches: ['M12'], file: 'model', mutate: swap('(before ? ` ·', '(before !== null ? ` ·') },
+  { name: 'a page holds every listed file', catches: ['M13', 'P11'], file: 'model', mutate: swap('rows: (files || []).slice((at - 1) * PAGE_ROWS, at * PAGE_ROWS)', 'rows: files || []') },
+  { name: 'past the limit said as the count', catches: ['M13'], file: 'model', mutate: swap('answer && answer.truncated ?', 'false ?') },
+  { name: 'Read these sends every path when none is ticked', catches: ['M13'], file: 'model', mutate: swap('ticked.size && ticked.size < listed.length ?', 'listed.length ?') },
+  { name: 'a beat rebuilds the progress rows under the panel', catches: ['P10'], file: 'parts', mutate: swap('if (this.drawn && this.drawn.keys === keys) { this.update(lines, counted); return; }', '') },
+  { name: 'the panel at the table\'s end, not under its source', catches: ['P10'], file: 'parts', mutate: swap('        body.append(under);\n', '        table.append(under);\n') },
+  { name: 'the handed states never read again', catches: ['P12'], file: 'parts', mutate: swap('try { this.reading.counts = await this.deps.onLeft(this.reading.ids); }', 'try { /* never */ }') },
+  { name: 'Read these on while some are left', catches: ['P12'], file: 'parts', mutate: swap('    else if (left > 0) setDisabledReason(go, WORDS.readingWait(left));\n', '') },
+  { name: 'a beat redraws the pattern box', catches: ['P13'], file: 'parts', mutate: swap('    }\n    this.drawBody();\n  }\n\n  drawBody() {', '    }\n    this.open(this.line);\n  }\n\n  drawBody() {') },
+  { name: 'a refused pattern not said', catches: ['P13'], file: 'parts', mutate: swap("    if (this.refused) {\n      const why = el('div', 'fi-why');", "    if (false) {\n      const why = el('div', 'fi-why');") },
   { name: 'a stopped re-read not said', catches: ['M11'], file: 'model', mutate: swap('(s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep))', 'sweepText(s.sweep)') },
   { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
   { name: 'the ask hides the other tables', catches: ['M10'], file: 'model', mutate: swap(", 'Other tables reading this folder have their waiting files put back too']", ']') },

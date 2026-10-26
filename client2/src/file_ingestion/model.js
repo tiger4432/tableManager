@@ -23,6 +23,12 @@ export const WORDS = Object.freeze({
   readAll: 'Read all again', readAllAsk: (n, where) => `Read ${count(n)} file${n === 1 ? '' : 's'} of ${where} again?`,
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
   progress: 'Read progress', noSources: 'No source counted yet', cancelReread: 'Cancel waiting re-reads',
+  pickFiles: 'Pick files', pattern: 'Pattern', list: 'List', listing: 'Listing', prev: 'Prev', next: 'Next', reading: 'Reading', readDone: 'Read',
+  pickHeads: ['Path', 'Modified', 'Status'], tickAll: 'Tick every listed file', tickOne: 'Tick this file',
+  listedAgo: (s) => `listed ${count(Math.round(s))} s ago`, pageOf: (i, n) => `page ${count(i)} of ${count(n)}`,
+  readThese: (n) => `Read these (${count(n)})`, noneTicked: (n) => `nothing ticked = all ${count(n)} listed`,
+  readTheseAsk: (n, source) => `Read ${count(n)} file${n === 1 ? '' : 's'} under ${source} now, read before or not?`,
+  readingWait: (left) => `${count(left)} left - wait for them, or Cancel waiting re-reads`,
   heads: ['File · folder', 'Status', 'Result', 'Read at', 'Took'],
   last: (at) => `last ${at}`, ok: (n) => `${n} ok`, failed: (n) => `${n} failed`, running: (n) => `${n} running`,
   waiting: (n) => `${count(n)} waiting`,
@@ -194,6 +200,40 @@ export const PROGRESS_COLUMNS = Object.freeze([
   // a re-read the watcher stopped (B 10-24) says so here, with what still waits - else the sweep
   { head: 'Last sweep', cls: 'fi-meta', cell: (s) => (s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep)) },
 ]);
+
+// -- Pick files by pattern (owner 10-26 «읽은 거 무관하게 glob 리스트»; B's /glob · /read-now?pattern · /read-now/left) --
+
+/** A source's line key - the progress row a Pick files panel opens under. */
+export const pickKey = (line) => `${line.table}|${line.source}`;
+
+/** The list's query: the source's table and root word, the pattern under it. */
+export const pickQuery = (line, pattern) => new URLSearchParams({ table: line.table, source: line.source, pattern }).toString();
+
+/** One page of the listed files (PAGE_ROWS a page) and how many pages. */
+export function pickPage(files, page) {
+  const pages = Math.max(1, Math.ceil((files || []).length / PAGE_ROWS));
+  const at = Math.min(Math.max(1, page), pages);
+  return { page: at, pages, rows: (files || []).slice((at - 1) * PAGE_ROWS, at * PAGE_ROWS) };
+}
+
+/** What the list holds: «first 5,000 of 12,431» past the server's limit, else «12 files»; and the ticked count. */
+export function pickMeta(answer, ticked) {
+  const matched = numberOr(answer && answer.matched) || 0;
+  const head = answer && answer.truncated ? `first ${count((answer.files || []).length)} of ${count(matched)}`
+    : `${count(matched)} file${matched === 1 ? '' : 's'}`;
+  return ticked ? `${head} · ${count(ticked)} ticked` : head;
+}
+
+/** Read these: the ticked paths, or none - the whole list (B: no body reads every listed file). */
+export function pickBody(answer, ticked) {
+  const listed = (answer && answer.files) || [];
+  return ticked.size && ticked.size < listed.length ? { paths: listed.map((f) => f.path).filter((p) => ticked.has(p)) } : null;
+}
+
+/** The handed files' states (B's /read-now/left): «1,500 handed · 1,212 left · 284 read · 4 failed». */
+export function leftText(c) {
+  return `${count(c.handed)} handed · ${count(c.left)} left · ${count(c.read)} read · ${count(c.failed)} failed`;
+}
 
 /** The ask before waiting re-reads are put back (A's preview: count · by_state): the server's line, the states they go
  *  back to, and that the folder's other tables are put back too. */

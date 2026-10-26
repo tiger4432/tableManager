@@ -4,7 +4,8 @@
 import { ABSENT } from '../absent.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
-import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
+import { localShort } from '../server_time.js';
+import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, leftText, pickBody, pickKey, pickMeta, pickPage, readAtText, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
 
 function maker(doc) {
   return (tag, cls, text) => {
@@ -25,23 +26,82 @@ const boxHead = (el, words, side) => {
 
 export class ProgressPart {
   /** The checklist's progress (owner 10-23): a row per table and source, its columns PROGRESS_COLUMNS; a source with
-   *  nothing left dimmed; «Cancel waiting re-reads» on an external source with some waiting.
-   *  @param {{doc, onCancel: (folder) => void}} deps */
+   *  nothing left dimmed; «Cancel waiting re-reads» on an external source with some waiting; «Pick files» on each, the
+   *  picked one's panel (`pickMount`, the page's) in a row right under it (owner 10-26). The same rows on a beat are
+   *  written in place, so the panel under one is never taken out and put back (its box would lose what is typed).
+   *  @param {{doc, onCancel: (folder) => void, pickMount?: Element, onPick?: (line|null) => void}} deps */
   constructor(mount, deps) {
     this.mount = mount;
     this.deps = deps;
     this.el = maker(deps.doc || mount.ownerDocument);
+    this.picked = null;
+    this.drawn = null;
   }
 
   render(lines, counted) {
+    const keys = `${lines.map(pickKey).join('\n')}\n${this.picked || ''}`;
+    if (this.drawn && this.drawn.keys === keys) { this.update(lines, counted); return; }
+    if (this.picked && !lines.some((l) => pickKey(l) === this.picked)) {
+      this.picked = null;
+      if (this.deps.onPick) this.deps.onPick(null);
+    }
+    this.build(lines, counted, `${lines.map(pickKey).join('\n')}\n${this.picked || ''}`);
+  }
+
+  /** «Pick files» pressed: that source's panel opens under it, or closes when it was the open one. */
+  pick(line) {
+    const key = pickKey(line);
+    this.picked = this.picked === key ? null : key;
+    if (this.deps.onPick) this.deps.onPick(this.picked ? line : null);
+    if (this.drawn) this.render(this.drawn.lines, this.drawn.counted);
+  }
+
+  update(lines, counted) {
+    this.drawn.side.textContent = counted || '';
+    this.drawn.lines = lines;
+    this.drawn.counted = counted;
+    lines.forEach((line, i) => {
+      const row = this.drawn.rows[i];
+      row.tr.className = line.done ? 'fi-dim' : '';
+      PROGRESS_COLUMNS.forEach((c, j) => { row.cells[j].textContent = String(c.cell(line)); });
+      row.act.replaceChildren(...this.actions(line));
+    });
+  }
+
+  actions(line) {
+    const el = this.el;
+    const out = [];
+    if (line.cancel) {
+      const b = el('button', 'fi-btn', WORDS.cancelReread);
+      b.type = 'button';
+      b.addEventListener('click', () => this.deps.onCancel(line.cancel));
+      out.push(b);
+    }
+    if (this.deps.pickMount) {
+      const b = el('button', 'fi-btn', WORDS.pickFiles);
+      b.type = 'button';
+      b.setAttribute('aria-expanded', this.picked === pickKey(line) ? 'true' : 'false');
+      b.addEventListener('click', () => this.pick(line));
+      out.push(b);
+    }
+    return out;
+  }
+
+  build(lines, counted, keys) {
     const el = this.el;
     const root = el('section', 'fi-box fi-progress');
-    root.append(boxHead(el, WORDS.progress, counted));
+    const head0 = boxHead(el, WORDS.progress, counted || '');
+    root.append(head0);
+    this.drawn = { keys, lines, counted, side: head0.children[head0.children.length - 1], rows: [] };
     if (!lines.length) {
       root.append(el('div', 'fi-say fi-pad', WORDS.noSources));
       this.mount.replaceChildren(root);
       return;
     }
+    const doc = this.deps.doc || this.mount.ownerDocument;
+    // the panel moves with its row when the rows change - a box being typed in keeps its focus
+    let typing = null;
+    for (let n = doc && doc.activeElement; n && this.deps.pickMount; n = n.parentNode) if (n === this.deps.pickMount) { typing = doc.activeElement; break; }
     const table = el('table', 'fi-list');
     const head = el('tr');
     for (const c of PROGRESS_COLUMNS) {
@@ -54,28 +114,190 @@ export class ProgressPart {
     for (const line of lines) {
       const tr = el('tr', line.done ? 'fi-dim' : '');
       tr.dataset.table = line.table;
-      for (const c of PROGRESS_COLUMNS) {
+      const cells = PROGRESS_COLUMNS.map((c) => {
         const td = el('td', c.cls, c.cell(line));
         if (c.wrap) td.dataset.wrapOk = '';
         tr.append(td);
-      }
-      const act = el('td', 'cell-fit');
-      if (line.cancel) {
-        const b = el('button', 'fi-btn', WORDS.cancelReread);
-        b.type = 'button';
-        b.addEventListener('click', () => this.deps.onCancel(line.cancel));
-        act.append(b);
-      }
-      tr.append(act);
+        return td;
+      });
+      // the buttons in a box of their own - a flex cell would leave the table's layout and lie over its neighbour
+      const cell = el('td', 'cell-fit');
+      const act = el('div', 'fi-progress__acts');
+      act.append(...this.actions(line));
+      cell.append(act);
+      tr.append(cell);
       body.append(tr);
+      this.drawn.rows.push({ tr, cells, act });
+      if (this.picked === pickKey(line)) {
+        const under = el('tr', 'fi-progress__pick');
+        const td = el('td');
+        td.colSpan = PROGRESS_COLUMNS.length + 1;
+        td.append(this.deps.pickMount);
+        under.append(td);
+        body.append(under);
+      }
     }
     const thead = el('thead');
     thead.append(head);
     table.append(thead, body);
-    const scroll = el('div', 'fi-scroll fi-progress__scroll');
+    // a panel open: the list scrolls in its own box, so this one is not capped under it
+    const scroll = el('div', `fi-scroll fi-progress__scroll${this.picked ? ' is-picking' : ''}`);
     scroll.append(table);
     root.append(scroll);
     this.mount.replaceChildren(root);
+    if (typing && typing.focus) typing.focus();
+  }
+}
+
+export class PickFilesPart {
+  /** Pick files by pattern under one source (owner 10-26): a pattern, the files it matches read or not (a page at a time,
+   *  each ticked or not; the head's tick = every listed one), Read these, and the handed files' states on the page's beat.
+   *  The pattern box is drawn once per source - a beat redraws the list under it, never the box being typed in.
+   *  @param {{doc, onList: (line, pattern) => Promise<answer>, onRead: (line, pattern, body, n) => Promise<{ids, handed}|null>,
+   *           onLeft: (ids) => Promise<{handed, left, read, failed}>}} deps */
+  constructor(mount, deps) {
+    this.mount = mount;
+    this.deps = deps;
+    this.el = maker(deps.doc || mount.ownerDocument);
+    this.line = null;
+  }
+
+  /** Open under a source's line (none: closed). */
+  open(line) {
+    Object.assign(this, { line, pattern: '', answer: null, listedAt: 0, refused: '', page: 1, ticked: new Set(), reading: null, busy: false });
+    if (!line) { this.mount.replaceChildren(); return; }
+    const el = this.el;
+    const form = el('form', 'fi-pick__form');
+    const label = el('label', 'fi-field fi-grow2');
+    label.append(el('span', 'fi-label', WORDS.pattern));
+    const input = el('input', 'fi-input fi-mono');
+    input.spellcheck = false;
+    label.append(input);
+    const go = el('button', 'fi-btn', WORDS.list);
+    go.type = 'submit';
+    this.age = el('span', 'fi-meta');
+    form.append(label, go, this.age);
+    form.addEventListener('submit', (e) => { e.preventDefault(); this.pattern = input.value.trim(); if (this.pattern) this.list(); });
+    this.input = input;
+    this.body = el('div', 'fi-pick__body');
+    const root = el('div', 'fi-pick');
+    root.append(form, this.body);
+    this.mount.replaceChildren(root);
+    this.drawBody();
+  }
+
+  async list() {
+    this.busy = true;
+    this.drawBody();
+    try {
+      this.answer = await this.deps.onList(this.line, this.pattern);
+      Object.assign(this, { refused: '', listedAt: Date.now(), page: 1, ticked: new Set() });
+    } catch (e) {
+      Object.assign(this, { answer: null, refused: e.message });
+    }
+    this.busy = false;
+    this.drawBody();
+  }
+
+  async read() {
+    const body = pickBody(this.answer, this.ticked);
+    const handed = await this.deps.onRead(this.line, this.answer.pattern || this.pattern, body, body ? body.paths.length : this.answer.files.length);
+    if (!handed) return;
+    this.reading = { ids: handed.ids || [], counts: { handed: handed.handed, left: handed.handed, read: 0, failed: 0 } };
+    this.drawBody();
+    await this.tick();
+  }
+
+  /** The page's beat: the handed files' states read again while some are left; the list's age said again. */
+  async tick() {
+    if (!this.line) return;
+    if (this.reading && this.reading.counts.left > 0 && this.reading.ids.length) {
+      try { this.reading.counts = await this.deps.onLeft(this.reading.ids); } catch (e) { /* the next beat reads again */ }
+    }
+    this.drawBody();
+  }
+
+  drawBody() {
+    if (!this.line) return;
+    const el = this.el;
+    this.input.setAttribute('aria-invalid', this.refused ? 'true' : 'false');
+    this.age.textContent = this.busy ? WORDS.listing : this.listedAt ? WORDS.listedAgo((Date.now() - this.listedAt) / 1000) : '';
+    const parts = [];
+    if (this.refused) {
+      const why = el('div', 'fi-why');
+      why.setAttribute('role', 'alert');
+      why.append(el('span', 'fi-why__title', WORDS.notRead), el('span', '', this.refused));
+      parts.push(why);
+    }
+    if (this.answer) parts.push(...this.drawList());
+    this.body.replaceChildren(...parts);
+  }
+
+  drawList() {
+    const el = this.el;
+    const files = this.answer.files || [];
+    const { page, pages, rows } = pickPage(files, this.page);
+    const meta = el('div', 'fi-pick__meta');
+    const said = el('span', 'fi-meta fi-num', pickMeta(this.answer, this.ticked.size));
+    const pager = el('div', 'fi-pick__pager');
+    const step = (words, to, off) => {
+      const b = el('button', 'fi-btn', words);
+      b.type = 'button';
+      b.disabled = off;
+      b.addEventListener('click', () => { this.page = to; this.drawBody(); });
+      return b;
+    };
+    pager.append(step(WORDS.prev, page - 1, page <= 1), el('span', 'fi-meta fi-num', WORDS.pageOf(page, pages)), step(WORDS.next, page + 1, page >= pages));
+    meta.append(said, pager);
+    const table = el('table', 'fi-list');
+    const head = el('tr');
+    const all = el('input');
+    all.type = 'checkbox';
+    all.setAttribute('aria-label', WORDS.tickAll);
+    all.checked = files.length > 0 && this.ticked.size === files.length;
+    all.addEventListener('change', () => { this.ticked = all.checked ? new Set(files.map((f) => f.path)) : new Set(); this.drawBody(); });
+    const corner = el('th', 'cell-fit');
+    corner.append(all);
+    head.append(corner, ...WORDS.pickHeads.map((h) => el('th', h === 'Path' ? '' : 'cell-fit', h)));
+    const tbody = el('tbody');
+    for (const f of rows) {
+      const tr = el('tr', 'fi-file');
+      const box = el('input');
+      box.type = 'checkbox';
+      box.setAttribute('aria-label', WORDS.tickOne);
+      box.checked = this.ticked.has(f.path);
+      box.addEventListener('change', () => { if (box.checked) this.ticked.add(f.path); else this.ticked.delete(f.path); this.drawBody(); });
+      const tick = el('td', 'cell-fit');
+      tick.append(box);
+      const path = el('td', 'fi-mono fi-path', f.rel || f.path);
+      path.title = f.path;
+      path.dataset.wrapOk = '';
+      const state = el('td', 'cell-fit');
+      state.append(pill(el, f.status));
+      tr.append(tick, path, el('td', 'fi-meta fi-num cell-fit', f.modified_at ? localShort(f.modified_at) : ABSENT), state);
+      tbody.append(tr);
+    }
+    const thead = el('thead');
+    thead.append(head);
+    table.append(thead, tbody);
+    const scroll = el('div', 'fi-scroll fi-pick__list');
+    scroll.append(table);
+    const acts = el('div', 'fi-pick__acts');
+    const n = this.ticked.size || files.length;
+    const go = el('button', 'fi-btn fi-btn--primary', WORDS.readThese(n));
+    go.type = 'button';
+    const left = this.reading ? this.reading.counts.left : 0;
+    if (!files.length) go.disabled = true;
+    else if (left > 0) setDisabledReason(go, WORDS.readingWait(left));
+    go.addEventListener('click', () => this.read());
+    acts.append(go, el('span', 'fi-meta', left > 0 ? WORDS.readingWait(left) : this.ticked.size ? '' : WORDS.noneTicked(files.length)));
+    const out = [meta, scroll, acts];
+    if (this.reading) {
+      const line = el('div', 'fi-pick__reading');
+      line.append(el('span', 'fi-pick__reading-word', left > 0 ? WORDS.reading : WORDS.readDone), el('span', 'fi-num', leftText(this.reading.counts)));
+      out.push(line);
+    }
+    return out;
   }
 }
 
