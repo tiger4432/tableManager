@@ -626,6 +626,7 @@
 - 무엇: 10-27 묶음 B-1. «웨이퍼 -processed{tx_id}-> 스텝 <-processed- 웨이퍼'» 처럼 같은 트랜잭션 웨이퍼를 찾는 길이 없었다 — `follow=processed:tx_id` 는 «씨앗에 tx_id 키가 없다»로 거절, 묶지 않으면 08-29 되돌이 가드가 형제를 막음.
   - `술어:이름` 의 이름이 씨앗의 키면 지금처럼 목적지 키 제약. 키가 아니면 그 술어의 엣지 수식어: 노드에 그 술어로 «올라온 엣지»의 값을 든 엣지로만 내려가고, 그때만 되돌이 가드를 지난다. 묶지 않은 걸음은 지금처럼 막힌다.
   - 값은 올라온 그 엣지의 것 — 웨이퍼가 스텝마다 다른 tx 를 가져도 섞이지 않는다. 같은 스텝을 두 번 지난 웨이퍼는 그 두 엣지의 값.
+  - 🔧 같은 날 고침: 공정 스텝 타입이 정적(sample 의 process_step 이 그렇다)이면 정적 허브 규칙(정적 노드에서 웨이퍼로 내려가지 않음)이 묶인 걸음도 막아 형제에 안 닿았다. 묶인 걸음은 그 규칙도 지나고, 그 노드는 묶인 술어를 읽는다. 묶지 않은 걸음은 그대로 막힌다.
   - 키도 아니고 선언의 그 술어 수식어(object.qualifiers)도 아니면 422 «… nor is it a qualifier of <술어> (declared: … | none declared)».
 - 자세히: `server/ledger_api/ledger_subgraph.py` 의 `_walk`(qualifier_binds · bound_arrivals) · `_qualifier_values`, `server/ledger/trace_router.py` 의 `_predicate_qualifiers`. 가이드 `docs/architecture/WALK.md` §1.
 

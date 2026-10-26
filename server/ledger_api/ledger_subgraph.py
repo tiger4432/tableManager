@@ -3114,7 +3114,16 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         elif target_near and not subject_near:
             near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
             near_id, far_id, step_dir = target["id"], subject_id, "incoming"
-        if far_kind and _name_step(near_kind, modes.get(near_id, OPEN), far_kind, static_types) is None:
+        # a bound predicate from a node it reached: only an edge holding the values of the edge that climbed (one
+        # transaction's siblings), and that one walks what the static hub rule and the guard below refuse - it drags in
+        # one transaction, not every thing that carries the name (lead 10-27)
+        bound = qualifier_binds.get(_bare(atom.predicate))
+        held = ((bound_arrivals.get(near_id) or {}).get(_bare(atom.predicate))
+                if bound and step_dir is not None else None)
+        if held and _qualifier_values(payload, bound) not in held:
+            return None
+        if (far_kind and not held
+                and _name_step(near_kind, modes.get(near_id, OPEN), far_kind, static_types) is None):
             return None
         # 🔴 THE KEY CONSTRAINT, ON THE FAR NODE ONLY. An edge whose predicate was named
         # with keys may only land on a node matching the SEED on those keys - so a hop out
@@ -3163,13 +3172,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # differential a person is asking for. MEASURED: seeded at `defect_kind{void}` with
         # follow=leads_to, refusing the step costs 2 of 21 nodes -- one of them another
         # defect kind the same cause produces.
-        # a bound predicate from a node it reached: only an edge holding the values of the edge that climbed (one
-        # transaction's siblings), and that one goes back down - the bound walks what the guard refuses (lead 10-27)
-        bound = qualifier_binds.get(_bare(atom.predicate))
-        held = ((bound_arrivals.get(near_id) or {}).get(_bare(atom.predicate))
-                if bound and step_dir is not None else None)
-        if held and _qualifier_values(payload, bound) not in held:
-            return None
         if (step_dir is not None and not held
                 and not _between_names(near_kind, far_kind, static_types)
                 and _goes_back_down(arrivals.get(near_id), atom.predicate, step_dir,
@@ -3179,7 +3181,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 "subject_near": subject_near, "target_near": target_near,
                 "subject_depth": subject_depth, "target_depth": target_depth,
                 "near_kind": near_kind, "far_kind": far_kind,
-                "far_id": far_id, "step_dir": step_dir, "near_id": near_id,
+                "far_id": far_id, "step_dir": step_dir, "near_id": near_id, "bound": bool(held),
                 "fan_key": ((near_id, atom.predicate, step_dir, far_kind)
                             if far_id is not None and step_dir is not None else None)}
 
@@ -3199,7 +3201,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             if values is not None:
                 bound_arrivals[far_id][_bare(atom.predicate)].add(values)
             if far_kind:
-                modes[far_id] = _wider(modes.get(far_id), _name_step(
+                modes[far_id] = _wider(modes.get(far_id), OPEN if step["bound"] else _name_step(
                     near_kind, modes.get(step["near_id"], OPEN), far_kind, static_types))
         # 🔴 A STEP BETWEEN TWO HAPPENINGS IS NOT A DEPARTURE - policy 1 of
         # `ONTOLOGY_GRAPH_SPEC` §7.5c, and the same machine `continues` was, keyed on the
@@ -3390,8 +3392,10 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # The two groups differ ONLY in the `follow` they are fetched with, so `s -> s`
         # survives: `leads_to` is in `static_follow` and the mechanism chain still walks.
         # A static SEED is not held (`_held_to_names`), nor a name it reached through names alone: the full `follow`.
+        # ... nor a static node holding a bound way back (`bound_arrivals`): its bound predicate is read, `_step` keeps
+        # the hub rule for the rest
         held = [_held_to_names(_bare(item["type"]), modes.get(item["id"], OPEN), static_types)
-                for item in full_entity_refs]
+                and not bound_arrivals.get(item["id"]) for item in full_entity_refs]
         dynamic_refs = [item for item, h in zip(full_entity_refs, held) if not h]
         static_refs = [item for item, h in zip(full_entity_refs, held) if h]
         # 🔴 AN EMPTY LIST IS NOT `None` HERE. `claims_for_entities` reads a falsy `follow`

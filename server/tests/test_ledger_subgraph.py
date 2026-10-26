@@ -1081,7 +1081,9 @@ def test_a_seed_that_cannot_carry_the_key_is_REFUSED_not_answered_with_zero(monk
 #
 # Lead 10-27 B-1: the wafers of ONE transaction at a process step - `wafer -processed{tx_id}-> step <-processed- wafer'`
 # walks back down the predicate it climbed, which the 08-29 guard refuses (the sibling noise); bound by the qualifier
-# of the edge that climbed, it walks to the siblings holding that value and no others.
+# of the edge that climbed, it walks to the siblings holding that value and no others. Each gate twice: the step type
+# dynamic, and static as the sample declares process_step - the static hub rule refuses a static node's step back out
+# to a wafer, and a bound step passes it as it passes the guard (8037e0469 reached no sibling over a static step).
 
 STEP_P, STEP_Q = {"product": "P", "step_seq": 10}, {"product": "P", "step_seq": 20}
 
@@ -1095,10 +1097,13 @@ def _processed(number, wafer, step, tx, predicate="processed", **keys):
         supersedes=None, source_event_id=EVENT, source_event_state="source_record")
 
 
-def _tx_wafers(atoms, follow_keys=None, seed_keys=None, **walk):
+BOTH_STEP_KINDS = pytest.mark.parametrize("static", [set(), {"process_step"}], ids=["dynamic step", "static step"])
+
+
+def _tx_wafers(static, atoms, follow_keys=None, seed_keys=None, **walk):
     seed = explorer.entity_id("wafer", seed_keys or {"wafer_id": "W1"})
     body = ledger_subgraph.subgraph(seed, ledger_subgraph.InMemoryEvidenceLookup(atoms), hops=4, direction="both",
-                                    follow=["processed"], follow_keys=follow_keys or {}, **walk)
+                                    follow=["processed"], follow_keys=follow_keys or {}, static_types=static, **walk)
     return sorted(node["keys"]["wafer_id"] for node in body["nodes"] if node["type"] == "wafer"), body
 
 
@@ -1106,40 +1111,45 @@ ONE_STEP = [_processed(301, "W1", STEP_P, "T1"), _processed(302, "W2", STEP_P, "
             _processed(303, "W3", STEP_P, "T2")]
 
 
-def test_a_follow_bound_by_the_climbing_edges_qualifier_reaches_that_transactions_siblings_only():
-    assert _tx_wafers(ONE_STEP)[0] == ["W1"], "unbound: the 08-29 guard still refuses the way back down to the siblings"
-    assert _tx_wafers(ONE_STEP, {"processed": ("tx_id",)})[0] == ["W1", "W2"], "bound: T1's sibling, not T2's"
+@BOTH_STEP_KINDS
+def test_a_follow_bound_by_the_climbing_edges_qualifier_reaches_that_transactions_siblings_only(static):
+    assert _tx_wafers(static, ONE_STEP)[0] == ["W1"], "unbound: the 08-29 guard (and a static step's hub rule) still refuses the way back down"
+    assert _tx_wafers(static, ONE_STEP, {"processed": ("tx_id",)})[0] == ["W1", "W2"], "bound: T1's sibling, not T2's"
 
 
-def test_a_wafer_through_two_steps_takes_each_steps_own_transaction():
+@BOTH_STEP_KINDS
+def test_a_wafer_through_two_steps_takes_each_steps_own_transaction(static):
     """W1 meets P under T1 and Q under T5: down from P only T1, down from Q only T5 - not every value W1 holds."""
     atoms = [_processed(311, "W1", STEP_P, "T1"), _processed(312, "W1", STEP_Q, "T5"),
              _processed(313, "W2", STEP_P, "T1"), _processed(314, "W3", STEP_P, "T5"),
              _processed(315, "W4", STEP_Q, "T5"), _processed(316, "W5", STEP_Q, "T1")]
-    assert _tx_wafers(atoms, {"processed": ("tx_id",)})[0] == ["W1", "W2", "W4"]
+    assert _tx_wafers(static, atoms, {"processed": ("tx_id",)})[0] == ["W1", "W2", "W4"]
 
 
-def test_a_step_run_twice_binds_both_of_its_edges():
+@BOTH_STEP_KINDS
+def test_a_step_run_twice_binds_both_of_its_edges(static):
     atoms = [_processed(321, "W1", STEP_P, "T1"), _processed(322, "W1", STEP_P, "T1b"),
              _processed(323, "W2", STEP_P, "T1b"), _processed(324, "W3", STEP_P, "T2")]
-    assert _tx_wafers(atoms, {"processed": ("tx_id",)})[0] == ["W1", "W2"]
+    assert _tx_wafers(static, atoms, {"processed": ("tx_id",)})[0] == ["W1", "W2"]
 
 
-def test_a_name_the_seed_carries_as_a_key_binds_the_key_as_before():
+@BOTH_STEP_KINDS
+def test_a_name_the_seed_carries_as_a_key_binds_the_key_as_before(static):
     """`lot` is the seed's key and the edge's qualifier: the key binds (a step's node holds no lot, so no step)."""
     atoms = [_processed(331, "W1", STEP_P, "T1", lot="L1"), _processed(332, "W2", STEP_P, "T1", lot="L1")]
-    wafers, body = _tx_wafers(atoms, {"processed": ("lot",)}, seed_keys={"wafer_id": "W1", "lot": "L1"})
+    wafers, body = _tx_wafers(static, atoms, {"processed": ("lot",)}, seed_keys={"wafer_id": "W1", "lot": "L1"})
     assert wafers == ["W1"] and not any(node["type"] == "process_step" for node in body["nodes"])
 
 
-def test_a_continued_walk_keeps_the_values_that_bound_it():
+@BOTH_STEP_KINDS
+def test_a_continued_walk_keeps_the_values_that_bound_it(static):
     """Paused at its node cap past the step, the next page goes down from P under W1's T1 still."""
     decoys = [_processed(340 + n, "W1", {"product": "P", "step_seq": 100 + n}, "D%d" % n) for n in range(12)]
     atoms = ONE_STEP + decoys
-    _first, body = _tx_wafers(atoms, {"processed": ("tx_id",)}, node_limit=10, resumable=True)
+    _first, body = _tx_wafers(static, atoms, {"processed": ("tx_id",)}, node_limit=10, resumable=True)
     token = body["more"]["resume"]
     assert token, "the fixture must pause the walk, or the page after proves nothing"
-    _wafers_after, after = _tx_wafers(atoms, {"processed": ("tx_id",)}, node_limit=10, resume=token)
+    _wafers_after, after = _tx_wafers(static, atoms, {"processed": ("tx_id",)}, node_limit=10, resume=token)
     reached = sorted(node["keys"].get("wafer_id") for node in _first_and(body, after) if node["type"] == "wafer")
     assert "W2" in reached and "W3" not in reached, reached
 
