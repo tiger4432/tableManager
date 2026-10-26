@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-26 [AI 리포트 원인 걷기가 읽는 원장 세상을 여럿 적는다 — causes.worlds](#2026-10-26--ai-리포트-원인-걷기가-읽는-원장-세상을-여럿-적는다--causesworlds) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.worlds
 - 2026-10-25 [AI 리포트 원인 후보와 조건 — 맺어진 조건은 표 줄로, 값이 없으면 채울 것이라고](#2026-10-25--ai-리포트-원인-후보와-조건--맺어진-조건은-표-줄로-값이-없으면-채울-것이라고) — 적는 곳 derive.report.causes · labels.to_fill · 보는 곳 리포트 표 · Evidence · 터미널 [report] causes
 - 2026-10-25 [AI 리포트 원인 후보 — 불량 종류 노드에서 모델이 씨앗을 고르고 제품이 정적으로 걷는다](#2026-10-25--ai-리포트-원인-후보--불량-종류-노드에서-모델이-씨앗을-고르고-제품이-정적으로-걷는다) — 적는 곳 derive.report.causes · 보는 곳 리포트 Evidence · 터미널 [report] causes
 - 2026-10-24 [AI 리포트 조건 — 한 웨이퍼의 같은 조건 두 값은 둘 다(300 / 320), 시각 항목은 조건 줄에서 숨김, 이름 앞뒤 공백 무시](#2026-10-24--ai-리포트-조건--한-웨이퍼의-같은-조건-두-값은-둘-다300--320-시각-항목은-조건-줄에서-숨김-이름-앞뒤-공백-무시) — 적을 것 없음 · 보는 곳 리포트 표 조건 줄 · Evidence
@@ -625,6 +626,13 @@
 - **바뀐 동작** — 시각은 파일의 «수정 시각»입니다. 수정 시각을 그대로 두는 복사로 켠 뒤에 들어온 파일은 «그 전»으로 보고 안 읽습니다. 표 읽기가 바뀌어 체크가 풀린 옛 파일도 저절로는 다시 안 읽습니다.
 - **자세히** — 시각은 `config/watcher_switched_on.json`(소스 id → 시각, ~~null = 자르지 않음~~(🆕 `23fd41a2c` 부터 적힌 null 도 처음 본 때로 찍힘), 읽기 도장 파일 옆). 자르는 자리는 자동 문이 모두 묻는 체크리스트 한 곳 `IngestionHandler.already_checked` 이고, 손 문(재시도 문 `retry_one`)은 거길 지나지 않습니다. 시각을 찍는 자리는 소스 등록 `_register_external_sources` → `stamp_switched_on`. 파일 화면 API 의 소스 훑기 칸에 `before_switch_on` 이 실립니다(화면이 그리는 것은 클라 착지 뒤).
 
+## 2026-10-26 · AI 리포트 원인 걷기가 읽는 원장 세상을 여럿 적는다 — causes.worlds
+
+- **무엇** — 소유자 10-26 «보고서 생성 시 걷기 세계 여러 개 지정되게». 원인 걷기(`derive.report.causes`)에 칸 `worlds` — 걷기가 읽는 원장 세상을 여럿 한 번에. 씨앗 노드 목록 · 걷기 · `follow` 를 안 적었을 때의 정적 술어 셋 다 그 세상들에서 읽는다.
+- **선언** — `"causes": {"seed_type": "defect_kind", "worlds": ["<세상>", "<세상>"]}`. 안 적으면 운영 세상(전과 같음). 이름 목록이 아니면 저장 · 로드가 «derive.report.causes is {...}» 로 거절.
+- **필요한 조건** — git pull · 체인 워커 재기동.
+- **자세히** — `report_shape.CAUSES_CELLS` · `report_reads.Report.seed_nodes` · `causes` 가 걷기 라우트 함수에 `world` 로 넘김, 빈 follow 는 `trace_router._static_step_predicates(worlds)`. 커밋 `885144cdd`.
+
 ## 2026-10-25 · AI 리포트 원인 후보와 조건 — 맺어진 조건은 표 줄로, 값이 없으면 채울 것이라고
 
 - **무엇** — 정적 걷기가 후보 인자를 내면, 모델이 후보와 이 리포트의 조건 이름을 보고 맺는다. 맺어진 조건은 yield_by 표의 조건 줄로 들어가고, 글쓰기 문맥에 후보마다 열마다의 값이 간다. 이 리포트 웨이퍼에 값이 없는 후보는 «채울 것»으로 말해진다(소유자 10-25).
@@ -639,11 +647,11 @@
 
 - **무엇** — 상세 분석 글쓰기 «직전»에 한 단계. 제품이 원장에서 선언된 타입의 노드 목록을 읽고, 모델이 그 목록과 이미 읽은 표를 보고 씨앗과 이유를 답하고, 제품이 그 씨앗에서 정적 층을 걸어 후보 인자와 길을 글쓰기 호출에 넘긴다(소유자 10-25).
 - **선언** — `chain_rules.json` 의 리포트 규칙 `derive.report.causes`: `{"seed_type": "defect_kind", "follow": ["leads_to"], "collect": ["quantity"], "hops": 6}`. seed_type 만 꼭. follow 없으면 양 끝이 둘 다 정적인 술어, hops 없으면 걷기 기본값. 모양이 틀리면 저장 · 로드가 «derive.report.causes is {...}» 로 거절.
-- **보는 곳** — 리포트 파일 Evidence: «product defect_kinds()» 와 노드 이름들, «causes({"seeds": ["void"]})» 와 why · 후보 줄(«quantity bond_temp: void <-leads_to- wetting_deficit <-leads_to- bond_temp»). 터미널 `[report] causes: …` · `[report] causes seeds …` · `[report] causes walk from …`.
+- **보는 곳** — 리포트 파일 Evidence: «product seed_nodes()»(10-25 `599e7cf33` 전 이름 defect_kinds) 와 노드 이름들, «causes({"seeds": ["void"]})» 와 why · 후보 줄(«quantity bond_temp: void <-leads_to- wetting_deficit <-leads_to- bond_temp»). 터미널 `[report] causes: …` · `[report] causes seeds …` · `[report] causes walk from …`.
 - **잰 것** — 박스 원장(읽기만): defect_kind 2 (delam · void), void 에서 leads_to 6 홉 — 닿은 노드 20 · 후보 quantity 19. 박스 리포트 규칙에 칸을 메모리로 더해 report_loop.run 을 대역 모델로 끝까지 돌림(파일 · DB 안 씀).
 - **필요한 조건** — git pull · 체인 워커 재기동.
 - **바뀐 동작** — 칸이 없으면 전과 같다(씨앗 호출 · 걷기 없음).
-- **자세히** — `report_reads.Report.defect_kinds` · `causes` · `_walk`(걷기 라우트 함수 `trace_router.evidence_subgraph` 를 프로세스 안에서) · `report_loop._causes`.
+- **자세히** — `report_reads.Report.seed_nodes` · `causes` · `_walk`(걷기 라우트 함수 `trace_router.evidence_subgraph` 를 프로세스 안에서) · `report_loop._causes`.
 
 ## 2026-10-24 · 선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 — keys · images.match 등
 
