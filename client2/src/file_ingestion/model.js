@@ -24,7 +24,7 @@ export const WORDS = Object.freeze({
   noFiles: 'No file matches', pickFile: 'Pick a file', noTables: 'No file has been read yet',
   progress: 'Read progress', noSources: 'No source counted yet', cancelReread: 'Cancel waiting re-reads',
   pickFiles: 'Pick files', pattern: 'Pattern', list: 'List', listing: 'Listing', prev: 'Prev', next: 'Next', reading: 'Reading', readDone: 'Read',
-  pickHeads: ['Path', 'Modified', 'Read before', 'After'], tickAll: 'Tick every listed file', tickOne: 'Tick this file',
+  pickHeads: ['Path', 'Modified', 'Read before', 'After'], tickAll: 'Tick every listed file', tickOne: (name) => `Tick ${name}`,
   listedAgo: (s) => `listed ${count(Math.round(s))} s ago`, pageOf: (i, n) => `page ${count(i)} of ${count(n)}`,
   readThese: (n) => `Read these (${count(n)})`, noneTicked: (n) => `nothing ticked = all ${count(n)} listed`,
   readTheseAsk: (n, source) => `Read ${count(n)} file${n === 1 ? '' : 's'} under ${source} now, read before or not?`,

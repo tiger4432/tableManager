@@ -64,7 +64,8 @@ export class ProgressPart {
       const row = this.drawn.rows[i];
       row.tr.className = line.done ? 'fi-dim' : '';
       PROGRESS_COLUMNS.forEach((c, j) => { row.cells[j].textContent = String(c.cell(line)); });
-      row.act.replaceChildren(...this.actions(line));
+      // the buttons kept while what they do is the same - a beat must not take the focus off them
+      if (row.cancel !== line.cancel) { row.act.replaceChildren(...this.actions(line)); row.cancel = line.cancel; }
     });
   }
 
@@ -127,7 +128,7 @@ export class ProgressPart {
       cell.append(act);
       tr.append(cell);
       body.append(tr);
-      this.drawn.rows.push({ tr, cells, act });
+      this.drawn.rows.push({ tr, cells, act, cancel: line.cancel });
       if (this.picked === pickKey(line)) {
         const under = el('tr', 'fi-progress__pick');
         const td = el('td');
@@ -152,7 +153,7 @@ export class ProgressPart {
 export class PickFilesPart {
   /** Pick files by pattern under one source (owner 10-26): a pattern, the files it matches read or not (a page at a time,
    *  each ticked or not; the head's tick = every listed one), Read these, and the handed files' states on the page's beat.
-   *  The pattern box is drawn once per source - a beat redraws the list under it, never the box being typed in.
+   *  The pattern box is drawn once per source - a beat redraws the list under it only while files are being read, never the box.
    *  @param {{doc, onList: (line, pattern) => Promise<answer>, onRead: (line, pattern, body, n) => Promise<{ids, handed}|null>,
    *           onLeft: (ids) => Promise<{handed, left, read, failed}>}} deps */
   constructor(mount, deps) {
@@ -191,7 +192,9 @@ export class PickFilesPart {
     this.drawBody();
     try {
       this.answer = await this.deps.onList(this.line, this.pattern);
-      Object.assign(this, { refused: '', listedAt: Date.now(), page: 1, ticked: new Set() });
+      // a read that came to its end is the last list's; one with files left stays said until they are read
+      const going = this.reading && this.reading.counts.left > 0 ? this.reading : null;
+      Object.assign(this, { refused: '', listedAt: Date.now(), page: 1, ticked: new Set(), reading: going });
     } catch (e) {
       Object.assign(this, { answer: null, refused: e.message });
     }
@@ -218,15 +221,27 @@ export class PickFilesPart {
         this.reading.counts = got;
         this.reading.now = new Map((got.files || []).map((f) => [f.path, f]));
       } catch (e) { /* the next beat reads again */ }
+      this.drawBody();
+      return;
     }
-    this.drawBody();
+    // nothing being read: only the age moves - a redraw would scroll the list back to its top under the reader
+    this.sayAge();
+  }
+
+  sayAge() {
+    this.age.textContent = this.busy ? WORDS.listing : this.listedAt ? WORDS.listedAgo((Date.now() - this.listedAt) / 1000) : '';
   }
 
   drawBody() {
     if (!this.line) return;
     const el = this.el;
     this.input.setAttribute('aria-invalid', this.refused ? 'true' : 'false');
-    this.age.textContent = this.busy ? WORDS.listing : this.listedAt ? WORDS.listedAgo((Date.now() - this.listedAt) / 1000) : '';
+    this.sayAge();
+    // a redraw keeps the list where it was scrolled and the control that held the focus
+    const was = this.body.querySelector('.fi-pick__list');
+    const top = was ? was.scrollTop : 0;
+    const doc = this.mount.ownerDocument;
+    const held = doc && [...this.body.querySelectorAll('[data-pick]')].includes(doc.activeElement) ? doc.activeElement.dataset.pick : null;
     const parts = [];
     if (this.refused) {
       const why = el('div', 'fi-why');
@@ -236,6 +251,10 @@ export class PickFilesPart {
     }
     if (this.answer) parts.push(...this.drawList());
     this.body.replaceChildren(...parts);
+    const now = this.body.querySelector('.fi-pick__list');
+    if (now) now.scrollTop = top;
+    const back = held && [...this.body.querySelectorAll('[data-pick]')].find((n) => n.dataset.pick === held);
+    if (back) back.focus();
   }
 
   drawList() {
@@ -249,6 +268,7 @@ export class PickFilesPart {
       const b = el('button', 'fi-btn', words);
       b.type = 'button';
       b.disabled = off;
+      b.dataset.pick = words;
       b.addEventListener('click', () => { this.page = to; this.drawBody(); });
       return b;
     };
@@ -259,6 +279,7 @@ export class PickFilesPart {
     const all = el('input');
     all.type = 'checkbox';
     all.setAttribute('aria-label', WORDS.tickAll);
+    all.dataset.pick = 'all';
     all.checked = files.length > 0 && this.ticked.size === files.length;
     all.addEventListener('change', () => { this.ticked = all.checked ? new Set(files.map((f) => f.path)) : new Set(); this.drawBody(); });
     const corner = el('th', 'cell-fit');
@@ -269,7 +290,8 @@ export class PickFilesPart {
       const tr = el('tr', 'fi-file');
       const box = el('input');
       box.type = 'checkbox';
-      box.setAttribute('aria-label', WORDS.tickOne);
+      box.setAttribute('aria-label', WORDS.tickOne(f.rel || f.path));
+      box.dataset.pick = `tick:${f.path}`;
       box.checked = this.ticked.has(f.path);
       box.addEventListener('change', () => { if (box.checked) this.ticked.add(f.path); else this.ticked.delete(f.path); this.drawBody(); });
       const tick = el('td', 'cell-fit');
@@ -298,6 +320,7 @@ export class PickFilesPart {
     const n = this.ticked.size || files.length;
     const go = el('button', 'fi-btn fi-btn--primary', WORDS.readThese(n));
     go.type = 'button';
+    go.dataset.pick = 'read';
     const left = this.reading ? this.reading.counts.left : 0;
     if (!files.length) go.disabled = true;
     else if (left > 0) setDisabledReason(go, WORDS.readingWait(left));

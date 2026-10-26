@@ -355,15 +355,17 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   const placed = underRow();
   const kRows = () => walk(kHost).filter((n) => n.tagName === 'TR' && n.dataset && n.dataset.table);
   const kids = (tr) => tr.parentNode.children;
+  const pickBefore = pickButtons()[2];
   const rightUnder = Boolean(placed) && placed.parentNode === kRows()[2].parentNode && kids(placed).indexOf(kRows()[2]) + 1 === kids(placed).indexOf(placed);
   kp.render(srcLines.map((l, i) => (i === 2 ? { ...l, read: 7, left: 2 } : l)), 'counted 1 s ago');
   const stayed = underRow() === placed && walk(placed).includes(kMount);
   const written = pCells(kRows()[2])[2];
+  const sameButton = pickButtons()[2] === pickBefore && Boolean(pickBefore);
   pickButtons()[2].dispatch('click');
   ok('P10 «Pick files» on every source; pressed, its panel stands in a row right under it; a beat with the same rows writes them '
-    + 'in place and the panel stays where it is; pressed again, it closes',
-    pickCount === 3 && rightUnder && stayed && written === '7 / 9 read · 2 left' && !underRow()
-      && JSON.stringify(panelPicks) === JSON.stringify([srcLines[2].source, null]), JSON.stringify([pickCount, rightUnder, stayed, written, panelPicks]));
+    + 'in place, its buttons kept, and the panel stays where it is; pressed again, it closes',
+    pickCount === 3 && rightUnder && stayed && sameButton && written === '7 / 9 read · 2 left' && !underRow()
+      && JSON.stringify(panelPicks) === JSON.stringify([srcLines[2].source, null]), JSON.stringify([pickCount, rightUnder, stayed, sameButton, written, panelPicks]));
 
   const sMount = doc.createElement('div');
   doc.body.append(sMount);
@@ -428,6 +430,40 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
       && JSON.stringify(afterReading) === JSON.stringify(['Read1 handed · 0 left · 0 read · 1 failed', false, 'FailedKeyError: lot', ABSENT]),
     JSON.stringify([readCalls, leftCalls, whileReading, afterReading]));
 
+  // measured on the real page (10-26): every beat redrew the list - its scroll back to the top, the focus gone
+  const scroller = () => byClass(sMount, 'fi-pick__list')[0] || {};
+  const tbodyOf = () => walk(sMount).find((n) => n.tagName === 'TBODY');
+  scroller().scrollTop = 300;
+  const box7 = () => boxes()[7] || { focus() {}, checked: false, dispatch() {} };
+  box7().focus();
+  const quietBody = tbodyOf();
+  await sp.tick();
+  const quiet = tbodyOf() === quietBody;
+  tickIt(box7());
+  const heldBox = doc.activeElement;
+  const heldWhere = [scroller().scrollTop, heldBox === boxes()[7] && Boolean(heldBox), heldBox && heldBox.getAttribute ? heldBox.getAttribute('aria-label') : null];
+  ok('P14 a beat with nothing being read leaves the list as it is; a tick redraws it where it was scrolled with the focus on '
+    + 'that tick, which names its file',
+    quiet && JSON.stringify(heldWhere) === JSON.stringify([300, true, M.WORDS.tickOne((sRows()[7] ? sCells(sRows()[7]) : [])[1])])
+      && Boolean(sRows()[7]) && M.WORDS.tickOne(sCells(sRows()[7])[1]) === 'Tick ' + sCells(sRows()[7])[1],
+    JSON.stringify([quiet, heldWhere]));
+
+  // measured on the real page (10-26): a new List kept the last read's «Read 3 handed · 0 left» under files it never handed
+  leftAnswer = { handed: 1, left: 1, read: 0, failed: 0 };
+  tickIt(boxes()[0] || { checked: false, dispatch() {} });
+  goButton().dispatch('click');
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  await submit('2026-09/*.csv');
+  const listedWhileLeft = readingLine();
+  leftAnswer = { handed: 1, left: 0, read: 1, failed: 0 };
+  await sp.tick();
+  await submit('2026-09/*.csv');
+  const listedWhenDone = readingLine();
+  ok('P15 a List after a read that came to its end says no read line; while files are left the line stays',
+    listedWhileLeft === 'Reading1 handed · 1 left · 0 read · 0 failed' && listedWhenDone === undefined,
+    JSON.stringify([listedWhileLeft, listedWhenDone]));
+
   const typedBox = patternBox();
   typedBox.value = 'half typed';
   await sp.tick();
@@ -435,7 +471,7 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   refuseList = 'The pattern leaves the source folder: ..';
   await submit('../x');
   const refusal = byClass(sMount, 'fi-why')[0];
-  ok('P13 a beat redraws the list, never the pattern box (what is typed stays); a refused pattern - the server\'s sentence under '
+  ok('P13 a beat never redraws the pattern box (what is typed stays); a refused pattern - the server\'s sentence under '
     + 'it as an alert, the box marked, no list',
     kept && refusal && refusal.getAttribute('role') === 'alert' && refusal.textContent === M.WORDS.notRead + refuseList
       && patternBox().getAttribute('aria-invalid') === 'true' && sRows().length === 0,
@@ -489,7 +525,14 @@ const MUTANTS = [
   { name: 'Read before says Success without when', catches: ['M14'], file: 'model', mutate: swap('words: `read · ${localShort(file.read_at)}`', 'words: statusWord(status)') },
   { name: 'After on a file not handed', catches: ['M14', 'P12'], file: 'model', mutate: swap('if (!handed || !handed.has(file.path)) return null;', 'if (!handed) return null;') },
   { name: 'Read these on while some are left', catches: ['P12'], file: 'parts', mutate: swap('    else if (left > 0) setDisabledReason(go, WORDS.readingWait(left));\n', '') },
-  { name: 'a beat redraws the pattern box', catches: ['P13'], file: 'parts', mutate: swap('    }\n    this.drawBody();\n  }\n\n  drawBody() {', '    }\n    this.open(this.line);\n  }\n\n  drawBody() {') },
+  { name: 'a beat redraws the pattern box', catches: ['P13'], file: 'parts', mutate: swap('    this.sayAge();\n  }\n\n  sayAge() {', '    this.open(this.line);\n  }\n\n  sayAge() {') },
+  { name: 'a beat rebuilds the row buttons', catches: ['P10'], file: 'parts', mutate: swap('if (row.cancel !== line.cancel) { row.act', 'if (true) { row.act') },
+  { name: 'a List keeps a read that came to its end', catches: ['P15'], file: 'parts', mutate: swap('ticked: new Set(), reading: going });', 'ticked: new Set() });') },
+  { name: 'a List drops a read with files left', catches: ['P15'], file: 'parts', mutate: swap('ticked: new Set(), reading: going });', 'ticked: new Set(), reading: null });') },
+  { name: 'a quiet beat redraws the list', catches: ['P14'], file: 'parts', mutate: swap('    this.sayAge();\n  }\n\n  sayAge() {', '    this.drawBody();\n  }\n\n  sayAge() {') },
+  { name: 'a redraw scrolls the list to its top', catches: ['P14'], file: 'parts', mutate: swap('    if (now) now.scrollTop = top;\n', '') },
+  { name: 'a redraw drops the focus', catches: ['P14'], file: 'parts', mutate: swap('    if (back) back.focus();\n', '') },
+  { name: 'a row tick does not name its file', catches: ['P14'], file: 'parts', mutate: swap('WORDS.tickOne(f.rel || f.path)', "WORDS.tickOne('this file')") },
   { name: 'a refused pattern not said', catches: ['P13'], file: 'parts', mutate: swap("    if (this.refused) {\n      const why = el('div', 'fi-why');", "    if (false) {\n      const why = el('div', 'fi-why');") },
   { name: 'a stopped re-read not said', catches: ['M11'], file: 'model', mutate: swap('(s.stopped ? `${s.stopped} · waiting ${count(s.waiting)}` : sweepText(s.sweep))', 'sweepText(s.sweep)') },
   { name: 'Cancel on every source', catches: ['M10'], file: 'model', mutate: swap('cancel: s.sweep && waiting > 0 ? s.source : null', 'cancel: s.source') },
