@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-26 [AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열](#2026-10-26--ai-리포트--by--where-에는-conditions-가-내준-조건-이름을-by-를-빼면-웨이퍼가-열) — 적을 것 없음 · 보는 곳 리포트 Evidence 의 걸음 줄
 - 2026-10-26 [AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다](#2026-10-26--ai-리포트-후보--날짜-있는-웨이퍼의-날짜-없는-leg-도-그-후보에-같이-선다) — 적을 것 없음 · 보는 곳 리포트 후보 줄 · chain_worker.log «[report]   wafer …»
 - 2026-10-26 [AI 리포트 원인 걷기 — 온톨로지에 없는 씨앗은 빼고 나머지로 걷고, 뺀 것은 한 줄씩 말한다](#2026-10-26--ai-리포트-원인-걷기--온톨로지에-없는-씨앗은-빼고-나머지로-걷고-뺀-것은-한-줄씩-말한다) — 적을 것 없음(낱말은 labels.no_seed) · 보는 곳 리포트 Evidence 의 causes 단계
 - 2026-10-26 [AI 리포트 조건 행 — conditions.most 로 개수를 자르고, 모델이 고른 순서(타이틀과 연관 큰 것부터)로](#2026-10-26--ai-리포트-조건-행--conditionsmost-로-개수를-자르고-모델이-고른-순서타이틀과-연관-큰-것부터로) — 적는 곳 derive.report.conditions.most · 보는 곳 리포트 표 조건 줄
@@ -609,6 +610,15 @@
 
 
 
+
+## 2026-10-26 · AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열
+
+- 무엇: 운영 리포트에 «'units' is not a condition - one of …» 거절이 났다. 모델이 yield_by(by="units") 나 where {"units": …} 를 불렀다 — 제품 규칙의 units 낱말과 «by: a condition …» 글이 모델을 그쪽으로 끌었다.
+  - yield_by 설명의 by: «one condition name exactly as conditions() lists it - leave by out for a column a wafer».
+  - wafers 의 where: «a condition name as conditions() lists it».
+  - by 가 조건이 아니면 거절 문장 끝에 «- leave by out for a column a wafer» — 모델이 다음 걸음에 by 를 뺀다. where 거절에는 안 붙는다(뺄 by 가 없다).
+  - 거절은 지금처럼 그 걸음만 막고 리포트는 이어 쓴다. 이건 걸음을 아끼는 일.
+- 자세히: `server/chain/report_loop.py` 의 ABOUT · WAFERS_SAID, `server/chain/report_reads.py` 의 `Report._condition`.
 
 ## 2026-10-26 · Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다
 

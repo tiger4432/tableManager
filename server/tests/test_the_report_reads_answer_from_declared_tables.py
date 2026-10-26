@@ -408,8 +408,12 @@ def test_what_the_reads_cannot_answer_is_refused_by_name(report, monkeypatch):
 
     with pytest.raises(report_reads.ReadRefused, match="W7 is not a wafer of this report"):
         report.yield_by(["W7"])
-    with pytest.raises(report_reads.ReadRefused, match="'tool' is not a condition"):
+    with pytest.raises(report_reads.ReadRefused, match="'tool' is not a condition") as said:
         report.yield_by(by="tool")
+    assert str(said.value).endswith(" - leave by out for a column a wafer"), "the next step can drop by"
+    with pytest.raises(report_reads.ReadRefused, match="'tool' is not a condition") as said:
+        report.pick({"where": {"tool": "T1"}})
+    assert not str(said.value).endswith("a column a wafer"), "a where has no by to leave out"
     monkeypatch.setattr(report_reads, "READ_ROW_CAP", 2)
     with pytest.raises(report_reads.ReadRefused, match="rr_summary: over 2 rows"):
         report.pareto()

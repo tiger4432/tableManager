@@ -54,8 +54,8 @@ RELATE = ("Relate each candidate factor below to the report's conditions that ar
 RELATED_CALL = "candidate conditions"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
-    "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: a condition whose values "
-                "become the columns; rows: the condition rows to show, the ones most related to the wafers' titles "
+    "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: one condition name exactly as "
+                "conditions() lists it - leave by out for a column a wafer; rows: the condition rows to show, the ones most related to the wafers' titles "
                 "first (a name keeps the names under it), all if none",
     "pareto": "the items by fail chips over the wafers, with the cumulative share",
     "trend": "each item's share wafer by wafer in time order - first, last, least, most",
@@ -68,7 +68,7 @@ ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by", "rows"), "paret
         "images": ("wafers", "items"), "candidates": (), "compare": ("sets", "evaluations", "wafers")}
 #: conditions.most said on the read that takes `rows` (owner 10-26)
 ROWS_MOST = "; rows: %d at most"
-WAFERS_SAID = 'wafers: a list of wafer names, "all", or {"where": {"<condition>": "<value>"}}'
+WAFERS_SAID = 'wafers: a list of wafer names, "all", or {"where": {"<a condition name as conditions() lists it>": "<value>"}}'
 
 STOP_STEPS = "step cap %d"
 STOP_SECONDS = "time cap %d s"

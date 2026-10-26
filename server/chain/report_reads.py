@@ -674,15 +674,18 @@ class Report:
         return sorted({_shown(f["conditions"].get(name)) for f in (self.wafers[w] for w in self.groups[self.evaluation])
                        if f["conditions"].get(name) is not None} - {EMPTY})
 
-    def _condition(self, said):
+    #: what a yield_by whose by names no condition can do instead (총괄 10-26: the model sent by="units")
+    BY_LEFT_OUT = " - leave by out for a column a wafer"
+
+    def _condition(self, said, then=""):
         """The condition a call names - a wafer table condition column or a conditions table item (owner 10-24 «read
         refused 컨디션 one of 가 아니래»: the long table's items were not known), matched without case and surrounding
-        spaces; one of none is refused with the names there are."""
+        spaces; one of none is refused with the names there are, and `then` - what the call can do instead."""
         known = list(dict.fromkeys(list(self.conditions_at) + [n for f in self.wafers.values() for n in f["conditions"]]))
         by_name = {report_shape.name(n).lower(): n for n in known}
         found = by_name.get(report_shape.name(said).lower())
         if found is None:
-            raise ReadRefused("%r is not a condition - one of %s" % (said, ", ".join(map(str, known))))
+            raise ReadRefused("%r is not a condition - one of %s%s" % (said, ", ".join(map(str, known)), then))
         return found
 
     def _column_groups(self, wafers, by):
@@ -693,7 +696,7 @@ class Report:
         for name, members in self.groups.items():
             members = [w for w in members if name != self.evaluation or w in picked]
             if by:
-                by = self._condition(by)
+                by = self._condition(by, self.BY_LEFT_OUT)
                 values = {}
                 for w in members:
                     values.setdefault(_shown(self.wafers[w]["conditions"].get(by)), []).append(w)

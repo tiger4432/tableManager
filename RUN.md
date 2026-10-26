@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    리포트 Evidence 의 걸음 줄 «read refused: 'units' is not a condition …» -> 줄면 고쳐진 것
+>          남아도 그 문장 끝에 «- leave by out for a column a wafer» 가 붙고, 다음 걸음이 by 없이 yield_by 를 부르면 정상
+> 되돌리기  git revert $(git log -1 --format=%h --grep='leave by out' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다** — git pull · 런처 재기동
 >
 > ```
