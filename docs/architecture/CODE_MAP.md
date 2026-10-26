@@ -4088,6 +4088,8 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ### `server/ledger/trace_router.py` — 🆕㉟ **라우트는 «넷»이다** (`/subgraph` · `/key-values` · `/gaps` · `/declaration`)
 
+- 🆕 **[10-27 `8037e0469`] `_predicate_qualifiers(world=None, declared=None)` :1009** (**1,384줄** @`8037e0469`) — {맨 술어: 그 술어의 수식어 이름(required 다음 optional)}, 고른 세상의 선언 vocabulary 에서. 수식어를 읽는 «한 자리» — `_value_names` :1021 이 이것을 접고(전엔 같은 줄을 제 안에 적음), `_evidence_graph` 가 `follow_keys` 가 있을 때 `follow_qualifiers=` 로 걷기에 넘김(:774). 걷기의 거절 문장이 «declared: …» 로 그 이름들을 댐
+
 - 🆕 **[10-21 `e8ae04b69`] id 로 나열한 `/subgraph` 답에 `cards`** — `{branches, missing_edges}`, `walk_cards.answer_cells` 그대로(에이전트 걷기가 LLM 에 주는 같은 칸). 대조를 물었으면 부호를 단다. 선언을 못 읽으면 그 까닭을 말하고 missing_edges 는 빼고 `[Walk] world …` 경고 한 줄
 
 - 🆕 **[10-12 `2bdb44df7`] `/subgraph` 를 POST 로도** (**1,312줄** @`2bdb44df7`) — 본문의 `resume`(`Body`)은 앞 쪽 답의 `more.resume` 그대로, `_evidence_graph(..., resume=)` 가 `ledger_subgraph.subgraph(node_id, lookup, aux=aux, resume=resume, ...)` 로 넘긴다
@@ -4591,6 +4593,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
   - 상한 = 읽은 «서로 다른» 원자(`spent`) — `min(MAX_CLAIM_SCAN, max(200, edge_limit × 2))`. 원자 하나는 상한에 한 번만 센다. 쪽마다 `near_of` · `whole` — 걷는 쪽은 통째로 읽은 노드를 다시 통째로 읽지 않고, 그때 «양쪽 끝»을 다 적어 둔다(응용 QA `3c23968f9` late-origin). 문을 지나는 읽기는 되풀이될 수 있다
   - 규칙(소유자 10-12): 정적 노드에서 동적 노드로 안 내려간다, 걸은 노드도 예외 없음 — 걷는 쪽(`held` m)은 정적 노드의 동적 먼 끝을, 보조 쪽(a, 거꾸로)은 동적 노드의 정적 먼 끝을 SQL 에서 안 읽고(`_far_types`) 짝에서도 거름(`refused`). 그 밖의 가드(도로 내려가기 · follow · 묶음)와 시간 창은 끔 — `timeless` 는 since/until 없는 lookup 사본
 - 🆕 **[10-12 `6c0f8ef6e`] 되돌아 내려가는 규칙이 거절할 걸음은 SQL 에서부터 안 읽는다** — `_back_down_steps(arrived)` 가 `_goes_back_down` 의 본문을 «거절하는 걸음 집합»으로 돌려주고(`_goes_back_down` 은 그 집합에 드는지), 걷기가 프런티어 노드마다 그 집합을 읽기에 넘겨 `_skip(arm)` 이 두 SQL 가지에서 뺀다(같은 프런티어의 먼 끝은 `_step` 이 통과) · 정적 타입 사이 걸음은 `_between_names` 한 자리가 판단 — 거절할 걸음이 claims 상한을 안 먹어 본딩 웨이퍼의 걷기가 코어 웨이퍼에 닿는다(소유자 10-12 «본딩 코어 1 개만»; 리허설 C8: SYN-BW-103-11 + · collect wafer · in_container + bonded_from → 코어 30 · claims 464 · 잘림 없음)
+- 🆕 **[10-27 `8037e0469`] `follow=<술어>:<이름>` — 시드가 키로 안 든 이름은 «올라온 엣지의 수식어»로 묶는다** (총괄 10-27 B-1, **3,767줄** @`8037e0469`) — `_walk` :2757 이 이름을 가름: 모든 시드의 keys 에 있으면 전처럼 먼 노드의 키로(`seed_key_sets`), 아무 시드에도 없으면 `qualifier_binds[술어]` :2902. 둘 다 아니면(시드 키도 아니고 그 술어의 선언된 수식어도 아님) 전처럼 거절 — 문장에 «nor is it a qualifier of <술어> (declared: … | none declared)». 노드마다 묶인 술어로 «자기에게 올라온» 엣지의 수식어 값을 `bound_arrivals` :2935 에 (시드가 든 엣지 전부가 아님 — 웨이퍼는 스텝을 여러 트랜잭션으로 만남, :3200). 그 노드에서 같은 술어로 걷는 걸음은 그 값 중 하나를 든 엣지만(:3171), 그 걸음은 08-29 되돌아 내려가기 가드를 지남 — 묶이지 않은 걸음은 전처럼 거절. `_qualifier_values(payload, names)` :535 — 값이 없는 엣지는 묶지도 묶이지도 않음(None). 읽기의 skip (`_back_down_steps`)은 묶인 되돌아 길을 빼지 않음(:3337), 이어 걷기는 프런티어 «bound» 로 값을 들고 감(:3267 · :3298). 시험 `test_ledger_subgraph.py`(묶지 않은 형제 거절 · T1 의 형제만 · 두 트랜잭션 안 섞임 · 같은 키 이름의 시드 키는 키로 · 이어 걷기)
 
 > 🆕㉟ 🔴 **[2026-09-16 · S-263 `53106c38`] 등록 쓸이가 술어를 «인자로 받는다» — `subgraph(..., registration_follow=None)` :1715**
 > ```
