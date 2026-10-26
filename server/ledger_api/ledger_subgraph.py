@@ -532,6 +532,15 @@ def _parse_instant(value):
     return parsed.astimezone(timezone.utc)
 
 
+def _qualifier_values(payload, names):
+    """The values `names` take in an edge's qualifiers (`_json_key`), or None when one is not there - an edge without
+    the value binds nothing and is bound by nothing (`follow=<predicate>:<qualifier>`, lead 10-27)."""
+    qualifiers = (payload or {}).get("qualifiers") or {}
+    if any(name not in qualifiers or qualifiers[name] is None for name in names):
+        return None
+    return tuple(_json_key(qualifiers[name]) for name in names)
+
+
 def _json_key(value):
     """One spelling for a key value, so `1` and `1.0` do not miss each other.
 
@@ -2749,7 +2758,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
-             static_follow=None, follow_keys=None, collect=None,
+             static_follow=None, follow_keys=None, follow_qualifiers=None, collect=None,
              cardinalities=None, rows=False,
              entities=None, group_by=None, measure=None,
              seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
@@ -2862,22 +2871,35 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # 🔴 AND A SEED THAT CANNOT CARRY THE KEY IS REFUSED, NOT ANSWERED WITH ZERO. Asking a
     # wafer seed for `inspected:x,y` is asking something unsatisfiable; zero would render
     # exactly like "there is nothing there" and the caller could not tell the two apart.
-    seed_key_sets = {}
+    #
+    # 🔴 A NAME NO SEED CARRIES AS A KEY IS THE EDGE'S QUALIFIER (lead 10-27 B-1): a step back down that predicate
+    # walks only an edge holding the values of the edge that climbed to the node (`bound_arrivals`) - the siblings of
+    # one transaction, not of the step. `follow_qualifiers`: the declaration's qualifiers of each predicate (the
+    # route's); a name in neither is refused as before, with the qualifiers it could have named.
+    seed_key_sets, qualifier_binds = {}, {}
     for predicate, key_names in (follow_keys or {}).items():
         if not key_names:
             continue
-        wanted = []
-        for ref in seed_refs.values():
-            keys = (ref or {}).get("keys") or {}
-            missing = [name for name in key_names if name not in keys]
+        refs = [ref or {} for ref in seed_refs.values()]
+        keyed = [name for name in key_names if all(name in (ref.get("keys") or {}) for ref in refs)]
+        declared = (None if follow_qualifiers is None
+                    else sorted(follow_qualifiers.get(_bare_name(predicate)) or ()))
+        for ref in refs:
+            missing = [name for name in key_names if name not in keyed and (
+                name in (ref.get("keys") or {}) or (declared is not None and name not in declared))]
             if missing:
+                missing = [name for name in key_names if name not in keyed]
                 raise ValueError(
                     f"follow={predicate}:{','.join(key_names)} cannot be satisfied: the "
-                    f"seed {ref.get('type')} has no {', '.join(missing)}. A seed that "
-                    f"cannot carry the key would match nothing, and an empty graph reads "
+                    f"seed {ref.get('type')} has no {', '.join(missing)}, nor is it a qualifier of "
+                    f"{_bare_name(predicate)} (declared: {', '.join(declared or ()) or 'none declared'}). "
+                    f"A seed that cannot carry the key would match nothing, and an empty graph reads "
                     f"as 'there is nothing here'.")
-            wanted.append(tuple(_json_key(keys[name]) for name in key_names))
-        seed_key_sets[_bare_name(predicate)] = (tuple(key_names), set(wanted))
+        if keyed:
+            seed_key_sets[_bare_name(predicate)] = (tuple(keyed), {
+                tuple(_json_key(ref["keys"][name]) for name in keyed) for ref in refs})
+        if len(keyed) < len(key_names):
+            qualifier_binds[_bare_name(predicate)] = tuple(name for name in key_names if name not in keyed)
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
@@ -2909,6 +2931,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: REACHED it - what `_goes_back_down` reads.
     #: Seeds keep an empty set, which is why they need no exemption below.
     arrivals = defaultdict(set)
+    #: node -> {bound predicate: the qualifier values of the edges on it that reached the node} (`qualifier_binds`)
+    bound_arrivals = defaultdict(lambda: defaultdict(set))
     #: node -> its mode under the static hub rule (`_name_step`) - a node never stepped to is OPEN
     modes = {}
     edges = {}
@@ -3139,7 +3163,14 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # differential a person is asking for. MEASURED: seeded at `defect_kind{void}` with
         # follow=leads_to, refusing the step costs 2 of 21 nodes -- one of them another
         # defect kind the same cause produces.
-        if (step_dir is not None
+        # a bound predicate from a node it reached: only an edge holding the values of the edge that climbed (one
+        # transaction's siblings), and that one goes back down - the bound walks what the guard refuses (lead 10-27)
+        bound = qualifier_binds.get(_bare(atom.predicate))
+        held = ((bound_arrivals.get(near_id) or {}).get(_bare(atom.predicate))
+                if bound and step_dir is not None else None)
+        if held and _qualifier_values(payload, bound) not in held:
+            return None
+        if (step_dir is not None and not held
                 and not _between_names(near_kind, far_kind, static_types)
                 and _goes_back_down(arrivals.get(near_id), atom.predicate, step_dir,
                                     far_kind)):
@@ -3163,6 +3194,10 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         far_id, step_dir = step["far_id"], step["step_dir"]
         if far_id is not None and step_dir is not None:
             arrivals[far_id].add((atom.predicate, step_dir, near_kind))
+            bound = qualifier_binds.get(_bare(atom.predicate))
+            values = _qualifier_values(atom.object_payload, bound) if bound else None
+            if values is not None:
+                bound_arrivals[far_id][_bare(atom.predicate)].add(values)
             if far_kind:
                 modes[far_id] = _wider(modes.get(far_id), _name_step(
                     near_kind, modes.get(step["near_id"], OPEN), far_kind, static_types))
@@ -3229,6 +3264,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             nodes[node_id] = dict(node)
             depths[node_id], dep_cost[node_id] = int(item["depth"]), int(item["cost"])
             arrivals[node_id] = {tuple(step) for step in item.get("arrivals") or ()}
+            for predicate, values in (item.get("bound") or {}).items():
+                bound_arrivals[node_id][predicate] = {tuple(value) for value in values}
             modes[node_id] = item.get("mode", OPEN)
         cursor = resume.get("cursor")
         for node_id in (cursor or {}).get("frontier") or ():
@@ -3257,7 +3294,10 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                              "frontier": [{"id": node_id, "depth": depths[node_id], "cost": dep_cost.get(node_id, 0),
                                            "mode": modes.get(node_id, OPEN),
                                            "arrivals": sorted((list(step) for step in arrivals.get(node_id, ())),
-                                                              key=str)}
+                                                              key=str),
+                                           **({"bound": {predicate: sorted((list(value) for value in values), key=str)
+                                                         for predicate, values in bound_arrivals[node_id].items()}}
+                                              if bound_arrivals.get(node_id) else {})}
                                           for node_id in open_ids],
                              "seen": whole, "cursor": at}}
 
@@ -3290,9 +3330,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         entities = []
         for item in items:
             near = _bare(item["type"])
+            held = bound_arrivals.get(item["id"]) or {}
             steps = [{"p": p, "d": d, "t": t}
                      for p, d, t in sorted(_back_down_steps(arrivals.get(item["id"])))
-                     if not _between_names(near, t, static_types) and t not in outside]
+                     if not _between_names(near, t, static_types) and t not in outside
+                     and not held.get(_bare(p))]          # a bound way back is read, `_step` takes its own
             entities.append((item["type"], item["keys"], {"steps": steps})
                             if steps else (item["type"], item["keys"]))
         return entities

@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **걷기 follow «술어:이름» — 이름이 씨앗 키가 아니면 올라온 엣지의 수식어로 묶어, 같은 트랜잭션 형제만 닿는다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    follow=<공정 술어>:<트랜잭션 수식어> 로 웨이퍼 씨앗 걷기 -> 같은 트랜잭션 웨이퍼만 = 고쳐진 것
+>          422 «… nor is it a qualifier of <술어> (declared: none declared)» -> 선언 vocabulary 의 그 술어 object.qualifiers 에 수식어를 적음
+>          묶지 않은 follow 는 지금과 같은 답(형제 차단 그대로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='climbing edge' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files (+ Paste HTML · 잘리지 않는 거절 문장 · N before switch on)** — git pull · 화면 새로 고침
 >
 > ```

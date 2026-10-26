@@ -771,6 +771,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
+        follow_qualifiers=_predicate_qualifiers(world) if follow_keys else None,
         backbone_hops=backbone_hops, static_types=_static_types(world),
         static_follow=_static_step_predicates(world), collect=collect,
         registration_follow=_self_describing_predicates(world),
@@ -1005,6 +1006,18 @@ def _expanded_bundle(item, world=None):
     return "|".join(parts)
 
 
+def _predicate_qualifiers(world=None, declared=None) -> dict:
+    """{bare predicate: [its qualifier names - required, then optional]} - the picked worlds' vocabulary, what an edge
+    may carry and `follow=<predicate>:<qualifier>` binds by (lead 10-27)."""
+    declared = (_declaration(world) or {}) if declared is None else declared
+    out = {}
+    for key, item in (declared.get("vocabulary") or {}).items():
+        qualifiers = ((item or {}).get("object") or {}).get("qualifiers") or {}
+        out[_bare_name(key)] = [str(name) for name in (*(qualifiers.get("required") or ()),
+                                                     *(qualifiers.get("optional") or ()))]
+    return out
+
+
 def _value_names(world=None):
     """Every name `group_by` and `measure` may read a value under - the fold's sources
     (`ledger_subgraph.VALUE_SOURCES`): an entity's keys and attributes, a predicate's
@@ -1017,12 +1030,9 @@ def _value_names(world=None):
         raise HTTPException(status_code=503, detail={
             "reason": "declaration_unreadable",
             "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
-    names = set()
-    for key, item in (declared.get("vocabulary") or {}).items():
-        names.add(_bare_name(key))
-        qualifiers = ((item or {}).get("object") or {}).get("qualifiers") or {}
-        names |= {str(name) for name in (*(qualifiers.get("required") or ()),
-                                         *(qualifiers.get("optional") or ()))}
+    names = {_bare_name(key) for key in (declared.get("vocabulary") or {})}
+    for qualifiers in _predicate_qualifiers(world, declared).values():
+        names |= set(qualifiers)
     for item in (declared.get("entities") or {}).values():
         names |= {str(name) for name in (*((item or {}).get("keys") or ()),
                                          *((item or {}).get("attributes") or ()))}
