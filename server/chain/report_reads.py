@@ -1088,7 +1088,9 @@ class Report:
         """The ledger's nodes of `causes.seed_type` - the walk's own described seeds, no step taken.
         -> {"context": its head and a name a line, "nodes": {name: node id}}."""
         kind = self._causes()["seed_type"]
-        answer = _walk(self.db, "derive.report.causes.seed_type", seed_type=kind, hops=0, propagation=False)
+        worlds = self._causes().get("worlds")
+        answer = _walk(self.db, "derive.report.causes.seed_type", seed_type=kind, hops=0, propagation=False,
+                       **({"world": worlds} if worlds else {}))
         nodes = {}
         for node in answer.get("nodes") or ():
             nodes.setdefault(str(node.get("label") or node["id"]), node["id"])
@@ -1116,12 +1118,14 @@ class Report:
         if unknown:
             raise ReadRefused("%s is not a %s node - one of %s" % (unknown[0], causes["seed_type"], ", ".join(kinds)))
         ids = list(dict.fromkeys(kinds.get(s, s) for s in said))
-        follow = causes.get("follow") or sorted(trace_router._static_step_predicates())
+        follow = causes.get("follow") or sorted(trace_router._static_step_predicates(causes.get("worlds") or None))
         if not follow:
             raise ReadRefused("derive.report.causes.follow is blank and the ledger declares no predicate between two "
                               "static types - name the predicates the walk follows")
         asked = {"node_id": ids[0], "positive": ids[1:] or None, "follow": follow,
                  "collect": causes.get("collect") or None, "propagation": True}
+        if causes.get("worlds"):                                 # several worlds at once (owner 10-26)
+            asked["world"] = causes["worlds"]
         if causes.get("hops") is not None:
             asked["hops"] = causes["hops"]
         answer = _walk(self.db, "derive.report.causes", **asked)

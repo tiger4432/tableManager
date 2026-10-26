@@ -2608,6 +2608,19 @@
                           "kind": "leaf",
                           "hint": "number"
                         }
+                      },
+                      {
+                        "key": "worlds",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "world",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
                       }
                     ]
                   }

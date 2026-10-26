@@ -116,6 +116,16 @@ def test_causes_walk_from_the_named_seeds_and_keep_each_candidates_path(walks):
     assert [c["id"] for c in said["candidates"]] == [WET, TEMP], "the seed is not a candidate"
 
 
+def test_the_declared_worlds_are_every_walks_and_the_static_predicates(walks, monkeypatch):
+    """owner 10-26 «보고서 생성 시 걷기 세계 여러 개 지정되게»: causes.worlds reaches the seed list, the walk and the
+    blank follow's declaration."""
+    asked_worlds = []
+    monkeypatch.setattr(trace_router, "_static_step_predicates", lambda world=None: asked_worlds.append(world) or {"leads_to"})
+    Reads({"seed_type": "defect_kind", "worlds": ["ops", "lab"]}).causes(["void"])
+    assert [w[1].get("world") for w in walks[-2:]] == [["ops", "lab"], ["ops", "lab"]]
+    assert asked_worlds == [["ops", "lab"]]
+
+
 def test_two_seeds_by_name_or_id_walk_once_with_the_second_positive(walks):
     Reads().causes(["void", DELAM, "void"])
     assert (walks[-1][1]["node_id"], walks[-1][1]["positive"]) == (VOID, [DELAM])

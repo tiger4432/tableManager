@@ -107,7 +107,9 @@ SEND_TO = "send_to"
 #: `causes`: the cause walk before the write (owner 10-25) - the entity type whose nodes the model picks seeds from,
 #: the predicates the walk follows (blank: every predicate between two static types), the types it keeps, its hops
 #: (blank: the walk's own). Names the operator writes; the walk route refuses one the ledger does not declare.
-CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops")
+#: `worlds`: the ledger worlds the walk reads, several at once (owner 10-26 «보고서 생성 시 걷기 세계 여러 개 지정되게»)
+#: - blank: the operating world
+CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops", "worlds")
 #: the walk route's own cap - the report walks in process, past the route's check, so the save holds it
 CAUSES_HOPS_MOST = 40
 #: `picture_rows`: rows of one picture a column in the summary table (owner 10-23 «열마다 한 장») - each a table, its
@@ -304,7 +306,9 @@ def skeleton_node():
                 "predicate", {"kind": "leaf", "hint": "free"})},
             {"key": "collect", "required": False, "node": chain_bindings.list_node(
                 "type", {"kind": "leaf", "hint": "free"})},
-            {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}},
+            {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}},
+            {"key": "worlds", "required": False, "node": chain_bindings.list_node(
+                "world", {"kind": "leaf", "hint": "free"})}]}},
     ]
     return {"kind": "record", "fields": fields}
 
@@ -722,7 +726,7 @@ def _causes_refusal(causes):
         return None
     if not isinstance(causes, dict) or set(causes) - set(CAUSES_CELLS) or not (
             isinstance(causes.get("seed_type"), str) and causes["seed_type"].strip()) or any(
-            cell in causes and not _names(causes[cell]) for cell in ("follow", "collect")) or (
+            cell in causes and not _names(causes[cell]) for cell in ("follow", "collect", "worlds")) or (
             "hops" in causes and not (_whole(causes["hops"], 0) and causes["hops"] <= CAUSES_HOPS_MOST)):
         return ('derive.report.causes is {"seed_type": "<entity>", "follow": ["<predicate or class:<word>>", ...], '
                 '"collect": ["<entity>", ...], "hops": <n up to %d>} - seed_type written, the rest optional; got %r'
