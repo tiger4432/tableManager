@@ -178,7 +178,7 @@ export function sweepText(sweep) {
   // files older than the source's switch-on, left to a hand (owner 10-26) - not sent, so not among the sent's words
   const before = numberOr(sweep.before_switch_on);
   const sent = `looked ${count(sweep.looked)} · sent ${count(sweep.dispatched)}${why.length ? ` (${why.join(' · ')})` : ''}`
-    + (before ? ` · ${count(before)} before switch-on` : '');
+    + (before ? ` · ${count(before)} before switch on` : '');
   if (sweep.state === 'sweeping') return `sweeping · ${sent}`;
   const age = numberOr(sweep.age_seconds);
   const took = numberOr(sweep.seconds);
