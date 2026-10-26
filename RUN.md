@@ -10,7 +10,7 @@
 >          체크 -> Read these (N) -> After 가 Pending retry 에서 Success  = 와처가 읽음 (watcher.log 에 그 파일 읽기 줄)
 >          After 가 Pending retry 에 머묾 -> 와처 프로세스 · Retry 줄 (한 바퀴 reread_max_files 개, 기본 25)
 >          «409 …» 토스트 -> 와처 프로세스가 없음 (DECOUPLED 런처로 띄웠는지)
->          줄이 «Lost track · no Read these … it restarted since» -> 서버 재기동. 넘긴 파일은 그대로 읽힘, 진행 표로 봄
+>          줄이 «Lost track · …» -> 서버가 그 넘김을 모름(재기동 또는 최근 20 개 밖). 넘긴 파일은 그대로 읽힘, 진행 표로 봄
 >          꺼진 저장소 줄의 Last sweep 이 «off» -> 그 저장소도 Pick files 로 골라 읽힘
 > 같이     체인 규칙 창 HTML 칸의 Paste HTML · 메인 그리드 거절 문장이 토스트로 다 보임 · Last sweep 의 «N before switch on»
 > 되돌리기  (Pick files 만) git revert $(git log --format=%h -i --grep='pick files by pattern' origin/main) -> 화면 새로 고침

@@ -243,7 +243,8 @@ export class PickFilesPart {
         for (const p of shown) if (!r.now.has(p)) r.now.set(p, null);
         for (const f of got.files || []) r.now.set(f.path, f);
       } catch (e) {
-        // the server restarted since and knows no such job - its sentence said, not asked again; else the next beat asks
+        // the server knows no such job (restarted, or past the newest it keeps) - its sentence said, not asked again;
+        // else the next beat asks
         if (e.status === 404) r.lost = e.message;
       } finally {
         this.asking = false;
