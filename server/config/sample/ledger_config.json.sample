@@ -347,6 +347,22 @@
           ]
         }
       }
+    },
+    "measured_at@1": {
+      "status": "active",
+      "subjects": [
+        "quantity@1"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "process_step@1"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
     }
   },
   "entities": {
