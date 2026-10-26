@@ -5683,6 +5683,24 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
                                                        "dispatched", "why", "before_switch_on")}
         else:
             entry["stopped"] = lap["stopped"]
+    # every declared storage has its line - raws, each external source, a switched-off one too (총괄 10-26: Pick files
+    # reaches a storage no file was read from); `off` says it is read by hand only (7328c8d51)
+    from ingestion import reread
+
+    _config, specs = reread.validated_sources()
+    for table, source, off in ([(table, reread.RAWS, False) for table in crud.TABLE_CONFIG]
+                               + [(spec["table_name"], spec["root"], bool(spec.get("off"))) for spec in specs]):
+        entries = sources.setdefault(table, [])
+        spelled = source if source == reread.RAWS else os.path.normcase(os.path.abspath(source))
+        entry = next((e for e in entries if e["source"] == source or (
+            source != reread.RAWS and e["source"] and os.path.normcase(os.path.abspath(e["source"])) == spelled)), None)
+        if entry is None:
+            entry = {"source": source, "total": 0, "read": 0, "left": 0, "left_by_status": {}}
+            entries.append(entry)
+        entry["off"] = off
+    for entries in sources.values():
+        for entry in entries:
+            entry.setdefault("off", False)
     for entry in data:
         entry["sources"] = sources.get(entry["table_name"], [])
     seen = {entry["table_name"] for entry in data}
@@ -7432,6 +7450,7 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
 class ReadNowFiles(BaseModel):
     paths: Optional[list] = None
     ids: Optional[list] = None
+    job: Optional[str] = None
 
 
 @app.get("/admin/file-ingestion/glob", dependencies=[Depends(require_admin_token)])
@@ -7453,11 +7472,27 @@ def list_storage_glob(table: str, source: str, pattern: str, limit: int = None, 
 
 @app.post("/admin/file-ingestion/read-now/left", dependencies=[Depends(require_admin_token)])
 def read_now_left(body: ReadNowFiles = Body(...), db: Session = Depends(get_db)):
-    """What a glob's Read these has left - its handed rows (`ids`) by state, no walk (`reread.left_of`)."""
+    """What a glob's Read these has left - its handed rows (`ids`, or its `job`'s so far) by state, no walk
+    (`reread.left_of`). With `job` (총괄 200949c38): counted by the job, the files only of the rows the screen shows -
+    `paths` or `ids` (none when neither), and matched (None until walked) · being_read · handing (still handing) ·
+    not_handed (why it stopped, or None)."""
     from ingestion import reread
 
-    ids = (body.model_dump() if hasattr(body, "model_dump") else body.dict()).get("ids") or []
-    return {"status": "success", **reread.left_of(db, ids)}
+    said = body.model_dump() if hasattr(body, "model_dump") else body.dict()
+    job = reread.hand_job(said["job"]) if said.get("job") else None
+    if said.get("job") and job is None:
+        raise HTTPException(status_code=404, detail="no Read these %s in this server - it restarted since; the files "
+                                                    "handed before stay handed" % said["job"])
+    if job is None:
+        left = reread.left_of(db, said.get("ids") or [], paths=said.get("paths"))
+    else:
+        left = reread.left_of(db, job["ids"], paths=said.get("paths") or [])
+        if said.get("ids") and not said.get("paths"):
+            left["files"] = reread.left_of(db, said["ids"])["files"]
+    if job:
+        left.update(matched=job["matched"], being_read=job["being_read"], handing=not job["done"],
+                    not_handed=job["failed"])
+    return {"status": "success", **left}
 
 
 @app.post("/admin/file-ingestion/read-now", dependencies=[Depends(require_admin_token)])
@@ -7492,8 +7527,9 @@ def read_file_now(path: str = None, table: str = None, preview: bool = False, so
 
 
 def _read_glob_now(db, table, source, pattern, chosen):
-    """A storage's glob handed to the watcher (`reread.hand_files`) - every file it takes, not only the list's first
-    5,000 (총괄 10-26: the retry line paces them), or the `chosen` files of it."""
+    """A storage's glob handed to the watcher - every file it takes, not only the list's first 5,000, or the `chosen`
+    files of it - off the request (`reread.hand_glob_later`; 총괄 10-26 «요청 답 1 s 안»): the answer is its job,
+    read-now/left says how far it came."""
     from ingestion import reread
 
     if os.getenv("DECOUPLED") != "True":
@@ -7502,23 +7538,13 @@ def _read_glob_now(db, table, source, pattern, chosen):
         raise HTTPException(status_code=400, detail="a glob is read from one storage - give table and source")
     source = str(source).strip()
     try:
-        _root, _spec, matched, _walked = reread.glob_matched(table, source, pattern)
+        job = reread.hand_glob_later(table, source, pattern, chosen)
     except reread.StorageUnknown as unknown:
         raise HTTPException(status_code=404, detail=str(unknown))
     except reread.RereadRefused as refused:
         raise HTTPException(status_code=400, detail=str(refused))
-    files = [path for _rel, path in matched]
-    if chosen is not None:
-        wanted = {os.path.normcase(os.path.abspath(str(p))) for p in chosen}
-        files = [f for f in files if os.path.normcase(os.path.abspath(f)) in wanted]
-    handed = reread.hand_files(db, table, source, files) if files else {"ids": [], "being_read": []}
-    if handed["ids"]:
-        # its (table, source) re-read stop let go by the watcher (system_reload.SCOPE_REREAD_RELEASED)
-        system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED, pairs=[(table, source)])
-    return {"status": "success", "table": table, "source": source, "pattern": pattern, "handed": len(handed["ids"]),
-            "being_read": len(handed["being_read"]), "ids": handed["ids"], "matched": len(matched),
-            "message": "%d of %d file(s) handed to the watcher" % (len(handed["ids"]), len(matched))
-                       + (" · %d being read now, left" % len(handed["being_read"]) if handed["being_read"] else "")}
+    return {"status": "success", "table": table, "source": source, "pattern": pattern, "job": job,
+            "message": "the files are being handed to the watcher"}
 
 
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])

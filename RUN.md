@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **Read these 즉시 답 · 넘김 번호로 진행 · 파일 화면에 선언된 저장소 전부(꺼진 것도)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 (화면은 클라 다음 빌드에서 번호 박동 · off 표시)
+> 볼 것    Read these 를 누르면 답이 바로 옴(«the files are being handed to the watcher»)
+>          서버 로그 «[Reread] glob <glob> under <루트> for <표>: N of M file(s) handed to the watcher» -> 다 넘김
+>          «… was not handed: <까닭>» -> 넘기다 멈춤. 그때까지 넘긴 것은 읽힘, 나머지는 다시 Read these
+>          read-now/left 가 404 «it restarted since» -> 서버가 재기동됨. 넘긴 파일은 그대로 읽힘 — 화면을 새로 고침
+>          파일 화면에 꺼진 외부 저장소 줄이 off 로 보임 -> 고쳐진 것 (전: 읽힌 파일 없으면 줄 없음)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='handed off the request' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **실패 파일은 정말로 Retry 로만 · 꺼진 저장소도 골라 읽기 · Read these 는 맞는 파일 전부** — git pull · 런처 재기동
 >
 > ```
@@ -8,7 +22,7 @@
 >          read again by themselves» -> 그 표의 FAILED 는 파일 화면에 FAILED 로 남음 = 고쳐진 것. 읽히려면 Retry
 >          (전: 줄은 그렇게 말하고 실패 파일이 저절로 읽혀 SUCCESS 가 됨)
 >          기동 한 번 «read files stamped N · failed files stamped K (...)» -> 첫 기동만. 이미 채운 박스엔 안 나옴
->          Read these 답 «N of M file(s) handed» -> M 이 패턴에 맞는 전부. N < M 이면 나머지는 지금 읽는 중
+>          Read these 는 즉시 답함 — 진행 수는 아래 [10-26] 넘김 번호 블록
 >          꺼진 저장소에 glob -> 목록이 나오면 고쳐진 것 (전: «switched off» 400)
 > 되돌리기  git revert $(git log -1 --format=%h --grep='read again only by hand' origin/main) -> 런처 재기동
 > ```

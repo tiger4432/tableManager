@@ -20,6 +20,7 @@ import time
 
 logger = logging.getLogger(__name__)
 _SOURCES, _SOURCES_LOCK = {}, threading.Lock()      # the validated sources this process holds - see validated_sources
+_HANDS, _HANDS_LOCK = {}, threading.Lock()          # a glob's Read these, handed off the request - see hand_glob_later
 
 #: The state that puts a row in the watcher's hands.
 REREAD_STATUS = "PENDING_RETRY"
@@ -535,15 +536,17 @@ def _newest_rows_of(db, table, files):
     return rows
 
 
-def stand_rows(db, table, picked):
+def stand_rows(db, table, picked, commit=True):
     """A checklist row for each picked file the table has none for - PENDING_RETRY at once, stood by the re-read
-    (`STOOD_BY_REREAD` - «cancel» deletes it). -> (the table's rows the picked files had, the rows stood)."""
+    (`STOOD_BY_REREAD` - «cancel» deletes it); `commit` False leaves the commit to the caller. -> (the table's rows the
+    picked files had, the rows stood)."""
     from ingestion import checkpoint
 
     logs = [log for log, _rel, _path in picked if log is not None]
     stood = [checkpoint.note_file(db, table, path, status=REREAD_STATUS, status_before=STOOD_BY_REREAD)
              for _log, _rel, path in (item for item in picked if item[0] is None)]
-    db.commit()
+    if commit:
+        db.commit()
     return logs, stood
 
 
@@ -615,24 +618,31 @@ def hand_files(db, table, source, files):
     """Hand the files `files` to the Retry door under (table, source) - every read a person asks for (Read now, a glob's
     Read these; 총괄 aaf19d0ca, 소유자 10-26 «읽은 거 무관하게»): each file's row marked (`mark_for_reread`), or one stood
     (`stand_rows`) for a file the table has none for, every row carrying the source it is read under. A file being
-    read now (PENDING) is left. The watcher's retry poller reads them at its pace (`max_files` a turn).
+    read now (PENDING) is left. The watcher's retry poller reads them at its pace (`max_files` a turn). A page of
+    files at a time, one commit a page: a commit expires the session's rows, and a row touched after it is loaded
+    again one by one (총괄 10-26: 100,000 files took 168 s).
     -> {"ids": the rows handed, "being_read": [(file, its row id)]}."""
-    rows = _newest_rows_of(db, table, files)
-    marked, standing, being_read = [], [], []
-    for path in files:
-        row = rows.get(os.path.normcase(os.path.abspath(path)))
-        if row is None:
-            standing.append((None, None, path))
-        elif row.status == "PENDING":
-            being_read.append((path, row.id))
-        else:
-            marked.append(row)
-    mark_for_reread(db, marked)
-    _logs, stood = stand_rows(db, table, standing)
-    for row in marked + stood:
-        row.source = source
-    db.commit()
-    return {"ids": [row.id for row in marked + stood], "being_read": being_read}
+    ids, being_read = [], []
+    for start in range(0, len(files), MARK_PAGE):
+        page = files[start:start + MARK_PAGE]
+        rows = _newest_rows_of(db, table, page)
+        marked, standing = [], []
+        for path in page:
+            row = rows.get(os.path.normcase(os.path.abspath(path)))
+            if row is None:
+                standing.append((None, None, path))
+            elif row.status == "PENDING":
+                being_read.append((path, row.id))
+            else:
+                marked.append(row)
+        mark_for_reread(db, marked, commit=False)
+        _logs, stood = stand_rows(db, table, standing, commit=False)
+        for row in marked + stood:
+            row.source = source
+        db.flush()
+        ids += [row.id for row in marked + stood]
+        db.commit()
+    return {"ids": ids, "being_read": being_read}
 
 
 def glob_refusal(pattern):
@@ -745,25 +755,103 @@ def _reads_of(db, log_ids):
     return out
 
 
-def left_of(db, ids):
+def hand_glob_later(table, source, pattern, chosen=None):
+    """A storage's glob handed to the watcher off the request (총괄 10-26 «요청 답 1 s 안» · CLAUDE.md «요청 경로 인라인
+    금지»): its refusals said now (RereadRefused · StorageUnknown); the walk (`glob_matched`, the `chosen` files of it)
+    and the hand-off (`hand_files`, a page a commit) in a thread of this process, the watcher's re-read stop of
+    (table, source) let go when the first page is handed. -> its job id (`hand_job`)."""
+    import uuid
+
+    refused = glob_refusal(pattern)
+    if refused:
+        raise RereadRefused(refused)
+    storage_of(table, source)
+    job_id = uuid.uuid4().hex[:12]
+    job = {"table": table, "source": source, "pattern": pattern, "matched": None, "ids": [], "being_read": 0,
+           "done": False, "failed": None}
+    with _HANDS_LOCK:
+        _HANDS[job_id] = job
+    threading.Thread(target=_hand_glob, args=(job, chosen), name="glob-hand", daemon=True).start()
+    return job_id
+
+
+def _hand_glob(job, chosen):
+    """`hand_glob_later`'s thread: its own session; a failure is said on its job and one line."""
+    from database.database import SessionLocal
+    from runtime import system_reload
+
+    db = SessionLocal()
+    try:
+        _root, _spec, matched, _walked = glob_matched(job["table"], job["source"], job["pattern"])
+        files = [path for _rel, path in matched]
+        if chosen is not None:
+            wanted = {os.path.normcase(os.path.abspath(str(path))) for path in chosen}
+            files = [path for path in files if os.path.normcase(os.path.abspath(path)) in wanted]
+        with _HANDS_LOCK:
+            job["matched"] = len(files)
+        for start in range(0, len(files), MARK_PAGE):
+            handed = hand_files(db, job["table"], job["source"], files[start:start + MARK_PAGE])
+            if handed["ids"] and not job["ids"]:
+                # its (table, source) re-read stop let go by the watcher (system_reload.SCOPE_REREAD_RELEASED)
+                system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED,
+                                             pairs=[(job["table"], job["source"])])
+            with _HANDS_LOCK:
+                job["ids"] += handed["ids"]
+                job["being_read"] += len(handed["being_read"])
+        logger.info("[Reread] glob %s under %s for %s: %d of %d file(s) handed to the watcher", job["pattern"],
+                    job["source"], job["table"], len(job["ids"]), len(files))
+    except Exception as exc:                                    # noqa: BLE001 - said on its job and its line
+        said = str(exc).strip()
+        with _HANDS_LOCK:
+            job["failed"] = "%s: %s" % (type(exc).__name__, said.splitlines()[0] if said else "")
+        logger.error("[Reread] glob %s under %s for %s was not handed: %s", job["pattern"], job["source"],
+                     job["table"], job["failed"])
+    finally:
+        with _HANDS_LOCK:
+            job["done"] = True
+        db.close()
+
+
+def hand_job(job_id):
+    """A `hand_glob_later` job as it stands - a copy: table · source · pattern · matched (None until walked) · ids ·
+    being_read · done · failed -, or None (none such in this process)."""
+    with _HANDS_LOCK:
+        job = _HANDS.get(str(job_id))
+        return None if job is None else dict(job, ids=list(job["ids"]))
+
+
+def left_of(db, ids, paths=None):
     """The handed rows `ids` by state - what a glob's Read these has left, no walk: {"handed", "left" (waiting),
     "read" (SUCCESS), "failed" (FAILED), "other", "files": [{id · path · status · read_at (its newest read) ·
-    error (a FAILED row's reason)}]}."""
+    error (a FAILED row's reason)}] - of `paths` only when given (the rows a screen shows)}. The counts are SQL's (a
+    count a state, a page of ids at a time): a job of 100,000 rows was fetched whole each beat (총괄 10-26)."""
+    from sqlalchemy import func, literal
+
     from database import models
 
     model = models.FileChecklist
     out = {"handed": 0, "left": 0, "read": 0, "failed": 0, "other": 0}
-    ids, found = sorted({int(i) for i in ids}), []
+    ids = sorted({int(i) for i in ids})
     for start in range(0, len(ids), MARK_PAGE):
-        found += db.query(model.id, model.filepath, model.status, model.log_id).filter(
-            model.id.in_(ids[start:start + MARK_PAGE])).all()
+        for state, n in db.query(model.status, func.count()).filter(
+                model.id.in_(ids[start:start + MARK_PAGE])).group_by(model.status):
+            key = ("left" if state in WAITING else "read" if state == "SUCCESS" else "failed" if state == "FAILED"
+                   else "other")
+            out["handed"] += n
+            out[key] += n
+    columns = (model.id, model.filepath, model.status, model.log_id)
+    if paths is None:
+        found = [row for start in range(0, len(ids), MARK_PAGE)
+                 for row in db.query(*columns).filter(model.id.in_(ids[start:start + MARK_PAGE]))]
+    else:
+        handed = set(ids)
+        keys = [models.path_key(literal(str(path))) for path in paths]
+        found = [row for start in range(0, len(keys), MARK_PAGE)
+                 for row in db.query(*columns).filter(model.path_key.in_(keys[start:start + MARK_PAGE]))
+                 if row[0] in handed]
     reads = _reads_of(db, [log_id for _id, _path, _state, log_id in found])
     files = []
     for row_id, path, state, log_id in found:
-        out["handed"] += 1
-        key = ("left" if state in WAITING else "read" if state == "SUCCESS" else "failed" if state == "FAILED"
-               else "other")
-        out[key] += 1
         read_at, error = reads.get(log_id, (None, None))
         files.append({"id": row_id, "path": path, "status": state, "read_at": read_at,
                       "error": error if state == "FAILED" else None})
@@ -804,9 +892,10 @@ def why_handed(row):
             else checkpoint.WHY_RETRY)
 
 
-def mark_for_reread(db, logs, page=MARK_PAGE):
-    """Hand the checklist rows `logs` to the watcher: PENDING_RETRY, a page a commit, each row's state before it kept
-    on it (`status_before` - a row already waiting keeps the state it had first). -> [(id, the state it had)]."""
+def mark_for_reread(db, logs, page=MARK_PAGE, commit=True):
+    """Hand the checklist rows `logs` to the watcher: PENDING_RETRY, a page a commit (`commit` False: none - the caller
+    commits), each row's state before it kept on it (`status_before` - a row already waiting keeps the state it had
+    first). -> [(id, the state it had)]."""
     marked = []
     for start in range(0, len(logs), page):
         for log in logs[start:start + page]:
@@ -814,7 +903,8 @@ def mark_for_reread(db, logs, page=MARK_PAGE):
             if log.status != REREAD_STATUS or log.status_before is None:
                 log.status_before = log.status
             log.status = REREAD_STATUS
-        db.commit()
+        if commit:
+            db.commit()
     return marked
 
 

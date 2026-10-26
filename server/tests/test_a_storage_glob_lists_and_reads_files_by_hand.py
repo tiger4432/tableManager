@@ -6,10 +6,12 @@ A real watcher process and a real API process on a scratch data root and a sqlit
 on before two new files and after five old ones (12f46f32f: the old ones are read by hand only):
   list      GET /admin/file-ingestion/glob - old/x*.csv: the three, BEFORE_SWITCH_ON, never read; read or not,
             new/n1.csv: SUCCESS and when (총괄 10-26 «이미 읽었나(언제)»)
-  read      POST read-now with the glob - the three handed though the list shows two (its cap set to 2 here: «every
-            match», 총괄 10-26), read by the watcher; /read-now/left counts them down and says each one's state and
-            read time; a file that fails says its reason («넘긴 뒤 결과»)
-  off       a source switched off is listed and read by hand (7328c8d51: off stops only the automatic reads)
+  read      POST read-now with the glob - answered at once with its job (총괄 10-26 «요청 답 1 s 안»); the three
+            handed though the list shows two (its cap set to 2 here: «every match»), read by the watcher;
+            /read-now/left by the job counts them down and says each one's state and read time - the files of the
+            rows asked only (`paths` or `ids`, none without); a file that fails says its reason («넘긴 뒤 결과»); a job
+            this server has not, 404
+  off       a source switched off has its line on /tables (off) and is listed and read by hand (7328c8d51)
   again     a read file picked by the glob is read again (a second log row)
   refused   a glob that leaves the root (.. · an absolute path) 400; a storage the table has not 404
 """
@@ -148,6 +150,21 @@ def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
             return c.execute("SELECT count(*) FROM file_ingestion_logs WHERE filename = ? AND status = 'SUCCESS'",
                              (name,)).fetchone()[0]
 
+    def read_these(pattern, source=share):
+        query = urllib.parse.urlencode({"table": "gt", "source": source, "pattern": pattern})
+        status, said = _ask(opener, base + "/read-now?" + query, body={})
+        assert status == 200 and said["job"] and said["message"] == "the files are being handed to the watcher", said
+        return said["job"]
+
+    def left(job, paths=None, ids=None):
+        status, said = _ask(opener, base + "/read-now/left", body=dict(
+            {"job": job}, **({"paths": paths} if paths else {}), **({"ids": ids} if ids else {})))
+        assert status == 200, said
+        return said
+
+    def handed(job):
+        return _wait("job %s handed" % job, lambda: (lambda said: said if not said["handing"] else None)(left(job)))
+
     def glob(pattern, source=share, limit=100):
         query = urllib.parse.urlencode({"table": "gt", "source": source, "pattern": pattern, "limit": limit})
         assert api.poll() is None, "the API process is gone - another may hold its port"
@@ -167,36 +184,42 @@ def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):
 
         capped = glob("old/x*.csv", limit=0)[1]
         assert (capped["matched"], len(capped["files"]), capped["truncated"]) == (3, 2, True), capped
-        query = urllib.parse.urlencode({"table": "gt", "source": share, "pattern": "old/x*.csv"})
-        status, handed = _ask(opener, base + "/read-now?" + query, body={})
-        assert status == 200 and handed["handed"] == 3, handed
-        assert handed["message"] == "3 of 3 file(s) handed to the watcher", handed
+        job = read_these("old/x*.csv")
+        said = handed(job)
+        assert (said["matched"], said["handed"], said["not_handed"]) == (3, 3, None), said
         _wait("the three read by the watcher", lambda: lots() == ["n1", "n2", "x1", "x2", "x3"])
-        status, left = _ask(opener, base + "/read-now/left", body={"ids": handed["ids"]})
-        assert (status, left["handed"], left["left"], left["read"]) == (200, 3, 0, 3), left
+        said = left(job)
+        assert (said["handed"], said["left"], said["read"], said["files"]) == (3, 0, 3, []), said
+        x = [os.path.join(share, "old", "x%d.csv" % n) for n in (1, 2, 3)]
+        said = left(job, paths=x)
         assert sorted((os.path.basename(f["path"]), f["status"], bool(f["read_at"]), f["error"])
-                      for f in left["files"]) == [(n, "SUCCESS", True, None) for n in ("x1.csv", "x2.csv", "x3.csv")]
+                      for f in said["files"]) == [(n, "SUCCESS", True, None) for n in ("x1.csv", "x2.csv", "x3.csv")]
+        said = left(job, paths=x[:1])
+        assert (said["read"], [os.path.basename(f["path"]) for f in said["files"]]) == (3, ["x1.csv"]), said
+        said = left(job, ids=[said["files"][0]["id"]])
+        assert (said["read"], [os.path.basename(f["path"]) for f in said["files"]]) == (3, ["x1.csv"]), said
+        status, gone = _ask(opener, base + "/read-now/left", body={"job": "nope"})
+        assert status == 404 and "restarted" in gone["detail"], gone
         assert glob("old/*.csv")[1]["by_status"] == {"BEFORE_SWITCH_ON": 3, "SUCCESS": 3}, "y1 · y2 · z1 by hand"
 
-        query = urllib.parse.urlencode({"table": "gt", "source": share, "pattern": "old/z1.csv"})
-        status, broken = _ask(opener, base + "/read-now?" + query, body={})
-        assert status == 200 and broken["handed"] == 1, broken
-        left = _wait("z1 failed", lambda: (lambda said: said if said["failed"] == 1 else None)(
-            _ask(opener, base + "/read-now/left", body={"ids": broken["ids"]})[1]))
-        (failed,) = left["files"]
+        job = read_these("old/z1.csv")
+        z1 = [os.path.join(share, "old", "z1.csv")]
+        said = _wait("z1 failed", lambda: (lambda said: said if said["failed"] == 1 else None)(left(job, paths=z1)))
+        (failed,) = said["files"]
         assert failed["status"] == "FAILED" and failed["read_at"], failed
         assert "z1 is broken" in failed["error"] and "traceback goes on" not in failed["error"], failed
 
-        query = urllib.parse.urlencode({"table": "gt", "source": share, "pattern": "new/n1.csv"})
-        status, again = _ask(opener, base + "/read-now?" + query, body={})
-        assert status == 200 and again["handed"] == 1, again
+        assert handed(read_these("new/n1.csv"))["handed"] == 1
         _wait("n1 read again", lambda: reads_of("n1.csv") == 2)
 
+        status, tables = _ask(opener, base + "/tables")
+        lines = {os.path.normcase(e["source"]): e["off"] for t in tables["data"] if t["table_name"] == "gt"
+                 for e in t["sources"]}
+        assert (lines.get(os.path.normcase(os.path.realpath(off))), lines.get(os.path.normcase(os.path.realpath(share))),
+                lines.get("raws")) == (True, False, False), lines
         status, listed = glob("*.csv", source=off)
         assert status == 200 and [(f["rel"], f["read_at"]) for f in listed["files"]] == [("o1.csv", None)], listed
-        query = urllib.parse.urlencode({"table": "gt", "source": off, "pattern": "*.csv"})
-        status, handed = _ask(opener, base + "/read-now?" + query, body={})
-        assert status == 200 and handed["handed"] == 1, handed
+        assert handed(read_these("*.csv", source=off))["handed"] == 1
         _wait("o1 read by hand from the off source", lambda: "o1" in lots())
 
         assert glob("../share/*.csv")[0] == 400
