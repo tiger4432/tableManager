@@ -551,6 +551,13 @@ def stand_rows(db, table, picked, commit=True):
     return logs, stood
 
 
+def _unquoted(path) -> str:
+    """A path as written, its surrounding quotes off - Explorer's «Copy as path» writes "\\\\server\\share\\a.csv"
+    (소유자 10-26 «그냥 디스크에 없대»)."""
+    text = str(path).strip()
+    return text[1:-1].strip() if len(text) > 1 and text[0] == text[-1] and text[0] in "\"'" else text
+
+
 def read_now_owners(db, path):
     """Who would read the file `path` and why the watcher did not (소유자 10-21 「이거 강제로 못 돌리냐고 · 그냥 와처 인식한
     걸로 하면 되잖아」): every table whose raws folder holds it, every external source whose root holds it by its real
@@ -559,7 +566,7 @@ def read_now_owners(db, path):
     from directory_watcher import _safe_relative_path, _written_relative_path, one_sweep, why_not_taken
     from ingestion import checkpoint
 
-    path = os.path.abspath(path)
+    path = os.path.abspath(_unquoted(path))
     config, specs = validated_sources()
     on_disk = os.path.isfile(path)
     owners = []
@@ -589,7 +596,16 @@ def read_now(db, path, table=None, apply=False):
     said = read_now_owners(db, path)
     path = said["path"]
     if not said["on_disk"]:
-        raise RereadRefused(f"{path} is not on the disk this server sees - check the path")
+        from chain_bindings import GLOB_CHARS
+
+        # what it is, when it is not a file (소유자 10-26 «공유폴더 검색 못 하는데 · 그냥 디스크에 없대»)
+        if any(char in path for char in GLOB_CHARS):
+            raise RereadRefused(f"{path} is a glob - use Pick files on its storage line")
+        if os.path.isdir(path):
+            raise RereadRefused(f"{path} is a folder - Read now takes one file; list a folder's files with Pick files "
+                                "on its storage line")
+        raise RereadRefused(f"{path} is not on the disk this server sees - check the path (a mapped drive letter is "
+                            "per Windows session - try the \\\\server\\share path)")
     owners = [owner for owner in said["owners"] if table is None or owner["table"] == table]
     if not owners:
         raise RereadRefused(

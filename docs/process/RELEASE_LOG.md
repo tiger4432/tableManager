@@ -423,6 +423,7 @@
 
 ### 어드민 화면
 
+- 2026-10-26 [Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다](#2026-10-26--read-now-는-따옴표-붙은-경로도-읽고-폴더--패턴--없는-파일을-각각-그것이라-말한다) — 적을 것 없음 · 누르는 곳 파일 화면 Read now
 - 2026-10-26 [Read these 넘김 번호는 최근 20 개만 서버가 쥔다 — 큰 glob 을 여러 번 눌러도 메모리가 안 쌓임](#2026-10-26--read-these-넘김-번호는-최근-20-개만-서버가-쥔다--큰-glob-을-여러-번-눌러도-메모리가-안-쌓임) — 적을 것 없음 · 보는 곳 파일 화면 Read these 진행
 - 2026-10-26 [Read these 는 즉시 답하고 뒤에서 넘긴다 — 넘김 번호로 진행을 세고, 파일 화면에 선언된 저장소가 전부(꺼진 것도) 줄로](#2026-10-26--read-these-는-즉시-답하고-뒤에서-넘긴다--넘김-번호로-진행을-세고-파일-화면에-선언된-저장소가-전부꺼진-것도-줄로) — 적을 것 없음 · 누르는 곳 파일 화면 Pick files · Read these · 보는 곳 API 로그 «[Reread] glob … handed to the watcher»
 - 2026-10-26 [실패 파일은 정말로 저절로 다시 안 읽힌다 — 읽는 법이 바뀌어도 · 기동해도. 꺼진 저장소도 glob 으로 골라 읽고, Read these 는 맞는 파일 전부](#2026-10-26--실패-파일은-정말로-저절로-다시-안-읽힌다--읽는-법이-바뀌어도--기동해도-꺼진-저장소도-glob-으로-골라-읽고-read-these-는-맞는-파일-전부) — 적을 것 없음 · 보는 곳 watcher.log «its reading changed» · «read files stamped» 줄, 파일 화면 Retry
@@ -608,6 +609,15 @@
 
 
 
+
+## 2026-10-26 · Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다
+
+- 무엇: 소유자 10-26 «공유폴더 검색 못 하는데 · 그냥 디스크에 없대». Read now 가 파일이 아닌 경로를 전부 «not on the disk» 한 문장으로 거절했다.
+  - 앞뒤 따옴표를 벗기고 읽는다 — 탐색기 «경로로 복사»가 `"\\server\share\a.csv"` 로 붙는다.
+  - 폴더면 «… is a folder - Read now takes one file; list a folder's files with Pick files on its storage line».
+  - `*` · `?` 가 있으면 «… is a glob - use Pick files on its storage line».
+  - 정말 없을 때만 «… is not on the disk this server sees - check the path (a mapped drive letter is per Windows session - try the \\server\share path)» — 서버 프로세스는 사용자가 잡은 드라이브 문자를 못 볼 수 있다.
+- 자세히: `server/ingestion/reread.py` 의 `read_now_owners` · `read_now` (API 와 `scripts/replay_ingestion.py` 둘 다 여기를 지난다). 시험 `test_a_file_is_read_now_as_the_watcher_would_have.py` 의 `test_the_path_is_said_for_what_it_is`.
 
 ## 2026-10-26 · AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다
 

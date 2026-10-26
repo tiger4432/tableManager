@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 파일 화면 Read now 에 탐색기 «경로로 복사» 그대로 붙여 넣기
+> 볼 것    읽힘 (Retry 줄에 그 파일) -> 따옴표가 원인이었음
+>          «is a folder» · «is a glob» -> 그 저장소 줄의 Pick files 로 고른다
+>          «is not on the disk this server sees … try the \\server\share path» -> 드라이브 문자(Z: 등) 대신 \\서버\공유 경로로
+>            (드라이브 문자는 Windows 세션마다 따로라, 서버가 다른 세션이면 그 문자를 못 본다)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='Read now says what a path is' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다** — git pull · 런처 재기동
 >
 > ```
