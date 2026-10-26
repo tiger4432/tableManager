@@ -345,11 +345,10 @@ const answerOf = (u) => {
 };
 // One pivot item cell edited with Tx on and applied (lead 10-23 ㄱ), Apply's read again answered as `mode` says; a staged
 // edit left by the state before is discarded first. Ends when Apply has said how it ended.
-async function pivotEditApplied(c, mode, at = '.ag-row[row-index="1"] .ag-cell[col-id^="item:"]') {
+async function pivotEditStaged(c, at = '.ag-row[row-index="1"] .ag-cell[col-id^="item:"]') {
   await evaluate(c, `(() => { const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Discard' && !b.disabled);
     if (d) d.click(); return true; })()`);
   await sleep(900);
-  PIVOT_LONG.mode = mode;
   await evaluate(c, `(() => {
     const cell = document.querySelector('.ag-center-cols-container ' + ${JSON.stringify(at)});
     if (!cell) return false;
@@ -365,6 +364,10 @@ async function pivotEditApplied(c, mode, at = '.ag-row[row-index="1"] .ag-cell[c
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
     return true; })()`);
   await until(c, "/pending/.test((document.querySelector('#performance-log') || {}).textContent || '')");
+}
+async function pivotEditApplied(c, mode, at) {
+  PIVOT_LONG.mode = mode;
+  await pivotEditStaged(c, at);
   await evaluate(c, `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Apply' && !x.disabled);
     if (b) b.click(); return Boolean(b); })()`);
   await until(c, "!/Checking|pending/.test((document.querySelector('#performance-log') || {}).textContent || '')"
@@ -2350,18 +2353,8 @@ const DRIVE = {
     // A refusal read whole (lead 10-23: the one-line badge cut «Apply or discard the stage…» at 1536): an edit staged
     // in pivot view (Tx is on by default), then «Pivot» pressed.
     ['Pivot refused over a staged edit', async (c, log) => {
-      await evaluate(c, `(() => {
-        const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell[col-id^="item:"]');
-        if (!cell) return false;
-        cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return true; })()`);
-      await until(c, "!!document.querySelector('.ag-cell-inline-editing input')");
-      await evaluate(c, `(() => {
-        const input = document.querySelector('.ag-cell-inline-editing input');
-        input.value = '12.5'; input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
-        return true; })()`);
-      await until(c, "/pending/.test((document.querySelector('#performance-log') || {}).textContent || '')");
+      await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
+      await pivotEditStaged(c);
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
       await sleep(600);
     }],
