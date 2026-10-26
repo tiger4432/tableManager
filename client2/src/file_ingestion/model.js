@@ -3,7 +3,7 @@
 // what the page runs. The server's answers: /admin/file-ingestion/tables · /logs (A bbbea4323 · 0eba61a50 · 06c21a7b1).
 import { ABSENT, isBlank } from '../absent.js';
 import { folderOf } from '../admin_rows.js';
-import { isFailedStatus, retryVerdict } from '../retry_verdict.js';
+import { isDoneStatus, isFailedStatus, retryVerdict } from '../retry_verdict.js';
 import { localShort } from '../server_time.js';
 
 /** Lines a page of the list asks for; «Show more» asks the next page. */
@@ -243,7 +243,7 @@ export function readCount(answer, ticked) {
  *  -> {status, words} - the status for the pill's tone. */
 export function readBefore(file) {
   const status = String(file.status || '');
-  return status === 'SUCCESS' && file.read_at ? { status, words: `read · ${localShort(file.read_at)}` } : { status, words: statusWord(status) };
+  return isDoneStatus(status) && file.read_at ? { status, words: `read · ${localShort(file.read_at)}` } : { status, words: statusWord(status) };
 }
 
 /** A listed file after Read these (owner 10-26 «읽은 후 상태»): not handed - null; handed, no answer yet - Pending; else

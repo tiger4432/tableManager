@@ -2817,7 +2817,7 @@ const MUTANTS = [
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },
   { name: 'Pivot refused while Tx is merely on (it is on by default)', entry: 'index.html', rule: 'pivot drawn', at: 'pivot',
-    file: 'src/api.js', edits: [['  if (Object.keys(state.pendingTxEdits).length) { elements.performanceLog', '  if (state.txModeActive) { elements.performanceLog']] },
+    file: 'src/api.js', edits: [["  if (refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard", "  if (refuseWrite(state.txModeActive ? 'Apply or discard"]] },
   { name: 'Apply reads a pivot group id again', entry: 'index.html', rule: 'pivot apply writes', at: 'pivot',
     file: 'src/grid_pivot.js', edits: [['  if (!view) return [...new Set(edits.map((edit) => edit.rowId))];\n', '  return [...new Set(edits.map((edit) => edit.rowId))];\n']] },
   { name: 'Apply drops a blank pivot cell', entry: 'index.html', rule: 'pivot blank writes', at: 'pivot',
