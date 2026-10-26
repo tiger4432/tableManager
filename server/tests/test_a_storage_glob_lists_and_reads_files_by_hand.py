@@ -12,6 +12,7 @@ on before two new files and after five old ones (12f46f32f: the old ones are rea
             rows asked only (`paths` or `ids`, none without); a file that fails says its reason («넘긴 뒤 결과»); a job
             this server has not, 404
   off       a source switched off has its line on /tables (off) and is listed and read by hand (7328c8d51)
+  kept      the newest 20 jobs are kept: at the 21st, the first (finished) is let go - left by it 404
   again     a read file picked by the glob is read again (a second log row)
   refused   a glob that leaves the root (.. · an absolute path) 400; a storage the table has not 404
 """
@@ -101,6 +102,22 @@ def _wait(what, until, seconds=120):
             return said
         time.sleep(1)
     raise AssertionError("waited %d s for %s" % (seconds, what))
+
+
+def test_the_newest_twenty_jobs_are_kept(client, monkeypatch):
+    from ingestion import reread
+
+    monkeypatch.setattr(reread, "_HANDS", {})
+    monkeypatch.setattr(reread, "glob_refusal", lambda pattern: None)
+    monkeypatch.setattr(reread, "storage_of", lambda table, source: ("root", None))
+    monkeypatch.setattr(reread, "_hand_glob", lambda job, chosen: job.update(done=True))
+    jobs = []
+    for _n in range(21):
+        jobs.append(reread.hand_glob_later("t1", "raws", "*.csv"))
+        _wait("job %s done" % jobs[-1], lambda: reread.hand_job(jobs[-1])["done"], seconds=10)
+    assert reread.hand_job(jobs[0]) is None and all(reread.hand_job(job) for job in jobs[1:])
+    said = client.post("/admin/file-ingestion/read-now/left", json={"job": jobs[0]})
+    assert said.status_code == 404 and "it restarted since" in said.json()["detail"], said.text
 
 
 def test_a_storage_glob_lists_and_reads_files_by_hand(tmp_path):

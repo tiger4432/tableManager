@@ -21,6 +21,7 @@ import time
 logger = logging.getLogger(__name__)
 _SOURCES, _SOURCES_LOCK = {}, threading.Lock()      # the validated sources this process holds - see validated_sources
 _HANDS, _HANDS_LOCK = {}, threading.Lock()          # a glob's Read these, handed off the request - see hand_glob_later
+KEPT_HANDS = 20     # jobs kept, the newest; an older finished one is let go at a new one - each holds its ids (총괄 10-26)
 
 #: The state that puts a row in the watcher's hands.
 REREAD_STATUS = "PENDING_RETRY"
@@ -770,6 +771,8 @@ def hand_glob_later(table, source, pattern, chosen=None):
     job = {"table": table, "source": source, "pattern": pattern, "matched": None, "ids": [], "being_read": 0,
            "done": False, "failed": None}
     with _HANDS_LOCK:
+        for key in [key for key, held in _HANDS.items() if held["done"]][:max(0, len(_HANDS) + 1 - KEPT_HANDS)]:
+            del _HANDS[key]
         _HANDS[job_id] = job
     threading.Thread(target=_hand_glob, args=(job, chosen), name="glob-hand", daemon=True).start()
     return job_id

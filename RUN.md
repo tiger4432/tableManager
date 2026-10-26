@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **Read these 넘김 번호는 최근 20 개만 서버가 쥔다 — 큰 glob 을 여러 번 눌러도 메모리가 안 쌓임** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    Read these 를 20 번 넘게 누른 뒤 옛 진행 표시가 404 «… it restarted since …» -> 그 번호가 버려진 것. 파일은 읽힘
+> 되돌리기  git revert $(git log -1 --format=%h --grep='newest 20 Read these jobs' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **Read these 즉시 답 · 넘김 번호로 진행 · 파일 화면에 선언된 저장소 전부(꺼진 것도)** — git pull · 런처 재기동
 >
 > ```
