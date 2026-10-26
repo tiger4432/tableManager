@@ -1691,6 +1691,14 @@
                         }
                       },
                       {
+                        "key": "most",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
                         "key": "time_item",
                         "required": false,
                         "node": {
@@ -2341,6 +2349,14 @@
                       },
                       {
                         "key": "to_fill",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "no_seed",
                         "required": false,
                         "node": {
                           "kind": "leaf",

@@ -342,6 +342,42 @@ def test_two_values_of_one_wafers_condition_are_both_said(report, db_session):
     assert "temp: 300 / 320 1" in both.conditions()["context"]
 
 
+@pytest.mark.parametrize("most, rows, also, shown", [
+    (None, None, None, "all"),                     # nothing picked: every differing row, the data's order - as before
+    (None, ["C", "A", "B"], None, ["C", "A", "B"]),     # the same rows, the model's order
+    (2, ["C", "A", "B"], None, ["C", "A"]),        # the model's first two
+    (2, None, None, "first 2"),                    # nothing picked: the data's first two
+    (2, ["C", "A", "B"], ["B"], ["C", "A", "B"])])  # a condition the texts name stands past the cap
+def test_the_condition_rows_are_the_models_in_its_order_up_to_most(report, db_session, most, rows, also, shown):
+    """conditions.most (owner 10-26 «컨디션 아이템 뽑는 항목 개수 제한 · title 과 연관된 아이템 순», 안 ㄱ: the model
+    orders them) - the model's picks in its order, cut at most; none picked, the differing rows in the data's order;
+    the conditions the texts name (`also`) never cut (owner 10-24 «글에 쓴 조건이 표에 없음»)."""
+    from chain import report_reads
+
+    m = models.DYNAMIC_TABLES
+    for wafer, values in (("W1", "147"), ("W2", "258"), ("W3", "369")):
+        for name, value in zip("ABC", values):                   # each condition differs over the wafers
+            db_session.add(m["rr_cond"](row_id=wafer + name, wafer_id=wafer, cname=name, step="1", cvalue=value))
+    db_session.commit()
+    spec = json.loads(json.dumps(SPEC))
+    spec["conditions"] = {"table": "rr_cond", "wafer": "wafer_id", "name": "cname", "value": "cvalue"}
+
+    def drawn(most):
+        said = report_reads.Report(db_session, dict(spec, conditions=dict(spec["conditions"], **(
+            {"most": most} if most else {}))), "E1")
+        labels = {said.condition_label(name): name for name in said.condition_names()}
+        return [labels[label] for label, _cells in said.yield_by(rows=rows, also=also)["html"]["info"]
+                if label in labels]
+
+    every = drawn(None) if rows is None else None       # the fixture's own conditions too, in the data's order
+    if shown == "all":
+        assert [n for n in every if n in "ABC"] == ["A", "B", "C"] and len(every) > 3, every
+    elif shown == "first 2":
+        assert drawn(most) == every[:2], every
+    else:
+        assert drawn(most) == shown
+
+
 def test_a_compare_set_is_a_second_group_of_columns(report):
     """The kind column's values are the declaration's (sets.kinds) - «eval» written there is not one of them."""
     assert report.compare(["baseline", "keylots"])["context"].splitlines() == [

@@ -55,7 +55,8 @@ RELATED_CALL = "candidate conditions"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
     "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: a condition whose values "
-                "become the columns; rows: the condition rows to show (a name keeps the names under it), all if none",
+                "become the columns; rows: the condition rows to show, the ones most related to the wafers' titles "
+                "first (a name keeps the names under it), all if none",
     "pareto": "the items by fail chips over the wafers, with the cumulative share",
     "trend": "each item's share wafer by wafer in time order - first, last, least, most",
     "images": "defect images of this evaluation's wafers where the item occurred, put in the report",
@@ -65,6 +66,8 @@ ABOUT = {
 }
 ARGS = {"conditions": ("keyword",), "yield_by": ("wafers", "by", "rows"), "pareto": ("wafers",), "trend": ("wafers", "items"),
         "images": ("wafers", "items"), "candidates": (), "compare": ("sets", "evaluations", "wafers")}
+#: conditions.most said on the read that takes `rows` (owner 10-26)
+ROWS_MOST = "; rows: %d at most"
 WAFERS_SAID = 'wafers: a list of wafer names, "all", or {"where": {"<condition>": "<value>"}}'
 
 STOP_STEPS = "step cap %d"
@@ -120,7 +123,8 @@ def _instructions(spec, step, cap):
     lines = [prompts.get("role") or ROLE, prompts.get("rules") or RULES, "Reads:"]
     for read in report_shape.READS:
         about = (functions.get(read) or {}).get(report_shape.ABOUT_CELL) or ABOUT[read]
-        lines.append("  %s(%s) - %s" % (read, ", ".join(ARGS[read]), about))
+        most = ((spec or {}).get("conditions") or {}).get(report_shape.CONDITION_MOST) if "rows" in ARGS[read] else None
+        lines.append("  %s(%s) - %s%s" % (read, ", ".join(ARGS[read]), about, ROWS_MOST % most if most else ""))
     lines.append("  " + WAFERS_SAID)
     lines.append('Answer one JSON object: {"call": "<read>", "args": {...}, "why": "..."} or {"done": {}} when you have read enough')
     lines.append("This is step %d of %d." % (step, cap))
@@ -405,6 +409,9 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps, tables):
     except report_reads.ReadRefused as refused_:
         logger.warning("[report] %s refused: %s", call, refused_, exc_info=refused_)
         walked, refused = None, str(refused_)
+    except Exception as exc:                                    # noqa: BLE001 - this step stops, the report is written
+        logger.error("[Report] %s failed: %s: %s", call, type(exc).__name__, exc, exc_info=exc)
+        walked, refused = None, "the read failed: %s: %s" % (type(exc).__name__, exc)
     lines = walked["context"].splitlines() if walked else []
     step(call, began, lines, refused, tokens=counted or budget.tokens(prompt), cut=cut, why=why)
     if refused is None:

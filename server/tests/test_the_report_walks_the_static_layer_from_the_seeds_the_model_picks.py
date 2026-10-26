@@ -249,6 +249,31 @@ def test_a_refused_seed_is_its_steps_and_the_report_is_written_without_candidate
     assert "causes(" not in model.prompts[2]
 
 
+def test_a_seed_the_ontology_has_not_is_left_out_and_said(walks):
+    """Owner 10-26 «디펙카인드 없는 거 아예 에러» (안 ㄱ): the known seeds are walked, each unknown one a line of the
+    walk's read - the write call's and the Evidence's; every seed unknown is refused as before."""
+    model = Model({"done": {}}, {"seeds": ["void", "particle"], "why": "w"}, {"conditions": {}},
+                  {"done": {"summary": "S"}})
+    report = Reads()
+    out = report_loop.run(report, SPEC, REQUEST, ask=model, clock=_clock())
+    walked = out["steps"][3]
+    said = "particle: no defect_kind node - add it to the ontology"
+    assert (walked["call"], walked["refused"], walked["read"]) == (
+        'causes({"seeds": ["void", "particle"]})', None, [said] + CANDIDATES), walked
+    assert said in model.prompts[3] and said in report_loop._steps_text(out, report)
+    assert [args["node_id"] for _cell, args in walks if "node_id" in args] == [VOID]
+
+
+def test_a_walk_that_fails_stops_its_step_and_the_report_is_written(walks, monkeypatch):
+    def fails(self, seeds):
+        raise RuntimeError("the graph is gone")
+    monkeypatch.setattr(Reads, "causes", fails)
+    model = Model({"done": {}}, {"seeds": ["void"], "why": "w"}, {"done": {"summary": "S"}})
+    out = report_loop.run(Reads(), SPEC, REQUEST, ask=model, clock=_clock())
+    assert out["steps"][3]["refused"] == "the read failed: RuntimeError: the graph is gone"
+    assert (out["state"], out["texts"], out["steps"][-1]["call"]) == ("done", {"summary": "S"}, "write")
+
+
 WITH_TABLE = dict(SPEC, layout=SPEC["layout"] + [{"kind": "table", "fill": "yield_by"}])
 TO_FILL = "no value on these wafers - to be filled (measured/recorded)"
 RELATED = {"conditions": {"bond_temp": ["Bond_Temp ", "bake"], "wetting": ["anneal"], "ghost": ["x"]}, "why": "W"}

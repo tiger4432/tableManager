@@ -440,8 +440,10 @@ class Report:
         names = [n for n in dict.fromkeys(str(n) for members in columns for w in members
                                           for n in self.wafers[w]["conditions"])
                  if report_shape.name(n).lower() not in never]
-        kept = [n for n in names if n in [str(c) for c in chosen or ()]]
-        rows = []
+        # the model's picks in its order - the ones most related to the wafers' titles first (owner 10-26 안 ㄱ)
+        kept = [n for n in dict.fromkeys(str(c) for c in chosen or ()) if n in names]
+        told = [str(a) for a in also or ()]
+        drawn = {}
         for name in names:
             cells = []
             for members in columns:
@@ -458,9 +460,13 @@ class Report:
             # the rows the model selected (prompts.select) are the rows - the others only when it selected none; the
             # conditions the texts name (`also`) stand too (owner 10-24 «스킵 말고 프롬프트로는 제어 못 해?»)
             varies = len(columns) <= 1 or len({cell["text"] for cell in cells if cell["text"] not in ("", EMPTY)}) > 1
-            if varies and (name in kept or not kept or name in [str(a) for a in also or ()]):
-                rows.append((self.condition_label(name), cells))
-        return rows
+            if varies:
+                drawn[name] = cells
+        # conditions.most cuts the picks (or, none picked, the differing rows); the texts' conditions stand past it
+        most = (self.long or {}).get(report_shape.CONDITION_MOST)
+        shown = [n for n in (kept or names) if n in drawn][:most]
+        shown += [n for n in names if n in told and n in drawn and n not in shown]
+        return [(self.condition_label(name), drawn[name]) for name in shown]
 
     def _pictures(self, columns):
         """The picture rows (owner 10-23 «열마다 한 장»): [(label, [cell, ...])] - a column of one wafer its picture
@@ -1103,7 +1109,10 @@ class Report:
     def causes(self, seeds):
         """A static walk from the picked `seed_nodes` nodes (names or ids) along `causes.follow` - blank: the
         predicates between two static types (`trace_router._static_step_predicates`) - keeping `causes.collect`.
-        -> {"context": its head and a candidate a line with its path, "candidates": [{id, type, label, path}]}."""
+        A seed that is not a node of the type is left out, a line each (labels.no_seed; owner 10-26 «디펙카인드 없는 거
+        아예 에러»); every seed so - refused.
+        -> {"context": its head, a line a seed left out, a candidate a line with its path, "candidates": [{id, type,
+        label, path}]}."""
         from ledger import trace_router
 
         causes = self._causes()
@@ -1115,9 +1124,9 @@ class Report:
             raise ReadRefused("no seed picked - one or more of the %s nodes: %s" % (causes["seed_type"],
                                                                                    ", ".join(kinds)))
         unknown = [s for s in said if s not in kinds and s not in kinds.values()]
-        if unknown:
+        if len(unknown) == len(said):
             raise ReadRefused("%s is not a %s node - one of %s" % (unknown[0], causes["seed_type"], ", ".join(kinds)))
-        ids = list(dict.fromkeys(kinds.get(s, s) for s in said))
+        ids = list(dict.fromkeys(kinds.get(s, s) for s in said if s not in unknown))
         follow = causes.get("follow") or sorted(trace_router._static_step_predicates(causes.get("worlds") or None))
         if not follow:
             raise ReadRefused("derive.report.causes.follow is blank and the ledger declares no predicate between two "
@@ -1142,8 +1151,9 @@ class Report:
             " (collect: %s)" % ", ".join(causes["collect"]) if causes.get("collect") else "",
             " - the walk was cut: %s" % cut if cut else "")
         logger.warning("[report] causes walk from %s", head)
+        left_out = [report_shape.word(self.spec, "no_seed") % (seed, causes["seed_type"]) for seed in unknown]
         lines = ["%s %s: %s" % (c["type"], c["label"], c["path"]) for c in candidates]
-        return {"context": "\n".join([head] + lines), "candidates": candidates}
+        return {"context": "\n".join([head] + left_out + lines), "candidates": candidates}
 
 
 def _path(hops, edges) -> str:

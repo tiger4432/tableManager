@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **AI 리포트 — 없는 씨앗은 빼고 걷기 · 조건 행 개수(conditions.most)와 모델 순서** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    Evidence 의 causes 단계에 «<씨앗>: no <타입> node - add it to the ontology» -> 그 씨앗만 빠지고 나머지로 걸음 = 고쳐진 것
+>          그 씨앗을 온톨로지에 넣으면 그 줄이 사라짐
+>          causes 단계 refused «the read failed: …» -> 걷기가 터짐, 리포트는 후보 없이 써짐 · 까닭은 chain_worker.log 트레이스백
+>          conditions 에 "most": 5 -> 표 조건 줄이 5 개 + 글에 쓴 조건. 모델이 고른 순서대로
+>          most 를 1 미만이나 글자로 적으면 저장 거절 «derive.report.conditions.most must be a whole number from 1»
+> 되돌리기  git revert $(git log -1 --format=%h --grep='a seed the ontology has not' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **Read these 넘김 번호는 최근 20 개만 서버가 쥔다 — 큰 glob 을 여러 번 눌러도 메모리가 안 쌓임** — git pull · 런처 재기동
 >
 > ```

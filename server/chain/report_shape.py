@@ -46,6 +46,10 @@ TITLE_ITEM = "title_item"
 #: `conditions.skip`: condition names that are never a condition row (owner 10-24 «wfid, lotid 뽑지 말라는데 계속
 #: 뽑아») - matched without case and surrounding spaces; the wafer key columns and wafer.lot are skipped anyway.
 CONDITION_SKIP = "skip"
+#: `conditions.most`: the condition rows a table shows at most (owner 10-26 «컨디션 아이템 뽑는 항목 개수 제한») - the
+#: model's picks in its order, else the differing rows in the data's; the conditions the texts name stand past it.
+#: Blank: no cap.
+CONDITION_MOST = "most"
 #: `summary.yield_item`: the summary rows (an item name, or a list) that are the unit's yield, not a defect (owner 10-24
 #: «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로 리포트하네») - read as every row (rate, or F and N),
 #: drawn as the matrix's yield rows, left out of the defect rows, the pareto, the trend and the images.
@@ -139,7 +143,7 @@ RECENT_CELLS = ("days", "evaluations")
 CONTROL_SAME = "same"
 #: wider by default - three was too few to compare (owner 10-24 «웨이퍼 리스트는 좀 더 충분히 · 많은데도 3 개만»)
 CONTROL_LIMITS = {"max_wafers": 100, "max_evaluations": 12}
-NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
+NUMBER_CELLS = {("images", "per_item"), ("images", "px"), ("conditions", CONDITION_MOST)}
 #: `formats`: item -> rules, the first that holds colours the cell - a fixed bar on the cell's share (`when`, `value`
 #: in percent) or this evaluation against the other groups' F sum / N sum (`vs` control, `times`) (owner 10-23).
 FORMAT_WHEN = (">=", ">", "<=", "<")
@@ -153,7 +157,8 @@ LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and
           "pareto_cumulative": "cumulative", "control": "compare", "mixed": "mixed (%d)", "evidence": "Evidence",
           "conditions": "Conditions", "yield": "Yield", "unpaired": "Image kinds no summary item matches (images.match): %s",
           "no_control": "This report's wafers only - no compare set default or control.recent is declared.",
-          "to_fill": "no value on these wafers - to be filled (measured/recorded)"}
+          "to_fill": "no value on these wafers - to be filled (measured/recorded)",
+          "no_seed": "%s: no %s node - add it to the ontology"}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
 RATE_SCALE = "rate_scale"
@@ -729,8 +734,8 @@ def _causes_refusal(causes):
             cell in causes and not _names(causes[cell]) for cell in ("follow", "collect", "worlds")) or (
             "hops" in causes and not (_whole(causes["hops"], 0) and causes["hops"] <= CAUSES_HOPS_MOST)):
         return ('derive.report.causes is {"seed_type": "<entity>", "follow": ["<predicate or class:<word>>", ...], '
-                '"collect": ["<entity>", ...], "hops": <n up to %d>} - seed_type written, the rest optional; got %r'
-                % (CAUSES_HOPS_MOST, causes))
+                '"collect": ["<entity>", ...], "hops": <n up to %d>, "worlds": ["<world>", ...]} - seed_type written, '
+                'the rest optional; got %r' % (CAUSES_HOPS_MOST, causes))
     return None
 
 

@@ -13,6 +13,8 @@
 
 ### 체인 규칙
 
+- 2026-10-26 [AI 리포트 원인 걷기 — 온톨로지에 없는 씨앗은 빼고 나머지로 걷고, 뺀 것은 한 줄씩 말한다](#2026-10-26--ai-리포트-원인-걷기--온톨로지에-없는-씨앗은-빼고-나머지로-걷고-뺀-것은-한-줄씩-말한다) — 적을 것 없음(낱말은 labels.no_seed) · 보는 곳 리포트 Evidence 의 causes 단계
+- 2026-10-26 [AI 리포트 조건 행 — conditions.most 로 개수를 자르고, 모델이 고른 순서(타이틀과 연관 큰 것부터)로](#2026-10-26--ai-리포트-조건-행--conditionsmost-로-개수를-자르고-모델이-고른-순서타이틀과-연관-큰-것부터로) — 적는 곳 derive.report.conditions.most · 보는 곳 리포트 표 조건 줄
 - 2026-10-26 [AI 리포트 원인 걷기가 읽는 원장 세상을 여럿 적는다 — causes.worlds](#2026-10-26--ai-리포트-원인-걷기가-읽는-원장-세상을-여럿-적는다--causesworlds) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.worlds
 - 2026-10-25 [AI 리포트 원인 후보와 조건 — 맺어진 조건은 표 줄로, 값이 없으면 채울 것이라고](#2026-10-25--ai-리포트-원인-후보와-조건--맺어진-조건은-표-줄로-값이-없으면-채울-것이라고) — 적는 곳 derive.report.causes · labels.to_fill · 보는 곳 리포트 표 · Evidence · 터미널 [report] causes
 - 2026-10-25 [AI 리포트 원인 후보 — 불량 종류 노드에서 모델이 씨앗을 고르고 제품이 정적으로 걷는다](#2026-10-25--ai-리포트-원인-후보--불량-종류-노드에서-모델이-씨앗을-고르고-제품이-정적으로-걷는다) — 적는 곳 derive.report.causes · 보는 곳 리포트 Evidence · 터미널 [report] causes
@@ -600,6 +602,25 @@
 
 
 
+
+## 2026-10-26 · AI 리포트 원인 걷기 — 온톨로지에 없는 씨앗은 빼고 나머지로 걷고, 뺀 것은 한 줄씩 말한다
+
+- 무엇: 모델이 고른 씨앗 중 하나라도 seed_type 의 노드가 아니면 걷기 전체가 거절돼 후보가 0 이던 것(소유자 «디펙카인드 없는 거 아예 에러»).
+  - 아는 씨앗으로 걷는다. 뺀 씨앗마다 걷기 읽기에 한 줄 «<씨앗>: no <seed_type> node - add it to the ontology» — 쓰기 호출이 받는 읽기와 Evidence 에. 낱말은 `labels.no_seed` (%s 둘: 씨앗, 타입).
+  - 씨앗이 전부 모를 때만 지금처럼 거절(«… is not a <type> node - one of …»).
+  - 걷기 단계에서 다른 예외가 나도 그 단계만 멈춘다(«the read failed: <종류>: <글>», 트레이스백은 로그). 리포트는 후보 없이 써진다.
+- 자세히: `server/chain/report_reads.py` 의 `Report.causes`, `server/chain/report_loop.py` 의 `_causes`.
+
+## 2026-10-26 · AI 리포트 조건 행 — conditions.most 로 개수를 자르고, 모델이 고른 순서(타이틀과 연관 큰 것부터)로
+
+- 무엇: 소유자 «컨디션 아이템 뽑는 항목 개수 제한 · title 과 연관된 아이템 순» — 안 ㄱ(모델이 매김).
+  - `derive.report.conditions.most` 숫자 한 칸(1 이상). 비우면 제한 없음.
+  - 모델이 yield_by 의 rows 로 고른 조건을 «모델이 낸 순서» 그대로 그리고 앞 most 개. 전: 데이터 순.
+  - 모델이 아무것도 안 고르면 달라지는 조건 행 전부를 데이터 순으로 앞 most 개.
+  - 글에 쓴 조건(also)은 자르지 않는다 — most 넘어서도 선다.
+  - 모델에게 주는 yield_by 설명에 «the ones most related to the wafers' titles first», most 가 있으면 «rows: N at most». Analyst 프롬프트가 이긴다는 머리줄은 그대로.
+  - 덤: causes 거절 문장이 worlds 칸도 말한다.
+- 자세히: `server/chain/report_shape.py` 의 `CONDITION_MOST`, `server/chain/report_reads.py` 의 `_condition_rows`, `server/chain/report_loop.py` 의 `ABOUT` · `ROWS_MOST`.
 
 ## 2026-10-26 · Read these 넘김 번호는 최근 20 개만 서버가 쥔다 — 큰 glob 을 여러 번 눌러도 메모리가 안 쌓임
 
