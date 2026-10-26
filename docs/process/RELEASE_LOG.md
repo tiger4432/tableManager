@@ -414,6 +414,7 @@
 
 ### 어드민 화면
 
+- 2026-10-26 [저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에](#2026-10-26--저장소-안-파일을-glob-으로-골라-읽는다--읽었든-안-읽었든-목록-고른-것만-와처에) — 적을 것 없음 · 누르는 곳 파일 화면의 저장소 glob (클라 착지 뒤) · 보는 곳 서버 로그 «[Reread] glob»
 - 2026-10-24 [선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 — keys · images.match 등](#2026-10-24--선언-폼에서-이름으로-새-칸을-여는-입력도-enter-로-들어간다--keys--imagesmatch-등) — 누르는 곳 어드민 선언 폼 · 온톨로지 탐색기 폼
 - 2026-10-24 [선언 폼에서 칸을 비우면 그 칸은 저장에서 빠진다 — 그 칸으로 비게 된 선택 블록도 같이](#2026-10-24--선언-폼에서-칸을-비우면-그-칸은-저장에서-빠진다--그-칸으로-비게-된-선택-블록도-같이) — 누르는 곳 어드민 선언 폼(Chain · Tables · Ledger)
 - 2026-10-24 [파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»](#2026-10-24--파일-기록이-바뀐-칸-이름을-말한다--changed-밑에-changed-in-칸-n) — 적을 것 없음 · 보는 곳 파일 화면 Result
@@ -594,6 +595,18 @@
 
 
 
+
+## 2026-10-26 · 저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에
+
+- 무엇: 표의 저장소(raws 또는 외부 소스 루트) 하나에 glob 을 주면 그 밑 파일 목록과 상태가 나온다. 고른 파일은 Read now 와 같은 문(Retry 줄)으로 와처가 읽는다.
+  - 상태: 체크리스트 행의 상태(SUCCESS · FAILED …) · NOT_READ · BEFORE_SWITCH_ON(켜기 전에 수정돼 저절로 안 읽는 파일, 12f46f32f). 읽은 파일도 나온다 — 다시 읽기도 같은 문.
+  - 줄마다 마지막 읽은 시각(read_at, 안 읽었으면 없음). 넘긴 뒤에는 read-now/left 가 파일마다 상태 · 읽은 시각, 실패면 그 사유 한 줄(파일 화면 reason 과 같은 칸).
+  - glob 문법은 외부 소스의 glob 과 같다: `*` 한 칸 안 · `?` 한 글자 · `**` 여러 폴더. `[0-4]` 같은 괄호는 글자 그대로.
+  - 목록은 앞에서 5,000 개까지(limit), 넘으면 truncated 와 전체 수(matched · 상태별 수).
+  - 거절: 빈 glob · 절대 경로 · `..` 는 400, 그 표에 없는 저장소는 404, 와처 프로세스 없이(DECOUPLED 아님) 읽기는 409.
+  - 속도: 와처의 Retry 줄 그대로(한 바퀴 reread_max_files 개, 기본 25). 남은 수는 `POST /admin/file-ingestion/read-now/left` 에 받은 ids 로.
+- 잰 것(이 박스, sqlite, 폴더 100 × 파일 1,000 = 10만, 절반 SUCCESS 행): `**/*.csv` 10만 매칭 7.3 s · `**/LOT050_*.csv` 10만 걷고 1,000 매칭 0.4 s · `d050/*.csv` 0.1 s. 10만 매칭에서 시간 대부분은 상태 찾기(체크리스트 5만 행 읽기).
+- 자세히: `server/ingestion/reread.py` 의 `list_glob` · `hand_files` · `glob_refusal` · `storage_of` · `left_of`, `server/main.py` 의 `GET /admin/file-ingestion/glob` · `POST /admin/file-ingestion/read-now?table=&source=&pattern=`. 게이트 `server/tests/test_a_storage_glob_lists_and_reads_files_by_hand.py` (실제 와처 + API 프로세스).
 
 ## 2026-10-26 · 켜져 있던 외부 저장소도 와처가 처음 본 때부터 자른다 — 재기동 · 끄고 켜기 없이, 시각과 파일마다 로그
 

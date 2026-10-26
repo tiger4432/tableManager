@@ -7429,14 +7429,49 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
                        + (" · %d waiting without a mark, left" % said["unmarked"] if said["unmarked"] else "")}
 
 
+class ReadNowFiles(BaseModel):
+    paths: Optional[list] = None
+    ids: Optional[list] = None
+
+
+@app.get("/admin/file-ingestion/glob", dependencies=[Depends(require_admin_token)])
+def list_storage_glob(table: str, source: str, pattern: str, limit: int = None, db: Session = Depends(get_db)):
+    """The files below a storage (the tables screen's table · source) a glob takes, read or not (소유자 10-26 «읽은 거
+    무관하게 glob 리스트 인제션 페이지에»): the first `limit` (default 5,000) by path, their states, the count of all
+    (`reread.list_glob`). A glob that leaves the root is refused by name."""
+    from ingestion import reread
+
+    try:
+        said = reread.list_glob(db, str(table).strip(), str(source).strip(), pattern,
+                                limit=reread.GLOB_LIST_LIMIT if limit is None or limit < 1 else limit)
+    except reread.StorageUnknown as unknown:
+        raise HTTPException(status_code=404, detail=str(unknown))
+    except reread.RereadRefused as refused:
+        raise HTTPException(status_code=400, detail=str(refused))
+    return {"status": "success", "table": table, "source": source, "pattern": pattern, **said}
+
+
+@app.post("/admin/file-ingestion/read-now/left", dependencies=[Depends(require_admin_token)])
+def read_now_left(body: ReadNowFiles = Body(...), db: Session = Depends(get_db)):
+    """What a glob's Read these has left - its handed rows (`ids`) by state, no walk (`reread.left_of`)."""
+    from ingestion import reread
+
+    ids = (body.model_dump() if hasattr(body, "model_dump") else body.dict()).get("ids") or []
+    return {"status": "success", **reread.left_of(db, ids)}
+
+
 @app.post("/admin/file-ingestion/read-now", dependencies=[Depends(require_admin_token)])
-def read_file_now(path: str, table: str = None, preview: bool = False, db: Session = Depends(get_db)):
+def read_file_now(path: str = None, table: str = None, preview: bool = False, source: str = None, pattern: str = None,
+                  body: Optional[ReadNowFiles] = Body(None), db: Session = Depends(get_db)):
     """One file read now as if the watcher saw it (총괄 aaf19d0ca, 소유자 「그냥 와처 인식한 걸로 하면 되잖아」): the table
     that owns its folder, its row handed to the Retry door under that source. `preview`: who owns it and why the
-    watcher did not pick it - nothing written."""
+    watcher did not pick it - nothing written. With `source` and `pattern` instead of `path`: the files of that
+    storage's glob list (the body's `paths` of them, or all it shows) handed the same way (소유자 10-26)."""
     from ingestion import reread
 
     table = None if crud.is_blank_value(table) else str(table).strip()
+    if not crud.is_blank_value(pattern):
+        return _read_glob_now(db, table, source, pattern, (body.paths if body is not None else None))
     if not preview and os.getenv("DECOUPLED") != "True":
         raise HTTPException(status_code=409, detail="reading a file now needs the watcher process")
     try:
@@ -7453,6 +7488,35 @@ def read_file_now(path: str, table: str = None, preview: bool = False, db: Sessi
                         else f"{os.path.basename(said['path'])} handed to the watcher for {owner['table']}" if not preview
                         else f"{owner['table']} reads it" + (" - " + "; ".join(owner["why_not"])
                                                             if owner["why_not"] else ""))}
+
+
+def _read_glob_now(db, table, source, pattern, chosen):
+    """A storage's glob list handed to the watcher (`reread.hand_files`) - all it shows, or the `chosen` files of it."""
+    from ingestion import reread
+
+    if os.getenv("DECOUPLED") != "True":
+        raise HTTPException(status_code=409, detail="reading files now needs the watcher process")
+    if table is None or crud.is_blank_value(source):
+        raise HTTPException(status_code=400, detail="a glob is read from one storage - give table and source")
+    source = str(source).strip()
+    try:
+        listed = reread.list_glob(db, table, source, pattern)
+    except reread.StorageUnknown as unknown:
+        raise HTTPException(status_code=404, detail=str(unknown))
+    except reread.RereadRefused as refused:
+        raise HTTPException(status_code=400, detail=str(refused))
+    files = [f["path"] for f in listed["files"]]
+    if chosen is not None:
+        wanted = {os.path.normcase(os.path.abspath(str(p))) for p in chosen}
+        files = [f for f in files if os.path.normcase(os.path.abspath(f)) in wanted]
+    handed = reread.hand_files(db, table, source, files) if files else {"ids": [], "being_read": []}
+    if handed["ids"]:
+        # its (table, source) re-read stop let go by the watcher (system_reload.SCOPE_REREAD_RELEASED)
+        system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED, pairs=[(table, source)])
+    return {"status": "success", "table": table, "source": source, "pattern": pattern, "handed": len(handed["ids"]),
+            "being_read": len(handed["being_read"]), "ids": handed["ids"], "matched": listed["matched"],
+            "message": "%d file(s) handed to the watcher" % len(handed["ids"])
+                       + (" · %d being read now, left" % len(handed["being_read"]) if handed["being_read"] else "")}
 
 
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
