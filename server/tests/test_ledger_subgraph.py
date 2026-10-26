@@ -1158,6 +1158,50 @@ def _first_and(first, after):
     return list(first["nodes"]) + list(after["nodes"])
 
 
+#: W1's step with ten wafers of another transaction - what a bound way back must not read (lead 10-27 ①)
+CROWDED_STEP = ONE_STEP + [_processed(350 + n, "W%d" % (10 + n), STEP_P, "T9") for n in range(10)]
+
+
+@BOTH_STEP_KINDS
+def test_a_bound_way_back_reads_only_its_transactions_atoms(static):
+    """W1's own edge, then down from P only T1's two (W1, W2), then W2's own - 4 atoms; the read whole would take P's 13.
+    The values ride the frontier's skip, so the lookup leaves the others unfetched rather than the walk dropping them."""
+    wafers, body = _tx_wafers(static, CROWDED_STEP, {"processed": ("tx_id",)})
+    assert wafers == ["W1", "W2"]
+    assert body["walk"]["claims_scanned"] == 4, body["walk"]["claims_scanned"]
+    unbound_wafers, unbound = _tx_wafers(static, CROWDED_STEP)
+    assert unbound_wafers == ["W1"]
+
+
+@pytest.mark.pg
+def test_the_sql_reads_a_bound_way_back_as_the_double_does(pg_engine):
+    """The same crowded step in PostgreSQL: the same wafers and the same 4 atoms - `_skip`'s bound clause is the
+    in-memory read's (a SQL that read the step whole would scan 13 there)."""
+    from ledger.envelope import Atom
+    from ledger.store import LedgerStore
+
+    store = LedgerStore(pg_engine)
+    store.ensure_schema()
+    atoms = [Atom(subject_type=a.subject_type, subject_keys=a.subject_keys, predicate=a.predicate,
+                  object_kind=a.object_kind, object_payload=a.object_payload, occurred_at=a.occurred_at,
+                  source_who="sql-fixture", source_translator_ver="v1", source_raw_ref=a.source_raw_ref,
+                  molecule_ref="event:%s" % a.source_raw_ref) for a in CROWDED_STEP]
+    connection = pg_engine.raw_connection()
+    try:
+        store.ensure_partitions(connection, [NOW])
+        store.insert_atoms(connection, atoms)
+        connection.commit()
+        seed = explorer.entity_id("wafer", {"wafer_id": "W1"})
+        for static in (set(), {"process_step"}):
+            body = ledger_subgraph.subgraph(seed, ledger_subgraph.SqlEvidenceLookup(connection), hops=4,
+                                            direction="both", follow=["processed"],
+                                            follow_keys={"processed": ("tx_id",)}, static_types=static)
+            wafers = sorted(node["keys"]["wafer_id"] for node in body["nodes"] if node["type"] == "wafer")
+            assert (wafers, body["walk"]["claims_scanned"]) == (["W1", "W2"], 4), (static, wafers, body["walk"])
+    finally:
+        connection.close()
+
+
 # ------------------------------------------------ [collect] the load, not the road (2026-09-06)
 #
 # `collect` names the node types carried back in `nodes`. It does NOT narrow the walk:

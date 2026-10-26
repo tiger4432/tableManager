@@ -541,6 +541,15 @@ def _qualifier_values(payload, names):
     return tuple(_json_key(qualifiers[name]) for name in names)
 
 
+def _bound_skip(held, qualifier_binds):
+    """{"bound": {bare predicate: {"names": its qualifier names, "values": [the values that reached the node]}}} for a
+    frontier node's skip - what `_step` keeps of a bound way back (`bound_arrivals`), read in the lookup so the atoms it
+    refuses are not fetched; {} when the node holds none."""
+    said = {predicate: {"names": list(qualifier_binds[predicate]), "values": sorted((list(v) for v in values), key=str)}
+            for predicate, values in held.items() if values and predicate in qualifier_binds}
+    return {"bound": said} if said else {}
+
+
 def _json_key(value):
     """One spelling for a key value, so `1` and `1.0` do not miss each other.
 
@@ -720,9 +729,16 @@ def _skip(arm):
     `f.skip.steps`, the steps `_back_down_steps` refuses - back to what brought `f`, and down to a
     container's other children - unless the far end is on the frontier too (`_step` passes a
     step between two near nodes). Not read, so not spent: MEASURED on one bonded wafer with ten
-    core wafers, `collect=wafer` at 12,000 claims reached 0 cores, then 10."""
+    core wafers, `collect=wafer` at 12,000 claims reached 0 cores, then 10.
+    And `f.skip.bound` (`_bound_skip`): on a bound predicate, only an atom whose qualifiers hold one of the values -
+    MEASURED 10-27 (box, assumed sizes: a step node 10,000 wafers, 200 steps, 30 wafers): read whole and filtered
+    after, 2,020,000 atoms at 19 s a 6,000 page; here 30,000 atoms, 5 pages, 17 s."""
     other = "incoming" if arm == "outgoing" else "outgoing"
-    return (f"NOT COALESCE(f.skip->'steps' @> jsonb_build_array("
+    bound = "f.skip->'bound'->split_part(e.predicate, '@', 1)"
+    return (f"({bound} IS NULL OR {bound}->'values' @> jsonb_build_array((\n"
+            f"                          SELECT jsonb_agg(e.object_payload->'qualifiers'->name ORDER BY at)\n"
+            f"                          FROM jsonb_array_elements_text({bound}->'names') WITH ORDINALITY AS q(name, at))))\n"
+            f"                      AND NOT COALESCE(f.skip->'steps' @> jsonb_build_array("
             f"jsonb_build_object('p', e.predicate, 'd', '{arm}', 't', {_FAR_TYPE[arm]}))\n"
             f"                          AND NOT EXISTS (SELECT 1 FROM frontier g WHERE "
             f"{_NAMES[other].format(f='g')}), false)")
@@ -1137,6 +1153,9 @@ class InMemoryEvidenceLookup:
                 return False                            # the set door, as `_far` spells it
             if far_types and (far is None or (_bare_name(str(far_type)) in far_types[1]) != (far_types[0] == "in")):
                 return False                            # the far end's class, as `_far_types` spells it
+            bound = (wanted[near].get("bound") or {}).get(_bare_name(atom.predicate))
+            if bound and list(_qualifier_values(atom.object_payload, bound["names"]) or ()) not in bound["values"]:
+                return False                            # the bound values, as `_skip` spells them
             return not (step in (wanted[near].get("steps") or ()) and far not in wanted)
 
         rows = []
@@ -3337,8 +3356,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                      for p, d, t in sorted(_back_down_steps(arrivals.get(item["id"])))
                      if not _between_names(near, t, static_types) and t not in outside
                      and not held.get(_bare(p))]          # a bound way back is read, `_step` takes its own
-            entities.append((item["type"], item["keys"], {"steps": steps})
-                            if steps else (item["type"], item["keys"]))
+            skip = dict({"steps": steps} if steps else {}, **_bound_skip(held, qualifier_binds))
+            entities.append((item["type"], item["keys"], skip) if skip else (item["type"], item["keys"]))
         return entities
 
     #: every atom read, at every level - `current_conflicts` counts over all of them
