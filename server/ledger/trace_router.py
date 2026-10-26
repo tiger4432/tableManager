@@ -694,16 +694,17 @@ def _static_step_predicates(world=None):
     entities = declared.get("entities") or {}
     static = {_bare_name(key) for key, rule in entities.items()
               if setup_bundle.has_class(rule, "static")}
-    names = set()
-    for key, rule in (declared.get("vocabulary") or {}).items():
-        subjects = [_bare_name(item) for item in ((rule or {}).get("subjects") or [])]
-        targets = [_bare_name(item)
-                   for item in (((rule or {}).get("object") or {}).get("types") or [])]
-        if not subjects or not targets:
-            continue
-        if all(item in static for item in subjects) and all(item in static for item in targets):
-            names.add(_bare_name(key))
-    return names
+    return {name for name, (subjects, targets) in _predicate_ends(declared=declared).items()
+            if subjects and targets and all(item in static for item in (*subjects, *targets))}
+
+
+def _predicate_ends(world=None, declared=None) -> dict:
+    """{bare predicate: ([its subject types], [its object types])}, bare - the picked worlds' vocabulary, what a
+    predicate joins (the static predicates; the report's quantity values, 10-27)."""
+    declared = (_declaration(world) or {}) if declared is None else declared
+    return {_bare_name(key): ([_bare_name(item) for item in ((rule or {}).get("subjects") or [])],
+                              [_bare_name(item) for item in (((rule or {}).get("object") or {}).get("types") or [])])
+            for key, rule in (declared.get("vocabulary") or {}).items()}
 
 
 def _instant_arg(raw):

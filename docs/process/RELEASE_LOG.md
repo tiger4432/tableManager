@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-27 [AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정](#2026-10-27--ai-리포트-계측값--원인-걷기가-닿은-quantity-의-웨이퍼별-값을-조건-행으로-값이-없으면-같은-트랜잭션-웨이퍼로-추정) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.values · 보는 곳 리포트 표의 조건 행 · Evidence «quantity values» · 터미널 [report] causes values
 - 2026-10-27 [새 술어가 걷기 라우트를 세우지 않는다 — 이름 없는 결측은 날 낱말로, 결측 이름 표는 config 로](#2026-10-27--새-술어가-걷기-라우트를-세우지-않는다--이름-없는-결측은-날-낱말로-결측-이름-표는-config-로) — 적을 곳 config/gap_names.json(선택) · 보는 곳 GET /api/ledger/gaps 의 unnamed
 - 2026-10-26 [AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다](#2026-10-26--ai-리포트-결과--부분별-글summary--conclusion-을-리포트-표-칸에-멈춘-리포트는-그-칸을-비운다) — 적을 것 `derive.report.results` 에 «글 칸 이름: 컬럼» · 보는 곳 리포트 표의 그 칸
 - 2026-10-26 [AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다](#2026-10-26--ai-리포트--모델-답이-json-이-아니어도-안-멈춘다-글-속-json-을-꺼내고-한-번-다시-묻고-그래도-아니면-읽은-것으로-쓴다) — 적을 것 없음 · 보는 곳 리포트 Evidence · chain_worker.log «[report] the answer held no JSON object»
@@ -621,6 +622,17 @@
 
 
 
+
+## 2026-10-27 · AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정
+
+- 무엇: 10-27 묶음 B-2(소유자 10-26 «걷기 해서 모델링 상 닿는 퀀티티의 각 wf 자재들 매칭해서 표에 추가»). 10-26 지시서의 fallback.step(고정 ref 스텝)은 은퇴 — 대신 «그 구조에 작용하는 공정 중 계측 스텝 바로 앞».
+  - 걷기 둘: ① 원인 걷기의 후보에서 values.follow 와 order 의 술어로 — 구조 · 그것을 describes 하는 quantity · quantity 의 계측 스텝 · 그 구조에 acts_on 하는 스텝 ② 리포트 웨이퍼와 비교 웨이퍼 «전부»를 씨앗으로 value 의 술어와 event 의 술어(트랜잭션 수식어로 묶음, 10-27 걷기 follow «술어:수식어»)로 3 홉, 쪽을 이어 끝까지.
+  - 칸: 웨이퍼 자기 값 «12.3». 없으면 계측 스텝 바로 앞(order 의 키 순) 작용 스텝에서 그 웨이퍼와 같은 트랜잭션 웨이퍼들의 값 — 하나면 그 값, 여럿이면 평균 «12.1 (est · <스텝> · 3 wf)». 그래도 없으면 빈 칸.
+  - 리포트 웨이퍼가 재지도 지나지도 않은 quantity 는 다른 제품의 것 — 행 없음. 지났는데 값이 어디에도 없으면 행은 서고(빈 칸) «채워야 함»(labels.to_fill).
+  - 값은 웨이퍼의 조건 칸(이름 = quantity label)으로 들어가 조건 행 길을 그대로 지난다 — 글에 쓴 조건(also)처럼 most 에 안 잘리고, 어디서나 같은 값이면 빠진다.
+- 선언: `"causes": {"seed_type": "defect_kind", "values": {"follow": ["of_kind", "describes", "acts_on"], "value": "measures:value", "event": "processed_at:tx_id", "order": ["measured_at", "step_seq"]}}`. 이름은 전부 원장 선언에서 — 원장이 모르는 술어 · 수식어 · 키는 저장 때 거절(«… - not a predicate the ledger declares» · «… is not a qualifier of …» · «… is not a key of …»). value 의 술어 주어가 웨이퍼 노드(키 수 = 리포트 웨이퍼 키 수).
+- 보는 곳: Evidence «quantity values» 걸음 — 머리줄 «N quantit(ies) with values on these wafers, M to fill - K model node(s), P wafer walk page(s)», quantity 마다 «<label>: WAFER W1 12.3 · WAFER W2 12.1 (est, 3 wf) · WAFER W3 -». 후보 조건 걸음 · 글쓰기 호출이 이 읽기를 받는다. 터미널 `[report] causes values: …` · `[report] quantity values to fill: …`.
+- 자세히: `server/chain/report_reads.py` 의 `Report.values`, `server/chain/report_loop.py` 의 `_values` · `_redraw_yield_by`, `server/chain/report_shape.py` 의 `VALUES_CELLS` · `_values_refusal`, `server/ledger/trace_router.py` 의 `_predicate_ends`. 가이드 `docs/guide/ai_report_tables.md`.
 
 ## 2026-10-27 · 새 술어가 걷기 라우트를 세우지 않는다 — 이름 없는 결측은 날 낱말로, 결측 이름 표는 config 로
 

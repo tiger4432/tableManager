@@ -52,6 +52,8 @@ SEEDS = ("Pick the seed node(s) of a cause walk from the %s nodes below, by the 
 RELATE = ("Relate each candidate factor below to the report's conditions that are it or set it - names from the list, "
           'none if none. Answer one JSON object: {"conditions": {"<candidate>": ["<condition>", ...]}, "why": "..."}')
 RELATED_CALL = "candidate conditions"
+#: the Evidence step of the quantities' measured values (causes.values, lead 10-27)
+VALUES_CALL = "quantity values"
 ABOUT = {
     "conditions": "the wafers whose conditions hold a keyword, or every condition value with its wafer count",
     "yield_by": "the summary table - items down, wafers across, each cell x% (F/N); by: one condition name exactly as "
@@ -433,11 +435,51 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps, tables):
     step(call, began, lines, refused, tokens=counted or budget.tokens(prompt), cut=cut, why=why)
     if refused is None:
         reads.append((steps[-1]["step"], call, lines))
+        first = len(reads) - 1
+        if walked["candidates"] and report_shape.VALUES in spec[report_shape.CAUSES]:
+            _values(report, clock, steps, reads, tables, walked["candidates"])
         if walked["candidates"]:
-            _related(report, spec, request, budget, ask, clock, steps, reads, tables, walked["candidates"])
+            _related(report, spec, request, budget, ask, clock, steps, reads, tables, walked["candidates"], first)
 
 
-def _related(report, spec, request, budget, ask, clock, steps, reads, tables, candidates):
+def _values(report, clock, steps, reads, tables, candidates):
+    """The quantities' measured values (`report.values`): a step of its own, its read handed on; the quantities stand
+    as yield_by rows as the candidates' conditions do (`written_rows`). A refusal stops this step alone."""
+    began = clock()
+    try:
+        said, refused = report.values(candidates), None
+    except report_reads.ReadRefused as refused_:
+        logger.warning("[report] %s refused: %s", VALUES_CALL, refused_, exc_info=refused_)
+        said, refused = None, str(refused_)
+    except Exception as exc:                                    # noqa: BLE001 - this step stops, the report is written
+        logger.error("[Report] %s failed: %s: %s", VALUES_CALL, type(exc).__name__, exc, exc_info=exc)
+        said, refused = None, "the read failed: %s: %s" % (type(exc).__name__, exc)
+    lines = said["context"].splitlines() if said else []
+    steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": VALUES_CALL, "seconds": clock() - began,
+                  "refused": refused, "summary": (lines[0] if lines else "")[:200], "read": lines[1:]})
+    if said is None:
+        return
+    reads.append((steps[-1]["step"], VALUES_CALL, lines))
+    if said["to_fill"]:
+        logger.warning("[report] quantity values to fill: %s", ", ".join(said["to_fill"]))
+    if said["labels"]:
+        report.written_rows = list(dict.fromkeys(list(getattr(report, "written_rows", None) or ()) + said["labels"]))
+        _redraw_yield_by(report, tables, VALUES_CALL)
+
+
+def _redraw_yield_by(report, tables, why):
+    """The yield_by table drawn again with the rows written since (`_args`) - {cell: [text, ...]} of its info rows."""
+    try:
+        table = report.yield_by(**_args(report, "yield_by"))["html"]
+    except report_reads.ReadRefused as said:
+        logger.warning("[report] yield_by with the %s refused: %s", why, said, exc_info=said)
+        return {}
+    if "yield_by" in tables:
+        tables["yield_by"] = table
+    return {label: [cell["text"] for cell in cells] for label, cells in table.get("info") or ()}
+
+
+def _related(report, spec, request, budget, ask, clock, steps, reads, tables, candidates, first=-1):
     """The candidates' conditions (owner 10-25 «조건표에서 디펙 카인드와 연관된 인자를 찾아서 언급하거나 표에 추가»): one
     model call over the walk's read and the report's condition names - the ledger links no candidate to a condition
     (the conditions are the report's tables, not the ledger's), so there is no walk to it; a name not a condition is
@@ -454,7 +496,7 @@ def _related(report, spec, request, budget, ask, clock, steps, reads, tables, ca
     names = [str(n) for n in report.condition_names()]
     labels = list(dict.fromkeys(str(c["label"]) for c in candidates))
     began = clock()
-    prompt, cut = compose_write(spec, request, reads[-1:], budget,
+    prompt, cut = compose_write(spec, request, reads[first:], budget,
                                 line="\n".join([RELATE, "Conditions: " + (", ".join(names) or "none")]))
     if prompt is None:
         return step([], STOP_CONTEXT, cut=cut)
@@ -479,13 +521,7 @@ def _related(report, spec, request, budget, ask, clock, steps, reads, tables, ca
     drawn = {}
     if rows:
         report.written_rows = list(dict.fromkeys(list(getattr(report, "written_rows", None) or ()) + rows))
-        try:
-            table = report.yield_by(**_args(report, "yield_by"))["html"]
-            if "yield_by" in tables:
-                tables["yield_by"] = table
-            drawn = {label: [cell["text"] for cell in cells] for label, cells in table.get("info") or ()}
-        except report_reads.ReadRefused as said_:
-            logger.warning("[report] yield_by with the candidates' conditions refused: %s", said_, exc_info=said_)
+        drawn = _redraw_yield_by(report, tables, "candidates' conditions")
     to_fill = report_shape.word(spec, "to_fill")
     lines, unfilled = ["%d of %d candidate(s) related to the conditions%s" % (
         len([label for label in labels if related.get(label)]), len(labels),

@@ -1161,6 +1161,130 @@ class Report:
         return {"context": "\n".join([head] + left_out + lines), "candidates": candidates}
 
 
+    # ---- the quantities' values (lead 10-27 B-2: «걷기 해서 모델링 상 닿는 퀀티티의 각 wf 자재들 매칭») -------
+    def values(self, candidates):
+        """The measured values of the quantities the model walk reaches from the cause walk's `candidates`, on every
+        wafer of this report and its compares (`causes.values`). Two walks: one from the candidates along `follow` and
+        `order`'s predicate - the structures, the quantities describing them, each one's measuring step and the steps
+        acting on its structures; one from every wafer along `value`'s and `event`'s predicates, `event` bound by its
+        transaction qualifier (follow «<predicate>:<qualifier>»), read to its end page by page. A wafer's value is its own; with none, the
+        step acting on the quantity's structure just before its measuring step (`order`'s key) - the wafers of its
+        transaction there that hold one: one, its value; several, their mean and n. A quantity no wafer here measured
+        or passed the steps of is another product's - no row. Each stands as the wafers' condition of its label.
+        -> {"context": a head, a line a quantity, "labels": [the rows' names], "to_fill": [labels with no value]}"""
+        from ledger import explorer, trace_router
+        from ledger_api import ledger_subgraph
+
+        causes = self._causes()
+        said, worlds = causes[report_shape.VALUES], causes.get("worlds") or None
+        bare = trace_router._bare_name
+        valued, value_name = said["value"].split(":")
+        event, tx_name = said["event"].split(":")
+        order, seq = said["order"]
+        ends = trace_router._predicate_ends(worlds)
+        keys = {bare(name): list((rule or {}).get("keys") or ())
+                for name, rule in trace_router._declared_entities(worlds).items()}
+        wafer_type = ends[bare(valued)][0][0]
+        if len(keys.get(wafer_type, ())) != len(self.keys):
+            raise ReadRefused("derive.report.causes.values: a %s node has %d key(s) (%s), a wafer here %d (%s)" % (
+                wafer_type, len(keys.get(wafer_type, ())), ", ".join(keys.get(wafer_type, ())), len(self.keys),
+                ", ".join(self.keys)))
+        world = {"world": worlds} if worlds else {}
+        ids = list(dict.fromkeys(c["id"] for c in candidates))
+        model = _walk(self.db, "derive.report.causes.values.follow", node_id=ids[0], positive=ids[1:] or None,
+                      follow=list(dict.fromkeys(list(said["follow"]) + [order])), propagation=False,
+                      node_limit=ledger_subgraph.MAX_NODE_LIMIT, **world,
+                      **({"hops": said["hops"]} if said.get("hops") is not None else {}))
+        nodes = {node["id"]: node for node in model.get("nodes") or ()}
+        out = {}
+        for edge in model.get("edges") or ():
+            out.setdefault(edge["source"], set()).add((bare(edge["predicate"]), edge["target"]))
+        at_step = {q: t for q, edges in out.items() for p, t in edges if p == bare(order)}
+
+        def seq_of(node_id):
+            return _number(((nodes.get(node_id) or {}).get("keys") or {}).get(seq))
+
+        before = {}
+        for q, step in at_step.items():
+            described = {t for p, t in out[q] if p != bare(order)}
+            acting = [s for s, edges in out.items() for p, t in edges if t in described and p != bare(order)
+                      and s != step and (nodes.get(s) or {}).get("type") == (nodes.get(step) or {}).get("type")
+                      and seq_of(s) is not None and seq_of(step) is not None and seq_of(s) < seq_of(step)]
+            if acting:
+                before[q] = max(acting, key=seq_of)
+        wafers = {explorer.entity_id(wafer_type, dict(zip(keys[wafer_type], w))): w for w in self.wafers}
+        seeds = list(wafers)
+        edges, calls, resume = {}, 0, None
+        while seeds and at_step:
+            answer = _walk(self.db, "derive.report.causes.values", node_id=seeds[0], positive=seeds[1:] or None,
+                           follow=[valued, "%s:%s" % (event, tx_name)], hops=3, propagation=False,
+                           resumable=True, node_limit=ledger_subgraph.MAX_NODE_LIMIT,
+                           edge_limit=ledger_subgraph.MAX_EDGE_LIMIT, **world, **({"resume": resume} if resume else {}))
+            calls += 1
+            for edge in answer.get("edges") or ():
+                edges[(edge["source"], bare(edge["predicate"]), edge["target"])] = edge.get("records") or [
+                    {"qualifiers": edge.get("qualifiers") or {}, "occurred_at": edge.get("occurred_at")}]
+                nodes.setdefault(edge["target"], {"id": edge["target"]})
+            resume = (answer.get("more") or {}).get("resume")
+            if not resume:
+                break
+
+        def own(wafer_id, q):
+            said_ = [r for r in edges.get((wafer_id, bare(valued), q)) or ()
+                     if ((r.get("qualifiers") or {}).get(value_name)) not in (None, "")]
+            return max(said_, key=lambda r: str(r.get("occurred_at") or ""))["qualifiers"][value_name] if said_ else None
+
+        def passed(wafer_id, step):
+            return {_said_key(r.get("qualifiers", {}).get(tx_name))
+                    for r in edges.get((wafer_id, bare(event), step)) or ()} - {None}
+
+        to_fill, labels, lines = [], [], []
+        for q in at_step:
+            step = before.get(q)
+            here = [w for w in wafers if (w, bare(valued), q) in edges or (w, bare(event), at_step[q]) in edges
+                    or (step and (w, bare(event), step) in edges)]
+            if not here:
+                continue                                     # another product's quantity - no wafer here met it
+            name = str((nodes.get(q) or {}).get("label") or q)
+            cells, said_cells = {}, []
+            for w, unit in wafers.items():
+                value = own(w, q)
+                if value is not None:
+                    cells[unit], spoken = str(value), str(value)
+                else:
+                    tx = passed(w, step) if step else set()
+                    found = [v for v in (own(x, q) for (x, p, t) in edges if p == bare(event) and t == step
+                                         and x != w and passed(x, step) & tx) if _number(v) is not None] if tx else []
+                    if found:
+                        mean = sum(_number(v) for v in found) / len(found)
+                        cells[unit] = "%s (est · %s · %d wf)" % (_count(mean), (nodes.get(step) or {}).get(
+                            "label") or step, len(found))
+                        spoken = "%s (est, %d wf)" % (_count(mean), len(found))
+                    else:
+                        spoken = "-"
+                said_cells.append("%s %s" % (self.said(unit), spoken))
+            for unit in self.wafers:
+                if unit in cells:
+                    self.wafers[unit]["conditions"][name] = cells[unit]
+            labels.append(name)
+            if not cells:
+                to_fill.append(name)
+            lines.append("%s: %s%s" % (name, " · ".join(said_cells),
+                                       "" if cells else " - " + report_shape.word(self.spec, "to_fill")))
+        head = "%d quantit(ies) with values on these wafers, %d to fill - %d model node(s), %d wafer walk page(s)" % (
+            len(labels) - len(to_fill), len(to_fill), len(nodes), calls)
+        logger.warning("[report] causes values: %s", head)
+        return {"context": "\n".join([head] + lines), "labels": labels, "to_fill": to_fill}
+
+
+def _said_key(value):
+    """A qualifier value as one spelling (`1` and `1.0` alike), None for none."""
+    if value is None:
+        return None
+    number = _number(value)
+    return number if number is not None else str(value)
+
+
 def _path(hops, edges) -> str:
     """A walk trail seed first, each hop's predicates pointed the way its edge runs: «void <-leads_to- gap»."""
     said = []

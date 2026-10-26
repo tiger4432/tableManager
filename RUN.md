@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 derive.report.causes 에 values 를 적고 리포트 한 번
+>          values = {"follow": [<구조 · quantity · 작용 스텝 술어>], "value": "<계측 술어>:<값 수식어>",
+>                    "event": "<공정 이벤트 술어>:<트랜잭션 수식어>", "order": ["<quantity -> 계측 스텝 술어>", "<스텝 순서 키>"]}
+> 볼 것    Evidence «quantity values» 머리줄 «N quantit(ies) with values …, M to fill - K model node(s), P wafer walk page(s)»
+>          표에 quantity 이름의 조건 행 · 칸 «12.3» / «12.1 (est · <스텝> · 3 wf)» / 빈 칸
+>          «0 quantit(ies)» 에 model node(s) 가 0 -> 후보에서 구조로 가는 술어가 follow 에 없음
+>          model node 는 있는데 0 -> 리포트 웨이퍼가 그 제품의 스텝을 안 지남(웨이퍼 키가 원장 웨이퍼 노드 키와 다름도 이 꼴)
+>          저장 거절 «… not a predicate the ledger declares» / «… is not a qualifier of …» -> 원장 선언의 이름으로 고침
+> 끄는 것   규칙에서 causes.values 를 지움(그 걸음만 안 돎)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='quantities the model walk reaches' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-27] **걷기 follow «술어:수식어» — 묶인 되돌이는 그 값을 든 원자만 읽는다(스텝 노드 전 이력을 안 읽음)** — git pull · 런처 재기동
 >
 > ```

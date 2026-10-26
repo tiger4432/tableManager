@@ -2633,6 +2633,65 @@
                             "hint": "free"
                           }
                         }
+                      },
+                      {
+                        "key": "values",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "follow",
+                              "required": true,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "predicate",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            {
+                              "key": "value",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "event",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "order",
+                              "required": true,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "name",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            {
+                              "key": "hops",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
