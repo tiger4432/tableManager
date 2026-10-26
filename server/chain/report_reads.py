@@ -854,8 +854,9 @@ class Report:
         for wafer in [] if where == {} else self._wafer_rows(where, newest=bool(role.get("time")), only_time=True):
             facts = self.wafers[wafer]
             at, evaluation = _instant(facts["time"]), facts["evaluation"]
-            # a wafer of no time is no candidate (owner 10-24 «날짜 없는 웨이퍼 후보 빼»)
-            if (wafer in own or at is None if each else at is None or evaluation in (None, self.evaluation)) \
+            # a wafer of no time is no candidate (owner 10-24 «날짜 없는 웨이퍼 후보 빼») - judged on the candidate, its
+            # rows folded: a leg of no row of a dated wafer stands with it (lead 10-23 «stands or falls whole»)
+            if (wafer in own if each else at is None or evaluation in (None, self.evaluation)) \
                     or facts["same"] not in alike:
                 continue
             entry = by.setdefault(self._unit(wafer) if each else str(evaluation), {"latest": at, "wafers": []})
@@ -867,8 +868,8 @@ class Report:
         # later than this report's is a candidate too when no evaluation column says one (owner 10-23 «빼지 마»)
         for name in list(by):
             at = by[name]["latest"]
-            if at is not None and anchor is not None and (at > anchor and not each or recent.get("days") and
-                                                          anchor - at > datetime.timedelta(days=recent["days"])):
+            if at is None or anchor is not None and (at > anchor and not each or recent.get("days") and
+                                                     anchor - at > datetime.timedelta(days=recent["days"])):
                 del by[name]
         newest = sorted(by, key=lambda name: (by[name]["latest"] is not None, by[name]["latest"] or datetime.datetime.min,
                                               name), reverse=True)

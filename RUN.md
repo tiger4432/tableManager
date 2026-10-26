@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-26] **AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    chain_worker.log «[report]   wafer <웨이퍼> · leg <leg>: time None … -> candidate» -> 날짜 있는 웨이퍼의 leg 가 같이 섬 = 고쳐진 것
+>          (전: 그 leg 만 «-> no time» 으로 빠져 후보 줄의 rows 수가 적었음)
+>          «-> no time» 이 남은 웨이퍼 -> 그 웨이퍼의 어느 행에도 날짜가 없음 (소유자 10-24 규칙 그대로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='stands or falls whole' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
 > ## [10-26] **AI 리포트 — 없는 씨앗은 빼고 걷기 · 조건 행 개수(conditions.most)와 모델 순서** — git pull · 런처 재기동
 >
 > ```

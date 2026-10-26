@@ -330,7 +330,10 @@ def test_a_report_declaration_writes_a_report_a_wafer_into_its_report_table(db, 
     assert "L1" in w1 and "L2" in w1 and "L2" not in w2, "W1's report holds both its legs as columns"
     assert "particle is low." in w1
     evidence = w1[w1.index('<details class="evidence">'):]
-    assert "1 yield_by" in evidence and "2 done" in evidence and "3 write" in evidence, evidence
+    # the model's read and done, then the product's - the declared comparison and the file's table - and the write
+    # (3b02c7efe · 541cbb4b1: the file's tables are the product's, drawn after the loop)
+    assert all(step in evidence for step in ("1 yield_by", "2 done", "3 product compare()", "4 product yield_by()",
+                                             "5 write")), evidence
     assert '\n    particle | 1.0% (1/100) | 2.0% (2/100)' in evidence, \
         "each step's read under its line, not its head alone (lead 10-23)"
     assert _summary(db) == before, "the summary table is read, never written"
@@ -518,7 +521,10 @@ def test_the_keys_say_what_each_key_column_does_the_latest_measurement_and_a_chi
                            {"wafer": "W1", "tkout": new, "leg": "L2", "item": "particle", "fail": 2, "total": 100},
                            {"wafer": "W2", "tkout": other, "leg": "L1", "item": "particle", "fail": 3, "total": 100}],
                 "kt_cond": [{"wafer": "W1", "leg": "L1", "condition_id": "bond", "value": "350",
-                             "date": "2026-10-22 10:00:00"}],
+                             "date": "2026-10-22 10:00:00"},
+                            # a wafer of no time is no candidate (owner 10-24, 84f8b2d02) - W2 is dated
+                            {"wafer": "W2", "leg": "L1", "condition_id": "bond", "value": "300",
+                             "date": "2026-10-21 10:00:00"}],
                 "kt_img": [{"wafer": "W1", "tkout": new, "leg": "L1", "x": 1, "y": 1, "layer": "10", "img": "11b",
                             "defects": "particle"},
                            {"wafer": "W1", "tkout": new, "leg": "L1", "x": 1, "y": 1, "layer": "9", "img": "11a",
@@ -559,8 +565,12 @@ def test_the_keys_say_what_each_key_column_does_the_latest_measurement_and_a_chi
         assert "keys unit (leg) is the report table's wafer" in refused[1]
         assert "keys.leg fold is a column beyond the wafer key" in refused[2]
         assert "each word one of unit · latest · fold" in refused[3]
-        assert "images.wafer 'img' is not a key column" in report_shape.refusal(
-            dict(spec, images=dict(spec["images"], wafer=["wafer", "img"])), "kt_rep", "kt_rep")
+        # images.wafer: any column of the picture table tells its rows apart (owner 10-24 «x, y 이거 키 못 넣는대»,
+        # 67e386def) - one it has not is refused
+        assert report_shape.refusal(dict(spec, images=dict(spec["images"], wafer=["wafer", "img"])),
+                                    "kt_rep", "kt_rep") is None
+        assert "images.wafer 'nope' is not a column of 'kt_img'" in report_shape.refusal(
+            dict(spec, images=dict(spec["images"], wafer=["wafer", "nope"])), "kt_rep", "kt_rep")
     finally:
         db.rollback()
         for name in more:
@@ -629,7 +639,7 @@ def test_the_owners_long_conditions_and_chip_images_are_read_as_they_are(db, rep
         assert report.candidates()["html"] is None and "candidates" not in report_shape.TABLE_FILLS, \
             "the candidates list table retired (owner 10-23 «CANDIDATE, DATE 이거»): the model's and the Evidence's"
         head = report_html._summary_table(report.yield_by()["html"], spec)
-        assert head.count(">W1</th>") == 1 and '<th class="rpt-head">L1</th>' in head, \
+        assert head.count(">W1</th>") == 1 and '<th class="rpt-head rpt-own">L1</th>' in head, \
             "a report of one wafer names it once over its legs (lead 10-23)"
         chosen = report.images()["html"]
         assert sorted(chosen) == ["particle", "scratch"], "the chip's image under each defect it holds"
