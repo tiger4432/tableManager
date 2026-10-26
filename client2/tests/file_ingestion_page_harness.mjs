@@ -333,11 +333,14 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
         === JSON.stringify({ status: 'FAILED', words: 'Failed', why: 'KeyError: lot' }),
     JSON.stringify([M.readBefore(READ_FILE), M.readAfter(READ_FILE, handedSet, new Map())]));
   ok('M13 a page is 100 files, the last holds the rest, a page past the end is the last; «first N of M» past the server\'s limit, '
-    + 'else the count, and the ticked; Read these sends the ticked paths in the list\'s order - none or all ticked: no body (every listed file)',
+    + 'else the count, and the ticked; Read these sends the ticked paths in the list\'s order, all ticked too - none ticked: no body, '
+    + 'and its count is every match (B 861bc45ab hands them all, past the list)',
     pg3.page === 3 && pg3.pages === 3 && pg3.rows.length === 50 && pg9.page === 3
       && M.pickMeta(LISTED, 0) === 'first 250 of 12,431' && M.pickMeta(LISTED, 3) === 'first 250 of 12,431 · 3 ticked'
       && M.pickMeta({ matched: 1, truncated: false, files: [FILES250[0]] }, 0) === '1 file'
-      && M.pickBody(LISTED, new Set()) === null && M.pickBody(LISTED, new Set(FILES250.map((f) => f.path))) === null
+      && M.pickBody(LISTED, new Set()) === null && (M.pickBody(LISTED, new Set(FILES250.map((f) => f.path))) || { paths: [] }).paths.length === 250
+      && M.readCount(LISTED, new Set()) === 12431 && M.readCount(LISTED, new Set([FILES250[0].path])) === 1
+      && M.readCount({ files: FILES250 }, new Set()) === 250
       && JSON.stringify(M.pickBody(LISTED, new Set([FILES250[9].path, FILES250[2].path]))) === JSON.stringify({ paths: [FILES250[2].path, FILES250[9].path] })
       && M.leftText({ handed: 1500, left: 1212, read: 284, failed: 4 }) === '1,500 handed · 1,212 left · 284 read · 4 failed',
     JSON.stringify([pg3, M.pickMeta(LISTED, 3)]).slice(0, 200));
@@ -403,13 +406,13 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   tickIt(headBox());
   const allTicked = goButton().textContent;
   tickIt(headBox());
-  const noneTicked = [metaLine(), texts(sMount, 'fi-meta').includes(M.WORDS.noneTicked(250))];
+  const noneTicked = [metaLine(), texts(sMount, 'fi-meta').includes(M.WORDS.noneTicked(12431)), goButton().textContent];
   ok('P11 List asks the trimmed pattern under its source; a page of 100 lines «path · modified · status»; ticks counted in the line '
-    + 'and on Read these; Next turns the page; the head ticks every listed file, and clears them (none ticked: every listed one)',
+    + 'and on Read these; Next turns the page; the head ticks every listed file, and clears them (none ticked: every match)',
     JSON.stringify(listCalls) === JSON.stringify([['inspection_run', '2026-09/*.csv']]) && onPage === 100
       && firstLine[1] === name3(0) && firstLine[3] === 'Before switch on'
       && JSON.stringify(twoTicked) === JSON.stringify(['first 250 of 12,431 · 2 ticked', 'Read these (2)'])
-      && page2 === name3(100) && allTicked === 'Read these (250)' && JSON.stringify(noneTicked) === JSON.stringify(['first 250 of 12,431', true]),
+      && page2 === name3(100) && allTicked === 'Read these (250)' && JSON.stringify(noneTicked) === JSON.stringify(['first 250 of 12,431', true, 'Read these (12,431)']),
     JSON.stringify([listCalls, onPage, firstLine, twoTicked, page2, allTicked, noneTicked]));
 
   tickIt(boxes()[5]);
@@ -464,6 +467,40 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
     listedWhileLeft === 'Reading1 handed · 1 left · 0 read · 0 failed' && listedWhenDone === undefined,
     JSON.stringify([listedWhileLeft, listedWhenDone]));
 
+  // B 861bc45ab: none ticked hands every match, and slowly (10,000 in 22 s) - said while handing; many ids not asked every beat
+  const hMount = doc.createElement('div');
+  doc.body.append(hMount);
+  let release = null;
+  const hRead = [];
+  const hLeft = [];
+  const hp = new Q.PickFilesPart(hMount, { doc,
+    onList: async () => LISTED,
+    onRead: async (line, pattern, body, n, started) => {
+      hRead.push([body, n]);
+      started();
+      await new Promise((r) => { release = r; });
+      return { ids: Array.from({ length: 6000 }, (_, i) => i), handed: n };
+    },
+    onLeft: async (ids) => { hLeft.push(ids.length); return { handed: 12431, left: 12000, read: 431, failed: 0 }; } });
+  hp.open(srcLines[2]);
+  walk(hMount).find((n) => n.tagName === 'INPUT' && String(n.className).includes('fi-input')).value = '2026-09/*.csv';
+  walk(hMount).find((n) => n.tagName === 'FORM').dispatch('submit', { preventDefault() {} });
+  await new Promise((r) => setTimeout(r, 0));
+  const hGo = () => byClass(hMount, 'fi-btn--primary')[0] || { textContent: '', disabled: null, dispatch() {} };
+  hGo().dispatch('click');
+  await new Promise((r) => setTimeout(r, 0));
+  const whileHanding = [Boolean(hGo().disabled), texts(hMount, 'fi-meta').includes(M.WORDS.handing(12431))];
+  if (release) release();
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  const afterHanded = texts(hMount, 'fi-meta').includes(M.WORDS.handing(12431));
+  await hp.tick();
+  ok('P16 none ticked: Read these asks for every match, no body - while handing, Read these off and «Handing N files to the '
+    + 'watcher»; past 5,000 handed ids their states are read once in 30 s, not on every beat',
+    JSON.stringify(hRead) === JSON.stringify([[null, 12431]]) && JSON.stringify(whileHanding) === JSON.stringify([true, true])
+      && afterHanded === false && JSON.stringify(hLeft) === JSON.stringify([6000]),
+    JSON.stringify([hRead, whileHanding, afterHanded, hLeft]));
+
   const typedBox = patternBox();
   typedBox.value = 'half typed';
   await sp.tick();
@@ -516,7 +553,7 @@ const MUTANTS = [
   { name: 'none before switch on said as 0', catches: ['M12'], file: 'model', mutate: swap('(before ? ` ·', '(before !== null ? ` ·') },
   { name: 'a page holds every listed file', catches: ['M13', 'P11'], file: 'model', mutate: swap('rows: (files || []).slice((at - 1) * PAGE_ROWS, at * PAGE_ROWS)', 'rows: files || []') },
   { name: 'past the limit said as the count', catches: ['M13'], file: 'model', mutate: swap('answer && answer.truncated ?', 'false ?') },
-  { name: 'Read these sends every path when none is ticked', catches: ['M13'], file: 'model', mutate: swap('ticked.size && ticked.size < listed.length ?', 'listed.length ?') },
+  { name: 'Read these sends every path when none is ticked', catches: ['M13'], file: 'model', mutate: swap('return ticked.size ? { paths:', 'return listed.length ? { paths:') },
   { name: 'a beat rebuilds the progress rows under the panel', catches: ['P10'], file: 'parts', mutate: swap('if (this.drawn && this.drawn.keys === keys) { this.update(lines, counted); return; }', '') },
   { name: 'the panel at the table\'s end, not under its source', catches: ['P10'], file: 'parts', mutate: swap('        body.append(under);\n', '        table.append(under);\n') },
   { name: 'the handed states never read again', catches: ['P12'], file: 'parts', mutate: swap('const got = await this.deps.onLeft(this.reading.ids);', 'const got = this.reading.counts;') },
@@ -529,6 +566,11 @@ const MUTANTS = [
   { name: 'a beat rebuilds the row buttons', catches: ['P10'], file: 'parts', mutate: swap('if (row.cancel !== line.cancel) { row.act', 'if (true) { row.act') },
   { name: 'a List keeps a read that came to its end', catches: ['P15'], file: 'parts', mutate: swap('ticked: new Set(), reading: going });', 'ticked: new Set() });') },
   { name: 'a List drops a read with files left', catches: ['P15'], file: 'parts', mutate: swap('ticked: new Set(), reading: going });', 'ticked: new Set(), reading: null });') },
+  { name: 'Read these counts the list, not every match', catches: ['M13', 'P11', 'P16'], file: 'model', mutate: swap('return matched === null ? ((answer && answer.files) || []).length : matched;', 'return ((answer && answer.files) || []).length;') },
+  { name: 'all ticked sends no body', catches: ['M13'], file: 'model', mutate: swap('return ticked.size ? { paths:', 'return ticked.size && ticked.size < listed.length ? { paths:') },
+  { name: 'Read these on while handing', catches: ['P16'], file: 'parts', mutate: swap('    else if (this.handing) setDisabledReason(go, WORDS.handing(this.handing));\n', '') },
+  { name: 'handing not said', catches: ['P16'], file: 'parts', mutate: swap('this.handing ? WORDS.handing(this.handing) : left > 0', 'left > 0') },
+  { name: 'many ids asked on every beat', catches: ['P16'], file: 'parts', mutate: swap('      if (r.ids.length > LEFT_MANY && Date.now() - r.askedAt < LEFT_MANY_EVERY_MS) { this.sayAge(); return; }\n', '') },
   { name: 'a quiet beat redraws the list', catches: ['P14'], file: 'parts', mutate: swap('    this.sayAge();\n  }\n\n  sayAge() {', '    this.drawBody();\n  }\n\n  sayAge() {') },
   { name: 'a redraw scrolls the list to its top', catches: ['P14'], file: 'parts', mutate: swap('    if (now) now.scrollTop = top;\n', '') },
   { name: 'a redraw drops the focus', catches: ['P14'], file: 'parts', mutate: swap('    if (back) back.focus();\n', '') },

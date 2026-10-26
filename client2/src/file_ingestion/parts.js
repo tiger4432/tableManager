@@ -5,7 +5,7 @@ import { ABSENT } from '../absent.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { isDoneStatus, isFailedStatus } from '../retry_verdict.js';
 import { localShort } from '../server_time.js';
-import { GROUPS, PROGRESS_COLUMNS, WORDS, folderLine, leftText, pickBody, pickKey, pickMeta, pickPage, readAfter, readAtText, readBefore, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
+import { GROUPS, LEFT_MANY, LEFT_MANY_EVERY_MS, PROGRESS_COLUMNS, WORDS, folderLine, leftText, pickBody, pickKey, pickMeta, pickPage, readAfter, readAtText, readBefore, readCount, reasonOf, resultCounts, resultText, rowsAddress, statusTone, statusWord, tookText } from './model.js';
 
 function maker(doc) {
   return (tag, cls, text) => {
@@ -165,7 +165,7 @@ export class PickFilesPart {
 
   /** Open under a source's line (none: closed). */
   open(line) {
-    Object.assign(this, { line, pattern: '', answer: null, listedAt: 0, refused: '', page: 1, ticked: new Set(), reading: null, busy: false });
+    Object.assign(this, { line, pattern: '', answer: null, listedAt: 0, refused: '', page: 1, ticked: new Set(), reading: null, busy: false, handing: 0 });
     if (!line) { this.mount.replaceChildren(); return; }
     const el = this.el;
     const form = el('form', 'fi-pick__form');
@@ -204,10 +204,13 @@ export class PickFilesPart {
 
   async read() {
     const body = pickBody(this.answer, this.ticked);
-    const handed = await this.deps.onRead(this.line, this.answer.pattern || this.pattern, body, body ? body.paths.length : this.answer.files.length);
-    if (!handed) return;
+    const n = readCount(this.answer, this.ticked);
+    // asked and said yes: handing many takes long (B: 10,000 in 22 s) - Read these off and said until the answer
+    const handed = await this.deps.onRead(this.line, this.answer.pattern || this.pattern, body, n, () => { this.handing = n; this.drawBody(); });
+    this.handing = 0;
+    if (!handed) { this.drawBody(); return; }
     const paths = body ? body.paths : this.answer.files.map((f) => f.path);
-    this.reading = { ids: handed.ids || [], handed: new Set(paths), now: new Map(), counts: { handed: handed.handed, left: handed.handed, read: 0, failed: 0 } };
+    this.reading = { ids: handed.ids || [], handed: new Set(paths), now: new Map(), counts: { handed: handed.handed, left: handed.handed, read: 0, failed: 0 }, askedAt: 0 };
     this.drawBody();
     await this.tick();
   }
@@ -216,6 +219,9 @@ export class PickFilesPart {
   async tick() {
     if (!this.line) return;
     if (this.reading && this.reading.counts.left > 0 && this.reading.ids.length) {
+      const r = this.reading;
+      if (r.ids.length > LEFT_MANY && Date.now() - r.askedAt < LEFT_MANY_EVERY_MS) { this.sayAge(); return; }
+      r.askedAt = Date.now();
       try {
         const got = await this.deps.onLeft(this.reading.ids);
         this.reading.counts = got;
@@ -317,15 +323,16 @@ export class PickFilesPart {
     const scroll = el('div', 'fi-scroll fi-pick__list');
     scroll.append(table);
     const acts = el('div', 'fi-pick__acts');
-    const n = this.ticked.size || files.length;
+    const n = readCount(this.answer, this.ticked);
     const go = el('button', 'fi-btn fi-btn--primary', WORDS.readThese(n));
     go.type = 'button';
     go.dataset.pick = 'read';
     const left = this.reading ? this.reading.counts.left : 0;
     if (!files.length) go.disabled = true;
+    else if (this.handing) setDisabledReason(go, WORDS.handing(this.handing));
     else if (left > 0) setDisabledReason(go, WORDS.readingWait(left));
     go.addEventListener('click', () => this.read());
-    acts.append(go, el('span', 'fi-meta', left > 0 ? WORDS.readingWait(left) : this.ticked.size ? '' : WORDS.noneTicked(files.length)));
+    acts.append(go, el('span', 'fi-meta', this.handing ? WORDS.handing(this.handing) : left > 0 ? WORDS.readingWait(left) : this.ticked.size ? '' : WORDS.noneTicked(n)));
     const out = [meta, scroll, acts];
     if (this.reading) {
       const line = el('div', 'fi-pick__reading');

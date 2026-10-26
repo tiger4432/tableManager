@@ -26,7 +26,8 @@ export const WORDS = Object.freeze({
   pickFiles: 'Pick files', pattern: 'Pattern', list: 'List', listing: 'Listing', prev: 'Prev', next: 'Next', reading: 'Reading', readDone: 'Read',
   pickHeads: ['Path', 'Modified', 'Read before', 'After'], tickAll: 'Tick every listed file', tickOne: (name) => `Tick ${name}`,
   listedAgo: (s) => `listed ${count(Math.round(s))} s ago`, pageOf: (i, n) => `page ${count(i)} of ${count(n)}`,
-  readThese: (n) => `Read these (${count(n)})`, noneTicked: (n) => `nothing ticked = all ${count(n)} listed`,
+  readThese: (n) => `Read these (${count(n)})`, noneTicked: (n) => `nothing ticked = all ${count(n)} matched`,
+  handing: (n) => `Handing ${count(n)} file${n === 1 ? '' : 's'} to the watcher`,
   readTheseAsk: (n, source) => `Read ${count(n)} file${n === 1 ? '' : 's'} under ${source} now, read before or not?`,
   readingWait: (left) => `${count(left)} left - wait for them, or Cancel waiting re-reads`,
   heads: ['File · folder', 'Status', 'Result', 'Read at', 'Took'],
@@ -224,11 +225,23 @@ export function pickMeta(answer, ticked) {
   return ticked ? `${head} · ${count(ticked)} ticked` : head;
 }
 
-/** Read these: the ticked paths, or none - the whole list (B: no body reads every listed file). */
+/** Read these: the ticked paths, or none - every file the pattern takes, past the list's 5,000 too (B 861bc45ab). */
 export function pickBody(answer, ticked) {
   const listed = (answer && answer.files) || [];
-  return ticked.size && ticked.size < listed.length ? { paths: listed.map((f) => f.path).filter((p) => ticked.has(p)) } : null;
+  return ticked.size ? { paths: listed.map((f) => f.path).filter((p) => ticked.has(p)) } : null;
 }
+
+/** How many Read these hands - the one count its button, its question and its call say: the ticked, or every match. */
+export function readCount(answer, ticked) {
+  if (ticked.size) return ticked.size;
+  const matched = numberOr(answer && answer.matched);
+  return matched === null ? ((answer && answer.files) || []).length : matched;
+}
+
+/** The handed files' states are read on the page's beat; past this many ids, once in this long (lead 10-26 ㄱ, until
+ *  read-now/left counts by one hand-off id). */
+export const LEFT_MANY = 5000;
+export const LEFT_MANY_EVERY_MS = 30000;
 
 /** A listed file's state when it was listed (owner 10-26 «이미 읽은 거 여부»): read - «read · <when>»; else the state's word.
  *  -> {status, words} - the status for the pill's tone. */

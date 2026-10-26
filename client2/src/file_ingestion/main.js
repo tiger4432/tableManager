@@ -47,8 +47,9 @@ export function seatFileIngestionPage(doc = document) {
   const pick = new PickFilesPart(doc.createElement('div'), {
     doc,
     onList: (line, pattern) => act(`/admin/file-ingestion/glob?${pickQuery(line, pattern)}`, true, { method: 'GET' }),
-    onRead: async (line, pattern, body, n) => {
+    onRead: async (line, pattern, body, n, started) => {
       if (!doc.defaultView.confirm(WORDS.readTheseAsk(n, line.source))) return null;
+      started();
       try {
         const done = await act(`/admin/file-ingestion/read-now?${pickQuery(line, pattern)}`, true, body ? { send: body } : {});
         showToast(done.message, 'success');

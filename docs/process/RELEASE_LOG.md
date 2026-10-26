@@ -627,7 +627,7 @@
 - **Read before** — 목록을 받은 때의 상태. 읽었으면 «read · <시각>», 아니면 Before switch on · Not read · Failed 같은 서버 상태.
 - **After** — 넘긴 파일만. 화면 박동마다 제자리에서 Pending retry → Success / Failed(실패면 사유 한 줄). 넘기지 않은 줄은 «—». 밑 줄 «Reading 3 handed · 1 left · 2 read · 0 failed», 다 끝나면 «Read». 남은 동안 Read these 는 꺼짐. 끝난 뒤 새로 List 하면 그 줄은 사라집니다. 넘긴 파일이 5,000 개를 넘으면 이 상태는 30 초에 한 번 읽습니다.
 - **거절** — 빈 패턴 · `..` · 절대 경로는 서버 문장이 칸 밑에. 와처 프로세스가 없으면 409 문장이 토스트로.
-- **잰 것(이 박스, sqlite, 실제 와처 + API 가 이 빌드를 서빙)** — 낡은 5 · 새 2 에서 `old/*.csv` 의 x1~x3 체크 → Read these → 셋 Success(표에 행 셋). 이미 읽은 `new/n1.csv` 다시 → Success(읽기 기록 둘). 켜기 전 6,000 개 `big/*.csv`: 답 + 100 줄 그리기 334~444 ms(세 번). 박동 · 체크 뒤에도 목록 스크롤과 포커스가 그대로.
+- **잰 것(이 박스, sqlite, 실제 와처 + API 가 이 빌드를 서빙)** — 낡은 5 · 새 2 에서 `old/*.csv` 의 x1~x3 체크 → Read these → 셋 Success(표에 행 셋). 이미 읽은 `new/n1.csv` 다시 → Success(읽기 기록 둘). 켜기 전 6,000 개 `big/*.csv`: 답 + 100 줄 그리기 334~444 ms(세 번). 박동 · 체크 뒤에도 목록 스크롤과 포커스가 그대로. 861bc45ab 위에서 체크 없이 `big/*.csv` → «Read these (6,000)» → 넘기는 14.5 s 동안 «Handing 6,000 files to the watcher», 넘긴 뒤 상태는 30 초마다.
 - **필요한 조건** — 서버 861bc45ab 이후 · git pull · 화면 새로 고침.
 - **자세히** — `client2/src/file_ingestion/parts.js` 의 `PickFilesPart` · `ProgressPart`, `model.js` 의 `pickQuery` · `pickBody` · `readBefore` · `readAfter`. 시험 file_ingestion_page_harness M13 · M14 · P10~P15, 화면 검사기 «Pick files listed» · «pick files» · 새 규칙 «cover»(버튼 · 상자가 옆 글 위에 놓이면 빨강).
 

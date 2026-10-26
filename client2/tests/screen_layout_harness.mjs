@@ -831,7 +831,7 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule:
   const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
   return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
 })()` });
-// owner 10-26: Pick files under the external source - its panel right under its row, a page of 100 of the 5,000 listed
+// owner 10-26: Pick files under the external source - its panel right under its row, a page of 100 of the 5,000 listed, none ticked reads all 12,431 matched (B 861bc45ab)
 // (of 12,431 matched), Read these the whole list while none is ticked.
 CELLS.push({ entry: 'file_ingestion.html', after: 'Pick files listed', rule: 'pick files', at: 'fi-progress', expr: `(() => {
   const rows = [...document.querySelectorAll('#fi-progress tr[data-table]')];
@@ -842,7 +842,7 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Pick files listed', rule: 'pi
   const meta = [...under.querySelectorAll('.fi-meta')].map((n) => n.textContent);
   if (!meta.includes('first 5,000 of 12,431') || !meta.includes('page 1 of 50')) return 'its lines say ' + JSON.stringify(meta);
   const go = under.querySelector('.fi-btn--primary');
-  return go && go.textContent === 'Read these (5,000)' ? null : 'Read these says «' + (go && go.textContent) + '»';
+  return go && go.textContent === 'Read these (12,431)' ? null : 'Read these says «' + (go && go.textContent) + '»';
 })()` });
 // The row checkboxes and the header's select-all at the grid's left edge with the first data column hidden (owner 10-22).
 CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'select all at the left', at: 'ag-header', expr: `(() => {
