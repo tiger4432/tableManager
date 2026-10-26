@@ -13,7 +13,7 @@ CALLS things comes from the table. Neither is a literal in this file.
 🔴 THE TWO ARE CHECKED AGAINST EACH OTHER. A question the declaration asks and the table has not named is asked
 in its own words, «<predicate> · <type> (no name)», and counted - owner 10-27 «안 막고 날 낱말로» replaced S1's
 refusal, so a predicate the operator adds never stops the walk routes. A table row whose predicate the
-declaration does not have is still refused. The table is the operator's `config/gap_names.json`, else the
+declaration does not have is left unused and counted. The table is the operator's `config/gap_names.json`, else the
 tracked sample.
 """
 from __future__ import annotations
@@ -44,15 +44,6 @@ def names_path():
 
 from declaration_names import bare_name as _bare_name
 from .schema import event_time_sql
-
-
-class GapTableMismatch(ValueError):
-    """The declaration and the name table disagree. Raised instead of guessing.
-
-    The brief's S1: "코드에서 이름을 지어내지 마십시오". A detector that filled the gap
-    itself would answer confidently and wrongly, and the wrong answer looks exactly like
-    the right one.
-    """
 
 
 #: `of_kind@1` -> `of_kind`. 🔴 이 번역의 «본체»는 `declaration_names` 에 있다 —
@@ -105,7 +96,7 @@ def vacuous_types(declaration):
             for name in names}
 
 
-def questions(declaration, names=None):
+def questions(declaration, names=None, unused=None):
     """Every gap this declaration asks, named by the table. Pure - no database.
 
     Each question carries `form`, the `type` it is about, the predicates that make it, and
@@ -118,21 +109,23 @@ def questions(declaration, names=None):
     by_bare = {_bare(name): name for name in vocabulary}
     vacuous = {(_bare(p), t) for p, t in vacuous_types(declaration)}
 
-    def declared(bare_predicate, where):
-        full = by_bare.get(bare_predicate)
-        if full is None:
-            raise GapTableMismatch(
-                f"{where}: the table names predicate '{bare_predicate}', which the "
-                f"declaration does not have. Either the declaration retired it and the "
-                f"table still asks for it, or it is a typo - both make a question that "
-                f"can never be answered.")
+    def declared(row, *predicates):
+        """The declaration's names of a table row's predicates - None when this world lacks one: the row is left
+        unused and counted in `unused`, not refused (owner 10-27 «안 막음» - worlds differ in vocabulary)."""
+        full = [by_bare.get(p) for p in predicates]
+        if None in full:
+            if unused is not None:
+                unused.append(row)
+            return None
         return full
 
     out = []
     for row in names.get("pairs", []):
         entity_type = row["type"]
-        side_a = [declared(p, f"pairs[{entity_type}].side_a") for p in row["side_a"]]
-        side_b = [declared(p, f"pairs[{entity_type}].side_b") for p in row["side_b"]]
+        both = declared(row, *row["side_a"], *row["side_b"])
+        if both is None:
+            continue
+        side_a, side_b = both[:len(row["side_a"])], both[len(row["side_a"]):]
         out.append({"form": "pair", "type": entity_type,
                     "present": side_a, "absent": side_b,
                     "name": row["a_only"], "meaning": row["a_only_meaning"],
@@ -143,14 +136,18 @@ def questions(declaration, names=None):
                     "vacuous": False})
 
     for row in names.get("subject_sides", []):
-        predicate = declared(row["predicate"], "subject_sides")
+        predicate = (declared(row, row["predicate"]) or [None])[0]
+        if predicate is None:
+            continue
         out.append({"form": "subject_side", "type": row["type"],
                     "present": [], "absent": [predicate],
                     "name": row["name"], "action": row["action"],
                     "vacuous": (row["predicate"], row["type"]) in vacuous})
 
     for row in names.get("object_sides", []):
-        predicate = declared(row["predicate"], "object_sides")
+        predicate = (declared(row, row["predicate"]) or [None])[0]
+        if predicate is None:
+            continue
         out.append({"form": "object_side", "type": row["type"],
                     "present": [], "absent": [predicate],
                     "name": row["name"], "action": row["action"],

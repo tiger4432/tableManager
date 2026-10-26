@@ -67,13 +67,14 @@ def test_the_operators_config_table_wins_and_the_shipped_sample_stands_in_withou
     assert gaps.load_names() == {"pairs": [], "subject_sides": [], "object_sides": []}
 
 
-def test_a_table_row_whose_predicate_the_declaration_retired_is_refused_too():
-    """The other way round: a question that can never be answered, asked forever."""
+def test_a_table_row_whose_predicate_this_world_lacks_is_left_unused_not_refused():
+    """The other way round: a row this world's declaration cannot answer is not asked, and is counted (owner 10-27
+    «안 막음» - worlds differ in vocabulary)."""
     declared = declaration({"x@1": edge(["a@1"], ["b@1"])})
-    with pytest.raises(gaps.GapTableMismatch) as caught:
-        gaps.questions(declared, names=NAMES)
-    assert "'y'" in str(caught.value)
-    assert "does not have" in str(caught.value)
+    unused = []
+    asked = gaps.questions(declared, names=NAMES, unused=unused)
+    assert unused and all("y" in str(row) for row in unused)
+    assert not any("y@1" in item["absent"] or "y@1" in item["present"] for item in asked)
 
 
 def test_a_chain_has_two_ends_and_neither_of_them_is_a_gap():
@@ -134,10 +135,7 @@ def test_the_live_table_and_the_live_declaration_are_checked_against_each_other(
     declared = ledger_config.load() or {}
     if not declared:
         pytest.skip("no live declaration to check the table against")
-    try:
-        produced = gaps.questions(declared, names=names)
-    except gaps.GapTableMismatch as exc:
-        pytest.skip(f"table and declaration disagree, which is reported: {exc}")
+    produced = gaps.questions(declared, names=names)
     assert {item["name"] for item in produced}, "every question carries the spec's name"
     for item in produced:
         assert item["absent"], "a gap is always about a predicate that is not there"

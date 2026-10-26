@@ -1124,7 +1124,7 @@ def ledger_gap_catalogue(name: str = Query(None),
     🔴 이름은 여기서 짓지 «않습니다». `docs/spec/APPLICATION_GAP_SPEC.md` 가 정본이고
     `config/gap_names.json`(없으면 sample) 이 그 기계 판형입니다. 표가 이름을 안 준 물음은
     «<술어> · <타입> (no name)» 날 낱말로 답하고 그 수를 `unnamed` 칸에 둡니다 (소유자 10-27
-    «안 막고 날 낱말로»). 표가 선언에 없는 술어를 물으면 여전히 503 입니다.
+    «안 막고 날 낱말로»). 표의 술어가 이 세계 선언에 없으면 그 줄은 안 쓰고 `unused` 에 셉니다.
 
     🔴 수마다 «어떤 수인지»가 붙습니다. 표본은 「가장 오래된 것들」이 «아니라고» 말하고,
     성립하지 않는 질문은 «0이 아니라» 수를 안 냅니다.
@@ -1146,20 +1146,16 @@ def ledger_gap_catalogue(name: str = Query(None),
         from database import crud
 
         if crud.is_blank_value(name):
-            asked = _gaps.questions(declared)
+            unused = []
+            asked = _gaps.questions(declared, unused=unused)
             return {"mode": "names", "count": len(asked), "gaps": asked,
-                    "unnamed": sum(1 for item in asked if item.get("unnamed"))}
+                    "unnamed": sum(1 for item in asked if item.get("unnamed")), "unused": len(unused)}
         from database.database import engine
         return {"mode": "measured", "count": 1,
                 "gaps": _gaps.measure(engine, declared, only=name,
                                       relation=schema.walk_relation(_worlds(world)))}
     except _gaps.GapQuestionUnknown as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except _gaps.GapTableMismatch as exc:
-        # 503, not 500: the declaration and the spec disagree, which is a DEPLOYMENT fact
-        # somebody has to fix in one of the two - not a failure of this request.
-        raise HTTPException(status_code=503, detail={
-            "reason": "gap_table_mismatch", "message": str(exc)})
 
 
 def _row_census_by_source(world=None):

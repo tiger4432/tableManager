@@ -105,6 +105,22 @@ def test_the_routes_that_answered_with_a_version_answer_bare(config):
     assert declaration["entities"] and gaps["gaps"]                     # canary: they answered
     assert not SUFFIX.search(json.dumps(declaration, default=str))
     assert not SUFFIX.search(json.dumps(gaps, default=str))
+    # the sample's modeling vocabulary is not named by the table: asked in its own words (owner 10-27)
+    unnamed = [g["name"] for g in gaps["gaps"] if g.get("unnamed")]
+    assert gaps["unnamed"] == len(unnamed) > 0 and all(n.endswith(" (no name)") for n in unnamed)
+    assert "acts_on · product_structure (no name)" in unnamed
+    assert gaps["unused"] == 0
+
+
+def test_a_gap_row_whose_predicate_this_world_lacks_is_left_unused_not_refused(config):
+    from ledger import gaps as gap_table, trace_router
+
+    names = gap_table.load_names()
+    names["subject_sides"].append({"predicate": "no_such_predicate", "type": "wafer", "name": "x", "action": "x"})
+    (config / "gap_names.json").write_text(json.dumps(names, ensure_ascii=False), encoding="utf-8")
+    gaps = trace_router.ledger_gap_catalogue(name=None, world=None)
+    assert gaps["unused"] == 1 and gaps["gaps"]
+    assert not any(g["name"] == "x" for g in gaps["gaps"])
 
 
 def test_two_worlds_one_old_file_and_one_bare_walk_one_name_each(config):
