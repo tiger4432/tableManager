@@ -2516,6 +2516,8 @@ const DRIVE = {
     // the fn picker, then + and record on a third item - and a flat rule; both with target_columns on the first screen.
     // The rules are the captured take_record_probe and dt_log_to_dt_map.
     ['Chain, a flat rule', async (c) => {
+      // the rule as recorded: «HTML pasted» below leaves a draft at the size before, and a draft held asks before a switch
+      await evaluate(c, "Object.keys(localStorage).filter((k) => /^assy\\.draft\\..*\\.dt_log_to_dt_map$/.test(k)).forEach((k) => localStorage.removeItem(k)); true");
       await evaluate(c, "location.hash = '#chain'; true");
       await until(c, "!!document.querySelector('select.chain-rule-picker')");
       await choose(c, 'select.chain-rule-picker', [0, "x.value === 'dt_log_to_dt_map'"]);
