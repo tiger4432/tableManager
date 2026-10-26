@@ -6,7 +6,7 @@
 > 돌릴 것   git pull -> 런처 재기동. 지금 설치는 config/gap_names.json 이 없으니 전과 같은 표(sample)를 읽음
 > 볼 곳    GET /api/ledger/gaps -> 200, 답의 «unnamed» 수 · 이름 칸이 «<술어> · <타입> (no name)» 인 줄
 > 뜻      unnamed > 0 = 선언에 이름 안 붙은 결측 물음이 있음 -> 이름을 붙이려면 sample 을 config/gap_names.json 으로 복사해 그 줄을 적음
->          여전히 503 이면 표가 «선언에 없는 술어»를 묻는 것 — config 표에서 그 줄을 지우거나 선언에 술어를 둠
+>          «unused» > 0 = 표의 줄이 이 세계 선언에 없는 술어를 물어 안 쓰인 것 — 503 은 이제 안 남 (소유자 10-27)
 > 되돌리기  git revert cd210579f -> 런처 재기동
 > ```
 
