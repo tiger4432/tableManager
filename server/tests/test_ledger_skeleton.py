@@ -44,6 +44,7 @@ ANCHORS = {
     ("_validate_vocabulary", "f'{path}.object'"): "vocabulary.*.object",
     ("_validate_vocabulary", "qpath"): "vocabulary.*.object.qualifiers",
     ("_validate_entities", "path"): "entities.*",
+    ("resolve_imports", "here"): "imports.*",
     # A reference composes an edge no atom backs, so it is spelled `from`/`edge`/`to`
     # rather than the mapping's `subject`/`predicate`/`target`. The validator has held
     # these three sites since the grammar landed; the skeleton had no node for them, so

@@ -1187,7 +1187,7 @@ def test_a_type_one_world_imports_is_one_node_in_a_walk_of_both(world):
     _seed(world)
     mine = _only(CHANGED)
     mine["entities"]["recipe@1"] = {"keys": ["recipe_name"]}
-    mine["imports"] = {C: ["recipe"]}
+    mine["imports"] = {C: {"entities": ["recipe"]}}
     _make(world, C, _only(CHANGED), CHANGED)
     _make(world, A, mine, CHANGED)
     with world["engine"].connect() as conn:

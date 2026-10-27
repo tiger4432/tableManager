@@ -73,7 +73,7 @@ LOGICAL_SECTIONS = (
 #: only the first was asked for.
 OPTIONAL_SECTIONS = ("virtual_joins",)
 
-#: `imports` (lead 10-27 B-4, owner «키를 한 곳에서»): {"<world>": ["<entity type>", ...]} - entity types another
+#: `imports` (lead 10-27 B-4, owner «키를 한 곳에서»): {"<world>": {"entities": ["<entity type>", ...]}} - entity types another
 #: world declares, used as that world writes them, so a type's nodes are one across worlds (`resolve_imports`).
 #: Optional at the root but NOT filled like the sections above: a bundle that names no imports serializes - and
 #: hashes - as it did.
@@ -1072,16 +1072,21 @@ def resolve_imports(value: Any, imported: Mapping[str, Any] | None):
     if not imports:
         return value, (), ()
     path = f"bundle.{IMPORTS}"
-    if not (isinstance(imports, Mapping) and all(
-            isinstance(world, str) and isinstance(types, list)
-            and all(isinstance(name, str) and name.strip() for name in types)
-            for world, types in imports.items())):
-        return value, (), (LedgerSetupValidationError(
-            "invalid_type", path, '{"<world>": ["<entity type>", ...]} - got %r' % (imports,)),)
+    if not isinstance(imports, Mapping):
+        return value, (), (LedgerSetupValidationError("invalid_type", path, "must be an object"),)
+    problems = _Problems()
+    for world, declared in imports.items():
+        here = f"{path}.{world}"
+        if problems.exact(declared, here, required=("entities",)) and not (
+                isinstance(declared.get("entities"), list)
+                and all(isinstance(name, str) and name.strip() for name in declared["entities"])):
+            problems.add("invalid_type", f"{here}.entities", '["<entity type>", ...]')
+    if problems.items:
+        return value, (), problems.finish()
     entities = dict(value.get("entities") or {}) if isinstance(value.get("entities"), Mapping) else {}
     notices, refusals = [], []
-    for world, types in imports.items():
-        for wanted in types:
+    for world, declared in imports.items():
+        for wanted in declared["entities"]:
             mine = [name for name in entities if bare_name(name) == bare_name(wanted)]
             if imported is None:
                 if not mine:
@@ -1116,9 +1121,10 @@ def _declared_where(world, wanted, imported, path):
                 "imports_world_unknown", path,
                 f"imports names the world {chain[-1]!r} - its declaration was not read "
                 f"(read: {', '.join(sorted(imported)) or 'none'})")
-        onward = [other for other, types in (written.get(IMPORTS) or {}).items()
-                  if isinstance(types, list) and any(
-                      isinstance(name, str) and bare_name(name) == bare_name(wanted) for name in types)]
+        onward = [other for other, declared in (written.get(IMPORTS) or {}).items()
+                  if isinstance(declared, Mapping) and isinstance(declared.get("entities"), list) and any(
+                      isinstance(name, str) and bare_name(name) == bare_name(wanted)
+                      for name in declared["entities"])]
         if not onward:
             break
         if onward[0] in chain:

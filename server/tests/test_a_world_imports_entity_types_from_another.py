@@ -65,7 +65,7 @@ def fixture_config(tmp_path, monkeypatch):
     config_watcher.forget_held()
     # A imports tool from B; B declares it with two keys
     _declare(B, _with(**{"tool@1": {"keys": ["tool", "site"]}}))
-    _declare(A, _with({B: ["tool"]}))
+    _declare(A, _with({B: {"entities": ["tool"]}}))
     yield config
     config_watcher.forget_held()
 
@@ -83,11 +83,11 @@ def _codes(issues):
 
 def test_an_imported_type_is_the_other_worlds_and_a_local_spelling_gives_way_with_a_notice(config):
     imported = setup.live_imported()
-    resolved, notices, refused = setup_bundle.resolve_imports(_with({B: ["tool"]}), imported)
+    resolved, notices, refused = setup_bundle.resolve_imports(_with({B: {"entities": ["tool"]}}), imported)
     assert (_tool_keys(resolved["entities"]), notices, refused) == (["tool", "site"], (), ())
-    assert resolved["imports"] == {B: ["tool"]}, "the section stays as written"
+    assert resolved["imports"] == {B: {"entities": ["tool"]}}, "the section stays as written"
 
-    local = _with({B: ["tool"]}, **{"tool@1": {"keys": ["tool"]}})
+    local = _with({B: {"entities": ["tool"]}}, **{"tool@1": {"keys": ["tool"]}})
     resolved, notices, refused = setup_bundle.resolve_imports(local, imported)
     assert _tool_keys(resolved["entities"]) == ["tool", "site"] and not refused
     assert notices == ("tool is %s's - this world writes it differently, and that is not used" % B,)
@@ -95,33 +95,36 @@ def test_an_imported_type_is_the_other_worlds_and_a_local_spelling_gives_way_wit
 
 def test_an_import_of_an_import_is_followed_to_the_world_that_declares_it(config):
     _declare(C, _with(**{"tool@1": {"keys": ["tool", "line"]}}))
-    _declare(B, _with({C: ["tool"]}, **{"tool@1": {"keys": ["tool", "site"]}}))
-    resolved, notices, refused = setup_bundle.resolve_imports(_with({B: ["tool"]}), setup.live_imported())
+    _declare(B, _with({C: {"entities": ["tool"]}}, **{"tool@1": {"keys": ["tool", "site"]}}))
+    resolved, notices, refused = setup_bundle.resolve_imports(_with({B: {"entities": ["tool"]}}), setup.live_imported())
     assert (_tool_keys(resolved["entities"]), refused) == (["tool", "line"], ())
 
 
 def test_a_cycle_an_unknown_world_an_undeclared_type_and_no_imported_are_refused_by_name(config):
-    _declare(B, _with({A: ["tool"]}))
-    (cycle,) = setup_bundle.resolve_imports(_with({B: ["tool"]}), setup.live_imported())[2]
+    _declare(B, _with({A: {"entities": ["tool"]}}))
+    (cycle,) = setup_bundle.resolve_imports(_with({B: {"entities": ["tool"]}}), setup.live_imported())[2]
     assert cycle.code == "imports_cycle" and "%s -> %s -> %s" % (B, A, B) in cycle.message
 
-    (unknown,) = setup_bundle.resolve_imports(_with({"nowhere": ["tool"]}), setup.live_imported())[2]
+    (unknown,) = setup_bundle.resolve_imports(_with({"nowhere": {"entities": ["tool"]}}), setup.live_imported())[2]
     assert unknown.code == "imports_world_unknown" and "'nowhere'" in unknown.message
 
-    (undeclared,) = setup_bundle.resolve_imports(_with({C: ["tool"]}), {C: {"entities": {"lot@1": {}}}})[2]
+    (undeclared,) = setup_bundle.resolve_imports(_with({C: {"entities": ["tool"]}}), {C: {"entities": {"lot@1": {}}}})[2]
     assert undeclared.code == "imports_type_unknown" and "it declares: lot" in undeclared.message
 
-    (unread,) = setup_bundle.resolve_imports(_with({B: ["tool"]}), None)[2]
+    (unread,) = setup_bundle.resolve_imports(_with({B: {"entities": ["tool"]}}), None)[2]
     assert unread.code == "imports_unresolved" and "imported=ledger.setup.live_imported()" in unread.message
-    (shape,) = setup_bundle.resolve_imports(_with({B: "tool"}), {})[2]
-    assert (shape.code, shape.path) == ("invalid_type", "bundle.imports")
+    shapes = [setup_bundle.resolve_imports(_with(wrong), {})[2] for wrong in (
+        {B: ["tool"]}, {B: {"entities": "tool"}}, {B: {"entities": ["tool"], "vocabulary": []}})]
+    assert [[(item.code, item.path) for item in said] for said in shapes] == [
+        [("invalid_type", "bundle.imports.%s" % B)], [("invalid_type", "bundle.imports.%s.entities" % B)],
+        [("unknown_field", "bundle.imports.%s.vocabulary" % B)]]
 
 
 def test_without_imported_a_resolved_bundle_passes_and_a_raw_one_is_refused(config):
-    resolved = setup_bundle.resolve_imports(_with({B: ["tool"]}), setup.live_imported())[0]
+    resolved = setup_bundle.resolve_imports(_with({B: {"entities": ["tool"]}}), setup.live_imported())[0]
     catalog = dict(setup.live_physical_catalog())
     assert setup_bundle.validate_bundle_errors(resolved, catalog=catalog) == ()
-    assert _codes(setup_bundle.validate_bundle_errors(_with({B: ["tool"]}), catalog=catalog)) == [
+    assert _codes(setup_bundle.validate_bundle_errors(_with({B: {"entities": ["tool"]}}), catalog=catalog)) == [
         "imports_unresolved"]
 
 
@@ -130,13 +133,13 @@ def test_without_imported_a_resolved_bundle_passes_and_a_raw_one_is_refused(conf
 def test_config_load_reads_the_imported_type_and_says_a_local_spelling(config):
     loaded = ledger_config.load(schema.world_names(A).declaration_path)
     assert _tool_keys(loaded["entities"]) == ["tool", "site"] and "__notices__" not in loaded
-    _declare(A, _with({B: ["tool"]}, **{"tool@1": {"keys": ["tool"]}}))
+    _declare(A, _with({B: {"entities": ["tool"]}}, **{"tool@1": {"keys": ["tool"]}}))
     loaded = ledger_config.load(schema.world_names(A).declaration_path)
     assert loaded["__notices__"] == ["tool is %s's - this world writes it differently, and that is not used" % B]
 
 
 def test_config_load_with_one_broken_source_still_reads_the_imported_type(config):
-    document = _with({B: ["tool"]})
+    document = _with({B: {"entities": ["tool"]}})
     document["sources"][CHANGED]["relation"] = "no_such_relation"
     _declare(A, document)
     loaded = ledger_config.load(schema.world_names(A).declaration_path)
@@ -146,7 +149,7 @@ def test_config_load_with_one_broken_source_still_reads_the_imported_type(config
 def test_the_world_list_says_what_an_import_overrides(config):
     from ledger_api import ontology_config_explorer_router as explorer_router
 
-    _declare(A, _with({B: ["tool"]}, **{"tool@1": {"keys": ["tool"]}}))
+    _declare(A, _with({B: {"entities": ["tool"]}}, **{"tool@1": {"keys": ["tool"]}}))
     notices = explorer_router.list_worlds()["notices"]
     assert notices == ["%s: tool is %s's - this world writes it differently, and that is not used" % (A, B)]
 
@@ -174,7 +177,7 @@ def test_the_compiled_setup_holds_the_imported_type_and_follows_a_change_to_it_a
 
 
 def test_load_setup_with_one_broken_source_isolates_it_and_keeps_the_imported_type(config):
-    document = _with({B: ["tool"]})
+    document = _with({B: {"entities": ["tool"]}})
     document["sources"][CHANGED]["relation"] = "no_such_relation"
     _declare(A, document)
     loaded = setup.load_setup(_root(A))
@@ -183,7 +186,7 @@ def test_load_setup_with_one_broken_source_isolates_it_and_keeps_the_imported_ty
 
 
 def test_a_setup_from_a_document_in_hand_reads_the_imported_type(config):
-    built = setup.setup_from_document(_with({B: ["tool"]}), config_root=_root(A))
+    built = setup.setup_from_document(_with({B: {"entities": ["tool"]}}), config_root=_root(A))
     assert _tool_keys(built.bundle.section("entities")) == ["tool", "site"]
 
 
@@ -200,7 +203,7 @@ def _service(world, tmp_path):
 
 
 def test_the_screen_shows_the_imported_type_and_refuses_only_the_broken_source(config, tmp_path):
-    document = _with({B: ["tool"]})
+    document = _with({B: {"entities": ["tool"]}})
     document["sources"][CHANGED]["relation"] = "no_such_relation"
     _declare(A, document)
     service = _service(A, tmp_path)
@@ -212,7 +215,7 @@ def test_the_screen_shows_the_imported_type_and_refuses_only_the_broken_source(c
 def test_a_screen_whose_every_source_is_refused_still_reads_the_imported_type(config, tmp_path, monkeypatch):
     from ledger import config_explorer_service
 
-    document = _with({B: ["tool"]})
+    document = _with({B: {"entities": ["tool"]}})
     document["sources"] = {CHANGED: dict(document["sources"][CHANGED], relation="no_such_relation")}
     _declare(A, document)
     service, asked = _service(A, tmp_path), []
@@ -229,13 +232,13 @@ def test_a_deletion_preview_of_a_world_that_imports_names_the_source_that_would_
     service = _service(A, tmp_path)
     service.active()
     answer = service.deletion_preview(targets=["predicate|processed_with"])
-    assert CHANGED in [item["canonical_id"] for item in answer["unread_after"]], answer["unread_after"]
+    assert [item["key"] for item in answer["unread_after"]] == ["source_plan|%s" % CHANGED], answer["unread_after"]
 
 
 def test_a_world_copied_from_one_that_imports_starts(config, tmp_path):
     service = _service(C, tmp_path)
     answer = service.bootstrap_config(seed_root=_root(A))
-    assert json.loads(Path(answer["created"]).read_text(encoding="utf-8"))["imports"] == {B: ["tool"]}
+    assert json.loads(Path(answer["created"]).read_text(encoding="utf-8"))["imports"] == {B: {"entities": ["tool"]}}
 
 
 def test_the_authoring_plan_of_a_world_that_imports_carries_no_unread_import(config, tmp_path):
@@ -261,7 +264,7 @@ def test_a_draft_of_a_world_that_imports_previews_valid_and_its_activation_keeps
     reviewed = service.review_draft(draft["draft_id"], expected_revision=saved["revision"])
     service.activate_draft(draft["draft_id"], expected_revision=reviewed["revision"], reload_callback=lambda: None)
     written = json.loads(Path(schema.world_names(A).declaration_path).read_text(encoding="utf-8"))
-    assert written["imports"] == {B: ["tool"]} and "tool@1" not in written["entities"] and "tool" not in written[
+    assert written["imports"] == {B: {"entities": ["tool"]}} and "tool@1" not in written["entities"] and "tool" not in written[
         "entities"], "the file keeps what was written - the imported type is not copied in"
 
 
@@ -289,7 +292,7 @@ def test_the_walks_key_order_for_an_imported_type_is_the_other_worlds_and_follow
 def test_a_script_that_validates_a_file_by_hand_refuses_an_import_it_did_not_read(config):
     """`scripts/migrate_ledger_slim_sources.py` passes no `imported`: a declaration that imports is refused by name
     there rather than judged without the types it names."""
-    issues = setup_bundle.validate_bundle_errors(_with({B: ["tool"]}), catalog=dict(setup.live_physical_catalog()))
+    issues = setup_bundle.validate_bundle_errors(_with({B: {"entities": ["tool"]}}), catalog=dict(setup.live_physical_catalog()))
     assert _codes(issues) == ["imports_unresolved"]
 
 
@@ -298,7 +301,7 @@ def test_the_restamp_scripts_tolerant_read_names_no_imported_and_still_drops_onl
     seat builds it, as `load_setup` does."""
     from ledger.config_explorer import load_resolved_setup
 
-    document = _with({B: ["tool"]})
+    document = _with({B: {"entities": ["tool"]}})
     document["sources"] = {CHANGED: dict(document["sources"][CHANGED], relation="no_such_relation"),
                            "lot_slot_wafer": document["sources"]["lot_slot_wafer"]}
     _declare(A, document)
@@ -309,3 +312,52 @@ def test_the_restamp_scripts_tolerant_read_names_no_imported_and_still_drops_onl
             doc, config_root=root, catalog=catalog, **more))
     assert ([key.partition("|")[2] for key in resolved["invalid"]], resolved["config_level"]) == ([CHANGED], [])
     assert _tool_keys(resolved["setup"].bundle.section("entities")) == ["tool", "site"]
+
+
+# ------------------------------------------------------------------ the screen authors it (kind `import`)
+
+def test_an_import_written_on_the_screen_is_saved_and_reads_back_as_written(config, tmp_path):
+    """The form's gate (lead 10-27): a new `import` declaration - one world - written, saved, activated; opened
+    again it is what was written, and the type it names is that world's, marked whose it is."""
+    _declare(C, _sample())
+    service = _service(C, tmp_path)
+    _setup, index, _ = service.active()
+    draft = service.create_declaration_draft(kind="import", canonical_id=B, base_snapshot_hash=index.snapshot_hash)
+    assert draft["raw"] == {"entities": []}, "the skeleton's empty declaration - the list there from the start"
+    saved = service.save_draft(draft["draft_id"], expected_revision=draft["revision"],
+                               raw=json.dumps({"entities": ["tool"]}))
+    assert saved["context_token"].startswith("draft:"), saved             # the preview read B
+    reviewed = service.review_draft(draft["draft_id"], expected_revision=saved["revision"])
+    service.activate_draft(draft["draft_id"], expected_revision=reviewed["revision"], reload_callback=lambda: None)
+
+    written = json.loads(Path(schema.world_names(C).declaration_path).read_text(encoding="utf-8"))
+    assert written["imports"] == {B: {"entities": ["tool"]}} and "tool" not in written["entities"]
+    _setup, index, _ = _service(C, tmp_path).active()
+    assert index.nodes["import|%s" % B].raw == {"entities": ["tool"]}
+    tool = index.nodes["entity|tool"].to_mapping()
+    assert (tool["imported_from"], list(tool["raw"]["keys"])) == (B, ["tool", "site"])
+    assert "imported_from" not in index.nodes["entity|lot"].to_mapping(), "a type of its own says nothing"
+
+
+def test_an_import_is_one_of_the_kinds_the_screen_may_create_and_remove(config, tmp_path):
+    from ledger.config_authoring import closed_lists
+
+    assert {"id": "import", "section": "imports"} in closed_lists()["authorable_kinds"]
+    assert _service(A, tmp_path).authoring()["sections"]["imports"] == [B]
+
+
+def test_removing_an_import_on_the_screen_takes_it_out_of_the_file(config, tmp_path):
+    service = _service(A, tmp_path)
+    _setup, index, _ = service.active()
+    service.delete_declaration("import|%s" % B, base_snapshot_hash=index.snapshot_hash, reload_callback=lambda: None)
+    written = json.loads(Path(schema.world_names(A).declaration_path).read_text(encoding="utf-8"))
+    assert B not in (written.get("imports") or {})
+
+
+def test_an_import_that_does_not_resolve_falls_alone_and_the_rest_loads(config):
+    """An import is a declaration the loader may isolate (it is authorable): one naming a world that is not there is
+    left out by name, the sources go on."""
+    _declare(A, _with({B: {"entities": ["tool"]}, "nowhere": {"entities": ["tool"]}}))
+    loaded = setup.load_setup(_root(A))
+    assert "import|nowhere" in loaded.left_out and loaded.bundle.section("sources")
+    assert _tool_keys(loaded.bundle.section("entities")) == ["tool", "site"]

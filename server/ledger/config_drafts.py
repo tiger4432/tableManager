@@ -263,12 +263,15 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
     # for a physical reason the operator's live config never saw -- and the preview's
     # whole job is to answer "what happens if I activate THIS".
     catalog = active_setup.catalog
-    issues = validate_bundle_errors(logical, catalog=catalog)
+    from .setup import live_imported
+
+    imported = live_imported()
+    issues = validate_bundle_errors(logical, catalog=catalog, imported=imported)
     if issues:
         # 🔴 [총괄 57ae5c2da ②] AND WHAT FALLS WITH THEM, FROM THE LOADER'S OWN SEAT. One pass
         #    names only the broken declaration; what names it falls in the next round, and
         #    only the resolver's fixpoint sees that.
-        report = resolve_declarations(logical, catalog=catalog)
+        report = resolve_declarations(logical, catalog=catalog, imported=imported)
         with_them = [reason for key in sorted(report["invalid"])
                      if report["invalid"][key]["round"] > 1
                      for reason in left_out_reasons(report["invalid"], key)]
@@ -278,7 +281,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
                   [*(issue.to_mapping() for issue in issues), *with_them]),
         )
     try:
-        bundle = require_ready_bundle(validate_bundle(logical, catalog=catalog))
+        bundle = require_ready_bundle(validate_bundle(logical, catalog=catalog, imported=imported))
         compile_issues = snapshot_compile_errors(
             bundle, trusted_implementations(), catalog=catalog)
         if compile_issues:
@@ -411,8 +414,9 @@ def _set_path(document: Any, path: Sequence[Any], value: Any) -> None:
     if not path:
         raise KeyError("empty target path")
     current = document
-    for part in path[:-1]:
-        current = current[part]
+    for depth, part in enumerate(path[:-1]):
+        # a section the file does not carry yet is an empty one (`imports`, the one optional section a screen writes)
+        current = current[part] if depth or part in current else current.setdefault(part, {})
     current[path[-1]] = json.loads(json.dumps(
         value, ensure_ascii=False, allow_nan=False))
 

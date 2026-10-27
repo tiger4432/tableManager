@@ -1057,13 +1057,22 @@
           "keyed_by": "name",
           "member": "World",
           "of": {
-            "kind": "map",
-            "keyed_by": "index",
-            "member": "Entity type",
-            "of": {
-              "kind": "leaf",
-              "hint": "free"
-            }
+            "kind": "record",
+            "fields": [
+              {
+                "key": "entities",
+                "required": true,
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "Entity type",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              }
+            ]
           }
         }
       }

@@ -13,7 +13,7 @@ from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 import event_constants
-from declaration_names import fold_versions
+from declaration_names import bare_name, fold_versions
 
 from . import setup_bundle
 
@@ -92,6 +92,8 @@ AUTHORABLE_SECTIONS: Mapping[str, str] = MappingProxyType({
     "predicate": "vocabulary",
     "entity": "entities",
     "source_plan": "sources",
+    # one world another's entity types come from (lead 10-27 B-4) - `imports.<world>`
+    "import": "imports",
 })
 
 
@@ -572,6 +574,8 @@ class ExplorerNode:
     compiled: Any
     definition_hash: str
     bundle_path: tuple[Any, ...]
+    #: The world an entity type was imported from (`imports`, lead 10-27 B-4) - it is edited there, not here.
+    imported_from: str | None = None
 
     def to_mapping(self, *, include_definition: bool = True) -> dict[str, Any]:
         result = {
@@ -585,6 +589,8 @@ class ExplorerNode:
             "compile_status": "valid",
             "description": _node_description(self.kind, self.raw),
         }
+        if self.imported_from is not None:
+            result["imported_from"] = self.imported_from
         if include_definition:
             result["raw"] = _plain(self.raw)
             result["compiled"] = _plain(self.compiled)
@@ -653,6 +659,7 @@ class _IndexBuilder:
         *,
         config_file: str,
         json_pointer: str,
+        imported_from: str | None = None,
     ) -> str:
         key = node_key(kind, canonical_id)
         if key in self.nodes:
@@ -671,6 +678,7 @@ class _IndexBuilder:
             compiled=_plain(compiled),
             definition_hash=_hash(compiled),
             bundle_path=tuple(bundle_path),
+            imported_from=imported_from,
         )
         return key
 
@@ -819,11 +827,15 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                 pointer("vocabulary", predicate_id, "object", "types", index),
             )
 
+    imported_from = {bare_name(name): world
+                     for world, declared in (bundle.get(setup_bundle.IMPORTS) or {}).items()
+                     for name in declared.get("entities") or ()}
     for entity_id, raw in sorted(bundle["entities"].items()):
         compiled = registries["entities"].to_mapping()[entity_id]
         builder.add_node(
             "entity", entity_id, raw, compiled, ("entities", entity_id),
             config_file=ledger_file, json_pointer=pointer("entities", entity_id),
+            imported_from=imported_from.get(bare_name(entity_id)),
         )
 
     # `pack` and `claim` NODES STOPPED BEING BUILT ON 2026-08-21 with the section they
@@ -867,6 +879,12 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         builder.add_node(
             "table", table_id, raw, raw, ("__physical_catalog__", table_id),
             config_file=table_file, json_pointer=pointer(table_id),
+        )
+
+    for world, raw in sorted((bundle.get(setup_bundle.IMPORTS) or {}).items()):
+        builder.add_node(
+            "import", world, raw, raw, (setup_bundle.IMPORTS, world),
+            config_file=ledger_file, json_pointer=pointer(setup_bundle.IMPORTS, world),
         )
 
     join_file = ledger_file

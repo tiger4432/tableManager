@@ -1176,8 +1176,7 @@ class OntologyExplorerService:
         # declaration that does not validate falls alone and by name - as it does in the base
         # a branch copies - and only a whole-file problem refuses. Holding the copy to every
         # declaration validating made a base with one refused source unbranchable.
-        issues = resolve_declarations(skeleton, catalog=self._catalog_loader(),
-                                      imported=self._imported_loader())["config_level"]
+        issues = resolve_declarations(skeleton, catalog=self._catalog_loader())["config_level"]
         if issues:
             raise ConfigExplorerError(
                 "bootstrap_invalid", CONFIG_FILENAME,
