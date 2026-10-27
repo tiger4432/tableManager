@@ -1,5 +1,15 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **원장 수식어 색인 — 선언을 못 읽으면 색인 작업이 한 줄로 말함** — 서버 · 스케줄러 재기동 뒤
+>
+> ```
+> 볼 줄     [Indexes] world <세계>: its declaration was not read - its indexed qualifiers are not built and none is said stale: <사유>
+> 뜻       그 세계의 ledger_config.json 이 안 읽힘 -> indexed 수식어 색인을 안 지었고, 안 쓰이는 색인도 말하지 않음
+>          고칠 것은 색인이 아니라 선언 — 같은 사유가 걷기 줄 «[Walk] world <세계>: its declaration was not read» 에도 남
+> ```
+>
+> ---
+>
 > ## [10-27] **원장 수식어 색인 — `indexed` 한 칸이면 묶인 걸음이 색인을 탄다** — 모든 프로세스 재기동 «뒤»에 칸을 적는다
 >
 > ```

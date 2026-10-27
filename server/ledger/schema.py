@@ -659,12 +659,14 @@ def qualifier_index(name) -> tuple:
 
 def declared_indexed_qualifiers(names: WorldNames):
     """The qualifier names the world's vocabulary declares `indexed`, sorted - None when its declaration cannot be read
-    (then nothing is said to be stale)."""
+    (said: its qualifier indexes are then not built, and none is said to be stale)."""
     from . import config as _config, setup_bundle
 
     try:
         declared = _config.load(names.declaration_path) or {}
-    except Exception:                                   # noqa: BLE001 - None: unknown, not «none declared»
+    except Exception as exc:                            # noqa: BLE001 - None: unknown, not «none declared»
+        logger.warning("[Indexes] world %s: its declaration was not read - its indexed qualifiers are not built and "
+                       "none is said stale: %s", names.name, told(exc), exc_info=exc)
         return None
     return sorted(setup_bundle.indexed_qualifiers(declared.get("vocabulary")))
 

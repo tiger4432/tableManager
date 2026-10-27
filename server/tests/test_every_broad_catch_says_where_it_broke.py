@@ -49,6 +49,8 @@ QUIET_KEPT = {
     "server/ledger/observability.py": {"hot": 3},
     "server/ledger/roleframe.py": {"parse": 1},
     "server/ledger/trace.py": {"import": 1},
+    # _indexed_qualifiers: its request's _predicate_cardinalities says «[Walk] world %s: its declaration was not read»
+    "server/ledger/trace_router.py": {"elsewhere": 1},
     "server/main.py": {"cleanup": 3, "import": 4, "parse": 2, "elsewhere": 3},
     "server/map_alignment.py": {"import": 1, "logging": 2, "parse": 1, "probe": 4, "elsewhere": 1},
     "server/map_overlay.py": {"cleanup": 1, "parse": 2},
