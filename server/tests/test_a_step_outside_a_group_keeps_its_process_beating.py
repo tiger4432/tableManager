@@ -21,9 +21,10 @@ SLOW = 0.6
 
 
 def test_a_slow_line_read_keeps_the_slot_beating_and_names_its_step(monkeypatch):
-    beats, seen_stage = [], []
+    beats, seen_stage, read_at = [], [], []
 
     def slow_read(db, line=None):
+        read_at.append(time.monotonic())
         time.sleep(SLOW)
         seen_stage.extend(c["stage"] for c in heartbeat.open_claims() if c["name"] == worker.GROUP_BEAT)
         return []
@@ -47,10 +48,11 @@ def test_a_slow_line_read_keeps_the_slot_beating_and_names_its_step(monkeypatch)
     monkeypatch.setattr(heartbeat, "beat", lambda name, **k: beats.append((name, time.monotonic())) or
                         real_beat(name, **k))
 
-    started = time.monotonic()
     outcome, _rules, _seen = asyncio.run(slots._run_batch("line-k", [], 0))
     assert outcome == slots.DRAINED
-    during = [at for name, at in beats if name == worker.GROUP_BEAT and started + 0.1 < at < started + SLOW]
+    # counted from the read's start: a process's first event loop can take seconds to make (box: 0.3 s idle, 2.7 s
+    # under load), and a window from before asyncio.run held none of the read
+    during = [at for name, at in beats if name == worker.GROUP_BEAT and read_at[0] + 0.1 < at < read_at[0] + SLOW]
     assert len(during) >= 3, "the loop did not beat while the read ran: %d" % len(during)
     assert seen_stage == ["line read"], seen_stage
 
