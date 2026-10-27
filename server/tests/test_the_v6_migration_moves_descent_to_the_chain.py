@@ -32,9 +32,18 @@ def shipped():
 
 def as_v5(ledger, tables, rules):
     """The setup as it stood before v6: the frozen ledger, and the shipped table and rule
-    samples without what the migration adds."""
+    samples without what the migration adds. The frozen vocabulary is the migration's only
+    for the register predicate; the other words and the entities are the shipped sample's, so
+    a word the sample models later (ff05abbd8) is expected from it, not pinned (10-27)."""
+    from ledger.setup_bundle import REGISTER_PREDICATE
+
     with open(V5_LEDGER, encoding="utf-8") as handle:
-        ledger = json.load(handle)
+        frozen = json.load(handle)
+    register = {name: spec for name, spec in frozen["vocabulary"].items()
+                if name.partition("@")[0] == REGISTER_PREDICATE}
+    assert register                                 # canary: the frozen file still asks it
+    ledger = dict(frozen, vocabulary=dict(copy.deepcopy(ledger["vocabulary"]), **register),
+                  entities=copy.deepcopy(ledger["entities"]))
     tables, rules = copy.deepcopy(tables), copy.deepcopy(rules)
     del tables[v6.LINEAGE]
     rules["rules"] = [r for r in rules["rules"] if r.get("name") != v6.LINEAGE_RULE]

@@ -70,13 +70,30 @@ def _unwritten(*args, **kwargs):
             for name in item["fields"].get("predicates") or ()}
 
 
+def _no_mapping_names(declaration):
+    """The sample's words no source's mapping names - read from the same sample the report reads, so a word the sample
+    adds is expected too (10-27: the pinned set went red on ff05abbd8's modeling vocabulary)."""
+    from declaration_names import bare_name
+
+    with open(declaration, encoding="utf-8") as handle:
+        document = json.load(handle)
+    assert not [name for name, entity in document["entities"].items() if entity.get("references")], \
+        "the sample's entities write no references edge - else this reader is short of the report's"
+    named = {bare_name(mapping["predicate"]) for source in document["sources"].values()
+             for mapping in (source.get("bind") or {}).get("mappings", {}).values()}
+    assert "has_wafer" in named                    # canary: the reader found the sample's mappings
+    return {bare_name(name) for name in document["vocabulary"]} - named
+
+
+UNWRITTEN = _no_mapping_names(SHIPPED[0])
+assert "measures" in UNWRITTEN and "in_container" in UNWRITTEN
+
+
 @pytest.mark.parametrize("files, change, unwritten", [
-    (SHIPPED, None, {"bonded_from", "in_container", "leads_to", "measures", "observed",
-                     "of_kind", "slot_map"}),
+    (SHIPPED, None, UNWRITTEN),
     (TRANSFER, None, set()),
     # the compiled vocabulary is handed over: in_container is written through the column type
-    (SHIPPED, _die_read_from_a_column, {"bonded_from", "leads_to", "measures", "observed",
-                                        "of_kind", "slot_map"}),
+    (SHIPPED, _die_read_from_a_column, UNWRITTEN - {"in_container"}),
 ])
 def test_the_report_names_only_the_words_no_source_writes(tmp_path, monkeypatch, files, change,
                                                           unwritten):
