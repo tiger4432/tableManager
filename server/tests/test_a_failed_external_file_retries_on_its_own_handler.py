@@ -19,6 +19,7 @@ import directory_watcher
 import run_watcher
 from database import crud, models
 from ingestion import checkpoint
+from ingestion import reread
 from database.database import Base
 from directory_watcher import WorkspaceWatcher
 from tests.test_external_source_watcher import VOID_INFO, _write_voids
@@ -54,6 +55,12 @@ def env(tmp_path, monkeypatch):
     workspace = tmp_path / "ingestion_workspace"
     workspace.mkdir()
     external = tmp_path / "external" / "void"
+    # the source cut at the epoch - this measures the retry, not the switch-on cut (23fd41a2c: a source on is cut from
+    # when the watcher first sees it, so the files laid before it would be held for a hand)
+    switched_on = tmp_path / "watcher_switched_on.json"
+    switched_on.write_text(json.dumps({"void_obs@" + os.path.normcase(os.path.realpath(str(external))): 0.0}),
+                           encoding="utf-8")
+    monkeypatch.setattr(reread, "SWITCHED_ON_FILENAME", str(switched_on))
 
     def watcher(options):
         """The watcher as it starts: its handlers, and the external source on void_obs."""

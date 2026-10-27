@@ -64,6 +64,12 @@ def env(tmp_path, monkeypatch):
     (root / "WF-001" / "notes.txt").write_text("not a voids file", encoding="utf-8")   # under the root, not matched
     (share / "elsewhere").mkdir()
     (share / "elsewhere" / "voids.json").write_text("{}", encoding="utf-8")            # outside every source root
+    # both sources cut at the epoch - this measures the re-read, not the switch-on cut (23fd41a2c: the files laid
+    # before the watcher started would be held for a hand)
+    switched_on = tmp_path / "watcher_switched_on.json"
+    switched_on.write_text(json.dumps({"%s@%s" % (table, os.path.normcase(os.path.realpath(str(root)))): 0.0
+                                       for table in (A, B)}), encoding="utf-8")
+    monkeypatch.setattr(reread, "SWITCHED_ON_FILENAME", str(switched_on))
     w = WorkspaceWatcher(str(workspace))
     w.discover_and_watch()
     monkeypatch.setattr(run_watcher, "workspace_watcher", w)

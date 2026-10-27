@@ -98,6 +98,10 @@ def test_read_all_again_reads_a_table_s_files_in_place_and_archived_and_no_other
     with open(data / "config" / "ingestion_settings.json", "w", encoding="utf-8") as f:
         json.dump({"external_sources": [{"path": str(ext), "table_name": "ta", "options": {"glob": "*.csv"}}],
                    "reread_max_files": 2}, f)
+    # the source cut at the epoch - this measures Read all again, not the switch-on cut (23fd41a2c: e0 · e1, laid
+    # before the watcher started, would be held for a hand)
+    with open(data / "config" / "watcher_switched_on.json", "w", encoding="utf-8") as f:
+        json.dump({"ta@" + os.path.normcase(os.path.realpath(str(ext))): 0.0}, f)
     db = tmp_path / "box.db"
     port = _free_port()
     env = dict(os.environ, ASSY_DATA_ROOT=str(data), DATABASE_URL="sqlite:///" + db.as_posix(), DECOUPLED="True",

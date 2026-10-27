@@ -4,7 +4,10 @@ data root, a sqlite file and a stub API:
   big    40 files of three days ago   -> read without the one-second copy wait
   small  3 files of two days ago      -> taken in turn with big, so read among the first dispatches
   bm     w1/bmap.csv and w2/bmap.csv, the same bytes -> both read (each wafer's own file)
-and a line «External sweep in progress: <source> looked x · dispatched y · z s» while the sweep runs.
+and a line «External sweep in progress: <source> looked x · dispatched y · z s» while the sweep runs. The three were
+switched on four days ago (a kept cut older than their files - a watcher down while they came); late, with no kept
+cut, is cut when the watcher first sees it, so its 3 files of two days ago are held for a hand (소유자 10-26 «기존 거는
+수동») - no row, said by count, in both runs.
 Run 2 (a restart, sweeps every 2 s): small's s0.csv written again (same bytes, a new mtime) at its own path is read
 again; the rest - the bmap copies too - are already read by the checklist: not dispatched, not hashed (소유자 10-21)."""
 import ctypes
@@ -126,29 +129,42 @@ def _logs(c, table=None):
 def test_old_files_are_read_in_turn_without_waiting(tmp_path):
     data = tmp_path / "data"
     (data / "config").mkdir(parents=True)
-    big, small, bm = (tmp_path / n for n in ("big", "small", "bm"))
+    big, small, bm, late = (tmp_path / n for n in ("big", "small", "bm", "late"))
     for i in range(40):
         _write(big / ("b%02d.csv" % i), "lot,val\nB%02d,old\n" % i, age=3 * DAY + i)
     for i in range(3):
         _write(small / ("s%d.csv" % i), "lot,val\nS%d,few\n" % i, age=2 * DAY)
     for wafer in ("w1", "w2"):
         _write(bm / wafer / "bmap.csv", "val\nsame bytes\n", age=2 * DAY)
+    for i in range(3):
+        _write(late / ("l%d.csv" % i), "lot,val\nL%d,held\n" % i, age=2 * DAY)
     scripts = data / "ingestion_workspace" / "bm" / "scripts"
     scripts.mkdir(parents=True)
     (scripts / "p.py").write_text(WAFER_PLUGIN, encoding="utf-8")
     with open(data / "config" / "table_config.json", "w", encoding="utf-8") as f:
-        json.dump({"big": TABLE, "small": TABLE, "bm": TABLE}, f)
+        json.dump({"big": TABLE, "small": TABLE, "bm": TABLE, "late": TABLE}, f)
     with open(data / "config" / "ingestion_settings.json", "w", encoding="utf-8") as f:
         json.dump({"external_sources": [{"path": str(big), "table_name": "big", "options": {"glob": "*.csv"}},
                                         {"path": str(small), "table_name": "small", "options": {"glob": "*.csv"}},
-                                        {"path": str(bm), "table_name": "bm", "options": {"glob": "**/bmap.csv"}}]}, f)
+                                        {"path": str(bm), "table_name": "bm", "options": {"glob": "**/bmap.csv"}},
+                                        {"path": str(late), "table_name": "late", "options": {"glob": "*.csv"}}]}, f)
+    late_id = "late@" + os.path.normcase(os.path.realpath(str(late)))
+    with open(data / "config" / "watcher_switched_on.json", "w", encoding="utf-8") as f:
+        json.dump({"%s@%s" % (t, os.path.normcase(os.path.realpath(str(root)))): time.time() - 4 * DAY
+                   for t, root in (("big", big), ("small", small), ("bm", bm))}, f)
     db = tmp_path / "box.db"
     api = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Stub)
     threading.Thread(target=api.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d" % api.server_address[1]
     try:
-        said = _run(tmp_path, db, url, lambda c, _log: len(_logs(c)) >= 45)
+        held = re.compile(r"External source %s: 3 file\(s\) looked at - .*before switch-on 3 · dispatched 0"
+                          % re.escape(late_id))
+        said = _run(tmp_path, db, url, lambda c, log: len(_logs(c)) >= 45 and held.search(log))
+        assert held.search(said), said[-3000:]
+        assert re.search(r"\[switch-on\] %s: 3 file\(s\) modified before its cut .* held for a hand" % re.escape(late_id),
+                         said), said[-3000:]
         with sqlite3.connect(str(db)) as c:
+            assert _logs(c, "late") == [] and c.execute("SELECT count(*) FROM late").fetchone() == (0,)
             logs = _logs(c)
             assert [r[2] for r in logs] == ["SUCCESS"] * 45, [r[1:4] for r in logs]
             order = [r[1] for r in logs]
@@ -182,5 +198,6 @@ def test_old_files_are_read_in_turn_without_waiting(tmp_path):
         assert ended == ("45", "44", "1"), ended                         # s0.csv only - it was written again
         assert later and set(later) == {("45", "45", "0")}, later        # then every sweep: all already read
         assert not re.findall(r"File to read \(\w+\): \S+bmap\.csv", said)
+        assert held.search(said), "late's cut was not kept: a restart is no switch-on"
     finally:
         api.shutdown()

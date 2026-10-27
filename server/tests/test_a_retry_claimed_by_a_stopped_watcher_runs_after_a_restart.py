@@ -85,6 +85,10 @@ def test_a_retry_claimed_by_a_stopped_watcher_runs_after_a_restart(tmp_path):
     with open(data / "config" / "ingestion_settings.json", "w", encoding="utf-8") as f:
         json.dump({"external_sources": [{"path": str(ext), "table_name": "tx", "options": {"glob": "*.csv"}}],
                    "retry_reclaim_after_seconds": 1}, f)
+    # the source cut at the epoch - this measures the reclaimed retry, not the switch-on cut (23fd41a2c: e0.csv, laid
+    # before the watcher started, would be held for a hand)
+    with open(data / "config" / "watcher_switched_on.json", "w", encoding="utf-8") as f:
+        json.dump({"tx@" + os.path.normcase(os.path.realpath(str(ext))): 0.0}, f)
     db = tmp_path / "box.db"
     api = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Stub)
     threading.Thread(target=api.serve_forever, daemon=True).start()
