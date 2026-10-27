@@ -638,6 +638,7 @@
 - 박스 수(운영 아님, 웨이퍼 하나 · 2 홉 · 원자 200 만 = 웨이퍼 1 만 × 스텝 200, 트랜잭션 25 웨이퍼): 걷기 12.4 s → 0.89 s. 색인 200 MB(원자당 ~105 B), 파티션 하나 처음 짓기 18 s(40 만이면 4 s · 40 MB).
 - 색인은 서버 기동 · 스케줄러의 색인 작업이 짓는다(`[Indexes] building idx_ledger_q_<이름> …`). 파티션마다 CONCURRENTLY, 새 달 파티션은 만들어질 때 같이. 색인 화면(GET /admin/indexes)에 행.
 - 칸을 빼면: 다음 걷기부터 예전 SQL. 색인은 남고 색인 작업이 «… no declaration indexes it any more; a person drops it: DROP INDEX idx_ledger_q_<이름>;» — 사람이 지운다(파티션 표에는 CONCURRENTLY 가 PostgreSQL 에서 안 됨).
+- 선언을 못 읽은 세상: 색인 작업이 «[Indexes] world <w>: its declaration was not read - its indexed qualifiers are not built and none is said stale» 한 줄과 추적을 남깁니다 — 그 세상의 수식어 색인은 짓지도, stale 이라 부르지도 않습니다(`e727da637`, 전엔 말없이 넘어감).
 - 필요한 조건: git pull · 모든 프로세스 재기동(코드) «뒤»에 칸을 적는다 — 옛 코드는 그 칸이 든 선언을 통째로 거절한다. 소급 없음 — 이 칸은 원자를 바꾸지 않아 소스 지문이 그대로.
 - 바뀐 동작: `indexed` 를 안 적은 선언은 없음(걷기 SQL 그대로 — 색인 없이 같음 조건을 쓰면 박스 40 만에서 3.2 s → 6.1 s 로 느려져서, 모든 걷는 세상이 적었을 때만 쓴다).
 - 자세히: `server/ledger/schema.py` 의 `qualifier_index` · `partitioned_indexes`, `server/ledger_api/ledger_subgraph.py` 의 `_bound_on` · `BOUND_FRONTIER_CTE`, `server/ledger/setup_bundle.py` 의 `indexed_qualifiers`. 가이드 `docs/guide/ONTOLOGY_LEDGER_SETUP.md` §7.1.
