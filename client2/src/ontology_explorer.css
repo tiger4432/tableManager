@@ -874,12 +874,16 @@
   /* Lines a step apart and half a step over and under: a row of N chip lines is N rows high (lead 10-21 ④). */
   padding-block: var(--space-1);
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-adder { display: inline-flex; align-items: center; gap: var(--space-1); }
+/* The adder stays inside its cell: in a narrow value column its box gives way, never its + or the row's word beside it
+   (lead 10-27: an empty required list's + lay under «Required»). */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-adder {
+  display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%;
+}
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-html-cell { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-html-cell__note { color: var(--oe-warn); font-size: var(--fs-label); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-html-cell__note:empty { display: none; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-adder .oe-form-new-id {
-  width: calc(var(--space-6) * 6); height: var(--control-h-small); min-height: var(--control-h-small);
+  flex: 0 1 auto; min-width: 0; width: calc(var(--space-6) * 6); height: var(--control-h-small); min-height: var(--control-h-small);
 }
 /* Form D: a list of records, or a name -> word map, as a table under its row - its lines a row high, its adder a box
    and a step under them, so the block is a whole number of rows (lead 10-21). */

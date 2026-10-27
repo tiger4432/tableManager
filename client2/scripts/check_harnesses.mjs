@@ -942,7 +942,8 @@ const FLOORS = new Map([
   // paused and resumed (asked once, one PUT, the worlds read again), Paused said, each history line says what.
   // 130 -> 139 ([11] K1-K5 and four mutants, lead 10-11 small two: the stale Create re-reads and sends once; a save's 409 untouched).
   // 147 -> 155 ([8b] W1-W2 and six mutants, lead 10-27: the worlds' overlaps and notices as meta lines).
-  ['explorer_open_path_harness.mjs', 155],
+  // 155 -> 173 ([13] I1-I4 and five mutants: an imported entity type is edited in its world; [14] E1-E4 and five: a key from sections[key_section], a ref from the world its key names - lead 10-27).
+  ['explorer_open_path_harness.mjs', 173],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -1791,7 +1792,8 @@ const FLOORS = new Map([
   ['skeleton_value_fit_harness.mjs', 27],
   // Form D (lead f3639d4a2, owner 10-20): one renderer for the three declarations - chips, tables, the fold row, the
   // gate switch, the adder, a choice of one - scored per module on a skeleton that names no declaration's word.
-  ['declaration_form_harness.mjs', 46],
+  // 46 -> 56 (lead 10-27, B's key_section · world_from: S5-S7 and V13 among them).
+  ['declaration_form_harness.mjs', 56],
   // New 2026-09-24 with the list skeleton (90b9f443). In the owner's Chrome the chain window's lists
   // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real

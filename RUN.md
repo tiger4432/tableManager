@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **선언 창에서 import 적기 · 가져온 엔티티는 그 세계에서 고치기** — git pull · 화면 새로 고침 (서버 97c2163d8 이후면 재기동 필요 없음)
+>
+> ```
+> 볼 곳     Ontology Explorer -> 왼쪽 목록 Import -> + New -> 이름 칸에 커서
+> 뜻       세계 이름이 떨어짐            = 화면이 새 번들 + 서버가 sections.worlds 를 냄
+>          Import 줄이 없음              = 서버가 97c2163d8 전 (authorable_kinds 에 import 가 없음)
+>          이름 칸에 아무것도 안 떨어짐   = 옛 번들 -> 강력 새로 고침
+>          Create 뒤 entities + 칸에 그 세계의 타입이 떨어짐 = 그 세계 선언을 읽음
+>          entities 칸이 비어 있음       = 그 세계 선언이 안 읽힘 -> 세계 목록 줄의 «<세계> · its declaration was not read» 를 봄
+>          가져온 엔티티에 «Edit in <세계>» -> 누르면 그 세계에서 같은 노드가 열림
+> 되돌리기  git revert $(git log --format=%h -i --grep='imports on the declaration form' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-27] **decide 의 key · list_columns 에 짝 {"<파생 칸>": "<원본 칸>"}** — 서버 · 체인 워커 재기동 뒤
 >
 > ```

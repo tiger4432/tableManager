@@ -6,7 +6,7 @@ import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import { pathSteps } from './path_bar.js';
 import {
-  asList, declarationShape, fieldApplies, memberPath, membersOf, refNames, shapeAt, shapeBranch, valueFits,
+  asList, declarationShape, fieldApplies, keyNames, memberPath, membersOf, refNames, shapeAt, shapeBranch, valueFits,
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { isBlank } from './absent.js';
@@ -129,7 +129,11 @@ function renderNewDeclaration(state, kind) {
   input.value = state.newDeclaration?.id || '';
   input.placeholder = 'id · e.g. dt-job';
   input.setAttribute('aria-label', 'New declaration id');
-  label.append(input);
+  // The names its section's keys are picked from, when the skeleton says (`key_section`, B 10-27).
+  const schema = state.authoringSchema || {};
+  const section = (schema.authorable_kinds || []).find((row) => row.id === kind)?.section;
+  const map = schema.skeleton && section ? shapeAt(schema.skeleton.root, [section], schema.skeleton.defs) : null;
+  label.append(withList({ listPrefix: 'oe-new' }, input, kind, keyNames(schema.sections, map)));
   box.append(label);
   const actions = h('div', 'oe-new-actions');
   const make = button('Create', 'create-declaration', kind, 'oe-new-make');
@@ -1107,6 +1111,9 @@ function renderInspector(state) {
   const title = h('div', 'oe-title-block');
   title.setAttribute('data-wrap-ok', '');
   title.append(h('h1', '', state.selection.canonical_id), h('p', '', `${state.selection.kind} · ${state.selection.config_path}`));
+  // An entity type another world declares (B 79987e3e1, lead 10-27 ③): said here, edited there.
+  const importedFrom = state.selection.imported_from;
+  if (importedFrom) title.append(h('p', 'meta', `imported from ${importedFrom}`));
   const actions = h('div', 'oe-head-actions');
   // The buttons wrap as one: short of room the status takes the line above, the buttons stay a row (lead 10-09).
   const buttons = h('div', 'oe-head-buttons');
@@ -1144,7 +1151,8 @@ function renderInspector(state) {
     buttons.append(activeButton, draftButton);
   }
   if (!state.draft && state.selection.config_file === 'ledger_config.json') {
-    buttons.append(button('Edit draft', 'create-draft', '', 'oe-edit-action'));
+    buttons.append(importedFrom ? button(`Edit in ${importedFrom}`, 'edit-in-world', importedFrom, 'oe-edit-action')
+      : button('Edit draft', 'create-draft', '', 'oe-edit-action'));
   }
   actions.append(buttons);
   head.append(title, actions);
@@ -2273,7 +2281,7 @@ function renderSkeletonMap(context, node, path, value, depth) {
     input.dataset.for = path;
     input.dataset.enter = 'form-name';
     input.setAttribute('aria-label', (node.member || path) + ' new name');
-    naming.append(input, button('+ ' + (node.member || 'Item'), 'form-name', path,
+    naming.append(withList(context, input, path, keyNames((context.schema || {}).sections, node)), button('+ ' + (node.member || 'Item'), 'form-name', path,
                                 'oe-form-add'));
   }
   box.append(treeRow(depth + 1, '', [], naming, null, 'is-new'));
@@ -2445,7 +2453,7 @@ function renderMapTable(context, node, path, value, depth, cells, members, held)
   if (!context.readOnly) {
     wrap.append(node.keyed_by === 'index'
       ? button(`+ ${node.member || 'Row'}`, 'form-append', path, 'ctl-small oe-form-table__add')
-      : adder(context, path, node.member || 'Name', []));
+      : adder(context, path, node.member || 'Name', keyNames((context.schema || {}).sections, node)));
   }
   return wrap;
 }
@@ -3031,7 +3039,8 @@ function renderAuthoring(state) {
     usedElsewhere,
     deref: (node) => (node && node.use ? (skeleton.defs || {})[node.use] : node),
     // Form D: what a ref cell is offered comes from the schema's sections and tables (B 5d5b99fac), as in the panel.
-    refOf: (node, at) => refNames(state.authoringSchema?.sections, state.authoringSchema?.tables, node, draftRaw, at),
+    refOf: (node, at) => refNames(state.authoringSchema?.sections, state.authoringSchema?.tables, node, draftRaw, at,
+      state.worldTypes?.[state.draft?.target_id]),
     rolesNear,
     // 🔴 THE ROLES A CLAIM DEFINED A MOMENT AGO ARE OFFERED BEFORE IT IS SAVED. The plan
     // row's own candidates come from the DOCUMENT, so a role typed just now is not among

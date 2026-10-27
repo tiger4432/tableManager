@@ -171,6 +171,7 @@
 ### 원장 선언
 
 - 2026-10-27 [원장 선언 imports — 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 쓴다, 그래서 두 세상의 그 노드가 하나](#2026-10-27--원장-선언-imports--다른-세상이-선언한-엔티티-타입을-그-세상이-적은-대로-쓴다-그래서-두-세상의-그-노드가-하나) — 적는 곳 그 세상 선언(config/ontology_worlds/<세상>/ledger_config.json 또는 config/ontology/ledger_config.json)의 최상위 imports · 보는 곳 GET /admin/ontology-explorer/worlds 의 notices
+  - 2026-10-27 [선언 창에서 import 를 적는다 — 이름은 세계 목록에서, 엔티티 타입은 그 세계의 선언에서, 가져온 타입은 그 세계에서 고친다](#2026-10-27--선언-창에서-import-를-적는다--이름은-세계-목록에서-엔티티-타입은-그-세계의-선언에서-가져온-타입은-그-세계에서-고친다) — 누르는 곳 Ontology Explorer 왼쪽 목록 Import 의 + New · 가져온 엔티티의 Edit in <세계>
 - 2026-10-20 [원장 선언 v7 — 한 칸을 묻는 제외 절 둘도 짧게 써진다, «어느 것도 아님» 조건](#2026-10-20--원장-선언-v7--한-칸을-묻는-제외-절-둘도-짧게-써진다-어느-것도-아님-조건) — 적는 곳 `ledger_config.json` 문장의 `when`
 - 2026-10-14 [선언 창의 서버 문 — 짧은 파일의 소스를 짧게 열고 저장 · 초안 Test run · 칩 목록(표 칸 · 엔티티 · 술어)](#2026-10-14--선언-창의-서버-문--짧은-파일의-소스를-짧게-열고-저장--초안-test-run--칩-목록표-칸--엔티티--술어)
 - 2026-10-14 [원장 선언 짧은 꼴 — 표 이름과 문장마다 «역할: 컬럼» (setup_version 7) · 옛 선언은 변환 명령 한 번](#2026-10-14--원장-선언-짧은-꼴--표-이름과-문장마다-역할-컬럼-setup_version-7--옛-선언은-변환-명령-한-번)
@@ -637,6 +638,17 @@
 - 필요한 조건: git pull · 서버 · 체인 워커 재기동(코드). 짝을 적은 선언을 저장하면 그 decide 가 짝으로 돈다 — 이미 있는 파생 행은 다음 원본 변경부터, 전부는 소급(enrichment_backfill).
 - 바뀐 동작: 이름 하나만 쓴 선언은 없음. 운영자가 복사해 쓰는 맵퍼 sample 둘(core_alignment_mapper · dt_alignment_metadata_mapper)이 판단키의 원본 칸을 `chain_bindings.key_source(decl)` 로 읽고 단위는 파생 칸 이름으로 부른다 — 예전에 복사한 맵퍼는 이름 같은 규칙에서 그대로 돈다(RUN.md 10-27).
 - 자세히: `server/chain/enrichment/config.py` 의 `_named_pairs`(정규화 칸 `key_source` · `list_source`), `server/chain_bindings.py` 의 `key_source` · `list_source`. 가이드 `docs/guide/chain_ingestion_guide.md` §4.1 · §4.2.
+
+## 2026-10-27 · 선언 창에서 import 를 적는다 — 이름은 세계 목록에서, 엔티티 타입은 그 세계의 선언에서, 가져온 타입은 그 세계에서 고친다
+
+- **무엇** — 총괄 10-27. 「원장 선언 imports — 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 쓴다, 그래서 두 세상의 그 노드가 하나」를 선언 창에서 적고 봅니다. 고르기 목록이 어디서 오는지는 스켈레톤이 적고(맵의 `key_section`, ref 잎의 `world_from`), 화면은 그 두 낱말만 읽습니다.
+- **화면에서** —
+  - 왼쪽 목록 Import 의 «+ New»: 이름 칸이 세계 이름을 제안합니다(서버의 sections.worlds). 이름 = 가져올 세계.
+  - 초안 폼의 entities «+» 칸: 그 세계의 선언에 있는 엔티티 타입을 제안합니다(`/api/ledger/declaration?world=<그 세계>` 를 한 번 읽음). 이미 넣은 것은 빠집니다. 제안일 뿐이라 없는 이름도 적을 수 있습니다.
+  - 가져온 엔티티 타입을 고르면 제목 밑에 `imported from <세계>`, Edit draft 대신 «Edit in <세계>». 누르면 그 세계로 바뀌고 같은 노드가 열립니다. 저장은 막지 않습니다.
+- **바뀐 동작** — 모든 선언 폼의 «+» 칸: 값 칸이 좁으면 입력 칸이 줄어듭니다. 전에는 빈 필수 목록에서 «+» 단추가 «Required» 밑에 가려졌습니다(1280 폭, import 의 entities).
+- **필요한 조건** — 서버 97c2163d8 이후 · git pull · 화면 새로 고침.
+- **자세히** — `client2/src/ontology_skeleton.js` 의 `keyNames` · `picksElsewhere` · `refNames`(world_from), `ontology_explorer.js` 의 `readWorldTypes` · `pickWorld`(selection), `ontology_explorer_view.js` 의 `renderInspector` · `renderNewDeclaration`. 시험 explorer_open_path [13] · [14], declaration_form S5~S7 · V13, 화면 검사기 «Ontology Explorer, an imported node» · «imports».
 
 ## 2026-10-27 · 원장 선언 imports — 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 쓴다, 그래서 두 세상의 그 노드가 하나
 

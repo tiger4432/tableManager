@@ -18,7 +18,7 @@ import { WorldFacts } from './world_facts.js';
 import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember, switchGated,
 } from './ontology_path.js';
-import { declarationShape, leafValue, pickBranch, shapeAt } from './ontology_skeleton.js';
+import { declarationShape, leafValue, picksElsewhere, pickBranch, shapeAt } from './ontology_skeleton.js';
 import { censusBySource, censusNames } from './source_backlog.js';
 
 /**
@@ -184,7 +184,32 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       history: state.history, live: state.live });
     root.querySelector('.oe-topbar')?.after(factsMount);
     markFormCursor();
+    readWorldTypes();
   };
+  // A draft whose shape picks from another world (`world_from: key`, B 10-27) reads the world its key names, once.
+  const worldReads = new Set();
+  function readWorldTypes() {
+    const world = state.draft?.target_id;
+    const skeleton = state.authoringSchema?.skeleton;
+    if (!world || !skeleton || worldReads.has(world) || world in (state.worldTypes || {})) return;
+    const section = (state.authoringSchema.authorable_kinds || []).find((k) => k.id === state.draft.target_kind)?.section;
+    if (!section || !picksElsewhere(declarationShape(skeleton, section), skeleton.defs)) return;
+    worldReads.add(world);
+    void (async () => {
+      let bySection = {};
+      try {
+        const res = await withWorld((url, init) => fetch(url, init), () => world)(`${apiBase}/api/ledger/declaration`);
+        const body = res.ok ? await res.json().catch(() => null) : null;
+        for (const [name, items] of Object.entries(body || {})) {
+          if (Array.isArray(items)) bySection[name] = items.map((item) => item && item.type).filter((t) => typeof t === 'string');
+        }
+      } catch (error) {
+        bySection = {};
+      }
+      worldReads.delete(world);
+      dispatch({ type: 'WORLD_TYPES_RECEIVED', world, bySection });
+    })();
+  }
 
   // 🔴 TYPING CHANGES THE DRAFT, NOT THE SCREEN — the raw window's rule, widened to the form's text
   //    boxes (lead 43a738d58 ②, owner 「한 글자다 서버 갱신 느낌」). Measured on the box declaration:
@@ -426,7 +451,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // in that world's draft store before the screen leaves it (lead ccf374d48 answer 2), Discard deletes it
   // there as `select`'s Discard does, and a refused store stays. A new branch is made by the existing
   // bootstrap, sent on the new name with the world it starts as a copy of.
-  const pickWorld = async (name, { create = false, copyFrom = null } = {}) => {
+  const pickWorld = async (name, { create = false, copyFrom = null, selection = null } = {}) => {
     const next = name || null;
     if (next === state.world && !create) return;
     const choice = state.dirty ? await chooseDirtyNavigation(root) : 'keep';
@@ -440,7 +465,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds,
       operating: state.operating, history: state.history, live: state.live };
     render();
-    if (!create) { await load({ allowContextSwitch: true }); return; }
+    if (!create) { await load({ allowContextSwitch: true, selection: selection || undefined }); return; }
     // A refused make leaves the screen on the world it was on, saying why (lead 4fde8b04e, owner 10-04): the
     // world was not made, and an empty screen on its name read nothing and offered nothing to add.
     const refused = await bootstrapConfig(copyFrom);
@@ -1422,6 +1447,9 @@ No effect`;
           code: error?.detail?.code, message: errorSentence(error),
         });
       }
+    } else if (action === 'edit-in-world') {
+      // An imported entity type is edited in the world that declares it (lead 10-27 ③): that world, the same node.
+      await pickWorld(target.dataset.value, { selection: state.selection.key });
     } else if (action === 'create-draft') {
       try {
         const draft = await jsonRequest('/drafts', {

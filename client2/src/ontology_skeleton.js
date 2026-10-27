@@ -141,8 +141,14 @@ export function shapeAt(node, steps, defs) {
  *  the cell's own step there (lead 10-22: «picture_rows.*.table» is the table of the cell's own row).
  * @param {string} [at] the cell's address from the declaration's root, members as `[i]`
  * @returns {{table: string, names: string[]}} */
-export function refNames(sections, tables, node, document, at = '') {
+export function refNames(sections, tables, node, document, at = '', elsewhere = null) {
   if (!node || node.hint !== 'ref') return { table: '', names: [] };
+  // `world_from: key` (B 10-27): the section as the world this declaration's key names declares it - `elsewhere` is
+  // that world's names by section, read by the page.
+  if (node.world_from) {
+    const there = elsewhere && node.section ? elsewhere[node.section] : null;
+    return { table: '', names: Array.isArray(there) ? there.filter((name) => typeof name === 'string') : [] };
+  }
   if (Array.isArray(node.table_from)) {
     const own = String(at).replace(/\[(\d+)\]/g, '.$1').split('.');
     const dig = (path) => String(path).split('.').map((k, i) => (k === '*' ? own[i] : k))
@@ -153,6 +159,23 @@ export function refNames(sections, tables, node, document, at = '') {
   }
   const list = sections && node.section ? sections[node.section] : null;
   return { table: '', names: Array.isArray(list) ? list.filter((name) => typeof name === 'string') : [] };
+}
+
+/** The names a map's keys are offered (`key_section`, B 10-27): `sections[key_section]`, the rule a ref's `section`
+ *  follows. */
+export function keyNames(sections, node) {
+  const list = sections && node && node.key_section ? sections[node.key_section] : null;
+  return Array.isArray(list) ? list.filter((name) => typeof name === 'string') : [];
+}
+
+/** Does a leaf under `node` pick from another world (`world_from`)? Then the page reads that world's declaration. */
+export function picksElsewhere(node, defs, seen = new Set()) {
+  const n = deref(node, defs);
+  if (!n || seen.has(n)) return false;
+  seen.add(n);
+  if (n.world_from) return true;
+  return [...(n.fields || []).map((f) => f.node), n.of, ...Object.values(n.branches || {})]
+    .some((child) => Boolean(child) && picksElsewhere(child, defs, seen));
 }
 
 /** The node for one declaration of `section`, i.e. what a member of that section is. */

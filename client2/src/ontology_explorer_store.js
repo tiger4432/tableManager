@@ -36,6 +36,9 @@ export const initialExplorerState = Object.freeze({
   census: {},
   // 그 봉투의 `census_names` — 이름표는 서버 한 자리(총괄 bed890af2). 없으면 키가 그려집니다.
   censusNames: {},
+  // Another world's declared names by section, for a ref that picks from the world its declaration's key names
+  // (`world_from`, B 10-27): {world: {section: [names]}}. A world read and failed holds {} - asked, not again.
+  worldTypes: {},
   currentPath: null,
   changes: [],
   edgeChanges: [],
@@ -167,6 +170,8 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     // 🔴 ITS OWN ACTION, for the reason above it: a separate route with a separate failure.
     //    `/api/ledger/declaration` is NOT admin-token gated, so it answers where the refusal
     //    report may not — and a failure here must leave the counts absent rather than empty.
+    case 'WORLD_TYPES_RECEIVED':
+      return { ...state, worldTypes: { ...state.worldTypes, [action.world]: action.bySection || {} } };
     case 'CENSUS_RECEIVED':
       return { ...state, census: action.bySource || {}, censusNames: action.names || {} };
     case 'WORLDS_RECEIVED':

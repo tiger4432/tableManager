@@ -240,6 +240,41 @@ const worldsOverlapAnswer = () => {
     notices: ['lab: its declaration was not read - JSONDecodeError: Expecting property name enclosed in double quotes: line 12 column 5 (char 318)',
       'default: two sources read one table'] } };
 };
+// Imports (lead 10-27, B 79987e3e1 · 97c2163d8): while its state runs, the authoring schema carries the import kind,
+// its skeleton (keys from sections.worlds, entity types from the world the key names) and sections.worlds, and the
+// selected node says it was imported from lab.
+const IMPORTS = { on: false };
+const IMPORTS_NODE = { kind: 'map', keyed_by: 'name', member: 'World', key_section: 'worlds', of: { kind: 'record', fields: [
+  { key: 'entities', required: true, node: { kind: 'map', keyed_by: 'index', member: 'Entity type',
+    of: { kind: 'leaf', hint: 'ref', section: 'entities', world_from: 'key' } } }] } };
+const IMPORT_DRAFT = { draft_id: 'd-import', target_key: 'import|lab', target_kind: 'import', target_id: 'lab', creates_declaration: true,
+  raw: { entities: [] }, revision: 1, lifecycle_status: 'draft', validation_errors: [], context_token: 'ctx:import' };
+const importsAnswer = (u) => {
+  const json = (body) => ({ status: 200, type: 'application/json', body });
+  if (u.pathname === '/api/ledger/declaration' && u.searchParams.get('world') === 'lab') {
+    return json({ entities: [{ type: 'lot' }, { type: 'wafer' }, { type: 'die' }] });
+  }
+  if (u.pathname === '/admin/ontology-explorer/authoring/plan' && /import/.test(u.searchParams.get('selection') || '')) {
+    return json({ ...bodyOf(ANSWERS['/admin/ontology-explorer/authoring/plan']), fields: [] });
+  }
+  if (u.pathname === '/admin/ontology-explorer/view' && u.searchParams.get('draft_id') === IMPORT_DRAFT.draft_id) {
+    return json({ ...bodyOf(ANSWERS['/admin/ontology-explorer/view?q=&page=1&limit=100&view_mode=active']), draft: IMPORT_DRAFT });
+  }
+  const at = u.pathname + u.search;
+  const a = ANSWERS[at];
+  if (!a) return null;
+  const b = bodyOf(a);
+  if (at === '/admin/ontology-explorer/authoring/schema') {
+    return { ...a, body: { ...b, authorable_kinds: [...b.authorable_kinds, { id: 'import', section: 'imports' }],
+      sections: { ...(b.sections || {}), worlds: ['default', 'lab'] },
+      skeleton: { ...b.skeleton, root: { ...b.skeleton.root, fields: [...b.skeleton.root.fields,
+        { key: 'imports', required: false, node: IMPORTS_NODE }] } } } };
+  }
+  if (u.pathname === '/admin/ontology-explorer/view' && b.selection) {
+    return { ...a, body: { ...b, selection: { ...b.selection, imported_from: 'lab' } } };
+  }
+  return null;
+};
 const HTML_HELD = '<table>' + '<tr><td>x</td></tr>'.repeat(110) + '</table>';
 const pasteHtmlAnswer = (u) => {
   const at = '/admin/chain/rules/raw?name=dt_log_to_dt_map';
@@ -361,6 +396,7 @@ const answerOf = (u) => {
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PASTE_HTML.on) { const v = pasteHtmlAnswer(u); if (v) return v; }
   if (WORLDS_OVERLAP.on && u.pathname === '/admin/ontology-explorer/worlds') return worldsOverlapAnswer();
+  if (IMPORTS.on) { const v = importsAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
@@ -1065,6 +1101,17 @@ CELLS.push({ entry: 'admin.html', after: 'Ontology Explorer, worlds overlap', ru
   const cut = [...list.children].find((e) => e.getBoundingClientRect().right > box.right + 0.5 || e.scrollWidth > e.clientWidth + 1);
   return cut ? '«' + cut.textContent.slice(0, 30) + '» past its box' : null;
 })()` });
+// Imports (lead 10-27): the imported node says whose under its title and offers «Edit in lab», not Edit draft; the new
+// import's name is offered the worlds.
+CELLS.push({ entry: 'admin.html', after: 'Ontology Explorer, an imported node', rule: 'imports', at: 'oe-title-block', expr: `(() => {
+  const said = [...document.querySelectorAll('.oe-title-block .meta')].map((e) => e.textContent);
+  if (said.join('|') !== 'imported from lab') return 'under the title: ' + JSON.stringify(said);
+  const words = [...document.querySelectorAll('.oe-head-buttons button')].map((b) => b.textContent);
+  if (!words.includes('Edit in lab') || words.includes('Edit draft')) return 'the buttons read ' + JSON.stringify(words);
+  const box = document.querySelector('input.oe-new-id');
+  const list = box && box.list ? [...box.list.options].map((o) => o.value) : [];
+  return list.join('|') === 'default|lab' ? null : 'the new name is offered ' + JSON.stringify(list);
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'reason whole', at: 'fail-summary__reason', expr: `(() => {
   const want = ${JSON.stringify(TIMEOUT)};
   const line = [...document.querySelectorAll('#chain-fail-summary-mount .fail-summary__reason')];
@@ -1491,6 +1538,10 @@ async function servePage(chrome, dist) {
     if (PIVOT.on && request.method === 'POST' && u.pathname === '/tables/dt_log/rows/batch_delete') {
       // A group deleted in pivot view (owner 10-23): answered with how many long rows it named.
       reply(200, 'application/json', JSON.stringify({ deleted_count: (JSON.parse(request.postData || '{}').row_ids || []).length }));
+      return;
+    }
+    if (IMPORTS.on && request.method === 'POST' && u.pathname === '/admin/ontology-explorer/drafts/new') {
+      reply(200, 'application/json', JSON.stringify({ draft: IMPORT_DRAFT }));
       return;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') { log.refused.push(`${request.method} ${u.pathname}`); chrome.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {}); return; }
@@ -2724,6 +2775,32 @@ const DRIVE = {
       await until(c, "document.querySelectorAll('.world-facts .world-fact').length === 4", 15000);
       WORLDS_OVERLAP.on = false;
     }],
+    // Imports (lead 10-27): the selected node imported from lab - said whose, «Edit in lab» for Edit draft - and the new
+    // import's name box, offered the worlds.
+    ['Ontology Explorer, an imported node', async (c, log) => {
+      IMPORTS.on = true;
+      log.opening = true;
+      await c.send('Page.reload', { ignoreCache: true });
+      await sleep(1500);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, "[...document.querySelectorAll('button')].some((b) => b.textContent === 'Edit in lab')", 15000);
+      await evaluate(c, `(() => { const b = document.querySelector('button[data-action="new-declaration"][data-value="import"]');
+        if (b) b.click(); return Boolean(b); })()`);
+      await until(c, "!!document.querySelector('input.oe-new-id')");
+      IMPORTS.on = false;
+    }],
+    // The new import created (lead 10-27): its required entities list empty in the form's value column, offered lab's types.
+    ['Ontology Explorer, a new import', async (c) => {
+      IMPORTS.on = true;
+      await evaluate(c, `(() => { const i = document.querySelector('input.oe-new-id'); if (!i) return false;
+        i.value = 'lab'; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await sleep(300);
+      await evaluate(c, `(() => { const b = document.querySelector('button[data-action="create-declaration"][data-value="import"]');
+        if (b) b.click(); return Boolean(b); })()`);
+      await until(c, "[...document.querySelectorAll('datalist option')].some((o) => o.value === 'wafer')", 15000);
+      IMPORTS.on = false;
+    }],
   ],
 };
 
@@ -2849,6 +2926,9 @@ const MUTANTS = [
     file: 'src/file_ingestion/file_ingestion.css', edits: [['.fi-progress__acts { display: flex;', 'td:has(> .fi-progress__acts) { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }\n.fi-progress__acts { display: flex;']] },
   { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',
     file: 'src/file_ingestion/parts.js', edits: [["el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')"]] },
+  // The form's adder inside its cell (lead 10-27): an empty required list's + under «Required» at 1280 again.
+  { name: 'the adder\'s box keeps its width in a narrow value column again, its + under the row\'s Required', entry: 'admin.html', rule: 'cover', at: 'oe-form-adder',
+    file: 'src/ontology_explorer.css', edits: [['gap: var(--space-1); min-width: 0; max-width: 100%;', 'gap: var(--space-1);'], ['flex: 0 1 auto; min-width: 0; width: calc(var(--space-6) * 6);', 'width: calc(var(--space-6) * 6);']] },
   // «Paste HTML» (lead 10-22).
   { name: 'a paste on «Paste HTML» is not taken', entry: 'admin.html', rule: 'html written', at: 'html',
     file: 'src/ontology_explorer_view.js', edits: [["  if (!el || !el.dataset || el.dataset.action !== 'paste-html') return false;", '  return false;']] },

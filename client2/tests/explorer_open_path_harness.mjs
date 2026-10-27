@@ -1778,6 +1778,218 @@ console.log('\n[11] a create refused for a moved snapshot');
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [13] lead 10-27 ③ (B 79987e3e1) — an entity type another world declares: said whose, no draft here, and
+//      «Edit in <world>» opens that world on the same node, through the controller's own clicks.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[13] an imported entity type is edited in its world');
+async function importedWalk(create, { imported = 'lab' } = {}) {
+  const clicks = [];
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); };
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+  const click = async (action, value) => {
+    const target = { dataset: { action, value }, disabled: false };
+    target.closest = () => target;
+    for (const fn of clicks) await fn({ target });
+    await settle();
+  };
+  const node = { key: 'entity|lot', canonical_id: 'lot', kind: 'entity', context_token: 'ctx:1',
+    config_file: 'ledger_config.json', config_path: 'ledger_config.json#/entities/lot', raw: { keys: ['lot'] },
+    ...(imported ? { imported_from: imported } : {}) };
+  const asked = [];
+  const fetchOf = async (url) => {
+    const u = String(url);
+    asked.push(u);
+    const body = u.includes('/authoring') ? AUTHORING
+      : u.includes('/worlds') ? { worlds: ['default', 'lab'], operating: 'default', history: [], live: {} }
+        : { ...COMPILE, selection: node, items: [node] };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const controller = create({ root, apiBase: '', adminFetch: fetchOf, showToast: () => {} });
+  await controller.refresh();
+  await settle();
+  const all = () => walkAll(root);
+  const out = {
+    said: all().filter((n) => n._classes?.includes('meta') && /imported from/.test(n.textContent)).map((n) => n.textContent),
+    edit: all().filter((n) => n.dataset?.action === 'edit-in-world').map((n) => `${n.textContent}|${n.dataset.value}`),
+    draft: all().filter((n) => n.dataset?.action === 'create-draft').length,
+  };
+  if (!out.edit.length) return out;
+  asked.length = 0;
+  await click('edit-in-world', 'lab');
+  out.world = controller.getState().world;
+  out.went = asked.filter((u) => u.includes('/view?')).map((u) => /[?&]world=lab(&|$)/.test(u) && /selection=entity%7Clot/.test(u));
+  return out;
+}
+function importedSuite(seen, plain) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  say('I1 an imported entity type says whose: one meta line «imported from lab»',
+    JSON.stringify(seen.said) === '["imported from lab"]', JSON.stringify(seen.said));
+  say('I2 ...offers no draft here, and «Edit in lab» instead',
+    seen.draft === 0 && JSON.stringify(seen.edit) === '["Edit in lab|lab"]', `${seen.draft} ${JSON.stringify(seen.edit)}`);
+  say('I3 «Edit in lab» opens lab on the same node',
+    seen.world === 'lab' && seen.went?.length > 0 && seen.went.every(Boolean), `${seen.world} ${JSON.stringify(seen.went)}`);
+  say('I4 an entity type of its own world keeps Edit draft and says nothing of imports',
+    plain.draft === 1 && plain.edit.length === 0 && plain.said.length === 0, JSON.stringify(plain));
+  return { ran: names.length, names, failures };
+}
+// [13] and [14] score the controller and the view: a controller mutant loaded as it is, a view mutant handed to
+// the controller as its view module (the probe's stub).
+const { loadWithProbe } = await import('./lib/probe.mjs');
+const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+const CONTROLLER = join(HERE, '..', 'src', 'ontology_explorer.js');
+const VIEW = join(HERE, '..', 'src', 'ontology_explorer_view.js');
+const swap = (text, from, to) => {
+  if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+  return text.split(from).join(to);
+};
+const VIEW_NAMES = ['renderOntologyExplorer', 'nodeTrail', 'placePopover', 'declarationView', 'adderInput', 'htmlPaste'];
+const withView = async (mutate) => {
+  const view = (await loadWithProbe(VIEW, { mutate })).module;
+  return (await loadWithProbe(CONTROLLER, { stubs: { './ontology_explorer_view.js':
+    Object.fromEntries(VIEW_NAMES.map((n) => [n, view[n]])) } })).module.createOntologyExplorerController;
+};
+const withController = async (mutate) => (await loadWithProbe(CONTROLLER, { mutate })).module.createOntologyExplorerController;
+{
+  const importedBase = importedSuite(await importedWalk(createOntologyExplorerController),
+    await importedWalk(createOntologyExplorerController, { imported: null }));
+  ran += importedBase.ran;
+  failed += importedBase.failures.length;
+  const MUTANTS = [
+    { id: 'I-M1', what: 'an imported entity type is not said whose', catches: 'I1', on: withView,
+      mutate: (text) => swap(text, "  if (importedFrom) title.append(h('p', 'meta', `imported from ${importedFrom}`));\n", '') },
+    { id: 'I-M2', what: 'an imported entity type offers a draft here', catches: 'I2', on: withView,
+      mutate: (text) => swap(text, 'buttons.append(importedFrom ? button(', 'buttons.append(false ? button(') },
+    { id: 'I-M3', what: '«Edit in» opens the world but not the node', catches: 'I3', on: withController,
+      mutate: (text) => swap(text, "await pickWorld(target.dataset.value, { selection: state.selection.key });",
+        'await pickWorld(target.dataset.value);') },
+    { id: 'I-M4', what: 'a picked world drops the node it was asked to open', catches: 'I3', on: withController,
+      mutate: (text) => swap(text, 'selection: selection || undefined', 'selection: undefined') },
+    { id: 'I-M5', what: 'every entity type reads as imported', catches: 'I4', on: withView,
+      mutate: (text) => swap(text, 'const importedFrom = state.selection.imported_from;',
+        "const importedFrom = state.selection.imported_from || 'lab';") },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => {
+    const create = await m.on(m.mutate);
+    return importedSuite(await importedWalk(create), await importedWalk(create, { imported: null }));
+  }, { baselineRan: importedBase.ran, baselineNames: importedBase.names,
+    title: '\n  [13] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [14] lead 10-27 ①② (B's skeleton words): a map's keys are offered sections[key_section] - the new declaration's name
+//      among them; a ref with `world_from: key` offers the section as the world its declaration's key names declares it,
+//      read once from that world. The fixture's words are the fixture's: the screen knows none of them.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[14] a name from a section, a ref from another world');
+async function elsewhereWalk(create, { away = true } = {}) {
+  const ref = { kind: 'leaf', hint: 'ref', section: 'entities', ...(away ? { world_from: 'key' } : {}) };
+  const skeleton = { skeleton_version: 1, root: { kind: 'record', fields: [{ key: 'imports', required: false, node: {
+    kind: 'map', keyed_by: 'name', member: 'World', key_section: 'worlds', of: { kind: 'record', fields: [
+      { key: 'entities', required: true, node: { kind: 'map', keyed_by: 'index', member: 'Entity type', of: ref } }] } } }] } };
+  const authoring = { ...AUTHORING, skeleton, authorable_kinds: [{ id: 'import', section: 'imports', versioned: false }],
+    sections: { worlds: ['default', 'lab'], entities: ['own_type'] } };
+  const node = { key: 'import|lab', canonical_id: 'lab', kind: 'import', context_token: 'ctx:1',
+    config_file: 'ledger_config.json', config_path: 'ledger_config.json#/imports/lab', raw: { entities: ['lot'] } };
+  const draft = { draft_id: 'd1', target_key: node.key, target_kind: 'import', target_id: 'lab', revision: 1,
+    raw: { entities: ['lot'] }, lifecycle_status: 'draft', validation_errors: [] };
+  const clicks = [];
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); };
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+  const click = async (action, value) => {
+    const target = { dataset: { action, value }, disabled: false };
+    target.closest = () => target;
+    for (const fn of clicks) await fn({ target });
+    await settle();
+  };
+  let opened = false;
+  const adminFetchOf = async (url, init = {}) => {
+    const u = String(url);
+    const body = u.includes('/authoring') ? authoring
+      : /\/drafts$/.test(u.split('?')[0]) && init.method === 'POST' ? (opened = true, draft)
+        : { ...COMPILE, selection: node, items: [node], ...(opened ? { draft: { ...draft, context_token: 'ctx:1' } } : {}) };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const read = [];
+  const before = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    read.push(String(url));
+    const body = String(url).includes('/api/ledger/declaration') ? { entities: [{ type: 'lot' }, { type: 'wafer' }] } : {};
+    return { ok: true, status: 200, json: async () => body };
+  };
+  try {
+    const controller = create({ root, apiBase: '', adminFetch: adminFetchOf, showToast: () => {} });
+    await controller.refresh();
+    await settle();
+    const options = () => walkAll(root).filter((n) => n.tagName === 'OPTION').map((n) => n.value);
+    await click('new-declaration', 'import');
+    const out = { named: options() };
+    await click('cancel-declaration', 'import');
+    read.length = 0;
+    await click('create-draft');
+    await settle();
+    out.read = read.filter((u) => u.includes('/api/ledger/declaration') && /[?&]world=/.test(u));
+    out.offered = options();
+    return out;
+  } finally {
+    globalThis.fetch = before;
+  }
+}
+function elsewhereSuite(seen, plain) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  say('E1 a new declaration\'s name is offered its section\'s key_section names',
+    JSON.stringify(seen.named) === '["default","lab"]', JSON.stringify(seen.named));
+  say('E2 a draft whose ref picks from another world reads that world once - its key, no other (the census read names none)',
+    JSON.stringify(seen.read) === '["/api/ledger/declaration?world=lab"]', JSON.stringify(seen.read));
+  say('E3 ...and its adder offers that world\'s types it does not hold yet, not its own section',
+    seen.offered.includes('wafer') && !seen.offered.includes('lot') && !seen.offered.includes('own_type'), JSON.stringify(seen.offered));
+  say('E4 a draft with no such ref reads no other world and offers its own section',
+    plain.read.length === 0 && plain.offered.includes('own_type'), JSON.stringify(plain));
+  return { ran: names.length, names, failures };
+}
+{
+  const both = async (create) => elsewhereSuite(await elsewhereWalk(create), await elsewhereWalk(create, { away: false }));
+  const elsewhereBase = await both(createOntologyExplorerController);
+  ran += elsewhereBase.ran;
+  failed += elsewhereBase.failures.length;
+  const MUTANTS = [
+    { id: 'E-M1', what: 'a new declaration\'s name is offered nothing', catches: 'E1', on: withView,
+      mutate: (text) => swap(text, 'keyNames(schema.sections, map)', '[]') },
+    { id: 'E-M2', what: 'the other world is never read', catches: 'E2', on: withController,
+      mutate: (text) => swap(text, '    readWorldTypes();\n  };', '  };') },
+    { id: 'E-M3', what: 'the screen\'s own world is read instead', catches: 'E2', on: withController,
+      mutate: (text) => swap(text, '() => world)(`${apiBase}/api/ledger/declaration`)', '() => state.world)(`${apiBase}/api/ledger/declaration`)') },
+    { id: 'E-M4', what: 'the form\'s ref is not handed the other world', catches: 'E3', on: withView,
+      mutate: (text) => swap(text, 'state.worldTypes?.[state.draft?.target_id])', 'null)') },
+    { id: 'E-M5', what: 'every draft reads its key\'s world', catches: 'E4', on: withController,
+      mutate: (text) => swap(text, 'if (!section || !picksElsewhere(declarationShape(skeleton, section), skeleton.defs)) return;',
+        'if (!section) return;') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => both(await m.on(m.mutate)),
+    { baselineRan: elsewhereBase.ran, baselineNames: elsewhereBase.names,
+      title: '\n  [14] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

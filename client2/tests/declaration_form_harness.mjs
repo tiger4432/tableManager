@@ -138,6 +138,16 @@ function viewSuite(M) {
   const words = boxAt(form, 'words');
   ok(same(chipsIn(words), ['n1']) && walk(words || makeNode(doc, 'div')).some((n) => has(n, 'oe-form-adder')),
     `V1 a list of words is its chips and an adder [${chipsIn(words)}]`);
+  // B 10-27: a name map's adder offers sections[key_section]
+  const named = (node) => M.view.renderSkeletonForm(viewContext(M, { schema: { sections: LISTS } }),
+    { kind: 'record', fields: [{ key: 'm', node }] }, '', { m: {} }, 0, 'k');
+  const offeredAt = (form) => walk(form).filter((n) => n.tagName === 'OPTION').map((n) => n.value);
+  const REC = { kind: 'record', fields: [{ key: 'x', required: false, node: LEAF }] };
+  const keyed = [offeredAt(named({ kind: 'map', keyed_by: 'name', member: 'w', key_section: 'names', of: LEAF })),
+    offeredAt(named({ kind: 'map', keyed_by: 'name', member: 'w', key_section: 'names', of: REC })),
+    offeredAt(named({ kind: 'map', keyed_by: 'name', member: 'w', of: LEAF })), offeredAt(named({ kind: 'map', keyed_by: 'name', member: 'w', of: REC }))];
+  ok(same(keyed, [['n1', 'n2'], ['n1', 'n2'], [], []]),
+    `V13 a name map's adder - drawn as a table or as members - offers its key_section's names, none without one [${JSON.stringify(keyed)}]`);
   const tableIn = (at) => walk(boxAt(form, at) || makeNode(doc, 'div')).find((n) => n.tagName === 'TABLE');
   const heads = (t) => (t ? walk(t).filter((n) => n.tagName === 'TH').map((n) => String(n.textContent)).filter(Boolean) : []);
   ok(same(heads(tableIn('rows')), ['a', 'pick']),
@@ -276,6 +286,21 @@ function skelSuite(M) {
   const rowsOwn = ['pics[0].cols[0]', 'pics[1].cols[0]', 'pics[2].cols[0]'].map((at) => M.skel.refNames({}, TABS, own, PICS, at));
   ok(same(rowsOwn.map((r) => [r.table, r.names]), [['T', ['c1']], ['U', ['u1', 'u2']], ['', []]]),
     `S3 a «*» in table_from is the cell's own row: row 0 offers T's columns, row 1 U's, a row not there none [${JSON.stringify(rowsOwn)}]`);
+  // B 10-27: a ref with `world_from` offers its section as the world its declaration's key names declares it (`elsewhere`);
+  // a map's keys are offered `sections[key_section]`; a shape with such a ref under it says so (the page reads that world)
+  const away = { kind: 'leaf', hint: 'ref', section: 'names', world_from: 'key' };
+  const there = [M.skel.refNames(LISTS, {}, away, DOC, '', { names: ['w1', 'w2'] }), M.skel.refNames(LISTS, {}, away, DOC),
+    M.skel.refNames(LISTS, {}, { kind: 'leaf', hint: 'ref', section: 'names' }, DOC, '', { names: ['w1'] })].map((r) => r.names);
+  ok(same(there, [['w1', 'w2'], [], ['n1', 'n2']]),
+    `S5 world_from offers that world's section, nothing before it is read; a plain ref keeps its own section [${JSON.stringify(there)}]`);
+  const keys = [M.skel.keyNames(LISTS, { kind: 'map', keyed_by: 'name', key_section: 'names', of: LEAF }),
+    M.skel.keyNames(LISTS, { kind: 'map', keyed_by: 'name', of: LEAF }), M.skel.keyNames(LISTS, { kind: 'map', key_section: 'nope' })];
+  ok(same(keys, [['n1', 'n2'], [], []]), `S6 a map's keys are offered sections[key_section], none without it [${JSON.stringify(keys)}]`);
+  const deep = { kind: 'map', keyed_by: 'name', of: { kind: 'record', fields: [{ key: 'e', node: { use: 'ent' } }] } };
+  const defs = { ent: { kind: 'map', keyed_by: 'index', of: away } };
+  const asks = [M.skel.picksElsewhere(deep, defs), M.skel.picksElsewhere(FIX.root, {}), M.skel.picksElsewhere(deep, {})];
+  ok(same(asks, [true, false, false]),
+    `S7 a world_from ref under a shape (through a use) says the page reads another world; a shape without one does not [${JSON.stringify(asks)}]`);
 }
 
 // ── P: the panel, as the table and chain windows seat it ─────────────────────────────────────────────────────────
@@ -599,6 +624,11 @@ const DEFECTS = [
   ['skel', 'a number leaf writes its text again',(s) => s.replace('    return Number.isFinite(n) ? n : undefined;', '    return text;')],
   ['panel', 'the panel writes what the box holds again',
     (s) => s.replace("action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);", "action === 'edit-shape-flag' ? Boolean(el.checked) : el.value) && (action === 'edit-shape-flag' ? Boolean(el.checked) : el.value);")],
+  ['skel', 'a world_from ref offers its own section', (s) => s.replace('  if (node.world_from) {', '  if (false) {')],
+  ['skel', "a map's keys are offered nothing", (s) => s.replace("  return Array.isArray(list) ? list.filter((name) => typeof name === 'string') : [];\n}\n\n/** Does a leaf", "  return [];\n}\n\n/** Does a leaf")],
+  ['skel', 'a world_from ref under a use is not seen', (s) => s.replace('  const n = deref(node, defs);\n  if (!n || seen.has(n)) return false;', '  const n = node;\n  if (!n || seen.has(n)) return false;')],
+  ['view', "a name map's adder offers nothing", (s) => s.replace('withList(context, input, path, keyNames((context.schema || {}).sections, node))', 'input')],
+  ['view', "a name map drawn as a table offers nothing", (s) => s.replace("adder(context, path, node.member || 'Name', keyNames((context.schema || {}).sections, node))", "adder(context, path, node.member || 'Name', [])")],
   ['panel', 'a + row is born without the lists', (s) => s.replace("named ? named.value : '', this.lists, el.dataset.branch || '');", "named ? named.value : '');")],
 ];
 const CONTROLS = [
