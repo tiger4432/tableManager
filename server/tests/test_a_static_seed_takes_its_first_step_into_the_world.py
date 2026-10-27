@@ -82,9 +82,10 @@ def test_a_static_node_met_on_the_way_is_held_as_before():
 
 
 def test_a_static_seeds_fan_out_draws_its_first_n_and_bundles_the_rest():
-    """총괄 11e5ea207: over the limit, the first `fanout_limit` are drawn - it drew none before."""
+    """총괄 11e5ea207: over the limit, the first `fanout_limit` are drawn - it drew none before; the rest is a hub (10-27)."""
     body = _walk(_id("defect_kind", "K"), follow=["of_kind"], fanout_limit=2)
-    assert len(_labels(body, "defect")) == 2
+    assert [n["hub"]["count"] for n in body["nodes"] if "hub" in n] == [1]
+    assert len([n for n in body["nodes"] if n["type"] == "defect" and "hub" not in n]) == 2
     assert [(b["far_type"], b["count"], b["drawn"]) for b in body["bundles"]] == [("defect", 3, 2)]
 
 

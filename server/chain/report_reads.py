@@ -1100,7 +1100,7 @@ class Report:
         -> {"context": its head and a name a line, "nodes": {name: node id}}."""
         kind = self._causes()["seed_type"]
         answer = _walk(self.db, "derive.report.causes.seed_type", seed_type=kind, hops=0, propagation=False,
-                       **_worlds_asked(self._causes()))
+                       **_worlds_asked(self._causes()), **_fanout(self._causes()))
         nodes = {}
         for node in answer.get("nodes") or ():
             nodes.setdefault(str(node.get("label") or node["id"]), node["id"])
@@ -1137,25 +1137,29 @@ class Report:
                               "static types - name the predicates the walk follows")
         asked = {"node_id": ids[0], "positive": ids[1:] or None, "follow": follow,
                  "collect": causes.get("collect") or None, "propagation": True}
-        asked.update(_worlds_asked(causes))                      # several worlds at once (owner 10-26)
+        asked.update(_worlds_asked(causes), **_fanout(causes))   # several worlds at once (owner 10-26)
         if causes.get("hops") is not None:
             asked["hops"] = causes["hops"]
         answer = _walk(self.db, "derive.report.causes", **asked)
         edges = {(edge.get("source"), edge.get("target")) for edge in answer.get("edges") or ()}
         ranked = (answer.get("propagation") or {}).get("ranked") or []
         trails = {item["id"]: ((item.get("evidence") or [{}])[0].get("hops") or []) for item in ranked}
+        # a hub is no candidate - its members share one value and cannot be told apart - but one line (owner 10-27)
         candidates = [{"id": node["id"], "type": node.get("type"), "label": node.get("label"),
                        "path": _path(trails.get(node["id"]) or (), edges)}
-                      for node in answer.get("nodes") or () if node["id"] not in ids]
+                      for node in answer.get("nodes") or () if node["id"] not in ids and "hub" not in node]
+        hubs = [node for node in answer.get("nodes") or () if "hub" in node]
         named = [name for name, at in kinds.items() if at in ids]
         cut = (answer.get("truncated") or {}).get("reason")
-        head = "%s: %d node(s) reached along %s, %d candidate(s) kept%s%s" % (
+        head = "%s: %d node(s) reached along %s, %d candidate(s) kept%s%s%s" % (
             ", ".join(named), len(ranked), ", ".join(follow), len(candidates),
+            ", %d hub(s) - a line each" % len(hubs) if hubs else "",
             " (collect: %s)" % ", ".join(causes["collect"]) if causes.get("collect") else "",
             " - the walk was cut: %s" % cut if cut else "")
         logger.warning("[Report] causes walk from %s", head)
         left_out = [report_shape.word(self.spec, "no_seed") % (seed, causes["seed_type"]) for seed in unknown]
         lines = ["%s %s: %s" % (c["type"], c["label"], c["path"]) for c in candidates]
+        lines += [_hub_line(hub, answer) for hub in hubs]
         return {"context": "\n".join([head] + left_out + lines), "candidates": candidates}
 
 
@@ -1189,10 +1193,12 @@ class Report:
                 ", ".join(self.keys)))
         world = _worlds_asked(causes)
         ids = list(dict.fromkeys(c["id"] for c in candidates))
-        model = _walk(self.db, "derive.report.causes.values.follow", node_id=ids[0], positive=ids[1:] or None,
-                      follow=list(dict.fromkeys(list(said["follow"]) + [order])), propagation=False,
-                      node_limit=ledger_subgraph.MAX_NODE_LIMIT, **world,
-                      **({"hops": said["hops"]} if said.get("hops") is not None else {}))
+        # a value is built from members: a hub the walk folds is opened (owner 10-27, as the contrast mapper's)
+        model, _opened = ledger_subgraph.walk_opened(lambda expand: _walk(
+            self.db, "derive.report.causes.values.follow", node_id=ids[0], positive=ids[1:] or None,
+            follow=list(dict.fromkeys(list(said["follow"]) + [order])), propagation=False,
+            node_limit=ledger_subgraph.MAX_NODE_LIMIT, expand=expand, **world,
+            **({"hops": said["hops"]} if said.get("hops") is not None else {})))
         nodes = {node["id"]: node for node in model.get("nodes") or ()}
         out = {}
         for edge in model.get("edges") or ():
@@ -1212,13 +1218,18 @@ class Report:
                 before[q] = max(acting, key=seq_of)
         wafers = {explorer.entity_id(wafer_type, dict(zip(keys[wafer_type], w))): w for w in self.wafers}
         seeds = list(wafers)
-        edges, calls, resume = {}, 0, None
+        edges, calls, resume, opened = {}, 0, None, []
         while seeds and at_step:
             answer = _walk(self.db, "derive.report.causes.values", node_id=seeds[0], positive=seeds[1:] or None,
                            follow=[valued, "%s:%s" % (event, tx_name)], hops=3, propagation=False,
                            resumable=True, node_limit=ledger_subgraph.MAX_NODE_LIMIT,
-                           edge_limit=ledger_subgraph.MAX_EDGE_LIMIT, **world, **({"resume": resume} if resume else {}))
+                           edge_limit=ledger_subgraph.MAX_EDGE_LIMIT, expand=opened or None, **world,
+                           **({"resume": resume} if resume else {}))
             calls += 1
+            folded = [node["id"] for node in answer.get("nodes") or () if "hub" in node and node["id"] not in opened]
+            if folded:                              # a hub folded: the walk again from its first page, opened
+                edges, calls, resume, opened = {}, 0, None, opened + folded
+                continue
             for edge in answer.get("edges") or ():
                 edges[(edge["source"], bare(edge["predicate"]), edge["target"])] = edge.get("records") or [
                     {"qualifiers": edge.get("qualifiers") or {}, "occurred_at": edge.get("occurred_at")}]
@@ -1269,10 +1280,39 @@ class Report:
                 to_fill.append(name)
             lines.append("%s: %s%s" % (name, " · ".join(said_cells),
                                        "" if cells else " - " + report_shape.word(self.spec, "to_fill")))
-        head = "%d quantit(ies) with values on these wafers, %d to fill - %d model node(s), %d wafer walk page(s)" % (
-            len(labels) - len(to_fill), len(to_fill), len(nodes), calls)
+        cut = (model.get("truncated") or {}).get("reason")
+        head = "%d quantit(ies) with values on these wafers, %d to fill - %d model node(s), %d wafer walk page(s)%s" % (
+            len(labels) - len(to_fill), len(to_fill), len(nodes), calls, " - the model walk was cut: %s" % cut if cut
+            else "")
         logger.warning("[Report] causes values: %s", head)
         return {"context": "\n".join([head] + lines), "labels": labels, "to_fill": to_fill}
+
+
+def _fanout(causes) -> dict:
+    """The prompt walks' fan-out (`causes.fanout_limit`): a step past it folds into a hub; none said - the walk's own
+    (only the predicates declared `hub` fold)."""
+    return {"fanout_limit": causes["fanout_limit"]} if causes.get("fanout_limit") is not None else {}
+
+
+def _hub_line(hub, answer):
+    """A hub of the cause walk as one prompt line - the walk card's own line (`walk_cards.item_line`): what it holds,
+    from where, how many (the ledger's when the walk read fewer) and the members it names."""
+    from ledger import walk_cards
+    from ledger_api import ledger_subgraph
+    from utils import text_links
+
+    nodes = {node["id"]: node for node in answer.get("nodes") or ()}
+    cells = hub["hub"]
+    near = cells["near"]
+    if near not in nodes:                           # a set's step: the members it went on from
+        step = ledger_subgraph.hub_cells(near + "|")
+        near = "%s via %s" % (step["far_type"], step["predicate"]) if step else near
+    item = {"hub": hub["label"], "from": near, "predicate": cells["predicate"], "direction": cells["direction"],
+            "far_type": cells["far_type"], "count": cells["count"], "in_ledger": cells.get("in_ledger"),
+            "sample": cells.get("sample")}
+    return walk_cards.item_line(item, lambda key, value: (
+        text_links._node_line(value, nodes) if key == "from" and value in nodes
+        else ", ".join(text_links._node_line(v, nodes) for v in value) if key == "sample" else value))
 
 
 def _worlds_asked(causes) -> dict:

@@ -168,12 +168,14 @@ def edges(sight, limit=None, argument=None):
     """The branches at the nodes it stands on, one per (predicate, direction, far type): how many far nodes, the
     first `limit` of them, and - where the nodes carry a sign - how many came from a positive and a negative one."""
     far, undrawn = _branches(sight)
+    hubs = {node_id for node_id, node in _nodes(sight).items() if "hub" in node}
     grouped = {}
     for (here, predicate, direction, far_type), ids in far.items():
         item = grouped.setdefault((predicate, direction, far_type), {
             "predicate": predicate, "direction": direction, "far_type": far_type, "count": 0, "sample": [],
             "from_positive": 0, "from_negative": 0})
-        item["count"] += len(ids) + undrawn.get((here, predicate, direction, far_type), 0)
+        # a hub stands as a far end and is no far node - its members are the bundle's undrawn ones
+        item["count"] += sum(1 for i in ids if i not in hubs) + undrawn.get((here, predicate, direction, far_type), 0)
         item["sample"].extend(i for i in ids if i not in item["sample"])
         sign = sight.signs.get(here)
         if sign is not None:
@@ -274,6 +276,13 @@ def full_path(sight, limit=None, argument=None):
 #: 🔴 THE ONE TABLE OF CARD NAMES - a recipe row's `card` is looked up here and nowhere else.
 CARDS = {fn.__name__: fn for fn in (node_types, key_shapes, node_count, meanings, key_candidates, edges,
                                     missing_edges, mentions, path, budget, question, dead_end, full_path)}
+
+
+def item_line(item, said=lambda key, value: value):
+    """THE ONE LINE a card item is read as - «- key: value; ...», blank cells left out; `said(key, value)` spells a cell
+    (the agent walk names a node by a short identifier, the AI report by its label)."""
+    return "- " + "; ".join("%s: %s" % (key, said(key, value)) for key, value in item.items()
+                            if value not in (None, "", []))
 
 
 def card(name, sight, limit=None, argument=None):

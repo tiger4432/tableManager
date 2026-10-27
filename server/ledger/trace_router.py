@@ -83,6 +83,18 @@ def _indexed_qualifiers(world=None) -> frozenset:
     return frozenset.intersection(*picked) if picked else frozenset()
 
 
+def _hub_predicates(world=None) -> frozenset:
+    """The predicates a picked world declares `hub` - a walk folds their steps (`ledger_subgraph._walk`). A declaration
+    that cannot be read folds nothing (`_predicate_cardinalities` says the failure)."""
+    from ledger import setup_bundle
+
+    try:
+        return frozenset().union(*(setup_bundle.hub_predicates((_declaration(names.name) or {}).get("vocabulary"))
+                                   for names in _worlds(world)))
+    except Exception:                                                  # noqa: BLE001 - said once, by the cardinalities
+        return frozenset()
+
+
 def _source_names(world) -> list:
     """A world's declared source names - what a walk read `first` leaves out of a later world (`schema.first_read`)."""
     return list((_declaration(world) or {}).get("sources") or {})
@@ -211,12 +223,13 @@ def evidence_subgraph(
     fanout_limit: int | None = Query(
         None, ge=1,
         description=("Steps from one node along one predicate and direction to more than this "
-                     "many nodes are not drawn - the answer's `bundles` lists them with their "
-                     "count. Absent: everything is drawn")),
+                     "many nodes draw this many and fold the rest into a hub node, as a predicate "
+                     "declared `hub` folds all of them - the answer's `bundles` lists each step with "
+                     "its count and hubs. Absent: only declared predicates fold")),
     expand: list[str] | None = Query(
         None,
-        description=("`<node id>|<predicate>|<direction>` of a bundle to draw past "
-                     "`fanout_limit`. May repeat")),
+        description=("`<node id>|<predicate>|<direction>` of a bundle, or a hub id: that step is "
+                     "drawn unfolded. May repeat")),
     around: str | None = Query(
         None, description=("Time page: the instant (ISO 8601) the first page is nearest to - "
                            "`id`'s atoms along one `follow` on one `direction`, hops=1")),
@@ -809,7 +822,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         group_by=group_by, measure=measure,
         # S-148-a. The description resolves INSIDE the walk, on the same connection.
         seed_type=seed_type, seed_limit=seed_limit,
-        fanout_limit=fanout_limit, expand=expand, propagation=propagation,
+        fanout_limit=fanout_limit, expand=expand, propagation=propagation, hubs=_hub_predicates(world),
         # the worlds' own declarations, for the walk's key order and plural names
         declaration_paths=tuple(each.declaration_path for each in names))
 
@@ -1020,8 +1033,15 @@ def _declared_or_refused(names, declared, *, reason, what, world, argument):
 
 
 def _expanded_bundle(item, world=None):
-    """`<node id>|<predicate>|<direction>` with its predicate through `_declared_or_refused`; a
-    shape that is not three parts goes on to the walk, which refuses it by its own words."""
+    """`<node id>|<predicate>|<direction>` - or a hub id, its predicate read by `ledger_subgraph.hub_cells` - with its
+    predicate through `_declared_or_refused`; any other shape goes on to the walk, which refuses it by its own words."""
+    cells = ledger_subgraph.hub_cells(item)
+    if cells is not None:
+        (predicate,) = _declared_or_refused(
+            [cells["predicate"]], _followable_predicates(world), reason="predicate_not_declared",
+            what="predicate", world=world, argument="expand")
+        return ledger_subgraph.hub_step_id(cells["near"], predicate, cells["direction"], cells["far_type"]) + (
+            "|" + cells["value"])
     parts = str(item).split("|")
     if len(parts) != 3 or not parts[1].strip():
         return item

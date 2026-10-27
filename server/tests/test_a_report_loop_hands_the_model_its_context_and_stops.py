@@ -103,11 +103,13 @@ def test_earlier_steps_are_a_line_each():
 
 
 def test_the_budget_cuts_the_last_result_then_the_conditions_then_stops():
-    tight = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 440})   # the yield_by and wafers lines grew (10-26)
+    # the yield_by and wafers lines grew (10-26); the prompt says what it cut (10-27)
+    tight = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 460})
     model = Model({"call": "yield_by", "args": {}}, {"done": {"summary": ""}})
     out = report_loop.run(FakeReport(condition_lines=40), tight, REQUEST, ask=model, clock=Clock())
     first = out["steps"][0]["cut"]
     assert set(first) == {"4"} and 1 <= first["4"] < 40, "the first step has no [6] - [4] is cut"
+    assert "Rows cut to fit the context: conditions %d of 40" % first["4"] in model.prompts[0].splitlines()
     assert out["steps"][1]["cut"]["6"] < 4 and out["steps"][1]["cut"]["4"] < 40
     starved = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 100})
     out = report_loop.run(FakeReport(), starved, REQUEST, ask=Model(), clock=Clock())

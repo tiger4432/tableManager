@@ -2713,6 +2713,14 @@
                         }
                       },
                       {
+                        "key": "fanout_limit",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
                         "key": "values",
                         "required": false,
                         "node": {

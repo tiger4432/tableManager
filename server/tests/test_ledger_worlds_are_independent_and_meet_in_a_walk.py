@@ -1197,3 +1197,25 @@ def test_a_type_one_world_imports_is_one_node_in_a_walk_of_both(world):
     (edge,) = [e for e in payload["edges"] if e["predicate"] == "processed_with"]
     assert [said["world"] for said in edge["by_world"]] == [A, C]
     assert edge["target"] == explorer.entity_id("recipe", {"recipe": "RCP-1"})
+
+
+@pytest.mark.pg
+def test_a_hub_one_world_declares_folds_its_step_in_a_walk_over_both_read_both_or_first(world):
+    """A hub over two worlds (총괄 eda0c65c7): the picked worlds' `hub` cells fold the step, and the count is read
+    through the same relation the walk reads - both worlds, or a source the first declares from the first alone."""
+    _seed(world)
+    hub = _only(KEPT, CHANGED)
+    hub["vocabulary"]["processed_with@1"]["hub"] = True
+    _make(world, A, hub, KEPT, CHANGED)
+    _make(world, C, _only(CHANGED), CHANGED)
+
+    def hubs(worlds, read="both"):
+        with world["engine"].connect() as conn:
+            payload = trace_router._evidence_graph(
+                conn, node_id=explorer.entity_id("wafer", {"wafer": "W1"}), hops=1, direction="both",
+                node_limit=200, edge_limit=400, world=worlds, read=read)
+        return [(n["hub"]["predicate"], n["hub"]["count"], n["hub"].get("in_ledger"))
+                for n in payload["nodes"] if "hub" in n]
+
+    assert hubs([A, C]) == hubs([A, C], "first") == [("processed_with", 1, 1)]
+    assert hubs([C]) == [], "C declares no hub"

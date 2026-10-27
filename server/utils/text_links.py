@@ -749,8 +749,7 @@ def walk_context(sight, recipe_rows, state, end=False, cap=None):
         reserve = more_line + sum(len("## %s" % later["card"]) + 1 + more_line for later in cards[at + 1:])
         for item in card["items"]:
             kept = (len(body), dict(listed), dict(ident), dict(ids))
-            body.append("- " + "; ".join("%s: %s" % (key, said(key, value)) for key, value in item.items()
-                                         if value not in (None, "", [])))
+            body.append(walk_cards.item_line(item, said))
             for name, node_id in ids.items():
                 listed.setdefault(name, "%s: %s" % (name, _node_line(node_id, nodes)))
             if room is not None and len(text()) + reserve > room:

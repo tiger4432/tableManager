@@ -199,6 +199,21 @@ def test_without_own_values_every_cell_is_an_estimate_or_blank(ledger):
     assert cells["W1"] is None and cells["W2"].endswith("· 1 wf)") and cells["W3"].endswith("· 3 wf)")
 
 
+@pytest.mark.parametrize("hub", ["processed_at", "describes"])
+def test_a_hub_a_walk_folds_is_opened_so_every_value_is_the_same(ledger, monkeypatch, hub):
+    """Owner 10-27: a value is built from members - a predicate declared `hub` folds the walk, and the values read opens
+    what it folded through `expand` (as the contrast mapper does): own · est · n wf · to fill as with no hub."""
+    plain = Reads()
+    said = plain.values(CANDIDATES)
+    sample = _sample()
+    sample["vocabulary"][hub + "@1"]["hub"] = True
+    monkeypatch.setattr(trace_router, "_declaration", lambda world=None: sample)
+    ledger["walks"].clear()
+    folded = Reads()
+    assert folded.values(CANDIDATES) == said and folded.wafers == plain.wafers
+    assert any(asked.get("expand") for _cell, asked in ledger["walks"]), "the walks must fold, or opening proves nothing"
+
+
 @pytest.mark.parametrize("values, said", [
     (dict(VALUES, follow=["of_kind", "nope"]), "names nope - not a predicate the ledger declares"),
     (dict(VALUES, event="processed_at:lot"), "lot is not a qualifier of processed_at (declared: tx_id)"),

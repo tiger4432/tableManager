@@ -104,9 +104,9 @@ def _walk_arguments(row) -> tuple:
     return args, None
 
 
-def _walk(db, args):
+def _walk(db, args, expand=None):
     """The walk route, called with every argument spelled out (a direct call leaves FastAPI's
-    `Query` sentinels in anything left out)."""
+    `Query` sentinels in anything left out). `expand`: the hubs it opens (`ledger_subgraph.walk_opened`)."""
     positive = args["positive"]
     return _route()(
         node_id=positive[0] if positive else None,
@@ -117,7 +117,7 @@ def _walk(db, args):
         follow=args["follow"] or None, backbone_hops=args["backbone_hops"],
         collect=None, seed_type=args["seed_type"], seed_limit=args["seed_limit"],
         group_by=None, measure=None, response_format="json", db=db,
-        include_superseded=args["include_superseded"], world=args["world"])
+        include_superseded=args["include_superseded"], world=args["world"], expand=expand)
 
 
 def contrast_walk(db, payload, rule=None):
@@ -126,6 +126,7 @@ def contrast_walk(db, payload, rule=None):
     from fastapi import HTTPException
 
     from chain.dynamic_mappers import _row_ids
+    from ledger_api import ledger_subgraph
     from database import crud, models, schemas
 
     trigger = str((rule or {}).get("trigger_table") or "")
@@ -145,7 +146,8 @@ def contrast_walk(db, payload, rule=None):
             refusals.append("%s: %s" % (run_id, why))
             continue
         try:
-            answer = _walk(db, args)
+            # a hub the walk folds is opened: the factor table holds a member a row, as it did (owner 10-27)
+            answer, _opened = ledger_subgraph.walk_opened(lambda expand: _walk(db, args, expand))
         except HTTPException as refused:
             detail = refused.detail if isinstance(refused.detail, dict) else {}
             refusals.append("%s: %s" % (run_id, detail.get("message") or refused.detail))

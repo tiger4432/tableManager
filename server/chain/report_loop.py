@@ -163,7 +163,9 @@ def compose(spec, request, conditions, steps, previous, budget, step, cap):
     cut = {}
     while True:
         body = head + ["Conditions:"] + rows4 + (["Earlier steps:"] + earlier if earlier else []) + last_head + rows6
-        text = "\n".join(body)
+        said = _cut_line([(name, cut[n], whole) for n, name, whole in (
+            ("6", "last result", len(previous)), ("4", "conditions", len(conditions))) if n in cut])
+        text = "\n".join(body + ([said] if said else []))
         used = budget.tokens(text + "\nused ~%d of %d tokens, %d steps left" % (budget.cap, budget.cap, cap))
         if used <= budget.cap:
             return text + "\nused ~%d of %d tokens, %d steps left" % (used, budget.cap, cap - step), cut
@@ -180,25 +182,40 @@ def compose(spec, request, conditions, steps, previous, budget, step, cap):
 def compose_write(spec, request, reads, budget, line=None):
     """The write call's prompt - role · rules · the write line (`line`: the seed call's) · style · compare · control ·
     the request · every table read (`reads`: [(step, call, lines)]) - and what was cut, or (None, cut) when the tables
-    at no rows do not fit. Over budget the oldest read loses half its rows first (lead 10-23)."""
+    at no rows do not fit. Over budget a read loses half its rows, the cause walk's reads first and the report's own
+    tables last, the oldest first in each (lead 10-23, owner 10-27 «ㅇㅇ»); what was cut is said in a line."""
     prompts = (spec or {}).get("prompts") or {}
     slots = ", ".join('"%s": "<text>"' % slot for slot in text_slots(spec))
     head = ([prompts.get("role") or ROLE] + ([prompts["rules"]] if prompts.get("rules") else []) + [line or WRITE % slots]
             + _prompts(spec, ("style", "compare", "control")) + _request(request) + ["Tables read:"])
     kept = [list(lines) for _step, _call, lines in reads]
+    order = sorted(range(len(reads)), key=lambda n: not _walked(reads[n][1]))
     cut = {}
     while True:
         body = list(head)
         for (step, call, _lines), lines in zip(reads, kept):
             body += ["step %d: %s" % (step, call)] + lines
-        text = "\n".join(body)
+        said = _cut_line([("step %d %s" % (step, call), len(lines), len(whole))
+                          for (step, call, whole), lines in zip(reads, kept) if len(lines) < len(whole)])
+        text = "\n".join(body + ([said] if said else []))
         if budget.tokens(text) <= budget.cap:
             return text, cut
-        at = next((n for n, lines in enumerate(kept) if lines), None)
+        at = next((n for n in order if kept[n]), None)
         if at is None:
             return None, cut
         kept[at] = kept[at][:len(kept[at]) // 2]
         cut["step %d %s" % (reads[at][0], reads[at][1])] = len(kept[at])
+
+
+def _walked(call):
+    """A read the cause walk made (`_causes`) - cut before the report's own tables."""
+    return call.startswith("causes(") or call in (VALUES_CALL, RELATED_CALL)
+
+
+def _cut_line(said):
+    """THE ONE LINE a prompt says what the budget cut in - «Rows cut to fit the context: <read> N of M, ...»; nothing
+    cut: none. `said`: [(read, rows kept, rows read)]."""
+    return ("Rows cut to fit the context: " + ", ".join("%s %d of %d" % item for item in said)) if said else None
 
 
 def _ask(prompt, ask):

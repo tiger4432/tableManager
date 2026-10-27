@@ -171,6 +171,7 @@
 
 ### 원장 선언
 
+- 2026-10-27 [허브 — 한 노드에서 한 술어로 많이 닿는 걸음을 노드 하나로 접고, 구성원은 집합째 걷는다 · AI 리포트 프롬프트에 한 줄](#2026-10-27--허브--한-노드에서-한-술어로-많이-닿는-걸음을-노드-하나로-접고-구성원은-집합째-걷는다--ai-리포트-프롬프트에-한-줄) — 적는 곳 ledger_config.json 의 vocabulary.<술어>.hub · 리포트 규칙의 derive.report.causes.fanout_limit · 보는 곳 걷기 답의 허브 노드 · 리포트 Evidence 의 causes 걸음
 - 2026-10-27 [원장 수식어 색인 — indexed 한 칸이면 묶인 걸음이 노드를 다 읽지 않고 찾는다](#2026-10-27--원장-수식어-색인--indexed-한-칸이면-묶인-걸음이-노드를-다-읽지-않고-찾는다) — 적는 곳 ledger_config.json 의 vocabulary.<술어>.object.qualifiers.indexed · 보는 곳 색인 화면 · 서버 로그 [Indexes]
 - 2026-10-27 [원장 선언 imports — 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 쓴다, 그래서 두 세상의 그 노드가 하나](#2026-10-27--원장-선언-imports--다른-세상이-선언한-엔티티-타입을-그-세상이-적은-대로-쓴다-그래서-두-세상의-그-노드가-하나) — 적는 곳 그 세상 선언(config/ontology_worlds/<세상>/ledger_config.json 또는 config/ontology/ledger_config.json)의 최상위 imports · 보는 곳 GET /admin/ontology-explorer/worlds 의 notices
   - 2026-10-27 [선언 창에서 import 를 적는다 — 이름은 세계 목록에서, 엔티티 타입은 그 세계의 선언에서, 가져온 타입은 그 세계에서 고친다](#2026-10-27--선언-창에서-import-를-적는다--이름은-세계-목록에서-엔티티-타입은-그-세계의-선언에서-가져온-타입은-그-세계에서-고친다) — 누르는 곳 Ontology Explorer 왼쪽 목록 Import 의 + New · 가져온 엔티티의 Edit in <세계>
@@ -631,6 +632,20 @@
 
 
 
+
+## 2026-10-27 · 허브 — 한 노드에서 한 술어로 많이 닿는 걸음을 노드 하나로 접고, 구성원은 집합째 걷는다 · AI 리포트 프롬프트에 한 줄
+
+- 무엇: 소유자 10-27 «허브 노드 거쳐 버리면 AI 컨텍스트 꽉 찰 텐데» · 「ㄴ」. 한 노드에서 한 술어 · 한 방향으로 닿는 먼 노드들(공정 스텝의 웨이퍼, 구조 종류의 구조 …)을 «허브» 노드 하나로 접는다. 구성원은 답에서 빠지지만 걸어 간다 — 다음 걸음은 구성원 전체가 한 읽기로 가고, 많으면 다시 허브.
+  - 접히는 걸음: 선언에 `hub: true` 인 술어의 걸음 전부(×1 도), 그리고 `fanout_limit` 을 넘은 걸음(앞 fanout_limit 개는 노드로, 나머지가 허브). `expand` 에 허브 id 를 주면 그 걸음은 안 접힌다.
+  - 허브 노드: type 은 구성원의 타입, 이름 «<타입> × N via <술어>», 원장에서 센 수가 더 크면 «(of N in the ledger)». 같은 걸음은 다시 걸어도 같은 id. 대조 걷기에서는 구성원의 대조값마다, aux 를 물었으면 그 판정마다 허브가 나뉜다.
+  - group_by · measure · 행 투영(format=rows) · 순위는 접기 전 걸음 위에서 — 허브가 있어도 수가 같다. `bundles` 는 그대로 있고 접힌 걸음에 `hubs` 를 더한다.
+  - 대조 맵퍼(contrast_factor)와 리포트 values 는 접힌 허브를 펼쳐 구성원으로 짓는다 — 표의 행과 값은 허브가 있어도 같다(소유자 «표엔 구성원 그대로»).
+- 선언: 원장 `ledger_config.json` 의 `"vocabulary": {"processed_at@1": {..., "hub": true}}` (참/거짓, 저작 뼈대의 Hub 칸). 리포트 규칙 `"causes": {"seed_type": "defect_kind", "fanout_limit": 20}` — 프롬프트에 싣는 두 걷기(seed_nodes · causes)에만, 비면 선언된 술어만 접힘.
+- 보는 곳: 걷기 화면 · rnd_board 는 허브를 노드 하나(이름 그대로)로 그린다 — 허브 그리기 화면은 다음 착지. 리포트 Evidence 의 causes 걸음 머리 «…, N hub(s) - a line each», 허브마다 «- hub: <이름>; from: …; count: N; sample: …». 프롬프트가 넘치면 «Rows cut to fit the context: <읽기> N of M».
+- 바뀐 동작: `fanout_limit` 이 남긴 먼 노드는 이제 허브의 구성원으로 걸려 그 타입의 닿음이 «미완»이 아니다(fan_out 0). 리포트 글쓰기 프롬프트가 넘치면 걷기가 읽은 행이 먼저, 리포트 자기 표(conditions · pareto · yield_by · trend)가 마지막에 잘린다(소유자 10-27 «ㅇㅇ»). 허브도 fanout_limit 도 없는 걷기는 전과 바이트가 같다.
+  - 구성원이 노드 예산 밖이라 한 노드의 이웃이 수천이 될 수 있어, 대조 근거 경로(`_reach`)가 이웃마다 그 노드의 이웃 전부를 훑던 자리(구성원 수의 제곱)를 노드마다 한 번 묶기로 고쳤다. 순위의 근거(`_evidence`)도 구성원 전부에 짓고 버리던 것을 접기 뒤 순위에 남는 항목(허브마다 하나)에만 짓는다(총괄 10-27) — 둘 다 답은 바이트가 같다. 시간은 PG 시험 `test_ten_thousand_in_one_hop_are_one_hub_counted_by_the_ledger` 가 찍는 «hub-box» 줄.
+- 필요한 조건: git pull · 런처 재기동. 선언을 고치면 다음 걷기부터 — 소스 지문 · 원장 무변, 소급 0.
+- 자세히: `server/ledger_api/ledger_subgraph.py` 의 `_walk`(`_folds` · 구성원) · `_fold_hubs` · `hub_cells` · `walk_opened` · `count_far_ends`, `server/ledger/trace_router.py` 의 `_hub_predicates`, `server/chain/report_reads.py` 의 `_hub_line`, `server/chain/report_loop.py` 의 `compose_write` · `_cut_line`. 문서 `docs/architecture/WALK.md` 허브 절, 가이드 `ONTOLOGY_LEDGER_SETUP.md` · `ai_report_tables.md`.
 
 ## 2026-10-27 · 원장 수식어 색인 — indexed 한 칸이면 묶인 걸음이 노드를 다 읽지 않고 찾는다
 

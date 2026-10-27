@@ -173,6 +173,23 @@ def test_a_replay_writes_the_same_rows_and_two_saves_are_two_runs(db):
     assert set(_factors(db, "R2")) == set(before)
 
 
+def test_a_hub_the_walk_folds_is_opened_so_the_rows_are_its_members(db, monkeypatch):
+    """Owner 10-27 «표엔 구성원 그대로»: a predicate declared `hub` folds the walk the screen and the AI read, and the
+    mapper opens it through `expand` - the factor rows are the members, as with no hub."""
+    positive, negative = [_lot("P1"), _lot("P2")], [_lot("N1")]
+
+    def cells(run_id):
+        return {k: (r.rank, r.reach_positive, r.reach_negative, r.reachable_positive, r.reachable_negative, r.type,
+                    r.label, r.top, r.tied, r.incomparable, r.evidence) for k, r in _factors(db, run_id).items()}
+
+    _chain(db, _save_run(db, "R1", positive, negative))
+    monkeypatch.setattr(trace_router, "_hub_predicates", lambda world=None: frozenset({"derived_from"}))
+    monkeypatch.setattr(trace_router, "_followable_predicates", lambda world=None: {"derived_from"})
+    assert any(item["id"].startswith(ledger_subgraph.HUB_PREFIX) for item in _route(db, positive, negative)["ranked"]),         "the fixture must fold, or opening it proves nothing"
+    _chain(db, _save_run(db, "R2", positive, negative))
+    assert cells("R2") == cells("R1") and cells("R1")
+
+
 def test_the_stored_trail_names_the_predicates_it_crossed(db):
     _chain(db, _save_run(db, "R1", [_lot("P1"), _lot("P2")], [_lot("N1")]))
     trails = json.loads(_factors(db, "R1")[_lot("X")].evidence)

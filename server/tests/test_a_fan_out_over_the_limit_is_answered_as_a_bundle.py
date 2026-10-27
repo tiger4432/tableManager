@@ -4,8 +4,9 @@ to more than `fanout_limit` nodes draws its first `fanout_limit` - the first rea
 the rest, with the count and what was drawn (소유자 「잘려도 일부는 나와야지」).
 
 The count is taken over the steps the walk's guards pass (`_step`), so it is what expanding
-that bundle draws. A bundle is not a node and spends no node budget; the far nodes it leaves undrawn cut its far
-type's reach - `more.reach.<type>.complete` false, `truncated.fan_out` their count, reason «fan-out» (총괄 9075f6605).
+that bundle draws. A bundle is not a node and spends no node budget. The far nodes past the limit are walked on as
+one hub's members (소유자 10-27 «허브 = 집합 노드»): the bundle names its hub, and the far type's reach is complete -
+before hubs they were left undrawn and cut it (총괄 9075f6605).
 """
 import os
 import sys
@@ -64,22 +65,36 @@ def _walk(atoms, **kwargs):
 
 
 def _dies(body):
-    return {n["id"] for n in body["nodes"] if n["type"] == "die"}
+    return {n["id"] for n in body["nodes"] if n["type"] == "die" and "hub" not in n}      # a hub of dies is no die
+
+
+def _plain(bundles):
+    """The bundles as they were before hubs - without the hubs they name."""
+    return [{k: v for k, v in bundle.items() if k != "hubs"} for bundle in bundles]
+
+
+def _held(body):
+    """{hub id: its count} - the hubs the answer stands."""
+    return {n["id"]: n["hub"]["count"] for n in body["nodes"] if "hub" in n}
 
 
 def _drawn(body, predicate):
     """The dies one predicate's edges reach from the wafer."""
     return {e["source"] if e["target"] == WAFER else e["target"] for e in body["edges"]
-            if e["predicate"] == predicate and WAFER in (e["source"], e["target"])}
+            if e["predicate"] == predicate and WAFER in (e["source"], e["target"])
+            and not e["id"].startswith(ledger_subgraph.HUB_PREFIX)}                     # not the hub's edge
 
 
 def test_a_fan_out_over_the_limit_draws_its_first_n_and_its_count_is_what_expanding_draws():
     body = _walk(_wafer_of_dies(), fanout_limit=20)
-    assert body["bundles"] == [
+    assert _plain(body["bundles"]) == [
         {"node": WAFER, "predicate": "in_container", "direction": "incoming",
          "far_type": "die", "count": DIES, "drawn": 20},
         {"node": WAFER, "predicate": "inspected", "direction": "outgoing",
          "far_type": "die", "count": DIES, "drawn": 20}]
+    # the dies neither step drew stand in a hub its bundle names - every die is a node or a member
+    assert set(_held(body)) == {hub for bundle in body["bundles"] for hub in bundle.get("hubs", ())}
+    assert len(_dies(body)) + sum(_held(body).values()) == DIES
     # the seed's own two edges are its depth-0 step, not the wafer's fan-out
     assert len(_drawn(body, "in_container") - {SEED}) == 20 == len(_drawn(body, "inspected") - {SEED}),         "a fan-out did not draw its first twenty"
 
@@ -99,7 +114,7 @@ def test_a_step_a_guard_refuses_is_not_counted():
     """Reached ONLY by climbing `inspected`, the wafer may not descend `inspected` - the
     guard refuses those steps, so they are no bundle; `in_container` still fans out."""
     body = _walk(_wafer_of_dies(seed_in_container=False), fanout_limit=20)
-    assert body["bundles"] == [
+    assert _plain(body["bundles"]) == [
         {"node": WAFER, "predicate": "in_container", "direction": "incoming",
          "far_type": "die", "count": DIES - 1, "drawn": 20}]
 
@@ -132,17 +147,17 @@ def test_without_a_limit_the_reach_of_the_dies_is_complete():
     assert "fan-out" not in (body["truncated"]["reason"] or "")
 
 
-def test_a_limit_of_20_leaves_the_reach_of_the_dies_incomplete_by_what_it_did_not_draw():
+def test_a_limit_of_20_walks_the_rest_as_a_hub_so_the_reach_of_the_dies_is_complete():
     body = _walk(_wafer_of_dies(), fanout_limit=20)
     left = DIES - len(_dies(body))
-    assert left > 0, "the bundles left dies undrawn"
-    assert body["more"]["reach"]["die"] == {"complete": False, "unexpanded": left}
-    assert body["truncated"]["fan_out"] == left and "fan-out" in body["truncated"]["reason"]
-    # the ranking: over a cut answer it is not complete - the walk below reaches every hop it can, so only the bundles cut
+    assert left > 0 and sum(_held(body).values()) == left, "the dies past the limit stand in a hub"
+    assert body["more"]["reach"]["die"] == {"complete": True, "unexpanded": 0}
+    assert body["truncated"]["fan_out"] == 0 and "fan-out" not in (body["truncated"]["reason"] or "")
+    # the ranking: the walk below reaches every hop it can, and the hub's members are walked - complete both ways
     whole = ledger_subgraph.subgraph(SEED, ledger_subgraph.InMemoryEvidenceLookup(_wafer_of_dies()), hops=3)
     bundled = ledger_subgraph.subgraph(SEED, ledger_subgraph.InMemoryEvidenceLookup(_wafer_of_dies()), hops=3,
                                        fanout_limit=20)
-    assert (whole["propagation"]["complete"], bundled["propagation"]["complete"]) == (True, False)
+    assert (whole["propagation"]["complete"], bundled["propagation"]["complete"]) == (True, True)
 
 
 def test_an_opened_bundle_cuts_nothing():
@@ -292,7 +307,7 @@ def fixture_pg_walk(request):
 
 
 def _pg_defects(body):
-    return {n["id"] for n in body["nodes"] if n["type"] == "defect"}
+    return {n["id"] for n in body["nodes"] if n["type"] == "defect" and "hub" not in n}
 
 
 def _pg_bundle(body, predicate):
