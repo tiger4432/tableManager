@@ -261,7 +261,7 @@ def test_without_the_resolver_one_typo_refuses_the_whole_bundle(tmp_path, monkey
     """Substituted through `import`, and the substitution is asserted."""
     from ledger.setup_bundle import LedgerSetupValidationError
 
-    def _all_or_nothing(root_path, catalog, first):
+    def _all_or_nothing(root_path, catalog, first, imported=None):
         raise first
 
     monkeypatch.setattr(ledger_setup, "_resolve_refused_declarations", _all_or_nothing)

@@ -54,6 +54,10 @@ def _read():
             raw = fold_versions(json.load(handle))
     except FileNotFoundError:
         return keys
+    from ledger.setup import live_imported
+    from ledger.setup_bundle import resolve_imports
+
+    raw = resolve_imports(raw, live_imported())[0]
     for name, spec in (raw.get("entities") or {}).items():
         declared = (spec or {}).get("keys")
         if isinstance(declared, list):

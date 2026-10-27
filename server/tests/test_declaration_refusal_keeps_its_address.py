@@ -31,7 +31,7 @@ def five_issues(monkeypatch):
         for i in range(5)
     )
     monkeypatch.setattr(setup_bundle, "validate_bundle_errors",
-                        lambda raw, catalog=None: issues)
+                        lambda raw, catalog=None, imported=None: issues)
     monkeypatch.setattr(ledger_setup, "live_physical_catalog", lambda: {})
     return issues
 

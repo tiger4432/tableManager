@@ -1048,6 +1048,24 @@
             ]
           }
         }
+      },
+      {
+        "key": "imports",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "World",
+          "of": {
+            "kind": "map",
+            "keyed_by": "index",
+            "member": "Entity type",
+            "of": {
+              "kind": "leaf",
+              "hint": "free"
+            }
+          }
+        }
       }
     ]
   }

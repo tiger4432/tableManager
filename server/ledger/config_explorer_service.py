@@ -33,7 +33,7 @@ from .config_explorer import (
     reference_diff,
 )
 from .setup import (
-    DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup, physical_catalog_path,
+    DEFAULT_ONTOLOGY_ROOT, live_imported, live_physical_catalog, load_setup, physical_catalog_path,
     setup_from_document,
 )
 from .setup_bundle import (
@@ -203,6 +203,7 @@ class OntologyExplorerService:
         draft_root: str | Path | None = None,
         setup_loader: Callable[[str | Path], Any] = load_setup,
         catalog_loader: Callable[[], Mapping[str, Any]] = live_physical_catalog,
+        imported_loader: Callable[[], Mapping[str, Any]] = live_imported,
         convergence_probe: Callable[[str], dict[str, str]] | None = None,
         world: str | None = None,
     ):
@@ -210,6 +211,7 @@ class OntologyExplorerService:
         #: None (a CLI, a test) leaves the count to the operating world.
         self.world = world
         self._catalog_loader = catalog_loader
+        self._imported_loader = imported_loader
         self.config_root = Path(config_root)
         self.draft_store = OntologyDraftStore(
             draft_root or self.config_root.parent / "backup" / "ontology_drafts")
@@ -620,7 +622,8 @@ class OntologyExplorerService:
                     if isinstance(holder, dict) and canonical_id in holder:
                         holder.pop(canonical_id)
                         break
-            after = resolve_declarations(document, catalog=self._catalog_loader())
+            after = resolve_declarations(document, catalog=self._catalog_loader(),
+                                         imported=self._imported_loader())
             already = set(self._invalid)
             unread_after = [
                 {"key": key, "canonical_id": key.partition("|")[2]}
@@ -1124,7 +1127,8 @@ class OntologyExplorerService:
             setup, index, _ = self.active()
             bundle, dropped = with_unsaved_body(
                 bundle, setup, self.draft_store.get(draft_id), index, raw)
-        payload = authoring_plan(bundle, catalog, selection_prefix=selection_prefix, time_sample=table_time_sample)
+        payload = authoring_plan(bundle, catalog, selection_prefix=selection_prefix, time_sample=table_time_sample,
+                                 imported=self._imported_loader())
         payload["config_source"] = source
         payload["dropped_fields"] = dropped
         return payload
@@ -1172,7 +1176,8 @@ class OntologyExplorerService:
         # declaration that does not validate falls alone and by name - as it does in the base
         # a branch copies - and only a whole-file problem refuses. Holding the copy to every
         # declaration validating made a base with one refused source unbranchable.
-        issues = resolve_declarations(skeleton, catalog=self._catalog_loader())["config_level"]
+        issues = resolve_declarations(skeleton, catalog=self._catalog_loader(),
+                                      imported=self._imported_loader())["config_level"]
         if issues:
             raise ConfigExplorerError(
                 "bootstrap_invalid", CONFIG_FILENAME,

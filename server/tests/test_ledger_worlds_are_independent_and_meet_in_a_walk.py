@@ -1177,3 +1177,23 @@ def test_the_walk_route_hands_read_to_the_walk_and_refuses_a_word_not_one_of_its
         assert seen.pop()["read"] == walked
     assert client.get("/api/ledger/subgraph", params={"id": "seed", "read": "last"}).status_code == 422
     assert not seen
+
+
+@pytest.mark.pg
+def test_a_type_one_world_imports_is_one_node_in_a_walk_of_both(world):
+    """`imports` (lead 10-27 B-4): A writes recipe with another key and imports C's - A's sources bind C's key, and
+    the recipe a wafer was processed with is one node, said by both worlds. Without the import A's declaration does
+    not even validate (its sources bind a key its own recipe does not have)."""
+    _seed(world)
+    mine = _only(CHANGED)
+    mine["entities"]["recipe@1"] = {"keys": ["recipe_name"]}
+    mine["imports"] = {C: ["recipe"]}
+    _make(world, C, _only(CHANGED), CHANGED)
+    _make(world, A, mine, CHANGED)
+    with world["engine"].connect() as conn:
+        payload = trace_router._evidence_graph(
+            conn, node_id=explorer.entity_id("wafer", {"wafer": "W1"}), hops=1, direction="both",
+            node_limit=200, edge_limit=400, world=[A, C])
+    (edge,) = [e for e in payload["edges"] if e["predicate"] == "processed_with"]
+    assert [said["world"] for said in edge["by_world"]] == [A, C]
+    assert edge["target"] == explorer.entity_id("recipe", {"recipe": "RCP-1"})

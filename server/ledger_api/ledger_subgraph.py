@@ -1255,16 +1255,17 @@ def _entity_facts(paths):
     as they are today rather than taking the walk down with it. The `@version` suffix is
     stripped the way `ledger/roleframe.py` strips it.
     """
-    from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
+    from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY, resolve_imports
 
     from ledger.config import merged
+    from ledger.setup import live_imported
 
     order, plural_by_type, confirmers, inverses, labels, steps = {}, {}, {}, {}, {}, {}
     try:
-        documents = []
+        documents, imported = [], live_imported()
         for path in paths:
             with open(path, "r", encoding="utf-8") as handle:
-                documents.append((path, fold_versions(json.load(handle) or {})))
+                documents.append((path, resolve_imports(fold_versions(json.load(handle) or {}), imported)[0]))
         # the worlds walked, merged as the route merges them (총괄 092a6f9e5)
         document = merged(documents)[0]
         declared = document.get("entities") or {}

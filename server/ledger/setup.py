@@ -58,7 +58,10 @@ from .setup_bundle import (
     setup_bundle_errors,
     validate_bundle,
 )
+from declaration_names import fold_versions
+
 from . import schema
+from . import setup_bundle
 from .setup_registry import (
     LedgerSetupSnapshot, compile_setup_snapshot, snapshot_compile_errors)
 
@@ -87,6 +90,23 @@ def physical_catalog_path() -> Path:
 def live_physical_catalog() -> Mapping[str, Any]:
     """The physical relation shape this deployment's `table_config.json` declares."""
     return load_physical_catalog(physical_catalog_path())
+
+
+def live_imported() -> Mapping[str, Any]:
+    """{world: {"entities", "imports"}} - every world's declaration as written, what `setup_bundle.resolve_imports`
+    reads an `imports` against; passed like the catalogue. A world whose file is missing or unreadable is left out,
+    and an import naming it is refused there by name."""
+    out = {}
+    for world in schema.world_listing()["worlds"]:
+        try:
+            with open(schema.world_names(world).declaration_path, "r", encoding="utf-8") as handle:
+                written = fold_versions(json.load(handle))
+        except (OSError, ValueError):
+            continue
+        if isinstance(written, Mapping):
+            out[world] = {"entities": dict(written.get("entities") or {}),
+                          setup_bundle.IMPORTS: dict(written.get(setup_bundle.IMPORTS) or {})}
+    return out
 
 
 def file_stamp(path):
@@ -347,7 +367,7 @@ def _refused_sources(invalid: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
-                                  first: LedgerSetupValidationError):
+                                  first: LedgerSetupValidationError, imported: Mapping[str, Any] | None = None):
     """`(bundle, refused_sources, left_out)` for a config one declaration has broken (S-177 ②).
 
     🔴 THE MECHANISM IS NOT NEW AND MUST NOT BE WRITTEN TWICE. `resolve_declarations`
@@ -379,12 +399,12 @@ def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
         raise first                              # nothing a drop can clear
     document = json.loads(
         (root_path / CONFIG_FILENAME).read_text(encoding="utf-8"))
-    report = resolve_declarations(document, catalog=catalog)
+    report = resolve_declarations(document, catalog=catalog, imported=imported)
     if report["config_level"] or not report["invalid"]:
         raise first
     refused = _refused_sources(report["invalid"])
     bundle = require_ready_bundle(
-        validate_bundle(report["document"], catalog=catalog))
+        validate_bundle(report["document"], catalog=catalog, imported=imported))
     # ⛔ ZERO SURVIVING SOURCES IS NOT A LOAD (판정 280 ⓒ). A bundle that compiles to no
     # plan at all reads to every screen as 「this deployment has no sources」, and the
     # ledger then stands still with nothing saying why. Refused by name, with each
@@ -408,6 +428,7 @@ def load_setup(
     root: str | Path | None = None,
     *,
     catalog: Mapping[str, Any] | None = None,
+    imported: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
     """Load one file, enforce binding readiness, and compile one snapshot.
 
@@ -425,14 +446,15 @@ def load_setup(
                      else root).resolve(strict=True)
     resolved_catalog = (
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
+    imported = live_imported() if imported is None else imported
     refused: Mapping[str, Any] = {}
     left_out: Mapping[str, Any] = {}
     try:
         bundle = require_ready_bundle(
-            load_setup_bundle(root_path, catalog=resolved_catalog))
+            load_setup_bundle(root_path, catalog=resolved_catalog, imported=imported))
     except LedgerSetupValidationError as first:
         bundle, refused, left_out = _resolve_refused_declarations(
-            root_path, resolved_catalog, first)
+            root_path, resolved_catalog, first, imported)
     _announce_dead_cells(_dead_time_cells(bundle.section("sources")))
     _announce_unscored_bindings(
         _unscored_self_edge_sentences(bundle.section("sources")))
@@ -457,6 +479,7 @@ def setup_from_document(
     config_root: str | Path | None = None,
     catalog: Mapping[str, Any] | None = None,
     refused_sources: Mapping[str, Any] | None = None,
+    imported: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
     """`load_setup`, but from a document already in hand instead of from the file.
 
@@ -472,7 +495,8 @@ def setup_from_document(
     """
     resolved_catalog = (
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
-    bundle = require_ready_bundle(validate_bundle(document, catalog=resolved_catalog))
+    bundle = require_ready_bundle(validate_bundle(
+        document, catalog=resolved_catalog, imported=live_imported() if imported is None else imported))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(), catalog=resolved_catalog,
         refused_sources=refused_sources)
@@ -709,10 +733,10 @@ def _authoring_issues(
     the operator still gets an answer; a report that said "0 problems" about a config that
     just failed to load would be worse than the single message it replaced.
     """
-    catalog = dict(live_physical_catalog())
-    issues = setup_bundle_errors(root, catalog=catalog)
+    catalog, imported = dict(live_physical_catalog()), live_imported()
+    issues = setup_bundle_errors(root, catalog=catalog, imported=imported)
     if not issues:
-        bundle = load_setup_bundle(root, catalog=catalog)
+        bundle = load_setup_bundle(root, catalog=catalog, imported=imported)
         issues = bundle_readiness_errors(bundle)
     if not issues:
         issues = snapshot_compile_errors(

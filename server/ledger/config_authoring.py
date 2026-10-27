@@ -1642,7 +1642,7 @@ def _without(bundle: Mapping[str, Any], path: str) -> dict[str, Any] | None:
 
 
 def _dispositions(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
-                  paths: Sequence[str], base_valid: bool) -> dict[str, str]:
+                  paths: Sequence[str], base_valid: bool, imported=None) -> dict[str, str]:
     """Which forced fields can actually LEAVE the file -- by deleting them and re-checking.
 
     🔴 MEASURED, NOT CLAIMED.  "This field is determined, so it could be removed" is a
@@ -1665,7 +1665,7 @@ def _dispositions(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             continue
         out[path] = (
             "remove_from_file"
-            if not validate_bundle_errors(reduced, catalog=catalog)
+            if not validate_bundle_errors(reduced, catalog=catalog, imported=imported)
             else "grammar_requires_it")
     return out
 
@@ -1674,7 +1674,7 @@ def _dispositions(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
 
 
 def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
-                   selection_prefix: str | None = None, time_sample=None) -> dict[str, Any]:
+                   selection_prefix: str | None = None, time_sample=None, imported=None) -> dict[str, Any]:
     """The whole authoring surface: what is filled, what is missing, what is still asked.
 
     `bundle` may be INVALID or half-written -- that is the normal authoring state, and a
@@ -1695,7 +1695,7 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
         *_source_fields(bundle, catalog, time_sample),
     ]
     refusals = [issue.to_mapping()
-                for issue in validate_bundle_errors(bundle, catalog=catalog)]
+                for issue in validate_bundle_errors(bundle, catalog=catalog, imported=imported)]
     # Owner rule: a derived value is a default a person can change, or it is force that
     # belongs out of the file. Which one each field is gets MEASURED here, not asserted.
     forced = [
@@ -1703,7 +1703,7 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
         if item.state == "derived" and item.comparison == "equal"
         and item.disposition != "shape"
     ]
-    disposition = _dispositions(bundle, catalog, forced, not refusals)
+    disposition = _dispositions(bundle, catalog, forced, not refusals, imported)
     by_path: dict[str, list[dict[str, str]]] = {}
     for issue in refusals:
         by_path.setdefault(issue["path"], []).append(issue)

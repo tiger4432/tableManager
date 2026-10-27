@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **원장 선언 imports — 다른 세상의 엔티티 타입을 그 세상이 적은 대로** — 서버 · 체인 워커 · 원장 워커 재기동 뒤
+>
+> ```
+> 적는 곳    들이는 세상의 선언 최상위:  "imports": {"<세상>": ["<엔티티 타입>", ...]}
+>           기본 세상 = config/ontology/ledger_config.json · 가지 = config/ontology_worlds/<가지>/ledger_config.json
+> 확인      curl.exe --noproxy "*" "http://127.0.0.1:8080/admin/ontology-explorer/worlds" -H "X-Admin-Token: <토큰>"
+>           notices 의 «<세상>: <타입> is <세상>'s - this world writes it differently, and that is not used»
+>             = 이 세상에도 그 타입이 다르게 적혀 있음 — 들인 것이 쓰이고 이 세상 것은 안 쓰임. 지워도 됨
+>           notices 빈 목록 = 겹쳐 적은 것 없음
+>           curl.exe --noproxy "*" -G "http://127.0.0.1:8080/api/ledger/declaration" -H "X-Admin-Token: <토큰>" --data-urlencode "world=<들이는 세상>"
+>             entities 의 그 type 의 keys = 들인 세상의 keys 여야 함
+> 거절 낱말  imports_world_unknown = 그 세상 선언을 못 읽음(이름 · 파일)    imports_type_unknown = 그 세상이 그 타입을 선언 안 함
+>           imports_cycle = 서로 들임(문장에 고리) — 한 세상이 그 타입을 직접 선언해야 함    invalid_type = 꼴이 틀림
+>           imports_unresolved = 다른 세상을 안 읽고 검증한 자리(스크립트 migrate_ledger_slim_sources 등) — 버그 아니면 그 스크립트 몫
+> 이미 번역한 원자  들이기 «전»에 이 세상이 그 타입을 다른 키로 번역해 두었으면 옛 노드가 남는다. 그 타입을 쓰는 소스마다:
+>           미리보기  python -m ledger.backfill --source <소스> --world <세상> --whole-source
+>           수가 맞으면 같은 줄 + --apply   (10-27 «기본 세계에서 소스 하나 거두기» 블록과 같은 수의 뜻)
+> 끄기      imports 를 지움 — 다음 읽기부터 이 세상 자기 선언대로(재기동 필요 없음)
+> 로그      원장 워커 · 서버: "[Ledger] <선언 경로>: <타입> is <세상>'s - this world writes it differently, and that is not used"
+> ```
+>
+> ---
+>
 > ## [10-27] **걷기 read=first · 세상 목록의 겹친 소스 · 리포트 causes.read** — 서버 재기동 · 체인 워커 재기동 뒤
 >
 > ```

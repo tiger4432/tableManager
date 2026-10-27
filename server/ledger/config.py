@@ -371,7 +371,7 @@ def config_path(filename: str = CONFIG_FILENAME) -> str:
     return os.path.join(world_names().declaration_root, filename)
 
 
-def load(path: str = None, catalog=None) -> dict:
+def load(path: str = None, catalog=None, imported=None) -> dict:
     """Load and validate. No declaration file is refused - nothing is translated, nothing is guessed.
 
     ⚰️ A `sample/<name>.sample` fallback was promised here and reached by nothing since the declaration moved into
@@ -397,7 +397,7 @@ def load(path: str = None, catalog=None) -> dict:
             f"no ledger configuration at {path}. The translator refuses to run rather than guess a time column.")
     with open(path, "r", encoding="utf-8") as handle:
         raw = fold_versions(json.load(handle))
-    raw = _validate_for_version(raw, origin=path, catalog=catalog)
+    raw = _validate_for_version(raw, origin=path, catalog=catalog, imported=imported)
     raw["__origin__"] = path
     return raw
 
@@ -421,7 +421,7 @@ def merged(documents) -> tuple[dict, dict]:
     return out, whose
 
 
-def _validate_for_version(raw: dict, origin: str, catalog=None):
+def _validate_for_version(raw: dict, origin: str, catalog=None, imported=None):
     """Check the declaration with the validator that speaks ITS grammar.
 
     `validate` below is the v3 validator and `load` called it unconditionally, so no v5
@@ -453,7 +453,8 @@ def _validate_for_version(raw: dict, origin: str, catalog=None):
     from . import setup as _setup
     from . import setup_bundle as _bundle
     physical = _setup.live_physical_catalog() if catalog is None else catalog
-    errors = _bundle.validate_bundle_errors(raw, catalog=physical)
+    imported = _setup.live_imported() if imported is None else imported
+    errors = _bundle.validate_bundle_errors(raw, catalog=physical, imported=imported)
     if errors:
         # 🔴 [총괄 da3fa7493, 소유자 「이대로 해」] ONE BROKEN DECLARATION FALLS ALONE HERE TOO -
         #   the fixpoint `load_setup` already runs (S-177 ②, `resolve_declarations`), so a
@@ -461,7 +462,7 @@ def _validate_for_version(raw: dict, origin: str, catalog=None):
         #   COPY and this returns it; nothing here writes the file.
         from .config_explorer import resolve_declarations
 
-        report = resolve_declarations(raw, catalog=physical)
+        report = resolve_declarations(raw, catalog=physical, imported=imported)
         if not report["config_level"] and report["invalid"] and (
                 report["document"].get("sources")):
             for key, entry in sorted(report["invalid"].items()):
@@ -473,7 +474,7 @@ def _validate_for_version(raw: dict, origin: str, catalog=None):
                 reason = (entry.get("reasons") or [{}])[0]
                 logger.error("[Ledger] %s is NOT read: %s %s", key,
                              reason.get("path"), reason.get("message"))
-            return report["document"]
+            return _with_imports(report["document"], imported, origin)
         # 🔴 THE ADDRESSES SURVIVE. Every one of these errors already carries
         # `(code, path, message)` - the path is the authoring box the operator has to open
         # - and this boundary used to flatten them into one sentence and keep only the
@@ -491,7 +492,18 @@ def _validate_for_version(raw: dict, origin: str, catalog=None):
             errors=[e.to_mapping() if hasattr(e, "to_mapping")
                     else {"code": "", "path": "", "message": str(e)}
                     for e in errors])
-    return raw
+    return _with_imports(raw, imported, origin)
+
+
+def _with_imports(document, imported, origin):
+    """The declaration with the types it imports in, as the world that declares them writes them (lead 10-27 B-4) -
+    what every reader of `load` gets - and what that overrides (`__notices__`, beside `__origin__`; the world list)."""
+    from . import setup_bundle as _bundle
+
+    document, notices, _refused = _bundle.resolve_imports(document, imported)
+    for said in notices:
+        logger.warning("[Ledger] %s: %s", origin, said)
+    return {**document, "__notices__": list(notices)} if notices else document
 
 
 def validate(cfg: dict, origin: str = "<memory>"):

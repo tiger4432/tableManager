@@ -367,6 +367,7 @@ setup_version 6 에서 은퇴 — §7.3).
 | `entities` | 예 | 개체 ID와 key shape (§7.2) |
 | `sources` | 예 | 소스 하나 = `relation`+`read`+`map`+`bind` (§7.4·§7.6·§7.7 — `prepare` 는 은퇴, §7.3) |
 | `virtual_joins` | **아니오** | verified **write** batch join (§6) — `materialize: true` 필수. setup_version 6 부터 이 절을 읽는 소스는 없다(로더는 검증만) |
+| `imports` | **아니오** | 🆕 10-27 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 — `"imports": {"<세상>": ["<엔티티 타입>", ...]}` (§7.2) |
 
 정본은 `server/ledger/setup_bundle.py`의 `LOGICAL_SECTIONS`(필수 셋) ·
 `OPTIONAL_SECTIONS`(`virtual_joins`) · `SETUP_VERSION`이다. **개수를 외우지 말고 거기서 읽어라.**
@@ -719,6 +720,10 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
   어느 개체인지 고를 수 없어 실리지 않고(바인딩이 같으면 롤이 둘이어도 한 개체라 실린다),
   로드가 「attributes not registered: …」 한 줄을 남긴다 — 롤마다 자기 `attributes` 로 적는다.
 - 이미 읽은 행에는 실리지 않는다. 그 소스를 통째로 다시 번역하면 실린다(RUN.md 10-07 절).
+
+🆕 **[10-27, 총괄 B-4] 다른 세상의 타입을 쓴다 — 최상위 `imports`.** `"imports": {"<세상>": ["<엔티티 타입>", ...]}` 로 적으면 그 타입은 그 세상이 적은 대로 이 세상의 `entities` 에 들어온다 — 이 세상의 소스는 그 키로 바인딩한다. 두 세상을 함께 걸으면 그 노드가 하나다.
+- 같은 타입을 이 세상에도 적어 두면 그것은 안 쓰이고 공지가 남는다(세상 목록 `notices`). 들인 세상이 그 타입을 또 들였으면 원래 선언한 세상까지 따라간다. 고리 · 없는 세상 · 선언 안 된 타입은 이름 대어 거절한다.
+- 파일에 복사되지 않는다. 들인 세상 파일만 바꿔도 다음 읽기가 새 것을 쓴다.
 
 ### 7.3 ⚰️ `sources.<id>.prepare` — 은퇴 (setup_version 6, 총괄 e14416950)
 

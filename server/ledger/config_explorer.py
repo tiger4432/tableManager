@@ -1251,7 +1251,8 @@ def _blame(problems, ground_node_key):
 
 
 def resolve_declarations(document: Mapping[str, Any], *,
-                         catalog: Mapping[str, Any] | None = None
+                         catalog: Mapping[str, Any] | None = None,
+                         imported: Mapping[str, Any] | None = None
                          ) -> dict[str, Any]:
     """Which declarations load, which do not, and why -- WITHOUT a new validator.
 
@@ -1281,7 +1282,7 @@ def resolve_declarations(document: Mapping[str, Any], *,
 
     while True:
         rounds += 1
-        problems = list(setup_bundle.validate_bundle_errors(working, catalog=catalog))
+        problems = list(setup_bundle.validate_bundle_errors(working, catalog=catalog, imported=imported))
         # 🔴 `isolation_key`, NOT `ground_node_key` (판정 281). The blame map decides what
         # can fall alone, and reading the AUTHORING map here is what kept a broken virtual
         # join rule refusing the whole bundle. See `ISOLATION_ROOTS`.
@@ -1358,6 +1359,7 @@ def document_hash(document: Mapping[str, Any]) -> str:
 
 
 def load_resolved_setup(config_root, *, catalog: Mapping[str, Any] | None = None,
+                        imported: Mapping[str, Any] | None = None,
                         setup_from_document: Any = None) -> dict[str, Any]:
     """Load as much of the setup as resolves, and say what did not.
 
@@ -1368,8 +1370,10 @@ def load_resolved_setup(config_root, *, catalog: Mapping[str, Any] | None = None
 
     path = Path(config_root) / setup_bundle.CONFIG_FILENAME
     document = json.loads(path.read_text(encoding="utf-8"))
-    report = resolve_declarations(document, catalog=catalog)
-    from .setup import _refused_sources
+    from .setup import _refused_sources, live_imported
+
+    report = resolve_declarations(document, catalog=catalog,
+                                  imported=live_imported() if imported is None else imported)
 
     setup = setup_from_document(report["document"],
                                 refused_sources=_refused_sources(report["invalid"]))

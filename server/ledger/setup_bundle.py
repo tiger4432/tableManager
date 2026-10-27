@@ -73,6 +73,13 @@ LOGICAL_SECTIONS = (
 #: only the first was asked for.
 OPTIONAL_SECTIONS = ("virtual_joins",)
 
+#: `imports` (lead 10-27 B-4, owner «키를 한 곳에서»): {"<world>": ["<entity type>", ...]} - entity types another
+#: world declares, used as that world writes them, so a type's nodes are one across worlds (`resolve_imports`).
+#: Optional at the root but NOT filled like the sections above: a bundle that names no imports serializes - and
+#: hashes - as it did.
+IMPORTS = "imports"
+ROOT_OPTIONAL_SECTIONS = (*OPTIONAL_SECTIONS, IMPORTS)
+
 ALL_SECTIONS = (*LOGICAL_SECTIONS, *OPTIONAL_SECTIONS)
 
 #: The physical-schema authority for the WHOLE system -- ingestion, the chain workers, the
@@ -1053,12 +1060,90 @@ def _event_edge_time(profile: Any) -> Any:
     return {"column": column, "timezone": zone, **({"format": fmt} if fmt else {})}
 
 
+def resolve_imports(value: Any, imported: Mapping[str, Any] | None):
+    """(the document with its imported entity types in `entities`, the notices, the refusals) - `imports` stays.
+
+    `imported` {world: {"entities", "imports"}} is every world's declaration as written (`ledger.setup.live_imported`),
+    passed in like `catalog`: this module reads no file. A type a world itself imports is followed to the world that
+    declares it - that world is the one place its keys live (lead 10-27); a cycle is refused naming its worlds. A type
+    this document also writes is the other world's: a notice, not a refusal. Without `imported` a listed type already
+    in `entities` passes (a bundle this resolved, validated again); one that is not is refused by name."""
+    imports = value.get(IMPORTS) if isinstance(value, Mapping) else None
+    if not imports:
+        return value, (), ()
+    path = f"bundle.{IMPORTS}"
+    if not (isinstance(imports, Mapping) and all(
+            isinstance(world, str) and isinstance(types, list)
+            and all(isinstance(name, str) and name.strip() for name in types)
+            for world, types in imports.items())):
+        return value, (), (LedgerSetupValidationError(
+            "invalid_type", path, '{"<world>": ["<entity type>", ...]} - got %r' % (imports,)),)
+    entities = dict(value.get("entities") or {}) if isinstance(value.get("entities"), Mapping) else {}
+    notices, refusals = [], []
+    for world, types in imports.items():
+        for wanted in types:
+            mine = [name for name in entities if bare_name(name) == bare_name(wanted)]
+            if imported is None:
+                if not mine:
+                    refusals.append(LedgerSetupValidationError(
+                        "imports_unresolved", f"{path}.{world}",
+                        f"{wanted} is imported from {world} and that world was not read - pass "
+                        f"imported=ledger.setup.live_imported()"))
+                continue
+            found = _declared_where(world, wanted, imported, f"{path}.{world}")
+            if isinstance(found, LedgerSetupValidationError):
+                refusals.append(found)
+                continue
+            home, name, spec = found
+            if any(entities[each] != spec for each in mine):
+                notices.append("%s is %s's - this world writes it differently, and that is not used" % (
+                    bare_name(wanted), home))
+            for each in mine:
+                entities.pop(each)
+            entities[name] = copy.deepcopy(spec)
+    if refusals:
+        return value, (), tuple(refusals)
+    return {**value, "entities": entities}, tuple(notices), ()
+
+
+def _declared_where(world, wanted, imported, path):
+    """(the world that declares `wanted`, its name there, its body) - followed through that world's own imports."""
+    chain = [world]
+    while True:
+        written = imported.get(chain[-1])
+        if not isinstance(written, Mapping):
+            return LedgerSetupValidationError(
+                "imports_world_unknown", path,
+                f"imports names the world {chain[-1]!r} - its declaration was not read "
+                f"(read: {', '.join(sorted(imported)) or 'none'})")
+        onward = [other for other, types in (written.get(IMPORTS) or {}).items()
+                  if isinstance(types, list) and any(
+                      isinstance(name, str) and bare_name(name) == bare_name(wanted) for name in types)]
+        if not onward:
+            break
+        if onward[0] in chain:
+            return LedgerSetupValidationError(
+                "imports_cycle", path,
+                f"{bare_name(wanted)} is imported round a cycle - {' -> '.join([*chain, onward[0]])}; one of "
+                f"these worlds has to declare it")
+        chain.append(onward[0])
+    declared = written.get("entities") or {}
+    found = [name for name in declared if bare_name(name) == bare_name(wanted)]
+    if not found:
+        return LedgerSetupValidationError(
+            "imports_type_unknown", path,
+            f"{bare_name(wanted)} is imported from {chain[-1]}, which declares no such entity type (it declares: "
+            f"{', '.join(sorted(map(bare_name, declared))) or 'none'})")
+    return chain[-1], found[0], declared[found[0]]
+
+
 def validate_bundle(value: Mapping[str, Any], *,
-                    catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
-    issues = validate_bundle_errors(value, catalog=catalog)
+                    catalog: Mapping[str, Any] | None = None,
+                    imported: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
+    issues = validate_bundle_errors(value, catalog=catalog, imported=imported)
     if issues:
         raise issues[0]
-    value = fold_versions(upgrade_setup(value))
+    value = resolve_imports(fold_versions(upgrade_setup(value)), imported)[0]
     value = with_read_defaults(value, catalog)
     filled = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
     normalized = _normalize(_derived_cursor(filled))
@@ -1066,7 +1151,8 @@ def validate_bundle(value: Mapping[str, Any], *,
 
 
 def validate_bundle_errors(value: Mapping[str, Any], *,
-                           catalog: Mapping[str, Any] | None = None
+                           catalog: Mapping[str, Any] | None = None,
+                           imported: Mapping[str, Any] | None = None
                            ) -> tuple[LedgerSetupValidationError, ...]:
     """Every structural and cross-section issue in one pass.
 
@@ -1103,10 +1189,13 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
     # sentence is true of what they were given and false about the world - the shape a loud
     # axis takes when it is standing in front of a quiet one.
     refuse_unadapted_catalog(catalog)
+    value, _notices, refused = resolve_imports(value, imported)
+    if refused:
+        return refused
     value = with_read_defaults(value, catalog)
     if not problems.exact(
             value, "bundle", required=("setup_version", *LOGICAL_SECTIONS),
-            optional=OPTIONAL_SECTIONS):
+            optional=ROOT_OPTIONAL_SECTIONS):
         return problems.finish()
     if value.get("setup_version") != SETUP_VERSION:
         problems.add(
@@ -1165,7 +1254,8 @@ def require_ready_bundle(bundle: LedgerSetupBundle) -> LedgerSetupBundle:
 
 
 def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
-                      catalog: Mapping[str, Any] | None = None
+                      catalog: Mapping[str, Any] | None = None,
+                      imported: Mapping[str, Any] | None = None
                       ) -> LedgerSetupBundle:
     """Load the ONE authoring file under ``root``.
 
@@ -1218,7 +1308,7 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
     issues = _root_document_errors(fold_versions(upgrade_setup(written)))
     if issues:
         raise issues[0]
-    return validate_bundle(written, catalog=catalog)
+    return validate_bundle(written, catalog=catalog, imported=imported)
 
 
 #: The setup version the last grammar change came from, and the ones its in-memory reading
@@ -1696,7 +1786,7 @@ def _root_document_errors(document: Mapping[str, Any]
     if problems.exact(
             document, "ledger_config",
             required=("setup_version", *LOGICAL_SECTIONS),
-            optional=OPTIONAL_SECTIONS):
+            optional=ROOT_OPTIONAL_SECTIONS):
         if document.get("setup_version") != SETUP_VERSION:
             problems.add(
                 "unsupported_setup_version", "ledger_config.setup_version",
@@ -1705,7 +1795,8 @@ def _root_document_errors(document: Mapping[str, Any]
 
 
 def setup_bundle_errors(root: str | Path, *, config_name: str = CONFIG_FILENAME,
-                        catalog: Mapping[str, Any] | None = None
+                        catalog: Mapping[str, Any] | None = None,
+                        imported: Mapping[str, Any] | None = None
                         ) -> tuple[LedgerSetupValidationError, ...]:
     """EVERY problem in one root, for the AUTHORING path.
 
@@ -1735,7 +1826,7 @@ def setup_bundle_errors(root: str | Path, *, config_name: str = CONFIG_FILENAME,
         # The section-level validator would read sections this one just called absent or
         # misspelled, and report a second wave of consequences rather than causes.
         return root_issues
-    return validate_bundle_errors(written, catalog=catalog)
+    return validate_bundle_errors(written, catalog=catalog, imported=imported)
 
 
 def _resolve_config_path(root: Path, relative: Any, path: str, *, require_json: bool) -> Path:
