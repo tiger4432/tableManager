@@ -242,8 +242,8 @@ curl -s -H "$AUTH" "$API/admin/mappers/list"
       "auto_confirm": true,
       "reference_views": [
         {
-          "label": "설비 track-in이 말하는 DT 랏",
-          "query": "SELECT DISTINCT le.lot AS dt_lot FROM lot_event le WHERE le.event_type = 'track_in' AND le.equipment = :dt_job",
+          "label": "이 job 의 셀이 적은 DT 랏",
+          "query": "SELECT COALESCE(dt_lot, '') AS dt_lot, COUNT(*) AS cells FROM dt_log WHERE dt_job = :dt_job GROUP BY 1 ORDER BY cells DESC",
           "limit": 50,
           "candidate_for": {
             "dt_lot_confirmed": "dt_lot"
