@@ -1010,8 +1010,7 @@ def get_report(name: str):
     path = os.path.join(folder, os.path.basename(name))
     if os.path.basename(name) != name or not name.lower().endswith(".html") or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="no report %r - GET /reports lists them" % name)
-    return FileResponse(path, media_type="text/html; charset=utf-8",
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+    return FileResponse(path, media_type="text/html; charset=utf-8", headers=HTML_NO_CACHE_HEADERS)
 
 
 @app.get("/reports")
