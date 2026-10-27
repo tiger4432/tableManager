@@ -123,16 +123,26 @@ SHELL_DELETER = "chain_shell_rows"
 GONE_DELETER = "chain_no_source_rows"
 
 
+def rule_layer_names() -> tuple:
+    """The layer names a rule writes under its declaration (`updated_by` = `rule_shape.declaration_of`, what
+    `rule_run.signed` stamps): the chain's, and a decide's auto-confirm stamps. «This rule's layer» to
+    `cells_written_by` and `rows_others_wrote` alike (총괄 10-28)."""
+    from chain.enrichment import candidates
+    from database import crud
+
+    return crud.CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY
+
+
 def rows_others_wrote(db, table_name: str, own) -> dict:
     """{row_id: [layer names]} - of `own` {row_id: the rules whose rows they are}, the rows another writer has a layer
     on (총괄 355ee9840 2): not a person's (`crud.layer_writer`), not those rules' chain or auto-confirm layer
     (`updated_by` is the rule that wrote it), not the backfill's old name for that write."""
-    from chain.enrichment import backfill, candidates
+    from chain.enrichment import backfill
     from database import crud, models
 
     S = models.CellSource
     ids = list(own)
-    mine = (crud.CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY)
+    mine = rule_layer_names()
     found = {}
     for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
         for row_id, name, by in (db.query(S.row_id, S.source_name, S.updated_by)
@@ -279,27 +289,29 @@ STAMPED_BY_EACH_ORIGIN = text(
 
 
 def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
-    """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - on these cells `(row_id, column)`, the plain
-    chain layer one of `declarations` wrote last (총괄 bc9710454 가-1 ㄱ: the layer row's `updated_by` is the rule that
-    wrote it), the layer it wrote from the cell's own row (`chain_ingestion (<its row>)` - a report's results, lead
-    10-26: a report that stopped withdrew nothing), and an `enrichment_backfill` layer - the backfill's old name for
-    that write (총괄 가 옛 백필 ㄱ). Not a join's (its layer is named per source row, another row), nor a rule's that
-    wrote the cell after it. READ ONLY, the shape `cells_stamped_by` answers."""
+    """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - on these cells `(row_id, column)`, the layer
+    one of `declarations` wrote under a rule's name (`rule_layer_names`: the plain chain layer, a decide's auto-confirm
+    stamp - 총괄 bc9710454 가-1 ㄱ: the layer row's `updated_by` is the rule that wrote it), the layer it wrote from the
+    cell's own row (`chain_ingestion (<its row>)` - a report's results, lead 10-26: a report that stopped withdrew
+    nothing), and an `enrichment_backfill` layer - the backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a
+    join's (its layer is named per source row, another row), nor a rule's that wrote the cell after it. READ ONLY,
+    the shape `cells_stamped_by` answers."""
     from sqlalchemy import and_, or_, tuple_
     from chain.enrichment import backfill
     from database import crud, models
 
     S = models.CellSource
+    names = rule_layer_names()
     wanted = list(dict.fromkeys(cells or ()))
     found = []
     for i in range(0, len(wanted), chunk_size):
         found.extend(tuple(row) for row in (
             db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id)
             .filter(S.table_name == table_name, tuple_(S.row_id, S.column_name).in_(wanted[i:i + chunk_size]),
-                    or_(and_(S.source_name == crud.CHAIN_SOURCE, S.updated_by.in_(list(declarations))),
+                    or_(and_(S.source_name.in_(names), S.updated_by.in_(list(declarations))),
                         and_(S.origin_row_id == S.row_id, S.updated_by.in_(list(declarations))),
                         S.source_name == backfill.SOURCE_NAME)).all())
-            if row[3] in (crud.CHAIN_SOURCE, backfill.SOURCE_NAME) or row[3] == crud.merged_layer_name(
+            if row[3] in names + (backfill.SOURCE_NAME,) or row[3] == crud.merged_layer_name(
                 crud.CHAIN_SOURCE, row[4]))
     return found
 

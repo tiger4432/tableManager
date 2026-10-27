@@ -3740,8 +3740,13 @@ def _withdraw_blanks(db, table, blanks):
 
 def _delete_gone(db, table, gone):
     """The rows of these keys go - a decide's key no source row holds any more (총괄 옛 키): the grid's delete (its
-    layers, a history line, one DELETE). `gone` [(key, the declaration's rules)]. A row a person wrote on goes too,
-    and is named; a row another writer is on stays, and is named (355ee9840 2). -> the deleted row ids."""
+    layers, a history line, one DELETE). `gone` [(key, the declaration's rules)] - the rules by the name their writes
+    carry in `updated_by` (`rule_shape.declaration_of`, what `rule_run.signed` stamps). A row another writer is on
+    stays, and is named (355ee9840 2).
+    🔴 뒤집음 · 소유자 10-28: A ROW A PERSON WROTE ON STAYS - these rules' layers on it go (`cells_written_by`,
+    the key columns' kept, so the row is still known by its key), the person's stay, and it is named with the cells
+    withdrawn. It went, named, from 10-14 (총괄 4abf68886 «A row a person wrote on goes too»). -> the deleted row
+    ids."""
     from chain import cell_layer
     from chain.keyset_scan import DEFAULT_CHUNK_SIZE
     from database import crud, models
@@ -3761,9 +3766,21 @@ def _delete_gone(db, table, gone):
     if not doomed:
         return []
     persons = cell_layer.person_rows(db, table, doomed)
-    crud.delete_rows_batch(db, table, doomed, cell_layer.GONE_DELETER)
+    keys = cell_layer.key_columns(table)
+    columns = [c for c in (crud.TABLE_CONFIG.get(table) or {}).get("column_types") or {} if c not in keys]
+    by_rules = defaultdict(list)
     for row_id in sorted(persons):
-        logger.warning("[ChainRetract] deleted %s %s: no source rows (a person's value was on it)", table, found[row_id])
+        by_rules[own[found[row_id]]].append(row_id)
+    for rules, row_ids in sorted(by_rules.items()):
+        layers = cell_layer.cells_written_by(db, table, [(r, c) for r in row_ids for c in columns], rules)
+        if layers:
+            _withdraw_and_tell(db, table, row_ids, "gone", declarations=rules, layers=layers)
+        for row_id in row_ids:
+            logger.warning("[ChainRetract] kept %s %s: no source rows, a person's value is on it - withdrew %d "
+                           "cell(s)", table, found[row_id], sum(1 for layer in layers if layer[1] == row_id))
+    doomed = [row_id for row_id in doomed if row_id not in persons]
+    if doomed:
+        crud.delete_rows_batch(db, table, doomed, cell_layer.GONE_DELETER)
     logger.info("[ChainRetract] table=%s rows_deleted=%d - no source row holds their key", table, len(doomed))
     return doomed
 

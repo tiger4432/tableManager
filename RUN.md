@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **체인이 지우는 행 — 사람이 적은 행은 남고 그 규칙의 칸만 거둬진다 (뒤집음 · 소유자 10-28)** — 체인 워커 재기동 뒤
+>
+> ```
+> 무엇     decide 의 옛 키(원천 행 없음) · expand 목록에서 빠진 값의 파생 행 중 사람 칸이 있는 행은 지우지 않는다
+>          그 규칙의 칸(체인 층 · 자동 확정 층)만 거두고 사람 칸 · 키 칸 · 행은 남는다. 10-14 «사람 행도 지움»을 뒤집음
+> 보는 줄   chain_worker.log  «[ChainRetract] kept <표> <키>: no source rows, a person's value is on it - withdrew N cell(s)»
+>          N = 거둔 칸 수. 0 이면 그 행에 이 규칙 칸이 이미 없었다는 뜻(사람 칸만 남은 행)
+>          옛 줄 «deleted <표> <키>: no source rows (a person's value was on it)» 은 더 안 나온다
+> 그대로    사람 칸 없는 행은 지워진다(이력 chain_no_source_rows) · 다른 쓰는이가 있는 행은 «kept … wrote on it» 으로 남는다
+> 그 행을 없애려면  그리드에서 그 행을 지운다(사람이 지움) — 체인은 사람 칸 있는 행을 지우지 않는다
+> ```
+>
+> ---
+>
 > ## [10-28] **견본 맵퍼가 칸의 값을 읽는다 — dt_log_to_dt_job_rollup 이 09-09 부터 «can't adapt type 'dict'»로 실패하던 것** — 체인 워커 재기동 뒤
 >
 > ```
@@ -3826,7 +3840,7 @@
 >          business_key)으로 원천 행을 다시 물어 가름 — 판단키가 그보다 넓어도 원천이 남은 행은 안 지우고 안 씀
 >          지우는 것은 그리드 지움 문(이력 줄의 지운 이 = chain_no_source_rows). require 칸이 있는 decide 는 지운 행을 옛 값으로 거름
 > 볼 줄    chain_worker.log «[ChainRetract] table=<파생 표> rows_deleted=N - no source row holds their key»
->          사람이 값을 적은 행이었으면 행마다 «[ChainRetract] deleted <표> <키>: no source rows (a person's value was on it)»
+>          (10-28 뒤집음 · 소유자: 사람 칸 있는 행은 지우지 않고 그 규칙 칸만 거둔다 — 맨 위 10-28 «체인이 지우는 행» 블록)
 >          다른 쓴 이(파일 · 다른 규칙 · 조인)의 층이 있으면 안 지움 «[ChainRetract] kept <표> <키>: no source rows, but <층> wrote on it»
 >          지우기가 실패하면 «[ChainRetract] Table: '<표>' | … failed - the group fails (retried up to its rules'
 >          max_group_attempts, then FAILED)» — 시도 상한 기본 1 이라 대개 바로 FAILED, 상한을 적은 규칙이면 그만큼 다시

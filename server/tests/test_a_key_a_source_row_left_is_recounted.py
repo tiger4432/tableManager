@@ -5,11 +5,12 @@ holds any more takes its derived row with it (lead 옛 키 ㄱ: 판정 435 ④ w
 The event carries the old values (an edit the columns it changed, a deletion every column); a rule that declares
 `allow_delete_trigger` is woken by a deletion (the product's decide does, a person's mapper does not unless it says
 so); the decide mapper adds the old key to its recount, and one with no source row left is handed back as `gone`;
-the worker deletes that row through the grid's door after the write, naming a row a person wrote on.
+the worker deletes that row through the grid's door after the write - a row a person wrote on stays, its rule's
+cells withdrawn, and is named (뒤집음 · 소유자 10-28).
 
   path              edit (per row) · edit (collapsed) · delete (grid door) · delete (ORM, per row)
   key left          one of two rows -> recounted · the only row -> its derived row goes
-  person on it      the row goes and one line names it
+  person on it      the row stays, the rule's cells (its auto-confirm stamp too) go, the key and the person's stay
   rule without cell a deletion is not handed to it
   same key          the event carries no old key; nothing goes
   copy (PG)         a deleted source row's layer is withdrawn and the hold recounted - without the cell
@@ -232,16 +233,26 @@ def test_the_map_purge_door_carries_the_rows_it_deletes_too(db):
     assert _inv(db) == {"J1": ("A, B", 2)}
 
 
-def test_a_keys_row_a_person_wrote_on_goes_and_is_named(db, caplog):
+def test_a_keys_row_a_person_wrote_on_stays_without_its_rules_cells_and_is_named(db, caplog):
+    """뒤집음 · 소유자 10-28 (it went, named, from 10-14): the rule's layers go - its auto-confirm stamp, by the rule
+    name the chain signs it with, too - and the person's note and the row's key stay."""
+    from chain.enrichment import candidates
+
     _seed(db)
     crud.apply_batch_updates(db, INV, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
         business_key_val="J3", updates={"note": "checked"}, source_name=crud.USER_SOURCE, updated_by="okey")]))
+    confirm = enrichment.config.synthesized_rule_names("okey_rule")[1]
+    crud.apply_batch_updates(db, INV, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        business_key_val="J3", updates={"n": 9}, source_name=candidates.SOURCE_NAME, updated_by=confirm)]))
     with caplog.at_level(logging.INFO):
         crud.delete_rows_batch(db, SRC, [_src(db, "L3").row_id], "okey")
         _chain(db)
 
-    assert _inv(db) == {"J1": ("A, B", 2)}
-    assert "[ChainRetract] deleted %s J3: no source rows (a person's value was on it)" % INV in _gone_lines(caplog)
+    assert _inv(db) == {"J1": ("A, B", 2), "J3": (None, None)}
+    assert db.query(models.DYNAMIC_TABLES[INV]).filter_by(job="J3").one().note == "checked"
+    assert _deletions(db) == []
+    assert ("[ChainRetract] kept %s J3: no source rows, a person's value is on it - withdrew 3 cell(s)" % INV
+            in _gone_lines(caplog))
 
 
 def test_the_chains_deletion_is_a_chain_event_and_a_persons_is_not(db):
@@ -339,12 +350,15 @@ def test_a_wider_decision_key_keeps_the_row_when_the_same_batch_moves_its_row_wi
     assert _wide(db) == {"L1": "checked"}
 
 
-def test_a_wider_decision_key_takes_the_row_when_no_source_row_has_its_identity(db):
+def test_a_wider_decision_key_keeps_a_persons_row_without_its_count_when_no_source_row_has_its_identity(db):
+    """No source row holds L1 - its count goes, the person's note and the row stay (뒤집음 · 소유자 10-28)."""
     _wseed(db, [("W1", "L1", "3"), ("W2", "L1", "4")])
     crud.delete_rows_batch(db, WSRC, [_wrow(db, "W1"), _wrow(db, "W2")], "okey")
     _chain(db, WSRC)
 
-    assert _wide(db) == {}
+    assert _wide(db) == {"L1": "checked"}
+    assert [row.n for row in db.query(models.DYNAMIC_TABLES[WINV])] == [None]
+    assert _deletions(db, WINV) == []
 
 
 def test_a_keys_row_another_writer_is_on_stays_and_is_named(db, caplog):

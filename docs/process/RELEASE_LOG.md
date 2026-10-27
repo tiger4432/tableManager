@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [체인이 지우는 행 — 사람이 적은 행은 남기고 그 규칙의 칸만 거둔다(뒤집음)](#2026-10-28--체인이-지우는-행--사람이-적은-행은-남기고-그-규칙의-칸만-거둔다뒤집음) — 보는 곳 chain_worker.log 의 «[ChainRetract] kept <표> <키>: … withdrew N cell(s)» · 그 행의 사람 칸
 - 2026-10-28 [고침 — 견본 맵퍼가 칸의 값을 읽는다 · dt_log_to_dt_job_rollup 이 다시 쓴다](#2026-10-28--고침--견본-맵퍼가-칸의-값을-읽는다--dt_log_to_dt_job_rollup-이-다시-쓴다) — 할 일 운영의 rollup 맵퍼를 견본으로 다시 복사 · 보는 곳 dt_job_rollup 행 수 · chain_worker.log
 - 2026-10-27 [decide expand — 키 하나를 정해진 값 목록만큼 파생 행으로 펼친다](#2026-10-27--decide-expand--키-하나를-정해진-값-목록만큼-파생-행으로-펼친다) — 적는 곳 chain_rules.json 의 derive.decide.expand · 보는 곳 파생 표 · 저장 거절 문장
 - 2026-10-27 [decide 의 key 와 list_columns 에 짝 — 파생 칸 이름과 원본 칸 이름이 다를 때](#2026-10-27--decide-의-key-와-list_columns-에-짝--파생-칸-이름과-원본-칸-이름이-다를-때) — 적는 곳 chain_rules.json 의 derive.decide.key · list_columns · 보는 곳 파생 표 · 저장 거절 문장
@@ -639,6 +640,15 @@
 - **바뀐 동작** — 총괄 10-28. 체인이 맵퍼에 넘기는 칸은 `{"value": x, …}` 인데, 견본 `dt_job_rollup_mapper.py.sample` 이 칸을 값 대신 통째로 써서 규칙 `dt_log_to_dt_job_rollup` 이 태어난 09-09 부터 행마다 «can't adapt type 'dict'» 로 실패했습니다. 이제 칸 하나를 읽는 자리는 `mapper_sdk.cell_value` 하나이고, 견본 맵퍼들과 lot_lineage · lot_slot_wafer 가 그것을 부릅니다. 같은 날 견본 decide `dt_job_lot_slot_attribution` 의 참조 뷰 둘(없는 열 lot_event.lot · equipment 를 읽던 것)이 빠졌습니다(`560c031cc`).
 - **필요한 조건** — git pull · 운영의 `server/mappers/dt_job_rollup_mapper.py` 가 견본 복사본이면 견본으로 다시 복사 · 체인 워커 재기동. `SELECT count(*) FROM dt_job_rollup;` 이 0 이면 09-09 부터 비어 있었고 원장 dt_job 소스의 셈 원자도 없었습니다(RUN.md).
 - **자세히** — `server/mapper_sdk.py` 의 `cell_value`. 시험 `test_the_chain_counts_and_the_ledger_only_reads.py`.
+
+## 2026-10-28 · 체인이 지우는 행 — 사람이 적은 행은 남기고 그 규칙의 칸만 거둔다(뒤집음)
+
+- 무엇: 소유자 10-28. decide 가 «원천 행이 하나도 없는 키»(옛 키) · «expand 목록에서 빠진 값»의 파생 행을 지울 때, 사람이 적은 칸(빈 값을 적었어도)이 있는 행은 지우지 않는다. 그 행에서 이 규칙이 쓴 칸(체인 층 · 자동 확정 층)만 거두고, 사람 칸과 키 칸과 행은 남긴다. 10-14 판정 «A row a person wrote on goes too, and is named»(4abf68886)을 **뒤집음 · 소유자 10-28**.
+- 보는 곳: `chain_worker.log` 에 행마다 «[ChainRetract] kept <표> <키>: no source rows, a person's value is on it - withdrew N cell(s)». 요약 줄 «rows_deleted=N» 은 사람 칸 없는 행만 센다. 거둔 행은 그리드에 고침으로 들린다.
+- 그대로: 사람 칸 없는 행은 전처럼 지운다(이력 «chain_no_source_rows»). 다른 규칙 · 다른 쓰는이가 쓴 행은 전처럼 남기고 이름을 적는다.
+- 바뀐 동작: 10-27 decide expand 항목의 «사람이 채운 칸이 있는 행은 남음»이 이제 참이다(그때까지 그런 행도 지워졌다).
+- 필요한 조건: git pull · 체인 워커 재기동. 선언 · 소급 · 재적재 없음.
+- 자세히: `server/chain/ingestion_worker.py` 의 `_delete_gone`, `server/chain/cell_layer.py` 의 `rule_layer_names` · `cells_written_by` · `person_rows`. 좌석이 견주는 낱말은 gone 항목의 `own` = 그 규칙들의 선언 이름(`rule_shape.declaration_of`, 체인 쓰기가 층의 `updated_by` 에 적는 것 — decide 는 두 반쪽 규칙 이름).
 
 ## 2026-10-27 · 허브 — 한 노드에서 한 술어로 많이 닿는 걸음을 노드 하나로 접고, 구성원은 집합째 걷는다 · AI 리포트 프롬프트에 한 줄
 

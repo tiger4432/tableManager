@@ -14,6 +14,7 @@ that read the source keep reading `key_source`, and only the derived row's ident
     a row that left its key                 test_a_row_that_moves_off_a_key_recounts_every_listed_row
     a narrower identity, key left empty     test_a_key_left_empty_keeps_the_rows_another_source_row_holds
     the list changed, a replay              test_a_value_taken_off_the_list_goes_and_one_added_stands
+    ... a person wrote on the row it took   test_a_value_taken_off_the_list_keeps_the_row_a_person_wrote_on
     no expand (control)                     test_without_expand_the_rule_and_its_rows_are_as_before
 """
 import anyio
@@ -191,6 +192,23 @@ def test_a_value_taken_off_the_list_goes_and_one_added_stands(env):
     got = _rows(env)
     assert sorted(item for job, _lot, item in got if job == "J1") == sorted(changed)
     assert sorted(item for job, _lot, item in got if job == "J2") == sorted(LISTED)    # not run again: as it was
+
+
+def test_a_value_taken_off_the_list_keeps_the_row_a_person_wrote_on(env):
+    """뒤집음 · 소유자 10-28: the row a person wrote on stays - the rule's cells go, its key and the person's stay."""
+    _write(env, ROWS, "tx1")
+    _run(env, "tx1")
+    crud.apply_batch_updates(env, DRV, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+        business_key_val="J1|L1|leg 1", updates={"fill": "F"}, source_name=crud.USER_SOURCE, updated_by="okey")]))
+    rewrite_rules(env.info["rules_path"], {"dx_rule": dict(RULE, expand={"column": "item", "values": ["base"]})})
+    _write(env, [{"s_row": "r1", "s_note": "N1b"}], "tx2")
+    _run(env, "tx2")
+
+    got = _rows(env)
+    assert sorted(item for job, _lot, item in got if job == "J1") == ["base", "leg 1"]
+    assert got[("J1", "L1", "leg 1")] == {"d_note": None, "d_count": None, "unit": "J1|L1|leg 1"}
+    model = models.DYNAMIC_TABLES[DRV]
+    assert env.query(model).filter_by(business_key_val="J1|L1|leg 1").one().fill == "F"
 
 
 def test_a_row_made_before_expand_goes_when_the_key_runs(env):
