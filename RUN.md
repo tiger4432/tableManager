@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **시험: 묶어 돌리면 빨강이던 시험 다수가 풀림** — 서버 재기동 필요 없음
+>
+> ```
+> 돌릴 것   cd server && conda run -n assy_manager python -m pytest -q -p no:cacheprovider tests
+> 뜻       conftest 의 autouse 픽스처가 시험의 monkeypatch 되돌림을 db_session 정리 뒤로 밀고 있었음
+>          고친 뒤 main 사본 넓은 판 빨강 139 -> 32. 남은 32 는 고치기 전에도 빨강
+>          «혼자 초록 · 묶으면 빨강» 이 또 보이면 autouse 픽스처가 공유 monkeypatch 를 잡는지부터 봄
+> ```
+>
+> ---
+>
 > ## [10-27] **선언 창에서 import 적기 · 가져온 엔티티는 그 세계에서 고치기** — git pull · 화면 새로 고침 (서버 97c2163d8 이후면 재기동 필요 없음)
 >
 > ```

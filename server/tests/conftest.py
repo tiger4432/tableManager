@@ -389,14 +389,16 @@ def _heartbeats_never_touch_the_live_tree(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
-def _switch_on_times_never_touch_the_live_tree(tmp_path_factory, monkeypatch):
+def _switch_on_times_never_touch_the_live_tree(tmp_path_factory):
     """Every source registration keeps the switch-on times (`directory_watcher.stamp_switched_on`); a run in the live
     tree would leave the file there and the live watcher's first start would cut every source on (소유자 10-26).
-    An absolute name: `paths.config_path` joins it as it is."""
+    An absolute name: `paths.config_path` joins it as it is. Its own MonkeyPatch: taking the test's shared one first
+    moved every test's undo behind `db_session`'s teardown (lead 10-27, the backfill reds)."""
     from ingestion import reread
     path = os.path.join(str(tmp_path_factory.getbasetemp()), reread.SWITCHED_ON_FILENAME)
-    monkeypatch.setattr(reread, "SWITCHED_ON_FILENAME", path)
-    yield
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(reread, "SWITCHED_ON_FILENAME", path)
+        yield
     if os.path.exists(path):
         os.remove(path)
 
