@@ -98,7 +98,7 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 |---|---|
 | `check:clipboard` | 클립보드 관례 (`client2/scripts/check_clipboard_convention.mjs`) |
 | `check:contracts` | `contracts/*/client_harness.mjs` **발견식 스캔** — 이음새의 클라 절반을 `vectors.json` 에 채점 |
-| `check:harnesses` | `client2/tests/*.mjs` **발견식 스캔** (`client2/scripts/check_harnesses.mjs`) |
+| `check:harnesses` | `client2/tests/*.mjs` **발견식 스캔** (`client2/scripts/check_harnesses.mjs`). 🆕 [10-27 `8ddae68a4`] 스캔한 것 중 origin/main 과 갈라진 뒤 바뀐 파일이 «닿는» 하니스만 돕니다(`module_reach.mjs`; 전부는 `--all`) |
 | `check:suggest-keys` | 값 제안 셀 에디터의 키보드 계약. `prebuild` 에는 없고 위 스캔에 «흡수»돼 있습니다 |
 
 실측 2026-08-27: 하네스 **60** · 계약 **8**.
@@ -110,7 +110,7 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 ① 발견식이지 목록이 아니다   러너가 디렉터리를 «스캔»한다. 하드코딩 목록은 「추가했는데 안 돌았다」를 만든다
 ② 빈 스캔은 «실패»다         하네스가 하나도 안 잡히면 「0개, 전부 초록」이 아니라 exit 1 이다
 ③ ASSERTIONS 프로토콜        종료코드는 «근거 없는 판결»이다. 하네스는 `ASSERTIONS <ran> <failed>` 를 찍는다
-④ 플로어와 천장              FLOORS 는 「이만큼은 채점해야 한다」 · CEILINGS 는 「이 수는 여기서 더 못 자란다」
+④ 플로어와 천장              FLOORS 는 「이만큼은 채점해야 한다」 · CEILINGS 는 「이 수는 여기서 더 못 자란다」 — 표는 `client2/scripts/harness_floors.mjs`
 ```
 
 - **플로어** — 초록 하네스도 최소 `ran` 을 기록하고, 그 아래로 떨어지면 하네스 자신이 exit 0 이어도 BLOCKING
