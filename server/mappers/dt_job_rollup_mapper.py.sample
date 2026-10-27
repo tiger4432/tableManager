@@ -37,6 +37,7 @@ caller and a shared helper would be a layer built for a plural that does not exi
 from __future__ import annotations
 
 import chain_bindings
+from mapper_sdk import cell_value
 
 #: Whose write this is, in the cell-source layer. A name that is not a person, because no
 #: person typed these values.
@@ -74,10 +75,10 @@ def _payload_jobs(payloads):
         data = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(data, dict):
             continue
-        raw = data.get(JOB_COLUMN)
+        raw = cell_value(payload, JOB_COLUMN)                  # a cell is {"value": x, ...} - 09-09 wrote the dict
         job = str(raw).strip() if raw is not None else ""
         if job and job not in jobs:
-            jobs[job] = {column: data.get(column) for column in CARRIED_COLUMNS}
+            jobs[job] = {column: cell_value(payload, column) for column in CARRIED_COLUMNS}
     return jobs
 
 

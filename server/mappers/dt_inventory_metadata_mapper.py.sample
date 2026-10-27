@@ -15,11 +15,7 @@ import chain_bindings
 import dt_frame_transform
 import map_alignment
 import map_overlay
-
-
-def _value(payload, key):
-    cell = (payload.get("data") or {}).get(key)
-    return cell.get("value") if isinstance(cell, dict) else None
+from mapper_sdk import cell_value as _value
 
 
 def _reference_geometry(db, metadata, cache):

@@ -56,6 +56,14 @@ class MapperContractError(ValueError):
     upsert can never find again."""
 
 
+def cell_value(payload, column):
+    """One column's value out of a payload a chain mapper is handed (`outbox_expand.synthesize_payload`): the cell is
+    `{"value": x, ...}` and the value is `x`; a cell that is not one is itself. The one reading - `payloads_to_df` and
+    the shipped mappers call it (총괄 10-28: the rollup sample wrote the cell dict as a value from 09-09)."""
+    cell = ((payload or {}).get("data") or {}).get(column)
+    return cell["value"] if isinstance(cell, dict) and "value" in cell else cell
+
+
 def payloads_to_df(payloads: "Dict[str, Any] | List[Dict[str, Any]]") -> pd.DataFrame:
     """Outbox payloads -> one flat row each. Step ①.
 
@@ -89,10 +97,8 @@ def payloads_to_df(payloads: "Dict[str, Any] | List[Dict[str, Any]]") -> pd.Data
                 f"handed one payload per row, or the whole list when the rule declares "
                 f"'is_batch: true' - a list of row ids instead of payloads reads like this.")
         flat_row = {"row_id": p.get("row_id")}
-        for col_name, cell in (p.get("data") or {}).items():
-            flat_row[col_name] = (cell["value"]
-                                  if isinstance(cell, dict) and "value" in cell
-                                  else cell)
+        for col_name in (p.get("data") or {}):
+            flat_row[col_name] = cell_value(p, col_name)
         flat_rows.append(flat_row)
     return pd.DataFrame(flat_rows)
 

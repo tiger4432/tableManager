@@ -189,7 +189,11 @@ def mapper():
 
 
 def payload(job, **extra):
-    return {"data": dict({"dt_job": job}, **extra)}
+    """The payload the chain hands a mapper - every cell `{"value": x, ...}`. A flat `{"data": {...}}` here passed
+    while the shipped mapper wrote the cell dict as a value, from 09-09 (총괄 10-28)."""
+    import outbox_expand
+
+    return outbox_expand.synthesize_payload(1, job, dict({"dt_job": job}, **extra), {})
 
 
 def test_the_mapper_counts_the_whole_job_and_not_the_batch(mapper, monkeypatch):
@@ -239,6 +243,7 @@ def test_the_mapper_counts_the_whole_job_and_not_the_batch(mapper, monkeypatch):
     assert len(result["updates"]) == 1, "one row per job, however many rows arrived"
     item = result["updates"][0]
     assert item["business_key_val"] == JOB
+    assert item["updates"]["dt_eqp"] == "EQP-7", "the cell's value is written, not the cell"
     assert item["updates"]["netdie_count"] == 5, (
         "the count is the job's, not the batch's - two payloads arrived and the job has five")
     assert seen["in"] == [JOB], "the recount asks the source table about the jobs it saw"

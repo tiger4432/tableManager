@@ -26,6 +26,7 @@ import pandas as pd
 
 import chain_bindings
 import mapper_sdk
+from mapper_sdk import cell_value as _value
 
 SOURCE_NAME = "chain_ingestion"
 UPDATED_BY = "chain_lot_slot_wafer"
@@ -40,13 +41,6 @@ OUTPUT_CELLS = ("target_lot_column", "target_slot_column", "target_wafer_column"
 
 class ListPairingRefused(ValueError):
     """A trigger row whose two lists cannot be paired. Named, never trimmed."""
-
-
-def _value(payload, key):
-    cell = (payload.get("data") or {}).get(key)
-    if isinstance(cell, dict):
-        return cell.get("value")
-    return cell
 
 
 def _split(raw, delimiter):

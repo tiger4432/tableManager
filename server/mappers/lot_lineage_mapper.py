@@ -22,6 +22,7 @@ import pandas as pd
 
 import chain_bindings
 import mapper_sdk
+from mapper_sdk import cell_value as _value
 
 logger = logging.getLogger("Mappers.LotLineage")
 
@@ -39,13 +40,6 @@ OUTPUT_CELLS = ("target_parent_column", "target_child_column", "target_event_typ
 
 class DescentRefused(ValueError):
     """A trigger row that names both a parent and a child. Named, never split in two."""
-
-
-def _value(payload, key):
-    cell = (payload.get("data") or {}).get(key)
-    if isinstance(cell, dict):
-        return cell.get("value")
-    return cell
 
 
 def _text(value):

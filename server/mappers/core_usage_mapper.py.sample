@@ -17,17 +17,13 @@ import chain_bindings
 import dt_frame_transform
 import map_meta_registrar
 import notation_norm
+from mapper_sdk import cell_value as _value
 
 
 SOURCE_NAME = "chain_ingestion"
 UPDATED_BY = "chain_core_usage"
 _EQUATION_FIELDS = ("core_x_base", "core_x_sign", "core_x_offset",
                     "core_y_base", "core_y_sign", "core_y_offset")
-
-
-def _value(payload, key):
-    cell = (payload.get("data") or {}).get(key)
-    return cell.get("value") if isinstance(cell, dict) else None
 
 
 def _nonblank(value):

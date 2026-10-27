@@ -15,6 +15,7 @@ import chain_bindings
 import map_alignment
 import map_meta_registrar
 import map_overlay
+from mapper_sdk import cell_value as _payload_value
 
 
 SOURCE_NAME = "chain_ingestion"
@@ -23,12 +24,6 @@ UPDATED_BY = "chain_alignment"
 
 def _nonblank(value) -> bool:
     return value is not None and str(value).strip() != ""
-
-
-def _payload_value(payload: dict, column: str):
-    """Read the one canonical durable-outbox payload shape."""
-    nested = (payload.get("data") or {}).get(column)
-    return nested.get("value") if isinstance(nested, dict) else None
 
 
 def _decision_units(payloads, decision_key, key_source):

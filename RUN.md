@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **견본 맵퍼가 칸의 값을 읽는다 — dt_log_to_dt_job_rollup 이 09-09 부터 «can't adapt type 'dict'»로 실패하던 것** — 체인 워커 재기동 뒤
+>
+> ```
+> 무엇     견본 server/mappers/dt_job_rollup_mapper.py.sample 이 체인이 넘기는 칸({"value": …})을 값 대신 통째로 써서
+>          규칙 dt_log_to_dt_job_rollup 이 행마다 실패했다(태어난 09-09 부터). 견본 맵퍼 여덟과 mapper_sdk.payloads_to_df 가
+>          이제 mapper_sdk.cell_value 하나로 칸의 값을 읽는다
+> 할 일     운영 server/mappers/dt_job_rollup_mapper.py 가 견본 복사본과 같다면 견본으로 다시 복사하고 체인 워커를 재기동한다
+>          다른 견본 맵퍼의 운영 복사본은 그대로 돌아간다(같은 값을 읽는다) — 다시 복사는 선택
+> 보는 것   SELECT count(*) FROM dt_job_rollup;   0 이면 09-09 부터 비어 있었다는 뜻 -> 원장 dt_job 소스의 셈 원자도 없었다
+>          다시 복사 · 재기동 뒤 dt_log 에 행이 들어오면 그 job 의 행이 생긴다. 옛 dt_log 행을 채우려면 그 규칙을 소급(R1)으로
+>          chain_worker.log 에 «can't adapt type 'dict'» 가 더 안 나와야 한다
+> 끄기     규칙 dt_log_to_dt_job_rollup 의 enabled 를 false — 원장 dt_job 소스가 읽을 것이 없어질 뿐, 다른 규칙은 그대로
+> ```
+>
+> ---
+>
 > ## [10-27] **허브 — 많이 닿는 걸음이 노드 하나로 접히고, AI 리포트 프롬프트에 한 줄** — 서버 · 체인 워커 재기동 뒤
 >
 > ```

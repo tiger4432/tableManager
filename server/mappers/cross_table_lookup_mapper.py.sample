@@ -135,6 +135,8 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from mapper_sdk import cell_value
+
 # The degradation vocabulary is a CLOSED SET and it is defined once. Importing it here
 # rather than retyping the strings is the point: `config_resolve_report.entry` raises
 # on a word outside `REASONS`, so the operator-facing surface cannot drift from what a
@@ -271,11 +273,8 @@ def _flatten(payload: dict) -> dict:
     `crud.is_blank_value`: it would be written out as the text "nan".)
     """
     flat = {"row_id": payload.get("row_id"), "business_key": payload.get("business_key")}
-    for column, cell in (payload.get("data") or {}).items():
-        if isinstance(cell, dict) and "value" in cell:
-            flat[column] = cell["value"]
-        else:
-            flat[column] = cell
+    for column in (payload.get("data") or {}):
+        flat[column] = cell_value(payload, column)
     return flat
 
 

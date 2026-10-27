@@ -19,15 +19,11 @@ import chain_bindings
 import dt_frame_transform
 import map_alignment
 import map_overlay
+from mapper_sdk import cell_value as _value
 
 
 SOURCE_NAME = "chain_ingestion"
 UPDATED_BY = "chain_core_alignment"
-
-
-def _value(payload: dict, key: str):
-    cell = (payload.get("data") or {}).get(key)
-    return cell.get("value") if isinstance(cell, dict) else None
 
 
 def _nonblank(value) -> bool:
