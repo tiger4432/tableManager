@@ -225,11 +225,11 @@ def test_the_seed_call_comes_before_the_write_and_the_candidates_go_to_it(walks,
     assert (walked["why"], walked["refused"], walked["read"]) == ("void tops the pareto", None, CANDIDATES)
     evidence = report_loop._steps_text(out, report)
     assert "    why: void tops the pareto\n    " + CANDIDATES[0] in evidence
-    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[report] causes")]
-    assert said == ["[report] causes: 2 defect_kind node(s) - delam, void",
-                    "[report] causes seeds void - void tops the pareto",
-                    "[report] causes walk from void: 2 node(s) reached along leads_to, 2 candidate(s) kept "
-                    "(collect: quantity)", "[report] causes conditions: none", "[report] causes to fill: wetting, bond_temp"]
+    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Report] causes")]
+    assert said == ["[Report] causes: 2 defect_kind node(s) - delam, void",
+                    "[Report] causes seeds void - void tops the pareto",
+                    "[Report] causes walk from void: 2 node(s) reached along leads_to, 2 candidate(s) kept "
+                    "(collect: quantity)", "[Report] causes conditions: none", "[Report] causes to fill: wetting, bond_temp"]
 
 
 def test_without_the_cell_there_is_no_seed_call_and_no_walk(walks):
@@ -296,9 +296,9 @@ def test_the_candidates_conditions_stand_as_table_rows_and_are_said_with_their_v
     assert (related["call"], related["why"], [related["summary"]] + related["read"]) == (
         "candidate conditions", "W", lines)
     assert "\n".join(["step 6: candidate conditions"] + lines) in write
-    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[report] causes ")][-2:]
-    assert said == ["[report] causes conditions: wetting -> anneal; bond_temp -> bond_temp (dropped bake, ghost)",
-                    "[report] causes to fill: wetting"]
+    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Report] causes ")][-2:]
+    assert said == ["[Report] causes conditions: wetting -> anneal; bond_temp -> bond_temp (dropped bake, ghost)",
+                    "[Report] causes to fill: wetting"]
 
 
 def test_the_conditions_the_texts_name_join_the_related_ones_in_the_table(walks):

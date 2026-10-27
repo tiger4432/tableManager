@@ -1,5 +1,14 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **리포트 체인 로그 태그가 [Report] 하나로** — 체인 워커 재기동 뒤
+>
+> ```
+> 찾는 법   chain_worker.log 에서 [Report] 로 찾는다 — 읽기 · 후보 · 원인 걷기 · 거절 줄이 전부 이 태그
+>          전에는 같은 줄들이 [report](소문자)였다. 소문자로 찾던 검색은 이제 아무것도 안 잡힘
+> ```
+>
+> ---
+>
 > ## [10-27] **원장 수식어 색인 — 선언을 못 읽으면 색인 작업이 한 줄로 말함** — 서버 · 스케줄러 재기동 뒤
 >
 > ```
@@ -333,7 +342,7 @@
 > ```
 > 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
 > 볼 것    chain_worker.log «[LLM] answer had text around its JSON» -> 설명 붙은 답을 꺼내 읽음 (정상)
->          «[report] the answer held no JSON object - asked once more» -> 한 번 다시 물음
+>          «[Report] the answer held no JSON object - asked once more» -> 한 번 다시 물음
 >          리포트 상태 «stopped - the model answered no JSON at step N: …» 인데 글이 있음 -> 읽은 것으로 씀 (정상)
 >          «stopped - the language model call was refused: the answer is not JSON: …» -> 글쓰기 답이 두 번 다 JSON 아님 -> 앞 200 자로 모델 쪽을 봄
 >          조건 행 -> 모델이 2~3 개만 골라도 conditions.most 개까지 차면 고쳐진 것
@@ -370,7 +379,7 @@
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
-> 볼 것    chain_worker.log «[report]   wafer <웨이퍼> · leg <leg>: time None … -> candidate» -> 날짜 있는 웨이퍼의 leg 가 같이 섬 = 고쳐진 것
+> 볼 것    chain_worker.log «[Report]   wafer <웨이퍼> · leg <leg>: time None … -> candidate» -> 날짜 있는 웨이퍼의 leg 가 같이 섬 = 고쳐진 것
 >          (전: 그 leg 만 «-> no time» 으로 빠져 후보 줄의 rows 수가 적었음)
 >          «-> no time» 이 남은 웨이퍼 -> 그 웨이퍼의 어느 행에도 날짜가 없음 (소유자 10-24 규칙 그대로)
 > 되돌리기  git revert $(git log -1 --format=%h --grep='stands or falls whole' origin/main) -> 런처 재기동

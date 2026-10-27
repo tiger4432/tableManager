@@ -93,7 +93,7 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, ca
         # a picture table is read wafer by wafer, each to the cap - one cap over them all kept the first wafers' rows
         # and dropped every other wafer (owner 10-24 «10000rows 때문에 다른 wf 안나오는거 아니냐»)
         out = [row for wafer in wafers for row in _rows(db, role, columns, [wafer], where, newest, keys, capped, _said=False)]
-        logger.warning("[report] read %s: %d rows for %d wafers (wafer by wafer, %d each at most)",
+        logger.warning("[Report] read %s: %d rows for %d wafers (wafer by wafer, %d each at most)",
                        role["table"], len(out), len(wafers), READ_ROW_CAP)
         return out
     table = role["table"]
@@ -124,10 +124,10 @@ def _rows(db, role, columns, wafers=None, where=None, newest=None, keys=None, ca
                                 "every" if wafers is None else len(wafers),
                                 " (%s ...)" % ", ".join(map(str, wafers[:3])) if wafers else "",
                                 {c: len((f or {}).get("conditions") or [f]) for c, f in filters.items()}))
-        logger.warning("[report] read REFUSED %s", said, stack_info=True)
+        logger.warning("[Report] read REFUSED %s", said, stack_info=True)
         raise ReadRefused("%s - pick fewer" % said)
     if _said:
-        logger.warning("[report] read %s: %d rows for %s wafers%s (filters %s)", table, len(found),
+        logger.warning("[Report] read %s: %d rows for %s wafers%s (filters %s)", table, len(found),
                        "every" if wafers is None else len(wafers),
                        " - cut at %d" % READ_ROW_CAP if len(found) >= READ_ROW_CAP else "", sorted(filters))
     if wafers is None:
@@ -174,7 +174,7 @@ class Report:
             here = self._wafer_rows({role["evaluation"]: _equals_any(role["evaluation"], [evaluation])}
                                     if role.get("evaluation") else None)
         self.groups[evaluation] = self._ordered(here)
-        logger.warning("[report] start %s: %d wafers - %s", evaluation, len(here), "; ".join(
+        logger.warning("[Report] start %s: %d wafers - %s", evaluation, len(here), "; ".join(
             "%s @ %r" % (self.said(w), self.wafers[w]["time"]) for w in self.groups[evaluation]) or "none")
         self.embedded = {}                       # what images() embedded - for the HTML only
         self._candidates = None                  # the recent evaluations, read once (`_recent`)
@@ -313,11 +313,11 @@ class Report:
             # what the time item read - each wafer's value and the day it is taken as (owner 10-24 «날짜 뭐 읽었는지 다
             # 로그 띄워 · Bonding Date 를 못 읽는 거 같아»)
             timed = [w for w in set(wafers) if self.wafers[w].get("time") is not None]
-            logger.warning("[report] time_item %r (%s.%s): %d of %d wafers have it; names read: %s", time_item,
+            logger.warning("[Report] time_item %r (%s.%s): %d of %d wafers have it; names read: %s", time_item,
                            role["table"], role["name"], len(timed), len(set(wafers)),
                            ", ".join("%r x%d" % kv for kv in sorted(seen_names.items())[:30]) or "none")
             for w in sorted(set(wafers), key=label):
-                logger.warning("[report]   %s: %s %r -> %s", self.said(w), time_item, self.wafers[w].get("time"),
+                logger.warning("[Report]   %s: %s %r -> %s", self.said(w), time_item, self.wafers[w].get("time"),
                                _instant(self.wafers[w].get("time")))
 
     def _ordered(self, wafers):
@@ -880,7 +880,7 @@ class Report:
         if recent.get("evaluations"):
             newest = newest[:recent["evaluations"]]
         timed = sum(1 for w in self.wafers if _instant(self.wafers[w]["time"]) is not None)
-        logger.warning("[report] candidates: %d wafers read, %d with a time (time from %s); this report's %d wafers, "
+        logger.warning("[Report] candidates: %d wafers read, %d with a time (time from %s); this report's %d wafers, "
                        "%d with a time, latest %s; recent %s -> %d candidates: %s", len(self.wafers), timed,
                        role.get("time") or (self.long or {}).get("time") or
                        "conditions.time_item %s" % (self.long or {}).get(report_shape.TIME_ITEM),
@@ -890,7 +890,7 @@ class Report:
         for wafer in self.wafers:
             facts = self.wafers[wafer]
             name = self._unit(wafer) if each else str(facts["evaluation"])
-            logger.warning("[report]   wafer %s: time %r (day %s) -> %s", self.said(wafer), facts["time"],
+            logger.warning("[Report]   wafer %s: time %r (day %s) -> %s", self.said(wafer), facts["time"],
                            _instant(facts["time"]),
                            "this report" if wafer in own else "candidate" if name in newest else
                            "no time" if _instant(facts["time"]) is None else
@@ -933,7 +933,7 @@ class Report:
         days = recent.get("days")
         kept = [k for k, at in dates.items() if anchor is None or not days or
                 abs(anchor - at) <= datetime.timedelta(days=days)]
-        logger.warning("[report] dated by %r: %d time_item rows, %d wafers dated, latest of this report %s, "
+        logger.warning("[Report] dated by %r: %d time_item rows, %d wafers dated, latest of this report %s, "
                        "%d within %s", time_item, len(rows), len(dates), anchor, len(kept), recent)
         if not kept:
             return {}
@@ -1107,7 +1107,7 @@ class Report:
         more = (answer.get("truncated") or {}).get("seeds") or 0
         self._kinds = nodes
         head = "%d %s node(s)%s" % (len(nodes), kind, " - %d more not listed" % more if more else "")
-        logger.warning("[report] causes: %s - %s", head, ", ".join(nodes) or "none")
+        logger.warning("[Report] causes: %s - %s", head, ", ".join(nodes) or "none")
         return {"context": "\n".join([head] + list(nodes)), "nodes": nodes}
 
     def causes(self, seeds):
@@ -1153,7 +1153,7 @@ class Report:
             ", ".join(named), len(ranked), ", ".join(follow), len(candidates),
             " (collect: %s)" % ", ".join(causes["collect"]) if causes.get("collect") else "",
             " - the walk was cut: %s" % cut if cut else "")
-        logger.warning("[report] causes walk from %s", head)
+        logger.warning("[Report] causes walk from %s", head)
         left_out = [report_shape.word(self.spec, "no_seed") % (seed, causes["seed_type"]) for seed in unknown]
         lines = ["%s %s: %s" % (c["type"], c["label"], c["path"]) for c in candidates]
         return {"context": "\n".join([head] + left_out + lines), "candidates": candidates}
@@ -1271,7 +1271,7 @@ class Report:
                                        "" if cells else " - " + report_shape.word(self.spec, "to_fill")))
         head = "%d quantit(ies) with values on these wafers, %d to fill - %d model node(s), %d wafer walk page(s)" % (
             len(labels) - len(to_fill), len(to_fill), len(nodes), calls)
-        logger.warning("[report] causes values: %s", head)
+        logger.warning("[Report] causes values: %s", head)
         return {"context": "\n".join([head] + lines), "labels": labels, "to_fill": to_fill}
 
 

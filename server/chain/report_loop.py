@@ -210,7 +210,7 @@ def _ask(prompt, ask):
     try:
         said = ask(prompt, usage=usage)
     except llm.LlmNotAnObject as refused:
-        logger.warning("[report] the answer held no JSON object - asked once more: %s", refused)
+        logger.warning("[Report] the answer held no JSON object - asked once more: %s", refused)
         usage = {}
         said = ask(prompt + AGAIN_JSON % refused.answer, usage=usage)
     return said, usage.get("prompt_tokens")
@@ -232,7 +232,7 @@ def _call(report, said, seen):
     try:
         return getattr(report, call)(**args), None
     except report_reads.ReadRefused as refused:
-        logger.warning("[report] %s(%s) refused: %s", call, args, refused, exc_info=refused)
+        logger.warning("[Report] %s(%s) refused: %s", call, args, refused, exc_info=refused)
         return None, str(refused)
     except Exception as exc:                                        # noqa: BLE001 - one read's data, said to the model
         logger.error("[Report] %s failed: %s: %s", call, type(exc).__name__, exc, exc_info=exc)
@@ -322,7 +322,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             try:
                 tables["yield_by"] = report.yield_by(**_args(report, "yield_by"))["html"]
             except report_reads.ReadRefused as said:
-                logger.warning("[report] yield_by with the written conditions refused: %s", said, exc_info=said)
+                logger.warning("[Report] yield_by with the written conditions refused: %s", said, exc_info=said)
     return out
 
 
@@ -366,7 +366,7 @@ def _product_reads(report, spec, tables, reads, steps, clock):
         try:
             lines, refused = report.declared_compare(), None
         except report_reads.ReadRefused as said:
-            logger.warning("[report] compare() refused: %s", said, exc_info=said)
+            logger.warning("[Report] compare() refused: %s", said, exc_info=said)
             lines, refused, alone = ["refused: %s" % said], str(said), True
         reads.append((len(steps) + 1, "product compare()", lines))
         steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": "product compare()",
@@ -377,7 +377,7 @@ def _product_reads(report, spec, tables, reads, steps, clock):
         try:
             answer, refused = getattr(report, call)(**_args(report, call)), None
         except report_reads.ReadRefused as said:
-            logger.warning("[report] %s() refused: %s", call, said, exc_info=said)
+            logger.warning("[Report] %s() refused: %s", call, said, exc_info=said)
             answer, refused = None, str(said)
         lines = answer["context"].splitlines() if answer else ["refused: " + refused]
         name = "product %s()" % call
@@ -404,7 +404,7 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps, tables):
     try:
         kinds = report.seed_nodes()["context"].splitlines()
     except report_reads.ReadRefused as said:
-        logger.warning("[report] seed_nodes() refused: %s", said, exc_info=said)
+        logger.warning("[Report] seed_nodes() refused: %s", said, exc_info=said)
         return step("product seed_nodes()", began, [], str(said))
     step("product seed_nodes()", began, kinds)
     tables_read = [read for read in reads if read[1].replace("product ", "").split("(")[0] in report_shape.TABLE_FILLS]
@@ -421,12 +421,12 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps, tables):
     seeds = said.get("seeds")
     seeds = [seeds] if isinstance(seeds, str) else [str(s) for s in seeds or () if str(s).strip()]
     why = str(said.get("why") or "").strip() or None
-    logger.warning("[report] causes seeds %s - %s", ", ".join(seeds) or "none", why or "no why given")
+    logger.warning("[Report] causes seeds %s - %s", ", ".join(seeds) or "none", why or "no why given")
     call = _said("causes", {"seeds": seeds})
     try:
         walked, refused = report.causes(seeds), None
     except report_reads.ReadRefused as refused_:
-        logger.warning("[report] %s refused: %s", call, refused_, exc_info=refused_)
+        logger.warning("[Report] %s refused: %s", call, refused_, exc_info=refused_)
         walked, refused = None, str(refused_)
     except Exception as exc:                                    # noqa: BLE001 - this step stops, the report is written
         logger.error("[Report] %s failed: %s: %s", call, type(exc).__name__, exc, exc_info=exc)
@@ -449,7 +449,7 @@ def _values(report, clock, steps, reads, tables, candidates):
     try:
         said, refused = report.values(candidates), None
     except report_reads.ReadRefused as refused_:
-        logger.warning("[report] %s refused: %s", VALUES_CALL, refused_, exc_info=refused_)
+        logger.warning("[Report] %s refused: %s", VALUES_CALL, refused_, exc_info=refused_)
         said, refused = None, str(refused_)
     except Exception as exc:                                    # noqa: BLE001 - this step stops, the report is written
         logger.error("[Report] %s failed: %s: %s", VALUES_CALL, type(exc).__name__, exc, exc_info=exc)
@@ -461,7 +461,7 @@ def _values(report, clock, steps, reads, tables, candidates):
         return
     reads.append((steps[-1]["step"], VALUES_CALL, lines))
     if said["to_fill"]:
-        logger.warning("[report] quantity values to fill: %s", ", ".join(said["to_fill"]))
+        logger.warning("[Report] quantity values to fill: %s", ", ".join(said["to_fill"]))
     if said["labels"]:
         report.written_rows = list(dict.fromkeys(list(getattr(report, "written_rows", None) or ()) + said["labels"]))
         _redraw_yield_by(report, tables, VALUES_CALL)
@@ -472,7 +472,7 @@ def _redraw_yield_by(report, tables, why):
     try:
         table = report.yield_by(**_args(report, "yield_by"))["html"]
     except report_reads.ReadRefused as said:
-        logger.warning("[report] yield_by with the %s refused: %s", why, said, exc_info=said)
+        logger.warning("[Report] yield_by with the %s refused: %s", why, said, exc_info=said)
         return {}
     if "yield_by" in tables:
         tables["yield_by"] = table
@@ -538,11 +538,11 @@ def _related(report, spec, request, budget, ask, clock, steps, reads, tables, ca
             lines.append("%s: %s" % (label, to_fill))
         if not valued:
             unfilled.append(label)
-    logger.warning("[report] causes conditions: %s%s", "; ".join(
+    logger.warning("[Report] causes conditions: %s%s", "; ".join(
         "%s -> %s" % (label, ", ".join(related[label])) for label in labels if related.get(label)) or "none",
         " (dropped %s)" % ", ".join(dropped) if dropped else "")
     if unfilled:
-        logger.warning("[report] causes to fill: %s", ", ".join(unfilled))
+        logger.warning("[Report] causes to fill: %s", ", ".join(unfilled))
     step(lines, tokens=counted or budget.tokens(prompt), cut=cut, why=why)
     reads.append((steps[-1]["step"], RELATED_CALL, lines))
 
