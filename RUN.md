@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **탐색기 창이 아래 Source status 를 덮지 않음** — git pull · 화면 새로 고침, 명령 없음
+>
+> ```
+> 볼 곳     낮은 화면(1280x720)에서 Ontology Explorer 탭을 아래로 굴림
+> 뜻       탐색기 아래 끝 바로 밑에서 «MEASURE · SOURCE STATUS» 머리가 시작 = 새 번들
+>          트리 · 맵 줄이 그 머리 위에 겹쳐 보임 = 옛 번들 -> 강력 새로 고침
+> 되돌리기  git revert $(git log --format=%h -i --grep='the explorer keeps to its box' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-27] **decide expand — 키 하나를 값 목록만큼 파생 행으로** — 서버 · 체인 워커 재기동 뒤
 >
 > ```

@@ -2762,6 +2762,11 @@ const DRIVE = {
       btn.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
       return true; })()`).then(() => sleep(800))],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
+    // The tab scrolled to the explorer's foot (lead 10-27): the explorer keeps to its box and the section under it is not
+    // drawn over (at 1280x720 the window's minimum height ran 97 px over Ledger sources).
+    ['Ontology Explorer, tab scrolled', (c) => evaluate(c, `(() => { const w = document.getElementById('ontology-tab-wrapper');
+      const r = document.getElementById('ontology-explorer-root'); if (!w || !r) return false;
+      w.scrollTop = r.offsetTop + r.offsetHeight - w.clientHeight / 2; return true; })()`).then(() => sleep(600))],
     // Worlds that overlap (lead 10-27): the page loaded again on the explorer, so its first read is the recorded one -
     // the tab opened twice asks for the selection's view, which is not recorded. A navigate to the same url with its hash
     // does not load the page again.
@@ -2926,6 +2931,9 @@ const MUTANTS = [
     file: 'src/file_ingestion/file_ingestion.css', edits: [['.fi-progress__acts { display: flex;', 'td:has(> .fi-progress__acts) { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }\n.fi-progress__acts { display: flex;']] },
   { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',
     file: 'src/file_ingestion/parts.js', edits: [["el('tr', line.done ? 'fi-dim' : '')", "el('tr', '')"]] },
+  // The explorer kept to its box (lead 10-27): at 1280x720 its window ran 97 px over Ledger sources.
+  { name: 'the explorer\'s box no longer holds the window\'s least height, the window over the section under it', entry: 'admin.html', rule: 'cover', at: 'oe-tree',
+    file: 'src/ontology_explorer.css', edits: [['  min-height: var(--oe-window-min-h);\n  min-width: 0;\n  position: relative;', '  min-width: 0;\n  position: relative;']] },
   // The form's adder inside its cell (lead 10-27): an empty required list's + under «Required» at 1280 again.
   { name: 'the adder\'s box keeps its width in a narrow value column again, its + under the row\'s Required', entry: 'admin.html', rule: 'cover', at: 'oe-form-adder',
     file: 'src/ontology_explorer.css', edits: [['gap: var(--space-1); min-width: 0; max-width: 100%;', 'gap: var(--space-1);'], ['flex: 0 1 auto; min-width: 0; width: calc(var(--space-6) * 6);', 'width: calc(var(--space-6) * 6);']] },

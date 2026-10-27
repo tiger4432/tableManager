@@ -173,6 +173,7 @@
 
 - 2026-10-27 [원장 선언 imports — 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 쓴다, 그래서 두 세상의 그 노드가 하나](#2026-10-27--원장-선언-imports--다른-세상이-선언한-엔티티-타입을-그-세상이-적은-대로-쓴다-그래서-두-세상의-그-노드가-하나) — 적는 곳 그 세상 선언(config/ontology_worlds/<세상>/ledger_config.json 또는 config/ontology/ledger_config.json)의 최상위 imports · 보는 곳 GET /admin/ontology-explorer/worlds 의 notices
   - 2026-10-27 [선언 창에서 import 를 적는다 — 이름은 세계 목록에서, 엔티티 타입은 그 세계의 선언에서, 가져온 타입은 그 세계에서 고친다](#2026-10-27--선언-창에서-import-를-적는다--이름은-세계-목록에서-엔티티-타입은-그-세계의-선언에서-가져온-타입은-그-세계에서-고친다) — 누르는 곳 Ontology Explorer 왼쪽 목록 Import 의 + New · 가져온 엔티티의 Edit in <세계>
+  - 2026-10-27 [고침 — 1280x720 에서 탐색기 창이 아래 Source status 칸을 덮지 않는다](#2026-10-27--고침--1280x720-에서-탐색기-창이-아래-source-status-칸을-덮지-않는다) — 보는 곳 Ontology Explorer 탭을 아래로 굴렸을 때
 - 2026-10-20 [원장 선언 v7 — 한 칸을 묻는 제외 절 둘도 짧게 써진다, «어느 것도 아님» 조건](#2026-10-20--원장-선언-v7--한-칸을-묻는-제외-절-둘도-짧게-써진다-어느-것도-아님-조건) — 적는 곳 `ledger_config.json` 문장의 `when`
 - 2026-10-14 [선언 창의 서버 문 — 짧은 파일의 소스를 짧게 열고 저장 · 초안 Test run · 칩 목록(표 칸 · 엔티티 · 술어)](#2026-10-14--선언-창의-서버-문--짧은-파일의-소스를-짧게-열고-저장--초안-test-run--칩-목록표-칸--엔티티--술어)
 - 2026-10-14 [원장 선언 짧은 꼴 — 표 이름과 문장마다 «역할: 컬럼» (setup_version 7) · 옛 선언은 변환 명령 한 번](#2026-10-14--원장-선언-짧은-꼴--표-이름과-문장마다-역할-컬럼-setup_version-7--옛-선언은-변환-명령-한-번)
@@ -650,6 +651,12 @@
 - 필요한 조건: git pull · 서버 · 체인 워커 재기동(코드). 짝을 적은 선언을 저장하면 그 decide 가 짝으로 돈다 — 이미 있는 파생 행은 다음 원본 변경부터, 전부는 소급(enrichment_backfill).
 - 바뀐 동작: 이름 하나만 쓴 선언은 없음. 운영자가 복사해 쓰는 맵퍼 sample 둘(core_alignment_mapper · dt_alignment_metadata_mapper)이 판단키의 원본 칸을 `chain_bindings.key_source(decl)` 로 읽고 단위는 파생 칸 이름으로 부른다 — 예전에 복사한 맵퍼는 이름 같은 규칙에서 그대로 돈다(RUN.md 10-27).
 - 자세히: `server/chain/enrichment/config.py` 의 `_named_pairs`(정규화 칸 `key_source` · `list_source`), `server/chain_bindings.py` 의 `key_source` · `list_source`. 가이드 `docs/guide/chain_ingestion_guide.md` §4.1 · §4.2.
+
+## 2026-10-27 · 고침 — 1280x720 에서 탐색기 창이 아래 Source status 칸을 덮지 않는다
+
+- **바뀐 동작** — 총괄 10-27. 화면 높이가 낮으면(1280x720) 탐색기 창이 최소 높이 620px 를 지키느라 담는 상자(523px)를 넘쳐, 탭을 굴리면 아래 «Source status» 칸의 머리 약 97px 를 덮었습니다. 이제 상자가 그 높이를 잡고 탭이 굴러갑니다. 창 크기는 그대로입니다.
+- **필요한 조건** — git pull · 화면 새로 고침.
+- **자세히** — `client2/src/ontology_explorer.css` 의 `--oe-window-min-h`. 화면 검사기 «Ontology Explorer, tab scrolled».
 
 ## 2026-10-27 · 선언 창에서 import 를 적는다 — 이름은 세계 목록에서, 엔티티 타입은 그 세계의 선언에서, 가져온 타입은 그 세계에서 고친다
 

@@ -82,6 +82,9 @@
   --oe-indent: var(--space-5);
   /* A tree row's value box is one width (lead 10-21; the mockup's 240 on the 3.4 grid). */
   --oe-box-w: calc(var(--space-6) * 9);
+  /* The explorer's least height - held by its box, so a short tab scrolls instead of the window running over what is under
+     it (lead 10-27, skill §5). */
+  --oe-window-min-h: 620px;
   --oe-line-hover: var(--line-hover);
   --oe-ink-label: var(--ink-label);
   --oe-ink-th: var(--ink-th);
@@ -101,6 +104,7 @@
   line-height: 1.55;
   width: 100%;
   height: 100%;
+  min-height: var(--oe-window-min-h);
   min-width: 0;
   position: relative;
 }
@@ -160,7 +164,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 620px;
+  min-height: var(--oe-window-min-h);
   min-width: 0;
   background: var(--oe-bg);
   border-top: 1px solid var(--oe-line);
