@@ -636,7 +636,7 @@
 - 선언: `"imports": {"<세상>": {"entities": ["<엔티티 타입>", ...]}}` — 세상 하나가 선언 하나. 안 적으면 오늘과 같다(묶음 해시도 같음).
 - 필요한 조건: git pull · 서버 · 체인 워커 · 원장 워커 재기동(코드). 선언을 바꾸는 것은 재기동이 필요 없다.
 - 바뀐 동작: 없음(imports 를 안 적은 선언). 이미 자기 철자로 번역한 원자가 있는 세상에 imports 를 적으면, 그 타입을 로컬에서 고친 것과 같다 — 그 타입을 쓰는 소스를 다시 번역해야 옛 노드가 걷힌다(RUN.md 10-27).
-- 화면에서(서버 몫, 화면은 클라 착지 뒤): 선언 창이 만들 수 있는 종류에 `import`(이름 = 세상) — 만들기 · 고치기 · 지우기가 다른 선언과 같다. 들인 엔티티 노드에 `imported_from` = 그 세상(고치기는 그 세상에서). 세상 이름이 틀린 import 하나는 그것만 빠진다(left_out), 나머지는 읽힌다.
+- 화면에서(서버 몫, 화면은 클라 착지 뒤): 선언 창이 만들 수 있는 종류에 `import`(이름 = 세상) — 만들기 · 고치기 · 지우기가 다른 선언과 같다. 들인 엔티티 노드에 `imported_from` = 그 세상(고치기는 그 세상에서). 고르기 목록의 출처는 스켈레톤이 말한다 — 맵 노드 `key_section`(세상 = sections.worlds) · ref 잎 `world_from: key`(그 세상의 선언에서). 세상 이름이 틀린 import 하나는 그것만 빠진다(left_out), 나머지는 읽힌다.
 - 자세히: `server/ledger/setup_bundle.py` 의 `resolve_imports` · `IMPORTS`, `server/ledger/setup.py` 의 `live_imported`(catalog 처럼 넘김). 가이드 `docs/guide/ONTOLOGY_LEDGER_SETUP.md` §4 · §7.2.
 
 

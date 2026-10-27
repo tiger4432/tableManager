@@ -1070,9 +1070,12 @@ class OntologyExplorerService:
         # the names a `ref` leaf's `section` picks from (총괄 f3639d4a2) - a `columns` section reads `tables` above
         import chain_bindings
 
+        from ledger import schema
+
         payload["sections"] = {chain_bindings.SECTION_TABLES: sorted(payload["tables"]),
                                AUTHORABLE_SECTIONS["entity"]: sorted(payload["entities"]),
-                               AUTHORABLE_SECTIONS["predicate"]: sorted(payload["vocabulary"])}
+                               AUTHORABLE_SECTIONS["predicate"]: sorted(payload["vocabulary"]),
+                               chain_bindings.SECTION_WORLDS: list(schema.world_listing()["worlds"])}
         return payload
 
     @staticmethod

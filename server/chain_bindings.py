@@ -747,6 +747,8 @@ _SKELETON_HINTS = {
 #: and the columns of one of them - which one, `table_from` says: paths from the declaration's root, the first that
 #: holds a value (one node spelling serves both grammars). `authoring_schema` serves the lists.
 SECTION_TABLES, SECTION_COLUMNS = "tables", "columns"
+#: the ledger worlds by name - what a map keyed by a world picks its keys from (`key_section`, lead 10-27 B-4)
+SECTION_WORLDS = "worlds"
 TRIGGER_TABLE_AT = ("trigger_table", "on.table")         # the table a rule is woken by
 SOURCE_TABLE_AT = ("on.table",)                           # a unified join's value table - its key and its takes
 TARGET_TABLE_AT = ("target_table", "into.table")          # the table a rule writes

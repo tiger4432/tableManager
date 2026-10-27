@@ -1056,6 +1056,7 @@
           "kind": "map",
           "keyed_by": "name",
           "member": "World",
+          "key_section": "worlds",
           "of": {
             "kind": "record",
             "fields": [
@@ -1068,7 +1069,9 @@
                   "member": "Entity type",
                   "of": {
                     "kind": "leaf",
-                    "hint": "free"
+                    "hint": "ref",
+                    "section": "entities",
+                    "world_from": "key"
                   }
                 }
               }

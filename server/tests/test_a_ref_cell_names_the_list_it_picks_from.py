@@ -58,17 +58,23 @@ def _field(record, *keys):
 def test_the_three_skeletons_speak_one_vocabulary():
     from ledger.config_explorer import AUTHORABLE_SECTIONS
 
-    sections = {chain_bindings.SECTION_TABLES, chain_bindings.SECTION_COLUMNS, *AUTHORABLE_SECTIONS.values()}
+    sections = {chain_bindings.SECTION_TABLES, chain_bindings.SECTION_COLUMNS, chain_bindings.SECTION_WORLDS,
+                *AUTHORABLE_SECTIONS.values()}
     counted = {}
     for name, (roots, defs) in _three().items():
         for root in roots:
             for path, node in _nodes(root, defs=defs):
                 counted[name] = counted.get(name, 0) + 1
                 assert node["kind"] in config_authoring.SKELETON_NODE_KINDS, (name, path, node["kind"])
+                # a map's keys picked from a list name it as a leaf names its section (lead 10-27 B-4)
+                assert node.get("key_section", sections and next(iter(sections))) in sections, (name, path, node)
                 if node["kind"] == "leaf":
                     assert node["hint"] in HINTS, (name, path, node)
                     if "section" in node:
                         assert node["hint"] == "ref" and node["section"] in sections, (name, path, node)
+                    # the section read off another world's declaration - the one this declaration's key names
+                    assert node.get("world_from", "key") == "key" and (
+                        "world_from" not in node or node["hint"] == "ref"), (name, path, node)
                     if node.get("section") == chain_bindings.SECTION_COLUMNS:
                         assert node["table_from"] and all(isinstance(p, str) for p in node["table_from"]), path
     assert all(counted.get(name, 0) > 20 for name in ("chain", "table", "ledger")), counted
@@ -124,11 +130,12 @@ def test_the_lists_come_from_the_declarations(tmp_path):
         return schema["sections"], {name: sorted(schema["tables"][name]["columns"]) for name in schema["tables"]}
 
     sections, columns = lists(["lot_t", "die_t"], ["lot", "die"], ["has_die"])
-    assert sections == {"tables": ["die_t", "lot_t"], "entities": ["die", "lot"], "vocabulary": ["has_die"]}
+    assert sections == {"tables": ["die_t", "lot_t"], "entities": ["die", "lot"], "vocabulary": ["has_die"],
+                        "worlds": ["default"]}
     assert columns == {"die_t": ["c_die_t"], "lot_t": ["c_lot_t"]}         # what a `columns` section reads
 
     sections, columns = lists(["wafer_t"], ["wafer"], [])                  # the declarations change, the lists follow
-    assert sections == {"tables": ["wafer_t"], "entities": ["wafer"], "vocabulary": []}
+    assert sections == {"tables": ["wafer_t"], "entities": ["wafer"], "vocabulary": [], "worlds": ["default"]}
     assert columns == {"wafer_t": ["c_wafer_t"]}
 
 

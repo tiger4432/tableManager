@@ -27,6 +27,7 @@
 >           curl.exe --noproxy "*" -G "http://127.0.0.1:8080/api/ledger/declaration" -H "X-Admin-Token: <토큰>" --data-urlencode "world=<들이는 세상>"
 >             entities 의 그 type 의 keys = 들인 세상의 keys 여야 함
 > 들인 타입  선언 창에서 imported_from = 그 세상 — 고치기는 그 세상 선언에서
+> 고르기 목록  세상 = authoring schema 의 sections.worlds · 타입 = GET /api/ledger/declaration?world=<그 세상> 의 entities[].type (스켈레톤 key_section · world_from)
 > 거절 낱말  imports_world_unknown = 그 세상 선언을 못 읽음(이름 · 파일)    imports_type_unknown = 그 세상이 그 타입을 선언 안 함
 >           imports_cycle = 서로 들임(문장에 고리) — 한 세상이 그 타입을 직접 선언해야 함    invalid_type · unknown_field = 꼴이 틀림 (세상마다 {"entities": [...]})
 >           imports_unresolved = 다른 세상을 안 읽고 검증한 자리(스크립트 migrate_ledger_slim_sources 등) — 버그 아니면 그 스크립트 몫

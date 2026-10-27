@@ -361,3 +361,17 @@ def test_an_import_that_does_not_resolve_falls_alone_and_the_rest_loads(config):
     loaded = setup.load_setup(_root(A))
     assert "import|nowhere" in loaded.left_out and loaded.bundle.section("sources")
     assert _tool_keys(loaded.bundle.section("entities")) == ["tool", "site"]
+
+
+def test_the_import_form_says_where_its_picks_come_from_and_the_schema_serves_the_worlds(config, tmp_path):
+    """The client knows two general rules and no `import` (lead 10-27): a map's `key_section` and a leaf's `section`
+    pick from the authoring schema's sections; a leaf's `world_from: key` reads that section off the declaration of
+    the world the declaration's key names (/api/ledger/declaration?world=<key>)."""
+    from ledger.config_authoring import skeleton
+
+    (imports,) = [field["node"] for field in skeleton()["root"]["fields"] if field["key"] == "imports"]
+    (entities,) = [field["node"] for field in imports["of"]["fields"] if field["key"] == "entities"]
+    assert (imports["key_section"], entities["of"]) == (
+        "worlds", {"kind": "leaf", "hint": "ref", "section": "entities", "world_from": "key"})
+    assert _service(A, tmp_path).authoring_schema()["sections"]["worlds"] == schema.world_listing()["worlds"]
+    assert {B, A} <= set(schema.world_listing()["worlds"])
