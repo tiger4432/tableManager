@@ -55,7 +55,10 @@ LINE = re.compile(
     r" · waited (?P<waited>[\d.]+ s \((?P<span>[^)]*)\)|not measured) · sent: new (?P<new>\d+)"
     r" · changed "
     r"(?P<changed>\d+) · unchanged (?P<unchanged>\d+) · cells changed (?P<cells>\d+)"
-    r" · side-table rows (?P<side>\d+) · STAGES.* · INSIDE THE WRITE(?P<write>.*) · DB wait")
+    # whether the file replaced its maps (ea9fef6fb) - this table does not declare allow_replace_map
+    r" · side-table rows (?P<side>\d+)"
+    r" · replace off \(allow_replace_map is not true in table_config for \w+\)"
+    r" · STAGES.* · INSIDE THE WRITE(?P<write>.*) · DB wait")
 
 
 @pytest.fixture(name="env")
