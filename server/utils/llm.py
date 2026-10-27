@@ -318,6 +318,95 @@ def _refused(status, built, error, asked=None):
 USAGE_CELLS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
 
+#: What a model may wrap an id in - taken off both ends before ids are compared.
+ID_WRAPPING = "[]\"'“”‘’«»「」 "
+
+
+def _text_id(value):
+    """An id as compared: its text (`crud.clean_str_value` - 7, 7.0 and "7" alike, "007" not), brackets and
+    quotes off both ends."""
+    from database import crud
+
+    return crud.clean_str_value(value).strip(ID_WRAPPING)
+
+
+def _requests(texts, cap):
+    """`texts` [(id, text)] in order, cut into requests of at most `cap` characters of text - a text
+    longer than `cap` goes alone."""
+    out, size = [], 0
+    for item in texts:
+        if out and out[-1] and size + len(item[1]) <= cap:
+            out[-1].append(item)
+            size += len(item[1])
+        else:
+            out.append([item])
+            size = len(item[1])
+    return out
+
+
+def _ask(request, prompt_of, read, key):
+    """One request -> ({id: rows}, {id: why}) for its texts [(id, text)]: the answer's item of each id,
+    its list under `key` read by `read(text, items)` - ids compared as text, brackets and quotes off (`_text_id`). A request of one
+    text answered {<key>: [...]} is that text's answer. An answer refused whole gives every text its
+    sentence; a call that failed (`LlmCallFailed`) is raised - the whole batch fails (`max_group_attempts`)."""
+    try:
+        answer = ask_json(prompt_of(request))
+        items = answer.get("texts")
+        if not isinstance(items, list) and len(request) == 1 and isinstance(answer.get(key), list):
+            items = [{"id": request[0][0], key: answer[key]}]       # one text, answered the one-text way
+        if not isinstance(items, list):
+            raise LlmRefused("the answer has no 'texts' list: %s" % sorted(answer)[:10])
+    except LlmCallFailed:
+        raise
+    except LlmRefused as exc:
+        return {}, {ident: str(exc) for ident, _text in request}
+    by_id = {}
+    for item in items:
+        if isinstance(item, dict):
+            by_id.setdefault(_text_id(item.get("id")), item)       # the first item of an id is its answer
+    rows, why = {}, {}
+    for ident, text in request:
+        item = by_id.get(_text_id(ident))
+        if item is None:
+            why[ident] = "the answer has no item for text %r" % (ident,)
+        elif not isinstance(item.get(key), list):
+            why[ident] = "the answer's item for text %r has no '%s' list: %s" % (ident, key, sorted(item)[:10])
+        else:
+            try:
+                rows[ident] = read(text, item[key])
+            except LlmRefused as exc:
+                why[ident] = str(exc)
+    return rows, why
+
+
+def ask_batch(texts, prompt_of, read, key, cap, log=None):
+    """Texts [(id, text)] asked in requests of at most `cap` characters -> ({id: what `read` made}, {id: why}, calls).
+    `prompt_of(request)` writes one request's prompt; the answer is {"texts": [{"id", <key>: [...]}, ...]} and
+    `read(text, items)` reads one text's list under `key` (raising `LlmRefused` refuses that text). A text a
+    request of several left unread is asked again alone, once; a call that failed (`LlmCallFailed`) is raised.
+    `log`: the caller's logger for the asked-again line (default this module's).
+    The one batching of the product's model calls - `text_links.ask_links` (key «links») and the chain's
+    `derive: {kind: "ask"}` go through it (lead 10-27)."""
+    log = log or logger
+    rows, why, asked = {}, {}, 0
+    for request in _requests(texts, cap):
+        got, failed = _ask(request, prompt_of, read, key)
+        asked += 1
+        rows.update(got)
+        if failed and len(request) > 1:
+            log.warning("[LLM] a request of %d texts left %d unread - each asked alone: %s", len(request),
+                           len(failed), "; ".join("%r: %s" % (ident, said[:160]) for ident, said in failed.items()))
+            for ident, one in request:
+                if ident in failed:
+                    got, failed_alone = _ask([(ident, one)], prompt_of, read, key)
+                    asked += 1
+                    rows.update(got)
+                    why.update(failed_alone)
+        else:
+            why.update(failed)
+    return rows, why, asked
+
+
 def ask_json(prompt, *, system=None, usage=None):
     """One call -> the JSON object the model answered (the first one, in text around it). Refused by name when the
     file refuses, the call fails (`_refused` says which class) or the answer holds no JSON object (`LlmNotAnObject`). `from None` keeps the

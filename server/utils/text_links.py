@@ -283,20 +283,6 @@ class AskedLinks(list):
         self.requests, self.texts, self.refused, self.known = requests, texts, list(refused), list(known)
 
 
-def _requests(texts, cap):
-    """`texts` [(id, text)] in order, cut into requests of at most `cap` characters of text - a text
-    longer than `cap` goes alone."""
-    out, size = [], 0
-    for item in texts:
-        if out and out[-1] and size + len(item[1]) <= cap:
-            out[-1].append(item)
-            size += len(item[1])
-        else:
-            out.append([item])
-            size = len(item[1])
-    return out
-
-
 def _read(text, links, names, by_id, match_at, extractor):
     """The rows of one text's answered `links` - every check below, for this text alone. Refused by name
     (`LlmRefused`) when a link has not the shape, or every link quotes evidence the text does not hold."""
@@ -365,54 +351,11 @@ def _read(text, links, names, by_id, match_at, extractor):
     return out
 
 
-#: What a model may wrap an id in - taken off both ends before ids are compared.
-ID_WRAPPING = "[]\"'“”‘’«»「」 "
-
-
 def _text_id(value):
-    """An id as compared: its text (`crud.clean_str_value` - 7, 7.0 and "7" alike, "007" not), brackets and
-    quotes off both ends."""
-    from database import crud
-
-    return crud.clean_str_value(value).strip(ID_WRAPPING)
-
-
-def _ask(request, prompt_of, read):
-    """One request -> ({id: rows}, {id: why}) for its texts [(id, text)]: the answer's item of each id,
-    read by `read(text, links)` - ids compared as text, brackets and quotes off (`_text_id`). A request of one
-    text answered {"links": [...]} is that text's answer. An answer refused whole gives every text its
-    sentence; a call that failed (`LlmCallFailed`) is raised - the whole batch fails (`max_group_attempts`)."""
-    from database import crud
+    """An id as compared - `llm._text_id`, the batching's own."""
     from utils import llm
 
-    try:
-        answer = llm.ask_json(prompt_of(request))
-        items = answer.get("texts")
-        if not isinstance(items, list) and len(request) == 1 and isinstance(answer.get("links"), list):
-            items = [{"id": request[0][0], "links": answer["links"]}]       # one text, answered the one-text way
-        if not isinstance(items, list):
-            raise llm.LlmRefused("the answer has no 'texts' list: %s" % sorted(answer)[:10])
-    except llm.LlmCallFailed:
-        raise
-    except llm.LlmRefused as exc:
-        return {}, {ident: str(exc) for ident, _text in request}
-    by_id = {}
-    for item in items:
-        if isinstance(item, dict):
-            by_id.setdefault(_text_id(item.get("id")), item)       # the first item of an id is its answer
-    rows, why = {}, {}
-    for ident, text in request:
-        item = by_id.get(_text_id(ident))
-        if item is None:
-            why[ident] = "the answer has no item for text %r" % (ident,)
-        elif not isinstance(item.get("links"), list):
-            why[ident] = "the answer's item for text %r has no 'links' list: %s" % (ident, sorted(item)[:10])
-        else:
-            try:
-                rows[ident] = read(text, item["links"])
-            except llm.LlmRefused as exc:
-                why[ident] = str(exc)
-    return rows, why
+    return llm._text_id(value)
 
 
 #: What `known` adds under the dictionary (총괄 d7a27a758 · 423599fe9, 소유자 「모델링이 서로 연결이 되어야」):
@@ -689,22 +632,7 @@ def ask_links(text, names, instruction=None, match_at=None, known=None):
     def read(one, links):
         return _read(one, links, names, by_id, match_at, extractor)
 
-    rows, why, asked = {}, {}, 0
-    for request in _requests(texts, cells["batch_chars"]):
-        got, failed = _ask(request, prompt_of, read)
-        asked += 1
-        rows.update(got)
-        if failed and len(request) > 1:
-            logger.warning("[LLM] a request of %d texts left %d unread - each asked alone: %s", len(request),
-                           len(failed), "; ".join("%r: %s" % (ident, said[:160]) for ident, said in failed.items()))
-            for ident, one in request:
-                if ident in failed:
-                    got, failed_alone = _ask([(ident, one)], prompt_of, read)
-                    asked += 1
-                    rows.update(got)
-                    why.update(failed_alone)
-        else:
-            why.update(failed)
+    rows, why, asked = llm.ask_batch(texts, prompt_of, read, "links", cells["batch_chars"], logger)
     if not rows:
         first, said = next(iter(why.items()))
         raise llm.LlmRefused(said if not many else "every text (%d) was refused - text %r: %s"
