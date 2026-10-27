@@ -2783,6 +2783,180 @@
                   }
                 }
               ]
+            },
+            "ask": {
+              "kind": "record",
+              "fields": [
+                {
+                  "key": "input",
+                  "required": true,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "group_by",
+                        "required": true,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      {
+                        "key": "order_by",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "text",
+                        "required": true,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "output",
+                  "required": true,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "carry",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      {
+                        "key": "cells",
+                        "required": true,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "common",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "cell",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "table",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "column",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "none",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "prompts",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "common",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "memo",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "table",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "key",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "text",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
             }
           }
         }

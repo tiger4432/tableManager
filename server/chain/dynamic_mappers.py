@@ -91,6 +91,12 @@ def _report(db, payload, rule=None):
     return report_loop.answer(db, rule or {}, _row_ids(payload))
 
 
+def _ask(db, payload, rule=None):
+    """`derive: {kind: "ask"}` as an ordinary mapper - `ask_rule.answer` over the rows handed, as the report's."""
+    from chain import ask_rule
+    return ask_rule.answer(db, rule or {}, _row_ids(payload))
+
+
 def _auto_confirm(db, payload, rule=None, fetched=None):
     """`derive: {kind: "decide"}` as an ordinary mapper.
 
@@ -306,6 +312,10 @@ def _install_templates():
     # its result cells carry the summary row they are written on, and it says the columns (`results`)
     TEMPLATE_FACTS[report_shape.REPORT_MAPPER] = {"label": "report", "stamps_origin": True,
                                                   "columns": report_shape.result_columns, "params": None}
+    from chain import ask_rule
+    TEMPLATES[ask_rule.ASK_MAPPER] = _ask
+    TEMPLATE_FACTS[ask_rule.ASK_MAPPER] = {"label": "ask", "stamps_origin": False,
+                                           "columns": ask_rule.written_columns, "params": None}
     TEMPLATES[enrichment.config.DEDUP_MAPPER] = _enrich
     # ⚠️ `stamps_origin` False is measured (`origin_row_id` × 0 in `enrichment/mapper.py`),
     #    not assumed.

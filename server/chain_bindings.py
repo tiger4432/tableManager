@@ -938,11 +938,13 @@ def _unified_root():
     dangling name would not have been. This choice is reported, not assumed - if the ruling
     goes the other way it is one cell to add.
     """
-    from chain import join_into, report_shape, rule_shape
+    from chain import ask_rule, join_into, report_shape, rule_shape
 
     derive_branches = {
         # the AI report's settings (owner 10-22): tables and columns picked by name, as a join's
         "report": report_shape.skeleton_node(),
+        # a group's rows asked of the model, the answer written as rows (lead 10-27) - every cell a name
+        "ask": ask_rule.skeleton_node(),
         # A list or a flag drawn as a value is a BLANK BOX (09-22 owner report). The shape of
         # each cell that is not one value lives beside the list the reader consults.
         "join": _record(*[_field(cell, join_into.JOIN_CELL_SHAPES.get(cell) or _leaf(cell))

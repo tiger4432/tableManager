@@ -158,7 +158,7 @@ RETIRED_INTO_KINDS = ("read",)
 
 #: The three words a declaration's `derive.kind` can say. A LOADED rule has already been
 #: translated to today's flat shape, so the word has to be read back off what it RUNS.
-DECLARED_KINDS = ("join", "decide", "mapper", "report")
+DECLARED_KINDS = ("join", "decide", "mapper", "report", "ask")
 
 #: The word for a declaration whose `derive` the grammar cannot read. Not one of the three and
 #: never guessed into one - a refused join drawn as 「mapper」 is a false row (lead 3b1a7a550).
@@ -295,6 +295,12 @@ def as_chain_rule(internal: dict) -> dict:
         out["params"] = dict(derive.get("report") or {})
         # the group's rows in one call, so a wafer's rows make one report (판정 506, as the join's)
         out["is_batch"] = True
+    if derive.get("kind") == "ask" and "table" in into:
+        # the declaration rides as its mapper's arguments and a group is one call, as the report's (lead 10-27)
+        from chain import ask_rule
+        out["mapper"] = ask_rule.ASK_MAPPER
+        out["params"] = dict(derive.get("ask") or {})
+        out["is_batch"] = True
     out.update(derive.get("mapper") or {})
     return with_declared_cells(out, internal)
 
@@ -400,7 +406,7 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
     derive = raw.get("derive") or {}
     kind = derive.get("kind")
     if not kind:
-        for name in ("mapper", "join", "decide", "report"):
+        for name in ("mapper", "join", "decide", "report", "ask"):
             if name in derive:
                 kind = name
                 break

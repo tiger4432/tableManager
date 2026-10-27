@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [AI 가 표를 채우는 체인 규칙 — derive kind ask (모델링 구조 인식)](#2026-10-28--ai-가-표를-채우는-체인-규칙--derive-kind-ask-모델링-구조-인식) — 적을 곳 chain_rules 의 derive.ask · 보는 곳 chain_worker.log «[ChainRule] … asked»
 - 2026-10-28 [체인이 지우는 행 — 사람이 적은 행은 남기고 그 규칙의 칸만 거둔다(뒤집음)](#2026-10-28--체인이-지우는-행--사람이-적은-행은-남기고-그-규칙의-칸만-거둔다뒤집음) — 보는 곳 chain_worker.log 의 «[ChainRetract] kept <표> <키>: … withdrew N cell(s)» · 그 행의 사람 칸
 - 2026-10-28 [고침 — 견본 맵퍼가 칸의 값을 읽는다 · dt_log_to_dt_job_rollup 이 다시 쓴다](#2026-10-28--고침--견본-맵퍼가-칸의-값을-읽는다--dt_log_to_dt_job_rollup-이-다시-쓴다) — 할 일 운영의 rollup 맵퍼를 견본으로 다시 복사 · 보는 곳 dt_job_rollup 행 수 · chain_worker.log
 - 2026-10-27 [decide expand — 키 하나를 정해진 값 목록만큼 파생 행으로 펼친다](#2026-10-27--decide-expand--키-하나를-정해진-값-목록만큼-파생-행으로-펼친다) — 적는 곳 chain_rules.json 의 derive.decide.expand · 보는 곳 파생 표 · 저장 거절 문장
@@ -635,6 +636,12 @@
 
 
 
+## 2026-10-28 · AI 가 표를 채우는 체인 규칙 — derive kind ask (모델링 구조 인식)
+
+- **무엇** — 한 그룹(예: 제품)의 행을 통째로 AI 에 묻고 답을 다른 표의 행으로 쓰는 선언입니다. 지시서 10-27 A-1(제품마다 구조 인식)이 첫 쓰임이고, 스텝 맵핑 · 아이템 글 해석도 같은 선언의 다른 값으로 들어옵니다. 표 · 칸 · 낱말 이름은 전부 선언 칸이고 코드에는 없습니다.
+- **바뀐 동작** — 새 선언 종류 하나입니다. 몸통은 리포트와 같은 자리(dynamic_mappers)에서 돌고, AI 호출은 ask_links 와 같은 묶음 함수(llm.ask_batch)를 지납니다. 그룹 하나 = 호출 하나(자르지 않음). 다시 돌면 사람이 고친 칸은 그대로이고, 답에 없어진 행은 그 규칙의 칸만 거둡니다.
+- **필요한 조건** — git pull · 런처 재기동 · chain_rules 에 derive.ask 선언 · llm_config.json.
+- **자세히** — docs/guide/ai_ask_tables.md · `chain/ask_rule.py`.
 ## 2026-10-28 · 고침 — 견본 맵퍼가 칸의 값을 읽는다 · dt_log_to_dt_job_rollup 이 다시 쓴다
 
 - **바뀐 동작** — 총괄 10-28. 체인이 맵퍼에 넘기는 칸은 `{"value": x, …}` 인데, 견본 `dt_job_rollup_mapper.py.sample` 이 칸을 값 대신 통째로 써서 규칙 `dt_log_to_dt_job_rollup` 이 태어난 09-09 부터 행마다 «can't adapt type 'dict'» 로 실패했습니다. 이제 칸 하나를 읽는 자리는 `mapper_sdk.cell_value` 하나이고, 견본 맵퍼들과 lot_lineage · lot_slot_wafer 가 그것을 부릅니다. 같은 날 견본 decide `dt_job_lot_slot_attribution` 의 참조 뷰 둘(없는 열 lot_event.lot · equipment 를 읽던 것)이 빠졌습니다(`560c031cc`).
