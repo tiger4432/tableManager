@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [고침 — 견본 맵퍼가 칸의 값을 읽는다 · dt_log_to_dt_job_rollup 이 다시 쓴다](#2026-10-28--고침--견본-맵퍼가-칸의-값을-읽는다--dt_log_to_dt_job_rollup-이-다시-쓴다) — 할 일 운영의 rollup 맵퍼를 견본으로 다시 복사 · 보는 곳 dt_job_rollup 행 수 · chain_worker.log
 - 2026-10-27 [decide expand — 키 하나를 정해진 값 목록만큼 파생 행으로 펼친다](#2026-10-27--decide-expand--키-하나를-정해진-값-목록만큼-파생-행으로-펼친다) — 적는 곳 chain_rules.json 의 derive.decide.expand · 보는 곳 파생 표 · 저장 거절 문장
 - 2026-10-27 [decide 의 key 와 list_columns 에 짝 — 파생 칸 이름과 원본 칸 이름이 다를 때](#2026-10-27--decide-의-key-와-list_columns-에-짝--파생-칸-이름과-원본-칸-이름이-다를-때) — 적는 곳 chain_rules.json 의 derive.decide.key · list_columns · 보는 곳 파생 표 · 저장 거절 문장
 - 2026-10-27 [AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정](#2026-10-27--ai-리포트-계측값--원인-걷기가-닿은-quantity-의-웨이퍼별-값을-조건-행으로-값이-없으면-같은-트랜잭션-웨이퍼로-추정) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.values · 보는 곳 리포트 표의 조건 행 · Evidence «quantity values» · 터미널 [report] causes values
@@ -632,6 +633,12 @@
 
 
 
+
+## 2026-10-28 · 고침 — 견본 맵퍼가 칸의 값을 읽는다 · dt_log_to_dt_job_rollup 이 다시 쓴다
+
+- **바뀐 동작** — 총괄 10-28. 체인이 맵퍼에 넘기는 칸은 `{"value": x, …}` 인데, 견본 `dt_job_rollup_mapper.py.sample` 이 칸을 값 대신 통째로 써서 규칙 `dt_log_to_dt_job_rollup` 이 태어난 09-09 부터 행마다 «can't adapt type 'dict'» 로 실패했습니다. 이제 칸 하나를 읽는 자리는 `mapper_sdk.cell_value` 하나이고, 견본 맵퍼들과 lot_lineage · lot_slot_wafer 가 그것을 부릅니다. 같은 날 견본 decide `dt_job_lot_slot_attribution` 의 참조 뷰 둘(없는 열 lot_event.lot · equipment 를 읽던 것)이 빠졌습니다(`560c031cc`).
+- **필요한 조건** — git pull · 운영의 `server/mappers/dt_job_rollup_mapper.py` 가 견본 복사본이면 견본으로 다시 복사 · 체인 워커 재기동. `SELECT count(*) FROM dt_job_rollup;` 이 0 이면 09-09 부터 비어 있었고 원장 dt_job 소스의 셈 원자도 없었습니다(RUN.md).
+- **자세히** — `server/mapper_sdk.py` 의 `cell_value`. 시험 `test_the_chain_counts_and_the_ledger_only_reads.py`.
 
 ## 2026-10-27 · 허브 — 한 노드에서 한 술어로 많이 닿는 걸음을 노드 하나로 접고, 구성원은 집합째 걷는다 · AI 리포트 프롬프트에 한 줄
 
