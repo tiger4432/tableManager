@@ -228,6 +228,18 @@ const DECL_REFUSED = { on: false };
 // An html cell (lead 10-22 «Paste HTML»): while its states run, the captured dt_log_to_dt_map rule carries a field the
 // skeleton marks `hint: html`, holding about 2 KB of a table.
 const PASTE_HTML = { on: false };
+// Worlds that overlap (lead 10-27, B ed4b6cb84): while its state runs, the worlds read names two worlds, one source both
+// declare, one table both read under other names, and two notices - one of them the long sentence a failed read writes.
+const WORLDS_OVERLAP = { on: false };
+const worldsOverlapAnswer = () => {
+  const a = ANSWERS['/admin/ontology-explorer/worlds'];
+  const b = bodyOf(a);
+  return { ...a, body: { ...b, worlds: ['default', 'lab'], live: { default: true, lab: true },
+    overlaps: [{ same: 'name', source: 'process_event', worlds: ['default', 'lab'] },
+      { same: 'table', relation: 'proc_pass', sources: { default: 'pass_a', lab: 'pass_b' } }],
+    notices: ['lab: its declaration was not read - JSONDecodeError: Expecting property name enclosed in double quotes: line 12 column 5 (char 318)',
+      'default: two sources read one table'] } };
+};
 const HTML_HELD = '<table>' + '<tr><td>x</td></tr>'.repeat(110) + '</table>';
 const pasteHtmlAnswer = (u) => {
   const at = '/admin/chain/rules/raw?name=dt_log_to_dt_map';
@@ -348,6 +360,7 @@ const answerOf = (u) => {
   if (PICK_GLOB.on && u.pathname === '/admin/file-ingestion/glob') return pickGlobAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
   if (PASTE_HTML.on) { const v = pasteHtmlAnswer(u); if (v) return v; }
+  if (WORLDS_OVERLAP.on && u.pathname === '/admin/ontology-explorer/worlds') return worldsOverlapAnswer();
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
@@ -1039,6 +1052,19 @@ CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'f
 // A failure sentence is the server's, whole (lead 903053c14): the failed list's line, the queue's timeout line and the
 // newest failed groups say it as sent, and it reads to its end or to three lines with the whole of it in its title -
 // never one line cut; a line's rules say their rows (3de34d292).
+// The world facts (lead 10-27): the four lines as the server sent them, in its order, right under the top bar, each whole in the window.
+CELLS.push({ entry: 'admin.html', after: 'Ontology Explorer, worlds overlap', rule: 'world facts', at: 'world-facts', expr: `(() => {
+  const want = ['process_event · same name · default, lab', 'proc_pass · same table · default (pass_a), lab (pass_b)',
+    'lab · its declaration was not read - JSONDecodeError: Expecting property name enclosed in double quotes: line 12 column 5 (char 318)',
+    'default · two sources read one table'];
+  const got = [...document.querySelectorAll('.world-facts .world-fact')].map((e) => e.textContent);
+  if (got.join('|') !== want.join('|')) return 'the facts read ' + JSON.stringify(got);
+  const list = document.querySelector('.world-facts'), box = list.closest('.oe-window').getBoundingClientRect();
+  const above = list.parentElement.previousElementSibling;
+  if (!above || !above.classList.contains('oe-topbar')) return 'the facts sit under ' + (above ? above.className : 'nothing');
+  const cut = [...list.children].find((e) => e.getBoundingClientRect().right > box.right + 0.5 || e.scrollWidth > e.clientWidth + 1);
+  return cut ? '«' + cut.textContent.slice(0, 30) + '» past its box' : null;
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'reason whole', at: 'fail-summary__reason', expr: `(() => {
   const want = ${JSON.stringify(TIMEOUT)};
   const line = [...document.querySelectorAll('#chain-fail-summary-mount .fail-summary__reason')];
@@ -2685,6 +2711,19 @@ const DRIVE = {
       btn.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
       return true; })()`).then(() => sleep(800))],
     ['Ontology Explorer', (c) => evaluate(c, "location.hash = '#ontology'; true").then(() => sleep(1500))],
+    // Worlds that overlap (lead 10-27): the page loaded again on the explorer, so its first read is the recorded one -
+    // the tab opened twice asks for the selection's view, which is not recorded. A navigate to the same url with its hash
+    // does not load the page again.
+    ['Ontology Explorer, worlds overlap', async (c, log) => {
+      WORLDS_OVERLAP.on = true;
+      log.opening = true;
+      await c.send('Page.reload', { ignoreCache: true });
+      await sleep(1500);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, "document.querySelectorAll('.world-facts .world-fact').length === 4", 15000);
+      WORLDS_OVERLAP.on = false;
+    }],
   ],
 };
 

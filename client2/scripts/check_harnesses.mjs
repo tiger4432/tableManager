@@ -941,7 +941,8 @@ const FLOORS = new Map([
   // 114 -> 123 (lead 99032248f): beneath gives way to Empty / Copy of (copy_from), the walk's world set row, Live
   // paused and resumed (asked once, one PUT, the worlds read again), Paused said, each history line says what.
   // 130 -> 139 ([11] K1-K5 and four mutants, lead 10-11 small two: the stale Create re-reads and sends once; a save's 409 untouched).
-  ['explorer_open_path_harness.mjs', 147],
+  // 147 -> 155 ([8b] W1-W2 and six mutants, lead 10-27: the worlds' overlaps and notices as meta lines).
+  ['explorer_open_path_harness.mjs', 155],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.

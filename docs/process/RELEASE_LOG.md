@@ -235,6 +235,7 @@
 ### 걷기 화면
 
 - 2026-10-27 [걷기 read=first — 여러 세상이 같은 이름의 소스를 선언하면 앞 세상 것만 읽는다 · 세상 목록이 겹친 소스를 말한다 · 리포트 causes.read](#2026-10-27--걷기-readfirst--여러-세상이-같은-이름의-소스를-선언하면-앞-세상-것만-읽는다--세상-목록이-겹친-소스를-말한다--리포트-causesread) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.read · 부르는 곳 `read=first` · 보는 곳 GET /admin/ontology-explorer/worlds 의 overlaps
+  - 2026-10-27 [탐색기 세상 고르기 밑에 겹친 소스와 세상 알림이 한 줄씩 보인다](#2026-10-27--탐색기-세상-고르기-밑에-겹친-소스와-세상-알림이-한-줄씩-보인다) — 보는 곳 Ontology Explorer 상단 바 바로 밑
 - 2026-10-27 [걷기 follow «술어:이름» — 이름이 씨앗 키가 아니면 올라온 엣지의 수식어로 묶어, 같은 트랜잭션 형제만 닿는다](#2026-10-27--걷기-follow-술어이름--이름이-씨앗-키가-아니면-올라온-엣지의-수식어로-묶어-같은-트랜잭션-형제만-닿는다) — 적을 것 없음 · 부르는 곳 `follow=<술어>:<수식어>`
 - 2026-10-21 [에이전트 걷기 — 물음 한 행을 적으면 LLM 이 홉마다 골라 걷고, 걸은 길과 답이 표에 남는다 · 뜻 표](#2026-10-21--에이전트-걷기--물음-한-행을-적으면-llm-이-홉마다-골라-걷고-걸은-길과-답이-표에-남는다--뜻-표) — 적는 곳 walk_request · walk_recipe · chain_rules.json · 보는 곳 walk_log
 - 2026-10-20 [걷기 — 묶음으로 잘린 먼 타입은 «complete» 가 아니다](#2026-10-20--걷기--묶음으로-잘린-먼-타입은-complete-가-아니다) — 누르는 곳 시험대 · 걷기의 상태 줄
@@ -638,6 +639,17 @@
 - 화면에서(서버 몫, 화면은 클라 착지 뒤): 선언 창이 만들 수 있는 종류에 `import`(이름 = 세상) — 만들기 · 고치기 · 지우기가 다른 선언과 같다. 들인 엔티티 노드에 `imported_from` = 그 세상(고치기는 그 세상에서). 세상 이름이 틀린 import 하나는 그것만 빠진다(left_out), 나머지는 읽힌다.
 - 자세히: `server/ledger/setup_bundle.py` 의 `resolve_imports` · `IMPORTS`, `server/ledger/setup.py` 의 `live_imported`(catalog 처럼 넘김). 가이드 `docs/guide/ONTOLOGY_LEDGER_SETUP.md` §4 · §7.2.
 
+
+## 2026-10-27 · 탐색기 세상 고르기 밑에 겹친 소스와 세상 알림이 한 줄씩 보인다
+
+- **무엇** — 총괄 10-27. 「걷기 read=first — 여러 세상이 같은 이름의 소스를 선언하면 앞 세상 것만 읽는다 · 세상 목록이 겹친 소스를 말한다 · 리포트 causes.read」의 overlaps · notices 를 화면이 그립니다. 경고가 아니라 사실이라 보통 글자색(흐린 meta 줄)입니다.
+- **화면에서** — Ontology Explorer 상단 바 바로 밑에 한 줄씩, 겹침이 먼저 알림이 뒤:
+  - `process_event · same name · default, lab` — 그 이름의 소스를 선언한 세상들(목록 순). read=first 면 뒤 세상 것은 안 읽힘
+  - `proc_pass · same table · default (pass_a), lab (pass_b)` — 같은 표를 다른 이름으로 읽는 세상들. first 도 안 뺌
+  - `lab · its declaration was not read - …` — 서버 알림 문장 그대로, 세상 이름이 앞
+  - 둘 다 없으면 아무것도 안 그림. Operate 로 운영 세상을 바꾸면 그 답으로 다시 그림
+- **필요한 조건** — 서버 ed4b6cb84 이후 · git pull · 화면 새로 고침.
+- **자세히** — `client2/src/world_facts.js` 의 `WorldFacts` · `overlapLine` · `noticeLine`, `ontology_explorer.js` 의 `loadWorlds` · `operateWorld`. 시험 explorer_open_path [8b] W1 · W2, 화면 검사기 «Ontology Explorer, worlds overlap» · «world facts».
 
 ## 2026-10-27 · 걷기 read=first — 여러 세상이 같은 이름의 소스를 선언하면 앞 세상 것만 읽는다 · 세상 목록이 겹친 소스를 말한다 · 리포트 causes.read
 

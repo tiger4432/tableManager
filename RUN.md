@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **탐색기 상단 바 밑의 겹친 소스 · 세상 알림 줄** — git pull · 화면 새로 고침 (서버 ed4b6cb84 이후면 재기동 필요 없음)
+>
+> ```
+> 볼 곳     Ontology Explorer 탭 -> 상단 바(Branch 고르기) 바로 밑
+> 뜻       «<소스> · same name · <세상들>»  = 같은 이름의 소스를 여러 세상이 선언 (read=first 면 뒤 세상 것 안 읽힘)
+>          «<표> · same table · <세상> (<소스>), …» = 같은 표를 다른 이름으로 읽음 (first 도 안 뺌)
+>          «<세상> · its declaration was not read - …» = 그 세상 선언이 안 읽힘 -> 그 세상 선언 파일을 고침
+>          줄이 없음 = 겹침도 알림도 없음. 위 curl (GET /worlds) 의 overlaps · notices 가 [] 인지로 견줌
+>          curl 에는 있는데 화면에 없음 -> 옛 번들. 강력 새로 고침
+> 되돌리기  git revert $(git log --format=%h -i --grep='overlaps and notices as meta lines' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-27] **원장 선언 imports — 다른 세상의 엔티티 타입을 그 세상이 적은 대로** — 서버 · 체인 워커 · 원장 워커 재기동 뒤
 >
 > ```

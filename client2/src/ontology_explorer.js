@@ -14,6 +14,7 @@ import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
 import { CURRENT_USER } from './config.js';
 import { BranchPicker } from './branch_picker.js';
+import { WorldFacts } from './world_facts.js';
 import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember, switchGated,
 } from './ontology_path.js';
@@ -162,6 +163,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     onCreate: (name, copyFrom) => void pickWorld(name, { create: true, copyFrom }),
     onDelete: (name) => void deleteWorld(name), onOperate: (name) => void operateWorld(name),
     onLive: (name, live) => void liveWorld(name, live) });
+  // The worlds' overlaps and notices (lead 10-27): their own part, seated under the top bar on every render.
+  const factsMount = document.createElement('div');
+  const worldFacts = new WorldFacts(factsMount, { doc: document });
   // The section the field being edited sits in — its parent node, found in the drawn tree.
   const markFormCursor = () => {
     for (const node of root.querySelectorAll('.oe-node.is-editing-parent')) {
@@ -178,6 +182,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     branchPicker.attach(root.querySelector('.oe-branch-mount'));
     branchPicker.show({ worlds: state.worlds, current: state.world, operating: state.operating,
       history: state.history, live: state.live });
+    root.querySelector('.oe-topbar')?.after(factsMount);
     markFormCursor();
   };
 
@@ -472,6 +477,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         headers: { 'Content-Type': 'application/json', 'X-User': CURRENT_USER }, body: JSON.stringify({ world: name }) });
       dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history,
         live: body.live });
+      worldFacts.show(body);
       showToast?.(`${name} operating`, 'success');
     } catch (error) {
       showToast?.(errorMessage(error), 'error');
@@ -931,6 +937,7 @@ No effect`;
       const body = await jsonRequest('/worlds');
       dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history,
         live: body.live });
+      worldFacts.show(body);
     } catch (error) {
       void error;
     }

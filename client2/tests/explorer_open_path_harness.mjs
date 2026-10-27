@@ -1304,6 +1304,74 @@ failed += pickerBase.failures.length;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
+// [8b] lead 10-27 (B ed4b6cb84) — the worlds' facts: overlaps then notices, one meta line each, none when empty.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[8b] the worlds\' facts');
+function factsWalk(Facts) {
+  const mount = element('div');
+  const facts = new Facts(mount, { doc: document });
+  const lines = () => walkAll(mount).filter((n) => n._classes.includes('world-fact'))
+    .map((n) => `${n._classes.includes('meta') ? 'meta' : 'plain'}:${n.textContent}`);
+  facts.show({ overlaps: [
+    { same: 'name', source: 'process_event', worlds: ['default', 'lab'] },
+    { same: 'table', relation: 'proc_pass', sources: { default: 'a', lab: 'b' } }],
+  notices: ['lab: its declaration was not read - ValueError: x: y', 'no world named'] });
+  const seen = { lines: lines() };
+  facts.show({});
+  seen.after = mount.children.length;
+  return seen;
+}
+function factsSuite(seen) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  say('W1 overlaps then notices, one meta line each, the notice\'s world named first',
+    JSON.stringify(seen.lines) === JSON.stringify(['meta:process_event · same name · default, lab',
+      'meta:proc_pass · same table · default (a), lab (b)', 'meta:lab · its declaration was not read - ValueError: x: y',
+      'meta:no world named']), JSON.stringify(seen.lines));
+  say('W2 a read with no overlaps and no notices draws nothing', seen.after === 0, String(seen.after));
+  return { ran: names.length, names, failures };
+}
+{
+  const { WorldFacts } = await import('../src/world_facts.js');
+  const factsBase = factsSuite(factsWalk(WorldFacts));
+  ran += factsBase.ran;
+  failed += factsBase.failures.length;
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const FACTS = join(HERE, '..', 'src', 'world_facts.js');
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const MUTANTS = [
+    { id: 'W-M1', what: 'one table read under other names reads as one name', catches: 'W1',
+      mutate: (text) => swap(text, "if (o.same === 'table') {", "if (o.same === 'tables') {") },
+    { id: 'W-M2', what: 'a notice loses its world', catches: 'W1',
+      mutate: (text) => swap(text, 'return at > 0 ? `${text.slice(0, at)} · ${text.slice(at + 2)}` : text;', 'return at > 0 ? text.slice(at + 2) : text;') },
+    { id: 'W-M3', what: 'the notices are not drawn', catches: 'W1',
+      mutate: (text) => swap(text, '...this.notices.map(noticeLine)]', ']') },
+    { id: 'W-M4', what: 'a fact is not a meta line', catches: 'W1',
+      mutate: (text) => swap(text, "line.className = 'meta world-fact';", "line.className = 'world-fact';") },
+    { id: 'W-M5', what: 'a read with no facts still draws the box', catches: 'W2',
+      mutate: (text) => swap(text, '    if (!facts.length) return;\n', '') },
+    { id: 'W-M6', what: 'the next read keeps the last facts', catches: 'W2',
+      mutate: (text) => swap(text, '    this.overlaps = Array.isArray(overlaps) ? overlaps.slice() : [];\n', '    if (Array.isArray(overlaps)) this.overlaps = overlaps.slice();\n') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => factsSuite(factsWalk(
+    (await loadWithProbe(FACTS, { mutate: m.mutate })).module.WorldFacts)),
+    { baselineRan: factsBase.ran, baselineNames: factsBase.names,
+      title: '\n  [8b] facts mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
 // [9] lead 04cecc30f — the slim source's form, through the controller's own clicks: opening the
 //     folded read writes nothing, and a record chip writes only its own key and takes it back out.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
