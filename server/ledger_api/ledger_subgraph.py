@@ -752,6 +752,32 @@ FAR_CTE = """,
         """
 
 
+#: The frontier a row per (node, bound value) - read by the incoming arm when every node is bound on one qualifier the
+#: ledger indexes (`_bound_on`), so the arm also asks `qualifiers-><it> = f.bv`: an equality `schema.qualifier_index`
+#: serves. The containment in `_skip` still decides; this only lets the index find the rows it keeps (총괄 10-27 ㄱ).
+BOUND_FRONTIER_CTE = """,
+            bound_frontier AS (
+                SELECT DISTINCT f.type, f.keys, f.skip, v.value->0 AS bv
+                FROM frontier f, jsonb_each(f.skip->'bound') b, jsonb_array_elements(b.value->'values') v
+            )
+        """
+BOUND_JOIN = "\n                     AND e.object_payload->'qualifiers'->%(bound_on)s = f.bv"
+
+
+def _bound_on(frontier, follow):
+    """The one qualifier name every frontier node is bound on (`_bound_skip`) for every followed predicate - None
+    otherwise, and the read is as it was."""
+    names = set()
+    for item in frontier if follow else ():
+        bound = (item.get("skip") or {}).get("bound") or {}
+        for predicate in follow:
+            said = bound.get(_bare_name(predicate))
+            if not said or len(said["names"]) != 1:
+                return None
+            names.add(said["names"][0])
+    return names.pop() if len(names) == 1 else None
+
+
 def _far(arm, mode):
     """THE SET DOOR (총괄 41194be5d): the far end of an atom read on `arm` in (`in`) or out of (`not_in`) the set
     `far` - where two sides of a search meet, and what a continued walk has seen. Spelled as `_skip` spells it."""
@@ -792,7 +818,7 @@ class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
     def __init__(self, connection, worlds=None, since=None, until=None,
-                 one=(), current_only=True, leave_out=None):
+                 one=(), current_only=True, leave_out=None, indexed=()):
         from ledger import schema
 
         self.connection = connection
@@ -819,6 +845,9 @@ class SqlEvidenceLookup:
         #: The `one` predicates (bare names) and whether only their current facts are fetched.
         self.one = sorted(set(one))
         self.current_only = current_only
+        #: the qualifiers every walked ledger keeps an index on (`schema.qualifier_index`) - a read bound on one of
+        #: them asks its equality (`_bound_on`); none: every read as it was
+        self.indexed = frozenset(indexed)
         #: A continued walk's «as of» (총괄 10-12 이어 걷기): only atoms recorded before this uuid7 bound - `_as_of_bound`.
         self.recorded_before = None
 
@@ -935,6 +964,12 @@ class SqlEvidenceLookup:
             cte = FRONTIER_CTE.rstrip() + FAR_CTE
         if far_types:
             params["far_types"] = sorted(far_types[1])
+        bound_on = _bound_on(frontier, follow) if direction in ("incoming", "both") else None
+        if bound_on not in self.indexed:            # no index: the equality only turns the planner to a full scan
+            bound_on = None
+        if bound_on:
+            params["bound_on"] = bound_on
+            cte = cte.rstrip() + BOUND_FRONTIER_CTE
         after = ""
         if before is not None:
             params["before_at"], params["before_id"] = before
@@ -949,10 +984,11 @@ class SqlEvidenceLookup:
             built = []
             for arm in ("outgoing", "incoming"):
                 if direction in (arm, "both"):
+                    bound = bool(bound_on) and arm == "incoming"
                     built.append(f"""
-                    SELECT {selected} FROM frontier f
+                    SELECT {selected} FROM {"bound_frontier" if bound else "frontier"} f
                     JOIN {self.relation} e
-                      ON {ARM_JOIN[arm]}
+                      ON {ARM_JOIN[arm]}{BOUND_JOIN if bound else ""}
                     {_where(follow_clause, extra_clause, current, _skip(arm), far and _far(arm, far[0]),
                             far_types and _far_types(arm, far_types[0]), after, recorded)}
                 """)
@@ -1086,7 +1122,8 @@ class _DescribedSeeds:
 class InMemoryEvidenceLookup:
     """Contract double used to prove traversal independently of PostgreSQL."""
 
-    def __init__(self, atoms, since=None, until=None, one=(), current_only=True):
+    def __init__(self, atoms, since=None, until=None, one=(), current_only=True, indexed=()):
+        # `indexed`: the SQL lookup's, taken for its signature - a list in memory has no index to read by
         self.atoms = list(atoms)
         self.one = frozenset(one)
         self.current_only = current_only

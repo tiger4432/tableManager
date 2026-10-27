@@ -530,6 +530,20 @@
                                 "hint": "free"
                               }
                             }
+                          },
+                          {
+                            "key": "indexed",
+                            "label": "Indexed",
+                            "required": false,
+                            "node": {
+                              "kind": "map",
+                              "keyed_by": "index",
+                              "member": "Qualifier name",
+                              "of": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
                           }
                         ]
                       }

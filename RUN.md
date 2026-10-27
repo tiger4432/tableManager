@@ -1,5 +1,33 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **원장 수식어 색인 — `indexed` 한 칸이면 묶인 걸음이 색인을 탄다** — 모든 프로세스 재기동 «뒤»에 칸을 적는다
+>
+> ```
+> 순서      git pull -> 서버 · 스케줄러 · 워커 전부 재기동 -> 그다음 선언에 칸
+>          옛 코드로 도는 프로세스는 그 칸이 든 선언을 통째로 거절함 («field is not allowed»)
+> 적는 곳   ledger_config.json  vocabulary.<술어>.object.qualifiers 에  "indexed": ["<수식어>"]
+>          그 수식어가 required 나 optional 에 있어야 함 (아니면 저장 거절 «indexed qualifiers must be declared ...»)
+> 짓는 때   다음 색인 작업(서버 기동 · 스케줄러 색인 줄)이 짓는다. 줄:
+>          [Indexes] building idx_ledger_q_<수식어> on ledger_events - N of N partition(s) lack it
+>          [Indexes] <파티션>: built <파티션>_q_<수식어> in N s · N bytes · attached
+>          새 달 파티션은 만들어질 때 같이 생김
+> 크기(박스 수, 운영 아님)
+>          색인 하나 = 원자당 ~105 B (원자 200 만 -> 200 MB) · 처음 짓기 파티션 하나 18 s (40 만이면 4 s)
+>          CONCURRENTLY 라 쓰기를 막지 않음 (쓰기 중 짓기 · 원자 쓰기마다 늘어나는 비용은 안 잼)
+> 뜻       follow=<술어>:<수식어> 의 묶인 걸음이 노드 원자를 다 읽지 않고 그 값으로 찾음
+>          박스 원자 200 만 · 웨이퍼 하나 2 홉: 12.4 s -> 0.89 s, 같은 답
+>          소급 없음 — 원자를 안 바꿔서 소스 지문 그대로
+> 확인      색인 화면(GET /admin/indexes) 에 idx_ledger_q_<수식어> · 빠진 파티션 0
+> 끄기      칸을 지우고 저장 -> 다음 걷기부터 예전 SQL. 색인은 남고 색인 작업이 한 줄로:
+>          [Indexes] idx_ledger_q_<수식어> - no declaration indexes it any more; a person drops it: DROP INDEX idx_ledger_q_<수식어>;
+>          지울 거면 그 문장을 사람이 돌림 (파티션 색인까지 같이 지워짐 · 원장 표에 잠깐 배타 잠금, 박스 0.02 s
+>          · CONCURRENTLY 는 PostgreSQL 이 파티션 표에서 거절)
+> 되돌리기  코드째 되돌리려면 «먼저» 선언에서 indexed 칸을 지운다 — 옛 코드는 그 칸이 든 선언을 통째로 거절함
+>          git revert $(git log --format=%h -i --grep='indexed qualifier' origin/main) -> 재기동
+> ```
+>
+> ---
+>
 > ## [10-27] **탐색기 창이 아래 Source status 를 덮지 않음** — git pull · 화면 새로 고침, 명령 없음
 >
 > ```

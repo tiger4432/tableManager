@@ -70,6 +70,19 @@ def _declaration(world=None) -> dict:
     return _declaration_and_whose(world)[0]
 
 
+def _indexed_qualifiers(world=None) -> frozenset:
+    """The qualifiers EVERY picked world declares `indexed` - the ones each ledger read has an index on. A declaration
+    that cannot be read indexes nothing - the walk reads as it was (`_predicate_cardinalities` says the failure)."""
+    from ledger import setup_bundle
+
+    try:
+        picked = [setup_bundle.indexed_qualifiers((_declaration(names.name) or {}).get("vocabulary"))
+                  for names in _worlds(world)]
+    except Exception:                                                  # noqa: BLE001 - said once, by the cardinalities
+        return frozenset()
+    return frozenset.intersection(*picked) if picked else frozenset()
+
+
 def _source_names(world) -> list:
     """A world's declared source names - what a walk read `first` leaves out of a later world (`schema.first_read`)."""
     return list((_declaration(world) or {}).get("sources") or {})
@@ -770,7 +783,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
     lookup = ledger_subgraph.SqlEvidenceLookup(
         connection, worlds=names, since=since, until=until,
         **({"leave_out": schema.first_read(names, _source_names)} if read == "first" else {}),
-        one=ledger_subgraph.one_predicates(cardinalities),
+        one=ledger_subgraph.one_predicates(cardinalities), indexed=_indexed_qualifiers(world),
         # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
         current_only=not (include_superseded or page is not None))
     if page is not None:

@@ -845,6 +845,15 @@ def is_registration(object_kind: Any) -> bool:
     return object_kind is None or object_kind == "none"
 
 
+def indexed_qualifiers(vocabulary: Any) -> frozenset:
+    """The qualifier names a vocabulary declares `indexed` (`object.qualifiers.indexed`) - the ledger keeps an index
+    on each (`schema.qualifier_index`) and a bound step back reads by it (`ledger_subgraph._bound_on`)."""
+    return frozenset(name for item in (vocabulary.values() if isinstance(vocabulary, Mapping) else ())
+                     if isinstance(item, Mapping) and isinstance(item.get("object"), Mapping)
+                     and isinstance(item["object"].get("qualifiers"), Mapping)
+                     for name in _column_values(item["object"]["qualifiers"].get("indexed")))
+
+
 def _declared_object_kinds(vocabulary: Any) -> dict:
     return {bare_name(key): ((rule.get("object") or {}).get("kind")
                              if isinstance(rule, Mapping) and isinstance(rule.get("object"), Mapping)
@@ -2330,11 +2339,21 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
             qualifiers = obj.get("qualifiers")
             qpath = f"{path}.object.qualifiers"
             if problems.exact(
-                    qualifiers, qpath, required=("required", "optional")):
+                    qualifiers, qpath, required=("required", "optional"), optional=("indexed",)):
                 required = qualifiers.get("required")
                 optional = qualifiers.get("optional")
                 _nonblank_list(required, f"{qpath}.required", problems, allow_empty=True)
                 _nonblank_list(optional, f"{qpath}.optional", problems, allow_empty=True)
+                # the qualifiers the ledger keeps an index on (`schema.qualifier_index`) - declared ones only
+                if "indexed" in qualifiers:
+                    indexed = qualifiers.get("indexed")
+                    _nonblank_list(indexed, f"{qpath}.indexed", problems, allow_empty=True)
+                    undeclared = sorted(set(_column_values(indexed))
+                                        - set(_column_values(required)) - set(_column_values(optional)))
+                    if undeclared:
+                        problems.add(
+                            "invalid_predicate", f"{qpath}.indexed",
+                            f"indexed qualifiers must be declared in required or optional: {undeclared!r}")
                 overlap = sorted(set(_column_values(required)) &
                                  set(_column_values(optional)))
                 if overlap:

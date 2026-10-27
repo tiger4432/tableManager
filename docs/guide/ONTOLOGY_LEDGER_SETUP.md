@@ -650,6 +650,7 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 | `inverse_of` | (선택) 같은 연결을 «반대 끝에서» 말하는 술어의 ID — 예: `inspected` 에 `in_container`. 한쪽만 적어도 양쪽으로 읽힌다. 두 끝 타입이 뒤집혀 맞아야 하고 역은 하나뿐이다. 걷기만 읽는다(형제로 «도로 내려가지» 않기) — 소스 지문 · 원장 무변 |
 | `object.qualifiers.required` | 문장이 반드시 공급해야 하는 qualifier 이름. 🔴 **각 이름이 그대로 필수 Role이 된다**(§7.5) |
 | `object.qualifiers.optional` | 선택적으로 공급할 수 있는 qualifier 이름. 각 이름이 그대로 «선택» Role이 된다 |
+| `object.qualifiers.indexed` | 🆕 10-27 (선택) 원장이 색인을 두는 qualifier 이름 — required · optional 에 있는 이름만. 이름 하나에 색인 `idx_ledger_q_<이름>` 하나(파티션마다, 서버 · 스케줄러 색인 작업이 CONCURRENTLY 로 지음). 묶인 걸음(`follow=<술어>:<이름>`)이 노드의 원자를 다 읽지 않고 그 값으로 찾는다 — 모든 걷는 세상이 적었을 때만. 원자를 안 바꾸므로 소스 지문 · 소급 없음. 빼면 색인은 남고 색인 작업이 `DROP INDEX …` 문장을 말한다(사람이 지움) |
 
 required와 optional은 겹칠 수 없다. `object.kind: "none"`에는 qualifier나 type을 붙일 수
 없다. `slot_map`을 내는 문장이 `from`, `to`, `wafer` 중 하나를 빠뜨리면

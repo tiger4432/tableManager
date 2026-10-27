@@ -171,6 +171,7 @@
 
 ### 원장 선언
 
+- 2026-10-27 [원장 수식어 색인 — indexed 한 칸이면 묶인 걸음이 노드를 다 읽지 않고 찾는다](#2026-10-27--원장-수식어-색인--indexed-한-칸이면-묶인-걸음이-노드를-다-읽지-않고-찾는다) — 적는 곳 ledger_config.json 의 vocabulary.<술어>.object.qualifiers.indexed · 보는 곳 색인 화면 · 서버 로그 [Indexes]
 - 2026-10-27 [원장 선언 imports — 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 쓴다, 그래서 두 세상의 그 노드가 하나](#2026-10-27--원장-선언-imports--다른-세상이-선언한-엔티티-타입을-그-세상이-적은-대로-쓴다-그래서-두-세상의-그-노드가-하나) — 적는 곳 그 세상 선언(config/ontology_worlds/<세상>/ledger_config.json 또는 config/ontology/ledger_config.json)의 최상위 imports · 보는 곳 GET /admin/ontology-explorer/worlds 의 notices
   - 2026-10-27 [선언 창에서 import 를 적는다 — 이름은 세계 목록에서, 엔티티 타입은 그 세계의 선언에서, 가져온 타입은 그 세계에서 고친다](#2026-10-27--선언-창에서-import-를-적는다--이름은-세계-목록에서-엔티티-타입은-그-세계의-선언에서-가져온-타입은-그-세계에서-고친다) — 누르는 곳 Ontology Explorer 왼쪽 목록 Import 의 + New · 가져온 엔티티의 Edit in <세계>
   - 2026-10-27 [고침 — 1280x720 에서 탐색기 창이 아래 Source status 칸을 덮지 않는다](#2026-10-27--고침--1280x720-에서-탐색기-창이-아래-source-status-칸을-덮지-않는다) — 보는 곳 Ontology Explorer 탭을 아래로 굴렸을 때
@@ -629,6 +630,17 @@
 
 
 
+
+## 2026-10-27 · 원장 수식어 색인 — indexed 한 칸이면 묶인 걸음이 노드를 다 읽지 않고 찾는다
+
+- 무엇: 총괄 10-27 ㄱ. 묶인 걸음(`follow=processed_at:tx_id` — 같은 트랜잭션 형제)이 스텝 노드에서 그 노드의 원자를 색인 (type, keys) 로 «다» 읽고 tx 로 걸렀다. 선언에 `indexed` 를 적으면 원장이 (type, keys, 그 수식어) 색인을 두고, 걷기는 그 값으로 찾는다.
+- 선언 예시 (`config/ontology/ledger_config.json`): `"processed_at": {"object": {"kind": "entity_ref", "types": ["process_step"], "qualifiers": {"required": [], "optional": ["tx_id"], "indexed": ["tx_id"]}}}` — required · optional 에 없는 이름은 저장 거절 «indexed qualifiers must be declared in required or optional: [...]».
+- 박스 수(운영 아님, 웨이퍼 하나 · 2 홉 · 원자 200 만 = 웨이퍼 1 만 × 스텝 200, 트랜잭션 25 웨이퍼): 걷기 12.4 s → 0.89 s. 색인 200 MB(원자당 ~105 B), 파티션 하나 처음 짓기 18 s(40 만이면 4 s · 40 MB).
+- 색인은 서버 기동 · 스케줄러의 색인 작업이 짓는다(`[Indexes] building idx_ledger_q_<이름> …`). 파티션마다 CONCURRENTLY, 새 달 파티션은 만들어질 때 같이. 색인 화면(GET /admin/indexes)에 행.
+- 칸을 빼면: 다음 걷기부터 예전 SQL. 색인은 남고 색인 작업이 «… no declaration indexes it any more; a person drops it: DROP INDEX idx_ledger_q_<이름>;» — 사람이 지운다(파티션 표에는 CONCURRENTLY 가 PostgreSQL 에서 안 됨).
+- 필요한 조건: git pull · 모든 프로세스 재기동(코드) «뒤»에 칸을 적는다 — 옛 코드는 그 칸이 든 선언을 통째로 거절한다. 소급 없음 — 이 칸은 원자를 바꾸지 않아 소스 지문이 그대로.
+- 바뀐 동작: `indexed` 를 안 적은 선언은 없음(걷기 SQL 그대로 — 색인 없이 같음 조건을 쓰면 박스 40 만에서 3.2 s → 6.1 s 로 느려져서, 모든 걷는 세상이 적었을 때만 쓴다).
+- 자세히: `server/ledger/schema.py` 의 `qualifier_index` · `partitioned_indexes`, `server/ledger_api/ledger_subgraph.py` 의 `_bound_on` · `BOUND_FRONTIER_CTE`, `server/ledger/setup_bundle.py` 의 `indexed_qualifiers`. 가이드 `docs/guide/ONTOLOGY_LEDGER_SETUP.md` §7.1.
 
 ## 2026-10-27 · decide expand — 키 하나를 정해진 값 목록만큼 파생 행으로 펼친다
 

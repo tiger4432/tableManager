@@ -2303,11 +2303,18 @@ def _ledger_index_rows(engine):
                      failure="%s: %s" % (type(exc).__name__, told(exc)), size_bytes=None, scans=None)]
     rows = []
     for row in states:
+        if row.get("stale"):
+            rows.append(dict(name=row["name"], table=row["table"], world=row["world"], columns=[], where=None,
+                             include=[], using=None, unique=False, constraint=False, serves=None, source="ledger",
+                             purpose="no declaration indexes it any more; a person drops it: " + row["stale"],
+                             stale=row["stale"], partitions=None, partitions_missing=None, state=INDEX_PRESENT,
+                             building=None, failure=None, size_bytes=None, scans=None))
+            continue
         shape = _re.match(r"USING (\w+) \((.*)\)", row["columns"])
         rows.append(dict(
             name=row["name"], table=row["table"], world=row["world"],
             columns=[c.strip() for c in shape.group(2).split(",")] if shape else [row["columns"]],
-            where=None, include=[], using=shape.group(1) if shape else None, unique=False, constraint=False,
+            where=row.get("where"), include=[], using=shape.group(1) if shape else None, unique=False, constraint=False,
             purpose=row["serves"], serves=row["serves"], source="ledger", partitions=row["partitions"],
             partitions_missing=row["partitions_missing"],
             state=(INDEX_MISSING if row["partitions_missing"] else INDEX_BUILDING if row["building"] else
@@ -2338,8 +2345,10 @@ def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY
     `_ensure_one_index` (총괄 e0e8020fb). A UNIQUE constraint is named and not built (it is ALTER
     TABLE, not an index).
     -> {name: INDEX_BUILT | INDEX_PRESENT | INDEX_FAILED} of what was built."""
-    owed = [row for row in index_states(engine, tables)["declared"]
-            if row["state"] in (INDEX_MISSING, INDEX_INVALID) and row["source"] in sources]
+    states = [row for row in index_states(engine, tables)["declared"] if row["source"] in sources]
+    for row in [row for row in states if row.get("stale")]:
+        say("[Indexes] %s - %s" % (row["name"], row["purpose"]))
+    owed = [row for row in states if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
     for row in [row for row in owed if row.get("unbuildable")]:
         say("[Indexes] %s on %s is not built: %s" % (row["name"], row["table"], row["failure"]))
     owed = [row for row in owed if not row.get("unbuildable")]
@@ -2518,8 +2527,8 @@ def _build_ledger_index(engine, row, say):
     from ledger import schema
 
     names = schema.world_names(row["world"])
-    index, columns, child, _serves = next(item for item in schema.PARTITIONED_INDEXES
-                                          if schema.in_space(names, item[0]) == row["name"])
+    index, columns, predicate, child, _serves = next(item for item in schema.partitioned_indexes(names)
+                                                     if schema.in_space(names, item[0]) == row["name"])
     import db_waits
 
     say("[Indexes] building %s on %s - %d of %d partition(s) lack it" % (
@@ -2547,7 +2556,7 @@ def _build_ledger_index(engine, row, say):
             return None, None
         threading.Thread(target=_say_while_building, daemon=True,
                          args=(engine, waiting, started, stop, say, LEDGER_WAIT_SAY_SECONDS)).start()
-        done = schema.build_partitioned_index(connection, names, index, columns, apply=True,
+        done = schema.build_partitioned_index(connection, names, index, columns, predicate, apply=True,
                                               say=lambda line: say("[Indexes] " + line), child_name=child)
     except Exception as exc:                                            # noqa: BLE001 - said, the rest go on
         say("[Indexes] %s failed - %s: %s" % (row["name"], type(exc).__name__, error_said.told(exc)))

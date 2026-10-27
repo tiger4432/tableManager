@@ -632,8 +632,46 @@ REF_INDEX_COLUMNS = "USING hash (source_raw_ref)"
 #: The ledger's indexes built a partition at a time (`build_partitioned_index`) - (index, columns, child name, what it
 #: serves). The index master names and builds them beside the models' and the tables' own (`models.index_states`,
 #: 총괄 10-13: an index the code lands must not need a person's command to reach production).
-PARTITIONED_INDEXES = ((REF_INDEX, REF_INDEX_COLUMNS, REF_INDEX_CHILD,
+PARTITIONED_INDEXES = ((REF_INDEX, REF_INDEX_COLUMNS, "", REF_INDEX_CHILD,
                         "a withdrawal - a re-translate page, a deletion - finds a source's atoms by their refs"),)
+#: A qualifier a predicate declares `indexed` (vocabulary `<p>.object.qualifiers.indexed`, 총괄 10-27 ㄱ): one index a
+#: qualifier name, the incoming read's (type, keys) and that qualifier - a bound step back (`follow=<p>:<q>`) looks its
+#: siblings up instead of reading the node's every atom (box 2,000,000 atoms: 6.658 s -> 0.011 s, 200 MB).
+QUALIFIER_INDEX_PREFIX = "idx_ledger_q_"
+
+
+def qualifier_index(name) -> tuple:
+    """The `PARTITIONED_INDEXES` entry of one `indexed` qualifier. A name that is not a plain identifier, or a long
+    one, is spelled with a hash of it - an index name is one PostgreSQL keeps under 63 bytes."""
+    import hashlib
+
+    name = str(name)
+    safe = re.sub(r"[^a-z0-9_]", "_", name.lower())
+    if safe != name or len(safe) > 24:
+        safe = safe[:16] + "_" + hashlib.md5(name.encode("utf-8")).hexdigest()[:6]
+    quoted = "'" + name.replace("'", "''") + "'"
+    return (QUALIFIER_INDEX_PREFIX + safe,
+            "USING btree ((object_payload->>'type'), (object_payload->'keys'), "
+            f"(object_payload->'qualifiers'->{quoted}))",
+            "WHERE object_kind = 'entity_ref'", "{partition}_q_" + safe,
+            f"a step back bound on the qualifier {name} (follow=<predicate>:{name}) finds its siblings by it")
+
+
+def declared_indexed_qualifiers(names: WorldNames):
+    """The qualifier names the world's vocabulary declares `indexed`, sorted - None when its declaration cannot be read
+    (then nothing is said to be stale)."""
+    from . import config as _config, setup_bundle
+
+    try:
+        declared = _config.load(names.declaration_path) or {}
+    except Exception:                                   # noqa: BLE001 - None: unknown, not «none declared»
+        return None
+    return sorted(setup_bundle.indexed_qualifiers(declared.get("vocabulary")))
+
+
+def partitioned_indexes(names: WorldNames) -> tuple:
+    """`PARTITIONED_INDEXES` and the world's declared qualifier indexes (`qualifier_index`)."""
+    return PARTITIONED_INDEXES + tuple(qualifier_index(name) for name in declared_indexed_qualifiers(names) or ())
 
 
 def in_space(names: WorldNames, name) -> str:
@@ -661,7 +699,8 @@ def partitioned_index_states(engine) -> list:
     `partitions`, `partitions_missing` (lacking it or not attached), `building` (what each partition's build in progress
     is doing), `valid` (the parent's - every partition's attached) -
     asked of `build_partitioned_index` without building, so the build and this answer are one judgment. A world whose
-    ledger table is not there yet has no row."""
+    ledger table is not there yet has no row. A qualifier index no declaration names any more is a row `stale` with the
+    statement that drops it - a person drops it (소유자 10-15, as an automatic index)."""
     rows = []
     for world in world_listing()["worlds"]:
         names = world_names(world)
@@ -670,15 +709,26 @@ def partitioned_index_states(engine) -> list:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT to_regclass(%s)", (names.ledger,))
                 there = cursor.fetchone()[0] is not None
-            for index, columns, child, serves in PARTITIONED_INDEXES if there else ():
-                done = build_partitioned_index(connection, names, index, columns, apply=False,
+            wanted = partitioned_indexes(names) if there else ()
+            for index, columns, predicate, child, serves in wanted:
+                done = build_partitioned_index(connection, names, index, columns, predicate, apply=False,
                                                say=lambda *_: None, child_name=child)
                 owed = done["would_build"] + done["would_attach"]
                 rows.append({"world": names.name, "name": in_space(names, index), "table": names.ledger,
-                             "columns": columns, "serves": serves,
+                             "columns": columns, "where": predicate or None, "serves": serves,
                              "partitions": done["already"] + owed + len(done["building"]),
                              "partitions_missing": owed, "building": done["building"],
                              "valid": bool(done["parent_valid"])})
+            if there and declared_indexed_qualifiers(names) is not None:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT c.relname FROM pg_index x JOIN pg_class c ON c.oid = x.indexrelid "
+                                   "WHERE x.indrelid = to_regclass(%s) AND c.relname LIKE %s", (
+                                       names.ledger, QUALIFIER_INDEX_PREFIX.replace("_", r"\_") + "%"))
+                    held = sorted(name for (name,) in cursor.fetchall())
+                for name in held:
+                    if name not in {item[0] for item in wanted}:
+                        rows.append({"world": names.name, "name": in_space(names, name), "table": names.ledger,
+                                     "stale": f"DROP INDEX {in_space(names, name)};"})
         finally:
             connection.rollback()
             connection.close()
