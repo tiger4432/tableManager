@@ -2635,6 +2635,14 @@
                         }
                       },
                       {
+                        "key": "read",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
                         "key": "values",
                         "required": false,
                         "node": {

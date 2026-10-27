@@ -70,6 +70,11 @@ def _declaration(world=None) -> dict:
     return _declaration_and_whose(world)[0]
 
 
+def _source_names(world) -> list:
+    """A world's declared source names - what a walk read `first` leaves out of a later world (`schema.first_read`)."""
+    return list((_declaration(world) or {}).get("sources") or {})
+
+
 def _ledgers_present(connection, names):
     """Every ledger the walk would read is there - or the first that is not, refused by name."""
     for each in names:
@@ -209,6 +214,10 @@ def evidence_subgraph(
     resumable: bool = Query(
         False, description=("This caller asks the next page with `more.resume` (the walk screen) - only then is a "
                             "cut walk kept and its key handed back")),
+    read: str = Query(
+        "both", pattern="^(both|first)$",
+        description=("Several worlds, a source more than one declares: both - side by side, each fact with its "
+                     "world (as ever); first - the first picked world's alone")),
     propagation: bool = Query(
         True, description=("false: the answer carries no `propagation` (the ranking) - a caller that reads only nodes "
                            "and edges (the test bed's parts) is not made to wait for it; the R&D board and the walk "
@@ -352,6 +361,7 @@ def evidence_subgraph(
             resumable=resumable is True and wants == "json",
             # a direct call leaves the Query sentinel - the ranking, as before
             propagation=propagation is not False,
+            read=read if read in schema.READS else "both",
             page=time_page, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -744,7 +754,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
                     fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False,
-                    propagation=True):
+                    propagation=True, read="both"):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -759,6 +769,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
     cardinalities = _predicate_cardinalities(world)
     lookup = ledger_subgraph.SqlEvidenceLookup(
         connection, worlds=names, since=since, until=until,
+        **({"leave_out": schema.first_read(names, _source_names)} if read == "first" else {}),
         one=ledger_subgraph.one_predicates(cardinalities),
         # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
         current_only=not (include_superseded or page is not None))

@@ -137,6 +137,9 @@ edges        {id, source, target, predicate, predicate_label, original_predicate
               🆕 10-04 `ec6874b28` 걷기는 `world=a&world=c` 로 고른 세상들의 원자를 합쳐 걷는다(없으면 운영 세상 하나).
               같은 엣지 id 를 두 세상이 말하면 엣지는 «하나»이고 `worlds`(고른 순서 — 🆕 10-06 `f34f16892`, ~~만난 순~~) 와 `by_world`
               (세상마다 `{world, claim_id, occurred_at, source_who, basis, not_current?}`)가 는다 — 한 세상이 두 번 말하면 먼저 것
+              🆕 10-27 `read=both|first` — 같은 이름의 소스를 여러 세상이 선언하면 both(기본) 나란히, first 는 고른 순서
+              앞 세상 것만: 뒤 세상 다리에서 그 소스 원자를 SQL 로 뺀다(`schema.first_read`). 같은 표를 «다른 이름»으로 읽으면
+              병렬 번역일 수 있어 안 뺀다 — 세상 목록 `overlaps`(`schema.source_overlaps`)에만
               — 🔴 «근거가 여기 실린다»(S-75 B11, 2026-09-09):
               원자에서 온 엣지는 `claim_id` = 그 원자의 id · `basis` = 그 원자의 `source_raw_ref`(어느 «물리 행»)
               를 달고, 응답은 이 dict 를 «투영 없이» 그대로 낸다(`_edge` 가 짓고 `_claim_edge` 가 원자 것을 더한다)

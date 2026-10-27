@@ -114,7 +114,9 @@ SEND_TO = "send_to"
 #: (blank: the walk's own). Names the operator writes; the walk route refuses one the ledger does not declare.
 #: `worlds`: the ledger worlds the walk reads, several at once (owner 10-26 «보고서 생성 시 걷기 세계 여러 개 지정되게»)
 #: - blank: the operating world
-CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops", "worlds", "values")
+CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops", "worlds", "read", "values")
+#: `causes.read` (lead 10-27 B-4): how the walks read a source several of the worlds declare - the walk route's own
+#: `read` (both | first), handed on as it is; blank: the route's
 #: `causes.values` (lead 10-27): the measured values of the quantities the model walk reaches from the candidates, per
 #: wafer, as condition rows. `follow` the predicates from the candidates to the structures, their quantities and the
 #: steps acting on them; `value` «<predicate>:<qualifier>» a wafer's value of a quantity; `event`
@@ -321,6 +323,7 @@ def skeleton_node():
             {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}},
             {"key": "worlds", "required": False, "node": chain_bindings.list_node(
                 "world", {"kind": "leaf", "hint": "free"})},
+            {"key": "read", "required": False, "node": {"kind": "leaf", "hint": "free"}},
             {"key": VALUES, "required": False, "node": {"kind": "record", "fields": [
                 {"key": "follow", "required": True, "node": chain_bindings.list_node(
                     "predicate", {"kind": "leaf", "hint": "free"})},
@@ -769,11 +772,19 @@ def _causes_refusal(causes):
     if not isinstance(causes, dict) or set(causes) - set(CAUSES_CELLS) or not (
             isinstance(causes.get("seed_type"), str) and causes["seed_type"].strip()) or any(
             cell in causes and not _names(causes[cell]) for cell in ("follow", "collect", "worlds")) or (
-            "hops" in causes and not (_whole(causes["hops"], 0) and causes["hops"] <= CAUSES_HOPS_MOST)):
+            "hops" in causes and not (_whole(causes["hops"], 0) and causes["hops"] <= CAUSES_HOPS_MOST)) or (
+            "read" in causes and causes["read"] not in _reads()):
         return ('derive.report.causes is {"seed_type": "<entity>", "follow": ["<predicate or class:<word>>", ...], '
-                '"collect": ["<entity>", ...], "hops": <n up to %d>, "worlds": ["<world>", ...], "values": {...}} - '
-                'seed_type written, the rest optional; got %r' % (CAUSES_HOPS_MOST, causes))
+                '"collect": ["<entity>", ...], "hops": <n up to %d>, "worlds": ["<world>", ...], "read": %s, '
+                '"values": {...}} - seed_type written, the rest optional; got %r' % (
+                    CAUSES_HOPS_MOST, " | ".join(_reads()), causes))
     return _values_refusal(causes[VALUES], causes.get("worlds")) if VALUES in causes else None
+
+
+def _reads():
+    from ledger import schema
+
+    return schema.READS
 
 
 def _pair(value) -> bool:

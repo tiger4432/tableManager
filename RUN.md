@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **걷기 read=first · 세상 목록의 겹친 소스 · 리포트 causes.read** — 서버 재기동 · 체인 워커 재기동 뒤
+>
+> ```
+> 겹친 소스  curl.exe --noproxy "*" "http://127.0.0.1:8080/admin/ontology-explorer/worlds" -H "X-Admin-Token: <토큰>"
+>          overlaps 의 {"same": "name", source, worlds}  = 그 이름의 소스를 선언한 세상들 — read=first 가 뒤 세상에서 빼는 것
+>          overlaps 의 {"same": "table", relation, sources} = 같은 표를 «다른 이름»으로 읽는 세상들 — first 도 안 뺌
+>          overlaps []  = 겹친 소스 없음 -> both 와 first 의 답이 같다
+>          notices 의 «<세상>: its declaration was not read - …» = 그 세상 선언이 안 읽힘 — 그 세상은 overlaps 에서 빠져 있음
+> 걷기      curl.exe --noproxy "*" -G "http://127.0.0.1:8080/api/ledger/subgraph" -H "X-Admin-Token: <토큰>" --data-urlencode "id=<노드>" --data-urlencode "world=<앞 세상>" --data-urlencode "world=<뒤 세상>" --data-urlencode "read=first"
+>          엣지 by_world 에 앞 세상만 = 같은 이름 소스는 앞 세상 것만 읽힘. 뒤 세상이 «그 세상만 선언한» 소스 엣지는 그대로 나옴
+>          walk.claims_scanned 가 read=both 보다 적음 = 뒤 세상의 그 원자를 SQL 이 안 읽음
+>          422 = read 가 both | first 가 아님
+> 리포트    chain_rules.json 의 리포트 규칙 derive.report.causes 에 "worlds": ["<앞>", "<뒤>"], "read": "first"
+>          저장 거절 «derive.report.causes is {...}» = read 낱말이 both | first 가 아님
+> 끄기      read 를 지우거나 both — 전과 같음 (세상마다 나란히)
+> 첫 줄     first 는 «같은 이름»만 뺀다 — 같은 표 다른 이름은 병렬일 수 있어 빼지 않고 목록에만
+> ```
+>
+> ---
+>
 > ## [10-27] **기본 세계에서 소스 하나 거두기 — 가지 세계에도 같은 소스가 있을 때(공정 이벤트를 ai_model 같은 세계로만)** — 코드 안 바뀜, 명령만
 >
 > ```

@@ -1099,9 +1099,8 @@ class Report:
         """The ledger's nodes of `causes.seed_type` - the walk's own described seeds, no step taken.
         -> {"context": its head and a name a line, "nodes": {name: node id}}."""
         kind = self._causes()["seed_type"]
-        worlds = self._causes().get("worlds")
         answer = _walk(self.db, "derive.report.causes.seed_type", seed_type=kind, hops=0, propagation=False,
-                       **({"world": worlds} if worlds else {}))
+                       **_worlds_asked(self._causes()))
         nodes = {}
         for node in answer.get("nodes") or ():
             nodes.setdefault(str(node.get("label") or node["id"]), node["id"])
@@ -1138,8 +1137,7 @@ class Report:
                               "static types - name the predicates the walk follows")
         asked = {"node_id": ids[0], "positive": ids[1:] or None, "follow": follow,
                  "collect": causes.get("collect") or None, "propagation": True}
-        if causes.get("worlds"):                                 # several worlds at once (owner 10-26)
-            asked["world"] = causes["worlds"]
+        asked.update(_worlds_asked(causes))                      # several worlds at once (owner 10-26)
         if causes.get("hops") is not None:
             asked["hops"] = causes["hops"]
         answer = _walk(self.db, "derive.report.causes", **asked)
@@ -1189,7 +1187,7 @@ class Report:
             raise ReadRefused("derive.report.causes.values: a %s node has %d key(s) (%s), a wafer here %d (%s)" % (
                 wafer_type, len(keys.get(wafer_type, ())), ", ".join(keys.get(wafer_type, ())), len(self.keys),
                 ", ".join(self.keys)))
-        world = {"world": worlds} if worlds else {}
+        world = _worlds_asked(causes)
         ids = list(dict.fromkeys(c["id"] for c in candidates))
         model = _walk(self.db, "derive.report.causes.values.follow", node_id=ids[0], positive=ids[1:] or None,
                       follow=list(dict.fromkeys(list(said["follow"]) + [order])), propagation=False,
@@ -1275,6 +1273,13 @@ class Report:
             len(labels) - len(to_fill), len(to_fill), len(nodes), calls)
         logger.warning("[report] causes values: %s", head)
         return {"context": "\n".join([head] + lines), "labels": labels, "to_fill": to_fill}
+
+
+def _worlds_asked(causes) -> dict:
+    """The worlds a report's walks read and how (`causes.worlds`, `causes.read`) - as the walk route takes them, the
+    one place the report says them; none said: the route's own (the operating world, both)."""
+    return dict({"world": causes["worlds"]} if causes.get("worlds") else {},
+                **({"read": causes["read"]} if causes.get("read") else {}))
 
 
 def _said_key(value):

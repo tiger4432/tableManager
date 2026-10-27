@@ -1099,3 +1099,81 @@ def test_the_grid_says_each_worlds_sources_and_a_row_changed_since(world):
     assert page("wafer_process") == {"P1": ([], translated), "P2": ([], translated)}
     _declare(A, _only(CHANGED))                                   # declared, its index never made: not read
     assert page("wafer_process", unread=[A]) == {"P1": ([], translated), "P2": ([], translated)}
+
+
+# ------------------------------------------------ a source several worlds declare (lead 10-27 B-4)
+
+def test_a_walk_read_first_leaves_out_of_a_later_world_the_sources_an_earlier_one_declares(config):
+    """`first`: a later world's leg without the atoms of a source a world picked before it also declares, by the
+    source's name; `both`: the legs as they are (the walk_relation tests above)."""
+    _declare(A, _only(KEPT, CHANGED))
+    _declare(C, _only(CHANGED))
+    names = trace_router._worlds([A, C])
+    assert schema.first_read(names, trace_router._source_names) == {C: [CHANGED]}
+    relation = schema.walk_relation(names, schema.first_read(names, trace_router._source_names))
+    assert relation.count(" WHERE ") == 1
+    assert "FROM w_%s.ledger_events WHERE source_who NOT IN ('%s')" % (C, CHANGED) in relation
+    back = trace_router._worlds([C, A])
+    assert schema.first_read(back, trace_router._source_names) == {A: [CHANGED]}, "the order picked decides"
+
+
+def test_the_world_list_says_the_sources_two_worlds_declare_by_name_and_by_table(config):
+    """A fact, not a warning: the same source name in several worlds, and a table two worlds read under different
+    names (a parallel translation - `first` does not leave it out)."""
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    _declare(A, _only(KEPT))
+    document = _only(CHANGED)
+    document["sources"]["kept_again"] = _only(KEPT)["sources"][KEPT]
+    _declare(C, document)
+    overlaps = explorer_router.list_worlds()["overlaps"]
+    named = {item["source"]: item["worlds"] for item in overlaps if item["same"] == "name"}
+    assert named[KEPT] == [DEFAULT, A] and named[CHANGED] == [DEFAULT, C] and "kept_again" not in named
+    (table,) = [item for item in overlaps if item["same"] == "table" and item["relation"] == "lot_slot_wafer"]
+    assert table["sources"] == {DEFAULT: KEPT, A: KEPT, C: "kept_again"}
+    assert schema.first_read(trace_router._worlds([A, C]), trace_router._source_names) == {}, \
+        "a table under another name is not left out"
+
+
+@pytest.mark.pg
+def test_a_walk_read_first_takes_a_source_both_worlds_declare_from_the_first_picked_alone(world):
+    _seed(world)
+    _make(world, A, _only(KEPT, CHANGED), KEPT, CHANGED)
+    _make(world, C, _only(CHANGED), CHANGED)
+
+    def recipe(worlds, read):
+        with world["engine"].connect() as conn:
+            payload = trace_router._evidence_graph(
+                conn, node_id=explorer.entity_id("wafer", {"wafer": "W1"}), hops=1, direction="both",
+                node_limit=200, edge_limit=400, world=worlds, read=read)
+        (edge,) = [e for e in payload["edges"] if e["predicate"] == "processed_with"]
+        return [said["world"] for said in edge["by_world"]], payload["walk"]["claims_scanned"]
+
+    both, both_read = recipe([A, C], "both")
+    first, first_read = recipe([A, C], "first")
+    assert (both, first) == ([A, C], [A]), "C's atoms of the source A declares too are not read"
+    assert first_read == both_read - 1, "left out in the SQL, not dropped after"
+    assert recipe([C, A], "first")[0] == [C], "the first picked is whichever came first"
+
+
+def test_the_walk_route_hands_read_to_the_walk_and_refuses_a_word_not_one_of_its(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from admin.auth import require_admin_token
+    from database.database import get_db
+
+    seen = []
+    monkeypatch.setattr(trace_router, "_evidence_graph", lambda *a, **kw: seen.append(kw) or {})
+    monkeypatch.setattr(trace_router, "_signed_start", lambda *a, **kw: "seed")
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[get_db] = lambda: type("_Db", (), {"connection": lambda self: None})()
+    app.include_router(trace_router.router)
+    client = TestClient(app)
+
+    for asked, walked in (({"read": "first"}, "first"), ({}, "both")):
+        assert client.get("/api/ledger/subgraph", params={"id": "seed", **asked}).status_code == 200
+        assert seen.pop()["read"] == walked
+    assert client.get("/api/ledger/subgraph", params={"id": "seed", "read": "last"}).status_code == 422
+    assert not seen

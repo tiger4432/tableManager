@@ -792,14 +792,14 @@ class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
     def __init__(self, connection, worlds=None, since=None, until=None,
-                 one=(), current_only=True):
+                 one=(), current_only=True, leave_out=None):
         from ledger import schema
 
         self.connection = connection
         # The ledgers of the worlds walked (`schema.walk_relation`; none: the default's) -
         # never a relation handed in.
         picked = worlds or (schema.world_names(schema.DEFAULT_WORLD),)
-        self.relation = schema.walk_relation(picked)
+        self.relation = schema.walk_relation(picked, leave_out)
         #: the worlds in the order picked - every «each world» list is in this order
         self.worlds = tuple(each.name for each in picked)
         # 🔴 S-98. THE INTERVAL LIVES ON THE LOOKUP, not on each method. The walk asks

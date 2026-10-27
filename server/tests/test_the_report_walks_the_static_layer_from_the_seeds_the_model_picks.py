@@ -314,3 +314,31 @@ def test_a_candidate_related_to_nothing_is_to_be_filled_in_the_declarations_word
                   {"done": {"summary": "S"}})
     out = report_loop.run(Reads(), dict(WITH_TABLE, labels={"to_fill": "TO MEASURE"}), REQUEST, ask=model, clock=_clock())
     assert out["steps"][5]["read"] == ["wetting: TO MEASURE", "bond_temp -> bond_temp: 350 | 300"]
+
+
+def test_causes_read_is_handed_to_every_walk_as_it_is(walks):
+    """Lead 10-27 B-4: `causes.read` beside `causes.worlds` - the route's own `read`, the report only hands it on."""
+    report = Reads({"seed_type": "defect_kind", "worlds": ["ops", "lab"], "read": "first", "follow": ["leads_to"]})
+    report.causes(["void"])
+    assert [(cell, args.get("world"), args.get("read")) for cell, args in walks] == [
+        ("derive.report.causes.seed_type", ["ops", "lab"], "first"), ("derive.report.causes", ["ops", "lab"], "first")]
+    walks.clear()
+    Reads().causes(["void"])
+    assert all("read" not in args for _cell, args in walks), "none said: the route's own"
+
+
+def test_causes_read_reaches_the_route_and_a_word_not_one_of_its_is_refused_at_save(monkeypatch):
+    route, got = trace_router.evidence_subgraph, {}
+
+    @functools.wraps(route)
+    def stand_in(**kwargs):
+        got.update(kwargs)
+        return {"nodes": []}
+
+    monkeypatch.setattr(trace_router, "evidence_subgraph", stand_in)
+    report_reads._walk("DB", "derive.report.causes", node_id=VOID, read="first")
+    assert got["read"] == "first"
+    from chain import report_shape
+    said = report_shape._causes_refusal({"seed_type": "defect_kind", "read": "last"})
+    assert said and '"read": both | first' in said
+    assert report_shape._causes_refusal({"seed_type": "defect_kind", "read": "first"}) is None

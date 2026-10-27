@@ -233,6 +233,7 @@
 
 ### 걷기 화면
 
+- 2026-10-27 [걷기 read=first — 여러 세상이 같은 이름의 소스를 선언하면 앞 세상 것만 읽는다 · 세상 목록이 겹친 소스를 말한다 · 리포트 causes.read](#2026-10-27--걷기-readfirst--여러-세상이-같은-이름의-소스를-선언하면-앞-세상-것만-읽는다--세상-목록이-겹친-소스를-말한다--리포트-causesread) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.read · 부르는 곳 `read=first` · 보는 곳 GET /admin/ontology-explorer/worlds 의 overlaps
 - 2026-10-27 [걷기 follow «술어:이름» — 이름이 씨앗 키가 아니면 올라온 엣지의 수식어로 묶어, 같은 트랜잭션 형제만 닿는다](#2026-10-27--걷기-follow-술어이름--이름이-씨앗-키가-아니면-올라온-엣지의-수식어로-묶어-같은-트랜잭션-형제만-닿는다) — 적을 것 없음 · 부르는 곳 `follow=<술어>:<수식어>`
 - 2026-10-21 [에이전트 걷기 — 물음 한 행을 적으면 LLM 이 홉마다 골라 걷고, 걸은 길과 답이 표에 남는다 · 뜻 표](#2026-10-21--에이전트-걷기--물음-한-행을-적으면-llm-이-홉마다-골라-걷고-걸은-길과-답이-표에-남는다--뜻-표) — 적는 곳 walk_request · walk_recipe · chain_rules.json · 보는 곳 walk_log
 - 2026-10-20 [걷기 — 묶음으로 잘린 먼 타입은 «complete» 가 아니다](#2026-10-20--걷기--묶음으로-잘린-먼-타입은-complete-가-아니다) — 누르는 곳 시험대 · 걷기의 상태 줄
@@ -622,6 +623,19 @@
 
 
 
+
+## 2026-10-27 · 걷기 read=first — 여러 세상이 같은 이름의 소스를 선언하면 앞 세상 것만 읽는다 · 세상 목록이 겹친 소스를 말한다 · 리포트 causes.read
+
+- 무엇: 10-27 묶음 B-4(총괄 10-27). 걷기가 세상을 여럿 고를 때(`world=a&world=c`), 같은 이름의 소스를 두 세상이 다 선언하면
+  - `read=both`(기본, 전과 같음) — 세상마다 나란히, 엣지의 `by_world` 에 세상마다 한 줄.
+  - `read=first` — 고른 순서의 앞 세상 것만. 뒤 세상의 다리에서 그 소스의 원자를 SQL 로 뺀다(뺀 만큼 claims_scanned 도 준다).
+  - 빼는 것은 «같은 이름»뿐. 같은 표를 다른 소스 이름으로 읽는 세상은 일부러 나란히 번역한 것일 수 있어 안 뺀다 — 세상 목록에만 나온다.
+  - 세상 목록 `GET /admin/ontology-explorer/worlds` 에 `overlaps` — `{"same": "name", "source", "worlds"}` (같은 이름을 선언한 세상들, 목록 순) · `{"same": "table", "relation", "sources": {세상: 소스}}`(같은 표를 다른 이름으로). 경고가 아니라 사실. 선언을 못 읽은 세상은 `notices` 에 한 줄.
+  - 리포트: 원인 걷기의 `causes.read` 가 걷기 라우트의 `read` 로 그대로 넘어간다(씨앗 목록 · 원인 걷기 · 계측값 걷기 셋 다).
+- 선언: `"causes": {"seed_type": "defect_kind", "worlds": ["<세상>", "<세상>"], "read": "first"}`. 안 적으면 both. both | first 가 아니면 저장이 «derive.report.causes is {...}» 로 거절.
+- 필요한 조건: git pull · 서버 재기동(걷기 라우트) · 체인 워커 재기동(리포트).
+- 박스 시험: 두 세상이 같은 소스를 선언 — both 의 by_world [A, C], first [A], claims_scanned 하나 적음. 고른 순서를 뒤집으면 [C].
+- 자세히: `server/ledger/schema.py` 의 `walk_relation(names, leave_out)` · `first_read` · `source_overlaps`, `server/ledger/trace_router.py` 의 `read` 인자 · `_source_names`, `server/chain/report_reads.py` 의 `_worlds_asked`. `docs/architecture/WALK.md` · `docs/guide/ai_report_tables.md`.
 
 ## 2026-10-27 · AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정
 
