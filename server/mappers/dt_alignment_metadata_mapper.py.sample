@@ -31,15 +31,16 @@ def _payload_value(payload: dict, column: str):
     return nested.get("value") if isinstance(nested, dict) else None
 
 
-def _decision_units(payloads, decision_key):
-    """Stable, deduplicated declared decision-key values from a batch payload."""
+def _decision_units(payloads, decision_key, key_source):
+    """Stable, deduplicated declared decision-key values from a batch payload - each read from its
+    source column (`key_source`), named by the derived row's (`decision_key`)."""
     units = OrderedDict()
     for payload in payloads or ():
         if not isinstance(payload, dict):
             continue
         # Live ingestion, collapsed-event expansion, and replay all use the
         # durable outbox ``data.{column}.value`` contract.
-        values = {key: _payload_value(payload, key) for key in decision_key}
+        values = {key: _payload_value(payload, read) for key, read in zip(decision_key, key_source)}
         # A partial key can expand a rule to an unrelated historical population.
         # DT-job ingestion supplies a complete key in one transaction; without it
         # this automatic writer has no bounded identity and must wait.
@@ -170,7 +171,7 @@ def build_dt_alignment_metadata_batch(db, payloads, rule=None):
     cfg = map_overlay.load_overlay_config()
     updates = []
 
-    for key_values in _decision_units(payloads, decision_key):
+    for key_values in _decision_units(payloads, decision_key, chain_bindings.key_source(decl)):
         reference_spec = _reference_spec_for(rule, key_values, reference_job_column)
         view = alignment_view_service.resolve_alignment_view(
             db, rule_name, key_values, map_table,

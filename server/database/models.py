@@ -2414,13 +2414,14 @@ def auto_index_serves(index, columns, why):
 def decide_key_wants(known_tables=None):
     """[(table, columns, AUTO_DECIDE_KEY)] - each decide rule's judgment key on its source table, from the rules as
     the chain worker stands them (`enrich_declarations.declarations`)."""
+    import chain_bindings
     from chain import enrich_declarations
     from database import crud
 
     wants = []
     for rule in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG if known_tables is None
                                                  else known_tables):
-        table, columns = str(rule.get("source_table") or "").strip(), [str(c) for c in rule.get("decision_key") or ()]
+        table, columns = str(rule.get("source_table") or "").strip(), [str(c) for c in chain_bindings.key_source(rule)]
         if table and columns and (table, columns, AUTO_DECIDE_KEY) not in wants:
             wants.append((table, columns, AUTO_DECIDE_KEY))
     return wants
@@ -2608,8 +2609,8 @@ def alignment_decision_key_index_ddl(rule, entry):
     box that query was a Seq Scan removing 109,877 rows to keep 88, at 21.96 ms, which is
     23.8 s of a 44.9 s group: the single largest thing the chain does.
 
-    🔴 THE COLUMNS COME OUT OF THE DECLARATION. `decision_key` is what the rule says it
-    keys on, so an installation keying on something else gets an index on that instead,
+    🔴 THE COLUMNS COME OUT OF THE DECLARATION. The key's source columns (`key_source`) are what the
+    rule says the source is keyed on, so an installation keying on something else gets an index on that instead,
     with no code change. What is NOT derivable is the trailing map-key columns that would
     make this index cover the sort as well: the map table is chosen by the mapper at call
     time and no declaration names it. Leading with the equality column is what removes the
@@ -2621,9 +2622,10 @@ def alignment_decision_key_index_ddl(rule, entry):
         return None, None
     if not (rule or {}).get("alignment"):
         return None, None
+    import chain_bindings
+
     table_name = str((rule or {}).get("source_table") or "").strip()
-    columns = [str(name) for name in ((rule or {}).get("decision_key") or [])
-               if str(name).strip()]
+    columns = [str(name) for name in chain_bindings.key_source(rule or {}) if str(name).strip()]
     if not table_name or not columns:
         return None, None
     name = f"idx_{table_name}_decision_key"[:63]

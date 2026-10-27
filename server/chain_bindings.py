@@ -1183,6 +1183,19 @@ def sdk_mapper_refusals(rule) -> list:
     return why
 
 
+#: The decide's key and list read their source columns through these two (10-27): a pair names the derived
+#: column and the source column apart; the validator (`chain.enrichment.config`) writes both cells.
+def key_source(rule: dict) -> list:
+    """The source columns a decide's key is read from, in key order - `decision_key` names the derived row's."""
+    return list(rule.get("key_source") or rule.get("decision_key") or ())
+
+
+def list_source(rule: dict) -> dict:
+    """Each list column -> the source column its value is carried from (a name alone: the same name)."""
+    said = rule.get("list_source") or {}
+    return {column: said.get(column, column) for column in rule.get("list_columns") or ()}
+
+
 def resolve_decision_column(rule, key: str, decision_key, purpose: str) -> str:
     """Same precedence, for a name that must live in an alignment rule's decision key.
 

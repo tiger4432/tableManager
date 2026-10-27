@@ -608,6 +608,11 @@ def _named(member, item):
     return {"kind": "map", "keyed_by": "name", "member": member, "of": item}
 
 
+#: A key / list item: a name (the same column on both tables) or one {derived: source} pair, picked by shape (10-27)
+_NAME_OR_PAIR = {"kind": "oneOf", "hint": "choice", "pick": "shape",
+                 "branches": {"name": _value(), "pair": _named("column", _value())}, "empty": {"name": "", "pair": {}}}
+
+
 #: The skeleton node of each `decide` cell that is NOT one value. The reader is
 #: `chain.enrichment.config` (`chain_rules_from_cells`, `_normalize_reference_views`,
 #: `_view_reads`); the shapes sit here beside DECIDE_CELLS. A cell missing here is a value.
@@ -615,9 +620,9 @@ def _named(member, item):
 #:    or, picked by shape, an old record {fn, column, separator} no expression answers the same; the form draws
 #:    each as the reader folds it (`with_aggregation_records`, 총괄 8b487d2e6).
 DECIDE_CELL_SHAPES = {
-    "key": _listed("column", _value()),
+    "key": _listed("column", _NAME_OR_PAIR),
     "fields": _listed("field", _value()),
-    "list_columns": _listed("column", _value()),
+    "list_columns": _listed("column", _NAME_OR_PAIR),
     "aggregations": _named("column", {"kind": "oneOf", "hint": "choice", "pick": "shape", "branches": {
         "expression": _value(),
         "record": {"kind": "record", "fields": [

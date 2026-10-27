@@ -249,6 +249,28 @@ def _is_str_list(value) -> bool:
     )
 
 
+def _named_pairs(cell: str, value, required: bool) -> tuple:
+    """A key / list cell -> (derived names, source names, refusal). An item is a name - the same column on both tables -
+    or one {"<derived column>": "<source column>"} pair, aggregations' direction (owner 10-27)."""
+    refusal = (f"'{cell}' must be a {'non-empty ' if required else ''}list of column names "
+               f"or {{derived: source}} pairs")
+    if not isinstance(value, list) or (required and not value):
+        return None, None, refusal
+    derived, source = [], []
+    for item in value:
+        if isinstance(item, str) and (item.strip() or not required):
+            derived.append(item)
+            source.append(item)
+        elif (isinstance(item, dict) and len(item) == 1
+              and all(isinstance(name, str) and name.strip() for name in next(iter(item.items())))):
+            (into, read), = item.items()
+            derived.append(into)
+            source.append(read)
+        else:
+            return None, None, refusal
+    return derived, source, None
+
+
 def _resolve_view_query(view: dict) -> tuple:
     """참조뷰의 SQL 본문을 해석한다. 반환: (sql|None, 실패사유|None)."""
     inline = view.get("query")
@@ -731,9 +753,9 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         return None, "'source_table' is required"
     if not isinstance(derived_table, str) or not derived_table.strip():
         return None, "'derived_table' is required (spec §5 확정: 필수)"
-    decision_key = raw.get("decision_key")
-    if not _is_str_list(decision_key):
-        return None, "'decision_key' must be a non-empty list of column names"
+    decision_key, key_read, why = _named_pairs("decision_key", raw.get("decision_key"), required=True)
+    if why:
+        return None, why
     target_fields = raw.get("target_fields")
     if target_fields is None or target_fields == []:
         # 소유자 10-11 (총괄 ㄴ): a row per key that carries only its key and its aggregations
@@ -750,9 +772,10 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     # 물러난다. 없는 것을 «있다»고 말하지 않기 위해서다.
     derived_binds = None
 
-    list_columns = raw.get("list_columns") or []
-    if not isinstance(list_columns, list) or not all(isinstance(c, str) for c in list_columns):
-        return None, "'list_columns' must be a list of column names"
+    list_columns, list_read, why = _named_pairs("list_columns", raw.get("list_columns") or [], required=False)
+    if why:
+        return None, why
+    list_read = dict(zip(list_columns, list_read))
 
     aggregations = {}
     raw_aggs = raw.get("aggregations") or {}
@@ -785,9 +808,13 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         # execution reads values from, handed to the view validator so a name that
         # will not resolve is refused HERE rather than in front of an operator.
         derived_binds = set(drv_cols)
-        missing = [c for c in decision_key if c not in src_cols]
+        missing = [c for c in key_read if c not in src_cols]
         if missing:
             return None, f"decision_key column(s) missing in source table: {missing}"
+        # a pair says 「carry this source column」, so a source column the table lacks is a wrong declaration (lead 10-27)
+        unreadable = [f"{c} <- {list_read[c]}" for c in list_columns if list_read[c] != c and list_read[c] not in src_cols]
+        if unreadable:
+            return None, f"list_columns pair(s) read column(s) missing in source table '{source_table}': {unreadable}"
         missing = [c for c in decision_key if c not in drv_cols]
         if missing:
             return None, f"decision_key column(s) missing in derived table: {missing}"
@@ -857,8 +884,10 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         "source_table": source_table.strip(),
         "derived_table": derived_table.strip(),
         "decision_key": list(decision_key),
+        "key_source": list(key_read),
         "target_fields": list(target_fields),
         "list_columns": list(list_columns),
+        "list_source": {column: list_read[column] for column in list_columns},
         "aggregations": aggregations,
         "reference_views": reference_views,
     }

@@ -287,19 +287,19 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
             f"(is it registered in table_config.json?)"
         )
 
-    # Columns the mapper reads from the payload: decision keys + display-hint
-    # list_columns. list_columns are derived-table names; only those that also
-    # exist on the source model can carry a value (identical to the chain path,
-    # where a column absent from the source payload simply yields None).
+    # Columns the mapper reads from the payload: the key's and the list columns' source columns
+    # (`key_source` · `list_source`); a list column's source the model lacks carries no value
+    # (identical to the chain path, where a column absent from the source payload simply yields None).
     src_cols = {c.name for c in src_model.__table__.columns}
-    missing_keys = [k for k in decision_key if k not in src_cols]
+    key_read = chain_bindings.key_source(rule)
+    missing_keys = [k for k in key_read if k not in src_cols]
     if missing_keys:
         raise BackfillRefused(
             f"decision_key column(s) missing on source table model: {missing_keys}"
         )
     # `require` columns ride along so the seat below can judge them (총괄 2276e38cf ③).
     payload_cols = list(dict.fromkeys(
-        decision_key + [c for c in rule.get("list_columns", []) if c in src_cols]
+        key_read + [c for c in chain_bindings.list_source(rule).values() if c in src_cols]
         + [c for gate in chain_bindings.ROW_GATE_KEYS for c in chain_bindings.gate_columns(rule.get(gate))
            if c in src_cols]
     ))

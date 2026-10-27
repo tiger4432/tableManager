@@ -171,8 +171,10 @@ def build_core_frame_confirmation_batch(db, payloads, rule=None):
         rule, "target_job_column", target_table,
         "the job column written onto the inventory identity row")
     decl = alignment_view_service.declared_alignment_rule(rule_name)
-    if list(decl.get("decision_key") or ()) != [job_column]:
-        raise ValueError("core alignment rule decision key must be [%s]" % job_column)
+    # the key READS the job column; the unit it names is the derived row's (a pair may rename it)
+    if chain_bindings.key_source(decl) != [job_column]:
+        raise ValueError("core alignment rule decision key must read [%s]" % job_column)
+    unit_column = decl["decision_key"][0]
     from database import models
     source = models.DYNAMIC_TABLES.get(source_table)
     if source is None:
@@ -194,7 +196,7 @@ def build_core_frame_confirmation_batch(db, payloads, rule=None):
         if reference_spec is None:
             continue
         view = alignment_view_service.resolve_alignment_view(
-            db, rule_name, {job_column: job_id}, map_table,
+            db, rule_name, {unit_column: job_id}, map_table,
             reference_spec=reference_spec, include_cells=False,
             x_col=rule.get("x_col"), y_col=rule.get("y_col"),
             value_col=rule.get("value_col"), index_col=rule.get("index_col"),

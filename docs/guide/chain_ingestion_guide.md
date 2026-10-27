@@ -777,8 +777,9 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
   "enabled": true,
   "derive": {"kind": "decide", "decide": {
     "key":    ["equipment", "event_time"],       // 필수: 판단키(사람이 1회 판단하는 단위)
+                                                 // 🆕 10-27 항목은 이름 하나(두 표에 같은 칸) 또는 짝 {"<파생 칸>": "<원본 칸>"} — 예 [{"job": "dt_job"}, "event_time"]
     "fields": ["wafer_id"],                      // 필수: 사람이 채울 필드 — 맵퍼는 이 필드를 절대 쓰지 않음
-    "list_columns": ["chip_count", "lot_hint"],  // 선택: 워크리스트 표시 단서(배치 내 대표값)
+    "list_columns": ["chip_count", "lot_hint"],  // 선택: 워크리스트 표시 단서(배치 내 대표값) — 짝 {"<파생 칸>": "<원본 칸>"} 도
     "aggregations": {                            // 선택(서버 전용): 그 키 그룹의 집계 — 영향 키 한정 재계산(멱등)
       "chip_count": "count",                     //   행을 센다 (컬럼 없음)
       "bonding_time_min": "Min([bonding_time])", //   🆕 10-14 스팟파이어 수식 한 줄 (총괄 5667ea0fe) — 옛 {fn, column} 도 같은 수식으로 읽힘
@@ -797,6 +798,7 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
 ### 4.2 필수 전제·제약 (위반 시 규칙이 로그와 함께 **스킵**됨)
 
 1. **파생 테이블 등록**: `derived_table`은 `table_config.json`의 보통 테이블이어야 합니다(레이어링·AuditLog·WS·그리드 편집이 공짜로 적용되는 이유). `decision_key`·`target_fields`·`list_columns`는 파생 테이블 컬럼이어야 하고, `decision_key`는 원본 테이블 컬럼이기도 해야 합니다.
+   🆕 10-27 key · list_columns 의 항목을 짝 `{"<파생 칸>": "<원본 칸>"}` 으로 적으면 왼쪽은 파생 표의 칸, 오른쪽은 원본 표의 칸입니다(aggregations 와 같은 방향). 오른쪽이 원본 표에 없으면 key · list 둘 다 저장 · 로드에서 이름 대어 거절 — 「decision_key column(s) missing in source table: [...]」 · 「list_columns pair(s) read column(s) missing in source table '<표>': ['<파생> <- <원본>']」. 왼쪽이 파생 표에 없으면 전과 같습니다(key 는 거절, list 는 빼고 알림). 이름 하나는 전과 같습니다 — list 의 이름 하나가 원본에 없으면 옮기지 않고 파생 칸을 보여 주기만 합니다. 원본을 읽는 자리(체인 · 소급 · 큐 분석 · 정렬 화면 · 판단키 색인 · retype)는 `chain_bindings.key_source` · `list_source` 를 지납니다.
 2. **파생 테이블 키 계약**: 파생 테이블 config는 `composite_key_source ⊆ decision_key` 이거나 `business_key ∈ decision_key` 여야 합니다(맵퍼가 판단키로 business_key_val을 결정론적으로 조립 — 키당 1행 upsert의 근거).
    🆕 09-26 `d773be13` — **같은 계약이 그 파생 테이블로 들어가는 조인에도 걸립니다**: 대상이 돌고 있는 파생 규칙의 파생 테이블인 조인(`derive: {kind: join}`)은 그 표의 키를 **조인의 `on[].left` 칸**으로 지을 수 있어야 합니다(같은 함수 `key_contract_refusal`, 같은 문장 — `decision_key` 자리에 「the join's on[].left columns」). 못 지으면 로더 · 저장 · Declarations 에서 이름 대어 거절(`join_key_contract`). 파생 테이블이 아닌 표로 가는 조인은 그대로입니다.
 3. **참조뷰 SQL**: 단일 SELECT(또는 WITH)만, `;` 다중문 금지. 바인드 파라미터(`:col`)는

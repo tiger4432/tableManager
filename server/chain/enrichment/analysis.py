@@ -266,12 +266,13 @@ def _typed_key_values(rule: dict, keys: dict) -> tuple:
     src_types = (crud.TABLE_CONFIG.get(rule["source_table"], {}).get("column_types", {}))
     # the decision key's one spelling (`_clean_key`, the source column's type - 총괄 88761926b):
     # an input '001' and the database's 1.0 are one key, as the row read back below spells it
-    clean = _clean_key(rule["source_table"], rule["decision_key"],
-                       [keys.get(k) for k in rule["decision_key"]])
+    import chain_bindings
+
+    read = chain_bindings.key_source(rule)
+    clean = _clean_key(rule["source_table"], read, [keys.get(k) for k in rule["decision_key"]])
     if "" in clean:
         return None, None
-    raw = tuple(crud.cast_value_by_type(sv, src_types.get(k, "string"), k)
-                for k, sv in zip(rule["decision_key"], clean))
+    raw = tuple(crud.cast_value_by_type(sv, src_types.get(k, "string"), k) for k, sv in zip(read, clean))
     return clean, raw
 
 
@@ -295,7 +296,10 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
     if not hasattr(model, target_field):
         return {}
 
-    cols = [getattr(model, k) for k in rule["decision_key"]]
+    import chain_bindings
+
+    read = chain_bindings.key_source(rule)
+    cols = [getattr(model, k) for k in read]
     tgt = getattr(model, target_field)
     # THE shared notBlank spelling, not a third copy. `cast(..., String)` stays because
     # `target_field` can name a numeric column and `crud.not_blank_sql_condition` compares
@@ -315,7 +319,7 @@ def _source_target_presence(db, rule: dict, target_field: str, key_raw_values: d
         rows = (db.query(*cols, func.count().label("cnt"))
                 .filter(cond, non_blank, *gated).group_by(*cols).all())
         for row in rows:
-            key = _clean_key(rule["source_table"], rule["decision_key"], row[:-1])
+            key = _clean_key(rule["source_table"], read, row[:-1])
             out[key] = int(row[-1])
     return out
 
@@ -418,19 +422,18 @@ def classify_queue(db, rule: dict, max_keys: int = 200, limit: int = None,
     # specs; the answer wanted here is the same one it always gave. Calling the same
     # function with a count spec keeps the blank-key partitioning in ONE place - the
     # comment above already says why a second copy of it goes wrong.
-    from chain import rule_run
+    import chain_bindings
+    from chain import enrichment, rule_run
     from chain.enrichment.mapper import _aggregate_affected_keys
 
     _ROW_TOTAL = "__rows__"
     totals = _aggregate_affected_keys(
-        db, rule["source_table"], rule["decision_key"], key_raw,
+        db, rule["source_table"], chain_bindings.key_source(rule), key_raw,
         {_ROW_TOTAL: {"expression": "Count()"}}, rule_run.gates_of(rule)) if key_raw else {}
     total_per_key = {k: v[_ROW_TOTAL] for k, v in totals.items()}
     presence = {t: _source_target_presence(db, rule, t, key_raw) for t in same_name_targets}
 
     # 2) Per row: cheap classes first, reference probe only for what survives.
-    from chain import enrichment
-    from chain import enrichment
     caps = caps if caps is not None else enrichment.config.load_read_caps()
     # Same shape `confirm_keys` produces, so `classify` and `confirm` report a
     # clipped read with the same words and the same repair.

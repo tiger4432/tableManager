@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **decide 의 key · list_columns 에 짝 {"<파생 칸>": "<원본 칸>"}** — 서버 · 체인 워커 재기동 뒤
+>
+> ```
+> 적는 곳   chain_rules.json 의 derive.decide:  "key": [{"<파생 칸>": "<원본 칸>"}, "<같은 이름>"] · list_columns 도 같은 꼴
+> 저장 거절  «decision_key column(s) missing in source table: [...]»       = 짝의 오른쪽(원본 칸)이 원본 표에 없음 -> 오른쪽을 고침
+>          «list_columns pair(s) read column(s) missing in source table» = list 짝의 오른쪽이 원본에 없음 -> 오른쪽을 고침
+>          «... missing in derived table» / list 빼고 알림               = 왼쪽(파생 칸)이 파생 표에 없음 (전과 같음)
+> 확인      짝 선언 저장 뒤 원본 행 하나를 고침 -> 파생 표의 왼쪽 칸에 원본 오른쪽 칸 값이 들어오면 됨
+>          이미 있는 파생 행 전부 -> 소급 화면의 enrichment_backfill (드라이런 수 -> 실행)
+> 복사한 맵퍼  예전에 복사한 맵퍼(core_alignment_mapper · dt_alignment_metadata_mapper)는 이름 같은 규칙에서는 그대로 돈다.
+>          짝을 쓰려면 decl 의 decision_key 대신 chain_bindings.key_source(decl) 로 원본 칸을 읽도록 바꿔야 한다 (새 sample 이 그 꼴)
+>          server/mappers/ 에 사본이 있는 박스는 «live mapper and tracked sample are byte identical» 시험이 빨강 = 사본이 옛 꼴.
+>          새 sample 을 사본 자리에 복사하면 초록 (이름 같은 규칙에서는 둘 다 같은 답)
+> 되돌리기  git revert $(git log --format=%h -i --grep='decide key and list_columns take a pair' origin/main) -> 재기동.
+>          짝을 적은 선언은 되돌린 뒤 로드에서 거절된다 -> 이름 하나로 고쳐 적음
+> ```
+>
+> ---
+>
 > ## [10-27] **넓은 catch 셋이 로그에 트레이스를 남긴다** — 서버 · 체인 워커 재기동 뒤, 명령 없음
 >
 > ```

@@ -865,8 +865,28 @@
                     "keyed_by": "index",
                     "member": "column",
                     "of": {
-                      "kind": "leaf",
-                      "hint": "free"
+                      "kind": "oneOf",
+                      "hint": "choice",
+                      "pick": "shape",
+                      "branches": {
+                        "name": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        },
+                        "pair": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      "empty": {
+                        "name": "",
+                        "pair": {}
+                      }
                     }
                   }
                 },
@@ -891,8 +911,28 @@
                     "keyed_by": "index",
                     "member": "column",
                     "of": {
-                      "kind": "leaf",
-                      "hint": "free"
+                      "kind": "oneOf",
+                      "hint": "choice",
+                      "pick": "shape",
+                      "branches": {
+                        "name": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        },
+                        "pair": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      "empty": {
+                        "name": "",
+                        "pair": {}
+                      }
                     }
                   }
                 },

@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-27 [decide 의 key 와 list_columns 에 짝 — 파생 칸 이름과 원본 칸 이름이 다를 때](#2026-10-27--decide-의-key-와-list_columns-에-짝--파생-칸-이름과-원본-칸-이름이-다를-때) — 적는 곳 chain_rules.json 의 derive.decide.key · list_columns · 보는 곳 파생 표 · 저장 거절 문장
 - 2026-10-27 [AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정](#2026-10-27--ai-리포트-계측값--원인-걷기가-닿은-quantity-의-웨이퍼별-값을-조건-행으로-값이-없으면-같은-트랜잭션-웨이퍼로-추정) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.values · 보는 곳 리포트 표의 조건 행 · Evidence «quantity values» · 터미널 [report] causes values
 - 2026-10-27 [새 술어가 걷기 라우트를 세우지 않는다 — 이름 없는 결측은 날 낱말로, 결측 이름 표는 config 로](#2026-10-27--새-술어가-걷기-라우트를-세우지-않는다--이름-없는-결측은-날-낱말로-결측-이름-표는-config-로) — 적을 곳 config/gap_names.json(선택) · 보는 곳 GET /api/ledger/gaps 의 unnamed
 - 2026-10-26 [AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다](#2026-10-26--ai-리포트-결과--부분별-글summary--conclusion-을-리포트-표-칸에-멈춘-리포트는-그-칸을-비운다) — 적을 것 `derive.report.results` 에 «글 칸 이름: 컬럼» · 보는 곳 리포트 표의 그 칸
@@ -625,6 +626,17 @@
 
 
 
+
+## 2026-10-27 · decide 의 key 와 list_columns 에 짝 — 파생 칸 이름과 원본 칸 이름이 다를 때
+
+- 무엇: 소유자 10-27(「decide 에서 출력 컬럼 짝 이름이 다를 때」 · 안 «key · list 도 짝으로»). decide 의 `key` · `list_columns` 항목을 이름 하나(두 표에 같은 칸, 전과 같음) 또는 짝 `{"<파생 칸>": "<원본 칸>"}` 으로 적는다. 짝이면 원본 행의 오른쪽 칸 값이 파생 행의 왼쪽 칸에 들어가고, 판단키는 원본의 오른쪽 칸들로 묶인다. 순서는 그대로 판단키 순서.
+- 선언 예시 (`server/config/chain_rules.json`):
+  `"derive": {"kind": "decide", "decide": {"key": [{"job": "dt_job"}, "event_time"], "fields": ["wafer_id"], "list_columns": [{"lot": "lot_hint"}]}}`
+- 거절: 짝의 오른쪽이 원본 표에 없으면 key · list 둘 다 저장 · 로드에서 이름 대어 거절(「decision_key column(s) missing in source table: [...]」 · 「list_columns pair(s) read column(s) missing in source table '<표>': ['<파생> <- <원본>']」). 짝 꼴이 틀리면(항목이 둘 이상인 객체 · 글자 아닌 값) 「'decision_key' must be a non-empty list of column names or {derived: source} pairs」. 왼쪽이 파생 표에 없을 때는 전과 같다(key 거절 · list 는 빼고 알림).
+- 화면에서: Chain 탭 선언 폼의 decide.key · list_columns 항목이 «이름 | 짝» 고르기(스켈레톤 `oneOf`, pick shape). 폼이 모르는 꼴은 지우지 않는다.
+- 필요한 조건: git pull · 서버 · 체인 워커 재기동(코드). 짝을 적은 선언을 저장하면 그 decide 가 짝으로 돈다 — 이미 있는 파생 행은 다음 원본 변경부터, 전부는 소급(enrichment_backfill).
+- 바뀐 동작: 이름 하나만 쓴 선언은 없음. 운영자가 복사해 쓰는 맵퍼 sample 둘(core_alignment_mapper · dt_alignment_metadata_mapper)이 판단키의 원본 칸을 `chain_bindings.key_source(decl)` 로 읽고 단위는 파생 칸 이름으로 부른다 — 예전에 복사한 맵퍼는 이름 같은 규칙에서 그대로 돈다(RUN.md 10-27).
+- 자세히: `server/chain/enrichment/config.py` 의 `_named_pairs`(정규화 칸 `key_source` · `list_source`), `server/chain_bindings.py` 의 `key_source` · `list_source`. 가이드 `docs/guide/chain_ingestion_guide.md` §4.1 · §4.2.
 
 ## 2026-10-27 · 원장 선언 imports — 다른 세상이 선언한 엔티티 타입을 그 세상이 적은 대로 쓴다, 그래서 두 세상의 그 노드가 하나
 

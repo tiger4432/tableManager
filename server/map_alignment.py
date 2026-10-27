@@ -5763,9 +5763,13 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     # 맵 단위는 **맵 테이블이 선언한 것**을 쓴다 — 여기 컬럼명을 적으면 네 번째 철자가 된다.
     map_key_cols = _map_key_columns(cfg, map_table)
 
+    import chain_bindings
+
+    # the unit is keyed by the derived row's names; the source rows by the columns they are read from (10-27)
+    read = dict(zip(rule.get("decision_key") or (), chain_bindings.key_source(rule)))
     filters = []
     for col, val in (key_values or {}).items():
-        attr = getattr(src_model, col, None)
+        attr = getattr(src_model, read.get(col, col), None)
         if attr is None:
             raise ValueError("Source table '%s' has no decision key column '%s'" % (src_table, col))
         filters.append(attr == val)
@@ -6864,10 +6868,12 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
     from database import crud, models
     from sqlalchemy import func as _func
     from maps import frame_confirmation
+    import chain_bindings
 
     t0 = time.monotonic()
     rule_name = rule.get("name")
     decision_key = list(rule.get("decision_key") or [])
+    key_read = chain_bindings.key_source(rule)
     if not decision_key:
         raise ValueError("Rule '%s' declares no decision_key" % rule_name)
     src_table = rule["source_table"]
@@ -6982,13 +6988,13 @@ def build_alignment_worklist(db, cfg: dict, rule: dict, map_table: str,
         if filters:
             # 단위 집합으로 좁힌다. 컬럼별 IN은 과대근사지만 DISTINCT 결과에서 정확히
             # 걸러지고, 튜플 IN과 달리 모든 백엔드에서 같은 뜻이다.
-            for i, c in enumerate(decision_key):
+            for i, c in enumerate(key_read):
                 vs = sorted({u["_tuple"][i] for u in units})
                 a = getattr(src_model, c, None)
                 if a is not None and vs:
                     narrow.append(a.in_(vs))
         per_unit_maps, maps_truncated = _unit_maps(
-            db, src_model, decision_key, map_key_cols, narrow, MAX_WORKLIST_MAP_ROWS)
+            db, src_model, key_read, map_key_cols, narrow, MAX_WORKLIST_MAP_ROWS)
         wanted = {u["_tuple"] for u in units}
         per_unit_maps = {k: v for k, v in per_unit_maps.items() if k in wanted}
 

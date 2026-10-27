@@ -293,7 +293,10 @@ def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values,
         return set(empty)
     at = [decision_key.index(column) for column in identity]
     of = {key: tuple(key[i] for i in at) for key in empty if any(key[i] != "" for i in at)}
-    held = _aggregate_affected_keys(db, source_table, identity, {of[key]: tuple(key_raw_values[key][i] for i in at)
+    import chain_bindings
+
+    read = chain_bindings.key_source(enrich)
+    held = _aggregate_affected_keys(db, source_table, [read[i] for i in at], {of[key]: tuple(key_raw_values[key][i] for i in at)
                                                                  for key in of},
                                     {_SOURCE_ROWS: {"expression": "Count()"}}, gates)
     return {key for key in of if not (held.get(of[key]) or {}).get(_SOURCE_ROWS)}
@@ -376,12 +379,17 @@ def read_decide(db, payloads, rule=None) -> dict:
 
     import event_constants
 
+    import chain_bindings
+
+    key_read = chain_bindings.key_source(enrich)
+    list_read = chain_bindings.list_source(enrich)
+
     def raw_of(clean_vals):
         # 빈 컬럼의 raw는 None이다 — 타입 캐스트를 태우지 않는다. 재계산 쿼리가 그
         # 컬럼을 동등 비교가 아니라 공백 술어로 묻기 때문이며(`_aggregate_affected_keys`),
         # 빈 문자열을 number 컬럼 타입으로 캐스트하는 무의미한 경로도 함께 사라진다.
         return tuple(None if sv == "" else crud.cast_value_by_type(sv, source_col_types.get(k, "string"), k)
-                     for k, sv in zip(decision_key, clean_vals))
+                     for k, sv in zip(key_read, clean_vals))
 
     groups = {}          # clean_key_tuple -> {"reps": {list_col: 값}}
     key_raw_values = {}  # clean_key_tuple -> typed_raw_tuple (count 재계산 바인딩용)
@@ -389,15 +397,15 @@ def read_decide(db, payloads, rule=None) -> dict:
     skipped = 0
     for p in payloads:
         data = p.get("data") or {}
-        was = event_constants.key_left(p, decision_key)
+        was = event_constants.key_left(p, key_read)
         if was is not None:
-            was = list(_clean_key(source_table, decision_key, list(was)))
+            was = list(_clean_key(source_table, key_read, list(was)))
             if not enrichment.config.key_is_wholly_blank(enrich, dict(zip(decision_key, was))):
                 left.add(tuple(was))
                 key_raw_values.setdefault(tuple(was), raw_of(was))
         if not data:
             continue     # a deletion: its row has only the key it left
-        clean_vals = list(_clean_key(source_table, decision_key, [_cell_value(data, k) for k in decision_key]))
+        clean_vals = list(_clean_key(source_table, key_read, [_cell_value(data, k) for k in key_read]))
         key_values = dict(zip(decision_key, clean_vals))
         if enrichment.config.key_is_wholly_blank(enrich, key_values):
             skipped += 1
@@ -409,7 +417,7 @@ def read_decide(db, payloads, rule=None) -> dict:
         for col in list_columns:
             if col in aggregations or col in target_fields:
                 continue
-            v = _cell_value(data, col)
+            v = _cell_value(data, list_read[col])
             if not crud.is_blank_value(v):
                 g["reps"][col] = v
     if skipped:
@@ -433,7 +441,7 @@ def read_decide(db, payloads, rule=None) -> dict:
     counted = dict(aggregations, **({_SOURCE_ROWS: {"expression": "Count()"}} if left else {}))
     if counted:
         aggregated = _aggregate_affected_keys(
-            db, source_table, decision_key, key_raw_values, counted, gates)
+            db, source_table, key_read, key_raw_values, counted, gates)
     # 총괄 옛 키: a key a row left with no source row of its own. Whether its derived row goes is asked of the
     # columns that BUILD that row's identity (355ee9840 1): a decision key wider than them shares the row with
     # others, and the row goes only when no source row holds its identity. One that still has some writes nothing.
