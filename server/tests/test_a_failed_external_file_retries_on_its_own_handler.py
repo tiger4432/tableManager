@@ -154,10 +154,12 @@ def test_a_managed_raws_file_retries_as_it_did(env):
     assert os.path.exists(where), "a retry reads the file where it lies and moves nothing"
 
 
-def test_a_table_the_watcher_does_not_run_fails_by_name(env):
+def test_a_table_the_watcher_does_not_run_fails_by_name(env, tmp_path):
     env["watcher"]({})
+    on_disk = tmp_path / "x.csv"            # a file gone from the disk is refused first (dd5f221ef) - this one is there
+    on_disk.write_text("a\n", encoding="utf-8")
     db = env["Session"]()
-    log = checkpoint.note_file(db, "no_such_table", "C:/nowhere/x.csv", status="PENDING_RETRY")
+    log = checkpoint.note_file(db, "no_such_table", str(on_disk), status="PENDING_RETRY")
     db.commit()
     log_id = log.id
     db.close()

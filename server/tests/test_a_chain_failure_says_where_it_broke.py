@@ -6,7 +6,8 @@ Real processes - the API and the chain worker - on one sqlite file and a scratch
 package of their own:
   mapper    a pandas error inside the owner's mapper (reset_index over a column of its index's name, as in ops) -
             the permanent failure line and the queue's recent failures name the mapper's file, line and function
-  twice     the same failure in two transactions - the same sentence
+  twice     the same failure in two transactions - one line, the second folded under it and counted (06b1fd297:
+            «same failure as above» once a minute, the rule's streak 2)
   product   a mapper that hands back what the product cannot take - the product's innermost frame
 """
 import json
@@ -144,11 +145,22 @@ def test_a_chain_failure_says_where_it_broke(tmp_path):
                 "no permanent failure line for %s: %s" % (rule, worker_log.read_text(errors="replace")[-3000:]))
             time.sleep(0.5)
 
+    def streak(rule):
+        try:
+            return json.loads((data / "config" / "chain_control.json").read_text(encoding="utf-8")
+                              ).get("failure_streaks", {}).get(rule)
+        except (OSError, ValueError):
+            return None
+
     try:
         write({"t_a": [{"k": "a1", "v": "x"}]})
         wait_for("r_boom", 1)
         write({"t_a": [{"k": "a2", "v": "x"}]})
-        wait_for("r_boom", 2)
+        deadline = time.monotonic() + 120
+        while streak("r_boom") != 2:
+            assert worker.poll() is None and time.monotonic() < deadline, (
+                "the second r_boom failure was not counted: %s" % worker_log.read_text(errors="replace")[-3000:])
+            time.sleep(0.5)
         write({"t_b": [{"k": "b1", "v": "x"}]})
         wait_for("r_bad", 1)
         with opener.open(base + "/admin/chain/queue", timeout=60) as reply:
@@ -163,8 +175,8 @@ def test_a_chain_failure_says_where_it_broke(tmp_path):
     said = _failures(worker_log)
     line = BOOM.splitlines().index("    return df.reset_index()") + 1
     where = " at %s:%d in _fold" % (pkg / "boom.py", line)
-    # mapper: the owner's file, line and function - the innermost of its frames; twice: the same sentence
-    assert said["r_boom"] == ["ValueError: cannot insert k, already exists" + where] * 2, said
+    # mapper: the owner's file, line and function - the innermost of its frames; twice: one line, the second folded
+    assert said["r_boom"] == ["ValueError: cannot insert k, already exists" + where], said
     # product: the product's innermost frame - where the decorator refuses what the mapper handed back, said from
     # the server folder (the mapper's own frame is no longer on the traceback)
     bad = said["r_bad"][0]
