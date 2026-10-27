@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **착지 빌드의 하니스도 바꾼 것이 닿는 것만** — 명령 하나로 «무엇이 돌지» 미리 봄
+>
+> ```
+> 돌릴 명령  cd client2 && node scripts/check_harnesses.mjs --dry-run
+> 뜻       «C changed file(s), M of N harnesses reach one» = 빌드가 M 개만 돌린다, 나머지 이름은 같은 줄에
+>          «0 changed files - nothing to run» = main 과 같은 트리, 하니스는 아무것도 안 돈다
+>          «every harness runs - <파일> changed» = 실행기 · 그래프 · package · vite 설정이 바뀜, 전부 돈다
+> 끄는 법   전부 돌리기: node scripts/check_harnesses.mjs --all
+> 한 커밋   --commit <해시> 를 붙이면 그 커밋이 바꾼 파일로 고른다
+> ```
+>
+> ---
+>
 > ## [10-27] **리포트 체인 로그 태그가 [Report] 하나로** — 체인 워커 재기동 뒤
 >
 > ```

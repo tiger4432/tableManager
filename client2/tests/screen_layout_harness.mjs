@@ -40,6 +40,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
+import { reachPlugin, changedFiles, norm } from '../scripts/module_reach.mjs';
 import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -2879,29 +2880,16 @@ async function runScreens(dist, label, some = only ? [only] : null) {
 let ran = 0;
 let failed = 0;
 const t0 = Date.now();
-// --touched: each entry's modules as this build bundled them (its chunk and every chunk it imports), against the files
-// changed since the merge base with origin/main - committed, staged, unstaged and new.
-const graph = new Map();
-const source = await buildBundle('screens-source-', TOUCHED ? [{ name: 'screens-graph', generateBundle(o, bundle) {
-  const reach = (file, into) => { const c = bundle[file]; if (!c || c.type !== 'chunk' || into.has(file)) return; into.add(file);
-    for (const f of [...c.imports, ...c.dynamicImports]) reach(f, into); };
-  for (const [file, c] of Object.entries(bundle)) {
-    if (c.type !== 'chunk' || !c.isEntry || !/\.html$/.test(c.facadeModuleId || '')) continue;
-    const files = new Set();
-    reach(file, files);
-    graph.set(path.basename(c.facadeModuleId), new Set([c.facadeModuleId, ...[...files].flatMap((f) => bundle[f].moduleIds)]
-      .map((id) => id.split('?')[0].replace(/\\/g, '/').toLowerCase())));
-  }
-} }] : []);
+// --touched: each entry's modules as this build bundled them, against the files changed since this tree left origin/main -
+// both from module_reach.mjs, the harness runner's narrowing too.
+const reached = new Map();
+const source = await buildBundle('screens-source-', TOUCHED ? [reachPlugin(reached)] : []);
+const graph = new Map([...reached].filter(([id]) => id.endsWith('.html')).map(([id, ids]) => [path.posix.basename(id), ids]));
 let picked = null;
 if (TOUCHED) {
-  const git = (...a) => execFileSync('git', a, { cwd: CLIENT, encoding: 'utf8' }).split('\n').filter(Boolean);
-  const top = git('rev-parse', '--show-toplevel')[0];
-  const base = git('merge-base', 'HEAD', 'origin/main')[0];
-  const changed = [...git('-C', top, 'diff', '--name-only', base), ...git('-C', top, 'ls-files', '--others', '--exclude-standard')]
-    .map((f) => `${top}/${f}`.replace(/\\/g, '/').toLowerCase());
-  const checker = ['tests/screen_layout_harness.mjs', 'tests/fixtures/screens_answers.json.gz', 'tests/fixtures/chain_states.json']
-    .map((f) => `${CLIENT}/${f}`.replace(/\\/g, '/').toLowerCase());
+  const changed = changedFiles(CLIENT);
+  const checker = ['tests/screen_layout_harness.mjs', 'tests/fixtures/screens_answers.json.gz', 'tests/fixtures/chain_states.json',
+    'scripts/module_reach.mjs'].map((f) => norm(path.join(CLIENT, f)));
   picked = [...graph].filter(([, ids]) => changed.some((f) => ids.has(f))).map(([entry]) => entry).sort();
   if (!picked.length && changed.some((f) => checker.includes(f))) picked = null;
   console.log(picked === null ? 'narrowed: every screen - only the checker or its recorded answers changed'

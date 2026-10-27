@@ -250,7 +250,7 @@ ok(ctlFlags !== null && ctlFlags.length === base.undeclared.length,
 
 // ── 7-9. the module-state count, and the controls that keep it honest ───────────────────
 // The CEILING itself is not asserted here: it lives beside the assertion floors in
-// check_harnesses.mjs, so a run baseline is edited in exactly one file. What this harness
+// scripts/harness_floors.mjs, so a run baseline is edited in exactly one file. What this harness
 // owes the runner is a number it can trust, so what is asserted here is that the counter
 // counts the right things.
 let stateNames = null, stateErr = null;

@@ -371,6 +371,7 @@
 
 ### 명령
 
+- 2026-10-27 [착지 빌드의 하니스도 바꾼 것이 닿는 것만 — 전부는 --all](#2026-10-27--착지-빌드의-하니스도-바꾼-것이-닿는-것만--전부는---all) — 명령 `npm run build` · `node client2/scripts/check_harnesses.mjs --dry-run`
 - 2026-10-24 [착지 빌드의 화면 검사는 바꾼 화면만 — 전체 판은 밤에](#2026-10-24--착지-빌드의-화면-검사는-바꾼-화면만--전체-판은-밤에) — 명령 `npm run build` (prebuild 안의 화면 검사기가 --touched)
 - 2026-10-11 [소급 강제 종료 — 더블클릭 한 번](#2026-10-11--소급-강제-종료--더블클릭-한-번) — 명령 `stop_retroactive.bat`
 - 2026-10-10 [원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 읽지 않게](#2026-10-10--원장-ref-해시-인덱스--거두기-한-장이-원장-전체를-읽지-않게) — 명령 `python server/scripts/build_ledger_ref_index.py`
@@ -1163,6 +1164,14 @@
 - **바뀐 동작** — 조각이 «모두» 빈 행은 지금처럼 키 없음. 페이로드에 조각 칸 자체가 «안 실린» 행도 지금처럼(체인 키 관문이 그 칸을 이름 대어 거절, 새 행은 준 키를 지킴 — 총괄 10-14 는 이 경우에 남음). «실린 빈» 조각이면 조립 키가 준 키를 이깁니다(판정 191). 표준 파서가 빈 조각 행을 건너뛰던 것도 멈춥니다. 기존 행의 키 조각 하나를 비우면 키가 NULL 이 아니라 빈 조각 키가 됩니다(a61d32f4f 의 «키 없음»이 바뀜). NaN 조각은 빈 조각(«nan» 글자 신원은 안 생김).
 - **필요한 조건** — git pull · 런처 재기동 · 표마다 한 번 `rebuild_blank_business_keys.py --table <표>`(미리보기) 뒤 `--apply`. 이 변경 전에 빈 조각으로 들어와 키가 NULL 이거나 준 키로 저장된 행을 조립 키로 옮기고, 같은 키가 된 행은 그 키를 가진 행에 합칩니다(되돌릴 수 없음). 안 돌리면 그 행들은 다음 파일의 같은 키 행과 접히지 않습니다(유일 인덱스 표에서는 «이미 가진 행»으로 거절).
 - **자세히** — 시험 `test_blank_business_key_is_null.py` · `test_chain_key_gate.py` · `test_std_parser.py`.
+
+## 2026-10-27 · 착지 빌드의 하니스도 바꾼 것이 닿는 것만 — 전부는 --all
+
+- **무엇** — 총괄 10-27 «ㄴ». 착지 빌드가 무엇을 바꾸든 하니스를 전부 하나씩 돌았습니다. 걸린 시간 대부분이 그것이었습니다(10-27 하니스마다 잰 판).
+- **이제** — 하니스 실행기가 origin/main 과 갈라진 뒤 바뀐 파일을 읽고, 그 파일이 «닿는» 하니스만 돌립니다. 닿는다 = 하니스 파일 자신 · 그것이 import 하는 tests/lib · 그 글이 이름 대는 추적 파일 · 이름 댄 클라 파일이 import 로 닿는 모듈 전부(화면 검사기의 --touched 와 같은 그래프 함수). 폴더를 훑는 하니스(readdir · glob · ls-files)는 늘 돕니다. 실행기 · 그래프 모듈 · package.json · vite.config 가 바뀌면 전부 돕니다. 바닥 수 · 알려진 빨강 · 천장 표는 `client2/scripts/harness_floors.mjs` 로 옮겼고, 그 표가 바뀌면 바뀐 줄에 이름이 나온 하니스가 돕니다.
+- **보이는 것** — 실행기 첫머리 한 줄: «C changed file(s), M of N harnesses reach one - not run, …: <이름들>» · 바뀐 것이 없으면 «0 changed files - nothing to run» · 끝줄 «every gated harness that ran is green ― K not run».
+- **필요한 조건** — 없음(시험 도구만 바뀜). 전부 돌리기: `node client2/scripts/check_harnesses.mjs --all`.
+- **자세히** — `client2/scripts/module_reach.mjs` (changedFiles · reachPlugin · harnessesToRun) · `client2/scripts/check_harnesses.mjs` (--all · --commit · --dry-run) · `client2/scripts/harness_floors.mjs`.
 
 ## 2026-10-24 · 착지 빌드의 화면 검사는 바꾼 화면만 — 전체 판은 밤에
 
