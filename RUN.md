@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **AI 가 표를 채우는 체인 규칙 derive.ask — 제품마다 구조 인식(A-1) · 스텝 맵핑(A-2), 79915e72a · 3349a437c** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. chain_rules 에 derive.ask 선언(docs/guide/ai_ask_tables.md 의 꼴), llm_config.json
+> 볼 줄    chain_worker.log «[ChainRule] <규칙>: asked N text(s) in M call(s), W window(s) reused whole - R row(s), K refused»
+> 뜻      M = 실제 AI 호출 수. A-1 은 제품 수, A-2 는 «바뀐 스텝이 든 창» 수(재사용으로 다 찬 창은 0)
+>          K > 0 이면 체인 거절 줄에 «["<제품>"] (<글자 수> chars): <사유>» — 어느 제품이 몇 글자에서 거절됐나
+>          사람이 고친 칸은 다시 돌아도 그대로. 답에 없어진 행은 그 규칙 칸만 거둠(사람 행은 남음)
+> 알아둘 것 Test run 은 이 규칙도 AI 를 실제로 부름(report 와 같음) — 코드로 읽음, 안 잼
+> 끄기     그 규칙 선언에 "enabled": false
+> 되돌리기  git revert 3349a437c 79915e72a -> 런처 재기동
+> ```
+
+---
+
 > ## [10-28] **체인이 지우는 행 — 사람이 적은 행은 남고 그 규칙의 칸만 거둬진다 (뒤집음 · 소유자 10-28)** — 체인 워커 재기동 뒤
 >
 > ```
