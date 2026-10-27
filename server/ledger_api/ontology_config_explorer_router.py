@@ -1,6 +1,7 @@
 """Admin API for the Ledger v2 ontology config explorer."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
@@ -91,6 +92,7 @@ def _worlds() -> dict:
         try:
             declared[world] = _config.load(schema.world_names(world).declaration_path)
         except Exception as exc:                                    # noqa: BLE001 - a world unread is said, not fatal
+            logging.getLogger(__name__).warning("[Worlds] %s: its declaration was not read", world, exc_info=True)
             notices.append("%s: its declaration was not read - %s: %s" % (world, type(exc).__name__, exc))
             continue
         notices += ["%s: %s" % (world, said) for said in declared[world].get("__notices__") or ()]

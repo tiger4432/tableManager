@@ -824,7 +824,7 @@ def _hand_glob(job, chosen):
         with _HANDS_LOCK:
             job["failed"] = "%s: %s" % (type(exc).__name__, said.splitlines()[0] if said else "")
         logger.error("[Reread] glob %s under %s for %s was not handed: %s", job["pattern"], job["source"],
-                     job["table"], job["failed"])
+                     job["table"], job["failed"], exc_info=True)
     finally:
         with _HANDS_LOCK:
             job["done"] = True

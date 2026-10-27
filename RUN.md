@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **넓은 catch 셋이 로그에 트레이스를 남긴다** — 서버 · 체인 워커 재기동 뒤, 명령 없음
+>
+> ```
+> 로그 줄   [Reread] glob <패턴> under <폴더> for <표> was not handed: <첫 줄>   + 그 아래 Traceback
+>          [Report] causes.values: the ledger declaration was not read           + Traceback (저장 거절 문장은 그대로)
+>          [Worlds] <세상>: its declaration was not read                          + Traceback (세상 목록 notices 는 그대로)
+> 뜻      화면 · 저장 거절 문장은 안 바뀜. 어디서 깨졌는지는 로그의 Traceback 에
+> ```
+>
+> ---
+>
 > ## [10-27] **탐색기 상단 바 밑의 겹친 소스 · 세상 알림 줄** — git pull · 화면 새로 고침 (서버 ed4b6cb84 이후면 재기동 필요 없음)
 >
 > ```

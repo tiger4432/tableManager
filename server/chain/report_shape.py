@@ -8,9 +8,12 @@ A wafer is named by one column or a list of them in every role, matched across r
 «키도 복수로»); the form draws each as a list - one column is a list of one."""
 from __future__ import annotations
 
+import logging
 import re
 
 import chain_bindings
+
+logger = logging.getLogger("Chain")
 
 #: The mapper a report declaration stands as (`rule_shape.as_chain_rule`).
 REPORT_MAPPER = "declared:report"
@@ -806,7 +809,8 @@ def _values_refusal(values, worlds):
         ends, qualifiers = trace_router._predicate_ends(worlds or None), trace_router._predicate_qualifiers(worlds or None)
         keys = {trace_router._bare_name(name): list((rule or {}).get("keys") or ())
                 for name, rule in trace_router._declared_entities(worlds or None).items()}
-    except Exception as exc:                                    # noqa: BLE001 - the save says why
+    except Exception as exc:                                    # noqa: BLE001 - the save says why, the log where
+        logger.warning("[Report] causes.values: the ledger declaration was not read", exc_info=True)
         return "derive.report.causes.values: the ledger declaration was not read - %s: %s" % (type(exc).__name__, exc)
     bare = trace_router._bare_name
     order, key = values["order"]
