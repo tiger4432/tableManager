@@ -2826,6 +2826,22 @@
                             "hint": "free"
                           }
                         }
+                      },
+                      {
+                        "key": "window",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
+                        "key": "overlap",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
                       }
                     ]
                   }
@@ -2860,6 +2876,157 @@
                             "kind": "leaf",
                             "hint": "free"
                           }
+                        }
+                      },
+                      {
+                        "key": "line",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "item",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "items",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "table",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "step",
+                        "required": true,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "column",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "drop_leading",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": "item",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "reuse",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "key",
+                        "required": true,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "part",
+                          "of": {
+                            "kind": "record",
+                            "fields": [
+                              {
+                                "key": "column",
+                                "required": true,
+                                "node": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              },
+                              {
+                                "key": "drop_leading",
+                                "required": false,
+                                "node": {
+                                  "kind": "leaf",
+                                  "hint": "number"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "key": "within",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "cell",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "table",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "column",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "carry",
+                              "required": false,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "column",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            }
+                          ]
                         }
                       }
                     ]

@@ -83,7 +83,7 @@ def test_a_refused_group_is_named_with_its_length(world, monkeypatch):
     from utils import llm
     monkeypatch.setattr(llm, "ask_json", lambda prompt, **_kw: (_ for _ in ()).throw(llm.LlmRefused("too long")))
     answer = ask_rule.answer(db, rule_shape.as_chain_rule(rule_shape.from_declaration(DECLARATION)), ["P1-0"])
-    text = ask_rule._text(ask_rule._groups(db, "ak_steps", DECLARATION["derive"]["ask"], ["P1-0"])[("P1",)],
+    text = ask_rule._text(ask_rule._groups(db, "ak_steps", DECLARATION["derive"]["ask"], ["P1-0"])[("P1",)][0],
                           DECLARATION["derive"]["ask"])
     assert answer["updates"] == []
     assert answer["refusal"] == '["P1"] (%d chars): too long' % len(text)

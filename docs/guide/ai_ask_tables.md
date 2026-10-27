@@ -29,12 +29,24 @@
 | `common` | `cell` 의 값은 공용 표 칸 값 중 하나, 아니면 `none` 낱말 |
 | `prompts.memo` | 그 그룹에 붙는 사람 메모(표의 행) |
 
+### 스텝 맵핑에 더하는 칸 (A-2)
+
+| 칸 | 뜻 |
+|---|---|
+| `input.window` · `input.overlap` | 그룹을 `window` 줄씩 잘라 묻고, 앞뒤 `overlap` 줄은 «맥락 줄»로만 싣습니다(답하지 않음) |
+| `output.line` · `output.item` | 답 행이 «어느 줄 · 어느 아이템»인지 적을 출력 칸 |
+| `items` | `{table, step: {column}, item}` — 아이템 표 step 값을 줄의 `order_by` 값과 «그대로» 견주어 그 줄 아래에 아이템을 싣습니다. 접두가 제품이라 제품까지 같이 맞습니다 |
+| `reuse.key` | `[{column, drop_leading}, ...]` — 이 값이 같은 기존 답이 있으면 묻지 않고 그 답을 씁니다(다른 그룹 포함). `drop_leading` 은 앞 접두(제품)를 떼어 «같은 자리의 공정»으로 견줄 때. 이 줄의 아이템 중 기존 답에 없는 것이 있으면 그 줄은 묻습니다 |
+| `reuse.within` | `{cell, table, column, carry}` — 재사용할 답의 `cell` 값이 이 그룹의 목록에 없으면 재사용하지 않고 묻습니다 |
+
 ## 동작
 
 ```
-호출 수     그룹 수 (한 그룹은 늘 통째로 한 글. 자르지 않습니다)
-묶음        llm_config.json 의 batch_chars 까지 그룹 여럿을 한 요청에. 넘는 그룹은 혼자 한 요청
-거절        그 그룹만. 체인 거절 줄에 «["P1"] (4699 chars): <사유>» — 어느 그룹이 몇 글자였나
+호출 수     물을 글 수. window 없으면 그룹마다 하나(자르지 않음), 있으면 «바뀐 줄이 든 창»마다 하나
+           재사용으로 다 채워진 창은 묻지 않습니다
+묶음        llm_config.json 의 batch_chars 까지 글 여럿을 한 요청에. 넘는 글은 혼자 한 요청
+거절        그 글만. 체인 거절 줄에 «["P1"] (4699 chars): <사유>» — 어느 그룹이 몇 글자였나
 다시 돌 때   사람이 고친 칸은 그대로(user 층). 답에 없어진 행은 그 규칙의 칸만 거둡니다(사람 행은 남음)
-로그        chain_worker.log «[ChainRule] <규칙>: asked N group(s) in M call(s) - R row(s), K refused»
+           창 하나만 물었으면 그 창의 줄 범위만 거둡니다
+로그        chain_worker.log «[ChainRule] <규칙>: asked N text(s) in M call(s), W window(s) reused whole - R row(s), K refused»
 ```
