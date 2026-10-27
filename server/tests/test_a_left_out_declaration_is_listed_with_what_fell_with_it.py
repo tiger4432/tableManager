@@ -17,7 +17,21 @@ from ledger.config_explorer_service import OntologyExplorerService
 from ledger.setup import load_setup
 from test_a_declared_thing_carries_classes import _catalog, _sample
 
-LEFT_WITH_QUANTITY = {"predicate|leads_to", "predicate|measures"}
+def _naming(entity):
+    """The sample's predicates that name `entity` on either side - what falls with it. Read from the same sample the
+    service loads, so a predicate the sample adds is expected too (10-27: the pinned set went red on ff05abbd8)."""
+    from declaration_names import bare_name
+
+    out = set()
+    for name, spec in _sample()["vocabulary"].items():
+        types = list(spec.get("subjects") or ()) + list((spec.get("object") or {}).get("types") or ())
+        if entity in {bare_name(t) for t in types}:
+            out.add("predicate|" + bare_name(name))
+    return out
+
+
+LEFT_WITH_QUANTITY = _naming("quantity")
+assert "predicate|measures" in LEFT_WITH_QUANTITY        # canary: the reader found the sample's predicates
 
 
 @pytest.fixture
@@ -88,7 +102,7 @@ def test_an_entity_saved_unreadable_takes_the_predicates_that_name_it_onto_the_l
     said = [(error["path"], error["message"]) for error in saved["validation_errors"]]
     assert any(path.endswith("quantity.class") for path, _ in said), said
     fell_said = [path for path, message in said if message == "entity quantity left out"]
-    assert sorted({p.split(".")[2] for p in fell_said}) == ["leads_to", "measures"], said
+    assert sorted({p.split(".")[2] for p in fell_said}) == sorted(k.partition("|")[2] for k in LEFT_WITH_QUANTITY), said
 
 
 def test_the_row_the_tag_and_the_save_answer_say_one_sentence(service):
