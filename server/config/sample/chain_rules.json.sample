@@ -424,7 +424,7 @@
       }
     },
     {
-      "__comment": "Every bind param in a reference view MUST be a decision_key column -- the loader rejects anything else (enrichment_config.py:126-129) and drops just that view. A view that binds only PART of the decision key is legal but gets flagged scope_unresolved, because one confirmed value would then be stamped onto every member of the wider scope; both rules in this file bind the FULL key. | candidate_for is {target_field: view_result_column}. Without it declaring_views is empty, resolve_target_candidate refuses before running any SQL (enrichment_candidates.py:306-308), and the probe emits ZERO log lines -- which is indistinguishable from 'the feature is off'. That silent state is what this config exists to avoid. | INFERENCE #1 -- confirm which DT lot and slot a DT job's wafer ended up as. This cannot be done with a SQL join: bonding_log's (dt_lot, dt_slot) is the value AS OF BONDING and dt_log's is the value AS OF DT, and split/merge moved the wafer in between, so a naive join does not error -- it matches the wrong wafer plausibly. | auto_confirm is ON here: the candidate is a RECORDED FACT (an equipment track-in event) plus an assignment fixed by the monotonic constraint, not a guess, and a single distinct answer is the only thing that confirms. Anything else -- zero candidates, two candidates, a failed view -- stays in the queue for a human.",
+      "__comment": "Every bind param in a reference view MUST be a decision_key column -- the loader rejects anything else (enrichment_config.py:126-129) and drops just that view. A view that binds only PART of the decision key is legal but gets flagged scope_unresolved, because one confirmed value would then be stamped onto every member of the wider scope; both rules in this file bind the FULL key. | candidate_for is {target_field: view_result_column}. Without it declaring_views is empty, resolve_target_candidate refuses before running any SQL (enrichment_candidates.py:306-308), and the probe emits ZERO log lines -- which is indistinguishable from 'the feature is off'. That silent state is what this config exists to avoid. | INFERENCE #1 -- confirm which DT lot and slot a DT job's wafer ended up as. This cannot be done with a SQL join: bonding_log's (dt_lot, dt_slot) is the value AS OF BONDING and dt_log's is the value AS OF DT, and split/merge moved the wafer in between, so a naive join does not error -- it matches the wrong wafer plausibly. | auto_confirm is ON here: the candidate is a RECORDED FACT (an equipment track-in event) plus an assignment fixed by the monotonic constraint, not a guess, and a single distinct answer is the only thing that confirms. Anything else -- zero candidates, two candidates, a failed view -- stays in the queue for a human. | [10-28] The two track-in views (the DT lot by equipment track-in, the DT slot by monotonic assignment) were taken out: they read lot_event.lot / equipment / slot_numbers and the shipped lot_event declares lot_id and slotnumbers and no equipment. With no candidate_for view auto_confirm has nothing to confirm, and every job stays in the queue.",
       "name": "dt_job_lot_slot_attribution",
       "enabled": false,
       "on": {
@@ -465,22 +465,6 @@
               "label": "앵커 - core_wafer가 적힌 셀",
               "query": "SELECT core_wafer, core_lot, core_slot, COUNT(*) AS dies FROM dt_log WHERE dt_job = :dt_job AND COALESCE(core_wafer, '') <> '' GROUP BY 1, 2, 3 ORDER BY dies DESC",
               "limit": 100
-            },
-            {
-              "label": "설비 track-in이 말하는 DT 랏",
-              "query": "WITH j AS (  SELECT MIN(dt_eqp) AS eqp, MIN(event_time) AS et  FROM dt_log WHERE dt_job = :dt_job) SELECT DISTINCT le.lot AS dt_lot FROM lot_event le, j WHERE le.event_type = 'track_in' AND le.equipment = j.eqp AND le.event_time = j.et",
-              "limit": 50,
-              "candidate_for": {
-                "dt_lot_confirmed": "dt_lot"
-              }
-            },
-            {
-              "label": "단조 배정이 말하는 DT 슬롯",
-              "query": "WITH j AS (  SELECT MIN(dt_eqp) AS eqp, MIN(event_time) AS et,         MIN(split_part(dt_job, '_', 3)) AS tape_slot  FROM dt_log WHERE dt_job = :dt_job), peers AS (  SELECT DISTINCT split_part(d.dt_job, '_', 3) AS tape_slot  FROM dt_log d, j WHERE d.dt_eqp = j.eqp AND d.event_time = j.et), rk AS (  SELECT COUNT(*) AS pos FROM peers, j WHERE peers.tape_slot <= j.tape_slot), ti AS (  SELECT le.slot_numbers AS slots FROM lot_event le, j  WHERE le.event_type = 'track_in' AND le.equipment = j.eqp AND le.event_time = j.et) SELECT (string_to_array(ti.slots, ':'))[rk.pos] AS dt_slot FROM ti, rk",
-              "limit": 50,
-              "candidate_for": {
-                "dt_slot_confirmed": "dt_slot"
-              }
             }
           ]
         }
