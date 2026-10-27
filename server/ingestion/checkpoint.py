@@ -333,9 +333,10 @@ def note_file(db, table_name, filepath, **cells):
         if db.get_bind().dialect.name == "postgresql":
             from sqlalchemy.exc import IntegrityError
 
+            import session_contract
+
             try:                                  # the API's Read now and the watcher's read of one new file at once
-                with db.begin_nested():
-                    db.add(row)
+                session_contract.in_savepoint(db, "checkpoint.note_file", lambda: (db.add(row), db.flush()))
             except IntegrityError:
                 row = db.query(Row).filter(Row.table_name == table_name, Row.path_key == key).one()
         else:
