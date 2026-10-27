@@ -20,6 +20,7 @@ derived_table에 키당 1행을 upsert하는 체인 맵퍼다. `chain_rules.json
 주의: 이 모듈은 저장소 추적 인프라 코드다(사용자 영역 `server/mappers/*`가 아님).
 SYSTEM_RELOAD의 mappers.* 캐시 무효화 대상이 아니므로 콜드 스타트 재발도 없다.
 """
+import itertools
 import logging
 
 logger = logging.getLogger("Chain.enrichment_dedup")
@@ -287,8 +288,8 @@ def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values,
     from database import crud
 
     derived = crud.TABLE_CONFIG.get(enrich["derived_table"], {})
-    identity = list(derived.get("composite_key_source") or ([derived["business_key"]] if derived.get("business_key")
-                                                            else []))
+    written = derived.get("composite_key_source") or ([derived["business_key"]] if derived.get("business_key") else [])
+    identity = [column for column in written if column in decision_key]     # a listed part is no source row's
     if not empty or not identity or set(identity) == set(decision_key):
         return set(empty)
     at = [decision_key.index(column) for column in identity]
@@ -300,6 +301,52 @@ def _without_source_rows(db, enrich, source_table, decision_key, key_raw_values,
                                                                  for key in of},
                                     {_SOURCE_ROWS: {"expression": "Count()"}}, gates)
     return {key for key in of if not (held.get(of[key]) or {}).get(_SOURCE_ROWS)}
+
+
+def _expanded(key_map: dict, listed: list) -> list:
+    """The derived rows one decision key makes - itself, or one a combination of the listed values (`expand`)."""
+    columns = [column for column, _values in listed]
+    return [dict(key_map, **dict(zip(columns, values)))
+            for values in itertools.product(*[values for _column, values in listed])]
+
+
+def _gone(enrich: dict, joined: str) -> dict:
+    """The item that takes a derived row away - the worker deletes it unless another writer is on it."""
+    from chain import enrichment
+
+    return {"business_key_val": joined, "updates": {}, "source_name": "chain_ingestion", "gone": True,
+            "own": list(enrichment.config.synthesized_rule_names(enrich["name"]))}
+
+
+def _off_list(db, enrich: dict, keys: list) -> list:
+    """The business keys of `keys`' derived rows whose listed part holds no listed value - a value taken off `expand`
+    or a row made before it; they go as a left key's row does (owner 10-27). Nothing is read without `expand`."""
+    import chain_bindings
+    from sqlalchemy import not_, or_
+    from database import crud, models
+
+    listed = chain_bindings.key_parts(enrich)["listed"]
+    if not listed or not keys:
+        return []
+    table, names = enrich["derived_table"], list(enrich["decision_key"])
+    model = models.DYNAMIC_TABLES[table]
+    types = (crud.TABLE_CONFIG.get(table) or {}).get("column_types") or {}
+
+    def typed(column, values):
+        return [crud.cast_value_by_type(value, types.get(column, "string"), column) for value in values]
+
+    off = [or_(crud.blank_sql_condition(crud.column_text_sql(getattr(model, column))),
+               not_(getattr(model, column).in_(typed(column, values)))) for column, values in listed]
+    out = []
+    for i in range(0, len(keys), RECOUNT_KEY_CHUNK):
+        chunk = keys[i:i + RECOUNT_KEY_CHUNK]
+        # each key column IN its values (wider than the keys), cut back to them by the key's one spelling
+        live = [sorted({key[at] for key in chunk} - {""}) for at in range(len(names))]
+        narrow = [getattr(model, name).in_(typed(name, values)) for name, values in zip(names, live) if values]
+        wanted = set(chunk)
+        rows = db.query(model.business_key_val, *[getattr(model, name) for name in names]).filter(*narrow, *off)
+        out.extend(row[0] for row in rows if _clean_key(table, names, row[1:]) in wanted)
+    return out
 
 
 def _result(updates, skipped_no_key: int, partial_keys: int,
@@ -448,18 +495,20 @@ def read_decide(db, payloads, rule=None) -> dict:
     empty = {key for key in left if not (aggregated.get(key) or {}).get(_SOURCE_ROWS)}
     gone = _without_source_rows(db, enrich, source_table, decision_key, key_raw_values, empty, gates)
     return {"handed": len(payloads), "enrich": enrich, "groups": groups, "aggregated": aggregated,
-            "empty": empty, "gone": gone, "skipped": skipped}
+            "empty": empty, "gone": gone, "skipped": skipped, "off_list": _off_list(db, enrich, list(groups))}
 
 
 def built(rule, got) -> dict:
-    """The derived rows `read_decide` read for - one a decision key, nothing read here."""
+    """The derived rows `read_decide` read for - one a decision key (one a listed value), nothing read here."""
     if "result" in got:
         return got["result"]
+    import chain_bindings
     from chain import enrichment
     from database import crud
 
     enrich, groups, aggregated = got["enrich"], got["groups"], got["aggregated"]
     empty, gone, skipped = got["empty"], got["gone"], got["skipped"]
+    listed = chain_bindings.key_parts(enrich)["listed"]
     derived_table, decision_key = enrich["derived_table"], enrich["decision_key"]
     target_fields, aggregations = set(enrich.get("target_fields", [])), enrich.get("aggregations", {})
     derived_cfg = crud.TABLE_CONFIG.get(derived_table, {})
@@ -492,78 +541,79 @@ def built(rule, got) -> dict:
                                  for c in identity_cols):
             unaddressable += 1
             continue
-        upd_cols = {}
-        for k, v in key_map.items():
-            if k in derived_cols and k not in target_fields:
-                # 🔴 [소유자 2026-09-23] 빈 판단키 성분은 «키를 짓는 데»는 쓰고 «셀을 덮는
-                # 데»는 쓰지 않는다. 실측: 부분 키 행이 빈 core_lot 을 실어 와 그 이름의
-                # 기존 행에서 'LOT' 을 지웠다. 이 빈칸의 뜻은 「그 소스 행에 값이 없었다」이지
-                # 「비었다고 말한다」가 아니다 — 후자는 조인의 매칭된 NULL 이고(판정 f3c04dee)
-                # 그쪽은 그대로다. 둘은 `source_name` 이 같아 crud 에서는 못 가른다.
-                if k in blank_key_cols:
-                    continue
-                upd_cols[k] = v
-        for col, v in g["reps"].items():
-            if col in derived_cols and col not in target_fields:
-                upd_cols[col] = v
-        blank = []
-        for col, spec in aggregations.items():
-            if col in derived_cols:
-                # 행이 없는 키의 답은 그 집계가 «빈 행»에 내는 답이다(Count() 0 · 값 집계 None — `_plan`).
-                value = (aggregated.get(key) or {}).get(col)
-                if crud.is_blank_value(value):
-                    blank.append(col)
-                else:
-                    upd_cols[col] = value
+        for row in _expanded(key_map, listed):     # a listed key part makes one row a value (10-27)
+            upd_cols = {}
+            for k, v in row.items():
+                if k in derived_cols and k not in target_fields:
+                    # 🔴 [소유자 2026-09-23] 빈 판단키 성분은 «키를 짓는 데»는 쓰고 «셀을 덮는
+                    # 데»는 쓰지 않는다. 실측: 부분 키 행이 빈 core_lot 을 실어 와 그 이름의
+                    # 기존 행에서 'LOT' 을 지웠다. 이 빈칸의 뜻은 「그 소스 행에 값이 없었다」이지
+                    # 「비었다고 말한다」가 아니다 — 후자는 조인의 매칭된 NULL 이고(판정 f3c04dee)
+                    # 그쪽은 그대로다. 둘은 `source_name` 이 같아 crud 에서는 못 가른다.
+                    if k in blank_key_cols:
+                        continue
+                    upd_cols[k] = v
+            for col, v in g["reps"].items():
+                if col in derived_cols and col not in target_fields:
+                    upd_cols[col] = v
+            blank = []
+            for col, spec in aggregations.items():
+                if col in derived_cols:
+                    # 행이 없는 키의 답은 그 집계가 «빈 행»에 내는 답이다(Count() 0 · 값 집계 None — `_plan`).
+                    value = (aggregated.get(key) or {}).get(col)
+                    if crud.is_blank_value(value):
+                        blank.append(col)
+                    else:
+                        upd_cols[col] = value
 
-        # `updated_by` 는 체인이 규칙의 선언 이름으로 찍는다(`rule_run.signed`)
-        item = {
-            "updates": upd_cols,
-            "source_name": "chain_ingestion",
-            "withdraw": blank,
-        }
-        # business_key_val 선(先)조립 — apply_batch_updates의 벌크 프리페치(row/CellSource 캐시)가
-        # business_key_val 기준이므로 여기서 확정해야 기존 행 조회가 N+1 없이 배치된다.
-        #
-        # 🔴 종전 comp_src 분기의 `all(... != "")` 가드가 사라졌다 — 부분 키가 **바로
-        # 그 가드에 걸려** 선언을 못 타고 아래 폴백으로 떨어지던 자리다. 부분 키는
-        # `partial_ok`(= comp_src가 판단키 전체를 덮음)일 때만 여기 도달하므로, 빈
-        # 성분을 포함한 comp_src 조인이 곧 그 행의 정체성이고 **온전한 키와 같은 순서·
-        # 같은 구분자**로 조립된다(정체성 철자가 두 개가 되지 않는다).
-        # 온전한 키의 결과는 종전과 100% 동일하다: 성분이 전부 non-blank일 때 이 식은
-        # 옛 식과 글자 그대로 같다.
-        if comp_src:
-            # 🔴 조립은 `crud.compose_business_key` 하나다 (S1). 여기서 따로 이어 붙이면
-            #    같은 행이 두 철자를 갖게 되고 그날 오류는 «안 난다».
-            #    빈 성분 판정은 «하지 않는다» — 부분 키를 그대로 조립하는 것이
-            #    2026-08-05 소유자 재정이고, 그 판정은 위 `blank_key_cols` 가 «세기만» 한다.
-            joined = crud.compose_business_key(
-                derived_table, [key_map.get(c) for c in comp_src], comp_src)
-        elif bk_col and bk_col in key_map:
-            # the derived key column's spelling, as the write assembles it (총괄 88761926b)
-            joined = crud.compose_business_key(derived_table, [key_map[bk_col]], [bk_col])
-        else:
-            # 방어적 폴백(로더가 키 계약을 검증하므로 정상 경로에선 도달하지 않음)
+            # `updated_by` 는 체인이 규칙의 선언 이름으로 찍는다(`rule_run.signed`)
+            item = {
+                "updates": upd_cols,
+                "source_name": "chain_ingestion",
+                "withdraw": blank,
+            }
+            # business_key_val 선(先)조립 — apply_batch_updates의 벌크 프리페치(row/CellSource 캐시)가
+            # business_key_val 기준이므로 여기서 확정해야 기존 행 조회가 N+1 없이 배치된다.
             #
-            # 🔴 S1 확인 (2026-09-02): 이 갈래가 `crud.compose_business_key` 를 «안 쓰는»
-            #    이유는 «도달 불가»이기 때문이다. `enrichment_config._validate_rule` 이
-            #    「comp_src ⊆ decision_key 이거나 bk_col ∈ decision_key」를 어기는 규칙을
-            #    «로드 시점에 거절»한다. `key_map` 은 decision_key 로 zip 되므로
-            #    `bk_col ∈ decision_key` 는 곧 `bk_col in key_map` 이고, 따라서 로더를
-            #    통과한 규칙에서는 위 두 갈래 중 하나가 «반드시» 잡는다.
-            #    그리고 도달하더라도 «철자는 같다»: `key` 는 이미
-            #    `tuple(crud.clean_str_value(...))` 이고 그 함수는 자기 출력에 멱등이므로,
-            #    여기서 다시 태우든 안 태우든 같은 문자열이 나온다. 즉 이것은 정체성의
-            #    «다섯째 철자»가 아니라 «닿지 않는 같은 철자»다.
-            joined = comp_sep.join(key)
-        item["business_key_val"] = joined
-        if key in gone:     # the worker deletes it unless another writer is on it - this declaration's halves are not
-            item = {"business_key_val": joined, "updates": {}, "source_name": "chain_ingestion", "gone": True,
-                    "own": list(enrichment.config.synthesized_rule_names(enrich["name"]))}
-        if bk_col and bk_col in derived_cols and bk_col not in upd_cols and bk_col not in target_fields:
-            upd_cols[bk_col] = joined
-        updates.append(item)
+            # 🔴 종전 comp_src 분기의 `all(... != "")` 가드가 사라졌다 — 부분 키가 **바로
+            # 그 가드에 걸려** 선언을 못 타고 아래 폴백으로 떨어지던 자리다. 부분 키는
+            # `partial_ok`(= comp_src가 판단키 전체를 덮음)일 때만 여기 도달하므로, 빈
+            # 성분을 포함한 comp_src 조인이 곧 그 행의 정체성이고 **온전한 키와 같은 순서·
+            # 같은 구분자**로 조립된다(정체성 철자가 두 개가 되지 않는다).
+            # 온전한 키의 결과는 종전과 100% 동일하다: 성분이 전부 non-blank일 때 이 식은
+            # 옛 식과 글자 그대로 같다.
+            if comp_src:
+                # 🔴 조립은 `crud.compose_business_key` 하나다 (S1). 여기서 따로 이어 붙이면
+                #    같은 행이 두 철자를 갖게 되고 그날 오류는 «안 난다».
+                #    빈 성분 판정은 «하지 않는다» — 부분 키를 그대로 조립하는 것이
+                #    2026-08-05 소유자 재정이고, 그 판정은 위 `blank_key_cols` 가 «세기만» 한다.
+                joined = crud.compose_business_key(
+                    derived_table, [row.get(c) for c in comp_src], comp_src)
+            elif bk_col and bk_col in row:
+                # the derived key column's spelling, as the write assembles it (총괄 88761926b)
+                joined = crud.compose_business_key(derived_table, [row[bk_col]], [bk_col])
+            else:
+                # 방어적 폴백(로더가 키 계약을 검증하므로 정상 경로에선 도달하지 않음)
+                #
+                # 🔴 S1 확인 (2026-09-02): 이 갈래가 `crud.compose_business_key` 를 «안 쓰는»
+                #    이유는 «도달 불가»이기 때문이다. `enrichment_config._validate_rule` 이
+                #    「comp_src ⊆ decision_key 이거나 bk_col ∈ decision_key」를 어기는 규칙을
+                #    «로드 시점에 거절»한다. `key_map` 은 decision_key 로 zip 되므로
+                #    `bk_col ∈ decision_key` 는 곧 `bk_col in key_map` 이고, 따라서 로더를
+                #    통과한 규칙에서는 위 두 갈래 중 하나가 «반드시» 잡는다.
+                #    그리고 도달하더라도 «철자는 같다»: `key` 는 이미
+                #    `tuple(crud.clean_str_value(...))` 이고 그 함수는 자기 출력에 멱등이므로,
+                #    여기서 다시 태우든 안 태우든 같은 문자열이 나온다. 즉 이것은 정체성의
+                #    «다섯째 철자»가 아니라 «닿지 않는 같은 철자»다.
+                joined = comp_sep.join(key)
+            item["business_key_val"] = joined
+            if key in gone:     # the worker deletes it unless another writer is on it - this declaration's halves are not
+                item = _gone(enrich, joined)
+            if bk_col and bk_col in derived_cols and bk_col not in upd_cols and bk_col not in target_fields:
+                upd_cols[bk_col] = joined
+            updates.append(item)
 
+    updates.extend(_gone(enrich, joined) for joined in got["off_list"])
     if unaddressable:
         logger.warning(
             f"[Enrichment:{enrich.get('name')}] {unaddressable} decision key(s) were NOT "

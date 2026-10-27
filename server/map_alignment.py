@@ -5771,7 +5771,7 @@ def build_alignment_view(db, cfg: dict, rule: dict, key_values: dict, map_table:
     for col, val in (key_values or {}).items():
         attr = getattr(src_model, read.get(col, col), None)
         if attr is None:
-            raise ValueError("Source table '%s' has no decision key column '%s'" % (src_table, col))
+            raise ValueError("Source table '%s' has no decision key column '%s'" % (src_table, read.get(col, col)))
         filters.append(attr == val)
     # A chain can score one material subset of a decision unit without storing
     # an extra derived map.  Restrict this to validated equality predicates;

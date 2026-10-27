@@ -1075,6 +1075,36 @@
                     "kind": "leaf",
                     "hint": "flag"
                   }
+                },
+                {
+                  "key": "expand",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "column",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "values",
+                        "required": true,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "value",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      }
+                    ]
+                  }
                 }
               ]
             },

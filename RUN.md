@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **decide expand — 키 하나를 값 목록만큼 파생 행으로** — 서버 · 체인 워커 재기동 뒤
+>
+> ```
+> 적는 곳   chain_rules.json 의 derive.decide:  "expand": {"column": "<파생 칸>", "values": ["<값>", ...]}
+>          파생 표 table_config 의 composite_key_source 에 그 칸을 넣는다 (예 ["wafer", "item"])
+> 저장 거절  «... not in derived table '<표>' composite_key_source»  = 정체성에 그 칸이 없음 -> composite_key_source 에 더함
+>          «expand on an alignment rule is not supported»          = 정렬 규칙에는 못 씀
+> 목록 바꿈  저장만으로는 안 돈다. 이미 있는 키 전부를 다시 돌리기:
+>          conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <규칙 이름>   (드라이런 수 -> --apply)
+>          뜻: 목록 밖 값의 행 = 거둠 (사람이 채운 칸이 있는 행은 남음) · 더한 값의 행 = 섬
+>          enrichment_backfill 은 «새 행만» 짓는다 — 빼낸 값의 행을 거두지 않는다
+> 확인      파생 표에서 키 하나를 거르면 행이 값 수만큼, 그 칸이 목록 값
+> 되돌리기  expand 를 지워도 펼친 행은 남는다 (거두는 자리는 expand 가 있을 때만 돈다)
+>          -> 파생 표에서 그 행들을 지운 뒤 chain_replay
+>          코드째: git revert $(git log --format=%h -i --grep='decide expand' origin/main) -> 재기동
+> ```
+>
+> ---
+>
 > ## [10-27] **시험: 묶어 돌리면 빨강이던 시험 다수가 풀림** — 서버 재기동 필요 없음
 >
 > ```

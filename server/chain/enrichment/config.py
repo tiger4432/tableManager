@@ -10,9 +10,11 @@
 정규화된 선언의 칸 (통합 문법에서 이름이 다른 것은 둘뿐: `key` -> decision_key,
 `fields` -> target_fields. 원본·파생 표는 `on.table` · `into.table`):
     source_table · derived_table               원본 표 · 파생 영속 표(table_config 등록 필요)
-    decision_key                               판단키 (1..N 컬럼)
+    decision_key                               판단키 (1..N 컬럼) — 파생 표의 이름. 항목은 이름 또는 짝 {"<파생>": "<원본>"}
+    key_source                                 판단키를 읽는 원본 칸 (같은 순서) — `chain_bindings.key_source`
+    expand                                     선택: {column, values} — 키 하나가 값마다 파생 행 하나 (`chain_bindings.key_parts`)
     target_fields                              사람이 채울 필드 (파생 표 컬럼) — 비거나 없으면 aggregations 가 있어야 한다
-    list_columns                               선택: 워크리스트 표시 단서
+    list_columns                               선택: 워크리스트 표시 단서 — 이름 또는 짝, list_source 가 원본 칸
     aggregations                               선택(서버 전용): 파생행에 두는 그룹 집계
         {"chip_count": "count", "t_min": {"fn": "min", "column": "t"}}   count | min | max
         {"wafer_ids": {"fn": "unique_concat", "column": "wafer_id", "separator": ", "}}
@@ -48,6 +50,7 @@ logger = logging.getLogger("EnrichmentConfig")
 
 from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
 from chain import rule_shape
+import chain_bindings
 from declaration_names import bare_name as _bare_name
 
 QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
@@ -247,6 +250,23 @@ def _is_str_list(value) -> bool:
     return isinstance(value, list) and len(value) > 0 and all(
         isinstance(v, str) and v.strip() for v in value
     )
+
+
+def _expand(raw: dict, decision_key: list, target_fields: list) -> tuple:
+    """`expand` -> ({column, values} | None, refusal): one derived row a listed value of a derived column the source
+    has not (owner 10-27). Not on an alignment rule - its unit would change under the maps (lead 10-27)."""
+    said = raw.get("expand")
+    if said is None:
+        return None, None
+    column, values = (said.get("column"), said.get("values")) if isinstance(said, dict) else (None, None)
+    if not (isinstance(column, str) and column.strip() and isinstance(values, list) and values
+            and all(isinstance(value, str) and value.strip() for value in values)):
+        return None, "'expand' must be {\"column\": <derived column>, \"values\": [<value>, ...]}"
+    if column in decision_key or column in target_fields:
+        return None, f"expand column '{column}' is already a decision_key or fields column"
+    if raw.get("alignment") is True:
+        return None, "expand on an alignment rule is not supported - its unit would become key × values"
+    return {"column": column, "values": list(values)}, None
 
 
 def _named_pairs(cell: str, value, required: bool) -> tuple:
@@ -776,6 +796,9 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     if why:
         return None, why
     list_read = dict(zip(list_columns, list_read))
+    expand, why = _expand(raw, decision_key, target_fields)
+    if why:
+        return None, why
 
     aggregations = {}
     raw_aggs = raw.get("aggregations") or {}
@@ -853,7 +876,14 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
                 f"aggregation(s) read column(s) missing in source table "
                 f"'{source_table}': {unreadable}")
         # 파생 테이블 키 계약: dedup mapper가 판단키로 business_key_val을 조립할 수 있어야 한다.
-        key_refusal = key_contract_refusal(drv_cfg, decision_key)
+        if expand and expand["column"] not in drv_cols:
+            return None, f"expand column '{expand['column']}' missing in derived table"
+        if expand and expand["column"] not in (drv_cfg.get("composite_key_source") or ()):
+            return None, (f"expand column '{expand['column']}' is not in derived table '{derived_table}' "
+                          f"composite_key_source - a key's rows would be one row")
+        key_refusal = key_contract_refusal(
+            drv_cfg, chain_bindings.key_parts({"decision_key": decision_key, "expand": expand})["row"],
+            "decision_key" + (" + expand.column" if expand else ""))
         if key_refusal:
             return None, key_refusal
 
@@ -888,6 +918,7 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
         "target_fields": list(target_fields),
         "list_columns": list(list_columns),
         "list_source": {column: list_read[column] for column in list_columns},
+        **({"expand": expand} if expand else {}),
         "aggregations": aggregations,
         "reference_views": reference_views,
     }

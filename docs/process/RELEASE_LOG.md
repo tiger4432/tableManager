@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-27 [decide expand — 키 하나를 정해진 값 목록만큼 파생 행으로 펼친다](#2026-10-27--decide-expand--키-하나를-정해진-값-목록만큼-파생-행으로-펼친다) — 적는 곳 chain_rules.json 의 derive.decide.expand · 보는 곳 파생 표 · 저장 거절 문장
 - 2026-10-27 [decide 의 key 와 list_columns 에 짝 — 파생 칸 이름과 원본 칸 이름이 다를 때](#2026-10-27--decide-의-key-와-list_columns-에-짝--파생-칸-이름과-원본-칸-이름이-다를-때) — 적는 곳 chain_rules.json 의 derive.decide.key · list_columns · 보는 곳 파생 표 · 저장 거절 문장
 - 2026-10-27 [AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정](#2026-10-27--ai-리포트-계측값--원인-걷기가-닿은-quantity-의-웨이퍼별-값을-조건-행으로-값이-없으면-같은-트랜잭션-웨이퍼로-추정) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.values · 보는 곳 리포트 표의 조건 행 · Evidence «quantity values» · 터미널 [report] causes values
 - 2026-10-27 [새 술어가 걷기 라우트를 세우지 않는다 — 이름 없는 결측은 날 낱말로, 결측 이름 표는 config 로](#2026-10-27--새-술어가-걷기-라우트를-세우지-않는다--이름-없는-결측은-날-낱말로-결측-이름-표는-config-로) — 적을 곳 config/gap_names.json(선택) · 보는 곳 GET /api/ledger/gaps 의 unnamed
@@ -627,6 +628,17 @@
 
 
 
+
+## 2026-10-27 · decide expand — 키 하나를 정해진 값 목록만큼 파생 행으로 펼친다
+
+- 무엇: 소유자 10-27(「하나의 키를 출력 테이블에 키+정해진 아이템 개수만큼 펼치고 싶을 때」 · 목록은 「정해놔야지」). decide 에 `expand` 를 적으면 판단키 하나가 «키 + 그 칸 = 값» 파생 행을 값마다 하나씩 짓는다. 새 종류가 아니라 decide 를 넓힌 것이다. 펼친 행을 AI 걷기로 채우는 것은 다음 일(e88e6d882 의 2 · 3).
+- 선언 예시 (`server/config/chain_rules.json`):
+  `"derive": {"kind": "decide", "decide": {"key": ["wafer"], "fields": ["value"], "expand": {"column": "item", "values": ["base", "leg 1", "leg 2"]}}}` — 파생 표의 `composite_key_source` 에 `item` 이 있어야 한다(예 `["wafer", "item"]`).
+- 거절: 꼴 틀림 「'expand' must be {"column": <derived column>, "values": [<value>, ...]}」 · 그 칸이 판단키나 fields 에 있음 · 파생 표에 없음 · 파생 표 정체성(composite_key_source)에 없음 「... a key's rows would be one row」 · 정렬 규칙 「expand on an alignment rule is not supported - its unit would become key × values」.
+- 목록을 바꾸면: 선언 저장만으로는 아무것도 안 돈다. 그 키가 다시 돌 때(원본 행 변경 · chain_replay) 목록 밖 값의 행은 거둬지고(사람이 채운 칸이 있는 행은 남음) 더한 값의 행이 선다. enrichment_backfill 은 새 행만 짓는다(RUN.md 10-27).
+- 필요한 조건: git pull · 서버 · 체인 워커 재기동(코드).
+- 바뀐 동작: expand 를 안 적은 선언은 없음.
+- 자세히: `server/chain_bindings.py` 의 `key_parts`(source · listed · row), `server/chain/enrichment/mapper.py` 의 `_expanded` · `_off_list`, `server/chain/enrichment/config.py` 의 `_expand`. 가이드 `docs/guide/chain_ingestion_guide.md` §4.1 · §4.2.
 
 ## 2026-10-27 · decide 의 key 와 list_columns 에 짝 — 파생 칸 이름과 원본 칸 이름이 다를 때
 

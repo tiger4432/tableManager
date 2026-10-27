@@ -1183,11 +1183,22 @@ def sdk_mapper_refusals(rule) -> list:
     return why
 
 
-#: The decide's key and list read their source columns through these two (10-27): a pair names the derived
-#: column and the source column apart; the validator (`chain.enrichment.config`) writes both cells.
+#: The decide's key and list read their source columns through these (10-27): a pair names the derived column and
+#: the source column apart; the validator (`chain.enrichment.config`) writes the cells.
+def key_parts(rule: dict) -> dict:
+    """A decide's key by where each part comes from: `source` [(derived column, source column)] - read off the source
+    row, in key order (`decision_key` is these derived names) - and `listed` [(derived column, values)] - no source
+    column, one derived row a value (`expand`, owner 10-27). `row`: the derived row's key columns, both."""
+    derived = list(rule.get("decision_key") or ())
+    source = list(zip(derived, rule.get("key_source") or derived))
+    expand = rule.get("expand")
+    listed = [(expand["column"], list(expand["values"]))] if expand else []
+    return {"source": source, "listed": listed, "row": derived + [column for column, _values in listed]}
+
+
 def key_source(rule: dict) -> list:
-    """The source columns a decide's key is read from, in key order - `decision_key` names the derived row's."""
-    return list(rule.get("key_source") or rule.get("decision_key") or ())
+    """The source columns a decide's key is read from, in key order - the listed part has none."""
+    return [read for _derived, read in key_parts(rule)["source"]]
 
 
 def list_source(rule: dict) -> dict:

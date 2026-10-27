@@ -593,7 +593,7 @@ def unknown_join_cells(internal: dict) -> list:
 #: them (판정 401): 「was it written」 is DERIVED from the key being present, the same way
 #: `enabled_written` is, and a cell for it would be a place to write that you wrote something.
 DECIDE_CELLS = ("key", "fields", "list_columns", "aggregations", "reference_views",
-                "auto_confirm", "alignment")
+                "auto_confirm", "alignment", "expand")
 
 
 def _value(hint="free"):
@@ -635,6 +635,8 @@ DECIDE_CELL_SHAPES = {
             ("candidate_for", _named("field", _value())))]}),
     "auto_confirm": _value("flag"),
     "alignment": _value("flag"),
+    "expand": {"kind": "record", "fields": [{"key": "column", "required": True, "node": _value()},
+                                            {"key": "values", "required": True, "node": _listed("value", _value())}]},
 }
 
 #: How a `decide` cell is spelled in the enrichment vocabulary the normalizer already reads.
