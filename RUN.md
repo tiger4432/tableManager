@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> ## [10-28] **리포트 글을 사람이 고치면 메모리에 남는다, 033aa0bc4** — git pull · 런처 재기동
+> ## [10-28] **리포트 글을 사람이 고치면 메모리에 남는다, bca2a6866** — git pull · 런처 재기동
 >
 > ```
 > 할 것    리포트 선언(derive.report)에 memory {table, columns} 와 prompts.memory {scope, limit} — ask 규칙과 같은 칸
@@ -9,7 +9,7 @@
 > 뜻      행이 안 생김 = 고친 칸이 results 의 text 칸이 아님(파일 경로 칸은 교정이 아님) 이거나 AI 값과 같음
 >          같은 값으로 되돌림 = 그 행이 걷힘
 > 끄기     리포트 선언에서 memory 를 지움 -> 반쪽 규칙이 사라짐
-> 되돌리기  git revert 033aa0bc4 -> 런처 재기동
+> 되돌리기  git revert bca2a6866 -> 런처 재기동
 > ```
 
 ---
