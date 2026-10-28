@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [AI 표를 원장에 — ai_model 세계 견본 · 모델링의 종류는 is_a](#2026-10-28--ai-표를-원장에--ai_model-세계-견본--모델링의-종류는-is_a) — 적을 곳 config/ontology_worlds/ai_model/ledger_config.json (견본 ai_model_world.ledger_config.json.sample)
 - 2026-10-28 [AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음](#2026-10-28--ai-가-사람-교정을-기억한다--deriveask-의-memory--리포트도-읽음) — 적을 곳 derive.ask · derive.report 의 memory · prompts.memory
 - 2026-10-28 [AI 스텝 맵핑 — 창 단위로 묻고, 같은 자리 공정의 답을 다시 쓴다 (derive.ask)](#2026-10-28--ai-스텝-맵핑--창-단위로-묻고-같은-자리-공정의-답을-다시-쓴다-deriveask) — 적을 곳 derive.ask 의 window · items · reuse · output.line/item
 - 2026-10-28 [AI 가 표를 채우는 체인 규칙 — derive kind ask (모델링 구조 인식)](#2026-10-28--ai-가-표를-채우는-체인-규칙--derive-kind-ask-모델링-구조-인식) — 적을 곳 chain_rules 의 derive.ask · 보는 곳 chain_worker.log «[ChainRule] … asked»
@@ -638,6 +639,13 @@
 
 
 
+
+## 2026-10-28 · AI 표를 원장에 — ai_model 세계 견본 · 모델링의 종류는 is_a
+
+- **무엇** — 지시서 10-27 A-4. AI 가 채운 구조 표 · 맵핑 표를 읽는 소스 둘을 ai_model 세계 견본에 적었습니다. 공용 타입(process_step · quantity · physical_*)은 imports 로 기본 세계 것을 가리켜 두 세계에서 같은 노드입니다. AI 가 «공용 없음»이라 답한 행은 is_a 문장만 안 합니다(매핑의 when, 코드 0).
+- **바뀐 동작** — 기본 견본에서 product_structure 와 술어 part_of · acts_on · describes 가 ai_model 세계 견본으로 옮겨 갔습니다. 지시서의 «of_kind(넓힘)»은 is_a 로 대신합니다 — of_kind 는 기본 세계의 결함 → 결함 종류로 되돌렸습니다(이름 하나에 정의 하나). 리포트 causes.values.follow 예시는 is_a, causes.worlds 는 두 세계입니다.
+- **필요한 조건** — 견본을 config/ontology_worlds/ai_model/ledger_config.json 으로 복사 · table_config 에 구조 · 맵핑 표 · 그 세계 번역.
+- **자세히** — docs/guide/ai_ask_tables.md 의 «AI 표를 원장에 — ai_model 세계».
 
 ## 2026-10-28 · AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음
 

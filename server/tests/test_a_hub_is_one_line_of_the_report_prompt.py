@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 """The AI report's prompt and a hub (소유자 10-27 «허브 노드 거쳐 버리면 AI 컨텍스트 꽉 찰 텐데», B probe 51ec2fa68): one report
 run - the walk route's own function over an in-memory ledger on the committed sample's declaration, the model a
-stand-in - with a hub of 500 product structures of_kind one physical object, each described by a quantity.
+stand-in - with a hub of 500 product structures is_a one physical object, each described by a quantity.
 
   one line     `causes.fanout_limit` folds the step: the hub is one line of the prompt (the walk card's line),
                never a candidate, said once; without it the members fill the prompt (the probe: 50,971 characters)
   own tables   the report's own tables (conditions · pareto) are cut last - a narrowed budget cuts the walk's rows first
   said         a cut is said in the prompt, rows kept of rows read
 """
-import json
-import os
 import uuid
 from datetime import datetime, timezone
 
@@ -18,8 +16,8 @@ import pytest
 from chain import report_loop, report_reads, report_shape
 from ledger import trace_router
 from ledger_api import ledger_subgraph
+from support import declaration
 
-SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample", "ledger_config.json.sample")
 NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
 MEMBERS = 500
 
@@ -33,7 +31,7 @@ def _atom(n, subject_type, subject_keys, predicate, object_type, object_keys):
 
 
 def _atoms(members=MEMBERS):
-    """void <-leads_to- wetting -describes-> PA/M2 -of_kind-> via, and `members` more structures of_kind via, each
+    """void <-leads_to- wetting -describes-> PA/M2 -is_a-> via, and `members` more structures is_a via, each
     described by a quantity of its own."""
     n, atoms = [0], []
 
@@ -43,11 +41,11 @@ def _atoms(members=MEMBERS):
 
     add("quantity", {"quantity": "wetting"}, "leads_to", "defect_kind", {"defect_kind": "void"})
     add("quantity", {"quantity": "wetting"}, "describes", "product_structure", {"product": "PA", "structure": "M2"})
-    add("product_structure", {"product": "PA", "structure": "M2"}, "of_kind", "physical_object",
+    add("product_structure", {"product": "PA", "structure": "M2"}, "is_a", "physical_object",
         {"physical_object": "via"})
     for i in range(members):
         structure = {"product": "P%03d" % i, "structure": "M2"}
-        add("product_structure", structure, "of_kind", "physical_object", {"physical_object": "via"})
+        add("product_structure", structure, "is_a", "physical_object", {"physical_object": "via"})
         add("quantity", {"quantity": "P%03d-THK" % i}, "describes", "product_structure", structure)
     return atoms
 
@@ -55,7 +53,7 @@ def _atoms(members=MEMBERS):
 @pytest.fixture
 def ledger(monkeypatch):
     atoms = _atoms()
-    sample = json.load(open(SAMPLE, encoding="utf-8"))
+    sample = declaration.committed_walk_declaration()
     monkeypatch.setattr(trace_router, "_declaration", lambda world=None: sample)
     monkeypatch.setattr(trace_router.trace, "relation_exists", lambda *a, **k: True)
     monkeypatch.setattr(trace_router, "_subgraph_contract_state", lambda *a, **k: [])
@@ -115,7 +113,7 @@ def _clock():
     return tick
 
 
-CAUSES = {"seed_type": "defect_kind", "follow": ["leads_to", "describes", "of_kind"], "collect": ["quantity"]}
+CAUSES = {"seed_type": "defect_kind", "follow": ["leads_to", "describes", "is_a"], "collect": ["quantity"]}
 
 
 def _run(causes, tokens=16000):
@@ -134,7 +132,7 @@ def test_a_hub_is_one_line_never_a_candidate_and_the_tables_stand(ledger):
     hub_lines = [line for line in write.splitlines() if line.startswith("- hub: ")]
     assert len(hub_lines) == 1, hub_lines
     # the 500 structures past the first 20 walk on as a set; their quantities past the first 20 are the hub
-    assert "from: product_structure via of_kind; " in hub_lines[0], hub_lines
+    assert "from: product_structure via is_a; " in hub_lines[0], hub_lines
     assert "far_type: quantity; count: %d; " % (MEMBERS - 20 - 20) in hub_lines[0], hub_lines
     walked = next(step for step in folded["steps"] if step["call"].startswith("causes("))
     assert walked["read"].count(hub_lines[0]) == 1 and not any(line.startswith("- hub: ") for line in walked["read"][

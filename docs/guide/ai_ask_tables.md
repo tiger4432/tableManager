@@ -57,6 +57,27 @@
 남는 것     AI 가 나중에 사람 값과 같은 답을 내게 돼도 교정 줄은 남습니다 — 지우려면 메모리 행을 지웁니다
 ```
 
+## AI 표를 원장에 — ai_model 세계 (A-4)
+
+운영에서는 `server/config/sample/ai_model_world.ledger_config.json.sample` 을 `config/ontology_worlds/ai_model/ledger_config.json` 으로 복사하고, 소스 둘의 `relation` 을 구조 표 · 맵핑 표 이름으로 고치면 됩니다.
+
+| 문장 | 읽는 칸 |
+|---|---|
+| 구조 `part_of` 부모 구조 | 구조 표의 제품 · 구조 · 부모 |
+| 구조 `is_a` physical_object | 구조 표의 종류 칸 |
+| 스텝 `acts_on` 구조 | 맵핑 표의 제품 · 스텝 · 작용 구조 |
+| 스텝 `is_a` physical_process | 맵핑 표의 공정 종류 칸 |
+| 계측 항목 `describes` 구조 | 맵핑 표의 아이템 · 작용 구조 |
+
+```
+imports    process_step · quantity · physical_object/process/quantity 는 기본 세계 것을 가리킵니다 — 키가 한 곳, 노드가 하나
+           product_structure 와 술어 넷(part_of · acts_on · describes · is_a)은 이 세계 것입니다
+공용 없음   is_a 문장의 "when": {"<종류 칸>": {"not": "<common.none 낱말>"}} — 그 문장만 안 하고, 같은 행의 다른 문장은 섭니다
+           화면(출력 표)에는 «공용 없음» 낱말이 그대로 남습니다
+of_kind    기본 세계의 결함 → 결함 종류만입니다. 모델링의 «무엇의 한 종류»는 is_a 입니다
+```
+리포트의 모델 걷기는 `causes.worlds` 에 두 세계(`["default", "ai_model"]`)를 적고 `causes.values.follow` 에 `is_a` 를 적습니다(docs/guide/ai_report_tables.md).
+
 ## 동작
 
 ```

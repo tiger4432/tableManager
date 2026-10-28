@@ -156,18 +156,12 @@
     "of_kind@1": {
       "status": "active",
       "subjects": [
-        "defect@1",
-        "product_structure@1",
-        "process_step@1",
-        "quantity@1"
+        "defect@1"
       ],
       "object": {
         "kind": "entity_ref",
         "types": [
-          "defect_kind@1",
-          "physical_object@1",
-          "physical_process@1",
-          "physical_quantity@1"
+          "defect_kind@1"
         ],
         "qualifiers": {
           "required": [],
@@ -282,54 +276,6 @@
         }
       }
     },
-    "part_of@1": {
-      "status": "active",
-      "subjects": [
-        "product_structure@1"
-      ],
-      "object": {
-        "kind": "entity_ref",
-        "types": [
-          "product_structure@1"
-        ],
-        "qualifiers": {
-          "required": [],
-          "optional": []
-        }
-      }
-    },
-    "acts_on@1": {
-      "status": "active",
-      "subjects": [
-        "process_step@1"
-      ],
-      "object": {
-        "kind": "entity_ref",
-        "types": [
-          "product_structure@1"
-        ],
-        "qualifiers": {
-          "required": [],
-          "optional": []
-        }
-      }
-    },
-    "describes@1": {
-      "status": "active",
-      "subjects": [
-        "quantity@1"
-      ],
-      "object": {
-        "kind": "entity_ref",
-        "types": [
-          "product_structure@1"
-        ],
-        "qualifiers": {
-          "required": [],
-          "optional": []
-        }
-      }
-    },
     "processed_at@1": {
       "status": "active",
       "subjects": [
@@ -426,13 +372,6 @@
         "lot",
         "slot"
       ]
-    },
-    "product_structure@1": {
-      "keys": [
-        "product",
-        "structure"
-      ],
-      "class": "static"
     },
     "process_step@1": {
       "keys": [

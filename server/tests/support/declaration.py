@@ -1,12 +1,34 @@
 """A test that reads the operating declaration reads the one the repository ships - config/sample's ledger declaration
 and the table catalogue it is checked against - from a config root of its own, not the box's gitignored files
 (총괄 568388892 ③: on a fresh checkout those tests answered 503, and a real defect hid among them)."""
+import copy
+import json
 import os
 import shutil
 
 import paths
 
 SAMPLE = os.path.join(paths.SERVER_DIR, "config", "sample")
+#: the ai_model world the operator copies to config/ontology_worlds/ai_model/ledger_config.json (lead 10-28 A-4)
+AI_MODEL_WORLD = os.path.join(SAMPLE, "ai_model_world.ledger_config.json.sample")
+
+
+def committed_worlds():
+    """{world: declaration} - the default sample and the ai_model sample world, as written."""
+    def read(path):
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    return {"default": read(os.path.join(SAMPLE, "ledger_config.json.sample")), "ai_model": read(AI_MODEL_WORLD)}
+
+
+def committed_walk_declaration():
+    """What a walk over both sample worlds declares: the default's, with the ai_model world's own types and
+    predicates beside it (its imported types are the default's)."""
+    worlds = committed_worlds()
+    out = copy.deepcopy(worlds["default"])
+    for cell in ("entities", "vocabulary"):
+        out[cell].update(worlds["ai_model"][cell])
+    return out
 
 
 def use_committed_declaration(monkeypatch, tmp_path):

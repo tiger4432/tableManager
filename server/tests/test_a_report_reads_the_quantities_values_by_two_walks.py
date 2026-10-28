@@ -14,9 +14,6 @@ the measured values of the quantities the model walk reaches, per wafer, as cond
 The route is the walk route's own function in process over an in-memory ledger; the declaration is the committed
 sample's (the names A's modeling writes), so a name this file spells and the sample does not is red here.
 """
-import io
-import json
-import os
 import uuid
 from datetime import datetime, timezone
 
@@ -25,17 +22,16 @@ import pytest
 from chain import report_loop, report_reads, report_shape
 from ledger import explorer, trace_router
 from ledger_api import ledger_subgraph
+from support import declaration
 
-SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample", "ledger_config.json.sample")
 NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
-VALUES = {"follow": ["of_kind", "describes", "acts_on"], "value": "measures:value",
+VALUES = {"follow": ["is_a", "describes", "acts_on"], "value": "measures:value",
           "event": "processed_at:tx_id", "order": ["measured_at", "step_seq"]}
 CAUSES = {"seed_type": "defect_kind", "values": VALUES}
 
 
 def _sample():
-    with io.open(SAMPLE, encoding="utf-8") as handle:
-        return json.load(handle)
+    return declaration.committed_walk_declaration()
 
 
 def _atom(n, subject_type, subject_keys, predicate, object_type, object_keys, **qualifiers):
@@ -57,7 +53,7 @@ THK, CD, THK_B = {"quantity": "PA40-THK"}, {"quantity": "PA60-CD"}, {"quantity":
 
 
 def _model():
-    """via <-of_kind- the structure of PA and of PB; PA's THK measured at 40 and CD at 60, steps 20 · 30 · 50 acting on
+    """via <-is_a- the structure of PA and of PB; PA's THK measured at 40 and CD at 60, steps 20 · 30 · 50 acting on
     PA's structure (30 is the one just before 40); PB's THK at PB 40 with PB 30 acting - no wafer here is PB's."""
     n, atoms = [0], []
 
@@ -66,7 +62,7 @@ def _model():
         atoms.append(_atom(n[0], *args, **qualifiers))
 
     for structure in (S_PA, S_PB):
-        add("product_structure", structure, "of_kind", "physical_object", {"physical_object": "via"})
+        add("product_structure", structure, "is_a", "physical_object", {"physical_object": "via"})
     for quantity, structure, at in ((THK, S_PA, _step("PA", 40)), (CD, S_PA, _step("PA", 60)),
                                     (THK_B, S_PB, _step("PB", 40))):
         add("quantity", quantity, "describes", "product_structure", structure)
@@ -184,7 +180,7 @@ def test_two_walks_one_from_the_candidates_one_from_every_wafer(ledger):
     cells = [cell for cell, _asked in ledger["walks"]]
     assert cells == ["derive.report.causes.values.follow", "derive.report.causes.values"], cells
     model, wafers = ledger["walks"][0][1], ledger["walks"][1][1]
-    assert (model["node_id"], model["follow"]) == (VIA, ["of_kind", "describes", "acts_on", "measured_at"])
+    assert (model["node_id"], model["follow"]) == (VIA, ["is_a", "describes", "acts_on", "measured_at"])
     seeds = [wafers["node_id"]] + list(wafers["positive"] or ())
     assert seeds == [explorer.entity_id("wafer", {"wafer": w}) for w in ("W1", "W2", "W3", "W0")]
     assert wafers["follow"] == ["measures", "processed_at:tx_id"] and wafers["hops"] == 3
@@ -206,7 +202,7 @@ def test_a_hub_a_walk_folds_is_opened_so_every_value_is_the_same(ledger, monkeyp
     plain = Reads()
     said = plain.values(CANDIDATES)
     sample = _sample()
-    sample["vocabulary"][hub + "@1"]["hub"] = True
+    next(v for n, v in sample["vocabulary"].items() if n.split("@")[0] == hub)["hub"] = True
     monkeypatch.setattr(trace_router, "_declaration", lambda world=None: sample)
     ledger["walks"].clear()
     folded = Reads()
@@ -215,7 +211,7 @@ def test_a_hub_a_walk_folds_is_opened_so_every_value_is_the_same(ledger, monkeyp
 
 
 @pytest.mark.parametrize("values, said", [
-    (dict(VALUES, follow=["of_kind", "nope"]), "names nope - not a predicate the ledger declares"),
+    (dict(VALUES, follow=["is_a", "nope"]), "names nope - not a predicate the ledger declares"),
     (dict(VALUES, event="processed_at:lot"), "lot is not a qualifier of processed_at (declared: tx_id)"),
     (dict(VALUES, value="measures:weight"), "weight is not a qualifier of measures"),
     (dict(VALUES, order=["measured_at", "seq"]), "seq is not a key of measured_at's step (process_step)"),

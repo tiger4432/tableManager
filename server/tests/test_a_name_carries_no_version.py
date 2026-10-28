@@ -108,7 +108,7 @@ def test_the_routes_that_answered_with_a_version_answer_bare(config):
     # the sample's modeling vocabulary is not named by the table: asked in its own words (owner 10-27)
     unnamed = [g["name"] for g in gaps["gaps"] if g.get("unnamed")]
     assert gaps["unnamed"] == len(unnamed) > 0 and all(n.endswith(" (no name)") for n in unnamed)
-    assert "acts_on · product_structure (no name)" in unnamed
+    assert "measured_at · quantity (no name)" in unnamed
     assert gaps["unused"] == 0
 
 

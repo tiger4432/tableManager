@@ -1504,5 +1504,34 @@
       "argument",
       "instruction"
     ]
+  },
+  "ai_structure": {
+    "__comment": "AI structure recognition (derive.ask, docs/guide/ai_ask_tables.md): one row a structure of a product - read into the ai_model world",
+    "composite_key_source": [
+      "product",
+      "structure"
+    ],
+    "column_types": {
+      "product": "string",
+      "structure": "string",
+      "parent": "string",
+      "kind": "string"
+    }
+  },
+  "ai_step_map": {
+    "__comment": "AI step mapping (derive.ask): one row a step, or a step's measured item - read into the ai_model world",
+    "composite_key_source": [
+      "product",
+      "step_seq",
+      "item_id"
+    ],
+    "column_types": {
+      "product": "string",
+      "step_seq": "string",
+      "item_id": "string",
+      "process_kind": "string",
+      "acts_on": "string",
+      "item_desc": "string"
+    }
   }
 }

@@ -1,0 +1,286 @@
+{
+  "setup_version": 6,
+  "imports": {
+    "default": {
+      "entities": [
+        "process_step",
+        "quantity",
+        "physical_object",
+        "physical_process",
+        "physical_quantity"
+      ]
+    }
+  },
+  "vocabulary": {
+    "part_of": {
+      "status": "active",
+      "subjects": [
+        "product_structure"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "product_structure"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "acts_on": {
+      "status": "active",
+      "subjects": [
+        "process_step"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "product_structure"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "describes": {
+      "status": "active",
+      "subjects": [
+        "quantity"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "product_structure"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "is_a": {
+      "status": "active",
+      "subjects": [
+        "product_structure",
+        "process_step",
+        "quantity"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "physical_object",
+          "physical_process",
+          "physical_quantity"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    }
+  },
+  "entities": {
+    "product_structure": {
+      "keys": [
+        "product",
+        "structure"
+      ],
+      "class": "static"
+    }
+  },
+  "sources": {
+    "ai_structure": {
+      "relation": "ai_structure",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "mappings": {
+          "structure-part-of": {
+            "predicate": "part_of",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "product_structure",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "structure": {
+                    "kind": "column",
+                    "column": "structure"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "product_structure",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "structure": {
+                    "kind": "column",
+                    "column": "parent"
+                  }
+                }
+              }
+            }
+          },
+          "structure-is-a": {
+            "predicate": "is_a",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "product_structure",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "structure": {
+                    "kind": "column",
+                    "column": "structure"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "physical_object",
+                "keys": {
+                  "physical_object": {
+                    "kind": "column",
+                    "column": "kind"
+                  }
+                }
+              }
+            },
+            "when": {
+              "kind": {
+                "not": "no common"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ai_step_map": {
+      "relation": "ai_step_map",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "mappings": {
+          "step-acts-on": {
+            "predicate": "acts_on",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "process_step",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "step_seq": {
+                    "kind": "column",
+                    "column": "step_seq"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "product_structure",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "structure": {
+                    "kind": "column",
+                    "column": "acts_on"
+                  }
+                }
+              }
+            }
+          },
+          "step-is-a": {
+            "predicate": "is_a",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "process_step",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "step_seq": {
+                    "kind": "column",
+                    "column": "step_seq"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "physical_process",
+                "keys": {
+                  "physical_process": {
+                    "kind": "column",
+                    "column": "process_kind"
+                  }
+                }
+              }
+            },
+            "when": {
+              "process_kind": {
+                "not": "no common"
+              }
+            }
+          },
+          "quantity-describes": {
+            "predicate": "describes",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "quantity",
+                "keys": {
+                  "quantity": {
+                    "kind": "column",
+                    "column": "item_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "product_structure",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "structure": {
+                    "kind": "column",
+                    "column": "acts_on"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
