@@ -655,6 +655,10 @@
 
 
 
+## 2026-10-29 · 고침 — 선언만 되고 아직 안 지어진 세계의 원장 펼친 보기는 500 대신 이름으로 거절
+
+- **바뀐 동작** — 세계를 파일로 선언만 하고 그 세계의 스키마 · 뷰가 아직 없을 때, 그리드에서 그 세계의 원장 펼친 보기(ledger_atom_rows)를 열면 매번 500 «Internal Server Error» 였습니다. 이제 409 와 문장 «ledger world '<이름>' is declared but not built yet - activate a declaration of it in the ontology explorer, or run its backfill» — 화면은 이 문장을 그대로 띄웁니다. 선언 안 된 세계는 그대로 404 world_unknown, 다른 표는 세계와 무관하게 그대로.
+- **필요한 조건** — git pull · 런처 재기동.
 ## 2026-10-29 · 표 스키마가 그 표의 수식을 말한다 — 그리드 칸 머리 fx 표지의 출처
 
 - 무엇: `GET /tables/<표>/schema` 답에 `"formulas": {"c": "=[a]+[b]*3"}` — 그 표에서 이 서버가 지금 돌리는 수식(켜짐 · 거절 안 됨)만, 없으면 칸이 없다. 클라 칸 머리 fx 표지가 이것을 읽는다.

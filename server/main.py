@@ -2462,10 +2462,14 @@ def grid_model(table_name, world=None):
     world that is not declared is refused by name (404)."""
     from sqlalchemy import MetaData
     from sqlalchemy.orm import registry
+    from database.database import engine
     from ledger import schema as ledger_schema
 
     try:
-        relation = ledger_schema.world_relation(table_name, world or None)
+        relation = ledger_schema.world_relation(table_name, world or None, bind=engine)
+    except ledger_schema.WorldNotBuilt as exc:
+        raise HTTPException(status_code=409, detail={
+            "reason": "world_not_built", "world": world, "message": str(exc)})
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=404, detail={
             "reason": "world_unknown", "world": world, "message": str(exc)})

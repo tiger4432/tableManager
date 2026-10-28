@@ -426,12 +426,33 @@ def atom_rows_view_name(names: WorldNames) -> str:
     return f"{names.schema}.{ATOM_ROWS_VIEW}" if names.schema else ATOM_ROWS_VIEW
 
 
-def world_relation(table: str, world: str | None = None) -> str:
+class WorldNotBuilt(LookupError):
+    """A declared branch whose atom view is not made yet - refused by name as an undeclared one is (lead 10-29)."""
+
+
+#: What makes a declared branch's schema and view (`ensure_world`'s callers) - the next thing to do.
+WORLD_BUILT_BY = "activate a declaration of it in the ontology explorer, or run its backfill"
+
+
+def world_relation(table: str, world: str | None = None, bind=None) -> str:
     """The relation the grid reads `table` through in `world` - the operating one when none is
     named (총괄 2bb20ff56). Each world has its own ledger atom view; every other table is the one
-    table. A world named and not declared is refused by name, never folded to the default."""
+    table. A world named and not declared is refused by name, never folded to the default; with `bind`,
+    a branch declared whose view is not there yet too (`WorldNotBuilt`) - it read as a 500 (lead 10-29)."""
     names = require_world(world) if world or table == ATOM_ROWS_VIEW else None
-    return atom_rows_view_name(names) if table == ATOM_ROWS_VIEW else table
+    if table != ATOM_ROWS_VIEW:
+        return table
+    relation = atom_rows_view_name(names)
+    if names.schema and bind is not None:
+        connection = bind.raw_connection()
+        try:
+            with connection.cursor() as cursor:
+                there = _relation_exists(cursor, relation)
+        finally:
+            connection.close()
+        if not there:
+            raise WorldNotBuilt(f"ledger world {names.world!r} is declared but not built yet - {WORLD_BUILT_BY}")
+    return relation
 
 
 #: A ledger's columns by name, as the walk reads them - every world's table has them.

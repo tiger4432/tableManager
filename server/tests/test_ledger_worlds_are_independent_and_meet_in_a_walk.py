@@ -796,6 +796,31 @@ def test_the_grid_reads_the_atom_view_of_the_world_it_names(world):
     assert (listed["operating"], A in listed["worlds"], listed["per_world"]) == (A, True, [VIEW])
 
 
+@pytest.mark.pg
+def test_a_world_declared_and_not_built_is_refused_by_name_not_a_500(world):
+    """Lead 10-29 (ai_model set up by a file): the grid's atom view of a branch declared whose schema is not made was
+    a 500 «Internal Server Error» on every read. Refused by name beside world_unknown, until it is built."""
+    import main
+    from fastapi import HTTPException
+
+    _seed(world)
+    _make(world, A, _only(CHANGED), CHANGED)
+    db = world["db"]
+    with world["engine"].begin() as conn:
+        conn.execute(text("DROP VIEW w_%s.%s" % (A, VIEW)))
+    for read in (lambda: main.get_table_data(VIEW, order_by="atom_id", world=A, db=db),
+                 lambda: main.get_table_data_count(VIEW, world=A, db=db)):
+        with pytest.raises(HTTPException) as refused:
+            read()
+        assert refused.value.status_code == 409 and refused.value.detail == {
+            "reason": "world_not_built", "world": A,
+            "message": "ledger world %r is declared but not built yet - %s" % (A, schema.WORLD_BUILT_BY)}
+    assert schema.world_relation(CHANGED, A, bind=world["engine"]) == CHANGED, "another table is the one table"
+    schema._ensured.discard("w_" + A)       # made in this process already, and the memo asks only for the ledger
+    schema.ensure_world(world["engine"], schema.world_names(A))           # what activating or a backfill does
+    assert json.loads(main.get_table_data(VIEW, order_by="atom_id", world=A, db=db).body)["table_name"] == VIEW
+
+
 # ------------------------------------------------- a declaration that does not compile (총괄 558a46ef1 · 6c6ccad8f)
 
 GONE = "no_such_relation"
