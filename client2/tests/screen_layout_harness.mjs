@@ -1113,6 +1113,24 @@ CELLS.push({ entry: 'admin.html', after: 'Ontology Explorer, an imported node', 
   const list = box && box.list ? [...box.list.options].map((o) => o.value) : [];
   return list.join('|') === 'default|lab' ? null : 'the new name is offered ' + JSON.stringify(list);
 })()` });
+// lead 10-28: the Chain table's header is admin.html's and its cells are admin.js's - each header's column holds that
+// header's cells, and every rule's state badge is inside the box when the tab opens (it was past it at every size).
+CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'chain columns', at: 'chain-list-body', expr: `(() => {
+  const table = document.querySelector('#chain-list-body').closest('table');
+  const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+  const mark = { 'Rule / Mapper': '.chain-rule-name', 'Data Flow': '.chain-flow', 'State': '.chain-state' };
+  const rows = [...document.querySelectorAll('#chain-list-body tr')];
+  if (!rows.length) return 'no rule rows';
+  for (const tr of rows) for (const [head, sel] of Object.entries(mark)) {
+    const cell = tr.children[heads.indexOf(head)];
+    if (!cell || !cell.querySelector(sel)) return 'the «' + head + '» column of ' + tr.dataset.name + ' holds no ' + sel;
+  }
+  const box = table.closest('.section-body');
+  box.scrollLeft = 0;
+  const right = box.getBoundingClientRect().right;
+  const out = rows.find((tr) => tr.querySelector('.chain-state .badge').getBoundingClientRect().right > right + 0.5);
+  return out ? 'the state badge of ' + out.dataset.name + ' is past the box when the tab opens' : null;
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'reason whole', at: 'fail-summary__reason', expr: `(() => {
   const want = ${JSON.stringify(TIMEOUT)};
   const line = [...document.querySelectorAll('#chain-fail-summary-mount .fail-summary__reason')];
@@ -2915,6 +2933,9 @@ console.log(`screens: ${entries.length} entries x ${SIZES.length} sizes in ${Mat
 // The five that leaked on 10-08/09, each built back into a temp folder (the source is not touched) and opened on its
 // screen: its line must turn red. A find that is no longer in the file is an error, not an escape.
 const MUTANTS = [
+  { name: 'the Chain table\'s State header back at the end while its cells stay second', entry: 'admin.html', rule: 'chain columns',
+    at: 'chain-list-body', file: 'admin.html', edits: [['<th style="width: 105px; text-align: center;">State</th>', ''],
+      ['<th style="width: 190px;">Write Policy</th>', '<th style="width: 190px;">Write Policy</th><th style="width: 105px; text-align: center;">State</th>']] },
   { name: 'the progress row\'s buttons in a flex cell again, over the Last sweep sentence', entry: 'file_ingestion.html', rule: 'cover', at: 'fi-progress',
     file: 'src/file_ingestion/file_ingestion.css', edits: [['.fi-progress__acts { display: flex;', 'td:has(> .fi-progress__acts) { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }\n.fi-progress__acts { display: flex;']] },
   { name: 'a read progress source with nothing left not dimmed', entry: 'file_ingestion.html', rule: 'read progress', at: 'fi-progress',

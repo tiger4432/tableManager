@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **체인 탭 State 칸이 둘째로** — git pull · 화면 새로 고침, 명령 없음
+>
+> ```
+> 볼 곳     어드민 Chain 탭 규칙 표 — Kind 다음 칸
+> 뜻       Kind · State · Rule / Mapper … 순서 = 새 번들. 탭을 열자마자 running / declared_only 배지가 보임
+>          State 가 맨 끝 = 옛 번들 -> 강력 새로 고침
+> 되돌리기  git revert $(git log --format=%h -i --grep='the State column is the second' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-28] **체인 탭 규칙 상태 배지 = 서버 rule_state** — git pull · 화면 새로 고침, 명령 없음
 >
 > ```

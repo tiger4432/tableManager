@@ -1995,6 +1995,7 @@ function renderChainTable() {
 
     row.innerHTML = `
       <td>${escapeHtml(rule.kind || ABSENT)}</td>
+      <td class="cell-fit"><div class="chain-state">${stateBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
       <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div>${stateDetail}</td>
       <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
       <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
@@ -2003,7 +2004,6 @@ function renderChainTable() {
         rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
         !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
       ].join('')}</div></td>
-      <td class="cell-fit"><div class="chain-state">${stateBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
     `;
 
     row.addEventListener('click', () => {
