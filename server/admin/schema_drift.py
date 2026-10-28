@@ -196,7 +196,7 @@ def _declared():
         import database.models as _models  # noqa: F401  (registers mappings onto Base)
         _register_dynamic_models(_models)
         return {name: {c.name: c for c in table.columns}
-                for name, table in Base.metadata.tables.items()}
+                for metadata in (Base.metadata, _models.VIEW_METADATA) for name, table in metadata.tables.items()}
     finally:
         if not already_imported:
             if prior_testing is None:

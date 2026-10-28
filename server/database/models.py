@@ -1285,8 +1285,13 @@ if not hasattr(sys, "_dynamic_tables_singleton"):
     sys._dynamic_tables_singleton = {}
 DYNAMIC_TABLES = sys._dynamic_tables_singleton
 
+from sqlalchemy import MetaData
 from sqlalchemy.orm import column_property, registry
 mapper_registry = registry()
+#: The relations a catalogue declares `kind: view`: mapped, never built - `Base.metadata.create_all` (setup, boot)
+#: does not see them, so a name the ledger builds (ledger_events, ledger_atom_rows) is not made a plain table first
+#: (총괄 10-28, C's box: «character varying ->>»).
+VIEW_METADATA = MetaData()
 
 
 def _mapped(column):
@@ -1610,9 +1615,12 @@ def init_dynamic_models(config_dict: dict, engine=None):
         table_args = tuple(table_args)
 
         # 4. Table 객체 동적 생성 및 metadata 등록
+        held, other = (VIEW_METADATA, Base.metadata) if is_view else (Base.metadata, VIEW_METADATA)
+        if table_name in other.tables:                  # a kind that changed on a reload
+            other.remove(other.tables[table_name])
         table_obj = Table(
             table_name,
-            Base.metadata,
+            held,
             *columns,
             *table_args,
             extend_existing=True
@@ -1791,9 +1799,12 @@ def create_missing_dynamic_tables(engine):
             print(f"[Schema Sync] Failed to inspect database for missing tables: {told(err)}")
             return created
 
+        from database import crud
+        from ledger.setup_bundle import catalog_kind
+
         for table_name, model_class in list(DYNAMIC_TABLES.items()):
             try:
-                if inspector.has_table(table_name):
+                if inspector.has_table(table_name) or catalog_kind(crud.TABLE_CONFIG.get(table_name) or {}) == "view":
                     continue
                 Base.metadata.create_all(
                     bind=engine, tables=[model_class.__table__], checkfirst=True

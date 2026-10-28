@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **카탈로그의 kind: view 는 제품이 표로 짓지 않는다 — 새 DB 에서 원장 표 · 원장 뷰가 일반 표로 먼저 서던 것** — 서버 · 체인 워커 재기동 뒤
+>
+> ```
+> 무엇     table_config 의 "kind": "view" 관계(견본: ledger_events · ledger_atom_rows)를 setup/init_db.py · 서버 부팅이
+>          일반 varchar 표로 먼저 지었다 -> 원장이 «있다»며 건너뜀 -> «연산자 없음: character varying ->>» · 빈 펼친 원장 보기
+>          이제 view 관계는 짓지 않는다(그리드는 그대로 읽는다)
+> 확인     SELECT relname, relkind FROM pg_class WHERE relname IN ('ledger_events', 'ledger_atom_rows')
+>              AND relnamespace = current_schema()::regnamespace;
+>          ledger_events 'p' · ledger_atom_rows 'v' = 정상
+>          ledger_events 'r' = 카탈로그가 지은 일반 표가 원장 자리에 있음 · ledger_atom_rows 'r' = 뷰 자리에 표
+> 보는 줄   chain_worker.log 등 원장을 준비하는 프로세스에 이름마다 · 프로세스마다 한 번
+>          «ledger_events: a table stands where the ledger's partitioned table belongs - it is not built»
+>          «ledger_atom_rows: a table stands where the ledger's view belongs - it is not built»
+> 사람이 할 고침  (제품은 지우지 않는다) 그 표가 비었는지 먼저 본다:  SELECT count(*) FROM <그 이름>;
+>          ledger_atom_rows 가 0 행이면  DROP TABLE ledger_atom_rows;  뒤 체인 워커 재기동 -> 원장이 뷰를 짓는다('v')
+>          ledger_events 가 0 행이면  DROP TABLE ledger_events;  뒤 재기동 -> 원장 표가 'p' 로, 뷰도 'v' 로 선다
+>          0 이 아니면 지우지 말고 총괄에게
+> ```
+>
+> ---
+>
 > ## [10-28] **AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음 (A-3), 4c114d2e1** — git pull · 런처 재기동
 >
 > ```

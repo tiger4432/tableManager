@@ -222,7 +222,8 @@ def _the_model_registries_come_back():
     from database import models
 
     before_models = dict(models.DYNAMIC_TABLES)
-    before_tables = set(Base.metadata.tables)
+    held = (Base.metadata, models.VIEW_METADATA)          # a `kind: view` is mapped in the second
+    before_tables = [set(metadata.tables) for metadata in held]
     try:
         yield
     finally:
@@ -233,10 +234,9 @@ def _the_model_registries_come_back():
         for name, model in before_models.items():
             if models.DYNAMIC_TABLES.get(name) is not model:
                 models.DYNAMIC_TABLES[name] = model
-        for key in [k for k in list(Base.metadata.tables) if k not in before_tables]:
-            table = Base.metadata.tables.get(key)
-            if table is not None:
-                Base.metadata.remove(table)
+        for metadata, before in zip(held, before_tables):
+            for key in [k for k in list(metadata.tables) if k not in before]:
+                metadata.remove(metadata.tables[key])
 
 
 # ===========================================================================
@@ -354,9 +354,9 @@ def retire_dynamic_model(name):
     from database import models
 
     model = models.DYNAMIC_TABLES.pop(name, None)
-    table = Base.metadata.tables.get(name)
-    if table is not None:
-        Base.metadata.remove(table)
+    for metadata in (Base.metadata, models.VIEW_METADATA):     # a `kind: view` is mapped in the second
+        if name in metadata.tables:
+            metadata.remove(metadata.tables[name])
     return model
 
 

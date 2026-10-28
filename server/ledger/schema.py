@@ -1105,6 +1105,30 @@ def set_partitions_autoanalyze(connection):
     return done
 
 
+#: pg_class relkind, in the words a line says it.
+_KIND_WORDS = {"r": "table", "p": "partitioned table", "v": "view", "m": "materialized view", "f": "foreign table"}
+#: The names said, once a process (`ensure_schema` runs at every start and backfill).
+_SAID_ANOTHER_KIND = set()
+
+
+def _built_kinds(names) -> tuple:
+    """(relation, the relkind the ledger builds it as) - the relations a grid catalogue may declare too."""
+    return (names.ledger, "p"), (atom_rows_view_name(names), "v")
+
+
+def _say_another_kind(cursor, names):
+    """A relation stands where the ledger builds one and it is another kind - a plain table a grid catalogue's
+    `kind: view` built before the ledger was (총괄 10-28): `CREATE … IF NOT EXISTS` and the view's gate step over it.
+    Said once a process, never dropped: a person drops it (RUN.md)."""
+    for name, kind in _built_kinds(names):
+        cursor.execute("SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)", (name,))
+        row = cursor.fetchone()
+        if row and row[0] != kind and name not in _SAID_ANOTHER_KIND:
+            _SAID_ANOTHER_KIND.add(name)
+            logger.warning("%s: a %s stands where the ledger's %s belongs - it is not built", name,
+                           _KIND_WORDS.get(row[0], row[0]), _KIND_WORDS[kind])
+
+
 def _relation_exists(cursor, name: str) -> bool:
     """Catalogue gate before any DDL.
 
@@ -1263,6 +1287,7 @@ def ensure_schema(connection, names: WorldNames = _DEFAULT):
     with connection.cursor() as cursor:
         for statement in names.space_statements:
             cursor.execute(statement)
+        _say_another_kind(cursor, names)
         ledger_existed = _relation_exists(cursor, names.ledger)
         cursor.execute(create_ledger_sql(names))
         # An install that predates attributes still carries the narrow rule, and the

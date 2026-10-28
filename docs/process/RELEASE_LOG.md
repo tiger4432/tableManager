@@ -387,6 +387,7 @@
 
 ### 설정 파일
 
+- 2026-10-28 [고침 — 카탈로그의 kind: view 관계를 표로 짓지 않는다(새 DB 에서 원장 표 · 원장 뷰가 일반 표로 먼저 서던 것)](#2026-10-28--고침--카탈로그의-kind-view-관계를-표로-짓지-않는다새-db-에서-원장-표--원장-뷰가-일반-표로-먼저-서던-것) — 보는 곳 RUN.md 의 relkind 확인 한 줄 · 원장 프로세스 로그의 한 줄
 - 2026-10-26 [버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다](#2026-10-26--버전-칸--같은-버전이면-나중에-들어온-것이-이긴다--같은-내용의-맵을-다시-읽으면-아무것도-안-쓴다) — 적을 것 없음 · 보는 곳 파일 결과 칸 · [VersionGate] 줄
 - 2026-10-26 [켜져 있던 외부 저장소도 와처가 처음 본 때부터 자른다 — 재기동 · 끄고 켜기 없이, 시각과 파일마다 로그](#2026-10-26--켜져-있던-외부-저장소도-와처가-처음-본-때부터-자른다--재기동--끄고-켜기-없이-시각과-파일마다-로그) — 적을 것 없음 · 보는 곳 watcher.log «[switch-on] …»
 - 2026-10-26 [외부 저장소를 켜면 그 뒤에 온 파일만 저절로 읽는다 — 그 전 파일은 손으로](#2026-10-26--외부-저장소를-켜면-그-뒤에-온-파일만-저절로-읽는다--그-전-파일은-손으로) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목 `enabled` false → true · 보는 곳 watcher.log «External source switched on» · 훑기 줄 «before switch-on N»
@@ -663,6 +664,13 @@
 - **바뀐 동작** — 총괄 10-28. 체인이 맵퍼에 넘기는 칸은 `{"value": x, …}` 인데, 견본 `dt_job_rollup_mapper.py.sample` 이 칸을 값 대신 통째로 써서 규칙 `dt_log_to_dt_job_rollup` 이 태어난 09-09 부터 행마다 «can't adapt type 'dict'» 로 실패했습니다. 이제 칸 하나를 읽는 자리는 `mapper_sdk.cell_value` 하나이고, 견본 맵퍼들과 lot_lineage · lot_slot_wafer 가 그것을 부릅니다. 같은 날 견본 decide `dt_job_lot_slot_attribution` 의 참조 뷰 둘(없는 열 lot_event.lot · equipment 를 읽던 것)이 빠졌습니다(`560c031cc`).
 - **필요한 조건** — git pull · 운영의 `server/mappers/dt_job_rollup_mapper.py` 가 견본 복사본이면 견본으로 다시 복사 · 체인 워커 재기동. `SELECT count(*) FROM dt_job_rollup;` 이 0 이면 09-09 부터 비어 있었고 원장 dt_job 소스의 셈 원자도 없었습니다(RUN.md).
 - **자세히** — `server/mapper_sdk.py` 의 `cell_value`. 시험 `test_the_chain_counts_and_the_ledger_only_reads.py`.
+
+## 2026-10-28 · 고침 — 카탈로그의 kind: view 관계를 표로 짓지 않는다(새 DB 에서 원장 표 · 원장 뷰가 일반 표로 먼저 서던 것)
+
+- 무엇: 총괄 10-28 (C 의 운영 모양 박스). table_config 에 "kind": "view" 로 선언한 관계 — 견본의 ledger_events(09-11, 원장을 메인 그리드에 읽기 전용으로) · ledger_atom_rows(10-01, 펼친 원장 보기) — 를 `setup/init_db.py` · 서버 부팅 · 설정 리로드 뒤 «빠진 표 만들기»가 일반 표로 먼저 지었다. 그러면 원장이 «있다»며 건너뛰어 ledger_events 는 varchar 표로 남고(`add_ledger_source_events.py` 가 «연산자 없음: character varying ->>»), ledger_atom_rows 는 빈 표로 남아 그리드가 오류 없이 빈 표를 읽었다. 이제 view 관계는 매핑만 하고 짓지 않는다. 그리드 읽기는 그대로다.
+- 이미 그렇게 선 설치: 제품은 지우지 않는다. 원장을 준비하는 프로세스가 이름마다 · 프로세스마다 한 번 «ledger_events: a table stands where the ledger's partitioned table belongs - it is not built» · «ledger_atom_rows: a table stands where the ledger's view belongs - it is not built» 라고 말한다. 확인 SQL · 사람이 할 고침은 RUN.md.
+- 필요한 조건: git pull · 서버 · 체인 워커 재기동. 선언 · 소급 없음.
+- 자세히: `server/database/models.py` 의 `VIEW_METADATA` · `init_dynamic_models` · `create_missing_dynamic_tables`, `server/ledger/schema.py` 의 `_built_kinds`(원장이 짓는 이름 → relkind 한 표) · `_say_another_kind`(견주는 함수 하나), 스키마 점검(`server/admin/schema_drift.py` 의 `_declared`)은 두 메타데이터를 다 본다. 판정은 `ledger.setup_bundle.catalog_kind` 하나.
 
 ## 2026-10-28 · 체인이 지우는 행 — 사람이 적은 행은 남기고 그 규칙의 칸만 거둔다(뒤집음)
 
