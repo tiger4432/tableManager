@@ -1255,6 +1255,7 @@ chain_rules.json.sample      키 = {name, trigger_table, derivation_source_table
 enrichment_rules.json.sample 키 = {source_table, derived_table, decision_key, target_fields,
                              list_columns, aggregations, alignment, reference_views, auto_confirm, enabled}
                              => 여기가 체인의 «선언적인 절반»입니다
+                             (이 샘플은 그 뒤 은퇴 — 지금 server/config/sample 에 없음, `39f990b21` 09-24)
 ```
 
 ## D-8-2. 셋을 그 칸에 대 봅니다
