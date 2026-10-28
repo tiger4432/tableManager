@@ -1184,14 +1184,22 @@ class Report:
         keys = {bare(name): list((rule or {}).get("keys") or ())
                 for name, rule in trace_router._declared_entities(worlds).items()}
         wafer_type = ends[bare(valued)][0][0]
-        if len(keys.get(wafer_type, ())) != len(self.keys):
-            raise ReadRefused("derive.report.causes.values: a %s node has %d key(s) (%s), a wafer here %d (%s)" % (
-                wafer_type, len(keys.get(wafer_type, ())), ", ".join(keys.get(wafer_type, ())), len(self.keys),
-                ", ".join(self.keys)))
+        wafers = {}                                  # a wafer node -> the report's wafers on it (its legs, with row)
+        if said.get(report_shape.VALUES_ROW):
+            for w in self.wafers:
+                for node in wafer_nodes(wafer_type, keys[wafer_type], said[report_shape.VALUES_ROW],
+                                        dict(zip(self.keys, w))):
+                    wafers.setdefault(node, []).append(w)
+        elif len(keys.get(wafer_type, ())) != len(self.keys):
+            raise ReadRefused("derive.report.causes.values: a %s node has %d key(s) (%s), a wafer here %d (%s) - write "
+                              "causes.values.row: the report's columns that hold the ledger's %s (e.g. [\"%s\"])" % (
+                                  wafer_type, len(keys.get(wafer_type, ())), ", ".join(keys.get(wafer_type, ())),
+                                  len(self.keys), ", ".join(self.keys), wafer_type, self.keys[0]))
+        else:
+            wafers = {explorer.entity_id(wafer_type, dict(zip(keys[wafer_type], w))): [w] for w in self.wafers}
         world = _worlds_asked(causes)
         ids = list(dict.fromkeys(c["id"] for c in candidates))
         model, nodes, at_step, before = model_walk(self.db, CAUSES_VALUES, ids, said, world)
-        wafers = {explorer.entity_id(wafer_type, dict(zip(keys[wafer_type], w))): w for w in self.wafers}
         edges, calls = wafer_walk(self.db, CAUSES_VALUES, list(wafers), said, world, nodes) if at_step else ({}, 0)
         to_fill, labels, lines = [], [], []
         for q in at_step:
@@ -1202,16 +1210,17 @@ class Report:
                 continue                                     # another product's quantity - no wafer here met it
             name = str((nodes.get(q) or {}).get("label") or q)
             cells, said_cells = {}, []
-            for w, unit in wafers.items():
+            for w, units in wafers.items():
                 value, n = value_of(edges, said, w, q, step)
-                if value is not None and n is None:
-                    cells[unit], spoken = str(value), str(value)
-                elif value is not None:
-                    cells[unit] = with_n(value, "est · %s" % ((nodes.get(step) or {}).get("label") or step), n)
-                    spoken = "%s (est, %d wf)" % (_count(value), n)
-                else:
-                    spoken = "-"
-                said_cells.append("%s %s" % (self.said(unit), spoken))
+                for unit in units:
+                    if value is not None and n is None:
+                        cells[unit], spoken = str(value), str(value)
+                    elif value is not None:
+                        cells[unit] = with_n(value, "est · %s" % ((nodes.get(step) or {}).get("label") or step), n)
+                        spoken = "%s (est, %d wf)" % (_count(value), n)
+                    else:
+                        spoken = "-"
+                    said_cells.append("%s %s" % (self.said(unit), spoken))
             for unit in self.wafers:
                 if unit in cells:
                     self.wafers[unit]["conditions"][name] = cells[unit]
@@ -1231,6 +1240,20 @@ class Report:
 
 #: The cell a report's value walks are counted under (`_walk`) - the declaration's own path.
 CAUSES_VALUES = "derive.report.causes.values"
+
+
+def wafer_nodes(wafer_type, keys, columns, row):
+    """The ledger's wafer nodes a row holds: each value of `columns` (a list spread, a blank one dropped) as a
+    `wafer_type` node of `keys` - a join take walk's `row` and a report's `causes.values.row` (lead 10-28)."""
+    from database import crud
+    from ledger import explorer
+
+    out = []
+    for name in columns or ():
+        value = (row or {}).get(name)
+        out += [explorer.entity_id(wafer_type, dict(zip(keys, [v])))
+                for v in (value if isinstance(value, (list, tuple)) else [value]) if not crud.is_blank_value(v)]
+    return out
 
 
 def model_walk(db, cell, seeds, said, world):

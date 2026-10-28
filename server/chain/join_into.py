@@ -172,14 +172,10 @@ def walked(db, record, values, rows):
         return explorer.entity_id(type_, dict(zip(keys[type_], [value])))
 
     def wafers_of(row):
-        out = []
-        for name in record.get(TAKE_ROW) or ():
-            value = (row or {}).get(name)
-            out += [v for v in (value if isinstance(value, (list, tuple)) else [value]) if not crud.is_blank_value(v)]
-        return out
+        return report_reads.wafer_nodes(wafer_type, keys[wafer_type], record.get(TAKE_ROW), row)
 
     things = list(dict.fromkeys(node(thing_type, v) for v in values if not crud.is_blank_value(v)))
-    wafers = list(dict.fromkeys(node(wafer_type, w) for row in rows for w in wafers_of(row)))
+    wafers = list(dict.fromkeys(w for row in rows for w in wafers_of(row)))
     nodes, at_step, before, edges = {}, {}, {}, {}
     if things:
         _model, nodes, at_step, before = report_reads.model_walk(db, "join.take.walk", things, said, world)
@@ -192,7 +188,7 @@ def walked(db, record, values, rows):
         if not (nodes.get(thing) or {}).get("claim_count"):       # a seed the ledger says nothing of
             return None, _walk_word(said, "no_mapping")
         step = before.get(thing)
-        got = [value_of for value_of in (report_reads.value_of(edges, said, node(wafer_type, w), thing, step)
+        got = [value_of for value_of in (report_reads.value_of(edges, said, w, thing, step)
                                          for w in wafers_of(row)) if value_of[0] is not None]
         if not got:
             return None, _walk_word(said, "no_value")

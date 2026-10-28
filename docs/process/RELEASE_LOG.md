@@ -644,6 +644,11 @@
 
 
 
+## 2026-10-28 · 고침 — (wafer, leg) 단위 리포트도 계측값이 실린다 — causes.values.row
+
+- **바뀐 동작** — 리포트 `causes.values` 에 `row`(원장 웨이퍼를 가리키는 리포트 칸, 조인 take walk 의 `row` 와 같은 칸)를 적으면, 단위가 (wafer, leg) 여도 웨이퍼마다 값을 읽어 그 웨이퍼의 leg 모두에 싣습니다. 전에는 «a wafer node has 1 key(s) (wafer), a wafer here 2 (wafer, leg)» 로 값 걸음이 거절돼 프롬프트에 값이 없었습니다(견본을 켠 판에서 찾음). 견본 `wafer_report` 에 `"row": ["wafer"]`. 조인 walk 와 리포트가 «행의 웨이퍼 노드»를 같은 함수(`report_reads.wafer_nodes`)로 짓습니다 — 빈 칸은 노드가 아님.
+- **필요한 조건** — git pull · 런처 재기동 · (wafer, leg) 리포트 선언에 `causes.values.row`.
+
 ## 2026-10-28 · 견본 기본 세계가 계측값과 공정 통과를 읽는다 — metro · process_event 소스
 
 - **무엇** — 기본 세계 견본에 소스 둘: `metro` 가 웨이퍼 `measures` quantity(값 · 스텝)와 quantity `measured_at` 스텝을, `process_event` 가 웨이퍼 `processed_at` 스텝(수식어 `tx_id`, indexed)을 냅니다. 견본 `metro` · `process_event` 표에 `product` 칸 — 스텝 노드 키 (제품, step_seq) 의 한 칸. 리포트 계측값 걷기와 split 채우기가 견본만으로 값에 닿습니다.

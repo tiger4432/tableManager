@@ -941,6 +941,9 @@
               "order": [
                 "measured_at",
                 "step_seq"
+              ],
+              "row": [
+                "wafer"
               ]
             }
           },

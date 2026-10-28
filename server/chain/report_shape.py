@@ -128,6 +128,9 @@ CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops", "wor
 #: to the step it is measured at, the step key in order]; `hops` the model walk's (blank: the walk's own). Every name
 #: the ledger's - one it does not declare is refused at save.
 VALUES, VALUES_CELLS = "values", ("follow", "value", "event", "order", "hops")
+#: A report's `causes.values.row`: its wafer columns that hold the ledger's wafer node - a join take walk's `row`
+#: (lead 10-28); unwritten, a report wafer's columns are the node's keys in order, as many as it has.
+VALUES_ROW = "row"
 #: the walk route's own cap - the report walks in process, past the route's check, so the save holds it
 CAUSES_HOPS_MOST = 40
 #: `picture_rows`: rows of one picture a column in the summary table (owner 10-23 «열마다 한 장») - each a table, its
@@ -680,6 +683,11 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     said = _causes_refusal(spec.get(CAUSES))
     if said:
         return said
+    row = ((spec.get(CAUSES) or {}).get(VALUES) or {}).get(VALUES_ROW) or ()
+    outside = [c for c in row if c not in wafer_columns(spec["wafer"].get("key"))]
+    if outside:
+        return "derive.report.causes.values.row names %s - not a column of derive.report.wafer.key (%s)" % (
+            ", ".join(outside), ", ".join(wafer_columns(spec["wafer"].get("key"))))
     send_to = spec.get(SEND_TO)
     if send_to is not None and not (isinstance(send_to, str) and send_to.startswith(("http://", "https://"))):
         return "derive.report.send_to is the address a report is POSTed to (http://...), got %r" % (send_to,)
@@ -791,7 +799,15 @@ def _causes_refusal(causes):
                 '"collect": ["<entity>", ...], "hops": <n up to %d>, "worlds": ["<world>", ...], "read": %s, '
                 '"fanout_limit": <n from 1>, "values": {...}} - seed_type written, the rest optional; got %r' % (
                     CAUSES_HOPS_MOST, " | ".join(_reads()), causes))
-    return _values_refusal(causes[VALUES], causes.get("worlds")) if VALUES in causes else None
+    if VALUES not in causes:
+        return None
+    values = causes[VALUES]
+    row = values.get(VALUES_ROW) if isinstance(values, dict) else None
+    said = _values_refusal({k: v for k, v in values.items() if k != VALUES_ROW} if isinstance(values, dict)
+                           else values, causes.get("worlds"))
+    if said or row is None:
+        return said
+    return None if _names(row) else 'derive.report.causes.values.row is ["<wafer column>", ...]; got %r' % (row,)
 
 
 def _reads():
