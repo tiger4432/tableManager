@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [split 행을 걸어서 채운다 — 조인 take 의 fn walk](#2026-10-28--split-행을-걸어서-채운다--조인-take-의-fn-walk) — 적을 곳 chain_rules 의 join.take (fn walk · walk · row · why)
 - 2026-10-28 [split 아이템 글을 quantity 로 — derive.ask 의 common.about](#2026-10-28--split-아이템-글을-quantity-로--deriveask-의-commonabout) — 적을 곳 chain_rules 의 derive.ask (common.about)
 - 2026-10-28 [AI 표를 원장에 — ai_model 세계 견본 · 모델링의 종류는 is_a](#2026-10-28--ai-표를-원장에--ai_model-세계-견본--모델링의-종류는-is_a) — 적을 곳 config/ontology_worlds/ai_model/ledger_config.json (견본 ai_model_world.ledger_config.json.sample)
 - 2026-10-28 [AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음](#2026-10-28--ai-가-사람-교정을-기억한다--deriveask-의-memory--리포트도-읽음) — 적을 곳 derive.ask · derive.report 의 memory · prompts.memory
@@ -640,6 +641,13 @@
 
 
 
+
+## 2026-10-28 · split 행을 걸어서 채운다 — 조인 take 의 fn walk
+
+- **무엇** — split 템플릿 3 단계(e88e6d882). 펼친 split 행을 아이템 글로 맵핑 표와 조인하고, take 의 `fn: "walk"` 가 그 quantity 를 행의 웨이퍼에서 걸어 값을 씁니다. 리포트 계측값과 같은 걷기 함수(report_reads.model_walk · wafer_walk · value_of)를 부릅니다. 값이 없으면 사유 칸에 no mapping · no value.
+- **바뀐 동작** — 조인 take 의 fn 목록에 `walk` 하나. 리포트 계측값 계산은 같은 답을 내는 함수들로 빠졌습니다(시험 그대로 초록). 웨이퍼 여럿인 행은 평균 + n. 걷기는 묶음마다 두 번입니다.
+- **필요한 조건** — git pull · 런처 재기동 · chain_rules 에 조인 선언. split 행에서 웨이퍼를 찾는 방법(행의 칸 · 다른 표)은 소유자 답 대기 — 지금은 `row` 칸 하나(값 또는 목록).
+- **자세히** — docs/guide/config/chain_rules.md 의 «⑧ fn walk».
 
 ## 2026-10-28 · split 아이템 글을 quantity 로 — derive.ask 의 common.about
 

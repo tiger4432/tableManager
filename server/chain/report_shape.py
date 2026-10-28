@@ -333,16 +333,19 @@ def skeleton_node():
                 "world", {"kind": "leaf", "hint": "free"})},
             {"key": "read", "required": False, "node": {"kind": "leaf", "hint": "free"}},
             {"key": "fanout_limit", "required": False, "node": {"kind": "leaf", "hint": "number"}},
-            {"key": VALUES, "required": False, "node": {"kind": "record", "fields": [
-                {"key": "follow", "required": True, "node": chain_bindings.list_node(
-                    "predicate", {"kind": "leaf", "hint": "free"})},
-                {"key": "value", "required": True, "node": {"kind": "leaf", "hint": "free"}},
-                {"key": "event", "required": True, "node": {"kind": "leaf", "hint": "free"}},
-                {"key": "order", "required": True, "node": chain_bindings.list_node(
-                    "name", {"kind": "leaf", "hint": "free"})},
-                {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}}]}},
+            {"key": VALUES, "required": False, "node": values_node()}]}},
     ]
     return {"kind": "record", "fields": fields}
+
+
+def values_node(*more) -> dict:
+    """The form of a value walk - `causes.values`, and a join take's `walk` with its `more` fields beside."""
+    return {"kind": "record", "fields": [
+        {"key": "follow", "required": True, "node": chain_bindings.list_node("predicate", {"kind": "leaf", "hint": "free"})},
+        {"key": "value", "required": True, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": "event", "required": True, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": "order", "required": True, "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})},
+        {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}}, *more]}
 
 
 def unknown_cells(spec) -> list:
@@ -801,15 +804,16 @@ def _pair(value) -> bool:
     return isinstance(value, str) and len(value.split(":")) == 2 and all(part.strip() for part in value.split(":"))
 
 
-def _values_refusal(values, worlds):
-    """causes.values' shape, then its names against the ledger declaration of the walk's worlds."""
+def _values_refusal(values, worlds, path="derive.report.causes.values"):
+    """A value walk's shape (`causes.values`, a join take's `walk` - `path` names which), then its names against the
+    ledger declaration of the walk's worlds."""
     if not isinstance(values, dict) or set(values) - set(VALUES_CELLS) or not _names(values.get("follow")) or not all(
             _pair(values.get(cell)) for cell in ("value", "event")) or not (
             _names(values.get("order")) and len(values["order"]) == 2) or (
             "hops" in values and not (_whole(values["hops"], 1) and values["hops"] <= CAUSES_HOPS_MOST)):
-        return ('derive.report.causes.values is {"follow": ["<predicate>", ...], "value": "<predicate>:<qualifier>", '
+        return ('%s is {"follow": ["<predicate>", ...], "value": "<predicate>:<qualifier>", '
                 '"event": "<predicate>:<qualifier>", "order": ["<predicate>", "<key>"], "hops": <n up to %d>} - hops '
-                'optional; got %r' % (CAUSES_HOPS_MOST, values))
+                'optional; got %r' % (path, CAUSES_HOPS_MOST, values))
     from ledger import trace_router
 
     try:
@@ -818,24 +822,24 @@ def _values_refusal(values, worlds):
                 for name, rule in trace_router._declared_entities(worlds or None).items()}
     except Exception as exc:                                    # noqa: BLE001 - the save says why, the log where
         logger.warning("[Report] causes.values: the ledger declaration was not read", exc_info=True)
-        return "derive.report.causes.values: the ledger declaration was not read - %s: %s" % (type(exc).__name__, exc)
+        return "%s: the ledger declaration was not read - %s: %s" % (path, type(exc).__name__, exc)
     bare = trace_router._bare_name
     order, key = values["order"]
     pairs = [values["value"].split(":"), values["event"].split(":")]
     missing = [name for name in list(values["follow"]) + [order] + [p for p, _q in pairs] if bare(name) not in ends]
     if missing:
-        return "derive.report.causes.values names %s - not a predicate the ledger declares" % ", ".join(missing)
+        return "%s names %s - not a predicate the ledger declares" % (path, ", ".join(missing))
     for predicate, qualifier in pairs:
         if qualifier not in (qualifiers.get(bare(predicate)) or ()):
-            return "derive.report.causes.values: %s is not a qualifier of %s (declared: %s)" % (
-                qualifier, predicate, ", ".join(qualifiers.get(bare(predicate)) or ()) or "none declared")
+            return "%s: %s is not a qualifier of %s (declared: %s)" % (
+                path, qualifier, predicate, ", ".join(qualifiers.get(bare(predicate)) or ()) or "none declared")
     if not any(key in keys.get(kind, ()) for kind in ends[bare(order)][1]):
-        return "derive.report.causes.values.order: %s is not a key of %s's step (%s)" % (
-            key, order, ", ".join(ends[bare(order)][1]) or "no type declared")
+        return "%s.order: %s is not a key of %s's step (%s)" % (
+            path, key, order, ", ".join(ends[bare(order)][1]) or "no type declared")
     subjects = ends[bare(pairs[0][0])][0]
     if len(subjects) != 1 or not keys.get(subjects[0]):
-        return ("derive.report.causes.values.value: %s's subject is the wafer node a report's wafer is walked from - "
-                "one entity type with keys, got %s" % (pairs[0][0], ", ".join(subjects) or "none"))
+        return ("%s.value: %s's subject is the wafer node a wafer is walked from - "
+                "one entity type with keys, got %s" % (path, pairs[0][0], ", ".join(subjects) or "none"))
     return None
 
 

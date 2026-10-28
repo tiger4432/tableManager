@@ -1175,14 +1175,11 @@ class Report:
         or passed the steps of is another product's - no row. Each stands as the wafers' condition of its label.
         -> {"context": a head, a line a quantity, "labels": [the rows' names], "to_fill": [labels with no value]}"""
         from ledger import explorer, trace_router
-        from ledger_api import ledger_subgraph
 
         causes = self._causes()
         said, worlds = causes[report_shape.VALUES], causes.get("worlds") or None
         bare = trace_router._bare_name
-        valued, value_name = said["value"].split(":")
-        event, tx_name = said["event"].split(":")
-        order, seq = said["order"]
+        valued, event = said["value"].split(":")[0], said["event"].split(":")[0]
         ends = trace_router._predicate_ends(worlds)
         keys = {bare(name): list((rule or {}).get("keys") or ())
                 for name, rule in trace_router._declared_entities(worlds).items()}
@@ -1193,60 +1190,9 @@ class Report:
                 ", ".join(self.keys)))
         world = _worlds_asked(causes)
         ids = list(dict.fromkeys(c["id"] for c in candidates))
-        # a value is built from members: a hub the walk folds is opened (owner 10-27, as the contrast mapper's)
-        model, _opened = ledger_subgraph.walk_opened(lambda expand: _walk(
-            self.db, "derive.report.causes.values.follow", node_id=ids[0], positive=ids[1:] or None,
-            follow=list(dict.fromkeys(list(said["follow"]) + [order])), propagation=False,
-            node_limit=ledger_subgraph.MAX_NODE_LIMIT, expand=expand, **world,
-            **({"hops": said["hops"]} if said.get("hops") is not None else {})))
-        nodes = {node["id"]: node for node in model.get("nodes") or ()}
-        out = {}
-        for edge in model.get("edges") or ():
-            out.setdefault(edge["source"], set()).add((bare(edge["predicate"]), edge["target"]))
-        at_step = {q: t for q, edges in out.items() for p, t in edges if p == bare(order)}
-
-        def seq_of(node_id):
-            return _number(((nodes.get(node_id) or {}).get("keys") or {}).get(seq))
-
-        before = {}
-        for q, step in at_step.items():
-            described = {t for p, t in out[q] if p != bare(order)}
-            acting = [s for s, edges in out.items() for p, t in edges if t in described and p != bare(order)
-                      and s != step and (nodes.get(s) or {}).get("type") == (nodes.get(step) or {}).get("type")
-                      and seq_of(s) is not None and seq_of(step) is not None and seq_of(s) < seq_of(step)]
-            if acting:
-                before[q] = max(acting, key=seq_of)
+        model, nodes, at_step, before = model_walk(self.db, CAUSES_VALUES, ids, said, world)
         wafers = {explorer.entity_id(wafer_type, dict(zip(keys[wafer_type], w))): w for w in self.wafers}
-        seeds = list(wafers)
-        edges, calls, resume, opened = {}, 0, None, []
-        while seeds and at_step:
-            answer = _walk(self.db, "derive.report.causes.values", node_id=seeds[0], positive=seeds[1:] or None,
-                           follow=[valued, "%s:%s" % (event, tx_name)], hops=3, propagation=False,
-                           resumable=True, node_limit=ledger_subgraph.MAX_NODE_LIMIT,
-                           edge_limit=ledger_subgraph.MAX_EDGE_LIMIT, expand=opened or None, **world,
-                           **({"resume": resume} if resume else {}))
-            calls += 1
-            folded = [node["id"] for node in answer.get("nodes") or () if "hub" in node and node["id"] not in opened]
-            if folded:                              # a hub folded: the walk again from its first page, opened
-                edges, calls, resume, opened = {}, 0, None, opened + folded
-                continue
-            for edge in answer.get("edges") or ():
-                edges[(edge["source"], bare(edge["predicate"]), edge["target"])] = edge.get("records") or [
-                    {"qualifiers": edge.get("qualifiers") or {}, "occurred_at": edge.get("occurred_at")}]
-                nodes.setdefault(edge["target"], {"id": edge["target"]})
-            resume = (answer.get("more") or {}).get("resume")
-            if not resume:
-                break
-
-        def own(wafer_id, q):
-            said_ = [r for r in edges.get((wafer_id, bare(valued), q)) or ()
-                     if ((r.get("qualifiers") or {}).get(value_name)) not in (None, "")]
-            return max(said_, key=lambda r: str(r.get("occurred_at") or ""))["qualifiers"][value_name] if said_ else None
-
-        def passed(wafer_id, step):
-            return {_said_key(r.get("qualifiers", {}).get(tx_name))
-                    for r in edges.get((wafer_id, bare(event), step)) or ()} - {None}
-
+        edges, calls = wafer_walk(self.db, CAUSES_VALUES, list(wafers), said, world, nodes) if at_step else ({}, 0)
         to_fill, labels, lines = [], [], []
         for q in at_step:
             step = before.get(q)
@@ -1257,20 +1203,14 @@ class Report:
             name = str((nodes.get(q) or {}).get("label") or q)
             cells, said_cells = {}, []
             for w, unit in wafers.items():
-                value = own(w, q)
-                if value is not None:
+                value, n = value_of(edges, said, w, q, step)
+                if value is not None and n is None:
                     cells[unit], spoken = str(value), str(value)
+                elif value is not None:
+                    cells[unit] = with_n(value, "est · %s" % ((nodes.get(step) or {}).get("label") or step), n)
+                    spoken = "%s (est, %d wf)" % (_count(value), n)
                 else:
-                    tx = passed(w, step) if step else set()
-                    found = [v for v in (own(x, q) for (x, p, t) in edges if p == bare(event) and t == step
-                                         and x != w and passed(x, step) & tx) if _number(v) is not None] if tx else []
-                    if found:
-                        mean = sum(_number(v) for v in found) / len(found)
-                        cells[unit] = "%s (est · %s · %d wf)" % (_count(mean), (nodes.get(step) or {}).get(
-                            "label") or step, len(found))
-                        spoken = "%s (est, %d wf)" % (_count(mean), len(found))
-                    else:
-                        spoken = "-"
+                    spoken = "-"
                 said_cells.append("%s %s" % (self.said(unit), spoken))
             for unit in self.wafers:
                 if unit in cells:
@@ -1286,6 +1226,115 @@ class Report:
             else "")
         logger.warning("[Report] causes values: %s", head)
         return {"context": "\n".join([head] + lines), "labels": labels, "to_fill": to_fill}
+
+
+
+#: The cell a report's value walks are counted under (`_walk`) - the declaration's own path.
+CAUSES_VALUES = "derive.report.causes.values"
+
+
+def model_walk(db, cell, seeds, said, world):
+    """The model half of a value read (`causes.values` · a join's walk take): from `seeds` along `follow` and `order`'s
+    predicate -> (the walk's answer, its nodes, {quantity: its measuring step}, {quantity: the step acting on its
+    structure just before that one, by `order`'s key})."""
+    from ledger import trace_router
+    from ledger_api import ledger_subgraph
+
+    bare = trace_router._bare_name
+    order, seq = said["order"]
+    # a value is built from members: a hub the walk folds is opened (owner 10-27, as the contrast mapper's)
+    model, _opened = ledger_subgraph.walk_opened(lambda expand: _walk(
+        db, cell + ".follow", node_id=seeds[0], positive=seeds[1:] or None,
+        follow=list(dict.fromkeys(list(said["follow"]) + [order])), propagation=False,
+        node_limit=ledger_subgraph.MAX_NODE_LIMIT, expand=expand, **world,
+        **({"hops": said["hops"]} if said.get("hops") is not None else {})))
+    nodes = {node["id"]: node for node in model.get("nodes") or ()}
+    out = {}
+    for edge in model.get("edges") or ():
+        out.setdefault(edge["source"], set()).add((bare(edge["predicate"]), edge["target"]))
+    at_step = {q: t for q, edges in out.items() for p, t in edges if p == bare(order)}
+
+    def seq_of(node_id):
+        return _number(((nodes.get(node_id) or {}).get("keys") or {}).get(seq))
+
+    before = {}
+    for q, step in at_step.items():
+        described = {t for p, t in out[q] if p != bare(order)}
+        acting = [s for s, edges in out.items() for p, t in edges if t in described and p != bare(order)
+                  and s != step and (nodes.get(s) or {}).get("type") == (nodes.get(step) or {}).get("type")
+                  and seq_of(s) is not None and seq_of(step) is not None and seq_of(s) < seq_of(step)]
+        if acting:
+            before[q] = max(acting, key=seq_of)
+    return model, nodes, at_step, before
+
+
+def wafer_walk(db, cell, seeds, said, world, nodes):
+    """The wafer half: from every wafer in `seeds` at once along `value`'s and `event`'s predicates, `event` bound by its
+    transaction qualifier, read to its end page by page -> ({(wafer, predicate, node): records}, pages read)."""
+    from ledger import trace_router
+    from ledger_api import ledger_subgraph
+
+    bare = trace_router._bare_name
+    valued = said["value"].split(":")[0]
+    event, tx_name = said["event"].split(":")
+    edges, calls, resume, opened = {}, 0, None, []
+    while seeds:
+        answer = _walk(db, cell, node_id=seeds[0], positive=seeds[1:] or None,
+                       follow=[valued, "%s:%s" % (event, tx_name)], hops=3, propagation=False,
+                       resumable=True, node_limit=ledger_subgraph.MAX_NODE_LIMIT,
+                       edge_limit=ledger_subgraph.MAX_EDGE_LIMIT, expand=opened or None, **world,
+                       **({"resume": resume} if resume else {}))
+        calls += 1
+        folded = [node["id"] for node in answer.get("nodes") or () if "hub" in node and node["id"] not in opened]
+        if folded:                              # a hub folded: the walk again from its first page, opened
+            edges, calls, resume, opened = {}, 0, None, opened + folded
+            continue
+        for edge in answer.get("edges") or ():
+            edges[(edge["source"], bare(edge["predicate"]), edge["target"])] = edge.get("records") or [
+                {"qualifiers": edge.get("qualifiers") or {}, "occurred_at": edge.get("occurred_at")}]
+            nodes.setdefault(edge["target"], {"id": edge["target"]})
+        resume = (answer.get("more") or {}).get("resume")
+        if not resume:
+            break
+    return edges, calls
+
+
+def value_of(edges, said, wafer, q, step):
+    """One wafer's value of quantity `q` -> (its own, None); with none, the wafers of its transaction at `step` that hold
+    one -> (their mean, how many); else (None, None)."""
+    from ledger import trace_router
+
+    bare = trace_router._bare_name
+    valued, value_name = said["value"].split(":")
+    event, tx_name = said["event"].split(":")
+
+    def own(wafer_id):
+        said_ = [r for r in edges.get((wafer_id, bare(valued), q)) or ()
+                 if ((r.get("qualifiers") or {}).get(value_name)) not in (None, "")]
+        return max(said_, key=lambda r: str(r.get("occurred_at") or ""))["qualifiers"][value_name] if said_ else None
+
+    def passed(wafer_id):
+        return {_said_key(r.get("qualifiers", {}).get(tx_name))
+                for r in edges.get((wafer_id, bare(event), step)) or ()} - {None}
+
+    value = own(wafer)
+    if value is not None:
+        return value, None
+    tx = passed(wafer) if step else set()
+    found = [v for v in (own(x) for (x, p, t) in edges if p == bare(event) and t == step and x != wafer
+                         and passed(x) & tx) if _number(v) is not None] if tx else []
+    return mean_of(found) if found else (None, None)
+
+
+def mean_of(values):
+    """(the mean, how many) of numbers - an estimate's, and a row of several wafers' (lead 10-28: one fold)."""
+    numbers = [_number(v) for v in values]
+    return sum(numbers) / len(numbers), len(numbers)
+
+
+def with_n(value, words, n) -> str:
+    """A value built from several wafers, as a cell says it: «12.1 (est · <step> · 3 wf)»."""
+    return "%s (%s · %d wf)" % (_count(value), words, n)
 
 
 def _fanout(causes) -> dict:

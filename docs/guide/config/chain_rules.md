@@ -191,6 +191,26 @@ return {"batches": [{"target_table": "dt_map",
 - 원천 행이 오고 · 바뀌고 · 떠나면, 대상 행이 오거나 조인 키 · `row` 칸이 바뀌면 그 키를 다시 판정합니다. 참조 표가 바뀌어도 스스로 다시 판정하지 않습니다 — 그 규칙을 리플레이합니다
 - 로드에서 이름 대어 거절: 없는 파일 · 그 파일에 없는 함수 · 읽다 터지는 파일 · `table_config` 에 없는 `ref` 표 · 대상 표에 없는 `row` 칸 · 네 함수(`count` …)에 적은 `ref` · `row` · 함수 아닌 take 의 칸 목록 `from` · `into` 없는 칸 목록 · 원천 표에 없는 칸
 
+**⑧ 키의 값이 노드면 웨이퍼에서 걸어 값 → `"fn": "walk"`** (🆕 10-28, split 템플릿 3 단계)
+
+take 의 `from` 칸 값(예: 아이템 맵핑 표의 quantity)을 원장 노드로 보고, 대상 행의 웨이퍼(`row` 칸)에서 걸어 그 값을 씁니다. 리포트 계측값(`causes.values`)과 같은 걷기 · 같은 계산입니다.
+
+```json
+{ "from": "quantity", "into": "value", "fn": "walk", "row": ["wafer"], "why": "why",
+  "walk": { "follow": ["describes", "acts_on"], "value": "measures:value", "event": "processed_at:tx_id",
+            "order": ["measured_at", "step_seq"], "worlds": ["default", "ai_model"] } }
+```
+```
+값       웨이퍼 하나: 자기 값, 없으면 계측 스텝 바로 앞 작용 스텝에서 같은 트랜잭션 웨이퍼들의 평균 «12 (est · <스텝> · 3 wf)»
+         웨이퍼 여럿(row 칸 값이 목록): 웨이퍼마다의 값의 평균 «12.1 (mean · 3 wf)»
+why     값이 빈 행의 사유: no mapping(그 값이 원장 노드가 아님 — 예: "not found") · no value(어느 웨이퍼에도 값 없음)
+        낱말은 walk.labels {"no_mapping", "no_value"} 로 바꿉니다
+걷기     묶음마다 두 번(모델 하나 · 웨이퍼 하나) — 행 수와 무관
+거절     row 없음 · walk 의 칸이 원장에 없는 술어 · 수식어 · 키, 모르는 칸
+```
+- 맵핑 표가 키마다 한 행이어도 `key.unique` 는 적지 않습니다 — fn take 와 같이 설 수 없습니다(fn 은 키의 행을 모읍니다)
+- 사람이 고친 값 칸은 그대로입니다(user 층)
+
 ## 1. 언제 이 파일을 만지는가
 
 - **테이블 A의 변경이 테이블 B를 자동 갱신하게 만들 때** (trigger→target→mapper 체인)

@@ -189,7 +189,7 @@ def test_the_fn_choices_ride_the_answer_by_the_name_the_leaf_names():
 
     take = _node_at(admin.chain_rule_raw_view()["skeleton"]["unified_root"], ("derive", "join", "take"))
     fn = next(f for f in take["of"]["branches"]["record"]["fields"] if f["key"] == join_into.TAKE_FN)["node"]
-    assert admin.chain_rule_raw_view()["lists"][fn["list"]] == list(config.AGGREGATION_FUNCTIONS)
+    assert admin.chain_rule_raw_view()["lists"][fn["list"]] == list(config.AGGREGATION_FUNCTIONS) + [join_into.WALK_FN]
 
 
 def test_the_route_hands_the_browser_these_shapes():

@@ -248,8 +248,8 @@ def test_the_declarations_screen_offers_the_folders_functions(functions, client)
     from ledger import admin
 
     offered = admin._chain_lists()[join_into.TAKE_FN_LIST]
-    assert offered[:4] == ["count", "min", "max", "unique_concat"]
-    assert offered[4:] == ["spec_out.s_o", "spec_out.s_o_by_item", "spec_out.spec_hash"]
+    assert offered[:5] == ["count", "min", "max", "unique_concat", join_into.WALK_FN]
+    assert offered[5:] == ["spec_out.s_o", "spec_out.s_o_by_item", "spec_out.spec_hash"]
     # the Editor's Mappers list opens the file
     listed = client.get("/admin/scripts/list").json()["data"]["mappers"]
     assert {"filename": "join_fn/spec_out.py", "path": "mappers/join_fn/spec_out.py", "type": "mapper"} in listed

@@ -109,9 +109,109 @@ TAKE_FN_LIST = "aggregation_functions"
 #: A function take's other two inputs (owner 10-23 S/O): `ref` the tables it is handed whole, `row` the target row's
 #: columns it is handed beside the join key.
 TAKE_REF, TAKE_ROW = "ref", "row"
+#: The product's one function a take may name beside the four (split step 3, lead 10-28): the key's value is a node the
+#: row's wafers (`row`) are walked to, as a report's values are (`report_reads.model_walk` · `wafer_walk` ·
+#: `value_of`), by its `walk` cell; `why` the column it says why a cell is blank in. Words: `walk.labels`, else these.
+WALK_FN, TAKE_WALK, TAKE_WHY = "walk", "walk", "why"
+WALK_WORDS = {"no_mapping": "no mapping", "no_value": "no value"}
 #: Where a take's `fn` «<file>.<function>» lives - `f(values, row, ref)` -> one value. Not a package: the mapper walk
 #: (`mapper_sdk._walk`) does not enter it.
 JOIN_FN_DIR = os.path.join(paths.SERVER_DIR, "mappers", "join_fn")
+
+
+def _walk_node() -> dict:
+    """A walk take's `walk` - a report's value walk (`report_shape.values_node`), its worlds and its words beside."""
+    from chain import report_shape
+
+    return report_shape.values_node(
+        {"key": "worlds", "required": False, "node": chain_bindings.list_node("world", {"kind": "leaf", "hint": "free"})},
+        {"key": "labels", "required": False, "node": {"kind": "record", "fields": [
+            {"key": name, "required": False, "node": {"kind": "leaf", "hint": "free"}} for name in WALK_WORDS]}})
+
+
+def _walk_word(said, name) -> str:
+    """A walk take's word - its `labels`, or the product's (the shape of `report_shape.word`)."""
+    word = (said.get("labels") or {}).get(name)
+    return word if isinstance(word, str) and word.strip() else WALK_WORDS[name]
+
+
+def _walk_refusal(record):
+    from chain import report_shape
+
+    said = record.get(TAKE_WALK)
+    if not isinstance(said, dict):
+        return 'fn walk - walk is {"follow", "value", "event", "order", "worlds", "labels"}, got %r' % (said,)
+    if not record.get(TAKE_ROW):
+        return "fn walk - row names the target column(s) holding the wafer(s) walked from"
+    extra = sorted(set(said) - set(report_shape.VALUES_CELLS) - {"worlds", "labels"})
+    if extra:
+        return "walk %s - not a cell (cells: %s, worlds, labels)" % (", ".join(extra), ", ".join(report_shape.VALUES_CELLS))
+    return report_shape._values_refusal({k: v for k, v in said.items() if k in report_shape.VALUES_CELLS},
+                                        said.get("worlds"), "take walk")
+
+
+def walked(db, record, values, rows):
+    """The batch's walk take: one model walk from every node the keys hand, one wafer walk from every wafer the rows
+    hand (`row`: a column of one wafer, or of a list of them) -> {"value": f, "why": f}, each `f(values, row, ref)`.
+    One wafer: its own value, else its estimate; several: the mean of theirs and n (`report_reads.mean_of`, lead
+    10-28 - the estimate's fold). A key's value that is no node walked: `no_mapping`; no wafer with a value: `no_value`."""
+    from chain import report_reads
+    from database import crud
+    from ledger import explorer, trace_router
+
+    said = record[TAKE_WALK]
+    world = report_reads._worlds_asked(said)
+    bare = trace_router._bare_name
+    ends = trace_router._predicate_ends(said.get("worlds") or None)
+    keys = {bare(name): list((rule or {}).get("keys") or ())
+            for name, rule in trace_router._declared_entities(said.get("worlds") or None).items()}
+    (wafer_type,), (thing_type,) = ends[bare(said["value"].split(":")[0])][0][:1], ends[bare(said["value"].split(":")[0])][1][:1]
+
+    def node(type_, value):
+        return explorer.entity_id(type_, dict(zip(keys[type_], [value])))
+
+    def wafers_of(row):
+        out = []
+        for name in record.get(TAKE_ROW) or ():
+            value = (row or {}).get(name)
+            out += [v for v in (value if isinstance(value, (list, tuple)) else [value]) if not crud.is_blank_value(v)]
+        return out
+
+    things = list(dict.fromkeys(node(thing_type, v) for v in values if not crud.is_blank_value(v)))
+    wafers = list(dict.fromkeys(node(wafer_type, w) for row in rows for w in wafers_of(row)))
+    nodes, at_step, before, edges = {}, {}, {}, {}
+    if things:
+        _model, nodes, at_step, before = report_reads.model_walk(db, "join.take.walk", things, said, world)
+        if wafers:
+            edges, _calls = report_reads.wafer_walk(db, "join.take.walk", wafers, said, world, nodes)
+
+    def answer(values, row):
+        kept = [node(thing_type, v) for v in values if not crud.is_blank_value(v)]
+        thing = kept[0] if kept else None
+        if not (nodes.get(thing) or {}).get("claim_count"):       # a seed the ledger says nothing of
+            return None, _walk_word(said, "no_mapping")
+        step = before.get(thing)
+        got = [value_of for value_of in (report_reads.value_of(edges, said, node(wafer_type, w), thing, step)
+                                         for w in wafers_of(row)) if value_of[0] is not None]
+        if not got:
+            return None, _walk_word(said, "no_value")
+        if len(wafers_of(row)) == 1:
+            value, n = got[0]
+            label = (nodes.get(step) or {}).get("label") or step
+            return (str(value) if n is None else report_reads.with_n(value, "est · %s" % label, n)), None
+        numbers = [v for v, _n in got if report_reads._number(v) is not None]
+        if not numbers:
+            return None, _walk_word(said, "no_value")
+        mean, n = report_reads.mean_of(numbers)
+        return report_reads.with_n(mean, "mean", n), None
+
+    return {"value": lambda values, row, ref: answer(values, row)[0],
+            "why": lambda values, row, ref: answer(values, row)[1]}
+
+
+walked.takes_the_batch = True
+walked.refusal = _walk_refusal
+
 
 #: The skeleton node of each join cell that is NOT one value - read by `_pairs` (`on`: a list
 #: of {left, right}) and `_takes` (`take`: a list of names, or of records {from, into, fn, separator}).
@@ -133,7 +233,9 @@ JOIN_CELL_SHAPES = {
             {"key": "separator", "required": False, "node": {"kind": "leaf", "hint": "free"}},
             {"key": TAKE_REF, "required": False, "node": chain_bindings.list_node("table", chain_bindings.table_ref())},
             {"key": TAKE_ROW, "required": False,
-             "node": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT))}]}},
+             "node": chain_bindings.list_node("column", chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT))},
+            {"key": TAKE_WALK, "required": False, "node": _walk_node()},
+            {"key": TAKE_WHY, "required": False, "node": chain_bindings.column_ref(chain_bindings.TARGET_TABLE_AT)}]}},
         "empty": {"name": ""}}),
 }
 
@@ -217,6 +319,8 @@ def _takes(spec: dict) -> list:
             out.append((item, item))
         elif isinstance(item, dict) and item.get("from"):
             out.append((_from(item), str(item.get("into") or item["from"])))
+            if item.get(TAKE_WHY):                      # the same values, the function's second answer
+                out.append((_from(item), str(item[TAKE_WHY])))
     return out
 
 
@@ -228,10 +332,13 @@ def _fn_takes(spec: dict) -> dict:
             record = {"fn": item[TAKE_FN]}
             if item[TAKE_FN] != "count":
                 record["column"] = _from(item)
-            for cell in ("separator", TAKE_REF, TAKE_ROW):
+            for cell in ("separator", TAKE_REF, TAKE_ROW, TAKE_WALK):
                 if cell in item:
                     record[cell] = item[cell]
-            out[str(item.get("into") or item["from"])] = (_from(item), record)
+            into = str(item.get("into") or item["from"])
+            out[into] = (_from(item), record)
+            if item.get(TAKE_WHY):
+                out[str(item[TAKE_WHY])] = (_from(item), dict(record, says=TAKE_WHY, of=into))
     return out
 
 
@@ -248,7 +355,7 @@ def take_functions() -> list:
 
     from chain.enrichment import config
 
-    out = list(config.AGGREGATION_FUNCTIONS)
+    out = list(config.AGGREGATION_FUNCTIONS) + [WALK_FN]
     try:
         names = sorted(name for name in os.listdir(JOIN_FN_DIR) if name.endswith(".py"))
     except OSError:
@@ -273,6 +380,8 @@ def take_function(fn):
 
     if fn in config.AGGREGATION_FUNCTIONS:
         return None, None
+    if fn == WALK_FN:
+        return walked, None
     file, _dot, name = str(fn).rpartition(".")
     path = os.path.join(JOIN_FN_DIR, file + ".py")
     if not file or not name or os.sep in file or "/" in file or not os.path.isfile(path):
@@ -325,6 +434,10 @@ def take_refusal(join: dict, key: dict, right_table: str, left_table: str = ""):
         if function is None and (TAKE_REF in record or TAKE_ROW in record):
             return "take %r ref and row are a function's - fn %r takes neither" % (into, fn)
         if function is not None:
+            said = getattr(function, "refusal", None)
+            why = said(record) if said else None
+            if why:
+                return "take %r %s" % (into, why)
             if "separator" in record:
                 return "take %r separator - only %s takes one" % (into, " · ".join(config.AGGREGATION_SEPARATOR_DEFAULTS))
             for table in record.get(TAKE_REF) or ():
@@ -616,12 +729,13 @@ def _is_function(record: dict) -> bool:
     return record.get("fn") not in config.AGGREGATION_FUNCTIONS
 
 
-def _functions_and_ref(db, spec: dict):
+def _functions_and_ref(db, spec: dict, rows=None, answers=None):
     """({into: how}, {table: [row]}) for this batch - each take's calculation made once: a function resolved
     (`take_function`), one of the four's expression compiled (`(compiled or None for unique_concat, types)`, lead
     10-24 - it was compiled again a target row); each `ref` table read once, whole, whichever takes name it (owner
-    10-23: under 100 rows, changed once a quarter). -> (..., why not) - a function that cannot be resolved, or a ref
-    table with no model."""
+    10-23: under 100 rows, changed once a quarter); a function that takes the batch (`walked`) made once from every
+    value the keys hand (`answers`) and every target row's columns (`rows`). -> (..., why not) - a function that
+    cannot be resolved, or a ref table with no model."""
     from sqlalchemy import select
 
     import expression
@@ -629,7 +743,8 @@ def _functions_and_ref(db, spec: dict):
     from chain.enrichment import config
     from database import crud, models
 
-    functions, wanted = {}, []
+    functions, wanted, made = {}, [], {}
+    at = {into: index for index, (_right, into) in enumerate(_takes(spec))}
     for into, (column, record) in _fn_takes(spec).items():
         if not _is_function(record):
             types = {column: map_overlay.declared_column_type(str(spec.get("right_table") or ""), column)}
@@ -639,6 +754,13 @@ def _functions_and_ref(db, spec: dict):
         function, why = take_function(record["fn"])
         if why:
             return {}, {}, "take %r %s" % (into, why)
+        if getattr(function, "takes_the_batch", False):
+            of = record.get("of") or into
+            if of not in made:
+                made[of] = function(db, record, [take[at[of]] for found in (answers or {}).values()
+                                                 for _id, take in found], list((rows or {}).values()))
+            functions[into] = made[of][record.get("says") or "value"]
+            continue
         functions[into] = function
         wanted += [table for table in record.get(TAKE_REF) or () if table not in wanted]
     ref = {}
@@ -793,11 +915,11 @@ def read(db, rule: dict, row_ids=None, keys_left=()) -> dict:
     #    no beat. The left rows are read ONCE - asking the key filter again per page re-walks
     #    the table from the cursor (measured: a page past the last match read 9,999 rows for 0)
     #    - and each page answers only its own rows. The seat writes a page, then asks the next.
-    functions, ref, why = _functions_and_ref(db, spec)
-    if why:
-        return {"answer": {"updates": [], "refusal": why}}
     left_rows, answers, empty, rows = _read_once(db, spec, left_model, right_model, wheres,
                                                  left_table)
+    functions, ref, why = _functions_and_ref(db, spec, rows, answers)
+    if why:
+        return {"answer": {"updates": [], "refusal": why}}
     _say_empty_keys(rule, "target", empty)
     return {"spec": spec, "left_table": left_table, "left_rows": left_rows, "answers": answers,
             "handed": len(rows_in), "side": "reference" if reference_side else "target",

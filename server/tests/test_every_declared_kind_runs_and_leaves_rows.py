@@ -473,7 +473,7 @@ def test_the_five_kinds_are_the_whole_of_what_the_product_builds():
     mapper_sdk.discover()
 
     assert sorted(dynamic_mappers.TEMPLATES) == [
-        "declared:decide", "declared:enrich", "declared:join", "declared:report"]
+        "declared:ask", "declared:decide", "declared:enrich", "declared:join", "declared:report"]
 
 
 def test_a_switched_off_report_makes_nothing_by_itself_and_one_report_a_wafer_by_a_replay_naming_it(
