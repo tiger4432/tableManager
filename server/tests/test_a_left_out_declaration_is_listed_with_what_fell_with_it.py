@@ -27,11 +27,21 @@ def _naming(entity):
         types = list(spec.get("subjects") or ()) + list((spec.get("object") or {}).get("types") or ())
         if entity in {bare_name(t) for t in types}:
             out.add("predicate|" + bare_name(name))
+    # a source falls whole when any mapping it binds names what fell - a source is the unit the load leaves out
+    # (10-28: 9734db4f6's metro binds quantity)
+    for name, spec in _sample()["sources"].items():
+        mappings = list(((spec.get("bind") or {}).get("mappings") or {}).values())
+        if any("predicate|" + bare_name(m["predicate"]) in out
+                            or entity in {bare_name(side.get("entity_type") or "")
+                                          for side in (m["bind"].get("subject") or {}, m["bind"].get("target") or {})}
+                            for m in mappings):
+            out.add("source_plan|" + name)
     return out
 
 
 LEFT_WITH_QUANTITY = _naming("quantity")
 assert "predicate|measures" in LEFT_WITH_QUANTITY        # canary: the reader found the sample's predicates
+assert "source_plan|metro" in LEFT_WITH_QUANTITY         # canary: ... and a source all of whose mappings fall
 
 
 @pytest.fixture
