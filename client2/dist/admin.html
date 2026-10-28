@@ -819,7 +819,7 @@
     /* 4px 은 3.4 격자 «밖»이었습니다. 위로(6.8)가 아니라 «아래로»(3.4) 갑니다 —
        이 둘은 «바로 윗줄에 붙는» 보조 줄이고, 6.8 이면 그 붙음이 끊어집니다.
        소유자가 지적한 것은 «폼이 빡빡하다»였지 이 붙음이 아니었습니다. */
-    .chain-rule-mapper, .chain-flow-note { color: var(--text-muted); margin-top: 3.4px; }
+    .chain-rule-mapper, .chain-flow-note { color: var(--text-muted); margin-top: var(--space-1); }
     .chain-rule-mapper + .meta { margin-top: var(--space-1); }
     .chain-flow { display: flex; align-items: center; gap: 7px; font-weight: 500; }
     .chain-flow-arrow { color: var(--accent); }
@@ -1695,7 +1695,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DNynokUS.js"></script>
+  <script type="module" crossorigin src="/assets/admin-D6tteqWO.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/chunk-CEoa-xHZ.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-EfXpBRd1.js">
   <link rel="modulepreload" crossorigin href="/assets/clipboard_write-CLY3qg6U.js">
@@ -1959,11 +1959,11 @@
                   <tr>
                     <!-- 소유자 「체인 탭에서 리스트를 항목별로 정렬만」 — 종류와 순서는 서버 한 좌석(rule_shape) -->
                     <th>Kind</th>
+                    <th style="width: 105px; text-align: center;">State</th>
                     <th>Rule / Mapper</th>
                     <th style="width: 240px;">Data Flow</th>
                     <th style="width: 135px;">Execution</th>
                     <th style="width: 190px;">Write Policy</th>
-                    <th style="width: 105px; text-align: center;">State</th>
                   </tr>
                 </thead>
                 <tbody id="chain-list-body"></tbody>
