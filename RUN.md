@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **리포트의 메모리 반쪽이 규칙 목록에 «report» 로, 8f32cdaba** — git pull · 런처 재기동
+>
+> ```
+> 볼 줄    chain_worker.log «[ChainRules] set(N): ... <리포트 이름>:target[decl,report] target_table=<메모리 표>»
+> 뜻      [decl,report] = 리포트 선언의 메모리 반쪽(사람이 고친 글 -> 메모리 행). 전에는 [decl,ask] 로 보였음
+>          실행 줄 «rule=<리포트 이름>:target kind=declared:ask» 는 그대로 — 반쪽은 ask 의 메모리 기제로 돕니다
+> 끄기     없음(이름표만)
+> 되돌리기  git revert 8f32cdaba -> 런처 재기동
+> ```
+
+---
+
 > ## [10-28] **메모리 scope 칸이 상황에 없으면 교정을 안 싣는다 (거짓 답 고침), b3f100e5f** — git pull · 런처 재기동
 >
 > ```
