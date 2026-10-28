@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **(wafer, leg) 리포트도 계측값이 실린다 — causes.values.row, 61adaa9ee** — git pull · 런처 재기동
+>
+> ```
+> 할 것    리포트 단위가 (wafer, leg) 면 derive.report.causes.values 에 "row": ["<원장 웨이퍼를 가리키는 칸>"] (예 ["wafer"])
+> 볼 줄    chain_worker.log «[Report] causes values: N quantit(ies) with values on these wafers, M to fill …»
+> 뜻      «quantity values refused: … a wafer node has 1 key(s) (wafer), a wafer here 2 (wafer, leg) - write causes.values.row»
+>          = row 를 안 적음 -> 위 한 줄. 저장 거절 «causes.values.row names <칸> - not a column of derive.report.wafer.key»
+>          = row 칸이 wafer.key 밖
+> 되돌리기  git revert 61adaa9ee -> 런처 재기동 (그러면 (wafer, leg) 리포트는 다시 값 없이 써짐)
+> ```
+
+---
+
 > ## [10-28] **견본 기본 세계가 계측값 · 공정 통과를 읽는다 (metro · process_event 소스), 9734db4f6** — git pull 만 (견본만)
 >
 > ```
