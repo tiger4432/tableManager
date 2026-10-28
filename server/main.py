@@ -1919,6 +1919,20 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
 # "대시보드를 열 때마다 GROUP BY"를 구조적으로 막는 1차 방어선이다.
 RECORRECTION_CACHE = {"value": None, "at": 0.0}
 RECORRECTION_CACHE_TTL = 60.0
+#: The dashboard's «today» audit count - a range over idx_audit_recent_groups, once a minute (소유자 10-28 «속도만»).
+TODAY_UPDATES_CACHE = {"value": None, "at": 0.0}
+TODAY_UPDATES_CACHE_TTL = 60.0
+
+
+def _held(cache, ttl):
+    """A dashboard figure's cached value while younger than `ttl` seconds, else None."""
+    return cache["value"] if cache["value"] is not None and time.time() - cache["at"] < ttl else None
+
+
+def _hold(cache, value, at):
+    """Keep `value` as the figure computed at `at`. -> value"""
+    cache["value"], cache["at"] = value, at
+    return value
 # 2차 방어선: 인덱스(idx_audit_user_recorrection)가 아직 없는 운영 DB에서도 대시보드가
 # 절대 느려지지 않게 하는 상한. 인덱스가 있으면 도달할 일이 없고, 없으면 값 대신 '—'가 뜬다.
 # (지표 하나 때문에 대시보드 전체가 굼떠지는 것보다, 그 칸만 비는 편이 낫다.)
@@ -1929,7 +1943,7 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
     """재교정률을 캐시/타임아웃 보호 하에 계산한다. 절대 예외를 밖으로 내보내지 않는다."""
     import sqlalchemy as sa
     now = time.time()
-    if RECORRECTION_CACHE["value"] is not None and (now - RECORRECTION_CACHE["at"]) < RECORRECTION_CACHE_TTL:
+    if _held(RECORRECTION_CACHE, RECORRECTION_CACHE_TTL) is not None:
         return RECORRECTION_CACHE["value"]
 
     try:
@@ -1962,9 +1976,7 @@ def _get_recorrection_stat(db: Session) -> schemas.RecorrectionStat:
             unavailable_reason=reason,
         )
 
-    RECORRECTION_CACHE["value"] = result
-    RECORRECTION_CACHE["at"] = now
-    return result
+    return _hold(RECORRECTION_CACHE, result, now)
 
 
 # [V1 계기] 상호작용 점수도 재교정률과 **완전히 같은 방어**를 쓴다(캐시 + statement_timeout).
@@ -1980,7 +1992,7 @@ def _get_effort_stat(db: Session) -> schemas.EffortStat:
     import sqlalchemy as sa
     import effort_metric
     now = time.time()
-    if EFFORT_CACHE["value"] is not None and (now - EFFORT_CACHE["at"]) < EFFORT_CACHE_TTL:
+    if _held(EFFORT_CACHE, EFFORT_CACHE_TTL) is not None:
         return EFFORT_CACHE["value"]
 
     # 배점은 캐시하지 않는다 — config 핫리로드가 다음 집계부터 반영되어야 하고,
@@ -2015,9 +2027,7 @@ def _get_effort_stat(db: Session) -> schemas.EffortStat:
             unavailable_reason=reason,
         )
 
-    EFFORT_CACHE["value"] = result
-    EFFORT_CACHE["at"] = now
-    return result
+    return _hold(EFFORT_CACHE, result, now)
 
 
 @app.get("/api/effort/config")
@@ -2127,8 +2137,10 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     # payload. The per-table counts above already spell it this way.
     #
     # ⚠️ THE MEANING IS UNCHANGED: rows written to the audit log since local midnight.
-    today_updates_count = db.query(sa.func.count(models.AuditLog.id)).filter(
-        models.AuditLog.timestamp >= today_start).scalar() or 0
+    today_updates_count = _held(TODAY_UPDATES_CACHE, TODAY_UPDATES_CACHE_TTL)
+    if today_updates_count is None:
+        today_updates_count = _hold(TODAY_UPDATES_CACHE, db.query(sa.func.count(models.AuditLog.id)).filter(
+            models.AuditLog.timestamp >= today_start).scalar() or 0, time.time())
 
     # 두 계기는 **마지막에** 계산한다 — 타임아웃 시 rollback 이 위쪽 집계를 건드리지 않도록.
     # (각자 자기 rollback 을 하므로 앞의 실패가 뒤의 집계를 오염시키지 않는다.)
