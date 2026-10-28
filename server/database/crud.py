@@ -1789,8 +1789,29 @@ def resolution_ingested_at(entry: Any, source_name: str = None,
         return None
 
 
+#: chain.formula - imported at the first cell asked about (it imports this module).
+_FORMULAS = []
+
+
+def _formulas():
+    if not _FORMULAS:
+        from chain import formula
+
+        _FORMULAS.append(formula)
+    return _FORMULAS[0]
+
+
+def formula_written(table_name: str, column: str, source_name) -> Optional[str]:
+    """The formula's name («formula T.c») when this write is a formula column's - a chain write to a column a formula
+    computes, which only the formula's rule may write (`formula.second_writers`) - else None. Such a write holds no
+    layer and leaves no line of its own: the value is the declaration's, its history the batch's receipt (lead 10-28)."""
+    if layer_ranks_as(source_name) != CHAIN_SOURCE or (table_name, column) not in _formulas().columns():
+        return None
+    return _formulas().RULE_NAME % (table_name, column)
+
+
 def compute_priority_value(sources: dict, manual_priority_source: str = None, table_name: str = None,
-                           ingested_at_by_source: dict = None, ranks: dict = None):
+                           ingested_at_by_source: dict = None, ranks: dict = None, cell: tuple = None):
     """여러 소스들 중 가장 우선순위가 높은 값을 결정합니다.
 
     🔴 THE ORDER IS EXPLICIT AND TOTAL, AND IT HAS TO BE. This used to be
@@ -1828,14 +1849,24 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
        and level 3 always decides. The result therefore does not depend on the order
        the caller assembled `sources` in, on the SELECT that produced it, or on the
        physical row order underneath that SELECT.
+
+    `cell` (table, column, row): a column a formula rule writes has one more layer, undated, ranked as the chain
+    (`chain.formula.columns`, lead 10-28) - its value is the formula over `row`. A pin names a stored layer only.
     """
-    if not sources:
+    formula = None
+    if cell is not None:
+        formula = _formulas().columns().get(cell[:2])
+    if not sources and formula is None:
         return None, None
 
     if manual_priority_source and manual_priority_source in sources:
         val_data = sources[manual_priority_source]
         val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
         return val, manual_priority_source
+    if formula is not None and formula[0] not in sources:
+        sources = {**sources, formula[0]: {}}
+    else:
+        formula = None
 
     # `ranks` {source: declared rank} - a batch's memo over its rows, one table; alone, this call's own
     ranks = {} if ranks is None else ranks
@@ -1854,6 +1885,8 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     # `min` rather than `sorted`: the same first element, without materialising and
     # sorting the whole list on a per-cell hot path.
     top_source = min(sources.keys(), key=_rank)
+    if formula is not None and top_source == formula[0]:
+        return formula[1]([{name: getattr(cell[2], name, None) for name in formula[2]}]), top_source
     val_data = sources[top_source]
     val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
     return val, top_source
@@ -2008,6 +2041,40 @@ def create_audit_log(db: Session, table_name: str, row_id: str, col_name: str, o
         audit_cache.add_log(log_dict)
         
     return log_dict
+
+def receipt_log(db, table_name, batch_id, label, facts, source, who, transaction_id, row_ids=None) -> list:
+    """A batch's receipt in the history - lines under RECEIPT_COLUMN whose `new_value` is `facts` with `receipt_label`,
+    the word the screen shows (lead 10-28: the ledger's «Ledger batch», a formula's «formula T.c»). `row_ids`, the rows
+    the batch changed, are split over as many lines as keep each under the audit value cap (MAX_AUDIT_VALUE_CHARS,
+    07-25), each line with `part` · `parts` and `rows` - the rows that line names, so a group's lines sum to its rows (lead
+    10-28). `transaction_id` as given, None too (판정 248: an invented id makes a backfill look like a group of one).
+    Built, not persisted - the caller writes them. -> [line]"""
+    from event_constants import MAX_AUDIT_VALUE_CHARS
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    said = dict(facts, receipt_label=label)
+    parts = [said]
+    if row_ids is not None:
+        said = dict(said, rows=len(row_ids), part=0, parts=0, row_ids=[])
+        room, parts, ids = MAX_AUDIT_VALUE_CHARS - len(repr(said)) - 8, [], []
+        used = 0
+        for row_id in row_ids:
+            cost = len(repr(row_id)) + 2
+            if ids and used + cost > room:
+                parts.append(ids)
+                ids, used = [], 0
+            ids.append(row_id)
+            used += cost
+        parts = [dict(said, rows=len(ids_k), part=k, parts=len(parts) + 1, row_ids=ids_k)
+                 for k, ids_k in enumerate(parts + [ids], 1)]
+    lines = []
+    for value in parts:
+        line = create_audit_log(db, table_name, batch_id, RECEIPT_COLUMN, None, value, source, who,
+                                transaction_id=transaction_id, add_to_cache=False)
+        line["transaction_id"] = transaction_id
+        lines.append(line)
+    return lines
+
 
 def bulk_insert_audit_logs(db: Session, logs: list[dict]):
     """AuditLog를 Bulk Insert로 초고속 적재합니다."""
@@ -4081,11 +4148,20 @@ def apply_row_update_internal(
 
         # 3. 소스 데이터 upsert
         col_type = (config.get("column_types") or {}).get(col_name, "string")
+        formula = formula_written(table_name, col_name, update_item.source_name)
+        tally = (plan["receipts"].setdefault(formula, {"row_ids": [], "blank": 0, "refused": 0,
+                                                       "who": update_item.updated_by})
+                 if formula and plan else None)
         try:
             clean_val = cast_value_by_type(val, col_type, col_name, table_name)
         except CellRefused as refused:
-            refused.item = update_item      # `apply_batch_updates` turns this into a row
-            raise
+            if tally is None:
+                refused.item = update_item      # `apply_batch_updates` turns this into a row
+                raise
+            clean_val = None                    # counted; the display answer casts the formula's own the same way
+            tally["refused"] += 1
+        if tally is not None and val is None:
+            tally["blank"] += 1
 
         # 🔴 [S-243, 판정 405] ABSENCE MAKES NO LAYER; ONLY A DELIBERATE BLANK DOES.
         # 소유자 2026-09-15: 「빈 층 고의 입력은 진짜 빈 것, 그냥 없던 것은 아직 입력하지
@@ -4159,9 +4235,9 @@ def apply_row_update_internal(
             repeat, folded = file_layer_fold(
                 col_srcs, update_item.source_name, clean_val, col_type, table_name,
                 ow.manual_priority_source if ow else None)
-        source_unchanged = source_unchanged or repeat
+        source_unchanged = source_unchanged or repeat or bool(formula)    # a formula column holds no layer
 
-        if not src_obj and not repeat:
+        if not src_obj and not repeat and not formula:
             if cell_sources_to_upsert is None:
                 # No bulk accumulator: this object IS the write, so it has to be the
                 # mapped one.
@@ -4246,7 +4322,7 @@ def apply_row_update_internal(
             manual_pin = None # 수동 값 입력 시 핀 초기화
             
         new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name,
-                                                  ranks=plan["ranks"] if plan else None)
+                                                  ranks=plan["ranks"] if plan else None, cell=(table_name, col_name, row))
         old_val = old_values_snapshot.get(col_name)
         
         # 6. cell_overwrites 마킹
@@ -4326,6 +4402,8 @@ def apply_row_update_internal(
         if has_changed:
             setattr(row, col_name, new_val)
             changed_cols.append(col_name)
+            if tally is not None:
+                tally["row_ids"].append(row.row_id)
             if update_item.source_name == "user":
                 log_dict = create_audit_log(
                     db, table_name, row.row_id, col_name, old_val, new_val, 
@@ -4349,9 +4427,10 @@ def apply_row_update_internal(
             if logs_to_cache is not None:
                 logs_to_cache.append(log_dict)
 
-    if changed_cols and update_item.source_name != "user":
+    lined = [col for col in changed_cols if not formula_written(table_name, col, update_item.source_name)]
+    if lined and update_item.source_name != "user":
         log_dict = row_update_line(
-            db, table_name, row.row_id, changed_cols, {col: getattr(row, col, None) for col in changed_cols},
+            db, table_name, row.row_id, lined, {col: getattr(row, col, None) for col in lined},
             old_values_snapshot, is_new, update_item.source_name, update_item.updated_by,
             transaction_id, row.business_key_val, add_to_cache=(logs_to_cache is None))
         if logs_to_cache is not None:
@@ -5767,7 +5846,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
 
         # what is the same for every row of this batch, once (총괄 249b43409) - the keys were assembled above
         plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
-                "unmapped": {}, "ranks": {}, "map_judged": map_judged}
+                "unmapped": {}, "ranks": {}, "map_judged": map_judged, "receipts": {}}
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:
@@ -5885,6 +5964,14 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # layers, so its rollback left them all dead (box: 6,002 per 1,000 rows x 5) - now it waits there first and
         # leaves ~2. And two batches of the same new keys in opposite orders wait in one order instead of deadlocking
         # (40P01, which nothing retries; box: 2 of 13). The steps below write by row id and read no data row.
+        for label, tally in plan["receipts"].items():
+            if tally["blank"] or tally["refused"]:
+                logger.info("[Formula] %s: %d blank answer(s), %d not of the column's type - written blank",
+                            label, tally["blank"], tally["refused"])
+            if tally["row_ids"]:
+                logs_to_cache.extend(receipt_log(
+                    db, table_name, str(uuid6.uuid7()), label, {"blank": tally["blank"], "refused": tally["refused"]},
+                    CHAIN_SOURCE, tally["who"] or "system", tx_id, row_ids=tally["row_ids"]))
         new_rows = sorted((row for row in db.new if isinstance(row, table_model)),
                           key=lambda row: (row.business_key_val is None, row.business_key_val or ""))
         for row in new_rows:
@@ -6361,7 +6448,7 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
         }
 
         old_val = getattr(row, col_name, None)
-        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name)
+        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name, cell=(table_name, col_name, row))
         moved = values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
             "column_types") or {}).get(col_name, "string"))
         if moved:                       # the value it already shows is not written again - no event (총괄 f5ff1e3e9)
@@ -6519,7 +6606,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         }
 
         old_val = getattr(row, col_name, None)
-        new_val, top_src = compute_priority_value(sources_dict, effective_source, table_name)
+        new_val, top_src = compute_priority_value(sources_dict, effective_source, table_name,
+                                                  cell=(table_name, col_name, row))
         moved = values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
             "column_types") or {}).get(col_name, "string"))
         if moved:                       # the value it already shows is not written again - no event (총괄 f5ff1e3e9)

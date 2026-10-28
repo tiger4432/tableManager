@@ -245,14 +245,15 @@ def _start_all(pool):
                      pool.name, pool.name, type(exc).__name__, told(exc), exc_info=exc)
 
 
-def recycle():
+def recycle(names=None):
     """A reload empties this process's caches; a pool process holds its own copies. The idle ones end now, a running
-    one after its answer - and new ones start behind it, and in its place when it ends. Every pool.
+    one after its answer - and new ones start behind it, and in its place when it ends. The pools `names` names (a
+    `Pool.name` each - those whose processes read what changed), every pool when None.
     🔴 Only in a process that warmed the pools (lead eb9c328e4): the watcher, chain worker and auto-update daemons run
     the same table-config reload, and a pool process started there runs the daemon's top level again as `__mp_main__`."""
     if not _warmed[0]:
         return
-    for pool in POOLS:
+    for pool in POOLS if names is None else [pool for pool in POOLS if pool.name in names]:
         with pool.cond:
             pool.generation[0] += 1
             _drain_locked(pool)

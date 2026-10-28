@@ -560,6 +560,68 @@ def rule_name_holders(db, name: str, rules) -> list:
     return [(what, count) for what, count in held if count]
 
 
+def _chain_rules_opened(base: str):
+    """(path, document, its rules copied) - chain_rules.json as the editor opened it (`base`), else refused."""
+    path = chain_rules_path()
+    if base != file_fingerprint(path):
+        raise _table_config_refusal(
+            "stale_base", "base",
+            "This file changed after you opened it. Reopen it, check, then save")
+
+    document = _read_json(path, {})
+    if not isinstance(document, dict) or not isinstance(document.get("rules"), list):
+        raise _table_config_refusal(
+            "config_not_object", "chain_rules.json",
+            "chain_rules.json is not an object with a rules array")
+
+    # 🔴 [판정 556] WHAT THIS SAVE DOES NOT RECOGNISE, IT CARRIES - it does not drop it.
+    #   This read `[dict(r) for r in ... if isinstance(r, dict)]`, so any entry in the
+    #   operator's file that is not an object VANISHED the next time ANY rule was saved,
+    #   without a word. Found by the application lane.
+    # ⚠️ AND IT IS THE SAME RULE 판정 536 SET FOR CELLS, one level up: 「제품이 모르는 것을
+    #   그대로 실어 나른다 — 읽는 자를 못 본다 ≠ 아무도 안 읽는다」. Whether a non-object
+    #   entry SHOULD be there is not a judgement this box can make, and deleting is the one
+    #   answer that cannot be taken back.
+    return path, document, [dict(rule) if isinstance(rule, dict) else rule for rule in document["rules"]]
+
+
+def remove_chain_rule_raw(name: str, base: str, db=None) -> dict:
+    """Take ONE chain rule out of the file - the save door's shape (lead 10-28): the file as opened, the rule by its one
+    name (`rule_index_named`), refused while something holds it by that name (`rule_name_holders`), the set left
+    judged as the save judges it, written atomically with the same backup (`_atomic_write` - the saves' history), and
+    read again where it is watched (`config_watcher.changed`)."""
+    from chain import ingestion_worker
+    from chain import rule_shape
+    from database import crud as _catalogue
+
+    path, document, rules = _chain_rules_opened(base)
+    existing = rule_index_named(rules, name)
+    if existing is None:
+        raise _table_config_refusal(
+            "stale_base", "name", f"Rule {name!r} is not in the file any more. Reopen it, check, then save")
+    with _session_of(db) as session:
+        holders = rule_name_holders(session, name, rules)
+    if holders:
+        raise _table_config_refusal(
+            "rule_name_held", "name",
+            f"Next: switch the rule off and remove it when nothing holds it. Removing it would cut what holds it "
+            f"by name: " + ", ".join(f"{count} {what}" for what, count in holders))
+    del rules[existing]
+    expanded_set = []
+    for saved in rules:
+        if isinstance(saved, dict):
+            expanded_set.extend(rule_shape.expand_declaration(saved, _catalogue.TABLE_CONFIG)[0])
+    ingestion_worker._validate_chain_cascade_graph(expanded_set)
+    merged = dict(document)
+    merged["rules"] = rules
+    backup = _atomic_write(path, merged)
+    from database import config_watcher
+
+    config_watcher.changed(path)
+    return {"ok": True, "name": name, "base": file_fingerprint(path), "backup": backup,
+            "rules": sum(1 for rule in rules if isinstance(rule, dict))}
+
+
 def save_chain_rule_raw(name: str, declaration, base: str, db=None,
                         renamed_from: str = None) -> dict:
     """Write ONE chain rule. 🔴 A NEW RULE IS SAVED ARMED BUT NOT FIRING.
@@ -589,28 +651,7 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
         raise _table_config_refusal("declaration_not_object", f"rules.{name}",
                                     "A rule must be a JSON object")
 
-    path = chain_rules_path()
-    if base != file_fingerprint(path):
-        raise _table_config_refusal(
-            "stale_base", "base",
-            "This file changed after you opened it. Reopen it, check, then save")
-
-    document = _read_json(path, {})
-    if not isinstance(document, dict) or not isinstance(document.get("rules"), list):
-        raise _table_config_refusal(
-            "config_not_object", "chain_rules.json",
-            "chain_rules.json is not an object with a rules array")
-
-    # 🔴 [판정 556] WHAT THIS SAVE DOES NOT RECOGNISE, IT CARRIES - it does not drop it.
-    #   This read `[dict(r) for r in ... if isinstance(r, dict)]`, so any entry in the
-    #   operator's file that is not an object VANISHED the next time ANY rule was saved,
-    #   without a word. Found by the application lane.
-    # ⚠️ AND IT IS THE SAME RULE 판정 536 SET FOR CELLS, one level up: 「제품이 모르는 것을
-    #   그대로 실어 나른다 — 읽는 자를 못 본다 ≠ 아무도 안 읽는다」. Whether a non-object
-    #   entry SHOULD be there is not a judgement this box can make, and deleting is the one
-    #   answer that cannot be taken back.
-    rules = [dict(rule) if isinstance(rule, dict) else rule
-             for rule in document["rules"]]
+    path, document, rules = _chain_rules_opened(base)
     renamed_from = renamed_from if renamed_from != name else None
     existing = rule_index_named(rules, renamed_from or name)
     if renamed_from:
@@ -743,6 +784,12 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
     # by mapper and back by join is INTENDED, and `max_chain_depth` is what makes it finite -
     # so refusing here refused a declaration that runs correctly, at the one door an operator
     # has. The validator says its line and the save goes through.
+    from chain import formula
+    mine = {rule.get("name") for rule in stood}
+    for writer, named, sentence in formula.second_writers(rules, expanded_set):
+        if mine & {writer.get("name"), named}:
+            raise _table_config_refusal("formula_column", f"rules.{name}", sentence)
+
     ingestion_worker._validate_chain_cascade_graph(expanded_set)
 
     backup = _atomic_write(path, merged)

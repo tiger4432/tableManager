@@ -329,7 +329,7 @@ def test_a_table_config_save_ends_the_walks_kept_here(declared, cut, monkeypatch
     from database import config_watcher, crud, models
 
     key = _first(declared)["more"]["resume"]["walk"]
-    monkeypatch.setattr(process_pool, "recycle", lambda: None)
+    monkeypatch.setattr(process_pool, "recycle", lambda names=None: None)
     monkeypatch.setattr(crud, "TABLE_CONFIG", {})
     monkeypatch.setattr(crud, "load_table_config", lambda: {"t": {}})
     monkeypatch.setattr(models, "init_dynamic_models", lambda config, engine=None: None)
@@ -352,7 +352,7 @@ def test_a_table_config_save_says_which_of_the_two_failed(monkeypatch, caplog, f
     def boom(*args):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(process_pool, "recycle", boom if failing == "recycle" else lambda: None)
+    monkeypatch.setattr(process_pool, "recycle", boom if failing == "recycle" else lambda names=None: None)
     monkeypatch.setattr(ledger_subgraph, "end_kept_walks", boom if failing == "end_kept_walks" else ended.append)
     monkeypatch.setattr(crud, "TABLE_CONFIG", {})
     monkeypatch.setattr(crud, "load_table_config", lambda: {"t": {}})

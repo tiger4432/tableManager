@@ -72,7 +72,7 @@ FOLLOWUP_JOB = "chain_followup"
 #: The audit column, source layer and writer a ledger receipt carries. Imported from the
 #: one place that already names them so the failure receipt below and the success receipt
 #: in `runtime_v2` cannot describe themselves differently.
-from .runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED, RECEIPT_SOURCE  # noqa: E402
+from .runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED, RECEIPT_LABEL, RECEIPT_SOURCE  # noqa: E402
 from utils.logger import count_cleared, count_crossed  # noqa: E402
 from error_said import told
 RECEIPT_WRITER = "ledger"
@@ -340,12 +340,12 @@ def _write_failure_receipt(engine, relation, source, transaction_id, exc, world)
         connection = engine.raw_connection()
         try:
             for one in ids or (None,):
-                store_module._insert_audit_row(connection, crud.create_audit_log(
-                    None, relation, str(uuid6.uuid7()), RECEIPT_COLUMN, None,
-                    {"source": source, "world": world, "status": RECEIPT_FAILED,
-                     "error": f"{type(exc).__name__}: {exc}"},
-                    RECEIPT_SOURCE, RECEIPT_WRITER,
-                    transaction_id=one, add_to_cache=False))
+                for line in crud.receipt_log(
+                        None, relation, str(uuid6.uuid7()), RECEIPT_LABEL,
+                        {"source": source, "world": world, "status": RECEIPT_FAILED,
+                         "error": f"{type(exc).__name__}: {exc}"},
+                        RECEIPT_SOURCE, RECEIPT_WRITER, one):
+                    store_module._insert_audit_row(connection, line)
             connection.commit()
         finally:
             connection.close()

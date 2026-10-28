@@ -2746,8 +2746,12 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                              row_ids: list = None, apply: bool = False,
                              chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
                              max_report: int = DEFAULT_MAX_REPORT,
-                             log=logger.info, checkpoint=None) -> dict:
+                             log=logger.info, checkpoint=None, formula_removed=()) -> dict:
     """[R3] Re-run the resolution over stored layers and repair the materialised column.
+
+    `formula_removed`: columns whose formula was just removed (`chain.formula.remove`). Their every cell is resolved,
+        under two layers too - a value the formula wrote has no layer, and left there it would have no source (lead
+        10-28 ㄱ). No other cell passes the gate below.
 
     WHY THIS EXISTS AND WHY R1/R2 CANNOT DO IT
         The winning value is MATERIALISED: `apply_row_update_internal` ends with
@@ -2865,6 +2869,9 @@ def recompute_display_values(db, table_name: str, columns: list = None,
             page_ids = [r.row_id for r in page]
             by_id = {r.row_id: r for r in page}
             cell_sources, pins = _load_cell_state(db, table_name, page_ids)
+            for column in formula_removed or ():
+                for row_id in page_ids:
+                    cell_sources.setdefault((row_id, column), {})
 
             page_changed = False
             for cell, srcs in cell_sources.items():
@@ -2878,7 +2885,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                     continue
                 # The safety gate. See the docstring: one layer has no tie, zero layers
                 # would blank the column.
-                if len(srcs) < 2:
+                if len(srcs) < 2 and col not in (formula_removed or ()):
                     continue
 
                 stats["cells_examined"] += 1

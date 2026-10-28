@@ -96,6 +96,8 @@ def _refusal_reasons(refusals) -> dict:
 RECEIPT_COLUMN = "ledger_batch"
 #: A receipt's `status` when a world's translation failed (`followup._write_failure_receipt`).
 RECEIPT_FAILED = "failed"
+#: The word a ledger receipt line is shown by (`crud.receipt_log`'s `receipt_label`, lead 10-28).
+RECEIPT_LABEL = "Ledger batch"
 
 #: The layer a ledger receipt is written as. Beside `user` and a parser's file name, so the
 #: existing priority rules already know what to do with it: nothing, because it claims a
@@ -129,8 +131,8 @@ def _batch_receipt(store, plan, preview, rows: int, batch_id: str):
 
         receipts = []
         for followed in followup.event_transaction_ids():
-            row = crud.create_audit_log(
-                None, plan.relation, batch_id, RECEIPT_COLUMN, None,
+            receipts.extend(crud.receipt_log(
+                None, plan.relation, batch_id, RECEIPT_LABEL,
                 {
                     "rows": rows,
                     "molecules": preview.molecule_count,
@@ -147,17 +149,7 @@ def _batch_receipt(store, plan, preview, rows: int, batch_id: str):
                     "status": "ok",
                     "error": None,
                 },
-                RECEIPT_SOURCE, store.who,
-                transaction_id=followed, add_to_cache=False)
-            # 🔴 AND THE EMPTY FIELD SURVIVES `create_audit_log`'S DEFAULT (판정 248, measured
-            # on the first live run). That function invents a transaction id when given none,
-            # which is right for a cell edit - every human write belongs to some group - and
-            # wrong for a receipt: an invented id makes a backfill look like a group of ONE,
-            # indistinguishable on the timeline from a chain event that happened to touch a
-            # single table. The difference is exactly what this record exists to show, so the
-            # field is put back to what was followed, which may be nothing.
-            row["transaction_id"] = followed
-            receipts.append(row)
+                RECEIPT_SOURCE, store.who, followed))
         return receipts
 
     return build

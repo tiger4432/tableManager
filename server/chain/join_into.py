@@ -299,10 +299,29 @@ def right_key(rule: dict) -> tuple:
             [fold for _left, _right, fold in on])
 
 
+#: A take's `fn` that starts with this is a formula - the rest is the shared calculator's text (owner 10-28).
+FORMULA_MARK = "="
+
+
+def formula_of(fn):
+    """The calculator's reading (`expression.compile`) of a take's `fn` when it is a formula «=…» - else None."""
+    if not (isinstance(fn, str) and fn.startswith(FORMULA_MARK)):
+        return None
+    import expression
+
+    return expression.compile(fn[len(FORMULA_MARK):])
+
+
 def _from(item: dict):
     """A take record's `from`: one column name, or a tuple of names when it is a list (owner 10-23 «from 이 여러 개») -
-    the one reader of its shape. A function take's values follow it: a value a row, or {column: value} a row."""
+    the one reader of its shape. A function take's values follow it: a value a row, or {column: value} a row. A formula
+    take writes none: it reads the columns it names. "" - neither."""
     said = item.get("from")
+    if said is None:
+        read = formula_of(item.get(TAKE_FN))
+        said = list(read["names"]) if read and read["ok"] and read["names"] else None
+    if said is None:
+        return ""
     return tuple(str(name) for name in said) if isinstance(said, list) else str(said)
 
 
@@ -318,8 +337,8 @@ def _takes(spec: dict) -> list:
     for item in spec.get("take") or ():
         if isinstance(item, str):
             out.append((item, item))
-        elif isinstance(item, dict) and item.get("from"):
-            out.append((_from(item), str(item.get("into") or item["from"])))
+        elif isinstance(item, dict) and _from(item):
+            out.append((_from(item), str(item.get("into") or item.get("from"))))
             if item.get(TAKE_WHY):                      # the same values, the function's second answer
                 out.append((_from(item), str(item[TAKE_WHY])))
     return out
@@ -329,14 +348,14 @@ def _fn_takes(spec: dict) -> dict:
     """{left column: (value-table column, the aggregation as the gap fill writes one)} of the `take` items saying `fn`."""
     out = {}
     for item in spec.get("take") or ():
-        if isinstance(item, dict) and item.get("from") and item.get(TAKE_FN):
+        if isinstance(item, dict) and _from(item) and item.get(TAKE_FN):
             record = {"fn": item[TAKE_FN]}
             if item[TAKE_FN] != "count":
                 record["column"] = _from(item)
             for cell in ("separator", TAKE_REF, TAKE_ROW, TAKE_WALK):
                 if cell in item:
                     record[cell] = item[cell]
-            into = str(item.get("into") or item["from"])
+            into = str(item.get("into") or item.get("from"))
             out[into] = (_from(item), record)
             if item.get(TAKE_WHY):
                 out[str(item[TAKE_WHY])] = (_from(item), dict(record, says=TAKE_WHY, of=into))
@@ -383,6 +402,9 @@ def take_function(fn):
         return None, None
     if fn == WALK_FN:
         return walked, None
+    read = formula_of(fn)
+    if read is not None:
+        return (_formula(read), None) if read["ok"] else (None, "fn %r - %s" % (fn, read["why"]))
     file, _dot, name = str(fn).rpartition(".")
     path = os.path.join(JOIN_FN_DIR, file + ".py")
     if not file or not name or os.sep in file or "/" in file or not os.path.isfile(path):
@@ -400,6 +422,21 @@ def take_function(fn):
     return function, None
 
 
+def _formula(read):
+    """A formula take's function: the calculator over the key's row (a join on the table's own key has one) - its value;
+    an answer the calculator cannot give (a text where a number is asked, a division by 0) is blank."""
+    import expression
+
+    names = read["names"]
+
+    def f(values, _row=None, _ref=None):
+        said = expression.run(read, [value if isinstance(value, dict) else {names[0]: value} for value in values])
+        answers = said["values"] if "values" in said else [said["value"]] if "value" in said else []
+        return answers[0] if answers else None
+
+    return f
+
+
 def take_refusal(join: dict, key: dict, right_table: str, left_table: str = ""):
     """Why this join's `take ... fn` cannot stand, by name - or None."""
     import map_overlay
@@ -407,7 +444,19 @@ def take_refusal(join: dict, key: dict, right_table: str, left_table: str = ""):
     from database import crud
 
     for item in (join or {}).get("take") or ():
-        said = item.get("from") if isinstance(item, dict) else None
+        read = formula_of(item.get(TAKE_FN)) if isinstance(item, dict) else None
+        if read is not None:
+            into = item.get("into")
+            if "from" in item:
+                return "take %r from - a formula reads the columns it names, so from is not written" % (into,)
+            if not read["ok"]:
+                return "take %r fn %r - %s" % (into, item[TAKE_FN], read["why"])
+            if not read["names"]:
+                return "take %r fn %r - a formula reads at least one column" % (into, item[TAKE_FN])
+            if right_table == left_table and into in read["names"]:
+                return ("take %r fn %r reads %s itself - a formula reads the row's other columns"
+                        % (into, item[TAKE_FN], into))
+        said = list(_from(item)) if isinstance(item, dict) and isinstance(_from(item), tuple) else None
         if not isinstance(said, list):
             continue
         into = item.get("into") or said
@@ -943,6 +992,9 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
     if fns:
         from database import crud
 
+        # a formula's blank is written, not withdrawn: its column holds no layer to take back (lead 10-28 ㄴ)
+        said = {into for into, (_column, record) in fns.items() if formula_of(record["fn"]) is not None}
+
         # 🔴 [lead 10-20] NO ORIGIN, AND A BLANK ONE IS WITHDRAWN - the gap fill's door: a gathered cell has every row
         #    of its key for a source, so no one row's deletion or move may take it back (`_retract_deleted_rows` aims at
         #    origins); the recount is its one author, and a key left with no row takes back what this rule wrote
@@ -958,8 +1010,9 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
             gathered = once[asked]
             updates.append({"row_id": row_id, "source_name": CHAIN_LAYER,
                             "updated_by": str((rule or {}).get("name") or ""),
-                            "updates": {c: v for c, v in gathered.items() if not crud.is_blank_value(v)},
-                            "withdraw": sorted(c for c, v in gathered.items() if crud.is_blank_value(v))})
+                            "updates": {c: v for c, v in gathered.items() if c in said or not crud.is_blank_value(v)},
+                            "withdraw": sorted(c for c, v in gathered.items()
+                                               if c not in said and crud.is_blank_value(v))})
     more = after is not None
     unsaid, total = {}, 0
     if not start:

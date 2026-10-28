@@ -212,6 +212,34 @@ why     값이 빈 행의 사유: no mapping(그 값이 원장 노드가 아님 
 - 사람이 고친 값 칸은 그대로입니다(user 층)
 - worlds 는 그 걷기 옆에 적습니다: 리포트는 `causes.worlds`(후보 · 값 두 걷기를 함께), 조인은 take 의 `walk.worlds`. 리포트의 `causes.values` 안에는 적지 않습니다(저장 거절).
 
+**⑨ 같은 행의 다른 칸으로 계산 → 칸 수식 `"fn": "=식"`** (🆕 10-28)
+
+그리드 칸에 `=[a]+[b]*3` 을 적으면(`POST /admin/chain/formula`) 규칙 «formula <표>.<칸>» 하나가 됩니다. 그 표를 자기 키로 자기에게 잇는 조인이고, take 하나의 `fn` 이 그 식입니다. 다시 열면 같은 식이 보입니다.
+
+```json
+{ "name": "formula fx.c", "enabled": true, "allow_chain_trigger": true, "on": { "table": "fx" }, "into": { "table": "fx" },
+  "derive": { "kind": "join", "join": { "on": [{ "left": "k", "right": "k" }],
+                                         "take": [{ "into": "c", "fn": "=[a]+[b]*3" }] } } }
+```
+```
+문법     공용 계산기(server/expression.py) 그대로 — [칸] · Round · If …. OVER 는 아직 없음. 자기 칸([c]) 읽기는 거절
+저장     미리보기(앞 5 행의 답 · 다시 도는 행 수 = 그리드 개수) 뒤 저장 → 규칙 켜짐 + R1(전 행)
+따라감   엑셀처럼 읽는 칸을 따라간다 — 사람 · 파일이 바꾼 칸, 다른 규칙 · 다른 수식이 쓴 칸도(allow_chain_trigger,
+         소유자 10-28 ㄱ). 자기 쓰기로는 안 깨어난다. 단계 상한은 max_chain_depth(기본 8) — 넘으면 chain_worker.log
+         «[Chain Depth] … over the declared limit of N». 서로 읽는 두 수식은 저장 · 로드에서 거절되지 않고 거기서 멎는다
+층       수식 칸은 층(cell_sources)을 남기지 않는다 — 값은 선언이 낸다. 사람 값(user)은 그대로 이긴다
+         파일 소스가 그 칸을 쓰면 파일 층은 남고 서열대로 선다 — 수식은 체인 서열이다
+이력     배치마다 영수증 줄(ledger_batch 칸, receipt_label «formula <표>.<칸>», row_ids) — 행마다 줄은 없다
+         값 상한(4,096 자)을 넘으면 part k / parts 로 쪼갠다. 줄마다 rows = 그 줄이 덮은 행 수(줄을 더하면 배치)
+빈칸     피연산자가 비었다 · 0 으로 나눴다 · 칸 타입에 안 맞는다 → 빈칸. chain_worker.log
+         피연산자 하나라도 비면 답도 빈칸 — 엑셀처럼 0 으로 보지 않는다(소유자 10-28 ㄱ, 스팟파이어와 같음)
+         «[Formula] formula <표>.<칸>: N blank answer(s), M not of the column's type - written blank» 와 영수증에 센다
+한 저자   수식 칸을 쓰는 다른 규칙은 저장 · 로드에서 이름 대어 거절
+         «<규칙> writes <표>.<칸>, which formula <표>.<칸> computes - a formula column has one writer»
+지우기   식 "" → 규칙이 빠지고 R3(formula_removed): 그 칸은 자기 층대로, 층이 없으면 빈칸
+```
+- 글자 칸의 숫자 글(«4»)은 숫자로 셉니다. 숫자가 아닌 글(«four»)에 셈을 걸면 빈칸입니다.
+
 ## 1. 언제 이 파일을 만지는가
 
 - **테이블 A의 변경이 테이블 B를 자동 갱신하게 만들 때** (trigger→target→mapper 체인)
@@ -325,6 +353,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 | `into.read` | `rule_shape.expand_declaration` «하나»(로더와 어드민 저장 라우트가 같이 부른다) — `rule_shape.RETIRED_INTO_KINDS` 에 든 가지를 `READ_TIME_RETIRED` «한 문장»으로 거절한다. 같은 목록을 스켈레톤(`chain_bindings._unified_root`)이 «안 내놓을 것»으로 읽는다 | ⚰ **[2026-09-16 은퇴 1단계 `6580c30f`, 판정 440 ④ — 소유자 「운영은 조인 값을 표에 써서 쓴다」]** 통합 선언의 `derive.kind: join` + `into: {read: true}` 는 «이름 대고 거절»된다: 「읽기 시점 조인(into.read)은 은퇴했습니다 — 조인 값을 «표에 써서» 씁니다. → 다음: 이 선언의 `into` 를 `{"table": "<대상 표>"}` 로 바꾸십시오」. 거절은 «규칙 하나»만 떨어뜨리고 파일은 선다(같은 파일의 쓰는 조인은 규칙 둘로 선다 — `test_a_writing_join_still_stands_two_chain_rules`), 어드민 저장 라우트도 «같은 문장»을 `declaration_refused` 로 낸다. `read` 는 `INTO_KINDS` 에 «남는다» — 빼면 「모르는 칸」이 되어 운영자가 «안 낸 오타»를 찾는다(S-251 이 닫은 구멍을 은퇴가 다시 열지 않는다). `enabled: false` 는 여전히 «조용하다»(판정 399 ③′). ⚰ `virtual_join_rules.json` 쪽도 끝났다 — 09-17 `306419fd5` 가 엔진을 지웠고, 09-22 `fd546ccb1`(판정 652)이 그 문법을 지웠다 — 서버·클라 소스에서 그 파일 이름은 주석에만 남았다(09-25 `git grep`). 조인 쪽 옛 규율은 [config/virtual_join_rules](./virtual_join_rules.md) |
 | `key.unique` · `key.columns` | 워커 웜업(`chain/synthesis.ensure_declared_unique_keys` — 부팅 + 리로드마다. 읽기 경로가 «아니다») | `unique: true` 면 «제품이» 원천 표(`on.table`)에 유일 인덱스를 세운다 — 읽기 시점 가상 조인과 같은 `unique_key.ensure_once`, 같은 `uq_vjoin_*` 이름(S-240 `8cab58da`). 중복이 있으면 안 세우고 값·건수를 줄로 낸다(→ `RUN.md` §2 로 가른다). `columns` 는 «선택»이고 «검사»만 — 조인의 원천 쪽 키(`right`)와 같으면 무변, 다르면 두 목록을 이름 대고 안 세운다(`07a568ad` — 다른 컬럼 위의 인덱스는 이 조인이 안 쓴다). `enabled: false` 면 호출 0. 쓰기 시점 «행 단위 그물»은 그대로다 — 답이 둘인 into 행만 `[join_into:<규칙>] … → 다음:` 한 줄로 건너뛰고 나머지는 써진다 |
 | `derive.join.take[].fn` · `separator` (🆕 10-20) | `join_into._fn_takes` · `_gathered`(계산은 `enrichment.config.aggregation_record` → `expression`, 다른 구분자의 `unique_concat` 은 `enrichment.mapper._joined`) · 로드 거절 `join_into.take_refusal` | 키가 같은 원천 행 전부를 모아 한 칸에. 그 칸의 층은 origin 없이 쓰고 빈 집계는 `withdraw` — 결손 보정과 같은 문이라 원천 행 하나의 지움 · 이사가 그 칸을 거두지 않는다(다시 계산이 유일한 저자). 값 쪽 규칙에 로더가 `allow_delete_trigger` 를 찍어 지움도 다시 센다 |
+| `derive.join.take[].fn` 의 `=식` (🆕 10-28) | `join_into.formula_of` · `chain.formula`(`to_declaration` · `of_declaration` · `columns` · `second_writers`) · 쓰기 `crud.formula_written` · 표시 `crud.compute_priority_value(cell=)` | 같은 행의 칸 수식 — 위 ⑨ |
 | `enabled` | 로더(`rule_shape.is_switched_off`) | `false` 면 규칙이 «안 선다» — DB 도 안 만진다(판정 399, ③′). 5-B 의 `enabled` 가 로드 «뒤» 걸러지는 것과 다르다. ⚰️ `ASSY_CHAIN_SYNTHESIZE` 은퇴(S-234 `5c845e67`, 판정 408) — 어느 문법이든 규칙 하나는 «적은 파일»의 `enabled`, 전부는 `ASSY_CHAIN_WORKER=0`. 🆕 이 파일·`enrichment_rules.json`·`virtual_join_rules.json` 의 규칙 이름은 «한 집합»(판정 409): 같은 이름이 두 번이면 로더가 «어느 쪽도 안 세우고» 한 번 거절한다 — `[ChainRules] <이름>: 같은 규칙 이름이 N 번 선언돼 있습니다 (<파일> · <파일>) — 어느 쪽도 돌지 않습니다 → 다음: 두 파일 중 하나에서 이름을 바꾸십시오` |
 
 ### 5-bis. 맵퍼 «사설» 키 — 프레임워크가 «안 읽고 안 검증한다» (출하 샘플 기준)

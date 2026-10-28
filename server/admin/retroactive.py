@@ -288,7 +288,7 @@ def _count_resolve(db, params, scan_limit):
 
     s = replay.recompute_display_values(
         db, params["table"], columns=params.get("columns"), apply=False, limit=scan_limit,
-        log=lambda m: logger.debug(m))
+        log=lambda m: logger.debug(m), **_given(params, "formula_removed"))
     truncated = s["rows_scanned"] >= scan_limit
     affected = s["cells_changed"]
     return {
@@ -1707,7 +1707,7 @@ def _run_resolve(db, params, log, control=None):
 
     s = replay.recompute_display_values(db, params["table"], columns=params.get("columns"),
                                         apply=True, log=log, checkpoint=_checkpoint(control),
-                                        **_given(params, "limit", "chunk_size"))
+                                        **_given(params, "limit", "chunk_size", "formula_removed"))
     _final_progress(control, s.get("rows_scanned"), s)
     return {"cells_changed": s["cells_changed"], "cells_examined": s["cells_examined"],
             "rows_scanned": s["rows_scanned"]}
@@ -2320,7 +2320,10 @@ OPERATIONS = {
                    _p("limit", required=False, kind="int", form=False,
                       help="bound the rows scanned"),
                    _p("chunk_size", required=False, kind="int", form=False,
-                      help="rows per page")],
+                      help="rows per page"),
+                   _p("formula_removed", required=False, kind="csv", form=False,
+                      help="columns whose formula was just removed - every cell resolved, under two layers too",
+                      cli="set by removing a formula (POST /admin/chain/formula with an empty formula)")],
         "count": _count_resolve,
         "run": _run_resolve,
         "judge": _judge_table,
@@ -2746,6 +2749,22 @@ OPERATIONS = {
 #: The upkeep doors outside this tab, in the catalog's cells - what the operator means to do, their questions, and
 #: the door to call next (소유자 10-23 ㄴ). Not runs: each door is its own route or command, named in `doors`.
 DOORS_OUTSIDE = {
+    "formula_column": {
+        "label": "Compute a column from a formula",
+        "what_is_missing": "a column should be worked out from the same row's other columns, as a spreadsheet formula",
+        "examples": ["c 칸을 a + b*3 으로 자동 계산되게 하고 싶어", "엑셀처럼 이 칸에 수식 걸어줘",
+                     "수율 칸을 양품 / 투입 으로 채워줘", "걸어 둔 수식을 지우고 원래 값으로 돌려줘",
+                     "수식 칸이 비었어 - 0 으로 나눈 행인가"],
+        "doors": [
+            {"name": "preview", "how": "POST /admin/chain/formula {table, column, formula, preview: true}",
+             "when": "the first rows' answers and how many rows saving recomputes; nothing is written"},
+            {"name": "save", "how": "POST /admin/chain/formula {table, column, formula, base}",
+             "when": ("the formula saved as the rule «formula <table>.<column>», switched on, and recomputed over "
+                      "every row (R1 queued); a person's value on a cell stays")},
+            {"name": "remove", "how": "POST /admin/chain/formula {table, column, formula: \"\", base}",
+             "when": "the rule taken out and the column shown from its own layers again (R3 queued) - blank where none"}],
+        "next": ["chain_replay of each rule that reads the formula's column, one by one - a replay wakes no rule"],
+    },
     "read_files_again": {
         "label": "Read files again",
         "what_is_missing": "files already read keep the parse they had - the parser or the table's reading changed since",

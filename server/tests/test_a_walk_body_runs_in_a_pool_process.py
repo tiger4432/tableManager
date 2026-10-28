@@ -206,7 +206,7 @@ def test_a_reload_recycles_the_pool(monkeypatch):
     from runtime import system_reload
 
     called = []
-    monkeypatch.setattr(process_pool, "recycle", lambda: called.append(1))
+    monkeypatch.setattr(process_pool, "recycle", lambda names=None: called.append(1))
     system_reload.reload_local_process_cache()
     assert called == [1]
 
@@ -240,7 +240,7 @@ def test_a_table_config_reload_recycles_the_pool(monkeypatch, sync):
         raise RuntimeError("the schema sync failed")
 
     called = []
-    monkeypatch.setattr(process_pool, "recycle", lambda: called.append(1))
+    monkeypatch.setattr(process_pool, "recycle", lambda names=None: called.append(1))
     monkeypatch.setattr(crud, "TABLE_CONFIG", {})
     monkeypatch.setattr(crud, "load_table_config", lambda: {"t": {}})
     monkeypatch.setattr(models, "init_dynamic_models", lambda config, engine=None: None)

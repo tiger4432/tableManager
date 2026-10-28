@@ -1454,14 +1454,14 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
                 elif is_ow or updated_by == "user" or manual_pin == "user":
                     priority_source = "user"
                 else:
-                    priority_source = None
+                    _, priority_source = crud.compute_priority_value({}, None, table_name, cell=(table_name, col, row))
             else:
                 # `col_srcs` is `{source: value}` because that dict IS the client-facing
                 # cell contract and cannot carry a timestamp; the timestamps travel
                 # beside it. The response shape is unchanged.
                 _, priority_source = crud.compute_priority_value(
                     col_srcs, manual_pin, table_name,
-                    ingested_at_by_source=ingested_map.get(key))
+                    ingested_at_by_source=ingested_map.get(key), cell=(table_name, col, row))
 
             is_collision = (priority_source == "collision_merge") or (include_sources and "collision_merge" in col_srcs)
             has_overwrite = is_ow or (manual_pin is not None) or is_collision or (include_sources and "user" in col_srcs)
@@ -2485,7 +2485,7 @@ def grid_model(table_name, world=None):
 from grid_read import (  # noqa: E402 - the grid read path, importable without main (총괄 10-22)
     COUNT_CACHE_KEY_SEP, apply_column_filters, apply_enrichment_queue_predicate, apply_search_filter,
     build_count_cache_key, count_cache_table_of, has_row_id, narrowed_table_query, refuse_row_address,
-    search_scope_columns, total_order_keys)
+    search_scope_columns, total_order_keys, transaction_rows)
 
 
 #: PostgreSQL's query_canceled - what a statement_timeout's cancel raises.
@@ -3182,12 +3182,7 @@ def export_table_csv(
     
     # [NEW] 트랜잭션 필터링
     if transaction_id:
-        refuse_row_address(table_name)
-        subquery = db.query(models.AuditLog.row_id).filter(
-            models.AuditLog.table_name == table_name,
-            in_group(models.AuditLog.transaction_id, transaction_id)
-        )
-        query = query.filter(table_model.row_id.in_(subquery))
+        query = query.filter(transaction_rows(db, table_model, table_name, transaction_id))
 
     # [NEW] AG-Grid 컬럼 필터링
     query = apply_column_filters(query, table_model, table_name, filters)
@@ -4248,7 +4243,8 @@ def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = 
     
     manual_priority_source = ow.manual_priority_source if ow else None
     
-    _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source)
+    _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source, table_name,
+                                                     cell=(table_name, col_name, row))
     
     return {
         "sources": sources_dict,
@@ -4548,7 +4544,8 @@ def query_cells_sources(
         sources_dict = sources_map.get(key, {})
         manual_priority_source = overwrites_map.get(key)
         
-        _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source)
+        _, priority_source = crud.compute_priority_value(sources_dict, manual_priority_source, table_name,
+                                                         cell=(table_name, col_name, row))
         
         result.append({
             "row_id": row_id,
@@ -7039,6 +7036,39 @@ def post_chain_rule_raw(payload: dict = Body(...), db: Session = Depends(get_db)
         str(payload.get("base") or ""), db=db,
         # 🔴 the name the editor OPENED - absent for a new rule (총괄 c6a8c069c ㉠)
         renamed_from=str(payload.get("from") or "") or None)
+
+
+@app.get("/admin/chain/formula", dependencies=[Depends(require_admin_token)])
+def get_chain_formula(table: str):
+    """A table's same-row formulas - {"table", "formulas": [{"column", "formula", "rule", "enabled"}], "base"} - read
+    from chain_rules.json, where each is a chain rule (`chain.formula`, owner 10-28)."""
+    from chain import formula
+    return formula.view(table)
+
+
+@app.post("/admin/chain/formula", dependencies=[Depends(require_admin_token)])
+def post_chain_formula(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """{"table", "column", "formula", "preview": true} -> {"rule", "sample", "says", "count"}: the formula over the
+    table's first rows, and the rows saving runs it over again - every row, the grid's count (`grid_count`, with its
+    time). With "base" instead (the file as `GET` read it) -> {"rule", "run_id", "base"}: saved and R1 queued; an empty
+    "formula" removes it and queues R3 over the column (`chain.formula`, lead 10-28). 400 with why it cannot stand."""
+    from admin import retroactive
+    from chain import formula
+
+    table, column = str(payload.get("table") or ""), str(payload.get("column") or "")
+    text = str(payload.get("formula") or "").strip()
+    try:
+        if payload.get("preview") is True:
+            said = formula.preview(db, table, column, text)
+            return dict(said, count=grid_count(db, table, None, grid_model(table)))
+        if not payload.get("base"):
+            raise formula.FormulaRefused("Send preview: true, or the base GET read to save")
+        if not text:
+            return formula.remove(db, table, column, str(payload["base"]), payload.get("requested_by") or None)
+        return formula.save(db, table, column, text, str(payload["base"]), payload.get("requested_by") or None)
+    except (formula.FormulaRefused, retroactive.RetroactiveRefused) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.post("/admin/chain/rules/grammar", dependencies=[Depends(require_admin_token)])

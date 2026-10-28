@@ -250,7 +250,7 @@ def _resolve_cell(table_name: str, col_types: dict, row, col: str,
 
     survivors = {s: d for s, d in (cell_sources or {}).items() if s != exclude_source}
     old_val = getattr(row, col, None)
-    new_val, top_src = crud.compute_priority_value(survivors, pin, table_name)
+    new_val, top_src = crud.compute_priority_value(survivors, pin, table_name, cell=(table_name, col, row))
     if new_val is not None:
         new_val = crud.cast_value_by_type(new_val, col_types.get(col, "string"), col)
     return {

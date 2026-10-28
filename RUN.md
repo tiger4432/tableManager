@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **칸 수식 — 그리드 칸에 `=[a]+[b]*3` 을 적으면 같은 행의 다른 칸으로 그 칸을 계산한다** — 서버 · 와처 · 체인 워커 재기동 뒤
+>
+> ```
+> 무엇     POST /admin/chain/formula {table, column, formula, preview: true} -> 앞 5 행의 답 · 다시 도는 행 수(그리드 개수)
+>          같은 라우트에 base(GET /admin/chain/formula?table= 의 답) -> 규칙 «formula <표>.<칸>» 켜짐 + R1 큐 · run_id
+>          formula "" -> 규칙 빠짐 + R3(formula_removed) 큐: 그 칸은 자기 층대로, 층이 없으면 빈칸
+>          수식 칸은 층(cell_sources)도 행마다 감사 줄도 남기지 않는다 — 배치마다 영수증 줄(ledger_batch 칸, receipt_label,
+>          row_ids, part k / parts, rows = 그 줄이 덮은 행 수 — 줄을 더하면 배치). 사람 값(user)은 그대로 이긴다. 원장 영수증도 receipt_label «Ledger batch» 를 받는다
+>          엑셀처럼 읽는 칸을 따라간다 — 다른 규칙 · 다른 수식이 쓴 칸도. 단계 상한은 max_chain_depth(기본 8)
+>          수식 칸을 쓰는 다른 규칙은 저장 · 로드에서 거절. chain_rules.json 이 바뀌면 그리드 풀만 다시 뜬다(걷기 풀은 그대로)
+> 보는 줄  chain_worker.log «[Formula] formula <표>.<칸>: N blank answer(s), M not of the column's type - written blank»
+>            빈 피연산자 · 0 으로 나눔 · 칸 타입에 안 맞음 -> 빈칸으로 썼다. 식이나 원천 값을 본다
+>          «[ChainRules] <규칙> refused: formula_column - <규칙> writes <표>.<칸>, which formula <표>.<칸> computes ...»
+>            그 칸을 쓰는 규칙이 둘이다. 수식을 지우거나 그 규칙의 take 에서 그 칸을 뺀다 — 거절된 규칙은 안 돈다
+>            같은 줄이 grid_pool.log 에도 찍힌다(그리드 풀도 규칙을 읽는다) — 같은 문장, 하나만 보면 된다
+>          «[Chain Depth] … over the declared limit of N; refusing it» -> 수식이 N 단계 넘게 이어졌거나 서로 읽는 두 수식이
+>            돌고 돈다. 그 칸 값은 멎은 자리의 값이다 — 서로 읽는 식을 고치거나, 이어짐이 맞으면 max_chain_depth 를 올린다
+> 끄는 법  수식 하나: 같은 라우트에 formula "" (그 칸은 층대로 돌아감). 되돌리기 커밋 전에는 수식마다 formula "" 로
+>          먼저 지운다 — 옛 코드는 «=» 식을 읽지 못한다(규칙은 서지만 무엇을 쓰는지는 재지 않았다)
+> ```
+>
+> ---
+>
 > ## [10-28] **대시보드 «오늘 감사» — 서버 로컬 자정부터, a46bc6ba3** — git pull · 런처 재기동
 >
 > ```

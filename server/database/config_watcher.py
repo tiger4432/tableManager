@@ -250,15 +250,15 @@ def reload_everything(engine=None):
 _BATCH = [None]
 
 
-def recycle_pools():
-    """The walk's pool processes started again (`process_pool.recycle` - they hold their own copies of what this
-    process read); a whole reload asks it once."""
+def recycle_pools(names=None):
+    """The pool processes started again (`process_pool.recycle` - they hold their own copies of what this process
+    read): those `names` names, every pool when None; a whole reload asks every pool once."""
     if _BATCH[0] is not None:
         _BATCH[0].append(1)
         return
     from runtime import process_pool
 
-    process_pool.recycle()
+    process_pool.recycle(names)
 
 
 def _apply(name, paths, engine):
@@ -296,11 +296,14 @@ def _table_config(paths, engine):
 
 def _chain_rules(paths, engine):
     from chain import ingestion_worker, synthesis
-    from runtime import maintenance_line
+    from runtime import maintenance_line, process_pool
 
     _each([("the chain rules", ingestion_worker.forget_loaded_chain_rules),
            ("the join keys", synthesis.reset_right_key_cache),
-           ("the declared indexes", maintenance_line.declarations_changed)])
+           ("the declared indexes", maintenance_line.declarations_changed),
+           # the grid pool's processes hold the formula list (`chain.formula.columns`); no walk-pool process reads
+           # this file (lead 10-28: measured, the walk pool imports nothing of the chain)
+           ("the grid pool", lambda: recycle_pools((process_pool.GRID.name,)))])
 
 
 def _ontology(paths, engine):

@@ -189,7 +189,7 @@ def test_a_whole_reload_starts_the_walk_pool_once(monkeypatch):
     from runtime import process_pool
 
     recycled = []
-    monkeypatch.setattr(process_pool, "recycle", lambda: recycled.append(1))
+    monkeypatch.setattr(process_pool, "recycle", lambda names=None: recycled.append(1))
     monkeypatch.setattr(config_watcher, "ROWS", {
         "probe_a": ((lambda p, e: config_watcher.recycle_pools()), False),
         "probe_b": ((lambda p, e: config_watcher.recycle_pools()), False)})

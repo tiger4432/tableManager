@@ -790,7 +790,7 @@ def load_chain_rules():
     # 🔴 ONE READER (S-180 ⓑ). The sentences below are unchanged; only where the bytes come
     # from moved, so the registrar can ask the same question without opening the file again.
     read = read_rules_document()
-    rules = read["rules"]
+    rules = declared = read["rules"]
     if not read["exists"]:
         logger.warning(f"Chain rules configuration file not found at {RULES_PATH}. Using empty rules.")
     elif read["error"]:
@@ -933,6 +933,12 @@ def load_chain_rules():
                 operator_line.rename_one_declaration(files))
             logger.error(why)
             refused_here.append((name, "name_claimed_twice", why))
+
+    from chain import formula
+    for rule, _formula, sentence in formula.second_writers(declared, rules):
+        logger.error("[ChainRules] %s refused: formula_column - %s", rule.get("name"), sentence)
+        refused_here.append((rule.get("name"), "formula_column", "formula_column - " + sentence))
+        rules = [kept_rule for kept_rule in rules if kept_rule is not rule]
 
     # 🔴 [총괄 016a766af] A MAPPER THAT READS ANOTHER RULE OF ITS KIND PAIRS THEM HERE, with the set in
     #    hand (`mapper_sdk.MAPPER_FACTS[...]["at_load"]`) - the hold recount counts by its copy rule's
