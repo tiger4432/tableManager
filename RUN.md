@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **AI 규칙 견본 여섯이 견본 설정에 (꺼진 채), 90dd45a65** — git pull 만 (견본만 바뀜)
+>
+> ```
+> 할 것    server/config/sample/chain_rules.json.sample 의 ai_structure_of_product · ai_step_mapping · ai_split_item_quantity ·
+>          split_fill · wafer_report_rows · wafer_report 를 운영 chain_rules 에 옮기고 enabled 를 켜고 표 이름을 자기 표로
+>          그 표들은 table_config.json.sample 에 같은 이름(step_master · item_master · ai_memory · wafer_summary …)
+> 볼 줄    chain_worker.log «<규칙>: enabled=false — no rule stands for it.»
+> 뜻      리포트 · split_fill 은 꺼져 있어도 표 · 세계를 읽어 판정 -> 표 이름을 고치기 전엔 안 섬. 바로 위 줄의 거절 문장이
+>          고칠 것을 이름 댐(«... 'wafer_summary' is not a declared table» · «take walk: ... world_unknown ai_model»)
+>          ai_model 세계: ai_model_world.ledger_config.json.sample 을 config/ontology_worlds/ai_model/ledger_config.json 으로
+> 되돌리기  git revert 90dd45a65 (견본만)
+> ```
+
+---
+
 > ## [10-28] **리포트의 메모리 반쪽이 규칙 목록에 «report» 로, 8f32cdaba** — git pull · 런처 재기동
 >
 > ```
