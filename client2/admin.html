@@ -1056,6 +1056,66 @@
     .cfg-chip[data-tone="warn"] { color: var(--warning); background: var(--warning-weak); border-color: transparent; }
     .cfg-chip[data-tone="danger"] { color: var(--danger); background: var(--danger-weak); border-color: transparent; }
     .cfg-chip[data-tone="muted"] { opacity: 0.62; }
+    /* The admin help (owner 10-29 «ㄴ»): what the help filled is marked until it is changed. */
+    .cfg-chip[data-tone="help"] { color: var(--accent-2); background: var(--accent-2-weak); border-color: transparent; }
+    .retro-input.is-help { border-color: var(--accent-2); background: var(--accent-2-weak); }
+    .retro-asked { gap: var(--space-2); }
+    #help-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+    /* under Help (its bottom set on open by admin.js), so Help stays in reach to close it */
+    #help-mount { --help-panel-top: 0px; }
+    .help-panel { position: fixed; top: var(--help-panel-top); right: 0; bottom: 0; z-index: 300; box-sizing: border-box;
+      width: min(460px, 100vw); display: flex; flex-direction: column; background: var(--bg-surface);
+      border-left: 1px solid var(--border); box-shadow: var(--shadow-pop); }
+    .help-panel[hidden] { display: none; }
+    .help-panel__head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border); background: var(--bg-header); }
+    .help-panel__title, .help-panel__label { font-family: var(--font-head); font-size: var(--fs-h6); font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+    .help-panel__tag { font-size: var(--fs-tag); color: var(--text-dim); border: 1px solid var(--border);
+      padding: 0 var(--space-2); }
+    .help-panel__close { margin-left: auto; font-size: var(--fs-h4); }
+    .help-panel__body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-4); display: flex;
+      flex-direction: column; gap: var(--space-3); }
+    .help-panel__input { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertical;
+      padding: var(--space-2) var(--space-3); font-family: var(--font-body); font-size: var(--fs-body); }
+    .help-panel__row, .help-card__acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+    .help-panel__empty { color: var(--text-dim); font-size: var(--fs-meta); }
+    .help-panel__earlier { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+    .help-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4);
+      border: 1px solid var(--border); }
+    .help-card[data-tone="answer"] { border-color: var(--accent); }
+    .help-card[data-tone="danger"] { border-color: var(--danger); }
+    .help-card[data-tone="warn"] { border-color: var(--warning); }
+    .help-card__head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+    .help-card__title { font-family: var(--font-head); font-size: var(--fs-title); font-weight: 600; }
+    .help-card__op { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted);
+      border: 1px solid var(--border); background: var(--bg-inset); padding: 0 var(--space-2); }
+    .help-card__meta { color: var(--text-dim); font-size: var(--fs-meta); }
+    .help-card__cancel { margin-left: auto; }
+    .help-card__late { color: var(--warning); font-size: var(--fs-meta); }
+    .help-card__why { color: var(--text-dim); }
+    .help-card__fields, .help-card__door { display: grid; grid-template-columns: max-content minmax(0, 1fr);
+      gap: var(--space-1) var(--space-4); }
+    .help-card__k { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text-muted); }
+    .help-card__v { font-family: var(--font-mono); font-size: var(--fs-label); overflow-wrap: anywhere; }
+    .help-card__count { display: flex; align-items: baseline; gap: var(--space-2); }
+    .help-card__count-value { font-family: var(--font-head); font-size: var(--fs-h3); font-weight: 600;
+      font-variant-numeric: tabular-nums; }
+    .help-card__refused, .help-card__count-refused { padding: var(--space-2) var(--space-3); font-family: var(--font-mono);
+      font-size: var(--fs-label); overflow-wrap: anywhere; }
+    .help-card__refused { color: var(--danger); background: var(--danger-weak); }
+    .help-card__count-refused { color: var(--warning); background: var(--warning-weak); }
+    .help-card__near { display: flex; flex-direction: column; }
+    .help-card__near-row { display: flex; align-items: center; gap: var(--space-2); height: auto; min-height: var(--control-h);
+      padding: var(--space-1) var(--space-2); text-align: left; color: var(--text); border-bottom: 1px solid var(--border); }
+    .help-card__near-label { flex: 1; min-width: 0; }
+    .help-card__near-go { color: var(--accent); font-size: var(--fs-button); }
+    .help-card__page { text-decoration: none; }
+    .help-row { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: var(--space-1) var(--space-3);
+      height: auto; padding: var(--space-2) 0; text-align: left; color: var(--text); border-bottom: 1px solid var(--border); }
+    .help-row__q { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .help-row__at, .help-row__tail { color: var(--text-dim); font-size: var(--fs-meta); }
+    .help-row__what { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
 
     .cfg-body {
       display: flex;
@@ -1707,6 +1767,7 @@
     </div>
     <div class="header-actions">
       <div id="account-badge" class="acct-host"></div>
+      <button id="help-btn" class="admin-btn" type="button" aria-pressed="false" aria-controls="help-mount">Help</button>
       <button id="reload-configs-btn" class="admin-btn" style="border-color: var(--color-warning); color: var(--color-warning);">⚙️ Reload Configs & Code</button>
       <a href="/" class="btn">🏠 Return to Main</a>
       <button class="theme-toggle-btn" data-theme-toggle type="button" title="Toggle theme" aria-label="Toggle theme">
@@ -2276,6 +2337,7 @@
     </section>
   </main>
 
+  <div id="help-mount"></div>
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Load script directly -->

@@ -5892,6 +5892,16 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - **판**: `state.gridReads`(그리드 행 — 쪽 · 정렬 · 필터 · 표 · 점프) · `state.historyReads`(이력 옆판 — Global · Row · Cell, 그 `ticket` 이 «더 보기» 페이징 세션을 겸한다) · `formula_popover.js` 의 미리보기(인스턴스마다 하나)
 - **채점자**: `client2/tests/history_paging_harness.mjs`(import 로 `ReadBoard` 를 씀) · `formula_popover_harness.mjs`(늦은 미리보기가 버려짐)
 
+### 🆕 `help_panel.js` (**301줄** 신설, 10-29 — 소유자 «ㄴ») — 어드민 머리 Help 의 옆 판
+
+> 🔴 **실행하지 않는다** — 답은 `POST /admin/help/ask` 의 것(도구 하나 · 칸 · 셈 · help_id), 실행은 Open form 이 연 소급 폼이 한다(`help_id` 를 실어 `mark_run`).
+> 🔴 **Cancel 은 기다림만 멈춘다** — 서버는 끝까지 묻고 행을 적으므로, 그 뒤 온 답은 버리지 않고 «arrived after you stopped» 로 남는다(소유자 10-29 · 총괄).
+
+- **`helpRequest(question)`** · **`answerView(answer, forms)`** → kind `tool`(칸 · 셈은 `retroactive_view.buildCountView` 로, 문 `doors[].open` 이 있으면 페이지 단추) · `unsure`(similar `[{op, label}]`, 폼은 `forms` 에 있는 것만) · `refused`(`tries` 0 = 모델 못 부름)
+- **`class HelpPanel(host, {doc, send, forms, openForm, clock})`** — 모듈 상태 없음, 두 인스턴스가 따로 산다. `open` · `close` · `toggle` · `ask()` · `stopWaiting()` · `noteRun(helpId, runId)`. Earlier 는 인스턴스의 `asks`(새로 고침하면 사라짐 — 서버 표를 읽는 라우트 없음)
+- **소비자**: `admin.js` — `initHelpPanel()`(머리 `#help-btn`, 판 자리 `#help-mount`, 판 위끝 = Help 단추 밑) · `sendHelp` · `openHelpForm`(그 도구의 `retroState` 에 칸 · `help` · 셈을 앉히고 소급 탭으로) · `confirmRetroactiveRun` 이 `help_id` 를 싣고 run 을 `noteRun` 으로 알림 · 채운 칸 `is-help`
+- **채점자**: `client2/tests/help_panel_harness.mjs`(`harness_floors.mjs` 에 **40** 건 — 변이 9 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE 아홉 «Help, asking … Help closed»(HELP 토글이 POST 를 녹화 꼴로 답하거나 붙잡음)
+
 ### 🆕⑰ `dropdown.js` (🆕 **108줄** @`f3b6391d2` · 75줄 @`f22cf7027` · 69줄 @`3a8036b74` · 38줄, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
 
 > 🔴 **«둘째»가 나와서 생긴 파일이다**(상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). 첫째는 Re-translate 드롭다운, 둘째는 필터 칩 펼침. 비슷한 것을 하나 더 그리는 대신 «닫는 방법»을 한 곳에 뒀다.

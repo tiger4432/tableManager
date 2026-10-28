@@ -421,6 +421,29 @@ const formulaPreview = () => {
         becomes: reads.dt_x === null || reads.dt_y === null ? null : reads.dt_x + reads.dt_y * 3 };
     }) };
 };
+// The admin help (owner 10-29 «ㄴ»): while HELP.on POST /admin/help/ask answers HELP.next - or, HELP.hold, waits until a later
+// step answers it (the asking state, then Cancel and the answer that comes after). The answers are the server's shapes
+// (server/admin/help.py) over the recorded box's rule and tools; the doors' `open` is the one the lead asked B for.
+const HELP = { on: false, hold: false, next: null, held: [] };
+const HELP_TOOL = { op: 'chain_replay', label: 'Replay chain rules over old data (R1)', why: "The join's rule never ran over rows written before it changed.",
+  params: { rule: 'inventory_confirmed' }, similar: [], refused: null, tries: 1, seconds: [4.2], help_id: 'screens-tool',
+  count: { affected: 1240, affected_label: 'rows to re-run', count_kind: 'sample', detail: 'Rows of dt_inventory the rule would read again.' },
+  count_refused: null };
+const HELP_ANSWERS = {
+  unsure: { op: null, params: {}, why: 'The question names no table or column.', refused: "'fix_values' is not a tool in the list",
+    tries: 2, seconds: [3.1, 2.8], help_id: 'screens-unsure', count: null, count_refused: null, label: null,
+    similar: [{ op: 'resolve', label: 'Recompute shown values from stored layers (R3)' },
+              { op: 'withdraw', label: 'Withdraw a stale source (R2)' },
+              { op: 'formula_column', label: 'Compute a column from a formula' }] },
+  notAsked: { op: null, params: {}, why: null, similar: [], tries: 0, seconds: [], help_id: 'screens-no', count: null,
+    count_refused: null, label: null, refused: 'the language model call failed: Request timed out.' },
+  countRefused: { ...HELP_TOOL, help_id: 'screens-count', count: null,
+    count_refused: 'The count for this operation cannot be computed: QueryCanceled: canceling statement due to statement timeout' },
+  door: { op: 'formula_column', label: 'Compute a column from a formula', why: 'A same-row formula on the column, written on the grid.',
+    params: {}, similar: [], refused: null, tries: 1, seconds: [3.6], help_id: 'screens-door', count: null, count_refused: null,
+    doors: [{ name: 'on the grid', how: "the grid's column header - right-click it (a blank column too) or its fx mark",
+              when: 'the formula window: write, preview, save, remove', open: { label: 'Open the grid', href: 'index.html' } }] },
+};
 const answerOf = (u) => {
   if (FILE_SOURCES.on && u.pathname === '/admin/file-ingestion/tables') return fileSourcesAnswer();
   if (PICK_GLOB.on && u.pathname === '/admin/file-ingestion/glob') return pickGlobAnswer();
@@ -1596,6 +1619,12 @@ async function servePage(chrome, dist) {
       else reply(200, 'application/json', JSON.stringify(formulaPreview()));
       return;
     }
+    if (HELP.on && request.method === 'POST' && u.pathname === '/admin/help/ask') {
+      const answer = (body) => reply(200, 'application/json', JSON.stringify(body));
+      if (HELP.hold) HELP.held.push(answer);
+      else answer(HELP.next);
+      return;
+    }
     if (IMPORTS.on && request.method === 'POST' && u.pathname === '/admin/ontology-explorer/drafts/new') {
       reply(200, 'application/json', JSON.stringify({ draft: IMPORT_DRAFT }));
       return;
@@ -2764,6 +2793,63 @@ const DRIVE = {
     // The other tabs, each by its address (lead 10-09: the File tab showed two defects the first time it was opened).
     ...[['Tables', 'tables'], ['Chain', 'chain'], ['Auto Update', 'autoupdate'], ['Retroactive', 'retroactive']]
       .map(([name, hash]) => [name, (c) => evaluate(c, `location.hash = '#${hash}'; true`).then(() => sleep(1500))]),
+    // The admin help (owner 10-29 «ㄴ»): the header's Help opens the side panel over the Tables tab - an ask held, Cancel, the
+    // answer that came after, then not sure · the model not asked · a count refused · a tool outside the tab, and the form
+    // the first answer opens on the Retroactive tab, filled; Help again closes it.
+    ...(() => {
+      const ask = (c, question) => evaluate(c, `(() => { const i = document.querySelector('.help-panel__input'); if (!i) return false;
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(i, ${JSON.stringify(question)});
+        i.dispatchEvent(new Event('input', { bubbles: true }));
+        const b = document.querySelector('.help-panel__ask'); if (b) b.click(); return Boolean(b); })()`);
+      const answered = (c, question, answer, seen) => {
+        HELP.next = answer;
+        return ask(c, question).then(() => until(c, seen));
+      };
+      return [
+        ['Help, asking', async (c) => {
+          HELP.on = true;
+          HELP.hold = true;
+          await evaluate(c, "location.hash = '#tables'; true");
+          await sleep(1200);
+          await evaluate(c, "(() => { const b = document.getElementById('help-btn'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, "Boolean(document.querySelector('.help-panel:not([hidden])'))");
+          await ask(c, '조인을 고쳤는데 옛 행의 dt_lot 칸이 비어 있어');
+          await until(c, "Boolean(document.querySelector('.help-card__cancel'))");
+          await sleep(2200);
+        }],
+        ['Help, stopped waiting', async (c) => {
+          await evaluate(c, "(() => { const b = document.querySelector('.help-card__cancel'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, "!document.querySelector('.help-card__cancel') && /server still finishes/.test(document.querySelector('.help-panel__card').textContent)");
+        }],
+        ['Help, the answer after Cancel', async (c) => {
+          HELP.hold = false;
+          HELP.held.splice(0).forEach((answer) => answer(HELP_TOOL));
+          await until(c, "Boolean(document.querySelector('.help-card__late')) && Boolean(document.querySelector('.help-card__open'))");
+        }],
+        ['Help, not sure', (c) => answered(c, '값이 좀 이상해', HELP_ANSWERS.unsure, "document.querySelectorAll('.help-card__near-row').length === 3")],
+        ['Help, the model not asked', (c) => answered(c, '조인을 고쳤는데 옛 행의 dt_lot 칸이 비어 있어', HELP_ANSWERS.notAsked,
+          "Boolean(document.querySelector('.help-card__refused'))")],
+        ['Help, a count refused', (c) => answered(c, '이 규칙 예전 데이터에 다시 돌려줘', HELP_ANSWERS.countRefused,
+          "Boolean(document.querySelector('.help-card__count-refused'))")],
+        ['Help, a tool outside the tab', (c) => answered(c, '수율 칸을 양품 / 투입 으로 채워줘', HELP_ANSWERS.door,
+          "Boolean(document.querySelector('.help-card__page'))")],
+        ['Help, the form opened from an answer', async (c) => {
+          // the first ask's row in Earlier, then its Open form
+          await evaluate(c, `(() => { const rows = [...document.querySelectorAll('.help-row')];
+            const row = rows[rows.length - 1]; if (row) row.click(); return Boolean(row); })()`);
+          await until(c, "Boolean(document.querySelector('.help-card__open'))");
+          await evaluate(c, "(() => { const b = document.querySelector('.help-card__open'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, "Boolean(document.querySelector('article.retro-op[data-op=\"chain_replay\"] .retro-input.is-help'))");
+          await sleep(600);
+        }],
+        ['Help closed', async (c) => {
+          await evaluate(c, "(() => { const b = document.getElementById('help-btn'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, "!document.querySelector('.help-panel:not([hidden])')");
+          HELP.on = false;
+          HELP.next = null;
+        }],
+      ];
+    })(),
     // The chain form opened on a rule (lead after a2b7f6e14 · owner 10-21): a join whose take holds a record - its rows,
     // the fn picker, then + and record on a third item - and a flat rule; both with target_columns on the first screen.
     // The rules are the captured take_record_probe and dt_log_to_dt_map.

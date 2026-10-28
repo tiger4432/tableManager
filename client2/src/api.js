@@ -107,7 +107,7 @@ export async function checkServerHealth() {
 /** 체인 워커가 살아 있나 — «판정은 `/health` 가 내린다».
  *
  * 🔴 여기서 다시 유도하지 않는다. 서버가 낱말을 «이미» 짓는다(`runtime/health.py`):
- *    down · unknown · starting · foreign_beat · missing · wedged · stale · stalled · ok · off_roster.
+ *    down · unknown · starting · foreign_beat · missing · wedged · stale · stalled · unreadable · ok · off_roster.
  *    그 가름의 근거는 두 주인에게 나뉘어 있다(`utils/heartbeat.py`) — 감독자는 «프로세스가 있나»,
  *    심박은 «고리가 도나». 화면이 나이로 다시 재면 임계값이 두 벌이 되고, 오늘 아침처럼
  *    「프로세스는 살아 있는데 고리가 멈춘」 경우에 둘이 다른 말을 한다.

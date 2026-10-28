@@ -102,6 +102,7 @@ import { TableConfigPanel } from './table_config_panel.js';
 import { ChainRulePanel, mapperChoices, mapperNotes } from './chain_rule_panel.js';
 import { countWithAbsence } from './count_with_absence.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
+import { HelpPanel } from './help_panel.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -361,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   initMonacoEditor();
   initRetroactiveLine();
+  initHelpPanel();
   refreshRunning();
   scheduleRunsPoll();
   scheduleQueuePoll();
@@ -3080,6 +3082,65 @@ function adoptRescopeHandoff() {
   refreshRetroactiveOperations(true);
 }
 
+// The admin help (owner 10-29 «ㄴ»): the header's Help, a side panel on every tab (help_panel.js). Its Open form lands
+// here - the form takes the answer's fields, its count when it has one, and the `help_id` its run carries back.
+let helpPanel = null;
+
+async function sendHelp(req) {
+  try {
+    const res = await adminFetch(`${API_BASE}${req.path}`, {
+      method: req.method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body) });
+    if (!res.ok) return { ok: false, error: await retroFailureLine(res, failureFactOf(res), 'Help refused') };
+    return { ok: true, body: await res.json() };
+  } catch (e) {
+    return { ok: false, error: fetchFailureLine(null, 'Help refused') };
+  }
+}
+
+function initHelpPanel() {
+  const btn = byId('help-btn');
+  const mount = byId('help-mount');
+  if (!btn || !mount) return;
+  helpPanel = new HelpPanel(mount, {
+    doc: document,
+    send: sendHelp,
+    forms: () => Object.fromEntries(((retroactiveView && retroactiveView.operations) || []).map((o) => [o.op, o.label])),
+    openForm: openHelpForm,
+  });
+  btn.addEventListener('click', () => {
+    // the tools whose form this page has - an answer offers Open form only for those
+    refreshRetroactiveOperations();
+    // it hangs from Help, as every header panel hangs from its button
+    mount.style.setProperty('--help-panel-top', `${Math.round(btn.getBoundingClientRect().bottom)}px`);
+    helpPanel.toggle();
+    btn.setAttribute('aria-pressed', helpPanel.isOpen ? 'true' : 'false');
+  });
+}
+
+function openHelpForm({ op, params, helpId, question, count }) {
+  const state = retroState(op);
+  state.params = {};
+  Object.keys(params || {}).forEach((key) => {
+    const value = params[key];
+    if (value === undefined || value === null || value === '') return;
+    state.params[key] = Array.isArray(value) ? value.join(',') : String(value);
+  });
+  state.help = { id: helpId, question, filled: { ...state.params } };
+  state.run = null;
+  state.runFailure = null;
+  // the answer's count is that tool's own count of these fields - the form shows it as its own
+  const opView = retroactiveView && retroactiveView.operations.find((o) => o.op === op);
+  state.count = count && opView
+    ? { ok: true, view: buildCountView(count), paramsKey: paramsKey(retroParamEntries(op, opView)), cut: null } : null;
+  switchTab('retroactive');
+  renderRetroOperation(op);
+  const card = byId('retroactive-body') && byId('retroactive-body').querySelector(`article.retro-op[data-op="${CSS.escape(op)}"]`);
+  if (card) card.scrollIntoView({ block: 'start' });
+}
+
+/** A field the help filled, still as the help filled it. */
+const helpFilled = (state, key) => Boolean(state.help && state.params[key] && state.help.filled[key] === state.params[key]);
+
 /** 이 연산이 **선언한** 파라미터만, 비어 있지 않은 것만. 판정은 뷰 모델이 소유한다 —
  *  서버가 재시작하며 파라미터를 개명·삭제하면 맵에 남은 옛 키가 400을 부르는데, 그 필드는
  *  이미 화면에 없어서 운영자는 이유를 알 수 없다. 선언에서 유도하면 그 경로가 사라진다. */
@@ -3203,6 +3264,13 @@ function retroOperationEl(op) {
   // 「무엇이 빠져 있는가」 — 이 문장이 없으면 버튼 다섯 개는 지시 대상 없는 동사 다섯 개다.
   if (op.whatIsMissing) card.appendChild(cfgEl('div', 'cfg-detail', cfgText(op.whatIsMissing)));
   if (op.downstreamNote) card.appendChild(cfgEl('div', 'cfg-detail', cfgText(op.downstreamNote)));
+  const asked = retroState(op.op).help;
+  if (asked) {
+    const line = cfgEl('div', 'cfg-row-head retro-asked');
+    line.appendChild(cfgChip('help', 'help'));
+    line.appendChild(cfgEl('span', 'cfg-detail', asked.question));
+    card.appendChild(line);
+  }
 
   // 이 연산이 무엇을 지우고 어떤 단위로 커밋되는가 — 둘 다 서버 문자열이고 그대로 적는다.
   // 다섯 중 하나(고아 스윕)만 삭제이고 중단 시 통째로 롤백된다. 확인 문구 하나로 다섯을
@@ -3316,9 +3384,11 @@ function retroParamsEl(op) {
     input.className = 'retro-input';
     input.dataset.param = param.key;
     input.value = state.params[param.key] || '';
+    input.classList.toggle('is-help', helpFilled(state, param.key));
     input.addEventListener('input', () => {
       const wasStale = resolveCount(state, op).stale;
       state.params[param.key] = input.value;
+      input.classList.toggle('is-help', helpFilled(state, param.key));
       // 카드를 통째로 다시 그리면 타이핑 중에 포커스가 날아가므로, **측정의 유효성이 실제로
       // 뒤집힌 타이핑에서만** 다시 그린다 — 한 글자 고쳤다 되돌리면 측정은 다시 유효해지고
       // 그 전이도 화면에 나와야 한다. 판정은 `resolveCount` 하나가 한다.
@@ -3355,6 +3425,7 @@ function retroChoiceEl(op, param, state) {
     select.appendChild(option);
   });
   select.value = state.params[param.key] || '';
+  select.classList.toggle('is-help', helpFilled(state, param.key));
   select.addEventListener('change', () => {
     state.params[param.key] = select.value;
     // 고르면 «설명»이 따라 바뀌어야 하므로 카드를 다시 그립니다 -- 입력칸과 달리
@@ -3633,7 +3704,8 @@ async function confirmRetroactiveRun(op) {
     const res = await adminFetch(`${API_BASE}/admin/retroactive/${encodeURIComponent(op.op)}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ params: body }),
+      // the help's answer this form was opened from - the server writes the run on that ask
+      body: JSON.stringify({ params: body, ...(state.help ? { help_id: state.help.id } : {}) }),
     });
     failure = failureFactOf(res);
     if (!res.ok) {
@@ -3647,6 +3719,10 @@ async function confirmRetroactiveRun(op) {
       // run_id를 영구히 지웠다 — 토스트는 이미 사라진 뒤였고, 무언가 실행됐다는 증거가 화면에서
       // 완전히 없어졌다. 카운트와 파라미터는 살아남는데 그것만 못 살아남을 이유가 없다.
       state.run = buildRunView(await res.json());
+      if (state.help) {
+        if (helpPanel) helpPanel.noteRun(state.help.id, state.run.runId);
+        state.help = null;
+      }
       // 방금 큐에 들어간 것을 «지금» 보여 줍니다 -- 다음 박자를 기다리면 그 사이에
       // 운영자는 안 걸린 줄 알고 한 번 더 누릅니다.
       refreshRunning().then(scheduleRunsPoll, scheduleRunsPoll);

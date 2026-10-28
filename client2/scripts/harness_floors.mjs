@@ -1813,6 +1813,9 @@ export const FLOORS = new Map([
   // New with lead 10-29 ③ (owner 10-28 option A): a column's formula on its header - the requests, opening, the preview,
   // a refusal word for word, Apply and Remove, closing, chips at the caret, two instances, the fx press not a sort.
   ['formula_popover_harness.mjs', 52],
+  // New with the owner's 10-29 «ㄴ»: the admin help's side panel - the request, each answer as drawn, asking, Cancel
+  // keeping the late answer, Open form's fields and help_id, Earlier, two panels.
+  ['help_panel_harness.mjs', 40],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
