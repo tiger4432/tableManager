@@ -1249,10 +1249,10 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 
 ## D-8-1. 체인의 선언 «둘»과 그 칸 (출하 샘플, 저장소 파일)
 ```
-chain_rules.json.sample      규칙 9. 키 = {name, trigger_table, derivation_source_table, target_table,
+chain_rules.json.sample      키 = {name, trigger_table, derivation_source_table, target_table,
                              mapper_module, mapper_function, is_batch, enabled}
                              => 「어느 파이썬을 부르나」는 «선언». 「무엇을 계산하나」는 «코드»
-enrichment_rules.json.sample 규칙 4. 키 = {source_table, derived_table, decision_key, target_fields,
+enrichment_rules.json.sample 키 = {source_table, derived_table, decision_key, target_fields,
                              list_columns, aggregations, alignment, reference_views, auto_confirm, enabled}
                              => 여기가 체인의 «선언적인 절반»입니다
 ```
