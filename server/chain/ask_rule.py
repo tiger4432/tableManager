@@ -330,8 +330,9 @@ def _shown(value):
 def remember(db, rule, row_ids):
     """The memory half: the output rows handed -> a memory row for each AI cell a person corrected, and `gone` for
     the memory rows of those output rows no correction holds any more (a person put the AI's value back, or their
-    layer went). A person's value equal to the AI's corrects nothing. The judgement is `cell_layer.person_cells`."""
-    from chain import cell_layer, rule_shape
+    layer went). A person's value equal to the AI's corrects nothing. The judgement is `cell_layer.person_cells`.
+    The AI's cells: an ask's `output.cells`, a report's text slots its `results` names."""
+    from chain import cell_layer, report_shape, rule_shape
     from database import crud
 
     spec = _spec(rule)
@@ -342,7 +343,9 @@ def remember(db, rule, row_ids):
     where = sorted(cell_layer.key_columns(table))                # the situation: the output row's key
     rows = {str(r[0]): dict(zip(where, r[1:])) for r in db.query(model.row_id, *(getattr(model, c) for c in where))
             .filter(model.row_id.in_([str(i) for i in row_ids or ()])).all()}
-    cells = set(out_spec.get("cells") or ())
+    texts = set(report_shape.text_slots(spec))
+    cells = set(out_spec.get("cells") or ()) | {column for cell, column in report_shape.result_cells(spec)
+                                                if cell in texts}
     updates, said = [], set()
     for (row_id, column), layers in sorted(cell_layer.person_cells(db, table, list(rows)).items()):
         person = [l for n, l in layers.items() if crud.layer_writer(n) == crud.USER_SOURCE]

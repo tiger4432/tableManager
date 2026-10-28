@@ -47,7 +47,7 @@
 | `memory.columns` | 역할마다 그 표의 칸 이름: `purpose`(규칙 이름) · `key`(상황 — 출력 행의 키 칸 값 json) · `cell` · `ai`(AI 가 낸 값) · `right`(사람이 고친 값) · `memo`(사람이 적는 메모, 규칙은 안 씀) · `who` · `when` |
 | `prompts.memory` | `{scope, limit}` — 상황의 `scope` 칸 값이 같은 교정만, 최근 `limit` 개(기본 5)를 프롬프트에 «Past corrections» 줄로 싣습니다 |
 
-리포트 선언(`derive.report`)도 같은 `memory` · `prompts.memory` 칸을 읽습니다. 상황은 리포트의 웨이퍼 키 값입니다. 리포트 표의 사람 교정을 메모리로 «쓰는» 쪽은 아직 없습니다.
+리포트 선언(`derive.report`)도 같은 `memory` · `prompts.memory` 칸을 읽고 씁니다. 사람이 리포트 표의 글 칸(`results` 가 이름 댄 text 칸)을 고치면 그 교정이 메모리 행이 됩니다. 상황은 리포트 표의 키 칸 값이라, `scope` 칸이 리포트 표의 키에 있어야 다음 리포트에 실립니다.
 
 ```
 쓰는 것     memory 를 적으면 같은 선언에서 반쪽 규칙 하나가 섭니다(출력 표가 트리거, 메모리 표가 타깃)
