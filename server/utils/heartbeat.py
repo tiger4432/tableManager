@@ -253,6 +253,27 @@ def _payload_locked(name, now):
     }
 
 
+#: A beat file busy on Windows - a reader's open and a writer's replace of it refuse each other (PermissionError) - is
+#: tried this many times more, this long apart (lead 10-28 ㄷ; C's big3 503 was one such read).
+BUSY_RETRIES, BUSY_WAIT_SECONDS = 1, 0.05
+
+
+def _when_free(act):
+    """`act()`, tried again while the beat file is busy (PermissionError) - the reader's and the writer's one wait."""
+    for attempt in range(BUSY_RETRIES + 1):
+        try:
+            return act()
+        except PermissionError:
+            if attempt == BUSY_RETRIES:
+                raise
+            time.sleep(BUSY_WAIT_SECONDS)
+
+
+def _load(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def _write(name, payload):
     try:
         d = heartbeat_dir()
@@ -262,7 +283,7 @@ def _write(name, payload):
         # stale temp file instead of accumulating them.
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f)
-        os.replace(tmp, heartbeat_path(name))  # atomic: a reader never sees a partial file
+        _when_free(lambda: os.replace(tmp, heartbeat_path(name)))  # atomic: a reader never sees a partial file
         return True
     except Exception:
         with _state_lock:
@@ -463,8 +484,7 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
     for fname in names:
         name = fname[: -len(".json")]
         try:
-            with open(os.path.join(d, fname), encoding="utf-8") as f:
-                data = json.load(f)
+            data = _when_free(lambda: _load(os.path.join(d, fname)))
             ts = float(data.get("ts") or 0.0)
             age = max(0.0, now - ts)
             entry = {

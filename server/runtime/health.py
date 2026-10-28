@@ -55,6 +55,15 @@ HTTP_UNHEALTHY = 503
 # health check that is routinely wrong at startup gets ignored.
 STARTUP_GRACE_SEC = 60.0
 
+
+def _stale_beat(who, hb, stale_after, tail=""):
+    """What a stale beat says: the error when its file would not read (lead 10-28 - «no progress for Nones»), else how
+    long it has not moved."""
+    if hb.get("error"):
+        return f"{who}: {hb['error']}"
+    return f"{who} has made no progress for {hb.get('age_seconds')}s (threshold {stale_after:.0f}s){tail}"
+
+
 # Backlog age thresholds. The chain worker's measured notify latency is 0-31 ms
 # and it drains continuously even mid-ingestion, so an oldest-unprocessed row
 # older than 5 minutes already means it is not keeping up; 15 minutes means it is
@@ -362,6 +371,11 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             entry["status"] = "starting"
             entry["detail"] = f"starting: {hb.get('note')}, {hb.get('age_seconds') or 0:.0f}s"
             escalate(STATUS_DEGRADED)
+        elif hb.get("error") and uptime is not None and uptime < STARTUP_GRACE_SEC:
+            # a beat file that would not read, inside the startup grace: starting, as a missing one is
+            entry["status"] = "starting"
+            entry["detail"] = f"{hb['error']}, up {uptime:.0f}s"
+            escalate(STATUS_DEGRADED)
         elif hb.get("stale"):
             # The case a pid check cannot see.
             entry["status"] = "wedged" if watched else "stale"
@@ -370,10 +384,8 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             if hb.get("error"):
                 entry["error"] = hb["error"]
             escalate(STATUS_UNHEALTHY)
-            problems.append(
-                f"worker '{hb_name}' has made no progress for "
-                f"{hb.get('age_seconds')}s (threshold {stale_after:.0f}s)"
-                + (" although its process is alive" if watched else ""))
+            problems.append(_stale_beat(f"worker '{hb_name}'", hb, stale_after,
+                                        " although its process is alive" if watched else ""))
         else:
             entry["status"] = STATUS_OK
             entry["age_seconds"] = hb.get("age_seconds")
@@ -444,8 +456,7 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         if hb.get("stale"):
             entry["status"] = "wedged"
             escalate(STATUS_UNHEALTHY)
-            problems.append(f"chain slot '{hb_name}' has made no progress for "
-                            f"{hb.get('age_seconds')}s (threshold {stale_after:.0f}s)")
+            problems.append(_stale_beat(f"chain slot '{hb_name}'", hb, stale_after))
         elif (entry.get("chain_state") or {}).get("state") == event_constants.CHAIN_STATE_STALLED:
             entry["status"], entry["work"] = "stalled", work
             escalate(STATUS_UNHEALTHY)

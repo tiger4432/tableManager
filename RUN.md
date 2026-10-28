@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **/health 가 기동 직후 «worker 'scheduler' has made no progress for Nones» 로 503 을 내던 것 — 비트 파일이 바쁜 것이었다** — 서버 · 와처 · 체인 워커 재기동 뒤
+>
+> ```
+> 무엇     Windows 에서 비트 파일을 읽는 쪽(open)과 쓰는 쪽(replace)이 서로를 막는다(PermissionError). 이제 둘 다
+>          한 번 더(0.05 s 뒤) 해 본다. 그래도 못 읽으면 문장이 그 오류를 그대로 싣는다(«Nones» 가 아니다)
+>          기동 유예(60 s) 안이면 그 일꾼은 starting · 200(DEGRADED), 유예 밖이면 전처럼 503
+> 볼 것    curl -s localhost:<포트>/health
+>          «worker '<이름>': unreadable heartbeat: PermissionError ...»  유예 밖에서 두 번 연달아 못 읽었다
+>            한 번이면 다음 요청에 사라진다. 계속 나오면 그 파일을 잡은 다른 프로세스(백신 · 백업)를 본다
+>          «... has made no progress for <N>s»  이건 전과 같다 — 일꾼이 정말 멈췄다
+> 끄는 법  되돌리기 커밋 하나. 데이터 · 설정은 안 건드린다
+> ```
+>
+> ---
+>
 > ## [10-28] **체인이 스스로 끈 규칙 — 기동 줄 · 배치 줄 · 큐 사유가 «꺼짐»을 말함, 8be4af893** — git pull · 런처 재기동
 >
 > ```
