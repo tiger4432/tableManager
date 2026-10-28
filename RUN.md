@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **새 세계(ai_model 등) 셋업 순서 — 안 지어진 세계는 500 대신 이름으로 거절, 648120c44** — git pull · 런처 재기동
+>
+> ```
+> 셋업 순서  1 세계 선언  2 짓기 — 온톨로지 탐색기에서 그 세계의 선언을 Activate(또는 Create starting file),
+>                       또는 그 세계 backfill   3 그 뒤 그리드에서 그 세계의 원장 펼친 보기 · 그 세계를 걷는 리포트 규칙 켜기
+> 볼 것     2 전에 그리드에서 그 세계의 ledger_atom_rows 를 열면 409 문장:
+>          «ledger world '<이름>' is declared but not built yet - activate a declaration of it in the ontology explorer, or run its backfill»
+>          (전에는 500 «Internal Server Error»). 다른 표는 세계와 무관하게 그대로 열림
+> 답의 뜻   그 문장 -> 2 를 안 함. «no ledger world '<이름>'» (404) -> 1 을 안 함(선언 파일이 그 자리에 없음)
+>          리포트 규칙이 그 세계를 걷는데 1 전이면 규칙 로드마다 «[Report] causes.values: the ledger declaration was not read» 와 그 규칙 거절
+> 되돌리기  git revert 648120c44 -> 런처 재기동
+> ```
+
+---
+
 > ## [10-29] **표 스키마가 그 표의 수식을 말한다 — 그리드 칸 머리 fx 표지의 출처** — 서버 재기동 뒤
 >
 > ```
