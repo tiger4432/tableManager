@@ -1,6 +1,18 @@
 {
  "fresh": [
   [
+   "SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)",
+   [
+    "ledger_events"
+   ]
+  ],
+  [
+   "SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)",
+   [
+    "ledger_atom_rows"
+   ]
+  ],
+  [
    "SELECT to_regclass(%s) IS NOT NULL",
    [
     "ledger_events"
@@ -199,6 +211,18 @@
   ]
  ],
  "current": [
+  [
+   "SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)",
+   [
+    "ledger_events"
+   ]
+  ],
+  [
+   "SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)",
+   [
+    "ledger_atom_rows"
+   ]
+  ],
   [
    "SELECT to_regclass(%s) IS NOT NULL",
    [
