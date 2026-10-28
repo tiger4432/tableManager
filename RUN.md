@@ -4,7 +4,7 @@
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동. 그 뒤로는 할 일 없음 — 표를 새로 선언하고 설정 다시 읽기를 누르면 저절로
-> 볼 줄    auto_update.log «[Ledger] business-key unique index on <표>: created» — 표가 생기고 5 초 안팎
+> 볼 줄    auto_update.log «[Ledger] business-key unique index on <표>: created (CREATE UNIQUE INDEX ...)» — 설정 다시 읽기 뒤 5 초 안(버리는 DB 위 API + 스케줄러에서 잼: 4.7 초)
 > 뜻      created = 그 표의 같은 키 동시 쓰기가 한 행으로 합쳐짐
 >          «<표> cannot take its business-key unique index: N surplus row(s)» = 서기 전에 같은 키가 이미 둘 -> 소급 탭의 키 철자 합치기
 >          줄이 없음 = 스케줄러가 안 떠 있음(이 줄은 스케줄러가 짓습니다)
