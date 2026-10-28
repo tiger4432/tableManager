@@ -292,3 +292,7 @@ def test_the_values_are_a_step_before_the_candidates_conditions_and_stand_as_row
     relate = model.prompts[2]
     assert "step %d: %s" % (values["step"], report_loop.VALUES_CALL) in relate, "the candidates' conditions read it"
     assert "step %d: %s" % (values["step"], report_loop.VALUES_CALL) in model.prompts[3], "and the write"
+    related = out["steps"][calls.index(report_loop.RELATED_CALL)]
+    assert not related["summary"].startswith("0 of 0 "), related["summary"]          # canary: candidates were asked
+    assert not [line for line in related["read"] if line.endswith(report_shape.LABELS["to_fill"])], (
+        "lead 10-28: the values step answered - none of its candidates is to be filled here", related["read"])

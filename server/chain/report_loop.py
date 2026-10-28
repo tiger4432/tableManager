@@ -453,15 +453,18 @@ def _causes(report, spec, request, reads, budget, ask, clock, steps, tables):
     if refused is None:
         reads.append((steps[-1]["step"], call, lines))
         first = len(reads) - 1
+        said = None
         if walked["candidates"] and report_shape.VALUES in spec[report_shape.CAUSES]:
-            _values(report, clock, steps, reads, tables, walked["candidates"])
+            said = _values(report, clock, steps, reads, tables, walked["candidates"])
         if walked["candidates"]:
-            _related(report, spec, request, budget, ask, clock, steps, reads, tables, walked["candidates"], first)
+            _related(report, spec, request, budget, ask, clock, steps, reads, tables, walked["candidates"], first,
+                     said["to_fill"] if said else None)
 
 
 def _values(report, clock, steps, reads, tables, candidates):
     """The quantities' measured values (`report.values`): a step of its own, its read handed on; the quantities stand
-    as yield_by rows as the candidates' conditions do (`written_rows`). A refusal stops this step alone."""
+    as yield_by rows as the candidates' conditions do (`written_rows`). A refusal stops this step alone. -> its
+    answer, None refused."""
     began = clock()
     try:
         said, refused = report.values(candidates), None
@@ -475,13 +478,14 @@ def _values(report, clock, steps, reads, tables, candidates):
     steps.append({"step": len(steps) + 1, "tokens": 0, "cut": {}, "call": VALUES_CALL, "seconds": clock() - began,
                   "refused": refused, "summary": (lines[0] if lines else "")[:200], "read": lines[1:]})
     if said is None:
-        return
+        return None
     reads.append((steps[-1]["step"], VALUES_CALL, lines))
     if said["to_fill"]:
         logger.warning("[Report] quantity values to fill: %s", ", ".join(said["to_fill"]))
     if said["labels"]:
         report.written_rows = list(dict.fromkeys(list(getattr(report, "written_rows", None) or ()) + said["labels"]))
         _redraw_yield_by(report, tables, VALUES_CALL)
+    return said
 
 
 def _redraw_yield_by(report, tables, why):
@@ -496,13 +500,16 @@ def _redraw_yield_by(report, tables, why):
     return {label: [cell["text"] for cell in cells] for label, cells in table.get("info") or ()}
 
 
-def _related(report, spec, request, budget, ask, clock, steps, reads, tables, candidates, first=-1):
+def _related(report, spec, request, budget, ask, clock, steps, reads, tables, candidates, first=-1,
+             values_to_fill=None):
     """The candidates' conditions (owner 10-25 «조건표에서 디펙 카인드와 연관된 인자를 찾아서 언급하거나 표에 추가»): one
     model call over the walk's read and the report's condition names - the ledger links no candidate to a condition
     (the conditions are the report's tables, not the ledger's), so there is no walk to it; a name not a condition is
     dropped and said. The related conditions stand as yield_by rows (`written_rows` -> `also`; a constant one still
     drops) and each candidate is said with its conditions' values per column, or as to be filled when none has a value
-    on the report's wafers (owner 10-25 «값이 없으면 채워야 한다는 코멘트»)."""
+    on the report's wafers (owner 10-25 «값이 없으면 채워야 한다는 코멘트»). One related to none: when the quantity
+    values step answered (`values_to_fill`, its own to_fill), to be filled only if that step says so - a value it gave
+    or a candidate no value lands on is that step's line or none (lead 10-28); with no values step, to be filled."""
     from utils import llm
 
     def step(lines, refused=None, **more):
@@ -552,6 +559,8 @@ def _related(report, spec, request, budget, ask, clock, steps, reads, tables, ca
             lines.append("%s -> %s: %s" % (label, name, (cells or "%s in every column" % " / ".join(values)) if values
                                            else to_fill + (" - the other columns: %s" % cells if cells else "")))
         if not related.get(label):
+            if values_to_fill is not None and label not in values_to_fill:
+                continue                                  # the quantity values step said it: its value, or none lands
             lines.append("%s: %s" % (label, to_fill))
         if not valued:
             unfilled.append(label)

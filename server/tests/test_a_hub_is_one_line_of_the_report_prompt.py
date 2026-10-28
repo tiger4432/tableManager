@@ -146,7 +146,7 @@ def test_a_hub_is_one_line_never_a_candidate_and_the_tables_stand(ledger):
 def test_the_hub_is_not_handed_to_relate_or_values(ledger, monkeypatch):
     seen = []
     monkeypatch.setattr(report_loop, "_related", lambda report, spec, request, budget, ask, clock, steps, reads,
-                        tables, candidates, first=-1: seen.extend(c["id"] for c in candidates))
+                        tables, candidates, first=-1, values_to_fill=None: seen.extend(c["id"] for c in candidates))
     _run(dict(CAUSES, fanout_limit=20))
     assert seen and not [c for c in seen if c.startswith(ledger_subgraph.HUB_PREFIX)]
 

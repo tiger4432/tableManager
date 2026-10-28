@@ -1103,7 +1103,7 @@ class Report:
                        **_worlds_asked(self._causes()), **_fanout(self._causes()))
         nodes = {}
         for node in answer.get("nodes") or ():
-            nodes.setdefault(str(node.get("label") or node["id"]), node["id"])
+            nodes.setdefault(node_label(node), node["id"])
         more = (answer.get("truncated") or {}).get("seeds") or 0
         self._kinds = nodes
         head = "%d %s node(s)%s" % (len(nodes), kind, " - %d more not listed" % more if more else "")
@@ -1145,7 +1145,7 @@ class Report:
         ranked = (answer.get("propagation") or {}).get("ranked") or []
         trails = {item["id"]: ((item.get("evidence") or [{}])[0].get("hops") or []) for item in ranked}
         # a hub is no candidate - its members share one value and cannot be told apart - but one line (owner 10-27)
-        candidates = [{"id": node["id"], "type": node.get("type"), "label": node.get("label"),
+        candidates = [{"id": node["id"], "type": node.get("type"), "label": node_label(node),
                        "path": _path(trails.get(node["id"]) or (), edges)}
                       for node in answer.get("nodes") or () if node["id"] not in ids and "hub" not in node]
         hubs = [node for node in answer.get("nodes") or () if "hub" in node]
@@ -1208,7 +1208,7 @@ class Report:
                     or (step and (w, bare(event), step) in edges)]
             if not here:
                 continue                                     # another product's quantity - no wafer here met it
-            name = str((nodes.get(q) or {}).get("label") or q)
+            name = node_label(nodes.get(q) or {"id": q})
             cells, said_cells = {}, []
             for w, units in wafers.items():
                 value, n = value_of(edges, said, w, q, step)
@@ -1216,7 +1216,7 @@ class Report:
                     if value is not None and n is None:
                         cells[unit], spoken = str(value), str(value)
                     elif value is not None:
-                        cells[unit] = with_n(value, "est · %s" % ((nodes.get(step) or {}).get("label") or step), n)
+                        cells[unit] = with_n(value, "est · %s" % node_label(nodes.get(step) or {"id": step}), n)
                         spoken = "%s (est, %d wf)" % (_count(value), n)
                     else:
                         spoken = "-"
@@ -1240,6 +1240,12 @@ class Report:
 
 #: The cell a report's value walks are counted under (`_walk`) - the declaration's own path.
 CAUSES_VALUES = "derive.report.causes.values"
+
+
+def node_label(node):
+    """A walked node's one name in the report's reads - its label, else its id: a candidate and its quantity values
+    row say the same node by the same word (lead 10-28)."""
+    return str(node.get("label") or node["id"])
 
 
 def wafer_nodes(wafer_type, keys, columns, row):
@@ -1410,7 +1416,7 @@ def _path(hops, edges) -> str:
             near, predicates = hops[at - 1]["id"], ",".join(hop.get("predicates") or ()) or "?"
             said.append("-%s->" % predicates if (near, hop["id"]) in edges else
                         "<-%s-" % predicates if (hop["id"], near) in edges else "-%s-" % predicates)
-        said.append(str(hop.get("label") or hop["id"]))
+        said.append(node_label(hop))
     return " ".join(said)
 
 
