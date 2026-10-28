@@ -134,7 +134,13 @@ def bootstrap_database_schema(bind=None):
     # 부팅 스키마 점검은 `Base.metadata`를 「이 빌드가 요구하는 표」로 읽으므로, 매
     # 재기동이 세 표를 결손으로 신고했다(SCHEMA DRIFT 3건). 은퇴가 고장으로 보였다.
     # 이제 모델이 없으므로 «요구» 자체가 없다: 제외 목록이 아니라 부재가 보장한다.
+    from sqlalchemy import inspect as _inspect
+
+    held = set(_inspect(target).get_table_names())
     models.Base.metadata.create_all(bind=target)
+    made = set(_inspect(target).get_table_names()) - held
+    for table in sorted(made & set(models.DYNAMIC_TABLES)):    # made now: its key index on the line's next poll
+        models.ask_key_unique(table, target)
     try:
         models.sync_dynamic_tables_schema(target)
     except Exception as e:

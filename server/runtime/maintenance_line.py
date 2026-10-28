@@ -203,6 +203,12 @@ def poll_once(db_session_factory, mark):
         mark = latest
     if declared:
         _each(_declared_work(db_session_factory))
+    keys = [table for table, _columns, why in asked if why == models.KEY_UNIQUE]
+    if keys:
+        from chain import ingestion_worker as worker
+
+        _each([(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)])
+    asked = [each for each in asked if each[2] != models.KEY_UNIQUE]
     if asked:
         _each([(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
     return mark

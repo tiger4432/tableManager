@@ -1773,6 +1773,15 @@ from error_said import told
 _runtime_ddl_lock = threading.Lock()
 
 
+def ask_key_unique(table_name, bind):
+    """A table made after the scheduler's start asks its business-key unique index (lead 10-28): an INDEX_WANTED row
+    the index line builds on its next poll - queued, so nothing is written in the caller's path (`index_wants.want`)."""
+    from runtime import index_wants
+
+    if bind.dialect.name == "postgresql":                        # the builder's database - `ask` declines the rest
+        index_wants.want(table_name, ["business_key_val"], KEY_UNIQUE, 0.0, bind)
+
+
 def create_missing_dynamic_tables(engine):
     """[이슈 #7] DYNAMIC_TABLES에 등록됐지만 물리 DB에 아직 없는 **신규 테이블만** CREATE한다.
 
@@ -1811,6 +1820,7 @@ def create_missing_dynamic_tables(engine):
                 )
                 created.append(table_name)
                 print(f"[Schema Sync] Created missing physical table '{table_name}' at runtime.")
+                ask_key_unique(table_name, engine)
             except Exception as err:
                 # CREATE 경합(DuplicateTable 등) 포함 — 실패를 격리하고 계속 진행
                 print(f"[Schema Sync] Failed to create missing table '{table_name}': {told(err)}")
@@ -2399,6 +2409,9 @@ AUTO_INDEX_PREFIX = "ix_auto_"
 AUTO_SAID = "auto: "
 AUTO_DECIDE_KEY, AUTO_SLOW_SORT, AUTO_SLOW_FILTER = "decide key", "slow sort", "slow filter"
 AUTO_SLOW_SEARCH = "slow search"
+#: An INDEX_WANTED of a table made at runtime (lead 10-28): its business_key_val unique index - the identity the start
+#: builder (`ingestion_worker._ensure_business_key_unique_indexes_sync`) makes, built for this table on the next poll.
+KEY_UNIQUE = "business key"
 
 
 def auto_index_name(table, columns, why=None):
@@ -2425,7 +2438,10 @@ def auto_index_why(said):
 def auto_index_serves(index, columns, why):
     """Does `index` (a catalogue row) already serve what an automatic index over `columns` is wanted for: a sort needs
     the rows in (columns, row_id) order (1M 판: the column alone 724 ms · with row_id 3.3 ms), an equal or range
-    lookup the columns leading, a search a trigram index reading them."""
+    lookup the columns leading, a search a trigram index reading them. A key's unique index is the builder's to judge -
+    the catalogue rows carry no uniqueness."""
+    if why == KEY_UNIQUE:
+        return False
     if why == AUTO_SLOW_SEARCH:
         return set(columns) <= set(index.get("search") or ())
     return orders_rows_by(index, [*columns, "row_id"] if why == AUTO_SLOW_SORT else list(columns))
