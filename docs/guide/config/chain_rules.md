@@ -210,6 +210,7 @@ why     값이 빈 행의 사유: no mapping(그 값이 원장 노드가 아님 
 ```
 - 맵핑 표가 키마다 한 행이어도 `key.unique` 는 적지 않습니다 — fn take 와 같이 설 수 없습니다(fn 은 키의 행을 모읍니다)
 - 사람이 고친 값 칸은 그대로입니다(user 층)
+- worlds 는 그 걷기 옆에 적습니다: 리포트는 `causes.worlds`(후보 · 값 두 걷기를 함께), 조인은 take 의 `walk.worlds`. 리포트의 `causes.values` 안에는 적지 않습니다(저장 거절).
 
 ## 1. 언제 이 파일을 만지는가
 
