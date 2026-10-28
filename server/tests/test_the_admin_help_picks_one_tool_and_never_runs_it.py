@@ -47,6 +47,7 @@ def test_a_question_gets_one_tool_its_fields_and_its_own_count(client, db_sessio
     own = retroactive.count(db_session, "rerun_set_aside", {"tables": "t1"})
     assert got["count"]["affected"] == own["affected"] and got["count"]["detail"] == own["detail"]
     assert "Tools:" in asked[0] and "- rerun_set_aside:" in asked[0] and "read_files_again" in asked[0]
+    assert "doors" not in got, "a tool with no doors carries none"
     row = db_session.query(models.AdminHelpAsk).filter(models.AdminHelpAsk.id == got["help_id"]).one()
     assert (row.op, row.tries, row.asked_by, row.run_id, row.question) == (
         "rerun_set_aside", 1, None, None, "어제 옆으로 뺀 거 다시 돌려줘")
@@ -68,7 +69,19 @@ def test_a_wrong_field_twice_is_not_sure_and_names_tools_of_the_list_only(client
     assert got["op"] is None and got["count"] is None and got["tries"] == 2
     assert "requires parameter 'reason'" in asked[1]
     assert "unknown parameter(s) for 'set_aside': ['colour']" in got["refused"]
-    assert got["similar"] == ["withdraw", "set_aside"]
+    assert got["similar"] == [{"op": op, "label": retroactive.OPERATIONS[op]["label"]} for op in ("withdraw", "set_aside")]
+
+
+def test_a_tool_with_doors_answers_with_them_and_their_pages(client, monkeypatch):
+    """lead 10-29: the screen draws the answer's doors, a button where one has `open`; the answer's other cells stay"""
+    _model(monkeypatch, {"op": "formula_column", "params": {}, "why": "a formula", "similar": ["read_files_again"]})
+    got = _ask(client, "수식은 어디서 적어?").json()
+    assert got["doors"] == retroactive.DOORS_OUTSIDE["formula_column"]["doors"]
+    assert got["doors"][0]["open"] == {"label": "Open the grid", "href": "index.html"}
+    assert [door["name"] for door in got["doors"] if "open" not in door] == ["preview", "save", "remove"]
+    assert (got["op"], got["params"], got["why"], got["label"], got["count"], got["count_refused"], got["tries"]) == (
+        "formula_column", {}, "a formula", "Compute a column from a formula", None, None, 1)
+    assert got["similar"] == [] and got["refused"] is None and got["help_id"]
 
 
 def test_the_help_runs_nothing(client, monkeypatch):

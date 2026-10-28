@@ -45,3 +45,22 @@ def test_the_formula_door_names_the_grid_header_it_is_written_on():
 
     assert ("on the grid: the grid's column header - right-click it (a blank column too) or its fx mark"
             in admin_help.prompt_of("수식은 어디서 적어?"))
+
+
+def test_a_door_on_a_screen_page_opens_it_and_the_page_is_built():
+    """`open` on the doors that are on a screen page, and only those (lead 10-29) - a page client2/dist has; the model's
+    prompt does not carry it."""
+    from admin import help as admin_help
+
+    dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "client2", "dist")
+    opens = {(name, door["name"]): door["open"] for name, spec in admin_help.catalog().items()
+             for door in spec.get("doors", ()) if "open" in door}
+    assert opens == {("formula_column", "on the grid"): retroactive.GRID_PAGE,
+                     ("read_files_again", "now"): retroactive.FILE_PAGE,
+                     ("read_files_again", "by pattern"): retroactive.FILE_PAGE,
+                     ("cancel_reread", "now"): retroactive.FILE_PAGE}
+    assert [page["href"] for page in opens.values() if not (
+        page["label"] and os.path.isfile(os.path.join(dist, page["href"])))] == []
+    prompt = admin_help.prompt_of("수식은 어디서 적어?")
+    assert "on the grid: the grid's column header" in prompt, "canary: the doors are in the prompt"
+    assert [w for page in opens.values() for w in (page["href"], page["label"]) if w in prompt] == []

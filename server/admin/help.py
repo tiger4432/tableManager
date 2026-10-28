@@ -97,12 +97,14 @@ def pick(question, ask_json=None):
                 "tries": tries, "seconds": seconds}
     near = answer.get("similar") if isinstance(answer.get("similar"), list) else []
     return {"op": None, "params": {}, "why": answer.get("why"), "refused": refused, "tries": TRIES,
-            "similar": [name for name in dict.fromkeys(near) if name in tools][:SIMILAR], "seconds": seconds}
+            "similar": [{"op": name, "label": tools[name]["label"]}
+                        for name in dict.fromkeys(near) if name in tools][:SIMILAR], "seconds": seconds}
 
 
 def ask(db, question, asked_by=None, ask_json=None):
     """The help's answer: `pick`, then the tool's own count (`retroactive.count`), written as one `admin_help_asks`
-    row. -> the answer with `help_id`, `label`, `count` (the count's answer, or None) and `count_refused`."""
+    row. -> the answer with `help_id`, `label`, `count` (the count's answer, or None), `count_refused`, and the tool's
+    `doors` when it has them (each {name, how, when, open?})."""
     from database import models
     from utils.llm import LlmRefused
 
@@ -113,8 +115,9 @@ def ask(db, question, asked_by=None, ask_json=None):
         got = pick(question, ask_json)
     except LlmRefused as e:
         got = {"op": None, "params": {}, "why": None, "similar": [], "refused": str(e), "tries": 0, "seconds": []}
-    got.update(help_id=uuid.uuid4().hex[:12], count=None, count_refused=None,
-               label=catalog()[got["op"]]["label"] if got["op"] else None)
+    spec = catalog().get(got["op"]) or {}
+    got.update(help_id=uuid.uuid4().hex[:12], count=None, count_refused=None, label=spec.get("label"),
+               **({"doors": spec["doors"]} if spec.get("doors") else {}))
     if got["op"] in retroactive.OPERATIONS:
         try:
             got["count"] = retroactive.count(db, got["op"], got["params"])

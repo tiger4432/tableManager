@@ -2748,6 +2748,11 @@ OPERATIONS = {
 
 #: The upkeep doors outside this tab, in the catalog's cells - what the operator means to do, their questions, and
 #: the door to call next (소유자 10-23 ㄴ). Not runs: each door is its own route or command, named in `doors`.
+#: The screen page a door is on - `open` on that door only, a page client2/dist has (lead 10-29: the help draws a button
+#: where a door has one; a door with no page yet has none).
+GRID_PAGE = {"label": "Open the grid", "href": "index.html"}
+FILE_PAGE = {"label": "Open the file page", "href": "file_ingestion.html"}
+
 DOORS_OUTSIDE = {
     "formula_column": {
         "label": "Compute a column from a formula",
@@ -2757,7 +2762,7 @@ DOORS_OUTSIDE = {
                      "수식 칸이 비었어 - 0 으로 나눈 행인가", "수식은 어디서 적어?"],
         "doors": [
             {"name": "on the grid", "how": "the grid's column header - right-click it (a blank column too) or its fx mark",
-             "when": "the formula window: write, preview, save, remove - it calls the three doors below"},
+             "when": "the formula window: write, preview, save, remove - it calls the three doors below", "open": GRID_PAGE},
             {"name": "preview", "how": "POST /admin/chain/formula {table, column, formula, preview: true}",
              "when": "the first rows' answers and how many rows saving recomputes; nothing is written"},
             {"name": "save", "how": "POST /admin/chain/formula {table, column, formula, base}",
@@ -2779,12 +2784,13 @@ DOORS_OUTSIDE = {
             {"name": "now", "how": ("the file page's Retry · Read all again · Retry failed files under a folder "
                                     "(POST /admin/file-ingestion/retry-failed) · Read now"),
              "when": ("the rows the file log names, picked by state, folder and time, read where the log says they "
-                      "are; a file gone from there is not handed")},
+                      "are; a file gone from there is not handed"), "open": FILE_PAGE},
             {"name": "by pattern", "how": ("the file page's Pick files on a source's progress line - a pattern "
                                            "(* ? **), the files it matches, ticked, Read these "
                                            "(GET /admin/file-ingestion/glob · POST /admin/file-ingestion/read-now)"),
              "when": ("files under the source picked by path, read or not - each with its state and when it was "
-                      "last read; the ones from before the source was switched on are read only this way")},
+                      "last read; the ones from before the source was switched on are read only this way"),
+             "open": FILE_PAGE},
             {"name": "next sweep", "how": "python server/scripts/replay_ingestion.py --path <file> [--table <table>] --apply",
              "when": ("a file still where its source's sweep looks - its log row's stamp emptied, the next sweep "
                       "reads it as the source's pattern takes it; a file moved away is not read")}],
@@ -2802,10 +2808,10 @@ DOORS_OUTSIDE = {
         "examples": ["리트라이 대기 취소해줘", "다시 읽기로 넘긴 파일이 너무 많이 쌓였어, 도로 물려",
                      "Read all again 을 잘못 눌렀어, 아직 안 읽은 건 원래대로 돌려"],
         "doors": [
-            {"name": "now", "how": ("the file page's Cancel waiting re-reads (coming) · "
+            {"name": "now", "how": ("the file page's Cancel waiting re-reads on a source's progress line · "
                                     "POST /admin/file-ingestion/cancel-reread [?folder=<folder>] [&preview=true]"),
              "when": ("files still waiting go back to the state they had before; a file the watcher already "
-                      "took is not touched; preview counts and writes nothing")}],
+                      "took is not touched; preview counts and writes nothing"), "open": FILE_PAGE}],
         "next": ["read_files_again of the files that should be read, when they should be"],
     },
 }
