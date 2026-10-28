@@ -17,6 +17,7 @@ WHAT THIS HAS TO GET RIGHT
        supervisor: running + beat stale         -> wedged  (alive, not progressing)
        supervisor: running + no beat yet, young -> starting (grace, not an alarm)
        supervisor: running + beat fresh         -> ok
+       beat file fresh but would not read       -> unreadable (degraded, said - not stopped)
        ... + a claimed unit of work that has stopped progressing -> stalled
 
    The last row is what a beat alone cannot see. A beat proves *a* loop is
@@ -56,11 +57,13 @@ HTTP_UNHEALTHY = 503
 STARTUP_GRACE_SEC = 60.0
 
 
-def _stale_beat(who, hb, stale_after, tail=""):
-    """What a stale beat says: the error when its file would not read (lead 10-28 - «no progress for Nones»), else how
-    long it has not moved."""
+def _beat_said(who, hb, stale_after, tail=""):
+    """What a stale or unread beat says: the error and its file's age when its file would not read (lead 10-28 - «no
+    progress for Nones», 10-29), else how long it has not moved."""
     if hb.get("error"):
-        return f"{who}: {hb['error']}"
+        age = hb.get("age_seconds")
+        return f"{who}: {hb['error']}" + ("" if age is None else f" - its file was written {age}s ago "
+                                                                 f"(threshold {stale_after:.0f}s)")
     return f"{who} has made no progress for {hb.get('age_seconds')}s (threshold {stale_after:.0f}s){tail}"
 
 
@@ -384,8 +387,14 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
             if hb.get("error"):
                 entry["error"] = hb["error"]
             escalate(STATUS_UNHEALTHY)
-            problems.append(_stale_beat(f"worker '{hb_name}'", hb, stale_after,
-                                        " although its process is alive" if watched else ""))
+            problems.append(_beat_said(f"worker '{hb_name}'", hb, stale_after,
+                                       " although its process is alive" if watched else ""))
+        elif hb.get("error"):
+            # read, not stopped (lead 10-29): a fresh file that refused this read
+            entry["status"], entry["error"], entry["age_seconds"] = "unreadable", hb["error"], hb.get("age_seconds")
+            entry["detail"] = _beat_said(f"worker '{hb_name}'", hb, stale_after)
+            escalate(STATUS_DEGRADED)
+            problems.append(entry["detail"])
         else:
             entry["status"] = STATUS_OK
             entry["age_seconds"] = hb.get("age_seconds")
@@ -456,7 +465,13 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         if hb.get("stale"):
             entry["status"] = "wedged"
             escalate(STATUS_UNHEALTHY)
-            problems.append(_stale_beat(f"chain slot '{hb_name}'", hb, stale_after))
+            problems.append(_beat_said(f"chain slot '{hb_name}'", hb, stale_after))
+        elif hb.get("error"):
+            # read, not stopped (lead 10-29): a fresh file that refused this read
+            entry["status"], entry["error"] = "unreadable", hb["error"]
+            entry["detail"] = _beat_said(f"chain slot '{hb_name}'", hb, stale_after)
+            escalate(STATUS_DEGRADED)
+            problems.append(entry["detail"])
         elif (entry.get("chain_state") or {}).get("state") == event_constants.CHAIN_STATE_STALLED:
             entry["status"], entry["work"] = "stalled", work
             escalate(STATUS_UNHEALTHY)

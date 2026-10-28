@@ -3972,7 +3972,8 @@ def gate_refusal(db):
     if owner == "unknown":
         return ("run_id=%s op=%s is held by runner=%s, and whether that process is alive "
                 "CANNOT BE JUDGED from here (a row written before runs carried a runner "
-                "stamp). Cancelling asks it to stop; it cannot release the lock. %s"
+                "stamp, or its heartbeat file did not read just now). Cancelling asks it to "
+                "stop; it cannot release the lock. %s"
                 % (run_id, op, blocking.get("runner"), where))
     # The seconds are SINCE THE LAST PROGRESS - 「progressing for 0.0s」 read as a run that
     # had just started (총괄 d34247b3d ㉡).

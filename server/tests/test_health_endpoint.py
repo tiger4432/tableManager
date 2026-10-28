@@ -477,13 +477,13 @@ def test_beat_never_raises_into_the_worker_loop(hb_dir, monkeypatch):
     assert heartbeat._state["chain"]["errors"] == 1
 
 
-def test_corrupt_heartbeat_is_reported_stale_not_skipped(hb_dir):
-    """Silence is the one answer a health check must never give."""
+def test_corrupt_heartbeat_is_reported_not_skipped(hb_dir):
+    """Silence is the one answer a health check must never give. Stale or not is its file's age (lead 10-29)."""
     os.makedirs(hb_dir, exist_ok=True)
     with open(os.path.join(hb_dir, "chain.json"), "w", encoding="utf-8") as f:
         f.write("{ this is not json")
     entry = heartbeat.read_all()["chain"]
-    assert entry["stale"] is True
+    assert entry["stale"] is False and entry["pid"] is None
     assert "unreadable" in entry["error"]
 
 

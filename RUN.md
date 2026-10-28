@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **못 읽은 박동은 «멈춤»이 아니다 — /health 의 unreadable** — git pull · 런처 재기동
+>
+> ```
+> 볼 것    curl -s localhost:<포트>/health   (503 이어도 본문은 온다)
+>          checks.workers.<이름>.status = "unreadable", 200, problems 에
+>          «chain slot 'chain-slot-1': unreadable heartbeat: PermissionError … - its file was written 0.4s ago (threshold 60s)»
+> 뜻       한 번 못 읽었다 · 슬롯(일꾼)은 돈다. 쓰는 쪽이 그 파일을 바꾸는 순간에 읽었다 -> 할 일 없음
+>          wedged 503 은 이제 «파일이 임계값보다 낡았다»만 뜻한다 = 진짜 멈춤
+> 계속이면  여러 번 다시 물어도 같은 이름이 unreadable 이고 «written Ns» 가 계속 작으면
+>          -> 그 프로세스는 쓰고 있는데 파일이 깨졌거나 무엇이 계속 쥐고 있다
+>          -> 그 파일(heartbeats 디렉터리의 <이름>.json)을 메모장으로 열어 본다. 열리면 내용이 깨진 것, 안 열리면 쥔 쪽이 있는 것
+>          «written Ns» 가 커지다 60 을 넘으면 wedged 로 바뀐다 -> 그 일꾼이 멈춘 것
+> 끄는 법  되돌리기 커밋 하나. 데이터 · 설정은 안 건드린다
+> ```
+>
+> ---
+>
 > ## [10-29] **함수 조인 값 표 키 색인 — c27ae5801** — git pull · 런처 재기동
 >
 > ```

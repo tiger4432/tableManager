@@ -600,6 +600,7 @@
 
 ### 그 밖 (위 주제에 안 드는 것)
 
+- 2026-10-29 [고침 — 못 읽은 박동은 «멈춤»이 아니다 · 파일 나이로 가르고 /health 는 unreadable(200)로 말한다](#2026-10-29--고침--못-읽은-박동은-멈춤이-아니다--파일-나이로-가르고-health-는-unreadable200로-말한다) — 보는 곳 /health 의 unreadable · 적을 것 없음
 - 2026-10-28 [고침 — 비트 파일이 바쁘면 한 번 더 읽고 쓴다 · 못 읽으면 /health 가 그 오류를 말한다(«no progress for Nones» 503 이던 것)](#2026-10-28--고침--비트-파일이-바쁘면-한-번-더-읽고-쓴다--못-읽으면-health-가-그-오류를-말한다no-progress-for-nones-503-이던-것) — 보는 곳 /health problems · 적을 것 없음
 - 2026-10-24 [키 조각 하나가 빈 행은 같은 키로 접힌다 — (a, 빈값) 두 행이 한 행](#2026-10-24--키-조각-하나가-빈-행은-같은-키로-접힌다--a-빈값-두-행이-한-행) — 돌릴 것 rebuild_blank_business_keys.py · 보는 곳 파일 기록의 refused 줄
 - 2026-10-24 [쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것](#2026-10-24--쓰기가-쓰는-칸의-층만-읽는다--행의-모든-칸-층을-잠그고-읽던-것) — 적는 곳 없음 · 보는 곳 chain_worker.log · watcher.log 의 INSIDE THE WRITE prefetch
@@ -656,6 +657,16 @@
 
 
 
+
+## 2026-10-29 · 고침 — 못 읽은 박동은 «멈춤»이 아니다 · 파일 나이로 가르고 /health 는 unreadable(200)로 말한다
+
+- 무엇: 쓰는 쪽이 비트 파일을 바꾸는 동안 읽기가 거절되는 창은 한가할 때 7~11 ms, CPU 를 다 쓰면 최대 478 ms 다(박스에서 잼). 10-28 의 0.05 초 한 번 더 읽기로는 부하 때 모자라, C 의 파일 인제션 판에서 «chain slot … unreadable heartbeat: PermissionError» 503 이 한 번 났다. 그때 슬롯은 멈추지 않았다.
+- 바뀐 동작: `read_all` 은 못 읽은 파일의 나이를 그 파일의 수정 시각(mtime)으로 잰다(거절 중에도 403 번 중 403 번 읽힘). 그래서 «stale» 은 나이만 말하고, «못 읽음»은 `error` 칸과 pid 없음으로 따로 말한다.
+  - /health: 파일이 새것인데 못 읽었으면 일꾼 · 체인 슬롯 모두 unreadable, DEGRADED(200)이고 문장은 «<누구>: unreadable heartbeat: … - its file was written Ns ago (threshold 60s)». 파일이 낡았으면 전처럼 wedged 503.
+  - 회고 실행: 주인 판정(runner_state)이 «orphaned» 가 아니라 «unknown» 이다. 체인 워커의 죽은 리플레이 풀기 · × 취소 · 스케줄러 복원이 그 실행을 실패로 만들지 않는다. 막힘 문장은 «… or its heartbeat file did not read just now».
+  - 앱을 멈출 때: 회고 자식의 비트를 못 읽으면 «… its pid is not known, so it was not stopped» 를 남긴다.
+- 필요한 조건: git pull · 서버 · 와처 · 체인 워커 · 런처 재기동.
+- 자세히: `server/utils/heartbeat.py` 의 `read_all` · `runner_state`, `server/runtime/health.py` 의 `_beat_said`. 시험 `test_a_busy_beat_file_is_tried_again_and_said_as_it_is.py`(read_all 을 읽는 13 자리 × 네 갈래).
 
 ## 2026-10-29 · 빨라짐 — 함수 조인(take … fn)이 값 표를 키 색인으로 읽음
 

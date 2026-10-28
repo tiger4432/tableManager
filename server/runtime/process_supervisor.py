@@ -558,6 +558,10 @@ def stop_retroactive_child(grace=RETROACTIVE_STOP_GRACE_SEC, log=None):
         beat = heartbeat.read_all().get(retroactive.RUN_HERE_HEARTBEAT)
         if not beat or beat.get("stale"):
             return "none"
+        if beat.get("error"):
+            say("The retroactive child's heartbeat did not read (%s) - its pid is not known, so it was not stopped."
+                % beat["error"], level="WARNING")
+            return "unreadable"
         psutil = _psutil_or_warn(log)
         if psutil is None:
             return "no_psutil"

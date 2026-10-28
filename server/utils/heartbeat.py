@@ -464,7 +464,7 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
     """Read every worker heartbeat. Returns ``{name: {...}}``.
 
     Each entry carries ``age_seconds`` and ``stale``. Unreadable or corrupt files
-    are reported as stale with an ``error`` field rather than being skipped —
+    are reported with an ``error`` field rather than being skipped —
     silence is the one answer a health check must never give.
     """
     now = time.time() if now is None else now
@@ -525,11 +525,18 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
                 }
             out[name] = entry
         except Exception as e:
+            # 🔴 UNREAD IS NOT STOPPED (lead 10-29): a file the writer is replacing refuses the open for 7-11 ms idle,
+            #    up to 478 ms with every CPU busy (measured; one 503 in C's ingestion run). Its age is the file's own -
+            #    os.stat read it in 403 of 403 refusals - so `stale` says what the age says, and `error` that it did not read.
+            try:
+                age = max(0.0, now - os.path.getmtime(os.path.join(d, fname)))
+            except OSError:
+                age = None
             out[name] = {
                 "pid": None,
                 "beats": None,
-                "age_seconds": None,
-                "stale": True,
+                "age_seconds": None if age is None else round(age, 2),
+                "stale": age is None or age > stale_after,
                 "stale_after_seconds": stale_after,
                 "error": f"unreadable heartbeat: {type(e).__name__}: {told(e)}",
             }
@@ -683,6 +690,9 @@ def runner_state(runner):
         # row was "unknown" forever. The name is answerable from anywhere that can read
         # the heartbeats, so the unknown disappears rather than being handled.
         return "orphaned"
+    if entry.get("error"):
+        # a fresh file that did not read (lead 10-29): its pid is not known, so nothing is judged gone
+        return "unknown"
     beating = entry.get("pid")
     # Fresh beat, different pid: the process that started this run is gone and a newer one
     # of the same kind is beating. The run it left behind is nobody's.
