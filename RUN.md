@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **split 아이템 글을 quantity 로 — derive.ask 의 common.about, ea956b9a8** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. chain_rules 에 derive.ask 하나(docs/guide/ai_ask_tables.md «split 아이템 글 -> quantity»):
+>          on = 펼친 split 표 · group_by = 아이템 글 칸 · cells = quantity 칸 · common = quantity 목록 표 + about = 설명 칸
+> 볼 줄    chain_worker.log «[ChainRule] split_item_quantity: asked N text(s) in M call(s) ...»
+> 뜻      N = 서로 다른 아이템 글 수(행 수 아님). 맵핑 표의 «not found» = 목록에서 못 고름(또는 목록 밖 답) — 사람이 고치면 메모리로
+> 크기     선택지는 요청마다 «전부» 실립니다. 선택지 하나 ≈ 36 자 — 50 개 2,155 자 · 500 개 18,305 자(박스 수, 설명이 짧은 픽스처)
+>          quantity 가 수천이면 프롬프트가 그만큼 큽니다 — 제품별로 거르는 칸은 아직 없습니다(운영 quantity 수를 보고 정함)
+> 끄기     그 규칙 선언에 "enabled": false
+> 되돌리기  git revert ea956b9a8 -> 런처 재기동 (about 을 안 적은 선언은 그대로)
+> ```
+
+---
+
 > ## [10-28] **AI 표를 원장에 — ai_model 세계 견본 · 모델링의 종류는 is_a (A-4), a34c5866c** — git pull · 세계 파일 복사 · 런처 재기동
 >
 > ```
