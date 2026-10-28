@@ -599,6 +599,381 @@
       }
     },
     {
+      "__comment": "A-1 (docs/guide/ai_ask_tables.md): a product's step sequence -> its structures",
+      "name": "ai_structure_of_product",
+      "enabled": false,
+      "on": {
+        "table": "step_master"
+      },
+      "into": {
+        "table": "ai_structure"
+      },
+      "derive": {
+        "kind": "ask",
+        "ask": {
+          "input": {
+            "group_by": [
+              "product"
+            ],
+            "order_by": "step_seq",
+            "text": [
+              "step_desc"
+            ]
+          },
+          "output": {
+            "carry": {
+              "product": "product"
+            },
+            "cells": [
+              "structure",
+              "parent",
+              "kind"
+            ]
+          },
+          "common": {
+            "cell": "kind",
+            "table": "ai_common_object",
+            "column": "name",
+            "none": "no common"
+          },
+          "prompts": {
+            "common": "Read the step sequence of one product.",
+            "memory": {
+              "scope": [
+                "product"
+              ],
+              "limit": 5
+            }
+          },
+          "memory": {
+            "table": "ai_memory",
+            "columns": {
+              "purpose": "purpose",
+              "key": "situation",
+              "cell": "cell",
+              "ai": "ai",
+              "right": "right",
+              "memo": "memo",
+              "who": "who",
+              "when": "at"
+            }
+          }
+        }
+      }
+    },
+    {
+      "__comment": "A-2: a product's steps and their items -> what each step does and acts on, what each item describes",
+      "name": "ai_step_mapping",
+      "enabled": false,
+      "on": {
+        "table": "step_master"
+      },
+      "into": {
+        "table": "ai_step_map"
+      },
+      "derive": {
+        "kind": "ask",
+        "ask": {
+          "input": {
+            "group_by": [
+              "product"
+            ],
+            "order_by": "step_seq",
+            "text": [
+              "step_desc"
+            ],
+            "window": 30,
+            "overlap": 5
+          },
+          "output": {
+            "carry": {
+              "product": "product"
+            },
+            "line": "step_seq",
+            "item": "item_id",
+            "cells": [
+              "process_kind",
+              "acts_on",
+              "item_desc"
+            ]
+          },
+          "items": {
+            "table": "item_master",
+            "step": {
+              "column": "step"
+            },
+            "item": "item_id"
+          },
+          "reuse": {
+            "key": [
+              {
+                "column": "step_seq",
+                "drop_leading": 2
+              },
+              {
+                "column": "step_desc"
+              }
+            ],
+            "within": {
+              "cell": "acts_on",
+              "table": "ai_structure",
+              "column": "structure",
+              "carry": {
+                "product": "product"
+              }
+            }
+          },
+          "common": {
+            "cell": "process_kind",
+            "table": "ai_common_process",
+            "column": "name",
+            "none": "no common"
+          },
+          "prompts": {
+            "memory": {
+              "scope": [
+                "product"
+              ],
+              "limit": 5
+            }
+          },
+          "memory": {
+            "table": "ai_memory",
+            "columns": {
+              "purpose": "purpose",
+              "key": "situation",
+              "cell": "cell",
+              "ai": "ai",
+              "right": "right",
+              "memo": "memo",
+              "who": "who",
+              "when": "at"
+            }
+          }
+        }
+      }
+    },
+    {
+      "__comment": "split step 2: each split item text -> the quantity it means, from the step mapping's items",
+      "name": "ai_split_item_quantity",
+      "enabled": false,
+      "on": {
+        "table": "split_expanded"
+      },
+      "into": {
+        "table": "split_item_quantity"
+      },
+      "derive": {
+        "kind": "ask",
+        "ask": {
+          "input": {
+            "group_by": [
+              "item_text"
+            ],
+            "order_by": "split",
+            "text": [
+              "split"
+            ]
+          },
+          "output": {
+            "carry": {
+              "item_text": "item_text"
+            },
+            "cells": [
+              "quantity"
+            ]
+          },
+          "common": {
+            "cell": "quantity",
+            "table": "ai_step_map",
+            "column": "item_id",
+            "about": "item_desc",
+            "none": "not found"
+          },
+          "prompts": {
+            "common": "Which measured quantity does this split item mean?"
+          }
+        }
+      }
+    },
+    {
+      "__comment": "split step 3 (docs/guide/config/chain_rules.md fn walk): each split row's value, walked from its wafer",
+      "name": "split_fill",
+      "enabled": false,
+      "on": {
+        "table": "split_item_quantity"
+      },
+      "into": {
+        "table": "split_expanded"
+      },
+      "derive": {
+        "kind": "join",
+        "join": {
+          "on": [
+            {
+              "left": "item_text",
+              "right": "item_text"
+            }
+          ],
+          "take": [
+            {
+              "from": "quantity",
+              "into": "value",
+              "fn": "walk",
+              "walk": {
+                "follow": [
+                  "is_a",
+                  "describes",
+                  "acts_on"
+                ],
+                "value": "measures:value",
+                "event": "processed_at:tx_id",
+                "order": [
+                  "measured_at",
+                  "step_seq"
+                ],
+                "worlds": [
+                  "default",
+                  "ai_model"
+                ]
+              },
+              "row": [
+                "wafer"
+              ],
+              "why": "why"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "__comment": "The report's rows (docs/guide/ai_report_tables.md): a wafer of the summary -> a report row",
+      "name": "wafer_report_rows",
+      "enabled": false,
+      "on": {
+        "table": "wafer_summary"
+      },
+      "into": {
+        "table": "wafer_report"
+      },
+      "derive": {
+        "kind": "decide",
+        "decide": {
+          "key": [
+            "wafer"
+          ]
+        }
+      }
+    },
+    {
+      "__comment": "The AI report: a wafer's report, its causes walked through both worlds to the quantities' values",
+      "name": "wafer_report",
+      "enabled": false,
+      "on": {
+        "table": "wafer_report"
+      },
+      "into": {
+        "table": "wafer_report"
+      },
+      "derive": {
+        "kind": "report",
+        "report": {
+          "wafer": {
+            "table": "wafer_summary",
+            "key": [
+              "wafer",
+              "leg"
+            ]
+          },
+          "summary": {
+            "table": "wafer_summary",
+            "wafer": [
+              "wafer",
+              "leg"
+            ],
+            "item": "defect_kind",
+            "fail": "defective_chip_count",
+            "total": "total_chip_count"
+          },
+          "conditions": {
+            "table": "wafer_condition",
+            "wafer": [
+              "wafer",
+              "leg"
+            ],
+            "name": "condition_id",
+            "value": "value",
+            "time": "date",
+            "title": "title"
+          },
+          "results": {
+            "file": "report_path",
+            "summary": "report_summary"
+          },
+          "layout": [
+            {
+              "kind": "text",
+              "slot": "summary"
+            },
+            {
+              "kind": "table",
+              "fill": "yield_by"
+            },
+            {
+              "kind": "text",
+              "slot": "conclusion"
+            }
+          ],
+          "causes": {
+            "seed_type": "defect_kind",
+            "worlds": [
+              "default",
+              "ai_model"
+            ],
+            "values": {
+              "follow": [
+                "is_a",
+                "describes",
+                "acts_on"
+              ],
+              "value": "measures:value",
+              "event": "processed_at:tx_id",
+              "order": [
+                "measured_at",
+                "step_seq"
+              ]
+            }
+          },
+          "prompts": {
+            "memory": {
+              "scope": [
+                "wafer"
+              ],
+              "limit": 5
+            }
+          },
+          "memory": {
+            "table": "ai_memory",
+            "columns": {
+              "purpose": "purpose",
+              "key": "situation",
+              "cell": "cell",
+              "ai": "ai",
+              "right": "right",
+              "memo": "memo",
+              "who": "who",
+              "when": "at"
+            }
+          },
+          "loop": {
+            "steps": 8,
+            "seconds": 300,
+            "context_tokens": 16000
+          }
+        }
+      }
+    },
+    {
       "__comment": "lot_event -> lot_lineage: a row naming a parent (parent_lot) or a child (child_lot) becomes one descent row (parent, child, kind, time); the two rows of a pair write the same row. A row naming no lot is an old generation and writes nothing; a row naming both is refused by name. [총괄 e14416950 - the ledger's lot_event preparer retires; this is the computation it did, moved to the chain]",
       "name": "lot_event_to_lot_lineage",
       "trigger_table": "lot_event",

@@ -6,6 +6,9 @@
 모델링 구조 인식 · 스텝 맵핑 · 아이템 글 해석이 모두 이 «선언 하나»의 다른 값입니다.
 코드에는 표 · 칸 · 낱말 이름이 없습니다. 아래 칸이 전부입니다.
 
+운영에서는 `server/config/sample/chain_rules.json.sample` 의 견본 규칙(`ai_structure_of_product` · `ai_step_mapping` · `ai_split_item_quantity` · `split_fill` · `wafer_report_rows` · `wafer_report`, 모두 `enabled: false`)을 켜고 표 이름을 자기 표로 고치면 됩니다. 견본 표는 `table_config.json.sample` 에 같은 이름으로 있습니다(스텝 표 `step_master` 의 `step_seq` · `step_desc`, 아이템 표 `item_master` 의 `item_id` 등).
+리포트 · fn walk 규칙은 꺼져 있어도 표와 세계를 읽어 판정하므로, 표 이름을 고치기 전에는 «규칙이 안 섬» — 체인 로드 줄 «<규칙>: enabled=false — no rule stands for it.» 와 그 위의 거절 문장이 고칠 표 · 세계를 이름 댑니다.
+
 ## 선언
 
 ```json

@@ -99,7 +99,7 @@ def test_the_shipped_sample_would_not_be_refused(sample_rules):
             assert key not in chain_bindings.RULE_ROUTING_REQUIRED
 
 
-def test_every_required_cell_is_present_in_every_shipped_rule(sample_rules):
+def test_every_required_cell_is_present_in_every_shipped_rule(sample_rules, monkeypatch, tmp_path):
     """⚠️ `required` IS A CONTRACT, NOT AN OBSERVATION. `target_table`, `enabled` and
     `is_batch` appear in all ten shipped rules and are still OPTIONAL, because the code
     carries a default or the decorator can supply the value -- 「all ten write it」 and
@@ -120,11 +120,19 @@ def test_every_required_cell_is_present_in_every_shipped_rule(sample_rules):
     Whether a declaration RUNS and whether it is WELL FORMED are different questions, and
     only the second one is this test's. So `enabled` is forced on for the scoring pass.
     """
+    import shutil
+
     from chain import rule_shape
+    from support import declaration
 
     assert sample_rules, "the shipped sample declares no rules"
-    # No catalogue on purpose: this asks the GRAMMAR's question, and a `table_config`
-    # would answer it with this box's tables (「박스 설정으로 재지 않는다」).
+    # The COMMITTED catalogue and worlds, never this box's (「박스 설정으로 재지 않는다」): a report reads its tables
+    # off the catalogue and a join's fn walk its predicates off the worlds, so a shipped one is judged against what
+    # ships beside it (lead 10-28, the AI samples).
+    root = declaration.use_committed_declaration(monkeypatch, tmp_path)
+    (root / "ontology_worlds" / "ai_model").mkdir(parents=True)
+    shutil.copyfile(declaration.AI_MODEL_WORLD, root / "ontology_worlds" / "ai_model" / "ledger_config.json")
+    declaration.use_committed_catalogue(monkeypatch)
     examined, switched_off = [], []
     for raw in sample_rules:
         stood, refusal, _notes = rule_shape.expand_declaration(raw, None)

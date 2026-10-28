@@ -1533,5 +1533,125 @@
       "acts_on": "string",
       "item_desc": "string"
     }
+  },
+  "step_master": {
+    "__comment": "A step sequence, one row a product's step - read by the AI structure and step mapping rules (docs/guide/ai_ask_tables.md)",
+    "composite_key_source": [
+      "product",
+      "step_seq"
+    ],
+    "column_types": {
+      "product": "string",
+      "step_seq": "string",
+      "step_desc": "string",
+      "is_metro": "string"
+    }
+  },
+  "item_master": {
+    "__comment": "A metro step's measured items, one row an item - step is the step value with its product prefix, as step_master writes it",
+    "composite_key_source": [
+      "step",
+      "item_id"
+    ],
+    "column_types": {
+      "step": "string",
+      "item_id": "string"
+    }
+  },
+  "ai_common_object": {
+    "__comment": "The shared physical nodes a structure's kind is one of (ask common)",
+    "business_key": "name",
+    "column_types": {
+      "name": "string"
+    }
+  },
+  "ai_common_process": {
+    "__comment": "The shared process kinds a step's kind is one of (ask common)",
+    "business_key": "name",
+    "column_types": {
+      "name": "string"
+    }
+  },
+  "ai_memory": {
+    "__comment": "A person's corrections of AI cells, written by the ask and report rules' memory half and read back into their prompts",
+    "composite_key_source": [
+      "purpose",
+      "situation",
+      "cell"
+    ],
+    "column_types": {
+      "purpose": "string",
+      "situation": "string",
+      "cell": "string",
+      "ai": "string",
+      "right": "string",
+      "memo": "string",
+      "who": "string",
+      "at": "string"
+    }
+  },
+  "split_expanded": {
+    "__comment": "A split plan spread out, one row a lot's split item - its wafer, and the value the split fill join walks",
+    "composite_key_source": [
+      "lot",
+      "split",
+      "item_text"
+    ],
+    "column_types": {
+      "lot": "string",
+      "split": "string",
+      "item_text": "string",
+      "wafer": "string",
+      "value": "string",
+      "why": "string"
+    }
+  },
+  "split_item_quantity": {
+    "__comment": "A split item's text and the quantity the AI read it as",
+    "business_key": "item_text",
+    "column_types": {
+      "item_text": "string",
+      "quantity": "string"
+    }
+  },
+  "wafer_summary": {
+    "__comment": "The defect summary, one row a wafer leg's item - read by the report, never written",
+    "composite_key_source": [
+      "wafer",
+      "leg",
+      "defect_kind"
+    ],
+    "column_types": {
+      "wafer": "string",
+      "leg": "string",
+      "defect_kind": "string",
+      "defective_chip_count": "number",
+      "total_chip_count": "number"
+    }
+  },
+  "wafer_condition": {
+    "__comment": "A wafer leg's conditions, one row a condition - read by the report, never written",
+    "composite_key_source": [
+      "wafer",
+      "leg",
+      "condition_id"
+    ],
+    "column_types": {
+      "wafer": "string",
+      "leg": "string",
+      "condition_id": "string",
+      "value": "string",
+      "date": "string",
+      "title": "string"
+    }
+  },
+  "wafer_report": {
+    "__comment": "One row a wafer: the report's file and its summary text, written by the report rule",
+    "business_key": "wafer",
+    "column_types": {
+      "wafer": "string",
+      "report_path": "string",
+      "report_summary": "string"
+    }
   }
 }

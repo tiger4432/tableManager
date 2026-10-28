@@ -8,6 +8,8 @@
 > 소유자 10-23 「요약표가 wafer, leg, item_id, value 모양인데 … 리포트용 표가 따로 있어야지」 · 「요약표는 그냥 데이터 표일 뿐이야, 거기에 뭐 정리하려고 하지 마」 · 「그냥 wafer, 보고서 파일 경로 이 두 개가 최종 출력이어야 해」. 요약표 · 조건표 · 이미지표는 «읽기만» 한다 — 칸을 더하지 않는다.
 > 시범 동안(소유자 10-23 「막아」): 규칙을 `"enabled": false` 로 두면 리포트 표에 행이 들어와도 안 돈다. 소급 탭 «Replay chain rules over old data (R1)» 에 이 규칙 이름을 적은 리플레이만 돈다 — 모든 규칙이 같은 뜻이다.
 
+견본: `server/config/sample/chain_rules.json.sample` 의 `wafer_report_rows` · `wafer_report`(꺼진 채, 아래 소유자 표 넷 이름 그대로 · causes.values 와 메모리 칸까지). 켜고 표 이름을 고치면 됩니다. 표가 선언되기 전에는 꺼진 리포트 규칙도 안 섭니다 — 로드 줄 «wafer_report: enabled=false — no rule stands for it.».
+
 ## 1. 적는 것
 
 - **리포트 표** — 웨이퍼 칸(이름은 `derive.report.wafer.key` 의 칸과 같게)과 파일 경로 칸(string), 웨이퍼당 한 행. 웨이퍼 키가 (wafer, leg) 여도 리포트 표는 웨이퍼 칸 하나 — 리포트 한 판이 그 웨이퍼의 leg 를 다 읽어 열로 놓는다.
