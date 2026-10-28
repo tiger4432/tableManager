@@ -37,3 +37,11 @@ def test_a_door_outside_the_tab_names_how_each_of_its_doors_is_called():
     for name, spec in retroactive.DOORS_OUTSIDE.items():
         assert spec["doors"] and all(door["name"] and door["how"] and door["when"] for door in spec["doors"]), name
         assert name not in retroactive.OPERATIONS
+
+
+def test_the_formula_door_names_the_grid_header_it_is_written_on():
+    """the help answers «where do I write a formula» with the screen's door (lead 10-29, client 76a1ebf26)"""
+    from admin import help as admin_help
+
+    assert ("on the grid: the grid's column header - right-click it (a blank column too) or its fx mark"
+            in admin_help.prompt_of("수식은 어디서 적어?"))

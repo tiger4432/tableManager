@@ -2754,8 +2754,10 @@ DOORS_OUTSIDE = {
         "what_is_missing": "a column should be worked out from the same row's other columns, as a spreadsheet formula",
         "examples": ["c 칸을 a + b*3 으로 자동 계산되게 하고 싶어", "엑셀처럼 이 칸에 수식 걸어줘",
                      "수율 칸을 양품 / 투입 으로 채워줘", "걸어 둔 수식을 지우고 원래 값으로 돌려줘",
-                     "수식 칸이 비었어 - 0 으로 나눈 행인가"],
+                     "수식 칸이 비었어 - 0 으로 나눈 행인가", "수식은 어디서 적어?"],
         "doors": [
+            {"name": "on the grid", "how": "the grid's column header - right-click it (a blank column too) or its fx mark",
+             "when": "the formula window: write, preview, save, remove - it calls the three doors below"},
             {"name": "preview", "how": "POST /admin/chain/formula {table, column, formula, preview: true}",
              "when": "the first rows' answers and how many rows saving recomputes; nothing is written"},
             {"name": "save", "how": "POST /admin/chain/formula {table, column, formula, base}",
