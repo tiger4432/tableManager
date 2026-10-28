@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **split 행을 걸어서 채운다 — 조인 take 의 fn walk (split 3 단계), 2182ab007** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. chain_rules 에 조인 하나: on = 아이템 맵핑 표(2 단계 표), into = 펼친 split 표, on 칸 = 아이템 글
+>          take [{"from": "<quantity 칸>", "into": "<값 칸>", "fn": "walk", "row": ["<웨이퍼 칸>"], "why": "<사유 칸>",
+>                 "walk": 리포트 causes.values 와 같은 칸 + "worlds"}]   (docs/guide/config/chain_rules.md «⑧ fn walk»)
+>          key.unique 는 적지 않습니다(fn take 와 같이 못 섬)
+> 볼 것    펼친 split 표의 값 칸 «12.3» · «12 (est · <스텝> · 3 wf)» · 웨이퍼 여럿이면 «12.1 (mean · 3 wf)»
+> 뜻      사유 칸 no mapping = 맵핑 칸 값이 원장 노드가 아님(«not found» 포함) -> 2 단계 맵핑을 사람이 고치면 다시 채워짐
+>          사유 칸 no value = 노드는 있는데 그 웨이퍼들에 값도 같은 트랜잭션 추정도 없음 -> 원장(계측 소스)을 볼 일
+>          둘은 고칠 곳이 다릅니다 — 앞은 맵핑 표, 뒤는 계측 데이터
+> 알아둘 것 split 행에서 웨이퍼를 찾는 방법은 소유자 답 대기 — 지금은 행의 웨이퍼 칸 하나(값 또는 목록)
+>          걷기는 묶음마다 두 번(행 수와 무관)
+> 끄기     그 조인 선언에 "enabled": false
+> 되돌리기  git revert 2182ab007 -> 런처 재기동 (리포트 계측값은 같은 함수로 돌아갑니다 — 되돌려도 리포트는 그대로)
+> ```
+
+---
+
 > ## [10-28] **split 아이템 글을 quantity 로 — derive.ask 의 common.about, ea956b9a8** — git pull · 런처 재기동
 >
 > ```
