@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **견본 기본 세계가 계측값 · 공정 통과를 읽는다 (metro · process_event 소스), 25eebad42** — git pull 만 (견본만)
+>
+> ```
+> 할 것    운영 원장에 이미 계측 · 공정 소스가 있으면 할 일 없음. 없으면 ledger_config.json.sample 의 소스 metro · process_event 를
+>          운영 원장에 옮기고 relation 을 자기 표로 -> 소급(그 표의 행 수만큼)
+> 뜻      measured_at(quantity -> 계측 스텝)은 실측 metro 행에서만. 맵핑 표(ai_step_map)의 아이템 행은 describes 만
+>          스텝 노드 키 = (제품, step_seq) — 운영 표에 제품 칸이 없으면 표에 칸을 두거나 체인이 채움(원장 bind 는 접두를 못 뗌)
+> 볼 것    리포트 Evidence «quantity values» 줄에 값 · «12 (est · <스텝> · n wf)» — 비면 계측 소스가 원장에 없는 것
+> 되돌리기  git revert 25eebad42 (견본만)
+> ```
+
+---
+
 > ## [10-28] **AI 규칙 견본 여섯이 견본 설정에 (꺼진 채), 8051dacf6** — git pull 만 (견본만 바뀜)
 >
 > ```
