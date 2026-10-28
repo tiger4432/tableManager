@@ -158,9 +158,9 @@ console.log('\n[2] a number the screen cannot read has no cell; not_measured is 
 
   // 🔴 THE SIGN-FLIPPED CASE. Depth and retries left the old headline; if they left the screen
   //    with it, these redden.
-  eq('the depth is the Waiting number', numberOf(v, 'waiting').value, '812');
+  eq('the depth is the Waiting number', numberOf(v, 'waiting').value, '812 events');
   eq('and the retry count is on the meta line', metaOf(v, 'retried'), 'retried 17');
-  ok('and both reach the screen', valueOf(host, 'waiting') === '812' && /retried 17/.test(host.textContent));
+  ok('and both reach the screen', valueOf(host, 'waiting') === '812 events' && /retried 17/.test(host.textContent));
 
   // ── Running is `now_running`'s count — one seat, four sources (lead 4994c3afe · 5996d7f54) ──
   const RUN = { waiting: 0, oldest_waiting_seconds: null, loop_seen_via: 'this_process',
@@ -225,7 +225,7 @@ console.log('\n[3] the panel judges nothing it was not told, and prints no numbe
   const partial = queueView({ oldest_waiting_seconds: null, not_measured: NOT_MEASURED });
   eq('an absent depth has no Waiting cell, not 0', numberOf(partial, 'waiting'), undefined);
   eq('an absent retry count is a dash, not 0', metaOf(partial, 'retried'), 'retried —');
-  eq('a present zero IS a zero', numberOf(queueView(EMPTY), 'waiting').value, '0');
+  eq('a present zero IS a zero', numberOf(queueView(EMPTY), 'waiting').value, '0 events');
   eq('and a response with no list at all draws no rows, rather than throwing',
     partial.rows.length, 0);
 
@@ -332,7 +332,7 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   eq('an empty queue draws no table at all', byTag(host2, 'TABLE').length, 0);
   ok('and says so in one line', byClass(host2, 'chain-queue-empty').map((n) => n.textContent).join('') === 'Nothing waiting');
   // ...but the numbers are still there, because 「대기 없음」 is itself the answer (rule ①)
-  eq('while the numbers stay', valueOf(host2, 'waiting'), '0');
+  eq('while the numbers stay', valueOf(host2, 'waiting'), '0 events');
 }
 
 // ═══ ⑤-J one retroactive job is one line (lead b3a4334db, server f843188e5) ══════════════
@@ -1046,6 +1046,15 @@ async function xSuite(m, say) {
       && m.cutRunFor({ interrupted_runs: [{ ...CUT, op: undefined }] }, 'chain_replay', 'rule_r') === null);
   say('Z5 an answer with no cut runs draws the list it drew, and no Resume',
     rowsOf(seatR(BODY)).length === 3 && !byClass(seatR(BODY), 'chain-queue-resume').length);
+  // Waiting counts outbox events, not rows (lead 10-28): the card and each owner's line say «events».
+  const owned = { ...BODY, waiting_by_owner: [{ owner: 'chain', waiting: 1, oldest_waiting_seconds: 5 },
+    { owner: 'retro', waiting: 4, oldest_waiting_seconds: 9 }] };
+  const card = (m.queueView(owned).numbers.find((n) => n.key === 'waiting') || {}).value;
+  say('U1 the Waiting number says what it counts - «3 events»', card === '3 events', JSON.stringify(card));
+  const ownerText = byClass(seat(owned).host, 'chain-queue-owner').map((n) => n.textContent);
+  say('U2 each owner line says events - «chain · waiting 1 event», «retro · waiting 4 events»',
+    /^chain · waiting 1 event · /.test(ownerText[0] || '') && /^retro · waiting 4 events · /.test(ownerText[1] || ''),
+    JSON.stringify(ownerText));
 }
 const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
 const refreshed = [];
@@ -1081,6 +1090,10 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'KM3', what: 'the chip draws the full id', catches: 'K2', mutate: swap('chip.textContent = r.label;', 'chip.textContent = r.id;') },
     { id: 'KM4', what: 'a one-row line copies its words', catches: 'K3',
       mutate: swap('  if (!run && t.outbox_id != null) {', '  if (false) {') },
+    { id: 'UM1', what: 'the Waiting number is drawn bare', catches: 'U1',
+      mutate: swap("cell('waiting', WAITING, unitText(countOf(payload.waiting), 'event'))", "cell('waiting', WAITING, countOf(payload.waiting))") },
+    { id: 'UM2', what: 'an owner line is drawn bare', catches: 'U2',
+      mutate: swap("waiting ${unitText(b.waiting, 'event')} · oldest", 'waiting ${b.waiting} · oldest') },
     { id: 'YM1', what: 'Refresh asks nothing', catches: 'Y1', mutate: swap("btn.addEventListener('click', () => this.onRefresh());", '') },
     { id: 'YM2', what: 'a queue that could not be read has no Refresh', catches: 'Y1',
       mutate: swap('      const again = this._refresh();\n      if (again) this.root.appendChild(again);\n', '') },

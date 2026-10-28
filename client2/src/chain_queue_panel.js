@@ -589,7 +589,8 @@ export function queueView(payload, opts = {}) {
   const cell = (key, label, value, extra = {}) => Object.freeze({
     key, label, value, sub: '', tone: '', ...extra });
   const numbers = [];
-  if (isCount(payload.waiting)) numbers.push(cell('waiting', WAITING, countOf(payload.waiting)));
+  // Waiting counts outbox events, not rows (lead 10-28) - the card and each owner's line say so.
+  if (isCount(payload.waiting)) numbers.push(cell('waiting', WAITING, unitText(countOf(payload.waiting), 'event')));
   if (oldest !== null) numbers.push(cell('oldest', 'Oldest', oldest));
   // 🔴 C-61. 「최장」은 수 «옆»에 붙습니다 — 따로 줄을 만들면 운영자가 수를 먼저 읽고
   //    「3 개 돈다, 정상」으로 판정한 «뒤»에 나이를 봅니다. 나이가 읽히는 것이 하나도
@@ -832,7 +833,7 @@ export class ChainQueuePanel {
       strip.className = 'chain-queue-owner-strip';
       for (const b of view.byOwner) {
         const line = this._line('chain-queue-owner',
-          `${b.owner} · waiting ${b.waiting} · oldest ${b.age}`);
+          `${b.owner} · waiting ${unitText(b.waiting, 'event')} · oldest ${b.age}`);
         line.setAttribute('data-owner', b.owner);
         strip.appendChild(line);
       }

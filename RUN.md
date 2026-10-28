@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **체인 대기열 Waiting 수에 «events»** — git pull · 화면 새로 고침, 명령 없음
+>
+> ```
+> 볼 곳     어드민 Chain 탭 대기열 · 그리드 Queue 탭, 맨 위 Waiting 카드와 소유자 줄
+> 뜻       «812 events» · «chain · waiting 5 events · oldest …» = 새 번들, 그 수는 outbox 이벤트 수(행 수 아님)
+>          낱말 없이 «812» = 옛 번들 -> 강력 새로 고침
+> 되돌리기  git revert $(git log --format=%h -i --grep='the Waiting count says events' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-28] **조인 blank: skip 의 줄이 «옛 값은 거둔다»를 말한다 — «not written» 이 «옛 값이 남는다»로 읽히던 것** — 체인 워커 재기동 뒤
 >
 > ```
