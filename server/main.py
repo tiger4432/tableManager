@@ -2122,7 +2122,8 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
 
 
     # 오늘의 업데이트 건수 (AuditLog 기준 - 각 항목이 셀 단위 수정임)
-    today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    # the server's local midnight as an instant (소유자 10-28 «2 ㄱ») - a local date stamped UTC began at 09:00 KST
+    today_start = datetime.combine(date.today(), datetime.min.time()).astimezone(timezone.utc)
     # 🔴 `count(id)`, NOT `query(AuditLog).count()`. The ORM's `.count()` wraps the
     # ROW-SELECTING query in a subquery, so PostgreSQL materialises all eleven columns of
     # every audit row written today just to arrive at a number:
