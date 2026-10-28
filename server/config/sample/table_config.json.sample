@@ -27,6 +27,7 @@
     "__comment": "[source_config.xlsx] Ontology Class: process.",
     "business_key": "txn_seq",
     "column_types": {
+      "product": "string",
       "txn_seq": "string",
       "lot_id": "string",
       "wafer_id": "string",
@@ -36,6 +37,7 @@
       "event_time": "datetime"
     },
     "display_columns": [
+      "product",
       "txn_seq",
       "lot_id",
       "wafer_id",
@@ -388,6 +390,7 @@
   "metro": {
     "__comment": "[source_config.xlsx] Ontology Class: observation. Unique Key is not declared in the source workbook.",
     "column_types": {
+      "product": "string",
       "txn_seq": "string",
       "lot_id": "string",
       "wafer_id": "string",
@@ -400,6 +403,7 @@
       "value": "string"
     },
     "display_columns": [
+      "product",
       "txn_seq",
       "lot_id",
       "wafer_id",

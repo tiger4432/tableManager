@@ -290,6 +290,9 @@
           "required": [],
           "optional": [
             "tx_id"
+          ],
+          "indexed": [
+            "tx_id"
           ]
         }
       }
@@ -1072,6 +1075,177 @@
               "occurred_at": {
                 "kind": "column",
                 "column": "event_time"
+              }
+            }
+          }
+        }
+      }
+    },
+    "metro": {
+      "relation": "metro",
+      "read": {
+        "unit": "row",
+        "identity": [
+          "row_id"
+        ],
+        "order_by": [
+          "row_id"
+        ],
+        "cursor": {
+          "columns": [
+            "row_id"
+          ]
+        },
+        "occurred_at": {
+          "column": "event_time",
+          "timezone": "Asia/Seoul"
+        }
+      },
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "mappings": {
+          "wafer-measures": {
+            "predicate": "measures@1",
+            "bind": {
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_time"
+              },
+              "subject": {
+                "kind": "entity",
+                "entity_type": "wafer@1",
+                "keys": {
+                  "wafer": {
+                    "kind": "column",
+                    "column": "wafer_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "quantity@1",
+                "keys": {
+                  "quantity": {
+                    "kind": "column",
+                    "column": "item_id"
+                  }
+                }
+              },
+              "value": {
+                "kind": "column",
+                "column": "value"
+              },
+              "step": {
+                "kind": "column",
+                "column": "step_seq"
+              }
+            }
+          },
+          "measured-at-step": {
+            "predicate": "measured_at@1",
+            "bind": {
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_time"
+              },
+              "subject": {
+                "kind": "entity",
+                "entity_type": "quantity@1",
+                "keys": {
+                  "quantity": {
+                    "kind": "column",
+                    "column": "item_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "process_step@1",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "step_seq": {
+                    "kind": "column",
+                    "column": "step_seq"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "process_event": {
+      "relation": "process_event",
+      "read": {
+        "unit": "row",
+        "identity": [
+          "txn_seq"
+        ],
+        "order_by": [
+          "txn_seq"
+        ],
+        "cursor": {
+          "columns": [
+            "txn_seq"
+          ]
+        },
+        "occurred_at": {
+          "column": "event_time",
+          "timezone": "Asia/Seoul"
+        }
+      },
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "mappings": {
+          "wafer-processed-at": {
+            "predicate": "processed_at@1",
+            "bind": {
+              "occurred_at": {
+                "kind": "column",
+                "column": "event_time"
+              },
+              "subject": {
+                "kind": "entity",
+                "entity_type": "wafer@1",
+                "keys": {
+                  "wafer": {
+                    "kind": "column",
+                    "column": "wafer_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "process_step@1",
+                "keys": {
+                  "product": {
+                    "kind": "column",
+                    "column": "product"
+                  },
+                  "step_seq": {
+                    "kind": "column",
+                    "column": "step_seq"
+                  }
+                }
+              },
+              "tx_id": {
+                "kind": "column",
+                "column": "txn_seq"
               }
             }
           }

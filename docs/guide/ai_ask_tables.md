@@ -98,6 +98,8 @@ imports    process_step · quantity · physical_object/process/quantity 는 기�
            화면(출력 표)에는 «공용 없음» 낱말이 그대로 남습니다
 of_kind    기본 세계의 결함 → 결함 종류만입니다. 모델링의 «무엇의 한 종류»는 is_a 입니다
 ```
+계측값은 기본 세계가 읽습니다(견본 `ledger_config.json.sample` 의 소스 `metro` · `process_event`): 웨이퍼 `measures` quantity(값 · 스텝) · quantity `measured_at` 스텝 — 실측 행에서, 웨이퍼 `processed_at` 스텝(수식어 `tx_id`). 맵핑 표의 아이템 행은 `describes` 만 냅니다.
+스텝 노드의 키는 (제품, step_seq) 입니다. 운영 표에 제품 칸이 없고 step 값이 제품 접두를 품으면, 원장 bind 는 무계산이라 접두를 뗄 수 없습니다 — 표에 제품 칸을 두거나 체인이 채웁니다.
 리포트의 모델 걷기는 `causes.worlds` 에 두 세계(`["default", "ai_model"]`)를 적고 `causes.values.follow` 에 `is_a` 를 적습니다(docs/guide/ai_report_tables.md).
 
 ## 동작

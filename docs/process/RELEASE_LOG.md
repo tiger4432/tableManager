@@ -644,6 +644,12 @@
 
 
 
+## 2026-10-28 · 견본 기본 세계가 계측값과 공정 통과를 읽는다 — metro · process_event 소스
+
+- **무엇** — 기본 세계 견본에 소스 둘: `metro` 가 웨이퍼 `measures` quantity(값 · 스텝)와 quantity `measured_at` 스텝을, `process_event` 가 웨이퍼 `processed_at` 스텝(수식어 `tx_id`, indexed)을 냅니다. 견본 `metro` · `process_event` 표에 `product` 칸 — 스텝 노드 키 (제품, step_seq) 의 한 칸. 리포트 계측값 걷기와 split 채우기가 견본만으로 값에 닿습니다.
+- **바뀐 판정** — measured_at 은 실측(metro)에서 냅니다. 맵핑 표의 아이템 행은 describes 만 — A-2 때 «맵핑 행에서 measured_at» 이던 것을 바꿨고, 같은 술어를 두 소스가 쓰지 않게 ai_model 세계 견본에는 없습니다.
+- **필요한 조건** — 없음(견본만). 운영 원장에 옮길 때 소급 — 그 소스의 행 수만큼.
+
 ## 2026-10-28 · AI 규칙 견본 — 가이드에만 있던 선언 여섯이 견본 설정에 (꺼진 채)
 
 - **무엇** — 구조 인식 · 스텝 맵핑(메모리 칸 포함) · split 아이템 글 · split 채우기 조인 · 리포트 행 · AI 리포트 선언이 `chain_rules.json.sample` 에, 그 표 열 개가 `table_config.json.sample` 에 들어갔습니다. 칸 이름은 운영 이름(step_seq · step_desc · item_id)과 소유자 리포트 표 이름 그대로입니다.

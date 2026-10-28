@@ -35,6 +35,7 @@ LOT_EVENT_COLUMNS = (
 )
 
 PROCESS_EVENT_COLUMNS = (
+    "product",
     "txn_seq",
     "lot_id",
     "wafer_id",
@@ -283,6 +284,7 @@ def generate_lot_split_merge_sources(
                 for wafer_id, _slot in sorted(members.items(), key=lambda item: (item[1], item[0])):
                     wafer_number = int(wafer_id.rsplit("W", 1)[1])
                     process_rows.append({
+                        "product": "SYN",
                         "txn_seq": f"PE-{root_index + 1:02d}-{step:03d}-{wafer_number:02d}",
                         "lot_id": lot_id,
                         "wafer_id": wafer_id,

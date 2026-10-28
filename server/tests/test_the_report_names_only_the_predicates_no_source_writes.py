@@ -86,7 +86,8 @@ def _no_mapping_names(declaration):
 
 
 UNWRITTEN = _no_mapping_names(SHIPPED[0])
-assert "measures" in UNWRITTEN and "in_container" in UNWRITTEN
+# canary: words the sample still writes no source for (measures left on 10-28 - the metro source writes it)
+assert "leads_to" in UNWRITTEN and "in_container" in UNWRITTEN
 
 
 @pytest.mark.parametrize("files, change, unwritten", [
