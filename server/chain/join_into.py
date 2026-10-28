@@ -130,9 +130,10 @@ def _walk_node() -> dict:
 
 
 def _walk_word(said, name) -> str:
-    """A walk take's word - its `labels`, or the product's (the shape of `report_shape.word`)."""
-    word = (said.get("labels") or {}).get(name)
-    return word if isinstance(word, str) and word.strip() else WALK_WORDS[name]
+    """A walk take's word - its `labels`, or the product's (`report_shape.declared_word`)."""
+    from chain import report_shape
+
+    return report_shape.declared_word((said.get("labels") or {}).get(name), WALK_WORDS[name])
 
 
 def _walk_refusal(record):

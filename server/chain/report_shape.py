@@ -876,8 +876,13 @@ def _formats_refusal(spec):
 
 def word(spec, name) -> str:
     """A fixed word of the report file - the declaration's `labels`, or the product's."""
-    said = ((spec or {}).get("labels") or {}).get(name)
-    return said if isinstance(said, str) and said.strip() else LABELS[name]
+    return declared_word(((spec or {}).get("labels") or {}).get(name), LABELS[name])
+
+
+def declared_word(said, default) -> str:
+    """A word a declaration may say: what it says when that is a word, else the product's - the one judgement (a
+    report's `labels`, a join walk take's `walk.labels`, lead 10-28)."""
+    return said if isinstance(said, str) and said.strip() else default
 
 
 def column_word(spec, tier) -> str:
