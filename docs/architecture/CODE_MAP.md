@@ -5884,6 +5884,14 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - **소비자**: `grid.js` — `state.currentFormulas[col]` 이 있는 칸만 `FormulaHeader` · 폭에 `FORMULA_MARK_PX`(28) · `registerFormulaOpener(fn)`. `main.js` — `initFormulaPopover()` · `sendFormula(req, opts)`(`adminFetch` + `api.refusalText`) · `openFormula(column, anchor)`(데이터 칸만), `#myGrid` 의 contextmenu 하나가 `.ag-header-cell[col-id]` 에서 연다(필터 칸 빼고) · 표를 바꾸면 닫는다. `api.js` — `formulasOf(schema)` · `rereadFormulas(table)` 가 `/schema` 의 `formulas`(B `72acf1fd1`)를 `readSchema` 한 읽기로 받는다(그리드 읽기 수 api 7 그대로). `utils.showToast` 의 `opts.action`(«Open queue»)
 - **채점자**: `client2/tests/formula_popover_harness.mjs`(**447줄**, `harness_floors.mjs` 에 **52** 건 — 변이 9 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE 넷 «Formula, its column marked / the popover open / refused / closed»(녹화 박스엔 수식이 없어 그 상태 동안만 `dt_index` 에 수식을 얹는다 — 피벗 상태와 같은 방식)
 
+### 🆕 `latest_read.js` (**43줄** @`ae8573108` 신설, 10-29 — 총괄 10-28 «기제 하나 · 판 둘») — 한 판에 읽기 «하나»
+
+> 🔴 **새 물음이 나가 있는 읽기를 끊는다** — 그 답은 «다른 물음»의 답이다. 같은 물음이 읽는 중에 또 오면 옆에 하나 더 안 읽고, 끝난 뒤 «한 번 더» 읽는다.
+
+- **`class ReadBoard`** — `begin()` → `{signal, current()}`: 앞 읽기를 `AbortController` 로 끊고 새 표를 준다 · `ask(question, read)` — 같은 `question` 이 나가 있으면 `again` 만 세우고 그 `done` 을 돌려준다
+- **판**: `state.gridReads`(그리드 행 — 쪽 · 정렬 · 필터 · 표 · 점프) · `state.historyReads`(이력 옆판 — Global · Row · Cell, 그 `ticket` 이 «더 보기» 페이징 세션을 겸한다) · `formula_popover.js` 의 미리보기(인스턴스마다 하나)
+- **채점자**: `client2/tests/history_paging_harness.mjs`(import 로 `ReadBoard` 를 씀) · `formula_popover_harness.mjs`(늦은 미리보기가 버려짐)
+
 ### 🆕⑰ `dropdown.js` (🆕 **108줄** @`f3b6391d2` · 75줄 @`f22cf7027` · 69줄 @`3a8036b74` · 38줄, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
 
 > 🔴 **«둘째»가 나와서 생긴 파일이다**(상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). 첫째는 Re-translate 드롭다운, 둘째는 필터 칩 펼침. 비슷한 것을 하나 더 그리는 대신 «닫는 방법»을 한 곳에 뒀다.
