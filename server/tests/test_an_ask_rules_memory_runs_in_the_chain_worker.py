@@ -41,6 +41,11 @@ def _memory(db):
                            "WHERE ai IS NOT NULL OR right IS NOT NULL").fetchall()
 
 
+def _parents(db):
+    with sqlite3.connect(db) as con:
+        return dict(con.execute("SELECT structure, parent FROM ak_structure WHERE product = 'P1'").fetchall())
+
+
 def _calls(path):
     return [json.loads(line) for line in open(path, encoding="utf-8")] if os.path.exists(path) else []
 
@@ -90,6 +95,8 @@ def test_a_correction_is_remembered_asked_with_and_taken_back(tmp_path):
         assert _put(opener, base, "ak_steps", steps) == 200
         _wait(lambda: len(_calls(calls)) == 1, worker, log)
         assert "Past corrections" not in _calls(calls)[0]
+        # the AI's rows written before the person's PUT - asked is not written (a PUT in between makes a second row)
+        _wait(lambda: _parents(db) == {"M1": None, "V1": "M1"}, worker, log)
 
         # a person corrects the AI's parent of V1
         assert _put(opener, base, "ak_structure", [{"updates": {"product": "P1", "structure": "V1",
