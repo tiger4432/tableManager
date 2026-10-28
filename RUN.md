@@ -9,7 +9,7 @@
 >          원장 선언 화면에서 ai_model 세계를 열고 두 소스를 번역
 > 볼 것    세계 목록에 ai_model · 선언 화면에서 process_step · quantity · physical_* 에 «imported from default»
 >          걷기에서 세계 둘(default, ai_model)을 고르고 계측 항목 노드에서 describes -> 구조 -> is_a 가 이어짐
-> 뜻      저장이 «unknown entity type» 으로 거절 = imports 가 빠졌거나, 공용 타입 이름에 @1 을 붙였음(가져온 이름은 맨이름으로)
+> 뜻      저장이 «unknown entity type» 으로 거절 = imports 가 빠졌음(가져온 이름은 @1 을 붙여도 됩니다 — 고침 c4dd0930e)
 >          AI 가 «no common» 이라 답한 행 = is_a 엣지만 없음. 구조 노드와 part_of · acts_on 은 섬
 > 알아둘 것 기본 세계 견본에서 product_structure · part_of · acts_on · describes 가 빠졌습니다. 운영 기본 세계 선언이 그것을 이미 쓰면
 >          그대로 둬도 걸리지 않지만 키가 두 곳이 됩니다 — 옮기려면 그 소스를 ai_model 세계로 옮기고 기본 세계에서 거둡니다
