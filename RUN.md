@@ -13,9 +13,11 @@
 > 보는 줄   chain_worker.log 등 원장을 준비하는 프로세스에 이름마다 · 프로세스마다 한 번
 >          «ledger_events: a table stands where the ledger's partitioned table belongs - it is not built»
 >          «ledger_atom_rows: a table stands where the ledger's view belongs - it is not built»
-> 사람이 할 고침  (제품은 지우지 않는다) 그 표가 비었는지 먼저 본다:  SELECT count(*) FROM <그 이름>;
->          ledger_atom_rows 가 0 행이면  DROP TABLE ledger_atom_rows;  뒤 체인 워커 재기동 -> 원장이 뷰를 짓는다('v')
->          ledger_events 가 0 행이면  DROP TABLE ledger_events;  뒤 재기동 -> 원장 표가 'p' 로, 뷰도 'v' 로 선다
+> 사람이 할 고침  (제품은 지우지 않는다) relkind 가 'r' 인 것(ledger_events · ledger_atom_rows)마다 먼저 행 수를 본다:
+>              SELECT count(*) FROM <그 이름>;
+>          'r' 인 것을 전부(각각 0 행 확인 뒤)  DROP TABLE <그 이름>;  그다음 재기동 한 번
+>          -> 확인 SQL 이 ledger_events 'p' · ledger_atom_rows 'v'
+>          새 원장은 걷기가 묻는 source_event 색인 둘도 같이 짓는다 - 이주 스크립트 따로 없음 (코드로 읽음, 돌려 보지 않음)
 >          0 이 아니면 지우지 말고 총괄에게
 > ```
 >
