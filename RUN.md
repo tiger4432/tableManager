@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> ## [10-28] **AI 규칙 견본 여섯이 견본 설정에 (꺼진 채), 90dd45a65** — git pull 만 (견본만 바뀜)
+> ## [10-28] **AI 규칙 견본 여섯이 견본 설정에 (꺼진 채), 8051dacf6** — git pull 만 (견본만 바뀜)
 >
 > ```
 > 할 것    server/config/sample/chain_rules.json.sample 의 ai_structure_of_product · ai_step_mapping · ai_split_item_quantity ·
@@ -10,7 +10,7 @@
 > 뜻      리포트 · split_fill 은 꺼져 있어도 표 · 세계를 읽어 판정 -> 표 이름을 고치기 전엔 안 섬. 바로 위 줄의 거절 문장이
 >          고칠 것을 이름 댐(«... 'wafer_summary' is not a declared table» · «take walk: ... world_unknown ai_model»)
 >          ai_model 세계: ai_model_world.ledger_config.json.sample 을 config/ontology_worlds/ai_model/ledger_config.json 으로
-> 되돌리기  git revert 90dd45a65 (견본만)
+> 되돌리기  git revert 8051dacf6 (견본만)
 > ```
 
 ---
