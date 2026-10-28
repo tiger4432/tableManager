@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음 (A-3), 4c114d2e1** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 메모리 표를 table_config 에(키 purpose · situation · cell 꼴),
+>          derive.ask 선언에 memory {table, columns} 와 prompts.memory {scope, limit} (docs/guide/ai_ask_tables.md)
+> 볼 것    출력 표의 AI 칸을 사람이 다른 값으로 고침 -> 메모리 표에 그 상황 · 칸의 행 하나 (ai · right · who · when)
+>          다음 AI 호출의 프롬프트에 «Past corrections» 줄 — Test run 으로 프롬프트를 보면 보입니다
+> 뜻      메모리 행이 안 생김 = 고친 값이 AI 값과 같거나, 그 칸에 이 규칙의 AI 층이 없음(AI 가 비워 둔 칸)
+>          사람이 AI 값으로 되돌리면 그 행은 지워집니다
+> 알아둘 것 AI 가 나중에 사람 값과 같은 답을 내게 돼도 교정 줄은 남습니다 — 지우려면 메모리 행을 지웁니다
+>          리포트는 같은 칸으로 «읽기만». 리포트 표의 교정을 메모리로 쓰는 쪽은 다음
+> 끄기     선언에서 memory 를 빼면 반쪽 규칙이 안 섭니다. prompts.memory 를 빼면 프롬프트에 안 실립니다
+> 되돌리기  git revert 4c114d2e1 -> 런처 재기동
+> ```
+
+---
+
 > ## [10-28] **AI 가 표를 채우는 체인 규칙 derive.ask — 제품마다 구조 인식(A-1) · 스텝 맵핑(A-2), 79915e72a · 3349a437c** — git pull · 런처 재기동
 >
 > ```
