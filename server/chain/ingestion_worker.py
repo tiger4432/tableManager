@@ -939,6 +939,14 @@ def load_chain_rules():
         logger.error("[ChainRules] %s refused: formula_column - %s", rule.get("name"), sentence)
         refused_here.append((rule.get("name"), "formula_column", "formula_column - " + sentence))
         rules = [kept_rule for kept_rule in rules if kept_rule is not rule]
+    looped = {}
+    for table, columns, names in column_loops(rules):
+        for name in names:
+            looped.setdefault(name, COLUMN_LOOP % (table, " -> ".join(columns)))
+    for name, sentence in looped.items():
+        logger.error("[ChainRules] %s refused: column_loop - %s", name, sentence)
+        refused_here.append((name, "column_loop", "column_loop - " + sentence))
+    rules = [kept_rule for kept_rule in rules if kept_rule.get("name") not in looped]
 
     # 🔴 [총괄 016a766af] A MAPPER THAT READS ANOTHER RULE OF ITS KIND PAIRS THEM HERE, with the set in
     #    hand (`mapper_sdk.MAPPER_FACTS[...]["at_load"]`) - the hold recount counts by its copy rule's
@@ -1408,7 +1416,9 @@ def _validate_chain_cascade_graph(rules) -> list:
         # lands is `map_meta_registrar.META_TABLE`, so that is what the edge points at.
         for dst in (*chain_bindings.rule_tables(rule, chain_bindings.TABLE_ROLE_WRITE),
                     map_meta_registrar.META_TABLE if rule.get("allow_map_metadata_upsert") else None):
-            if dst:
+            # a rule woken by named columns back into its own table is the column walk's (`column_loops`) - as a
+            # table edge every formula chain a -> b -> c read as a loop (lead 10-28)
+            if dst and not (dst == src and wake_columns(rule)):
                 graph[src].add(dst)
 
     visiting, visited = set(), set()
@@ -1436,6 +1446,44 @@ def _validate_chain_cascade_graph(rules) -> list:
     for node in graph:
         visit(node, [])
     return cycles
+
+
+#: The sentence a rule in a column loop is refused with - the table, then the loop's columns in order.
+COLUMN_LOOP = "%s: %s - these rules wake each other and never settle"
+
+
+def column_loops(rules) -> list:
+    """The loops opt-in rules make inside one table by its columns: X writes a column Y is woken by, Y one X is woken by
+    (any length) - they never settle, so the loader and the save door refuse them (owner 10-28 ㄱ, a formula reading
+    another that reads it). Only rules woken by named columns (`wake_columns`) back into their own table; a loop through
+    a rule woken by its whole table stays the cascade graph's report (판정 402). -> [(table, columns in order with the
+    first again, rule names)], each loop once, begun at its smallest column."""
+    from chain import rule_order, rule_run
+
+    edges = defaultdict(set)                                     # (table, column) -> {(column it writes, rule name)}
+    for rule in rules:
+        table, wake = rule.get("trigger_table"), wake_columns(rule)
+        if rule_shape.is_switched_off(rule) or not rule.get("allow_chain_trigger") or not wake \
+                or rule.get("target_table") != table:
+            continue
+        for written in rule_run.columns_a_rule_writes(rule) or ():
+            for column in wake:
+                edges[(table, column)].add((written, rule.get("name")))
+    loops = {}
+
+    def walk(trail, names):
+        table = trail[-1][0]
+        for written, name in sorted(edges.get(trail[-1], ())):
+            columns = [column for _table, column in trail]
+            if written in columns:
+                at = columns.index(written)
+                key = (table, rule_order.loop_of(columns[at:] + [written]))
+                loops.setdefault(key, sorted(set(names[at:] + [name])))
+            else:
+                walk(trail + [(table, written)], names + [name])
+    for node in sorted(edges):
+        walk([node], [])
+    return [(table, list(loop) + [loop[0]], names) for (table, loop), names in sorted(loops.items())]
 
 
 

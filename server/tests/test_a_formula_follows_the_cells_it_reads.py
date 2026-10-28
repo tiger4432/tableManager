@@ -2,13 +2,13 @@
 """A formula follows the cells it reads, as a spreadsheet's cell does (owner 10-28 «1 ㄱ»): its rule is woken by what
 other rules write too (`allow_chain_trigger`, written by `formula.to_declaration`), so a formula reading a column a rule
 writes, or another formula's column, is not left on the old value. Measured with the events the grid and a file write
-(collapsed - they name the columns they set).
+(collapsed - they name the columns they set). Two that read each other are refused -
+test_rules_that_wake_each_other_by_column_are_refused.
 
     case                                        gate
     a column another rule writes                the formula follows it
     another formula's column                    the formula follows it
     its own write                               wakes nothing - one receipt an edit
-    two formulas that read each other           not refused; the chain stops at max_chain_depth and says so
 """
 import json
 
@@ -74,18 +74,9 @@ def test_its_own_write_wakes_nothing(db, declare, monkeypatch):
     _put(db, [{"k": "k1", "a": 1}])
     _drain(db, rules)
     ran, answer = [], join_into.answer
-    monkeypatch.setattr(join_into, "answer", lambda db_, rule, read: ran.append(rule.get("name")) or answer(db_, rule, read))
+    monkeypatch.setattr(join_into, "answer",
+                        lambda db_, rule, read: ran.append(rule.get("name")) or answer(db_, rule, read))
     _put(db, [{"k": "k1", "a": 5}])
     _drain(db, rules)
     receipts = db.query(models.AuditLog).filter(models.AuditLog.column_name == RECEIPT_COLUMN).count()
     assert _row(db)["c"] == 10 and receipts == 2 and ran == ["formula fx.c"], "one run an edit"
-
-
-def test_two_formulas_that_read_each_other_stop_at_the_depth_limit_and_say_so(db, declare, caplog):
-    rules = declare(("b", "=[c]+1"), ("c", "=If([b] Is Null, 0, [b]+1)"))
-    assert [rule.get("name") for rule in rules] == ["formula fx.b", "formula fx.c"], "not refused at load"
-    _put(db, [{"k": "k1", "a": 1}])
-    _drain(db, rules)
-    limit = event_constants.max_chain_depth(worker._RULES_DOCUMENT)
-    assert sum("[Chain Depth]" in record.getMessage() and "over the declared limit of %d" % limit
-               in record.getMessage() for record in caplog.records) == 1

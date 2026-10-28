@@ -226,7 +226,10 @@ why     값이 빈 행의 사유: no mapping(그 값이 원장 노드가 아님 
 저장     미리보기(앞 5 행의 답 · 다시 도는 행 수 = 그리드 개수) 뒤 저장 → 규칙 켜짐 + R1(전 행)
 따라감   엑셀처럼 읽는 칸을 따라간다 — 사람 · 파일이 바꾼 칸, 다른 규칙 · 다른 수식이 쓴 칸도(allow_chain_trigger,
          소유자 10-28 ㄱ). 자기 쓰기로는 안 깨어난다. 단계 상한은 max_chain_depth(기본 8) — 넘으면 chain_worker.log
-         «[Chain Depth] … over the declared limit of N». 서로 읽는 두 수식은 저장 · 로드에서 거절되지 않고 거기서 멎는다
+         «[Chain Depth] … over the declared limit of N»
+고리     서로 읽는 수식(b=[c]+1 · c=[b]+1, 셋 이상도)은 저장 · 로드에서 거절 — 엑셀의 순환 참조처럼(소유자 10-28 ㄱ)
+         «formula fx.c refused: column_loop - fx: b -> c -> b - these rules wake each other and never settle»
+         칸을 적은 규칙(조인 포함)끼리 같은 표에서 이루는 고리면 다 그렇다. 표 단위로 깨는 규칙이 낀 고리는 보고만(판정 402)
 층       수식 칸은 층(cell_sources)을 남기지 않는다 — 값은 선언이 낸다. 사람 값(user)은 그대로 이긴다
          파일 소스가 그 칸을 쓰면 파일 층은 남고 서열대로 선다 — 수식은 체인 서열이다
 이력     배치마다 영수증 줄(ledger_batch 칸, receipt_label «formula <표>.<칸>», row_ids) — 행마다 줄은 없다

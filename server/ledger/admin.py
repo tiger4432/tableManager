@@ -789,6 +789,10 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
     for writer, named, sentence in formula.second_writers(rules, expanded_set):
         if mine & {writer.get("name"), named}:
             raise _table_config_refusal("formula_column", f"rules.{name}", sentence)
+    for table, columns, names in ingestion_worker.column_loops(expanded_set):
+        if mine & set(names):
+            raise _table_config_refusal("column_loop", f"rules.{name}",
+                                        ingestion_worker.COLUMN_LOOP % (table, " -> ".join(columns)))
 
     ingestion_worker._validate_chain_cascade_graph(expanded_set)
 
