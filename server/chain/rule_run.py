@@ -254,9 +254,12 @@ def rule_label(rule):
     half's: an operator reading a list of rules for one table should not have to know which
     half they got.
     """
+    import chain_bindings
     from chain import dynamic_mappers
 
-    label = dynamic_mappers.label_for((rule or {}).get("mapper"))
+    # a memory half is called by its declaration's word (lead 10-28) - the cell `companion_rules` writes
+    label = dynamic_mappers.label_for((rule or {}).get(chain_bindings.COMPANION_MAPPER_NAME)
+                                      or (rule or {}).get("mapper"))
     if label is not None:
         return label
     return "mapper"

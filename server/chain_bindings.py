@@ -224,6 +224,9 @@ RULE_ROUTING_REQUIRED = ("name", "trigger_table")
 #: 🔴 여기가 저자다 — `chain.rule_shape.COMPANION_CELL` 이 이 이름을 «가져다» 쓴다. 두 벌로
 #: 적으면 한쪽만 고쳐지는 날 문법은 모르는 칸이 되고, 그 규칙은 매 부팅 경고를 받는다.
 COMPANION_CELL_NAME = "companion_of"
+#: A memory half's declaration's mapper (lead 10-28): the half runs as the ask's memory and its list label is the
+#: declaration's word - `rule_run.rule_label` reads this first. Written by `rule_shape.companion_rules` alone.
+COMPANION_MAPPER_NAME = "companion_mapper"
 
 #: ⚠️ `target_table` · `enabled` · `is_batch` 는 샘플 규칙 «열 개 전부»가 적지만 선택이다 —
 #: 코드에 기본값이 있거나(`rule.get("enabled", True)` · `rule.get("is_batch", False)`) 데코레이터가
@@ -323,7 +326,7 @@ RULE_ROUTING_OPTIONAL = tuple(
     # `origin` 과 «같은 부류»다 — 문법이 받기는 하지만 쓰는 것은 로더다. 여기 없으면
     # `flat_param_cells` 가 이것을 「params 로 옮기라」고 «매 부팅» 경고한다(실측 2026-09-16:
     # 조인 하나당 한 줄). 영구 경고 한 줄은 진짜 경고 하나를 안 읽히게 만든다.
-    COMPANION_CELL_NAME,
+    COMPANION_CELL_NAME, COMPANION_MAPPER_NAME,
     # S-188 ⓓ: `mapper` is the ONE cell; the two-cell spelling stays readable. `params` is
     # where a mapper's arguments live. The symbols `MAPPER_KEY`/`PARAMS_KEY` below are
     # defined against these literals and a test asserts they agree — the literals are here

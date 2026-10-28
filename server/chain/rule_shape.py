@@ -455,6 +455,7 @@ COMPANION_SUFFIX = ":target"
 #: A permanent warning is how a real one stops being read, and two spellings of the name is
 #: how only one of them gets fixed.
 COMPANION_CELL = chain_bindings.COMPANION_CELL_NAME
+COMPANION_MAPPER = chain_bindings.COMPANION_MAPPER_NAME
 
 
 #: `origin` of a rule the loader stands from a declaration under other names - «synthesized:<declaration>» (a decide's
@@ -506,7 +507,7 @@ def companion_rules(internal: dict) -> list:
         companion = dict(as_chain_rule(internal))
         companion["name"] = str(name) + COMPANION_SUFFIX
         companion["trigger_table"], companion["target_table"] = into["table"], memory["table"]
-        companion["mapper"] = ask_rule.ASK_MAPPER
+        companion[COMPANION_MAPPER], companion["mapper"] = companion.get("mapper"), ask_rule.ASK_MAPPER
         for key in ("trigger_columns", chain_bindings.ALLOW_DELETE_TRIGGER_KEY) + chain_bindings.ROW_GATE_KEYS:
             companion.pop(key, None)
         companion[COMPANION_CELL] = str(name)

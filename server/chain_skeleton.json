@@ -408,6 +408,14 @@
         }
       },
       {
+        "key": "companion_mapper",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
         "key": "mapper",
         "required": false,
         "node": {
@@ -3805,6 +3813,14 @@
       },
       {
         "key": "companion_of",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "companion_mapper",
         "required": false,
         "node": {
           "kind": "leaf",

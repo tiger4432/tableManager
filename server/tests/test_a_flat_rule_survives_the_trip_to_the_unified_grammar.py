@@ -194,8 +194,10 @@ def test_the_axis_set_is_the_difference_between_the_two_lists():
     # 24 -> 25 (총괄 옛 키 ㄱ): `allow_delete_trigger`, a deletion wakes the rule that declares it.
     # 25 -> 26 (총괄 a7b67be28 ㄱ): `target_columns`, the columns a rule writes.
     # 26 -> 27 (총괄 10-22, the AI report): `writes`, the tables a rule writes besides its target - `reads`'s twin.
+    # 27 -> 28 (총괄 10-28): `companion_mapper`, a memory half's declaration's mapper - loader-stamped like
+    #   `companion_of`, read by the list label alone.
     axis = known - folded - {rule_shape.KEY_CELL}
     assert set(rule_shape.axis_keys()) == axis
-    assert len(axis) == 27, (
+    assert len(axis) == 28, (
         "the axis set moved to %d - a cell was added to one list and not the other: %s"
         % (len(axis), sorted(axis)))

@@ -106,3 +106,24 @@ def test_the_remembered_row_reaches_the_next_reports_prompt_by_its_scope(world):
         "a scope column the report table's key does not hold matches nothing"
     assert ask_rule.memory_lines(world, off, "eval_summary", dict(zip(keys, ("W1",)))) == "", \
         "held on neither side - the report's own situation has no lot_id - matches nothing either, not everything"
+
+
+def test_a_memory_half_is_listed_by_its_declarations_word_and_every_other_rule_as_before():
+    from chain import dynamic_mappers, rule_run
+
+    import chain_bindings
+
+    assert rule_run.rule_label(_half()) == "report"
+    assert chain_bindings.flat_param_cells(_half()) == (), "a routing cell - not read as a mapper argument"
+    ask = rule_shape.from_declaration({"name": "step_kind", "on": {"table": "rm_report"},
+                                       "into": {"table": "rm_report"},
+                                       "derive": {"kind": "ask", "ask": {"memory": MEMORY}}})
+    (ask_half,) = rule_shape.companion_rules(ask)
+    assert rule_run.rule_label(ask_half) == "ask"
+    for name in dynamic_mappers.TEMPLATES:                       # join · decide · report · ask: the cell absent
+        assert rule_run.rule_label({"mapper": name}) == dynamic_mappers.label_for(name), name
+    assert rule_run.rule_label({"mapper": "mappers.some_file.run"}) == "mapper"
+    join = rule_shape.from_declaration({"name": "j", "on": {"table": "rm_report"}, "into": {"table": "rm_memory"},
+                                        "derive": {"kind": "join", "join": {}}})
+    assert all(rule_shape.COMPANION_MAPPER not in half for half in rule_shape.companion_rules(join)), \
+        "the join's half keeps its own mapper - the cell is the memory half's alone"
