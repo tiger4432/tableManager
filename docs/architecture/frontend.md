@@ -98,7 +98,7 @@ npm run build     # prebuild(§2.1) 통과 후 dist/ 생성
 |---|---|
 | `check:clipboard` | 클립보드 관례 (`client2/scripts/check_clipboard_convention.mjs`) |
 | `check:contracts` | `contracts/*/client_harness.mjs` **발견식 스캔** — 이음새의 클라 절반을 `vectors.json` 에 채점 |
-| `check:harnesses` | `client2/tests/*.mjs` **발견식 스캔** (`client2/scripts/check_harnesses.mjs`). 🆕 [10-27 `8ddae68a4`] 스캔한 것 중 origin/main 과 갈라진 뒤 바뀐 파일이 «닿는» 하니스만 돕니다(`module_reach.mjs`; 전부는 `--all`) |
+| `check:harnesses` | `client2/tests/*.mjs` **발견식 스캔** (`client2/scripts/check_harnesses.mjs`). 🆕 [10-27 `8ddae68a4`] 스캔한 것 중 origin/main 과 갈라진 뒤 바뀐 파일이 «닿는» 하니스만 돕니다(`module_reach.mjs`; 전부는 `--all`). 🆕 [10-28 `499f5d952`] 폴더를 나열(readdir)하는 하니스는 이름 대지 않은 파일을 읽으므로 칸이 없으면 매 변경에 돌고, `harness_floors.mjs` 의 `SCANS` 에 칸(저장소 경로 — `/**` 그 폴더와 그 밑 전부, `/*` 그 폴더의 항목)이 있으면 칸 안 파일이 바뀔 때만 돕니다. 러너가 그 하니스를 `scripts/scan_watch.mjs` 를 `--import` 로 실어 돌려 하니스 «자신의» 나열을 적고, 칸 밖의 소스 폴더를 나열했으면 BLOCKING(«Widen the cell») |
 | `check:suggest-keys` | 값 제안 셀 에디터의 키보드 계약. `prebuild` 에는 없고 위 스캔에 «흡수»돼 있습니다 |
 
 실측 2026-08-27: 하네스 **60** · 계약 **8**.
