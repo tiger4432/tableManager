@@ -311,6 +311,9 @@ _RULES_DOCUMENT = {}
 #: reads. Request paths read `loaded_chain_rules()`; a process forgets it where it learns the
 #: rules changed - the web server's reload seat and the one rule writer.
 _LOADED_RULES = None
+#: {rule name: the loader's sentence} of the last load's refusals - replaced whole by every load, as `_LOADED_RULES`
+#: (lead 10-28: a rule fixed and loaded again is no longer refused). Read through `refused_chain_rules`.
+_REFUSED_RULES = {}
 
 
 #: 한 그룹이 «몇 번» 시도되고 격리되나 (S-139, 소유자 09-10 21:35 「3회 없애, 1회면 끝」).
@@ -772,7 +775,7 @@ def read_rules_document(path=None):
 
 
 def load_chain_rules():
-    global _RULES_DOCUMENT, _LOADED_RULES
+    global _RULES_DOCUMENT, _LOADED_RULES, _REFUSED_RULES
     # 🔴 ONE READER (S-180 ⓑ). The sentences below are unchanged; only where the bytes come
     # from moved, so the registrar can ask the same question without opening the file again.
     read = read_rules_document()
@@ -829,7 +832,7 @@ def load_chain_rules():
                      told(grammar_error), exc_info=grammar_error)
 
     kept = []
-    refused_here = []  # (이름, 코드) — 아래 census 가 「안 도는 것」으로 같이 말한다
+    refused_here = []  # (이름, 코드, 문장) — 아래 census 가 「안 도는 것」으로 같이 말한다
     derived = enrichment.config.derived_tables(rules)
     for index, rule in enumerate(rules):
         path = "rules[%d]" % index
@@ -857,12 +860,10 @@ def load_chain_rules():
         fatal = [i for i in issues if i.code != "unknown_field"]
         unknown = [i for i in issues if i.code == "unknown_field"]
         if fatal:
-            logger.error(
-                "[ChainRules] %s refused (%d): %s",
-                (rule or {}).get("name") or path, len(fatal),
-                " | ".join("%s %s: %s" % (i.code, i.path, i.message) for i in fatal))
+            why = " | ".join("%s %s: %s" % (i.code, i.path, i.message) for i in fatal)
+            logger.error("[ChainRules] %s refused (%d): %s", (rule or {}).get("name") or path, len(fatal), why)
             refused_here.append(((rule or {}).get("name") or path,
-                                 ",".join(sorted({i.code for i in fatal}))))
+                                 ",".join(sorted({i.code for i in fatal})), why))
             continue
         if unknown:
             logger.warning(
@@ -913,12 +914,13 @@ def load_chain_rules():
     if twice:
         import operator_line
         for name, files in twice:
-            logger.error(operator_line.line(
+            why = operator_line.line(
                 "ChainRules", name,
                 "같은 규칙 이름이 %d 번 선언돼 있습니다 (%s) — 어느 쪽도 돌지 않습니다"
                 % (len(files), " · ".join(sorted(set(files)))),
-                operator_line.rename_one_declaration(files)))
-            refused_here.append((name, "name_claimed_twice"))
+                operator_line.rename_one_declaration(files))
+            logger.error(why)
+            refused_here.append((name, "name_claimed_twice", why))
 
     # 🔴 [총괄 016a766af] A MAPPER THAT READS ANOTHER RULE OF ITS KIND PAIRS THEM HERE, with the set in
     #    hand (`mapper_sdk.MAPPER_FACTS[...]["at_load"]`) - the hold recount counts by its copy rule's
@@ -928,7 +930,7 @@ def load_chain_rules():
         mine = [rule for rule in rules if chain_bindings.mapper_cells(rule)[0] == mapper_name]
         for rule, sentence in (facts["at_load"](mine) if facts.get("at_load") and mine else ()):
             logger.error("[ChainRules] %s refused: pair_mismatch - %s", rule.get("name"), sentence)
-            refused_here.append((rule.get("name"), "pair_mismatch"))
+            refused_here.append((rule.get("name"), "pair_mismatch", "pair_mismatch - " + sentence))
             rules = [kept_rule for kept_rule in rules if kept_rule is not rule]
 
     # 🔴 [S-156, 판정 385] THE DERIVED ORDER, READ HERE, ONCE. `rule_order` orders producers
@@ -982,7 +984,7 @@ def load_chain_rules():
         #    둘이 서로 다른 로그 줄에 흩어져 있어 «수만 줄» 속에서 짝지을 수가 없었다.
         if refused_here:
             logger.error("[ChainRules] refused(%d): %s", len(refused_here),
-                         " | ".join("%s(%s)" % pair for pair in refused_here))
+                         " | ".join("%s(%s)" % (name, code) for name, code, _why in refused_here))
         # 🔴 그리고 «지난번과 무엇이 달라졌나». 사진은 한 장만으로는 아무것도 안 막는다 —
         #    2026-09-14 에 필요했던 문장은 「지금 이렇다」가 아니라 「어제 돌던 그것이
         #    사라졌다」였고, 그것은 «두 장을 견줘야» 나온다. 로드는 설정이 바뀔 때마다
@@ -1021,6 +1023,7 @@ def load_chain_rules():
     # match it against a save's `base` (총괄 76aa4b6ed).
     activity.registry.note_rules_loaded(read.get("base"))
     _LOADED_RULES = copy.deepcopy(rules)
+    _REFUSED_RULES = {name: why for name, _code, why in refused_here}
     return rules
 
 
@@ -1060,6 +1063,14 @@ def say_the_declaration():
                "splits its groups" % name for name in _RETIRED_RUN_IN]
         + ["[ChainRules] %s: source_name '%s' is written as %s" % (name, named, rule_run.CHAIN_SOURCE)
            for name, named in _RENAMED_LAYER])
+
+
+def refused_chain_rules():
+    """{rule name: the loader's sentence} of the last load's refusals; loads once if this process has not. The one
+    seat a screen or a replay asks «did this rule stand, and why not» (lead 10-28, Q-194)."""
+    if _LOADED_RULES is None:
+        load_chain_rules()
+    return dict(_REFUSED_RULES)
 
 
 def forget_loaded_chain_rules():

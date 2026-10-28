@@ -645,6 +645,12 @@
 
 
 
+## 2026-10-28 · 고침 — 로더가 거절한 규칙은 목록과 재생이 로더 문장으로 말한다
+
+- **바뀐 동작** — 로더는 거절 사유를 로그에만 적고 버렸습니다. 그래서 규칙 목록(`GET /admin/chain/rules`)은 로더가 떨어뜨린 규칙을 이유 없이 `declared_only` 로, 꺼 둔 선언은 로더가 거절해도 «a replay that names it runs it» 로 보였고, 그 이름으로 재생하면 «not found or disabled» 였습니다(견본을 켠 판에서 찾음: 등록 안 된 맵퍼를 부르는 꺼진 선언). 이제 로더가 마지막 로드의 거절을 {규칙 이름: 로더 문장}으로 남기고(로드마다 통째로 갈아끼움), 목록은 그 규칙을 `declared_only` 에 `rule_state_detail` = 로더 문장으로(판정 656 — 안 섬의 사유는 값이 아니라 detail), 재생은 «was refused at load: <로더 문장>» 으로 답합니다.
+- **화면** — 체인 탭은 아직 `rule_state` · `rule_state_detail` 을 읽지 않습니다(배지는 enabled · active 만). 거절 문장은 응답에만 있고, 탭이 그리는 것은 클라 착지 뒤입니다.
+- **필요한 조건** — git pull · 런처 재기동.
+
 ## 2026-10-28 · 고침 — 리포트 프롬프트가 같은 quantity 를 «값 있음»과 «채울 것»으로 두 번 말하지 않는다
 
 - **바뀐 동작** — «candidate conditions» 걸음이 맺어진 조건이 없는 후보마다 «no value on these wafers - to be filled» 를 썼습니다. 그래서 `causes.values` 를 선언한 리포트에서 바로 앞 «quantity values» 걸음이 값(예 12.3)을 적은 quantity 에도, 값을 받지 않는 구조 · 스텝 · 물체 후보에도 «채울 것»이 붙었습니다(견본을 켠 판에서 찾음). 선언한 리포트: 값 줄 · «to fill» 은 값 걸음 한 자리가 답합니다 — «to be filled» 와 `[Report] causes to fill` 은 값 걸음이 «채워야 함»으로 낸 이름만. 선언 없는 리포트는 그대로(소유자 10-25 «값이 없으면 채워야 한다는 코멘트»). 후보의 이름과 값 줄의 이름은 한 함수(`report_reads.node_label`: 라벨, 없으면 id)로 짓습니다.

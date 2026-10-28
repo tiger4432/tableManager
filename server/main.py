@@ -6619,6 +6619,7 @@ def get_chain_rules(db: Session = Depends(get_db)):
                    rule_state_detail=_switched_off_line(db, rule, off[rule.get("name")]))
               for rule in standing]
     standing_names = {rule.get("name") for rule in standing}
+    refused = worker.refused_chain_rules()          # the loader's own sentences (lead 10-28, Q-194)
     for raw in (read["rules"] or ()):
         if not isinstance(raw, dict):
             continue
@@ -6631,8 +6632,9 @@ def get_chain_rules(db: Session = Depends(get_db)):
         # Measured: asking the grammar alone dropped a refused rule off the list entirely.
         expanded, refusal, notes = rule_shape.expand_declaration(raw, crud.TABLE_CONFIG)
         if expanded and rule_shape.is_switched_off(raw):
+            why = [refused[rule.get("name")] for rule in expanded if rule.get("name") in refused]
             listed.append(dict(raw, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
-                               rule_state_detail=notes[0] if notes else "enabled=false"))
+                               rule_state_detail=" | ".join(why) or (notes[0] if notes else "enabled=false")))
             continue
         # 🔴 [Q-191] PER STANDING RULE, NOT PER DECLARATION. One declaration can stand TWO
         # rules under DIFFERENT names, and the loader drops BY NAME
@@ -6648,7 +6650,9 @@ def get_chain_rules(db: Session = Depends(get_db)):
             # an unknown cell inside `derive.decide`, say - so borrowing notes[0] would tell
             # an operator their half is missing because of a typo it has nothing to do with.
             # A wrong reason is worse than none: it sends them to fix the wrong line.
-            listed.append(dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY))
+            # 판정 656: one value for «안 섬»; why it did not stand is the detail - the loader's own sentence
+            listed.append(dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+                               rule_state_detail=refused.get(rule.get("name"))))
         if expanded:
             continue
         # ⚠️ THE REASON IS BEST EFFORT AND THAT IS STATED RATHER THAN HIDDEN. The grammar

@@ -163,6 +163,8 @@ def test_a_rule_the_loader_refused_is_on_the_list_too(declared, tmp_path, monkey
 
     assert "r644_no_mapper" in rows, "로더가 거절한 규칙이 목록에서 사라졌습니다"
     assert rows["r644_no_mapper"]["rule_state"] == event_constants.RULE_STATE_DECLARED_ONLY
+    # lead 10-28 (Q-194 closes): 판정 656 - one value, the why in the detail: the loader's own sentence
+    assert rows["r644_no_mapper"]["rule_state_detail"] == worker.refused_chain_rules()["r644_no_mapper"]
 
 
 def test_one_half_falling_does_not_hide_behind_the_other(declared, tmp_path, monkeypatch):
@@ -196,11 +198,10 @@ def test_one_half_falling_does_not_hide_behind_the_other(declared, tmp_path, mon
     assert rows["enrichment_auto_confirm:r644_half"]["rule_state"] == \
         event_constants.RULE_STATE_DECLARED_ONLY, (
             "떨어진 반쪽이 «형제 뒤에 숨었습니다» — 목록이 규칙 전부를 못 보여 줍니다")
-    # ⛔ [Q-194] 사유는 «없어야» 합니다. 문법은 이 규칙을 «세웠고», 떨어뜨린 것은 로더입니다.
-    #    여기서 문법의 notes 를 빌려 오면 「모르는 칸 때문에 없다」로 읽혀, 운영자를 상관없는
-    #    줄로 보냅니다 — 틀린 사유는 없는 사유보다 나쁩니다.
-    assert rows["enrichment_auto_confirm:r644_half"].get("rule_state_detail") is None, (
-        "떨어진 반쪽에 «다른 말»이 사유로 붙었습니다")
+    # ⛔ [Q-194] 문법의 notes 를 빌리지 않는다(「모르는 칸 때문에 없다」로 읽힘) — 사유는 떨어뜨린 «로더»의
+    #    문장 그대로 (lead 10-28: 로더가 그 문장을 남기는 자리 하나)
+    said = rows["enrichment_auto_confirm:r644_half"].get("rule_state_detail")
+    assert said == worker.refused_chain_rules()["enrichment_auto_confirm:r644_half"] and "typo_cell" not in said
 
 
 def test_a_switched_off_flat_rule_is_listed_as_the_unified_one_is(declared):
@@ -251,3 +252,39 @@ def test_a_missing_file_still_answers_absent_not_empty(tmp_path, monkeypatch):
     assert answer["state"] == listing_absence.LISTING_ABSENT, answer
     assert answer["absent_path"] == str(missing), answer
     assert answer["data"] == [], answer
+
+
+# ---------------------------------------------------------------------------
+# ⓓ lead 10-28 (Q-194) - a switched-off declaration the loader refuses: the list, the replay, a reload
+# ---------------------------------------------------------------------------
+
+#: the box scene's: a one-cell mapper no file registers, switched off
+UNIFIED_MAPPER = {"name": "r644_unified_mapper", "enabled": False, "on": {"table": SRC}, "into": {"table": SRC},
+                  "derive": {"kind": "mapper", "mapper": {"mapper": "r644_not_registered", "params": {}}}}
+
+
+def test_a_switched_off_rule_the_loader_refused_says_so_on_the_list_and_at_replay(declared, tmp_path, monkeypatch):
+    import mapper_sdk
+    from chain import replay
+
+    chain_file = tmp_path / "off_refused.json"
+    chain_file.write_text(json.dumps({"rules": [UNIFIED_MAPPER]}), encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(chain_file))
+    import paths
+    monkeypatch.setattr(paths, "config_path", lambda name: str(chain_file))
+
+    row = _listing()["r644_unified_mapper"]
+    said = worker.refused_chain_rules()["r644_unified_mapper"]
+    assert said.startswith("unresolvable_mapper ") and "r644_not_registered" in said
+    assert (row["rule_state"], row["rule_state_detail"]) == (event_constants.RULE_STATE_DECLARED_ONLY, said)
+    with pytest.raises(replay.ReplayRefused) as refused:
+        replay.find_rule("r644_unified_mapper")
+    assert str(refused.value) == "chain rule 'r644_unified_mapper' was refused at load: %s" % said
+
+    # the mapper registered and the rules loaded again: no longer refused - the last load's refusals, whole
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "r644_not_registered", lambda *a, **k: None)
+    worker.forget_loaded_chain_rules()
+    row = _listing()["r644_unified_mapper"]
+    assert "r644_unified_mapper" not in worker.refused_chain_rules()
+    assert row["rule_state"] == event_constants.RULE_STATE_DECLARED_ONLY
+    assert row["rule_state_detail"].startswith("r644_unified_mapper: enabled=false")

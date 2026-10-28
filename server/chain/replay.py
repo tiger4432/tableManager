@@ -167,7 +167,7 @@ def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> d
     """The rule a replay NAMES - off ones too (owner 10-23 「자동 시작은 막고 리플레이로」): off is «nothing wakes
     it», and naming it is the one way it runs. The lists (`load_rules`) keep only the rules that are on."""
     from chain import rule_shape
-    from chain.ingestion_worker import loaded_chain_rules
+    from chain.ingestion_worker import loaded_chain_rules, refused_chain_rules
 
     named = rules is None
     rules = rules if rules is not None else load_rules()
@@ -179,6 +179,9 @@ def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> d
     if rule is None:
         available = ", ".join(sorted({r.get("name", "?") for r in rules}
                                      | {rule_shape.stood_for(r) for r in rules} - {""})) or "<none>"
+        refused = refused_chain_rules().get(rule_name)
+        if refused:
+            raise ReplayRefused(f"chain rule '{rule_name}' was refused at load: {refused}")
         raise ReplayRefused(f"chain rule '{rule_name}' not found or disabled; available: {available}")
     # ⛔ [S-242, narrowed by S-270] A COMPANION IS NOT A WHOLE-TABLE BACKFILL SUBJECT. The
     # declaration and its companion recompute the same answer from two sides, so replaying
