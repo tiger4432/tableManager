@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **AI 표를 원장에 — ai_model 세계 견본 · 모델링의 종류는 is_a (A-4), a34c5866c** — git pull · 세계 파일 복사 · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull
+>          server/config/sample/ai_model_world.ledger_config.json.sample 을 config/ontology_worlds/ai_model/ledger_config.json 으로 복사
+>          그 파일의 sources 둘(ai_structure · ai_step_map)의 relation 과 칸 이름을 운영 구조 표 · 맵핑 표에 맞춤 -> 런처 재기동
+>          원장 선언 화면에서 ai_model 세계를 열고 두 소스를 번역
+> 볼 것    세계 목록에 ai_model · 선언 화면에서 process_step · quantity · physical_* 에 «imported from default»
+>          걷기에서 세계 둘(default, ai_model)을 고르고 계측 항목 노드에서 describes -> 구조 -> is_a 가 이어짐
+> 뜻      저장이 «unknown entity type» 으로 거절 = imports 가 빠졌거나, 공용 타입 이름에 @1 을 붙였음(가져온 이름은 맨이름으로)
+>          AI 가 «no common» 이라 답한 행 = is_a 엣지만 없음. 구조 노드와 part_of · acts_on 은 섬
+> 알아둘 것 기본 세계 견본에서 product_structure · part_of · acts_on · describes 가 빠졌습니다. 운영 기본 세계 선언이 그것을 이미 쓰면
+>          그대로 둬도 걸리지 않지만 키가 두 곳이 됩니다 — 옮기려면 그 소스를 ai_model 세계로 옮기고 기본 세계에서 거둡니다
+>          of_kind 는 결함 -> 결함 종류만. 모델링은 is_a. 리포트 causes.values.follow 의 of_kind 는 is_a 로, causes.worlds 에 ["default", "ai_model"]
+> 끄기     ontology_worlds/ai_model 폴더를 지우면 세계가 없어집니다(기본 세계 원장은 그대로)
+> 되돌리기  git revert a34c5866c (견본 · 시험만 — 운영 세계 파일은 손으로 지움)
+> ```
+
+---
+
 > ## [10-28] **카탈로그의 kind: view 는 제품이 표로 짓지 않는다 — 새 DB 에서 원장 표 · 원장 뷰가 일반 표로 먼저 서던 것** — 서버 · 체인 워커 재기동 뒤
 >
 > ```
