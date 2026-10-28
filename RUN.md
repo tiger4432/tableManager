@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> ## [10-28] **불러올 수 없는 맵퍼 모듈을 이름 댄 규칙은 로드 때 거절 — 6a612ed5f** — git pull · 런처 재기동
+> ## [10-28] **불러올 수 없는 맵퍼 모듈을 이름 댄 규칙은 로드 때 거절 — b8d0bd0f3** — git pull · 런처 재기동
 >
 > ```
 > 볼 줄    chain_worker.log «[ChainRules] <규칙> refused (1): unresolvable_mapper rules[N].mapper_module: names no mapper this process can run: <모듈>.<함수> could not be loaded (<오류>)»
@@ -9,12 +9,12 @@
 >          예전 «… FAILED: … could not be loaded» 가 그룹마다 찍히던 것 = 이 착지 전
 > 견본     dt_log_to_dt_job_rollup 은 꺼진 채 — mappers/dt_job_rollup_mapper.py.sample 을 .py 로 놓고 켬
 >          production_to_inventory_reservation_batch 는 켠 채 — 맵퍼 파일이 없는 설치에선 위 거절 줄이 보임
-> 되돌리기  git revert 6a612ed5f -> 런처 재기동
+> 되돌리기  git revert b8d0bd0f3 -> 런처 재기동
 > ```
 
 ---
 
-> ## [10-28] **로더가 거절한 규칙 — 목록 · 재생이 로더 문장으로 말함, a9074e30c** — git pull · 런처 재기동
+> ## [10-28] **로더가 거절한 규칙 — 목록 · 재생이 로더 문장으로 말함, d1f07e1f9** — git pull · 런처 재기동
 >
 > ```
 > 돌릴 것  curl -s -H "X-Admin-Token: <토큰>" http://127.0.0.1:8080/admin/chain/rules  (그 규칙 행의 rule_state · rule_state_detail)
@@ -23,12 +23,12 @@
 > 재생     그 이름 재생이 «was refused at load: …» = 위 로더 문장과 같은 원인
 > ⚠️      맵퍼 파일을 막 저장하면 한 그룹 동안 API 목록과 워커가 다를 수 있음 (체인 쪽은 그룹 경계에서 적용)
 > 화면     체인 탭은 아직 rule_state · detail 을 안 그림 — 배지는 enabled/active 만, 켜진 채 거절된 규칙은 ACTIVE 로 보임
-> 되돌리기  git revert a9074e30c -> 런처 재기동
+> 되돌리기  git revert d1f07e1f9 -> 런처 재기동
 > ```
 
 ---
 
-> ## [10-28] **리포트 프롬프트가 같은 quantity 를 «값 있음 + 채울 것»으로 두 번 말하지 않는다 — f83bcc6e9** — git pull · 런처 재기동
+> ## [10-28] **리포트 프롬프트가 같은 quantity 를 «값 있음 + 채울 것»으로 두 번 말하지 않는다 — 5016ff213** — git pull · 런처 재기동
 >
 > ```
 > 할 것    없음 (선언 그대로)
@@ -36,7 +36,7 @@
 > 뜻      causes.values 를 선언한 리포트: «causes to fill» = «quantity values to fill» 과 같은 이름들 = 고쳐짐
 >          값이 적힌 quantity 나 구조 · 스텝 · 물체가 «causes to fill» 에 = 이 착지 전
 >          선언 안 한 리포트: 조건 안 맺은 후보가 전부 «causes to fill» 에 = 그대로 (소유자 10-25)
-> 되돌리기  git revert f83bcc6e9 -> 런처 재기동
+> 되돌리기  git revert 5016ff213 -> 런처 재기동
 > ```
 
 ---
