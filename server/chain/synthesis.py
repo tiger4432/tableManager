@@ -235,8 +235,10 @@ def _live_stood_rules(known_tables: dict = None):
 
 
 def declared_lookup_targets(rules):
-    """(left table, left columns, folds) of every switched-on join - the non-unique index its
-    left rows are selected by (총괄 8934fa36f ②). `enabled: false` asks nothing (판정 399)."""
+    """(table, columns, folds) of every switched-on join's non-unique key index: the left rows are selected by it
+    (총괄 8934fa36f ②), and a gathering join's value rows too - many a key, so no unique index (`declared_unique_targets`)
+    stands there and its read scanned the whole value table every batch (owner 10-29 «함수조인 ㄱ»). `enabled: false`
+    asks nothing (판정 399)."""
     from chain import join_into
 
     for rule, off in _declared_joins(rules):
@@ -244,8 +246,13 @@ def declared_lookup_targets(rules):
             continue
         on = join_into.pairs(rule)
         table = str(rule.get("target_table") or "")
+        folds = [fold for _l, _r, fold in on]
         if table and on:
-            yield (table, [left for left, _right, _fold in on], [fold for _l, _r, fold in on])
+            yield (table, [left for left, _right, _fold in on], folds)
+        spec = join_into.join_spec(rule)
+        right = str(spec.get("right_table") or "")
+        if right and on and join_into.gathers(spec):
+            yield (right, [right_col for _l, right_col, _fold in on], folds)
 
 
 def declared_lookup_index_names(known_tables: dict = None) -> set:

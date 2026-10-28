@@ -492,8 +492,8 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         logger.info("[Join] 조회 인덱스 %s 를 세웠습니다 (%.1f s)", name, time.monotonic() - started)
     elif report["state"] == "deferred":
         logger.warning("[Join] 조회 인덱스 %s 를 세우지 못했습니다 — 다른 세션이 표 %s 를 %s 넘게 "
-                       "잡고 있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 조인은 왼쪽 행을 "
-                       "인덱스 없이 고릅니다(느림).", name, table, db_safety.DDL_LOCK_TIMEOUT)
+                       "잡고 있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 조인은 %s 의 행을 "
+                       "인덱스 없이 고릅니다(느림).", name, table, db_safety.DDL_LOCK_TIMEOUT, table)
     else:
         logger.warning("[Join] 조회 인덱스 %s 를 세우지 못했습니다: %s", name, report["error"])
     return report
