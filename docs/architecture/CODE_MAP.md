@@ -3909,6 +3909,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | `ensure_partitions_for_range(connection, first, last)` / `partitions(connection)` | 월 범위 일괄 · 파티션 목록(보고와 헬스체크용) |
 | `_relation_exists(cursor, name)` | DDL 전 카탈로그 관문. 실패한 DDL은 트랜잭션을 오염시켜 **그 뒤 모든 질의가 무관한 이유로** 실패한다 |
 | 🆕 [10-28 `64b197e63`] `_built_kinds(names)` · `_say_another_kind(cursor, names)` · `_KIND_WORDS` · `_SAID_ANOTHER_KIND` | 원장이 짓는 관계와 그 relkind 의 표 하나 — `ledger_events` 'p' · `ledger_atom_rows` 'v'(`atom_rows_view_name`) — 와 견주는 함수 하나. 다른 relkind 면 이름마다 · 프로세스마다 한 번 «ledger_events: a table stands where the ledger's partitioned table belongs - it is not built» (`ensure_schema` 는 기동마다 · 백필마다 돈다) |
+| 🆕 [10-29 `648120c44`] `class WorldNotBuilt(LookupError)` · `WORLD_BUILT_BY` · `world_relation(table, world=None, bind=None)` | 선언됐는데 아직 안 지어진 가지 — 그 원자 보기가 없는 관계를 읽어 모든 읽기가 500 이던 것. `bind` 를 주면 가지의 원자 보기만 카탈로그에 물어(`to_regclass` 하나) 없으면 `WorldNotBuilt` «ledger world '<세계>' is declared but not built yet - activate a declaration of it in the ontology explorer, or run its backfill». 다른 표는 그대로. 그리드 문 전부(데이터 · 셈 · 내보내기 · 칸 · 피벗 · 갱신)가 지나는 `main.grid_model` 이 409 `world_not_built`(`world_unknown` 옆)로 답 |
 
 #### `store.py`
 
