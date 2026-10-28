@@ -391,6 +391,36 @@ const pickGlobAnswer = () => {
     root: 'X:/nas-fab-07/void_inspection', pattern: '2026-09/**/*.csv', matched: 12431, limit: 5000, truncated: true,
     by_status: { BEFORE_SWITCH_ON: 2487, NOT_READ: 2486, SUCCESS: 2486, FAILED: 2486, PENDING_RETRY: 2486 }, files, walked: 12431, seconds: 1.8 } };
 };
+// A column's formula (owner 10-28 option A, B 72acf1fd1): while FORMULA.on dt_log's dt_index carries =[dt_x]+[dt_y]*3 - its
+// schema says it (the recorded answer with `formulas`), the popover's read finds it, and a preview answers over the recorded
+// first rows (FORMULA.refuse: refused with the server's kind of sentence). No formula is saved on the recorded box.
+const FORMULA = { on: false, refuse: false };
+const FORMULA_COLUMN = 'dt_index';
+const FORMULA_TEXT = '=[dt_x]+[dt_y]*3';
+const FORMULA_REFUSED = "formula dt_log.dt_index: take 'dt_index' from 'dt_z' - not a column of dt_log";
+const formulaAnswer = (u) => {
+  if (u.pathname === '/tables/dt_log/schema') {
+    const a = ANSWERS['/tables/dt_log/schema'];
+    return { ...a, body: { ...bodyOf(a), formulas: { [FORMULA_COLUMN]: FORMULA_TEXT } } };
+  }
+  if (u.pathname === '/admin/chain/formula' && u.searchParams.get('table') === 'dt_log') {
+    return { status: 200, type: 'application/json', body: { table: 'dt_log', base: 'sha256:screens',
+      formulas: [{ column: FORMULA_COLUMN, formula: FORMULA_TEXT, rule: 'formula dt_log.dt_index', enabled: true }] } };
+  }
+  return null;
+};
+const formulaPreview = () => {
+  const a = ANSWERS['/tables/dt_log/data?skip=0&limit=1000&order_by=updated_at&order_desc=true&defer_total=true'];
+  const rows = (bodyOf(a && a.same_as ? ANSWERS[a.same_as] : a).data || []).slice(0, 5);
+  const v = (row, col) => ((row.data || {})[col] || {}).value ?? null;
+  return { rule: 'formula dt_log.dt_index', says: "Saving replaces this column's values row by row - earlier values are not kept per cell; the history keeps one line per batch.",
+    count: { total: 10000, capped: true, counted_at: null, count_seconds: null, counting: false, failed: null },
+    sample: rows.map((row) => {
+      const reads = { dt_x: v(row, 'dt_x'), dt_y: v(row, 'dt_y') };
+      return { keys: { dt_cell_key: v(row, 'dt_cell_key') }, reads, now: v(row, FORMULA_COLUMN),
+        becomes: reads.dt_x === null || reads.dt_y === null ? null : reads.dt_x + reads.dt_y * 3 };
+    }) };
+};
 const answerOf = (u) => {
   if (FILE_SOURCES.on && u.pathname === '/admin/file-ingestion/tables') return fileSourcesAnswer();
   if (PICK_GLOB.on && u.pathname === '/admin/file-ingestion/glob') return pickGlobAnswer();
@@ -399,6 +429,7 @@ const answerOf = (u) => {
   if (WORLDS_OVERLAP.on && u.pathname === '/admin/ontology-explorer/worlds') return worldsOverlapAnswer();
   if (IMPORTS.on) { const v = importsAnswer(u); if (v) return v; }
   if (PIVOT.on) { const v = pivotAnswer(u); if (v) return v; }
+  if (FORMULA.on) { const v = formulaAnswer(u); if (v) return v; }
   if (DECL_REFUSED.on && u.pathname === '/api/ledger/declaration') {
     return { status: 503, type: 'application/json', body: { detail: { reason: 'declaration_unreadable', message: DECL_SENTENCE } } };
   }
@@ -1559,6 +1590,12 @@ async function servePage(chrome, dist) {
       reply(200, 'application/json', JSON.stringify({ deleted_count: (JSON.parse(request.postData || '{}').row_ids || []).length }));
       return;
     }
+    if (FORMULA.on && request.method === 'POST' && u.pathname === '/admin/chain/formula' && JSON.parse(request.postData || '{}').preview === true) {
+      // the formula's preview (B's route): over the recorded first rows, or refused in the server's words
+      if (FORMULA.refuse) reply(400, 'application/json', JSON.stringify({ detail: FORMULA_REFUSED }));
+      else reply(200, 'application/json', JSON.stringify(formulaPreview()));
+      return;
+    }
     if (IMPORTS.on && request.method === 'POST' && u.pathname === '/admin/ontology-explorer/drafts/new') {
       reply(200, 'application/json', JSON.stringify({ draft: IMPORT_DRAFT }));
       return;
@@ -2670,6 +2707,46 @@ const DRIVE = {
         window.__hiddenFirst = box.id.replace(/^col-toggle-/, ''); box.checked = false; box.dispatchEvent(new Event('change', { bubbles: true }));
         document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; })()`);
       await sleep(600);
+    }],
+    // A column's formula (owner 10-28 option A): dt_log's dt_index marked fx in its header, its popover opened from the mark
+    // with the preview drawn, then a text the server refuses; Esc closes it and the table opened before comes back.
+    ['Formula, its column marked', async (c, log) => {
+      FORMULA.on = true;
+      await evaluate(c, "window.__formulaFrom = (document.getElementById('table-select') || {}).value; true");
+      for (const name of ['ledger_events', 'dt_log']) {
+        await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === ${JSON.stringify(name)}) return false;
+          sel.value = ${JSON.stringify(name)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await sleep(900);
+        await settle(c, log);
+        await until(c, GRID_LOADED);
+      }
+      await evaluate(c, `(() => { const h = document.querySelector('.ag-header-cell[col-id="${FORMULA_COLUMN}"]');
+        const v = document.querySelector('.ag-body-horizontal-scroll-viewport');
+        if (h && v) { v.scrollLeft = Math.max(0, h.offsetLeft - 200); v.dispatchEvent(new Event('scroll')); } return Boolean(h); })()`);
+      await until(c, "Boolean(document.querySelector('.ag-header-cell .formula-mark'))");
+    }],
+    ['Formula, the popover open', async (c, log) => {
+      await evaluate(c, "(() => { const m = document.querySelector('.ag-header-cell .formula-mark'); if (m) m.click(); return Boolean(m); })()");
+      await settle(c, log);
+      await until(c, "Boolean(document.querySelector('.formula-pop .formula-pop__preview:not([hidden]) tbody tr'))");
+    }],
+    ['Formula, refused', async (c, log) => {
+      FORMULA.refuse = true;
+      await evaluate(c, `(() => { const i = document.querySelector('.formula-pop input'); if (!i) return false;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '=[dt_x]+[dt_z]*3');
+        i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await settle(c, log);
+      await until(c, "Boolean(document.querySelector('.formula-pop .formula-pop__why:not([hidden])'))");
+    }],
+    ['Formula closed', async (c, log) => {
+      await evaluate(c, "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true");
+      FORMULA.refuse = false;
+      FORMULA.on = false;
+      await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__formulaFrom || sel.value === window.__formulaFrom) return true;
+        sel.value = window.__formulaFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
     }],
   ],
   'admin.html': [

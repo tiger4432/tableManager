@@ -3334,3 +3334,51 @@ body.resizing-active .history-sidebar {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ── a column's formula (formula_popover.js, owner 10-28 option A) ──────────────────────────────────────── */
+/* The header: its name and an fx mark, inside the header's own text span (AG's innerHeaderComponent). */
+#myGrid .formula-header { display: inline-flex; align-items: center; gap: var(--space-2); }
+#myGrid .formula-mark {
+  height: auto;
+  min-height: 0;
+  padding: 0 var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-tag);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--decl-pred-ink);
+  background: var(--decl-pred-weak);
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+#myGrid .formula-mark:hover { background: color-mix(in srgb, var(--decl-pred-weak) 80%, var(--decl-pred)); }
+/* The popover: the dropdown shell, composed of the base controls. */
+.glass-dropdown-panel.formula-pop { width: 560px; padding: var(--space-4); gap: var(--space-3); }
+.formula-pop [hidden] { display: none; }
+.formula-pop__head, .formula-pop__foot { display: flex; align-items: center; gap: var(--space-2); }
+.formula-pop__head { justify-content: space-between; }
+.formula-pop__title { font-size: var(--fs-title); font-weight: 600; }
+/* its × as the toast's: a glyph its line's height, pressed by its letters (the screen gate's size rule) */
+.formula-pop__close { height: auto; min-height: 0; padding: 0 var(--space-1); font-size: var(--fs-h4); line-height: 1; color: var(--text-dim); }
+.formula-pop__field { display: flex; flex-direction: column; gap: var(--space-1); }
+.formula-pop__label { font-size: var(--fs-label); font-weight: 600; color: var(--text-dim); }
+.formula-pop__input { font-family: var(--font-mono); }
+.formula-pop__input[aria-invalid="true"] { border-color: var(--danger); }
+.formula-pop__why { padding: var(--space-2) var(--space-3); font-size: var(--fs-label); color: var(--decl-bad-ink); background: var(--danger-weak); overflow-wrap: anywhere; }
+.formula-pop__insert { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.formula-pop__preview { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.formula-pop__section { font-size: var(--fs-h6); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.formula-pop__at { color: var(--text-dim); }
+.formula-pop__table { max-height: calc(8 * var(--space-6)); overflow: auto; }
+.formula-pop__table td { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.formula-pop__table .is-num { text-align: right; }
+.formula-pop__now { color: var(--text-dim); }
+.formula-pop__becomes.is-changed { font-weight: 600; color: var(--accent); }
+.formula-pop__says { font-size: var(--fs-label); color: var(--text-dim); }
+.formula-pop__foot { justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.formula-pop__remove { margin-right: auto; color: var(--danger); }
+/* A toast's one action (utils.showToast): pressable while the toast lets presses through. */
+.toast-action { pointer-events: auto; flex: 0 0 auto; }

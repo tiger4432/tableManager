@@ -364,6 +364,13 @@ function takePivot(answer) {
   return pivotRows(answer);
 }
 
+/** The table's /schema answer - its one read: a table load, and the formulas read again after a save or a removal. */
+async function readSchema(tableName) {
+  const res = await gridFetch(`${API_BASE}/tables/${tableName}/schema`);
+  if (!res.ok) throw new Error(`schema ${res.status}`);
+  return res.json();
+}
+
 export async function loadSchema(tableName) {
   // [F3] Drop the value-suggestion module's learned negative facts (disabled columns, prefix
   // floors, unavailable cooldowns). They are learned from the server's own refusals, which are
@@ -376,13 +383,12 @@ export async function loadSchema(tableName) {
   try {
     // 🔴 Unchecked, a failure body became `columns: []` and the grid believed the table
     //    had no columns -- which is the state writes start from. Same class as F-11.
-    const res = await gridFetch(`${API_BASE}/tables/${tableName}/schema`);
-    if (!res.ok) throw new Error(`schema ${res.status}`);
-    const data = await res.json();
+    const data = await readSchema(tableName);
     state.currentColumns = data.columns || [];
     state.currentColumnTypes = data.column_types || {};
     // each column's built index: ['equal'] · ['search'] · both (owner 10-15) - an old server sends none
     state.currentColumnIndexes = data.column_indexes && typeof data.column_indexes === 'object' ? data.column_indexes : {};
+    state.currentFormulas = formulasOf(data);
     // C-84. 표인가 뷰인가. S-187 이 `/schema` 에 실었고, `/tables` 의 `kinds` 와 «같은 서버
     // 함수»라 둘 다 읽을 이유가 없다 — 두 경로면 갈라질 수 있다(criterion ④).
     // 🔴 문자열이 «아니면» 빈 값이다: 옛 서버는 이 키를 안 보내고, 그 «모름»을 뷰로 읽으면
@@ -460,6 +466,26 @@ export async function loadSchema(tableName) {
   } catch (err) {
     console.error('Failed to load schema', err);
     sayStopped('Schema load error');
+  }
+}
+
+/** The table's formulas as /schema says them - {column: text}, only columns with one (B 72acf1fd1); an old server
+ *  sends no key, and none is none. */
+export function formulasOf(schema) {
+  const f = schema && schema.formulas;
+  return f && typeof f === 'object' && !Array.isArray(f) ? f : {};
+}
+
+/** After a formula is saved or removed: the table's formulas read again and its headers drawn with them - the rows
+ *  stay. A table no longer open is left alone; a failed read leaves the marks as they were. */
+export async function rereadFormulas(tableName) {
+  try {
+    const data = await readSchema(tableName);
+    if (tableName !== state.currentTable || !state.gridApi) return;
+    state.currentFormulas = formulasOf(data);
+    state.gridApi.setGridOption('columnDefs', buildColumnDefs());
+  } catch (err) {
+    console.error('Failed to read the formulas again', err);
   }
 }
 

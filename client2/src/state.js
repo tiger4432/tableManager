@@ -14,6 +14,8 @@ export const state = {
   currentColumns: [],
   currentColumnTypes: {},
   currentColumnIndexes: {},
+  // the open table's formulas, {column: text}, as /schema says them (B 72acf1fd1) - none: no key
+  currentFormulas: {},
   // The main grid's pivot (owner 10-22): the table's declaration ({column, value} from /schema, null: none), whether
   // it is shown, and the last answer's view ({column, value, keys, items, items_more}).
   currentPivot: null,

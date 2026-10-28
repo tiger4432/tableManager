@@ -154,7 +154,8 @@ function paintToast(item) {
 /**
  * @param {string} message
  * @param {'info'|'success'|'error'|'warning'} type
- * @param {{dedupeKey?: string, sticky?: boolean, ttl?: number}} [opts]
+ * @param {{dedupeKey?: string, sticky?: boolean, ttl?: number, action?: {label: string, run: Function}}} [opts]
+ *        action — one button beside the words (the formula's «Open queue»); pressing it runs it and closes the toast.
  *        dedupeKey — 같은 키의 알림은 쌓지 않고 기존 토스트에 집계된다.
  */
 export function showToast(message, type = 'info', opts = {}) {
@@ -202,6 +203,18 @@ export function showToast(message, type = 'info', opts = {}) {
   //    클릭을 삼키면 그건 편의가 아니라 의도를 «조용히 버리는» 것입니다.
   //    그래서 본체는 CSS 에서 `pointer-events: none` 이고, 닫는 일은 «닫기 단추»가
   //    합니다 — 닫을 수 있다는 것도 이제 «보입니다»(전에는 숨은 기능이었습니다).
+  if (opts.action && opts.action.label && typeof opts.action.run === 'function') {
+    const actionEl = document.createElement('button');
+    actionEl.type = 'button';
+    actionEl.className = 'btn-quiet ctl-small toast-action';
+    actionEl.textContent = opts.action.label;
+    actionEl.addEventListener('click', () => {
+      opts.action.run();
+      const it = toastItems.find(x => x.el === el);
+      if (it) removeToast(it);
+    });
+    el.appendChild(actionEl);
+  }
   const closeEl = document.createElement('button');
   closeEl.className = 'toast-close';
   closeEl.type = 'button';

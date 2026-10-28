@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **그리드 칸 머리 수식 — 머리 오른쪽 클릭 또는 fx 로 열고, 미리 보고, Apply** — git pull · 화면 새로 고침
+>
+> ```
+> 여는 법   그리드 칸 머리 오른쪽 클릭(빈 칸도) · 수식이 있는 칸은 이름 옆 fx 를 누름
+> 볼 것     «N rows will be recomputed» + 앞 다섯 행 now -> becomes. 빨간 줄 = 서버가 거절한 문장 그대로(Apply 꺼짐)
+> 저장 뒤   토스트 «Formula saved · formula 표.칸 · recompute queued · run <id>» -> Open queue 로 그 run. fx 가 새 수식을 말함
+> 답의 뜻   fx 가 안 보임 -> 그 표 schema 에 "formulas" 가 없음(서버가 72acf1fd1 전이거나 그 수식이 꺼짐 · 거절)
+>          창에 «Admin token ...» -> 이 브라우저에 관리자 토큰이 없거나 틀림
+> 되돌리기  git revert $(git log --format=%h -i --grep='a column.s formula on its header' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-29] **새 세계(ai_model 등) 셋업 순서 — 안 지어진 세계는 500 대신 이름으로 거절, 648120c44** — git pull · 런처 재기동
 >
 > ```
@@ -33,6 +46,7 @@
 > 볼 곳     메인 화면 이력 창 Global 탭 — 접힌 줄의 Row · column 칸
 > 뜻       «N RECEIPTS» · «N ROWS»(지움 · 만듦) · «N CHANGES» = 새 번들. 무엇이든 «N ROWS» = 옛 번들 -> 강력 새로 고침
 >          수식 줄의 제목이 «formula 표.칸» = 서버가 receipt_label 을 보냄. «Ledger batch» 면 그 영수증에 이름이 없음(옛 영수증)
+>          이름이 다른 영수증이 섞인 묶음은 제목이 대표 영수증 하나의 이름(목록이 대표 한 줄만 실음)
 > 되돌리기  git revert $(git log --format=%h -i --grep='counts in its title' origin/main) -> 화면 새로 고침
 > ```
 >

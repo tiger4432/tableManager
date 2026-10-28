@@ -1810,6 +1810,9 @@ export const FLOORS = new Map([
   // drawn again from the grid's rows, only the lines in view, the tile's side panel, the choices kept per table.
   // 12 -> 18 (owner 10-20 «갤러리 1,2,3,5»): the caption column, the group order, the side panel's keys, its shown columns, two galleries.
   ['gallery_harness.mjs', 28],
+  // New with lead 10-29 ③ (owner 10-28 option A): a column's formula on its header - the requests, opening, the preview,
+  // a refusal word for word, Apply and Remove, closing, chips at the caret, two instances, the fx press not a sort.
+  ['formula_popover_harness.mjs', 52],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

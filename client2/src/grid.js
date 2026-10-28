@@ -1,4 +1,5 @@
 import { createGrid } from 'ag-grid-community';
+import { FormulaHeader } from './formula_popover.js';
 import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
 import { pivotColumns, itemOf, isNewPivotRow } from './grid_pivot.js';
@@ -847,6 +848,10 @@ export function syncReferenceRule() {
 }
 
 let selectionListener = null;
+let formulaOpener = null;
+
+/** What a press on a header's fx mark opens - the page hands it (the popover is the page's part). */
+export function registerFormulaOpener(fn) { formulaOpener = fn || null; }
 
 /** 선택이 바뀔 때 불릴 함수 하나. 화면이 자기 부품을 연결합니다. */
 export function registerSelectionListener(fn) { selectionListener = fn || null; }
@@ -897,6 +902,8 @@ export function buildColumnDefs() {
     // its built index (owner 10-15): a small mark on the header, and an equal index alone makes the filter equals
     const indexed = (state.currentColumnIndexes || {})[col] || [];
     const indexWords = indexed.map((kind) => (kind === 'search' ? 'partial' : kind));
+    // its formula, as /schema says it (B 72acf1fd1) - the header draws an fx mark beside the name
+    const formula = isSystem ? null : (state.currentFormulas || {})[col] || null;
 
     // [Virtual join] A STORED column can still be join-resolved — `kind: 'collide'`, where
     // the same name exists on both sides and the server fills it from the right table
@@ -924,6 +931,9 @@ export function buildColumnDefs() {
       floatingFilter: filterable,
       headerClass: [fillOrdinal ? 'fill-target-header' : '', ...indexed.map((kind) => `idx-${kind}`)]
         .filter(Boolean).join(' ') || undefined,
+      // its formula (owner 10-28 option A): the name and an fx mark inside the header's own text, the mark opens it
+      ...(formula ? { headerComponentParams: { innerHeaderComponent: FormulaHeader, innerHeaderComponentParams: {
+        formula, open: (anchor) => { if (formulaOpener) formulaOpener(col, anchor); } } } } : {}),
       resizable: true,
       // C-85. 시각은 보는 쪽 zone 으로 «그리고», 값은 서버가 준 원문 그대로 둔다.
       valueFormatter: isTimeColumn(col, colType) ? timeCellFormatter : undefined,
@@ -1236,6 +1246,8 @@ const MOCKUP_COLUMN_LAYOUT = Object.freeze({
 // Measured off the live grid rather than assumed -- `dt_slot` at 58px and `dt_eqp` at 70px
 // both reported exactly 32px less usable text width than their column width.
 const HEADER_CHROME_PX = 32;
+/** A formula column's fx mark beside its name: the mark (two glyphs at --fs-tag, --space-1 each side) and its gap. */
+const FORMULA_MARK_PX = 28;
 
 /**
  * How wide the header label needs the column to be, so it is not truncated.
@@ -1268,7 +1280,8 @@ function applyMockupLayout(columnDefs) {
   columnDefs.forEach(def => {
     const mockupWidth = MOCKUP_COLUMN_LAYOUT[def.field];
     if (!mockupWidth) return;
-    const width = Math.max(mockupWidth, headerLabelWidth(def.headerName) + HEADER_CHROME_PX);
+    const mark = def.headerComponentParams ? FORMULA_MARK_PX : 0;
+    const width = Math.max(mockupWidth, headerLabelWidth(def.headerName) + HEADER_CHROME_PX + mark);
     def.width = width; def.minWidth = Math.min(width, def.minWidth ?? width);
   });
   // △소유자: 「그리드 컬럼 순서 table config 의 display col 순서 그대로」.

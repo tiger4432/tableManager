@@ -38,8 +38,10 @@ import {
   prevPage,
   openExport,
   refusalText,
-  setGridPivot
+  setGridPivot,
+  rereadFormulas
 } from './api.js';
+import { FormulaPopover } from './formula_popover.js';
 import { WorldTabs } from './world_tabs.js';
 
 /** 체인 뱃지를 다시 묻는 간격. 서버의 stale_after 가 60 초라 그보다 촘촘할 이유가 없다. */
@@ -80,6 +82,7 @@ import {
   updatePaginationUI,
   renderGrid,
   registerSelectionListener,
+  registerFormulaOpener,
   applyFillTargetHeaders,
   isSystemColumn,
   sortParams,
@@ -194,11 +197,13 @@ async function init() {
       // `setRelation` 한 번으로 문장이 확정됩니다.
       sourceLabel = initGridSourceLabel();
       redoBanner = initRedoBanner();
+      formulaPop = initFormulaPopover();
       // 🔴 부팅 자동 선택도 · 드롭다운도 · 이력 점프도 «표를 고른 것»입니다 — 셋 다 switchTable 을 지나므로 거기서 한 번
       //    알립니다. 손으로 알리던 두 자리(부팅 · 드롭다운)는 이력 점프를 빠뜨렸습니다(총괄 10-12).
       seatTableFollower((table) => {
         if (sourceLabel) sourceLabel.setRelation(table);
         redoBannerFollows(table);
+        if (formulaPop) formulaPop.close();
       });
       // Seated before the table list loads, so the first table switch finds it.
       const tabsHost = document.getElementById('world-tabs-host');
@@ -297,6 +302,42 @@ async function runRetroactive(op, params) {
   } catch (e) {
     return { ok: false, error: (e && e.message) || 'unreachable' };
   }
+}
+
+// A column's formula (owner 10-28 option A) - opened by a right-click on a data column's header or its fx mark.
+let formulaPop = null;
+
+/** The popover's one transport: /admin through adminFetch, a refusal as the server's sentence (api.refusalText). */
+async function sendFormula(req, opts = {}) {
+  try {
+    const init = req.method === 'GET' ? { signal: opts.signal }
+      : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body), signal: opts.signal };
+    const res = await adminFetch(`${API_BASE}${req.path}`, init);
+    if (!res.ok) return { ok: false, error: await refusalText(res, 'Formula refused') };
+    return { ok: true, body: await res.json().catch(() => ({})) };
+  } catch (e) {
+    if (e && e.name === 'AbortError') return { ok: false, error: '' };
+    return { ok: false, error: (e && e.message) || 'unreachable' };
+  }
+}
+
+/** Opens the formula of `column` of the open table under `anchor` - a data column only, the formula reads the others. */
+function openFormula(column, anchor) {
+  if (!formulaPop || !state.currentTable || isSystemColumn(column) || !(state.currentColumns || []).includes(column)) return;
+  formulaPop.open({ table: state.currentTable, column, anchor,
+    columns: (state.currentColumns || []).filter((c) => !isSystemColumn(c)) });
+}
+
+function initFormulaPopover() {
+  const part = new FormulaPopover(document.body, {
+    doc: document,
+    send: sendFormula,
+    say: showToast,
+    onSaved: ({ table }) => rereadFormulas(table),
+    openQueue: () => { if (elements.tabQueueBtn) elements.tabQueueBtn.click(); },
+  });
+  registerFormulaOpener(openFormula);
+  return part;
 }
 
 /** 체인 규칙 «이름» 목록. 🔴 `null`(못 읽음)과 `[]`(서버가 하나도 선언 안 함)을 «가릅니다» --
@@ -908,6 +949,9 @@ function setupEventListeners() {
   if (gridContainer) {
     gridContainer.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      // a column's header (not its filter box) opens its formula - an empty column too (owner 10-28 option A)
+      const head = e.target && e.target.closest ? e.target.closest('.ag-header-cell[col-id]') : null;
+      if (head && !head.closest('.ag-floating-filter, .ag-header-row-column-filter')) openFormula(head.getAttribute('col-id'), head);
       // 다시 돌리는 줄은 이제 이 메뉴에 «없습니다» (소유자 지시). 배너로 옮겼습니다.
     });
     gridContainer.addEventListener('mouseleave', () => {
