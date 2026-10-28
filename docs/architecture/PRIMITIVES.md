@@ -2314,6 +2314,11 @@
 - **언제 재사용**: LLM 을 부르는 새 자리는 `ask_json`(맵퍼는 `mapper_sdk.ask_json`)을 부른다 — 옆에서 openai 를 직접 부르면 다시 묻기도 일시정지도 없다.
 - **함정**: 기다림은 부른 자리의 트랜잭션 안이다(체인이면 그 묶음의 표 잠금을 쥔 채). openai 클라이언트의 다시 시도는 0 — 다시 묻기는 이 자리만 한다.
 
+### **AI 가 표를 채운다 = `derive: {kind: "ask"}` — 리포트와 같은 체인 좌석, 묻기는 `utils.llm.ask_batch`** (2026-10-28 등록 · `79915e72a` · `3349a437c`, 총괄 10-27 A-1 · A-2)
+- **어디**: `server/chain/ask_rule.py` `answer(db, rule, row_ids)` — 맵퍼 이름 `declared:ask`, `dynamic_mappers._ask` 가 `_report` 처럼 건네진 행으로 부른다(규칙은 `is_batch`, 그룹 하나 = 부름 하나). 선언 칸(input · output · items · reuse · common · prompts)은 모듈 머리. 쓰기는 체인의 쓰기 — 사람 칸은 안 덮고, 답이 더 안 주는 행은 gone 좌석으로.
+- **언제 재사용**: «행들을 모델에게 묻고 답을 표의 행으로» — 모델링 구조 · 스텝 매핑이 각각 이 선언 한 벌이다. 새 «AI 가 채우는 표»에 맵퍼나 종류를 새로 짓지 않는다.
+- **함정**: `window` 가 있으면 건네진 행이 든 창만 묻는다. `reuse.key` 를 앞 답이 들면 안 묻지만, 그 답의 `within.cell` 값이 이 그룹 목록 밖이거나 그 줄의 항목을 다 안 들면 묻는다. Test run 도 모델을 부른다.
+
 ### **맵퍼가 «이번에 못 읽은 job» 은 `mapper_sdk.UNREAD_JOBS` — 회수에서 빠진다** (2026-10-13 등록 · 총괄 10-13 ①)
 - **어디**: 맵퍼 결과 DataFrame 의 `attrs[UNREAD_JOBS]`(job 값 목록) → `mapper_sdk._removal_batches` 가 `allow_retraction` 에서 그 job 의 배치를 안 만든다(옛 칸 그대로 · 그 job 의 행도 안 씀) · 줄 «[Chain] <규칙>: kept old cells of N job(s) the mapper could not read».
 - **언제 재사용**: 맵퍼가 어떤 입력을 «모름»으로 끝냈을 때(외부 호출 실패 · 모델이 못 읽음) — «아무것도 안 냄»과 가른다. `ask_links` 의 `refused` 가 그 경우.
