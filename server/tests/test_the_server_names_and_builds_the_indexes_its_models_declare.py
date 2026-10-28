@@ -178,6 +178,27 @@ def test_the_folder_index_is_built_as_the_folder_search_reads_it(scratch):
 
 
 @pytest.mark.pg
+def test_a_history_groups_pages_are_found_through_its_index_under_any_collation(scratch):
+    """소유자 10-28 (인제션 중 표 열기 1 분): `in_group`'s «label·%» reads ix_audit_logs_transaction_group - a
+    text_pattern_ops prefix (~>=~ · ~<~), which a default-collation index cannot give under a non-C collation."""
+    from admin.audit_cache import in_group
+
+    item = {name: item for _table, name, item in models.declared_indexes()}["ix_audit_logs_transaction_group"]
+    statement = models.model_index_ddl(item, scratch.dialect)
+    _ddl(scratch, "DROP INDEX IF EXISTS ix_audit_logs_transaction_group", statement.replace(" CONCURRENTLY", "", 1))
+    session = sessionmaker(bind=scratch)()
+    try:
+        query = session.query(models.AuditLog.id).filter(in_group(models.AuditLog.transaction_id, "chain_replay_7"))
+        sql = str(query.statement.compile(scratch, compile_kwargs={"literal_binds": True}))
+        session.execute(text("SET LOCAL enable_seqscan = off"))
+        plan = " / ".join(row[0] for row in session.execute(text("EXPLAIN " + sql)))
+    finally:
+        session.rollback()
+        session.close()
+    assert "ix_audit_logs_transaction_group" in plan and "~>=~" in plan, plan
+
+
+@pytest.mark.pg
 def test_the_re_read_stops_question_reads_its_partial_index(scratch):
     """총괄 10-24: settle asks each poller turn whether a pair has a re-read left - without an index it read the whole
     checklist (0.13 s at 1,000,000 rows). The statements `_rereads_left` itself sends, explained: the planner takes a

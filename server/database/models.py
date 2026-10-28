@@ -71,6 +71,14 @@ class AuditLog(Base):
         Index("ix_audit_logs_transaction_id", "transaction_id",
               info={"purpose": "audit rows of one transaction",
                     "serves": "GET /audit_logs/transaction/{tx_id}, row targeting, export"}),
+        # 소유자 10-28 «인제션 중 표 열기 1 분»: `in_group` 의 «LIKE 'X·%'» 는 기본 콜레이션 색인을 못 탄다
+        # (Korean_Korea.949 에서 범위 꼴은 접두가 아님 - 0/2,005). text_pattern_ops 는 콜레이션 무관한 접두.
+        # 씨앗 2,059 만 행: 표 전환 새로고침 델타 800 만 56.4 -> 5.4 s · tx 필터 3 s -> 0.003 s · 짓기 23.5 s, 144 MB.
+        Index("ix_audit_logs_transaction_group", "transaction_id",
+              postgresql_ops={"transaction_id": "text_pattern_ops"},
+              info={"purpose": "audit rows of one history group - its label and its pages' «label·…»",
+                    "serves": "audit_cache.in_group: GET /audit_logs/recent refresh, history detail, grid and "
+                              "export transaction filter"}),
         # [재교정률] 대시보드가 매 로드마다 감사 테이블을 훑지 않게 하는 유일한 수단.
         # 이 인덱스가 없으면 7일 창 집계가 병렬 Seq Scan으로 떨어진다(2026-07-27 실측:
         # 2,628,453행/1.6GB 기준 512ms, 128,523 블록 판독). 1,000만 행에서는 그대로 초 단위다.
