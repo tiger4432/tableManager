@@ -2315,7 +2315,7 @@
 - **함정**: 기다림은 부른 자리의 트랜잭션 안이다(체인이면 그 묶음의 표 잠금을 쥔 채). openai 클라이언트의 다시 시도는 0 — 다시 묻기는 이 자리만 한다.
 
 ### **AI 가 표를 채운다 = `derive: {kind: "ask"}` — 리포트와 같은 체인 좌석, 묻기는 `utils.llm.ask_batch`** (2026-10-28 등록 · `79915e72a` · `3349a437c`, 총괄 10-27 A-1 · A-2)
-- **어디**: `server/chain/ask_rule.py` `answer(db, rule, row_ids)` — 맵퍼 이름 `declared:ask`, `dynamic_mappers._ask` 가 `_report` 처럼 건네진 행으로 부른다(규칙은 `is_batch`, 그룹 하나 = 부름 하나). 선언 칸(input · output · items · reuse · common · prompts)은 모듈 머리. 쓰기는 체인의 쓰기 — 사람 칸은 안 덮고, 답이 더 안 주는 행은 gone 좌석으로.
+- **어디**: `server/chain/ask_rule.py` `answer(db, rule, row_ids)` — 맵퍼 이름 `declared:ask`, `dynamic_mappers._ask` 가 `_report` 처럼 건네진 행으로 부른다(규칙은 `is_batch`, 그룹 하나 = 부름 하나). 선언 칸(input · output · items · reuse · common · prompts · memory)은 모듈 머리. 쓰기는 체인의 쓰기 — 사람 칸은 안 덮고, 답이 더 안 주는 행은 gone 좌석으로. 🆕 [`4c114d2e1`] `memory` 를 적으면 둘째 반쪽이 사람이 고친 칸을 기억 표에 적고(`remember`), `ask_rule.memory_lines` 한 자리가 ask · report 프롬프트에 싣는다.
 - **언제 재사용**: «행들을 모델에게 묻고 답을 표의 행으로» — 모델링 구조 · 스텝 매핑이 각각 이 선언 한 벌이다. 새 «AI 가 채우는 표»에 맵퍼나 종류를 새로 짓지 않는다.
 - **함정**: `window` 가 있으면 건네진 행이 든 창만 묻는다. `reuse.key` 를 앞 답이 들면 안 묻지만, 그 답의 `within.cell` 값이 이 그룹 목록 밖이거나 그 줄의 항목을 다 안 들면 묻는다. Test run 도 모델을 부른다.
 
