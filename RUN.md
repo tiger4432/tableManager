@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **체인이 스스로 끈 규칙 — 기동 줄 · 배치 줄 · 큐 사유가 «꺼짐»을 말함, 8be4af893** — git pull · 런처 재기동
+>
+> ```
+> 볼 줄    chain_worker.log «[ChainRules] set(N): … <규칙>[…] … OFF» (기동 · 다시 읽기 때)
+>          chain_worker.log «[Chain] rule=<규칙> target=<표> SKIPPED: Switched off after N failures in a row since <시각> · <원인>»
+> 뜻      OFF · SKIPPED = 연속 실패로 체인이 끈 규칙 -> 원인을 고치고 그 규칙(또는 맵퍼 파일)을 저장하면 다시 켜짐
+>          SKIPPED 는 꺼질 때마다 한 번, 그 뒤 500 배치마다 «SKIPPED x500 (same reason)»
+>          큐 화면 결과 사유도 같은 문장 · 규칙 목록 사유 칸은 그 문장 + 건너뛴 변경 수
+> 되돌리기  git revert 8be4af893 -> 런처 재기동
+> ```
+
+---
+
 > ## [10-28] **체인 대기열 Waiting 수에 «events»** — git pull · 화면 새로 고침, 명령 없음
 >
 > ```
