@@ -727,15 +727,11 @@ def _resolvable_mapper(name):
 def _loadable_mapper(module_name, function_name):
     """Why this process cannot load a rule's `mapper_module.mapper_function`, or None - handed to `rule_refusals` by
     all three of its callers, as `_resolvable_mapper` is (lead 10-28). A module imports once per process
-    (`sys.modules`); one that would not is asked again at the next load, so a file put there since is found."""
-    for attempt in (1, 2):
-        try:
-            module = importlib.import_module(module_name)
-            break
-        except Exception as exc:                        # noqa: BLE001 - one module's failure is its own sentence
-            if attempt == 2:
-                return "%s: %s" % (type(exc).__name__, told(exc))
-            importlib.invalidate_caches()               # a file put there since the last load
+    (`sys.modules`); one that would not is asked again at the next load, and the import system finds a file put there since (its finder re-reads a folder whose mtime moved)."""
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as exc:                            # noqa: BLE001 - one module's failure is its own sentence
+        return "%s: %s" % (type(exc).__name__, told(exc))
     return None if callable(getattr(module, function_name, None)) else "%s has no %s" % (module_name, function_name)
 
 
