@@ -104,3 +104,5 @@ def test_the_remembered_row_reaches_the_next_reports_prompt_by_its_scope(world):
     off = dict(REPORT, prompts={"memory": {"scope": ["lot_id"], "limit": 3}})
     assert ask_rule.memory_lines(world, off, "eval_summary", {"wafer_id": "W1", "lot_id": "L1"}) == "", \
         "a scope column the report table's key does not hold matches nothing"
+    assert ask_rule.memory_lines(world, off, "eval_summary", dict(zip(keys, ("W1",)))) == "", \
+        "held on neither side - the report's own situation has no lot_id - matches nothing either, not everything"

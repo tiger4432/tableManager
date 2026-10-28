@@ -372,7 +372,9 @@ def remember(db, rule, row_ids):
 
 def memory_lines(db, spec, purpose, situation):
     """The «past corrections» lines of a prompt: this purpose's memory rows whose `prompts.memory.scope` values are
-    this text's, newest first, `limit` of them (default 5). The one reader - an ask prompt and a report prompt call it."""
+    this text's, newest first, `limit` of them (default 5). The one reader - an ask prompt and a report prompt call it.
+    A scope column the situation or the remembered key does not hold matches nothing (lead 10-28): a column held on
+    neither side is a declaration slip, and «all match» would carry another wafer's corrections."""
     memory, reading = spec.get("memory") or {}, (spec.get("prompts") or {}).get("memory")
     named = memory.get("columns") or {}
     if not memory.get("table") or not isinstance(reading, dict) or not purpose:
@@ -382,8 +384,9 @@ def memory_lines(db, spec, purpose, situation):
     found = [dict(zip(roles, row)) for row in db.query(*(getattr(model, named[r]) for r in roles))
              .filter(getattr(model, named["purpose"]) == purpose).all()]
     scope = list(reading.get("scope") or ())
-    picked = [m for m in found if all(str(json.loads(m.get("key") or "{}").get(c)) == str(situation.get(c))
-                                      for c in scope)]
+    keys = [(m, json.loads(m.get("key") or "{}")) for m in found]
+    picked = [m for m, held in keys if all(c in held and c in situation and str(held[c]) == str(situation[c])
+                                           for c in scope)]
     picked.sort(key=lambda m: str(m.get("when") or ""), reverse=True)
     lines = ["- %s %s: you said %s; correct: %s%s" % (m.get("key"), m.get("cell"), m.get("ai"), m.get("right"),
                                                        " - note: %s" % m["memo"] if m.get("memo") else "")
