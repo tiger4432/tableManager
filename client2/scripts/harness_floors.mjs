@@ -784,7 +784,8 @@ export const FLOORS = new Map([
   // while the code claims it drew), and absence means ONLY 「older server」 — never_evaluated
   // is a value. A seventh token is shown but ungraded: hiding it would swallow a real
   // outcome, grading it would be a claim this client cannot make.
-  ['rule_outcome_harness.mjs', 24],
+  // 24 -> 34: E1-E10 - the rule state badge reads rule_state alone, the server's word, grey unless running (lead 10-28).
+  ['rule_outcome_harness.mjs', 34],
   //
   // C-9. The refresh branch is the one websocket branch that shows the operator NOTHING —
   // no cell flash, no status line, unlike its two siblings — so the row count the server

@@ -6,7 +6,7 @@
 //    이름을 고르면 「그렸다」고 적어 두고 화면엔 아무 강조도 안 붙습니다.
 //
 // Run: node client2/tests/rule_outcome_harness.mjs
-import { ruleOutcomeView } from '../src/rule_outcome.js';
+import { ruleOutcomeView, ruleStateView } from '../src/rule_outcome.js';
 
 let pass = 0, fail = 0;
 const failed = [];
@@ -86,6 +86,40 @@ ok(at('ran:changed').reason === '', 'D5 a missing reason is empty, not the word 
 // 🔴 이 칸은 «성공에도» 옵니다 — 그래서 「있나」가 아니라 «값»을 단언합니다 (게이트 ④).
 ok(at('ran:unchanged').read === true && at('ran:unchanged').outcome === 'ran:unchanged',
   'D6 a SUCCESSFUL run still carries the field, so the assertion is on the value');
+
+console.log('\n-- the rule state is the server\'s word, graded only as running ----------');
+// `GET /admin/chain/rules` rows, as the server sends them (lead 10-28 ㄱ, 판정 656: a reason is never a value).
+function state(rule) {
+  try { return ruleStateView(rule); }
+  catch (e) { return { state: `<<threw: ${e && e.message}>>`, running: null, badge: '', detail: '' }; }
+}
+const RUNNING_ROW = { name: 'r', enabled: true, rule_state: 'running' };
+// measured 10-28 on the server: the chain switched it off, and `enabled` still says true
+const SWITCHED_OFF = { name: 'enrichment_dedup:rp_on', enabled: true, rule_state: 'declared_only',
+  rule_state_detail: 'Switched off after 10 failures in a row since 2026-10-28T12:00:00 · 0 changes skipped since · probe' };
+const LOADER_DROPPED = { name: 'half', rule_state: 'declared_only', rule_state_detail: 'mapper x.y could not be imported' };
+const FILE_OFF = { name: 'flat', enabled: false, rule_state: 'declared_only', rule_state_detail: 'enabled=false' };
+ok(state(RUNNING_ROW).running === true && state(RUNNING_ROW).state === 'running'
+  && state(RUNNING_ROW).badge === 'badge-success', 'E1 running is drawn as the server says it, and it alone is green');
+ok(state(SWITCHED_OFF).running === false && state(SWITCHED_OFF).state === 'declared_only'
+  && state(SWITCHED_OFF).badge === 'badge-muted',
+  'E2 a rule the chain switched off is declared_only and grey, though its enabled is true - enabled is not read');
+ok(state(SWITCHED_OFF).detail === SWITCHED_OFF.rule_state_detail, 'E3 ...and its reason is the server sentence verbatim');
+ok(state(LOADER_DROPPED).state === 'declared_only' && state(LOADER_DROPPED).badge === 'badge-muted'
+  && state(LOADER_DROPPED).detail === 'mapper x.y could not be imported',
+  'E4 a rule the loader dropped: declared_only, grey, the loader sentence beside it');
+ok(state(LOADER_DROPPED).badge === state(FILE_OFF).badge,
+  'E5 the colour is not chosen from the sentence - why it is off is the detail\'s to say, not a second verdict');
+const odd = state({ rule_state: 'paused_by_someone' });
+ok(odd.state === 'paused_by_someone' && odd.badge === 'badge-muted' && odd.running === false,
+  'E6 an unknown state is drawn as its own word, grey, and not counted as running');
+ok(state({ enabled: true }).state === '—' && state({ enabled: true }).running === false,
+  'E7 no rule_state is the absence mark, never folded to running from enabled');
+ok(state({ rule_state: '  ' }).state === '—' && state(null).state === '—' && state(undefined).running === false,
+  'E8 blank, null and undefined are absence too, and nothing throws');
+ok([RUNNING_ROW, SWITCHED_OFF, LOADER_DROPPED, FILE_OFF].every(r => STYLED.has(state(r).badge)),
+  'E9 every state badge is one the stylesheet defines');
+ok(state({ rule_state: 'declared_only' }).detail === '', 'E10 a missing reason is empty, not a made-up word');
 
 console.log(`\n${pass} passed, ${fail} failed.`);
 if (fail) console.error(`failed:\n  ${failed.join('\n  ')}`);

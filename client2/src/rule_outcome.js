@@ -16,6 +16,8 @@
 // ⛔ 그리고 이 줄은 C-9 의 `change_count` 와 «다른 알갱이»입니다 — 저쪽은 «이벤트» 단위이고
 //    이쪽은 «규칙» 단위입니다. 한 줄에 섞으면 두 수가 서로를 설명하는 것처럼 보입니다.
 
+import { ABSENT } from './absent.js';
+
 // 🔴 스타일시트가 «실제로 그리는» 넷뿐입니다 (`admin.html` 의 badge 정의 실측).
 //    없는 이름을 고르면 「그렸다」고 적어 두고 화면엔 아무 강조도 안 붙습니다 — 오늘 하루
 //    제가 세 번 잡은 「발신 있고 독자 0」의 CSS 판입니다.
@@ -27,6 +29,25 @@ const BADGE = {
   'skipped:not_triggered': 'badge-muted',   // 데이터의 사실 — 고칠 대상이 아니다
   'never_evaluated': 'badge-muted',         // 이 «프로세스»가 아직 이 규칙을 못 봤다
 };
+
+// 「이 선언이 지금 서 있나」 — `GET /admin/chain/rules` 의 `rule_state` (총괄 10-28 ㄱ). 결과 배지와 같은 규율:
+// 낱말은 서버 토큰 그대로, 색만 여기서. 모르는 토큰은 회색으로 그대로. 꺼진 까닭은 `rule_state_detail` 이 말하고,
+// 그 글자로 색을 가르지 않는다 (둘째 판정이 된다). enabled 로 다시 판정하지 않는다. 안 섬의 사유는 값이 아니다 (판정 656).
+const RUNNING = 'running';
+
+/**
+ * @param {object|null|undefined} rule  `/admin/chain/rules` 의 행 하나
+ * @returns {{state: string, running: boolean, badge: string, detail: string}}  키가 없으면 state 는 «—»
+ */
+export function ruleStateView(rule) {
+  const word = rule && typeof rule.rule_state === 'string' ? rule.rule_state.trim() : '';
+  return {
+    state: word || ABSENT,
+    running: word === RUNNING,
+    badge: word === RUNNING ? 'badge-success' : 'badge-muted',
+    detail: rule && typeof rule.rule_state_detail === 'string' ? rule.rule_state_detail.trim() : '',
+  };
+}
 
 /**
  * 규칙 하나의 마지막 결과를 «무엇을 그리나»로.

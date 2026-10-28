@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **체인 탭 규칙 상태 배지 = 서버 rule_state** — git pull · 화면 새로 고침, 명령 없음
+>
+> ```
+> 볼 곳     어드민 Chain 탭 규칙 표 State 칸 · 맨 위 N/M · 규칙을 누른 뒤 상세 패널의 배지
+> 뜻       running(초록) = 도는 규칙. declared_only(회색) = 안 도는 규칙, 까닭은 Rule / Mapper 칸 맵퍼 줄 밑의 회색 문장
+>          («Switched off after N failures…» = 체인이 끈 것, «enabled=false» = 선언에서 끈 것)
+>          처음 보는 낱말(회색) = 서버가 새 상태를 보냄, 화면은 낱말만 옮김
+>          ACTIVE / DISABLED 가 보이면 = 옛 번들 -> 강력 새로 고침
+> 되돌리기  git revert $(git log --format=%h -i --grep='the rule state badge is the server' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-28] **/health 가 기동 직후 «worker 'scheduler' has made no progress for Nones» 로 503 을 내던 것 — 비트 파일이 바쁜 것이었다** — 서버 · 와처 · 체인 워커 재기동 뒤
 >
 > ```

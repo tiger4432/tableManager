@@ -53,7 +53,7 @@ import { localShort, NO_TIME, viewerZone } from './server_time.js';
 import { FailureSummary, failureRecordCells, failureSummaryView } from './failure_summary.js';
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
-import { ruleOutcomeView } from './rule_outcome.js';
+import { ruleOutcomeView, ruleStateView } from './rule_outcome.js';
 // 나이 문구는 «있는 것»을 부릅니다. 두 번째 철자를 만들면 같은 초가 두 화면에서 다르게 읽힙니다.
 import { ageText } from './pickup_state.js';
 import { countNumberText, countOf } from './match_count.js';
@@ -1928,10 +1928,6 @@ function renderWorkspaceTable() {
 }
 
 // Chain 탭 §현황: Chain Rules
-function chainRuleIsActive(rule) {
-  return rule && rule.enabled !== false && rule.active !== false;
-}
-
 function chainRuleCapabilities(rule) {
   const badges = [];
   badges.push(`<span class="badge badge-muted">${rule.is_batch ? 'BATCH' : 'ROW'}</span>`);
@@ -1951,14 +1947,15 @@ function chainRuleNarrative(rule) {
   if (rule.allow_chain_trigger) lines.push('Consumes chain-created events (cycle-checked at config load).');
   if (rule.allow_map_metadata_upsert) lines.push('May register metadata only for its own target map before cells are written.');
   if (rule.allow_replace_map) lines.push('May replace a mapper-declared, validated map scope.');
-  if (!chainRuleIsActive(rule)) lines.push('Disabled: this rule is not evaluated by the worker.');
+  const ruleState = ruleStateView(rule);
+  if (!ruleState.running) lines.push(`State: ${ruleState.state}${ruleState.detail ? ` - ${ruleState.detail}` : ''}`);
   return lines.join('\n');
 }
 
 function renderChainTable() {
   chainListBody.innerHTML = '';
-  const activeCount = chainData.filter(chainRuleIsActive).length;
-  setSectionCount('chain-rule-count', `${activeCount}/${chainData.length}`, activeCount ? 'ok' : 'danger');
+  const runningCount = chainData.filter(rule => ruleStateView(rule).running).length;
+  setSectionCount('chain-rule-count', `${runningCount}/${chainData.length}`, runningCount ? 'ok' : 'danger');
 
   if (chainData.length === 0) {
     chainEmptyState.style.display = 'flex';
@@ -1973,12 +1970,12 @@ function renderChainTable() {
     row.className = `table-row ${selectedChainName === rule.name ? 'active' : ''}`;
     row.dataset.name = rule.name;
 
-    const isActive = chainRuleIsActive(rule);
-    const activeBadge = isActive
-      ? `<span class="badge badge-success">ACTIVE</span>`
-      : `<span class="badge badge-danger">DISABLED</span>`;
+    const ruleState = ruleStateView(rule);
+    const stateBadge = `<span class="badge ${ruleState.badge}">${escapeHtml(ruleState.state)}</span>`;
+    // The server's why is a sentence, so it lives where the table's long text does - not in the State cell (lead 10-28 ㄴ).
+    const stateDetail = ruleState.detail ? `<div class="meta">${escapeHtml(ruleState.detail)}</div>` : '';
     // 🔴 C-1. 위 배지는 「지금 «선언»이 어떤가」이고 이것은 「마지막에 «무엇을 했나»」입니다.
-    //    둘이 «어긋날 수» 있고 — 껐다가 다시 켠 규칙은 ACTIVE 이면서 `skipped:disabled` 입니다 —
+    //    둘이 «어긋날 수» 있고 — 껐다가 다시 켠 규칙은 running 이면서 `skipped:disabled` 입니다 —
     //    그 어긋남이 운영자가 알아야 할 사실이라 접지 않습니다. 사본이 아닙니다.
     const outcome = ruleOutcomeView(chainRuleOutcomes && chainRuleOutcomes[rule.name]);
     const outcomeBadge = outcome.read
@@ -1998,7 +1995,7 @@ function renderChainTable() {
 
     row.innerHTML = `
       <td>${escapeHtml(rule.kind || ABSENT)}</td>
-      <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div></td>
+      <td><div class="chain-rule-name">${rule.name || '-'}</div><div class="chain-rule-mapper">${mapper || 'built-in mapper'}</div>${stateDetail}</td>
       <td><div class="chain-flow"><span>${source}</span><span class="chain-flow-arrow">→</span><span>${target}</span></div><div class="chain-flow-note">${sourceNote}</div></td>
       <td><div class="chain-capabilities">${chainRuleCapabilities(rule)}</div></td>
       <td><div class="chain-capabilities">${[
@@ -2006,7 +2003,7 @@ function renderChainTable() {
         rule.allow_replace_map ? '<span class="badge badge-danger">SCOPED REPLACE</span>' : '',
         !rule.allow_map_metadata_upsert && !rule.allow_replace_map ? '<span class="badge badge-muted">UPSERT ONLY</span>' : '',
       ].join('')}</div></td>
-      <td><div class="chain-state">${activeBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
+      <td class="cell-fit"><div class="chain-state">${stateBadge}${outcomeBadge}<span class="chain-state-note">${rule.allow_chain_trigger ? 'cascade allowed' : 'source-only'}</span>${outcomeNote}</div></td>
     `;
 
     row.addEventListener('click', () => {
@@ -4138,8 +4135,9 @@ function selectChainRow(rule) {
 
   diagnosticsTitle.textContent = '🔍 Chained Ingestion Rule Details';
   tracebackTitle.textContent = 'Rule Description';
-  tracebackSeverity.textContent = chainRuleIsActive(rule) ? 'ACTIVE' : 'DISABLED';
-  tracebackSeverity.className = chainRuleIsActive(rule) ? 'badge badge-success' : 'badge badge-danger';
+  const ruleState = ruleStateView(rule);
+  tracebackSeverity.textContent = ruleState.state;
+  tracebackSeverity.className = `badge ${ruleState.badge}`;
   tracebackSeverity.style.display = 'inline';
   payloadTitle.innerHTML = `Raw Chain Ingestion Rule Configuration
     <button id="inline-edit-mapper-btn" class="admin-btn btn-primary" style="margin-left: 10px;">🛠️ Edit Mapper Code</button>`;
