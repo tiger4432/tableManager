@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **조인 blank: skip 의 줄이 «옛 값은 거둔다»를 말한다 — «not written» 이 «옛 값이 남는다»로 읽히던 것** — 체인 워커 재기동 뒤
+>
+> ```
+> 무엇     chain_worker.log «<규칙>: N blank answer(s) not written (blank: skip) - <칸>=<n> - where this rule wrote the cell
+>          before, that value is withdrawn and the cell shows its other layers»
+>          원천 행을 고치면 이 규칙이 그 칸에 전에 쓴 값은 거둬지고, 빈 답은 다시 안 쓰므로 그 칸에는 파일 값 · 사람 값이 선다
+>          (다른 층이 없으면 빈다). 동작은 바뀐 것 없음 — 줄의 말만
+>          규칙 줄 «matched N row(s) and wrote nothing - …» 뒤의 «the rest already held» 는 아무것도 안 세어 지웠다
+> 보는 줄  위 한 줄. 화면 값이 비었는데 이 줄이 나왔으면: 그 칸에 다른 층이 없었던 것(정상). 옛 체인 값을 남기려면 blank 를 안 적는다
+>          (그러면 빈 답이 «빈 층»으로 써진다 — 그것도 빈 화면). 사람 값(user)은 이 거둠의 대상이 아니다
+> ```
+>
+> ---
+>
 > ## [10-28] **불러올 수 없는 맵퍼 모듈을 이름 댄 규칙은 로드 때 거절 — b8d0bd0f3** — git pull · 런처 재기동
 >
 > ```

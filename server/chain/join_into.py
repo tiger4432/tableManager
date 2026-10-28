@@ -42,6 +42,10 @@ from error_said import told
 
 logger = logging.getLogger("Chain.JoinInto")
 
+#: What a `blank: skip` answer leaves in its cell - the source row's edit withdraws what this rule wrote there
+#: (`ingestion_worker._withdraw_and_tell` «edited»), and a skipped answer writes nothing back (lead 10-28: the line read
+#: as «the old value is kept»).
+SKIPPED_CELL = "where this rule wrote the cell before, that value is withdrawn and the cell shows its other layers"
 #: The kind an operator's `derive: {kind: "join"}` becomes. One string, read by the translator
 #: that writes it and by the table that runs it, so the two cannot drift.
 JOIN_INTO_MAPPER = "declared:join"
@@ -976,9 +980,9 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
                 unsaid[column] = unsaid.get(column, 0) + 1
             total += not values or len(blank_takes) < len(values)
         if unsaid:
-            logger.info("%s: %d blank answer(s) not written (blank: skip) - %s",
+            logger.info("%s: %d blank answer(s) not written (blank: skip) - %s - %s",
                         (rule or {}).get("name") or "join", sum(unsaid.values()),
-                        ", ".join("%s=%d" % pair for pair in sorted(unsaid.items())))
+                        ", ".join("%s=%d" % pair for pair in sorted(unsaid.items())), SKIPPED_CELL)
     # ⚠️ TWO DIFFERENT ZEROS, AND THE OPERATOR FIXES THEM DIFFERENTLY: no match means the
     #    join key or the right table's data; a match that wrote nothing means the value was
     #    already there. Collapsing them sends half the readers to the wrong repair.
@@ -991,7 +995,7 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side, h
                    "no row matched in the right table (%d row(s) handed)" % handed
                    if not rows else
                    "matched %d row(s) and wrote nothing - %d blank answer(s) not written "
-                   "(blank: skip), the rest already held" % (len(rows), sum(unsaid.values()))
+                   "(blank: skip) - %s" % (len(rows), sum(unsaid.values()), SKIPPED_CELL)
                    if unsaid else
                    "matched %d row(s) - every value was already the same" % len(rows))
     answer = {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,

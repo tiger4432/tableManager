@@ -117,9 +117,13 @@ def test_a_blank_answer_is_not_written_and_the_file_value_stands(db, caplog, sid
     assert _left(db) == {"L1": ("FILE", "FILE2")}
     assert _chain_layers(db, "got") == 0 and _chain_layers(db, "got2") == 0, "no layer"
     assert result["written"] == 0 and result["rows_total"] == 0
-    assert result["refusal"].startswith("matched 1 row(s) and wrote nothing - 2 blank")
+    # lead 10-28: «the rest already held» counted nothing - a skip line says what the edit does to the cell
+    assert result["refusal"] == ("matched 1 row(s) and wrote nothing - 2 blank answer(s) not written (blank: skip) - "
+                                 "where this rule wrote the cell before, that value is withdrawn and the cell shows "
+                                 "its other layers")
     assert _lines(caplog) == [
-        "%s: 2 blank answer(s) not written (blank: skip) - got=1, got2=1" % NAME]
+        "%s: 2 blank answer(s) not written (blank: skip) - got=1, got2=1 - where this rule wrote the cell before, that "
+        "value is withdrawn and the cell shows its other layers" % NAME]
 
 
 @SIDES
@@ -132,7 +136,8 @@ def test_a_filled_answer_still_overwrites_and_a_blank_one_beside_it_does_not(db,
     assert _left(db) == {"L1": ("FILE", "JOIN2")}
     assert _chain_layers(db, "got") == 0 and _chain_layers(db, "got2") == 1
     assert result["written"] == 1 and result["rows_total"] == 1
-    assert _lines(caplog) == ["%s: 1 blank answer(s) not written (blank: skip) - got=1" % NAME]
+    assert _lines(caplog) == ["%s: 1 blank answer(s) not written (blank: skip) - got=1 - where this rule wrote the "
+                              "cell before, that value is withdrawn and the cell shows its other layers" % NAME]
 
 
 def test_no_file_value_and_a_blank_answer_stays_empty(db):

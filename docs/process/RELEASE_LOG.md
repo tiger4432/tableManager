@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [고침 — 조인 blank: skip 의 줄이 «옛 값은 거둔다»를 말한다 — «not written» 이 «옛 값이 남는다»로 읽히던 것](#2026-10-28--고침--조인-blank-skip-의-줄이-옛-값은-거둔다를-말한다--not-written-이-옛-값이-남는다로-읽히던-것) — 보는 곳 chain_worker.log
 - 2026-10-28 [split 행을 걸어서 채운다 — 조인 take 의 fn walk](#2026-10-28--split-행을-걸어서-채운다--조인-take-의-fn-walk) — 적을 곳 chain_rules 의 join.take (fn walk · walk · row · why)
 - 2026-10-28 [split 아이템 글을 quantity 로 — derive.ask 의 common.about](#2026-10-28--split-아이템-글을-quantity-로--deriveask-의-commonabout) — 적을 곳 chain_rules 의 derive.ask (common.about)
 - 2026-10-28 [AI 표를 원장에 — ai_model 세계 견본 · 모델링의 종류는 is_a](#2026-10-28--ai-표를-원장에--ai_model-세계-견본--모델링의-종류는-is_a) — 적을 곳 config/ontology_worlds/ai_model/ledger_config.json (견본 ai_model_world.ledger_config.json.sample)
@@ -644,6 +645,14 @@
 
 
 
+
+## 2026-10-28 · 고침 — 조인 blank: skip 의 줄이 «옛 값은 거둔다»를 말한다 — «not written» 이 «옛 값이 남는다»로 읽히던 것
+
+- 무엇: blank: skip 을 적은 조인의 줄 «<규칙>: N blank answer(s) not written (blank: skip) - <칸>=<n>» 뒤에 «where this rule wrote the cell before, that value is withdrawn and the cell shows its other layers» 가 붙는다. 같은 말이 규칙 줄 «matched N row(s) and wrote nothing - …» 끝에도. 원천 행을 고치면 이 규칙이 그 칸에 전에 쓴 값은 거둬지고 빈 답은 다시 안 쓰므로, 그 칸에는 파일 값 · 사람 값이 선다(다른 층이 없으면 빈다). 줄이 «not written» 만 말해서 «옛 값이 남는다»로 읽혔다(총괄 10-28, 자기 표 조인을 재 본 판에서 칸이 비었음).
+- 규칙 줄의 «the rest already held» 는 아무것도 세지 않아 지웠다.
+- 바뀐 동작: 없음 — 줄의 말만. 사람 값(user)은 이 거둠의 대상이 아니라 그대로 이긴다.
+- 필요한 조건: git pull · 체인 워커 재기동.
+- 자세히: `server/chain/join_into.py` 의 `SKIPPED_CELL`, 가이드 `docs/guide/config/chain_rules.md` §5-B-bis.
 
 ## 2026-10-28 · 고침 — 불러올 수 없는 맵퍼 모듈을 이름 댄 규칙은 로드 때 거절된다
 
