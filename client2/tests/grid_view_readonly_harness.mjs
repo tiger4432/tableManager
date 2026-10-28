@@ -1013,7 +1013,7 @@ const DEFECTS = [
   ['api.js: a refused read drops the typed column filter', 'api',
     s => s.replace('function showReadRefusal(why) {\n', 'function showReadRefusal(why) {\n  if (state.gridApi) state.gridApi.setFilterModel(null);\n')],
   ['timeline.js: the jump words its own refusal again', 'timeline',
-    s => s.replace("      releaseNavigationGuard(await refusalText(res, '❌ Jump refused'));", "      releaseNavigationGuard('❌ Jump refused');")],
+    s => s.replace("      releaseNavigationGuard(await refusalText(res, '❌ Jump refused'), jump);", "      releaseNavigationGuard('❌ Jump refused', jump);")],
   ['api.js: a refused read is asked again', 'api',
     s => s.replace("      showReadRefusal(await refusalText(res, 'Data fetch failed'));\n", "      showReadRefusal(await refusalText(res, 'Data fetch failed'));\n      await gridFetch(url);\n")],
   ['source_rows.js: a caller that omits the flag gets the controls', 'rows',

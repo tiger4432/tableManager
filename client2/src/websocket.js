@@ -10,7 +10,7 @@ import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress
          finishRetroactiveProgress, showToast, getLocalTimeString } from './utils.js';
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
 import { fileEndView, isDoneStatus, statusToastTone } from './retry_verdict.js';
-import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
+import { triggerHistoryReloadDebounced, appendHistoryLocally, loadHistory } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 import { chainRefreshNote } from './chain_refresh_note.js';
 import { goToLogin, WS_LOGIN_REQUIRED } from './auth_gate.js';
@@ -268,6 +268,9 @@ export function initWebSocket() {
       // 오프라인 동안 유실된 데이터 동기화를 위해 현재 테이블 데이터 리로드
       fetchData(true);
     }
+    // the Global list held missed the logs of the time away (onclose marked it) - read once, when it is the tab shown;
+    // at boot nothing is held and the table switch reads it
+    if (state.globalHistoryStale && state.globalHistoryData.length && state.activeHistoryTab === 'global') loadHistory();
   };
 
   state.ws.onclose = (event) => {
@@ -286,6 +289,8 @@ export function initWebSocket() {
     // resumes from the rung it was on.
     const openedAt = state.wsOpenedAt;
     state.wsOpenedAt = 0;
+    // Logs that come while the socket is away are not added to Global: it is old, read on return when shown.
+    state.globalHistoryStale = true;
     if (openedAt && Date.now() - openedAt < WS_HEALTHY_SESSION_MS) {
       state.wsReconnectDelay = state.wsPrevReconnectDelay;
     }
@@ -413,6 +418,8 @@ export function handleWebSocketMessage(msg) {
   const totalLogs = msg.total_log_count;
   const logsTruncated = totalLogs != null && createdLogs.length < totalLogs;
   if (createdLogs.length > 0) {
+    // Global is not shown, so these are not added to it: it is old now, and read when it is picked.
+    if (state.activeHistoryTab !== 'global') state.globalHistoryStale = true;
     createdLogs.forEach(log => {
       // For non-global tabs ('cell' or 'row'), only process if the log belongs to the current table
       if (state.activeHistoryTab !== 'global' && log.table_name !== state.currentTable) {

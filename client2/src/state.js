@@ -1,5 +1,6 @@
 import { LEDGER_COL_ID } from './grid_ledger_column.js';
 import { withWorld } from './world.js';
+import { ReadBoard } from './latest_read.js';
 
 export const state = {
   gridApi: null,
@@ -135,11 +136,14 @@ export const state = {
   // capped, page for more", and a count that is a lower bound is a different fact. Conflating
   // them would hang the 더 보기 pager off a number.
   cellRowHistoryRowTotalIsFloor: false,
-  // The paging session token. Bumped by every fresh `loadHistory()`, so a 더 보기 still in
-  // flight when the operator clicks another cell can tell that its page belongs to a list that
-  // is no longer on screen — appending the previous row's page 2 onto this row's page 1 is the
-  // defect this counter exists to prevent, and those rows would all be real.
-  cellRowHistorySession: 0,
+  // The two read boards (latest_read.js). `historyReads.ticket` is also the paging session: a 더 보기 still in flight
+  // when the operator clicks another cell, another tab or a refresh can tell that its page belongs to a list no longer
+  // on screen - the previous row's page 2 on this row's page 1, every row of it real.
+  gridReads: new ReadBoard(),
+  historyReads: new ReadBoard(),
+  // The held Global list may be missing logs: none read yet, logs came while another tab was shown, the socket was
+  // away, or the server said read again. Global reads when this is set (or it holds nothing); else it redraws.
+  globalHistoryStale: true,
   // [History paging] The GLOBAL tab's half of the same envelope, and it exists because the
   // route that publishes `next_cursor` now ACCEPTS one (판정 473). Until then this tab could
   // only state 「일부만」 as a fact with nowhere to go.
@@ -151,10 +155,6 @@ export const state = {
   // that array as a new group, so its length climbs on its own and would make the pager's count
   // — and the 「일부만 (N건)」 fact beside it — drift upward while nothing was fetched.
   globalHistoryLoaded: 0,
-  // The paging session token, same discipline as `cellRowHistorySession`: bumped by every fresh
-  // global load, so a 더 보기 resolving after the operator reloaded or switched tabs can tell
-  // that its page belongs to a list that is no longer on screen.
-  globalHistorySession: 0,
   expandedTransactions: new Set(),
   fetchingTransactions: new Set(),
   currentTransactionId: null,
@@ -166,6 +166,9 @@ export const state = {
   isDeletingRows: false,
   hasMoreData: true,
   isNavigating: false,
+  // The jump that holds the lock above: a jump ends only its own lock, so one that lands after its watchdog let the
+  // next jump start leaves that one's lock alone.
+  navigationJump: null,
   navigationWatchdog: null,
   pageCache: new Map(),
   txModeActive: true,

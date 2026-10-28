@@ -60,6 +60,7 @@ import { CHROME, failureFactOf, fetchFailureLine, retroFailureLine } from './con
 import { loadReplayableRules } from './replayable_rules.js';
 import {
   loadHistory,
+  rereadHistory,
   triggerHistoryReloadDebounced,
   navigateToLog,
   installAuditFilters
@@ -471,7 +472,7 @@ function setupEventListeners() {
 
   if (elements.refreshHistoryBtn) {
     elements.refreshHistoryBtn.addEventListener('click', () => {
-      loadHistory();
+      rereadHistory();
     });
   }
 

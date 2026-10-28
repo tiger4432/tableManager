@@ -127,6 +127,8 @@ const STATE_MOD = await import(pathToFileURL(SRC('state.js')).href);
 //    import stays because the harness's own fixtures are built from them.
 const TIMELINE_MOD = await import(pathToFileURL(SRC('timeline.js')).href);
 const ABSENT_MOD = await import(pathToFileURL(SRC('absent.js')).href);
+// Each case starts on a fresh history board, so a read a case left out cannot take the next case's question.
+const { ReadBoard } = await import(pathToFileURL(SRC('latest_read.js')).href);
 const state = STATE_MOD.state;
 if (!state || typeof state !== 'object') die('client2/src/state.js no longer exports `state`.');
 
@@ -138,7 +140,7 @@ if (!state || typeof state !== 'object') die('client2/src/state.js no longer exp
 //    evaluation, which is the loud failure — a probe that quietly returned undefined would let a
 //    renamed function score green.
 const WANTED = [
-  'loadHistory', 'historyUrl', 'beginHistorySession', 'readHistoryPage',
+  'loadHistory', 'rereadHistory', 'historyUrl', 'clearCellRowEnvelope', 'readHistoryPage',
   // `createHistoryEmptyDom` is REACHED rather than stubbed because the claim under test IS
   // what it paints: two different facts that used to share one sentence. A stub would score
   // section I against the harness's own idea of the empty slot.
@@ -348,9 +350,11 @@ async function buildSandbox() {
   const requests = [];
   const responses = [];   // {status, body, hang} | {throws: true}
   const pending = [];     // resolvers for hung requests
+  const signals = [];     // each request's abort signal, in order - a cut read's is aborted
 
-  const fetchFake = (url) => {
+  const fetchFake = (url, init = {}) => {
     requests.push(url);
+    signals.push(init.signal || null);
     const spec = responses.shift();
     if (!spec) return Promise.reject(new Error(`unscripted fetch: ${url}`));
     if (spec.throws) return Promise.reject(new Error('network down'));
@@ -378,7 +382,7 @@ async function buildSandbox() {
   //    here drives; if one is ever reached it does the real thing rather than a stand-in's
   //    thing, which is strictly the better failure.
   const sandbox = { timeline, tabRowBtn, performanceLog: makeEl('div'),
-    fetchFake, requests, responses, pending };
+    fetchFake, requests, responses, pending, signals };
   const subject = await subjectFor(UNDER_TEST);
   // Every call CLAIMS the world first, so a case that holds two sandboxes reads the right one.
   const ctx = {};
@@ -430,7 +434,8 @@ function resetState() {
   state.cellRowHistoryLoaded = 0;
   state.cellRowHistoryRowTotal = null;
   state.cellRowHistoryRowTotalIsFloor = false;
-  state.cellRowHistorySession = 0;
+  state.historyReads = new ReadBoard();
+  state.globalHistoryStale = true;
   state.currentTransactionId = null;
   state.globalHistoryData = [];
 }
@@ -802,9 +807,9 @@ async function sectionD() {
   await S.ctx.loadHistory();
   S.responses.push({
     status: 200, body: page([log(3), log(4)], null),
-    // The only thing that moves this counter is a fresh `loadHistory()` — i.e. the operator
-    // selecting another cell while the body was still being read.
-    onJson: () => { state.cellRowHistorySession += 1; },
+    // The only thing that moves the session is a newer question on the history board — i.e. the
+    // operator selecting another cell while the body was still being read.
+    onJson: () => { state.historyReads.begin(); },
   });
   await S.ctx.loadMoreHistory(moreBtn(S.timeline));
   check('D6 a page whose BODY lands after the session moved is not appended',
@@ -1097,9 +1102,9 @@ async function sectionJ() {
                     hang: true });
   const inFlight = parked(S,
     S.ctx.loadMoreHistory(moreBtn(S.timeline), S.panes.global));
-  // ...the operator reloads the tab while that page is still out.
+  // ...the operator presses refresh while that page is still out.
   S.responses.push({ status: 200, body: recentPage([group('TX-NEW', [log(5)])], 'GCUR5') });
-  await S.ctx.loadHistory();
+  await S.ctx.rereadHistory();
   await releaseAndAwait(S, inFlight);
   check('J7 a page from a replaced session is dropped',
     txIds(state.globalHistoryData), ['TX-NEW']);
@@ -1372,14 +1377,15 @@ const MUTANTS = [
     find: '    elements.tabRowBtn?.click();',
     repl: '' },
   // NOT MUTATED, DELIBERATELY: the `cellRowHistoryRowTotal = null` reset in
-  // `beginHistorySession`. Removing it changes nothing observable today — every path that
+  // `clearCellRowEnvelope`. Removing it changes nothing observable today — every path that
   // RENDERS the empty slot assigns the field first — so a "defect" mutant there would be one
   // this corpus can never catch, and a mutant nobody can catch is a red build, not coverage.
   // The reset stays in the source for the same reason the cursor's does: it is the envelope's
   // reset point, and the next path that renders without assigning must not inherit a count.
   { name: 'the paging session never advances', defect: true,
-    find: '  state.cellRowHistorySession += 1;\n  return state.cellRowHistorySession;',
-    repl: '  return state.cellRowHistorySession;' },
+    // Re-anchored 2026-10-28: the session is the history board's ticket, read off the pane.
+    find: '    cursor: () => state.cellRowHistoryCursor,\n    session: () => state.historyReads.ticket,',
+    repl: '    cursor: () => state.cellRowHistoryCursor,\n    session: () => 0,' },
   { name: 'the pager replaces the list instead of appending', defect: true,
     find: '    state.cellRowHistoryData.push(log);',
     repl: '    state.cellRowHistoryData = [log];' },
@@ -1415,10 +1421,10 @@ const MUTANTS = [
     // rather than from `readHistoryPage`'s collapse (F-12). The mutant is unchanged -- it still
     // puts the envelope where the array belongs. This harness died loudly instead of scoring
     // nothing, which is the only reason the split was noticed.
-    find: "      const body = await res.json();\n"
-        + "      const page = readHistoryPage(body, 'groups');\n"
+    // Re-anchored 2026-10-28: the body is checked against the history board between the two lines.
+    find: "      const page = readHistoryPage(body, 'groups');\n"
         + '      state.globalHistoryData = page.logs;',
-    repl: '      state.globalHistoryData = await res.json();' },
+    repl: '      state.globalHistoryData = body;' },
   // Half-flipped: the envelope is opened, under the wrong list name. The panel then declares an
   // empty history over a full database, which is a wrong answer wearing an empty state.
   { name: 'the global read opens the wrong list of the envelope', defect: true,
@@ -1437,8 +1443,22 @@ const MUTANTS = [
     find: '      page.logs.forEach(group => state.globalHistoryData.push(group));',
     repl: '      state.globalHistoryData = page.logs.slice();' },
   { name: 'a fresh global load does not open a new session', defect: true,
-    find: '      state.globalHistorySession += 1;',
-    repl: '      state.globalHistorySession += 0;' },
+    // Re-anchored 2026-10-28: the session is the history board's ticket, read off the pane.
+    find: '    cursor: () => state.globalHistoryCursor,\n    session: () => state.historyReads.ticket,',
+    repl: '    cursor: () => state.globalHistoryCursor,\n    session: () => 0,' },
+  // ── the history board, added 2026-10-28 (lead): section L's four claims, one defect each.
+  { name: 'the history board asks beside the read out', defect: true,
+    find: '  return state.historyReads.ask(question, readHistory);',
+    repl: '  return readHistory(state.historyReads.begin());' },
+  { name: 'Global is read whatever it holds', defect: true,
+    find: '    if (!state.globalHistoryStale && state.globalHistoryData.length) {',
+    repl: '    if (false) {' },
+  { name: 'Global is marked fresh when its read ends, not as it goes out', defect: true,
+    find: '      renderGlobalTimeline();\n      readWhole = true;',
+    repl: '      renderGlobalTimeline();\n      state.globalHistoryStale = false;\n      readWhole = true;' },
+  { name: 'a Global body that lands after another question is drawn', defect: true,
+    find: '      // superseded while the body came - the operator is looking at another list now\n      if (!read.current()) return;\n',
+    repl: '' },
   { name: 'the global count is read off the array live updates grow', defect: true,
     find: '      state.globalHistoryLoaded = page.logs.length;',
     repl: '      state.globalHistoryLoaded = 0;' },
@@ -1452,6 +1472,80 @@ const MUTANTS = [
     find: '  const cursor = pane.cursor();',
     repl: '  const cursorToken = pane.cursor();\n  const cursor = cursorToken;' },
 ];
+
+// ════════════════════════════════════════════════════════════════════════════════
+// L — the history board (lead 10-28): a newer question cuts the read out, the same one asked while it reads is read
+//     once more when it ends, and Global - the whole database's list, not the table's - is drawn again unless it is old
+// ════════════════════════════════════════════════════════════════════════════════
+async function sectionL() {
+  const recent = (S) => S.requests.filter(u => u.includes('/audit_logs/recent')).length;
+
+  // -- L1: four calls while one Global read is out (a table switch, a tab click, two socket rereads) --
+  let S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-A', [log(1)])]), hang: true });
+  S.responses.push({ status: 200, body: recentPage([group('TX-B', [log(2)])]) });
+  const first = parked(S, S.ctx.loadHistory());
+  const later = [S.ctx.loadHistory(), S.ctx.rereadHistory(), S.ctx.loadHistory(), S.ctx.rereadHistory()]
+    .map(p => p.catch(() => {}));
+  check('L1 four Global calls while one read is out ask nothing beside it', recent(S), 1);
+  await releaseAndAwait(S, first);
+  await Promise.all(later);
+  check('L1b ... and it is read once more when it ends: 2 requests for the 5 calls (5 before the board)', recent(S), 2);
+  check('L1c ... and the list is that second read\'s', txIds(state.globalHistoryData), ['TX-B']);
+
+  // -- L2: a held Global list that missed nothing: a table switch and tab clicks draw it again --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-1', [log(1)])]) });
+  await S.ctx.loadHistory();
+  S.timeline.innerHTML = '';
+  await S.ctx.loadHistory();
+  await S.ctx.loadHistory();
+  await S.ctx.loadHistory();
+  check('L2 three more Global calls on a held list that missed nothing ask nothing (3 requests before)', recent(S), 1);
+  check('L2b ... and draw the held list again', items(S.timeline).length, 1);
+
+  // -- L3: logs came while another tab was shown (websocket.js marks it): picked again, Global is read once --
+  state.activeHistoryTab = 'row';
+  S.responses.push({ status: 200, body: page([log(3)], null) });
+  await S.ctx.loadHistory();
+  state.globalHistoryStale = true;
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-2', [log(4)])]) });
+  await S.ctx.loadHistory();
+  await S.ctx.loadHistory();
+  check('L3 an old Global list, picked twice, is read once', recent(S), 2);
+  check('L3b ... and shows what that read brought', txIds(state.globalHistoryData), ['TX-2']);
+
+  // -- L4: the Row tab picked while the Global body comes: the read is cut, its answer not drawn, Global left old --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  let rowLoad = null;
+  S.responses.push({ status: 200, body: recentPage([group('TX-LATE', [log(7)])]),
+    onJson: () => { state.activeHistoryTab = 'row'; rowLoad = S.ctx.loadHistory(); } });
+  S.responses.push({ status: 200, body: page([log(1)], null) });
+  await S.ctx.loadHistory();
+  if (rowLoad) await rowLoad.catch(() => {});
+  check('L4 the Global request is cut when another question is asked', Boolean(S.signals[0] && S.signals[0].aborted), true);
+  check('L4b ... its late body is not taken into the Global list', txIds(state.globalHistoryData), []);
+  check('L4c ... the Row tab shows its own read', listIds(state.cellRowHistoryData), [1]);
+  check('L4d ... and Global is left old, read when it is picked again', state.globalHistoryStale, true);
+
+  // -- L5: refresh on a held list that missed nothing reads it again --
+  S = await buildSandbox();
+  resetState();
+  state.activeHistoryTab = 'global';
+  S.responses.push({ status: 200, body: recentPage([group('TX-1', [log(1)])]) });
+  await S.ctx.loadHistory();
+  S.responses.push({ status: 200, body: recentPage([group('TX-2', [log(2)])]) });
+  await S.ctx.rereadHistory();
+  check('L5 a reread reads a held list that missed nothing', [recent(S), txIds(state.globalHistoryData)], [2, ['TX-2']]);
+  resetState();
+}
 
 async function sectionG() {
   for (const m of MUTANTS) {
@@ -1478,6 +1572,7 @@ async function sectionG() {
       await sectionI();
       await sectionJ();
       await sectionK();
+      await sectionL();
     } catch (e) {
       // A mutant that throws while RUNNING (a DOM operation that cannot apply, a value that is
       // no longer the shape its reader expects) is caught as surely as one that fails an
@@ -1512,6 +1607,7 @@ await sectionH();
 await sectionI();
 await sectionJ();
 await sectionK();
+await sectionL();
 const beforeG = { pass, fail };
 await sectionG();
 

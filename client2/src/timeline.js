@@ -14,8 +14,23 @@ import { countOf, setMatchCount } from './match_count.js';
 import { saysTruncated } from './truncation.js';
 import { countNav, ROUTES } from './effort_meter.js';
 
-// Feature 3: Load audit log history from API
-export async function loadHistory() {
+// Feature 3: Load audit log history from API - on the history board (lead 10-28): another tab or another cell cuts the
+// read out; the same question asked while it reads (three socket events, a table switch, a tab click) is read once more
+// when it ends.
+export function loadHistory() {
+  const cell = state.selectedCell;
+  const question = state.activeHistoryTab === 'global' ? 'global'
+    : `${state.activeHistoryTab}:${state.currentTable}:${cell ? `${cell.rowId}:${cell.colId}` : ''}`;
+  return state.historyReads.ask(question, readHistory);
+}
+
+/** The server or the operator says read again: the held Global list is old, and the shown tab is read again. */
+export function rereadHistory() {
+  state.globalHistoryStale = true;
+  return loadHistory();
+}
+
+async function readHistory(read) {
   // [2c] The audit table's header and legend are siblings of the `<ul>`, so `innerHTML = ''`
   // on the list leaves them alone. ONE place decides whether they show, here rather than in
   // each of the four tab handlers -- every switch calls this.
@@ -26,9 +41,19 @@ export async function loadHistory() {
   elements.timelineContainer?.classList.toggle('audit-table', onGlobal);
   elements.timelineContainer?.classList.toggle('tab-global', onGlobal);
   if (state.activeHistoryTab === 'global') {
+    // The Global list is the whole database's, not the open table's: a held list that missed nothing is drawn again, not
+    // read again (A 10-28: the read costs what piled up since the last one - 56 s on a box with 8 million new rows).
+    if (!state.globalHistoryStale && state.globalHistoryData.length) {
+      renderGlobalTimeline();
+      return;
+    }
     elements.timeline.innerHTML = '<li class="timeline-empty">Loading global history...</li>';
+    // Cleared as the read goes out: logs that come while it reads set it again, and the board's repeat reads them.
+    state.globalHistoryStale = false;
+    let readWhole = false;
     try {
-      const res = await fetch(`${API_BASE}/audit_logs/recent?limit_groups=100`);
+      const res = await fetch(`${API_BASE}/audit_logs/recent?limit_groups=100`, { signal: read.signal });
+      if (!read.current()) return;
       // 🔴 F-11. There was no `res.ok` here, and the catch below could not stand in for
       //    one: a 500 answers with a VALID JSON body (`{detail: …}`), so `res.json()`
       //    resolves, `readHistoryPage` looks for `groups`, finds no such key, and returns
@@ -50,12 +75,9 @@ export async function loadHistory() {
       //    right for `/history` and wrong here -- and reading the body does not depend on
       //    whether the cursorless state is reachable, so a query predicate changing upstream
       //    cannot silently turn this back off.
-      // [History paging] A FRESH LOAD OPENS A NEW SESSION, so a 더 보기 still in flight from the
-      // previous one can tell that its page belongs to a list no longer on screen. Same counter
-      // discipline as `beginHistorySession` for the other tab; appending the previous view's
-      // page 2 onto this view's page 1 is what it prevents, and those rows would all be real.
-      state.globalHistorySession += 1;
       const body = await res.json();
+      // superseded while the body came - the operator is looking at another list now
+      if (!read.current()) return;
       const page = readHistoryPage(body, 'groups');
       state.globalHistoryData = page.logs;
       state.globalHistoryTruncated = saysTruncated(body && body.truncated) === true;
@@ -66,37 +88,42 @@ export async function loadHistory() {
       state.globalHistoryCursor = page.nextCursor;
       state.globalHistoryLoaded = page.logs.length;
       renderGlobalTimeline();
+      readWhole = true;
     } catch (err) {
+      if (!read.current()) return;
       console.error('Failed to load global history', err);
       elements.timeline.innerHTML = '<li class="timeline-empty" style="color:var(--color-danger)">Failed to load global history log</li>';
+    } finally {
+      // cut, refused or failed: the held list is still the old one
+      if (!readWhole) state.globalHistoryStale = true;
     }
     return;
   }
 
   if (!state.selectedCell) {
-    // No target, so no position to page from. Retiring the session here too keeps a cursor from
-    // outliving the list it names.
-    beginHistorySession();
+    // No target, so no position to page from - the board's new ticket already retired the session; the envelope goes
+    // too, so a cursor does not outlive the list it names.
+    clearCellRowEnvelope();
     elements.timeline.innerHTML = '<li class="timeline-empty">Select a cell to view history</li>';
     return;
   }
 
   elements.timeline.innerHTML = '<li class="timeline-empty">Loading history...</li>';
 
-  // A FRESH LOAD OPENS A NEW PAGING SESSION. Everything below is reset BEFORE the request goes
-  // out, not after it lands: between the two, a 더 보기 from the previous cell can still be in
-  // flight, and the stale cursor it would append against belongs to another row's history.
-  const session = beginHistorySession();
+  // A FRESH LOAD OPENS A NEW PAGING SESSION (the board's ticket). The envelope is reset BEFORE the request goes out, not
+  // after it lands: between the two, a 더 보기 from the previous cell can still be in flight, and the stale cursor it
+  // would append against belongs to another row's history.
+  clearCellRowEnvelope();
 
   const { rowId, colId } = state.selectedCell;
   const url = historyUrl(rowId, colId);
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: read.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const page = readHistoryPage(await res.json());
     // Superseded while in flight — the operator is looking at a different list now.
-    if (session !== state.cellRowHistorySession) return;
+    if (!read.current()) return;
     state.cellRowHistoryData = page.logs;
     state.cellRowHistoryCursor = page.nextCursor;
     state.cellRowHistoryTruncated = page.truncated;
@@ -108,7 +135,7 @@ export async function loadHistory() {
     state.cellRowHistoryRowTotalIsFloor = page.rowHistoryTotalIsFloor;
     renderTimeline(state.cellRowHistoryData);
   } catch (err) {
-    if (session !== state.cellRowHistorySession) return;
+    if (!read.current()) return;
     console.error('Failed to load history', err);
     elements.timeline.innerHTML = '<li class="timeline-empty" style="color:var(--color-danger)">Failed to load history log</li>';
   }
@@ -125,9 +152,8 @@ function historyUrl(rowId, colId, cursor = null) {
   return url;
 }
 
-// Open a new paging session and return its token. Callers compare the token back after every
-// await; anything that does not match belongs to a list that has been replaced.
-function beginHistorySession() {
+// The cell/row envelope back to empty, as a fresh list opens. The session token is the history board's ticket.
+function clearCellRowEnvelope() {
   state.cellRowHistoryCursor = null;
   state.cellRowHistoryTruncated = false;
   state.cellRowHistoryLoaded = 0;
@@ -136,8 +162,6 @@ function beginHistorySession() {
   // a disclosure that is confidently wrong is worse than the one that was missing.
   state.cellRowHistoryRowTotal = null;
   state.cellRowHistoryRowTotalIsFloor = false;
-  state.cellRowHistorySession += 1;
-  return state.cellRowHistorySession;
 }
 
 // [History paging] Read one history response into the three things the timeline needs.
@@ -805,7 +829,7 @@ const HISTORY_PANES = {
   cellRow: {
     label: () => `Partial (${state.cellRowHistoryLoaded}) · more`,
     cursor: () => state.cellRowHistoryCursor,
-    session: () => state.cellRowHistorySession,
+    session: () => state.historyReads.ticket,
     // A page is only wanted while the list it belongs to is still the list on screen.
     live: () => !!state.selectedCell,
     url: (cursor) => historyUrl(state.selectedCell.rowId, state.selectedCell.colId, cursor),
@@ -825,7 +849,7 @@ const HISTORY_PANES = {
   global: {
     label: () => `Partial (${state.globalHistoryLoaded}) · more`,
     cursor: () => state.globalHistoryCursor,
-    session: () => state.globalHistorySession,
+    session: () => state.historyReads.ticket,
     live: () => state.activeHistoryTab === 'global',
     url: (cursor) => `${API_BASE}/audit_logs/recent?limit_groups=100`
       + `&cursor=${encodeURIComponent(cursor)}`,
@@ -881,7 +905,7 @@ export function createHistoryMoreDom(pane = HISTORY_PANES.cellRow) {
     // After a 400 the cursor names a position the server cannot decode, so the same token can
     // only fail again. The control stops being a pager and becomes the one move that recovers.
     if (btn.dataset.mode === 'reload') {
-      loadHistory();
+      rereadHistory();
       return;
     }
     loadMoreHistory(btn, pane);
@@ -1165,6 +1189,8 @@ export function formatVal(v, isOld = false) {
 // Debounced History Loader
 let historyDebounceTimeout = null;
 export function triggerHistoryReloadDebounced() {
+  // the server says logs were missed: Global is old now, read when it is shown
+  state.globalHistoryStale = true;
   clearTimeout(historyDebounceTimeout);
   historyDebounceTimeout = setTimeout(() => {
     loadHistory();
@@ -1268,6 +1294,8 @@ export async function navigateToLog(log) {
   }
 
   state.isNavigating = true;
+  const jump = {};
+  state.navigationJump = jump;
   // V1 instrument: the deepest in-page jump on the grid page — it can change table, set a
   // transaction filter and scroll to another row, so the prior working context is gone.
   countNav(ROUTES.GRID, 'grid:log_jump');
@@ -1276,11 +1304,13 @@ export async function navigateToLog(log) {
   // Set 5s watchdog safety net (mimics PyQt 10s guard timer)
   if (state.navigationWatchdog) clearTimeout(state.navigationWatchdog);
   state.navigationWatchdog = setTimeout(() => {
-    releaseNavigationGuard('❌ Navigation Timeout');
+    releaseNavigationGuard('❌ Navigation Timeout', jump);
   }, 5000);
 
   const targetTable = log.table_name;
   const targetTx = log.transaction_id;
+  // The rows on screen answer this jump only when they were read for the same table and transaction.
+  const sameView = state.currentTable === targetTable && (state.currentTransactionId || null) === (targetTx || null);
 
   // Step 1: Switch table/tab if different
   if (state.currentTable !== targetTable) {
@@ -1289,6 +1319,8 @@ export async function navigateToLog(log) {
   }
 
   // Set the transaction filter context automatically
+  // Another transaction: the cached pages were read under the old one (setTransactionFilter's own read clears them too).
+  if (!sameView) state.pageCache.clear();
   if (targetTx) {
     state.currentTransactionId = targetTx;
     if (elements.bannerTxId) elements.bannerTxId.textContent = targetTx;
@@ -1318,21 +1350,22 @@ export async function navigateToLog(log) {
 
   // Give browser event loop 50ms to stabilize layout
   setTimeout(() => {
-    navigatorStep3(log);
+    if (sameView) navigatorStep2(log, jump);
+    else navigatorStep3(log, jump);
   }, 50);
 }
 
 // Step 2: Check local caching or decide server target jump
-export function navigatorStep2(log) {
+export function navigatorStep2(log, jump = null) {
   if (!state.gridApi) {
-    releaseNavigationGuard('❌ Grid not initialized');
+    releaseNavigationGuard('❌ Grid not initialized', jump);
     return;
   }
 
   const rowNode = state.gridApi.getRowNode(log.row_id);
   if (rowNode) {
     // Cache Hit -> directly scroll (Step 4)
-    navigatorFinalScroll(rowNode, log.column_name);
+    navigatorFinalScroll(rowNode, log.column_name, jump);
   } else {
     // Check if row exists in any of the cached pages
     for (const [skip, cached] of state.pageCache.entries()) {
@@ -1348,9 +1381,9 @@ export function navigatorStep2(log) {
         setTimeout(() => {
           const node = state.gridApi.getRowNode(log.row_id);
           if (node) {
-            navigatorFinalScroll(node, log.column_name);
+            navigatorFinalScroll(node, log.column_name, jump);
           } else {
-            releaseNavigationGuard('❌ Failed to locate row in cached page');
+            releaseNavigationGuard('❌ Failed to locate row in cached page', jump);
           }
         }, 50);
         return;
@@ -1358,13 +1391,18 @@ export function navigatorStep2(log) {
     }
 
     // Cache Miss -> request server target jump (Step 3)
-    navigatorStep3(log);
+    navigatorStep3(log, jump);
   }
 }
 
 // Step 3: Fetch target row via API parameter
-export async function navigatorStep3(log) {
+export async function navigatorStep3(log, jump = null) {
   elements.performanceLog.textContent = '🌐 Requesting target position from server...';
+  // On the grid's board: a page, a table or another jump asked after this cuts it, and its answer is not drawn. The
+  // read it cut held the page latch, which this jump does not hold.
+  const read = state.gridReads.begin();
+  state.isLoadingMore = false;
+  const cut = () => !read.current();
 
   const narrowing = narrowingTail({
     globalSearch: elements.globalSearch, searchCols: elements.searchCols,
@@ -1374,11 +1412,14 @@ export async function navigatorStep3(log) {
   // A-6. The SAME sort the grid is showing — `sortQueryTail` is the one spelling. This used to
   // re-derive it from the toggle here, which was a second copy of one decision and would have
   // computed the jump's offset in a different order from the one on screen.
+  // `defer_total=true`, fetchData's: the total is not counted on the way (A 10-28: 3.3 s of a jump's 7.5-13.6 s on the box
+  // was that count); `askMatchCount` below fills it the way the grid's own read does.
   const url = `${API_BASE}/tables/${state.currentTable}/data?target_row_id=${log.row_id}`
-    + `&limit=${pageLimit}${sortQueryTail()}${narrowing}`;
+    + `&limit=${pageLimit}${sortQueryTail()}&defer_total=true${narrowing}`;
 
   try {
-    const res = await gridFetch(url);
+    const res = await gridFetch(url, { signal: read.signal });
+    if (cut()) { releaseNavigationGuard('', jump); return; }
 
     // 🔴 THE REFUSAL IS SHOWN, NOT SWALLOWED (A-6-b). Under a header sort the server refuses
     //    this jump: its offset comparison is written for three names only. Without this branch
@@ -1389,13 +1430,14 @@ export async function navigatorStep3(log) {
     //    already judged. Worded by the one refusal seat (api.js refusalText) - a stopped read's
     //    `detail.message` too (lead 87dfa71d7).
     if (!res.ok) {
-      releaseNavigationGuard(await refusalText(res, '❌ Jump refused'));
+      releaseNavigationGuard(await refusalText(res, '❌ Jump refused'), jump);
       return;
     }
     const result = await res.json();
+    if (cut()) { releaseNavigationGuard('', jump); return; }
 
     if (result.target_offset === -1 || result.data.length === 0) {
-      releaseNavigationGuard('❌ Target row does not match active search/transaction filters');
+      releaseNavigationGuard('❌ Target row does not match active search/transaction filters', jump);
       return;
     }
 
@@ -1421,22 +1463,25 @@ export async function navigatorStep3(log) {
 
     // Check if target node loaded successfully
     setTimeout(() => {
+      if (cut()) { releaseNavigationGuard('', jump); return; }
       const rowNode = state.gridApi.getRowNode(log.row_id);
       if (rowNode) {
-        navigatorFinalScroll(rowNode, log.column_name);
+        navigatorFinalScroll(rowNode, log.column_name, jump);
       } else {
-        releaseNavigationGuard('❌ Failed to locate row after server fetch');
+        releaseNavigationGuard('❌ Failed to locate row after server fetch', jump);
       }
     }, 20); // 20ms layout sync delay
 
   } catch (err) {
+    // cut by a newer read - its end, not a failure
+    if (cut()) { releaseNavigationGuard('', jump); return; }
     console.error('Jump fetch error', err);
-    releaseNavigationGuard('❌ Server fetch error');
+    releaseNavigationGuard('❌ Server fetch error', jump);
   }
 }
 
 // Step 4: Scroll and Focus Column Cell
-export function navigatorFinalScroll(rowNode, columnName) {
+export function navigatorFinalScroll(rowNode, columnName, jump = null) {
   try {
     // 1. Ensure visible
     state.gridApi.ensureNodeVisible(rowNode, 'middle');
@@ -1466,15 +1511,18 @@ export function navigatorFinalScroll(rowNode, columnName) {
     elements.performanceLog.textContent = `🎯 Jumped to ${columnName} at Row ${rowNode.data.row_id}`;
 
     // Finalize
-    releaseNavigationGuard();
+    releaseNavigationGuard('', jump);
   } catch (err) {
     console.error('Final scroll error', err);
-    releaseNavigationGuard('❌ Scroller positioning error');
+    releaseNavigationGuard('❌ Scroller positioning error', jump);
   }
 }
 
-// Helper: Navigation Locker Release
-export function releaseNavigationGuard(errorMessage = '') {
+// Helper: Navigation Locker Release. A jump ends only its own lock: one that ends after its watchdog let the next jump
+// start leaves that jump's lock, and says nothing over it. No `jump` - a caller outside a jump - ends whatever holds it.
+export function releaseNavigationGuard(errorMessage = '', jump = null) {
+  if (jump && jump !== state.navigationJump) return;
+  state.navigationJump = null;
   state.isNavigating = false;
   if (state.navigationWatchdog) {
     clearTimeout(state.navigationWatchdog);

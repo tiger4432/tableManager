@@ -184,6 +184,9 @@ async function drive(wsSrc, cfgSrc, {
     // `ws_connect_watchdog_harness.mjs`. These fields are present because the subject reads and
     // writes them, not because this file measures them.
     wsConnectWatchdog: null, wsConnectingSince: 0, wsWatchdogTrips: 0,
+    // The Global history list the socket marks old while it is away and reads on its return (lead 10-28) - present
+    // because the subject reads them; nothing is held here, so the return reads nothing.
+    globalHistoryStale: true, globalHistoryData: [], activeHistoryTab: 'global',
     currentTable: hasTable ? 'bonding_map' : '', pageCache: new Map(),
   };
   const fakeDocument = {

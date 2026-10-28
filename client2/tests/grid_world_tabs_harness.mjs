@@ -239,6 +239,8 @@ async function leftovers(M) {
   left.cacheTrip = await cacheTrip(M);
   left.addedRows = await addedRows(M);
   left.lateReads = await lateReads(M);
+  left.jumpReads = await jumpReads(M);
+  left.globalReads = await globalReads(M);
   S.gridApi = gridApi;
   return left;
 }
@@ -661,6 +663,112 @@ async function lateReads(M) {
   return out;
 }
 
+// The row jump on the grid's board (lead 10-28): a page move or a table switch while it reads cuts it, its late answer
+// is not drawn and it ends its own lock; a jump into the view on screen asks nothing; its read counts no total.
+async function jumpReads(M) {
+  const out = {};
+  reset();
+  let drawn = null;
+  S.viewMode = 'pagination';
+  S.currentTable = 'dt_log';
+  S.currentTransactionId = null;
+  S.isNavigating = false;
+  S.navigationJump = null;
+  const node = (id) => ({ data: { row_id: id, data: {} }, rowIndex: 0, setSelected() {} });
+  S.gridApi = { ...gridApi, setGridOption: (key, value) => { if (key === 'rowData') drawn = value; },
+    getRowNode: (id) => ((drawn || []).some((r) => r.row_id === id) ? node(id) : null),
+    ensureNodeVisible() {}, setFocusedCell() {}, flashCells() {} };
+  const keep = globalThis.fetch;
+  const held = [];
+  globalThis.fetch = (url, init = {}) => {
+    const u = String(url);
+    if (!u.includes('/data?')) return keep(url, init);
+    const sp = new URL(u, 'http://box').searchParams;
+    const target = sp.get('target_row_id');
+    const table = u.split('/tables/')[1].split('/')[0];
+    return new Promise((resolve) => {
+      held.push({ url: u, jump: target !== null, signal: init.signal || null,
+        answer: () => resolve({ ok: true, status: 200, text: async () => '', json: async () => (target !== null
+          ? { data: [{ row_id: target, data: {} }], target_offset: 0, calculated_skip: 0, total: null }
+          : { data: [{ row_id: `${table}@${sp.get('skip')}`, data: {} }], total: null }) }) });
+    });
+  };
+  const rowsOf = () => (drawn || []).map((r) => r.row_id);
+  const logOf = (row, tx) => ({ table_name: 'dt_log', row_id: row, column_name: 'a', transaction_id: tx });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const cutOf = (h) => Boolean(h && h.signal && h.signal.aborted);
+  try {
+    // another transaction: the jump asks the server; a page move while it reads cuts it
+    M.timeline.navigateToLog(logOf('J1', 'TX1'));
+    await wait(80); await settle();
+    out.jumpAsked = held.map((h) => (h.jump ? `jump defer_total=${h.url.includes('defer_total=true')}` : 'page'));
+    S.currentSkip = 100;
+    const page = M.api.fetchData(false);
+    await settle();
+    out.jumpCut = cutOf(held[0]);
+    if (held[1]) held[1].answer();
+    await page; await settle();
+    held[0].answer();
+    await wait(40); await settle();
+    out.pageDrawn = rowsOf();
+    out.pageLock = S.isNavigating;
+    // a table switch while a jump reads cuts it - its read from the top (switchTable stops at renderGrid in this page)
+    held.length = 0;
+    drawn = null;
+    M.timeline.navigateToLog(logOf('J2', 'TX2'));
+    await wait(80); await settle();
+    S.currentTable = 'ledger_atom_rows';
+    const sw = M.api.fetchData(true);
+    await settle();
+    out.switchCut = cutOf(held.find((h) => h.jump));
+    held.forEach((h) => h.answer());
+    await sw; await wait(40); await settle();
+    out.switchDrawn = rowsOf();
+    out.switchLock = S.isNavigating;
+    // the view on screen holds the row: nothing is asked
+    S.currentTable = 'dt_log';
+    S.currentTransactionId = 'TX3';
+    held.length = 0;
+    drawn = [{ row_id: 'J3', data: {} }];
+    M.timeline.navigateToLog(logOf('J3', 'TX3'));
+    await wait(80); await settle();
+    out.sameView = { asked: held.length, lock: S.isNavigating };
+    // a jump ending after its watchdog let the next one start leaves that one's lock
+    const next = {};
+    S.isNavigating = true;
+    S.navigationJump = next;
+    M.timeline.releaseNavigationGuard('', {});
+    out.ownLock = [S.isNavigating, S.navigationJump === next];
+  } finally {
+    M.timeline.releaseNavigationGuard('');
+    held.forEach((h) => h.answer());
+    globalThis.fetch = keep;
+    S.gridApi = gridApi;
+    S.currentTransactionId = null;
+  }
+  return out;
+}
+
+// A log the socket brings while another tab is shown is not added to Global, so Global is old now and read when it is
+// picked (lead 10-28); one brought while Global is shown is added and leaves it as it was. The read counts that follow
+// are history_paging's L2 and L3.
+async function globalReads(M) {
+  const log = { id: 99, table_name: 'other', row_id: 'R9', column_name: 'a', transaction_id: 'TX9' };
+  const after = (tab) => {
+    S.activeHistoryTab = tab;
+    S.globalHistoryStale = false;
+    try {
+      M.ws.handleWebSocketMessage({ event: 'batch_row_upsert', table_name: 'other', items: [], created_logs: [log] });
+    } catch (e) { /* the Global row is drawn into a page this harness does not build */ }
+    return S.globalHistoryStale;
+  };
+  const out = [after('row'), after('global')];
+  S.activeHistoryTab = 'global';
+  S.globalHistoryData = [];
+  S.globalHistoryStale = true;
+  return out;
+}
+
 // The seat itself, on the state module under test (a state.js copy carries its own state object).
 async function seat(stateModule) {
   const sent = [];
@@ -788,6 +896,18 @@ function suite(out, sent) {
   eq('W37 the socket back while a page read is out: it reads from the top at once, the page read cut and its late answer not drawn (lead 10-15)',
     [out.left.lateReads.socketError || null, out.left.lateReads.socketAsked, out.left.lateReads.pageCut, out.left.lateReads.socketDrawn],
     [null, [100, 0], true, ['ledger_atom_rows@0']]);
+  eq('W38 a jump to another transaction asks the server counting no total; a page move while it reads cuts it - the page drawn, the jump\'s late answer not, its lock let go (lead 10-28)',
+    [out.left.jumpReads.jumpAsked, out.left.jumpReads.jumpCut, out.left.jumpReads.pageDrawn, out.left.jumpReads.pageLock],
+    [['jump defer_total=true'], true, ['dt_log@100'], false]);
+  eq('W39 a table switched while a jump reads cuts it - the new table drawn, the lock let go (lead 10-28)',
+    [out.left.jumpReads.switchCut, out.left.jumpReads.switchDrawn, out.left.jumpReads.switchLock],
+    [true, ['ledger_atom_rows@0'], false]);
+  eq('W40 a jump into the view on screen - same table, same transaction, the row drawn - asks nothing (navigatorStep2; one request before)',
+    out.left.jumpReads.sameView, { asked: 0, lock: false });
+  eq('W41 a jump ends only its own lock: one ending after its watchdog let the next start leaves that one\'s',
+    out.left.jumpReads.ownLock, [true, true]);
+  eq('W42 a log the socket brings while Row is shown marks Global old - read when picked; one while Global is shown leaves it',
+    out.left.globalReads, [true, false]);
   eq('W13 ...and at once puts the value from before the edit back, both halves - no staged value waits for the read',
     out.left.atOnce, { value: 28, is_overwrite: false, priority_source: null });
   eq('W9 census: the grid\'s reads of the open table go through the seat - api 7 (schema, data, count, Apply\'s read of the '
@@ -808,12 +928,23 @@ const swap = (text, from, to) => {
   return text.split(from).join(to);
 };
 const MUTANTS = [
+  { id: 'G54', what: 'the jump reads off the grid board - a page move does not cut it', catches: 'W38', file: 'timeline.js',
+    mutate: (t) => swap(t, '  const read = state.gridReads.begin();\n  state.isLoadingMore = false;\n',
+      '  const read = { signal: undefined, current: () => true };\n  state.isLoadingMore = false;\n') },
+  { id: 'G55', what: 'the jump counts the total on the way again', catches: 'W38', file: 'timeline.js',
+    mutate: (t) => swap(t, '&defer_total=true${narrowing}`;', '${narrowing}`;') },
+  { id: 'G56', what: 'a jump that ends lets go of whatever lock is held', catches: 'W41', file: 'timeline.js',
+    mutate: (t) => swap(t, '  if (jump && jump !== state.navigationJump) return;\n', '') },
+  { id: 'G57', what: 'a jump into the view on screen asks the server', catches: 'W40', file: 'timeline.js',
+    mutate: (t) => swap(t, '    if (sameView) navigatorStep2(log, jump);\n    else navigatorStep3(log, jump);', '    navigatorStep3(log, jump);') },
+  { id: 'G58', what: 'a log while another tab is shown leaves Global fresh', catches: 'W42', file: 'websocket.js',
+    mutate: (t) => swap(t, "    if (state.activeHistoryTab !== 'global') state.globalHistoryStale = true;\n", '') },
   { id: 'G51', what: 'a read from the top waits for the one out - the code before: a switch asks nothing', catches: 'W36', file: 'api.js',
     mutate: (t) => swap(t, '  if (!state.currentTable || (state.isLoadingMore && !resetSkip)) return;', '  if (!state.currentTable || state.isLoadingMore) return;') },
   { id: 'G52', what: 'a late answer is drawn - no generation', catches: 'W36', file: 'api.js',
-    mutate: (t) => swap(t, '  const stale = () => mine !== dataGeneration || table !== state.currentTable;', '  const stale = () => false;') },
-  { id: 'G53', what: 'the older read is not cut', catches: 'W37', file: 'api.js',
-    mutate: (t) => swap(t, '  if (dataAbort) dataAbort.abort();\n', '') },
+    mutate: (t) => swap(t, '  const stale = () => !read.current() || table !== state.currentTable;', '  const stale = () => false;') },
+  { id: 'G53', what: 'the older read is not cut - off the grid board', catches: 'W37', file: 'api.js',
+    mutate: (t) => swap(t, '  const read = state.gridReads.begin();\n', '  const read = { signal: undefined, current: () => true };\n') },
   { id: 'G1', what: 'the seat sends the picked world on any table', catches: 'W0', file: 'state.js',
     mutate: (t) => swap(t, '  () => (tableIsPerWorld() ? state.gridWorld : null));', '  () => state.gridWorld);') },
   { id: 'G2', what: 'a switch keeps the picked world', catches: 'W7', file: 'api.js',
@@ -823,13 +954,13 @@ const MUTANTS = [
   { id: 'G4', what: 'a pick does not read again', catches: 'W5', file: 'api.js',
     mutate: (t) => swap(t, '  drawWorldTabs();\n  await fetchData(true);\n}', '  drawWorldTabs();\n}') },
   { id: 'G5', what: 'the page read goes round the seat', catches: 'W6', file: 'api.js',
-    mutate: (t) => swap(t, '    const res = await gridFetch(url, { signal: abort.signal });\n', '    const res = await fetch(url, { signal: abort.signal });\n') },
+    mutate: (t) => swap(t, '    const res = await gridFetch(url, { signal: read.signal });\n', '    const res = await fetch(url, { signal: read.signal });\n') },
   { id: 'G6', what: 'the list load drops per_world', catches: 'W3 ', file: 'api.js',
     mutate: (t) => swap(t, 'perWorld: data.per_world,', 'perWorld: undefined,') },
   { id: 'G7', what: 'the row jump goes round the seat', catches: 'W6', file: 'timeline.js',
     // re-aimed (lead 87dfa71d7): the jump's refusal check now stands between the read and its body
-    mutate: (t) => swap(t, '    const res = await gridFetch(url);\n\n    // 🔴 THE REFUSAL IS SHOWN',
-      '    const res = await fetch(url);\n\n    // 🔴 THE REFUSAL IS SHOWN') },
+    mutate: (t) => swap(t, '    const res = await gridFetch(url, { signal: read.signal });\n    if (cut()) {',
+      '    const res = await fetch(url, { signal: read.signal });\n    if (cut()) {') },
   { id: 'G8', what: 'the operating world is not marked', catches: 'W3 ', file: 'world_tabs.js',
     mutate: (t) => swap(t, '      if (name === view.operating) {', '      if (false) {') },
   { id: 'G9', what: 'no tab is shown while none is picked', catches: 'W3 ', file: 'world_tabs.js',

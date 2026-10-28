@@ -297,7 +297,8 @@ export async function switchTable(tableName) {
   // Fetch initial chunk of data (reset skip to 0)
   await fetchData(true);
 
-  // Reset active history tab to global when switching tables to avoid empty screen
+  // Reset active history tab to global when switching tables to avoid empty screen. Global is not the table's: the
+  // held list is drawn again, read only when it is old (timeline.js readHistory).
   // 🔵 참조 탭의 강조도 여기서 같이 꺼집니다 — 규칙 «없는» 표가 앞 표의 강조를 물려받으면
   //    안 되고, 규칙 있는 표는 `syncReferenceViewRule` 이 잠시 뒤 다시 켭니다. 창도 같이 — 탭만 켜면
   //    대기열 창이 Global 밑에 남았다 (소유자 10-21).
@@ -608,11 +609,6 @@ export function prevPage() {
   return fetchData(false, key);
 }
 
-// Each read of the open table's rows: a newer one makes an older one's answer another question's - cut and dropped,
-// fillMatchCount's rule (lead 6fa4c5094: a table switched while the first table's rows came drew them under its heads).
-let dataGeneration = 0;
-let dataAbort = null;
-
 // Fetch row data and render inside AG-Grid (Handles Pagination). `key` - Next's {after} or Prev's {before}; a page-number
 // jump sends none (skip).
 export async function fetchData(resetSkip = true, key = null) {
@@ -642,17 +638,16 @@ export async function fetchData(resetSkip = true, key = null) {
 
   state.isLoadingMore = true;
   elements.performanceLog.textContent = 'Fetching data...';
-  const mine = ++dataGeneration;
-  if (dataAbort) dataAbort.abort();
-  const abort = new AbortController();
-  dataAbort = abort;
+  // Each read of the open table's rows is on the grid's board: a newer one (a page, a table, a jump) cuts this one and
+  // its answer is dropped (lead 6fa4c5094: a table switched while the first table's rows came drew them under its heads).
+  const read = state.gridReads.begin();
 
   const startTime = performance.now();
 
   const narrowing = narrowingParams();
   const table = state.currentTable;
   // answered late - the table or the read changed since: not drawn, not cached, the newer read's latch left alone
-  const stale = () => mine !== dataGeneration || table !== state.currentTable;
+  const stale = () => !read.current() || table !== state.currentTable;
 
   // 🔴 `defer_total=true` -> 응답의 `total` 이 «null» 입니다. 행이 먼저 나오고 개수는
   //    두 번째 요청이 채웁니다. 세는 데 걸리는 시간이 첫 화면에서 빠집니다.
@@ -665,7 +660,7 @@ export async function fetchData(resetSkip = true, key = null) {
   if (tail) url += `&${tail}`;
 
   try {
-    const res = await gridFetch(url, { signal: abort.signal });
+    const res = await gridFetch(url, { signal: read.signal });
     if (stale()) return;
     // 🔴 C-105. 거절은 «읽기»에도 옵니다 — 그리고 그 답에는 행이 «없습니다». 종전에는 `res.ok`
     //    를 안 보고 `result.data.length` 를 읽어 «던졌고», 서버가 이름을 대고 거절한 사유가

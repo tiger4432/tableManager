@@ -373,7 +373,7 @@ export const FLOORS = new Map([
   //    「a live update does not throw on the state a load left behind」 -- which is the production
   //    symptom this file was written for, said out loud instead of ending the section.
   //    All nineteen verdicts now come from failed assertions; the run reports zero throws.
-  ['history_paging_harness.mjs', 171],   // -> 171: K1 K2 a person's change by the layer source, and their two mutants (lead 10-13)
+  ['history_paging_harness.mjs', 187],   // -> 171: K1 K2 a person's change by the layer source, and their two mutants (lead 10-13); -> 187: L1-L5 the history board and its four mutants (lead 10-28)
   // New 2026-08-04 with the isotropic-cell round (equal mm-per-pixel on both canvas axes, so
   // the wafer outline is a circle by construction). Same rule as the entries above: the floor
   // is the count it reports on the commit that introduces it — there is no earlier tree to
@@ -1363,7 +1363,7 @@ export const FLOORS = new Map([
   // 77 -> 87: the lead's check of c3a3fd5cb (10-13) - W32 Take server drops every cell asked (one back at its pre-edit
   //    value too), W33 Tx turned off to apply keeps a mid-PUT edit staged, W34 a refused PUT turns Tx back on, W35 the PUT
   //    under the cap; V1 measures the cut, W28 a timer later; G45-G50.
-  ['grid_world_tabs_harness.mjs', 92],
+  ['grid_world_tabs_harness.mjs', 102],   // -> 102: W38-W42 the jump on the grid board, Global marked old by the socket, and G54-G58 (lead 10-28)
   // 0 -> 44: the visual testbed (lead aca803a7a, d1b3c1b7f, 5835e6714) - T1-T17 (the reduces against contracts/walk_aggregate,
   //    the one filter, hubs, the two kinds, the root part, two parts on one page, a kind added, save and reopen, the census,
   //    the bundle); M1-M23.
