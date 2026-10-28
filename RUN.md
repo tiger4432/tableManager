@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **다시 읽은 raws 파일이 «raws» 소스를 잃지 않는다 — 파일 화면의 표 · 저장소 묶음이 갈리던 것** — 와처 재기동 뒤
+>
+> ```
+> 무엇     raws 파일을 다시 읽으면 archives 사본을 읽는데, 그 읽기 기록 · 체크리스트 행의 소스가 빈 값이 됐다
+>          (10-20 기록 · 10-23 체크리스트부터). 이제 archives 사본은 raws 로 읽힌 것으로 적힌다
+> 세기     SELECT table_name, status, count(*) FROM file_checklist WHERE source IS NULL GROUP BY 1, 2 ORDER BY 1, 2;
+>          raws 표의 행이 나오면 = 이 고침 전에 다시 읽힌 파일. 손댈 것 없음 — 다음 다시 읽기에서 «raws» 로 돌아온다
+>          그 사이에도 Read all again 은 그 행을 고른다(빈 소스 행은 파일이 그 표 작업 폴더 밑이면 raws 로 판단)
+>          외부 저장소 표의 행이 나오면 이 고침과 무관 — 총괄에게
+> 보는 곳  어드민 File Ingestion 탭의 읽기 진행 — 다시 읽은 표가 «raws» 한 묶음으로 보이면 정상
+> ```
+>
+> ---
+>
 > ## [10-28] **split 행을 걸어서 채운다 — 조인 take 의 fn walk (split 3 단계), 303e0a726** — git pull · 런처 재기동
 >
 > ```

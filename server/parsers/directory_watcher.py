@@ -750,7 +750,7 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
     result = {
         "reader": (kind[len("pipeline:"):] if kind.startswith("pipeline:") else "standard" if kind == "std"
                    else kind.split(":")[1] if kind.startswith("external:") else None),
-        "source": external["source_root"] if external else ("raws" if meta.get("rel_path") is not None else None),
+        "source": external["source_root"] if external else meta.get("read_under"),
         "rows_read": None, "rows_new": None, "rows_changed": None, "rows_unchanged": None, "rows_refused": None,
         "columns_changed": None, "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
         "transaction_id": tally.transaction_id if tally is not None else None,
@@ -2256,10 +2256,11 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _parse_meta_for(self, abs_path: str, source: str | None = None) -> dict:
         """`source` - the external source root a log row names (Read now, a Retry): the file is read under that
-        source whatever its name or depth (총괄 10-21 «와처가 본 것처럼»)."""
+        source whatever its name or depth (총괄 10-21 «와처가 본 것처럼»). `read_under` - the source a raws read is
+        under, what its record and its checklist row say (an external read's is its `external_source` root)."""
         managed_rel = self.relative_source_path(abs_path, os.path.abspath(self.raws_path))
         if managed_rel is not None:
-            return {"rel_path": managed_rel}
+            return {"rel_path": managed_rel, "read_under": "raws"}
         if source and source != "raws":
             named = [spec["source_id"] for spec in self._external_sources.values()
                      if os.path.normcase(spec["root"]) == os.path.normcase(os.path.abspath(source))]
@@ -2285,7 +2286,10 @@ class IngestionHandler(FileSystemEventHandler):
             return {"rel_path": context["rel_path"], "external_source": context}
         context = self.external_source_context(abs_path)
         if context is None:
-            return {"rel_path": None}
+            # a raws file read again from its archive - only raws moves files there (총괄 10-28: it read as no source,
+            # and its checklist row lost «raws»)
+            archived = self.relative_source_path(abs_path, os.path.abspath(self.archives_path)) is not None
+            return {"rel_path": None, "read_under": "raws" if archived else None}
         return {"rel_path": context["rel_path"], "external_source": context}
 
     @staticmethod
