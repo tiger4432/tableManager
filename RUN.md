@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **로더가 거절한 규칙 — 목록 · 재생이 로더 문장으로 말함, a9074e30c** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것  curl -s -H "X-Admin-Token: <토큰>" http://127.0.0.1:8080/admin/chain/rules  (그 규칙 행의 rule_state · rule_state_detail)
+> 뜻      declared_only + 로더 문장(예 «unresolvable_mapper …») = 로더가 못 세움 -> 문장대로 고침 (unresolvable_mapper = 맵퍼 이름이 등록 안 됨)
+>          declared_only + «enabled=false — nothing wakes it; a replay that names it runs it.» = 꺼져 있고 이름 대면 돔
+> 재생     그 이름 재생이 «was refused at load: …» = 위 로더 문장과 같은 원인
+> ⚠️      맵퍼 파일을 막 저장하면 한 그룹 동안 API 목록과 워커가 다를 수 있음 (체인 쪽은 그룹 경계에서 적용)
+> 화면     체인 탭은 아직 rule_state · detail 을 안 그림 — 배지는 enabled/active 만, 켜진 채 거절된 규칙은 ACTIVE 로 보임
+> 되돌리기  git revert a9074e30c -> 런처 재기동
+> ```
+
+---
+
 > ## [10-28] **리포트 프롬프트가 같은 quantity 를 «값 있음 + 채울 것»으로 두 번 말하지 않는다 — f83bcc6e9** — git pull · 런처 재기동
 >
 > ```
