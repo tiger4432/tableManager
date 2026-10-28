@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **불러올 수 없는 맵퍼 모듈을 이름 댄 규칙은 로드 때 거절 — 6a612ed5f** — git pull · 런처 재기동
+>
+> ```
+> 볼 줄    chain_worker.log «[ChainRules] <규칙> refused (1): unresolvable_mapper rules[N].mapper_module: names no mapper this process can run: <모듈>.<함수> could not be loaded (<오류>)»
+> 뜻      그 줄 = 맵퍼 파일이 없거나 import 에서 터짐 -> server/mappers/ 에 그 파일을 놓음 (다음 로드에서 풀림)
+>          규칙 목록의 사유 칸(rule_state_detail)과 그 이름 재생도 같은 문장
+>          예전 «… FAILED: … could not be loaded» 가 그룹마다 찍히던 것 = 이 착지 전
+> 견본     dt_log_to_dt_job_rollup 은 꺼진 채 — mappers/dt_job_rollup_mapper.py.sample 을 .py 로 놓고 켬
+>          production_to_inventory_reservation_batch 는 켠 채 — 맵퍼 파일이 없는 설치에선 위 거절 줄이 보임
+> 되돌리기  git revert 6a612ed5f -> 런처 재기동
+> ```
+
+---
+
 > ## [10-28] **로더가 거절한 규칙 — 목록 · 재생이 로더 문장으로 말함, a9074e30c** — git pull · 런처 재기동
 >
 > ```
