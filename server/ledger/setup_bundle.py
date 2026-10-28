@@ -14,7 +14,7 @@ import logging
 
 import validation
 import json
-from declaration_names import bare_name, fold_versions
+from declaration_names import IMPORTS, bare_name, fold_versions
 from pathlib import Path
 import re
 from types import MappingProxyType
@@ -76,8 +76,7 @@ OPTIONAL_SECTIONS = ("virtual_joins",)
 #: `imports` (lead 10-27 B-4, owner «키를 한 곳에서»): {"<world>": {"entities": ["<entity type>", ...]}} - entity types another
 #: world declares, used as that world writes them, so a type's nodes are one across worlds (`resolve_imports`).
 #: Optional at the root but NOT filled like the sections above: a bundle that names no imports serializes - and
-#: hashes - as it did.
-IMPORTS = "imports"
+#: hashes - as it did. The name lives with the fold (`declaration_names.IMPORTS`).
 ROOT_OPTIONAL_SECTIONS = (*OPTIONAL_SECTIONS, IMPORTS)
 
 ALL_SECTIONS = (*LOGICAL_SECTIONS, *OPTIONAL_SECTIONS)

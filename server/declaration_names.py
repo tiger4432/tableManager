@@ -31,6 +31,9 @@ import re
 
 #: 옛 선언이 이름에 버전을 붙일 때 쓰던 글자. 여기 말고 다른 곳에서 이 글자를 «의미로» 쓰지 않는다.
 VERSION_SEPARATOR = "@"
+#: The root cell a world names another world's entity types in (`ledger.setup_bundle.resolve_imports`) - names this
+#: document uses as declared, so they fold too.
+IMPORTS = "imports"
 #: `name@N` - the spelling a declaration gave its names until 10-04.
 _VERSIONED = re.compile(r"^([^@/\s]+)@[1-9][0-9]*$")
 
@@ -52,9 +55,10 @@ def fold_versions(document):
     """A declaration with its names spelled bare - THE ONE FOLD, at every read of a declaration.
 
     Every dict key and every string that is `name@N` of a name `vocabulary` or `entities`
-    declares becomes `name`, wherever it sits (subjects, object types, a mapping's predicate, an
-    `entity_type`, `bind.entities`, references). A string naming nothing declared is left alone -
-    `SYN-RCP-BOND@4` is a value. Not a declaration (neither section) -> returned as given.
+    declares, or `imports` names (lead 10-28), becomes `name`, wherever it sits (subjects, object
+    types, a mapping's predicate, an `entity_type`, `bind.entities`, references). A string naming
+    nothing declared is left alone - `SYN-RCP-BOND@4` is a value. Not a declaration (none of the
+    three) -> returned as given.
 
     ⛔ Two spellings of one name in one section (`x@1` and `x@2`, or `x` beside `x@1`) are not
     merged - which one a source meant is not this function's to guess. The document comes back
@@ -73,6 +77,11 @@ def fold_versions(document):
         if any(len(each) > 1 for each in spellings.values()):
             return document
         declared |= set(spellings)
+    imports = document.get(IMPORTS)
+    if isinstance(imports, dict):
+        declared |= {bare_name(name) for listed in imports.values() if isinstance(listed, dict)
+                     for name in (listed.get("entities") if isinstance(listed.get("entities"), list) else ())
+                     if isinstance(name, str)}
     if not declared:
         return document
 

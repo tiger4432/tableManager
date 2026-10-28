@@ -3,6 +3,7 @@ types with `imports`, so its quantity · step · physical_* are the default worl
 `is_a` and leaves the row's other sentences standing (a mapping's `when`, no code). The declarations are the committed
 samples; the rows are this file's."""
 import copy
+import json
 import os
 
 import pandas as pd
@@ -86,3 +87,14 @@ def test_a_step_map_row_says_acts_on_is_a_and_describes(worlds):
         ("process_step", ("AA010", "P1"), "is_a", "physical_process", ("etch",)),
         ("process_step", ("AA020", "P1"), "acts_on", "product_structure", ("P1", "V1")),
         ("quantity", ("THK",), "describes", "product_structure", ("P1", "V1"))]
+
+
+def test_an_imported_name_written_with_its_version_is_the_same_node(worlds):
+    """Lead 10-28: a name is bare, `@N` or not - an imported one too (one fold, `declaration_names.fold_versions`)."""
+    catalog, written, imported = worlds
+    versioned = json.loads(json.dumps(written["ai_model"]).replace('"quantity"', '"quantity@1"'))
+    assert '"quantity@1"' in json.dumps(versioned)                     # canary: the spelling is in the file
+    assert validate_bundle_errors(versioned, catalog=catalog, imported=imported) == ()
+    row = {"row_id": "m1", "product": "P1", "step_seq": "AA020", "item_id": "THK", "process_kind": "etch",
+           "acts_on": "V1", "item_desc": None}
+    assert _said(worlds, "ai_step_map", [row]) == _said((catalog, dict(written, ai_model=versioned), imported), "ai_step_map", [row])
