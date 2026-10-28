@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [split 아이템 글을 quantity 로 — derive.ask 의 common.about](#2026-10-28--split-아이템-글을-quantity-로--deriveask-의-commonabout) — 적을 곳 chain_rules 의 derive.ask (common.about)
 - 2026-10-28 [AI 표를 원장에 — ai_model 세계 견본 · 모델링의 종류는 is_a](#2026-10-28--ai-표를-원장에--ai_model-세계-견본--모델링의-종류는-is_a) — 적을 곳 config/ontology_worlds/ai_model/ledger_config.json (견본 ai_model_world.ledger_config.json.sample)
 - 2026-10-28 [AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음](#2026-10-28--ai-가-사람-교정을-기억한다--deriveask-의-memory--리포트도-읽음) — 적을 곳 derive.ask · derive.report 의 memory · prompts.memory
 - 2026-10-28 [AI 스텝 맵핑 — 창 단위로 묻고, 같은 자리 공정의 답을 다시 쓴다 (derive.ask)](#2026-10-28--ai-스텝-맵핑--창-단위로-묻고-같은-자리-공정의-답을-다시-쓴다-deriveask) — 적을 곳 derive.ask 의 window · items · reuse · output.line/item
@@ -639,6 +640,13 @@
 
 
 
+
+## 2026-10-28 · split 아이템 글을 quantity 로 — derive.ask 의 common.about
+
+- **무엇** — split 템플릿 2 단계(e88e6d882). 펼친 split 표의 서로 다른 아이템 글마다 한 번 «어느 quantity 인가»를 묻고, 답을 «아이템 글 -> quantity» 표의 행으로 씁니다. 새 선언 종류는 없습니다 — derive.ask 의 다른 값입니다.
+- **바뀐 동작** — common 에 칸 하나 `about`: 선택지마다 같은 표의 그 칸(예: quantity 설명)을 «값 (설명)»으로 싣습니다. 안 적으면 지금과 같습니다. 목록 밖의 답은 none 낱말(예: "not found")로 남습니다.
+- **필요한 조건** — git pull · 런처 재기동 · chain_rules 에 선언.
+- **자세히** — docs/guide/ai_ask_tables.md 의 «split 아이템 글 -> quantity».
 
 ## 2026-10-28 · 고침 — 다른 세계에서 가져온 이름도 @1 을 붙여 적을 수 있다
 

@@ -26,7 +26,7 @@
 | `input.text` | 한 줄에 실을 칸 (`order_by` 값이 줄 머리) |
 | `output.carry` | 그룹 값을 출력 행에 옮겨 적을 칸 |
 | `output.cells` | AI 가 채우는 칸 — 답 행의 키 |
-| `common` | `cell` 의 값은 공용 표 칸 값 중 하나, 아니면 `none` 낱말 |
+| `common` | `cell` 의 값은 공용 표 칸 값 중 하나, 아니면 `none` 낱말. `about` 을 적으면 같은 표의 그 칸이 값 옆에 실립니다 |
 | `prompts.memo` | 그 그룹에 붙는 사람 메모(표의 행) |
 
 ### 스텝 맵핑에 더하는 칸 (A-2)
@@ -55,6 +55,25 @@
            사람 값이 AI 값과 같으면 교정이 아닙니다
 되돌리면    사람이 AI 값으로 되돌리거나 사람 층이 거둬지면 그 상황의 메모리 행은 지워집니다(gone)
 남는 것     AI 가 나중에 사람 값과 같은 답을 내게 돼도 교정 줄은 남습니다 — 지우려면 메모리 행을 지웁니다
+```
+
+### split 아이템 글 -> quantity (split 템플릿 2 단계)
+
+펼친 split 표의 아이템 글(자연어)마다 «어느 quantity 인가»를 한 번 묻습니다. 같은 선언, 다른 값:
+
+```json
+{"name": "split_item_quantity", "on": {"table": "<펼친 split 표>"}, "into": {"table": "<아이템 글 맵핑 표>"},
+ "derive": {"kind": "ask", "ask": {
+   "input":  {"group_by": ["<아이템 글 칸>"], "order_by": "<split 종류 칸>", "text": ["<split 종류 칸>", "<레이어 칸>"]},
+   "output": {"carry": {"<아이템 글 칸>": "<아이템 글 칸>"}, "cells": ["<quantity 칸>"]},
+   "common": {"cell": "<quantity 칸>", "table": "<quantity 목록 표>", "column": "<quantity 키 칸>",
+              "about": "<설명 칸>", "none": "not found"},
+   "prompts": {"common": "<약어 풀이 · 레이어 이름>"}}}}
+```
+```
+호출      서로 다른 아이템 글 수(행 수 아님). 로그 «asked N text(s)» 의 N
+선택지    common.about 을 적으면 «값 (설명)» 으로 실립니다. 답은 값만. 목록 밖의 답은 none 낱말
+크기      선택지 하나에 약 36 자(박스: 설명 «quantity number N» 꼴) — 50 개 2,155 자, 500 개 18,305 자. 요청마다 한 번
 ```
 
 ## AI 표를 원장에 — ai_model 세계 (A-4)

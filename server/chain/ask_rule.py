@@ -8,7 +8,8 @@ One body for every «AI fills a table from rows» declaration (lead 10-27: model
     output   {carry: {output column: input column}, cells: [column, ...], line: column, item: column}
     items    {table, step: {column, drop_leading}, item: column}       - lines under each matching row
     reuse    {key: [column | {column, drop_leading}, ...], within: {cell, table, column, carry: {its column: input}}}
-    common   {cell, table, column, none}   - `cell` must be one of that column's values, else the word `none`
+    common   {cell, table, column, none, about}   - `cell` must be one of that column's values, else the word `none`;
+             `about` another column of that table, shown beside each value
     prompts  {common: text, memo: {table, key, text}, memory: {scope: [column, ...], limit: N}}
     memory   {table, columns: {purpose, key, cell, ai, right, memo, who, when}}   - a person's corrections
 
@@ -87,7 +88,7 @@ def skeleton_node():
             {"key": "within", "required": False, "node": {"kind": "record", "fields": [
                 {"key": k, "required": False, "node": leaf()} for k in ("cell", "table", "column")] + [
                 {"key": "carry", "required": False, "node": mapping()}]}}]}},
-        {"key": "common", "required": False, "node": record("cell", "table", "column", "none")},
+        {"key": "common", "required": False, "node": record("cell", "table", "column", "none", "about")},
         {"key": "prompts", "required": False, "node": {"kind": "record", "fields": [
             {"key": "common", "required": False, "node": leaf()},
             {"key": "memo", "required": False, "node": record("table", "key", "text")},
@@ -282,9 +283,15 @@ def _choices(db, spec):
     if not common.get("cell"):
         return None, ""
     model = _model(common["table"])
-    values = sorted({str(v) for (v,) in db.query(getattr(model, common["column"])).distinct().all() if v is not None})
-    return set(values), "%s is one of: %s - or %s when none fits.\n" % (
-        common["cell"], json.dumps(values, ensure_ascii=False), json.dumps(common.get("none")))
+    said = {}
+    for value, about in db.query(getattr(model, common["column"]), getattr(model, common.get("about") or common["column"])):
+        if value is not None:
+            said.setdefault(str(value), set()).add(str(about) if common.get("about") and about is not None else None)
+    values = sorted(said)
+    shown = [v if said[v] == {None} else "%s (%s)" % (v, "; ".join(sorted(a for a in said[v] if a))) for v in values]
+    return set(values), "%s is one of: %s - or %s when none fits.%s\n" % (
+        common["cell"], json.dumps(shown, ensure_ascii=False), json.dumps(common.get("none")),
+        " Answer the value alone, without the words in brackets." if common.get("about") else "")
 
 
 def _key_of(table, row):
