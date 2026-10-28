@@ -155,17 +155,29 @@ def rows_others_wrote(db, table_name: str, own) -> dict:
     return {row_id: sorted(names) for row_id, names in found.items()}
 
 
-def person_rows(db, table_name: str, row_ids) -> set:
-    """The rows a person wrote a layer on, blank or not (`crud.layer_writer`) - what a gone row says by name."""
-    from database import crud
+def person_cells(db, table_name: str, row_ids) -> dict:
+    """{(row_id, column): {source_name: {"value", "ingested_at", "updated_by"}}} - every layer of each cell a person
+    wrote a layer on, blank or not (`crud.layer_writer`). THE ONE «did a person write here» judgement: a gone row
+    (`person_rows`) and an AI rule's memory of a person's correction (`chain.ask_rule`, lead 10-28) both read it."""
+    from database import crud, models
 
+    cs = models.CellSource
     ids = list(dict.fromkeys(str(r) for r in row_ids or () if r))
-    found = set()
+    found = {}
     for i in range(0, len(ids), DEFAULT_CHUNK_SIZE):
-        layers, _pins = _load_cell_state(db, table_name, ids[i:i + DEFAULT_CHUNK_SIZE])
-        found.update(row_id for (row_id, _column), named in layers.items()
-                     if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named))
+        layers = {}
+        for row_id, column, source, value, at, by in (
+                db.query(cs.row_id, cs.column_name, cs.source_name, cs.value, cs.ingested_at, cs.updated_by)
+                .filter(cs.table_name == table_name, cs.row_id.in_(ids[i:i + DEFAULT_CHUNK_SIZE]))):
+            layers.setdefault((row_id, column), {})[source] = {"value": value, "ingested_at": at, "updated_by": by}
+        found.update({cell: named for cell, named in layers.items()
+                      if any(crud.layer_writer(name) == crud.USER_SOURCE for name in named)})
     return found
+
+
+def person_rows(db, table_name: str, row_ids) -> set:
+    """The rows a person wrote a layer on, blank or not - what a gone row says by name (`person_cells`)."""
+    return {row_id for row_id, _column in person_cells(db, table_name, row_ids)}
 
 
 def key_columns(table_name: str) -> set:

@@ -9,7 +9,8 @@ One body for every «AI fills a table from rows» declaration (lead 10-27: model
     items    {table, step: {column, drop_leading}, item: column}       - lines under each matching row
     reuse    {key: [column | {column, drop_leading}, ...], within: {cell, table, column, carry: {its column: input}}}
     common   {cell, table, column, none}   - `cell` must be one of that column's values, else the word `none`
-    prompts  {common: text, memo: {table, key, text}}
+    prompts  {common: text, memo: {table, key, text}, memory: {scope: [column, ...], limit: N}}
+    memory   {table, columns: {purpose, key, cell, ai, right, memo, who, when}}   - a person's corrections
 
 A group (the `group_by` values of a row handed) is read whole in `order_by` order. Without `window` it is one text;
 with it, its rows are cut `window` at a time with `overlap` rows each side as context, and only the windows holding a
@@ -30,11 +31,15 @@ ANSWER_KEY = "rows"
 
 PROMPT = """<<common>>
 <<memo>>
+<<memory>>
 Answer one JSON object: {"texts": [{"id": <the text's id>, "rows": [<row>, ...]}, ...]} - one item for each text
 below, in any order. A row is an object with exactly these keys: <<cells>>. A value you cannot tell is null.
 <<choices>>
 <<texts>>"""
 CONTEXT_MARK = "(context only - do not answer this line)"
+#: the parts of a memory row - each a column the declaration names (`memory.columns`)
+MEMORY_ROLES = ("purpose", "key", "cell", "ai", "right", "memo", "who", "when")
+MEMORY_HEADING = "Past corrections - a person fixed these answers of yours; answer the same place the same way:"
 
 
 def _spec(rule):
@@ -85,11 +90,34 @@ def skeleton_node():
         {"key": "common", "required": False, "node": record("cell", "table", "column", "none")},
         {"key": "prompts", "required": False, "node": {"kind": "record", "fields": [
             {"key": "common", "required": False, "node": leaf()},
-            {"key": "memo", "required": False, "node": record("table", "key", "text")}]}}]}
+            {"key": "memo", "required": False, "node": record("table", "key", "text")},
+            memory_nodes()[1]]}},
+        memory_nodes()[0]]}
+
+
+def memory_nodes():
+    """The form of `memory` and of `prompts.memory` - one shape for every kind that reads a person's corrections
+    (an ask rule; a report reads them too, `report_shape.skeleton_node`)."""
+    import chain_bindings
+
+    leaf = {"kind": "leaf", "hint": "free"}
+    return ({"key": "memory", "required": False, "node": {"kind": "record", "fields": [
+                {"key": "table", "required": True, "node": leaf},
+                {"key": "columns", "required": True, "node": {"kind": "record", "fields": [
+                    {"key": role, "required": False, "node": leaf} for role in MEMORY_ROLES]}}]}},
+            {"key": "memory", "required": False, "node": {"kind": "record", "fields": [
+                {"key": "scope", "required": False, "node": chain_bindings.list_node("column", leaf)},
+                {"key": "limit", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}})
 
 
 def written_columns(rule) -> list:
-    """The output columns an ask rule writes - its carried keys, its line and item, then its cells."""
+    """The output columns an ask rule writes - its carried keys, its line and item, then its cells; its memory half
+    the memory table's columns but the person's memo."""
+    from chain import rule_shape
+
+    if (rule or {}).get(rule_shape.COMPANION_CELL):
+        named = (_spec(rule).get("memory") or {}).get("columns") or {}
+        return [named[role] for role in MEMORY_ROLES if role != "memo" and named.get(role)]
     out = _spec(rule).get("output") or {}
     return list(dict.fromkeys([*(out.get("carry") or {}), *[out[k] for k in ("line", "item") if out.get(k)],
                                *(out.get("cells") or ())]))
@@ -284,17 +312,91 @@ def _gone(db, rule, carried, answered, lines=None):
              "own": [rule_shape.declaration_of(rule)]} for (key,) in query.all() if key not in answered]
 
 
-def prompt(db, spec, request, choices_line):
-    """The prompt of one request [(id, text)] - also what a Test run shows."""
+def _situation(row):
+    return json.dumps(row, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _shown(value):
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+
+
+def remember(db, rule, row_ids):
+    """The memory half: the output rows handed -> a memory row for each AI cell a person corrected, and `gone` for
+    the memory rows of those output rows no correction holds any more (a person put the AI's value back, or their
+    layer went). A person's value equal to the AI's corrects nothing. The judgement is `cell_layer.person_cells`."""
+    from chain import cell_layer, rule_shape
+    from database import crud
+
+    spec = _spec(rule)
+    named = (spec.get("memory") or {}).get("columns") or {}
+    out_spec = spec.get("output") or {}
+    table, asker = rule.get("trigger_table"), str(rule.get(rule_shape.COMPANION_CELL) or "")
+    model = _model(table)
+    where = sorted(cell_layer.key_columns(table))                # the situation: the output row's key
+    rows = {str(r[0]): dict(zip(where, r[1:])) for r in db.query(model.row_id, *(getattr(model, c) for c in where))
+            .filter(model.row_id.in_([str(i) for i in row_ids or ()])).all()}
+    cells = set(out_spec.get("cells") or ())
+    updates, said = [], set()
+    for (row_id, column), layers in sorted(cell_layer.person_cells(db, table, list(rows)).items()):
+        person = [l for n, l in layers.items() if crud.layer_writer(n) == crud.USER_SOURCE]
+        ai = [l for n, l in layers.items() if crud.layer_writer(n) == crud.CHAIN_SOURCE and l.get("updated_by") == asker]
+        if column not in cells or row_id not in rows or not person or not ai:
+            continue
+        mine = max(person, key=lambda l: str(l.get("ingested_at")))
+        if _shown(mine["value"]) == _shown(ai[0]["value"]):
+            continue
+        written = {named.get("purpose"): asker, named.get("key"): _situation(rows[row_id]), named.get("cell"): column,
+                   named.get("ai"): _shown(ai[0]["value"]), named.get("right"): _shown(mine["value"]),
+                   named.get("who"): mine.get("updated_by"), named.get("when"): str(mine.get("ingested_at"))}
+        written = {k: v for k, v in written.items() if k}
+        said.add(_key_of(rule.get("target_table"), written))
+        updates.append({"source_name": crud.CHAIN_SOURCE, "updated_by": asker, "updates": written})
+    memory = _model(rule.get("target_table"))
+    held = db.query(memory.business_key_val).filter(
+        getattr(memory, named["purpose"]) == asker,
+        getattr(memory, named["key"]).in_(sorted({_situation(r) for r in rows.values()}))).all()
+    updates += [{"business_key_val": key, "updates": {}, "source_name": crud.CHAIN_SOURCE, "gone": True,
+                 "own": [rule_shape.declaration_of(rule)]} for (key,) in held if key not in said]
+    return {"updates": updates, "refusal": None, "calls": 0}
+
+
+def memory_lines(db, spec, purpose, situation):
+    """The «past corrections» lines of a prompt: this purpose's memory rows whose `prompts.memory.scope` values are
+    this text's, newest first, `limit` of them (default 5). The one reader - an ask prompt and a report prompt call it."""
+    memory, reading = spec.get("memory") or {}, (spec.get("prompts") or {}).get("memory")
+    named = memory.get("columns") or {}
+    if not memory.get("table") or not isinstance(reading, dict) or not purpose:
+        return ""
+    model = _model(memory["table"])
+    roles = [r for r in ("key", "cell", "ai", "right", "memo", "when") if named.get(r)]
+    found = [dict(zip(roles, row)) for row in db.query(*(getattr(model, named[r]) for r in roles))
+             .filter(getattr(model, named["purpose"]) == purpose).all()]
+    scope = list(reading.get("scope") or ())
+    picked = [m for m in found if all(str(json.loads(m.get("key") or "{}").get(c)) == str(situation.get(c))
+                                      for c in scope)]
+    picked.sort(key=lambda m: str(m.get("when") or ""), reverse=True)
+    lines = ["- %s %s: you said %s; correct: %s%s" % (m.get("key"), m.get("cell"), m.get("ai"), m.get("right"),
+                                                       " - note: %s" % m["memo"] if m.get("memo") else "")
+             for m in picked[:int(reading.get("limit") or 5)]]
+    return "\n".join([MEMORY_HEADING] + lines) if lines else ""
+
+
+def prompt(db, spec, request, choices_line, purpose=None):
+    """The prompt of one request [(id, text)] - also what a Test run shows. `purpose`: whose corrections it carries."""
     from database import crud
 
     memos = [m for m in (_memo(db, spec, json.loads(ident)) for ident, _t in request) if m]
+    by = list((spec.get("input") or {}).get("group_by") or ())
+    carry = (spec.get("output") or {}).get("carry") or {}
+    remembered = [memory_lines(db, spec, purpose, {out: group.get(src) for out, src in carry.items()})
+                  for group in (dict(zip(by, json.loads(ident))) for ident, _t in request)] if purpose else []
     common = (spec.get("prompts") or {}).get("common")
     out_spec = spec.get("output") or {}
     keys = [out_spec[k] for k in ("line", "item") if out_spec.get(k)] + list(out_spec.get("cells") or ())
     return (PROMPT
             .replace("<<common>>", "" if crud.is_blank_value(common) else str(common))
             .replace("<<memo>>", "\n".join(memos))
+            .replace("<<memory>>", "\n".join(dict.fromkeys(m for m in remembered if m)))
             .replace("<<cells>>", ", ".join(json.dumps(c) for c in keys))
             .replace("<<choices>>", choices_line)
             .replace("<<texts>>", "\n\n".join("[%s]\n%s" % pair for pair in request)))
@@ -305,6 +407,10 @@ def answer(db, rule, row_ids):
     from database import crud
     from utils import llm
 
+    from chain import rule_shape
+
+    if (rule or {}).get(rule_shape.COMPANION_CELL):
+        return remember(db, rule, row_ids)
     spec = _spec(rule)
     name = str((rule or {}).get("name") or "")
     put, out_spec = spec.get("input") or {}, spec.get("output") or {}
@@ -358,7 +464,7 @@ def answer(db, rule, row_ids):
             raise llm.LlmRefused("the answer has no row")
         return out
 
-    got, why, asked = llm.ask_batch(texts, lambda request: prompt(db, spec, request, choices_line), read, ANSWER_KEY,
+    got, why, asked = llm.ask_batch(texts, lambda request: prompt(db, spec, request, choices_line, rule_shape.declaration_of(rule)), read, ANSWER_KEY,
                                     llm.settings()["batch_chars"], logger) if texts else ({}, {}, 0)
     for ident, (carried, lines, reused) in plan.items():
         if ident in why:

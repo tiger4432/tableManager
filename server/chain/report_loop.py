@@ -147,7 +147,7 @@ def _prompts(spec, cells=("select", "style", "compare", "control")):
 def _request(request):
     return ["Evaluation: %s" % request.get("evaluation"),
             "Compare sets: %s" % (", ".join(request.get("sets") or ()) or "the declaration's default"),
-            "Note: %s" % (request.get("note") or "none")]
+            "Note: %s" % (request.get("note") or "none")] + ([request["memory"]] if request.get("memory") else [])
 
 
 def _said(call, args):
@@ -622,7 +622,7 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     (`SEND_MARK`) - the chain worker's upkeep POSTs it (`send_waiting`)."""
     import datetime
 
-    from chain import report_html
+    from chain import ask_rule, report_html, rule_shape
     from database import crud, models
 
     model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
@@ -642,7 +642,9 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
         said, report = report_reads.label(wafer), None
         try:
             report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
-            out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": []}, ask=ask, clock=clock)
+            memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), dict(zip(keys, wafer)))
+            out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": [], "memory": memory},
+                      ask=ask, clock=clock)
         except report_reads.ReadRefused as refused:
             logger.error("[Report] %s wafer %s stopped: %s", name, said, refused, exc_info=refused)
             out = {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}

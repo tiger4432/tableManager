@@ -478,7 +478,8 @@ def declaration_of(rule: dict) -> str:
 
 
 def companion_rules(internal: dict) -> list:
-    """The EXTRA chain rules one unified declaration implies. Today: a join's target side.
+    """The EXTRA chain rules one unified declaration implies. Today: a join's target side, and an ask rule's
+    memory half (when it declares `memory`).
 
     🔴 ONE DECLARATION, TWO TRIGGERS (S-237 ㉢). A join has to be recomputed when the source
     row moves (the declaration's own rule, on `on.table`) AND when a row it writes into
@@ -494,6 +495,17 @@ def companion_rules(internal: dict) -> list:
     derive = internal.get("derive") or {}
     into = internal.get("into") or {}
     name = internal.get("name")
+    memory = ((derive.get("ask") or {}).get("memory") or {}) if derive.get("kind") == "ask" else {}
+    if memory.get("table") and "table" in into and name:
+        # an AI rule's second half (lead 10-28 A-3): a person's edit on its output table wakes it - the chain's own
+        # writes do not (no allow_chain_trigger) - and it writes the correction into the memory table
+        companion = dict(as_chain_rule(internal))
+        companion["name"] = str(name) + COMPANION_SUFFIX
+        companion["trigger_table"], companion["target_table"] = into["table"], memory["table"]
+        for key in ("trigger_columns", chain_bindings.ALLOW_DELETE_TRIGGER_KEY) + chain_bindings.ROW_GATE_KEYS:
+            companion.pop(key, None)
+        companion[COMPANION_CELL] = str(name)
+        return [companion]
     if derive.get("kind") != "join" or "table" not in into or not name:
         return []
     source = (internal.get("on") or {}).get("table")

@@ -2002,6 +2002,126 @@
                             }
                           ]
                         }
+                      },
+                      {
+                        "key": "memory",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "scope",
+                              "required": false,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "column",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            {
+                              "key": "limit",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "memory",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "table",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "columns",
+                        "required": true,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "purpose",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "key",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "cell",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "ai",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "right",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "memo",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "who",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "when",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
                       }
                     ]
                   }
@@ -3111,6 +3231,126 @@
                             },
                             {
                               "key": "text",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": "memory",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "scope",
+                              "required": false,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "column",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            {
+                              "key": "limit",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "memory",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "table",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "columns",
+                        "required": true,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "purpose",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "key",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "cell",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "ai",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "right",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "memo",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "who",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "when",
                               "required": false,
                               "node": {
                                 "kind": "leaf",

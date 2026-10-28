@@ -101,7 +101,7 @@ SIZES = "sizes"
 SIZE_DEFAULTS = {"font_px": 10, "name_px": 185, "value_px": 100}
 KEY_WORDS = (KEY_UNIT, KEY_LATEST, KEY_FOLD)
 #: The cells of `derive.report`, in the form's order.
-REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
+REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "memory", "layout", "loop", "template", "control",
                                      "formats", "item_sep", "sizes", "columns", "keys", "labels", "info", "picture_rows", "results",
                                      "send_to", "causes")
 #: `results`: the report table's columns a report writes on the wafer's row - the operator names them: `file` its file
@@ -271,13 +271,17 @@ def _record(cells, hint):
 
 def skeleton_node():
     """`derive.report`'s node in the chain skeleton's unified root."""
+    from chain import ask_rule
+
     fields = [{"key": role, "required": role in REQUIRED_ROLES, "node": _role_node(role)} for role in ROLE_COLUMNS]
     fields += [
         {"key": "rows", "required": False, "node": chain_bindings.list_node("item", {"kind": "leaf", "hint": "free"})},
         {"key": "digits", "required": False, "node": {"kind": "leaf", "hint": "number"}},
         {"key": "prompts", "required": False, "node": {"kind": "record", "fields": _record(PROMPT_CELLS, "free")[
             "fields"] + [{"key": FUNCTIONS_CELL, "required": False, "node": {"kind": "record", "fields": [
-                {"key": read, "required": False, "node": _record((ABOUT_CELL,), "free")} for read in READS]}}]}},
+                {"key": read, "required": False, "node": _record((ABOUT_CELL,), "free")} for read in READS]}},
+            ask_rule.memory_nodes()[1]]}},
+        ask_rule.memory_nodes()[0],
         {"key": "layout", "required": False, "node": chain_bindings.list_node("slot", _record(
             ("kind", "fill", "slot"), "free"))},
         {"key": "loop", "required": False, "node": _record(LOOP_CELLS, "number")},

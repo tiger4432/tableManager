@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-28 [AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음](#2026-10-28--ai-가-사람-교정을-기억한다--deriveask-의-memory--리포트도-읽음) — 적을 곳 derive.ask · derive.report 의 memory · prompts.memory
 - 2026-10-28 [AI 스텝 맵핑 — 창 단위로 묻고, 같은 자리 공정의 답을 다시 쓴다 (derive.ask)](#2026-10-28--ai-스텝-맵핑--창-단위로-묻고-같은-자리-공정의-답을-다시-쓴다-deriveask) — 적을 곳 derive.ask 의 window · items · reuse · output.line/item
 - 2026-10-28 [AI 가 표를 채우는 체인 규칙 — derive kind ask (모델링 구조 인식)](#2026-10-28--ai-가-표를-채우는-체인-규칙--derive-kind-ask-모델링-구조-인식) — 적을 곳 chain_rules 의 derive.ask · 보는 곳 chain_worker.log «[ChainRule] … asked»
 - 2026-10-28 [체인이 지우는 행 — 사람이 적은 행은 남기고 그 규칙의 칸만 거둔다(뒤집음)](#2026-10-28--체인이-지우는-행--사람이-적은-행은-남기고-그-규칙의-칸만-거둔다뒤집음) — 보는 곳 chain_worker.log 의 «[ChainRetract] kept <표> <키>: … withdrew N cell(s)» · 그 행의 사람 칸
@@ -636,6 +637,13 @@
 
 
 
+
+## 2026-10-28 · AI 가 사람 교정을 기억한다 — derive.ask 의 memory · 리포트도 읽음
+
+- **무엇** — 지시서 10-27 A-3. AI 가 채운 칸을 사람이 다르게 고치면, 그 상황(출력 행의 키 칸 값)과 칸을 키로 메모리 표에 한 행이 남습니다. 다음에 같은 범위(`prompts.memory.scope`)를 물을 때 최근 `limit` 개가 프롬프트에 «Past corrections» 줄로 실립니다. 리포트 선언도 같은 칸으로 읽습니다(쓰는 쪽은 다음).
+- **바뀐 동작** — memory 를 적은 ask 선언은 반쪽 규칙 하나를 더 세웁니다(조인의 :target 반쪽과 같은 꼴). 사람이 AI 값으로 되돌리거나 사람 층이 거둬지면 그 메모리 행은 지워집니다. AI 가 나중에 맞게 돼도 교정 줄은 남습니다 — 지우려면 메모리 행을 지웁니다.
+- **필요한 조건** — git pull · 런처 재기동 · 메모리 표(table_config) · 선언에 memory 와 prompts.memory.
+- **자세히** — docs/guide/ai_ask_tables.md 의 «사람 교정을 기억하는 칸».
 
 ## 2026-10-28 · AI 스텝 맵핑 — 창 단위로 묻고, 같은 자리 공정의 답을 다시 쓴다 (derive.ask)
 
