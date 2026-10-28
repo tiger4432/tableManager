@@ -396,6 +396,8 @@ isolated_pg.install_trigram(connection, schema)  pg_trgm 을 스크래치 «안�
       스크래치에 varchar `ledger_events` 가 서고 제품의 ensure_schema 가 CHECK jsonb_typeof(object_payload) 를 붙이다 죽었다
       => 하니스의 «닮은꼴»이 진짜 저자(원장의 파티션 jsonb DDL)보다 «먼저» 도착했다
 수리   conftest.creatable_tables(metadata, catalogue=None) — DB 가 아니라 «선언»에 묻는다
+      ⚰️ 10-28 64b197e63 부터 제품이 막는다: kind: view 는 models.VIEW_METADATA 에 매핑되고 Base.metadata 에 없다
+         -> 하니스는 Base.metadata 를 통째로 복사하고 creatable_tables 는 은퇴
       (models.sync_dynamic_tables_schema 가 inspector.get_view_names() 를 쓰는 것은 그때는 «관계가 이미 있어서»다.
        픽스처에는 아직 아무것도 없으므로 답할 수 있는 것은 카탈로그뿐이고, 그것도 낱말의 기본값을 매기는
        «한 자리» ledger.setup_bundle.catalog_kind 를 통해서다 — S-187)
