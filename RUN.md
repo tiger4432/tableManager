@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **리포트 프롬프트가 같은 quantity 를 «값 있음 + 채울 것»으로 두 번 말하지 않는다 — f83bcc6e9** — git pull · 런처 재기동
+>
+> ```
+> 할 것    없음 (선언 그대로)
+> 볼 줄    리포트 Evidence «candidate conditions» 걸음 · 터미널 «[Report] causes to fill: …»
+> 뜻      causes.values 를 선언한 리포트: «causes to fill» = «quantity values to fill» 과 같은 이름들 = 고쳐짐
+>          값이 적힌 quantity 나 구조 · 스텝 · 물체가 «causes to fill» 에 = 이 착지 전
+>          선언 안 한 리포트: 조건 안 맺은 후보가 전부 «causes to fill» 에 = 그대로 (소유자 10-25)
+> 되돌리기  git revert f83bcc6e9 -> 런처 재기동
+> ```
+
+---
+
 > ## [10-28] **파일 다시 읽기가 소급 줄로 돈다 · 소급 줄은 슬롯 몫까지만 · 소급 줄의 배치는 page_seconds 에 맞춘 행 수 — 다시 읽기가 한 표를 한 줄로 세우고 새 파일의 체인을 뒤에 세우던 것** — 서버 · 와처 · 체인 워커 재기동 뒤
 >
 > ```
