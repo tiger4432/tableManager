@@ -16,6 +16,8 @@ through the chain's one batch body (`ingestion_worker.drain_events`), saying aft
               that touches one of its tables is unfinished - else the later value could land
               first. Tables two slots touch at once are held per group (`table_locks`).
   pace        a retroactive run's line rests by its run's pace (`pacing.json`) between batches
+  share       retroactive lines hold at most `chain_retroactive_slots` slots (unset: all but one), so a live line
+              always has a slot to be given at the next batch boundary (소유자 10-28)
   stopped     a × or a kill of the slot's pid stops the line it holds only: the dispatcher sets
               aside what of it still waits, ends the slot's database connections, starts a new
               slot and never gives that line again on its own (`rerun_set_aside` brings it back)
@@ -40,6 +42,9 @@ from error_said import told
 #: at a time; 0 or a wrong value reads as the default.
 SLOTS_SETTING = "chain_slots"
 DEFAULT_SLOTS = 2
+#: ingestion_settings.json - how many of those slots retroactive runs' lines may hold at once; unset or a wrong value:
+#: all but one, and at least one (소유자 10-28 «소급 체인 돌다가 운영 체인 다 줄 서면 안 되잖아»).
+RETROACTIVE_SLOTS_SETTING = "chain_retroactive_slots"
 #: The module a slot process runs - what its command line says, and what a kill checks first.
 SLOT_MODULE = "chain.slots"
 #: A slot's heartbeat file is `chain-slot-<n>`; the line it holds rides its `holds` lap.
@@ -91,6 +96,15 @@ def chain_slots(settings=None):
     settings = load_ingestion_settings() if settings is None else settings
     value = settings.get(SLOTS_SETTING, DEFAULT_SLOTS)
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else DEFAULT_SLOTS
+
+
+def retroactive_slots(slots, settings=None):
+    """How many of `slots` retroactive lines may hold - read every tick like `chain_slots`."""
+    from parsers.directory_watcher import load_ingestion_settings
+
+    settings = load_ingestion_settings() if settings is None else settings
+    value = settings.get(RETROACTIVE_SLOTS_SETTING)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 1 else max(1, slots - 1)
 
 
 # ------------------------------------------------------------------------------ the dispatcher
@@ -173,10 +187,11 @@ class _Slot:
         except (OSError, ValueError):
             return False
 
-    def ask(self, line):
-        """Run a batch of `line`. -> False when it can no longer be asked (it is reaped next tick)."""
+    def ask(self, line, rows=None):
+        """Run a batch of `line` - of at most `rows` rows (a retroactive line's budget; None: the chain's).
+        -> False when it can no longer be asked (it is reaped next tick)."""
         self.line, self.ready = line, False
-        if self._send({"line": line["line"], "run": line["run"]}):
+        if self._send({"line": line["line"], "run": line["run"], "rows": rows}):
             return True
         self.line = None
         return False
@@ -218,6 +233,7 @@ class SlotPool:
         self._resting = {}            # line key -> monotonic time it may be given again
         self._ran = {}                # line key -> monotonic time a batch of it last ran
         self._batches = {}            # retroactive line key -> batches run, for its pace
+        self._rows = {}               # retroactive line key -> its next batch's rows (`next_row_budget`)
         self._started = {}            # slot index -> monotonic time it was last started
         self._wanted = DEFAULT_SLOTS
         self._read_at, self._waiting = -READ_EVERY_SECONDS, []
@@ -236,6 +252,7 @@ class SlotPool:
         self.woken.clear()
         answered = self._read_answers(db)
         self._size(chain_slots())
+        share = retroactive_slots(self._wanted)
         open_slots = [slot for _i, slot in sorted(self.slots.items())
                       if not slot.leaving and (slot.line is None or slot.ready)]
         if control.paused() is not None:
@@ -255,19 +272,25 @@ class SlotPool:
         rank = lambda line: (bool(line["run"]), self._ran.get(line["line"], 0.0))   # noqa: E731
         waiting = sorted((line for line in self._waiting
                           if line["line"] not in held and line["line"] not in self._resting), key=rank)
+        retro = sum(1 for slot in self.slots.values() if slot.line is not None and slot.line["run"])
         asked = 0
         for slot in open_slots:
             mine = slot.line
-            if mine is not None and mine["line"] not in self._resting and not (
-                    waiting and rank(waiting[0]) < rank(mine)):
+            retro -= bool(mine is not None and mine["run"])
+            # a retroactive line is given only while the retroactive lines in the other slots hold fewer than its share
+            givable = [line for line in waiting if not line["run"] or retro < share]
+            if mine is not None and mine["line"] not in self._resting and (not mine["run"] or retro < share) and not (
+                    givable and rank(givable[0]) < rank(mine)):
                 nxt = mine                                   # it keeps its line
-            elif waiting:
-                nxt = _held(waiting.pop(0))
+            elif givable:
+                waiting.remove(givable[0])
+                nxt = _held(givable[0])
             else:
                 if mine is not None:
-                    slot.release()                           # its line rests and nothing waits
+                    slot.release()                           # its line rests, or is over its share, and nothing waits
                 continue
-            if slot.ask(nxt):
+            retro += bool(nxt["run"])
+            if slot.ask(nxt, self._rows.get(nxt["line"]) if nxt["run"] else None):
                 asked += 1
                 if nxt is not mine:
                     logger.info("[Chain] slot %d (pid %d) runs line %s", slot.index, slot.pid, nxt["line"])
@@ -302,6 +325,7 @@ class SlotPool:
                     slot.ready = True
                     self._ran[key] = now
                     if slot.line["run"]:
+                        self._rows[key] = answer.get("rows") or self._rows.get(key)
                         self._rest_by_pace(db, key, now)
                 else:
                     if outcome == FAILED:
@@ -309,6 +333,7 @@ class SlotPool:
                     if outcome == DRAINED:
                         self._ran.pop(key, None)
                         self._batches.pop(key, None)
+                        self._rows.pop(key, None)
                         # the window read before it drained still lists it: given again from there, it
                         # was asked, drained at once and given again every few ms until the next read
                         self._waiting = [line for line in self._waiting if line["line"] != key]
@@ -556,15 +581,45 @@ async def _serve(index, answers):
             continue
         heartbeat.record_lap(name, HOLDS, line=ask["line"])
         heartbeat.beat(name, note=ingestion_worker._worker_note(), force=True)
-        outcome, rules, seen = await _run_batch(ask["line"], rules, seen)
+        outcome, rules, seen, rows = await _run_batch(ask, rules, seen)
         if outcome != RAN:
             heartbeat.record_lap(name, HOLDS)
             heartbeat.beat(name, note=ingestion_worker._worker_note(), force=True)
-        answers.write(json.dumps({"line": ask["line"], "outcome": outcome}) + "\n")
+        answers.write(json.dumps({"line": ask["line"], "outcome": outcome, "rows": rows}) + "\n")
 
 
-async def _run_batch(key, rules, seen):
-    """One batch of the line's waiting events, through the chain's batch body."""
+def next_row_budget(rows, seconds, target=None):
+    """A retroactive line's next batch, in rows, after `rows` ran in `seconds`: the page rule
+    (`keyset_scan.next_size`) at the page time (`pacing.page_seconds`) - at most double, 1 to the chain's budget
+    (총괄 10-28: a batch that ran a cheap event in 0.15 s sized the next at 30 times, and it took 174 s). None when
+    nothing ran: the line keeps its budget."""
+    import event_constants
+    import pacing
+    from chain.keyset_scan import next_size
+
+    if rows <= 0 or seconds <= 0:
+        return None
+    target = pacing.page_seconds() if target is None else target
+    return next_size(rows, seconds, target, event_constants.OUTBOX_GROUP_MAX_ROWS, (rows / seconds,))
+
+
+def _rows_ran(db, events, ids):
+    """The rows of `events` (ids `ids`, read before the batch) it marked done - a group it left waiting, deferred or
+    rewound ran none (C 10-28: the budget was counted as run whatever the batch did)."""
+    import event_constants
+    from database.models import DatabaseOutbox
+
+    done = {i for (i,) in db.query(DatabaseOutbox.id).filter(DatabaseOutbox.id.in_(ids),
+                                                              DatabaseOutbox.processed_chain == True)}  # noqa: E712
+    return sum(event_constants.payload_row_count(getattr(event, "_parsed_payload", None))
+               for event, i in zip(events, ids) if i in done)
+
+
+async def _run_batch(ask, rules, seen):
+    """One batch of the asked line's waiting events, through the chain's batch body - a retroactive line's at most its
+    `rows` (first: the chain's budget), a live line's the chain's -> (outcome, rules, seen, a retroactive line's next
+    `rows`: None when the batch did not run)."""
+    import event_constants
     from chain import activity, control, ingestion_worker
     from database.database import SessionLocal
     from runtime import system_reload
@@ -572,8 +627,10 @@ async def _run_batch(key, rules, seen):
     from utils import logger as process_logging
 
     if control.paused() is not None:
-        return PAUSED, rules, seen
-    started = time.monotonic()
+        return PAUSED, rules, seen, None
+    key = ask["line"]
+    budget = (ask.get("rows") or event_constants.OUTBOX_GROUP_MAX_ROWS) if ask.get("run") else None
+    started, rows = time.monotonic(), None
     db = SessionLocal()
     try:
         # the reload reads the database too: a dropped connection there is this batch's, said and run again - outside
@@ -589,9 +646,16 @@ async def _run_batch(key, rules, seen):
         events = await ingestion_worker._step_beating(db, "line read", ingestion_worker.pending_chain_events, db,
                                                       line=key)
         if not events:
-            return DRAINED, rules, seen
+            return DRAINED, rules, seen, None
+        ids = [event.id for event in events]
         failed = await ingestion_worker.drain_events(db, events, control.with_rules_off(rules), SessionLocal,
-                                                     batch_wake_ts=started)
+                                                     batch_wake_ts=started, row_budget=budget)
+        if budget is not None:
+            took = time.monotonic() - started
+            ran = await ingestion_worker._step_beating(db, "rows ran", _rows_ran, db, events, ids)
+            rows = next_row_budget(ran, took)
+            logger.info("[Chain] line %s: this batch ran %d ingested rows in %.1f s - the next covers ~%d ingested rows.",
+                        key, ran, took, rows or budget)
     except Exception as exc:                                            # noqa: BLE001
         # The chain loop's own contract, kept: a batch that raised is said and tried again, its
         # events as they were - a set-aside cutting a group's wait for a table lands here. Raised
@@ -606,8 +670,8 @@ async def _run_batch(key, rules, seen):
                          log_filename=process_logging.active_log_filename(),
                          **activity.registry.instants())
     if control.paused() is not None:
-        return PAUSED, rules, seen
-    return (FAILED if failed else RAN), rules, seen
+        return PAUSED, rules, seen, None
+    return (FAILED if failed else RAN), rules, seen, (None if failed else rows)
 
 
 if __name__ == "__main__":

@@ -4346,11 +4346,11 @@ def reload_rules(work):
     return rules
 
 
-async def drain_events(db, pending_events, rules, db_session_factory, batch_wake_ts=None):
+async def drain_events(db, pending_events, rules, db_session_factory, batch_wake_ts=None, row_budget=None):
     """One batch of waiting events, run: normalized, refused past the depth limit, its last
     transaction completed, cut to the row budget, grouped, merged and processed -> `failed_any`,
     or None when no event of it could run. The loop and a slot call this one body (총괄
-    19f6a9277: 「둘째 체인 길 금지」)."""
+    19f6a9277: 「둘째 체인 길 금지」). `row_budget`: a smaller budget - a retroactive line's (`slots.next_row_budget`)."""
     from database.models import DatabaseOutbox
 
     # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx
@@ -4447,14 +4447,14 @@ async def drain_events(db, pending_events, rules, db_session_factory, batch_wake
     # processed_chain=False and returns in the same order next iteration.
     # 총괄 72f419bd1: and a rule's `rows_per_run` is a smaller budget for the events that wake it -
     # one cut, so a rule of 1 runs one text a group.
-    trimmed = trim_events_to_row_budget(normalized_events, OUTBOX_GROUP_MAX_ROWS,
-                                        cap_of=lambda event: _rows_cap(event, rules))
+    budget = OUTBOX_GROUP_MAX_ROWS if row_budget is None else min(OUTBOX_GROUP_MAX_ROWS, row_budget)
+    trimmed = trim_events_to_row_budget(normalized_events, budget, cap_of=lambda event: _rows_cap(event, rules))
     if len(trimmed) < len(normalized_events):
         caps = [c for c in (_rows_cap(e, rules) for e in normalized_events[:len(trimmed) + 1]) if c]
         # a declared rows_per_run cuts every batch of its rule - said at debug, it is the declaration
         (logger.debug if caps else logger.info)(
             f"[OUTBOX-4] Deferring {len(normalized_events) - len(trimmed)} event(s) "
-            f"to the next iteration: this batch already covers ~{min(caps) if caps else OUTBOX_GROUP_MAX_ROWS} "
+            f"to the next iteration: this batch already covers ~{min(caps) if caps else budget} "
             f"ingested rows{' (rows_per_run)' if caps else ''}."
         )
         normalized_events = trimmed

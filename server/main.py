@@ -7638,6 +7638,9 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
                else None)
     if refused:
         raise HTTPException(status_code=409, detail=refused)
+    # the press's file re-read runs - the watcher and the read below read under them (소유자 10-28)
+    await asyncio.to_thread(reread.open_runs, db, {(log.table_name, log.source) if log is not None else (into, None)
+                                                   for log in failed_logs})
 
     # 만약 프로세스 분리(DECOUPLED) 모드라면 상태만 PENDING_RETRY로 변경하고 즉시 반환합니다.
     if os.getenv("DECOUPLED") == "True":
@@ -7707,8 +7710,10 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
         )
         
         def _retry_in_order(handler=handler, log=log):
-            # The table's files one at a time, as the watcher and the split-mode poller take them (총괄 5c0a86cec).
-            with get_workspace_serial_lock(handler.workspace_path):
+            # The table's files one at a time, as the watcher and the split-mode poller take them (총괄 5c0a86cec),
+            # under the press's run as the watcher reads them (소유자 10-28)
+            with get_workspace_serial_lock(handler.workspace_path), \
+                    reread.reading_under(db, log.table_name, log.source):
                 return handler.process_archived_file_sync(log, db)
 
         res = await asyncio.to_thread(_retry_in_order)

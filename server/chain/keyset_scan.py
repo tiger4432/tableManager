@@ -35,6 +35,16 @@ DEFAULT_CHUNK_SIZE = 1000
 FIRST_PAGE = 1
 
 
+def next_size(size, took, seconds, most, rates):
+    """The page after one of `size` rows that took `took` s: cut by its overshoot past `seconds`, else at most double,
+    to what the slowest of `rates` (rows a second, None unknown) fills in `seconds` - never above `most`. `PageSize`'s
+    rule, and a retroactive chain line's batch (`slots.next_row_budget`)."""
+    if took > seconds:
+        return max(1, int(size * seconds / took))
+    known = [rate for rate in rates if rate]
+    return min(most, size * 2, math.ceil(min(known) * seconds) if known else size * 2)
+
+
 class PageSize:
     """THE ONE PAGE-SIZE RULE every retroactive page loop asks (소유자 10-12 「모든 소급은 5 초에 한 번은 진행 상황이 보이게 배치
     크기 조절해」): the first page is FIRST_PAGE; a page that took under half the declared page time
@@ -59,12 +69,7 @@ class PageSize:
         if self._since is not None:
             took = now - self._since
             rate = self.size / took if took > 0 else None
-            if took > self.seconds:
-                self.size = max(1, int(self.size * self.seconds / took))
-            else:
-                slower = min(r for r in (rate, self._rate) if r) if rate or self._rate else None
-                self.size = min(self.most, self.size * 2,
-                                math.ceil(slower * self.seconds) if slower else self.size * 2)
+            self.size = next_size(self.size, took, self.seconds, self.most, (rate, self._rate))
             self._rate = rate
         self._since = now
         return self.size

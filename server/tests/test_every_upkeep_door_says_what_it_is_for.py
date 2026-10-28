@@ -12,8 +12,9 @@ from admin import retroactive                                        # noqa: E40
 
 
 def _catalog():
-    return {**{op: spec for op, spec in retroactive.OPERATIONS.items() if not spec.get("retired")},
-            **retroactive.DOORS_OUTSIDE}
+    from admin import help as admin_help
+
+    return admin_help.catalog()
 
 
 def test_every_door_in_the_catalog_says_what_it_is_for_with_questions_and_the_next_door():

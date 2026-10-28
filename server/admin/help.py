@@ -34,7 +34,8 @@ SYSTEM = ("You route an operator's question to ONE maintenance tool of the list 
 
 def catalog():
     """{name: spec} - the retroactive tools not retired, and the upkeep doors outside the tab."""
-    return {**{op: spec for op, spec in retroactive.OPERATIONS.items() if not spec.get("retired")},
+    return {**{op: spec for op, spec in retroactive.OPERATIONS.items()
+               if not spec.get("retired") and retroactive.form_started(spec)},
             **retroactive.DOORS_OUTSIDE}
 
 

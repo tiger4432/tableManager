@@ -379,7 +379,10 @@ def retry_one(db, log):
             raise RuntimeError(
                 "the watcher runs no handler for table %r (%s) - nothing to retry it with"
                 % (table_name, workspace_watcher.raws_root_for(table_name)))
-        with get_workspace_serial_lock(handler.workspace_path):
+        from ingestion import reread
+
+        with get_workspace_serial_lock(handler.workspace_path), \
+                reread.reading_under(db, log.table_name, log.source):
             res = handler.process_archived_file_sync(log, db)
         if res:
             logger.info(f"Retry succeeded for checklist row #{log.id} ({log.filename}).")

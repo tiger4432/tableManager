@@ -181,7 +181,7 @@ def test_every_operation_is_judged_before_it_is_recorded():
                   if spec["judge"] is None) == NO_NAME_OPS
     assert [op for op in NO_NAME_OPS if retroactive.OPERATIONS[op]["params"]] == []
     assert (set(NAME_OPS) | set(RULE_OPS) | set(COLLECTOR_OPS) | set(SET_ASIDE_OPS) | set(NO_NAME_OPS)
-            == set(retroactive.OPERATIONS))
+            == {op for op, spec in retroactive.OPERATIONS.items() if retroactive.form_started(spec)})
 
 
 @pytest.mark.parametrize("op", sorted(NAME_OPS))

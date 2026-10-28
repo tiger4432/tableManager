@@ -1,5 +1,35 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **파일 다시 읽기가 소급 줄로 돈다 · 소급 줄은 슬롯 몫까지만 · 소급 줄의 배치는 page_seconds 에 맞춘 행 수 — 다시 읽기가 한 표를 한 줄로 세우고 새 파일의 체인을 뒤에 세우던 것** — 서버 · 와처 · 체인 워커 재기동 뒤
+>
+> ```
+> 무엇     Retry · Read all again · Read now · Read these 를 누르면 (표, 소스)마다 «file_reread» 소급 실행이 done 으로 서고,
+>          와처는 그 파일을 그 run 으로 읽는다 -> 그 체인 이벤트는 소급 줄: 운영 줄을 안 막고, 운영 줄이 먼저, run 의 pace 로 쉼
+>          앞 누름의 파일이나 체인 이벤트가 아직 남았으면 같은 run 이 이어 받는다(줄 하나 · 순서 하나). 다 돈 뒤 누르면 새 run
+>          소급 줄이 쥘 슬롯은 chain_retroactive_slots 까지(비면 «슬롯 수 - 1», 최소 1) — 나머지는 늘 운영 줄 몫
+>          소급 줄의 배치: 첫 배치 20,000 행, 다음부터 «page_seconds × 지난 배치에서 돈 행 / 지난 배치 초»,
+>          많아야 두 배(1 ~ 20,000). 아무것도 안 돈 배치 뒤에는 예산 그대로. 운영 줄은 그대로
+>          다시 읽기가 쓴 체인 이벤트는 200 행씩(다른 쓰기는 그대로 1,000) — 배치가 목표 초 근처에서 잘리게
+>          게이트는 안 잡는다 — 다시 읽기가 서 있어도 다른 소급은 거절되지 않는다
+> 확인     SELECT run_id, state, params, queued_at FROM retroactive_runs WHERE op = 'file_reread' ORDER BY queued_at DESC LIMIT 5;
+>          state 'done' = 정상. 같은 (표, 소스) 행이 앞 누름이 다 돌기 전에 또 생기면 이어 받기가 안 된 것
+>          어드민 체인 대기열: 다시 읽기의 줄이 «Re-read files» 로 보이고, 새 파일의 줄은 그 뒤가 아니라 먼저 돈다
+>          대기열 맨 위 «Waiting» 수는 이벤트 수다(행 수 아님) — 다시 읽기 이벤트는 200 행씩이라 같은 행 수에 다섯 배로 보인다.
+>          행이 는 게 아니다. 클라 착지 뒤에는 화면의 그 수에 단위(events)가 붙는다. 줄 표의 Rows 칸은 행 수
+> 손잡이   ingestion_settings.json "chain_retroactive_slots": N — 소급 줄이 함께 쥘 슬롯 수. chain_slots 와 같게 적으면 소급이 슬롯을
+>          다 쓸 수 있다(이 고침 전과 같음). 재기동 없이 다음 바퀴부터
+>          pacing.json "page_seconds": 초(기본 3, 상한 5) — 소급 줄 한 배치의 목표 초. 줄이면 배치가 작아져 운영 줄이 표 잠금을
+>          덜 기다린다. 재기동 없이 다음 배치부터
+> ×        대기열 × 는 그 (표, 소스)의 다시 읽기를 멈춘다 — 아직 안 읽힌 파일은 다시 읽기 전 상태로 돌아가고 줄에 다시 안 선다
+>          이미 읽는 파일 하나는 끝까지 읽힌다(× 뒤에 그 파일이 쓴 것은 체인이 돈다). 다른 표 · 다른 소스의 다시 읽기는 그대로
+> 보는 줄  chain_worker.log «[Chain] slot N (pid P) runs line <run_id>» — 다시 읽기 run 은 슬롯 몫을 넘어 동시에 서지 않는다
+>          chain_worker.log «[Chain] line <run_id>: this batch ran R ingested rows in S s - the next covers ~N ingested rows.»
+>          — 소급 줄의 배치마다 한 줄. S 가 page_seconds 근처이고 N 이 많아야 R 의 두 배면 정상. S 가 page_seconds 의 몇 배로
+>          자주 뛰면 크기 맞추기가 안 맞는 것. R 0 이 이어지면 그 줄의 이벤트가 돌지 않고 남는 것(배치가 아무것도 못 끝냄)
+> ```
+>
+> ---
+>
 > ## [10-28] **(wafer, leg) 리포트도 계측값이 실린다 — causes.values.row, 61adaa9ee** — git pull · 런처 재기동
 >
 > ```

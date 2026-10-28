@@ -517,12 +517,15 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         RUN_KEY = "run_id"
 
     tx_id, user, source, ts, chain_depth, channel, cascade, written_by, run_id = _outbox_envelope()
+    from .context import request_event_rows
+
+    chunk = request_event_rows.get() or OUTBOX_COLLAPSE_CHUNK_ROWS
 
     # Split a huge flush into 1,000-id chunks: bounds the JSONB payload (~40 KB),
     # keeps the project's chunking discipline, and bounds the failure path (a
     # poison row takes at most one chunk FAILED with it).
-    for i in range(0, len(row_ids), OUTBOX_COLLAPSE_CHUNK_ROWS):
-        id_chunk = row_ids[i:i + OUTBOX_COLLAPSE_CHUNK_ROWS]
+    for i in range(0, len(row_ids), chunk):
+        id_chunk = row_ids[i:i + chunk]
         chunk_event = DatabaseOutbox(
             event_uuid=str(uuid.uuid4()),
             event_type=event_type,
@@ -583,9 +586,8 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
             chunk_event.payload[REPLAY_KEY] = True
         if page:
             chunk_event.payload[REPLAY_PAGE_KEY] = dict(
-                page, part=i // OUTBOX_COLLAPSE_CHUNK_ROWS + 1,
-                parts=(len(row_ids) + OUTBOX_COLLAPSE_CHUNK_ROWS - 1) // OUTBOX_COLLAPSE_CHUNK_ROWS)
-        old_chunk = list(old[i:i + OUTBOX_COLLAPSE_CHUNK_ROWS]) if old else []
+                page, part=i // chunk + 1, parts=(len(row_ids) + chunk - 1) // chunk)
+        old_chunk = list(old[i:i + chunk]) if old else []
         if any(old_chunk):
             chunk_event.payload[OLD_VALUES_KEY] = old_chunk
         session.add(chunk_event)

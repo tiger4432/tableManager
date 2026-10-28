@@ -48,7 +48,7 @@ def test_a_slow_line_read_keeps_the_slot_beating_and_names_its_step(monkeypatch)
     monkeypatch.setattr(heartbeat, "beat", lambda name, **k: beats.append((name, time.monotonic())) or
                         real_beat(name, **k))
 
-    outcome, _rules, _seen = asyncio.run(slots._run_batch("line-k", [], 0))
+    outcome, _rules, _seen, _rows = asyncio.run(slots._run_batch({"line": "line-k", "run": False}, [], 0))
     assert outcome == slots.DRAINED
     # counted from the read's start: a process's first event loop can take seconds to make (box: 0.3 s idle, 2.7 s
     # under load), and a window from before asyncio.run held none of the read

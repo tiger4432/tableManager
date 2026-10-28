@@ -9,6 +9,9 @@ archive, or the external path it was read from), with the parser as it is now, t
 row then checks the file.
 ⚰️ The retroactive «Re-read files» (976defaac) is retired: it put a run, the operations gate and a
 wait page by page on top of this mark, and did not run in production (총괄 a4d135a06).
+🆕 The run alone comes back - for the chain's queue line and its pace; the gate and the wait stay retired (소유자 10-28
+«ㄱ»): a press writes a done run for each (table, source) it hands (`open_runs`) and the watcher reads under the
+newest (`run_of`). A second press on the same (table, source) takes the first's files still waiting into its run.
 """
 from __future__ import annotations
 
@@ -624,6 +627,7 @@ def read_now(db, path, table=None, apply=False):
     if "outside the root" in owner["why_not"]:
         raise RereadRefused(f"{path} is outside the root of {owner['source']} by its real path (a junction or link "
                             "leads out) - read it from where it really is")
+    open_runs(db, [(owner["table"], owner["source"])])
     handed = hand_files(db, owner["table"], owner["source"], [path])
     if handed["being_read"]:
         raise RereadRefused("%s is being read now (checklist row #%d)" % handed["being_read"][0])
@@ -808,6 +812,8 @@ def _hand_glob(job, chosen):
             files = [path for path in files if os.path.normcase(os.path.abspath(path)) in wanted]
         with _HANDS_LOCK:
             job["matched"] = len(files)
+        if files:
+            open_runs(db, [(job["table"], job["source"])])
         for start in range(0, len(files), MARK_PAGE):
             handed = hand_files(db, job["table"], job["source"], files[start:start + MARK_PAGE])
             if handed["ids"] and not job["ids"]:
@@ -911,6 +917,75 @@ def why_handed(row):
             else checkpoint.WHY_RETRY)
 
 
+def _run_params(table, source):
+    import json
+
+    return json.dumps({"source": source, "table": table}, ensure_ascii=False, sort_keys=True)
+
+
+def open_runs(db, pairs):
+    """A file re-read run (`retroactive.FILE_REREAD_OP`) for each (table, source) in `pairs`, written `done` at once -
+    it holds no gate - or the pair's newest run again while it has not drained: one line, one order (총괄 10-28 - a
+    second run was a second line a slot ran by turns with the first). Committed. -> {(table, source): run_id}."""
+    import uuid
+    from datetime import datetime, timezone
+
+    from admin import retroactive
+    from database import models
+
+    now, runs = datetime.now(timezone.utc), {}
+    for table, source in sorted(set(pairs), key=str):
+        newest = run_of(db, table, source)
+        if newest is not None and _undrained(db, newest, table, source):
+            runs[(table, source)] = newest
+            continue
+        runs[(table, source)] = run_id = uuid.uuid4().hex[:12]
+        db.add(models.RetroactiveRun(run_id=run_id, op=retroactive.FILE_REREAD_OP, params=_run_params(table, source),
+                                     requested_by=retroactive.os_user(), state=retroactive.RUN_DONE, queued_at=now,
+                                     started_at=now, finished_at=now))
+    db.commit()
+    return runs
+
+
+def _undrained(db, run_id, table, source):
+    """The run still has chain events waiting, or the pair still has files waiting to be read."""
+    from database import models
+
+    outbox, row = models.DatabaseOutbox, models.FileChecklist
+    return (db.query(outbox.id).filter(outbox.processed_chain == False,  # noqa: E712 - the partial index's spelling
+                                       outbox.run_id == run_id).first() is not None
+            or db.query(row.id).filter(row.table_name == table, row.source.is_not_distinct_from(source),
+                                       row.status.in_(WAITING)).first() is not None)
+
+
+#: The rows a re-read's collapsed event carries - the chain cuts a retroactive line's batch at an event, and its batch
+#: aims at `pacing.page_seconds` (C 10-28: 20,000 rows took 27-40 s, so 3 s is ~1,500-2,200 rows): an event a tenth of
+#: that. Only the re-read's own writes - the chain's writes from them stay 1,000 (총괄 10-28).
+REREAD_EVENT_ROWS = 200
+
+
+def reading_under(db, table, source):
+    """Context manager: a re-read file of (table, source) is read under its newest run, its events cut fine."""
+    import contextlib
+
+    from database.context import event_rows, retroactive_run
+
+    stack = contextlib.ExitStack()
+    stack.enter_context(retroactive_run(run_of(db, table, source)))
+    stack.enter_context(event_rows(REREAD_EVENT_ROWS))
+    return stack
+
+
+def run_of(db, table, source):
+    """The newest file re-read run of (table, source) - what a re-read file is read under - or None."""
+    from admin import retroactive
+    from database import models
+
+    R = models.RetroactiveRun
+    return (db.query(R.run_id).filter(R.op == retroactive.FILE_REREAD_OP, R.params == _run_params(table, source))
+            .order_by(R.queued_at.desc()).limit(1).scalar())
+
+
 def mark_for_reread(db, logs, page=MARK_PAGE, commit=True):
     """Hand the checklist rows `logs` to the watcher: PENDING_RETRY, a page a commit (`commit` False: none - the caller
     commits), each row's state before it kept on it (`status_before` - a row already waiting keeps the state it had
@@ -927,12 +1002,14 @@ def mark_for_reread(db, logs, page=MARK_PAGE, commit=True):
     return marked
 
 
-def cancel_reread(db, folder=None, apply=False):
+def cancel_reread(db, folder=None, apply=False, pair=None):
     """Put the rows still waiting under `folder` (every waiting row without one) back to the state they had before
     the re-read handed them over; a row the watcher has claimed is no longer waiting and is not touched, and a waiting
     row with no mark is left and counted; a row the re-read stood itself (`STOOD_BY_REREAD`) is deleted - it had no
-    state. -> {"count" (put back), "removed" (stood rows deleted), "by_state", "unmarked"}."""
-    waiting = [log for log, _rel in select_logs(db, (REREAD_STATUS,), folder=folder)]
+    state. `pair` (table, source): that pair's rows only - a × on its re-read run's line (`chain.control.stop_line`).
+    -> {"count" (put back), "removed" (stood rows deleted), "by_state", "unmarked"}."""
+    waiting = [log for log, _rel in select_logs(db, (REREAD_STATUS,), table=pair[0] if pair else None, folder=folder)
+               if pair is None or log.source == pair[1]]
     back = [(log, log.status_before) for log in waiting if log.status_before is not None]
     by_state = {}
     for _log, state in back:

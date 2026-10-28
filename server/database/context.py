@@ -62,6 +62,9 @@ request_chain_group = sys._context_vars_cache.setdefault(
 #: [GRID READ] The statement limit a grid read runs under, in seconds - None: none (총괄 d16033b63).
 request_read_seconds = sys._context_vars_cache.setdefault(
     "request_read_seconds", contextvars.ContextVar("request_read_seconds", default=None))
+#: [EVENT ROWS] The rows one collapsed outbox event carries - None: `OUTBOX_COLLAPSE_CHUNK_ROWS` (총괄 10-28).
+request_event_rows = sys._context_vars_cache.setdefault(
+    "request_event_rows", contextvars.ContextVar("request_event_rows", default=None))
 
 
 def _for_the_block(var, value):
@@ -103,6 +106,11 @@ def retroactive_run(run_id):
 def read_limit(seconds):
     """A grid read's statements run at most `seconds` (None: no limit) - `database._set_statement_time_limits`."""
     return _for_the_block(request_read_seconds, seconds)
+
+
+def event_rows(rows):
+    """Context manager: the writes inside stage their collapsed events `rows` rows an event (`stage_collapsed_event`)."""
+    return _for_the_block(request_event_rows, rows)
 
 
 def chain_group():

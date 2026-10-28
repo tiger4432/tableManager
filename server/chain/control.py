@@ -194,7 +194,8 @@ def stop_line(db, key, by, must_be_run=False):
     A replay run only stages events and is `done` long before the worker has eaten them, so a
     stop that ended at ① left the work running.
     The queue line's × and a run's Cancel both call this; `must_be_run` (the latter) refuses a
-    key that is not a run before anything moves. -> `{"run"?, "skipped_events",
+    key that is not a run before anything moves. A file re-read run's line stops its (table, source)'s re-read too - the
+    files still waiting are put back (`reread.cancel_reread`); the one being read goes to its end (총괄 10-28). -> `{"run"?, "skipped_events",
     "already_processed", "slot_pid", "slot_not_found"?, "kept"?, "already"?}` - `run` the run's state read back,
     `done` stays `done`; of the line's chain events waiting when the × read, `skipped_events`
     are set aside and `already_processed` ran, counted once the slot has ended."""
@@ -203,7 +204,8 @@ def stop_line(db, key, by, must_be_run=False):
     from database import models
 
     models.ensure_run_columns(db.get_bind())          # before this session reads the table (`replay._cursor_start`)
-    run = db.query(models.RetroactiveRun.state).filter(models.RetroactiveRun.run_id == key).first()
+    run = (db.query(models.RetroactiveRun.state, models.RetroactiveRun.op, models.RetroactiveRun.params)
+           .filter(models.RetroactiveRun.run_id == key).first())
     if must_be_run and run is None:
         raise retroactive.RetroactiveRefused(f"unknown run_id '{key}'")
     # × on a cut replay's line closes it - not continued, its cursor and tally cleared (총괄 fc1e1e385)
@@ -211,8 +213,13 @@ def stop_line(db, key, by, must_be_run=False):
         db.commit()
         return {"run": run.state, "closed": "not continued", "skipped_events": 0, "already_processed": 0,
                 "slot_pid": None}
+    reread_of = run is not None and run.op == retroactive.FILE_REREAD_OP and json.loads(run.params or "{}")
     run = run is not None
     answer = {"run": retroactive.request_cancel(db, key)["state"]} if run else {}
+    if reread_of:
+        from ingestion import reread
+
+        answer["reread"] = reread.cancel_reread(db, apply=True, pair=(reread_of.get("table"), reread_of.get("source")))
     done = set_aside.set_aside_line(db, key, by)
     slot_pid = slots.stop_slot(db, key)
     if slot_pid == slots.UNREAD:                      # said, not a silent null (총괄 10-09)

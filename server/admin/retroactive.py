@@ -2104,6 +2104,26 @@ def _judge_ledger_rescope(params):
 # The registry
 # ---------------------------------------------------------------------------
 
+#: A file re-read's run (소유자 10-28 «ㄱ»): a re-read door writes one `done` at once for each (table, source) it hands
+#: (`ingestion.reread.open_runs`) and the watcher reads those files under it, so their chain events are a retroactive
+#: line - queued apart, paced, given within its slot share. Done, never in flight: it holds no gate (총괄 a4d135a06
+#: retired a re-read run that did). Not the retired `reread_files` - its running rows held the gate (10-11).
+FILE_REREAD_OP = "file_reread"
+#: `started_by` - which door starts an operation: the retroactive form (an op without the cell), or the re-read doors.
+STARTED_BY_FORM, STARTED_BY_REREAD = "form", "reread"
+FILE_REREAD_STARTED_BY = ("a file re-read is started by Read now, Retry or Read these on the file ingestion screen - "
+                          "its run is the record of that press")
+
+
+def _started_by_the_reread_doors(*_args):
+    raise RetroactiveRefused(FILE_REREAD_STARTED_BY)
+
+
+def form_started(spec) -> bool:
+    """The operation is started from the retroactive form - what the form lists and the help catalog offers."""
+    return spec.get("started_by", STARTED_BY_FORM) == STARTED_BY_FORM
+
+
 #: Per-operation facts a client cannot infer from the id, and must not guess.
 #:
 #: `deletes` and `restartable` are explicit so a client never infers mutation
@@ -2241,6 +2261,25 @@ OPERATIONS = {
         "cli_only": [],
         "downstream_note": ("It replays the rows those events named, each rule once - "
                             "nothing downstream runs; replay a row from the grid to cascade"),
+    },
+    FILE_REREAD_OP: {
+        "label": "Re-read files",
+        "started_by": STARTED_BY_REREAD,
+        "what_is_missing": "files read again with today's parser - their chain runs as a retroactive line",
+        "examples": [],
+        "next": [FILE_REREAD_STARTED_BY],
+        "params": [_p("table"), _p("source", required=False)],
+        "count": _started_by_the_reread_doors,
+        "run": _started_by_the_reread_doors,
+        "judge": _started_by_the_reread_doors,
+        "cli": "server/scripts/replay_ingestion.py - the re-read doors' own CLI",
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": False,
+        "restartable": False,
+        "commit_granularity": "the watcher's own - one file a commit",
+        "cli_only": [],
+        "downstream_note": "What the files write wakes the chain rules, as a first read does",
     },
     RULE_ROWS_OP: {
         "label": "Run a rule's queued rows (retired)",
@@ -3697,7 +3736,7 @@ def inventory() -> list:
          "deletes": s["deletes"], "restartable": s["restartable"],
          "cancellable": s["cancellable"], "reads_as": s["reads_as"],
          "commit_granularity": s["commit_granularity"]}
-        for op, s in sorted(OPERATIONS.items())
+        for op, s in sorted(OPERATIONS.items()) if form_started(s)
     ]
 
 

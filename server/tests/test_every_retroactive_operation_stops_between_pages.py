@@ -48,8 +48,8 @@ def _fetch(connection, plan, columns, *, after=None, group_value=None, limit=Non
 
 
 def test_every_registered_operation_takes_a_cancel():
-    assert {op: spec["cancellable"] for op, spec in retroactive.OPERATIONS.items()} == {
-        op: True for op in retroactive.OPERATIONS}
+    form = {op: spec for op, spec in retroactive.OPERATIONS.items() if retroactive.form_started(spec)}
+    assert {op: spec["cancellable"] for op, spec in form.items()} == {op: True for op in form}
 
 
 def test_a_rescope_page_ends_on_a_group_boundary(monkeypatch):

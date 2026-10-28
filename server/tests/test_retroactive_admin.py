@@ -196,7 +196,8 @@ class TestInventory:
 
     def test_it_lists_every_registered_operation(self, client):
         body = client.get("/admin/retroactive/operations").json()
-        assert {o["op"] for o in body["operations"]} == set(retroactive.OPERATIONS)
+        assert {o["op"] for o in body["operations"]} == {
+            op for op, spec in retroactive.OPERATIONS.items() if retroactive.form_started(spec)}
         # Non-vacuous by NAMING the members: an empty registry would satisfy the equality
         # above, and a bare count would go red on any legitimate addition while saying
         # nothing about WHICH operation appeared - the failure would read as a defect in
@@ -1473,6 +1474,8 @@ def test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises(
     # promise - and how many do is pinned, so the exemption cannot grow unseen (총괄 1c3038997).
     missing, no_cli = [], []
     for op, spec in sorted(retroactive.OPERATIONS.items()):
+        if not retroactive.form_started(spec):
+            continue                                     # no button and no cli line: a re-read door starts it
         haystack = " ".join([spec["cli"]] + list(spec["cli_only"]))
         for param in spec["params"]:
             if param["cli"] is not True:
