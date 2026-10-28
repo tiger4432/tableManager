@@ -47,7 +47,30 @@ function changedLines(cwd, file, commit) {
     .split('\n').filter((l) => /^[-+](?![-+]{2} )/.test(l)).join('\n');
 }
 
-// A harness that lists a folder reads what nobody named; it runs on every change.
+/** Whether a SCANS cell (harness_floors.mjs) covers a path. A scope is a repo path ending in '/**' (the folder and all
+ *  under it) or '/*' (the folder's own entries). `kind`: 'file' a changed file, 'dir' a folder listed, 'tree' a folder
+ *  listed with { recursive: true }. */
+export function scanCovers(scopes, top, p, kind) {
+  return scopes.some((s) => {
+    const deep = s.endsWith('/**');
+    const base = `${norm(top)}/${norm(s.replace(/\/\*\*?$/, ''))}`;
+    if (kind === 'file') return deep ? p.startsWith(`${base}/`) : path.posix.dirname(p) === base;
+    return deep ? p === base || p.startsWith(`${base}/`) : kind === 'dir' && p === base;
+  });
+}
+
+/** Every folder that holds a source file - tracked, or new and not ignored. A folder outside it (a temp dir, the probe's
+ *  gitignored copies) holds nothing a change can reach. */
+export function sourceDirs(top) {
+  const dirs = new Set();
+  for (const f of execFileSync('git', ['-C', top, 'ls-files', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' }).split('\n')) {
+    if (!f) continue;
+    for (let d = path.posix.dirname(norm(`${top}/${f}`)); !dirs.has(d) && d.length > 3; d = path.posix.dirname(d)) dirs.add(d);
+  }
+  return dirs;
+}
+
+// A harness that lists a folder reads what nobody named; without a SCANS cell it runs on every change.
 const LISTS = /\breaddirSync\b|\breaddir\(|\bglobSync\b|\bglob\(|ls-files/;
 // Any dotted word: only one a tracked file is called counts (`ledger_config.json.sample` too).
 const NAMES = /[A-Za-z0-9_-][A-Za-z0-9_.-]*\.[A-Za-z0-9]+\b/g;
@@ -55,9 +78,10 @@ const uncomment = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.
 
 /** Which harnesses a change reaches. A harness reaches its own file, the tests/lib helpers it imports, every tracked file
  *  its text names (a basename two tracked files share counts only with its folder named beside it), and every module a
- *  named client file reaches in one vite build. Returns { run, notRun, why } - `why` set when every harness runs. */
-export async function harnessesToRun({ client, tests, harnesses, changed, commit = null }) {
-  const all = (why) => ({ run: harnesses, notRun: [], why });
+ *  named client file reaches in one vite build, and every file its SCANS cell covers. Returns { run, notRun, why, reach }
+ *  - `why` set when every harness runs. */
+export async function harnessesToRun({ client, tests, harnesses, changed, commit = null, scans = new Map() }) {
+  const all = (why) => ({ run: harnesses, notRun: [], why, reach: new Map() });
   const own = ['scripts/check_harnesses.mjs', 'scripts/read_harness.mjs', 'scripts/module_reach.mjs', 'package.json',
     'package-lock.json', 'vite.config.js'].map((f) => norm(path.join(client, f)));
   const whole = changed.find((f) => own.includes(f));
@@ -101,10 +125,12 @@ export async function harnessesToRun({ client, tests, harnesses, changed, commit
   };
   const run = [];
   const notRun = [];
+  const reaches = new Map();
   for (const name of harnesses) {
     if (tabled.includes(name)) { run.push(name); continue; }
+    const scopes = scans.get(name);
     // The harness's own text: tests/lib/probe.mjs lists its temp folder to sweep it, which reads nothing.
-    if (LISTS.test(uncomment(readFileSync(path.join(tests, name), 'utf8')))) { run.push(name); continue; }
+    if (!scopes && LISTS.test(uncomment(readFileSync(path.join(tests, name), 'utf8')))) { run.push(name); continue; }
     const seen = new Set();
     const text = textOf(path.join(tests, name), seen);
     const reach = new Set([...seen].map(norm));
@@ -115,9 +141,12 @@ export async function harnessesToRun({ client, tests, harnesses, changed, commit
         if (fs.length === 1 || text.includes(`${dir}/`) || text.includes(`'${dir}'`)) reach.add(f);
       }
     }
-    if (reach.size === seen.size) { run.push(name); continue; }   // names no file - nothing to narrow by
+    if (reach.size === seen.size && !scopes) { run.push(name); continue; }   // names no file - nothing to narrow by
+    // Listing a folder names every file in it - an html page listed reaches its modules like a page named.
+    if (scopes) for (const f of tracked) if (scanCovers(scopes, top, f, 'file')) reach.add(f);
     for (const f of [...reach]) for (const m of graph.get(f) || []) reach.add(m);
-    (changed.some((f) => reach.has(f)) ? run : notRun).push(name);
+    reaches.set(name, reach);
+    (changed.some((f) => reach.has(f) || (scopes && scanCovers(scopes, top, f, 'file'))) ? run : notRun).push(name);
   }
-  return { run, notRun, why: null };
+  return { run, notRun, why: null, reach: reaches };
 }

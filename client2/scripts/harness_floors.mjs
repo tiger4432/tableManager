@@ -1840,3 +1840,28 @@ export const CEILINGS = new Map([
   ['undeclared_identifier_harness.mjs', { key: 'MODULE_STATE', max: 48,
     what: 'module-level mutable bindings in client2/src/map_editor.js' }],
 ]);
+
+// ── the folders a harness lists ──────────────────────────────────────────
+// A harness that lists a folder (readdir) reads files nobody named, so without a cell here it runs on every change.
+// With one it runs when a changed file is inside the cell - repo paths, «/**» a folder and all under it, «/*» its own
+// entries - and the runner watches what it lists (scripts/scan_watch.mjs): a source folder outside the cell is red,
+// because a change there would not have run it (lead 10-28). An empty cell: it lists no source folder (only its temp).
+export const SCANS = new Map([
+  ['cell_overwrite_mark_harness.mjs', ['client2/src/**']],
+  ['css_token_definition_harness.mjs', ['client2/src/**', 'client2/*']],
+  ['disabled_reason_harness.mjs', ['client2/src/**']],
+  ['escaping_harness.mjs', ['client2/src/**']],
+  ['history_tabs_harness.mjs', ['client2/src/*']],
+  ['probe_mechanism_harness.mjs', ['client2/src/*', 'client2/tests/*']],
+  ['refusal_seat_harness.mjs', ['client2/src/**']],
+  ['retry_verdict_harness.mjs', ['client2/src/**']],
+  ['rnd_board_harness.mjs', ['client2/src/rnd_board/*']],
+  ['screen_layout_cleanup_harness.mjs', []],
+  ['screen_layout_harness.mjs', ['client2/*']],   // it lists the build of every page at client2/'s top
+  ['slow_reason_harness.mjs', ['client2/src/**']],
+  ['split_registry_harness.mjs', ['client2/src/**']],
+  ['testbed_harness.mjs', ['client2/src/**', 'client2/dist/assets/*']],
+  ['truncation_carriers_harness.mjs', ['client2/dist/assets/*']],
+  ['truncation_harness.mjs', ['client2/src/**']],
+  ['wire_event_names_harness.mjs', ['client2/src/**']],
+]);

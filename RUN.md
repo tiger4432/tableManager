@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **폴더를 훑는 하니스도 그 폴더가 바뀔 때만** — 하니스가 새 폴더를 훑게 고쳤으면 칸부터
+>
+> ```
+> 볼 명령   node client2/scripts/check_harnesses.mjs --dry-run
+> 뜻       서버 파일만 바꾼 착지 = 그 파일을 읽는 클라 하니스만 돈다
+>          «✗ <하니스> [BLOCKING] it listed <폴더> - outside its SCANS cell» = 하니스가 칸 밖 폴더를 훑음
+>          -> client2/scripts/harness_floors.mjs 의 SCANS 에서 그 하니스의 칸에 폴더를 더함
+> 전부      node client2/scripts/check_harnesses.mjs --all
+> ```
+>
+> ---
+>
 > ## [10-28] **다시 읽은 raws 파일이 «raws» 소스를 잃지 않는다 — 파일 화면의 표 · 저장소 묶음이 갈리던 것** — 와처 재기동 뒤
 >
 > ```

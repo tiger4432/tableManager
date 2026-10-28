@@ -38,12 +38,13 @@
 // says out loud that the harness dies before measuring anything.
 
 import { readHarness, RUN_BUFFER } from './read_harness.mjs';
-import { changedFiles, harnessesToRun } from './module_reach.mjs';
-import { NOT_A_HARNESS, KNOWN_RED, FLOORS, CEILINGS } from './harness_floors.mjs';
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { changedFiles, harnessesToRun, norm, scanCovers, sourceDirs } from './module_reach.mjs';
+import { NOT_A_HARNESS, KNOWN_RED, FLOORS, CEILINGS, SCANS } from './harness_floors.mjs';
+import { readdirSync, existsSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { isProbeArtifact } from '../tests/lib/probe.mjs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..');
@@ -288,7 +289,7 @@ const CLIENT_DIR = path.join(REPO_ROOT, 'client2');
 const changed = ALL ? null : changedFiles(CLIENT_DIR, COMMIT);
 const plan = ALL ? { run: harnesses, notRun: [], why: '--all' }
   : !changed.length ? { run: [], notRun: harnesses, why: null }
-  : await harnessesToRun({ client: CLIENT_DIR, tests: TESTS_DIR, harnesses, changed, commit: COMMIT });
+  : await harnessesToRun({ client: CLIENT_DIR, tests: TESTS_DIR, harnesses, changed, commit: COMMIT, scans: SCANS });
 if (changed && !changed.length) console.log('  · 0 changed files - nothing to run');
 else if (plan.why) console.log(`  · every harness runs - ${plan.why}`);
 else console.log(`  · ${changed.length} changed file(s), ${plan.run.length} of ${harnesses.length} harnesses reach one`
@@ -298,8 +299,39 @@ if (process.argv.includes('--dry-run')) {
   process.exit(0);
 }
 
+// A harness with a SCANS cell runs watched (scan_watch.mjs); a source folder it lists outside the cell is red.
+const SOURCE_DIRS = sourceDirs(REPO_ROOT);
+const WATCH = `--import="${pathToFileURL(path.join(HERE, 'scan_watch.mjs')).href}"`;
+const watched = (name) => {
+  const out = path.join(tmpdir(), `scan-watch-${process.pid}-${name}.txt`);
+  rmSync(out, { force: true });
+  const env = { NODE_OPTIONS: process.env.NODE_OPTIONS, SCAN_WATCH_OUT: process.env.SCAN_WATCH_OUT };
+  process.env.NODE_OPTIONS = [env.NODE_OPTIONS, WATCH].filter(Boolean).join(' ');
+  process.env.SCAN_WATCH_OUT = out;
+  try {
+    return { run: readHarness(path.join(TESTS_DIR, name), flagsOf(name), REPO_ROOT), out };
+  } finally {
+    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
+};
+const listedOutside = (name, out) => {
+  const lines = existsSync(out) ? readFileSync(out, 'utf8').split('\n').filter(Boolean) : [];
+  rmSync(out, { force: true });
+  return [...new Set(lines.map((l) => { const [dir, deep] = l.split('\t'); return { dir: norm(dir), kind: deep ? 'tree' : 'dir' }; })
+    .filter(({ dir, kind }) => SOURCE_DIRS.has(dir) && !scanCovers(SCANS.get(name), REPO_ROOT, dir, kind))
+    .map(({ dir, kind }) => `${path.posix.relative(norm(REPO_ROOT), dir)}${kind === 'tree' ? '/**' : ''}`))];
+};
+
 for (const name of plan.run) {
-  const run = readHarness(path.join(TESTS_DIR, name), flagsOf(name), REPO_ROOT);
+  const { run, out } = SCANS.has(name) ? watched(name)
+    : { run: readHarness(path.join(TESTS_DIR, name), flagsOf(name), REPO_ROOT), out: null };
+  const outside = out ? listedOutside(name, out) : [];
+  if (outside.length) {
+    blocking.push({ name, run: run || {} });
+    console.log(`✗ ${name}  [BLOCKING] it listed ${outside.join(', ')} - outside its SCANS cell `
+      + `(${SCANS.get(name).join(', ') || 'none'}) in harness_floors.mjs, so a change there would not run it. Widen the cell.`);
+    continue;
+  }
   if (!run) {
     unread.push(name);
     console.log(`? ${name}  [NO VERDICT] instrument: its output ran past the runner's ${RUN_BUFFER / 1048576} MiB `
