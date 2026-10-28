@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-28] **감사 묶음 색인 — 인제션 중 표 열기 1 분의 원인, f710a9c39** — git pull · 런처 재기동
+>
+> ```
+> 무엇     새 선언 색인 ix_audit_logs_transaction_group (audit_logs.transaction_id text_pattern_ops)
+>          표를 열 때마다 도는 감사 새로고침 · 감사 상세 · 그리드/내보내기 tx 필터가 이 색인을 탐
+>          기존 ix_audit_logs_transaction_id 는 그대로 둠
+> 볼 줄    server\auto_update.log «[Indexes] 1 declared index(es) the database lacks …: ix_audit_logs_transaction_group on audit_logs (missing) - building them one at a time»
+>          -> «[Indexes] building ix_audit_logs_transaction_group on audit_logs» -> «… built in N s»
+>          기다리는 동안 600 s 마다 «누구를 기다리는지» 한 줄
+> 언제 서나 CONCURRENTLY — 감사 쓰기는 안 막음. 다만 시작 시점에 돌던 트랜잭션이 «다 끝날 때까지» 기다림
+>          긴 소급이 돌고 있으면 그 소급이 끝난 뒤에 섬. 짓기 자체는 약 1.1 s / 백만 행 (박스) -> 수억 행이면 수 분
+>          디스크 약 7 MB / 백만 행. 감사 쓰기 +2.9 % (박스, 5,000 행 커밋 중앙값)
+> 답의 뜻   서기 전에는 표 열기가 그대로 느림 (델타 800 만 행에 56 s) — 섰는지는 GET /admin/indexes 의 state
+>          «Failed to ensure declared index 'ix_audit_logs_transaction_group'» -> 그 색인은 invalid 로 남고
+>          COMMENT 에 사유 · 다음 기동이나 Reload 때 지우고 다시 지음
+>          «not built: build_missing_indexes is off» -> ingestion_settings.json 의 그 칸이 false
+> 되돌리기  git revert f710a9c39 -> 런처 재기동 (색인은 남음 — 지우려면 DROP INDEX CONCURRENTLY ix_audit_logs_transaction_group)
+> ```
+
+---
+
 > ## [10-28] **체인 탭 State 칸이 둘째로** — git pull · 화면 새로 고침, 명령 없음
 >
 > ```
