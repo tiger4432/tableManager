@@ -359,6 +359,33 @@ export function ledgerReceiptLine(newValue, worlds) {
   return parts.join(' · ');
 }
 
+// What a folded line is, said once (lead 10-29) - the kind pill, the card's title and its Row · column cell read it, so the
+// cell's count says the title's unit (it said «N ROWS» for every fold; a fold of receipts or of changes is not N rows).
+// The count is the transaction's audit lines, and the unit what one line is. 🔴 C-55: the ledger first - a failed receipt
+// has two lines and would fold as «N changes», a table edit's sentence. «All» for the same reason as DELETE · CREATE: a
+// mixed transaction is not named after one side.
+const FOLDS = {
+  ledger: { pill: 'LEDGER', cls: 'kind-ledger', unit: 'receipt' },
+  delete: { pill: 'DELETE', cls: 'kind-delete', unit: 'row' },
+  create: { pill: 'CREATE', cls: 'kind-create', unit: 'row' },
+  batch: { pill: 'BATCH', cls: 'kind-batch', unit: 'change' },
+};
+
+function foldOf(group) {
+  const kind = allLogsAre(group, LEDGER_BATCH_COLUMN) ? 'ledger'
+    : allLogsAre(group, 'DELETE') ? 'delete'
+      : allLogsAre(group, 'CREATE') ? 'create' : 'batch';
+  return { kind, ...FOLDS[kind], count: unitText(group.total_count, FOLDS[kind].unit) };
+}
+
+/** A receipt's own word - the server's `receipt_label` (crud.receipt_log: «Ledger batch», «formula T.c»); a receipt
+ *  written before it carried one is a ledger batch's. */
+export function receiptLabel(newValue) {
+  const label = newValue && typeof newValue === 'object' && typeof newValue.receipt_label === 'string'
+    ? newValue.receipt_label.trim() : '';
+  return label || 'Ledger batch';
+}
+
 /**
  * 이 묶음의 로그가 «전부» 그 칸인가. 목록 라우트는 묶음마다 대표 로그 «1건»만 싣으므로 실린 로그로
  * 세면 섞인 묶음이 한쪽 이름이 됩니다 — 고친 행 + 세상 둘 영수증(로그 셋)이 「LEDGER」로 접혔습니다
@@ -384,13 +411,8 @@ export function receiptWorldsLine(group, worlds) {
 
 function auditKind(group, baseLog, isSummary) {
   if (isSummary) {
-    // 🔴 C-55. 원장 배치가 먼저입니다 — 안 그러면 실패 영수증(로그 둘)이 「BATCH」로 접히고,
-    //    종류 필터에서 «표 셀 변경»과 같은 칸에 앉습니다. «전부» 인 것은 DELETE·CREATE 와
-    //    같은 이유입니다: 섞인 트랜잭션을 한쪽 이름으로 부르지 않습니다.
-    if (allLogsAre(group, LEDGER_BATCH_COLUMN)) return { label: 'LEDGER', cls: 'kind-ledger' };
-    if (allLogsAre(group, 'DELETE')) return { label: 'DELETE', cls: 'kind-delete' };
-    if (allLogsAre(group, 'CREATE')) return { label: 'CREATE', cls: 'kind-create' };
-    return { label: 'BATCH', cls: 'kind-batch' };
+    const fold = foldOf(group);
+    return { label: fold.pill, cls: fold.cls };
   }
   const col = baseLog.column_name;
   // 🔴 C-55. 종전엔 여기까지 흘러 «SYSTEM» 이 됐습니다 — 원장 배치가 다른 시스템 행과
@@ -468,27 +490,22 @@ export function createGlobalTimelineItemDom(group) {
   let displayTitle = '';
   let colorClass = '';
 
+  const fold = isSummary ? foldOf(group) : null;
   if (isSummary) {
-    const allDeletes = allLogsAre(group, 'DELETE');
-    const allCreates = allLogsAre(group, 'CREATE');
-    // 🔴 C-55. 원장 배치가 «먼저»입니다 — 실패 영수증은 로그가 둘이라 여기로 오고,
-    //    안 가르면 「N건 변경」으로 접혀 표 셀 변경과 같은 문장이 됩니다.
-    const allLedger = allLogsAre(group, LEDGER_BATCH_COLUMN);
-
-    if (allLedger) {
+    if (fold.kind === 'ledger') {
       // ③ 'no_tid' 는 «이름»이지 빈 칸이 아닙니다 — 백필·소급은 체인 트랜잭션이 «없는» 것입니다.
       const chainless = txId === NO_TRANSACTION_BUCKET;
-      displayTitle = `📒 Ledger batch ${group.total_count} · ${baseLog.table_name}`
+      displayTitle = `📒 ${receiptLabel(baseLog.new_value)} · ${fold.count} · ${baseLog.table_name}`
         + `${chainless ? ' · batch without a chain' : ''}`;
       colorClass = 'color-ledger';
-    } else if (allDeletes) {
-      displayTitle = `🗑️ [${user}] | ${baseLog.table_name} | ${unitText(group.total_count, 'row')} deleted`;
+    } else if (fold.kind === 'delete') {
+      displayTitle = `🗑️ [${user}] | ${baseLog.table_name} | ${fold.count} deleted`;
       colorClass = 'color-delete';
-    } else if (allCreates) {
-      displayTitle = `🆕 [${user}] | ${baseLog.table_name} | ${unitText(group.total_count, 'row')} created`;
+    } else if (fold.kind === 'create') {
+      displayTitle = `🆕 [${user}] | ${baseLog.table_name} | ${fold.count} created`;
       colorClass = 'color-create';
     } else {
-      displayTitle = `📦 [${user}] | ${baseLog.table_name} | ${unitText(group.total_count, 'change')}`;
+      displayTitle = `📦 [${user}] | ${baseLog.table_name} | ${fold.count}`;
       colorClass = baseLog.is_row_deleted ? 'color-deleted-row' : 'color-summary';
     }
   } else {
@@ -509,7 +526,7 @@ export function createGlobalTimelineItemDom(group) {
       // 🔴 ③ 'no_tid' 는 «빈 칸이 아니라 이름»입니다 — 백필·소급은 체인 트랜잭션이 «없는»
       //    것이고, 「자료 없음」과 섞으면 조작자가 없는 트랜잭션을 찾아다닙니다.
       const chainless = txId === NO_TRANSACTION_BUCKET;
-      displayTitle = `📒 Ledger batch · ${baseLog.table_name}${chainless ? ' · batch without a chain' : ''}`;
+      displayTitle = `📒 ${receiptLabel(baseLog.new_value)} · ${baseLog.table_name}${chainless ? ' · batch without a chain' : ''}`;
       colorClass = 'color-ledger';
     } else {
       displayTitle = `🔄 [${user}] edited ${col} of ${baseLog.table_name} (${targetId})`;
@@ -552,9 +569,7 @@ export function createGlobalTimelineItemDom(group) {
   const rowKey = baseLog.business_key || baseLog.row_id.slice(0, 8);
   const keyTable = isSummary ? (targetTable || baseLog.table_name) : targetTable;
   const keyRow = isSummary ? '' : rowKey;
-  const targetCol = isSummary
-    ? `${group.total_count} ROWS`
-    : baseLog.column_name;
+  const targetCol = isSummary ? fold.count : baseLog.column_name;
 
   li.innerHTML = `
     <div class="timeline-card ${colorClass} ${isSummary ? 'summary-card' : ''}" title="${escapeHtml(displayTitle)}">

@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **Global 이력 묶음 줄 — 칸 수가 제목과 같은 단위, 영수증은 자기 이름** — git pull · 화면 새로 고침, 명령 없음
+>
+> ```
+> 볼 곳     메인 화면 이력 창 Global 탭 — 접힌 줄의 Row · column 칸
+> 뜻       «N RECEIPTS» · «N ROWS»(지움 · 만듦) · «N CHANGES» = 새 번들. 무엇이든 «N ROWS» = 옛 번들 -> 강력 새로 고침
+>          수식 줄의 제목이 «formula 표.칸» = 서버가 receipt_label 을 보냄. «Ledger batch» 면 그 영수증에 이름이 없음(옛 영수증)
+> 되돌리기  git revert $(git log --format=%h -i --grep='counts in its title' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-28] **표 전환이 Global 이력을 다시 안 읽음 · 이력 / 점프 읽기는 새 부름이 앞 것을 끊음** — git pull · 화면 새로 고침, 명령 없음
 >
 > ```

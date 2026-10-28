@@ -236,6 +236,46 @@ console.log('\n[7] the list\'s group: one representative log, the kind from the 
   eq('W7 one world, no failure: no line, as before', '', T.receiptWorldsLine(c, ['default']));
 }
 
+console.log('\n[7] a folded line counts in its title\'s unit - one decision for the pill, the title and the cell (lead 10-29)');
+{
+  // The cell said «N ROWS» for every fold, N the transaction's audit lines - 5,635 receipts on the box read as rows.
+  const card = (g) => createGlobalTimelineItemDom(g).innerHTML;
+  const cell = (html) => (html.match(/<span class="audit-target-col">([^<]*)<\/span>/) || [])[1];
+  const title = (html) => (html.match(/title="([^"]*)"/) || [])[1];
+  const pill = (html) => (html.match(/class="audit-pill [^"]*">([^<]*)</) || [])[1];
+  const line = (i, column, value, table) => ({ id: i, table_name: table, row_id: `r${i}`, column_name: column,
+    old_value: null, new_value: value, source_name: 'ledger', updated_by: 'ledger', timestamp: '2026-10-29T01:00:00' });
+  const fold = (tx, columns, log, total) => ({ transaction_id: tx, total_count: total, summary_columns: columns, logs: [log] });
+
+  // a formula batch split over four lines (crud.receipt_log, B 9d56d6f1d): each line names its rows and its part
+  const formula = card(fold('TX-F', ['ledger_batch'], line(1, 'ledger_batch',
+    { receipt_label: 'formula fx.c', rows: 99, part: 2, parts: 4, refused: 0, blank: 0, row_ids: [] }, 'fx'), 4));
+  eq('F1 a split formula batch: the title says the receipt\'s own word and its receipts', '📒 formula fx.c · 4 receipts · fx', title(formula));
+  eq('F2 ...the cell the same count in the same unit, not «4 ROWS»', '4 receipts', cell(formula));
+  eq('F3 ...and the pill the same decision\'s', 'LEDGER', pill(formula));
+
+  // the ledger's receipts, one per batch, from before receipt_label: the word they always had
+  const ledger = card(fold('TX-L', ['ledger_batch'], line(2, 'ledger_batch',
+    { rows: 742, atoms_written: 1484, atoms_deduped: 0, refused: 0, status: 'ok' }, 'inspection_run'), 5635));
+  eq('F4 ledger receipts: «Ledger batch» and 5635 receipts - the box\'s «5635 ROWS»', '📒 Ledger batch · 5635 receipts · inspection_run', title(ledger));
+  eq('F5 ...the cell the same', '5635 receipts', cell(ledger));
+
+  const deletes = card(fold('TX-D', ['DELETE'], line(3, 'DELETE', null, 't'), 3));
+  eq('F6 deleted rows: the title\'s rows', '🗑️ [ledger] | t | 3 rows deleted', title(deletes));
+  eq('F7 ...and the cell\'s', '3 rows', cell(deletes));
+  eq('F8 ...the pill DELETE', 'DELETE', pill(deletes));
+
+  const mixed = card(fold('TX-M', ['a', 'b'], line(4, 'a', 'x', 't'), 2));
+  eq('F9 a mixed transaction counts changes, not rows', '📦 [ledger] | t | 2 changes', title(mixed));
+  eq('F10 ...the cell too', '2 changes', cell(mixed));
+  eq('F11 ...the pill BATCH', 'BATCH', pill(mixed));
+
+  // one line: the receipt's word, its own column in the cell as before
+  const single = card(fold('TX-S', ['ledger_batch'], line(5, 'ledger_batch',
+    { receipt_label: 'formula fx.c', rows: 7, part: 1, parts: 1 }, 'fx'), 1));
+  eq('F12 one formula receipt: its word in the title', '📒 formula fx.c · fx', title(single));
+}
+
 console.log('\n[6] the value cell is read at the panel\'s width (lead 3e8b6171f) - the stylesheet is the subject');
 {
   // Measured in the preview (1440 and 375): the change line takes the row's width. Here, the rule that makes it so.
