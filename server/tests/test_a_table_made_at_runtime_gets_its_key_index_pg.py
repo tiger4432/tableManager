@@ -18,9 +18,10 @@ VALID = ("SELECT x.indisvalid FROM pg_index x JOIN pg_class c ON c.oid = x.index
 
 
 @pytest.fixture
-def made(pg_db, monkeypatch):
+def made(pg_session, monkeypatch):
     from runtime import index_wants
 
+    pg_db = pg_session
     engine = pg_db.get_bind()
     asked = []
     monkeypatch.setattr(index_wants, "want", lambda *args: asked.append(args))   # its thread's job, run here
