@@ -145,7 +145,7 @@
       "enabled": false
     },
     {
-      "__comment": "[NOT fixture data -- DO NOT DELETE AS DEAD] This table is not referenced by any fixture, so it looks unused. It is not. It exists because it is the only live exercise of the CHAIN path: test_api.py::test_chained_ingestion asserts on the outbox events the production_plan -> inventory_master chain produces, and removing these declarations silently removes that coverage. The dt_log_to_dt_map fixture chain cannot replace it -- that rule ships enabled:false on purpose (a chain can upsert map cells but cannot purge them), and turning an unsafe rule on to keep a test green is the same mistake as deleting the test. Its auto-update collector is disabled, so the table is declared but never grows. | The rule stays ENABLED so the test exercises the real worker path rather than a mock.",
+      "__comment": "[NOT fixture data -- DO NOT DELETE AS DEAD] This table is not referenced by any fixture, so it looks unused. It is not. It exists because it is the only live exercise of the CHAIN path: test_api.py::test_chained_ingestion asserts on the outbox events the production_plan -> inventory_master chain produces, and removing these declarations silently removes that coverage. The dt_log_to_dt_map fixture chain cannot replace it -- that rule ships enabled:false on purpose (a chain can upsert map cells but cannot purge them), and turning an unsafe rule on to keep a test green is the same mistake as deleting the test. Its auto-update collector is disabled, so the table is declared but never grows. | The rule stays ENABLED so the test exercises the real worker path rather than a mock. | A new install has no mappers/production_mapper.py, so the loader refuses this rule at load and the rule list says why (unresolvable_mapper) - test_api carries the mapper itself (lead 10-28).",
       "name": "production_to_inventory_reservation_batch",
       "trigger_table": "production_plan",
       "target_table": "inventory_master",
@@ -180,8 +180,9 @@
       }
     },
     {
-      "__comment": "[S-100 ⓐ] Writes one row per dt_job with that job's row count. The ledger does not aggregate (local, no computation), so the count runs here. The ledger's Python mapper `dt-job-role` used to count len(unit), and the declaration beside it pointed at dt_index, which it never read (rulings 197 · 211).",
+      "__comment": "[S-100 ⓐ] Writes one row per dt_job with that job's row count. The ledger does not aggregate (local, no computation), so the count runs here. The ledger's Python mapper `dt-job-role` used to count len(unit), and the declaration beside it pointed at dt_index, which it never read (rulings 197 · 211). | Ships switched off: its mapper ships only as mappers/dt_job_rollup_mapper.py.sample - put the .py there, then switch it on (lead 10-28).",
       "name": "dt_log_to_dt_job_rollup",
+      "enabled": false,
       "trigger_table": "dt_log",
       "target_table": "dt_job_rollup",
       "mapper_module": "mappers.dt_job_rollup_mapper",

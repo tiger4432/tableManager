@@ -186,7 +186,7 @@ def test_the_cell_is_in_the_grammar_and_the_skeleton_draws_it_as_a_flag():
 def _refusals(rule, monkeypatch):
     monkeypatch.setitem(crud.TABLE_CONFIG, TRIGGER, {"column_types": {"lot": "string"}})
     return [issue.code for issue in chain_bindings.rule_refusals(
-        rule, "rule", mapper_resolvable=lambda name: True, derived_tables=())]
+        rule, "rule", mapper_resolvable=lambda name: True, mapper_loadable=lambda module, function: None, derived_tables=())]
 
 
 @pytest.mark.parametrize("written", ["false", "no", 0, 1, None])

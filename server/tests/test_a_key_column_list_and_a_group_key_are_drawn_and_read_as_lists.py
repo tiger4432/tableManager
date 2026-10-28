@@ -103,5 +103,5 @@ def test_a_group_key_as_a_list_passes_the_save_gates_judgement(grammar, monkeypa
     stood, refusal, _notes = rule_shape.expand_declaration(declaration, TABLES)
     assert refusal is None and len(stood) == 1
     assert stood[0]["group_by"] == ["lot", "slot"]
-    assert chain_bindings.rule_refusals(stood[0], "rule", mapper_resolvable=lambda name: True,
+    assert chain_bindings.rule_refusals(stood[0], "rule", mapper_resolvable=lambda name: True, mapper_loadable=lambda module, function: None,
                                         derived_tables=()) == []

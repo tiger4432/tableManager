@@ -37,7 +37,7 @@ def declared(monkeypatch):
 @pytest.mark.parametrize("writes, code", [(["w1"], None), (["w1", "nowhere"], "unknown_writes_table"),
                                           ("w1", "bad_writes"), ([""], "bad_writes")])
 def test_the_save_refuses_a_writes_table_it_does_not_declare(declared, writes, code):
-    issues = cb.rule_refusals(dict(RULE, writes=writes, mapper="m"), "rules[0]", mapper_resolvable=lambda name: True,
+    issues = cb.rule_refusals(dict(RULE, writes=writes, mapper="m"), "rules[0]", mapper_resolvable=lambda name: True, mapper_loadable=lambda module, function: None,
                               derived_tables=set())
     codes = [issue.code for issue in issues if "writes" in issue.code]
     assert codes == ([] if code is None else [code]), [(i.code, str(i)) for i in issues]

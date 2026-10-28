@@ -156,7 +156,7 @@ def test_a_ceiling_that_is_not_a_positive_number_is_refused(written):
     limit」 are opposite readings of the same zero."""
     issues = chain_bindings.rule_refusals(
         _rule("r", max_group_rows=written), "rule",
-        mapper_resolvable=lambda name: object(), derived_tables=(),
+        mapper_resolvable=lambda name: object(), mapper_loadable=lambda module, function: None, derived_tables=(),
         mapper_params=lambda name: None)
 
     assert "bad_group_rows" in [i.code for i in issues], written
@@ -165,7 +165,7 @@ def test_a_ceiling_that_is_not_a_positive_number_is_refused(written):
 def test_a_good_ceiling_is_not_refused():
     issues = chain_bindings.rule_refusals(
         _rule("r", max_group_rows=5000), "rule",
-        mapper_resolvable=lambda name: object(), derived_tables=(),
+        mapper_resolvable=lambda name: object(), mapper_loadable=lambda module, function: None, derived_tables=(),
         mapper_params=lambda name: None)
 
     assert [i.code for i in issues] == []

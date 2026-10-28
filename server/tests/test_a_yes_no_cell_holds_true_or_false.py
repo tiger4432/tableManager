@@ -183,7 +183,7 @@ def test_the_report_carries_the_sentence(rules_file):
 
 def test_rule_refusals_keeps_its_code_and_says_the_one_sentence():
     issues = chain_bindings.rule_refusals(
-        dict(FLAT, idempotent="false"), "rules[0]", mapper_resolvable=lambda name: True,
+        dict(FLAT, idempotent="false"), "rules[0]", mapper_resolvable=lambda name: True, mapper_loadable=lambda module, function: None,
         derived_tables=set())
     [issue] = [i for i in issues if i.code == "bad_idempotent"]
     assert issue.message == validation.flag_refusal("idempotent", "false")

@@ -175,7 +175,7 @@ LOAD = {
 def test_the_loader_refuses_by_name(case):
     rule, code = LOAD[case]
     issues = chain_bindings.rule_refusals(
-        rule, "rules[0]", mapper_resolvable=worker._resolvable_mapper, derived_tables=set(),
+        rule, "rules[0]", mapper_resolvable=worker._resolvable_mapper, mapper_loadable=lambda module, function: None, derived_tables=set(),
         mapper_made_by_sdk=worker._made_by_sdk)
     codes = [i.code for i in issues if i.code.startswith("sdk_")]
     assert codes == ([code] if code else []), [(i.code, i.message) for i in issues]
@@ -187,7 +187,7 @@ def test_a_hand_written_mapper_is_not_judged_by_the_decorators_rules(monkeypatch
     monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "sdkm_hand", lambda db, payloads, rule=None: {})
     rule = _rule("sdkm_hand", allow_retraction=True, is_batch=False)
     issues = chain_bindings.rule_refusals(
-        rule, "rules[0]", mapper_resolvable=worker._resolvable_mapper, derived_tables=set(),
+        rule, "rules[0]", mapper_resolvable=worker._resolvable_mapper, mapper_loadable=lambda module, function: None, derived_tables=set(),
         mapper_made_by_sdk=worker._made_by_sdk)
     assert not [i for i in issues if i.code.startswith("sdk_")]
 

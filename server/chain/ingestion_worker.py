@@ -724,6 +724,21 @@ def _resolvable_mapper(name):
     return rule_run.runnable(name)
 
 
+def _loadable_mapper(module_name, function_name):
+    """Why this process cannot load a rule's `mapper_module.mapper_function`, or None - handed to `rule_refusals` by
+    all three of its callers, as `_resolvable_mapper` is (lead 10-28). A module imports once per process
+    (`sys.modules`); one that would not is asked again at the next load, so a file put there since is found."""
+    try:
+        module = importlib.import_module(module_name)
+    except Exception:                                   # noqa: BLE001 - one module's failure is its own sentence
+        importlib.invalidate_caches()                   # a file put there since the last load
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:                        # noqa: BLE001
+            return "%s: %s" % (type(exc).__name__, told(exc))
+    return None if callable(getattr(module, function_name, None)) else "%s has no %s" % (module_name, function_name)
+
+
 def _made_by_sdk(name):
     """Was the mapper this name runs built by `@mapper`? Handed to `rule_refusals` by all three
     of its callers - the one answer, read off the mark by `mapper_sdk.made_by_sdk`."""
@@ -841,7 +856,8 @@ def load_chain_rules():
         # dry-run screen accepted what this loop drops. The sentences below are unchanged;
         # only where the verdict comes from moved.
         issues = chain_bindings.rule_refusals(
-            rule, path, mapper_resolvable=_resolvable_mapper, derived_tables=derived,
+            rule, path, mapper_resolvable=_resolvable_mapper, mapper_loadable=_loadable_mapper,
+            derived_tables=derived,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get, mapper_made_by_sdk=_made_by_sdk,
             mapper_refusals=mapper_sdk.MAPPER_REFUSALS)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)

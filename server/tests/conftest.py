@@ -116,6 +116,31 @@ def _the_api_took_the_last_notification():
     yield
 
 
+#: The fixtures' fake mapper names (m · x · mappers.x) - their rules name `m.f`, `x.y`, `mappers.x.build` and only
+#: mean «some mapper»; the loader now loads a module/function mapper (lead 10-28, `_loadable_mapper`), so each stands
+#: as a module holding that one function. ⛔ To test a refusal, do not use these names - use your own (zz_*).
+_FAKE_MAPPERS = {"m": "f", "x": "y", "mappers.x": "build"}
+
+
+@pytest.fixture(autouse=True)
+def _the_fixtures_fake_mappers_load():
+    # ⚠️ not through `monkeypatch`: asking for it here would undo a test's own patches AFTER the other autouse
+    #   teardowns ran (measured: a test that breaks `forget_loaded_chain_rules` broke the forgetting fixture's teardown)
+    import types
+
+    held = {name: sys.modules.get(name) for name in _FAKE_MAPPERS}
+    for module_name, function_name in _FAKE_MAPPERS.items():
+        module = types.ModuleType(module_name)
+        setattr(module, function_name, lambda *args, **kwargs: {"updates": []})
+        sys.modules[module_name] = module
+    yield
+    for name, module in held.items():
+        if module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = module
+
+
 @pytest.fixture(autouse=True)
 def _the_loaded_chain_rules_are_forgotten():
     """A rule set one test loaded must not answer for the next, whose fake `load_chain_rules`

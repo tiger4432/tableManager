@@ -175,6 +175,9 @@ def test_the_loader_refuses_a_name_the_trigger_table_does_not_have(catalogue, tm
     path = tmp_path / "chain_rules.json"
     path.write_text(json.dumps({"rules": rules}), encoding="utf-8")
     monkeypatch.setattr(worker, "RULES_PATH", str(path))
+    (tmp_path / "rq_copy.py").write_text(textwrap.dedent(MAPPER), encoding="utf-8")   # the loader loads it (10-28)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, "rq_copy", raising=False)
     with caplog.at_level(logging.ERROR):
         loaded = {r.get("name") for r in worker.load_chain_rules()}
     assert "rq_ok" in loaded

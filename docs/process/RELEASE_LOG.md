@@ -645,6 +645,12 @@
 
 
 
+## 2026-10-28 · 고침 — 불러올 수 없는 맵퍼 모듈을 이름 댄 규칙은 로드 때 거절된다
+
+- **바뀐 동작** — `mapper_module` · `mapper_function` 을 둘 다 적었는데 그 모듈을 이 프로세스가 불러올 수 없으면, 전에는 규칙이 섰다가 그 표의 그룹마다 «could not be loaded» 로 실패 → 격리 → 꺼짐이었고 목록은 도는 것처럼 보였습니다. 이제 로드 때 `unresolvable_mapper` 로 거절되고, 규칙 목록의 사유 칸과 이름 대는 재생이 «… could not be loaded (<오류>)» 를 말합니다. 모듈 파일을 놓으면 다음 로드에서 풀립니다.
+- **견본** — `dt_log_to_dt_job_rollup` 은 꺼진 채 나갑니다(맵퍼가 `.py.sample` 로만 있음 — 파일을 놓고 켭니다). `production_to_inventory_reservation_batch` 는 켠 채(시험이 맵퍼를 싣음) — 새 설치에선 로드 때 거절 문장이 보입니다.
+- **필요한 조건** — git pull · 런처 재기동.
+
 ## 2026-10-28 · 고침 — 로더가 거절한 규칙은 목록과 재생이 로더 문장으로 말한다
 
 - **바뀐 동작** — 로더는 거절 사유를 로그에만 적고 버렸습니다. 그래서 규칙 목록(`GET /admin/chain/rules`)은 로더가 떨어뜨린 규칙을 이유 없이 `declared_only` 로, 꺼 둔 선언은 로더가 거절해도 «a replay that names it runs it» 로 보였고, 그 이름으로 재생하면 «not found or disabled» 였습니다(견본을 켠 판에서 찾음: 등록 안 된 맵퍼를 부르는 꺼진 선언). 이제 로더가 마지막 로드의 거절을 {규칙 이름: 로더 문장}으로 남기고(로드마다 통째로 갈아끼움), 목록은 그 규칙을 `declared_only` 에 `rule_state_detail` = 로더 문장으로(판정 656 — 안 섬의 사유는 값이 아니라 detail), 재생은 «was refused at load: <로더 문장>» 으로 답합니다.

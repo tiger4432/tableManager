@@ -60,7 +60,7 @@ def test_the_rule_answers_its_list():
                                           ("c", "bad_target_columns"), (["c"], None)])
 def test_the_save_gate_names_a_column_the_target_does_not_have(listed, code):
     issues = chain_bindings.rule_refusals(dict(RULE, target_columns=listed), "rules[0]",
-                                          mapper_resolvable=lambda name: True, derived_tables=set())
+                                          mapper_resolvable=lambda name: True, mapper_loadable=lambda module, function: None, derived_tables=set())
     codes = [i.code for i in issues if "target_columns" in i.code]
     assert codes == ([code] if code else []), [(i.code, i.message) for i in issues]
 

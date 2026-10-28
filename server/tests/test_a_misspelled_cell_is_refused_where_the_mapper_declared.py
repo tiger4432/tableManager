@@ -34,7 +34,7 @@ def _refusals(rule, *, declared=None, registered=True):
     """`declared=None` stands for 「this mapper never declared its arguments」."""
     return chain_bindings.rule_refusals(
         rule, "rule",
-        mapper_resolvable=(lambda name: object() if registered else None),
+        mapper_resolvable=(lambda name: object() if registered else None), mapper_loadable=lambda module, function: None,
         derived_tables=(), mapper_params=(lambda name: declared))
 
 
@@ -162,7 +162,7 @@ def test_the_product_mapper_that_reads_lists_declares_them():
     rule = {"name": "r", "trigger_table": "t", "mapper": "copy_rows_with_hold",
             "params": {"key_columns": "lot", "columns": ["c_bn"], "hold_column": "h", "source_table": "s"}}
     issues = chain_bindings.rule_refusals(
-        rule, "rule", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get, derived_tables=(),
+        rule, "rule", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get, mapper_loadable=lambda module, function: None, derived_tables=(),
         mapper_params=mapper_sdk.MAPPER_PARAMS.get)
     assert [(i.code, i.path) for i in issues if i.code == "param_not_a_list"] == [
         ("param_not_a_list", "rule.params.key_columns")]

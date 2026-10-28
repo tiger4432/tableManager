@@ -724,7 +724,8 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
         # here while running there - two answers to 「can this run」 from one product.
         grammar = chain_bindings.rule_refusals(
             candidate, f"rules.{name}",
-            mapper_resolvable=ingestion_worker._resolvable_mapper, derived_tables=derived,
+            mapper_resolvable=ingestion_worker._resolvable_mapper,
+            mapper_loadable=ingestion_worker._loadable_mapper, derived_tables=derived,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get,
             mapper_made_by_sdk=ingestion_worker._made_by_sdk,
             mapper_refusals=mapper_sdk.MAPPER_REFUSALS)

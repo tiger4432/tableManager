@@ -198,7 +198,7 @@ def test_the_batch_keeps_to_the_smallest_cap_of_what_it_holds(caps, kept):
 def test_a_bad_cell_is_refused_at_load(cells, code):
     issues = chain_bindings.rule_refusals(
         _rule("q", "q_txt", "q_cand", "fast", **cells), "rules[0]",
-        mapper_resolvable=lambda _name: True, derived_tables=())
+        mapper_resolvable=lambda _name: True, mapper_loadable=lambda module, function: None, derived_tables=())
     assert code in {issue.code for issue in issues}
 
 
