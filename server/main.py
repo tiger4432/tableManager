@@ -3425,12 +3425,16 @@ def get_table_schema(table_name: str, world: str = None, db: Session = Depends(g
     join_resolved_columns = []
 
 
+    from chain import formula
     from ledger.setup_bundle import catalog_kind
 
+    # the formulas this process runs on the table, as written - the grid header's mark (lead 10-28 ③); none, no key
+    formulas = {column: said[3] for (table, column), said in formula.columns().items() if table == table_name}
     return {
         "table_name": table_name,
         "columns": columns,
         "column_types": col_types,
+        **({"formulas": formulas} if formulas else {}),
         # 🔴 THE SAME VALUE `/tables` HANDS OVER, FROM THE SAME FUNCTION (S-187). Two
         # routes answering 「is this a view」 from two spellings is how they come to
         # disagree, and a screen that trusted the wrong one would offer an edit the write

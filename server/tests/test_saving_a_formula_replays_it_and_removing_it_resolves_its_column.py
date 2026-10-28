@@ -10,6 +10,7 @@ no value is left with no source. No other cell under two layers is touched.
     remove_chain_rule_raw                 refused by name while a run holds the rule; the file as opened
     R3 formula_removed                    no layer -> blank, one layer -> its value, a person's stays; others untouched
     chain_rules.json changed              the grid pool started again, the walk pool not (it reads nothing of it)
+    /tables/{t}/schema                    «formulas» as saved, gone when removed, absent on a table with none
 """
 import json
 from datetime import datetime
@@ -119,3 +120,16 @@ def test_a_rules_file_change_starts_the_grid_pool_again_and_not_the_walk_pool(mo
     assert generation() == dict(before, grid=before["grid"] + 1)
     process_pool.recycle()
     assert generation() == {"walk": before["walk"] + 1, "grid": before["grid"] + 2}
+
+
+def test_the_schema_says_the_tables_formulas_as_saved_and_removed(db, rules_file):
+    import main
+
+    assert "formulas" not in main.get_table_schema(T, db=db)
+    _route(db, formula="=[a]*2", base=admin.file_fingerprint(str(rules_file)))
+    assert main.get_table_schema(T, db=db)["formulas"] == {"c": "=[a]*2"}
+    assert "formulas" not in main.get_table_schema("another", db=db)
+    db.query(models.RetroactiveRun).delete()                     # the R1 the save queued, gone - it held the rule
+    db.commit()
+    _route(db, formula="", base=admin.file_fingerprint(str(rules_file)))
+    assert "formulas" not in main.get_table_schema(T, db=db)

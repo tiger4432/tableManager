@@ -50,7 +50,8 @@ _COLUMNS = [None, {}]
 
 
 def columns() -> dict:
-    """{(table, column): (layer name, the formula's function, the columns it reads)} - the formulas this process runs:
+    """{(table, column): (layer name, the formula's function, the columns it reads, its text)} - the formulas this process
+    runs:
     each loaded rule that is switched on and is a formula (`of_declaration` over the document it was loaded from). Read
     again when the rules are (`ingestion_worker.forget_loaded_chain_rules`, every process's config watcher). Asked
     for every cell the display answer resolves - nothing is imported or built on the way back."""
@@ -69,7 +70,7 @@ def columns() -> dict:
                 table, column, text = said
                 out[(table, column)] = (crud.merged_layer_name(crud.CHAIN_SOURCE, RULE_NAME % (table, column)),
                                         _typed(join_into.take_function(text)[0], table, column),
-                                        join_into.formula_of(text)["names"])
+                                        join_into.formula_of(text)["names"], text)
         _COLUMNS[:] = [loaded, out]
     return _COLUMNS[1]
 
