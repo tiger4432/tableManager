@@ -988,8 +988,9 @@ def load_chain_rules():
     # was DROPPED by a spelling complaint and nothing named it. Both questions - what is
     # running, and what stopped - are answered by writing the set down each time it is built.
     try:
+        from chain import control as chain_control
         from chain import rule_census
-        _rows = rule_census.census(rules)
+        _rows = rule_census.census(chain_control.with_rules_off(rules))   # a rule the chain switched off: OFF
         logger.info("[ChainRules] set(%d): %s", len(_rows), " | ".join(
             "%s[%s,%s] %s%s" % (
                 row["name"], row["origin"][:4], row["derive"],
@@ -1451,8 +1452,9 @@ _FAILURE_SEEN = {}
 _FAILURE_LOG_EVERY = 500
 
 
-def log_failure_folded(logger_, rule_name, target_table, reason: str):
-    """One line per distinct failure, with a count - never one per row."""
+def log_folded(logger_, rule_name, target_table, reason: str, said="FAILED", since=None):
+    """One line per distinct failure - or skip (`said`) - with a count, never one per row. `since` is part of what is
+    distinct: a rule switched off again later is a new line (lead 10-28)."""
     lines = [ln for ln in str(reason or "").strip().splitlines() if ln.strip()]
     gist = lines[-1] if lines else "(no reason)"
     # 🔴 THE KEY MUST NOT CARRY THE ROW. A unique-violation message names the offending
@@ -1461,17 +1463,18 @@ def log_failure_folded(logger_, rule_name, target_table, reason: str):
     # which is the very flood this function exists to stop. The bucket is the exception
     # CLASS; the values stay in the first occurrence, where they are the diagnosis.
     kind = gist.split(":", 1)[0].strip()[:120] or "(unknown)"
-    key = (rule_name, target_table, kind)
+    key = (rule_name, target_table, said, kind, since)
     seen = _FAILURE_SEEN.get(key, 0) + 1
     if key not in _FAILURE_SEEN and len(_FAILURE_SEEN) >= 2000:
         _FAILURE_SEEN.clear()  # a bounded map beats a leak; the count restarts, the log does not stop
     _FAILURE_SEEN[key] = seen
     if seen == 1:
-        logger_.error("[Chain] rule=%s target=%s FAILED: %s%s%s",
-                      rule_name, target_table, gist, "\n", reason)
+        logger_.error("[Chain] rule=%s target=%s %s: %s%s%s",
+                      rule_name, target_table, said, gist, "\n" if len(lines) > 1 or said == "FAILED" else "",
+                      reason if len(lines) > 1 or said == "FAILED" else "")
     elif seen % _FAILURE_LOG_EVERY == 0:
-        logger_.error("[Chain] rule=%s target=%s FAILED x%d (same reason): %s",
-                      rule_name, target_table, seen, gist)
+        logger_.error("[Chain] rule=%s target=%s %s x%d (same reason): %s",
+                      rule_name, target_table, said, seen, gist)
     return seen
 
 # ⚰️ [총괄 3c3f2b1f2] `mark_processed` lives in `event_constants` now, beside
@@ -1494,7 +1497,11 @@ def _rule_outcome_before_running(rule, events):
     ⚠️ 꺼짐이 안 걸림을 «이긴다». 둘 다 참일 때 운영자가 고칠 수 있는 쪽이 그것이다.
     """
     if rule_shape.is_switched_off(rule) and all(fire_refusal(rule, e) is not None for e in events):
-        return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false"
+        from chain import control as chain_control
+
+        off = rule.get(chain_control.SWITCHED_OFF)
+        return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, (
+            chain_control.switched_off_line(off) if isinstance(off, dict) else "rule declares enabled: false")
     refused = set()
     for e in events:
         if not _is_trigger_event(e, rule):
@@ -1523,6 +1530,13 @@ def _record_pre_run_outcomes(rules, events):
         if outcome is not None:
             activity.registry.record_outcome(
                 (rule or {}).get("name") or "<unnamed rule>", outcome, reason)
+        from chain import control as chain_control
+
+        off = (rule or {}).get(chain_control.SWITCHED_OFF)
+        if outcome == event_constants.RULE_OUTCOME_SKIPPED_DISABLED and isinstance(off, dict) and any(
+                wakes(rule, e) for e in events):
+            # a batch it would have woken: said once per switch-off, folded as failures are (lead 10-28)
+            log_folded(logger, rule.get("name"), rule.get("target_table"), reason, said="SKIPPED", since=off.get("at"))
 
 
 def _group_triggered_rules(events_in_tx, rules):
@@ -2188,7 +2202,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 error_msg = named_failure(
                     [n for ns in table_contributors.values() for n in ns],
                     sorted(table_contributors), error_msg)
-            log_failure_folded(logger, ", ".join(error_msg.rules or ()) or "(unknown)",
+            log_folded(logger, ", ".join(error_msg.rules or ()) or "(unknown)",
                                ", ".join(error_msg.tables or ()) or "(unknown)", error_msg)
             return False, error_msg
         finally:
@@ -2645,7 +2659,7 @@ def _rule_failed(rule, error):
     `reason` and every downstream FAILED log, and those said only a transaction id - so an operator staring at
     thousands of failures could not tell WHICH declaration to switch off."""
     error_msg = named_failure([rule.get("name")], [rule.get("target_table")], error)
-    log_failure_folded(logger, rule.get("name"), rule.get("target_table"), error_msg)
+    log_folded(logger, rule.get("name"), rule.get("target_table"), error_msg)
     return False, error_msg, []
 
 

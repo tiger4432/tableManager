@@ -69,6 +69,8 @@ def resume():
 # Its batches failed for good this many times in a row with none run: it is read as `enabled: false` (skipped, the other
 # rules on its table run on) until its rule or a mapper file is saved - the owner's chain_rules.json is not written.
 RULES_OFF = "rules_off"
+#: the cell `with_rules_off` puts its record in, on the rule's copy - read by whoever says why the rule did not run
+SWITCHED_OFF = "switched_off"
 FAILURE_STREAKS = "failure_streaks"
 
 
@@ -89,8 +91,16 @@ def with_rules_off(rules):
     off = rules_off()
     if not off:
         return rules
-    return [dict(rule, enabled=False, switched_off=off[rule.get("name")]) if rule.get("name") in off else rule
+    return [dict(rule, enabled=False, **{SWITCHED_OFF: off[rule.get("name")]}) if rule.get("name") in off else rule
             for rule in rules]
+
+
+def switched_off_line(off, skipped=None):
+    """Why a rule the chain switched off does not run - one sentence for the rules list, the queue's outcome and the
+    chain's skipped line (lead 10-28). `skipped`: the changes skipped since, where the reader counted them."""
+    return "Switched off after %s failures in a row since %s%s · %s" % (
+        off.get("failures"), off.get("at"), "" if skipped is None else " · %s changes skipped since" % skipped,
+        off.get("cause") or "")
 
 
 def count_outcome(names, failed, cause=None, cap=10):

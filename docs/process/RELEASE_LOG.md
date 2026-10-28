@@ -647,6 +647,10 @@
 
 
 
+## 2026-10-28 · 고침 — 체인이 스스로 끈 규칙은 기동 줄 · 배치 줄 · 큐 사유가 «꺼짐»을 말한다
+
+- **바뀐 동작** — 연속 실패로 체인이 끈 규칙(`chain_control.json` 의 rules_off)이 재기동 뒤에도 꺼져 있는데, 기동 줄 `[ChainRules] set(N)` 은 켜짐으로 찍고, 배치마다 아무 줄도 없고, 큐 결과 사유는 «rule declares enabled: false»(파일은 켜짐이라 거짓)였습니다. 이제 기동 줄에 « OFF», 큐 사유는 규칙 목록과 같은 문장 «Switched off after N failures in a row since <시각> · <원인>», 그 규칙을 깨웠을 배치에서 «[Chain] rule=… SKIPPED: <같은 문장>» 이 꺼질 때마다 한 번(이후 500 번마다 «SKIPPED xN»). 실패 줄을 접던 함수 이름이 `log_folded` 로 바뀌었습니다.
+- **필요한 조건** — git pull · 런처 재기동.
 ## 2026-10-28 · 고침 — 체인 대기열의 Waiting 수가 «events» 를 단다(행 수로 읽히던 것)
 
 - **바뀐 동작** — 총괄 10-28(B 가 찾음). 대기열 맨 위 «Waiting» 수와 소유자별 줄 «<owner> · waiting N · oldest …» 의 N 이 단위 없는 맨 숫자여서, 1,000 행짜리 이벤트 하나가 «1» 로, 다시 읽기는 행 수와 크게 어긋나 «N 줄이 섰다» 로 읽혔습니다. 그 수는 처리 안 된 outbox «이벤트» 수입니다. 이제 «812 events» · «chain · waiting 5 events · oldest 3m» 처럼 줄 표의 «N events» 배지와 같은 낱말로 씁니다. 수는 그대로입니다.

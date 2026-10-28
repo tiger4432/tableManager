@@ -6574,8 +6574,9 @@ def _switched_off_line(db, rule, off):
                                                          outbox.created_at >= since.astimezone(timezone.utc)).scalar()
     except (TypeError, ValueError):
         skipped = None
-    return "Switched off after %s failures in a row since %s · %s changes skipped since · %s" % (
-        off.get("failures"), off.get("at"), "?" if skipped is None else skipped, off.get("cause") or "")
+    from chain import control as chain_control
+
+    return chain_control.switched_off_line(off, "?" if skipped is None else skipped)
 
 
 @app.get("/admin/chain/rules", dependencies=[Depends(require_admin_token)])
