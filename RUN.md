@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **서버가 굳으면 한 줄 — STALL, 63a69b97a** — git pull · 런처 재기동
+>
+> ```
+> 볼 곳     서버 로그(API 창 · server.log) 의 «STALL » 로 시작하는 줄. 어드민 머리에도 같은 줄(/health 의 stall)
+>          굳음이 «끝난 뒤» 한 줄 — 굳은 동안은 /health 도 못 답해서 화면엔 끝난 뒤 보임
+>          30 초 넘게 이어지면 30 초마다 중간 줄(초 뒤에 «+»). 굳음이 없으면 줄 0
+> 꼴       STALL 14s L12 T40/40 G6 D9/11s C97 slot2:61 ING dt_log   <- 이 줄 그대로 폰으로 옮겨 보내 주시면 됩니다
+>
+> 칸   뜻 · 어디서 읽나(코드)                                      이 칸이 높으면
+> 14s  굳은 초 — 가장 오래 답 없는 요청 또는 루프가 멈춘 때부터    길수록 사람이 오래 기다림
+> L    이벤트 루프가 답 못 한 초 — stall_watch.LoopProbe            async 라우트 안의 무거운 일 · 루프를 잡은 코드
+> T    요청 스레드 바쁨/전체 — anyio 기본 limiter                   다 찼으면 느린 동기 요청이 스레드를 다 잡음 (DB 기다림이면 D 도 높음)
+> G    그리드 풀을 기다리는 요청 — process_pool.GRID.waiting         그리드 페이지가 줄 섬 (grid_processes 가 모자람 · 그리드 문이 느림)
+> D    DB 활성 문 수/가장 긴 초 — pg_stat_activity, 감시 전용 연결  DB 가 바쁘거나 잠금을 기다림 (인제션 · 체인 쓰기와 겹침)
+> C    시스템 CPU % 와 가장 많이 쓴 우리 프로세스:% (기계 전체 대비) — psutil, 이름은 heartbeat 파일의 pid
+>                                                                  그 프로세스가 CPU 를 다 씀 (slotN = 체인 슬롯 · watcher = 인제션 · api)
+> ING  그때 인제션이 읽던 표 — watcher claim 의 note_work(table=)   이 표의 파일을 읽는 중에 굳음 (칸이 없으면 인제션 없음)
+> ?    그 칸을 읽지 못함 — 서버 로그에 «[Stall] the X reading failed» 한 번
+>
+> 끄기      없음 — 감시는 1 초마다 0.6 ms, 굳은 동안만 DB 문 하나(1.4 ms) · 프로세스 읽기
+> 되돌리기  git revert 63a69b97a -> 런처 재기동
+> ```
+
+---
+
 > ## [10-29] **어드민 Help — 어느 탭에서든 물으면 도구 · 칸 · 셈, Open form 이 그 폼을 채워 엶** — git pull · 화면 새로 고침
 >
 > ```
