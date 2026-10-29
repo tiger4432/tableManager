@@ -148,6 +148,36 @@ def test_same_json_produces_the_run_denominator(tmp_path):
     }]
 
 
+def _three(middle):
+    good = {"base_x": 3, "base_y": 4, "gate": 2, "inchip_x": 10, "inchip_y": 20, "radius_x": 1, "radius_y": 2}
+    return {"unit": "um", "voids": [dict(good), {**good, "base_x": 5, **middle}, dict(good, base_x=7)]}
+
+
+@pytest.mark.parametrize("middle", [{"base_x": "N/A"}, {"base_y": "abc"}, {"gate": 2.5}, {"gate": None}])
+def test_a_run_identity_that_does_not_read_leaves_its_row_out_and_is_counted(tmp_path, middle, caplog):
+    """🔴 Owner 10-29 ㄱ «데이터 값은 멈추지 않는다»: one such cell stopped the whole file. Now that row - it cannot
+    be named, so it is not half written - is left out and counted (the watcher's rows_refused), and the rest load."""
+    file_path = _write_voids(tmp_path, body=_three(middle))
+    rel = "WF-001/WORK_20260817_031405/voids.json"
+    with caplog.at_level("WARNING"):
+        rows, total, refused = parse_voids_json(str(file_path), rel_path=rel, table_name="void_obs")
+    assert (len(rows), total, refused) == (2, 3, 1)
+    assert [r["base_x"] for r in rows] == [3.0, 7.0]
+    assert any("1 row(s) left out" in r.getMessage() for r in caplog.records)
+    runs, _total, run_refused = parse_voids_json(str(file_path), rel_path=rel, table_name="inspection_run")
+    assert run_refused == 1 and {r["base_x"] for r in runs} == {3.0, 7.0}
+
+
+@pytest.mark.parametrize("bad", ["N/A", "abc", True])
+def test_a_finding_cell_that_is_not_a_number_goes_to_the_write_as_read(tmp_path, bad):
+    """Not part of the run's identity: the write funnel judges it against the column's type and folds that cell."""
+    file_path = _write_voids(tmp_path, body=_three({"radius_x": bad}))
+    rows, total, refused = parse_voids_json(
+        str(file_path), rel_path="WF-001/WORK_20260817_031405/voids.json", table_name="void_obs")
+    assert (len(rows), refused) == (3, 0)
+    assert rows[1]["radius_x"] == bad and rows[1]["radius_y"] == 2.0
+
+
 def test_missing_unit_refuses_observation_but_keeps_independent_run_fact(tmp_path):
     file_path = _write_voids(tmp_path, body={
         "voids": [{

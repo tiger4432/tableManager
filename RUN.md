@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **voids.json 도 멈추지 않는다 — 판 위치 칸이 안 읽히면 그 행만 빼고 셈, 결과 칸은 그 칸만 안 들어감** — 서버 재기동
+>
+> ```
+> 무엇     base_x · base_y · gate(stack_gate) 가 빈칸 · 글자 · NaN · 반 층(2.5)이면 그 행만 빠지고 나머지 행은 씀
+>         inchip_x · inchip_y · radius_x · radius_y 가 글자면 그 칸만 안 들어감(value_refused, 위 [10-29] 블록과 같은 줄)
+> 문장     전   파일 실패 «voids[1]: 'base_x' is not numeric: 'N/A'.» · «… missing required finding field(s) …»
+>         후   watcher.log «[voids_json] <파일>: N row(s) left out - their run identity does not read. First: voids[1]: …»
+>              파일 탭의 거절 행 수(rows_refused) = N
+> 뜻      N = 그 파일에서 판 위치를 못 읽은 행 수. 원천 JSON 의 그 행을 고치고 다시 넣으면 들어감
+> 그대로   unit 이 없거나 모르는 단위면 void_obs 는 파일 거절(단위를 추측하지 않음) · 키 문이 거절한 행이 있으면 파일 거절
+> 급할 때  끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
+---
+
 > ## [10-29] **데이터 값은 멈추지 않는다 — 받지 못한 값은 그 칸만 «안 들어감» · 셈 (소유자 10-29 ㄱ)** — 서버 재기동 · 마이그레이션 없음
 >
 > ```

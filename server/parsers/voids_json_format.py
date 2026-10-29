@@ -32,6 +32,7 @@ can replace this boundary after a real large sample is available.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -86,6 +87,9 @@ _VOID_REQUIRED = (
 )
 _RUN_REQUIRED = ("base_x", "base_y", "stack_gate")
 _NUMERIC = frozenset(_VOID_REQUIRED)
+
+
+logger = logging.getLogger(__name__)
 
 
 def _fold(name) -> str:
@@ -279,24 +283,41 @@ def _merge_path_identity(row: dict, path_data: dict, *, row_label: str) -> dict:
     return out
 
 
+def _layer_read(row: dict, label: str, skipped: list) -> bool:
+    """Read `row`'s run identity (base_x · base_y · stack_gate) in place -> whether the row can be named. A blank,
+    unreadable or non-whole one leaves THAT row out, its sentence in `skipped`, and the rest of the file goes on
+    (owner 10-29 ㄱ «데이터 값은 멈추지 않는다»; it stopped the whole file). The one reader for the three normalisers."""
+    try:
+        for column in _RUN_REQUIRED:
+            row[column] = _finite_number(row.get(column), column=column, row_label=label)
+        missing = [c for c in _RUN_REQUIRED if row[c] is None]
+        if missing:
+            raise ValueError(f"{label}: missing package-layer field(s) {missing!r}.")
+        if row["stack_gate"] != int(row["stack_gate"]):
+            raise ValueError(f"{label}: stack_gate must be a whole layer, got {row['stack_gate']!r}.")
+    except ValueError as why:
+        skipped.append(str(why))
+        return False
+    row["stack_gate"] = int(row["stack_gate"])
+    return True
+
+
 def _normalise_void_rows(raw_rows: list, path_data: dict, metadata: dict,
-                         options: dict) -> list[dict]:
+                         options: dict, skipped: list) -> list[dict]:
     file_unit = metadata.get("unit", options.get("unit"))
     rows = []
     for index, raw in enumerate(raw_rows):
         label = f"voids[{index}]"
         row = _merge_path_identity(_canonical_row(raw, row_label=label), path_data,
                                    row_label=label)
-        for column in _NUMERIC:
+        if not _layer_read(row, label, skipped):
+            continue
+        for column in _NUMERIC.difference(_RUN_REQUIRED):
             if column in row:
-                row[column] = _finite_number(row[column], column=column, row_label=label)
-        missing = [c for c in _VOID_REQUIRED if row.get(c) is None]
-        if missing:
-            raise ValueError(f"{label}: missing required finding field(s) {missing!r}.")
-        gate = row["stack_gate"]
-        if gate != int(gate):
-            raise ValueError(f"{label}: stack_gate must be a whole layer, got {gate!r}.")
-        row["stack_gate"] = int(gate)
+                try:
+                    row[column] = _finite_number(row[column], column=column, row_label=label)
+                except ValueError:
+                    pass        # as read - the write refuses it against the column's type and counts that cell
 
         unit = row.get("unit", file_unit)
         if unit is None or str(unit).strip() not in UNITS:
@@ -312,7 +333,7 @@ def _normalise_void_rows(raw_rows: list, path_data: dict, metadata: dict,
     return rows
 
 
-def _normalise_run_carriers(raw_rows: list, path_data: dict) -> list[dict]:
+def _normalise_run_carriers(raw_rows: list, path_data: dict, skipped: list) -> list[dict]:
     """Read only the package-layer facts needed to derive scan denominators.
 
     A missing/unknown radius unit makes an observation unusable, but it does not
@@ -324,29 +345,20 @@ def _normalise_run_carriers(raw_rows: list, path_data: dict) -> list[dict]:
         label = f"voids[{index}]"
         row = _merge_path_identity(_canonical_row(raw, row_label=label), path_data,
                                    row_label=label)
-        for column in _RUN_REQUIRED:
-            if column in row:
-                row[column] = _finite_number(row[column], column=column, row_label=label)
-        missing = [c for c in _RUN_REQUIRED if row.get(c) is None]
-        if missing:
-            raise ValueError(
-                f"{label}: missing package-layer field(s) needed to identify the "
-                f"inspection run: {missing!r}.")
-        gate = row["stack_gate"]
-        if gate != int(gate):
-            raise ValueError(f"{label}: stack_gate must be a whole layer, got {gate!r}.")
+        if not _layer_read(row, label, skipped):
+            continue
         rows.append({
             "base_wafer_id": row["base_wafer_id"],
             "work_id": row["work_id"],
             "base_x": row["base_x"],
             "base_y": row["base_y"],
-            "stack_gate": int(gate),
+            "stack_gate": row["stack_gate"],
             "observed_at": row["observed_at"],
         })
     return rows
 
 
-def _normalise_explicit_runs(raw_runs: list, path_data: dict, metadata: dict) -> list[dict]:
+def _normalise_explicit_runs(raw_runs: list, path_data: dict, metadata: dict, skipped: list) -> list[dict]:
     rows = []
     for index, raw in enumerate(raw_runs):
         label = f"runs[{index}]"
@@ -357,16 +369,8 @@ def _normalise_explicit_runs(raw_runs: list, path_data: dict, metadata: dict) ->
             raise ValueError(
                 f"{label}: method {method!r} conflicts with this declared SAT feed.")
         row["method"] = METHOD
-        for column in _RUN_REQUIRED:
-            if column in row:
-                row[column] = _finite_number(row[column], column=column, row_label=label)
-        missing = [c for c in _RUN_REQUIRED if row.get(c) is None]
-        if missing:
-            raise ValueError(f"{label}: missing required scan field(s) {missing!r}.")
-        gate = row["stack_gate"]
-        if gate != int(gate):
-            raise ValueError(f"{label}: stack_gate must be a whole layer, got {gate!r}.")
-        row["stack_gate"] = int(gate)
+        if not _layer_read(row, label, skipped):
+            continue
         for optional in ("recipe_id", "eqp_id"):
             if optional not in row and optional in metadata:
                 row[optional] = metadata[optional]
@@ -430,12 +434,13 @@ def parse_voids_json(file_path: str, *, rel_path: str, table_name: str,
     path_data = parse_relative_source_path(rel_path, expected_filename)
     raw_voids, raw_runs, metadata = _read_payload(file_path, options)
 
+    skipped = []
     if table_name == VOID_TABLE:
-        void_rows = _normalise_void_rows(raw_voids, path_data, metadata, options)
+        void_rows = _normalise_void_rows(raw_voids, path_data, metadata, options, skipped)
         kept, report = screen(VOID_TABLE, void_rows, source=file_path)
     elif table_name == RUN_TABLE:
-        carriers = _normalise_run_carriers(raw_voids, path_data)
-        runs = _normalise_explicit_runs(raw_runs, path_data, metadata)
+        carriers = _normalise_run_carriers(raw_voids, path_data, skipped)
+        runs = _normalise_explicit_runs(raw_runs, path_data, metadata, skipped)
         derived = _derived_runs(carriers, metadata)
         if not runs:
             runs = derived
@@ -469,4 +474,7 @@ def parse_voids_json(file_path: str, *, rel_path: str, table_name: str,
             f"{file_path}: {table_name} key gate refused {refused} row(s): "
             f"{report.get('by_reason')}. Nothing from this file was written; "
             f"fix the ambiguous/unkeyed rows and deliver it again.")
-    return kept, len(kept), 0
+    if skipped:
+        logger.warning("[voids_json] %s: %d row(s) left out - their run identity does not read. First: %s",
+                       file_path, len(skipped), skipped[0])
+    return kept, len(kept) + len(skipped), len(skipped)
