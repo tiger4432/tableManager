@@ -41,6 +41,18 @@ CONTEXT_MARK = "(context only - do not answer this line)"
 #: the parts of a memory row - each a column the declaration names (`memory.columns`)
 MEMORY_ROLES = ("purpose", "key", "cell", "ai", "right", "memo", "who", "when")
 MEMORY_HEADING = "Past corrections - a person fixed these answers of yours; answer the same place the same way:"
+#: `memory.comment` - the report table column a person writes a comment in (owner 10-29 «코멘트 보고 다시 하게»): kept
+#: in the memory table as written, its `cell` the column's name, no AI value.
+MEMORY_COMMENT = "comment"
+
+
+def comment_column(spec):
+    """The column `memory.comment` names, or None."""
+    from database import crud
+
+    memory = (spec or {}).get("memory")
+    said = memory.get(MEMORY_COMMENT) if isinstance(memory, dict) else None
+    return None if crud.is_blank_value(said) else str(said).strip()
 
 
 def _spec(rule):
@@ -96,16 +108,17 @@ def skeleton_node():
         memory_nodes()[0]]}
 
 
-def memory_nodes():
+def memory_nodes(comment=False):
     """The form of `memory` and of `prompts.memory` - one shape for every kind that reads a person's corrections
-    (an ask rule; a report reads them too, `report_shape.skeleton_node`)."""
+    (an ask rule; a report reads them too, `report_shape.skeleton_node`). `comment`: a report's `memory.comment`."""
     import chain_bindings
 
     leaf = {"kind": "leaf", "hint": "free"}
     return ({"key": "memory", "required": False, "node": {"kind": "record", "fields": [
                 {"key": "table", "required": True, "node": leaf},
                 {"key": "columns", "required": True, "node": {"kind": "record", "fields": [
-                    {"key": role, "required": False, "node": leaf} for role in MEMORY_ROLES]}}]}},
+                    {"key": role, "required": False, "node": leaf} for role in MEMORY_ROLES]}}]
+                + ([{"key": MEMORY_COMMENT, "required": False, "node": leaf}] if comment else [])}},
             {"key": "memory", "required": False, "node": {"kind": "record", "fields": [
                 {"key": "scope", "required": False, "node": chain_bindings.list_node("column", leaf)},
                 {"key": "limit", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}})
@@ -331,7 +344,8 @@ def remember(db, rule, row_ids):
     """The memory half: the output rows handed -> a memory row for each AI cell a person corrected, and `gone` for
     the memory rows of those output rows no correction holds any more (a person put the AI's value back, or their
     layer went). A person's value equal to the AI's corrects nothing. The judgement is `cell_layer.person_cells`.
-    The AI's cells: an ask's `output.cells`, a report's text slots its `results` names."""
+    The AI's cells: an ask's `output.cells`, a report's text slots its `results` names. A report's comment column
+    (`memory.comment`) is kept as the person wrote it, no AI value - a blank one is withdrawn."""
     from chain import cell_layer, report_shape, rule_shape
     from database import crud
 
@@ -344,19 +358,26 @@ def remember(db, rule, row_ids):
     rows = {str(r[0]): dict(zip(where, r[1:])) for r in db.query(model.row_id, *(getattr(model, c) for c in where))
             .filter(model.row_id.in_([str(i) for i in row_ids or ()])).all()}
     texts = set(report_shape.text_slots(spec))
+    comment = comment_column(spec)
     cells = set(out_spec.get("cells") or ()) | {column for cell, column in report_shape.result_cells(spec)
-                                                if cell in texts}
+                                                if cell in texts} | ({comment} if comment else set())
     updates, said = [], set()
     for (row_id, column), layers in sorted(cell_layer.person_cells(db, table, list(rows)).items()):
         person = [l for n, l in layers.items() if crud.layer_writer(n) == crud.USER_SOURCE]
         ai = [l for n, l in layers.items() if crud.layer_writer(n) == crud.CHAIN_SOURCE and l.get("updated_by") == asker]
-        if column not in cells or row_id not in rows or not person or not ai:
+        if column not in cells or row_id not in rows or not person or not (ai or column == comment):
             continue
         mine = max(person, key=lambda l: str(l.get("ingested_at")))
-        if _shown(mine["value"]) == _shown(ai[0]["value"]):
+        if column == comment:
+            if crud.is_blank_value(mine["value"]):
+                continue                                         # cleared - its memory row is withdrawn below
+            said_by_ai = None
+        elif _shown(mine["value"]) == _shown(ai[0]["value"]):
             continue
+        else:
+            said_by_ai = _shown(ai[0]["value"])
         written = {named.get("purpose"): asker, named.get("key"): _situation(rows[row_id]), named.get("cell"): column,
-                   named.get("ai"): _shown(ai[0]["value"]), named.get("right"): _shown(mine["value"]),
+                   named.get("ai"): said_by_ai, named.get("right"): _shown(mine["value"]),
                    named.get("who"): mine.get("updated_by"), named.get("when"): str(mine.get("ingested_at"))}
         written = {k: v for k, v in written.items() if k}
         said.add(_key_of(rule.get("target_table"), written))
@@ -388,8 +409,10 @@ def memory_lines(db, spec, purpose, situation):
     picked = [m for m, held in keys if all(c in held and c in situation and str(held[c]) == str(situation[c])
                                            for c in scope)]
     picked.sort(key=lambda m: str(m.get("when") or ""), reverse=True)
-    lines = ["- %s %s: you said %s; correct: %s%s" % (m.get("key"), m.get("cell"), m.get("ai"), m.get("right"),
-                                                       " - note: %s" % m["memo"] if m.get("memo") else "")
+    comment = comment_column(spec)
+    lines = [("- %s reviewer comment: %s" % (m.get("key"), m.get("right")) if comment and m.get("cell") == comment
+              else "- %s %s: you said %s; correct: %s" % (m.get("key"), m.get("cell"), m.get("ai"), m.get("right")))
+             + (" - note: %s" % m["memo"] if m.get("memo") else "")
              for m in picked[:int(reading.get("limit") or 5)]]
     return "\n".join([MEMORY_HEADING] + lines) if lines else ""
 

@@ -121,7 +121,11 @@ def test_a_report_declares_the_same_memory_and_its_prompt_carries_the_lines():
 
     fields = {f["key"]: f for f in report_shape.skeleton_node()["fields"]}
     asked = {f["key"]: f for f in ask_rule.skeleton_node()["fields"]}
-    assert fields["memory"] == asked["memory"] and "memory" in report_shape.REPORT_CELLS
+    # the same form, a report's with its reviewer comment column too (owner 10-29)
+    assert asked["memory"] == ask_rule.memory_nodes()[0] and "memory" in report_shape.REPORT_CELLS
+    assert fields["memory"] == ask_rule.memory_nodes(comment=True)[0]
+    assert [f for f in fields["memory"]["node"]["fields"] if f["key"] != ask_rule.MEMORY_COMMENT] == \
+        asked["memory"]["node"]["fields"]
     prompts = {f["key"]: f for f in fields["prompts"]["node"]["fields"]}
     assert prompts["memory"] == {f["key"]: f for f in asked["prompts"]["node"]["fields"]}["memory"]
     said = report_loop._request({"evaluation": "e", "memory": ask_rule.MEMORY_HEADING + "\n- x"})

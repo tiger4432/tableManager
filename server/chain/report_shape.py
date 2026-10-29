@@ -284,7 +284,7 @@ def skeleton_node():
             "fields"] + [{"key": FUNCTIONS_CELL, "required": False, "node": {"kind": "record", "fields": [
                 {"key": read, "required": False, "node": _record((ABOUT_CELL,), "free")} for read in READS]}},
             ask_rule.memory_nodes()[1]]}},
-        ask_rule.memory_nodes()[0],
+        ask_rule.memory_nodes(comment=True)[0],
         {"key": "layout", "required": False, "node": chain_bindings.list_node("slot", _record(
             ("kind", "fill", "slot"), "free"))},
         {"key": "loop", "required": False, "node": _record(LOOP_CELLS, "number")},

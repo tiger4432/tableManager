@@ -147,7 +147,9 @@ def _prompts(spec, cells=("select", "style", "compare", "control")):
 def _request(request):
     return ["Evaluation: %s" % request.get("evaluation"),
             "Compare sets: %s" % (", ".join(request.get("sets") or ()) or "the declaration's default"),
-            "Note: %s" % (request.get("note") or "none")] + ([request["memory"]] if request.get("memory") else [])
+            "Note: %s" % (request.get("note") or "none")] + (
+        ["Reviewer comment: %s" % request["comment"]] if request.get("comment") else []) + (
+        [request["memory"]] if request.get("memory") else [])
 
 
 def _said(call, args):
@@ -641,19 +643,23 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     name = str(rule.get("name") or "")
     keys = report_shape.report_key(spec, rule.get("trigger_table"))
     written = report_shape.result_cells(spec)                 # the file's column, then each named text's
-    by_wafer = {}
+    comment = ask_rule.comment_column(spec)                   # a person's comment on the wafer's row (owner 10-29)
+    by_wafer, comments = {}, {}
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
         wafer = report_reads._parts(getattr(row, c) for c in keys)
         if not all(crud.is_blank_value(part) for part in wafer):
             by_wafer.setdefault(wafer, []).append(row.row_id)
+            said = getattr(row, comment, None) if comment else None
+            if not crud.is_blank_value(said):
+                comments.setdefault(wafer, {})[str(said).strip()] = None
     updates = []
     for wafer, rows in sorted(by_wafer.items(), key=lambda pair: report_reads.label(pair[0])):
         said, report = report_reads.label(wafer), None
         try:
             report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
             memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), dict(zip(keys, wafer)))
-            out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": [], "memory": memory},
-                      ask=ask, clock=clock)
+            out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": [], "memory": memory,
+                                     "comment": " / ".join(comments.get(wafer) or ())}, ask=ask, clock=clock)
         except report_reads.ReadRefused as refused:
             logger.error("[Report] %s wafer %s stopped: %s", name, said, refused, exc_info=refused)
             out = {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
