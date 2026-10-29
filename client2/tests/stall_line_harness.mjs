@@ -4,10 +4,14 @@
 //   A  stallOf: /health not read keeps what is drawn (undefined) · no freeze yet (null) · a freeze ({line, at})
 //   B  the line drawn as the server wrote it, with its time; null hides it; a read without the key leaves it; two lines apart
 // Run: node client2/tests/stall_line_harness.mjs
-import { fileURLToPath } from 'node:url';
+import { register } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
-import * as BASELINE from '../src/stall_line.js';
 import { localShort } from '../src/server_time.js';
+
+// the module opens with its stylesheet's import - answered with an empty module, the module itself as it ships
+register(pathToFileURL(fileURLToPath(new URL('./lib/css_loader.mjs', import.meta.url))).href);
+const BASELINE = await import('../src/stall_line.js');
 
 const SRC_PATH = fileURLToPath(new URL('../src/stall_line.js', import.meta.url));
 let passed = 0;

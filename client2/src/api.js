@@ -132,7 +132,8 @@ export function chainBadge(payload) {
   };
 }
 
-/** 그 뱃지를 한 번 그린다. 503 이어도 «본문»을 읽는다 — 정작 알려야 할 순간이 그때다. */
+/** 그 뱃지를 한 번 그린다. 503 이어도 «본문»을 읽는다 — 정작 알려야 할 순간이 그때다.
+ *  읽은 본문(못 읽으면 null)을 돌려준다 — 머리의 마지막 굳음이 같은 답을 읽는다(main.js). */
 export async function checkChainHealth() {
   let failure = null;
   let body = null;
@@ -155,6 +156,7 @@ export async function checkChainHealth() {
   } catch (err) {
     console.error('[health] chain badge could not be drawn', err);
   }
+  return body;
 }
 
 /**

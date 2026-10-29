@@ -448,6 +448,13 @@ const HELP_ANSWERS = {
 // shape: {line, at} after a freeze, null before one. The recorded /health is an older server's, without the key.
 const STALL = { on: false, next: null };
 const STALL_LINE = { line: 'STALL 36s+ L12 T40/40 G6 D9/11s C97 slot2:61 ING wafer_process_inspection_result_by_lot_and_slot', at: '2026-10-29T01:23:45+00:00' };
+// The whole line is read off the screen and typed (lead 10-29): every letter inside the box, the box inside the page - a
+// line that does not fit goes down at a space, it is not cut or slid.
+const STALL_WHOLE = `(() => { const box = document.querySelector('.stall-line:not([hidden])'); if (!box) return false;
+  const t = box.querySelector('.stall-line__text');
+  if (t.textContent !== ${JSON.stringify(STALL_LINE.line)} || t.scrollWidth > t.clientWidth + 1) return false;
+  const b = box.getBoundingClientRect(); if (b.left < 0 || b.right > innerWidth) return false;
+  return [...t.getClientRects()].every((r) => r.left >= b.left - 0.5 && r.right <= b.right + 0.5); })()`;
 const answerOf = (u) => {
   if (STALL.on && u.pathname === '/health') {
     const a = ANSWERS['/health'];
@@ -2785,6 +2792,20 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
+    // The header's last stall on the grid (owner 10-29 «1 ㄴ»): the page's own /health read at its start says a freeze.
+    // Last, so the states above are drawn without it.
+    ['Header, the last stall', async (c, log) => {
+      STALL.on = true;
+      STALL.next = STALL_LINE;
+      log.opening = true;
+      await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
+      await sleep(1500);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, GRID_LOADED, 15000);
+      await until(c, STALL_WHOLE);
+      STALL.on = false;
+    }],
   ],
   'admin.html': [
     ['Overview', async () => true],
@@ -2809,12 +2830,7 @@ const DRIVE = {
       await evaluate(c, "location.hash = '#overview'; true");
       await evaluate(c, "(() => { const b = document.getElementById('refresh-btn'); if (b) b.click(); return true; })()");
       await until(c, "Boolean(document.querySelector('.stall-line:not([hidden])'))");
-      // the whole line is read off the screen and typed (lead 10-29): every letter inside the box, the box inside the page -
-      // a line that does not fit goes down at a space, it is not cut or slid
-      await until(c, `(() => { const box = document.querySelector('.stall-line'); const t = box.querySelector('.stall-line__text');
-        if (t.textContent !== ${JSON.stringify(STALL_LINE.line)} || t.scrollWidth > t.clientWidth + 1) return false;
-        const b = box.getBoundingClientRect(); if (b.left < 0 || b.right > innerWidth) return false;
-        return [...t.getClientRects()].every((r) => r.left >= b.left - 0.5 && r.right <= b.right + 0.5); })()`);
+      await until(c, STALL_WHOLE);
     }],
     ['Header, no stall since a restart', async (c) => {
       STALL.next = null;

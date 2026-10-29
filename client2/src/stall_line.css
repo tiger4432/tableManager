@@ -1,0 +1,11 @@
+/* The last freeze (owner 10-29): the server's line whole, in a face the owner can type from - a line that does not fit
+   goes down at a space, never cut or slid (lead 10-29). One sheet for every page that seats it (admin · grid). */
+.stall-host { min-width: 0; }
+.stall-line { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0;
+  padding: var(--space-1) var(--space-2); border: 1px solid var(--warning); background: var(--warning-weak); }
+.stall-line[hidden] { display: none; }
+.stall-line__label, .stall-line__at { white-space: nowrap; }
+.stall-line__label { font-family: var(--font-head); font-size: var(--fs-label); font-weight: 600; color: var(--warning);
+  text-transform: uppercase; letter-spacing: 0.08em; }
+.stall-line__at { font-size: var(--fs-label); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.stall-line__text { font-family: var(--font-mono); font-size: var(--fs-body); color: var(--text); }

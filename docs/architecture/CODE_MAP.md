@@ -5903,14 +5903,14 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - **소비자**: `admin.js` — `initHelpPanel()`(머리 `#help-btn`, 판 자리 `#help-mount`, 판 위끝 = Help 단추 밑) · `sendHelp` · `openHelpForm`(그 도구의 `retroState` 에 칸 · `help` · 셈을 앉히고 소급 탭으로) · `confirmRetroactiveRun` 이 `help_id` 를 싣고 run 을 `noteRun` 으로 알림 · 채운 칸 `is-help`
 - **채점자**: `client2/tests/help_panel_harness.mjs`(`harness_floors.mjs` 에 **40** 건 — 변이 9 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE 아홉 «Help, asking … Help closed»(HELP 토글이 POST 를 녹화 꼴로 답하거나 붙잡음)
 
-### 🆕 `stall_line.js` (**44줄** 신설, 10-29 — 소유자 «ㄴ», A 63a69b97a) — 어드민 머리의 마지막 굳음 한 줄
+### 🆕 `stall_line.js` (**45줄** 신설, 10-29 — 소유자 «ㄴ» · «1 ㄴ», A 63a69b97a) — 어드민 · 그리드 머리의 마지막 굳음 한 줄
 
-> 🔴 **요청을 하지 않는다** — 페이지가 이미 읽은 /health 본문을 넘긴다(`admin.js` `chainPauseFrom` · Overview · Chain 탭).
+> 🔴 **요청을 하지 않는다** — 페이지가 이미 읽은 /health 본문을 넘긴다(`admin.js` `chainPauseFrom` · Overview · Chain 탭 / `main.js` 가 `api.js` `checkChainHealth()` 가 돌려준 본문, 20 초마다).
 
 - **`stallOf(health)`** → `{line, at}`(굳음) · `null`(서버가 켜진 뒤 없음) · `undefined`(못 읽음 · 키 없는 옛 서버 — 그린 것을 그대로 둠)
-- **`class StallLine(mount, {doc})`** — 자기 div `.stall-line`, `render(stall)`: 줄은 서버 글 그대로 · 시각은 `server_time.localShort`
-- **소비자**: `admin.js` `renderChainPause(next)` 가 `next.stall` 이 있을 때 `#stall-mount`(머리 `.header-actions` 첫 칸)에 그림
-- **채점자**: `client2/tests/stall_line_harness.mjs`(`harness_floors.mjs` 에 **12** 건 — 변이 4 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE 둘 «Header, the last stall» · «Header, no stall since a restart»(STALL 토글이 녹화 /health 에 stall 을 얹음)
+- **`class StallLine(mount, {doc})`** — 자기 div `.stall-line`, `render(stall)`: 줄은 서버 글 그대로 · 시각은 `server_time.localShort`. 꼴은 `stall_line.css`(모듈이 import, 두 페이지 한 벌) — 들어가지 않으면 공백에서 내려감
+- **소비자**: `admin.js` `renderChainPause(next)` 가 `next.stall` 이 있을 때 `#stall-mount`(머리 `.header-actions` 첫 칸)에 · `main.js` 가 `index.html` `#stall-mount`(`.status-indicators` 앞)에
+- **채점자**: `client2/tests/stall_line_harness.mjs`(`harness_floors.mjs` 에 **12** 건 — 변이 4 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE admin 둘 «Header, the last stall» · «Header, no stall since a restart», index 하나 «Header, the last stall»(STALL 토글이 녹화 /health 에 stall 을 얹음, `STALL_WHOLE` = 글자 전부가 상자 안 · 상자가 화면 안)
 
 ### 🆕⑰ `dropdown.js` (🆕 **108줄** @`f3b6391d2` · 75줄 @`f22cf7027` · 69줄 @`3a8036b74` · 38줄, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
 

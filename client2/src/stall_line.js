@@ -1,8 +1,9 @@
-// The last freeze of the API process, on the admin header (owner 10-29 «ㄴ», A 63a69b97a): /health's `stall` -
-// {line, at} once a freeze has ended, null before one - drawn as the server wrote it, one line in a fixed-width face,
-// with its time, so the owner can type it from a phone. No request of its own: the page hands in the /health body it
-// already read.
+// The last freeze of the API process, on the admin and grid headers (owner 10-29 «ㄴ» · «1 ㄴ», A 63a69b97a): /health's
+// `stall` - {line, at} once a freeze has ended, null before one - drawn as the server wrote it in a fixed-width face, with
+// its time, so the owner can type it from a phone. No request of its own: the page hands in the /health body it already
+// read (admin.js chainPauseFrom · main.js after checkChainHealth).
 import { localShort } from './server_time.js';
+import './stall_line.css';
 
 export const LAST_STALL = 'Last stall';
 
