@@ -73,6 +73,7 @@ class Pool:
         self.process_name, self.log_file = process_name, log_file
         self.idle = []                  # [process, connection, generation] ready for a body
         self.taken = [0]                # pool processes running a body, or being started
+        self.waiting = [0]              # requests waiting for a process (`runtime.stall_watch`'s G)
         self.modules = []               # the modules of the bodies in_pool wraps - imported before a process is ready
         self.prepares = []              # (module, function) a body's registration asks run before ready (in_pool prepare=)
         self.cond = threading.Condition()
@@ -344,7 +345,11 @@ def _run(target, kwargs, limit, seconds, pid=None, gone=None, pool=None):
                     "The walk process keeping this walk stayed busy for %g s with another walk - ask More again" % seconds
                     if pid is not None else "Every %s process stayed busy for %g s - try again, or raise %s in "
                     "ingestion_settings.json" % (pool.name, seconds, pool.setting)))
-            pool.cond.wait(left())
+            pool.waiting[0] += 1
+            try:
+                pool.cond.wait(left())
+            finally:
+                pool.waiting[0] -= 1
         if pid is not None and seconds is not None:
             deadline = time.monotonic() + seconds
         pool.taken[0] += 1

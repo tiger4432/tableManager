@@ -9,6 +9,7 @@ The database time is counted by two cursor hooks while a request's counter is se
 request (a worker, a thread the request started) finds no counter and is not counted.
 """
 import contextvars
+import itertools
 import json
 import logging
 import os
@@ -72,9 +73,21 @@ def _read_slow_request_ms():
     return event_constants.slow_warn_ms(declared, "%s %s" % (SETTINGS_FILE, SLOW_REQUEST_CELL))
 
 
+_open = {}                      # this process's requests begun and not ended: key -> perf_counter at begin
+_keys = itertools.count()
+
+
 def begin():
     """Start this request's counter; hand the token to `end`."""
-    return _counter.set([0.0, 0]), time.perf_counter()
+    key, started = next(_keys), time.perf_counter()
+    _open[key] = started
+    return _counter.set([0.0, 0]), started, key
+
+
+def oldest_open_seconds():
+    """Seconds the oldest request still without a response has been open - 0 with none (`runtime.stall_watch`)."""
+    starts = list(_open.values())
+    return time.perf_counter() - min(starts) if starts else 0.0
 
 
 def spent():
@@ -93,7 +106,8 @@ def add(seconds, queries):
 def end(began, method, path, response):
     """Stamp the response's header and, over the budget, say it once. No response (the app
     raised): the counter is only put away."""
-    token, started = began
+    token, started, key = began
+    _open.pop(key, None)
     seconds, queries = _counter.get()
     _counter.reset(token)
     if response is None:

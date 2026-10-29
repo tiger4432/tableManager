@@ -2945,6 +2945,7 @@ class IngestionHandler(FileSystemEventHandler):
         # [D1] 파일당 1회 스냅샷 — 해석·검증·업서트·로그가 전부 같은 config 스냅샷을 본다.
         # 파일 처리 도중 table_config가 바뀌어도 이 파일은 시작 시점 기준으로 완결된다.
         t_name, table_info = self._snapshot_table_context()
+        heartbeat.note_work(table=t_name)               # the STALL line's ING (runtime.stall_watch)
 
         # The checklist, BEFORE the debounce: one stat answers it, and a file this deployment already read costs no
         # second of waiting (소유자 10-21, `checkpoint.checked`).

@@ -36,7 +36,7 @@ UPN = "kim@corp.test"
 ADFS_CLAIMS = {"upn": UPN, "unique_name": "CORP\\kim", "sub": "s-kim"}
 ADMIN_TOKEN = "worker-token-for-tests"
 CHALLENGE = auth.GATE_CHALLENGE_HEADER
-HEALTH_KEYS = {"status", "checked_at", "problems", "checks"}
+HEALTH_KEYS = {"status", "checked_at", "problems", "checks", "stall"}   # stall: the last STALL line (owner 10-29)
 HEALTH_CHECKS = {"database", "workers", "outbox", "supervisor", "config_backup"}
 
 

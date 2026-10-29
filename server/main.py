@@ -343,6 +343,8 @@ async def health_check():
         outbox_result=outbox_result,
         stale_after=_heartbeat_mod.DEFAULT_STALE_AFTER_SEC,
     )
+    from runtime import stall_watch
+    payload["stall"] = stall_watch.last()       # {line, at} of the last freeze - said when it ENDS, null before one
     return JSONResponse(status_code=http_status, content=payload,
                         headers={"Cache-Control": "no-store"})
 
@@ -449,6 +451,12 @@ async def startup_event():
     if os.getenv("TESTING") == "True":
         logger.info("Running in Testing mode. Skipping migrations, Directory Watcher and background Workers.")
         return
+
+    # A freeze of this process leaves one STALL line (owner 10-29, runtime.stall_watch) - anyio's thread limiter is
+    # only reachable from inside the loop, so it is taken here.
+    import anyio.to_thread
+    from runtime import stall_watch
+    stall_watch.start(main_loop, anyio.to_thread.current_default_thread_limiter())
 
     # 🔴 THE MAPPERS THIS PROCESS CAN NAME (S-204 (3), 판정 326). The chain rule editor
     # refuses a rule naming a mapper nothing implements, and that judgement is only the
