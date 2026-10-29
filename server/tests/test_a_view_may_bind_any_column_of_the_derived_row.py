@@ -133,3 +133,29 @@ def test_the_normalizer_stamps_only_the_key_columns_a_view_actually_binds():
     assert views, "the view must survive validation with a non-key bind"
     assert views[0]["blank_is_missing"] == ["lot"]
     assert set(views[0]["required_binds"]) == {"lot", "equipment"}
+
+
+def _refusal(**kw):
+    rejections = []
+    views = enrichment.config._normalize_reference_views(
+        "r", [{"label": "x", "query": "SELECT 1 WHERE lot = :nope"}],
+        ["lot"], ["wafer_id"], rejections=rejections, **kw)
+    assert views == [] and len(rejections) == 1, rejections
+    return rejections[0]["detail"]
+
+
+def test_the_refusal_says_what_binds_when_the_catalogue_is_seen():
+    """The sentence says the judgement `view_bind_names` made (lead 10-29): with the derived
+    table seen, every column of it binds - not «decision_key columns or aggregation names»."""
+    said = _refusal(derived_binds={"lot", "equipment", "wafer_id"}, derived_table="s136_derived")
+
+    assert "bind params must be columns of the derived table 's136_derived'" in said, said
+    assert "decision_key" not in said, said
+    assert "'nope'" in said, said
+
+
+def test_the_refusal_without_the_catalogue_keeps_its_old_sentence():
+    said = _refusal()
+
+    assert "bind params must be decision_key columns or aggregation names" in said, said
+    assert "'nope'" in said, said

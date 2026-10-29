@@ -525,11 +525,20 @@ def view_bind_values(rule: dict, row_values: dict,
     return {name: row_values[name] for name in view_bind_names(rule, known_tables)
             if name in (row_values or {})}
 
-def _validate_view_sql(sql: str, allowed_binds) -> str:
+def binds_allowed_said(derived_table=None) -> str:
+    """What a reference view may bind, as a refusal says it - `view_bind_names`' judgement: every column of the
+    derived table when the catalogue is seen (S-136), else the rule's decision_key columns and aggregation names."""
+    if derived_table:
+        return "bind params must be columns of the derived table %r" % derived_table
+    return "bind params must be decision_key columns or aggregation names"
+
+
+def _validate_view_sql(sql: str, allowed_binds, derived_table=None) -> str:
     """참조뷰 SQL 안전성 검증. 통과 시 None, 실패 시 사유 문자열 반환.
 
     - 단일 SELECT(또는 WITH … SELECT)문만 허용, ';' 다중 스테이트먼트 금지.
-    - 바인드 파라미터는 «판단키 ∪ 집계 이름»만 허용(경계 계약: params도 동일 제약).
+    - 바인드 파라미터는 `allowed_binds` 만 허용(경계 계약: params도 동일 제약) — 카탈로그가 보이면
+      파생 표의 모든 칸(S-136), 아니면 «판단키 ∪ 집계 이름». 거절 문장은 `binds_allowed_said`.
       집계가 들어온 이유는 S-129 다 — 그 lot 그룹의 min/max 로 조회하려면 뷰가 그
       값을 물을 수 있어야 하고, 두 이름 다 «파생행의 컬럼»이라 출처가 하나다.
     실행 시엔 SQLAlchemy text() 바인딩만 사용하므로 값 주입(injection)은 구조적으로 불가.
@@ -549,8 +558,7 @@ def _validate_view_sql(sql: str, allowed_binds) -> str:
     binds = set(_BIND_PARAM_RE.findall(body))
     invalid = sorted(binds - set(allowed_binds))
     if invalid:
-        return (f"bind params must be decision_key columns or aggregation names; "
-                f"invalid: {invalid}")
+        return f"{binds_allowed_said(derived_table)}; invalid: {invalid}"
     return None
 
 
@@ -654,7 +662,7 @@ def _view_reads(rule_name: str, label: str, raw, known_tables, rejections):
 def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
                                target_fields: list = None, rejections: list = None,
                                caps: dict = None, aggregations: dict = None,
-                               derived_binds=None, known_tables=None) -> list:
+                               derived_binds=None, known_tables=None, derived_table=None) -> list:
     """참조뷰 목록을 정규화한다. 유효하지 않은 뷰는 **목록에서 제외**된다.
 
     주의: 제외는 로드 시점에 일어나므로 `/enrichment/rules`의 label 목록과
@@ -689,7 +697,8 @@ def _normalize_reference_views(rule_name: str, raw_views, decision_key: list,
             # could not supply it keeps this function usable from the pure-shape path.
             err = _validate_view_sql(
                 sql, derived_binds if derived_binds is not None
-                else set(decision_key) | set(aggregations or {}))
+                else set(decision_key) | set(aggregations or {}),
+                derived_table if derived_binds is not None else None)
         if err is not None:
             logger.warning(f"[Enrichment:{rule_name}] reference view '{raw.get('label')}' dropped: {err}")
             _record(rejections, "reference_view", f"{rule_name}/{raw.get('label')}",
@@ -890,7 +899,7 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     reference_views = _normalize_reference_views(
         name, raw.get("reference_views"), decision_key, target_fields,
         rejections=rejections, caps=caps, aggregations=aggregations,
-        derived_binds=derived_binds, known_tables=known_tables)
+        derived_binds=derived_binds, known_tables=known_tables, derived_table=derived_table)
     normalized = {
         "name": name,
         # ① auto-confirm opt-in. Carried through RAW (not coerced) so

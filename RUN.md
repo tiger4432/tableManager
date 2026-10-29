@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **참조 뷰 거절 문장 — 카탈로그가 보이면 «columns of the derived table '<표>'»** — 문장만 바뀜, 판정 그대로
+>
+> ```
+> 돌릴 것   없음. git pull · 서버 재기동 뒤 규칙이 다시 읽힐 때부터
+> 볼 줄     [Enrichment:<규칙>] reference view '<뷰>' dropped: bind params must be columns of the derived table '<표>'; invalid: [...]
+> 뜻       invalid 안의 이름이 파생 표 칸에 없다 -> 뷰의 :이름 을 파생 표 칸 이름으로 고친다 (짝 키면 왼쪽 = 파생 쪽 이름)> 끄는 법   없음 (문장만 바뀜)
+> ```
+
+---
+
+---
+
 > ## [10-29] **도움말 선언 가이드 일곱 — ai_report_tables 더함(리포트 선언) · 긴 절은 목록 항목에서도 잘림** — git pull · 서버 재기동
 >
 > ```
