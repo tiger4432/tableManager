@@ -2809,6 +2809,12 @@ const DRIVE = {
       await evaluate(c, "location.hash = '#overview'; true");
       await evaluate(c, "(() => { const b = document.getElementById('refresh-btn'); if (b) b.click(); return true; })()");
       await until(c, "Boolean(document.querySelector('.stall-line:not([hidden])'))");
+      // the whole line is read off the screen and typed (lead 10-29): every letter inside the box, the box inside the page -
+      // a line that does not fit goes down at a space, it is not cut or slid
+      await until(c, `(() => { const box = document.querySelector('.stall-line'); const t = box.querySelector('.stall-line__text');
+        if (t.textContent !== ${JSON.stringify(STALL_LINE.line)} || t.scrollWidth > t.clientWidth + 1) return false;
+        const b = box.getBoundingClientRect(); if (b.left < 0 || b.right > innerWidth) return false;
+        return [...t.getClientRects()].every((r) => r.left >= b.left - 0.5 && r.right <= b.right + 0.5); })()`);
     }],
     ['Header, no stall since a restart', async (c) => {
       STALL.next = null;
