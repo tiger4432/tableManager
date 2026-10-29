@@ -70,3 +70,20 @@
 .gallery-side__values { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--fs-body); }
 .gallery-side__values dt { color: var(--text-dim); }
 .gallery-side__values dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+/* The opened cell in the page's seat, where the history tabs were (owner 10-29, mockup 9TTS8LPifG5y3wMnDLN2oZ): its head, its
+   tiles a line each in their own scroll, the row picked pinned under them; the board alone takes the left's height. */
+.gallery-seat { width: 300px; height: 100%; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg-surface); color: var(--text); }
+.gallery-seat[hidden] { display: none; }
+.gallery-seat .gallery-open { flex: none; border: 0; border-bottom: 1px solid var(--border); }
+.gallery-seat .gallery-open__n { flex-basis: 100%; }
+.gallery-seat .gallery-open__filter { margin-left: 0; }
+.gallery-seat .gallery-body { flex-direction: column; gap: 0; background: var(--bg-inset); }
+.gallery-seat .gallery-scroll { margin: var(--space-3); }
+.gallery-seat .gallery-side { flex: 0 1 auto; width: auto; max-height: 50%; border: 0; border-top: 1px solid var(--border); }
+.gallery-seat .gallery-side__img { max-height: 240px; }
+.gallery > .gallery-board:last-child { flex: 1 1 auto; max-height: none; }
+/* A list's tile pressed (owner 10-29 «팝업으로 커지게»): the page's modal (.modal-overlay · .modal-content), the row's side in it */
+.gallery-popup[hidden] { display: none; }
+.gallery-popup > .gallery-popup__box { width: auto; max-width: 90vw; max-height: 90vh; overflow: auto; padding: 0; }
+.gallery-popup .gallery-side { width: min(640px, 80vw); border: 0; }
+.gallery-popup .gallery-side__img { max-height: 60vh; }

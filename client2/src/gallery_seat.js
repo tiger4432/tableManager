@@ -12,12 +12,22 @@ export function seatGallery({ doc = document, base = '', storage = null, loadAll
   const host = doc.getElementById('gallery-host');
   const toggle = doc.getElementById('gallery-toggle-btn');
   const counted = doc.getElementById('total-rows');
+  // the history tabs step aside while the gallery is open: a board's opened cell takes their place (mockup
+  // 9TTS8LPifG5y3wMnDLN2oZ), a list takes the whole width (owner 10-29) - the handle only beside a panel
+  const seat = doc.getElementById('gallery-seat');
+  const history = doc.querySelector('.history-sidebar');
+  const handle = doc.getElementById('main-split-resizer');
   if (!grid || !host || !toggle) return null;
   let open = false;
+  const seated = (held) => {
+    if (seat) seat.hidden = !(open && held);
+    if (history) history.hidden = open;
+    if (handle) handle.hidden = open && !held;
+  };
   const columns = () => (state.currentColumns || []).map((name) => ({ name, type: (state.currentColumnTypes || {})[name] || null }));
   const hasImage = () => columns().some((c) => c.type === IMAGE_TYPE);
   const part = new GalleryPart(host, {
-    doc, base, storage, loader: new ImageLoader({ base }),
+    doc, base, storage, loader: new ImageLoader({ base }), seat, seated,
     table: () => state.currentTable || '', columns, rows: gridRowsInOrder,
     // the grid's own answers: the columns it shows, less its system ones (owner 10-20 ⑤)
     shown: () => visibleRangeColIds().filter((name) => !isSystemColumn(name) && columns().some((c) => c.name === name)),
@@ -36,6 +46,7 @@ export function seatGallery({ doc = document, base = '', storage = null, loadAll
     toggle.textContent = open ? WORDS.grid : WORDS.gallery;
     toggle.classList.toggle('is-on', open);
     if (open) part.render();
+    else seated(false);
   };
   toggle.addEventListener('click', () => show(!open));
   // the grid's rows changed (a filter, a sort, a page, another table): the button only where there is an image column

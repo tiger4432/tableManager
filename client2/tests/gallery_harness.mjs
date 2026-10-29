@@ -64,7 +64,10 @@ function seat(M, o = {}) {
   const mount = doc.createElement('div');
   doc.body.append(mount);
   const asked = [];
-  const calls = { more: 0, shown: [] };
+  const calls = { more: 0, shown: [], seated: [] };
+  // the page's seat (owner 10-29): where the opened cell's list goes, and what the page is told
+  const seatBox = o.seat ? doc.createElement('aside') : null;
+  if (seatBox) doc.body.append(seatBox);
   const state = { rows: o.rows || rowsOf(9), columns: o.columns || IMG, table: o.table || 'T', whole: o.whole !== false, count: o.count || null };
   const part = new M.GalleryPart(mount, {
     doc, storage: o.storage || memory(),
@@ -73,9 +76,10 @@ function seat(M, o = {}) {
     ...(o.shown ? { shown: () => o.shown } : {}),
     valueOf: (row, col) => row.data[col], count: () => state.count, whole: () => state.whole,
     loadMore: () => { calls.more += 1; }, showRow: (id) => calls.shown.push(id),
+    ...(seatBox ? { seat: seatBox, seated: (held) => calls.seated.push(held) } : {}),
   });
   part.render();
-  return { doc, mount, part, state, asked, calls };
+  return { doc, mount, part, state, asked, calls, seat: seatBox };
 }
 const heads = (root) => byClass(root, 'gallery-head').map((h) => [textOf(byClass(h, 'gallery-head__value')[0]), textOf(byClass(h, 'gallery-head__n')[0]), textOf(byClass(h, 'gallery-head__without')[0])]);
 const tiles = (root) => byClass(root, 'gallery-tile');
@@ -364,6 +368,70 @@ async function suite(M) {
       && byClass(co.mount, 'gallery-board__col').map(textOf).join() === 'S1,S2,S3,' + M.WORDS.total
       && JSON.stringify(coN) === '[4,6,2]' && JSON.stringify(coTotals) === '[12]' && JSON.stringify(coHanded) === '[["step","S2"]]',
     `lines ${byClass(co.mount, 'gallery-board__value').map(textOf).join('|')} corner «${textOf(byClass(co.mount, 'gallery-board__corner')[0])}» ${JSON.stringify(coN)} totals ${JSON.stringify(coTotals)} filter ${JSON.stringify(coHanded)}`);
+
+  // S - the page's seat (owner 10-29 «갤러리 모드에서는 우측 탭 빼 주고 하단에 리스트 보기를 그 위치로»)
+  const seatDoc = makeDoc('dark');
+  const watched = [];
+  seatDoc.defaultView = { ResizeObserver: class { constructor(fn) { this.fn = fn; } observe(n) { watched.push({ n, fn: this.fn }); } disconnect() {} },
+    requestAnimationFrame: (fn) => fn() };
+  const st = seat(M, { doc: seatDoc, seat: true, columns: BCOLS, rows: boardRows(), storage: keptAs({ groupBy: 'defect', columnBy: 'step' }) });
+  press(cellOf(st.mount, 'B', 'S2'));
+  lay(st, 280, 600);
+  ok('S1 a board open with the page\'s seat: the board stays, its opened cell\'s head and tiles go to the seat, the page told it is held',
+    byClass(st.mount, 'gallery-board').length === 1 && !byClass(st.mount, 'gallery-body').length && !byClass(st.mount, 'gallery-open').length
+      && byClass(st.seat, 'gallery-open').length === 1 && byClass(st.seat, 'gallery-body').length === 1 && tiles(st.seat).length > 0
+      && st.calls.seated[st.calls.seated.length - 1] === true,
+    `mount body ${byClass(st.mount, 'gallery-body').length} · seat open ${byClass(st.seat, 'gallery-open').length} · seated ${JSON.stringify(st.calls.seated)}`);
+  ok('S2 ...a line of the seat 280 wide holds one tile', st.part.layout.per === 1, st.part.layout.per);
+  press(tiles(st.seat)[0]);
+  const stSide = byClass(st.seat, 'gallery-side')[0];
+  press(byClass(stSide || st.seat, 'gallery-side__go')[0]);
+  ok('S3 ...a tile pressed: its row under the tiles in the seat, Show in grid hands its row', !!stSide && !stSide.hidden
+    && JSON.stringify(st.calls.shown) === JSON.stringify([tiles(st.seat)[0].dataset.row]), JSON.stringify(st.calls.shown));
+  const seen = watched.filter((w) => w.n === st.part.scroller);
+  st.part.scroller.clientWidth = 600;
+  if (seen.length) seen[seen.length - 1].fn();
+  ok('S4 ...the seat\'s edge dragged wider: its lines laid out again, three tiles a line', seen.length > 0 && st.part.layout.per === 3,
+    `${seen.length} watched · per ${st.part.layout.per}`);
+  box(st.mount, M.WORDS.columnsBy).value = '';
+  press(box(st.mount, M.WORDS.columnsBy), 'change');
+  ok('S5 Columns by (None): the seat emptied, the page told it is not held, the tiles back in the gallery',
+    st.seat.children.length === 0 && st.calls.seated[st.calls.seated.length - 1] === false && byClass(st.mount, 'gallery-body').length === 1,
+    `seat ${st.seat.children.length} · seated ${JSON.stringify(st.calls.seated)}`);
+  const sn = seat(M, { seat: true, columns: [{ name: 'lot', type: null }] });
+  ok('S6 a table with no image column: the seat empty, not held', sn.seat.children.length === 0 && sn.calls.seated[sn.calls.seated.length - 1] === false,
+    JSON.stringify(sn.calls.seated));
+
+  // P - a list's tile pressed (owner 10-29 «없애고 팝업으로 커지게»): the page's modal over the list, its row large in it
+  const pp = seat(M, { seat: true });
+  lay(pp, 2000, 3000);
+  const popOf = () => byClass(pp.mount, 'gallery-popup')[0];
+  const shut = () => !popOf() || popOf().hidden;
+  const shutAtFirst = !!popOf() && popOf().hidden;
+  press(tiles(pp.mount).find((n) => n.dataset.row === '4'));
+  const pop = popOf();
+  const pside = pop && byClass(pop, 'gallery-side')[0];
+  const pdd = walk(pside || pp.mount).filter((n) => n.tagName === 'DD').map(textOf);
+  ok('P1 no board: a tile pressed opens the page\'s modal with its picture large, its row\'s values and its buttons; none beside the tiles',
+    shutAtFirst && !!pop && !pop.hidden && pop.classList.contains('modal-overlay') && byClass(pop, 'modal-content').length === 1
+      && !!pside && !pside.hidden && JSON.stringify(pdd) === JSON.stringify(['L4', 'B', 'img/4.png'])
+      && byClass(pside, 'gallery-side__go').length === 1 && byClass(pside, 'gallery-side__close').length === 1
+      && !byClass(pp.mount, 'gallery-body').some((b) => byClass(b, 'gallery-side').length) && pp.seat.children.length === 0,
+    `popup ${pop ? pop.hidden : 'none'} · values ${JSON.stringify(pdd)}`);
+  press(pop ? byClass(pop, 'modal-content')[0] : null);
+  const keptOpen = !shut();
+  press(popOf());
+  ok('P2 ...a press inside its box keeps it; a press outside shuts it', keptOpen && shut() && pp.part.picked === null,
+    `inside kept ${keptOpen} · after outside ${shut()}`);
+  press(tiles(pp.mount)[0]);
+  pp.doc.press('Escape');
+  ok('P3 ...Esc shuts it', !!popOf() && shut() && pp.part.picked === null, String(shut()));
+  const pb = seat(M, { seat: true, columns: BCOLS, rows: boardRows(), storage: keptAs({ groupBy: 'defect', columnBy: 'step' }) });
+  lay(pb, 280, 600);
+  press(tiles(pb.seat)[0]);
+  ok('P4 a board has no popup - its row stays under the opened cell\'s tiles', !byClass(pb.mount, 'gallery-popup').length && !byClass(pb.seat, 'gallery-popup').length
+    && byClass(pb.seat, 'gallery-body').some((b) => byClass(b, 'gallery-side').some((n) => !n.hidden)),
+    `${byClass(pb.mount, 'gallery-popup').length} popups`);
   return { ran, failed: failed.slice() };
 }
 
@@ -389,7 +457,17 @@ const MUTANTS = [
   { name: 'typing in a box moves the panel', catches: ['G11'], mutate: swap("if (tag === 'input' || tag === 'select' || tag === 'textarea' || (t && t.isContentEditable)) return;", '') },
   { name: 'Esc keeps the keys', catches: ['G11'], mutate: swap("    if (this.doc.removeEventListener) this.doc.removeEventListener('keydown', this.onKey);\n    this.render();", '    this.render();') },
   { name: 'a cell holds its line\'s rows whatever the column', catches: ['B1'], mutate: swap('      const cells = new Map(galleryModel(line.rows,', '      const cells = new Map(galleryModel(rows,') },
-  { name: 'Columns by (None) still draws a board', catches: ['B2'], mutate: swap('    this.heads = !columnBy;\n    if (columnBy) {', '    this.heads = !columnBy;\n    if (true) {') },
+  { name: 'Columns by (None) still draws a board', catches: ['B2'], mutate: swap('    const list = [];\n    if (columnBy) {', '    const list = [];\n    if (true) {') },
+  { name: 'the page\'s seat ignored', catches: ['S1'], mutate: swap('    if (!seat) return false;\n', '    return false;\n') },
+  { name: 'the seat kept full with no board', catches: ['S5'], mutate: swap('this.seatList(columnBy ? list : [])', 'this.seatList(list)') },
+  { name: 'the page never told', catches: ['S1', 'S5'], mutate: swap('    if (this.deps.seated) this.deps.seated(list.length > 0);\n', '') },
+  { name: 'no image column leaves the seat as it was', catches: ['S6'], mutate: swap('      this.seatList([]);\n      return;', '      return;') },
+  { name: 'a list\'s tile opens no popup', catches: ['P1'], mutate: swap('    if (this.popup) this.popup.hidden = false;\n', '') },
+  { name: 'a list\'s row beside its tiles again', catches: ['P1'], mutate: swap('this.popup = columnBy ? null : this.popupOf(this.side);', 'this.popup = null;') },
+  { name: 'a press outside leaves the popup', catches: ['P2'], mutate: swap("over.addEventListener('click', (event) => { if (event.target === over) this.close(); });", '') },
+  { name: 'a press inside shuts the popup', catches: ['P2'], mutate: swap('if (event.target === over) this.close();', 'this.close();') },
+  { name: 'a board\'s row in a popup', catches: ['P4'], mutate: swap('this.popup = columnBy ? null : this.popupOf(this.side);', 'this.popup = this.popupOf(this.side);') },
+  { name: 'a wider seat not laid out again', catches: ['S4'], mutate: swap('    if (this.watch) this.watch.observe(scroller);\n', '') },
   { name: 'Rows by is its first column alone', catches: ['B3'], mutate: swap("  const by = [].concat(groupBy || []).filter(Boolean);", "  const by = [].concat(groupBy || []).filter(Boolean).slice(0, 1);") },
   { name: 'the opened cell lays out every line\'s tiles', catches: ['B4'], mutate: swap('      this.groups = open ? [open.cell] : [];', '      this.groups = board.lines;') },
   { name: 'Filter grid to this cell hands the column alone', catches: ['B5'], mutate: swap('this.deps.filterTo([...rowsBy, columnBy].map(', 'this.deps.filterTo([columnBy].map(') },

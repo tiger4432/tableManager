@@ -186,6 +186,7 @@ export class GalleryPart {
     if (!image) {
       root.append(this.el('div', 'gallery-say', WORDS.noImageColumn));
       this.mount.replaceChildren(root);
+      this.seatList([]);
       return;
     }
     const select = (label, options, value, onPick) => {
@@ -240,16 +241,22 @@ export class GalleryPart {
     body.append(scroller);
     this.side = this.el('aside', 'gallery-side');
     this.side.hidden = !this.picked;
-    body.append(this.side);
+    // a tile pressed: its row under the opened cell's tiles (a board), or large in a popup over the list (owner 10-29)
+    this.popup = columnBy ? null : this.popupOf(this.side);
+    if (!this.popup) body.append(this.side);
     this.heads = !columnBy;
+    // the opened cell's head and its tiles: under the board, or in the page's seat when it gives one (owner 10-29)
+    const list = [];
     if (columnBy) {
       const board = galleryBoard(rows, { rowsBy, columnBy, image, caption, order, valueOf: this.deps.valueOf });
       const open = this.openedIn(board);
       root.append(this.boardOf(board, { rowsBy, columnBy, perCell, open }));
-      if (open) root.append(this.openHead(open, { rowsBy, columnBy }));
+      if (open) list.push(this.openHead(open, { rowsBy, columnBy }));
       this.groups = open ? [open.cell] : [];
     }
-    root.append(body);
+    list.push(body);
+    if (!this.seatList(columnBy ? list : [])) root.append(...list);
+    if (this.popup) root.append(this.popup);
     this.mount.replaceChildren(root);
     if (!columnBy) this.groups = galleryModel(rows, { groupBy, image, caption, order, valueOf: this.deps.valueOf });
     this.scroller = scroller;
@@ -257,9 +264,38 @@ export class GalleryPart {
     this.drawn = new Map();
     this.width = 0;
     scroller.addEventListener('scroll', () => this.soon());
+    // its box made wider or narrower (the seat's edge dragged, the window): the lines laid out again
+    const Watch = this.doc.defaultView && this.doc.defaultView.ResizeObserver;
+    if (this.watch) this.watch.disconnect();
+    this.watch = Watch ? new Watch(() => this.soon()) : null;
+    if (this.watch) this.watch.observe(scroller);
     this.place();
     if (was) { scroller.scrollTop = was; this.place(); }
     if (this.picked) this.showSide(this.picked);
+  }
+
+  /** `list` into the page's seat (`deps.seat`), emptied when there is none to put; the page told whether its seat
+   *  holds it (`deps.seated`). true - the seat took it. */
+  seatList(list) {
+    const seat = this.deps.seat;
+    if (!seat) return false;
+    seat.replaceChildren(...list);
+    if (this.deps.seated) this.deps.seated(list.length > 0);
+    return list.length > 0;
+  }
+
+  /** The popup a list's tile opens: the page's modal (.modal-overlay · .modal-content) with the row's side in it, shut by
+   *  Close, Esc or a press outside its box. */
+  popupOf(side) {
+    const over = this.el('div', 'modal-overlay gallery-popup');
+    over.hidden = !this.picked;
+    const box = this.el('div', 'modal-content gallery-popup__box');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.append(side);
+    over.append(box);
+    over.addEventListener('click', (event) => { if (event.target === over) this.close(); });
+    return over;
   }
 
   /** The side panel shut and the keys let go. */
@@ -420,6 +456,7 @@ export class GalleryPart {
     for (const node of this.canvas ? this.canvas.querySelectorAll('.gallery-tile') : []) node.classList.toggle('is-picked', node.dataset.row === String(t.id));
     const side = this.side;
     side.hidden = false;
+    if (this.popup) this.popup.hidden = false;
     const head = this.el('div', 'gallery-side__head');
     const show = this.el('button', 'glass-btn gallery-side__go', WORDS.showInGrid);
     show.type = 'button';

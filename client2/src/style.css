@@ -286,7 +286,8 @@ body.resizing-active {
 }
 body.resizing-active iframe,
 body.resizing-active #myGrid,
-body.resizing-active .history-sidebar {
+body.resizing-active .history-sidebar,
+body.resizing-active .gallery-seat {
   pointer-events: none !important;
 }
 
@@ -421,6 +422,8 @@ body.resizing-active .history-sidebar {
   border-bottom: none;
   background: var(--bg-surface);
 }
+/* stepped aside for the gallery's seat (gallery_seat.js) - kept as it was, not read again */
+.history-sidebar[hidden] { display: none; }
 
 .sidebar-header {
   padding: 20px;

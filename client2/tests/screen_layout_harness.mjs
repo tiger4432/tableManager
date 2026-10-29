@@ -1157,16 +1157,66 @@ CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'thum
   return null;
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, a cell opened and a tile pressed', rule: 'opened cell tiles', at: 'gallery-open', expr: `(() => {
-  const words = ((document.querySelector('#gallery-host .gallery-open__n') || {}).textContent || '').replace(/,/g, '');
+  // the opened cell's list in the history tabs' place (owner 10-29): the seat stands, the tabs step aside
+  const seat = document.getElementById('gallery-seat');
+  const history = document.querySelector('.history-sidebar');
+  if (!seat || seat.hidden || seat.getBoundingClientRect().width < 300) return 'the seat is not standing at its width';
+  if (!history || !history.hidden) return 'the history tabs still stand beside the seat';
+  if (document.querySelector('#gallery-host .gallery-body')) return 'the tiles still under the board';
+  const words = ((document.querySelector('#gallery-seat .gallery-open__n') || {}).textContent || '').replace(/,/g, '');
   const m = words.match(/^(\\d+) rows?(?: · (\\d+) without image)?$/);
   if (!m) return 'the opened head says «' + words + '»';
   const want = Number(m[1]) - Number(m[2] || 0);
-  const scroll = document.querySelector('#gallery-host .gallery-scroll');
+  const scroll = document.querySelector('#gallery-seat .gallery-scroll');
   if (scroll) { scroll.scrollTop = scroll.scrollHeight; scroll.dispatchEvent(new Event('scroll')); }
-  const tiles = document.querySelectorAll('#gallery-host .gallery-tile').length;
-  const side = document.querySelector('#gallery-host .gallery-side');
-  if (tiles !== want && tiles < 12) return tiles + ' tiles for ' + want + ' rows with a picture';
+  // only the lines in view are drawn - what is laid out is the whole: its lines × a line's height, a line its tiles
+  const drawn = [...document.querySelectorAll('#gallery-seat .gallery-line')];
+  const per = Math.max(0, ...drawn.map((l) => l.querySelectorAll('.gallery-tile').length));
+  const lineHeight = drawn.length ? parseFloat(drawn[0].style.height) : 0;
+  const laid = parseFloat((document.querySelector('#gallery-seat .gallery-canvas') || { style: {} }).style.height) || 0;
+  const side = document.querySelector('#gallery-seat .gallery-side');
+  if (!per || Math.abs(laid - Math.ceil(want / per) * lineHeight) > 1) return 'its tiles laid out ' + laid + ' px high for ' + want + ' rows with a picture, ' + per + ' a line';
   if (!side || side.hidden) return 'no side panel after a tile pressed';
+  return null;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Gallery, the seat widened', rule: 'seat widened', at: 'gallery-seat', expr: `(() => {
+  const seat = document.getElementById('gallery-seat');
+  const width = Math.round(seat.getBoundingClientRect().width);
+  if (Math.abs(width - 520) > 2) return 'the seat is ' + width + ' wide after a drag to 520';
+  if (Number(localStorage.getItem('assy.gallerySeatWidth')) !== width) return 'its width kept as ' + localStorage.getItem('assy.gallerySeatWidth');
+  const tops = new Set([...seat.querySelectorAll('.gallery-tile')].map((t) => Math.round(t.getBoundingClientRect().top)));
+  const tiles = seat.querySelectorAll('.gallery-tile').length;
+  if (tiles > 1 && tops.size === tiles) return 'still one tile a line in a seat ' + width + ' wide';
+  return null;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Gallery, a list and its popup', rule: 'list popup', at: 'gallery-popup', expr: `(() => {
+  const layout = document.querySelector('.main-layout').getBoundingClientRect();
+  const host = document.getElementById('gallery-host').getBoundingClientRect();
+  if (!document.getElementById('gallery-seat').hidden) return 'a seat beside a list';
+  if (!document.querySelector('.history-sidebar').hidden) return 'the history tabs beside a list';
+  if (!document.getElementById('main-split-resizer').hidden) return 'a handle beside no panel';
+  if (host.width < layout.width - 2) return 'the list is ' + Math.round(host.width) + ' of ' + Math.round(layout.width) + ' wide';
+  const pop = document.querySelector('#gallery-host .gallery-popup');
+  if (!pop || pop.hidden || !pop.classList.contains('modal-overlay')) return 'no modal open on a tile pressed';
+  const box = pop.querySelector('.modal-content').getBoundingClientRect();
+  if (box.left < 0 || box.top < 0 || box.right > innerWidth || box.bottom > innerHeight) return 'its box out of the screen';
+  const words = [...pop.querySelectorAll('button')].map((b) => b.textContent.trim());
+  if (!words.includes('Show in grid') || !words.includes('Close')) return 'its buttons ' + JSON.stringify(words);
+  const inner = pop.querySelector('.modal-content');
+  if (inner.scrollWidth > inner.clientWidth + 1) return 'its box scrolls sideways: ' + inner.scrollWidth + ' in ' + inner.clientWidth;
+  for (const b of pop.querySelectorAll('button')) { const r = b.getBoundingClientRect(); if (r.left < box.left || r.right > box.right || r.top < box.top || r.bottom > box.bottom) return '«' + b.textContent.trim() + '» out of its box'; }
+  if (!pop.querySelector('.gallery-side__values dt')) return 'no row values in it';
+  return null;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Gallery, the popup shut by Esc', rule: 'popup shut', at: 'gallery-popup', expr: `(() => {
+  const pop = document.querySelector('#gallery-host .gallery-popup');
+  return pop && pop.hidden ? null : 'the popup still open after Esc';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Gallery left, the first table again', rule: 'tabs back', at: 'history-sidebar', expr: `(() => {
+  const seat = document.getElementById('gallery-seat');
+  const history = document.querySelector('.history-sidebar');
+  if (!seat.hidden) return 'the seat still stands';
+  if (history.hidden || history.getBoundingClientRect().width < 300) return 'the history tabs are not back';
   return null;
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'filter set', at: 'filter-chip', expr: `(() => {
@@ -2504,16 +2554,37 @@ const DRIVE = {
     ['Gallery, a cell opened and a tile pressed', async (c) => {
       await evaluate(c, "(() => { const cell = document.querySelectorAll('#gallery-host .gallery-cell:not(.is-empty)')[1]; if (cell) cell.click(); return Boolean(cell); })()");
       await sleep(500);
-      await evaluate(c, "(() => { const t = document.querySelector('#gallery-host .gallery-tile'); if (t) t.click(); return Boolean(t); })()");
+      await evaluate(c, "(() => { const t = document.querySelector('#gallery-seat .gallery-tile'); if (t) t.click(); return Boolean(t); })()");
+      await sleep(600);
+    }],
+    // the seat's edge dragged wider (owner 10-29 «가로 레이아웃 지금처럼 조절되게»): the page's one handle, its own kept width
+    ['Gallery, the seat widened', async (c) => {
+      await evaluate(c, `(() => { const h = document.getElementById('main-split-resizer'); const layout = document.querySelector('.main-layout');
+        if (!h || !layout) return false; const x = layout.getBoundingClientRect().right - 520;
+        h.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: x + 20 }));
+        document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x }));
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x })); return true; })()`);
       await sleep(600);
     }],
     ['Gallery, + Column', (c) => evaluate(c, "(() => { const b = document.querySelector('#gallery-host .gallery-add'); if (b) b.click(); return Boolean(b); })()").then(() => sleep(800))],
     ['Gallery, filtered to a cell', async (c, log) => {
-      await evaluate(c, "(() => { const b = document.querySelector('#gallery-host .gallery-open__filter'); if (b) b.click(); return Boolean(b); })()");
+      await evaluate(c, "(() => { const b = document.querySelector('#gallery-seat .gallery-open__filter'); if (b) b.click(); return Boolean(b); })()");
       await sleep(900);
       await settle(c, log);
       await until(c, GRID_LOADED);
       await sleep(600);
+    }],
+    // no board (owner 10-29 «없애고 팝업으로 커지게»): the list across the width, a tile pressed opens the page's modal
+    ['Gallery, a list and its popup', async (c) => {
+      await evaluate(c, GALLERY_PICK('Columns by', ''));
+      await sleep(600);
+      await evaluate(c, "(() => { const t = document.querySelector('#gallery-host .gallery-tile'); if (t) t.click(); return Boolean(t); })()");
+      await until(c, "Boolean(document.querySelector('#gallery-host .gallery-popup:not([hidden]) .gallery-side__img'))");
+      await sleep(400);
+    }],
+    ['Gallery, the popup shut by Esc', async (c) => {
+      await evaluate(c, "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true");
+      await sleep(300);
     }],
     ['Gallery left, the first table again', async (c, log) => {
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__galleryFrom) return false;
@@ -2522,6 +2593,7 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
       GALLERY.on = false;
+      await evaluate(c, "(() => { try { localStorage.removeItem('assy.gallerySeatWidth'); } catch (e) {} const s = document.getElementById('gallery-seat'); if (s) s.style.width = ''; return true; })()");
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || sel.value === window.__galleryFrom) return true;
         sel.value = window.__galleryFrom; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
       await sleep(900);

@@ -1325,23 +1325,29 @@ function setupEventListeners() {
     // Clamped on the way back in, not just on the way out: the stored number was legal
     // against YESTERDAY's window, and a 900px sidebar restored into a 1000px window would
     // leave no grid. A missing or unparseable entry simply leaves the CSS width alone.
-    const SIDEBAR_WIDTH_KEY = 'assy.sidebarWidth';
+    // The panel the handle moves: the history tabs, or the gallery's seat while it stands in their place
+    // (owner 10-29) - each its own width, kept under its own key.
+    const gallerySeat = document.getElementById('gallery-seat');
+    const sidePanel = () => (gallerySeat && !gallerySeat.hidden ? gallerySeat : historySidebar);
+    const widthKey = (panel) => (panel === gallerySeat ? 'assy.gallerySeatWidth' : 'assy.sidebarWidth');
     const clampSidebarWidth = (width, containerWidth) =>
       Math.min(Math.max(width, 300), Math.max(300, containerWidth - 350));
     // The width put on the panel, restored or dragged: it does not grow, and it still yields so the grid keeps its
     // floor - its bottom bar's controls. `none` held it: 900 stored overflowed a 1536 screen (lead cb04c0487).
-    const putSidebarWidth = (width) => {
-      historySidebar.style.width = `${width}px`;
-      historySidebar.style.flex = '0 1 auto';
+    const putSidebarWidth = (panel, width) => {
+      panel.style.width = `${width}px`;
+      panel.style.flex = '0 1 auto';
     };
 
-    try {
-      const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-      const mainLayout = document.querySelector('.main-layout');
-      if (Number.isFinite(stored) && stored > 0 && mainLayout) {
-        putSidebarWidth(clampSidebarWidth(stored, mainLayout.getBoundingClientRect().width));
-      }
-    } catch { /* storage disabled or full: the CSS width is a correct fallback */ }
+    for (const panel of [historySidebar, gallerySeat].filter(Boolean)) {
+      try {
+        const stored = Number(localStorage.getItem(widthKey(panel)));
+        const mainLayout = document.querySelector('.main-layout');
+        if (Number.isFinite(stored) && stored > 0 && mainLayout) {
+          putSidebarWidth(panel, clampSidebarWidth(stored, mainLayout.getBoundingClientRect().width));
+        }
+      } catch { /* storage disabled or full: the CSS width is a correct fallback */ }
+    }
 
     mainResizer.addEventListener('mousedown', (e) => {
       isDragging = true;
@@ -1367,7 +1373,7 @@ function setupEventListeners() {
         if (sidebarWidth < minWidth) sidebarWidth = minWidth;
         if (sidebarWidth > maxWidth) sidebarWidth = maxWidth;
 
-        putSidebarWidth(sidebarWidth);
+        putSidebarWidth(sidePanel(), sidebarWidth);
 
         // AG-Grid 컬럼 가로 크기 반응형 자동 피팅
         if (state.gridApi) {
@@ -1385,9 +1391,10 @@ function setupEventListeners() {
         // Written on mouseup, not on every mousemove: a drag raises hundreds of moves and
         // only the resting place is a decision.
         try {
-          const width = parseFloat(historySidebar.style.width);
+          const panel = sidePanel();
+          const width = parseFloat(panel.style.width);
           if (Number.isFinite(width) && width > 0) {
-            localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(width)));
+            localStorage.setItem(widthKey(panel), String(Math.round(width)));
           }
         } catch { /* storage refused the write; the drag itself still stands */ }
 
