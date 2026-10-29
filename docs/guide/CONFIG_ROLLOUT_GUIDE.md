@@ -255,6 +255,15 @@ curl -s -H "$AUTH" "$API/admin/mappers/list"
 }
 ```
 
+**칸 이름이 두 표에서 다를 때** (🆕 10-27 `34516220a`) ― `key` · `list_columns` 의 항목은 이름 하나(두 표에 같은 칸) 또는 짝 `{"<파생 칸>": "<원본 칸>"}` 입니다(`aggregations` 와 같은 방향).
+
+```
+적는 곳   derive.decide:  "key": [{"<파생 칸>": "<원본 칸>"}, "<같은 이름>"] · list_columns 도 같은 꼴
+저장 거절  «decision_key column(s) missing in source table: [...]»       = 짝의 오른쪽(원본 칸)이 원본 표에 없음 -> 오른쪽을 고침
+         «list_columns pair(s) read column(s) missing in source table» = list 짝의 오른쪽이 원본에 없음 -> 오른쪽을 고침
+         «... missing in derived table» / list 빼고 알림               = 왼쪽(파생 칸)이 파생 표에 없음
+```
+
 **여기서 조용히 죽는 자리 넷** ― 넷 다 에러가 아니라 **아무 일도 안 일어남**으로 나타납니다.
 
 1. `source_table`·`derived_table`이 `table_config`에 없으면 **그 규칙 하나가 통째로 빠집니다.** → §4.1
