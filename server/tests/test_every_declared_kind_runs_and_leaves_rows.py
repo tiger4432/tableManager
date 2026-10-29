@@ -339,6 +339,56 @@ def test_a_report_declaration_writes_a_report_a_wafer_into_its_report_table(db, 
     assert _summary(db) == before, "the summary table is read, never written"
 
 
+def test_the_pictures_of_a_written_report_link_to_their_originals(db, reported, tmp_path, monkeypatch):
+    """Owner 10-29 «크게 보기»: the loop numbers the page's pictures and keeps their refs beside the file
+    (`report_html.link_pictures` · `keep`) - W1's picture links to W1.html/image/0; W2, no picture, leaves no list."""
+    import io
+    import json
+
+    from PIL import Image
+
+    import image_sources
+    from chain import report_html
+    from conftest import retire_dynamic_model
+
+    pics = tmp_path / "pics"
+    pics.mkdir()
+    out = io.BytesIO()
+    Image.new("RGB", (200, 200), "red").save(out, format="PNG")
+    (pics / "a.png").write_bytes(out.getvalue())
+    sources = tmp_path / "image_sources.json"
+    sources.write_text(json.dumps({"pics": {"kind": "folder", "root": str(pics)}}), encoding="utf-8")
+    monkeypatch.setattr(image_sources, "CONFIG_PATH", str(sources))
+    more = {"kinds_pic": {"composite_key_source": ["wafer", "leg", "x"],
+                          "column_types": {"wafer": "string", "leg": "string", "x": "string", "item": "string",
+                                           "img": "string"}}}
+    models.init_dynamic_models(more)
+    crud.TABLE_CONFIG.update(more)
+    models.DYNAMIC_TABLES["kinds_pic"].__table__.create(bind=db.get_bind())
+    try:
+        crud.apply_batch_updates(db, "kinds_pic", schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
+            updates={"wafer": "W1", "leg": "L1", "x": "1", "item": "particle", "img": "a.png"}, source_name="seed",
+            updated_by="kinds")]))
+        db.commit()
+        declaration = _report_declaration()
+        declaration["derive"]["report"].update(
+            images={"table": "kinds_pic", "wafer": ["wafer", "leg"], "item": "item", "image": "img", "source": "pics"},
+            layout=[{"kind": "text", "slot": "summary"}, {"kind": "image"}])
+        rules = rule_shape.expand_declaration(declaration, crud.TABLE_CONFIG)[0]
+        _done_model(monkeypatch)
+        _run(db, "report", rules, "kinds_rep")
+        files = dict(_report_rows(db))
+        w1 = open(files["W1"], encoding="utf-8").read()
+        assert w1.count('href="W1.html/image/0"') == 1 and "/image/1" not in w1, "one picture, one link"
+        assert json.load(open(files["W1"] + report_html.IMAGES_SUFFIX, encoding="utf-8")) == ["pics:a.png"]
+        assert not os.path.exists(files["W2"] + report_html.IMAGES_SUFFIX), "W2 has no picture - no list"
+    finally:
+        db.rollback()
+        models.DYNAMIC_TABLES["kinds_pic"].__table__.drop(bind=db.get_bind())
+        crud.TABLE_CONFIG.pop("kinds_pic", None)
+        retire_dynamic_model("kinds_pic")
+
+
 def test_a_report_without_a_model_writes_its_file_and_says_why_in_it(db, reported, monkeypatch):
     from utils import llm
 

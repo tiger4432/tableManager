@@ -1494,8 +1494,9 @@ def _ref(source, value):
 
 
 def _picture(ref, px):
-    """A picture embedded - {"src": data URI} - or {"refused": why}: the one way a report puts a picture in its file
-    (images() and the picture rows)."""
+    """A picture embedded - {"src": data URI, "ref": the ref it was read by} - or {"refused": why}: the one way a report
+    puts a picture in its file (images() and the picture rows). The ref is what its original opens by
+    (`report_html.link_pictures`)."""
     import image_sources
 
     try:
@@ -1503,7 +1504,7 @@ def _picture(ref, px):
     except image_sources.ImageRefused as refused:
         return {"refused": str(refused)}
     data, media = _image_bytes(answer)
-    return {"src": "data:%s;base64,%s" % (media, base64.b64encode(data).decode())}
+    return {"src": "data:%s;base64,%s" % (media, base64.b64encode(data).decode()), "ref": ref}
 
 
 def _image_bytes(answer):

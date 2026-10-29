@@ -963,7 +963,6 @@ def get_image(ref: str, px: int | None = Query(None, ge=_IMAGE_PX_MIN, le=_IMAGE
                                                            "(image_sources.PX_MIN..PX_MAX); none: the original")):
     """One image reference read from its declared source (`image_sources`), shrunk to `px` when asked. Reads only."""
     import image_sources
-    from fastapi.responses import Response
 
     try:
         answer = image_sources.resolve(ref)
@@ -971,6 +970,14 @@ def get_image(ref: str, px: int | None = Query(None, ge=_IMAGE_PX_MIN, le=_IMAGE
         raise HTTPException(status_code=refused.status, detail=str(refused))
     if isinstance(px, int):
         answer = image_sources.shrink(answer, px)
+    return _image_response(answer)
+
+
+def _image_response(answer):
+    """`image_sources.resolve`'s answer as the response - GET /api/image's and a report picture's original alike."""
+    import image_sources
+    from fastapi.responses import Response
+
     if answer[0] == "file":
         response = FileResponse(answer[1])
     else:
@@ -1008,11 +1015,24 @@ def _report_link_key(name):
 def get_shared_report(name: str, k: str = ""):
     """A report page by its signed link, no sign-in - to embed in another site's iframe (owner 10-24 «SSO 땜에 첨부 안 될
     듯» · 서명 링크). Only a key this server made for that name opens it; GET /reports gives each report's link."""
+    _signed(name, k)
+    return get_report(name)
+
+
+@app.get("/shared/report/{name}/image/{n}")
+def get_shared_report_image(name: str, n: int, k: str = ""):
+    """A report picture's original by the report's signed link (owner 10-29 ㄱ) - the page's key, then GET
+    /reports/<name>/image/<n>'s own answer: only that report's list. The page's links carry its ?k= (report_html)."""
+    _signed(name, k)
+    return get_report_image(name, n)
+
+
+def _signed(name, k):
+    """403 unless `k` is the key this server made for the report `name` - the page's and its pictures' one check."""
     import hmac
 
     if not k or not hmac.compare_digest(k, _report_link_key(os.path.basename(name))):
         raise HTTPException(status_code=403, detail="this link is not a report's signed link - copy it from GET /reports")
-    return get_report(name)
 
 
 @app.get("/reports/{name}")
@@ -1020,11 +1040,45 @@ def get_report(name: str):
     """One AI report file as a page - to open, or to embed elsewhere in an iframe (owner 10-24 «report 서빙하는 거 서버에
     달아줘 · 다른 데에 iframe 으로 첨부하게»). Only a <name>.html straight under the reports folder; never cached, a
     report written again is read again."""
-    folder = _reports_folder()
-    path = os.path.join(folder, os.path.basename(name))
+    return FileResponse(_report_path(name), media_type="text/html; charset=utf-8", headers=HTML_NO_CACHE_HEADERS)
+
+
+def _report_path(name):
+    """A report file's path - only a <name>.html straight under the reports folder, else 404."""
+    path = os.path.join(_reports_folder(), os.path.basename(name))
     if os.path.basename(name) != name or not name.lower().endswith(".html") or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="no report %r - GET /reports lists them" % name)
-    return FileResponse(path, media_type="text/html; charset=utf-8", headers=HTML_NO_CACHE_HEADERS)
+    return path
+
+
+@app.get("/reports/{name}/image/{n}")
+def get_report_image(name: str, n: int):
+    """A report picture's original (owner 10-29 «크게 보기» - the picture in the page links here): the n-th ref of the
+    list the report wrote beside itself (`report_html.keep`), read as GET /api/image reads one. Only that list's refs."""
+    import json as _json
+
+    import image_sources
+    from chain import report_html
+
+    path = _report_path(name)
+    try:
+        with open(path + report_html.IMAGES_SUFFIX, encoding="utf-8") as handle:
+            refs = _json.load(handle)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="report %r links no picture - it has none, or it was written "
+                                                    "before pictures linked to their originals (write it again)"
+                                                    % name)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="report %r's picture list does not read: %s" % (name, told(exc)))
+    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+        raise HTTPException(status_code=500, detail="report %r's picture list is not a list of image refs" % name)
+    if not 0 <= n < len(refs):
+        raise HTTPException(status_code=404, detail="report %r has %d picture(s) - no picture %d" % (name, len(refs), n))
+    try:
+        answer = image_sources.resolve(refs[n])
+    except image_sources.ImageRefused as refused:
+        raise HTTPException(status_code=refused.status, detail=str(refused))
+    return _image_response(answer)
 
 
 @app.get("/reports")

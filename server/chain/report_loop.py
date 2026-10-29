@@ -674,10 +674,11 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
         if report is not None:
             try:
                 made = datetime.datetime.now().astimezone()
+                refs = report_html.link_pictures(report_html.file_name(said), out["tables"], report.embedded)
                 page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
                     name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
                     evidence=_steps_text(out, report).splitlines())
-                kept, _sha = report_html.keep(said, page)
+                kept, _sha = report_html.keep(said, page, refs)
                 wrote = dict(out["texts"], file=kept)       # a text the report did not write is withdrawn, as a file
                 cells = {column: wrote.get(cell) or None for cell, column in written}
                 _mark(kept, name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)

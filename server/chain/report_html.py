@@ -12,12 +12,17 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import os
 
 import paths
 from chain import report_reads, report_shape
 
 REPORTS_DIRNAME = "reports"
+#: Beside a report file, its pictures' refs by number - what GET /reports/<file>/image/<n> opens (owner 10-29)
+IMAGES_SUFFIX = ".images.json"
+#: the link around a picture to its original
+ORIGINAL = "rpt-original"
 STYLE = """
 :root { --ink: #1d2433; --muted: #5b6475; --line: #d9dee8; --head: #eef2f8; --ground: #ffffff; }
 body { margin: 0; padding: 24px 16px; background: var(--ground); color: var(--ink);
@@ -41,6 +46,7 @@ thead th:first-child { position: sticky; left: 0; z-index: 2; }
 .gallery figure img { width: var(--px, 320px); height: var(--px, 320px); object-fit: contain; display: block;
                       background: var(--head); }
 .gallery figure img[hidden] { display: none; }
+a.rpt-original { display: contents; }
 figure { margin: 0; display: grid; gap: 4px; }
 figcaption { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .text { white-space: pre-wrap; }
@@ -249,9 +255,40 @@ def _aligned(cls, cell, kind):
     return CELL if kind == "info" and number_of(cell.get("text")) is not None else cls
 
 
+def _img(picture, alt, extra=""):
+    """A picture's <img> - inside a link to its original when `link_pictures` gave it one (owner 10-29 «크게 보기»)."""
+    img = '<img src="%s" alt="%s"%s>' % (picture["src"], alt, extra)
+    if not picture.get("href"):
+        return img
+    return '<a class="%s" href="%s" target="_blank" rel="noopener">%s</a>' % (ORIGINAL, _e(picture["href"]), img)
+
+
+def link_pictures(file, tables, embedded):
+    """Each picture of the page numbered - the tables' picture rows, then the gallery - and given the link its original
+    opens at -
+    `<file>/image/<n>`, relative to the page (GET /reports/<file>/image/<n>) - -> the refs by number, the list `keep`
+    writes beside the file. Only pictures read by a ref (`report_reads._picture`)."""
+    refs = []
+    for picture in _pictures(tables, embedded):
+        if picture.get("src") and picture.get("ref"):
+            picture["href"] = "%s/image/%d" % (file, len(refs))
+            refs.append(picture["ref"])
+    return refs
+
+
+def _pictures(tables, embedded):
+    """Every picture the page draws - the tables' picture rows, then the gallery, each layer of a stack."""
+    for table in (tables or {}).values():
+        for _name, cells in (table.get("pictures") or ()) if isinstance(table, dict) else ():
+            yield from cells
+    for pictures in (embedded or {}).values():
+        for picture in pictures:
+            yield from picture.get("layers") or [picture]
+
+
 def _value(cell, name, column):
     if cell.get("src"):
-        return '<img src="%s" alt="%s - %s">' % (cell["src"], _e(name), _e(column))
+        return _img(cell, "%s - %s" % (_e(name), _e(column)))
     return _e(cell.get("refused") or cell.get("text"))
 
 
@@ -273,8 +310,8 @@ def _images(embedded, spec) -> str:
     for item, pictures in embedded.items():
         figures = "".join(
             _stack(item, p) if len(p.get("layers") or ()) > 1 else
-            '<figure><img src="%s" alt="%s on %s"><figcaption>%s</figcaption></figure>'
-            % (p["src"], _e(item), _e(p["wafer"]), _e(p["wafer"])) if p.get("src") else
+            '<figure>%s<figcaption>%s</figcaption></figure>'
+            % (_img(p, "%s on %s" % (_e(item), _e(p["wafer"]))), _e(p["wafer"])) if p.get("src") else
             '<figure><figcaption>%s - %s</figcaption></figure>' % (_e(p["wafer"]), _e(p.get("refused")))
             for p in pictures)
         # every patch one box of images.px, the picture fitted inside it - one grid, no ragged row (owner 10-24 «이미지
@@ -292,11 +329,16 @@ STACK_SCRIPT = ("<script>document.querySelectorAll('figure.stack').forEach(funct
                 "cap.textContent=im[i].dataset.layer+' ('+(i+1)+'/'+im.length+')';},{passive:false});});</script>")
 
 
+#: the page opened by its signed link (/shared/report/<file>?k=): its pictures' links carry the same ?k= - the key
+#: is the page address's, never written into the file (owner 10-29 ㄱ)
+LINK_SCRIPT = ("<script>document.querySelectorAll('a.%s').forEach(function(a){a.search=location.search;});</script>"
+               % ORIGINAL)
+
+
 def _stack(item, picture):
     layers = picture["layers"]
-    images = "".join('<img src="%s" alt="%s on %s" data-layer="%s"%s>' % (
-        p["src"], _e(item), _e(picture["wafer"]), _e(p.get("layer")), "" if at == 0 else " hidden")
-        for at, p in enumerate(layers))
+    images = "".join(_img(p, "%s on %s" % (_e(item), _e(picture["wafer"])), ' data-layer="%s"%s' % (
+        _e(p.get("layer")), "" if at == 0 else " hidden")) for at, p in enumerate(layers))
     return ('<figure class="stack" title="wheel: layers">%s<figcaption>%s &middot; <span class="layer">%s (1/%d)</span>'
             '</figcaption></figure>' % (images, _e(picture["wafer"]), _e(layers[0].get("layer")), len(layers)))
 
@@ -327,7 +369,8 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
     whole table; `embedded`: item -> pictures; `texts`: slot name -> what the model wrote. A slot with nothing to
     show says so. `evidence`: the steps' lines, folded at the end."""
     spec = spec or {}
-    folded = _evidence(evidence, spec) if evidence is not None else ""
+    folded = (_evidence(evidence, spec) if evidence is not None else "") + (
+        LINK_SCRIPT if any(p.get("href") for p in _pictures(tables, embedded)) else "")
     layout, template = report_shape.layout(spec), spec.get("template")
     if isinstance(template, str) and template.strip():
         from chain import report_template
@@ -356,14 +399,30 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
             % (_e(title), STYLE, _e(title), _e(meta), "".join(sections), folded))
 
 
-def keep(name, text) -> tuple:
-    """Write the file `<name>.html` -> (its path, sha256 of its bytes)."""
+def file_name(name) -> str:
+    """The report file's name for `name` - `<name>.html`, every character outside letters, digits and «-_.» an «_»."""
+    return ("".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in str(name)) or "report") + ".html"
+
+
+def keep(name, text, images=()) -> tuple:
+    """Write the file `<name>.html`, and when it links pictures, beside it `<name>.html` + IMAGES_SUFFIX - their refs
+    by number (`link_pictures`), the only originals GET /reports/<file>/image/<n> opens; the list first, so a page never
+    links to a list that is not there. A page with no picture leaves no list -> (the page's path, sha256 of its
+    bytes)."""
     data = text.encode("utf-8")
     folder = os.path.join(paths.DATA_ROOT, REPORTS_DIRNAME)
     os.makedirs(folder, exist_ok=True)
-    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in str(name)) or "report"
-    path = os.path.join(folder, safe + ".html")
+    path = os.path.join(folder, file_name(name))
+    listed = path + IMAGES_SUFFIX
+    if images:
+        _write(listed, json.dumps(list(images), ensure_ascii=False).encode("utf-8"))
+    elif os.path.exists(listed):
+        os.remove(listed)                                    # written again with no picture: the old list goes
+    _write(path, data)
+    return path, "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def _write(path, data):
     with open(path + ".tmp", "wb") as handle:
         handle.write(data)
     os.replace(path + ".tmp", path)
-    return path, "sha256:" + hashlib.sha256(data).hexdigest()
