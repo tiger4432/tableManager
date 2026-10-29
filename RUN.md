@@ -31,6 +31,8 @@
 > 첫 물음  절 116 개를 16 개씩 8 요청으로 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 묶음마다 남김
 >          -> 그 물음만 느리다
 > 볼 것    어드민 도움말 «이거 멈춰» -> 셈 줄이 «the count waits for: reason, …» (빈 칸을 폼에서 채우면 셈이 된다)
+>          어드민 도움말 «조인 규칙 어떻게 써» -> 선언 카드 회색 줄 «via embedding» / «via bm25 (embedding failed: …)»
+>          — 위 «via 뜻» 과 같은 낱말 (화면 새로 고침)
 > 끄는 법  embedding_model 줄을 지우고 재기동 -> BM25 로 돌아간다. 캐시 파일은 지워도 된다(다시 만든다)
 > ```
 >
