@@ -278,11 +278,19 @@ def fixture_gateway(guides, tmp_path, monkeypatch):
         data = [SimpleNamespace(embedding=state["vector"](text)) for text in input]
         return SimpleNamespace(status_code=200, text="{}", parse=lambda: SimpleNamespace(data=data))
 
+    clients = []
+
+    def chat(model, messages):
+        answer = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": 1}'))])
+        return SimpleNamespace(status_code=200, text="{}", parse=lambda: answer)
+
     class OpenAI:
         def __init__(self, **kwargs):
+            clients.append(kwargs)
             self.base_url = kwargs["base_url"].rstrip("/") + "/"
             self.default_headers = {}
             self.embeddings = SimpleNamespace(with_raw_response=SimpleNamespace(create=create))
+            self.chat = SimpleNamespace(completions=SimpleNamespace(with_raw_response=SimpleNamespace(create=chat)))
 
     module = types.ModuleType("openai")
     module.OpenAI = OpenAI
@@ -294,7 +302,7 @@ def fixture_gateway(guides, tmp_path, monkeypatch):
                         encoding="utf-8")
         config_watcher.changed(str(path))
 
-    return SimpleNamespace(made=made, state=state, declare=declare, root=root)
+    return SimpleNamespace(made=made, state=state, declare=declare, root=root, clients=clients)
 
 
 def test_without_an_embedding_model_the_sections_are_picked_by_their_words_and_nothing_is_embedded(gateway):
@@ -416,6 +424,24 @@ def test_an_edited_section_alone_is_embedded_again_and_every_request_is_in_the_l
     log = [json.loads(line) for line in (gateway.root / llm.REQUEST_LOG).read_text(encoding="utf-8").splitlines()]
     sent = [line for line in log if "sent" in line]
     assert len(sent) == len(gateway.made) and all(line["url"] == "http://gw/embeddings" for line in sent)
+
+
+def test_the_embedding_calls_its_own_address_with_its_own_key_and_the_chat_keeps_its(gateway):
+    """owner 10-29 «임베딩 모델은 api 주소가 다른데» - embedding_base_url · embedding_api_key; blank: the chat's."""
+    gateway.declare(embedding_model="bge-m3", embedding_base_url="http://emb/v1", embedding_api_key="emb-secret")
+    llm.embed(["x"])
+    assert llm.ask_json("q") == {"ok": 1}
+    assert [(c["base_url"], c["api_key"]) for c in gateway.clients] == [("http://emb/v1", "emb-secret"), ("http://gw", "k")]
+    text = (gateway.root / llm.REQUEST_LOG).read_text(encoding="utf-8")
+    sent = [json.loads(line)["url"] for line in text.splitlines() if '"sent"' in line]
+    assert sent == ["http://emb/v1/embeddings", "http://gw/chat/completions"] and "emb-secret" not in text
+    gateway.state["fail"] = RuntimeError("connection refused for emb-secret")              # an error quoting the key
+    gateway.clients.clear()
+    with pytest.raises(llm.LlmRefused):
+        llm.embed(["x"])
+    lines = [json.loads(line) for line in (gateway.root / llm.REQUEST_LOG).read_text(encoding="utf-8").splitlines()]
+    assert "received" in lines[-1] and "connection refused" in lines[-1]["error"]
+    assert lines[-2]["url"] == "http://emb/v1/embeddings" and "emb-secret" not in json.dumps(lines)
 
 
 def test_embed_refuses_by_name_without_a_model_and_asks_nothing(gateway):

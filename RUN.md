@@ -19,6 +19,7 @@
 >
 > ```
 > 적을 것  config/llm_config.json 에 "embedding_model": "bge-m3" 한 줄 -> 서버 재기동
+>          임베딩 주소 · 키가 채팅과 다르면 "embedding_base_url" · "embedding_api_key" 도 (비면 base_url · api_key)
 > 운영 재기  python server/scripts/help_bench.py --part declarations --retrieval embedding
 >          python server/scripts/help_bench.py --part declarations --retrieval bm25
 >          두 요약 줄 «right section cited N of 20 … · via …» 을 옮겨 친다. 견주는 수는 cited N

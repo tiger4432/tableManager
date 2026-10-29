@@ -689,6 +689,7 @@
 - 실패: 임베딩 호출이 실패하면 그 물음은 BM25 로 고르고 답의 `retrieval` 이 «bm25 (embedding failed: <거절 문장>)» 로 말한다. 성공이면 «embedding», 모델이 없으면 «bm25».
 - 셈 «기다림»: 도움말이 고른 도구에 빈 필수 칸(unfilled)이 있으면 셈을 부르지 않고 count_refused 가 «the count waits for: <unfilled 그대로>» 한 줄이다(같은 낱말 · 같은 순서). 그 밖의 셈 실패는 전처럼 «The count for this operation cannot be computed: …».
 - 견본: `server/config/sample/llm_config.json.sample` 에 `"embedding_model": ""` 와 그 설명 칸.
+- 주소 · 키 (소유자 10-29 «임베딩 모델은 api 주소가 다른데»): `"embedding_base_url"` · `"embedding_api_key"` 를 적으면 임베딩만 그 주소 · 키로 부른다. 비면 채팅의 base_url · api_key. proxy · headers · timeout_s · 다시 시도는 같이 쓴다. llm_requests.log 의 보낸 줄 url 이 임베딩 주소로 찍히고, 키는 지금처럼 가려진다.
 - 재기: `help_bench --part declarations --retrieval embedding|bm25` — 요약 줄 끝 «via <고른 방법> ×n».
 - 박스: 가짜 임베딩으로 길만 쟀다(뜻으로 고름 · 캐시 · 같은 점수는 BM25 · 실패는 BM25 와 사유 · 호출 셋과 둘). 실제 bge-m3 의 정확도는 운영 벤치 몫이다.
 - 필요한 조건: git pull · 서버 재기동. 임베딩을 쓰려면 llm_config 에 한 줄.

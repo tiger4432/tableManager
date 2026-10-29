@@ -14,6 +14,7 @@ proxy are cells of one declaration file read on every call - a change reaches th
     batch_chars · known_chars · known_per_seed   `text_links.ask_links`' (NUMBER_CELLS)
     embedding_model   the gateway's embedding model (`embed`) - absent or blank: none, the admin help picks guide
                       sections by their words (owner 10-29)
+    embedding_base_url · embedding_api_key   where `embed` calls and its key - absent or blank: base_url · api_key
 
 The pace is the gateway's: no limit is kept here (소유자 10-13 「어차피 서버가 거절함」). No answer (connection,
 time limit, 5xx, 408) and a 429 are asked again - after CALL_RETRY_WAITS, a 429 after its Retry-After - while the
@@ -44,6 +45,9 @@ CONFIG_FILE = "llm_config.json"
 SAMPLE = "config/%s/%s.sample" % (paths.CONFIG_SAMPLE_DIRNAME, CONFIG_FILE)
 REQUEST_LOG = "llm_requests.log"
 REQUIRED_CELLS = ("base_url", "model", "api_key")
+#: The cells `embed` reads as "embedding_<cell>" when written - blank: the chat's (owner 10-29 «임베딩 모델은 api 주소가
+#: 다른데»). Proxy, headers, time limit and the try loop are the same.
+EMBEDDING_ENDPOINT_CELLS = ("base_url", "api_key")
 DEFAULT_TIMEOUT_S = 60.0
 #: Cells that are a number above 0: (default for an absent or null cell, whole number, what it counts).
 #: batch_chars - the texts one ask_links request carries, counted as len(text) (a longer text goes alone):
@@ -146,6 +150,9 @@ def _read_settings():
     cells.update(headers={str(k): str(v) for k, v in headers.items()},
                  proxy=None if is_blank_value(proxy) else proxy.strip(),
                  embedding_model=None if is_blank_value(embedding) else str(embedding).strip())
+    for name in EMBEDDING_ENDPOINT_CELLS:
+        own = loaded.get("embedding_" + name)
+        cells["embedding_" + name] = cells[name] if is_blank_value(own) else str(own).strip()
     return cells
 
 
@@ -438,7 +445,8 @@ def embed(texts):
     cells = settings()
     if not cells.get("embedding_model"):
         raise LlmRefused("no embedding_model in config/%s" % CONFIG_FILE)
-    return _call(cells, "embeddings", {"model": cells["embedding_model"], "input": list(texts)},
+    own = dict(cells, **{name: cells["embedding_" + name] for name in EMBEDDING_ENDPOINT_CELLS})
+    return _call(own, "embeddings", {"model": cells["embedding_model"], "input": list(texts)},
                  lambda client: client.embeddings.with_raw_response.create,
                  lambda parsed: [list(item.embedding) for item in parsed.data])
 
