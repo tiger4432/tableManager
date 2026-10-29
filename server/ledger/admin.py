@@ -369,13 +369,11 @@ def chain_rule_raw_view(name: str = None) -> dict:
     Same unit and same shape as the table and declaration editors: ONE rule. The whole
     document is readable for context; it is not the unit of writing.
     """
+    from chain import ingestion_worker
+
     path = chain_rules_path()
-    document, error = {}, None
-    try:
-        document = _read_json(path, {})
-    except Exception as exc:
-        error = f"{exc.__class__.__name__}: {told(exc)}"
-    rules = (document.get("rules") or []) if isinstance(document, dict) else []
+    read = ingestion_worker.read_rules_document(path)          # the loader's reader and judgement (lead 10-29)
+    error, rules = read["error"], read["rules"]
     named = {str(r.get("name")): r for r in rules if isinstance(r, dict) and r.get("name")}
     # 🔴 [판정 540] THE NAME LIST AND THE GRAMMAR MAP COME OFF `named`, WHICH IS ONE
     #   EXPRESSION. Two loops could disagree about which names exist, and a response that
@@ -562,6 +560,19 @@ def rule_name_holders(db, name: str, rules) -> list:
     return [(what, count) for what, count in held if count]
 
 
+def _chain_rules_read(path: str):
+    """(document, rules) of chain_rules.json as the loader reads it - `read_rules_document`, the one reader (lead
+    10-29): absent or no `rules` cell is no rules; what it cannot read is refused with its sentence."""
+    from chain import ingestion_worker
+
+    read = ingestion_worker.read_rules_document(path)
+    if read["error"]:
+        raise _table_config_refusal(
+            "config_not_object" if read["error"] == ingestion_worker.RULES_NOT_AN_OBJECT else "config_unreadable",
+            "chain_rules.json", read["error"])
+    return read["document"], read["rules"]
+
+
 def _chain_rules_opened(base: str):
     """(path, document, its rules copied) - chain_rules.json as the editor opened it (`base`), else refused."""
     path = chain_rules_path()
@@ -570,11 +581,7 @@ def _chain_rules_opened(base: str):
             "stale_base", "base",
             "This file changed after you opened it. Reopen it, check, then save")
 
-    document = _read_json(path, {})
-    if not isinstance(document, dict) or not isinstance(document.get("rules"), list):
-        raise _table_config_refusal(
-            "config_not_object", "chain_rules.json",
-            "chain_rules.json is not an object with a rules array")
+    document, rules = _chain_rules_read(path)
 
     # 🔴 [판정 556] WHAT THIS SAVE DOES NOT RECOGNISE, IT CARRIES - it does not drop it.
     #   This read `[dict(r) for r in ... if isinstance(r, dict)]`, so any entry in the
@@ -584,7 +591,7 @@ def _chain_rules_opened(base: str):
     #   그대로 실어 나른다 — 읽는 자를 못 본다 ≠ 아무도 안 읽는다」. Whether a non-object
     #   entry SHOULD be there is not a judgement this box can make, and deleting is the one
     #   answer that cannot be taken back.
-    return path, document, [dict(rule) if isinstance(rule, dict) else rule for rule in document["rules"]]
+    return path, document, [dict(rule) if isinstance(rule, dict) else rule for rule in rules]
 
 
 def remove_chain_rule_raw(name: str, base: str, db=None) -> dict:
@@ -885,12 +892,7 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
     from chain import rule_shape
 
     path = chain_rules_path()
-    document = _read_json(path, {})
-    rules = (document or {}).get("rules")
-    if not isinstance(rules, list):
-        raise _table_config_refusal(
-            "config_not_object", "chain_rules.json",
-            "chain_rules.json is not an object with a rules array")
+    document, rules = _chain_rules_read(path)
 
     index = rule_index_named(rules, name)
     stored = rules[index] if index is not None else None

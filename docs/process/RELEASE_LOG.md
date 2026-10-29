@@ -13,6 +13,7 @@
 
 ### 체인 규칙
 
+- 2026-10-29 [고침 — chain_rules.json 을 로더 · 저장 · 검사 · 편집기가 한 판정으로 읽는다 · 파일이 없거나 rules 칸이 없으면 «규칙 없음», 첫 규칙을 적을 수 있다](#2026-10-29--고침--chain_rulesjson-을-로더--저장--검사--편집기가-한-판정으로-읽는다--파일이-없거나-rules-칸이-없으면-규칙-없음-첫-규칙을-적을-수-있다) — 보는 곳 체인 규칙 편집기 · 도움말 선언 카드의 check · 체인 로그 «Failed to load chain rules»
 - 2026-10-29 [표 스키마가 그 표의 수식을 말한다 — 그리드 칸 머리 fx 표지의 출처](#2026-10-29--표-스키마가-그-표의-수식을-말한다--그리드-칸-머리-fx-표지의-출처) — 보는 곳 GET /tables/<표>/schema 의 formulas
 - 2026-10-28 [서로 읽는 수식은 저장 · 로드에서 거절 — 엑셀의 순환 참조처럼](#2026-10-28--서로-읽는-수식은-저장--로드에서-거절--엑셀의-순환-참조처럼) — 보는 곳 chain_worker.log «column_loop» · 규칙 목록
 - 2026-10-28 [칸 수식 — 그리드 칸에 =식 을 적으면 같은 행의 다른 칸으로 계산한다](#2026-10-28--칸-수식--그리드-칸에-식-을-적으면-같은-행의-다른-칸으로-계산한다) — 보는 곳 그리드 칸 머리 · chain_worker.log
@@ -670,6 +671,14 @@
 
 
 
+
+## 2026-10-29 · 고침 — chain_rules.json 을 로더 · 저장 · 검사 · 편집기가 한 판정으로 읽는다 · 파일이 없거나 rules 칸이 없으면 «규칙 없음», 첫 규칙을 적을 수 있다
+
+- 무엇: chain_rules.json 을 읽고 꼴을 판정하는 자리가 하나(`ingestion_worker.read_rules_document`)가 됐다. 로더 · 규칙 저장 · 저장 없는 검사(도움말 선언 카드의 check) · 문법 바꾸기 · 편집기 보기가 모두 그것을 부른다. 전에는 로더가 «규칙 없음»으로 읽는 꼴을 저장 · 검사가 «chain_rules.json is not an object with a rules array» 로 거절했다.
+- 판정: 파일이 없음 · `{}` · rules 칸이 없는 객체 -> 규칙 없음(첫 규칙을 저장하면 그 파일에 적힌다, 다른 칸은 그대로). 최상위가 목록 · rules 가 목록이 아닌 값(객체 · null · 글자) -> 모든 자리가 «chain_rules.json is not an object with a rules array» (로더 줄 «Failed to load chain rules: …», 저장 거절 config_not_object). JSON 이 아님 -> 모든 자리가 같은 읽기 오류 문장(저장 거절 config_unreadable — 전에는 저장이 예외로 터졌다).
+- 로더가 바뀐 것: 최상위 목록은 «'list' object has no attribute 'get'» 대신 위 문장. rules 가 객체 · null · 글자이던 파일은 전에 «읽었다»고 넘어갔는데 이제 그 문장으로 거절한다.
+- 필요한 조건: git pull · 서버 재기동 · 체인 워커 재기동.
+- 자세히: `server/chain/ingestion_worker.py` 의 `read_rules_document` · `RULES_NOT_AN_OBJECT`, `server/ledger/admin.py` 의 `_chain_rules_read`.
 
 ## 2026-10-29 · 새 기능 — 어드민 Help 선언 카드에 절을 고른 방법 한 줄: via embedding · via bm25
 

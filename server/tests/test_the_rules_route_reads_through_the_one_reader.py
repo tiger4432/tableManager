@@ -135,7 +135,9 @@ def test_a_top_level_list_is_REFUSED_the_way_the_loader_refuses_it(rules_file):
 
     assert answer["status"] == "error", "the screen must not be kinder than the loader"
     assert answer["data"] == []
-    assert "list" in answer["message"], answer["message"]
+    from chain import ingestion_worker as worker
+
+    assert worker.RULES_NOT_AN_OBJECT in answer["message"], answer["message"]       # named (lead 10-29)
 
 
 def test_the_route_and_the_loader_agree_on_that_file(rules_file):

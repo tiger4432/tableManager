@@ -102,6 +102,9 @@ logger = get_process_logger("Chain", LOG_FILENAME)
 
 import paths  # single override point (ASSY_DATA_ROOT)
 RULES_PATH = paths.config_path("chain_rules.json")
+#: The rules file's shape refusal - the loader's line and the save's answer (lead 10-29: one reader, one sentence).
+#: Absent, or an object with no `rules` cell, is no rules.
+RULES_NOT_AN_OBJECT = "chain_rules.json is not an object with a rules array"
 
 #: 직전 적재의 규칙 사진. «두 장을 견줘야» 「무엇이 사라졌나」가 나온다 (S-234 0단계).
 _LAST_CENSUS = None
@@ -754,9 +757,9 @@ def read_rules_document(path=None):
     caller that read THAT would depend on `load_chain_rules` having run first — an ordering
     nobody states and nothing enforces. This takes a path and returns an answer.
 
-    ⚠️ THE CONTROL FLOW IS THE LOADER'S OWN, MOVED. A top-level list still raises inside the
-    `try` exactly as it did (`data.get` on a list), so the same file that logged
-    「Failed to load chain rules」 yesterday logs it today, with the same words.
+    🔴 AND THE SAVE READS IT HERE TOO (lead 10-29, `ledger.admin`): it refused an absent file or an object with no
+    `rules` that this reads as no rules. A top-level list or a `rules` that is not a list is RULES_NOT_AN_OBJECT
+    for both - the loader's 「Failed to load chain rules」 line says it, the save answers it.
 
     Returns `{document, rules, path, exists, error, base}` — `exists=False` is the answer for a
     file that is not there, which is what lets the route keep saying `absent` rather than
@@ -777,8 +780,10 @@ def read_rules_document(path=None):
         # same thing, so a screen can say whether THIS read saw that save (총괄 76aa4b6ed).
         base = ledger_admin.content_fingerprint(raw)
         data = json.loads(raw.decode("utf-8"))
-        rules = data.get("rules", [])
-        document = data if isinstance(data, dict) else {}
+        if isinstance(data, dict) and isinstance(data.get("rules", []), list):
+            document, rules = data, data.get("rules", [])
+        else:
+            error = RULES_NOT_AN_OBJECT
     except Exception as exc:
         document, rules, error = {}, [], told(exc)
     return {"document": document, "rules": rules, "path": target,

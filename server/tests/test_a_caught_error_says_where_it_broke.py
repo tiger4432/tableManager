@@ -34,9 +34,9 @@ def test_told_and_where_name_the_frame_under_a_wrapping_error():
 
 def test_the_chain_rules_file_says_where_it_broke(tmp_path):
     path = tmp_path / "chain_rules.json"
-    path.write_text("[]", encoding="utf-8")                          # a list where a document belongs
+    path.write_bytes(b"\xff")                                 # not UTF-8 (a list is named now - lead 10-29)
     error = ingestion_worker.read_rules_document(str(path))["error"]
-    assert error.startswith("'list' object has no attribute 'get' (ingestion_worker.py:") and \
+    assert error.startswith("'utf-8' codec can't decode byte 0xff") and "(ingestion_worker.py:" in error and \
         error.endswith(" in read_rules_document)"), error
 
 
