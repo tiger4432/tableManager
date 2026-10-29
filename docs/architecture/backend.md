@@ -351,7 +351,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 ### 인제션 / 어드민 / 내부 / 맵 / WS
 | 경로 | 용도 |
 |---|---|
-| `GET /health` | **[운영]** 헬스체크. **항상 JSON**, 정상 200 / `unhealthy` 503(`degraded`는 200). 본문 `{status, checked_at, problems[], checks{database, workers, outbox, supervisor, config_backup}}`. DB 프로브는 2초 타임아웃 + 스레드 격리 + **중복 프로브 차단**(직전 프로브 미귀환이면 즉시 `timeout`으로 응답 — 헬스체크가 2차 장애가 되면 안 된다), `Cache-Control: no-store`. 판정 규칙은 §1.3 |
+| `GET /health` | **[운영]** 헬스체크. **항상 JSON**, 정상 200 / `unhealthy` 503(`degraded`는 200). 본문 `{status, checked_at, problems[], checks{database, workers, outbox, supervisor, config_backup}, stall}`(🆕 [10-29 `63a69b97a`] `stall` = API 프로세스의 마지막 굳음 {line, at} — 끝난 뒤에 서고, 그 전엔 null. `runtime/stall_watch.py`). DB 프로브는 2초 타임아웃 + 스레드 격리 + **중복 프로브 차단**(직전 프로브 미귀환이면 즉시 `timeout`으로 응답 — 헬스체크가 2차 장애가 되면 안 된다), `Cache-Control: no-store`. 판정 규칙은 §1.3 |
 | `POST /tables/{t}/upload` | 클라이언트 파일을 `raws/`로 업로드 |
 | ⚰️ ~~`POST /api/graph/sync`~~ | 🔴 **[2026-09-05 정정] 종전 「410 — 이것이 일곱 번째 거절 지점입니다」는 «거짓»입니다.** 거절 스텁이 `8ffe23d7` 에서 삭제돼 이 주소는 **404** 를 답합니다(`/api` 에 자기 가드가 있어 SPA catch-all 로 안 떨어지는 «유일한» 주소입니다 — `/graph/*` 여섯은 index.html + 200 입니다). 위 은퇴 블록의 정정을 보십시오 |
 | `/admin/outbox/*`, `/admin/file-ingestion/*` | 아웃박스·파일적재 데드레터 관리·재시도 |
