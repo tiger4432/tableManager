@@ -1,4 +1,5 @@
--- The index `/dashboard/summary`'s "edits today" count needs.
+-- All audit rows in a time range, at 72 kB. Built for `/dashboard/summary`'s "edits today" count, which was
+-- retired 2026-10-29 - nothing named reads it since; kept until the lead rules on it.
 --
 -- Declared in `server/database/models.py` (AuditLog.__table_args__) so that NEW
 -- databases get it from `create_all`. `create_all` never adds an index to a table

@@ -100,9 +100,9 @@ class AuditLog(Base):
                   "serves": "dashboard re-correction rate"},
         ),
 
-        # [dashboard] "how many edits today", over ALL audit rows. The index above cannot
-        # serve it: it is PARTIAL on `source_name = 'user'`, so a count that includes
-        # machine writes falls back to reading the table.
+        # All audit rows in a time range. Built for the dashboard's «edits today» count, which was RETIRED
+        # 2026-10-29 (owner «ㄱ») - no statement in the code names this index's use since; kept until the lead
+        # rules on it. The index above cannot serve such a range: it is PARTIAL on `source_name = 'user'`.
         #
         # MEASURED 2026-09-05 on 3,897,752 rows of which 2,800 were written today:
         #   none    Parallel Seq Scan   468.8 ms
@@ -121,7 +121,7 @@ class AuditLog(Base):
         # file is the only path onto an existing database.
         Index("idx_audit_logs_timestamp_brin", "timestamp", postgresql_using="brin",
               info={"purpose": "all audit rows in a time range, at 72 kB",
-                    "serves": "dashboard edits today"}),
+                    "serves": "nothing named since 2026-10-29 (the dashboard's edits-today count retired)"}),
 
         # [history keyset] The two indexes that make a row click cost O(page)
         # instead of O(everything ever written to that row).

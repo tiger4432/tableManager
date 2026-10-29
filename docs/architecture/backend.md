@@ -263,7 +263,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 
 #### `/dashboard/summary` 응답에서 «셋»이 빠졌다 — `table_stats` · `total_rows` · `total_tables` (2026-09-05)
 
-🔴 **배포 시 응답 «모양»이 바뀌는 변경이다.** `schemas.DashboardSummaryResponse` 에서 세 필드가 **제거**됐다. 남는 것은 `today_updates` · `system_health` · `recorrection` · `effort` · `uncounted_tables` 다.
+🔴 **배포 시 응답 «모양»이 바뀌는 변경이다.** `schemas.DashboardSummaryResponse` 에서 세 필드가 **제거**됐다. 남는 것은 `system_health` · `recorrection` · `effort` · `uncounted_tables` 다(`today_updates` 는 2026-10-29 은퇴 — 읽는 화면 0, 어드민을 열 때 굳음의 주인).
 
 - **왜 셋이 함께 갔나**: **루프 «하나»가 셋을 다 만들었다.** 표마다 `count(<t>.row_id)` 와 `max(coalesce(updated_at, created_at))` 를 도는 그 루프가 `table_stats` 를 채웠고, `total_rows` 는 **같은 count 들의 합**, `total_tables` 는 같은 목록의 길이였다. `table_stats` 만 지우면 count 질의가 그대로 남아 얻는 것이 절반도 안 된다 — 그래서 소유자 판정이 「셋은 한 단위」였다.
 - **읽는 쪽이 없었다** — 저장소 전수 기준: `client2/src` 에 `table_stats`·`row_count`·`last_updated`·`total_rows`·`total_tables` 참조 **0**, 출하 번들에도 **0**, 서버에는 스키마 정의와 이 핸들러의 대입뿐. ⚠️ 벽시계 비중(전체 질의의 대부분)은 **이 개발 박스에서 이 핸들러의 자기 문장을 타이밍해 잰 값**이며 운영 수치가 아니다. 운영에 대해서도 참인 것은 **「읽는 소비자가 없다」와 「비용이 선언된 표 수 × 표 크기로 자란다」** 쪽이다.

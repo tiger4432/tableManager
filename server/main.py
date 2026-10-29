@@ -1855,9 +1855,6 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
 # "대시보드를 열 때마다 GROUP BY"를 구조적으로 막는 1차 방어선이다.
 RECORRECTION_CACHE = {"value": None, "at": 0.0}
 RECORRECTION_CACHE_TTL = 60.0
-#: The dashboard's «today» audit count - a range over idx_audit_recent_groups, once a minute (소유자 10-28 «속도만»).
-TODAY_UPDATES_CACHE = {"value": None, "at": 0.0}
-TODAY_UPDATES_CACHE_TTL = 60.0
 
 
 def _held(cache, ttl):
@@ -1987,9 +1984,6 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     """
     대시보드에 표시할 전역 통계 및 테이블별 현황을 반환합니다.
     """
-    from datetime import datetime, date, timezone
-    import sqlalchemy as sa
-    
     # 🔴 THE PER-TABLE COUNTS ARE GONE, AND WITH THEM `table_stats`, `total_rows` and
     # `total_tables`. Measured 2026-09-05 by timing this handler's own statements: two
     # shapes - `count(<t>.row_id)` 39 times and `max(coalesce(updated_at, created_at))`
@@ -2057,27 +2051,8 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
             continue
 
 
-    # 오늘의 업데이트 건수 (AuditLog 기준 - 각 항목이 셀 단위 수정임)
-    # the server's local midnight as an instant (소유자 10-28 «2 ㄱ») - a local date stamped UTC began at 09:00 KST
-    today_start = datetime.combine(date.today(), datetime.min.time()).astimezone(timezone.utc)
-    # 🔴 `count(id)`, NOT `query(AuditLog).count()`. The ORM's `.count()` wraps the
-    # ROW-SELECTING query in a subquery, so PostgreSQL materialises all eleven columns of
-    # every audit row written today just to arrive at a number:
-    #
-    #     SELECT count(*) FROM (SELECT audit_logs.id, .table_name, .row_id, .column_name,
-    #                                  .old_value, .new_value, ... WHERE timestamp >= ?)
-    #
-    # Measured 2026-09-05 by timing this handler's own statements: 0.507 s, 31.8% of the
-    # whole response and larger than the next four statements combined, on a 3.9M-row
-    # table. The counted set is IDENTICAL either way - the subquery selects columns
-    # nothing reads - so this is the same question asked without carrying the answer's
-    # payload. The per-table counts above already spell it this way.
-    #
-    # ⚠️ THE MEANING IS UNCHANGED: rows written to the audit log since local midnight.
-    today_updates_count = _held(TODAY_UPDATES_CACHE, TODAY_UPDATES_CACHE_TTL)
-    if today_updates_count is None:
-        today_updates_count = _hold(TODAY_UPDATES_CACHE, db.query(sa.func.count(models.AuditLog.id)).filter(
-            models.AuditLog.timestamp >= today_start).scalar() or 0, time.time())
+    # ⚰️ `today_updates` (audit rows since local midnight) retired 10-29 (owner «ㄱ»): no screen read it, and C's F4
+    # run found it the freeze when the admin opened (9-28 s at ops-scale «today»). The summary counts no audit row.
 
     # 두 계기는 **마지막에** 계산한다 — 타임아웃 시 rollback 이 위쪽 집계를 건드리지 않도록.
     # (각자 자기 rollback 을 하므로 앞의 실패가 뒤의 집계를 오염시키지 않는다.)
@@ -2085,7 +2060,6 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     effort = _get_effort_stat(db)
 
     return schemas.DashboardSummaryResponse(
-        today_updates=today_updates_count,
         system_health="Excellent",
         recorrection=recorrection,
         effort=effort,
