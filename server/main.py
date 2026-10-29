@@ -1650,7 +1650,7 @@ def resolve_missing_business_keys(db: Session, log_models: list) -> None:
             lm.business_key = bk
 
 
-from ledger.runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED  # noqa: E402
+from ledger.runtime_v2 import RECEIPT_COLUMN  # noqa: E402
 
 
 def _names_a_row(log) -> bool:
@@ -1681,7 +1681,7 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
                 existing_keys.add((t_name, f_id))
     return existing_keys
 
-from admin.audit_cache import audit_cache, in_group
+from admin.audit_cache import audit_cache, in_group, representative
 import event_constants
 from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 # [Heavy Lane P1] 진행 중 인제션 스냅샷 레지스트리 (watcher가 push, admin API가 서빙)
@@ -1751,13 +1751,6 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
     return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups)
 
 
-def _representative(logs):
-    """The one log a folded row shows: the newest that is not a ledger receipt - the write the
-    transaction was about, whose writer the user cell names (클라 9cdbda108 · 총괄); a group of
-    receipts only shows its newest. `logs` is newest first."""
-    return next((log for log in logs if log.column_name != RECEIPT_COLUMN), logs[0])
-
-
 def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
                          limit_groups: int):
     """The `{groups, truncated, next_cursor, limit_groups, returned}` envelope.
@@ -1770,30 +1763,12 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
     and then fixed once).
     """
     groups = []
-    # Collect keys to check existence
-    keys_to_check = []
-    for g in cache_groups:
-        logs = g.get("logs", [])
-        if not logs: continue
-        repr_log = _representative(logs)
-        if _names_a_row(repr_log):
-            keys_to_check.append((repr_log.table_name, repr_log.row_id))
+    shown = [(g, representative(g)) for g in cache_groups]
+    shown = [(g, log) for g, log in shown if log is not None]
+    existing_keys = check_rows_exist(db, [(log.table_name, log.row_id) for _g, log in shown if _names_a_row(log)])
 
-    existing_keys = check_rows_exist(db, keys_to_check)
-
-    for g in cache_groups:
-        logs = g.get("logs", [])
-        if not logs: continue
-        
-        # summary_columns 추출 (중복 제거)
-        cols = []
-        for l in logs:
-            c = l.column_name
-            if c and c not in cols:
-                cols.append(c)
-                
-        # Populate is_row_deleted flag for representing log
-        repr_log = _representative(logs).model_copy()
+    for g, repr_log in shown:
+        repr_log = repr_log.model_copy()
         is_deleted = _names_a_row(repr_log) and (repr_log.table_name, repr_log.row_id) not in existing_keys
         repr_log.is_row_deleted = is_deleted
         
@@ -1802,20 +1777,14 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
                 
         # the receipts behind the one representative, per world, in the order written (3e8b6171f ②),
         # and how many of them say the translation failed - a failed world is not one that wrote
-        receipts = {}
-        for l in reversed(logs):
-            if l.column_name == RECEIPT_COLUMN:
-                value = l.new_value if isinstance(l.new_value, dict) else {}
-                counted = receipts.setdefault(value.get("world"), {"receipts": 0, "failed": 0})
-                counted["receipts"] += 1
-                counted["failed"] += value.get("status") == RECEIPT_FAILED
-
+        summary = g["summary"]
         groups.append({
             "transaction_id": g.get("transaction_id"),
-            "total_count": g.get("total_count", len(logs)),
-            "summary_columns": cols,
+            "total_count": g.get("total_count", 1),
+            "summary_columns": sorted(summary["columns"]),
             "logs": [repr_log], # 대표 로그 1건만 포함
-            "receipt_worlds": [{"world": world, **counted} for world, counted in receipts.items()],
+            "receipt_worlds": [{"world": world, "receipts": receipts, "failed": failed}
+                               for world, (receipts, failed) in summary["worlds"].items()],
         })
     return {
         "groups": groups,
@@ -1827,49 +1796,8 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
 
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
 def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 20000):
-    """특정 트랜잭션의 상세 로그를 반환합니다. (인메모리 캐시 우선 조회, 최대 limit 건 반환)"""
-
-    # 1. 캐시에서 조회 시도
-    if audit_cache.is_loaded:
-        for g in audit_cache.groups:
-            if g.get("transaction_id") == tx_id:
-                logs = g.get("logs", [])
-                total_count = g.get("total_count", len(logs))
-                
-                # 캐시 캡핑(500개)이 걸렸고 limit이 그보다 많은 양을 요구한다면 캐시 조회를 건너뛰고 DB 조회로 폴백합니다.
-                if len(logs) >= total_count or len(logs) >= limit:
-                    cols = []
-                    
-                    # Check existences
-                    keys_to_check = []
-                    for l in logs[:limit]:
-                        if _names_a_row(l):
-                            keys_to_check.append((l.table_name, l.row_id))
-                    existing_keys = check_rows_exist(db, keys_to_check)
-                    
-                    cloned_logs = []
-                    # 키가 필요한 로그를 모아 두었다가 루프 밖에서 한 번에 채운다.
-                    # 루프 안에서 부르면 로그 1건당 쿼리 2개다 - 아래 DB 분기와 같은 결함.
-                    needs_bk = []
-                    for l in logs[:limit]:
-                        c = l.column_name
-                        if c and c not in cols: cols.append(c)
-                        cloned_log = l.model_copy()
-                        is_deleted = _names_a_row(cloned_log) and (cloned_log.table_name, cloned_log.row_id) not in existing_keys
-                        cloned_log.is_row_deleted = is_deleted
-                        if is_deleted and not cloned_log.business_key:
-                            needs_bk.append(cloned_log)
-                        cloned_logs.append(cloned_log)
-                    resolve_missing_business_keys(db, needs_bk)
-                    return {
-                        "transaction_id": tx_id,
-                        "total_count": total_count,
-                        "summary_columns": cols,
-                        "logs": cloned_logs
-                    }
-                break
-                
-    # 2. 캐시에 없으면 DB에서 직접 조회 (만약 오래된 트랜잭션을 클릭했다면) - a group, so a replay's pages too
+    """특정 트랜잭션의 상세 로그를 반환합니다 - DB 에서 최대 limit 건. 목록 캐시는 묶음 요약만 든다(소유자 10-29 «경량화»)."""
+    # a group, so a replay's pages too
     in_tx = in_group(models.AuditLog.transaction_id, tx_id)
     total_count = db.query(models.AuditLog).filter(in_tx).count()
     if total_count == 0:

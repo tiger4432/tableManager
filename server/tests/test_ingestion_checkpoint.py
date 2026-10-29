@@ -580,7 +580,8 @@ def test_single_message_total_count_is_used_as_is(cache):
     cache.add_logs_batch([_log("tx_a", i) for i in range(3)], 500)
     group = next(g for g in cache.groups if g["transaction_id"] == "tx_a")
     assert group["total_count"] == 500
-    assert len(group["logs"]) == 3
+    from admin.audit_cache import representative
+    assert representative(group).row_id == "r0"
 
 
 def test_without_total_count_falls_back_to_len(cache):
@@ -600,10 +601,12 @@ def test_multi_tx_batch_ignores_message_total_count(cache):
     assert gy["total_count"] == 2
 
 
-def test_cache_log_list_still_capped_at_500(cache):
+def test_a_big_message_keeps_one_row_and_the_whole_count(cache):
+    """The list keeps a summary, not logs (owner 10-29 «경량화») - 600 logs leave one row and the count."""
+    from admin.audit_cache import representative
     cache.add_logs_batch([_log("tx_cap", i) for i in range(600)], 600)
     group = next(g for g in cache.groups if g["transaction_id"] == "tx_cap")
-    assert len(group["logs"]) == 500
+    assert "logs" not in group and representative(group).row_id == "r0"
     assert group["total_count"] == 600
 
 

@@ -8,7 +8,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from admin.audit_cache import AuditLogCache
+from admin.audit_cache import AuditLogCache, representative
 from database import models
 
 
@@ -149,5 +149,5 @@ def test_a_group_s_count_is_cumulative_however_its_rows_arrive(db_session):
     rebuilt = AuditLogCache()
     rebuilt.load_initial(db_session)
     assert _totals(one) == _totals(each) == _totals(rebuilt) == {"G": 7}
-    assert [log.row_id for log in one.groups[0]["logs"]] == [log.row_id for log in each.groups[0]["logs"]] == [
-        log.row_id for log in rebuilt.groups[0]["logs"]]
+    assert representative(one.groups[0]).row_id == representative(each.groups[0]).row_id == \
+        representative(rebuilt.groups[0]).row_id == "g6"

@@ -30,10 +30,11 @@ WHAT IT DOES NOW
 
     DISCOVERY is a keyset walk over `(timestamp, id)` selecting three columns,
     so it is an index scan instead of a sort, and it carries a hard ceiling
-    (`recent_max_scan_rows`). HYDRATION is a second pass that fetches - and
-    validates - only the rows a group actually keeps, so the pydantic bill is
-    bounded by `limit_groups * recent_logs_per_group` no matter how many rows
-    were walked.
+    (`recent_max_scan_rows`). Each chunk's one GROUP BY also carries what the
+    list shows of a group - its columns, its receipts per world, the id of its
+    representative (`_tally`) - so HYDRATION reads one row per group by id, not
+    a group's logs (owner 10-29 «경량화»: the list is navigation, a group's rows
+    are read when it is opened, `/audit_logs/transaction/{id}`).
 
     The keyset predicate, the sort order and the cursor encoding are IMPORTED
     from `audit_history`, not re-typed. That module is the one place this
@@ -112,10 +113,6 @@ RECENT_DEFAULTS = {
     # projection that finds its hundred groups in the first 1,400 rows reads one
     # whole chunk - so it trades round trips against that floor. 20,000 is ~22 ms.
     "recent_scan_chunk_rows": 20_000,
-    # Logs kept per group. The projection serves one representative log plus the
-    # column list, and `/audit_logs/transaction/{id}` falls back to the database
-    # for anything deeper, so this is a convenience cache, not the record.
-    "recent_logs_per_group": 500,
 }
 
 
@@ -265,10 +262,8 @@ class AuditLogCache:
         therefore reproduces the order the old row-by-row walk produced.
         """
         m = models.AuditLog
-        q = db.query(m.transaction_id, func.count().label("n"),
-                     func.max(m.timestamp), func.max(m.id))
-        q = self._ordered_rows(audit_history.apply_cursor(q, m, cursor), edge)
-        rows = q.group_by(m.transaction_id).all()
+        tallied = _tally(db, lambda q: self._ordered_rows(audit_history.apply_cursor(q, m, cursor), edge))
+        rows = [(tid, *one) for tid, one in tallied.items()]
         # Belt and braces on the `IS NOT NULL` above: comparing a None against a
         # datetime raises, and a sort that raises takes the whole projection
         # down. Ordered as oldest rather than allowed to do that.
@@ -279,7 +274,7 @@ class AuditLogCache:
                          start: Optional[str] = None):
         """Walk newest-first over `(timestamp, id)` and name the groups.
 
-        Returns `(order, counts, tops, bottom, truncated, next_cursor, scanned)`.
+        Returns `(order, counts, tops, bottom, truncated, next_cursor, scanned, summaries)`.
 
         `start` RESUMES the same walk for a later page (판정 473). There is one
         author of "which groups come next" and this is it; the row-paging route
@@ -301,6 +296,7 @@ class AuditLogCache:
 
         order: List[str] = []
         counts: Dict[str, int] = {}
+        summaries: Dict[str, dict] = {}
         tops: Dict[str, Tuple] = {}
         cursor = start
         floor = audit_history.decode_cursor(start) if start else None
@@ -325,16 +321,18 @@ class AuditLogCache:
                 already = self._groups_seen_at_or_above(db, floor, fresh - set(counts))
             else:
                 already = ()
-            for tid, n, newest_ts, newest_id in rows:
+            for tid, n, newest_ts, newest_id, summary in rows:
                 scanned += n
                 key = group_of(tid)
                 if key in already:
                     continue
                 if key in counts:
                     counts[key] += n
+                    summaries[key] = _fold(summaries[key], summary)
                 elif len(order) < limit_groups:
                     order.append(key)
                     counts[key] = n
+                    summaries[key] = summary
                     tops[key] = (newest_ts, newest_id)
                 elif stop_at is None:
                     # 🔴 [판정 473] THE FIRST GROUP THIS PAGE DID NOT TAKE. The
@@ -397,47 +395,13 @@ class AuditLogCache:
         # group position to publish and the scan position is all there is.
         resume = tops.get(order[-1]) if order else bottom
         return (order, counts, tops, bottom, truncated,
-                _cursor_token(resume) if truncated else None, scanned)
+                _cursor_token(resume) if truncated else None, scanned, summaries)
 
-    def _hydrate(self, db: Session, order, counts, tops, bottom,
-                 watermark: int, per_group: int) -> List[Dict]:
-        """Fetch and model ONLY the rows a group actually keeps.
-
-        Bounded by `limit_groups * recent_logs_per_group` by construction: the
-        walk may cross a million rows, but pydantic never sees more than what
-        the projection holds. That separation is the entire point of splitting
-        discovery from hydration.
-
-        The `(timestamp, id)` range is not decoration - it pins each fetch to
-        the SAME window the count came from, and its upper end is the group's
-        own newest position, so the planner can walk down from there and stop
-        after `per_group` matches instead of sorting the transaction's whole
-        history. `id <= watermark` excludes rows another process committed while
-        this scan ran; those stay above the watermark for the next refresh.
-        """
-        m = models.AuditLog
-        groups = []
-        for tid in order:
-            # `_ordered_rows` and not a hand-written pair of bounds: hydration
-            # must exclude exactly what the count excluded. Without its
-            # `IS NOT NULL`, a transaction that has BOTH stamped and unstamped
-            # rows would hydrate the unstamped ones first (PostgreSQL sorts
-            # NULLs first under DESC) and hand pydantic a null into
-            # `AuditLogResponse.timestamp: datetime` - a 500 on the route, from
-            # rows the count never even saw.
-            q = self._ordered_rows(db.query(m).filter(m.id <= watermark), bottom)
-            q = q.filter(in_group(m.transaction_id, tid))
-            top = tops.get(tid)
-            if top is not None:
-                q = q.filter(sa.tuple_(m.timestamp, m.id) <= sa.tuple_(*top))
-            logs = []
-            for obj in q.order_by(*audit_history.order_desc(m)).limit(per_group).all():
-                log_dict = obj.__dict__.copy()
-                log_dict["business_key"] = obj.business_key
-                logs.append(schemas.AuditLogResponse.model_validate(log_dict))
-            groups.append({"transaction_id": tid, "logs": logs,
-                           "total_count": counts[tid]})
-        return groups
+    def _hydrate(self, db: Session, order, counts, summaries) -> List[Dict]:
+        """The groups as the list serves them - each one's count and summary (`_tally`), its representative read by
+        id: one statement for the page, never a group's logs (owner 10-29 «경량화»)."""
+        _resolve(db, [summaries[key] for key in order])
+        return [{"transaction_id": key, "total_count": counts[key], "summary": summaries[key]} for key in order]
 
     def page_from_cursor(self, db: Session, cursor: str, limit_groups: int = 100):
         """The groups AFTER `cursor`, as `(groups, truncated, next_cursor, scanned)`.
@@ -459,12 +423,9 @@ class AuditLogCache:
         state with the projection.
         """
         settings = resolve_recent_settings()
-        watermark = db.query(func.max(models.AuditLog.id)).scalar() or 0
-        order, counts, tops, bottom, truncated, nxt, scanned = \
+        order, counts, _tops, _bottom, truncated, nxt, scanned, summaries = \
             self._discover_groups(db, limit_groups, settings, start=cursor)
-        groups = self._hydrate(db, order, counts, tops, bottom, watermark,
-                               settings["recent_logs_per_group"])
-        return groups, truncated, nxt, scanned
+        return self._hydrate(db, order, counts, summaries), truncated, nxt, scanned
 
     def load_initial(self, db: Session, limit_groups: int = 100,
                      force: bool = False, refresh_above: int = None):
@@ -502,10 +463,9 @@ class AuditLogCache:
             # above the watermark and the next refresh picks it up.
             watermark = db.query(func.max(models.AuditLog.id)).scalar() or 0
 
-            order, counts, tops, bottom, truncated, cursor, scanned = \
+            order, counts, _tops, _bottom, truncated, cursor, scanned, summaries = \
                 self._discover_groups(db, limit_groups, settings)
-            groups = self._hydrate(db, order, counts, tops, bottom, watermark,
-                                   settings["recent_logs_per_group"])
+            groups = self._hydrate(db, order, counts, summaries)
             with self._lock:
                 self.groups = groups
                 self.is_loaded = True
@@ -528,16 +488,15 @@ class AuditLogCache:
         The audit cache belongs to the API process, while chain replay and file
         ingestion write from workers. A primary-key MAX probe keeps the common
         read path cheap; when it advances, the delta is merged - whatever its size (총괄 10-22: a rebuild per
-        2,000-row file re-read up to 30,500 rows each time, 94 % of it the database's). Its cost is the groups it
-        touched, not its rows: each group's count by one GROUP BY over the id range, and the newest
-        `recent_logs_per_group` rows of each of the newest `limit_groups` groups it touched. A group's count is
+        2,000-row file re-read up to 30,500 rows each time, 94 % of it the database's). Its cost is one GROUP BY
+        over the id range (`_tally`: each group's count and summary) and one row per touched group, its
+        representative - C 10-29: the newest 500 rows of each touched group were 27 of a 38 s delta. A group's count is
         cumulative - what was there plus what came, less what a notification already claimed (`_absorb`).
         A rebuild or another refresh that moved the watermark meanwhile leaves this merge out: the next read starts
         from the watermark it left.
         """
         m = models.AuditLog
         latest_id = db.query(func.max(m.id)).scalar() or 0
-        settings = resolve_recent_settings()
         with self._lock:
             if not self.is_loaded or latest_id <= (self._db_max_id or 0):
                 return False
@@ -545,39 +504,30 @@ class AuditLogCache:
 
         in_range = (m.id > previous_id, m.id <= latest_id)
         counted = {}
-        for tid, n, newest in (db.query(m.transaction_id, func.count(m.id), func.max(m.id))
-                               .filter(*in_range).group_by(m.transaction_id)):
+        tallied = sorted(_tally(db, lambda q: q.filter(*in_range)).items(), key=lambda kv: kv[1][2], reverse=True)
+        for tid, (n, _newest_ts, newest, summary) in tallied:       # newest first, so each fold is (newer, older)
             key = group_of(tid)
-            had = counted.get(key, (0, 0))
-            counted[key] = (had[0] + n, max(had[1], newest))
+            had = counted.get(key)
+            counted[key] = (n, newest, summary) if had is None else (had[0] + n, had[1], _fold(had[2], summary))
         touched = sorted(counted, key=lambda key: counted[key][1], reverse=True)[:limit_groups]
-        per_group = settings["recent_logs_per_group"]
-        fresh = {}
-        for key in touched:
-            logs = []
-            for obj in (db.query(m).filter(*in_range, in_group(m.transaction_id, key))
-                        .order_by(m.id.desc()).limit(per_group)):
-                log_dict = obj.__dict__.copy()
-                log_dict["business_key"] = obj.business_key
-                logs.append(schemas.AuditLogResponse.model_validate(log_dict))
-            fresh[key] = logs
+        _resolve(db, [counted[key][2] for key in touched])
 
         popped = False
         with self._lock:
             if (self._db_max_id or 0) != previous_id:
                 return False
             for key in reversed(touched):           # the newest ends on top
-                count, logs = counted[key][0], fresh[key]
+                count, summary = counted[key][0], counted[key][2]
                 group = next((g for g in self.groups if g["transaction_id"] == key), None)
                 if group is None:
-                    self.groups.insert(0, {"transaction_id": key, "logs": logs, "total_count": count})
+                    self.groups.insert(0, {"transaction_id": key, "summary": summary, "total_count": count})
                     continue
                 # 🔴 ABSORB, DO NOT ADD, WHAT AN EVENT ALREADY CLAIMED.
                 # `add_logs_batch` cannot advance the watermark (its log
                 # dicts carry id 0), so these very rows were merged once
                 # already. Counting them again is how 300 rows read 600.
                 _absorb(group, count)
-                group["logs"] = (logs + group["logs"])[:per_group]
+                group["summary"] = _fold(summary, group["summary"])
                 self.groups.remove(group)
                 self.groups.insert(0, group)
             while len(self.groups) > limit_groups:
@@ -606,16 +556,13 @@ class AuditLogCache:
                 return
 
             tid = group_of(log_dict.get("transaction_id"))
-            log_model = schemas.AuditLogResponse.model_validate(log_dict)
-            per_group = resolve_recent_settings()["recent_logs_per_group"]
+            summary = _summary_of([schemas.AuditLogResponse.model_validate(log_dict)])
 
             # [Fix] 기존 그룹 중에 같은 transaction_id가 있는지 전체 검색
             for group in self.groups:
                 if group["transaction_id"] == tid:
                     _claim(group, 1)
-                    # [최적화] 인메모리 캡핑
-                    if len(group["logs"]) < per_group:
-                        group["logs"].insert(0, log_model)
+                    group["summary"] = _fold(summary, group["summary"])
 
                     # 해당 그룹을 최상단으로 이동 (최신 활동 트랜잭션 순서 유지)
                     if self.groups.index(group) > 0:
@@ -624,7 +571,7 @@ class AuditLogCache:
                     return
 
             # 없으면 새 그룹 생성
-            new_group = {"transaction_id": tid, "logs": [log_model], "total_count": 0}
+            new_group = {"transaction_id": tid, "summary": summary, "total_count": 0}
             _claim(new_group, 1)
             self.groups.insert(0, new_group)
 
@@ -659,8 +606,6 @@ class AuditLogCache:
                 return
 
             from collections import defaultdict
-            settings = resolve_recent_settings()
-            per_group = settings["recent_logs_per_group"]
             logs_by_tx = defaultdict(list)
             for log_dict in logs_list:
                 tid = group_of(log_dict.get("transaction_id"))
@@ -692,10 +637,7 @@ class AuditLogCache:
                         # [P2 #10] SET → 누적. 같은 tx가 여러 메시지로 나뉘어 도착해도
                         # 총계가 마지막 메시지 값으로 덮어써지지 않는다.
                         _claim(group, contribution)
-
-                        for log_model in reversed(logs):
-                            if len(group["logs"]) < per_group:
-                                group["logs"].insert(0, log_model)
+                        group["summary"] = _fold(_summary_of(logs), group["summary"])
 
                         idx = self.groups.index(group)
                         if idx > 0:
@@ -705,8 +647,7 @@ class AuditLogCache:
                         break
 
                 if not found:
-                    new_group = {"transaction_id": tid, "logs": logs[:per_group],
-                                 "total_count": 0}
+                    new_group = {"transaction_id": tid, "summary": _summary_of(logs), "total_count": 0}
                     _claim(new_group, contribution)
                     self.groups.insert(0, new_group)
 
@@ -748,6 +689,106 @@ def in_group(column, key):
     if key == "no_tid":
         return sa.or_(column.is_(None), column == "")
     return sa.or_(column == key, column.startswith(key + event_constants.GROUP_PART, autoescape=True))
+
+
+# ---------------------------------------------------------------------------
+# The summary - what the list shows of a group (owner 10-29 «경량화»)
+# ---------------------------------------------------------------------------
+#
+# `{"newest", "nonreceipt", "columns", "worlds"}`: the newest log and the newest that is not a ledger receipt (an id
+# from `_tally` until `_resolve` reads it, a log after), the columns written, the receipts per world in the order the
+# worlds were first written as [receipts, failed]. Every path - the walk's chunks, a refresh's delta, a notification's
+# logs - meets the others in `_fold`.
+
+def _receipt_names():
+    from ledger.runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED
+    return RECEIPT_COLUMN, RECEIPT_FAILED
+
+
+def _tally(db: Session, restrict) -> Dict[str, list]:
+    """Per transaction label `[rows, newest timestamp, newest id, summary]` of the rows `restrict` keeps - ONE
+    GROUP BY (label, column, receipt world, receipt failed), so a group's logs are never read for the list. The two
+    receipt facts are keys, not aggregate inputs: as an input the JSON value rode the sort to disk (seed 10-29:
+    20,000 rows, external merge 6.8 MB, 118 ms a chunk)."""
+    receipt_column, failed_status = _receipt_names()
+    m = models.AuditLog
+    receipt = m.column_name == receipt_column
+    world = sa.case((receipt, m.new_value["world"].as_string()), else_=None)
+    failed = sa.case((receipt, m.new_value["status"].as_string() == failed_status), else_=None)
+    q = restrict(db.query(m.transaction_id, m.column_name, world, failed, func.count(), func.max(m.timestamp),
+                          func.max(m.id), func.min(m.id)))
+    tallied, receipts = {}, []
+    for tid, column, in_world, is_failed, n, newest_ts, newest_id, first_id in q.group_by(sa.text("1, 2, 3, 4")):
+        one = tallied.setdefault(tid, [0, None, 0, {"newest": 0, "nonreceipt": None, "columns": set(), "worlds": {}}])
+        one[0] += n
+        if newest_ts is not None and (one[1] is None or newest_ts > one[1]):
+            one[1] = newest_ts
+        one[2] = max(one[2], newest_id)
+        summary = one[3]
+        summary["newest"] = one[2]
+        if column:
+            summary["columns"].add(column)
+        if column == receipt_column:
+            receipts.append((first_id, tid, in_world, n, n if is_failed else 0))
+        else:
+            summary["nonreceipt"] = max(summary["nonreceipt"] or 0, newest_id)
+    for _first, tid, in_world, n, n_failed in sorted(receipts, key=lambda r: r[0]):
+        counted = tallied[tid][3]["worlds"].setdefault(in_world, [0, 0])
+        counted[0] += n
+        counted[1] += n_failed
+    return tallied
+
+
+def _summary_of(logs) -> dict:
+    """A notification's logs, first is newest, as a summary - what `_tally` says of the same rows."""
+    receipt_column, failed_status = _receipt_names()
+    worlds = {}
+    for log in reversed(logs):
+        if log.column_name == receipt_column:
+            value = log.new_value if isinstance(log.new_value, dict) else {}
+            counted = worlds.setdefault(value.get("world"), [0, 0])
+            counted[0] += 1
+            counted[1] += value.get("status") == failed_status
+    return {"newest": logs[0], "nonreceipt": next((log for log in logs if log.column_name != receipt_column), None),
+            "columns": {log.column_name for log in logs if log.column_name}, "worlds": worlds}
+
+
+def _fold(newer: dict, older: dict) -> dict:
+    """One group's summary from two slices of it, `newer` written after `older`."""
+    worlds = {name: list(counted) for name, counted in older["worlds"].items()}
+    for name, (receipts, failed) in newer["worlds"].items():
+        counted = worlds.setdefault(name, [0, 0])
+        counted[0] += receipts
+        counted[1] += failed
+    return {"newest": newer["newest"], "nonreceipt": newer["nonreceipt"] or older["nonreceipt"],
+            "columns": older["columns"] | newer["columns"], "worlds": worlds}
+
+
+def representative(group: dict):
+    """The one log a group's line shows: the newest that is not a ledger receipt - the write the transaction was
+    about (클라 9cdbda108 · 총괄) - else the newest receipt. None when its row is gone."""
+    summary = group["summary"]
+    return summary["nonreceipt"] or summary["newest"]
+
+
+def _resolve(db: Session, summaries):
+    """Read each summary's representative by the id `_tally` named - all of them in one statement."""
+    for summary in summaries:
+        if summary["nonreceipt"] is not None:
+            summary["newest"] = None
+    ids = {summary[k] for summary in summaries for k in ("newest", "nonreceipt") if isinstance(summary[k], int)}
+    if not ids:
+        return
+    m = models.AuditLog
+    rows = {}
+    for obj in db.query(m).filter(m.id.in_(ids)):
+        log_dict = obj.__dict__.copy()
+        log_dict["business_key"] = obj.business_key
+        rows[obj.id] = schemas.AuditLogResponse.model_validate(log_dict)
+    for summary in summaries:
+        for k in ("newest", "nonreceipt"):
+            if isinstance(summary[k], int):
+                summary[k] = rows.get(summary[k])
 
 
 def _claim(group: dict, contribution: int):

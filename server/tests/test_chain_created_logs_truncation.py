@@ -196,7 +196,8 @@ def test_internal_broadcast_respects_total_log_count(client, loaded_audit_cache)
     groups = [g for g in loaded_audit_cache.groups if g["transaction_id"] == tx_id]
     assert len(groups) == 1
     assert groups[0]["total_count"] == 65000, "절단 전 실건수(total_log_count)가 total_count에 반영돼야 한다"
-    assert len(groups[0]["logs"]) == 3
+    from admin.audit_cache import representative
+    assert representative(groups[0]).row_id == "r0", "the list keeps one row a group - the first log, as before"
 
 
 def test_internal_broadcast_falls_back_to_len_without_total_log_count(client, loaded_audit_cache):

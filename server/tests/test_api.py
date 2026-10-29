@@ -542,8 +542,8 @@ def test_internal_events_updates_cache_and_broadcasts(client):
     # Verify audit cache updated
     assert len(audit_cache.groups) > 0
     assert audit_cache.groups[0]["transaction_id"] == "tx_refresh_test"
-    assert len(audit_cache.groups[0]["logs"]) == 1
-    assert audit_cache.groups[0]["logs"][0].row_id == "test_row_123"
+    from admin.audit_cache import representative
+    assert representative(audit_cache.groups[0]).row_id == "test_row_123"
 
     # Reset cache
     audit_cache.groups = []
@@ -576,8 +576,7 @@ def test_internal_events_updates_cache_and_broadcasts(client):
     # Verify audit cache updated
     assert len(audit_cache.groups) > 0
     assert audit_cache.groups[0]["transaction_id"] == "tx_broadcast_test"
-    assert len(audit_cache.groups[0]["logs"]) == 1
-    assert audit_cache.groups[0]["logs"][0].row_id == "test_row_456"
+    assert representative(audit_cache.groups[0]).row_id == "test_row_456"
 
 
 def test_automatic_schema_alteration(db_session):

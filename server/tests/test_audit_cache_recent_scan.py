@@ -131,23 +131,19 @@ def test_d_the_kept_logs_are_capped_but_the_count_is_not(db_session, knobs):
     with a bill proportional to the ingestion.
     """
     seed(db_session, [("cap-tx-a", 40)])
-    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=100,
-          recent_logs_per_group=6)
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=100)
 
     cache = AuditLogCache()
     cache.load_initial(db_session, limit_groups=10)
 
     group = cache.groups[0]
     assert group["total_count"] == 40
-    assert len(group["logs"]) == 6
-    # Newest first, and they are the NEWEST six - not the first six the scan met
-    # in some other order.
-    ids = [log.id for log in group["logs"]]
-    assert ids == sorted(ids, reverse=True)
+    # One row per group - its representative, the NEWEST (owner 10-29 «경량화»: the list is a summary).
     newest = db_session.query(models.AuditLog.id)\
         .filter(models.AuditLog.transaction_id == "cap-tx-a")\
-        .order_by(models.AuditLog.id.desc()).limit(6).all()
-    assert ids == [row[0] for row in newest]
+        .order_by(models.AuditLog.id.desc()).first()
+    assert audit_cache.representative(group).id == newest[0]
+    assert group["summary"]["columns"] == {"value"}
 
 
 def test_e_the_route_publishes_the_two_words(client, db_session, knobs):
@@ -280,7 +276,7 @@ def test_f_a_malformed_knob_falls_back_instead_of_taking_the_scan_down(knobs, ca
         audit_cache.RECENT_DEFAULTS["recent_max_scan_rows"]
     assert resolved["recent_scan_chunk_rows"] == \
         audit_cache.RECENT_DEFAULTS["recent_scan_chunk_rows"]
-    assert resolved["recent_logs_per_group"] == 250
+    assert "recent_logs_per_group" not in resolved, "retired 10-29 - a file that still names it is not read"
     assert "must be a positive integer" in capsys.readouterr().out
 
 

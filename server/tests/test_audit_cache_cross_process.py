@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from admin import audit_history
-from admin.audit_cache import AuditLogCache
+from admin.audit_cache import AuditLogCache, representative
 from database import models
 
 
@@ -96,11 +96,10 @@ def test_a_bulk_delta_is_merged_not_rebuilt_and_models_only_what_a_group_keeps(d
     the merge modelled every new row (~40 us each, 100,000 rows 4,010 ms against c723585). The lead's freeze
     measurement reversed that ruling (총괄 10-22, rebuild debt ㄱ): with a 2,000-row file every 2 s the rebuild ran
     every ~6 s and re-read up to 30,500 rows each time, 94 % of it the database's. Now a delta of any size is merged:
-    its count by one GROUP BY, its logs the newest `recent_logs_per_group` of the group - so it models no more rows
-    than the group keeps, and no rebuild runs."""
+    its count and summary by one GROUP BY, its representative one row by id - so it models one row a group (owner
+    10-29 «경량화»), and no rebuild runs."""
     from database import schemas
 
-    monkeypatch.setattr(audit_history, "load_config", lambda *a, **k: {"recent_logs_per_group": 5})
     cache = AuditLogCache()
     db_session.add(_audit("bulk-seed", "seed"))
     db_session.commit()
@@ -120,5 +119,5 @@ def test_a_bulk_delta_is_merged_not_rebuilt_and_models_only_what_a_group_keeps(d
     assert cache.refresh_if_stale(db_session) is True
     group = next(g for g in cache.groups if g["transaction_id"] == "bulk-tx")
     assert group["total_count"] == 12
-    assert [log.row_id for log in group["logs"]] == ["row-11", "row-10", "row-09", "row-08", "row-07"]
-    assert len(modelled) == 5, "the merge modelled %d rows for a group that keeps 5" % len(modelled)
+    assert representative(group).row_id == "row-11"
+    assert len(modelled) == 1, "the merge modelled %d rows for a group it shows one row of" % len(modelled)

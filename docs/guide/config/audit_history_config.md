@@ -30,8 +30,7 @@
      "default_limit": 200,
      "max_limit": 1000,
      "recent_max_scan_rows": 500000,
-     "recent_scan_chunk_rows": 20000,
-     "recent_logs_per_group": 500
+     "recent_scan_chunk_rows": 20000
    }
    ```
 
@@ -43,12 +42,12 @@
 
 이 파일은 **같은 기능의 두 얼굴**을 담습니다 — "행/셀 하나를 클릭했을 때"(`default_limit`/`max_limit`, `server/admin/audit_history.py`)와 "전역 타임라인 패널을 열었을 때"(`recent_*`, `server/admin/audit_cache.py`)는 둘 다 `audit_logs`가 무제한으로 자라는 것을 어떻게 상한 짓는가의 문제이고, `audit_cache`는 이 파일을 **두 번째 로더로 다시 읽지 않고** `audit_history.load_config()`를 그대로 재사용합니다. 운영자가 "감사 이력을 어디까지 보여줄까"를 결정할 자리를 파일 하나로 묶어 둔 것입니다.
 
-## 4. `recent_*` 셋의 뜻 — 그리고 무엇을 지키는가
+## 4. `recent_*` 의 뜻 — 그리고 무엇을 지키는가
 
 - `recent_max_scan_rows`(기본 500,000)는 **최근 100개 트랜잭션 그룹을 찾는 발견(discovery) 걸음의 하드 천장**입니다. `audit_logs`에 `timestamp`-리딩 인덱스가 없던 시절에는 이 걸음이 매 청크마다 전체 정렬을 다시 했고(2,900,000행 픽스처에서 청크 하나가 3.6초), 대량 인제션은 트랜잭션 하나가 파일 하나이므로 **최신 200,000행이 그룹 2개일 수 있어** 100개를 채우려면 계속 더 걸어야 했습니다. 이 값은 성능 노브가 아니라 **제품 결정**입니다 — 대량 적재 직후 패널이 얼마나 과거까지 보여줄 수 있는지를 정합니다. 500,000은 실측 최악 ~400ms(10만행 파일 4개 연속 인제션)를 커버합니다.
 - `recent_scan_chunk_rows`(기본 20,000)는 한 왕복에 훑는 행 수이자 **걸음의 바닥**이기도 합니다 — 100개 그룹이 처음 1,400행 안에서 다 채워져도 청크 하나는 통째로 읽습니다.
-- `recent_logs_per_group`(기본 500)는 그룹당 보관하는 로그 수입니다. 대표 로그 하나만 화면에 실리므로 **캐시 편의**이지 기록이 아닙니다 — 더 깊은 내역은 `/audit_logs/transaction/{tx}`가 DB로 폴백합니다.
-- 새 이력 행은 크기와 무관하게 **이어 붙입니다**(2026-10-22, 총괄 굳음 측정): 그룹별 수는 묶음 셈 한 번, 로그는 건드린 그룹마다 최신 `recent_logs_per_group` 건만. 전에 있던 `recent_refresh_max_delta_rows`(2,000 을 넘으면 처음부터 다시 짓기)는 은퇴했습니다 — 파일에 남아 있어도 읽지 않습니다.
+- 목록은 그룹마다 **요약만** 듭니다(2026-10-29, 소유자 «경량화»): 수 · 칸 · 세계별 영수증 · 대표 로그 한 줄. 그룹의 로그는 펼칠 때 `/audit_logs/transaction/{tx}` 가 DB 에서 읽습니다. 전에 있던 `recent_logs_per_group`(그룹당 로그 500 건)은 은퇴했습니다 — 파일에 남아 있어도 읽지 않습니다.
+- 새 이력 행은 크기와 무관하게 **이어 붙입니다**(2026-10-22, 총괄 굳음 측정): 묶음 셈 한 번이 수와 요약을 같이 내고, 건드린 그룹마다 대표 로그 한 줄을 id 로 읽습니다. 전에 있던 `recent_refresh_max_delta_rows`(2,000 을 넘으면 처음부터 다시 짓기)도 은퇴했습니다 — 파일에 남아 있어도 읽지 않습니다.
 
 ## 5. 반영 확인
 
@@ -81,7 +80,6 @@ conda run -n assy_manager python server/scripts/backup_config.py restore audit_h
 | `max_limit` | 양의 정수, 기본 `1000` | 행/셀 이력 조회가 요청할 수 있는 `limit`의 천장. 초과 요청은 거절하지 않고 clamp + `truncated: true` |
 | `recent_max_scan_rows` | 양의 정수, 기본 `500000` | `/audit_logs/recent` discovery 걸음의 하드 천장(행 수) — **제품 결정**, §4 |
 | `recent_scan_chunk_rows` | 양의 정수, 기본 `20000` | discovery 걸음의 왕복당 청크 크기이자 최소 비용 |
-| `recent_logs_per_group` | 양의 정수, 기본 `500` | 캐시가 그룹당 보관하는 로그 수(대표 1건만 화면에 실림) |
 
 `default_limit > max_limit`이면 `default_limit`이 `max_limit`으로 clamp됩니다(경고 로그와 함께).
 
