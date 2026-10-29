@@ -225,7 +225,7 @@ SAT 보이드 출력 하나가 **두 테이블**을 채웁니다 — `inspection
 - 🔴 **체인으로 대신할 수 없습니다** — 깨끗한 스캔(보이드 0건)은 파생할 행이 **0개**라 `void_obs`에서 `inspection_run`을 만들어 낼 수 없습니다. 이 스키마가 존재하는 이유가 바로 그 행이므로, 이것은 배선 취향이 아니라 구조적 제약입니다.
 - **로직은 추적되는 `server/parsers/void_sat_format.py`에 있고, 워크스페이스에 손복사하는 것은 `.sample` 셋 세 줄짜리 shim 둘뿐입니다**(`void_obs_parser.py.sample` · `inspection_run_parser.py.sample`). 수정이 `git pull` 하나로 끝나게 하려는 배치이고, 워처가 `<workspace>/<table>/scripts/*.py`를 스캔하므로 **레지스트리 편집은 필요 없습니다.**
 - ⚠️ **단위 없는 파일은 추측하지 않고 거절합니다**(`DEFAULT_UNIT`이 `None`).
-- 🆕 10-29 숫자로 못 읽는 `inchip` · `radius` 칸은 그 칸만 안 들어가고 파일 상태 줄 «Not written: value_refused <칸>=<수>» 로 셉니다(전엔 파일 전체 실패). `base_x` · `base_y` · `stack_gate` 는 런의 uid 를 지으므로 여전히 거절합니다.
+- 🆕 10-29 숫자로 못 읽는 `inchip` · `radius` 칸은 그 칸만 안 들어가고 파일 상태 줄 «Not written: value_refused <칸>=<수> (first '<값>') over N row(s).» 로 셉니다(전엔 파일 전체 실패). `base_x` · `base_y` · `stack_gate` 는 런의 uid 를 지으므로 여전히 거절합니다.
 
 ### 검증이 찾아낸 결함 둘 — 둘 다 **오라클이 없던 자리**에서 나왔다
 
@@ -261,7 +261,7 @@ SAT 보이드 출력 하나가 **두 테이블**을 채웁니다 — `inspection
 - **업데이트 안전 때문에 대상 테이블에 업무 키가 필수입니다.** 키 없는 legacy `void`는 재전달 때 새 행을 만들 수 있어 설정에서 거절하고, canonical `inspection_run`/`void_obs`만 받습니다.
 - **체크리스트 칸은 기동이 보충합니다.** `file_ingestion_logs` 의 `file_mtime` · `file_size` 는 서버 · 와처 · 체인 워커 기동의 스키마 동기화가 더합니다(손으로 먼저: `server/migrations/add_file_ingestion_log_stamp.sql`).
 
-JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...], "unit": "um"}`)입니다. 배열/`voids`의 각 행에는 `base_x`, `base_y`, `gate`(또는 `stack_gate`/`layer`), `inchip_x`, `inchip_y`, `radius_x`, `radius_y`가 필요합니다. `unit`은 행·파일 루트·설정 옵션 중 한 곳에서 `um|px|mm`로 선언해야 하며 추측하지 않습니다. 깨끗한 스캔은 `voids: []`와 함께 `runs`/`scans`에 검사한 `base_x`, `base_y`, `gate`를 적어야 합니다. 빈 0바이트 파일은 정상적인 0건과 복사 중단을 구분할 수 없어 거절합니다. 🆕 10-29 숫자가 아닌 `inchip_x` · `inchip_y` · `radius_x` · `radius_y` 칸은 그 칸만 안 들어가고 파일 상태 줄 «Not written: value_refused <칸>=<수>» 로 셉니다(빈 칸은 안 들어감). `base_x` · `base_y` · gate 를 못 읽는 행(빈 값 · 글자 · 반 층)은 런의 신원을 못 대니 그 행만 빠지고 셉니다 — 워처 로그 «[voids_json] <파일>: N row(s) left out - their run identity does not read. First: …», 파일 기록의 거절 행 수. 전엔 둘 다 파일 전체가 멈췄습니다. 단위가 없거나 모르는 것과 키 관문의 거절은 그대로 파일을 거절합니다.
+JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...], "unit": "um"}`)입니다. 배열/`voids`의 각 행에는 `base_x`, `base_y`, `gate`(또는 `stack_gate`/`layer`), `inchip_x`, `inchip_y`, `radius_x`, `radius_y`가 필요합니다. `unit`은 행·파일 루트·설정 옵션 중 한 곳에서 `um|px|mm`로 선언해야 하며 추측하지 않습니다. 깨끗한 스캔은 `voids: []`와 함께 `runs`/`scans`에 검사한 `base_x`, `base_y`, `gate`를 적어야 합니다. 빈 0바이트 파일은 정상적인 0건과 복사 중단을 구분할 수 없어 거절합니다. 🆕 10-29 숫자가 아닌 `inchip_x` · `inchip_y` · `radius_x` · `radius_y` 칸은 그 칸만 안 들어가고 파일 상태 줄 «Not written: value_refused <칸>=<수> (first '<값>') over N row(s).» 로 셉니다(빈 칸은 안 들어감). `base_x` · `base_y` · gate 를 못 읽는 행(빈 값 · 글자 · 반 층)은 런의 신원을 못 대니 그 행만 빠지고 셉니다 — 워처 로그 «[voids_json] <파일>: N row(s) left out - their run identity does not read. First: …», 파일 기록의 거절 행 수. 전엔 둘 다 파일 전체가 멈췄습니다. 단위가 없거나 모르는 것과 키 관문의 거절은 그대로 파일을 거절합니다.
 
 > ⚠️ **관측과 결측 (2026-08-17):** 실제 경로와 `SAMPLE-01/WORK_20260101_000000/voids.json` 한 건은 확인했지만 그 파일은 **0바이트**였습니다. 따라서 경로·감시·두 테이블 배선은 자동 테스트로 확정했고, 위 JSON 본문 철자는 합성 픽스처 계약입니다. 생산 파일 첫 유효 표본이 도착하면 필드 철자·단위·clean-run 메타가 일치하는지 다시 검증해야 합니다. 현재 상태를 “실파일 형식 검증 완료”라고 보고하면 안 됩니다.
 
