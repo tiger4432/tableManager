@@ -1317,12 +1317,12 @@ def times_the_database_refuses(db: Session, table_name: str, updates) -> dict:
     about 2k·log n queries and a clean batch one. No version branch: `pg_input_is_valid` would need PostgreSQL 16.
     A text column declared datetime is not read by PostgreSQL (`join_key_index.column_is_text`) and is not asked.
     Another database never refuses a time here, so it is not asked either."""
+    if db.get_bind().dialect.name != "postgresql":
+        return {}
     from sqlalchemy import exc as sa_exc, text as sa_text
     import expression
     from chain import join_key_index
 
-    if db.get_bind().dialect.name != "postgresql":
-        return {}
     types = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
     asked = {}                                          # {spelling: {column, ...}}
     for item in updates:
