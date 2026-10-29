@@ -5269,6 +5269,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
   - **`discardPendingEdits()`** — 편집 전 값을 그 자리에서 되돌리고(두 반쪽, C-22) 다시 읽는다(`rereadGrid()`).
   - **`copyRow` · `copyRows`** — 쪽 캐시는 서버 행을 복사본으로 지닌다. 넣을 때 · 꺼낼 때(`api.js` · `timeline.js`) · 방송 반영(`ui.updatePageCacheOnUpsert`) 모두.
   - **`dropStagedEditsOf(rowIds)` · `droppedText(n)`** — 지운 행의 모아 둔 편집을 버리고 바닥줄 글을 붙인다. 부르는 곳: 여기의 행 지우기 · 방송 `batch_row_delete` · Apply 의 다시 읽기.
+  - 🆕 10-29 **`sayNotWritten(result)`** (총괄 10-29, B 72fe1f94e) — 저장 답의 `dropped` 가 있으면 `dropped.said` 를 그대로 경고 토스트로(없으면 «Not written: N cells · 칸»), 그 문장을 돌려준다. 부르는 곳 다섯: 여기 `applyStaged` · `editCell`, `clipboard.js` 붙여넣기 · 지우기, `ui.js` `applyValueToSelectedRange`. 돌려받은 자리는 손으로 그리지 않고 `fetchData(false)` 로 쪽을 다시 읽은 뒤 제 상태 줄을 다시 단다(피벗 보기와 같은 길). 클라는 `by_reason` 을 읽지 않는다.
   - **`conflictedEdits()`** — 충돌(`edit.conflict`)이 붙은 모아 둔 편집들. 물음 줄의 수(`sayConflicts`)와 Apply 의 «물을까» 판정이 이 하나를 읽는다. `edit.conflict` 를 «다는» 것은 `overlayStagedEdits` 뿐(Apply 의 저장 뒤는 지우기만).
 - 🔴 **[F3 `d5f75a8`] `loadSchema`가 첫 줄에서 `resetSuggestLearning()`을 부른다(**~110**)** — `import { resetSuggestLearning } from './value_suggest.js'`(~10). 이유가 배선의 전부다: 제안 모듈이 붙드는 부정 사실(비대상 컬럼·프리픽스 바닥·불가 쿨다운)은 **서버의 거절**에서 배웠고 그 거절은 `table_config`에서 나오는데, **`table_config`는 핫리로드**다. `/schema` 재조회는 클라가 그 선언을 다시 읽는 **유일한 신호 지점**이므로, 여기서 비우지 않으면 새로 제안 대상이 된 컬럼이 이미 열린 탭에서 `LEARNED_TTL_MS`(60초) 동안 죽어 있다. 래치들은 시간으로도 만료되지만 **이 호출이 신호가 있는 경로에서 즉시 반영시킨다**([§7 `value_suggest.js`](#7-client2src--웹-클라이언트)).
 
