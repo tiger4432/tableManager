@@ -60,7 +60,7 @@
 | ① | `decision_key` 모든 컬럼(짝이면 왼쪽 파생 칸)이 **파생에** 존재 | `decision_key column(s) missing in derived table: [...]` |
 | ② | `decision_key` ∩ `target_fields` = ∅ (`:157-159`) | `decision_key and target_fields must not overlap: [...]` |
 | ③ | `composite_key_source ⊆ decision_key` **또는** `business_key ∈ decision_key` (`:30-32`, `:202-216`) | `derived table composite_key_source must be a subset of decision_key (violation: [...])` 또는 `derived table must declare composite_key_source ⊆ decision_key or business_key ∈ decision_key (dedup upsert key contract)` |
-| ④ | 참조뷰 `:바인딩`은 `decision_key` 컬럼 또는 집계 이름만 (`config.py` 의 `_BIND_PARAM_RE` 로 읽음) | *(규칙이 아니라 그 뷰만 제거)* `reference view '<label>' dropped: bind params must be decision_key columns or aggregation names; invalid: [...]` |
+| ④ | 참조뷰 `:바인딩`은 파생 행의 칸(카탈로그가 있으면 아무 칸, 없으면 decide 키 · 집계 이름)만 (S-136, `config.py` 의 `_BIND_PARAM_RE` 로 읽음) | *(규칙이 아니라 그 뷰만 제거)* `reference view '<label>' dropped: bind params must be decision_key columns or aggregation names; invalid: [...]` |
 | ④-2 | 참조뷰에 `:x::type` 철자 금지 — 바인드 뒤에 `::` 형 변환이 붙으면 바인드로 안 읽힌다 | *(그 뷰만 제거)* `reference view '<label>' dropped: write CAST(:x AS type) instead of :x::type` — 뷰 글을 `CAST(:x AS type)` 로 고친다 |
 
 - **② 왜**: `target_fields`는 사람이 앞으로 채울 결손 필드입니다. 판단 시점에 비어 있는 값이 판단 근거(키)일 수는 없습니다.
@@ -112,7 +112,7 @@
    }
    ```
 
-   참조뷰의 `:바인딩`은 **`decision_key` 컬럼만** 허용됩니다(§2-④). 긴 SQL은 `query_ref`로 `server/config/enrichment_queries/<ref>.sql`에 뺄 수 있습니다(폴더는 직접 생성).
+   참조뷰의 `:바인딩`은 **파생 행의 칸(카탈로그가 있으면 아무 칸, 없으면 decide 키 · 집계 이름)만** 허용됩니다(§2-④). 긴 SQL은 `query_ref`로 `server/config/enrichment_queries/<ref>.sql`에 뺄 수 있습니다(폴더는 직접 생성).
 4. 저장 후 **리로드**(체인 파생 + 온톨로지 승격에 필수 — 조회 API만은 리로드 없이도 즉시):
 
    ```bash
