@@ -673,9 +673,10 @@
 
 - 무엇: `config/llm_config.json` 에 `"embedding_model"` 을 적으면 도움말의 선언 답이 가이드 절을 그 모델의 임베딩(코사인)으로 고른다. 점수가 같으면 BM25 가 가른다. 비워 두면 지금처럼 BM25 만.
 - 호출 수: 선언 물음 하나에 세 번(도구 고르기 · 검색어 임베딩 · 선언 쓰기). embedding_model 이 없으면 두 번 그대로.
-- 절 벡터: `DATA_ROOT/cache/help_guides_<모델>.json` 에 절 글자별로 남는다. 첫 물음이 가이드 절 116 개(글자 약 12 만)를 한 요청으로 임베딩하고, 그 뒤로는 바뀐 절만 다시 묻는다. 재기동해도 다시 안 묻는다. 모델을 바꾸면 그 모델의 파일을 새로 만든다.
+- 절 벡터: `DATA_ROOT/cache/help_guides_<모델>.json` 에 절 글자별로 남는다. 첫 물음이 가이드 절 116 개(글자 약 12 만)를 16 개씩 나눠 임베딩하고(묶음마다 저장 — 한 묶음이 거절되면 받은 묶음은 남고 다음 물음이 남은 것만 묻는다), 그 뒤로는 바뀐 절만 다시 묻는다. 재기동해도 다시 안 묻는다. 모델을 바꾸면 그 모델의 파일을 새로 만든다.
 - 실패: 임베딩 호출이 실패하면 그 물음은 BM25 로 고르고 답의 `retrieval` 이 «bm25 (embedding failed: <거절 문장>)» 로 말한다. 성공이면 «embedding», 모델이 없으면 «bm25».
 - 셈 «기다림»: 도움말이 고른 도구에 빈 필수 칸(unfilled)이 있으면 셈을 부르지 않고 count_refused 가 «the count waits for: <unfilled 그대로>» 한 줄이다(같은 낱말 · 같은 순서). 그 밖의 셈 실패는 전처럼 «The count for this operation cannot be computed: …».
+- 견본: `server/config/sample/llm_config.json.sample` 에 `"embedding_model": ""` 와 그 설명 칸.
 - 재기: `help_bench --part declarations --retrieval embedding|bm25` — 요약 줄 끝 «via <고른 방법> ×n».
 - 박스: 가짜 임베딩으로 길만 쟀다(뜻으로 고름 · 캐시 · 같은 점수는 BM25 · 실패는 BM25 와 사유 · 호출 셋과 둘). 실제 bge-m3 의 정확도는 운영 벤치 몫이다.
 - 필요한 조건: git pull · 서버 재기동. 임베딩을 쓰려면 llm_config 에 한 줄.

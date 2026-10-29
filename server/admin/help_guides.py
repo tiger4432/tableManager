@@ -36,6 +36,9 @@ CAP = 2000
 PICKED = 3
 #: The sections' estimated tokens the prompt may carry - more stop at the first that would pass it (one always goes).
 SECTION_TOKENS = 3800
+#: Sections per embedding request - a gateway may cap the inputs of one request (lead 10-29); each batch is kept as
+#: it comes, so a refused one leaves the ones before it and the next question asks only what is left.
+EMBED_BATCH = 16
 KINDS = ("chain_rule", "table", "ledger")
 
 _HEADING = re.compile(r"^(#{1,4})\s+(.*)")
@@ -178,7 +181,8 @@ def _piece_key(piece):
 
 def _vectors(model, pieces):
     """[vector] of `pieces` from `model` - kept in its cache file by each section's text, so a restart or an unchanged
-    guide asks nothing; the sections not kept yet asked in one batch, the file written whole (sections gone dropped)."""
+    guide asks nothing; the sections not kept yet asked EMBED_BATCH at a time, the file written whole after each batch
+    (sections gone dropped) - a refused batch raises with the ones before it kept."""
     from utils import llm
 
     path = _cache_path(model)
@@ -189,13 +193,14 @@ def _vectors(model, pieces):
         kept = {}
     keys = [_piece_key(p) for p in pieces]
     missing = [i for i, key in enumerate(keys) if key not in kept]
-    if missing:
-        for i, vector in zip(missing, llm.embed([pieces[i]["name"] + "\n" + pieces[i]["text"] for i in missing])):
+    for start in range(0, len(missing), EMBED_BATCH):
+        batch = missing[start:start + EMBED_BATCH]
+        for i, vector in zip(batch, llm.embed([pieces[i]["name"] + "\n" + pieces[i]["text"] for i in batch])):
             kept[keys[i]] = vector
         os.makedirs(os.path.dirname(path), exist_ok=True)
         handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
         with os.fdopen(handle, "w", encoding="utf-8") as out:
-            json.dump({key: kept[key] for key in keys}, out)
+            json.dump({key: kept[key] for key in keys if key in kept}, out)
         os.replace(temporary, path)
     return [kept[key] for key in keys]
 

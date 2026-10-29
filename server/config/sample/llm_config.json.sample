@@ -1,6 +1,8 @@
 {
   "base_url": "",
   "model": "",
+  "embedding_model": "",
+  "_embedding_model_doc": "The admin help picks guide sections with this embedding model (e.g. bge-m3), on the same base_url. Blank: picked by words (BM25).",
   "api_key": "",
   "timeout_s": 60,
   "headers": {},

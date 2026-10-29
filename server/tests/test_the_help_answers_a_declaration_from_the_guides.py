@@ -273,7 +273,7 @@ def fixture_gateway(guides, tmp_path, monkeypatch):
 
     def create(model, input):                                       # noqa: A002 - the SDK's name
         made.append((model, list(input)))
-        if state["fail"]:
+        if state["fail"] and state.get("fail_on", len(made)) == len(made):
             raise state["fail"]
         data = [SimpleNamespace(embedding=state["vector"](text)) for text in input]
         return SimpleNamespace(status_code=200, text="{}", parse=lambda: SimpleNamespace(data=data))
@@ -311,14 +311,39 @@ def test_an_embedding_model_picks_by_meaning_and_its_section_vectors_are_kept(ga
     assert how == "embedding" and picked[0]["name"] != by_words[0]["name"]
     assert "이미지" in picked[0]["text"] or "이미지" in picked[0]["name"]
     pieces = help_guides.index().pieces
-    assert [len(inputs) for _model, inputs in gateway.made] == [len(pieces), 1], "the sections in one batch, then the search"
+    batches = _batches(len(pieces))
+    assert [len(inputs) for _model, inputs in gateway.made] == batches + [1], "the sections in batches, then the search"
     cache = gateway.root / "cache" / "help_guides_bge-m3.json"
     assert len(json.loads(cache.read_text(encoding="utf-8"))) == len({help_guides._piece_key(p) for p in pieces})
     help_guides.nearest("사진 칸")
-    assert [len(inputs) for _model, inputs in gateway.made][2:] == [1], "kept: only the search asked again"
+    assert [len(inputs) for _model, inputs in gateway.made][len(batches) + 1:] == [1], "kept: only the search asked again"
     gateway.declare(embedding_model="other-model")
     help_guides.nearest("사진 칸")
-    assert gateway.made[-2][0] == "other-model" and len(gateway.made[-2][1]) == len(pieces), "another model asks again"
+    other = [inputs for model, inputs in gateway.made if model == "other-model"]
+    assert [len(inputs) for inputs in other] == batches + [1], "another model asks again"
+
+
+def _batches(count):
+    """The request sizes `count` sections are asked in - EMBED_BATCH each, the rest last."""
+    size = help_guides.EMBED_BATCH
+    return [size] * (count // size) + ([count % size] if count % size else [])
+
+
+def test_a_refused_batch_keeps_the_batches_before_it_and_the_next_question_asks_the_rest(gateway):
+    """lead 10-29 - a gateway capping one request's inputs refuses a batch; what came before it stays."""
+    gateway.declare(embedding_model="bge-m3")
+    gateway.state.update(fail=RuntimeError("413 too many inputs"), fail_on=3)
+    picked, how = help_guides.nearest("사진 칸")
+    assert how.startswith("bm25 (embedding failed: LlmCallFailed: ") and "413 too many inputs" in how
+    size, count = help_guides.EMBED_BATCH, len(help_guides.index().pieces)
+    assert count > 2 * size and [len(inputs) for _model, inputs in gateway.made] == [size, size, size]
+    cache = gateway.root / "cache" / "help_guides_bge-m3.json"
+    assert len(json.loads(cache.read_text(encoding="utf-8"))) == 2 * size
+    gateway.state["fail"] = None
+    sent = len(gateway.made)
+    picked, how = help_guides.nearest("사진 칸")
+    assert how == "embedding" and [len(inputs) for _model, inputs in gateway.made[sent:]] == _batches(count - 2 * size) + [1]
+    assert len(json.loads(cache.read_text(encoding="utf-8"))) == count
 
 
 def test_a_tie_in_meaning_is_broken_by_the_words(gateway):
@@ -348,8 +373,10 @@ def test_the_help_asks_three_times_with_an_embedding_model_and_twice_without(gat
         return {"op": "declaration", "params": {}, "search": "사진 칸"} if prompt.startswith("Tools:") else {}
 
     monkeypatch.setattr(llm, "ask_json", ask_json)
-    for model, embeddings in (("", 0), ("bge-m3", 2)):
+    for model, embeddings in (("", 0), ("bge-m3", 1)):
         gateway.declare(embedding_model=model)
+        if model:
+            help_guides.nearest("x")                                # the sections' vectors kept once, before
         before, calls[:] = len(gateway.made), []
         got = client.post("/admin/help/ask", json={"question": "표에 사진 칸 넣으려면"}).json()
         searched = [inputs for _m, inputs in gateway.made[before:] if len(inputs) == 1]
@@ -382,7 +409,10 @@ def test_an_edited_section_alone_is_embedded_again_and_every_request_is_in_the_l
     help_guides.nearest("사진 칸")
     changed = [p["name"] + "\n" + p["text"] for p in help_guides.index().pieces if (p["name"], p["text"]) not in before]
     assert len(changed) == 1 and changed[0].endswith("words added to a short section")
-    assert gateway.made[2][1] == changed and len(gateway.made[3][1]) == 1, "same name, new text: asked again alone"
+    first = len(_batches(len(before))) + 1
+    assert gateway.made[first][1] == changed and len(gateway.made[first + 1][1]) == 1, "same name, new text: asked again alone"
+    cache = json.loads((gateway.root / "cache" / "help_guides_bge-m3.json").read_text(encoding="utf-8"))
+    assert set(cache) == {help_guides._piece_key(p) for p in help_guides.index().pieces}, "the old text's vector dropped"
     log = [json.loads(line) for line in (gateway.root / llm.REQUEST_LOG).read_text(encoding="utf-8").splitlines()]
     sent = [line for line in log if "sent" in line]
     assert len(sent) == len(gateway.made) and all(line["url"] == "http://gw/embeddings" for line in sent)

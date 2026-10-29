@@ -9,9 +9,11 @@
 >          두 요약 줄 «right section cited N of 20 … · via …» 을 옮겨 친다. 견주는 수는 cited N
 > via 뜻   embedding ×20                       임베딩으로 골랐다
 >          bm25 (embedding failed: <문장>) ×n  게이트웨이가 임베딩을 거절 -> 그 문장이 사유. 모델 이름 · /embeddings 경로 ·
->                                             한 요청 입력 수 상한(첫 물음이 절 116 개를 한 요청으로 보낸다)
+>                                             한 요청 입력 수 상한(절을 16 개씩 보낸다 — 받은 묶음은 남고 다음 물음이 남은 것만)
 >          bm25 ×n (embedding 을 시켰는데)       embedding_model 이 비었다 -> 한 줄을 적고 재기동
-> 첫 물음  절 116 개를 한 번 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 남김 -> 그 물음만 느리다
+> 적을 곳  견본 server/config/sample/llm_config.json.sample 에 "embedding_model": "" 칸이 있다
+> 첫 물음  절 116 개를 16 개씩 8 요청으로 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 묶음마다 남김
+>          -> 그 물음만 느리다
 > 볼 것    어드민 도움말 «이거 멈춰» -> 셈 줄이 «the count waits for: reason, …» (빈 칸을 폼에서 채우면 셈이 된다)
 > 끄는 법  embedding_model 줄을 지우고 재기동 -> BM25 로 돌아간다. 캐시 파일은 지워도 된다(다시 만든다)
 > ```
