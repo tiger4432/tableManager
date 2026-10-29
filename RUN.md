@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **도움말 — «표 · 규칙 · 트랜잭션 중 하나» 도 빈 칸** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    어드민 도움말에 «치워 둔 사건을 이제 돌려» -> Run set-aside events again, unfilled «one of: tables, rules, transactions»
+> 뜻       그 셋 중 하나를 폼에서 채워야 돈다. 비운 채 돌리면 «… needs at least one of tables, rules, transactions - running
+>          every set-aside event again is not something a form should do in one click»
+> 끄는 법  되돌리기 커밋 하나. 데이터 · 설정은 안 건드린다
+> ```
+>
+> ---
+>
 > ## [10-29] **도움말이 «not sure» 로만 답하던 것 — 빈 필수 칸은 폼에 남기고 도구를 고른다** — git pull · 서버 재기동
 >
 > ```

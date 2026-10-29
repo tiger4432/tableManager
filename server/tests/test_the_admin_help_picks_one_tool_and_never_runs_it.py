@@ -4,6 +4,8 @@ tool's own `validate` reads them, and the tool's own count; it never runs anythi
 
   the model names a tool and fields          the answer: tool · fields · `retroactive.count`'s answer · help_id · a row
   a required field the question leaves out   not refused (lead 10-29): `unfilled` names it, the count says it cannot count
+  a group of which one is needed («one_of»)  the same: «one of: tables, rules, transactions»; the run refuses it in the
+                                             tool's own words
   every field given                          the operation's own judgement runs - a rule that does not exist is refused
   the run's doors                            judge whole: validate · count · publish refuse a blank required field
   the tool's name                            its key, its key in another case, its label - nothing else
@@ -85,6 +87,29 @@ def test_a_required_field_the_question_leaves_out_is_left_for_the_form(client, m
         "set_aside", {"tables": ["t1"]}, ["reason"], 1, None)
     assert got["count"] is None and "'set_aside' requires parameter 'reason'" in got["count_refused"]
     assert len(asked) == 1
+
+
+def test_a_group_of_which_one_is_needed_is_a_blank_field_too(client, monkeypatch):
+    _model(monkeypatch, {"op": "rerun_set_aside", "params": {}, "why": "w"})
+    got = _ask(client, "치워 둔 사건을 이제 돌려").json()
+    assert (got["op"], got["params"], got["unfilled"]) == ("rerun_set_aside", {}, ["one of: tables, rules, transactions"])
+    assert "'rerun_set_aside' needs at least one of tables, rules, transactions - running every set-aside event "            "again is not something a form should do in one click" in got["count_refused"]
+    assert retroactive.unfilled("set_aside", {}) == ["reason", "one of: tables, rules, transactions"]
+    assert retroactive.unfilled("set_aside", {"rules": ["r"], "reason": "x"}) == []
+
+
+@pytest.mark.parametrize("op, params, said", [
+    ("set_aside", {"reason": "r"}, "'set_aside' needs at least one of tables, rules, transactions - setting aside "
+                                   "the whole queue is not something a form should do in one click"),
+    ("rerun_set_aside", {}, "'rerun_set_aside' needs at least one of tables, rules, transactions - running every "
+                            "set-aside event again is not something a form should do in one click"),
+])
+def test_the_run_refuses_a_tool_with_none_of_its_group_in_its_own_words(db_session, op, params, said):
+    for door in (lambda: retroactive.validate(op, params), lambda: retroactive.count(db_session, op, params),
+                 lambda: retroactive.publish(db_session, op, params)):
+        with pytest.raises(retroactive.RetroactiveRefused) as refused:
+            door()
+        assert str(refused.value) == said
 
 
 def test_every_field_given_is_judged_by_the_operation_itself(client, monkeypatch):
@@ -183,8 +208,8 @@ def test_a_run_opened_from_an_answer_is_written_on_its_ask(client, db_session, m
 
 
 def test_the_bench_asks_every_example_and_counts_the_hits():
-    """A fake model naming each question's own tool with no fields - the path, not the model's quality: every tool is
-    a hit but the one whose own judgement asks for at least one scope (rerun_set_aside, lead 10-29: 18 -> 56 of 58)."""
+    """A fake model naming each question's own tool with no fields - the path, not the model's quality: every
+    question is a hit (lead 10-29: 18 -> 56 -> 58 of 58)."""
     from scripts.help_bench import bench
 
     catalog = admin_help.catalog()
@@ -192,8 +217,7 @@ def test_the_bench_asks_every_example_and_counts_the_hits():
     said = bench(ask_json=lambda prompt, system=None: {
         "op": owner[prompt.rsplit("Question: ", 1)[1].split("\n\nYour last answer")[0]], "params": {}})
     assert said["asked"] == len(owner) > 20 and len(said["seconds"]) >= said["asked"]
-    assert {tool for tool, _q, _picked in said["misses"]} == {"rerun_set_aside"}
-    assert said["hit"] == said["asked"] - len(catalog["rerun_set_aside"]["examples"])
+    assert said["misses"] == [] and said["hit"] == said["asked"]
 
 
 def test_the_bench_counts_a_failed_ask_as_its_miss_and_goes_on_and_stops_at_its_limit():

@@ -243,7 +243,7 @@ def test_a_set_aside_with_an_unknown_rule_or_no_scope_is_refused_once_and_leaves
         answers.append(str(refused.value))
 
     assert len(set(answers)) == 1, answers
-    assert ("no_such_rule" if params else "at least one table") in answers[0], answers[0]
+    assert ("no_such_rule" if params else "needs at least one of tables, rules, transactions") in answers[0], answers[0]
     assert _recorded(retro_env) == (0, 0), "a refused set-aside must leave no run and no event"
 
 

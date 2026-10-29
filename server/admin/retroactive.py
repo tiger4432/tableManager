@@ -1065,13 +1065,10 @@ def _scope(params):
 
 
 def _judge_set_aside(params):
+    """The rules named are declared - at least one scope is the tool's `one_of`."""
     from chain import replay
 
     scope = _scope(params)
-    if not any(scope.values()):
-        raise RetroactiveRefused(
-            "name at least one table, rule or transaction - setting aside the whole queue "
-            "is not something a form should do in one click")
     known = {r.get("name") for r in replay.load_rules()}
     unknown = sorted(set(scope["rules"]) - known)
     if unknown:
@@ -2223,6 +2220,8 @@ OPERATIONS = {
                    _p("transactions", required=False, kind="csv",
                       help="only events of these transaction ids"),
                    _p("reason", help="why - written into each event set aside")],
+        "one_of": {"fields": ["tables", "rules", "transactions"],
+                   "why": "setting aside the whole queue is not something a form should do in one click"},
         "count": _count_set_aside,
         "run": _run_set_aside,
         "judge": _judge_set_aside,
@@ -2248,6 +2247,8 @@ OPERATIONS = {
                       help="only these chain rules"),
                    _p("transactions", required=False, kind="csv",
                       help="only events of these transaction ids")],
+        "one_of": {"fields": ["tables", "rules", "transactions"],
+                   "why": "running every set-aside event again is not something a form should do in one click"},
         "count": _count_rerun_set_aside,
         "run": _run_rerun_set_aside,
         "judge": _judge_set_aside,
@@ -3772,9 +3773,19 @@ def inventory() -> list:
 # worker cannot disagree about what a valid request is.
 # ---------------------------------------------------------------------------
 
+def _none_of(spec, params):
+    """The tool's `one_of` fields when `params` gives none of them (a form must name at least one), else None."""
+    fields = (spec.get("one_of") or {}).get("fields")
+    return fields if fields and not any(name in params for name in fields) else None
+
+
 def unfilled(op: str, params: dict) -> list:
-    """The required fields normalized `params` (`validate`'s answer) leaves blank, in the form's order."""
-    return [p["name"] for p in operation(op)["params"] if p["required"] and p["name"] not in params]
+    """The required fields normalized `params` (`validate`'s answer) leaves blank, in the form's order, and «one of:
+    <fields>» when the tool needs at least one of a group and none is given."""
+    spec = operation(op)
+    none_of = _none_of(spec, params)
+    return [p["name"] for p in spec["params"] if p["required"] and p["name"] not in params] + (
+        ["one of: " + ", ".join(none_of)] if none_of else [])
 
 
 def validate(op: str, params: dict, partial: bool = False) -> dict:
@@ -3835,6 +3846,9 @@ def validate(op: str, params: dict, partial: bool = False) -> dict:
 
     # The operation's own judgment, so the operator gets a 400 instead of a queued job that
     # dies in a worker log - and the publish, the count and a CLI get one answer.
+    none_of = _none_of(spec, out)
+    if none_of and not partial:
+        raise RetroactiveRefused(f"'{op}' needs at least one of {', '.join(none_of)} - {spec['one_of']['why']}")
     if spec["judge"] is not None and not (partial and unfilled(op, out)):
         spec["judge"](out)
     return out
