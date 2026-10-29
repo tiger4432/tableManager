@@ -255,8 +255,8 @@ def _announce_dropped_columns(t_name, not_written, defined_cols, filename, row_c
     if first_seen:
         announced.update(first_seen)
         logger.warning(
-            f"[{t_name}] Column(s) dropped before the write, so NO per-cell record is created "
-            f"for them: {', '.join(f'{c} ({reason})' for reason, c in first_seen)}. First "
+            f"[{t_name}] Column(s) not written, so NO per-cell record is created "
+            f"for those cells: {', '.join(f'{c} ({reason})' for reason, c in first_seen)}. First "
             f"sighting in this process, carried by '{filename or '?'}'. If the drop is intended "
             f"(a field of a superseded scheme) this is the expected state. Repeats are "
             f"reported at INFO, once per file."
@@ -4067,7 +4067,7 @@ class IngestionHandler(FileSystemEventHandler):
         # with an empty error_message. Not writing the column is frequently the correct
         # outcome; being unable to tell that outcome apart from a new or misspelled column
         # going nowhere is not. See _announce_dropped_columns for the reporting shape.
-        not_written = {crud.DROP_UNDECLARED_COLUMN: {}, crud.DROP_UNMAPPED_COLUMN: {}}
+        not_written = {crud.DROP_UNDECLARED_COLUMN: {}, crud.DROP_UNMAPPED_COLUMN: {}, crud.DROP_VALUE_REFUSED: {}}
         dropped_value_counts = not_written[crud.DROP_UNDECLARED_COLUMN]
         unmapped_value_counts = not_written[crud.DROP_UNMAPPED_COLUMN]
         # Rows handed to the write. A resumed prefix was committed through it - a chunk
@@ -4112,7 +4112,6 @@ class IngestionHandler(FileSystemEventHandler):
                 with alignment_batch_counts.counting_group() as chunk_counts:
                     chunk_started = time.monotonic()
                     items = []
-                    item_rows = []      # each item's data row in the FILE, for a refusal to name
 
                     with alignment_batch_counts.stage("parse"):
                         for file_row, row in (chunk if map_columns else enumerate(chunk, start=processed_rows + 1)):
@@ -4144,7 +4143,6 @@ class IngestionHandler(FileSystemEventHandler):
                                     updated_by=uploader
                                 ))
                                 items[-1]._file_row = file_row
-                                item_rows.append(file_row)
                 
                     if not items:
                         processed_rows += len(chunk)
@@ -4189,20 +4187,18 @@ class IngestionHandler(FileSystemEventHandler):
 
                         _time_left, _replaced, _dropped = {}, ({} if map_columns else None), {}
                         with alignment_batch_counts.stage("apply"):
-                            try:
-                                results, changed_cells, created_logs, deleted_row_ids = \
-                                    crud.apply_batch_updates(db, t_name, batch_obj,
-                                                             replace_report=_replaced,
-                                                             drop_report=_dropped,
-                                                             notation_report=_time_left)
-                            except crud.CellRefused as refused:
-                                # The write names the chunk's row; the operator reads the file's.
-                                refused.row = item_rows[refused.row - 1] if refused.row else None
-                                raise
+                            results, changed_cells, created_logs, deleted_row_ids = \
+                                crud.apply_batch_updates(db, t_name, batch_obj,
+                                                         replace_report=_replaced,
+                                                         drop_report=_dropped,
+                                                         notation_report=_time_left)
                         # Read BEFORE the commit: the commit expires the rows and the session
                         # closes, so asking a row its id afterwards is a refresh on a dead
                         # session. The id is in memory here - no query.
                         new_row_ids = _new_row_ids(t_name, results)
+                        refused_values = not_written[crud.DROP_VALUE_REFUSED]
+                        for column, seen in (_dropped.get("refused_values") or {}).items():
+                            refused_values[column] = refused_values.get(column, 0) + seen["cells"]
                         for kind, seen in (batch_obj._nokey or {}).items():
                             nokey_counts[kind]["rows"] += seen["rows"]
                             nokey_counts[kind]["columns"].update(seen["columns"])

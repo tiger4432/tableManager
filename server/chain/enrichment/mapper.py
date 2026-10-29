@@ -149,6 +149,7 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
     read = list(dict.fromkeys([c for n in by_rows for c in plan[n]["rows"]["names"]]
                               + (time_columns(timed) if timed else [])))
     key_rows = {}
+    unread_times = []                   # row_time's sentence for each row whose time the ledger cannot read
 
     by_pattern = {}
     for clean_key, raw in key_raw_values.items():
@@ -178,7 +179,11 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                     key = _clean_key(source_table, decision_key, row[:len(cols)])
                     values = dict(zip(read, row[len(cols):]))
                     if timed:
-                        values["$at"] = row_time(timed, values, source_table)
+                        try:
+                            values["$at"] = row_time(timed, values, source_table)
+                        except ValueError as unread:
+                            values["$at"] = None        # that row's time left out, counted (owner 10-29 ㄱ)
+                            unread_times.append(str(unread))
                     key_rows.setdefault(key, []).append(values)
             for row in rows:
                 key = _clean_key(source_table, decision_key, row[:len(cols)])
@@ -206,6 +211,9 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                 rows = [row for row in rows if row["$at"] is not None]
             answer = expression.run(plan[name]["rows"], rows, types)
             bucket[name] = answer.get("value")
+    if unread_times:
+        logger.warning("[Enrichment] %s: %d row(s) whose time the ledger cannot read - their time left out, the rest "
+                       "read. First: %s", source_table, len(unread_times), unread_times[0])
     return results
 
 

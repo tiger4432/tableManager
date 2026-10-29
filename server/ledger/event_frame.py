@@ -313,22 +313,29 @@ def _validate_base_frame(
             "source_preparation_incomplete", "source_batch.columns",
             f"base cursor batch is missing physical columns: {missing}",
         )
+
+
+def _without_unnamed_rows(context: SourcePreparationContext, base: pd.DataFrame) -> pd.DataFrame:
+    """The page minus the rows whose driver identity / group_by cell is blank - refused by `no_identity`, counted, and
+    the rest of the page translated. 🔴 These used to refuse the PAGE («identity and group_by stay: without them there
+    is no molecule to name»); the rows still have no molecule, so they are named by their position instead, as
+    `occurred_at` and `order_by` already were (S-41 ②, 총괄 4b5964ab2) - owner 10-29 ㄱ «데이터 값은 멈추지 않는다»."""
     driver = context.source_plan.driver
-    required_physical = set(driver.identity) | set(driver.group_by)
-    # 🔴 `occurred_at.column` AND `order_by` (= the cursor, `setup_bundle._derived_cursor`)
-    # ARE DELIBERATELY NOT HERE ANY MORE. Each is a fact about ONE ROW with a gate name -
-    # `missing_occurred_at`, `no_raw_ref` - and refusing the page threw away every other
-    # molecule (box dt_log 09-30: one job's empty `dt_cell_key` stopped every follow-up of
-    # it). `_refuse_molecule` answers them, where molecules exist (S-41 ②, 총괄 4b5964ab2).
-    # identity and group_by stay: without them there is no molecule to name.
-    for column in sorted(required_physical):
-        for position, value in enumerate(frame[column].tolist()):
-            if is_blank_source_value(value):
-                raise SourcePreparationError(
-                    "source_preparation_incomplete",
-                    f"source_batch.rows[{position}].{column}",
-                    "driver identity/group_by value is missing",
-                )
+    columns = sorted(set(driver.identity) | set(driver.group_by))
+    blank = [(position, column) for column in columns
+             for position, value in enumerate(base[column].tolist()) if is_blank_source_value(value)]
+    if not blank:
+        return base
+    from .gate import REFUSE_NO_IDENTITY
+
+    positions = sorted({position for position, _column in blank})
+    context.refusals.append(MoleculeRefusal(
+        reason=REFUSE_NO_IDENTITY,
+        detail=f"{len(positions)} row(s) with a blank driver identity/group_by {columns} - no molecule names them",
+        rows=len(positions),
+        addresses=tuple({"code": "source_preparation_incomplete", "path": f"source_batch.rows[{position}].{column}"}
+                        for position, column in blank[:20])))
+    return base.drop(index=base.index[positions])
 
 
 def event_frames(
@@ -337,7 +344,7 @@ def event_frames(
 ) -> tuple[pd.DataFrame, ...]:
     """The cursor's page -> one EventFrame per molecule. The one entry, for every caller."""
     _validate_base_frame(context, base_frame)
-    return _event_frames(context, _without_excluded_rows(context, base_frame))
+    return _event_frames(context, _without_excluded_rows(context, _without_unnamed_rows(context, base_frame)))
 
 
 def _without_excluded_rows(context: SourcePreparationContext,

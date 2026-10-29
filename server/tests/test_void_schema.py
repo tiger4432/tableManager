@@ -433,16 +433,25 @@ def test_a_truncated_row_is_refused_by_the_same_arity_check(tmp_path):
 
 
 @pytest.mark.parametrize("bad", ["N/A", "nan", "inf"])
-def test_a_numeric_cell_that_is_not_a_number_names_its_row_and_column(bad, tmp_path):
-    """It fails the WHOLE file on purpose - a void that kept its position and
-    silently lost its size would be an observation nobody can judge, and it
-    would make the scan's void count quietly wrong. Loud and stopped beats
-    partially loaded. The message has to be actionable, so it names both."""
+def test_a_plain_cell_that_is_not_a_number_goes_to_the_write_as_read(bad, tmp_path):
+    """🔴 INVERTED (owner 10-29 ㄱ «데이터 값은 멈추지 않는다»). This used to fail the WHOLE file: «a void that kept its
+    position and silently lost its size would be an observation nobody can judge ... Loud and stopped beats partially
+    loaded». The loss is no longer silent - the write funnel refuses the cell against the column's type, leaves it
+    not entered and counts it by name in the file's line - and the file's other voids load."""
     path = write(tmp_path, "bad.csv",
                  HEADER + COLUMNS + f"BW-1,12,34,101.5,220.25,3,{bad},2.5\n")
+    _run, voids, _warnings = vsf.read_sat_file(path)
+    assert voids[0]["radius_x"] == bad and voids[0]["radius_y"] == 2.5
+
+
+@pytest.mark.parametrize("bad", ["N/A", "nan"])
+def test_an_identity_part_that_is_not_a_number_still_names_its_row_and_column(bad, tmp_path):
+    """base_x / base_y / stack_gate make the run's uid - a key cannot be half read, so these still refuse."""
+    path = write(tmp_path, "bad.csv",
+                 HEADER + COLUMNS + f"BW-1,{bad},34,101.5,220.25,3,4,2.5\n")
     with pytest.raises(vsf.UnreadableValue) as exc:
         vsf.read_sat_file(path)
-    assert "radius_x" in str(exc.value) and "row 1" in str(exc.value)
+    assert "base_x" in str(exc.value) and "row 1" in str(exc.value)
 
 
 def test_a_plugin_only_claims_files_in_its_own_workspace(tmp_path):

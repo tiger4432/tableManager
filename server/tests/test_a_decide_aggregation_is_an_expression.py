@@ -11,6 +11,7 @@ it folds there (`mapper._plan`: Count(), Sum · Min · Max of a number column), 
 """
 import datetime as dt
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -229,8 +230,15 @@ def test_a_row_with_no_atom_is_not_in_latests_set(board, monkeypatch):
     assert got[("C",)]["n"] == 1 and got[("D",)]["n"] == 1, "control: the other aggregations still see every row"
 
 
-def test_a_time_the_ledger_cannot_read_fails_by_its_cell(board, monkeypatch):
+def test_a_time_the_ledger_cannot_read_is_left_out_and_counted_by_its_cell(board, monkeypatch, caplog):
+    """🔴 INVERTED (owner 10-29 ㄱ «데이터 값은 멈추지 않는다»). This failed the group by its cell; now that row's time is
+    left out - it is in no Latest, as a row with no atom is not - and the read says how many, with the first cell."""
     db, _model = board
     _ledger(monkeypatch, ("src_a", SRC, "s", ()))
-    with pytest.raises(ValueError, match=r"Latest: x5667_src\.s holds '.+', which the ledger cannot read as its time"):
-        _answers(db, {"latest": {"expression": "Latest([n])"}})
+    with caplog.at_level("WARNING", logger="Chain.enrichment_dedup"):
+        got = _answers(db, {"latest": {"expression": "Latest([n])"}, "n": {"expression": "Count([n])"}})
+    said = [r.getMessage() for r in caplog.records if "whose time the ledger cannot read" in r.getMessage()]
+    assert len(said) == 1, said
+    assert re.search(r"Latest: x5667_src\.s holds '.+', which the ledger cannot read as its time", said[0]), said[0]
+    assert all(answer["latest"] is None for answer in got.values()), got
+    assert any(answer["n"] for answer in got.values()), "control: the other aggregation still reads every row"

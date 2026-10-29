@@ -137,6 +137,23 @@ def test_missing_entity_identity_refuses_ITS_MOLECULE_not_the_page():
     assert cursor == "BEFORE"
 
 
+def test_a_blank_group_by_cell_refuses_its_row_not_the_page():
+    """🔴 INVERTED (owner 10-29 ㄱ «데이터 값은 멈추지 않는다»). A blank driver identity / group_by cell refused the
+    whole PAGE - measured 10-29: three good rows give three events, one blank `event_key` gave none. Now that row is
+    refused by `no_identity` and counted, and the other two translate."""
+    compiled = snapshot()
+    base = base_rows(3)
+    assert len(prepare_v2_cursor_batch(compiled, "input_rows", base.copy(), refusals=[])) == 3   # canary
+    base.loc[1, "event_key"] = None
+
+    refusals = []
+    events = prepare_v2_cursor_batch(compiled, "input_rows", base, refusals=refusals)
+
+    assert len(events) == 2
+    assert [(r.reason, r.rows) for r in refusals] == [("no_identity", 1)]
+    assert [a["path"] for a in refusals[0].addresses] == ["source_batch.rows[1].event_key"]
+
+
 def test_one_blank_row_refuses_one_molecule_and_the_others_land():
     """The whole point of the change, and a one-row fixture cannot show it: with a single
     molecule, "refused the molecule" and "refused the page" produce the same answer."""

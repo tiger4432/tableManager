@@ -11,7 +11,8 @@ import pytest
 
 from tests.test_ingestion_checkpoint import TABLE, _ingestion_logs, _write, p2_env  # noqa: F401
 
-FAILING = "part_no,category,stock_qty\nP-1,Cap,abc\n"
+# A header without the key column still fails a file; a value a column does not take no longer does (owner 10-29 ㄱ).
+FAILING = "category,stock_qty\nCap,1\n"
 
 
 @pytest.fixture

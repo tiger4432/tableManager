@@ -207,6 +207,10 @@ DROP_ABSENT_NOT_WRITTEN = "absent_not_written"
 #: the model build skips. It was written to the layer and silently not to the table
 #: (0a7c46615 ㉠); now it is neither, and counted.
 DROP_UNMAPPED_COLUMN = "unmapped_column"
+#: A value its column's type does not take (`CellRefused`). It used to refuse the whole batch - one 'N/A' in a number
+#: column stopped a file, a grid paste and a chain group (owner 10-29 «데이터 값은 멈추지 않는다» ㄱ): now that cell
+#: is not entered, the rest of its row is written, and the cell is counted here with its value.
+DROP_VALUE_REFUSED = "value_refused"
 
 # Both caps exist for the same reason the undeclared-column registry has a budget: every
 # name and every row id in this report comes from the PAYLOAD, so a malformed file must
@@ -238,6 +242,8 @@ def _new_drop_stats() -> dict:
         # Whole rows refused by name before a cell was read - today the virtual-join
         # uniqueness refusal (S-174). Declared here so a reader never tests for the key.
         "row_refusals": [],
+        # {column: {"cells": n, "first": the first value refused there}} - capped like by_column.
+        "refused_values": {},
     }
 
 
@@ -336,6 +342,7 @@ def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
         # an operator fixing the data needs WHICH, and each entry carries the other row
         # that claims the same key - which is the whole of what makes it fixable.
         "refusals": list(drop_stats["row_refusals"])[:MAX_DROP_REPORT_ROWS],
+        "refused_values": dict(drop_stats["refused_values"]),
         # Rows that were NOT inserted because every key the payload carried for them was
         # discarded - see the guard in `_apply_batch_updates_once`.
         "empty_rows_suppressed": len(suppressed_row_ids),
@@ -1140,8 +1147,8 @@ class CellRefused(ValueError):
     """A value its column's type does not take - ONE sentence for it, whichever door wrote the
     row (총괄 bed890af2 ②: the grid said it in Korean, a file load stored a traceback).
 
-    `row` is the 1-based row of what the caller submitted: `apply_batch_updates` sets the
-    batch position, and a file load re-sets it to the file's data row before it records."""
+    `row` is the 1-based row of what the caller submitted, where a caller knows it. The write funnel does not raise
+    it any more - it folds the cell (`DROP_VALUE_REFUSED`, owner 10-29); the casts outside the funnel still do."""
 
     def __init__(self, column, value, expected, row=None):
         super().__init__(column, value, expected)
@@ -1160,6 +1167,7 @@ NOT_WRITTEN_NEXT = {
     DROP_UNDECLARED_COLUMN: "declare the undeclared columns in table_config.json",
     DROP_UNMAPPED_COLUMN: "reload or restart so this process holds the unmapped columns, "
                           "then Retry the file",
+    DROP_VALUE_REFUSED: "fix the values their columns' types do not take - the rest of each row was written",
 }
 
 
@@ -1284,6 +1292,58 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
     # `"abc\udcff"` into `"abc"` but never introduces whitespace - order is not
     # load-bearing today, and doing it first keeps "normalize, then sanitize" readable.
     return sanitize_to_utf8(normalize_stored_text(value))
+
+def times_the_database_refuses(db: Session, table_name: str, updates) -> dict:
+    """`{column: {spelling, ...}}` - the values (as `str(value).strip()`) headed for this table's time columns that PostgreSQL will not read as a
+    timestamptz, asked of PostgreSQL itself (lead 10-29). Measured on 24 spellings: our reader (`expression.TIME`)
+    and PostgreSQL part on nine - «2026.10.29», «2026/10/29», «3:05 PM», «20261029» ... are taken by PostgreSQL and
+    not by us - so our reader cannot be the judge without dropping values that load today.
+
+    ONE query for the batch's values that are not already in the reader's ISO spelling (those PostgreSQL always
+    takes), in a savepoint; only when it refuses are the values halved and asked again, so k bad values among n cost
+    about 2k·log n queries and a clean batch one. No version branch: `pg_input_is_valid` would need PostgreSQL 16.
+    A text column declared datetime is not read by PostgreSQL (`join_key_index.column_is_text`) and is not asked.
+    Another database never refuses a time here, so it is not asked either."""
+    from sqlalchemy import exc as sa_exc, text as sa_text
+    import expression
+    from chain import join_key_index
+
+    if db.get_bind().dialect.name != "postgresql":
+        return {}
+    types = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
+    asked = {}                                          # {spelling: {column, ...}}
+    for item in updates:
+        for column, value in (getattr(item, "updates", None) or {}).items():
+            if types.get(column) != "datetime" or is_blank_value(value) or isinstance(value, (bool, datetime)):
+                continue
+            if isinstance(value, str) and expression.TIME.match(value.strip()):
+                continue
+            if not isinstance(value, (str, numbers.Real)) or join_key_index.column_is_text(table_name, column):
+                continue
+            asked.setdefault(str(value).strip(), set()).add(column)
+    refused = set()
+    statement = sa_text("SELECT CAST(v AS timestamptz) FROM unnest(CAST(:vals AS text[])) AS v")
+
+    def ask(spellings):
+        from session_contract import in_savepoint
+        try:
+            in_savepoint(db, "times_the_database_refuses", lambda: db.execute(statement, {"vals": spellings}))
+        except sa_exc.DataError:
+            if len(spellings) == 1:
+                refused.add(spellings[0])
+                return
+            half = len(spellings) // 2
+            ask(spellings[:half])
+            ask(spellings[half:])
+
+    if asked:
+        ask(sorted(asked))
+    out = {}
+    for spelling in refused:
+        for column in asked[spelling]:
+            out.setdefault(column, set()).add(spelling)
+    return out
+
 
 def clean_str_value(val: Any) -> str:
     """값을 깔끔하게 문자열로 변환합니다. float인 경우 소수점 이하가 .0이면 정수로 처리합니다.
@@ -4153,11 +4213,20 @@ def apply_row_update_internal(
                                                        "who": update_item.updated_by})
                  if formula and plan else None)
         try:
+            if plan and col_name in plan["refused_times"] and str(val).strip() in plan["refused_times"][col_name]:
+                raise CellRefused(col_name, val, "a time")
             clean_val = cast_value_by_type(val, col_type, col_name, table_name)
         except CellRefused as refused:
             if tally is None:
-                refused.item = update_item      # `apply_batch_updates` turns this into a row
-                raise
+                if drop_stats is not None:
+                    _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
+                                         col_name, DROP_VALUE_REFUSED)
+                    seen = drop_stats["refused_values"].get(col_name)
+                    if seen is not None:
+                        seen["cells"] += 1
+                    elif len(drop_stats["refused_values"]) < MAX_DROP_REPORT_COLUMNS:
+                        drop_stats["refused_values"][col_name] = {"cells": 1, "first": refused.value}
+                continue                        # not entered: no layer, the row's other cells go on
             clean_val = None                    # counted; the display answer casts the formula's own the same way
             tally["refused"] += 1
         if tally is not None and val is None:
@@ -4934,10 +5003,9 @@ def refuse_virtual_join_duplicates(db: Session, table_name: str,
     the product cannot answer; keeping either would write a guess and the guess would look
     like a fact. So both are skipped, both are named, and each is told the other's key.
 
-    ⚠️ WITHIN ONE BATCH, AND THAT IS STATED RATHER THAN IMPLIED. A row colliding with one
-    ALREADY STORED breaks the same index and is not caught here - catching it needs a read
-    per batch, which is a different decision on a write path. What this closes is the case
-    the incident had: one mapper output carrying the pair.
+    ⚠️ BOTH HALVES: a pair within one batch, and a row whose key a DIFFERENT stored row holds
+    (`_stored_join_key_owners`, one read per batch - the «stored half» below). Measured on
+    PostgreSQL 10-29: either overlap leaves the batch running, the offending rows refused.
 
     Returns the refusals; `batch.updates` is left holding the survivors.
     """
@@ -5335,8 +5403,6 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     replay_key_col = _replay_sensitive_key_column(table_name, batch)
     pristine_payload = (_snapshot_payload_identity(batch, replay_key_col)
                         if replay_key_col else None)
-    # The row a refusal names is the CALLER's - taken before anything below filters the batch.
-    positions = {id(item): index for index, item in enumerate(batch.updates, start=1)}
     rewind_write_steps = alignment_batch_counts.write_steps_rewind()
 
     for attempt in range(BK_CONFLICT_MAX_RETRIES + 1):
@@ -5351,9 +5417,6 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         try:
             return _apply_batch_updates_once(db, table_name, batch, replace_report,
                                              drop_report)
-        except CellRefused as refused:
-            refused.row = positions.get(id(getattr(refused, "item", None)))
-            raise
         except IntegrityError as exc:
             if not _is_business_key_unique_violation(exc):
                 # 🔴 [S-269] EVERY OTHER CONSTRAINT IS STILL REFUSED - BY NAME, AND AFTER A
@@ -5846,7 +5909,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
 
         # what is the same for every row of this batch, once (총괄 249b43409) - the keys were assembled above
         plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
-                "unmapped": {}, "ranks": {}, "map_judged": map_judged, "receipts": {}}
+                "unmapped": {}, "ranks": {}, "map_judged": map_judged, "receipts": {},
+                "refused_times": times_the_database_refuses(db, table_name, batch.updates)}
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:
@@ -5964,6 +6028,12 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # layers, so its rollback left them all dead (box: 6,002 per 1,000 rows x 5) - now it waits there first and
         # leaves ~2. And two batches of the same new keys in opposite orders wait in one order instead of deadlocking
         # (40P01, which nothing retries; box: 2 of 13). The steps below write by row id and read no data row.
+        refused_cells = drop_stats["by_reason"].get(DROP_VALUE_REFUSED)
+        if refused_cells:
+            logger.warning("[Write] %s: %d cell(s) refused - %s - not entered, the rest of each row written",
+                           table_name, refused_cells, "; ".join(
+                               "%s=%d (first %r)" % (column, seen["cells"], seen["first"])
+                               for column, seen in sorted(drop_stats["refused_values"].items())))
         for label, tally in plan["receipts"].items():
             if tally["blank"] or tally["refused"]:
                 logger.info("[Formula] %s: %d blank answer(s), %d not of the column's type - written blank",

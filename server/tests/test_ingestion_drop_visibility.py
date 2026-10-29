@@ -75,6 +75,7 @@ class _StubCrud:
     # And the one sentence for what was offered and not written, by reason (d4a949a8c ③).
     DROP_UNDECLARED_COLUMN = _real_crud.DROP_UNDECLARED_COLUMN
     DROP_UNMAPPED_COLUMN = _real_crud.DROP_UNMAPPED_COLUMN
+    DROP_VALUE_REFUSED = _real_crud.DROP_VALUE_REFUSED
     not_written_sentence = staticmethod(_real_crud.not_written_sentence)
 
     @staticmethod

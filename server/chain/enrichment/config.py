@@ -384,8 +384,9 @@ def time_columns(time) -> list:
 
 def row_time(time, row, table):
     """A row's ledger time in ms, read by the ledger's own reader (`roleframe.aware_time`) - or None for a row with no
-    atom: every source's `exclude_when` takes it out, or its time is blank. A time the ledger cannot read is a failure
-    named by its cell, not a row quietly left out (총괄 review of e2c3a9a15)."""
+    atom: every source's `exclude_when` takes it out, or its time is blank. A time the ledger cannot read raises its
+    cell's sentence (총괄 review of e2c3a9a15) - and the one caller leaves that row's time out and COUNTS it rather than
+    failing the group on it (owner 10-29 ㄱ «데이터 값은 멈추지 않는다»)."""
     from ledger.event_frame import is_blank_source_value, row_excluded
     from ledger.roleframe import RoleFrameError, aware_time
 

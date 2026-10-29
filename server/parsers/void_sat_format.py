@@ -557,6 +557,17 @@ def _number(text, column=None, row_index=None):
     return value
 
 
+def _value(text, column=None, row_index=None):
+    """A plain cell (not a part of the run's identity): its number, or the text as read when it is not one - the write
+    funnel judges that against the column's declared type and, refused, leaves that cell alone not entered and counted
+    (owner 10-29 ㄱ «데이터 값은 멈추지 않는다»; this cell used to stop the whole file). Identity parts stay `_number`'s:
+    a key cannot be half read."""
+    try:
+        return _number(text, column=column, row_index=row_index)
+    except UnreadableValue:
+        return str(text).strip()
+
+
 def read_sat_file(file_path: str):
     """Read one SAT file into ``(run_row, void_rows, warnings)``. Refuses loudly.
 
@@ -623,6 +634,9 @@ def read_sat_file(file_path: str):
         def number(name, _at=offset):
             return _number(cell(name), column=name, row_index=_at)
 
+        def value(name, _at=offset):
+            return _value(cell(name), column=name, row_index=_at)
+
         raw_id = cell("base_wafer_id")
         base_wafer_id = str(raw_id).strip() if raw_id is not None else None
         base_x, base_y = number("base_x"), number("base_y")
@@ -635,10 +649,10 @@ def read_sat_file(file_path: str):
             "base_x": base_x,
             "base_y": base_y,
             "stack_gate": stack_gate,
-            "inchip_x": number("inchip_x"),
-            "inchip_y": number("inchip_y"),
-            "radius_x": number("radius_x"),
-            "radius_y": number("radius_y"),
+            "inchip_x": value("inchip_x"),
+            "inchip_y": value("inchip_y"),
+            "radius_x": value("radius_x"),
+            "radius_y": value("radius_y"),
             "unit": unit,
         })
 

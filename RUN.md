@@ -1,5 +1,36 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **데이터 값은 멈추지 않는다 — 받지 못한 값은 그 칸만 «안 들어감» · 셈 (소유자 10-29 ㄱ)** — 서버 재기동 · 마이그레이션 없음
+>
+> ```
+> 무엇      숫자 칸의 'N/A' · '1,234' · 시각 칸의 'not a time' · SAT 파일 반지름의 'nan' — 그 칸만 안 들어가고 행 · 파일 · 묶음은 씀
+>          원장: 묶음 칸(identity · group_by)이 빈 행만 no_identity 로 거절하고 나머지는 번역 · enrichment: 못 읽는 시각은 그 행의 시각만 뺌
+> 문장      자리         전                                                후
+>          그리드       400 «Row 2: column 'target_qty' does not take        200 · 응답 dropped.by_reason {"value_refused": 1}
+>                       'abc' - a number is expected.»
+>          파일         실패 · 같은 문장                                   읽힘 · 상태 줄 «Next: fix the values their columns' types do not take -
+>                                                                          the rest of each row was written. Not written: value_refused target_qty=2 over N row(s).»
+>          체인         묶음 실패 «[rules=r target=t] Row 2: …»             묶음 씀 · 연속 실패가 안 늘어남(전엔 10 번이면 규칙 꺼짐)
+>          로그(셋 다)  없음                                                «[Write] <표>: N cell(s) refused - target_qty=2 (first 'abc') - not entered,
+>                                                                          the rest of each row written»
+>          시각 칸      PG 원문(잘못된 입력 + SQL) · 묶음 0 행               위와 같은 [Write] 줄 — 판단은 PG 가 함(묶음마다 질의 하나)
+>          원장         쪽 전체 «driver identity/group_by value is missing»  그 행만 «no_identity … N row(s) with a blank driver identity/group_by»
+>          enrichment   묶음 실패 «Latest: t.c holds 'v', which the ledger   «[Enrichment] t: N row(s) whose time the ledger cannot read - … First: Latest: …»
+>                       cannot read as its time»
+> 볼 줄     server.log · watcher.log · chain_worker.log 에서 «cell(s) refused» · «whose time the ledger cannot read»
+> 뜻       그 수 = 원천 데이터에서 고칠 값의 수. 고치면 다음 읽기 · Retry 에서 들어감. 줄이 없으면 이 변경이 한 일 없음
+> 틈       그리드 화면은 아직 dropped 를 안 그림 — 클라 착지 전까지 붙여 넣은 칸이 화면에서는 «조용히 빔»(응답에만 있음)
+> 소급     이 착지가 스스로 다시 돌리는 행 0. 전에 실패한 파일은 Retry 할 때만 · 데이터로 꺼진 규칙은 규칙을 저장할 때 다시 켜짐
+> 비용     시각 칸에 ISO 아닌 철자가 있을 때만 묶음마다 질의 하나 · 1,000 행 두 판: 다 정상 92 · 101 ms, 나쁜 값 10 개 1,002 · 62 ms(반으로 나눠 다시 물음)
+> 남은 것   replace_map 이고 모든 행이 조인 키 겹침이면 묶음 통째 취소 — 맵이 비지 않게 지키는 가드라 이번엔 그대로
+>          SAT 의 base_x · base_y · stack_gate · voids.json 필수 칸 — 키 · 필수 칸이라 파일 거절 그대로
+> 급할 때   끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
+---
+
 > ## [10-29] **리포트 그림을 누르면 원본이 새 탭에 — 로그인 · 서명 링크 둘 다** — git pull · 서버 재기동 · 체인 워커 재기동
 >
 > ```
@@ -9015,7 +9046,7 @@
 > 뜻           그 줄 = 원천 표의 그 행 커서 칸이 비어 있음. 할 일은 그 칸을 채우는 것 — 채우면 다음 따라가기가 그 분자를 번역
 >             그 분자에 전에 적힌 원자는 거절되는 동안 원장에서 걷힘 — 편집으로 칸을 비우면 걷히고 채우면 돌아옴(PG 에서 잼)
 >             거절 수는 그 작업을 따라갈 때마다 늘어남 — 채울 때까지
->             identity · group_by 칸이 빈 행은 전처럼 페이지째 멈춤 — 문장만 「driver identity/group_by value is missing」 으로
+>             identity · group_by 칸이 빈 행은 10-29 부터 그 행만 no_identity 로 거절 · 셈 (전엔 페이지째 멈춤)
 > 급할 때       끄는 스위치 없음 — 커밋 되돌리기
 > ```
 
@@ -10133,6 +10164,7 @@
 > ## 🔴 [09-25 밤 6] **숫자 칸에 글자가 오면 «한 문장» — 그리드 · 파일 · 체인 같은 말 · 마이그레이션 «없음» · 재기동 API · 감시자 · 체인 워커**
 >
 > ```
+> ⚠️ 10-29 부터 이 문장으로 멈추는 문 없음 — 그 칸만 안 들어감(value_refused), [10-29] «데이터 값은 멈추지 않는다» 블록
 > 문장     Row N: column 'C' does not take 'V' - a number is expected.
 >          그리드  N = 보낸 묶음에서 몇 번째          파일  N = 파일의 몇 번째 데이터 행 (머리줄 빼고)
 >          체인    [rules=그 규칙 target=그 표] 뒤에 같은 문장 — N 은 그 규칙이 쓴 묶음에서 몇 번째
