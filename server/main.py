@@ -5621,8 +5621,9 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     from ingestion import reread
 
     _config, specs = reread.validated_sources()
-    for table, source, off in ([(table, reread.RAWS, False) for table in crud.TABLE_CONFIG]
-                               + [(spec["table_name"], spec["root"], bool(spec.get("off"))) for spec in specs]):
+    for table, source, off, unread in ([(table, reread.RAWS, False, []) for table in crud.TABLE_CONFIG]
+                                       + [(spec["table_name"], spec["root"], bool(spec.get("off")), spec.get("unread", []))
+                                          for spec in specs]):
         entries = sources.setdefault(table, [])
         spelled = source if source == reread.RAWS else os.path.normcase(os.path.abspath(source))
         entry = next((e for e in entries if e["source"] == source or (
@@ -5630,10 +5631,11 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
         if entry is None:
             entry = {"source": source, "total": 0, "read": 0, "left": 0, "left_by_status": {}}
             entries.append(entry)
-        entry["off"] = off
+        entry["off"], entry["unread"] = off, unread
     for entries in sources.values():
         for entry in entries:
             entry.setdefault("off", False)
+            entry.setdefault("unread", [])
     for entry in data:
         entry["sources"] = sources.get(entry["table_name"], [])
     seen = {entry["table_name"] for entry in data}

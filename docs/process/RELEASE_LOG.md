@@ -396,6 +396,7 @@
 
 ### 설정 파일
 
+- 2026-10-29 [고침 — 외부 소스 항목에 적었는데 아무도 안 읽는 칸을 이름 댄다 · options 에 살 칸이 맨 위에 있으면 그 자리까지, 소스는 돈다](#2026-10-29--고침--외부-소스-항목에-적었는데-아무도-안-읽는-칸을-이름-댄다--options-에-살-칸이-맨-위에-있으면-그-자리까지-소스는-돈다) — 적는 곳 `ingestion_settings.json` 의 external_sources · 보는 곳 파일 화면 소스 줄 · 와처 로그
 - 2026-10-28 [고침 — 카탈로그의 kind: view 관계를 표로 짓지 않는다(새 DB 에서 원장 표 · 원장 뷰가 일반 표로 먼저 서던 것)](#2026-10-28--고침--카탈로그의-kind-view-관계를-표로-짓지-않는다새-db-에서-원장-표--원장-뷰가-일반-표로-먼저-서던-것) — 보는 곳 RUN.md 의 relkind 확인 한 줄 · 원장 프로세스 로그의 한 줄
 - 2026-10-26 [버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다](#2026-10-26--버전-칸--같은-버전이면-나중에-들어온-것이-이긴다--같은-내용의-맵을-다시-읽으면-아무것도-안-쓴다) — 적을 것 없음 · 보는 곳 파일 결과 칸 · [VersionGate] 줄
 - 2026-10-26 [켜져 있던 외부 저장소도 와처가 처음 본 때부터 자른다 — 재기동 · 끄고 켜기 없이, 시각과 파일마다 로그](#2026-10-26--켜져-있던-외부-저장소도-와처가-처음-본-때부터-자른다--재기동--끄고-켜기-없이-시각과-파일마다-로그) — 적을 것 없음 · 보는 곳 watcher.log «[switch-on] …»
@@ -668,6 +669,17 @@
 
 
 
+
+## 2026-10-29 · 고침 — 외부 소스 항목에 적었는데 아무도 안 읽는 칸을 이름 댄다 · options 에 살 칸이 맨 위에 있으면 그 자리까지, 소스는 돈다
+
+- 무엇: `ingestion_settings.json` 의 외부 소스 항목에서 와처가 읽지 않는 칸 — 항목 맨 위와 `options` 안 — 을 한 줄로 이름 댄다. 거절이 아니다: 소스는 그대로 선다. 운영에서 `stability_interval_seconds` 를 `options` 밖(항목 맨 위)에 적었는데 아무 말 없이 무시되어 0 행이 계속된 것이 계기.
+- 문장: «external_sources[N]: top-level cell this product does not read — <칸>. <칸> is read under options. The source runs.» — options 에 살 칸이 맨 위에 있으면 «is read under options» 가 붙는다. 꺼진 소스는 «The source runs.» 가 없다. `__` 로 시작하는 칸은 주석이라 대지 않는다.
+- 읽는 칸: 맨 위 enabled · path · table_name · parser · recursive · max_depth · options. options 는 filename · glob · stability_interval_seconds, parser 가 voids_json 이면 max_file_mb · unit 도. 워크스페이스 플러그인에는 options 가 안 넘어간다.
+- 뜨는 곳: 파일 화면 소스 줄(`GET /admin/file-ingestion/tables` 의 sources[].unread — 화면은 클라 착지 뒤) · 와처 로그 WARNING «External source config: …» · `scripts/check_external_sources.py` 의 소스 밑 «! …».
+- 체인 규칙과 같은 문장 함수(`validation.unread_said`) 하나를 지난다. 체인 문장은 글자 그대로이고, 하나만 바뀐다: «derive.join / derive.report cell(s) this product does not read» 가 «cell».
+- 칸을 고쳐 저장하면 와처가 그 소스를 «바뀜»으로 다시 세우고 한 번 다시 훑는다(이미 읽은 파일은 건너뛴다).
+- 필요한 조건: git pull · 와처 재기동 · 서버 재기동.
+- 자세히: `server/parsers/directory_watcher.py` 의 `unread_source_cells` · `SOURCE_CELLS` · `OPTION_CELLS`, `server/parsers/voids_json_format.py` 의 `OPTION_CELLS`, `server/validation.py` 의 `unread_said`.
 
 ## 2026-10-29 · 도움말의 선언 절 고르기가 임베딩으로 — llm_config 의 embedding_model 한 줄, 없거나 실패면 BM25 와 그 사유 · 빈 칸이 있으면 셈은 «기다림»
 

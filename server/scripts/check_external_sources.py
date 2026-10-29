@@ -69,6 +69,8 @@ def main() -> int:
         # resolved it from that table's workspace scripts/ folder.
         print(f"      parser={spec['parser'] or '(워크스페이스 scripts/ 플러그인)'}  "
               f"max_depth={spec['max_depth']}  options={spec['options']}")
+        for line in spec.get("unread", ()):
+            print(f"      ! {line}")
 
     print()
     print(f"=== 거절된 것: {len(errors)}개 ===")

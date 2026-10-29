@@ -193,7 +193,7 @@ def test_a_state_or_reason_column_named_is_said_and_the_rule_stands():
 def test_a_cell_the_product_does_not_read_is_named_and_the_rule_stands():
     rules, refusal, notes = rule_shape.expand_declaration(_declaration(dict(REPORT, colour="blue")))
     assert refusal is None and len(rules) == 1
-    assert any("derive.report cell(s) this product does not read — colour" in note for note in notes), notes
+    assert any("derive.report cell this product does not read — colour" in note for note in notes), notes
 
 
 def test_the_form_draws_the_report_from_the_skeleton():

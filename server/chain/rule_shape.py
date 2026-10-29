@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 import chain_bindings
+import validation
 from chain import join_into, report_shape
 
 #: 체인 문법에서 «모양으로 접히는» 칸. 나머지는 전부 `extra` 로 간다.
@@ -810,8 +811,7 @@ def expand_declaration(declaration, table_config=None,
     #    return below carries them, so the save's refusal and the loader's line name what it does not read.
     unified = isinstance(declaration, dict) and isinstance(declaration.get("derive"), dict)
     name = declaration.get("name") if isinstance(declaration, dict) else None
-    unread = ["%s: %s cell this product does not read \u2014 %s.%s" % (name, where, ", ".join(cells),
-                                                                      _report_home(declaration, cells))
+    unread = [validation.unread_said(name, where, cells, _report_home(declaration, cells))
               for where, cells in unread_cells(declaration)] if unified else flat_cell_notes(declaration)
     flags = chain_bindings.flag_refusals(declaration)
     if flags:
@@ -838,7 +838,7 @@ def expand_declaration(declaration, table_config=None,
                     + [note.replace(" The rule runs.", "") for note in notes])
         # a rule that is off is still read for its cells (\ucd1d\uad04 6c6d76924 \u2460)
         return ([], None, ["%s: enabled=false \u2014 no rule stands for it." % name] + unread
-                + ["%s: derive.%s cell this product does not read \u2014 %s." % (name, kind, ", ".join(cells))
+                + [validation.unread_said(name, "derive." + kind, cells)
                    for kind, cells in (("decide", unknown_decide_cells(internal)),
                                        ("join", unknown_join_cells(internal)),
                                        ("report", unknown_report_cells(internal))) if cells])
@@ -899,8 +899,7 @@ def expand_declaration(declaration, table_config=None,
         return ([], "%s: %s" % (name, decide_refusal), unread)
     if decided:
         stood = decided
-        notes = ["%s: derive.decide cell this product does not read — %s. "
-                 "The rule runs." % (name, cell)
+        notes = [validation.unread_said(name, "derive.decide", [cell], " The rule runs.")
                  for cell in unknown_decide_cells(internal)]
     else:
         try:
@@ -911,10 +910,8 @@ def expand_declaration(declaration, table_config=None,
         notes = [old_shape] if old_shape else []
         for kind, unknown in (("join", unknown_join_cells(internal)), ("report", unknown_report_cells(internal))):
             if unknown:
-                notes.append(
-                    "%s: derive.%s cell(s) this product does not read — %s. The rule "
-                    "runs; check the spelling if it was meant to do something."
-                    % (name, kind, ", ".join(unknown)))
+                notes.append(validation.unread_said(
+                    name, "derive." + kind, unknown, " The rule runs; check the spelling if it was meant to do something."))
         notes += ["%s: %s" % (name, said) for said in report_notes(internal)]
         stood = [as_chain_rule(internal)] + companion_rules(internal)
 

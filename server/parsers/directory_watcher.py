@@ -1242,6 +1242,28 @@ def source_taking(specs, file_path: str, named: bool = True):
     return spec, rel_path
 
 
+def unread_source_cells(raw: dict, parser_name, off: bool, owner: str) -> list:
+    """The sentences (`validation.unread_said`) naming what an external source's entry writes at its top or under
+    `options` and nothing reads - an option written at the top says it is read under options (lead 10-29: a
+    stability_interval_seconds written there was dropped without a word and the table read 0 rows). Comment cells
+    (`chain_bindings.comment_cells`) are not named; a source switched off has no «The source runs.»."""
+    from chain_bindings import comment_cells
+
+    options = raw.get("options") if isinstance(raw.get("options"), dict) else {}
+    read_options = OPTION_CELLS
+    if parser_name == "voids_json":
+        from voids_json_format import OPTION_CELLS as parser_reads
+        read_options += parser_reads
+    said = []
+    for where, cells, read in (("top-level", raw, SOURCE_CELLS), ("options", options, read_options)):
+        unread = sorted(str(cell) for cell in cells if cell not in read and cell not in comment_cells(cells))
+        if unread:
+            home = [cell for cell in unread if where == "top-level" and cell in read_options]
+            said.append(validation.unread_said(owner, where, unread, (
+                " %s is read under options." % ", ".join(home) if home else "") + ("" if off else " The source runs.")))
+    return said
+
+
 def validate_external_source_specs(settings: dict, table_config: dict,
                                    workspace_base: str):
     """Validate ``external_sources`` and return ``(valid_specs, errors)``.
@@ -1394,6 +1416,9 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         }
         if not enabled:
             spec["off"] = True
+        unread = unread_source_cells(raw, parser_name, not enabled, where)
+        if unread:
+            spec["unread"] = unread
         valid.append(spec)
 
     # The same root MAY feed two tables (void_obs + inspection_run).  Within one
@@ -1597,6 +1622,10 @@ FLATTEN_STABILITY_INTERVAL_SECONDS = 1.0
 #: An external source's switch for the same wait (owner 10-23, 총괄 b15d6b66e): its trigger file is read once the
 #: file's folder looks the same this many seconds apart. Unwritten - read after the one-second debounce, as before.
 STABILITY_INTERVAL_OPTION = "stability_interval_seconds"
+#: The cells an external source's entry is read by - at its top, and under `options` (a declared parser's own too:
+#: `voids_json_format.OPTION_CELLS`; a workspace plugin is handed no options). Any other is named, never refused.
+SOURCE_CELLS = ("enabled", "path", "table_name", "parser", "recursive", "max_depth", "options")
+OPTION_CELLS = ("filename", "glob", STABILITY_INTERVAL_OPTION)
 # Stop waiting after this long; the files still being written and every folder are
 # left, and the subfolder recheck re-triggers later.
 FLATTEN_STABILITY_MAX_WAIT_SECONDS = 600
@@ -4669,6 +4698,7 @@ class WorkspaceWatcher:
         specs, errors = validate_external_source_specs(
             settings, table_config, self.base_dir)
         stamp_switched_on(specs)                                        # before `wanted`: a kept time is the same spec
+        unread = [line for spec in specs for line in spec.get("unread", ())]
         specs = [spec for spec in specs if not spec.get("off")]         # switched off: read by hand only
 
         # A disabled entry is neither accepted nor refused, so without this line
@@ -4683,6 +4713,8 @@ class WorkspaceWatcher:
 
         for error in errors:
             logger.error(f"External source config rejected: {error}")
+        for line in unread:
+            logger.warning(f"External source config: {line}")
 
         # 🔴 [총괄 10-21, 소유자 「외부 저장소 별로 끄기」 · 「받는 파일을 바꿨는데 voids.json 이 계속 돎」] A binding
         #    switched off, removed or changed (path · glob/filename · parser) is retired here - no restart: its events

@@ -108,6 +108,13 @@ def did_you_mean(wanted: Any, declared: Iterable[Any], label: str) -> str:
     return f"; declared {label}: {listed}"
 
 
+def unread_said(owner: str, where: str, cells: Sequence[str], after: str = "") -> str:
+    """THE sentence for cells a declaration writes and this product does not read - named, never refused (lead 10-29:
+    a chain rule's and an external source's, one spelling). `after` follows it spaced: where a cell is read, «The rule
+    runs.» / «The source runs.»."""
+    return "%s: %s cell this product does not read — %s.%s" % (owner, where, ", ".join(cells), after)
+
+
 def flag_refusal(name: str, value: Any):
     """A yes/no cell holds true or false and nothing else - None, or the ONE sentence (총괄
     de64fb0f9 · 872f6cb6b). `"false"` is truthy and `0` is not, so every reader that guessed

@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **외부 소스 항목의 읽지 않는 칸 — 이름을 대고 소스는 돈다** — git pull · 와처 재기동 · 서버 재기동
+>
+> ```
+> 볼 것    와처 로그 «External source config: external_sources[N]: top-level cell this product does not read — <칸>.
+>          <칸> is read under options. The source runs.»  · 파일 화면 소스 줄(클라 착지 뒤)
+>          python server/scripts/check_external_sources.py -> 받아들인 소스 밑 «! <같은 문장>»
+> 뜻       그 칸은 지금도 안 읽힌다 — 거절이 아니다. «is read under options» 가 붙으면 그 칸을 options 안으로 옮긴다
+>          (stability_interval_seconds 를 options 안으로 -> 폴더가 조용해진 뒤 읽는다)
+> 옮기면   ingestion_settings.json 저장 -> 와처가 그 소스를 다시 세우고 한 번 다시 훑는다(이미 읽은 파일은 건너뜀)
+> 체인     로그를 «cell(s) this product does not read» 로 찾던 줄은 이제 «cell this product does not read»
+> 끄는 법  되돌리기 커밋 하나. 설정 · 데이터는 안 건드린다
+> ```
+>
+> ---
+>
 > ## [10-29] **도움말 선언 절 고르기를 임베딩으로 — embedding_model 한 줄 · 빈 칸이면 셈은 «기다림»** — git pull · 서버 재기동
 >
 > ```

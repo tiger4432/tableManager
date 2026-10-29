@@ -49,6 +49,8 @@ from void_sat_format import (
 
 
 DEFAULT_MAX_FILE_MB = 128
+#: The source's options this parser reads - the watcher names any other it is given (`unread_source_cells`).
+OPTION_CELLS = ("filename", "max_file_mb", "unit")
 # The producer's real folder is ``{workid}_YYYYMMDD_HHMMSS``; the work id is an
 # arbitrary token, so it cannot be spelled out here.  The timestamp is anchored to
 # the END of the name and everything before the last underscore-separated
