@@ -7468,10 +7468,10 @@
 > 보는 법        브라우저 개발자 도구 -> Network -> 그 요청 -> Timing 탭(Server Timing) 에 total · db 가 보인다
 >                total 이 크고 db 가 작다 = 파이썬 쪽 · db 가 total 에 가깝다 = 질의 쪽(queries 수가 크면 질의를 너무 많이 낸다)
 > 적는 곳       server/config/server_settings.json (모양: server/config/sample/server_settings.json.sample)
->                 slow_request_ms   없으면 1000 · null 이면 줄을 안 남김(머리는 그대로) · 재기동 때 읽음
+>                 slow_request_ms   없으면 1000 · null 이면 줄을 안 남김(머리는 그대로) · 저장하면 다시 읽음(재기동 필요 없음)
 > 볼 줄          [Slow] <메서드> <경로> <상태> - 응답이 <N>ms 걸렸습니다 (예산 <B>ms) · db <D> ms · <Q> queries
 >                 = 그 요청이 예산을 넘었다. 쿼리 문자열 · 바디는 싣지 않는다
-> 급할 때       slow_request_ms 를 null 로 + 재기동 — 줄이 멈춘다(머리는 남는다)
+> 급할 때       slow_request_ms 를 null 로 저장 — 재기동 없이 줄이 멈춘다(머리는 남는다)
 > ```
 
 ---
