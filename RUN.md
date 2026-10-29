@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **void 작업공간의 voids_json.py 사본 지움 — 아무것도 안 읽던 파일** — git pull (재기동 없음)
+>
+> ```
+> 무엇     server/ingestion_workspace/void/scripts/voids_json.py 가 git 에서 빠짐 (클래스 0 개라 어떤 파일도 안 읽었음)
+>          voids.json 은 그대로 외부 소스 선언의 "parser": "voids_json" 이 읽음
+> git pull 그 파일을 지움. 손으로 고친 적 있으면 pull 이 멈춤 («would be overwritten») -> 그 파일을 옮겨 두고 다시 pull
+> 볼 것    watcher.log 에 그 폴더를 대는 경고 · 오류 줄 없음 (빈 폴더 · 폴더 없음 · __pycache__ 만 남음 — 셋 다 0)
+> 끄는 법  되돌리기 커밋 하나
+> ```
+>
+> ---
+>
 > ## [10-29] **그리드 «안 써진 것» 문장의 수 = 파일의 수(빈 값 안 셈)** — git pull · 서버 재기동
 >
 > ```
