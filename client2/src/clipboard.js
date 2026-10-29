@@ -1,8 +1,8 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
-import { notANumber, unitText } from './ui_words.js';
+import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
-import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped } from './write_guard.js';
+import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped, cellToSend } from './write_guard.js';
 import { newPivotRows } from './grid_pivot.js';
 import { fetchData, sayNotWritten } from './api.js';
 import { elements } from './dom.js';
@@ -458,22 +458,7 @@ export function setupClipboardHandlers() {
             updateMapByRow[rowId] = { rowNode, updates: {} };
           }
 
-          const colTypes = state.currentColumnTypes || {};
-          const colType = colTypes[colId] || 'string';
-          let castedVal = val;
-          if (colType === 'number') {
-            if (val === '' || val === null || val === undefined) {
-              castedVal = null;
-            } else {
-              const parsedVal = Number(val);
-              if (isNaN(parsedVal)) {
-                alert(notANumber(colId, val));
-                throw new Error(`Invalid number format`);
-              }
-              castedVal = parsedVal;
-            }
-          }
-          updateMapByRow[rowId].updates[colId] = castedVal;
+          updateMapByRow[rowId].updates[colId] = cellToSend(colId, val);
         });
       } else {
         // MxN Matrix clipboard ➡️ Standard offset paste starting from top-left anchor cell
@@ -542,22 +527,7 @@ export function setupClipboardHandlers() {
               updateMapByRow[rowId] = { rowNode, updates: {} };
             }
 
-            const colTypes = state.currentColumnTypes || {};
-            const colType = colTypes[colId] || 'string';
-            let castedVal = val;
-            if (colType === 'number') {
-              if (val === '' || val === null || val === undefined) {
-                castedVal = null;
-              } else {
-                const parsedVal = Number(val);
-                if (isNaN(parsedVal)) {
-                  alert(notANumber(colId, val));
-                  throw new Error(`Invalid number format`);
-                }
-                castedVal = parsedVal;
-              }
-            }
-            updateMapByRow[rowId].updates[colId] = castedVal;
+            updateMapByRow[rowId].updates[colId] = cellToSend(colId, val);
           });
         });
       }

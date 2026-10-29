@@ -3,9 +3,9 @@ import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld, pivotShown, rowUnit } from './state.js';
 import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, stagedReadRows, newPivotRows, isNewPivotRow,
   groupFilters, strayLongRow } from './grid_pivot.js';
-import { notANumber, unitText } from './ui_words.js';
+import { unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped } from './write_guard.js';
+import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped, cellToSend } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
@@ -1159,32 +1159,7 @@ async function editCell(event) {
   const oldIsOverwrite = oldCell ? oldCell.is_overwrite : false;
   const oldPrioritySource = oldCell ? oldCell.priority_source : null;
 
-  // --- 타입 검사 및 변환 추가 ---
-  let finalValue = newValue;
-  const colTypes = state.currentColumnTypes || {};
-  const colType = colTypes[colId] || 'string';
-  if (colType === 'number') {
-    if (newValue === '' || newValue === null || newValue === undefined) {
-      finalValue = null;
-    } else {
-      const parsedVal = Number(newValue);
-      if (isNaN(parsedVal)) {
-        sayStopped(notANumber(colId, newValue));
-        // Rollback grid value & overwrite status
-        const latestNode = state.gridApi.getRowNode(rowId);
-        const latestData = latestNode ? latestNode.data : data;
-        if (latestData) {
-          ensureCellObject(latestData, colId);
-          latestData.data[colId].value = oldValue;
-          latestData.data[colId].is_overwrite = oldIsOverwrite;
-          latestData.data[colId].priority_source = oldPrioritySource;
-        }
-        state.gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
-        return;
-      }
-      finalValue = parsedVal;
-    }
-  }
+  const finalValue = cellToSend(colId, newValue);
 
   // In pivot view (owner 10-23): a new row's key cell stays on that row, unwritten; a value there with a key blank is
   // refused and the cell goes back.

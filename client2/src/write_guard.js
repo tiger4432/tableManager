@@ -25,6 +25,7 @@ import { elements } from './dom.js';
 //    한 함수가 두 물음에 답하기 시작하면 그것이 다음 라운드의 결함입니다.
 import { setDisabledReason } from './disabled_reason.js';
 import { showToast } from './utils.js';
+import { isBlank } from './absent.js';
 
 /**
  * 이 화면에서 «쓰는» 컨트롤들. 실측 2026-09-13: 다 `state.currentTable` 에 씁니다 —
@@ -63,6 +64,14 @@ export function refusePivotKeys(items) {
  *  cells become their long rows' updates (lead 10-22 ②), otherwise the updates as they are. */
 export function wireUpdates(updates) {
   return pivotWire(pivotShown() ? state.pivotView : null, updates, gridRowOf);
+}
+
+/** A cell's value as a grid write sends it (lead 10-29 ㄷ): a number column's blank is no value; a number JSON cannot
+ *  carry (Infinity · NaN - the number editor's 1e999) its text, or JSON would make it null and the server write a
+ *  blank; anything else as it was given - the server takes it or folds it, and sayNotWritten says so. */
+export function cellToSend(colId, value) {
+  if ((state.currentColumnTypes || {})[colId] === 'number' && isBlank(value)) return null;
+  return typeof value === 'number' && !Number.isFinite(value) ? String(value) : value;
 }
 
 /** The grid row a row id is - in pivot view a group, whose cells carry their long rows. */

@@ -34,6 +34,8 @@
  *      with no transaction says why; any other line still jumps to its row
  *   N  the cells a save's answer did not write (lead 10-29): paste, clear, fill, edit and Apply each toast the
  *      server's `dropped.said` as it wrote it, the cells and columns when it sent none, nothing when nothing dropped
+ *   V  a number column's value as it was given (lead 10-29 ㄷ): paste, pasted table, edit and the cell's setter send the
+ *      text (1e999 · NaN · 1,234 · -0) without stopping, a blank as no value, Infinity as its text (`cellToSend`)
  *   S  ONE RULE (C-107): every write control on this screen is armed from the same answer, the
  *      four funnels ask that same answer, and the table says what it is in its own header
  *
@@ -967,6 +969,69 @@ async function suite(M) {
     }
   }
 
+  // ── V (lead 10-29 ㄷ): a number column's value goes as it was given - the page neither turns it into a number nor
+  //    stops the write; a blank is no value; a number JSON cannot carry goes as its text ──
+  {
+    const savedV = globalThis.fetch;
+    let sent = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      if (String(opts.method || 'GET').toUpperCase() === 'PUT') {
+        for (const u of JSON.parse(opts.body).updates) sent.push(u.updates);
+        return { ok: true, status: 200, json: async () => ({ status: 'success', change_count: 0 }), text: async () => '' };
+      }
+      return savedV(url, opts);
+    };
+    const onQty = async () => {
+      await stageThrough(M.api, 'table');
+      realState.selectedCellsMap = { '0_qty': { rowIndex: 0, colId: 'qty' } };
+    };
+    const paste = async (text) => {
+      sent = [];
+      await onQty();
+      listeners.clear();
+      M.clipboard.setupClipboardHandlers();
+      try { await (listeners.get('paste') || [])[0](pasteEvent(text)); } catch (e) { /* as above */ }
+      return sent.map((u) => u.qty);
+    };
+    try {
+      const typed = {};
+      for (const text of ['1e999', 'NaN', '1,234', '-0']) typed[text] = await paste(text);
+      ok(Object.entries(typed).every(([text, got]) => got.length === 1 && got[0] === text),
+        `V1 a paste into a number column sends what was pasted, as text - 1e999 · NaN · 1,234 · -0 [${JSON.stringify(typed)}]`);
+      // (a paste of a blank alone is dropped by the reader before any cell - a blank cell rides in a row)
+      ok((await paste(' \tz')).length === 1 && sent[0].qty === null && sent[0].note === 'z',
+        `V2 a blank cell pasted is no value [${JSON.stringify(sent)}]`);
+      sent = [];
+      await onQty();
+      listeners.clear();
+      M.clipboard.setupClipboardHandlers();
+      try { await (listeners.get('paste') || [])[0](pasteEvent('1,234\tz')); } catch (e) { /* as above */ }
+      ok(sent.length === 1 && sent[0].qty === '1,234' && sent[0].note === 'z',
+        `V3 a table pasted sends its number cells as text too [${JSON.stringify(sent)}]`);
+      sent = [];
+      await onQty();
+      try { await M.api.handleCellEdit({ data: rowData(), colDef: { field: 'qty' }, newValue: Infinity, oldValue: 1 }); } catch (e) { /* as above */ }
+      ok(sent.length === 1 && sent[0].qty === 'Infinity',
+        `V4 the number editor's Infinity goes as its text, not as JSON null [${JSON.stringify(sent)}]`);
+      sent = [];
+      await onQty();
+      try { await M.api.handleCellEdit({ data: rowData(), colDef: { field: 'qty' }, newValue: 'abc', oldValue: 1 }); } catch (e) { /* as above */ }
+      ok(sent.length === 1 && sent[0].qty === 'abc', `V5 an edit's text goes as typed [${JSON.stringify(sent)}]`);
+      const qty = M.grid.buildColumnDefs().find((d) => d.field === 'qty');
+      const row = rowData();
+      const took = [Infinity, '1,234', ''].map((v) => (qty.valueSetter({ data: row, newValue: v }), row.data.qty.value));
+      ok(took[0] === 'Infinity' && took[1] === '1,234' && took[2] === null,
+        `V6 the cell takes the editor's value the same way - Infinity as text, text as typed, blank none [${JSON.stringify(took)}]`);
+      // the one rule, asked of its own module (a write_guard.js copy is not what the real funnels import)
+      const send = (col, v) => M.guard.cellToSend(col, v);
+      const rule = [send('qty', '  '), send('qty', Infinity), send('qty', NaN), send('qty', '1,234'), send('qty', 5), send('note', '')];
+      ok(JSON.stringify(rule) === JSON.stringify([null, 'Infinity', 'NaN', '1,234', 5, '']),
+        `V7 cellToSend: a number column's blank none, Infinity · NaN their text, text and numbers as given, a text column's blank as given [${JSON.stringify(rule)}]`);
+    } finally {
+      globalThis.fetch = savedV;
+    }
+  }
+
   // ── O: the offscreen badge is written only when its count moves (lead 10-09: it runs on every scroll frame) ──
   {
     const savedApi = realState.gridApi;
@@ -1166,6 +1231,18 @@ const DEFECTS = [
   ['api.js: the server`s sentence is passed over for the counts', 'api',
     s => s.replace("typeof dropped.said === 'string' && dropped.said ? dropped.said", 'false ? dropped.said')],
   ['api.js: the counts name no column', 'api', s => s.replace(" · ${[].concat(dropped.columns || []).join(', ')}", '')],
+  // ── V (lead 10-29 ㄷ): a number column's value as it was given ─────────────
+  // the single value's line comes first in the file, the table's last
+  ['clipboard.js: a paste turns the value into a number again', 'clipboard',
+    s => s.replace('updates[colId] = cellToSend(colId, val);', 'updates[colId] = cellToSend(colId, Number(val));')],
+  ['clipboard.js: a pasted table turns its values into numbers again', 'clipboard', s => {
+    const at = s.lastIndexOf('updates[colId] = cellToSend(colId, val);');
+    return at < 0 ? s : `${s.slice(0, at)}updates[colId] = cellToSend(colId, Number(val));${s.slice(at + 'updates[colId] = cellToSend(colId, val);'.length)}`;
+  }],
+  ['api.js: an edit sends the editor`s value raw - Infinity becomes JSON null', 'api', s => s.replace('const finalValue = cellToSend(colId, newValue);', 'const finalValue = newValue;')],
+  ['grid.js: the cell takes the editor`s value raw', 'grid', s => s.replace('const finalVal = cellToSend(col, params.newValue);', 'const finalVal = params.newValue;')],
+  ['write_guard.js: a number JSON cannot carry goes as a number', 'guard', s => s.replace("typeof value === 'number' && !Number.isFinite(value) ? String(value) : value", 'value')],
+  ['write_guard.js: a number column`s blank goes as typed', 'guard', s => s.replace('&& isBlank(value)) return null;', '&& value === undefined) return null;')],
   // ⚠️ NOT HERE: 「fetchData stops returning true」. `timeline.js` reaches `fetchData` through the REAL
   //    `ui.js`, which imports the real `api.js`, so an `api.js` copy swapped in by this file never
   //    reaches that path and the mutant escapes by construction (measured). L2 still runs through the

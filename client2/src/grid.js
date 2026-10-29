@@ -3,9 +3,9 @@ import { FormulaHeader } from './formula_popover.js';
 import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
 import { pivotColumns, itemOf, isNewPivotRow } from './grid_pivot.js';
-import { notANumber, unitText } from './ui_words.js';
+import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
-import { writeRefusal } from './write_guard.js';
+import { writeRefusal, cellToSend } from './write_guard.js';
 import { elements } from './dom.js';
 import { pagingView } from './match_count.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
@@ -950,19 +950,7 @@ export function buildColumnDefs() {
         if (isSystem) return false;
         ensureCellObject(params.data, col);
 
-        let finalVal = params.newValue;
-        if (colType === 'number') {
-          if (params.newValue === '' || params.newValue === null || params.newValue === undefined) {
-            finalVal = null;
-          } else {
-            const parsed = Number(params.newValue);
-            if (isNaN(parsed)) {
-              alert(notANumber(col, params.newValue));
-              return false;
-            }
-            finalVal = parsed;
-          }
-        }
+        const finalVal = cellToSend(col, params.newValue);
 
         params.data.data[col].value = finalVal;
         if (!state.txModeActive) {

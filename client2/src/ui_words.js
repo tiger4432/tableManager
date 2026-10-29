@@ -18,8 +18,3 @@ export const CHOOSE = '— choose —';
 export function unitText(n, singular, plural = `${singular}s`) {
   return `${n} ${Number(n) === 1 ? singular : plural}`;
 }
-
-/** The refusal three write paths (edit · paste · fill) give a value that is not a number. */
-export function notANumber(column, value) {
-  return `Column '${column}': '${value}' is not a number`;
-}
