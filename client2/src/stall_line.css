@@ -1,5 +1,5 @@
 /* The last freeze (owner 10-29): the server's line whole, in a face the owner can type from - a line that does not fit
-   goes down at a space, never cut or slid (lead 10-29). One sheet for every page that seats it (admin · grid). */
+   goes down at a space, never cut or slid (lead 10-29). The admin header seats it. */
 .stall-host { min-width: 0; }
 .stall-line { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0;
   padding: var(--space-1) var(--space-2); border: 1px solid var(--warning); background: var(--warning-weak); }

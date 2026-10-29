@@ -42,7 +42,6 @@ import {
   rereadFormulas
 } from './api.js';
 import { FormulaPopover } from './formula_popover.js';
-import { StallLine, stallOf } from './stall_line.js';
 import { WorldTabs } from './world_tabs.js';
 
 /** 체인 뱃지를 다시 묻는 간격. 서버의 stale_after 가 60 초라 그보다 촘촘할 이유가 없다. */
@@ -165,12 +164,8 @@ async function init() {
   //    두면 그 파일을 재는 하니스가 «끝나지 않는다»(실측: 그 게이트가 120초를 넘겼다).
   //    주기는 페이지의 가구다. 기준은 서버의 stale_after 60 초이고, 세 번은 봐야 바뀐 것을
   //    봤다고 말할 수 있어 20 초로 둔다.
-  // The header's last stall (owner 10-29 «1 ㄴ») reads the same answer - no request of its own.
-  const stallMount = document.getElementById('stall-mount');
-  const stallLine = stallMount ? new StallLine(stallMount, { doc: document }) : null;
-  const readHealth = () => checkChainHealth().then((body) => { if (stallLine) stallLine.render(stallOf(body)); });
-  readHealth();
-  setInterval(readHealth, CHAIN_BADGE_POLL_MS);
+  checkChainHealth();
+  setInterval(checkChainHealth, CHAIN_BADGE_POLL_MS);
 
   await startup({
     prepare() {

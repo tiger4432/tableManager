@@ -2814,20 +2814,6 @@ const DRIVE = {
       await settle(c, log);
       await until(c, GRID_LOADED);
     }],
-    // The header's last stall on the grid (owner 10-29 «1 ㄴ»): the page's own /health read at its start says a freeze.
-    // Last, so the states above are drawn without it.
-    ['Header, the last stall', async (c, log) => {
-      STALL.on = true;
-      STALL.next = STALL_LINE;
-      log.opening = true;
-      await c.send('Page.navigate', { url: `${ORIGIN}/index.html` });
-      await sleep(1500);
-      await settle(c, log);
-      await evaluate(c, `(${screensLib})(${TOL})`);
-      await until(c, GRID_LOADED, 15000);
-      await until(c, STALL_WHOLE);
-      STALL.on = false;
-    }],
   ],
   'admin.html': [
     ['Overview', async () => true],
