@@ -372,7 +372,9 @@ const fileSourcesAnswer = () => {
   const sources = { bonding_log: [{ source: 'raws', total: 4488, read: 4483, left: 5 },
     { source: '\\\\nas-fab-07\\equipment_exports\\bonding\\line_03\\recipe_archive_2026\\void_inspection', total: 12000, read: 3400, left: 8600,
     left_by_status: { PENDING_RETRY: 40, FAILED: 3 }, sweep: { state: 'rested', age_seconds: 38, seconds: 2.4, looked: 12000, already_read: 11997,
-      dispatched: 3, why: { new: 2, changed: 1 }, before_switch_on: 1500 } }],
+      dispatched: 3, why: { new: 2, changed: 1 }, before_switch_on: 1500 },
+    // a cell written outside options, which nothing reads (B b48b6d81f) - the server's sentence under the row
+    unread: ['external_sources[0]: top-level cell this product does not read — stability_interval_seconds. stability_interval_seconds is read under options. The source runs.'] }],
   // a storage switched off and never read (B b5ee3f42a: /tables lists every declared storage, with off)
   bonding_map: [{ source: 'raws', total: 3216, read: 3216, left: 0 }, { source: 'X:/nas-fab-07/bonding_map_retired', total: 0, read: 0, left: 0, off: true }] };
   return { ...a, body: { ...b, data: b.data.map((t) => ({ ...t, sources: sources[t.table_name] || [] })),
@@ -961,6 +963,9 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule:
   if (buttons.length !== 1 || !rows[1].contains(buttons[0])) return buttons.length + ' Cancel buttons, not one on the external source';
   if (document.querySelectorAll('#fi-progress button[aria-expanded]').length !== 4) return 'not a Pick files on every source';
   if (((rows[3].cells[3] || {}).textContent || '') !== 'off') return 'the switched-off source says «' + (rows[3].cells[3] || {}).textContent + '»';
+  const unread = rows[1].nextElementSibling;
+  const said = unread && unread.className === 'fi-progress__unread' ? unread.textContent : '';
+  if (!said.startsWith('external_sources[0]: top-level cell this product does not read') || !said.endsWith('The source runs.')) return 'the unread sentence under the external source says «' + said + '»';
   if (!/^last sweep \\d+ s ago, took 2\\.4 s · looked 12,000 · sent 3 \\(new 2 · changed 1\\) · 1,500 before switch on$/.test((rows[1].cells[3] || {}).textContent || '')) return 'its sweep says «' + (rows[1].cells[3] || {}).textContent + '»';
   const head = (document.querySelector('#fi-progress .fi-box-head .fi-meta') || {}).textContent || '';
   return /^counted \\d+ s ago$/.test(head) ? null : 'its head says «' + head + '»';
@@ -970,7 +975,10 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Read progress counted', rule:
 CELLS.push({ entry: 'file_ingestion.html', after: 'Pick files listed', rule: 'pick files', at: 'fi-progress', expr: `(() => {
   const rows = [...document.querySelectorAll('#fi-progress tr[data-table]')];
   const under = document.querySelector('#fi-progress tr.fi-progress__pick');
-  if (!under || under.previousElementSibling !== rows[1]) return 'the panel is not right under the external source';
+  // its line is the source's row and the row of that source's unread sentences, when it has some (B b48b6d81f)
+  const above = under && under.previousElementSibling;
+  const line = above && above.className === 'fi-progress__unread' ? above.previousElementSibling : above;
+  if (!under || line !== rows[1]) return 'the panel is not right under the external source';
   const lines = under.querySelectorAll('tr.fi-file');
   if (lines.length !== 100) return lines.length + ' lines, not a page of 100';
   const meta = [...under.querySelectorAll('.fi-meta')].map((n) => n.textContent);
@@ -2142,7 +2150,8 @@ const DRIVE = {
   'file_ingestion.html': [
     ['Read progress counted', async (c) => {
       FILE_SOURCES.on = true;
-      await until(c, "document.querySelectorAll('#fi-progress tr[data-table]').length === 4", 15000);
+      await until(c, "document.querySelectorAll('#fi-progress tr[data-table]').length === 4"
+        + " && document.querySelectorAll('#fi-progress .fi-progress__said').length === 1", 15000);
     }],
     // Pick files under the external source, a pattern listed (owner 10-26)
     ['Pick files listed', async (c) => {

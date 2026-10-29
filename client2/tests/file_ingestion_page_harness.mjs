@@ -285,6 +285,31 @@ async function suite({ model: M, parts: Q, narrowing: N }) {
   (pButtons[0] && pButtons[0].listeners.click || []).forEach((fn) => fn());
   ok('P9 one Cancel waiting re-reads, on its row, handing its folder', pButtons.length === 1 && walk(pRows[2]).includes(pButtons[0])
     && JSON.stringify(cancels) === JSON.stringify([P('', '', 'nas', 'bond')]), JSON.stringify(cancels));
+  // a source's cells this product does not read (B b48b6d81f): the server's sentences, a line each, in a row under it
+  const UNREAD = ['external_sources[0]: top-level cell this product does not read — stability_interval_seconds. stability_interval_seconds is read under options. The source runs.',
+    'external_sources[0]: top-level cell this product does not read — max_depth. max_depth is read under options. The source runs.'];
+  const uTables = [{ table_name: 'inspection_run', sources: [{ source: 'raws', total: 5, read: 5, left: 0, unread: [] },
+    { source: NAS, total: 4, read: 4, left: 0, unread: UNREAD }, { source: P('', '', 'nas', 'bond'), total: 9, read: 9, left: 0 }] }];
+  const uLines = M.sourceLines(uTables);
+  ok('M15 a source\'s unread sentences as the server said them; none - an empty list', JSON.stringify(uLines.map((l) => l.unread))
+    === JSON.stringify([[], UNREAD, []]), JSON.stringify(uLines.map((l) => l.unread)));
+  const uHost = doc.createElement('div');
+  doc.body.append(uHost);
+  const up = new Q.ProgressPart(uHost, { doc, onCancel() {} });
+  up.render(uLines, 'counted 12 s ago');
+  const uRows = () => walk(uHost).filter((n) => n.tagName === 'TR' && n.className === 'fi-progress__unread');
+  const uSaid = () => walk(uHost).filter((n) => n.className === 'fi-progress__said');
+  const allRows = walk(uHost).filter((n) => n.tagName === 'TR' && (n.dataset.table || n.className === 'fi-progress__unread'));
+  ok('P17 the unread sentences in one row right under their source, across every column, a line each in the warning tone',
+    uRows().length === 1 && allRows.indexOf(uRows()[0]) === 2 && walk(uRows()[0]).find((n) => n.tagName === 'TD').colSpan === M.PROGRESS_COLUMNS.length + 1
+      && JSON.stringify(uSaid().map((n) => n.textContent)) === JSON.stringify(UNREAD) && uSaid().every((n) => n.dataset.tone === 'warn'),
+    JSON.stringify(uSaid().map((n) => n.textContent)));
+  const NEXT = ['external_sources[0]: top-level cell this product does not read — stability_interval_seconds. stability_interval_seconds is read under options.'];
+  up.render(M.sourceLines([{ ...uTables[0], sources: uTables[0].sources.map((x, i) => (i === 1 ? { ...x, unread: NEXT } : x)) }]), 'counted 1 s ago');
+  const NEXT_SAID = uSaid().map((n) => n.textContent);
+  up.render(M.sourceLines([{ ...uTables[0], sources: uTables[0].sources.map((x) => ({ ...x, unread: [] })) }]), 'counted 1 s ago');
+  ok('P18 a beat with other sentences draws them; written in options at last - the row goes', JSON.stringify(NEXT_SAID) === JSON.stringify(NEXT)
+    && uRows().length === 0, JSON.stringify(NEXT_SAID));
   const pNone = doc.createElement('div');
   new Q.ProgressPart(pNone, { doc }).render([], 'counting');
   ok('P8 none counted yet - its line', texts(pNone, 'fi-say')[0] === M.WORDS.noSources);
@@ -588,7 +613,7 @@ const MUTANTS = [
   { name: 'a page holds every listed file', catches: ['M13', 'P11'], file: 'model', mutate: swap('rows: (files || []).slice((at - 1) * PAGE_ROWS, at * PAGE_ROWS)', 'rows: files || []') },
   { name: 'past the limit said as the count', catches: ['M13'], file: 'model', mutate: swap('answer && answer.truncated ?', 'false ?') },
   { name: 'Read these sends every path when none is ticked', catches: ['M13'], file: 'model', mutate: swap('return ticked.size ? { paths:', 'return listed.length ? { paths:') },
-  { name: 'a beat rebuilds the progress rows under the panel', catches: ['P10'], file: 'parts', mutate: swap('if (this.drawn && this.drawn.keys === keys) { this.update(lines, counted); return; }', '') },
+  { name: 'a beat rebuilds the progress rows under the panel', catches: ['P10'], file: 'parts', mutate: swap('if (this.drawn && this.drawn.keys === keysOf()) { this.update(lines, counted); return; }', '') },
   { name: 'the panel at the table\'s end, not under its source', catches: ['P10'], file: 'parts', mutate: swap('        body.append(under);\n', '        table.append(under);\n') },
   { name: 'the handed states never read again', catches: ['P12', 'P16'], file: 'parts', mutate: swap('const got = await this.deps.onLeft(r.job, shown);', 'const got = r.counts;') },
   { name: 'every handed path asked, not the shown page', catches: ['P16'], file: 'parts', mutate: swap('const got = await this.deps.onLeft(r.job, shown);', 'const got = await this.deps.onLeft(r.job, [...r.handed]);') },
@@ -624,6 +649,10 @@ const MUTANTS = [
   { name: 'a line is its record id again - two files not read yet are one', catches: ['P1h'], file: 'parts',
     mutate: swap('view.picked === log.checklist_id', 'view.picked === log.id') },
   { name: 'counted said without its age', catches: ['M8'], file: 'model', mutate: swap('return `counted ${', 'return `counted${') },
+  { name: 'the unread sentences not read', catches: ['M15', 'P17'], file: 'model', mutate: swap('unread: [].concat(s.unread || [])', 'unread: [].concat([])') },
+  { name: 'the unread row not drawn', catches: ['P17'], file: 'parts', mutate: swap('      if (line.unread.length) {', '      if (false) {') },
+  { name: 'only the first sentence drawn', catches: ['P17'], file: 'parts', mutate: swap('for (const sentence of line.unread) {', 'for (const sentence of line.unread.slice(0, 1)) {') },
+  { name: 'a beat keeps the old sentences', catches: ['P18'], file: 'parts', mutate: swap("${pickKey(l)}\\t${l.unread.join('\\t')}", '${pickKey(l)}') },
   { name: 'Find table narrows nothing', catches: ['P4'], file: 'parts', mutate: swap('.filter((t) => !want || String(t.name).toLowerCase().includes(want))', '') },
 ];
 

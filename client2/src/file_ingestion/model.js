@@ -171,6 +171,8 @@ export function sourceLines(tables) {
     const waiting = numberOr((s.left_by_status || {}).PENDING_RETRY) || 0;
     return { table: t.table_name, source: s.source, off: Boolean(s.off), read: numberOr(s.read), total: numberOr(s.total), left: numberOr(s.left),
       done: !numberOr(s.left), sweep: s.sweep || null, stopped: s.stopped || null, waiting,
+      // its cells this product does not read, the server's sentences (B b48b6d81f) - [] for raws and a clean source
+      unread: [].concat(s.unread || []).map(String).filter(Boolean),
       // its waiting re-reads put back, under its root - an external source's (a sweep of its own) with some waiting
       cancel: s.sweep && waiting > 0 ? s.source : null };
   }));

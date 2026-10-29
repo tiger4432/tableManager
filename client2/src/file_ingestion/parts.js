@@ -39,13 +39,14 @@ export class ProgressPart {
   }
 
   render(lines, counted) {
-    const keys = `${lines.map(pickKey).join('\n')}\n${this.picked || ''}`;
-    if (this.drawn && this.drawn.keys === keys) { this.update(lines, counted); return; }
+    // the rows' shape: the sources, each one's unread sentences (a row of their own) and the picked one
+    const keysOf = () => `${lines.map((l) => `${pickKey(l)}\t${l.unread.join('\t')}`).join('\n')}\n${this.picked || ''}`;
+    if (this.drawn && this.drawn.keys === keysOf()) { this.update(lines, counted); return; }
     if (this.picked && !lines.some((l) => pickKey(l) === this.picked)) {
       this.picked = null;
       if (this.deps.onPick) this.deps.onPick(null);
     }
-    this.build(lines, counted, `${lines.map(pickKey).join('\n')}\n${this.picked || ''}`);
+    this.build(lines, counted, keysOf());
   }
 
   /** «Pick files» pressed: that source's panel opens under it, or closes when it was the open one. */
@@ -129,6 +130,19 @@ export class ProgressPart {
       tr.append(cell);
       body.append(tr);
       this.drawn.rows.push({ tr, cells, act, cancel: line.cancel });
+      if (line.unread.length) {
+        const said = el('tr', 'fi-progress__unread');
+        const td = el('td');
+        td.colSpan = PROGRESS_COLUMNS.length + 1;
+        td.dataset.wrapOk = '';
+        for (const sentence of line.unread) {
+          const one = el('div', 'fi-progress__said', sentence);
+          one.dataset.tone = 'warn';
+          td.append(one);
+        }
+        said.append(td);
+        body.append(said);
+      }
       if (this.picked === pickKey(line)) {
         const under = el('tr', 'fi-progress__pick');
         const td = el('td');
