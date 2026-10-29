@@ -103,6 +103,7 @@ import { ChainRulePanel, mapperChoices, mapperNotes } from './chain_rule_panel.j
 import { countWithAbsence } from './count_with_absence.js';
 import { takeRescopeHandoff } from './rescope_handoff.js';
 import { HelpPanel } from './help_panel.js';
+import { StallLine, stallOf } from './stall_line.js';
 
 const isDevServer = window.location.port === '5173';
 const API_BASE = isDevServer ? 'http://127.0.0.1:8080' : window.location.origin;
@@ -1558,7 +1559,14 @@ function renderChainQueue(payload, opts) {
 // The emergency stop (lead 668fa004c) — like the queue: one read, both instances drawn from it.
 let chainPauseControls = null;
 let chainPauseLast = { requested: null, worker: null };
+// The header's last freeze (owner 10-29 «ㄴ») - from the same /health read, no request of its own.
+let stallLine = null;
 function renderChainPause(next) {
+  if (next && 'stall' in next) {
+    const mount = byId('stall-mount');
+    if (!stallLine && mount) stallLine = new StallLine(mount, { doc: document });
+    if (stallLine) stallLine.render(next.stall);
+  }
   if (next) chainPauseLast = { ...chainPauseLast, ...next };
   if (!chainPauseControls) {
     chainPauseControls = ['chain-pause-mount', 'overview-pause-mount']
@@ -1591,7 +1599,7 @@ async function chainPauseFrom([pauseRes, healthRes]) {
   // /health answers 503 WITH its body — the worker's word is read either way (api.js checkChainHealth).
   const health = healthRes ? await healthRes.json().catch(() => null) : null;
   const worker = (((health || {}).checks || {}).workers || {}).chain || null;
-  return { requested, worker };
+  return { requested, worker, stall: stallOf(health) };
 }
 
 async function sendChainPause({ path, body }) {

@@ -1816,6 +1816,9 @@ export const FLOORS = new Map([
   // New with the owner's 10-29 «ㄴ»: the admin help's side panel - the request, each answer as drawn, asking, Cancel
   // keeping the late answer, Open form's fields and help_id, Earlier, two panels.
   ['help_panel_harness.mjs', 41],
+  // New with the owner's 10-29 «ㄴ» (A 63a69b97a): the header's last stall - /health's stall read, the line as written
+  // with its time, a read without the key keeping it, null hiding it, two lines.
+  ['stall_line_harness.mjs', 12],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

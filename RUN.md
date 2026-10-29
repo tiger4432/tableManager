@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **어드민 머리 Last stall — 서버가 마지막으로 굳은 한 줄** — git pull · 화면 새로 고침
+>
+> ```
+> 볼 곳     어드민 머리 Help 왼쪽 노란 상자 «LAST STALL <시각> STALL 14s L12 …». 그 줄을 그대로 옮겨 보내 주시면 됩니다
+> 바뀌는 때 Overview · Chain 탭을 열 때 · Refresh (그 두 탭이 읽는 /health 에서 옴, 새 요청 없음)
+> 답의 뜻   상자가 없음 -> 서버가 켜진 뒤 굳음 없음 · 또는 서버가 63a69b97a 전 · 또는 아직 그 두 탭을 안 엶
+>          상자가 있는데 방금 굳은 것이 아님 -> 다른 탭에 있었음. Overview 를 열면 새로 읽음
+> 끄기      없음 — 화면만 그림
+> 되돌리기  git revert $(git log --format=%h -i --grep='the header.s last stall' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
 > ## [10-29] **서버가 굳으면 한 줄 — STALL, 63a69b97a** — git pull · 런처 재기동
 >
 > ```

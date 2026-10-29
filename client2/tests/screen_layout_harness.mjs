@@ -444,7 +444,15 @@ const HELP_ANSWERS = {
     doors: [{ name: 'on the grid', how: "the grid's column header - right-click it (a blank column too) or its fx mark",
               when: 'the formula window: write, preview, save, remove', open: { label: 'Open the grid', href: 'index.html' } }] },
 };
+// The header's last stall (owner 10-29 «ㄴ», A 63a69b97a): while STALL.on /health carries `stall` - STALL.next, the server's
+// shape: {line, at} after a freeze, null before one. The recorded /health is an older server's, without the key.
+const STALL = { on: false, next: null };
+const STALL_LINE = { line: 'STALL 36s+ L12 T40/40 G6 D9/11s C97 slot2:61 ING wafer_process_inspection_result_by_lot_and_slot', at: '2026-10-29T01:23:45+00:00' };
 const answerOf = (u) => {
+  if (STALL.on && u.pathname === '/health') {
+    const a = ANSWERS['/health'];
+    return { ...a, body: { ...bodyOf(a), stall: STALL.next } };
+  }
   if (FILE_SOURCES.on && u.pathname === '/admin/file-ingestion/tables') return fileSourcesAnswer();
   if (PICK_GLOB.on && u.pathname === '/admin/file-ingestion/glob') return pickGlobAnswer();
   if (GALLERY.on) { const g = galleryAnswer(u); if (g) return g; }
@@ -2793,6 +2801,21 @@ const DRIVE = {
     // The other tabs, each by its address (lead 10-09: the File tab showed two defects the first time it was opened).
     ...[['Tables', 'tables'], ['Chain', 'chain'], ['Auto Update', 'autoupdate'], ['Retroactive', 'retroactive']]
       .map(([name, hash]) => [name, (c) => evaluate(c, `location.hash = '#${hash}'; true`).then(() => sleep(1500))]),
+    // The header's last stall (owner 10-29 «ㄴ»): the Overview's /health read says a freeze - the line as written, its time;
+    // then a restart's null hides it.
+    ['Header, the last stall', async (c) => {
+      STALL.on = true;
+      STALL.next = STALL_LINE;
+      await evaluate(c, "location.hash = '#overview'; true");
+      await evaluate(c, "(() => { const b = document.getElementById('refresh-btn'); if (b) b.click(); return true; })()");
+      await until(c, "Boolean(document.querySelector('.stall-line:not([hidden])'))");
+    }],
+    ['Header, no stall since a restart', async (c) => {
+      STALL.next = null;
+      await evaluate(c, "(() => { const b = document.getElementById('refresh-btn'); if (b) b.click(); return true; })()");
+      await until(c, "Boolean(document.querySelector('.stall-line[hidden]'))");
+      STALL.on = false;
+    }],
     // The admin help (owner 10-29 «ㄴ»): the header's Help opens the side panel over the Tables tab - an ask held, Cancel, the
     // answer that came after, then not sure · the model not asked · a count refused · a tool outside the tab, and the form
     // the first answer opens on the Retroactive tab, filled; Help again closes it.
