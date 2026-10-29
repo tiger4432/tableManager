@@ -95,6 +95,13 @@ const NOT_ASKED = { op: null, params: {}, why: null, similar: [], tries: 0, help
 const COUNT_REFUSED = { ...TOOL, help_id: 'h-cr', count: null,
   count_refused: 'The count for this operation cannot be computed: QueryCanceled' };
 
+// a tool the question left fields of (B 7c326a296 · 7f40790ad, server/admin/retroactive.py unfilled · validate)
+const NEEDS = { ...TOOL, help_id: 'h-needs', params: {}, unfilled: ['rule'], count: null,
+  count_refused: "'chain_replay' requires parameter 'rule' (chain rule name (GET /admin/chain/rules), or the declared name of a decide - its enrichment_dedup half)" };
+const NEEDS_ONE_OF = { op: 'set_aside', label: 'Set queued chain events aside', why: 'Events that must not run now.', params: {},
+  unfilled: ['reason', 'one of: tables, rules, transactions'], similar: [], refused: null, tries: 1, help_id: 'h-oneof',
+  count: null, count_refused: "'set_aside' requires parameter 'reason' (why - written into each event set aside)" };
+
 /** A send whose answers the harness releases by hand, in order; every request kept. */
 function makeSend() {
   const sent = [];
@@ -148,6 +155,9 @@ console.log('\n── B. AN ANSWER AS DRAWN ────────────
   const c = X.answerView(COUNT_REFUSED, FORMS);
   ok('B9 a count refused: no number, the server\'s sentence, the form still offered', c.count === null && c.countRefused === COUNT_REFUSED.count_refused && c.form === true);
   ok('B10 not sure: why the last try was refused and the model\'s why, word for word', u.refused === UNSURE.refused && u.why === UNSURE.why, u);
+  const nd = X.answerView(NEEDS, FORMS);
+  ok('B11 the fields still blank, the server\'s words in its order; none when the answer names none',
+    JSON.stringify(nd.unfilled) === JSON.stringify(NEEDS.unfilled) && X.answerView(TOOL, FORMS).unfilled.length === 0, nd.unfilled);
 }
 
 console.log('\n── C. ASKING ───────────────────────────────────────────────────────');
@@ -242,6 +252,19 @@ console.log('\n── E. WHAT EACH ANSWER DRAWS ──────────�
   await asked(c, 'q', { ok: true, body: COUNT_REFUSED });
   ok('E6 a count refused: the sentence, no number, Open form still there', text(card(c), 'help-card__count-refused') === COUNT_REFUSED.count_refused
     && !find(card(c), 'help-card__count') && find(card(c), 'help-card__open'));
+  const nb = mount(X);
+  await asked(nb, 'q', { ok: true, body: NEEDS });
+  ok('E7 fields left blank: «needs:» and the server\'s field, the count\'s refusal', text(card(nb), 'help-card__needs') === 'needs: rule'
+    && text(card(nb), 'help-card__count-refused') === NEEDS.count_refused, text(card(nb), 'help-card__needs'));
+  find(card(nb), 'help-card__open').click();
+  ok('E8 ...Open form opens it with those blank', nb.opened.length === 1 && nb.opened[0].op === 'chain_replay'
+    && Object.keys(nb.opened[0].params).length === 0 && nb.opened[0].helpId === 'h-needs');
+  const no = mount(X);
+  await asked(no, 'q', { ok: true, body: NEEDS_ONE_OF });
+  ok('E9 an item holding commas keeps them, items apart by «·»', text(card(no), 'help-card__needs') === 'needs: reason · one of: tables, rules, transactions');
+  const nt = mount(X);
+  await asked(nt, 'q', { ok: true, body: TOOL });
+  ok('E10 every field filled: no needs line', !find(card(nt), 'help-card__needs'));
 }
 
 console.log('\n── F. EARLIER · TWO PANELS ─────────────────────────────────────────');
@@ -305,6 +328,10 @@ const DEFECTS = [
   ['M8 the model not asked is drawn as not sure', swap('if (!a.tries) return', 'if (false) return')],
   ['M11 not sure keeps its refusal to itself', swap("near, refused: a.refused ? String(a.refused) : '' };", "near, refused: '' };")],
   ['M13 the not sure card leaves the refusal out', swap("      if (v.refused) box.appendChild(this.el('div', 'help-card__refused', v.refused));\n", '')],
+  ['M14 the fields left blank are not read', swap('unfilled: (Array.isArray(a.unfilled) ? a.unfilled : [])', 'unfilled: ([])')],
+  ['M15 the needs line is not drawn', swap('if (v.unfilled.length) box', 'if (false) box')],
+  ['M16 items joined by commas', swap("v.unfilled.join(' · ')", "v.unfilled.join(', ')")],
+  ['M17 a needs line on every tool', swap('if (v.unfilled.length) box', 'if (true) box')],
   ['M12 an Earlier row shows the whole refusal', swap("rec.view.refused.split('\\n')[0] : '';", "rec.view.refused : '';")],
   ['M10 the waiting card is drawn again each second', swap('if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);', 'this.render();')],
   ['M9 a page link drawn for a door that names none',
@@ -347,6 +374,12 @@ async function verdict(M) {
   if (text(card(u), 'help-card__refused') !== 'first line\nsecond line') return true;
   await asked(u, 'r', { ok: true, body: TOOL });
   if (text(find(u.panel.root, 'help-row'), 'help-row__refused') !== 'first line') return true;
+
+  const nb = mount(M);
+  await asked(nb, 'q', { ok: true, body: NEEDS_ONE_OF });
+  if (text(card(nb), 'help-card__needs') !== 'needs: reason · one of: tables, rules, transactions') return true;
+  await asked(nb, 'r', { ok: true, body: TOOL });
+  if (find(card(nb), 'help-card__needs')) return true;
   return false;
 }
 

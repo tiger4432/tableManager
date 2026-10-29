@@ -45,6 +45,8 @@ export function answerView(answer, forms = {}) {
   return {
     ...base, kind: 'tool', op: a.op, title: a.label || forms[a.op] || a.op, form: a.op in forms, params,
     fields: Object.keys(params).map((name) => ({ name, value: shown(params[name]) })),
+    // the required fields the question left blank, the server's words - the form opens with them blank (B 7c326a296)
+    unfilled: (Array.isArray(a.unfilled) ? a.unfilled : []).map(shown).filter(Boolean),
     // the form's own reading of a count (buildCountView): a number only with the server's word for it
     count: count && count.affectedLabel && count.affected ? { value: count.affected.text, label: count.affectedLabel.text } : null,
     rawCount: a.count || null,
@@ -268,6 +270,8 @@ export class HelpPanel {
       });
       box.appendChild(kv);
     }
+    // « · » between items: an item can hold commas itself («one of: tables, rules, transactions»)
+    if (v.unfilled.length) box.appendChild(this.el('div', 'help-card__needs', `needs: ${v.unfilled.join(' · ')}`));
     if (v.count) {
       const line = this.el('div', 'help-card__count');
       line.appendChild(this.el('span', 'help-card__count-value', v.count.value));

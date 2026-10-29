@@ -439,6 +439,9 @@ const HELP_ANSWERS = {
     count_refused: null, label: null, refused: 'the language model call failed: Request timed out.' },
   countRefused: { ...HELP_TOOL, help_id: 'screens-count', count: null,
     count_refused: 'The count for this operation cannot be computed: QueryCanceled: canceling statement due to statement timeout' },
+  // B 7c326a296 · 7f40790ad: the rule left blank - the form opens with it blank, the count refused by validate's sentence
+  needs: { ...HELP_TOOL, help_id: 'screens-needs', params: {}, unfilled: ['rule'], count: null,
+    count_refused: "'chain_replay' requires parameter 'rule' (chain rule name (GET /admin/chain/rules), or the declared name of a decide - its enrichment_dedup half)" },
   door: { op: 'formula_column', label: 'Compute a column from a formula', why: 'A same-row formula on the column, written on the grid.',
     params: {}, similar: [], refused: null, tries: 1, seconds: [3.6], help_id: 'screens-door', count: null, count_refused: null,
     doors: [{ name: 'on the grid', how: "the grid's column header - right-click it (a blank column too) or its fx mark",
@@ -2878,6 +2881,8 @@ const DRIVE = {
           "Boolean(document.querySelector('.help-card__refused'))")],
         ['Help, a count refused', (c) => answered(c, '이 규칙 예전 데이터에 다시 돌려줘', HELP_ANSWERS.countRefused,
           "Boolean(document.querySelector('.help-card__count-refused'))")],
+        ['Help, fields left blank', (c) => answered(c, '체인 다시 돌려줘', HELP_ANSWERS.needs,
+          "(document.querySelector('.help-panel__card .help-card__needs') || {}).textContent === 'needs: rule'")],
         ['Help, a tool outside the tab', (c) => answered(c, '수율 칸을 양품 / 투입 으로 채워줘', HELP_ANSWERS.door,
           "Boolean(document.querySelector('.help-card__page'))")],
         ['Help, the form opened from an answer', async (c) => {
