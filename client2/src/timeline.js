@@ -466,6 +466,13 @@ export function auditTargetTable(group) {
   return `${names[0]}${more}${sampled ? ' …' : ''}`;
 }
 
+/** A group that carries a part of its logs (the list route sends one representative, A 1e4bbe748): unfolding it reads
+ *  the transaction for all of them. One that carries them all draws what it holds; no total_count reads as complete. */
+export function needsTransactionRead(group) {
+  const logs = group && Array.isArray(group.logs) ? group.logs : [];
+  return logs.length < Number(group && group.total_count);
+}
+
 export function createGlobalTimelineItemDom(group) {
   const txId = group.transaction_id;
   const isSummary = group.total_count > 1;
@@ -613,7 +620,7 @@ export function createGlobalTimelineItemDom(group) {
         indicator.style.transform = 'rotate(90deg)';
         indicator.textContent = '▼';
 
-        if (group.logs.length <= 1 && group.total_count > 1) {
+        if (needsTransactionRead(group)) {
           if (state.fetchingTransactions.has(txId)) return;
           state.fetchingTransactions.add(txId);
           detailsContainer.innerHTML = '<div class="loading-subdetails">Loading details...</div>';

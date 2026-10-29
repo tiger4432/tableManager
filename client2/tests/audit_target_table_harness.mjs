@@ -37,7 +37,7 @@ const element = () => {
 globalThis.document = globalThis.document || { createElement: element, getElementById: () => null,
   createDocumentFragment: element, addEventListener() {} };
 globalThis.window = globalThis.window || { addEventListener() {} };
-const { auditTargetTable } = await import('../src/timeline.js');
+const { auditTargetTable, needsTransactionRead } = await import('../src/timeline.js');
 
 const SRC_PATH = fileURLToPath(new URL('../src/timeline.js', import.meta.url));
 
@@ -138,6 +138,16 @@ const rowView = (m) => [cellsOf(m, ROW([{ table_name: 'dt_log' }], 1)), cellsOf(
     'D3 the head names it: Table, then Row · column', null);
 }
 
+console.log('\n── E. unfolding a group that carries a part (A 1e4bbe748: one representative a group) ──');
+{
+  const reads = (n, total) => needsTransactionRead({ logs: Array.from({ length: n }, () => log('dt_log')), total_count: total });
+  ok(reads(2, 500) === true, 'E1 a group carrying some of its 500 logs reads the transaction when unfolded', reads(2, 500));
+  ok(reads(1, 2) === true, 'E2 one representative of two reads it too', reads(1, 2));
+  ok(reads(3, 3) === false, 'E3 a group carrying all its logs draws what it holds', reads(3, 3));
+  ok(reads(1, 1) === false, 'E4 a single change reads nothing more', reads(1, 1));
+  ok(needsTransactionRead({ logs: [log('dt_log')] }) === false, 'E5 no total_count is read as complete, as the Table cell reads it');
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}. `
@@ -162,6 +172,8 @@ const DEFECTS = [
     swap('names.length > 1 ? ` +${names.length - 1}` : \'\'', "''")],
   ['a log with no table name still takes a slot',
     swap('.filter(Boolean))]', ')]')],
+  ['a group carrying more than one but not all of its logs unfolds to those only',
+    swap('return logs.length < Number(group && group.total_count);', 'return logs.length <= 1 && Number(group && group.total_count) > 1;')],
 ];
 
 const CONTROLS = [
@@ -175,6 +187,7 @@ const CONTROLS = [
 /** 채점기. 기준선과 변이가 «같은 질문»에 답해야 비교가 뜻을 가집니다. */
 function verdict(m) {
   const g = m.auditTargetTable;
+  if (m.needsTransactionRead({ logs: [log('a'), log('b')], total_count: 500 }) !== true) return true;
   const [one, many] = rowView(m);
   return one.table !== 'dt_log' || many.table !== 'dt_log +1 …' || one.target.includes('dt_log') || many.target.includes('dt_log')
     || g(group(['dt_log', 'dt_inventory', 'lot_event'], 3)) !== 'dt_log +2'
