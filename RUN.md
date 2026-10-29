@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **도움말 선언 절 고르기를 임베딩으로 — embedding_model 한 줄 · 빈 칸이면 셈은 «기다림»** — git pull · 서버 재기동
+>
+> ```
+> 적을 것  config/llm_config.json 에 "embedding_model": "bge-m3" 한 줄 -> 서버 재기동
+> 운영 재기  python server/scripts/help_bench.py --part declarations --retrieval embedding
+>          python server/scripts/help_bench.py --part declarations --retrieval bm25
+>          두 요약 줄 «right section cited N of 20 … · via …» 을 옮겨 친다. 견주는 수는 cited N
+> via 뜻   embedding ×20                       임베딩으로 골랐다
+>          bm25 (embedding failed: <문장>) ×n  게이트웨이가 임베딩을 거절 -> 그 문장이 사유. 모델 이름 · /embeddings 경로 ·
+>                                             한 요청 입력 수 상한(첫 물음이 절 116 개를 한 요청으로 보낸다)
+>          bm25 ×n (embedding 을 시켰는데)       embedding_model 이 비었다 -> 한 줄을 적고 재기동
+> 첫 물음  절 116 개를 한 번 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 남김 -> 그 물음만 느리다
+> 볼 것    어드민 도움말 «이거 멈춰» -> 셈 줄이 «the count waits for: reason, …» (빈 칸을 폼에서 채우면 셈이 된다)
+> 끄는 법  embedding_model 줄을 지우고 재기동 -> BM25 로 돌아간다. 캐시 파일은 지워도 된다(다시 만든다)
+> ```
+>
+> ---
+>
 > ## [10-29] **도움말이 선언법을 답한다 — 가이드 절 셋 · 선언 예시 · 저장 없이 판정** — git pull · 서버 재기동
 >
 > ```

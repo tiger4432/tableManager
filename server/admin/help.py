@@ -159,7 +159,10 @@ def ask(db, question, asked_by=None, ask_json=None):
 
         got["declaration"] = help_guides.answer(question, search, ask_json or llm.ask_json)
         got["params"] = {cell: got["declaration"].get(cell) for cell in ("kind", "name") if got["declaration"].get(cell)}
-    if got["op"] in retroactive.OPERATIONS:
+    if got["op"] in retroactive.OPERATIONS and got["unfilled"]:
+        # a blank required field is expected here - its count waits for the form, not a failure (lead 10-29)
+        got["count_refused"] = "the count waits for: " + ", ".join(got["unfilled"])
+    elif got["op"] in retroactive.OPERATIONS:
         try:
             got["count"] = retroactive.count(db, got["op"], got["params"])
         except Exception as e:                                       # noqa: BLE001 - said on the answer

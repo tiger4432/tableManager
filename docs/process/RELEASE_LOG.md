@@ -456,6 +456,7 @@
 
 ### 어드민 화면
 
+- 2026-10-29 [도움말의 선언 절 고르기가 임베딩으로 — llm_config 의 embedding_model 한 줄, 없거나 실패면 BM25 와 그 사유 · 빈 칸이 있으면 셈은 «기다림»](#2026-10-29--도움말의-선언-절-고르기가-임베딩으로--llm_config-의-embedding_model-한-줄-없거나-실패면-bm25-와-그-사유--빈-칸이-있으면-셈은-기다림) — 적는 곳 config/llm_config.json 의 embedding_model · 재기 help_bench --retrieval
 - 2026-10-29 [새 기능 — 어드민 Help 의 선언법 카드: 예시 선언 · 복사 · 근거 절 · 저장 판정(저장은 안 함)](#2026-10-29--새-기능--어드민-help-의-선언법-카드-예시-선언--복사--근거-절--저장-판정저장은-안-함) — 보는 곳 어드민 머리 Help
 - 2026-10-29 [바뀐 화면 — 어드민 Help 카드에 «needs:» — 물음이 비워 둔 필수 칸, Open form 은 그 칸을 비운 채](#2026-10-29--바뀐-화면--어드민-help-카드에-needs--물음이-비워-둔-필수-칸-open-form-은-그-칸을-비운-채) — 보는 곳 어드민 머리 Help
 - 2026-10-29 [도움말이 선언법을 답한다 — 가이드 다섯에서 가까운 절 셋, 선언 예시 하나, 저장 없이 저장 판정](#2026-10-29--도움말이-선언법을-답한다--가이드-다섯에서-가까운-절-셋-선언-예시-하나-저장-없이-저장-판정) — 보는 곳 어드민 도움말의 declaration · 재기 help_bench --part declarations
@@ -667,6 +668,18 @@
 
 
 
+
+## 2026-10-29 · 도움말의 선언 절 고르기가 임베딩으로 — llm_config 의 embedding_model 한 줄, 없거나 실패면 BM25 와 그 사유 · 빈 칸이 있으면 셈은 «기다림»
+
+- 무엇: `config/llm_config.json` 에 `"embedding_model"` 을 적으면 도움말의 선언 답이 가이드 절을 그 모델의 임베딩(코사인)으로 고른다. 점수가 같으면 BM25 가 가른다. 비워 두면 지금처럼 BM25 만.
+- 호출 수: 선언 물음 하나에 세 번(도구 고르기 · 검색어 임베딩 · 선언 쓰기). embedding_model 이 없으면 두 번 그대로.
+- 절 벡터: `DATA_ROOT/cache/help_guides_<모델>.json` 에 절 글자별로 남는다. 첫 물음이 가이드 절 116 개(글자 약 12 만)를 한 요청으로 임베딩하고, 그 뒤로는 바뀐 절만 다시 묻는다. 재기동해도 다시 안 묻는다. 모델을 바꾸면 그 모델의 파일을 새로 만든다.
+- 실패: 임베딩 호출이 실패하면 그 물음은 BM25 로 고르고 답의 `retrieval` 이 «bm25 (embedding failed: <거절 문장>)» 로 말한다. 성공이면 «embedding», 모델이 없으면 «bm25».
+- 셈 «기다림»: 도움말이 고른 도구에 빈 필수 칸(unfilled)이 있으면 셈을 부르지 않고 count_refused 가 «the count waits for: <unfilled 그대로>» 한 줄이다(같은 낱말 · 같은 순서). 그 밖의 셈 실패는 전처럼 «The count for this operation cannot be computed: …».
+- 재기: `help_bench --part declarations --retrieval embedding|bm25` — 요약 줄 끝 «via <고른 방법> ×n».
+- 박스: 가짜 임베딩으로 길만 쟀다(뜻으로 고름 · 캐시 · 같은 점수는 BM25 · 실패는 BM25 와 사유 · 호출 셋과 둘). 실제 bge-m3 의 정확도는 운영 벤치 몫이다.
+- 필요한 조건: git pull · 서버 재기동. 임베딩을 쓰려면 llm_config 에 한 줄.
+- 자세히: `server/utils/llm.py` 의 `embed` · `_call`(ask_json 과 같은 재시도 한 곳), `server/admin/help_guides.py` 의 `nearest` · `_vectors`, `server/admin/help.py` 의 `ask`, `server/scripts/help_bench.py --retrieval`.
 
 ## 2026-10-29 · 새 기능 — 어드민 Help 의 선언법 카드: 예시 선언 · 복사 · 근거 절 · 저장 판정(저장은 안 함)
 

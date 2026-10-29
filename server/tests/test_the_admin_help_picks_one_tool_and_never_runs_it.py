@@ -85,15 +85,24 @@ def test_a_required_field_the_question_leaves_out_is_left_for_the_form(client, m
     got = _ask(client, "이거 멈춰").json()
     assert (got["op"], got["params"], got["unfilled"], got["tries"], got["refused"]) == (
         "set_aside", {"tables": ["t1"]}, ["reason"], 1, None)
-    assert got["count"] is None and "'set_aside' requires parameter 'reason'" in got["count_refused"]
+    assert (got["count"], got["count_refused"]) == (None, "the count waits for: reason")
     assert len(asked) == 1
+
+
+def test_a_count_with_blank_fields_is_not_asked_and_says_what_it_waits_for(client, monkeypatch):
+    """lead 10-29 - a blank field is expected here; the count is not asked and no code place reaches the operator"""
+    monkeypatch.setattr(retroactive, "count", lambda *a, **k: pytest.fail("the count was asked with blank fields"))
+    _model(monkeypatch, {"op": "set_aside", "params": {}, "why": "w"})
+    got = _ask(client, "이거 멈춰").json()
+    assert (got["count"], got["count_refused"]) == (
+        None, "the count waits for: reason, one of: tables, rules, transactions")
 
 
 def test_a_group_of_which_one_is_needed_is_a_blank_field_too(client, monkeypatch):
     _model(monkeypatch, {"op": "rerun_set_aside", "params": {}, "why": "w"})
     got = _ask(client, "치워 둔 사건을 이제 돌려").json()
     assert (got["op"], got["params"], got["unfilled"]) == ("rerun_set_aside", {}, ["one of: tables, rules, transactions"])
-    assert "'rerun_set_aside' needs at least one of tables, rules, transactions - running every set-aside event "            "again is not something a form should do in one click" in got["count_refused"]
+    assert got["count_refused"] == "the count waits for: one of: tables, rules, transactions"
     assert retroactive.unfilled("set_aside", {}) == ["reason", "one of: tables, rules, transactions"]
     assert retroactive.unfilled("set_aside", {"rules": ["r"], "reason": "x"}) == []
 

@@ -12,6 +12,8 @@ proxy are cells of one declaration file read on every call - a change reaches th
     headers     extra request headers (default none)
     proxy       a proxy URL; absent or null = straight to base_url, the system proxy is not read
     batch_chars · known_chars · known_per_seed   `text_links.ask_links`' (NUMBER_CELLS)
+    embedding_model   the gateway's embedding model (`embed`) - absent or blank: none, the admin help picks guide
+                      sections by their words (owner 10-29)
 
 The pace is the gateway's: no limit is kept here (소유자 10-13 「어차피 서버가 거절함」). No answer (connection,
 time limit, 5xx, 408) and a 429 are asked again - after CALL_RETRY_WAITS, a 429 after its Retry-After - while the
@@ -140,8 +142,10 @@ def _read_settings():
     proxy = loaded.get("proxy")
     if proxy is not None and not isinstance(proxy, str):
         raise LlmRefused("proxy in config/%s is not a URL or null" % CONFIG_FILE)
+    embedding = loaded.get("embedding_model")
     cells.update(headers={str(k): str(v) for k, v in headers.items()},
-                 proxy=None if is_blank_value(proxy) else proxy.strip())
+                 proxy=None if is_blank_value(proxy) else proxy.strip(),
+                 embedding_model=None if is_blank_value(embedding) else str(embedding).strip())
     return cells
 
 
@@ -409,17 +413,44 @@ def ask_batch(texts, prompt_of, read, key, cap, log=None):
 
 def ask_json(prompt, *, system=None, usage=None):
     """One call -> the JSON object the model answered (the first one, in text around it). Refused by name when the
-    file refuses, the call fails (`_refused` says which class) or the answer holds no JSON object (`LlmNotAnObject`). `from None` keeps the
-    client's own exception - which may quote the key - out of every traceback. No answer (`_no_answer`) and a 429
-    are tried again after CALL_RETRY_WAITS (a 429 after its Retry-After) while the next try starts within
-    CALL_RETRY_WINDOW_S of the first failure - a gateway back within about 55 s passes; a longer stop, or a
-    Retry-After over the window, is `LlmCallFailed` (총괄 10-13 ④). `usage`: a dict filled with the token counts
-    the gateway said (`prompt_tokens` · `completion_tokens` · `total_tokens`), left empty when it said none."""
+    file refuses, the call fails (`_refused` says which class) or the answer holds no JSON object (`LlmNotAnObject`).
+    Tried again as `_call` says. `usage`: a dict filled with the token counts the gateway said (`prompt_tokens` ·
+    `completion_tokens` · `total_tokens`), left empty when it said none."""
     cells = settings()
-    key = cells["api_key"]
     messages = ([{"role": "system", "content": system}] if system else []) + [
         {"role": "user", "content": prompt}]
-    payload = {"model": cells["model"], "messages": messages}
+
+    def read(parsed):
+        if usage is not None:
+            said_usage = getattr(parsed, "usage", None)
+            usage.update({name: getattr(said_usage, name) for name in USAGE_CELLS
+                          if isinstance(getattr(said_usage, name, None), int)})
+        return parsed.choices[0].message.content
+
+    content = _call(cells, "chat/completions", {"model": cells["model"], "messages": messages},
+                    lambda client: client.chat.completions.with_raw_response.create, read)
+    return _object(content, cells["api_key"])
+
+
+def embed(texts):
+    """[vector] of `texts`, in order, from the file's `embedding_model` - one call, tried again as `_call` says.
+    Refused by name when no embedding model is set (owner 10-29: the gateway's bge-m3)."""
+    cells = settings()
+    if not cells.get("embedding_model"):
+        raise LlmRefused("no embedding_model in config/%s" % CONFIG_FILE)
+    return _call(cells, "embeddings", {"model": cells["embedding_model"], "input": list(texts)},
+                 lambda client: client.embeddings.with_raw_response.create,
+                 lambda parsed: [list(item.embedding) for item in parsed.data])
+
+
+def _call(cells, endpoint, payload, create, read):
+    """`read(parsed answer)` of one request to `endpoint` - the one try loop of the product's model calls (`ask_json`,
+    `embed`). `create(client)` is the SDK's raw-response create. `from None` keeps the client's own exception - which
+    may quote the key - out of every traceback. No answer (`_no_answer`) and a 429 are tried again after
+    CALL_RETRY_WAITS (a 429 after its Retry-After) while the next try starts within CALL_RETRY_WINDOW_S of the first
+    failure - a gateway back within about 55 s passes; a longer stop, or a Retry-After over the window, is
+    `LlmCallFailed` (총괄 10-13 ④). Every try writes its sent and received lines to llm_requests.log."""
+    key = cells["api_key"]
     from internal_event_client import _redact_proxy
     proxy = _redact_proxy(cells["proxy"]) if cells["proxy"] else None
     failed, failed_at = 0, None
@@ -431,21 +462,16 @@ def ask_json(prompt, *, system=None, usage=None):
             # built in here: a client that cannot be built fails like a call - a received line, one refusal (총괄 93570a1ea)
             client = _client(cells)
             # the URL the client posts to: its base_url always ends in "/" (the SDK adds it)
-            _log({"sent": _now(), "id": back["id"], "url": str(client.base_url) + "chat/completions",
-                  "model": cells["model"], "headers": dict(client.default_headers), "payload": payload,
+            _log({"sent": _now(), "id": back["id"], "url": str(client.base_url) + endpoint,
+                  "model": payload["model"], "headers": dict(client.default_headers), "payload": payload,
                   "proxy": proxy}, key)
-            raw = client.chat.completions.with_raw_response.create(**payload)
+            raw = create(client)(**payload)
             back.update(status=raw.status_code, answer=_body(raw.text))
-            parsed = raw.parse()
-            content = parsed.choices[0].message.content
-            if usage is not None:
-                said_usage = getattr(parsed, "usage", None)
-                usage.update({name: getattr(said_usage, name) for name in USAGE_CELLS
-                              if isinstance(getattr(said_usage, name, None), int)})
+            said = read(raw.parse())
         except Exception as exc:                                       # noqa: BLE001
             if client is None:
                 # no sent line - where it was going, from the file (총괄 93570a1ea)
-                back.update(url=cells["base_url"].rstrip("/") + "/chat/completions", proxy=proxy)
+                back.update(url=cells["base_url"].rstrip("/") + "/" + endpoint, proxy=proxy)
             status = back["status"] or getattr(exc, "status_code", None)
             back.update(status=status, error=_why(exc, cells["proxy"]))
             error = _masked(back["error"], key)
@@ -456,7 +482,7 @@ def ask_json(prompt, *, system=None, usage=None):
                 wait = asked if asked is not None else CALL_RETRY_WAITS[failed]
                 if _steady() - failed_at + wait <= CALL_RETRY_WINDOW_S:
                     again, failed = wait, failed + 1
-                    said = "[LLM] call failed (%s) - retrying in %d s (%d of %d)" % (
+                    told_line = "[LLM] call failed (%s) - retrying in %d s (%d of %d)" % (
                         error[:300], math.ceil(again), failed, len(CALL_RETRY_WAITS))
             if again is None:
                 raise _refused(status, client is not None, error,
@@ -464,6 +490,6 @@ def ask_json(prompt, *, system=None, usage=None):
         finally:
             _log({"received": _now(), **back, "ms": round((time.monotonic() - started) * 1000)}, key)
         if again is None:
-            return _object(content, key)
-        logger.warning(said)
+            return said
+        logger.warning(told_line)
         _wait(again)

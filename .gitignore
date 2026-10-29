@@ -136,3 +136,6 @@ client2/.tmp/
 
 # owner 2026-10-01: work in a personal copy of a workbench notebook; the tracked two are the template
 server/notebooks/my_*
+
+# the admin help's guide-section vectors per embedding model (owner 10-29 bge-m3) - DATA_ROOT/cache, rebuilt from the guides
+**/cache/help_guides_*.json

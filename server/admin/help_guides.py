@@ -6,7 +6,11 @@ declaration put through the save's own judgement without saving.
     guides      the five below - cut at headings, at bold numbered items (**①…), a section over CAP split at table rows
                 or blank lines with its table's header row; the Status line out, and of the rest only the SENTENCES
                 with a retired mark (⚰ 🪦) - a current rule on the same line stays
-    pick        character 2- and 3-gram BM25 over section name + text, no package
+    pick        the embedding model llm_config.json names (owner 10-29: bge-m3) - cosine of the search and each
+                section, BM25 only breaking a tie (the box has no model to weigh a mix with); none named, or the
+                embedding failed: character 2- and 3-gram BM25 over section name + text, no package - and the answer
+                says which («retrieval»). The sections' vectors are kept in DATA_ROOT/cache per model, asked once in
+                one batch for the sections not kept yet
     answer      {"kind", "name", "declaration", "why", "sections"} - a section the pieces do not name is dropped
     check       chain_rule · table: the save itself, stopped before its write (`check_only`); ledger: the draft
                 preview's judgement (`compile_draft_preview`) on the node the answer names; else «not checked»
@@ -14,10 +18,12 @@ Measured on the box (lead 10-29, 20 operator questions, guide-worded searches): 
 of 20, the declaration prompt 2.1k-3.4k tokens estimated.
 """
 import collections
+import hashlib
 import json
 import math
 import os
 import re
+import tempfile
 
 import paths
 
@@ -125,11 +131,10 @@ class _Index:
         self.norm = [k1 * (1 - b + b * n / average) for n in self.length]
         self.k1 = k1
 
-    def nearest(self, search, count):
+    def scores(self, search):
         grams = set(_grams(search))
-        scored = [(sum(self.idf[g] * tf[g] * (self.k1 + 1) / (tf[g] + self.norm[i]) for g in grams if g in tf), i)
-                  for i, tf in enumerate(self.tf)]
-        return [self.pieces[i] for _score, i in sorted(scored, reverse=True)[:count]]
+        return [sum(self.idf[g] * tf[g] * (self.k1 + 1) / (tf[g] + self.norm[i]) for g in grams if g in tf)
+                for i, tf in enumerate(self.tf)]
 
 
 _built = {"stamp": None, "index": None}
@@ -163,17 +168,84 @@ def index():
     return _built["index"]
 
 
-def nearest(search):
-    """The sections the declaration prompt carries for `search`: the PICKED nearest, stopped before one would pass
-    SECTION_TOKENS (the first always goes)."""
+def _cache_path(model):
+    return os.path.join(paths.DATA_ROOT, "cache", "help_guides_%s.json" % re.sub(r"[^\w.-]", "_", model))
+
+
+def _piece_key(piece):
+    return hashlib.sha1((piece["name"] + "\n" + piece["text"]).encode("utf-8")).hexdigest()
+
+
+def _vectors(model, pieces):
+    """[vector] of `pieces` from `model` - kept in its cache file by each section's text, so a restart or an unchanged
+    guide asks nothing; the sections not kept yet asked in one batch, the file written whole (sections gone dropped)."""
+    from utils import llm
+
+    path = _cache_path(model)
+    try:
+        with open(path, encoding="utf-8") as handle:
+            kept = json.load(handle)
+    except (OSError, ValueError):
+        kept = {}
+    keys = [_piece_key(p) for p in pieces]
+    missing = [i for i, key in enumerate(keys) if key not in kept]
+    if missing:
+        for i, vector in zip(missing, llm.embed([pieces[i]["name"] + "\n" + pieces[i]["text"] for i in missing])):
+            kept[keys[i]] = vector
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            json.dump({key: kept[key] for key in keys}, out)
+        os.replace(temporary, path)
+    return [kept[key] for key in keys]
+
+
+def _cosine(a, b):
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return sum(x * y for x, y in zip(a, b)) / norm if norm else 0.0
+
+
+def _model():
+    """The embedding model llm_config.json names, or None (no file counts as none)."""
+    from utils import llm
+
+    try:
+        return llm.settings().get("embedding_model")
+    except llm.LlmRefused:
+        return None
+
+
+def nearest(search, retrieval=None):
+    """(the sections the declaration prompt carries for `search`, how they were picked). The PICKED nearest - by
+    embedding when a model is named (`retrieval` "bm25" or "embedding" forces one, the bench's), else BM25 - stopped
+    before one would pass SECTION_TOKENS (the first always goes)."""
+    from error_said import told
+    from utils import llm
+
+    found = index()
+    words = found.scores(search)
+    model = _model() if retrieval != "bm25" else None
+    how = "bm25"
+    order = sorted(range(len(words)), key=lambda i: words[i], reverse=True)
+    if model or retrieval == "embedding":
+        try:
+            if not model:
+                raise llm.LlmRefused("no embedding_model in config/%s" % llm.CONFIG_FILE)
+            vectors = _vectors(model, found.pieces)
+            [asked] = llm.embed([search])
+            near = [_cosine(asked, vector) for vector in vectors]
+            order = sorted(range(len(words)), key=lambda i: (round(near[i], 6), words[i]), reverse=True)
+            how = "embedding"
+        except Exception as e:                                       # noqa: BLE001 - said on the answer
+            how = "bm25 (embedding failed: %s: %s)" % (type(e).__name__, told(e))
     out, spent = [], 0
-    for piece in index().nearest(search, PICKED):
+    for piece in (found.pieces[i] for i in order[:PICKED]):
         cost = estimated_tokens(piece["name"] + "\n" + piece["text"])
         if out and spent + cost > SECTION_TOKENS:
             break
         out.append(piece)
         spent += cost
-    return out
+    return out, how
 
 
 def prompt_of(question, pieces):
@@ -228,22 +300,25 @@ def _ledger_check(target, declaration):
     return {"ok": False, "said": " | ".join(str(error.get("message")) for error in preview.errors)}
 
 
-def answer(question, search, ask_json):
+def answer(question, search, ask_json, retrieval=None):
     """One declaration for `question` -> {"kind", "name", "declaration", "why", "sections", "dropped_sections",
-    "check", "refused"}. `search` is the model's guide-worded search from the help's first ask."""
+    "check", "refused", "retrieval"}. `search` is the model's guide-worded search from the help's first ask."""
     from utils import llm
 
     try:
-        pieces = nearest(search or question)
+        pieces, how = nearest(search or question, retrieval)
     except LookupError as missing:
-        return {"refused": str(missing), "sections": [], "dropped_sections": 0, "check": {"not_checked": str(missing)}}
+        return {"refused": str(missing), "sections": [], "dropped_sections": 0, "check": {"not_checked": str(missing)},
+                "retrieval": None}
     try:
         said = ask_json(prompt_of(question, pieces), system=SYSTEM)
     except llm.LlmRefused as e:                                    # not JSON, or the call failed - said
-        return {"refused": str(e), "sections": [], "dropped_sections": 0, "check": {"not_checked": str(e)}}
+        return {"refused": str(e), "sections": [], "dropped_sections": 0, "check": {"not_checked": str(e)},
+                "retrieval": how}
     names = {p["name"] for p in pieces}
     cited = list(dict.fromkeys(s for s in said.get("sections") or () if isinstance(s, str)))
     kept = [s for s in cited if s in names]
     return {"kind": said.get("kind"), "name": said.get("name"), "declaration": said.get("declaration"),
             "why": said.get("why"), "sections": kept, "dropped_sections": len(cited) - len(kept),
-            "check": check(said.get("kind"), said.get("name"), said.get("declaration")), "refused": None}
+            "check": check(said.get("kind"), said.get("name"), said.get("declaration")), "refused": None,
+            "retrieval": how}

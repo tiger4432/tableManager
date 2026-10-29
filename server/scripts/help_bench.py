@@ -4,6 +4,7 @@ model the server is set to (config/llm_config.json), as the help asks it (`admin
 own tool, which do not, and the gateway's seconds per ask. Reads and writes nothing in the database.
 
     python server/scripts/help_bench.py [--tool <name>] [--limit N] [--part tools|declarations|both]
+                                        [--retrieval bm25|embedding]
 
 A question whose ask fails (the gateway, an answer that is not JSON twice) is a miss with its sentence - the bench
 goes on. The declaration part (owner 10-29) asks help_declaration_bench.json's questions as the help does - the tool
@@ -53,9 +54,12 @@ def bench(ask_json=None, tools=None, limit=None):
 DECLARATIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "help_declaration_bench.json")
 
 
-def bench_declarations(ask_json=None, limit=None):
+def bench_declarations(ask_json=None, limit=None, retrieval=None):
     """-> {"asked", "cited", "ok", "refused", "not_checked", "absent": [(question, section)], "misses": [(question,
-    what)]} over help_declaration_bench.json's first `limit` questions."""
+    what)], "via": Counter of how the sections were picked} over help_declaration_bench.json's first `limit`
+    questions - `retrieval` "bm25" or "embedding" forces one (none: as the help picks)."""
+    import collections
+
     from admin import help as admin_help
     from admin import help_guides
     from utils import llm
@@ -63,7 +67,8 @@ def bench_declarations(ask_json=None, limit=None):
     with open(DECLARATIONS, encoding="utf-8") as handle:
         asks = json.load(handle)["questions"][:limit]
     pieces = help_guides.index().pieces
-    said = {"asked": 0, "cited": 0, "ok": 0, "refused": 0, "not_checked": 0, "absent": [], "misses": []}
+    said = {"asked": 0, "cited": 0, "ok": 0, "refused": 0, "not_checked": 0, "absent": [], "misses": [],
+            "via": collections.Counter()}
     for ask in asks:
         right = {p["name"] for p in pieces if ask["section"] in p["name"] or ask["section"] in p["text"]}
         if not right:
@@ -75,11 +80,12 @@ def bench_declarations(ask_json=None, limit=None):
             if got["op"] != admin_help.DECLARATION:
                 said["misses"].append((ask["question"], "picked %s" % (got["op"] or got["refused"])))
                 continue
-            answer = help_guides.answer(ask["question"], got.get("search"), ask_json or llm.ask_json)
+            answer = help_guides.answer(ask["question"], got.get("search"), ask_json or llm.ask_json, retrieval)
         except Exception as e:                                          # noqa: BLE001 - the question's miss
             said["misses"].append((ask["question"], _failed(e)))
             continue
         check = answer["check"]
+        said["via"][answer.get("retrieval")] += 1
         said["ok"] += check.get("ok") is True
         said["refused"] += check.get("ok") is False
         said["not_checked"] += "not_checked" in check
@@ -95,6 +101,8 @@ def main(argv=None):
     parser.add_argument("--tool", action="append", help="only this tool's questions (repeatable)")
     parser.add_argument("--limit", type=int, help="ask only the first N questions")
     parser.add_argument("--part", choices=("tools", "declarations", "both"), default="both")
+    parser.add_argument("--retrieval", choices=("bm25", "embedding"),
+                        help="how the declaration part picks guide sections (none: as the help does)")
     args = parser.parse_args(argv)
     whole = True
     if args.part in ("tools", "both"):
@@ -108,13 +116,14 @@ def main(argv=None):
                   % (statistics.median(seconds), max(seconds), len(seconds)))
         whole = said["hit"] == said["asked"]
     if args.part in ("declarations", "both"):
-        said = bench_declarations(limit=args.limit)
+        said = bench_declarations(limit=args.limit, retrieval=args.retrieval)
         for question, section in said["absent"]:
             print("NO RIGHT SECTION IN THE GUIDES  %s  ->  %s" % (question, section))
         for question, what in said["misses"]:
             print("MISS  %s  ->  %s" % (question, what))
-        print("declarations: right section cited %d of %d · checked ok %d · refused %d · not checked %d"
-              % (said["cited"], said["asked"], said["ok"], said["refused"], said["not_checked"]))
+        print("declarations: right section cited %d of %d · checked ok %d · refused %d · not checked %d · via %s"
+              % (said["cited"], said["asked"], said["ok"], said["refused"], said["not_checked"],
+                 " · ".join("%s ×%d" % (how, n) for how, n in said["via"].most_common()) or "-"))
         whole = whole and not said["absent"] and said["cited"] == said["asked"]
     return 0 if whole else 1
 
