@@ -31,7 +31,7 @@
 >
 > ```
 > 볼 것    와처 로그 «External source config: external_sources[N]: top-level cell this product does not read — <칸>.
->          <칸> is read under options. The source runs.»  · 파일 화면 소스 줄(클라 착지 뒤)
+>          <칸> is read under options. The source runs.»  · 파일 화면 Read progress 그 소스 줄 밑 경고색 한 줄(같은 문장)
 >          python server/scripts/check_external_sources.py -> 받아들인 소스 밑 «! <같은 문장>»
 > 뜻       그 칸은 지금도 안 읽힌다 — 거절이 아니다. «is read under options» 가 붙으면 그 칸을 options 안으로 옮긴다
 >          (stability_interval_seconds 를 options 안으로 -> 폴더가 조용해진 뒤 읽는다)
