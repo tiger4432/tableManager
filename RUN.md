@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **도움말 선언 가이드 여섯 — ai_ask_tables 더함(ask · report 선언)** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    어드민 도움말에 «리포트에 코멘트 칸은 어떻게 다나» -> Write a declaration, 근거 절이 ai_ask_tables 의 메모리 절
+> 운영 재기  python server/scripts/help_bench.py --part declarations   (문항 27 — ask · report 7 개 더함)
+>          embedding_model 을 쓰면 --retrieval embedding 과 bm25 두 줄을 견줌. 첫 물음은 새 절 7 개만 더 임베딩
+> 끄는 법  되돌리기 커밋 하나
+> ```
+>
+> ---
+>
 > ## [10-29] **리포트 코멘트 칸 — 사람이 적으면 그 웨이퍼만 다시 · 코멘트는 메모리에 그대로** — git pull · 서버 재기동 · 체인 워커 재기동
 >
 > ```
@@ -55,7 +66,7 @@
 >                                             한 요청 입력 수 상한(절을 16 개씩 보낸다 — 받은 묶음은 남고 다음 물음이 남은 것만)
 >          bm25 ×n (embedding 을 시켰는데)       embedding_model 이 비었다 -> 한 줄을 적고 재기동
 > 적을 곳  견본 server/config/sample/llm_config.json.sample 에 "embedding_model": "" 칸이 있다
-> 첫 물음  절 116 개를 16 개씩 8 요청으로 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 묶음마다 남김
+> 첫 물음  절 123 개(가이드 여섯)를 16 개씩 8 요청으로 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 묶음마다 남김
 >          -> 그 물음만 느리다
 > 볼 것    어드민 도움말 «이거 멈춰» -> 셈 줄이 «the count waits for: reason, …» (빈 칸을 폼에서 채우면 셈이 된다)
 >          어드민 도움말 «조인 규칙 어떻게 써» -> 선언 카드 회색 줄 «via embedding» / «via bm25 (embedding failed: …)»

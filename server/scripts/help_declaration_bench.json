@@ -80,6 +80,34 @@
   {
    "question": "행마다 조건에 따라 원장에 다른 문장으로 넣고 싶어",
    "section": "⑤ 문장 고르기"
+  },
+  {
+   "question": "AI 로 제품별로 스텝 읽어서 구조 표 채우게 하려면",
+   "section": "`input.group_by`"
+  },
+  {
+   "question": "스텝이 너무 많아서 몇 줄씩 끊어서 물어보게",
+   "section": "`input.window` · `input.overlap`"
+  },
+  {
+   "question": "같은 공정은 전에 AI 가 답한 거 다시 쓰게",
+   "section": "`reuse.key`"
+  },
+  {
+   "question": "사람이 고친 값을 AI 가 기억하게",
+   "section": "`memory.columns`"
+  },
+  {
+   "question": "리포트에 코멘트 칸은 어떻게 다나",
+   "section": "\"comment\": \"<리포트 표의 칸>\""
+  },
+  {
+   "question": "아이템 글을 quantity 로 맵핑하는 AI 규칙 예시",
+   "section": "split 아이템 글 -> quantity"
+  },
+  {
+   "question": "AI 가 목록에 없는 답을 내면 뭐라고 적혀",
+   "section": "`none` 낱말"
   }
  ]
 }

@@ -3,14 +3,14 @@
 sections, the three nearest a guide-worded search picked, the model writing one declaration from them, and that
 declaration put through the save's own judgement without saving.
 
-    guides      the five below - cut at headings, at bold numbered items (**①…), a section over CAP split at table rows
+    guides      the six below (ask and report declarations' since lead 10-29) - cut at headings, at bold numbered items (**①…), a section over CAP split at table rows
                 or blank lines with its table's header row; the Status line out, and of the rest only the SENTENCES
                 with a retired mark (⚰ 🪦) - a current rule on the same line stays
     pick        the embedding model llm_config.json names (owner 10-29: bge-m3) - cosine of the search and each
                 section, BM25 only breaking a tie (the box has no model to weigh a mix with); none named, or the
                 embedding failed: character 2- and 3-gram BM25 over section name + text, no package - and the answer
-                says which («retrieval»). The sections' vectors are kept in DATA_ROOT/cache per model, asked once in
-                one batch for the sections not kept yet
+                says which («retrieval»). The sections' vectors are kept in DATA_ROOT/cache per model by each
+                section's name and text, the sections not kept yet asked EMBED_BATCH at a time
     answer      {"kind", "name", "declaration", "why", "sections"} - a section the pieces do not name is dropped
     check       chain_rule · table: the save itself, stopped before its write (`check_only`); ledger: the draft
                 preview's judgement (`compile_draft_preview`) on the node the answer names; else «not checked»
@@ -29,7 +29,7 @@ import paths
 
 GUIDES = ("docs/guide/config/chain_rules.md", "docs/guide/config/table_config.md",
           "docs/guide/config/ledger_declaration_by_example.md", "docs/guide/config/enrichment_rules.md",
-          "docs/guide/CONFIG_ROLLOUT_GUIDE.md")
+          "docs/guide/CONFIG_ROLLOUT_GUIDE.md", "docs/guide/ai_ask_tables.md")
 #: A section longer than this many characters is split at its table rows / blank lines.
 CAP = 2000
 #: Sections the declaration prompt carries.

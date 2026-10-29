@@ -32,7 +32,7 @@ PAIR = '{"<파생 칸>": "<원본 칸>"}'
 
 @pytest.fixture(name="guides")
 def fixture_guides(tmp_path, monkeypatch):
-    """A repository root of its own holding the five guides as committed."""
+    """A repository root of its own holding the guides (`help_guides.GUIDES`) as committed."""
     for guide in help_guides.GUIDES:
         os.makedirs(tmp_path / os.path.dirname(guide), exist_ok=True)
         shutil.copyfile(os.path.join(paths.REPO_ROOT, guide), tmp_path / guide)

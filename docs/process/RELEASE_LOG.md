@@ -460,6 +460,7 @@
 
 ### 어드민 화면
 
+- 2026-10-29 [도움말 선언 가이드가 여섯 — ai_ask_tables 가 더해져 ask · report 선언(리포트 코멘트 칸 포함)도 답한다](#2026-10-29--도움말-선언-가이드가-여섯--ai_ask_tables-가-더해져-ask--report-선언리포트-코멘트-칸-포함도-답한다) — 보는 곳 어드민 도움말의 declaration · 재기 help_bench --part declarations
 - 2026-10-29 [새 기능 — 어드민 Help 선언 카드에 절을 고른 방법 한 줄: via embedding · via bm25](#2026-10-29--새-기능--어드민-help-선언-카드에-절을-고른-방법-한-줄-via-embedding--via-bm25) — 보는 곳 어드민 머리 Help
 - 2026-10-29 [도움말의 선언 절 고르기가 임베딩으로 — llm_config 의 embedding_model 한 줄, 없거나 실패면 BM25 와 그 사유 · 빈 칸이 있으면 셈은 «기다림»](#2026-10-29--도움말의-선언-절-고르기가-임베딩으로--llm_config-의-embedding_model-한-줄-없거나-실패면-bm25-와-그-사유--빈-칸이-있으면-셈은-기다림) — 적는 곳 config/llm_config.json 의 embedding_model · 재기 help_bench --retrieval
 - 2026-10-29 [새 기능 — 어드민 Help 의 선언법 카드: 예시 선언 · 복사 · 근거 절 · 저장 판정(저장은 안 함)](#2026-10-29--새-기능--어드민-help-의-선언법-카드-예시-선언--복사--근거-절--저장-판정저장은-안-함) — 보는 곳 어드민 머리 Help
@@ -673,6 +674,14 @@
 
 
 
+
+## 2026-10-29 · 도움말 선언 가이드가 여섯 — ai_ask_tables 가 더해져 ask · report 선언(리포트 코멘트 칸 포함)도 답한다
+
+- 무엇: 도움말이 선언법을 찾는 가이드에 `docs/guide/ai_ask_tables.md` 가 더해져 여섯이 됐다(chain_rules · table_config · ledger_declaration_by_example · enrichment_rules · CONFIG_ROLLOUT_GUIDE · ai_ask_tables). AI 가 표를 채우는 규칙(`derive.ask`)과 리포트의 메모리 · 코멘트 칸을 물으면 그 절에서 답한다. 자르는 법은 다른 다섯과 같다.
+- 절 수: 116 -> 123. 임베딩을 쓰는 박스는 첫 물음이 새 절 7 개만 더 임베딩한다(캐시는 절 이름 + 글로 열쇠를 삼아 바뀐 절만 다시 묻는다).
+- 벤치: `help_declaration_bench.json` 에 ask · report 문항 7 개(27 개). BM25 로 고른 세 절에 정답 절이 든 수 — 원래 20 문항은 전후 같음(물은 그대로 12/20 · 가이드 낱말로 고쳐 쓴 검색어 20/20), 새 7 문항은 물은 그대로 6/7(«AI 가 목록에 없는 답을 내면» 하나가 못 찾음). 실제 모델의 검색어로 재는 것은 운영 벤치 몫.
+- 필요한 조건: git pull · 서버 재기동.
+- 자세히: `server/admin/help_guides.py` 의 `GUIDES`, `server/scripts/help_declaration_bench.json`.
 
 ## 2026-10-29 · 새 기능 — 파일 화면 소스 줄 밑에 아무도 안 읽는 칸의 문장 한 줄
 
