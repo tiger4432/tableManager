@@ -813,6 +813,17 @@ function dropStagedEdits(keys) {
 }
 export const droppedText = (count) => (count ? ` · ${unitText(count, 'staged edit')} dropped (row deleted)` : '');
 
+/** The cells a save's answer says were not written (B 72fe1f94e): the server's `dropped.said` as it wrote it, or - none
+ *  sent (system columns only) - the cells and their columns. Every grid save asks it after res.ok (lead 10-29). */
+export function sayNotWritten(result) {
+  const dropped = result && result.dropped;
+  if (!dropped || !dropped.cells) return null;
+  const said = typeof dropped.said === 'string' && dropped.said ? dropped.said
+    : `Not written: ${unitText(dropped.cells, 'cell')} · ${[].concat(dropped.columns || []).join(', ')}`;
+  try { showToast(said, 'warning'); } catch (err) { console.error('[toast] not written', err); }
+  return said;
+}
+
 /** Staged edits whose cell changed on the server since they were made. */
 export const conflictedEdits = () => Object.values(state.pendingTxEdits).filter((edit) => edit.conflict);
 
@@ -1067,9 +1078,11 @@ async function applyStaged(choice) {
     // effort, and a 200 that changed nothing (every staged edit already matched storage)
     // records no effort row — resetting there would delete the effort it cost.
     commitIfRecorded(result);
+    const notWritten = sayNotWritten(result);
     settleTx();
-    // a pivot cell is a long row's: the page read again (a blank one now has its row)
-    if (pivotShown()) await fetchData(false);
+    // a pivot cell is a long row's: the page read again (a blank one now has its row) - and a cell not written is drawn
+    // as the server holds it (lead 10-29)
+    if (pivotShown() || notWritten) await fetchData(false);
     updateGridSortState();
     state.gridApi.refreshCells({ force: true });
 
@@ -1250,10 +1263,13 @@ async function editCell(event) {
       // not proof of a correction — a no-op save writes nothing, and resetting there would
       // erase the effort the attempt cost. Read AFTER res.json() for that reason.
       commitIfRecorded(result);
+      const notWritten = sayNotWritten(result);
       const saveTime = (performance.now() - editStartTime).toFixed(1);
-      elements.performanceLog.textContent = `Saved in ${saveTime}ms (${result.change_count} cell updated)`;
-      // a pivot cell is a long row's: the page read again (a blank one now has its row)
-      if (pivotShown()) { await fetchData(false); return; }
+      const saved = `Saved in ${saveTime}ms (${result.change_count} cell updated)`;
+      elements.performanceLog.textContent = saved;
+      // a pivot cell is a long row's: the page read again (a blank one now has its row) - and a cell not written is drawn
+      // as the server holds it, the save's line kept (lead 10-29)
+      if (pivotShown() || notWritten) { await fetchData(false); elements.performanceLog.textContent = saved; return; }
 
       const latestNode = state.gridApi.getRowNode(rowId);
       const latestData = latestNode ? latestNode.data : data;

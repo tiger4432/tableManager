@@ -32,6 +32,8 @@
  *      counted, no second request, the rows removed on the answer, the server's refusal + next step
  *   L  a ledger receipt line (43a738d58) shows its transaction's rows and stops — no row jump; one
  *      with no transaction says why; any other line still jumps to its row
+ *   N  the cells a save's answer did not write (lead 10-29): paste, clear, fill, edit and Apply each toast the
+ *      server's `dropped.said` as it wrote it, the cells and columns when it sent none, nothing when nothing dropped
  *   S  ONE RULE (C-107): every write control on this screen is armed from the same answer, the
  *      four funnels ask that same answer, and the table says what it is in its own header
  *
@@ -901,6 +903,70 @@ async function suite(M) {
     M.timeline.releaseNavigationGuard('');
   }
 
+  // ── N (lead 10-29): the cells a save's answer says were not written - the server's sentence, at every grid save ──
+  {
+    const savedN = globalThis.fetch;
+    const said = `Next: fix the values their columns' types do not take - the rest of each row was written. Not written: value_refused qty=1 (first 'abc') over 1 row(s). #${++stopRun}`;
+    let dropped = null;
+    // the page's own read (fetchData) after a save - not Apply's read of its staged rows, which names them
+    let pageReads = 0;
+    globalThis.fetch = async (url, opts = {}) => {
+      if (String(opts.method || 'GET').toUpperCase() === 'PUT') {
+        const body = { status: 'success', change_count: 0, ...(dropped ? { dropped } : {}) };
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+      }
+      // Apply's own read of its staged rows: the row as it was staged, so nothing conflicts
+      if (String(url).includes('filters=')) return { ok: true, status: 200, json: async () => ({ data: [rowData()], total: null }), text: async () => '' };
+      if (String(url).includes('/data?skip=')) pageReads += 1;
+      return savedN(url, opts);
+    };
+    const lines = { paste: 'Pasted · 0 cells updated', clear: 'Cleared cells in', fill: 'Updated range cells in',
+      edit: 'Saved in', apply: 'Applied batch updates in' };
+    const saves = {
+      paste: async () => { await stageThrough(M.api, 'table'); listeners.clear(); M.clipboard.setupClipboardHandlers(); await (listeners.get('paste') || [])[0](pasteEvent('9')); },
+      clear: async () => { await stageThrough(M.api, 'table'); await M.clipboard.clearSelectedCells(); },
+      fill: async () => { await stageThrough(M.api, 'table'); await M.ui.applyValueToSelectedRange('9'); },
+      edit: async () => { await stageThrough(M.api, 'table'); await M.api.handleCellEdit({ data: rowData(), colDef: { field: 'note' }, newValue: 'y', oldValue: 'x' }); },
+      apply: async () => {
+        await stageThrough(M.api, 'table');
+        realState.pendingTxEdits = { R0_note: { rowId: 'R0', colId: 'note', newValue: 'y', oldValue: 'x', data: rowData(), conflict: null } };
+        await M.api.applyPendingEdits();
+      },
+    };
+    const toastsAfter = async (run) => {
+      const before = toastTexts().length;
+      try { await run(); } catch (e) { /* a save may walk further than this stub goes */ }
+      return toastTexts().slice(before);
+    };
+    try {
+      dropped = { cells: 1, rows: 1, columns: ['qty'], by_reason: { value_refused: 1 }, said };
+      for (const [name, run] of Object.entries(saves)) {
+        pageReads = 0;
+        const got = await toastsAfter(run);
+        ok(got.includes(said), `N1 ${name}: the server's sentence is the toast, as it wrote it [${got.join(' | ')}]`);
+        // the cell not written drawn as the server holds it: the page read again, and the save's own line kept on top
+        ok(pageReads === 1 && log().textContent.startsWith(lines[name]),
+          `N4 ${name}: the page read again once, its line kept [${pageReads} reads · ${log().textContent}]`);
+      }
+      dropped = { cells: 2, rows: 1, columns: ['created_by', 'row_kind'], by_reason: { system_column: 2 } };
+      const plain = await toastsAfter(saves.edit);
+      ok(plain.includes('Not written: 2 cells · created_by, row_kind'),
+        `N2 no sentence sent: the cells and their columns only [${plain.join(' | ')}]`);
+      dropped = null;
+      pageReads = 0;
+      const none = await toastsAfter(saves.edit);
+      ok(!none.some((t) => String(t).startsWith('Not written') || String(t).includes(said)),
+        `N3 nothing dropped: nothing said [${none.join(' | ')}]`);
+      ok(pageReads === 0, `N5 nothing dropped: no page read [${pageReads}]`);
+      await toastsAfter(saves.paste);
+      ok(log().textContent === 'Pasted · 0 cells updated',
+        `N6 a paste counts the cells the server changed, not the rows sent - none says 0 [${log().textContent}]`);
+    } finally {
+      globalThis.fetch = savedN;
+      realState.pendingTxEdits = {};
+    }
+  }
+
   // ── O: the offscreen badge is written only when its count moves (lead 10-09: it runs on every scroll frame) ──
   {
     const savedApi = realState.gridApi;
@@ -1086,6 +1152,20 @@ const DEFECTS = [
     s => s.replace('    await switchTable(log.table_name);\n  }\n  // Only on screen', '  }\n  // Only on screen')],
   ['timeline.js: the line claims rows a refused read never showed', 'timeline',
     s => s.replace('  if (await setTransactionFilter(tx)) {', '  if (await setTransactionFilter(tx) || true) {')],
+  // ── N (lead 10-29): every grid save says what its answer did not write ──────
+  ['clipboard.js: a paste says nothing of the cells not written', 'clipboard', s => s.replace(/\n {10}const notWritten = sayNotWritten\(result\);/, '\n          const notWritten = null;')],
+  ['clipboard.js: a clear says nothing of the cells not written', 'clipboard', s => s.replace(/\n {6}const notWritten = sayNotWritten\(result\);/, '\n      const notWritten = null;')],
+  ['ui.js: a fill says nothing of the cells not written', 'ui', s => s.replace(/\n {6}const notWritten = sayNotWritten\(result\);/, '\n      const notWritten = null;')],
+  ['api.js: an edit says nothing of the cells not written', 'api', s => s.replace(/\n {6}const notWritten = sayNotWritten\(result\);/, '\n      const notWritten = null;')],
+  ['api.js: an Apply says nothing of the cells not written', 'api', s => s.replace(/\n {4}const notWritten = sayNotWritten\(result\);/, '\n    const notWritten = null;')],
+  ['clipboard.js: a cell not written stays drawn as sent - no page read', 'clipboard', s => s.replaceAll('pivotShown() || notWritten', 'pivotShown()')],
+  ['ui.js: a filled cell not written stays drawn as sent', 'ui', s => s.replace('pivotShown() || notWritten', 'pivotShown()')],
+  ['api.js: an edited or applied cell not written stays drawn as sent', 'api', s => s.replaceAll('pivotShown() || notWritten', 'pivotShown()')],
+  ['clipboard.js: the page read takes the paste`s line', 'clipboard', s => s.replace('await fetchData(false); elements.performanceLog.textContent = pasted; return;', 'await fetchData(false); return;')],
+  ['clipboard.js: a paste counts the rows sent again', 'clipboard', s => s.replace('Number(result.change_count) || 0', 'batchUpdates.length')],
+  ['api.js: the server`s sentence is passed over for the counts', 'api',
+    s => s.replace("typeof dropped.said === 'string' && dropped.said ? dropped.said", 'false ? dropped.said')],
+  ['api.js: the counts name no column', 'api', s => s.replace(" · ${[].concat(dropped.columns || []).join(', ')}", '')],
   // ⚠️ NOT HERE: 「fetchData stops returning true」. `timeline.js` reaches `fetchData` through the REAL
   //    `ui.js`, which imports the real `api.js`, so an `api.js` copy swapped in by this file never
   //    reaches that path and the mutant escapes by construction (measured). L2 still runs through the

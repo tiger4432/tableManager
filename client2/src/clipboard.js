@@ -1,10 +1,10 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
-import { state, isVirtualColumn, isDataColumn, pivotShown, rowUnit } from './state.js';
+import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
 import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped } from './write_guard.js';
 import { newPivotRows } from './grid_pivot.js';
-import { fetchData } from './api.js';
+import { fetchData, sayNotWritten } from './api.js';
 import { elements } from './dom.js';
 import { ensureCellObject, markCellOverwritten, updateGridSortState, isSystemColumn } from './grid.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
@@ -629,9 +629,13 @@ export function setupClipboardHandlers() {
           // V1 instrument: reset ONLY when the server confirms it recorded the effort — a
           // paste whose values already match storage returns 200 and records nothing.
           commitIfRecorded(result);
-          elements.performanceLog.textContent = `Pasted successfully: ${unitText(batchUpdates.length, rowUnit())} updated`;
-          // a pivot cell is a long row's: the page read again (a blank one now has its row)
-          if (pivotShown()) { await fetchData(false); return; }
+          const notWritten = sayNotWritten(result);
+          // the cells the server changed, not the rows sent - none changed says 0 (lead 10-29)
+          const pasted = `Pasted · ${unitText(Number(result.change_count) || 0, 'cell')} updated`;
+          elements.performanceLog.textContent = pasted;
+          // a pivot cell is a long row's: the page read again (a blank one now has its row) - and a cell not written is
+          // drawn as the server holds it, the paste's line kept (lead 10-29)
+          if (pivotShown() || notWritten) { await fetchData(false); elements.performanceLog.textContent = pasted; return; }
 
           // Fast-apply local data values by updating latest node data in-place
           batchUpdates.forEach(update => {
@@ -885,10 +889,13 @@ export async function clearSelectedCells() {
       // V1 instrument: reset ONLY when the server confirms it recorded the effort — clearing
       // cells that are already empty returns 200 and records nothing.
       commitIfRecorded(result);
+      const notWritten = sayNotWritten(result);
       const saveTime = (performance.now() - startTime).toFixed(1);
-      elements.performanceLog.textContent = `Cleared cells in ${saveTime}ms (${result.change_count} cells updated)`;
-      // a pivot cell is a long row's: the page read again (a blank one now has its row)
-      if (pivotShown()) { await fetchData(false); return; }
+      const cleared = `Cleared cells in ${saveTime}ms (${result.change_count} cells updated)`;
+      elements.performanceLog.textContent = cleared;
+      // a pivot cell is a long row's: the page read again (a blank one now has its row) - and a cell not written is drawn
+      // as the server holds it, the clear's line kept (lead 10-29)
+      if (pivotShown() || notWritten) { await fetchData(false); elements.performanceLog.textContent = cleared; return; }
 
       // Apply grid local updates on the latest nodes directly
       updatesArray.forEach(item => {

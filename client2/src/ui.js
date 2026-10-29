@@ -16,7 +16,7 @@ import { snapshot, commitIfRecorded } from './effort_meter.js';
 //    ENTRY chunk. The grid page then statically imported that chunk for the helper alone --
 //    evaluating admin's top level on every grid load (1 TypeError) and pulling ~197 KB of admin
 //    js+css nobody on that page used. Removing this one `import()` removed the helper itself.
-import { fetchData, copyRow } from './api.js';
+import { fetchData, copyRow, sayNotWritten } from './api.js';
 import { shiftCount } from './match_count.js';
 
 export function setupBeforeUnloadWarning() {
@@ -262,10 +262,13 @@ export async function applyValueToSelectedRange(newValue) {
       // V1 instrument: reset ONLY when the server confirms it recorded the effort — a no-op
       // save returns 200 and records nothing, so committing there erases real effort.
       commitIfRecorded(result);
+      const notWritten = sayNotWritten(result);
       const saveTime = (performance.now() - startTime).toFixed(1);
-      elements.performanceLog.textContent = `Updated range cells in ${saveTime}ms (${result.change_count} cells updated)`;
-      // a pivot cell is a long row's: the page read again (a blank one now has its row)
-      if (pivotShown()) { await fetchData(false); return; }
+      const filled = `Updated range cells in ${saveTime}ms (${result.change_count} cells updated)`;
+      elements.performanceLog.textContent = filled;
+      // a pivot cell is a long row's: the page read again (a blank one now has its row) - and a cell not written is drawn
+      // as the server holds it, the fill's line kept (lead 10-29)
+      if (pivotShown() || notWritten) { await fetchData(false); elements.performanceLog.textContent = filled; return; }
 
       updatesArray.forEach(item => {
         const rowNode = state.gridApi.getRowNode(item.row_id);
