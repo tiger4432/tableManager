@@ -244,13 +244,14 @@ def _new_drop_stats() -> dict:
         "row_refusals": [],
         # {column: {"cells": n, "first": the first value refused there}} - capped like by_column.
         "refused_values": {},
-        # {reason: {column: cells}} - the columns by_column counts, by why (not_written_sentence's material)
+        # {reason: {column: non-blank values}} - the columns by_column counts, by why, counted as a file's load
+        # counts them (a blank lost nothing; a column of blanks only is still named, at 0) - not_written_sentence's
         "by_reason_column": {},
     }
 
 
 def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
-                         col_name: str, reason: str):
+                         col_name: str, reason: str, value: Any):
     """One discarded (row, column) pair. Called only from a branch that already decided
     to discard, so the healthy write path never reaches it."""
     drop_stats["cells"] += 1
@@ -266,7 +267,7 @@ def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
         drop_stats["columns_omitted"] += 1
     if col_name in by_column:
         named = drop_stats["by_reason_column"].setdefault(reason, {})
-        named[col_name] = named.get(col_name, 0) + 1
+        named[col_name] = named.get(col_name, 0) + (0 if is_blank_value(value) else 1)
 
     drop_stats["rows_with_drops"].add(row_id)
 
@@ -4187,7 +4188,7 @@ def apply_row_update_internal(
             # answers and the caller could not tell them apart.
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
-                                     col_name, DROP_SYSTEM_COLUMN)
+                                     col_name, DROP_SYSTEM_COLUMN, val)
             continue
 
         # The one answer, so this path and the watcher's cannot drift (S-119). The
@@ -4204,7 +4205,7 @@ def apply_row_update_internal(
             # WHICH row, so it can never answer "did my write land?". This can.
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
-                                     col_name, DROP_UNDECLARED_COLUMN)
+                                     col_name, DROP_UNDECLARED_COLUMN, val)
             continue
 
         if col_name not in unmapped:
@@ -4212,7 +4213,7 @@ def apply_row_update_internal(
         if unmapped[col_name]:
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
-                                     col_name, DROP_UNMAPPED_COLUMN)
+                                     col_name, DROP_UNMAPPED_COLUMN, val)
             continue
 
         key = (row.row_id, col_name)
@@ -4232,7 +4233,7 @@ def apply_row_update_internal(
             if tally is None:
                 if drop_stats is not None:
                     _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
-                                         col_name, DROP_VALUE_REFUSED)
+                                         col_name, DROP_VALUE_REFUSED, val)
                     seen = drop_stats["refused_values"].get(col_name)
                     if seen is not None:
                         seen["cells"] += 1
@@ -4263,7 +4264,7 @@ def apply_row_update_internal(
         if is_blank_value(clean_val) and not can_mean_emptied(update_item.source_name, replaces_map):
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
-                                     col_name, DROP_ABSENT_NOT_WRITTEN)
+                                     col_name, DROP_ABSENT_NOT_WRITTEN, clean_val)
             continue
 
         src_obj = next((s for s in col_srcs if s.source_name == update_item.source_name), None)

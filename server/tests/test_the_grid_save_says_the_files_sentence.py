@@ -69,3 +69,19 @@ def test_nothing_dropped_says_nothing(client, db_session):
 def test_a_drop_the_sentence_has_no_words_for_is_not_said(client, db_session):
     dropped = _grid_says(client, [{"plan_id": "G7", "target_qty": 7, "updated_at": "2026-10-29"}])["dropped"]
     assert dropped["by_reason"] == {crud.DROP_SYSTEM_COLUMN: 1} and "said" not in dropped
+
+
+def test_blank_values_are_not_counted_at_either_door(client, db_session, monkeypatch):
+    """Lead 10-29: a blank (length 0 after strip = absent) lost nothing, so neither door counts it - the file's count;
+    a column of blanks only is still named, at 0."""
+    mixed = [{"zz": ""}, {"zz": "   "}, {"zz": "x"}]
+    by_file = _file_says(monkeypatch, [dict(row, plan_id="F%d" % n) for n, row in enumerate(mixed)])
+    by_grid = _grid_says(client, [dict(row, plan_id="G%d" % n) for n, row in enumerate(mixed)])["dropped"]
+    assert by_file == by_grid["said"] == ("Next: declare the undeclared columns in table_config.json. "
+                                          "Not written: undeclared_column zz=1 over 3 row(s).")
+    assert by_grid["cells"] == 3, "dropped's cells count every dropped cell, as they did"
+    blanks = [{"zz": ""}, {"zz": "  "}]
+    by_file = _file_says(monkeypatch, [dict(row, plan_id="H%d" % n) for n, row in enumerate(blanks)])
+    by_grid = _grid_says(client, [dict(row, plan_id="K%d" % n) for n, row in enumerate(blanks)])["dropped"]
+    assert by_file == by_grid["said"] == ("Next: declare the undeclared columns in table_config.json. "
+                                          "Not written: undeclared_column zz=0 over 2 row(s).")
