@@ -1815,7 +1815,7 @@ export const FLOORS = new Map([
   ['formula_popover_harness.mjs', 52],
   // New with the owner's 10-29 «ㄴ»: the admin help's side panel - the request, each answer as drawn, asking, Cancel
   // keeping the late answer, Open form's fields and help_id, Earlier, two panels.
-  ['help_panel_harness.mjs', 40],
+  ['help_panel_harness.mjs', 41],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

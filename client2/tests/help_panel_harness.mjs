@@ -161,8 +161,10 @@ console.log('\n── C. ASKING ────────────────
   ok('C5 one request, the question trimmed', m.s.sent.length === 1 && m.s.sent[0].body.question === 'dt_lot 칸이 비어 있어');
   ok('C6 while it is out: the card says so, Ask off with its reason', text(card(m), 'help-card__title') === 'Asking the model'
     && askBtn.disabled === true && askBtn.getAttribute('title') === X.ASKING);
+  const cancelBefore = find(card(m), 'help-card__cancel');
   m.clock.advance(3000);
   ok('C7 the seconds are counted', text(card(m), 'help-card__meta') === '3 s', text(card(m), 'help-card__meta'));
+  ok('C7b ...in place: Cancel is the same button, not drawn again under the hand', find(card(m), 'help-card__cancel') === cancelBefore);
   find(m.panel.root, 'help-panel__ask').click();
   ok('C8 a second Ask while one is out sends nothing', m.s.sent.length === 1);
   m.s.answer({ ok: true, body: TOOL });
@@ -292,6 +294,7 @@ const DEFECTS = [
   ['M6 Ask stays on while one is out', swap('const why = this.waiting ? ASKING', 'const why = false ? ASKING')],
   ['M7 the shown ask is listed in Earlier too', swap('this.asks.filter((r) => r !== this.shown)', 'this.asks')],
   ['M8 the model not asked is drawn as not sure', swap('if (!a.tries) return', 'if (false) return')],
+  ['M10 the waiting card is drawn again each second', swap('if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);', 'this.render();')],
   ['M9 a page link drawn for a door that names none',
     swap("open: d.open && d.open.href ? {", "open: { label: '', href: '#' } || d.open && d.open.href ? {")],
 ];
@@ -310,6 +313,9 @@ async function verdict(M) {
   const m = mount(M);
   await asked(m, 'first');
   if (find(m.panel.root, 'help-panel__ask').disabled !== true) return true;
+  const before = find(card(m), 'help-card__cancel');
+  m.clock.advance(1000);
+  if (find(card(m), 'help-card__cancel') !== before) return true;
   find(card(m), 'help-card__cancel').click();
   m.s.answer({ ok: true, body: TOOL });
   await tick();

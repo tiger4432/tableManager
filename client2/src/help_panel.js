@@ -75,6 +75,7 @@ export class HelpPanel {
     this.asks = [];           // newest first: {question, at, view, waiting, stopped, late, runId}
     this.shown = null;        // the ask whose card is drawn
     this.tick = null;
+    this.seconds = null;     // the waiting card's seconds, counted in place
     this.root = null;
   }
 
@@ -181,11 +182,15 @@ export class HelpPanel {
     if (this.tick) this.clock.clear(this.tick);
     this.tick = this.clock.set(() => {
       this.tick = null;
-      if (!this.waiting) return;
-      this.render();
+      const rec = this.waiting;
+      if (!rec) return;
+      // the seconds only - the card is not drawn again under a hand on its Cancel
+      if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);
       this.beat();
     }, 1000);
   }
+
+  secondsOf(rec) { return `${Math.floor((this.clock.now() - rec.at) / 1000)} s`; }
 
   /** The run the form queued from `helpId`'s answer, said on its ask. */
   noteRun(helpId, runId) {
@@ -212,9 +217,9 @@ export class HelpPanel {
     const head = this.el('div', 'help-card__head');
     box.appendChild(head);
     if (rec.waiting) {
-      const seconds = Math.floor((this.clock.now() - rec.at) / 1000);
       head.appendChild(this.el('span', 'help-card__title', 'Asking the model'));
-      head.appendChild(this.el('span', 'help-card__meta', `${seconds} s`));
+      this.seconds = this.el('span', 'help-card__meta', this.secondsOf(rec));
+      head.appendChild(this.seconds);
       const acts = this.el('div', 'help-card__acts');
       acts.appendChild(this.button('help-card__cancel', 'Cancel', () => this.stopWaiting()));
       box.appendChild(acts);
@@ -268,12 +273,15 @@ export class HelpPanel {
       box.appendChild(line);
     }
     if (v.countRefused) box.appendChild(this.el('div', 'help-card__count-refused', v.countRefused));
-    v.doors.forEach((d) => {
-      const line = this.el('div', 'help-card__door');
-      line.appendChild(this.el('span', 'help-card__k', d.name));
-      line.appendChild(this.el('span', 'help-card__door-how', d.how));
-      box.appendChild(line);
-    });
+    if (v.doors.length) {
+      // one grid for every door, so the names stand in one column
+      const doors = this.el('div', 'help-card__doors');
+      v.doors.forEach((d) => {
+        doors.appendChild(this.el('span', 'help-card__k', d.name));
+        doors.appendChild(this.el('span', 'help-card__door', d.how));
+      });
+      box.appendChild(doors);
+    }
     const acts = this.el('div', 'help-card__acts');
     if (v.form) {
       acts.appendChild(this.button('btn-primary help-card__open', 'Open form', () => this.openForm({
@@ -290,12 +298,16 @@ export class HelpPanel {
 
   rowOf(rec) {
     const row = this.button('btn-quiet help-row', '', () => { this.shown = rec; this.render(); });
-    row.appendChild(this.el('span', 'help-row__q', rec.question));
-    row.appendChild(this.el('span', 'help-row__at', localClock(new Date(rec.at).toISOString())));
+    // two lines, each a long word that gives way and a short one at the right edge
+    const line = () => row.appendChild(this.el('span', 'help-row__line'));
+    const top = line();
+    top.appendChild(this.el('span', 'help-row__q', rec.question));
+    top.appendChild(this.el('span', 'help-row__at', localClock(new Date(rec.at).toISOString())));
+    const under = line();
     const what = rec.waiting ? 'Asking' : !rec.view ? 'waiting' : rec.view.title;
-    row.appendChild(this.el('span', 'help-row__what', what));
+    under.appendChild(this.el('span', 'help-row__what', what));
     const tail = rec.late ? ARRIVED_LATE : rec.runId ? `run ${rec.runId}` : '';
-    row.appendChild(this.el('span', 'help-row__tail', tail));
+    under.appendChild(this.el('span', 'help-row__tail', tail));
     return row;
   }
 }
