@@ -400,6 +400,7 @@
 
 ### 설정 파일
 
+- 2026-10-29 [메일로 나간 리포트 파일에서도 그림을 누르면 원본이 열린다 — server_settings.json 의 public_url](#2026-10-29--메일로-나간-리포트-파일에서도-그림을-누르면-원본이-열린다--server_settingsjson-의-public_url) — 적을 것 server_settings.json 의 public_url · 보는 곳 메일로 받은 리포트 파일
 - 2026-10-29 [고침 — ingestion_settings 를 바꾸면 파일 화면의 unread · 미리 보기가 다음 변경까지 옛 설정으로 남던 것](#2026-10-29--고침--ingestion_settings-를-바꾸면-파일-화면의-unread--미리-보기가-다음-변경까지-옛-설정으로-남던-것) — 보는 곳 파일 화면 소스 줄 · 다시 읽기 미리 보기 · 적을 것 없음
 - 2026-10-29 [새 기능 — 파일 화면 소스 줄 밑에 아무도 안 읽는 칸의 문장 한 줄](#2026-10-29--새-기능--파일-화면-소스-줄-밑에-아무도-안-읽는-칸의-문장-한-줄) — 보는 곳 파일 화면 Read progress
 - 2026-10-29 [고침 — 외부 소스 항목에 적었는데 아무도 안 읽는 칸을 이름 댄다 · options 에 살 칸이 맨 위에 있으면 그 자리까지, 소스는 돈다](#2026-10-29--고침--외부-소스-항목에-적었는데-아무도-안-읽는-칸을-이름-댄다--options-에-살-칸이-맨-위에-있으면-그-자리까지-소스는-돈다) — 적는 곳 `ingestion_settings.json` 의 external_sources · 보는 곳 파일 화면 소스 줄 · 와처 로그
@@ -682,6 +683,14 @@
 
 
 
+
+## 2026-10-29 · 메일로 나간 리포트 파일에서도 그림을 누르면 원본이 열린다 — server_settings.json 의 public_url
+
+- 무엇: `server/config/server_settings.json` 에 `"public_url": "https://<다른 곳에서 이 서버를 여는 주소>"` 를 적으면, 그 뒤 만드는 리포트 파일의 그림 링크가 `<그 주소>/reports/<파일>/image/<n>` 이 된다 — 메일로 나간 파일에서 그림을 눌러도 원본이 열린다(로그인 쪽 주소 — 로그인이 켜진 설치면 먼저 로그인; 서명 키는 파일에 안 씀).
+- 그대로인 것: 서버에서 연 리포트(`/reports/<파일>`)와 서명 링크 페이지(`/shared/report/<파일>?k=`)의 그림 링크 — 칸이 있어도 없어도 지금과 같다. 칸이 비면 메일 파일의 링크도 지금처럼 파일 기준 상대 주소(눌러도 안 열림).
+- 주소 꼴이 아니면: chain_worker.log 에 한 줄 «[Report] server_settings.json public_url is not an http(s) address (…) - report files link their pictures relative to themselves», 링크는 상대 주소. 끝의 `/` · http/https 는 상관없음.
+- 필요한 조건: git pull · 서버 재기동(코드). 그 뒤 칸은 저장하면 다시 읽고, 이미 만든 리포트는 그대로 — 다시 만들면 새 링크.
+- 자세히: `server/runtime/request_timing.py` 의 `public_url`, `server/chain/report_html.py` 의 `link_pictures` · `LINK_SCRIPT`.
 
 ## 2026-10-29 · 정리 — void 작업공간의 voids_json.py 사본을 git 에서 뺌: 아무것도 안 읽던 파일
 

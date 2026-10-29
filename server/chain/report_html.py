@@ -260,18 +260,26 @@ def _img(picture, alt, extra=""):
     img = '<img src="%s" alt="%s"%s>' % (picture["src"], alt, extra)
     if not picture.get("href"):
         return img
-    return '<a class="%s" href="%s" target="_blank" rel="noopener">%s</a>' % (ORIGINAL, _e(picture["href"]), img)
+    rel = ' data-rel="%s"' % _e(picture["rel"]) if picture.get("rel") else ""
+    return '<a class="%s" href="%s"%s target="_blank" rel="noopener">%s</a>' % (ORIGINAL, _e(picture["href"]), rel, img)
 
 
 def link_pictures(file, tables, embedded):
     """Each picture of the page numbered - the tables' picture rows, then the gallery - and given the link its original
     opens at -
-    `<file>/image/<n>`, relative to the page (GET /reports/<file>/image/<n>) - -> the refs by number, the list `keep`
-    writes beside the file. Only pictures read by a ref (`report_reads._picture`)."""
+    `<file>/image/<n>`, relative to the page (GET /reports/<file>/image/<n>); with server_settings.json's `public_url`
+    `<public_url>/reports/<file>/image/<n>`, so it opens from the file a mail carried (lead 10-29), the relative one
+    kept beside it for the server's own pages (LINK_SCRIPT) - -> the refs by number, the list `keep` writes beside the
+    file. Only pictures read by a ref (`report_reads._picture`)."""
+    from runtime import request_timing
+
+    public = request_timing.public_url()
     refs = []
     for picture in _pictures(tables, embedded):
         if picture.get("src") and picture.get("ref"):
             picture["href"] = "%s/image/%d" % (file, len(refs))
+            if public:
+                picture["rel"], picture["href"] = picture["href"], "%s/reports/%s" % (public, picture["href"])
             refs.append(picture["ref"])
     return refs
 
@@ -330,8 +338,15 @@ STACK_SCRIPT = ("<script>document.querySelectorAll('figure.stack').forEach(funct
 
 
 #: the page opened by its signed link (/shared/report/<file>?k=): its pictures' links carry the same ?k= - the key
-#: is the page address's, never written into the file (owner 10-29 ㄱ)
-LINK_SCRIPT = ("<script>document.querySelectorAll('a.%s').forEach(function(a){a.search=location.search;});</script>"
+#: is the page address's, never written into the file (owner 10-29 ㄱ). A link at public_url (its relative one in
+#: data-rel) is made relative again on the server's own pages, http(s) /reports/<file> and /shared/report/<file> -
+#: they stay as they were; elsewhere (the mail's file, a file:// one in a folder named reports too) it stays as
+#: written, the query untouched (lead 10-29)
+LINK_SCRIPT = ("<script>document.querySelectorAll('a.%s').forEach(function(a){"
+               "var here=location.pathname.replace(/[^/]*$/,'');"
+               "if(!a.dataset.rel||location.protocol.indexOf('http')===0&&"
+               "(here.endsWith('/reports/')||here.endsWith('/shared/report/'))){"
+               "if(a.dataset.rel)a.setAttribute('href',a.dataset.rel);a.search=location.search;}});</script>"
                % ORIGINAL)
 
 

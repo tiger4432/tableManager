@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **메일로 나간 리포트 파일에서도 그림 원본이 열린다 — server_settings.json 의 public_url** — git pull · 서버 재기동
+>
+> ```
+> 적을 것  server/config/server_settings.json 에 "public_url": "https://<다른 곳에서 이 서버를 여는 주소>"
+>          (끝 / 는 있어도 없어도 같음. 비우면 오늘과 같음)
+> 볼 것    그 뒤 만든 리포트를 메일로 받아 그림을 누름 -> <그 주소>/reports/<파일>/image/<n> 에서 원본
+>          (로그인이 켜져 있으면 먼저 로그인. 칸 적기 전에 만든 리포트는 다시 만들어야 링크가 바뀜)
+>          서버에서 연 리포트 · Share link 페이지에서 누름 -> 지금과 같은 주소
+> chain_worker.log 에 [Report] server_settings.json public_url is not an http(s) address (...) -> 주소 꼴이 아님, 링크는 상대 주소
+> 끄는 법  public_url 을 비움 (저장하면 다시 읽음, 그 뒤 만드는 리포트부터)
+> ```
+>
+> ---
+>
 > ## [10-29] **void 작업공간의 voids_json.py 사본 지움 — 아무것도 안 읽던 파일** — git pull (재기동 없음)
 >
 > ```

@@ -4,6 +4,7 @@ A `Server-Timing` header on every response - `total;dur=<ms>, db;dur=<ms>;desc="
 look at the browser's network panel says which call was slow and whether the time was the database.
 A request over `slow_request_ms` (server/config/server_settings.json, default 1000) also says so in one
 log line: method, path, status, total, db, queries - never the query string or the body.
+The same file's `public_url` is read here too (`public_url()`): one reader of server_settings.json.
 
 The database time is counted by two cursor hooks while a request's counter is set; a query outside a
 request (a worker, a thread the request started) finds no counter and is not counted.
@@ -14,6 +15,7 @@ import json
 import logging
 import os
 import time
+from urllib.parse import urlsplit
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
@@ -29,6 +31,7 @@ SETTINGS_PATH = paths.config_path(SETTINGS_FILE)
 SLOW_REQUEST_CELL = "slow_request_ms"
 #: Left out of the file, a request over this many ms is logged (총괄 10-07 ④ 2) ㄴ). null: never.
 DEFAULT_SLOW_REQUEST_MS = 1000
+PUBLIC_URL_CELL = "public_url"
 
 #: [database seconds, queries] of the request running in this context, or None outside one.
 _counter = contextvars.ContextVar("request_database_time", default=None)
@@ -61,16 +64,50 @@ def slow_request_ms():
 
 def _read_slow_request_ms():
     declared = DEFAULT_SLOW_REQUEST_MS
-    if os.path.exists(SETTINGS_PATH):
-        try:
-            with open(SETTINGS_PATH, "rb") as handle:
-                loaded = json.loads(_decode_config_text(handle.read()))
-            if isinstance(loaded, dict) and SLOW_REQUEST_CELL in loaded:
-                declared = loaded[SLOW_REQUEST_CELL]
-        except (OSError, ValueError) as exc:
-            logger.warning("[Slow] %s could not be read (%s) - requests over %d ms are logged",
-                           SETTINGS_FILE, exc, DEFAULT_SLOW_REQUEST_MS)
+    try:
+        loaded = _settings()
+        if SLOW_REQUEST_CELL in loaded:
+            declared = loaded[SLOW_REQUEST_CELL]
+    except (OSError, ValueError) as exc:
+        logger.warning("[Slow] %s could not be read (%s) - requests over %d ms are logged",
+                       SETTINGS_FILE, exc, DEFAULT_SLOW_REQUEST_MS)
     return event_constants.slow_warn_ms(declared, "%s %s" % (SETTINGS_FILE, SLOW_REQUEST_CELL))
+
+
+def public_url():
+    """`public_url` - the address this server is opened at from elsewhere, `scheme://host[/path]` with no «/» at its
+    end - or None: not written, or not an address (said once). A report file links its pictures' originals there, so
+    they open from the file a mail carried (lead 10-29); held until server_settings.json changes, as the budget is."""
+    from database import config_watcher
+
+    return config_watcher.held(config_watcher.names_of([SETTINGS_PATH]), "request_timing.public_url", _read_public_url)
+
+
+def _read_public_url():
+    try:
+        written = _settings().get(PUBLIC_URL_CELL)
+    except (OSError, ValueError) as exc:
+        logger.warning("[Report] %s could not be read (%s) - report files link their pictures relative to themselves",
+                       SETTINGS_FILE, exc)
+        return None
+    if written is None or (isinstance(written, str) and not written.strip()):
+        return None
+    address = urlsplit(written.strip()) if isinstance(written, str) else None
+    if address is None or address.scheme.lower() not in ("http", "https") or not address.netloc or (
+            address.query or address.fragment):
+        logger.warning("[Report] %s %s is not an http(s) address (%r) - report files link their pictures relative "
+                       "to themselves", SETTINGS_FILE, PUBLIC_URL_CELL, written)
+        return None
+    return written.strip().rstrip("/")
+
+
+def _settings():
+    """server_settings.json as an object - {} when it is not there or is not an object; raises when it does not read."""
+    if not os.path.exists(SETTINGS_PATH):
+        return {}
+    with open(SETTINGS_PATH, "rb") as handle:
+        loaded = json.loads(_decode_config_text(handle.read()))
+    return loaded if isinstance(loaded, dict) else {}
 
 
 _open = {}                      # this process's requests begun and not ended: key -> (perf_counter at begin, path)

@@ -18,6 +18,13 @@
   a wrong key, none, another report's key     403 - the key never expires: there is no «expired»
   the report's key, a number off the list     404, the same sentence
   the page's links                            carry the page's own ?k= (a script); a page with no link has no script
+
+  server_settings.json's public_url (lead 10-29 ①) - the file a mail carried opens its pictures too
+  written (a «/» at its end or not, http or https)   the file links <public_url>/reports/<file>/image/<n>, the
+                                                      relative link beside it (data-rel) for the server's own pages
+  blank or not written                               relative, as before, nothing said
+  not an http(s) address                             relative, one line says so - once, not per report
+  (what the script makes of each link on each page: in the browser - the round's report)
 """
 import io
 import json
@@ -211,3 +218,67 @@ def test_the_page_s_links_carry_its_own_key_only_when_it_has_links(box):
     bare = report_html.page("W1 report", "R", {"layout": [{"kind": "image"}]}, {},
                             {"void": [{"wafer": "W1", "src": "data:image/png;base64,AAAA"}]}, {})
     assert report_html.LINK_SCRIPT not in bare
+
+
+@pytest.fixture
+def settings(box, monkeypatch):
+    """server_settings.json in the scratch root -> write(cells or None for no file); read again as a change is."""
+    from database import config_watcher
+    from runtime import request_timing
+
+    path = box["tmp"] / "server_settings.json"
+    monkeypatch.setattr(request_timing, "SETTINGS_PATH", str(path))
+
+    def write(cells):
+        if cells is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(json.dumps(cells), encoding="utf-8")
+        config_watcher.forget_held()
+    yield write
+    config_watcher.forget_held()
+
+
+def _links(page):
+    return [(a.split('href="', 1)[1].split('"', 1)[0], a.split('data-rel="', 1)[1].split('"', 1)[0]
+             if 'data-rel="' in a else None) for a in page.split('<a class="%s" ' % report_html.ORIGINAL)[1:]]
+
+
+@pytest.mark.parametrize("written, base", [
+    ("https://assy.example.com", "https://assy.example.com"),
+    ("https://assy.example.com/", "https://assy.example.com"),
+    (" http://assy.example.com/ ", "http://assy.example.com"),
+    ("https://gate.example.com/assy/", "https://gate.example.com/assy"),
+])
+def test_with_public_url_the_file_links_its_pictures_there(box, settings, written, base):
+    settings({"slow_request_ms": 500, "public_url": written})
+    _path, page, refs = _written()
+    assert _links(page) == [("%s/reports/W1.html/image/%d" % (base, n), "W1.html/image/%d" % n)
+                            for n in range(len(refs))]
+    assert page.count(report_html.LINK_SCRIPT) == 1 and "k=" not in page.replace(report_html.LINK_SCRIPT, "")
+    href = _links(page)[2][0]
+    got = box["client"].get(href[len(base):])                      # the address's path is the route's
+    assert got.status_code == 200 and got.content == box["originals"]["c.png"]
+    from runtime import request_timing
+
+    assert request_timing.slow_request_ms() == 500, "the same file's other cell reads as before"
+
+
+@pytest.mark.parametrize("cells", [None, {}, {"public_url": ""}, {"public_url": "   "}, {"public_url": None}])
+def test_blank_or_not_written_links_relative_as_before_and_says_nothing(box, settings, caplog, cells):
+    settings(cells)
+    _path, page, refs = _written()
+    assert _links(page) == [("W1.html/image/%d" % n, None) for n in range(len(refs))]
+    assert "[Report]" not in caplog.text
+
+
+@pytest.mark.parametrize("written", ["assy.example.com", "ftp://assy.example.com", "https://", "https://h/?a=1",
+                                     "https://h/#x", 8080])
+def test_not_an_address_is_said_once_and_links_relative(box, settings, caplog, written):
+    settings({"public_url": written})
+    for _ in range(2):
+        _path, page, refs = _written()
+        assert _links(page) == [("W1.html/image/%d" % n, None) for n in range(len(refs))]
+    said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Report]")]
+    assert said == ["[Report] server_settings.json public_url is not an http(s) address (%r) - report files link "
+                    "their pictures relative to themselves" % (written,)], said
