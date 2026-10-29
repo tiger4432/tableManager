@@ -68,35 +68,53 @@ def prompt_of(question, refused=None):
     return text
 
 
+def tool_named(said, tools):
+    """The tool `said` names: its key, its key in another case, or its label exactly (lead 10-29) - else None."""
+    if not isinstance(said, str):
+        return None
+    folded = said.casefold()
+    return next((name for name in tools if name == said), None) or next(
+        (name for name in tools if name.casefold() == folded or tools[name]["label"] == said), None)
+
+
 def pick(question, ask_json=None):
-    """-> {"op", "params", "why", "similar", "refused", "tries", "seconds"} - the tool the model named and the fields
-    as its `validate` normalized them; op None when no answer passed. `seconds` the gateway's time per ask. Refused
-    by name (`LlmRefused`) when the model cannot be asked."""
+    """-> {"op", "params", "unfilled", "why", "similar", "refused", "tries", "seconds"} - the tool the model named
+    and the fields it gave as `validate(partial=True)` normalized them, `unfilled` the required ones still blank (the
+    form opens with them blank); op None when no answer passed. `seconds` the gateway's time per ask. An answer that
+    is not a JSON object is asked again like a refused one; refused by name (`LlmRefused`) when the model cannot be
+    asked."""
     from utils import llm
 
     ask_json = ask_json or llm.ask_json
     tools, refused, seconds, answer = catalog(), None, [], {}
     for tries in range(1, TRIES + 1):
         began = time.monotonic()
-        answer = ask_json(prompt_of(question, refused), system=SYSTEM)
-        seconds.append(round(time.monotonic() - began, 3))
-        op = answer.get("op")
+        try:
+            answer = ask_json(prompt_of(question, refused), system=SYSTEM)
+        except llm.LlmNotAnObject as e:
+            answer, refused = {}, str(e)
+            continue
+        finally:
+            seconds.append(round(time.monotonic() - began, 3))
+        op = tool_named(answer.get("op"), tools)
         params = answer.get("params") if isinstance(answer.get("params"), dict) else {}
-        if op not in tools:
-            refused = "%r is not a tool in the list" % (op,)
+        if op is None:
+            refused = ("the model named no tool" if answer.get("op") in (None, "")
+                       else "%r is not a tool in the list" % (answer.get("op"),))
             continue
         if op in retroactive.DOORS_OUTSIDE:
-            params = {}
+            params, unfilled = {}, []
         else:
             try:
-                params = retroactive.validate(op, params)
+                params = retroactive.validate(op, params, partial=True)
             except retroactive.RetroactiveRefused as e:
                 refused = str(e)
                 continue
-        return {"op": op, "params": params, "why": answer.get("why"), "similar": [], "refused": None,
-                "tries": tries, "seconds": seconds}
+            unfilled = retroactive.unfilled(op, params)
+        return {"op": op, "params": params, "unfilled": unfilled, "why": answer.get("why"), "similar": [],
+                "refused": None, "tries": tries, "seconds": seconds}
     near = answer.get("similar") if isinstance(answer.get("similar"), list) else []
-    return {"op": None, "params": {}, "why": answer.get("why"), "refused": refused, "tries": TRIES,
+    return {"op": None, "params": {}, "unfilled": [], "why": answer.get("why"), "refused": refused, "tries": TRIES,
             "similar": [{"op": name, "label": tools[name]["label"]}
                         for name in dict.fromkeys(near) if name in tools][:SIMILAR], "seconds": seconds}
 
@@ -114,7 +132,8 @@ def ask(db, question, asked_by=None, ask_json=None):
     try:
         got = pick(question, ask_json)
     except LlmRefused as e:
-        got = {"op": None, "params": {}, "why": None, "similar": [], "refused": str(e), "tries": 0, "seconds": []}
+        got = {"op": None, "params": {}, "unfilled": [], "why": None, "similar": [], "refused": str(e), "tries": 0,
+               "seconds": []}
     spec = catalog().get(got["op"]) or {}
     got.update(help_id=uuid.uuid4().hex[:12], count=None, count_refused=None, label=spec.get("label"),
                **({"doors": spec["doors"]} if spec.get("doors") else {}))

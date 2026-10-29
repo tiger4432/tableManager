@@ -3,7 +3,12 @@
 tool's own `validate` reads them, and the tool's own count; it never runs anything.
 
   the model names a tool and fields          the answer: tool · fields · `retroactive.count`'s answer · help_id · a row
-  a tool outside the list · a wrong field    asked once more with the refusal in the prompt
+  a required field the question leaves out   not refused (lead 10-29): `unfilled` names it, the count says it cannot count
+  every field given                          the operation's own judgement runs - a rule that does not exist is refused
+  the run's doors                            judge whole: validate · count · publish refuse a blank required field
+  the tool's name                            its key, its key in another case, its label - nothing else
+  an answer that is not JSON                 asked once more with that sentence
+  a tool outside the list · a wrong field    asked once more with the refusal in the prompt; no tool -> «named no tool»
   still refused                              op None, the refusal, up to three tools of the list it named near
   the help                                   no route under /admin/help runs, and `publish` is never reached
   a run the form opened with help_id         its run_id on that ask's row; without help_id the same answer as before
@@ -62,14 +67,79 @@ def test_a_tool_outside_the_list_is_asked_again_with_its_refusal(client, monkeyp
 
 
 def test_a_wrong_field_twice_is_not_sure_and_names_tools_of_the_list_only(client, monkeypatch):
-    asked = _model(monkeypatch, {"op": "set_aside", "params": {"tables": "t"}},
+    asked = _model(monkeypatch, {"op": "chain_replay", "params": {"pace": "warp"}},
                    {"op": "set_aside", "params": {"tables": "t", "colour": "red"},
                     "similar": ["withdraw", "no_such_tool", "set_aside", "withdraw"]})
     got = _ask(client, "이거 멈춰").json()
-    assert got["op"] is None and got["count"] is None and got["tries"] == 2
-    assert "requires parameter 'reason'" in asked[1]
+    assert got["op"] is None and got["count"] is None and got["tries"] == 2 and got["unfilled"] == []
+    assert "'chain_replay' parameter 'pace' must be one of" in asked[1], "a field given is judged"
     assert "unknown parameter(s) for 'set_aside': ['colour']" in got["refused"]
     assert got["similar"] == [{"op": op, "label": retroactive.OPERATIONS[op]["label"]} for op in ("withdraw", "set_aside")]
+
+
+def test_a_required_field_the_question_leaves_out_is_left_for_the_form(client, monkeypatch):
+    """lead 10-29 - 18 of 19 operations need a field a question seldom says; the help answered «not sure» to them"""
+    asked = _model(monkeypatch, {"op": "set_aside", "params": {"tables": "t1"}, "why": "w"})
+    got = _ask(client, "이거 멈춰").json()
+    assert (got["op"], got["params"], got["unfilled"], got["tries"], got["refused"]) == (
+        "set_aside", {"tables": ["t1"]}, ["reason"], 1, None)
+    assert got["count"] is None and "'set_aside' requires parameter 'reason'" in got["count_refused"]
+    assert len(asked) == 1
+
+
+def test_every_field_given_is_judged_by_the_operation_itself(client, monkeypatch):
+    _model(monkeypatch, {"op": "set_aside", "params": {"rules": "no_such_rule", "reason": "r"}},
+           {"op": "set_aside", "params": {"rules": "no_such_rule", "reason": "r"}})
+    got = _ask(client, "그 규칙 멈춰").json()
+    assert got["op"] is None and "no chain rule is declared under ['no_such_rule']" in got["refused"]
+
+
+def test_the_runs_own_doors_judge_whole(db_session):
+    """the partial judgement is the help's alone: the form's run, its count and the queue refuse a blank required field"""
+    import ast
+    import pathlib
+
+    said = "'set_aside' requires parameter 'reason'"
+    for door in (lambda: retroactive.validate("set_aside", {"tables": "t1"}),
+                 lambda: retroactive.count(db_session, "set_aside", {"tables": "t1"}),
+                 lambda: retroactive.publish(db_session, "set_aside", {"tables": "t1"})):
+        with pytest.raises(retroactive.RetroactiveRefused, match=said):
+            door()
+    server = pathlib.Path(__file__).resolve().parents[1]
+    partial = sorted(str(path.relative_to(server)).replace(os.sep, "/") for path in server.rglob("*.py")
+                     if "tests" not in path.parts and "partial=True" in path.read_text(encoding="utf-8")
+                     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+                     if isinstance(node, ast.Call) and any(k.arg == "partial" for k in node.keywords)
+                     and getattr(node.func, "attr", getattr(node.func, "id", None)) == "validate")
+    assert partial == ["admin/help.py"]
+
+
+@pytest.mark.parametrize("said, named, refused", [
+    ("chain_replay", "chain_replay", None),
+    ("CHAIN_REPLAY", "chain_replay", None),
+    ("Replay chain rules over old data (R1)", "chain_replay", None),
+    ("`chain_replay`", None, "'`chain_replay`' is not a tool in the list"),
+    (None, None, "the model named no tool"),
+    ("", None, "the model named no tool"),
+])
+def test_the_tool_is_named_by_its_key_its_key_in_any_case_or_its_label(monkeypatch, said, named, refused):
+    answers = [{"op": said, "params": {}}] * 2
+    got = admin_help.pick("q", lambda prompt, system=None: answers.pop())
+    assert (got["op"], got["refused"]) == (named, refused)
+
+
+def test_an_answer_that_is_not_json_is_asked_again_with_its_sentence(monkeypatch):
+    asked = []
+
+    def ask_json(prompt, system=None):
+        asked.append(prompt)
+        if len(asked) == 1:
+            raise llm.LlmNotAnObject('the answer is not JSON: {"op": "chain_re', '{"op": "chain_re')
+        return {"op": "fold_withdrawal_events", "params": {}}
+
+    got = admin_help.pick("q", ask_json)
+    assert (got["op"], got["tries"], len(got["seconds"])) == ("fold_withdrawal_events", 2, 2)
+    assert 'Your last answer was refused: the answer is not JSON: {"op": "chain_re' in asked[1]
 
 
 def test_a_tool_with_doors_answers_with_them_and_their_pages(client, monkeypatch):
@@ -113,24 +183,29 @@ def test_a_run_opened_from_an_answer_is_written_on_its_ask(client, db_session, m
 
 
 def test_the_bench_asks_every_example_and_counts_the_hits():
-    """A fake model naming each question's own tool with no fields: the tools that need no field are hits, the rest
-    are refused by their own validate and counted as misses - the path, not the model's quality."""
+    """A fake model naming each question's own tool with no fields - the path, not the model's quality: every tool is
+    a hit but the one whose own judgement asks for at least one scope (rerun_set_aside, lead 10-29: 18 -> 56 of 58)."""
     from scripts.help_bench import bench
 
     catalog = admin_help.catalog()
     owner = {question: tool for tool, spec in catalog.items() for question in spec["examples"]}
-
-    def named(tool):
-        try:
-            return tool in retroactive.DOORS_OUTSIDE or retroactive.validate(tool, {}) is not None
-        except retroactive.RetroactiveRefused:
-            return False
-
     said = bench(ask_json=lambda prompt, system=None: {
         "op": owner[prompt.rsplit("Question: ", 1)[1].split("\n\nYour last answer")[0]], "params": {}})
     assert said["asked"] == len(owner) > 20 and len(said["seconds"]) >= said["asked"]
-    assert said["hit"] == sum(1 for tool in owner.values() if named(tool)) > 0
-    assert {tool for tool, _q, _picked in said["misses"]} == {tool for tool in owner.values() if not named(tool)}
+    assert {tool for tool, _q, _picked in said["misses"]} == {"rerun_set_aside"}
+    assert said["hit"] == said["asked"] - len(catalog["rerun_set_aside"]["examples"])
+
+
+def test_the_bench_counts_a_failed_ask_as_its_miss_and_goes_on_and_stops_at_its_limit():
+    from scripts.help_bench import bench
+
+    def ask_json(prompt, system=None):
+        raise llm.LlmCallFailed("the language model call failed: 400 context length")
+
+    said = bench(ask_json=ask_json, limit=3)
+    assert said["asked"] == 3 and said["hit"] == 0
+    assert [picked.split(" (")[0] for _tool, _q, picked in said["misses"]] == [
+        "LlmCallFailed: the language model call failed: 400 context length"] * 3
 
 
 @pytest.fixture(autouse=True)

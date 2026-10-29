@@ -3,7 +3,10 @@
 model the server is set to (config/llm_config.json), as the help asks it (`admin.help.pick`) - how many name their
 own tool, which do not, and the gateway's seconds per ask. Reads and writes nothing in the database.
 
-    python server/scripts/help_bench.py [--tool <name>]
+    python server/scripts/help_bench.py [--tool <name>] [--limit N]
+
+A question whose ask fails (the gateway, an answer that is not JSON twice) is a miss with its sentence - the bench
+goes on.
 """
 import argparse
 import os
@@ -15,29 +18,36 @@ if _SERVER_DIR not in sys.path:
     sys.path.insert(0, _SERVER_DIR)
 
 
-def bench(ask_json=None, tools=None):
-    """-> {"asked", "hit", "misses": [(tool, question, picked or the refusal)], "seconds": [per ask]}."""
+def bench(ask_json=None, tools=None, limit=None):
+    """-> {"asked", "hit", "misses": [(tool, question, picked or the refusal)], "seconds": [per ask]} - the first
+    `limit` questions when given."""
     from admin import help as admin_help
 
     catalog = admin_help.catalog()
     said = {"asked": 0, "hit": 0, "misses": [], "seconds": []}
-    for tool in tools or sorted(catalog):
-        for question in catalog[tool]["examples"]:
+    asks = [(tool, question) for tool in tools or sorted(catalog) for question in catalog[tool]["examples"]]
+    for tool, question in asks[:limit]:
+        try:
             got = admin_help.pick(question, ask_json)
-            said["asked"] += 1
-            said["seconds"] += got["seconds"]
-            if got["op"] == tool:
-                said["hit"] += 1
-            else:
-                said["misses"].append((tool, question, got["op"] or got["refused"]))
+        except Exception as e:                                          # noqa: BLE001 - the question's miss
+            from error_said import told
+
+            got = {"op": None, "refused": "%s: %s" % (type(e).__name__, told(e)), "seconds": []}
+        said["asked"] += 1
+        said["seconds"] += got["seconds"]
+        if got["op"] == tool:
+            said["hit"] += 1
+        else:
+            said["misses"].append((tool, question, got["op"] or got["refused"]))
     return said
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tool", action="append", help="only this tool's questions (repeatable)")
+    parser.add_argument("--limit", type=int, help="ask only the first N questions")
     args = parser.parse_args(argv)
-    said = bench(tools=args.tool)
+    said = bench(tools=args.tool, limit=args.limit)
     for tool, question, picked in said["misses"]:
         print("MISS  %-28s %s  ->  %s" % (tool, question, picked))
     seconds = said["seconds"]

@@ -3772,8 +3772,15 @@ def inventory() -> list:
 # worker cannot disagree about what a valid request is.
 # ---------------------------------------------------------------------------
 
-def validate(op: str, params: dict) -> dict:
-    """-> the normalized parameter dict, or raise `RetroactiveRefused`."""
+def unfilled(op: str, params: dict) -> list:
+    """The required fields normalized `params` (`validate`'s answer) leaves blank, in the form's order."""
+    return [p["name"] for p in operation(op)["params"] if p["required"] and p["name"] not in params]
+
+
+def validate(op: str, params: dict, partial: bool = False) -> dict:
+    """-> the normalized parameter dict, or raise `RetroactiveRefused`. `partial` (the admin help only, lead 10-29):
+    the fields given are judged, a required one left blank is not refused, and the operation's own judgement runs once
+    none is - the form opens with the blank ones for the operator, and its run is judged whole."""
     spec = operation(op)
     params = params or {}
     known = {p["name"] for p in spec["params"]}
@@ -3786,7 +3793,7 @@ def validate(op: str, params: dict) -> dict:
     for p in spec["params"]:
         raw = params.get(p["name"])
         if raw is None or (isinstance(raw, str) and not raw.strip()):
-            if p["required"]:
+            if p["required"] and not partial:
                 raise RetroactiveRefused(
                     f"'{op}' requires parameter '{p['name']}' ({p['help'] or p['type']})")
             continue
@@ -3828,7 +3835,7 @@ def validate(op: str, params: dict) -> dict:
 
     # The operation's own judgment, so the operator gets a 400 instead of a queued job that
     # dies in a worker log - and the publish, the count and a CLI get one answer.
-    if spec["judge"] is not None:
+    if spec["judge"] is not None and not (partial and unfilled(op, out)):
         spec["judge"](out)
     return out
 

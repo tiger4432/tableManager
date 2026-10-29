@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **도움말이 «not sure» 로만 답하던 것 — 빈 필수 칸은 폼에 남기고 도구를 고른다** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    어드민 도움말에 «어제 옆으로 뺀 거 다시 돌려줘» 같은 물음 -> 도구가 골라지고, 물음에 없던 필수 칸은 unfilled
+> 뜻       빈 필수 칸은 폼이 비운 채 연다 -> 운영자가 채우고 돌린다. 돌릴 때는 전처럼 전부 판정
+> Not sure 카드의 refused 한 줄 -> 무엇
+>   «'<도구>' requires parameter '<칸>' …»     이 착지 전 서버 -> git pull · 재기동
+>   «the answer is not JSON: …»               모델이 두 번 다 JSON 이 아닌 답 -> 게이트웨이의 출력 상한 · 모델 설정
+>   «'<글자>' is not a tool in the list»      모델이 목록에 없는 이름 (키 · 대소문자 · 라벨은 받는다)
+>   «the model named no tool»                 모델이 맞는 도구가 없다고 봄 -> 예시 말투로 다시 물어 본다
+>   «the language model call failed: … 400 …»  게이트웨이 거절. 프롬프트 약 15,400 자 -> 모델 문맥이 그보다 작을 수 있다
+>   그 밖 (예: «no chain rule is declared under …»)  모델이 준 칸 값이 틀림 -> 물음에 그 이름을 정확히
+> 한 번에 재기   python server/scripts/help_bench.py --limit 10
+>          «named their own tool: N of M» 한 줄과 MISS 한 줄을 옮겨 친다
+> 끄는 법  되돌리기 커밋 하나. 데이터 · 설정은 안 건드린다
+> ```
+>
+> ---
+>
 > ## [10-29] **대시보드 요약이 «오늘 감사» 를 안 셈 — 4fc33ef20** — git pull · 런처 재기동
 >
 > ```
