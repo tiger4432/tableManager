@@ -1065,8 +1065,9 @@
     /* under Help (its bottom set on open by admin.js), so Help stays in reach to close it */
     /* The last freeze (owner 10-29): the server's line whole, on one line, in a face the owner can type from. */
     .stall-host { min-width: 0; }
-    .stall-line { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; overflow-x: auto;
-      white-space: nowrap; padding: var(--space-1) var(--space-2); border: 1px solid var(--warning); background: var(--warning-weak); }
+    .stall-line { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0;
+      padding: var(--space-1) var(--space-2); border: 1px solid var(--warning); background: var(--warning-weak); }
+    .stall-line__label, .stall-line__at { white-space: nowrap; }
     .stall-line[hidden] { display: none; }
     .stall-line__label { font-family: var(--font-head); font-size: var(--fs-label); font-weight: 600; color: var(--warning);
       text-transform: uppercase; letter-spacing: 0.08em; }
