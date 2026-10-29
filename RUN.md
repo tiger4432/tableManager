@@ -10,6 +10,20 @@
 >          서버에서 연 리포트 · Share link 페이지에서 누름 -> 지금과 같은 주소
 > chain_worker.log 에 [Report] server_settings.json public_url is not an http(s) address (...) -> 주소 꼴이 아님, 링크는 상대 주소
 > 끄는 법  public_url 을 비움 (저장하면 다시 읽음, 그 뒤 만드는 리포트부터)
+>
+> 페이지 스크립트(report_html.LINK_SCRIPT)를 만지면 이 아홉 칸을 다시 돌린다 — 10-29 에 node 로 돌린 답
+>   링크로 쓴 것 A = https://assy.example.com/reports/W1.html/image/0 (data-rel W1.html/image/0)
+>   public_url 있음 · 연 페이지 -> 누르면 가는 곳
+>     http://10.0.0.5:8080/reports/W1.html          -> http://10.0.0.5:8080/reports/W1.html/image/0
+>     http://10.0.0.5:8080/shared/report/W1.html?k=K -> .../shared/report/W1.html/image/0?k=K
+>     https://gate.example.com/assy/reports/W1.html -> https://gate.example.com/assy/reports/W1.html/image/0
+>     file:///C:/Users/u/Downloads/W1.html          -> A
+>     file:///C:/Users/u/reports/W1.html            -> A   (reports 폴더에 저장한 메일 파일)
+>     https://mail.example.com/owa/attach/W1.html?id=9 -> A
+>   public_url 없음 (링크로 쓴 것 W0.html/image/0)
+>     http://10.0.0.5:8080/reports/W0.html          -> http://10.0.0.5:8080/reports/W0.html/image/0
+>     http://10.0.0.5:8080/shared/report/W0.html?k=K -> .../shared/report/W0.html/image/0?k=K
+>     file:///C:/Users/u/Downloads/W0.html          -> file:///C:/Users/u/Downloads/W0.html/image/0 (안 열림, 전과 같음)
 > ```
 >
 > ---
