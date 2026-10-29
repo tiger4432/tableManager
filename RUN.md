@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **ingestion_settings 를 고치면 파일 화면 unread · 미리 보기가 1 초 안에 새 설정으로** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    ingestion_settings.json 의 외부 소스 칸을 옮기거나 고친 뒤, 파일 화면 소스 줄의 unread 문장이 1~2 초 안에 바뀜
+>          (전: 다음 변경 · 리로드 · 재기동까지 옛 문장)
+> 안 바뀌면 설정 와처가 이 프로세스에서 안 돎 — API 로그에 «Dynamic table config watcher started.» 줄이 있는지 본다
+> 끄는 법  되돌리기 커밋 하나
+> ```
+>
+> ---
+>
 > ## [10-29] **도움말 선언 가이드 여섯 — ai_ask_tables 더함(ask · report 선언)** — git pull · 서버 재기동
 >
 > ```

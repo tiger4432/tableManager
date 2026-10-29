@@ -438,15 +438,20 @@ class StorageUnknown(RereadRefused):
 
 def validated_sources():
     """(table_config, every external source as `validate_external_source_specs` - the watcher's registration - answers)
-    held by this process: validated again only when table_config.json or ingestion_settings.json changes stamp, or
-    after a reload (`forget_sources`). Judging a source resolves its root, and one unreachable share root cost every
-    preview 21 s (총괄 10-20, 소유자 「시작할 때 안 읽는 거는」); the API's start fills it."""
+    held by this process: validated again only when one of the copies it reads moves, or after a reload
+    (`forget_sources`). Each copy by its own reader's clock: table_config.json is read from the file, so its stamp;
+    the settings are `config_watcher.held`, so what it keys on (the path, its generation) - a file stamp there cached
+    the old settings under the new stamp when asked before the watcher's event, until the next change (총괄 10-29).
+    Judging a source resolves its root, and one unreachable share root cost every preview 21 s (총괄 10-20, 소유자 「시작할
+    때 안 읽는 거는」); the API's start fills it."""
     import paths
+    from database import config_watcher
     from directory_watcher import (INGESTION_SETTINGS_PATH, load_global_table_config, load_ingestion_settings,
                                    validate_external_source_specs)
     from ledger.setup import file_stamp
 
-    stamp = (file_stamp(paths.config_path("table_config.json")), file_stamp(INGESTION_SETTINGS_PATH))
+    stamp = (file_stamp(paths.config_path("table_config.json")), INGESTION_SETTINGS_PATH,
+             config_watcher.generation(*config_watcher.names_of([INGESTION_SETTINGS_PATH])))
     with _SOURCES_LOCK:
         if _SOURCES.get("stamp") != stamp:
             config = load_global_table_config()

@@ -36,6 +36,7 @@ def test_the_sources_are_validated_once_until_a_file_changes_or_a_reload(tmp_pat
     import json
 
     import paths
+    from database import config_watcher
     from runtime import system_reload
 
     tables = {"asked": {"business_key": "k", "column_types": {"k": "string"}, "std_parse": True},
@@ -56,9 +57,55 @@ def test_the_sources_are_validated_once_until_a_file_changes_or_a_reload(tmp_pat
     reread.table_sources("other")
     reread.table_sources("asked")
     assert [spec["table_name"] for spec in specs] == ["asked"] and len(validated) == 1, validated     # once
-    os.utime(settings, ns=(os.stat(settings).st_mtime_ns + 10 ** 9,) * 2)                          # the file changed
+    config_watcher.changed(str(settings))                                    # the settings changed, as the watcher says
     reread.table_sources("asked")
     assert len(validated) == 2, validated
     system_reload.reload_local_process_cache()                                                      # a reload
     reread.table_sources("asked")
     assert len(validated) == 3, validated
+
+
+def test_settings_asked_before_the_watchers_event_answer_anew_once_it_comes(tmp_path, monkeypatch):
+    """총괄 10-29 (client: a cell moved into options, GET /tables said «unread» 2 min on): the settings are held until
+    the watcher's event, so asked between the write and the event they are the old ones - and the sources kept them
+    under the file's new stamp until the next change. Keyed on the held copy's generation, the first ask after the
+    event judges the new settings: the tables route's «unread» and the preview's picked files alike."""
+    import json
+
+    import paths
+    from database import config_watcher
+
+    (tmp_path / "table_config.json").write_text(json.dumps(
+        {"asked": {"business_key": "k", "column_types": {"k": "string"}, "std_parse": True}}), encoding="utf-8")
+    share = tmp_path / "share"
+    share.mkdir()
+    for name in ("a.csv", "a.txt"):
+        (share / name).write_text("x")
+    settings = tmp_path / "ingestion_settings.json"
+
+    def write(glob, top):
+        entry = {"path": str(share), "table_name": "asked", "options": {"glob": [glob]}}
+        (entry if top else entry["options"])["stability_interval_seconds"] = 5
+        settings.write_text(json.dumps({"external_sources": [entry]}), encoding="utf-8")
+
+    def answer():
+        picked = reread.select_files(None, "asked", str(share))["picked"]
+        unread = [said for spec in reread.validated_sources()[1] for said in spec.get("unread", ())]
+        return [os.path.basename(path) for _log, _rel, path in picked], len(unread)
+
+    monkeypatch.setattr(paths, "config_path", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(paths, "WORKSPACE_DIR", str(tmp_path / "ingestion_workspace"))
+    monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(settings))
+    monkeypatch.setattr(reread, "_newest_rows_of", lambda db, table, walked: {})
+    write("*.csv", top=True)
+    config_watcher.changed(str(settings))
+    reread.forget_sources()
+    assert answer() == (["a.csv"], 1), "CANARY: the first settings, a cell at the top named"
+    write("*.txt", top=False)
+    os.utime(settings, ns=(os.stat(settings).st_mtime_ns + 10 ** 9,) * 2)     # the file's stamp surely moved
+    assert answer() == (["a.csv"], 1), "before the event the held settings are the old ones"
+    config_watcher.changed(str(settings))                                     # the watcher's event
+    assert answer() == (["a.txt"], 0)
+    write("*.csv", top=True)
+    config_watcher.changed(str(settings))
+    assert answer() == (["a.csv"], 1), "and back"
