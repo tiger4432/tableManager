@@ -3,8 +3,8 @@
 sections, the three nearest a guide-worded search picked, the model writing one declaration from them, and that
 declaration put through the save's own judgement without saving.
 
-    guides      the six below (ask and report declarations' since lead 10-29) - cut at headings, at bold numbered items (**①…), a section over CAP split at table rows
-                or blank lines with its table's header row; the Status line out, and of the rest only the SENTENCES
+    guides      the seven below (ask and report declarations' since lead 10-29) - cut at headings, at bold numbered items (**①…), a section over CAP split at table rows,
+                blank lines or list items, a table piece with its table's header row; the Status line out, and of the rest only the SENTENCES
                 with a retired mark (⚰ 🪦) - a current rule on the same line stays
     pick        the embedding model llm_config.json names (owner 10-29: bge-m3) - cosine of the search and each
                 section, BM25 only breaking a tie (the box has no model to weigh a mix with); none named, or the
@@ -29,8 +29,9 @@ import paths
 
 GUIDES = ("docs/guide/config/chain_rules.md", "docs/guide/config/table_config.md",
           "docs/guide/config/ledger_declaration_by_example.md", "docs/guide/config/enrichment_rules.md",
-          "docs/guide/CONFIG_ROLLOUT_GUIDE.md", "docs/guide/ai_ask_tables.md")
-#: A section longer than this many characters is split at its table rows / blank lines.
+          "docs/guide/CONFIG_ROLLOUT_GUIDE.md", "docs/guide/ai_ask_tables.md",
+          "docs/guide/ai_report_tables.md")
+#: A section longer than this many characters is split at its table rows / blank lines / list items.
 CAP = 2000
 #: Sections the declaration prompt carries.
 PICKED = 3
@@ -77,7 +78,7 @@ def _split(text):
         if row.startswith("|") and n + 1 < len(rows) and _TABLE_RULE.match(rows[n + 1]):
             header = row + "\n" + rows[n + 1]
     pieces, current = [], ""
-    for block in re.split(r"\n(?=\| )|\n\n", text):
+    for block in re.split(r"\n(?=\| )|\n\n|\n(?=- )", text):
         if current and len(current) + len(block) > CAP:
             pieces.append(current)
             current = header + "\n" if header and block.startswith("| ") else ""

@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **도움말 선언 가이드 일곱 — ai_report_tables 더함(리포트 선언) · 긴 절은 목록 항목에서도 잘림** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    어드민 도움말에 «리포트 조건 줄이 너무 많아 다섯 개만» -> Write a declaration, 근거 절이 ai_report_tables 의 «2. 도는 것»
+> 운영 재기  python server/scripts/help_bench.py --part declarations   (문항 37 — 리포트 10 개 더함)
+>          BM25 물은 그대로에서 못 찾는 것(고쳐 쓴 검색어 20/20 는 그대로):
+>          «엑셀 헤더를 붙여서 표를 새로 만들고 싶어» — 정답 table_config.md «2.1 엑셀에서 칸을 붙여 넣기 — 어드민의 표 등록 (10-01 `4d07d3987`)» 자리에 ai_report_tables.md «엑셀 양식 붙이는 법 (A, 10-23)»
+>          «웨이퍼마다 AI 리포트 만들려면 뭘 적어» — 정답 ai_report_tables.md «1. 적는 것 (part 1)» 자리에 ai_report_tables.md «AI 리포트 — 리포트 표 하나 + 거기에 리포트 규칙 하나 (소유자 10-23)»
+>          «테스트 leg 는 리포트에서 빼고 싶어» — 정답 ai_report_tables.md «2. 도는 것 (part 3)» 자리에 ai_report_tables.md «2. 도는 것 (part 2)»
+>          embedding_model 을 쓰면 첫 물음은 새 절 · 바뀐 절만 다시 임베딩
+> 끄는 법  되돌리기 커밋 하나
+> ```
+>
+> ---
+>
 > ## [10-29] **ingestion_settings 를 고치면 파일 화면 unread · 미리 보기가 1 초 안에 새 설정으로** — git pull · 서버 재기동
 >
 > ```
@@ -77,7 +92,7 @@
 >                                             한 요청 입력 수 상한(절을 16 개씩 보낸다 — 받은 묶음은 남고 다음 물음이 남은 것만)
 >          bm25 ×n (embedding 을 시켰는데)       embedding_model 이 비었다 -> 한 줄을 적고 재기동
 > 적을 곳  견본 server/config/sample/llm_config.json.sample 에 "embedding_model": "" 칸이 있다
-> 첫 물음  절 123 개(가이드 여섯)를 16 개씩 8 요청으로 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 묶음마다 남김
+> 첫 물음  절 141 개(가이드 일곱)를 16 개씩 9 요청으로 임베딩해 DATA_ROOT/cache/help_guides_bge-m3.json 에 묶음마다 남김
 >          -> 그 물음만 느리다
 > 볼 것    어드민 도움말 «이거 멈춰» -> 셈 줄이 «the count waits for: reason, …» (빈 칸을 폼에서 채우면 셈이 된다)
 >          어드민 도움말 «조인 규칙 어떻게 써» -> 선언 카드 회색 줄 «via embedding» / «via bm25 (embedding failed: …)»

@@ -314,8 +314,10 @@ def test_without_an_embedding_model_the_sections_are_picked_by_their_words_and_n
 
 def test_an_embedding_model_picks_by_meaning_and_its_section_vectors_are_kept(gateway):
     gateway.declare(embedding_model="bge-m3")
-    by_words = help_guides.nearest("사진 칸", "bm25")[0]
-    picked, how = help_guides.nearest("사진 칸")
+    # «사진» is in no guide, so its words pick nothing in particular - «칸» alone had a report section with 이미지 on top
+    assert not any("사진" in p["name"] + p["text"] for p in help_guides.index().pieces), "CANARY: a word no guide has"
+    by_words = help_guides.nearest("사진", "bm25")[0]
+    picked, how = help_guides.nearest("사진")
     assert how == "embedding" and picked[0]["name"] != by_words[0]["name"]
     assert "이미지" in picked[0]["text"] or "이미지" in picked[0]["name"]
     pieces = help_guides.index().pieces

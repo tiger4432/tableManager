@@ -108,6 +108,46 @@
   {
    "question": "AI 가 목록에 없는 답을 내면 뭐라고 적혀",
    "section": "`none` 낱말"
+  },
+  {
+   "question": "웨이퍼마다 AI 리포트 만들려면 뭘 적어",
+   "section": "**리포트 규칙** — 어드민 Chain 탭에 하나"
+  },
+  {
+   "question": "리포트 다 만들면 중계 PC 로 보내게",
+   "section": "보내기: `send_to` 가 있으면"
+  },
+  {
+   "question": "보내기 실패한 리포트는 어디서 봐",
+   "section": "보내기 실패는 화면에 안 보인다"
+  },
+  {
+   "question": "리포트 하나 다시 만들고 싶어",
+   "section": "다시 보내기 · 다시 만들기"
+  },
+  {
+   "question": "리포트가 불량 원인 후보를 온톨로지에서 찾게",
+   "section": "`causes` — 상세 분석을 쓰기"
+  },
+  {
+   "question": "리포트 조건 줄이 너무 많아 다섯 개만",
+   "section": "`conditions.most`"
+  },
+  {
+   "question": "테스트 leg 는 리포트에서 빼고 싶어",
+   "section": "`wafer.exclude`"
+  },
+  {
+   "question": "리포트 결론 글을 리포트 표 칸에도 남기게",
+   "section": "`results` 에 layout 의 text slot 이름으로"
+  },
+  {
+   "question": "리포트를 회사 엑셀 양식에 맞춰 뽑고 싶어",
+   "section": "엑셀 양식 붙이는 법"
+  },
+  {
+   "question": "리포트 비교 웨이퍼는 어떻게 골라",
+   "section": "대조군 — 모델이 최근 평가에서 고른다"
   }
  ]
 }
