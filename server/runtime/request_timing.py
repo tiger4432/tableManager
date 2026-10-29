@@ -73,21 +73,24 @@ def _read_slow_request_ms():
     return event_constants.slow_warn_ms(declared, "%s %s" % (SETTINGS_FILE, SLOW_REQUEST_CELL))
 
 
-_open = {}                      # this process's requests begun and not ended: key -> perf_counter at begin
+_open = {}                      # this process's requests begun and not ended: key -> (perf_counter at begin, path)
 _keys = itertools.count()
 
 
-def begin():
-    """Start this request's counter; hand the token to `end`."""
+def begin(path=None):
+    """Start this request's counter; hand the token to `end`. `path`: the request's, without its query."""
     key, started = next(_keys), time.perf_counter()
-    _open[key] = started
+    _open[key] = (started, path)
     return _counter.set([0.0, 0]), started, key
 
 
-def oldest_open_seconds():
-    """Seconds the oldest request still without a response has been open - 0 with none (`runtime.stall_watch`)."""
-    starts = list(_open.values())
-    return time.perf_counter() - min(starts) if starts else 0.0
+def oldest_open():
+    """(seconds, path) of the oldest request still without a response - (0.0, None) with none (`runtime.stall_watch`)."""
+    opened = list(_open.values())
+    if not opened:
+        return 0.0, None
+    started, path = min(opened, key=lambda one: one[0])
+    return time.perf_counter() - started, path
 
 
 def spent():

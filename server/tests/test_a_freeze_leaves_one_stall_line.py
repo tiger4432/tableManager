@@ -19,7 +19,7 @@ class Readings:
     """What the cells read, set per tick by the test."""
 
     def __init__(self):
-        self.open, self.lag, self.threads, self.grid = 0.0, 0.0, (3, 40), 0
+        self.open, self.path, self.lag, self.threads, self.grid = 0.0, None, 0.0, (3, 40), 0
         self.statements, self.cpu, self.pids, self.table = (1, 0.1), (5.0, ("api", 2.0)), {1: "api"}, None
 
     def watch(self, said):
@@ -27,7 +27,7 @@ class Readings:
             if isinstance(value, Exception):
                 raise value
             return value
-        return stall_watch.Watch(lambda: fail_or(self.open), lambda now: fail_or(self.lag),
+        return stall_watch.Watch(lambda: fail_or((self.open, self.path)), lambda now: fail_or(self.lag),
                                  lambda: fail_or(self.threads), lambda: fail_or(self.grid),
                                  lambda: fail_or(self.statements), lambda pids: fail_or(self.cpu),
                                  lambda: fail_or((self.pids, self.table)), say=said.append)
@@ -46,7 +46,7 @@ def test_a_freeze_ends_in_one_line_of_its_highest_readings():
     r, said = Readings(), []
     w = r.watch(said)
     w.tick(100.0)
-    r.open, r.threads, r.grid, r.statements = 7.0, (40, 40), 6, (9, 11.2)
+    r.open, r.path, r.threads, r.grid, r.statements = 7.0, "/dashboard/summary", (40, 40), 6, (9, 11.2)
     r.cpu, r.table = (97.0, ("slot2", 61.3)), "dt_log"
     w.tick(101.0)
     r.open, r.lag, r.grid, r.cpu = 9.0, 12.4, 2, (40.0, ("watcher", 12.0))
@@ -54,7 +54,7 @@ def test_a_freeze_ends_in_one_line_of_its_highest_readings():
     assert said == []
     r.open, r.lag = 0.0, 0.0
     w.tick(105.0)
-    assert said == ["STALL 11s L12 T40/40 G6 D9/11s C97 slot2:61 ING dt_log"]
+    assert said == ["STALL 11s P /dashboard/summary L12 T40/40 G6 D9/11s C97 slot2:61 ING dt_log"]
     assert w.last["line"] == said[0] and w.last["at"]
     w.tick(106.0)
     assert len(said) == 1, "one freeze, one line"
@@ -142,12 +142,27 @@ def test_the_loop_probe_reads_how_long_a_blocked_loop_has_not_answered():
     runner.join(2)
 
 
+def test_the_path_is_the_request_open_longest_not_the_last_one_seen():
+    """C's F4 10-29: every STALL was /dashboard/summary while the line showed only «ING lag_wide · watcher:6» and
+    read as the ingestion's - the path of the request open longest comes first, after the seconds."""
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.open, r.path = 9.0, "/dashboard/summary"
+    w.tick(1.0)
+    r.open, r.path, r.table = 6.0, "/tables/dt_log/data", "lag_wide"
+    w.tick(2.0)
+    r.open, r.path = 0.0, None
+    w.tick(3.0)
+    assert said[0].startswith("STALL 11s P /dashboard/summary L0 ") and said[0].endswith("ING lag_wide"), said
+
+
 def test_an_open_request_is_counted_until_it_ends():
-    began = request_timing.begin()
+    began = request_timing.begin("/x")
     time.sleep(0.05)
-    assert request_timing.oldest_open_seconds() >= 0.05
+    seconds, path = request_timing.oldest_open()
+    assert seconds >= 0.05 and path == "/x"
     request_timing.end(began, "GET", "/x", None)
-    assert request_timing.oldest_open_seconds() == 0.0
+    assert request_timing.oldest_open() == (0.0, None)
 
 
 def test_a_request_waiting_for_a_grid_process_is_counted_while_it_waits():

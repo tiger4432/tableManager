@@ -187,7 +187,7 @@ async def db_context_middleware(request: Request, call_next):
 async def time_the_request(request: Request, call_next):
     """Server-Timing on every response, and a line for one over `slow_request_ms` (총괄 10-07 ④).
     Added after the request context above, so it is outside it and times its refusals too."""
-    began = request_timing.begin()
+    began = request_timing.begin(request.url.path)
     response = None
     try:
         response = await call_next(request)

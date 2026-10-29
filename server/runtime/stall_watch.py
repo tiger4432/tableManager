@@ -1,7 +1,7 @@
 """The one line a freeze of this server leaves (owner 10-29 «파일 인제션하면 서버가 굳네 여전히» · «원인 파악하게
 로그를 구성해봐 · 폰으로 쳐서 보내야 하니 구성 잘해», lead ㄴ):
 
-    STALL 14s L12 T40/40 G6 D9/11s C97 slot2:61 ING dt_log
+    STALL 14s P /dashboard/summary L12 T40/40 G6 D9/11s C97 slot2:61 ING dt_log
 
 A thread of the API process looks once a second. A freeze is a request open longer than `STALL_SECONDS`, or the event
 loop not answering that long. While one lasts the readings' highest values are kept; its end writes the line, and one
@@ -106,8 +106,8 @@ def workers():
 class Watch:
     """One freeze at a time: `tick(now)` once a second; readers are the cells' sources (tests hand their own)."""
 
-    def __init__(self, open_seconds, loop_lag, threads, grid_waiting, statements, cpu, named, say=None):
-        self.open_seconds, self.loop_lag, self.threads, self.grid_waiting = open_seconds, loop_lag, threads, grid_waiting
+    def __init__(self, open_requests, loop_lag, threads, grid_waiting, statements, cpu, named, say=None):
+        self.open_requests, self.loop_lag, self.threads, self.grid_waiting = open_requests, loop_lag, threads, grid_waiting
         self.statements, self.cpu, self.named = statements, cpu, named
         self.say = say or logger.warning
         self.freeze, self.last, self._broke = None, None, set()
@@ -122,7 +122,8 @@ class Watch:
             return UNREAD
 
     def tick(self, now):
-        open_s = self._read("open", self.open_seconds)
+        opened = self._read("P", self.open_requests)
+        open_s, path = (UNREAD, None) if opened == UNREAD else opened
         lag = self._read("L", self.loop_lag, now)
         longest = max(v for v in (open_s, lag, 0.0) if v != UNREAD)
         if longest <= STALL_SECONDS:
@@ -133,7 +134,9 @@ class Watch:
         f = self.freeze
         if f is None:
             f = self.freeze = {"start": now - longest, "said": now, "L": 0.0, "T": None, "G": 0, "D": None,
-                               "C": None, "top": None, "ING": None}
+                               "C": None, "top": None, "ING": None, "open": 0.0, "P": None}
+        if open_s != UNREAD and path and open_s >= f["open"]:
+            f["open"], f["P"] = open_s, path        # the path of the request open longest in this freeze
         f["L"] = _most(f["L"], lag)
         threads = self._read("T", self.threads)
         if threads != UNREAD and (f["T"] in (None, UNREAD) or threads[0] > f["T"][0]):
@@ -165,8 +168,10 @@ class Watch:
 
     def _line(self, now, going):
         f = self.freeze
-        cells = ["STALL", "%ds%s" % (round(now - f["start"]), "+" if going else ""),
-                 "L%s" % _int(f["L"]),
+        cells = ["STALL", "%ds%s" % (round(now - f["start"]), "+" if going else "")]
+        if f["P"]:
+            cells.append("P %s" % f["P"])
+        cells += ["L%s" % _int(f["L"]),
                  "T%s" % (UNREAD if f["T"] in (None, UNREAD) else "%d/%d" % f["T"]),
                  "G%s" % _int(f["G"]),
                  "D%s" % (UNREAD if f["D"] in (None, UNREAD) else "%d/%ds" % (f["D"][0], round(f["D"][1]))),
@@ -207,7 +212,7 @@ def start(loop, limiter):
     if _watch:
         return
     cpu = Cpu()
-    _watch.append(Watch(request_timing.oldest_open_seconds, LoopProbe(loop),
+    _watch.append(Watch(request_timing.oldest_open, LoopProbe(loop),
                         lambda: (limiter.borrowed_tokens, limiter.total_tokens),
                         lambda: process_pool.GRID.waiting[0], active_statements, cpu, workers))
 
