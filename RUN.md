@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-29] **도움말이 선언법을 답한다 — 가이드 절 셋 · 선언 예시 · 저장 없이 판정** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    어드민 도움말에 «디사이드 키 다른거 어케하더라» -> Write a declaration, 예시 선언 · 근거 절 · check 한 줄
+>          check  ok        저장 판정을 지난다 (저장은 안 했다 — 적으려면 Chain · 표 편집기에서)
+>                 refused   저장이 거절할 문장 그대로
+>                 not checked  종류를 모름 · 원장 경로가 없음 · 가이드가 없음 -> 판정하지 않았다는 뜻, 통과 아님
+> 운영 재기  python server/scripts/help_bench.py --part declarations
+>          «declarations: right section cited N of 20 · checked ok M · refused R · not checked K» 한 줄과 MISS 줄을 옮겨 친다
+>          «NO RIGHT SECTION IN THE GUIDES» 가 먼저 나오면 가이드의 그 절 이름이 바뀐 것 -> server/scripts/help_declaration_bench.json 을 고친다
+> 박스는 흉내 모델로 길만 쟀다(정답 절이 첫째 20 중 19). 실제 정확도는 이 운영 재기 몫
+> 끄는 법  되돌리기 커밋 하나. 데이터 · 설정은 안 건드린다
+> ```
+>
+> ---
+>
 > ## [10-29] **도움말 — «표 · 규칙 · 트랜잭션 중 하나» 도 빈 칸** — git pull · 서버 재기동
 >
 > ```

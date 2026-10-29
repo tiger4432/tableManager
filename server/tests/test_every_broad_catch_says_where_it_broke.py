@@ -21,6 +21,7 @@ KEPT = {
     "server/utils/llm.py": 1,                       # _why says every cause in the chain
     "server/scripts/dev_env/devenv.py": 1,          # standalone scripts without server/ on the path at import
     "server/scripts/diagnose_socket.py": 7,
+    "server/scripts/help_bench.py": 2,              # a failed ask is its miss: _failed says the type and told(e)
     "server/scripts/ledger_deploy_preflight.py": 1,
 }
 QUIET_KEPT = {

@@ -28,15 +28,29 @@ CHOICES_SHOWN = 40
 SYSTEM = ("You route an operator's question to ONE maintenance tool of the list below, or to none. Answer one JSON "
           'object: {"op": the tool name from the list or null, "params": {field: value} using only that tool\'s '
           'fields - leave a field out when the question does not say it, "why": one short English sentence, '
-          '"similar": up to three other tool names from the list}. Never name a tool or a field that is not in the '
-          "list.")
+          '"similar": up to three other tool names from the list, "search": only for the tool declaration - the '
+          "question rewritten in the words a configuration guide would use}. Never name a tool or a field that is "
+          "not in the list.")
+
+#: The help's own tool (owner 10-29 «선언법도 도우미에»): how to write a declaration - answered from the guides
+#: (`help_guides.answer`), checked by the save's own judgement without saving.
+DECLARATION = "declaration"
+DECLARATION_SPEC = {
+    "label": "Write a declaration",
+    "what_is_missing": ("the operator asks how to write a chain rule, a table's settings or a ledger declaration - "
+                        "an example declaration from the guides, checked without saving"),
+    "examples": ["디사이드 키 다른거 어케하더라", "조인 규칙 어떻게 적어", "표에 칸 타입 선언하는 법",
+                 "원장 소스 선언 예시 보여줘"],
+    "next": [],
+}
 
 
 def catalog():
-    """{name: spec} - the retroactive tools not retired, and the upkeep doors outside the tab."""
+    """{name: spec} - the retroactive tools not retired, the upkeep doors outside the tab, and the declaration
+    answer."""
     return {**{op: spec for op, spec in retroactive.OPERATIONS.items()
                if not spec.get("retired") and retroactive.form_started(spec)},
-            **retroactive.DOORS_OUTSIDE}
+            **retroactive.DOORS_OUTSIDE, DECLARATION: DECLARATION_SPEC}
 
 
 def _field(param):
@@ -102,7 +116,7 @@ def pick(question, ask_json=None):
             refused = ("the model named no tool" if answer.get("op") in (None, "")
                        else "%r is not a tool in the list" % (answer.get("op"),))
             continue
-        if op in retroactive.DOORS_OUTSIDE:
+        if op in retroactive.DOORS_OUTSIDE or op == DECLARATION:
             params, unfilled = {}, []
         else:
             try:
@@ -112,7 +126,7 @@ def pick(question, ask_json=None):
                 continue
             unfilled = retroactive.unfilled(op, params)
         return {"op": op, "params": params, "unfilled": unfilled, "why": answer.get("why"), "similar": [],
-                "refused": None, "tries": tries, "seconds": seconds}
+                "refused": None, "tries": tries, "seconds": seconds, "search": answer.get("search")}
     near = answer.get("similar") if isinstance(answer.get("similar"), list) else []
     return {"op": None, "params": {}, "unfilled": [], "why": answer.get("why"), "refused": refused, "tries": TRIES,
             "similar": [{"op": name, "label": tools[name]["label"]}
@@ -121,8 +135,9 @@ def pick(question, ask_json=None):
 
 def ask(db, question, asked_by=None, ask_json=None):
     """The help's answer: `pick`, then the tool's own count (`retroactive.count`), written as one `admin_help_asks`
-    row. -> the answer with `help_id`, `label`, `count` (the count's answer, or None), `count_refused`, and the tool's
-    `doors` when it has them (each {name, how, when, open?})."""
+    row. -> the answer with `help_id`, `label`, `count` (the count's answer, or None), `count_refused`, the tool's
+    `doors` when it has them (each {name, how, when, open?}), and for the declaration tool `declaration` - the
+    guides' answer and its check (`help_guides.answer`)."""
     from database import models
     from utils.llm import LlmRefused
 
@@ -137,6 +152,13 @@ def ask(db, question, asked_by=None, ask_json=None):
     spec = catalog().get(got["op"]) or {}
     got.update(help_id=uuid.uuid4().hex[:12], count=None, count_refused=None, label=spec.get("label"),
                **({"doors": spec["doors"]} if spec.get("doors") else {}))
+    search = got.pop("search", None)
+    if got["op"] == DECLARATION:
+        from admin import help_guides
+        from utils import llm
+
+        got["declaration"] = help_guides.answer(question, search, ask_json or llm.ask_json)
+        got["params"] = {cell: got["declaration"].get(cell) for cell in ("kind", "name") if got["declaration"].get(cell)}
     if got["op"] in retroactive.OPERATIONS:
         try:
             got["count"] = retroactive.count(db, got["op"], got["params"])

@@ -1,0 +1,85 @@
+{
+ "__comment": "The admin help's declaration questions (help_bench.py --part declarations): each question and a piece of its right guide section - a heading, a numbered item or a cell of it, as the guide spells it. Read by the bench only.",
+ "questions": [
+  {
+   "question": "디사이드 키 다른거 어케하더라",
+   "section": "{\"<파생 칸>\": \"<원본 칸>\"}"
+  },
+  {
+   "question": "체인이 만든 값에도 다음 규칙이 돌게 하려면",
+   "section": "**① 체인이 쓴 값에"
+  },
+  {
+   "question": "맵 하나를 이 규칙이 매번 통째로 다시 채우게",
+   "section": "**② 맵 하나를 이 규칙"
+  },
+  {
+   "question": "여러 군데서 같은 맵에 값을 넣는데 한 군데 것만 다시 계산",
+   "section": "**③ 맵 하나를 «여러 출처»"
+  },
+  {
+   "question": "조인할 때 붙일 쪽 표에 같은 키가 두 줄이면 어떻게 돼",
+   "section": "**⑤ 조인 원천이 키마다"
+  },
+  {
+   "question": "키 하나에 행이 여러 개인데 그걸 한 칸에 이어 붙이고 싶어",
+   "section": "**⑥ 원천에 키 하나가"
+  },
+  {
+   "question": "같은 행의 a 랑 b 로 c 칸을 계산하고 싶어",
+   "section": "**⑨ 같은 행의 다른 칸으로"
+  },
+  {
+   "question": "규칙 잠깐 끄고 싶어",
+   "section": "`enabled: false`"
+  },
+  {
+   "question": "특정 칸이 바뀔 때만 규칙이 돌게",
+   "section": "`trigger_columns: [칸"
+  },
+  {
+   "question": "빈 칸 있는 행은 규칙에 안 넘기게",
+   "section": "`require: [칸"
+  },
+  {
+   "question": "엑셀 헤더를 붙여서 표를 새로 만들고 싶어",
+   "section": "2.1 엑셀에서 칸을 붙여 넣기"
+  },
+  {
+   "question": "표에 사진 칸 넣으려면",
+   "section": "2.2 이미지 칸"
+  },
+  {
+   "question": "검색창에서 어떤 칸으로 찾게 할지 정하려면",
+   "section": "`search_columns`"
+  },
+  {
+   "question": "늦게 도착한 옛날 파일이 새 값을 덮어쓰지 않게",
+   "section": "`version_column`"
+  },
+  {
+   "question": "사람이 고친 값이 더 새 버전 파일에 밀리나",
+   "section": "7.5 🔴 사람의 교정"
+  },
+  {
+   "question": "운영 표 이름 대문자를 소문자로 바꾸려면",
+   "section": "6. 대소문자 전환"
+  },
+  {
+   "question": "원장에서 이 값은 숫자라고 정하려면",
+   "section": "① 값의 «타입»"
+  },
+  {
+   "question": "웨이퍼 하나에 값이 하나만 있어야 하는 속성",
+   "section": "② 술어의 «개수»"
+  },
+  {
+   "question": "이 소스 이제 안 쓰니까 원장에서 내리고 싶어",
+   "section": "③ 수명"
+  },
+  {
+   "question": "행마다 조건에 따라 원장에 다른 문장으로 넣고 싶어",
+   "section": "⑤ 문장 고르기"
+  }
+ ]
+}

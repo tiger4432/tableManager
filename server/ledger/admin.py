@@ -197,7 +197,7 @@ def table_config_raw_view(table: str = None) -> dict:
     return out
 
 
-def save_table_config_raw(table: str, declaration, base: str) -> dict:
+def save_table_config_raw(table: str, declaration, base: str, check_only: bool = False) -> dict:
     """Write ONE table's registration. Three guards, and each is part of the ruling.
 
     🔴 1 - THE BASE FINGERPRINT. Same refusal name as the ledger raw editor: two operators
@@ -289,6 +289,8 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
         raise _table_config_refusal(
             "declaration_not_serialisable", f"tables.{table}",
             f"It holds a value that cannot be saved: {exc}") from exc
+    if check_only:                                 # judged whole, nothing written (the admin help, lead 10-29)
+        return {"ok": True, "checked": True, "table": table}
 
     backup = _atomic_write(path, merged)
     from database import config_watcher
@@ -623,7 +625,7 @@ def remove_chain_rule_raw(name: str, base: str, db=None) -> dict:
 
 
 def save_chain_rule_raw(name: str, declaration, base: str, db=None,
-                        renamed_from: str = None) -> dict:
+                        renamed_from: str = None, check_only: bool = False) -> dict:
     """Write ONE chain rule. 🔴 A NEW RULE IS SAVED ARMED BUT NOT FIRING.
 
     A saved table registers something and nothing runs; a saved rule is re-read by
@@ -795,6 +797,8 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None,
                                         ingestion_worker.COLUMN_LOOP % (table, " -> ".join(columns)))
 
     ingestion_worker._validate_chain_cascade_graph(expanded_set)
+    if check_only:                                 # judged whole, nothing written (the admin help, lead 10-29)
+        return {"ok": True, "checked": True, "name": name, "notes": notes}
 
     backup = _atomic_write(path, merged)
     # 🔴 [e6a0bdbbd] THIS PROCESS READS THE SAVED FILE AT ONCE, EVERY OTHER ONE FROM ITS OWN WATCHER - the file is the
