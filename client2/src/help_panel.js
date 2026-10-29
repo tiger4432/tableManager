@@ -49,6 +49,7 @@ function declarationOf(d) {
     dropped: Number(d.dropped_sections) > 0 ? Number(d.dropped_sections) : 0,
     check: checkOf(d.check),
     refused: shown(d.refused),
+    retrieval: shown(d.retrieval),
   };
 }
 
@@ -353,6 +354,8 @@ export class HelpPanel {
       d.sections.forEach((s) => list.appendChild(this.el('div', 'help-card__section', s)));
       box.appendChild(list);
     }
+    // how the sections were picked - the server's word; a failed embedding's sentence rides in it
+    if (d.retrieval) box.appendChild(this.el('div', 'help-card__meta help-card__retrieval', `via ${d.retrieval}`));
     if (d.dropped) {
       box.appendChild(this.el('div', 'help-card__dropped',
         `${d.dropped} section name${d.dropped === 1 ? '' : 's'} the model made up ${d.dropped === 1 ? 'was' : 'were'} dropped`));

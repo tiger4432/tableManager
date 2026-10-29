@@ -441,7 +441,7 @@ const HELP_ANSWERS = {
     count_refused: 'The count for this operation cannot be computed: QueryCanceled: canceling statement due to statement timeout' },
   // B 7c326a296 · 7f40790ad: the rule left blank - the form opens with it blank, the count refused by validate's sentence
   needs: { ...HELP_TOOL, help_id: 'screens-needs', params: {}, unfilled: ['rule'], count: null,
-    count_refused: "'chain_replay' requires parameter 'rule' (chain rule name (GET /admin/chain/rules), or the declared name of a decide - its enrichment_dedup half)" },
+    count_refused: 'the count waits for: rule' },
   // B 813eac94a: how to write a declaration - an example over the recorded box's dt_log -> dt_map rule, from the guides
   declaration: { op: 'declaration', label: 'Write a declaration', why: 'The question asks how to write a chain rule.',
     params: { kind: 'chain_rule', name: 'dt_log_to_dt_map' }, unfilled: [], similar: [], refused: null, tries: 1,
@@ -451,7 +451,7 @@ const HELP_ANSWERS = {
         join: { on: { dt_wafer: 'map_wafer' }, take: { dt_lot: 'map_lot', dt_slot: 'map_slot' } } },
       sections: ['chain_rules.md: `chain_rules.json` 세팅 — 체인 인제션 룰 > 0. 한눈에 보기 (part 2)',
         'chain_rules.md: `chain_rules.json` 세팅 — 체인 인제션 룰 > 3. join — 키로 다른 표의 칸을 가져온다'],
-      dropped_sections: 1, check: { ok: true, said: null }, refused: null } },
+      dropped_sections: 1, check: { ok: true, said: null }, refused: null, retrieval: 'embedding' } },
   door: { op: 'formula_column', label: 'Compute a column from a formula', why: 'A same-row formula on the column, written on the grid.',
     params: {}, similar: [], refused: null, tries: 1, seconds: [3.6], help_id: 'screens-door', count: null, count_refused: null,
     doors: [{ name: 'on the grid', how: "the grid's column header - right-click it (a blank column too) or its fx mark",
@@ -2894,12 +2894,15 @@ const DRIVE = {
         ['Help, fields left blank', (c) => answered(c, '체인 다시 돌려줘', HELP_ANSWERS.needs,
           "(document.querySelector('.help-panel__card .help-card__needs') || {}).textContent === 'needs: rule'")],
         ['Help, a declaration', (c) => answered(c, '조인 규칙 어떻게 써', HELP_ANSWERS.declaration,
-          "Boolean(document.querySelector('.help-panel__card .help-card__decl-text')) && Boolean(document.querySelector('.help-panel__card .help-card__check-ok'))")],
+          "Boolean(document.querySelector('.help-panel__card .help-card__decl-text')) && Boolean(document.querySelector('.help-panel__card .help-card__check-ok'))"
+          + " && (document.querySelector('.help-panel__card .help-card__retrieval') || {}).textContent === 'via embedding'")],
         ['Help, a declaration not checked', (c) => answered(c, '그래프 선언 써줘', { ...HELP_ANSWERS.declaration, help_id: 'screens-decl-not',
           params: { kind: 'graph', name: 'dt_log_to_dt_map' },
           declaration: { ...HELP_ANSWERS.declaration.declaration, kind: 'graph', dropped_sections: 0,
-            check: { not_checked: "unknown declaration kind 'graph' - one of chain_rule, table, ledger" } } },
-          "Boolean(document.querySelector('.help-panel__card .help-card__check-not'))")],
+            check: { not_checked: "unknown declaration kind 'graph' - one of chain_rule, table, ledger" },
+            retrieval: 'bm25 (embedding failed: LlmRefused: no embedding_model in config/llm_config.json)' } },
+          "Boolean(document.querySelector('.help-panel__card .help-card__check-not'))"
+          + " && /^via bm25 \\(embedding failed: /.test((document.querySelector('.help-panel__card .help-card__retrieval') || {}).textContent || '')")],
         ['Help, a tool outside the tab', (c) => answered(c, '수율 칸을 양품 / 투입 으로 채워줘', HELP_ANSWERS.door,
           "Boolean(document.querySelector('.help-card__page'))")],
         ['Help, the form opened from an answer', async (c) => {

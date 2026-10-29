@@ -96,11 +96,12 @@ const COUNT_REFUSED = { ...TOOL, help_id: 'h-cr', count: null,
   count_refused: 'The count for this operation cannot be computed: QueryCanceled' };
 
 // a tool the question left fields of (B 7c326a296 · 7f40790ad, server/admin/retroactive.py unfilled · validate)
+// (B ce34e17ff, server/admin/help.py: a blank field's count waits for the form)
 const NEEDS = { ...TOOL, help_id: 'h-needs', params: {}, unfilled: ['rule'], count: null,
-  count_refused: "'chain_replay' requires parameter 'rule' (chain rule name (GET /admin/chain/rules), or the declared name of a decide - its enrichment_dedup half)" };
+  count_refused: 'the count waits for: rule' };
 const NEEDS_ONE_OF = { op: 'set_aside', label: 'Set queued chain events aside', why: 'Events that must not run now.', params: {},
   unfilled: ['reason', 'one of: tables, rules, transactions'], similar: [], refused: null, tries: 1, help_id: 'h-oneof',
-  count: null, count_refused: "'set_aside' requires parameter 'reason' (why - written into each event set aside)" };
+  count: null, count_refused: 'the count waits for: reason, one of: tables, rules, transactions' };
 
 // how to write a declaration (B 813eac94a, server/admin/help_guides.py answer · check)
 const DECL_BODY = { source_table: 'dt_log', target_table: 'dt_map', join: { on: ['wafer'] } };
@@ -109,7 +110,8 @@ const DECL = { op: 'declaration', label: 'Write a declaration', why: 'The questi
   help_id: 'h-decl', count: null, count_refused: null,
   declaration: { kind: 'chain_rule', name: 'dt_log_to_dt_map', declaration: DECL_BODY, why: 'A join rule copies dt_lot by the wafer.',
     sections: ['chain_rules.md: `chain_rules.json` 세팅 — 체인 인제션 룰 > 0. 한눈에 보기 (part 2)'], dropped_sections: 2,
-    check: { ok: true, said: null }, refused: null } };
+    check: { ok: true, said: null }, refused: null, retrieval: 'embedding' } };
+const EMBED_FAILED = "bm25 (embedding failed: LlmRefused: no embedding_model in config/llm_config.json)";
 const declWith = (patch) => ({ ...DECL, declaration: { ...DECL.declaration, ...patch } });
 
 /** A send whose answers the harness releases by hand, in order; every request kept. */
@@ -316,7 +318,7 @@ console.log('\n── G. HOW TO WRITE A DECLARATION ─────────�
     && !find(card(n), 'help-card__check-ok') && !find(card(n), 'help-card__dropped'));
   const q = mount(X);
   const failed = 'the language model call failed: Request timed out.';
-  await asked(q, 'q', { ok: true, body: { ...DECL, declaration: { refused: failed, sections: [], dropped_sections: 0, check: { not_checked: failed } } } });
+  await asked(q, 'q', { ok: true, body: { ...DECL, declaration: { refused: failed, sections: [], dropped_sections: 0, check: { not_checked: failed }, retrieval: null } } });
   ok('G10 the second call refused: its sentence once, no example, no check', text(card(q), 'help-card__refused') === failed
     && findAll(card(q), 'help-card__refused').length === 1 && !find(card(q), 'help-card__decl-text') && !find(card(q), 'help-card__check-not'));
   const s = mount(X);
@@ -325,6 +327,14 @@ console.log('\n── G. HOW TO WRITE A DECLARATION ─────────�
   const t = mount(X);
   await asked(t, 'q', { ok: true, body: TOOL });
   ok('G12 a tool answer draws no declaration box', !find(card(t), 'help-card__decl'));
+  ok('G13 how the sections were picked: «via embedding»', text(card(m), 'help-card__retrieval') === 'via embedding');
+  const e = mount(X);
+  await asked(e, 'q', { ok: true, body: declWith({ retrieval: 'bm25' }) });
+  const ef = mount(X);
+  await asked(ef, 'q', { ok: true, body: declWith({ retrieval: EMBED_FAILED }) });
+  ok('G14 ...«via bm25», and a failed embedding\'s sentence word for word', text(card(e), 'help-card__retrieval') === 'via bm25'
+    && text(card(ef), 'help-card__retrieval') === `via ${EMBED_FAILED}`);
+  ok('G15 ...no line when the server says none (the guide was not found)', !find(card(q), 'help-card__retrieval'));
 }
 
 console.log('\n── F. EARLIER · TWO PANELS ─────────────────────────────────────────');
@@ -397,6 +407,9 @@ const DEFECTS = [
   ['M20 the declaration\'s why not in the why\'s seat', swap('why: (declaration && declaration.why) || base.why', 'why: base.why')],
   ['M21 the example on one line', swap('JSON.stringify(body, null, 2)', 'JSON.stringify(body)')],
   ['M22 the made-up count said when there is none', swap('    if (d.dropped) {', '    if (true) {')],
+  ['M23 the retrieval not drawn', swap('if (d.retrieval) box', 'if (false) box')],
+  ['M24 a retrieval line with nothing in it', swap('if (d.retrieval) box', 'if (true) box')],
+  ['M25 a failed embedding cut to its first word', swap('`via ${d.retrieval}`', "`via ${d.retrieval.split(' ')[0]}`")],
   ['M12 an Earlier row shows the whole refusal', swap("rec.view.refused.split('\\n')[0] : '';", "rec.view.refused : '';")],
   ['M10 the waiting card is drawn again each second', swap('if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);', 'this.render();')],
   ['M9 a page link drawn for a door that names none',
@@ -451,12 +464,17 @@ async function verdict(M) {
   if (text(card(dc), 'help-card__decl-text') !== JSON.stringify(DECL_BODY, null, 2)) return true;
   if (text(card(dc), 'help-card__why') !== DECL.declaration.why) return true;
   if (text(card(dc), 'help-card__dropped') !== '2 section names the model made up were dropped') return true;
+  if (text(card(dc), 'help-card__retrieval') !== 'via embedding') return true;
   find(card(dc), 'help-card__copy').click();
   await tick();
   if (text(card(dc), 'help-card__copy') !== 'Copy failed') return true;
   await asked(dc, 'r', { ok: true, body: declWith({ check: { not_checked: 'no guide' }, dropped_sections: 0 }) });
   if (find(card(dc), 'help-card__check-ok') || text(card(dc), 'help-card__check-not') !== 'Not checked: no guide') return true;
   if (find(card(dc), 'help-card__dropped')) return true;
+  await asked(dc, 's', { ok: true, body: declWith({ retrieval: EMBED_FAILED }) });
+  if (text(card(dc), 'help-card__retrieval') !== `via ${EMBED_FAILED}`) return true;
+  await asked(dc, 't', { ok: true, body: declWith({ retrieval: null }) });
+  if (find(card(dc), 'help-card__retrieval')) return true;
   return false;
 }
 
