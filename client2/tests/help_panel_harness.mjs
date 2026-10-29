@@ -102,6 +102,16 @@ const NEEDS_ONE_OF = { op: 'set_aside', label: 'Set queued chain events aside', 
   unfilled: ['reason', 'one of: tables, rules, transactions'], similar: [], refused: null, tries: 1, help_id: 'h-oneof',
   count: null, count_refused: "'set_aside' requires parameter 'reason' (why - written into each event set aside)" };
 
+// how to write a declaration (B 813eac94a, server/admin/help_guides.py answer · check)
+const DECL_BODY = { source_table: 'dt_log', target_table: 'dt_map', join: { on: ['wafer'] } };
+const DECL = { op: 'declaration', label: 'Write a declaration', why: 'The question asks how to write a chain rule.',
+  params: { kind: 'chain_rule', name: 'dt_log_to_dt_map' }, unfilled: [], similar: [], refused: null, tries: 1,
+  help_id: 'h-decl', count: null, count_refused: null,
+  declaration: { kind: 'chain_rule', name: 'dt_log_to_dt_map', declaration: DECL_BODY, why: 'A join rule copies dt_lot by the wafer.',
+    sections: ['chain_rules.md: `chain_rules.json` 세팅 — 체인 인제션 룰 > 0. 한눈에 보기 (part 2)'], dropped_sections: 2,
+    check: { ok: true, said: null }, refused: null } };
+const declWith = (patch) => ({ ...DECL, declaration: { ...DECL.declaration, ...patch } });
+
 /** A send whose answers the harness releases by hand, in order; every request kept. */
 function makeSend() {
   const sent = [];
@@ -110,15 +120,17 @@ function makeSend() {
   return { send, sent, answer(got) { const r = waiting.shift(); if (r) r(got); } };
 }
 
-function mount(M) {
+function mount(M, copies = true) {
   const doc = makeDoc();
   const host = doc.createElement('div');
   const clock = makeClock();
   const s = makeSend();
   const opened = [];
-  const panel = new M.HelpPanel(host, { doc, send: s.send, clock, forms: () => FORMS, openForm: (x) => opened.push(x) });
+  const copied = [];
+  const panel = new M.HelpPanel(host, { doc, send: s.send, clock, forms: () => FORMS, openForm: (x) => opened.push(x),
+    copy: (t) => { copied.push(t); return copies; } });
   panel.open();
-  return { doc, host, clock, s, opened, panel };
+  return { doc, host, clock, s, opened, copied, panel };
 }
 async function asked(m, question, got) {
   find(m.panel.root, 'help-panel__input').value = question;
@@ -267,6 +279,54 @@ console.log('\n── E. WHAT EACH ANSWER DRAWS ──────────�
   ok('E10 every field filled: no needs line', !find(card(nt), 'help-card__needs'));
 }
 
+console.log('\n── G. HOW TO WRITE A DECLARATION ───────────────────────────────────');
+{
+  const PRETTY = JSON.stringify(DECL_BODY, null, 2);
+  const v = X.answerView(DECL, FORMS);
+  ok('G1 the example as text to paste, its sections, the made-up ones counted, its check',
+    v.declaration && v.declaration.text === PRETTY && v.declaration.sections.length === 1 && v.declaration.dropped === 2
+    && v.declaration.check.state === 'ok' && v.form === false, v.declaration);
+  ok('G2 ...the declaration\'s own why in the why\'s seat', v.why === DECL.declaration.why);
+  const m = mount(X);
+  await asked(m, 'q', { ok: true, body: DECL });
+  const k = findAll(card(m), 'help-card__k').map((e) => e.textContent);
+  ok('G3 the card: kind and name above, the example in its box, the why where every card has it',
+    k.join() === 'kind,name' && text(card(m), 'help-card__decl-text') === PRETTY && text(card(m), 'help-card__why') === DECL.declaration.why);
+  ok('G4 ...the guide sections word for word, and «2 section names the model made up were dropped»',
+    text(card(m), 'help-card__section') === DECL.declaration.sections[0]
+    && text(card(m), 'help-card__dropped') === '2 section names the model made up were dropped');
+  ok('G5 ...a passed check says it would save - not that it saved', text(card(m), 'help-card__check-ok') === X.CHECKED
+    && !find(card(m), 'help-card__refused') && !find(card(m), 'help-card__check-not') && !find(card(m), 'help-card__open'));
+  find(card(m), 'help-card__copy').click();
+  await tick();
+  ok('G6 Copy hands the example to the clipboard and says so', m.copied.length === 1 && m.copied[0] === PRETTY
+    && text(card(m), 'help-card__copy') === 'Copied');
+  const f = mount(X, false);
+  await asked(f, 'q', { ok: true, body: DECL });
+  find(card(f), 'help-card__copy').click();
+  await tick();
+  ok('G7 ...a copy that did not reach it says so', text(card(f), 'help-card__copy') === 'Copy failed');
+  const r = mount(X);
+  await asked(r, 'q', { ok: true, body: declWith({ check: { ok: false, said: "rule 'dt_log_to_dt_map': target_table 'dt_mapp' is not a table" }, dropped_sections: 1 }) });
+  ok('G8 the save would refuse it: its sentence, red, no «would save»', text(card(r), 'help-card__refused') === "rule 'dt_log_to_dt_map': target_table 'dt_mapp' is not a table"
+    && !find(card(r), 'help-card__check-ok') && text(card(r), 'help-card__dropped') === '1 section name the model made up was dropped');
+  const n = mount(X);
+  await asked(n, 'q', { ok: true, body: declWith({ check: { not_checked: "unknown declaration kind 'graph' - one of chain_rule, table, ledger" }, dropped_sections: 0 }) });
+  ok('G9 not checked: «Not checked: <why>», never drawn as passed', text(card(n), 'help-card__check-not') === "Not checked: unknown declaration kind 'graph' - one of chain_rule, table, ledger"
+    && !find(card(n), 'help-card__check-ok') && !find(card(n), 'help-card__dropped'));
+  const q = mount(X);
+  const failed = 'the language model call failed: Request timed out.';
+  await asked(q, 'q', { ok: true, body: { ...DECL, declaration: { refused: failed, sections: [], dropped_sections: 0, check: { not_checked: failed } } } });
+  ok('G10 the second call refused: its sentence once, no example, no check', text(card(q), 'help-card__refused') === failed
+    && findAll(card(q), 'help-card__refused').length === 1 && !find(card(q), 'help-card__decl-text') && !find(card(q), 'help-card__check-not'));
+  const s = mount(X);
+  await asked(s, 'q', { ok: true, body: declWith({ declaration: 'sources.wafer_log:\n  read: wafer_log' }) });
+  ok('G11 an example that is not an object stays as written', text(card(s), 'help-card__decl-text') === 'sources.wafer_log:\n  read: wafer_log');
+  const t = mount(X);
+  await asked(t, 'q', { ok: true, body: TOOL });
+  ok('G12 a tool answer draws no declaration box', !find(card(t), 'help-card__decl'));
+}
+
 console.log('\n── F. EARLIER · TWO PANELS ─────────────────────────────────────────');
 {
   const m = mount(X);
@@ -332,6 +392,11 @@ const DEFECTS = [
   ['M15 the needs line is not drawn', swap('if (v.unfilled.length) box', 'if (false) box')],
   ['M16 items joined by commas', swap("v.unfilled.join(' · ')", "v.unfilled.join(', ')")],
   ['M17 a needs line on every tool', swap('if (v.unfilled.length) box', 'if (true) box')],
+  ['M18 not checked drawn as passed', swap("if ('not_checked' in c) return { state: 'not', said: shown(c.not_checked) };", "if ('not_checked' in c) return { state: 'ok', said: '' };")],
+  ['M19 a failed copy says Copied', swap("ok === false ? 'Copy failed' : 'Copied'", "'Copied'")],
+  ['M20 the declaration\'s why not in the why\'s seat', swap('why: (declaration && declaration.why) || base.why', 'why: base.why')],
+  ['M21 the example on one line', swap('JSON.stringify(body, null, 2)', 'JSON.stringify(body)')],
+  ['M22 the made-up count said when there is none', swap('    if (d.dropped) {', '    if (true) {')],
   ['M12 an Earlier row shows the whole refusal', swap("rec.view.refused.split('\\n')[0] : '';", "rec.view.refused : '';")],
   ['M10 the waiting card is drawn again each second', swap('if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);', 'this.render();')],
   ['M9 a page link drawn for a door that names none',
@@ -380,6 +445,18 @@ async function verdict(M) {
   if (text(card(nb), 'help-card__needs') !== 'needs: reason · one of: tables, rules, transactions') return true;
   await asked(nb, 'r', { ok: true, body: TOOL });
   if (find(card(nb), 'help-card__needs')) return true;
+
+  const dc = mount(M, false);
+  await asked(dc, 'q', { ok: true, body: DECL });
+  if (text(card(dc), 'help-card__decl-text') !== JSON.stringify(DECL_BODY, null, 2)) return true;
+  if (text(card(dc), 'help-card__why') !== DECL.declaration.why) return true;
+  if (text(card(dc), 'help-card__dropped') !== '2 section names the model made up were dropped') return true;
+  find(card(dc), 'help-card__copy').click();
+  await tick();
+  if (text(card(dc), 'help-card__copy') !== 'Copy failed') return true;
+  await asked(dc, 'r', { ok: true, body: declWith({ check: { not_checked: 'no guide' }, dropped_sections: 0 }) });
+  if (find(card(dc), 'help-card__check-ok') || text(card(dc), 'help-card__check-not') !== 'Not checked: no guide') return true;
+  if (find(card(dc), 'help-card__dropped')) return true;
   return false;
 }
 

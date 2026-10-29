@@ -19,6 +19,8 @@ export const STOPPED_WAITING = 'Stopped waiting - the server still finishes this
 export const ARRIVED_LATE = 'arrived after you stopped';
 export const UNTIL_RELOAD = 'until reload';
 export const NOTHING_ASKED = 'Nothing asked since this page opened';
+// the save's judgement passed - and nothing was saved (lead 10-29: said in the word)
+export const CHECKED = 'Checked - would save';
 
 /** The one request: the question as typed. */
 export function helpRequest(question) {
@@ -26,6 +28,29 @@ export function helpRequest(question) {
 }
 
 const shown = (v) => (Array.isArray(v) ? v.join(', ') : v === null || v === undefined ? '' : String(v));
+
+/** The save's judgement of an example declaration (B 813eac94a): passed - not saved · refused · not checked. */
+function checkOf(c) {
+  if (!c || typeof c !== 'object') return null;
+  if ('not_checked' in c) return { state: 'not', said: shown(c.not_checked) };
+  if (c.ok === true) return { state: 'ok', said: shown(c.said) };
+  if (c.ok === false) return { state: 'refused', said: shown(c.said) };
+  return null;
+}
+
+/** The help's answer on how to write a declaration: the example as text, the guide sections it rests on, its check. */
+function declarationOf(d) {
+  if (!d || typeof d !== 'object') return null;
+  const body = d.declaration;
+  return {
+    text: body === undefined || body === null ? '' : typeof body === 'string' ? body : JSON.stringify(body, null, 2),
+    why: shown(d.why),
+    sections: (Array.isArray(d.sections) ? d.sections : []).map(shown).filter(Boolean),
+    dropped: Number(d.dropped_sections) > 0 ? Number(d.dropped_sections) : 0,
+    check: checkOf(d.check),
+    refused: shown(d.refused),
+  };
+}
 
 /** What an answer draws. `forms` - {op: label} of the tools whose form this page has (the Retroactive list).
  *  kind: `tool` (a tool and its fields) · `unsure` (none fitted; the tools near) · `refused` (the model was not asked). */
@@ -42,8 +67,10 @@ export function answerView(answer, forms = {}) {
   }
   const params = a.params && typeof a.params === 'object' ? a.params : {};
   const count = a.count ? buildCountView(a.count) : null;
+  const declaration = declarationOf(a.declaration);
   return {
-    ...base, kind: 'tool', op: a.op, title: a.label || forms[a.op] || a.op, form: a.op in forms, params,
+    // a declaration's own why takes the why's seat (lead 10-29: every card draws it in the same place)
+    ...base, why: (declaration && declaration.why) || base.why, declaration, kind: 'tool', op: a.op, title: a.label || forms[a.op] || a.op, form: a.op in forms, params,
     fields: Object.keys(params).map((name) => ({ name, value: shown(params[name]) })),
     // the required fields the question left blank, the server's words - the form opens with them blank (B 7c326a296)
     unfilled: (Array.isArray(a.unfilled) ? a.unfilled : []).map(shown).filter(Boolean),
@@ -66,6 +93,7 @@ const CLOCK = { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(
  *   forms     () -> {op: label}  - the tools whose form the page has, read when an answer is drawn
  *   openForm  ({op, params, helpId, question, count}) - the page opens that tool's form filled
  *   clock     {set, clear, now}
+ *   copy      (text) -> true when it reached the clipboard - an example declaration (the page's clipboard_write)
  */
 export class HelpPanel {
   constructor(host, deps = {}) {
@@ -75,6 +103,7 @@ export class HelpPanel {
     this.forms = deps.forms || (() => ({}));
     this.openForm = deps.openForm || (() => {});
     this.clock = deps.clock || CLOCK;
+    this.copy = deps.copy || (() => false);
     this.asks = [];           // newest first: {question, at, view, waiting, stopped, late, runId}
     this.shown = null;        // the ask whose card is drawn
     this.tick = null;
@@ -272,6 +301,7 @@ export class HelpPanel {
     }
     // « · » between items: an item can hold commas itself («one of: tables, rules, transactions»)
     if (v.unfilled.length) box.appendChild(this.el('div', 'help-card__needs', `needs: ${v.unfilled.join(' · ')}`));
+    if (v.declaration) box.appendChild(this.declarationBox(v.declaration));
     if (v.count) {
       const line = this.el('div', 'help-card__count');
       line.appendChild(this.el('span', 'help-card__count-value', v.count.value));
@@ -299,6 +329,42 @@ export class HelpPanel {
       acts.appendChild(a);
     });
     if (acts.children.length) box.appendChild(acts);
+    return box;
+  }
+
+  /** The example to paste (its Copy beside it), the guide sections it rests on, and what the save would say of it. */
+  declarationBox(d) {
+    const box = this.el('div', 'help-card__decl');
+    if (d.refused) box.appendChild(this.el('div', 'help-card__refused', d.refused));
+    if (d.text) {
+      const text = this.el('pre', 'help-card__decl-text', d.text);
+      text.setAttribute('data-clip-ok', '');
+      box.appendChild(text);
+      const copy = this.button('btn-quiet help-card__copy', 'Copy', () => {
+        Promise.resolve().then(() => this.copy(d.text))
+          .then((ok) => { copy.textContent = ok === false ? 'Copy failed' : 'Copied'; }, () => { copy.textContent = 'Copy failed'; });
+      });
+      const acts = this.el('div', 'help-card__acts');
+      acts.appendChild(copy);
+      box.appendChild(acts);
+    }
+    if (d.sections.length) {
+      const list = this.el('div', 'help-card__sections');
+      d.sections.forEach((s) => list.appendChild(this.el('div', 'help-card__section', s)));
+      box.appendChild(list);
+    }
+    if (d.dropped) {
+      box.appendChild(this.el('div', 'help-card__dropped',
+        `${d.dropped} section name${d.dropped === 1 ? '' : 's'} the model made up ${d.dropped === 1 ? 'was' : 'were'} dropped`));
+    }
+    // a refused second call carries the same sentence as its not_checked - said once, as the refusal
+    const c = d.refused ? null : d.check;
+    if (c && c.state === 'ok') {
+      box.appendChild(this.el('div', 'help-card__check-ok', CHECKED));
+      if (c.said) box.appendChild(this.el('div', 'help-card__check-note', c.said));
+    }
+    if (c && c.state === 'refused') box.appendChild(this.el('div', 'help-card__refused', c.said));
+    if (c && c.state === 'not') box.appendChild(this.el('div', 'help-card__check-not', `Not checked: ${c.said}`));
     return box;
   }
 

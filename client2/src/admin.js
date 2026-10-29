@@ -3114,6 +3114,7 @@ function initHelpPanel() {
     send: sendHelp,
     forms: () => Object.fromEntries(((retroactiveView && retroactiveView.operations) || []).map((o) => [o.op, o.label])),
     openForm: openHelpForm,
+    copy: (text) => writeClipboardRich('', text),
   });
   btn.addEventListener('click', () => {
     // the tools whose form this page has - an answer offers Open form only for those
