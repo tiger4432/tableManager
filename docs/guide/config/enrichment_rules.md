@@ -41,9 +41,9 @@
 
 ## 2. `decision_key` 계약 — source와 derived에서 같아야 하는가?
 
-**예, 완전히 같아야 합니다.** 규칙 하나에 `decision_key`는 컬럼명 목록 **하나**뿐이고, 그 목록의 모든 컬럼이 `source_table`과 `derived_table` **양쪽에 같은 이름으로** 존재해야 합니다(`table_config.json`의 `column_types` 선언 기준, `enrichment/config.py:185-190`). 소스 `eqp_id` ↔ 파생 `equipment` 같은 **이름 매핑 기능은 없습니다.**
+**아니오 — 달라도 됩니다** (🆕 10-27 `34516220a`). `decision_key` 의 항목은 이름 하나(그 컬럼이 `source_table`과 `derived_table` **양쪽에 같은 이름으로**) 또는 짝 `{"<파생 칸>": "<원본 칸>"}`(왼쪽은 `derived_table`, 오른쪽은 `source_table` 의 `column_types` 에 — `aggregations` 와 같은 방향)입니다. `list_columns` 도 같은 꼴. ⚰️ 종전 「완전히 같아야 · 이름 매핑 기능 없음」은 10-27 전의 문장입니다.
 
-**실무 처방**: 소스 테이블 컬럼명은 인제션 스키마라 바꾸기 어렵지만, **파생 테이블은 사이트가 `table_config.json`에 직접 선언하는 테이블**입니다. 파생 테이블을 만들 때 판단키 컬럼명을 **소스 쪽에 맞춰** 지으십시오 — 반대 방향(규칙에서 이름을 바꿔치기)은 존재하지 않습니다.
+**실무 처방**: 소스 `eqp_id` ↔ 파생 `equipment` 처럼 이름이 다르면 짝으로 적습니다 — `"key": [{"equipment": "eqp_id"}, "event_time"]`.
 
 위반한 규칙은 **조용히 스킵**되고 서버 로그에만 남습니다. 워크리스트가 비면 이 형식으로 grep:
 
@@ -55,8 +55,9 @@
 
 | # | 계약 | 위반 시 `rule skipped:` 뒤에 오는 사유 |
 |---|---|---|
-| ① | `decision_key` 모든 컬럼이 **소스에** 존재 | `decision_key column(s) missing in source table: [...]` |
-| ① | `decision_key` 모든 컬럼이 **파생에** 존재 (같은 이름) | `decision_key column(s) missing in derived table: [...]` |
+| ① | `decision_key` 모든 컬럼(짝이면 오른쪽 원본 칸)이 **소스에** 존재 | `decision_key column(s) missing in source table: [...]` |
+| ① | `list_columns` 짝의 오른쪽(원본 칸)이 **소스에** 존재 (🆕 10-27 `34516220a`) | `list_columns pair(s) read column(s) missing in source table '<표>': [...]` |
+| ① | `decision_key` 모든 컬럼(짝이면 왼쪽 파생 칸)이 **파생에** 존재 | `decision_key column(s) missing in derived table: [...]` |
 | ② | `decision_key` ∩ `target_fields` = ∅ (`:157-159`) | `decision_key and target_fields must not overlap: [...]` |
 | ③ | `composite_key_source ⊆ decision_key` **또는** `business_key ∈ decision_key` (`:30-32`, `:202-216`) | `derived table composite_key_source must be a subset of decision_key (violation: [...])` 또는 `derived table must declare composite_key_source ⊆ decision_key or business_key ∈ decision_key (dedup upsert key contract)` |
 | ④ | 참조뷰 `:바인딩`은 `decision_key` 컬럼 또는 집계 이름만 (`config.py` 의 `_BIND_PARAM_RE` 로 읽음) | *(규칙이 아니라 그 뷰만 제거)* `reference view '<label>' dropped: bind params must be decision_key columns or aggregation names; invalid: [...]` |
@@ -84,7 +85,7 @@
 [Enrichment:bonding_wafer_attribution] rule skipped: decision_key column(s) missing in source table: ['equipment']
 ```
 
-고치는 방향은 하나입니다: 파생 테이블 컬럼을 `eqp_id`로 다시 선언하고 `decision_key: ["eqp_id", "event_time"]`로 — 규칙에서 이름을 매핑할 수는 없습니다.
+고치는 방향은 둘입니다: 짝 `decision_key: [{"equipment": "eqp_id"}, "event_time"]` (🆕 10-27 `34516220a`), 또는 파생 테이블 컬럼을 `eqp_id`로 다시 선언하고 `decision_key: ["eqp_id", "event_time"]`로.
 
 ## 3. 세팅 절차
 
@@ -182,7 +183,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore enrichm
 |---|---|---|
 | `source_table` | ✔ | 대량 원본 테이블 (`table_config` 등록 필수) |
 | `derived_table` | ✔ | 파생 영속 테이블 (등록 + 키 계약 필수) |
-| `decision_key` | ✔ | 판단키 컬럼 1..N — 소스·파생 **양쪽에 같은 이름으로** 존재 (§2) |
+| `decision_key` | ✔ | 판단키 컬럼 1..N — 이름이면 소스·파생 **양쪽에 같은 이름으로**, 짝 `{"<파생 칸>": "<원본 칸>"}` 이면 왼쪽은 파생 · 오른쪽은 소스에 존재 (§2, 🆕 10-27 `34516220a`) |
 | `target_fields` | ✔ | 사람이 채울 필드. 🆕 10-11 비거나 안 적으면 `aggregations` 가 있어야 선다 — 키마다 행 하나에 키와 집계만(사람 칸 없음, 워크리스트에 안 뜸). 🆕 10-23 둘 다 없어도 선다 — 키만 든 행(리포트 표의 웨이퍼 행, 소유자 「wafer, 보고서 파일 경로 이 두 개가 최종 출력」) |
 | `list_columns` | | 워크리스트 표시 단서 |
 | `aggregations` | | 🆕 **10-14 (총괄 5667ea0fe) 이름마다 스팟파이어 수식 한 줄** — `{"chip_count": "Count()", "first_bond": "Min([bonding_time])", "mean_n": "Avg([n])"}`. 그 키의 원천 행을 접어 값 하나(계산기 `server/expression.py`, 채점 `contracts/expression/vectors.json`). `Count()` 와 number 칸의 `Sum` · `Min` · `Max` 는 SQL 집계, 나머지는 그 키의 원천 행을 읽어 계산. datetime 칸의 `Min`/`Max` 는 순간으로 견줌. 🆕 10-14 (총괄 112293f73) `Latest([칸])` 은 그 키의 원천 행 중 «원장 원자 시각»(그 표를 읽는 원장 소스의 occurred_at)이 가장 늦은 행의 값 — 같은 시각에 값이 다르면 빈칸, 그 소스의 `exclude_when` 에 걸리는 행 · 시각이 빈 행은 후보 아님(키의 행이 전부 그러면 빈칸), 원장이 못 읽는 시각 값은 실행 실패(칸 이름과 값). 행을 묶는 ingested 소스는 행마다 시각이 없어 거절. 로더가 이름 대어 거절: 값이 행마다인 수식(`[n] * 2`) · 원천에 없는 칸 · 원장이 그 원천 표에 시각 하나를 안 주는 `Latest` · `Marked` · 길 `[a.b~.x]`. 아래 옛 모양은 파일을 안 고쳐도 같은 수식으로 읽힌다(`aggregation_record`) — 글자 칸의 min/max 와 `", "` 아닌 `separator` 만 옛 그대로. 옮기는 명령 `python -m scripts.migrate_decide_aggregations`(미리보기 · `--compare N` · `--apply`).<br>옛 모양: `{이름: "count"}` 또는 `{이름: {"fn": "count\|min\|max\|unique_concat", "column": "<소스 컬럼>"}}` (S-129, 2026-09-10 · `unique_concat` 09-26 `5dee85a5b`). `count` 는 행을 세므로 컬럼이 없고, `min`/`max`/`unique_concat` 는 소스 컬럼을 읽는다. `unique_concat` 는 빈 값을 빼고 중복 없이 값 순서로 이어붙이며, `separator` 를 받는 유일한 함수다(선택 · 기본 `", "` · 다른 함수에 주면 로더가 거절). 그 키 그룹의 «커밋된 소스 행 전체» 위에서 재계산된다. 🆕 10-11 선언 폼은 이름마다 `fn` · `column` · `separator` 칸으로 그린다 — `"count"` 는 `{"fn": "count"}` 로 보이고(읽는 쪽의 그 한 자리 `aggregation_record`), 폼에서 저장하면 파일도 그 모양이 된다(같은 뜻). 맞는지는 읽는 쪽이 오늘처럼 이름 대어 거절(총괄 8b487d2e6) |
