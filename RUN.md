@@ -99,6 +99,7 @@
 > 볼 것     카드 = 도구 이름 · 채운 칸 · «N <그 도구의 낱말>» · Open form -> 소급 탭 그 폼, 채운 칸 보라
 > 답의 뜻   «Not asked» + 빨간 문장 -> 모델을 못 부름(그 문장이 사유, 예 llm_config.json · 게이트웨이)
 >          «Not sure» -> 맞는 도구 없음. 가까운 도구 셋 중 폼이 있는 것은 누르면 빈 폼
+>                        그 밑 빨간 줄 = 마지막 시도를 서버가 거절한 문장 — 그대로 옮겨 보내 주시면 됩니다
 >          «Stopped waiting ...» -> Cancel 을 누름. 서버는 끝까지 묻고, 온 답은 Earlier 에 «arrived after you stopped»
 >          Earlier 가 비어 있음 -> 이 페이지를 연 뒤 물은 것이 없음(새로 고침하면 비워짐)
 > 되돌리기  git revert $(git log --format=%h -i --grep='the admin help.s side panel' origin/main) -> 화면 새로 고침

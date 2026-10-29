@@ -2871,7 +2871,9 @@ const DRIVE = {
           HELP.held.splice(0).forEach((answer) => answer(HELP_TOOL));
           await until(c, "Boolean(document.querySelector('.help-card__late')) && Boolean(document.querySelector('.help-card__open'))");
         }],
-        ['Help, not sure', (c) => answered(c, '값이 좀 이상해', HELP_ANSWERS.unsure, "document.querySelectorAll('.help-card__near-row').length === 3")],
+        ['Help, not sure', (c) => answered(c, '값이 좀 이상해', HELP_ANSWERS.unsure, "document.querySelectorAll('.help-card__near-row').length === 3"
+          + ` && (document.querySelector('.help-panel__card .help-card__refused') || {}).textContent === ${JSON.stringify(HELP_ANSWERS.unsure.refused)}`
+          + ` && (document.querySelector('.help-panel__card .help-card__why') || {}).textContent === ${JSON.stringify(HELP_ANSWERS.unsure.why)}`)],
         ['Help, the model not asked', (c) => answered(c, '조인을 고쳤는데 옛 행의 dt_lot 칸이 비어 있어', HELP_ANSWERS.notAsked,
           "Boolean(document.querySelector('.help-card__refused'))")],
         ['Help, a count refused', (c) => answered(c, '이 규칙 예전 데이터에 다시 돌려줘', HELP_ANSWERS.countRefused,

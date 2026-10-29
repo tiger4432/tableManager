@@ -5898,10 +5898,10 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 > 🔴 **실행하지 않는다** — 답은 `POST /admin/help/ask` 의 것(도구 하나 · 칸 · 셈 · help_id), 실행은 Open form 이 연 소급 폼이 한다(`help_id` 를 실어 `mark_run`).
 > 🔴 **Cancel 은 기다림만 멈춘다** — 서버는 끝까지 묻고 행을 적으므로, 그 뒤 온 답은 버리지 않고 «arrived after you stopped» 로 남는다(소유자 10-29 · 총괄).
 
-- **`helpRequest(question)`** · **`answerView(answer, forms)`** → kind `tool`(칸 · 셈은 `retroactive_view.buildCountView` 로, 문 `doors[].open` 이 있으면 페이지 단추) · `unsure`(similar `[{op, label}]`, 폼은 `forms` 에 있는 것만) · `refused`(`tries` 0 = 모델 못 부름)
+- **`helpRequest(question)`** · **`answerView(answer, forms)`** → kind `tool`(칸 · 셈은 `retroactive_view.buildCountView` 로, 문 `doors[].open` 이 있으면 페이지 단추) · `unsure`(similar `[{op, label}]`, 폼은 `forms` 에 있는 것만, `refused` = 마지막 시도의 거절 문장 — 카드에 그대로 · Earlier 줄에 첫 줄) · `refused`(`tries` 0 = 모델 못 부름)
 - **`class HelpPanel(host, {doc, send, forms, openForm, clock})`** — 모듈 상태 없음, 두 인스턴스가 따로 산다. `open` · `close` · `toggle` · `ask()` · `stopWaiting()` · `noteRun(helpId, runId)`. Earlier 는 인스턴스의 `asks`(새로 고침하면 사라짐 — 서버 표를 읽는 라우트 없음)
 - **소비자**: `admin.js` — `initHelpPanel()`(머리 `#help-btn`, 판 자리 `#help-mount`, 판 위끝 = Help 단추 밑) · `sendHelp` · `openHelpForm`(그 도구의 `retroState` 에 칸 · `help` · 셈을 앉히고 소급 탭으로) · `confirmRetroactiveRun` 이 `help_id` 를 싣고 run 을 `noteRun` 으로 알림 · 채운 칸 `is-help`
-- **채점자**: `client2/tests/help_panel_harness.mjs`(`harness_floors.mjs` 에 **40** 건 — 변이 9 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE 아홉 «Help, asking … Help closed»(HELP 토글이 POST 를 녹화 꼴로 답하거나 붙잡음)
+- **채점자**: `client2/tests/help_panel_harness.mjs`(`harness_floors.mjs` 에 **45** 건 — 변이 13 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE 아홉 «Help, asking … Help closed»(HELP 토글이 POST 를 녹화 꼴로 답하거나 붙잡음)
 
 ### 🆕 `stall_line.js` (**45줄** 신설, 10-29 — 소유자 «ㄴ» · «1 ㄴ», A 63a69b97a) — 어드민 · 그리드 머리의 마지막 굳음 한 줄
 

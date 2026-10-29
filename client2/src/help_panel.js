@@ -37,7 +37,8 @@ export function answerView(answer, forms = {}) {
     if (!a.tries) return { ...base, kind: 'refused', title: 'Not asked', refused: a.refused ? String(a.refused) : '' };
     const near = (Array.isArray(a.similar) ? a.similar : []).filter((s) => s && s.op)
       .map((s) => ({ op: s.op, label: s.label || forms[s.op] || s.op, form: s.op in forms }));
-    return { ...base, kind: 'unsure', title: 'Not sure', tries: a.tries, near };
+    // why the last try was refused, as the server says it (lead 10-29: «every answer is not sure» is read off this line)
+    return { ...base, kind: 'unsure', title: 'Not sure', tries: a.tries, near, refused: a.refused ? String(a.refused) : '' };
   }
   const params = a.params && typeof a.params === 'object' ? a.params : {};
   const count = a.count ? buildCountView(a.count) : null;
@@ -242,6 +243,7 @@ export class HelpPanel {
       return box;
     }
     if (v.kind === 'unsure') {
+      if (v.refused) box.appendChild(this.el('div', 'help-card__refused', v.refused));
       const list = this.el('div', 'help-card__near');
       // a tool whose form the page has is the row's press - its form opens empty; the others are named only
       v.near.forEach((n) => {
@@ -298,7 +300,7 @@ export class HelpPanel {
 
   rowOf(rec) {
     const row = this.button('btn-quiet help-row', '', () => { this.shown = rec; this.render(); });
-    // two lines, each a long word that gives way and a short one at the right edge
+    // two lines, each a long word that gives way and a short one at the right edge; a third, the refusal's first line
     const line = () => row.appendChild(this.el('span', 'help-row__line'));
     const top = line();
     top.appendChild(this.el('span', 'help-row__q', rec.question));
@@ -308,6 +310,8 @@ export class HelpPanel {
     under.appendChild(this.el('span', 'help-row__what', what));
     const tail = rec.late ? ARRIVED_LATE : rec.runId ? `run ${rec.runId}` : '';
     under.appendChild(this.el('span', 'help-row__tail', tail));
+    const said = rec.view && rec.view.refused ? rec.view.refused.split('\n')[0] : '';
+    if (said) line().appendChild(this.el('span', 'help-row__refused', said));
     return row;
   }
 }

@@ -147,6 +147,7 @@ console.log('\n── B. AN ANSWER AS DRAWN ────────────
   ok('B8 the model not asked: its refusal word for word', n.kind === 'refused' && n.title === 'Not asked' && n.refused === NOT_ASKED.refused);
   const c = X.answerView(COUNT_REFUSED, FORMS);
   ok('B9 a count refused: no number, the server\'s sentence, the form still offered', c.count === null && c.countRefused === COUNT_REFUSED.count_refused && c.form === true);
+  ok('B10 not sure: why the last try was refused and the model\'s why, word for word', u.refused === UNSURE.refused && u.why === UNSURE.why, u);
 }
 
 console.log('\n── C. ASKING ───────────────────────────────────────────────────────');
@@ -226,6 +227,8 @@ console.log('\n── E. WHAT EACH ANSWER DRAWS ──────────�
   const opens = findAll(card(u), 'help-card__open');
   ok('E3 not sure: the tools near, Open form only where the page has the form', findAll(card(u), 'help-card__near-row').length === 2
     && opens.length === 1 && text(card(u), 'help-card__meta') === 'asked 2 times');
+  ok('E3b ...the refusal and the why on the card, the server\'s words', text(card(u), 'help-card__refused') === UNSURE.refused
+    && text(card(u), 'help-card__why') === UNSURE.why);
   opens[0].click();
   ok('E4 ...that Open form opens the tool empty, the ask\'s help_id on it', u.opened.length === 1 && u.opened[0].op === 'resolve'
     && Object.keys(u.opened[0].params).length === 0 && u.opened[0].helpId === 'h-unsure');
@@ -251,6 +254,12 @@ console.log('\n── F. EARLIER · TWO PANELS ───────────
   ok('F1 Earlier: newest first, the shown ask not listed', rows.length === 2 && text(rows[0], 'help-row__q') === 'two'
     && text(rows[1], 'help-row__q') === 'one', rows.map((r) => text(r, 'help-row__q')));
   ok('F2 a row says what came back', text(rows[0], 'help-row__what') === 'Not sure' && text(rows[1], 'help-row__what') === TOOL.label);
+  ok('F2b ...a refused one its refusal\'s first line, a tool none', text(rows[0], 'help-row__refused') === UNSURE.refused
+    && !find(rows[1], 'help-row__refused'));
+  const l = mount(X);
+  await asked(l, 'a', { ok: true, body: { ...UNSURE, refused: 'first line\nsecond line' } });
+  await asked(l, 'b', { ok: true, body: TOOL });
+  ok('F2c ...only the first line of a longer one', text(find(l.panel.root, 'help-row'), 'help-row__refused') === 'first line');
   rows[1].click();
   ok('F3 a row shows its ask again', text(card(m), 'help-card__title') === TOOL.label && findAll(m.panel.root, 'help-row').length === 2);
   m.panel.noteRun('h-tool', 'r-77');
@@ -294,6 +303,9 @@ const DEFECTS = [
   ['M6 Ask stays on while one is out', swap('const why = this.waiting ? ASKING', 'const why = false ? ASKING')],
   ['M7 the shown ask is listed in Earlier too', swap('this.asks.filter((r) => r !== this.shown)', 'this.asks')],
   ['M8 the model not asked is drawn as not sure', swap('if (!a.tries) return', 'if (false) return')],
+  ['M11 not sure keeps its refusal to itself', swap("near, refused: a.refused ? String(a.refused) : '' };", "near, refused: '' };")],
+  ['M13 the not sure card leaves the refusal out', swap("      if (v.refused) box.appendChild(this.el('div', 'help-card__refused', v.refused));\n", '')],
+  ['M12 an Earlier row shows the whole refusal', swap("rec.view.refused.split('\\n')[0] : '';", "rec.view.refused : '';")],
   ['M10 the waiting card is drawn again each second', swap('if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);', 'this.render();')],
   ['M9 a page link drawn for a door that names none',
     swap("open: d.open && d.open.href ? {", "open: { label: '', href: '#' } || d.open && d.open.href ? {")],
@@ -329,6 +341,12 @@ async function verdict(M) {
   const r = mount(M);
   await asked(r, 'q', { ok: true, body: NOT_ASKED });
   if (text(card(r), 'help-card__refused') !== NOT_ASKED.refused) return true;
+
+  const u = mount(M);
+  await asked(u, 'q', { ok: true, body: { ...UNSURE, refused: 'first line\nsecond line' } });
+  if (text(card(u), 'help-card__refused') !== 'first line\nsecond line') return true;
+  await asked(u, 'r', { ok: true, body: TOOL });
+  if (text(find(u.panel.root, 'help-row'), 'help-row__refused') !== 'first line') return true;
   return false;
 }
 
