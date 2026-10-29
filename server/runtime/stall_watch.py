@@ -16,6 +16,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from error_said import told
+
 logger = logging.getLogger("Server")
 
 STALL_SECONDS = 5
@@ -118,7 +120,7 @@ class Watch:
         except Exception as exc:                        # the watch alone goes quiet - its cell says «?»
             if cell not in self._broke:
                 self._broke.add(cell)
-                logger.warning("[Stall] the %s reading failed (%s: %s) - its cell says ?", cell, type(exc).__name__, exc)
+                logger.warning("[Stall] the %s reading failed: %s - its cell says ?", cell, told(exc))
             return UNREAD
 
     def tick(self, now):
@@ -222,7 +224,7 @@ def start(loop, limiter):
             try:
                 _watch[0].tick(began)
             except Exception as exc:                    # never the server's: say it, keep watching
-                logger.warning("[Stall] a tick failed (%s: %s)", type(exc).__name__, exc)
+                logger.warning("[Stall] a tick failed - this freeze is not watched until the next: %s", told(exc))
             time.sleep(max(TICK_SECONDS - (time.monotonic() - began), 0.05))
 
     threading.Thread(target=run, name="stall-watch", daemon=True).start()
