@@ -226,7 +226,7 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
         return False
 
 
-def _announce_dropped_columns(t_name, not_written, defined_cols, filename, row_count):
+def _announce_dropped_columns(t_name, not_written, defined_cols, filename, row_count, firsts=None):
     """Report columns the loadable-column filter discarded before the write.
 
     Dropping is often the CORRECT outcome - a file carrying fields of a superseded
@@ -244,7 +244,8 @@ def _announce_dropped_columns(t_name, not_written, defined_cols, filename, row_c
         later warning means something actually changed;
       - INFO per file with the names and counts, so 0 dropped and 200 dropped never
         look the same to anyone who goes looking.
-    ASCII only - this reaches a cp949 console.
+    Its own words ASCII - this reaches a cp949 console; a refused value is quoted as it came,
+    as crud's refused-cells line quotes it.
     """
     if not any(not_written.values()):
         return None
@@ -270,8 +271,7 @@ def _announce_dropped_columns(t_name, not_written, defined_cols, filename, row_c
         )
     # The file's record carries the same sentence as this line (총괄 8e54a261b ②), next
     # action first (d4a949a8c ③). column=non-blank values discarded.
-    sentence = crud.not_written_sentence(
-        not_written, "Not written") + f" over {row_count} row(s).{capped}"
+    sentence = crud.not_written_sentence(not_written, "Not written", firsts, row_count) + capped
     logger.info(f"[{t_name}] {sentence} File '{filename or '?'}'. "
                 f"Declared columns={list(defined_cols)}.")
     return sentence
@@ -4068,6 +4068,7 @@ class IngestionHandler(FileSystemEventHandler):
         # outcome; being unable to tell that outcome apart from a new or misspelled column
         # going nowhere is not. See _announce_dropped_columns for the reporting shape.
         not_written = {crud.DROP_UNDECLARED_COLUMN: {}, crud.DROP_UNMAPPED_COLUMN: {}, crud.DROP_VALUE_REFUSED: {}}
+        refused_firsts = {}                 # {column: the first value refused there}, the file's first chunk that had one
         dropped_value_counts = not_written[crud.DROP_UNDECLARED_COLUMN]
         unmapped_value_counts = not_written[crud.DROP_UNMAPPED_COLUMN]
         # Rows handed to the write. A resumed prefix was committed through it - a chunk
@@ -4199,6 +4200,7 @@ class IngestionHandler(FileSystemEventHandler):
                         refused_values = not_written[crud.DROP_VALUE_REFUSED]
                         for column, seen in (_dropped.get("refused_values") or {}).items():
                             refused_values[column] = refused_values.get(column, 0) + seen["cells"]
+                            refused_firsts.setdefault(column, seen["first"])
                         for kind, seen in (batch_obj._nokey or {}).items():
                             nokey_counts[kind]["rows"] += seen["rows"]
                             nokey_counts[kind]["columns"].update(seen["columns"])
@@ -4317,7 +4319,7 @@ class IngestionHandler(FileSystemEventHandler):
 
             # [Drop visibility] Individual silence, named aggregate - one report per file.
             dropped = _announce_dropped_columns(
-                t_name, not_written, defined_cols, filename, processed_rows
+                t_name, not_written, defined_cols, filename, processed_rows, refused_firsts
             )
             for kind, seen in nokey_counts.items():
                 if not seen["rows"]:

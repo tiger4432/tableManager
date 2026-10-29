@@ -3794,6 +3794,7 @@ async def apply_batch_updates_endpoint(
         # must not reach 「N rows updated」. The number to subtract travels here rather than
         # on the return value, which ten call sites and dozens of tests unpack as a 4-tuple.
         drop_report: dict = {}
+        rows_offered = len(batch.updates)
         with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
             results, changed_cells, created_logs, deleted_row_ids = await run_in_threadpool(
                 crud.apply_batch_updates, db, table_name, batch, replace_report, drop_report
@@ -4011,6 +4012,11 @@ async def apply_batch_updates_endpoint(
             "rows": drop_report["rows_affected"],
             "columns": sorted(drop_report["by_column"]),
             "by_reason": drop_report["by_reason"],
+            # the file's own sentence for what was not written - its function, its words (lead 10-29)
+            **({"said": said} if (said := crud.not_written_sentence(
+                drop_report["by_reason_column"], "Not written",
+                {column: seen["first"] for column, seen in drop_report["refused_values"].items()},
+                rows_offered)) else {}),
         }} if drop_report.get("dropped_cells") else {}),
         "change_count": len(changed_cells),
         "deleted_row_ids": deleted_row_ids,

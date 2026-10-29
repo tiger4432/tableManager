@@ -244,6 +244,8 @@ def _new_drop_stats() -> dict:
         "row_refusals": [],
         # {column: {"cells": n, "first": the first value refused there}} - capped like by_column.
         "refused_values": {},
+        # {reason: {column: cells}} - the columns by_column counts, by why (not_written_sentence's material)
+        "by_reason_column": {},
     }
 
 
@@ -262,6 +264,9 @@ def _record_dropped_cell(drop_stats: dict, row_id: str, business_key_val: Any,
         by_column[col_name] = 1
     else:
         drop_stats["columns_omitted"] += 1
+    if col_name in by_column:
+        named = drop_stats["by_reason_column"].setdefault(reason, {})
+        named[col_name] = named.get(col_name, 0) + 1
 
     drop_stats["rows_with_drops"].add(row_id)
 
@@ -343,6 +348,7 @@ def _render_drop_report(drop_report: dict, table_name: str, drop_stats: dict,
         # that claims the same key - which is the whole of what makes it fixable.
         "refusals": list(drop_stats["row_refusals"])[:MAX_DROP_REPORT_ROWS],
         "refused_values": dict(drop_stats["refused_values"]),
+        "by_reason_column": {reason: dict(columns) for reason, columns in drop_stats["by_reason_column"].items()},
         # Rows that were NOT inserted because every key the payload carried for them was
         # discarded - see the guard in `_apply_batch_updates_once`.
         "empty_rows_suppressed": len(suppressed_row_ids),
@@ -1171,20 +1177,26 @@ NOT_WRITTEN_NEXT = {
 }
 
 
-def not_written_sentence(by_reason, tail):
-    """`Next: <actions>. <tail>: <reason> <columns> · ...` - ONE spelling for a file's columns
-    that were offered and not written, whether some rows were written (`tail` "Not written")
-    or none (`NothingWritten`). `by_reason` is `{reason: {column: non-blank values}}`, or
-    `{reason: [column, ...]}` where the values are not known (a header)."""
+def not_written_sentence(by_reason, tail, firsts=None, rows=None):
+    """`Next: <actions>. <tail>: <reason> <columns> · ...[ over N row(s).]` - ONE spelling for the
+    columns offered and not written, a file's and a grid save's (lead 10-29), whether some rows were
+    written (`tail` "Not written") or none (`NothingWritten`). `by_reason` is `{reason: {column:
+    values}}`, or `{reason: [column, ...]}` where the values are not known (a header); `firsts`
+    `{column: the first value refused there}` (the drop report's refused_values); `rows` the rows
+    offered. None when it names no reason of NOT_WRITTEN_NEXT."""
     reasons = [reason for reason in NOT_WRITTEN_NEXT if by_reason.get(reason)]
+    if not reasons:
+        return None
+    firsts = firsts or {}
     named = []
     for reason in reasons:
         columns = by_reason[reason]
         named.append("%s %s" % (reason, ", ".join(
-            "%s=%s" % (column, columns[column]) for column in sorted(columns))
+            "%s=%s%s" % (column, columns[column], " (first %r)" % (firsts[column],) if column in firsts else "")
+            for column in sorted(columns))
             if isinstance(columns, dict) else ", ".join(sorted(columns))))
-    return "Next: %s. %s: %s" % ("; ".join(NOT_WRITTEN_NEXT[reason] for reason in reasons),
-                                 tail, "; ".join(named))
+    return "Next: %s. %s: %s%s" % ("; ".join(NOT_WRITTEN_NEXT[reason] for reason in reasons),
+                                   tail, "; ".join(named), "" if rows is None else " over %d row(s)." % rows)
 
 
 class NothingWritten(ValueError):
