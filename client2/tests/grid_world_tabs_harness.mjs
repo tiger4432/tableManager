@@ -468,7 +468,8 @@ async function conflicts(M) {
     rowsById.R1.data.a.value = 28.5; rowsById.R2.data.a.value = 4;
     S.pendingTxEdits = {}; toggle.checked = true; S.txModeActive = true; S.currentColumnTypes = { a: 'number' };
   };
-  const edit = (id, from, to) => M.api.handleCellEdit({ data: rowsById[id], colDef: { field: 'a' }, newValue: to, oldValue: from });
+  // the setter writes the row before the change event, as AG Grid does
+  const edit = (id, from, to) => { rowsById[id].data.a.value = to; return M.api.handleCellEdit({ data: rowsById[id], colDef: { field: 'a' }, newValue: to, oldValue: from }); };
   S.gridApi = { ...grid, getRowNode: (id) => (rowsById[id] ? { data: rowsById[id] } : null) };
   const keepAlert = globalThis.alert;
   const keepConfirm = globalThis.confirm;
@@ -556,7 +557,9 @@ async function cacheTrip(M) {
   const go = async (skip, reset_) => { S.currentSkip = skip; try { await M.api.fetchData(reset_); } catch (e) { /* as above */ } await settle(); };
   const editCell = async (rowId, newValue) => {
     const row = drawn.find((r) => r.row_id === rowId);
-    try { await M.api.handleCellEdit({ data: row, colDef: { field: 'a' }, newValue, oldValue: row.data.a.value }); } catch (e) { /* as above */ }
+    const oldValue = row.data.a.value;
+    row.data.a.value = newValue;
+    try { await M.api.handleCellEdit({ data: row, colDef: { field: 'a' }, newValue, oldValue }); } catch (e) { /* as above */ }
   };
   await go(0, true);
   await editCell('R1', 28.9);

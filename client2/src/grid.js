@@ -1017,26 +1017,26 @@ export function buildColumnDefs() {
     };
 
     // Applied AFTER the literal so it overrides `filter`/`headerTooltip`, and BEFORE the
-    // editor selection below so it cannot touch it: a collide column's storage is still
-    // numeric when it is declared `number`, so it keeps `agNumberCellEditor` and its
-    // numeric write validation. Only the filter becomes text, because only the filter is
+    // editor selection below so it cannot touch it: a collide column declared `number` keeps
+    // the number column's editor. Only the filter becomes text, because only the filter is
     // evaluated against the joined value.
     if (resolvedEntry) {
       Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));
     }
 
     if (colType === 'number') {
-      colDef.cellEditor = 'agNumberCellEditor';
+      // a text box, not a number box (owner 10-31 ㄱ): the number box handed 1e999 and letters over as a blank and the
+      // cell was erased; typed text goes through cellToSend and the server takes it or folds it, and the toast says so
+      colDef.cellEditor = 'agTextCellEditor';
+      // and the text as typed: the grid's own number parsing would turn 1e999 into Infinity before cellToSend
+      colDef.valueParser = (params) => params.newValue;
     } else if (!isSystem && colType === 'string') {
       // [0b-a] Prefix suggestions, on STRING columns only.
       //
-      // Scoping, deliberately narrow: `number` keeps `agNumberCellEditor` because that
-      // editor carries the numeric validation this grid's `valueSetter` depends on, and
-      // `datetime` is refused by the endpoint itself (`_resolve_target` raises rather than
-      // inventing a datetime canonicalisation). The server DOES support numeric prefixes
-      // (`_numeric_values`), so widening later is a change to this predicate and nothing
-      // else — but it would mean re-implementing number validation inside the editor,
-      // which is a separate round.
+      // Scoping, deliberately narrow: not `number` (no suggestions there, a plain text box above), and not
+      // `datetime`, which the endpoint refuses itself (`_resolve_target` raises rather than inventing a datetime
+      // canonicalisation). The server DOES support numeric prefixes (`_numeric_values`), so widening later is a
+      // change to this predicate and nothing else.
       colDef.cellEditor = SuggestCellEditor;
     }
     // (lead 191912ce2) an image column: its cells preview on a dwell and open from their mark.

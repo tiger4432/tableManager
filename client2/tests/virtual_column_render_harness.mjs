@@ -616,12 +616,12 @@ async function suite(sources) {
   check('3j2 and is NOT in virtual_columns, so isVirtualColumn cannot reach it',
     SCHEMA.virtual_columns.some(v => v.name === 'core_lot'), false);
   // 🔴 The announcement is a UI marker, never a write guard. A collide column's value really
-  // is stored, so it stays editable and keeps its numeric editor and its validation.
+  // is stored, so it stays editable and keeps the number column's editor (a text box since owner 10-31 ㄱ).
   check('3k a collide column stays EDITABLE',
     [defOf(defs, 'core_lot').editable, defOf(defs, 'core_slot').editable], [true, true]);
-  check('3k2 a number collide column keeps its numeric CELL EDITOR while its filter is text',
+  check('3k2 a number collide column keeps the number column`s CELL EDITOR while its filter is text',
     [defOf(defs, 'core_slot').cellEditor, defOf(defs, 'core_slot').filter],
-    ['agNumberCellEditor', 'agTextColumnFilter']);
+    ['agTextCellEditor', 'agTextColumnFilter']);
 
   // [3l] OLD SERVER. `virtual_columns` present, `join_resolved_columns` absent — a
   // pre-change server, which drops the condition and answers with an UNFILTERED page. The
@@ -826,8 +826,8 @@ const DEFECTS = [
   //    and the mutant still says the same thing: the join ANNOUNCEMENT must not decide writability.
   ['make the announcement decide editability', 'grid', (t) => sub(t, `      editable: !isSystem && !viewTable && `,
       `      editable: !isSystem && !viewTable && !resolvedEntry && `, 'write-guard')],
-  ['let the announcement replace the numeric cell editor', 'grid', (t) => sub(t, `    if (colType === 'number') {\n      colDef.cellEditor = 'agNumberCellEditor';`,
-      `    if (colType === 'number' && !resolvedEntry) {\n      colDef.cellEditor = 'agNumberCellEditor';`,
+  ['let the announcement replace the number column`s cell editor', 'grid', (t) => sub(t, `    if (colType === 'number') {`,
+      `    if (colType === 'number' && !resolvedEntry) {`,
       'editor')],
   ['accept a non-array join_resolved_columns straight into state', 'api', (t) => sub(t, `Array.isArray(data.join_resolved_columns)\n      ? data.join_resolved_columns : []`,
       `data.join_resolved_columns || []`, 'non-array-jrc')],

@@ -928,7 +928,7 @@ async function suite(M) {
       paste: async () => { await stageThrough(M.api, 'table'); listeners.clear(); M.clipboard.setupClipboardHandlers(); await (listeners.get('paste') || [])[0](pasteEvent('9')); },
       clear: async () => { await stageThrough(M.api, 'table'); await M.clipboard.clearSelectedCells(); },
       fill: async () => { await stageThrough(M.api, 'table'); await M.ui.applyValueToSelectedRange('9'); },
-      edit: async () => { await stageThrough(M.api, 'table'); await M.api.handleCellEdit({ data: rowData(), colDef: { field: 'note' }, newValue: 'y', oldValue: 'x' }); },
+      edit: async () => { await stageThrough(M.api, 'table'); const row = rowData(); row.data.note.value = 'y'; await M.api.handleCellEdit({ data: row, colDef: { field: 'note' }, newValue: 'y', oldValue: 'x' }); },
       apply: async () => {
         await stageThrough(M.api, 'table');
         realState.pendingTxEdits = { R0_note: { rowId: 'R0', colId: 'note', newValue: 'y', oldValue: 'x', data: rowData(), conflict: null } };
@@ -1010,16 +1010,28 @@ async function suite(M) {
         `V3 a table pasted sends its number cells as text too [${JSON.stringify(sent)}]`);
       sent = [];
       await onQty();
-      try { await M.api.handleCellEdit({ data: rowData(), colDef: { field: 'qty' }, newValue: Infinity, oldValue: 1 }); } catch (e) { /* as above */ }
-      ok(sent.length === 1 && sent[0].qty === 'Infinity',
-        `V4 the number editor's Infinity goes as its text, not as JSON null [${JSON.stringify(sent)}]`);
-      sent = [];
-      await onQty();
-      try { await M.api.handleCellEdit({ data: rowData(), colDef: { field: 'qty' }, newValue: 'abc', oldValue: 1 }); } catch (e) { /* as above */ }
-      ok(sent.length === 1 && sent[0].qty === 'abc', `V5 an edit's text goes as typed [${JSON.stringify(sent)}]`);
+      // as AG Grid edits: the parser, the setter on the row, then the change event with the valueGetter's read of it
       const qty = M.grid.buildColumnDefs().find((d) => d.field === 'qty');
+      const typedEdit = async (text, reread) => {
+        const row = rowData();
+        qty.valueSetter({ data: row, newValue: qty.valueParser ? qty.valueParser({ newValue: text, oldValue: 1 }) : text });
+        sent = [];
+        await onQty();
+        try { await M.api.handleCellEdit({ data: row, colDef: { field: 'qty' }, newValue: reread, oldValue: 1 }); } catch (e) { /* as above */ }
+        return sent.length === 1 ? sent[0].qty : `sent ${sent.length}`;
+      };
+      const edited = [await typedEdit('1e999', Infinity), await typedEdit('0x10', 16), await typedEdit('007', 7)];
+      ok(JSON.stringify(edited) === JSON.stringify(['1e999', '0x10', '007']),
+        `V4 an edit sends the text the cell took, not the grid's number read of it - 1e999 · 0x10 · 007 [${JSON.stringify(edited)}]`);
+      const abc = await typedEdit('abc', 'abc');
+      ok(abc === 'abc', `V5 an edit's text goes as typed [${JSON.stringify(abc)}]`);
       const row = rowData();
       const took = [Infinity, '1,234', ''].map((v) => (qty.valueSetter({ data: row, newValue: v }), row.data.qty.value));
+      const parsed = ['1e999', '-0', '007'].map((v) => (qty.valueParser ? qty.valueParser({ newValue: v, oldValue: 5 }) : 'no parser'));
+      ok(JSON.stringify(parsed) === JSON.stringify(['1e999', '-0', '007']),
+        `V9 the text box's text reaches the cell as typed - no number parsing on the way [${JSON.stringify(parsed)}]`);
+      ok(qty.cellEditor === 'agTextCellEditor',
+        `V8 a number column is edited in a text box - the number box handed 1e999 and letters over as a blank (owner 10-31) [${qty.cellEditor}]`);
       ok(took[0] === 'Infinity' && took[1] === '1,234' && took[2] === null,
         `V6 the cell takes the editor's value the same way - Infinity as text, text as typed, blank none [${JSON.stringify(took)}]`);
       // the one rule, asked of its own module (a write_guard.js copy is not what the real funnels import)
@@ -1239,9 +1251,11 @@ const DEFECTS = [
     const at = s.lastIndexOf('updates[colId] = cellToSend(colId, val);');
     return at < 0 ? s : `${s.slice(0, at)}updates[colId] = cellToSend(colId, Number(val));${s.slice(at + 'updates[colId] = cellToSend(colId, val);'.length)}`;
   }],
-  ['api.js: an edit sends the editor`s value raw - Infinity becomes JSON null', 'api', s => s.replace('const finalValue = cellToSend(colId, newValue);', 'const finalValue = newValue;')],
   ['grid.js: the cell takes the editor`s value raw', 'grid', s => s.replace('const finalVal = cellToSend(col, params.newValue);', 'const finalVal = params.newValue;')],
   ['write_guard.js: a number JSON cannot carry goes as a number', 'guard', s => s.replace("typeof value === 'number' && !Number.isFinite(value) ? String(value) : value", 'value')],
+  ['grid.js: the typed text is parsed as a number on the way', 'grid', s => s.replace('colDef.valueParser = (params) => params.newValue;', 'colDef.valueParser = (params) => Number(params.newValue);')],
+  ['grid.js: a number column is edited in the number box again', 'grid', s => s.replace("colDef.cellEditor = 'agTextCellEditor';", "colDef.cellEditor = 'agNumberCellEditor';")],
+  ['api.js: an edit sends the grid`s number read, not what the cell took', 'api', s => s.replace('const finalValue = data.data[colId].value;', 'const finalValue = newValue;')],
   ['write_guard.js: a number column`s blank goes as typed', 'guard', s => s.replace('&& isBlank(value)) return null;', '&& value === undefined) return null;')],
   // ⚠️ NOT HERE: 「fetchData stops returning true」. `timeline.js` reaches `fetchData` through the REAL
   //    `ui.js`, which imports the real `api.js`, so an `api.js` copy swapped in by this file never

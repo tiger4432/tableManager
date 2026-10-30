@@ -5,7 +5,7 @@ import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, st
   groupFilters, strayLongRow } from './grid_pivot.js';
 import { unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped, cellToSend } from './write_guard.js';
+import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
@@ -1159,7 +1159,9 @@ async function editCell(event) {
   const oldIsOverwrite = oldCell ? oldCell.is_overwrite : false;
   const oldPrioritySource = oldCell ? oldCell.priority_source : null;
 
-  const finalValue = cellToSend(colId, newValue);
+  // what the valueSetter wrote on the row (through cellToSend), not newValue: AG Grid reads that back through the number
+  // column's valueGetter, and 1e999 went out as Infinity, 0x10 as 16 (owner 10-31 ㄱ, lead 10-31)
+  const finalValue = data.data[colId].value;
 
   // In pivot view (owner 10-23): a new row's key cell stays on that row, unwritten; a value there with a key blank is
   // refused and the cell goes back.
