@@ -471,6 +471,7 @@
 
 ### 어드민 화면
 
+- 2026-10-31 [바뀐 화면 — 소급 탭: 미리보기 · 확인 상자가 detail 의 줄을 그대로 그림](#2026-10-31--바뀐-화면--소급-탭-미리보기--확인-상자가-detail-의-줄을-그대로-그림) — 보는 곳 어드민 Retroactive 의 count
 - 2026-10-31 [바뀐 화면 — 표 · 체인 편집기: 저장 답의 notes 를 저장 줄 밑에 그림](#2026-10-31--바뀐-화면--표--체인-편집기-저장-답의-notes-를-저장-줄-밑에-그림) — 보는 곳 어드민 Tables · Chain 편집기 저장
 - 2026-10-29 [도움말 선언 가이드가 일곱 — ai_report_tables 가 더해져 리포트 선언도 답한다 · 긴 절은 목록 항목에서도 잘린다](#2026-10-29--도움말-선언-가이드가-일곱--ai_report_tables-가-더해져-리포트-선언도-답한다--긴-절은-목록-항목에서도-잘린다) — 보는 곳 어드민 도움말의 declaration · 재기 help_bench --part declarations
 - 2026-10-29 [도움말 선언 가이드가 여섯 — ai_ask_tables 가 더해져 ask · report 선언(리포트 코멘트 칸 포함)도 답한다](#2026-10-29--도움말-선언-가이드가-여섯--ai_ask_tables-가-더해져-ask--report-선언리포트-코멘트-칸-포함도-답한다) — 보는 곳 어드민 도움말의 declaration · 재기 help_bench --part declarations
@@ -695,6 +696,12 @@
 
 
 
+
+## 2026-10-31 · 바뀐 화면 — 소급 탭: 미리보기 · 확인 상자가 detail 의 줄을 그대로 그림
+
+- **바뀐 화면** — 소급 탭에서 count 를 누르면 나오는 미리보기의 문장(detail)과 run 전 확인 상자가 서버가 넣은 줄바꿈을 그대로 그립니다. «Convert the columns already declared another type» 의 미리보기는 칸마다 한 줄씩입니다. count 가 거절될 때의 문장(«The count for this operation cannot be computed: …», DB 오류는 여러 줄)도 같은 자리라 줄이 나뉘어 보입니다. 전에는 줄이 빈칸 하나로 접혀 한 줄로 이어 붙었습니다. 다른 작업의 미리보기 문장에는 줄바꿈이 없어 보이는 것이 그대로입니다.
+- **필요한 조건** — git pull · 화면 새로 고침.
+- **자세히** — `client2/admin.html` 의 `.retro-detail` · `.retro-confirm .cfg-detail` (white-space: pre-line), `client2/src/admin.js` 의 미리보기 상자. 화면 검사기 칸 «detail lines».
 
 ## 2026-10-31 · 소급 탭 — 이미 다른 타입으로 선언만 된 칼럼을 한 번에 바꿈
 
