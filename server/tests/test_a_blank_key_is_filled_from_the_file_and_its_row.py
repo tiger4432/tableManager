@@ -206,6 +206,69 @@ def test_a_value_spelled_as_the_write_door_stores_it_is_the_same_content(load):
     assert second == first
 
 
+SPELLED = {"business_key": "k", "composite_key_source": ["lot", "slot"],
+           "column_types": {"k": "string", "lot": "string", "slot": "string", "n": "number", "t": "datetime"},
+           "null_policy": {"slot": "nokey"}}
+TIMES = ["2026-10-29", "2026-10-29 00:00", "2026-10-29 00:00:00", "2026-10-29T00:00:00", "2026-10-28T15:00:00Z"]
+
+
+def _print(monkeypatch, **cells):
+    monkeypatch.setitem(crud.TABLE_CONFIG, T, SPELLED)
+    printer = crud.NokeyPrint(T, SPELLED)
+    printer.add(dict({"lot": "L1", "slot": "", "n": 1, "t": TIMES[0]}, **cells))
+    return printer.keys()[0].split("_")[1]
+
+
+@pytest.mark.parametrize("cells", [{"n": "1.0"}, {"n": "1.00"}, {"n": 1.0}, {"n": "001"},
+                                   {"t": TIMES[1]}, {"t": TIMES[2]}, {"t": TIMES[3]}, {"t": TIMES[4]}],
+                         ids=["1.0", "1.00", "float 1.0", "001", *TIMES[1:]])
+def test_a_value_the_table_stores_as_one_is_one_print(monkeypatch, cells):
+    """lead 10-31 ㄷ: «1.0 and 1, 2026-10-29T00:00:00 and 2026-10-29 are one value» - the print spells each cast value
+    by the one key speller (`key_part`)."""
+    assert _print(monkeypatch, **cells) == _print(monkeypatch)
+    assert _print(monkeypatch, n="007") == _print(monkeypatch, n="7")
+
+
+def test_another_value_and_a_time_only_postgresql_reads_are_another_print(monkeypatch):
+    """The canary (the print does move), and what stays apart: «2026/10/29» is read by PostgreSQL, not by our reader,
+    so the first pass has nothing to fold it with (lead 10-31: reported, not built)."""
+    assert _print(monkeypatch, n=2) != _print(monkeypatch)
+    assert _print(monkeypatch, t="2026-10-30") != _print(monkeypatch)
+    assert _print(monkeypatch, t="2026/10/29") != _print(monkeypatch)
+
+
+def _keys(rows):
+    printer = crud.NokeyPrint(T, SPELLED)
+    for row in rows:
+        printer.add(row)
+    return printer.keys(), printer
+
+
+def test_a_remembered_spelling_is_the_spelling(monkeypatch):
+    """lead 10-31: the print remembers (column, value) -> spelling within one file, at most NOKEY_SPELLED_MAX. The
+    same file with nothing remembered gives the same keys - one raw value in two columns of two types, 1 and True in
+    one column, a value that cannot be a dict key (a plugin's list)."""
+    monkeypatch.setitem(crud.TABLE_CONFIG, T, SPELLED)
+    rows = [{"lot": "1.0", "n": "1.0", "t": TIMES[1], "k": 1}, {"lot": "1.0", "n": "1.0", "t": TIMES[1], "k": True},
+            {"lot": "1", "n": 1, "t": TIMES[3], "k": ["a"]}, {"lot": "1.0", "n": "2", "t": TIMES[1], "k": True}]
+    remembered, printer = _keys(rows)
+    assert printer.spelled, "CANARY: something was remembered"
+    monkeypatch.setattr(crud, "NOKEY_SPELLED_MAX", 0)
+    spelled_each_time, printer = _keys(rows)
+
+    assert not printer.spelled and remembered == spelled_each_time
+
+
+def test_the_print_remembers_no_more_than_its_bound(monkeypatch):
+    monkeypatch.setitem(crud.TABLE_CONFIG, T, SPELLED)
+    rows = [{"lot": "L%d" % at, "n": at, "t": TIMES[0]} for at in range(50)]
+    whole, _ = _keys(rows)
+    monkeypatch.setattr(crud, "NOKEY_SPELLED_MAX", 7)
+    bounded, printer = _keys(rows)
+
+    assert len(printer.spelled) == 7 and bounded == whole
+
+
 @pytest.mark.pg
 def test_another_source_with_the_same_content_writes_the_same_rows(load):
     first, _ = load(DECLARED, source="share-a")

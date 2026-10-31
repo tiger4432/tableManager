@@ -3344,7 +3344,10 @@ class NokeyPrint:
     """THE nokey keys of one file's rows (owner 10-31 «노키 로직을 파일 내용 해시로» · «같은 파일이 아니어도 정의된 유효
     내용이 같으면 같은 키» · «행 하나 말고 파일로 입력된 전체로») - `nokey_<print, 12 hex>_<number>`, made only from what
     the file put in: each row's declared columns (not the system ones), each value as the write door casts it
-    (`cast_value_by_type`, a value it refuses counted blank), before any nokey fill. The rows are put in content
+    (`cast_value_by_type`, a value it refuses counted blank) and then spelled by the one key speller (`key_part`, lead
+    10-31 ㄷ: 1 · 1.0 · 1.00 one number, a time our reader reads one instant), before any nokey fill. A time only
+    PostgreSQL reads («2026/10/29») stays its text; a value met again in its column takes the spelling remembered
+    (`NOKEY_SPELLED_MAX` distinct at most). The rows are put in content
     order; the print is the hash of that order and a row's number its place in it (equal rows, numbers in a run). A
     file's name, times, undeclared columns, column order, header spelling and row order are not in it.
 
@@ -3359,6 +3362,7 @@ class NokeyPrint:
         for column in loadable_columns(table_info):
             self.by_lower.setdefault(column.lower(), column)
         self.digests = []
+        self.spelled = {}                               # (column, type, value) -> its spelling, this file only
 
     def add(self, row) -> None:
         cells = {}
@@ -3368,10 +3372,20 @@ class NokeyPrint:
                 cells[column] = value
         values = []
         for column in self.columns:
+            raw = cells.get(column)
+            memo = (column, type(raw), raw)             # type: 1 · 1.0 · True are one dict key
             try:
-                values.append(cast_value_by_type(cells.get(column), self.types[column], column, self.table))
-            except CellRefused:
-                values.append(None)
+                spelled = self.spelled.get(memo, _NOT_SPELLED)
+            except TypeError:                           # a value that cannot be a key (a plugin's list)
+                memo = spelled = _NOT_SPELLED
+            if spelled is _NOT_SPELLED:
+                try:
+                    spelled = key_part(self.table, column, cast_value_by_type(raw, self.types[column], column, self.table))
+                except CellRefused:
+                    spelled = None
+                if memo is not _NOT_SPELLED and len(self.spelled) < NOKEY_SPELLED_MAX:
+                    self.spelled[memo] = spelled
+            values.append(spelled)
         self.digests.append(hashlib.blake2b(json.dumps(values, default=str, ensure_ascii=False).encode("utf-8"),
                                             digest_size=16).digest())
 
@@ -3387,6 +3401,10 @@ class NokeyPrint:
 
 #: The print part of a nokey key, hex characters (owner 10-31).
 NOKEY_PRINT_HEX = 12
+#: How many distinct values one print remembers the spelling of (lead 10-31: a coordinate log repeats its values; past
+#: this a value is spelled each time, so a file of all-different values stays bounded).
+NOKEY_SPELLED_MAX = 200_000
+_NOT_SPELLED = object()
 
 
 def nokey_print(table_name: str, table_info: dict):
