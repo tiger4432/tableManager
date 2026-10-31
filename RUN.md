@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **그리드 숫자 칸 편집기 — 글자 상자, 친 글자를 그대로 보냄** — git pull · 화면 새로 고침
+>
+> ```
+> 볼 곳    숫자 칸을 두 번 눌러 1e999 · NaN · 1,234 · 0x10 을 치고 Enter
+> 답       노란 토스트 «Next: fix the values … Not written: value_refused <칸>=1 (first '<친 글자>') over 1 row(s).»
+>          칸은 서버 값 그대로, 상태 줄 «Saved in … (0 cell updated)»
+>          -0 · 007 · 1e3 은 서버가 받아 0 · 7 · 1000 으로 써지고 «(1 cell updated)»
+>          빈 칸 · 공백만은 값 없음으로 써짐
+> 끄기     없음 — 화면만 바뀜
+> ```
+>
+> ---
+>
 > ## [10-31] **nokey 키 = 파일 내용 전체의 지문 — nokey_<지문 12 hex>_<행 번호>** — git pull · 서버 · 워처 재기동
 >
 > ```
@@ -35,7 +48,6 @@
 > 답       창 없이 노란 토스트 «Next: fix the values … Not written: value_refused <칸>=1 (first '<값>') over 1 row(s).»
 >          칸은 서버 값 그대로, 상태 줄 «Pasted · 0 cells updated»
 >          -0 은 0 으로 써지고 «Pasted · 1 cell updated»
-> 남은 것  편집기(두 번 눌러 치기)에서 1e999 · NaN 은 칸을 지움, 1,234 는 1234 — 다음 착지
 > 끄기     없음 — 화면만 바뀜
 > ```
 >
