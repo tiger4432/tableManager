@@ -80,17 +80,22 @@ def column_is_text(table: str, column: str) -> bool:
     an outage. Saying 「text」 leaves a numeric key at that seat exactly as broken as it was
     before this round, which is the status quo and is loud rather than silent.
     """
+    import notation_norm
+
+    sa_type = _column_type(table, column)
+    return sa_type is None or notation_norm.is_text_type(sa_type)
+
+
+def _column_type(table, column):
+    """The live model's SQLAlchemy type of `table.column`, None when it cannot be resolved."""
     try:
         from database import models
-        import notation_norm
 
         model = models.DYNAMIC_TABLES.get(table) if table else None
         attribute = getattr(model, str(column), None) if model is not None else None
-        if attribute is None:
-            return True
-        return notation_norm.is_text_type(getattr(attribute, "type", None))
+        return None if attribute is None else getattr(attribute, "type", None)
     except Exception:                                              # noqa: BLE001
-        return True
+        return None
 
 def index_key_expression(column: str, fold_rules=None, table: str = None) -> str:
     """인덱스 키 1개의 SQL 식 ― 평범한 컬럼이거나, **접힌 식**이거나.
@@ -126,7 +131,8 @@ def index_key_expression(column: str, fold_rules=None, table: str = None) -> str
 
     return notation_norm.key_expression_text(
         '"%s"' % column, fold_rules, text_column=column_is_text(table, column),
-        zone=map_overlay.key_time_zone(table, column))
+        zone=map_overlay.key_time_zone(table, column),
+        number_column=notation_norm.is_number_type(_column_type(table, column)))
 
 def blank_key_slot_expression(table: str, columns: list, folds=None) -> str:
     """The unique index's last key: `''` for a row with a filled key part, the row's own id when EVERY part is blank

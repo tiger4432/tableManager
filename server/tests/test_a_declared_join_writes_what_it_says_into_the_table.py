@@ -605,5 +605,7 @@ def test_a_number_key_is_compared_as_text_and_a_text_key_is_left_alone():
     # adds when it renders an index definition, and leaves `CAST(...)` standing. So the
     # write-time join and the index that has to serve it were casting in two shapes, and
     # only one of them normalises to what the other seats require.
-    assert "t.num::text" in num_sql, num_sql
+    # 🔴 10-31 lead ②: a float key is now spelled by `assy_key_number` (the ledger's speller) - no '' reaches the
+    # Float column either way, which is what this test guards
+    assert "assy_key_number(t.num)" in num_sql, num_sql
     assert txt_sql == "coalesce(t.txt, %(coalesce_1)s)", txt_sql

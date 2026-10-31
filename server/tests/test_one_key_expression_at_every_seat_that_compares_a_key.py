@@ -93,9 +93,9 @@ def test_the_two_renderings_of_a_numeric_key_are_the_same_expression(tables):
     left, _right = tables
 
     compiled = _pg(notation_norm.key_expression_sql(left.c.num))
-    ddl = notation_norm.key_expression_text("s245_left.num", None, text_column=False)
+    ddl = notation_norm.key_expression_text("s245_left.num", None, text_column=False, number_column=True)
 
-    assert compiled == ddl == "coalesce(s245_left.num::text, '')"
+    assert compiled == ddl == "coalesce(assy_key_number(s245_left.num), '')"
 
 
 def test_the_two_renderings_of_a_text_key_are_byte_identical_to_yesterday(tables):
@@ -134,7 +134,7 @@ def test_the_cast_asks_the_column_not_whatever_the_fold_returned(tables):
     day that validator loosens, this is the line that keeps the expression right."""
     left, _right = tables
 
-    assert "::text" in _pg(notation_norm.key_expression_sql(left.c.num, FOLD))
+    assert "assy_key_number(" in _pg(notation_norm.key_expression_sql(left.c.num, FOLD))
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,7 @@ def test_the_index_ddl_casts_a_numeric_key_and_only_when_it_knows(known):
     for an unresolvable column would put a cast into an index expression the existing
     indexes do not have, and every join on that table would go unapproved."""
     assert (vjc.index_key_expression("num", None, "s245_left")
-            == "coalesce(\"num\"::text, '')")
+            == "coalesce(assy_key_number(\"num\"), '')")
     assert (vjc.index_key_expression("txt", None, "s245_left")
             == "coalesce(\"txt\", '')")
     assert (vjc.index_key_expression("num", None, "a_table_nobody_declared")
@@ -182,7 +182,7 @@ def test_the_duplicate_probe_groups_by_the_expression_the_index_is_built_on(know
     from chain import unique_key
 
     assert (unique_key._expressions("s245_left", ["num", "txt"], None)
-            == ["coalesce(\"num\"::text, '')", "coalesce(\"txt\", '')"])
+            == ["coalesce(assy_key_number(\"num\"), '')", "coalesce(\"txt\", '')"])
 
 
 def test_the_index_name_does_not_move_when_the_cast_appears(known):
@@ -205,8 +205,13 @@ def test_the_cast_is_invisible_to_the_index_comparator(known):
     `CAST(... AS TEXT)` is NOT stripped there, and rendering it that way on PostgreSQL would
     make every join on a cast key unapproved even though its index exists."""
     with_cast = vjc.normalize_index_expression(
-        vjc.index_key_expression("num", None, "s245_left"))
+        vjc.index_key_expression("row_id", None, "s245_left"))
     without = vjc.normalize_index_expression(
-        vjc.index_key_expression("num", None, None))
+        vjc.index_key_expression("row_id", None, None))
 
-    assert with_cast == without == "coalesce(num,'')"
+    assert with_cast == without == "coalesce(row_id,'')"
+    # ...and a float key is NOT the old index any more (lead 10-31 ②): an index built on `num::text` is rebuilt once,
+    # and the one built on the function is recognised as PostgreSQL renders it
+    wanted = vjc.normalize_index_expression(vjc.index_key_expression("num", None, "s245_left"))
+    assert wanted == vjc.normalize_index_expression("COALESCE(assy_key_number(num), ''::text)")
+    assert wanted != vjc.normalize_index_expression("COALESCE((num)::text, ''::text)")

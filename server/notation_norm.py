@@ -646,6 +646,14 @@ def is_text_type(sa_type) -> bool:
     return isinstance(sa_type, String)
 
 
+def is_number_type(sa_type) -> bool:
+    """A float or numeric column - the one whose key is spelled by `KEY_NUMBER_FUNCTION` (an integer's `::text` is
+    already `map_overlay.canonical_key_value`'s spelling, so its indexes stay as built)."""
+    from sqlalchemy.types import Numeric
+
+    return isinstance(sa_type, Numeric)
+
+
 def _install_text_cast_construct():
     """`x::text` on PostgreSQL, `CAST(x AS TEXT)` everywhere else.
 
@@ -759,6 +767,32 @@ def key_instant_sql():
     return KEY_INSTANT_SQL.replace("__TIME__", expression.TIME.pattern.replace("'", "''"))
 
 
+KEY_NUMBER_FUNCTION = "assy_key_number"
+
+#: `map_overlay.canonical_key_value(v, "number")` in PostgreSQL, for a float or numeric column (lead 10-31 ②: the
+#: ledger's key speller and the join's are one; `::text` read 1e15 as '1e+15', NaN as 'NaN'). A float8 NaN · ±inf ->
+#: NULL (`crud.is_blank_key_part`), an integral value -> its integer, else the float's shortest round trip (Python's
+#: repr). ⚠️ Python reads a numeric through float and keeps its NaN as the text 'NaN' (only a float NaN is blank) -
+#: mirrored, not mended here. ⚠️ An integral float8 past 2^63 goes through
+#: numeric, PostgreSQL's shortest decimal, where Python spells int(v)'s binary digits - 1e23 parts; and Python reads
+#: a numeric past 2^53 through float. Box and lag key columns hold neither (10-31 lv/spell_count.py: 0).
+#: Created beside `assy_key_instant` by `models.sync_dynamic_tables_schema`.
+KEY_NUMBER_SQL = r"""
+CREATE OR REPLACE FUNCTION assy_key_number(v double precision) RETURNS text
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $f$
+  SELECT CASE WHEN v::text IN ('NaN', 'Infinity', '-Infinity') THEN NULL
+              WHEN v <> trunc(v) THEN v::text
+              WHEN abs(v) < 9.2e18 THEN v::bigint::text
+              ELSE v::numeric::text END
+$f$;
+CREATE OR REPLACE FUNCTION assy_key_number(v numeric) RETURNS text
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $f$
+  SELECT CASE WHEN v = trunc(v) THEN trunc(v)::text
+              ELSE v::float8::text END
+$f$;
+"""
+
+
 def _key_instant_call(inner_sql: str, zone: str) -> str:
     return "%s(%s, '%s')" % (KEY_INSTANT_FUNCTION, inner_sql, str(zone).replace("'", "''"))
 
@@ -780,8 +814,11 @@ def key_expression_sql(column, rules=None, zone=None):
     """
     from sqlalchemy import func
 
+    from sqlalchemy.types import String
     if zone:
         column = getattr(func, KEY_INSTANT_FUNCTION)(column, zone)
+    elif is_number_type(getattr(column, "type", None)):
+        column = getattr(func, KEY_NUMBER_FUNCTION)(column, type_=String())
     elif not is_text_type(getattr(column, "type", None)):
         column = _TextCast(column)
     if rules:
@@ -789,7 +826,8 @@ def key_expression_sql(column, rules=None, zone=None):
     return func.coalesce(column, "")
 
 
-def key_expression_text(inner_sql: str, rules=None, text_column: bool = True, zone=None) -> str:
+def key_expression_text(inner_sql: str, rules=None, text_column: bool = True, zone=None,
+                        number_column: bool = False) -> str:
     """The same expression as PostgreSQL text - what an index is BUILT on.
 
     `inner_sql` is already quoted by the caller (`"col"`), the way `fold_sql_text` takes it.
@@ -801,6 +839,8 @@ def key_expression_text(inner_sql: str, rules=None, text_column: bool = True, zo
     """
     if zone:
         inner_sql = _key_instant_call(inner_sql, zone)
+    elif number_column:
+        inner_sql = "%s(%s)" % (KEY_NUMBER_FUNCTION, inner_sql)
     elif not text_column:
         inner_sql = "%s::text" % inner_sql
     if rules:
@@ -841,9 +881,15 @@ def install_sqlite_fold():
             import map_overlay
 
             return map_overlay.time_key_text(value, ZoneInfo(zone))
+
+        def _number(value):
+            import map_overlay
+
+            return map_overlay.canonical_key_value(value, "number")
         try:
             create_function(SQL_FOLD_FUNCTION, 2, _fold)
             create_function(KEY_INSTANT_FUNCTION, 2, _instant)
+            create_function(KEY_NUMBER_FUNCTION, 1, _number)
         except Exception as e:      # pragma: no cover - defensive
             logger.warning("[NotationNorm] could not register %s on this "
                            "connection: %s", SQL_FOLD_FUNCTION, told(e), exc_info=e)

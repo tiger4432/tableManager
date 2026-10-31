@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **float · numeric 키의 SQL 철자를 원장 철자와 하나로** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    재기동 뒤 server.log 에 '[Schema Sync] assy_key_instant / assy_key_number were not made' 가 «없어야» 함
+>          있으면 -> PG 함수가 안 만들어진 것. float · datetime 키 조인이 그때까지 실패. 그 줄의 오류 문장을 봄
+> 색인     float · numeric 칸 위의 조인 키 색인이 있는 설치만 스케줄러가 한 번 다시 지음(auto_update.log 의 색인 줄)
+>          박스 · lag 는 조인 키가 전부 글자 칸이라 다시 짓기 0. 운영은 float 조인 키가 있을 때만
+> 보고     조인 키 색인 보고에서 float 칸의 NaN · 무한 키가 «중복» 대신 «빈 키» 묶음에 듦 (원장과 같은 판정)
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "float_key_is_spelled_once or same_key_blank"  -> 5 passed
+> 끄는 법  git revert <이 커밋> -> 서버 재기동. 키 식이 옛 ::text 로 돌아가고 그 색인을 다시 지음 (원장 원자에는 영향 없음)
+> ```
+>
+> ---
+>
 > ## [10-31] **소급 탭 — group 소스의 번역 안 된 행이 «0» 대신 그 수로 보임** — git pull · 서버 재기동
 >
 > ```

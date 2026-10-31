@@ -1673,10 +1673,10 @@ def sync_dynamic_tables_schema(engine):
 
         try:
             with engine.begin() as conn:
-                conn.connection.cursor().execute(notation_norm.key_instant_sql())
+                conn.connection.cursor().execute(notation_norm.key_instant_sql() + notation_norm.KEY_NUMBER_SQL)
         except Exception as err:
-            logger.error("[Schema Sync] %s was not made - a join on a datetime key fails until it is: %s",
-                         notation_norm.KEY_INSTANT_FUNCTION, told(err), exc_info=err)
+            logger.error("[Schema Sync] %s / %s were not made - a join on a datetime or float key fails until they are: %s",
+                         notation_norm.KEY_INSTANT_FUNCTION, notation_norm.KEY_NUMBER_FUNCTION, told(err), exc_info=err)
 
     # 🔴 A DECLARED RELATION MAY BE A VIEW, AND `has_table` SAYS TRUE FOR ONE. Measured
     # 2026-09-04: nine declared "tables" were views, so this function issued 28 ALTERs per

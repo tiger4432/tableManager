@@ -2,8 +2,8 @@
 """총괄 f36abbb1a ② — 인덱스 보고(`unique_key`)의 「빈 키」와 조인의 「빈 키」는 판정 하나(`crud.every_key_part_blank`).
 쓰기 가드도 그것을 지난다(소유자 10-20).
 
-접기 전에 둘이 갈린 값은 실수 nan · inf · -inf 셋이었다. 인덱스 보고에는 키 «식»(텍스트로
-캐스트)이 들어오므로 PostgreSQL 에서는 그 셋이 문자열로 와서 보고 문장은 안 바뀐다 — 아래 pg 칸.
+접기 전에 둘이 갈린 값은 실수 nan · inf · -inf 셋이었다. 🔴 10-31 총괄 ② 부터 PostgreSQL 의 키 «식»도
+float 칸을 원장 철자(`assy_key_number`)로 읽어 그 셋이 NULL — 보고에서도 빈 키다(전엔 'NaN' 글자로 와서 중복이었다).
 """
 import os
 import sys
@@ -38,9 +38,9 @@ TABLES = {TABLE: {"business_key": "k", "composite_key_source": ["k"],
 
 
 @pytest.mark.pg
-def test_the_index_report_reads_text_so_a_nan_key_is_a_duplicate_not_a_blank(pg_engine):
-    """What reaches the judgement on PostgreSQL is the key EXPRESSION, cast to text - so a NaN
-    key arrives as 'NaN' and is a duplicate, a NULL arrives as '' and is a blank."""
+def test_the_index_report_reads_a_nan_key_as_a_blank_like_null(pg_engine):
+    """🔴 TURNED (lead 10-31 ②, was «a NaN key is a duplicate, not a blank»): the key EXPRESSION spells a float
+    column by `assy_key_number`, the ledger's speller, so a NaN arrives NULL -> '' and sits with the NULL rows."""
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
     Base.metadata.create_all(bind=pg_engine)
@@ -57,8 +57,8 @@ def test_the_index_report_reads_text_so_a_nan_key_is_a_duplicate_not_a_blank(pg_
 
         duplicates, blanks = unique_key.duplicate_keys(db, TABLE, ["k"])
 
-        assert duplicates == [{"key": ["NaN"], "rows": 2}]
-        assert blanks == [{"key": [""], "rows": 2}]
+        assert duplicates == []
+        assert blanks == [{"key": [""], "rows": 4}]
     finally:
         db.rollback()
         db.close()
