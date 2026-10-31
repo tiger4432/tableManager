@@ -754,7 +754,7 @@
 | 🆕⑮ **`server/runtime/system_reload.py`** (config 핫리로드 — `main.py`에서 이사. **같은 규칙의 세 번째 사례**) | **151** (신설 @`5a73021a`) | [§1.9](#19-serversystem_reloadpy--리로드가-엔트리포인트-밖으로-나간-자리-5db3b80c-신설) |
 | **`server/admin/auth.py`** (어드민 토큰 게이트) | **463** (무변동 — blob 해시 초록) | [§1.6](#16-serveradmin_authpy--어드민내부-토큰-게이트-90e284f-신설) |
 | **`server/internal_event_client.py`** (내부 HTTP 호출의 단일 소유자) | **359** (235 → **+124**: 미배달 통지 마커 + `/health` 응답 *모양* 판별자) | [§1.7](#17-serverinternal_event_clientpy--내부-http-호출의-단일-소유자-23a346d-신설) |
-| `server/database/crud.py` | 🆕 **6,803** @`ce00f4343` · 6,796 @`a75d4a5fd` · 6,626 @`4f32e0ce7` · 6,538 @`5e842aafc` · 5,715 @`c904b389`(HEAD — `b1db471a` 5,664 에서 **+51**: S-243 `DROP_ABSENT_NOT_WRITTEN` · `CHAIN_SOURCE` · `can_mean_emptied` · `apply_row_update_internal` 의 부재 관문, 아래 §2) · 🆕🆕🆕🆕 4,172 @`347de78`(3,980 → **+192**: `compute_priority_value`의 3단 tie-break 신설 + `resolution_ingested_at` 신설 + `_warn_undeclared_column_once` 재작성 + `undeclared_column_drops()` 신설 — 아래 §2) · 그전 3,980 @`7097a67`(top-level 심볼 집합 `34d2518` 대비 **무변동**) · 종전 등재 3,526 (@`e943e46` 재확인 — `d3ed167` 3,209 → **+317**: 🆕 **[P6] 복합 키 프리페치** · 🆕 **[`87a944e`] `replace_map` 차집합 경로**). ⚠️ **`server/database/crud.py`는 없다** | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
+| `server/database/crud.py` | 🆕 **6,839** @`6e269b903` · 6,803 @`ce00f4343` · 6,796 @`a75d4a5fd` · 6,626 @`4f32e0ce7` · 6,538 @`5e842aafc` · 5,715 @`c904b389`(HEAD — `b1db471a` 5,664 에서 **+51**: S-243 `DROP_ABSENT_NOT_WRITTEN` · `CHAIN_SOURCE` · `can_mean_emptied` · `apply_row_update_internal` 의 부재 관문, 아래 §2) · 🆕🆕🆕🆕 4,172 @`347de78`(3,980 → **+192**: `compute_priority_value`의 3단 tie-break 신설 + `resolution_ingested_at` 신설 + `_warn_undeclared_column_once` 재작성 + `undeclared_column_drops()` 신설 — 아래 §2) · 그전 3,980 @`7097a67`(top-level 심볼 집합 `34d2518` 대비 **무변동**) · 종전 등재 3,526 (@`e943e46` 재확인 — `d3ed167` 3,209 → **+317**: 🆕 **[P6] 복합 키 프리페치** · 🆕 **[`87a944e`] `replace_map` 차집합 경로**). ⚠️ **`server/database/crud.py`는 없다** | [§2](#2-serverdatabasecrudpy--레이어링-코어) |
 | `server/parsers/directory_watcher.py` | 🆕 [10-28] **5,298** @`a12ebea1c`(git 에서 읽음) · 4,764 @`13341d1ac` · 🆕⑤ **2,681** @`831ab68`(`ba664c5`+`831ab68`로 2,293에서 **+388**, 신설 top-level 심볼 4종·메서드 5종) · 구 등재 2,293 @`7097a67` | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | **`server/parsers/advanced_ingester.py`** (선언 검증 + 경로 메타 추출) | **508** (무변동 — blob 해시 초록) | [§3](#3-serverparsersdirectory_watcherpy--파일-인제션) |
 | 🆕 **`server/parsers/html_topology_parser.py`** (HTML 표 → 그래프/행렬) | **768** (638 → **+130**: 격자 원점 이중 유도 + 구조적 헤더 술어. **전부 `parse_matrix_to_records` 본체 안**) | [§3-ter](#-3-ter-serverparsershtml_topology_parserpy-768줄-ed9cfdb-638에서-130--html-표--그래프행렬) |
@@ -2403,13 +2403,13 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | `ensure_ingestion_checkpoint_table(engine)` | [P2] `file_ingestion_checkpoints` 생성(동일 패턴) · 🆕 `daafb2214` `file_checklist` 도(워처가 첫 읽기부터 씀) |
 | `refresh_dynamic_models(engine=None) -> list[str]` | **핫리로드 공용 진입점** — config 디스크 재로드 → `crud.TABLE_CONFIG` 싱글턴 갱신(빈/손상 config 시 기존 보존) → `init_dynamic_models` → engine 지정 시 물리 CREATE(`create_missing_dynamic_tables` + `ensure_ingestion_checkpoint_table`). 🆕⑨ 🔴 **[2026-08-18 실측 정정] 「+그래프 테이블 보장」은 더 이상 일어나지 않는다** — 그 자리에 `⚰️ [R-2026-08-14-H] ensure_graph_tables(engine) 호출이 여기 있었다`는 묘비 주석만 남아 있다. 호출처도 **「graph worker SYSTEM_RELOAD」를 빼라**(그 워커가 없다): main `reload_local_process_cache` / config_watcher(간접) / run_watcher · chain worker SYSTEM_RELOAD |
 
-### `server/parsers/std_parser.py` (~222줄) — 무스크립트 표준 파서
+### `server/parsers/std_parser.py` (**268줄** @`6e269b903` · ~222줄) — 무스크립트 표준 파서
 | 시그니처 | 역할 | 라인 |
 |---|---|---|
 | `is_std_supported(file_path) -> bool` | 확장자 게이트(csv/tsv/txt) | ~31 |
 | `_resolve_delimiter` / `_build_header_map` / `_resolve_key_groups` / `_row_has_key` / `_map_record` | 구분자 추정·헤더↔컬럼 매핑·키 검증 | ~36–127 |
 | `_iter_rows(file_path, encoding, delimiter, header_map, key_groups)` | 스트리밍 행 이터레이터 | ~144 |
-| `parse_std_file(file_path, table_info, table_name) -> (row_iter, total_rows, skipped_no_key)` | **진입점** — 키 결측 행은 스킵 카운트(파일 전체 거부 안 함), 헤더 실패 시 ValueError | ~155 |
+| `parse_std_file(file_path, table_info, table_name) -> (row_iter, total_rows, skipped_no_key)` | **진입점** — 키 결측 행은 스킵 카운트(파일 전체 거부 안 함), 헤더 실패 시 ValueError. 🆕 [10-31 `6e269b903`] `row_iter` 는 **`StdRows`** — 둘째 통과의 행 + `nokey_keys`(행마다 nokey 키, 같은 차례): 세는 첫 통과가 지킨 행마다 `crud.nokey_print(table, info).add(row)`, nokey 칸을 선언 안 한 표는 None. 워처 `_send_to_upsert` 가 그것을 읽고(플러그인의 list 는 같은 지문을 빈 행 거름 뒤에 먹임) 묶음이 `_nokey_keys` 를 들고 감 | ~155 |
 
 ### `server/chain/enrichment/config.py` (🆕 **2060줄** @`205a52845` — 🆕 10-14 `_ask_if_slow`: 참조 뷰 읽기가 느리면 `index_wants.want_plan` · 🆕㊱ 1,940줄 @`6ea4f7b2`(`6ea4f7b2` S-271 **−4**) — ~~1,944 @`2c93ae9f`~~, 1,958 @`474f1aa9`, 🆕⑨ 1,638 @`5359fdd`, 구 표기 676 · `c520012` 585에서 **+63** — `f9289f6`) — 인리치먼트 규칙 로더/검증
 
