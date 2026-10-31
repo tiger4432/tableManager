@@ -3307,9 +3307,12 @@ def _key_from_the_key_column(table_name: str, update_item, key_col, composite_sr
 
 #: The one value `null_policy` carries (판정 286 removed `placeholder`; 🔴 owner 10-31 «ㄴ» retired `skip` - declared,
 #: it did nothing: no seat asked `key_fold_drops_row`). A blank declared key column of a row read from a FILE is filled
-#: with `nokey_value` - 286 overridden for this value alone (owner 09-30 「ㅇㅇ 너제안대로」). Anything else is said
+#: with its file's content key (`NokeyPrint`, owner 10-31) - 286 overridden for this value alone (owner 09-30). Anything else is said
 #: (`null_policy_unread`) and read as no policy: a blank key is handled at each seat as it is today.
 KEY_NULL_NOKEY = "nokey"
+#: The columns the write path owns - a value offered for one is not written (`DROP_SYSTEM_COLUMN`), and a nokey
+#: print leaves them out.
+SYSTEM_COLUMNS = ("created_at", "updated_at", "row_id", "id", "updated_by")
 
 
 def key_null_policy(table_name: str, column: str):
@@ -3337,58 +3340,91 @@ def null_policy_unread(table_name: str, declaration=None) -> list:
             ] if unread else []
 
 
-#: The row part of a `nokey` value is `(hash of the file) + (row number)` in a ring of this
-#: size, so two rows of one file never share it below this many rows - a hash of the pair
-#: alone would, at ten thousand rows, expect a few collisions (birthday).
-NOKEY_RING = 16 ** 6
+class NokeyPrint:
+    """THE nokey keys of one file's rows (owner 10-31 «노키 로직을 파일 내용 해시로» · «같은 파일이 아니어도 정의된 유효
+    내용이 같으면 같은 키» · «행 하나 말고 파일로 입력된 전체로») - `nokey_<print, 12 hex>_<number>`, made only from what
+    the file put in: each row's declared columns (not the system ones), each value as the write door casts it
+    (`cast_value_by_type`, a value it refuses counted blank), before any nokey fill. The rows are put in content
+    order; the print is the hash of that order and a row's number its place in it (equal rows, numbers in a run). A
+    file's name, times, undeclared columns, column order, header spelling and row order are not in it.
+
+    The standard parser's first pass and the watcher's row list (a plugin's) feed the same `add`, so one content
+    gives one set of keys by either road. `keys()` answers in the order the rows were added."""
+
+    def __init__(self, table_name: str, table_info: dict):
+        self.table = table_name
+        self.types = dict((table_info or {}).get("column_types") or {})
+        self.columns = sorted(c for c in self.types if c not in SYSTEM_COLUMNS)
+        self.by_lower = {}
+        for column in loadable_columns(table_info):
+            self.by_lower.setdefault(column.lower(), column)
+        self.digests = []
+
+    def add(self, row) -> None:
+        cells = {}
+        for name, value in row.items():                 # the watcher's own mapping: case-blind, the last one wins
+            column = self.by_lower.get(str(name).lower())
+            if column is not None:
+                cells[column] = value
+        values = []
+        for column in self.columns:
+            try:
+                values.append(cast_value_by_type(cells.get(column), self.types[column], column, self.table))
+            except CellRefused:
+                values.append(None)
+        self.digests.append(hashlib.blake2b(json.dumps(values, default=str, ensure_ascii=False).encode("utf-8"),
+                                            digest_size=16).digest())
+
+    def keys(self) -> list:
+        order = sorted(range(len(self.digests)), key=lambda at: (self.digests[at], at))
+        print_ = hashlib.blake2b(b"".join(self.digests[at] for at in order),
+                                 digest_size=NOKEY_PRINT_HEX // 2).hexdigest()
+        keys = [None] * len(order)
+        for number, at in enumerate(order, start=1):
+            keys[at] = "nokey_%s_%d" % (print_, number)
+        return keys
 
 
-def nokey_value(file_signature: str, first_ingested_at, file_row: int) -> str:
-    """`nokey_<first ingestion, UTC to the microsecond>_<6 hex>` for one data row of one file
-    (총괄 4311a51ed · 1ce3305f3 - two files begun in the same second would otherwise share the
-    time part, and rows whose ring parts meet would merge).
+#: The print part of a nokey key, hex characters (owner 10-31).
+NOKEY_PRINT_HEX = 12
 
-    NOTHING RANDOM: the same file (its content signature, the resume's own identity) and the
-    same row give the same value, so a Retry finds the rows the first load made."""
-    moment = first_ingested_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
-    offset = int(hashlib.sha256(str(file_signature).encode("utf-8")).hexdigest(), 16)
-    return "nokey_%s_%06x" % (moment, (offset + int(file_row)) % NOKEY_RING)
+
+def nokey_print(table_name: str, table_info: dict):
+    """A `NokeyPrint` for a table with a key column declared `nokey`, None for any other - its reads are as before."""
+    info = table_info or {}
+    columns = [c for c in (info.get("composite_key_source") or [info.get("business_key")]) if c]
+    policy = info.get("null_policy") if isinstance(info.get("null_policy"), dict) else {}
+    return NokeyPrint(table_name, info) if any(policy.get(c) == KEY_NULL_NOKEY for c in columns) else None
 
 
 def fill_nokey_keys(table_name: str, batch) -> None:
-    """Fill each item's blank key columns declared `nokey`, from the batch's file origin and the
-    item's row (총괄 4311a51ed) - the one seat, ahead of the key assembly. An item with an
-    identity of its own, or not read from a file, is not touched. Writes `batch._nokey`:
-    `{"filled" | "unfilled": {"rows": n, "columns": {col: n}}}` - unfilled = a file row whose
-    file has no content signature to make the value from."""
+    """Fill each item's blank key columns declared `nokey` with its file row's key (`NokeyPrint`, carried on the batch
+    as `_nokey_keys`, one per file row) - the one seat, ahead of the key assembly (총괄 4311a51ed). An item with an
+    identity of its own, or not read from a file, is not touched. Writes `batch._nokey`: {"rows": n, "columns":
+    {col: n}}."""
     config = TABLE_CONFIG.get(table_name) or {}
     key_col = config.get("business_key")
     columns = [c for c in (config.get("composite_key_source") or [key_col]) if c]
     nokey_columns = [c for c in columns if key_null_policy(table_name, c) == KEY_NULL_NOKEY]
-    if not nokey_columns:
+    keys = getattr(batch, "_nokey_keys", None)
+    if not nokey_columns or keys is None:
         return
-    origin = getattr(batch, "_file_origin", None)
-    counts = {kind: {"rows": 0, "columns": {}} for kind in ("filled", "unfilled")}
+    counts = {"rows": 0, "columns": {}}
     for item in batch.updates:
         if item._file_row is None or item.row_id:
             continue
-        kinds = set()
+        filled = False
         for column in nokey_columns:
             if not is_blank_key_part(item.updates.get(column)):
                 continue
             if column == key_col and not is_blank_key_part(item.business_key_val):
                 continue
-            kind = "filled" if origin is not None else "unfilled"
-            kinds.add(kind)
-            counts[kind]["columns"][column] = counts[kind]["columns"].get(column, 0) + 1
-            if origin is None:
-                continue
-            value = nokey_value(origin[0], origin[1], item._file_row)
-            item.updates[column] = value
+            item.updates[column] = keys[item._file_row - 1]
             if column == key_col:
-                item.business_key_val = value
-        for kind in kinds:
-            counts[kind]["rows"] += 1
+                item.business_key_val = item.updates[column]
+            counts["columns"][column] = counts["columns"].get(column, 0) + 1
+            filled = True
+        counts["rows"] += filled
     batch._nokey = counts
 
 
@@ -4126,7 +4162,7 @@ def apply_row_update_internal(
     # The three graph-sync names left with their branch on 2026-08-31. They stay OUT of
     # this skip list rather than being kept "just in case": the list is what a write path
     # refuses to touch, and a name here that nothing writes is a rule protecting nothing.
-    system_cols = ["created_at", "updated_at", "row_id", "id", "updated_by"]
+    system_cols = SYSTEM_COLUMNS
     
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:

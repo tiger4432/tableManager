@@ -208,8 +208,8 @@ class GeneralUpdateItem(BaseModel):
     # {column: the spelling that arrived} for each value the write funnel's notation fold
     # changed - the audit line's old_value (총괄 5ee9d3bd1 ②). Set by `crud`, never sent.
     _written_spelling: Optional[dict] = PrivateAttr(default=None)
-    # The item's data row in its FILE (1-based, the watcher's count) - what a `nokey` key is
-    # made from with the file's identity (총괄 4311a51ed). Set by the watcher, never sent.
+    # The item's data row in its FILE (1-based, the watcher's count) - its place in the batch's `_nokey_keys`
+    # (owner 10-31). Set by the watcher, never sent.
     _file_row: Optional[int] = PrivateAttr(default=None)
 
 
@@ -266,11 +266,11 @@ class GeneralUpdateBatch(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     updates: list[GeneralUpdateItem]
-    # (file signature, the first time that file was ingested) when the batch comes from a
-    # FILE - the rest of a `nokey` key (총괄 4311a51ed). Set by the watcher, never sent.
-    _file_origin: Optional[tuple] = PrivateAttr(default=None)
+    # A FILE's nokey key of each row, in file row order (`crud.NokeyPrint`, owner 10-31) - None when the table
+    # declares none. Set by the watcher, never sent.
+    _nokey_keys: Optional[list] = PrivateAttr(default=None)
     _file_replace: bool = PrivateAttr(default=False)   # a file replacing its maps: purged whole (owner 10-24)
-    # What the door's `nokey` fill did to this batch: {"filled": {col: n}, "unfilled": {col: n}}.
+    # What the door's `nokey` fill did to this batch: {"rows": n, "columns": {col: n}}.
     _nokey: Optional[dict] = PrivateAttr(default=None)
     transaction_id: Optional[str] = None # [Phase 75] 외부에서 주입하는 트랜잭션 ID 지원
     silent: bool = False                 # [Phase 76] True일 경우 WebSocket 브로드캐스트 생략

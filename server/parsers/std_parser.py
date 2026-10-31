@@ -175,6 +175,20 @@ def _iter_rows(file_path: str, encoding: str, delimiter: str, header_map: list, 
                 yield row
 
 
+class StdRows:
+    """The second pass's rows, and `nokey_keys`: each row's nokey key in the same order (`crud.NokeyPrint`, made on the
+    first pass), None for a table that declares none (owner 10-31)."""
+
+    def __init__(self, rows, nokey_keys):
+        self._rows, self.nokey_keys = rows, nokey_keys
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._rows)
+
+
 def parse_std_file(file_path: str, table_info: dict, table_name: str):
     """표준 파서 메인 진입점.
 
@@ -190,6 +204,7 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
     ext = os.path.splitext(file_path)[1].lower()
     basename = os.path.basename(file_path)
     last_decode_error = None
+    from database import crud
 
     for encoding in _ENCODING_CANDIDATES:
         try:
@@ -208,6 +223,7 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
                     return iter(()), 0, 0
 
                 header_map = _build_header_map(header, table_info, table_name, file_path)
+                printer = crud.nokey_print(table_name, table_info)
                 key_groups = _resolve_key_groups(table_info, {c for c in header_map if c is not None},
                                                  table_name)
                 passthrough = [(i, (h or "").strip()) for i, (h, col) in enumerate(zip(header, header_map))
@@ -226,6 +242,8 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
                         skipped_no_key += 1
                         continue
                     total_rows += 1
+                    if printer is not None:              # a nokey table's keys, from this same pass (owner 10-31)
+                        printer.add(row)
 
             logger.info(
                 f"[{table_name}] 🧰 Std parser accepted '{basename}' "
@@ -237,7 +255,8 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
                     f"[{table_name}] Std parser: {skipped_no_key}행이 키 컬럼 공백/결측으로 스킵됨 "
                     f"(고아 행 방지): '{basename}'"
                 )
-            return (_iter_rows(file_path, encoding, delimiter, header_map, key_groups, passthrough),
+            return (StdRows(_iter_rows(file_path, encoding, delimiter, header_map, key_groups, passthrough),
+                            printer.keys() if printer is not None else None),
                     total_rows, skipped_no_key)
         except UnicodeDecodeError as e:
             last_decode_error = e

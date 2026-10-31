@@ -3968,12 +3968,10 @@ class IngestionHandler(FileSystemEventHandler):
         # 🔴 [총괄 791c0f45e 3] Declared, but this process's model cannot hold it - the door
         #    would drop it anyway; here it is named on the file's line with its values.
         unmapped = set(crud.unmapped_columns(t_name, defined_cols))
-        # 총괄 4311a51ed: what makes a `nokey` key, and what the door did with it per chunk.
-        file_origin = ((checkpoint.file_signature, checkpoint.started_at)
-                       if checkpoint is not None and checkpoint.active
-                       and checkpoint.file_signature and checkpoint.started_at is not None
-                       else None)
-        nokey_counts = {kind: {"rows": 0, "columns": set()} for kind in ("filled", "unfilled")}
+        # A nokey table's key of each row (owner 10-31): the standard parser's, made on its first pass, or below from
+        # a plugin's list - one `crud.NokeyPrint` either way; and what the door filled with them.
+        nokey_keys = getattr(rows, "nokey_keys", None)
+        nokey_counts = {"rows": 0, "columns": set()}
 
         # Determine source_name based on real original filename
         if source_name:
@@ -4009,6 +4007,11 @@ class IngestionHandler(FileSystemEventHandler):
                 cells = [v for k, v in r.items() if str(k).lower() in declared_by_lower]
                 return bool(cells) and crud.row_is_blank(cells)
             rows = [r for r in rows if not _declared_blank(r)]
+            printer = crud.nokey_print(t_name, table_info)
+            if printer is not None:
+                for row in rows:
+                    printer.add(row)
+                nokey_keys = printer.keys()
 
         # [확장성] list와 이터레이터 모두 지원 — 이터레이터(std parser)는 총 행 수를 인자로 받는다.
         # allow_replace_map (lead 59b020ca2): the file is read whole, a row with a blank map key refuses the file before
@@ -4160,7 +4163,7 @@ class IngestionHandler(FileSystemEventHandler):
                             silent=True,
                             replace_map=bool(map_columns),      # the map's scope: its key, from its rows
                         )
-                        batch_obj._file_origin = file_origin
+                        batch_obj._nokey_keys = nokey_keys
                         batch_obj._file_replace = bool(map_columns)   # purged whole (owner 10-24)
                         # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.
                         # crud.apply_batch_updates가 내부에서 commit하므로, 그 호출 '이전'에
@@ -4201,9 +4204,8 @@ class IngestionHandler(FileSystemEventHandler):
                         for column, seen in (_dropped.get("refused_values") or {}).items():
                             refused_values[column] = refused_values.get(column, 0) + seen["cells"]
                             refused_firsts.setdefault(column, seen["first"])
-                        for kind, seen in (batch_obj._nokey or {}).items():
-                            nokey_counts[kind]["rows"] += seen["rows"]
-                            nokey_counts[kind]["columns"].update(seen["columns"])
+                        nokey_counts["rows"] += (batch_obj._nokey or {}).get("rows", 0)
+                        nokey_counts["columns"].update((batch_obj._nokey or {}).get("columns") or ())
 
                         with alignment_batch_counts.stage("commit"):
                             db.commit()
@@ -4321,14 +4323,8 @@ class IngestionHandler(FileSystemEventHandler):
             dropped = _announce_dropped_columns(
                 t_name, not_written, defined_cols, filename, processed_rows, refused_firsts
             )
-            for kind, seen in nokey_counts.items():
-                if not seen["rows"]:
-                    continue
-                columns = ", ".join(sorted(seen["columns"]))
-                rows_n = seen["rows"]
-                note = (f"{rows_n} row(s) keyed nokey_... ({columns})." if kind == "filled" else
-                        f"{rows_n} row(s) not keyed nokey ({columns}) - the file has no content "
-                        f"signature to make the key from.")
+            if nokey_counts["rows"]:
+                note = "%d row(s) keyed nokey_... (%s)." % (nokey_counts["rows"], ", ".join(sorted(nokey_counts["columns"])))
                 logger.info(f"[{t_name}] {note} File '{filename or '?'}'.")
                 dropped = f"{dropped} {note}" if dropped else note
             file_tally.log(t_name, filename)

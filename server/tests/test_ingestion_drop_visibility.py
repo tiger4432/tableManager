@@ -77,6 +77,8 @@ class _StubCrud:
     DROP_UNMAPPED_COLUMN = _real_crud.DROP_UNMAPPED_COLUMN
     DROP_VALUE_REFUSED = _real_crud.DROP_VALUE_REFUSED
     not_written_sentence = staticmethod(_real_crud.not_written_sentence)
+    # A plugin's list makes a nokey table's keys by the real print (owner 10-31) - None for these tables.
+    nokey_print = staticmethod(_real_crud.nokey_print)
 
     @staticmethod
     def apply_batch_updates(_db, _t_name, batch_obj, notation_report=None, replace_report=None, drop_report=None):
