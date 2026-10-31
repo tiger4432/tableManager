@@ -130,7 +130,8 @@ curl -s "$API/tables/dt_job_attribution/data?limit=1"   # 200 = ORM이 실물 �
 | 서버가 아예 안 뜨고 로그에 `table_config.json is not valid JSON` | JSON 문법 오류. 부팅 경로는 **일부러 죽습니다**(테이블 0개로 조용히 뜨는 것보다 낫습니다) |
 | 로그에 `Config reload ABORTED: ... produced an empty table config` | 실행 중 리로드였고 **아무것도 바뀌지 않았습니다.** 기존 상태가 유지됩니다 |
 | `/tables/<t>/schema`는 200인데 `information_schema`에 컬럼이 없음 | **컬럼 추가는 watcher 경로에서만 ALTER됩니다.** `/admin/reload-configs`는 ALTER를 하지 않습니다 → §4.2 |
-| 컬럼 삭제·타입 변경이 반영되지 않음 | 어떤 리로드 경로도 하지 않습니다. **재기동**(+ 필요 시 수동 마이그레이션) |
+| 컬럼 삭제가 반영되지 않음 | 어떤 리로드 경로도 하지 않습니다. **재기동**(+ 필요 시 수동 마이그레이션) |
+| 🆕 타입 변경이 반영되지 않음(부팅 로그 `[Schema]` 타입 줄) | 파일만 고친 칸 — 소급 탭 «Convert the columns already declared another type»(`retype_declared_columns`, 10-31 `23106c060`) Preview → Run. 어드민 저장으로 고친 칸은 저장이 `retype_column` 을 이미 세웠습니다(소급 목록). 키 칸을 숫자 · 시각으로 · 못 읽는 값은 이름 대어 거절 |
 
 → 키 사전: [config/table_config](./config/table_config.md) · 반영 규율: [CONFIG_GUIDE §4.1 / §4.3 / §4.4](./CONFIG_GUIDE.md)
 

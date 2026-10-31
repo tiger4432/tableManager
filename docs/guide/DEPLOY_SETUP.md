@@ -631,6 +631,7 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - ⚠️ **8의 `--preflight-only`는 이것도 못 잡는다** — 드리프트 점검은 컬럼만 보고 인덱스는 보지 않는다(8-bis·8-ter와 같은 사각).
    - ⚠️ **`server/scripts/setup_bonding_plan_indexes.py`·`setup_transfer_plan_indexes.py`가 만드는 인덱스 둘은 선언 키와 컬럼이 «같고 이름만 다르다».** 마이그레이션은 이름이 아니라 컬럼으로 멱등이라 **중복을 만들지 않고 건너뛴다**. 이름 통일은 저 스크립트들을 먼저 정리해야 한다 → [INDEX_POLICY §6.1](../architecture/INDEX_POLICY.md).
 8-quinquies. 🔴 **선언만 고친 컬럼 타입은 물리 DB에 «절대» 도달하지 않는다 — `dt_inventory.dt_lot`/`dt_slot`** (2026-08-13 `8bdc136`)
+   ⚰️ 🆕 10-31 «절대»는 거짓 — 소급 탭 «Convert the columns already declared another type»(`retype_declared_columns`, 10-31 `23106c060`) 이 선언만 다른 칸을 바꿉니다(키 칸을 숫자 · 시각으로 · 못 읽는 값은 거절). 어드민 저장은 10-22 `09173fe1e` 부터 `retype_column` 을 세웁니다. 아래 SQL 은 그 전의 길입니다.
    ```bash
    psql "$DATABASE_URL" -f server/migrations/alter_dt_inventory_lot_slot_to_text.sql
    ```
