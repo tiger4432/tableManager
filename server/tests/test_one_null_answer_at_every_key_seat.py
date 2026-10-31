@@ -109,35 +109,40 @@ def test_a_non_finite_float_is_still_not_an_identity():
 
 
 # ---------------------------------------------------------------------------
-# 2. The policy cell: absent means today, `skip` means everywhere
+# 2. The policy cell: absent means today, "nokey" on a key column is its one value (owner 10-31 retired "skip")
 # ---------------------------------------------------------------------------
 
+UNREAD_TAIL = ' Only "nokey" on a key column is read - the rest is read as no null_policy.'
+
+
 def test_absent_policy_is_not_a_policy():
-    """🔴 THE REGRESSION GATE. A table with no cell must be 「not one character different」,
-    which is what makes this safe to add to a live deployment."""
+    """🔴 THE REGRESSION GATE. A table with no cell must be 「not one character different」."""
     assert crud.key_null_policy(PLAIN, "slot") is None
-    assert crud.key_fold_drops_row(PLAIN, "slot", None) is False
-    assert crud.key_fold_drops_row(PLAIN, "slot", "") is False
+    assert crud.null_policy_unread(PLAIN) == []
 
 
-def test_skip_drops_the_row_at_every_seat():
-    assert crud.key_null_policy(TABLE, "slot") == crud.KEY_NULL_SKIP
-    for blank in BLANKS:
-        assert crud.key_fold_drops_row(TABLE, "slot", blank) is True
-    assert crud.key_fold_drops_row(TABLE, "slot", "S1") is False
+def test_a_retired_skip_is_read_as_no_policy_and_said():
+    """The symptom «skip» had (owner 10-31 «ㄴ»): declared, and nothing did anything. It is read as no policy - the
+    seats answer as for a table with none - and it is said, not passed over."""
+    assert crud.key_null_policy(TABLE, "slot") is None
+    assert crud.null_policy_unread(TABLE) == [
+        's181_test_table: null_policy cell this product does not read — slot: "skip".' + UNREAD_TAIL]
 
 
-def test_a_column_without_a_policy_in_a_table_that_has_one_is_untouched():
-    """The cell is per column, so declaring it for `slot` must not judge `lot`."""
-    assert crud.key_null_policy(TABLE, "lot") is None
-    assert crud.key_fold_drops_row(TABLE, "lot", None) is False
-
-
-def test_an_unknown_policy_value_is_not_obeyed():
-    """⛔ 판정 286 REMOVED `placeholder`. A config still carrying one must not be read as
-    some third behaviour — the only value with meaning is `skip`."""
-    crud.TABLE_CONFIG[PLAIN]["null_policy"] = {"slot": "placeholder:-"}
-    assert crud.key_null_policy(PLAIN, "slot") is None
+@pytest.mark.parametrize("policy, said", [
+    ({"slot": "nokey"}, []),
+    ({"slot": "placeholder:-"}, ['slot: "placeholder:-"']),
+    ({"slot": "NOKEY", "lot": "nokey"}, ['slot: "NOKEY"']),
+    ({"slot": "nokey", "k2": "nokey"}, ['k2: "nokey"']),
+])
+def test_only_nokey_on_a_key_column_is_read(policy, said):
+    """⛔ 판정 286 removed `placeholder`; a value is read only when it is exactly "nokey", on a key column (the
+    composite's parts here) - a "nokey" on another column is said too (lead 10-31 ㄱ)."""
+    crud.TABLE_CONFIG[PLAIN]["null_policy"] = policy
+    assert crud.key_null_policy(PLAIN, "slot") == ("nokey" if policy.get("slot") == "nokey" else None)
+    assert crud.null_policy_unread(PLAIN) == (
+        ["s181_test_plain: null_policy cell this product does not read — %s." % ", ".join(said) + UNREAD_TAIL]
+        if said else [])
 
 
 # ---------------------------------------------------------------------------

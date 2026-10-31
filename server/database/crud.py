@@ -3305,31 +3305,36 @@ def _key_from_the_key_column(table_name: str, update_item, key_col, composite_sr
     return True
 
 
-#: A value `null_policy` may carry (판정 286: `placeholder` was removed — an operator
-#: who means 「deliberately empty」 writes a VALUE in the data, such as 「없음」, and that is
-#: not a product cell). Absent means 「today's behaviour」, which is why the regression gate
-#: reads 「a table with no cell is not one character different」.
-#: 🔴 [총괄 12cc7dd1f ②] 286 IS OVERRIDDEN FOR ONE VALUE, `nokey`: the owner chose a product
-#: fill on 09-30 - 「특정 키컬럼들 없으면 해당키들 배치 일괄로 nokey_입력시간_uuid6자리 로
-#: 채울수 있어?」 · 「ㅇㅇ 너제안대로」. It answers the same question as `skip`, so it is the
-#: same cell's third answer.
-KEY_NULL_SKIP = "skip"
-#: A blank declared key column of a row read from a FILE is filled with `nokey_value`.
+#: The one value `null_policy` carries (판정 286 removed `placeholder`; 🔴 owner 10-31 «ㄴ» retired `skip` - declared,
+#: it did nothing: no seat asked `key_fold_drops_row`). A blank declared key column of a row read from a FILE is filled
+#: with `nokey_value` - 286 overridden for this value alone (owner 09-30 「ㅇㅇ 너제안대로」). Anything else is said
+#: (`null_policy_unread`) and read as no policy: a blank key is handled at each seat as it is today.
 KEY_NULL_NOKEY = "nokey"
 
 
 def key_null_policy(table_name: str, column: str):
-    """`"skip"`, `"nokey"` or `None`, declared beside `column_types` as
-    `null_policy: {<key column>: "skip" | "nokey"}` (S-181 · 총괄 4311a51ed).
-
-    ⚠️ ABSENT IS NOT A POLICY. It means every seat keeps the behaviour it has today, which
-    is what makes this cell safe to add to a live deployment: the default changes nothing,
-    and an operator opts a column in when they want a blank key to drop the row EVERYWHERE
-    rather than only at the seat that happens to refuse it.
-    """
+    """`"nokey"` or None - `null_policy: {<key column>: "nokey"}` beside `column_types` (총괄 4311a51ed). None is
+    today's behaviour at every seat."""
     policy = (TABLE_CONFIG.get(table_name) or {}).get("null_policy") or {}
-    value = policy.get(column)
-    return value if value in (KEY_NULL_SKIP, KEY_NULL_NOKEY) else None
+    return KEY_NULL_NOKEY if policy.get(column) == KEY_NULL_NOKEY else None
+
+
+def null_policy_unread(table_name: str, declaration=None) -> list:
+    """The sentence (`validation.unread_said`) naming each `null_policy` entry nothing reads - a value other than
+    "nokey" (a retired "skip" too, owner 10-31), or "nokey" on a column that is not a key column - or [] (lead 10-31:
+    one seat is asked what of it is unread). `declaration`: the table's entry, its TABLE_CONFIG one when None."""
+    import validation
+
+    entry = TABLE_CONFIG.get(table_name) if declaration is None else declaration
+    policy = entry.get("null_policy") if isinstance(entry, dict) else None
+    if not isinstance(policy, dict):
+        return []
+    keys = set(entry.get("composite_key_source") or [entry.get("business_key")])
+    unread = ["%s: %s" % (column, json.dumps(value, ensure_ascii=False)) for column, value in policy.items()
+              if value != KEY_NULL_NOKEY or column not in keys]
+    return [validation.unread_said(table_name, "null_policy", unread,
+                                   ' Only "nokey" on a key column is read - the rest is read as no null_policy.')
+            ] if unread else []
 
 
 #: The row part of a `nokey` value is `(hash of the file) + (row number)` in a ring of this
@@ -3414,17 +3419,6 @@ def fold_key_value(table_name: str, column: str, value):
     index.
     """
     return None if is_blank_key_part(value) else value
-
-
-def key_fold_drops_row(table_name: str, column: str, value) -> bool:
-    """Whether this blank key value means 「drop the row」 at EVERY seat (S-181).
-
-    Separate from `fold_key_value` because they answer different questions: what the value
-    IS after folding, and what to DO about it. One function returning both would make the
-    seats that only compare read a verdict they never asked for.
-    """
-    return (fold_key_value(table_name, column, value) is None
-            and key_null_policy(table_name, column) == KEY_NULL_SKIP)
 
 
 def is_blank_key_part(value) -> bool:

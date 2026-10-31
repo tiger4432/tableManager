@@ -992,17 +992,18 @@ def _resolve_catalog() -> dict:
             continue
 
         relation = adapted.get(name)
+        unread = "".join(" " + said for said in crud.null_policy_unread(name, declared))    # lead 10-31
         if relation is None:
             ineffective.append(entry(
                 SCOPE_RULE, name,
                 "`%s` is declared but its `column_types` is empty, so the catalogue does not "
-                "read it. Write its columns and the later steps can use this table." % name,
+                "read it. Write its columns and the later steps can use this table." % name + unread,
                 reason=REASON_NOT_DECLARED))
             continue
 
         effective.append(entry(
             SCOPE_RULE, name,
-            "`%s` stands in the catalogue with %d columns." % (name, len(relation.get("columns") or {})),
+            "`%s` stands in the catalogue with %d columns." % (name, len(relation.get("columns") or {})) + unread,
             fields={"columns": sorted(relation.get("columns") or {}),
                     "composite_key": list(relation.get("composite_key") or [])}))
 

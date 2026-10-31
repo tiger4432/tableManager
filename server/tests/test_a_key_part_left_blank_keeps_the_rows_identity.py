@@ -5,7 +5,7 @@ it, so the row was found by nothing (B's inspection_run rows). An EXISTING row w
 
 A part the write does not CARRY is what this measures; a part carried BLANK among filled ones composes blank and the
 assembled key wins over a given one (총괄 242f4a43a ㄱ2 - `test_a_blank_key_part_is_one_key_and_old_rows_are_rekeyed.py`);
-`null_policy` (skip, or filled `nokey`) - `test_a_blank_key_is_filled_from_the_file_and_its_row.py`."""
+`null_policy` (filled `nokey`) - `test_a_blank_key_is_filled_from_the_file_and_its_row.py`."""
 import os
 import sys
 

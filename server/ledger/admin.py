@@ -289,8 +289,12 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
         raise _table_config_refusal(
             "declaration_not_serialisable", f"tables.{table}",
             f"It holds a value that cannot be saved: {exc}") from exc
+    # what the reload will say of this declaration - a null_policy entry nothing reads (lead 10-31)
+    from database import crud
+
+    notes = crud.null_policy_unread(table, declaration)
     if check_only:                                 # judged whole, nothing written (the admin help, lead 10-29)
-        return {"ok": True, "checked": True, "table": table}
+        return {"ok": True, "checked": True, "table": table, "notes": notes}
 
     backup = _atomic_write(path, merged)
     from database import config_watcher
@@ -299,7 +303,7 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
     retypes = [retype.queue(table, *one) for one in held]
     return {"ok": True, "table": table, "base": file_fingerprint(path),
             "backup": backup, "tables": len(merged), "retypes": retypes,
-            "note": " · ".join(one["said"] for one in retypes)}
+            "note": " · ".join(one["said"] for one in retypes), "notes": notes}
 
 
 def set_column_type(table: str, column: str, declared: str) -> str:

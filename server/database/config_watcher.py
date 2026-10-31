@@ -593,7 +593,8 @@ def _collector_dirs():
 
 
 def _report_unsearchable_declarations(config: dict):
-    """Name every `search_columns` entry that nothing can search. Never raises.
+    """Name every `search_columns` entry that nothing can search, and every `null_policy` entry nothing reads
+    (`crud.null_policy_unread`, lead 10-31 - the reload is the moment the operator is looking). Never raises.
 
     🔴 THE VERDICT COMES FROM `crud.resolve_search_columns`, the same function the
     search path calls, because two spellings of "is this column searchable" is how a reload
@@ -613,6 +614,8 @@ def _report_unsearchable_declarations(config: dict):
         for table_name, table_info in (config or {}).items():
             if not isinstance(table_info, dict):
                 continue
+            for sentence in crud.null_policy_unread(table_name, table_info):
+                logger.warning("[Config] %s", sentence)
             if not table_info.get(crud.SEARCH_COLUMNS_KEY):
                 continue
             used, unknown = crud.resolve_search_columns(
