@@ -3336,7 +3336,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 **테스트**: ⚰️ ~~`server/tests/test_virtual_join_types.py`~~ 는 «없다»(expose 타입 우주를 열거하던 파일 — 노출 자체가 은퇴했다). 🆕 오늘 이 엔진을 import 하는 시험 여덟: `test_a_materialized_join_writes_its_own_layer.py` · `test_notation_normalization.py` · `test_one_bad_row_does_not_stop_a_tables_chain.py` · `test_one_declarations_failure_does_not_block_another_tables_read.py` · `test_one_key_expression_at_every_seat_that_compares_a_key.py` · `test_one_null_answer_at_every_key_seat.py` · `test_the_product_synthesizes_chain_rules_in_one_seat.py` · `test_the_sort_column_is_named_or_refused.py`. 🆕 선언 쪽 시험은 `test_virtual_join_guard.py` (§5-C).
 
-### 🆕 [10-22 `09173fe1e`] `server/admin/retype.py` (**329줄**) — 표 선언이 DB 에 아직 없는 칼럼 타입을 말할 때
+### 🆕 [10-22 `09173fe1e`] `server/admin/retype.py` (**349줄** @`3a7f08e6a` · 329줄) — 표 선언이 DB 에 아직 없는 칼럼 타입을 말할 때
 
 소유자 10-21 «문자 → 숫자로 바꾸니 numeric pg 에러» · 10-22 «string 으로 바꿨는데 아직도 시간으로 들어감», 총괄 aa8ff1af5 · afe3a1b47. 전: 저장이 파일만 쓰고 모델이 선언 타입을 따라가 «Unknown PG numeric type» · 쓴 글이 시간으로 되돌아감.
 
