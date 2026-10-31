@@ -1896,7 +1896,7 @@
 
 ### ⭐⭐ **가드를 «낮추지» 말고 «좁혀라» — 「이 행은 내 것이 아니다」는 도메인 지식이고, 그것을 아는 계층이 «선언»으로 말한다** (2026-08-21 등록 · `8bb0f5f1`)
 - **무엇**: 한 표에 세대·형식이 둘 섞여 있어 일부 행이 필수 필드를 못 채우고 **배치를 통째로 거절시킬 때**, 가드를 완화(널 허용·경고로 강등)하지 않는다. 그 행이 「우리 것이 아니다」를 아는 것은 **소스별 준비기**뿐이므로, 준비기가 **행마다 boolean 하나로 선언**하고 엔진이 검사 «전에» 그 행들만 뺀다. 살아남은 행은 전부 종전 그대로 검사받고 **거절문도 한 글자 안 바뀐다.**
-- **어디**: 🆕 10-01 `0b59a2f30` `sources.<s>.read.exclude_when`(선언) — `event_frame._without_excluded_rows` 가 떨군다. ~~`source_preparation.py`의 `SOURCE_ROW_EXCLUDED_COLUMN`(`__source_row_excluded`) — `prepare.output_columns`에 **선언했을 때만** 뜻이 생긴다.~~ 준비기 표지 둘은 v6 에서 은퇴. 형제는 `__source_event_incomplete`(「행이 다 안 왔다」 — 착지하되 «센다»). 절차 [ONTOLOGY_LEDGER_SETUP §7.3](../guide/ONTOLOGY_LEDGER_SETUP.md).
+- **어디**: 🆕 10-01 `0b59a2f30` `sources.<s>.read.exclude_when`(선언) — `event_frame.excluded_rows` 가 떨군다. ~~`source_preparation.py`의 `SOURCE_ROW_EXCLUDED_COLUMN`(`__source_row_excluded`) — `prepare.output_columns`에 **선언했을 때만** 뜻이 생긴다.~~ 준비기 표지 둘은 v6 에서 은퇴. 형제는 `__source_event_incomplete`(「행이 다 안 왔다」 — 착지하되 «센다»). 절차 [ONTOLOGY_LEDGER_SETUP §7.3](../guide/ONTOLOGY_LEDGER_SETUP.md).
   ⚠️ **[2026-09-05] 「선언했을 때만」은 그대로이되 「운영자가 «적었을» 때만」은 아니다** — 구현이 `declared_output_columns`로 이 이름들을 밝히면 그 칸이 **파생**으로 채워진다(§7.3-bis). 즉 **선언에 있는데 아무도 타이핑하지 않은** 상태가 정상이다. 「이 소스는 이 경로를 지나나」를 물을 때는 «파일»을 보라 — 「누가 적었나」가 아니라.
 - **언제 재사용**: **한 물리 표에 세대·공급자·형식이 섞여 「일부 행에만」 규칙이 적용되는 모든 파이프라인.** 판별 질문 — **「이 행을 빼야 한다는 것을 «누가» 아는가?」** 답이 「그 소스를 아는 코드」면 엔진의 규칙이 아니라 **그 코드의 선언**이다. 반대로 답이 「아무도」면 배제가 아니라 진짜 결함이다.
 - **함정**:

@@ -315,17 +315,17 @@ def _validate_base_frame(
         )
 
 
-def _without_unnamed_rows(context: SourcePreparationContext, base: pd.DataFrame) -> pd.DataFrame:
-    """The page minus the rows whose driver identity / group_by cell is blank - refused by `no_identity`, counted, and
-    the rest of the page translated. 🔴 These used to refuse the PAGE («identity and group_by stay: without them there
+def _unnamed_rows(context: SourcePreparationContext, cells, rows: int) -> set:
+    """The rows whose driver identity / group_by cell is blank - refused by `no_identity`, counted, and the rest of the
+    page translated. 🔴 These used to refuse the PAGE («identity and group_by stay: without them there
     is no molecule to name»); the rows still have no molecule, so they are named by their position instead, as
     `occurred_at` and `order_by` already were (S-41 ②, 총괄 4b5964ab2) - owner 10-29 ㄱ «데이터 값은 멈추지 않는다»."""
     driver = context.source_plan.driver
     columns = sorted(set(driver.identity) | set(driver.group_by))
     blank = [(position, column) for column in columns
-             for position, value in enumerate(base[column].tolist()) if is_blank_source_value(value)]
+             for position in range(rows) if is_blank_source_value(cells[column][position])]
     if not blank:
-        return base
+        return set()
     from .gate import REFUSE_NO_IDENTITY
 
     positions = sorted({position for position, _column in blank})
@@ -335,7 +335,7 @@ def _without_unnamed_rows(context: SourcePreparationContext, base: pd.DataFrame)
         rows=len(positions),
         addresses=tuple({"code": "source_preparation_incomplete", "path": f"source_batch.rows[{position}].{column}"}
                         for position, column in blank[:20])))
-    return base.drop(index=base.index[positions])
+    return set(positions)
 
 
 def event_frames(
@@ -344,12 +344,31 @@ def event_frames(
 ) -> tuple[pd.DataFrame, ...]:
     """The cursor's page -> one EventFrame per molecule. The one entry, for every caller."""
     _validate_base_frame(context, base_frame)
-    return _event_frames(context, _without_excluded_rows(context, _without_unnamed_rows(context, base_frame)))
+    base = base_frame.reset_index(drop=True)
+    return _event_frames(base, prepared_molecules(context, read_columns_once(base), len(base)))
 
 
-def _without_excluded_rows(context: SourcePreparationContext,
-                           base: pd.DataFrame) -> pd.DataFrame:
-    """The page minus the rows `read.exclude_when` says are not this source's.
+def prepared_molecules(context: SourcePreparationContext, cells, rows: int) -> list:
+    """A page's CELLS (column -> tuple) -> its molecules `(positions, row_refs, instant, attrs)`, positions into the
+    page as given: the blank-identity rows refused, the `read.exclude_when` rows taken out, the entity columns
+    checked, the rest grouped (`page_molecules`). The DataFrame path and the SQL path (`sql_translate`) both read a
+    page through this, so the order of those steps has one author (lead 10-31 ②)."""
+    unnamed = _unnamed_rows(context, cells, rows)
+    alive = [position for position in range(rows) if position not in unnamed]
+    if context.source_plan.driver.exclude_when:
+        excluded = excluded_rows(context, _cells_at(cells, alive), len(alive))
+        alive = [position for position, out in zip(alive, excluded) if not out]
+    require_entity_columns(context, cells)
+    return [([alive[position] for position in positions], row_refs, instant, attrs)
+            for positions, row_refs, instant, attrs in page_molecules(context, _cells_at(cells, alive), len(alive))]
+
+
+def _cells_at(cells, positions) -> dict:
+    return {column: tuple(values[position] for position in positions) for column, values in cells.items()}
+
+
+def excluded_rows(context: SourcePreparationContext, cells, rows: int) -> list:
+    """Which rows of the page `read.exclude_when` takes, counted into `context.excluded_rows`.
 
     A row is excluded when ANY clause takes it (`row_excluded`). The rows leave here before
     anything asks them for an identity. `lot_event` held two generations
@@ -364,14 +383,15 @@ def _without_excluded_rows(context: SourcePreparationContext,
     🔴 COUNTED HERE BECAUSE THIS IS WHERE THEY GO. Without it the test run says "200 rows
     read, 3 molecules, 0 refused" and the screen cannot say where the other 197 went.
     """
-    out = base.reset_index(drop=True)
     exclude_when = context.source_plan.driver.exclude_when
-    if exclude_when:
-        cells = read_columns_once(out)
-        excluded = [row_excluded(exclude_when, lambda column, at=position: cells[column][at])
-                    for position in range(len(out))]
-        context.excluded_rows.append(sum(excluded))
-        out = out.loc[[not value for value in excluded]].reset_index(drop=True)
+    excluded = [row_excluded(exclude_when, lambda column, at=position: cells[column][at])
+                for position in range(rows)]
+    context.excluded_rows.append(sum(excluded))
+    return excluded
+
+
+def require_entity_columns(context: SourcePreparationContext, columns) -> None:
+    """Every cell that names an entity is in the read, or the page is refused."""
     typed_key_columns = tuple(
         child["column"] for _mapping, _role, binding, _type in _row_typed(context.source_plan)
         for child in binding.get("keys", {}).values()
@@ -380,12 +400,11 @@ def _without_excluded_rows(context: SourcePreparationContext,
         # 🔴 A MISSING COLUMN IS A PAGE REFUSAL AND A MISSING VALUE IS NOT. The column is a
         # fact about the DECLARATION; an empty cell is a fact about ONE ROW, and it refuses
         # that row's molecule by name in `_refuse_molecule`.
-        if column not in out.columns:
+        if column not in columns:
             raise SourcePreparationError(
                 "source_preparation_incomplete", f"event_frame.columns.{column}",
                 "entity identity column is missing from the read",
             )
-    return out
 
 
 def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
@@ -674,30 +693,69 @@ def _read_molecule(context, cells, positions) -> tuple:
             addresses=({"code": "source_preparation_incomplete", "path": unread.path},)), None
 
 
-def _event_frames(
-    context: SourcePreparationContext,
-    prepared: pd.DataFrame,
-) -> tuple[pd.DataFrame, ...]:
+def _event_frames(prepared: pd.DataFrame, kept: list) -> tuple[pd.DataFrame, ...]:
+    """The page's molecules (`prepared_molecules`, positions into `prepared`) as EventFrames."""
+    if not kept:
+        return ()
+    # 🔴 THE TWO ENGINE CELLS GO ON THE PAGE ONCE, AND A MOLECULE IS ITS ROWS OF IT (ㄴ, 10-13): a deep copy and two
+    #    column writes a molecule were a fifth of a one-row source's translation (box, 2,000-row pages). A row of no
+    #    event keeps "" and None - no molecule takes it.
+    page = prepared.copy(deep=False)
+    refs, instants = [""] * len(page), [None] * len(page)
+    for positions, row_refs, instant, _attrs in kept:
+        for position, ref in zip(positions, row_refs):
+            refs[position], instants[position] = ref, instant
+    page[SOURCE_ROW_REF_COLUMN] = refs
+    # Publish the event's time under ONE engine-owned name.  A mapper that had to ask
+    # `source_plan.driver.occurred_at.column` was reading a physical column name, so a
+    # source declaring `basis` moved the time out from under it; resolving a
+    # declaration to a column is this boundary's job, and now it is only this
+    # boundary's job.
+    #
+    # The published cell is the INTERPRETED instant, the same one the event id is
+    # minted from above.  🔴 THE DECLARED TIMEZONE READS A NAIVE COLUMN (owner ruling
+    # 2026-08-21): a value that writes its own offset keeps it, and `occurred_at
+    # .timezone` answers only for a value that carries none.
+    #
+    # Until that ruling this line published the value AS READ, and the two halves
+    # disagreed: the id above was ALREADY minted from `occurred_values[earliest]`, so
+    # the declared timezone was trusted to say WHICH instant an event happened at while
+    # the published cell kept the raw text and was refused outright by the Role
+    # validator ("time Role must be a timezone-aware datetime").  One assumption, good
+    # enough for identity and not for the value, is not a safeguard -- it is a source
+    # that cannot produce an atom at all, which is what `lot_event` did.
+    #
+    # The price is named on purpose: EVERY source whose time column carries no zone is
+    # now read through the timezone someone declared for it.  That is what the
+    # declaration is FOR -- if it were never allowed to decide this, the square would
+    # have had zero freedom and belonged out of the file entirely.
+    #
+    # object dtype so the exact value survives instead of being re-derived through a
+    # pandas datetime64 conversion.
+    page[SOURCE_OCCURRED_AT_COLUMN] = pd.Series(instants, index=page.index, dtype=object)
+    events = []
+    for positions, _row_refs, _instant, attrs in kept:
+        event = page.iloc[positions].reset_index(drop=True)
+        event.attrs.update(attrs)
+        missing_attrs = [name for name in EVENT_FRAME_REQUIRED_ATTRS
+                         if name not in event.attrs]
+        if missing_attrs:
+            raise AssertionError(f"internal EventFrame attrs missing: {missing_attrs}")
+        events.append(event)
+    return tuple(events)
+
+
+def page_molecules(context: SourcePreparationContext, cells, rows: int) -> list:
+    """The page's molecules from its CELLS (column -> tuple, `read_columns_once`) - `(positions, row_refs, instant,
+    attrs)` each, refusals appended to `context.refusals`. The DataFrame path (`_event_frames`) and the SQL path
+    (`sql_translate`) both read a page through this (lead 10-31 ②)."""
     plan = context.source_plan
     driver = plan.driver
-    # 🔴 THE PAGE IS READ ONCE, HERE (S-64-b). Every line below used to reach a cell
-    # with `prepared.iloc[position][column]`, which builds a pandas Series for that row -
-    # and with a mixed-dtype page that means `find_common_type` and a copy, per read. There
-    # were nine such sites and they ran about ten times per molecule; profiled on a
-    # 2,000-row page they were roughly a third of the whole translation.
-    #
-    # ⚠️ `roleframe` ALREADY MADE THIS REPAIR AND WROTE IT DOWN (「READ THE COLUMNS
-    # ONCE」), so this calls that same function rather than spelling it a second time.
-    # ⚠️ NAMED `cells`, NOT `columns`: `_refuse_molecule` below already binds
-    # `columns` to a tuple of COLUMN NAMES in its own loop, and the first version of
-    # this change shadowed it - `cells[column]` became a tuple indexed by a string and
-    # every page refused. Two things called `columns` in one file is enough.
-    cells = read_columns_once(prepared)
     if driver.unit == "row":
-        groups = [[position] for position in range(len(prepared))]
+        groups = [[position] for position in range(rows)]
     else:
         grouped: dict[str, list[int]] = {}
-        for position in range(len(prepared)):
+        for position in range(rows):
             identity = {}
             for column in driver.group_by:
                 value = cells[column][position]
@@ -808,51 +866,4 @@ def _event_frames(
             "source_raw_ref": source_raw_ref,
             "setup_snapshot_hash": context.snapshot.snapshot_sha256,
         }))
-    if not kept:
-        return ()
-    # 🔴 THE TWO ENGINE CELLS GO ON THE PAGE ONCE, AND A MOLECULE IS ITS ROWS OF IT (ㄴ, 10-13): a deep copy and two
-    #    column writes a molecule were a fifth of a one-row source's translation (box, 2,000-row pages). A row of no
-    #    event keeps "" and None - no molecule takes it.
-    page = prepared.copy(deep=False)
-    refs, instants = [""] * len(page), [None] * len(page)
-    for positions, row_refs, instant, _attrs in kept:
-        for position, ref in zip(positions, row_refs):
-            refs[position], instants[position] = ref, instant
-    page[SOURCE_ROW_REF_COLUMN] = refs
-    # Publish the event's time under ONE engine-owned name.  A mapper that had to ask
-    # `source_plan.driver.occurred_at.column` was reading a physical column name, so a
-    # source declaring `basis` moved the time out from under it; resolving a
-    # declaration to a column is this boundary's job, and now it is only this
-    # boundary's job.
-    #
-    # The published cell is the INTERPRETED instant, the same one the event id is
-    # minted from above.  🔴 THE DECLARED TIMEZONE READS A NAIVE COLUMN (owner ruling
-    # 2026-08-21): a value that writes its own offset keeps it, and `occurred_at
-    # .timezone` answers only for a value that carries none.
-    #
-    # Until that ruling this line published the value AS READ, and the two halves
-    # disagreed: the id above was ALREADY minted from `occurred_values[earliest]`, so
-    # the declared timezone was trusted to say WHICH instant an event happened at while
-    # the published cell kept the raw text and was refused outright by the Role
-    # validator ("time Role must be a timezone-aware datetime").  One assumption, good
-    # enough for identity and not for the value, is not a safeguard -- it is a source
-    # that cannot produce an atom at all, which is what `lot_event` did.
-    #
-    # The price is named on purpose: EVERY source whose time column carries no zone is
-    # now read through the timezone someone declared for it.  That is what the
-    # declaration is FOR -- if it were never allowed to decide this, the square would
-    # have had zero freedom and belonged out of the file entirely.
-    #
-    # object dtype so the exact value survives instead of being re-derived through a
-    # pandas datetime64 conversion.
-    page[SOURCE_OCCURRED_AT_COLUMN] = pd.Series(instants, index=page.index, dtype=object)
-    events = []
-    for positions, _row_refs, _instant, attrs in kept:
-        event = page.iloc[positions].reset_index(drop=True)
-        event.attrs.update(attrs)
-        missing_attrs = [name for name in EVENT_FRAME_REQUIRED_ATTRS
-                         if name not in event.attrs]
-        if missing_attrs:
-            raise AssertionError(f"internal EventFrame attrs missing: {missing_attrs}")
-        events.append(event)
-    return tuple(events)
+    return kept

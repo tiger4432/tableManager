@@ -400,6 +400,7 @@
 
 ### 설정 파일
 
+- 2026-10-31 [원장 번역 SQL 길 1 단계 — 같은 답의 번역 길(아직 쓰지 않음)](#2026-10-31--원장-번역-sql-길-1-단계--같은-답의-번역-길아직-쓰지-않음) — 적을 것 없음 · 동작 그대로
 - 2026-10-31 [숫자 키의 NaN · 아주 큰 float 은 빈 키](#2026-10-31--숫자-키의-nan--아주-큰-float-은-빈-키) — 적을 것 없음 · 박스 · lag 해당 값 0
 - 2026-10-31 [float · numeric 키의 SQL 철자를 원장 철자와 하나로](#2026-10-31--float--numeric-키의-sql-철자를-원장-철자와-하나로) — 적을 것 없음 · 서버 재기동 뒤 한 번 색인 다시 짓기가 있을 수 있음
 - 2026-10-31 [소급 탭 — group 소스의 번역 안 된 행이 «0» 대신 그 수로 보임](#2026-10-31--소급-탭--group-소스의-번역-안-된-행이-0-대신-그-수로-보임) — 적을 것 없음 · 보는 곳 소급 탭 «Translate the rows not yet in the ledger»
@@ -701,6 +702,14 @@
 
 
 
+## 2026-10-31 · 원장 번역 SQL 길 1 단계 — 같은 답의 번역 길(아직 쓰지 않음)
+
+- 무엇: 원장 번역을 SQL 로 읽은 쪽 위에서 하는 길을 지었습니다. 아직 아무 자리에서도 쓰지 않고(원장에 안 씀), 파이썬 길과 원자를 견주는 데만 씁니다. 그 과정에서 파이썬 번역 앞부분을 함수로 나눴고, 지금 번역도 그 함수들을 지납니다.
+- 왜 중요한가: 소급 · 재번역이 느린 까닭인 번역 속도를 줄이는 첫 단계입니다. 박스에서 같은 답을 확인했고(선언 소스 넷, 75 만 원자, 다른 것 0) 행당 시간은 절반 정도입니다. 목표 속도는 다음 단계입니다.
+- 할 일: 없음. 번역 결과는 그대로입니다.
+- 필요한 조건: git pull · 서버 재기동.
+- 자세히: `server/ledger/sql_translate.py`.
+
 ## 2026-10-31 · 숫자 키의 NaN · 아주 큰 float 은 빈 키
 
 - 무엇: 숫자 키 칸의 NaN(어느 타입이든)과 크기 2^53(약 9.007e15) 이상인 float 값을 «빈 키»로 읽습니다. 원장 · 조인 · 유일 색인 · 쓰기 관문이 같은 판정 하나를 지납니다.
@@ -877,7 +886,7 @@
 - **화면에서** — 그리드: 400 대신 200, 응답의 `dropped.by_reason` 에 `value_refused`. 화면이 그 칸을 그리는 것은 클라 착지 뒤입니다. 파일: 실패 대신 «Not written: value_refused <칸>=<수>» 상태 줄.
 - **필요한 조건** — git pull · 서버 재기동.
 - **그대로인 것** — replace_map 이고 모든 행이 조인 키 겹침이면 묶음 통째 취소(맵을 지키는 가드). SAT 의 키 칸 · voids.json 의 필수 칸은 파일 거절.
-- **자세히** — `crud.DROP_VALUE_REFUSED` · `crud.times_the_database_refuses` · `event_frame._without_unnamed_rows`. 시험: test_a_value_a_column_does_not_take_is_one_sentence · test_a_time_the_database_refuses_is_not_entered(PG) · test_ledger_event_frame · test_a_decide_aggregation_is_an_expression · test_void_schema.
+- **자세히** — `crud.DROP_VALUE_REFUSED` · `crud.times_the_database_refuses` · `event_frame._unnamed_rows`. 시험: test_a_value_a_column_does_not_take_is_one_sentence · test_a_time_the_database_refuses_is_not_entered(PG) · test_ledger_event_frame · test_a_decide_aggregation_is_an_expression · test_void_schema.
 ## 2026-10-29 · 새 기능 — 리포트 그림을 누르면 원본이 새 탭에 열린다(로그인 · 서명 링크 둘 다)
 
 - 무엇: 보고서 안의 작은 그림을 누르면 그 그림의 원본이 새 탭에 크게 열린다(소유자 «작아도 크게 보기 같은거 · 이미지 경로로 라우트», «보고서에 큰 원본은 좀 아니고»). 보고서 파일 크기는 그대로 — 그림은 여전히 작게 박혀 있다.

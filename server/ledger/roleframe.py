@@ -327,33 +327,8 @@ class BaseLedgerMapper:
                     "mapper_failed", f"mapper.units[{unit_index}]",
                     f"interpret_unit raised {exc.__class__.__name__}: {exc}",
                 ) from exc
-            if (isinstance(produced, (pd.DataFrame, Mapping, str, bytes, bytearray))
-                    or not isinstance(produced, Sequence)):
-                raise RoleFrameError(
-                    "unsupported_mapper_output", f"mapper.units[{unit_index}]",
-                    "interpret_unit must return a sequence of RoleEmission values",
-                )
-            for emission_index, emission in enumerate(produced):
-                if not isinstance(emission, RoleEmission):
-                    raise RoleFrameError(
-                        "unsupported_mapper_output",
-                        f"mapper.units[{unit_index}].emissions[{emission_index}]",
-                        "raw Atom, LedgerFrame, mappings, and arbitrary values are forbidden",
-                    )
-                emissions.append(_with_attribute_values(
-                    context, profile, emission, unit,
-                    f"mapper.units[{unit_index}].emissions[{emission_index}]",
-                    columns=unit_columns))
-            if not produced:
-                quiet = _said_by_no_when(unit_columns, profile)
-                if quiet is not None:
-                    unsaid.append(quiet)
-        frame = _role_frame_from_emissions(event_frame.attrs, emissions, profile)
-        rows = validate_role_frame(context, frame, descriptor, profile)
-        if unsaid:
-            rows = replace(rows, attrs=MappingProxyType(
-                {**rows.attrs, UNIT_SAID_NOTHING_ATTR: tuple(unsaid)}))
-        return rows
+            unit_emissions(context, profile, unit_index, produced, unit, unit_columns, emissions, unsaid)
+        return role_rows_of(context, event_frame.attrs, emissions, unsaid, descriptor, profile)
 
     def interpret_unit(
         self,
@@ -362,6 +337,42 @@ class BaseLedgerMapper:
         profile: ProfileDescriptor,
     ) -> Sequence[RoleEmission]:
         raise NotImplementedError
+
+
+def unit_emissions(context, profile, unit_index, produced, unit, unit_columns, emissions: list, unsaid: list) -> None:
+    """One unit's emissions checked, their attributes filled (`_with_attribute_values`) and appended to `emissions`;
+    a unit that said nothing noted in `unsaid` - `BaseLedgerMapper.map` and `sql_translate` both pass here."""
+    if (isinstance(produced, (pd.DataFrame, Mapping, str, bytes, bytearray))
+            or not isinstance(produced, Sequence)):
+        raise RoleFrameError(
+            "unsupported_mapper_output", f"mapper.units[{unit_index}]",
+            "interpret_unit must return a sequence of RoleEmission values",
+        )
+    for emission_index, emission in enumerate(produced):
+        if not isinstance(emission, RoleEmission):
+            raise RoleFrameError(
+                "unsupported_mapper_output",
+                f"mapper.units[{unit_index}].emissions[{emission_index}]",
+                "raw Atom, LedgerFrame, mappings, and arbitrary values are forbidden",
+            )
+        emissions.append(_with_attribute_values(
+            context, profile, emission, unit,
+            f"mapper.units[{unit_index}].emissions[{emission_index}]",
+            columns=unit_columns))
+    if not produced:
+        quiet = _said_by_no_when(unit_columns, profile)
+        if quiet is not None:
+            unsaid.append(quiet)
+
+
+def role_rows_of(context, attrs, emissions, unsaid, descriptor, profile) -> "RoleRows":
+    """A molecule's emissions -> its validated RoleRows, the units that said nothing noted - one tail, both paths."""
+    frame = _role_frame_from_emissions(attrs, emissions, profile)
+    rows = validate_role_frame(context, frame, descriptor, profile)
+    if unsaid:
+        rows = replace(rows, attrs=MappingProxyType(
+            {**rows.attrs, UNIT_SAID_NOTHING_ATTR: tuple(unsaid)}))
+    return rows
 
 
 class DeclarativeRoleMapper(BaseLedgerMapper):
@@ -381,78 +392,82 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
         unit: pd.DataFrame,
         profile: ProfileDescriptor,
     ) -> Sequence[RoleEmission]:
-        from .event_frame import sentences_said
+        return declared_emissions(context, profile, read_columns_once(unit), _source_row_refs(unit), len(unit))
 
-        refs = _source_row_refs(unit)
-        unit_columns = read_columns_once(unit)
-        said = sentences_said(context.source_plan, context.snapshot.entities,
-                              unit_columns, range(len(unit)))
-        out = []
-        for sentence, mapping in profile.mappings.items():
-            # S-99. The declaration says WHEN this sentence applies; a unit that does not
-            # match says nothing here and goes on to the next sentence. So does one leaving
-            # blank a cell only some sentences need to name their entities (소유자 10-12).
-            if sentence not in said:
+
+def declared_emissions(context: MapperContext, profile: ProfileDescriptor, unit_columns, refs, rows: int) -> list:
+    """`DeclarativeRoleMapper`'s reading of one unit from its CELLS (column -> tuple of the unit's values, with the
+    engine's `SOURCE_OCCURRED_AT_COLUMN`) - the DataFrame path and the SQL path (`sql_translate`) both call it."""
+    from .event_frame import sentences_said
+
+    unit = None             # every reading below takes `columns=`; the frame is not asked
+    said = sentences_said(context.source_plan, context.snapshot.entities, unit_columns, range(rows))
+    out = []
+    for sentence, mapping in profile.mappings.items():
+        # S-99. The declaration says WHEN this sentence applies; a unit that does not
+        # match says nothing here and goes on to the next sentence. So does one leaving
+        # blank a cell only some sentences need to name their entities (소유자 10-12).
+        if sentence not in said:
+            continue
+        claim = context.snapshot.claims.get(mapping.predicate_id)
+        # 🔴 EVERY SENTENCE STATES THE MOLECULE'S TIME (총괄 0c9b6e3c0). A mapping that binds
+        # no event time is a not-an-event edge: its atom keeps this stored time and
+        # `runtime_v2._stamp_occurred_at_basis` says it is not an event's.
+        roles = {OCCURRED_AT_ROLE: unit_columns[SOURCE_OCCURRED_AT_COLUMN][0]}
+        for role_id, binding in mapping.bindings.items():
+            if is_event_time_role(role_id):
+                # 🔴 BY NAME, NOT BY KIND (총괄 0c9b6e3c0 ③). A `timestamp` value Role is
+                # kind `time` too; asking the kind filled it with the event instant and
+                # dropped its column.
+                # The EVENT TIME Role is filled from the instant the preparation boundary
+                # already interpreted (`SOURCE_OCCURRED_AT_COLUMN`), never from the
+                # frame cell the binding names.  The custom mapper does exactly this
+                # (`ledger_v2_dt_job_mapper.interpret_unit`) and never reads its
+                # `occurred_at` binding; this is the same reading, not a new one.  Reading the cell is what refused
+                # `transfer_event` outright -- a varchar time column arrives as a
+                # string and `_validate_role_value` demands a tz-aware datetime -- and
+                # re-parsing it here would be a SECOND spelling of an instant the
+                # engine has already committed to: `source_event_identity` mints the
+                # event id from this very value, so an atom timed from anything else
+                # would disagree with the id of the event it belongs to.
+                #
+                # RULED 2026-08-23: the binding's column is ignored here ALWAYS, not
+                # only where the two coincide.  The two already differ in the live
+                # config -- `dt_job` reads `occurred_at.basis: ingested`, naming no
+                # column at all, while every one of its `bind.occurred_at` says
+                # `event_time` -- and its atoms carry the ingestion instant, so that
+                # binding has been doing nothing on a running cursor since the source
+                # was written.  The custom mappers never read it either.  So this is
+                # not a rule being introduced; it is the rule already in force,
+                # reaching the mapper that had been left out of it.
+                #
+                # ⚰️ SETTLED BY 총괄 0c9b6e3c0: the column is what an EVENT EDGE says - a
+                # source that writes no `read.occurred_at` reads its event edges' column
+                # (`setup_bundle.source_defaults`), and that instant arrives here. Still
+                # never re-read at this seat.
                 continue
-            claim = context.snapshot.claims.get(mapping.predicate_id)
-            # 🔴 EVERY SENTENCE STATES THE MOLECULE'S TIME (총괄 0c9b6e3c0). A mapping that binds
-            # no event time is a not-an-event edge: its atom keeps this stored time and
-            # `runtime_v2._stamp_occurred_at_basis` says it is not an event's.
-            roles = {OCCURRED_AT_ROLE: unit_columns[SOURCE_OCCURRED_AT_COLUMN][0]}
-            for role_id, binding in mapping.bindings.items():
-                if is_event_time_role(role_id):
-                    # 🔴 BY NAME, NOT BY KIND (총괄 0c9b6e3c0 ③). A `timestamp` value Role is
-                    # kind `time` too; asking the kind filled it with the event instant and
-                    # dropped its column.
-                    # The EVENT TIME Role is filled from the instant the preparation boundary
-                    # already interpreted (`SOURCE_OCCURRED_AT_COLUMN`), never from the
-                    # frame cell the binding names.  The custom mapper does exactly this
-                    # (`ledger_v2_dt_job_mapper.interpret_unit`) and never reads its
-                    # `occurred_at` binding; this is the same reading, not a new one.  Reading the cell is what refused
-                    # `transfer_event` outright -- a varchar time column arrives as a
-                    # string and `_validate_role_value` demands a tz-aware datetime -- and
-                    # re-parsing it here would be a SECOND spelling of an instant the
-                    # engine has already committed to: `source_event_identity` mints the
-                    # event id from this very value, so an atom timed from anything else
-                    # would disagree with the id of the event it belongs to.
-                    #
-                    # RULED 2026-08-23: the binding's column is ignored here ALWAYS, not
-                    # only where the two coincide.  The two already differ in the live
-                    # config -- `dt_job` reads `occurred_at.basis: ingested`, naming no
-                    # column at all, while every one of its `bind.occurred_at` says
-                    # `event_time` -- and its atoms carry the ingestion instant, so that
-                    # binding has been doing nothing on a running cursor since the source
-                    # was written.  The custom mappers never read it either.  So this is
-                    # not a rule being introduced; it is the rule already in force,
-                    # reaching the mapper that had been left out of it.
-                    #
-                    # ⚰️ SETTLED BY 총괄 0c9b6e3c0: the column is what an EVENT EDGE says - a
-                    # source that writes no `read.occurred_at` reads its event edges' column
-                    # (`setup_bundle.source_defaults`), and that instant arrives here. Still
-                    # never re-read at this seat.
-                    continue
-                role = None if claim is None else claim.roles.get(role_id)
-                if role is not None and not role.required:
-                    # 🔴 AN OPTIONAL QUALIFIER IS READ AS AN ATTRIBUTE IS (총괄 10-11): a blank
-                    # cell is "nothing to say" and the qualifier stays out of this atom. Read as
-                    # a required role, one blank row refused its whole batch (`missing_binding_value`).
-                    value = _attribute_value(
-                        binding, unit, columns=unit_columns,
-                        path=f"{mapping.config_path}.bind.{role_id}")
-                    if value is not _NO_ATTRIBUTE_VALUE:
-                        roles[role_id] = value
-                    continue
-                roles[role_id] = _evaluate_binding(
+            role = None if claim is None else claim.roles.get(role_id)
+            if role is not None and not role.required:
+                # 🔴 AN OPTIONAL QUALIFIER IS READ AS AN ATTRIBUTE IS (총괄 10-11): a blank
+                # cell is "nothing to say" and the qualifier stays out of this atom. Read as
+                # a required role, one blank row refused its whole batch (`missing_binding_value`).
+                value = _attribute_value(
                     binding, unit, columns=unit_columns,
-                    path=f"{mapping.config_path}.bind.{role_id}",
-                    relation=context.source_plan.relation,
-                    entities=context.snapshot.entities)
-            out.append(RoleEmission(
-                sentence=sentence,
-                roles=roles,
-                source_row_refs=refs,
-            ))
-        return out
+                    path=f"{mapping.config_path}.bind.{role_id}")
+                if value is not _NO_ATTRIBUTE_VALUE:
+                    roles[role_id] = value
+                continue
+            roles[role_id] = _evaluate_binding(
+                binding, unit, columns=unit_columns,
+                path=f"{mapping.config_path}.bind.{role_id}",
+                relation=context.source_plan.relation,
+                entities=context.snapshot.entities)
+        out.append(RoleEmission(
+            sentence=sentence,
+            roles=roles,
+            source_row_refs=refs,
+        ))
+    return out
 
 
 @dataclass(frozen=True)
@@ -865,49 +880,42 @@ def _partition_units(
     frame: pd.DataFrame,
     descriptor: MapperDescriptor,
 ) -> tuple[pd.DataFrame, ...]:
+    units = []
+    for positions, refs, whole in unit_partition(
+            context, descriptor, read_columns_once(frame), len(frame), _frame_row_refs(frame)):
+        unit = frame.copy(deep=False) if whole else frame.iloc[list(positions)].copy(deep=False)
+        unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = refs
+        units.append(unit)
+    return tuple(units)
+
+
+def unit_partition(context: MapperContext, descriptor: MapperDescriptor, cells, rows: int, refs) -> list:
+    """A molecule's mapper units from its CELLS: `(positions, row refs, whole molecule?)` each, in the order the mapper
+    reads them - the DataFrame path (`_partition_units`) and the SQL path (`sql_translate`) both cut here."""
     kind = descriptor.unit_kind
     if kind == "event":
-        unit = frame.copy(deep=False)
-        unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
-        return (unit,)
+        return [(tuple(range(rows)), refs, True)]
     if kind == "row":
         from .event_frame import named_columns
 
         # 총괄 164553a6f ①: ordered by the named columns and row_id only - a column the
         # declaration does not name may hold a value with no canonical form (NUMERIC, DATE).
-        keyed = [name for name in named_columns(context.source_plan) if name in frame.columns]
-        frame_columns = read_columns_once(frame)
+        keyed = [name for name in named_columns(context.source_plan) if name in cells]
         # every row's token, one row too: a named value with no canonical form stops the page whatever the row count
         # (검수 a08c95676 ① - the one-row shortcut had skipped it)
-        tokens = [_row_sort_token({name: frame_columns[name][position] for name in keyed}, keyed)
-                  for position in range(len(frame))]
-        if len(frame) == 1:     # its own one unit - the event's frame, not a sorted copy of its one row (ㄴ, 10-13)
-            unit = frame.copy(deep=False)
-            unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
-            return (unit,)
-        ordered = sorted(range(len(frame)), key=tokens.__getitem__)
-        units = []
-        refs = _frame_row_refs(frame)
-        for position in ordered:
-            unit = frame.iloc[[position]].copy(deep=False)
-            unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = (refs[position],)
-            units.append(unit)
-        return tuple(units)
+        tokens = [_row_sort_token({name: cells[name][position] for name in keyed}, keyed)
+                  for position in range(rows)]
+        if rows == 1:     # its own one unit - the event's frame, not a sorted copy of its one row (ㄴ, 10-13)
+            return [((0,), refs, True)]
+        return [((position,), (refs[position],), False) for position in sorted(range(rows), key=tokens.__getitem__)]
     if kind == "group_by":
         columns = tuple(descriptor.unit_columns)
-        if not columns or any(column not in frame.columns for column in columns):
+        if not columns or any(column not in cells for column in columns):
             raise RoleFrameError(
                 "invalid_mapper_unit", "mapper.unit.group_by",
                 "MapperDescriptor group_by columns must exist in EventFrame")
-        refs = _frame_row_refs(frame)
-        units = []
-        for positions in unit_positions(descriptor, read_columns_once(frame), range(len(frame))):
-            positions = list(positions)
-            unit = frame.iloc[positions].copy(deep=False)
-            unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = tuple(
-                sorted(refs[position] for position in positions))
-            units.append(unit)
-        return tuple(units)
+        return [(tuple(positions), tuple(sorted(refs[position] for position in positions)), False)
+                for positions in unit_positions(descriptor, cells, range(rows))]
     raise RoleFrameError(
         "unsupported_mapper_unit", "mapper.unit.kind",
         f"unsupported mapper unit {kind!r}")
@@ -1064,18 +1072,23 @@ def _source_row_refs(unit: pd.DataFrame) -> tuple[str, ...]:
     return _frame_row_refs(unit)
 
 
+def checked_row_refs(values) -> tuple[str, ...]:
+    """A molecule's source row refs, trimmed - refused when one is blank or two are the same."""
+    refs = tuple(str(value).strip() for value in values)
+    if any(not value for value in refs):
+        raise RoleFrameError(
+            "invalid_source_row_ref", f"event_frame.{SOURCE_ROW_REF_COLUMN}",
+            "source row references must be non-blank")
+    if len(set(refs)) != len(refs):
+        raise RoleFrameError(
+            "ambiguous_source_row_ref", f"event_frame.{SOURCE_ROW_REF_COLUMN}",
+            "source row references must be unique within one source event")
+    return refs
+
+
 def _frame_row_refs(frame: pd.DataFrame) -> tuple[str, ...]:
     if SOURCE_ROW_REF_COLUMN in frame.columns:
-        refs = tuple(str(value).strip() for value in frame[SOURCE_ROW_REF_COLUMN].tolist())
-        if any(not value for value in refs):
-            raise RoleFrameError(
-                "invalid_source_row_ref", f"event_frame.{SOURCE_ROW_REF_COLUMN}",
-                "source row references must be non-blank")
-        if len(set(refs)) != len(refs):
-            raise RoleFrameError(
-                "ambiguous_source_row_ref", f"event_frame.{SOURCE_ROW_REF_COLUMN}",
-                "source row references must be unique within one source event")
-        return refs
+        return checked_row_refs(frame[SOURCE_ROW_REF_COLUMN].tolist())
     base = str(frame.attrs.get("source_raw_ref") or "").strip()
     if len(frame) == 1:
         return (base,)
@@ -1147,7 +1160,7 @@ def source_times_to_ask(source_plan, frame) -> dict:
                 walk(binding)
     wanted = {}
     for column, zone in reads:
-        if column in frame.columns:
+        if column in frame:            # a DataFrame's columns, or a page's cells (`sql_translate`)
             wanted.setdefault(zone_of(zone), set()).update(v for v in frame[column] if unread_time_text(v))
     return wanted
 
@@ -2070,7 +2083,12 @@ def dry_run_event_frame(
     _validate_event_frame(
         context, event_frame, context.source_plan.driver.mapper,
         context.source_plan.profile)
-    role_rows = map_event_rows(context, event_frame, implementations)
+    return dry_run_result(context, event_frame.attrs, map_event_rows(context, event_frame, implementations))
+
+
+def dry_run_result(context: MapperContext, attrs, role_rows: RoleRows) -> LedgerV2DryRunResult:
+    """A molecule's RoleRows compiled into the candidates the gate screens - `dry_run_event_frame` and
+    `sql_translate` both end here, from the molecule's event attrs."""
     ledger_rows = compile_role_rows(context, role_rows)
     derivations = tuple(sorted(set(ledger_rows.column("derivation"))))
     subjects = tuple(sorted(set(ledger_rows.column("subject_type"))))
@@ -2080,15 +2098,15 @@ def dry_run_event_frame(
     gate_preview = MappingProxyType({
         "status": "candidate",
         "atom_count": len(ledger_rows),
-        "source_event_id": str(event_frame.attrs["source_event_id"]),
+        "source_event_id": str(attrs["source_event_id"]),
         "declared_derivations": derivations,
         "declared_subject_types": subjects,
     })
     provenance = MappingProxyType({
-        "source_id": event_frame.attrs["source_id"],
-        "source_event_id": str(event_frame.attrs["source_event_id"]),
-        "molecule_ref": event_frame.attrs["molecule_ref"],
-        "source_raw_ref": event_frame.attrs["source_raw_ref"],
+        "source_id": attrs["source_id"],
+        "source_event_id": str(attrs["source_event_id"]),
+        "molecule_ref": attrs["molecule_ref"],
+        "source_raw_ref": attrs["source_raw_ref"],
         "sentences": sentences,
         "source_row_refs": refs,
         "mapper_implementation": (
