@@ -167,15 +167,13 @@ def test_the_index_is_asked_by_relation_AND_by_source():
     assert params == [("dt_log_transferable", "dt_transfer")]
 
 
-#: The two shapes `rows_not_yet_translated` answers - a row source's remainder, and a group
-#: source's refusal to subtract rows from groups (총괄 f453968fe ⓐ: the fake used to be only
-#: the first, so the CLI's KeyError on the second, box source `lot_event`, went unseen).
+#: The shape `rows_not_yet_translated` answers, for a row source and a group source alike (lead 10-31 ①: the group
+#: source's «rows vs groups» refusal is gone - the index counts rows).
 CENSUS_SHAPES = {
-    "rows": ({"relation_rows": 478035, "indexed_rows": 478035, "counts": "rows",
+    "rows": ({"relation_rows": 478035, "indexed_rows": 478035,
               "not_yet": 0}, "relation rows 478035 | indexed 478035 | not yet translated 0"),
-    "groups": ({"relation_rows": 3633, "indexed_rows": 490, "counts": "rows vs groups",
-                "not_comparable": "this source reads by group (event_group_key), so ..."},
-               "relation rows 3633 | indexed 490 | this source reads by group"),
+    "groups": ({"relation_rows": 3633, "indexed_rows": 490, "not_yet": 3143},
+               "relation rows 3633 | indexed 490 | not yet translated 3143"),
 }
 
 
@@ -188,7 +186,7 @@ def test_the_cli_prints_the_three_values_rather_than_the_word_None(monkeypatch, 
     is enough to score what an operator sees - for each shape the census answers, and
     every key the printer reads is one the run carries."""
     census, line = CENSUS_SHAPES[shape]
-    assert set(census) - {"counts"} <= set(backfill.CENSUS_KEYS_A_RUN_CARRIES)
+    assert set(census) <= set(backfill.CENSUS_KEYS_A_RUN_CARRIES)
     import logging
 
     import database.database as database_module
@@ -251,24 +249,17 @@ def test_the_index_is_counted_by_distinct_row_rather_than_by_ref():
     assert "DISTINCT" in asked and "row_id" in asked, asked
 
 
-def test_a_group_source_does_not_publish_rows_minus_groups():
-    """🔴 MEASURED ON THE OPERATOR'S SCREEN (2026-09-09): `lot_event` reads by GROUP, and the
-    census subtracted the index's 490 GROUPS from the relation's 3,633 ROWS and published
-    「3,143 not yet translated」 for a source that was fully translated.
-
-    ⛔ A PLAUSIBLE WRONG NUMBER IS WORSE THAN A BLANK. The two counts are kept — each says
-    what it counted — and the remainder is refused with the reason, rather than computed
-    from two different units."""
+def test_a_group_source_publishes_its_rows_left():
+    """🔴 TURNED (lead 10-31 ①, owner ㄱ - was «does not publish rows minus groups», 3adf9e797). The index holds every
+    ROW of a molecule, so a group source's remainder is rows less rows: on the box the refusal showed dt_job's
+    67,921 untranslated rows as «0, exact». The 09-09 3,633 - 490 was `lot_event`'s `prepare` frame, which carried no
+    row id - refused at load now. The PG gate: test_a_group_source_says_the_rows_it_has_left_pg."""
     setup = _setup({"lot_event": _Plan("lot_event", "row_id", unit="group",
                                        group_by=("event_group_key",))})
     report = backfill.rows_not_yet_translated(_Engine([3633, 490]), setup, "lot_event")
 
-    assert report["relation_rows"] == 3633
-    assert report["indexed_rows"] == 490
-    assert "not_yet" not in report, "rows minus groups is not a remainder"
-    assert report["counts"] == "rows vs groups"
-    assert "event_group_key" in report["not_comparable"], (
-        "the refusal names the group the source reads by, so an operator can see WHY")
+    assert (report["relation_rows"], report["indexed_rows"], report["not_yet"]) == (3633, 490, 3143)
+    assert "not_comparable" not in report and "counts" not in report
 
 
 def test_a_row_source_still_publishes_the_remainder():
@@ -277,4 +268,4 @@ def test_a_row_source_still_publishes_the_remainder():
     setup = _setup({"wafer_process": _Plan("wafer_process_recipe", "row_id")})
     report = backfill.rows_not_yet_translated(_Engine([100, 40]), setup, "wafer_process")
 
-    assert report["not_yet"] == 60 and report["counts"] == "rows"
+    assert report["not_yet"] == 60

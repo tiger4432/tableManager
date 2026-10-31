@@ -463,13 +463,6 @@ def _count_ledger_backfill(db, params, scan_limit):
     behind = backfill.rows_to_catch_up(engine, setup, source, world=world, census=census)
     rows, gone = behind["rows_new"], behind["rows_gone"]
     total, indexed = census["relation_rows"], census["indexed_rows"]
-    if rows is None:
-        return {
-            "affected": 0, "affected_label": "rows not yet translated",
-            "absence": ABSENCE_NOT_APPLICABLE, "count_kind": COUNT_EXACT, "scanned": total,
-            "scan_limit": None, "truncated": False, "detail": census["not_comparable"],
-            "extra": {"source": source, "relation_rows": total, "indexed_rows": indexed},
-        }
     if not rows:
         detail = (f"'{source}' has NO rows left to translate - {total} row(s) in "
                   f"the table, {indexed} in the index. Running it now does nothing "

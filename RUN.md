@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **소급 탭 — group 소스의 번역 안 된 행이 «0» 대신 그 수로 보임** — git pull · 서버 재기동
+>
+> ```
+> 볼 곳    어드민 Retroactive → «Translate the rows not yet in the ledger» → source 에 원장 소스 이름(예 dt_job) → Preview
+> 답의 뜻  '<소스>' has N row(s) not yet translated - T row(s) in the table, I in the index
+>            -> 그 소스 표에 원장이 아직 안 읽은 행 N 개. 그대로 Run (멈추면 쪽 사이에서 멈춤, 다시 돌리면 남은 것만)
+>          '<소스>' has NO rows left to translate                     -> 놓친 행 없음
+>          09-08 ~ 10-02 코드를 돌린 설치면 그때 놓친 행이 여기 N 으로 뜰 수 있음(그때 따라가기가 메모리 줄)
+> 같은 수  server 폴더에서 python -m ledger census --source <소스> --world default
+>          -> «<소스> (default): 표 T · 색인 I · 차이 N ... 새 행 N» — 미리보기의 N 과 같음
+> 끄는 법  git revert <이 커밋> -> 서버 재기동. 미리보기가 다시 group 소스에 «0» 을 보임 (원자에는 영향 없음)
+> ```
+>
+> ---
+>
 > ## [10-31] **원장 · Latest 가 시각 글자를 쓰기 문과 같은 판정으로 읽음** — git pull · 서버 · 원장 워커 · 체인 워커 재기동
 >
 > ```

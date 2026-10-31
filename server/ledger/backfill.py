@@ -101,10 +101,8 @@ logger = logging.getLogger("Ledger.Backfill")
 
 DEFAULT_FETCH_ROWS = 2000
 
-#: What a run carries from `rows_not_yet_translated`. A group source answers `not_comparable`
-#: instead of `not_yet`; dropping it left the CLI indexing a key that is not there.
-CENSUS_KEYS_A_RUN_CARRIES = ("relation_rows", "indexed_rows", "not_yet", "not_comparable",
-                             "index_names_absent_rows")
+#: What a run carries from `rows_not_yet_translated`.
+CENSUS_KEYS_A_RUN_CARRIES = ("relation_rows", "indexed_rows", "not_yet", "index_names_absent_rows")
 
 #: One page for the write-free test run behind the setup screen. Small on purpose: the
 #: screen asks "does this declaration work at all", and that answer arrives in the first
@@ -1534,29 +1532,14 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
         connection.rollback()
         connection.close()
 
-    # 🔴 A GROUP SOURCE COUNTS TWO DIFFERENT THINGS, so the subtraction is refused
-    # rather than published. The index holds ONE entry per translated GROUP while the
-    # relation holds rows, and `rows - groups` is a number with no meaning: measured on
-    # `lot_event` (unit=group) it read 3,633 - 490 = 3,143 「not yet translated」 on the
-    # operator's screen while the source was fully translated. That is the false-log shape,
-    # and a plausible wrong number is worse than a blank.
-    #
-    # ⚠️ THE OTHER HALF OF THE ANSWER IS NOT BUILT: counting DISTINCT groups would make
-    # them comparable, but `driver.group_by` carries LOGICAL names (`event_group_key`) and
-    # the physical column behind one is resolved elsewhere. Guessing that mapping to produce
-    # a number is how the wrong number got there in the first place, so the shape says what
-    # it counted and stops.
-    grouped = getattr(plan.driver, "unit", "row") == "group"
+    # 🔴 ROWS LESS ROWS, A GROUP SOURCE TOO (lead 10-31, owner ㄱ - reverses 3adf9e797 «rows vs groups»): the index
+    #    holds every ROW of a molecule under its atom's ref (`runtime_v2._row_ref_index`), so a group source subtracts
+    #    like a row one - measured on the box: dt_job 535,559 - 467,638 = 67,921 = `rows_missing_from_the_index`, rows
+    #    a refusal had shown the screen as «0, exact». The 09-09 3,633 - 490 was `lot_event`'s `prepare` frame, which
+    #    carried no row id; a prepare section or a view is refused at load now.
     report.update({"relation_rows": total, "indexed_rows": indexed,
                    "relation_rows_estimated": from_estimate,
-                   "indexed_rows_counted_now": counted_now,
-                   "counts": "rows vs groups" if grouped else "rows"})
-    if grouped:
-        report["not_comparable"] = (
-            f"this source reads by group ({', '.join(plan.driver.group_by)}), so the "
-            f"relation's {total} ROWS and the index's {indexed} GROUPS are different units; "
-            f"the remainder is not published rather than published wrong.")
-        return report
+                   "indexed_rows_counted_now": counted_now})
     remainder = total - indexed
     # 🔴 a row `read.exclude_when` takes out is never translated nor indexed - it is not 「not yet」 (총괄 10-12, rp500g
     #    link_candidates kept 1 after every backfill). Taken out of a person's count; the paced tick does not scan (S-122)
@@ -1667,14 +1650,12 @@ def rows_to_catch_up(engine, setup, source, world=None, census=None):
     translated, rows edited since, rows the table lost that the index still names - and the
     index lines with no print. Scans: a person's census and the catch-up's count ask it, the
     paced tick never (S-122). The table less the index (`census`, one measurement) nets a lost
-    row against a new one, so the lost rows, counted, are added back; `rows_new` is None where
-    the index counts groups and the table rows."""
+    row against a new one, so the lost rows, counted, are added back."""
     census = census or rows_not_yet_translated(engine, setup, source, world=world)
     gone = len(rows_gone_from_the_source(engine, setup, source, world=world))
     drift = rows_drifted(engine, setup, source, world=world)
     new = (census["relation_rows"] - census["indexed_rows"] - census.get("excluded_rows", 0)
-           - census.get("said_nothing_rows", 0) + gone
-           if census.get("counts") == "rows" else None)
+           - census.get("said_nothing_rows", 0) + gone)
     return {"rows_new": new, "rows_drifted": drift["rows_drifted"], "rows_gone": gone,
             "rows_unprinted": drift["rows_unprinted"]}
 
@@ -1835,7 +1816,6 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
             if behind[box] is not None:
                 stamped[box] = measured(behind[box], exact=True, method=method,
                                         measured_at=stamp)
-    grouped = census.get("counts") == "rows vs groups"
     # ⚠️ THE METHOD IS PART OF THE NUMBER (S-122). A paced tick reads the planner's free
     # estimate and a person's `census` command counts; publishing both as `exact=True`
     # would make a figure that is off by a few thousand indistinguishable from one that is
@@ -1844,7 +1824,7 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
     stamped["relation_rows"] = measured(
         census["relation_rows"], exact=not estimated,
         method=("pg_class.reltuples (planner estimate, no scan)" if estimated
-                else ("count(*) [rows]" if grouped else "count(*)")),
+                else "count(*)"),
         measured_at=stamp)
     # ⚠️ THE METHOD SAYS WHICH ONE ANSWERED (S-122-b). A counted value maintained inside
     # the atoms' transaction and a fresh `count(DISTINCT)` are both exact, but they are not
@@ -1853,8 +1833,7 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
     stamped["indexed_rows"] = measured(
         census["indexed_rows"], exact=True,
         method=("rows_indexed (counted at write time)" if from_counter
-                else ("count(distinct row_id) [groups]" if grouped
-                      else "count(distinct row_id)")),
+                else "count(distinct row_id)"),
         measured_at=stamp)
     # 🔴 CARRIED OUT OF THE STAMPING, because `measure_and_store` is what plants the
     # counter and this dict is all it gets. The first version left the flag on the inner
@@ -1862,13 +1841,6 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
     # caught by finding fifteen NULLs after a full lap.
     stamped["indexed_rows_counted_now"] = bool(
         census.get("indexed_rows_counted_now"))
-    # ⛔ NO REMAINDER FOR A GROUP SOURCE, and the reason travels instead of the number.
-    # `rows - groups` published 3,143 「not yet translated」 for a fully translated
-    # `lot_event`; a key that is simply absent leaves the cell blank, which is the honest
-    # rendering of 「these two do not subtract」.
-    if grouped:
-        stamped["not_comparable"] = census["not_comparable"]
-        return stamped
     # 🔴 A DIFFERENCE, NAMED AS ONE (총괄 6091a7ae3 ②): a lost row still in the index nets out
     #    a new one, so 0 here is not 「nothing left」 - the person's boxes above say that.
     stamped["difference"] = measured(
@@ -2926,12 +2898,8 @@ def main(argv=None):
         logger.info("[Ledger] not counted (%s): %s",
                     result["refused"], result.get("remedy"))
     elif "relation_rows" in result:
-        # A group source's answer is `not_comparable` - rows against groups is no number
-        # (rows_not_yet_translated) - so the remainder is named only where there is one.
-        logger.info("[Ledger] relation rows %s | indexed %s | %s",
-                    result["relation_rows"], result["indexed_rows"],
-                    result["not_comparable"] if "not_comparable" in result
-                    else "not yet translated %s" % result["not_yet"])
+        logger.info("[Ledger] relation rows %s | indexed %s | not yet translated %s",
+                    result["relation_rows"], result["indexed_rows"], result["not_yet"])
         if result.get("index_names_absent_rows"):
             logger.warning(
                 "[Ledger] the index names %s row(s) the relation no longer holds",

@@ -255,21 +255,16 @@ def test_the_job_has_a_declared_pace_rather_than_a_constant():
     assert units is None or units >= 1
 
 
-def test_a_group_source_is_stamped_without_a_remainder_rather_than_crashing():
-    """🔴 THE JOB RUNS EVERY CYCLE. A census that assumed `not_yet` was always there would
-    raise on `lot_event` (unit=group) on every sweep — and the sweep names the failure and
-    moves on, so it would have been a source silently never measured.
-
-    ⛔ AND THE TWO COUNTS STILL SAY WHAT THEY COUNTED. `[rows]` and `[groups]` ride in the
-    `method`, which is the field that exists so a number cannot be read as the wrong thing."""
+def test_a_group_source_is_stamped_with_its_difference_like_a_row_source():
+    """🔴 TURNED (lead 10-31 ①, was «stamped without a remainder»): the index counts a group source's ROWS, so its
+    stamp carries the difference as a row source's does, and the counts' methods are the row source's."""
     setup = _setup({"lot_event": _Plan("lot_event", "row_id", unit="group",
                                        group_by=("event_group_key",))})
     census = backfill.measure_row_census(_Engine([3633, 490]), setup, "lot_event")
 
-    assert census["relation_rows"]["method"].endswith("[rows]")
-    assert census["indexed_rows"]["method"].endswith("[groups]")
-    assert "difference" not in census and "rows_new" not in census
-    assert "event_group_key" in census["not_comparable"]
+    assert census["relation_rows"]["method"] == "count(*)"
+    assert census["indexed_rows"]["method"] == "count(distinct row_id)"
+    assert census["difference"]["estimate"] == 3143 and "not_comparable" not in census
 
 
 def test_the_sweep_skips_a_retired_source_and_says_which(monkeypatch, caplog):
