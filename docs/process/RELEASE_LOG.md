@@ -466,6 +466,7 @@
 
 ### 어드민 화면
 
+- 2026-10-31 [바뀐 화면 — 표 · 체인 편집기: 저장 답의 notes 를 저장 줄 밑에 그림](#2026-10-31--바뀐-화면--표--체인-편집기-저장-답의-notes-를-저장-줄-밑에-그림) — 보는 곳 어드민 Tables · Chain 편집기 저장
 - 2026-10-29 [도움말 선언 가이드가 일곱 — ai_report_tables 가 더해져 리포트 선언도 답한다 · 긴 절은 목록 항목에서도 잘린다](#2026-10-29--도움말-선언-가이드가-일곱--ai_report_tables-가-더해져-리포트-선언도-답한다--긴-절은-목록-항목에서도-잘린다) — 보는 곳 어드민 도움말의 declaration · 재기 help_bench --part declarations
 - 2026-10-29 [도움말 선언 가이드가 여섯 — ai_ask_tables 가 더해져 ask · report 선언(리포트 코멘트 칸 포함)도 답한다](#2026-10-29--도움말-선언-가이드가-여섯--ai_ask_tables-가-더해져-ask--report-선언리포트-코멘트-칸-포함도-답한다) — 보는 곳 어드민 도움말의 declaration · 재기 help_bench --part declarations
 - 2026-10-29 [새 기능 — 어드민 Help 선언 카드에 절을 고른 방법 한 줄: via embedding · via bm25](#2026-10-29--새-기능--어드민-help-선언-카드에-절을-고른-방법-한-줄-via-embedding--via-bm25) — 보는 곳 어드민 머리 Help
@@ -689,6 +690,12 @@
 
 
 
+
+## 2026-10-31 · 바뀐 화면 — 표 · 체인 편집기: 저장 답의 notes 를 저장 줄 밑에 그림
+
+- **바뀐 화면** — 표 · 체인 선언을 저장하면, 서버가 그 선언에서 «읽지 않는 칸»을 말한 문장(notes)이 저장 줄 밑에 한 줄씩 그대로 서고 경고색입니다. 예: 표 선언의 null_policy "skip" → «gal: null_policy cell this product does not read — qty: "skip". Only "nokey" on a key column is read - the rest is read as no null_policy.» 없으면 아무 줄도 없습니다. 전에는 저장만 되고 아무 말이 없었습니다 — 체인 저장 답은 6c6d76924 부터 notes 를 실었는데 화면이 안 그렸습니다. 표의 칼럼 타입 바꾸기 · 체인 이름 바꾸기 문장(note)도 같은 자리, 같은 경고색입니다.
+- **필요한 조건** — git pull · 서버 재기동(표 저장의 notes 는 ce00f4343 부터) · 화면 새로 고침.
+- **자세히** — `client2/src/raw_registry_panel.js` 의 저장 줄 — 두 편집기가 같은 자리를 지납니다(하니스 chain_rule_form H5d · table_config_panel C7b).
 
 ## 2026-10-31 · 바뀐 동작 — 그리드 숫자 칸 편집기: 글자 상자로, 친 글자를 그대로 보냄
 

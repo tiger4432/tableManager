@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **표 · 체인 편집기 — 저장 답의 notes 를 저장 줄 밑에 그림** — git pull · 서버 재기동 · 화면 새로 고침
+>
+> ```
+> 볼 곳    어드민 Tables 에서 표 선언에 "null_policy": {"<칸>": "skip"} 을 적고 Save
+> 답       저장 줄 밑 경고색 한 줄 «<표>: null_policy cell this product does not read — <칸>: "skip". Only "nokey" on a key column is read - the rest is read as no null_policy.»
+>          체인: 맨 위에 안 읽는 칸을 단 규칙을 저장하면 «<규칙>: top-level cell this product does not read — <칸>.»
+>          그 칸을 빼고 다시 Save → 줄 없음
+> 끄기     없음 — 화면만 바뀜
+> ```
+>
+> ---
+>
 > ## [10-31] **그리드 숫자 칸 편집기 — 글자 상자, 친 글자를 그대로 보냄** — git pull · 화면 새로 고침
 >
 > ```
