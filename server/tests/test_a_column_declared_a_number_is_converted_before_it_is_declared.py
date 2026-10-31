@@ -92,3 +92,72 @@ def test_a_stop_asked_before_the_transaction_leaves_the_column_as_it_was(pg_engi
         db.close()
         with pg_engine.begin() as conn:
             conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, table)))
+
+
+DECLARED_OVER = {"composite_key_source": ["k", "d"],
+                 "column_types": {"k": "datetime", "d": "string", "n": "number", "t": "datetime"}}
+
+
+@pytest.mark.pg
+def test_columns_already_declared_another_type_are_listed_and_the_ones_that_convert_convert(pg_engine, monkeypatch):
+    """Lead fd7ef4de1 (owner 10-21 «이미 되어 있는 건 어떡함», 10-31 ㄱ): a declaration that already names a type the
+    database does not hold - no save to catch it. The retroactive op lists them from schema_drift's type findings, by
+    the save's own judgment: a number and a time over text convert, a key column over text to a time is refused with
+    its reason, a time key column declared string converts in the key's spelling. The run converts those, table by
+    table, through the save's own conversion; the key stays, the table reads; the boot line counts them."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from conftest import PG_TEST_SCHEMA, retire_dynamic_model
+    from admin import retroactive, schema_drift
+    from database import crud, models
+
+    table = "zz_retype_declared"
+    monkeypatch.setitem(crud.TABLE_CONFIG, table, DECLARED_OVER)
+    written = []
+    monkeypatch.setattr("ledger.admin.set_column_type", lambda *a: written.append(a))
+    retire_dynamic_model(table)
+    with pg_engine.begin() as conn:
+        conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, table)))
+        conn.execute(text('CREATE TABLE "%s"."%s" (row_id varchar PRIMARY KEY, business_key_val varchar, created_at timestamptz, '
+                          'updated_at timestamptz, k varchar, d timestamptz, n varchar, t varchar)'
+                          % (PG_TEST_SCHEMA, table)))
+        conn.execute(text('INSERT INTO "%s"."%s" VALUES (\'r1\', \'K\', now(), now(), \'2026-10-03 12:00:00\', '
+                          '\'2026-10-03 12:00:00+09\', \'1.5\', \'2026-10-29 10:00:00\')' % (PG_TEST_SCHEMA, table)))
+    models.init_dynamic_models({table: DECLARED_OVER})
+    db = sessionmaker(bind=pg_engine)()
+
+    def kinds():
+        with pg_engine.connect() as conn:
+            return dict(conn.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE "
+                                          "table_schema = :s AND table_name = :t AND column_name IN ('k', 'd', 'n', 't')"),
+                                     {"s": PG_TEST_SCHEMA, "t": table}).fetchall())
+
+    try:
+        boot = [line for _level, line in schema_drift.banner_lines(schema_drift.check(pg_engine), "t")]
+        preview = retroactive.OPERATIONS["retype_declared_columns"]["count"](db, {}, 1000)
+        db.rollback()
+        listed = {c["column"]: c for c in preview["extra"]["columns"] if c["table"] == table}
+        stats = retroactive.OPERATIONS["retype_declared_columns"]["run"](db, {}, lambda *_: None)
+        db.rollback()
+        after = kinds()
+        read = db.query(models.DYNAMIC_TABLES[table]).count()
+    finally:
+        db.close()
+        retire_dynamic_model(table)
+        with pg_engine.begin() as conn:
+            conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, table)))
+
+    assert {column: c["verdict"] for column, c in listed.items()} == {
+        "d": retype.CONVERT, "n": retype.CONVERT, "t": retype.CONVERT, "k": retype.REFUSED}
+    assert listed["k"]["said"].startswith("it is a key - the row key - ")
+    assert all(c["rows"] == 1 and "estimated_lock_seconds" in c for c in listed.values())
+    assert "%s.k text -> datetime: it is a key - the row key - " % table in preview["detail"]
+    assert "%s.n text -> number: converts 1 row(s), est. lock " % table in preview["detail"]
+    assert any("of them can be converted on the retroactive tab" in line for line in boot), boot
+    mine = ["%s.%s" % (table, c) for c in ("d", "n", "t")]
+    assert [c for c in stats["converted"] if c.startswith(table + ".")] == mine and stats["refused"] == []
+    assert after == {"k": "character varying", "d": "character varying", "n": "double precision",
+                     "t": "timestamp with time zone"}
+    assert sorted(a for a in written if a[0] == table) == [(table, "d", "string"), (table, "n", "number"),
+                                                           (table, "t", "datetime")]
+    assert read == 1, "the table reads"

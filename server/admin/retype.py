@@ -97,6 +97,35 @@ def key_uses(table, column):
     return list(dict.fromkeys(uses))
 
 
+def judged(db, table, column, declared):
+    """THE answer for one column the queue reads - its preview and its conversion: (the database's family, the cell,
+    the values it cannot take, the verdict, the sentence)."""
+    physical = family(db.get_bind(), table, column)
+    cell = CELLS.get((physical, declared))
+    values = bad_values(db, table, column, cell) if cell else None
+    do, said = verdict(declared, physical, values, key_uses(table, column) if cell else ())
+    return physical, cell, values, do, said
+
+
+def declared_over(db):
+    """The columns a table declaration already names a type the database does not hold - declared before the save held
+    them (owner 10-21 «이미 되어 있는 건 어떡함», lead fd7ef4de1): `schema_drift`'s type findings, called and not found
+    again, on the declared tables, each with `judged`'s answer. A table models.py maps is not this queue's."""
+    from admin import schema_drift
+    from database import crud
+
+    out = []
+    for finding in schema_drift.check(db.get_bind()):
+        table, column = finding["table"], finding["column"]
+        declared = ((crud.TABLE_CONFIG.get(table) or {}).get("column_types") or {}).get(column)
+        if finding.get("kind") not in schema_drift.TYPE_KINDS or declared is None:
+            continue
+        physical, _cell, values, do, said = judged(db, table, column, declared)
+        out.append({"table": table, "column": column, "declared": declared, "family": physical, "verdict": do,
+                    "said": said, "bad_values": list(values or ())})
+    return out
+
+
 def hold(engine, table, declaration, previous=None):
     """-> (the declaration to write, [(column, held type, declared type)], notes): each column the save would convert
     has the database's type kept in its place. A key column the conversion would change raises the refusal, and so
@@ -272,11 +301,8 @@ def convert(db, table, column, declared, log, checkpoint=None):
     import db_safety
 
     out = {"table": table, "column": column, "type": declared, "converted": False, "indexes_rebuilt": []}
-    physical = family(db.get_bind(), table, column)
-    cell = CELLS.get((physical, declared))
-    if verdict(declared, physical)[0] != NONE:
-        do, said = verdict(declared, physical, bad_values(db, table, column, cell) if cell else None,
-                           key_uses(table, column))
+    physical, cell, _values, do, said = judged(db, table, column, declared)
+    if do != NONE:
         if do != CONVERT:
             raise RetroactiveRefused("%s.%s stays %s: %s" % (table, column, physical, said or "nothing to convert"))
         if checkpoint is not None and checkpoint(0, 1):

@@ -1841,10 +1841,7 @@ def _count_retype_column(db, params, scan_limit):
     from admin import retype
 
     table, column = params["table"], params["column"]
-    physical = retype.family(db.get_bind(), table, column)
-    cell = retype.CELLS.get((physical, params["type"]))
-    values = retype.bad_values(db, table, column, cell) if cell else None
-    do, said = retype.verdict(params["type"], physical, values, retype.key_uses(table, column) if cell else ())
+    physical, _cell, values, do, said = retype.judged(db, table, column, params["type"])
     rows = db.execute(text('SELECT count(*) FROM "%s"' % table.replace('"', '""'))).scalar() if physical else 0
     return {
         "affected": rows if do == retype.CONVERT else 0,
@@ -1860,6 +1857,59 @@ def _count_retype_column(db, params, scan_limit):
                      % retype.lock_estimate(db, table) if do == retype.CONVERT else "Nothing to convert."))),
         "extra": {"family": physical, "verdict": do, "bad_values": list(values or ())},
     }
+
+
+def _count_retype_declared(db, params, scan_limit):
+    """The columns already declared another type (lead fd7ef4de1): each one's table, its rows, whether it converts -
+    the refusal's sentence when not - and the table's estimated lock."""
+    from sqlalchemy import text
+    from admin import retype
+
+    columns, rows, lines = retype.declared_over(db), {}, []
+    for c in columns:
+        table = c["table"]
+        if table not in rows:
+            rows[table] = db.execute(text('SELECT count(*) FROM "%s"' % table.replace('"', '""'))).scalar()
+        c.update(rows=rows[table], estimated_lock_seconds=retype.lock_estimate(db, table))
+        lines.append("%s.%s %s -> %s: %s" % (
+            table, c["column"], c["family"], c["declared"],
+            "converts %d row(s), est. lock %s s (box rate)" % (c["rows"], c["estimated_lock_seconds"])
+            if c["verdict"] == retype.CONVERT else (c["said"] or "nothing to convert")))
+    affected = sum(c["rows"] for c in columns if c["verdict"] == retype.CONVERT)
+    return {
+        "affected": affected,
+        "absence": None if affected else ABSENCE_TRULY_NONE,
+        "affected_label": "rows to convert",
+        "count_kind": COUNT_EXACT,
+        "scanned": sum(rows.values()),
+        "scan_limit": scan_limit,
+        "truncated": False,
+        "detail": "\n".join(lines) or "No column is declared a type the database does not hold.",
+        "extra": {"columns": columns},
+    }
+
+
+def _run_retype_declared(db, params, log, control=None):
+    """The columns that convert, table by table - each through the save's own conversion (`retype.convert`), its
+    values judged again; a stop lands between columns, a refused one is said and the next goes on."""
+    from admin import retype
+
+    hook = _checkpoint(control)
+    columns = sorted((c for c in retype.declared_over(db) if c["verdict"] == retype.CONVERT),
+                     key=lambda c: (c["table"], c["column"]))
+    converted, refused = [], []
+    for at, c in enumerate(columns):
+        if hook and hook(at, len(columns)):
+            break
+        try:
+            retype.convert(db, c["table"], c["column"], c["declared"], log)
+            converted.append("%s.%s" % (c["table"], c["column"]))
+        except RetroactiveRefused as e:
+            refused.append(str(e))
+            log("[Retype] %s" % e)
+    stats = {"columns": len(columns), "converted": converted, "refused": refused}
+    _final_progress(control, len(converted), stats)
+    return stats
 
 
 def _retype_types():
@@ -2743,6 +2793,28 @@ OPERATIONS = {
         "commit_granularity": ("one transaction - the values checked, the indexes reading the column dropped, "
                                "the column converted, those indexes built again; then the declaration's one cell. A "
                                "stop lands before the transaction begins; once it has, it ends"),
+        "cli_only": [],
+    },
+    "retype_declared_columns": {
+        "label": "Convert the columns already declared another type",
+        "what_is_missing": ("a column the table declaration already names a number or a time (or text over a time) "
+                            "that the database still holds as before - declared before a save converted it"),
+        "downstream_note": ("Each table is locked while its column converts; afterwards every process reads the "
+                            "column as declared"),
+        "examples": ["선언은 숫자인데 DB 칸은 아직 글자로 남아 있다", "이미 숫자로 선언해 둔 칸들 한꺼번에 바꿔줘",
+                     "부팅 로그에 type-mismatch 칸이 떠"],
+        "next": [],
+        "params": [],
+        "count": _count_retype_declared,
+        "run": _run_retype_declared,
+        "judge": None,
+        "cli": "python -c \"from admin import retroactive; retroactive.run_here('retype_declared_columns', {})\"",
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("table by table, each column one transaction (retype_column's conversion); a stop "
+                               "lands between columns and a re-run finds only what is left"),
         "cli_only": [],
     },
 }

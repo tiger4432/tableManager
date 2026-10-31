@@ -226,7 +226,7 @@ COLLECTOR_OPS = ["collector_backfill"]
 SET_ASIDE_OPS = ["rerun_set_aside", "set_aside"]
 
 #: Operations that take no parameter - no name to judge (the withdrawal fold, eddf9e38e).
-NO_NAME_OPS = ["fold_withdrawal_events"]
+NO_NAME_OPS = ["fold_withdrawal_events", "retype_declared_columns"]
 
 
 @pytest.mark.parametrize("op", SET_ASIDE_OPS)

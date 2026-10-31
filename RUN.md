@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **소급 탭 — 이미 다른 타입으로 선언만 된 칼럼을 한 번에 바꿈** — git pull · 서버 재기동
+>
+> ```
+> 볼 곳    부팅 로그(server.log) [Schema] 타입 줄 밑 «N of them can be converted on the retroactive tab - «Convert the columns already declared another type» ...»
+>          줄이 없음 -> 바꿀 칸 없음
+> 다음     소급 탭 «Convert the columns already declared another type» -> Preview
+> 답의 뜻  <표>.<칸> text -> number: converts N row(s), est. lock S s   -> Run 이 바꿈 (표가 그동안 잠김)
+>          <표>.<칸> ...: it is a key - the row key - ...               -> 안 바꿈. 키 칸은 그대로 두고 새 칸을 체인으로 채움
+>          <표>.<칸> ...: N value(s) are not numbers, e.g. ...          -> 그 값을 고친 뒤 다시 Preview
+> 실행     Run: 바뀌는 칸만, 표 하나씩. 멈춤은 칸 사이
+> 끄는 법  되돌리기 커밋 하나 — op 가 탭에서 사라짐. 이미 바뀐 칸은 바뀐 타입 그대로 남음
+> ```
+>
+> ---
+>
 > ## [10-31] **표 선언 — 키 칸을 datetime 으로 새로 선언하면 저장이 거절** — git pull · 서버 재기동
 >
 > ```

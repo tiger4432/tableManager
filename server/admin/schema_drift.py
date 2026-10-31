@@ -475,6 +475,9 @@ def _type_findings(table, columns, actual_types, dynamic_names):
     printed the fact at all, on any boot, ever. INFO is printed daily by both
     boot paths and changes no exit code.
     """
+    from admin import retype
+    from database import crud
+
     out = []
     for name, col in sorted(columns.items()):
         actual = actual_types.get(name)
@@ -484,6 +487,9 @@ def _type_findings(table, columns, actual_types, dynamic_names):
         actual_family = _type_family(actual)
         if declared_family is None:
             continue
+        # the retroactive tab converts it, by its types - its preview reads the values and the keys (lead fd7ef4de1)
+        convertible = table in dynamic_names and retype.verdict(
+            ((crud.TABLE_CONFIG.get(table) or {}).get("column_types") or {}).get(name), actual_family)[0] == retype.CONVERT
         if declared_family == "number" and actual_family != "number":
             out.append({
                 "severity": "INFO", "kind": "type-breaking",
@@ -493,6 +499,7 @@ def _type_findings(table, columns, actual_types, dynamic_names):
                            f"type' - {name} is declared numeric and the database "
                            f"holds {actual}. Not only code that reads {name}."),
                 "remedy": _type_remedy(table, name, "number", actual, dynamic_names),
+                "convertible": convertible,
             })
             continue
         if actual_family is not None and actual_family != declared_family:
@@ -503,6 +510,7 @@ def _type_findings(table, columns, actual_types, dynamic_names):
                            f"{name} is declared {declared_family} and the database "
                            f"holds {actual}."),
                 "remedy": _type_remedy(table, name, declared_family, actual, dynamic_names),
+                "convertible": convertible,
             })
     return out
 
@@ -832,6 +840,11 @@ def _type_section(types):
     out = [(level, head + "."),
            (level, "  Not blocking, and no migration will repair it by itself - "
                    "a type is never altered automatically here (see _sync_repairs).")]
+    convertible = sum(1 for f in types if f.get("convertible"))
+    if convertible:
+        out.append((level, f"  {convertible} of them can be converted on the retroactive tab - «Convert the columns "
+                           f"already declared another type» (retype_declared_columns): its preview reads the values "
+                           f"and the keys."))
     out += _finding_lines(breaking, "warning")
     out += _finding_lines([f for f in types if f["kind"] != "type-breaking"], "info")
     return out
