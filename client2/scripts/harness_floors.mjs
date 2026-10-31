@@ -213,7 +213,8 @@ export const FLOORS = new Map([
   // 89 -> 93 (lead 72aa14785 answer): row 3 only when the three rows can write the key as it is, and a
   // copy that leaves it out says why (E10 E11, P25 P26).
   // 120 -> 123 (lead 5ef827675, A9 I1 P42): the column type word image: read, saved, reopened, copied; a near miss refused.
-  ['table_config_panel_harness.mjs', 123],
+  // 123 -> 124 (lead 10-31, C7b): the save answer's note and notes under the saved line.
+  ['table_config_panel_harness.mjs', 124],
   // New with lead 72aa14785: the shared clipboard writer (moved from map_editor.js) run as it ships -
   // the map harnesses replace its name and the table harness injects its own, so nothing else runs it.
   ['clipboard_write_harness.mjs', 8],
@@ -1401,7 +1402,8 @@ export const FLOORS = new Map([
   // 103 -> 104 (W7): the server's 「not seen」 is said, not drawn as a wait.
   // 104 -> 106 (lead c6a8c069c: the save says which rule it opened, none for a new one (C4b, D4)).
   // 106 -> 108 (lead 43f4823dc: the save answer's note under the saved line, none when it carries none (H5b, H5c)).
-  ['chain_rule_form_harness.mjs', 108],
+  // 108 -> 109 (lead 10-31, H5d): the save answer's notes under its note, a line each; none, no line.
+  ['chain_rule_form_harness.mjs', 109],
   // 21 -> 23 (F1-F2, lead 5793b49fb): the line saying why it asks is the caller's when given.
   ['clipboard_type_modal_harness.mjs', 23],
   // New with lead 8771e43ac 1: the table's smart_paste order picks the format without asking; no

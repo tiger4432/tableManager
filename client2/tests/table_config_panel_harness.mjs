@@ -337,6 +337,13 @@ async function pasteSuite(m) {
       byClass(h7, 'table-config-unsaved').length === 1
         && JSON.stringify(Object.keys((rawOf(h7) || {}).column_types || {})) === '["lot","qty"]');
 
+    const { host: h7b, p: p7b } = panel();
+    const NOTED = 'lot_event: null_policy cell this product does not read - lot: "skip".';
+    p7b.render(PASTE_PAYLOAD, { saved: { name: 'lot_event', count: 1, backup: 'b.bak', note: 'qty is retyped', notes: [NOTED] } });
+    const saidLines = byClass(h7b, 'table-config-saved-note').map((n) => n.textContent);
+    say('C7b the table save answer\'s note and notes stand under the saved line, verbatim (lead 10-31)',
+      JSON.stringify(saidLines) === JSON.stringify(['qty is retyped', NOTED]), JSON.stringify(saidLines));
+
     const { host: h8, p: p8 } = panel();
     p8.render(PASTE_PAYLOAD);
     pasteInto(h8, SHEET(['lot', 'qty'], ['string', 'number']));

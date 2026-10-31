@@ -453,6 +453,15 @@ function suite(M) {
   const noteLines = byCls(clock.host, 'chain-rule-saved-note').map((n) => n.textContent);
   ok(noteLines.length === 1 && noteLines[0] === NOTE,
     `H5c the answer's note stands under the saved line, verbatim -- ${JSON.stringify(noteLines)}`);
+  const NOTES = ['rules.alpha2: null_policy cell this product does not read - slot: "skip".', 'rules.alpha2: a second cell it does not read.'];
+  clock.panel.render(payloadFor(SKELETON, { name: 'alpha2', trigger_table: 'stored' }),
+                     { saved: { name: 'alpha2', rules: ['alpha2', 'beta'], backup: '/box/bak', note: NOTE, notes: NOTES } });
+  const notesLines = byCls(clock.host, 'chain-rule-saved-note').map((n) => n.textContent);
+  clock.panel.render(payloadFor(SKELETON, { name: 'alpha2', trigger_table: 'stored' }),
+                     { saved: { name: 'alpha2', rules: ['alpha2', 'beta'], backup: '/box/bak', notes: [] } });
+  const noNotes = byCls(clock.host, 'chain-rule-saved-note').length;
+  ok(JSON.stringify(notesLines) === JSON.stringify([NOTE, ...NOTES]) && noNotes === 0,
+    `H5d the answer's notes stand under its note, a line each, verbatim; none, no line (lead 10-31) -- ${JSON.stringify({ notesLines, noNotes })}`);
   // ⚠️ NOTHING OPEN MEANS NOTHING TO PROTECT -- the tab's first read is a background one, and a
   //    guard that refused it would open the tab on an empty panel.
   const first = makePanel(M, SPEC);
@@ -936,7 +945,12 @@ const DEFECTS = [
   ['the save answer\'s note is not drawn',
     s => s.replace('      if (view.saved.note) this.root.appendChild(this._line(`${spec.cls}-saved-note`, view.saved.note));\n', '')],
   ['the view drops the save answer\'s note',
-    s => s.replace("                        note: String(opts.saved.note || '') })", "                        note: '' })")],
+    s => s.replace("                        note: String(opts.saved.note || ''),", "                        note: '',")],
+  // lead 10-31: what the loader will say of a saved declaration is the server's to say and the screen's to show.
+  ['the save answer\'s notes are not drawn',
+    s => s.replace('      for (const said of view.saved.notes) this.root.appendChild(this._line(`${spec.cls}-saved-note`, said));\n', '')],
+  ['the view drops the save answer\'s notes',
+    s => s.replace('(Array.isArray(opts.saved.notes) ? opts.saved.notes : [])', '[]')],
   // lead c6a8c069c: a rename that does not say which rule it was is a copy on the server.
   ['the save does not say which document it opened',
     s => s.replace(',\n        ...(this.newMode ? {} : { from: view.name }) });', ' });')],
