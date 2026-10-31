@@ -19,7 +19,7 @@ from chain import unique_key                                       # noqa: E402
 from database.database import Base                                 # noqa: E402
 from database import crud, models                                  # noqa: E402
 
-VALUES = [None, "", " ", "\t", "　", float("nan"), float("inf"), float("-inf"), 0, 0.0,
+VALUES = [None, "", " ", "\t", "　", float("nan"), float("inf"), float("-inf"), 2.0 ** 53, -1e23, 0, 0.0,
           False, "0", "nan", "NaN", "Infinity", "x"]
 
 
@@ -52,13 +52,15 @@ def test_the_index_report_reads_a_nan_key_as_a_blank_like_null(pg_engine):
             {"row_id": "N1", "business_key_val": "N1", "k": float("nan")},
             {"row_id": "N2", "business_key_val": "N2", "k": float("nan")},
             {"row_id": "E1", "business_key_val": "E1", "k": None},
-            {"row_id": "E2", "business_key_val": "E2", "k": None}])
+            {"row_id": "E2", "business_key_val": "E2", "k": None},
+            {"row_id": "B1", "business_key_val": "B1", "k": 2.0 ** 53},            # past 2^53: blank too (lead 10-31)
+            {"row_id": "B2", "business_key_val": "B2", "k": -1e23}])
         db.commit()
 
         duplicates, blanks = unique_key.duplicate_keys(db, TABLE, ["k"])
 
         assert duplicates == []
-        assert blanks == [{"key": [""], "rows": 4}]
+        assert blanks == [{"key": [""], "rows": 6}], "NaN and past-2^53 keys are COUNTED with the blank ones"
     finally:
         db.rollback()
         db.close()

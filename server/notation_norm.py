@@ -770,27 +770,32 @@ def key_instant_sql():
 KEY_NUMBER_FUNCTION = "assy_key_number"
 
 #: `map_overlay.canonical_key_value(v, "number")` in PostgreSQL, for a float or numeric column (lead 10-31 ②: the
-#: ledger's key speller and the join's are one; `::text` read 1e15 as '1e+15', NaN as 'NaN'). A float8 NaN · ±inf ->
-#: NULL (`crud.is_blank_key_part`), an integral value -> its integer, else the float's shortest round trip (Python's
-#: repr). ⚠️ Python reads a numeric through float and keeps its NaN as the text 'NaN' (only a float NaN is blank) -
-#: mirrored, not mended here. ⚠️ An integral float8 past 2^63 goes through
-#: numeric, PostgreSQL's shortest decimal, where Python spells int(v)'s binary digits - 1e23 parts; and Python reads
-#: a numeric past 2^53 through float. Box and lag key columns hold neither (10-31 lv/spell_count.py: 0).
-#: Created beside `assy_key_instant` by `models.sync_dynamic_tables_schema`.
+#: ledger's key speller and the join's are one; `::text` read 1e15 as '1e+15', NaN as 'NaN'). NaN · ±inf · |x| >=
+#: `crud.KEY_EXACT_LIMIT` -> NULL (`crud.is_blank_key_part`), a whole number -> its integer, else float8::text
+#: (`map_overlay.float_key_text` is Python's copy of it). A numeric is read as Python reads it: an integer text
+#: exactly, anything else through float8. Created beside `assy_key_instant` by `models.sync_dynamic_tables_schema`.
+#: ⚠️ Below 2^53 the two engines' shortest spellings are the same on every value the contract holds; that they agree
+#: on EVERY value (the round-to-even edge where 1e23 parted) is not proven - the shadow board is where it would show.
 KEY_NUMBER_SQL = r"""
 CREATE OR REPLACE FUNCTION assy_key_number(v double precision) RETURNS text
 LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $f$
-  SELECT CASE WHEN v::text IN ('NaN', 'Infinity', '-Infinity') THEN NULL
-              WHEN v <> trunc(v) THEN v::text
-              WHEN abs(v) < 9.2e18 THEN v::bigint::text
-              ELSE v::numeric::text END
+  SELECT CASE WHEN v::text IN ('NaN', 'Infinity', '-Infinity') OR abs(v) >= __EXACT__ THEN NULL
+              WHEN v = trunc(v) THEN v::bigint::text
+              ELSE v::text END
 $f$;
 CREATE OR REPLACE FUNCTION assy_key_number(v numeric) RETURNS text
-LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $f$
-  SELECT CASE WHEN v = trunc(v) THEN trunc(v)::text
-              ELSE v::float8::text END
+LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path FROM CURRENT AS $f$
+  SELECT CASE WHEN v::text ~ '^-?[0-9]+$' THEN v::text
+              ELSE assy_key_number(v::float8) END
 $f$;
 """
+
+
+def key_number_sql():
+    """`KEY_NUMBER_SQL` with `crud.KEY_EXACT_LIMIT` written in - one constant for both spellers."""
+    from database import crud
+
+    return KEY_NUMBER_SQL.replace("__EXACT__", str(crud.KEY_EXACT_LIMIT))
 
 
 def _key_instant_call(inner_sql: str, zone: str) -> str:

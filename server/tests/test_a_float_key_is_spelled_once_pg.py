@@ -19,17 +19,25 @@ from chain import join_key_index as vjc
 
 pytestmark = pytest.mark.pg
 
-FLOATS = [(9.0, "9"), (-0.0, "0"), (1.5, "1.5"), (1e15, "1000000000000000"), (1e16, "10000000000000000"),
-          (1e19, "10000000000000000000"), (0.0001, "0.0001"), (1.5e-07, "1.5e-07"), (123456.789, "123456.789"),
+#: a whole number is its integer; a fraction is float8::text (the exponent from 1e15 up); NaN · ±inf · |x| >= 2^53
+#: (`crud.KEY_EXACT_LIMIT`) are blank - such a float cannot tell neighbouring integers apart, and the engines parted
+#: on 1e23 (lead 10-31 ㄱ). The near-edge fractions are where an unproven disagreement below 2^53 would show.
+FLOATS = [(9.0, "9"), (-0.0, "0"), (1.5, "1.5"), (1e15, "1000000000000000"), (2.0 ** 53 - 1, "9007199254740991"),
+          (2.0 ** 53, None), (2.0 ** 53 + 2, None), (-(2.0 ** 53), None), (1e16, None), (1e23, None),
+          (1000000000000000.5, "1.0000000000000005e+15"), (2.0 ** 52 + 0.5, "4503599627370496"),
+          (2.0 ** 51 + 0.5, "2.2517998136852485e+15"),
+          (0.1 + 0.2, "0.30000000000000004"), (1 / 3, "0.3333333333333333"), (1e-07, "1e-07"), (5e-324, "5e-324"),
+          (0.0001, "0.0001"), (1.5e-07, "1.5e-07"), (123456.789, "123456.789"),
           (math.nan, None), (math.inf, None), (-math.inf, None), (None, None)]
-#: ⚠️ a numeric NaN is the text 'NaN' to Python (only a float NaN is blank) - recorded as Python answers it
-NUMERICS = [("9.0", "9"), ("1.50", "1.5"), ("0.1000", "0.1"), ("12", "12"), ("123.4500", "123.45"), ("NaN", "NaN")]
+#: a numeric reads as Python reads it: an integer text exactly, anything else through float - NaN blank too
+NUMERICS = [("9.0", "9"), ("1.50", "1.5"), ("0.1000", "0.1"), ("12", "12"), ("123.4500", "123.45"), ("NaN", None),
+            ("12345678901234567", "12345678901234567"), ("12345678901234567.0", None)]
 
 
 @pytest.fixture(name="pg")
 def fixture_pg(pg_engine):
     with pg_engine.begin() as conn:
-        conn.connection.cursor().execute(notation_norm.KEY_NUMBER_SQL)
+        conn.connection.cursor().execute(notation_norm.key_number_sql())
     return pg_engine
 
 

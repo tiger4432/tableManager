@@ -125,15 +125,26 @@ def load_overlay_config(path: str = None) -> dict:
 
 _CANON_INT_RE = re.compile(r"^[+-]?[0-9]+$")
 
+def float_key_text(f):
+    """A key float (finite, below `crud.KEY_EXACT_LIMIT`) as PostgreSQL's float8::text spells it: the shortest round
+    trip (Python's repr), with an exponent from 1e15 up where repr writes all the digits."""
+    r = repr(f)
+    if "e" in r or abs(f) < 1e15:
+        return r
+    whole, _, part = r.lstrip("-").partition(".")
+    digits = (whole + part).rstrip("0")
+    return "%s%s%se+%02d" % ("-" if f < 0 else "", digits[0], "." + digits[1:] if digits[1:] else "", len(whole) - 1)
+
 
 def canonical_key_value(value, col_type):
     """Value + DECLARED column type -> canonical key string.
 
     - "number": an integer text is read as an integer - exactly, no float on the way ('01' /
       '1' / ' 1 ' are one key, and 20 digits stay 20 digits); any other number is read as a
-      float: integral -> its integer ('1.0' · 1.0 · '1e3'), else the float's short spelling
-      ('1.50' · Decimal('1.50') -> '1.5', owner 10-20). An unreadable or non-finite value keeps
-      its trimmed original — the lookup misses honestly instead of inventing a key.
+      float: integral -> its integer ('1.0' · 1.0 · '1e3'), else the float's short spelling as PostgreSQL writes it
+      ('1.50' · Decimal('1.50') -> '1.5', owner 10-20). NaN / inf / |x| >= 2^53, in any carrier, is blank -> None
+      (`crud.is_blank_key_part`, lead 10-31). An unreadable value keeps its trimmed original — the lookup misses
+      honestly instead of inventing a key.
       🔴 THE ONE SPELLER OF A KEY (lead 88761926b): `crud.key_part` and `canonical_bind_value`
       look the declared type up and call this; a key compared anywhere passes here.
     - "datetime": its instant on the zone's wall clock - ISO, `T`, the zone's offset, microseconds when not 0
@@ -162,9 +173,9 @@ def canonical_key_value(value, col_type):
             f = float(value)
         except (TypeError, ValueError):
             return s
-        if not math.isfinite(f):
-            return s
-        return str(int(f)) if f.is_integer() else repr(f)
+        if crud.is_blank_key_part(f):           # NaN / inf / past 2^53, whatever carried it (lead 10-31)
+            return None
+        return str(int(f)) if f.is_integer() else float_key_text(f)
     if col_type == "datetime":
         import expression
 

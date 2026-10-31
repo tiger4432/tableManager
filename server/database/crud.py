@@ -3557,10 +3557,17 @@ def is_blank_key_part(value) -> bool:
     `blank_to_null` - places where calling a NaN blank would change what gets WRITTEN, not
     just what gets refused. Whether that is also right is a separate measurement (lead PM,
     2026-09-04); until it is made, only identity is answered here.
+
+    🔴 A FLOAT FROM `KEY_EXACT_LIMIT` UP IS NOT AN IDENTITY EITHER (lead 10-31): it cannot tell neighbouring whole
+    numbers apart, and PostgreSQL and Python spell some of them differently (1e23: '9.999999999999999e+22' / '1e+23').
     """
-    if isinstance(value, float) and not math.isfinite(value):
+    if isinstance(value, float) and not (math.isfinite(value) and abs(value) < KEY_EXACT_LIMIT):
         return True
     return is_blank_value(value)
+
+
+#: The float magnitude from which a key part is blank (`is_blank_key_part`) - written into `notation_norm.KEY_NUMBER_SQL`
+KEY_EXACT_LIMIT = 2 ** 53
 
 
 def every_key_part_blank(key) -> bool:
