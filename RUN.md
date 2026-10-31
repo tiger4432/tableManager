@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **쓰기 문 — 존 없는 시각을 철자와 상관없이 expression_time_zone 으로 저장** — git pull · 서버 · 워처 · 체인 워커 재기동
+>
+> ```
+> 무엇     2026/10/29 · 2026.10.29 · 20261029 같은 PG 만 읽는 꼴도 PG 에 expression_time_zone 으로 물어 받은 순간으로 저장
+>          전: 글자로 넘겨 DB 세션 TimeZone 으로 읽힘 (ISO 꼴만 expression_time_zone)
+> 확인     cd server && python -c "from database.database import engine; from sqlalchemy import text; import expression; c = engine.connect(); print('DB', c.execute(text('SHOW TimeZone')).scalar(), '| expression_time_zone', expression.time_zone().key)"
+> 답의 뜻  둘이 같다   -> 할 일 없음. 저장되는 순간이 전과 같음 (이 박스: Asia/Seoul | Asia/Seoul)
+>          둘이 다르다 -> 이 착지 전 PG 만 읽는 꼴로 들어온 시각은 두 존의 차이만큼 어긋나 있을 수 있음
+>                       옛 행은 안 고침(소급 없음). 그 파일을 다시 읽으면 바로잡힌 순간으로 써짐 — 칸 값이 바뀌어 감사 · 체인이 돎
+> 처음 다시 읽기  그런 꼴로 든 값 칸은 출처 층 글자가 ISO 로 한 번 다시 써지고 ingested_at 이 한 번 움직임 (같은 존 설치: 칸 값 · 감사 · 체인 그대로)
+> 이 고침 밖  키 칸이 datetime 인 옛 표 — 그 칸은 오늘처럼 온 글자 그대로 저장 · 키도 그 글자 (존 결함이 남음)
+> 찾기     cd server && python -c "from database import crud; from chain.cell_layer import key_columns; print([(t, c) for t in sorted(crud.TABLE_CONFIG) for c in sorted(key_columns(t)) if (crud.TABLE_CONFIG[t].get('column_types') or {}).get(c) == 'datetime'])"
+> 답의 뜻  []  -> 그런 표 없음
+>          [(표, 칸), ...]  -> 그 칸의 존 결함은 남음 (이 박스: inspection_run.observed_at · lot_slot_move.event_time · step_inspection_run.observed_at)
+>          고치는 길: 어드민 Tables 에서 그 칸의 타입을 "string" 으로 저장 -> 재해석 큐의 retype 이 시각을 키 철자 그대로 글자로 바꿈
+> 끄는 법  되돌리기 커밋 하나
+> ```
+>
+> ---
+>
 > ## [10-31] **nokey 지문의 시각 — 판독기가 못 읽는 철자는 DB 에 물어 접음** — git pull · 서버 · 워처 재기동
 >
 > ```
@@ -3530,7 +3550,8 @@
 > ## [10-20] **시간대 없이 쓴 시각도 한국 시간으로 저장 — 세션 시간대와 무관 (총괄 d94342107)** — git pull · 런처 재기동
 >
 > ```
-> 무엇     쓰기 문이 «2026-08-14 00:03» 같은 시각을 expression_time_zone 으로 읽어 «…+09:00» 을 붙여 넘김 — 물리 칸이 시각 타입일 때만. datetime 으로 선언된 글자 칸은 적은 그대로(키는 같은 순간). 오프셋 있는 값은 그대로. 소급 없음
+> 무엇     🆕 10-31 PG 만 읽는 꼴(2026/10/29 …)까지는 이 블록이 아니라 맨 위 10-31 «쓰기 문 — 존 없는 시각» 블록
+>          쓰기 문이 «2026-08-14 00:03» 같은 시각을 expression_time_zone 으로 읽어 «…+09:00» 을 붙여 넘김 — 물리 칸이 시각 타입일 때만. datetime 으로 선언된 글자 칸은 적은 그대로(키는 같은 순간). 오프셋 있는 값은 그대로. 소급 없음
 > 볼 것     새로 쓴 행의 datetime 칸 = 그 시각의 한국 시간 (PG 세션 TimeZone 이 UTC 여도). watcher.log 청크 줄 끝 « | timezone_naive: <표.칸> N» · chain_worker.log [LayerHealth] 줄은 전처럼 셈(«오프셋 없이 왔다»)
 > 되돌리기  git revert 127daba3a 3ea1ae778 -> 런처 재기동
 > ```

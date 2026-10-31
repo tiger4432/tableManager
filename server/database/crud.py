@@ -1306,9 +1306,12 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
     # load-bearing today, and doing it first keeps "normalize, then sanitize" readable.
     return sanitize_to_utf8(normalize_stored_text(value))
 
-def times_the_database_refuses(db: Session, table_name: str, updates) -> dict:
-    """`{column: {spelling, ...}}` - the values (as `str(value).strip()`) headed for this table's time columns that PostgreSQL will not read as a
-    timestamptz, asked of PostgreSQL itself (lead 10-29). Measured on 24 spellings: our reader (`expression.TIME`)
+def times_the_database_refuses(db: Session, table_name: str, updates) -> tuple:
+    """`({column: {spelling, ...}}, {column: {spelling: timestamptz}})` - the values (as `str(value).strip()`) headed for this table's time columns that PostgreSQL will not read as a
+    timestamptz, asked of PostgreSQL itself (lead 10-29), and its reading of the rest: the write puts that moment in
+    the batch ahead of the key, so a time without a zone is stored on `expression_time_zone` whichever spelling it came
+    in (lead 10-31 - the text went to PostgreSQL, which read it on the session's zone, while our reader's ISO went on
+    this one). Measured on 24 spellings: our reader (`expression.TIME`)
     and PostgreSQL part on nine - «2026.10.29», «2026/10/29», «3:05 PM», «20261029» ... are taken by PostgreSQL and
     not by us - so our reader cannot be the judge without dropping values that load today.
 
@@ -1324,12 +1327,15 @@ def times_the_database_refuses(db: Session, table_name: str, updates) -> dict:
             spelling = time_text_to_ask(table_name, column, types.get(column), value)
             if spelling is not None:
                 asked.setdefault(spelling, set()).add(column)
-    _readings, refused = times_postgresql_reads(db, asked)
-    out = {}
-    for spelling in refused:
-        for column in asked[spelling]:
-            out.setdefault(column, set()).add(spelling)
-    return out
+    readings, refused = times_postgresql_reads(db, asked)
+    out, read = {}, {}
+    for spelling, columns in asked.items():
+        for column in columns:
+            if spelling in refused:
+                out.setdefault(column, set()).add(spelling)
+            elif spelling in readings:
+                read.setdefault(column, {})[spelling] = readings[spelling]
+    return out, read
 
 
 def time_text_to_ask(table_name: str, column: str, declared_type, value):
@@ -5854,6 +5860,19 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # row - the business key column included. Hoisting this above the purge would turn
         # "delete this map" into "delete this one die". Here, the resolver sees exactly
         # the payload it saw before.
+        # A time PostgreSQL reads and our reader does not («2026/10/29») goes on as PostgreSQL's moment on
+        # expression_time_zone (lead 10-31) - not in a key column: its spelling is the row's identity (owner 10-21 «키 칸은
+        # 시간 절대 안 쓰는 걸로», 총괄 d5cf3a954), and an old table's key column keeps the text it came as.
+        from chain.cell_layer import key_columns
+
+        refused_times, read_times = times_the_database_refuses(db, table_name, batch.updates)
+        read_times = {column: readings for column, readings in read_times.items()
+                      if column not in key_columns(table_name)}
+        for item in batch.updates:
+            for column, readings in read_times.items():
+                value = item.updates.get(column)
+                if value is not None and str(value).strip() in readings:
+                    item.updates[column] = readings[str(value).strip()].isoformat()
         fill_nokey_keys(table_name, batch)
         for item in batch.updates:
             assemble_composite_business_key(table_name, item)
@@ -6025,7 +6044,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # what is the same for every row of this batch, once (총괄 249b43409) - the keys were assembled above
         plan = {"keys_assembled": True, "loadable": frozenset(loadable_columns(TABLE_CONFIG.get(table_name, {}))),
                 "unmapped": {}, "ranks": {}, "map_judged": map_judged, "receipts": {},
-                "refused_times": times_the_database_refuses(db, table_name, batch.updates)}
+                "refused_times": refused_times}
         with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:

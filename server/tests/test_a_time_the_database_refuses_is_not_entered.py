@@ -98,9 +98,50 @@ def test_the_cost_of_asking(table, capsys):
     out = {}
     for name, items in (("all_good", good), ("ten_bad", bad)):
         started = time.perf_counter()
-        refused = crud.times_the_database_refuses(table, T, items)
+        refused, _read = crud.times_the_database_refuses(table, T, items)
         out[name] = (round((time.perf_counter() - started) * 1000, 1), len(refused.get("at", ())))
     table.rollback()
     with capsys.disabled():
         print("\nCOST ms, refused:", out)
     assert out["all_good"][1] == 0 and out["ten_bad"][1] == 10
+
+
+ONE_MOMENT = {"A": "2026-10-29 00:00:00", "B": "2026-10-29", "C": "2026-10-29T00:00:00", "D": "2026/10/29",
+              "E": "2026.10.29", "F": "2026-10-29 00:00:00+09:00"}
+
+
+@pytest.mark.parametrize("session_zone", ["UTC", "Asia/Seoul"])
+def test_a_time_without_a_zone_is_stored_on_expression_time_zone(table, pg_engine, monkeypatch, session_zone):
+    """lead 10-31: one zone - our reader's ISO went on expression_time_zone while «2026/10/29» went to PostgreSQL as
+    text, read on the session's zone (measured: 15:00 and 00:00 UTC under a UTC session). The write passes
+    PostgreSQL's reading, asked on expression_time_zone; a session on that zone stores what it stored before. One
+    connection, its zone set for the session: the write commits on the way."""
+    import expression
+    from sqlalchemy.orm import Session
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(expression, "time_zone", lambda: ZoneInfo("Asia/Seoul"))
+    utc = "SELECT %s, to_char(at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') FROM \"%s\".\"%s\" ORDER BY 1"
+    conn = pg_engine.connect()
+    try:
+        conn.execute(text("SELECT set_config('TimeZone', :zone, false)"), {"zone": session_zone})
+        conn.commit()
+        own = conn.execute(text("SELECT to_char(CAST('2026/10/29' AS timestamptz) AT TIME ZONE 'UTC', "
+                                "'YYYY-MM-DD HH24:MI')")).scalar()
+        conn.rollback()
+        db = Session(bind=conn)
+        crud.apply_batch_updates(db, T, schemas.GeneralUpdateBatch(updates=_items(list(ONE_MOMENT.items())),
+                                                                   transaction_id="tx-zone"))
+        db.commit()
+        zone_after = db.execute(text("SHOW TimeZone")).scalar()
+        stored = dict(db.execute(text(utc % ("part_no", S, T))).fetchall())
+        db.close()
+    finally:
+        conn.rollback()
+        conn.execute(text("RESET TimeZone"))
+        conn.commit()
+        conn.close()
+
+    assert own == ("2026-10-29 00:00" if session_zone == "UTC" else "2026-10-28 15:00"), "CANARY: the session's zone"
+    assert zone_after == session_zone, "CANARY: the write ran on that connection, its zone kept"
+    assert stored == {key: "2026-10-28 15:00" for key in ONE_MOMENT}
