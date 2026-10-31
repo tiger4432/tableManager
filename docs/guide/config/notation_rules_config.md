@@ -20,6 +20,8 @@
   key expression: notation_norm.key_expression_sql(column, rules)                 (SQLAlchemy - what a join COMPARES)
                   notation_norm.key_expression_text(inner_sql, rules, text_column)  (PG text - what an index is BUILT on)
                   = coalesce(fold(col), '') ; non-text column -> coalesce(fold(col::text), '')   (S-245 ddd5b3ba, 2026-09-15)
+                  except a datetime column -> assy_key_instant(col, zone) (b3a6e64f7, 10-20) and a float / numeric
+                  column -> assy_key_number(col), the ledger's spelling (363775bfd, 10-31)
   consumers:      virtual_join_executor.join_onclause      (the ON clause, both sides)
                   chain.join_key_index.index_key_expression / required_index_ddl   (decides text-or-not: it holds the table; moved 21abf176, virtual_join.config re-imports it)
                   chain.unique_key                         (duplicate probe groups by the same expression; moved 21abf176)
@@ -300,7 +302,7 @@ GET /admin/config/notation/preview?table=dt_log&column=core_lot 가 병합군으
 
 ## 6. 🔴 소비자 — 가상 조인, 그리고 **평범한 UNIQUE 인덱스로는 안 되는 이유**
 
-이 선언을 읽는 소비자는 **키 비교** 하나입니다 — 다만 그 철자는 ON 절이 아니라 **키 식** `notation_norm.key_expression_sql`(조인이 비교하는 것) · `key_expression_text`(인덱스가 서는 것)에 있고, 네 자리가 그것을 지납니다: 가상 조인 ON 절(`virtual_join_executor.join_onclause`) · 인덱스 DDL(`virtual_join_config.index_key_expression`) · 중복 탐침(`virtual_join.unique_key`) · 통합 join 의 쓰기 조인(`chain/join_into`)(S-245 `ddd5b3ba`). 키 식은 `coalesce(fold(col), '')` 이고 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 입니다 — 텍스트 컬럼은 바이트 그대로라 어제 세운 인덱스에 오늘도 맞습니다.
+이 선언을 읽는 소비자는 **키 비교** 하나입니다 — 다만 그 철자는 ON 절이 아니라 **키 식** `notation_norm.key_expression_sql`(조인이 비교하는 것) · `key_expression_text`(인덱스가 서는 것)에 있고, 네 자리가 그것을 지납니다: 가상 조인 ON 절(`virtual_join_executor.join_onclause`) · 인덱스 DDL(`virtual_join_config.index_key_expression`) · 중복 탐침(`virtual_join.unique_key`) · 통합 join 의 쓰기 조인(`chain/join_into`)(S-245 `ddd5b3ba`). 키 식은 `coalesce(fold(col), '')` 이고 컬럼이 텍스트가 아니면 `coalesce(fold(col::text), '')` 입니다(🆕 시각 칸은 `assy_key_instant(col, zone)` — 10-20 `b3a6e64f7`, float · numeric 칸은 원장 철자와 같은 `assy_key_number(col)` — 10-31 `363775bfd`) — 텍스트 컬럼은 바이트 그대로라 어제 세운 인덱스에 오늘도 맞습니다.
 
 **① 어느 한쪽이라도 선언됐으면 양쪽이 접힙니다.** 한쪽만 접을 수 있는 인자도, 플래그도, 호출 모양도 **일부러 없습니다**(`notation_norm.join_pair_rules`). 양쪽이 서로 다른 규칙으로 선언돼 있으면 유효 집합은 **합집합**입니다 — 폴드는 컬럼의 성질이 아니라 **비교의 성질**이고, 합집합은 두 선언을 모두 만족하는 최소 집합이자 **더 합칠 수는 있어도 매치를 잃지는 않는** 유일한 단조 선택입니다.
 
