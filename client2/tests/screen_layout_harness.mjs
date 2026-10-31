@@ -1305,6 +1305,26 @@ CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'contents', at: 'r
   wrap.scrollTop = 0;
   return null;
 })()` });
+// A count's detail written a line per column (retype_declared_columns) keeps its lines in the preview box and the
+// confirm, in this page's own CSS - a box shaped as retroCountEl and retroConfirmEl draw it (lead 10-31).
+CELLS.push({ entry: 'admin.html', after: 'Retroactive', rule: 'detail lines', at: 'retroactive-body', expr: `(() => {
+  const host = document.getElementById('retroactive-body');
+  if (!host) return 'no retroactive body';
+  const drawn = [['cfg-dryrun', 'cfg-detail retro-detail'], ['retro-confirm', 'cfg-detail']].map(([outer, inner]) => {
+    const box = document.createElement('div');
+    box.className = outer;
+    const line = document.createElement('div');
+    line.className = inner;
+    line.textContent = 't.n text -> number: converts 3 row(s)\\nt.k text -> datetime: it is a key\\nt.q text -> number: converts 1 row(s)';
+    box.appendChild(line);
+    host.appendChild(box);
+    const lh = parseFloat(getComputedStyle(line).lineHeight) || parseFloat(getComputedStyle(line).fontSize) * 1.2;
+    const lines = Math.round(line.clientHeight / lh);
+    box.remove();
+    return outer + ' ' + lines;
+  });
+  return drawn.every((said) => said.endsWith(' 3')) ? null : 'a three-line detail drawn as ' + drawn.join(', ') + ' line(s)';
+})()` });
 // The walk table as the lead reviewed it (34d91c09d gate), asked in each theme after its two steps.
 const SIDE_CELLS = [
   ['Δ in view', `(() => {

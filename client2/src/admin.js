@@ -3524,7 +3524,7 @@ function retroExtraBoxes(extras) {
 function retroCountEl(cached, stale) {
   const box = cfgEl('div', 'cfg-dryrun');
   if (!cached.ok) {
-    box.appendChild(cfgEl('div', 'cfg-detail', cached.failure || RETRO_CHROME.COUNT_FAILED));
+    box.appendChild(cfgEl('div', 'cfg-detail retro-detail', cached.failure || RETRO_CHROME.COUNT_FAILED));
     return box;
   }
   const view = cached.view;
@@ -3564,7 +3564,7 @@ function retroCountEl(cached, stale) {
   }
   if (head.childNodes.length) box.appendChild(head);
 
-  if (view.detail) box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.detail)));
+  if (view.detail) box.appendChild(cfgEl('div', 'cfg-detail retro-detail', cfgText(view.detail)));
   if (view.why) box.appendChild(cfgEl('div', 'cfg-detail', cfgText(view.why)));
   // 서버가 **라벨을 붙여 준** 두 번째 숫자만 나온다(R1의 회수 후보처럼). `affected`에 더하지
   // 않는 것이 핵심이다 — 더하면 「쓰기 연산」의 수에 「절대 쓰지 않는 것」의 수가 섞인다.
