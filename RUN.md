@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **표 선언 — 키 칸을 datetime 으로 새로 선언하면 저장이 거절** — git pull · 서버 재기동
+>
+> ```
+> 무엇     표 저장(검사만 저장 포함)이 키 칸(composite_key_source, 없으면 business_key)을 datetime 으로 새로 만들거나 바꾸면 거절
+> 거절 줄  400 retype_refused  tables.<표>.column_types.<칸>
+>          «key column <칸> is declared datetime - declare it string; a key's spelling is its identity»
+>          -> 그 칸을 "string" 으로 적어 다시 저장
+> 옛 표    이미 키 칸이 datetime 인 표는 다른 칸을 고쳐 저장됨 + 저장 줄 밑 notes 한 줄
+>          «<표>: key column <칸> is declared datetime - saved as before; ...»
+>          -> 그 칸을 "string" 으로 저장하면 재해석 큐의 retype 이 키 철자 그대로 글자로 바꿈
+> 끄는 법  되돌리기 커밋 하나
+> ```
+>
+> ---
+>
 > ## [10-31] **쓰기 문 — 존 없는 시각을 철자와 상관없이 expression_time_zone 으로 저장** — git pull · 서버 · 워처 · 체인 워커 재기동
 >
 > ```

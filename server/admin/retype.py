@@ -97,11 +97,24 @@ def key_uses(table, column):
     return list(dict.fromkeys(uses))
 
 
-def hold(engine, table, declaration):
-    """-> (the declaration to write, [(column, held type, declared type)]): each column the save would convert has the
-    database's type kept in its place. A key column the conversion would change raises the refusal."""
-    held, out = [], declaration
-    for column, declared in sorted(((declaration or {}).get("column_types") or {}).items()):
+def hold(engine, table, declaration, previous=None):
+    """-> (the declaration to write, [(column, held type, declared type)], notes): each column the save would convert
+    has the database's type kept in its place. A key column the conversion would change raises the refusal, and so
+    does a key column this save makes a time (owner 10-21 «키 칸은 시간 절대 안 쓰는 걸로»); one `previous` - the
+    file's entry before this save - already held as a time key is a note, so an old table still saves."""
+    from chain import cell_layer
+
+    held, notes, out = [], [], declaration
+    types = (declaration or {}).get("column_types") or {}
+    was = previous if isinstance(previous, dict) else {}
+    for column in cell_layer.entry_key_columns(declaration or {}):
+        if types.get(column) != "datetime":
+            continue
+        if column in cell_layer.entry_key_columns(was) and (was.get("column_types") or {}).get(column) == "datetime":
+            notes.append(KEY_TIME_HELD % (table, column))
+        else:
+            raise RetypeRefused(column, KEY_TIME % column)
+    for column, declared in sorted(types.items()):
         physical = family(engine, table, column)
         do, said = verdict(declared, physical)
         if do == CONVERT:
@@ -114,7 +127,13 @@ def hold(engine, table, declaration):
             cell = CELLS[(physical, declared)]
             out["column_types"][column] = cell["held"]
             held.append((column, cell["held"], declared))
-    return out, held
+    return out, held, notes
+
+
+#: A key column declared datetime by this save, and one an old table already declared so (owner 10-21, lead 10-31).
+KEY_TIME = "key column %s is declared datetime - declare it string; a key's spelling is its identity"
+KEY_TIME_HELD = ("%s: key column %s is declared datetime - saved as before; a new key column is not a time - declared "
+                 "string, the queue converts it in the key's own spelling")
 
 
 class RetypeRefused(Exception):

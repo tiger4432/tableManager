@@ -54,8 +54,8 @@ def test_the_save_holds_nothing_off_postgresql(tmp_path):
     from sqlalchemy import create_engine
 
     declaration = {"column_types": {"rev": "number"}}
-    out, held = retype.hold(create_engine("sqlite:///" + (tmp_path / "x.db").as_posix()), "t", declaration)
-    assert out is declaration and held == []
+    out, held, notes = retype.hold(create_engine("sqlite:///" + (tmp_path / "x.db").as_posix()), "t", declaration)
+    assert out is declaration and held == [] and notes == []
 
 
 @pytest.mark.pg

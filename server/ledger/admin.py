@@ -275,7 +275,7 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
     from admin import retype
     from database.database import engine
     try:
-        declaration, held = retype.hold(engine, table, declaration)
+        declaration, held, notes = retype.hold(engine, table, declaration, document.get(table))
     except retype.RetypeRefused as refused:
         raise _table_config_refusal("retype_refused", f"tables.{table}.column_types.{refused.column}",
                                     str(refused)) from None
@@ -292,7 +292,7 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
     # what the reload will say of this declaration - a null_policy entry nothing reads (lead 10-31)
     from database import crud
 
-    notes = crud.null_policy_unread(table, declaration)
+    notes = notes + crud.null_policy_unread(table, declaration)
     if check_only:                                 # judged whole, nothing written (the admin help, lead 10-29)
         return {"ok": True, "checked": True, "table": table, "notes": notes}
 
