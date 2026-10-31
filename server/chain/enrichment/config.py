@@ -382,6 +382,19 @@ def time_columns(time) -> list:
         column for clauses in time["excluded_by"] for clause in clauses for column in exclusion_columns(clause)]))
 
 
+def times_read_of(db, time, rows):
+    """What PostgreSQL reads of these rows' time text the ledger's reader refuses - the table the ledger's translation
+    reads (lead 10-31 ②), asked on the caller's session; `roleframe.times_read` holds it around `row_time`."""
+    from ledger.backfill import times_postgresql_read
+    from ledger.roleframe import unread_time_text, zone_of
+
+    at = time["occurred_at"]
+    spellings = {row.get(at.column) for row in rows if unread_time_text(row.get(at.column))}
+    if at.format or not spellings:
+        return None
+    return times_postgresql_read(db, {zone_of(at.timezone): spellings})
+
+
 def row_time(time, row, table):
     """A row's ledger time in ms, read by the ledger's own reader (`roleframe.aware_time`) - or None for a row with no
     atom: every source's `exclude_when` takes it out, or its time is blank. A time the ledger cannot read raises its

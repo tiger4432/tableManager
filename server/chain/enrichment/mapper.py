@@ -143,7 +143,8 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
     names = sorted(n for n in plan if "sql" in plan[n])
     exprs = [plan[n]["sql"] for n in names]
     by_rows = sorted(n for n in plan if "rows" in plan[n])
-    from chain.enrichment.config import row_time, time_columns
+    from chain.enrichment.config import row_time, time_columns, times_read_of
+    from ledger.roleframe import times_read
 
     timed = next((plan[n]["time"] for n in by_rows if "time" in plan[n]), None)
     read = list(dict.fromkeys([c for n in by_rows for c in plan[n]["rows"]["names"]]
@@ -175,16 +176,18 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
             rows = (db.query(*cols, *exprs)
                     .filter(and_(*conds)).group_by(*cols).all()) if exprs else []
             if by_rows:
-                for row in db.query(*cols, *[getattr(model, c) for c in read]).filter(and_(*conds)):
-                    key = _clean_key(source_table, decision_key, row[:len(cols)])
-                    values = dict(zip(read, row[len(cols):]))
-                    if timed:
-                        try:
-                            values["$at"] = row_time(timed, values, source_table)
-                        except ValueError as unread:
-                            values["$at"] = None        # that row's time left out, counted (owner 10-29 ㄱ)
-                            unread_times.append(str(unread))
-                    key_rows.setdefault(key, []).append(values)
+                fetched = [(row[:len(cols)], dict(zip(read, row[len(cols):])))
+                           for row in db.query(*cols, *[getattr(model, c) for c in read]).filter(and_(*conds))]
+                with times_read(times_read_of(db, timed, [values for _head, values in fetched]) if timed else None):
+                    for head, values in fetched:
+                        key = _clean_key(source_table, decision_key, head)
+                        if timed:
+                            try:
+                                values["$at"] = row_time(timed, values, source_table)
+                            except ValueError as unread:
+                                values["$at"] = None        # that row's time left out, counted (owner 10-29 ㄱ)
+                                unread_times.append(str(unread))
+                        key_rows.setdefault(key, []).append(values)
             for row in rows:
                 key = _clean_key(source_table, decision_key, row[:len(cols)])
                 # FOLD, not assign. `NULL` and `''` are two SQL groups and one

@@ -1355,12 +1355,13 @@ def time_text_to_ask(table_name: str, column: str, declared_type, value):
     return str(value).strip()
 
 
-def times_postgresql_reads(db: Session, spellings) -> tuple:
+def times_postgresql_reads(db: Session, spellings, zone=None) -> tuple:
     """`({spelling: timestamptz}, {refused spelling, ...})` - ONE query for all, in a savepoint; only when PostgreSQL
     refuses are the spellings halved and asked again, so k bad ones among n cost about 2k·log n queries and a clean set
     one. No version branch: `pg_input_is_valid` would need PostgreSQL 16. Another database is not asked: ({}, set()).
 
-    A time without a zone is read on `expression_time_zone`, the zone `key_part` reads it on (lead 10-31): the
+    A time without a zone is read on `zone` - the ledger's declared one (lead 10-31 ②) - else on `expression_time_zone`,
+    the zone `key_part` reads it on (lead 10-31): the
     savepoint sets TimeZone to it and puts the session's back before it is released - a SET LOCAL outlives a released
     savepoint until the transaction ends (measured), and the write's transaction goes on after this."""
     if db.get_bind().dialect.name != "postgresql":
@@ -1370,7 +1371,7 @@ def times_postgresql_reads(db: Session, spellings) -> tuple:
     import expression
 
     readings, refused = {}, set()
-    zone = expression.time_zone().key
+    zone = zone or expression.time_zone().key
     setting = sa_text("SELECT current_setting('TimeZone'), set_config('TimeZone', :zone, true)")
     statement = sa_text("SELECT v, CAST(v AS timestamptz) FROM unnest(CAST(:vals AS text[])) AS v")
     put_back = sa_text("SELECT set_config('TimeZone', :zone, true)")

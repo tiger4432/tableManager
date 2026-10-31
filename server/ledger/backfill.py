@@ -95,6 +95,7 @@ from pathlib import Path
 import time
 from typing import Any
 from error_said import told
+from . import roleframe
 
 logger = logging.getLogger("Ledger.Backfill")
 
@@ -444,7 +445,9 @@ def preview_rescope(engine, setup, source, scope_column, scope_values, world=Non
         from chain import keyset_scan
         from .store import LedgerStore
 
-        previewed = _preview_frame(engine, setup, source, plan, _v2_frame(rows), world=world)
+        frame = _v2_frame(rows)
+        with roleframe.times_read(times_read_of(engine, plan, frame)):
+            previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
         previewed.pop("preview")                 # the translation itself is not an answer
         result.update(previewed)
         # what the withdrawal would take - a preview's count; an apply's is its DELETE's (총괄 10-14)
@@ -792,8 +795,10 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         result["pages"] += 1
         scope_row_ids = _scope_row_ids(plan, frame)
         aimed = previewed = None
+        readings = times_read_of(engine, plan, frame)
         if withdraw:
-            previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
+            with roleframe.times_read(readings):
+                previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
             result["remake"] += previewed["remake"]
             with keyset_scan.stage("index lines of the rows", len(scope_row_ids)) as said:
                 indexed = {ref for who, ref
@@ -808,7 +813,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         if aimed is None or aimed:
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
-            with keyset_scan.stage("write", len(frame)) as said:
+            with keyset_scan.stage("write", len(frame)) as said, roleframe.times_read(readings):
                 try:
                     executed = execute_selected_scoped_batch(
                         setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
@@ -2337,8 +2342,9 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
                 page_keys = _rows_sample(plan, complete, len(complete))
             frame = _v2_frame(complete)
             cursor_value = last_cursor(plan, frame)
-            answered = preview_selected_cursor_batch(
-                setup, source, frame, cursor_value, known_registrations=())
+            with roleframe.times_read(times_read_of(engine, plan, frame)):
+                answered = preview_selected_cursor_batch(
+                    setup, source, frame, cursor_value, known_registrations=())
             refusals.extend(answered.refusals)
             if answered.excluded_rows is not None:
                 excluded = (excluded or 0) + answered.excluded_rows
@@ -2447,6 +2453,31 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
         return 0, len(rows)
     indexed = LedgerStore(engine, world=world).indexed_row_ids(plan.relation, excluded, source)
     return len(indexed), len(rows)
+
+
+def times_postgresql_read(db, wanted) -> dict:
+    """`wanted` {zone: {text}} -> {(zone, text): moment}: one ask a zone, by the write door's judge. Text PostgreSQL
+    refuses too is left out - `aware_time` refuses it as before; another database reads none."""
+    from database.crud import times_postgresql_reads
+
+    readings = {}
+    for zone, spellings in wanted.items():
+        if spellings:
+            read = times_postgresql_reads(db, spellings, zone)[0]
+            readings.update(((zone, text), moment) for text, moment in read.items())
+    return readings
+
+
+def times_read_of(engine, plan, frame):
+    """What PostgreSQL reads of a page's time text the ledger's reader refuses (lead 10-31 ②) - one ask a zone, on a
+    session of its own; `roleframe.times_read` holds it around the page's translation."""
+    from sqlalchemy.orm import Session
+
+    wanted = roleframe.source_times_to_ask(plan, frame)
+    if not any(wanted.values()):
+        return None
+    with Session(engine) as db:
+        return times_postgresql_read(db, wanted)
 
 
 def _v2_frame(rows):

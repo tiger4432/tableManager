@@ -9,9 +9,11 @@ single owner of LedgerFrame payload construction.
 from __future__ import annotations
 
 from collections import OrderedDict
+from contextlib import contextmanager
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+import contextvars
 import hashlib
 import json
 import math
@@ -1096,6 +1098,59 @@ ISO_EXTENDED = re.compile(r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}(?::\d{2}(?::\d{2}(?:\.
 #: ⤷ 총괄 db2df6981: an offset only after a time (3.x read «2026-10-11+09:00» as a naive 09:00), and fractions of
 #:   3 or 6 digits - what every Python reads.
 
+#: {(zone, text): aware moment} - the text PostgreSQL reads where ISO_EXTENDED does not (lead 10-31 ②: the write door's
+#: judgment, `crud.times_postgresql_reads`, asked by `backfill.times_postgresql_read` - this module reaches no database).
+#: Set around a translation or a Latest read by `times_read`; `aware_time`
+#: looks here before it refuses text - a declared format is read first, as before.
+_TIMES_READ = contextvars.ContextVar("ledger_times_read", default=None)
+
+
+@contextmanager
+def times_read(readings):
+    token = _TIMES_READ.set(readings or None)
+    try:
+        yield
+    finally:
+        _TIMES_READ.reset(token)
+
+
+def zone_of(timezone_name) -> str:
+    """The zone a time's naive text is read on: the declared one, else expression_time_zone (lead 10-31 ②)."""
+    import expression
+
+    return str(timezone_name) if timezone_name else expression.time_zone().key
+
+
+def unread_time_text(value) -> bool:
+    """Text `aware_time` refuses when no format is declared."""
+    return isinstance(value, str) and bool(value.strip()) and not ISO_EXTENDED.fullmatch(value)
+
+
+def source_times_to_ask(source_plan, frame) -> dict:
+    """{zone: {text}} - what `frame` holds that this source reads as a time and `aware_time` refuses: its occurred_at
+    column and every column binding that declares a timezone, each with no format."""
+    reads = []
+    occurred = source_plan.driver.occurred_at
+    if occurred.column and not occurred.format:
+        reads.append((occurred.column, occurred.timezone))
+
+    def walk(binding):
+        if isinstance(binding, Mapping):
+            if binding.get("kind") == "column" and binding.get("timezone") and not binding.get("format"):
+                reads.append((binding.get("column"), binding["timezone"]))
+            for child in binding.values():
+                walk(child)
+
+    for mapping in (source_plan.profile.mappings.values() if source_plan.profile is not None else ()):
+        for role_id, binding in mapping.bindings.items():
+            if not is_event_time_role(role_id):         # never read at the mapper - the instant above is
+                walk(binding)
+    wanted = {}
+    for column, zone in reads:
+        if column in frame.columns:
+            wanted.setdefault(zone_of(zone), set()).update(v for v in frame[column] if unread_time_text(v))
+    return wanted
+
 
 def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str | None = None) -> datetime:
     """A timezone-AWARE datetime out of whatever a source column holds. One spelling.
@@ -1112,7 +1167,8 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str |
 
     🆕 `fmt` - the binding's declared `format` (총괄 ca87ffdb3, 소유자 「yyyymmdd_hhmmss」): text
     is read by THE parser for a declared shape, `time_format.parse_occurred_at` - not a second one.
-    A datetime value reads as it always has. Nothing is guessed: no format, ISO_EXTENDED text only.
+    A datetime value reads as it always has. Nothing is guessed: no format, ISO_EXTENDED text - or what
+    PostgreSQL read of it on this zone, when `times_read` holds it (lead 10-31 ②).
 
     A string this cannot read falls through to the refusal rather than being replaced by
     ingestion time: a value we could not read is not a value we may invent.
@@ -1123,11 +1179,15 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str |
         if parsed is None:
             raise refuse("invalid_time_value", path, f"{value!r} does not match format {fmt}")
         return parsed
-    if isinstance(value, str):
-        if not ISO_EXTENDED.fullmatch(value):
+    if isinstance(value, str) and not ISO_EXTENDED.fullmatch(value):
+        read = _TIMES_READ.get()
+        read = read and read.get((zone_of(timezone_name), value))
+        if read is None:
             raise refuse("invalid_time_value", path,
                          f"{value!r} is not ISO 8601 (2026-10-11 21:36:31) - declare the format its text is "
                          f"written in, e.g. \"format\": \"%Y%m%d_%H%M%S\"")
+        value = read
+    elif isinstance(value, str):
         try:
             value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:

@@ -1357,6 +1357,9 @@ def _time_columns(relation: Any, types: Mapping[str, str], sample) -> tuple[tupl
 
 
 def _reads_as_time(value: Any) -> bool:
+    """⚠️ Text only PostgreSQL reads («2026/10/11 21:36:31») is not a time HERE - the sample's session closed before this
+    asks, so `roleframe.times_read` holds nothing; the ledger's translation and Latest do read it (lead 10-31 ②). A screen
+    hint, no atom: such a column is left out of the candidates."""
     from .roleframe import aware_time
 
     try:

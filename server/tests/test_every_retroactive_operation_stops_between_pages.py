@@ -55,6 +55,7 @@ def test_every_registered_operation_takes_a_cancel():
 def test_a_rescope_page_ends_on_a_group_boundary(monkeypatch):
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", _fetch)
     monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
+    monkeypatch.setattr(backfill, "times_read_of", lambda engine, plan, frame: None)   # ... and its time question
     pages = [list(frame["k"]) for frame in backfill._scope_pages(_ENGINE, _Plan(), None, 2)]
     assert pages == [["a", "a"], ["b", "b", "b"], ["c"]], "a group read whole, never cut"
 
@@ -70,6 +71,7 @@ def rescope_doors(monkeypatch):
                             forget_row_refs=lambda relation, ids, source=None: 0)
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", _fetch)
     monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
+    monkeypatch.setattr(backfill, "times_read_of", lambda engine, plan, frame: None)   # ... and its time question
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
     monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
     monkeypatch.setattr(backfill, "_preview_frame", lambda e, s, src, plan, frame, **_: {

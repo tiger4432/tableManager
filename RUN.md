@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-31] **원장 · Latest 가 시각 글자를 쓰기 문과 같은 판정으로 읽음** — git pull · 서버 · 원장 워커 · 체인 워커 재기동
+>
+> ```
+> 볼 곳    온톨로지 탐색기에서 그 소스를 골라 «Test run» — 거절 칸의 «Time unreadable»(unreadable_occurred_at)
+> 답의 뜻   0                                                         -> 그 소스의 시각 글자를 다 읽음
+>          N, 문장에 «is not ISO 8601 … declare the format»              -> PostgreSQL 도 못 읽는 글자 — 그 칸에 "format" 을 적음
+> 그다음    재기동 전에 거절되던 행은 아직 원자가 없음 ->
+>          server 폴더에서 python -m ledger.backfill --source <소스> --whole-source --apply
+>          (그 소스를 다시 번역 — 끝에 찍히는 refused 에 unreadable_occurred_at 이 없어야 함)
+> 로그     체인 워커: «[Enrichment] …: N row(s) whose time the ledger cannot read» 가 PostgreSQL 이 읽는 글자로는 안 나와야 함
+> 끄는 법  git revert <이 커밋> -> 서버 · 원장 워커 · 체인 워커 재기동. 원장이 다시 ISO 만 읽음, 이미 만든 원자는 남음
+> ```
+>
+> ---
+>
 > ## [10-31] **소급 탭 — 미리보기 · 확인 상자가 detail 의 줄을 그대로 그림** — git pull · 화면 새로 고침
 >
 > ```

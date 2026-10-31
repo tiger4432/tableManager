@@ -118,6 +118,9 @@ class _StubCatalog:
 
 
 class _StubEngine:
+    #: not PostgreSQL - the page's time text is not asked of it (`crud.times_postgresql_reads`)
+    dialect = type("dialect", (), {"name": "stub"})
+
     def __init__(self, relation, page_key):
         self.connection = _StubConnection(relation, page_key)
         self._relation = relation
