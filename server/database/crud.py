@@ -1317,45 +1317,78 @@ def times_the_database_refuses(db: Session, table_name: str, updates) -> dict:
     about 2k·log n queries and a clean batch one. No version branch: `pg_input_is_valid` would need PostgreSQL 16.
     A text column declared datetime is not read by PostgreSQL (`join_key_index.column_is_text`) and is not asked.
     Another database never refuses a time here, so it is not asked either."""
-    if db.get_bind().dialect.name != "postgresql":
-        return {}
-    from sqlalchemy import exc as sa_exc, text as sa_text
-    import expression
-    from chain import join_key_index
-
     types = (TABLE_CONFIG.get(table_name) or {}).get("column_types") or {}
     asked = {}                                          # {spelling: {column, ...}}
     for item in updates:
         for column, value in (getattr(item, "updates", None) or {}).items():
-            if types.get(column) != "datetime" or is_blank_value(value) or isinstance(value, (bool, datetime)):
-                continue
-            if isinstance(value, str) and expression.TIME.match(value.strip()):
-                continue
-            if not isinstance(value, (str, numbers.Real)) or join_key_index.column_is_text(table_name, column):
-                continue
-            asked.setdefault(str(value).strip(), set()).add(column)
-    refused = set()
-    statement = sa_text("SELECT CAST(v AS timestamptz) FROM unnest(CAST(:vals AS text[])) AS v")
-
-    def ask(spellings):
-        from session_contract import in_savepoint
-        try:
-            in_savepoint(db, "times_the_database_refuses", lambda: db.execute(statement, {"vals": spellings}))
-        except sa_exc.DataError:
-            if len(spellings) == 1:
-                refused.add(spellings[0])
-                return
-            half = len(spellings) // 2
-            ask(spellings[:half])
-            ask(spellings[half:])
-
-    if asked:
-        ask(sorted(asked))
+            spelling = time_text_to_ask(table_name, column, types.get(column), value)
+            if spelling is not None:
+                asked.setdefault(spelling, set()).add(column)
+    _readings, refused = times_postgresql_reads(db, asked)
     out = {}
     for spelling in refused:
         for column in asked[spelling]:
             out.setdefault(column, set()).add(spelling)
     return out
+
+
+def time_text_to_ask(table_name: str, column: str, declared_type, value):
+    """The spelling (`str(value).strip()`) PostgreSQL is asked to read for a value headed for a declared time column,
+    or None - not a time column, blank, already a datetime, in our reader's ISO spelling (`expression.TIME`, which
+    PostgreSQL always takes), or a text column declared datetime (`join_key_index.column_is_text`). The one question
+    the write's refusal (`times_the_database_refuses`) and the nokey print (`NokeyPrint`) ask (lead 10-31)."""
+    if declared_type != "datetime" or is_blank_value(value) or isinstance(value, (bool, datetime)):
+        return None
+    import expression
+    from chain import join_key_index
+
+    if isinstance(value, str) and expression.TIME.match(value.strip()):
+        return None
+    if not isinstance(value, (str, numbers.Real)) or join_key_index.column_is_text(table_name, column):
+        return None
+    return str(value).strip()
+
+
+def times_postgresql_reads(db: Session, spellings) -> tuple:
+    """`({spelling: timestamptz}, {refused spelling, ...})` - ONE query for all, in a savepoint; only when PostgreSQL
+    refuses are the spellings halved and asked again, so k bad ones among n cost about 2k·log n queries and a clean set
+    one. No version branch: `pg_input_is_valid` would need PostgreSQL 16. Another database is not asked: ({}, set()).
+
+    A time without a zone is read on `expression_time_zone`, the zone `key_part` reads it on (lead 10-31): the
+    savepoint sets TimeZone to it and puts the session's back before it is released - a SET LOCAL outlives a released
+    savepoint until the transaction ends (measured), and the write's transaction goes on after this."""
+    if db.get_bind().dialect.name != "postgresql":
+        return {}, set()
+    from sqlalchemy import exc as sa_exc, text as sa_text
+    from session_contract import in_savepoint
+    import expression
+
+    readings, refused = {}, set()
+    zone = expression.time_zone().key
+    setting = sa_text("SELECT current_setting('TimeZone'), set_config('TimeZone', :zone, true)")
+    statement = sa_text("SELECT v, CAST(v AS timestamptz) FROM unnest(CAST(:vals AS text[])) AS v")
+    put_back = sa_text("SELECT set_config('TimeZone', :zone, true)")
+
+    def read(part):
+        session_zone = db.execute(setting, {"zone": zone}).first()[0]
+        rows = db.execute(statement, {"vals": part}).all()
+        db.execute(put_back, {"zone": session_zone})
+        return rows
+
+    def ask(part):
+        try:
+            readings.update(in_savepoint(db, "times_the_database_refuses", lambda: read(part)))
+        except sa_exc.DataError:
+            if len(part) == 1:
+                refused.add(part[0])
+                return
+            half = len(part) // 2
+            ask(part[:half])
+            ask(part[half:])
+
+    if spellings:
+        ask(sorted(spellings))
+    return readings, refused
 
 
 def clean_str_value(val: Any) -> str:
@@ -3345,11 +3378,13 @@ class NokeyPrint:
     내용이 같으면 같은 키» · «행 하나 말고 파일로 입력된 전체로») - `nokey_<print, 12 hex>_<number>`, made only from what
     the file put in: each row's declared columns (not the system ones), each value as the write door casts it
     (`cast_value_by_type`, a value it refuses counted blank) and then spelled by the one key speller (`key_part`, lead
-    10-31 ㄷ: 1 · 1.0 · 1.00 one number, a time our reader reads one instant), before any nokey fill. A time only
-    PostgreSQL reads («2026/10/29») stays its text; a value met again in its column takes the spelling remembered
-    (`NOKEY_SPELLED_MAX` distinct at most). The rows are put in content
-    order; the print is the hash of that order and a row's number its place in it (equal rows, numbers in a run). A
-    file's name, times, undeclared columns, column order, header spelling and row order are not in it.
+    10-31 ㄷ: 1 · 1.0 · 1.00 one number, a time our reader reads one instant), before any nokey fill; a value met again
+    in its column takes the spelling remembered (`NOKEY_SPELLED_MAX` distinct at most). A row's time columns are hashed
+    apart (owner 10-31 ㄱ, lead ㄴ): its other columns when it is added, its times in `keys`, where the spellings our
+    reader leaves as text («2026/10/29») are read by PostgreSQL first - one query, no second read of the file. The rows
+    are put in content order; the print is the hash of that order and a row's number its place in it (equal rows,
+    numbers in a run). A file's name, times, undeclared columns, column order, header spelling and row order are not
+    in it.
 
     The standard parser's first pass and the watcher's row list (a plugin's) feed the same `add`, so one content
     gives one set of keys by either road. `keys()` answers in the order the rows were added."""
@@ -3361,8 +3396,11 @@ class NokeyPrint:
         self.by_lower = {}
         for column in loadable_columns(table_info):
             self.by_lower.setdefault(column.lower(), column)
-        self.digests = []
+        self.time_columns = [c for c in self.columns if self.types[c] == "datetime"]
+        self.digests = []                               # each row's other columns, hashed
+        self.row_times = []                             # each row's time spellings, hashed in `keys`
         self.spelled = {}                               # (column, type, value) -> its spelling, this file only
+        self.unread = set()                             # the time spellings for PostgreSQL
 
     def add(self, row) -> None:
         cells = {}
@@ -3370,7 +3408,7 @@ class NokeyPrint:
             column = self.by_lower.get(str(name).lower())
             if column is not None:
                 cells[column] = value
-        values = []
+        values, times = [], []
         for column in self.columns:
             raw = cells.get(column)
             memo = (column, type(raw), raw)             # type: 1 · 1.0 · True are one dict key
@@ -3380,18 +3418,34 @@ class NokeyPrint:
                 memo = spelled = _NOT_SPELLED
             if spelled is _NOT_SPELLED:
                 try:
-                    spelled = key_part(self.table, column, cast_value_by_type(raw, self.types[column], column, self.table))
+                    value = cast_value_by_type(raw, self.types[column], column, self.table)
                 except CellRefused:
-                    spelled = None
+                    value = None
+                asked = time_text_to_ask(self.table, column, self.types[column], value)
+                if asked is not None:
+                    self.unread.add(asked)
+                spelled = key_part(self.table, column, value)
                 if memo is not _NOT_SPELLED and len(self.spelled) < NOKEY_SPELLED_MAX:
                     self.spelled[memo] = spelled
-            values.append(spelled)
+            (times if self.types[column] == "datetime" else values).append(spelled)
         self.digests.append(hashlib.blake2b(json.dumps(values, default=str, ensure_ascii=False).encode("utf-8"),
                                             digest_size=16).digest())
+        if self.time_columns:
+            self.row_times.append(times)
 
-    def keys(self) -> list:
-        order = sorted(range(len(self.digests)), key=lambda at: (self.digests[at], at))
-        print_ = hashlib.blake2b(b"".join(self.digests[at] for at in order),
+    def keys(self, db=None) -> list:
+        """`db`: PostgreSQL reads the time spellings our reader left as text (`times_postgresql_reads`, owner 10-31 ㄱ),
+        each spelled as `key_part` spells its moment. Without a database, or a spelling it refuses, the text stays."""
+        digests = self.digests
+        if self.time_columns:
+            readings = times_postgresql_reads(db, self.unread)[0] if self.unread and db is not None else {}
+            read = {spelling: key_part(self.table, self.time_columns[0], moment)   # any time column: one speller
+                    for spelling, moment in readings.items()}
+            digests = [hashlib.blake2b(digest + json.dumps([read.get(t, t) for t in times], default=str,
+                                                           ensure_ascii=False).encode("utf-8"), digest_size=16).digest()
+                       for digest, times in zip(self.digests, self.row_times)]
+        order = sorted(range(len(digests)), key=lambda at: (digests[at], at))
+        print_ = hashlib.blake2b(b"".join(digests[at] for at in order),
                                  digest_size=NOKEY_PRINT_HEX // 2).hexdigest()
         keys = [None] * len(order)
         for number, at in enumerate(order, start=1):

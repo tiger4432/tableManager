@@ -3968,9 +3968,9 @@ class IngestionHandler(FileSystemEventHandler):
         # 🔴 [총괄 791c0f45e 3] Declared, but this process's model cannot hold it - the door
         #    would drop it anyway; here it is named on the file's line with its values.
         unmapped = set(crud.unmapped_columns(t_name, defined_cols))
-        # A nokey table's key of each row (owner 10-31): the standard parser's, made on its first pass, or below from
-        # a plugin's list - one `crud.NokeyPrint` either way; and what the door filled with them.
-        nokey_keys = getattr(rows, "nokey_keys", None)
+        # A nokey table's key of each row (owner 10-31): the standard parser's print, fed on its first pass, or below
+        # from a plugin's list - one `crud.NokeyPrint` either way; and what the door filled with them.
+        printer = getattr(rows, "nokey_print", None)
         nokey_counts = {"rows": 0, "columns": set()}
 
         # Determine source_name based on real original filename
@@ -4011,7 +4011,13 @@ class IngestionHandler(FileSystemEventHandler):
             if printer is not None:
                 for row in rows:
                     printer.add(row)
-                nokey_keys = printer.keys()
+        nokey_keys = None
+        if printer is not None:
+            db = SessionLocal()                         # its own: the time spellings are asked outside any write
+            try:
+                nokey_keys = printer.keys(db)
+            finally:
+                db.close()
 
         # [확장성] list와 이터레이터 모두 지원 — 이터레이터(std parser)는 총 행 수를 인자로 받는다.
         # allow_replace_map (lead 59b020ca2): the file is read whole, a row with a blank map key refuses the file before

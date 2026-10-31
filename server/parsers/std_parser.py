@@ -176,11 +176,11 @@ def _iter_rows(file_path: str, encoding: str, delimiter: str, header_map: list, 
 
 
 class StdRows:
-    """The second pass's rows, and `nokey_keys`: each row's nokey key in the same order (`crud.NokeyPrint`, made on the
-    first pass), None for a table that declares none (owner 10-31)."""
+    """The second pass's rows, and `nokey_print`: the first pass's `crud.NokeyPrint` (None for a table that declares
+    no nokey, owner 10-31) - its `keys` are made by the watcher, which has a database to ask."""
 
-    def __init__(self, rows, nokey_keys):
-        self._rows, self.nokey_keys = rows, nokey_keys
+    def __init__(self, rows, nokey_print):
+        self._rows, self.nokey_print = rows, nokey_print
 
     def __iter__(self):
         return self
@@ -255,8 +255,7 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
                     f"[{table_name}] Std parser: {skipped_no_key}행이 키 컬럼 공백/결측으로 스킵됨 "
                     f"(고아 행 방지): '{basename}'"
                 )
-            return (StdRows(_iter_rows(file_path, encoding, delimiter, header_map, key_groups, passthrough),
-                            printer.keys() if printer is not None else None),
+            return (StdRows(_iter_rows(file_path, encoding, delimiter, header_map, key_groups, passthrough), printer),
                     total_rows, skipped_no_key)
         except UnicodeDecodeError as e:
             last_decode_error = e

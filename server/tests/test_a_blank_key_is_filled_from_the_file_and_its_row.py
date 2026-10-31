@@ -50,7 +50,7 @@ def fixture_load(pg_engine, monkeypatch, tmp_path):
 
     saved = dict(crud.TABLE_CONFIG)
     retire_dynamic_model(T)
-    models.init_dynamic_models({T: DECLARED})
+    models.init_dynamic_models({T: SPELLED})                 # DECLARED's columns, and n · t
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
         conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
@@ -207,9 +207,13 @@ def test_a_value_spelled_as_the_write_door_stores_it_is_the_same_content(load):
 
 
 SPELLED = {"business_key": "k", "composite_key_source": ["lot", "slot"],
-           "column_types": {"k": "string", "lot": "string", "slot": "string", "n": "number", "t": "datetime"},
+           "column_types": {"k": "string", "lot": "string", "slot": "string", "v": "string", "n": "number",
+                            "t": "datetime"},
            "null_policy": {"slot": "nokey"}}
 TIMES = ["2026-10-29", "2026-10-29 00:00", "2026-10-29 00:00:00", "2026-10-29T00:00:00", "2026-10-28T15:00:00Z"]
+POSTGRESQL_READS = ["2026/10/29", "2026/10/29 00:00:00", "2026.10.29", "20261029", "2026-10-29 12:00:00 AM",
+                    "Oct 29 2026"]
+POSTGRESQL_REFUSES = ["10/29/2026", "29/10/2026", "29-10-2026"]
 
 
 def _print(monkeypatch, **cells):
@@ -230,8 +234,8 @@ def test_a_value_the_table_stores_as_one_is_one_print(monkeypatch, cells):
 
 
 def test_another_value_and_a_time_only_postgresql_reads_are_another_print(monkeypatch):
-    """The canary (the print does move), and what stays apart: «2026/10/29» is read by PostgreSQL, not by our reader,
-    so the first pass has nothing to fold it with (lead 10-31: reported, not built)."""
+    """The canary (the print does move), and what stays apart without a database: «2026/10/29» is read by PostgreSQL,
+    not by our reader, and `keys()` with no database asks no one."""
     assert _print(monkeypatch, n=2) != _print(monkeypatch)
     assert _print(monkeypatch, t="2026-10-30") != _print(monkeypatch)
     assert _print(monkeypatch, t="2026/10/29") != _print(monkeypatch)
@@ -267,6 +271,80 @@ def test_the_print_remembers_no_more_than_its_bound(monkeypatch):
     bounded, printer = _keys(rows)
 
     assert len(printer.spelled) == 7 and bounded == whole
+
+
+@pytest.fixture(name="asked")
+def fixture_asked(pg_engine, monkeypatch):
+    """A print whose keys PostgreSQL helps make: T's model has a time column t, its session on the scratch schema,
+    expression_time_zone Asia/Seoul; `session_zone` sets the database session's own TimeZone for that print."""
+    import expression
+    from zoneinfo import ZoneInfo
+
+    retire_dynamic_model(T)
+    models.init_dynamic_models({T: SPELLED})
+    monkeypatch.setitem(crud.TABLE_CONFIG, T, SPELLED)
+    monkeypatch.setattr(expression, "time_zone", lambda: ZoneInfo("Asia/Seoul"))
+    Session = sessionmaker(bind=pg_engine)
+
+    def asked(t, session_zone=None):
+        db = Session()
+        try:
+            if session_zone:
+                db.execute(text("SELECT set_config('TimeZone', :zone, false)"), {"zone": session_zone})
+            printer = crud.NokeyPrint(T, SPELLED)
+            printer.add({"lot": "L1", "slot": "", "v": "a", "n": 1, "t": t})
+            return printer.keys(db)[0].split("_")[1]
+        finally:
+            db.close()
+
+    asked.Session = Session
+    try:
+        yield asked
+    finally:
+        retire_dynamic_model(T)
+
+
+@pytest.mark.parametrize("spelling", POSTGRESQL_READS)
+@pytest.mark.pg
+def test_a_time_only_postgresql_reads_is_folded_by_it(asked, spelling):
+    """owner 10-31 ㄱ: the time spellings our reader leaves as text are read by PostgreSQL at the print's end."""
+    assert asked(spelling) == asked("2026-10-29")
+
+
+@pytest.mark.parametrize("spelling", POSTGRESQL_REFUSES)
+@pytest.mark.pg
+def test_a_time_postgresql_refuses_stays_its_text(asked, spelling):
+    assert asked(spelling) != asked("2026-10-29")
+
+
+@pytest.mark.pg
+def test_the_database_s_own_zone_does_not_move_a_time(asked):
+    """lead 10-31: the one zone is expression_time_zone - a database session on UTC reads «2026/10/29» on Asia/Seoul
+    too, as key_part reads «2026-10-29»; and the session's own zone is back after the ask."""
+    from datetime import datetime, timezone
+
+    db = asked.Session()
+    try:
+        db.execute(text("SELECT set_config('TimeZone', 'UTC', false)"))
+        own = db.execute(text("SELECT CAST('2026/10/29' AS timestamptz)")).scalar()
+        assert own == datetime(2026, 10, 29, tzinfo=timezone.utc), "CANARY: this session reads on UTC"
+        crud.times_postgresql_reads(db, {"2026/10/29"})
+        assert db.execute(text("SHOW TimeZone")).scalar() == "UTC", "the write's transaction keeps its zone"
+    finally:
+        db.close()
+
+    assert asked("2026/10/29", "UTC") == asked("2026-10-29", "UTC") == asked("2026-10-29")
+
+
+@pytest.mark.parametrize("plugin", [False, True], ids=["standard parser", "plugin list"])
+@pytest.mark.pg
+def test_a_file_of_postgresql_only_times_writes_the_rows_of_its_iso_twin(load, plugin):
+    iso, _ = load(SPELLED, csv="lot,slot,v,t\nL1,,a,2026-10-29\nL1,,b,2026-10-30 08:00:00\n")
+    other = "lot,slot,v,t\nL1,,a,2026/10/29\nL1,,b,2026.10.30 08:00:00\n"
+    again, line = load(SPELLED, csv=other, plugin=plugin, signature="sha256:1:bb")
+
+    assert len(iso) == 2 and again == iso, "no new row: PostgreSQL read 2026/10/29 as the ISO file's 2026-10-29"
+    assert "2 row(s) keyed nokey_... (slot)" in line, line
 
 
 @pytest.mark.pg
