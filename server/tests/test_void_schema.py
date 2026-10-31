@@ -109,8 +109,8 @@ def test_both_tables_are_declared_and_obey_R1():
                  "radius_x", "radius_y", "stack_gate"):
         assert void_types[name] == "number", name
 
-    # R5: the inspection time is a real timestamp, not a string that sorts.
-    assert run_types["observed_at"] == "datetime"
+    # R5 overturned by the owner 10-21 (a key column is never a time): observed_at is in the run's key.
+    assert run_types["observed_at"] == "string"
 
 
 def test_no_verdict_and_no_area_are_stored():

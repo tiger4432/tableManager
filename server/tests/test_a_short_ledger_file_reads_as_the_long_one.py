@@ -83,7 +83,8 @@ def _row(relation):
     """One row a table can hold, every column filled by its type - a time held as text included."""
     spelled = {"number": 1, "datetime": "2026-09-30 10:00:00", "boolean": True}
     types = CATALOG[relation]["columns"]
-    return {"row_id": "R1", **{column: spelled["datetime"] if "time" in column else spelled.get(kind, "S1")
+    timed = {column for column in types if "time" in column or column.endswith("_at")}   # observed_at: a string key
+    return {"row_id": "R1", **{column: spelled["datetime"] if column in timed else spelled.get(kind, "S1")
                                for column, kind in types.items()}}
 
 

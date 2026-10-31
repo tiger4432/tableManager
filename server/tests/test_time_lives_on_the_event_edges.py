@@ -415,7 +415,7 @@ def test_a_string_column_is_a_time_candidate_only_when_its_values_read_as_a_time
     def sample(relation, columns, limit):
         if reads == "fails":
             raise RuntimeError("no table")
-        return {column: ["2026-10-01 11:00:00" if column == "recipe_id" else "EQP-01"] for column in columns}
+        return {column: ["2026-10-01 11:00:00" if column in ("recipe_id", "observed_at") else "EQP-01"] for column in columns}
 
     row = _plan_rows(_document(), time_sample=sample)["bundle.sources.die_inspection.read.occurred_at"]
     columns = {c["column"] for c in row["candidates"] if "column" in c}
