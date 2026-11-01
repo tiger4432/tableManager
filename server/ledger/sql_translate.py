@@ -57,3 +57,118 @@ def event_results(snapshot, source_id, rows) -> tuple:
         results.append(roleframe.dry_run_result(
             mapper, attrs, roleframe.role_rows_of(mapper, attrs, emissions, unsaid, descriptor, profile)))
     return tuple(results), context
+
+
+def atom_records(plan, results) -> list:
+    """The atoms `results` hand the gate (`runtime_v2`: registrations filtered, time basis stamped, event ids minted),
+    each as one sorted-key JSON line of its semantic fields and its basis - what the shadow compares."""
+    import json
+
+    from . import runtime_v2
+
+    groups = runtime_v2._filtered_event_atoms(results, ())
+    runtime_v2._stamp_occurred_at_basis(plan, groups)
+    records = []
+    for atoms in groups:
+        for atom in atoms:
+            atom.ensure_source_event_identity()
+            records.append(json.dumps(dict(runtime_v2._semantic_atom(atom), basis=atom.occurred_at_basis),
+                                      sort_keys=True, default=str, ensure_ascii=False))
+    return records
+
+
+def shadow_source(engine, setup, source, page_rows=2000, max_pages=None, show=3) -> dict:
+    """Every page of `source` translated by both paths, read only - the backfill's pages (page key order, cut at the
+    same `after`). -> rows, pages, atoms each path, the atoms only one path made (count and the first `show`),
+    refusals and seconds each path."""
+    import time
+    from collections import Counter
+
+    from . import backfill, runtime_v2
+    from .setup import preview_selected_cursor_batch
+
+    plan = setup.snapshot.source_plans[source]
+    page_key, readable = backfill._page_key(plan), backfill._readable_columns(engine, plan)
+    said = {"source": source, "rows": 0, "pages": 0, "atoms": {"python": 0, "sql": 0},
+            "only": {"python": 0, "sql": 0}, "first": {"python": [], "sql": []},
+            "refused": {"python": 0, "sql": 0}, "seconds": {"python": 0.0, "sql": 0.0}}
+    after = None
+    while max_pages is None or said["pages"] < max_pages:
+        raw = engine.raw_connection()
+        try:
+            full = backfill._fetch_v2_lineage_rows(raw, plan, readable, after=after, limit=page_rows)
+            narrow = read_page(raw, plan, after=after, limit=page_rows)
+        finally:
+            raw.close()
+        if not full:
+            break
+        said["pages"] += 1
+        said["rows"] += len(full)
+        frame = backfill._v2_frame(full)
+        started = time.perf_counter()
+        with roleframe.times_read(backfill.times_read_of(engine, plan, frame)):
+            preview = preview_selected_cursor_batch(setup, source, frame, runtime_v2.last_cursor(plan, frame),
+                                                    known_registrations=())
+            python = atom_records(plan, preview.event_results)
+        said["seconds"]["python"] += time.perf_counter() - started
+        started = time.perf_counter()
+        cells = {column: tuple(row[column] for row in narrow) for column in narrow[0]}
+        with roleframe.times_read(backfill.times_read_of(engine, plan, cells)):
+            results, context = event_results(setup.snapshot, source, narrow)
+            sql = atom_records(plan, results)
+        said["seconds"]["sql"] += time.perf_counter() - started
+        said["refused"]["python"] += len(preview.refusals)
+        said["refused"]["sql"] += len(context.refusals)
+        for name, mine, theirs in (("python", python, sql), ("sql", sql, python)):
+            said["atoms"][name] += len(mine)
+            extra = list((Counter(mine) - Counter(theirs)).elements())
+            said["only"][name] += len(extra)
+            said["first"][name].extend(extra[:max(0, show - len(said["first"][name]))])
+        after = full[-1][page_key]
+    said["seconds"] = {name: round(value, 1) for name, value in said["seconds"].items()}
+    said["rows_per_s"] = {name: (round(said["rows"] / value) if value else None)
+                          for name, value in said["seconds"].items()}
+    return said
+
+
+def main(argv=None) -> int:
+    """`python -m ledger sql-shadow` - every page of every declarative source through both paths, read only; exit 1
+    when any atom differs."""
+    import argparse
+    import json
+    import sys
+
+    from sqlalchemy import create_engine
+
+    parser = argparse.ArgumentParser(
+        prog="python -m ledger sql-shadow",
+        description="Translate every page by the Python path and the SQL path and compare the atoms (writes nothing)")
+    parser.add_argument("--world", default=None, help="this world; the operating one when absent")
+    parser.add_argument("--source", action="append", default=None, help="this source (repeatable); every one when absent")
+    parser.add_argument("--page-rows", type=int, default=2000)
+    parser.add_argument("--max-pages", type=int, default=None, help="stop each source after this many pages")
+    parser.add_argument("--show", type=int, default=3, help="atoms shown per side when they differ")
+    args = parser.parse_args(argv)
+
+    from database.database import engine as live
+    from . import schema
+    from .setup import load_setup
+
+    setup = load_setup(schema.require_world(args.world).declaration_root)
+    engine = create_engine(live.url, connect_args={"options": "-c default_transaction_read_only=on"})
+    plans = {name: plan for name, plan in setup.snapshot.source_plans.items() if plan.runs}
+    wanted = args.source or sorted(plans)
+    differs = False
+    for source in wanted:
+        if source not in plans:
+            print(json.dumps({"source": source, "skipped": "not a planned source"}, ensure_ascii=False))
+            continue
+        if not covers(plans[source]):
+            print(json.dumps({"source": source, "skipped": "mapper is code - the Python path translates it"},
+                             ensure_ascii=False))
+            continue
+        said = shadow_source(engine, setup, source, args.page_rows, args.max_pages, args.show)
+        differs = differs or any(said["only"].values())
+        print(json.dumps(said, ensure_ascii=False), flush=True)
+    print("DIFFERENT" if differs else "SAME", file=sys.stderr)
+    return 1 if differs else 0

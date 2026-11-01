@@ -709,6 +709,7 @@
 - 할 일: 없음. 번역 결과는 그대로입니다.
 - 필요한 조건: git pull · 서버 재기동.
 - 자세히: `server/ledger/sql_translate.py`.
+- 「원장 번역 SQL 길 1 단계」를 견주는 명령(11-01): `python -m ledger sql-shadow` — 선언 소스마다 모든 쪽을 두 길로 번역해 원자를 견줍니다. 읽기만 하고, 다르면 종료 코드 1 과 한쪽에만 있는 원자를 찍습니다. lag 실측: lot_slot_wafer 125,000 행 같음, 파이썬 195.8 s · SQL 89.6 s.
 
 ## 2026-10-31 · 숫자 키의 NaN · 아주 큰 float 은 빈 키
 

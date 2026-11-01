@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-01] **`python -m ledger sql-shadow` — 파이썬 번역과 SQL 번역을 모든 쪽에서 견주기(읽기만)** — git pull (재기동 필요 없음)
+>
+> ```
+> 돌릴 것   server 폴더에서 python -m ledger sql-shadow            (선언 소스 전부)
+>           python -m ledger sql-shadow --source <소스> --max-pages 2  (빨리 한 소스만)
+> 답의 뜻   소스마다 JSON 한 줄 + 끝에 SAME / DIFFERENT
+>           SAME      -> 두 길이 모든 쪽에서 같은 원자(ids · raw ref · 시각 · basis 까지). 종료 코드 0
+>           DIFFERENT -> 그 소스의 «only» 에 한쪽에만 있는 원자가 처음 몇 개 찍힘. 종료 코드 1 -> 그 줄을 총괄에게
+>           skipped   -> 코드 맵퍼 소스(파이썬 길만 있음) — 결함 아님
+> 쓰기     없음. 읽기 전용 연결(default_transaction_read_only=on)로만 읽음
+> 같은 답   server 폴더에서 python scripts/run_pg_tests.py -k sql_path_translates  -> 7 passed, 1 xfailed
+>           (xfailed = 빈 키 행 칸. 소유자 «빈 키 행은 무시» 수리가 다음 착지)
+> 끄는 법   쓰지 않으면 됨 — 서버 동작에 닿지 않음
+> ```
+>
+> ---
+>
 > ## [10-31] **원장 번역 SQL 길 1 단계 — 같은 답의 번역 길(아직 쓰지 않음)** — git pull · 서버 재기동
 >
 > ```
