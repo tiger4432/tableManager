@@ -81,7 +81,8 @@ strict Bundle validation
   → trusted implementation 대조
   → immutable Registry/Snapshot
   → cursor physical batch
-  → pandas EventFrame   (relation 컬럼 그대로 — 조인·계산은 체인이 표에 이미 썼다, §7.3)
+  → 분자               선언 소스는 칸 dict(11-01 3 단계 SQL 길) · 코드 맵퍼나 ledger_translate: "python" 이면
+                       pandas EventFrame (relation 컬럼 그대로 — 조인·계산은 체인이 표에 이미 썼다, §7.3)
   → Mapper RoleEmission
   → RoleFrame compiler LedgerFrame   (Claim은 선언이 아니라 «술어에서 도출»된다)
   → 기존 gate → LedgerStore → cursor transaction
