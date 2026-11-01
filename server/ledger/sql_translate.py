@@ -80,7 +80,7 @@ def atom_records(plan, results) -> list:
 def shadow_source(engine, setup, source, page_rows=2000, max_pages=None, show=3) -> dict:
     """Every page of `source` translated by both paths, read only - the backfill's pages (page key order, cut at the
     same `after`). -> rows, pages, atoms each path, the atoms only one path made (count and the first `show`),
-    refusals and seconds each path."""
+    refusals, excluded rows by cause (and the pages whose causes differ) and seconds each path."""
     import time
     from collections import Counter
 
@@ -91,7 +91,8 @@ def shadow_source(engine, setup, source, page_rows=2000, max_pages=None, show=3)
     page_key, readable = backfill._page_key(plan), backfill._readable_columns(engine, plan)
     said = {"source": source, "rows": 0, "pages": 0, "atoms": {"python": 0, "sql": 0},
             "only": {"python": 0, "sql": 0}, "first": {"python": [], "sql": []},
-            "refused": {"python": 0, "sql": 0}, "seconds": {"python": 0.0, "sql": 0.0}}
+            "refused": {"python": 0, "sql": 0}, "excluded": {"python": {}, "sql": {}}, "excluded_pages_differ": 0,
+            "seconds": {"python": 0.0, "sql": 0.0}}
     after = None
     while max_pages is None or said["pages"] < max_pages:
         raw = engine.raw_connection()
@@ -119,6 +120,11 @@ def shadow_source(engine, setup, source, page_rows=2000, max_pages=None, show=3)
         said["seconds"]["sql"] += time.perf_counter() - started
         said["refused"]["python"] += len(preview.refusals)
         said["refused"]["sql"] += len(context.refusals)
+        kept_out = {"python": dict(preview.excluded_rows or {}), "sql": dict(context.excluded_rows or {})}
+        said["excluded_pages_differ"] += kept_out["python"] != kept_out["sql"]
+        for name, causes in kept_out.items():
+            for cause, n in causes.items():
+                said["excluded"][name][cause] = said["excluded"][name].get(cause, 0) + n
         for name, mine, theirs in (("python", python, sql), ("sql", sql, python)):
             said["atoms"][name] += len(mine)
             extra = list((Counter(mine) - Counter(theirs)).elements())
@@ -131,9 +137,15 @@ def shadow_source(engine, setup, source, page_rows=2000, max_pages=None, show=3)
     return said
 
 
+def differs(said) -> bool:
+    """The two paths are the same only when the atoms, the refusals and every page's excluded rows by cause are."""
+    return bool(any(said["only"].values()) or said["refused"]["python"] != said["refused"]["sql"]
+                or said["excluded_pages_differ"])
+
+
 def main(argv=None) -> int:
     """`python -m ledger sql-shadow` - every page of every declarative source through both paths, read only; exit 1
-    when any atom differs."""
+    when the atoms, the refusals or a page's excluded rows by cause differ."""
     import argparse
     import json
     import sys
@@ -158,7 +170,7 @@ def main(argv=None) -> int:
     engine = create_engine(live.url, connect_args={"options": "-c default_transaction_read_only=on"})
     plans = {name: plan for name, plan in setup.snapshot.source_plans.items() if plan.runs}
     wanted = args.source or sorted(plans)
-    differs = False
+    different = False
     for source in wanted:
         if source not in plans:
             print(json.dumps({"source": source, "skipped": "not a planned source"}, ensure_ascii=False))
@@ -168,7 +180,7 @@ def main(argv=None) -> int:
                              ensure_ascii=False))
             continue
         said = shadow_source(engine, setup, source, args.page_rows, args.max_pages, args.show)
-        differs = differs or any(said["only"].values())
+        different = different or differs(said)
         print(json.dumps(said, ensure_ascii=False), flush=True)
-    print("DIFFERENT" if differs else "SAME", file=sys.stderr)
-    return 1 if differs else 0
+    print("DIFFERENT" if different else "SAME", file=sys.stderr)
+    return 1 if different else 0

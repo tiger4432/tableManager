@@ -731,6 +731,7 @@
 - 필요한 조건: git pull · 서버 재기동.
 - 자세히: `server/ledger/sql_translate.py`.
 - 「원장 번역 SQL 길 1 단계」를 견주는 명령(11-01): `python -m ledger sql-shadow` — 선언 소스마다 모든 쪽을 두 길로 번역해 원자를 견줍니다. 읽기만 하고, 다르면 종료 코드 1 과 한쪽에만 있는 원자를 찍습니다. lag 실측: lot_slot_wafer 125,000 행 같음, 파이썬 195.8 s · SQL 89.6 s.
+- sql-shadow 가 빠진 행도 견줍니다(11-01 저녁, 총괄 · C): 원자만이 아니라 거절 수와, 쪽마다 빠진 행의 원인별 수("excluded")를 두 길에서 견주어 하나라도 다르면 DIFFERENT · 종료 1 입니다. lag 실측: transfer_event 선언을 dt_log 에 겨눈 2 쪽 4,000 행 — 원자 0 · 빠진 행 «blank key c_wx, c_wy, core_wafer_id» 4,000 두 길 같음, SAME. 한 길의 원인 수를 틀리게 한 변이는 DIFFERENT · 종료 1.
 
 ## 2026-10-31 · 숫자 키의 NaN · 아주 큰 float 은 빈 키
 

@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-01] **sql-shadow 가 빠진 행도 원인별로 견준다** — git pull (서버 재기동 필요 없음, 명령줄 도구)
+>
+> ```
+> 돌릴 것  server 폴더에서 python -m ledger sql-shadow [--source <소스>] [--max-pages N]
+> 볼 것    줄마다 "excluded": {"python": {원인: 행 수}, "sql": {...}} · "excluded_pages_differ"
+>          끝 줄 SAME (종료 0) -> 원자 · 거절 수 · 쪽마다 빠진 행의 원인별 수가 두 길에서 같음
+>          끝 줄 DIFFERENT (종료 1) -> 셋 중 하나가 다름: "only" 가 0 이 아니면 원자, "refused" 두 수가 다르면 거절,
+>                                     "excluded_pages_differ" 가 0 이 아니면 그 수만큼의 쪽에서 빠진 행 원인별 수
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "sql_path_translates"  -> 18 passed
+> 끄는 법  git revert <이 커밋> (원자만 견주던 때로)
+> ```
+>
+> ---
+>
 > ## [11-01] **재번역 실행 행이 «쪽마다 치르는 결함»을 남긴다** — git pull · 서버 재기동
 >
 > ```

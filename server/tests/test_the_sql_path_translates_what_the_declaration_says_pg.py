@@ -173,3 +173,12 @@ def test_the_sql_path_gives_the_atoms_the_declaration_says(world):
     assert _said(python) == world["expected"], "the Python path, against the same"
     assert sql == python, "every field of every atom (ids, raw refs, times, basis) the same on both paths"
     assert [r.reason for r in context.refusals] == [r.reason for r in preview.refusals]
+
+
+def test_the_shadow_compares_the_excluded_rows_by_cause_page_by_page(world):
+    said = sql_translate.shadow_source(world["engine"], world["setup"], hw.SOURCE, page_rows=2)
+    assert said["pages"] > 1, said
+    assert said["excluded"]["python"] == said["excluded"]["sql"] and said["excluded"]["sql"].get("exclude_when"), said
+    assert said["excluded_pages_differ"] == 0 and not sql_translate.differs(said), said
+    assert sql_translate.differs(dict(said, excluded_pages_differ=1)), "a page whose causes differ is DIFFERENT"
+    assert sql_translate.differs(dict(said, refused={"python": 1, "sql": 0})), "so are refusals that differ"
