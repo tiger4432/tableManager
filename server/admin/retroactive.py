@@ -810,7 +810,7 @@ def _run_ledger_rescope(db, params, log, control=None):
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"],
             "refused": sum(refused.values()), **({"refused_reasons": why} if why else {}),
             **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages", "rows_without_page_key",
-                                       "every_page_pays") if key in s}}
+                                       "every_page_pays", "translated_by", "translated_by_label") if key in s}}
 
 
 def _rescope_in_slices(db, params, control):
@@ -818,7 +818,7 @@ def _rescope_in_slices(db, params, control):
     one slice (`backfill.slice_bounds` says when), a source the declaration no longer has, or no run row for a slice to
     read its run from - and this process runs it. The pages are the slices'; what runs once - the lines every page
     pays, the rows the relation lost, the stale atoms - is this process's, before and after them."""
-    from ledger import backfill, schema
+    from ledger import backfill, schema, sql_translate
 
     if control is None or control.run_id in (None, "?"):
         return None
@@ -839,6 +839,7 @@ def _rescope_in_slices(db, params, control):
     # the slices find the world made - none of them races another to make it
     schema.ensure_world(engine, schema.world_names(world))
     paid = backfill.say_what_every_page_pays(engine, plan, world, True)
+    start = sql_translate.translate_path(plan)
     backfill.analyze_stale_partitions(engine, world)
     control.own_beat = False
     try:
@@ -849,6 +850,8 @@ def _rescope_in_slices(db, params, control):
         s.pop("scope_empty", None)                 # empty only when every slice was
     if paid:
         s["every_page_pays"] = paid                # the run's, said once before its slices (`_run_ledger_rescope`)
+    s["translated_by"] = sql_translate.translated_by(plan, start)
+    s["translated_by_label"] = sql_translate.TRANSLATED_BY
     if s.get("stopped"):
         control.stop_requested()                   # the × the slices stopped on - the run ends cancelled
     else:

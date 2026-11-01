@@ -130,7 +130,7 @@ def _both(world):
         raw.close()
     frame = backfill._v2_frame(full)
     preview = preview_selected_cursor_batch(setup, hw.SOURCE, frame, runtime_v2.last_cursor(plan, frame),
-                                            known_registrations=())
+                                            known_registrations=(), translate="python")
     results, context = sql_translate.event_results(setup.snapshot, hw.SOURCE, narrow)
     named = sorted(set(narrow[0]) if narrow else ())
     cells = ({column: [row[column] for row in full] for column in named},
@@ -182,3 +182,38 @@ def test_the_shadow_compares_the_excluded_rows_by_cause_page_by_page(world):
     assert said["excluded_pages_differ"] == 0 and not sql_translate.differs(said), said
     assert sql_translate.differs(dict(said, excluded_pages_differ=1)), "a page whose causes differ is DIFFERENT"
     assert sql_translate.differs(dict(said, refused={"python": 1, "sql": 0})), "so are refusals that differ"
+
+
+def test_the_switch_parts_the_two_paths_at_one_seat_and_both_answer_alike(world, monkeypatch):
+    import ingestion.settings
+
+    engine, setup = world["engine"], world["setup"]
+    plan = setup.snapshot.source_plans[hw.SOURCE]
+    raw = engine.raw_connection()
+    try:
+        frame = backfill._v2_frame(backfill._fetch_v2_lineage_rows(raw, plan, backfill._readable_columns(engine, plan)))
+    finally:
+        raw.close()
+    calls = {"sql": 0, "python": 0}
+    cells_results, dry_run = sql_translate.cells_results, runtime_v2.dry_run_event_frame
+
+    def counted(name, fn):
+        def wrapper(*a, **k):
+            calls[name] += 1
+            return fn(*a, **k)
+        return wrapper
+    monkeypatch.setattr(sql_translate, "cells_results", counted("sql", cells_results))
+    monkeypatch.setattr(runtime_v2, "dry_run_event_frame", counted("python", dry_run))
+    previews = {}
+    for setting in ({}, {"ledger_translate": "python"}):
+        monkeypatch.setattr(ingestion.settings, "read_ingestion_settings", lambda s=setting: dict(s))
+        before = dict(calls)
+        previews[setting.get("ledger_translate", "sql")] = preview_selected_cursor_batch(
+            setup, hw.SOURCE, frame, runtime_v2.last_cursor(plan, frame), known_registrations=())
+        took = {name: calls[name] - before[name] for name in calls}
+        assert sql_translate.translate_path(plan) == setting.get("ledger_translate", "sql")
+        assert (took["sql"] > 0) == (not setting) and (took["python"] > 0) == bool(setting), (setting, took)
+    sql, python = previews["sql"], previews["python"]
+    assert sql.candidate_semantics == python.candidate_semantics and sql.candidate_semantics
+    assert sql.row_refs == python.row_refs and sql.row_refs, "the withdrawal's index lines, alike"
+    assert sql.excluded_rows == python.excluded_rows and sql.refusals == python.refusals

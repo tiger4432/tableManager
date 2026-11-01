@@ -238,6 +238,9 @@ def test_the_two_defects_are_said_once_with_the_lines_off(world, monkeypatch):
     paid = out["result"]["every_page_pays"]
     assert paid == " · ".join(line.split("] ", 1)[1] for line in ref + key), paid
     assert "every page pays: " + paid in retroactive.run_result_sentence(out["result"])
+    # the path its pages went by - the switch absent is sql (lead 11-01 stage 3)
+    assert out["result"]["translated_by"] == "sql", out["result"]
+    assert "translated by sql" in retroactive.run_result_sentence(out["result"])
 
 
 def test_a_held_lock_is_named_by_the_beat(world, monkeypatch, pg_engine):

@@ -208,6 +208,13 @@ def _row_ref_index(source_plan, event_frames, event_results):
             if row_id is None or row_ref is None:
                 continue
             row_id_of[str(row_ref)] = str(row_id)
+    return _row_ref_pairs(source_plan, row_id_of, event_results)
+
+
+def _row_ref_pairs(source_plan, row_id_of, event_results):
+    """{row ref: row id} -> the ledger refs (`_row_ref_index`); the SQL path hands its map straight here."""
+    from .roleframe import claim_source_row_refs
+
     if not row_id_of:
         return ()
     pairs = set()
@@ -252,26 +259,45 @@ def preview_cursor_batch(
     mappers: RoleMapperImplementationRegistry,
     *,
     known_registrations: Any = None,
+    translate: str | None = None,
 ) -> CursorBatchPreview:
-    """Compile the exact candidates execute will use, without gate/store writes."""
+    """Compile the exact candidates execute will use, without gate/store writes. `translate`: "sql" or "python";
+    absent, the switch's answer for this source (`sql_translate.translate_path`) - the one seat the two paths part."""
     from chain.keyset_scan import stage
+    from . import sql_translate
 
     source_plan = _source_plan(snapshot, source_id)
     normalized_cursor = _cursor_value(source_plan, base_rows, cursor_value)
     refusals: list = []
     excluded: dict = {}
-    with stage("event frames", len(base_rows)) as said:
-        event_frames = prepare_v2_cursor_batch(
-            snapshot, source_id, base_rows, refusals=refusals, excluded=excluded)
-        said["note"] = "%d molecules · %d refused" % (len(event_frames), len(refusals))
-    mapper_context = MapperContext(snapshot, source_plan)
-    with stage("dry run", len(event_frames)):
-        event_results = tuple(
-            dry_run_event_frame(mapper_context, event_frame, mappers)
-            for event_frame in event_frames
-        )
-    with stage("row refs", len(event_frames)):
-        row_refs = _row_ref_index(source_plan, event_frames, event_results)
+    if (translate or sql_translate.translate_path(source_plan)) == "sql":
+        with stage("sql translate", len(base_rows)) as said:
+            from .backfill import _v2_frame
+            from .event_frame import SourcePreparationContext, _validate_base_frame
+            from .roleframe import read_columns_once
+
+            base = base_rows if isinstance(base_rows, pd.DataFrame) else _v2_frame(base_rows)
+            _validate_base_frame(SourcePreparationContext(snapshot, source_plan), base)
+            base = base.reset_index(drop=True)
+            event_results, context, row_ids = sql_translate.cells_results(
+                snapshot, source_id, read_columns_once(base), len(base))
+            refusals.extend(context.refusals)
+            excluded.update(context.excluded_rows)
+            said["note"] = "%d molecules · %d refused" % (len(event_results), len(refusals))
+        row_refs = _row_ref_pairs(source_plan, row_ids, event_results)
+    else:
+        with stage("event frames", len(base_rows)) as said:
+            event_frames = prepare_v2_cursor_batch(
+                snapshot, source_id, base_rows, refusals=refusals, excluded=excluded)
+            said["note"] = "%d molecules · %d refused" % (len(event_frames), len(refusals))
+        mapper_context = MapperContext(snapshot, source_plan)
+        with stage("dry run", len(event_frames)):
+            event_results = tuple(
+                dry_run_event_frame(mapper_context, event_frame, mappers)
+                for event_frame in event_frames
+            )
+        with stage("row refs", len(event_frames)):
+            row_refs = _row_ref_index(source_plan, event_frames, event_results)
     unsaid: dict = {}
     for result in event_results:
         for key in result.role_rows.attrs.get(UNIT_SAID_NOTHING_ATTR, ()):

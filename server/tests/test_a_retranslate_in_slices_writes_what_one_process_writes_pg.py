@@ -203,6 +203,7 @@ def test_the_run_door_in_four_slices_answers_as_one_process(world, monkeypatch, 
     assert _written(world) == written
     said = [line.split("] ", 1)[1] for line in lines if line.startswith("[ledger_rescope] ix_ref missing or not valid")]
     assert len(said) == 1 and out["every_page_pays"] == said[0], (said, out.get("every_page_pays"))
+    assert out["translated_by"] == "sql" and out["translated_by_label"] == "translated by", out
 
 
 def test_a_retranslation_with_nothing_changed_rewrites_no_row_index_line(world):

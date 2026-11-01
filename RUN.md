@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [11-01] **원장 번역이 SQL 길로 돈다 — 되돌림 스위치 하나** — git pull · 서버 재기동
+>
+> ```
+> 볼 줄    재기동 뒤 원장 워커 · API · 소급 실행 로그에 '[Ledger] translated by sql (ingestion_settings.json ledger_translate: …)'
+>          프로세스마다 첫 쪽에 한 번, 스위치가 바뀔 때마다 한 번
+>          소급 탭의 끝난 재번역 실행 행 요약에 'translated by sql' (스위치가 실행 중에 바뀌면 'sql → python')
+> 돌릴 것  server 폴더에서 python -m ledger sql-shadow --max-pages 5
+> 답의 뜻  SAME -> 두 길 같음, 그대로 둠
+>          DIFFERENT (종료 1) -> 아래 끄는 법으로 python 에 두고, 그 줄(원자 · 거절 · 빠진 행)을 들고 옴
+> 끄는 법  config/ingestion_settings.json 에 "ledger_translate": "python" 한 칸 -> 재기동 없음
+>          (원장 워커 · API 는 다음 쪽부터, 소급 실행은 다음 실행부터 — 버리는 DB 판으로 확인)
+>          지우거나 "sql" 이면 다시 SQL 길
+> 코드 맵퍼 소스  선언이 아니라 코드로 번역하는 소스는 스위치와 상관없이 python 길 ('translated by python')
+> 다시 도는 것  0 행 — 스위치는 선언 밖이라 소급 · 재번역이 일어나지 않고 새로 바뀌는 행부터 SQL 길
+> 4 단계  소유자가 7 일을 말하면 — 그 사이 python 으로 끈 날 0 · 그 뒤 sql-shadow 전 소스 SAME 한 번
+>          -> 파이썬 번역 · 스위치 삭제 (박스의 코드 맵퍼 소스 dt_job 은 그 전에 체인 표 dt_job_rollup 으로)
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "switch_parts or sql_path_translates or two_defects_are_said_once or run_door_in_four_slices"  -> 29 passed
+> ```
+>
+> ---
+>
 > ## [11-01] **sql-shadow 가 빠진 행도 원인별로 견준다** — git pull (서버 재기동 필요 없음, 명령줄 도구)
 >
 > ```

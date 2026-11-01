@@ -785,6 +785,9 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         total = _table_rows(engine, plan)
     run = keyset_scan.RUN_CONTROL.get() is not None
     skips = {} if skips is None else skips      # the partitions put off this run (`analyze_stale_partitions`)
+    # the path the run's pages go by, on its record (lead 11-01 stage 3: the switch is seen on the screen)
+    from . import sql_translate
+    start = sql_translate.translate_path(plan) if run and key_range is None else None
     if run and key_range is None:
         paid = say_what_every_page_pays(engine, plan, world, withdraw)
         if paid:
@@ -904,6 +907,9 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # refused it as `scope.row_id: the batch does not carry 'row_id'`; it repeated every
         # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
+    if start:
+        result["translated_by"] = sql_translate.translated_by(plan, start)
+        result["translated_by_label"] = sql_translate.TRANSLATED_BY
     return result
 
 

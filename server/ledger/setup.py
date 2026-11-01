@@ -529,11 +529,12 @@ def preview_selected_cursor_batch(
     cursor_value: Mapping[str, Any],
     *,
     known_registrations: Any = None,
+    translate: str | None = None,
 ) -> CursorBatchPreview:
     _require_declared_source(setup, source_id)
     return preview_cursor_batch(
         setup.snapshot, source_id, base_rows, cursor_value, setup.mappers,
-        known_registrations=known_registrations,
+        known_registrations=known_registrations, translate=translate,
     )
 
 
