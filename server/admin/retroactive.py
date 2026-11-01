@@ -809,8 +809,8 @@ def _run_ledger_rescope(db, params, log, control=None):
             "inserted": s["inserted"], "deduped": s["deduped"],
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"],
             "refused": sum(refused.values()), **({"refused_reasons": why} if why else {}),
-            **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages", "rows_without_page_key")
-               if key in s}}
+            **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages", "rows_without_page_key",
+                                       "every_page_pays") if key in s}}
 
 
 def _rescope_in_slices(db, params, control):
@@ -838,7 +838,7 @@ def _rescope_in_slices(db, params, control):
         return None
     # the slices find the world made - none of them races another to make it
     schema.ensure_world(engine, schema.world_names(world))
-    backfill.say_what_every_page_pays(engine, plan, world, True)
+    paid = backfill.say_what_every_page_pays(engine, plan, world, True)
     backfill.analyze_stale_partitions(engine, world)
     control.own_beat = False
     try:
@@ -847,6 +847,8 @@ def _rescope_in_slices(db, params, control):
         control.own_beat = True
     if s.get("rows_in_scope"):
         s.pop("scope_empty", None)                 # empty only when every slice was
+    if paid:
+        s["every_page_pays"] = paid                # the run's, said once before its slices (`_run_ledger_rescope`)
     if s.get("stopped"):
         control.stop_requested()                   # the × the slices stopped on - the run ends cancelled
     else:
@@ -4543,6 +4545,7 @@ RESULT_NAMES = {
     "days": "days in the window", "days_done": "days collected",
     "done_until": "collected up to (KST)", "key_index": "index on the keys",
     "probe_batch_fallbacks": "batch -> key by key (keys)",
+    "every_page_pays": "every page pays:",
 }
 
 

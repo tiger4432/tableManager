@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-01] **재번역 실행 행이 «쪽마다 치르는 결함»을 남긴다** — git pull · 서버 재기동
+>
+> ```
+> 볼 것    소급 탭의 끝난 재번역 실행 행 요약에 'every page pays: …' 가 있으면
+>          -> page key X of T has no index : T 의 table_config.json "indexes" 에 ["X"] 를 적음 -> 스케줄러가 지음
+>             (그때까지 그 표의 재번역은 쪽마다 표 전체를 정렬 — lag dt_log 실측 2,000 행 쪽 2.85 s)
+>          -> <ref 색인> missing or not valid : 원장 프로세스가 시작 때 짓거나, 그 줄 끝의 CREATE INDEX 를 돌림
+>          없으면 -> 두 결함 다 없음
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "two_defects_are_said_once or run_door_in_four_slices"  -> 2 passed
+> 끄는 법  git revert <이 커밋> -> 서버 재기동 (로그 줄은 그대로, 실행 행 요약만 빠짐)
+> ```
+>
+> ---
+>
 > ## [11-01] **빈 키 행은 거절하지 않고 뺀다 — 원인별로 셈** — git pull · 서버 재기동
 >
 > ```

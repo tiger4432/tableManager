@@ -786,7 +786,9 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     run = keyset_scan.RUN_CONTROL.get() is not None
     skips = {} if skips is None else skips      # the partitions put off this run (`analyze_stale_partitions`)
     if run and key_range is None:
-        say_what_every_page_pays(engine, plan, world, withdraw)
+        paid = say_what_every_page_pays(engine, plan, world, withdraw)
+        if paid:
+            result["every_page_pays"] = paid
         if withdraw:
             analyze_stale_partitions(engine, world, skips=skips)
     for frame in _scope_pages(engine, plan, scoped, page_rows, key_range):
@@ -909,14 +911,16 @@ def say_what_every_page_pays(engine, plan, world, withdraw):
     """The two defects a run pays on every page, said once at its start whatever `retroactive_debug` says (총괄 10-13:
     a line that names a defect is not a debug line) - by the judgments the stage lines' notes use: the ledger's ref index
     missing or not valid (each page's withdrawal reads the whole ledger), and no index on the page key
-    (each page sorts the source - and the pages begin at one row)."""
+    (each page sorts the source - and the pages begin at one row). -> the sentences said, joined, or "" - the run puts
+    the same string on its record (`every_page_pays`, lead 11-01: a line only in the log is not on the screen)."""
     from chain import keyset_scan
 
+    said = []
     if withdraw:
         name, valid, build = ref_index_state(engine, world)
         if not valid:
-            keyset_scan.say("%s missing or not valid - each page's withdrawal reads the whole ledger; "
-                            "the ledger process builds it at its start (build_missing_indexes), or now: %s" % (name, build))
+            said.append("%s missing or not valid - each page's withdrawal reads the whole ledger; "
+                        "the ledger process builds it at its start (build_missing_indexes), or now: %s" % (name, build))
     connection = engine.raw_connection()
     try:
         keyed = _page_key_index(connection, plan)
@@ -924,10 +928,13 @@ def say_what_every_page_pays(engine, plan, world, withdraw):
         connection.rollback()
         connection.close()
     if not keyed and _table_rows(engine, plan, count=False):        # a view has no index of its own (총괄 bdc08ec39 ⑥)
-        keyset_scan.say('page key %s of %s has no index - each page sorts the table and the run goes in one slice '
-                        '(`slice_bounds`); declare one on ["%s"] in that table\'s "indexes" (table_config.json) and '
-                        'the scheduler\'s index line builds it'
-                        % (_page_key(plan), plan.relation, _page_key(plan)))
+        said.append('page key %s of %s has no index - each page sorts the table and the run goes in one slice '
+                    '(`slice_bounds`); declare one on ["%s"] in that table\'s "indexes" (table_config.json) and '
+                    'the scheduler\'s index line builds it'
+                    % (_page_key(plan), plan.relation, _page_key(plan)))
+    for sentence in said:
+        keyset_scan.say(sentence)
+    return " · ".join(said)
 
 
 #: `ingestion_settings.json`: the share of a ledger partition's rows changed since its last ANALYZE from which a
@@ -1244,7 +1251,7 @@ def _missing_rows_taken_out(engine, setup, source, exact_rows, world=None):
     if len(ids) > EXCLUDED_COUNT_ROWS:
         return {}, 0, "over %dk rows the index does not name" % (EXCLUDED_COUNT_ROWS // 1000)
     if not ids:
-        return 0, 0, None
+        return {}, 0, None
     columns = list(named_columns(plan))
     relation = sql.SQL(".").join(sql.Identifier(part) for part in str(plan.relation).split("."))
     connection = engine.raw_connection()

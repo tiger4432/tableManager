@@ -183,6 +183,8 @@ def test_the_run_door_in_four_slices_answers_as_one_process(world, monkeypatch, 
     # rows no page reads (a NULL page key) are counted at the run's end and said (총괄 9752e91f7 ⑤)
     monkeypatch.setattr(backfill, "_rows_without_page_key", lambda engine, plan: 2)
     _whole(world)
+    # a defect every page pays, said once before the slices - on the run's record too (lead 11-01)
+    monkeypatch.setattr(backfill, "ref_index_state", lambda engine, world=None: ("ix_ref", False, "CREATE INDEX ix_ref"))
     written = _written(world)
     tails.clear()
     _forget(world)
@@ -199,6 +201,8 @@ def test_the_run_door_in_four_slices_answers_as_one_process(world, monkeypatch, 
     assert any(line.startswith("[ledger_rescope] 2 rows of ") and " have no row_id (the page key) - " in line
                for line in lines), [line for line in lines if "page key" in line]
     assert _written(world) == written
+    said = [line.split("] ", 1)[1] for line in lines if line.startswith("[ledger_rescope] ix_ref missing or not valid")]
+    assert len(said) == 1 and out["every_page_pays"] == said[0], (said, out.get("every_page_pays"))
 
 
 def test_a_retranslation_with_nothing_changed_rewrites_no_row_index_line(world):

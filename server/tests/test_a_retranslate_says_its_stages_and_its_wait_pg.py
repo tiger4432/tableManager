@@ -234,6 +234,10 @@ def test_the_two_defects_are_said_once_with_the_lines_off(world, monkeypatch):
         "[ledger_rescope] page key row_id of hc_official has no index - each page sorts the table")]
     assert (len(ref), len(key)) == (1, 1), [line for line in lines if "index" in line][:6]
     assert _stage_lines(lines) == {}
+    # and on the run's record, the log's own sentences as one string - the run row's summary draws it (lead 11-01)
+    paid = out["result"]["every_page_pays"]
+    assert paid == " · ".join(line.split("] ", 1)[1] for line in ref + key), paid
+    assert "every page pays: " + paid in retroactive.run_result_sentence(out["result"])
 
 
 def test_a_held_lock_is_named_by_the_beat(world, monkeypatch, pg_engine):
