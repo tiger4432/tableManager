@@ -365,7 +365,7 @@
 >
 > ```
 > 무엇      숫자 칸의 'N/A' · '1,234' · 시각 칸의 'not a time' · SAT 파일 반지름의 'nan' — 그 칸만 안 들어가고 행 · 파일 · 묶음은 씀
->          원장: 묶음 칸(identity · group_by)이 빈 행만 no_identity 로 거절하고 나머지는 번역 · enrichment: 못 읽는 시각은 그 행의 시각만 뺌
+>          원장: (11-01 부터) 빈 키 행은 거절 대신 excluded 로 셈 — 맨 위 11-01 블록 · enrichment: 못 읽는 시각은 그 행의 시각만 뺌
 > 문장      자리         전                                                후
 >          그리드       400 «Row 2: column 'target_qty' does not take        200 · 응답 dropped.by_reason {"value_refused": 1}
 >                       'abc' - a number is expected.»
@@ -375,7 +375,7 @@
 >          로그(셋 다)  없음                                                «[Write] <표>: N cell(s) refused - target_qty=2 (first 'abc') - not entered,
 >                                                                          the rest of each row written»
 >          시각 칸      PG 원문(잘못된 입력 + SQL) · 묶음 0 행               위와 같은 [Write] 줄 — 판단은 PG 가 함(묶음마다 질의 하나)
->          원장         쪽 전체 «driver identity/group_by value is missing»  그 행만 «no_identity … N row(s) with a blank driver identity/group_by»
+>          원장         쪽 전체 «driver identity/group_by value is missing»  (11-01 부터) 빈 키 행은 거절 대신 excluded 로 셈 — 맨 위 11-01 블록
 >          enrichment   묶음 실패 «Latest: t.c holds 'v', which the ledger   «[Enrichment] t: N row(s) whose time the ledger cannot read - … First: Latest: …»
 >                       cannot read as its time»
 > 볼 줄     server.log · watcher.log · chain_worker.log 에서 «cell(s) refused» · «whose time the ledger cannot read»
@@ -9408,7 +9408,7 @@
 > 뜻           그 줄 = 원천 표의 그 행 커서 칸이 비어 있음. 할 일은 그 칸을 채우는 것 — 채우면 다음 따라가기가 그 분자를 번역
 >             그 분자에 전에 적힌 원자는 거절되는 동안 원장에서 걷힘 — 편집으로 칸을 비우면 걷히고 채우면 돌아옴(PG 에서 잼)
 >             거절 수는 그 작업을 따라갈 때마다 늘어남 — 채울 때까지
->             identity · group_by 칸이 빈 행은 10-29 부터 그 행만 no_identity 로 거절 · 셈 (전엔 페이지째 멈춤)
+>             (11-01 부터) 빈 키 행은 거절 대신 excluded 로 셈 — 맨 위 11-01 블록
 > 급할 때       끄는 스위치 없음 — 커밋 되돌리기
 > ```
 
