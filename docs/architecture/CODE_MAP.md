@@ -4961,6 +4961,8 @@ python -m ledger                   있는 도구 목록
 python -m ledger backfill  [옵션]   -> ledger/backfill.py                 main(argv)
 python -m ledger restamp   [옵션]   -> scripts/ledger_restamp_cursor.py   main(argv)
 python -m ledger census    [옵션]   -> ledger/census_cli.py               main(argv)  🆕
+python -m ledger followup  [옵션]   -> ledger/followup.py                 main(argv)
+python -m ledger sql-shadow [옵션]  -> ledger/sql_translate.py            main(argv)  🆕 10-31 3d9bdcc78 (읽기만, 다르면 종료 1)
 python -m chain  replay    [옵션]   -> scripts/chain_replay_cli.py        main(argv)
 ```
 🔴 **문은 아무것도 구현하지 않는다.** 부명령은 위 모듈을 import 해 `main(argv)` 를 «부를 뿐»이고,
