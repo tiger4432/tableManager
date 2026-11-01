@@ -709,7 +709,7 @@
 
 - 무엇: 원장 번역(라이브 follow · 재번역 · 소급 실행 · 소급 미리보기 · Test run)이 이제 SQL 길로 돕니다(10-31 ② 3 단계). 바뀌는 자리는 하나입니다 — 모든 번역이 지나는 `runtime_v2.preview_cursor_batch`. 선언으로 번역하는 소스만이고, 코드 맵퍼 소스는 파이썬 길에 남습니다.
 - 되돌리기: `config/ingestion_settings.json` 에 `"ledger_translate": "python"` 한 칸이면 모든 소스가 파이썬 길로 돌아갑니다. 재기동은 필요 없습니다 — 버리는 DB 에 API · 스케줄러 · 원장 워커 · 체인 워커를 한 번 띄우고 스위치를 python → sql → python 으로 바꾼 판에서, 원장 워커와 API 는 다음 쪽부터, 소급 실행은 다음 실행부터 바뀌었습니다. 체인 워커는 번역을 하지 않습니다.
-- 보이는 곳: 로그 줄 «[Ledger] translated by sql (…)»(프로세스마다 첫 쪽과 스위치가 바뀔 때), 소급 탭의 끝난 재번역 실행 행 요약 «translated by sql». 둘은 같은 낱말(`sql_translate.TRANSLATED_BY`)에서 나옵니다.
+- 보이는 곳: 로그 줄 «[Ledger] <소스> translated by sql (…)»(소스마다 프로세스의 첫 쪽과 그 길이 바뀔 때 — 코드 맵퍼 소스는 «translated by python (… - its mapper is code)»), 소급 탭의 끝난 재번역 실행 행 요약 «translated by sql». 둘은 같은 낱말(`sql_translate.TRANSLATED_BY`)에서 나옵니다.
 - 다시 도는 것: 없습니다. 스위치는 선언 밖이라 선언 지문 · 커서 · 드리프트(행 값 지문)가 그대로이고, 새로 바뀌는 행부터 SQL 길로 갑니다.
 - 같은 답 근거: 박스 선언 소스 넷 전 쪽 635,190 행 · lag lot_slot_wafer 125,000 행 · lag dt_log_container 100 쪽 · lag «전부 빠짐» 200,000 행이 두 길 SAME.
 - 필요한 조건: git pull · 서버 재기동.

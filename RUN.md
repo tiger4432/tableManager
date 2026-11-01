@@ -3,8 +3,9 @@
 > ## [11-01] **원장 번역이 SQL 길로 돈다 — 되돌림 스위치 하나** — git pull · 서버 재기동
 >
 > ```
-> 볼 줄    재기동 뒤 원장 워커 · API · 소급 실행 로그에 '[Ledger] translated by sql (ingestion_settings.json ledger_translate: …)'
->          프로세스마다 첫 쪽에 한 번, 스위치가 바뀔 때마다 한 번
+> 볼 줄    재기동 뒤 원장 워커 · API · 소급 실행 로그에 '[Ledger] <소스> translated by sql (ingestion_settings.json ledger_translate: …)'
+>          소스마다 그 프로세스의 첫 쪽에 한 번, 그 소스의 길이 바뀔 때마다 한 번
+>          코드 맵퍼 소스는 '<소스> translated by python (… - its mapper is code)'
 >          소급 탭의 끝난 재번역 실행 행 요약에 'translated by sql' (스위치가 실행 중에 바뀌면 'sql → python')
 > 돌릴 것  server 폴더에서 python -m ledger sql-shadow --max-pages 5
 > 답의 뜻  SAME -> 두 길 같음, 그대로 둠
@@ -16,7 +17,7 @@
 > 다시 도는 것  0 행 — 스위치는 선언 밖이라 소급 · 재번역이 일어나지 않고 새로 바뀌는 행부터 SQL 길
 > 4 단계  소유자가 7 일을 말하면 — 그 사이 python 으로 끈 날 0 · 그 뒤 sql-shadow 전 소스 SAME 한 번
 >          -> 파이썬 번역 · 스위치 삭제 (박스의 코드 맵퍼 소스 dt_job 은 그 전에 체인 표 dt_job_rollup 으로)
-> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "switch_parts or sql_path_translates or two_defects_are_said_once or run_door_in_four_slices"  -> 29 passed
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "switch_parts or sql_path_translates or two_defects_are_said_once or run_door_in_four_slices or line_says_the_path"  -> 30 passed
 > ```
 >
 > ---

@@ -217,3 +217,23 @@ def test_the_switch_parts_the_two_paths_at_one_seat_and_both_answer_alike(world,
     assert sql.candidate_semantics == python.candidate_semantics and sql.candidate_semantics
     assert sql.row_refs == python.row_refs and sql.row_refs, "the withdrawal's index lines, alike"
     assert sql.excluded_rows == python.excluded_rows and sql.refusals == python.refusals
+
+
+def test_the_line_says_the_path_each_source_goes_by_a_code_mapper_by_python(monkeypatch, caplog):
+    import logging
+    from types import SimpleNamespace
+
+    import ingestion.settings
+
+    def plan(source, mapper):
+        return SimpleNamespace(source_id=source, driver=SimpleNamespace(mapper=SimpleNamespace(
+            implementation=SimpleNamespace(implementation_id=mapper))))
+    monkeypatch.setattr(sql_translate, "_said_path", {})
+    monkeypatch.setattr(ingestion.settings, "read_ingestion_settings", lambda: {})
+    caplog.set_level(logging.WARNING, logger="ledger.sql_translate")
+    declared, code = plan("hc_official", "declarative-role"), plan("dt_job", "dt-job-role")
+    assert [sql_translate.translate_path(p) for p in (declared, code, declared, code)] == ["sql", "python"] * 2
+    said = [r.getMessage() for r in caplog.records if r.name == "ledger.sql_translate"]
+    assert said == ["[Ledger] hc_official translated by sql (ingestion_settings.json ledger_translate: 'sql')",
+                    "[Ledger] dt_job translated by python (ingestion_settings.json ledger_translate: 'sql'"
+                    " - its mapper is code)"], said

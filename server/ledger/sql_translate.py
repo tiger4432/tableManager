@@ -28,17 +28,20 @@ _said_path = {}
 
 def translate_path(plan) -> str:
     """"sql" or "python" for this source's next page - python when the switch says so or the mapper is code (a code
-    mapper stays on the Python path until stage 4). Said at a process's first page and at each change of the switch."""
+    mapper stays on the Python path until stage 4). Said a source at a process's first page of it and at each change
+    of its path - the path it goes by, not the switch alone (C 11-01: a code mapper went by python under a «sql» line)."""
     import logging
 
     from ingestion.settings import read_ingestion_settings
 
     value = read_ingestion_settings().get(TRANSLATE_SETTING, "sql")
-    if "value" not in _said_path or _said_path["value"] != value:
-        logging.getLogger(__name__).warning("[Ledger] %s %s (ingestion_settings.json %s: %r)", TRANSLATED_BY,
-                                            "python" if value == "python" else "sql", TRANSLATE_SETTING, value)
-    _said_path["value"] = value
-    return "python" if value == "python" or not covers(plan) else "sql"
+    path = "python" if value == "python" or not covers(plan) else "sql"
+    if _said_path.get(plan.source_id) != path:
+        logging.getLogger(__name__).warning("[Ledger] %s %s %s (ingestion_settings.json %s: %r%s)", plan.source_id,
+                                            TRANSLATED_BY, path, TRANSLATE_SETTING, value,
+                                            "" if covers(plan) else " - its mapper is code")
+    _said_path[plan.source_id] = path
+    return path
 
 
 def translated_by(plan, start) -> str:
