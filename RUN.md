@@ -30,7 +30,7 @@
 > 코드 맵퍼 소스  선언이 아니라 코드로 번역하는 소스는 스위치와 상관없이 python 길 ('translated by python')
 > 다시 도는 것  0 행 — 스위치는 선언 밖이라 소급 · 재번역이 일어나지 않고 새로 바뀌는 행부터 SQL 길
 > 4 단계  소유자가 7 일을 말하면 — 그 사이 python 으로 끈 날 0 · 그 뒤 sql-shadow 전 소스 SAME 한 번
->          -> 파이썬 번역 · 스위치 삭제 (박스의 코드 맵퍼 소스 dt_job 은 그 전에 체인 표 dt_job_rollup 으로)
+>          -> 파이썬 번역 · 스위치 삭제 (박스 · 운영에 코드 맵퍼 원장 소스가 남아 있으면 그 전에 샘플 길로 — 그 소스는 4 단계 뒤 멈춤. 지금 박스는 dt_job 하나: 견본의 decide 선언 dt_log_to_dt_job_rollup + 원장 소스를 dt_job_rollup 으로)
 > 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "switch_parts or sql_path_translates or two_defects_are_said_once or run_door_in_four_slices or line_says_the_path"  -> 30 passed
 > ```
 >

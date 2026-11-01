@@ -45,7 +45,7 @@ MOVED = (
     "parsers/custom_parser.py.sample",
 )
 
-#: The seven tracked samples that STAY: tests read them byte-identically against the
+#: The tracked samples that STAY - the mapper samples and the parser shims below: tests read them byte-identically against the
 #: owner's live mappers, so moving them out would leave the drift gate nothing to compare.
 STAYS = (
     "mappers/core_alignment_mapper.py.sample",
