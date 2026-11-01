@@ -180,16 +180,36 @@
       }
     },
     {
-      "__comment": "[S-100 ⓐ] Writes one row per dt_job with that job's row count. The ledger does not aggregate (local, no computation), so the count runs here. The ledger's Python mapper `dt-job-role` used to count len(unit), and the declaration beside it pointed at dt_index, which it never read (rulings 197 · 211). | Ships switched off: its mapper ships only as mappers/dt_job_rollup_mapper.py.sample - put the .py there, then switch it on (lead 10-28).",
+      "__comment": "[S-100 ⓐ] One row per dt_job with that job's row count. The ledger does not aggregate (local, no computation), so the count runs here - by a decide declaration, no mapper file: key dt_job, the count and the two columns the ledger's dt_job source reads (dt_eqp is the entity's attribute, event_time its occurred_at). No field for a person, so nothing is queued (da6c523e1). A row deleted from dt_log recounts its job. The mapper file this rule used to name (mappers/dt_job_rollup_mapper.py.sample) retired 11-02.",
       "name": "dt_log_to_dt_job_rollup",
-      "enabled": false,
-      "trigger_table": "dt_log",
-      "target_table": "dt_job_rollup",
-      "mapper_module": "mappers.dt_job_rollup_mapper",
-      "mapper_function": "build_dt_job_rollup_rows",
-      "is_batch": true,
       "enabled": true,
-      "__why_enabled": "SHIPS ENABLED because the shipped ledger declaration READS dt_job_rollup (measured 2026-09-10). The ledger is local and calculation-free so it cannot count a group; S-100 (a) moved that count here. Off, the ledger source has nothing to read."
+      "__why_enabled": "SHIPS ENABLED because the shipped ledger declaration READS dt_job_rollup (measured 2026-09-10) and nothing here needs a file.",
+      "on": {
+        "table": "dt_log"
+      },
+      "into": {
+        "table": "dt_job_rollup"
+      },
+      "derive": {
+        "kind": "decide",
+        "decide": {
+          "key": [
+            "dt_job"
+          ],
+          "fields": [],
+          "aggregations": {
+            "netdie_count": "count",
+            "dt_eqp": {
+              "fn": "max",
+              "column": "dt_eqp"
+            },
+            "event_time": {
+              "fn": "max",
+              "column": "event_time"
+            }
+          }
+        }
+      }
     },
     {
       "__comment": "A process row carries the material type of its step: step_phase lists the DT steps, and this join copies mat_type onto every wafer_process row with that step - the ledger says the row about a dtwafer when it reads DT and about a wafer when it is blank (363db7dfa). To take a step out, empty its mat_type rather than deleting the row: a deleted source row names no key, so the rows it filled keep their value.",

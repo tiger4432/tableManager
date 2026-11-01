@@ -50,7 +50,6 @@ HAND_COPIED = (
     os.path.join("mappers", "cross_table_lookup_mapper.py.sample"),
     os.path.join("mappers", "dt_alignment_metadata_mapper.py.sample"),
     os.path.join("mappers", "dt_inventory_metadata_mapper.py.sample"),
-    os.path.join("mappers", "dt_job_rollup_mapper.py.sample"),
     os.path.join("mappers", "dt_map_mapper.py.sample"),
 )
 

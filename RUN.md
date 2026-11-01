@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-02] **dt_job_rollup 을 맵퍼 파일 없이 — 견본 규칙이 decide 선언, 견본 맵퍼 은퇴** — git pull 만 (견본만 바뀜)
+>
+> ```
+> 무엇     견본 chain_rules 의 dt_log_to_dt_job_rollup 이 decide 선언(key dt_job · netdie_count = count · dt_eqp · event_time)
+>          맵퍼 파일을 찾지 않음 — 견본 mappers/dt_job_rollup_mapper.py.sample 은 지움
+>          견본 ingestion_settings 에 "ledger_translate": "sql" ("python" = 전역 되돌림, 재기동 없음)
+> 알아 둘 것  운영에 dt_job_rollup_mapper.py 를 놓고 쓰고 있으면 그대로 돎
+>          파일 없이 가려면 그 규칙을 견본의 decide 선언으로 바꿈 — 바꾸면 dt_job_rollup 을 다시 셈(행 수는 그 표 크기)
+> 같은 답  server 폴더에서 python -m pytest tests/test_the_chain_counts_and_the_ledger_only_reads.py  -> 6 passed
+>          (job 행 1 · 2 · 4 -> 한 행씩 그 수 · 행 하나 지우면 그 job 만 3)
+> ```
+>
+> ---
+>
 > ## [11-01] **원장 번역이 SQL 길로 돈다 — 되돌림 스위치 하나** — git pull · 서버 재기동
 >
 > ```
@@ -970,8 +984,7 @@
 > 뜻      그 줄 = 맵퍼 파일이 없거나 import 에서 터짐 -> server/mappers/ 에 그 파일을 놓음 (다음 로드에서 풀림)
 >          규칙 목록의 사유 칸(rule_state_detail)과 그 이름 재생도 같은 문장
 >          예전 «… FAILED: … could not be loaded» 가 그룹마다 찍히던 것 = 이 착지 전
-> 견본     dt_log_to_dt_job_rollup 은 꺼진 채 — mappers/dt_job_rollup_mapper.py.sample 을 .py 로 놓고 켬
->          production_to_inventory_reservation_batch 는 켠 채 — 맵퍼 파일이 없는 설치에선 위 거절 줄이 보임
+> 견본     production_to_inventory_reservation_batch 는 켠 채 — 맵퍼 파일이 없는 설치에선 위 거절 줄이 보임
 > 되돌리기  git revert b8d0bd0f3 -> 런처 재기동
 > ```
 
@@ -1272,22 +1285,6 @@
 >          옛 줄 «deleted <표> <키>: no source rows (a person's value was on it)» 은 더 안 나온다
 > 그대로    사람 칸 없는 행은 지워진다(이력 chain_no_source_rows) · 다른 쓰는이가 있는 행은 «kept … wrote on it» 으로 남는다
 > 그 행을 없애려면  그리드에서 그 행을 지운다(사람이 지움) — 체인은 사람 칸 있는 행을 지우지 않는다
-> ```
->
-> ---
->
-> ## [10-28] **견본 맵퍼가 칸의 값을 읽는다 — dt_log_to_dt_job_rollup 이 09-09 부터 «can't adapt type 'dict'»로 실패하던 것** — 체인 워커 재기동 뒤
->
-> ```
-> 무엇     견본 server/mappers/dt_job_rollup_mapper.py.sample 이 체인이 넘기는 칸({"value": …})을 값 대신 통째로 써서
->          규칙 dt_log_to_dt_job_rollup 이 행마다 실패했다(태어난 09-09 부터). 견본 맵퍼 여덟과 mapper_sdk.payloads_to_df 가
->          이제 mapper_sdk.cell_value 하나로 칸의 값을 읽는다
-> 할 일     운영 server/mappers/dt_job_rollup_mapper.py 가 견본 복사본과 같다면 견본으로 다시 복사하고 체인 워커를 재기동한다
->          다른 견본 맵퍼의 운영 복사본은 그대로 돌아간다(같은 값을 읽는다) — 다시 복사는 선택
-> 보는 것   SELECT count(*) FROM dt_job_rollup;   0 이면 09-09 부터 비어 있었다는 뜻 -> 원장 dt_job 소스의 셈 원자도 없었다
->          다시 복사 · 재기동 뒤 dt_log 에 행이 들어오면 그 job 의 행이 생긴다. 옛 dt_log 행을 채우려면 그 규칙을 소급(R1)으로
->          chain_worker.log 에 «can't adapt type 'dict'» 가 더 안 나와야 한다
-> 끄기     규칙 dt_log_to_dt_job_rollup 의 enabled 를 false — 원장 dt_job 소스가 읽을 것이 없어질 뿐, 다른 규칙은 그대로
 > ```
 >
 > ---

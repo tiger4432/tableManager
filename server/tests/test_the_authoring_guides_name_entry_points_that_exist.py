@@ -53,7 +53,6 @@ STAYS = (
     "mappers/cross_table_lookup_mapper.py.sample",
     "mappers/dt_alignment_metadata_mapper.py.sample",
     "mappers/dt_inventory_metadata_mapper.py.sample",
-    "mappers/dt_job_rollup_mapper.py.sample",
     "mappers/dt_map_mapper.py.sample",
     # 🔴 AND THE TWO PARSER SHIMS (판정 349): their own headers say 「HAND-COPY THIS FILE」,
     # and `OPERATOR_RUNBOOK.md` :71 makes that copy step 4 of a procedure. Their reason to

@@ -401,6 +401,7 @@
 
 ### 설정 파일
 
+- 2026-11-02 [dt_job_rollup 을 맵퍼 파일 없이 — 견본 규칙이 decide 선언, 견본 맵퍼 은퇴 · 샘플 설정에 ledger_translate](#2026-11-02--dt_job_rollup-을-맵퍼-파일-없이--견본-규칙이-decide-선언-견본-맵퍼-은퇴--샘플-설정에-ledger_translate) — 견본 chain_rules · ingestion_settings
 - 2026-11-01 [원장 번역이 SQL 길로 돈다 — 되돌림 스위치 하나(ingestion_settings.json ledger_translate)](#2026-11-01--원장-번역이-sql-길로-돈다--되돌림-스위치-하나ingestion_settingsjson-ledger_translate) — 끄는 곳 ingestion_settings.json · 보는 곳 소급 탭 실행 행
 - 2026-11-01 [빈 키 행은 거절하지 않고 뺀다 — 원인별로 셈](#2026-11-01--빈-키-행은-거절하지-않고-뺀다--원인별로-셈) — 적을 것 없음 · allow_null 은 안 읽음
 - 2026-10-31 [원장 번역 SQL 길 1 단계 — 같은 답의 번역 길(아직 쓰지 않음)](#2026-10-31--원장-번역-sql-길-1-단계--같은-답의-번역-길아직-쓰지-않음) — 적을 것 없음 · 동작 그대로
@@ -704,6 +705,14 @@
 
 
 
+
+## 2026-11-02 · dt_job_rollup 을 맵퍼 파일 없이 — 견본 규칙이 decide 선언, 견본 맵퍼 은퇴 · 샘플 설정에 ledger_translate
+
+- 무엇: 견본의 dt_job_rollup 규칙이 이제 decide 선언입니다 — dt_log 를 dt_job 별로 묶어 한 행에 행 수(netdie_count)와 원장이 읽는 dt_eqp · event_time 을 씁니다. 맵퍼 파일을 찾지 않으므로 견본 mappers/dt_job_rollup_mapper.py.sample 은 지웠습니다. 사람이 채울 칸이 없어 아무것도 큐에 서지 않습니다(da6c523e1).
+- 운영: 이미 dt_job_rollup_mapper.py 를 놓고 쓰는 설치는 그대로 돕니다. 파일 없이 가려면 그 규칙을 견본의 decide 선언으로 바꾸고, 그러면 dt_job_rollup 을 다시 셉니다.
+- 같은 답 근거: 버리는 DB 에 API · 체인 워커 · 원장 워커를 띄운 판 — job 행 1 · 2 · 4 → dt_job_rollup 1 · 2 · 4 · 원장 counted 1 · 2 · 4, 행 하나 지우면 3. 박스 dt_log 에서 job 안 dt_eqp · event_time 이 둘 이상인 job 0.
+- 함께: 견본 ingestion_settings.json 에 "ledger_translate": "sql" 한 줄(원장 번역 되돌림 스위치의 자리).
+- 필요한 조건: git pull 만(견본만 바뀜).
 
 ## 2026-11-01 · 원장 번역이 SQL 길로 돈다 — 되돌림 스위치 하나(ingestion_settings.json ledger_translate)
 

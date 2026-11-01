@@ -16,8 +16,6 @@ predicates, the same subject, the same number, the same qualifiers - measured ag
 python path before it was deleted, and written out here by hand rather than captured.
 """
 from datetime import datetime, timezone
-import importlib.machinery
-import importlib.util
 import io
 import json
 import os
@@ -38,8 +36,6 @@ SAMPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config"
 TABLE_CONFIG = os.path.join(SAMPLE, "table_config.json.sample")
 LEDGER_CONFIG = os.path.join(SAMPLE, "ledger_config.json.sample")
 CHAIN_RULES = os.path.join(SAMPLE, "chain_rules.json.sample")
-MAPPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mappers",
-                      "dt_job_rollup_mapper.py.sample")
 
 NOW = datetime(2026, 9, 9, 3, 0, tzinfo=timezone.utc)
 JOB = "SYN-DTJ-002-04"
@@ -142,9 +138,9 @@ def test_the_three_declarations_name_each_other():
 
     rules = load(CHAIN_RULES)["rules"]
     rule = next(r for r in rules if r["name"] == "dt_log_to_dt_job_rollup")
-    assert rule["trigger_table"] == "dt_log" and rule["target_table"] == ROLLUP
-    assert rule["mapper_module"] == "mappers.dt_job_rollup_mapper"
-    assert rule["is_batch"] is True
+    assert rule["on"]["table"] == "dt_log" and rule["into"]["table"] == ROLLUP
+    assert rule["derive"]["kind"] == "decide" and rule["derive"]["decide"]["key"] == ["dt_job"]
+    assert set(rule["derive"]["decide"]["aggregations"]) == set(table["column_types"]) - {"dt_job"}
 
     source = load(LEDGER_CONFIG)["sources"]["dt_job"]
     assert source["relation"] == ROLLUP
@@ -152,113 +148,97 @@ def test_the_three_declarations_name_each_other():
     assert source["bind"]["mappings"]["counted"]["bind"]["value"]["column"] == "netdie_count"
 
 
-def test_the_mapper_the_rule_names_is_a_tracked_sample():
-    """⚠️ `server/mappers/` IS GITIGNORED. A rule pointing at a module that exists only on one
-    machine ships a declaration nobody else can run, which is why every other chain mapper
-    here has a tracked `.py.sample` beside it."""
-    assert os.path.exists(MAPPER)
+def _rule():
+    return next(r for r in load(CHAIN_RULES)["rules"] if r["name"] == "dt_log_to_dt_job_rollup")
 
 
-def test_this_is_not_an_enrichment_rule_and_leaves_no_human_worklist():
-    """⛔ MEASURED, AND IT IS WHY THE RULING'S FIRST MECHANISM WAS PUT ASIDE. Enrichment's
-    `aggregations` would have done the counting declaratively, but a rule there requires a
-    non-empty `target_fields` and its worklist is exactly 「rows where those are blank」 - so
-    one permanent, unanswerable queue item per dt_job. An ordinary chain rule has no such
-    field, and this asserts the rule stayed one."""
-    rule = next(r for r in load(CHAIN_RULES)["rules"]
-                if r["name"] == "dt_log_to_dt_job_rollup")
-    assert "target_fields" not in rule and "decision_key" not in rule
+def test_the_rule_names_no_mapper_file_and_queues_nobody():
+    """11-02 (lead ㄱ): the count is a decide declaration - the product builds its mapper from the declaration in this
+    process (`declared:enrich`), so no file ships or has to be put anywhere; the mapper file this rule named
+    (mappers/dt_job_rollup_mapper.py.sample) retired. ⚰️ This file used to assert the rule was NOT a decide, because a
+    decide then required a field for a person and queued one unanswerable item a dt_job; da6c523e1 («a decide with no
+    field for a person stands on its aggregations - one derived row per key ... queued for nobody») ended that."""
+    from chain import rule_shape
+
+    rules, refusal = rule_shape.decide_rules(rule_shape.from_declaration(_rule()), load(TABLE_CONFIG))
+    assert refusal is None
+    assert sorted(r["mapper"] for r in rules) == ["declared:decide", "declared:enrich"]
+    assert all(r["params"]["target_fields"] == [] for r in rules), "no field for a person - nothing queued"
+    assert not any("mapper_module" in r for r in rules)
 
 
-# ------------------------------------------------------------------ the mapper
+# ------------------------------------------------------------------ the count, run by the chain seat
 
 
-@pytest.fixture(scope="module")
-def mapper():
-    """The tracked `.py.sample`, imported from its own path - it is the file that ships."""
-    # ⚠️ AN EXPLICIT LOADER, because `.py.sample` is not a name python recognises as source
-    # - `spec_from_file_location` returns None for it and the failure is an unhelpful
-    # `NoneType has no attribute loader`. The extension is the whole point of the deployment
-    # shape, so the test adapts rather than the file being renamed.
-    spec = importlib.util.spec_from_loader(
-        "dt_job_rollup_mapper_sample",
-        importlib.machinery.SourceFileLoader("dt_job_rollup_mapper_sample", MAPPER))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+@pytest.fixture(name="seat")
+def fixture_seat():
+    """The sample's dt_log and dt_job_rollup on sqlite, and the shipped declaration's dedup half - the rule the seat
+    runs when dt_log moves."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import mapper_sdk
+    from chain import rule_shape
+    from database import crud, models
+    from database.database import Base
+
+    mapper_sdk.discover()
+    tables = {name: load(TABLE_CONFIG)[name] for name in ("dt_log", ROLLUP)}
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    models.init_dynamic_models(tables)
+    crud.TABLE_CONFIG.update(tables)
+    Base.metadata.create_all(bind=engine)
+    models.sync_dynamic_tables_schema(engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
+    rules = rule_shape.expand_declaration(_rule(), crud.TABLE_CONFIG)[0]
+    try:
+        yield session, [r for r in rules if r["name"].startswith("enrichment_dedup:")]
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        for name in tables:
+            crud.TABLE_CONFIG.pop(name, None)
 
 
-def payload(job, **extra):
-    """The payload the chain hands a mapper - every cell `{"value": x, ...}`. A flat `{"data": {...}}` here passed
-    while the shipped mapper wrote the cell dict as a value, from 09-09 (총괄 10-28)."""
-    import outbox_expand
-
-    return outbox_expand.synthesize_payload(1, job, dict({"dt_job": job}, **extra), {})
-
-
-def test_the_mapper_counts_the_whole_job_and_not_the_batch(mapper, monkeypatch):
-    """🔴 THE ARITHMETIC'S ONE REAL HAZARD. A trigger carries the rows that just arrived;
-    writing `len(payloads)` would make the number mean 「how many came together」, which is not
-    what `has_netdie` says and falls the moment a job arrives in two files. The affected jobs
-    are named from the batch and then RE-COUNTED against the source table."""
-    seen = {}
-
-    class _Query:
-        def __init__(self, jobs):
-            seen["asked"] = jobs
-
-        def filter(self, *a, **k):
-            return self
-
-        def group_by(self, *a, **k):
-            return self
-
-        def all(self):
-            return [(JOB, 5)]
-
-    class _DB:
-        def query(self, *columns):
-            return _Query(columns)
-
-    monkeypatch.setattr(mapper.chain_bindings, "resolve_table", lambda rule, key: "dt_log")
-
-    class _Column:
-        """Enough of a SQLAlchemy column to be filtered on - the mapper asks the MODEL for
-        its column and then `IN`s it, and a bare string would let the double pass a mapper
-        that had stopped querying at all."""
-
-        def in_(self, values):
-            seen["in"] = list(values)
-            return self
-
-    class _Model:
-        dt_job = _Column()
-
+def _counts(db):
     from database import models
-    monkeypatch.setitem(models.DYNAMIC_TABLES, "dt_log", _Model)
 
-    result = mapper.build_dt_job_rollup_rows(
-        _DB(), [payload(JOB, dt_eqp="EQP-7"), payload(JOB, dt_eqp="EQP-7")], rule={})
-
-    assert len(result["updates"]) == 1, "one row per job, however many rows arrived"
-    item = result["updates"][0]
-    assert item["business_key_val"] == JOB
-    assert item["updates"]["dt_eqp"] == "EQP-7", "the cell's value is written, not the cell"
-    assert item["updates"]["netdie_count"] == 5, (
-        "the count is the job's, not the batch's - two payloads arrived and the job has five")
-    assert seen["in"] == [JOB], "the recount asks the source table about the jobs it saw"
+    return {r.dt_job: int(float(r.netdie_count)) for r in db.query(models.DYNAMIC_TABLES[ROLLUP]).all()}
 
 
-def test_a_row_with_no_job_makes_no_row(mapper):
-    """A row that names no job cannot be counted into one and cannot make an identity."""
-    assert mapper.build_dt_job_rollup_rows(None, [payload("  "), payload(None)],
-                                           rule={})["updates"] == []
-    assert mapper.build_dt_job_rollup_rows(None, [], rule={})["updates"] == []
+def _run(db, tag, rules):
+    from chain import ingestion_worker as worker
+    from database import models
+
+    events = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.table_name == "dt_log",
+                                                    models.DatabaseOutbox.processed_at.is_(None)).all()
+    worker._process_chain_transaction_group_sync("tx-rollup-%s" % tag, events, db, rules)
+    for event in events:
+        event.processed_at = event.processed_at or datetime.now(timezone.utc)
+    db.commit()
 
 
-def test_the_carried_columns_ride_along_because_the_atoms_need_them(mapper):
-    """⚠️ `dt_eqp` IS AN ATTRIBUTE OF THE ENTITY, so it rides on the register atom's
-    qualifiers - leaving it out of the table would change the atoms, which is the one thing
-    this round promises not to do. `event_time` is carried because both sentences REQUIRE an
-    `occurred_at` role whose binding is checked against the relation's columns."""
-    assert mapper.CARRIED_COLUMNS == ("dt_eqp", "event_time")
+def test_one_row_a_job_its_count_and_a_deleted_row_recounts(seat):
+    """🔴 THE RETIRED MAPPER'S CONTROL (lead 11-02): what `build_dt_job_rollup_rows` did - one row a job, the job's
+    count and not the batch's, a deleted row recounts its job - measured here on the declaration that replaced it.
+    The throwaway-DB board of 11-02 (API + chain worker + ledger worker) gave the same 1 · 2 · 4, then 3."""
+    from database import crud, models, schemas
+
+    db, rules = seat
+    jobs = {"JOB-A": 1, "JOB-B": 2, "JOB-C": 4}
+    crud.apply_batch_updates(db, "dt_log", schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(updates={"dt_job": job, "dt_job_id": job, "b_wx": i, "b_wy": j,
+                                           "dt_eqp": "EQP-%d" % j, "event_time": "2026-11-02 0%d:00:00" % j},
+                                  source_name="user", updated_by="t")
+        for j, (job, n) in enumerate(jobs.items()) for i in range(n)]))
+    db.commit()
+    _run(db, "seed", rules)
+    assert _counts(db) == jobs, "one row a job, each the job's own count"
+    row = db.query(models.DYNAMIC_TABLES[ROLLUP]).filter_by(dt_job="JOB-B").one()
+    assert (row.dt_eqp, row.event_time) == ("EQP-1", "2026-11-02 01:00:00"), "the columns the ledger reads ride along"
+
+    gone = db.query(models.DYNAMIC_TABLES["dt_log"]).filter_by(dt_job="JOB-C").first()
+    crud.delete_rows_batch(db, "dt_log", [gone.row_id], "t")
+    db.commit()
+    _run(db, "delete", rules)
+    assert _counts(db) == dict(jobs, **{"JOB-C": 3}), "a deleted row recounts its job, and only its job"
