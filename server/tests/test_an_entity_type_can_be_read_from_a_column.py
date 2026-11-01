@@ -130,8 +130,9 @@ def test_each_row_names_its_own_type_and_only_admitted_ones_land(shipped, catalo
          {"type": "quantity", "keys": {"quantity": "q-b"},
           "qualifiers": {"certainty": "confirmed"}}),
     ], key=str), "each row's own type, and only that type's keys"
-    assert sorted(refusal.reason for refusal in refusals) == [
-        "no_identity", "no_identity", "type_not_admitted"]
+    # rows 5 (no type) and 6 (its own type's key empty) are blank-key rows, taken out - they were refused
+    # `no_identity` (REVERSED, owner 11-01 «빈키행은 무시»)
+    assert sorted(refusal.reason for refusal in refusals) == ["type_not_admitted"]
     (not_admitted,) = [r for r in refusals if r.reason == "type_not_admitted"]
     assert "'defect_kind'" in not_admitted.detail and "subject" in not_admitted.detail
 

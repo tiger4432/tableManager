@@ -21,6 +21,7 @@ import uuid
 import uuid6
 import codecs
 import json
+import decimal
 import math
 import numbers
 import os
@@ -3563,6 +3564,17 @@ def is_blank_key_part(value) -> bool:
     """
     if isinstance(value, float) and not (math.isfinite(value) and abs(value) < KEY_EXACT_LIMIT):
         return True
+    # pandas' missing scalars (pd.NA · NaT) and a numeric NaN were the text keys '<NA>' · 'NaT' · 'NaN' - the ledger's
+    # key seats ask this one judge too (lead 11-01; box: 0 such keys over 55 tables)
+    if isinstance(value, decimal.Decimal):
+        if value.is_nan():
+            return True
+    elif value is not None and not isinstance(value, (str, numbers.Number)):
+        import pandas as pd
+
+        missing = pd.isna(value)
+        if missing is True or (getattr(missing, "shape", None) == () and bool(missing)):
+            return True
     return is_blank_value(value)
 
 

@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-01] **빈 키 행은 거절하지 않고 뺀다 — 원인별로 셈** — git pull · 서버 재기동
+>
+> ```
+> 무엇     키 칸이 빈 행(read identity · group_by, 또는 적용되는 문장 모두가 쓰는 엔티티 칸)을 거절 대신 뺌
+>          그룹은 그 행만 빼고 말함. 시각 · 커서 칸 빈 행과 코드 맵퍼는 그대로 거절
+> 볼 것    재기동 뒤 server.log 에 'cell this product does not read — allow_null' 줄이 있으면
+>          -> 그 엔티티의 allow_null 이 아직 적혀 있는 것. 읽지 않음, 지워도 됨. 동작은 같음
+>          시험 실행 화면의 Excluded N (… · blank key <칸> M) -> 그 칸이 빈 행 M 개를 뺀 것. 거절이 아님
+>          census 안내 '… rows excluded (…)' 도 같은 문장
+> 셈       박스: 선언 소스 넷 전 쪽에서 오늘 거절 0 -> 바뀌는 원자 0. 업무 키에 '<NA>' · 'NaT' · 'NaN' 글자 0 행(55 표)
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k sql_path_translates  -> 9 passed
+>          python -m pytest -q tests/test_a_blank_target_leaves_only_its_sentence_unsaid.py tests/test_one_null_answer_at_every_key_seat.py
+> 끄는 법  git revert <이 커밋> -> 서버 재기동 (이미 쓴 원자에는 영향 없음 — 새 번역부터)
+> ```
+>
+> ---
+>
 > ## [11-01] **`python -m ledger sql-shadow` — 파이썬 번역과 SQL 번역을 모든 쪽에서 견주기(읽기만)** — git pull (재기동 필요 없음)
 >
 > ```
@@ -10,8 +27,7 @@
 >           DIFFERENT -> 그 소스의 «only» 에 한쪽에만 있는 원자가 처음 몇 개 찍힘. 종료 코드 1 -> 그 줄을 총괄에게
 >           skipped   -> 코드 맵퍼 소스(파이썬 길만 있음) — 결함 아님
 > 쓰기     없음. 읽기 전용 연결(default_transaction_read_only=on)로만 읽음
-> 같은 답   server 폴더에서 python scripts/run_pg_tests.py -k sql_path_translates  -> 7 passed, 1 xfailed
->           (xfailed = 빈 키 행 칸. 소유자 «빈 키 행은 무시» 수리가 다음 착지)
+> 같은 답   server 폴더에서 python scripts/run_pg_tests.py -k sql_path_translates  -> 9 passed (11-01 빈 키 착지 뒤)
 > 끄는 법   쓰지 않으면 됨 — 서버 동작에 닿지 않음
 > ```
 >

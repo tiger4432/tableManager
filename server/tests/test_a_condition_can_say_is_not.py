@@ -214,7 +214,7 @@ def test_the_census_takes_out_the_same_rows_the_read_does(monkeypatch):
         setup, SOURCE)
 
     assert (report["relation_rows"], report["indexed_rows"], report.get("excluded_rows"),
-            report["not_yet"]) == (6, 0, 4, 2), report
+            report["not_yet"]) == (6, 0, {"exclude_when": 4}, 2), report
     assert report["not_yet"] == len(_landed(clauses))
 
 

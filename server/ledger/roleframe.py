@@ -398,10 +398,10 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
 def declared_emissions(context: MapperContext, profile: ProfileDescriptor, unit_columns, refs, rows: int) -> list:
     """`DeclarativeRoleMapper`'s reading of one unit from its CELLS (column -> tuple of the unit's values, with the
     engine's `SOURCE_OCCURRED_AT_COLUMN`) - the DataFrame path and the SQL path (`sql_translate`) both call it."""
-    from .event_frame import sentences_said
+    from .event_frame import sentence_rows
 
     unit = None             # every reading below takes `columns=`; the frame is not asked
-    said = sentences_said(context.source_plan, context.snapshot.entities, unit_columns, range(rows))
+    said = sentence_rows(context.source_plan, context.snapshot.entities, unit_columns, range(rows))
     out = []
     for sentence, mapping in profile.mappings.items():
         # S-99. The declaration says WHEN this sentence applies; a unit that does not
@@ -409,11 +409,16 @@ def declared_emissions(context: MapperContext, profile: ProfileDescriptor, unit_
         # blank a cell only some sentences need to name their entities (소유자 10-12).
         if sentence not in said:
             continue
+        # said from its rows: one leaving a cell that names its entities blank is not one (소유자 11-01)
+        at = said[sentence]
+        columns = (unit_columns if len(at) == rows
+                   else {column: tuple(values[i] for i in at) for column, values in unit_columns.items()})
+        row_refs = refs if len(at) == rows else tuple(refs[i] for i in at)
         claim = context.snapshot.claims.get(mapping.predicate_id)
         # 🔴 EVERY SENTENCE STATES THE MOLECULE'S TIME (총괄 0c9b6e3c0). A mapping that binds
         # no event time is a not-an-event edge: its atom keeps this stored time and
         # `runtime_v2._stamp_occurred_at_basis` says it is not an event's.
-        roles = {OCCURRED_AT_ROLE: unit_columns[SOURCE_OCCURRED_AT_COLUMN][0]}
+        roles = {OCCURRED_AT_ROLE: columns[SOURCE_OCCURRED_AT_COLUMN][0]}
         for role_id, binding in mapping.bindings.items():
             if is_event_time_role(role_id):
                 # 🔴 BY NAME, NOT BY KIND (총괄 0c9b6e3c0 ③). A `timestamp` value Role is
@@ -452,20 +457,20 @@ def declared_emissions(context: MapperContext, profile: ProfileDescriptor, unit_
                 # cell is "nothing to say" and the qualifier stays out of this atom. Read as
                 # a required role, one blank row refused its whole batch (`missing_binding_value`).
                 value = _attribute_value(
-                    binding, unit, columns=unit_columns,
+                    binding, unit, columns=columns,
                     path=f"{mapping.config_path}.bind.{role_id}")
                 if value is not _NO_ATTRIBUTE_VALUE:
                     roles[role_id] = value
                 continue
             roles[role_id] = _evaluate_binding(
-                binding, unit, columns=unit_columns,
+                binding, unit, columns=columns,
                 path=f"{mapping.config_path}.bind.{role_id}",
                 relation=context.source_plan.relation,
                 entities=context.snapshot.entities)
         out.append(RoleEmission(
             sentence=sentence,
             roles=roles,
-            source_row_refs=refs,
+            source_row_refs=row_refs,
         ))
     return out
 
@@ -1681,7 +1686,7 @@ def _validate_role_value(
                 "invalid_entity_ref", f"{path}.keys",
                 "entity keys must exactly match the registered identity keys")
         for key in entity.identity_keys:
-            # 🔴 FOLD FIRST, THEN ASK `allow_null` (S-181, 판정 287). This seat treated `''`
+            # 🔴 FOLD FIRST, THEN ASK (S-181, 판정 287). This seat treated `''`
             # as a VALUE while every other key seat treated it as absent, so one identity
             # key could be 「present」 here and 「blank」 four functions away. The fold is the
             # write door's own predicate, so 「blank」 means one thing across all seven.
@@ -1693,12 +1698,14 @@ def _validate_role_value(
             # ⚰️ ATOMS ALREADY WRITTEN WITH `''` ARE RECORD AND ARE NOT TOUCHED
             # (판정 287). This changes what a NEW translation accepts, and a ledger
             # appends: 「투영은 지워도 기록은 안 된다」.
+            # A null key is never an entity: the read takes a blank-key row out before this (소유자 11-01 «빈키행은
+            # 무시» - `allow_null` retired, `event_frame.blank_key_cause`).
             key_value = _fold_identity_key(keys[key])
-            if _is_missing(key_value) and not entity.allow_null:
+            if _is_missing(key_value):
                 raise RoleFrameError(
                     "invalid_entity_ref", f"{path}.keys.{key}",
                     "null entity identity key is not allowed")
-            _scalar(key_value, f"{path}.keys.{key}", allow_null=entity.allow_null)
+            _scalar(key_value, f"{path}.keys.{key}")
         return
     if kind == "time":
         if (not isinstance(value, datetime) or value.tzinfo is None
@@ -1733,9 +1740,7 @@ def _validate_role_value(
         "unsupported_role_kind", path, f"unsupported Role kind {kind!r}")
 
 
-def _scalar(value: Any, path: str, *, allow_null: bool = False) -> None:
-    if value is None and allow_null:
-        return
+def _scalar(value: Any, path: str) -> None:
     if isinstance(value, bool):
         return
     if isinstance(value, numbers.Integral):

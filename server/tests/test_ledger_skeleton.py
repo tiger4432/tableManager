@@ -234,7 +234,9 @@ def skeleton_fields() -> dict[str, set[str]]:
 #: ⚠️ An entry here is a claim that a field is unreachable, not that it is unimportant.
 #: `sources.*.read.registration_probe` retired 10-07 (총괄 ④): the grammar still accepts it, only so the
 #: loader can say it is read by nothing and can be deleted - nothing offers it.
-NOT_OFFERED = ("entities.*.references", "sources.*.read.registration_probe")
+#: `entities.*.allow_null` - retired 11-01 (owner «빈키행은 무시»): the validator lets a written one stand, the loader
+#: names it unread, the form does not offer it
+NOT_OFFERED = ("entities.*.references", "sources.*.read.registration_probe", "entities.*.allow_null")
 
 
 def deliberately_not_offered(path: str) -> bool:

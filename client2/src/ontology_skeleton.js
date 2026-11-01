@@ -299,8 +299,8 @@ export function emptyOf(node, defs, depth = 0, lists = null) {
     // screen was ALREADY showing them, so the file stops disagreeing with the pixels.
     //
     // The class, not the case: three fields of the skeleton are required flags today, and
-    // the HINT is read, so a fourth is covered the day it is declared. `allow_null` is
-    // `required: false` and stays absent -- seeding what is not required is the complaint
+    // the HINT is read, so a fourth is covered the day it is declared. A flag that is
+    // `required: false` stays absent -- seeding what is not required is the complaint
     // below, coming straight back.
     //
     // 🔴 REQUIRED IS NOT UNCONDITIONAL: `when` SAYS WHO IT IS REQUIRED OF. Four fields of

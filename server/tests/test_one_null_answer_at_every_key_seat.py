@@ -31,6 +31,10 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
+import decimal                                                       # noqa: E402
+
+import pandas as pd                                                  # noqa: E402
+
 import map_overlay                                                   # noqa: E402
 from chain import join_key_index as vjc                                    # noqa: E402
 from database import crud                                            # noqa: E402
@@ -98,6 +102,18 @@ def test_a_real_value_is_never_folded():
                  lambda v: map_overlay.canonical_key_value(v, "string")):
         assert seat("S1") == "S1"
     assert crud.is_blank_key_part("S1") is False
+
+
+#: pandas' missing scalars and a numeric NaN - read as the text keys '<NA>' · 'NaT' · 'NaN' until 11-01 (lead: the one
+#: key judge takes them; the ledger's key seats call it too)
+MISSING = (pd.NA, pd.NaT, decimal.Decimal("NaN"))
+
+
+@pytest.mark.parametrize("blank", MISSING, ids=["pd.NA", "NaT", "Decimal-NaN"])
+def test_a_missing_scalar_is_no_key_part(blank):
+    assert crud.is_blank_key_part(blank) is True
+    assert crud.fold_key_value(PLAIN, "slot", blank) is None
+    assert crud.is_blank_value(blank) is False, "the write door's predicate is not this round's"
 
 
 def test_a_non_finite_float_is_still_not_an_identity():

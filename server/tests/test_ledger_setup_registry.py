@@ -391,7 +391,6 @@ def test_registry_builder_refuses_add_after_seal():
     descriptor = EntityTypeDescriptor(
         entity_type_id="Example@1",
         identity_keys=("id",),
-        allow_null=False,
         config_path="bundle.entities.Example@1",
     )
     builder = setup_registry_module._RegistryBuilder(EntityTypeRegistry)

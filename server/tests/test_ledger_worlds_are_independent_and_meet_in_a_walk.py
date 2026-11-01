@@ -1053,7 +1053,7 @@ def test_a_row_the_read_takes_out_is_not_left_not_yet_translated(world):
     setup = load_setup(schema.require_world(A).declaration_root)
     census = backfill.rows_not_yet_translated(world["engine"], setup, CHANGED, world=A)
     assert (census["relation_rows"], census["indexed_rows"], census.get("excluded_rows"),
-            census["not_yet"]) == (3, 1, 2, 0), census
+            census["not_yet"]) == (3, 1, {"exclude_when": 2}, 0), census
     tick = backfill.rows_not_yet_translated(world["engine"], setup, CHANGED, exact_rows=False, world=A)
     assert ("excluded_rows" in tick, tick.get("excluded_not_subtracted")) == (False, "an estimate"), tick
 

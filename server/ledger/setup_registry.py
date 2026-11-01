@@ -209,7 +209,6 @@ class PredicateDescriptor:
 class EntityTypeDescriptor:
     entity_type_id: str
     identity_keys: tuple[str, ...]
-    allow_null: bool
     config_path: str
     #: 🔴 `active` or `retired`, and it reaches the compiled plan for the same reason
     #: `PredicateDescriptor.status` does (S-103, ruling 198). The grammar accepted this word
@@ -913,7 +912,6 @@ def _compile_entities(section: Mapping[str, Any]) -> EntityTypeRegistry:
         builder.add(entity_id, EntityTypeDescriptor(
             entity_type_id=entity_id,
             identity_keys=tuple(item["keys"]),
-            allow_null=item.get("allow_null", False),
             config_path=f"bundle.entities.{entity_id}",
             status=item.get("status", DEFAULT_LIFECYCLE),
             references=() if is_retired(item) else _compile_references(entity_id, item),

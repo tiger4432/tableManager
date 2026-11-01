@@ -155,7 +155,8 @@ def prepare_v2_cursor_batch(snapshot, source_id, rows, refusals=None, excluded=N
     if refusals is not None:
         refusals.extend(context.refusals)
     if excluded is not None:
-        excluded.extend(context.excluded_rows)
+        for cause, rows in context.excluded_rows.items():
+            excluded[cause] = excluded.get(cause, 0) + rows
     return frames
 
 
@@ -1228,18 +1229,20 @@ def _missing_rows_taken_out(engine, setup, source, exact_rows, world=None):
     EXCLUDED_COUNT_ROWS rows the index does not name none are subtracted and the reason says so."""
     from psycopg2 import sql
 
-    from .event_frame import SourcePreparationContext, named_columns, row_excluded, says_nothing
+    from .event_frame import SourcePreparationContext, blank_key_cause, named_columns, row_excluded, says_nothing
     from .setup_bundle import executes_the_bindings
 
     plan = setup.snapshot.source_plans[source]
     clauses = [clause for clause in plan.driver.exclude_when if isinstance(clause, Mapping)]
+    # ⚠️ a code mapper's source with no clause is not scanned - its blank-identity rows (taken out by the read, owner
+    #    11-01) stay counted here (no new scan this round, lead 11-01)
     if not clauses and not executes_the_bindings(plan.driver.mapper.implementation.implementation_id):
-        return 0, 0, None
+        return {}, 0, None
     if not exact_rows:
-        return 0, 0, "an estimate"
+        return {}, 0, "an estimate"
     ids = rows_missing_from_the_index(engine, setup, source, EXCLUDED_COUNT_ROWS + 1, world=world)
     if len(ids) > EXCLUDED_COUNT_ROWS:
-        return 0, 0, "over %dk rows the index does not name" % (EXCLUDED_COUNT_ROWS // 1000)
+        return {}, 0, "over %dk rows the index does not name" % (EXCLUDED_COUNT_ROWS // 1000)
     if not ids:
         return 0, 0, None
     columns = list(named_columns(plan))
@@ -1255,10 +1258,12 @@ def _missing_rows_taken_out(engine, setup, source, exact_rows, world=None):
         connection.close()
     cells = {column: tuple(row[at] for row in rows) for at, column in enumerate(columns)}
     context = SourcePreparationContext(setup.snapshot, plan)
-    excluded = silent = 0
+    excluded, silent = {}, 0
     for position in range(len(rows)):
-        if clauses and row_excluded(clauses, lambda column: cells[column][position]):
-            excluded += 1
+        cause = ("exclude_when" if clauses and row_excluded(clauses, lambda column: cells[column][position])
+                 else blank_key_cause(context, cells, position))
+        if cause:
+            excluded[cause] = excluded.get(cause, 0) + 1
         elif says_nothing(context, cells, (position,)):
             silent += 1
     return excluded, silent, None
@@ -1546,10 +1551,10 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
     #    So is a row the read takes in and says no sentence of (총괄 10-12 QA ④), counted apart. Nothing left
     #    over, nothing to take out - no scan (QA2 ②).
     excluded, said_nothing, kept_in = (_missing_rows_taken_out(engine, setup, source, exact_rows, world=world)
-                                       if remainder > 0 else (0, 0, None))
+                                       if remainder > 0 else ({}, 0, None))
     if excluded:
         report["excluded_rows"] = excluded
-        remainder -= excluded
+        remainder -= sum(excluded.values())
     if said_nothing:
         report["said_nothing_rows"] = said_nothing
         remainder -= said_nothing
@@ -1654,7 +1659,7 @@ def rows_to_catch_up(engine, setup, source, world=None, census=None):
     census = census or rows_not_yet_translated(engine, setup, source, world=world)
     gone = len(rows_gone_from_the_source(engine, setup, source, world=world))
     drift = rows_drifted(engine, setup, source, world=world)
-    new = (census["relation_rows"] - census["indexed_rows"] - census.get("excluded_rows", 0)
+    new = (census["relation_rows"] - census["indexed_rows"] - sum((census.get("excluded_rows") or {}).values())
            - census.get("said_nothing_rows", 0) + gone)
     return {"rows_new": new, "rows_drifted": drift["rows_drifted"], "rows_gone": gone,
             "rows_unprinted": drift["rows_unprinted"]}
@@ -1778,6 +1783,8 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
     point of `rows_not_yet_translated`'s refusal is that 「셀 수 없다」 and 「한 것이 없다」
     are different, and storing a 0 here would throw that away one layer later.
     """
+    from . import event_frame
+
     from datetime import datetime, timezone
 
     from ledger.trace import measured
@@ -1804,7 +1811,7 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
     if exact_rows:
         behind = rows_to_catch_up(engine, setup, census["source"], world=world, census=census)
         new = "relation rows the index does not name" + (
-            ", less %d exclude_when takes out" % census["excluded_rows"] if census.get("excluded_rows") else
+            ", less " + event_frame.excluded_note(census["excluded_rows"]) if census.get("excluded_rows") else
             "; rows exclude_when takes out or that say no sentence not subtracted (%s)"
             % census["excluded_not_subtracted"] if census.get("excluded_not_subtracted") else "") + (
             ", less %d that say no sentence" % census["said_nothing_rows"]
@@ -2202,8 +2209,8 @@ class TestRunReading:
     #: Key columns first, then the columns the declaration reads - not the whole row, which
     #: would put a source's every column through a screen nobody asked to see.
     rows_sample: tuple
-    #: Rows the source's `exclude_when` removed, or `None` where this source declares no
-    #: marker - "not measured" and "measured, none" are different answers.
+    #: Rows the read took out, by cause (`event_frame.excluded_note`), or `None` where none was measured -
+    #: "not measured" and "measured, none" are different answers.
     excluded_rows: Any
 
     # 🔴 NO FIELD DEFAULTS. There is exactly one place that builds this and it passes all
@@ -2319,7 +2326,9 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
                     setup, source, frame, cursor_value, known_registrations=())
             refusals.extend(answered.refusals)
             if answered.excluded_rows is not None:
-                excluded = (excluded or 0) + answered.excluded_rows
+                excluded = excluded or {}
+                for cause, count in answered.excluded_rows.items():
+                    excluded[cause] = excluded.get(cause, 0) + count
             if answered.molecule_count >= PREVIEW_MIN_MOLECULES:
                 break
             if len(rows) < fetch_rows:

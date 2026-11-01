@@ -335,6 +335,17 @@ def _registration_notes(sources, vocabulary) -> list:
     return notes
 
 
+def _unread_entity_cells(entities) -> list:
+    """An entity's `allow_null`, still written - read by nothing since a blank-key row is taken out (소유자 11-01
+    «빈키행은 무시», `event_frame.blank_key_cause`): named (`validation.unread_said`), never refused."""
+    import validation
+
+    return [validation.unread_said("ledger_config", f"entities.{entity_type}", ["allow_null"],
+                                   " A row whose key is blank is excluded.")
+            for entity_type, item in sorted((entities or {}).items(), key=lambda pair: str(pair[0]))
+            if isinstance(item, Mapping) and "allow_null" in item]
+
+
 #: Which registration notes this PROCESS has said - keyed by the notes, like the two above.
 _REGISTRATION_NOTES_ANNOUNCED: set = set()
 
@@ -459,7 +470,8 @@ def load_setup(
     _announce_unscored_bindings(
         _unscored_self_edge_sentences(bundle.section("sources")))
     _announce_registration_notes(
-        _registration_notes(bundle.section("sources"), bundle.section("vocabulary")))
+        _registration_notes(bundle.section("sources"), bundle.section("vocabulary"))
+        + _unread_entity_cells(bundle.section("entities")))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(),
         catalog=resolved_catalog, refused_sources=refused)

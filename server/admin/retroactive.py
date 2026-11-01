@@ -472,7 +472,9 @@ def _count_ledger_backfill(db, params, scan_limit):
                   f"row(s) in the table, {indexed} in the index. This number is the "
                   f"WHOLE set, not a sample. The run can be stopped while it goes.")
     if census.get("excluded_rows"):
-        detail += " %d row(s) the declaration's exclude_when takes out are not counted." % census["excluded_rows"]
+        from ledger.event_frame import excluded_note
+
+        detail += " %s, not counted." % excluded_note(census["excluded_rows"])
     if census.get("said_nothing_rows"):
         detail += (" %d row(s) that say no sentence (no when holds, or every target is blank) are "
                    "not counted." % census["said_nothing_rows"])

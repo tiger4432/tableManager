@@ -470,7 +470,7 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     WRONG. The prediction had the mechanism right and the result wrong: the hint WAS read,
     the flag WAS seeded, and `False` was the wrong answer because 판정 446 had collapsed
     that field's domain to one value, so the seed produced a join the validator refuses.
-    What a required flag is seeded with is settled ABOVE, by `const`.  `entities.*.allow_null` is `required: false` and stays absent --
+    What a required flag is seeded with is settled ABOVE, by `const`.  A flag that is `required: false` stays absent --
     seeding what is NOT required is the complaint below, coming straight back.
 
     Nothing here knows a field by name -- it asks the skeleton whether the field is required

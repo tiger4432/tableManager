@@ -1562,21 +1562,20 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     # the same read, so it moved to the deepest record a config still nests.
     source_profile(raw)["mappings"]["main_transition"]["colour"] = "blue"
     raw["vocabulary"]["moves_to@1"]["colour"] = "blue"
-    raw["entities"]["InputEntity@1"]["allow_null"] = "yes"
+    raw["entities"]["InputEntity@1"]["allow_null"] = "yes"     # read by nothing since 11-01 - not one of the mistakes
     raw["sources"]["input_rows"]["read"]["unit"] = "wafer"
     write_tree(tmp_path, raw)
 
     issues = setup_bundle_module.setup_bundle_errors(
         tmp_path, catalog=DEFAULT_CATALOG)
     paths = [item.path for item in issues]
-    assert len(set(paths)) >= 5, paths
+    assert len(set(paths)) >= 4, paths
     # All five mistakes, from one read. Named individually so a regression that drops one
     # kind of check cannot hide behind the count.
     for expected in (
         f"{MAPPER_PATH}.colour",
         f"{PROFILE_PATH}.mappings.main_transition.colour",
         "bundle.vocabulary.moves_to.colour",
-        "bundle.entities.InputEntity.allow_null",
         "bundle.sources.input_rows.read.unit",
     ):
         assert expected in paths, expected

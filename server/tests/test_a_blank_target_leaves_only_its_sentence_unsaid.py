@@ -3,15 +3,17 @@
 「선언 아이덴티티가 없다고 하나만 적은 거 안 나오는데」.
 
 A cell only SOME sentences of a source need to name their entities, left blank, leaves only those
-sentences unsaid - as a `when` that does not match. A cell every sentence needs (the shared subject),
-an `allow_null` entity's key, or any cell of a code mapper's source still refuses the molecule. One
-seat: `event_frame.blank_entity_cells`.
+sentences unsaid - as a `when` that does not match. A row leaving blank a cell every applying sentence
+needs (the shared subject) is taken out, counted «blank key <column>» with the excluded rows - it was
+refused (REVERSED, owner 11-01 «빈키행은 무시»); `allow_null` is read by nothing. Any cell of a code
+mapper's source still refuses the molecule. Seats: `event_frame.blank_entity_cells` · `blank_key_cause`.
 
 The source is the RELEASE_LOG example, read out of the log and run as written.
 """
 from __future__ import annotations
 
 import copy
+import decimal
 import json
 import os
 import re
@@ -140,41 +142,46 @@ def test_each_row_says_the_edges_its_filled_targets_name():
 
 
 def test_a_row_whose_targets_are_all_blank_writes_nothing_and_is_not_indexed():
-    """P4: no atom, no refusal, no `unsaid` line - and no row reference, so the row index never
-    names it and `rows_not_yet_translated` keeps counting it."""
+    """P4: no atom, no refusal, no `unsaid` line - taken out as a blank-key row (owner 11-01) - and no
+    row reference, so the row index never names it."""
     preview = _preview(_document(), OWNER_ROWS)
 
     assert "P4" not in _edges(preview)
     assert (preview.refusals, dict(preview.unsaid)) == ((), {})
+    assert preview.excluded_rows == {"blank key object_id, quantity_id, related_process_id": 1}
     assert sorted({ref[1] for ref in preview.row_refs}) == ["R1", "R2", "R3"]
 
 
-def test_a_blank_shared_subject_still_refuses_the_row():
-    preview = _preview(_document(), [OWNER_ROWS[0], SHARED_BLANK])
+#: blank by the one key judge (`crud.is_blank_key_part`, lead 11-01) - the ledger's own `is_blank_source_value` calls
+#: the last three filled and the third and fourth blank
+KEY_BLANKS = (None, "  ", pd.NA, decimal.Decimal("NaN"), float("inf"), 2.0 ** 53)
 
-    assert _refused(preview) == [(
-        "no_identity", "molecule rows[1] declares 'process_id' and the row at "
-                       "event_frame.rows[1].process_id leaves it empty")]
+
+@pytest.mark.parametrize("blank", KEY_BLANKS, ids=["None", "spaces", "pd.NA", "Decimal-NaN", "inf", "2^53"])
+def test_a_blank_shared_subject_takes_the_row_out(blank):
+    """REVERSED, owner 11-01 «빈키행은 무시»: it refused the row `no_identity`."""
+    preview = _preview(_document(), [OWNER_ROWS[0], dict(SHARED_BLANK, process_id=blank)])
+
+    assert (_refused(preview), preview.excluded_rows) == ([], {"blank key process_id": 1})
     assert set(_edges(preview)) == {"P1"}
 
 
-def test_one_sentence_with_a_blank_target_is_refused_as_before():
+def test_one_sentence_with_a_blank_target_takes_the_row_out():
+    """REVERSED, owner 11-01 «빈키행은 무시»: it refused the row `no_identity`."""
     preview = _preview(_document(_one_sentence()), OWNER_ROWS[:2])
 
-    assert _refused(preview) == [(
-        "no_identity", "molecule rows[1] declares 'object_id' and the row at "
-                       "event_frame.rows[1].object_id leaves it empty")]
+    assert (_refused(preview), preview.excluded_rows) == ([], {"blank key object_id": 1})
+    assert _edges(preview) == {"P1": [("physical_object", "O1")]}
 
 
-def test_an_allow_null_target_is_refused_as_before():
-    """A column-bound key of an `allow_null` entity was never a null-key atom - the read refused
-    the row (measured on the code before this round) - and it still is."""
+def test_an_allow_null_target_is_read_by_nothing():
+    """`allow_null` retired (owner 11-01): the row says what the same row says without it - P2's
+    quantity edge, its blank object leaving only that sentence unsaid. (It refused the row.)"""
     preview = _preview(_document(allow_null=True), OWNER_ROWS[:2])
+    plain = _preview(_document(), OWNER_ROWS[:2])
 
-    assert _refused(preview) == [(
-        "no_identity", "molecule rows[1] declares 'object_id' and the row at "
-                       "event_frame.rows[1].object_id leaves it empty")]
-    assert set(_edges(preview)) == {"P1"}
+    assert (_refused(preview), _edges(preview)) == ([], _edges(plain))
+    assert _edges(preview)["P2"] == [("physical_quantity", "QB")]
 
 
 def test_a_code_mappers_source_refuses_as_before():
@@ -195,7 +202,7 @@ def test_a_code_mappers_source_refuses_as_before():
 def test_a_typed_target_with_a_blank_key_or_type_unsays_only_its_sentence(shipped, catalog):
     """Two sentences share the typed subject; `leads` reads its target's type and key from
     phenomenon_*, `leads-eqp` from cause_type / dt_eqp. A blank phenomenon key or type leaves
-    `leads` unsaid; a blank shared subject key still refuses (`_row_type_refusal`)."""
+    `leads` unsaid; a blank shared subject key takes the row out (REVERSED, owner 11-01: it refused)."""
     source = copy.deepcopy(TYPED_SOURCE)
     source["bind"]["mappings"]["leads-eqp"] = {"predicate": "leads_to@1", "bind": {
         "subject": typed("cause_type", {"quantity": column("cause_key")}),
@@ -220,17 +227,16 @@ def test_a_typed_target_with_a_blank_key_or_type_unsays_only_its_sentence(shippe
 
     assert said == [("q-1", "quantity", {"quantity": "q-9"}),
                     ("q-2", "quantity", {"quantity": "q-8"})]
-    assert [(r.reason, r.detail) for r in refusals] == [(
-        "no_identity", "molecule rows[2]: a row of type 'quantity' needs 'cause_key' and the row at "
-                       "event_frame.rows[2].cause_key leaves it empty")]
+    assert refusals == []
 
 
 # ------------------------------------------------------------------ a group (총괄 10-12 QA ①)
 
-def test_a_group_skips_a_sentence_only_when_its_cell_is_blank_in_every_row():
+def test_a_group_says_a_sentence_from_the_rows_that_fill_its_cell():
     """A group read whose mapper reads the group as one unit (the default `map.unit`): a cell blank
-    in some rows and filled in others refuses the group, whichever row is first - the filled value is
-    not dropped in silence. Blank in every row: that sentence only."""
+    in some rows and filled in others - the sentence is said from the rows that fill it (REVERSED,
+    owner 11-01 «빈키행은 무시»: 총괄 10-12 QA ① refused the group). Blank in every row: that sentence
+    only."""
     source = release_log_source()
     source["read"] = {"unit": "group", "identity": ["process_id"], "group_by": ["process_id"],
                       "order_by": ["row_id"]}
@@ -244,10 +250,11 @@ def test_a_group_skips_a_sentence_only_when_its_cell_is_blank_in_every_row():
     ]
     preview = _preview(_document(source), rows)
 
-    assert _edges(preview) == {"P3": [("physical_process", "PR3"), ("physical_quantity", "Q3")]}
-    assert [(r.reason, "'object_id'" in r.detail, r.addresses[0]["path"]) for r in preview.refusals] == [
-        ("no_identity", True, "event_frame.rows[0].object_id"),
-        ("no_identity", True, "event_frame.rows[3].object_id")]
+    assert _edges(preview) == {
+        "P1": [("physical_object", "O1"), ("physical_process", "PR1"), ("physical_quantity", "Q1")],
+        "P2": [("physical_object", "O2"), ("physical_process", "PR2"), ("physical_quantity", "Q2")],
+        "P3": [("physical_process", "PR3"), ("physical_quantity", "Q3")]}
+    assert _refused(preview) == []
 
 
 #: A group read whose mapper speaks per row - the shape of the shipped `dt_log` (총괄 10-12 QA2 ①).
@@ -278,10 +285,10 @@ def test_a_row_mapper_inside_a_group_read_judges_each_row(unit):
 @pytest.mark.parametrize("quantity_when", [{"kind": "qty"}, {"kind": {"not": "obj"}}],
                          ids=["equals", "not"])
 def test_a_when_mixed_inside_a_group_read_never_raises(unit, quantity_when):
-    """QA2 probe B. R1 (kind obj, object blank) and R2 (kind qty) share a group read. Per row: R1's
-    one applying sentence has a blank target, so the group is refused `no_identity` - as on base;
-    before this round it raised `missing_binding_value` and failed the whole batch. The group as one
-    unit: the kinds disagree, no sentence applies, and the group is counted under its `when`."""
+    """QA2 probe B. R1 (kind obj, object blank) and R2 (kind qty) share a group read. R1's one
+    applying sentence has a blank target, so R1 is taken out and the group says R2's quantity, per row
+    or as one unit (REVERSED, owner 11-01 «빈키행은 무시»: the group was refused `no_identity`, or as one
+    unit counted under its disagreeing `when`)."""
     source = _gated()
     source["bind"]["mappings"]["process-quantity"]["when"] = quantity_when
     source["read"] = dict(GROUP_READ)
@@ -292,13 +299,9 @@ def test_a_when_mixed_inside_a_group_read_never_raises(unit, quantity_when):
             {"row_id": "R3", "process_id": "P3", "kind": "obj", "object_id": "O3", "quantity_id": "Q3"}]
     preview = _preview(_document(source), rows)
 
-    assert _edges(preview) == {"P3": [("physical_object", "O3")]}
-    if unit:
-        assert [(r.reason, r.addresses[0]["path"]) for r in preview.refusals] == [
-            ("no_identity", "event_frame.rows[0].object_id")]
-        assert dict(preview.unsaid) == {}
-    else:
-        assert (preview.refusals, dict(preview.unsaid)) == ((), {(("kind", "obj, qty"),): 1})
+    assert _edges(preview) == {"P1": [("physical_quantity", "Q2")], "P3": [("physical_object", "O3")]}
+    assert (preview.refusals, dict(preview.unsaid)) == ((), {})
+    assert preview.excluded_rows == {"blank key object_id": 1}
 
 
 # ------------------------------------------------------------------ sentences a `when` gates (QA ②)
@@ -323,15 +326,13 @@ GATED_ROWS = [
 
 
 def test_only_the_sentences_whose_when_holds_decide_what_every_one_needs():
-    """W2: one sentence applies, so it is a one-sentence source - its blank target refuses, as
-    before. W4: the blank cell is another sentence's, which does not apply. W5: no sentence applies,
-    so nothing is refused and the row is counted under the `when` it passed by."""
+    """W2: one sentence applies, so it is a one-sentence source - its blank target takes the row out
+    (REVERSED, owner 11-01: it refused). W4: the blank cell is another sentence's, which does not
+    apply. W5: no sentence applies, so the row is counted under the `when` it passed by."""
     preview = _preview(_document(_gated()), GATED_ROWS)
 
     assert _edges(preview) == {"P4": [("physical_object", "O4")]}
-    assert _refused(preview) == [(
-        "no_identity", "molecule rows[0] declares 'object_id' and the row at "
-                       "event_frame.rows[0].object_id leaves it empty")]
+    assert (_refused(preview), preview.excluded_rows) == ([], {"blank key object_id": 1})
     assert dict(preview.unsaid) == {(("kind", "other"),): 1}
 
 
@@ -357,29 +358,38 @@ def _census(document, rows, monkeypatch):
                                             type("S", (), {"snapshot": snapshot})(), SOURCE)
 
 
-#: A blank subject AND every target blank: refused - not «says nothing» (QA2 ④ N4_refused_counted).
+#: A blank subject AND every target blank: a blank-key row, taken out (owner 11-01; it was refused, QA2 ④).
 ALL_BLANK = {"row_id": "R6", "process_id": None, "object_id": None, "quantity_id": "",
              "related_process_id": " "}
 
 
 def test_the_census_takes_out_a_row_that_says_no_sentence_and_keeps_a_refused_one(monkeypatch):
-    """P4 (every target blank) and W5 (no `when` holds) say nothing and are never indexed; the
-    refused rows (a blank shared subject - with its targets filled or blank -, W2) stay «not yet»:
-    a refusal is something to fix."""
+    """W5 (no `when` holds) says nothing and is never indexed; the blank-key rows - P4 every target
+    blank, a blank shared subject with its targets filled or blank, W2 - are taken out by cause, as the
+    read takes them out (REVERSED, owner 11-01 «빈키행은 무시»: P4 said nothing, the rest were refused
+    and stayed «not yet»)."""
     owner = _census(_document(), OWNER_ROWS + [SHARED_BLANK, ALL_BLANK], monkeypatch)
     gated = _census(_document(_gated()), GATED_ROWS, monkeypatch)
 
-    assert (owner.get("excluded_rows"), owner.get("said_nothing_rows"), owner["not_yet"]) == (None, 1, 5)
-    assert (gated.get("said_nothing_rows"), gated["not_yet"]) == (1, 2)
+    from ledger.event_frame import excluded_note
+    assert excluded_note(owner["excluded_rows"]) == (    # the one sentence every excluded seat says (lead 11-01)
+        "3 rows excluded (blank key object_id, process_id, quantity_id, related_process_id 1 · "
+        "blank key object_id, quantity_id, related_process_id 1 · blank key process_id 1)")
+    assert (owner.get("excluded_rows"), owner.get("said_nothing_rows"), owner["not_yet"]) == (
+        {"blank key object_id, quantity_id, related_process_id": 1, "blank key process_id": 1,
+         "blank key object_id, process_id, quantity_id, related_process_id": 1}, None, 3)
+    assert (gated.get("excluded_rows"), gated.get("said_nothing_rows"), gated["not_yet"]) == (
+        {"blank key object_id": 1}, 1, 1)
 
 
 def test_the_census_keeps_a_row_whose_time_does_not_read(monkeypatch):
     """QA2 ⑤: the census asks the read's whole judgement (`_read_molecule`) - a row refused for an
-    unreadable time is not a row that says nothing, even with every target blank."""
-    source = release_log_source()
+    unreadable time is not a row that says nothing, even where no `when` holds (W5). (A row every
+    target blank is a blank-key row now, taken out before its time is read - owner 11-01.)"""
+    source = _gated()
     source["read"] = {"occurred_at": {"column": "event_at", "timezone": "UTC"}}
-    rows = [dict(OWNER_ROWS[3], event_at="not a time"),
-            dict(OWNER_ROWS[3], row_id="R4b", event_at=STORED_AT)]
+    rows = [dict(GATED_ROWS[2], event_at="not a time"),
+            dict(GATED_ROWS[2], row_id="W5b", event_at=STORED_AT)]
     census = _census(_document(source), rows, monkeypatch)
 
     assert (census.get("said_nothing_rows"), census["not_yet"]) == (1, 1)
@@ -391,7 +401,8 @@ def test_a_row_the_read_excludes_is_counted_once(monkeypatch):
     source["read"] = {"exclude_when": [{"when": {"process_id": "P4"}}]}
     census = _census(_document(source), OWNER_ROWS, monkeypatch)
 
-    assert (census.get("excluded_rows"), census.get("said_nothing_rows"), census["not_yet"]) == (1, None, 3)
+    assert (census.get("excluded_rows"), census.get("said_nothing_rows"), census["not_yet"]) == (
+        {"exclude_when": 1}, None, 3)
 
 
 def test_the_census_reads_no_row_when_nothing_is_left(monkeypatch):
@@ -499,7 +510,6 @@ def test_re_translating_after_adding_a_sentence_keeps_the_old_sentences_atoms(wo
         {proc: {"processed_with": 1, **({"processed_on": 1} if proc in tooled else {})}
          for proc in ("P1", "P2", "P3", "P4")},
         {proc: 1 for proc in ("P1", "P2", "P3", "P4")})
-    # P5 is in a whole-source run only (the scope names wafers, P5 has none)
-    said = ", refused 1 (no_identity 1)" if scope.get("whole_source") else ", refused 0"
-    assert (result["refused"], said + "," in lines[0] + ",") == (1 if scope.get("whole_source") else 0, True), (
-        result, lines)
+    # P5 (whole-source run only - the scope names wafers, P5 has none) names no wafer: a blank-key row, taken out,
+    # not refused (REVERSED, owner 11-01 «빈키행은 무시»: «refused 1 (no_identity 1)»)
+    assert (result["refused"], ", refused 0," in lines[0] + ",") == (0, True), (result, lines)

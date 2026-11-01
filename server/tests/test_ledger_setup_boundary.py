@@ -482,7 +482,6 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
         f"bundle.sources.{source}.map.emits",
         f"bundle.sources.{source}.bind.mappings.{sentence}.colour",
         f"bundle.vocabulary.{predicate}.colour",
-        f"bundle.entities.{entity_type}.allow_null",
         f"bundle.sources.{source}.read.unit",
     ):
         assert any(expected in line for line in lines), expected

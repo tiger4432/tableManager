@@ -58,6 +58,9 @@ async function score(mutate) {
 
   // ══ 제외 — 「키 없음」과 「0」이 다르다 ═════════════════════════════════════════════
   eq('B6 표지를 선언한 소스의 제외 행 수', 'Excluded 4', X({ rows: 4 }));
+  eq('B6b 원인별 수 — 서버 excluded_note 와 같은 마디 (총괄 11-01)',
+     'Excluded 5 (blank key dt_job 2 · exclude_when 3)',
+     X({ rows: 5, causes: { exclude_when: 3, 'blank key dt_job': 2, 'blank key x': 0 } }));
   // 🔴 키가 «없으면» 안 잰 것입니다 — 0 을 그리면 「재 봤는데 없다」가 됩니다.
   eq('B7 키가 없으면 «아무것도» 안 그린다', '', X(undefined));
   eq('B8 0 도 그리지 않는다 — 그릴 것이 없다', '', X({ rows: 0 }));

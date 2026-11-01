@@ -291,8 +291,8 @@ def test_the_excluded_rows_are_counted_rather_than_silently_gone(setup):
     reading = _read(setup, relation)
 
     assert reading.excluded_rows is not None, "the source declares exclude_when"
-    assert reading.excluded_rows >= 4
-    assert reading.rows_read >= reading.excluded_rows
+    assert reading.excluded_rows["exclude_when"] >= 4
+    assert reading.rows_read >= sum(reading.excluded_rows.values())
 
 
 def test_a_source_with_no_marker_reports_no_count_rather_than_zero(setup, monkeypatch):
@@ -310,7 +310,7 @@ def test_the_counts_account_for_every_row_the_run_read(setup, monkeypatch):
     """㉢ `rows_read` is spent, not approximated: what compiled, what was refused and what
     the marker removed have to add up to it, or a row went somewhere with no name."""
     monkeypatch.setattr("ledger.setup.preview_selected_cursor_batch", _compiler([
-        _Compiled(1, [_Refusal("no_identity")], excluded=2),
+        _Compiled(1, [_Refusal("no_identity")], excluded={"exclude_when": 2}),
     ]))
     # `fetch_rows` above the relation's size on purpose: a page that FILLS has its
     # trailing group cut off, and then `rows_read` is legitimately smaller than the table.
@@ -321,6 +321,6 @@ def test_the_counts_account_for_every_row_the_run_read(setup, monkeypatch):
 
     refused_rows = sum(r.rows for r in reading.refusals)
     assert reading.rows_read == len(relation)
-    assert reading.excluded_rows == 2
+    assert reading.excluded_rows == {"exclude_when": 2}
     assert refused_rows == 1
-    assert refused_rows + reading.excluded_rows <= reading.rows_read
+    assert refused_rows + sum(reading.excluded_rows.values()) <= reading.rows_read

@@ -259,7 +259,7 @@ def preview_cursor_batch(
     source_plan = _source_plan(snapshot, source_id)
     normalized_cursor = _cursor_value(source_plan, base_rows, cursor_value)
     refusals: list = []
-    excluded: list = []
+    excluded: dict = {}
     with stage("event frames", len(base_rows)) as said:
         event_frames = prepare_v2_cursor_batch(
             snapshot, source_id, base_rows, refusals=refusals, excluded=excluded)
@@ -296,7 +296,7 @@ def preview_cursor_batch(
             bool(result.role_rows.attrs.get(SOURCE_EVENT_INCOMPLETE_ATTR, False))
             for result in event_results),
         refusals=tuple(refusals),
-        excluded_rows=(sum(excluded) if excluded else None),
+        excluded_rows=(dict(excluded) if excluded else None),
         row_refs=row_refs,
         unsaid=MappingProxyType(unsaid),
     )

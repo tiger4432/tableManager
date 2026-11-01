@@ -455,15 +455,13 @@ def _rebuilt_mapper_registry():
 # ⚰️ `test_a_rule_change_produces_NEW_atoms_rather_than_silently_none` - died with `run(reset_cursor=...)` and a v1 `vocabulary.slot_pairing` edit. The property - a changed fingerprint writes NEW atoms rather than deduping into silence - is what `source_translator_ver` in `uq_ledger_atom` enforces and what S-87's cases now measure.
 
 @pytest.mark.pg
-def test_a_molecule_the_declaration_cannot_say_is_refused_counted_and_NAMED(ledger, caplog):
-    """🔴 THE REFUSAL IS READ FROM THE OPERATOR'S LOG, not from the return value (판정 219).
-    A refusal a caller can see and an operator cannot is the silent-skip defect wearing a
-    return type.
+def test_a_split_row_whose_parent_is_blank_is_taken_out_not_refused(ledger, caplog):
+    """REVERSED, owner 11-01 «빈키행은 무시»: a split row whose parent is blank was refused `no_identity`, read from
+    the operator's log (판정 219). It is a blank-key row now - taken out, nothing written, no refusal line. (A refusal
+    read from the log is `test_two_independent_refusals_are_counted_and_named_in_one_run`'s blank time.)
 
-    ⚰️ THE MOLECULE WAS A `lot_event` SPLIT (S-112) and this case went red the day S-112
-    closed, as it said it would: setup_version 6 retired `lot_event` and the chain writes one
-    `lot_lineage` row per lineage (총괄 e14416950). The property stays, on the source that
-    replaced it - a split row whose parent is blank.
+    ⚰️ THE MOLECULE WAS A `lot_event` SPLIT (S-112): setup_version 6 retired `lot_event` and the chain writes one
+    `lot_lineage` row per lineage (총괄 e14416950).
     """
     connection = ledger.raw_connection()
     try:
@@ -475,13 +473,9 @@ def test_a_molecule_the_declaration_cannot_say_is_refused_counted_and_NAMED(ledg
         result = run(ledger, source="lot_lineage")
 
     messages = chr(10).join(r.getMessage() for r in caplog.records)
-    assert "REFUSED" in messages, messages[:400]
-    assert "no_identity" in messages, messages[:400]
-    # ⛔ AND THE COLUMN IS NAMED. "something was refused" sends an operator looking; the
-    # path is what they open.
-    assert "parent_lot" in messages, messages[:400]
-    assert result["refused_total"] >= 1, result
-    assert result["inserted"] == 0, "nothing of a refused molecule may land"
+    assert "no_identity" not in messages, messages[:400]
+    assert result["refused_total"] == 0, result
+    assert result["inserted"] == 0, "nothing of a blank-key row may land"
 
 #: 🔴 A ROW THE DECLARATION CANNOT COMPLETE (판정 219). The old one carried an `event_type`
 #: nobody had declared - a lot_event vocabulary word, and vocabulary is not what these proofs
@@ -911,6 +905,10 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     `occurred_at` is a column, so it can miss either - and `dt_job` cannot miss the second,
     because it reads its instant from a BASIS.
 
+    REVERSED, owner 11-01 «빈키행은 무시»: the blank `base_wafer_id` row is taken out now, not refused - this
+    declaration has no second reason left to refuse a molecule for, so the run counts ONE reason and the
+    blank-key row is not among the refusals. (The breakdown's shape - reasons by name - is unchanged.)
+
     🔴 AND THE BLANK IS `base_wafer_id`, NOT `run_uid`. `run_uid` is identity AND cursor AND
     order_by, so blanking it is refused at the BASE FRAME - "driver identity/group_by value
     is missing", as the identity - which aborts the whole batch before any molecule exists and is counted
@@ -929,16 +927,15 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
         result = run(ledger, source="die_inspection")
 
     assert result["rows_read"] == 4
-    assert result["refused_total"] == 2, (
-        f"two molecules are unsayable; the rest must still land: {result}")
+    assert result["refused_total"] == 1, (
+        f"the blank time is unsayable, the blank key taken out; the rest must still land: {result}")
     assert result["inserted"] > 0, "a run where nothing lands cannot tell refusal from silence"
 
     said = chr(10).join(r.getMessage() for r in caplog.records)
-    assert gate.REFUSE_NO_IDENTITY in said, said[:400]
+    assert gate.REFUSE_NO_IDENTITY not in said, said[:400]
     assert gate.REFUSE_MISSING_OCCURRED_AT in said, said[:400]
-    # ⛔ AND THE COLUMN IS NAMED IN EACH. "two were refused" sends an operator looking; the
-    # address is what they open.
-    assert "base_wafer_id" in said and "observed_at" in said, said[:400]
+    # ⛔ AND THE COLUMN IS NAMED. "one was refused" sends an operator looking; the address is what they open.
+    assert "observed_at" in said, said[:400]
 
 
 # ---------------------------------------------------------------- S-113 ⓑ-1: the registry row
@@ -1046,19 +1043,18 @@ def test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row(ledger):
         connection.close()
 
     result = run(ledger, source="die_inspection")
-    assert result["refused_total"] == 2, result
+    assert result["refused_total"] == 1, result      # the blank key is taken out, not refused (owner 11-01)
 
     row = read_cursor_row(ledger, "die_inspection")
     assert row is not None, (
         "the refusal write must create the row too: since S-76 nothing else does, so an "
         "UPDATE would land nowhere for a source declared today")
     breakdown = row["refusal_reasons"]
-    assert set(breakdown) == {gate.REFUSE_NO_IDENTITY, gate.REFUSE_MISSING_OCCURRED_AT}, \
-        breakdown
-    assert [breakdown[name]["count"] for name in sorted(breakdown)] == [1, 1], breakdown
+    assert set(breakdown) == {gate.REFUSE_MISSING_OCCURRED_AT}, breakdown
+    assert [breakdown[name]["count"] for name in sorted(breakdown)] == [1], breakdown
     assert all(breakdown[name]["last_at"] for name in breakdown), breakdown
 
-    assert row["molecules_refused"] == 2
+    assert row["molecules_refused"] == 1
     assert _unaccounted({"molecules_refused": row["molecules_refused"]}, breakdown) == 0, (
         "a breakdown written without its aggregate reads as a bookkeeping fault")
 

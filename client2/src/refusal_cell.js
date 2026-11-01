@@ -59,7 +59,10 @@ export function excludedNote(excluded) {
   if (!excluded || typeof excluded !== 'object') return '';
   const rows = Number(excluded.rows);
   if (!Number.isFinite(rows) || rows <= 0) return '';
-  return `${EXCLUDED_MARK} ${rows}`;
+  // 원인별 수 — 서버 `event_frame.excluded_note` 와 같은 마디 (exclude_when 3 · blank key dt_job 2, 총괄 11-01)
+  const causes = Object.entries(excluded.causes || {}).filter(([, n]) => Number(n) > 0)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([cause, n]) => `${cause} ${n}`);
+  return causes.length ? `${EXCLUDED_MARK} ${rows} (${causes.join(' · ')})` : `${EXCLUDED_MARK} ${rows}`;
 }
 
 /** 「N 건까지」 — «자른 것은 개수»라는 사실. 문장이 아니라 값 옆의 낱말입니다. */

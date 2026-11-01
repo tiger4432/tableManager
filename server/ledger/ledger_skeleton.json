@@ -309,14 +309,6 @@
                 }
               },
               {
-                "key": "allow_null",
-                "required": false,
-                "node": {
-                  "kind": "leaf",
-                  "hint": "flag"
-                }
-              },
-              {
                 "key": "class",
                 "required": false,
                 "label": "Classes - one word or a list; static means a walk leaves this type only to static types (blank = no class)",

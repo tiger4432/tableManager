@@ -250,14 +250,13 @@ async function suite(d) {
     { key: 'keys', node: { kind: 'map', keyed_by: 'index', of: { kind: 'leaf', hint: 'free' } } },
     { key: 'attributes', node: { kind: 'map', keyed_by: 'index', of: { kind: 'leaf', hint: 'free' } } },
     { key: 'label', node: { kind: 'map', keyed_by: 'name', of: { kind: 'leaf', hint: 'free' } } },
-    { key: 'allow_null', node: { kind: 'leaf', hint: 'flag' } },
     { key: 'status', node: { kind: 'leaf', hint: 'choice', list: 'lifecycle_status' } }] } } }] }, defs: {} };
   const ENTITY_DRAFT = { ...DRAFT, target_kind: 'entity', target_key: 'entity|wafer', target_id: 'wafer' };
   const eState = { ...base, draft: ENTITY_DRAFT, editorText: JSON.stringify({ keys: ['wafer'], status: 'active' }),
     authoringSchema: { authorable_kinds: [{ id: 'entity', section: 'entities' }], lifecycle_status: ['active', 'retired'], skeleton: SKELETON } };
   const ev = view.declarationView(eState, 'entity');
   ok('G1 the More line is the skeleton\'s fields the bar does not draw', same(ev.more.map((f) => [f.name, f.kind, (f.options || []).map((o) => o.value)]),
-    [['label', 'json', []], ['allow_null', 'options', [true, false]], ['status', 'options', ['active', 'retired']]]), JSON.stringify(ev.more));
+    [['label', 'json', []], ['status', 'options', ['active', 'retired']]]), JSON.stringify(ev.more));
   const eEditor = view.renderRaw(eState);
   const moreLine = byClass(bar.renderDeclarationBar(document, { keys: ['wafer'], status: 'active' }, ev), 'ldb-bar').find((b) => b.attrs['aria-label'] === 'More');
   ok('G2 a node type is its bar, its other fields on the More line', byClass(eEditor, 'ldb').length === 1 && Boolean(moreLine)

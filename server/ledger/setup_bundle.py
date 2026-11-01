@@ -2262,8 +2262,8 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
             problems.add("invalid_predicate", f"{path}.cardinality",
                          f"must be one of {sorted(CARDINALITIES)} (absent means {DEFAULT_CARDINALITY!r})")
         # 🔴 「이 술어가 «안 보이는» 것이 무슨 뜻인가」 (S-147-a / 판정 333). A1 has this
-        # sub-axis for node keys -- `allow_null` says whether an absent key is 「원자 없음」 or
-        # 「null 목적어」 -- and A2 had no counterpart at all.
+        # sub-axis for node keys -- an absent key is 「원자 없음」: the row is taken out (`allow_null`, which once said
+        # 「null 목적어」, retired 11-01) -- and A2 had no counterpart at all.
         #
         # 🔴 THE VALUE IS ANOTHER PREDICATE'S NAME, not a self-contained word, and that is
         # forced rather than chosen: 「안 봤다」 and 「보고 없었다」 are separated by THE
@@ -2493,10 +2493,6 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                         "unknown_id", f"{path}.label",
                         f"{name!r} is neither an identity key nor an attribute of this "
                         f"entity; a label shows the node's own values.")
-        why = (validation.flag_refusal("allow_null", item["allow_null"])
-               if "allow_null" in item else None)
-        if why:
-            problems.add("invalid_type", f"{path}.allow_null", why)
         # 🔴 THE SAME RULE AS A RETIRED SOURCE (S-177 ①). `references` is the ONE entity
         # clause whose truth depends on something OUTSIDE this entity -- it names another
         # declaration, which an operator is free to delete once nothing active points at

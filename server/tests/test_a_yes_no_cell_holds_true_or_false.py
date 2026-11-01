@@ -222,7 +222,9 @@ def test_a_ledger_flag_refuses_the_bundle_with_the_sentence(cells, name):
         (wanted, validation.flag_refusal(name, "true"))]
 
 
-def test_blank_and_allow_null_say_the_sentence_too():
+def test_blank_says_the_sentence_too_and_allow_null_is_read_by_nothing():
+    """An entity's `allow_null` is read by nothing since 11-01 (owner «빈키행은 무시») - named at load, never refused,
+    so its value is not judged either."""
     raw = logical_bundle()
     raw["sources"]["input_rows"]["read"]["exclude_when"] = [
         {"column": "join_id", "blank": 1}]
@@ -230,7 +232,7 @@ def test_blank_and_allow_null_say_the_sentence_too():
     messages = {e.message for e in snapshot_compile_errors(
         LedgerSetupBundle(raw), trusted_implementations())}
     assert validation.flag_refusal("blank", 1) in messages
-    assert validation.flag_refusal("allow_null", "false") in messages
+    assert not any("allow_null" in message for message in messages)
 
 
 # -------------------------------------------------------------------------------- notation

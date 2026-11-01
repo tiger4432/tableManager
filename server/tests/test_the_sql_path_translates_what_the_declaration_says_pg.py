@@ -5,9 +5,10 @@ would pass if both went wrong together).
 
   the board   hold_world's official table on PostgreSQL, the ledger source re-declared per cell
   the cells   row (exclude_when blank) · when · constant value · read group x map row · a blank entity key ·
-              the same with allow_null · a time read by a declared format · an entity attribute (not a time)
-  each cell   SQL atoms == Python atoms == the hand-written atoms; refusals counted alike; the cells both paths read
-              are the same values (a time column reaches the format as the text the Python path reads)
+              the same with allow_null · a group one row of which leaves the key blank · a time read by a declared
+              format · an entity attribute (not a time)
+  each cell   SQL atoms == Python atoms == the hand-written atoms; refusals and excluded rows counted alike; the cells
+              both paths read are the same values (a time column reaches the format as the text the Python path reads)
   not here    two tables naming one entity - the box board (die from inspection_run and dt_transfer_log, every
               page, both paths alike); worlds - the translation asks no world (a world only names the ledger tables)
 """
@@ -58,11 +59,17 @@ CELLS = {
                                   "exclude_when": [{"column": "hold", "blank": True}]},
                             unit={"kind": "row"}),
                     ROWS, {("J1", "has_netdie", 7), ("J1", "has_netdie", 5)}),
-    # a row naming no job: its molecule is refused, the others land
+    # a row naming no job is taken out, counted «blank key dt_job» - the others land (owner 11-01 «빈키행은 무시»)
     "blank key": (_source(), ROWS + [BLANK], {("J1", "has_netdie", 7), ("J1", "has_netdie", 5)}),
-    # the same row, the entity allowing a null key: it lands keyed by nothing
-    "allow_null": (_source(), ROWS + [BLANK],
-                   {("J1", "has_netdie", 7), ("J1", "has_netdie", 5), (None, "has_netdie", 9)}),
+    # the same row, the entity writing `allow_null` (read by nothing since 11-01): the same atoms
+    "allow_null": (_source(), ROWS + [BLANK], {("J1", "has_netdie", 7), ("J1", "has_netdie", 5)}),
+    # a group (dt_x) one row of which names no job: that row is taken out, the group says the rest
+    "group, one blank": (_source(read={"unit": "group", "group_by": ["dt_x"], "identity": ["dt_x"],
+                                       "order_by": ["dt_x", "dt_job", "dt_y"],
+                                       "exclude_when": [{"column": "hold", "blank": True}]}),
+                         ROWS + [dict(BLANK, hold="agreed"),
+                                 {"dt_job": "J3", "dt_x": 3, "dt_y": 2, "netdie": 4, "hold": "agreed"}],
+                         {("J1", "has_netdie", 7), ("J1", "has_netdie", 5), ("J3", "has_netdie", 4)}),
     # the event time read from a text cell by a declared format, on the declared zone
     "time format": (_source(read={"occurred_at": {"column": "note", "timezone": "Asia/Seoul",
                                                   "format": "%Y/%m/%d %H:%M"},
@@ -77,16 +84,13 @@ CELLS = {
 #: the time the «time format» cell's atoms carry, by hand: 09:30 on Asia/Seoul
 FORMAT_TIME = "2026-10-01T09:30:00+09:00"
 ALLOW_NULL = {"allow_null"}
+#: the rows each cell's read takes out, by cause (`event_frame.excluded_note`) - by hand
+EXCLUDED = {"blank key": {"exclude_when": 1, "blank key dt_job": 1},
+            "allow_null": {"exclude_when": 1, "blank key dt_job": 1},
+            "group, one blank": {"exclude_when": 1, "blank key dt_job": 1}}
 
 
-#: ⚠️ OPEN (asked of the lead 11-01): both paths refuse the allow_null row - `event_frame._read_molecule` refuses a blank
-#: entity cell without asking allow_null, and `blank_entity_cells` never excuses one - so the declaration's «a null key
-#: is allowed» does not reach `roleframe`'s allow_null branch. Strict: the day that is decided and mended, this reds.
-PARAMS = [pytest.param(cell, id=cell, marks=pytest.mark.xfail(strict=True, reason="allow_null blank key refused"))
-          if cell in ALLOW_NULL else pytest.param(cell, id=cell) for cell in CELLS]
-
-
-@pytest.fixture(name="world", params=PARAMS)
+@pytest.fixture(name="world", params=list(CELLS))
 def fixture_world(request, pg_engine, monkeypatch, tmp_path):
     source, rows, expected = CELLS[request.param]
     monkeypatch.setattr(hw, "LEDGER_SOURCE", source)
@@ -145,6 +149,12 @@ def _said(records):
     return out
 
 
+def setup_notes(world):
+    from ledger import setup as ledger_setup
+
+    return ledger_setup._unread_entity_cells(hw.sample("ledger_config.json.sample")["entities"])
+
+
 def test_the_sql_path_gives_the_atoms_the_declaration_says(world):
     plan, preview, results, context, (full, narrow) = _both(world)
     python, sql = (sorted(sql_translate.atom_records(plan, preview.event_results)),
@@ -153,8 +163,11 @@ def test_the_sql_path_gives_the_atoms_the_declaration_says(world):
     assert narrow == full, "the SQL read hands every named column as the Python read does - a time text included"
     if world["cell"] == "time format":
         assert {json.loads(r)["occurred_at"] for r in sql} == {FORMAT_TIME}
-    if world["cell"] == "blank key":
-        assert len(context.refusals) == 1, "the blank-keyed row refuses its molecule, counted"
+    assert context.refusals == [] and preview.refusals == (), "a blank key refuses nothing (owner 11-01)"
+    assert context.excluded_rows == preview.excluded_rows == EXCLUDED.get(world["cell"], {"exclude_when": 1})
+    if world["cell"] in ALLOW_NULL:
+        assert setup_notes(world) == ["ledger_config: entities.dtjob@1 cell this product does not read — allow_null."
+                                      " A row whose key is blank is excluded."]
 
     assert _said(sql) == world["expected"], "the SQL path, against the hand-written atoms"
     assert _said(python) == world["expected"], "the Python path, against the same"

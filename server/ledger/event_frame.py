@@ -35,6 +35,7 @@ from .roleframe import (
     unit_positions,
 )
 from .setup_bundle import entity_type_column, exclusion_columns, executes_the_bindings
+from database.crud import is_blank_key_part
 from .setup_registry import (
     LedgerSetupSnapshot,
     SourcePlan,
@@ -193,11 +194,10 @@ class SourcePreparationContext:
     #: Molecules refused during this preparation. Out-parameter, deliberately: the
     #: return value is EventFrames and a batch can now produce both.
     refusals: list = field(default_factory=list, compare=False, repr=False)
-    #: Rows `read.exclude_when` removed, per batch. A ONE-ELEMENT LIST rather than an int
-    #: because the count has three states and `0` can only say two: no entry at all means
-    #: this source declares no `exclude_when` and nothing was measured, which is not the
-    #: same claim as "measured, and none".
-    excluded_rows: list = field(default_factory=list, compare=False, repr=False)
+    #: Rows the read takes out, by cause (`excluded_note`): "exclude_when", and "blank key <columns>" (owner 11-01
+    #: «빈키행은 무시»). No "exclude_when" entry means the source declares none and nothing was measured, which is not
+    #: the same claim as "measured, and none".
+    excluded_rows: dict = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.snapshot.readiness != "ready":
@@ -315,27 +315,45 @@ def _validate_base_frame(
         )
 
 
-def _unnamed_rows(context: SourcePreparationContext, cells, rows: int) -> set:
-    """The rows whose driver identity / group_by cell is blank - refused by `no_identity`, counted, and the rest of the
-    page translated. 🔴 These used to refuse the PAGE («identity and group_by stay: without them there
-    is no molecule to name»); the rows still have no molecule, so they are named by their position instead, as
-    `occurred_at` and `order_by` already were (S-41 ②, 총괄 4b5964ab2) - owner 10-29 ㄱ «데이터 값은 멈추지 않는다»."""
-    driver = context.source_plan.driver
-    columns = sorted(set(driver.identity) | set(driver.group_by))
-    blank = [(position, column) for column in columns
-             for position in range(rows) if is_blank_source_value(cells[column][position])]
-    if not blank:
-        return set()
-    from .gate import REFUSE_NO_IDENTITY
+def blank_key_cause(context: SourcePreparationContext, cells, position: int):
+    """«blank key <columns>» for a row the read takes out, or None (owner 11-01 «빈키행은 무시» - it was refused
+    `no_identity`): a blank read identity / group_by cell, or - a declared mapper's - a blank entity cell every
+    sentence applying at the row needs (a sentence only some need is unsaid, `blank_entity_cells`). The read's time
+    and cursor cells are not keys and still refuse; so does a code mapper's blank cell. One judge of «blank»:
+    `crud.is_blank_key_part`. The page (`prepared_molecules`) and the census (`backfill._missing_rows_taken_out`)."""
+    plan = context.source_plan
+    driver = plan.driver
+    blank = sorted(column for column in {*driver.identity, *driver.group_by}
+                   if is_blank_key_part(cells[column][position]))
+    if not blank and executes_the_bindings(driver.mapper.implementation.implementation_id):
+        hard = {*driver.identity, driver.occurred_at.column}
+        needs = [_blank_cells(mapping, context.snapshot.entities, cells, position, hard)
+                 for mapping in plan.profile.mappings.values() if _applies(mapping, cells, (position,))]
+        if needs and all(needs):
+            blank = sorted(set().union(*needs))
+    return "blank key " + ", ".join(blank) if blank else None
 
-    positions = sorted({position for position, _column in blank})
-    context.refusals.append(MoleculeRefusal(
-        reason=REFUSE_NO_IDENTITY,
-        detail=f"{len(positions)} row(s) with a blank driver identity/group_by {columns} - no molecule names them",
-        rows=len(positions),
-        addresses=tuple({"code": "source_preparation_incomplete", "path": f"source_batch.rows[{position}].{column}"}
-                        for position, column in blank[:20])))
-    return set(positions)
+
+def _blank_key_rows(context: SourcePreparationContext, cells, rows: int) -> set:
+    """The page's rows `blank_key_cause` takes out, counted by cause into `context.excluded_rows`."""
+    out = set()
+    for position in range(rows):
+        cause = blank_key_cause(context, cells, position)
+        if cause:
+            out.add(position)
+            context.excluded_rows[cause] = context.excluded_rows.get(cause, 0) + 1
+    return out
+
+
+def excluded_note(excluded) -> str:
+    """THE sentence for the rows the read took out, by cause - «5 rows excluded (exclude_when 3 · blank key dt_job
+    2)», or "" when none (lead 11-01: every seat that shows excluded rows says this; the screen's `excludedNote` writes
+    the same parts)."""
+    said = {cause: rows for cause, rows in (excluded or {}).items() if rows}
+    if not said:
+        return ""
+    return "%d rows excluded (%s)" % (sum(said.values()),
+                                      " · ".join("%s %d" % (cause, rows) for cause, rows in sorted(said.items())))
 
 
 def event_frames(
@@ -350,15 +368,16 @@ def event_frames(
 
 def prepared_molecules(context: SourcePreparationContext, cells, rows: int) -> list:
     """A page's CELLS (column -> tuple) -> its molecules `(positions, row_refs, instant, attrs)`, positions into the
-    page as given: the blank-identity rows refused, the `read.exclude_when` rows taken out, the entity columns
-    checked, the rest grouped (`page_molecules`). The DataFrame path and the SQL path (`sql_translate`) both read a
-    page through this, so the order of those steps has one author (lead 10-31 ②)."""
-    unnamed = _unnamed_rows(context, cells, rows)
-    alive = [position for position in range(rows) if position not in unnamed]
+    page as given: the `read.exclude_when` rows taken out, the entity columns checked, the blank-key rows taken out
+    (`blank_key_cause`), the rest grouped (`page_molecules`). The DataFrame path and the SQL path (`sql_translate`)
+    both read a page through this, so the order of those steps has one author (lead 10-31 ②)."""
+    alive = list(range(rows))
     if context.source_plan.driver.exclude_when:
-        excluded = excluded_rows(context, _cells_at(cells, alive), len(alive))
+        excluded = excluded_rows(context, cells, rows)
         alive = [position for position, out in zip(alive, excluded) if not out]
     require_entity_columns(context, cells)
+    blank = _blank_key_rows(context, _cells_at(cells, alive), len(alive))
+    alive = [position for at, position in enumerate(alive) if at not in blank]
     return [([alive[position] for position in positions], row_refs, instant, attrs)
             for positions, row_refs, instant, attrs in page_molecules(context, _cells_at(cells, alive), len(alive))]
 
@@ -386,7 +405,7 @@ def excluded_rows(context: SourcePreparationContext, cells, rows: int) -> list:
     exclude_when = context.source_plan.driver.exclude_when
     excluded = [row_excluded(exclude_when, lambda column, at=position: cells[column][at])
                 for position in range(rows)]
-    context.excluded_rows.append(sum(excluded))
+    context.excluded_rows["exclude_when"] = context.excluded_rows.get("exclude_when", 0) + sum(excluded)
     return excluded
 
 
@@ -413,16 +432,15 @@ def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     its TYPE column here; which key columns that row needs depends on its type (`_row_type_refusal`)."""
     return tuple(sorted({column for mapping in source_plan.profile.mappings.values()
                          for binding in mapping.bindings.values()
-                         for column in _binding_cells(binding)[0]}))
+                         for column in _binding_cells(binding)}))
 
 
-def _binding_cells(binding, entities=None, cells=None, position=None) -> tuple:
-    """-> (the cells an entity binding fills to name its entity, does that entity allow a null key) -
-    THE one answer to 「which cells name this entity」 (총괄 10-12 QA2 ③): a declared type's key
-    columns; a type read per row, its type column and - given a row whose cell names a declared
-    type - that type's key columns. Nothing for a binding that is not an entity."""
+def _binding_cells(binding, entities=None, cells=None, position=None) -> frozenset:
+    """The cells an entity binding fills to name its entity - THE one answer to 「which cells name this entity」 (총괄
+    10-12 QA2 ③): a declared type's key columns; a type read per row, its type column and - given a row whose cell
+    names a declared type - that type's key columns. Nothing for a binding that is not an entity."""
     if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
-        return frozenset(), False
+        return frozenset()
     keys, type_column = binding.get("keys", {}), entity_type_column(binding)
     columns = {type_column} if type_column else set()
     if type_column:
@@ -430,61 +448,43 @@ def _binding_cells(binding, entities=None, cells=None, position=None) -> tuple:
         declared = (None if is_blank_source_value(named)
                     else entities.get(bare_name(str(named).strip())))
         keys = {key: keys.get(key) for key in (declared.identity_keys if declared else ())}
-    else:
-        declared = (entities or {}).get(bare_name(str(binding.get("entity_type"))))
     columns |= {child["column"] for child in keys.values()
                 if isinstance(child, Mapping) and child.get("kind") == "column"}
-    return frozenset(columns), bool(declared is not None and declared.allow_null)
+    return frozenset(columns)
+
+
+def _blank_cells(mapping, entities, cells, position, hard) -> set:
+    """The cells naming `mapping`'s entities that are blank at the row (`crud.is_blank_key_part`), the read's identity
+    and time (`hard`) aside."""
+    return {column for binding in mapping.bindings.values()
+            for column in _binding_cells(binding, entities, cells, position)
+            if column not in hard and column in cells and is_blank_key_part(cells[column][position])}
 
 
 def blank_entity_cells(source_plan: SourcePlan, entities, cells, positions) -> tuple:
-    """-> (`(position, column)` blank cells that do not refuse the molecule, the sentences they
-    leave unsaid) for ONE mapper unit (`roleframe.unit_positions`) - one answer for
-    `_refuse_molecule`, `_row_type_refusal` and the declarative mapper's sentence skip (소유자 10-12
-    「세 개 중 빈 거는 무시」).
+    """-> (`(position, column)` blank entity cells, which refuse nothing; each sentence's rows - those whose cells
+    naming its entities are all filled) for ONE mapper unit (`roleframe.unit_positions`) - one answer for
+    `_refuse_molecule`, `_row_type_refusal` and the declarative mapper (`sentence_rows`).
 
-    A sentence needs the cells that name its entities (`_binding_cells`). Only the sentences whose
-    `when` holds for the unit are asked (총괄 10-12 QA ②) - a cell none of them needs does not
-    matter. A blank one leaves the sentences needing it unsaid - as a `when` that does not match -
-    when it is blank in EVERY row of the unit; blank in some rows only (QA ①), or needed by every
-    applying sentence at that row, or keying an `allow_null` entity, or the read's identity or time,
-    or the mapper is code (it says no declared sentence): it refuses the molecule, as every blank
-    entity cell did before."""
+    A sentence is said from its rows: a row leaving one of its entity cells blank is not one of them, and a sentence
+    with none left is unsaid - as a `when` that does not match (소유자 10-12 「세 개 중 빈 거는 무시」, and 11-01 «빈키행은
+    무시» - REVERSES 총괄 10-12 QA ①'s refusal of a group blank in some rows: the group is said from the rest). A
+    row every applying sentence leaves is taken out before (`blank_key_cause`). The read's identity and time are not
+    excused here, nor any cell of a code mapper (it says no declared sentence): they refuse the molecule."""
     driver = source_plan.driver
-    if not executes_the_bindings(driver.mapper.implementation.implementation_id):
-        return frozenset(), frozenset()
     positions = tuple(positions)
-    mappings = source_plan.profile.mappings
-    applying = {sentence for sentence, mapping in mappings.items()
-                if _applies(mapping, cells, positions)}
-    excused, candidates = set(), {}
-    for position in positions:
-        needs, hard = {}, {*driver.identity, driver.occurred_at.column}
-        for sentence, mapping in mappings.items():
-            needs[sentence] = set()
-            for binding in mapping.bindings.values():
-                columns, allows_null = _binding_cells(binding, entities, cells, position)
-                needs[sentence] |= columns
-                if allows_null and sentence in applying:
-                    hard |= columns
-        applied = [needs[sentence] for sentence in applying]
-        hard |= set.intersection(*applied) if applied else set()
-        used = set().union(*applied)
-        for sentence, need in needs.items():
-            for column in need - hard:
-                if not (column in cells and is_blank_source_value(cells[column][position])):
-                    continue
-                if column not in used:
-                    excused.add((position, column))
-                elif sentence in applying:
-                    candidates.setdefault((sentence, column), set()).add(position)
-    unsaid = set()
-    for (sentence, column), at in candidates.items():
-        # 총괄 10-12 QA ①: blank in some rows of a group and filled in others refuses, visibly
-        if all(is_blank_source_value(cells[column][position]) for position in positions):
-            unsaid.add(sentence)
-            excused |= {(position, column) for position in at}
-    return frozenset(excused), frozenset(unsaid)
+    if not executes_the_bindings(driver.mapper.implementation.implementation_id):
+        return frozenset(), {sentence: positions for sentence in source_plan.profile.mappings}
+    hard = {*driver.identity, driver.occurred_at.column}
+    excused, rows = set(), {}
+    for sentence, mapping in source_plan.profile.mappings.items():
+        rows[sentence] = []
+        for position in positions:
+            blank = _blank_cells(mapping, entities, cells, position, hard)
+            excused |= {(position, column) for column in blank}
+            if not blank:
+                rows[sentence].append(position)
+    return frozenset(excused), {sentence: tuple(at) for sentence, at in rows.items()}
 
 
 def _applies(mapping, cells, positions) -> bool:
@@ -494,13 +494,17 @@ def _applies(mapping, cells, positions) -> bool:
          for column in mapping.when if column in cells}, mapping.when)
 
 
+def sentence_rows(source_plan: SourcePlan, entities, cells, positions) -> dict:
+    """The sentences this unit says, each with its rows (`blank_entity_cells`) - those left and whose `when` holds
+    over them. The declarative mapper says exactly these; `says_nothing` asks it."""
+    rows = blank_entity_cells(source_plan, entities, cells, positions)[1]
+    return {sentence: rows[sentence] for sentence, mapping in source_plan.profile.mappings.items()
+            if rows.get(sentence) and _applies(mapping, cells, rows[sentence])}
+
+
 def sentences_said(source_plan: SourcePlan, entities, cells, positions) -> tuple:
-    """The sentences this unit says: its `when` holds and no blank cell unsays it
-    (`blank_entity_cells`). The declarative mapper says exactly these; `says_nothing` asks it."""
-    positions = tuple(positions)
-    unsaid = blank_entity_cells(source_plan, entities, cells, positions)[1]
-    return tuple(sentence for sentence, mapping in source_plan.profile.mappings.items()
-                 if sentence not in unsaid and _applies(mapping, cells, positions))
+    """The sentences this unit says (`sentence_rows`)."""
+    return tuple(sentence_rows(source_plan, entities, cells, positions))
 
 
 def says_nothing(context: SourcePreparationContext, cells, positions) -> bool:
@@ -546,7 +550,7 @@ def _row_type_refusal(context, cells, positions, key, soft=frozenset()):
                             f"({', '.join(admitted)})"),
                     rows=len(positions),
                     addresses=({"code": "invalid_entity_ref", "path": path},))
-            keyed = _binding_cells(binding, context.snapshot.entities, cells, position)[0]
+            keyed = _binding_cells(binding, context.snapshot.entities, cells, position)
             for column in sorted(keyed - {type_column}):
                 if (column in cells and is_blank_source_value(cells[column][position])
                         and (position, column) not in soft):
@@ -638,21 +642,20 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
                                          f"{column}"} for column in empty),
             )
 
-    # a blank entity cell no applying sentence needs, or only some do (unsaid in the mapper), does not
-    # refuse (소유자 10-12, `blank_entity_cells`)
-    # judged per mapper unit - the rows the mapper says sentences for (총괄 10-12 QA2 ①)
+    # a declared mapper's blank entity cell refuses nothing - its sentences leave that row (소유자 10-12 · 11-01,
+    # `blank_entity_cells`), judged per mapper unit (총괄 10-12 QA2 ①); a key is blank by the key judge, a time by its own
     soft = frozenset().union(*(blank_entity_cells(plan, context.snapshot.entities, cells, unit)[0]
                                for unit in unit_positions(driver.mapper, cells, positions)))
     checks = (
-        (REFUSE_NO_IDENTITY, tuple(_required_entity_columns(plan)) + tuple(driver.identity)),
-        (REFUSE_MISSING_OCCURRED_AT, (driver.occurred_at.column,)),
+        (REFUSE_NO_IDENTITY, tuple(_required_entity_columns(plan)) + tuple(driver.identity), is_blank_key_part),
+        (REFUSE_MISSING_OCCURRED_AT, (driver.occurred_at.column,), _empty),
     )
-    for reason, columns in checks:
+    for reason, columns, blank in checks:
         for column in columns:
             if column not in cells:
                 continue
             for position in positions:
-                if not _empty(cells[column][position]) or (position, column) in soft:
+                if not blank(cells[column][position]) or (position, column) in soft:
                     continue
                 path = f"event_frame.rows[{position}].{column}"
                 return MoleculeRefusal(
