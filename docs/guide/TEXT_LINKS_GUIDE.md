@@ -217,7 +217,7 @@ conda run -n assy_manager python server/scripts/causal_graph_connectivity.py --p
 - `optional` 한정자의 칸이 빈 행은 그 엣지에 그 한정자만 없이 들어간다(빈 속성과 같은 읽기). `required` 한정자의 칸이 빈 행은 전처럼 그 행이 든 원장 묶음 전체를 실패시킨다(`missing_binding_value`).
 - 타입 칸의 값은 선언된 타입 이름 그대로다(옛 철자 `x@1` 도 접힌다). 행마다 그 타입의 키만 쓴다.
 - 그 자리가 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어간다 — 받는 타입은 술어 목록(`subjects` · `object.types`)이 정한다.
-- 타입 칸이 비거나 그 타입의 키 칸이 빈 행은 `no_identity`.
+- 타입 칸이 비거나 그 타입의 키 칸이 빈 행은 그 칸을 쓰는 문장만 안 말하고, 그 행의 문장 모두가 쓰면 행이 빠진다(«blank key <칸>» 으로 셈, 소유자 11-01). 전엔 `no_identity` 거절.
 - 적재에서 거절: 받는 타입의 키를 안 적음 · 어느 타입에도 없는 키 · 칸 타입에 속성 · 받는 타입에 소스 속성(`bind.entities`) · 코드 맵퍼.
 - 선언 화면의 타입 칸은 아직 이름만 고른다 — 칸에서 읽는 모양은 선언 원본(JSON)으로 적는다.
 

@@ -691,7 +691,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 | Entity ID | 예 | 맨이름, 예: `Lot` — 옛 `Lot@1` 도 읽을 때 접히고 저장하면 맨이름으로 다시 쓰인다(10-06 `f34f16892` · ~~versioned ID~~) |
 | `keys` | 예 | 개체를 식별하는 논리 key 이름. 비어 있거나 중복될 수 없다. |
 | ~~`key_types`~~ | — | ⚰️ 은퇴(판정 165) — 읽는 곳이 없었다. 적으면 로드가 `unknown_field` 로 거절한다. |
-| `allow_null` | 아니오 | 명시적 boolean. 생략 시 null key를 허용하는 것으로 추측하지 않는다. |
+| ~~`allow_null`~~ | — | ⚰️ 은퇴(소유자 11-01 «빈키행은 무시») — key 칸이 빈 행은 읽기가 빼고 원인별로 센다(`blank key <칸> N`). 적어도 거절하지 않고 로드가 «cell this product does not read — allow_null» 한 줄로 말한다. |
 | `label` | 아니오 | 🆕 10-06(총괄 03bc94b6b) 노드를 보일 이름 — 이 개체의 key 또는 `attributes` 이름 목록. 걷기가 적힌 순서대로 값을 「 · 」로 잇고, 값이 없는 이름은 건너뛴다. 비우면 key. 걷기만 읽어 소스 지문 · 원장 소급 0. key 도 attribute 도 아닌 이름은 로드가 그 이름을 대어 거절한다. |
 
 여기서 `lot`은 논리 key 이름이지 반드시 물리 컬럼명일 필요는 없다. 소스 A의 `bind`는
@@ -705,8 +705,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
   "Die": {
     "keys": ["wafer", "x", "y"],
     "attributes": ["bin"],
-    "label": ["bin", "x", "y"],
-    "allow_null": false
+    "label": ["bin", "x", "y"]
   }
 }
 ```

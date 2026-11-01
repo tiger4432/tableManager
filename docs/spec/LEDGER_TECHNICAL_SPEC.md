@@ -474,7 +474,7 @@ vocabulary.<술어id>     필수  status · subjects · object
                         types   kind == entity_ref 이면 «필수», 그 밖의 kind 에서는 «금지»
   .object.qualifiers    필수  required · optional      (둘 다 있어야 한다 — 빈 목록이라도)
 
-entities.<개체id>       필수  keys                     선택  key_types · allow_null · references
+entities.<개체id>       필수  keys                     선택  key_types · allow_null(11-01 받되 안 읽음 — 빈 키 행은 뺀다) · references
                         keys    «비지 않고» 중복 없는 문자열 목록 = 그 개체의 신원
 ```
 

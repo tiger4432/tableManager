@@ -30,9 +30,9 @@
 | 부축 | 상태 | 칸 · 자리 | 값의 정의역 (좁히는 층) | 읽는 쪽 |
 |---|---|---|---|---|
 | 타입 | ① | `entities.<type>` — id 는 `^[^@/\s]+@[1-9][0-9]*$` (`setup_bundle.py:90` `_VERSIONED_ID`, 검사 :1096) | 문자열 | 걷기 노드 `type` · 폼 |
-| 정체성 `keys` | ① | `entities.<t>.keys` :1123 — 비지 않은 목록 · 중복 ⛔ :1126 | **값 = `_scalar`**(`roleframe.py:1328`): 문자열 · 정수 · 유한 실수 · 불. null 은 `allow_null` 일 때만 :1289 → 🔵 **「keys 가 수여도 되나」 ✅ 된다.** 목록 ❌ | 원자 `subject_keys` JSONB · 노드 id · label |
+| 정체성 `keys` | ① | `entities.<t>.keys` :1123 — 비지 않은 목록 · 중복 ⛔ :1126 | **값 = `_scalar`**(`roleframe.py:1328`): 문자열 · 정수 · 유한 실수 · 불. null 은 받지 않는다 — 빈 키 행은 읽기가 뺀다(소유자 11-01, `event_frame.blank_key_cause`) → 🔵 **「keys 가 수여도 되나」 ✅ 된다.** 목록 ❌ | 원자 `subject_keys` JSONB · 노드 id · label |
 | `key_types` | ⚰️ **칸이 «없습니다»** (09-11 D-3c 재측정) — 판정 165 ㉡ 대로 «삭제»됐고, `entities.<t>` 의 optional 은 오늘 `(allow_null, references, class, attributes, status)` 입니다(`setup_bundle.py`). 남은 히트 둘은 「은퇴했다」고 적은 «주석»입니다. 그러므로 ③′ 가 아니라 «관문 밖»입니다 | `entities.<t>.key_types` :1129~1145 — 이름이 `keys` 와 «정확히» 일치해야 함 | 값 = trimmed 비지 않은 문자열. **타입 이름의 목록이 닫혀 있지 않다** | 🔴 **없다.** 검증기(:1129) · 폼(`ledger_skeleton.json:183`) · 레지스트리 «보관»(`setup_registry.py:168,:906`) 셋뿐. 시험·문서·아카이브를 뺀 «값을 읽는» 자리 `git grep` **0** |
-| `allow_null` | ① | `entities.<t>.allow_null` :1163 | 불 | `roleframe.py:1289` |
+| `allow_null` | ⚰️ 11-01 은퇴 — 받되 안 읽음, 로드가 «cell this product does not read» 한 줄로 말함(`setup._unread_entity_cells`). 빈 키 행은 읽기가 뺀다 | `entities.<t>.allow_null` | 불 | — |
 | `class` | ① | `entities.<t>.class` = 낱말 하나 또는 낱말 목록, 낱말은 운영자가 짓는다(🆕 09-29 `45e363a05` — 닫힌 {static, dynamic} 검사 은퇴). 읽는 함수 `setup_bundle.class_words` 하나, 코드가 묻는 낱말은 `static` 하나(`has_class(spec, "static")`). 🔵 «안 적힌 것»을 `"dynamic"` 으로 채우지 않는다 — 선언 응답은 `null` | 열린 낱말 | 걷기 — 정적 노드에 «닿되 나가지 않음» |
 | 속성 — 이름 | ① | `entities.<t>.attributes` :1147 — 목록 · 중복 ⛔ · **keys 와 이름 충돌 ⛔** :1160 | 이름 = 문자열 | `predicate_claim` :531~537 이 목적어 없는 술어의 optional qualifier 로 올린다 |
 | 속성 — 값 | ① 자리 / 🔴 **③ 정의역** | `sources.<s>.bind.entities.<t>.attributes.<name>` = `column`\|`constant` (:1821~1850). 역할 층 override 는 `…bind.<role>.attributes` :1425 | 🔴 `attribute` 역할 → `_scalar` → **스칼라 «하나»**. 목록 ❌ · 객체 ❌ · 시각 ❌. DB 는 JSONB 라 목록을 «담을 수는» 있는데 발행이 거절한다 — 층이 어긋난 자리 | 원자 `object_payload.qualifiers` · CHECK `ck_ledger_objectless_carries_only_qualifiers`(`schema.py:99`) · 걷기 노드 `attributes` · 클라 |
@@ -60,7 +60,7 @@
 | `occurred_at` | ① | 🆕 10-02 `3a2d79ff9` 사건 시각의 자리는 매핑의 `bind.occurred_at`(사건 엣지 — 안 적은 매핑의 원자는 `ingested`) · 소스 칸 «기본값이 덮음»: 안 적으면 엣지들의 칼럼 · 시간대, 엣지가 없으면 저장 시각(`ingested` — 🆕 10-11 zone 없음, 읽기는 UTC `setup_registry.BASIS_TIMEZONE` · 시간대 없는 읽기에만 닿음) · `sources.<s>.read.occurred_at` = `{column | basis 중 하나, timezone?, format?}` — 🆕 10-11 `96f54ab36` timezone 은 column 옆에서만 필수(`missing_timezone`) · `setup_bundle._validate_sources` :2534~2556(10-11 HEAD, ~~:1513~1525~~) · `basis` ∈ `{"ingested"}` (`_OCCURRED_AT_BASES` :205 — 10-11 HEAD, ~~:135~~) | 시각 «순간» 하나 | 원자 `occurred_at` TIMESTAMPTZ · 월 파티션 키 · CHECK `ck_ledger_occurred_at_basis` |
 | **유효 구간** | 🔵 **«원장 밖»** (소유자 결정, 09-10) | 순간 하나뿐인 것은 «그대로»이고, 「언제부터 언제까지 참」은 «체인이 표에 씁니다»(생애 표 — 소유자가 dt 를 별 노드 타입으로 두고 합성 `dt_wafer_id` 를 매기기로 결정). 그러므로 원장 문법의 구멍이 아니라 «체인 기저의 항목»입니다 — 동결 관문에서 «뺍니다» | 체인 | 표의 두 컬럼 |
 | **카디널리티** | ✅ **① (09-11 D-3c — «거짓»이었습니다)** — 칸 `vocabulary.<p>.cardinality` 가 있고 읽는 쪽이 «셋»입니다: 컴파일(`9f17f8a9`) · 위반 거절(`3c81682d`) · 대체 기록(`ccedc59f`) · 걷기 엣지(`118cc4f0`). S-133(09-10 16:57~17:12). 뒤의 표 A2-3 은 이미 닫혀 있었고 이 행만 남았습니다. 🪦 당시 근거: | `vocabulary` 에 칸 없음. ⚠️ `virtual_joins.<r>.join_cardinality` 는 «있다» — 다른 선언 언어에만 | — | BASIS §3 대로 B5 집계의 «중복 셈»을 구조적으로 못 막는다 |
-| **부재의 뜻** | ✅ **① (S-147-a, 판정 333)** — `vocabulary.<p>.absence_confirmed_by` = «검사 술어의 id». 🔴 **A1 의 `allow_null` 의 거울이고, 이 부축이 A2 에 «아예 없었다».** 「이 술어가 안 보이는 것」이 「안 봤다」인지 「보고 없었다」인지를 가르는 것은 «다른 원자의 존재»라, 값이 자기 완결 낱말이 아니라 «다른 술어의 이름»이다 — `absence: none\|unknown` 류로는 쓸 수 없다. 없으면 오늘 그대로(부재 = «모름») | 선언된 술어 id · 자기 자신 ⛔ · retired ⛔(`status` 재사용) · 오타는 «거절»(조용한 분모 0 금지) | S-147-b 가 분모를 `parents` 에서 «유도»(새 걷기 0) |<br>🆕 **[2026-09-13 S-216 `09217e2e`, 판정 366] 이제 그 칸을 «화면이 읽을 수» 있다** — `/api/ledger/declaration` 의 `predicates[]` 가 `absence_confirmed_by` 를 «선언한 술어에만» 실어 보낸다. 🔴 **그전엔 화면이 부재 열의 모집단을 «노드에서» 가져올 수밖에 없었고**, 그것은 «도착한 술어»을 모집단으로 쓰는 것이라 이 칸이 막으려던 오독 그 자체였다. ⚠️ 연결은 «서렸고», 오늘 출하 선언은 그 칸을 한 번도 안 채운다 — 기제가 있다 ≠ 돌다
+| **부재의 뜻** | ✅ **① (S-147-a, 판정 333)** — `vocabulary.<p>.absence_confirmed_by` = «검사 술어의 id». 🔴 **A1 의 부재의 뜻(그때 `allow_null`, 11-01 부터 «빈 키 행은 뺀다»)의 거울이고, 이 부축이 A2 에 «아예 없었다».** 「이 술어가 안 보이는 것」이 「안 봤다」인지 「보고 없었다」인지를 가르는 것은 «다른 원자의 존재»라, 값이 자기 완결 낱말이 아니라 «다른 술어의 이름»이다 — `absence: none\|unknown` 류로는 쓸 수 없다. 없으면 오늘 그대로(부재 = «모름») | 선언된 술어 id · 자기 자신 ⛔ · retired ⛔(`status` 재사용) · 오타는 «거절»(조용한 분모 0 금지) | S-147-b 가 분모를 `parents` 에서 «유도»(새 걷기 0) |<br>🆕 **[2026-09-13 S-216 `09217e2e`, 판정 366] 이제 그 칸을 «화면이 읽을 수» 있다** — `/api/ledger/declaration` 의 `predicates[]` 가 `absence_confirmed_by` 를 «선언한 술어에만» 실어 보낸다. 🔴 **그전엔 화면이 부재 열의 모집단을 «노드에서» 가져올 수밖에 없었고**, 그것은 «도착한 술어»을 모집단으로 쓰는 것이라 이 칸이 막으려던 오독 그 자체였다. ⚠️ 연결은 «서렸고», 오늘 출하 선언은 그 칸을 한 번도 안 채운다 — 기제가 있다 ≠ 돌다
 | 방향 | ① | 주어→목적어 «고정». 걷기는 양방향, 같은 술어 반전 ⛔. 🆕 10-01 `3ab88ae49` `vocabulary.<p>.inverse_of: "<술어 id>"` — 역방향 짝 선언. 검증만(`absence_confirmed_by` 자리: 미선언 `unknown_id` · 양 끝이 안 뒤집히거나 역이 둘 `invalid_predicate`), 컴파일 안 함 → 지문 · 재번역 없음. 걷기가 형제로 되짚어 내려가지 않는 판정에만 씀 | | 걷기 |
 | **supersede** | 🔴 **컬럼만 있고 «쓰는 자리 0»** (총괄 22ebdd153, 10-01) | 컬럼 `supersedes UUID` · 검증(`ledger_frame`) · CHECK `ck_ledger_no_self_supersede` 는 그대로. ⚰️ 유일한 writer `runtime_v2._stamp_supersedes` 는 판정 256 과 함께 은퇴 — `cardinality: one` 의 지금 값은 «가장 늦은 occurred_at» 이고 걷기가 읽을 때 정한다(`WALK.md` 「`cardinality: one`」). `roleframe` 은 `None` 을 싣는다 | | 읽는 쪽도 은퇴(`live_claims` · `_split_superseded`) — 칸을 지우는 것은 이 라운드 밖 |
 
@@ -72,7 +72,7 @@
 |---|---|---|---|
 | value 목적어 | ⚰️ **① — 위 A2 행과 «같은 칸»** (09-11 D-3c). 같은 사실을 세 번 적고 있었고, 그래서 한 곳만 고치면 나머지가 «거짓으로 남았습니다» | |
 | **단위** | ② | 선언 칸이 없다 — 수식어 «이름»(`unit` 같은)으로 «약속»한다. 스칼라라 값과 단위가 «두 칸»이 된다 | 스칼라 |
-| null | ① | 엔티티 키는 `allow_null`, 그 밖의 역할 값은 «null 금지»(`roleframe.py:1261`) | |
+| null | ① | 역할 값은 «null 금지» — 엔티티 키도(11-01 `allow_null` 은퇴, 빈 키 행은 읽기가 뺀다) | |
 
 ---
 
@@ -644,7 +644,7 @@ C-5 마킹 대수           🔴 ③ 그대로 = 표 B B1-1. 걷기에 ∩·∖�
 | `entities.<t>` · `keys` | `node : T × K → N` 의 T 와 K | ✅ |
 | `attributes`(이름) · `bind.entities…attributes`(값) | `fact(n, register, ∅, Q, τ, π)` 의 **Q** | ✅ |
 | `class` | 걷기 D_walk 의 «길» 제약(정적에서 안 나감) | ✅ B 쪽 인자 |
-| `allow_null` | K 의 정의역 | ✅ |
+| `allow_null` | K 의 정의역 | ⚰️ 11-01 은퇴 — 빈 키 행은 뺀다 |
 | `references` | fact 의 목적어 N (🆕 10-02 `f45c75442` 원자 — ~~합성 엣지~~) | ✅ |
 | `vocabulary.<p>` · `subjects` · `object.kind` · `object.types` | `fact` 의 **P** 와 목적어 종류 | ✅ |
 | `qualifiers.required/optional` | `fact` 의 **Q** | ✅ |
@@ -1049,7 +1049,7 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
 | **그룹 집계** | 🔴 **③** | `map.unit.kind: group_by` 는 «분할»을 선언하고 «집계»는 선언하지 않습니다. 샘플에서 group_by 는 «1»이고 그 소스가 곧 `dt-job-role`(파이썬)입니다. 범용 매퍼는 여러 값을 만나면 `ambiguous_binding_value` 로 «거절»합니다 |
 | **선언 조인** | ✅ **①** (단서 있음) | 🆕 10-01 `0b59a2f30`: 읽을 때 조인 칸 둘(`accepts_verified_join_rules` · `inherit_virtual_join_rules`)과 `direct-join` 준비기 은퇴 — 조인은 체인 `derive: {kind: "join"}` + `into.table` 이 표에 쓰고 원장은 그 표를 읽는다. 아래는 이력: 칸이 있습니다 — `prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules`, 그리고 `direct-join` 준비기를 15 중 «14»가 씁니다. ⚠️ 단서 둘: ⓐ 조인 «규칙»은 «다른 선언 언어»(`virtual_join_rules.json`)에 삽니다 — `decision_key` 와 «같은 부류»이므로 판정 165 와 같이 «관계를 적는» 처리 ⓑ 샘플 15 전부가 `false` / `[]` 입니다(소비자 0) → ③′ 의 성격을 «함께» 가집니다 |
 | **다중 목적어 타입** | ✅ **①** | `object.types` 가 «목록»입니다(`setup_bundle.py:1149` `_nonblank_list`, 검사 :1993 · :2133). 한 술어의 목적어가 여러 엔티티 타입일 수 있습니다 |
-| **부재의 뜻** | ✅ **②** | `entities.*.allow_null` 이 칸으로 있고(`ledger_skeleton.json:183`) 읽는 쪽이 있습니다(`roleframe.py:1289~1293`). 기본은 «원자 없음», 적으면 «null 목적어». 🔴 「없음 vs 모름」을 «구별»하려면 값의 정의역이 필요하고 그것은 S-84 의 자리입니다 — 번역 인자가 아닙니다 |
+| **부재의 뜻** | ✅ **②** | 빈 키 칸 → 그 행은 원자 없이 빠지고 원인별로 셉니다(소유자 11-01 «빈키행은 무시», `event_frame.blank_key_cause`). 옛 `entities.*.allow_null`(«null 목적어»)은 은퇴 — 받되 안 읽습니다. 🔴 「없음 vs 모름」을 «구별»하려면 값의 정의역이 필요하고 그것은 S-84 의 자리입니다 — 번역 인자가 아닙니다 |
 
 ### 그리고 후보 여섯 «밖»에서 나온 것 — 매퍼가 이름 댄 셋 중 둘
 | 축 | 판정 | 근거 |
@@ -1183,7 +1183,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 | `read.occurred_at.column` \| `basis` (+`timezone`) | **emit** 의 t | ① |
 | `list_separator` | **emit** 의 다중 | ① |
 | `object.value_type` | **emit** 의 정의역 | ① (넷 다 · timestamp 는 바인딩 `timezone` 필요) |
-| `entities.*.allow_null` | **emit** 의 부재 | ② |
+| `entities.*.allow_null` | **emit** 의 부재 — ⚰️ 11-01 은퇴, 빈 키 행은 뺀다 | ② |
 | ~~`read.registration_probe`~~ | ~~**규칙의 «명시된 예외»**(비국소)~~ — 10-07 `bd33605af` 은퇴, 예외는 닫혔다(BASIS `d6795570a`) | ① |
 | `decision_key` | 번역 인자 «아님** — 표의 판단 단위(판정 165) | ① |
 | ⚰️ ~~`prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules`~~(🆕 10-01 `0b59a2f30` 은퇴) | **규칙 «밖»**(조인) | 칸 있음 · 샘플 소비 0 → S-100 |
