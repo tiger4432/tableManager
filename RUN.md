@@ -4902,7 +4902,7 @@
 >                       ① table_config 에 묶음마다 한 행 표(견본 dt_job_rollup) · chain_rules 에 decide 규칙 하나 —
 >                          {"on": {"table": "dt_log", "require": ["dt_job"]}, "into": {"table": "dt_job_rollup"}, "derive": {"kind": "decide",
 >                           "decide": {"key": ["dt_job"], "fields": [], "aggregations": {"netdie_count": "count", ...}}}}
->                          그 표를 쓰는 규칙은 하나만 — 11-02 부터 견본의 dt_log_to_dt_job_rollup 이 바로 이 decide 선언(맨 위 11-02 블록) · 운영에 옛 코드 맵퍼 규칙이 켜져 있으면 끄고 이것을 씀
+>                          그 표를 쓰는 규칙은 하나만 — 11-02 부터 견본의 dt_log_to_dt_job_rollup 은 decide 선언(맨 위 11-02 블록). 옛 코드 맵퍼 규칙을 쓰고 있으면 그것을 두거나, 끄고 이 선언을 씀(둘 다 켜지 않음)
 >                          그다음 체인 재생: cd server && python scripts/chain_replay_cli.py replay "enrichment_dedup:<규칙 이름>" --apply
 >                       ② 이 소스를 그 표를 읽는 짧은 소스로(문장 · 속성은 그대로) -> 변환 명령 다시
 >                       ③ 그 소스를 한 번 다시 번역 — cd server && python -m ledger.backfill --source <소스> --whole-source (미리보기) -> --apply

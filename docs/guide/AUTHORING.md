@@ -61,5 +61,5 @@ SDK 가 «맵퍼 옆»이 아니라 «배포되는 자리»에 사는 이유로 
 | 남는 것 | 왜 |
 |---|---|
 | [`guide/HTML_TOPOLOGY_PARSER_GUIDE.md`](./HTML_TOPOLOGY_PARSER_GUIDE.md) | 제품 모듈(`server/parsers/html_topology_parser.py`)의 사용 설명서 — 파서의 «길»이 아니라 «도구»다. ⚠️ 머리글 `Last-verified: 2026-07-24` 이고 `419cd8fa`(2026-08-04)가 넣은 «거절 경로»가 한 글자도 없다(실측: 그 문서에서 `REFUSED` 0건, 소스 `:654`) |
-| `server/mappers/*.sample` 중 «일곱» | 시험이 바이트 동일로 읽는 «라이브 맵퍼의 추적 사본»이다(판정 348). 옮기면 드리프트 게이트가 비교할 대상을 잃는다 |
+| `server/mappers/*.sample` 중 `server/tests/test_the_authoring_guides_name_entry_points_that_exist.py` 의 `STAYS` 가 드는 것 | 시험이 바이트 동일로 읽는 «라이브 맵퍼의 추적 사본»이다(판정 348). 옮기면 드리프트 게이트가 비교할 대상을 잃는다 |
 | [`guide/chain_ingestion_guide.md`](./chain_ingestion_guide.md) · [`guide/INGESTION_GUIDE.md`](./INGESTION_GUIDE.md) | 제품이 «어떻게 도나»를 적는 문서다. 작성자 문서는 「무엇을 적으면 받아 주나」만 적는다 |
