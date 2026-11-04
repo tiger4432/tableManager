@@ -370,7 +370,8 @@ def test_a_script_that_raises_is_named_and_the_run_goes_on(workspace, monkeypatc
     stats = _run(start, Control())
 
     assert len(calls) == 3 and stats["days_done"] == 2, stats
-    assert stats["failed_days"] == "1: %s (collecting failed: RuntimeError: the source is down)" % second
+    assert stats["failed_days"].startswith("1: %s (collecting failed: RuntimeError: the source is down (" % second)
+    assert "test_a_collector_is_backfilled_day_by_day.py" in stats["failed_days"], stats   # where it broke
 
 
 def test_a_schedule_the_scheduler_cannot_read_is_refused_before_anything_runs(workspace):

@@ -1949,7 +1949,7 @@ def _run_collector_backfill(db, params, log, control=None):
         try:
             written = collector.execute()
         except Exception as e:                                      # noqa: BLE001
-            written, why = None, "collecting failed: %s: %s" % (type(e).__name__, e)
+            written, why = None, "collecting failed: %s: %s" % (type(e).__name__, told(e))
         else:
             why = None
             if written:
