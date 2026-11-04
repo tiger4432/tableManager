@@ -11,10 +11,11 @@ through a rule woken by its whole table is still only reported (판정 402).
     a join and a formula in a ring               refused at load
     a rule woken by its whole table              reported as a table loop, not refused
     rules that do not opt in                     no loop - their writes wake nothing
-    a join woken by a key its row is found by    stands - target_columns adds the key, the loop does not count it
-      (business key, a composite piece, map key)   (owner 11-04)
+    a join woken by a key its row is found by    stands at load and at save - target_columns adds
+      (business key, a composite piece, map key)   the key, the loop does not count it (owner 11-04)
     a join writing a finding column it lists     refused - it changes it
-    two joins taking each other's key            refused, as today - 조인 고리 거절, 소유자 11-04 ㄱ: rows that
+    two joins taking each other's key            refused at load and at save, as today -
+                                                 조인 고리 거절, 소유자 11-04 ㄱ: rows that
                                                  disagree never settle and the cut value is right for neither side
 """
 import json
@@ -152,3 +153,19 @@ def test_two_joins_taking_each_others_key_are_refused(rules_file):
     said = "column_loop - fk: v -> w -> v" + NEVER
     refused = worker.refused_chain_rules()
     assert (refused.get("w by v:target"), refused.get("v by w:target")) == (said, said)
+
+
+def _save_join(path, declaration):
+    return admin.save_chain_rule_raw(declaration["name"], declaration, admin.file_fingerprint(str(path)))
+
+
+@pytest.mark.parametrize("key", ["bk", "p", "q", "m"])
+def test_the_save_door_takes_a_join_woken_by_a_key_its_row_is_found_by(rules_file, key):
+    assert _save_join(rules_file, _join_into_fk("take v", key, "v", ["v"]))["ok"]
+
+
+def test_the_save_door_refuses_two_joins_taking_each_others_key(rules_file):
+    assert _save_join(rules_file, _join_into_fk("w by v", "v", "w", ["w"]))["ok"]
+    with pytest.raises(HTTPException) as refused:
+        _save_join(rules_file, _join_into_fk("v by w", "w", "v", ["v"]))
+    assert "fk: v -> w -> v" + NEVER in str(refused.value.detail)

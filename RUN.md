@@ -10,7 +10,7 @@
 >          target_columns 에 키 칸을 직접 적은 규칙. 거절 문장도 그대로. 쓰기 필터 · R2 답 그대로
 > 위험     찾는 칸을 실제로 바꾸는데 target_columns 에 안 적은 규칙은 그 고리를 못 봄 — 그 칸을 목록에 적으면 잡힘
 > 보는 것  막혔던 조인을 다시 저장 -> 저장됨 · 체인 규칙 목록에 refused 없음
-> 같은 답  server 폴더에서 python -m pytest tests/test_rules_that_wake_each_other_by_column_are_refused.py tests/test_a_rule_writes_only_the_columns_it_lists.py  -> 19 passed
+> 같은 답  server 폴더에서 python -m pytest tests/test_rules_that_wake_each_other_by_column_are_refused.py tests/test_a_rule_writes_only_the_columns_it_lists.py  -> 24 passed
 > ```
 >
 > ---
