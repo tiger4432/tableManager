@@ -171,13 +171,34 @@ def test_a_missing_key_column_on_a_plain_target_is_refused_by_name():
     assert "part_no" in str(raised.value)
 
 
-def test_a_blank_key_value_on_a_plain_target_is_refused_too():
-    """The column being present is not the same as it holding something. A blank one
-    lands exactly the identity-less row the missing column would have."""
-    with pytest.raises(mapper_sdk.MapperContractError):
-        _emit(PLAIN, pd.DataFrame([{"part_no": "  ", "qty": 5}]))
-    with pytest.raises(mapper_sdk.MapperContractError):
-        _emit(PLAIN, pd.DataFrame([{"part_no": None, "qty": 5}]))
+def _gated(table, frame):
+    """The frame through the SDK and then the chain's key gate, as a chain write takes it -> (kept, report)."""
+    from chain import key_gate
+    from database import schemas
+
+    items = [schemas.GeneralUpdateItem(**item) for item in _emit(table, frame)["updates"]]
+    return key_gate.screen(table, items)
+
+
+@pytest.mark.parametrize("blank", ["  ", None, float("nan")])
+def test_a_row_whose_plain_key_is_blank_is_left_out_and_counted_and_the_rest_go(blank):
+    """Owner 10-24 «데이터 빈 값으로 막지 말 것» · 11-01 «빈키행은 무시»: a row whose key is blank was refused here
+    with the whole batch. It goes out unkeyed and the key gate - the one seat a composite key is judged at too -
+    leaves that row out and counts it."""
+    kept, report = _gated(PLAIN, pd.DataFrame([{"part_no": "P1", "qty": 1}, {"part_no": blank, "qty": 2},
+                                               {"part_no": "P3", "qty": 3}]))
+
+    assert [i.business_key_val for i in kept] == ["P1", "P3"]
+    assert (report["refused_rows"], report["by_column"]) == (1, {"part_no": 1})
+
+
+def test_a_row_whose_composite_key_is_all_blank_is_left_out_the_same_way_and_one_blank_part_is_a_part():
+    """The same seat, the same answer; a blank part among filled ones composes as blank (10-24, 총괄 242f4a43a)."""
+    kept, report = _gated(COMPOSITE, pd.DataFrame([
+        {"job": "J1", "cx": 1, "cy": 1}, {"job": None, "cx": None, "cy": None}, {"job": "J1", "cx": 2, "cy": None}]))
+
+    assert [i.updates["cx"] for i in kept] == [1, 2]
+    assert report["refused_rows"] == 1 and set(report["by_column"]) == {"job", "cx", "cy"}
 
 
 # ---------------------------------------------------------------------------

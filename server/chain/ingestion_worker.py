@@ -1927,6 +1927,12 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     _move_off_the_plain_layer(db, target_table, batch_data.updates)
 
                 if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
+                    # the columns not written in the words a file and a grid save say them (lead 11-04: one event,
+                    # one sentence - `crud.not_written_sentence`)
+                    said = crud.not_written_sentence(
+                        drop_report["by_reason_column"], "Not written",
+                        {column: seen["first"] for column, seen in drop_report["refused_values"].items()},
+                        len(batch_data.updates))
                     logger.warning(
                         f"⚠️ [Chain Write Discard] Table: '{target_table}' | TX: "
                         f"'{chain_tx_id}' | rule(s): "
@@ -1935,8 +1941,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         f"{drop_report['rows_affected']} row(s) were dropped "
                         f"({drop_report['by_reason']}, columns {sorted(drop_report['by_column'])}); "
                         f"{drop_report['empty_rows_suppressed']} row(s) were not created "
-                        f"because every key they carried was dropped. Fix "
-                        f"config/table_config.json or the mapper's column names.")
+                        f"because every key they carried was dropped." + (f" {said}" if said else ""))
 
                 # [S-174] A row that breaks a virtual join's right-side uniqueness is ONE
                 # ROW'S problem. It used to be the table's: the statement died on a

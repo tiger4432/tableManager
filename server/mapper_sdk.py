@@ -254,16 +254,13 @@ def df_to_updates(df, table_name: str, *, source_name: str, updated_by: str) -> 
         values = {k: _python_scalar(v) for k, v in record.items()}
         item = {"updates": values,
                 "source_name": source_name, "updated_by": updated_by}
-        if not composite_src and key_col:
+        if not composite_src and key_col and not crud.is_blank_key_part(values.get(key_col)):
             # The plain case, and the ONLY one where this function names the key (the write
-            # would lift it from `updates` too since 총괄 5c0a86cec; the blank refusal is this one's).
-            identity = values.get(key_col)
-            if crud.is_blank_value(identity):
-                raise MapperContractError(
-                    f"'{table_name}' carries the key '{key_col}' and a row leaves it "
-                    f"blank. That row would land with no identity; refused rather than "
-                    f"written.")
-            item["business_key_val"] = crud.clean_str_value(identity)
+            # would lift it from `updates` too since 총괄 5c0a86cec). A row whose key is blank goes
+            # out as it is: the chain's key gate (`chain.key_gate.screen`) leaves THAT row out and
+            # counts it, a plain key and a composite one alike (owner 10-24 «데이터 빈 값으로 막지 말 것»
+            # · 11-01 «빈키행은 무시» - it refused the whole batch here).
+            item["business_key_val"] = crud.clean_str_value(values[key_col])
         updates.append(item)
     return {"updates": updates}
 
