@@ -128,7 +128,8 @@ def test_an_external_file_fixed_by_its_options_goes_in_on_retry_with_its_folder(
     assert status == "SUCCESS", why
     rows, sources = _cells(env["Session"], "void_obs")
     assert [(r.base_wafer_id, r.unit) for r in rows] == [("WF-001", "um")], "the folder's wafer"
-    assert "external:voids_json:%s" % os.path.realpath(str(path)) in sources
+    assert [name for name in sources if name.startswith("external:voids_json@void_obs@")
+            and name.endswith("|" + os.path.realpath(str(path)))], sources       # the share, then the file
     assert path.exists(), "an external file is never moved"
 
 

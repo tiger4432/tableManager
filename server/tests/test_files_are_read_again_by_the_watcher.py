@@ -189,7 +189,8 @@ def test_an_external_file_is_read_again_on_the_watchers_handler_with_its_new_opt
 
     rows, sources = _cells(env["Session"], "void_obs")
     assert [(r.base_wafer_id, r.unit) for r in rows] == [("WF-001", "mm")]
-    assert "external:voids_json:%s" % os.path.realpath(str(path)) in sources
+    assert [name for name in sources if name.startswith("external:voids_json@")
+            and name.endswith("|" + os.path.realpath(str(path)))], sources       # the share, then the file
     assert path.exists(), "an external file is never moved"
 
 

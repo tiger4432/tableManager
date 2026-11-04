@@ -822,6 +822,34 @@ def is_file_layer(source_name) -> bool:
     return layer_writer(source_name) not in machine_layer_names()
 
 
+#: An external file's layer name - «external:<parser>@<table>@<root><LAYER_SHARE_END><path>» (owner 11-04 «ㄷ»):
+#: the share it was read from (`<table>@<root>`, its source's id) is in the name, so two shares saying one value
+#: keep a layer each. Built by `external_layer_name`, read by `layer_share` - the one place the shape is spelled.
+EXTERNAL_LAYER = "external:"
+LAYER_SHARE_END = "|"
+
+
+def external_layer_name(parser: str, source_id: str, path: str) -> str:
+    return "%s%s@%s%s%s" % (EXTERNAL_LAYER, parser, source_id, LAYER_SHARE_END, path)
+
+
+def layer_share(source_name):
+    """The share an external layer was read from (`<table>@<root>`), or None: a name from before 11-04 (no share in
+    it), a raws file's, any other writer's."""
+    name = str(source_name or "")
+    if not name.startswith(EXTERNAL_LAYER) or LAYER_SHARE_END not in name:
+        return None
+    head = name[len(EXTERNAL_LAYER):].split(LAYER_SHARE_END, 1)[0]
+    return head.split("@", 1)[1] if "@" in head else None
+
+
+def same_share(a, b) -> bool:
+    """May layer `a` fold into layer `b` - THE question both folds ask (`file_layer_fold` · `stacked_layers`): one
+    share, or either share not known (an old name, a raws file), which folds as every file layer did before."""
+    share_a, share_b = layer_share(a), layer_share(b)
+    return share_a is None or share_b is None or share_a == share_b
+
+
 def value_key(value, col_type: str):
     """What a value COMPARES as - the ONE equality every 「did this cell change」 asks (총괄
     a7d2e90ec · 2dd93d4a9 2): a blank is absence (판정 284), a number column compares numbers
@@ -859,7 +887,7 @@ def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name
     """
     rank = get_source_priority(source_name, table_name)
     same_class = [s for s in col_srcs
-                  if get_source_priority(s.source_name, table_name) == rank]
+                  if get_source_priority(s.source_name, table_name) == rank and same_share(s.source_name, source_name)]
     if same_class:
         _value, newest = compute_priority_value(
             {s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
@@ -896,8 +924,10 @@ def stacked_layers(layers: dict, col_type: str, table_name: str, pin=None, key: 
     out = {"file": [], "renamed": {}, "chain": [], "differs": False, "copies": 0}
     for group in groups.values():
         if len(group) > 1:
-            _value, keep = compute_priority_value(group, None, table_name)
-            out["file"].extend(name for name in group if name not in (keep, pin))
+            # one kept per share (owner 11-04 «ㄷ»); a layer whose share is not known folds into any
+            kept = {compute_priority_value({name: entry for name, entry in group.items() if same_share(name, member)},
+                                           None, table_name)[1] for member in group}
+            out["file"].extend(name for name in group if name not in kept and name != pin)
     out["file"].sort()
     bracketed = [name for name in layers if name != CHAIN_SOURCE and layer_ranks_as(name) == CHAIN_SOURCE]
     rows = [name for name in bracketed

@@ -126,7 +126,8 @@ def test_a_path_is_read_now_under_the_source_that_owns_its_folder(tmp_path):
             layers = {name for (name,) in c.execute("SELECT DISTINCT source_name FROM cell_sources")}
             assert c.execute("SELECT lot FROM ta ORDER BY lot").fetchall() == [("DEEP",), ("NOTES",)]
         for path in (notes, deep):                                      # the source's layer, as the watcher names it
-            assert "external:workspace:" + os.path.realpath(path) in layers, layers
+            assert [name for name in layers if name.startswith("external:workspace@ta@")
+                    and name.endswith("|" + os.path.realpath(path))], layers   # the share, then the file
         text = log_path.read_text(encoding="utf-8", errors="replace")
         assert len(re.findall(r"Retry succeeded for checklist row #1 \(r\.csv\)\.", text)) == 1   # raws/r.csv: its own row
     finally:

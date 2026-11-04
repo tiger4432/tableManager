@@ -356,8 +356,11 @@ def test_external_relative_path_is_the_parser_metadata(tmp_path):
     assert meta["rel_path"] == "WF-001/WORK_20260817_031405/voids.json"
     assert meta["external_source"]["source_root"] == os.path.realpath(str(external))
     assert handler.is_managed_source(str(file_path)) is False
-    assert handler._external_cell_source_name(str(file_path), meta) == (
-        f"external:voids_json:{os.path.realpath(os.path.abspath(file_path))}")
+    share = meta["external_source"]["source_id"]                # <table>@<root>, owner 11-04 «ㄷ»
+    name = handler._external_cell_source_name(str(file_path), meta)
+    assert name == "external:voids_json@%s%s%s" % (share, crud.LAYER_SHARE_END,
+                                               os.path.realpath(os.path.abspath(file_path)))
+    assert crud.layer_share(name) == share
 
 
 PLUGIN_SOURCE = """
@@ -434,8 +437,11 @@ def test_external_source_without_parser_resolves_the_table_workspace_plugin(tmp_
     }]
     # Parser identity is the plugin's, exactly as on the managed raws/ path.
     assert meta["source_kind"] == "pipeline:external_probe_parser.py::ExternalProbeParser"
-    assert handler._external_cell_source_name(str(file_path), meta) == (
-        f"external:workspace:{os.path.realpath(os.path.abspath(file_path))}")
+    share = meta["external_source"]["source_id"]                # <table>@<root>, owner 11-04 «ㄷ»
+    name = handler._external_cell_source_name(str(file_path), meta)
+    assert name == "external:workspace@%s%s%s" % (share, crud.LAYER_SHARE_END,
+                                               os.path.realpath(os.path.abspath(file_path)))
+    assert crud.layer_share(name) == share
 
 
 def test_external_source_without_parser_is_refused_naming_table_and_folder(tmp_path):

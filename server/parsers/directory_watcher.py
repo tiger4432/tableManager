@@ -2338,7 +2338,8 @@ class IngestionHandler(FileSystemEventHandler):
         # No declared parser == resolved from the table's workspace scripts/ folder.
         parser_name = external.get("parser") or "workspace"
         canonical_path = os.path.realpath(os.path.abspath(file_path))
-        return f"external:{parser_name}:{canonical_path}"
+        # the share in the name too (owner 11-04 «ㄷ»): two shares saying one value keep a layer each
+        return crud.external_layer_name(parser_name, external["source_id"], canonical_path)
 
     def _load_legacy_config(self) -> dict:
         """[하위호환] 레거시 워크스페이스 config.json을 읽는다 (삭제하지 않음 — 사용자 파일).
