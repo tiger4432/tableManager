@@ -3052,7 +3052,7 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
         _index_db = db_session_factory()
         try:
             _report = synthesis.ensure_declared_unique_keys(_index_db, rules)
-            synthesis.ensure_declared_lookup_keys(_index_db, rules)
+            _lookup = synthesis.ensure_declared_lookup_keys(_index_db, rules)
             _retracted = synthesis.retract_unrequired_indexes_once(_index_db)
             # 🔴 [총괄 10-20] a join unique index built or taken back: the writers learned the old answer once
             #    and keep it - one join-keys reload tells them (the lookup indexes gate nothing)
@@ -3068,6 +3068,10 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
                             ", ".join(map(str, _changed)))
         finally:
             _index_db.close()
+        # the tables a join key index was just built on: ANALYZE now, or the planner guesses its rows (owner 11-04)
+        _built = set(_report.get("built") or ()) | set(_lookup.get("built") or ())
+        if _built:
+            _analyze_stale_tables_sync(db_session_factory, built=_built)
         for _name, _why in _report.get("skipped") or ():
             # ⚠️ [판정 683] 「건너뜀」은 「하라고 한 것을 안 했다」는 말이고, 이 목록의 한 부류는
             #    「하라고 한 적이 없습니다」 - 선언이 `key.unique` 를 안 적었으면 건너뛸 일이
@@ -3995,8 +3999,10 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
         logger.info("[Chain] alignment decision-key indexes are already in place.")
 
 
-def _analyze_stale_tables_sync(db_session_factory):
-    """`ANALYZE` every catalogued table whose statistics the database says are stale (S-130).
+def _analyze_stale_tables_sync(db_session_factory, built=()):
+    """`ANALYZE` every catalogued table whose statistics the database says are stale (S-130), and the `built` ones - a
+    join key index was just built on them, and until an ANALYZE the planner has no statistics for its expression: a
+    batch of 100 keys or more scanned the whole table beside the index (owner 11-04, 1.3 s a batch at 10M rows).
 
     🔴 S-124 ② ONLY COVERS TABLES THAT ARE LOADED AGAIN. It re-analyses after a big load,
     so a relation that took 440,000 rows BEFORE that landed keeps planning against
@@ -4064,6 +4070,7 @@ def _analyze_stale_tables_sync(db_session_factory):
 
     stale = [(name, int(modified or 0)) for name, modified in rows
              if name in tables or ledger_schema.owns_table(name)]
+    stale += [(name, 0) for name in sorted(set(built) & tables - {name for name, _m in stale})]
     if not stale:
         logger.info("[Chain] statistics are current on all %d declared table(s) "
                     "(threshold %d modified rows).", len(tables), threshold)
@@ -4073,8 +4080,9 @@ def _analyze_stale_tables_sync(db_session_factory):
     for name, modified in sorted(stale, key=lambda item: -item[1]):
         if dw._analyze_after_load(
                 name, modified,
-                why="the planner was costing this table against statistics taken "
-                    "before those rows arrived"):
+                why="a join key index was just built on it and the planner had no statistics for it"
+                if name in built else "the planner was costing this table against statistics taken "
+                                      "before those rows arrived", forced=name in built):
             analysed.append(name)
     return analysed
 

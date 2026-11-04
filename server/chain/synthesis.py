@@ -94,7 +94,7 @@ def ensure_declared_unique_keys(db, rules) -> dict:
     from chain import join_key_index as vjc
     from chain import unique_key
 
-    report = {"ensured": [], "skipped": []}
+    report = {"ensured": [], "skipped": [], "built": []}
     seen = set()
     for name, table, columns, folds, skip, _kind in declared_unique_targets(rules):
         if skip:
@@ -110,8 +110,10 @@ def ensure_declared_unique_keys(db, rules) -> dict:
         if index_name in seen:
             continue
         seen.add(index_name)
-        report["ensured"].append(
-            (name, unique_key.ensure_once(db, name, table, columns, folds)))
+        one = unique_key.ensure_once(db, name, table, columns, folds)
+        report["ensured"].append((name, one))
+        if one.get("created"):
+            report["built"].append(table)
     return report
 
 
@@ -160,7 +162,7 @@ def declared_unique_targets(rules):
             #    not make a mistake, so this is 「asks nothing right now」 and NOT a refusal.
             yield (name, None, None, None, "enabled=false", SKIP_NOT_ASKED)
             continue
-        if not (rule.get("key") or {}).get("unique"):
+        if not asks_unique_key(rule):
             # ⚠️ ABSENT IS NOT 「no」 TO A QUESTION NOBODY ASKED. A declaration that says
             # nothing about uniqueness gets no index and no complaint; `join_into`'s own
             # row-level net still refuses a left row with two right answers.
@@ -234,11 +236,16 @@ def _live_stood_rules(known_tables: dict = None):
         yield from stood
 
 
+def asks_unique_key(rule) -> bool:
+    """The join declares `key.unique` - its value side gets the unique index (`declared_unique_targets`)."""
+    return bool(((rule or {}).get("key") or {}).get("unique"))
+
+
 def declared_lookup_targets(rules):
     """(table, columns, folds) of every switched-on join's non-unique key index: the left rows are selected by it
-    (총괄 8934fa36f ②), and a gathering join's value rows too - many a key, so no unique index (`declared_unique_targets`)
-    stands there and its read scanned the whole value table every batch (owner 10-29 «함수조인 ㄱ»). `enabled: false`
-    asks nothing (판정 399)."""
+    (총괄 8934fa36f ②), and the value rows of a join whose value side has no unique index - a gathering join (owner
+    10-29 «함수조인 ㄱ») or a plain take without `key.unique` (owner 11-04 «조인이 너무 느린데»): each batch scanned the
+    whole value table, 0.4 - 1.3 s a batch at 10M rows. `enabled: false` asks nothing (판정 399)."""
     from chain import join_into
 
     for rule, off in _declared_joins(rules):
@@ -251,8 +258,43 @@ def declared_lookup_targets(rules):
             yield (table, [left for left, _right, _fold in on], folds)
         spec = join_into.join_spec(rule)
         right = str(spec.get("right_table") or "")
-        if right and on and join_into.gathers(spec):
+        if right and on and (join_into.gathers(spec) or not asks_unique_key(rule)):
             yield (right, [right_col for _l, right_col, _fold in on], folds)
+
+
+#: The rules list's word on a running join whose lookup index is not standing (owner 11-04: state on the screen). The
+#: scheduler builds the index (`runtime.maintenance_line`), and says why it could not in its log under «[Join]».
+NO_KEY_INDEX_LINE = ("no key index on %s yet - each batch reads the whole table; the scheduler builds it at start "
+                     "(auto_update.log [Join] line says why if it could not)")
+
+
+def joins_without_lookup_index(db, rules) -> dict:
+    """{rule name: [tables]} - the switched-on joins whose lookup indexes (`declared_lookup_targets`) do not stand valid
+    in the database. A fact of the database, so every process answers alike. {} off PostgreSQL or when unreadable."""
+    from sqlalchemy import text
+
+    from chain import join_key_index as vjc
+    from error_said import told
+
+    if vjc._dialect_of(db) != "postgresql":
+        return {}
+    wanted = {rule.get("name"): [(table, vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX))
+                                 for table, columns, folds in declared_lookup_targets([rule])] for rule in rules}
+    names = sorted({name for pairs in wanted.values() for _table, name in pairs})
+    if not names:
+        return {}
+    try:
+        # by the search path, as the read finds the table (to_regclass), and only a valid one stands
+        standing = {row[0] for row in db.execute(text(
+            "SELECT n FROM unnest(CAST(:names AS text[])) n JOIN pg_index x "
+            "ON x.indexrelid = to_regclass(quote_ident(n)) WHERE x.indisvalid"), {"names": names})}
+        db.rollback()
+    except Exception as exc:                                           # noqa: BLE001
+        db.rollback()
+        logger.warning("[Join] could not read the join indexes for the rules list: %s", told(exc))
+        return {}
+    return {name: list(dict.fromkeys(table for table, index in pairs if index not in standing))
+            for name, pairs in wanted.items() if any(index not in standing for _table, index in pairs)}
 
 
 def declared_lookup_index_names(known_tables: dict = None) -> set:
@@ -269,13 +311,16 @@ def ensure_declared_lookup_keys(db, rules) -> dict:
     from chain import join_key_index as vjc
     from chain import unique_key
 
-    report, seen = {"ensured": []}, set()
+    report, seen = {"ensured": [], "built": []}, set()
     for table, columns, folds in declared_lookup_targets(rules):
         name = vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX)
         if name in seen:
             continue
         seen.add(name)
-        report["ensured"].append((name, unique_key.ensure_lookup_once(db, table, columns, folds)))
+        one = unique_key.ensure_lookup_once(db, table, columns, folds)
+        report["ensured"].append((name, one))
+        if one.get("created"):
+            report["built"].append(table)
     return report
 
 

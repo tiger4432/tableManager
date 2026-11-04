@@ -111,8 +111,9 @@ MAX_DROPPED_COLUMNS_REPORTED = 64
 _dropped_column_announced = {}
 
 
-def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
-    """`ANALYZE` one table after a load big enough to have moved its statistics.
+def _analyze_after_load(table_name: str, rows: int, why: str = None, forced: bool = False) -> bool:
+    """`ANALYZE` one table after a load big enough to have moved its statistics - or, `forced`, whatever it moved (a
+    join key index was just built on it: `ingestion_worker._analyze_stale_tables_sync`).
 
     ⚠️ ITS OWN SESSION, AND OUTSIDE THE LOAD'S TRANSACTIONS. `ANALYZE` takes no lock that
     blocks readers or writers, but it must not ride inside a chunk's transaction: that
@@ -123,7 +124,7 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
     slow query into a file reported as FAILED - trading a small cost for a large lie.
     """
     threshold = analyze_after_rows()
-    if threshold <= 0 or not table_name or rows < threshold:
+    if threshold <= 0 or not table_name or (rows < threshold and not forced):
         return False
     started = time.time()
     # ⚠️ THE SESSION IS BORROWED FOR THE URL AND CLOSED BEFORE THE WORK. It was held open

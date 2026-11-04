@@ -135,6 +135,24 @@ def test_a_small_load_is_left_alone(monkeypatch):
     assert called == []
 
 
+def test_a_forced_one_goes_whatever_it_moved(monkeypatch):
+    """A join key index was just built on the table (owner 11-04): analysed below the threshold."""
+    monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10000)
+    called = []
+    class _Unreachable:
+        bind = None
+
+        def get_bind(self):
+            raise RuntimeError("no database here")
+
+        def close(self):
+            pass
+    monkeypatch.setattr(dw, "SessionLocal", lambda: called.append(1) or _Unreachable())
+
+    assert dw._analyze_after_load("t", 0, forced=True) is False
+    assert called == [1], "it went on to the database"
+
+
 def test_it_can_be_turned_off_by_declaration(monkeypatch):
     """⚠️ ZERO IS OFF, not "every load". An operator who has autovacuum tuned should be
     able to say so without editing code."""
@@ -298,7 +316,7 @@ def test_a_table_the_database_calls_stale_is_analysed_at_boot(monkeypatch):
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10000)
     analysed = []
     monkeypatch.setattr(dw, "_analyze_after_load",
-                        lambda name, rows, why=None: analysed.append((name, rows)) or True)
+                        lambda name, rows, why=None, forced=False: analysed.append((name, rows)) or True)
 
     class _Session:
         def execute(self, statement, params=None):
@@ -325,7 +343,7 @@ def test_a_relation_this_application_did_not_declare_is_left_alone(monkeypatch):
 
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10)
     monkeypatch.setattr(dw, "_analyze_after_load",
-                        lambda name, rows, why=None: pytest.fail(f"touched {name}"))
+                        lambda name, rows, why=None, forced=False: pytest.fail(f"touched {name}"))
 
     class _Session:
         def execute(self, statement, params=None):
@@ -358,7 +376,7 @@ def test_a_threshold_of_zero_turns_the_boot_pass_off(monkeypatch):
 
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 0)
     monkeypatch.setattr(dw, "_analyze_after_load",
-                        lambda name, rows, why=None: pytest.fail("must not run"))
+                        lambda name, rows, why=None, forced=False: pytest.fail("must not run"))
 
     assert worker._analyze_stale_tables_sync(lambda: pytest.fail("no session either")) == []
 
@@ -434,7 +452,7 @@ def test_only_partitions_that_exist_are_reached_because_the_database_names_them(
     monkeypatch.setattr(dw, "analyze_after_rows", lambda: 10000)
     analysed = []
     monkeypatch.setattr(dw, "_analyze_after_load",
-                        lambda name, rows, why=None: analysed.append(name) or True)
+                        lambda name, rows, why=None, forced=False: analysed.append(name) or True)
 
     class _Session:
         def execute(self, statement, params=None):

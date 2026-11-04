@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [11-04] **보통 조인의 값 표 키 색인 — 조인 느림 고침** — git pull · 런처 재기동
+>
+> ```
+> 무엇     key.unique 를 안 적은 보통 take 조인도 값(원천) 표 키에 조회 색인(ix_vjoin_<값 표>_<키>_ns)을 세움
+>          세운 표는 곧바로 ANALYZE (문턱 analyze_after_rows 와 상관없이) — 통계 없으면 100 키 넘는 배치가 표 전체를 훑음
+> 첫 기동  재기동 뒤 첫 기동에서 조인 값 표마다 색인을 세움 — 1000만 행 값 표 하나에 약 25 초 · 약 0.3 GB
+>          (일회용 DB 판, 칸 넷짜리 표 — 표가 크면 그만큼 길어짐), ANALYZE 약 1 초. 그동안 조인은 오늘처럼 돎
+> 볼 줄    auto_update.log «[Join] 조회 인덱스 ix_vjoin_<값 표>_<키>_ns 를 세웠습니다 (N s)»
+>          그 다음 «[<값 표>] statistics re-analysed after 0 row(s) in N s - a join key index was just built on it ...»
+> 화면     체인 탭 규칙 목록 — 색인이 안 선 RUNNING 조인 줄의 이름 밑에
+>          «no key index on <표> yet - each batch reads the whole table; the scheduler builds it at start
+>          (auto_update.log [Join] line says why if it could not)» -> 그 로그의 «[Join]» 줄이 못 세운 사유
+> 잰 것    값 표 1000만 행 · 대상 700 행 한 그룹(실제 API + 체인 워커): 13.1 s(그중 fetch 11.7 s) -> 5.5 s 안(쓰기 호출 4.4 s 포함)
+>          값 표 쓰기 1,000 행당 +0.015 s (색인 갱신, 일회용 DB 판)
+> 위험     색인을 못 세우면(잠금 대기 · 실패) 오늘처럼 느림 — 이제 규칙 줄에 보임, 다음 기동 · 선언 다시 읽기 때 다시 시도
+> 끄기     환경변수 ASSY_VJOIN_AUTO_INDEX=0 -> 런처 재기동 (조인 자동 색인 전부를 안 세우고 안 거둠, 이미 선 것은 그대로)
+> 같은 답  server 폴더에서 python -m pytest tests/test_a_gathering_join_reads_its_value_rows_through_a_key_index.py tests/test_a_big_load_leaves_the_planner_a_current_picture.py  -> 32 passed, 2 skipped
+>          pg 칸: python scripts/run_pg_tests.py -k "lookup_index_does_not_stand or gathering_read_is_planned"  -> 2 passed
+> ```
+>
+> ---
+>
+
 > ## [11-04] **수집기 백필이 날마다 넘어감 · 안 돈 날은 이름만 남기고 계속 · 확인 1 초** — git pull · 재기동 필요 없음 (실행마다 스케줄러가 새 자식 프로세스를 띄움 — 새 실행이 새 코드)
 >
 > ```
