@@ -252,6 +252,27 @@ def test_every_day_is_read_by_the_real_watcher_and_the_run_goes_on(workspace, mo
     assert len(read) == 3, read
 
 
+@pytest.mark.pg
+def test_the_stamp_a_read_wrote_is_the_stamp_asked_on_postgresql(pg_session, tmp_path):
+    """The record's stamp goes through a PostgreSQL timestamptz and back (microseconds, the session's zone) - the
+    file's own stat must still be the same value; another size is not."""
+    from database import models
+
+    path = str(tmp_path / "probe_20261104_101500.csv")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("s,e\n1,2\n")
+    mtime, size = checkpoint.read_file_stat(path)
+    assert mtime.microsecond, "canary: a stamp with no microseconds proves nothing about them"
+    pg_session.add(models.FileIngestionLog(
+        filename=os.path.basename(path), filepath=str(tmp_path / "archives" / "probe_20261104_101500_1.csv"),
+        table_name=TABLE, status="SUCCESS", retry_count=0, file_mtime=mtime, file_size=size))
+    pg_session.commit()
+
+    assert checkpoint.read_as_written(pg_session, TABLE, path, (mtime, size)) == "SUCCESS"
+    assert checkpoint.read_as_written(pg_session, TABLE, path, (mtime, size + 1)) is None
+    assert checkpoint.read_as_written(pg_session, "another_table", path, (mtime, size)) is None
+
+
 def test_the_result_line_reads_in_words_not_keys():
     """The run's result is drawn by `run_result_sentence` on the Retroactive list and the
     Overview (design c0feacccf: it printed `days 3 · days_done 3`)."""

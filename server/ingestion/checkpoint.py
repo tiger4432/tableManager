@@ -293,7 +293,10 @@ def _utc(value):
 
 
 def checked(db, table_name: str, entries, words=None) -> dict:
-    """The checklist (소유자 10-21 · 10-23 「파일당 한 행」): `{filepath: status}` for the `(filepath, file_stat)` entries
+    """FOR A FILE WHERE IT LIES NOW - a sweep's «read already?». A file written and then perhaps moved by its read
+    asks `read_as_written`.
+
+    The checklist (소유자 10-21 · 10-23 「파일당 한 행」): `{filepath: status}` for the `(filepath, file_stat)` entries
     whose row of `table_name` (`FileChecklist`, the path as `path_key` folds it) carries that stamp (mtime, size) - its
     status (SUCCESS, FAILED, or PENDING_RETRY / PENDING once handed to the retry door). A path absent is not checked: it
     is read - and `words`, when given, gets why for each such path: WHY_NEW no row · WHY_UNSTAMPED no stamp ·
@@ -320,7 +323,10 @@ def checked(db, table_name: str, entries, words=None) -> dict:
 
 
 def read_as_written(db, table_name: str, filepath: str, file_stat):
-    """How the read of the file written at `filepath` with that stamp ended - SUCCESS, FAILED, or None while it has
+    """FOR A FILE YOU WROTE, which its read may have moved since - a backfill's «has my day's file gone in?». A file
+    where it lies now asks `checked`.
+
+    How the read of the file written at `filepath` with that stamp ended - SUCCESS, FAILED, or None while it has
     not - asked of its read's record by the name it was written under: a raws file is read, then moved to archives/
     under a name the move picks, and its record and checklist row carry that path, never the one written (owner 11-04
     «백필로 돌리면 10분 지나도 안 끝나서»: a backfill asked `checked` by the raws path and waited forever)."""
