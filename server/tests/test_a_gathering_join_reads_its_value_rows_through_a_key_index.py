@@ -167,3 +167,29 @@ def test_the_list_reads_which_lookup_index_does_not_stand(tables, pg_session):
     assert sorted(report["built"]) == ["gk_meas", "gk_tgt"], report
     assert before == {"gk": ["gk_tgt", "gk_meas"], "gk:target": ["gk_tgt", "gk_meas"]}
     assert synthesis.joins_without_lookup_index(db, rules) == {}
+
+
+def test_with_the_switch_off_the_line_says_the_indexes_are_off(monkeypatch):
+    monkeypatch.delenv("ASSY_VJOIN_AUTO_INDEX", raising=False)
+    assert synthesis.no_key_index_line(["gk_meas"]) == synthesis.NO_KEY_INDEX_LINE % "gk_meas"
+    monkeypatch.setenv("ASSY_VJOIN_AUTO_INDEX", "0")
+    assert synthesis.no_key_index_line(["gk_meas"]) == synthesis.NO_KEY_INDEX_OFF_LINE % ("gk_meas", "0")
+
+
+@pytest.mark.pg
+def test_the_builder_and_the_list_find_an_index_by_one_probe(tables, pg_session):
+    """The pg runner's scratch schema: the builder's probe once asked 'public' and the list the search path."""
+    db = pg_session
+    from database.database import Base
+
+    Base.metadata.create_all(bind=db.get_bind(), tables=[models.DYNAMIC_TABLES[t].__table__ for t in TABLES])
+    rules = _stood([{"from": "v", "into": "w"}])
+    db.execute(text('DROP INDEX IF EXISTS "%s"' % VALUE_INDEX))
+    db.commit()
+    unique_key.forget()
+    assert unique_key.ensure_lookup_once(db, "gk_meas", ["lot", "item"], [None, None])["created"]
+    unique_key.forget()
+    again = unique_key.ensure_lookup_once(db, "gk_meas", ["lot", "item"], [None, None])
+    assert (again["state"], again["created"]) == ("ok", None), again
+    assert unique_key.index_validity(db, [VALUE_INDEX]) == {VALUE_INDEX: True}
+    assert "gk_meas" not in sum(synthesis.joins_without_lookup_index(db, rules).values(), [])

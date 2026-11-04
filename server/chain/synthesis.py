@@ -263,17 +263,28 @@ def declared_lookup_targets(rules):
 
 
 #: The rules list's word on a running join whose lookup index is not standing (owner 11-04: state on the screen). The
-#: scheduler builds the index (`runtime.maintenance_line`), and says why it could not in its log under «[Join]».
+#: scheduler builds the index (`runtime.maintenance_line`), and says why it could not in its log under «[Join]» - unless
+#: the switch turns the automatic indexes off (`unique_key.auto_index_off`).
 NO_KEY_INDEX_LINE = ("no key index on %s yet - each batch reads the whole table; the scheduler builds it at start "
                      "(auto_update.log [Join] line says why if it could not)")
+NO_KEY_INDEX_OFF_LINE = ("no key index on %s - automatic join indexes are off (ASSY_VJOIN_AUTO_INDEX=%s); each batch "
+                         "reads the whole table - build it by hand or turn the switch on")
+
+
+def no_key_index_line(tables) -> str:
+    """The word for a join whose lookup index on `tables` does not stand - what happens next, by the switch."""
+    from chain import unique_key
+
+    off = unique_key.auto_index_off()
+    named = ", ".join(tables)
+    return NO_KEY_INDEX_OFF_LINE % (named, off) if off else NO_KEY_INDEX_LINE % named
 
 
 def joins_without_lookup_index(db, rules) -> dict:
     """{rule name: [tables]} - the switched-on joins whose lookup indexes (`declared_lookup_targets`) do not stand valid
     in the database. A fact of the database, so every process answers alike. {} off PostgreSQL or when unreadable."""
-    from sqlalchemy import text
-
     from chain import join_key_index as vjc
+    from chain import unique_key
     from error_said import told
 
     if vjc._dialect_of(db) != "postgresql":
@@ -284,10 +295,7 @@ def joins_without_lookup_index(db, rules) -> dict:
     if not names:
         return {}
     try:
-        # by the search path, as the read finds the table (to_regclass), and only a valid one stands
-        standing = {row[0] for row in db.execute(text(
-            "SELECT n FROM unnest(CAST(:names AS text[])) n JOIN pg_index x "
-            "ON x.indexrelid = to_regclass(quote_ident(n)) WHERE x.indisvalid"), {"names": names})}
+        standing = {name for name, valid in unique_key.index_validity(db, names).items() if valid}
         db.rollback()
     except Exception as exc:                                           # noqa: BLE001
         db.rollback()

@@ -21,7 +21,7 @@
 >
 > ```
 > 무엇     key.unique 를 안 적은 보통 take 조인도 값(원천) 표 키에 조회 색인(ix_vjoin_<값 표>_<키>_ns)을 세움
->          세운 표는 곧바로 ANALYZE (문턱 analyze_after_rows 와 상관없이) — 통계 없으면 100 키 넘는 배치가 표 전체를 훑음
+>          세운 표는 곧바로 ANALYZE (문턱과 상관없이 — analyze_after_rows 를 0 이하로 꺼 두면 안 함) — 통계 없으면 100 키 넘는 배치가 표 전체를 훑음
 > 첫 기동  재기동 뒤 첫 기동에서 조인 값 표마다 색인을 세움 — 1000만 행 값 표 하나에 약 25 초 · 약 0.3 GB
 >          (일회용 DB 판, 칸 넷짜리 표 — 표가 크면 그만큼 길어짐), ANALYZE 약 1 초. 그동안 조인은 오늘처럼 돎
 > 볼 줄    auto_update.log «[Join] 조회 인덱스 ix_vjoin_<값 표>_<키>_ns 를 세웠습니다 (N s)»
@@ -29,6 +29,8 @@
 > 화면     체인 탭 규칙 목록 — 색인이 안 선 RUNNING 조인 줄의 이름 밑에
 >          «no key index on <표> yet - each batch reads the whole table; the scheduler builds it at start
 >          (auto_update.log [Join] line says why if it could not)» -> 그 로그의 «[Join]» 줄이 못 세운 사유
+>          ASSY_VJOIN_AUTO_INDEX=0 으로 꺼 두면 «no key index on <표> - automatic join indexes are off (ASSY_VJOIN_AUTO_INDEX=0); …
+>          - build it by hand or turn the switch on» (11-04, 스위치를 읽는 함수는 unique_key.auto_index_off 하나)
 > 잰 것    값 표 1000만 행 · 대상 700 행 한 그룹(실제 API + 체인 워커): 13.1 s(그중 fetch 11.7 s) -> 5.5 s 안(쓰기 호출 4.4 s 포함)
 >          값 표 쓰기 1,000 행당 +0.015 s (색인 갱신, 일회용 DB 판)
 > 위험     색인을 못 세우면(잠금 대기 · 실패) 오늘처럼 느림 — 이제 규칙 줄에 보임, 다음 기동 · 선언 다시 읽기 때 다시 시도

@@ -6612,7 +6612,7 @@ def get_chain_rules(db: Session = Depends(get_db)):
     # a running join whose lookup index does not stand reads its whole table each batch - said on its line (owner 11-04)
     unindexed = synthesis.joins_without_lookup_index(db, [rule for rule in standing if rule.get("name") not in off])
     listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING,
-                   **({"rule_state_detail": synthesis.NO_KEY_INDEX_LINE % ", ".join(unindexed[rule.get("name")])}
+                   **({"rule_state_detail": synthesis.no_key_index_line(unindexed[rule.get("name")])}
                       if rule.get("name") in unindexed else {}))
               if rule.get("name") not in off else
               dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,

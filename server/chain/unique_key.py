@@ -248,12 +248,34 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
 _TRIED = {}
 
 
+def auto_index_off():
+    """The value of ASSY_VJOIN_AUTO_INDEX when it turns the joins' automatic indexes off, else None - the one reading:
+    the builders, the retraction and the rules list's word (`synthesis.no_key_index_line`) ask it."""
+    switch = os.getenv("ASSY_VJOIN_AUTO_INDEX", "1").strip().lower()
+    return switch if switch in ("0", "false", "off", "no") else None
+
+
+def index_validity(db, names) -> dict:
+    """{index name: valid} of the named indexes the search path finds, as the read finds its table (to_regclass); a
+    name that is not there is not a key. The one «does this index stand» probe - the lookup builder and the rules list
+    (`synthesis.joins_without_lookup_index`) ask it (lead 11-04: they had asked 'public' and the search path)."""
+    from sqlalchemy import text
+
+    names = sorted(set(names or ()))
+    if not names:
+        return {}
+    rows = db.execute(text(
+        "SELECT n, x.indisvalid FROM unnest(CAST(:names AS text[])) n "
+        "JOIN pg_index x ON x.indexrelid = to_regclass(quote_ident(n))"), {"names": names})
+    return {row[0]: bool(row[1]) for row in rows}
+
+
 def ensure_once(db, rule_name: str, table: str, columns: list, folds=None) -> dict:
     """이 프로세스에서 이 규칙에 대해 «처음일 때만» 세운다. 그 뒤엔 기억한 보고를 돌려준다."""
     if rule_name in _TRIED:
         return _TRIED[rule_name]
-    switch = os.getenv("ASSY_VJOIN_AUTO_INDEX", "1").strip().lower()
-    if switch in ("0", "false", "off", "no"):
+    switch = auto_index_off()
+    if switch:
         # 🔴 OFF MEANS OFF - TOUCH NO DATABASE (2026-09-15 outage). The first cut still
         # called inspect() here, whose duplicate/blank probes run GROUP BY on the folded
         # join key; on a numeric key that raised 「invalid input syntax for double
@@ -354,8 +376,8 @@ def retract_unrequired_once(db, required) -> dict:
     if key in _RETRACTED:
         return _RETRACTED[key]
 
-    switch = os.getenv("ASSY_VJOIN_AUTO_INDEX", "1").strip().lower()
-    if switch in ("0", "false", "off", "no"):
+    switch = auto_index_off()
+    if switch:
         report = {"dropped": [], "kept": [], "skipped":
                   "ASSY_VJOIN_AUTO_INDEX=%s" % switch}
         _RETRACTED[key] = report
@@ -436,8 +458,8 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
     if memo in _TRIED:
         return _TRIED[memo]
     report = {"index": name, "state": None, "created": None, "dropped": []}
-    switch = os.getenv("ASSY_VJOIN_AUTO_INDEX", "1").strip().lower()
-    if switch in ("0", "false", "off", "no"):
+    switch = auto_index_off()
+    if switch:
         report["state"] = "skipped"
         report["skipped"] = "ASSY_VJOIN_AUTO_INDEX=%s" % switch
     elif vjc._dialect_of(db) != "postgresql":
@@ -447,11 +469,7 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         _TRIED[memo] = report
         return report
     try:
-        found = db.execute(text(
-            "SELECT x.indisvalid FROM pg_index x "
-            "JOIN pg_class i ON i.oid = x.indexrelid "
-            "JOIN pg_namespace n ON n.oid = i.relnamespace "
-            "WHERE i.relname = :n AND n.nspname = 'public'"), {"n": name}).first()
+        found = index_validity(db, [name]).get(name)                  # None: not there · False: INVALID
         # the same reason `ensure` gives: this session's read must not hold the DDL beside it
         db.rollback()
     except Exception as probe_error:                                   # noqa: BLE001
@@ -461,7 +479,7 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         _TRIED[memo] = report
         logger.warning("[Join] 조회 인덱스 %s 점검 실패(체인은 계속): %s", name, report["error"])
         return report
-    if found and found[0]:
+    if found:
         report["state"] = "ok"
         _TRIED[memo] = report
         return report
@@ -474,7 +492,7 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         _TRIED[memo] = report
         return report
     try:
-        if found:
+        if found is not None:
             connection.execute(text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name))
             report["dropped"].append(name)
         report["created"] = vjc.required_index_ddl(table, columns, folds, unique=False)
