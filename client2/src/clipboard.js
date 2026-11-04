@@ -7,6 +7,7 @@ import { newPivotRows } from './grid_pivot.js';
 import { fetchData, sayNotWritten } from './api.js';
 import { elements } from './dom.js';
 import { ensureCellObject, markCellOverwritten, updateGridSortState, isSystemColumn } from './grid.js';
+import { pastedImage, uploadImage } from './grid_image_column.js';
 import { updateTxModeUI, updateSelectedCellUI, setupBeforeUnloadWarning } from './ui.js';
 import { getLocalTimeString } from './utils.js';
 // The ONE TSV reader/writer. Lifted out of this file (it used to be four lines inline in
@@ -357,6 +358,253 @@ export function registerSmartPasteHandler(fn) {
   smartPasteHandler = fn;
 }
 
+/** What a paste or a drop writes, through the one fill below (owner 11-05 ㄱ): the text as given, or - into image cells,
+ *  when there is no text - the reference the server gives the picture. */
+export async function pasteInto(targetCells, text, files) {
+  const image = pastedImage(text, files, targetCells.map((c) => (state.currentColumnTypes || {})[c.colId]));
+  if (image && image.refused) { sayStopped(image.refused); return; }
+  const value = image ? await uploadedRef(image.file, targetCells[0].colId) : text;
+  if (value) await pasteText(targetCells, value);
+}
+
+async function uploadedRef(file, colId) {
+  elements.performanceLog.textContent = `Uploading image [${file.name}] (${(file.size / 1024).toFixed(1)} KB)...`;
+  const got = await uploadImage(API_BASE, state.currentTable, colId, file);
+  if (got.refused) { sayStopped(got.refused); return ''; }
+  return got.ref;
+}
+
+async function pasteText(targetCells, clipboardText) {
+  const focusedCell = state.gridApi.getFocusedCell();
+  // Parse TSV clipboard through the shared reader. `trimCells`/`dropBlankLines` keep this
+  // handler's long-standing whitespace and blank-line treatment byte for byte; what
+  // CHANGES is that a cell Excel quoted because it contains a newline is now one cell.
+  // It used to become two grid rows, the second of them garbage ending in a stray quote.
+  const parsedMatrix = parseTsv(clipboardText, { trimCells: true, dropBlankLines: true });
+  if (parsedMatrix.length === 0) return;
+
+  elements.performanceLog.textContent = 'Processing paste updates...';
+
+  const batchUpdates = [];
+  const updateMapByRow = {};
+  const allCols = state.gridApi.getColumns().map(c => c.getColId());
+
+  try {
+    const isSingleVal = (parsedMatrix.length === 1 && parsedMatrix[0].length === 1);
+
+    if (isSingleVal) {
+      // 1x1 Single value clipboard ➡️ Fill all target cells
+      const val = parsedMatrix[0][0];
+
+      targetCells.forEach(cell => {
+        const { rowIndex, colId } = cell;
+        const isSystem = isSystemColumn(colId) || !isDataColumn(colId);
+        if (isSystem) return;
+        // [Virtual join] 🔴 THE GATE HERE IS GRID PRESENCE, NOT `currentColumns`. This
+        // funnel builds its updates from grid column ids and never consults
+        // `state.currentColumns`, so keeping virtual names out of that list does NOT keep
+        // them out of a paste — only this guard does. Without it a 1x1 fill over a
+        // selection that happens to include the column sends it to the server, and the
+        // refusal is BATCH-LEVEL: the whole fill returns 400 and the user loses every
+        // other cell they meant to write.
+        if (isVirtualColumn(colId)) return;
+
+        const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);
+        if (!rowNode || !rowNode.data) return;
+        const rowId = rowNode.data.row_id;
+        if (!rowId) return;
+
+        if (!updateMapByRow[rowId]) {
+          updateMapByRow[rowId] = { rowNode, updates: {} };
+        }
+
+        updateMapByRow[rowId].updates[colId] = cellToSend(colId, val);
+      });
+    } else {
+      // MxN Matrix clipboard ➡️ Standard offset paste starting from top-left anchor cell
+      // Find visible columns in grid
+      const visibleCols = (state.gridApi.getColumnState() || [])
+        .filter(c => !c.hide)
+        .map(c => c.colId);
+
+      // Find anchor (top-left) cell
+      let anchorRow = Infinity;
+      let anchorColVisibleIdx = -1;
+      let anchorColId = '';
+
+      if (focusedCell) {
+        anchorRow = focusedCell.rowIndex;
+        anchorColId = focusedCell.column.getColId();
+        anchorColVisibleIdx = visibleCols.indexOf(anchorColId);
+      } else {
+        targetCells.forEach(cell => {
+          const idx = visibleCols.indexOf(cell.colId);
+          if (cell.rowIndex < anchorRow) {
+            anchorRow = cell.rowIndex;
+          }
+          if (idx !== -1 && (anchorColVisibleIdx === -1 || idx < anchorColVisibleIdx)) {
+            anchorColVisibleIdx = idx;
+            anchorColId = cell.colId;
+          }
+        });
+      }
+
+      // If anchor col not in visible list, fallback to first visible column (excluding index column '#')
+      if (anchorColVisibleIdx === -1 && visibleCols.length > 0) {
+        const firstNonHash = visibleCols.find(isDataColumn);
+        if (firstNonHash) {
+          anchorColId = firstNonHash;
+          anchorColVisibleIdx = visibleCols.indexOf(firstNonHash);
+        }
+      }
+
+      if (anchorRow === Infinity || anchorColVisibleIdx === -1) return;
+      // In pivot view the lines pasted past the last row are new rows (owner 10-23): their keys and values go on them.
+      const short = pivotShown() ? anchorRow + parsedMatrix.length - state.gridApi.getDisplayedRowCount() : 0;
+      if (short > 0) state.gridApi.applyTransaction({ add: newPivotRows(short) });
+
+      parsedMatrix.forEach((rowValues, rOffset) => {
+        const targetRowIndex = anchorRow + rOffset;
+        const rowNode = state.gridApi.getDisplayedRowAtIndex(targetRowIndex);
+        if (!rowNode || !rowNode.data) return;
+        const rowId = rowNode.data.row_id;
+
+        rowValues.forEach((val, cOffset) => {
+          const targetColIndex = anchorColVisibleIdx + cOffset;
+          if (targetColIndex >= visibleCols.length) return;
+
+          const colId = visibleCols[targetColIndex];
+          const isSystem = isSystemColumn(colId) || !isDataColumn(colId);
+          if (isSystem) return;
+          // [Virtual join] Same guard as the 1x1 branch, and this is the branch that
+          // matters most: an MxN paste walks the VISIBLE columns from the anchor, so a
+          // block wide enough to reach the appended virtual column picks it up with no
+          // action from the user at all. Skipping the cell keeps the rest of the batch
+          // writable instead of losing all of it to one 400.
+          if (isVirtualColumn(colId)) return;
+
+          if (!updateMapByRow[rowId]) {
+            updateMapByRow[rowId] = { rowNode, updates: {} };
+          }
+
+          updateMapByRow[rowId].updates[colId] = cellToSend(colId, val);
+        });
+      });
+    }
+
+    if (refusePivotKeys(Object.values(updateMapByRow))) return;
+    // Populate batchUpdates array
+    Object.keys(updateMapByRow).forEach(rowId => {
+      const item = updateMapByRow[rowId];
+      if (Object.keys(item.updates).length > 0) {
+        batchUpdates.push({
+          row_id: rowId,
+          updates: item.updates,
+          source_name: 'user',
+          updated_by: CURRENT_USER
+        });
+
+        // Stage edits in pendingTxEdits if Tx Mode is active, and update local grid row node data in-place
+        const oldRowData = item.rowNode.data;
+        if (state.txModeActive) {
+          Object.keys(item.updates).forEach(col => {
+            const key = `${rowId}_${col}`;
+            if (!state.pendingTxEdits[key]) {
+              const oldValue = oldRowData.data?.[col]?.value !== undefined ? oldRowData.data[col].value : '';
+              const oldIsOverwrite = oldRowData.data?.[col]?.is_overwrite === true;
+              state.pendingTxEdits[key] = {
+                rowId,
+                colId: col,
+                newValue: item.updates[col],
+                oldValue: oldValue,
+                oldIsOverwrite: oldIsOverwrite,
+                data: oldRowData
+              };
+            } else {
+              state.pendingTxEdits[key].newValue = item.updates[col];
+            }
+
+            // Update in-place on latest row data
+            const latestNode = state.gridApi.getRowNode(rowId);
+            const latestData = latestNode ? latestNode.data : oldRowData;
+            if (latestData) {
+              ensureCellObject(latestData, col);
+              latestData.data[col].value = item.updates[col];
+            }
+          });
+        }
+      }
+    });
+
+    if (state.txModeActive) {
+      if (batchUpdates.length > 0) {
+        updateTxModeUI();
+        state.gridApi.refreshCells({ force: true });
+        elements.performanceLog.textContent = `Staged clipboard paste: ${Object.keys(state.pendingTxEdits).length} total pending edits`;
+      }
+      return;
+    }
+
+    if (batchUpdates.length > 0) {
+      const res = await fetch(`${API_BASE}/tables/${state.currentTable}/data/updates`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        // V1 instrument: `effort` is an optional field. Raw counts only.
+        body: JSON.stringify({ updates: wireUpdates(batchUpdates), effort: snapshot() })
+      });
+
+      if (res.ok) {
+        state.pageCache.clear();
+        const result = await res.json();
+        // V1 instrument: reset ONLY when the server confirms it recorded the effort — a
+        // paste whose values already match storage returns 200 and records nothing.
+        commitIfRecorded(result);
+        const notWritten = sayNotWritten(result);
+        // the cells the server changed, not the rows sent - none changed says 0 (lead 10-29)
+        const pasted = `Pasted · ${unitText(Number(result.change_count) || 0, 'cell')} updated`;
+        elements.performanceLog.textContent = pasted;
+        // a pivot cell is a long row's: the page read again (a blank one now has its row) - and a cell not written is
+        // drawn as the server holds it, the paste's line kept (lead 10-29)
+        if (pivotShown() || notWritten) { await fetchData(false); elements.performanceLog.textContent = pasted; return; }
+
+        // Fast-apply local data values by updating latest node data in-place
+        batchUpdates.forEach(update => {
+          const rowNode = state.gridApi.getRowNode(update.row_id);
+          if (rowNode) {
+            const latestData = rowNode.data;
+            if (latestData) {
+              Object.keys(update.updates).forEach(col => {
+                markCellOverwritten(latestData, col, update.updates[col]);
+              });
+              latestData.updated_at = getLocalTimeString();
+            }
+          }
+        });
+
+        // Force sort update to push modified rows to the top
+        updateGridSortState();
+        state.gridApi.refreshCells({ force: true });
+
+        // Sync selected cell UI if inside pasted range
+        if (state.selectedCell) {
+          const matchedUpdate = batchUpdates.find(u => u.row_id === state.selectedCell.rowId);
+          if (matchedUpdate && matchedUpdate.updates[state.selectedCell.colId] !== undefined) {
+            state.selectedCell.value = matchedUpdate.updates[state.selectedCell.colId];
+            updateSelectedCellUI();
+          }
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData.detail || 'Paste batch update failed';
+        throw new Error(errMsg);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to paste updates', err);
+    sayStopped(`Paste save failed: ${err.message}`);
+  }
+}
+
 export function setupClipboardHandlers() {
   // 1. Paste handler
   document.addEventListener('paste', async (e) => {
@@ -413,236 +661,8 @@ export function setupClipboardHandlers() {
     if (targetCells.length === 0) return;
 
     e.preventDefault();
-    const clipboardText = e.clipboardData.getData('text/plain');
-    if (!clipboardText) return;
-
-    // Parse TSV clipboard through the shared reader. `trimCells`/`dropBlankLines` keep this
-    // handler's long-standing whitespace and blank-line treatment byte for byte; what
-    // CHANGES is that a cell Excel quoted because it contains a newline is now one cell.
-    // It used to become two grid rows, the second of them garbage ending in a stray quote.
-    const parsedMatrix = parseTsv(clipboardText, { trimCells: true, dropBlankLines: true });
-    if (parsedMatrix.length === 0) return;
-
-    elements.performanceLog.textContent = 'Processing paste updates...';
-
-    const batchUpdates = [];
-    const updateMapByRow = {};
-    const allCols = state.gridApi.getColumns().map(c => c.getColId());
-
-    try {
-      const isSingleVal = (parsedMatrix.length === 1 && parsedMatrix[0].length === 1);
-
-      if (isSingleVal) {
-        // 1x1 Single value clipboard ➡️ Fill all target cells
-        const val = parsedMatrix[0][0];
-
-        targetCells.forEach(cell => {
-          const { rowIndex, colId } = cell;
-          const isSystem = isSystemColumn(colId) || !isDataColumn(colId);
-          if (isSystem) return;
-          // [Virtual join] 🔴 THE GATE HERE IS GRID PRESENCE, NOT `currentColumns`. This
-          // funnel builds its updates from grid column ids and never consults
-          // `state.currentColumns`, so keeping virtual names out of that list does NOT keep
-          // them out of a paste — only this guard does. Without it a 1x1 fill over a
-          // selection that happens to include the column sends it to the server, and the
-          // refusal is BATCH-LEVEL: the whole fill returns 400 and the user loses every
-          // other cell they meant to write.
-          if (isVirtualColumn(colId)) return;
-
-          const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);
-          if (!rowNode || !rowNode.data) return;
-          const rowId = rowNode.data.row_id;
-          if (!rowId) return;
-
-          if (!updateMapByRow[rowId]) {
-            updateMapByRow[rowId] = { rowNode, updates: {} };
-          }
-
-          updateMapByRow[rowId].updates[colId] = cellToSend(colId, val);
-        });
-      } else {
-        // MxN Matrix clipboard ➡️ Standard offset paste starting from top-left anchor cell
-        // Find visible columns in grid
-        const visibleCols = (state.gridApi.getColumnState() || [])
-          .filter(c => !c.hide)
-          .map(c => c.colId);
-
-        // Find anchor (top-left) cell
-        let anchorRow = Infinity;
-        let anchorColVisibleIdx = -1;
-        let anchorColId = '';
-
-        if (focusedCell) {
-          anchorRow = focusedCell.rowIndex;
-          anchorColId = focusedCell.column.getColId();
-          anchorColVisibleIdx = visibleCols.indexOf(anchorColId);
-        } else {
-          targetCells.forEach(cell => {
-            const idx = visibleCols.indexOf(cell.colId);
-            if (cell.rowIndex < anchorRow) {
-              anchorRow = cell.rowIndex;
-            }
-            if (idx !== -1 && (anchorColVisibleIdx === -1 || idx < anchorColVisibleIdx)) {
-              anchorColVisibleIdx = idx;
-              anchorColId = cell.colId;
-            }
-          });
-        }
-
-        // If anchor col not in visible list, fallback to first visible column (excluding index column '#')
-        if (anchorColVisibleIdx === -1 && visibleCols.length > 0) {
-          const firstNonHash = visibleCols.find(isDataColumn);
-          if (firstNonHash) {
-            anchorColId = firstNonHash;
-            anchorColVisibleIdx = visibleCols.indexOf(firstNonHash);
-          }
-        }
-
-        if (anchorRow === Infinity || anchorColVisibleIdx === -1) return;
-        // In pivot view the lines pasted past the last row are new rows (owner 10-23): their keys and values go on them.
-        const short = pivotShown() ? anchorRow + parsedMatrix.length - state.gridApi.getDisplayedRowCount() : 0;
-        if (short > 0) state.gridApi.applyTransaction({ add: newPivotRows(short) });
-
-        parsedMatrix.forEach((rowValues, rOffset) => {
-          const targetRowIndex = anchorRow + rOffset;
-          const rowNode = state.gridApi.getDisplayedRowAtIndex(targetRowIndex);
-          if (!rowNode || !rowNode.data) return;
-          const rowId = rowNode.data.row_id;
-
-          rowValues.forEach((val, cOffset) => {
-            const targetColIndex = anchorColVisibleIdx + cOffset;
-            if (targetColIndex >= visibleCols.length) return;
-
-            const colId = visibleCols[targetColIndex];
-            const isSystem = isSystemColumn(colId) || !isDataColumn(colId);
-            if (isSystem) return;
-            // [Virtual join] Same guard as the 1x1 branch, and this is the branch that
-            // matters most: an MxN paste walks the VISIBLE columns from the anchor, so a
-            // block wide enough to reach the appended virtual column picks it up with no
-            // action from the user at all. Skipping the cell keeps the rest of the batch
-            // writable instead of losing all of it to one 400.
-            if (isVirtualColumn(colId)) return;
-
-            if (!updateMapByRow[rowId]) {
-              updateMapByRow[rowId] = { rowNode, updates: {} };
-            }
-
-            updateMapByRow[rowId].updates[colId] = cellToSend(colId, val);
-          });
-        });
-      }
-
-      if (refusePivotKeys(Object.values(updateMapByRow))) return;
-      // Populate batchUpdates array
-      Object.keys(updateMapByRow).forEach(rowId => {
-        const item = updateMapByRow[rowId];
-        if (Object.keys(item.updates).length > 0) {
-          batchUpdates.push({
-            row_id: rowId,
-            updates: item.updates,
-            source_name: 'user',
-            updated_by: CURRENT_USER
-          });
-
-          // Stage edits in pendingTxEdits if Tx Mode is active, and update local grid row node data in-place
-          const oldRowData = item.rowNode.data;
-          if (state.txModeActive) {
-            Object.keys(item.updates).forEach(col => {
-              const key = `${rowId}_${col}`;
-              if (!state.pendingTxEdits[key]) {
-                const oldValue = oldRowData.data?.[col]?.value !== undefined ? oldRowData.data[col].value : '';
-                const oldIsOverwrite = oldRowData.data?.[col]?.is_overwrite === true;
-                state.pendingTxEdits[key] = {
-                  rowId,
-                  colId: col,
-                  newValue: item.updates[col],
-                  oldValue: oldValue,
-                  oldIsOverwrite: oldIsOverwrite,
-                  data: oldRowData
-                };
-              } else {
-                state.pendingTxEdits[key].newValue = item.updates[col];
-              }
-
-              // Update in-place on latest row data
-              const latestNode = state.gridApi.getRowNode(rowId);
-              const latestData = latestNode ? latestNode.data : oldRowData;
-              if (latestData) {
-                ensureCellObject(latestData, col);
-                latestData.data[col].value = item.updates[col];
-              }
-            });
-          }
-        }
-      });
-
-      if (state.txModeActive) {
-        if (batchUpdates.length > 0) {
-          updateTxModeUI();
-          state.gridApi.refreshCells({ force: true });
-          elements.performanceLog.textContent = `Staged clipboard paste: ${Object.keys(state.pendingTxEdits).length} total pending edits`;
-        }
-        return;
-      }
-
-      if (batchUpdates.length > 0) {
-        const res = await fetch(`${API_BASE}/tables/${state.currentTable}/data/updates`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          // V1 instrument: `effort` is an optional field. Raw counts only.
-          body: JSON.stringify({ updates: wireUpdates(batchUpdates), effort: snapshot() })
-        });
-
-        if (res.ok) {
-          state.pageCache.clear();
-          const result = await res.json();
-          // V1 instrument: reset ONLY when the server confirms it recorded the effort — a
-          // paste whose values already match storage returns 200 and records nothing.
-          commitIfRecorded(result);
-          const notWritten = sayNotWritten(result);
-          // the cells the server changed, not the rows sent - none changed says 0 (lead 10-29)
-          const pasted = `Pasted · ${unitText(Number(result.change_count) || 0, 'cell')} updated`;
-          elements.performanceLog.textContent = pasted;
-          // a pivot cell is a long row's: the page read again (a blank one now has its row) - and a cell not written is
-          // drawn as the server holds it, the paste's line kept (lead 10-29)
-          if (pivotShown() || notWritten) { await fetchData(false); elements.performanceLog.textContent = pasted; return; }
-
-          // Fast-apply local data values by updating latest node data in-place
-          batchUpdates.forEach(update => {
-            const rowNode = state.gridApi.getRowNode(update.row_id);
-            if (rowNode) {
-              const latestData = rowNode.data;
-              if (latestData) {
-                Object.keys(update.updates).forEach(col => {
-                  markCellOverwritten(latestData, col, update.updates[col]);
-                });
-                latestData.updated_at = getLocalTimeString();
-              }
-            }
-          });
-
-          // Force sort update to push modified rows to the top
-          updateGridSortState();
-          state.gridApi.refreshCells({ force: true });
-
-          // Sync selected cell UI if inside pasted range
-          if (state.selectedCell) {
-            const matchedUpdate = batchUpdates.find(u => u.row_id === state.selectedCell.rowId);
-            if (matchedUpdate && matchedUpdate.updates[state.selectedCell.colId] !== undefined) {
-              state.selectedCell.value = matchedUpdate.updates[state.selectedCell.colId];
-              updateSelectedCellUI();
-            }
-          }
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          const errMsg = errData.detail || 'Paste batch update failed';
-          throw new Error(errMsg);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to paste updates', err);
-      sayStopped(`Paste save failed: ${err.message}`);
-    }
+    // Read now: the clipboard is empty once this handler awaits.
+    await pasteInto(targetCells, e.clipboardData.getData('text/plain'), Array.from(e.clipboardData.files || []));
   });
 
   // 2. Copy handler

@@ -1156,6 +1156,22 @@ CELLS.push({ entry: 'index.html', after: 'Gallery, rows by columns', rule: 'thum
   }
   return null;
 })()` });
+// A picture held over an image cell (owner 11-05 ㄱ): that one cell outlined, the overlay out of its way; taken away, neither.
+CELLS.push({ entry: 'index.html', after: 'Grid, a picture held over an image cell', rule: 'drop target outlined', at: 'cell-drop-target', expr: `(() => {
+  const marked = [...document.querySelectorAll('.cell-drop-target')];
+  if (marked.length !== 1) return marked.length + ' cells outlined, want 1';
+  if (marked[0].getAttribute('col-id') !== 'photo') return 'the outlined cell is ' + marked[0].getAttribute('col-id');
+  if (getComputedStyle(marked[0]).outlineStyle !== 'dashed') return 'the cell has no outline';
+  const o = document.getElementById('drop-overlay');
+  if (!o || !o.classList.contains('over-cell') || getComputedStyle(o).pointerEvents !== 'none') return 'the overlay still covers the cell';
+  return null;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Grid, the picture taken away', rule: 'drop target cleared', at: 'drop-overlay', expr: `(() => {
+  if (document.querySelectorAll('.cell-drop-target').length) return 'a cell is still outlined';
+  const o = document.getElementById('drop-overlay');
+  if (o && (o.classList.contains('over-cell') || o.classList.contains('active'))) return 'the overlay is still held';
+  return null;
+})()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, a cell opened and a tile pressed', rule: 'opened cell tiles', at: 'gallery-open', expr: `(() => {
   // the opened cell's list in the history tabs' place (owner 10-29): the seat stands, the tabs step aside
   const seat = document.getElementById('gallery-seat');
@@ -2605,6 +2621,32 @@ const DRIVE = {
     ['Gallery, the popup shut by Esc', async (c) => {
       await evaluate(c, "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true");
       await sleep(300);
+    }],
+    // A picture held over an image cell (owner 11-05 ㄱ): the grid back from the gallery, dt_log's «photo» column in view, a
+    // picture dragged in and held over one of its cells - the overlay steps aside, that cell is outlined. Never dropped: a
+    // drop would send the picture.
+    ['Grid, a picture held over an image cell', async (c) => {
+      await evaluate(c, "(() => { const b = document.getElementById('gallery-toggle-btn'); if (b && b.classList.contains('is-on')) b.click(); return true; })()");
+      await sleep(500);
+      await evaluate(c, `(() => { for (const v of document.querySelectorAll('.ag-body-horizontal-scroll-viewport, .ag-center-cols-viewport')) v.scrollLeft = v.scrollWidth;
+        return true; })()`);
+      await sleep(700);
+      await evaluate(c, `(() => {
+        const cell = document.querySelector('.ag-center-cols-container .ag-cell[col-id="photo"]');
+        if (!cell) return false;
+        const r = cell.getBoundingClientRect();
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' }));
+        const at = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+        cell.dispatchEvent(new DragEvent('dragenter', at));
+        cell.dispatchEvent(new DragEvent('dragover', at));
+        window.__heldPicture = at;
+        return true; })()`);
+      await sleep(400);
+    }],
+    ['Grid, the picture taken away', async (c) => {
+      await evaluate(c, "(() => { const at = window.__heldPicture; if (!at) return false; document.body.dispatchEvent(new DragEvent('dragleave', at)); delete window.__heldPicture; return true; })()");
+      await sleep(500);
     }],
     ['Gallery left, the first table again', async (c, log) => {
       await evaluate(c, `(() => { const sel = document.getElementById('table-select'); if (!sel || !window.__galleryFrom) return false;

@@ -855,11 +855,11 @@ const DEFECTS = [
   // The trailing line disambiguates the two paste branches, whose guards differ only in
   // indentation (and the shallower one is a substring of the deeper one).
   ['let the MxN paste target a virtual column', 'clipboard', (t) => sub(t,
-      `            if (isVirtualColumn(colId)) return;\n\n            if (!updateMapByRow[rowId]) {`,
-      `            if (!updateMapByRow[rowId]) {`, 'paste-mxn')],
+      `          if (isVirtualColumn(colId)) return;\n\n          if (!updateMapByRow[rowId]) {`,
+      `          if (!updateMapByRow[rowId]) {`, 'paste-mxn')],
   ['let the 1x1 fill target a virtual column', 'clipboard', (t) => sub(t,
-      `          if (isVirtualColumn(colId)) return;\n\n          const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);`,
-      `          const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);`, 'paste-1x1')],
+      `        if (isVirtualColumn(colId)) return;\n\n        const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);`,
+      `        const rowNode = state.gridApi.getDisplayedRowAtIndex(rowIndex);`, 'paste-1x1')],
   ['let delete-to-clear target a virtual column', 'clipboard', (t) => sub(t, `    if (isVirtualColumn(cell.colId)) return;`, ``, 'clear')],
   ['let the bulk fill target a virtual column', 'ui', (t) => sub(t, `    if (isVirtualColumn(colId)) return;`, ``, 'bulk-fill')],
   ['make the push gate count announced columns', 'push', (t) => sub(t, `  const cols = Array.isArray(schema && schema.columns) ? schema.columns : [];`,

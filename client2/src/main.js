@@ -15,7 +15,7 @@ import { narrowingTail } from './narrowing.js';
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
 import { state, isDataColumn, pivotShown } from './state.js';
 import { NONE, unitText } from './ui_words.js';
-import { writeRefusal, sayStopped } from './write_guard.js';
+import { writeRefusal, sayStopped, refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
 import { placeUnder } from './dropdown.js';
 import {
@@ -75,8 +75,10 @@ import {
   commitDragSelection,
   setupClipboardHandlers,
   registerSmartPasteHandler,
-  clearSelectedCells
+  clearSelectedCells,
+  pasteInto
 } from './clipboard.js';
+import { imageCellIn, isImageFile, NOT_SENT } from './grid_image_column.js';
 import {
   updateViewModeUI,
   updatePaginationUI,
@@ -1420,6 +1422,21 @@ function setupDragAndDrop() {
   if (!dropOverlay) return;
 
   let dragCounter = 0;
+  // (owner 11-05 ㄱ) Pictures held over an image cell are that cell's: the overlay steps aside and the cell is outlined.
+  // Anything else - another cell, a file that is not a picture - is ingested into the table as before.
+  let dropCell = null;
+  const imageCellAt = (e) => {
+    const items = Array.from(e.dataTransfer.items || []);
+    if (!items.length || !items.every((i) => i.kind === 'file' && isImageFile(i.type))) return null;
+    return imageCellIn(document.elementsFromPoint(e.clientX, e.clientY), state.currentColumnTypes);
+  };
+  const markDropCell = (cell) => {
+    const el = cell ? cell.el : null;
+    if (dropCell && dropCell !== el) dropCell.classList.remove('cell-drop-target');
+    dropCell = el;
+    if (el) el.classList.add('cell-drop-target');
+    dropOverlay.classList.toggle('over-cell', Boolean(el));
+  };
 
   window.addEventListener('dragenter', (e) => {
     e.preventDefault();
@@ -1438,6 +1455,7 @@ function setupDragAndDrop() {
 
   window.addEventListener('dragover', (e) => {
     e.preventDefault();
+    if (state.currentTable && e.dataTransfer.types.includes('Files')) markDropCell(imageCellAt(e));
   });
 
   window.addEventListener('dragleave', (e) => {
@@ -1447,6 +1465,7 @@ function setupDragAndDrop() {
     if (e.dataTransfer.types.includes('Files')) {
       dragCounter--;
       if (dragCounter === 0) {
+        markDropCell(null);
         dropOverlay.classList.remove('active');
         setTimeout(() => {
           if (!dropOverlay.classList.contains('active')) {
@@ -1459,6 +1478,8 @@ function setupDragAndDrop() {
 
   window.addEventListener('drop', async (e) => {
     e.preventDefault();
+    const cell = imageCellAt(e);
+    markDropCell(null);
     dragCounter = 0;
     dropOverlay.classList.remove('active');
     dropOverlay.style.display = 'none';
@@ -1467,6 +1488,10 @@ function setupDragAndDrop() {
 
     const files = e.dataTransfer.files;
     if (files.length === 0) return;
+    if (cell) {
+      if (!refuseWrite()) await pasteInto([{ rowIndex: cell.rowIndex, colId: cell.colId }], '', Array.from(files));
+      return;
+    }
 
     elements.performanceLog.textContent = `Uploading ${files.length} log file(s)...`;
 
@@ -1903,7 +1928,7 @@ async function uploadSmartPastePayload(selectedText, selectedType, byOrder = fal
     // A transport failure, not a clipboard failure - say so, or the user reads it as the
     // clipboard bug again.
     console.error('Smart paste upload failed', err);
-    sayStopped('Not sent to the server · check the network');
+    sayStopped(NOT_SENT);
   }
 }
 

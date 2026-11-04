@@ -1230,7 +1230,7 @@ const DEFECTS = [
   ['timeline.js: the line claims rows a refused read never showed', 'timeline',
     s => s.replace('  if (await setTransactionFilter(tx)) {', '  if (await setTransactionFilter(tx) || true) {')],
   // ── N (lead 10-29): every grid save says what its answer did not write ──────
-  ['clipboard.js: a paste says nothing of the cells not written', 'clipboard', s => s.replace(/\n {10}const notWritten = sayNotWritten\(result\);/, '\n          const notWritten = null;')],
+  ['clipboard.js: a paste says nothing of the cells not written', 'clipboard', s => s.replace(/\n {8}const notWritten = sayNotWritten\(result\);/, '\n        const notWritten = null;')],
   ['clipboard.js: a clear says nothing of the cells not written', 'clipboard', s => s.replace(/\n {6}const notWritten = sayNotWritten\(result\);/, '\n      const notWritten = null;')],
   ['ui.js: a fill says nothing of the cells not written', 'ui', s => s.replace(/\n {6}const notWritten = sayNotWritten\(result\);/, '\n      const notWritten = null;')],
   ['api.js: an edit says nothing of the cells not written', 'api', s => s.replace(/\n {6}const notWritten = sayNotWritten\(result\);/, '\n      const notWritten = null;')],

@@ -29,6 +29,51 @@ export function linkHref(value, origin = globalThis.location && globalThis.locat
   return text.startsWith('/') && url.origin === origin ? url.href : null;
 }
 
+// A picture pasted or dropped on image cells (owner 11-05 ㄱ): the server keeps it, and its reference is written to
+// the cells as a pasted value would be.
+export const IMAGES_ONLY = 'Images paste into image columns only';
+export const ONE_IMAGE = 'One image per paste';
+export const NOT_SENT = 'Not sent to the server · check the network';
+export const isImageFile = (type) => /^image\//i.test(String(type || ''));
+
+/** A paste's picture, or why not: null when the paste is text as today. Only when there is no text - Excel puts a
+ *  picture of the copied cells beside any cell's text (measured in Chrome 11-05), so that picture is not what is pasted. */
+export function pastedImage(text, files, types) {
+  if (!isBlank(text)) return null;
+  const list = Array.from(files || []);
+  const images = list.filter((f) => isImageFile(f && f.type));
+  if (!images.length) return null;
+  if (!types.length || !types.every((t) => t === IMAGE_TYPE)) return { refused: IMAGES_ONLY };
+  if (images.length > 1 || list.length > 1) return { refused: ONE_IMAGE };
+  return { file: images[0] };
+}
+
+/** The image cell under a point - a drop's target: the topmost grid cell among `elements` (document.elementsFromPoint),
+ *  when its column is declared image. */
+export function imageCellIn(elements, types) {
+  const cell = Array.from(elements || []).find((el) => el && el.classList && el.classList.contains('ag-cell'));
+  if (!cell || (types || {})[cell.getAttribute('col-id')] !== IMAGE_TYPE) return null;
+  const row = cell.closest ? cell.closest('.ag-row') : null;
+  const rowIndex = row ? Number(row.getAttribute('row-index')) : NaN;
+  return Number.isInteger(rowIndex) ? { el: cell, colId: cell.getAttribute('col-id'), rowIndex } : null;
+}
+
+/** POST /tables/{table}/images?column= (server c2b6b8e9b): {ref} or {refused: the server's sentence}. */
+export async function uploadImage(base, table, column, file, send = (...args) => fetch(...args)) {
+  const body = new FormData();
+  body.append('file', file, file.name || 'image');
+  let res;
+  try {
+    res = await send(`${base}/tables/${encodeURIComponent(table)}/images?column=${encodeURIComponent(column)}`,
+      { method: 'POST', body });
+  } catch {
+    return { refused: NOT_SENT };
+  }
+  const answer = await res.json().catch(() => ({}));
+  if (res.ok && typeof answer.ref === 'string' && answer.ref) return { ref: answer.ref };
+  return { refused: typeof answer.detail === 'string' && answer.detail ? answer.detail : `Image not saved (HTTP ${res.status})` };
+}
+
 export class ImageCellRenderer {
   init(params) {
     const doc = (params.eGridCell && params.eGridCell.ownerDocument) || document;

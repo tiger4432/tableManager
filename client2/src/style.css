@@ -1107,6 +1107,16 @@ body.resizing-active .gallery-seat {
   pointer-events: auto;
 }
 
+/* A picture held over an image cell (owner 11-05): the overlay steps aside and the cell is outlined. */
+.drop-overlay.over-cell {
+  opacity: 0;
+  pointer-events: none;
+}
+.ag-cell.cell-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
 .drop-zone {
   width: 460px;
   max-width: 90%;
