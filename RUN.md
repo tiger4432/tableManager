@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-04] **키로 깨어나 값만 가져오는 조인이 저장됨 — column_loop 거절 고침** — git pull · 서버 재기동
+>
+> ```
+> 무엇     11-04 전에 «column_loop - <표>: <키> -> <키> - these rules wake each other and never settle» 로
+>          막힌 조인(키로 깨어나 take 칸만 씀, target_columns 적음)은 이제 저장 · 로드됨
+>          고리 판정이 행을 찾는 칸(업무 키 · 합성 키 조각 · 맵 키 · 잡 칸 · group_by)을 «쓰는 칸»으로 안 셈
+> 그대로   진짜 고리는 거절 — 서로 읽는 수식 · 서로의 take 칸을 키로 쓰는 조인 둘(소유자 11-04 ㄱ) ·
+>          target_columns 에 키 칸을 직접 적은 규칙. 거절 문장도 그대로. 쓰기 필터 · R2 답 그대로
+> 위험     찾는 칸을 실제로 바꾸는데 target_columns 에 안 적은 규칙은 그 고리를 못 봄 — 그 칸을 목록에 적으면 잡힘
+> 보는 것  막혔던 조인을 다시 저장 -> 저장됨 · 체인 규칙 목록에 refused 없음
+> 같은 답  server 폴더에서 python -m pytest tests/test_rules_that_wake_each_other_by_column_are_refused.py tests/test_a_rule_writes_only_the_columns_it_lists.py  -> 19 passed
+> ```
+>
+> ---
+>
+
 > ## [11-04] **그리드 link 칸 · CHAIN 배지 stalled → RUNNING (클라 반쪽)** — git pull · 화면 새로 고침
 >
 > ```

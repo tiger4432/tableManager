@@ -1471,7 +1471,12 @@ def column_loops(rules) -> list:
         if rule_shape.is_switched_off(rule) or not rule.get("allow_chain_trigger") or not wake \
                 or rule.get("target_table") != table:
             continue
-        for written in rule_run.columns_a_rule_writes(rule) or ():
+        # the columns it changes, not the ones `written_columns` adds because a row is found by them (owner 11-04, a join
+        # woken by its key read as a loop) - a finding column it lists in `target_columns` still counts. ⚠️ One that
+        # changes a finding column it does not list is not seen here
+        listed = {str(c) for c in rule.get(chain_bindings.TARGET_COLUMNS_KEY) or ()}
+        found = chain_bindings.finding_columns(rule) - listed if listed else set()
+        for written in set(rule_run.columns_a_rule_writes(rule) or ()) - found:
             for column in wake:
                 edges[(table, column)].add((written, rule.get("name")))
     loops = {}

@@ -710,13 +710,21 @@ def written_columns(rule):
     listed = (rule or {}).get(TARGET_COLUMNS_KEY)
     if not listed:
         return None
+    return {str(column) for column in listed if column} | finding_columns(rule)
+
+
+def finding_columns(rule) -> set:
+    """The columns a target row is found by - handed with the row, not changed by it: the business key and what composes
+    it, the map key, the job column a withdrawal aims by, `group_by`. `written_columns` adds them; the column loop judge
+    (`ingestion_worker.column_loops`) leaves them out, or a join woken by its key reads as writing it (owner 11-04)."""
+    rule = rule or {}
     config = _table_config(str(rule.get("target_table") or ""))
     keys = [config.get("business_key"), rule.get("target_job_column"), rule.get("job_column")]
     for cell in ("composite_key_source", "map_key_columns"):
         keys += [config.get(cell)] if isinstance(config.get(cell), str) else list(config.get(cell) or ())
     group = rule.get(GROUP_BY_KEY)
     keys += [group] if isinstance(group, str) else list(group or ())
-    return {str(column) for column in list(listed) + keys if column}
+    return {str(column) for column in keys if column}
 
 
 def takes_deletions(rule) -> bool:

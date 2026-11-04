@@ -11,6 +11,11 @@ through a rule woken by its whole table is still only reported (판정 402).
     a join and a formula in a ring               refused at load
     a rule woken by its whole table              reported as a table loop, not refused
     rules that do not opt in                     no loop - their writes wake nothing
+    a join woken by a key its row is found by    stands - target_columns adds the key, the loop does not count it
+      (business key, a composite piece, map key)   (owner 11-04)
+    a join writing a finding column it lists     refused - it changes it
+    two joins taking each other's key            refused, as today - 조인 고리 거절, 소유자 11-04 ㄱ: rows that
+                                                 disagree never settle and the cut value is right for neither side
 """
 import json
 
@@ -25,7 +30,11 @@ from ledger import admin
 T = "fx"
 TABLES = {T: {"business_key": "k", "composite_key_source": ["k"],
               "column_types": {"k": "string", "a": "number", "b": "number", "c": "number", "d": "number",
-                               "t": "string", "x": "number"}}}
+                               "t": "string", "x": "number"}},
+          "fk": {"business_key": "bk", "composite_key_source": ["p", "q"], "map_key_columns": ["m"],
+                 "column_types": {c: "string" for c in ("bk", "p", "q", "m", "v", "w")}},
+          "fs": {"business_key": "sk", "composite_key_source": ["sk"],
+                 "column_types": {c: "string" for c in ("sk", "bk", "p", "q", "m", "v", "w")}}}
 NEVER = " - these rules wake each other and never settle"
 
 
@@ -114,3 +123,32 @@ def test_rules_that_do_not_opt_in_make_no_loop(rules_file):
     ring = [_stood("b", "=[c]+1"), _stood("c", "=[b]+1")]
     assert [loop[1] for loop in worker.column_loops(ring)] == [["b", "c", "b"]], "the instrument sees the ring"
     assert worker.column_loops([dict(rule, allow_chain_trigger=False) for rule in ring]) == []
+
+
+def _join_into_fk(name, key, take_into, listed):
+    return {"name": name, "enabled": True, "allow_chain_trigger": True, "target_columns": listed,
+            "on": {"table": "fs"}, "into": {"table": "fk"},
+            "derive": {"kind": "join", "join": {"on": [{"left": key, "right": key}],
+                                                "take": [{"into": take_into, "from": "v"}]}}}
+
+
+@pytest.mark.parametrize("key", ["bk", "p", "q", "m"])
+def test_a_join_woken_by_a_key_its_row_is_found_by_stands(rules_file, key):
+    _write(rules_file, _join_into_fk("take v", key, "v", ["v"]))
+    rules = worker.load_chain_rules()
+    assert [rule.get("name") for rule in rules] == ["take v", "take v:target"] and worker.refused_chain_rules() == {}
+    assert worker.column_loops(rules) == []
+
+
+def test_a_join_writing_a_finding_column_it_lists_is_refused(rules_file):
+    _write(rules_file, _join_into_fk("into bk", "bk", "bk", ["bk"]))
+    worker.load_chain_rules()
+    assert worker.refused_chain_rules()["into bk:target"] == "column_loop - fk: bk -> bk" + NEVER
+
+
+def test_two_joins_taking_each_others_key_are_refused(rules_file):
+    _write(rules_file, _join_into_fk("w by v", "v", "w", ["w"]), _join_into_fk("v by w", "w", "v", ["v"]))
+    worker.load_chain_rules()
+    said = "column_loop - fk: v -> w -> v" + NEVER
+    refused = worker.refused_chain_rules()
+    assert (refused.get("w by v:target"), refused.get("v by w:target")) == (said, said)
