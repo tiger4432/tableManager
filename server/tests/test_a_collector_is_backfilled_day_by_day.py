@@ -6,11 +6,13 @@
 🔴 A DAY IS DONE WHEN ITS FILE HAS PASSED THE INGESTION QUEUE, asked of its read's record
 (`checkpoint.read_as_written`) by the name and stat the collector wrote - the read moves the
 file to archives/ (owner 11-04, the real watcher's test below) - so the days never pile into the queue at
-once, and a day whose file FAILED stops the run and names the day.
+once, and a day whose collect or file FAILED is named in the result's failed days and the run goes on (owner 11-04,
+REVERSING 총괄 ffd5d42b7 «stop on the failed day»).
 """
 import csv
 import io
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -137,21 +139,27 @@ def test_every_day_runs_in_order_and_waits_for_its_file(workspace, monkeypatch):
     stats = _run(start, control)
 
     assert seen == expected and len(expected) == 3
-    assert stats == {"days": 3, "days_done": 3, "done_until": seen[-1][1]}
+    assert stats == {"days": 3, "days_done": 3, "failed_days": "0", "done_until": seen[-1][1]}
     assert not control.stopped
 
 
-def test_a_failed_day_stops_the_run_and_names_the_day(workspace, monkeypatch):
+def test_a_failed_day_is_named_and_the_run_goes_on(workspace, monkeypatch):
+    """REVERSES 총괄 ffd5d42b7 «a failed day stops the run» - owner 11-04 «그날에서 멈추지 말고 계속 돌리고 안 돈 날짜
+    알려줘»: the middle day's file fails, the third day still runs, and the result names the failed day and why."""
     seen = ingests(monkeypatch, [checkpoint.STATUS_DONE, checkpoint.STATUS_FAILED])
+    lines = []
     start = _two_days_ago()
-    second = cm.backfill_windows(cm.backfill_start(start))[1][0].strftime("%Y-%m-%d %H:%M")
+    windows = cm.backfill_windows(cm.backfill_start(start))
+    second = windows[1][0].strftime("%Y-%m-%d %H:%M")
 
-    with pytest.raises(retroactive.RetroactiveRefused) as refused:
-        _run(start, Control())
+    stats = retroactive._run_collector_backfill(DB, {"collector": KEY, "start": start}, lines.append, Control())
 
-    assert "the file collected for %s (KST) failed to ingest" % second in str(refused.value)
-    assert "start again from %s" % second in str(refused.value)
-    assert len(seen) == 2, "the day after the failed one never ran"
+    assert len(seen) == 3, "the day after the failed one ran"
+    assert stats["days_done"] == 2 and stats["done_until"] == seen[-1][1]
+    assert re.fullmatch(r"1: %s \(file failed to ingest: probe_\d{8}_\d{6}\.csv\)" % second,
+                        stats["failed_days"]), stats
+    assert "failed days " + stats["failed_days"] in retroactive.run_result_sentence(stats)
+    assert any(line.endswith("failed days " + stats["failed_days"]) for line in lines), lines
 
 
 def test_starting_again_from_the_failed_day_finishes_the_rest(workspace, monkeypatch):
@@ -161,7 +169,7 @@ def test_starting_again_from_the_failed_day_finishes_the_rest(workspace, monkeyp
 
     stats = _run(second, Control())
 
-    assert stats == {"days": 2, "days_done": 2, "done_until": seen[-1][1]}
+    assert stats == {"days": 2, "days_done": 2, "failed_days": "0", "done_until": seen[-1][1]}
     assert seen[0][0] == second + ":00"
 
 
@@ -172,7 +180,7 @@ def test_a_stop_lands_between_days(workspace, monkeypatch):
 
     stats = _run(start, control)
 
-    assert stats == {"days": 3, "days_done": 1, "done_until": cm.backfill_text(
+    assert stats == {"days": 3, "days_done": 1, "failed_days": "0", "done_until": cm.backfill_text(
         cm.backfill_start(start) + cm.BACKFILL_SLICE)}
     assert control.stopped and len(seen) == 1
 
@@ -186,7 +194,7 @@ def test_a_stop_while_a_file_waits_ends_without_counting_that_day(workspace, mon
 
     stats = _run(start, control)
 
-    assert stats == {"days": 3, "days_done": 0, "done_until": start}
+    assert stats == {"days": 3, "days_done": 0, "failed_days": "0", "done_until": start}
 
 
 class Watcher(Control):
@@ -209,7 +217,10 @@ class Watcher(Control):
         return self.stopped
 
 
-def test_every_day_is_read_by_the_real_watcher_and_the_run_goes_on(workspace, monkeypatch):
+def _real_backfill(workspace, monkeypatch, first_day=None):
+    """The backfill against the real watcher (`Watcher`) on a sqlite memory db -> (stats or the refusal, the read
+    records [(filepath, status, file_mtime)], the control). `first_day(attempt)`, when given, runs inside the first
+    day's write on each attempt the watcher makes at it - it may raise."""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
@@ -230,6 +241,17 @@ def test_every_day_is_read_by_the_real_watcher_and_the_run_goes_on(workspace, mo
     monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: {TABLE: info})
     monkeypatch.setattr(directory_watcher, "SessionLocal", factory)
     monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(workspace / "ingestion_settings.json"))
+    if first_day is not None:
+        real, files, attempts = directory_watcher.IngestionHandler._send_to_upsert, [], []
+
+        def send(self, *a, **k):
+            name = k.get("filename")
+            files.append(name) if name not in files else None
+            if name == files[0]:
+                attempts.append(name)
+                first_day(len(attempts))
+            return real(self, *a, **k)
+        monkeypatch.setattr(directory_watcher.IngestionHandler, "_send_to_upsert", send)
     folder = os.path.join(str(workspace), "ingestion_workspace", TABLE)
     for sub in ("raws", "archives", "err"):
         os.makedirs(os.path.join(folder, sub), exist_ok=True)
@@ -237,19 +259,61 @@ def test_every_day_is_read_by_the_real_watcher_and_the_run_goes_on(workspace, mo
                                                  default_table_name=TABLE, heavy_lane=FakeLane())
     control = Watcher(handler, os.path.join(folder, "raws"))
     db = factory()
-    start = _two_days_ago()
     try:
-        stats = retroactive._run_collector_backfill(db, {"collector": KEY, "start": start}, lambda m: None, control)
-        read = db.query(models.FileIngestionLog.filepath, models.FileIngestionLog.status).all()
+        try:
+            got = retroactive._run_collector_backfill(db, {"collector": KEY, "start": _two_days_ago()},
+                                                      lambda m: None, control)
+        except retroactive.RetroactiveRefused as e:
+            got = e
+        read = db.query(models.FileIngestionLog.filepath, models.FileIngestionLog.status,
+                        models.FileIngestionLog.file_mtime).order_by(models.FileIngestionLog.id).all()
     finally:
         db.close()
         engine.dispose()
         retire_dynamic_model(TABLE)
+    return got, read, control
 
-    assert read and {s for _p, s in read} == {"SUCCESS"}, read              # canary: the watcher read the first day
-    assert all(os.sep + "archives" + os.sep in p for p, _s in read), read   # ... under a path the collector never wrote
+
+def test_every_day_is_read_by_the_real_watcher_and_the_run_goes_on(workspace, monkeypatch):
+    stats, read, control = _real_backfill(workspace, monkeypatch)
+
+    assert read and {s for _p, s, _m in read} == {"SUCCESS"}, read           # canary: the watcher read the first day
+    assert all(os.sep + "archives" + os.sep in p for p, _s, _m in read), read  # ... under a path never written
     assert stats["days_done"] == 3 and not control.stopped, (stats, control.looks, read)
     assert len(read) == 3, read
+
+
+def test_a_day_whose_file_stayed_locked_into_err_is_a_failed_day(workspace, monkeypatch):
+    """Locked through every attempt: the watcher moves the file to err/ and records a FAILED with no stamp; nothing
+    reads it again by itself, so it ends that day as any failed file does (owner 11-04 «2 ㄴ») - named, and the run
+    goes on. Before, the wait never saw it and waited until stopped."""
+    # the day's own wait, as shipped: a file name carries its second, and a day waits >= 1 s, so no two days share one
+    monkeypatch.setattr(retroactive, "BACKFILL_POLL_SECONDS", 1)
+
+    def locked(attempt):
+        if attempt <= 3:                                     # the watcher's three attempts at the first day
+            raise PermissionError("locked by another process")
+    stats, read, control = _real_backfill(workspace, monkeypatch, locked)
+
+    first = cm.backfill_windows(cm.backfill_start(_two_days_ago()))[0][0].strftime("%Y-%m-%d %H:%M")
+    assert (os.sep + "err" + os.sep in read[0][0], read[0][1], read[0][2]) == (True, "FAILED", None), read  # the shape
+    assert not control.stopped and stats["days_done"] == 2, (stats, control.looks, read)
+    assert re.fullmatch(r"1: %s \(file failed to ingest: probe_\d{8}_\d{6}\.csv\)" % first, stats["failed_days"])
+
+
+def test_a_day_whose_file_waited_out_a_lock_is_waited_for_and_goes_in(workspace, monkeypatch):
+    """Waited out another session's lock: a FAILED with no stamp too, but the file stays where it lies and the next
+    sweep reads it - the run waits and goes on."""
+    import directory_watcher
+
+    def once(attempt):
+        if attempt == 1:
+            raise directory_watcher.LockWaitedOut("another session holds the table")
+    stats, read, control = _real_backfill(workspace, monkeypatch, once)
+
+    assert [s for _p, s, _m in read][:2] == ["FAILED", "SUCCESS"] and read[0][2] is None, read   # the shape
+    assert os.sep + "raws" + os.sep in read[0][0], read
+    assert stats["days_done"] == 3 and not control.stopped, (stats, control.looks, read)
 
 
 @pytest.mark.pg
@@ -287,8 +351,9 @@ def test_the_count_is_the_number_of_days(workspace):
         3, "days to collect", retroactive.COUNT_EXACT)
 
 
-def test_a_script_that_raises_stops_the_run_and_names_the_day(workspace, monkeypatch):
-    """총괄 69aad666e B: a collect that raised ended the run with no day - any failure names it."""
+def test_a_script_that_raises_is_named_and_the_run_goes_on(workspace, monkeypatch):
+    """총괄 69aad666e B: a collect that raised ended the run with no day - any failure names it. Since owner 11-04 the
+    run goes on past it (REVERSES 총괄 ffd5d42b7)."""
     import run_auto_update
     ingests(monkeypatch, [])
     real, calls = run_auto_update.GenericScriptRunnerCollector.execute, []
@@ -302,12 +367,10 @@ def test_a_script_that_raises_stops_the_run_and_names_the_day(workspace, monkeyp
     start = _two_days_ago()
     second = cm.backfill_windows(cm.backfill_start(start))[1][0].strftime("%Y-%m-%d %H:%M")
 
-    with pytest.raises(retroactive.RetroactiveRefused) as refused:
-        _run(start, Control())
+    stats = _run(start, Control())
 
-    assert ("collecting %s (KST) failed (RuntimeError: the source is down)" % second
-            in str(refused.value))
-    assert "start again from %s" % second in str(refused.value)
+    assert len(calls) == 3 and stats["days_done"] == 2, stats
+    assert stats["failed_days"] == "1: %s (collecting failed: RuntimeError: the source is down)" % second
 
 
 def test_a_schedule_the_scheduler_cannot_read_is_refused_before_anything_runs(workspace):

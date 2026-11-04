@@ -4,8 +4,8 @@
 
 🔴 THE LAST WINDOW OF A RUN THAT REACHED THE END IS CUT AT ITS «NOW», so start + days is
 tomorrow's midnight - in the future, which the judge refuses. Done and cancelled runs write
-`done_until`; a failed run writes no result, and its finished days (one progress per day)
-name the failed day. Whatever the answer, running again from it leaves no gap and no overlap.
+`done_until`; a run that crashed writes no result, and its days got through (one progress per
+day) name where it stopped. Whatever the answer, running again from it leaves no gap and no overlap.
 """
 import json
 from datetime import datetime, timedelta, timezone
@@ -76,25 +76,21 @@ def test_a_run_cancelled_after_two_days_picks_up_at_the_third_days_midnight(work
     _no_gap_no_overlap(_windows(START, NOW)[:2], "2026-09-27")
 
 
-def test_a_run_that_failed_on_the_third_day_picks_up_at_that_day(workspace, monkeypatch):
+def test_a_run_with_a_failed_third_day_goes_to_the_end_and_picks_up_after_it(workspace, monkeypatch):
+    """Owner 11-04 «그날에서 멈추지 말고 계속 돌리고 안 돈 날짜 알려줘» (REVERSES 총괄 ffd5d42b7): the failed day is named,
+    the run goes on, and the next run picks up after the last day it got through."""
     ingests(monkeypatch, [checkpoint.STATUS_DONE, checkpoint.STATUS_DONE, checkpoint.STATUS_FAILED])
-    control = Control()
 
-    with pytest.raises(retroactive.RetroactiveRefused):
-        _run(control)
+    stats = _run(Control())
 
-    processed = max(p for p, _t in control.progressed if p is not None)
-    assert processed == 2
-    assert _next(retroactive.RUN_FAILED, None, processed) == "2026-09-27"
+    assert stats["days_done"] == 4 and stats["failed_days"].startswith("1: 2026-09-27 00:00 (file failed to ingest: ")
+    assert _next(retroactive.RUN_DONE, stats, 5) == "2026-09-29 13:05:42"
+
+
+def test_a_run_that_crashed_picks_up_at_its_progress(workspace, monkeypatch):
+    """A run that raised out of the operation (FAILED, no result): its progress - one per day it got through."""
+    assert _next(retroactive.RUN_FAILED, None, 2) == "2026-09-27"
     _no_gap_no_overlap(_windows(START, NOW)[:2], "2026-09-27")
-
-
-def test_no_day_done_picks_up_at_the_start_as_written(workspace, monkeypatch):
-    ingests(monkeypatch, [checkpoint.STATUS_FAILED])
-    control = Control()
-    with pytest.raises(retroactive.RetroactiveRefused):
-        _run(control)
-
     assert _next(retroactive.RUN_FAILED, None, 0) == START
     assert _next(retroactive.RUN_FAILED, None, None) == START
 

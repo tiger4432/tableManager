@@ -329,16 +329,24 @@ def read_as_written(db, table_name: str, filepath: str, file_stat):
     How the read of the file written at `filepath` with that stamp ended - SUCCESS, FAILED, or None while it has
     not - asked of its read's record by the name it was written under: a raws file is read, then moved to archives/
     under a name the move picks, and its record and checklist row carry that path, never the one written (owner 11-04
-    «백필로 돌리면 10분 지나도 안 끝나서»: a backfill asked `checked` by the raws path and waited forever)."""
+    «백필로 돌리면 10분 지나도 안 끝나서»: a backfill asked `checked` by the raws path and waited forever).
+
+    A FAILED with no stamp ends it too when its record's path is not where the file was written - a file locked
+    through every attempt is moved to err/ and nothing reads it again by itself (owner 11-04 «2 ㄴ»). One that waited
+    out a lock stays where it lies (its record's path is the written one) and the next sweep reads it: not an end."""
     from database.models import FileIngestionLog as Log
 
     if not table_name or not filepath or not file_stat:
         return None
-    for mtime, size, status in (db.query(Log.file_mtime, Log.file_size, Log.status)
-                                .filter(Log.table_name == table_name, Log.filename == os.path.basename(filepath),
-                                        Log.status.in_(("SUCCESS", STATUS_FAILED)))
-                                .order_by(Log.id.desc()).limit(CHECKED_BATCH_SIZE)):
-        if mtime is not None and (_utc(mtime), size) == (_utc(file_stat[0]), file_stat[1]):
+    for mtime, size, status, path in (db.query(Log.file_mtime, Log.file_size, Log.status, Log.filepath)
+                                      .filter(Log.table_name == table_name,
+                                              Log.filename == os.path.basename(filepath),
+                                              Log.status.in_(("SUCCESS", STATUS_FAILED)))
+                                      .order_by(Log.id.desc()).limit(CHECKED_BATCH_SIZE)):
+        if mtime is None:
+            if status == STATUS_FAILED and path and not _same_path(path, os.path.abspath(filepath)):
+                return status
+        elif (_utc(mtime), size) == (_utc(file_stat[0]), file_stat[1]):
             return status
     return None
 

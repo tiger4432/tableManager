@@ -1789,8 +1789,9 @@ def _enrichment_rule(name):
 # answers: a refusal, or a queued run that failed in the child.
 # ---------------------------------------------------------------------------
 
-#: How often a backfill asks whether the day's file has been ingested (and whether to stop).
-BACKFILL_POLL_SECONDS = 5
+#: How often a backfill asks whether the day's file has been ingested (and whether to stop) - a day is mostly this wait
+#: (owner 11-04 1 ㄱ: 5 s made a 7-day run 41 s on the box, its files in 1-3 s).
+BACKFILL_POLL_SECONDS = 1
 
 
 def _backfill_target(params):
@@ -1926,8 +1927,10 @@ def _run_retype_column(db, params, log, control=None):
 
 def _run_collector_backfill(db, params, log, control=None):
     """One day at a time: fill the script with that day's window, run it, wait until its
-    file has passed the ingestion queue, then the next day. A day whose file fails stops
-    the run and names the day; starting again from that day finishes it."""
+    file has passed the ingestion queue, then the next day. A day whose collect raised or whose
+    file failed is named in `failed_days` with why, and the run goes on to the next day (owner
+    11-04 «그날에서 멈추지 말고 계속 돌리고 안 돈 날짜 알려줘» - REVERSES 총괄 ffd5d42b7 «stop on the
+    failed day»). `done_until` is the end of the last day the run got through, failed or not."""
     import collector_markers
     import paths
     import run_auto_update
@@ -1939,30 +1942,38 @@ def _run_collector_backfill(db, params, log, control=None):
         filename_prefix=header["filename_prefix"], server_dir=paths.DATA_ROOT,
         window=header["window"], window_format=header["window_format"])
     hook = _checkpoint(control)
-    done = 0
+    reached, done, failed = 0, 0, []
     for window in windows:
         day = window[0].strftime("%Y-%m-%d %H:%M")
         collector.run_window = window
         try:
             written = collector.execute()
         except Exception as e:                                      # noqa: BLE001
-            raise _day_refused(day, "collecting %s (KST) failed (%s: %s)"
-                               % (day, type(e).__name__, e)) from e
-        if written and not _wait_until_ingested(db, table, written, day, hook, done,
-                                                len(windows)):
+            written, why = None, "collecting failed: %s: %s" % (type(e).__name__, e)
+        else:
+            why = None
+            if written:
+                status = _wait_until_ingested(db, table, written, hook, reached, len(windows))
+                if status is None:
+                    break
+                if status != "SUCCESS":
+                    why = "file failed to ingest: %s" % os.path.basename(written)
+        reached += 1
+        if why:
+            failed.append("%s (%s)" % (day, why))
+        else:
+            done += 1
+        log(f"[collector_backfill] {params['collector']} {day} (KST) - day {reached} of {len(windows)} "
+            + ("NOT collected - " + why if why else "ingested" if written else "had nothing to collect"))
+        if hook and hook(reached, len(windows)):
             break
-        done += 1
-        log(f"[collector_backfill] {params['collector']} {day} (KST) - day {done} of "
-            f"{len(windows)} " + ("ingested" if written else "had nothing to collect"))
-        if hook and hook(done, len(windows)):
-            break
-    # 🔴 [총괄 3a1446982] WHERE THE NEXT RUN PICKS UP: the end of the last finished window -
-    #    for a run that reached the end that is the moment its last window was cut at, which
-    #    start + days cannot give.
+    # 🔴 [총괄 3a1446982] WHERE THE NEXT RUN PICKS UP: the end of the last day the run got through.
     stats = {"days": len(windows), "days_done": done,
-             "done_until": collector_markers.backfill_text(
-                 windows[done - 1][1] if done else start)}
-    _final_progress(control, done, stats)
+             "failed_days": "%d%s" % (len(failed), ": " + " · ".join(failed) if failed else ""),
+             "done_until": collector_markers.backfill_text(windows[reached - 1][1] if reached else start)}
+    if failed:
+        log("[collector_backfill] %s - failed days %s" % (params["collector"], stats["failed_days"]))
+    _final_progress(control, reached, stats)
     return stats
 
 
@@ -1971,8 +1982,8 @@ def _collector_backfill_next_start(run: dict):
     reads (총괄 3a1446982, 소유자 「다시 돌리니 처음부터 다시 도네」). The screen prefills Start
     with it; the operator may change it. None while the run is still going.
 
-    DONE and CANCELLED wrote `done_until`. FAILED writes no result, so its finished days -
-    `processed_rows`, one per day - name the failed day's own start. A DONE record from
+    DONE and CANCELLED wrote `done_until`. FAILED (the run raised) writes no result, so the days it
+    got through - `processed_rows`, one per day - name where it stopped. A DONE record from
     before `done_until` does not say where its last window was cut, so it says nothing.
     """
     import collector_markers
@@ -1992,17 +2003,9 @@ def _collector_backfill_next_start(run: dict):
         start + collector_markers.BACKFILL_SLICE * int(run.get("processed_rows") or 0))
 
 
-def _day_refused(day, what):
-    """The one sentence a day-by-day backfill stops on, whatever failed: what, and the day to
-    start again from (총괄 69aad666e B - a script that raised used to end the run with no day)."""
-    return RetroactiveRefused("%s - fix it, then start again from %s" % (what, day))
-
-
-def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
-    """True once the file has passed the ingestion queue, False when a stop was asked while
-    waiting. A file that FAILED stops the run by name. Asked of its read (`checkpoint.read_as_written`), by the
-    name and stat the collector wrote - the read moved it to another path."""
-    import os
+def _wait_until_ingested(db, table, written, hook, done, total):
+    """How the file's read ended - SUCCESS or FAILED - or None when a stop was asked while waiting. Asked of its read
+    (`checkpoint.read_as_written`), by the name and stat the collector wrote - the read moved it to another path."""
     import time
 
     from ingestion import checkpoint
@@ -2011,13 +2014,10 @@ def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
     while True:
         status = checkpoint.read_as_written(db, table, written, stat)
         db.rollback()                      # the next look reads what has committed since
-        if status in ("SUCCESS", checkpoint.STATUS_FAILED):
-            if status == checkpoint.STATUS_FAILED:
-                raise _day_refused(day, "the file collected for %s (KST) failed to ingest (%s)"
-                                   % (day, os.path.basename(written)))
-            return True
+        if status is not None:
+            return status
         if hook and hook(done, total):
-            return False
+            return None
         time.sleep(BACKFILL_POLL_SECONDS)
 
 
@@ -2767,9 +2767,10 @@ OPERATIONS = {
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
-        "commit_granularity": ("one day at a time - the day's file is ingested (the file "
-                               "checkpoint says DONE) before the next day runs; a stop lands "
-                               "between days, and a failed day stops the run and names it"),
+        "commit_granularity": ("one day at a time - the day's file is read (its read's record says "
+                               "SUCCESS or FAILED) before the next day runs; a stop lands between "
+                               "days, and a failed day is named in the result's failed days while "
+                               "the run goes on"),
         "cli_only": [],
     },
     "retype_column": {
@@ -4545,7 +4546,7 @@ RESULT_NAMES = {
     "cells_changed": "cells changed", "cells_examined": "cells examined",
     "confirmed": "confirmed", "written_cells": "cells written", "queue_size": "queue size",
     "batches": "batches", "molecules": "molecules", "stopped": "stopped early",
-    "days": "days in the window", "days_done": "days collected",
+    "days": "days in the window", "days_done": "days collected", "failed_days": "failed days",
     "done_until": "collected up to (KST)", "key_index": "index on the keys",
     "probe_batch_fallbacks": "batch -> key by key (keys)",
     "every_page_pays": "every page pays:",
