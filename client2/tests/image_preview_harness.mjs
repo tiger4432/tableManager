@@ -12,6 +12,7 @@
 //   W2 the word link takes the link cell (owner 11-04)         L1 "/..." and http(s): the value is the link, a new tab
 //   L2 javascript:, an old file path: text, no address         L3 a press on the link is not the cell's
 //   L4 a changed value draws anew                              G3 grid: a link column is a text column but for its cell
+//   L5 a «/» value the browser opens on another host (tab, //host, /\host) is text
 // 「같은 칸 다시 -> 새 요청 0」 is the browser's cache under the server's Cache-Control: measured in the
 // browser, not here. Timers, fetch and the window are injected; nothing waits on a clock.
 //
@@ -273,7 +274,12 @@ async function suite(P, C) {
       C.columnTypeParts('link').cellRenderer === C.LinkCellRenderer, String(C.columnTypeParts('link').cellRenderer));
   }
   {
-    // The link cell (owner 11-04): the value as written is the link, in a new tab; only "/..." and http(s) are links.
+    // The link cell (owner 11-04): the value as written is the link, in a new tab; the address is the browser's parse of
+    // it - an http(s) address, or a «/» value that stays on the page's origin (lead 11-04, C). Node's URL is the same
+    // WHATWG parser the browser uses: it drops tabs and newlines and reads «\» as «/» for http(s).
+    const hadLocation = Object.prototype.hasOwnProperty.call(globalThis, 'location');
+    const heldLocation = globalThis.location;
+    globalThis.location = { origin: BASE };
     const drawn = (value) => {
       const renderer = new C.LinkCellRenderer();
       renderer.init({ value, eGridCell: { ownerDocument: makeDoc() } });
@@ -282,19 +288,26 @@ async function suite(P, C) {
       const t = gui.querySelectorAll('.cell-link-text')[0];
       return { renderer, a, t, href: a.attrs.href, link: a.textContent, text: t.textContent, shown: a.style.display !== 'none' };
     };
-    const linked = ['/reports/W1.html', 'https://box/r?a=1&b=2', 'HTTP://box/x'].map(drawn);
-    say('L1 a path on our server or an http(s) address is the link: the value as written, a new tab, no opener',
-      linked.every((d, i) => d.shown && d.href === ['/reports/W1.html', 'https://box/r?a=1&b=2', 'HTTP://box/x'][i]
-        && d.link === d.href && d.text === '' && d.a.attrs.target === '_blank' && d.a.attrs.rel === 'noopener'),
+    const LINKED = { '/reports/W1.html': `${BASE}/reports/W1.html`, '/home/u/W1.html': `${BASE}/home/u/W1.html`,
+      'https://ex.com/a': 'https://ex.com/a', 'https://box/r?a=1&b=2': 'https://box/r?a=1&b=2', 'HTTP://box/x': 'http://box/x' };
+    const linked = Object.keys(LINKED).map(drawn);
+    say('L1 an http(s) address or a path on our origin is the link: the value as written, the parsed address, a new tab, no opener',
+      linked.every((d, i) => d.shown && d.href === Object.values(LINKED)[i] && d.link === Object.keys(LINKED)[i]
+        && d.text === '' && d.a.attrs.target === '_blank' && d.a.attrs.rel === 'noopener'),
       JSON.stringify(linked.map(({ href, link, text, shown }) => ({ href, link, text, shown }))));
-    const plain = ['javascript:alert(1)', ' JavaScript:alert(1)', 'C:\\data\\reports\\W1.html', 'data:text/html,x', 'reports/W1.html']
-      .map(drawn);
+    const PLAIN = ['javascript:alert(1)', ' JavaScript:alert(1)', 'C:\\data\\reports\\W1.html', 'data:text/html,x', 'reports/W1.html'];
+    const plain = PLAIN.map(drawn);
     const blank = [null, '', '   '].map(drawn);
     say('L2 anything else - javascript:, an old file path - is drawn as text with no address; a blank cell draws nothing',
-      plain.every((d, i) => !d.shown && d.href === undefined && d.link === ''
-        && d.text === ['javascript:alert(1)', ' JavaScript:alert(1)', 'C:\\data\\reports\\W1.html', 'data:text/html,x', 'reports/W1.html'][i])
+      plain.every((d, i) => !d.shown && d.href === undefined && d.link === '' && d.text === PLAIN[i])
         && blank.every((d) => !d.shown && d.href === undefined && d.link === '' && d.text === ''),
       JSON.stringify([...plain, ...blank].map(({ href, link, text, shown }) => ({ href, link, text, shown }))));
+    // (lead 11-04, C) values that start with «/» but the browser opens on another host.
+    const ELSEWHERE = ['/\t/evil.example', '/\n/evil.example', '//evil.example/x', '/\\evil.example', '/\\/evil.example'];
+    const elsewhere = ELSEWHERE.map(drawn);
+    say('L5 another host spelled as a path - a tab or newline the browser drops, //host, /\\host - is text',
+      elsewhere.every((d, i) => !d.shown && d.href === undefined && d.text === ELSEWHERE[i]),
+      JSON.stringify(elsewhere.map(({ href, text, shown }) => ({ href, text, shown }))));
     const d = drawn('/reports/W1.html');
     const stopped = [];
     const prevented = [];
@@ -309,8 +322,9 @@ async function suite(P, C) {
     d.renderer.refresh({ value: '/reports/W2.html' });
     say('L4 a cell whose value changes draws the new value: a link that turns into javascript: loses its address',
       after.href === undefined && after.link === '' && after.text === 'javascript:alert(1)'
-        && d.a.attrs.href === '/reports/W2.html' && d.t.textContent === '',
+        && d.a.attrs.href === `${BASE}/reports/W2.html` && d.t.textContent === '',
       JSON.stringify({ after, back: d.a.attrs.href }));
+    if (hadLocation) globalThis.location = heldLocation; else delete globalThis.location;
   }
   {
     // (lead, answer to the click question) the cell itself selects and edits as today; only the mark opens.
@@ -442,10 +456,15 @@ const failures = [];
       '  if (type === IMAGE_TYPE) return', '  if (true) return'),
     M('C6', 'a press anywhere on the cell opens the window', 'N1', COLUMN,
       "    this.mark.addEventListener('click', (e) => {", "    this.gui.addEventListener('click', (e) => {"),
-    M('K1', 'no guard - javascript: is drawn as a link', 'L2', COLUMN,
-      '  return /^(\\/|https?:\\/\\/)/i.test(text) ? text : null;', '  return text;'),
-    M('K2', 'the guard reads the scheme anywhere in the value', 'L2', COLUMN,
-      '/^(\\/|https?:\\/\\/)/i', '/(\\/|https?:\\/\\/)/i'),
+    M('K1', 'no guard - javascript: is drawn as a link', 'L2', COLUMN, '  let url;\n', '  return text;\n  let url;\n'),
+    M('K2', 'a value not starting with «/» is taken as our path', 'L2', COLUMN,
+      "  return text.startsWith('/') && url.origin === origin ? url.href : null;",
+      '  return url.origin === origin ? url.href : null;'),
+    M('K7', 'no origin comparison - a «/» value that the browser opens on another host is a link', 'L5', COLUMN,
+      "  return text.startsWith('/') && url.origin === origin ? url.href : null;",
+      "  return text.startsWith('/') ? url.href : null;"),
+    M('K8', 'back to the old regex - any leading slash, the value as written', 'L5', COLUMN,
+      '  let url;\n', '  return /^(\\/|https?:\\/\\/)/i.test(text) ? text : null;\n  let url;\n'),
     M('K3', 'the link opens in this tab', 'L1', COLUMN, "    this.link.setAttribute('target', '_blank');\n", ''),
     M('K4', 'a press on the link starts a range drag', 'L3', COLUMN,
       "    this.link.addEventListener('pointerdown', (e) => e.stopPropagation());\n", ''),

@@ -17,12 +17,16 @@ export function columnTypeParts(type) {
   return {};
 }
 
-/** The address a link cell may open: a path on our server or an http(s) address. Anything else - javascript:,
- *  a file path written before the type - is null and is drawn as text (lead 11-04, a guard that keeps data). */
-export function linkHref(value) {
-  if (isBlank(value)) return null;
+/** The address a link cell opens, as the browser's own parser reads it: an http(s) address, or a value starting
+ *  with «/» that lands on our own origin. Anything else - javascript:, a file path written before the type, «//host»,
+ *  «/\host», a tab or newline the browser drops - is null and is drawn as text (lead 11-04, a guard that keeps data). */
+export function linkHref(value, origin = globalThis.location && globalThis.location.origin) {
+  if (isBlank(value) || !origin) return null;
   const text = String(value);
-  return /^(\/|https?:\/\/)/i.test(text) ? text : null;
+  let url;
+  try { url = new URL(text, origin); } catch { return null; }
+  if (/^https?:\/\//i.test(text)) return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  return text.startsWith('/') && url.origin === origin ? url.href : null;
 }
 
 export class ImageCellRenderer {

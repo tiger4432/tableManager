@@ -1455,7 +1455,8 @@ export const FLOORS = new Map([
   // nothing, one at a time, the last let go, the server's refusal said, two previews apart; the grid
   // changes only its image columns.
   // 31 -> 43 (owner 11-04, W2 L1-L4 G3 K1-K6): a link cell - "/..." and http(s) open in a new tab, anything else is text.
-  ['image_preview_harness.mjs', 43],
+  // 43 -> 46 (lead 11-04, C: L5 K7 K8): the address is the browser's parse - a «/» value on another host is text.
+  ['image_preview_harness.mjs', 46],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
