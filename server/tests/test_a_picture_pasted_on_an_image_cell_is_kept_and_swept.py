@@ -91,7 +91,7 @@ def _post_with(client, monkeypatch, tmp_path, receivers):
 
 def test_the_size_limit_is_max_mb_to_the_byte(client, tables, tmp_path, monkeypatch):
     monkeypatch.setattr(image_sources, "load_sources", lambda: _sources(tmp_path))
-    limit = image_sources.receive_limit(_sources(tmp_path)["up0"])
+    limit = image_sources.receive_settings("up0", _sources(tmp_path)["up0"])[0]
     assert _post(client, PNG + b"\x00" * (limit - len(PNG))).status_code == 200
     over = _post(client, PNG + b"\x00" * (limit - len(PNG) + 1))
     assert over.status_code == 413 and "at most 0.01 MB" in over.json()["detail"]
@@ -176,7 +176,7 @@ def test_one_held_again_is_taken_off_and_counted_afresh(tables, tmp_path):
 
 
 def test_a_name_it_did_not_make_and_a_link_out_of_the_root_are_not_touched(tables, tmp_path):
-    db, sources = tables, _sources(tmp_path, keep_days=0)
+    db, sources = tables, _sources(tmp_path, keep_days=1)
     _kept(tmp_path, sources)
     by_hand = tmp_path / "up0" / "a.png"
     by_hand.write_bytes(PNG)
@@ -186,15 +186,21 @@ def test_a_name_it_did_not_make_and_a_link_out_of_the_root_are_not_touched(table
     outside.mkdir(parents=True)
     far = outside / ("f" * 32 + ".png")
     far.write_bytes(PNG)
-    link = tmp_path / "up0" / "im_b"
-    if os.name == "nt":
-        import _winapi
-        _winapi.CreateJunction(str(tmp_path / "outside"), str(link))
-    else:
-        os.symlink(str(tmp_path / "outside"), str(link))
-    said = image_sources.sweep(db, DAY, sources)
+    day_folder = tmp_path / "outside2"                          # a date folder under the root that leads out of it
+    day_folder.mkdir()
+    farther = day_folder / ("e" * 32 + ".png")
+    farther.write_bytes(PNG)
+    for target, link in ((tmp_path / "outside", tmp_path / "up0" / "im_b"),
+                         (day_folder, tmp_path / "up0" / "im_a" / "2026-11-06")):
+        if os.name == "nt":
+            import _winapi
+            _winapi.CreateJunction(str(target), str(link))
+        else:
+            os.symlink(str(target), str(link))
+    image_sources.sweep(db, DAY, sources)
+    said = image_sources.sweep(db, DAY + datetime.timedelta(days=1), sources)
     assert said["listed"] == 1 and said["deleted"] == 1
-    assert by_hand.exists() and wrong_suffix.exists() and far.exists()
+    assert by_hand.exists() and wrong_suffix.exists() and far.exists() and farther.exists()
     assert set(_marks(tmp_path)) == set()
 
 
@@ -214,15 +220,17 @@ def test_no_receiver_sweeps_nothing(tables, tmp_path, caplog):
 
 
 def test_one_held_by_another_tables_image_column_stays(tables, tmp_path):
-    db, sources = tables, _sources(tmp_path, keep_days=0)
+    db, sources = tables, _sources(tmp_path, keep_days=1)
     ref = _kept(tmp_path, sources)
     _hold(db, "im_b", "shot", ref)
-    assert image_sources.sweep(db, DAY, sources)["deleted"] == 0 and _exists(tmp_path, ref)
+    image_sources.sweep(db, DAY, sources)
+    assert image_sources.sweep(db, DAY + datetime.timedelta(days=9), sources)["deleted"] == 0 and _exists(tmp_path, ref)
 
 
 def test_a_file_made_after_the_listing_is_not_this_passes(tables, tmp_path, monkeypatch):
-    db, sources = tables, _sources(tmp_path, keep_days=0)
+    db, sources = tables, _sources(tmp_path, keep_days=1)
     _kept(tmp_path, sources)
+    image_sources.sweep(db, DAY, sources)
     late = []
     asked = image_sources.referenced
 
@@ -230,7 +238,7 @@ def test_a_file_made_after_the_listing_is_not_this_passes(tables, tmp_path, monk
         late.append(_kept(tmp_path, sources))
         return asked(*a, **k)
     monkeypatch.setattr(image_sources, "referenced", _upload_meanwhile)
-    assert image_sources.sweep(db, DAY, sources)["deleted"] == 1
+    assert image_sources.sweep(db, DAY + datetime.timedelta(days=1), sources)["deleted"] == 1
     assert _exists(tmp_path, late[0]) and late[0].split(":", 1)[1] not in _marks(tmp_path)
 
 
@@ -248,17 +256,87 @@ def test_a_removed_picture_says_so_and_others_keep_todays_sentence(tmp_path):
 
 @pytest.mark.pg
 def test_the_held_question_on_postgresql_across_the_batch_edge(pg_session, monkeypatch):
-    """Production is PostgreSQL: the same `referenced` (IN, one query for both dialects) at 1,000 and 1,001 refs."""
+    """Production is PostgreSQL: the same `referenced` (one LIKE read a column, both dialects) at 1,000 and 1,001
+    names, one held under another source name."""
     db = pg_session
     for name, config in TABLES.items():
         monkeypatch.setitem(crud.TABLE_CONFIG, name, config)
     models.init_dynamic_models(crud.TABLE_CONFIG)
     from database.database import Base
     Base.metadata.create_all(bind=db.get_bind(), tables=[models.DYNAMIC_TABLES[t].__table__ for t in TABLES])
-    refs = ["up0:im_a/2026-11-05/%032x.png" % n for n in range(1001)]
-    _hold(db, "im_a", "pic", refs[0], key="r0")
-    _hold(db, "im_a", "pic", refs[999], key="r999")
-    _hold(db, "im_b", "shot", refs[1000], key="r1000")
-    assert image_sources.referenced(db, refs[:1000]) == {refs[0], refs[999]}
-    assert image_sources.referenced(db, refs) == {refs[0], refs[999], refs[1000]}
-    assert image_sources.referenced(db, refs[1:999]) == set()
+    names = ["im_a/2026-11-05/%032x.png" % n for n in range(1001)]
+    _hold(db, "im_a", "pic", "up0:" + names[0], key="r0")
+    _hold(db, "im_a", "pic", "up0:" + names[999], key="r999")
+    _hold(db, "im_b", "shot", "renamed:" + names[1000], key="r1000")
+    _hold(db, "im_b", "shot", "photos:p/1.png", key="r1")
+    assert image_sources.referenced(db, names[:1000]) == ({names[0], names[999]}, [])
+    assert image_sources.referenced(db, names) == ({names[0], names[999], names[1000]}, [])
+    assert image_sources.referenced(db, names[1:999]) == (set(), [])
+
+
+# ── C's six cells (lead 11-05) ──
+
+def test_a_renamed_receiving_source_or_a_full_path_still_holds_its_picture(tables, tmp_path):
+    db, sources = tables, _sources(tmp_path, keep_days=1)
+    by_name, by_path = _kept(tmp_path, sources), _kept(tmp_path, sources)
+    _hold(db, "im_a", "pic", by_name, key="r1")
+    _hold(db, "im_b", "shot", str(tmp_path / "up0" / by_path.split(":", 1)[1]).replace("/", "\\"), key="r2")
+    renamed = {"pics": dict(sources["up0"]), "photos": sources["photos"]}
+    said = image_sources.sweep(db, DAY + datetime.timedelta(days=9), renamed)
+    assert (said["unreferenced"], said["deleted"]) == (0, 0) and _exists(tmp_path, by_name) and _exists(tmp_path, by_path)
+
+
+def test_an_image_column_this_process_cannot_read_stops_the_deleting(tables, tmp_path, monkeypatch, caplog):
+    db, sources = tables, _sources(tmp_path, keep_days=1)
+    ref = _kept(tmp_path, sources)
+    monkeypatch.setitem(crud.TABLE_CONFIG, "im_ghost", {"business_key": "k", "column_types": {"k": "string", "g": "image"}})
+    image_sources.sweep(db, DAY, sources)
+    with caplog.at_level("WARNING"):
+        said = image_sources.sweep(db, DAY + datetime.timedelta(days=9), sources)
+    assert said == {"unread": ["im_ghost.g"]} and _exists(tmp_path, ref)
+    assert "image column(s) im_ghost.g could not be read" in caplog.text
+
+
+def test_with_keep_days_absent_a_missing_received_file_says_what_todays_sentence_says(tmp_path):
+    with pytest.raises(image_sources.ImageRefused) as missing:
+        image_sources.resolve("up0:im_a/2026-11-01/%s.png" % ("a" * 32), _sources(tmp_path, keep_days=None))
+    assert str(missing.value).startswith("no file ") and "removed" not in str(missing.value)
+
+
+@pytest.mark.parametrize("keep_days", ["7d", 0, -1, 1.5, True])
+def test_a_keep_days_it_does_not_take_is_said_and_nothing_deleted(tables, tmp_path, caplog, keep_days):
+    db = tables
+    ref = _kept(tmp_path, _sources(tmp_path, keep_days=1))
+    with caplog.at_level("WARNING"):
+        said = image_sources.sweep(db, DAY + datetime.timedelta(days=9), _sources(tmp_path, keep_days=keep_days))
+    assert "receive.keep_days is %r - write whole days, 1 or more" % keep_days in said["refused"]
+    assert "[Images] not swept - image_sources.json up0.receive.keep_days" in caplog.text and _exists(tmp_path, ref)
+
+
+def test_a_state_file_of_another_shape_is_counted_afresh(tables, tmp_path, caplog):
+    db, sources = tables, _sources(tmp_path, keep_days=1)
+    ref = _kept(tmp_path, sources)
+    (tmp_path / "up0" / image_sources.UNREFERENCED_FILE).write_text("[]", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        said = image_sources.sweep(db, DAY, sources)
+    assert said["deleted"] == 0 and _exists(tmp_path, ref) and _marks(tmp_path) == {ref.split(":", 1)[1]: DAY.isoformat()}
+    assert "is not a {path: day} object - counting afresh" in caplog.text
+
+
+@pytest.mark.parametrize("max_mb, said", [(None, "is not declared"), (0, "is 0"), ("10", "is '10'")])
+def test_a_max_mb_it_does_not_take_refuses_the_paste_by_name(client, tables, tmp_path, monkeypatch, max_mb, said):
+    sources = _sources(tmp_path)
+    if max_mb is None:
+        del sources["up0"]["receive"]["max_mb"]
+    else:
+        sources["up0"]["receive"]["max_mb"] = max_mb
+    monkeypatch.setattr(image_sources, "load_sources", lambda: sources)
+    answer = _post(client, PNG)
+    assert answer.status_code == 409 and ("image_sources.json up0.receive.max_mb " + said) in answer.json()["detail"]
+    assert not (tmp_path / "up0").exists()
+
+
+def test_keep_days_zero_refuses_the_paste(client, tables, tmp_path, monkeypatch):
+    monkeypatch.setattr(image_sources, "load_sources", lambda: _sources(tmp_path, keep_days=0))
+    answer = _post(client, PNG)
+    assert answer.status_code == 409 and "receive.keep_days is 0 - write whole days, 1 or more" in answer.json()["detail"]

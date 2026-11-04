@@ -1001,7 +1001,7 @@ async def receive_image(request: Request, table_name: str, column: str):
         upload = form.get("file")
         if not hasattr(upload, "read"):
             raise HTTPException(status_code=400, detail="send the picture as the multipart field 'file'")
-        data = await upload.read(image_sources.receive_limit(source) + 1)
+        data = await upload.read(image_sources.receive_settings(name, source)[0] + 1)
         return await run_in_threadpool(image_sources.keep, table_name, data)
     except image_sources.ImageRefused as refused:
         raise HTTPException(status_code=refused.status, detail=str(refused))

@@ -199,8 +199,13 @@ def _folder(name, source, rest):
         raise ImageRefused(400, "%r is outside the root of image source %r" % (rest, name))
     if not os.path.isfile(path):
         if isinstance(source.get(RECEIVE), dict) and RECEIVED_NAME.match(rest.strip()):
-            raise ImageRefused(404, "picture removed - it was unreferenced for %s days (image_sources.json %s.%s.keep_days)"
-                               % (source[RECEIVE].get("keep_days"), name, RECEIVE))
+            try:
+                keep_days = receive_settings(name, source)[1]
+            except ImageRefused:
+                keep_days = None                               # the sweep deletes nothing then - not its sentence
+            if keep_days:
+                raise ImageRefused(404, "picture removed - it was unreferenced for %s days (image_sources.json "
+                                        "%s.%s.keep_days)" % (keep_days, name, RECEIVE))
         raise ImageRefused(404, "no file %r in image source %r" % (rest, name))
     return ("file", os.path.realpath(path))
 
@@ -310,6 +315,11 @@ def _fetch(label, address):
 RECEIVE = "receive"
 #: What `keep` names a file, relative to the root - the sweep touches nothing else.
 RECEIVED_NAME = re.compile(r"^[^/\\]+/\d{4}-\d{2}-\d{2}/[0-9a-f]{32}\.(png|jpg|gif|bmp|webp|tif)$")
+#: A received name at the end of a cell's value, whatever names its source or its root: `referenced` compares by it,
+#: so a renamed receiving source or a full path still holds its picture (lead 11-05 ①).
+_RECEIVED_TAIL = re.compile(r"([^/\\:]+/\d{4}-\d{2}-\d{2}/[0-9a-f]{32}\.(?:png|jpg|gif|bmp|webp|tif))$")
+#: The values shaped like one, found in one read of a column: <anything><day><one separator><32 chars>.<anything>
+_RECEIVED_LIKE = "%____-__-___" + "_" * 32 + ".%"
 #: {relative path: the day it was first seen unreferenced} - in the receiving root, beside what it is about.
 UNREFERENCED_FILE = ".assy_unreferenced.json"
 #: Head bytes -> (suffix, media type): the one «is this a picture» judge; Pillow stays optional.
@@ -331,18 +341,28 @@ def receiver(sources=None):
     return named[0], sources[named[0]]
 
 
-def receive_limit(source) -> int:
-    """The largest picture `source` receives, in bytes (`receive.max_mb`)."""
-    return int(float(source[RECEIVE].get("max_mb") or 0) * 1024 * 1024)
+def receive_settings(name, source):
+    """(the largest picture in bytes, keep days or None) the receiving source declares, or ImageRefused 409 naming the
+    cell: max_mb a number above 0; keep_days whole days of 1 or more (0 could delete a picture between its paste and
+    the cell's write) or absent - never deleted."""
+    receive = source[RECEIVE]
+    max_mb, keep_days = receive.get("max_mb"), receive.get("keep_days")
+    if isinstance(max_mb, bool) or not isinstance(max_mb, (int, float)) or not max_mb > 0:
+        raise ImageRefused(409, "image_sources.json %s.receive.max_mb is %s - write the largest picture it takes in MB, "
+                                "e.g. 10" % (name, "not declared" if max_mb is None else repr(max_mb)))
+    if keep_days is not None and (isinstance(keep_days, bool) or not isinstance(keep_days, int) or keep_days < 1):
+        raise ImageRefused(409, "image_sources.json %s.receive.keep_days is %r - write whole days, 1 or more, or leave "
+                                "it out to keep every received picture" % (name, keep_days))
+    return int(max_mb * 1024 * 1024), keep_days
 
 
 def check_size(name, source, size):
     """ImageRefused 413 when `size` bytes is more than the receiving source takes - the one size judge."""
-    if size > receive_limit(source):
+    limit = receive_settings(name, source)[0]
+    if size > limit:
         raise ImageRefused(413, "the picture is %.1f MB (%s bytes); at most %s MB (%s bytes) - make it smaller or raise "
                                 "receive.max_mb of %s" % (size / 1024 / 1024, format(size, ","),
-                                                          source[RECEIVE].get("max_mb"),
-                                                          format(receive_limit(source), ","), name))
+                                                          source[RECEIVE].get("max_mb"), format(limit, ","), name))
 
 
 def picture_kind(head: bytes):
@@ -381,45 +401,81 @@ def image_columns(table_config=None):
             for column, kind in sorted((info.get("column_types") or {}).items()) if kind == COLUMN_TYPE]
 
 
-def referenced(db, refs, columns=None, batch=1000) -> set:
-    """The refs some image column's current value holds - each column asked once per `batch` refs (`IN`, one query
-    for every dialect)."""
+def referenced(db, relatives, columns=None):
+    """(the received names some image column's current value ends with, ["table.column" it could not read]) - each
+    column read once for the values shaped like a received name and compared here by that name, not by the source
+    before it: a renamed receiving source or a full path still holds its picture (lead 11-05 ①). The cost is the
+    table, not the number of files (an IN per 1,000 refs read the table once per batch). A column the catalogue calls
+    image but this process has no model of is named, never passed over (④). One query for every dialect."""
     from sqlalchemy import select
 
     from database import models
 
-    refs, found = sorted(set(refs)), set()
+    relatives, found, unread = set(relatives), set(), []
     for table, column in (image_columns() if columns is None else columns):
         model = models.DYNAMIC_TABLES.get(table)
         if model is None or column not in model.__table__.c:
+            unread.append("%s.%s" % (table, column))
             continue
         cell = model.__table__.c[column]
-        for start in range(0, len(refs), batch):
-            found.update(row[0] for row in db.execute(select(cell).where(cell.in_(refs[start:start + batch]))))
+        for (value,) in db.execute(select(cell).where(cell.like(_RECEIVED_LIKE)).distinct()):
+            match = _RECEIVED_TAIL.search(str(value or "").strip().replace("\\", "/"))
+            if match and match.group(1) in relatives:
+                found.add(match.group(1))
         db.rollback()
-    return found
+    return found, unread
 
 
 def received_files(root):
-    """{relative path: full path} of the files `keep` made under `root` - its name, and within the root once links
-    are followed."""
+    """{relative path: full path} of the files `keep` made under `root` - its name, not a link itself, and in no folder
+    that leads out of the root."""
     from parsers.directory_watcher import _safe_relative_path
 
     real_root, out = os.path.realpath(root), {}
-    for here, _dirs, names in os.walk(root):
+    for here, dirs, names in os.walk(root):
+        if _safe_relative_path(os.path.realpath(here), real_root) is None:
+            dirs[:] = []                                       # a folder that leads out of the root: nothing under it
+            continue
         for name in names:
             full = os.path.join(here, name)
             relative = os.path.relpath(full, root).replace("\\", "/")
-            if RECEIVED_NAME.match(relative) and _safe_relative_path(os.path.realpath(full), real_root) is not None:
+            if RECEIVED_NAME.match(relative) and not os.path.islink(full):
                 out[relative] = full
     return out
 
 
+def _read_marks(path, files, today):
+    """The state file's {relative: day} for the files listed now; one that is not that shape is said and counted afresh
+    (deleting later, never sooner)."""
+    import datetime
+
+    try:
+        with open(path, encoding="utf-8") as fh:
+            marks = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        logger.warning("[Images] %s is unreadable (%s) - counting afresh from %s", path, told(exc), today)
+        return {}
+    if not isinstance(marks, dict):
+        logger.warning("[Images] %s is not a {path: day} object - counting afresh from %s", path, today)
+        return {}
+    out = {}
+    for relative, day in marks.items():
+        try:
+            if relative in files:
+                out[relative] = datetime.date.fromisoformat(str(day)).isoformat()
+        except ValueError:
+            pass                                               # that file counted afresh
+    return out
+
+
 def sweep(db, today=None, sources=None, columns=None) -> dict:
-    """Delete the received pictures no image column's current value has held for `receive.keep_days` days: the day
-    one is first seen unreferenced is written to UNREFERENCED_FILE, a referenced one is taken off, and one still
-    unreferenced keep_days after that day goes. Files made after the listing are not this pass's. No keep_days: none
-    deleted, said once a pass. -> {"listed", "unreferenced", "deleted", "freed_bytes"}"""
+    """Delete the received pictures no image column's current value has held for `receive.keep_days` days, counted
+    from the day a sweep first saw one unreferenced (UNREFERENCED_FILE); held again, it is taken off. Files made after
+    the listing are not this pass's. Nothing is deleted when keep_days is absent (said), when a receive cell is not
+    one it takes, or when an image column could not be read (said). -> {"listed", "unreferenced", "deleted",
+    "freed_bytes"} or {"refused"} / {"unread"}"""
     import datetime
 
     today = today or datetime.date.today()
@@ -427,40 +483,42 @@ def sweep(db, today=None, sources=None, columns=None) -> dict:
         name, source = receiver(sources)
     except ImageRefused:
         return {}
+    try:
+        keep_days = receive_settings(name, source)[1]
+    except ImageRefused as refused:
+        logger.warning("[Images] not swept - %s", refused)
+        return {"refused": str(refused)}
     root = str(source.get("root") or "")
     files = received_files(root) if root and os.path.isdir(root) else {}
-    held = referenced(db, ["%s:%s" % (name, relative) for relative in files], columns)
+    held, unread = referenced(db, files, columns)
+    if unread:
+        logger.warning("[Images] not swept - image column(s) %s could not be read (no model in this process); nothing "
+                       "deleted - tried again at the next sweep", ", ".join(unread))
+        return {"unread": unread}
     marks_path = os.path.join(root, UNREFERENCED_FILE)
-    try:
-        with open(marks_path, encoding="utf-8") as fh:
-            marks = json.load(fh)
-    except (OSError, ValueError):
-        marks = {}
-    marks = {relative: day for relative, day in marks.items() if relative in files}
-    unreferenced = [relative for relative in sorted(files) if "%s:%s" % (name, relative) not in held]
-    for relative in files:
-        if relative not in unreferenced:
-            marks.pop(relative, None)
+    marks = _read_marks(marks_path, files, today.isoformat())
+    unreferenced = [relative for relative in sorted(files) if relative not in held]
+    for relative in held:
+        marks.pop(relative, None)
     for relative in unreferenced:
         marks.setdefault(relative, today.isoformat())
-    keep_days = source[RECEIVE].get("keep_days")
-    gone = [relative for relative in unreferenced if keep_days not in (None, "")
-            and (today - datetime.date.fromisoformat(marks[relative])).days >= int(keep_days)]
-    size = sum(os.path.getsize(files[relative]) for relative in (gone if keep_days not in (None, "") else unreferenced))
-    if keep_days in (None, ""):
+    gone = [relative for relative in unreferenced if keep_days is not None
+            and (today - datetime.date.fromisoformat(marks[relative])).days >= keep_days]
+    if keep_days is None:
         if unreferenced:
             logger.info("[Images] keep_days not declared - kept %d unreferenced received file(s), %.1f MB (%s.%s)",
-                        len(unreferenced), size / 1024 / 1024, name, RECEIVE)
+                        len(unreferenced), sum(os.path.getsize(files[r]) for r in unreferenced) / 1024 / 1024,
+                        name, RECEIVE)
     elif gone:
         logger.info("[Images] sweeping: %d file(s), %.1f MB unreferenced for >= %s days (%s)",
-                    len(gone), size / 1024 / 1024, keep_days, name)
+                    len(gone), sum(os.path.getsize(files[r]) for r in gone) / 1024 / 1024, keep_days, name)
     deleted, freed = 0, 0
     for relative in gone:
         try:
-            bytes_ = os.path.getsize(files[relative])
+            size = os.path.getsize(files[relative])
             os.remove(files[relative])
             marks.pop(relative, None)
-            deleted, freed = deleted + 1, freed + bytes_
+            deleted, freed = deleted + 1, freed + size
         except OSError as exc:
             logger.warning("[Images] could not delete %s: %s - tried again at the next sweep", relative, told(exc))
     with open(marks_path + ".part", "w", encoding="utf-8") as fh:

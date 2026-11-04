@@ -9,7 +9,8 @@
     "root": "D:/shared/assy_uploads",
     "receive": {
       "max_mb": 10,
-      "_comment": "그리드 이미지 칸에 붙여 넣거나 끌어다 놓은 그림을 받는 곳 — receive 를 적은 folder 출처 하나. max_mb = 그림 하나 상한. keep_days = 어떤 이미지 칸의 지금 값도 가리키지 않게 된 지 그 날 수가 지난 받은 그림을 지움 — 안 적으면 안 지움(하루 한 번 auto_update.log 에 남은 수 · MB 한 줄)"
+      "keep_days": 7,
+      "_comment": "그리드 이미지 칸에 붙여 넣거나 끌어다 놓은 그림을 받는 곳 — receive 를 적은 folder 출처 하나. max_mb = 그림 하나 상한(0 보다 큰 수). keep_days = 쓸기가 처음 «어떤 이미지 칸의 지금 값도 안 가리킴»을 본 날부터 그 날 수(1 이상 정수)가 지나도 여전히 안 가리키면 지움 — 안 적으면 안 지움(하루 한 번 auto_update.log 에 남은 수 · MB 한 줄)"
     }
   },
   "inspection_db": {
