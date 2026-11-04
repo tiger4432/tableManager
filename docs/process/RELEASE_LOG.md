@@ -711,7 +711,7 @@
 ## 2026-11-04 · 바뀐 화면 — 그리드 link 칸은 값이 링크(새 탭) · CHAIN 배지 stalled 는 RUNNING
 
 - **바뀐 화면** — 칸 타입이 `link` 인 칸은 값 전체가 링크입니다. 누르면 새 탭에서 열립니다. 링크 글자 밖을 누르면 칸이 골라지고, Enter · F2 · 타자로 글자 칸처럼 편집합니다. 복사 · 붙여넣기도 글자 칸과 같습니다.
-- **링크가 아닌 값** — «/» 로 시작하거나 http(s):// 인 값만 링크입니다. 그 밖(예: javascript: · 링크 전에 쓰인 파일 경로 C:\…\W1.html)은 글자로 그려집니다.
+- **링크가 아닌 값** — http(s):// 주소와, «/» 로 시작해 브라우저가 이 서버 주소로 읽는 값만 링크입니다. 그 밖(예: javascript: · 링크 전에 쓰인 파일 경로 C:\…\W1.html · «//다른호스트» · «/\다른호스트» · 탭이 낀 값)은 글자로 그려집니다(같은 날 고침 `ae30b4d6b`).
 - **CHAIN 배지** — 서버가 체인을 stalled 라 하면 메인 그리드 머리의 배지가 «CHAIN: RUNNING» 을 평소 색(초록)으로 그립니다. 마우스를 올리면 서버 문장이 그대로 보입니다. 다른 낱말은 그대로이고, 어드민 화면도 그대로입니다.
 - **필요한 조건** — git pull · 화면 새로 고침(dist 포함). 칸 타입 적는 곳은 위 «설정 파일» 의 11-04 항목입니다.
 - **자세히** — `client2/src/grid_image_column.js` 의 `columnTypeParts` · `linkHref` · `LinkCellRenderer`, `client2/src/api.js` 의 `chainBadge`. 시험 `image_preview_harness` W2 · L1–L4 · G3, `chain_badge_harness` S1–S2.
