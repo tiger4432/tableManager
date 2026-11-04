@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-04] **맵퍼 결과의 빈 키 행은 그 행만 빠지고 셈 · 체인이 버린 칸을 파일과 같은 문장으로** — git pull · 체인 워커 재기동
+>
+> ```
+> 무엇     업무 키 표에 맵퍼가 키 빈 행을 하나라도 내면 묶음 전체가 거절됐음 -> 이제 그 행만 빠지고 나머지는 씀
+>          (합성 키 표와 같은 자리 — 체인 키 관문이 빼고 셈. 부분 하나만 빈 합성 키는 오늘대로 키)
+> 볼 줄     chain_worker.log «[ChainKeyGate] … unkeyed_refused=N» — N 이 빠진 행 수
+>          «⚠️ [Chain Write Discard] … Next: declare the undeclared columns in table_config.json. Not written: undeclared_column <칸>=<수> over <행> row(s).»
+> 답의 뜻   예전 «carries the key '<k>' and a row leaves it blank … refused» 가 또 보임 -> 워커가 재기동 전 코드
+>          모든 행이 빈 키 -> «the whole batch … carried no key value … Nothing was written» (오늘과 같음)
+> 끄기     없음
+> ```
+>
+> ---
+>
 > ## [11-04] **보통 조인의 값 표 키 색인 — 조인 느림 고침** — git pull · 런처 재기동
 >
 > ```
