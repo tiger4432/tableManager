@@ -24,7 +24,7 @@ import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
 import { refreshReferenceForSelection, fillTargetOrdinals, syncReferenceViewRule } from './enrichment_reference_view.js';
 import { ledgerColumnDef } from './grid_ledger_column.js';
-import { imageColumnParts } from './grid_image_column.js';
+import { columnTypeParts } from './grid_image_column.js';
 import { ImagePreview } from './image_preview.js';
 import { localStamp, NO_TIME } from './server_time.js';
 import { ABSENT, isBlank } from './absent.js';
@@ -1039,8 +1039,9 @@ export function buildColumnDefs() {
       // change to this predicate and nothing else.
       colDef.cellEditor = SuggestCellEditor;
     }
-    // (lead 191912ce2) an image column: its cells preview on a dwell and open from their mark.
-    Object.assign(colDef, imageColumnParts(colType));
+    // (lead 191912ce2) an image column: its cells preview on a dwell and open from their mark; a link column's
+    // value opens in a new tab (owner 11-04).
+    Object.assign(colDef, columnTypeParts(colType));
 
     if (isSystem) {
       colDef.cellClass = 'cell-system-readonly';
@@ -1162,7 +1163,7 @@ export function buildColumnDefs() {
       // Same grey a system column gets. Reusing the existing class rather than inventing a
       // "virtual" one: to the operator the fact is identical — this cell cannot be typed in.
       cellClass: 'cell-system-readonly',
-      ...imageColumnParts(vc.type),
+      ...columnTypeParts(vc.type),
       cellClassRules: {
         // The other four stored-column rules are deliberately absent, not forgotten:
         // `cell-dirty-tx` keys on `pendingTxEdits`, which a column that cannot be edited

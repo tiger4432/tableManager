@@ -214,7 +214,8 @@ export const FLOORS = new Map([
   // copy that leaves it out says why (E10 E11, P25 P26).
   // 120 -> 123 (lead 5ef827675, A9 I1 P42): the column type word image: read, saved, reopened, copied; a near miss refused.
   // 123 -> 124 (lead 10-31, C7b): the save answer's note and notes under the saved line.
-  ['table_config_panel_harness.mjs', 124],
+  // 124 -> 126 (owner 11-04, A10 P43): the column type word link.
+  ['table_config_panel_harness.mjs', 126],
   // New with lead 72aa14785: the shared clipboard writer (moved from map_editor.js) run as it ships -
   // the map harnesses replace its name and the table harness injects its own, so nothing else runs it.
   ['clipboard_write_harness.mjs', 8],
@@ -252,7 +253,8 @@ export const FLOORS = new Map([
   //    absent age promoted to 0 -- plus ONE CONTROL that must escape: the shared minute
   //    constant written back as a literal, which changes nothing today and is guarding a
   //    future edit rather than a present bug.
-  ['chain_badge_harness.mjs', 15],
+  // 15 -> 19 (owner 11-04, S1 S1b S1c S2): stalled reads RUNNING, online, the server's sentence kept; only stalled turns.
+  ['chain_badge_harness.mjs', 19],
   // 152 -> 165 on 2026-09-25, mockup A: four numbers whose blind cells drop (Running asks
   // loop_seen_via alone), Failed from one function shared with the Overview card, five columns
   // with no inline widths, 「retry N」 badges, the local As of. 13 mutants, 13 caught.
@@ -1452,7 +1454,8 @@ export const FLOORS = new Map([
   // New (lead 191912ce2): an image cell previews on a dwell and opens from its mark - passing over asks
   // nothing, one at a time, the last let go, the server's refusal said, two previews apart; the grid
   // changes only its image columns.
-  ['image_preview_harness.mjs', 31],
+  // 31 -> 43 (owner 11-04, W2 L1-L4 G3 K1-K6): a link cell - "/..." and http(s) open in a new tab, anything else is text.
+  ['image_preview_harness.mjs', 43],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

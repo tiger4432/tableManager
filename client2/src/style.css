@@ -903,6 +903,12 @@ body.resizing-active .gallery-seat {
 .ag-tooltip {
   white-space: pre-line;
 }
+/* A link cell (owner 11-04): the value is the link; the cell around it selects. */
+.cell-link-open {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 /* The image cell and its preview carry their own look (image_preview.js IMAGE_PREVIEW_CSS) - the walk page loads no
    style.css. */

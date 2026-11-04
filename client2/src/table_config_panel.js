@@ -34,7 +34,8 @@ function missingRelations(payload, opts) {
 //    as Float for `number`, DateTime for `datetime` and String for anything else, so an unknown word
 //    lands as a string column with nothing said. These are that rule's names, and `image` (server
 //    a8dea2bcf, table_config.md): an image reference, stored as text, read through GET /api/image.
-export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime', 'image']);
+//    `link` (owner 11-04): an address stored as text, the grid opens it in a new tab.
+export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime', 'image', 'link']);
 /** The word row 3 puts under a business key column. */
 const KEY_MARK = 'key';
 /** A type or key cell as the server spells it: any case is read, lower case is written (lead c6a8c069c). */

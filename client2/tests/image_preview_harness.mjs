@@ -9,6 +9,9 @@
 //   D8 a blank cell has no mark and asks nothing               D9 a cell that changes or goes takes its box
 //   W1 only the word image takes the image cell                N1 a press on the cell itself: nothing asked, untouched
 //   G1 grid: only the image column changes                     G2 grid: a join column of type image too
+//   W2 the word link takes the link cell (owner 11-04)         L1 "/..." and http(s): the value is the link, a new tab
+//   L2 javascript:, an old file path: text, no address         L3 a press on the link is not the cell's
+//   L4 a changed value draws anew                              G3 grid: a link column is a text column but for its cell
 // 「같은 칸 다시 -> 새 요청 0」 is the browser's cache under the server's Cache-Control: measured in the
 // browser, not here. Timers, fetch and the window are injected; nothing waits on a clock.
 //
@@ -262,10 +265,52 @@ async function suite(P, C) {
       JSON.stringify({ shown, afterRefresh, text, after: r.imgs().length }));
   }
   {
-    const others = ['string', 'number', 'datetime', undefined].map((t) => Object.keys(C.imageColumnParts(t)).length);
+    const others = ['string', 'number', 'datetime', undefined].map((t) => Object.keys(C.columnTypeParts(t)).length);
     say('W1 only the column type word image takes the image cell',
-      C.imageColumnParts('image').cellRenderer === C.ImageCellRenderer && others.every((n) => n === 0),
+      C.columnTypeParts('image').cellRenderer === C.ImageCellRenderer && others.every((n) => n === 0),
       JSON.stringify(others));
+    say('W2 the column type word link takes the link cell',
+      C.columnTypeParts('link').cellRenderer === C.LinkCellRenderer, String(C.columnTypeParts('link').cellRenderer));
+  }
+  {
+    // The link cell (owner 11-04): the value as written is the link, in a new tab; only "/..." and http(s) are links.
+    const drawn = (value) => {
+      const renderer = new C.LinkCellRenderer();
+      renderer.init({ value, eGridCell: { ownerDocument: makeDoc() } });
+      const gui = renderer.getGui();
+      const a = gui.querySelectorAll('.cell-link-open')[0];
+      const t = gui.querySelectorAll('.cell-link-text')[0];
+      return { renderer, a, t, href: a.attrs.href, link: a.textContent, text: t.textContent, shown: a.style.display !== 'none' };
+    };
+    const linked = ['/reports/W1.html', 'https://box/r?a=1&b=2', 'HTTP://box/x'].map(drawn);
+    say('L1 a path on our server or an http(s) address is the link: the value as written, a new tab, no opener',
+      linked.every((d, i) => d.shown && d.href === ['/reports/W1.html', 'https://box/r?a=1&b=2', 'HTTP://box/x'][i]
+        && d.link === d.href && d.text === '' && d.a.attrs.target === '_blank' && d.a.attrs.rel === 'noopener'),
+      JSON.stringify(linked.map(({ href, link, text, shown }) => ({ href, link, text, shown }))));
+    const plain = ['javascript:alert(1)', ' JavaScript:alert(1)', 'C:\\data\\reports\\W1.html', 'data:text/html,x', 'reports/W1.html']
+      .map(drawn);
+    const blank = [null, '', '   '].map(drawn);
+    say('L2 anything else - javascript:, an old file path - is drawn as text with no address; a blank cell draws nothing',
+      plain.every((d, i) => !d.shown && d.href === undefined && d.link === ''
+        && d.text === ['javascript:alert(1)', ' JavaScript:alert(1)', 'C:\\data\\reports\\W1.html', 'data:text/html,x', 'reports/W1.html'][i])
+        && blank.every((d) => !d.shown && d.href === undefined && d.link === '' && d.text === ''),
+      JSON.stringify([...plain, ...blank].map(({ href, link, text, shown }) => ({ href, link, text, shown }))));
+    const d = drawn('/reports/W1.html');
+    const stopped = [];
+    const prevented = [];
+    const ev = (type) => ({ stopPropagation: () => stopped.push(type), preventDefault: () => prevented.push(type) });
+    for (const type of ['pointerdown', 'mousedown', 'click']) d.a.dispatch(type, ev(type));
+    say('L3 a press on the link is not the cell\'s (no drag, no focus taken), and its click is left to open the tab',
+      ['pointerdown', 'mousedown', 'click'].every((t) => stopped.includes(t))
+        && prevented.length === 1 && prevented[0] === 'mousedown',
+      JSON.stringify({ stopped, prevented }));
+    d.renderer.refresh({ value: 'javascript:alert(1)' });
+    const after = { href: d.a.attrs.href, link: d.a.textContent, text: d.t.textContent };
+    d.renderer.refresh({ value: '/reports/W2.html' });
+    say('L4 a cell whose value changes draws the new value: a link that turns into javascript: loses its address',
+      after.href === undefined && after.link === '' && after.text === 'javascript:alert(1)'
+        && d.a.attrs.href === '/reports/W2.html' && d.t.textContent === '',
+      JSON.stringify({ after, back: d.a.attrs.href }));
   }
   {
     // (lead, answer to the click question) the cell itself selects and edits as today; only the mark opens.
@@ -327,6 +372,16 @@ function gridSuite(G, C) {
     join && join.cellRenderer === C.ImageCellRenderer && join.editable === false
       && !(without.get('right_shot') || {}).cellRenderer,
     JSON.stringify({ join: join && Object.keys(join) }));
+  stage('link', 'link');
+  const withLink = new Map(G.buildColumnDefs().map((d) => [d.field, d]));
+  const but = (def) => { const { cellRenderer, ...rest } = def || {}; return shape(rest); };
+  const linkSame = others.filter((f) => withLink.has(f) && shape(withLink.get(f)) === shape(without.get(f)));
+  say('G3 a link column and a join column of type link are drawn by the link cell; edit, filter and read-only are an image column\'s',
+    linkSame.length === others.length && (withLink.get('photo') || {}).cellRenderer === C.LinkCellRenderer
+      && (withLink.get('right_shot') || {}).cellRenderer === C.LinkCellRenderer
+      && but(withLink.get('photo')) === but(withImage.get('photo'))
+      && but(withLink.get('right_shot')) === but(withImage.get('right_shot')),
+    JSON.stringify({ linkSame, photo: withLink.get('photo') && Object.keys(withLink.get('photo')) }));
   return { ran: names.length, names, failures: fails };
 }
 
@@ -377,18 +432,30 @@ const failures = [];
     M('C1', 'a press on the mark starts a range drag', 'D5', COLUMN,
       "    this.mark.addEventListener('pointerdown', (e) => e.stopPropagation());\n", ''),
     M('C5', 'the pressed mark takes the focus, so the grid selects its cell', 'D5', COLUMN,
-      "(e) => { e.preventDefault(); e.stopPropagation(); }", '(e) => { e.stopPropagation(); }'),
+      "this.mark.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });",
+      "this.mark.addEventListener('mousedown', (e) => { e.stopPropagation(); });"),
     M('C2', 'a blank cell still shows its mark', 'D8', COLUMN,
       "this.mark.style.display = blank ? 'none' : '';", "this.mark.style.display = '';"),
     M('C3', 'a cell that goes keeps its box', 'D9', COLUMN,
       '  destroy() {\n    if (this.preview) this.preview.leave(this.gui);\n  }', '  destroy() {}'),
     M('C4', 'every column is taken for an image', 'W1', COLUMN,
-      'return type === IMAGE_TYPE ? { cellRenderer: ImageCellRenderer } : {};', 'return { cellRenderer: ImageCellRenderer };'),
+      '  if (type === IMAGE_TYPE) return', '  if (true) return'),
     M('C6', 'a press anywhere on the cell opens the window', 'N1', COLUMN,
       "    this.mark.addEventListener('click', (e) => {", "    this.gui.addEventListener('click', (e) => {"),
+    M('K1', 'no guard - javascript: is drawn as a link', 'L2', COLUMN,
+      '  return /^(\\/|https?:\\/\\/)/i.test(text) ? text : null;', '  return text;'),
+    M('K2', 'the guard reads the scheme anywhere in the value', 'L2', COLUMN,
+      '/^(\\/|https?:\\/\\/)/i', '/(\\/|https?:\\/\\/)/i'),
+    M('K3', 'the link opens in this tab', 'L1', COLUMN, "    this.link.setAttribute('target', '_blank');\n", ''),
+    M('K4', 'a press on the link starts a range drag', 'L3', COLUMN,
+      "    this.link.addEventListener('pointerdown', (e) => e.stopPropagation());\n", ''),
+    M('K5', 'a value that stops being a link keeps its old address', 'L4', COLUMN,
+      " else this.link.removeAttribute('href');", ''),
+    M('K6', 'a link column is not drawn by the link cell', 'W2', COLUMN,
+      '  if (type === LINK_TYPE) return { cellRenderer: LinkCellRenderer };\n', ''),
     M('G1', 'the grid gives an image column no image cell', 'G1', GRID,
-      '    Object.assign(colDef, imageColumnParts(colType));\n', ''),
-    M('G2', 'a join column skips the image parts', 'G2', GRID, '      ...imageColumnParts(vc.type),\n', ''),
+      '    Object.assign(colDef, columnTypeParts(colType));\n', ''),
+    M('G2', 'a join column skips the image parts', 'G2', GRID, '      ...columnTypeParts(vc.type),\n', ''),
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => quietly(async () => {
     const mutate = (t) => swap(t, mu.from, mu.to);

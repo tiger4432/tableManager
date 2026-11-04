@@ -252,6 +252,10 @@ async function pasteSuite(m) {
       image.next && JSON.stringify(image.next.column_types) === '{"lot":"string","photo":"image","shot":"image"}'
         && nearMiss.next === null && JSON.stringify(nearMiss.refused) === '["column 2 (photo): unknown type images"]',
       JSON.stringify({ image, nearMiss }));
+    // (owner 11-04) a link column: the word is taken, any case.
+    const link = read([['lot', 'report'], ['string', 'Link']]);
+    say('A10 the word link is a column type (any case)',
+      link.next && JSON.stringify(link.next.column_types) === '{"lot":"string","report":"link"}', JSON.stringify(link));
   }
 
   console.log('\n[7] what a save changes, said before it');
@@ -655,8 +659,8 @@ async function pasteSuite(m) {
     R('P3', 'an unknown type is accepted', 'A4',
       '    if (!COLUMN_TYPES.includes(word(types[i]))) refused.push(', '    if (false) refused.push('),
     R('P42', 'image is not a column type word', 'A9',
-      "export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime', 'image']);",
-      "export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime']);"),
+      "'datetime', 'image', 'link']);", "'datetime', 'link']);"),
+    R('P43', 'link is not a column type word', 'A10', "'datetime', 'image', 'link']);", "'datetime', 'image']);"),
     R('P4', 'a repeated name is accepted', 'A4',
       '    if (seen.has(name)) refused.push(', '    if (false) refused.push('),
     R('P5', 'no key row still rewrites the key', 'A5',

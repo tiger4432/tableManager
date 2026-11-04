@@ -61,6 +61,17 @@ console.log('\n[멈췄을 때 — 두 실패는 «다른 말»이다 (게이트 
     chainBadge(HEALTH({ ...RUNNING, age_seconds: 99999 })).text, 'CHAIN: OK');
 }
 
+console.log('\n[stalled — 소유자 11-04: 메인 그리드에서 RUNNING]');
+{
+  const stalled = chainBadge(HEALTH({ ...RUNNING, status: 'stalled', detail: 'queue older than 600 s' }));
+  eq('S1 a stalled worker reads RUNNING', stalled.text, 'CHAIN: RUNNING');
+  eq('S1b ...with the online class', stalled.cls, 'status-badge online');
+  eq('S1c ...and the server\'s sentence stays the tooltip', stalled.title, 'queue older than 600 s');
+  eq('S2 CONTROL: only stalled turns - stale still says itself, offline',
+    `${chainBadge(HEALTH({ ...RUNNING, status: 'stale' })).text}|${chainBadge(HEALTH({ ...RUNNING, status: 'stale' })).cls}`,
+    'CHAIN: STALE|status-badge offline');
+}
+
 console.log('\n[못 읽었을 때 — 「모름」을 「이상 없다」로 그리지 않는다 (게이트 ㉣)]');
 {
   const none = chainBadge(null);

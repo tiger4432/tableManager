@@ -111,7 +111,8 @@ export async function checkServerHealth() {
  *    그 가름의 근거는 두 주인에게 나뉘어 있다(`utils/heartbeat.py`) — 감독자는 «프로세스가 있나»,
  *    심박은 «고리가 도나». 화면이 나이로 다시 재면 임계값이 두 벌이 되고, 오늘 아침처럼
  *    「프로세스는 살아 있는데 고리가 멈춘」 경우에 둘이 다른 말을 한다.
- * ⛔ 그래서 이 함수는 색만 고른다: «ok 면 online, 나머지는 offline». 못 읽었으면 «중립»이다 —
+ * ⛔ 그래서 이 함수는 색만 고른다: «ok 면 online, 나머지는 offline». 하나만 뒤집는다 —
+ *    소유자 11-04: stalled 는 메인 그리드에서 RUNNING (online). 툴팁은 서버 문장 그대로. 못 읽었으면 «중립»이다 —
  *    「못 봤다」를 「이상 없다」로 그리지 않는다(그 계약은 서버 쪽 주석에도 같은 말로 있다).
  *
  * @param {object|null} payload `/health` 의 본문 (503 이어도 본문은 온다)
@@ -124,9 +125,10 @@ export function chainBadge(payload) {
     return { text: 'CHAIN: ?', cls: 'status-badge', title: '' };
   }
   const token = String(row.status);
+  const running = token === 'stalled';
   return {
-    text: `CHAIN: ${token.toUpperCase()}`,
-    cls: token === 'ok' ? 'status-badge online' : 'status-badge offline',
+    text: running ? 'CHAIN: RUNNING' : `CHAIN: ${token.toUpperCase()}`,
+    cls: token === 'ok' || running ? 'status-badge online' : 'status-badge offline',
     // 문장은 서버 것이다. 없으면 «아무 말도 안 한다» — 사유를 지어내지 않는다.
     title: typeof row.detail === 'string' ? row.detail : '',
   };

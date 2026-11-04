@@ -5,6 +5,7 @@
 // With a Columns by column the lines are a board, rows x columns (owner 10-20 «갤러리는 매트릭스로», lead 3589216b9): a cell its
 // rows' count, its share of the row and its first thumbnails; a cell pressed lays its tiles out under the board as the list does.
 import { isBlank } from './absent.js';
+import { IMAGE_TYPE } from './grid_image_column.js';
 import { Thumb } from './image_thumb.js';
 import { countNumberText } from './match_count.js';
 
@@ -152,7 +153,7 @@ export class GalleryPart {
   el(tag, cls, text) { const n = this.doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
 
   /** The table's image columns and the choices kept for it (this browser). */
-  images() { return (this.deps.columns() || []).filter((c) => c.type === 'image').map((c) => c.name); }
+  images() { return (this.deps.columns() || []).filter((c) => c.type === IMAGE_TYPE).map((c) => c.name); }
 
   kept() {
     const table = this.deps.table();
