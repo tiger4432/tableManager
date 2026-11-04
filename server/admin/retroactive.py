@@ -2000,16 +2000,16 @@ def _day_refused(day, what):
 
 def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
     """True once the file has passed the ingestion queue, False when a stop was asked while
-    waiting. A file that FAILED stops the run by name. Asked of the checklist (`checkpoint.checked`),
-    by the path and stat the collector wrote."""
+    waiting. A file that FAILED stops the run by name. Asked of its read (`checkpoint.read_as_written`), by the
+    name and stat the collector wrote - the read moved it to another path."""
     import os
     import time
 
     from ingestion import checkpoint
 
-    where, stat = os.path.abspath(written), checkpoint.read_file_stat(written)
+    stat = checkpoint.read_file_stat(written)
     while True:
-        status = checkpoint.checked(db, table, [(where, stat)]).get(where)
+        status = checkpoint.read_as_written(db, table, written, stat)
         db.rollback()                      # the next look reads what has committed since
         if status in ("SUCCESS", checkpoint.STATUS_FAILED):
             if status == checkpoint.STATUS_FAILED:

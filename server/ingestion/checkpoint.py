@@ -319,6 +319,24 @@ def checked(db, table_name: str, entries, words=None) -> dict:
     return found
 
 
+def read_as_written(db, table_name: str, filepath: str, file_stat):
+    """How the read of the file written at `filepath` with that stamp ended - SUCCESS, FAILED, or None while it has
+    not - asked of its read's record by the name it was written under: a raws file is read, then moved to archives/
+    under a name the move picks, and its record and checklist row carry that path, never the one written (owner 11-04
+    «백필로 돌리면 10분 지나도 안 끝나서»: a backfill asked `checked` by the raws path and waited forever)."""
+    from database.models import FileIngestionLog as Log
+
+    if not table_name or not filepath or not file_stat:
+        return None
+    for mtime, size, status in (db.query(Log.file_mtime, Log.file_size, Log.status)
+                                .filter(Log.table_name == table_name, Log.filename == os.path.basename(filepath),
+                                        Log.status.in_(("SUCCESS", STATUS_FAILED)))
+                                .order_by(Log.id.desc()).limit(CHECKED_BATCH_SIZE)):
+        if mtime is not None and (_utc(mtime), size) == (_utc(file_stat[0]), file_stat[1]):
+            return status
+    return None
+
+
 def note_file(db, table_name, filepath, **cells):
     """THE checklist's writer for a file's read (총괄 64b264610 ②): its row of (table, file) - made when there is none -
     takes `cells` (status · source · file_mtime · file_size · log_id · status_before) and the path as now spelled. In

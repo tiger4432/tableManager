@@ -3,8 +3,9 @@
 24-hour window at a time (소유자 2026-09-26 「목표 기간까지 1 일 단위로 자동 소급」 · 「24h 씩,
 마지막은 지금에서 자름」 · 총괄 ffd5d42b7 ㄴ 「실패한 날에서 멈춤, 그 날부터 재시작」).
 
-🔴 A DAY IS DONE WHEN ITS FILE HAS PASSED THE INGESTION QUEUE, asked of the file checkpoint
-ledger by the path and stat the collector wrote - so the days never pile into the queue at
+🔴 A DAY IS DONE WHEN ITS FILE HAS PASSED THE INGESTION QUEUE, asked of its read's record
+(`checkpoint.read_as_written`) by the name and stat the collector wrote - the read moves the
+file to archives/ (owner 11-04, the real watcher's test below) - so the days never pile into the queue at
 once, and a day whose file FAILED stops the run and names the day.
 """
 import csv
@@ -70,16 +71,15 @@ def ingests(monkeypatch, verdicts):
     (DONE = read · FAILED · None = not yet). Returns the windows the files carried, in order."""
     seen, calls = [], []
 
-    def door(db, table, entries):
-        [(filepath, _file_stat)] = entries
+    def door(db, table, filepath, _file_stat):
         with open(filepath, encoding="utf-8") as f:
             row = next(csv.DictReader(io.StringIO(f.read())))
         if not seen or seen[-1] != (row["s"], row["e"]) or calls[-1] is not None:
             seen.append((row["s"], row["e"]))
         verdict = verdicts[len(seen) - 1] if len(seen) - 1 < len(verdicts) else checkpoint.STATUS_DONE
         calls.append(verdict)
-        return {} if verdict is None else {filepath: "SUCCESS" if verdict == checkpoint.STATUS_DONE else verdict}
-    monkeypatch.setattr(checkpoint, "checked", door)
+        return None if verdict is None else "SUCCESS" if verdict == checkpoint.STATUS_DONE else verdict
+    monkeypatch.setattr(checkpoint, "read_as_written", door)
     return seen
 
 
@@ -187,6 +187,69 @@ def test_a_stop_while_a_file_waits_ends_without_counting_that_day(workspace, mon
     stats = _run(start, control)
 
     assert stats == {"days": 3, "days_done": 0, "done_until": start}
+
+
+class Watcher(Control):
+    """The control whose every look while a day waits is one sweep of the REAL watcher over raws/ - it reads the
+    file, archives it under another path and writes its record and checklist row there (owner 11-04 «백필로 돌리면
+    10분 지나도 안 끝나서 그냥 끔»: the wait asked by the raws path the collector wrote and never saw the read).
+    After `patience` looks it asks the run to stop, so a wait that never sees the read ends short of its days."""
+
+    def __init__(self, handler, raws, patience=20):
+        super().__init__()
+        self.handler, self.raws, self.looks, self.patience = handler, raws, 0, patience
+
+    def stop_requested(self):
+        self.looks += 1
+        for name in sorted(os.listdir(self.raws)):
+            if name.endswith(".csv"):
+                self.handler._handle_event(os.path.join(self.raws, name))
+        self.handler.heavy_lane.run_all()
+        self.stopped = self.stopped or self.looks > self.patience
+        return self.stopped
+
+
+def test_every_day_is_read_by_the_real_watcher_and_the_run_goes_on(workspace, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    import directory_watcher
+    from conftest import retire_dynamic_model
+    from database import crud, models
+    from database.database import Base
+    from test_heavy_lane import FakeLane
+
+    info = {"business_key": "s", "column_types": {"s": "string", "e": "string"}, "display_columns": ["s", "e"]}
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    models.init_dynamic_models({TABLE: dict(info)})
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, dict(info))
+    Base.metadata.create_all(bind=engine)
+    models.ensure_ingestion_checkpoint_table(engine)
+    monkeypatch.setattr(directory_watcher, "load_global_table_config", lambda: {TABLE: info})
+    monkeypatch.setattr(directory_watcher, "SessionLocal", factory)
+    monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(workspace / "ingestion_settings.json"))
+    folder = os.path.join(str(workspace), "ingestion_workspace", TABLE)
+    for sub in ("raws", "archives", "err"):
+        os.makedirs(os.path.join(folder, sub), exist_ok=True)
+    handler = directory_watcher.IngestionHandler(folder, None, os.path.join(folder, "archives"),
+                                                 default_table_name=TABLE, heavy_lane=FakeLane())
+    control = Watcher(handler, os.path.join(folder, "raws"))
+    db = factory()
+    start = _two_days_ago()
+    try:
+        stats = retroactive._run_collector_backfill(db, {"collector": KEY, "start": start}, lambda m: None, control)
+        read = db.query(models.FileIngestionLog.filepath, models.FileIngestionLog.status).all()
+    finally:
+        db.close()
+        engine.dispose()
+        retire_dynamic_model(TABLE)
+
+    assert read and {s for _p, s in read} == {"SUCCESS"}, read              # canary: the watcher read the first day
+    assert all(os.sep + "archives" + os.sep in p for p, _s in read), read   # ... under a path the collector never wrote
+    assert stats["days_done"] == 3 and not control.stopped, (stats, control.looks, read)
+    assert len(read) == 3, read
 
 
 def test_the_result_line_reads_in_words_not_keys():
