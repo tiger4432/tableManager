@@ -193,3 +193,23 @@ def test_the_builder_and_the_list_find_an_index_by_one_probe(tables, pg_session)
     assert (again["state"], again["created"]) == ("ok", None), again
     assert unique_key.index_validity(db, [VALUE_INDEX]) == {VALUE_INDEX: True}
     assert "gk_meas" not in sum(synthesis.joins_without_lookup_index(db, rules).values(), [])
+
+
+@pytest.mark.pg
+def test_an_invalid_leftover_of_the_name_is_dropped_before_the_build(tables, pg_session):
+    """A cancelled CONCURRENTLY build leaves an INVALID index of the same name: IF NOT EXISTS would keep it."""
+    db = pg_session
+    from database.database import Base
+
+    Base.metadata.create_all(bind=db.get_bind(), tables=[models.DYNAMIC_TABLES[t].__table__ for t in TABLES])
+    db.execute(text('DROP INDEX IF EXISTS "%s"' % VALUE_INDEX))
+    db.commit()
+    unique_key.forget()
+    assert unique_key.ensure_lookup_once(db, "gk_meas", ["lot", "item"], [None, None])["created"]
+    db.execute(text("UPDATE pg_index SET indisvalid = false WHERE indexrelid = to_regclass(:n)"), {"n": VALUE_INDEX})
+    db.commit()
+    assert unique_key.index_validity(db, [VALUE_INDEX]) == {VALUE_INDEX: False}, "the fixture made no INVALID index"
+    unique_key.forget()
+    again = unique_key.ensure_lookup_once(db, "gk_meas", ["lot", "item"], [None, None])
+    assert (again["state"], again["dropped"], bool(again["created"])) == ("ok", [VALUE_INDEX], True), again
+    assert unique_key.index_validity(db, [VALUE_INDEX]) == {VALUE_INDEX: True}
