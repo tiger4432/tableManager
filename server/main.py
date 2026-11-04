@@ -973,6 +973,40 @@ def get_image(ref: str, px: int | None = Query(None, ge=_IMAGE_PX_MIN, le=_IMAGE
     return _image_response(answer)
 
 
+#: What a multipart body carries beside the picture (boundaries, the part's head) - a Content-Length past the receiving
+#: source's limit by more than this is refused before the body is read.
+_MULTIPART_SLACK = 64 * 1024
+
+
+@app.post("/tables/{table_name}/images")
+async def receive_image(request: Request, table_name: str, column: str):
+    """A picture pasted or dropped on a grid image cell (multipart field `file`), kept under the source that receives
+    (`image_sources.keep`) -> {"ref", "bytes", "media_type"}; the client writes `ref` into the cell as any edit (owner
+    11-05). The size is judged here alone - by Content-Length before the body, then by the bytes."""
+    import image_sources
+    from database import crud
+    from starlette.concurrency import run_in_threadpool
+
+    info = crud.TABLE_CONFIG.get(table_name)
+    if not isinstance(info, dict):
+        raise HTTPException(status_code=404, detail="Table '%s' is not in the catalogue" % table_name)
+    if (info.get("column_types") or {}).get(column) != image_sources.COLUMN_TYPE:
+        raise HTTPException(status_code=400, detail="%s.%s is not an image column" % (table_name, column))
+    try:
+        name, source = image_sources.receiver()
+        length = request.headers.get("content-length") or ""
+        if length.isdigit():
+            image_sources.check_size(name, source, max(int(length) - _MULTIPART_SLACK, 0))
+        form = await request.form()
+        upload = form.get("file")
+        if not hasattr(upload, "read"):
+            raise HTTPException(status_code=400, detail="send the picture as the multipart field 'file'")
+        data = await upload.read(image_sources.receive_limit(source) + 1)
+        return await run_in_threadpool(image_sources.keep, table_name, data)
+    except image_sources.ImageRefused as refused:
+        raise HTTPException(status_code=refused.status, detail=str(refused))
+
+
 def _image_response(answer):
     """`image_sources.resolve`'s answer as the response - GET /api/image's and a report picture's original alike."""
     import image_sources

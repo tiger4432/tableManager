@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [11-05] **그리드 이미지 칸에 그림을 붙여 넣거나 끌어다 놓으면 서버가 받음 (서버 반쪽)** — git pull · 런처 재기동 (클라 dist 와 같이)
+>
+> ```
+> 적는 곳  server/config/image_sources.json — folder 출처 «하나»에
+>          "receive": {"max_mb": 10, "keep_days": <일>}
+>          max_mb = 그림 하나 상한 · keep_days = 어떤 이미지 칸의 지금 값도 안 가리킨 지 그 날 수 지나면 지움 — 안 적으면 안 지움
+> 무엇     POST /tables/<표>/images?column=<칸> 이 그림을 <root>/<표>/<날짜>/<고유>.<확장자> 로 저장하고 «<출처>:<경로>» 를 돌려줌
+>          클라가 그 값을 그 칸에 보통 편집으로 씀 (이력 · 층 그대로). 읽기는 오늘의 /api/image 그대로
+> 쓸기     스케줄러 정비 줄이 하루 한 번 (기동 뒤 첫 merge 박자에 첫 번째)
+>          처음 «안 가리킴»을 본 날을 <root>/.assy_unreferenced.json 에 적고, keep_days 지나도 여전히 안 가리키면 지움
+>          지우는 것은 서버가 지은 이름 꼴 · root 안 (링크 따라 밖이면 안 건드림) 뿐
+> 볼 줄    auto_update.log «[Images] sweeping: N file(s), X MB unreferenced for >= <keep_days> days (<출처>)»
+>          keep_days 없으면 «[Images] keep_days not declared - kept N unreferenced received file(s), X MB (<출처>.receive)»
+> 거절     409 받는 곳 없음 · 둘 이상 / 413 상한 넘음 (Content-Length 로 본문 받기 전에, 브라우저도 413 문장을 받음) /
+>          415 그림 아님 / 400 이미지 칸 아님 / 404 모르는 표
+> 알아 둘 것  이력에서 지운 그림을 열면 «picture removed - it was unreferenced for <k> days (image_sources.json <출처>.receive.keep_days)»
+>          이미지 칸이 아닌 글자 칸에 참조를 복사해 둔 것 · 감사 · 층의 옛 값은 «가리킴»으로 안 셈 — 지워질 수 있음
+> 같은 답  server 폴더에서 python -m pytest tests/test_a_picture_pasted_on_an_image_cell_is_kept_and_swept.py  -> 20 passed, 1 skipped
+> 끄기     receive 칸을 지우면 받기 · 쓸기 둘 다 멈춤 (이미 받은 그림 · 상태 파일은 그대로)
+> ```
+>
+> ---
+>
+
 > ## [11-04] **다른 공유가 같은 값을 써도 그 공유의 층이 남음** — git pull · 와처 재기동
 >
 > ```

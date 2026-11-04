@@ -11,6 +11,7 @@ does all of it beside the scheduler's 5 s loop, on a thread of its own:
   ask       INDEX_WANTED rows (`index_wants.taken`) - the automatic index each names
   merge     every GIN_CLEAN_SECONDS the GIN indexes' pending lists (`clean_gin_pending`) - not a file's flush
   storage   the tables' declared storage (`apply_table_storage`) - at the start, then each merge until it holds
+  pictures  every IMAGE_SWEEP_SECONDS the received pictures no image cell holds (`image_sources.sweep`, owner 11-05)
 """
 import logging
 import threading
@@ -73,6 +74,20 @@ def _clean_and_say(db_session_factory):
     if merged:
         logger.info("[Indexes] merged GIN pending lists in %.1f s: %s", time.time() - started,
                     ", ".join("%s %d page(s)" % each for each in merged))
+
+
+#: How often the received pictures are swept (`image_sources.sweep`) - the first at the line's first merge beat.
+IMAGE_SWEEP_SECONDS = 24 * 3600.0
+
+
+def sweep_images(db_session_factory):
+    import image_sources
+
+    db = db_session_factory()
+    try:
+        return image_sources.sweep(db)
+    finally:
+        db.close()
 
 
 #: How long ALTER TABLE ... SET waits for its lock. Under deadlock_timeout (1 s by default): a waiter past it makes
@@ -229,7 +244,7 @@ def run(db_session_factory, stop=None):
     logger.info("[Indexes] start work done in %.1f s", time.time() - started)
     stored = [False]
     _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])
-    cleaned = time.monotonic()
+    cleaned, swept = time.monotonic(), None
     while not stop.wait(POLL_SECONDS):
         try:
             mark = poll_once(db_session_factory, mark)
@@ -240,6 +255,9 @@ def run(db_session_factory, stop=None):
             _each([(_clean_and_say, db_session_factory)])
             if not stored[0]:
                 _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])
+            if swept is None or time.monotonic() - swept >= IMAGE_SWEEP_SECONDS:
+                swept = time.monotonic()
+                _each([(sweep_images, db_session_factory)])
 
 
 def start(db_session_factory):

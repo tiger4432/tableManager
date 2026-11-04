@@ -403,6 +403,7 @@
 
 ### 설정 파일
 
+- 2026-11-05 [그리드 이미지 칸에 붙여 넣거나 끌어다 놓은 그림을 서버가 받음 — image_sources 의 receive · 하루 한 번 쓸기](#2026-11-05--그리드-이미지-칸에-붙여-넣거나-끌어다-놓은-그림을-서버가-받음--image_sources-의-receive--하루-한-번-쓸기) — 적는 곳 image_sources.json receive · 보는 곳 그리드 이미지 칸 · auto_update.log
 - 2026-11-04 [리포트 표의 결과 파일 칸이 링크 — 칸 타입 link, 그리드에서 누르면 열림](#2026-11-04--리포트-표의-결과-파일-칸이-링크--칸-타입-link-그리드에서-누르면-열림) — 적는 곳 table_config.json column_types · 보는 곳 그리드
 - 2026-11-02 [dt_job_rollup 을 맵퍼 파일 없이 — 견본 규칙이 decide 선언, 견본 맵퍼 은퇴 · 샘플 설정에 ledger_translate](#2026-11-02--dt_job_rollup-을-맵퍼-파일-없이--견본-규칙이-decide-선언-견본-맵퍼-은퇴--샘플-설정에-ledger_translate) — 견본 chain_rules · ingestion_settings
 - 2026-11-01 [원장 번역이 SQL 길로 돈다 — 되돌림 스위치 하나(ingestion_settings.json ledger_translate)](#2026-11-01--원장-번역이-sql-길로-돈다--되돌림-스위치-하나ingestion_settingsjson-ledger_translate) — 끄는 곳 ingestion_settings.json · 보는 곳 소급 탭 실행 행
@@ -709,6 +710,14 @@
 
 
 
+
+## 2026-11-05 · 그리드 이미지 칸에 붙여 넣거나 끌어다 놓은 그림을 서버가 받음 — image_sources 의 receive · 하루 한 번 쓸기
+
+- 무엇: 그리드 이미지 칸에 그림을 붙여 넣거나 끌어다 놓으면 서버가 `image_sources.json` 의 «받는 곳»(receive 를 적은 folder 출처 하나) 밑에 `<표>/<날짜>/<고유>.<확장자>` 로 저장하고 참조를 돌려줍니다. 클라가 그 참조를 보통 편집으로 칸에 씁니다(소유자 11-05 ㄱ).
+- 할 일: folder 출처 하나에 `"receive": {"max_mb": 10, "keep_days": <일>}` 를 적습니다. keep_days 를 안 적으면 받은 그림을 지우지 않습니다.
+- 지우기: 스케줄러가 하루 한 번, 어떤 이미지 칸의 지금 값도 가리키지 않게 된 지 keep_days 일이 지난 받은 그림만 지웁니다. 지운 그림을 이력에서 열면 «picture removed - …» 이 뜹니다.
+- 도우미: 표 설정 가이드(table_config.md) 이미지 칸 절에 receive 줄이 생겼습니다 — 도우미 답이 바뀝니다.
+- 필요한 조건: git pull · 런처 재기동 · 클라 dist.
 
 ## 2026-11-04 · 보통 조인(키 유니크 아님)의 값 표 키에도 조회 색인 · 세운 뒤 ANALYZE · 없으면 규칙 줄에 한 마디
 

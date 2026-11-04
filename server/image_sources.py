@@ -14,7 +14,9 @@ sources, one file:
 No secret lives in the file: a db source names the environment variable that holds its password.
 Every image is read by the server - an http(s) cell and a url source are fetched and sent on,
 never handed to the browser (총괄 f087403fe); `_fetch` holds the guards that makes safe.
-`resolve` is the one seat that asks a source's kind; it reads and never writes.
+`resolve` is the one seat that asks a source's kind; it reads and never writes. `keep` is the one writer: a
+picture pasted or dropped on a grid image cell, kept under the source that declares `receive`, and `sweep`
+deletes what no image cell has held for its `keep_days` (owner 11-05).
 """
 import hashlib
 import io
@@ -196,6 +198,9 @@ def _folder(name, source, rest):
     if not root or _safe_relative_path(path, root) is None:
         raise ImageRefused(400, "%r is outside the root of image source %r" % (rest, name))
     if not os.path.isfile(path):
+        if isinstance(source.get(RECEIVE), dict) and RECEIVED_NAME.match(rest.strip()):
+            raise ImageRefused(404, "picture removed - it was unreferenced for %s days (image_sources.json %s.%s.keep_days)"
+                               % (source[RECEIVE].get("keep_days"), name, RECEIVE))
         raise ImageRefused(404, "no file %r in image source %r" % (rest, name))
     return ("file", os.path.realpath(path))
 
@@ -295,3 +300,170 @@ def _fetch(label, address):
                 raise ImageRefused(502, "%s is larger than %d bytes - not read further"
                                    % (label, MAX_BYTES))
     return ("bytes", bytes(data), media)
+
+
+# ── Receiving pictures (owner 11-05 ㄱ): a grid image cell's paste or drop is kept under the folder source that declares
+#    `receive`, by a name the server makes, and its reference handed back - the client writes it as any edit. ──
+
+#: The cell that makes a folder source the one that receives: {"max_mb": <MB>, "keep_days": <days; absent = never
+#: deleted>}. One source may carry it.
+RECEIVE = "receive"
+#: What `keep` names a file, relative to the root - the sweep touches nothing else.
+RECEIVED_NAME = re.compile(r"^[^/\\]+/\d{4}-\d{2}-\d{2}/[0-9a-f]{32}\.(png|jpg|gif|bmp|webp|tif)$")
+#: {relative path: the day it was first seen unreferenced} - in the receiving root, beside what it is about.
+UNREFERENCED_FILE = ".assy_unreferenced.json"
+#: Head bytes -> (suffix, media type): the one «is this a picture» judge; Pillow stays optional.
+_HEADS = ((b"\x89PNG\r\n\x1a\n", "png", "image/png"), (b"\xff\xd8\xff", "jpg", "image/jpeg"),
+          (b"GIF87a", "gif", "image/gif"), (b"GIF89a", "gif", "image/gif"), (b"BM", "bmp", "image/bmp"),
+          (b"II*\x00", "tif", "image/tiff"), (b"MM\x00*", "tif", "image/tiff"))
+
+
+def receiver(sources=None):
+    """(name, source) of the folder source that receives pictures, or ImageRefused 409 - none, or more than one."""
+    sources = load_sources() if sources is None else sources
+    named = sorted(name for name, source in sources.items()
+                   if isinstance(source, dict) and source.get("kind") == "folder" and isinstance(source.get(RECEIVE), dict))
+    if not named:
+        raise ImageRefused(409, 'no image source receives pictures - add "receive": {"max_mb": 10} to one folder '
+                                "source in image_sources.json")
+    if len(named) > 1:
+        raise ImageRefused(409, 'image sources %s both receive pictures - keep "receive" on one' % ", ".join(named))
+    return named[0], sources[named[0]]
+
+
+def receive_limit(source) -> int:
+    """The largest picture `source` receives, in bytes (`receive.max_mb`)."""
+    return int(float(source[RECEIVE].get("max_mb") or 0) * 1024 * 1024)
+
+
+def check_size(name, source, size):
+    """ImageRefused 413 when `size` bytes is more than the receiving source takes - the one size judge."""
+    if size > receive_limit(source):
+        raise ImageRefused(413, "the picture is %.1f MB (%s bytes); at most %s MB (%s bytes) - make it smaller or raise "
+                                "receive.max_mb of %s" % (size / 1024 / 1024, format(size, ","),
+                                                          source[RECEIVE].get("max_mb"),
+                                                          format(receive_limit(source), ","), name))
+
+
+def picture_kind(head: bytes):
+    """(suffix, media type) of a picture by its first bytes, or None."""
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "webp", "image/webp"
+    return next(((suffix, media) for magic, suffix, media in _HEADS if head.startswith(magic)), None)
+
+
+def keep(table, data: bytes, sources=None, today=None) -> dict:
+    """Keep one received picture under the receiving source: <root>/<table>/<day>/<32 hex>.<suffix>, written whole
+    (a temporary name, then replaced). -> {"ref", "bytes", "media_type"}; ImageRefused 409 / 413 / 415."""
+    import datetime
+    import uuid
+
+    name, source = receiver(sources)
+    check_size(name, source, len(data))
+    kind = picture_kind(data[:16])
+    if kind is None:
+        raise ImageRefused(415, "that file is not a png, jpeg, gif, bmp, webp or tiff picture")
+    relative = "%s/%s/%s.%s" % (table, (today or datetime.date.today()).isoformat(), uuid.uuid4().hex, kind[0])
+    path = os.path.join(str(source["root"]), *relative.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".part", "wb") as fh:
+        fh.write(data)
+    os.replace(path + ".part", path)
+    return {"ref": "%s:%s" % (name, relative), "bytes": len(data), "media_type": kind[1]}
+
+
+def image_columns(table_config=None):
+    """[(table, column)] of every column whose declared type is `image`."""
+    if table_config is None:
+        from database import crud
+        table_config = crud.TABLE_CONFIG
+    return [(table, column) for table, info in sorted((table_config or {}).items()) if isinstance(info, dict)
+            for column, kind in sorted((info.get("column_types") or {}).items()) if kind == COLUMN_TYPE]
+
+
+def referenced(db, refs, columns=None, batch=1000) -> set:
+    """The refs some image column's current value holds - each column asked once per `batch` refs (`IN`, one query
+    for every dialect)."""
+    from sqlalchemy import select
+
+    from database import models
+
+    refs, found = sorted(set(refs)), set()
+    for table, column in (image_columns() if columns is None else columns):
+        model = models.DYNAMIC_TABLES.get(table)
+        if model is None or column not in model.__table__.c:
+            continue
+        cell = model.__table__.c[column]
+        for start in range(0, len(refs), batch):
+            found.update(row[0] for row in db.execute(select(cell).where(cell.in_(refs[start:start + batch]))))
+        db.rollback()
+    return found
+
+
+def received_files(root):
+    """{relative path: full path} of the files `keep` made under `root` - its name, and within the root once links
+    are followed."""
+    from parsers.directory_watcher import _safe_relative_path
+
+    real_root, out = os.path.realpath(root), {}
+    for here, _dirs, names in os.walk(root):
+        for name in names:
+            full = os.path.join(here, name)
+            relative = os.path.relpath(full, root).replace("\\", "/")
+            if RECEIVED_NAME.match(relative) and _safe_relative_path(os.path.realpath(full), real_root) is not None:
+                out[relative] = full
+    return out
+
+
+def sweep(db, today=None, sources=None, columns=None) -> dict:
+    """Delete the received pictures no image column's current value has held for `receive.keep_days` days: the day
+    one is first seen unreferenced is written to UNREFERENCED_FILE, a referenced one is taken off, and one still
+    unreferenced keep_days after that day goes. Files made after the listing are not this pass's. No keep_days: none
+    deleted, said once a pass. -> {"listed", "unreferenced", "deleted", "freed_bytes"}"""
+    import datetime
+
+    today = today or datetime.date.today()
+    try:
+        name, source = receiver(sources)
+    except ImageRefused:
+        return {}
+    root = str(source.get("root") or "")
+    files = received_files(root) if root and os.path.isdir(root) else {}
+    held = referenced(db, ["%s:%s" % (name, relative) for relative in files], columns)
+    marks_path = os.path.join(root, UNREFERENCED_FILE)
+    try:
+        with open(marks_path, encoding="utf-8") as fh:
+            marks = json.load(fh)
+    except (OSError, ValueError):
+        marks = {}
+    marks = {relative: day for relative, day in marks.items() if relative in files}
+    unreferenced = [relative for relative in sorted(files) if "%s:%s" % (name, relative) not in held]
+    for relative in files:
+        if relative not in unreferenced:
+            marks.pop(relative, None)
+    for relative in unreferenced:
+        marks.setdefault(relative, today.isoformat())
+    keep_days = source[RECEIVE].get("keep_days")
+    gone = [relative for relative in unreferenced if keep_days not in (None, "")
+            and (today - datetime.date.fromisoformat(marks[relative])).days >= int(keep_days)]
+    size = sum(os.path.getsize(files[relative]) for relative in (gone if keep_days not in (None, "") else unreferenced))
+    if keep_days in (None, ""):
+        if unreferenced:
+            logger.info("[Images] keep_days not declared - kept %d unreferenced received file(s), %.1f MB (%s.%s)",
+                        len(unreferenced), size / 1024 / 1024, name, RECEIVE)
+    elif gone:
+        logger.info("[Images] sweeping: %d file(s), %.1f MB unreferenced for >= %s days (%s)",
+                    len(gone), size / 1024 / 1024, keep_days, name)
+    deleted, freed = 0, 0
+    for relative in gone:
+        try:
+            bytes_ = os.path.getsize(files[relative])
+            os.remove(files[relative])
+            marks.pop(relative, None)
+            deleted, freed = deleted + 1, freed + bytes_
+        except OSError as exc:
+            logger.warning("[Images] could not delete %s: %s - tried again at the next sweep", relative, told(exc))
+    with open(marks_path + ".part", "w", encoding="utf-8") as fh:
+        json.dump(marks, fh, ensure_ascii=False, sort_keys=True)
+    os.replace(marks_path + ".part", marks_path)
+    return {"listed": len(files), "unreferenced": len(unreferenced), "deleted": deleted, "freed_bytes": freed}
