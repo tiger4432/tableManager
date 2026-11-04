@@ -1847,7 +1847,7 @@
 
 ### ⭐⭐ **스위치는 «거르기»가 아니라 «안 세우기»다 — 끄면 DB 를 «한 번도» 안 만진다** (2026-09-15 등록 · `dc29056a` · `1497ea3e`)
 - **무엇**: 「켜짐/꺼짐」을 «세운 뒤 걸러서» 구현하면 꺼진 것이 여전히 로드·검증·점검 SQL 을 «돈다». 운영자가 다 껐는데 계속 오류가 나는 장애의 모양이 그것이다(2026-09-14~15). 스위치는 그 «앞»에 앉는다 — 꺼지면 규칙이 «안 서고», 그 아래 아무 줄도 «안 돈다».
-- **어디**: `chain/rule_shape.is_switched_off`(통합 선언 `enabled: false` → 로더가 규칙을 «안 세운다», 거절 목록에도 안 센다 — 판정 399, 통합 계획 ③′; `expand_declaration` 은 OFF 를 «거절이 아니라 노트»로 낸다) · `chain/unique_key.ensure_once` **와 `retract_unrequired_once`**(`ASSY_VJOIN_AUTO_INDEX=0` → 맨 보고서, DB 무접촉 — 세우지도 걷지도 않는다). 강제 자리: 세 시험 — «OFF 로 그 경로가 불리는지»를 «호출 0» 으로 단언한다.
+- **어디**: `chain/rule_shape.is_switched_off`(통합 선언 `enabled: false` → 로더가 규칙을 «안 세운다», 거절 목록에도 안 센다 — 판정 399, 통합 계획 ③′; `expand_declaration` 은 OFF 를 «거절이 아니라 노트»로 낸다) · `chain/unique_key.ensure_once` **와 `retract_unrequired_once`**(`ASSY_VJOIN_AUTO_INDEX=0` → 맨 보고서, DB 무접촉 — 세우지도 걷지도 않는다; 🆕 11-04 `d5129ae21` 스위치를 읽는 자리는 `unique_key.auto_index_off()` 하나 — 조회 인덱스 `ensure_lookup_once` 와 규칙 목록 줄도 이것을 묻는다). 강제 자리: 세 시험 — «OFF 로 그 경로가 불리는지»를 «호출 0» 으로 단언한다.
 - **언제 재사용**: 새 스위치·`enabled`·환경변수 전부. 판별 질문: 「끄면 «어느 줄»부터 안 도나」. 답이 「마지막 필터」면 반쪽 스위치다.
 - **함정**:
   - 🔴 **스위치마다 «주어»를 적어라 — 그리고 주어가 없어지면 스위치도 «없앤다».** `ASSY_CHAIN_SYNTHESIZE` 의 주어는 «운영자가 못 보는» 파생 규칙이었고, 부팅 줄 `[ChainRules] set(N)` 이 어느 파일이 썼든 «전부» 대게 되자 그 주어가 사라져 스위치도 은퇴했다(S-234 `5c845e67`, 판정 408 — 아래 「한 뜻을 여러 파일에」 항목). 오늘 손잡이는 둘 — 규칙을 «적은 파일»의 `enabled: false`, 전부는 `ASSY_CHAIN_WORKER=0`. 주어를 안 적으면 「전부 껐다」가 거짓이 된다.
