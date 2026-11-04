@@ -679,7 +679,8 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
                     name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
                     evidence=_steps_text(out, report).splitlines())
                 kept, _sha = report_html.keep(said, page, refs)
-                wrote = dict(out["texts"], file=kept)       # a text the report did not write is withdrawn, as a file
+                # the cell holds the file's signed-in link (owner 11-04); send_to and its mark keep the path
+                wrote = dict(out["texts"], file=report_html.link_of(kept))   # a text the report did not write is withdrawn
                 cells = {column: wrote.get(cell) or None for cell, column in written}
                 _mark(kept, name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
             except Exception as exc:                                # noqa: BLE001 - this wafer's page, the others go on

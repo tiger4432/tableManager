@@ -286,8 +286,16 @@ def fixture_reported(db, tmp_path, monkeypatch):
 
 
 def _report_rows(db):
+    """(wafer, the page's file) - the cell holds the signed-in link «/reports/<file name>» (owner 11-04), and the
+    page is that name in the reports folder."""
+    import paths
+    from chain import report_html
+
     db.expire_all()
-    return sorted((r.wafer, r.fl) for r in db.query(models.DYNAMIC_TABLES["kinds_rep"]).all())
+    rows = sorted((r.wafer, r.fl) for r in db.query(models.DYNAMIC_TABLES["kinds_rep"]).all())
+    assert all(fl is None or fl == report_html.link_of(fl) for _w, fl in rows), rows
+    folder = os.path.join(paths.DATA_ROOT, report_html.REPORTS_DIRNAME)
+    return [(w, fl and os.path.join(folder, os.path.basename(fl))) for w, fl in rows]
 
 
 def _summary(db):

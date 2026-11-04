@@ -65,6 +65,7 @@ def box(tmp_path, monkeypatch):
     sources.write_text(json.dumps({"pics": {"kind": "folder", "root": str(pics)}}), encoding="utf-8")
     monkeypatch.setattr(image_sources, "CONFIG_PATH", str(sources))
     app = FastAPI()
+    app.add_api_route("/reports", main.list_reports, methods=["GET"])
     app.add_api_route("/reports/{name}", main.get_report, methods=["GET"])
     app.add_api_route("/reports/{name}/image/{n}", main.get_report_image, methods=["GET"])
     app.add_api_route("/shared/report/{name}", main.get_shared_report, methods=["GET"])
@@ -282,3 +283,14 @@ def test_not_an_address_is_said_once_and_links_relative(box, settings, caplog, w
     said = [r.getMessage() for r in caplog.records if r.getMessage().startswith("[Report]")]
     assert said == ["[Report] server_settings.json public_url is not an http(s) address (%r) - report files link "
                     "their pictures relative to themselves" % (written,)], said
+
+
+def test_the_list_links_each_report_by_the_link_its_cell_holds_and_that_link_opens_it(box):
+    """Owner 11-04: a report's results.file cell holds `report_html.link_of(path)`; GET /reports writes its links
+    by the same function, so the cell and the list cannot spell a report two ways."""
+    path, _page, _refs = _written()
+    link = report_html.link_of(path)
+    assert link == "/reports/W1.html"
+    listed = box["client"].get("/reports")
+    assert listed.status_code == 200 and ('href="%s"' % link) in listed.text, listed.text[:400]
+    assert box["client"].get(link).status_code == 200, "the cell's link opens the page"

@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-04] **리포트 표의 결과 파일 칸이 링크 — 그리드에서 누르면 열림** — git pull · 서버 재기동 (클라 dist 같이)
+>
+> ```
+> 무엇     리포트가 결과 파일 칸(derive.report.results.file)에 경로 대신 '/reports/<파일 이름>' 을 씀 — 로그인 링크
+>          표 선언 column_types 에 낱말 "link" — 그 칸을 그리드가 링크로 그림 (서버는 글자 칸)
+> 운영에서  리포트 표의 그 칸 타입을 "link" 로 적음 (견본 wafer_report.report_path 가 그렇게 됨)
+>          이미 쓰인 행은 경로 그대로 — 그 웨이퍼 리포트가 다시 돌 때 링크로 바뀜 (소급 없음)
+>          메일 · 바깥으로 보내는 것(send_to · 공유 링크)은 그대로 서명 링크 · 파일
+> 보는 것  리포트 한 판 뒤 그 행의 칸이 '/reports/W1.html' 꼴 · 누르면 그 페이지 · GET /reports 목록의 링크와 같은 글자
+> 같은 답  server 폴더에서 python -m pytest tests/test_every_declared_kind_runs_and_leaves_rows.py tests/test_a_report_picture_opens_its_original.py  -> 55 passed
+> ```
+>
+> ---
+>
 > ## [11-02] **dt_job_rollup 을 맵퍼 파일 없이 — 견본 규칙이 decide 선언, 견본 맵퍼 은퇴** — git pull 만 (견본만 바뀜)
 >
 > ```

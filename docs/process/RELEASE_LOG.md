@@ -401,6 +401,7 @@
 
 ### 설정 파일
 
+- 2026-11-04 [리포트 표의 결과 파일 칸이 링크 — 칸 타입 link, 그리드에서 누르면 열림](#2026-11-04--리포트-표의-결과-파일-칸이-링크--칸-타입-link-그리드에서-누르면-열림) — 적는 곳 table_config.json column_types · 보는 곳 그리드
 - 2026-11-02 [dt_job_rollup 을 맵퍼 파일 없이 — 견본 규칙이 decide 선언, 견본 맵퍼 은퇴 · 샘플 설정에 ledger_translate](#2026-11-02--dt_job_rollup-을-맵퍼-파일-없이--견본-규칙이-decide-선언-견본-맵퍼-은퇴--샘플-설정에-ledger_translate) — 견본 chain_rules · ingestion_settings
 - 2026-11-01 [원장 번역이 SQL 길로 돈다 — 되돌림 스위치 하나(ingestion_settings.json ledger_translate)](#2026-11-01--원장-번역이-sql-길로-돈다--되돌림-스위치-하나ingestion_settingsjson-ledger_translate) — 끄는 곳 ingestion_settings.json · 보는 곳 소급 탭 실행 행
 - 2026-11-01 [빈 키 행은 거절하지 않고 뺀다 — 원인별로 셈](#2026-11-01--빈-키-행은-거절하지-않고-뺀다--원인별로-셈) — 적을 것 없음 · allow_null 은 안 읽음
@@ -705,6 +706,14 @@
 
 
 
+
+## 2026-11-04 · 리포트 표의 결과 파일 칸이 링크 — 칸 타입 link, 그리드에서 누르면 열림
+
+- 무엇: 리포트가 결과 파일 칸에 파일 경로 대신 로그인 링크 «/reports/<파일 이름>» 을 씁니다(소유자 11-04 안 ㄱ). 표 선언의 칸 타입에 낱말 `link` 가 생겼고, 그 타입인 칸은 그리드가 누르면 열리는 링크로 그립니다. 서버는 그 칸을 글자로 둡니다.
+- 할 일: 리포트 표의 결과 파일 칸 타입을 `link` 로 적습니다. 견본 wafer_report.report_path 는 이미 link 입니다.
+- 그대로인 것: 이미 쓰인 행은 경로 그대로이고 그 웨이퍼 리포트가 다시 돌 때 바뀝니다(소급 없음). send_to 로 보내는 파일 · 메일과 바깥의 서명 공유 링크는 그대로입니다. GET /reports 목록과 칸은 같은 함수(`report_html.link_of`)로 링크를 짓습니다.
+- 도우미: 리포트 표 가이드(ai_report_tables.md)가 «파일 경로 칸»을 «파일 링크 칸»으로 말합니다 — 도우미 답이 바뀝니다.
+- 필요한 조건: git pull · 서버 재기동 · 클라 dist.
 
 ## 2026-11-02 · dt_job_rollup 을 맵퍼 파일 없이 — 견본 규칙이 decide 선언, 견본 맵퍼 은퇴 · 샘플 설정에 ledger_translate
 

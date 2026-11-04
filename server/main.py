@@ -1090,8 +1090,10 @@ def list_reports():
     folder = _reports_folder()
     names = sorted((n for n in (os.listdir(folder) if os.path.isdir(folder) else ()) if n.lower().endswith(".html")),
                    key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
-    rows = "".join('<li><a href="/reports/%s">%s</a> <small>%s</small> · <a href="/shared/report/%s?k=%s">Share link</a>'
-                   '</li>' % (_html.escape(n), _html.escape(n), time.strftime("%Y-%m-%d %H:%M", time.localtime(
+    from chain import report_html
+
+    rows = "".join('<li><a href="%s">%s</a> <small>%s</small> · <a href="/shared/report/%s?k=%s">Share link</a>'
+                   '</li>' % (_html.escape(report_html.link_of(n)), _html.escape(n), time.strftime("%Y-%m-%d %H:%M", time.localtime(
                        os.path.getmtime(os.path.join(folder, n)))), _html.escape(n), _report_link_key(n))
                    for n in names)
     return HTMLResponse('<!doctype html><meta charset="utf-8"><title>Reports</title><h1>Reports</h1><ul>%s</ul>'

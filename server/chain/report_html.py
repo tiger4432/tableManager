@@ -419,6 +419,13 @@ def file_name(name) -> str:
     return ("".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in str(name)) or "report") + ".html"
 
 
+def link_of(path) -> str:
+    """The signed-in link to a report file - «reports/<file name>» with its leading slash, what GET /reports/<name>
+    opens. The report's `results.file` cell and the GET /reports list both write it (owner 11-04); the path stays
+    `keep`'s."""
+    return "/reports/" + os.path.basename(str(path))
+
+
 def keep(name, text, images=()) -> tuple:
     """Write the file `<name>.html`, and when it links pictures, beside it `<name>.html` + IMAGES_SUFFIX - their refs
     by number (`link_pictures`), the only originals GET /reports/<file>/image/<n> opens; the list first, so a page never

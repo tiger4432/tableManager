@@ -83,7 +83,7 @@
 표를 고르기 전에도 칸과 버튼이 보이지만 꺼져 있습니다 — 「Pick a table or Add table」(10-01 `cbbf03dd7`). 저장(Save · Ctrl+S)과 원문 칸도 같은 낱말로 꺼집니다(`b4f162ccd`).
 1줄 = 칸 이름, 2줄 = 타입, 3줄(있으면) = 키 칸 밑에 key.
 ```
-- **타입은 `string` · `number` · `datetime` · `image` 넷입니다** — 서버가 가르는 낱말이 앞의 셋이고(그 밖의 낱말은 글자 칸이 됨), `image` 는 이미지 참조 칸이라 글자로 저장됩니다(아래 §2.2, `a8dea2bcf`). 화면은 이 넷 밖의 낱말을 거절합니다. 낱말 목록은 서버에 없고 화면의 `COLUMN_TYPES` 한 곳입니다(10-01 총괄 5ef827675). 대소문자는 안 가립니다 — `Number` · `KEY` 도 읽고, 저장은 서버의 철자(`number` · `key`)로 씁니다(`666b3568d`).
+- **타입은 `string` · `number` · `datetime` · `image` · `link`** — 서버가 가르는 낱말이 앞의 셋이고(그 밖의 낱말은 글자 칸이 됨), `image` 는 이미지 참조 칸이라 글자로 저장됩니다(아래 §2.2, `a8dea2bcf`). `link` 는 링크 칸 — 글자로 저장되고 그리드가 누르면 열리는 링크로 그립니다(리포트 표의 결과 파일 칸이 «/reports/<파일 이름>» 을 씀, 소유자 11-04). 화면은 이 목록 밖의 낱말을 거절합니다. 낱말 목록은 서버에 없고 화면의 `COLUMN_TYPES` 한 곳입니다(10-01 총괄 5ef827675). 대소문자는 안 가립니다 — `Number` · `KEY` 도 읽고, 저장은 서버의 철자(`number` · `key`)로 씁니다(`666b3568d`).
 - 3줄에 `key` 가 하나면 `business_key`, 여럿이면 `composite_key_source`(왼쪽부터). 3줄이 없으면 키는 그대로입니다.
 - 붙여 넣은 것은 `column_types` · `display_columns`(3줄이 있으면 키 둘도)를 **바꿔 씁니다**. 그 밖의 칸은 그대로 남습니다.
 - 거절은 칸마다 이름 대어 밑에 섭니다: `column N: no name` · `name repeated` · `unknown type <낱말>` · `<값> is not key` · `row N: only names, types and key are read` · `Nothing pasted`.

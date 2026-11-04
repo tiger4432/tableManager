@@ -1654,7 +1654,7 @@
     "business_key": "wafer",
     "column_types": {
       "wafer": "string",
-      "report_path": "string",
+      "report_path": "link",
       "report_summary": "string"
     }
   }
