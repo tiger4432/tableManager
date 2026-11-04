@@ -1933,13 +1933,17 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         drop_report["by_reason_column"], "Not written",
                         {column: seen["first"] for column, seen in drop_report["refused_values"].items()},
                         len(batch_data.updates))
+                    # ONE cell count per reason on the line (lead 11-04 ㄱ): a reason the sentence names is counted
+                    # there (cells that held a value - 총괄 629c678a8); any other reason here, its cells as dropped
+                    unsaid = {reason: n for reason, n in drop_report["by_reason"].items()
+                              if reason not in crud.NOT_WRITTEN_NEXT}
                     logger.warning(
                         f"⚠️ [Chain Write Discard] Table: '{target_table}' | TX: "
                         f"'{chain_tx_id}' | rule(s): "
                         f"{', '.join(sorted(rules_by_target.get(target_table, ()))) or '<unknown>'} | "
-                        f"{drop_report['dropped_cells']} cell(s) on "
-                        f"{drop_report['rows_affected']} row(s) were dropped "
-                        f"({drop_report['by_reason']}, columns {sorted(drop_report['by_column'])}); "
+                        f"{drop_report['rows_affected']} row(s) had cells dropped "
+                        f"({', '.join(sorted(drop_report['by_reason']))}, columns {sorted(drop_report['by_column'])}"
+                        + "".join(f"; {reason} {n} cell(s)" for reason, n in sorted(unsaid.items())) + "); "
                         f"{drop_report['empty_rows_suppressed']} row(s) were not created "
                         f"because every key they carried was dropped." + (f" {said}" if said else ""))
 
