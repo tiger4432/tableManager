@@ -328,6 +328,10 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
   분석합니다(`chain_ingestion_worker._analyze_stale_tables_sync`). 대상은 「이 애플리케이션이
   선언한 표」 — 동적 카탈로그 ∪ `models.Base.metadata` ∪ 원장 표(`ledger.schema.owns_table`).
   넘지 않는 표는 «건드리지 않고», 그렇게 한 줄로 말합니다.
+- 🆕 **조인 키 인덱스를 방금 세운 표**(11-04 `eef1c196a`): 스케줄러의 인덱스 일이 세운 표는 이 임계와 상관없이
+  곧바로 분석합니다 — 새 인덱스 식에 통계가 없으면 키 100 개 넘는 배치가 표 전체를 훑습니다. 줄은
+  «[<표>] statistics re-analysed after 0 row(s) … - a join key index was just built on it …». 임계가 0 이하(«끔»)면
+  이것도 돌지 않습니다.
 
 🔴 **임계와 함수가 «하나»입니다.** 「stale 한가」의 철자가 둘이면 기동에서 도는 쪽이
 «아무도 재 본 적 없는» 쪽이 됩니다.

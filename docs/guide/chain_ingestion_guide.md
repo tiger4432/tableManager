@@ -332,6 +332,10 @@ is gitignored and only `*.py.sample` ships.
   (`contracts/blank_predicate`). A coordinate of `0` is a value, not a blank.
 - **An item that carries `row_id` or `business_key_val` is never refused**, so updating
   an existing row is unaffected.
+- 🆕 11-04 `71dfa331d` **`df_to_updates` (so every `@mapper`) no longer refuses a blank key itself.** A row whose
+  plain key is blank goes out without `business_key_val`, and this gate leaves THAT row out and counts it, as it
+  does a composite target's all-blank row (owner 10-24 · 11-01). Before, one such row made the SDK refuse the whole
+  batch with `MapperContractError`. A composite key with only some parts blank is still a key.
 - **A refusal is never a deletion.** If the gate empties a `replace_map` batch, the
   batch is skipped entirely rather than purging the scope and writing nothing. A
   *declared* empty replace (explicit `scope`, empty payload) still works.
