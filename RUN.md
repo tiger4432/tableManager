@@ -19,6 +19,7 @@
 >          표 선언 column_types 에 낱말 "link" — 그 칸을 그리드가 링크로 그림 (서버는 글자 칸)
 > 운영에서  리포트 표의 그 칸 타입을 "link" 로 적음 (견본 wafer_report.report_path 가 그렇게 됨)
 >          이미 쓰인 행은 경로 그대로 — 그 웨이퍼 리포트가 다시 돌 때 링크로 바뀜 (소급 없음)
+>          데이터 루트가 «/» 로 시작하는 설치에서는 그 행이 링크로 보이고, 누르면 보고서가 아니라 앱 첫 화면이 열림 — 그 웨이퍼 보고서가 다시 돌면 링크로 바뀜
 >          메일 · 바깥으로 보내는 것(send_to · 공유 링크)은 그대로 서명 링크 · 파일
 > 보는 것  리포트 한 판 뒤 그 행의 칸이 '/reports/W1.html' 꼴 · 누르면 그 페이지 · GET /reports 목록의 링크와 같은 글자
 > 같은 답  server 폴더에서 python -m pytest tests/test_every_declared_kind_runs_and_leaves_rows.py tests/test_a_report_picture_opens_its_original.py  -> 55 passed
