@@ -6,7 +6,8 @@ import logging
 from fastapi import HTTPException
 
 import grid_pivot
-from column_filter import ROW_ID_FILTER_NAMES, FilterRefused, get_column_filter_condition, model_has_row_id
+from column_filter import (ROW_ID_FILTER_NAMES, TEXT_PATTERNS, FilterRefused, filter_column, get_column_filter_condition,
+                           model_has_row_id)
 from database import crud, models
 
 logger = logging.getLogger("Server")
@@ -399,3 +400,72 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
     # 🔴 키 철자는 `build_count_cache_key` 하나뿐이다. 여기서 `"|".join(...)`을 다시
     #    쓰면 무효화 쪽 판정과 갈라져 여덟 개 호출 지점이 전부 죽는다(그 사고의 재발).
     return query, build_count_cache_key(table_name, *cache_key_parts)
+
+
+#: A value list's length - one more is read, to say `more` (총괄 11-05).
+VALUES_CAP = 10000
+
+
+def column_values(db, table_name, table_model, column, *, search=None, filters=None, pivot=None, **narrowing):
+    """`column`'s distinct values over the grid's narrowing less its own filter (총괄 11-05: the list a set filter picks
+    from, as a spreadsheet's) - sorted, the blank cells one None at the end, at most `VALUES_CAP` (`more`); `search`
+    keeps the values that contain it, as the text filter's contains. A value is the one its `equals` matches
+    (`filter_column`). Nothing else narrowing and a btree leading on the column: one index probe per value
+    (`_skipped_values`) - else DISTINCT over the narrowed rows."""
+    import json
+
+    from sqlalchemy import case
+
+    try:
+        expr, is_numeric = filter_column(table_model, column)
+    except FilterRefused as refused:
+        raise filter_refused(table_name, column, refused) from refused
+    try:
+        asked = json.loads(filters) if filters else None
+    except ValueError:
+        asked = None
+    if isinstance(asked, dict):
+        kept = {name: spec for name, spec in asked.items() if name != column}
+        filters = json.dumps(kept) if kept else None
+    found = None
+    if not (search or filters or any(narrowing.values())):
+        found = _skipped_values(db, table_model, column, is_numeric)
+    if found is None:
+        query, _ = narrowed_table_query(db, table_name, table_model, filters=filters, pivot=pivot, **narrowing)
+        text = models.search_text(expr) if is_numeric else expr
+        if search:
+            query = query.filter(text.ilike(TEXT_PATTERNS["contains"].format(search)))
+        value = case((crud.blank_sql_condition(text), None), else_=expr)
+        found = [row[0] for row in query.with_entities(value).distinct().order_by(value.asc().nullsfirst())
+                 .limit(VALUES_CAP + 2)]
+    blank = bool(found) and found[0] is None
+    values = found[1:] if blank else found
+    return {"column": column, "values": values[:VALUES_CAP] + ([None] if blank else []), "more": len(values) > VALUES_CAP}
+
+
+def _skipped_values(db, table_model, column, is_numeric):
+    """`column`'s values in the shape `column_values` reads them (a None first when a cell is blank) by a recursive
+    skip over a btree that leads with it - one index probe per value, not the table (box throwaway DB 10M rows: 33 ms
+    against DISTINCT's 0.5-0.9 s); None when PostgreSQL has no such index, or the column's text is not its value."""
+    from sqlalchemy import String, exists, text
+
+    table = getattr(table_model, "__table__", None)
+    bind = db.get_bind()
+    if bind.dialect.name != "postgresql" or table is None or column not in table.columns:
+        return None
+    raw = table.columns[column]
+    if not (is_numeric or isinstance(raw.type, String)):
+        return None
+    held = models.catalogue_indexes(db.connection().connection.dbapi_connection, table.name)
+    if not any(models.orders_rows_by(index, [column]) for index in held):
+        return None
+    prep = bind.dialect.identifier_preparer
+    rel, col = prep.format_table(table), prep.quote(column)
+    first = "IS NOT NULL" if is_numeric else "> ''"
+    values = [row[0] for row in db.execute(text(
+        "WITH RECURSIVE s(v) AS ((SELECT {c} FROM {t} WHERE {c} {first} ORDER BY {c} LIMIT 1) UNION ALL "
+        "SELECT (SELECT {c} FROM {t} WHERE {c} > s.v ORDER BY {c} LIMIT 1) FROM s WHERE s.v IS NOT NULL) "
+        "SELECT v FROM s WHERE v IS NOT NULL LIMIT :most".format(c=col, t=rel, first=first)), {"most": VALUES_CAP + 1})]
+    # a number is blank only as NULL - its text is never '' (`column_filter`'s blank branch)
+    blank = db.query(exists().where(raw.is_(None) if is_numeric else crud.blank_sql_condition(raw))).scalar()
+    return ([None] if blank else []) + values

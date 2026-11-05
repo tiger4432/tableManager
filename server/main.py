@@ -2488,7 +2488,7 @@ def grid_model(table_name, world=None):
 
 from grid_read import (  # noqa: E402 - the grid read path, importable without main (총괄 10-22)
     COUNT_CACHE_KEY_SEP, apply_column_filters, apply_enrichment_queue_predicate, apply_search_filter,
-    build_count_cache_key, count_cache_table_of, has_row_id, narrowed_table_query, refuse_row_address,
+    build_count_cache_key, column_values, count_cache_table_of, has_row_id, narrowed_table_query, refuse_row_address,
     search_scope_columns, total_order_keys, transaction_rows)
 
 
@@ -2518,7 +2518,7 @@ def grid_read(route):
                 asked.get("table_name"), asked.get("order_by", "row_id"), asked.get("filters")))))
         q = asked.get("q") if isinstance(asked.get("q"), str) else None     # a direct call leaves Query sentinels
         filters = asked.get("filters")
-        seconds = grid_read_timeout() if q or pattern_filtered_columns(filters) else None
+        seconds = grid_read_timeout() if q or asked.get("search") or pattern_filtered_columns(filters) else None
         started = time.time()
         try:
             with read_limit(seconds):
@@ -3049,6 +3049,35 @@ def get_table_data_count(
                          transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,
                          enrichment_queue_scope=enrichment_queue_scope)
     return {"table_name": table_name, **counted}
+
+
+@app.get("/tables/{table_name}/data/values")
+@grid_read
+def get_table_data_values(
+    table_name: str,
+    order_by: str = Query(..., alias="column"),
+    search: str = None,
+    q: str = None,
+    cols: str = None,
+    transaction_id: str = None,
+    filters: str = None,
+    enrichment_queue: str = None,
+    enrichment_queue_scope: str = None,
+    world: str = None,
+    pivot: bool = False,
+    db: Session = Depends(get_db)
+):
+    """`?column=`'s distinct values for a set filter (총괄 11-05) - the grid's narrowing less that column's own filter,
+    through the same `narrowed_table_query` as /data and /data/count: {"column", "values" (sorted, the blank cells a
+    null at the end), "more" (past `VALUES_CAP`)}. `search` keeps the values that contain it. The column is `order_by`
+    here because the read is ordered by it: a slow one asks for its index as a slow sort does (`grid_read`)."""
+    table_model = grid_model(table_name, world)
+    if not table_model:
+        raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+    pivoted = grid_pivot.of(table_name, transaction_id=transaction_id, enrichment_queue=enrichment_queue) if pivot else None
+    return {"table_name": table_name, **column_values(
+        db, table_name, table_model, order_by, search=search, filters=filters, pivot=pivoted, q=q, cols=cols,
+        transaction_id=transaction_id, enrichment_queue=enrichment_queue, enrichment_queue_scope=enrichment_queue_scope)}
 
 import json
 from fastapi import HTTPException

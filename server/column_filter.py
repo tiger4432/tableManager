@@ -45,6 +45,20 @@ ROW_ID_FILTER_NAMES = ("row_id", "id")
 #: The text types that match a pattern with ILIKE over `models.search_text` - the ones a declared search index
 #: serves (총괄 10-13: the grid's «search» is a column filter's contains).
 TEXT_PATTERNS = {"contains": "%{}%", "startsWith": "{}%", "endsWith": "%{}"}
+#: The condition types an ordered index serves - an equal value or a range (총괄 ff7890892).
+ORDERED_TYPES = frozenset({"equals", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange"})
+#: A filter's `type`s this reads - a text's and a number's, as the grid's text and number filters send them.
+TYPES = frozenset(TEXT_PATTERNS) | ORDERED_TYPES | {"notEqual", "notContains", "blank", "notBlank"}
+#: A filter's `filterType` - absent (a server-written filter), the grid's text and number filters, and a set of
+#: values (`"values": [...]`, null the blank cells).
+SET = "set"
+FILTER_TYPES = (None, "text", "number", SET)
+
+
+def json_text(value):
+    """`value` as JSON text, for a refusal's sentence."""
+    import json
+    return json.dumps(value, ensure_ascii=False, default=str)
 
 
 class FilterRefused(ValueError):
@@ -58,6 +72,26 @@ def model_has_row_id(table_model) -> bool:
     The schema route's column list and the filter door below both ask this."""
     table = getattr(table_model, "__table__", None)
     return table is not None and "row_id" in table.columns
+
+
+def filter_column(table_model, col_name):
+    """(the expression a filter on `col_name` compares, is it a number) - a number column as it is, any other as its
+    search text, `row_id`/`id` the row's; a column the table does not have refused by name. The filter's and the value
+    list's (`grid_read.column_values`) - one reading, so a listed value is the value its filter matches."""
+    if col_name in ("created_at", "updated_at"):
+        return models.search_text(getattr(table_model, col_name)), False
+    if col_name in ROW_ID_FILTER_NAMES:
+        return table_model.row_id, False
+    if not hasattr(table_model, col_name):
+        from sqlalchemy import inspect
+
+        raise FilterRefused("'%s' has no column '%s' - a filter on it cannot narrow the rows"
+                            % (inspect(table_model).mapper.local_table.name, col_name))
+    from sqlalchemy.sql.sqltypes import Float, Integer, Numeric
+
+    raw_col = getattr(table_model, col_name)
+    is_numeric = isinstance(raw_col.type, (Numeric, Float, Integer))
+    return (raw_col if is_numeric else models.search_text(raw_col)), is_numeric
 
 
 def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_expr_override=None):
@@ -80,8 +114,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     `unresolved_label` ("미상"), so it is a string expression even when the underlying
     right column is declared numeric.
     """
-    from sqlalchemy.dialects.postgresql import JSONB
-    from sqlalchemy import func, or_, and_
+    from sqlalchemy import and_, false, or_
 
     # 1. Handle compound filter conditions (AND / OR)
     if "operator" in f_info:
@@ -100,6 +133,14 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     # 2. Handle simple filter condition
     f_val = f_info.get("filter")
     f_type = f_info.get("type", "contains")
+    # 🔴 A shape this does not read is refused by name, not dropped into an unnarrowed 200 (S-71, 총괄 11-05).
+    if f_info.get("filterType") not in FILTER_TYPES or (f_info.get("filterType") != SET and f_type not in TYPES):
+        raise FilterRefused("%s is not a filter '%s' can read - filterType is text, number or set, type one of %s"
+                            % (json_text(f_info), col_name, ", ".join(sorted(TYPES))))
+    if f_info.get("filterType") == SET:
+        f_type, f_val = SET, f_info.get("values")
+        if not isinstance(f_val, list):
+            raise FilterRefused("a set filter on '%s' takes \"values\": [...] - not %s" % (col_name, json_text(f_val)))
 
     # [N7/N8] An override compares TEXT, but a client filtering a typed virtual column
     # may send the value as a NUMBER or a BOOLEAN (AG-Grid does for number- and
@@ -110,7 +151,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     # int spelling for numbers (3.0 -> '3'), `'true'`/`'false'` for booleans,
     # `TEMPORAL_TEXT_FORMAT` for timestamps. Strings pass through untouched - this is a
     # type bridge, not a second trim.
-    if col_expr_override is not None and f_val is not None and not isinstance(f_val, str):
+    if col_expr_override is not None and f_val is not None and not isinstance(f_val, str) and f_type != SET:
         f_val = crud.comparison_text_value(f_val)
 
     # Allow blank/notBlank even if f_val is not present
@@ -122,27 +163,12 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     if col_expr_override is not None:
         # No model lookup: this column is computed, not stored.
         col_expr = models.search_text(col_expr_override)
-    elif col_name in ["created_at", "updated_at"]:
-        target_col = table_model.created_at if col_name == "created_at" else table_model.updated_at
-        col_expr = models.search_text(target_col)
-    elif col_name in ROW_ID_FILTER_NAMES:
-        col_expr = table_model.row_id
     else:
-        if not hasattr(table_model, col_name):
-            from sqlalchemy import inspect
-
-            raise FilterRefused("'%s' has no column '%s' - a filter on it cannot narrow the rows"
-                                % (inspect(table_model).mapper.local_table.name, col_name))
-        raw_col = getattr(table_model, col_name)
-        from sqlalchemy.sql.sqltypes import Numeric, Float, Integer
-        is_numeric = isinstance(raw_col.type, (Numeric, Float, Integer))
-        
+        col_expr, is_numeric = filter_column(table_model, col_name)
         # Check if we should treat it as numeric filter
-        numeric_operators = ["equals", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange"]
-        if is_numeric and f_type in numeric_operators:
-            col_expr = raw_col
-        else:
-            col_expr = models.search_text(raw_col)
+        numeric_operators = ["equals", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange", SET]
+        if is_numeric and f_type not in numeric_operators:
+            col_expr = models.search_text(col_expr)
             
     # Condition mapping based on type
     #
@@ -169,6 +195,20 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     # That pre-cast is also the precondition `crud.blank_sql_condition` documents: it
     # compares against `''`, so the caller owns making the expression text-typed. Every
     # caller here does.
+    if f_type == SET:                     # each value as `equals` reads it, a null the blank cells (총괄 11-05)
+        given = [value for value in f_val if value is not None]
+        if is_numeric:
+            try:
+                given = [float(value) for value in given]
+            except (ValueError, TypeError):
+                raise FilterRefused("%s is not a list of numbers for '%s'" % (json_text(given), col_name)) from None
+        elif col_expr_override is not None:
+            given = [value if isinstance(value, str) else crud.comparison_text_value(value) for value in given]
+        met = [col_expr.in_(given)] if given else []
+        if len(given) < len(f_val):
+            met.append(crud.blank_sql_condition(models.search_text(col_expr) if is_numeric else col_expr))
+        return or_(*met) if met else false()
+
     if f_type == "blank":
         return crud.blank_sql_condition(col_expr)
     elif f_type == "notBlank":
@@ -212,8 +252,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
             return col_expr == f_val
         elif f_type == "notEqual":
             return col_expr != f_val
-        else:
-            return col_expr.ilike(f"%{f_val}%")
+        raise FilterRefused("'%s' is not a number column - %s is a number's filter" % (col_name, f_type))
 
 
 def filtered_columns(filters, by):
@@ -240,12 +279,9 @@ def pattern_filtered_columns(filters):
     return filtered_columns(filters, lambda f: f.get("type", "contains") in TEXT_PATTERNS and f.get("filter") is not None)
 
 
-#: The condition types an ordered index serves - an equal value or a range (총괄 ff7890892).
-ORDERED_TYPES = frozenset({"equals", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "inRange"})
-
-
 def ordered_filtered_columns(filters):
-    """The columns a `?filters=` model narrows by an equal value or a range (`ORDERED_TYPES`) - a number's, a date's or
-    a text's - what an automatic (column, row_id) index serves."""
-    return filtered_columns(filters, lambda f: f.get("type") in ORDERED_TYPES
-                            and (f.get("filter") is not None or f.get("dateFrom") is not None))
+    """The columns a `?filters=` model narrows by an equal value or a range (`ORDERED_TYPES`) or a set of values - a
+    number's, a date's or a text's - what an automatic (column, row_id) index serves."""
+    return filtered_columns(filters, lambda f: (f.get("type") in ORDERED_TYPES and f.get("filterType") != SET
+                                                and (f.get("filter") is not None or f.get("dateFrom") is not None))
+                            or (f.get("filterType") == SET and any(v is not None for v in f.get("values") or ())))

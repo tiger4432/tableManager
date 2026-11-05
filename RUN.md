@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [11-05] **그리드 여러 값 필터 — 서버 반쪽** (set 필터 · 값 목록 라우트 · 모르는 필터 꼴 거절) — git pull · 서버 재기동
+>
+> ```
+> 무엇     필터 {"filterType":"set","values":[...]} — 값마다 equals 와 같은 비교, null 은 빈칸, [] 는 0 행
+>          GET /tables/<표>/data/values?column=<칸>&search=<글> — 그리드 좁히기 그대로, 그 칸 자기 필터만 빼고
+>          답 {"column","values"(정렬, 빈칸은 끝에 null),"more"(10,000 넘음)}
+>          모르는 필터 꼴(filterType date · type between · 글자 칸의 lessThan 등)은 이제 422 — 예전엔 조용히 빠져 «안 거른» 답
+> 글자칸    lessThan · inRange 등 범위 꼴도 이제 422 — 예전엔 «포함» 으로 바뀌어 틀린 답. 보내던 자리 0 (그리드는 숫자 칸에만 숫자 필터, 서버 · 맵 편집기 · R&D 보드는 범위 꼴을 안 씀)
+> 돌릴 것   curl "http://localhost:8085/tables/<표>/data/values?column=<칸>"
+> 답의 뜻   200 + values   정상
+>          422 «has no column»                       그 표에 없는 칸 이름 (피벗의 item:<x> 도 여기 — 아직 안 받음)
+>          422 «is not a filter '<칸>' can read»     화면 · 저장 쪽이 이 서버가 모르는 필터 꼴을 보냄 — 그 꼴이 결함
+>          503 «stopped»                             search 를 단 느린 읽기가 grid_read_timeout 에 끊김 — 그 칸 인덱스 청함이 로그에
+> 끄기     스위치 없음. set · 값 목록은 클라가 부를 때만 돎
+>          모르는 꼴 거절은 늘 켜짐 — 오늘 저장소의 필터를 적는 자리(클라 그리드 · 맵 편집기 · R&D 보드, 서버 리포트 읽기 · 큐 술어 · 피벗)에서 모르는 꼴 0
+> ```
+>
+> ---
+>
 > ## [11-05] **그리드 자동 인덱스를 세우면 그 표를 바로 ANALYZE** — git pull · 스케줄러 재기동
 >
 > ```
