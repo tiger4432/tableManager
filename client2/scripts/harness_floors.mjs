@@ -1462,7 +1462,7 @@ export const FLOORS = new Map([
   ['image_paste_harness.mjs', 23],
   ['pivot_filter_carry_harness.mjs', 25],
   // New (owner 11-05): a table's columns fitted once to their first rows, a column hidden from its header and «N hidden».
-  ['grid_columns_harness.mjs', 23],
+  ['grid_columns_harness.mjs', 27],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

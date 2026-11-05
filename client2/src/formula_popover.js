@@ -111,16 +111,19 @@ export class FormulaPopover {
 
   get isOpen() { return this.panel !== null; }
 
-  /** Opens under `anchor` for `table`.`column`; `columns` are the ones the formula may read (its own is left out). */
-  async open({ table, column, columns = [], anchor = null }) {
+  /** Opens under `anchor` for `table`.`column`; `columns` are the ones the formula may read (its own is left out).
+   *  `formula` false: a column no formula stands on (a system one, a pivot's item column) - the head alone, its
+   *  «Hide column», named by `word` (lead 11-06: one popover, not a second). */
+  async open({ table, column, columns = [], anchor = null, formula = true, word = column }) {
     this.close();
     this.target = { table, column };
     this.base = '';
     this.existing = null;
     this.previewed = null;
     this.anchor = anchor;
-    this.draw(columns.filter((c) => c !== column));
+    this.draw(columns.filter((c) => c !== column), formula ? null : word);
     this.fit();
+    if (!formula) return;
     if (this.input.focus) this.input.focus();
     const mine = this.target;
     const read = await this.send(formulaRequest('read', { table }));
@@ -161,20 +164,23 @@ export class FormulaPopover {
     return btn;
   }
 
-  draw(columns) {
+  /** `only` - the column's word when the popover holds its head alone (no formula stands on the column). */
+  draw(columns, only = null) {
     const { table, column } = this.target;
     const panel = this.el('div', 'glass-dropdown-panel formula-pop');
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-label', `Formula ${table}.${column}`);
+    const title = only === null ? `Formula · ${table}.${column}` : `${table} · ${only}`;
+    panel.setAttribute('aria-label', title);
 
     const head = this.el('div', 'formula-pop__head');
-    head.appendChild(this.el('span', 'formula-pop__title', `Formula · ${table}.${column}`));
+    head.appendChild(this.el('span', 'formula-pop__title', title));
     // the header's right click is where a column is hidden too (owner 11-05); «N hidden» shows it again
     if (this.hide) head.appendChild(this.button('btn-quiet formula-pop__hide', 'Hide column', () => { this.hide(column); this.close(); }));
     const shut = this.button('btn-quiet formula-pop__close', '×', () => this.close());
     shut.setAttribute('aria-label', 'Close');
     head.appendChild(shut);
     panel.appendChild(head);
+    if (only !== null) { this.mount(panel); return; }
 
     const field = this.el('label', 'formula-pop__field');
     field.appendChild(this.el('span', 'formula-pop__label', 'Formula'));
@@ -212,7 +218,11 @@ export class FormulaPopover {
     setDisabledReason(this.applyBtn, NEEDS_PREVIEW);
     foot.appendChild(this.applyBtn);
     panel.appendChild(foot);
+    this.mount(panel);
+  }
 
+  /** The drawn panel in its host, shut by a press outside or Esc. */
+  mount(panel) {
     this.host.appendChild(panel);
     this.panel = panel;
     this.unwatch = watchForDismiss(this.doc, panel, () => this.close());

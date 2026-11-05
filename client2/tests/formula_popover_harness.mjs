@@ -356,7 +356,7 @@ const DEFECTS = [
   ['M5 the fx press reaches the header',
     swap("    this.mark.addEventListener('click', (e) => {\n      stop(e);", "    this.mark.addEventListener('click', (e) => {")],
   ['M6 the column is offered as its own operand',
-    swap('this.draw(columns.filter((c) => c !== column));', 'this.draw(columns);')],
+    swap('this.draw(columns.filter((c) => c !== column), formula ? null : word);', 'this.draw(columns, formula ? null : word);')],
   ['M7 a blank operand is drawn as 0',
     swap("v === null || v === undefined || v === '' ? BLANK", "v === null || v === undefined || v === '' ? '0'")],
   ['M8 a count still counting is drawn as a number',

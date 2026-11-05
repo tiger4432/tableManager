@@ -11,6 +11,7 @@
 //   H2 «N hidden ▾»: none hides it; it lists them, Show shows one, Show all every one; two on a page do not interfere
 //   H3 the filter bar draws it with the grid's hidden data columns - not the pivot's held item column
 //   H4 the header's popover has «Hide column»: it hides that column and closes; without a hide it has none
+//   H5 a column no formula stands on (a system one, a pivot's item column): the same popover, its head alone
 //   B1 the audit's Table cell breaks a name only after «_» «.» or at a space: each piece its own span
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -172,12 +173,14 @@ async function suite(M) {
     const words = [...rows].map((r) => r.querySelector('.hidden-cols__word').textContent);
     rows[1].querySelector('.hidden-cols__show').dispatch('click');
     a.panel.querySelector('.hidden-cols__all').dispatch('click');
-    say('H2 none hides it; «2 hidden ▾» lists them; Show one, Show all; the other one untouched',
-      emptyHidden === true && a.root.hidden === false && a.button.textContent === '2 hidden ▾'
+    const twoSaid = a.button.textContent;
+    a.draw([]);
+    say('H2 none hides it and says nothing (no «0 hidden»); «2 hidden ▾» lists them; Show one, Show all; the other one untouched',
+      emptyHidden === true && twoSaid === '2 hidden ▾' && a.root.hidden === true && a.button.textContent === '' && a.panel === null
         && JSON.stringify(words) === '["LOT","VALUE"]'
         && JSON.stringify(shown) === '[["a",["value"]],["a",["lot","value"]]]'
         && b.panel === null && b.button.textContent === '1 hidden ▾',
-      JSON.stringify({ emptyHidden, text: a.button.textContent, words, shown, b: b.button.textContent }));
+      JSON.stringify({ emptyHidden, twoSaid, after: a.button.textContent, words, shown, b: b.button.textContent }));
   }
   {
     stage({ pivotOn: true, cols: [col('#'), col('lot', { visible: false }), col('itemid', { visible: false }), col('value', { visible: false }), col('note')] });
@@ -201,6 +204,21 @@ async function suite(M) {
       btn && btn.textContent === 'Hide column' && JSON.stringify(hid) === '["lot"]' && pop.panel === null
         && bare.panel.querySelector('.formula-pop__hide') === null,
       JSON.stringify({ btn: Boolean(btn), hid, open: pop.panel !== null }));
+  }
+  {
+    const hid = [];
+    const asked = [];
+    const send = async (req) => { asked.push(req); return { ok: true, body: {} }; };
+    const pop = new M.formula.FormulaPopover(doc.createElement('div'), { doc, send, hide: (c) => hid.push(c) });
+    await pop.open({ table: 'm', column: 'item:BOW', anchor: null, formula: false, word: 'BOW', columns: ['lot'] });
+    const p = pop.panel;
+    const title = p && p.querySelector('.formula-pop__title');
+    const bare = p && !p.querySelector('.formula-pop__input') && !p.querySelector('.formula-pop__apply');
+    const btn = p && p.querySelector('.formula-pop__hide');
+    if (btn) btn.dispatch('click');
+    say('H5 no formula stands on the column: the same popover, its head alone - «Hide column» hides it; no formula read',
+      Boolean(title) && title.textContent === 'm · BOW' && bare && asked.length === 0 && JSON.stringify(hid) === '["item:BOW"]'
+        && pop.panel === null, JSON.stringify({ title: title && title.textContent, bare, asked: asked.length, hid }));
   }
 
   console.log('\n[B] the audit\'s Table cell');
@@ -263,6 +281,12 @@ const MUTANTS = [
   { id: 'X11', what: 'none still shows the chip', catches: 'H2', file: 'hidden_columns.js', from: 'this.root.hidden = !hidden.length;', to: '' },
   { id: 'X12', what: 'the bar counts every column', catches: 'H3', file: 'grid.js',
     from: '.filter((col) => isDataColumn(col.getColId()) && !col.isVisible())', to: '.filter((col) => !col.isVisible())' },
+  { id: 'X16', what: 'none still says «0 hidden»', catches: 'H2', file: 'hidden_columns.js',
+    from: "hidden.length ? `${hidden.length} hidden ▾` : ''", to: '`${hidden.length} hidden ▾`' },
+  { id: 'X17', what: 'the hide-only popover draws the formula too', catches: 'H5', file: 'formula_popover.js',
+    from: '    if (only !== null) { this.mount(panel); return; }\n', to: '' },
+  { id: 'X18', what: 'the hide-only popover reads the formula', catches: 'H5', file: 'formula_popover.js',
+    from: '    if (!formula) return;\n', to: "    if (!formula) { await this.send(formulaRequest('read', { table })); return; }\n" },
   { id: 'X13', what: 'Hide column leaves the popover open', catches: 'H4', file: 'formula_popover.js',
     from: '{ this.hide(column); this.close(); }', to: '{ this.hide(column); }' },
   { id: 'X14', what: 'the name breaks only at spaces', catches: 'B1', file: 'timeline.js',

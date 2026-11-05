@@ -14,6 +14,7 @@ import { narrowingTail } from './narrowing.js';
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
 import { state, isDataColumn, pivotShown } from './state.js';
+import { headerWord } from './grid_pivot.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal, sayStopped, refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
@@ -326,8 +327,12 @@ async function sendFormula(req, opts = {}) {
 
 /** Opens the formula of `column` of the open table under `anchor` - a data column only, the formula reads the others. */
 function openFormula(column, anchor) {
-  if (!formulaPop || !state.currentTable || isSystemColumn(column) || !(state.currentColumns || []).includes(column)) return;
-  formulaPop.open({ table: state.currentTable, column, anchor,
+  if (!formulaPop || !state.currentTable) return;
+  // a data column no formula stands on (a system one, a pivot's item column) opens the same popover, «Hide column» only
+  // (lead 11-06)
+  const formula = !isSystemColumn(column) && (state.currentColumns || []).includes(column);
+  if (!formula && !isDataColumn(column)) return;
+  formulaPop.open({ table: state.currentTable, column, anchor, formula, word: headerWord(column),
     columns: (state.currentColumns || []).filter((c) => !isSystemColumn(c)) });
 }
 
@@ -953,7 +958,8 @@ function setupEventListeners() {
   if (gridContainer) {
     gridContainer.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      // a column's header (not its filter box) opens its formula - an empty column too (owner 10-28 option A)
+      // a column's header (not its filter box) opens its formula - an empty column too (owner 10-28 option A); where no
+      // formula stands, the same popover with «Hide column» alone (lead 11-06)
       const head = e.target && e.target.closest ? e.target.closest('.ag-header-cell[col-id]') : null;
       if (head && !head.closest('.ag-floating-filter, .ag-header-row-column-filter')) openFormula(head.getAttribute('col-id'), head);
       // 다시 돌리는 줄은 이제 이 메뉴에 «없습니다» (소유자 지시). 배너로 옮겼습니다.

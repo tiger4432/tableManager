@@ -26,11 +26,11 @@ export class HiddenColumns {
     return node;
   }
 
-  /** `hidden` - [{id, word}] in the grid's order; none hides the chip. */
+  /** `hidden` - [{id, word}] in the grid's order; none hides the chip and leaves no «0 hidden» behind it (lead 11-06). */
   draw(hidden) {
     this.hidden = hidden;
     this.root.hidden = !hidden.length;
-    this.button.textContent = `${hidden.length} hidden ▾`;
+    this.button.textContent = hidden.length ? `${hidden.length} hidden ▾` : '';
     if (!hidden.length) this.close();
     else if (this.panel) this.fill();
   }

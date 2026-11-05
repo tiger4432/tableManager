@@ -1043,6 +1043,8 @@ CELLS.push({ entry: 'index.html', after: 'Hidden columns listed', rule: 'hidden 
 CELLS.push({ entry: 'index.html', after: 'Hidden columns shown again', rule: 'hidden shown', at: 'hidden-cols', expr: `(() => {
   const b = document.querySelector('.hidden-cols__open');
   if (b && b.getClientRects().length) return 'the chip still says «' + b.textContent + '»';
+  // nothing left behind to read (lead 11-06: a «0 hidden ▾» stayed in the page at 0 px)
+  if (b && b.textContent) return 'the hidden chip still holds «' + b.textContent + '»';
   const id = window.__hiddenByHeader;
   return document.querySelector('.ag-header-cell[col-id="' + id + '"]') ? null : id + ' not back';
 })()` });
@@ -1324,6 +1326,15 @@ CELLS.push({ entry: 'index.html', after: 'Pivot, filters carried', rule: 'filter
   if ([...document.querySelectorAll('.ag-header-cell[col-id="b_wy"]')].some((h) => h.getClientRects().length)) return 'the item column is a header in the pivot';
   if (!document.querySelector('.ag-center-cols-container .ag-row')) return 'no group row drawn - the grid filtered them by the item column';
   return null;
+})()` });
+// The pivot's item column hidden from its header (lead 11-06): the popover held no formula, the column is gone, said in the strip.
+CELLS.push({ entry: 'index.html', after: 'Pivot, an item column hidden', rule: 'item hidden', at: 'hidden-cols', expr: `(() => {
+  const gone = window.__hiddenItem;
+  if (!gone) return 'no item column header to press';
+  if (window.__hidePop !== 'bare') return window.__hidePop === 'none' ? 'no popover opened over ' + gone : 'the popover over ' + gone + ' held a formula field';
+  if (document.querySelector('.ag-header-cell[col-id="' + gone + '"]')) return gone + ' is still in the grid';
+  const b = document.querySelector('.hidden-cols__open');
+  return b && b.getClientRects().length && b.textContent === '1 hidden ▾' ? null : 'the chip row says «' + (b && b.textContent) + '»';
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Pivot off, filters carried back', rule: 'filters carried out of the pivot', at: 'filter-chip', expr: `(() => {
   ${CARRIED_CHIPS}
@@ -2918,6 +2929,17 @@ const DRIVE = {
       await until(c, "/^Filters dropped/.test((document.querySelector('#performance-log') || {}).textContent || '')");
       await until(c, "document.querySelectorAll('.ag-header-cell[col-id^=\"item:\"]').length > 0");
     }],
+    // An item column hidden from its header in the pivot (lead 11-06): no formula stands on it, so the same popover holds
+    // its head alone and «Hide column» hides it.
+    ['Pivot, an item column hidden', async (c) => {
+      await evaluate(c, `(() => { const h = [...document.querySelectorAll('.ag-header-cell[col-id^="item:"]')].find((e) => e.getClientRects().length);
+        if (!h) return false; window.__hiddenItem = h.getAttribute('col-id');
+        h.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return true; })()`);
+      await until(c, "Boolean(document.querySelector('.formula-pop__hide'))");
+      await evaluate(c, `(() => { const p = document.querySelector('.formula-pop'); window.__hidePop = !p ? 'none' : p.querySelector('input') ? 'formula' : 'bare';
+        const b = document.querySelector('.formula-pop__hide'); if (b) b.click(); return Boolean(b); })()`);
+      await sleep(400);
+    }],
     ['Pivot off, filters carried back', async (c, log) => {
       await evaluate(c, SWITCH_READS);
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
@@ -3555,6 +3577,12 @@ const MUTANTS = [
       '.header-filter-bar:has(.filter-chip, > .tx-filter-banner[style*="flex"])'],
     ['.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden])))',
       '.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"]))']] },
+  // The item column's right click opening nothing, as before 11-06.
+  { name: 'no popover where no formula stands', entry: 'index.html', rule: 'item hidden', at: 'hidden-cols',
+    file: 'src/main.js', edits: [['  if (!formula && !isDataColumn(column)) return;\n', '  if (!formula) return;\n']] },
+  // «0 hidden ▾» left in the page.
+  { name: 'none says 0 hidden', entry: 'index.html', rule: 'hidden shown', at: 'hidden-cols',
+    file: 'src/hidden_columns.js', edits: [["hidden.length ? `${hidden.length} hidden ▾` : ''", '`${hidden.length} hidden ▾`']] },
   // «N hidden» never drawn.
   { name: 'the hidden columns not said', entry: 'index.html', rule: 'hidden said', at: 'hidden-cols',
     file: 'src/grid.js', edits: [['  hiddenPart.draw(hiddenColumns(api));\n', '']] },
