@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **스냅숏 — 한 명령으로 뜨고 한 명령으로 되살림** (도커 없음 · 설치 프로그램 없음) — git pull 만 (재기동 불요)
+>
+> ```
+> 뜨는 법     conda run -n assy_manager python server\scripts\snapshot.py --out D:\snap_<날짜>   [--no-secrets]
+>             새 폴더여야 함. 박스: 약 3.5 분, 1.32 GB (코드 36 MB · 환경 413 MB · PG 이진 53 MB · DB 867 MB)
+> 되살리는 법  D:\snap_<날짜>\restore.bat C:\assy_restore [PG 포트] [API 포트]   (기본 5432 · 8080, 뒤에 --no-start 가능)
+>             «짧은» 경로에 — 환경 안에 Windows 260자 한도를 넘는 경로가 있음
+>             풀기 → initdb(원본 인코딩 · 로캘) → PG 기동 → pg_restore → 설정 · 스크립트 · 맵퍼 제자리
+>             → database.json 을 새 PG 로 → «다시 지을 것» 출력 → 앱 기동 → /health
+>             박스: 약 12 분(724 s) — 대부분 pg_restore
+> 뺀 것과 까닭  원장 공간(세계마다 ledger · cursor · row_ref 와 그 칸, 원장 뷰, 세계의 스키마) — 표에서 다시 번역
+>             <원장>_pre_rebuild* — 옛 재구축 사본, 아무 선언도 안 읽음
+>             raws · archives · err — manifest.json 에 파일 목록(경로 · 크기 · 시각)만
+>             비밀값 — 기본은 담음. --no-secrets 면 database.json url · llm_config.json api_key 를 비우고 매니페스트에 적음
+>             로그인 클라이언트 비밀(ASSY_OIDC_CLIENT_SECRET)은 환경 변수라 안 담김 — 되살린 곳에서 다시 설정
+> 되살린 뒤    restore 가 찍는 «to rebuild» 목록대로: 원장 일꾼이 기동 때 빈 원장 표 · 뷰를 만듦(새 변경만 따라감)
+>             → Admin > Retroactive > «Translate the rows not yet in the ledger» 를 원장 소스마다
+>             (또는 server 에서 python -m ledger.backfill --source <소스> --apply)
+> 답의 뜻     restore 끝줄 «restored {tables, cell_sources, person_layers}» 가 «the snapshot had …» 와 같으면 DB 는 다 옴
+>             «the environment did not unpack» → 더 짧은 경로에 다시
+> ```
+>
+> ---
+>
 > ## [11-05] **Pivot 을 켜고 끌 때 키 칸 · 항목 칸 필터를 가져감 (클라)** — git pull · 화면 새로 고침
 >
 > ```
