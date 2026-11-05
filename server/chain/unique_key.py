@@ -489,7 +489,10 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         report["dropped"] = [name] if found is not None else []
     else:
         report["error"] = last
-    _TRIED[memo] = report
+    from database import models
+
+    if not models.comes_again(done):                                   # a deferred one is asked again (총괄 11-06)
+        _TRIED[memo] = report
     if report["state"] == "ok":
         logger.info("[Join] 조회 인덱스 %s 를 세웠습니다 (%.1f s)", name, time.monotonic() - started)
     elif report["state"] == "deferred":

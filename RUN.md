@@ -9,7 +9,7 @@
 > 볼 줄    scheduler 로그 (auto_update.log)
 >          «[Indexes] <이름> waits for pid <pid> holding <표> before it builds (at most 20 s)»   기다리는 중
 >          «... not built - waited 20s for pid <pid> holding <표>; built again at the next start or Reload»
->              그 pid 가 표를 오래 잡고 있음. 그 세션이 끝난 뒤 Reload 하면 다시 지음
+>              그 pid 가 표를 오래 잡고 있음. 기동 때 미뤄진 것은 라인이 5 초마다 다시 시도 — 그 세션이 끝나면 저절로 지어짐 (11-06)
 >          «... is being built by another session - left to it (...)»   다른 세션이 짓는 중 — 기다리면 됨
 >          «... is INVALID from an earlier failure; dropping and rebuilding.»   예전 실패 잔해를 지우고 다시 지음
 > 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k test_one_index_builder  -> 3 passed

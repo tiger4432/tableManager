@@ -1896,7 +1896,22 @@ INDEX_FAILED_SAID = "build failed: "
 _IN_THIS_SCHEMA = " AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
 
 
-def _ensure_one_index(engine, name, statement, what, say=print, table=None, leftovers=(), say_every=None):
+def comes_again(word):
+    """A build that ended `INDEX_DEFERRED` is asked again by its caller - nothing was started, so asking costs only the
+    wait (총괄 11-06 ㄱ-1); built, present or failed is not (a failure's retry is a whole build every time). The one
+    judgment for the line's start work (`maintenance_line._LEFT`) and the join lookup's memo (`unique_key._TRIED`)."""
+    return word == INDEX_DEFERRED
+
+
+def _ensure_one_index(engine, name, *args, **kwargs):
+    """`_ensure_one_index_once`, and a name it left for later (`comes_again`) noted on this thread's round."""
+    word = _ensure_one_index_once(engine, name, *args, **kwargs)
+    if comes_again(word) and getattr(_ROUND, "left", None) is not None:
+        _ROUND.left.append(name)
+    return word
+
+
+def _ensure_one_index_once(engine, name, statement, what, say=print, table=None, leftovers=(), say_every=None):
     """Build one index CONCURRENTLY, repairing an invalid leftover first - the one builder (총괄 11-05 ㄴ).
 
     Returns `INDEX_BUILT`, `INDEX_PRESENT`, `INDEX_FAILED`, `INDEX_BUSY` or `INDEX_DEFERRED` - see those constants for
@@ -2013,11 +2028,16 @@ _ROUND = threading.local()
 def built_tables():
     """A round of index work on this thread - the set of tables an index was built on in it (`_ensure_one_index`),
     for the line's one ANALYZE after the round (`runtime.maintenance_line`, 총괄 11-05)."""
-    _ROUND.built = set()
+    _ROUND.built, _ROUND.left = set(), []
     try:
         yield _ROUND.built
     finally:
-        _ROUND.built = None
+        _ROUND.built = _ROUND.left = None
+
+
+def left_in_round():
+    """How many builds this thread's open round left for later (`comes_again`) so far."""
+    return len(getattr(_ROUND, "left", None) or ())
 
 
 def _note_failure(engine, name, err):
@@ -2848,7 +2868,7 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None, say=p
         if name in created:
             continue
         if _ensure_one_index(engine, name, statement, "decision-key", say=say,
-                             table=str(rule.get("source_table"))) == INDEX_BUILT:
+                             table=rule["source_table"]) == INDEX_BUILT:
             created.append(name)
     return created
 

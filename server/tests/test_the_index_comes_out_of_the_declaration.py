@@ -155,25 +155,46 @@ def test_two_rules_over_one_table_ask_for_one_index_and_the_count_says_one():
     assert built == created, "the duplicate must not even be attempted"
 
 
-def test_every_caller_of_the_one_builder_names_its_table():
-    """Each call of `_ensure_one_index` passes `table=` - the wait before the build asks who holds it and a built one is
-    noted for the round's ANALYZE; without it neither happens and nothing says so (C 11-06: dropping decision-key's
-    survived). Counted on the source: the census is the subject."""
-    import ast
-    import os
+def test_every_caller_of_the_one_builder_hands_it_the_table_its_statement_builds_on(monkeypatch):
+    """Each caller of `_ensure_one_index` passes `table=` the very table its statement is ON - the wait before the
+    build asks who holds it and a built one is noted for the round's ANALYZE; a wrong or missing one makes neither
+    happen and nothing says so (C 11-06: decision-key's `table=None` survived a count of keywords). Measured on the
+    value: each caller is run against a builder that records what it was handed."""
+    import contextlib
+    import re
 
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    calls = []
-    for folder, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in ("tests", "node_modules", "__pycache__", ".git")]
-        for name in files:
-            if name.endswith(".py"):
-                path = os.path.join(folder, name)
-                with open(path, encoding="utf-8") as handle:
-                    tree = ast.parse(handle.read())
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", None))                             == "_ensure_one_index":
-                        calls.append(("%s:%d" % (os.path.relpath(path, root), node.lineno),
-                                      any(k.arg == "table" for k in node.keywords)))
-    assert calls, "canary: the builder's callers were not found"
-    assert [where for where, named in calls if not named] == [], calls
+    from chain import ingestion_worker as worker
+    from chain import join_key_index as vjc
+    from chain import unique_key
+    from database import models
+    from migrations import add_business_key_unique_index as uq
+
+    handed = []
+
+    def record(engine, name, statement, what, say=print, table=None, **_kw):
+        handed.append((what, table, re.search(r' ON\s+"?([^"\s(]+)', statement).group(1)))
+        return models.INDEX_PRESENT
+
+    class Db:
+        def get_bind(self):
+            return None
+
+        def close(self):
+            pass
+
+        def rollback(self):
+            pass
+
+    monkeypatch.setattr(models, "_ensure_one_index", record)
+    models.ensure_dynamic_table_indexes(None, config={"t_dyn": {"kind": "table"}})
+    models.ensure_alignment_decision_key_indexes(None, config={"t_dec": {"kind": "table"}}, rules=[
+        {"alignment": True, "source_table": "t_dec", "decision_key": ["a"]}])
+    models.ensure_map_key_indexes(None, config={"t_map": {"kind": "table", "map_key_columns": ["x"]}})
+    with contextlib.suppress(Exception):                    # what it says after the build is not this test's
+        worker._ensure_human_claims_index_sync(lambda: Db())
+    worker._build_unique_index_waiting(None, uq, "t_bk", "uq_bk_t_bk")
+    unique_key._build(Db(), "t_join", "uq_t_join", vjc.required_index_ddl("t_join", ["k"]), "join unique")
+
+    assert {what for what, _t, _on in handed} == {"dynamic-table", "decision-key", "map-key", "human-claims",
+                                                  "business-key unique", "join unique"}, handed
+    assert [(what, table, on) for what, table, on in handed if table != on] == [], handed

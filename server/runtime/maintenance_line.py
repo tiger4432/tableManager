@@ -162,21 +162,37 @@ def _each(works):
 BUILT_WHY = "an index was just built on it and the planner had no statistics for it"
 
 
+#: The start's works that left an index for later (`models.comes_again`) - asked again each poll until none does
+#: (총괄 11-06 ㄱ-1): a start-only index (human-claims, business-key unique, dynamic tables) is built by no Reload.
+_LEFT = []
+
+
 def _round(db_session_factory, works):
     """Index works (`_each`), then one ANALYZE of every table the round built an index on (`models.built_tables` -
     the one builder notes it, 총괄 11-05 ㄴ): without statistics for a new index the planner guesses (owner 11-04 ·
-    11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4)."""
+    11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4). -> the works that left one for later."""
     from chain import ingestion_worker as worker
     from database import models
 
+    left = []
     with models.built_tables() as built:
-        _each(works)
+        for work in works:
+            before = models.left_in_round()
+            _each([work])
+            if models.left_in_round() > before:
+                left.append(work)
     if built:
         try:
             worker._analyze_stale_tables_sync(db_session_factory, built=set(built), built_why=BUILT_WHY)
         except Exception as exc:                                    # noqa: BLE001
             logger.warning("[Indexes] built on %s; the ANALYZE after it did not run (this process goes on): %s: %s",
                            ", ".join(sorted(built)), type(exc).__name__, told(exc))
+    return left
+
+
+def _start(db_session_factory):
+    """The start's works; those that left an index for later stay in `_LEFT` for the polls."""
+    _LEFT[:] = _round(db_session_factory, _start_work(db_session_factory))
 
 
 def _declared_work(db_session_factory):
@@ -250,6 +266,8 @@ def poll_once(db_session_factory, mark):
     asked = [each for each in asked if each[2] != models.KEY_UNIQUE]
     if asked:
         _round(db_session_factory, [(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
+    if _LEFT:
+        _LEFT[:] = _round(db_session_factory, list(_LEFT))
     return mark
 
 
@@ -264,7 +282,7 @@ def run(db_session_factory, stop=None):
     finally:
         db.close()
     started = time.time()
-    _round(db_session_factory, _start_work(db_session_factory))
+    _start(db_session_factory)
     logger.info("[Indexes] start work done in %.1f s", time.time() - started)
     stored = [False]
     _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])
