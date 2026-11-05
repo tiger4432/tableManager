@@ -566,6 +566,7 @@
 
 ### 메인 화면 (그리드 · 보드 · 맵)
 
+- 2026-11-05 [그리드 열 너비는 첫 쪽에 맞춰 한 번, 열 숨기기와 «N hidden», 감사 표의 표 이름](#2026-11-05--그리드-열-너비는-첫-쪽에-맞춰-한-번-열-숨기기와-n-hidden-감사-표의-표-이름) — 보는 곳 그리드 · 필터 칩 줄 · 이력 Global
 - 2026-11-05 [Pivot 을 켜고 끌 때 키 칸 · 항목 칸 필터가 남음](#2026-11-05--pivot-을-켜고-끌-때-키-칸--항목-칸-필터가-남음) — 보는 곳 그리드 필터 칩 줄 · 상태 줄
 - 2026-11-05 [새 기능 — 그리드 이미지 칸에 그림 붙여넣기(Ctrl+V) · 끌어다 놓기 (클라 반쪽)](#2026-11-05--새-기능--그리드-이미지-칸에-그림-붙여넣기ctrlv--끌어다-놓기-클라-반쪽) — 보는 곳 그리드 이미지 칸
 - 2026-11-04 [바뀐 화면 — 그리드 link 칸은 값이 링크(새 탭) · CHAIN 배지 stalled 는 RUNNING](#2026-11-04--바뀐-화면--그리드-link-칸은-값이-링크새-탭--chain-배지-stalled-는-running) — 보는 곳 그리드 link 칸 · 머리의 CHAIN 배지
@@ -712,6 +713,14 @@
 
 
 
+
+## 2026-11-05 · 그리드 열 너비는 첫 쪽에 맞춰 한 번, 열 숨기기와 «N hidden», 감사 표의 표 이름
+
+- **열 너비** — 전에는 옆 판을 끌 때마다 모든 열을 그리드 폭에 맞춰 늘이고 줄였습니다. 이제 표를 열 때와 Pivot 을 켜고 끌 때 한 번, 첫 쪽의 값 중 가장 긴 것과 머리 이름에 맞추고(긴 값은 `--grid-column-max` 360 px 에서 멈춤, 이름은 안 잘림), 그 뒤로는 옆 판 · 창 크기 · 다시 읽기 · 쪽 넘김에 바뀌지 않습니다. 손으로 끈 너비도 그대로입니다.
+- **열 숨기기** — 칸 머리 우클릭 창(수식 창)에 «Hide column». 숨긴 열은 필터 칩 줄의 «N hidden ▾» 가 세고, 누르면 열마다 Show 와 Show all. Columns 목록과 같은 함수를 지나서 어느 쪽에서 숨겨도 같은 수입니다. 피벗이 숨겨 들고 있는 항목 칸은 세지 않습니다.
+- **감사 표의 Table 칸** — 표 이름이 글자 사이에서 잘리던 것을, «_» «.» 뒤(와 빈칸)에서만 줄을 바꾸고 칸은 가장 긴 조각만큼으로.
+- **필요한 조건** — git pull · 화면 새로 고침. 서버 무변경.
+- **자세히** — `client2/src/grid.js` 의 `fitColumnWidths` · `columnFitWidth` · `setColumnsHidden`, `hidden_columns.js` 의 `HiddenColumns`, `cell_fit.js` 의 `widestCell`(대기열 표 `_fitColumns` 와 같은 함수), `timeline.js` 의 `fitAuditTable`. 시험 `grid_columns_harness`, 화면 검사기 «values whole» · «column widths kept» · «hidden said» · «hidden listed» · «hidden shown» · «table names whole».
 
 ## 2026-11-05 · Pivot 을 켜고 끌 때 키 칸 · 항목 칸 필터가 남음
 
