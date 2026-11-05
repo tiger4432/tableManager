@@ -566,6 +566,7 @@
 
 ### 메인 화면 (그리드 · 보드 · 맵)
 
+- 2026-11-05 [Pivot 을 켜고 끌 때 키 칸 · 항목 칸 필터가 남음](#2026-11-05--pivot-을-켜고-끌-때-키-칸--항목-칸-필터가-남음) — 보는 곳 그리드 필터 칩 줄 · 상태 줄
 - 2026-11-05 [새 기능 — 그리드 이미지 칸에 그림 붙여넣기(Ctrl+V) · 끌어다 놓기 (클라 반쪽)](#2026-11-05--새-기능--그리드-이미지-칸에-그림-붙여넣기ctrlv--끌어다-놓기-클라-반쪽) — 보는 곳 그리드 이미지 칸
 - 2026-11-04 [바뀐 화면 — 그리드 link 칸은 값이 링크(새 탭) · CHAIN 배지 stalled 는 RUNNING](#2026-11-04--바뀐-화면--그리드-link-칸은-값이-링크새-탭--chain-배지-stalled-는-running) — 보는 곳 그리드 link 칸 · 머리의 CHAIN 배지
 - 2026-10-31 [바뀐 동작 — 그리드 숫자 칸 편집기: 글자 상자로, 친 글자를 그대로 보냄](#2026-10-31--바뀐-동작--그리드-숫자-칸-편집기-글자-상자로-친-글자를-그대로-보냄) — 보는 곳 그리드 숫자 칸 두 번 눌러 치기
@@ -711,6 +712,15 @@
 
 
 
+
+## 2026-11-05 · Pivot 을 켜고 끌 때 키 칸 · 항목 칸 필터가 남음
+
+- **바뀐 동작** — 전에는 Pivot 을 켜고 끌 때 그리드 필터가 모두 풀렸습니다. 이제 두 방향 모두 키 칸 · 항목 칸(pivot.column) 필터는 남고, 나머지(값 칸, 피벗에서 건 항목별 필터)는 버리며 상태 줄에 «Filters dropped: <칸>» 이 뜹니다. 정렬은 오늘처럼 풀립니다.
+- **피벗에서 항목 칸 필터** — 항목 칸은 피벗에서 열이 아니라 보이지 않는 칸으로 들고 있어, 필터 칩 줄에 칩으로만 보입니다. 칩의 ✕ · Clear all 로 풉니다. 칸 고르기 목록 · 범위 고르기 · 붙여넣기에는 이 칸이 들지 않습니다.
+- **읽기 한 번** — 필터가 있던 칸이 빠지는 열 바꿈마다 그리드가 같은 필터로 한 번 더 읽던 것을 없앴습니다(필터가 마지막 읽기와 같으면 칩만 다시 그림).
+- **거절** — 모아 둔 편집이 있으면 오늘처럼 «Apply or discard the staged edits first».
+- **필요한 조건** — 서버 B 4d15e2fca(피벗 읽기가 항목 칸 필터를 받음) · git pull · 화면 새로 고침. 도우미 답이 바뀝니다(table_config.md 의 pivot 줄).
+- **자세히** — `client2/src/grid_pivot.js` 의 `carriedFilters` · `headerWord` · `pivotColumns`, `client2/src/grid.js` 의 `dropGridFilters(keep)` · `gridFilterChanged`, `client2/src/api.js` 의 `setGridPivot`, `state.js` 의 `isDataColumn`. 시험 `pivot_filter_carry_harness`, 화면 검사기 «filters carried into the pivot» · «filters carried out of the pivot».
 
 ## 2026-11-05 · 새 기능 — 그리드 이미지 칸에 그림 붙여넣기(Ctrl+V) · 끌어다 놓기 (클라 반쪽)
 
