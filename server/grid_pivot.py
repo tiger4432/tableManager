@@ -1,8 +1,8 @@
 """The main grid's pivot (소유자 10-22, 총괄 95d9525b4 · a1d9382fb): a long table keyed (k..., column) read as one row
 per key group - its keys less `column` - and one cell per value of `column`, filled from `value`. Two declaration cells
-(`"pivot": {"column", "value"}`); the read is the grid's own route (`?pivot=1`), its key filters the grid's, an item
-column's filter the grid filter's own condition inside one EXISTS, and a cell's write the grid save door by its row_id
-(a blank cell: by its keys, which makes the row)."""
+(`"pivot": {"column", "value"}`); the read is the grid's own route (`?pivot=1`), its key and item column filters
+the grid's, an item's filter the grid filter's own condition inside one EXISTS, and a cell's write the grid save door
+by its row_id (a blank cell: by its keys, which makes the row)."""
 from fastapi import HTTPException
 from sqlalchemy import and_, exists, func, or_, select, tuple_
 from sqlalchemy.orm import aliased
@@ -75,8 +75,9 @@ def of(table_name, **asked):
 
 
 def split_filters(filters, pivot):
-    """`?filters=` -> (the key columns' filters as `?filters=` text, {item: its filter}). Anything else is refused by
-    name; text that is not JSON goes on as it is, to the grid filter's own refusal."""
+    """`?filters=` -> (the key columns' and the item column's filters as `?filters=` text, {item: its filter}) - the
+    item column's narrows the long rows, so the items, their count and the groups follow it. Anything else is refused
+    by name; text that is not JSON goes on as it is, to the grid filter's own refusal."""
     import json
 
     try:
@@ -89,12 +90,15 @@ def split_filters(filters, pivot):
     for name, spec in asked.items():
         if name.startswith(ITEM_PREFIX):
             items[name[len(ITEM_PREFIX):]] = spec
-        elif name in pivot.keys:
+        elif name in pivot.keys or name == pivot.column:
             keys[name] = spec
+        elif name == pivot.value:
+            raise HTTPException(status_code=422, detail=(
+                "'%s' fills the pivot's cells - filter it per item inside the pivot as %s<item>" % (name, ITEM_PREFIX)))
         else:
             raise HTTPException(status_code=422, detail=(
-                "'%s' is not a key column of the pivot (%s) - filter an item column as %s<item>"
-                % (name, ", ".join(pivot.keys), ITEM_PREFIX)))
+                "'%s' is not a key column (%s) or the item column (%s) of the pivot - filter an item column as %s<item>"
+                % (name, ", ".join(pivot.keys), pivot.column, ITEM_PREFIX)))
     return (json.dumps(keys) if keys else None), items
 
 

@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-05] **피벗 읽기가 «항목 칸» 필터를 받음 (서버 반쪽)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     언피벗(긴 표)에서 항목 칸(pivot.column)에 건 필터를 피벗 읽기가 긴 행에 그대로 건다
+>          -> 그 필터에 맞는 항목만 칸이 됨 · 맞는 항목이 없는 키 묶음은 행에서 빠짐 (언피벗에서 보이던 그대로)
+>          Pivot 을 누를 때 필터를 가져가는 것은 클라 착지 뒤
+> 답       422 «'<값 칸>' fills the pivot's cells - filter it per item inside the pivot as item:<item>»
+>          = 값 칸 필터는 피벗에서 항목 칸마다 다시 건다
+>          422 «'<칸>' is not a key column (<키>) or the item column (<항목 칸>) of the pivot …» = 그 밖의 칸
+>          항목 칸 blank 필터 = 이름 빈 행이 있는 키 묶음만 · 칸 0 개 (빈 이름은 칸이 안 됨 — 맞는 답)
+> 같은 답  server 폴더에서 python -m pytest tests/test_the_grid_pivots_a_long_table_by_its_item_key.py  -> 25 passed, 1 skipped
+> 끄기     없음 — 항목 칸 필터를 지우면 오늘처럼 모든 항목
+> ```
+>
+> ---
+>
 > ## [11-05] **그리드 이미지 칸 — 그림 Ctrl+V · 끌어다 놓기 (클라 반쪽)** — git pull · 화면 새로 고침
 >
 > ```
