@@ -36,7 +36,7 @@ QUIET_KEPT = {
     "server/chain/enrichment/config.py": {"probe": 3, "elsewhere": 1},
     "server/chain/join_key_index.py": {"probe": 2},
     "server/chain/slots.py": {"probe": 1, "elsewhere": 1},
-    "server/chain/unique_key.py": {"cleanup": 4},
+    "server/chain/unique_key.py": {"cleanup": 3},
     "server/collector_markers.py": {"elsewhere": 1},
     "server/database/crud.py": {"probe": 1},
     "server/database/database.py": {"hot": 4, "probe": 1},

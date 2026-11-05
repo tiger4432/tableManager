@@ -1877,6 +1877,15 @@ def map_key_index_ddl(table_name, entry):
 INDEX_BUILT = "built"
 INDEX_PRESENT = "present"
 INDEX_FAILED = "failed"
+#: Another session is building this name now - left to it, not dropped as a leftover (총괄 11-05; the ledger
+#: builder's judgement, bdc08ec39 ①: dropping it was a deadlock between two builders).
+INDEX_BUSY = "building elsewhere"
+#: Not built: another session held the table past the wait before the build - the next start or Reload builds it.
+INDEX_DEFERRED = "deferred"
+#: How long the wait before a build may be (총괄 11-05 ㄱ-2: before the build only - once it builds, its own waits for
+#: older transactions have no limit, or a finished build is thrown away; 9752e91f7 ②) and how often it looks again.
+INDEX_WAIT_BEFORE_SECONDS = 20.0
+INDEX_WAIT_POLL_SECONDS = 1.0
 #: The head of the comment a failed build leaves on its INVALID leftover, so GET /admin/indexes - in
 #: another process - can say why (총괄 06e8c22c3: a unique index over duplicated values).
 INDEX_FAILED_SAID = "build failed: "
@@ -1887,11 +1896,18 @@ INDEX_FAILED_SAID = "build failed: "
 _IN_THIS_SCHEMA = " AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
 
 
-def _ensure_one_index(engine, name, statement, what, say=print):
-    """Build one index CONCURRENTLY, repairing an invalid leftover first.
+def _ensure_one_index(engine, name, statement, what, say=print, table=None, leftovers=(), say_every=None):
+    """Build one index CONCURRENTLY, repairing an invalid leftover first - the one builder (총괄 11-05 ㄴ).
 
-    Returns `INDEX_BUILT`, `INDEX_PRESENT` or `INDEX_FAILED` - see those constants for why
-    it is not a boolean. `say` gets its lines (the repair, a failure and its reason).
+    Returns `INDEX_BUILT`, `INDEX_PRESENT`, `INDEX_FAILED`, `INDEX_BUSY` or `INDEX_DEFERRED` - see those constants for
+    why it is not a boolean. `say` gets its lines (the repair, the waits, a failure and its reason).
+    `table`: the table it is built on - the wait before the build asks who holds it, and a built one is noted for the
+    line's one ANALYZE (`built_tables`). `leftovers`: other names of INVALID leftovers of the same index to take away
+    first. `say_every`: how often a build that waits says whom for (`INDEX_WAIT_SAY_SECONDS`).
+
+    🔴 A LEFTOVER ANOTHER SESSION IS BUILDING IS NOT A LEFTOVER - left to it (`INDEX_BUSY`).
+    🔴 ONLY THE WAIT BEFORE THE BUILD HAS A LIMIT (`INDEX_WAIT_BEFORE_SECONDS`): past it nothing is started, so
+    nothing is left behind. Once building, the waits are said and never cut.
 
     🔴 ONE SPELLING, BECAUSE THE REPAIR IS THE HARD PART. A failed `CONCURRENTLY` leaves the
     index behind marked INVALID, the planner will not use it, and `IF NOT EXISTS` then sees
@@ -1899,14 +1915,17 @@ def _ensure_one_index(engine, name, statement, what, say=print):
     every query keeps scanning. That dance was written once for the map-key index and is
     now called by both, rather than copied beside it.
     """
+    import time
+
     from sqlalchemy import text as _text
 
     try:
         with engine.connect().execution_options(
                 isolation_level="AUTOCOMMIT") as connection:
             # no statement limit on a build - CONCURRENTLY waits for older transactions by design
-            # (총괄 e0e8020fb) - and the limit as it was before the connection goes back to the pool
+            # (총괄 e0e8020fb) - and the limits as they were before the connection goes back to the pool
             connection.execute(_text("SET statement_timeout = 0"))
+            connection.execute(_text("SET lock_timeout = 0"))
             try:
                 # 🔴 "THE STATEMENT RAN" IS NOT "AN INDEX WAS MADE" (S-124, caught by its own
                 # gate). Every caller appends this function's `True` to a list it then reports
@@ -1921,20 +1940,84 @@ def _ensure_one_index(engine, name, statement, what, say=print):
                     {"name": name}).first()
                 if already is not None and already[0]:
                     return INDEX_PRESENT
-                if already is not None:
-                    say(f"[Schema Sync] {what} index '{name}' is INVALID from an "
+                stale = ([name] if already is not None else []) + [n for n in leftovers if n != name]
+                building = _building(connection) if stale else {}
+                busy = [n for n in stale if n in building]
+                if busy:
+                    say(f"[Indexes] {what} index '{busy[0]}' is being built by another session - left to it "
+                        f"({building[busy[0]]})")
+                    return INDEX_BUSY
+                held = _wait_before_the_build(connection, table, name, say) if table else []
+                if held:
+                    say(f"[Indexes] {what} index '{name}' not built - waited {INDEX_WAIT_BEFORE_SECONDS:.0f}s for pid "
+                        f"{', '.join(map(str, held))} holding {table}; built again at the next start or Reload")
+                    return INDEX_DEFERRED
+                for leftover in stale:
+                    say(f"[Schema Sync] {what} index '{leftover}' is INVALID from an "
                         f"earlier failure; dropping and rebuilding.")
                     connection.execute(_text(
-                        f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
-                connection.execute(_text(statement))
+                        f'DROP INDEX CONCURRENTLY IF EXISTS "{leftover}"'))
+                started, stop = time.monotonic(), threading.Event()
+                watcher = threading.Thread(target=_say_while_building, daemon=True, args=(
+                    engine, lambda watch: (name, _building(watch).get(name)), started, stop, say,
+                    say_every or INDEX_WAIT_SAY_SECONDS))
+                watcher.start()
+                try:
+                    connection.execute(_text(statement))
+                finally:
+                    stop.set()
+                    watcher.join()
+                # «the statement ran» is not «an index enforces it» - a CONCURRENTLY build can end INVALID
+                valid = connection.execute(_text(
+                    "SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+                    " WHERE c.relname = :name AND c.relkind = 'i'" + _IN_THIS_SCHEMA), {"name": name}).first()
+                if not (valid and valid[0]):
+                    raise RuntimeError("index %s was built INVALID - it serves and enforces nothing" % name)
             finally:
                 with contextlib.suppress(Exception):       # a broken connection is dropped with it
                     connection.execute(_text("RESET statement_timeout"))
+                    connection.execute(_text("RESET lock_timeout"))
+        if table and getattr(_ROUND, "built", None) is not None:
+            _ROUND.built.add(table)
         return INDEX_BUILT
     except Exception as err:
         say(f"[Schema Sync] Failed to ensure {what} index '{name}': {told(err)}")
         _note_failure(engine, name, err)
         return INDEX_FAILED
+
+
+def _wait_before_the_build(connection, table, name, say):
+    """Wait up to `INDEX_WAIT_BEFORE_SECONDS` for the sessions holding `table` (`db_waits.table_holders`) - said once
+    when it starts waiting. -> the pids still holding it then, or [] (free: build)."""
+    import time
+
+    import db_waits
+
+    began, told_once = time.monotonic(), False
+    while True:
+        held = db_waits.table_holders(connection.connection.dbapi_connection, table)
+        if not held or time.monotonic() - began >= INDEX_WAIT_BEFORE_SECONDS:
+            return held
+        if not told_once:
+            told_once = True
+            say("[Indexes] %s waits for pid %s holding %s before it builds (at most %.0f s)"
+                % (name, ", ".join(map(str, held)), table, INDEX_WAIT_BEFORE_SECONDS))
+        time.sleep(INDEX_WAIT_POLL_SECONDS)
+
+
+#: The tables this thread's round built an index on (`built_tables`), or no round open.
+_ROUND = threading.local()
+
+
+@contextlib.contextmanager
+def built_tables():
+    """A round of index work on this thread - the set of tables an index was built on in it (`_ensure_one_index`),
+    for the line's one ANALYZE after the round (`runtime.maintenance_line`, 총괄 11-05)."""
+    _ROUND.built = set()
+    try:
+        yield _ROUND.built
+    finally:
+        _ROUND.built = None
 
 
 def _note_failure(engine, name, err):
@@ -2529,21 +2612,8 @@ def ensure_auto_indexes_sync(db_session_factory, wanted, say, decide=True):
         finally:
             db.close()
         decide_keys = decide_key_wants() if decide else None
-        done = ensure_auto_indexes(engine, wanted or (), say=say, decide_keys=decide_keys)
-        built = {table for table, columns, why in list(wanted or ()) + list(decide_keys or ())
-                 if done.get(auto_index_name(table, columns, why)) == INDEX_BUILT}
-        if built:
-            # the tables an automatic index was just built on: ANALYZE now, through the join key index's own path
-            # (owner 11-05 «ㅇㅇ»); its failure is its own sentence - the indexes stand (C 11-05 O4)
-            from chain import ingestion_worker
-
-            try:
-                ingestion_worker._analyze_stale_tables_sync(
-                    db_session_factory, built=built,
-                    built_why="an automatic index was just built on it and the planner had no statistics for it")
-            except Exception as exc:                                    # noqa: BLE001
-                say("[Indexes] built on %s; the ANALYZE after it did not run (this process goes on): %s: %s"
-                    % (", ".join(sorted(built)), type(exc).__name__, told(exc)))
+        # a table it builds on is analysed once after the line's round (`built_tables`, 총괄 11-05 ㄴ)
+        ensure_auto_indexes(engine, wanted or (), say=say, decide_keys=decide_keys)
     except Exception as exc:                                            # noqa: BLE001
         say("[Indexes] the automatic indexes were not compared (this process goes on): %s: %s"
             % (type(exc).__name__, told(exc)))
@@ -2629,15 +2699,9 @@ def _build_one(engine, statement, row, say, say_every):
     import time
 
     say("[Indexes] building %s on %s" % (row["name"], row["table"]))
-    started, stop = time.monotonic(), threading.Event()
-    watcher = threading.Thread(target=_say_while_building, daemon=True, args=(
-        engine, lambda connection: (row["name"], _building(connection).get(row["name"])), started, stop, say, say_every))
-    watcher.start()
-    try:
-        done = _ensure_one_index(engine, row["name"], statement, "declared", say=say)
-    finally:
-        stop.set()
-        watcher.join()
+    started = time.monotonic()
+    done = _ensure_one_index(engine, row["name"], statement, "declared", say=say, table=row["table"],
+                             say_every=say_every)
     say("[Indexes] %s %s in %.1f s" % (row["name"], done, time.monotonic() - started))
     return done
 
@@ -2738,7 +2802,7 @@ def ensure_dynamic_table_indexes(engine, config=None):
     for table_name, entry in sorted((catalog or {}).items()):
         for name, statement in dynamic_table_index_ddls(table_name, entry):
             if _ensure_one_index(engine, name, statement,
-                                 "dynamic-table") == INDEX_BUILT:
+                                 "dynamic-table", table=table_name) == INDEX_BUILT:
                 created.append(name)
     return created
 
@@ -2783,8 +2847,8 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None, say=p
         # would also issue a CONCURRENTLY build for an index just made.
         if name in created:
             continue
-        if _ensure_one_index(engine, name, statement,
-                             "decision-key", say=say) == INDEX_BUILT:
+        if _ensure_one_index(engine, name, statement, "decision-key", say=say,
+                             table=str(rule.get("source_table"))) == INDEX_BUILT:
             created.append(name)
     return created
 
@@ -2818,7 +2882,7 @@ def ensure_map_key_indexes(engine, config=None, say=print):
         name, statement = map_key_index_ddl(table_name, entry)
         if not statement:
             continue
-        if _ensure_one_index(engine, name, statement, "map-key", say=say) == INDEX_BUILT:
+        if _ensure_one_index(engine, name, statement, "map-key", say=say, table=table_name) == INDEX_BUILT:
             created.append(name)
     return created
 

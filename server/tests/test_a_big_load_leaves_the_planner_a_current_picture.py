@@ -51,7 +51,7 @@ def test_the_count_is_what_was_built_and_not_what_was_attempted():
     not anything happened is the log equivalent of no line at all."""
     attempted = []
 
-    def _fake(engine, name, statement, what):
+    def _fake(engine, name, statement, what, **_kw):
         attempted.append(name)
         # 🔴 THREE STATES, NOT A TRUTH VALUE, and the log proved twice in one day why:
         # `True` meaning "the statement ran" announced sixty-eight indexes nobody built,

@@ -350,6 +350,12 @@ def plan_table(conn, table: str) -> dict:
     return result
 
 
+def index_ddl(table: str, name: str) -> str:
+    """The unique index's one spelling - this script's build and the chain's (`_build_unique_index_waiting`)."""
+    return (f'CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS {quote_ident(name)} '
+            f'ON {quote_ident(table)} ({BK_COLUMN})')
+
+
 def build_index(conn, table: str, name: str) -> tuple:
     """Create the index and CHECK THAT IT CAME OUT VALID. Returns `(verdict, detail)`.
 
@@ -358,8 +364,7 @@ def build_index(conn, table: str, name: str) -> tuple:
     violates uniqueness). Reporting success on the strength of "the statement did not
     raise" would ship exactly the silent non-enforcement this migration exists to end.
     """
-    ddl = (f'CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS {quote_ident(name)} '
-           f'ON {quote_ident(table)} ({BK_COLUMN})')
+    ddl = index_ddl(table, name)
     try:
         conn.execute(text(ddl))
     except Exception as e:  # duplicates that appeared between census and build land here

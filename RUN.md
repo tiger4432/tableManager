@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **인덱스는 한 곳에서 지음 — 짓기 전 20 초까지만 기다리고, 남이 짓는 중이면 맡김** — git pull · 서버 · 스케줄러 재기동
+>
+> ```
+> 무엇     모든 인덱스(동적 표 · 판단 키 · 맵 키 · 조인 유일 · 조인 조회 · 업무키 유일)를 한 함수가 지음
+>          짓기 전 표를 잡은 세션을 20 초까지 기다리고, 넘으면 시작하지 않음 → 반쯤 지은 잔해가 안 남음
+>          다른 세션이 같은 인덱스를 짓는 중이면 손대지 않음. 지은 표는 라인 한 바퀴 뒤 한 번 ANALYZE
+> 볼 줄    scheduler 로그 (auto_update.log)
+>          «[Indexes] <이름> waits for pid <pid> holding <표> before it builds (at most 20 s)»   기다리는 중
+>          «... not built - waited 20s for pid <pid> holding <표>; built again at the next start or Reload»
+>              그 pid 가 표를 오래 잡고 있음. 그 세션이 끝난 뒤 Reload 하면 다시 지음
+>          «... is being built by another session - left to it (...)»   다른 세션이 짓는 중 — 기다리면 됨
+>          «... is INVALID from an earlier failure; dropping and rebuilding.»   예전 실패 잔해를 지우고 다시 지음
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k test_one_index_builder  -> 3 passed
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-06] **스냅숏 — 한 명령으로 뜨고 한 명령으로 되살림** (도커 없음 · 설치 프로그램 없음) — git pull 만 (재기동 불요)
 >
 > ```

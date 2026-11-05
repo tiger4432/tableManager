@@ -93,6 +93,25 @@ _INDEX_BUILDS = (
     " WHERE p.datid = (SELECT oid FROM pg_database WHERE datname = current_database())")
 
 
+#: The lock modes a CONCURRENTLY build waits out before it starts building - its own lock (ShareUpdateExclusive) waits
+#: on these, and its first wait is for every writer still open; a reader (AccessShareLock) holds none of them.
+BUILD_WAITS_ON = ("RowExclusiveLock", "ShareUpdateExclusiveLock", "ShareLock", "ShareRowExclusiveLock", "ExclusiveLock",
+                  "AccessExclusiveLock")
+
+_TABLE_HOLDERS = (
+    "SELECT DISTINCT l.pid FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid "
+    "WHERE l.relation = to_regclass(quote_ident(%s)) AND l.pid <> pg_backend_pid() AND l.granted "
+    "AND l.mode = ANY(%s) AND a.backend_type <> 'autovacuum worker' ORDER BY l.pid")
+
+
+def table_holders(dbapi_conn, table):
+    """-> the pids of the other sessions holding `table` the way a CONCURRENTLY build would wait for - an autovacuum
+    worker left out (a build's lock request cancels it). The index builder's wait before it builds (총괄 11-05 ㄱ-2)."""
+    with dbapi_conn.cursor() as cur:
+        cur.execute(_TABLE_HOLDERS, (table, list(BUILD_WAITS_ON)))
+        return [row[0] for row in cur.fetchall()]
+
+
 def index_builds(dbapi_conn):
     """-> {(schema, index): (the building backend's pid, the pid it waits for or None, what its build is doing)} - each
     index of this database a session is building now; a waiting one names whom it waits for. The index master's

@@ -158,6 +158,27 @@ def _each(works):
             logger.error("[Indexes] %s failed: %s", getattr(work[0], "__name__", work[0]), told(exc))
 
 
+#: Why a table is analysed after the round that built an index on it (`_round`).
+BUILT_WHY = "an index was just built on it and the planner had no statistics for it"
+
+
+def _round(db_session_factory, works):
+    """Index works (`_each`), then one ANALYZE of every table the round built an index on (`models.built_tables` -
+    the one builder notes it, 총괄 11-05 ㄴ): without statistics for a new index the planner guesses (owner 11-04 ·
+    11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4)."""
+    from chain import ingestion_worker as worker
+    from database import models
+
+    with models.built_tables() as built:
+        _each(works)
+    if built:
+        try:
+            worker._analyze_stale_tables_sync(db_session_factory, built=set(built), built_why=BUILT_WHY)
+        except Exception as exc:                                    # noqa: BLE001
+            logger.warning("[Indexes] built on %s; the ANALYZE after it did not run (this process goes on): %s: %s",
+                           ", ".join(sorted(built)), type(exc).__name__, told(exc))
+
+
 def _declared_work(db_session_factory):
     """The declared keys', the alignment decision keys', the map keys', the models' (the ledger's are the ledger
     process's) and every decide rule's key - the only builder of each (소유자 10-15: the chain worker, its slots and the
@@ -220,15 +241,15 @@ def poll_once(db_session_factory, mark):
     if latest != mark:
         mark = latest
     if declared:
-        _each(_declared_work(db_session_factory))
+        _round(db_session_factory, _declared_work(db_session_factory))
     keys = [table for table, _columns, why in asked if why == models.KEY_UNIQUE]
     if keys:
         from chain import ingestion_worker as worker
 
-        _each([(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)])
+        _round(db_session_factory, [(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)])
     asked = [each for each in asked if each[2] != models.KEY_UNIQUE]
     if asked:
-        _each([(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
+        _round(db_session_factory, [(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
     return mark
 
 
@@ -243,7 +264,7 @@ def run(db_session_factory, stop=None):
     finally:
         db.close()
     started = time.time()
-    _each(_start_work(db_session_factory))
+    _round(db_session_factory, _start_work(db_session_factory))
     logger.info("[Indexes] start work done in %.1f s", time.time() - started)
     stored = [False]
     _each([(lambda: stored.__setitem__(0, _storage_and_say(db_session_factory)),)])

@@ -80,19 +80,22 @@ def test_a_table_an_index_was_just_built_on_is_analysed_whatever_it_moved(monkey
 
 
 def test_the_index_work_hands_the_tables_it_built_to_the_analyse(monkeypatch, tables):
+    """One ANALYZE after the line's round, of every table the one builder built on in it (총괄 11-05 ㄴ) - a round that
+    built nothing asks none. The builder notes the table itself (`models.built_tables`; its PG gate builds for real)."""
     from chain import ingestion_worker as worker
+    from database import models
+    from runtime import maintenance_line
 
-    monkeypatch.setattr(synthesis, "ensure_declared_unique_keys", lambda db, rules: {"built": ["gk_tgt"]})
-    monkeypatch.setattr(synthesis, "ensure_declared_lookup_keys", lambda db, rules: {"built": ["gk_meas"]})
-    monkeypatch.setattr(synthesis, "retract_unrequired_indexes_once", lambda db: {})
     handed = []
-    monkeypatch.setattr(worker, "_analyze_stale_tables_sync", lambda factory, built=(): handed.append(set(built)))
+    monkeypatch.setattr(worker, "_analyze_stale_tables_sync",
+                        lambda factory, built=(), built_why=None: handed.append((set(built), built_why)))
 
-    class _Db:
-        def close(self):
-            pass
-    worker._ensure_declared_indexes_sync([], lambda: _Db())
-    assert handed == [{"gk_tgt", "gk_meas"}]
+    def builds(table):
+        models._ROUND.built.add(table)                              # what `_ensure_one_index` does on BUILT
+
+    maintenance_line._round(None, [(builds, "gk_tgt"), (builds, "gk_meas"), (lambda: None,)])
+    maintenance_line._round(None, [(lambda: None,)])
+    assert handed == [({"gk_tgt", "gk_meas"}, maintenance_line.BUILT_WHY)]
 
 
 def test_a_running_join_without_its_lookup_index_says_so_on_its_line(monkeypatch, tables):
@@ -112,15 +115,19 @@ def test_a_running_join_without_its_lookup_index_says_so_on_its_line(monkeypatch
 
 
 @pytest.mark.pg
-def test_the_gathering_read_is_planned_through_the_value_key_index(tables, pg_session):
+def test_the_gathering_read_is_planned_through_the_value_key_index(tables, pg_session, monkeypatch):
     db = pg_session
     from database.database import Base
 
     Base.metadata.create_all(bind=db.get_bind(), tables=[models.DYNAMIC_TABLES[t].__table__ for t in TABLES])
     rules = _stood([{"from": "v", "into": "m", "fn": "max"}])
     unique_key.forget()
+    through, builder = [], models._ensure_one_index
+    monkeypatch.setattr(models, "_ensure_one_index",
+                        lambda engine, name, *a, **k: through.append(name) or builder(engine, name, *a, **k))
     report = synthesis.ensure_declared_lookup_keys(db, rules)
     assert (VALUE_INDEX, "ok") in [(name, one.get("state")) for name, one in report["ensured"]], report
+    assert VALUE_INDEX in through, "the join's index is built by the one builder (총괄 11-05 ㄴ)"
     crud.apply_batch_updates(db, "gk_meas", schemas.GeneralUpdateBatch(updates=[
         schemas.GeneralUpdateItem(updates={"rid": "m%d" % i, "lot": "L1", "item": "I%d" % (i % 3), "v": i},
                                   source_name="seed", updated_by="gk") for i in range(6)]))

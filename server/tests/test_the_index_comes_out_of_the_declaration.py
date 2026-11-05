@@ -133,7 +133,7 @@ def test_two_rules_over_one_table_ask_for_one_index_and_the_count_says_one():
     class _Engine:
         pass
 
-    def _fake(engine, name, statement, what, say=print):
+    def _fake(engine, name, statement, what, say=print, **_kw):
         built.append(name)
         # The builder answers with a WORD now, because a boolean had two things to say -
         # "the statement ran" and "it was already there" - and each of them shipped a

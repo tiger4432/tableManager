@@ -3077,10 +3077,8 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
                             ", ".join(map(str, _changed)))
         finally:
             _index_db.close()
-        # the tables a join key index was just built on: ANALYZE now, or the planner guesses its rows (owner 11-04)
-        _built = set(_report.get("built") or ()) | set(_lookup.get("built") or ())
-        if _built:
-            _analyze_stale_tables_sync(db_session_factory, built=_built)
+        # a table a join key index was built on is analysed once after the line's round (`models.built_tables`,
+        # 총괄 11-05 ㄴ) - or the planner guesses its rows (owner 11-04)
         for _name, _why in _report.get("skipped") or ():
             # ⚠️ [판정 683] 「건너뜀」은 「하라고 한 것을 안 했다」는 말이고, 이 목록의 한 부류는
             #    「하라고 한 적이 없습니다」 - 선언이 `key.unique` 를 안 적었으면 건너뛸 일이
@@ -4228,10 +4226,12 @@ def _ensure_human_claims_index_sync(db_session_factory):
         # a truth value, and when `False` came to mean "already there" the boot printed
         # `COULD NOT BE ENSURED` about an index that exists - a false line, in the opposite
         # direction from the false line the same round had just fixed.
-        state = models._ensure_one_index(engine, name, statement, "human-claims")
+        state = models._ensure_one_index(engine, name, statement, "human-claims", table="cell_sources")
         logger.info("[Chain] human-claims index %s: %s", name, {
             models.INDEX_BUILT: "built",
             models.INDEX_PRESENT: "already in place",
+            models.INDEX_BUSY: "another session is building it",
+            models.INDEX_DEFERRED: "not built this time - see the line above",
         }.get(state, "COULD NOT BE ENSURED - see the line above"))
         # ⚠️ THE LEFTOVER LOOKUP IS A REPORT, NOT A REQUIREMENT. If it cannot run, the
         # line above has already said whether the index this boot needed is there; letting
@@ -4264,44 +4264,21 @@ def _ensure_human_claims_index_sync(db_session_factory):
             models.RETIRED_CLAIMS_INDEX, leftover)
 
 
-#: The lock modes a CONCURRENTLY build waits out - a reader (AccessShareLock) does not hold it.
-_BUILD_WAITS_ON = ("RowExclusiveLock", "ShareUpdateExclusiveLock", "ShareRowExclusiveLock", "ExclusiveLock",
-                   "AccessExclusiveLock")
-
-
 def _build_unique_index_waiting(bind, uq, table, name):
-    """`uq.build_index` on the DDL connection (`unique_key._open_ddl_connection` - it waits at most
-    db_safety.DDL_LOCK_TIMEOUT, and the setting is reset before the connection goes back): an INVALID leftover of a
-    build that gave up is dropped first, under the same wait (총괄 49792d3f6 A, 소유자 「체인은 뭐 10 분째 스타팅이냐」);
-    a wait past the timeout is BLOCKED, and the sessions holding the table are named in one line."""
-    import db_safety
-    from chain import unique_key
+    """`uq`'s unique index on `table` by the one builder (`models._ensure_one_index`, 총괄 11-05 ㄴ): an INVALID
+    leftover of its name dropped first unless another session is building it, the wait before the build at most
+    `models.INDEX_WAIT_BEFORE_SECONDS` and its holders named, the build's own waits said. -> (`uq`'s verdict, the
+    builder's last line) - the five states in `uq`'s words here only."""
+    from database import models
 
-    conn = unique_key._open_ddl_connection(bind)
-    try:
-        try:
-            if conn.execute(text("SELECT count(*) FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
-                                 "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = current_schema() "
-                                 "AND c.relname = :n AND NOT i.indisvalid"), {"n": name}).scalar():
-                conn.execute(text("DROP INDEX CONCURRENTLY IF EXISTS %s" % uq.quote_ident(name)))
-            verdict, detail = uq.build_index(conn, table, name)
-        except Exception as e:                                          # the leftover's drop waited past it
-            if not db_safety.waited_past_the_lock_timeout(e):
-                raise
-            verdict, detail = uq.BLOCKED, str(e).strip().splitlines()[0]
-        if verdict == uq.BLOCKED:
-            holders = [row[0] for row in conn.execute(text(
-                "SELECT DISTINCT pid FROM pg_locks WHERE relation = to_regclass(:t) AND pid <> pg_backend_pid() "
-                "AND mode = ANY(:modes) ORDER BY pid"), {"t": table, "modes": list(_BUILD_WAITS_ON)})] or [
-                row[0] for row in conn.execute(text(
-                    "SELECT pid FROM pg_stat_activity WHERE xact_start IS NOT NULL AND pid <> pg_backend_pid() "
-                    "ORDER BY xact_start LIMIT 3"))]
-            logger.warning("[Ledger] business-key unique index on %s not built - waited %s, blocked by pid %s; the "
-                           "next start builds it", table, db_safety.DDL_LOCK_TIMEOUT,
-                           ", ".join(str(p) for p in holders) or "?")
-        return verdict, detail
-    finally:
-        unique_key._close_ddl_connection(conn)
+    said = []
+    done = models._ensure_one_index(bind, name, uq.index_ddl(table, name), "business-key unique", say=said.append,
+                                    table=table)
+    for line in said:
+        logger.info(line)
+    verdict = {models.INDEX_BUILT: uq.OK_CREATED, models.INDEX_PRESENT: uq.OK_ALREADY, models.INDEX_BUSY: uq.BLOCKED,
+               models.INDEX_DEFERRED: uq.BLOCKED}.get(done, uq.FAILED)
+    return verdict, (said[-1] if said else uq.index_ddl(table, name))
 
 
 def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):

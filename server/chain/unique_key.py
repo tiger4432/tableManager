@@ -64,6 +64,20 @@ def _close_ddl_connection(connection):
     connection.close()
 
 
+def _build(db, table, name, ddl, what, leftovers=()) -> tuple:
+    """The join's index built by the one builder (`models._ensure_one_index`, 총괄 11-05 ㄴ) -> (this report's state
+    word, the builder's last line): its five states said in this file's words, here only - built or present «ok», left
+    to another session or not started past the wait before the build «deferred», failed «failed»."""
+    from database import models
+
+    said = []
+    done = models._ensure_one_index(db.get_bind(), name, ddl, what, say=said.append, table=table, leftovers=leftovers)
+    for line in said:
+        logger.info(line)
+    return {models.INDEX_BUILT: "ok", models.INDEX_PRESENT: "ok", models.INDEX_BUSY: "deferred",
+            models.INDEX_DEFERRED: "deferred"}.get(done, "failed"), (said[-1] if said else None), done
+
+
 #: 보고에 싣는 중복 키의 최대 건수. 수만 건이면 목록이 진단이 아니라 소음이 된다.
 MAX_REPORTED_DUPLICATES = 20
 
@@ -199,46 +213,30 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
         return report
 
     from chain import join_key_index as vjc
-    from sqlalchemy import text as sa_text
+    from database import models
 
     # 🔴 END THIS SESSION'S READ FIRST. `inspect` read the table here and the transaction stays
     # open; `DROP INDEX CONCURRENTLY` on an INVALID leftover waits for every transaction that
-    # touched the table - this one too, on the connection beside it. Without the time limit
-    # that wait never ended; with it, a deferred build could never be retried (⑤, measured).
+    # touched the table - this one too, on the connection beside it (⑤, measured).
     db.rollback()
-    try:
-        connection = _open_ddl_connection(db.get_bind())
-    except Exception as open_error:
-        report["error"] = "autocommit connection unavailable: %s" % told(open_error)
+    ddl = vjc.required_index_ddl(table, columns, **({"folds": folds} if folds and any(folds) else {}))
+    name = vjc.required_index_name(table, columns, folds)
+    state, last, done = _build(db, table, name, ddl, "join unique", leftovers=report["invalid"])
+    if done != models.INDEX_BUSY:
+        # 잔해는 제약을 강제하지 않으면서 «이름»을 붙잡는다 — 지우는 것이 곧 고치는 것이다
+        report["dropped"] = [n for n in report["invalid"] if done in (models.INDEX_BUILT, models.INDEX_FAILED)]
+    if state == "ok":
+        report.update(created=ddl, state="ok")
         return report
-
-    try:
-        for name in report["invalid"]:
-            # 잔해는 제약을 강제하지 않으면서 «이름»을 붙잡는다 — 지우는 것이 곧 고치는 것이다
-            connection.execute(sa_text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name))
-            report["dropped"].append(name)
-        ddl = vjc.required_index_ddl(table, columns,
-                                     **({"folds": folds} if folds and any(folds) else {}))
-        connection.execute(sa_text(ddl))
-        report["created"] = ddl
-        report["state"] = "ok"
-    except Exception as create_error:
-        # 여기서 실패하면 대개 «중복»이다. PostgreSQL 이 어떤 키인지까지 말해 주므로
-        # 우리 진단으로 덮어쓰지 않고 그 문장을 그대로 나른다.
-        report["error"] = told(create_error).strip().splitlines()[0]
-        if db_safety.waited_past_the_lock_timeout(create_error):
-            # Not the data: another session held the table past the time limit (⑤).
-            report["state"] = "deferred"
-            return report
-        if not report.get("duplicates"):
-            report["duplicates"], report["blank_keys"] = duplicate_keys(
-                db, table, columns, folds)
-        report["state"] = "duplicates" if report["duplicates"] else "failed"
-    finally:
-        try:
-            _close_ddl_connection(connection)
-        except Exception:
-            pass
+    # 여기서 실패하면 대개 «중복»이다. PostgreSQL 이 어떤 키인지까지 말해 주므로 우리 진단으로 덮어쓰지 않고
+    # 그 문장을 그대로 나른다 (the builder's last line)
+    report["error"] = last
+    if state == "deferred":
+        report["state"] = "deferred"
+        return report
+    if not report.get("duplicates"):
+        report["duplicates"], report["blank_keys"] = duplicate_keys(db, table, columns, folds)
+    report["state"] = "duplicates" if report["duplicates"] else "failed"
     return report
 
 
@@ -484,27 +482,13 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
         _TRIED[memo] = report
         return report
     started = time.monotonic()
-    try:
-        connection = _open_ddl_connection(db.get_bind())
-    except Exception as open_error:                                    # noqa: BLE001
-        report["state"] = "failed"
-        report["error"] = "autocommit connection unavailable: %s" % told(open_error)
-        _TRIED[memo] = report
-        return report
-    try:
-        if found is not None:
-            connection.execute(text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name))
-            report["dropped"].append(name)
-        report["created"] = vjc.required_index_ddl(table, columns, folds, unique=False)
-        connection.execute(text(report["created"]))
-        report["state"] = "ok"
-    except Exception as create_error:                                  # noqa: BLE001
-        report["created"] = None
-        report["error"] = told(create_error).strip().splitlines()[0]
-        report["state"] = ("deferred" if db_safety.waited_past_the_lock_timeout(create_error)
-                           else "failed")
-    finally:
-        _close_ddl_connection(connection)
+    ddl = vjc.required_index_ddl(table, columns, folds, unique=False)
+    report["state"], last, done = _build(db, table, name, ddl, "join lookup")
+    if report["state"] == "ok":
+        report["created"] = ddl
+        report["dropped"] = [name] if found is not None else []
+    else:
+        report["error"] = last
     _TRIED[memo] = report
     if report["state"] == "ok":
         logger.info("[Join] 조회 인덱스 %s 를 세웠습니다 (%.1f s)", name, time.monotonic() - started)

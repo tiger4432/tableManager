@@ -24,6 +24,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from chain import ingestion_worker as worker                              # noqa: E402
 
 
+def uq_ddl(table, name):
+    from migrations import add_business_key_unique_index as uq
+
+    return uq.index_ddl(table, name)
+
+
 class _Conn:
     def __enter__(self):
         return self
@@ -80,8 +86,10 @@ class _Session:
         pass
 
 
-def run(monkeypatch, *, tables, existing, census, build=("created", "ok")):
-    """Drive the ensure with the migration module's four questions stubbed."""
+def run(monkeypatch, *, tables, existing, census):
+    """Drive the ensure with the migration module's questions stubbed and the one builder (`models._ensure_one_index`,
+    its own PG gates) answering «built» - `engine.built` the tables it was asked for."""
+    from database import models
     from migrations import add_business_key_unique_index as uq
 
     monkeypatch.setattr(uq, "tables_with_business_key", lambda conn: list(tables))
@@ -89,9 +97,15 @@ def run(monkeypatch, *, tables, existing, census, build=("created", "ok")):
     monkeypatch.setattr(uq, "duplicate_census",
                         lambda conn, t, **kw: dict(census[t], table=t))
     monkeypatch.setattr(uq, "unique_index_name", lambda t: f"uq_bk_{t}")
-    monkeypatch.setattr(uq, "build_index", lambda conn, t, name: build)
-
     engine = _Engine()
+    engine.built = []
+
+    def one_builder(bind, name, statement, what, say=print, table=None, **_kw):
+        engine.built.append((table, name, statement))
+        say("[Indexes] built %s" % name)
+        return models.INDEX_BUILT
+
+    monkeypatch.setattr(models, "_ensure_one_index", one_builder)
     return worker._ensure_business_key_unique_indexes_sync(
         lambda: _Session(engine)), engine
 
@@ -100,10 +114,10 @@ def test_a_clean_table_gets_its_index(monkeypatch):
     out, engine = run(monkeypatch, tables=["clean"], existing={},
                       census={"clean": {"surplus": 0}})
 
-    assert out["built"] == [("clean", "created", "ok")]
+    assert out["built"] == [("clean", "created", "[Indexes] built uq_bk_clean")], "the builder's last line"
     assert out["refused"] == [] and out["invalid"] == []
-    assert engine.autocommit_asked, (
-        "CONCURRENTLY cannot run inside a transaction — the build needs AUTOCOMMIT")
+    assert engine.built == [("clean", "uq_bk_clean", uq_ddl("clean", "uq_bk_clean"))], (
+        "the chain's unique index goes through the one builder, in the migration's one spelling")
 
 
 def test_a_table_with_duplicates_is_named_and_left_alone(monkeypatch):
@@ -114,20 +128,21 @@ def test_a_table_with_duplicates_is_named_and_left_alone(monkeypatch):
 
     assert out["refused"] == [("dirty", 7)]
     assert out["built"] == []
-    assert not engine.autocommit_asked, "no DDL may be attempted on a table that refused"
+    assert engine.built == [], "no DDL may be attempted on a table that refused"
 
 
 def test_a_valid_index_is_left_alone_an_invalid_leftover_is_rebuilt_and_another_name_is_named(monkeypatch):
     """⚠️ 「the name exists」 IS NOT THE PREDICATE. An invalid leftover under the unique name enforces nothing, and
     since 총괄 49792d3f6 A it is the leftover of a build that gave up its wait - dropped and built again here. An
     invalid index under another name is not this build's, and is named."""
-    out, _engine = run(
+    out, engine = run(
         monkeypatch, tables=["ok", "leftover", "other"],
         existing={"ok": ("uq_bk_ok", True), "leftover": ("uq_bk_leftover", False), "other": ("custom", False)},
         census={"leftover": {"surplus": 0}})
 
-    assert out["built"] == [("leftover", "created", "ok")] and out["refused"] == []
+    assert out["built"] == [("leftover", "created", "[Indexes] built uq_bk_leftover")] and out["refused"] == []
     assert out["invalid"] == [("other", "custom")]
+    assert [t for t, _n, _d in engine.built] == ["leftover"], "a valid index is not built again"
 
 
 def test_the_scheduler_s_line_builds_it_and_the_chain_start_does_not():
