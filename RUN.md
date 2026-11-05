@@ -20,6 +20,7 @@
 >             (또는 server 에서 python -m ledger.backfill --source <소스> --apply)
 > 답의 뜻     restore 끝줄 «restored {tables, cell_sources, person_layers}» 가 «the snapshot had …» 와 같으면 DB 는 다 옴
 >             «the environment did not unpack» → 더 짧은 경로에 다시
+>             되살린 뒤 «첫» 기동에 [MISSING-VIEW] ledger_events 한 줄 — 원장 일꾼이 표를 만들기 전 검사, 무시 (두 번째 기동엔 없음)
 > ```
 >
 > ---
