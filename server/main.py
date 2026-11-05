@@ -7460,6 +7460,18 @@ def ask_admin_help(request: Request, payload: dict = Body(default=None), db: Ses
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get("/admin/help/guides", dependencies=[Depends(require_admin_token)])
+def read_admin_help_guides():
+    """The Help panel's Guide (owner 11-06): the declaration guides the answer reads (`help_guides.GUIDES`), cut at
+    their headings as written, each with the admin tabs it is shown on. 404 names a missing guide."""
+    from admin import help_guides
+
+    try:
+        return {"guides": help_guides.reader()}
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @app.get("/admin/retroactive/runs", dependencies=[Depends(require_admin_token)])
 def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
     """요청형 연산의 실행 행 — 최근 것부터. 읽기 전용.

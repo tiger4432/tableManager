@@ -24,13 +24,15 @@ import math
 import os
 import re
 import tempfile
+from datetime import datetime, timezone
 
 import paths
 
-GUIDES = ("docs/guide/config/chain_rules.md", "docs/guide/config/table_config.md",
-          "docs/guide/config/ledger_declaration_by_example.md", "docs/guide/config/enrichment_rules.md",
-          "docs/guide/CONFIG_ROLLOUT_GUIDE.md", "docs/guide/ai_ask_tables.md",
-          "docs/guide/ai_report_tables.md")
+#: The guides and the admin tabs each is shown on (the Help panel's «For this tab», lead 11-06) - the one list, in
+#: help_guides.json: the answer's sections and the Guide reader both walk it, and the client's guide harness reads it.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "help_guides.json"), encoding="utf-8") as _f:
+    GUIDE_TABS = {guide: tuple(tabs) for guide, tabs in json.load(_f)["guides"].items()}
+GUIDES = tuple(GUIDE_TABS)
 #: A section longer than this many characters is split at its table rows / blank lines / list items.
 CAP = 2000
 #: Sections the declaration prompt carries.
@@ -86,36 +88,50 @@ def _split(text):
     return pieces + [current]
 
 
-def cut(guide, text):
-    """[{"name", "text"}] of one guide's text - its sections, the history sentences out."""
-    out, path, item, body, fence = [], [], None, [], False
-
-    def close():
-        joined = "\n".join(body).strip()
-        if not (path and joined):
-            return
-        name = "%s: %s" % (os.path.basename(guide), " > ".join(path + ([item] if item else [])))
-        pieces = _split(joined) if len(joined) > CAP else [joined]
-        for k, piece in enumerate(pieces):
-            out.append({"name": name + ("" if len(pieces) == 1 else " (part %d)" % (k + 1)), "text": piece})
-
+def sections(text):
+    """[{"path", "level", "text"}] of one guide's text cut at its headings (# to ####, not inside a code fence) - the
+    text as written, every heading kept even with nothing under it. The Guide reader shows these; `cut` cuts them on."""
+    out, path, fence = [], [], False
     for line in text.split("\n"):
         if line.startswith("```"):
             fence = not fence
         heading = None if fence else _HEADING.match(line)
         if heading:
-            close()
             level = len(heading.group(1))
-            path, item, body = path[:level - 1] + [heading.group(2).strip()], None, []
-            continue
-        numbered = None if fence else _ITEM.match(line)
-        if numbered:
-            close()
-            item, body = numbered.group(1).strip(), []
-        kept = _sentences_kept(line)
-        if kept is not None:
-            body.append(kept)
-    close()
+            path = path[:level - 1] + [heading.group(2).strip()]
+            out.append({"path": path, "level": level, "lines": []})
+        elif out:
+            out[-1]["lines"].append(line)
+    return [{"path": s["path"], "level": s["level"], "text": "\n".join(s["lines"])} for s in out]
+
+
+def cut(guide, text):
+    """[{"name", "text"}] of one guide's text - its sections cut again at bold numbered items, the history sentences
+    out, a long one split."""
+    out = []
+    for section in sections(text):
+        item, body, fence = None, [], False
+
+        def close():
+            joined = "\n".join(body).strip()
+            if not joined:
+                return
+            name = "%s: %s" % (os.path.basename(guide), " > ".join(section["path"] + ([item] if item else [])))
+            pieces = _split(joined) if len(joined) > CAP else [joined]
+            for k, piece in enumerate(pieces):
+                out.append({"name": name + ("" if len(pieces) == 1 else " (part %d)" % (k + 1)), "text": piece})
+
+        for line in section["text"].split("\n"):
+            if line.startswith("```"):
+                fence = not fence
+            numbered = None if fence else _ITEM.match(line)
+            if numbered:
+                close()
+                item, body = numbered.group(1).strip(), []
+            kept = _sentences_kept(line)
+            if kept is not None:
+                body.append(kept)
+        close()
     return out
 
 
@@ -170,6 +186,22 @@ def index():
                 pieces += cut(guide, handle.read())
         _built.update(stamp=stamp, index=_Index(pieces))
     return _built["index"]
+
+
+def reader():
+    """The guides as the Help panel's Guide reads them: [{"path", "file", "updated", "tabs", "sections"}] in GUIDES'
+    order, each section {"path", "level", "text"} as written (`sections`). A missing guide is refused by name."""
+    stamp = _stamp()
+    missing = [guide for guide, at, _size in stamp if at is None]
+    if missing:
+        raise LookupError("guide not found: %s" % ", ".join(os.path.join(paths.REPO_ROOT, g) for g in missing))
+    out = []
+    for guide, at, _size in stamp:
+        with open(os.path.join(paths.REPO_ROOT, guide), encoding="utf-8") as handle:
+            text = handle.read()
+        out.append({"path": guide, "file": os.path.basename(guide), "tabs": list(GUIDE_TABS[guide]),
+                    "updated": datetime.fromtimestamp(at / 1e9, timezone.utc).isoformat(), "sections": sections(text)})
+    return out
 
 
 def _cache_path(model):

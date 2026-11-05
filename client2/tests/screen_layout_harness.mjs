@@ -55,8 +55,10 @@ const SIZES = [[1920, 950], [1536, 864], [1280, 720]];
 const EDGE_SIZES = [[1920, 1080], [1440, 900], [1024, 768]];
 // The main grid at all three too: its counts at 1024x768 were 0 wide under «‹ Prev» (lead 10-14).
 // The sample page at 1024 and a phone's 390 too: the ledger declaration window's gate is five sizes (lead 4c7b42b0a).
+// The admin at 1280x680 too (lead 11-06): with its header one row the explorer's box at 1280x720 is 616 px, 4 short of
+// the window's least height, so a window running over the section under it is not seen there; at 680 it is 44 px over.
 const ENTRY_SIZES = { 'walk.html': [[1568, 775], [1896, 907], [1280, 720]], 'testbed.html': EDGE_SIZES, 'index.html': EDGE_SIZES,
-  'sample.html': [[1024, 768], [390, 844]] };
+  'sample.html': [[1024, 768], [390, 844]], 'admin.html': [[1280, 680]] };
 // At 1024x768 the main grid is driven to its first state only: past it (a filter typed at the right end) the run loses
 // Chrome and ends unsettled - not chased (lead 10-14 «그 밖의 1024 결함은 찾아 나서지 말 것»).
 const FIRST_STATE_ONLY = { 'index.html': ['1024x768'] };
@@ -466,6 +468,29 @@ const HELP_ANSWERS = {
     doors: [{ name: 'on the grid', how: "the grid's column header - right-click it (a blank column too) or its fx mark",
               when: 'the formula window: write, preview, save, remove', open: { label: 'Open the grid', href: 'index.html' } }] },
 };
+// The Help panel's Guide (owner 11-06): while GUIDE.on GET /admin/help/guides answers the server's shape over the guide
+// list it reads (server/admin/help_guides.json - its paths and tabs); the sections are drawn here, chain_rules.md's with
+// a table, a quote, a fence and a list, and allow_chain_trigger three times over its sections.
+const GUIDE = { on: false };
+const GUIDE_FIND = 'allow_chain_trigger';
+const GUIDE_ANSWER = { guides: Object.entries(JSON.parse(readFileSync(path.join(FIX, '..', '..', '..', 'server', 'admin', 'help_guides.json'), 'utf8')).guides)
+  .map(([p, tabs]) => {
+    const file = p.split('/').pop();
+    const title = { path: [file], level: 1, text: '' };
+    const sections = file !== 'chain_rules.md'
+      ? [title, { path: [file, '1. Setting'], level: 2, text: `${file} 의 선언을 적는 곳입니다.` }]
+      : [title,
+        { path: [file, '0. 한눈에 보기 — 규칙 «맨 위»에 적는 칸'], level: 2, text: [
+          '전부 규칙 dict 의 «맨 위»에 적습니다. 적지 않으면 아래 「안 적으면」 칸이 답입니다.', '',
+          '| 칸 | 켜면 | 안 적으면 |', '|---|---|---|',
+          '| `allow_chain_trigger` | 다른 체인 규칙이 쓴 행에도 깨어난다 | 사람·파일·수집기가 바꾼 행에만 |',
+          '| `allow_replace_map` | 맵 하나를 통째로 갈아끼운다 | 이름 대어 거절 |', '',
+          '> 체인이 체인을 깨우는 깊이는 파일 맨 위 `max_chain_depth`(기본 8)가 막습니다.', '',
+          '```', '"allow_chain_trigger": true     다른 규칙이 쓴 행에도', '"enabled": false                규칙을 끈다', '```'].join('\n') },
+        { path: [file, '1. 세팅 절차'], level: 2, text: ['1. 규칙을 적는다', '2. **Check** 로 본다', '   - `allow_chain_trigger` 는 마지막에'].join('\n') }];
+    return { path: p, file, tabs, updated: '2026-11-05T09:00:00+00:00', sections };
+  }) };
+
 // The header's last stall (owner 10-29 «ㄴ», A 63a69b97a): while STALL.on /health carries `stall` - STALL.next, the server's
 // shape: {line, at} after a freeze, null before one. The recorded /health is an older server's, without the key.
 const STALL = { on: false, next: null };
@@ -1859,6 +1884,10 @@ async function servePage(chrome, dist) {
       reply(200, 'application/json', JSON.stringify({ draft: IMPORT_DRAFT }));
       return;
     }
+    if (GUIDE.on && request.method === 'GET' && u.pathname === '/admin/help/guides') {
+      reply(200, 'application/json', JSON.stringify(GUIDE_ANSWER));
+      return;
+    }
     if (request.method !== 'GET' && request.method !== 'HEAD') { log.refused.push(`${request.method} ${u.pathname}`); chrome.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {}); return; }
     if (resourceType === 'Document') {
       if (!log.opening) { log.left.push(u.pathname + u.search); reply(204, 'text/plain', ''); return; }
@@ -2220,8 +2249,11 @@ function screensLib(TOL) {
 
   // Every button in a <header>, and every [aria-haspopup], pressed in turn: what appears positioned is its panel.
   const keyOf = (b) => `${pathOf(b)}|${label(b)}`;
-  // the worlds' chips (a shared part, the branch picker) toggle a world - they open nothing; a pick walks again and redraws
-  const openers = () => [...document.querySelectorAll('header button, header [role="button"], [aria-haspopup]')].filter((b) => shown(b) && !b.disabled && !b.closest('.branch-picker'));
+  // the worlds' chips (a shared part, the branch picker) toggle a world - they open nothing; a pick walks again and redraws.
+  // A header button that opens no panel says so on itself or its group: data-no-panel (the admin's tabs and Refresh,
+  // in its header since owner 11-06) - never a list here
+  const openers = () => [...document.querySelectorAll('header button, header [role="button"], [aria-haspopup]')]
+    .filter((b) => shown(b) && !b.disabled && !b.closest('.branch-picker') && !b.closest('[data-no-panel]'));
   const floating = () => [...document.querySelectorAll('body *')].filter((e) => /absolute|fixed/.test(css(e).position) && shown(e));
   const pressed = new Set();
   let open = null;
@@ -2650,6 +2682,9 @@ const DRIVE = {
       const open = document.getElementById('sample-decl-bar');
       if (open) open.scrollIntoView({ block: 'start' }); return Boolean(open && open.querySelector('.ldb-pop')); })()`).then(() => sleep(300))],
     ['Ledger declaration, list open, light', (c) => evaluate(c, "document.documentElement.setAttribute('data-theme', 'light'); true").then(() => sleep(300))],
+    // its head's «?» names the ledger guide - the admin page opens the Guide on it (admin.html's «?» step)
+    ['Ledger declaration, its guide «?»', (c) => until(c, `(() => { const b = document.querySelector('#sample-decl-bar .ldb-head [data-guide]');
+      return Boolean(b) && b.dataset.guide === 'ledger_declaration_by_example.md' && b.dataset.guideTab === 'ontology'; })()`)],
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
@@ -3231,6 +3266,85 @@ const DRIVE = {
           await until(c, "!document.querySelector('.help-panel:not([hidden])')");
           HELP.on = false;
           HELP.next = null;
+        }],
+      ];
+    })(),
+    // The header in one row (owner 11-06): the name, the tabs and Help on one line at 1920; narrower it may wrap.
+    ['Header, one row', (c) => until(c, `(() => { const bar = document.querySelector('header.admin-bar');
+      const tabs = bar && bar.querySelector('.admin-bar__tabs #tab-chain-btn'); const help = bar && bar.querySelector('#help-btn');
+      if (!tabs || !help) return false;
+      if (innerWidth < 1900) return true;
+      const t = tabs.getBoundingClientRect(), h = help.getBoundingClientRect(), n = bar.querySelector('.admin-bar__name').getBoundingClientRect();
+      return Math.abs(t.top - h.top) < 4 && Math.abs(t.top - n.top) < 12 && bar.getBoundingClientRect().height < 64; })()`)],
+    // The Help panel's Guide (owner 11-06): the Chain tab's guides, a section picked, Find over the guide, the next section;
+    // then each declaration window's «?» opens it on that window's guide.
+    ...(() => {
+      const pick = (c, sel, value) => evaluate(c, `(() => { const s = document.querySelector(${JSON.stringify(sel)}); if (!s) return false;
+        s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      const heading = (text) => `(document.querySelector('.guide-reader__heading') || {}).textContent === ${JSON.stringify(text)}`;
+      const shown = (file) => `Boolean(document.querySelector('.help-panel:not([hidden]) .help-panel__guide:not([hidden]) .guide-chip.is-on'))`
+        + ` && document.querySelector('.guide-chip.is-on').textContent === ${JSON.stringify(file)}`;
+      const shownAll = (file) => `(document.querySelector('.guide-reader__meta') || {}).textContent.startsWith(${JSON.stringify(file + ' · ')})`;
+      const q = (file) => `(() => { const b = document.querySelector('.help-q[data-guide=${JSON.stringify(file)}]'); if (b) b.click(); return Boolean(b); })()`;
+      return [
+        ['Help, the guide for this tab', async (c) => {
+          GUIDE.on = true;
+          await evaluate(c, "location.hash = '#chain'; true");
+          await sleep(1200);
+          await evaluate(c, "(() => { const b = document.getElementById('help-btn'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, "Boolean(document.querySelector('.help-panel:not([hidden])'))");
+          await evaluate(c, "(() => { const b = document.querySelector('.help-panel__view[data-view=\"guide\"]'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, `${shown('chain_rules.md')} && document.querySelectorAll('.guide-chip').length === 4`
+            + " && Boolean(document.querySelector('.guide-reader__text .gmd-table'))"
+            + " && Boolean(document.querySelector('.guide-reader__text .gmd-pre'))"
+            + " && Boolean(document.querySelector('.guide-reader__text .gmd-quote'))");
+        }],
+        ['Help, a section picked', async (c) => {
+          await pick(c, '.guide-reader__sections', '2');
+          await until(c, `${heading('1. 세팅 절차')} && Boolean(document.querySelector('.guide-reader__text ol.gmd-list'))`);
+        }],
+        ['Help, found in the guide', async (c) => {
+          await evaluate(c, `(() => { const i = document.querySelector('.guide-reader__find'); if (!i) return false;
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(GUIDE_FIND)});
+            i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+          await until(c, `document.querySelector('.guide-reader__count').textContent === '1 of 3' && ${heading('0. 한눈에 보기 — 규칙 «맨 위»에 적는 칸')}`
+            + " && document.querySelectorAll('.guide-reader__text mark.guide-hit').length === 2"
+            + " && document.querySelectorAll('.guide-reader__text mark.guide-hit.is-current').length === 1");
+          await evaluate(c, `(() => { const i = document.querySelector('.guide-reader__find');
+            i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
+          await until(c, "document.querySelector('.guide-reader__count').textContent === '2 of 3'");
+        }],
+        ['Help, the next section', async (c) => {
+          await evaluate(c, "(() => { const b = document.querySelector('.guide-reader__next'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, `${heading('1. 세팅 절차')} && document.querySelectorAll('.guide-reader__text mark.guide-hit').length === 1`);
+        }],
+        ['Help, another guide from All', async (c) => {
+          await pick(c, '.guide-reader__all', 'CONFIG_ROLLOUT_GUIDE.md');
+          await until(c, `${shownAll('CONFIG_ROLLOUT_GUIDE.md')} && document.querySelector('.guide-reader__count').textContent === 'No match'`);
+        }],
+        ['Chain, its rules guide from «?»', async (c) => {
+          await evaluate(c, "(() => { const b = document.getElementById('help-btn'); if (b) b.click(); return true; })()");
+          await until(c, "!document.querySelector('.help-panel:not([hidden])')");
+          await evaluate(c, q('chain_rules.md'));
+          await until(c, `${shown('chain_rules.md')} && document.getElementById('help-btn').getAttribute('aria-pressed') === 'true'`);
+        }],
+        ['Tables, its guide from «?»', async (c) => {
+          await evaluate(c, "location.hash = '#tables'; true");
+          await sleep(1200);
+          await evaluate(c, q('table_config.md'));
+          await until(c, shown('table_config.md'));
+        }],
+        ['The ledger guide from a «?»', async (c) => {
+          // the ledger window draws its «?» (sample.html checks that); this is the page's answer to one. The tab is not
+          // visited: the Ontology Explorer's own steps below open it first
+          await evaluate(c, `(() => { const b = document.createElement('button'); b.className = 'help-q'; b.dataset.guide = 'ledger_declaration_by_example.md';
+            b.dataset.guideTab = 'ontology'; document.body.appendChild(b); b.click(); b.remove(); return true; })()`);
+          await until(c, shown('ledger_declaration_by_example.md'));
+        }],
+        ['Help closed after the guide', async (c) => {
+          await evaluate(c, "(() => { const b = document.getElementById('help-btn'); if (b) b.click(); return true; })()");
+          await until(c, "!document.querySelector('.help-panel:not([hidden])')");
+          GUIDE.on = false;
         }],
       ];
     })(),

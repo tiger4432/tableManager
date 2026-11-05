@@ -3096,7 +3096,7 @@ let helpPanel = null;
 
 async function sendHelp(req) {
   try {
-    const res = await adminFetch(`${API_BASE}${req.path}`, {
+    const res = await adminFetch(`${API_BASE}${req.path}`, req.body === undefined ? { method: req.method } : {
       method: req.method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body) });
     if (!res.ok) return { ok: false, error: await retroFailureLine(res, failureFactOf(res), 'Help refused') };
     return { ok: true, body: await res.json() };
@@ -3115,15 +3115,27 @@ function initHelpPanel() {
     forms: () => Object.fromEntries(((retroactiveView && retroactiveView.operations) || []).map((o) => [o.op, o.label])),
     openForm: openHelpForm,
     copy: (text) => writeClipboardRich('', text),
+    tab: () => currentTab,
   });
+  // it hangs from Help, as every header panel hangs from its button
+  const hang = () => mount.style.setProperty('--help-panel-top', `${Math.round(btn.getBoundingClientRect().bottom)}px`);
   btn.addEventListener('click', () => {
     // the tools whose form this page has - an answer offers Open form only for those
     refreshRetroactiveOperations();
-    // it hangs from Help, as every header panel hangs from its button
-    mount.style.setProperty('--help-panel-top', `${Math.round(btn.getBoundingClientRect().bottom)}px`);
+    hang();
     helpPanel.toggle();
     btn.setAttribute('aria-pressed', helpPanel.isOpen ? 'true' : 'false');
   });
+  // a declaration window's «?» (data-guide · data-guide-tab) opens the Guide on its guide - caught before the section
+  // header it sits in folds
+  document.addEventListener('click', (e) => {
+    const q = e.target && e.target.closest ? e.target.closest('[data-guide]') : null;
+    if (!q) return;
+    e.stopPropagation();
+    hang();
+    helpPanel.openGuide(q.dataset.guideTab, q.dataset.guide);
+    btn.setAttribute('aria-pressed', 'true');
+  }, true);
 }
 
 function openHelpForm({ op, params, helpId, question, count }) {

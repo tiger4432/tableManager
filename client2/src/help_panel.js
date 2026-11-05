@@ -9,6 +9,7 @@
 // NO NETWORK, NO DOM GLOBALS: `send`, `doc` and the page's doors come in (admin.js hands adminFetch's; the harness fakes).
 import { setDisabledReason } from './disabled_reason.js';
 import { buildCountView } from './retroactive_view.js';
+import { GuideReader, GUIDES_ROUTE } from './guide_reader.js';
 import { localClock } from './server_time.js';
 
 export const HELP_ROUTE = '/admin/help/ask';
@@ -95,6 +96,8 @@ const CLOCK = { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(
  *   openForm  ({op, params, helpId, question, count}) - the page opens that tool's form filled
  *   clock     {set, clear, now}
  *   copy      (text) -> true when it reached the clipboard - an example declaration (the page's clipboard_write)
+ *   tab       () -> the admin tab shown - the Guide's «For this tab»
+ * Ask | Guide: Guide is the guides read without asking (guide_reader.js, owner 11-06), read through `send` too.
  */
 export class HelpPanel {
   constructor(host, deps = {}) {
@@ -105,6 +108,8 @@ export class HelpPanel {
     this.openForm = deps.openForm || (() => {});
     this.clock = deps.clock || CLOCK;
     this.copy = deps.copy || (() => false);
+    this.tab = deps.tab || (() => null);
+    this.view = 'ask';
     this.asks = [];           // newest first: {question, at, view, waiting, stopped, late, runId}
     this.shown = null;        // the ask whose card is drawn
     this.tick = null;
@@ -117,7 +122,24 @@ export class HelpPanel {
   open() {
     if (!this.root) this.build();
     this.root.hidden = false;
-    if (this.input.focus) this.input.focus();
+    if (this.view === 'guide') this.reader.show(this.tab());
+    else if (this.input.focus) this.input.focus();
+  }
+
+  /** Opens on the Guide - `tab`'s guides, `file` when given (a declaration window's «?»). */
+  openGuide(tab, file = null) {
+    if (!this.root) this.build();
+    this.root.hidden = false;
+    this.setView('guide');
+    this.reader.show(tab, file);
+  }
+
+  setView(view) {
+    this.view = view;
+    this.askBody.hidden = view !== 'ask';
+    this.guideBody.hidden = view !== 'guide';
+    this.tag.hidden = view !== 'ask';
+    this.viewBtns.forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === view ? 'true' : 'false'));
   }
 
   close() { if (this.root) this.root.hidden = true; }
@@ -143,7 +165,22 @@ export class HelpPanel {
     root.setAttribute('aria-label', 'Help');
     const head = this.el('div', 'help-panel__head');
     head.appendChild(this.el('span', 'help-panel__title', 'Help'));
-    head.appendChild(this.el('span', 'help-panel__tag', UNTIL_RELOAD));
+    const views = this.el('div', 'help-panel__views');
+    views.setAttribute('role', 'group');
+    views.setAttribute('aria-label', 'Help view');
+    this.viewBtns = [['ask', 'Ask'], ['guide', 'Guide']].map(([view, text]) => {
+      const b = this.button('help-panel__view', text, () => {
+        this.setView(view);
+        if (view === 'guide') this.reader.show(this.tab());
+        else if (this.input.focus) this.input.focus();
+      });
+      b.dataset.view = view;
+      views.appendChild(b);
+      return b;
+    });
+    head.appendChild(views);
+    this.tag = this.el('span', 'help-panel__tag', UNTIL_RELOAD);
+    head.appendChild(this.tag);
     const close = this.button('btn-quiet ctl-small help-panel__close', '×', () => this.close());
     close.setAttribute('aria-label', 'Close help');
     head.appendChild(close);
@@ -170,8 +207,13 @@ export class HelpPanel {
     this.earlier = this.el('div', 'help-panel__earlier');
     body.appendChild(this.earlier);
     root.appendChild(body);
+    this.askBody = body;
+    this.guideBody = this.el('div', 'help-panel__body help-panel__guide');
+    root.appendChild(this.guideBody);
+    this.reader = new GuideReader(this.guideBody, { doc: this.doc, load: () => this.send({ method: 'GET', path: GUIDES_ROUTE }) });
     this.root = root;
     this.host.appendChild(root);
+    this.setView(this.view);
     this.render();
   }
 

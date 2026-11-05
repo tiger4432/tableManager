@@ -31,46 +31,39 @@
       overflow-x: hidden;
     }
 
-    header {
+    /* One row (owner 11-06, the Help mockup): the name · the tabs · the page's controls with Help last */
+    .admin-bar {
       background: var(--bg-header);
       border-bottom: 1px solid var(--border);
-      padding: 15px 30px;
+      padding: var(--space-3) var(--space-4);
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-3) var(--space-4);
       position: sticky;
       top: 0;
       /* .split-resizer(z:100)와 동률이면 DOM 순서상 resizer가 sticky 헤더 위에 그려짐 → 헤더 레이어 200 */
       z-index: 200;
     }
-
-    .brand-section {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .logo-badge {
-      background: var(--warning-weak);
-      border: 1px solid var(--warning);
-      color: var(--warning);
-      font-size: var(--fs-h4);
-      padding: 6px 10px;
-      font-weight: bold;
-    }
-
-    h1 {
+    .admin-bar__name {
+      font-family: var(--font-head);
       font-size: var(--fs-h4);
       font-weight: 600;
-      letter-spacing: -0.5px;
       color: var(--text);
+      white-space: nowrap;
     }
+    .admin-bar__tabs { display: flex; gap: var(--space-1); min-width: 0; }
+    .admin-bar__tabs .tab-btn { flex: none; }
+    .admin-bar__refreshed { font-size: var(--fs-tag); color: var(--text-dim); font-family: var(--font-mono); }
 
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 15px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: var(--space-3);
       min-width: 0;
+      margin-left: auto;
     }
 
     /* Buttons are the base layer's (base.css: default secondary · .btn-primary · .btn-danger ·
@@ -90,14 +83,8 @@
       font-family: var(--font-mono);
     }
     @media (max-width: 480px) {
-      header {
-        padding: 10px 12px;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-      .brand-section { min-width: 0; }
-      .brand-section h1 { font-size: var(--fs-h4); }
-      .brand-section p { display: none; }
+      .admin-bar { flex-wrap: wrap; }
+      .admin-bar__tabs { flex-wrap: wrap; }
       .header-actions {
         width: 100%;
         gap: 6px;
@@ -1085,6 +1072,53 @@
     .help-panel__row, .help-card__acts { display: flex; gap: var(--space-2); flex-wrap: wrap; }
     .help-panel__empty { color: var(--text-dim); font-size: var(--fs-meta); }
     .help-panel__earlier { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
+    .help-panel__views { display: inline-flex; }
+    .help-panel__view { height: var(--control-h-small); padding: 0 var(--space-4); font-size: var(--fs-button); }
+    .help-panel__view[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+    .help-panel__guide { padding: 0; gap: 0; overflow: hidden; }
+    .help-panel__body[hidden] { display: none; }
+    /* a declaration window's «?» - the Help panel's Guide on that window's guide */
+    .help-q { height: auto; min-height: 0; padding: 0 var(--space-2); flex: none; border: 1px solid var(--accent);
+      background: transparent; color: var(--accent); font-size: var(--fs-button); line-height: inherit; font-weight: 600;
+      cursor: pointer; }
+    /* The Guide (guide_reader.js · guide_markdown.js) */
+    .guide-reader { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .guide-reader__controls { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4);
+      border-bottom: 1px solid var(--border); }
+    .guide-reader__line { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
+    .guide-reader__label, .guide-reader__none { min-width: 6em; font-size: var(--fs-label); line-height: var(--control-h-small);
+      color: var(--text-dim); }
+    .guide-reader__chips { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+    .guide-chip { height: auto; min-height: 0; padding: 0 var(--space-2); font-family: var(--font-mono); font-size: var(--fs-label);
+      line-height: inherit; }
+    .guide-chip.is-on { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+    .guide-reader__all, .guide-reader__sections, .guide-reader__find { height: var(--control-h-small); font-size: var(--fs-button); }
+    .guide-reader__sections, .guide-reader__find { flex: 1; min-width: 0; }
+    .guide-reader__count, .guide-reader__state, .guide-reader__meta { font-size: var(--fs-meta);
+      color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .guide-reader__body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-4) var(--space-5) var(--space-5);
+      display: flex; flex-direction: column; gap: var(--space-3); font-size: var(--fs-body); line-height: 1.7; }
+    .guide-reader__heading { margin: 0; font-family: var(--font-head); font-size: var(--fs-h4); font-weight: 600; }
+    .guide-reader__text { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+    .guide-reader__steps { display: flex; justify-content: space-between; gap: var(--space-2); padding-top: var(--space-3);
+      border-top: 1px solid var(--border); }
+    .guide-hit { background: var(--warning-weak); color: inherit; }
+    .guide-hit.is-current { box-shadow: inset 0 0 0 1px var(--warning); }
+    .gmd-p { margin: 0; }
+    .gmd-h { font-weight: 600; }
+    .gmd-code { font-family: var(--font-mono); font-size: var(--fs-label); background: var(--bg-inset); padding: 0 var(--space-1); }
+    .gmd-pre { margin: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); background: var(--bg-inset);
+      font-family: var(--font-mono); font-size: var(--fs-label); line-height: 1.6; white-space: pre; overflow-x: auto; }
+    .gmd-quote { margin: 0; padding: var(--space-2) var(--space-4); border-left: var(--space-1) solid var(--border);
+      display: flex; flex-direction: column; gap: var(--space-2); color: var(--text-muted); }
+    .gmd-list { margin: 0; padding-left: var(--space-6); display: flex; flex-direction: column; gap: var(--space-1); }
+    .gmd-list > li > * + * { margin-top: var(--space-2); }
+    .gmd-table { overflow-x: auto; border: 1px solid var(--border); }
+    .gmd-table table { border-collapse: collapse; width: 100%; font-size: var(--fs-label); line-height: 1.55; }
+    .gmd-table th { text-align: left; padding: var(--space-2) var(--space-3); background: var(--bg-header); color: var(--text-muted);
+      font-weight: 600; border-bottom: 1px solid var(--border); }
+    .gmd-table td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); vertical-align: top; }
+    .gmd-hr { margin: 0; border: 0; border-top: 1px solid var(--border); }
     .help-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4);
       border: 1px solid var(--border); }
     .help-card[data-tone="answer"] { border-color: var(--accent); }
@@ -1775,7 +1809,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CaqUyC4t.js"></script>
+  <script type="module" crossorigin src="/assets/admin-B99CsBMA.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/chunk-CEoa-xHZ.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-B8UVsRJj.js">
   <link rel="modulepreload" crossorigin href="/assets/clipboard_write-CLY3qg6U.js">
@@ -1794,7 +1828,7 @@
   <link rel="modulepreload" crossorigin href="/assets/panel-C8ZsV0pk.js">
   <link rel="modulepreload" crossorigin href="/assets/table_part-Chkp1QLY.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-D5dATse0.js">
-  <link rel="modulepreload" crossorigin href="/assets/ontology_explorer_view-3nr-x24W.js">
+  <link rel="modulepreload" crossorigin href="/assets/ontology_explorer_view-DSDV1tvJ.js">
   <link rel="modulepreload" crossorigin href="/assets/config-CF7TpAYt.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CctkEQ54.js">
   <link rel="modulepreload" crossorigin href="/assets/tsv-CSAdFJ4-.js">
@@ -1806,24 +1840,29 @@
   <link rel="stylesheet" crossorigin href="/assets/base-CNLpu3jq.css">
 </head>
 <body>
-  <header>
-    <div class="brand-section">
-      <div class="logo-badge">⚡</div>
-      <div>
-        <h1>Pipeline Admin</h1>
-        <p style="font-size: var(--fs-label); color: var(--text-muted); margin-top: 2px;">File Ingestion · Chain · Auto Update · Enrichment lifecycle</p>
-      </div>
-    </div>
+  <header class="admin-bar">
+    <h1 class="admin-bar__name">Pipeline Admin</h1>
+    <nav class="admin-bar__tabs" aria-label="Admin tabs" data-no-panel>
+      <button id="tab-overview-btn" class="tab-btn active">Overview</button>
+      <button id="tab-tables-btn" class="tab-btn">Tables</button>
+      <button id="tab-file-btn" class="tab-btn">File Ingestion</button>
+      <button id="tab-chain-btn" class="tab-btn">Chain</button>
+      <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
+      <button id="tab-retroactive-btn" class="tab-btn">Retroactive</button>
+      <button id="tab-ontology-btn" class="tab-btn">Ontology Explorer</button>
+    </nav>
     <div class="header-actions">
+      <span id="last-refreshed" class="admin-bar__refreshed"></span>
+      <button id="refresh-btn" class="admin-btn" data-no-panel>🔄 Refresh</button>
       <div id="stall-mount" class="stall-host"></div>
       <div id="account-badge" class="acct-host"></div>
-      <button id="help-btn" class="admin-btn" type="button" aria-pressed="false" aria-controls="help-mount">Help</button>
       <button id="reload-configs-btn" class="admin-btn" style="border-color: var(--color-warning); color: var(--color-warning);">⚙️ Reload Configs & Code</button>
       <a href="/" class="btn">🏠 Return to Main</a>
       <button class="theme-toggle-btn" data-theme-toggle type="button" title="Toggle theme" aria-label="Toggle theme">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       </button>
+      <button id="help-btn" class="admin-btn" type="button" aria-pressed="false" aria-controls="help-mount">Help</button>
     </div>
   </header>
 
@@ -1831,22 +1870,6 @@
   <main>
     <!-- Left panel: 파이프라인 5탭 (Overview / File Ingestion / Chain / Auto Update / Enrichment) -->
     <section class="panel left-panel">
-      <div class="panel-header" style="flex-wrap: wrap; gap: 10px;">
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <button id="tab-overview-btn" class="tab-btn active">Overview</button>
-          <button id="tab-tables-btn" class="tab-btn">Tables</button>
-          <button id="tab-file-btn" class="tab-btn">File Ingestion</button>
-          <button id="tab-chain-btn" class="tab-btn">Chain</button>
-          <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
-          <button id="tab-retroactive-btn" class="tab-btn">Retroactive</button>
-          <button id="tab-ontology-btn" class="tab-btn">Ontology Explorer</button>
-        </div>
-        <div style="display: flex; gap: 10px; align-items: center;">
-          <span id="last-refreshed" style="font-size: var(--fs-tag); color: var(--text-dim); font-family: var(--font-mono);"></span>
-          <button id="refresh-btn" class="admin-btn">🔄 Refresh</button>
-        </div>
-      </div>
-
       <div class="panel-body" style="padding: 0; display: flex; flex-direction: column;">
         <!-- ═══ Overview 탭: 4 파이프라인 확장 카드 (첫 화면, 좌패널 전폭) ═══ -->
         <div id="overview-wrapper" style="flex: 1; overflow: auto;">
@@ -2067,6 +2090,7 @@
             <div class="section-header" data-section="sec-chain-rule-editor">
               <span class="stage-chip">Edit</span>
               <span class="section-title">Rules (chain_rules.json)</span>
+              <button type="button" class="help-q" data-guide="chain_rules.md" data-guide-tab="chain" aria-label="Guide for chain rules" title="Guide">?</button>
               <span class="section-count" id="chain-rule-editor-count">—</span>
               <span class="section-summary"></span>
               <span class="section-chevron">▾</span>
@@ -2242,6 +2266,7 @@
             <div class="section-header" data-section="sec-table-config">
               <span class="stage-chip">Edit</span>
               <span class="section-title">Tables (table_config.json)</span>
+              <button type="button" class="help-q" data-guide="table_config.md" data-guide-tab="tables" aria-label="Guide for table declarations" title="Guide">?</button>
               <span class="section-count" id="table-config-count">—</span>
               <span class="section-summary"></span>
               <span class="section-chevron">▾</span>

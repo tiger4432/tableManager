@@ -298,6 +298,14 @@ function head(el, view, raw) {
   if (view.kind === 'source') top.append(el('span', 'ldb-word', BAR_WORDS.shortForm((raw.sentences || []).length)));
   top.append(el('div', 'ldb-grow'));
   const btn = (words, action, cls = '', value) => { const b = el('button', `ldb-btn${cls}`, words); b.type = 'button'; b.dataset.action = action; if (value !== undefined) b.dataset.value = value; return b; };
+  // the page opens the Help panel's Guide on it (admin.js, data-guide)
+  const guide = el('button', 'ldb-btn', '?');
+  guide.type = 'button';
+  guide.dataset.guide = 'ledger_declaration_by_example.md';
+  guide.dataset.guideTab = 'ontology';
+  guide.setAttribute('aria-label', 'Guide for ledger declarations');
+  guide.title = 'Guide';
+  top.append(guide);
   top.append(btn(BAR_WORDS.json, 'decl-json'));
   if (view.kind === 'source') { const run = btn(BAR_WORDS.testRun, 'test-run', '', view.sourceId || ''); if (view.draftId) run.dataset.draft = view.draftId; top.append(run); }
   // from the bar: a refused save's rows come back to the bar, not to a toast (lead 10-14)

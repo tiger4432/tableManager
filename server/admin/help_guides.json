@@ -1,0 +1,12 @@
+{
+  "_what": "The declaration guides and the admin tabs each is shown on - help_guides.GUIDE_TABS reads this; the Help answer's sections and the Guide reader walk it, and client2/tests/guide_markdown_harness.mjs reads it too (lead 11-06).",
+  "guides": {
+    "docs/guide/config/chain_rules.md": ["chain"],
+    "docs/guide/config/table_config.md": ["tables"],
+    "docs/guide/config/ledger_declaration_by_example.md": ["ontology"],
+    "docs/guide/config/enrichment_rules.md": ["chain"],
+    "docs/guide/CONFIG_ROLLOUT_GUIDE.md": ["overview"],
+    "docs/guide/ai_ask_tables.md": ["chain", "tables"],
+    "docs/guide/ai_report_tables.md": ["chain"]
+  }
+}

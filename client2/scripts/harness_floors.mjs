@@ -1832,6 +1832,9 @@ export const FLOORS = new Map([
   // server's words, Open form with them blank. 50 -> 62 (B 813eac94a): how to write a declaration - the example to
   // copy, its guide sections, the made-up ones counted, and its check (would save · refused · not checked).
   ['help_panel_harness.mjs', 65],
+  // New with the owner's 11-06 Guide: every guide the Help reads (help_guides.json) read with no line left as letters,
+  // the shapes they hold as blocks, a fence in a list item, a table in a quote, inline runs, Find's count.
+  ['guide_markdown_harness.mjs', 19],
   // New with the owner's 10-29 «ㄴ» (A 63a69b97a): the header's last stall - /health's stall read, the line as written
   // with its time, a read without the key keeping it, null hiding it, two lines.
   ['stall_line_harness.mjs', 12],
