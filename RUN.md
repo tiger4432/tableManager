@@ -26,7 +26,7 @@
 > 알아 둘 것  이력에서 지운 그림을 열면 «picture removed - it was unreferenced for <k> days (image_sources.json <출처>.receive.keep_days)»
 >          (keep_days 를 안 적었으면 그 문장 대신 오늘 문장 «no file …»)
 >          이미지 칸이 아닌 글자 칸에 참조를 복사해 둔 것 · 감사 · 층의 옛 값은 «가리킴»으로 안 셈 — 지워질 수 있음
-> 같은 답  server 폴더에서 python -m pytest tests/test_a_picture_pasted_on_an_image_cell_is_kept_and_swept.py  -> 33 passed, 1 skipped
+> 같은 답  server 폴더에서 python -m pytest tests/test_a_picture_pasted_on_an_image_cell_is_kept_and_swept.py  -> 34 passed, 1 skipped
 > 끄기     receive 칸을 지우면 받기 · 쓸기 둘 다 멈춤 (이미 받은 그림 · 상태 파일은 그대로)
 > ```
 >

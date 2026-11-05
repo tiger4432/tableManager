@@ -204,6 +204,20 @@ def test_a_name_it_did_not_make_and_a_link_out_of_the_root_are_not_touched(table
     assert set(_marks(tmp_path)) == set()
 
 
+def test_a_file_that_is_itself_a_link_is_not_listed_or_deleted(tables, tmp_path, monkeypatch):
+    db, sources = tables, _sources(tmp_path, keep_days=1)
+    loose = _kept(tmp_path, sources)
+    link = tmp_path / "up0" / "im_a" / DAY.isoformat() / ("d" * 32 + ".png")
+    link.write_bytes(PNG)                    # this box cannot make a file link (WinError 1314): the OS answer is held
+    real_islink = os.path.islink
+    monkeypatch.setattr(os.path, "islink", lambda p: os.path.normcase(str(p)) == os.path.normcase(str(link))
+                        or real_islink(p))
+    assert sorted(image_sources.received_files(str(tmp_path / "up0"))) == [loose.split(":", 1)[1]]
+    image_sources.sweep(db, DAY, sources)
+    said = image_sources.sweep(db, DAY + datetime.timedelta(days=1), sources)
+    assert (said["listed"], said["deleted"]) == (1, 1) and not _exists(tmp_path, loose) and link.exists()
+
+
 def test_keep_days_absent_deletes_nothing_and_says_so(tables, tmp_path, caplog):
     db, sources = tables, _sources(tmp_path, keep_days=None)
     ref = _kept(tmp_path, sources)
