@@ -321,6 +321,13 @@ const pivotAnswer = (u) => {
     const filters = JSON.parse(u.searchParams.get('filters') || '{}');
     if (filters.row_id) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, data: pivotLongRows(filters) } };
     if (filters.dt_job && filters.b_wx) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, data: pivotGroupRows(filters) } };
+    // the long view filtered before and after «Pivot» (owner 11-05 ㄴ · ㄱ): a few long rows, whatever the filters
+    if (Object.keys(filters).length) return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null,
+      data: PIVOT_ITEMS.slice(0, 3).map((item, k) => ({ row_id: `pf-${k}`, data: { dt_job: { value: 'JOB-001' }, b_wx: { value: 0 },
+        b_wy: { value: item }, dt_index: { value: pivotValue(0, k) } } })) } };
+  }
+  if (u.pathname === '/tables/dt_log/data/count' && u.searchParams.get('pivot') !== 'true' && u.searchParams.get('filters')) {
+    return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: 3 } };
   }
   if (u.searchParams.get('pivot') !== 'true') return null;
   if (u.pathname === '/tables/dt_log/data/count') return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: 40 } };
@@ -1233,6 +1240,33 @@ CELLS.push({ entry: 'index.html', after: 'Gallery left, the first table again', 
   const history = document.querySelector('.history-sidebar');
   if (!seat.hidden) return 'the seat still stands';
   if (history.hidden || history.getBoundingClientRect().width < 300) return 'the history tabs are not back';
+  return null;
+})()` });
+// Filters across the pivot switch (owner 11-05 ㄴ · ㄱ): the key's and the item column's chips stay both ways, the value
+// column's is named on the status line; in the pivot the item column is no header (held hidden for its filter).
+const CARRIED_CHIPS = `const chips = [...document.querySelectorAll('.filter-chip-label')].map((n) => n.textContent.toLowerCase());
+  for (const col of ['dt_job', 'b_wy']) if (!chips.some((t) => t.includes(col))) return 'no «' + col + '» chip: ' + JSON.stringify(chips);
+  if (chips.some((t) => t.includes('dt_index'))) return 'the value column\\'s chip is still on: ' + JSON.stringify(chips);`;
+// the page's reads of the rows from here on, counted (a switch is one read: a column swap with filters on read twice)
+const SWITCH_READS = `(() => { window.__switchReads = [];
+  if (!window.__switchWrapped) { window.__switchWrapped = true; const f = window.fetch;
+    window.fetch = (u, i) => { if (/\\/tables\\/[^/]+\\/data(\\/count)?\\?/.test(String(u))) window.__switchReads.push(String(u)); return f(u, i); }; }
+  return true; })()`;
+CELLS.push({ entry: 'index.html', after: 'Pivot, filters carried', rule: 'filters carried into the pivot', at: 'filter-chip', expr: `(() => {
+  ${CARRIED_CHIPS}
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  if (said !== 'Filters dropped: DT_INDEX') return 'the status line says «' + said + '»';
+  const reads = (window.__switchReads || []).filter((u) => !u.includes('/count'));
+  if (reads.length !== 1) return reads.length + ' reads of the rows for one switch: ' + JSON.stringify(reads);
+  if ([...document.querySelectorAll('.ag-header-cell[col-id="b_wy"]')].some((h) => h.getClientRects().length)) return 'the item column is a header in the pivot';
+  if (!document.querySelector('.ag-center-cols-container .ag-row')) return 'no group row drawn - the grid filtered them by the item column';
+  return null;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Pivot off, filters carried back', rule: 'filters carried out of the pivot', at: 'filter-chip', expr: `(() => {
+  ${CARRIED_CHIPS}
+  const reads = (window.__switchReads || []).filter((u) => !u.includes('/count'));
+  if (reads.length !== 1) return reads.length + ' reads of the rows for one switch: ' + JSON.stringify(reads);
+  if (![...document.querySelectorAll('.ag-header-cell[col-id="b_wy"]')].some((h) => h.getClientRects().length)) return 'the item column is not shown again';
   return null;
 })()` });
 CELLS.push({ entry: 'index.html', after: 'Gallery, filtered to a cell', rule: 'filter set', at: 'filter-chip', expr: `(() => {
@@ -2789,6 +2823,40 @@ const DRIVE = {
       await evaluate(c, `(() => { const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Discard' && !b.disabled);
         if (d) d.click(); return Boolean(d); })()`);
       await sleep(900);
+      await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
+    // Filters across the switch (owner 11-05 ㄴ · ㄱ): a key's, the item column's and the value column's typed in the long
+    // view, «Pivot» pressed - the key and item chips stay, the value's is named; pressed again, both stay.
+    ['Pivot, filters carried', async (c, log) => {
+      // b_wy (the item column) and dt_index (the value) are numbers, and may lie right of the view: scrolled to first
+      for (const [col, v] of [['dt_job', 'JOB-001'], ['b_wy', '3'], ['dt_index', '5']]) {
+        for (let step = 0; step < 12; step += 1) {
+          const typed = await evaluate(c, `(() => {
+            const input = [...document.querySelectorAll('.ag-floating-filter input')].find((i) => i.closest('[col-id]') && i.closest('[col-id]').getAttribute('col-id') === ${JSON.stringify(col)});
+            if (!input) { const h = document.querySelector('.ag-body-horizontal-scroll-viewport'); if (h) h.scrollLeft += 300; return false; }
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(v)});
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            return true; })()`);
+          if (typed) break;
+          await sleep(300);
+        }
+        await sleep(900);
+        await settle(c, log);
+        await until(c, GRID_LOADED);
+      }
+      await evaluate(c, SWITCH_READS);
+      await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
+      await sleep(900);
+      await settle(c, log);
+      // the read ends on the line that names what was dropped
+      await until(c, "/^Filters dropped/.test((document.querySelector('#performance-log') || {}).textContent || '')");
+      await until(c, "document.querySelectorAll('.ag-header-cell[col-id^=\"item:\"]').length > 0");
+    }],
+    ['Pivot off, filters carried back', async (c, log) => {
+      await evaluate(c, SWITCH_READS);
       await evaluate(c, "document.getElementById('pivot-toggle-btn').click(); true");
       await sleep(900);
       await settle(c, log);

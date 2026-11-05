@@ -2,7 +2,7 @@
 // write sends. The subject is imported (grid_pivot.js, narrowing.js, match_count.js - no DOM).
 //
 //   rows     a key group is one grid row: its keys, its cells as «item:<value>» each with the long row it is
-//   columns  the keys, then the items; before the first answer the declaration's keys
+//   columns  the keys, then the items (before the first answer the declaration's keys), then the item column held hidden
 //   write    a cell with a row writes that row's value; a blank cell its keys, its item and the value - the row made
 //   narrow   pivot=true rides the one narrowing (data and count alike); the footer says groups when told so
 //   memory   per table, and a storage that throws keeps nothing and breaks nothing
@@ -38,10 +38,10 @@ eq('R5 groups have distinct row ids', rows[0].row_id !== rows[1].row_id, true);
 eq('R6 no group row id is a long row\'s', rows.some((r) => ['r1', 'r2', 'r3', 'r4', 'r5'].includes(r.row_id)), false);
 
 console.log('-- columns --');
-eq('C1 the keys, then the items as «item:<value>»', pivotColumns(VIEW, { column: 'itemid', value: 'value' }, []),
-  ['lot', 'wafer', 'item:a', 'item:b', 'item:c']);
-eq('C2 before the first answer: the declaration\'s keys less the item column',
-  pivotColumns(null, { column: 'itemid', value: 'value' }, ['lot', 'wafer', 'itemid']), ['lot', 'wafer']);
+eq('C1 the keys, then the items as «item:<value>», then the item column (held hidden for its filter, owner 11-05)',
+  pivotColumns(VIEW, { column: 'itemid', value: 'value' }, []), ['lot', 'wafer', 'item:a', 'item:b', 'item:c', 'itemid']);
+eq('C2 before the first answer: the declaration\'s keys, then the item column',
+  pivotColumns(null, { column: 'itemid', value: 'value' }, ['lot', 'wafer', 'itemid']), ['lot', 'wafer', 'itemid']);
 eq('C3 itemOf names an item column\'s item and nothing else', [itemOf(itemColId('x y')), itemOf('lot'), itemOf(undefined)], ['x y', null, null]);
 
 console.log('-- write --');

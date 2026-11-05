@@ -196,6 +196,8 @@ async function leftovers(M) {
   // The drop on its own: it takes the grid's filterChanged (sent after a timer) and reads nothing; the next change reads.
   reset();
   let held = filterOn();
+  // the rows on screen were read with it - a filterChanged naming the filters of the last read reads nothing (11-05)
+  S.readFilters = JSON.stringify(held);
   S.gridApi = { ...gridApi, getFilterModel: () => held,
     setFilterModel: (m) => { held = m || {}; setTimeout(() => { try { M.grid.gridFilterChanged(); } catch (e) { /* the chips */ } }, 5); } };
   S.currentTable = 'dt_log';
@@ -205,6 +207,7 @@ async function leftovers(M) {
   await settle();
   left.drop = { reads: reads().filter((u) => u.includes('/data?')).length, model: Object.keys(held) };
   urls = [];
+  held = { row_id: { filterType: 'text', type: 'equals', filter: 'R2' } };
   try { M.grid.gridFilterChanged(); } catch (e) { /* the chips */ }
   await settle();
   left.dropAfter = reads().filter((u) => u.includes('/data?')).length;

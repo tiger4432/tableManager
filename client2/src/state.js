@@ -142,6 +142,8 @@ export const state = {
   // when the operator clicks another cell, another tab or a refresh can tell that its page belongs to a list no longer
   // on screen - the previous row's page 2 on this row's page 1, every row of it real.
   gridReads: new ReadBoard(),
+  // the filters (narrowing's spelling) the grid's last read went out with - a filterChanged naming the same reads nothing
+  readFilters: '',
   historyReads: new ReadBoard(),
   // The held Global list may be missing logs: none read yet, logs came while another tab was shown, the socket was
   // away, or the server said read again. Global reads when this is set (or it holds nothing); else it redraws.
@@ -302,8 +304,10 @@ export function joinResolvedColumn(colId) {
  */
 // The grid's own checkbox column, as AG-Grid names it (rowSelection.checkboxes - owner 10-22).
 export const SELECTION_COL_ID = 'ag-Grid-SelectionColumn';
-/** A column that holds the table's data: not the row-number gutter '#', not the selection column (lead 10-22). */
-export const isDataColumn = (colId) => colId !== '#' && colId !== SELECTION_COL_ID;
+/** A column that holds the table's data: not the row-number gutter '#', not the selection column (lead 10-22), not the
+ *  item column a pivot view holds hidden for its filter (owner 11-05 ㄴ). */
+export const isDataColumn = (colId) => colId !== '#' && colId !== SELECTION_COL_ID
+  && !(pivotShown() && colId === state.currentPivot.column);
 
 export function visibleRangeColIds() {
   const map = state.visibleColIndexMap || {};

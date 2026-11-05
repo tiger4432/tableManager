@@ -2,7 +2,7 @@ import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { gridAddress, narrowingParams as buildNarrowing } from './narrowing.js';
 import { state, gridFetch, tableIsPerWorld, pivotShown, rowUnit } from './state.js';
 import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, stagedReadRows, newPivotRows, isNewPivotRow,
-  groupFilters, strayLongRow } from './grid_pivot.js';
+  groupFilters, strayLongRow, carriedFilters, headerWord } from './grid_pivot.js';
 import { unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
 import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped } from './write_guard.js';
@@ -11,7 +11,7 @@ import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, buildColumnDefs, dropGridFilters, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
+import { renderGrid, buildColumnDefs, dropGridFilters, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { countOf, setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -336,21 +336,36 @@ export function drawPivot() {
   }
 }
 
-/** «Pivot» pressed (owner 10-22): the table read again from the top the other way - its filters and sort dropped (an
- *  item's are not a long row's), the choice kept for this table. */
+/** «Pivot» pressed (owner 10-22): the table read again from the top the other way - its sort dropped, its key and item
+ *  column filters kept and the rest dropped and named (owner 11-05 ㄴ · ㄱ), the choice kept for this table. */
 export async function setGridPivot(on) {
   if (!state.currentPivot || !state.currentTable) return;
   // staged edits are keyed by the rows of the view they were made in (Tx itself is on by default and works in both)
   if (refuseWrite(Object.keys(state.pendingTxEdits).length ? 'Apply or discard the staged edits first' : '')) return;
+  const { keep, dropped } = carriedFilters(state.gridApi ? state.gridApi.getFilterModel() : {}, state.currentPivot,
+    state.currentCompositeKeySources);
   state.pivotOn = on;
   state.pivotView = null;
   rememberPivot(browserStore(), state.currentTable, on);
   state.serverSort = null;
-  await dropGridFilters();
-  applyWriteGuards();
-  drawPivot();
-  renderGrid([]);
-  await fetchData(true);
+  // all off while the columns change - the item column's filter is another kind in each view, and a kind changed loses
+  // its model - then the kept ones on, and drawn; the grid's own filterChanged reads nothing until this read is out
+  const release = holdFilterReads();
+  try {
+    await dropGridFilters();
+    applyWriteGuards();
+    drawPivot();
+    renderGrid([]);
+    await dropGridFilters(keep);
+    renderFilterBar();
+  } catch (err) {
+    release();
+    throw err;
+  }
+  const reading = fetchData(true);
+  release();
+  await reading;
+  if (dropped.length) elements.performanceLog.textContent = `Filters dropped: ${dropped.map(headerWord).join(', ')}`;
 }
 
 /** A pivot answer: its view kept, its items' columns typed as the value column and drawn again when they changed, its
@@ -673,6 +688,7 @@ export async function fetchData(resetSkip = true, key = null) {
   const startTime = performance.now();
 
   const narrowing = narrowingParams();
+  state.readFilters = narrowing.get('filters') || '';
   const table = state.currentTable;
   // answered late - the table or the read changed since: not drawn, not cached, the newer read's latch left alone
   const stale = () => !read.current() || table !== state.currentTable;

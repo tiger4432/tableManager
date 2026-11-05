@@ -2,12 +2,13 @@ import { createGrid } from 'ag-grid-community';
 import { FormulaHeader } from './formula_popover.js';
 import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
-import { pivotColumns, itemOf, isNewPivotRow } from './grid_pivot.js';
+import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter } from './grid_pivot.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
 import { writeRefusal, cellToSend } from './write_guard.js';
 import { elements } from './dom.js';
 import { pagingView } from './match_count.js';
+import { narrowingParams } from './narrowing.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
 //    그리지 않는 것이 이 저장소의 상설입니다.
 import { watchForDismiss, placeUnder } from './dropdown.js';
@@ -240,23 +241,36 @@ let applyingSortState = false;
 // nothing of its own: the switch's first read, after the new columns, is the table's, and its renderGrid draws the chips
 // again. AG Grid says filterChanged after a timer (18766, lead 80172956e: the read went out with the schema read), so
 // the drop waits for that one event and takes it - with a time cap, so a grid that never says it cannot hold the switch.
+// A pivot switch puts some back after its columns change (owner 11-05 ㄴ): `keep` is the model set; the model already
+// that is no change.
 const FILTER_DROP_WAIT_MS = 1000;
 let takeFilterChange = null;
-export function dropGridFilters() {
+export function dropGridFilters(keep = null) {
   const api = state.gridApi;
-  if (!api || !Object.keys(api.getFilterModel() || {}).length) return Promise.resolve();
+  if (!api || JSON.stringify(api.getFilterModel() || {}) === JSON.stringify(keep || {})) return Promise.resolve();
   return new Promise((done) => {
     const timer = setTimeout(() => { takeFilterChange = null; done(); }, FILTER_DROP_WAIT_MS);
     takeFilterChange = () => { clearTimeout(timer); takeFilterChange = null; done(); };
-    api.setFilterModel(null);
+    api.setFilterModel(keep);
   });
 }
 
 /** The grid's filterChanged: a read of the narrowed table, and the chips - unless it is the drop's own event. */
 export function gridFilterChanged() {
   if (takeFilterChange) { takeFilterChange(); return; }
-  fetchData(true);
+  // a column swap says filterChanged when columns that had a filter go, the filters as they were (a pivot switch's): the
+  // rows on screen were read with them
+  if (!filterReadsHeld && (narrowingParams({ gridApi: state.gridApi }).get('filters') || '') !== state.readFilters) fetchData(true);
   renderFilterBar();
+}
+
+/** A pivot switch changes the columns and sets its filters, and the grid says filterChanged on its own timers for both:
+ *  held, those read nothing - the switch reads once itself. -> the release, once its read is out. */
+let filterReadsHeld = 0;
+export function holdFilterReads() {
+  filterReadsHeld += 1;
+  let released = false;
+  return () => { if (!released) { released = true; filterReadsHeld -= 1; } };
 }
 
 export function updateGridSortState() {
@@ -856,6 +870,8 @@ export function registerFormulaOpener(fn) { formulaOpener = fn || null; }
 /** 선택이 바뀔 때 불릴 함수 하나. 화면이 자기 부품을 연결합니다. */
 export function registerSelectionListener(fn) { selectionListener = fn || null; }
 
+// the item column the last defs held hidden for a pivot's filter - the next defs that do not hold it show it again
+let lastHeld = null;
 export function buildColumnDefs() {
   // Read ONCE per build, not per column: it is the same Map for every column and the rule
   // must not be able to change halfway down the list.
@@ -875,6 +891,9 @@ export function buildColumnDefs() {
   //    ⚠️ 아래 필터는 «남겨 둡니다». 새 클라가 옛 서버를 볼 수 있는 배포 중에는 셋이 아직
   //       올 수 있고, 그때 이것이 마지막 방어선입니다. DB 컬럼 44개 표 삭제는 «별도 판정»입니다.
   const retired = ['is_graph_synced', 'needs_graph_rollback', 'graph_synced_at'];
+  // the item column a pivot view holds for its filter is hidden, and shown again by the next defs that do not hold it - a
+  // grid keeps a column's hide across defs that leave it unsaid (owner 11-05 ㄴ)
+  const held = pivotShown() ? state.currentPivot.column : null;
   // pivoted (owner 10-22): the keys, then one column per item
   const shown = pivotShown() ? pivotColumns(state.pivotView, state.currentPivot, state.currentCompositeKeySources)
     : state.currentColumns.filter((col) => !retired.includes(col));
@@ -887,7 +906,7 @@ export function buildColumnDefs() {
     const colType = colTypes[col] || 'string';
 
     // 헤더명에 비즈니스 키 / 조합 소스 컬럼 아이콘 표시
-    let headerLabel = itemOf(col) ?? col.toUpperCase();
+    let headerLabel = headerWord(col);
     if (col === state.currentBusinessKey) {
       headerLabel = `${headerLabel}🗝️`;
     } else if (state.currentCompositeKeySources.includes(col)) {
@@ -917,6 +936,7 @@ export function buildColumnDefs() {
       headerName: headerLabel,
       headerTooltip: indexWords.length ? `${headerLabel} · index: ${indexWords.join(', ')}` : headerLabel,
       field: col,
+      ...(col === held || col === lastHeld ? { hide: col === held } : {}),
       // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
       // a pivot view's keys name a group, not a row (owner 10-22): its items are written, its keys are typed only on a new
       // row (owner 10-23)
@@ -925,7 +945,8 @@ export function buildColumnDefs() {
       // A system column is not editable and, except ROW_ID, not filterable either.
       // `filter: false` is what AG-Grid reads to skip the floating row, and
       // `floatingFilter: false` says the same thing where a reader looks for it.
-      filter: filterable ? (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter') : false,
+      filter: col === held ? HeldColumnFilter
+        : filterable ? (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter') : false,
       ...(filterable && colType !== 'number' && indexed.includes('equal') && !indexed.includes('search')
         ? { filterParams: { defaultOption: 'equals' } } : {}),
       floatingFilter: filterable,
@@ -1206,6 +1227,7 @@ export function buildColumnDefs() {
     cellClass: 'cell-system-readonly'
   });
 
+  lastHeld = held;
   return applyMockupLayout(columnDefs);
 }
 

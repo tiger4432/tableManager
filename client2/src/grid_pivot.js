@@ -8,6 +8,8 @@ export const ITEM_PREFIX = 'item:';
 export const itemColId = (name) => `${ITEM_PREFIX}${name}`;
 /** The item an item column holds, else null. */
 export const itemOf = (colId) => (typeof colId === 'string' && colId.startsWith(ITEM_PREFIX) ? colId.slice(ITEM_PREFIX.length) : null);
+/** A column's header word: an item column its item, any other its name in capitals. */
+export const headerWord = (colId) => itemOf(colId) ?? String(colId).toUpperCase();
 
 /** A paste, fill or clear reaching a key column in pivot view - refused whole (lead 10-22 ②): a key is every long row's. */
 export const PIVOT_KEY_NOTE = 'Key columns cannot be changed in pivot view';
@@ -121,10 +123,38 @@ export function stagedReadRows(view, staged, rowOf, read) {
   return { rows: [...groups.values()], gone };
 }
 
-/** The columns a pivot view shows: its keys, then its items. Before its first answer, the declaration's keys. */
+/** The declaration's keys: the table's key columns less the item column. */
+const pivotKeys = (pivot, keySources) => (keySources || []).filter((key) => key !== pivot.column);
+
+/** The columns a pivot view has: its keys, then its items - before its first answer, the declaration's keys - and last
+ *  the item column, held hidden so a filter on it stays in the grid's model and its chip (owner 11-05 ㄴ). */
 export function pivotColumns(view, pivot, keySources) {
-  if (view) return [...view.keys, ...view.items.map(itemColId)];
-  return (keySources || []).filter((key) => key !== pivot.column);
+  return [...(view ? [...view.keys, ...view.items.map(itemColId)] : pivotKeys(pivot, keySources)), pivot.column];
+}
+
+/** The filter of the item column a pivot view holds hidden: the server reads it on the long rows, so every group row
+ *  passes here - the grid filters the rows it holds by its column filters, and a group row has no item column value.
+ *  Its model is kept as it was set (a text or number filter's) for the chip and the read. */
+export class HeldColumnFilter {
+  init() { this.model = null; }
+  getGui() { return document.createElement('div'); }
+  isFilterActive() { return this.model != null; }
+  doesFilterPass() { return true; }
+  getModel() { return this.model; }
+  setModel(model) { this.model = model || null; }
+}
+
+/** A switch between the long view and the pivot (owner 11-05 ㄴ · ㄱ, both ways): the key and item column filters are
+ *  kept - the server reads both in either view - and the rest dropped (the value column's, an item's «item:<v>»). */
+export function carriedFilters(model, pivot, keySources) {
+  const kept = [...pivotKeys(pivot, keySources), pivot.column];
+  const keep = {};
+  const dropped = [];
+  for (const [col, filter] of Object.entries(model || {})) {
+    if (kept.includes(col)) keep[col] = filter;
+    else dropped.push(col);
+  }
+  return { keep, dropped };
 }
 
 /** The answer's key groups as grid rows: a group's keys and its cells, each cell carrying the long row it is. */
