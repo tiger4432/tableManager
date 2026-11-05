@@ -1262,7 +1262,7 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
     # 2026-09-03). Proven identical over a twelve-value matrix before folding:
     # `v is None or str(v).strip() == ""` and `is_blank_value(v)` disagree ZERO
     # times, 0 and 0.0 and False included.
-    if is_blank_value(value):
+    if none_if_blank(value) is None:
         return None
 
     if col_type == "datetime":
@@ -1454,6 +1454,13 @@ def clean_str_value(val: Any) -> str:
             return str(int(val))
         return str(val)
     return str(val).strip()
+
+
+def none_if_blank(value: Any) -> Any:
+    """`value`, or None when it is blank (`is_blank_value`) - THE fold the write boundary makes
+    (`cast_value_by_type`) and the value a cell shows from its stored layers (`compute_priority_value`) passes:
+    a layer stored before the fold (box: 67 «""» layers of 07-17 ~ 08-07) wins as None (총괄 11-05)."""
+    return None if is_blank_value(value) else value
 
 
 def is_blank_value(val: Any) -> bool:
@@ -2006,7 +2013,7 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     if manual_priority_source and manual_priority_source in sources:
         val_data = sources[manual_priority_source]
         val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
-        return val, manual_priority_source
+        return none_if_blank(val), manual_priority_source
     if formula is not None and formula[0] not in sources:
         sources = {**sources, formula[0]: {}}
     else:
@@ -2030,10 +2037,10 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
     # sorting the whole list on a per-cell hot path.
     top_source = min(sources.keys(), key=_rank)
     if formula is not None and top_source == formula[0]:
-        return formula[1]([{name: getattr(cell[2], name, None) for name in formula[2]}]), top_source
+        return none_if_blank(formula[1]([{name: getattr(cell[2], name, None) for name in formula[2]}])), top_source
     val_data = sources[top_source]
     val = val_data["value"] if isinstance(val_data, dict) and "value" in val_data else val_data
-    return val, top_source
+    return none_if_blank(val), top_source
 
 #: The declaration cell that scopes `?q=`. Absent means "the identity" - see
 #: `resolve_search_columns`, which is the only place that spelling lives.
@@ -3998,7 +4005,7 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
         else:
             is_value_protected = is_old_user_overwritten and not is_explicitly_edited
 
-        new_val = getattr(row_to_delete, col_name, None)
+        new_val = none_if_blank(getattr(row_to_delete, col_name, None))
 
         # explicit에도 명시적으로 새로 기입된 값이 있으면 그 값을 우선적으로 선정
         if col_name in explicit:
