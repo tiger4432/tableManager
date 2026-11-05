@@ -114,6 +114,39 @@ def test_a_running_join_without_its_lookup_index_says_so_on_its_line(monkeypatch
     assert "rule_state_detail" not in rows["gk:target"]
 
 
+@pytest.mark.parametrize("switch, said", [("0", "off"), (None, "on")])
+def test_with_the_join_switch_off_the_rules_list_says_nothing_will_build_it(monkeypatch, tables, switch, said):
+    """X6: ASSY_VJOIN_AUTO_INDEX=0 - the join's missing key index is said as «off» on its line (nothing builds it),
+    through the rules list's own reading (`rules_without_key_index`, `unique_key.auto_index_off`); on, the scheduler
+    builds it."""
+    import main
+    from chain import control as chain_control
+    from chain import ingestion_worker as worker
+
+    if switch is None:
+        monkeypatch.delenv("ASSY_VJOIN_AUTO_INDEX", raising=False)
+    else:
+        monkeypatch.setenv("ASSY_VJOIN_AUTO_INDEX", switch)
+    rules = _stood([{"from": "v", "into": "w"}])
+    monkeypatch.setattr(worker, "read_rules_document", lambda *_a, **_k: {"exists": True, "error": None, "rules": []})
+    monkeypatch.setattr(worker, "loaded_chain_rules", lambda: rules)
+    monkeypatch.setattr(chain_control, "rules_off", lambda: {})
+    monkeypatch.setattr(worker, "refused_chain_rules", lambda: {})
+    monkeypatch.setattr(vjc, "_dialect_of", lambda db: "postgresql")
+    monkeypatch.setattr(unique_key, "index_validity", lambda db, names: {})            # none stands
+
+    class Db:
+        def rollback(self):
+            pass
+
+    real = synthesis.rules_without_key_index
+    monkeypatch.setattr(synthesis, "rules_without_key_index", lambda db, rules: real(Db(), rules))
+    detail = {row["name"]: row for row in main.get_chain_rules(db=None)["data"]}["gk"]["rule_state_detail"]
+    tables_said = ", ".join(t for t, _c, _f in synthesis.declared_lookup_targets([r for r in rules if r["name"] == "gk"]))
+    assert detail == (synthesis.NO_KEY_INDEX_OFF_LINE % (tables_said, "0") if said == "off"
+                      else synthesis.NO_KEY_INDEX_LINE % tables_said), detail
+
+
 @pytest.mark.pg
 def test_the_gathering_read_is_planned_through_the_value_key_index(tables, pg_session, monkeypatch):
     db = pg_session

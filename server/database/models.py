@@ -2735,9 +2735,9 @@ def _build_one(engine, statement, row, say, say_every):
 
 def _say_while_building(engine, watched, started, stop, say, every):
     """Looked at every `every` seconds while a build goes: what it is doing - `watched(connection)` -> (index, sentence
-    or None) - said when it changes and again every `INDEX_WAIT_SAY_SECONDS` while it does not (the ledger's «a wait
-    said once», 총괄 9752e91f7 ②, kept in the one builder). Watching only - a read that fails says so once and stops;
-    the build goes on."""
+    or None) - said when it changes and again every `INDEX_WAIT_SAY_SECONDS` while it does not: 9752e91f7 ② 의
+    '다시 안 말함' 을 총괄 11-06 이 바꿈, one rule for every index. Watching only - a read that fails says so once and
+    stops; the build goes on."""
     import time
 
     name, last, at = "the build", None, 0.0
