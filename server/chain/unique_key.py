@@ -258,7 +258,7 @@ def auto_index_off():
 def index_validity(db, names) -> dict:
     """{index name: valid} of the named indexes the search path finds, as the read finds its table (to_regclass); a
     name that is not there is not a key. The one «does this index stand» probe - the lookup builder and the rules list
-    (`synthesis.joins_without_lookup_index`) ask it (lead 11-04: they had asked 'public' and the search path)."""
+    (`synthesis.rules_without_key_index`) ask it (lead 11-04: they had asked 'public' and the search path)."""
     from sqlalchemy import text
 
     names = sorted(set(names or ()))

@@ -2743,7 +2743,7 @@ def ensure_dynamic_table_indexes(engine, config=None):
     return created
 
 
-def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
+def ensure_alignment_decision_key_indexes(engine, config=None, rules=None, say=print):
     """Create the decision-key index of every alignment rule. Returns the names made.
 
     Beside `ensure_map_key_indexes` and for the same reasons: CONCURRENTLY, outside a
@@ -2768,7 +2768,7 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
             rules = enrich_declarations.declarations(
                 known_tables=_crud.TABLE_CONFIG)
         except Exception as err:                       # noqa: BLE001
-            print(f"[Schema Sync] alignment rules unreadable, no decision-key index: {told(err)}")
+            say(f"[Schema Sync] alignment rules unreadable, no decision-key index: {told(err)}")
             return []
     created = []
     for rule in rules or []:
@@ -2784,12 +2784,12 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None):
         if name in created:
             continue
         if _ensure_one_index(engine, name, statement,
-                             "decision-key") == INDEX_BUILT:
+                             "decision-key", say=say) == INDEX_BUILT:
             created.append(name)
     return created
 
 
-def ensure_map_key_indexes(engine, config=None):
+def ensure_map_key_indexes(engine, config=None, say=print):
     """Create the map-key index of every table that declares one. Returns the names made.
 
     ⚠️ CONCURRENTLY, AND THEREFORE OUTSIDE A TRANSACTION. A plain CREATE INDEX takes a lock
@@ -2818,7 +2818,7 @@ def ensure_map_key_indexes(engine, config=None):
         name, statement = map_key_index_ddl(table_name, entry)
         if not statement:
             continue
-        if _ensure_one_index(engine, name, statement, "map-key") == INDEX_BUILT:
+        if _ensure_one_index(engine, name, statement, "map-key", say=say) == INDEX_BUILT:
             created.append(name)
     return created
 
@@ -2886,18 +2886,7 @@ def refresh_dynamic_models(engine=None):
         # 사라져서 이제는 되살릴 수단이 없다.
         # [P2] 인제션 체크포인트 테이블도 동일 보장 (워처가 부팅 전 이 경로로 먼저 도달할 수 있음)
         created.extend(ensure_ingestion_checkpoint_table(engine))
-        # [S-70] The map editor narrows a map target table by its declared map_key_columns,
-        # and nothing indexed them. This is the seat because it is the one place that runs
-        # at boot AND at config reload -- a table that starts declaring a map key gets its
-        # index on the next reload rather than on the next restart -- and because it is
-        # outside the request path.
-        created.extend(ensure_map_key_indexes(engine, new_config))
-        # [S-94 판정 237] The same seat, for the same reason, for a different
-        # declaration: an alignment rule's `decision_key` is what its per-job id query
-        # filters on, and nothing indexed it. Measured on this box, that query was a Seq
-        # Scan at 21.96 ms and the alignment mapper runs one per job - 23.8 s of a 44.9 s
-        # chain group. A rule that starts declaring a decision key gets its index on the
-        # next reload rather than on the next restart.
-        created.extend(ensure_alignment_decision_key_indexes(engine, new_config))
+        # the map-key and decision-key indexes are the scheduler's index line's (`runtime.maintenance_line`, 소유자 10-15:
+        # the chain worker builds nothing) - built at its start and at a Reload, not in every process that reloads
         return created
     return []

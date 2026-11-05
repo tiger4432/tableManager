@@ -3994,7 +3994,7 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
 
     db = db_session_factory()
     try:
-        created = models.ensure_alignment_decision_key_indexes(db.get_bind())
+        created = models.ensure_alignment_decision_key_indexes(db.get_bind(), say=logger.warning)
     finally:
         db.close()
     # ⚠️ IT SAYS SO EITHER WAY (판정 239). A line only on the build would make
@@ -4006,6 +4006,22 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
                     len(created), ", ".join(created))
     else:
         logger.info("[Chain] alignment decision-key indexes are already in place.")
+
+
+def _ensure_map_key_indexes_sync(db_session_factory):
+    """The index each table's declared `map_key_columns` asks for (S-70) - on the scheduler's index line at its start
+    and at a Reload, as the decision-key one (소유자 10-15: no other process builds). Says so either way."""
+    from database import models
+
+    db = db_session_factory()
+    try:
+        created = models.ensure_map_key_indexes(db.get_bind(), say=logger.warning)
+    finally:
+        db.close()
+    if created:
+        logger.info("[Chain] built %d map-key index(es): %s", len(created), ", ".join(created))
+    else:
+        logger.info("[Chain] map-key indexes are already in place.")
 
 
 def _analyze_stale_tables_sync(db_session_factory, built=(),

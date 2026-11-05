@@ -262,36 +262,45 @@ def declared_lookup_targets(rules):
             yield (right, [right_col for _l, right_col, _fold in on], folds)
 
 
-#: The rules list's word on a running join whose lookup index is not standing (owner 11-04: state on the screen). The
-#: scheduler builds the index (`runtime.maintenance_line`), and says why it could not in its log under «[Join]» - unless
-#: the switch turns the automatic indexes off (`unique_key.auto_index_off`).
+#: The rules list's word on a running rule whose key index is not standing (owner 11-04: state on the screen) - a join's
+#: lookup index or an alignment rule's decision key. The scheduler's index line is their only builder
+#: (`runtime.maintenance_line`, at its start and at a Reload) and says in its log why it could not - unless the join
+#: switch turns a join's off (`unique_key.auto_index_off`).
 NO_KEY_INDEX_LINE = ("no key index on %s yet - each batch reads the whole table; the scheduler builds it at start "
-                     "(auto_update.log [Join] line says why if it could not)")
+                     "and at a Reload (auto_update.log says why if it could not)")
 NO_KEY_INDEX_OFF_LINE = ("no key index on %s - automatic join indexes are off (ASSY_VJOIN_AUTO_INDEX=%s); each batch "
                          "reads the whole table - build it by hand or turn the switch on")
 
 
-def no_key_index_line(tables) -> str:
-    """The word for a join whose lookup index on `tables` does not stand - what happens next, by the switch."""
-    from chain import unique_key
-
-    off = unique_key.auto_index_off()
+def no_key_index_line(tables, off=None) -> str:
+    """The word for a rule whose key index on `tables` does not stand - what happens next: the scheduler builds it, or
+    `off` (the join switch's value, `rules_without_key_index`) says nothing will."""
     named = ", ".join(tables)
     return NO_KEY_INDEX_OFF_LINE % (named, off) if off else NO_KEY_INDEX_LINE % named
 
 
-def joins_without_lookup_index(db, rules) -> dict:
-    """{rule name: [tables]} - the switched-on joins whose lookup indexes (`declared_lookup_targets`) do not stand valid
-    in the database. A fact of the database, so every process answers alike. {} off PostgreSQL or when unreadable."""
+def rules_without_key_index(db, rules) -> dict:
+    """{rule name: ([tables], the join switch's value or None)} - the switched-on rules whose key indexes do not stand
+    valid in the database: a join's lookup indexes (`declared_lookup_targets`, under the join switch) and an alignment
+    rule's decision key (`models.alignment_decision_key_index_ddl`, no switch). A fact of the database, so every
+    process answers alike. {} off PostgreSQL or when unreadable."""
     from chain import join_key_index as vjc
     from chain import unique_key
+    from database import crud, models
     from error_said import told
 
     if vjc._dialect_of(db) != "postgresql":
         return {}
-    wanted = {rule.get("name"): [(table, vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX))
-                                 for table, columns, folds in declared_lookup_targets([rule])] for rule in rules}
-    names = sorted({name for pairs in wanted.values() for _table, name in pairs})
+    off, wanted = unique_key.auto_index_off(), {}
+    for rule in rules:
+        pairs = [(table, vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX))
+                 for table, columns, folds in declared_lookup_targets([rule])]
+        switch = off if pairs else None
+        params = rule.get("params") or {}
+        source = str(params.get("source_table") or "").strip()
+        index, _ddl = models.alignment_decision_key_index_ddl(params, crud.TABLE_CONFIG.get(source))
+        wanted[rule.get("name")] = (pairs + ([(source, index)] if index else []), switch)
+    names = sorted({name for pairs, _switch in wanted.values() for _table, name in pairs})
     if not names:
         return {}
     try:
@@ -299,10 +308,10 @@ def joins_without_lookup_index(db, rules) -> dict:
         db.rollback()
     except Exception as exc:                                           # noqa: BLE001
         db.rollback()
-        logger.warning("[Join] could not read the join indexes for the rules list: %s", told(exc))
+        logger.warning("[Indexes] could not read the key indexes for the rules list: %s", told(exc))
         return {}
-    return {name: list(dict.fromkeys(table for table, index in pairs if index not in standing))
-            for name, pairs in wanted.items() if any(index not in standing for _table, index in pairs)}
+    return {name: (list(dict.fromkeys(table for table, index in pairs if index not in standing)), switch)
+            for name, (pairs, switch) in wanted.items() if any(index not in standing for _table, index in pairs)}
 
 
 def declared_lookup_index_names(known_tables: dict = None) -> set:

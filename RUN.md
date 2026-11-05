@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-05] **새 규칙의 키 인덱스는 스케줄러가 Reload 때 지음 — 그 전엔 규칙 목록에 «no key index» 줄** — git pull · 서버 · 체인 일꾼 · 워처 · 스케줄러 재기동
+>
+> ```
+> 무엇     정렬 규칙의 결정 키 인덱스(idx_<표>_decision_key)와 맵 키 인덱스(idx_<표>_map_key)를
+>          스케줄러 인덱스 줄 «한 곳»이 지음 — 시작할 때와 Reload 때. 체인 일꾼 · 슬롯 · 워처는 안 지음 (소유자 10-15)
+>          예전엔 Reload 한 번에 그 프로세스들이 같은 인덱스를 동시에 지으려 했음
+> 볼 줄     auto_update.log «[Chain] built N alignment decision-key index(es)» · «[Chain] built N map-key index(es)»
+>          (이미 있으면 «... are already in place.»)
+> 짓기 전   규칙 목록의 그 규칙 줄에 «no key index on <표> yet - ... the scheduler builds it at start and at a Reload»
+>          — Reload 를 누르고 스케줄러가 지으면 사라짐. 안 사라지면 auto_update.log 의 실패 줄이 까닭
+> 끄기     없음 (예전과 같음 — 이 두 인덱스는 끄는 스위치가 없었음)
+> ```
+>
+> ---
+>
 > ## [11-05] **그리드 여러 값 필터 — 서버 반쪽** (set 필터 · 값 목록 라우트 · 모르는 필터 꼴 거절) — git pull · 서버 재기동
 >
 > ```

@@ -105,7 +105,7 @@ def test_a_running_join_without_its_lookup_index_says_so_on_its_line(monkeypatch
     monkeypatch.setattr(worker, "loaded_chain_rules", lambda: rules)
     monkeypatch.setattr(chain_control, "rules_off", lambda: {})
     monkeypatch.setattr(worker, "refused_chain_rules", lambda: {})
-    monkeypatch.setattr(synthesis, "joins_without_lookup_index", lambda db, rules: {"gk": ["gk_meas"]})
+    monkeypatch.setattr(synthesis, "rules_without_key_index", lambda db, rules: {"gk": (["gk_meas"], None)})
     rows = {row["name"]: row for row in main.get_chain_rules(db=None)["data"]}
     assert rows["gk"]["rule_state_detail"] == synthesis.NO_KEY_INDEX_LINE % "gk_meas"
     assert "rule_state_detail" not in rows["gk:target"]
@@ -161,19 +161,17 @@ def test_the_list_reads_which_lookup_index_does_not_stand(tables, pg_session):
         db.execute(text('DROP INDEX IF EXISTS "%s"' % vjc.required_index_name(table, ["lot", "item"], [None, None],
                                                                               vjc.LOOKUP_PREFIX)))
     db.commit()
-    before = synthesis.joins_without_lookup_index(db, rules)
+    before = synthesis.rules_without_key_index(db, rules)
     unique_key.forget()
     report = synthesis.ensure_declared_lookup_keys(db, rules)
     assert sorted(report["built"]) == ["gk_meas", "gk_tgt"], report
-    assert before == {"gk": ["gk_tgt", "gk_meas"], "gk:target": ["gk_tgt", "gk_meas"]}
-    assert synthesis.joins_without_lookup_index(db, rules) == {}
+    assert before == {"gk": (["gk_tgt", "gk_meas"], None), "gk:target": (["gk_tgt", "gk_meas"], None)}
+    assert synthesis.rules_without_key_index(db, rules) == {}
 
 
-def test_with_the_switch_off_the_line_says_the_indexes_are_off(monkeypatch):
-    monkeypatch.delenv("ASSY_VJOIN_AUTO_INDEX", raising=False)
+def test_with_the_switch_off_the_line_says_the_indexes_are_off():
     assert synthesis.no_key_index_line(["gk_meas"]) == synthesis.NO_KEY_INDEX_LINE % "gk_meas"
-    monkeypatch.setenv("ASSY_VJOIN_AUTO_INDEX", "0")
-    assert synthesis.no_key_index_line(["gk_meas"]) == synthesis.NO_KEY_INDEX_OFF_LINE % ("gk_meas", "0")
+    assert synthesis.no_key_index_line(["gk_meas"], "0") == synthesis.NO_KEY_INDEX_OFF_LINE % ("gk_meas", "0")
 
 
 @pytest.mark.pg
@@ -192,7 +190,8 @@ def test_the_builder_and_the_list_find_an_index_by_one_probe(tables, pg_session)
     again = unique_key.ensure_lookup_once(db, "gk_meas", ["lot", "item"], [None, None])
     assert (again["state"], again["created"]) == ("ok", None), again
     assert unique_key.index_validity(db, [VALUE_INDEX]) == {VALUE_INDEX: True}
-    assert "gk_meas" not in sum(synthesis.joins_without_lookup_index(db, rules).values(), [])
+    assert "gk_meas" not in sum((tables for tables, _off in synthesis.rules_without_key_index(db, rules).values()),
+                                [])
 
 
 @pytest.mark.pg

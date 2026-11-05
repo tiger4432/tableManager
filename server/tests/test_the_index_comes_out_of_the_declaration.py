@@ -87,8 +87,9 @@ def test_the_boot_sequence_calls_the_ensure_and_not_only_the_reload_path():
 
     from runtime import maintenance_line
 
-    body = inspect.getsource(maintenance_line._start_work)
+    body = inspect.getsource(maintenance_line._declared_work)      # its start and every Reload
     assert "_ensure_alignment_decision_key_indexes_sync" in body, body[:400]
+    assert "_ensure_map_key_indexes_sync" in body, body[:400]
     assert hasattr(worker, "_ensure_alignment_decision_key_indexes_sync")
 
 
@@ -132,7 +133,7 @@ def test_two_rules_over_one_table_ask_for_one_index_and_the_count_says_one():
     class _Engine:
         pass
 
-    def _fake(engine, name, statement, what):
+    def _fake(engine, name, statement, what, say=print):
         built.append(name)
         # The builder answers with a WORD now, because a boolean had two things to say -
         # "the statement ran" and "it was already there" - and each of them shipped a
