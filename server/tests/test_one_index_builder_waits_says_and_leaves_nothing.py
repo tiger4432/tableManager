@@ -111,3 +111,13 @@ def test_a_build_under_way_is_left_to_its_session_says_its_waits_and_ends_valid(
         builder.join(60)
     assert first["word"] == (models.INDEX_BUILT, {TABLE}) and _state(table) == "valid"
     assert len([line for line in first_said if NAME in line]) >= 2, first_said
+
+
+def test_a_statement_that_ran_but_left_no_valid_index_is_failed_not_built(table):
+    """«The statement ran» is not «an index enforces it» (C 11-06: the re-check after the build survived a mutant) - a
+    statement that leaves no valid index of the name is FAILED, said, and its table not noted for the ANALYZE."""
+    said = []
+    with models.built_tables() as built:
+        word = models._ensure_one_index(table, NAME, "SELECT 1", "test", say=said.append, table=TABLE)
+    assert (word, set(built)) == (models.INDEX_FAILED, set()) and _state(table) is None
+    assert "was built INVALID" in said[-1], said

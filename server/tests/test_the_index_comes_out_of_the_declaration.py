@@ -153,3 +153,27 @@ def test_two_rules_over_one_table_ask_for_one_index_and_the_count_says_one():
 
     assert created == ["idx_t_decision_key", "idx_u_decision_key"]
     assert built == created, "the duplicate must not even be attempted"
+
+
+def test_every_caller_of_the_one_builder_names_its_table():
+    """Each call of `_ensure_one_index` passes `table=` - the wait before the build asks who holds it and a built one is
+    noted for the round's ANALYZE; without it neither happens and nothing says so (C 11-06: dropping decision-key's
+    survived). Counted on the source: the census is the subject."""
+    import ast
+    import os
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    calls = []
+    for folder, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in ("tests", "node_modules", "__pycache__", ".git")]
+        for name in files:
+            if name.endswith(".py"):
+                path = os.path.join(folder, name)
+                with open(path, encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read())
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", None))                             == "_ensure_one_index":
+                        calls.append(("%s:%d" % (os.path.relpath(path, root), node.lineno),
+                                      any(k.arg == "table" for k in node.keywords)))
+    assert calls, "canary: the builder's callers were not found"
+    assert [where for where, named in calls if not named] == [], calls

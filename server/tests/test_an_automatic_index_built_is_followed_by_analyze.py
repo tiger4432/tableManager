@@ -59,9 +59,14 @@ def fixture_box(pg_engine, monkeypatch):
             c.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (S, name)))
 
 
-def _ensure(factory, table):
-    said = []
-    models.ensure_auto_indexes_sync(factory, [(table, ["k"], models.AUTO_SLOW_FILTER)], said.append, decide=False)
+def _ensure(factory, table, said=None):
+    """The scheduler line's round (`maintenance_line._round`, 총괄 11-05 ㄴ): the index work, then one ANALYZE of the
+    tables the one builder built on in it."""
+    from runtime import maintenance_line
+
+    said = [] if said is None else said
+    maintenance_line._round(factory, [(models.ensure_auto_indexes_sync, factory,
+                                       [(table, ["k"], models.AUTO_SLOW_FILTER)], said.append, False)])
     return said
 
 
@@ -176,8 +181,12 @@ def test_an_analyze_that_fails_after_an_index_is_built_says_the_index_stands(box
     def _fails(*args, **kwargs):
         raise RuntimeError("statistics unreachable")
 
+    from runtime import maintenance_line
+
+    said = []
     monkeypatch.setattr(ingestion_worker, "_analyze_stale_tables_sync", _fails)
-    said = _ensure(factory, "zz_auto_analyze")
+    monkeypatch.setattr(maintenance_line.logger, "warning", lambda msg, *args: said.append(msg % args))
+    _ensure(factory, "zz_auto_analyze", said)
     assert any(line.startswith("[Indexes] built on zz_auto_analyze; the ANALYZE after it did not run")
                and "statistics unreachable" in line for line in said), said
     assert not any("were not compared" in line for line in said), said
