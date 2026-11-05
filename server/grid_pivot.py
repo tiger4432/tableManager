@@ -91,18 +91,27 @@ def split_filters(filters, pivot):
         return filters, {}
     keys, items = {}, {}
     for name, spec in asked.items():
-        if name.startswith(ITEM_PREFIX):
-            items[name[len(ITEM_PREFIX):]] = spec
-        elif name in pivot.keys or name == pivot.column:
+        item = item_of(name, pivot)
+        if item is None:
             keys[name] = spec
-        elif name == pivot.value:
-            raise HTTPException(status_code=422, detail=(
-                "'%s' fills the pivot's cells - filter it per item inside the pivot as %s<item>" % (name, ITEM_PREFIX)))
         else:
-            raise HTTPException(status_code=422, detail=(
-                "'%s' is not a key column (%s) or the item column (%s) of the pivot - filter an item column as %s<item>"
-                % (name, ", ".join(pivot.keys), pivot.column, ITEM_PREFIX)))
+            items[item] = spec
     return (json.dumps(keys) if keys else None), items
+
+
+def item_of(name, pivot):
+    """The item `name` filters (`item:<item>`), or None for a key column or the item column - the names a pivot read
+    takes, its filters' and its value lists' (`grid_read.column_values`) one judgment; anything else refused by name."""
+    if name.startswith(ITEM_PREFIX):
+        return name[len(ITEM_PREFIX):]
+    if name in pivot.keys or name == pivot.column:
+        return None
+    if name == pivot.value:
+        raise HTTPException(status_code=422, detail=(
+            "'%s' fills the pivot's cells - filter it per item inside the pivot as %s<item>" % (name, ITEM_PREFIX)))
+    raise HTTPException(status_code=422, detail=(
+        "'%s' is not a key column (%s) or the item column (%s) of the pivot - filter an item column as %s<item>"
+        % (name, ", ".join(pivot.keys), pivot.column, ITEM_PREFIX)))
 
 
 def index_names(table_name, order_by, filters):

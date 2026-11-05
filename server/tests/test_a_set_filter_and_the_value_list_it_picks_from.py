@@ -13,6 +13,8 @@ does not read is refused by name where it used to be dropped into an unnarrowed 
 
   value list                    sorted, blank a null last · own filter left out · others kept · search contains
                                 cap -> more · pivot item column = the pivot read's items · a slow one asks its index
+  pivot value list              item:<x> = its cells (a group without the row: blank) · a picked value narrows
+                                the read · the value column and an unknown name refused as the read refuses
 """
 import json
 
@@ -133,9 +135,35 @@ def test_the_value_list_stops_at_its_cap(grid, monkeypatch):  # noqa: F811
 
 
 def test_the_value_list_refuses_a_column_the_table_lacks(grid):  # noqa: F811
-    for column in ("nope", "item:a"):
-        answer = _get(grid, "data/values", column=column, pivot="true")
-        assert answer.status_code == 422 and "has no column" in answer.json()["detail"], answer.text
+    answer = _get(grid, "data/values", column="nope")
+    assert answer.status_code == 422 and "has no column" in answer.json()["detail"], answer.text
+
+
+@pytest.mark.parametrize("column", ["value", "nope"])
+def test_on_a_pivot_the_value_list_refuses_a_name_as_the_read_does(grid, column):  # noqa: F811
+    listed = _get(grid, "data/values", column=column, pivot="true")
+    read = _get(grid, "data/count", {column: _set("x")}, pivot="true")
+    assert listed.status_code == read.status_code == 422, (listed.text, read.text)
+    assert listed.json()["detail"] == read.json()["detail"]
+
+
+@pytest.mark.parametrize("column, filters, search, values", [
+    ("item:a", None, None, [1.0, 2.0, 3.0, None]),         # (L2, None) has no «a» row: its cell shows blank
+    ("item:c", None, None, [7.0, 9.0, None]),
+    ("item:a", {"item:a": _set(1)}, None, [1.0, 2.0, 3.0, None]),
+    ("item:a", {"lot": _set("L2")}, None, [3.0, None]),
+    ("item:c", None, "9", [9.0]),
+])
+def test_a_pivot_items_value_list_is_its_cells(grid, column, filters, search, values):  # noqa: F811
+    params = {"pivot": "true"} if search is None else {"pivot": "true", "search": search}
+    assert _values(grid, column, filters, **params)["values"] == values
+
+
+@pytest.mark.parametrize("column", ["lot", "wafer", "itemid", "item:a", "item:b", "item:c"])
+def test_on_a_pivot_a_value_picked_from_the_list_narrows_the_read(grid, column):  # noqa: F811
+    for value in _values(grid, column, pivot="true")["values"]:
+        answer = _get(grid, "data/count", {column: _set(value)}, pivot="true")
+        assert answer.status_code == 200 and answer.json()["total"] > 0, (column, value, answer.text)
 
 
 @pytest.mark.parametrize("filters", [None, {"lot": _set("L2")}, {"item:c": {"filterType": "number", "type": "lessThan",

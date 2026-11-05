@@ -6,8 +6,8 @@ import logging
 from fastapi import HTTPException
 
 import grid_pivot
-from column_filter import (ROW_ID_FILTER_NAMES, TEXT_PATTERNS, FilterRefused, filter_column, get_column_filter_condition,
-                           model_has_row_id)
+from column_filter import (ROW_ID_FILTER_NAMES, SET, TEXT_PATTERNS, FilterRefused, filter_column,
+                           get_column_filter_condition, model_has_row_id)
 from database import crud, models
 
 logger = logging.getLogger("Server")
@@ -410,14 +410,17 @@ def column_values(db, table_name, table_model, column, *, search=None, filters=N
     """`column`'s distinct values over the grid's narrowing less its own filter (총괄 11-05: the list a set filter picks
     from, as a spreadsheet's) - sorted, the blank cells one None at the end, at most `VALUES_CAP` (`more`); `search`
     keeps the values that contain it, as the text filter's contains. A value is the one its `equals` matches
-    (`filter_column`). Nothing else narrowing and a btree leading on the column: one index probe per value
-    (`_skipped_values`) - else DISTINCT over the narrowed rows."""
+    (`filter_column`). On a pivot `column` is a name its read takes (`grid_pivot.item_of`): an item's (`item:<item>`)
+    values are that item's rows' `value`, and its blank also a group without that item's row (`grid_pivot.narrow`).
+    Nothing else narrowing and a btree leading on the column: one index probe per value (`_skipped_values`) - else
+    DISTINCT over the narrowed rows."""
     import json
 
     from sqlalchemy import case
 
+    item = grid_pivot.item_of(column, pivot) if pivot is not None else None
     try:
-        expr, is_numeric = filter_column(table_model, column)
+        expr, is_numeric = filter_column(table_model, column if item is None else pivot.value)
     except FilterRefused as refused:
         raise filter_refused(table_name, column, refused) from refused
     try:
@@ -428,19 +431,24 @@ def column_values(db, table_name, table_model, column, *, search=None, filters=N
         kept = {name: spec for name, spec in asked.items() if name != column}
         filters = json.dumps(kept) if kept else None
     found = None
-    if not (search or filters or any(narrowing.values())):
+    if item is None and not (search or filters or any(narrowing.values())):
         found = _skipped_values(db, table_model, column, is_numeric)
+    absent = False
     if found is None:
         query, _ = narrowed_table_query(db, table_name, table_model, filters=filters, pivot=pivot, **narrowing)
+        if item is not None:
+            absent = not search and db.query(grid_pivot.narrow(
+                query, table_model, pivot, {item: {"filterType": SET, "values": [None]}}).exists()).scalar()
+            query = query.filter(getattr(table_model, pivot.column) == item)
         text = models.search_text(expr) if is_numeric else expr
         if search:
             query = query.filter(text.ilike(TEXT_PATTERNS["contains"].format(search)))
         value = case((crud.blank_sql_condition(text), None), else_=expr)
         found = [row[0] for row in query.with_entities(value).distinct().order_by(value.asc().nullsfirst())
                  .limit(VALUES_CAP + 2)]
-    blank = bool(found) and found[0] is None
-    values = found[1:] if blank else found
-    return {"column": column, "values": values[:VALUES_CAP] + ([None] if blank else []), "more": len(values) > VALUES_CAP}
+    blank = absent or (bool(found) and found[0] is None)
+    found = found[1:] if found and found[0] is None else found
+    return {"column": column, "values": found[:VALUES_CAP] + ([None] if blank else []), "more": len(found) > VALUES_CAP}
 
 
 def _skipped_values(db, table_model, column, is_numeric):
