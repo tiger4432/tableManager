@@ -4067,9 +4067,12 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
     try:
         from sqlalchemy import text as sql_text
 
+        # only the relation the name resolves to through the search path - the one `ANALYZE "<name>"` reaches: a
+        # name in two schemas is analysed once, one in no schema of the path not at all (C 11-05, lead ㄱ)
         rows = db.execute(sql_text(
             "SELECT relname, n_mod_since_analyze FROM pg_stat_user_tables "
-            "WHERE n_mod_since_analyze >= :threshold"), {"threshold": threshold}).all()
+            "WHERE n_mod_since_analyze >= :threshold AND relid = to_regclass(quote_ident(relname))"),
+            {"threshold": threshold}).all()
     except Exception as exc:                                           # noqa: BLE001
         # Not PostgreSQL, or the view is unreadable. A boot must not die over statistics.
         logger.warning("[Chain] could not read table statistics, so no boot ANALYZE ran: "

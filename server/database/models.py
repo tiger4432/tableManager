@@ -2534,12 +2534,16 @@ def ensure_auto_indexes_sync(db_session_factory, wanted, say, decide=True):
                  if done.get(auto_index_name(table, columns, why)) == INDEX_BUILT}
         if built:
             # the tables an automatic index was just built on: ANALYZE now, through the join key index's own path
-            # (owner 11-05 «ㅇㅇ»)
+            # (owner 11-05 «ㅇㅇ»); its failure is its own sentence - the indexes stand (C 11-05 O4)
             from chain import ingestion_worker
 
-            ingestion_worker._analyze_stale_tables_sync(
-                db_session_factory, built=built,
-                built_why="an automatic index was just built on it and the planner had no statistics for it")
+            try:
+                ingestion_worker._analyze_stale_tables_sync(
+                    db_session_factory, built=built,
+                    built_why="an automatic index was just built on it and the planner had no statistics for it")
+            except Exception as exc:                                    # noqa: BLE001
+                say("[Indexes] built on %s; the ANALYZE after it did not run (this process goes on): %s: %s"
+                    % (", ".join(sorted(built)), type(exc).__name__, told(exc)))
     except Exception as exc:                                            # noqa: BLE001
         say("[Indexes] the automatic indexes were not compared (this process goes on): %s: %s"
             % (type(exc).__name__, told(exc)))
