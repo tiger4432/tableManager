@@ -655,6 +655,9 @@ def test_a_partition_deferred_leaves_the_parent_not_valid_until_the_ledger_line_
             assert conn.execute(text("SELECT x.indisvalid FROM pg_index x WHERE x.indexrelid = to_regclass(:n)"),
                                 {"n": name}).scalar() is False, "a partition without its own - the parent NOT valid"
         assert rounds.is_alive(), "a deferred partition keeps the ledger's index rounds going"
+        again = []                                       # the parent's own answer and line while one is deferred (C3)
+        assert models.ensure_model_indexes(engine, say=again.append, sources=LEDGER) == {name: models.INDEX_DEFERRED}
+        assert any(line.startswith("[Indexes] %s left for later in " % name) for line in again), again
     finally:
         held.rollback()
         holder.close()
