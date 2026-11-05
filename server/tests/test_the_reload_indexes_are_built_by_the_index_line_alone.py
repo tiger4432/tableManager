@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """An alignment rule's decision-key index and a table's map-key index have ONE builder - the scheduler's index line,
-at its start and at a Reload (소유자 10-15 «the chain worker builds nothing», 총괄 11-05 ㄱ). They were built in
+at its start and at a Reload (소유자 10-15 «the chain worker builds nothing», 총괄 11-05 ㄱ) - through the one door,
+`ensure_model_indexes`, as rows of the one comparison (`models.derived_key_indexes`, 총괄 11-06 ㄷ). They were built in
 `models.refresh_dynamic_models` too, which the chain loop, each slot and the watcher run on a Reload: N processes
 building one index at once. Until the line builds a new rule's index, the rules list says so (the join's word).
 
   process \\ Reload          builds a reload index
   chain loop / slot          no (reload_rules -> refresh_dynamic_models, spied)
   watcher                    no (refresh_dynamic_models, spied)
-  scheduler's index line     yes - both wrappers, once each; on PG the indexes stand after its poll;
+  scheduler's index line     yes - its declared work, once; on PG the indexes stand after its poll;
                              a failure is said in its log (the rules list's word points there)
   rules list                 «no key index on <t> yet» before, nothing after
 """
@@ -27,7 +28,7 @@ RULE = {"name": "zz_align", "alignment": True, "source_table": TABLE, "decision_
 @pytest.fixture(name="spied")
 def fixture_spied(monkeypatch):
     called = []
-    for name in ("ensure_map_key_indexes", "ensure_alignment_decision_key_indexes", "_ensure_one_index"):
+    for name in ("ensure_model_indexes", "_ensure_one_index"):
         monkeypatch.setattr(models, name, lambda *a, _n=name, **k: called.append(_n) or [])
     monkeypatch.setattr(crud, "TABLE_CONFIG", {})
     monkeypatch.setattr(crud, "load_table_config", lambda *a, **k: {TABLE: ENTRY})
@@ -54,13 +55,12 @@ def test_the_watchers_reload_builds_no_index(spied):
     assert spied == []
 
 
-def test_the_index_lines_reload_runs_both_builders(monkeypatch):
+def test_the_index_lines_reload_runs_the_declared_work_once(monkeypatch):
     from runtime import index_wants, maintenance_line, system_reload
     import event_constants
 
     ran = []
-    for name in ("_ensure_alignment_decision_key_indexes_sync", "_ensure_map_key_indexes_sync",
-                 "_ensure_declared_indexes_sync"):
+    for name in ("_ensure_declared_indexes_sync",):
         monkeypatch.setattr(worker, name, lambda *a, _n=name: ran.append(_n))
     for name in ("ensure_model_indexes_sync", "ensure_auto_indexes_sync"):
         monkeypatch.setattr(models, name, lambda *a, _n=name: ran.append(_n))
@@ -78,8 +78,7 @@ def test_the_index_lines_reload_runs_both_builders(monkeypatch):
             pass
 
     maintenance_line.poll_once(_Db, 0)
-    assert ran.count("_ensure_alignment_decision_key_indexes_sync") == 1
-    assert ran.count("_ensure_map_key_indexes_sync") == 1
+    assert ran.count("ensure_model_indexes_sync") == 1
 
 
 def test_a_failed_build_is_said_in_the_lines_log(monkeypatch):
@@ -101,10 +100,8 @@ def test_a_failed_build_is_said_in_the_lines_log(monkeypatch):
         def close(self):
             pass
 
-    worker._ensure_map_key_indexes_sync(_Db)
-    worker._ensure_alignment_decision_key_indexes_sync(_Db)
-    assert any("map-key index 'idx_%s_map_key'" % TABLE in line for line in said), said
-    assert any("decision-key index 'idx_%s_decision_key'" % TABLE in line for line in said), said
+    models.ensure_model_indexes_sync(_Db, ("model", "table"), worker.logger.warning)     # the line's call
+    assert any("the declared indexes of model/table were not compared" in line for line in said), said
 
 
 @pytest.mark.pg
@@ -113,18 +110,22 @@ def test_on_postgresql_the_line_builds_them_and_the_rules_list_said_so_before(pg
 
     engine = pg_session.get_bind()
     monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, ENTRY)
-    monkeypatch.setattr(enrich_declarations, "declarations", lambda *a, **k: [RULE])
-    for name in ("_ensure_declared_indexes_sync",):
-        monkeypatch.setattr(worker, name, lambda *a: None)
-    for name in ("ensure_model_indexes_sync", "ensure_auto_indexes_sync"):
-        monkeypatch.setattr(models, name, lambda *a: None)
+    stood = [{"name": RULE["name"], "params": RULE}]
+    # the rules as this process loaded them - the scheduler's own reading (`loaded_chain_rules`), no other
+    monkeypatch.setattr(worker, "loaded_chain_rules", lambda: stood)
+    monkeypatch.setattr(worker, "_ensure_declared_indexes_sync", lambda *a: None)
+    monkeypatch.setattr(models, "ensure_auto_indexes_sync", lambda *a: None)
     monkeypatch.setattr(worker, "load_chain_rules", lambda: [])
     monkeypatch.setattr(index_wants, "taken", lambda db: [])
     with engine.begin() as c:
         c.execute(text('DROP TABLE IF EXISTS "%s"' % TABLE))
-        c.execute(text('CREATE TABLE "%s" (row_id varchar PRIMARY KEY, m varchar, k varchar)' % TABLE))
+        c.execute(text('CREATE TABLE "%s" (row_id varchar PRIMARY KEY, m varchar, k varchar, updated_at timestamp)'
+                       % TABLE))
     try:
-        stood = [{"name": RULE["name"], "params": RULE}]
+        declared = {row["name"]: row["state"] for row in models.index_states(engine)["declared"]
+                    if row["table"] == TABLE}
+        assert {name: declared.get(name) for name in ("idx_%s_map_key" % TABLE, "idx_%s_decision_key" % TABLE)} == {
+            "idx_%s_map_key" % TABLE: models.INDEX_MISSING, "idx_%s_decision_key" % TABLE: models.INDEX_MISSING}
         assert synthesis.rules_without_key_index(pg_session, stood) == {RULE["name"]: ([TABLE], None)}
         assert synthesis.no_key_index_line([TABLE]) == synthesis.NO_KEY_INDEX_LINE % TABLE
         factory = sessionmaker(bind=engine)

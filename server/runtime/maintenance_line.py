@@ -227,8 +227,6 @@ def _declared_work(db_session_factory):
 
     rules = worker.load_chain_rules()
     return [(worker._ensure_declared_indexes_sync, rules, db_session_factory),
-            (worker._ensure_alignment_decision_key_indexes_sync, db_session_factory),
-            (worker._ensure_map_key_indexes_sync, db_session_factory),
             (models.ensure_model_indexes_sync, db_session_factory,
              tuple(source for source in models.INDEX_SOURCES if source != "ledger"), logger.warning),
             (models.ensure_auto_indexes_sync, db_session_factory, None, logger.warning, True)]
@@ -239,7 +237,6 @@ def _start_work(db_session_factory):
 
     return [(worker._ensure_business_key_unique_indexes_sync, db_session_factory),
             (worker._ensure_human_claims_index_sync, db_session_factory),
-            (worker._ensure_dynamic_table_indexes_sync, db_session_factory),
             (worker._analyze_stale_tables_sync, db_session_factory)] + _declared_work(db_session_factory)
 
 

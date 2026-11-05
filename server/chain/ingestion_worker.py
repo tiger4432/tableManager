@@ -3974,54 +3974,6 @@ def _move_off_the_plain_layer(db, table, items):
     return moved
 
 
-
-def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
-    """Build the index an alignment rule's per-job query needs (S-94, 판정 239).
-
-    🔴 THE BUILDER WAS WIRED ONLY INTO CONFIG RELOAD, WHICH IS NOT A BOOT. It sat
-    beside `ensure_map_key_indexes` in `create_missing_dynamic_tables`, and that runs on a
-    reload - so a deployment could restart, find the index still missing, and go on scanning
-    109,877 rows per view build. 「착지는 배선이 아니다」, measured on my own change one commit
-    after writing it down.
-
-    ⚠️ IT ONLY WEAKENS, so unlike its neighbour above it needs no surplus count: an
-    index that is not unique cannot fail on the rows already there. What it can do is find
-    nothing to build, which is the ordinary outcome on every boot after the first.
-    """
-    from database import models
-
-    db = db_session_factory()
-    try:
-        created = models.ensure_alignment_decision_key_indexes(db.get_bind(), say=logger.warning)
-    finally:
-        db.close()
-    # ⚠️ IT SAYS SO EITHER WAY (판정 239). A line only on the build would make
-    # "nothing was built" and "the ensure never ran" the same silence - and this round's
-    # first boot proved that matters: the ensure DID run and failed by name, and the only
-    # reason anybody saw it was that the failure spoke.
-    if created:
-        logger.info("[Chain] built %d alignment decision-key index(es): %s",
-                    len(created), ", ".join(created))
-    else:
-        logger.info("[Chain] alignment decision-key indexes are already in place.")
-
-
-def _ensure_map_key_indexes_sync(db_session_factory):
-    """The index each table's declared `map_key_columns` asks for (S-70) - on the scheduler's index line at its start
-    and at a Reload, as the decision-key one (소유자 10-15: no other process builds). Says so either way."""
-    from database import models
-
-    db = db_session_factory()
-    try:
-        created = models.ensure_map_key_indexes(db.get_bind(), say=logger.warning)
-    finally:
-        db.close()
-    if created:
-        logger.info("[Chain] built %d map-key index(es): %s", len(created), ", ".join(created))
-    else:
-        logger.info("[Chain] map-key indexes are already in place.")
-
-
 def _analyze_stale_tables_sync(db_session_factory, built=(),
                                built_why="a join key index was just built on it and the planner had no statistics for it"):
     """`ANALYZE` every catalogued table whose statistics the database says are stale (S-130), and the `built` ones - an
@@ -4114,34 +4066,6 @@ def _analyze_stale_tables_sync(db_session_factory, built=(),
                                       "before those rows arrived", forced=name in built):
             analysed.append(name)
     return analysed
-
-
-def _ensure_dynamic_table_indexes_sync(db_session_factory):
-    """Build the indexes a dynamic table's model declares but its database lacks (S-124).
-
-    🔴 A TABLE MADE BEFORE THE DECLARATION KEEPS RUNNING WITHOUT IT. `create_all` adds
-    indexes only while it creates a table, so a relation older than either of these two
-    never got them - and nothing said so, because the model reads correctly and only the
-    database disagrees. The grid's page query orders by `updated_at`, so on such a table it
-    sorts the whole relation instead of walking an index.
-
-    ⚠️ IT ONLY WEAKENS, so it needs no surplus count: neither index is unique, and building
-    one cannot make a query wrong. What it can do is find nothing to build, which is the
-    ordinary outcome on every boot after the first - and it says so either way.
-    """
-    from database import models
-
-    db = db_session_factory()
-    try:
-        created = models.ensure_dynamic_table_indexes(db.get_bind())
-    finally:
-        db.close()
-    if created:
-        logger.info("[Chain] built %d dynamic-table index(es): %s",
-                    len(created), ", ".join(created))
-    else:
-        logger.info("[Chain] dynamic-table indexes are already in place.")
-    _report_layer_table_health(db_session_factory)
 
 
 def _report_layer_table_health(db_session_factory):

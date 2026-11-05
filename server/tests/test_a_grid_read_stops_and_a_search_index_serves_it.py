@@ -412,12 +412,14 @@ def test_a_database_without_pg_trgm_is_named_on_the_search_index_it_owes(grid, p
 
 
 def test_a_read_s_comparison_reads_its_table_alone():
-    """A grid read asks about one table: no static model's rows and no ledger's (총괄 ad38ae9c6, per request)."""
+    """A grid read asks about one table: no static model's rows and no ledger's (총괄 ad38ae9c6, per request) - its own
+    declared ones, its page order among them (총괄 11-06 ㄷ)."""
     from sqlalchemy import create_engine
 
     entry = dict(ENTRY, indexes=[{"columns": ["k"], "search": True}])
     states = models.index_states(create_engine("sqlite://"), {TABLE: entry}, static=False)
-    assert [(row["source"], row["name"]) for row in states["declared"]] == [("table", "idx_grid_read_probe_k_search")]
+    assert [(row["source"], row["name"]) for row in states["declared"]] == [
+        ("table", "idx_grid_read_probe_k_search"), ("table", "idx_grid_read_probe_updated")]
 
 
 @pytest.mark.pg

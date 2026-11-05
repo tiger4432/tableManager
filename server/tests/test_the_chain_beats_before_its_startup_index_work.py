@@ -102,8 +102,7 @@ async def _nothing(*_a, **_k):
 
 #: Every index build and ANALYZE the chain worker's start once ran - the scheduler's line now (소유자 10-15).
 MOVED = ("_ensure_declared_indexes_sync", "_ensure_business_key_unique_indexes_sync",
-         "_ensure_alignment_decision_key_indexes_sync", "_ensure_human_claims_index_sync",
-         "_ensure_dynamic_table_indexes_sync", "_analyze_stale_tables_sync")
+         "_ensure_human_claims_index_sync", "_analyze_stale_tables_sync")
 
 
 def test_the_chain_start_builds_no_index_and_runs_no_analyze_and_ticks(monkeypatch):

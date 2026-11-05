@@ -250,8 +250,13 @@ def test_the_route_shows_each_declared_index_beside_the_database(scratch):
 
     assert answer.status_code == 200, answer.text
     said = answer.json()
-    by_name = {row["name"]: row for row in said["declared"] if row["source"] != "ledger"}
+    by_name = {row["name"]: row for row in said["declared"] if row["source"] == "model"}
     assert len(by_name) == len(models.declared_indexes())
+    from database import crud
+
+    dynamic = {"idx_%s_updated" % table for table, entry in crud.TABLE_CONFIG.items() if entry.get("kind") != "view"}
+    page_order = {row["name"] for row in said["declared"] if row["purpose"] == "page order"}
+    assert page_order == dynamic, "each dynamic table's page order is a declared row (총괄 11-06 ㄷ)"
     assert {name: by_name[name]["state"] for name in (DROPPED, BROKEN, "idx_audit_row_history")} == {
         DROPPED: "missing", BROKEN: "invalid", "idx_audit_row_history": "present"}
     present = by_name["idx_audit_row_history"]
@@ -407,7 +412,7 @@ def test_the_ledger_catalogue_reads_a_table_index_written_without_unique(tmp_pat
 @pytest.fixture(name="probe")
 def fixture_probe(pg_engine):
     """A table with duplicated codes and the owner's hand-made index on dt_wafer_id, in pg_engine's schema."""
-    _ddl(pg_engine, "CREATE TABLE %s (row_id text PRIMARY KEY, lot text, code text, dt_wafer_id text)" % PROBE,
+    _ddl(pg_engine, "CREATE TABLE %s (row_id text PRIMARY KEY, lot text, code text, dt_wafer_id text, updated_at timestamp)" % PROBE,
          "INSERT INTO %s VALUES ('1', 'L1', 'A', 'W1'), ('2', 'L1', 'A', 'W2')" % PROBE,
          'CREATE INDEX "idx_%s_dt_wafer_id" ON %s (dt_wafer_id)' % (PROBE, PROBE))
     yield pg_engine
@@ -420,7 +425,8 @@ def test_the_index_work_builds_a_table_index_keeps_a_hand_made_one_and_says_why_
     done = models.ensure_model_indexes(probe, say=said.append, tables=PROBE_TABLES)
 
     lot, wafer, code = ("idx_%s_%s" % (PROBE, column) for column in ("lot", "dt_wafer_id", "code"))
-    assert done == {lot: models.INDEX_BUILT, code: models.INDEX_FAILED}, said
+    page_order = "idx_%s_updated" % PROBE                   # a dynamic table's own, a declared row too (총괄 11-06 ㄷ)
+    assert done == {lot: models.INDEX_BUILT, code: models.INDEX_FAILED, page_order: models.INDEX_BUILT}, said
     owed = [line for line in said if "lacks or holds invalid" in line]
     assert len(owed) == 1 and "%s on %s (missing)" % (lot, PROBE) in owed[0] and wafer not in owed[0]
     states = {row["name"]: row for row in models.index_states(probe, PROBE_TABLES)["declared"]}

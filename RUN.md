@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **맵 키 · 판단 키 · 동적 표(쪽 순서) 인덱스가 /admin/indexes 의 선언 줄로 — 짓는 문 하나** — git pull · 런처 재기동
+>
+> ```
+> 무엇     세 인덱스가 /admin/indexes 의 «declared» 에 table 줄로 뜸 (Purpose: map key · decision key · page order)
+>          짓는 것은 다른 선언 인덱스와 같은 일 하나(스케줄러 기동 · Reload). 동적 표 쪽 순서 인덱스도 이제 Reload 때 지음
+>          판단 키 인덱스는 그 프로세스가 불러 둔 체인 규칙에서 나옴 (Reload 때 갈아 끼움)
+> 바뀐 문장
+>          없어진 줄  «[Chain] built N map-key index(es)» · «map-key indexes are already in place.»
+>                    «[Chain] built N dynamic-table index(es)» · 판단 키 인덱스의 자기 줄
+>          대신      «[Indexes] N declared index(es) the database lacks or holds invalid: <이름> on <표> (missing) …»
+>                    «[Indexes] building <이름> on <표>» · «[Indexes] <이름> built in N s»   (auto_update.log)
+>          부팅 알림의 수에 이 셋이 없을 때 들어감
+>          그리드 검색 · 정렬 상태: 맵 키 · 판단 키 · updated_at 칸이 그 인덱스로 덮이면 «built» 로 읽힘
+> 스위치   ingestion_settings 의 build_missing_indexes 를 false 로 두면 맵 키 · 판단 키 · 동적 표 인덱스도 «이름만 댐»
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "test_on_postgresql_the_line_builds_them
+>          or test_the_route_shows_each_declared_index_beside_the_database"  -> 2 passed
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-06] **원장 파티션 인덱스도 한 곳에서 지음 · 미뤄지면 원장 일꾼이 5 초마다 다시** — git pull · 런처 재기동(원장 일꾼 · 스케줄러)
 >
 > ```

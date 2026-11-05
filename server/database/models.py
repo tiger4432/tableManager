@@ -1841,8 +1841,24 @@ def create_missing_dynamic_tables(engine):
 # 걷어냈으므로 함수와 모델이 같은 커밋에서 사라진다.
 
 
+def _derived_index(table_name, suffix, columns, purpose):
+    """(name, shape) of an index a declaration asks for without naming it (총괄 11-06 ㄷ) - a row of the one comparison
+    (`index_states`, source table) as a table's own "indexes" are; its statement is theirs (`table_index_ddl`)."""
+    return f"idx_{table_name}_{suffix}"[:63], {"columns": list(columns), "unique": False, "search": False,
+                                               "purpose": purpose, "refused": None}
+
+
+def _derived_ddl(table_name, name, shape):
+    return (name, table_index_ddl(dict(shape, name=name, table=table_name))) if name else (None, None)
+
+
 def map_key_index_ddl(table_name, entry):
-    """The index a table's own declaration asks for, or `(None, None)`.
+    """`map_key_index` as (name, its CREATE), or `(None, None)`."""
+    return _derived_ddl(table_name, *map_key_index(table_name, entry))
+
+
+def map_key_index(table_name, entry):
+    """The index a table's own declaration asks for, as (name, shape), or `(None, None)`.
 
     🔴 IT COMES OUT OF THE DECLARATION, SO THERE IS NO OPERATOR FIELD. `map_key_columns` is
     what the map editor narrows on; the index is that list in that order. An installation
@@ -1860,10 +1876,7 @@ def map_key_index_ddl(table_name, entry):
     columns = [str(name) for name in columns if str(name).strip()]
     if not columns:
         return None, None
-    name = f"idx_{table_name}_map_key"[:63]
-    quoted = ", ".join(f'"{column}"' for column in columns)
-    return name, (f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{name}" '
-                  f'ON "{table_name}" ({quoted})')
+    return _derived_index(table_name, "map_key", columns, "map key")
 
 
 #: What `_ensure_one_index` did, as a word rather than a truth value.
@@ -2257,6 +2270,36 @@ def table_index_refusal(table, entry):
     return None
 
 
+def derived_key_indexes(tables=None, rules=None):
+    """-> [(table, name, shape)] the indexes `tables`' declarations ask for without naming them - a table's page order
+    (`page_order_index`), its map key (`map_key_index`) and an alignment rule's decision key on it (`decision_key_index`)
+    - rows of the one comparison beside a table's own "indexes", a name once (총괄 11-06 ㄷ). `tables`: None - this
+    process's `crud.TABLE_CONFIG`; `rules`: None - this process's chain rules as loaded
+    (`ingestion_worker.loaded_chain_rules`: loaded on its first ask, swapped at a Reload)."""
+    if tables is None:
+        from database import crud
+        tables = crud.TABLE_CONFIG
+    if rules is None:
+        from chain import ingestion_worker, rule_shape
+        rules = [rule for rule in ingestion_worker.loaded_chain_rules() if not rule_shape.is_switched_off(rule)]
+    out, seen = [], set()
+
+    def keep(table, name, shape):
+        if name and name not in seen:
+            seen.add(name)
+            out.append((table, name, shape))
+    for table, entry in sorted((tables or {}).items()):
+        if isinstance(entry, dict):
+            keep(table, *page_order_index(table, entry))
+            keep(table, *map_key_index(table, entry))
+    for rule in rules or ():
+        params = rule.get("params") or {}
+        table = decision_key_table(params)
+        if table in (tables or {}):
+            keep(table, *decision_key_index(params, tables[table]))
+    return out
+
+
 def table_declared_indexes(tables=None):
     """-> [(table, name, {"columns", "unique", "search", "purpose"})] - every table's "indexes" in table_config.json
     (`tables`; None: this process's `crud.TABLE_CONFIG`). A view's are left out - the save refuses them."""
@@ -2396,7 +2439,7 @@ def index_states(engine, tables=None, static=True):
                       using="gin" if shape["search"] else None, search=shape["search"],
                       unique=shape["unique"], constraint=False, purpose=shape["purpose"], serves=None,
                       source="table", refused=shape["refused"], **unread)
-                 for table, name, shape in table_declared_indexes(tables)]
+                 for table, name, shape in table_declared_indexes(tables) + derived_key_indexes(tables)]
     if engine.dialect.name != "postgresql":
         return {"declared": declared, "outside": []}
     ledger = _ledger_index_rows(engine) if static else []
@@ -2759,6 +2802,11 @@ def decision_key_table(rule):
 
 
 def alignment_decision_key_index_ddl(rule, entry):
+    """`decision_key_index` as (name, its CREATE), or `(None, None)`."""
+    return _derived_ddl(decision_key_table(rule), *decision_key_index(rule, entry))
+
+
+def decision_key_index(rule, entry):
     """The index an alignment rule's per-job id query asks for, or `(None, None)`.
 
     🔴 MEASURED, NOT GUESSED (S-94, 판정 237). Every alignment view build runs one
@@ -2786,14 +2834,17 @@ def alignment_decision_key_index_ddl(rule, entry):
     columns = [str(name) for name in chain_bindings.key_source(rule or {}) if str(name).strip()]
     if not table_name or not columns:
         return None, None
-    name = f"idx_{table_name}_decision_key"[:63]
-    quoted = ", ".join(f'"{column}"' for column in columns)
-    return name, (f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{name}" '
-                  f'ON "{table_name}" ({quoted})')
+    return _derived_index(table_name, "decision_key", columns, "decision key")
 
 
 def dynamic_table_index_ddls(table_name: str, entry) -> list:
-    """The indexes the dynamic-table model declares, as `(name, CREATE)` pairs (S-124).
+    """`page_order_index` as `(name, CREATE)` pairs."""
+    name, shape = page_order_index(table_name, entry)
+    return [_derived_ddl(str(table_name).strip(), name, shape)] if name else []
+
+
+def page_order_index(table_name: str, entry):
+    """The index the dynamic-table model declares, as (name, shape), or `(None, None)` (S-124).
 
     🔴 DECLARED IS NOT BUILT ON A TABLE THAT ALREADY EXISTS. `create_all` adds indexes only
     while it is creating the table, so a relation made before either of these was declared
@@ -2808,118 +2859,11 @@ def dynamic_table_index_ddls(table_name: str, entry) -> list:
     ⚠️ A VIEW GETS NOTHING, the same refusal the neighbours make and for the same reason.
     """
     if (entry or {}).get("kind") == "view":
-        return []
+        return None, None
     name = str(table_name or "").strip()
     if not name:
-        return []
-    pair = f"idx_{name}_updated"[:63]
-    return [
-        (pair, f'CREATE INDEX CONCURRENTLY IF NOT EXISTS "{pair}" '
-               f'ON "{name}" ("updated_at", "row_id")'),
-    ]
-
-
-def ensure_dynamic_table_indexes(engine, config=None):
-    """Build every dynamic table's declared indexes that are missing. Returns the names.
-
-    Beside `ensure_map_key_indexes` and `ensure_alignment_decision_key_indexes`, for the
-    same reasons: CONCURRENTLY, outside a transaction, at boot, never in a request, and a
-    failure on one table must not stop the others.
-    """
-    from database import crud as _catalog_owner
-
-    # ⚠️ THE CATALOGUE IS RESOLVED, NOT ASSUMED, and this is the second time the bare name
-    # was written here: `models` has no module-level `TABLE_CONFIG`, so the fallback that
-    # every RELOAD path avoids by passing one is exactly the path a BOOT takes - it died
-    # with `NameError` on its first run, the same way the decision-key ensure did.
-    catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
-    created = []
-    for table_name, entry in sorted((catalog or {}).items()):
-        for name, statement in dynamic_table_index_ddls(table_name, entry):
-            if _ensure_one_index(engine, name, statement,
-                                 "dynamic-table", table=table_name) == INDEX_BUILT:
-                created.append(name)
-    return created
-
-
-def ensure_alignment_decision_key_indexes(engine, config=None, rules=None, say=print):
-    """Create the decision-key index of every alignment rule. Returns the names made.
-
-    Beside `ensure_map_key_indexes` and for the same reasons: CONCURRENTLY, outside a
-    transaction, at boot and at config reload, never in a request. Failures are isolated
-    and reported - a box that cannot build one index must still serve.
-    """
-    # 🔴 `crud.TABLE_CONFIG` IS THE SINGLETON, and this module has no name of
-    # its own for it. The bare `TABLE_CONFIG` here raised `NameError` the first time a
-    # caller left `config` out - which nobody had, because the reload path always
-    # passes one. A fallback nothing reaches is a fallback nothing checks
-    # [[a-guard-goes-wrong-the-day-it-becomes-reachable]].
-    from database import crud as _catalog_owner
-
-    catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
-    if rules is None:
-        try:
-            from chain import enrichment
-            from database import crud as _crud
-
-            from chain import enrich_declarations
-
-            rules = enrich_declarations.declarations(
-                known_tables=_crud.TABLE_CONFIG)
-        except Exception as err:                       # noqa: BLE001
-            say(f"[Schema Sync] alignment rules unreadable, no decision-key index: {told(err)}")
-            return []
-    created = []
-    for rule in rules or []:
-        name, statement = alignment_decision_key_index_ddl(
-            rule, (catalog or {}).get(str((rule or {}).get("source_table") or "")))
-        if not statement:
-            continue
-        # 🔴 ONE INDEX IS ONE INDEX, HOWEVER MANY RULES ASK FOR IT. Two rules over the same
-        # table with the same decision key name the same index, and the first boot said
-        # "built 3" where the catalogue held 2 - a count that is not the number of things
-        # that exist. Skipped rather than deduplicated at the end, because the second pass
-        # would also issue a CONCURRENTLY build for an index just made.
-        if name in created:
-            continue
-        if _ensure_one_index(engine, name, statement, "decision-key", say=say,
-                             table=decision_key_table(rule)) == INDEX_BUILT:
-            created.append(name)
-    return created
-
-
-def ensure_map_key_indexes(engine, config=None, say=print):
-    """Create the map-key index of every table that declares one. Returns the names made.
-
-    ⚠️ CONCURRENTLY, AND THEREFORE OUTSIDE A TRANSACTION. A plain CREATE INDEX takes a lock
-    that blocks writers for as long as it runs, and on a production-sized map table that is
-    the outage this was meant to prevent. `CONCURRENTLY` cannot run inside a transaction
-    block, so this opens its own AUTOCOMMIT connection.
-
-    ⚠️ AND OUTSIDE THE REQUEST PATH. It belongs beside `create_missing_dynamic_tables`, at
-    boot and at config reload -- never in the route that noticed the index was missing.
-
-    Failures are isolated per table and reported, never raised: a box that cannot build one
-    index must still serve, and `IF NOT EXISTS` makes every later run a no-op.
-    """
-    from sqlalchemy import text as _text
-
-    # 🔴 `crud.TABLE_CONFIG` IS THE SINGLETON, and this module has no name of
-    # its own for it. The bare `TABLE_CONFIG` here raised `NameError` the first time a
-    # caller left `config` out - which nobody had, because the reload path always
-    # passes one. A fallback nothing reaches is a fallback nothing checks
-    # [[a-guard-goes-wrong-the-day-it-becomes-reachable]].
-    from database import crud as _catalog_owner
-
-    catalog = config if config is not None else _catalog_owner.TABLE_CONFIG
-    created = []
-    for table_name, entry in list((catalog or {}).items()):
-        name, statement = map_key_index_ddl(table_name, entry)
-        if not statement:
-            continue
-        if _ensure_one_index(engine, name, statement, "map-key", say=say, table=table_name) == INDEX_BUILT:
-            created.append(name)
-    return created
+        return None, None
+    return _derived_index(name, "updated", ["updated_at", "row_id"], "page order")
 
 
 def ensure_ingestion_checkpoint_table(engine):

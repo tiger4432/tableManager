@@ -43,39 +43,25 @@ def test_a_view_is_asked_for_nothing():
     assert models.dynamic_table_index_ddls("", {}) == []
 
 
-def test_the_count_is_what_was_built_and_not_what_was_attempted():
-    """🔴 THE LINE THIS FIXES SAID `built 68` ON EVERY BOOT (caught by this round's own
-    gate). `IF NOT EXISTS` succeeds loudly on an index that is already there, so a builder
-    reporting "the statement ran" made a second boot announce sixty-eight fresh indexes and
-    issue sixty-eight pointless CONCURRENTLY builds. A line that reads the same whether or
-    not anything happened is the log equivalent of no line at all."""
-    attempted = []
+def test_the_page_order_index_is_a_row_of_the_one_comparison_built_with_its_own_statement():
+    """총괄 11-06 ㄷ: a dynamic table's page-order index is a declared row of `index_states` (source table) - named
+    when missing and built by the one door (`ensure_model_indexes`) with the statement it always had; a view gets
+    none."""
+    from sqlalchemy import create_engine
 
-    def _fake(engine, name, statement, what, **_kw):
-        attempted.append(name)
-        # 🔴 THREE STATES, NOT A TRUTH VALUE, and the log proved twice in one day why:
-        # `True` meaning "the statement ran" announced sixty-eight indexes nobody built,
-        # and `False` meaning "already there" made a caller print COULD NOT BE ENSURED
-        # about an index that exists. Both false, in opposite directions, from one bit.
-        return (models.INDEX_BUILT if name == "idx_t_updated"
-                else models.INDEX_PRESENT)
-
-    original = models._ensure_one_index
-    models._ensure_one_index = _fake
-    try:
-        created = models.ensure_dynamic_table_indexes(
-            object(), config={"t": {}, "u": {}, "v": {"kind": "view"}})
-    finally:
-        models._ensure_one_index = original
-
-    assert created == ["idx_t_updated"]
-    assert attempted == ["idx_t_updated", "idx_u_updated"], attempted
+    tables = {"t": {}, "u": {}, "v": {"kind": "view"}}
+    rows = [row for row in models.index_states(create_engine("sqlite://"), tables, static=False)["declared"]
+            if row["purpose"] == "page order"]
+    assert [(row["table"], row["name"], row["source"]) for row in rows] == [
+        ("t", "idx_t_updated", "table"), ("u", "idx_u_updated", "table")]
+    assert [models.table_index_ddl(row) for row in rows] == [
+        statement for table in ("t", "u") for _name, statement in models.dynamic_table_index_ddls(table, {})]
 
 
 def test_every_caller_of_the_builder_speaks_the_same_three_words():
-    """⛔ FOUR CALLERS, ONE VOCABULARY. The states exist because a boolean had two things
-    to say and one bit to say them with; a caller left reading it as a truth value is the
-    regression that shipped a `COULD NOT BE ENSURED` line about an index that exists."""
+    """⛔ ONE VOCABULARY. The states exist because a boolean had two things to say and one bit to say them with; a
+    caller left reading it as a truth value is the regression that shipped a `COULD NOT BE ENSURED` line about an index
+    that exists."""
     import inspect
 
     from chain import ingestion_worker as worker
@@ -86,35 +72,19 @@ def test_every_caller_of_the_builder_speaks_the_same_three_words():
     body = inspect.getsource(worker._ensure_human_claims_index_sync)
     assert "models.INDEX_BUILT" in body and "models.INDEX_PRESENT" in body, body[:400]
 
-    for name in ("ensure_dynamic_table_indexes", "ensure_alignment_decision_key_indexes",
-                 "ensure_map_key_indexes"):
-        source = inspect.getsource(getattr(models, name))
-        assert "== INDEX_BUILT" in source, (name, source[:400])
 
-
-def test_the_ensure_survives_a_database_that_refuses():
-    """A boot that dies on an index build is a worse outage than a missing index."""
-    class _Refuses:
-        def connect(self):
-            raise RuntimeError("no database here")
-
-    assert models.ensure_dynamic_table_indexes(_Refuses(), config={"t": {}}) == []
-
-
-def test_the_boot_sequence_calls_it():
-    """🔴 착지는 배선이 아니다 — the check every ensure in this file needed, for the reason
-    the decision-key one proved: wired only into a config reload, a restarted deployment
-    comes up without the index and nothing says so."""
+def test_the_boot_and_every_reload_build_the_declared_rows():
+    """🔴 착지는 배선이 아니다: the declared rows (a table's page order among them) are built by the line's declared
+    work - its start and every Reload - through the one door; the chain worker builds none."""
     import inspect
 
     from chain import ingestion_worker as worker
 
     from runtime import maintenance_line
 
-    body = inspect.getsource(maintenance_line._start_work)
-    assert "_ensure_dynamic_table_indexes_sync" in body, body[:400]
-    assert "_ensure_dynamic_table_indexes_sync" not in inspect.getsource(worker.start_chain_ingestion_worker)
-    assert hasattr(worker, "_ensure_dynamic_table_indexes_sync")
+    assert "ensure_model_indexes_sync" in inspect.getsource(maintenance_line._declared_work)
+    assert "_declared_work(db_session_factory)" in inspect.getsource(maintenance_line._start_work)
+    assert "ensure_model_indexes" not in inspect.getsource(worker.start_chain_ingestion_worker)
 
 
 # ── the statistics a load leaves behind ──────────────────────────────────────

@@ -69,90 +69,31 @@ def test_the_map_key_builder_still_says_what_it_said():
                                    "map_key_columns": ["k"]}) == (None, None)
 
 
-def test_the_boot_sequence_calls_the_ensure_and_not_only_the_reload_path():
-    """🔴 착지는 배선이 아니다 — AND THIS FILE'S OWN CHANGE PROVED IT ONE COMMIT LATER.
-
-    The builder was wired into `create_missing_dynamic_tables`, which runs on a CONFIG
-    RELOAD. A deployment that restarts never passes through it, so it would come up with
-    the index still missing and every alignment view build still scanning its source. The
-    seat that runs at boot is the chain worker's ensure sequence, beside the business-key
-    unique index (판정 189).
-
-    ⚠️ ASSERTED ON THE SOURCE OF THE STARTER, because the alternative is booting a worker
-    in a test - and what can go wrong here is a call being deleted, which the text sees.
-    """
+def test_the_declared_rows_are_built_at_the_start_and_every_reload_by_the_one_door():
+    """🔴 착지는 배선이 아니다. The map key, the decision key and the page order are rows of the one comparison
+    (`derived_key_indexes`, 총괄 11-06 ㄷ) and the line's declared work - its start and every Reload - builds what is
+    owed through `ensure_model_indexes`; nothing else builds them."""
     import inspect
 
-    from chain import ingestion_worker as worker
-
+    from database import models
     from runtime import maintenance_line
 
-    body = inspect.getsource(maintenance_line._declared_work)      # its start and every Reload
-    assert "_ensure_alignment_decision_key_indexes_sync" in body, body[:400]
-    assert "_ensure_map_key_indexes_sync" in body, body[:400]
-    assert hasattr(worker, "_ensure_alignment_decision_key_indexes_sync")
+    body = inspect.getsource(maintenance_line._declared_work)
+    assert "ensure_model_indexes_sync" in body, body[:400]
+    assert "derived_key_indexes(tables)" in inspect.getsource(models.index_states)
 
 
-def test_the_ensure_runs_with_no_config_because_boot_calls_it_that_way():
-    """🔴 THE FALLBACK NOBODY HAD REACHED. Both ensures read a bare `TABLE_CONFIG` when a
-    caller left `config` out, and this module has no such name - the reload path always
-    passes one, so it had never been evaluated. The boot wiring reached it on its first
-    run and the ensure died with `NameError`, saying so in the log.
-
-    Asserted by CALLING it the way boot does, with a database double that answers nothing:
-    what is being proved is that the function gets as far as asking the engine, not what
-    the engine says.
-    """
+def test_two_rules_over_one_table_ask_for_one_index():
+    """🔴 A COUNT THAT IS NOT THE NUMBER OF THINGS THAT EXIST (깔끔 ①): two alignment rules over the same table and key
+    name one index - one row; a rule over a table the catalogue does not hold names none."""
     from database import models
 
-    class _Refuses:
-        def connect(self):
-            raise RuntimeError("no database here")
-
-    # Rules are supplied so the call does not read the box's own declaration.
-    created = models.ensure_alignment_decision_key_indexes(
-        _Refuses(), config={"t": {"kind": "table"}},
-        rules=[{"alignment": True, "source_table": "t", "decision_key": ["a"]}])
-    assert created == [], "a database that refuses builds nothing, and does not raise"
-
-    # And with no config at all - the shape boot uses - it must still resolve a catalogue.
-    assert models.ensure_alignment_decision_key_indexes(_Refuses(), rules=[]) == []
-
-
-def test_two_rules_over_one_table_ask_for_one_index_and_the_count_says_one():
-    """🔴 A COUNT THAT IS NOT THE NUMBER OF THINGS THAT EXIST (깔끔 ①). The first boot
-    logged "built 3" where the catalogue held 2: three alignment rules, two of them over
-    the same table with the same decision key, so two of the three name one index.
-
-    ⛔ SKIPPED, NOT DEDUPLICATED AT THE END, because the second pass would also issue a
-    CONCURRENTLY build for an index the first pass just made."""
-    from database import models
-
-    built = []
-
-    class _Engine:
-        pass
-
-    def _fake(engine, name, statement, what, say=print, **_kw):
-        built.append(name)
-        # The builder answers with a WORD now, because a boolean had two things to say -
-        # "the statement ran" and "it was already there" - and each of them shipped a
-        # false log line on the day it was the one the caller assumed.
-        return models.INDEX_BUILT
-
-    original = models._ensure_one_index
-    models._ensure_one_index = _fake
-    try:
-        created = models.ensure_alignment_decision_key_indexes(
-            _Engine(), config={"t": {"kind": "table"}},
-            rules=[{"alignment": True, "source_table": "t", "decision_key": ["a"]},
-                   {"alignment": True, "source_table": "t", "decision_key": ["a"]},
-                   {"alignment": True, "source_table": "u", "decision_key": ["a"]}])
-    finally:
-        models._ensure_one_index = original
-
-    assert created == ["idx_t_decision_key", "idx_u_decision_key"]
-    assert built == created, "the duplicate must not even be attempted"
+    rules = [{"params": {"alignment": True, "source_table": "t", "decision_key": ["a"]}},
+             {"params": {"alignment": True, "source_table": "t", "decision_key": ["a"]}},
+             {"params": {"alignment": True, "source_table": "u", "decision_key": ["a"]}}]
+    rows = models.derived_key_indexes({"t": {"kind": "table"}}, rules=rules)
+    assert [(table, name) for table, name, shape in rows if shape["purpose"] == "decision key"] == [
+        ("t", "idx_t_decision_key")]
 
 
 def test_every_caller_of_the_one_builder_hands_it_the_table_its_statement_builds_on(monkeypatch):
@@ -186,10 +127,12 @@ def test_every_caller_of_the_one_builder_hands_it_the_table_its_statement_builds
             pass
 
     monkeypatch.setattr(models, "_ensure_one_index", record)
-    models.ensure_dynamic_table_indexes(None, config={"t_dyn": {"kind": "table"}})
-    models.ensure_alignment_decision_key_indexes(None, config={"t_dec": {"kind": "table"}}, rules=[
-        {"alignment": True, "source_table": " t_dec ", "decision_key": ["a"]}])    # spaced: one name for both
-    models.ensure_map_key_indexes(None, config={"t_map": {"kind": "table", "map_key_columns": ["x"]}})
+    for table, name, shape in models.derived_key_indexes(       # the declared rows - built as every declared one is
+            {"t_dyn": {"kind": "table"}, "t_dec": {"kind": "table"},
+             "t_map": {"kind": "table", "map_key_columns": ["x"]}},
+            rules=[{"params": {"alignment": True, "source_table": " t_dec ", "decision_key": ["a"]}}]):  # spaced
+        row = dict(shape, name=name, table=table)
+        models._build_one(None, models.table_index_ddl(row), row, lambda line: None, None)
     with contextlib.suppress(Exception):                    # what it says after the build is not this test's
         worker._ensure_human_claims_index_sync(lambda: Db())
     worker._build_unique_index_waiting(None, uq, "t_bk", "uq_bk_t_bk")
@@ -197,6 +140,7 @@ def test_every_caller_of_the_one_builder_hands_it_the_table_its_statement_builds
     models._build_one(None, 'CREATE INDEX CONCURRENTLY IF NOT EXISTS "n_decl" ON "t_decl" ("a")',
                       {"name": "n_decl", "table": "t_decl"}, lambda line: None, None)    # declared · automatic
 
-    assert {what for what, _t, _on in handed} == {"dynamic-table", "decision-key", "map-key", "human-claims",
-                                                  "business-key unique", "join unique", "declared"}, handed
+    assert {what for what, _t, _on in handed} == {"human-claims", "business-key unique", "join unique",
+                                                  "declared"}, handed
+    assert {on for what, _t, on in handed if what == "declared"} >= {"t_dyn", "t_dec", "t_map"}, handed
     assert [(what, table, on) for what, table, on in handed if table != on] == [], handed
