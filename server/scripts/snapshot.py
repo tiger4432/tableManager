@@ -70,12 +70,14 @@ def left_out(names_of=None):
 
 def _ledger_sources():
     """The ledger's declared source ids - each one translated again after a restore."""
+    from error_said import told
     from ledger.setup import load_setup
 
     try:
         return list(load_setup().source_ids)
     except Exception as exc:                                            # noqa: BLE001 - said in the list instead
-        return ["<the ledger declaration did not load: %s - list its sources by GET /api/ledger/declaration>" % exc]
+        return ["<the ledger declaration did not load: %s - list its sources by GET /api/ledger/declaration>"
+                % told(exc)]
 
 
 def _pg(url):

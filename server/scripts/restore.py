@@ -115,7 +115,7 @@ def main(argv=None):
             with urllib.request.urlopen("http://127.0.0.1:%d/health" % args.api_port, timeout=2) as r:
                 said["health"] = r.status
                 break
-        except Exception:                                               # noqa: BLE001 - not up yet
+        except OSError:                                                 # refused · timed out · URLError: not up yet
             time.sleep(2)
     print("[restore] app pid %d · /health %s" % (app.pid, said.get("health", "not answering after 240 s")))
     return said
