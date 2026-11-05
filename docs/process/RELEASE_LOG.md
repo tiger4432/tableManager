@@ -717,7 +717,7 @@
 ## 2026-11-05 · 그리드 열 너비는 첫 쪽에 맞춰 한 번, 열 숨기기와 «N hidden», 감사 표의 표 이름
 
 - **열 너비** — 전에는 옆 판을 끌 때마다 모든 열을 그리드 폭에 맞춰 늘이고 줄였습니다. 이제 표를 열 때와 Pivot 을 켜고 끌 때 한 번, 첫 쪽의 값 중 가장 긴 것과 머리 이름에 맞추고(긴 값은 `--grid-column-max` 360 px 에서 멈춤, 이름은 안 잘림), 그 뒤로는 옆 판 · 창 크기 · 다시 읽기 · 쪽 넘김에 바뀌지 않습니다. 손으로 끈 너비도 그대로입니다.
-- **열 숨기기** — 칸 머리 우클릭 창(수식 창)에 «Hide column». 숨긴 열은 필터 칩 줄의 «N hidden ▾» 가 세고, 누르면 열마다 Show 와 Show all. Columns 목록과 같은 함수를 지나서 어느 쪽에서 숨겨도 같은 수입니다. 피벗이 숨겨 들고 있는 항목 칸은 세지 않습니다.
+- **열 숨기기** — 칸 머리 우클릭 창(수식 창)에 «Hide column». 숨긴 열은 필터 칩 줄의 «N hidden ▾» 가 세고, 누르면 열마다 Show 와 Show all. Columns 목록과 같은 함수를 지나서 어느 쪽에서 숨겨도 같은 수입니다. 피벗이 숨겨 들고 있는 항목 칸은 세지 않습니다. 수식이 안 서는 칸(피벗의 항목 칸 · 시스템 칸)은 같은 우클릭 창이 «Hide column» 만 담아 열립니다(총괄 11-06). 0 이면 칩에 글자도 남지 않습니다.
 - **감사 표의 Table 칸** — 표 이름이 글자 사이에서 잘리던 것을, «_» «.» 뒤(와 빈칸)에서만 줄을 바꾸고 칸은 가장 긴 조각만큼으로.
 - **필요한 조건** — git pull · 화면 새로 고침. 서버 무변경.
 - **자세히** — `client2/src/grid.js` 의 `fitColumnWidths` · `columnFitWidth` · `setColumnsHidden`, `hidden_columns.js` 의 `HiddenColumns`, `cell_fit.js` 의 `widestCell`(대기열 표 `_fitColumns` 와 같은 함수), `timeline.js` 의 `fitAuditTable`. 시험 `grid_columns_harness`, 화면 검사기 «values whole» · «column widths kept» · «hidden said» · «hidden listed» · «hidden shown» · «table names whole».
