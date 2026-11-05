@@ -144,3 +144,18 @@ def test_every_caller_of_the_one_builder_hands_it_the_table_its_statement_builds
                                                   "declared"}, handed
     assert {on for what, _t, on in handed if what == "declared"} >= {"t_dyn", "t_dec", "t_map"}, handed
     assert [(what, table, on) for what, table, on in handed if table != on] == [], handed
+
+
+def test_a_switched_off_rule_asks_for_no_decision_key_index(monkeypatch):
+    """A rule written `enabled: false` stands no index (판정 399 - the one off switch): the process's loaded rules are
+    read through `rule_shape.is_switched_off`, so an alignment rule switched off names nothing on the comparison and
+    nothing is built for it (C 11-06: dropping that filter survived)."""
+    from chain import ingestion_worker
+    from database import models
+
+    rules = [{"name": "on", "params": {"alignment": True, "source_table": "t_on", "decision_key": ["a"]}},
+             {"name": "off", "enabled": False,
+              "params": {"alignment": True, "source_table": "t_off", "decision_key": ["a"]}}]
+    monkeypatch.setattr(ingestion_worker, "loaded_chain_rules", lambda: rules)
+    rows = models.derived_key_indexes({"t_on": {"kind": "table"}, "t_off": {"kind": "table"}})
+    assert [name for _table, name, shape in rows if shape["purpose"] == "decision key"] == ["idx_t_on_decision_key"]
