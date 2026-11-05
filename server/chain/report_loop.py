@@ -132,6 +132,19 @@ def step_line(rule, wafer, s, cap):
         said.splitlines()[0] if said else "", s.get("seconds") or 0)
 
 
+#: How many of the wafers waiting behind the one building are named on the claim - the rest only counted
+#: (`queued_more`): the claim is rewritten each step and /health reads it every 2 s (C 11-05: 13.7 KB a 1,000-row batch
+#: when every waiting wafer's row ids rode it).
+QUEUED_SHOWN = 200
+
+
+def _key_of(row, keys):
+    """{key column: the row's own value} - as the grid's read carries it, so a screen finds the row by it (a number a
+    number, a text a text; anything else as its text)."""
+    return {column: value if value is None or isinstance(value, (str, int, float, bool)) else str(value)
+            for column, value in ((c, getattr(row, c)) for c in keys)}
+
+
 def _tell(live):
     """The report building now on this thread's chain group claim (`heartbeat.note_work`, written at once) - /health's
     chain state says it (`runtime.running.work_facts`); None: none. A copy each time, or the claim holds the same
@@ -142,7 +155,7 @@ def _tell(live):
         heartbeat.note_work(report=None if live is None else dict(live, steps=list(live.get("steps") or ())))
     except Exception as exc:                                    # noqa: BLE001
         logger.warning("[Report] the report's progress was not put on its group's beat - /health does not show it: "
-                       "%s: %s", type(exc).__name__, exc)
+                       "%s", told(exc))
 
 
 def _doing(live, what, step=None):
@@ -702,11 +715,12 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     keys = report_shape.report_key(spec, rule.get("trigger_table"))
     written = report_shape.result_cells(spec)                 # the file's column, then each named text's
     comment = ask_rule.comment_column(spec)                   # a person's comment on the wafer's row (owner 10-29)
-    by_wafer, comments = {}, {}
+    by_wafer, comments, key_of = {}, {}, {}
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
         wafer = report_reads._parts(getattr(row, c) for c in keys)
         if not all(crud.is_blank_value(part) for part in wafer):
             by_wafer.setdefault(wafer, []).append(row.row_id)
+            key_of.setdefault(wafer, _key_of(row, keys))
             said = getattr(row, comment, None) if comment else None
             if not crud.is_blank_value(said):
                 comments.setdefault(wafer, {})[str(said).strip()] = None
@@ -714,9 +728,12 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     wafers = sorted(by_wafer.items(), key=lambda pair: report_reads.label(pair[0]))
     try:
         for n, (wafer, rows) in enumerate(wafers):
+            waiting = wafers[n + 1:]
             updates += _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, clock, live={
-                "rule": name, "table": rule.get("trigger_table"), "wafer": report_reads.label(wafer), "rows": rows,
-                "queued": [{"wafer": report_reads.label(w), "rows": r} for w, r in wafers[n + 1:]],
+                "rule": name, "table": rule.get("trigger_table"), "wafer": report_reads.label(wafer), "keys": keys,
+                "wafer_key": key_of[wafer],
+                "queued": [key_of[w] for w, _r in waiting[:QUEUED_SHOWN]],
+                "queued_more": max(0, len(waiting) - QUEUED_SHOWN),
                 "started": time.time(), "step": None, "doing": None})
     finally:
         _tell(None)                                             # the batch is over: no report building

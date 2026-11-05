@@ -39,8 +39,9 @@ def _on_file():
 
 
 def _live(wafer="L1/W1", queued=()):
-    return {"rule": "rc_eval", "table": "eval_report", "wafer": wafer, "rows": ["r-" + wafer],
-            "queued": list(queued), "started": time.time(), "step": None, "doing": None}
+    return {"rule": "rc_eval", "table": "eval_report", "wafer": wafer, "keys": ["lot", "wafer"],
+            "wafer_key": {"lot": wafer.split("/")[0], "wafer": wafer.split("/")[1]},
+            "queued": list(queued), "queued_more": 0, "started": time.time(), "step": None, "doing": None}
 
 
 #: The call as the steps spell it (`report_loop._said`).
@@ -82,8 +83,8 @@ def test_each_step_is_on_the_claim_as_it_moves_and_its_line_logged_as_it_ends(cl
 
     first, second, write = model.seen
     assert (first["step"], first["cap"], first["doing"], first["steps"]) == (1, 4, "asking the model", [])
-    assert (first["seconds_cap"], first["tokens_cap"], first["wafer"], first["rows"]) == (300, 16000, "L1/W1",
-                                                                                           ["r-L1/W1"])
+    assert (first["seconds_cap"], first["tokens_cap"], first["wafer"], first["wafer_key"]) == (
+        300, 16000, "L1/W1", {"lot": "L1", "wafer": "W1"})
     assert report.during["doing"] == "reading " + CALL and report.during["step"] == 1
     assert second["doing"] == "asking the model" and second["step"] == 2
     [one] = second["steps"]
@@ -107,7 +108,7 @@ def test_a_refused_read_is_a_refused_step_on_the_claim(claim):
 
 
 def test_the_chain_state_says_the_report_and_its_seconds_as_of_the_read(claim):
-    live = _live(queued=[{"wafer": "L1/W2", "rows": ["r-L1/W2"]}])
+    live = _live(queued=[{"lot": "L1", "wafer": "W2"}])
     live["started"] = time.time() - 42
     report_loop._doing(live, "asking the model", 3)
     work = heartbeat.read_all()["chain"]["work"]
@@ -115,7 +116,7 @@ def test_the_chain_state_says_the_report_and_its_seconds_as_of_the_read(claim):
     assert said["state"] == event_constants.CHAIN_STATE_RUNNING
     report = said["why"]["report"]
     assert (report["wafer"], report["step"], report["doing"], report["queued"]) == (
-        "L1/W1", 3, "asking the model", [{"wafer": "L1/W2", "rows": ["r-L1/W2"]}])
+        "L1/W1", 3, "asking the model", [{"lot": "L1", "wafer": "W2"}])
     assert 42 <= report["elapsed_seconds"] < 60
     report_loop._tell(None)
     assert event_constants.chain_state_of(False, None, running=running.work_facts(
@@ -165,6 +166,56 @@ def test_answer_queues_the_wafers_after_this_one_and_clears_when_the_batch_is_ov
     report_loop.answer(Db(), {"name": "rc_eval", "trigger_table": "eval_report", "params": {}}, ["a", "b", "c"])
 
     first, second = seen
-    assert (first["wafer"], first["rows"], first["queued"]) == ("L1/W1", ["a"], [{"wafer": "L1/W2", "rows": ["b", "c"]}])
-    assert (second["wafer"], second["rows"], second["queued"]) == ("L1/W2", ["b", "c"], [])
+    assert (first["wafer"], first["keys"], first["wafer_key"], first["queued"], first["queued_more"]) == (
+        "L1/W1", ["lot", "wafer"], {"lot": "L1", "wafer": "W1"}, [{"lot": "L1", "wafer": "W2"}], 0)
+    assert (second["wafer_key"], second["queued"], second["queued_more"]) == ({"lot": "L1", "wafer": "W2"}, [], 0)
+    assert "rows" not in first, "the screen finds the wafer's rows by keys and wafer_key (client 11-05)"
+
+
+def test_the_claim_names_at_most_queued_shown_wafers_and_counts_the_rest(claim, monkeypatch):
+    seen = []
+
+    def run(report, spec, request, ask=None, clock=None, live=None):
+        seen.append(_on_file())
+        return {"state": report_loop.STOPPED, "reason": "test", "steps": [], "texts": {}, "tables": {}}
+
+    rows = {"r%d" % n: ("L1", n) for n in range(4)}
+
+    class Row:
+        def __init__(self, row_id):
+            self.row_id, (self.lot, self.wafer) = row_id, rows[row_id]
+
+    class Query:
+        def filter(self, *_):
+            return self
+
+        def all(self):
+            return [Row(r) for r in rows]
+
+    class Db:
+        def query(self, _model):
+            return Query()
+
+    class Column:
+        def in_(self, _ids):
+            return None
+
+    class Model_:
+        row_id = Column()
+
+    from chain import ask_rule, report_shape
+    from database import models
+
+    monkeypatch.setitem(models.DYNAMIC_TABLES, "eval_report", Model_)
+    monkeypatch.setattr(report_shape, "report_key", lambda spec, table: ["lot", "wafer"])
+    monkeypatch.setattr(report_loop, "_this_wafer", lambda db, spec, wafer: (None, None))
+    monkeypatch.setattr(ask_rule, "memory_lines", lambda *args: [])
+    monkeypatch.setattr(report_loop, "run", run)
+    monkeypatch.setattr(report_loop, "QUEUED_SHOWN", 2)
+    report_loop.answer(Db(), {"name": "rc_eval", "trigger_table": "eval_report", "params": {}}, list(rows))
+
+    assert [(each["queued"], each["queued_more"]) for each in seen] == [
+        ([{"lot": "L1", "wafer": 1}, {"lot": "L1", "wafer": 2}], 1),
+        ([{"lot": "L1", "wafer": 2}, {"lot": "L1", "wafer": 3}], 0),
+        ([{"lot": "L1", "wafer": 3}], 0), ([], 0)], "a number key stays a number - the grid's cell spelling"
     assert _on_file() is None, "the batch is over - no report building"

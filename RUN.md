@@ -33,9 +33,11 @@
 > 볼 줄    chain_worker.log — 단계가 «끝나는 그때» 한 줄씩 (전에는 리포트가 다 끝난 뒤 몰아서)
 >          «[Report] <규칙> wafer <웨이퍼> step 2/8 yield_by(…) - why <모델이 댄 이유> -> <결과 첫 줄> (11.0 s)»
 >          거절이면 «-> refused: …», 모델 읽기가 끝난 뒤의 제품 단계 · 글 쓰기는 «step 9 write - …» (/상한 없음)
-> 볼 곳    브라우저에서 /health 를 열고 리포트가 도는 동안 chain_state.why.report — 웨이퍼 · step · doing · steps
+> 볼 곳    브라우저에서 /health 를 열고 리포트가 도는 동안 chain_state.why.report — 웨이퍼 · step · doing · steps ·
+>          keys(웨이퍼 키 칸 이름) · wafer_key · queued(기다리는 웨이퍼의 키 값만, 200 까지) · queued_more(나머지 수)
+>          비트 파일 5,000 행 묶음(100 웨이퍼)에서 4.0 KB · 한 번 쓰기 4.9 ms 이하 (박스 일회용 디렉터리, 50 번 잼)
 >          묶음이 끝나면 report 가 null
-> 같은 답  server 폴더에서 python -m pytest tests/test_a_report_building_now_is_said_on_its_claim.py  -> 4 passed
+> 같은 답  server 폴더에서 python -m pytest tests/test_a_report_building_now_is_said_on_its_claim.py  -> 5 passed
 > 끄기     없음 — 되돌리기는 이 커밋 revert
 > ```
 >
