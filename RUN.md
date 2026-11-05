@@ -37,7 +37,7 @@
 >          keys(웨이퍼 키 칸 이름) · wafer_key · queued(기다리는 웨이퍼의 키 값만, 200 까지) · queued_more(나머지 수)
 >          비트 파일 5,000 행 묶음(100 웨이퍼)에서 4.0 KB · 한 번 쓰기 4.9 ms 이하 (박스 일회용 디렉터리, 50 번 잼)
 >          묶음이 끝나면 report 가 null
-> 같은 답  server 폴더에서 python -m pytest tests/test_a_report_building_now_is_said_on_its_claim.py  -> 5 passed
+> 같은 답  server 폴더에서 python -m pytest tests/test_a_report_building_now_is_said_on_its_claim.py  -> 6 passed
 > 끄기     없음 — 되돌리기는 이 커밋 revert
 > ```
 >

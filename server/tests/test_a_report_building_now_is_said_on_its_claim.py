@@ -219,3 +219,19 @@ def test_the_claim_names_at_most_queued_shown_wafers_and_counts_the_rest(claim, 
         ([{"lot": "L1", "wafer": 2}, {"lot": "L1", "wafer": 3}], 0),
         ([{"lot": "L1", "wafer": 3}], 0), ([], 0)], "a number key stays a number - the grid's cell spelling"
     assert _on_file() is None, "the batch is over - no report building"
+
+
+def test_a_date_or_decimal_key_rides_the_claim_as_its_text(claim):
+    """A key the beat's JSON cannot carry (a date, a Decimal) goes as its text - else the claim's write fails and only
+    a log line says so (C 11-05: the «else str» survived a mutant)."""
+    import datetime
+    import decimal
+
+    class Row:
+        day, lot = datetime.date(2026, 11, 5), decimal.Decimal("9.50")
+
+    key = report_loop._key_of(Row(), ["day", "lot"])
+    report_loop._tell(dict(_live(), keys=["day", "lot"], wafer_key=key, queued=[key]))
+    on = _on_file()
+    assert on is not None and (on["wafer_key"], on["queued"]) == (
+        {"day": "2026-11-05", "lot": "9.50"}, [{"day": "2026-11-05", "lot": "9.50"}])
