@@ -122,6 +122,56 @@ class Budget:
             self.ratio = counted / reckoned
 
 
+def step_line(rule, wafer, s, cap):
+    """A step's one sentence - the chain log's line the moment the step ends (lead 11-05): its read and why, then the
+    first line of what it read or why it was refused, and its seconds. `cap`: the step cap while the model reads, None
+    for the product's steps after it."""
+    said = ("refused: " + s["refused"]) if s.get("refused") else (s.get("summary") or "")
+    return "[Report] %s wafer %s step %s %s - why %s -> %s (%.1f s)" % (
+        rule, wafer, ("%d/%d" % (s["step"], cap)) if cap else s["step"], s["call"], s.get("why") or "-",
+        said.splitlines()[0] if said else "", s.get("seconds") or 0)
+
+
+def _tell(live):
+    """The report building now on this thread's chain group claim (`heartbeat.note_work`, written at once) - /health's
+    chain state says it (`runtime.running.work_facts`); None: none. A copy each time, or the claim holds the same
+    dict and sees no change. Never raises - the report goes on unseen."""
+    from utils import heartbeat
+
+    try:
+        heartbeat.note_work(report=None if live is None else dict(live, steps=list(live.get("steps") or ())))
+    except Exception as exc:                                    # noqa: BLE001
+        logger.warning("[Report] the report's progress was not put on its group's beat - /health does not show it: "
+                       "%s: %s", type(exc).__name__, exc)
+
+
+def _doing(live, what, step=None):
+    """The report is now `what` (asking the model, reading a call, writing) - said on the claim."""
+    if live is not None:
+        live.update(doing=what, **({} if step is None else {"step": step}))
+        _tell(live)
+
+
+class _Steps(list):
+    """A report's steps - each one appended (the model's reads, the product's, the write call) is logged as it ends and
+    said on the claim (`step_line`, `_tell`): every step seat appends here, so none is missed. `cap`: the step cap
+    while the model reads, None after."""
+
+    def __init__(self, live, cap):
+        super().__init__()
+        self.live, self.cap = live, cap
+
+    def append(self, s):
+        super().append(s)
+        said = ("refused: " + s["refused"]) if s.get("refused") else (s.get("summary") or "")
+        self.live["steps"] = self.live.get("steps", []) + [{
+            "n": s["step"], "call": s["call"], "why": s.get("why"), "result": said.splitlines()[0] if said else "",
+            "seconds": round(s.get("seconds") or 0, 1), "refused": bool(s.get("refused"))}]
+        self.live["tokens"] = s.get("tokens") or self.live.get("tokens")
+        logger.info(step_line(self.live["rule"], self.live["wafer"], s, self.cap))
+        _tell(self.live)
+
+
 def _instructions(spec, step, cap):
     prompts = (spec or {}).get("prompts") or {}
     functions = prompts.get(report_shape.FUNCTIONS_CELL) or {}
@@ -258,9 +308,10 @@ def _call(report, said, seen):
         return None, "the read failed: %s: %s" % (type(exc).__name__, exc)
 
 
-def run(report, spec, request, ask=None, clock=time.monotonic):
+def run(report, spec, request, ask=None, clock=time.monotonic, live=None):
     """One report's steps -> {"state", "reason", "steps", "texts", "tables"}. `request`: evaluation · sets (blank:
-    the declaration's default) · note. `ask(prompt, usage=)`: the model (`utils.llm.ask_json`)."""
+    the declaration's default) · note. `ask(prompt, usage=)`: the model (`utils.llm.ask_json`). `live`: the report
+    building now (`answer`) - its steps logged and said on the claim as they end."""
     from utils import heartbeat, llm
 
     ask = ask or llm.ask_json
@@ -270,7 +321,11 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
     if request.get("sets") or (report_shape.sets_role(spec) or {}).get(report_shape.SETS_DEFAULT):
         report.compare(request.get("sets"))
     conditions = report.conditions()["context"].splitlines()
-    steps, previous, seen, tables = [], [], {}, {}
+    previous, seen, tables = [], {}, {}
+    steps = [] if live is None else _Steps(live, caps["steps"])
+    if live is not None:
+        live.update(cap=caps["steps"], seconds_cap=caps["seconds"], tokens_cap=caps["context_tokens"], steps=[],
+                    tokens=None)
     reads = [(0, "conditions()", conditions)]                # what the write call is handed - the folded conditions first
     out = {"state": STOPPED, "reason": STOP_STEPS % caps["steps"], "steps": steps, "texts": {}, "tables": tables}
     no_json = None
@@ -279,6 +334,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             out["reason"] = STOP_SECONDS % caps["seconds"]
             break
         heartbeat.progress("report step %d" % step)
+        _doing(live, "asking the model", step)
         prompt, cut = compose(spec, request, conditions, steps, previous, budget, step, caps["steps"])
         if prompt is None:
             out["reason"] = STOP_CONTEXT
@@ -301,6 +357,7 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             steps.append(record)
             out.update(state=DONE, reason=None)
             break
+        _doing(live, "reading " + _said(said.get("call"), said.get("args")))
         answer, refused = _call(report, said, seen)
         record.update(call=_said(said.get("call"), said.get("args")), seconds=clock() - began, refused=refused,
                       why=str(said.get("why") or "").strip() or None)
@@ -326,6 +383,9 @@ def run(report, spec, request, ask=None, clock=time.monotonic):
             rows = (said.get("args") or {}).get("rows")
             report.kept_rows = list(dict.fromkeys(getattr(report, "kept_rows", []) +
                                                   ([rows] if isinstance(rows, str) else list(rows or []))))
+    _doing(live, "writing the report")
+    if live is not None:
+        steps.cap = None                                       # the model's reading is over - the product's steps
     _product_reads(report, spec, tables, reads, steps, clock)
     if out["state"] == DONE or out["reason"] in (STOP_STEPS % caps["steps"], STOP_SECONDS % caps["seconds"], no_json):
         if (spec or {}).get(report_shape.CAUSES) is not None:
@@ -631,9 +691,7 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
     파일 경로 이 두 개가 최종 출력»; the summary table is only read). The file is kept before anything is proposed; its
     state, why and steps are its Evidence and a chain log line each. A done report with `send_to` leaves its marker
     (`SEND_MARK`) - the chain worker's upkeep POSTs it (`send_waiting`)."""
-    import datetime
-
-    from chain import ask_rule, report_html, rule_shape
+    from chain import ask_rule
     from database import crud, models
 
     model = models.DYNAMIC_TABLES.get(str(rule.get("trigger_table") or ""))
@@ -653,48 +711,65 @@ def answer(db, rule, row_ids, ask=None, clock=time.monotonic):
             if not crud.is_blank_value(said):
                 comments.setdefault(wafer, {})[str(said).strip()] = None
     updates = []
-    for wafer, rows in sorted(by_wafer.items(), key=lambda pair: report_reads.label(pair[0])):
-        said, report = report_reads.label(wafer), None
-        try:
-            report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
-            memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), dict(zip(keys, wafer)))
-            out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": [], "memory": memory,
-                                     "comment": " / ".join(comments.get(wafer) or ())}, ask=ask, clock=clock)
-        except report_reads.ReadRefused as refused:
-            logger.error("[Report] %s wafer %s stopped: %s", name, said, refused, exc_info=refused)
-            out = {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
-        except Exception as exc:                                    # noqa: BLE001 - this wafer stops, the others go on
-            logger.error("[Report] %s wafer %s failed: %s: %s", name, said, type(exc).__name__, exc, exc_info=exc)
-            out = {"state": STOPPED, "reason": "%s: %s" % (type(exc).__name__, exc), "steps": [], "texts": {},
-                   "tables": {}}
-        for s in out["steps"]:
-            logger.info("[Report] %s wafer %s step %d %s - %s", name, said, s["step"], s["call"],
-                        s.get("refused") or s["summary"])
-        cells = {column: None for _cell, column in written}
-        if report is not None:
-            try:
-                made = datetime.datetime.now().astimezone()
-                refs = report_html.link_pictures(report_html.file_name(said), out["tables"], report.embedded)
-                page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
-                    name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
-                    evidence=_steps_text(out, report).splitlines())
-                kept, _sha = report_html.keep(said, page, refs)
-                # the cell holds the file's signed-in link (owner 11-04); send_to and its mark keep the path
-                wrote = dict(out["texts"], file=report_html.link_of(kept))   # a text the report did not write is withdrawn
-                cells = {column: wrote.get(cell) or None for cell, column in written}
-                _mark(kept, name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
-            except Exception as exc:                                # noqa: BLE001 - this wafer's page, the others go on
-                logger.error("[Report] %s wafer %s page failed: %s: %s", name, said, type(exc).__name__, exc,
-                             exc_info=exc)
-                cells = {column: None for _cell, column in written}
-                out = dict(out, state=STOPPED, reason="the page failed: %s: %s" % (type(exc).__name__, exc))
-        logger.info("[Report] %s wafer %s: %s%s", name, said, out["state"], " - %s" % out["reason"] if out["reason"] else "")
-        for row_id in rows:
-            updates.append({"row_id": row_id, "source_name": crud.CHAIN_SOURCE, "updated_by": name,
-                            "origin_row_id": row_id,
-                            "updates": {c: v for c, v in cells.items() if not crud.is_blank_value(v)},
-                            "withdraw": sorted(c for c, v in cells.items() if crud.is_blank_value(v))})
+    wafers = sorted(by_wafer.items(), key=lambda pair: report_reads.label(pair[0]))
+    try:
+        for n, (wafer, rows) in enumerate(wafers):
+            updates += _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, clock, live={
+                "rule": name, "table": rule.get("trigger_table"), "wafer": report_reads.label(wafer), "rows": rows,
+                "queued": [{"wafer": report_reads.label(w), "rows": r} for w, r in wafers[n + 1:]],
+                "started": time.time(), "step": None, "doing": None})
+    finally:
+        _tell(None)                                             # the batch is over: no report building
     return {"updates": updates}
+
+
+def _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, clock, live):
+    """One wafer's report (`answer`): run, its page kept, the updates of its rows."""
+    import datetime
+
+    from chain import ask_rule, report_html, rule_shape
+    from database import crud
+
+    said, report, updates = report_reads.label(wafer), None, []
+    try:
+        report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
+        memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), dict(zip(keys, wafer)))
+        _tell(live)
+        out = run(report, spec, {"evaluation": evaluation, "note": None, "sets": [], "memory": memory,
+                                 "comment": " / ".join(comments.get(wafer) or ())}, ask=ask, clock=clock,
+                  live=live)
+    except report_reads.ReadRefused as refused:
+        logger.error("[Report] %s wafer %s stopped: %s", name, said, refused, exc_info=refused)
+        out = {"state": STOPPED, "reason": str(refused), "steps": [], "texts": {}, "tables": {}}
+    except Exception as exc:                                    # noqa: BLE001 - this wafer stops, the others go on
+        logger.error("[Report] %s wafer %s failed: %s: %s", name, said, type(exc).__name__, exc, exc_info=exc)
+        out = {"state": STOPPED, "reason": "%s: %s" % (type(exc).__name__, exc), "steps": [], "texts": {},
+               "tables": {}}
+    cells = {column: None for _cell, column in written}
+    if report is not None:
+        try:
+            made = datetime.datetime.now().astimezone()
+            refs = report_html.link_pictures(report_html.file_name(said), out["tables"], report.embedded)
+            page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
+                name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
+                evidence=_steps_text(out, report).splitlines())
+            kept, _sha = report_html.keep(said, page, refs)
+            # the cell holds the file's signed-in link (owner 11-04); send_to and its mark keep the path
+            wrote = dict(out["texts"], file=report_html.link_of(kept))   # a text the report did not write is withdrawn
+            cells = {column: wrote.get(cell) or None for cell, column in written}
+            _mark(kept, name if out["state"] == DONE and spec.get(report_shape.SEND_TO) else None)
+        except Exception as exc:                                # noqa: BLE001 - this wafer's page, the others go on
+            logger.error("[Report] %s wafer %s page failed: %s: %s", name, said, type(exc).__name__, exc,
+                         exc_info=exc)
+            cells = {column: None for _cell, column in written}
+            out = dict(out, state=STOPPED, reason="the page failed: %s: %s" % (type(exc).__name__, exc))
+    logger.info("[Report] %s wafer %s: %s%s", name, said, out["state"], " - %s" % out["reason"] if out["reason"] else "")
+    for row_id in rows:
+        updates.append({"row_id": row_id, "source_name": crud.CHAIN_SOURCE, "updated_by": name,
+                        "origin_row_id": row_id,
+                        "updates": {c: v for c, v in cells.items() if not crud.is_blank_value(v)},
+                        "withdraw": sorted(c for c, v in cells.items() if crud.is_blank_value(v))})
+    return updates
 
 
 def _post(send_to, path):

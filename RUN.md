@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [11-05] **리포트 짓는 중 상태 — 서버 반쪽 (화면은 클라 착지 뒤)** — git pull · 런처 재기동
+>
+> ```
+> 무엇     체인이 리포트를 짓는 동안 «지금 어느 웨이퍼 · 몇 단계 · 무엇을 읽는 중 · 끝난 단계마다 call · why ·
+>          결과 첫 줄 · 초 · 기다리는 웨이퍼» 가 체인 그룹의 하트비트에 바로 적히고, /health 가 내보냄
+>          (checks.workers.<chain 또는 chain-slot-n>.chain_state.why.report). 표에는 아무것도 안 씀
+> 볼 줄    chain_worker.log — 단계가 «끝나는 그때» 한 줄씩 (전에는 리포트가 다 끝난 뒤 몰아서)
+>          «[Report] <규칙> wafer <웨이퍼> step 2/8 yield_by(…) - why <모델이 댄 이유> -> <결과 첫 줄> (11.0 s)»
+>          거절이면 «-> refused: …», 모델 읽기가 끝난 뒤의 제품 단계 · 글 쓰기는 «step 9 write - …» (/상한 없음)
+> 볼 곳    브라우저에서 /health 를 열고 리포트가 도는 동안 chain_state.why.report — 웨이퍼 · step · doing · steps
+>          묶음이 끝나면 report 가 null
+> 같은 답  server 폴더에서 python -m pytest tests/test_a_report_building_now_is_said_on_its_claim.py  -> 4 passed
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-05] **피벗 읽기가 빨라짐 — 키 견주기 · 항목 정렬 · set 필터의 null** — git pull · 런처 재기동
 >
 > ```

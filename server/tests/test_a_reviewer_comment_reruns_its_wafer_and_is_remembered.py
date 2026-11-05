@@ -137,7 +137,7 @@ def test_the_wafers_report_says_its_comment_and_its_lot_reads_it_beside_the_corr
     _remember(db, half, ["W1"])
     asked = {}
 
-    def run(_report, _spec, request, ask=None, clock=None):
+    def run(_report, _spec, request, ask=None, clock=None, live=None):
         asked[_report] = request
         return {"state": report_loop.STOPPED, "reason": "test", "steps": [], "texts": {}, "tables": {}}
 
@@ -159,7 +159,7 @@ def test_without_memory_comment_the_column_is_neither_remembered_nor_said(db, mo
     assert _remember(db, half, ["W1"]) == []
     asked = []
     monkeypatch.setattr(report_loop, "_this_wafer", lambda db_, spec, wafer: (wafer["wafer_id"], None))
-    monkeypatch.setattr(report_loop, "run", lambda r, s, request, ask=None, clock=None: asked.append(request) or {
+    monkeypatch.setattr(report_loop, "run", lambda r, s, request, ask=None, clock=None, live=None: asked.append(request) or {
         "state": report_loop.STOPPED, "reason": "t", "steps": [], "texts": {}, "tables": {}})
     report_loop.answer(db, report, [_row_id(db, "W1")])
     assert asked[0]["comment"] == "" and "Reviewer comment" not in "\n".join(report_loop._request(asked[0]))

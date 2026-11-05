@@ -72,6 +72,7 @@ def work_facts(work):
     the stage, how long since it moved, how long it has been held, what it was found waiting on,
     and the beat's own stalled verdict - /health's one threshold (총괄 248ae20cd)."""
     run = (work.get("facts") or {}).get("rule_run")
+    report = (work.get("facts") or {}).get("report")
     return {"stage": work.get("stage"), "moved_seconds": work.get("no_progress_seconds"),
             "elapsed_seconds": work.get("held_seconds"), "stalled_on": work.get("stalled_on"),
             "stalled": bool(work.get("stalled")),
@@ -80,7 +81,10 @@ def work_facts(work):
             "rule_run": ({"rule": run.get("rule"), "rows_in": run.get("rows_in"), "rows_out": run.get("rows_out"),
                           "running_seconds": (None if run.get("ended") else
                                               round(max(0.0, time.time() - float(run["started"])), 1))}
-                         if isinstance(run, dict) and run.get("started") else None)}
+                         if isinstance(run, dict) and run.get("started") else None),
+            # the AI report it builds now (`chain.report_loop`, owner 11-05), its seconds as of this read
+            "report": (dict(report, elapsed_seconds=round(max(0.0, time.time() - float(report["started"])), 1))
+                       if isinstance(report, dict) and report.get("started") else None)}
 
 
 def chain_lines_running(beats=None):
