@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **체인 쓰기 뒤 셀 소스 다시 읽기(plain layer moved 등) 빠르게** — git pull · 런처 재기동(체인 일꾼 · 슬롯)
+>
+> ```
+> 무엇     체인이 쓴 칸의 층을 다시 읽는 질의(cell_layer.cells_written_by)를 PG 에서 «쌍을 배열 둘로 조인» 으로
+>          답(찾는 층)은 같음. 빈칸 거두기 · 사라진 행 지우기 · plain 층 옮기기 셋이 같이 빨라짐
+> 수       (버리는 DB, cell_sources 만 심고 잼 · 함수 한 번 초) 1,000 행 × 14 칸 · 층 9: 6.7 → 1.5 s
+>          5,000 행 × 14 칸 · 층 9: 50.5 → 2.7 s · 칸 300 표 일부 쌍 2,000: 1.2 → 0.04 s
+> 볼 줄    chain_worker.log 의 체인 그룹 단계 초 — plain layer moved 단계가 줄어듦
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k test_cells_written_by_finds_the_same_layers  -> 1 passed
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-05] **그리드 열 너비 · 열 숨기기 · 감사 표의 표 이름 (클라)** — git pull · 화면 새로 고침
 >
 > ```

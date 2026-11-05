@@ -308,23 +308,34 @@ def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int =
     nothing), and an `enrichment_backfill` layer - the backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a
     join's (its layer is named per source row, another row), nor a rule's that wrote the cell after it. READ ONLY,
     the shape `cells_stamped_by` answers."""
-    from sqlalchemy import and_, or_, tuple_
+    from sqlalchemy import and_, func, or_, tuple_
     from chain.enrichment import backfill
     from database import crud, models
 
     S = models.CellSource
     names = rule_layer_names()
     wanted = list(dict.fromkeys(cells or ()))
+    pairs_joined = db.get_bind().dialect.name == "postgresql"
     found = []
     for i in range(0, len(wanted), chunk_size):
-        found.extend(tuple(row) for row in (
-            db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id)
-            .filter(S.table_name == table_name, tuple_(S.row_id, S.column_name).in_(wanted[i:i + chunk_size]),
-                    or_(and_(S.source_name.in_(names), S.updated_by.in_(list(declarations))),
-                        and_(S.origin_row_id == S.row_id, S.updated_by.in_(list(declarations))),
-                        S.source_name == backfill.SOURCE_NAME)).all())
-            if row[3] in names + (backfill.SOURCE_NAME,) or row[3] == crud.merged_layer_name(
-                crud.CHAIN_SOURCE, row[4]))
+        part = wanted[i:i + chunk_size]
+        query = db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id).filter(
+            S.table_name == table_name,
+            or_(and_(S.source_name.in_(names), S.updated_by.in_(list(declarations))),
+                and_(S.origin_row_id == S.row_id, S.updated_by.in_(list(declarations))),
+                S.source_name == backfill.SOURCE_NAME))
+        if pairs_joined:
+            # the pairs joined as two arrays: a 1,000-pair row-value IN is a 1,000-arm BitmapOr planned 363-384 ms a
+            # chunk (C 11-06; 1,000 rows x 14 columns 5.8 s -> 0.21 s), and rows IN + columns IN read every column
+            # of those rows - 300,000 rows for 2,000 pairs on a 300-column table (B 11-06, lead's rule)
+            pair = func.unnest([r for r, _c in part], [c for _r, c in part]).table_valued("r", "c").render_derived(
+                name="wanted_cell")
+            query = query.join(pair, and_(S.row_id == pair.c.r, S.column_name == pair.c.c))
+        else:
+            query = query.filter(tuple_(S.row_id, S.column_name).in_(part))
+        found.extend(tuple(row) for row in query.all()
+                     if row[3] in names + (backfill.SOURCE_NAME,) or row[3] == crud.merged_layer_name(
+                         crud.CHAIN_SOURCE, row[4]))
     return found
 
 
