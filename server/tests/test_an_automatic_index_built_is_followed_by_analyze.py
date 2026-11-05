@@ -7,6 +7,7 @@ with them it is a bitmap and a sort (29 ms).
   the index           built -> analysed · already there -> not again · analyze_after_rows 0 -> not analysed
   the schema          a name in two schemas -> the search path's one, once · in no schema of the path -> not at all
                       (C 11-05, lead ㄱ) · the ANALYZE failing -> «built on <t>; the ANALYZE after it did not run»
+                      a table only in the path's second schema -> analysed (not only the current schema's)
 """
 import os
 import sys
@@ -123,6 +124,48 @@ def test_a_name_in_two_schemas_is_analysed_once_and_one_off_the_path_not_at_all(
         with pg_engine.begin() as c:
             c.execute(text('DROP TABLE IF EXISTS "%s"."zz_stale_dup"' % S))
             c.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % OTHER))
+
+
+SECOND = "zz_b_stale_second"
+
+
+def test_a_table_only_in_the_search_paths_second_schema_is_analysed(pg_engine, monkeypatch):
+    """The path is «<test schema>, <second>» (SET LOCAL - the pooled connection keeps its own): a stale table only in the
+    second schema is the one `ANALYZE "<name>"` reaches, so it is analysed - the current schema alone would skip it."""
+    from chain import ingestion_worker
+
+    maker = sessionmaker(bind=pg_engine)
+
+    def factory():
+        db = maker()
+        db.execute(text('SET LOCAL search_path TO "%s", "%s"' % (S, SECOND)))
+        return db
+
+    monkeypatch.setattr(dw, "analyze_after_rows", lambda: 100)
+    monkeypatch.setitem(crud.TABLE_CONFIG, "zz_stale_second_only",
+                        {"business_key": "row_id", "column_types": {"k": "string"}})
+    try:
+        with pg_engine.begin() as c:
+            c.execute(text('CREATE SCHEMA IF NOT EXISTS "%s"' % SECOND))
+            c.execute(text('CREATE TABLE "%s"."zz_stale_second_only" (row_id varchar PRIMARY KEY, k varchar) '
+                           'WITH (autovacuum_enabled = false)' % SECOND))
+            c.execute(text("INSERT INTO \"%s\".\"zz_stale_second_only\" SELECT 'r' || g, 'K' "
+                           "FROM generate_series(1, 500) g" % SECOND))
+            c.execute(text("SELECT pg_stat_force_next_flush()"))
+        db = factory()
+        try:                                                             # canary: stale, and reached by the path
+            assert db.execute(text("SELECT count(*) FROM pg_stat_user_tables WHERE relname = 'zz_stale_second_only' "
+                                   "AND n_mod_since_analyze >= 100 AND current_schema() <> schemaname")).scalar() == 1
+        finally:
+            db.close()
+        analysed = []
+        monkeypatch.setattr(dw, "_analyze_after_load", lambda name, rows, why=None, forced=False: analysed.append(name)
+                            or True)
+        ingestion_worker._analyze_stale_tables_sync(factory)
+        assert "zz_stale_second_only" in analysed, analysed
+    finally:
+        with pg_engine.begin() as c:
+            c.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % SECOND))
 
 
 def test_an_analyze_that_fails_after_an_index_is_built_says_the_index_stands(box, monkeypatch):
