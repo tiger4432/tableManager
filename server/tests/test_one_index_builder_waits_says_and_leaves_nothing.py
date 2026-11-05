@@ -88,7 +88,8 @@ def test_a_holder_past_the_wait_defers_and_leaves_nothing(table, monkeypatch):
             in said[-1]), "asked in a round (`built_tables`) - the line keeps it for its next poll: %s" % said
 
 
-def test_a_build_under_way_is_left_to_its_session_says_its_waits_and_ends_valid(table):
+def test_a_build_under_way_is_left_to_its_session_says_its_waits_and_ends_valid(table, monkeypatch):
+    monkeypatch.setattr(models, "INDEX_WAIT_SAY_SECONDS", 0.5)          # an unchanged wait said again on this period
     old = table.connect()
     old.execute(text("BEGIN ISOLATION LEVEL REPEATABLE READ"))
     old.execute(text("SELECT 1"))                                          # an old snapshot - the build waits it out

@@ -759,18 +759,18 @@ def partitioned_index_states(engine) -> list:
 
 
 def build_partitioned_index(connection, names: WorldNames, index, columns, predicate="",
-                            apply=False, say=print, child_name="{index}_{suffix}") -> dict:
+                            apply=False, say=print, child_name="{index}_{suffix}", build_child=None) -> dict:
     """An index on the ledger's partitioned parent, built without blocking writes: a metadata-only
     index on ONLY the parent, then each partition's CONCURRENTLY, then ATTACH - PostgreSQL refuses
     CONCURRENTLY on a partitioned parent, and a plain parent build scans and locks every partition.
     A partition that already has an index attached to the parent's (built here before, or made when
-    the partition was) is left alone; an INVALID leftover of a stopped build is dropped and built
-    again, a valid one of that `child_name` is attached. 🔴 One a session is building NOW is left to it
-    (`db_waits.index_builds`) - dropping it was a deadlock between two builders (총괄 bdc08ec39 ①), and a
-    partition that fails is said and the others go on. `apply=False` says what it would do and writes
-    nothing. One line a partition.
-    -> {"built", "attached", "already", "would_build", "would_attach", "failed", "parent_valid",
-        "building": [what each build left to its session is doing]}"""
+    the partition was) is left alone; a partition's own index is built by `build_child(child, statement, partition,
+    schema)` - the one builder (`models.ledger_child_builder`, 총괄 11-06 ㄱ): an INVALID leftover dropped, one another
+    session is building left to it, a wait before the build at most its limit - and attached when it is there. A
+    partition not built is said and the others go on; the parent stays NOT valid until every partition has its own.
+    `apply=False` says what it would do and writes nothing. One line a partition.
+    -> {"built", "attached", "already", "would_build", "would_attach", "failed", "deferred", "parent_valid",
+        "building": [the partitions left to another session's build]}"""
     import db_waits
 
     space = in_space(names, "")
@@ -781,7 +781,7 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
     previous = driver.autocommit
     driver.autocommit = True                          # CONCURRENTLY cannot run in a transaction
     out = {"built": 0, "attached": 0, "already": 0, "would_build": 0, "would_attach": 0, "building": [], "failed": 0,
-           "parent_valid": None}
+           "deferred": 0, "parent_valid": None}
 
     def one(sql, params=()):
         with driver.cursor() as cursor:
@@ -812,28 +812,34 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
             left = one("SELECT x.indisvalid FROM pg_index x WHERE x.indexrelid = to_regclass(%s)",
                        (space + child,))
             there = bool(left and left[0])                # made and not attached - a half-run, carried on
-            building = (db_waits.index_builds(driver).get((home, child))
-                        if left is not None and not there else None)
-            if building is not None:
-                out["building"].append(f"{child} {building[2]} by pid {building[0]}")
-                say(f"{partition}: {out['building'][-1]} - left to it")
-                continue
             if not apply:
+                building = (db_waits.index_builds(driver).get((home, child))
+                            if left is not None and not there else None)
+                if building is not None:
+                    out["building"].append(f"{child} {building[2]} by pid {building[0]}")
+                    say(f"{partition}: {out['building'][-1]} - left to it")
+                    continue
                 out["would_attach" if there else "would_build"] += 1
                 say(f"{partition}: would attach the {child} already there" if there else
                     f"{partition}: would build {child} CONCURRENTLY and attach it")
                 continue
+            from database import models
+
             started = time.perf_counter()
+            word = build_child(child, f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {child} ON {space}{partition} "
+                                      f"{columns} {predicate}", partition, home)
+            if word not in (models.INDEX_BUILT, models.INDEX_PRESENT):
+                if word == models.INDEX_BUSY:
+                    out["building"].append(f"{child} by another session")
+                else:
+                    out["deferred" if models.comes_again(word) else "failed"] += 1
+                say(f"{partition}: {child} {word} - not attached; the other partitions go on")
+                continue
             try:
-                if left is not None and not there:
-                    do(f"DROP INDEX CONCURRENTLY IF EXISTS {space}{child}")
-                if not there:
-                    do(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {child} ON {space}{partition} {columns} "
-                       f"{predicate}")
                 do(f"ALTER INDEX {parent} ATTACH PARTITION {space}{child}")
             except Exception as exc:                      # noqa: BLE001 - said; the next partition goes on
                 out["failed"] += 1
-                say(f"{partition}: {child} failed after {time.perf_counter() - started:.1f} s - "
+                say(f"{partition}: {child} not attached after {time.perf_counter() - started:.1f} s - "
                     f"{type(exc).__name__}: {told(exc).strip().splitlines()[0] if told(exc).strip() else ''}; "
                     f"the other partitions go on, this one is built at the next start")
                 continue

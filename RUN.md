@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **원장 파티션 인덱스도 한 곳에서 지음 · 미뤄지면 원장 일꾼이 5 초마다 다시** — git pull · 런처 재기동(원장 일꾼 · 스케줄러)
+>
+> ```
+> 무엇     원장 파티션마다의 인덱스를 다른 인덱스와 같은 빌더가 지음 — 짓기 전 20 초 기다림 · 남이 짓는 중이면 맡김 · 미뤄짐
+>          미뤄진 파티션은 붙이지 않음. 원장 일꾼이 5 초마다 다시 시도하고, 다 붙으면 멈춤
+>          부모 인덱스는 모든 파티션이 붙을 때까지 not valid (/admin/indexes 의 그 줄)
+>          Reload 로 바뀐 선언의 미뤄진 인덱스는 옛 규칙으로 다시 짓지 않음 — 새 규칙의 것만
+> 볼 줄    ledger.log
+>          «[Indexes] ledger partition index '<자식>' not built - waited 20s for pid <pid> holding <파티션>;
+>           tried again at the line's next poll»       그 pid 가 파티션을 잡고 있음 — 놓으면 저절로 지어짐
+>          «[Indexes] <파티션>: <자식> deferred - not attached; the other partitions go on»
+>          «[Indexes] <인덱스> left for later in N s»   이번 바퀴에 다 못 붙임 — 다음 바퀴에 다시
+>          짓는 중 기다리는 줄 «still building after …» 은 기다리는 상대가 바뀔 때 한 번, 그대로면 10 분마다
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "test_a_partition_deferred_leaves_the_parent
+>          or test_the_ledger_ref_index_is_carried_on"  -> 2 passed
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-06] **인덱스는 한 곳에서 지음 — 짓기 전 20 초까지만 기다리고, 남이 짓는 중이면 맡김** — git pull · 서버 · 스케줄러 재기동
 >
 > ```

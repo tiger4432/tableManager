@@ -56,10 +56,10 @@ def _start_with(monkeypatch, *names):
 def test_a_deferred_start_index_is_built_at_the_next_poll_and_then_asked_no_more(builder, monkeypatch):
     builder["words"] = [models.INDEX_DEFERRED, models.INDEX_BUILT, models.INDEX_BUILT]
     _start_with(monkeypatch, "ix_later", "ix_now")
-    assert builder["calls"] == ["ix_later", "ix_now"] and len(maintenance_line._LEFT) == 1
+    assert builder["calls"] == ["ix_later", "ix_now"] and len(maintenance_line.left_works()) == 1
 
     _poll(monkeypatch)
-    assert builder["calls"][2:] == ["ix_later"] and maintenance_line._LEFT == [], "built at the next poll - list empty"
+    assert builder["calls"][2:] == ["ix_later"] and maintenance_line.left_works() == [], "built at the next poll - list empty"
 
     _poll(monkeypatch)
     assert builder["calls"][3:] == [], "nothing left - the polls after ask the builder nothing"
@@ -71,7 +71,7 @@ def test_a_start_index_not_deferred_is_not_asked_again(builder, monkeypatch, wor
     builder["words"] = [word]
     _start_with(monkeypatch, "ix")
     _poll(monkeypatch)
-    assert builder["calls"] == ["ix"] and maintenance_line._LEFT == []
+    assert builder["calls"] == ["ix"] and maintenance_line.left_works() == []
 
 
 def test_the_join_lookup_forgets_a_deferred_build_and_remembers_a_built_one(builder, monkeypatch):
@@ -104,8 +104,38 @@ def test_a_deferred_declared_index_is_built_at_the_next_poll_too(builder, monkey
     monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: [work])
     builder["words"] = [models.INDEX_DEFERRED, models.INDEX_BUILT]
     _poll(monkeypatch, declared=True)
-    assert builder["calls"] == ["ix_decl"] and maintenance_line._LEFT == [work]
+    assert builder["calls"] == ["ix_decl"] and maintenance_line.left_works() == [work]
 
     _poll(monkeypatch)
     _poll(monkeypatch)
-    assert builder["calls"] == ["ix_decl", "ix_decl"] and maintenance_line._LEFT == []
+    assert builder["calls"] == ["ix_decl", "ix_decl"] and maintenance_line.left_works() == []
+
+
+def test_a_reload_replaces_the_declared_work_left_so_a_rule_gone_is_asked_for_no_more(builder, monkeypatch):
+    """A kept declared work holds the rules it was made with (총괄 11-06 ①): the Reload's declared work takes its place."""
+    old = (lambda: models._ensure_one_index(None, "ix_gone", "S", "test", say=lambda line: None, table="t"),)
+    monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: [old])
+    builder["words"] = [models.INDEX_DEFERRED]
+    _poll(monkeypatch, declared=True)
+    assert maintenance_line.left_works() == [old]
+
+    monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: [])      # the rule deleted, then Reload
+    _poll(monkeypatch, declared=True)
+    _poll(monkeypatch)
+    assert builder["calls"] == ["ix_gone"] and maintenance_line.left_works() == [], "the old rules asked again"
+
+
+def test_the_same_work_deferred_at_the_start_and_again_at_a_reload_is_kept_once(builder, monkeypatch):
+    """총괄 11-06 ②: one work, one ask a poll - two copies were two 20 s waits each poll."""
+    work = (lambda: models._ensure_one_index(None, "ix_twice", "S", "test", say=lambda line: None, table="t"),)
+    monkeypatch.setattr(maintenance_line, "_start_work", lambda factory: [work])
+    monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: [work])
+    builder["words"] = [models.INDEX_DEFERRED] * 3
+    maintenance_line._start(None)
+    _poll(monkeypatch, declared=True)
+    assert maintenance_line.left_works() == [work] and len(builder["calls"]) == 2
+    _poll(monkeypatch)
+    assert maintenance_line.left_works() == [work] and len(builder["calls"]) == 3, "one ask a poll"
+    maintenance_line._keep([work], "asked")
+    maintenance_line._keep([work], "asked")
+    assert maintenance_line.left_works() == [work], "a work kept once, whatever asked for it"

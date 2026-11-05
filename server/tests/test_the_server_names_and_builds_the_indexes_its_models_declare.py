@@ -313,11 +313,14 @@ def test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing(scratch
 @pytest.mark.pg
 def test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it(scratch):
     """소유자 10-09: 47 minutes of «why does it not finish» - a CONCURRENTLY build waits for every
-    older transaction, and now says which, in its line and on the route."""
+    older transaction, and now says which, in its line and on the route. The older transaction holds a snapshot, not
+    the table: one holding the table is waited for at most 20 s before the build and the build deferred (총괄 11-05
+    ㄱ-2, `test_one_index_builder_waits_says_and_leaves_nothing`)."""
     _ddl(scratch, "DROP INDEX %s" % DROPPED)
     blocker = scratch.connect()
     held = blocker.begin()
-    blocker.execute(text("INSERT INTO audit_logs (table_name, row_id, column_name) VALUES ('zz', 'zz', 'zz')"))
+    blocker.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+    blocker.execute(text("SELECT 1"))
     said, done = [], {}
     build = threading.Thread(target=lambda: done.update(
         models.ensure_model_indexes(scratch, say=said.append, say_every=0.2)))
@@ -584,7 +587,7 @@ def test_a_partition_another_session_builds_is_left_to_it_and_a_wait_is_said_onc
         assert february, said                                           # February built, now waiting on the holder
         with canceller.cursor() as cur:
             cur.execute("SELECT pg_cancel_backend(%s)", (february,))
-        assert _wait(lambda: [line for line in said if "ledger_events_2026_02: " in line and " failed after " in line])
+        assert _wait(lambda: [line for line in said if "ledger_events_2026_02: " in line and " failed - " in line])
         assert _wait(lambda: [line for line in said if "ledger_events_2026_03_ref_hash still building" in line])
         time.sleep(3)                    # March waits past any limit a wait once had (DDL_LOCK_TIMEOUT, made 2 s here)
         assert build.is_alive() and not [line for line in said if "ledger_events_2026_03: " in line], said
@@ -597,17 +600,58 @@ def test_a_partition_another_session_builds_is_left_to_it_and_a_wait_is_said_onc
         canceller.close()
     assert not build.is_alive() and done == {name: models.INDEX_FAILED}, (done, said)
     assert ended == {"ok": True}, ended                                   # its build was not dropped from under it
-    assert [line for line in said if line.startswith(
-        "[Indexes] ledger_events_2026_01: ledger_events_2026_01_ref_hash building - ") and "left to it" in line], said
+    assert [line for line in said if line.startswith("[Indexes] ledger partition index 'ledger_events_2026_01_ref_hash' "
+                                                     "is being built by another session - left to it")], said
     waits = [line for line in said if "still building after" in line]
     assert waits and all("waiting for transactions older than it: pid " in line for line in waits), waits
     assert any("pid %s (b_old_snapshot)" % holder_pid in line for line in waits), waits
     assert len(waits) == len({line.split(" still building after ")[0] + line.split(" - building - ")[1]
                               for line in waits}), waits             # once a partition and a waiter
-    assert [line for line in said if "ledger_events_2026_02: " in line and " failed after " in line
-            and "the other partitions go on" in line]
+    assert [line for line in said if "ledger_events_2026_02: ledger_events_2026_02_ref_hash failed - not attached; "
+            "the other partitions go on" in line], said
     assert [line for line in said if "ledger_events_2026_03: built ledger_events_2026_03_ref_hash in " in line], said
     again = []
     assert models.ensure_model_indexes(engine, say=again.append, sources=LEDGER)[name] == models.INDEX_BUILT
     assert any("attached the ledger_events_2026_01_ref_hash already there" in line for line in again), again
+    assert _states(engine)[name]["state"] == models.INDEX_PRESENT
+
+
+@pytest.mark.pg
+def test_a_partition_deferred_leaves_the_parent_not_valid_until_the_ledger_line_builds_it(ledger_space, monkeypatch):
+    """총괄 11-06 ㄱ: a partition's own index is built by the one builder - held past the wait before the build it is
+    deferred and not attached, the parent NOT valid; the ledger worker's index rounds ask it again and the parent turns
+    valid. Once all are there the rounds end."""
+    from sqlalchemy.orm import sessionmaker
+
+    from ledger import worker as ledger_worker
+    from runtime import maintenance_line
+
+    monkeypatch.setattr(models, "INDEX_WAIT_BEFORE_SECONDS", 1.0)
+    monkeypatch.setattr(models, "INDEX_WAIT_POLL_SECONDS", 0.2)
+    monkeypatch.setattr(maintenance_line, "POLL_SECONDS", 0.5)
+    said = []
+    monkeypatch.setattr(ledger_worker, "logger", type("Said", (), {"warning": staticmethod(said.append),
+                                                                   "info": staticmethod(said.append)})())
+    engine = ledger_space
+    name = _months(engine, 1, 2)
+    holder = engine.connect()
+    held = holder.begin()
+    holder.execute(text("LOCK TABLE ledger_events_2026_01 IN ROW EXCLUSIVE MODE"))
+    rounds = threading.Thread(target=ledger_worker.ledger_index_rounds, args=(sessionmaker(bind=engine),), daemon=True)
+    try:
+        rounds.start()
+        assert _wait(lambda: _states(engine)[name]["partitions_missing"] == 1), said
+        assert any("ledger_events_2026_01_ref_hash' not built - waited 1s for pid " in line
+                   and line.endswith("; tried again at the line's next poll") for line in said), said
+        assert any("ledger_events_2026_01: ledger_events_2026_01_ref_hash deferred - not attached" in line
+                   for line in said) and not any("not attached after" in line for line in said), said
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT x.indisvalid FROM pg_index x WHERE x.indexrelid = to_regclass(:n)"),
+                                {"n": name}).scalar() is False, "a partition without its own - the parent NOT valid"
+        assert rounds.is_alive(), "a deferred partition keeps the ledger's index rounds going"
+    finally:
+        held.rollback()
+        holder.close()
+    rounds.join(30)
+    assert not rounds.is_alive(), "every partition has its own - the rounds end"
     assert _states(engine)[name]["state"] == models.INDEX_PRESENT

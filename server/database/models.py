@@ -1894,6 +1894,8 @@ INDEX_FAILED_SAID = "build failed: "
 #: An index name is looked up in THIS connection's schema (총괄 10-09) - by name alone, one found in
 #: another schema read 「present」 and nothing was built (a test database holds a schema per run).
 _IN_THIS_SCHEMA = " AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
+#: The builder's: in `:schema`, or this session's own when none is named (the ledger's worlds are schemas of their own).
+_IN_SCHEMA = " AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = coalesce(:schema, current_schema()))"
 
 
 def comes_again(word):
@@ -1911,7 +1913,8 @@ def _ensure_one_index(engine, name, *args, **kwargs):
     return word
 
 
-def _ensure_one_index_once(engine, name, statement, what, say=print, table=None, leftovers=(), say_every=None):
+def _ensure_one_index_once(engine, name, statement, what, say=print, table=None, leftovers=(), say_every=None,
+                           schema=None):
     """Build one index CONCURRENTLY, repairing an invalid leftover first - the one builder (총괄 11-05 ㄴ).
 
     Returns `INDEX_BUILT`, `INDEX_PRESENT`, `INDEX_FAILED`, `INDEX_BUSY` or `INDEX_DEFERRED` - see those constants for
@@ -1951,18 +1954,18 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                 already = connection.execute(_text(
                     "SELECT i.indisvalid FROM pg_class c "
                     "  JOIN pg_index i ON i.indexrelid = c.oid "
-                    " WHERE c.relname = :name AND c.relkind = 'i'" + _IN_THIS_SCHEMA),
-                    {"name": name}).first()
+                    " WHERE c.relname = :name AND c.relkind = 'i'" + _IN_SCHEMA),
+                    {"name": name, "schema": schema}).first()
                 if already is not None and already[0]:
                     return INDEX_PRESENT
                 stale = ([name] if already is not None else []) + [n for n in leftovers if n != name]
-                building = _building(connection) if stale else {}
+                building = _building(connection, schema) if stale else {}
                 busy = [n for n in stale if n in building]
                 if busy:
                     say(f"[Indexes] {what} index '{busy[0]}' is being built by another session - left to it "
                         f"({building[busy[0]]})")
                     return INDEX_BUSY
-                held = _wait_before_the_build(connection, table, name, say) if table else []
+                held = _wait_before_the_build(connection, table, name, say, schema) if table else []
                 if held:
                     # what comes next is true by where it was asked: the scheduler line's round keeps it for its next
                     # poll (`maintenance_line._LEFT`); outside one (the ledger worker's start, a retroactive merge) it
@@ -1976,10 +1979,10 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                     say(f"[Schema Sync] {what} index '{leftover}' is INVALID from an "
                         f"earlier failure; dropping and rebuilding.")
                     connection.execute(_text(
-                        f'DROP INDEX CONCURRENTLY IF EXISTS "{leftover}"'))
+                        f'DROP INDEX CONCURRENTLY IF EXISTS {_qualified(schema, leftover)}'))
                 started, stop = time.monotonic(), threading.Event()
                 watcher = threading.Thread(target=_say_while_building, daemon=True, args=(
-                    engine, lambda watch: (name, _building(watch).get(name)), started, stop, say,
+                    engine, lambda watch: (name, _building(watch, schema).get(name)), started, stop, say,
                     say_every or INDEX_WAIT_SAY_SECONDS))
                 watcher.start()
                 try:
@@ -1990,14 +1993,17 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                 # «the statement ran» is not «an index enforces it» - a CONCURRENTLY build can end INVALID
                 valid = connection.execute(_text(
                     "SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
-                    " WHERE c.relname = :name AND c.relkind = 'i'" + _IN_THIS_SCHEMA), {"name": name}).first()
+                    " WHERE c.relname = :name AND c.relkind = 'i'" + _IN_SCHEMA),
+                    {"name": name, "schema": schema}).first()
                 if not (valid and valid[0]):
                     raise RuntimeError("index %s was built INVALID - it serves and enforces nothing" % name)
             finally:
                 with contextlib.suppress(Exception):       # a broken connection is dropped with it
                     connection.execute(_text("RESET statement_timeout"))
                     connection.execute(_text("RESET lock_timeout"))
-        if table and getattr(_ROUND, "built", None) is not None:
+        if table and schema is None and getattr(_ROUND, "built", None) is not None:
+            # the round's ANALYZE finds a table through the search path; a named schema's (the ledger's partitions)
+            # are analysed by their own autoanalyze setting (총괄 53338e99b)
             _ROUND.built.add(table)
         return INDEX_BUILT
     except Exception as err:
@@ -2006,7 +2012,12 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
         return INDEX_FAILED
 
 
-def _wait_before_the_build(connection, table, name, say):
+def _qualified(schema, name):
+    """`name` quoted, in `schema` when one is named."""
+    return ('"%s".' % schema if schema else "") + '"%s"' % name
+
+
+def _wait_before_the_build(connection, table, name, say, schema=None):
     """Wait up to `INDEX_WAIT_BEFORE_SECONDS` for the sessions holding `table` (`db_waits.table_holders`) - said once
     when it starts waiting. -> the pids still holding it then, or [] (free: build)."""
     import time
@@ -2015,7 +2026,7 @@ def _wait_before_the_build(connection, table, name, say):
 
     began, told_once = time.monotonic(), False
     while True:
-        held = db_waits.table_holders(connection.connection.dbapi_connection, table)
+        held = db_waits.table_holders(connection.connection.dbapi_connection, table, schema)
         if not held or time.monotonic() - began >= INDEX_WAIT_BEFORE_SECONDS:
             return held
         if not told_once:
@@ -2074,7 +2085,7 @@ def _note_failure(engine, name, err):
 
 #: How often a build waiting on older transactions says whom it waits for.
 INDEX_WAIT_SAY_SECONDS = 600
-#: How often a ledger partition's build is looked at - whom it waits for said once a waiter (`_build_ledger_index`).
+#: How often a ledger partition's build says whom it waits for (`ledger_child_builder`).
 LEDGER_WAIT_SAY_SECONDS = 5
 #: Where a declared index comes from (`index_states` `source`): the static models', a table's own in table_config.json,
 #: the ledger's partitioned ones - the chain worker builds the ledger's on a line of its own (총괄 bdc08ec39 ②).
@@ -2359,11 +2370,11 @@ def column_index_kinds(engine, relation) -> dict:
             for column, served in kinds.items()}
 
 
-def _building(connection):
-    """-> {index name: what its build is doing} in this schema (`db_waits.index_builds`)."""
+def _building(connection, schema=None):
+    """-> {index name: what its build is doing} in `schema`, or this session's own (`db_waits.index_builds`)."""
     import db_waits
 
-    space = connection.execute(text("SELECT current_schema()")).scalar()
+    space = schema or connection.execute(text("SELECT current_schema()")).scalar()
     return {name: said for (schema, name), (_pid, _locker, said)
             in db_waits.index_builds(connection.connection.dbapi_connection).items() if schema == space}
 
@@ -2674,49 +2685,40 @@ def _build_ledger_index(engine, row, say):
     names = schema.world_names(row["world"])
     index, columns, predicate, child, _serves = next(item for item in schema.partitioned_indexes(names)
                                                      if schema.in_space(names, item[0]) == row["name"])
-    import db_waits
-
     say("[Indexes] building %s on %s - %d of %d partition(s) lack it" % (
         row["name"], row["table"], row["partitions_missing"], row["partitions"]))
-    started, stop = time.monotonic(), threading.Event()
+    started = time.monotonic()
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
-            # 🔴 no limit on a statement or a wait: a partition's build is long, and its wait for the database's older
-            #    transactions comes AFTER the build - given up at DDL_LOCK_TIMEOUT it threw the build away and the next
-            #    start built it again (총괄 9752e91f7 ②, 8.3 · 10.3 s built and dropped). The line is its own, so no join
-            #    key waits behind it; whom it waits for is said once a partition and a waiter
             cursor.execute("SET statement_timeout = 0")
             cursor.execute("SET lock_timeout = 0")
-            cursor.execute("SELECT pg_backend_pid()")
-            pid = cursor.fetchone()[0]
         connection.commit()
-        told = {}
-
-        def waiting(watch):
-            for (_space, name), (by, locker, said) in db_waits.index_builds(watch.connection.dbapi_connection).items():
-                if by == pid and locker and told.get(name) != locker:
-                    told[name] = locker
-                    return name, said
-            return None, None
-        threading.Thread(target=_say_while_building, daemon=True,
-                         args=(engine, waiting, started, stop, say, LEDGER_WAIT_SAY_SECONDS)).start()
         done = schema.build_partitioned_index(connection, names, index, columns, predicate, apply=True,
-                                              say=lambda line: say("[Indexes] " + line), child_name=child)
+                                              say=lambda line: say("[Indexes] " + line), child_name=child,
+                                              build_child=ledger_child_builder(engine, say))
     except Exception as exc:                                            # noqa: BLE001 - said, the rest go on
         say("[Indexes] %s failed - %s: %s" % (row["name"], type(exc).__name__, error_said.told(exc)))
         return INDEX_FAILED
     finally:
-        stop.set()
         with contextlib.suppress(Exception):           # the limits as they were before it goes back to the pool
             with connection.cursor() as cursor:
                 cursor.execute("RESET statement_timeout")
                 cursor.execute("RESET lock_timeout")
             connection.commit()
         connection.close()
-    say("[Indexes] %s %s in %.1f s" % (row["name"], "built" if done["parent_valid"] else "NOT valid",
-                                      time.monotonic() - started))
-    return INDEX_BUILT if done["parent_valid"] else INDEX_FAILED
+    word = INDEX_BUILT if done["parent_valid"] else INDEX_DEFERRED if done["deferred"] else INDEX_FAILED
+    say("[Indexes] %s %s in %.1f s" % (row["name"], {INDEX_BUILT: "built", INDEX_DEFERRED: "left for later"}.get(
+        word, "NOT valid"), time.monotonic() - started))
+    return word
+
+
+def ledger_child_builder(engine, say=print):
+    """A ledger partition's own index built by the one builder, in its world's schema (총괄 11-06 ㄱ) - what
+    `ledger.schema.build_partitioned_index` is handed by the ledger worker and by `build_ledger_ref_index.py`."""
+    return lambda child, statement, partition, space: _ensure_one_index(
+        engine, child, statement, "ledger partition", say=say, table=partition, schema=space,
+        say_every=LEDGER_WAIT_SAY_SECONDS)
 
 
 def _build_one(engine, statement, row, say, say_every):
@@ -2732,11 +2734,13 @@ def _build_one(engine, statement, row, say, say_every):
 
 
 def _say_while_building(engine, watched, started, stop, say, every):
-    """Every `every` seconds while a build goes: what it is doing - `watched(connection)` -> (index, sentence or None).
-    Watching only - a read that fails says so once and stops; the build goes on."""
+    """Looked at every `every` seconds while a build goes: what it is doing - `watched(connection)` -> (index, sentence
+    or None) - said when it changes and again every `INDEX_WAIT_SAY_SECONDS` while it does not (the ledger's «a wait
+    said once», 총괄 9752e91f7 ②, kept in the one builder). Watching only - a read that fails says so once and stops;
+    the build goes on."""
     import time
 
-    name = "the build"
+    name, last, at = "the build", None, 0.0
     while not stop.wait(every):
         try:
             with engine.connect() as connection:
@@ -2744,8 +2748,14 @@ def _say_while_building(engine, watched, started, stop, say, every):
         except Exception as exc:                                        # noqa: BLE001
             say("[Indexes] %s: its progress did not read (%s) - the build goes on, unwatched" % (name, told(exc)))
             return
-        if said:
+        if said and (said != last or time.monotonic() - at >= INDEX_WAIT_SAY_SECONDS):
             say("[Indexes] %s still building after %.0f s - %s" % (name, time.monotonic() - started, said))
+            last, at = said, time.monotonic()
+
+
+def decision_key_table(rule):
+    """The table an alignment rule's decision-key index is ON - its statement and the builder's `table` one value."""
+    return str((rule or {}).get("source_table") or "").strip()
 
 
 def alignment_decision_key_index_ddl(rule, entry):
@@ -2772,7 +2782,7 @@ def alignment_decision_key_index_ddl(rule, entry):
         return None, None
     import chain_bindings
 
-    table_name = str((rule or {}).get("source_table") or "").strip()
+    table_name = decision_key_table(rule)
     columns = [str(name) for name in chain_bindings.key_source(rule or {}) if str(name).strip()]
     if not table_name or not columns:
         return None, None
@@ -2873,7 +2883,7 @@ def ensure_alignment_decision_key_indexes(engine, config=None, rules=None, say=p
         if name in created:
             continue
         if _ensure_one_index(engine, name, statement, "decision-key", say=say,
-                             table=rule["source_table"]) == INDEX_BUILT:
+                             table=decision_key_table(rule)) == INDEX_BUILT:
             created.append(name)
     return created
 

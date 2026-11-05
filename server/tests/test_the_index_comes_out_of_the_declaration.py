@@ -188,7 +188,7 @@ def test_every_caller_of_the_one_builder_hands_it_the_table_its_statement_builds
     monkeypatch.setattr(models, "_ensure_one_index", record)
     models.ensure_dynamic_table_indexes(None, config={"t_dyn": {"kind": "table"}})
     models.ensure_alignment_decision_key_indexes(None, config={"t_dec": {"kind": "table"}}, rules=[
-        {"alignment": True, "source_table": "t_dec", "decision_key": ["a"]}])
+        {"alignment": True, "source_table": " t_dec ", "decision_key": ["a"]}])    # spaced: one name for both
     models.ensure_map_key_indexes(None, config={"t_map": {"kind": "table", "map_key_columns": ["x"]}})
     with contextlib.suppress(Exception):                    # what it says after the build is not this test's
         worker._ensure_human_claims_index_sync(lambda: Db())

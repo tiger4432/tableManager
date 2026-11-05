@@ -162,14 +162,27 @@ def _each(works):
 BUILT_WHY = "an index was just built on it and the planner had no statistics for it"
 
 
-#: The line's works that left an index for later (`models.comes_again`) - the start's, the declared work's, the asked
-#: ones' - asked again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it was met.
+#: The line's works that left an index for later (`models.comes_again`), each as (where it came from, work) - asked
+#: again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it was met.
 _LEFT = []
+#: Where the declared work's came from - a Reload runs it anew with the rules as they stand and its old ones go.
+DECLARED = "declared"
 
 
-def _keep(left):
-    """`left` (a round's works that left one) kept for the polls, each once."""
-    _LEFT.extend(work for work in left if work not in _LEFT)
+def _keep(left, source, replacing=False):
+    """`left` (a round's works that left one) kept for the polls under `source`, a work once whatever its source.
+    `replacing`: that source's old ones taken out first - a work holds the rules it was made with, and a rule changed
+    or gone must not be asked for again (총괄 11-06)."""
+    if replacing:
+        _LEFT[:] = [kept for kept in _LEFT if kept[0] != source]
+    for work in left:
+        if work not in left_works():
+            _LEFT.append((source, work))
+
+
+def left_works():
+    """The works kept for the next poll."""
+    return [work for _source, work in _LEFT]
 
 
 def _round(db_session_factory, works):
@@ -196,8 +209,13 @@ def _round(db_session_factory, works):
 
 
 def _start(db_session_factory):
-    """The start's works; those that left an index for later stay in `_LEFT` for the polls."""
-    _LEFT[:] = _round(db_session_factory, _start_work(db_session_factory))
+    """The start's works; those that left an index for later stay in `_LEFT` for the polls - its declared ones as the
+    declared work's (a Reload replaces them)."""
+    declared = _declared_work(db_session_factory)
+    left = _round(db_session_factory, _start_work(db_session_factory))
+    _LEFT[:] = []
+    _keep([work for work in left if work not in declared], "start")
+    _keep([work for work in left if work in declared], DECLARED)
 
 
 def _declared_work(db_session_factory):
@@ -261,19 +279,24 @@ def poll_once(db_session_factory, mark):
         declared = True
     if latest != mark:
         mark = latest
+    fresh = _declared_work(db_session_factory) if declared else None
+    if fresh is not None:
+        _keep((), DECLARED, replacing=True)                       # the old rules' are not asked for again
     if _LEFT:
-        _LEFT[:] = _round(db_session_factory, list(_LEFT))
-    if declared:
-        _keep(_round(db_session_factory, _declared_work(db_session_factory)))
+        left = _round(db_session_factory, left_works())
+        _LEFT[:] = [kept for kept in _LEFT if kept[1] in left]
+    if fresh is not None:
+        _keep(_round(db_session_factory, fresh), DECLARED)
     keys = [table for table, _columns, why in asked if why == models.KEY_UNIQUE]
     if keys:
         from chain import ingestion_worker as worker
 
-        _keep(_round(db_session_factory, [(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)]))
+        _keep(_round(db_session_factory, [(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)]),
+              "keys")
     asked = [each for each in asked if each[2] != models.KEY_UNIQUE]
     if asked:
         _keep(_round(db_session_factory, [(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning,
-                                           False)]))
+                                           False)]), "asked")
     return mark
 
 

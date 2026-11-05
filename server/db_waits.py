@@ -100,15 +100,16 @@ BUILD_WAITS_ON = ("RowExclusiveLock", "ShareUpdateExclusiveLock", "ShareLock", "
 
 _TABLE_HOLDERS = (
     "SELECT DISTINCT l.pid FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid "
-    "WHERE l.relation = to_regclass(quote_ident(%s)) AND l.pid <> pg_backend_pid() AND l.granted "
+    "WHERE l.relation = to_regclass(quote_ident(coalesce(%s, current_schema())) || '.' || quote_ident(%s)) "
+    "AND l.pid <> pg_backend_pid() AND l.granted "
     "AND l.mode = ANY(%s) AND a.backend_type <> 'autovacuum worker' ORDER BY l.pid")
 
 
-def table_holders(dbapi_conn, table):
+def table_holders(dbapi_conn, table, schema=None):
     """-> the pids of the other sessions holding `table` the way a CONCURRENTLY build would wait for - an autovacuum
     worker left out (a build's lock request cancels it). The index builder's wait before it builds (총괄 11-05 ㄱ-2)."""
     with dbapi_conn.cursor() as cur:
-        cur.execute(_TABLE_HOLDERS, (table, list(BUILD_WAITS_ON)))
+        cur.execute(_TABLE_HOLDERS, (schema, table, list(BUILD_WAITS_ON)))
         return [row[0] for row in cur.fetchall()]
 
 

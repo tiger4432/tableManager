@@ -546,6 +546,23 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
         db.close()
 
 
+def ledger_index_rounds(db_session_factory, stop=None):
+    """The ledger's indexes (the ledger process builds them - 19d6da585), in the scheduler line's round
+    (`maintenance_line._round`): a build left for later is asked again every `POLL_SECONDS` until none is
+    (총괄 11-06 ㄱ) - once all are there this ends."""
+    import threading
+
+    from database import models
+    from runtime import maintenance_line
+
+    stop = stop or threading.Event()
+    works = [(models.ensure_model_indexes_sync, db_session_factory, ("ledger",), logger.warning)]
+    while works:
+        works = maintenance_line._round(db_session_factory, works)
+        if works and stop.wait(maintenance_line.POLL_SECONDS):
+            return
+
+
 async def start_ledger_worker(db_session_factory):
     """The ledger process (`run_ledger_worker.py`), or its half of a server run alone (`main.py`): the schema and the
     cursors' fingerprints, the ledger's index line beside, the follow-up and the census, and a beat carrying the
@@ -578,7 +595,7 @@ async def start_ledger_worker(db_session_factory):
     # autoanalyze setting first, on the same line, so its ALTER and a CONCURRENTLY build never wait on each other.
     async def index_line():
         await asyncio.to_thread(_set_partitions_autoanalyze_sync, db_session_factory)
-        await asyncio.to_thread(models.ensure_model_indexes_sync, db_session_factory, ("ledger",), logger.warning)
+        await asyncio.to_thread(ledger_index_rounds, db_session_factory)
     asyncio.create_task(index_line())
     asyncio.create_task(run_ledger_followup(db_session_factory))
     # 🔴 ITS OWN LOOP, NOT A BRANCH OF THE FOLLOW-UP'S IDLE ARM. Two jobs sharing one

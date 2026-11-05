@@ -62,7 +62,7 @@ def test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it(pg_engine,
         assert (preview["built"], preview["already"], preview["would_build"], preview["would_attach"]) == (0, 0, 1, 1)
         assert not preview["parent_valid"]
 
-        done = build_ledger_ref_index.main(["--world", WORLD, "--apply"], connection=connection,
+        done = build_ledger_ref_index.main(["--world", WORLD, "--apply"], connection=connection, engine=pg_engine,
                                            say=lambda line: None)
         assert (done["built"], done["attached"], done["already"], done["parent_valid"]) == (1, 1, 0, True)
         assert _ref_indexes_on(connection, names, first) == [schema.REF_INDEX_CHILD.format(partition=first)], \
@@ -72,7 +72,7 @@ def test_a_half_built_ref_index_is_carried_on_and_the_page_follows_it(pg_engine,
         page, said = backfill.stale_page_refs(pg_engine, WORLD)
         assert page == backfill.STALE_PAGE_REFS == 1000, said
 
-        again = build_ledger_ref_index.main(["--world", WORLD, "--apply"], connection=connection,
+        again = build_ledger_ref_index.main(["--world", WORLD, "--apply"], connection=connection, engine=pg_engine,
                                             say=lambda line: None)
         assert (again["built"], again["attached"], again["already"], again["parent_valid"]) == (0, 0, 2, True)
     finally:

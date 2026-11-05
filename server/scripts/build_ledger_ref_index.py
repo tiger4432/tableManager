@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def main(argv=None, connection=None, say=print) -> dict:
+def main(argv=None, connection=None, say=print, engine=None) -> dict:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--world", default=None, help="a ledger world (branch); none = the operating one")
     parser.add_argument("--apply", action="store_true", help="build it; without this nothing is written")
@@ -27,13 +27,17 @@ def main(argv=None, connection=None, say=print) -> dict:
     from ledger import schema
 
     names = schema.require_world(args.world)
+    from database import models
+
+    if engine is None:
+        from database.database import engine
     own = connection is None
     if own:
-        from database.database import engine
         connection = engine.raw_connection()
     try:
         done = schema.build_partitioned_index(connection, names, schema.REF_INDEX, schema.REF_INDEX_COLUMNS,
-                                              apply=args.apply, say=say, child_name=schema.REF_INDEX_CHILD)
+                                              apply=args.apply, say=say, child_name=schema.REF_INDEX_CHILD,
+                                              build_child=models.ledger_child_builder(engine, say))
     finally:
         if own:
             connection.close()
