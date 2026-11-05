@@ -6,6 +6,9 @@ itemid) read as one row per (lot, wafer) and one cell per itemid, through the gr
   filters  a key column's as the grid's; an item's an EXISTS of its row (the grid filter's condition), blank: none
            the item column's as the grid's on the long rows: the items spread, their count and the groups follow
            it (소유자 11-05 ㄴ); the value column's refused - filter it per item
+           a set holding null takes a group without that item's row, as «blank» does (A ea92380da, 총괄 11-05)
+  keys     an absent key part equals an absent part - on PostgreSQL as ARRAY[a] = ARRAY[b], which hashes; every
+           read answered as a Python reckoning of the same rows (총괄 11-05 ㄴ)
   sort     one item's value, a group without it last both ways; then the keys
   items    the narrowed rows' DISTINCT itemid, up to pivot_max_columns, and how many more
   write    a cell by its row_id through the grid save door; a blank cell by its keys - the row is made
@@ -16,6 +19,8 @@ itemid) read as one row per (lot, wafer) and one cell per itemid, through the gr
 import json
 
 import pytest
+
+from sqlalchemy import func
 
 from conftest import retire_dynamic_model
 from database import crud, models
@@ -267,6 +272,75 @@ def test_a_slow_pivot_read_asks_its_index_by_the_value_column(grid, monkeypatch)
     _read(grid, order_by="item:b", filters=json.dumps({"item:a": {"filterType": "number", "type": "equals",
                                                                    "filter": 1}}))
     assert asked and set(map(tuple, (columns for _t, columns in asked))) == {("value",)}, asked
+
+
+def test_a_set_holding_null_takes_a_group_without_that_items_row(grid):
+    """item:b set [5, null]: (L1, W1) by its 5, (L1, W2) by having no «b» row - not (L2, W1)'s 4 or (L2, None)'s 8."""
+    filters = {"item:b": {"filterType": "set", "values": [5, None]}}
+    assert sorted(_groups(_read(grid, filters=json.dumps(filters))), key=str) == [("L1", "W1"), ("L1", "W2")]
+    assert _count(grid, filters) == 2
+    assert _groups(_read(grid, filters=json.dumps({"item:b": {"filterType": "set", "values": [5]}}))) == [("L1", "W1")]
+
+
+def _reckoned(rows, item):
+    """{group: its `item` value or None} and the groups in key order - lot, then wafer with an absent wafer last."""
+    groups = sorted({(lot, wafer) for lot, wafer, _i, _v in rows}, key=lambda g: (g[0], g[1] is None, g[1] or ""))
+    value = {(lot, wafer): v for lot, wafer, i, v in rows if i == item}
+    return groups, value
+
+
+def test_every_pivot_read_on_postgresql_answers_as_the_rows_reckoned(pg_session, monkeypatch):
+    """Production is PostgreSQL, where an absent key part is compared as ARRAY[a] = ARRAY[b]: 200 groups, one in ten
+    with no wafer, items missing here and there - the item filter, the item sort (both ways), the sort of the
+    no-wafer groups, a search and the counts, each against a reckoning of the same rows in Python."""
+    import grid_pivot
+    from grid_read import narrowed_table_query
+
+    db = pg_session
+    monkeypatch.setitem(crud.TABLE_CONFIG, TABLE, ENTRY)
+    models.init_dynamic_models({TABLE: ENTRY})
+    model = models.DYNAMIC_TABLES[TABLE]
+    model.__table__.create(bind=db.get_bind())
+    rows = [("L%03d" % (g // 10), None if g % 10 == 9 else "W%02d" % (g % 10), "i%d" % i, float((g * 7 + i * 13) % 50))
+            for g in range(200) for i in range(5) if (g + i) % 7]
+    try:
+        db.add_all([model(row_id="r%d" % n, lot=lot, wafer=wafer, itemid=item, value=value)
+                    for n, (lot, wafer, item, value) in enumerate(rows)])
+        db.commit()
+        pivot = grid_pivot.of(TABLE)
+        groups, value = _reckoned(rows, "i2")
+        absent = [g for g in groups if g[1] is None]
+        assert len(absent) == 20 and len(value) < len(groups), "CANARY: no-wafer groups, and groups without «i2»"
+
+        def read(order_by="row_id", desc=False, **narrowing):
+            narrowing = {k: json.dumps(v) if k == "filters" else v for k, v in narrowing.items()}
+            query, _key = narrowed_table_query(db, TABLE, model, pivot=pivot, **narrowing)
+            got = [tuple(g) for g in grid_pivot.order(grid_pivot.groups(query, model, pivot), model, pivot, order_by,
+                                                      desc).all()]
+            count = db.query(func.count()).select_from(grid_pivot.groups(query, model, pivot).subquery()).scalar()
+            assert count == len(got)
+            return got
+
+        def by_value(desc, among):
+            held = sorted((g for g in among if g in value), key=lambda g: (value[g], g[0], g[1] is None, g[1] or ""),
+                          reverse=False)
+            if desc:
+                held = sorted(held, key=lambda g: value[g], reverse=True)    # stable: keys stay in order within a tie
+            return held + [g for g in among if g not in value]
+
+        assert read(filters={"item:i2": {"filterType": "number", "type": "lessThan", "filter": 20}}) == [
+            g for g in groups if g in value and value[g] < 20]
+        assert read(order_by="item:i2") == by_value(False, groups)
+        assert read(order_by="item:i2", desc=True) == by_value(True, groups)
+        assert read(order_by="item:i2", filters={"wafer": {"filterType": "text", "type": "blank"}}) == by_value(
+            False, absent)
+        assert read(q="L005") == [g for g in groups if g[0] == "L005"]
+        assert read(filters={"item:i2": {"filterType": "set", "values": [value[groups[0]], None]}}) == [
+            g for g in groups if g not in value or value[g] == value[groups[0]]]
+    finally:
+        db.rollback()
+        model.__table__.drop(bind=db.get_bind())
+        retire_dynamic_model(TABLE)
 
 
 def test_the_item_columns_filter_on_postgresql(pg_session, monkeypatch):

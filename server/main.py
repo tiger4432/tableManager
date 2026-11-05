@@ -2933,8 +2933,8 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     pivoted = grid_pivot.of(table_name, **asked)
     rows, _cache_key = narrowed_table_query(db, table_name, table_model, q=asked.get("q"), cols=cols,
                                             filters=filters, pivot=pivoted)
-    page = [tuple(group) for group in grid_pivot.groups(rows, table_model, pivoted)
-            .order_by(*grid_pivot.order(table_model, pivoted, order_by, order_desc)).offset(skip).limit(limit).all()]
+    page = [tuple(group) for group in grid_pivot.order(grid_pivot.groups(rows, table_model, pivoted), table_model,
+                                                       pivoted, order_by, order_desc).offset(skip).limit(limit).all()]
     items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns())
     fetched = grid_pivot.rows_of(rows, table_model, pivoted, page)
     raw_rows = fetched.all() if fetched is not None else []
@@ -2999,7 +2999,7 @@ def get_table_data(
         if not table_model:
             raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
         if pivot:
-            grid_pivot.order(table_model, grid_pivot.of(table_name), order_by, order_desc)
+            grid_pivot.order(db.query(table_model), table_model, grid_pivot.of(table_name), order_by, order_desc)
         else:
             resolve_sort(None, table_model, table_name, order_by, order_desc)
         counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,

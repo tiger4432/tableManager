@@ -4,8 +4,11 @@ per key group - its keys less `column` - and one cell per value of `column`, fil
 the grid's, an item's filter the grid filter's own condition inside one EXISTS, and a cell's write the grid save door
 by its row_id (a blank cell: by its keys, which makes the row)."""
 from fastapi import HTTPException
-from sqlalchemy import and_, exists, func, or_, select, tuple_
+from sqlalchemy import Boolean, and_, exists, func, or_, select, tuple_
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql.expression import ColumnElement
+from sqlalchemy.sql.visitors import InternalTraversal
 
 #: The filter and sort name of an item column - always, so a key column and an item never share a name.
 ITEM_PREFIX = "item:"
@@ -122,9 +125,32 @@ def index_names(table_name, order_by, filters):
     return named(order_by), filters
 
 
+class _SameKeyPart(ColumnElement):
+    """`a` is `b`, an absent part the same as an absent part (10-24: «a,빈값 a,빈값 같은거로 처리»)."""
+    type = Boolean()
+    inherit_cache = True
+    _traverse_internals = [("a", InternalTraversal.dp_clauseelement), ("b", InternalTraversal.dp_clauseelement)]
+
+    def __init__(self, a, b):
+        self.a, self.b = a, b
+
+
+@compiles(_SameKeyPart)
+def _same_key_part(part, compiler, **kw):
+    return compiler.process(part.a.is_not_distinct_from(part.b), **kw)
+
+
+@compiles(_SameKeyPart, "postgresql")
+def _same_key_part_on_postgresql(part, compiler, **kw):
+    # IS NOT DISTINCT FROM takes neither an index nor a hash or merge join - every group re-read the table (A 11-05,
+    # 10M rows: over 60 s); an array's = holds NULL equal to NULL and hashes (B, box throwaway DB: 400k rows 0.3 s)
+    return "ARRAY[%s] = ARRAY[%s]" % (compiler.process(part.a, **kw), compiler.process(part.b, **kw))
+
+
 def _same_keys(one, other, pivot):
-    """`one`'s row has `other`'s keys - NULL is NULL (a key part may be absent)."""
-    return and_(*(getattr(one, key).is_not_distinct_from(getattr(other, key)) for key in pivot.keys))
+    """`one`'s row has `other`'s keys - NULL is NULL (a key part may be absent). `other`: a model, or a subquery's
+    columns (`.c`)."""
+    return and_(*(_SameKeyPart(getattr(one, key), getattr(other, key)) for key in pivot.keys))
 
 
 def group_rows(db, model, pivot):
@@ -135,20 +161,31 @@ def group_rows(db, model, pivot):
 
 def narrow(query, model, pivot, items):
     """The long rows of the key groups whose items pass `items`: each item's filter an EXISTS of that item's row with
-    the grid filter's own condition on `value`; «blank» - no such row with a value."""
+    the grid filter's own condition on `value`; a filter that takes the blank cell («blank», or a set holding null -
+    `_takes_blank`) takes a group with no such row with a value too."""
     from column_filter import get_column_filter_condition
 
     for item, spec in items.items():
         held = aliased(model)
-        if isinstance(spec, dict) and spec.get("type") == "blank" and "operator" not in spec:
-            met, wanted = get_column_filter_condition(held, pivot.value, {"type": "notBlank"}), False
-        else:
-            met, wanted = get_column_filter_condition(held, pivot.value, spec), True
+        met = get_column_filter_condition(held, pivot.value, spec)
         if met is None:
             continue
         found = exists().where(_same_keys(held, model, pivot), getattr(held, pivot.column) == item, met)
-        query = query.filter(found if wanted else ~found)
+        if _takes_blank(spec):
+            valued = aliased(model)
+            found = or_(found, ~exists().where(
+                _same_keys(valued, model, pivot), getattr(valued, pivot.column) == item,
+                get_column_filter_condition(valued, pivot.value, {"type": "notBlank"})))
+        query = query.filter(found)
     return query
+
+
+def _takes_blank(spec):
+    """An item filter that takes the blank cell - «blank», or a set holding null (A ea92380da, lead 11-05): in a pivot a
+    group without that item's row shows the same blank cell."""
+    if not isinstance(spec, dict) or "operator" in spec:
+        return False
+    return spec.get("type") == "blank" or (spec.get("filterType") == "set" and None in (spec.get("values") or ()))
 
 
 def groups(query, model, pivot):
@@ -157,21 +194,23 @@ def groups(query, model, pivot):
     return query.with_entities(*keys).group_by(*keys)
 
 
-def order(model, pivot, order_by, order_desc):
-    """ORDER BY of the key groups: a key column, or one item's value - a group without it last either way - then the
-    keys."""
+def order(groups, model, pivot, order_by, order_desc):
+    """`groups` (`groups`' query) in order: a key column, or one item's value - a group without it last either way -
+    then the keys. An item's value is one LEFT JOIN to that item's rows, not a read per group (B 11-05: 400k rows
+    405 s -> 1.5 s, box throwaway DB)."""
     keys = [getattr(model, key) for key in pivot.keys]
     if order_by in (None, "", "row_id"):
-        return keys
+        return groups.order_by(*keys)
     if order_by in pivot.keys:
         first = getattr(model, order_by)
-        return [first.desc() if order_desc else first.asc()] + keys
+        return groups.order_by(first.desc() if order_desc else first.asc(), *keys)
     if order_by.startswith(ITEM_PREFIX):
         held = aliased(model)
-        cell = (select(getattr(held, pivot.value))
-                .where(_same_keys(held, model, pivot), getattr(held, pivot.column) == order_by[len(ITEM_PREFIX):])
-                .limit(1).scalar_subquery())
-        return [(cell.desc() if order_desc else cell.asc()).nulls_last()] + keys
+        cells = (select(*(getattr(held, key) for key in pivot.keys), getattr(held, pivot.value).label("value"))
+                 .where(getattr(held, pivot.column) == order_by[len(ITEM_PREFIX):]).subquery())
+        cell = func.min(cells.c.value)
+        return (groups.outerjoin(cells, _same_keys(model, cells.c, pivot))
+                .order_by((cell.desc() if order_desc else cell.asc()).nulls_last(), *keys))
     raise HTTPException(status_code=422, detail=("cannot sort a pivot by '%s' - sort by a key column (%s) or an item "
                                                  "column as %s<item>" % (order_by, ", ".join(pivot.keys), ITEM_PREFIX)))
 
