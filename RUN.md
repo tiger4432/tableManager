@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [11-05] **그리드 자동 인덱스를 세우면 그 표를 바로 ANALYZE** — git pull · 스케줄러 재기동
+>
+> ```
+> 무엇     자동 인덱스(느린 그리드 읽기가 청한 것)를 세운 직후 그 표의 통계를 다시 냄 — 조인 색인과 같은 길
+>          통계 없이 정렬 페이지가 row_id 인덱스를 끝까지 걸었음 (박스 일회용 DB 1,000 만 행: 1,654 ms -> 17 ms)
+> 볼 줄     스케줄러 로그 «[Indexes] ix_auto_<표>_<칸> built in N s» 뒤에
+>          «[<표>] statistics re-analysed after 0 row(s) in N s - an automatic index was just built on it …»
+> 끄기     ingestion_settings.json analyze_after_rows 0 — 이 ANALYZE 와 적재 뒤 ANALYZE 가 같이 꺼짐
+> ```
+>
+> ---
+>
 > ## [11-05] **피벗 읽기가 «항목 칸» 필터를 받음 (서버 반쪽)** — git pull · 런처 재기동
 >
 > ```

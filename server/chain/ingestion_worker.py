@@ -4008,10 +4008,13 @@ def _ensure_alignment_decision_key_indexes_sync(db_session_factory):
         logger.info("[Chain] alignment decision-key indexes are already in place.")
 
 
-def _analyze_stale_tables_sync(db_session_factory, built=()):
-    """`ANALYZE` every catalogued table whose statistics the database says are stale (S-130), and the `built` ones - a
-    join key index was just built on them, and until an ANALYZE the planner has no statistics for its expression: a
-    batch of 100 keys or more scanned the whole table beside the index (owner 11-04, 1.3 s a batch at 10M rows).
+def _analyze_stale_tables_sync(db_session_factory, built=(),
+                               built_why="a join key index was just built on it and the planner had no statistics for it"):
+    """`ANALYZE` every catalogued table whose statistics the database says are stale (S-130), and the `built` ones - an
+    index was just built on them (`built_why`: a join key index, or the grid's automatic index -
+    `models.ensure_auto_indexes_sync`), and until an ANALYZE the planner has no statistics for it: a batch of 100 keys
+    or more scanned the whole table beside the index (owner 11-04, 1.3 s a batch at 10M rows); a sorted grid page of
+    two equal values walked the row_id index (owner 11-05 «ㅇㅇ», 1.4 s -> 29 ms at 10M rows).
 
     🔴 S-124 ② ONLY COVERS TABLES THAT ARE LOADED AGAIN. It re-analyses after a big load,
     so a relation that took 440,000 rows BEFORE that landed keeps planning against
@@ -4089,7 +4092,7 @@ def _analyze_stale_tables_sync(db_session_factory, built=()):
     for name, modified in sorted(stale, key=lambda item: -item[1]):
         if dw._analyze_after_load(
                 name, modified,
-                why="a join key index was just built on it and the planner had no statistics for it"
+                why=built_why
                 if name in built else "the planner was costing this table against statistics taken "
                                       "before those rows arrived", forced=name in built):
             analysed.append(name)

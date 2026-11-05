@@ -2528,7 +2528,18 @@ def ensure_auto_indexes_sync(db_session_factory, wanted, say, decide=True):
             engine = db.get_bind()
         finally:
             db.close()
-        ensure_auto_indexes(engine, wanted or (), say=say, decide_keys=decide_key_wants() if decide else None)
+        decide_keys = decide_key_wants() if decide else None
+        done = ensure_auto_indexes(engine, wanted or (), say=say, decide_keys=decide_keys)
+        built = {table for table, columns, why in list(wanted or ()) + list(decide_keys or ())
+                 if done.get(auto_index_name(table, columns, why)) == INDEX_BUILT}
+        if built:
+            # the tables an automatic index was just built on: ANALYZE now, through the join key index's own path
+            # (owner 11-05 «ㅇㅇ»)
+            from chain import ingestion_worker
+
+            ingestion_worker._analyze_stale_tables_sync(
+                db_session_factory, built=built,
+                built_why="an automatic index was just built on it and the planner had no statistics for it")
     except Exception as exc:                                            # noqa: BLE001
         say("[Indexes] the automatic indexes were not compared (this process goes on): %s: %s"
             % (type(exc).__name__, told(exc)))
