@@ -84,8 +84,8 @@ def test_a_holder_past_the_wait_defers_and_leaves_nothing(table, monkeypatch):
         builder.join(60)
     assert _state(table) is None, "nothing was started, so nothing is left behind"
     assert "waits for pid %s holding %s" % (pid, TABLE) in said[0], said
-    assert ("not built - waited 1s for pid %s holding %s; built again at the next start or Reload" % (pid, TABLE)
-            in said[-1]), said
+    assert ("not built - waited 1s for pid %s holding %s; tried again at the line's next poll" % (pid, TABLE)
+            in said[-1]), "asked in a round (`built_tables`) - the line keeps it for its next poll: %s" % said
 
 
 def test_a_build_under_way_is_left_to_its_session_says_its_waits_and_ends_valid(table):
@@ -121,3 +121,26 @@ def test_a_statement_that_ran_but_left_no_valid_index_is_failed_not_built(table)
         word = models._ensure_one_index(table, NAME, "SELECT 1", "test", say=said.append, table=TABLE)
     assert (word, set(built)) == (models.INDEX_FAILED, set()) and _state(table) is None
     assert "was built INVALID" in said[-1], said
+
+
+def test_outside_a_round_the_deferred_line_says_its_asker_builds_it_again(table, monkeypatch):
+    """The ledger worker's start and a retroactive merge ask outside the line's round - nothing keeps it for a poll,
+    and the sentence says so (총괄 11-06 ㄱ)."""
+    monkeypatch.setattr(models, "INDEX_WAIT_BEFORE_SECONDS", 1.0)
+    monkeypatch.setattr(models, "INDEX_WAIT_POLL_SECONDS", 0.2)
+    holder = table.connect()
+    builder = None
+    try:
+        holder.execute(text('INSERT INTO "%s" VALUES (999)' % TABLE))
+        said, out = [], {}
+        builder = threading.Thread(target=lambda: out.update(word=models._ensure_one_index(
+            table, NAME, DDL, "test", say=said.append, table=TABLE)), daemon=True)
+        builder.start()
+        builder.join(15)
+        assert out.get("word") == models.INDEX_DEFERRED, said
+    finally:
+        holder.rollback()
+        holder.close()
+        if builder is not None:
+            builder.join(60)
+    assert said[-1].endswith("; built again at the next start or the next run that asks for it"), said

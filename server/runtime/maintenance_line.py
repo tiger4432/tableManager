@@ -162,9 +162,14 @@ def _each(works):
 BUILT_WHY = "an index was just built on it and the planner had no statistics for it"
 
 
-#: The start's works that left an index for later (`models.comes_again`) - asked again each poll until none does
-#: (총괄 11-06 ㄱ-1): a start-only index (human-claims, business-key unique, dynamic tables) is built by no Reload.
+#: The line's works that left an index for later (`models.comes_again`) - the start's, the declared work's, the asked
+#: ones' - asked again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it was met.
 _LEFT = []
+
+
+def _keep(left):
+    """`left` (a round's works that left one) kept for the polls, each once."""
+    _LEFT.extend(work for work in left if work not in _LEFT)
 
 
 def _round(db_session_factory, works):
@@ -256,18 +261,19 @@ def poll_once(db_session_factory, mark):
         declared = True
     if latest != mark:
         mark = latest
+    if _LEFT:
+        _LEFT[:] = _round(db_session_factory, list(_LEFT))
     if declared:
-        _round(db_session_factory, _declared_work(db_session_factory))
+        _keep(_round(db_session_factory, _declared_work(db_session_factory)))
     keys = [table for table, _columns, why in asked if why == models.KEY_UNIQUE]
     if keys:
         from chain import ingestion_worker as worker
 
-        _round(db_session_factory, [(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)])
+        _keep(_round(db_session_factory, [(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)]))
     asked = [each for each in asked if each[2] != models.KEY_UNIQUE]
     if asked:
-        _round(db_session_factory, [(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning, False)])
-    if _LEFT:
-        _LEFT[:] = _round(db_session_factory, list(_LEFT))
+        _keep(_round(db_session_factory, [(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning,
+                                           False)]))
     return mark
 
 

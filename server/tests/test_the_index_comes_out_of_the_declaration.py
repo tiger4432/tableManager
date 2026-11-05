@@ -194,7 +194,9 @@ def test_every_caller_of_the_one_builder_hands_it_the_table_its_statement_builds
         worker._ensure_human_claims_index_sync(lambda: Db())
     worker._build_unique_index_waiting(None, uq, "t_bk", "uq_bk_t_bk")
     unique_key._build(Db(), "t_join", "uq_t_join", vjc.required_index_ddl("t_join", ["k"]), "join unique")
+    models._build_one(None, 'CREATE INDEX CONCURRENTLY IF NOT EXISTS "n_decl" ON "t_decl" ("a")',
+                      {"name": "n_decl", "table": "t_decl"}, lambda line: None, None)    # declared · automatic
 
     assert {what for what, _t, _on in handed} == {"dynamic-table", "decision-key", "map-key", "human-claims",
-                                                  "business-key unique", "join unique"}, handed
+                                                  "business-key unique", "join unique", "declared"}, handed
     assert [(what, table, on) for what, table, on in handed if table != on] == [], handed

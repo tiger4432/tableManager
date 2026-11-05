@@ -30,8 +30,8 @@ def fixture_builder(monkeypatch):
     return script
 
 
-def _poll(monkeypatch):
-    """One poll of the line with nothing new asked - only `_LEFT` can build."""
+def _poll(monkeypatch, declared=False):
+    """One poll of the line - nothing new asked, or a Reload (`declared`): only `_LEFT` and the declared work build."""
 
     class Db:
         def commit(self):
@@ -41,7 +41,7 @@ def _poll(monkeypatch):
             pass
 
     monkeypatch.setattr(system_reload, "reloads_after", lambda db, mark: [])
-    monkeypatch.setattr(system_reload, "reload_for", lambda *a: False)
+    monkeypatch.setattr(system_reload, "reload_for", lambda *a: declared)
     monkeypatch.setattr(index_wants, "taken", lambda db: [])
     maintenance_line.poll_once(lambda: Db(), 0)
 
@@ -95,3 +95,17 @@ def test_the_join_lookup_forgets_a_deferred_build_and_remembers_a_built_one(buil
         unique_key.forget()
     assert (first["state"], second["state"], third["state"]) == ("deferred", "ok", "ok")
     assert len(builder["calls"]) == 2, "deferred: asked again; built: remembered"
+
+
+def test_a_deferred_declared_index_is_built_at_the_next_poll_too(builder, monkeypatch):
+    """One «deferred» wherever it is met (총괄 11-06): the declared work's (a Reload's round) is kept for the next poll
+    as the start's is - no second Reload needed."""
+    work = (lambda: models._ensure_one_index(None, "ix_decl", "S", "test", say=lambda line: None, table="t"),)
+    monkeypatch.setattr(maintenance_line, "_declared_work", lambda factory: [work])
+    builder["words"] = [models.INDEX_DEFERRED, models.INDEX_BUILT]
+    _poll(monkeypatch, declared=True)
+    assert builder["calls"] == ["ix_decl"] and maintenance_line._LEFT == [work]
+
+    _poll(monkeypatch)
+    _poll(monkeypatch)
+    assert builder["calls"] == ["ix_decl", "ix_decl"] and maintenance_line._LEFT == []

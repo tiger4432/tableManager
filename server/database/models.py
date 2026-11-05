@@ -1964,8 +1964,13 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                     return INDEX_BUSY
                 held = _wait_before_the_build(connection, table, name, say) if table else []
                 if held:
+                    # what comes next is true by where it was asked: the scheduler line's round keeps it for its next
+                    # poll (`maintenance_line._LEFT`); outside one (the ledger worker's start, a retroactive merge) it
+                    # waits for its asker's next start or run (총괄 11-06 ㄱ)
+                    again = ("tried again at the line's next poll" if getattr(_ROUND, "left", None) is not None
+                             else "built again at the next start or the next run that asks for it")
                     say(f"[Indexes] {what} index '{name}' not built - waited {INDEX_WAIT_BEFORE_SECONDS:.0f}s for pid "
-                        f"{', '.join(map(str, held))} holding {table}; built again at the next start or Reload")
+                        f"{', '.join(map(str, held))} holding {table}; {again}")
                     return INDEX_DEFERRED
                 for leftover in stale:
                     say(f"[Schema Sync] {what} index '{leftover}' is INVALID from an "
