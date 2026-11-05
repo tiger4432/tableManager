@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [11-05] **그리드 이미지 칸 — 그림 Ctrl+V · 끌어다 놓기 (클라 반쪽)** — git pull · 화면 새로 고침
+>
+> ```
+> 볼 곳    이미지 칸 하나를 고르고 캡처한 그림을 Ctrl+V -> 상태 줄 «Uploading image …» 뒤 «Pasted · 1 cell updated»
+>          칸 값이 «<출처>:<표>/<날짜>/<고유>.png»
+>          그림 파일을 이미지 칸 위로 끌면 그 칸에 점선 테두리 · 놓으면 같은 줄
+> 답       엑셀 칸 복사 = 글자 붙여넣기 (엑셀이 그림을 같이 실어도 글자가 이김 — 맞는 답)
+>          «Images paste into image columns only» = 이미지 칸이 아닌 칸에 그림만 붙임
+>          «no image source receives pictures …» = 서버 image_sources.json 에 receive 없음 — 아래 서버 반쪽 블록
+> 끄기     없음 — 서버의 receive 를 지우면 올리기가 그 문장으로 거절됨
+> ```
+>
+> ---
+>
 > ## [11-05] **그리드 이미지 칸에 그림을 붙여 넣거나 끌어다 놓으면 서버가 받음 (서버 반쪽)** — git pull · 런처 재기동 (클라 dist 와 같이)
 >
 > ```
