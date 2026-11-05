@@ -4,12 +4,14 @@
 //   P1 text and a picture (Excel copies a picture of every cell) -> the text, as today
 //   P2 a picture alone, image cells -> that picture       P3 a picture alone, a cell that is not image -> refused
 //   P4 two pictures -> refused                            P5 no picture -> the text path, as today
+//   P6 an Excel empty cell ('\r\n', two cells '\t\r\n') and a picture -> the text, as today (owner 11-05 ㄴ)
 //   I1 a drop's cell: the topmost grid cell under the point, only when its column is image
 //   U1 the upload: its address and field; the ref; the server's sentence; no network
 //   R1 the real paste listener: a picture into an image cell -> one upload, then the ref through the paste's own PUT
 //   R2 the Excel shape (text + picture) into an image cell -> no upload, the text through the PUT
 //   R3 a picture into a cell that is not image -> nothing sent, the refusal said
 //   R4 a refused upload -> nothing written, the server's sentence said
+//   R5 · R6 Excel empty cells (G1 one cell, G3 two) into image cells -> no upload, the same calls and line as the text alone
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeDoc } from './lib/board_dom.mjs';
@@ -103,6 +105,9 @@ async function suite(C, CB) {
   say('P4 two pictures are refused', two && two.refused === C.ONE_IMAGE, JSON.stringify(two));
   say('P5 no picture is the text path', C.pastedImage('', [new File(['x'], 'a.txt', { type: 'text/plain' })], ['image']) === null
     && C.pastedImage('', [], ['image']) === null);
+  say('P6 an Excel empty cell and its picture is the text - only no text at all is a picture',
+    C.pastedImage('\r\n', [png()], ['image']) === null && C.pastedImage('\t\r\n', [png()], ['image', 'image']) === null
+      && C.pastedImage(' ', [png()], ['image']) === null);
 
   console.log('\n[I] a drop\'s cell');
   const el = (cls, attrs = {}, closest = null) => ({ classList: { contains: (c) => cls.split(' ').includes(c) },
@@ -168,6 +173,18 @@ async function suite(C, CB) {
       putOf(s.calls).length === 0 && log.textContent === 'that file is not a png, jpeg, gif, bmp, webp or tiff picture',
       JSON.stringify({ calls: s.calls.map((c) => c.method), log: log.textContent }));
   }
+  for (const [cell, id, text] of [['R5', 'G1', '\r\n'], ['R6', 'G3', '\t\r\n']]) {
+    const seen = async (files) => {
+      const s = stage();
+      await paste(text, files);
+      return { calls: s.calls.map((c) => `${c.method} ${c.url} ${c.body instanceof FormData ? 'form' : c.body || ''}`), log: log.textContent };
+    };
+    const withPicture = await seen([png()]);
+    const textAlone = await seen([]);
+    say(`${cell} ${id} Excel empty cell${id === 'G3' ? 's' : ''} into image cells: no upload, the same as the text alone`,
+      !withPicture.calls.some((c) => c.startsWith('POST')) && JSON.stringify(withPicture) === JSON.stringify(textAlone),
+      JSON.stringify({ withPicture, textAlone }));
+  }
   docListeners.clear();
   return { ran: names.length, names, failures: fails };
 }
@@ -191,7 +208,7 @@ const quietly = async (fn) => {
   try { return await fn(); } finally { console.log = say; }
 };
 const MUTANTS = [
-  M('X1', 'the picture wins over the text', 'P1', COLUMN, '  if (!isBlank(text)) return null;\n', ''),
+  M('X1', 'the picture wins over the text', 'P1', COLUMN, '  if (text) return null;\n', ''),
   M('X2', 'one image cell among the targets is enough', 'P3', COLUMN,
     '!types.every((t) => t === IMAGE_TYPE)', '!types.some((t) => t === IMAGE_TYPE)'),
   M('X3', 'two pictures pass', 'P4', COLUMN, 'if (images.length > 1 || list.length > 1)', 'if (false)'),
@@ -205,6 +222,10 @@ const MUTANTS = [
     '  if (image) await uploadedRef(image.file, targetCells[0].colId);\n  const value = text;'),
   M('X7', 'a refused upload writes the refusal into the cell', 'R4', CLIPBOARD,
     "  if (got.refused) { sayStopped(got.refused); return ''; }", '  if (got.refused) { return got.refused; }'),
+  M('X8', 'text of only whitespace counts as none, as isBlank reads it', 'P6', COLUMN,
+    '  if (text) return null;\n', '  if (!isBlank(text)) return null;\n'),
+  M('X9', 'the listener drops an Excel empty cell\'s text before asking (its picture uploads)', 'R5', CLIPBOARD,
+    'pastedImage(text, files,', 'pastedImage(text.trim(), files,'),
 ];
 const scored = await scoreMutants(MUTANTS, async (mu) => quietly(async () => {
   const mutate = (t) => swap(t, mu.from, mu.to);

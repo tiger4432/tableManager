@@ -1459,7 +1459,7 @@ export const FLOORS = new Map([
   ['image_preview_harness.mjs', 46],
   // New (owner 11-05 ㄱ): a picture pasted or dropped on an image cell - the text wins beside it, image cells only, one picture,
   // the topmost cell under a drop; the real paste listener uploads once and writes the ref through the paste's own PUT.
-  ['image_paste_harness.mjs', 18],
+  ['image_paste_harness.mjs', 23],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

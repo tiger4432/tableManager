@@ -36,10 +36,11 @@ export const ONE_IMAGE = 'One image per paste';
 export const NOT_SENT = 'Not sent to the server · check the network';
 export const isImageFile = (type) => /^image\//i.test(String(type || ''));
 
-/** A paste's picture, or why not: null when the paste is text as today. Only when there is no text - Excel puts a
- *  picture of the copied cells beside any cell's text (measured in Chrome 11-05), so that picture is not what is pasted. */
+/** A paste's picture, or why not: null when the paste is text as today. Only when there is no text at all - Excel puts
+ *  a picture of the copied cells beside any cell's text, an empty cell's '\r\n' too (measured in Chrome 11-05), so that
+ *  picture is not what is pasted (owner 11-05 ㄴ). */
 export function pastedImage(text, files, types) {
-  if (!isBlank(text)) return null;
+  if (text) return null;
   const list = Array.from(files || []);
   const images = list.filter((f) => isImageFile(f && f.type));
   if (!images.length) return null;
