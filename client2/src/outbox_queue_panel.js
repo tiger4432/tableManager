@@ -5,6 +5,7 @@
 // 🔴 판단을 여기서 «다시 내리지» 않는다 — 나이는 chain_queue_panel 의 좌석, 상태는 서버 어휘.
 // 🔴 실패 행은 이 표에 «안 온다» — 서버가 모집단에서 뺐다(`2eb1d38d`). 경계는 모집단 문장이 말한다.
 import { chainStateCell, formatAge, line } from './chain_queue_panel.js';
+import { widestCell } from './cell_fit.js';
 
 const str = (v) => (v == null ? '' : String(v));
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -120,19 +121,9 @@ export class OutboxQueuePanel {
   /** State and Rules as wide as their widest tag / rule name plus the cell's padding: the tag was cut at 96px (owner
    *  10-09), a rule name broke letter by letter (owner 09-23 「접지말고」, lead 10-09). A narrower panel rolls the box. */
   _fitColumns() {
-    const view = this.doc.defaultView;
-    if (!view || !view.getComputedStyle) return;
-    const widest = (sel) => {
-      let need = 0;
-      for (const el of this.root.querySelectorAll(sel)) {
-        const cs = view.getComputedStyle(el.closest('.queue-cell'));
-        need = Math.max(need, el.offsetWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + parseFloat(cs.borderRightWidth));
-      }
-      return Math.ceil(need);
-    };
     // The names written out: css_token_definition_harness reads a setProperty'd name as the token's definition.
-    const state = widest('.queue-state .tag');
-    const rules = widest('.queue-rule-name');
+    const state = widestCell(this.root, '.queue-state .tag', '.queue-cell');
+    const rules = widestCell(this.root, '.queue-rule-name', '.queue-cell');
     if (state) this.root.style.setProperty('--queue-state-w', `${state}px`);
     if (rules) this.root.style.setProperty('--queue-rules-w', `${rules}px`);
   }

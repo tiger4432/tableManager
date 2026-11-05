@@ -27,6 +27,7 @@ import { refreshReferenceForSelection, fillTargetOrdinals, syncReferenceViewRule
 import { ledgerColumnDef } from './grid_ledger_column.js';
 import { columnTypeParts } from './grid_image_column.js';
 import { ImagePreview } from './image_preview.js';
+import { HiddenColumns } from './hidden_columns.js';
 import { localStamp, NO_TIME } from './server_time.js';
 import { ABSENT, isBlank } from './absent.js';
 
@@ -424,6 +425,18 @@ let chipsOpen = false;
 // 펼쳐졌을 때 칩이 사는 판. 스트립의 자기 div «안»에 있지만 위치 조상은 헤더입니다.
 let chipsPanel = null;
 let chipsDetach = null;
+// The strip's «N hidden» part, born with the strip's first draw.
+let hiddenPart = null;
+
+/** Hides or shows data columns - the column chooser, a header's «Hide column» and «N hidden» all come here (owner 11-05). */
+export function setColumnsHidden(colIds, hidden) {
+  if (state.gridApi) state.gridApi.setColumnsVisible(colIds.filter(isDataColumn), !hidden);
+}
+
+/** The data columns hidden now, in the grid's order, by their header words. */
+const hiddenColumns = (api) => (api ? api.getColumns() || [] : [])
+  .filter((col) => isDataColumn(col.getColId()) && !col.isVisible())
+  .map((col) => ({ id: col.getColId(), word: col.getColDef().headerName || col.getColId() }));
 // Below this the truncated chip is a sliver that names nothing, and `+N 필터` alone says more.
 const READABLE_CHIP_PX = 90;
 
@@ -562,6 +575,9 @@ export function renderFilterBar() {
       });
     }
   }
+
+  if (!hiddenPart) hiddenPart = new HiddenColumns(bar, { doc: document, show: (ids) => setColumnsHidden(ids, false) });
+  hiddenPart.draw(hiddenColumns(api));
 
   foldFilterChips();
   updateOffscreenIndicator();
@@ -1257,6 +1273,9 @@ const MOCKUP_COLUMN_LAYOUT = Object.freeze({
 // Measured off the live grid rather than assumed -- `dt_slot` at 58px and `dt_eqp` at 70px
 // both reported exactly 32px less usable text width than their column width.
 const HEADER_CHROME_PX = 32;
+/** The sort arrow and the filter mark a header shows beside its name, 24 px each with their gap (measured 11-05 on a
+ *  sorted column): without their room a sorted or filtered name was cut. */
+const HEADER_ICONS_PX = 48;
 /** A formula column's fx mark beside its name: the mark (two glyphs at --fs-tag, --space-1 each side) and its gap. */
 const FORMULA_MARK_PX = 28;
 
@@ -1276,24 +1295,66 @@ const FORMULA_MARK_PX = 28;
  */
 function headerLabelWidth(label) {
   if (!label) return 0;
-  const canvas = headerLabelWidth.canvas || (headerLabelWidth.canvas = document.createElement('canvas'));
+  const css = getComputedStyle(document.body);
+  const family = css.getPropertyValue('--font-body').trim() || 'sans-serif';
+  // Matches `#myGrid .ag-header-cell-text` in style.css (its size the token, not a copy: 10.5 here against the drawn 11
+  // cut «CORE_WAFER…», 11-05). Uppercase because the header is transformed there, and the transform changes the width.
+  return textWidth(String(label).toUpperCase(), `600 ${css.getPropertyValue('--fs-tag').trim() || '11px'} ${family}`, 0.4);
+}
+
+/** A text's px in a font; `spacing` adds back the letter-spacing `measureText` cannot see. */
+function textWidth(text, font, spacing = 0) {
+  const canvas = textWidth.canvas || (textWidth.canvas = document.createElement('canvas'));
   const context = canvas.getContext('2d');
   if (!context) return 0;
-  const family = getComputedStyle(document.body).getPropertyValue('--font-body').trim() || 'sans-serif';
-  // Matches `#myGrid .ag-header-cell-text` in style.css. Uppercase because the header is
-  // transformed there, and the transform changes the measured width.
-  context.font = `600 10.5px ${family}`;
-  const text = String(label).toUpperCase();
-  return Math.ceil(context.measureText(text).width + text.length * 0.4);
+  context.font = font;
+  return Math.ceil(context.measureText(text).width + text.length * spacing);
+}
+
+/** The width a column's header needs whole: its name, the header's icons and a formula column's fx mark. */
+const headerNeed = (def) => headerLabelWidth(def.headerName) + HEADER_CHROME_PX + HEADER_ICONS_PX
+  + (def.headerComponentParams ? FORMULA_MARK_PX : 0);
+
+/** A column's fitted width (owner 11-05): its widest value plus the cell's padding, up to `cap`; never narrower than its
+ *  header's need - the name is never cut, the cap is for long values. `measure` gives a text's px. */
+export function columnFitWidth(header, texts, measure, pad, cap) {
+  let widest = 0;
+  for (const text of texts) if (text != null && text !== '') widest = Math.max(widest, measure(String(text)) + pad);
+  return Math.ceil(Math.max(header, Math.min(cap, widest)));
+}
+
+// renderGrid drew new columns (a table opened, the pivot turned) and the first rows drawn after it set their widths, once:
+// a re-read, a page, a window or side panel resize keep them, and so does a width the operator dragged (owner 11-05).
+let widthsOwed = false;
+
+/** The columns' widths from the rows drawn, when renderGrid owes them - the one place that asks. */
+export function fitColumnWidths() {
+  const api = state.gridApi;
+  if (!widthsOwed || !api || !api.getDisplayedRowCount()) return;
+  const cell = document.querySelector('#myGrid .ag-cell');
+  if (!cell) return;
+  widthsOwed = false;
+  const cs = getComputedStyle(cell);
+  const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
+  const font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-column-max')) || Infinity;
+  const nodes = [];
+  api.forEachNodeAfterFilterAndSort((node) => nodes.push(node));
+  // within each column's least and most: AG Grid resizes all or none, so one width under its least moved nothing (measured)
+  api.setColumnWidths(api.getColumns().filter((col) => isDataColumn(col.getColId())).map((col) => ({
+    key: col.getColId(),
+    newWidth: Math.min(col.getMaxWidth() || Infinity, Math.max(col.getMinWidth() || 0, columnFitWidth(headerNeed(col.getColDef()),
+      new Set(nodes.map((rowNode) => api.getCellValue({ rowNode, colKey: col, useFormatter: true }))),
+      (text) => textWidth(text, font), pad, cap))),
+  })));
 }
 
 function applyMockupLayout(columnDefs) {
   columnDefs.forEach(def => {
     const mockupWidth = MOCKUP_COLUMN_LAYOUT[def.field];
     if (!mockupWidth) return;
-    const mark = def.headerComponentParams ? FORMULA_MARK_PX : 0;
-    const width = Math.max(mockupWidth, headerLabelWidth(def.headerName) + HEADER_CHROME_PX + mark);
-    def.width = width; def.minWidth = Math.min(width, def.minWidth ?? width);
+    const width = Math.max(mockupWidth, headerNeed(def));
+    def.initialWidth = width; def.minWidth = Math.min(width, def.minWidth ?? width);
   });
   // △소유자: 「그리드 컬럼 순서 table config 의 display col 순서 그대로」.
   //
@@ -1315,6 +1376,7 @@ let chipBarWatch = null;
 
 export function renderGrid(initialRows) {
   const columnDefs = buildColumnDefs();
+  widthsOwed = true;
   const bar = elements.gridFilterBar;
   if (!chipBarWatch && bar && typeof ResizeObserver === 'function') {
     chipBarWatch = new ResizeObserver(() => foldFilterChips());
@@ -1365,7 +1427,9 @@ export function renderGrid(initialRows) {
     floatingFiltersHeight: 28,
     rowHeight: 28,
     defaultColDef: {
-      width: 150,
+      // initial, not width: a width in the defs is laid again on every defs refresh (the reference rule's header pass) and
+      // undid the fitted widths (owner 11-05, measured on the box); an initial width is only a new column's
+      initialWidth: 150,
       minWidth: 100,
       floatingFilter: true,
       // 🔴 NO `suppressFilterButton` HERE, DELIBERATELY. The 2b order asked for it and the
@@ -1393,6 +1457,7 @@ export function renderGrid(initialRows) {
     },
     onColumnVisible: () => {
       updateVisibleColIndexMap();
+      renderFilterBar();
     },
     onColumnPinned: () => {
       updateVisibleColIndexMap();
@@ -1432,8 +1497,10 @@ export function renderGrid(initialRows) {
     },
     // The `+N열 →` count is a fact about the VIEWPORT, so it is re-measured by everything
     // that can move the viewport's right edge: the first paint, a sidebar drag, a column
-    // resize (which `sizeColumnsToFit` also raises), and horizontal scrolling.
+    // resize, and horizontal scrolling.
     onFirstDataRendered: () => {
+      // the grid's very first rows land before its first cells are drawn - the fit they owe is paid here
+      fitColumnWidths();
       renderFilterBar();
     },
     onGridSizeChanged: () => {

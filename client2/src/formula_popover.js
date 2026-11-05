@@ -85,7 +85,8 @@ const CLOCK = { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(
  *   say      (text, type, opts) - the page's toast
  *   onSaved  ({table, column}) - the page reads the table's formulas again
  *   openQueue () - the toast's «Open queue»
- *   clock    {set, clear} - the preview's rest
+ *   hide     (column) - «Hide column» in the head; without it, no such button
+ *   clock   {set, clear} - the preview's rest
  */
 export class FormulaPopover {
   constructor(host, deps = {}) {
@@ -95,6 +96,7 @@ export class FormulaPopover {
     this.say = deps.say || (() => {});
     this.onSaved = deps.onSaved || (() => {});
     this.openQueue = deps.openQueue || null;
+    this.hide = deps.hide || null;
     this.clock = deps.clock || CLOCK;
     this.board = new ReadBoard();
     this.panel = null;
@@ -167,6 +169,8 @@ export class FormulaPopover {
 
     const head = this.el('div', 'formula-pop__head');
     head.appendChild(this.el('span', 'formula-pop__title', `Formula · ${table}.${column}`));
+    // the header's right click is where a column is hidden too (owner 11-05); «N hidden» shows it again
+    if (this.hide) head.appendChild(this.button('btn-quiet formula-pop__hide', 'Hide column', () => { this.hide(column); this.close(); }));
     const shut = this.button('btn-quiet formula-pop__close', '×', () => this.close());
     shut.setAttribute('aria-label', 'Close');
     head.appendChild(shut);

@@ -2,6 +2,7 @@ import { API_BASE, pageLimit } from './config.js';
 import { ABSENT, isCount } from './absent.js';
 import { LOADING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
+import { widestCell } from './cell_fit.js';
 import { sayStopped } from './write_guard.js';
 import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
@@ -583,7 +584,7 @@ export function createGlobalTimelineItemDom(group) {
       <div class="audit-cell audit-time">${timeStr}</div>
       <div class="audit-cell audit-user">${escapeHtml(user)}</div>
       <div class="audit-cell audit-kind"><span class="audit-pill ${kind.cls}">${kind.label}</span></div>
-      <div class="audit-cell audit-tbl"><span class="audit-target-table" data-clip-ok title="${escapeHtml(keyTable)}">${escapeHtml(keyTable)}</span></div>
+      <div class="audit-cell audit-tbl"><span class="audit-target-table" data-wrap-ok title="${escapeHtml(keyTable)}">${tablePieces(keyTable)}</span></div>
       <div class="audit-cell audit-target">
         <span class="audit-target-key" title="${escapeHtml(keyRow)}"><span class="audit-target-row">${escapeHtml(keyRow)}</span></span>
         <span class="audit-target-col">${escapeHtml(targetCol)}</span>
@@ -639,7 +640,7 @@ export function createGlobalTimelineItemDom(group) {
             // «더 있을 수 있다»는 표시인데 이제 없다는 것을 압니다. 그 칸만 고칩니다:
             // 줄을 통째로 다시 그리면 방금 펌친 것이 접힙니다.
             const keyEl = li.querySelector('.audit-target-table');
-            if (keyEl) keyEl.textContent = auditTargetTable(group) || keyEl.textContent;
+            if (keyEl) { keyEl.innerHTML = tablePieces(auditTargetTable(group) || keyEl.textContent); fitAuditTable(); }
             renderSubDetails(detailsContainer, group.logs);
           } catch (err) {
             console.error('Failed to load transaction details', err);
@@ -709,6 +710,28 @@ export function renderTimelineIncremental(log) {
 }
 
 // Prepend or update item incrementally to global history tab
+/** A table name breaks only after «_» or «.» or at a space, never between two letters (owner 11-05): each unbreakable
+ *  piece its own span, which fitAuditTable measures. */
+function tablePieces(name) {
+  return (String(name ?? '').match(/[^_.\s]*[_.]|[^_.\s]+|\s+/g) || [])
+    .map((piece) => (/^\s/.test(piece) ? ' '
+      : `<span class="audit-tbl-piece">${escapeHtml(piece)}</span>${/[_.]$/.test(piece) ? '<wbr>' : ''}`)).join('');
+}
+
+let auditFitWatch = null;
+/** The audit's Table column as wide as its widest piece - the head's word too; again when the panel shows or changes width
+ *  (a hidden panel measures 0 and keeps the last). */
+function fitAuditTable() {
+  const box = elements.timelineContainer;
+  if (!box) return;
+  if (!auditFitWatch && typeof ResizeObserver === 'function') {
+    auditFitWatch = new ResizeObserver(() => fitAuditTable());
+    auditFitWatch.observe(box);
+  }
+  const need = widestCell(box, '.audit-tbl-piece', '.audit-cell');
+  if (need) box.style.setProperty('--audit-tbl-w', `${need}px`);
+}
+
 export function renderGlobalTimelineIncremental(log) {
   if (state.activeHistoryTab !== 'global') return;
 
@@ -747,6 +770,7 @@ export function renderGlobalTimelineIncremental(log) {
   } else {
     elements.timeline.insertBefore(newLi, elements.timeline.firstChild);
   }
+  fitAuditTable();
 }
 
 // Render history logs in a vertical timeline UI card structure
@@ -1092,6 +1116,7 @@ export function renderGlobalTimeline() {
     const li = createGlobalTimelineItemDom(group);
     if (li) elements.timeline.appendChild(li);
   });
+  fitAuditTable();
 
   if (!shown.length) {
     elements.timeline.innerHTML = '<li class="timeline-empty">No history matches</li>';

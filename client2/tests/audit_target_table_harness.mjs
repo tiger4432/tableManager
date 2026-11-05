@@ -134,7 +134,7 @@ const rowView = (m) => [cellsOf(m, ROW([{ table_name: 'dt_log' }], 1)), cellsOf(
   ok(!one.target.includes('dt_log') && one.target.includes('LOT-7') && !many.target.includes('dt_log'),
     'D2 the target cell says the row and its column, not the table again', [one.target, many.target]);
   const head = readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8');
-  ok(/<div class="audit-cell audit-tbl">Table<\/div>\s*<div class="audit-cell audit-target">Row · column<\/div>/.test(head),
+  ok(/<div class="audit-cell audit-tbl"><span class="audit-tbl-piece">Table<\/span><\/div>\s*<div class="audit-cell audit-target">Row · column<\/div>/.test(head),
     'D3 the head names it: Table, then Row · column', null);
 }
 
@@ -156,7 +156,7 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
-  ['the row\'s table cell left empty', swap(' title="${escapeHtml(keyTable)}">${escapeHtml(keyTable)}</span></div>',
+  ['the row\'s table cell left empty', swap(' title="${escapeHtml(keyTable)}">${tablePieces(keyTable)}</span></div>',
     ' title="${escapeHtml(keyTable)}"></span></div>')],
   ['the table said again in the target cell', swap("  const keyRow = isSummary ? '' : rowKey;",
     "  const keyRow = isSummary ? keyTable : `${keyTable} · ${rowKey}`;")],

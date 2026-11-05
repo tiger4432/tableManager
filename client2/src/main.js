@@ -88,6 +88,7 @@ import {
   applyFillTargetHeaders,
   isSystemColumn,
   sortParams,
+  setColumnsHidden,
 } from './grid.js';
 import {
   showToast,
@@ -337,6 +338,7 @@ function initFormulaPopover() {
     say: showToast,
     onSaved: ({ table }) => rereadFormulas(table),
     openQueue: () => { if (elements.tabQueueBtn) elements.tabQueueBtn.click(); },
+    hide: (column) => setColumnsHidden([column], true),
   });
   registerFormulaOpener(openFormula);
   return part;
@@ -1044,12 +1046,12 @@ function setupEventListeners() {
         if (evt.target !== checkbox && evt.target !== label) {
           evt.stopPropagation();
           checkbox.checked = !checkbox.checked;
-          state.gridApi.setColumnsVisible([colId], checkbox.checked);
+          setColumnsHidden([colId], !checkbox.checked);
         }
       });
 
       checkbox.addEventListener('change', () => {
-        state.gridApi.setColumnsVisible([colId], checkbox.checked);
+        setColumnsHidden([colId], !checkbox.checked);
       });
 
       li.appendChild(checkbox);
@@ -1064,8 +1066,7 @@ function setupEventListeners() {
       e.stopPropagation();
       if (!state.gridApi) return;
       const columns = state.gridApi.getColumns() || [];
-      const colIds = columns.map(c => c.getColId()).filter(isDataColumn);
-      state.gridApi.setColumnsVisible(colIds, true);
+      setColumnsHidden(columns.map(c => c.getColId()), false);
       renderColumnSelectorList();
     });
   }
@@ -1076,8 +1077,7 @@ function setupEventListeners() {
       e.stopPropagation();
       if (!state.gridApi) return;
       const columns = state.gridApi.getColumns() || [];
-      const colIds = columns.map(c => c.getColId()).filter(isDataColumn);
-      state.gridApi.setColumnsVisible(colIds, false);
+      setColumnsHidden(columns.map(c => c.getColId()), true);
       renderColumnSelectorList();
     });
   }
@@ -1375,12 +1375,8 @@ function setupEventListeners() {
         if (sidebarWidth < minWidth) sidebarWidth = minWidth;
         if (sidebarWidth > maxWidth) sidebarWidth = maxWidth;
 
+        // The grid's columns keep their widths: the grid's box changes, its columns do not (owner 11-05).
         putSidebarWidth(sidePanel(), sidebarWidth);
-
-        // AG-Grid 컬럼 가로 크기 반응형 자동 피팅
-        if (state.gridApi) {
-          state.gridApi.sizeColumnsToFit();
-        }
       }
     });
 
@@ -1399,10 +1395,6 @@ function setupEventListeners() {
             localStorage.setItem(widthKey(panel), String(Math.round(width)));
           }
         } catch { /* storage refused the write; the drag itself still stands */ }
-
-        if (state.gridApi) {
-          state.gridApi.sizeColumnsToFit();
-        }
       }
     });
   }

@@ -1409,6 +1409,14 @@ body.resizing-active .gallery-seat {
 }
 .filter-chips-more:hover { color: var(--text); }
 
+/* «N hidden ▾» (owner 11-05): the hidden columns under it, one a row, each shown again alone or all at once. */
+.hidden-cols { flex: 0 0 auto; }
+.hidden-cols__panel { flex-direction: column; gap: var(--space-1); max-height: var(--menu-max-height); overflow-y: auto; }
+.hidden-cols__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.hidden-cols__word { font-family: var(--font-mono); font-size: var(--fs-label); color: var(--text); white-space: nowrap; }
+.hidden-cols__show { height: auto; min-height: 0; padding: 0 var(--space-1); line-height: 1.2; }
+.hidden-cols__all { margin-top: var(--space-2); }
+
 .filter-chip {
   display: inline-flex;
   align-items: center;
@@ -2612,9 +2620,9 @@ body.resizing-active .gallery-seat {
    the row breaks. An empty strip spends no width - its 240px basis was 240px of nothing. With chips or the TX banner
    it yields down to one readable chip, «+N» and «Clear all» (16em, measured at 0.67); a 0 basis
    with no floor is what settled it at 30px on 09-02. The message yields down to «Loaded <n> rows» whole
-   (13em) and never takes more than its own text, so the chips keep the free space. */
-.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"])) { flex: 0 0 0; }
-.app-header .header-filter-bar:has(.filter-chip, > .tx-filter-banner[style*="flex"]) { flex: 1 1 0; min-width: 16em; }
+   (13em) and never takes more than its own text, so the chips keep the free space. «N hidden» counts as a chip (11-05). */
+.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden]))) { flex: 0 0 0; }
+.app-header .header-filter-bar:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden])) { flex: 1 1 0; min-width: 16em; }
 .app-header .log-indicator-area {
   flex: 1 1 0;
   min-width: 13em;
@@ -2739,7 +2747,7 @@ body.resizing-active .gallery-seat {
    대신하고, 남는 폭은 Tx 가 받는다 — 대상은 소유자 지시대로 좁게 둔다. */
 .timeline-container > .audit-head, .audit-table .timeline-card {
   /* Kind 96: its longest word «OVERWRITE» is a 79 px pill and the cell pads 8 + 8 and a 1 px line (measured 10-12). */
-  grid-template-columns: 70px 62px 96px 96px 110px minmax(72px, 1fr);
+  grid-template-columns: 70px 62px 96px var(--audit-tbl-w, 96px) 110px minmax(72px, 1fr);
   grid-template-areas: "time user kind tbl target tx" "change change change change change change";
 }
 :is(.timeline-container > .audit-head, .audit-table .timeline-card) > .audit-time { grid-area: time; }
@@ -2831,10 +2839,11 @@ body.resizing-active .gallery-seat {
 /* The row id is the key the operator finds the row by: it stays whole and the table name gives way first; the whole is
    the title (lead 10-09). */
 .audit-target-key { display: flex; max-width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; }
-.audit-target-table { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* The table read, not glanced at (owner 10-12): body size and colour, cut whole in its title. */
-.audit-table .timeline-card > .audit-tbl { font-family: var(--font-mono); font-size: var(--fs-body); color: var(--text);
-  white-space: nowrap; overflow: hidden; }
+.audit-target-table { min-width: 0; }
+.audit-tbl-piece { white-space: nowrap; }
+/* The table read, not glanced at (owner 10-12): body size and colour; its name breaks only after «_» «.», the column as
+   wide as its widest piece (owner 11-05, fitAuditTable). */
+.audit-table .timeline-card > .audit-tbl { font-family: var(--font-mono); font-size: var(--fs-body); color: var(--text); }
 .audit-target-row { flex: 0 0 auto; }
 /* 🔴 규칙은 «접지 않는다» (소유자 2026-09-23). 이름이 한 줄씩 서고 끊기지 않는다 — 칸이 가장 긴 이름만큼
    잡힌다(_fitColumns).
@@ -3380,6 +3389,8 @@ body.resizing-active .gallery-seat {
 .formula-pop__head, .formula-pop__foot { display: flex; align-items: center; gap: var(--space-2); }
 .formula-pop__head { justify-content: space-between; }
 .formula-pop__title { font-size: var(--fs-title); font-weight: 600; }
+/* a word in the head's line, as tall as the line (the close × beside it is the same) */
+.formula-pop__hide { margin-left: auto; height: auto; min-height: 0; padding: 0 var(--space-1); line-height: 1.2; }
 /* its × as the toast's: a glyph its line's height, pressed by its letters (the screen gate's size rule) */
 .formula-pop__close { height: auto; min-height: 0; padding: 0 var(--space-1); font-size: var(--fs-h4); line-height: 1; color: var(--text-dim); }
 .formula-pop__field { display: flex; flex-direction: column; gap: var(--space-1); }

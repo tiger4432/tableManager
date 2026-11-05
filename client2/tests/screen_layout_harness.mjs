@@ -993,6 +993,69 @@ CELLS.push({ entry: 'file_ingestion.html', after: 'Pick files listed', rule: 'pi
   const go = under.querySelector('.fi-btn--primary');
   return go && go.textContent === 'Read these (12,431)' ? null : 'Read these says «' + (go && go.textContent) + '»';
 })()` });
+// A table's columns fitted to its first rows (owner 11-05): a drawn value is whole unless its column stands at the cap -
+// the first table, and one switched to (its fit is the read's: the grid's very first rows fit from onFirstDataRendered too).
+const VALUES_WHOLE = `(() => {
+  const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-column-max'));
+  const cells = [...document.querySelectorAll('.ag-center-cols-container .ag-row .ag-cell[col-id]')].filter((c) => c.getClientRects().length);
+  if (cells.length < 10) return cells.length + ' cells drawn (else this proves nothing)';
+  for (const c of cells) {
+    const v = c.querySelector('.ag-cell-value') || c;
+    if (v.scrollWidth > v.clientWidth + 1 && c.offsetWidth < cap - 1) return c.getAttribute('col-id') + ' «' + v.textContent.slice(0, 30) + '» ' + v.scrollWidth + ' px in a ' + c.offsetWidth + ' px column';
+  }
+  // and every drawn name whole - a name is never cut (lead 10-09)
+  const cut = [...document.querySelectorAll('.ag-header-cell[col-id] .ag-header-cell-text')].find((t) => t.getClientRects().length && t.scrollWidth > t.clientWidth + 1);
+  return cut ? 'header «' + cut.textContent + '» ' + cut.scrollWidth + ' px in ' + cut.clientWidth : null;
+})()`;
+for (const after of ['loaded', 'table switched from the Queue tab']) CELLS.push({ entry: 'index.html', after, rule: 'values whole', at: 'ag-cell', expr: VALUES_WHOLE });
+// The side panel dragged: the grid's box changes, its columns keep their widths (owner 11-05).
+CELLS.push({ entry: 'index.html', after: 'side panel dragged to 500 px', rule: 'column widths kept', at: 'ag-cell', expr: `(() => {
+  const was = window.__colWidthsBefore || {};
+  const now = Object.fromEntries([...document.querySelectorAll('.ag-center-cols-container .ag-row[row-index="0"] .ag-cell[col-id]')]
+    .map((c) => [c.getAttribute('col-id'), c.offsetWidth]));
+  const both = Object.keys(was).filter((id) => id in now);
+  if (both.length < 3) return both.length + ' columns drawn before and after the drag (else this proves nothing)';
+  const moved = both.filter((id) => Math.abs(was[id] - now[id]) > 0.5);
+  return moved.length ? moved.map((id) => id + ' ' + was[id] + ' -> ' + now[id] + ' px').join(' · ') : null;
+})()` });
+// The column chooser's hidden column said in the chip row (owner 11-05).
+CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'hidden said', at: 'hidden-cols', expr: `(() => {
+  const b = document.querySelector('.hidden-cols__open');
+  if (!b || !b.getClientRects().length || b.textContent !== '1 hidden ▾') return 'the chip row says «' + (b && b.textContent) + '»';
+  // inside the strip's box: an empty strip spends no width and cuts what it holds
+  const bar = document.getElementById('grid-filter-bar').getBoundingClientRect(), r = b.getBoundingClientRect();
+  return r.right <= bar.right + 0.5 ? null : '«1 hidden ▾» ends ' + Math.round(r.right - bar.right) + ' px past the strip (' + Math.round(bar.width) + ' px wide)';
+})()` });
+// A column hidden from its header's right click (owner 11-05): gone from the grid, said, listed by its word.
+CELLS.push({ entry: 'index.html', after: 'Hidden columns listed', rule: 'hidden listed', at: 'hidden-cols', expr: `(() => {
+  const gone = window.__hiddenByHeader;
+  if (!gone) return 'no column was hidden from its header';
+  if (document.querySelector('.ag-header-cell[col-id="' + gone + '"]')) return gone + ' is still in the grid';
+  const b = document.querySelector('.hidden-cols__open');
+  if (!b || b.textContent !== '1 hidden ▾') return 'the chip row says «' + (b && b.textContent) + '»';
+  // inside the strip's box with no filter chip beside it: an empty strip spends no width and cuts what it holds
+  const bar = document.getElementById('grid-filter-bar').getBoundingClientRect(), r = b.getBoundingClientRect();
+  if (r.right > bar.right + 0.5) return '«1 hidden ▾» ends ' + Math.round(r.right - bar.right) + ' px past the strip (' + Math.round(bar.width) + ' px wide)';
+  const words = [...document.querySelectorAll('.hidden-cols__panel .hidden-cols__word')].filter((w) => w.getClientRects().length).map((w) => w.textContent);
+  return words.length === 1 && words[0] === window.__hiddenWord ? null : 'the list says ' + JSON.stringify(words) + ' for ' + gone;
+})()` });
+// Show all: every column back, the chip gone.
+CELLS.push({ entry: 'index.html', after: 'Hidden columns shown again', rule: 'hidden shown', at: 'hidden-cols', expr: `(() => {
+  const b = document.querySelector('.hidden-cols__open');
+  if (b && b.getClientRects().length) return 'the chip still says «' + b.textContent + '»';
+  const id = window.__hiddenByHeader;
+  return document.querySelector('.ag-header-cell[col-id="' + id + '"]') ? null : id + ' not back';
+})()` });
+// The audit's table names whole (owner 11-05): broken only after «_» «.», every piece inside its cell.
+CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'table names whole', at: 'audit-tbl', expr: `(() => {
+  const pieces = [...document.querySelectorAll('.audit-table .timeline-card .audit-tbl-piece')].filter((p) => p.getClientRects().length);
+  if (!pieces.length) return 'no table name drawn in the audit table';
+  for (const p of pieces) {
+    const c = p.closest('.audit-tbl'), cs = getComputedStyle(c), cr = c.getBoundingClientRect(), pr = p.getBoundingClientRect();
+    if (pr.right > cr.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth) + 0.5) return '«' + p.textContent + '» ' + Math.ceil(pr.width) + ' px past its cell';
+  }
+  return null;
+})()` });
 // The row checkboxes and the header's select-all at the grid's left edge with the first data column hidden (owner 10-22).
 CELLS.push({ entry: 'index.html', after: 'first column hidden', rule: 'select all at the left', at: 'ag-header', expr: `(() => {
   const gone = window.__hiddenFirst;
@@ -2902,8 +2965,15 @@ const DRIVE = {
     // depended on the clock and the answers held only some (application QA 4bd46df68: red in one run of four).
     ['three filters', async (c, log) => {
       for (const [col, v] of [['subject_type', 'die'], ['predicate', 'in_container'], ['object_kind', 'entity_ref']]) {
-        await evaluate(c, `(() => {
-          const input = [...document.querySelectorAll('.ag-floating-filter input')].find((i) => i.closest('[col-id]') && i.closest('[col-id]').getAttribute('col-id') === ${JSON.stringify(col)});
+        // the column rolled into view from the left first: the columns open as wide as their values (owner 11-05), so
+        // the third may start past the drawn ones
+        await evaluate(c, `(async () => {
+          const find = () => [...document.querySelectorAll('.ag-floating-filter input')].find((i) => i.closest('[col-id]') && i.closest('[col-id]').getAttribute('col-id') === ${JSON.stringify(col)});
+          const v = document.querySelector('.ag-body-horizontal-scroll-viewport');
+          if (v) { v.scrollLeft = 0; v.dispatchEvent(new Event('scroll')); await new Promise((r) => setTimeout(r, 100)); }
+          for (let i = 0; v && i < 40 && !find() && v.scrollLeft + v.clientWidth < v.scrollWidth; i += 1) {
+            v.scrollLeft += v.clientWidth / 2; v.dispatchEvent(new Event('scroll')); await new Promise((r) => setTimeout(r, 100)); }
+          const input = find();
           if (!input) return false;
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(v)});
           input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -2921,6 +2991,8 @@ const DRIVE = {
     // Dragged to 500 px: wider than the six columns' least widths or not, every cell whole (the box rolls).
     ['side panel dragged to 500 px', (c) => evaluate(c, `(() => {
       const bar = document.getElementById('main-split-resizer'); const box = document.querySelector('.main-layout'); if (!bar || !box) return false;
+      window.__colWidthsBefore = Object.fromEntries([...document.querySelectorAll('.ag-center-cols-container .ag-row[row-index="0"] .ag-cell[col-id]')]
+        .map((cell) => [cell.getAttribute('col-id'), cell.offsetWidth]));
       const x = box.getBoundingClientRect().right - 500;
       const at = (t) => (t === 'mousedown' ? bar : document).dispatchEvent(new MouseEvent(t, { bubbles: true, clientX: x, clientY: 300 }));
       at('mousedown'); at('mousemove'); at('mouseup');
@@ -2988,10 +3060,31 @@ const DRIVE = {
         await settle(c, log);
         await until(c, GRID_LOADED);
       }
-      await evaluate(c, `(() => { const h = document.querySelector('.ag-header-cell[col-id="${FORMULA_COLUMN}"]');
-        const v = document.querySelector('.ag-body-horizontal-scroll-viewport');
-        if (h && v) { v.scrollLeft = Math.max(0, h.offsetLeft - 200); v.dispatchEvent(new Event('scroll')); } return Boolean(h); })()`);
+      await evaluate(c, `(async () => { const v = document.querySelector('.ag-body-horizontal-scroll-viewport'); if (!v) return false;
+        const head = () => document.querySelector('.ag-header-cell[col-id="${FORMULA_COLUMN}"]');
+        v.scrollLeft = 0; v.dispatchEvent(new Event('scroll')); await new Promise((r) => setTimeout(r, 100));
+        for (let i = 0; i < 40 && !head() && v.scrollLeft + v.clientWidth < v.scrollWidth; i += 1) {
+          v.scrollLeft += v.clientWidth / 2; v.dispatchEvent(new Event('scroll')); await new Promise((r) => setTimeout(r, 100)); }
+        const h = head(); if (h) { v.scrollLeft = Math.max(0, h.offsetLeft - 200); v.dispatchEvent(new Event('scroll')); } return Boolean(h); })()`);
       await until(c, "Boolean(document.querySelector('.ag-header-cell .formula-mark'))");
+    }],
+    // dt_log's first drawn column of its own hidden from its header's right click (owner 11-05) - the popover's read answered
+    // while FORMULA is on - then «1 hidden ▾» opened; Show all brings it back before the formula's own steps.
+    ['Hidden columns listed', async (c) => {
+      await evaluate(c, `(() => { const h = [...document.querySelectorAll('.ag-header-cell[col-id]')].find((e) => e.getClientRects().length
+          && /^dt_/.test(e.getAttribute('col-id')) && e.getAttribute('col-id') !== '${FORMULA_COLUMN}' && e.querySelector('.ag-header-cell-text'));
+        if (!h) return false; window.__hiddenByHeader = h.getAttribute('col-id');
+        window.__hiddenWord = h.querySelector('.ag-header-cell-text').textContent.trim();
+        h.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })); return true; })()`);
+      await until(c, "Boolean(document.querySelector('.formula-pop__hide'))");
+      await evaluate(c, "(() => { const b = document.querySelector('.formula-pop__hide'); if (b) b.click(); return Boolean(b); })()");
+      await sleep(400);
+      await evaluate(c, "(() => { const b = document.querySelector('.hidden-cols__open'); if (b) b.click(); return Boolean(b); })()");
+      await sleep(400);
+    }],
+    ['Hidden columns shown again', async (c) => {
+      await evaluate(c, "(() => { const b = document.querySelector('.hidden-cols__all'); if (b) b.click(); return Boolean(b); })()");
+      await sleep(600);
     }],
     ['Formula, the popover open', async (c, log) => {
       await evaluate(c, "(() => { const m = document.querySelector('.ag-header-cell .formula-mark'); if (m) m.click(); return Boolean(m); })()");
@@ -3443,7 +3536,28 @@ const MUTANTS = [
   { name: 'the Ledger cell says its source before changed', entry: 'index.html', rule: 'ledger word first', at: 'ledger-cell',
     file: 'src/grid_ledger_column.js', edits: [['return [CHANGED, which, ...unknownTail]', 'return [changed[0].source, CHANGED, which, ...unknownTail]']] },
   { name: 'the audit Kind column back at 74px', entry: 'index.html', rule: 'kind word whole', at: 'audit-kind',
-    file: 'src/style.css', edits: [['70px 62px 96px 96px 110px minmax(72px, 1fr)', '70px 62px 74px 96px 110px minmax(72px, 1fr)']] },
+    file: 'src/style.css', edits: [['70px 62px 96px var(--audit-tbl-w, 96px) 110px', '70px 62px 74px var(--audit-tbl-w, 96px) 110px']] },
+  // The audit's Table column back at a fixed width narrower than its pieces (owner 11-05).
+  { name: 'the audit Table column at a fixed 30px', entry: 'index.html', rule: 'table names whole', at: 'audit-tbl',
+    file: 'src/style.css', edits: [['var(--audit-tbl-w, 96px) 110px', '30px 110px']] },
+  // The side panel drag fitting the columns to the grid's box again, as before 11-05.
+  { name: 'the drag fits the columns to the box', entry: 'index.html', rule: 'column widths kept', at: 'ag-cell',
+    file: 'src/main.js', edits: [['        putSidebarWidth(sidePanel(), sidebarWidth);\n', '        putSidebarWidth(sidePanel(), sidebarWidth);\n        if (state.gridApi) state.gridApi.sizeColumnsToFit();\n']] },
+  // The first rows not fitting the columns (every column at the default 150 px).
+  { name: 'the columns not fitted', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
+    file: 'src/api.js', edits: [['    fitColumnWidths();\n', '']] },
+  // The defs' width laid again on every defs refresh, undoing the fit (measured on the box, 11-05).
+  { name: 'the defs say a width again', entry: 'index.html', rule: 'values whole', at: 'ag-cell',
+    file: 'src/grid.js', edits: [['      initialWidth: 150,\n', '      width: 150,\n']] },
+  // The strip spending no width with only «N hidden» in it.
+  { name: 'the strip folds with only N hidden in it', entry: 'index.html', rule: 'hidden listed', at: 'hidden-cols',
+    file: 'src/style.css', edits: [['.header-filter-bar:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden]))',
+      '.header-filter-bar:has(.filter-chip, > .tx-filter-banner[style*="flex"])'],
+    ['.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden])))',
+      '.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"]))']] },
+  // «N hidden» never drawn.
+  { name: 'the hidden columns not said', entry: 'index.html', rule: 'hidden said', at: 'hidden-cols',
+    file: 'src/grid.js', edits: [['  hiddenPart.draw(hiddenColumns(api));\n', '']] },
   { name: 'State column back at a fixed 96px', entry: 'index.html', rule: 'clip', at: 'queue-cell',
     file: 'src/style.css', edits: [['max(96px, var(--queue-state-w, 96px))', '96px']] },
   // The gallery's board (lead 3589216b9): it rolls inside its own box; a shut gallery is not laid out; the chip strip
