@@ -422,7 +422,7 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 씨앗      표 A 의 행 = 그리드 집합 필터(column_filter, filterType set) 그대로 · 그 행들의 원자가 이름 댄
           `type` 노드(양 끝 중 그 타입만) — 조회기 nodes_of_rows. 원장 철자는 걷기부터
 걸음      걷기의 조회기 claims_for_entities 를 follow 의 술어 하나씩 차례로 — 그림 조립(subgraph)과 그 상한은
-          안 지남. 상한은 REACH_ATOM_CAP 하나(원자 수, 박스 1,000 값 저장 ≤ 5 s 로 잼)
+          안 지남. 상한은 REACH_ATOM_CAP 하나를 걸음마다(원자 수) — 끊긴 걸음은 읽은 만큼으로 다음 걸음을 감
 닿은 행   조회기 rows_of = 읽은 원자 «전부»의 표 B 행(엣지의 가장 늦은 원자만이 아님). 저장은 row_ref,
           가상은 다리의 행(LEG_ROW). 수 = 그 집합의 길이, 잘리면 capped + cap
 조회기    trace_router._walk_lookup 하나 — 걷기와 같은 자리라 leave_out · engine 을 같이 물려받음

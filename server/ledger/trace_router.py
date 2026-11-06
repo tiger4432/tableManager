@@ -931,9 +931,9 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
     return payload
 
 
-#: The atoms one reach reads at most (lead 11-06: one value, measured on the box - 1,000 wafers, stored, the spec 5 s:
-#: at 10,000 atoms 2.56 ~ 4.51 s; at 15,000 2.95 ~ 5.01 s; at 20,000 3.4 ~ 5.07 s). Past it the answer says `capped`,
-#: and its rows are those of the atoms read.
+#: The atoms one step of a reach reads at most (lead 11-06: one value, measured on the box - 1,000 wafers, stored, the
+#: spec 5 s: at 10,000 atoms 2.56 ~ 4.51 s; at 15,000 2.95 ~ 5.01 s; at 20,000 3.4 ~ 5.07 s). A step it cuts says
+#: `capped` and goes on from what it read (lead 11-07: «N+», never «0+»).
 REACH_ATOM_CAP = 10000
 
 
@@ -941,7 +941,7 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
     """THE HOP of the Tables page (lead 11-06): the rows of `table` whose `column` is one of `values` (the grid's set
     filter, `column_filter`) -> the `type` nodes their atoms name -> the walk's reader along `follow`, one predicate a
     step -> the rows of `to` every atom read was read from (`rows_of`). The picture's assembly and its caps are not on
-    the way - `REACH_ATOM_CAP` is. A hidden table's sources are left out as the walk leaves them (`_hidden_here`)."""
+    the way - `REACH_ATOM_CAP` a step is. A hidden table's sources are left out as the walk leaves them (`_hidden_here`)."""
     from datetime import datetime, timezone
 
     from sqlalchemy import select
@@ -992,19 +992,14 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
     frontier = sorted({(kind, json.dumps(keys, sort_keys=True)) for ends in named.values() for kind, keys in ends})
     said["seeds"] = len(frontier)
     frontier = [(kind, json.loads(keys)) for kind, keys in frontier]
-    read, budget = [], REACH_ATOM_CAP
+    read = []
     for predicate in follow or ():
         if not frontier:
             break
-        if budget <= 0:
-            said["count"]["capped"] = True
-            break
-        atoms, cut = lookup.claims_for_entities(frontier, "both", budget, follow=[predicate])
+        atoms, cut = lookup.claims_for_entities(frontier, "both", REACH_ATOM_CAP, follow=[predicate])
         read.extend(atoms)
-        budget -= len(atoms)
         if cut:
             said["count"]["capped"] = True
-            break
         near = {(kind, json.dumps(keys, sort_keys=True)) for kind, keys in frontier}
         far = set()
         for atom in atoms:

@@ -178,6 +178,17 @@ def test_the_cap_is_said(world, monkeypatch):
         assert len(said["rows"]) == 1, engine
 
 
+def test_a_cut_step_goes_on_from_what_it_read(world, monkeypatch):
+    """Two steps at a cap of one atom a step: the lot slot step is cut at one wafer, the process step walks from it -
+    one row, capped, never «0, capped» (lead 11-07)."""
+    _board(world)
+    monkeypatch.setattr(trace_router, "REACH_ATOM_CAP", 1)
+    for engine in ENGINES:
+        said = _reach(world, engine, **{**LOTS, "values": ["L1"]})
+        assert said["count"]["capped"] is True and said["count"]["total"] == 1 and said["seeds"] == 2, said
+        assert set(said["rows"]) <= _expected(world, ("W1", "W2"))[1], engine
+
+
 def test_an_empty_marking_is_zero_rows_and_reads_nothing(world, monkeypatch):
     _board(world)
 
