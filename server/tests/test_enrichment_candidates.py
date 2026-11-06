@@ -22,6 +22,7 @@ from chain import enrichment
 from database import crud, models, schemas
 from tests.support.enrich_decl import rewrite_rules, write_rules  # noqa: E402
 from tests.support.enrich_decl import enrich_chain_rules  # noqa: E402
+from tests.support.declaration import use_committed_declaration  # noqa: E402
 from chain import enrich_declarations  # noqa: E402
 
 
@@ -108,6 +109,10 @@ def _rule(**overrides):
 def cand_env(db_session, tmp_path, monkeypatch):
     models.init_dynamic_models(CAND_TABLES)
     crud.TABLE_CONFIG.update(CAND_TABLES)
+    # the reload `run_followup_auto_confirm` takes reads table_config.json again (fe71989c7) - from a root of this
+    # test's own that declares these tables; the data root's file named none of them and the rules were refused (11-06)
+    root = use_committed_declaration(monkeypatch, tmp_path)
+    (root / "table_config.json").write_text(json.dumps(CAND_TABLES), encoding="utf-8")
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
 
