@@ -23,6 +23,11 @@ FAR = datetime(2032, 3, 15, tzinfo=timezone.utc)
 
 @pytest.fixture(name="world")
 def fixture_world(pg_engine, monkeypatch, tmp_path):
+    # this run's default world only: a world the product ships (abdbdd0cc, `system`) is a schema every run shares
+    # (`w_system`), so the setter would set - and these counts would meet - another run's partitions. Every world
+    # once is `test_every_world_once_when_a_branch_operates`.
+    monkeypatch.setattr(schema, "world_listing", lambda: {"worlds": [schema.DEFAULT_WORLD],
+                                                          "operating": schema.DEFAULT_WORLD})
     for w in hw.build(pg_engine, monkeypatch, tmp_path, batch=True):
         hw.push(w, [{"log_id": "L%03d" % i, "dt_job": "J%d" % i, "dt_x": i, "dt_y": 1, "netdie": i} for i in range(3)])
         hw.settle(w)
