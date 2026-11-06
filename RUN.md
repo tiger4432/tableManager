@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **이력 패널(/audit_logs/recent)이 서버를 붙잡지 않음 — 문장 5 s · 걷기 10 s 상한** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     최근 거래 목록의 걷기와 증분 병합이 두 상한 안에서 답함 (audit_history_config.json 의 칸 둘, 기본값)
+>          recent_statement_seconds 5   문장 하나가 넘으면 PostgreSQL 이 끊음
+>          recent_walk_seconds      10  걷기 · 병합 전체가 넘으면 거기서 멈춤
+>          끊기면 그때까지 이름 댄 거래만 «more» 와 함께 답함. 병합은 2 만 id 조각씩 — 남은 것은 다음 요청이 이어서
+> 볼 줄    서버 로그  [Audit] recent walk cut at N s - <걸음>; answered K group(s), truncated
+>                    [Audit] recent merge cut at N s - <걸음>; M id(s) left for the next read
+> 답의 뜻  <걸음> = a chunk's edge / a chunk's count  -> 그 문장이 느림: idx_audit_recent_groups 가 있는지부터
+>          past recent_walk_seconds  -> 문장 하나하나는 빠르나 많음 (맨 위에 큰 거래)
+>          같은 줄이 매번 = 상한이 원인을 가리는 중. STALL 줄은 사라져야 맞음
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k test_the_recent_history_never_holds_the_server  -> 5 passed
+> 끄기     audit_history_config.json 에 두 칸을 큰 수로 (예 3600)
+> ```
+>
+> ---
+>
 > ## [11-06] **Help → Guide · 선언창 «?»** — git pull + 서버 재기동 (새 라우트 GET /admin/help/guides · 클라는 dist 에 들어 있음)
 >
 > ```

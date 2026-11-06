@@ -105,6 +105,10 @@ _TABLE_HOLDERS = (
     "AND l.mode = ANY(%s) AND a.backend_type <> 'autovacuum worker' ORDER BY l.pid")
 
 
+#: PostgreSQL's query_canceled - what a statement_timeout's cancel raises (`exc.orig.pgcode`).
+QUERY_CANCELED = "57014"
+
+
 def table_holders(dbapi_conn, table, schema=None):
     """-> the pids of the other sessions holding `table` the way a CONCURRENTLY build would wait for - an autovacuum
     worker left out (a build's lock request cancels it). The index builder's wait before it builds (총괄 11-05 ㄱ-2)."""

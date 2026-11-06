@@ -2492,8 +2492,7 @@ from grid_read import (  # noqa: E402 - the grid read path, importable without m
     search_scope_columns, total_order_keys, transaction_rows)
 
 
-#: PostgreSQL's query_canceled - what a statement_timeout's cancel raises.
-QUERY_CANCELED = "57014"
+from db_waits import QUERY_CANCELED  # noqa: E402 - the one spelling (audit_cache reads it too)
 
 
 def grid_read(route):

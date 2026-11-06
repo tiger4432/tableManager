@@ -79,11 +79,15 @@ THE WATERMARK, AND THE COUNT IT WAS DOUBLING
     its own count against that credit instead of adding to it. The database
     stays the single authority for the number; the event only buys latency.
 """
+import logging
 import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
 
 import sqlalchemy as sa
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
@@ -91,6 +95,8 @@ import event_constants
 from admin import audit_history
 from database import models
 from database import schemas
+
+logger = logging.getLogger("Server")
 
 # Every knob is a DEFAULT that `audit_history_config.json` overrides - the same
 # file the row/cell history endpoints read, because this is the same feature and
@@ -113,6 +119,12 @@ RECENT_DEFAULTS = {
     # projection that finds its hundred groups in the first 1,400 rows reads one
     # whole chunk - so it trades round trips against that floor. 20,000 is ~22 ms.
     "recent_scan_chunk_rows": 20_000,
+    # 🔴 THE PANEL NEVER HOLDS THE SERVER (owner 11-06 «STALL 303s P /audit_logs/recent ... D9/228s SELECT audit_logs»):
+    # each statement of the walk and of the merge runs at most this many seconds (PostgreSQL cancels it) ...
+    "recent_statement_seconds": 5,
+    # ... and the walk, or the merge, stops after this many - answered as far as it got, truncated with its cursor;
+    # a merge's rest is the next read's.
+    "recent_walk_seconds": 10,
 }
 
 
@@ -312,23 +324,37 @@ class AuditLogCache:
         scanned = 0
         more_below = False
         stop_at = None
+        started, cut = time.monotonic(), None
 
         while len(order) < limit_groups and scanned < max_scan:
+            if time.monotonic() - started > settings["recent_walk_seconds"]:
+                cut = "past recent_walk_seconds %d" % settings["recent_walk_seconds"]
+                break
             want = min(chunk_rows, max_scan - scanned)
-            edge, more_below = self._chunk_edge(db, cursor, want)
-            rows = self._count_by_transaction(db, cursor, edge, want)
+            step = "a chunk's edge"
+            try:
+                edge, more_below = self._chunk_edge(db, cursor, want)
+                step = "a chunk's count"
+                rows = self._count_by_transaction(db, cursor, edge, want)
+                # 🔴 [판정 473] ON A RESUMED WALK, DROP THE GROUPS AN EARLIER PAGE
+                # ALREADY NAMED. A group is placed by its NEWEST row, so everything
+                # a previous page returned has its newest row at or above `floor` -
+                # and the older rows it left scattered below are exactly what this
+                # window meets. Asked once per chunk, for the chunk's own keys only.
+                step = "the groups an earlier page named"
+                if rows and floor is not None:
+                    fresh = {group_of(tid) for tid, *_ in rows}
+                    already = self._groups_seen_at_or_above(db, floor, fresh - set(counts))
+                else:
+                    already = ()
+            except OperationalError as exc:
+                if not _cut(exc):
+                    raise
+                db.rollback()
+                cut = "%s past recent_statement_seconds %d" % (step, settings["recent_statement_seconds"])
+                break
             if not rows:
                 break
-            # 🔴 [판정 473] ON A RESUMED WALK, DROP THE GROUPS AN EARLIER PAGE
-            # ALREADY NAMED. A group is placed by its NEWEST row, so everything
-            # a previous page returned has its newest row at or above `floor` -
-            # and the older rows it left scattered below are exactly what this
-            # window meets. Asked once per chunk, for the chunk's own keys only.
-            if floor is not None:
-                fresh = {group_of(tid) for tid, *_ in rows}
-                already = self._groups_seen_at_or_above(db, floor, fresh - set(counts))
-            else:
-                already = ()
             for tid, n, newest_ts, newest_id, summary in rows:
                 scanned += n
                 key = group_of(tid)
@@ -389,6 +415,10 @@ class AuditLogCache:
                 more_below = True
                 break
 
+        if cut:
+            more_below = True
+            logger.warning("[Audit] recent walk cut at %d s - %s; answered %d group(s), truncated",
+                           time.monotonic() - started, cut, len(order))
         # 🔴 [판정 473] `stop_at` IS PART OF "THERE IS MORE", NOT JUST `more_below`.
         # A page that fills on the LAST chunk has no rows below its edge, so
         # `more_below` is false - and a group it declined to take is still
@@ -403,7 +433,7 @@ class AuditLogCache:
         # group position to publish and the scan position is all there is.
         resume = tops.get(order[-1]) if order else bottom
         return (order, counts, tops, bottom, truncated,
-                _cursor_token(resume) if truncated else None, scanned, summaries)
+                _cursor_token(resume) if truncated else None, scanned, summaries, cut)
 
     def _hydrate(self, db: Session, order, counts, summaries) -> List[Dict]:
         """The groups as the list serves them - each one's count and summary (`_tally`), its representative read by
@@ -431,9 +461,10 @@ class AuditLogCache:
         state with the projection.
         """
         settings = resolve_recent_settings()
-        order, counts, _tops, _bottom, truncated, nxt, scanned, summaries = \
-            self._discover_groups(db, limit_groups, settings, start=cursor)
-        return self._hydrate(db, order, counts, summaries), truncated, nxt, scanned
+        with _bounded(db, settings):
+            order, counts, _tops, _bottom, truncated, nxt, scanned, summaries, _cut_at = \
+                self._discover_groups(db, limit_groups, settings, start=cursor)
+            return self._hydrate(db, order, counts, summaries), truncated, nxt, scanned
 
     def load_initial(self, db: Session, limit_groups: int = 100,
                      force: bool = False, refresh_above: int = None):
@@ -464,16 +495,27 @@ class AuditLogCache:
                 if done():
                     return
             settings = resolve_recent_settings()
-            # 🔴 The watermark is read BEFORE the walk, not after. A row
-            # committed WHILE the walk runs is not in the walk's result; if the
-            # watermark were taken afterwards it would sit ABOVE that row and
-            # the projection would never merge it. Taken first, such a row stays
-            # above the watermark and the next refresh picks it up.
-            watermark = db.query(func.max(models.AuditLog.id)).scalar() or 0
+            with _bounded(db, settings):
+                try:
+                    # 🔴 The watermark is read BEFORE the walk, not after. A row
+                    # committed WHILE the walk runs is not in the walk's result; if the
+                    # watermark were taken afterwards it would sit ABOVE that row and
+                    # the projection would never merge it. Taken first, such a row stays
+                    # above the watermark and the next refresh picks it up.
+                    watermark = db.query(func.max(models.AuditLog.id)).scalar() or 0
 
-            order, counts, _tops, _bottom, truncated, cursor, scanned, summaries = \
-                self._discover_groups(db, limit_groups, settings)
-            groups = self._hydrate(db, order, counts, summaries)
+                    order, counts, _tops, _bottom, truncated, cursor, scanned, summaries, cut = \
+                        self._discover_groups(db, limit_groups, settings)
+                    groups = self._hydrate(db, order, counts, summaries)
+                except OperationalError as exc:
+                    if not _cut(exc):
+                        raise
+                    logger.warning("[Audit] recent walk cut - the newest id or the groups' representatives past "
+                                   "recent_statement_seconds %d; not loaded, the next read walks again",
+                                   settings["recent_statement_seconds"])
+                    return
+            if cut and not order:
+                return                          # nothing named: the next read walks again rather than show none
             with self._lock:
                 self.groups = groups
                 self.is_loaded = True
@@ -502,14 +544,44 @@ class AuditLogCache:
         cumulative - what was there plus what came, less what a notification already claimed (`_absorb`).
         A rebuild or another refresh that moved the watermark meanwhile leaves this merge out: the next read starts
         from the watermark it left.
+        The delta is merged in id slices of `recent_scan_chunk_rows`, each moving the watermark, under the walk's
+        two limits (owner 11-06): past `recent_walk_seconds`, or a statement past `recent_statement_seconds`, the
+        rest is the next read's - a large delta is merged over reads, never in one that holds the server.
         """
         m = models.AuditLog
-        latest_id = db.query(func.max(m.id)).scalar() or 0
+        settings = resolve_recent_settings()
+        merged, started, step, latest_id = False, time.monotonic(), "the newest id", None
+        with _bounded(db, settings):
+            try:
+                latest_id = db.query(func.max(m.id)).scalar() or 0
+                while True:
+                    with self._lock:
+                        if not self.is_loaded or latest_id <= (self._db_max_id or 0):
+                            return merged
+                        previous_id = self._db_max_id or 0
+                    if time.monotonic() - started > settings["recent_walk_seconds"]:
+                        step = "past recent_walk_seconds %d" % settings["recent_walk_seconds"]
+                        break
+                    step = "a slice's count"
+                    one = self._merge(db, previous_id, min(latest_id, previous_id + settings["recent_scan_chunk_rows"]),
+                                      limit_groups)
+                    if one is None:
+                        return merged
+                    merged = merged or one
+            except OperationalError as exc:
+                if not _cut(exc):
+                    raise
+                step = "%s past recent_statement_seconds %d" % (step, settings["recent_statement_seconds"])
         with self._lock:
-            if not self.is_loaded or latest_id <= (self._db_max_id or 0):
-                return False
-            previous_id = self._db_max_id or 0
+            left = "?" if latest_id is None else latest_id - (self._db_max_id or 0)
+        logger.warning("[Audit] recent merge cut at %d s - %s; %s id(s) left for the next read",
+                       time.monotonic() - started, step, left)
+        return merged
 
+    def _merge(self, db: Session, previous_id: int, latest_id: int, limit_groups: int):
+        """One slice `(previous_id, latest_id]` of `refresh_if_stale`: counted, folded in, the watermark moved to
+        `latest_id`. -> whether it held rows, or None when another merge or a rebuild moved the watermark meanwhile."""
+        m = models.AuditLog
         in_range = (m.id > previous_id, m.id <= latest_id)
         counted = {}
         tallied = sorted(_tally(db, lambda q: q.filter(*in_range)).items(), key=lambda kv: kv[1][2], reverse=True)
@@ -523,7 +595,7 @@ class AuditLogCache:
         popped = False
         with self._lock:
             if (self._db_max_id or 0) != previous_id:
-                return False
+                return None
             for key in reversed(touched):           # the newest ends on top
                 count, summary = counted[key][0], counted[key][2]
                 group = next((g for g in self.groups if g["transaction_id"] == key), None)
@@ -669,6 +741,27 @@ class AuditLogCache:
         pass
 
 
+def _cut(exc) -> bool:
+    """Whether `exc` is PostgreSQL cancelling a statement past its `statement_timeout`."""
+    import db_waits
+    return getattr(getattr(exc, "orig", None), "pgcode", None) == db_waits.QUERY_CANCELED
+
+
+@contextmanager
+def _bounded(db: Session, settings):
+    """The walk's or the merge's statements in a transaction of their own under `recent_statement_seconds`
+    (`database.context.read_limit` - SET LOCAL at the transaction's begin), ended after so the limit goes with it.
+    Nothing here writes, so both ends are rollbacks."""
+    from database.context import read_limit
+
+    db.rollback()
+    try:
+        with read_limit(settings["recent_statement_seconds"]):
+            yield
+    finally:
+        db.rollback()
+
+
 # ---------------------------------------------------------------------------
 # The event credit
 # ---------------------------------------------------------------------------
@@ -682,7 +775,6 @@ class AuditLogCache:
 # It cannot leak upward. An event claims N; the refresh that reads those same N
 # rows absorbs exactly N. If a group is evicted and later rebuilt, the credit
 # goes with it and the count is derived from the database alone.
-
 def group_of(transaction_id) -> str:
     """The history group an audit label belongs to - the one answer the walk, the merges and the detail route ask.
     A label's part after `GROUP_PART` is one commit of its group (a replay page, 총괄 ㄴ 10-21), so a run is one
