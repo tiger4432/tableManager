@@ -636,7 +636,10 @@ function switchTab(tabName, opts = {}) {
     // 🔴 자기 탭입니다. 온톨로지 탭에 있을 때는 그 탭이 부르는 «셋째»였는데,
     //    이제 이 탭이 부르는 «전부»입니다.
     refreshTableConfig();
-  } else fetchData();
+  } else {
+    if (t.tab === 'overview') openIndexes();
+    fetchData();
+  }
 }
 
 // ── Event Listeners ────────────────────────────────────────
@@ -1416,15 +1419,20 @@ async function loadSourceCensus() {
   }
 }
 
-/** The declared indexes beside the database (lead d71f931c7) — read only; refused, the refusal's line. */
+/** The declared indexes beside the database (lead d71f931c7) — read only; refused, the refusal's line. Read when the
+ *  Overview opens and on the panel's Refresh, not on the 30 s beat (lead 11-06). */
 let indexPanel = null;
-async function refreshIndexes() {
+function openIndexes() {
   const mount = byId('overview-indexes-mount');
   if (!mount) return;
-  if (!indexPanel) indexPanel = new IndexTablePanel(mount);
-  const res = await adminFetch(`${API_BASE}/admin/indexes`).catch(() => null);
-  const body = res && res.ok ? await res.json().catch(() => null) : null;
-  indexPanel.render(body, body ? '' : fetchFailureLine(res ? failureFactOf(res) : null, 'Index list read failed'));
+  if (!indexPanel) {
+    indexPanel = new IndexTablePanel(mount, { read: async () => {
+      const res = await adminFetch(`${API_BASE}/admin/indexes`).catch(() => null);
+      const body = res && res.ok ? await res.json().catch(() => null) : null;
+      return { body, refused: body ? '' : fetchFailureLine(res ? failureFactOf(res) : null, 'Index list read failed') };
+    } });
+  }
+  void indexPanel.open();
 }
 
 async function refreshLedgerSources() {
@@ -3807,7 +3815,6 @@ async function fetchOverview(isStale) {
   //    Overview 에 자리만 놓으면 Chain 탭을 «들른 적 없는» 사람에게 빈 상자가 된다.
   // Ledger 줄은 소스 현황과 «같은» 읽기 — 본문 렌더를 기다리지 않는다(위의 설정 반영과 같은 이유).
   void refreshLedgerSources();
-  void refreshIndexes();
   const pauseReads = chainPauseReads();
   const [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),

@@ -6,6 +6,7 @@
 //   I4 a count of no scans is drawn dim, any other count plain
 //   I5 the indexes nothing declares stand below, under «Not declared»; none is said
 //   I6 an answer that did not come is the refusal's line, not an empty table
+//   R1-R3 given a read, the panel reads on open and on its Refresh, never two at once, and says when (lead 11-06)
 //
 // The answer is the server's own (fixtures/admin_indexes.json, capture_admin_indexes.py - models.index_states on
 // the box PostgreSQL). The box holds no invalid and no building index, so those two rows are hand rows: a captured
@@ -86,6 +87,32 @@ async function suite(m) {
   eq('I6 an answer that did not come is its refusal line and no table',
     [byTag(refusedHost, 'TABLE').length, byClass(refusedHost, 'refusal').map((n) => n.textContent)],
     [0, ['Token declined (HTTP 401)']]);
+  // R — the panel reads its own answer (lead 11-06): open and Refresh read, never two at once, the read's time said.
+  const reads = [];
+  const read = () => new Promise((done) => reads.push(done));
+  const at = new Date(2026, 10, 6, 14, 2, 30);
+  const readHost = doc.createElement('div');
+  const p = new m.IndexTablePanel(readHost, { doc, read, now: () => at });
+  const btn = byClass(readHost, 'index-refresh')[0];
+  const first = p.open();
+  const again = p.open();
+  btn.dispatch('click');
+  const during = [reads.length, btn.disabled, btn.textContent];
+  for (const done of reads) done({ body: BODY, refused: '' });
+  await Promise.all([first, again]);
+  eq('R1 open reads once; while it is on its way an open or a Refresh reads nothing, the button off and saying so',
+    during, [1, true, 'Reading…']);
+  reads.length = 1;
+  eq('R2 the answer drawn, the read\'s time said, the button back',
+    [rowsOf(byTag(readHost, 'TABLE')[0]).length, byClass(readHost, 'index-read-at')[0].textContent, btn.disabled, btn.textContent],
+    [BODY.declared.length, 'Read 14:02', false, 'Refresh']);
+  btn.dispatch('click');
+  const otherHost = doc.createElement('div');
+  const otherReads = [];
+  new m.IndexTablePanel(otherHost, { doc, read: () => { otherReads.push(1); return Promise.resolve({ body: null, refused: 'x' }); } });
+  eq('R3 Refresh reads once more; a second panel reads nothing of it; a panel given no read draws no head',
+    [reads.length, otherReads.length, byClass(host, 'index-table-head').length], [2, 0, 0]);
+  for (const done of reads.slice(1)) done({ body: null, refused: 'Token declined (HTTP 401)' });
   return { ran: ran.length, names: ran, failures };
 }
 
@@ -110,6 +137,9 @@ const MUTANTS = [
     mutate: swap("    if (view.outside.length) this.root.appendChild(this._table(OUTSIDE_COLUMNS, view.outside, 'valid'));", '    if (false) {}') },
   { id: 'XI8', what: 'an answer that did not come draws an empty table', catches: ['I6'],
     mutate: swap("  if (!declared) return { state: 'unread', declared: [], outside: [] };", "  if (!declared) return { state: 'ready', declared: [], outside: [] };") },
+  { id: 'XI9', what: 'a read still on its way is asked again', catches: ['R1'], mutate: swap('if (!this.read || this.reading) return false;', 'if (!this.read) return false;') },
+  { id: 'XI10', what: 'the read\'s time not said', catches: ['R2'], mutate: swap('      this.readAt.textContent = `Read ${localHourMinute(this.now().toISOString())}`;\n', '') },
+  { id: 'XI11', what: 'Refresh does not read', catches: ['R3'], mutate: swap("this.button.addEventListener('click', () => { this.open(); });", "this.button.addEventListener('click', () => {});") },
 ];
 console.log('');
 const { wrong } = await scoreMutants(MUTANTS, async (mu) => suite((await loadWithProbe(SUBJECT, { mutate: mu.mutate })).module),

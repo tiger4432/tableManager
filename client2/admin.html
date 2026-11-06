@@ -219,6 +219,8 @@
     /* Indexes (총괄 d71f931c7) wear the runtime table's look; a number's head stands over its number. */
     .index-table th.num { text-align: right; }
     .index-outside-title { margin: var(--space-4) 0 var(--space-2); }
+    .index-table-head { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+    .index-table-head .index-refresh:disabled { color: var(--text-dim); cursor: default; }
 
     /* Chain 대기열 — 시안 A (소유자 「A 로 해」): 숫자 넷 · 표 · 메타 한 줄. 두 자리(Overview 절 ·
        Chain 탭)에 같은 모양. 여백은 격자 토큰으로만. */
@@ -1478,6 +1480,7 @@
     .chain-queue-panel .chain-queue-resume,
     .ov-show-all,
     .chain-queue-panel .chain-queue-refresh,
+    .index-table-head .index-refresh,
     #file-list-body .admin-btn,
     #mapper-list-body .admin-btn,
     #autoupdate-linked-body .admin-btn,
@@ -1497,6 +1500,7 @@
     .chain-queue-panel .chain-queue-resume:focus,
     .ov-show-all:focus,
     .chain-queue-panel .chain-queue-refresh:focus,
+    .index-table-head .index-refresh:focus,
     #file-list-body .admin-btn:focus,
     #mapper-list-body .admin-btn:focus,
     #autoupdate-linked-body .admin-btn:focus,
@@ -1506,6 +1510,7 @@
     .chain-queue-panel .chain-queue-resume:focus-visible,
     .ov-show-all:focus-visible,
     .chain-queue-panel .chain-queue-refresh:focus-visible,
+    .index-table-head .index-refresh:focus-visible,
     #file-list-body .admin-btn:focus-visible,
     #mapper-list-body .admin-btn:focus-visible,
     #autoupdate-linked-body .admin-btn:focus-visible,

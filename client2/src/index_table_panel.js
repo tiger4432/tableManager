@@ -3,6 +3,7 @@
 // Read only: the chain worker builds what is owed. The state is the server's token as it comes, a build's
 // sentence is the server's, and nothing here judges — the one thing it adds is which tag tone a token wears.
 import { ABSENT, countText, isCount } from './absent.js';
+import { localHourMinute } from './server_time.js';
 
 /** The tone of a state's tag, one the base layer draws (`.tag[data-tone]`); a token not here wears none. */
 const STATE_TONE = Object.freeze({ present: 'ok', building: 'warn', missing: 'danger', invalid: 'danger' });
@@ -44,12 +45,42 @@ const OUTSIDE_COLUMNS = Object.freeze([['name', 'Name'], ['valid', 'Valid', 'cel
   ['size', 'Size', 'num cell-fit'], ['scans', 'Scans', 'num cell-fit']]);
 
 export class IndexTablePanel {
+  /** @param deps { doc, read: () => Promise<{body, refused}>, now: () => Date } - with `read` the panel reads its own
+   *  answer: open() and its Refresh, never two at once, and says when it last read (lead 11-06: the Overview's 30 s beat
+   *  read GET /admin/indexes every time, a slow read overlapping the next - «32s P /admin/indexes»). */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('IndexTablePanel needs a mount element');
     this.doc = deps.doc || mount.ownerDocument;
+    this.read = deps.read || null;
+    this.now = deps.now || (() => new Date());
+    this.reading = false;
+    if (this.read) {
+      const head = mount.appendChild(this._el('div', 'index-table-head'));
+      this.readAt = head.appendChild(this._el('span', 'meta index-read-at', ''));
+      this.button = head.appendChild(this._el('button', 'admin-btn index-refresh', 'Refresh'));
+      this.button.addEventListener('click', () => { this.open(); });
+    }
     this.root = this.doc.createElement('div');
     this.root.className = 'index-table-panel';
     mount.appendChild(this.root);
+  }
+
+  /** Read the answer and draw it - a read still on its way is the one: nothing more is asked. */
+  async open() {
+    if (!this.read || this.reading) return false;
+    this.reading = true;
+    this.button.disabled = true;
+    this.button.textContent = 'Reading…';
+    try {
+      const { body, refused } = await this.read();
+      this.render(body, refused);
+      this.readAt.textContent = `Read ${localHourMinute(this.now().toISOString())}`;
+    } finally {
+      this.reading = false;
+      this.button.disabled = false;
+      this.button.textContent = 'Refresh';
+    }
+    return true;
   }
 
   _el(tag, cls, words) {
