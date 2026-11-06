@@ -16,6 +16,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+import shipped
 from sqlalchemy import MetaData, text
 from sqlalchemy.orm import sessionmaker
 
@@ -102,9 +104,9 @@ def test_no_layout_is_today(config):
     assert schema.operating_world() == DEFAULT
     assert schema.world_names() == schema.world_names(DEFAULT)
     assert (schema.world_names().world, schema.world_names().name) == (None, DEFAULT)
-    assert schema.live_worlds() == [DEFAULT]
+    assert schema.live_worlds() == [DEFAULT, *shipped.worlds()]      # the worlds the product ships follow too
     _declare(A, _sample("ledger_config.json.sample"))
-    assert schema.live_worlds() == [DEFAULT, A]                      # a world made follows live
+    assert schema.live_worlds() == [DEFAULT, *sorted([A, *shipped.worlds()])]      # a world made follows live
     assert schema.world_names(A).declaration_root != schema.world_names().declaration_root
 
 
@@ -140,10 +142,10 @@ def test_every_seat_that_names_no_world_reads_the_operating_one(config):
 def test_a_world_is_switched_off_and_on_by_name_and_the_history_says_who(config):
     _declare(A, _sample("ledger_config.json.sample"))
     entry = schema.set_live(A, False, "tester")
-    assert (schema.live(A), schema.live_worlds()) == (False, [DEFAULT])
+    assert (schema.live(A), schema.live_worlds()) == (False, [DEFAULT, *shipped.worlds()])
     assert (entry["world"], entry["live"], entry["by"]) == (A, False, "tester")
     schema.set_live(A, True)
-    assert (schema.live(A), schema.live_worlds()) == (True, [DEFAULT, A])
+    assert (schema.live(A), schema.live_worlds()) == (True, [DEFAULT, *sorted([A, *shipped.worlds()])])
     assert [(h["world"], h["live"]) for h in schema.layout()["history"]] == [(A, False), (A, True)]
     with pytest.raises(LookupError):
         schema.set_live("nope", False)
@@ -167,12 +169,12 @@ def test_every_answer_that_lists_the_worlds_carries_one_shape(config):
 
     _declare(A, _sample("ledger_config.json.sample"))
     schema.operate(A)
-    expected = {"worlds": [DEFAULT, A], "operating": A}
+    expected = {"worlds": sorted([DEFAULT, A, *shipped.worlds()], key=lambda w: w != DEFAULT), "operating": A}
     for answer in (trace_router.ledger_declaration_catalog(world=None), main.list_tables(),
                    explorer_router.list_worlds()):
         assert {key: answer[key] for key in expected} == expected
     schema.set_live(A, False)
-    assert explorer_router.list_worlds()["live"] == {DEFAULT: True, A: False}
+    assert explorer_router.list_worlds()["live"] == {DEFAULT: True, A: False, **{w: True for w in shipped.worlds()}}
     with pytest.raises(HTTPException) as refused:                    # 총괄 f1ad96964 ①
         trace_router._worlds("nowhere")
     assert refused.value.detail["worlds"] == expected["worlds"]

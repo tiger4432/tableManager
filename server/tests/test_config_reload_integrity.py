@@ -69,6 +69,7 @@ import pytest
 from sqlalchemy import create_engine, inspect
 
 from database import crud, models
+import shipped
 from database import config_watcher as config_watcher_mod
 from database.config_watcher import ConfigChangeHandler, start_config_watcher
 
@@ -556,7 +557,8 @@ def test_inv_13_1_missing_file_is_not_an_error(tmp_path, monkeypatch, caplog):
     """
     monkeypatch.setattr(crud, "CONFIG_PATH", str(tmp_path / "nope.json"))
     with caplog.at_level(logging.ERROR):
-        assert crud.load_table_config() == {}
+        # nothing of the owner's - the tables the product ships only (`shipped`, owner 11-06)
+        assert crud.load_table_config() == shipped.merged({})
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
@@ -633,7 +635,7 @@ def test_h1_bom_encodings_load(tmp_path, monkeypatch, encoding, label):
     cfg = crud.load_table_config_or_raise()
     assert "cfgint_bom" in cfg, f"{label} config was rejected"
     # The BOM must be consumed, not smuggled into the first key.
-    assert list(cfg.keys()) == ["cfgint_bom"], f"{label}: BOM leaked into the key"
+    assert list(shipped.owner_only(cfg)) == ["cfgint_bom"], f"{label}: BOM leaked into the key"
     assert "값" in cfg["cfgint_bom"]["column_types"], f"{label}: non-ASCII column mangled"
 
 

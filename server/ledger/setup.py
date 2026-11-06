@@ -88,8 +88,15 @@ def physical_catalog_path() -> Path:
 
 
 def live_physical_catalog() -> Mapping[str, Any]:
-    """The physical relation shape this deployment's `table_config.json` declares."""
-    return load_physical_catalog(physical_catalog_path())
+    """The physical relation shape this deployment's `table_config.json` declares, and the tables the product ships
+    (`shipped`, owner 11-06) - the same merge `crud` loads."""
+    import shipped
+    from .setup_bundle import _adapt_physical_catalog
+
+    owner = dict(load_physical_catalog(physical_catalog_path()))
+    shipping = shipped.tables()
+    return {**{name: entry for name, entry in owner.items() if name not in shipping},
+            **_adapt_physical_catalog(shipping)}
 
 
 def live_imported() -> Mapping[str, Any]:

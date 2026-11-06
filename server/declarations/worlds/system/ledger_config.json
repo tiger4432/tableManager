@@ -1,0 +1,1036 @@
+{
+  "setup_version": 6,
+  "vocabulary": {
+    "declared": {
+      "status": "active",
+      "subjects": [
+        "table",
+        "column",
+        "chain_rule",
+        "ingestion",
+        "ledger_source"
+      ],
+      "object": {
+        "kind": "none",
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "has_column": {
+      "status": "active",
+      "subjects": [
+        "table"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "key_column": {
+      "status": "active",
+      "subjects": [
+        "table"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": [
+            "position"
+          ]
+        }
+      }
+    },
+    "reads_from": {
+      "status": "active",
+      "subjects": [
+        "chain_rule"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "table"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "writes": {
+      "status": "active",
+      "subjects": [
+        "chain_rule"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "table"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "triggered_by": {
+      "status": "active",
+      "subjects": [
+        "chain_rule"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "writes_column": {
+      "status": "active",
+      "subjects": [
+        "chain_rule"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "joins_on": {
+      "status": "active",
+      "subjects": [
+        "chain_rule"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "decides_by": {
+      "status": "active",
+      "subjects": [
+        "chain_rule"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "groups_by": {
+      "status": "active",
+      "subjects": [
+        "chain_rule"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "derived_from": {
+      "status": "active",
+      "subjects": [
+        "column"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "column"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": [
+            "rule"
+          ]
+        }
+      }
+    },
+    "fills": {
+      "status": "active",
+      "subjects": [
+        "ingestion"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "table"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "reads": {
+      "status": "active",
+      "subjects": [
+        "ledger_source"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "table"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    },
+    "builds": {
+      "status": "active",
+      "subjects": [
+        "ledger_source"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "entity_type"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
+    }
+  },
+  "entities": {
+    "table": {
+      "keys": [
+        "table"
+      ],
+      "class": "static",
+      "attributes": [
+        "group",
+        "key_columns",
+        "description"
+      ]
+    },
+    "column": {
+      "keys": [
+        "table",
+        "column"
+      ],
+      "class": "static",
+      "attributes": [
+        "column_type",
+        "description"
+      ]
+    },
+    "chain_rule": {
+      "keys": [
+        "rule"
+      ],
+      "class": "static",
+      "attributes": [
+        "kind",
+        "declaration",
+        "enabled",
+        "runs_on",
+        "when",
+        "function",
+        "formula",
+        "description"
+      ]
+    },
+    "ingestion": {
+      "keys": [
+        "ingestion"
+      ],
+      "class": "static",
+      "attributes": [
+        "folder",
+        "pattern",
+        "parser",
+        "enabled",
+        "description"
+      ]
+    },
+    "ledger_source": {
+      "keys": [
+        "world",
+        "source"
+      ],
+      "class": "static",
+      "attributes": [
+        "status",
+        "description"
+      ]
+    },
+    "entity_type": {
+      "keys": [
+        "entity_type"
+      ],
+      "class": "static"
+    }
+  },
+  "sources": {
+    "sys_tables": {
+      "relation": "sys_tables",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "table": {
+            "attributes": {
+              "group": {
+                "kind": "column",
+                "column": "group"
+              },
+              "key_columns": {
+                "kind": "column",
+                "column": "key_columns"
+              },
+              "description": {
+                "kind": "column",
+                "column": "description"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "table_declared": {
+            "predicate": "declared",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          }
+        }
+      }
+    },
+    "sys_columns": {
+      "relation": "sys_columns",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "column": {
+            "attributes": {
+              "column_type": {
+                "kind": "column",
+                "column": "column_type"
+              },
+              "description": {
+                "kind": "column",
+                "column": "description"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "column_declared": {
+            "predicate": "declared",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          },
+          "has_column": {
+            "predicate": "has_column",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          },
+          "key_column": {
+            "predicate": "key_column",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "key_of"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              },
+              "position": {
+                "kind": "column",
+                "column": "key_position"
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          }
+        }
+      }
+    },
+    "sys_chain_rules": {
+      "relation": "sys_chain_rules",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "chain_rule": {
+            "attributes": {
+              "kind": {
+                "kind": "column",
+                "column": "kind"
+              },
+              "declaration": {
+                "kind": "column",
+                "column": "declaration"
+              },
+              "enabled": {
+                "kind": "column",
+                "column": "enabled"
+              },
+              "runs_on": {
+                "kind": "column",
+                "column": "runs_on"
+              },
+              "when": {
+                "kind": "column",
+                "column": "when"
+              },
+              "function": {
+                "kind": "column",
+                "column": "function"
+              },
+              "formula": {
+                "kind": "column",
+                "column": "formula"
+              },
+              "description": {
+                "kind": "column",
+                "column": "description"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "rule_declared": {
+            "predicate": "declared",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          },
+          "reads_from": {
+            "predicate": "reads_from",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "trigger_table"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          },
+          "writes": {
+            "predicate": "writes",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "target_table"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          }
+        }
+      }
+    },
+    "sys_rule_columns": {
+      "relation": "sys_rule_columns",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {},
+        "mappings": {
+          "triggered_by": {
+            "predicate": "triggered_by",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes",
+              "role": "triggered_by"
+            }
+          },
+          "writes_column": {
+            "predicate": "writes_column",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes",
+              "role": "writes_column"
+            }
+          },
+          "joins_on": {
+            "predicate": "joins_on",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes",
+              "role": "joins_on"
+            }
+          },
+          "decides_by": {
+            "predicate": "decides_by",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes",
+              "role": "decides_by"
+            }
+          },
+          "groups_by": {
+            "predicate": "groups_by",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "chain_rule",
+                "keys": {
+                  "rule": {
+                    "kind": "column",
+                    "column": "rule_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes",
+              "role": "groups_by"
+            }
+          },
+          "derived_from": {
+            "predicate": "derived_from",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "column_name"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "column",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "from_table"
+                  },
+                  "column": {
+                    "kind": "column",
+                    "column": "from_column"
+                  }
+                }
+              },
+              "rule": {
+                "kind": "column",
+                "column": "rule_name"
+              }
+            },
+            "when": {
+              "declared": "yes",
+              "role": "writes_column"
+            }
+          }
+        }
+      }
+    },
+    "sys_ingestion": {
+      "relation": "sys_ingestion",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "ingestion": {
+            "attributes": {
+              "folder": {
+                "kind": "column",
+                "column": "folder"
+              },
+              "pattern": {
+                "kind": "column",
+                "column": "pattern"
+              },
+              "parser": {
+                "kind": "column",
+                "column": "parser"
+              },
+              "enabled": {
+                "kind": "column",
+                "column": "enabled"
+              },
+              "description": {
+                "kind": "column",
+                "column": "description"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "ingestion_declared": {
+            "predicate": "declared",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ingestion",
+                "keys": {
+                  "ingestion": {
+                    "kind": "column",
+                    "column": "ingestion_id"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          },
+          "fills": {
+            "predicate": "fills",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ingestion",
+                "keys": {
+                  "ingestion": {
+                    "kind": "column",
+                    "column": "ingestion_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "table_name"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          }
+        }
+      }
+    },
+    "sys_ledger_sources": {
+      "relation": "sys_ledger_sources",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "ledger_source": {
+            "attributes": {
+              "status": {
+                "kind": "column",
+                "column": "status"
+              },
+              "description": {
+                "kind": "column",
+                "column": "description"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "source_declared": {
+            "predicate": "declared",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ledger_source",
+                "keys": {
+                  "world": {
+                    "kind": "column",
+                    "column": "world"
+                  },
+                  "source": {
+                    "kind": "column",
+                    "column": "source_id"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          },
+          "reads": {
+            "predicate": "reads",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ledger_source",
+                "keys": {
+                  "world": {
+                    "kind": "column",
+                    "column": "world"
+                  },
+                  "source": {
+                    "kind": "column",
+                    "column": "source_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "relation"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          }
+        }
+      }
+    },
+    "sys_source_builds": {
+      "relation": "sys_source_builds",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {},
+        "mappings": {
+          "builds": {
+            "predicate": "builds",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "ledger_source",
+                "keys": {
+                  "world": {
+                    "kind": "column",
+                    "column": "world"
+                  },
+                  "source": {
+                    "kind": "column",
+                    "column": "source_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "entity_type",
+                "keys": {
+                  "entity_type": {
+                    "kind": "column",
+                    "column": "entity_type"
+                  }
+                }
+              }
+            },
+            "when": {
+              "declared": "yes"
+            }
+          }
+        }
+      }
+    }
+  }
+}

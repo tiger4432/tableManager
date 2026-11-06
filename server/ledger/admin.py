@@ -236,6 +236,11 @@ def save_table_config_raw(table: str, declaration, base: str, check_only: bool =
         raise _table_config_refusal(
             "declaration_not_object", f"tables.{table}",
             "A table registration must be a JSON object")
+    import shipped
+    if table in shipped.tables():
+        raise _table_config_refusal(
+            "shipped_table", f"tables.{table}",
+            "%s is a table the product ships (server/declarations/table_config.json) - name yours another way" % table)
     # 🔴 `column_types` IS READ AS A MAPPING AT BOOT AND NOWHERE ELSE CHECKS IT.
     # `init_dynamic_models` does `table_cfg.get("column_types", {}).items()`, so a list
     # here raises INSIDE the boot path, where `main`'s broad except swallows it: the server

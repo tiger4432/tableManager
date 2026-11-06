@@ -81,13 +81,15 @@ def test_the_dispatcher_says_a_loop_once_and_a_slot_or_a_respawn_says_nothing(de
 def test_only_the_dispatchers_loop_says_the_loops():
     """The seat is the call: `say_the_declaration` is called by the dispatcher's loop and by nothing a
     slot runs - a slot reads the same declaration through the same loader."""
-    def callers(path):
+    def callers(path, name):
         tree = ast.parse(open(os.path.join(SERVER_DIR, path), encoding="utf-8").read())
         found = []
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 found += [fn.name for node in ast.walk(fn) if isinstance(node, ast.Call)
-                          and getattr(node.func, "attr", getattr(node.func, "id", None)) == "say_the_declaration"]
+                          and getattr(node.func, "attr", getattr(node.func, "id", None)) == name]
         return found
-    assert callers("chain/ingestion_worker.py") == ["start_chain_ingestion_worker"] * 3   # boot · Reload · a changed file
-    assert callers("chain/slots.py") == []
+    # the loop says it through `declaration_read` (the system catalogue wakes beside it, owner 11-06)
+    assert callers("chain/ingestion_worker.py", "say_the_declaration") == ["declaration_read"]
+    assert callers("chain/ingestion_worker.py", "declaration_read") == ["start_chain_ingestion_worker"] * 3   # boot · Reload · a changed file
+    assert callers("chain/slots.py", "say_the_declaration") == callers("chain/slots.py", "declaration_read") == []

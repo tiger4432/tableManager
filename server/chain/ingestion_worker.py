@@ -1097,6 +1097,15 @@ def say_the_declaration():
            for name, named in _RENAMED_LAYER])
 
 
+def declaration_read():
+    """The dispatcher read the declaration (boot, a reload, a changed file): its lines said, and the system catalogue
+    syncs its rows on its own thread (owner 11-06, `system_catalog`)."""
+    import system_catalog
+
+    say_the_declaration()
+    system_catalog.wake()
+
+
 def refused_chain_rules():
     """{rule name: the loader's sentence} of the last load's refusals; loads once if this process has not. The one
     seat a screen or a replay asks «did this rule stand, and why not» (lead 10-28, Q-194)."""
@@ -4688,7 +4697,7 @@ async def start_chain_ingestion_worker(db_session_factory):
         getattr(logger, _lvl)(_msg)
 
     rules = _starting(steps, load_chain_rules)()
-    say_the_declaration()
+    declaration_read()
     logger.info(f"Loaded {len(rules)} active chain ingestion rules.")
     
     last_reload_event_id = 0
@@ -4815,7 +4824,7 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                 if reload_work:
                     rules = reload_rules(reload_work)
-                    say_the_declaration()
+                    declaration_read()
                     # Mark the trigger event as SUCCESS in this tx if it is not processed yet
                     # (This event only serves as IPC notify signal, does not execute mappers)
                     if latest_reload.processed_chain == False:
@@ -4827,7 +4836,7 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                 if config_watcher.apply_pending():
                     rules = loaded_chain_rules()
-                    say_the_declaration()
+                    declaration_read()
 
                 # Fetch pending outbox records
                 #

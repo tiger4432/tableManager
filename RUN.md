@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **System 표 일곱 + system 세계 — 제품 부품이 행으로, 사람은 description 만** — git pull · 런처 재기동(모든 프로세스)
+>
+> ```
+> 무엇     server/declarations/ (저장소에 추적) 의 표 일곱과 system 세계가 부팅 때 소유자 선언 «옆에» 섬 — 소유자 파일은 안 씀
+>          sys_tables · sys_columns · sys_chain_rules · sys_rule_columns · sys_ingestion · sys_ledger_sources · sys_source_builds
+>          (Tables 탭 group System). 체인 워커가 선언을 읽을 때마다(부팅 · Reload · 파일 바뀜) 바뀐 칸만 씀(층 system_catalog)
+>          description 은 사람이 적음(user 층 — 다시 맞춰도 남음). 선언에서 빠진 부품은 행이 남고 declared = no
+> 볼 줄     chain_worker.log «[SystemCatalog] synced - sys_tables N written ...» — 첫 부팅은 행 수만큼, 그 뒤는 «nothing changed»
+>          «[SystemCatalog] sync stopped - ...» 면 그 사유 한 줄. 다음 선언 읽기(Reload)에 다시 시도
+> 세계     Ontology Explorer 의 세계 목록에 system. 노드 table · column · chain_rule · ingestion · ledger_source · entity_type
+>          술어 has_column · key_column · reads_from · writes · triggered_by · writes_column · joins_on · decides_by · groups_by
+>               derived_from · fills · reads · builds · declared
+> 답의 뜻  표 일곱이 안 보임 → 재기동 전. 세계에 원자가 없음 → 원장 follow-up 이 아직 안 돎(체인 쓰기 뒤 따라옴)
+>          «table_config.json declares 'sys_...'» 줄 → 소유자 파일에 같은 이름 표가 있음: 그 표 이름을 바꿈(출하 것이 섬)
+> 같은 답  server 폴더에서 python -m pytest tests/test_the_system_catalogue_keeps_the_products_parts_as_rows.py  -> 7 passed
+> 끄기     스위치 없음 — 되돌리기는 이 커밋 revert(표 행은 남고 세계만 빠짐)
+> ```
+>
+> ---
+>
 > ## [11-06] **화면이 굳으면 그 한 줄이 남음 — 상태 단추 패널의 «Last UI stall»** — git pull · 그리드 새로 고침 (클라만)
 >
 > ```

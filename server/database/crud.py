@@ -1050,8 +1050,9 @@ def load_table_config_or_raise():
                through produces exactly the failure #13 exists to abolish: a
                server that boots with zero dynamic models and a near-clean log.
     """
+    import shipped
     if not os.path.exists(CONFIG_PATH):
-        return {}
+        return shipped.merged({})
     try:
         with open(CONFIG_PATH, "rb") as f:
             raw = f.read()
@@ -1078,7 +1079,8 @@ def load_table_config_or_raise():
             f"table_config.json must be a JSON object mapping table name -> "
             f"declaration, but its top level is {type(parsed).__name__}: '{CONFIG_PATH}'"
         )
-    return parsed
+    # the tables the product ships stand beside the owner's (owner 11-06, `shipped`)
+    return shipped.merged(parsed)
 
 
 def load_table_config():
@@ -1105,8 +1107,9 @@ def update_table_config(new_config: dict):
     global TABLE_CONFIG
     TABLE_CONFIG.update(new_config)
     try:
+        import shipped
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(TABLE_CONFIG, f, indent=2, ensure_ascii=False)
+            json.dump(shipped.owner_only(TABLE_CONFIG), f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"[crud] Failed to save table config: {told(e)}")
 

@@ -252,6 +252,91 @@ def _contested_tables(chain_rules, enrichment_rules):
 #    lost a FILE, not a concept.
 
 
+def _when(rule) -> str:
+    """The condition a rule runs under, as one sentence - its row gates and the columns that wake it."""
+    def items(cell):
+        return ", ".join(str(item) if isinstance(item, str) else ", ".join(
+            "%s in %s" % (column, values) for column, values in item.items())
+            for item in rule.get(cell) or () if item)
+
+    said = [("on change of " + ", ".join(rule["trigger_columns"])) if rule.get("trigger_columns") else ""]
+    said += ["%s %s" % (cell, items(cell)) for cell in chain_bindings.ROW_GATE_KEYS if items(cell)]
+    return " · ".join(part for part in said if part)
+
+
+def rule_facts(rule) -> dict:
+    """One loaded rule as its declaration says it (owner 11-06, the system catalogue): its kind word, what wakes it,
+    the columns it is woken by, joins and decides on, and every column it writes with where the value comes from.
+    `columns`: [{role, table, column, from_table, from_column}]. Reads the rule only - decides nothing."""
+    from chain import join_into, rule_run
+    from chain.enrichment import config as enrich
+    import expression
+
+    params = rule.get("params") or {}
+    trigger, target = rule.get("trigger_table"), rule.get("target_table")
+    mapper = str(rule.get("mapper") or "")
+    columns, functions, formulas = [], [], []
+
+    def add(role, table, column, from_table=None, from_column=None):
+        if table and column:
+            columns.append({"role": role, "table": str(table), "column": str(column),
+                            "from_table": str(from_table) if from_table and from_column else None,
+                            "from_column": str(from_column) if from_table and from_column else None})
+
+    for column in rule.get("trigger_columns") or ():
+        add("triggered_by", trigger, column)
+    group = rule.get(chain_bindings.GROUP_BY_KEY)
+    for column in ([group] if isinstance(group, str) else group or ()):
+        add("groups_by", trigger, column)
+    if mapper == join_into.JOIN_INTO_MAPPER:
+        right = params.get("right_table")
+        for pair in params.get("on") or ():
+            if isinstance(pair, dict):
+                add("joins_on", target, pair.get("left"))
+                add("joins_on", right, pair.get("right"))
+        for item in params.get("take") or ():
+            if isinstance(item, str):
+                add("writes_column", target, item, right, item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            into, fn = item.get("into") or item.get("from"), item.get(join_into.TAKE_FN)
+            if join_into.formula_of(fn) is not None:
+                formulas.append("%s %s" % (into, fn))
+            elif isinstance(fn, str) and "." in fn:
+                functions.append(fn)
+            read = join_into._from(item)
+            for column in (read if isinstance(read, tuple) else (read,) if read else ()):
+                add("writes_column", target, into, right, column)
+    elif mapper == enrich.DEDUP_MAPPER:
+        source, derived = params.get("source_table"), params.get("derived_table")
+        keys = [next(iter(key)) if isinstance(key, dict) else key for key in params.get("decision_key") or ()]
+        for key, read in zip(keys, params.get("key_source") or keys):
+            add("decides_by", derived, key)
+            add("writes_column", derived, key, source, read)
+        for name, spec in (params.get("aggregations") or {}).items():
+            text, _why = enrich.aggregation_record(spec)
+            if isinstance(text, str):
+                formulas.append("%s =%s" % (name, text))
+                read = expression.compile(text).get("names") or ()
+            else:
+                read = [spec.get("column")] if isinstance(spec, dict) and spec.get("column") else ()
+            for column in read:
+                add("writes_column", derived, name, source, column)
+    elif mapper != enrich.AUTO_CONFIRM_MAPPER:
+        functions.append(mapper or "%s.%s" % (rule.get("mapper_module"), rule.get("mapper_function")))
+    sourced = {c["column"] for c in columns if c["role"] == "writes_column"}
+    for column in sorted(rule_run.columns_a_rule_writes(rule) or ()):
+        if column not in sourced:
+            add("writes_column", target, column)
+    return {"name": rule.get("name"), "kind": rule_shape.declared_kind(rule),
+            "declaration": rule_shape.stood_for(rule) or rule_shape.declaration_of(rule),
+            "enabled": not rule_shape.is_switched_off(rule),
+            "runs_on": "plain and chain writes" if rule.get("allow_chain_trigger") else "plain writes",
+            "when": _when(rule), "trigger_table": trigger, "target_table": target,
+            "function": " · ".join(functions), "formula": " · ".join(formulas), "columns": columns}
+
+
 def _ledger_edges(db, setup):
     """④ `ledger_config`: a source's relation feeds the ledger.
 
@@ -408,6 +493,8 @@ def chain_graph(db):
         # loaded, so they are always answerable and always present.
         "counts": dict(counts, edges=len(edges), nodes=len(nodes)),
     }
+    # each rule as its declaration says it - what the system catalogue writes (owner 11-06)
+    out["rules"] = [rule_facts(rule) for rule in live_rules]
     out["counts"]["contested"] = len(out["contested"])
     out["counts"]["contested_tables"] = len(out["contested_tables"])
     if unread:

@@ -51,6 +51,9 @@ def _drain_ledger_followup_sync(db_session_factory, rows=None):
         followers = []
         for world in schema.live_worlds():
             try:
+                # a world the product ships has no schema until something makes it - its first batch does (owner 11-06)
+                if engine.dialect.name == "postgresql":
+                    schema.ensure_world(engine, schema.world_names(world))
                 followers.append((world, _compiled_setup(world)))
             except Exception as exc:                    # noqa: BLE001 - said by name below
                 # 🔴 ONE WORLD'S BROKEN DECLARATION STOPS ONLY ITSELF (총괄 6c6ccad8f, 소유자 「ㄷ」) - the

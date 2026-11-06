@@ -1,0 +1,65 @@
+{
+  "sys_tables": {
+    "__comment": "One row per declared table. The product writes every cell but description from the declarations (system_catalog); a person writes description.",
+    "group": "System",
+    "business_key": "table_name",
+    "column_types": {"table_name": "string", "group": "string", "key_columns": "string", "column_count": "number",
+                     "declared": "string", "description": "string"},
+    "display_columns": ["table_name", "group", "key_columns", "column_count", "declared", "description"]
+  },
+  "sys_columns": {
+    "__comment": "One row per declared column of a table. key_of names the table when the column is one of its key columns, blank otherwise.",
+    "group": "System",
+    "composite_key_source": ["table_name", "column_name"],
+    "composite_key_separator": "|",
+    "column_types": {"table_name": "string", "column_name": "string", "column_type": "string", "key_position": "number",
+                     "key_of": "string", "declared": "string", "description": "string"},
+    "display_columns": ["table_name", "column_name", "column_type", "key_position", "declared", "description"]
+  },
+  "sys_chain_rules": {
+    "__comment": "One row per chain rule the chain runs. kind is the declaration's own word (join · decide · mapper ...).",
+    "group": "System",
+    "business_key": "rule_name",
+    "column_types": {"rule_name": "string", "kind": "string", "declaration": "string", "enabled": "string",
+                     "runs_on": "string", "when": "string", "trigger_table": "string", "target_table": "string",
+                     "function": "string", "formula": "string", "declared": "string", "description": "string"},
+    "display_columns": ["rule_name", "kind", "enabled", "runs_on", "when", "trigger_table", "target_table", "function",
+                        "formula", "declared", "description"]
+  },
+  "sys_rule_columns": {
+    "__comment": "One row per (rule, column, role): what a rule is woken by, writes, joins or decides on. from_table / from_column: where a written column's value comes from.",
+    "group": "System",
+    "composite_key_source": ["rule_name", "table_name", "column_name", "role", "origin", "from_table", "from_column"],
+    "composite_key_separator": "|",
+    "column_types": {"rule_name": "string", "table_name": "string", "column_name": "string", "role": "string",
+                     "origin": "string", "from_table": "string", "from_column": "string", "first_seen": "datetime",
+                     "last_seen": "datetime", "declared": "string"},
+    "display_columns": ["rule_name", "role", "table_name", "column_name", "from_table", "from_column", "origin",
+                        "declared"]
+  },
+  "sys_ingestion": {
+    "__comment": "One row per folder files are read from into a table: a table's own folder under the workspace, or an external source.",
+    "group": "System",
+    "business_key": "ingestion_id",
+    "column_types": {"ingestion_id": "string", "table_name": "string", "folder": "string", "pattern": "string",
+                     "parser": "string", "enabled": "string", "declared": "string", "description": "string"},
+    "display_columns": ["ingestion_id", "table_name", "folder", "pattern", "parser", "enabled", "declared", "description"]
+  },
+  "sys_ledger_sources": {
+    "__comment": "One row per ledger source of each world, and the table it reads.",
+    "group": "System",
+    "composite_key_source": ["world", "source_id"],
+    "composite_key_separator": "|",
+    "column_types": {"world": "string", "source_id": "string", "relation": "string", "status": "string",
+                     "declared": "string", "description": "string"},
+    "display_columns": ["world", "source_id", "relation", "status", "declared", "description"]
+  },
+  "sys_source_builds": {
+    "__comment": "One row per entity type a ledger source builds.",
+    "group": "System",
+    "composite_key_source": ["world", "source_id", "entity_type"],
+    "composite_key_separator": "|",
+    "column_types": {"world": "string", "source_id": "string", "entity_type": "string", "declared": "string"},
+    "display_columns": ["world", "source_id", "entity_type", "declared"]
+  }
+}

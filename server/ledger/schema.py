@@ -143,8 +143,18 @@ def operating_world() -> str:
 
 
 def _declaration_root(world: str) -> str:
-    return (paths.config_path("ontology") if world == DEFAULT_WORLD
-            else paths.config_path(_BRANCH_ROOTS, world))
+    """The folder `world`'s declaration lives in - the owner's branch folder when it holds one, else the world the
+    product ships (`shipped`, owner 11-06)."""
+    if world == DEFAULT_WORLD:
+        return paths.config_path("ontology")
+    from .setup_bundle import CONFIG_FILENAME
+
+    owner = paths.config_path(_BRANCH_ROOTS, world)
+    if os.path.isfile(os.path.join(owner, CONFIG_FILENAME)):
+        return owner
+    import shipped
+
+    return shipped.world_root(world) or owner
 
 
 def world_names(world: str | None = None) -> WorldNames:
@@ -193,10 +203,12 @@ def worlds() -> list[str]:
     """The branches there are: a declaration file under `<config>/ontology_worlds/<name>/`."""
     from .setup_bundle import CONFIG_FILENAME
 
+    import shipped
+
     base = paths.config_path(_BRANCH_ROOTS)
-    return [name for name in (sorted(os.listdir(base)) if os.path.isdir(base) else ())
-            if _WORLD_NAME.match(name) and name != DEFAULT_WORLD
-            and os.path.isfile(os.path.join(_declaration_root(name), CONFIG_FILENAME))]
+    return sorted(name for name in {*(os.listdir(base) if os.path.isdir(base) else ()), *shipped.worlds()}
+                  if _WORLD_NAME.match(name) and name != DEFAULT_WORLD
+                  and os.path.isfile(os.path.join(_declaration_root(name), CONFIG_FILENAME)))
 
 
 def world_listing() -> dict:
