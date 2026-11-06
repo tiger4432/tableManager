@@ -3082,7 +3082,7 @@ import json
 from fastapi import HTTPException
 
 @app.delete("/tables/{table_name}/rows/{row_id}")
-async def delete_row(table_name: str, row_id: str, user_name: str = None,
+async def delete_row(table_name: str, row_id: str, request: Request, user_name: str = None,
                      db: Session = Depends(get_db)):
     """행 삭제 엔드포인트.
 
@@ -3098,7 +3098,7 @@ async def delete_row(table_name: str, row_id: str, user_name: str = None,
     """
     # [C-1 Fix] async 핸들러 내 동기 DB 호출 → threadpool 격리(이벤트 루프 동결 방지)
     from fastapi.concurrency import run_in_threadpool
-    author = user_name or event_constants.AUTHOR_NOT_STATED
+    author = sso.who(request, user_name or event_constants.AUTHOR_NOT_STATED)
     success = await run_in_threadpool(crud.delete_row, db, table_name, row_id, author)
     if not success:
         raise HTTPException(status_code=404, detail="Row not found")
@@ -3113,15 +3113,17 @@ async def delete_row(table_name: str, row_id: str, user_name: str = None,
     return {"status": "success", "row_id": row_id}
 
 @app.post("/tables/{table_name}/rows/batch_delete")
-async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBatch, db: Session = Depends(get_db)):
+async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBatch, request: Request,
+                                     db: Session = Depends(get_db)):
     """여러 행을 물리적으로 삭제하고 브로드캐스트합니다."""
+    author = sso.who(request, batch.user_name)
     from fastapi.concurrency import run_in_threadpool
 
     # [C-1 Fix] 동기 crud 삭제 + 감사 로그 조회를 threadpool로 격리(이벤트 루프 동결 방지).
     # 기존 삭제행별 get_deleted_row_business_key N+1 쿼리(대량 삭제 시 최악의 루프 블로커)는
     # get_deleted_rows_business_keys_bulk의 청크 IN 쿼리 2회로 대체한다.
     def _delete_and_collect():
-        deleted = crud.delete_rows_batch(db, table_name, batch.row_ids, batch.user_name)
+        deleted = crud.delete_rows_batch(db, table_name, batch.row_ids, author)
         logs = []
         if deleted > 0:
             log_objs = db.query(models.AuditLog).filter(
@@ -3165,7 +3167,7 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
                 chunk_logs[index].append(log)
         for chunk, logs in zip(chunks, chunk_logs):
             msg = event_constants.row_delete_message(
-                table_name, chunk, updated_by=batch.user_name, created_logs=logs)
+                table_name, chunk, updated_by=author, created_logs=logs)
             await manager.broadcast(json.dumps(msg))
         
     # 🔴 [총괄 a0ae05b60, 소유자 「ㄱ, 한 1만행」] THE ANSWER IS THE COUNT, NOT EVERY ROW'S HISTORY. It
@@ -3666,10 +3668,12 @@ def get_cell_history(table_name: str, row_id: str, col_name: str,
                          disclose_row_total=True)
 
 @app.post("/tables/{table_name}/rows")
-async def create_row(table_name: str, count: int = 1, user_name: str = "system", db: Session = Depends(get_db)):
+async def create_row(table_name: str, request: Request, count: int = 1, user_name: str = "system",
+                     db: Session = Depends(get_db)):
     """
     신규 행 추가 엔드포인트 (단건 및 다건 지원)
     """
+    user_name = sso.who(request, user_name)
     # [C-1 Fix] 동기 crud 생성 + AuditLog 조회 + ORM 속성 접근(msg_items)을 threadpool로 격리
     from fastapi.concurrency import run_in_threadpool
 
@@ -3811,9 +3815,12 @@ async def apply_batch_updates_endpoint(
     table_name: str,
     batch: schemas.GeneralUpdateBatch,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
+    for item in batch.updates:
+        item.updated_by = sso.who(request, item.updated_by)
     from fastapi.concurrency import run_in_threadpool
     # [V1 instrument] The instrument must never be able to destroy the operation it
     # measures (fix round F4). A malformed `effort` blob is DISCARDED and reported - in
@@ -4326,7 +4333,7 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
 
 @app.put("/tables/{table_name}/{row_id}/{col_name}/priority")
 async def set_cell_priority(
-    table_name: str, row_id: str, col_name: str, 
+    table_name: str, row_id: str, col_name: str, request: Request,
     source_name: Optional[str] = Body(None, embed=True), 
     updated_by: str = Body("user", embed=True),
     db: Session = Depends(get_db)
@@ -4336,7 +4343,8 @@ async def set_cell_priority(
     from fastapi.concurrency import run_in_threadpool
 
     def _apply_and_merge_single():
-        updated_row, changed_cols, deleted = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name, updated_by)
+        updated_row, changed_cols, deleted = crud.set_cell_manual_priority(db, table_name, row_id, col_name, source_name,
+                                                                         sso.who(request, updated_by))
         if not updated_row:
             return None, None, None
         cfg = crud.TABLE_CONFIG.get(table_name, {})
@@ -4383,6 +4391,7 @@ async def set_cell_priority(
 async def set_cell_priority_batch_endpoint(
     table_name: str,
     req: schemas.BatchCellPriorityRequest,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """여러 셀의 표시 우선순위 소스를 수동으로 일괄 지정합니다 (Pin)."""
@@ -4391,7 +4400,7 @@ async def set_cell_priority_batch_endpoint(
 
     def _apply_and_merge():
         changed, logs, deleted = crud.set_cell_manual_priority_batch(
-            db, table_name, req.updates, req.source_name, req.updated_by
+            db, table_name, req.updates, req.source_name, sso.who(request, req.updated_by)
         )
         merged = []
         # [P1b] Same discarded merge as the batch-update endpoint, and dearer here:
@@ -7098,7 +7107,7 @@ def get_chain_formula(table: str):
 
 
 @app.post("/admin/chain/formula", dependencies=[Depends(require_admin_token)])
-def post_chain_formula(payload: dict = Body(...), db: Session = Depends(get_db)):
+def post_chain_formula(payload: dict = Body(...), db: Session = Depends(get_db), request: Request = None):
     """{"table", "column", "formula", "preview": true} -> {"rule", "sample", "says", "count"}: the formula over the
     table's first rows, and the rows saving runs it over again - every row, the grid's count (`grid_count`, with its
     time). With "base" instead (the file as `GET` read it) -> {"rule", "run_id", "base"}: saved and R1 queued; an empty
@@ -7115,8 +7124,8 @@ def post_chain_formula(payload: dict = Body(...), db: Session = Depends(get_db))
         if not payload.get("base"):
             raise formula.FormulaRefused("Send preview: true, or the base GET read to save")
         if not text:
-            return formula.remove(db, table, column, str(payload["base"]), payload.get("requested_by") or None)
-        return formula.save(db, table, column, text, str(payload["base"]), payload.get("requested_by") or None)
+            return formula.remove(db, table, column, str(payload["base"]), sso.who(request, payload.get("requested_by") or None))
+        return formula.save(db, table, column, text, str(payload["base"]), sso.who(request, payload.get("requested_by") or None))
     except (formula.FormulaRefused, retroactive.RetroactiveRefused) as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
@@ -7411,7 +7420,7 @@ def get_retroactive_count(op: str, request: Request, scan_limit: int = None,
 # 스레드에서 한다. 소급 실행은 테이블을 전수로 걷기 때문에 동기 핸들러는 브라우저가
 # 포기할 때까지 요청을 붙잡는다. 토큰 미설정 서버에서는 503으로 거부한다.
 @app.post("/admin/retroactive/{op}/run", dependencies=[Depends(require_admin_token_strict)])
-def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
+def trigger_retroactive_run(op: str, request: Request, payload: dict = Body(default=None),
                             db: Session = Depends(get_db)):
     """소급 적용을 **큐에 넣고** 즉시 반환한다. 여기서 실행하지 않는다.
 
@@ -7432,7 +7441,7 @@ def trigger_retroactive_run(op: str, payload: dict = Body(default=None),
                                      # 🔴 없으면 «안 적습니다». "admin" 은 사람 이름처럼
                                      # 읽히는 글자라, 그것을 남기면 「누가 걸었나」에
                                      # 아무도 말하지 않은 답을 «적어 두는» 것입니다.
-                                     requested_by=body.get("requested_by") or None)
+                                     requested_by=sso.who(request, body.get("requested_by") or None))
         admin_help.mark_run(db, body.get("help_id"), queued)    # the help's answer the form opened it from
         return queued
     except retroactive.RetroactiveRefused as e:

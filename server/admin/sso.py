@@ -217,8 +217,8 @@ def admit(request: Request):
 
 def who(request: Request, fallback):
     """Who did this: the signed-in name, else the seat's own answer as before - sign-in off, or an
-    open path with nobody signed in (lead 10-07 ㄱ)."""
-    user = getattr(request.state, "sso_user", None)
+    open path with nobody signed in (lead 10-07 ㄱ), or a route called directly with no request."""
+    user = getattr(getattr(request, "state", None), "sso_user", None)
     return fallback if user is None else user
 
 

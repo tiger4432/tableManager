@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **회사 로그인(SSO) 켜진 서버 — 칸 고침 · 행 만들기 · 지우기 · 핀의 작성자가 로그인한 계정 이름** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     쓰기 문 여섯(PUT data/updates · POST rows · DELETE rows/{id} · POST rows/batch_delete · 핀 · 핀 일괄)과
+>          POST /admin/chain/formula · POST /admin/retroactive/{op}/run 이 작성자를 sso.who 에서 읽음
+>          로그인 켜짐 = 로그인한 계정 이름 · 꺼짐 = 예전처럼 화면이 보낸 이름(web_client 등)
+> 볼 것    칸 하나 고친 뒤 그 칸 이력(History) 줄과 Sources 의 user 층 작성자 = 오른쪽 위 계정 이름
+> 답의 뜻  여전히 web_client = 로그인이 꺼진 서버(auth_config.json) 이거나 API 가 재기동 안 됨
+>          이 고침 «전»에 쓴 이력 줄은 web_client 그대로 — 소급하지 않음
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k test_a_signed_in_write_is_authored_by_the_account
+> 끄기     없음 (되돌리려면 revert)
+> ```
+>
+> ---
+>
 > ## [11-06] **파일 쓰기 행 짓기 — 층 하나 칸의 순위를 묶음마다 한 번만 물음 (pfab)** — git pull · 런처 재기동(워처)
 >
 > ```
