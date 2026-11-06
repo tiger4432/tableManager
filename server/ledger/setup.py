@@ -602,18 +602,47 @@ def declared_value_type(setup: "LedgerSetup", source_id: str, name: str):
     import map_overlay
 
     plan = setup.snapshot.source_plans.get(source_id)
-    if plan is None or plan.profile is None:
+    columns = {row["column"] for row in bound_columns(plan) if row["role"] != "key" and row.get("name") == name}
+    if not columns:
         return None
-    columns = set()
-    for mapping in plan.profile.mappings.values():
-        for role, binding in mapping.bindings.items():
-            if not isinstance(binding, Mapping):
-                continue
-            bound = binding if role == name else (binding.get("attributes") or {}).get(name)
-            if isinstance(bound, Mapping) and bound.get("kind") == "column" and bound.get("column"):
-                columns.add(bound["column"])
     types = {map_overlay.declared_column_type(plan.relation, column) for column in columns}
     return types.pop() if len(types) == 1 else None
+
+
+def bound_columns(plan) -> list:
+    """Every column a source's sentences bind, one row per binding, with what the bind says it is: a `key` part of an
+    entity, an `attribute` of an entity, the sentence's `time`, or a `qualifier` of its predicate (owner 11-06
+    «tables for people»: a key cell is the link to the tables that share that entity). A constant binds no column and
+    gives no row; a column bound twice gives two rows. The one reader of bind by column - /declaration's column map
+    and `declared_value_type` both read it."""
+    rows = []
+    if plan is None or plan.profile is None:
+        return rows
+    for sentence, mapping in sorted(plan.profile.mappings.items()):
+        for role, binding in sorted(mapping.bindings.items()):
+            if not isinstance(binding, Mapping):
+                continue
+            said = {"sentence": sentence, "as": role}
+            if binding.get("kind") == "entity":
+                entity = binding.get("entity_type")
+                if _bound_column(entity):           # the type itself is read from a column: no one type to name
+                    rows.append({"column": entity["column"], "role": "entity_type", **said})
+                typed = {"entity": entity} if isinstance(entity, str) else {}
+                for part, bound in sorted((binding.get("keys") or {}).items()):
+                    if _bound_column(bound):
+                        rows.append({"column": bound["column"], **typed, "role": "key", "name": part, **said})
+                for attribute, bound in sorted((binding.get("attributes") or {}).items()):
+                    if _bound_column(bound):
+                        rows.append({"column": bound["column"], **typed, "role": "attribute", "name": attribute,
+                                     **said})
+            elif _bound_column(binding):
+                rows.append({"column": binding["column"], "predicate": mapping.predicate_id,
+                             "role": "time" if role == OCCURRED_AT_ROLE else "qualifier", "name": role, **said})
+    return rows
+
+
+def _bound_column(binding) -> bool:
+    return isinstance(binding, Mapping) and binding.get("kind") == "column" and bool(binding.get("column"))
 
 
 def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:

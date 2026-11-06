@@ -1425,6 +1425,8 @@ def ledger_declaration_catalog(
     try:
         from ledger.setup import load_setup
         from ledger.event_frame import base_select_columns
+        from ledger.setup import bound_columns
+        from declaration_names import bare_name
         from ledger.setup_bundle import emitted_predicates
 
         plans, planned_in, vocabulary_of = {}, {}, {}
@@ -1447,6 +1449,9 @@ def ledger_declaration_catalog(
         # filled, which is the same three-state discipline the `sources` key itself uses
         # eight lines up.
         census = _row_census_by_source(world)
+        # the compiled bind says bare names; the column map says them as entities[] and predicates[] here do
+        spelled = {bare_name(name): name for part in ("entities", "vocabulary")
+                   for name in (declared.get(part) or {})}
         catalogue["sources"] = [
             {
                 "source": source_id,
@@ -1478,6 +1483,11 @@ def ledger_declaration_catalog(
                 # no columns」, which is a different and false fact.
                 **({"scope_columns": list(base_select_columns(plan))}
                    if plan.runs else {}),
+                # owner 11-06 «tables for people»: which column is which entity's key part, attribute, time or
+                # qualifier, from the one reader of bind by column; omitted on a source the loader refused
+                **({"columns": [{**row, **{part: spelled.get(row[part], row[part])
+                                           for part in ("entity", "predicate") if part in row}}
+                                for row in bound_columns(plan)]} if plan.planned else {}),
                 **({"census": census[source_id]} if source_id in census else {}),
             }
             for source_id, plan in sorted(plans.items())

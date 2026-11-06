@@ -1,0 +1,47 @@
+{
+  "about": "GET /api/ledger/declaration sources[].columns - each column a source's sentences bind, one row per binding: role key (name = the key part), attribute, time or qualifier (name = the role). entity and predicate are spelled as entities[].type and predicates[].name in the same answer. A constant binds no column and gives no row; a column bound twice gives two rows; a source the loader refused has no columns key. Owner 11-06 tables for people: a key cell is the link to the tables that share that entity.",
+  "source": "lot_slot_wafer",
+  "cases": [
+    {
+      "name": "keys of two entities, a composite key and the time",
+      "declare": {},
+      "columns": [
+        {"column": "event_time", "predicate": "has_wafer@1", "role": "time", "name": "occurred_at", "sentence": "seat-holds-wafer", "as": "occurred_at"},
+        {"column": "lot", "entity": "lot_slot@1", "role": "key", "name": "lot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "slot", "entity": "lot_slot@1", "role": "key", "name": "slot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "wafer", "entity": "wafer@1", "role": "key", "name": "wafer", "sentence": "seat-holds-wafer", "as": "target"}
+      ]
+    },
+    {
+      "name": "an attribute bound on the source",
+      "declare": {"attribute": {"entity": "wafer@1", "name": "event_type", "column": "event_type"}},
+      "columns": [
+        {"column": "event_time", "predicate": "has_wafer@1", "role": "time", "name": "occurred_at", "sentence": "seat-holds-wafer", "as": "occurred_at"},
+        {"column": "lot", "entity": "lot_slot@1", "role": "key", "name": "lot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "slot", "entity": "lot_slot@1", "role": "key", "name": "slot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "wafer", "entity": "wafer@1", "role": "key", "name": "wafer", "sentence": "seat-holds-wafer", "as": "target"},
+        {"column": "event_type", "entity": "wafer@1", "role": "attribute", "name": "event_type", "sentence": "seat-holds-wafer", "as": "target"}
+      ]
+    },
+    {
+      "name": "a qualifier on a column that is also a key - two rows",
+      "declare": {"qualifier": {"name": "shot", "column": "wafer"}},
+      "columns": [
+        {"column": "event_time", "predicate": "has_wafer@1", "role": "time", "name": "occurred_at", "sentence": "seat-holds-wafer", "as": "occurred_at"},
+        {"column": "wafer", "predicate": "has_wafer@1", "role": "qualifier", "name": "shot", "sentence": "seat-holds-wafer", "as": "shot"},
+        {"column": "lot", "entity": "lot_slot@1", "role": "key", "name": "lot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "slot", "entity": "lot_slot@1", "role": "key", "name": "slot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "wafer", "entity": "wafer@1", "role": "key", "name": "wafer", "sentence": "seat-holds-wafer", "as": "target"}
+      ]
+    },
+    {
+      "name": "a key part bound to a constant gives no row",
+      "declare": {"constant_key": {"as": "subject", "part": "slot", "value": "S01"}},
+      "columns": [
+        {"column": "event_time", "predicate": "has_wafer@1", "role": "time", "name": "occurred_at", "sentence": "seat-holds-wafer", "as": "occurred_at"},
+        {"column": "lot", "entity": "lot_slot@1", "role": "key", "name": "lot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "wafer", "entity": "wafer@1", "role": "key", "name": "wafer", "sentence": "seat-holds-wafer", "as": "target"}
+      ]
+    }
+  ]
+}
