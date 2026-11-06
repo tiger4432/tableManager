@@ -14,7 +14,7 @@ import { narrowingTail } from './narrowing.js';
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
 import { state, isDataColumn, pivotShown } from './state.js';
-import { headerWord } from './grid_pivot.js';
+import { headerWord, itemOf } from './grid_pivot.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal, sayStopped, refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
@@ -1120,7 +1120,6 @@ function setupEventListeners() {
       elements.performanceLog.textContent = '⚡ 1/3. Initializing bulk request...';
       const startTime = performance.now();
 
-      const sortLatest = elements.sortLatestToggle.checked;
       // The narrowing set comes from ONE place now (`narrowing.js`). Order stays here because
       // the count route must not carry it -- see that file's header.
       const narrowing = narrowingTail({
@@ -1129,8 +1128,8 @@ function setupEventListeners() {
       });
 
       const baseApiUrl = `${API_BASE}/tables/${state.currentTable}/data`;
-      // a pivot view's key groups in the grid's own order (owner 10-22)
-      const order = pivotShown() ? sortParams() : { orderBy: sortLatest ? 'updated_at' : 'row_id', orderDesc: sortLatest };
+      // the grid's own order - one seat (`grid.sortParams`)
+      const order = sortParams();
       const queryParams = `order_by=${encodeURIComponent(order.orderBy)}`
         + `&order_desc=${order.orderDesc}${narrowing}`;
 
@@ -1229,7 +1228,6 @@ function setupEventListeners() {
         }
       }
 
-      const sortLatest = elements.sortLatestToggle.checked;
       // The narrowing set comes from ONE place now (`narrowing.js`). Order stays here because
       // the count route must not carry it -- see that file's header.
       const narrowing = narrowingTail({
@@ -1240,8 +1238,11 @@ function setupEventListeners() {
       // 🔴 THE EXPORT URL. This is the site the audit missed, and the reason C3 was worth
       //    doing: if this drifted from the grid's own query the operator would download a
       //    file that does not match what they were looking at, with nothing on screen to say so.
+      // the grid's own order (`grid.sortParams`) - an item column's is a pivot view's name, and the file reads long rows
+      const { orderBy, orderDesc } = sortParams();
+      const order = itemOf(orderBy) === null ? { orderBy, orderDesc } : { orderBy: 'row_id', orderDesc: false };
       const url = `${API_BASE}/tables/${state.currentTable}/export?`
-        + `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}${narrowing}`;
+        + `order_by=${encodeURIComponent(order.orderBy)}&order_desc=${order.orderDesc}${narrowing}`;
 
       elements.performanceLog.textContent = 'Connecting...';
       showToast('📄 CSV download started', 'success');

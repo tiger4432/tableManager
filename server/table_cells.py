@@ -55,6 +55,7 @@ TABLE_CELLS = (
         {"key": "column", "required": True, "node": _leaf()},
         {"key": "value", "required": True, "node": _leaf()},
         {"key": "carry", "required": False, "node": _columns()}]}),
+    ("order", _leaf()),
 )
 
 

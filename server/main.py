@@ -53,6 +53,7 @@ import paths  # single override point for config/ + ingestion_workspace/ (ASSY_D
 import db_safety  # [#16a] "a test process may not touch a real database", as a decision
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
 import grid_pivot  # the main grid's pivot read (소유자 10-22)
+import grid_order  # a table read in its entered order, and the places people dragged (소유자 11-06)
 from admin import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
@@ -2286,6 +2287,8 @@ def _named_sort(table_model, table_name, order_by, order_desc):
         # two paths. The total-order key IS `row_id` wherever it exists, so every table
         # that has one renders byte-identical SQL.
         return pair(None)
+    if order_by == grid_order.ENTERED:
+        return pair(grid_order.sort(table_model, table_name))
     return None
 
 
@@ -2784,6 +2787,8 @@ def grid_page(
                         count_query = count_query.filter(or_(table_model.business_key_val > t_bk, and_(table_model.business_key_val == t_bk, order_key < target_row_id)))
                     else:
                         count_query = count_query.filter(or_(table_model.business_key_val < t_bk, and_(table_model.business_key_val == t_bk, order_key < target_row_id)))
+            elif order_by == grid_order.ENTERED:
+                count_query = grid_order.target_offset_filter(db, count_query, table_model, table_name, target_row_id)
             elif order_by == "row_id":
                 # [판정 97] 방향을 «같이» 따라간다. 정렬이 내림차순인데 오프셋을 오름차순으로
                 # 세면 점프가 표의 «반대편» 페이지에 앉는다 — 위 `updated_at` 갈래가 이미
@@ -2889,6 +2894,8 @@ def grid_page(
     # 112K+ 소스 레코드 스캔으로 인한 2.4초 병목을 제거합니다.
     # 셀별 상세 소스는 기존 get_cell_sources API를 통해 온디맨드로 제공합니다.
     data_list = fetch_and_merge_metadata(db, table_name, raw_rows, user_cols, include_sources=False)
+    if order_by == grid_order.ENTERED:
+        grid_order.row_keys(db, table_name, data_list)
     t_dict = time.time() - t_dict_start
         
     t_total = time.time() - t_total_start
@@ -2959,9 +2966,14 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     pivoted = grid_pivot.of(table_name, **asked)
     rows, _cache_key = narrowed_table_query(db, table_name, table_model, q=asked.get("q"), cols=cols,
                                             filters=filters, pivot=pivoted)
-    page = [tuple(group) for group in grid_pivot.order(grid_pivot.groups(rows, table_model, pivoted), table_model,
-                                                       pivoted, order_by, order_desc).offset(skip).limit(limit).all()]
-    items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns())
+    read = grid_pivot.order(grid_pivot.groups(rows, table_model, pivoted), table_model, pivoted, order_by,
+                            order_desc).offset(skip).limit(limit).all()
+    # in entered order a group's row carries its first row_id and its place after its keys (`grid_pivot.order`)
+    n = len(pivoted.keys)
+    page = [tuple(group[:n]) for group in read]
+    entered = order_by == grid_order.ENTERED
+    item_places = {} if entered else None
+    items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns(), places=item_places)
     fetched = grid_pivot.rows_of(rows, table_model, pivoted, page)
     raw_rows = fetched.all() if fetched is not None else []
     merged = fetch_and_merge_metadata(db, table_name, raw_rows,
@@ -2969,12 +2981,16 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     logger.info("[get_table_data] pivot | Total: %.3fs | table=%s groups=%d rows=%d items=%d more=%d skip=%d "
                 "limit=%d order=%s filters=%d", time.time() - began, table_name, len(page), len(raw_rows),
                 len(items), more, skip, limit, order_by, _filtered_column_count(filters))
+    data = grid_pivot.fold(pivoted, page, raw_rows, merged, items)
+    if entered:
+        for group, out in zip(read, data):
+            out.update(first=group[n], order_key=group[n + 1])
     return _table_data_response({
         "table_name": table_name, "total": None if counted is None else counted["total"], "skip": skip,
         "limit": limit, **({"count": counted} if counted is not None else {}),
         "pivot": {"column": pivoted.column, "value": pivoted.value, "keys": pivoted.keys, "carry": pivoted.carry,
-                  "items": items, "items_more": more},
-        "data": grid_pivot.fold(pivoted, page, raw_rows, merged, items),
+                  "items": items, "items_more": more, **({"item_places": item_places} if entered else {})},
+        "data": data,
     }, table_name)
 
 
@@ -3525,6 +3541,8 @@ def get_table_schema(table_name: str, world: str = None, db: Session = Depends(g
         "smart_paste": config.get("smart_paste"),
         # {"column", "value"} as declared, or None - none declared, or one a pivot read refuses (총괄 10-22)
         "pivot": grid_pivot.declared(table_name, config),
+        # "entered" - its rows read in the order they were entered (owner 11-06), or None
+        "order": grid_order.declared(table_name, config),
         # Always present, `[]` when no verified join touches this table: a stable shape
         # is what lets a client read it without asking whether the key exists.
         "virtual_columns": virtual_columns,

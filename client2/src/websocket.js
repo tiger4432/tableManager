@@ -16,6 +16,7 @@ import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './gr
 import { chainRefreshNote } from './chain_refresh_note.js';
 import { goToLogin, WS_LOGIN_REQUIRED } from './auth_gate.js';
 import { sayLine } from './write_guard.js';
+import { ENTERED, LOOK_TABLE, placesOn } from './grid_order.js';
 
 /**
  * Queue the next reconnect attempt and advance the backoff ladder.
@@ -443,6 +444,15 @@ export function handleWebSocketMessage(msg) {
   //    is not everything, so the screen is asked to go and read the rest rather than left
   //    believing a truncated list is the change set.
   if (logsTruncated) triggerHistoryReloadDebounced();
+
+  // a place another screen wrote on this table (owner 11-06): its rows read again in their new order
+  if (msg.table_name === LOOK_TABLE) {
+    if (state.currentOrder === ENTERED && placesOn(msg, state.currentTable, state.placesWritten)) {
+      state.pageCache.clear();
+      fetchData(state.viewMode !== 'pagination');
+    }
+    return;
+  }
 
   // 2. Perform table-specific data/grid updates
   if (msg.table_name !== state.currentTable) return;

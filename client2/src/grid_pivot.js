@@ -183,7 +183,9 @@ export function pivotRows(answer) {
       data[col] = cell.values ? { value: null, values: cell.values } : { value: cell.value };
     }
     for (const [item, cell] of Object.entries(group.cells || {})) data[itemColId(item)] = { value: cell.value, row_id: cell.row_id };
-    return { row_id: `pivot:${JSON.stringify(view.keys.map((key) => group[key]))}`, data };
+    const row = { row_id: `pivot:${JSON.stringify(view.keys.map((key) => group[key]))}`, data };
+    // read in entered order (owner 11-06): its first long row - what its place is written on - and its order key
+    return group.order_key ? { ...row, first: group.first, order_key: group.order_key } : row;
   });
 }
 

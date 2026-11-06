@@ -1187,6 +1187,8 @@ export const FLOORS = new Map([
   // unit, the memory. Mutants by hand: a cell with a row written as blank (W1), pivot dropped from the narrowing (N1),
   // the footer's unit ignored (N3) - each red alone.
   ['grid_pivot_harness.mjs', 29],
+  // new with the entered order and its places (owner 11-06): its count on the commit that adds it
+  ['grid_order_harness.mjs', 16],
   // the screen checker's --mutant (lead 11-07): a named mutant runs, the others do not, an unknown name is said
   ['mutant_pick_harness.mjs', 7],
   // 2026-09-04, 44 -> 68: block G scores the two values R1 landed on the server with no

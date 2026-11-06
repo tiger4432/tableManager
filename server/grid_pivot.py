@@ -226,8 +226,19 @@ def groups(query, model, pivot):
 def order(groups, model, pivot, order_by, order_desc):
     """`groups` (`groups`' query) in order: a key column, or one item's value - a group without it last either way -
     then the keys. An item's value is one LEFT JOIN to that item's rows, not a read per group (B 11-05: 400k rows
-    405 s -> 1.5 s, box throwaway DB)."""
+    405 s -> 1.5 s, box throwaway DB). `grid_order.ENTERED`: each group at its place - its rows' first row_id
+    (whole table, so a filter does not move it) or where it was dragged - and each row of the read carries the first
+    row_id and the place after its keys."""
+    import grid_order
+
     keys = [getattr(model, key) for key in pivot.keys]
+    if order_by == grid_order.ENTERED:
+        narrowed = groups.subquery()
+        whole = (groups.session.query(*keys, func.min(model.row_id).label("first")).group_by(*keys).subquery())
+        place = grid_order.key(pivot.table_name, grid_order.GROUP, whole.c.first)
+        return (groups.session.query(*(getattr(narrowed.c, key) for key in pivot.keys), whole.c.first,
+                                     place.label("place"))
+                .join(whole, _same_keys(narrowed.c, whole.c, pivot)).order_by(place, whole.c.first))
     if order_by in (None, "", "row_id"):
         return groups.order_by(*keys)
     if order_by in pivot.keys:
@@ -244,13 +255,26 @@ def order(groups, model, pivot, order_by, order_desc):
                                                  "column as %s<item>" % (order_by, ", ".join(pivot.keys), ITEM_PREFIX)))
 
 
-def item_names(query, model, pivot, most):
-    """(the first `most` items of the narrowed rows, how many more) - one DISTINCT, and a count only past `most`."""
+def item_names(query, model, pivot, most, places=None):
+    """(the first `most` items of the narrowed rows, how many more) - one DISTINCT, and a count only past `most`.
+    `places` (a dict): the items in `grid_order.ENTERED` order instead - each at its first row_id over the whole table
+    or where it was dragged - and `places` filled {item: {"first", "order_key"}}."""
+    import grid_order
     from database import crud
 
     column = getattr(model, pivot.column)
-    found = [row[0] for row in query.with_entities(column).filter(column.isnot(None)).distinct()
-             .order_by(column).limit(most + 1).all()]
+    if places is None:
+        found = [row[0] for row in query.with_entities(column).filter(column.isnot(None)).distinct()
+                 .order_by(column).limit(most + 1).all()]
+    else:
+        shown = query.with_entities(column).filter(column.isnot(None)).distinct().subquery()
+        whole = (query.session.query(column.label("item"), func.min(model.row_id).label("first"))
+                 .filter(column.isnot(None)).group_by(column).subquery())
+        place = grid_order.key(pivot.table_name, grid_order.ITEM, whole.c.first)
+        read = (query.session.query(whole.c.item, whole.c.first, place).join(shown, list(shown.c)[0] == whole.c.item)
+                .order_by(place, whole.c.first).limit(most + 1).all())
+        found = [row[0] for row in read]
+        places.update({crud.comparison_text_value(row[0]): {"first": row[1], "order_key": row[2]} for row in read})
     more = 0
     if len(found) > most:
         found = found[:most]

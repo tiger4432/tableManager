@@ -11,7 +11,8 @@ import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, buildColumnDefs, fitColumnWidths, dropGridFilters, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
+import { renderGrid, buildColumnDefs, fitColumnWidths, dropGridFilters, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder } from './grid.js';
+import { ENTERED, LOOK_TABLE, placeUpdate, placeWord } from './grid_order.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { countOf, setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -423,6 +424,9 @@ export async function loadSchema(tableName) {
     state.pivotOn = Boolean(state.currentPivot) && rememberedPivot(browserStore(), tableName);
     state.pivotView = null;
     drawPivot();
+    // its order (owner 11-06): "entered", or none
+    state.currentOrder = data.order === ENTERED ? ENTERED : null;
+    drawOrder();
     // [Virtual join] The route always sends this key (`[]` when no verified join touches the
     // table), so a missing key means an OLD SERVER — fall back to empty, never to undefined,
     // because every consumer below treats "no virtual columns" as the normal case.
@@ -1328,6 +1332,29 @@ async function editCell(event) {
       latestData.data[colId].priority_source = oldPrioritySource;
     }
     state.gridApi.refreshCells({ rowNodes: [latestNode].filter(Boolean), columns: [colId], force: true });
+  }
+}
+
+/** A dragged row, group or item's place, written: one row of the shipped sys_looks through its write door (owner 11-06).
+ *  -> true when it was written; a refusal is said. */
+export async function writePlace(axis, first, position) {
+  if (refuseWrite()) return false;
+  try {
+    const res = await fetch(`${API_BASE}/tables/${LOOK_TABLE}/data/updates`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: [placeUpdate(state.currentTable, axis, first, position, CURRENT_USER)] }),
+    });
+    if (!res.ok) {
+      const said = await res.json().catch(() => ({}));
+      throw new Error(typeof said.detail === 'string' ? said.detail : `HTTP ${res.status}`);
+    }
+    state.pageCache.clear();
+    state.placesWritten.add(placeWord(first, position));
+    return true;
+  } catch (err) {
+    sayStopped(`Move not saved: ${err.message}`);
+    return false;
   }
 }
 

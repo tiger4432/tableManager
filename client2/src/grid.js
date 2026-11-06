@@ -3,16 +3,18 @@ import { FormulaHeader } from './formula_popover.js';
 import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
 import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter, carryColumns, carryText } from './grid_pivot.js';
+import { ENTERED, ROW, GROUP, ITEM, dropPlace } from './grid_order.js';
+import { setDisabledReason } from './disabled_reason.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
-import { writeRefusal, cellToSend } from './write_guard.js';
+import { writeRefusal, cellToSend, sayStopped } from './write_guard.js';
 import { elements } from './dom.js';
 import { pagingView } from './match_count.js';
 import { narrowingParams } from './narrowing.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
 //    그리지 않는 것이 이 저장소의 상설입니다.
 import { watchForDismiss, placeUnder } from './dropdown.js';
-import { handleCellEdit, fetchData, readColumnValues } from './api.js';
+import { handleCellEdit, fetchData, readColumnValues, writePlace } from './api.js';
 import { ValueFilter, ValueFloatingFilter, setWords } from './value_filter.js';
 import { loadHistory } from './timeline.js';
 import {
@@ -200,10 +202,82 @@ export function sortParams() {
   if (state.serverSort) {
     return { orderBy: state.serverSort.colId, orderDesc: !!state.serverSort.desc };
   }
+  // a table that reads in its entered order - rows, and in pivot view groups and items (owner 11-06)
+  if (state.currentOrder === ENTERED) return { orderBy: ENTERED, orderDesc: false };
   // a pivot view's groups in key order - its rows have no updated_at of their own (owner 10-22)
   if (pivotShown()) return { orderBy: 'row_id', orderDesc: false };
   const sortLatest = elements.sortLatestToggle.checked;
   return { orderBy: sortLatest ? 'updated_at' : 'row_id', orderDesc: sortLatest };
+}
+
+/** «Sort latest» is not this table's when it reads in its entered order - off, and why (owner 11-06). */
+export const SORT_LATEST_ENTERED_NOTE = 'This table reads in the order its rows were entered';
+export function drawOrder() {
+  setDisabledReason(elements.sortLatestToggle, state.currentOrder === ENTERED ? SORT_LATEST_ENTERED_NOTE : '');
+}
+
+/** A row or an item can be dragged to a place: the table reads in its entered order as it is, not under a header sort,
+ *  and it can be written. A place is written at once, staged edits or not - it moves a row, it edits no cell. */
+const placing = () => state.currentOrder === ENTERED && !state.serverSort && !writeRefusal();
+
+/** The rows shown, in order, each with its order key and what a place is written on (a group: its first row_id). */
+function shownRows() {
+  const rows = [];
+  for (let i = 0; i < state.gridApi.getDisplayedRowCount(); i += 1) {
+    const node = state.gridApi.getDisplayedRowAtIndex(i);
+    if (node && node.data) rows.push(node);
+  }
+  return rows;
+}
+
+/** Another page before / after the rows shown - a drop at that edge cannot say its place. */
+function pageEdges() {
+  const paged = state.viewMode === 'pagination' && !state.allDataLoaded;
+  return { openStart: paged && state.currentSkip > 0, openEnd: Boolean(state.hasMoreData) };
+}
+
+/** A row dropped (AG Grid's rowDragEnd): its place between the rows it lands among, written; the row moved there. */
+function dropRow(event) {
+  if (!placing() || !event.node || !event.node.data) return;
+  const nodes = shownRows();
+  const keyOf = (node) => node.data.order_key;
+  if (nodes.some((node) => !keyOf(node))) return sayStopped(SAVE_NEW_ROWS_FIRST_NOTE);
+  const from = nodes.indexOf(event.node);
+  const dropped = dropPlace(nodes.map(keyOf), from, event.overIndex, pageEdges());
+  if (!dropped) return;
+  if (dropped.refused) return sayStopped(dropped.refused);
+  const data = event.node.data;
+  const pivoted = pivotShown();
+  writePlace(pivoted ? GROUP : ROW, pivoted ? data.first : data.row_id, dropped.place).then((written) => {
+    if (!written) return;
+    data.order_key = dropped.place;
+    state.gridApi.applyTransaction({ remove: [data] });
+    state.gridApi.applyTransaction({ add: [data], addIndex: event.overIndex });
+  });
+}
+/** A new pivot row has no place until its first value makes its long rows. */
+export const SAVE_NEW_ROWS_FIRST_NOTE = 'Save the new rows before moving rows';
+
+/** An item column moved by its header (columnMoved, finished): its place between the item columns it lands among. */
+function dropItem(event) {
+  const item = event.column && itemOf(event.column.getColId());
+  if (!event.finished || event.source !== 'uiColumnMoved' || item === null || !placing() || !pivotShown()) return;
+  const places = (state.pivotView && state.pivotView.item_places) || {};
+  const shown = state.pivotView.items;
+  const now = state.gridApi.getAllGridColumns().map((col) => itemOf(col.getColId())).filter((name) => name !== null);
+  const to = now.indexOf(item);
+  const dropped = dropPlace(shown.map((name) => (places[name] || {}).order_key), shown.indexOf(item), to,
+    { openEnd: Boolean(state.pivotView.items_more) });
+  if (!dropped) return;
+  if (dropped.refused) { sayStopped(dropped.refused); state.gridApi.setGridOption('columnDefs', buildColumnDefs()); return; }
+  writePlace(ITEM, places[item].first, dropped.place).then((written) => {
+    if (written) {
+      places[item] = { ...places[item], order_key: dropped.place };
+      state.pivotView.items = now;
+    } else {
+      state.gridApi.setGridOption('columnDefs', buildColumnDefs());
+    }
+  });
 }
 
 /** The same pair as a query tail, so no caller re-spells the parameter names either. */
@@ -1262,6 +1336,8 @@ export function buildColumnDefs() {
     filter: false,
     resizable: false,
     editable: false,
+    // a table read in its entered order: its rows (in pivot view its groups) dragged by this cell (owner 11-06)
+    rowDrag: (params) => placing() && Boolean(params.data && params.data.order_key),
     cellClass: 'cell-system-readonly'
   });
 
@@ -1483,9 +1559,11 @@ export function renderGrid(initialRows) {
       state.gridApi = event.api;
       updateVisibleColIndexMap();
     },
-    onColumnMoved: () => {
+    onColumnMoved: (event) => {
       updateVisibleColIndexMap();
+      dropItem(event);
     },
+    onRowDragEnd: (event) => dropRow(event),
     onColumnVisible: () => {
       updateVisibleColIndexMap();
       renderFilterBar();

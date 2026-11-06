@@ -3,7 +3,7 @@ import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
 import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped } from './write_guard.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
-import { updateGridSortState } from './grid.js';
+import { updateGridSortState, sortParams } from './grid.js';
 import { ensureCellObject, markCellOverwritten, isSystemColumn } from './grid.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 // 🔴 STATIC, and it must stay static. `api.js` imports THIS file back, so the two form an
@@ -303,7 +303,9 @@ export async function applyValueToSelectedRange(newValue) {
 
 export function updatePageCacheOnUpsert(items) {
   if (!items || items.length === 0) return;
-  const isSortLatest = elements.sortLatestToggle && elements.sortLatestToggle.checked;
+  // a new row goes on top of the first page only when the grid reads newest first - the one seat says it
+  const { orderBy, orderDesc } = sortParams();
+  const isSortLatest = orderBy === 'updated_at' && orderDesc;
 
   items.forEach(item => {
     let foundAnywhere = false;

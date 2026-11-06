@@ -229,6 +229,22 @@
           "optional": []
         }
       }
+    },
+    "placed_on": {
+      "status": "active",
+      "subjects": [
+        "look"
+      ],
+      "object": {
+        "kind": "entity_ref",
+        "types": [
+          "table"
+        ],
+        "qualifiers": {
+          "required": [],
+          "optional": []
+        }
+      }
     }
   },
   "entities": {
@@ -299,6 +315,17 @@
         "entity_type"
       ],
       "class": "static"
+    },
+    "look": {
+      "keys": [
+        "table",
+        "axis",
+        "key"
+      ],
+      "class": "static",
+      "attributes": [
+        "position"
+      ]
     }
   },
   "sources": {
@@ -1027,6 +1054,63 @@
             },
             "when": {
               "declared": "yes"
+            }
+          }
+        }
+      }
+    },
+    "sys_looks": {
+      "relation": "sys_looks",
+      "map": {
+        "implementation_id": "declarative-role",
+        "implementation_version": 1,
+        "unit": {
+          "kind": "row"
+        }
+      },
+      "bind": {
+        "entities": {
+          "look": {
+            "attributes": {
+              "position": {
+                "kind": "column",
+                "column": "position"
+              }
+            }
+          }
+        },
+        "mappings": {
+          "look_placed_on": {
+            "predicate": "placed_on",
+            "bind": {
+              "subject": {
+                "kind": "entity",
+                "entity_type": "look",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "look_table"
+                  },
+                  "axis": {
+                    "kind": "column",
+                    "column": "look_axis"
+                  },
+                  "key": {
+                    "kind": "column",
+                    "column": "look_key"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "table",
+                "keys": {
+                  "table": {
+                    "kind": "column",
+                    "column": "look_table"
+                  }
+                }
+              }
             }
           }
         }
