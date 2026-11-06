@@ -23,6 +23,8 @@ import base64
 import datetime
 import json
 import logging
+from collections.abc import Mapping
+from types import SimpleNamespace
 
 from chain import report_shape
 
@@ -1165,77 +1167,118 @@ class Report:
 
     # ---- the quantities' values (lead 10-27 B-2: «걷기 해서 모델링 상 닿는 퀀티티의 각 wf 자재들 매칭») -------
     def values(self, candidates):
-        """The measured values of the quantities the model walk reaches from the cause walk's `candidates`, on every
-        wafer of this report and its compares (`causes.values`). Two walks: one from the candidates along `follow` and
-        `order`'s predicate - the structures, the quantities describing them, each one's measuring step and the steps
-        acting on its structures; one from every wafer along `value`'s and `event`'s predicates, `event` bound by its
-        transaction qualifier (follow «<predicate>:<qualifier>»), read to its end page by page. A wafer's value is its own; with none, the
-        step acting on the quantity's structure just before its measuring step (`order`'s key) - the wafers of its
-        transaction there that hold one: one, its value; several, their mean and n. A quantity no wafer here measured
-        or passed the steps of is another product's - no row. Each stands as the wafers' condition of its label.
-        -> {"context": a head, a line a quantity, "labels": [the rows' names], "to_fill": [labels with no value]}"""
-        from ledger import explorer, trace_router
+        """`causes.values` read as the walk ends (`how_it_ends`) -> {"context", "labels", "to_fill"}."""
+        return how_it_ends(self._causes()[report_shape.VALUES]).report(self, candidates)
 
-        causes = self._causes()
-        said, worlds = causes[report_shape.VALUES], causes.get("worlds") or None
-        bare = trace_router._bare_name
-        valued, event = said["value"].split(":")[0], said["event"].split(":")[0]
-        ends = trace_router._predicate_ends(worlds)
-        keys = {bare(name): list((rule or {}).get("keys") or ())
-                for name, rule in trace_router._declared_entities(worlds).items()}
-        wafer_type = ends[bare(valued)][0][0]
-        wafers = {}                                  # a wafer node -> the report's wafers on it (its legs, with row)
-        if said.get(report_shape.VALUES_ROW):
-            for w in self.wafers:
-                for node in wafer_nodes(wafer_type, keys[wafer_type], said[report_shape.VALUES_ROW],
-                                        dict(zip(self.keys, w))):
-                    wafers.setdefault(node, []).append(w)
-        elif len(keys.get(wafer_type, ())) != len(self.keys):
-            raise ReadRefused("derive.report.causes.values: a %s node has %d key(s) (%s), a wafer here %d (%s) - write "
-                              "causes.values.row: the report's columns that hold the ledger's %s (e.g. [\"%s\"])" % (
-                                  wafer_type, len(keys.get(wafer_type, ())), ", ".join(keys.get(wafer_type, ())),
-                                  len(self.keys), ", ".join(self.keys), wafer_type, self.keys[0]))
-        else:
-            wafers = {explorer.entity_id(wafer_type, dict(zip(keys[wafer_type], w))): [w] for w in self.wafers}
-        world = _worlds_asked(causes)
-        ids = list(dict.fromkeys(c["id"] for c in candidates))
-        model, nodes, at_step, before = model_walk(self.db, CAUSES_VALUES, ids, said, world)
-        edges, calls = wafer_walk(self.db, CAUSES_VALUES, list(wafers), said, world, nodes) if at_step else ({}, 0)
-        to_fill, labels, lines = [], [], []
-        for q in at_step:
-            step = before.get(q)
-            here = [w for w in wafers if (w, bare(valued), q) in edges or (w, bare(event), at_step[q]) in edges
-                    or (step and (w, bare(event), step) in edges)]
-            if not here:
-                continue                                     # another product's quantity - no wafer here met it
-            name = node_label(nodes.get(q) or {"id": q})
-            cells, said_cells = {}, []
-            for w, units in wafers.items():
-                value, n = value_of(edges, said, w, q, step)
-                for unit in units:
-                    if value is not None and n is None:
-                        cells[unit], spoken = str(value), str(value)
-                    elif value is not None:
-                        cells[unit] = with_n(value, "est · %s" % node_label(nodes.get(step) or {"id": step}), n)
-                        spoken = "%s (est, %d wf)" % (_count(value), n)
-                    else:
-                        spoken = "-"
-                    said_cells.append("%s %s" % (self.said(unit), spoken))
-            for unit in self.wafers:
-                if unit in cells:
-                    self.wafers[unit]["conditions"][name] = cells[unit]
-            labels.append(name)
-            if not cells:
-                to_fill.append(name)
-            lines.append("%s: %s%s" % (name, " · ".join(said_cells),
-                                       "" if cells else " - " + report_shape.word(self.spec, "to_fill")))
-        cut = (model.get("truncated") or {}).get("reason")
-        head = "%d quantit(ies) with values on these wafers, %d to fill - %d model node(s), %d wafer walk page(s)%s" % (
-            len(labels) - len(to_fill), len(to_fill), len(nodes), calls, " - the model walk was cut: %s" % cut if cut
-            else "")
-        logger.warning("[Report] causes values: %s", head)
-        return {"context": "\n".join([head] + lines), "labels": labels, "to_fill": to_fill}
 
+
+def _end_values(self, candidates):
+    """The value an `end` walk reaches from every wafer of this report and its compares, one condition named by the
+    end: the far node's key or its edge's qualifier, several folded (`fold_end_values`); none - to fill."""
+    from ledger import trace_router
+
+    causes = self._causes()
+    said, worlds = causes[report_shape.VALUES], causes.get("worlds") or None
+    bare = trace_router._bare_name
+    keys = {bare(name): list((rule or {}).get("keys") or ())
+            for name, rule in trace_router._declared_entities(worlds).items()}
+    start_type = end_start(said, trace_router._predicate_ends(worlds))
+    wafers = _value_wafers(self, said, start_type, keys)
+    found = end_values(self.db, CAUSES_VALUES, list(wafers), said, _worlds_asked(causes))
+    name, cells, said_cells = said["end"], {}, []
+    for w, units in wafers.items():
+        value = fold_end_values(found.get(w) or [])
+        for unit in units:
+            if value is not None:
+                cells[unit] = str(value)
+                self.wafers[unit]["conditions"][name] = str(value)
+            said_cells.append("%s %s" % (self.said(unit), "-" if value is None else value))
+    to_fill = [] if cells else [name]
+    head = "1 end (%s) on these wafers, %d to fill" % (name, len(to_fill))
+    logger.warning("[Report] causes values: %s", head)
+    return {"context": "\n".join([head, "%s: %s%s" % (name, " · ".join(said_cells), "" if cells else
+                                                      " - " + report_shape.word(self.spec, "to_fill"))]),
+            "labels": [name], "to_fill": to_fill}
+
+def _value_wafers(self, said, wafer_type, keys):
+    """A wafer node -> the report's wafers on it (its legs, with row) - by `causes.values.row`, else its keys."""
+    from ledger import explorer
+
+    wafers = {}
+    if said.get(report_shape.VALUES_ROW):
+        for w in self.wafers:
+            for node in wafer_nodes(wafer_type, keys[wafer_type], said[report_shape.VALUES_ROW],
+                                    dict(zip(self.keys, w))):
+                wafers.setdefault(node, []).append(w)
+    elif len(keys.get(wafer_type, ())) != len(self.keys):
+        raise ReadRefused("derive.report.causes.values: a %s node has %d key(s) (%s), a wafer here %d (%s) - write "
+                          "causes.values.row: the report's columns that hold the ledger's %s (e.g. [\"%s\"])" % (
+                              wafer_type, len(keys.get(wafer_type, ())), ", ".join(keys.get(wafer_type, ())),
+                              len(self.keys), ", ".join(self.keys), wafer_type, self.keys[0]))
+    else:
+        wafers = {explorer.entity_id(wafer_type, dict(zip(keys[wafer_type], w))): [w] for w in self.wafers}
+    return wafers
+
+def _estimate_values(self, candidates):
+    """The measured values of the quantities the model walk reaches from the cause walk's `candidates`, on every
+    wafer of this report and its compares (`causes.values`). Two walks: one from the candidates along `follow` and
+    `order`'s predicate - the structures, the quantities describing them, each one's measuring step and the steps
+    acting on its structures; one from every wafer along `value`'s and `event`'s predicates, `event` bound by its
+    transaction qualifier (follow «<predicate>:<qualifier>»), read to its end page by page. A wafer's value is its own; with none, the
+    step acting on the quantity's structure just before its measuring step (`order`'s key) - the wafers of its
+    transaction there that hold one: one, its value; several, their mean and n. A quantity no wafer here measured
+    or passed the steps of is another product's - no row. Each stands as the wafers' condition of its label.
+    -> {"context": a head, a line a quantity, "labels": [the rows' names], "to_fill": [labels with no value]}"""
+    from ledger import explorer, trace_router
+
+    causes = self._causes()
+    said, worlds = causes[report_shape.VALUES], causes.get("worlds") or None
+    bare = trace_router._bare_name
+    valued, event = said["value"].split(":")[0], said["event"].split(":")[0]
+    ends = trace_router._predicate_ends(worlds)
+    keys = {bare(name): list((rule or {}).get("keys") or ())
+            for name, rule in trace_router._declared_entities(worlds).items()}
+    wafer_type = ends[bare(valued)][0][0]
+    wafers = _value_wafers(self, said, wafer_type, keys)
+    world = _worlds_asked(causes)
+    ids = list(dict.fromkeys(c["id"] for c in candidates))
+    model, nodes, at_step, before = model_walk(self.db, CAUSES_VALUES, ids, said, world)
+    edges, calls = wafer_walk(self.db, CAUSES_VALUES, list(wafers), [valued, said["event"]], world,
+                              nodes) if at_step else ({}, 0)
+    to_fill, labels, lines = [], [], []
+    for q in at_step:
+        step = before.get(q)
+        here = [w for w in wafers if (w, bare(valued), q) in edges or (w, bare(event), at_step[q]) in edges
+                or (step and (w, bare(event), step) in edges)]
+        if not here:
+            continue                                     # another product's quantity - no wafer here met it
+        name = node_label(nodes.get(q) or {"id": q})
+        cells, said_cells = {}, []
+        for w, units in wafers.items():
+            value, n = value_of(edges, said, w, q, step)
+            for unit in units:
+                if value is not None and n is None:
+                    cells[unit], spoken = str(value), str(value)
+                elif value is not None:
+                    cells[unit] = with_n(value, "est · %s" % node_label(nodes.get(step) or {"id": step}), n)
+                    spoken = "%s (est, %d wf)" % (_count(value), n)
+                else:
+                    spoken = "-"
+                said_cells.append("%s %s" % (self.said(unit), spoken))
+        for unit in self.wafers:
+            if unit in cells:
+                self.wafers[unit]["conditions"][name] = cells[unit]
+        labels.append(name)
+        if not cells:
+            to_fill.append(name)
+        lines.append("%s: %s%s" % (name, " · ".join(said_cells),
+                                   "" if cells else " - " + report_shape.word(self.spec, "to_fill")))
+    cut = (model.get("truncated") or {}).get("reason")
+    head = "%d quantit(ies) with values on these wafers, %d to fill - %d model node(s), %d wafer walk page(s)%s" % (
+        len(labels) - len(to_fill), len(to_fill), len(nodes), calls, " - the model walk was cut: %s" % cut if cut
+        else "")
+    logger.warning("[Report] causes values: %s", head)
+    return {"context": "\n".join([head] + lines), "labels": labels, "to_fill": to_fill}
 
 
 #: The cell a report's value walks are counted under (`_walk`) - the declaration's own path.
@@ -1254,6 +1297,10 @@ def wafer_nodes(wafer_type, keys, columns, row):
     from database import crud
     from ledger import explorer
 
+    if len(keys) > 1:                        # a node of several keys: `columns` hold its keys in order (an end's start)
+        said = [(row or {}).get(name) for name in columns or ()]
+        return [] if len(said) != len(keys) or any(crud.is_blank_value(v) for v in said) else [
+            explorer.entity_id(wafer_type, dict(zip(keys, said)))]
     out = []
     for name in columns or ():
         value = (row or {}).get(name)
@@ -1297,19 +1344,18 @@ def model_walk(db, cell, seeds, said, world):
     return model, nodes, at_step, before
 
 
-def wafer_walk(db, cell, seeds, said, world, nodes):
-    """The wafer half: from every wafer in `seeds` at once along `value`'s and `event`'s predicates, `event` bound by its
-    transaction qualifier, read to its end page by page -> ({(wafer, predicate, node): records}, pages read)."""
+def wafer_walk(db, cell, seeds, follow, world, nodes, hops=3):
+    """The row half: from every node in `seeds` at once along `follow` (a measured value's: `value`'s and `event`'s
+    predicates, `event` bound by its transaction qualifier; an end's: its follow and end), read to its end page by page
+    -> ({(node, predicate, node): records}, pages read). The nodes it meets land in `nodes` (an end reads their keys)."""
     from ledger import trace_router
     from ledger_api import ledger_subgraph
 
     bare = trace_router._bare_name
-    valued = said["value"].split(":")[0]
-    event, tx_name = said["event"].split(":")
     edges, calls, resume, opened = {}, 0, None, []
     while seeds:
         answer = _walk(db, cell, node_id=seeds[0], positive=seeds[1:] or None,
-                       follow=[valued, "%s:%s" % (event, tx_name)], hops=3, propagation=False,
+                       follow=list(follow), hops=hops, propagation=False,
                        resumable=True, node_limit=ledger_subgraph.MAX_NODE_LIMIT,
                        edge_limit=ledger_subgraph.MAX_EDGE_LIMIT, expand=opened or None, **world,
                        **({"resume": resume} if resume else {}))
@@ -1318,6 +1364,8 @@ def wafer_walk(db, cell, seeds, said, world, nodes):
         if folded:                              # a hub folded: the walk again from its first page, opened
             edges, calls, resume, opened = {}, 0, None, opened + folded
             continue
+        for node in answer.get("nodes") or ():
+            nodes.setdefault(node["id"], node)
         for edge in answer.get("edges") or ():
             edges[(edge["source"], bare(edge["predicate"]), edge["target"])] = edge.get("records") or [
                 {"qualifiers": edge.get("qualifiers") or {}, "occurred_at": edge.get("occurred_at")}]
@@ -1326,6 +1374,77 @@ def wafer_walk(db, cell, seeds, said, world, nodes):
         if not resume:
             break
     return edges, calls
+
+
+def how_it_ends(said):
+    """THE ONE SEAT that asks how a value walk ends (lead 11-07 S2) - its refusal, a join take's read and a report's.
+    `end`: the far node's key or its edge's qualifier, reached from the row's nodes along `follow`, folded by
+    `fold_end_values`. None: today's measured value and its estimate (`model_walk` · `wafer_walk` · `value_of`)."""
+    return END if isinstance(said, Mapping) and said.get("end") else ESTIMATE
+
+
+def _join():
+    from chain import join_into
+
+    return join_into
+
+
+ESTIMATE = SimpleNamespace(
+    refusal=lambda values, worlds, path: report_shape._estimate_refusal(values, worlds, path),
+    take=lambda *asked: _join()._estimate_take(*asked),
+    report=lambda report, candidates: _estimate_values(report, candidates))
+END = SimpleNamespace(
+    refusal=lambda values, worlds, path: report_shape._end_refusal(values, worlds, path),
+    take=lambda *asked: _join()._end_take(*asked),
+    report=lambda report, candidates: _end_values(report, candidates))
+
+
+def end_start(said, ends):
+    """The type an end walk starts from: the subject of its first predicate (`follow`'s, else the end's)."""
+    from ledger import trace_router
+
+    first = (list(said.get("follow") or ()) + [said["end"].split(":")[0]])[0]
+    return ends[trace_router._bare_name(first)][0][0]
+
+
+def end_values(db, cell, starts, said, world):
+    """From every node in `starts` along `follow` then the end's predicate -> {start: [(when, value), ...]}: the end
+    predicate's edges reached from that start - its qualifier's value on the edge, or the far node's key."""
+    from ledger import trace_router
+
+    bare = trace_router._bare_name
+    predicate, _, qualifier = said["end"].partition(":")
+    path = [bare(p.split(":")[0]) for p in list(said.get("follow") or ())]
+    nodes = {}
+    edges, _calls = wafer_walk(db, cell, starts, list(said.get("follow") or ()) + [predicate], world, nodes,
+                               hops=len(path) + 1) if starts else ({}, 0)
+    out = {}
+    for start in starts:
+        here = {start}
+        for step in path:                        # a hop either way its edges run
+            here = {t for (s, p, t) in edges if p == step and s in here} | {
+                s for (s, p, t) in edges if p == step and t in here}
+        for (s, p, t), records in edges.items():
+            if p != bare(predicate) or not ({s, t} & here):
+                continue
+            far = t if s in here else s
+            for record in records:
+                value = (record.get("qualifiers") or {}).get(qualifier) if qualifier else _key_of(nodes.get(far, {"id": far}))
+                if value not in (None, ""):
+                    out.setdefault(start, []).append((record.get("occurred_at"), value))
+    return out
+
+
+def _key_of(node):
+    """A node's key as a cell says it: its one key's value, else its label."""
+    keys = node.get("keys") or {}
+    return next(iter(keys.values())) if len(keys) == 1 else node_label(node)
+
+
+def fold_end_values(found):
+    """Several values an end reaches from one row as one cell - the latest, as a wafer's own value is (`value_of`).
+    ⏳ the owner's rule for several values (lead 11-07 (나)) sets this; one value is itself either way."""
+    return max(found, key=lambda pair: str(pair[0] or ""))[1] if found else None
 
 
 def value_of(edges, said, wafer, q, step):

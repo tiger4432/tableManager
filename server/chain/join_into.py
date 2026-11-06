@@ -156,7 +156,41 @@ def _walk_refusal(record):
 
 
 def walked(db, record, values, rows):
-    """The batch's walk take: one model walk from every node the keys hand, one wafer walk from every wafer the rows
+    """The batch's walk take, read as its walk ends (`report_reads.how_it_ends`) -> {"value": f, "why": f}, each
+    `f(values, row, ref)`."""
+    from chain import report_reads
+
+    return report_reads.how_it_ends(record[TAKE_WALK]).take(db, record, values, rows)
+
+
+def _end_take(db, record, values, rows):
+    """An end walk take: from the nodes the row's `row` columns hold (the type of the walk's first predicate's subject),
+    along `follow` to the end - the far node's key or its edge's qualifier, several folded
+    (`report_reads.fold_end_values`). Nothing reached: `no_value`. One walk a batch."""
+    from chain import report_reads
+    from ledger import trace_router
+
+    said = record[TAKE_WALK]
+    bare = trace_router._bare_name
+    keys = {bare(name): list((rule or {}).get("keys") or ())
+            for name, rule in trace_router._declared_entities(said.get("worlds") or None).items()}
+    start_type = report_reads.end_start(said, trace_router._predicate_ends(said.get("worlds") or None))
+
+    def starts_of(row):
+        return report_reads.wafer_nodes(start_type, keys[start_type], record.get(TAKE_ROW), row)
+
+    starts = list(dict.fromkeys(n for row in rows for n in starts_of(row)))
+    found = report_reads.end_values(db, "join.take.walk", starts, said, report_reads._worlds_asked(said))
+
+    def answer(row):
+        value = report_reads.fold_end_values([pair for n in starts_of(row) for pair in found.get(n) or ()])
+        return (None, _walk_word(said, "no_value")) if value is None else (str(value), None)
+
+    return {"value": lambda values, row, ref: answer(row)[0], "why": lambda values, row, ref: answer(row)[1]}
+
+
+def _estimate_take(db, record, values, rows):
+    """The batch's walk take to a measured value: one model walk from every node the keys hand, one wafer walk from every wafer the rows
     hand (`row`: a column of one wafer, or of a list of them) -> {"value": f, "why": f}, each `f(values, row, ref)`.
     One wafer: its own value, else its estimate; several: the mean of theirs and n (`report_reads.mean_of`, lead
     10-28 - the estimate's fold). A key's value that is no node walked: `no_mapping`; no wafer with a value: `no_value`."""
@@ -184,7 +218,8 @@ def walked(db, record, values, rows):
     if things:
         _model, nodes, at_step, before = report_reads.model_walk(db, "join.take.walk", things, said, world)
         if wafers:
-            edges, _calls = report_reads.wafer_walk(db, "join.take.walk", wafers, said, world, nodes)
+            edges, _calls = report_reads.wafer_walk(db, "join.take.walk", wafers,
+                                                    [said["value"].split(":")[0], said["event"]], world, nodes)
 
     def answer(values, row):
         kept = [node(thing_type, v) for v in values if not crud.is_blank_value(v)]

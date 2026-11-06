@@ -127,7 +127,7 @@ CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops", "wor
 #: «<predicate>:<qualifier>» a wafer's pass through a step and its transaction; `order` [the predicate from a quantity
 #: to the step it is measured at, the step key in order]; `hops` the model walk's (blank: the walk's own). Every name
 #: the ledger's - one it does not declare is refused at save.
-VALUES, VALUES_CELLS = "values", ("follow", "value", "event", "order", "hops")
+VALUES, VALUES_CELLS = "values", ("follow", "value", "event", "order", "hops", "end")
 #: A report's `causes.values.row`: its wafer columns that hold the ledger's wafer node - a join take walk's `row`
 #: (lead 10-28); unwritten, a report wafer's columns are the node's keys in order, as many as it has.
 VALUES_ROW = "row"
@@ -345,10 +345,12 @@ def values_node(*more) -> dict:
     """The form of a value walk - `causes.values`, and a join take's `walk` with its `more` fields beside."""
     return {"kind": "record", "fields": [
         {"key": "follow", "required": True, "node": chain_bindings.list_node("predicate", {"kind": "leaf", "hint": "free"})},
-        {"key": "value", "required": True, "node": {"kind": "leaf", "hint": "free"}},
-        {"key": "event", "required": True, "node": {"kind": "leaf", "hint": "free"}},
-        {"key": "order", "required": True, "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})},
-        {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}}, *more]}
+        {"key": "value", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": "event", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": "order", "required": False, "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})},
+        {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}},
+        # the far node's key or an edge qualifier the walk ends on - value, event and order then unsaid (lead 11-07 S2)
+        {"key": "end", "required": False, "node": {"kind": "leaf", "hint": "free"}}, *more]}
 
 
 def unknown_cells(spec) -> list:
@@ -822,14 +824,22 @@ def _pair(value) -> bool:
 
 def _values_refusal(values, worlds, path="derive.report.causes.values"):
     """A value walk's shape (`causes.values`, a join take's `walk` - `path` names which), then its names against the
-    ledger declaration of the walk's worlds."""
+    ledger declaration of the walk's worlds - by how it ends (`report_reads.how_it_ends`)."""
+    from chain import report_reads
+
+    return report_reads.how_it_ends(values).refusal(values, worlds, path)
+
+
+def _estimate_refusal(values, worlds, path):
+    """A value walk to a measured value and its estimate: its four cells, then its names."""
     if not isinstance(values, dict) or set(values) - set(VALUES_CELLS) or not _names(values.get("follow")) or not all(
             _pair(values.get(cell)) for cell in ("value", "event")) or not (
             _names(values.get("order")) and len(values["order"]) == 2) or (
             "hops" in values and not (_whole(values["hops"], 1) and values["hops"] <= CAUSES_HOPS_MOST)):
         return ('%s is {"follow": ["<predicate>", ...], "value": "<predicate>:<qualifier>", '
                 '"event": "<predicate>:<qualifier>", "order": ["<predicate>", "<key>"], "hops": <n up to %d>} - hops '
-                'optional; got %r' % (path, CAUSES_HOPS_MOST, values))
+                'optional - or {"follow": [...], "end": "<predicate>" | "<predicate>:<qualifier>"}; got %r' % (
+                    path, CAUSES_HOPS_MOST, values))
     from ledger import trace_router
 
     try:
@@ -856,6 +866,39 @@ def _values_refusal(values, worlds, path="derive.report.causes.values"):
     if len(subjects) != 1 or not keys.get(subjects[0]):
         return ("%s.value: %s's subject is the wafer node a wafer is walked from - "
                 "one entity type with keys, got %s" % (path, pairs[0][0], ", ".join(subjects) or "none"))
+    return None
+
+
+def _end_refusal(values, worlds, path):
+    """A value walk to an end: `follow` (none or names) then `end` - a predicate, or one of its qualifiers - each
+    declared, the walk starting from the one keyed subject type of its first predicate."""
+    follow, end = values.get("follow") if "follow" in values else [], values.get("end")
+    if set(values) - set(VALUES_CELLS) or not (follow == [] or _names(follow)) or not (
+            isinstance(end, str) and end.strip() and len(end.split(":")) <= 2 and all(p.strip() for p in end.split(":"))):
+        return ('%s is {"follow": ["<predicate>", ...], "end": "<predicate>" | "<predicate>:<qualifier>"}; got %r'
+                % (path, values))
+    from ledger import trace_router
+
+    try:
+        ends, qualifiers = trace_router._predicate_ends(worlds or None), trace_router._predicate_qualifiers(worlds or None)
+        keys = {trace_router._bare_name(name): list((rule or {}).get("keys") or ())
+                for name, rule in trace_router._declared_entities(worlds or None).items()}
+    except Exception as exc:                                    # noqa: BLE001 - the save says why, the log where
+        logger.warning("[Report] causes.values: the ledger declaration was not read", exc_info=True)
+        return "%s: the ledger declaration was not read - %s: %s" % (path, type(exc).__name__, exc)
+    bare = trace_router._bare_name
+    predicate, _, qualifier = end.partition(":")
+    missing = [name for name in list(follow) + [predicate] if bare(name) not in ends]
+    if missing:
+        return "%s names %s - not a predicate the ledger declares" % (path, ", ".join(missing))
+    if qualifier and qualifier not in (qualifiers.get(bare(predicate)) or ()):
+        return "%s: %s is not a qualifier of %s (declared: %s)" % (
+            path, qualifier, predicate, ", ".join(qualifiers.get(bare(predicate)) or ()) or "none declared")
+    first = (list(follow) + [predicate])[0]
+    subjects = ends[bare(first)][0]
+    if len(subjects) != 1 or not keys.get(subjects[0]):
+        return ("%s: %s's subject is the node a row is walked from - one entity type with keys, got %s"
+                % (path, first, ", ".join(subjects) or "none"))
     return None
 
 
