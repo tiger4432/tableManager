@@ -245,7 +245,7 @@ class AuditLogCache:
         q = q.filter(sa.or_(*[in_group(m.transaction_id, key) for key in keys]))
         return {group_of(r[0]) for r in q.all()}
 
-    def _count_by_transaction(self, db: Session, cursor: Optional[str], edge):
+    def _count_by_transaction(self, db: Session, cursor: Optional[str], edge, want: int):
         """One row per transaction inside `(cursor, edge]`, counted BY POSTGRES.
 
         🔴 THIS IS THE WHOLE REPAIR OF THE WALK. The previous version pulled
@@ -260,9 +260,17 @@ class AuditLogCache:
         its DISCOVERY position: the first time a newest-first scan meets a
         transaction is at its newest row. Sorting the aggregate by that pair
         therefore reproduces the order the old row-by-row walk produced.
+
+        The chunk is counted by its ids (총괄 11-06, 소유자 ㄴ): the planner reads two row-value bounds as 150,000-200,000
+        rows when the chunk is 20,000, and from ~250,000 rows deep it scanned the whole table for each chunk (box: 982 ms,
+        325,284 buffers read a chunk; 27.7 s a walk under a 470,000-row transaction). The ids are the index walk
+        `_chunk_edge` takes, its LIMIT the estimate (box: 64-84 ms a chunk 20,000-480,000 deep; that walk's 25 chunks
+        2.1 s). Floor and LIMIT each name the same rows; the LIMIT is there for the planner.
         """
         m = models.AuditLog
-        tallied = _tally(db, lambda q: self._ordered_rows(audit_history.apply_cursor(q, m, cursor), edge))
+        chunk = audit_history.apply_cursor(sa.select(m.id), m, cursor)
+        chunk = self._ordered_rows(chunk, edge).order_by(*audit_history.order_desc(m)).limit(want)
+        tallied = _tally(db, lambda q: q.filter(m.id.in_(chunk)))
         rows = [(tid, *one) for tid, one in tallied.items()]
         # Belt and braces on the `IS NOT NULL` above: comparing a None against a
         # datetime raises, and a sort that raises takes the whole projection
@@ -308,7 +316,7 @@ class AuditLogCache:
         while len(order) < limit_groups and scanned < max_scan:
             want = min(chunk_rows, max_scan - scanned)
             edge, more_below = self._chunk_edge(db, cursor, want)
-            rows = self._count_by_transaction(db, cursor, edge)
+            rows = self._count_by_transaction(db, cursor, edge, want)
             if not rows:
                 break
             # 🔴 [판정 473] ON A RESUMED WALK, DROP THE GROUPS AN EARLIER PAGE
