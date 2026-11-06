@@ -4571,8 +4571,20 @@ def apply_row_update_internal(
         if update_item.source_name == "user":
             manual_pin = None # 수동 값 입력 시 핀 초기화
             
-        new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name,
-                                                  ranks=plan["ranks"] if plan else None, cell=(table_name, col_name, row))
+        # 🔴 One layer and no pin (lead 11-06, pfab: once per cell was 120,000 asks a 1,000-row x 120-column chunk):
+        # the winner is that layer or the column's formula, and which depends on the column, the source and whether
+        # the layer is dated - never on the value or the row. The batch asks once per that key and keeps the WINNER;
+        # the value is the layer's own. Two or more layers, a pin, or a formula winning ask every time.
+        only = next(iter(sources_dict)) if plan is not None and manual_pin is None and len(sources_dict) == 1 else None
+        asked = (col_name, only, sources_dict[only]["timestamp"] is None) if only else None
+        if asked and plan.setdefault("winners", {}).get(asked) == only:
+            new_val, top_src = none_if_blank(sources_dict[only]["value"]), only
+        else:
+            new_val, top_src = compute_priority_value(sources_dict, manual_pin, table_name,
+                                                      ranks=plan["ranks"] if plan else None,
+                                                      cell=(table_name, col_name, row))
+            if asked:
+                plan["winners"][asked] = top_src
         old_val = old_values_snapshot.get(col_name)
         
         # 6. cell_overwrites 마킹
