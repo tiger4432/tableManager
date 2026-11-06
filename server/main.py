@@ -61,6 +61,7 @@ from admin.auth import require_admin_token, require_admin_token_strict, require_
 from admin import auth
 from admin import help as admin_help  # the admin help: a question -> one tool, its fields and count (owner 10-23)
 from admin import access  # who may read / edit a table (owner 11-06) - the one seat
+import markings  # a person's named markings - the walk's seeds and the grid's page read one (11-07)
 from admin import sso  # company sign-in (총괄 2095014ee): off unless auth_config.json turns it on
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logger.info(f"[paths] {paths.describe()}")
@@ -259,6 +260,7 @@ async def _a_lock_not_got(request: Request, exc: OperationalError):
 # reader looking for it, and S-259 spent a pass finding out it was gone.
 from ledger import trace_router  # noqa: E402
 app.include_router(trace_router.router)
+app.include_router(markings.router)  # /markings - a person's named markings (lead 11-07 S-mark)
 app.include_router(sso.router)  # /auth/* - above the SPA catch-all for the same reason
 
 # --- Ledger v2 ontology config explorer (admin read/draft surface) --------
@@ -3011,12 +3013,17 @@ def get_table_data(
     after: str = None,
     before: str = None,
     pivot: bool = False,
+    marking: str = None,
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
     """🔴 THE ONE DOOR OF A GRID PAGE (총괄 e570dcda5 ㄴ): its count here, in the server process (`grid_count`), and
     its page in the grid pool (`grid_page`, `grid_processes` - 0: here). Every caller of /data passes this door - the
     grid, the map editor, the R&D board, the admin cards; no code calls the two halves apart. A sort name it cannot
-    sort by is refused before anything is counted."""
+    sort by is refused before anything is counted. `marking`: the reader's marking of this table narrows it, as its
+    set filter (`markings.as_filters`) - the values never ride the URL."""
+    if marking:
+        filters = markings.as_filters(db, table_name, marking, filters, access.person(request))
     counted = None
     if not defer_total:
         table_model = grid_model(table_name, world)
@@ -3048,6 +3055,8 @@ def get_table_data_count(
     enrichment_queue_scope: str = None,
     world: str = None,
     pivot: bool = False,
+    marking: str = None,
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
     """`GET .../data?defer_total=true`가 미룬 그 수 - `table_total` 하나: 표 전체는 일꾼이 마지막으로 센 수와 그 시각
@@ -3068,6 +3077,8 @@ def get_table_data_count(
     table_model = grid_model(table_name, world)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+    if marking:                                                   # the same narrowing the page's door makes
+        filters = markings.as_filters(db, table_name, marking, filters, access.person(request))
 
     counted = grid_count(db, table_name, world, table_model, pivot=pivot, q=q, cols=cols,
                          transaction_id=transaction_id, filters=filters, enrichment_queue=enrichment_queue,

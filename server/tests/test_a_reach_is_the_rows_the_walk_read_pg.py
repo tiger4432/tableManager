@@ -249,3 +249,30 @@ def test_a_view_has_no_rows_to_reach_and_is_said(world):
         assert said["rows"] == [] and said["count"]["total"] == 0
         assert said["left_out"] == [{"why": "a view - its rows have no row_id", "table": schema.ATOM_ROWS_VIEW,
                                      "sources": []}], engine
+
+
+def test_a_marking_names_the_seeds_and_the_answer_says_its_revision(world):
+    """Lead 11-07 S-mark: `reach.marking` (the reader's kept marking, `markings.read`) is the same seeds as its table,
+    column and values said in the body; with values too, refused - the seeds said twice."""
+    from fastapi import HTTPException
+
+    from database import models
+
+    _board(world)
+    world["db"].add(models.Marking(owner="", id="m1", table_name="lot_slot_wafer", column_name="wafer",
+                                   marked=["W1"], rev=3))
+    world["db"].commit()
+
+    def asked(engine="virtual", **reach):
+        return trace_router.evidence_subgraph(
+            node_id=None, reach={**{k: v for k, v in WAFERS.items() if k not in ("table", "column")}, **reach},
+            engine=engine, db=world["db"], world=None, follow=None, collect=None, expand=None, seed_type=None,
+            group_by=None, measure=None, since=None, until=None, around=None, earlier=None, later=None,
+            positive=None, negative=None, resume=None)
+
+    for engine in ("virtual", "stored"):                     # owner 11-07: virtual first
+        said = asked(engine, marking="m1")
+        assert set(said["rows"]) == _expected(world, ("W1",))[1] and said["marking"] == {"id": "m1", "rev": 3}, engine
+    with pytest.raises(HTTPException) as refused:
+        asked(marking="m1", values=["W2"])
+    assert refused.value.status_code == 422 and refused.value.detail["reason"] == "seeds_defined_twice"

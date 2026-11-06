@@ -1023,7 +1023,13 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
 
 def _reached(db, asked, world, engine, hidden=(), reader=None):
     """/subgraph's `reach` body answered (`reach`) - its type and predicates declared or refused by name, a table the
-    `reader` may not read (`hidden`, `access.hidden_tables`) refused in its door's sentence."""
+    `reader` may not read (`hidden`, `access.hidden_tables`) refused in its door's sentence. A `marking` (the reader's,
+    `markings.read`) says the table, column and values - the answer names it and the revision walked from."""
+    held = None
+    if "marking" in asked:
+        import markings
+
+        asked, held = markings.as_reach(db, asked, reader)
     missing = [name for name in ("table", "column", "values", "type", "follow", "to") if name not in asked]
     if missing or not isinstance(asked.get("values"), list) or not isinstance(asked.get("follow"), list):
         raise HTTPException(status_code=422, detail={
@@ -1037,9 +1043,10 @@ def _reached(db, asked, world, engine, hidden=(), reader=None):
     follow = _declared_or_refused(list(asked["follow"]), _followable_predicates(world),
                                   reason="predicate_not_declared", what="predicate", world=world,
                                   argument="reach.follow") if asked["follow"] else []
-    return reach(db.connection(), table=asked["table"], column=asked["column"], values=asked["values"], type=kind,
+    said = reach(db.connection(), table=asked["table"], column=asked["column"], values=asked["values"], type=kind,
                  follow=follow, to=asked["to"], world=world, engine=engine if engine in ENGINES else "stored",
                  hidden=hidden)
+    return {**said, "marking": held} if held else said
 
 
 #: How many NODES one key-values answer may read when it groups by ONE axis of a composite

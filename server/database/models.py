@@ -269,6 +269,20 @@ class InteractionEffortLog(Base):
     )
 
 
+class Marking(Base):
+    """A person's named marking (`markings.py`, lead 11-07 S-mark): the values of one column of one table they
+    picked, kept under a handle the server made. View state - no audit, no outbox, not a ledger source."""
+    __tablename__ = "markings"
+
+    owner = Column(String, primary_key=True)
+    id = Column(String, primary_key=True)
+    table_name = Column(String, nullable=False)
+    column_name = Column(String, nullable=False)
+    marked = Column(JSON().with_variant(JSONB, "postgresql"), default=list, nullable=False)
+    rev = Column(Integer, default=0, nullable=False)
+    touched_at = Column(DateTime(timezone=True))
+
+
 class DatabaseOutbox(Base):
     __tablename__ = "database_outbox"
 

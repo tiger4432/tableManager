@@ -222,6 +222,7 @@ def test_every_route_that_takes_a_table_carries_the_door():
 BODY_TABLE_ROUTES = {
     "/api/maps/alignment/confirm": ["POST"],      # payload map_table - access.may(EDIT) first thing in the route
     "/outbox/queue/rows": ["GET"],                # each row's table - an unreadable one's rows are left out
+    "/markings": ["POST"],                        # the marked table - access.may(READ) in the route (S-mark)
 }
 
 

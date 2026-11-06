@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+## 마킹 — 사람이 찍은 값 묶음을 서버가 이름(id)으로 쥔다 (S-mark · S-rows, 총괄 11-07)
+
+화면이 하는 순서: `POST /markings {table, column, values}` → `{id, rev}` · reach 본문에 `"marking": "<id>"` · 격자 `GET /tables/<t>/data?marking=<id>` (와 `/data/count`) — URL 엔 id 만
+
+답의 뜻
+- 404 marking_unknown = 그 사람의 마킹이 아님(남의 id) 또는 화면이 지움
+- 403 = 마킹한 표를 읽을 권한이 없음(`access.may` 한 자리)
+- 422 seeds_defined_twice = reach 에 marking 과 values 를 같이 줌 · marking_of_another_table = 다른 표의 마킹으로 격자를 읽음 · column_filtered_twice = 같은 칸을 필터와 마킹이 둘 다 좁힘
+- 마킹은 화면 상태 — 감사 · 아웃박스 0, 원장 원천 아님. 지우는 것은 화면뿐(쓸기 없음)
+
+표 크기 세기(읽기만):
+```
+SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched_at) FROM markings;
+```
+행 수가 커지는 게 «잰 문제»가 되면 그때 쓸기를 올림(총괄 11-07)
 > ## [11-07] **표 지우기 · 소급 취소 · 체인 줄 × 가 체인 워커와 겹칠 때의 교착 — 빼 두기가 칸을 거둔 «뒤»에 표시** — git pull · 런처 재기동(API · 소급 · 체인 워커)
 >
 > ```
