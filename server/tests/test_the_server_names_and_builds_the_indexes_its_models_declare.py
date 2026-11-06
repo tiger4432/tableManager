@@ -260,7 +260,7 @@ def test_the_route_shows_each_declared_index_beside_the_database(scratch):
     assert {name: by_name[name]["state"] for name in (DROPPED, BROKEN, "idx_audit_row_history")} == {
         DROPPED: "missing", BROKEN: "invalid", "idx_audit_row_history": "present"}
     present = by_name["idx_audit_row_history"]
-    assert present["purpose"] and present["serves"] and present["size_bytes"] > 0
+    assert present["purpose"] and present["serves"] and (present["size_bytes"] is None or present["size_bytes"] > 0)
     assert (by_name[DROPPED]["columns"], by_name[DROPPED]["include"], by_name[BROKEN]["where"]) == (
         ["timestamp", "id"], ["transaction_id"], "processed_chain = true")
     assert (by_name["idx_audit_logs_timestamp_brin"]["using"], by_name[DROPPED]["using"]) == ("brin", None)

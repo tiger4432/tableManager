@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **/admin/indexes 가 인덱스 잠금 뒤에서 안 기다림 — 크기는 카탈로그 추정, 원장은 세계마다 한 번 읽기** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     크기를 인덱스를 열지 않고 카탈로그(relpages × 블록)에서 읽음 — autovacuum 자르기 · 줄 선 ALTER 가
+>          인덱스 잠금을 쥐어도 화면이 안 기다림 (소유자 STALL «32s P /admin/indexes … D9/727s autovacuum»)
+>          원장 파티션 인덱스 상태는 세계마다 카탈로그 한 번 — 파티션이 늘어도 문장 수 그대로
+> 볼 것    /admin/indexes 가 몇 초 안에 열림. 크기 칸 «≈» 뜻은 아래 클라 Indexes 블록
+> 답의 뜻  «≈ ?» 가 많음 = 아직 vacuum · analyze 를 안 겪은 인덱스 — 결함 아님, autovacuum 이 돌면 수가 생김
+>          여전히 수십 초 = 크기 말고 다른 자리가 막힘 — 상태 단추 «Last stall» 줄 그대로 총괄에게
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "test_the_index_screen_does_not_wait_on_an_index_s_lock or test_a_ledger_index_is_judged_from_one_catalogue_read or test_the_server_names_and_builds_the_indexes_its_models_declare or test_the_ledger_ref_index_is_carried_on or test_an_indexed_qualifier_is_an_index_a_bound_step_takes or test_one_index_builder_waits or test_the_same_value_written_again_wakes_no_rule"  -> 32 passed
+> 끄기     없음 (되돌리려면 revert)
+> ```
+>
+> ---
+>
 > ## [11-06] **System 표 일곱 + system 세계 — 제품 부품이 행으로, 사람은 description 만** — git pull · 런처 재기동(모든 프로세스)
 >
 > ```

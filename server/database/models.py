@@ -2117,9 +2117,15 @@ _TRIGRAM_READS = (
     "        AND EXISTS (SELECT 1 FROM unnest({x}.indclass::oid[]) AS k(o) JOIN pg_opclass p ON p.oid = k.o"
     "                    WHERE p.opcname = 'gin_trgm_ops') ORDER BY a.attnum)")
 
+#: An index's size as the catalogue last counted it (vacuum · analyze · its build) - read without opening the index:
+#: pg_relation_size takes each index's lock, and behind an autovacuum's truncation or a queued ALTER /admin/indexes
+#: waited (owner 11-06 «32s P /admin/indexes ... D9/727s autovacuum», lead ①). Said as an estimate (`size_estimate`).
+#: 0 pages is «not counted yet» (no vacuum or analyze since the build - a btree has at least its metapage): None,
+#: never «0 B» (lead 11-06 ㄱ).
 _HELD = (
     "SELECT c.relname AS name, t.relname AS table_name, i.indisvalid AS valid,"
-    "       i.indisprimary AS is_primary, pg_relation_size(c.oid) AS size_bytes, s.idx_scan AS scans,"
+    "       i.indisprimary AS is_primary, NULLIF(c.relpages, 0)::bigint * current_setting('block_size')::bigint AS size_bytes,"
+    "       s.idx_scan AS scans,"
     "       obj_description(c.oid, 'pg_class') AS said,"
     "       ARRAY(SELECT a.attname FROM unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, n)"
     "             LEFT JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum"
@@ -2431,7 +2437,7 @@ def index_states(engine, tables=None, static=True):
     🔴 THE ONE COMPARISON - the boot's notice, its build, GET /admin/indexes and a grid read's search states all read
     this. `static` False: `tables`' own indexes alone, no ledger and no «outside» (a read asks about one table).
     PostgreSQL only; elsewhere every state is `unknown`."""
-    unread = dict(state=INDEX_UNKNOWN, building=None, failure=None, size_bytes=None, scans=None)
+    unread = dict(state=INDEX_UNKNOWN, building=None, failure=None, size_bytes=None, size_estimate=True, scans=None)
     declared = [dict(name=name, table=table.name, **_shape(item), purpose=item.info.get("purpose"),
                      serves=item.info.get("serves"), source="model", **unread)
                 for table, name, item in (declared_indexes() if static else ())]
@@ -2468,10 +2474,10 @@ def index_states(engine, tables=None, static=True):
                  serves=None, source="auto", building=building.get(name),
                  state=INDEX_BUILDING if building.get(name) else INDEX_PRESENT if row.valid else INDEX_INVALID,
                  failure=(row.said or "")[len(INDEX_FAILED_SAID):] if (row.said or "").startswith(INDEX_FAILED_SAID)
-                 else None, size_bytes=row.size_bytes, scans=row.scans)
+                 else None, size_bytes=row.size_bytes, size_estimate=True, scans=row.scans)
             for name, row in sorted(held.items()) if name.startswith(AUTO_INDEX_PREFIX)]
     outside = [{"name": name, "table": row.table_name, "valid": row.valid, "building": building.get(name),
-                "size_bytes": row.size_bytes, "scans": row.scans}
+                "size_bytes": row.size_bytes, "size_estimate": True, "scans": row.scans}
                for name, row in sorted(held.items())
                if not row.is_primary and row.table_name in models_tables and not name.startswith(AUTO_INDEX_PREFIX)]
     return {"declared": declared + auto + ledger, "outside": outside}

@@ -781,6 +781,9 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
     session is building left to it, a wait before the build at most its limit - and attached when it is there. A
     partition not built is said and the others go on; the parent stays NOT valid until every partition has its own.
     `apply=False` says what it would do and writes nothing. One line a partition.
+    Every partition's state - attached, its own index and whether valid, a build under way - is read in one catalogue
+    read before the loop, not a round trip a partition (lead 11-06: /admin/indexes asks this of every world on every
+    look); the dry run and the build judge from the same read.
     -> {"built", "attached", "already", "would_build", "would_attach", "failed", "deferred", "parent_valid",
         "building": [the partitions left to another session's build]}"""
     import db_waits
@@ -810,23 +813,28 @@ def build_partitioned_index(connection, names: WorldNames, index, columns, predi
             say(f"{names.ledger}: the index {index} on ONLY the parent " + ("made" if apply else "would be made"))
             if apply:
                 do(f"CREATE INDEX IF NOT EXISTS {index} ON ONLY {names.ledger} {columns} {predicate}")
-        for partition, _bound in partitions(driver, names):
-            child = child_name.format(index=index, suffix=partition.removeprefix(ledger_name + '_'),
-                                      partition=partition)
-            attached = one(
-                "SELECT EXISTS (SELECT 1 FROM pg_inherits i JOIN pg_index x ON x.indexrelid = i.inhrelid "
-                " WHERE i.inhparent = to_regclass(%s) AND x.indrelid = to_regclass(%s))",
-                (parent, space + partition))[0]
+        children = {partition: child_name.format(index=index, suffix=partition.removeprefix(ledger_name + '_'),
+                                                 partition=partition) for partition, _bound in partitions(driver, names)}
+        with driver.cursor() as cursor:
+            cursor.execute(
+                "SELECT p.part, EXISTS (SELECT 1 FROM pg_inherits i JOIN pg_index x ON x.indexrelid = i.inhrelid"
+                "                        WHERE i.inhparent = to_regclass(%s) AND x.indrelid = to_regclass(p.part)),"
+                "       x.indexrelid IS NOT NULL, x.indisvalid"
+                "  FROM unnest(%s::text[], %s::text[]) AS p(part, child)"
+                "  LEFT JOIN pg_index x ON x.indexrelid = to_regclass(p.child)",
+                (parent, [space + partition for partition in children], [space + child for child in children.values()]))
+            states = {part[len(space):]: (attached, made, valid) for part, attached, made, valid in cursor.fetchall()}
+        builds = db_waits.index_builds(driver) if not apply and any(
+            made and not valid for attached, made, valid in states.values() if not attached) else {}
+        for partition, child in children.items():
+            attached, made, valid = states[partition]
             if attached:
                 out["already"] += 1
                 say(f"{partition}: already has it")
                 continue
-            left = one("SELECT x.indisvalid FROM pg_index x WHERE x.indexrelid = to_regclass(%s)",
-                       (space + child,))
-            there = bool(left and left[0])                # made and not attached - a half-run, carried on
+            there = bool(made and valid)                  # made and not attached - a half-run, carried on
             if not apply:
-                building = (db_waits.index_builds(driver).get((home, child))
-                            if left is not None and not there else None)
+                building = builds.get((home, child)) if made and not there else None
                 if building is not None:
                     out["building"].append(f"{child} {building[2]} by pid {building[0]}")
                     say(f"{partition}: {out['building'][-1]} - left to it")
