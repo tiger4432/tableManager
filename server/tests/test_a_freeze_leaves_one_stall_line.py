@@ -20,7 +20,7 @@ class Readings:
 
     def __init__(self):
         self.open, self.path, self.lag, self.threads, self.grid = 0.0, None, 0.0, (3, 40), 0
-        self.statements, self.cpu, self.pids, self.table = (1, 0.1), (5.0, ("api", 2.0)), {1: "api"}, None
+        self.statements, self.cpu, self.pids, self.table = (1, 0.1, None), (5.0, ("api", 2.0)), {1: "api"}, None
 
     def watch(self, said):
         def fail_or(value):
@@ -46,7 +46,7 @@ def test_a_freeze_ends_in_one_line_of_its_highest_readings():
     r, said = Readings(), []
     w = r.watch(said)
     w.tick(100.0)
-    r.open, r.path, r.threads, r.grid, r.statements = 7.0, "/dashboard/summary", (40, 40), 6, (9, 11.2)
+    r.open, r.path, r.threads, r.grid, r.statements = 7.0, "/dashboard/summary", (40, 40), 6, (9, 11.2, None)
     r.cpu, r.table = (97.0, ("slot2", 61.3)), "dt_log"
     w.tick(101.0)
     r.open, r.lag, r.grid, r.cpu = 9.0, 12.4, 2, (40.0, ("watcher", 12.0))
@@ -193,3 +193,82 @@ def test_health_carries_the_last_stall_line(client, monkeypatch):
     assert body["stall"] == {"line": said[0], "at": w.last["at"]}
     monkeypatch.setattr(stall_watch, "_watch", [])
     assert client.get("/health").json()["stall"] is None
+
+
+# Owner 11-06 ㄱ: «stall 6s P /tables/split_table/data ... C41 watcher:4» - the grid page's body runs in a pool child
+# that had no name on the line; «D10/121s» named no statement.
+
+def test_a_pool_child_busiest_names_its_pool(monkeypatch):
+    """The pool children are named from the pools this process holds - an idle one's process, a busy one's pid."""
+    from utils import heartbeat
+
+    class Child:
+        pid = 424242
+    monkeypatch.setattr(heartbeat, "read_all", lambda: {})
+    monkeypatch.setattr(process_pool.GRID, "busy", {515151})
+    monkeypatch.setattr(process_pool.WALK, "idle", [[Child(), None, 0]])
+    names, _table = stall_watch.workers()
+    assert names == {os.getpid(): "api", 515151: "grid", 424242: "walk"}
+
+    said = []
+    w = stall_watch.Watch(lambda: (8.0, "/tables/split_table/data"), lambda now: 0.0, lambda: (1, 40), lambda: 0,
+                          lambda: (1, 0.0, None), lambda pids: (41.0, (pids[515151], 38.0)), stall_watch.workers,
+                          say=said.append)
+    w.tick(1.0)
+    w.tick(2.0)
+    assert said == [] and w.freeze is not None
+    w.open_requests = lambda: (0.0, None)
+    w.tick(3.0)
+    assert said == ["STALL 10s P /tables/split_table/data L0 T1/40 G0 D1/0s C41 grid:38"]
+
+
+def test_no_pool_child_leaves_the_line_as_it_was(monkeypatch):
+    from utils import heartbeat
+    monkeypatch.setattr(heartbeat, "read_all", lambda: {"watcher": {"pid": 77}})
+    for pool in process_pool.POOLS:
+        monkeypatch.setattr(pool, "idle", [])
+        monkeypatch.setattr(pool, "busy", set())
+    assert stall_watch.workers() == ({os.getpid(): "api", 77: "watcher"}, None)
+
+
+def test_a_failed_name_reading_says_question_mark_in_the_name_cell():
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.open, r.cpu = 8.0, (5.0, None)        # no pid named - no busiest one
+    w.named = lambda: (_ for _ in ()).throw(RuntimeError("pool list changed"))
+    w.tick(1.0)
+    r.open = 0.0
+    w.tick(2.0)
+    assert said == ["STALL 9s L0 T3/40 G0 D1/0s C5 ?"]
+
+
+@pytest.mark.parametrize("query, head", [
+    ("INSERT INTO cell_sources (row_id, value) VALUES ('비밀', 'from secret_table')", "INSERT cell_sources"),
+    ("SELECT extract(epoch FROM now() - q) FROM pg_stat_activity", "SELECT pg_stat_activity"),
+    ("select a from public.audit_logs where b = 'x'", "SELECT public.audit_logs"),
+    ('UPDATE "cell_sources" SET v = 1', "UPDATE cell_sources"),
+    ("DELETE FROM job_queue WHERE id = 3", "DELETE job_queue"),
+    ("/* from hidden */ SELECT 1", "SELECT"),
+    ("SELECT * FROM (SELECT a FROM inner_t) s", "SELECT"),
+    ("INSERT INTO t VALUES ('a text cut short from k", "INSERT t"),
+    ("SELECT 'a value cut short from secret_name", "SELECT"),
+    ("", None), (None, None), ("  -- only a comment", None),
+])
+def test_the_statement_head_is_a_word_and_a_table_and_never_a_value(query, head):
+    assert stall_watch.statement_head(query) == head
+    if query:
+        assert "비밀" not in (head or "") and "secret" not in (head or "")
+
+
+def test_the_d_cell_carries_the_head_of_the_longest_statement_of_the_freeze():
+    r, said = Readings(), []
+    w = r.watch(said)
+    r.open, r.statements = 8.0, (3, 5.0, "SELECT audit_logs")
+    w.tick(1.0)
+    r.statements = (2, 9.4, "INSERT cell_sources")
+    w.tick(2.0)
+    r.statements = (10, 2.0, "UPDATE job_queue")
+    w.tick(3.0)
+    r.open = 0.0
+    w.tick(4.0)
+    assert said == ["STALL 11s L0 T3/40 G0 D10/9s INSERT cell_sources C5 api:2"]

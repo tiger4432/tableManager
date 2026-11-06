@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **STALL 줄 — 그리드 · 걷기 풀 자식의 이름, 가장 긴 DB 문장의 머리** — git pull · 런처 재기동(API)
+>
+> ```
+> 줄       STALL 14s P /tables/x/data L0 T5/40 G0 D10/121s INSERT cell_sources C58 grid:38 ING dt_log
+> 칸       Ns     얼어 있던 초 («+» 면 아직 진행 중, 30 초마다 한 줄)
+>          P      가장 오래 열린 요청 경로
+>          L      이벤트 루프가 답 못 한 초 · T 스레드풀 바쁨/전체 · G 그리드 풀 자리를 기다린 요청 수
+>          D      이 DB 의 활성 문장 수 / 가장 긴 문장 초 + 그 문장의 첫 낱말과 표 이름 (값은 안 실림)
+>          C      기계 CPU %
+>          이름:N 가장 바쁜 프로세스와 그 CPU % — api · 일꾼(watcher · slot …) · 풀 자식(grid · walk)
+>          ING    그때 인제션이 붙든 표
+> 읽는 법  grid:N 이 크면 그리드 본문 계산 · D 가 길면 그 머리의 문장 · 칸이 «?» 면 그 읽기가 실패 (서버 로그에 한 번 이유)
+>          D 뒤 머리가 낱말뿐 = 표 이름이 괄호 안에만 있는 문장
+> 같은 답  server 폴더에서 python -m pytest tests/test_a_freeze_leaves_one_stall_line.py  -> 28 passed
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-06] **이력 패널 첫 로드(/audit_logs/recent) — 맨 위에 큰 파일이 있을 때 수십 초 걸리던 것** — git pull · 런처 재기동(API)
 >
 > ```
@@ -9,7 +28,6 @@
 >          묶음 하나(48 만 행 깊이) 982 ms → 64 ms · 보통 첫 로드 2.1 → 1.8 s · 증분 갱신은 안 바뀜
 > 볼 줄    stall 줄의 «P /audit_logs/recent» 가 다시 안 뜨면 맞는 답
 >          그래도 뜨면 D 칸(이 DB 의 가장 긴 문장 초)을 봄 — 인덱스 idx_audit_recent_groups 가 없으면 여전히 ~60 s (남은 것)
-> STALL 칸 «L 루프 멈춘 초 · T 스레드풀 바쁨/전체 · G 그리드 대기 · D 활성 문장 수/가장 긴 초 · C CPU% · 이름:가장 바쁜 프로세스 CPU%»
 > 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k test_the_recent_walk_counts_each_chunk_by_its_ids  -> 3 passed
 > 끄기     없음 — 되돌리기는 이 커밋 revert
 > ```

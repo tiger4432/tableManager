@@ -1,7 +1,7 @@
 """The one line a freeze of this server leaves (owner 10-29 «파일 인제션하면 서버가 굳네 여전히» · «원인 파악하게
 로그를 구성해봐 · 폰으로 쳐서 보내야 하니 구성 잘해», lead ㄴ):
 
-    STALL 14s P /dashboard/summary L12 T40/40 G6 D9/11s C97 slot2:61 ING dt_log
+    STALL 14s P /dashboard/summary L12 T40/40 G6 D9/11s INSERT cell_sources C97 grid:61 ING dt_log
 
 A thread of the API process looks once a second. A freeze is a request open longer than `STALL_SECONDS`, or the event
 loop not answering that long. While one lasts the readings' highest values are kept; its end writes the line, and one
@@ -12,6 +12,7 @@ database is asked on a connection of its own with a one-second statement limit, 
 """
 import logging
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -25,9 +26,11 @@ MID_EVERY = 30
 TICK_SECONDS = 1.0
 UNREAD = "?"
 
-ACTIVE_STATEMENTS = ("SELECT count(*), coalesce(max(extract(epoch FROM now() - query_start)), 0) "
+ACTIVE_STATEMENTS = ("SELECT count(*) OVER (), extract(epoch FROM now() - query_start), query "
                      "FROM pg_stat_activity WHERE state = 'active' AND pid <> pg_backend_pid() "
-                     "AND datname = current_database()")
+                     "AND datname = current_database() ORDER BY query_start LIMIT 1")
+_NOT_NAMES = re.compile(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", re.S)      # literals and comments - never on the line
+_TABLE = re.compile(r'\b(?:FROM|INTO|UPDATE)\s+"?([\w.]+)', re.I)
 
 
 class LoopProbe:
@@ -89,15 +92,39 @@ def active_statements():
                                      pool_pre_ping=True, connect_args={
                                          "connect_timeout": 2, "options": "-c statement_timeout=1000"}))
     with _engine[0].connect() as conn:
-        count, longest = conn.execute(text(ACTIVE_STATEMENTS)).one()
-    return int(count), float(longest or 0)
+        row = conn.execute(text(ACTIVE_STATEMENTS)).first()
+    return (0, 0.0, None) if row is None else (int(row[0]), float(row[1] or 0), statement_head(row[2]))
+
+
+def statement_head(query):
+    """«INSERT cell_sources» - a statement's first word and the first name after FROM / INTO / UPDATE at bracket depth
+    0, nothing else (owner 11-06 ㄱ: which statement the D seconds are). Literals and comments are cut first, and a text
+    cut short inside a literal ends at its quote, so no value rides the line. The word alone without a name (a name
+    only inside brackets too); None without a word."""
+    kept = _NOT_NAMES.sub(" ", query or "").split("'", 1)[0]
+    word = re.search(r"[A-Za-z]+", kept)
+    if word is None:
+        return None
+    depth, outer = 0, []                    # the name is read at bracket depth 0: «extract(epoch FROM x)» is no table
+    for ch in kept:
+        if depth == 0:
+            outer.append(ch)                # a bracket opened stays - «FROM (SELECT ...) s» names nothing
+        depth += (ch == "(") - (ch == ")")
+    table = _TABLE.search("".join(outer))
+    return word.group(0).upper() + (" " + table.group(1) if table else "")
 
 
 def workers():
-    """`({pid: name}, table)` - this process as «api», every worker heartbeat's pid by its name, and the table an
-    open claim of theirs names (the watcher's file, `note_work(table=)`)."""
+    """`({pid: name}, table)` - this process as «api», every worker heartbeat's pid by its name, this process's pool
+    children by their pool's (owner 11-06 ㄱ: a grid page's body runs in one), and the table an open claim of theirs
+    names (the watcher's file, `note_work(table=)`)."""
+    from runtime import process_pool
     from utils import heartbeat
     names, table = {os.getpid(): "api"}, None
+    for pool in process_pool.POOLS:
+        for pid in [worker[0].pid for worker in list(pool.idle)] + list(pool.busy):
+            if pid:
+                names[pid] = pool.name
     for name, entry in heartbeat.read_all().items():
         if entry.get("pid"):
             names[int(entry["pid"])] = name
@@ -148,8 +175,9 @@ class Watch:
         f["G"] = _most(f["G"], self._read("G", self.grid_waiting))
         statements = self._read("D", self.statements)
         if statements not in (None, UNREAD):
-            held = f["D"] if f["D"] not in (None, UNREAD) else (0, 0.0)
-            f["D"] = (max(held[0], statements[0]), max(held[1], statements[1]))
+            held = f["D"] if f["D"] not in (None, UNREAD) else (0, 0.0, None)
+            f["D"] = (max(held[0], statements[0]), max(held[1], statements[1]),
+                      statements[2] if statements[1] >= held[1] else held[2])      # the longest one's head
         elif f["D"] is None:
             f["D"] = UNREAD
         named = self._read("ING", self.named)
@@ -157,10 +185,12 @@ class Watch:
         if named != UNREAD:
             pids, table = named
             f["ING"] = table or f["ING"]
+        elif f["top"] is None:
+            f["top"] = UNREAD
         cpu = self._read("C", self.cpu, pids)
         if cpu != UNREAD:
             f["C"] = max(f["C"] if f["C"] not in (None, UNREAD) else 0.0, cpu[0])
-            if cpu[1] is not None and (f["top"] is None or cpu[1][1] > f["top"][1]):
+            if cpu[1] is not None and (f["top"] in (None, UNREAD) or cpu[1][1] > f["top"][1]):
                 f["top"] = cpu[1]
         elif f["C"] is None:
             f["C"] = UNREAD
@@ -176,9 +206,12 @@ class Watch:
         cells += ["L%s" % _int(f["L"]),
                  "T%s" % (UNREAD if f["T"] in (None, UNREAD) else "%d/%d" % f["T"]),
                  "G%s" % _int(f["G"]),
-                 "D%s" % (UNREAD if f["D"] in (None, UNREAD) else "%d/%ds" % (f["D"][0], round(f["D"][1]))),
+                 "D%s" % (UNREAD if f["D"] in (None, UNREAD) else "%d/%ds%s" % (
+                     f["D"][0], round(f["D"][1]), " " + f["D"][2] if f["D"][2] else "")),
                  "C%s" % _int(f["C"])]
-        if f["top"] is not None:
+        if f["top"] == UNREAD:
+            cells.append(UNREAD)
+        elif f["top"] is not None:
             cells.append("%s:%d" % (f["top"][0], round(f["top"][1])))
         if f["ING"]:
             cells.append("ING %s" % f["ING"])
