@@ -68,6 +68,10 @@ const RULES = ['clip', 'overflow', 'panel', 'text', 'size', 'centre', 'heights',
 // dist a build behind its source (prebuild runs before vite) or another run's.
 const STAMP = `${process.pid}-${Date.now()}`;
 const TOL = 12;
+// How long one DevTools call may go unanswered (lead 11-07: two runs hung 6 h one night and no line said which call). Past
+// it the call is refused in a sentence naming the method, the page, the size and the state, and the screen is red. The
+// longest wait asked in a page is 15 s (until); the fonts' wait (settle) is one of these calls, so it runs out here too.
+const SEND_LIMIT_MS = 60000;
 const argOf = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const only = argOf('--only');
 const shots = argOf('--shots');
@@ -1911,7 +1915,7 @@ const holderOf = (port) => {
 // The OS picks the DevTools port (port 0) and Chrome writes it into its profile's DevToolsActivePort (lead 10-22): with a
 // random port of 9300-9799 two runs on one box could meet - a port held by anything else left «did not answer», one held
 // by another run's Chrome handed this run THAT Chrome's page. The page asked for carries this run's own mark.
-async function openChrome() {
+async function openChrome(deaf = null) {
   if (!existsSync(CHROME)) throw new Error(`no Chrome at ${CHROME} - the screens cannot be opened`);
   const profile = mkdtempSync(path.join(tmpdir(), 'screens-'));
   folders.push(profile);
@@ -1945,10 +1949,24 @@ async function openChrome() {
     if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); return; }
     for (const h of handlers) h(m);
   });
-  const send = (method, params = {}) => new Promise((ok) => { id += 1; waiting.set(id, ok); ws.send(JSON.stringify({ id, method, params })); })
-    .then((m) => { if (m.error) throw new Error(`${method}: ${m.error.message}`); return m.result; });
+  const at = { entry: '', size: '', state: '' };
+  const send = (method, params = {}) => new Promise((ok, no) => {
+    id += 1;
+    const mine = id;
+    const asked = method === 'Runtime.evaluate' ? ` «${String(params.expression).replace(/\s+/g, ' ').slice(0, 80)}»` : '';
+    const timer = setTimeout(() => {
+      waiting.delete(mine);
+      const said = `DevTools ${method}${asked} gave no answer in ${SEND_LIMIT_MS / 1000} s · ${at.entry || 'no page'} ${at.size} · ${at.state}`;
+      console.log(`  stalled: ${said}`);
+      no(new Error(said));
+    }, SEND_LIMIT_MS);
+    const swallowed = deaf && deaf(method, params);
+    if (swallowed) deaf = null;
+    waiting.set(mine, swallowed ? () => {} : (m) => { clearTimeout(timer); ok(m); });
+    ws.send(JSON.stringify({ id: mine, method, params }));
+  }).then((m) => { if (m.error) throw new Error(`${method}: ${m.error.message}`); return m.result; });
   const close = () => { try { ws.close(); } catch { /* gone */ } proc.kill(); };
-  return { send, on: (h) => handlers.push(h), close };
+  return { send, on: (h) => handlers.push(h), close, at };
 }
 
 // One Chrome page that serves `dist` and the answers; `log` collects what was refused or unanswered.
@@ -3675,10 +3693,10 @@ const DRIVE = {
   ],
 };
 
-async function runScreens(dist, label, some = only ? [only] : null) {
+async function runScreens(dist, label, some = only ? [only] : null, deaf = null) {
   const entries = readdirSync(dist).filter((n) => n.endsWith('.html')).sort().filter((n) => !some || some.includes(n));
   const found = [];
-  const chrome = await openChrome();
+  const chrome = await openChrome(deaf);
   try {
     const log = await servePage(chrome, dist);
     // Each size once, however many entries name it.
@@ -3686,6 +3704,7 @@ async function runScreens(dist, label, some = only ? [only] : null) {
       await chrome.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
       for (const entry of entries.filter((e) => sizesOf(e).some(([a, b]) => a === w && b === h))) {
         const size = `${w}x${h}`;
+        Object.assign(chrome.at, { entry, size, state: 'opening' });
         log.missing.clear(); log.refused.length = 0; log.left.length = 0; log.thrown.length = 0; log.outside.clear();
         log.opening = true;
         await chrome.send('Page.navigate', { url: `${ORIGIN}/${entry}` });
@@ -3703,6 +3722,7 @@ async function runScreens(dist, label, some = only ? [only] : null) {
         waitsRunOut.length = 0;
         for (const [name, step] of states) {
           state = name;
+          chrome.at.state = name;
           await step(chrome, log);
           add(state, waitsRunOut.splice(0).map((what) => ({ rule: 'answers', path: entry, what })));
           await settle(chrome, log);
@@ -3719,6 +3739,7 @@ async function runScreens(dist, label, some = only ? [only] : null) {
           if (!opened) break;
           if (!opened.panel) continue;
           panels.push(opened.opener.split('|')[1]);
+          chrome.at.state = `${state}, «${opened.opener.split('|')[1]}» open`;
           await settle(chrome, log, 400, 3000);
           add(`${state}, «${opened.opener.split('|')[1]}» open`, [...opened.lines, ...await evaluate(chrome, "window.__screens.measure('[data-screens-open]')")]);
           if (shots) writeFileSync(path.join(shots, `${entry}_${size}_panel-${opened.opener.split('|')[1].replace(/[^a-z0-9]+/gi, '-')}.png`),
@@ -4081,6 +4102,20 @@ if (MUTATE) {
       removeFolder(out, 'mutant build');
     }
   }
+}
+// A DevTools call that never answers (lead 11-07): the first measure of the sample page loses its answer - the run says
+// that call, red, and goes on; it does not wait for ever. Bounded here too, so a send without its limit is a red line.
+const STALL_ENTRY = 'sample.html';
+if (MUTATE && (!only || only === STALL_ENTRY) && (!picked || picked.includes(STALL_ENTRY))) {
+  ran += 1;
+  const deaf = (method, params) => method === 'Runtime.evaluate' && params.expression === 'window.__screens.measure()';
+  const hung = sleep(SEND_LIMIT_MS * 3).then(() => null);
+  const run = await Promise.race([runScreens(source, 'stall', [STALL_ENTRY], deaf), hung]);
+  const got = run && run.found.find((f) => f.entry === STALL_ENTRY && f.rule === 'answers'
+    && f.what.includes(`Runtime.evaluate «window.__screens.measure()» gave no answer in ${SEND_LIMIT_MS / 1000} s · ${STALL_ENTRY}`));
+  if (!got) failed += 1;
+  console.log(`${got ? '✓' : '✗'} mutant «a DevTools call that never answers» ${got ? `red: ${got.what}`
+    : run ? 'ESCAPED - no line names the call' : `HUNG - no answer in ${SEND_LIMIT_MS * 3 / 1000} s`}`);
 }
 console.log(`ASSERTIONS ${ran} ${failed}`);
 await sleep(1500);   // the last Chrome's children let go of its profile
