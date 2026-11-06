@@ -55,6 +55,27 @@
 >
 > ---
 >
+> ## [11-06] **닿은 행 — 표 A 의 값들이 표 B 의 어느 행에 닿나 (Tables 페이지 S-hop · S-count)** — git pull · 런처 재기동(API)
+>
+> ```
+> 무엇     POST /api/ledger/subgraph 의 reach 본문 — 마킹(표 A · 칸 · 칸에 보인 값들) -> 표 B 에서 닿은 row id 와 그 수
+>          걷기의 조회기로 걷고 그림 상한은 안 지남. 상한은 원자 10,000 (박스 1,000 값 저장 2.6 ~ 4.5 s 로 잼)
+> 돌릴 것  curl -X POST http://<서버>/api/ledger/subgraph -H "Content-Type: application/json" -d
+>          '{"reach":{"table":"lot_slot_wafer","column":"wafer","values":["<웨이퍼>"],"type":"wafer",
+>            "follow":["processed_with"],"to":"wafer_process"}}'    (?engine=virtual 을 안 붙이면 stored)
+> 답의 뜻  rows             표 B 의 row id — 걸음이 읽은 원자 «전부»의 행
+>          count.total      rows 의 수.  capped = true 면 상한에서 끊김 -> 화면은 «N+»
+>          seeds            표 A 의 행들이 이름 댄 type 노드 수 — 0 이면 그 칸이 그 type 을 안 짓거나 번역이 안 됨
+>          left_out         not in the table = 표 A 에 없는 값 수 · names no <type> = 노드를 안 짓는 행 수 ·
+>                           a view = 그 표는 row_id 가 없어 닿은 행을 말할 수 없음(읽는 소스 이름)
+>          422              reach_not_spelled · node_type_not_declared · predicate_not_declared = 본문을 고침
+>          403              그 사람이 표 A 나 표 B 를 못 읽음(access.read) · hidden: n = 걸음에서 뺀 숨긴 표 수
+> 끄기     없음 — 새 라우트, 화면이 아직 안 부름
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k reach_is_the_rows  -> 12 passed
+> ```
+>
+> ---
+>
 > ## [11-06] **파일 쓰기 행 짓기 — 층 하나 칸의 순위를 묶음마다 한 번만 물음 (pfab)** — git pull · 런처 재기동(워처)
 >
 > ```

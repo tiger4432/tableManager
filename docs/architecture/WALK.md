@@ -413,6 +413,25 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 ⚠️ 엣지가 그리는 원자: 같은 엣지의 가장 늦은 원자가 동률이면 저장은 원자 id 로 고른다 — 가상엔 id 가 없어
 `basis` · `claim_id` 가 다를 수 있다(walk-shadow 의 tie). 저장 모드는 안 바꿈(총괄 11-06).
 
+## 🔵 닿은 행 — `/subgraph` 의 `reach` 본문 (총괄 11-06, Tables 페이지 S-hop · S-count)
+
+```
+묻는 것   표 A 의 칸에 보인 값들(마킹) -> 표 B 에서 «닿은 행» id 와 그 수
+인자      POST /api/ledger/subgraph 본문 {"reach": {table, column, values, type, follow, to}} + engine · world
+          — 라우트를 따로 안 둠(키 받는 데이터 라우트 0). 주면 그림 대신 이 답. type · follow 는 걷기의 이름 좌석
+씨앗      표 A 의 행 = 그리드 집합 필터(column_filter, filterType set) 그대로 · 그 행들의 원자가 이름 댄
+          `type` 노드(양 끝 중 그 타입만) — 조회기 nodes_of_rows. 원장 철자는 걷기부터
+걸음      걷기의 조회기 claims_for_entities 를 follow 의 술어 하나씩 차례로 — 그림 조립(subgraph)과 그 상한은
+          안 지남. 상한은 REACH_ATOM_CAP 하나(원자 수, 박스 1,000 값 저장 ≤ 5 s 로 잼)
+닿은 행   조회기 rows_of = 읽은 원자 «전부»의 표 B 행(엣지의 가장 늦은 원자만이 아님). 저장은 row_ref,
+          가상은 다리의 행(LEG_ROW). 수 = 그 집합의 길이, 잘리면 capped + cap
+조회기    trace_router._walk_lookup 하나 — 걷기와 같은 자리라 leave_out · engine 을 같이 물려받음
+빠진 것   left_out — 표에 없는 값 수 · 노드를 안 짓는 행 수 · 뷰(row_id 없음, 읽는 소스 이름) ·
+          가상에서 컴파일 안 된 A/B 소스. 빈 마킹 = 0 행, 원장을 안 읽음
+권한      표 A · B 를 못 읽는 사람 -> 403(access.DENIED). 숨긴 표(access.hidden_tables)를 읽는 소스는
+          _hidden_here 의 leave_out 으로 빠짐 — 걷기와 같은 자리, 답은 «hidden: n»(수만)
+```
+
 ## 🔵 이어 걷기 — `more` · `resume` (소유자 10-12, `2bdb44df7` … 병합 `c4b9b58a0`)
 
 ```

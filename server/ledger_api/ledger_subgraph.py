@@ -1094,6 +1094,38 @@ class SqlEvidenceLookup:
         """, params)
         return int(rows[0][0]) if rows else 0
 
+    def nodes_of_rows(self, relation, row_ids, bare_type):
+        """{row id: [(type, keys)]} - the `bare_type` nodes, on either end, of the atoms read from `relation`'s rows
+        `row_ids`: a reach's seeds (`trace_router.reach`). A row's atoms are found by each world's row index, in the
+        relation this reader reads (what it leaves out stays out); a virtual read reads its legs."""
+        from ledger import schema
+
+        reads = " UNION ".join(f"""
+            SELECT r.row_id, e.subject_type, e.subject_keys, e.object_kind, e.object_payload
+            FROM {self.relation} e JOIN {schema.world_names(world).row_ref} r
+              ON e.world = {_quoted_text(world)} AND r.source_who = e.source_who
+             AND md5(r.source_raw_ref) = md5(e.source_raw_ref) AND r.source_raw_ref = e.source_raw_ref
+            WHERE r.relation = %(relation)s AND r.row_id = ANY(%(rows)s)""" for world in self.worlds)
+        return _named_by_row(self._execute(reads, {"relation": relation, "rows": list(row_ids)}), bare_type)
+
+    def rows_of(self, atoms, relation):
+        """THE REACHED ROWS (lead 11-06): the ids of `relation`'s rows `atoms` were read from - of every atom read, not
+        only an edge's newest. The stored ledger asks its row index; a virtual read its legs."""
+        from ledger import schema
+
+        refs = defaultdict(set)
+        for atom in atoms:
+            refs[atom.world].add((atom.source_who, atom.source_raw_ref))
+        found = set()
+        for world, pairs in refs.items():
+            who, said = zip(*sorted(pairs))
+            found.update(row for (row,) in self._execute(f"""
+                SELECT DISTINCT r.row_id FROM {schema.world_names(world).row_ref} r
+                JOIN unnest(CAST(%(who)s AS text[]), CAST(%(refs)s AS text[])) AS a(who, ref)
+                  ON r.source_who = a.who AND md5(r.source_raw_ref) = md5(a.ref) AND r.source_raw_ref = a.ref
+                WHERE r.relation = %(relation)s""", {"who": list(who), "refs": list(said), "relation": relation}))
+        return found
+
     # ⚰️ `claims_by_ids` (and the in-memory one) - no caller, and it fetched past
     # `_not_current_clause` (총괄 10-01).
 
@@ -1141,6 +1173,21 @@ def _quoted_text(value):
     return "'%s'" % str(value).replace("'", "''")
 
 
+def _named_by_row(rows, bare_type):
+    """(row, subject type, subject keys, object kind, object payload) rows -> {row: the `bare_type` ends, sorted}."""
+    named = defaultdict(set)
+    for row, subject_type, subject_keys, object_kind, payload in rows:
+        payload = json.loads(payload) if isinstance(payload, str) else (payload or {})
+        ends = [(subject_type, subject_keys)]
+        if object_kind == "entity_ref":
+            ends.append((payload.get("type"), payload.get("keys")))
+        for kind, keys in ends:
+            keys = json.loads(keys) if isinstance(keys, str) else keys
+            if kind and _bare_name(kind) == bare_type:
+                named[row].add((kind, json.dumps(keys or {}, sort_keys=True)))
+    return {row: [(kind, json.loads(keys)) for kind, keys in sorted(ends)] for row, ends in named.items()}
+
+
 def legs_relation(legs, empty):
     """The legs (`sql_translate.compile_world`) as one relation of the ledger's columns and `world` - what a seedless
     read (a described seed set, the key list, the gap catalogue, a time page) reads; `empty` (a relation of those
@@ -1154,6 +1201,16 @@ def legs_relation(legs, empty):
                                    for leg in legs)
 
 
+def _leg_join(leg, arm):
+    """How an atom `e` of `leg` names a frontier node `f` on `arm` - on the leg's key columns first."""
+    bare, keys = leg.ends[arm]
+    # a row whose time does not read says nothing - asked WITH the frontier so it is asked after the join, of
+    # the rows the keys found, not of the table (a text time is a function call a row: 18 s for the table)
+    return " AND ".join([f"f.type = {_quoted_text(bare)}",
+                         *(f"e.{alias} = f.keys->>{_quoted_text(key)}" for key, alias in sorted(keys.items())),
+                         ARM_JOIN[arm], "(e.occurred_at IS NOT NULL OR f.type IS NULL)"])
+
+
 class VirtualEvidenceLookup(SqlEvidenceLookup):
     """The walk read from the declaration's own tables (engine=virtual, lead 11-06): every compiled leg is a relation
     the frontier joins on its key columns; the reads, the interval, `_skip` and the current fact are
@@ -1165,16 +1222,31 @@ class VirtualEvidenceLookup(SqlEvidenceLookup):
         self.relation = legs_relation(self.legs, self.relation)
 
     def _legs(self, arm):
-        out = []
-        for leg in self.legs:
-            bare, keys = leg.ends[arm]
-            # a row whose time does not read says nothing - asked WITH the frontier so it is asked after the join, of
-            # the rows the keys found, not of the table (a text time is a function call a row: 18 s for the table)
-            names = " AND ".join([f"f.type = {_quoted_text(bare)}",
-                                  *(f"e.{alias} = f.keys->>{_quoted_text(key)}" for key, alias in sorted(keys.items())),
-                                  ARM_JOIN[arm], "(e.occurred_at IS NOT NULL OR f.type IS NULL)"])
-            out.append((f"({leg.select})", names))
-        return tuple(out)
+        return tuple((f"({leg.select})", _leg_join(leg, arm)) for leg in self.legs)
+
+    def nodes_of_rows(self, relation, row_ids, bare_type):
+        from ledger.sql_translate import LEG_ROW
+
+        reads = " UNION ".join(f"""
+            SELECT e.{LEG_ROW}, e.subject_type, e.subject_keys, e.object_kind, e.object_payload FROM ({leg.select}) e
+            WHERE e.{LEG_ROW} = ANY(%(rows)s) AND e.occurred_at IS NOT NULL""" for leg in self.legs if leg.relation == relation)
+        return _named_by_row(self._execute(reads, {"rows": list(row_ids)}), bare_type) if reads else {}
+
+    def rows_of(self, atoms, relation):
+        from ledger.sql_translate import LEG_ROW
+
+        reads = " UNION ".join(f"""
+            SELECT e.{LEG_ROW} FROM frontier f JOIN ({leg.select}) e ON {_leg_join(leg, "outgoing")} AND e.id = f.id"""
+                               for leg in self.legs if leg.relation == relation)
+        if not reads or not atoms:
+            return set()
+        frontier = _canonical([{"type": atom.subject_type, "keys": atom.subject_keys, "id": atom.id} for atom in atoms])
+        return {row for (row,) in self._execute(f"""
+            WITH frontier AS (
+                SELECT type, keys, id FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
+                     AS item(type text, keys jsonb, id uuid)
+            )
+            {reads}""", {"frontier": frontier})}
 
     def _later_fact(self, bound):
         later = []

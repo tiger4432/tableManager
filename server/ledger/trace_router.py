@@ -258,6 +258,11 @@ def evidence_subgraph(
                      "nothing stored - the answer's `engine` names the sources it leaves out and the key columns "
                      "no index serves («scans»)")),
     hidden: tuple = Depends(access.hidden_tables),
+    reach: dict | None = Body(
+        None, embed=True,
+        description=("{table, column, values, type, follow, to}: the rows of `to` a marking reaches - the values "
+                     "`table`'s `column` showed, the `type` nodes they name, `follow` one predicate a step (`reach`). "
+                     "Answered instead of the picture")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -274,6 +279,8 @@ def evidence_subgraph(
         raise HTTPException(status_code=422, detail={
             "reason": "format_unknown", "argument": "format", "value": response_format,
             "message": f"Unknown format: {response_format} - use json or rows"})
+    if isinstance(reach, dict):
+        return _reached(db, reach, world, engine, hidden)
     # 🔴 AN UNDECLARED PREDICATE IS REFUSED, NOT ANSWERED WITH AN EMPTY GRAPH. A filter that
     # can never match returns exactly what "there is nothing here" returns, and the caller
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
@@ -851,6 +858,16 @@ def _hidden_here(names, hidden, leave_out=None):
     return len(tables), (out or None)
 
 
+def _walk_lookup(connection, engine, names, world, leave_out=None, **reading):
+    """(the walk's reader of `engine` over the worlds `names`, the answer's `engine` cell or None) - the walk's and a
+    reach's (`reach`)."""
+    legs, said = _engine_reading(connection, engine, names, leave_out)
+    if legs is not None:
+        return ledger_subgraph.VirtualEvidenceLookup(connection, legs, worlds=names, **reading), said
+    return ledger_subgraph.SqlEvidenceLookup(connection, worlds=names, **({"leave_out": leave_out} if leave_out else {}),
+                                             indexed=_indexed_qualifiers(world), **reading), None
+
+
 def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
@@ -876,13 +893,10 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
     cardinalities = _predicate_cardinalities(world)
     leave_out = schema.first_read(names, _source_names) if read == "first" else None
     hidden, leave_out = _hidden_here(names, hidden, leave_out)
-    legs, said = _engine_reading(connection, engine, names, leave_out)
-    reading = dict(worlds=names, since=since, until=until, one=ledger_subgraph.one_predicates(cardinalities),
-                   # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
-                   current_only=not (include_superseded or page is not None))
-    lookup = (ledger_subgraph.SqlEvidenceLookup(connection, **({"leave_out": leave_out} if leave_out else {}),
-                                                indexed=_indexed_qualifiers(world), **reading)
-              if legs is None else ledger_subgraph.VirtualEvidenceLookup(connection, legs, **reading))
+    lookup, said = _walk_lookup(connection, engine, names, world, leave_out, since=since, until=until,
+                                one=ledger_subgraph.one_predicates(cardinalities),
+                                # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
+                                current_only=not (include_superseded or page is not None))
     if page is not None:
         payload = ledger_subgraph.subgraph(
             node_id, lookup, page=page, direction=direction, follow=follow,
@@ -915,6 +929,115 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
     if hidden:
         payload["hidden"] = hidden                                       # how many tables, never which
     return payload
+
+
+#: The atoms one reach reads at most (lead 11-06: one value, measured on the box - 1,000 wafers, stored, the spec 5 s:
+#: at 10,000 atoms 2.56 ~ 4.51 s; at 15,000 2.95 ~ 5.01 s; at 20,000 3.4 ~ 5.07 s). Past it the answer says `capped`,
+#: and its rows are those of the atoms read.
+REACH_ATOM_CAP = 10000
+
+
+def reach(connection, *, table, column, values, type, follow, to, world=None, engine="stored", hidden=()):
+    """THE HOP of the Tables page (lead 11-06): the rows of `table` whose `column` is one of `values` (the grid's set
+    filter, `column_filter`) -> the `type` nodes their atoms name -> the walk's reader along `follow`, one predicate a
+    step -> the rows of `to` every atom read was read from (`rows_of`). The picture's assembly and its caps are not on
+    the way - `REACH_ATOM_CAP` is. A hidden table's sources are left out as the walk leaves them (`_hidden_here`)."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    import column_filter
+    from database import models
+
+    said = {"table": to, "rows": [], "count": {"total": 0, "capped": False, "cap": REACH_ATOM_CAP}, "seeds": 0,
+            "left_out": []}
+    left_out = said["left_out"]
+    names = _worlds(world)
+    reading_of = {}
+    for each in names:
+        for source, declared in ((_declaration(each.name) or {}).get("sources") or {}).items():
+            reading_of.setdefault(declared.get("relation"), []).append(source)
+    views = [each for each in dict.fromkeys((table, to))
+             if not column_filter.model_has_row_id(models.DYNAMIC_TABLES.get(each))]
+    left_out.extend({"why": "a view - its rows have no row_id", "table": each, "sources": reading_of.get(each, [])}
+                    for each in views)
+    if not values or table in views:
+        said["count"]["counted_at"] = datetime.now(timezone.utc).isoformat()
+        return said
+    model = models.DYNAMIC_TABLES[table]
+    try:
+        kept = column_filter.get_column_filter_condition(model, column, {"filterType": column_filter.SET,
+                                                                         "values": list(values)})
+    except column_filter.FilterRefused as refused:
+        raise HTTPException(status_code=422, detail={"reason": "filter_refused", "message": str(refused)}) from None
+    rows = [row for (row,) in connection.execute(select(model.row_id).where(kept))]
+    compared, number = column_filter.filter_column(model, column)
+    there = set(connection.execute(select(compared).where(kept).distinct()).scalars())
+    gone = [value for value in values if value is not None and (float(value) if number else value) not in there]
+    if gone:
+        left_out.append({"why": "not in the table", "table": table, "values": len(gone)})
+
+    hidden, leave_out_hidden = _hidden_here(names, hidden)
+    if hidden:
+        said["hidden"] = hidden                                          # how many tables, never which
+    lookup, engine_said = _walk_lookup(connection, engine, names, world, leave_out_hidden,
+                                       one=ledger_subgraph.one_predicates(_predicate_cardinalities(world)))
+    if engine_said:
+        said["engine"] = engine_said
+        left_out.extend({"why": item["why"], "table": each, "source": item["source"]} for item in engine_said["left_out"]
+                        for each in dict.fromkeys((table, to)) if item["source"] in reading_of.get(each, ()))
+    named = lookup.nodes_of_rows(table, rows, _bare_name(type)) if rows else {}
+    if len(named) < len(rows):
+        left_out.append({"why": "names no %s" % _bare_name(type), "table": table, "rows": len(rows) - len(named)})
+    frontier = sorted({(kind, json.dumps(keys, sort_keys=True)) for ends in named.values() for kind, keys in ends})
+    said["seeds"] = len(frontier)
+    frontier = [(kind, json.loads(keys)) for kind, keys in frontier]
+    read, budget = [], REACH_ATOM_CAP
+    for predicate in follow or ():
+        if not frontier:
+            break
+        if budget <= 0:
+            said["count"]["capped"] = True
+            break
+        atoms, cut = lookup.claims_for_entities(frontier, "both", budget, follow=[predicate])
+        read.extend(atoms)
+        budget -= len(atoms)
+        if cut:
+            said["count"]["capped"] = True
+            break
+        near = {(kind, json.dumps(keys, sort_keys=True)) for kind, keys in frontier}
+        far = set()
+        for atom in atoms:
+            subject = (atom.subject_type, json.dumps(atom.subject_keys, sort_keys=True))
+            if subject not in near:
+                far.add(subject)
+            elif atom.object_kind == "entity_ref":
+                far.add((atom.object_payload.get("type"), json.dumps(atom.object_payload.get("keys"), sort_keys=True)))
+        frontier = [(kind, json.loads(keys)) for kind, keys in sorted(far - near)]
+    said["rows"] = sorted(lookup.rows_of(read, to)) if read and to not in views else []
+    said["count"].update(total=len(said["rows"]), counted_at=datetime.now(timezone.utc).isoformat())
+    return said
+
+
+def _reached(db, asked, world, engine, hidden=()):
+    """/subgraph's `reach` body answered (`reach`) - its type and predicates declared or refused by name, a table the
+    reader may not read (`hidden`, `access.hidden_tables`) refused as its door refuses it."""
+    missing = [name for name in ("table", "column", "values", "type", "follow", "to") if name not in asked]
+    if missing or not isinstance(asked.get("values"), list) or not isinstance(asked.get("follow"), list):
+        raise HTTPException(status_code=422, detail={
+            "reason": "reach_not_spelled", "argument": "reach", "missing": missing,
+            "message": "reach takes {table, column, values: [...], type, follow: [...], to}"})
+    for table in (asked["table"], asked["to"]):
+        if isinstance(hidden, (tuple, list)) and table in hidden:
+            access.refuse("this account", table, access.READ)
+    (kind,) = _declared_or_refused([asked["type"]], _collectable_types(world), reason="node_type_not_declared",
+                                   what="type", world=world, argument="reach.type")
+    follow = _declared_or_refused(list(asked["follow"]), _followable_predicates(world),
+                                  reason="predicate_not_declared", what="predicate", world=world,
+                                  argument="reach.follow") if asked["follow"] else []
+    return reach(db.connection(), table=asked["table"], column=asked["column"], values=asked["values"], type=kind,
+                 follow=follow, to=asked["to"], world=world, engine=engine if engine in ENGINES else "stored",
+                 hidden=hidden)
 
 
 #: How many NODES one key-values answer may read when it groups by ONE axis of a composite

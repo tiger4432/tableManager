@@ -204,12 +204,14 @@ class NotCompiled(Exception):
 
 #: The ends a leg can be walked from, and the alias prefix of their key columns.
 LEG_ENDS = {"outgoing": "__o", "incoming": "__i"}
+#: The alias of the row a leg's atom is read from - its `row_id` (a reach's rows, `trace_router.reach`).
+LEG_ROW = "__row"
 _TEXT, _FLOAT, _INTEGER, _TIME = "text", "float", "integer", "time"
 _NUMBERS = (_FLOAT, _INTEGER, "numeric")
 
 
 class Leg:
-    """One sentence or reference of one source: `select` - `SELECT <the ledger's columns, each end's key columns> FROM
+    """One sentence or reference of one source: `select` - `SELECT <the ledger's columns, its row (`LEG_ROW`), each end's key columns> FROM
     <relation> w WHERE <the rows it says>`; `ends` {arm: (bare type, {key: column alias})}; `columns` {arm: the text
     columns its keys are read from as they are} - an index on one of them serves the arm, else the answer says «scan»."""
 
@@ -371,7 +373,8 @@ def _keys_json(keys) -> str:
 
 
 def _leg(plan, world, subject, predicate, target, qualifiers, row, kept, basis, version, columns_read) -> Leg:
-    """One leg's SELECT: the ledger's columns (`schema.LEDGER_COLUMNS`, with `world`) and each end's key columns."""
+    """One leg's SELECT: the ledger's columns (`schema.LEDGER_COLUMNS`, with `world`), its row and each end's key
+    columns."""
     (near_type, near), (far_type, far) = subject, target
     payload = "jsonb_build_object('type', %s, 'keys', %s)" % (_literal(far_type), _keys_json(far))
     if qualifiers:
@@ -387,7 +390,8 @@ def _leg(plan, world, subject, predicate, target, qualifiers, row, kept, basis, 
         f"{_literal(plan.source_id)}::text AS source_who", f"{_literal(version)}::text AS source_translator_ver",
         f"{row['ref']} AS source_raw_ref", "NULL::uuid AS supersedes", "NULL::uuid AS source_event_id",
         "NULL::text AS source_event_state",
-        ("NULL::text" if basis is None else f"{_literal(basis)}::text") + " AS occurred_at_basis"]
+        ("NULL::text" if basis is None else f"{_literal(basis)}::text") + " AS occurred_at_basis",
+        f"w.row_id AS {LEG_ROW}"]
     for arm, (bare, keys) in (("outgoing", (near_type, near)), ("incoming", (far_type, far))):
         aliases = {}
         for index, (key, sql) in enumerate(sorted(keys.items())):
