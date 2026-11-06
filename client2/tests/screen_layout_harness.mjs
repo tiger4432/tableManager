@@ -471,7 +471,7 @@ const HELP_ANSWERS = {
 // The Help panel's Guide (owner 11-06): while GUIDE.on GET /admin/help/guides answers the server's shape over the guide
 // list it reads (server/admin/help_guides.json - its paths and tabs); the sections are drawn here, chain_rules.md's with
 // a table, a quote, a fence and a list, and allow_chain_trigger three times over its sections.
-const GUIDE = { on: false };
+const GUIDE = { on: false, refuse: false };
 const GUIDE_FIND = 'allow_chain_trigger';
 const GUIDE_ANSWER = { guides: Object.entries(JSON.parse(readFileSync(path.join(FIX, '..', '..', '..', 'server', 'admin', 'help_guides.json'), 'utf8')).guides)
   .map(([p, tabs]) => {
@@ -1885,7 +1885,8 @@ async function servePage(chrome, dist) {
       return;
     }
     if (GUIDE.on && request.method === 'GET' && u.pathname === '/admin/help/guides') {
-      reply(200, 'application/json', JSON.stringify(GUIDE_ANSWER));
+      if (GUIDE.refuse) reply(401, 'application/json', JSON.stringify({ detail: 'Admin token required' }));
+      else reply(200, 'application/json', JSON.stringify(GUIDE_ANSWER));
       return;
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') { log.refused.push(`${request.method} ${u.pathname}`); chrome.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {}); return; }
@@ -3287,12 +3288,21 @@ const DRIVE = {
       const shownAll = (file) => `(document.querySelector('.guide-reader__meta') || {}).textContent.startsWith(${JSON.stringify(file + ' · ')})`;
       const q = (file) => `(() => { const b = document.querySelector('.help-q[data-guide=${JSON.stringify(file)}]'); if (b) b.click(); return Boolean(b); })()`;
       return [
-        ['Help, the guide for this tab', async (c) => {
+        ['Help, the guides refused', async (c) => {
+          // a refused read (no token) draws its line alone - nothing to pick from (lead 11-06: the box showed an empty picker)
           GUIDE.on = true;
+          GUIDE.refuse = true;
           await evaluate(c, "location.hash = '#chain'; true");
           await sleep(1200);
           await evaluate(c, "(() => { const b = document.getElementById('help-btn'); if (b) b.click(); return Boolean(b); })()");
           await until(c, "Boolean(document.querySelector('.help-panel:not([hidden])'))");
+          await evaluate(c, "(() => { const b = document.querySelector('.help-panel__view[data-view=\"guide\"]'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, "Boolean(document.querySelector('.guide-reader__controls[hidden]'))"
+            + " && (document.querySelector('.guide-reader__state') || {}).textContent.length > 0");
+        }],
+        ['Help, the guide for this tab', async (c) => {
+          // Guide pressed again asks again
+          GUIDE.refuse = false;
           await evaluate(c, "(() => { const b = document.querySelector('.help-panel__view[data-view=\"guide\"]'); if (b) b.click(); return Boolean(b); })()");
           await until(c, `${shown('chain_rules.md')} && document.querySelectorAll('.guide-chip').length === 4`
             + " && Boolean(document.querySelector('.guide-reader__text .gmd-table'))"

@@ -144,6 +144,7 @@ export class GuideReader {
 
     const controls = this.el('div', 'guide-reader__controls');
     controls.append(picks, sections, find);
+    this.controls = controls;
     this.body = this.el('article', 'guide-reader__body');
     root.append(controls, this.body);
     this.root = root;
@@ -153,6 +154,8 @@ export class GuideReader {
   render() {
     if (!this.root) return;
     this.body.textContent = '';
+    // nothing to pick from until the guides came: the refusal (or Loading) stands alone
+    this.controls.hidden = !this.guides;
     if (!this.guides) {
       this.body.appendChild(this.el('div', 'guide-reader__state', this.refused || LOADING));
       return;

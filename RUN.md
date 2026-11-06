@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **Help → Guide · 선언창 «?»** — git pull + 서버 재기동 (새 라우트 GET /admin/help/guides · 클라는 dist 에 들어 있음)
+>
+> ```
+> 보여야 할 것  Help → Guide: «For this tab» 가이드 칩(Chain 4 · Tables 2 · Ontology Explorer 1 · Overview 1, 나머지 탭은 없음)
+>              · All 7 · Sections · Find 는 «N of M» 과 본문에 칠함 · ‹ Previous / Next › section
+>              선언창 «?» 셋 — 체인 규칙 절 머리 · Tables 의 table_config 절 머리 · 원장 선언 창 머리 → 패널이 그 가이드로 열림
+> 답의 뜻      Guide 에 거절 줄만 있고 고르는 칸이 없다 → 401: 어드민 토큰을 다시 넣고 Guide 를 다시 누름
+>              «guide not found: <경로>» → 그 가이드 파일이 없음: 파일을 두거나 목록에서 뺌
+> 가이드 목록   server/admin/help_guides.json 한 곳(help_guides.GUIDE_TABS 가 읽음) — 가이드 · 보일 탭. 도우미 답과 Guide 가 같은 목록
+> ```
+>
+> ---
+>
 > ## [11-06] **STALL 줄 — 그리드 · 걷기 풀 자식의 이름, 가장 긴 DB 문장의 머리** — git pull · 런처 재기동(API)
 >
 > ```
