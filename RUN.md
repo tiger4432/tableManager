@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **메인 그리드 상단 바 · 이력 판 접기 · 칸 글씨 10 px (클라)** — git pull · 화면 새로 고침
+>
+> ```
+> 볼 곳    상단 바: 표 고르기 · 필터 칩 · (스테이징 있을 때만) Apply · Discard · Refresh · + Row · Delete · 상태 단추 · ⋯
+>          글씨 · 높이가 10-08 전 크기(컨트롤 36 px · 글씨 12 px). 67 % 줌을 뺌
+>          상태 단추 — 모두 정상이면 점 하나. 아니면 그 하나를 말함: «API · OFFLINE» · «STALL»(10 분 안의 굳음) · «CHAIN · RUNNING»
+>                     누르면 API · WS · CHAIN · Last(예전 «Loaded …» 문장) · 계정 · Last stall
+>          ⋯ — Data(Upload folder · Toggle Columns · Graph Sync) · Options(Sort Latest · Copy Header · Tx Mode · Theme) · Go to
+>          «Filters dropped …» · «… staged edits dropped» 는 Last 줄과 노란 토스트로 같이
+>          이력 판 오른쪽 위 ⇥ — 얇은 띠로 접힘, ⇤ 로 마지막 폭. 브라우저가 기억
+>          그리드 칸 글씨 10 px(토큰 --fs-cell, 참조 그리드 칸도), 행 높이 28 그대로. «#» 칸은 숫자만큼
+>          ⋯ Go to 의 데스크톱 받기 둘: «Desktop client (.exe)» · «Desktop client (.zip)» — 서로 다른 파일
+>          이력 Global 의 Table 칸 — 160 px(토큰 --audit-table-max) 까지는 이름 한 줄, 넘을 때만 «_» «.» 뒤에서 줄바꿈
+> 답       상태 단추가 회색 점 = 아직 못 읽은 배지가 있음(CHAIN: ? 등) · 초록 점 = 모두 정상
+> 끄기     없음
+> ```
+>
+> ---
+>
 > ## [11-06] **어드민 Overview 의 Indexes 표가 30 초마다 GET /admin/indexes 를 읽지 않음** — git pull · 어드민 새로 고침 (클라만, dist 에 들어 있음)
 >
 > ```
