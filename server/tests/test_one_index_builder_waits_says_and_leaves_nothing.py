@@ -5,6 +5,8 @@
   built      nothing there, or an INVALID leftover nobody builds (dropped first) - valid after, its table noted
   failed     the build fails (duplicates) - said, and the INVALID leftover it leaves is what the next one repairs
   deferred   a session holds the table past the wait before the build - nothing started, so nothing left behind
+  written    a session writing the table (an open INSERT) is not waited for - the build starts, waits that writer out
+             itself and ends valid (총괄 11-06: a table written without pause put its index off for ever)
   busy       the name is being built by another session - left to it; that build is not thrown away, says whom it
              waits for while it waits, and is valid once the old transaction ends
 """
@@ -71,7 +73,7 @@ def test_a_holder_past_the_wait_defers_and_leaves_nothing(table, monkeypatch):
     monkeypatch.setattr(models, "INDEX_WAIT_POLL_SECONDS", 0.2)
     holder = table.connect()
     try:
-        holder.execute(text('INSERT INTO "%s" VALUES (999)' % TABLE))     # RowExclusive, transaction left open
+        holder.execute(text('LOCK TABLE "%s" IN SHARE ROW EXCLUSIVE MODE' % TABLE))   # an ALTER's kind, left open
         pid = holder.execute(text("SELECT pg_backend_pid()")).scalar()
         said, out = [], {}
         builder = threading.Thread(target=lambda: out.update(word=_build(table, said)), daemon=True)
@@ -132,7 +134,7 @@ def test_outside_a_round_the_deferred_line_says_its_asker_builds_it_again(table,
     holder = table.connect()
     builder = None
     try:
-        holder.execute(text('INSERT INTO "%s" VALUES (999)' % TABLE))
+        holder.execute(text('LOCK TABLE "%s" IN SHARE ROW EXCLUSIVE MODE' % TABLE))
         said, out = [], {}
         builder = threading.Thread(target=lambda: out.update(word=models._ensure_one_index(
             table, NAME, DDL, "test", say=said.append, table=TABLE)), daemon=True)
@@ -145,3 +147,26 @@ def test_outside_a_round_the_deferred_line_says_its_asker_builds_it_again(table,
         if builder is not None:
             builder.join(60)
     assert said[-1].endswith("; built again at the next start or the next run that asks for it"), said
+
+
+def test_a_writing_session_is_not_waited_for_and_the_build_ends_valid(table, monkeypatch):
+    """총괄 11-06: an open INSERT (RowExclusive) does not hold the build back - no wait before it, the CONCURRENTLY
+    build itself waits that transaction out, and the index is valid once it ends."""
+    monkeypatch.setattr(models, "INDEX_WAIT_BEFORE_SECONDS", 30.0)    # a wait before it would outlast this test
+    holder = table.connect()
+    builder, said, out = None, [], {}
+    try:
+        holder.execute(text('INSERT INTO "%s" VALUES (999)' % TABLE))   # RowExclusive, transaction left open
+        builder = threading.Thread(target=lambda: out.update(word=_build(table, said)), daemon=True)
+        builder.start()
+        deadline = time.monotonic() + 10
+        while _state(table) != "invalid" and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert _state(table) == "invalid", "the build started with the writer open - %s" % said
+        assert not any("waits for pid" in line for line in said), said
+    finally:
+        holder.rollback()
+        holder.close()
+        if builder is not None:
+            builder.join(60)
+    assert out.get("word") == (models.INDEX_BUILT, {TABLE}) and _state(table) == "valid", (out, said)

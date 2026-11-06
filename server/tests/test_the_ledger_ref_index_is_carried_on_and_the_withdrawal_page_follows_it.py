@@ -108,7 +108,7 @@ def test_a_partition_held_in_its_world_s_own_schema_is_waited_for_and_deferred(p
             schema.ensure_partition(connection, datetime(2026, month, 15, tzinfo=timezone.utc), names=names)
         first, second = [name for name, _bound in schema.partitions(connection, names)]
         with holder.cursor() as cursor:                             # held, its transaction left open
-            cursor.execute("LOCK TABLE %s.%s IN ROW EXCLUSIVE MODE" % (space, first))
+            cursor.execute("LOCK TABLE %s.%s IN SHARE ROW EXCLUSIVE MODE" % (space, first))
         build = threading.Thread(target=lambda: out.update(done=build_ledger_ref_index.main(
             ["--world", WORLD, "--apply"], connection=connection, engine=pg_engine, say=said.append)), daemon=True)
         build.start()

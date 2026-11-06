@@ -93,10 +93,12 @@ _INDEX_BUILDS = (
     " WHERE p.datid = (SELECT oid FROM pg_database WHERE datname = current_database())")
 
 
-#: The lock modes a CONCURRENTLY build waits out before it starts building - its own lock (ShareUpdateExclusive) waits
-#: on these, and its first wait is for every writer still open; a reader (AccessShareLock) holds none of them.
-BUILD_WAITS_ON = ("RowExclusiveLock", "ShareUpdateExclusiveLock", "ShareLock", "ShareRowExclusiveLock", "ExclusiveLock",
-                  "AccessExclusiveLock")
+#: The lock modes a CONCURRENTLY build waits out before it starts building - the ones its own lock
+#: (ShareUpdateExclusive) conflicts with. 총괄 11-06: a writing session (RowExclusiveLock) is not waited for - on a table
+#: written without pause (audit_logs · cell_sources · an ingested table) the wait never saw none and the index was put
+#: off for ever (the owner's audit_logs 228 s statement, the likely cause). A writer open when the build starts is waited
+#: out by the build itself, which keeps no one else waiting meanwhile and says so («building - waiting for ...»).
+BUILD_WAITS_ON = ("ShareUpdateExclusiveLock", "ShareLock", "ShareRowExclusiveLock", "ExclusiveLock", "AccessExclusiveLock")
 
 _TABLE_HOLDERS = (
     "SELECT DISTINCT l.pid FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid "

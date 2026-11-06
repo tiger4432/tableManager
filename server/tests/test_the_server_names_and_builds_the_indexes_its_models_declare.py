@@ -642,7 +642,7 @@ def test_a_partition_deferred_leaves_the_parent_not_valid_until_the_ledger_line_
     name = _months(engine, 1, 2)
     holder = engine.connect()
     held = holder.begin()
-    holder.execute(text("LOCK TABLE ledger_events_2026_01 IN ROW EXCLUSIVE MODE"))
+    holder.execute(text("LOCK TABLE ledger_events_2026_01 IN SHARE ROW EXCLUSIVE MODE"))
     rounds = threading.Thread(target=ledger_worker.ledger_index_rounds, args=(sessionmaker(bind=engine),), daemon=True)
     try:
         rounds.start()

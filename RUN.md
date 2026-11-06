@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **인덱스 짓기 — 쓰고 있는 세션은 기다리지 않음** — git pull · 런처 재기동(스케줄러 · 원장 일꾼)
+>
+> ```
+> 무엇     인덱스를 짓기 전 20 초 기다림이 이제 «표를 쓰고 있는 세션»(INSERT · UPDATE)은 안 셈 — ALTER 류만 기다림
+>          쉬지 않고 쓰는 표(audit_logs · cell_sources · 인제션 표)의 인덱스가 영영 «not built - waited 20s» 이던 길
+> 볼 줄    스케줄러 로그 «[Index] … building - waiting for transactions older than it: pid N» 뒤 «built» — 맞는 답
+>          «not built - waited 20s for pid N holding <표>» 가 계속 = 그 pid 가 ALTER 류 락을 쥠 (마이그레이션 · 수동 작업)
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k test_one_index_builder_waits_says_and_leaves_nothing  -> 6 passed
+> 끄기     없음 — 되돌리기는 이 커밋 revert
+> ```
+>
+> ---
+>
 > ## [11-06] **이력 패널(/audit_logs/recent)이 서버를 붙잡지 않음 — 문장 5 s · 걷기 10 s 상한** — git pull · 런처 재기동(API)
 >
 > ```
