@@ -18,6 +18,7 @@ import table_cells                                                    # noqa: E4
 from ledger import config_authoring                                  # noqa: E402
 from ledger.config_explorer_service import OntologyExplorerService   # noqa: E402
 from ledger.setup_bundle import CONFIG_FILENAME                      # noqa: E402
+import shipped                                                       # noqa: E402
 
 HINTS = config_authoring.SKELETON_LEAF_HINTS
 
@@ -117,6 +118,10 @@ def _service(root, catalog):
     return OntologyExplorerService(config_root=root, setup_loader=lambda _root: None, catalog_loader=lambda: catalog)
 
 
+# every install carries the product's own worlds beside the owner's (abdbdd0cc)
+WORLDS = ["default"] + shipped.worlds()
+
+
 def test_the_lists_come_from_the_declarations(tmp_path):
     root = tmp_path / "ontology"
     root.mkdir()
@@ -131,11 +136,11 @@ def test_the_lists_come_from_the_declarations(tmp_path):
 
     sections, columns = lists(["lot_t", "die_t"], ["lot", "die"], ["has_die"])
     assert sections == {"tables": ["die_t", "lot_t"], "entities": ["die", "lot"], "vocabulary": ["has_die"],
-                        "worlds": ["default"]}
+                        "worlds": WORLDS}
     assert columns == {"die_t": ["c_die_t"], "lot_t": ["c_lot_t"]}         # what a `columns` section reads
 
     sections, columns = lists(["wafer_t"], ["wafer"], [])                  # the declarations change, the lists follow
-    assert sections == {"tables": ["wafer_t"], "entities": ["wafer"], "vocabulary": [], "worlds": ["default"]}
+    assert sections == {"tables": ["wafer_t"], "entities": ["wafer"], "vocabulary": [], "worlds": WORLDS}
     assert columns == {"wafer_t": ["c_wafer_t"]}
 
 
