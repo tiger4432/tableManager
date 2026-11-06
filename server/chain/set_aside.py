@@ -115,12 +115,13 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
         if apply and page_ids:
             from chain.ingestion_worker import _deleted_rows_of, _retract_deleted_rows
             deleted = _deleted_rows_of([event for event, _payload in kept])
+            # a deletion set aside still happened - its rows' cells go as a run one's do (총괄 fa5417c28 3), in the
+            # commit that marks it (총괄 09f58844f). 🔴 BEFORE THE MARK (총괄 11-07): a group ending these events locks
+            #    those cells, then the outbox - marked first, the two waited on each other (deadlock, run 7553f6432f49)
+            _retract_deleted_rows(db, deleted)
             for table, marked in _mark(db, page_ids, reason).items():
                 out["marked"] += marked
                 out["marked_by_table"][table] = out["marked_by_table"].get(table, 0) + marked
-            # a deletion set aside still happened - its rows' cells go as a run one's do (총괄 fa5417c28 3), in the
-            # commit that marks it (총괄 09f58844f)
-            _retract_deleted_rows(db, deleted)
             db.commit()
             # A group running one of them now is cut and rewinds without them - the rest of its
             # line runs on in the same slot (총괄 10-08: only stopping a WHOLE line stops its slot).
@@ -205,9 +206,9 @@ def _mark(db, ids, reason):
 
     waiting = (DatabaseOutbox.id.in_(ids), DatabaseOutbox.processed_chain.is_(False))
     if db.get_bind().dialect.name == "postgresql":
-        # 🔴 LOCKED IN ID ORDER FIRST (총괄 10-09) - the order a group's success path locks its rows
-        #    in, so the two never wait on each other in a circle. A row a group holds is waited for,
-        #    then, ended by it, no longer waiting: it keeps the group's ending.
+        # 🔴 ONE LOCK ORDER WITH A GROUP'S SUCCESS PATH, ON BOTH AXES: data rows (row_id order) before the outbox
+        #    (총괄 11-07 - `set_aside` withdraws before it marks), and the outbox in id order (총괄 10-09). A row a
+        #    group holds is waited for, then, ended by it, no longer waiting: it keeps the group's ending.
         db.query(DatabaseOutbox.id).filter(*waiting).order_by(DatabaseOutbox.id).with_for_update().all()
         return dict(Counter(table for (table,) in db.execute(
             update(DatabaseOutbox).where(*waiting).values(

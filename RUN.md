@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **표 지우기 · 소급 취소 · 체인 줄 × 가 체인 워커와 겹칠 때의 교착 — 빼 두기가 칸을 거둔 «뒤»에 표시** — git pull · 런처 재기동(API · 소급 · 체인 워커)
+>
+> ```
+> 무엇이 바뀌나  빼 두기(× · 소급 취소의 끝 · 줄 멈춤)가 지운 행이 먹인 칸을 «먼저» 거두고, 그다음 outbox 를 표시
+>              체인 그룹과 같은 순서(데이터 행 → outbox). 한 commit 은 그대로
+> 전에 보이던 것  소급 실행이 FAILED «deadlock 발생했음» + SELECT database_outbox.id … FOR UPDATE (id IN (…))
+>              또는 로그 «[ChainRetract] retraction failed … DeadlockDetected» 한 줄 (그 거두기가 빠짐)
+> 같은 답      server 폴더에서 python scripts/run_pg_tests.py -k test_a_set_aside_and_a_draining_group_never_deadlock
+>              1 passed = 10 회 겹쳐도 교착 0. 실패 문장 «N of 10 rounds deadlocked» 의 N 이 교착 수
+> 볼 것        × 를 눌러도 체인이 이미 돈 행은 «already processed» 로 답함 (ran 이 이김, 전과 같음)
+> 끄기         없음. 되돌리려면 revert
+> ```
+>
+> ---
+>
 > ## [11-06] **표별 읽기 · 편집 권한 — 로그인 켜진 서버는 이 착지부터 «관리자만 편집», 나머지는 읽기만** — git pull · 런처 재기동(모든 프로세스)
 >
 > ```
