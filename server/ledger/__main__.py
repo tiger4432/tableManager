@@ -44,6 +44,8 @@ TOOLS = {
                "소스마다 표 행 수 · 색인된 행 수 · 남은 수를 재서 저장"),
     "sql-shadow": ("ledger.sql_translate",
                    "Python 번역과 SQL 번역을 모든 쪽에서 견주기 (읽기만, 다르면 종료 코드 1)"),
+    "walk-shadow": ("ledger.walk_shadow",
+                    "같은 씨앗을 저장 원장과 가상(선언을 표에서 읽기)으로 걸어 견주기 (읽기만, real 이 있으면 종료 코드 1)"),
     "followup": ("ledger.followup",
                  "원장이 따라갈 아웃박스 이벤트 수 · 실패 목록 · --requeue-failed 로 다시 넣기"),
 }

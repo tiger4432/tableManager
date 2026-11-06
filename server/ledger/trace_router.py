@@ -252,6 +252,11 @@ def evidence_subgraph(
         None, embed=True,
         description=("A page's `more.resume`, as it came: the next page of the same walk, within the same caps, "
                      "as of the first page")),
+    engine: str = Query(
+        "stored", pattern="^(stored|virtual)$",
+        description=("stored (as ever): the ledger's atoms; virtual: the declaration read from its own tables, "
+                     "nothing stored - the answer's `engine` names the sources it leaves out and the key columns "
+                     "no index serves («scans»)")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -368,6 +373,12 @@ def evidence_subgraph(
             "reason": "seeds_not_defined",
             "message": "No seeds given - list them with `id` or describe them with "
                        "`seed_type`"})
+    engine = engine if engine in ENGINES else "stored"          # a direct call leaves the Query sentinel
+    if engine == "virtual" and (resumable is True or isinstance(resume, dict)):
+        raise HTTPException(status_code=422, detail={
+            "reason": "virtual_walk_not_continued", "argument": "resumable",
+            "message": "A virtual walk is not continued page by page - nothing is stored to read it as of its "
+                       "first page. Walk it whole, or with engine=stored"})
     try:
         payload = _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative), world=world,
@@ -388,7 +399,7 @@ def evidence_subgraph(
             # a direct call leaves the Query sentinel - the ranking, as before
             propagation=propagation is not False,
             read=read if read in schema.READS else "both",
-            page=time_page, **interval)
+            page=time_page, engine=engine, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
             # of the source - `rows` was folded from this payload's own structures.
@@ -770,6 +781,60 @@ def _declared_entities(world=None):
     return (_declaration(world) or {}).get("entities") or {}
 
 
+#: What a walk reads (lead 11-06): the stored ledger, or the declaration read from its own tables
+#: (`sql_translate.compile_world`) - the shadow beside the ledger, compared by `python -m ledger walk-shadow`.
+ENGINES = ("stored", "virtual")
+#: {world: ((declaration file, its stamp), (legs, left out))} - compiled once a declaration file's stamp
+_COMPILED = {}
+
+
+def _compiled(connection, names):
+    """(legs, left out) of the worlds `names`, each world's declaration compiled once a file stamp."""
+    import os
+
+    from ledger import sql_translate
+    from ledger.setup import load_setup
+
+    legs, left_out = [], []
+    for each in names:
+        try:
+            stamp = (each.declaration_path, os.stat(each.declaration_path).st_mtime_ns)
+        except OSError:
+            stamp = (each.declaration_path, None)
+        if _COMPILED.get(each.name, (None,))[0] != stamp:
+            _COMPILED[each.name] = (stamp, sql_translate.compile_world(
+                load_setup(each.declaration_root).snapshot,
+                lambda sql, params: trace._fetch(connection, sql, params), each.name))
+        legs.extend(_COMPILED[each.name][1][0])
+        left_out.extend(_COMPILED[each.name][1][1])
+    return legs, left_out
+
+
+def _engine_reading(connection, engine, names, leave_out=None):
+    """THE one seat that asks `engine` (lead 11-06): (legs, the answer's `engine` cell) of the worlds `names` -
+    (None, None) for the stored ledger. A scan is a leg's end none of whose text key columns leads an index the
+    table declares (table_config.json "indexes")."""
+    if engine != "virtual":
+        return None, None
+    from database import models
+
+    legs, left_out = _compiled(connection, names)
+    legs = [leg for leg in legs if leg.source not in (leave_out or {}).get(leg.world, ())]
+    led = {(table, item["columns"][0]) for table, _name, item in models.table_declared_indexes()
+           if not item.get("search")}
+    scans = sorted({(leg.relation, (columns or [None])[0]) for leg in legs for columns in leg.columns.values()
+                    if not any((leg.relation, column) in led for column in columns)}, key=str)
+    return legs, {"name": "virtual", "left_out": left_out,
+                  "scans": [{"table": table, "column": column} for table, column in scans]}
+
+
+def _engine_relation(connection, engine, names):
+    """(the relation a seedless read reads, the answer's `engine` cell or None) - `_engine_reading`'s."""
+    legs, said = _engine_reading(connection, engine, names)
+    relation = schema.walk_relation(names)
+    return (relation, None) if legs is None else (ledger_subgraph.legs_relation(legs, relation), said)
+
+
 def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
@@ -780,7 +845,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
                     fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False,
-                    propagation=True, read="both"):
+                    propagation=True, read="both", engine="stored"):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -793,38 +858,44 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                         "server/migrations/add_ledger_source_events.py --apply"),
         })
     cardinalities = _predicate_cardinalities(world)
-    lookup = ledger_subgraph.SqlEvidenceLookup(
-        connection, worlds=names, since=since, until=until,
-        **({"leave_out": schema.first_read(names, _source_names)} if read == "first" else {}),
-        one=ledger_subgraph.one_predicates(cardinalities), indexed=_indexed_qualifiers(world),
-        # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
-        current_only=not (include_superseded or page is not None))
+    leave_out = schema.first_read(names, _source_names) if read == "first" else None
+    legs, said = _engine_reading(connection, engine, names, leave_out)
+    reading = dict(worlds=names, since=since, until=until, one=ledger_subgraph.one_predicates(cardinalities),
+                   # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
+                   current_only=not (include_superseded or page is not None))
+    lookup = (ledger_subgraph.SqlEvidenceLookup(connection, **({"leave_out": leave_out} if leave_out else {}),
+                                                indexed=_indexed_qualifiers(world), **reading)
+              if legs is None else ledger_subgraph.VirtualEvidenceLookup(connection, legs, **reading))
     if page is not None:
-        return ledger_subgraph.subgraph(
+        payload = ledger_subgraph.subgraph(
             node_id, lookup, page=page, direction=direction, follow=follow,
             cardinalities=cardinalities,
             declaration_paths=tuple(each.declaration_path for each in names))
-    return ledger_subgraph.subgraph(
-        node_id, lookup, aux=aux, resume=resume, resumable=resumable,
-        hops=hops, direction=direction,
-        node_limit=node_limit, edge_limit=edge_limit, follow=follow,
-        follow_keys=follow_keys,
-        follow_qualifiers=_predicate_qualifiers(world) if follow_keys else None,
-        backbone_hops=backbone_hops, static_types=_static_types(world),
-        static_follow=_static_step_predicates(world), collect=collect,
-        registration_follow=_self_describing_predicates(world),
-        cardinalities=cardinalities,
-        # The declaration is the ONLY authority for which columns exist — the same source
-        # the client reads through /declaration, so a key added to a declaration reaches
-        # both the screen and the TSV with no edit in either (S-183).
-        rows=rows, entities=_declared_entities(world) if rows else None,
-        # S-146. The fold rides the SAME walk - no second query, no second budget.
-        group_by=group_by, measure=measure,
-        # S-148-a. The description resolves INSIDE the walk, on the same connection.
-        seed_type=seed_type, seed_limit=seed_limit,
-        fanout_limit=fanout_limit, expand=expand, propagation=propagation, hubs=_hub_predicates(world),
-        # the worlds' own declarations, for the walk's key order and plural names
-        declaration_paths=tuple(each.declaration_path for each in names))
+    else:
+        payload = ledger_subgraph.subgraph(
+            node_id, lookup, aux=aux, resume=resume, resumable=resumable,
+            hops=hops, direction=direction,
+            node_limit=node_limit, edge_limit=edge_limit, follow=follow,
+            follow_keys=follow_keys,
+            follow_qualifiers=_predicate_qualifiers(world) if follow_keys else None,
+            backbone_hops=backbone_hops, static_types=_static_types(world),
+            static_follow=_static_step_predicates(world), collect=collect,
+            registration_follow=_self_describing_predicates(world),
+            cardinalities=cardinalities,
+            # The declaration is the ONLY authority for which columns exist — the same source
+            # the client reads through /declaration, so a key added to a declaration reaches
+            # both the screen and the TSV with no edit in either (S-183).
+            rows=rows, entities=_declared_entities(world) if rows else None,
+            # S-146. The fold rides the SAME walk - no second query, no second budget.
+            group_by=group_by, measure=measure,
+            # S-148-a. The description resolves INSIDE the walk, on the same connection.
+            seed_type=seed_type, seed_limit=seed_limit,
+            fanout_limit=fanout_limit, expand=expand, propagation=propagation, hubs=_hub_predicates(world),
+            # the worlds' own declarations, for the walk's key order and plural names
+            declaration_paths=tuple(each.declaration_path for each in names))
+    if said:
+        payload["engine"] = said
+    return payload
 
 
 #: How many NODES one key-values answer may read when it groups by ONE axis of a composite
@@ -874,6 +945,8 @@ def ledger_key_values(
         None, description=("앞글자 — 그 타입의 `prefix_axis` 가 이것으로 시작하는 노드만, 원장 인덱스의 그 "
                            "범위에서 (`prefix_case` 가 대소문자를 말한다). 비면 오늘과 같은 답")),
     db: Session = Depends(get_db),
+    engine: str = Query("stored", pattern="^(stored|virtual)$",
+                        description="stored: the ledger; virtual: the declaration read from its own tables"),
 ):
     """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
 
@@ -908,7 +981,7 @@ def ledger_key_values(
     connection = db.connection()
     names = _worlds(world)
     _ledgers_present(connection, names)
-    relation = schema.walk_relation(names)
+    relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", names)
 
     # 🔴 THE GROUPING KEYS ARE THE SUBJECT, NOT ONE AXIS OF IT. Asked per key, a composite
     # type answers with one list per axis, and a screen that pairs them offers the CROSS
@@ -993,6 +1066,7 @@ def ledger_key_values(
         "order": "value_asc",
         "starts_with": starts_with if prefixed else None,
         "prefix_axis": prefix_axis, "prefix_case": case, "prefix_refusal": prefix_refusal,
+        **({"engine": said} if said else {}),
     }
 
 
@@ -1155,7 +1229,10 @@ def _relation_absent(relation) -> HTTPException:
 @router.get("/gaps")
 def ledger_gap_catalogue(name: str = Query(None),
                          world: list[str] | None = Query(
-                             None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world")):
+                             None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
+                         engine: str = Query("stored", pattern="^(stored|virtual)$",
+                                             description="stored: the ledger; virtual: the declaration read from its "
+                                                         "own tables")):
     """선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳.
 
     🔴 라우트는 «하나»이고 인자가 둘로 가릅니다 — 새 라우트가 아니라 «같은 질문의 두 배율»입니다.
@@ -1195,10 +1272,12 @@ def ledger_gap_catalogue(name: str = Query(None),
             asked = _gaps.questions(declared, unused=unused)
             return {"mode": "names", "count": len(asked), "gaps": asked,
                     "unnamed": sum(1 for item in asked if item.get("unnamed")), "unused": len(unused)}
-        from database.database import engine
+        from database.database import engine as database
+        with database.connect() as connection:
+            relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", _worlds(world))
         return {"mode": "measured", "count": 1,
-                "gaps": _gaps.measure(engine, declared, only=name,
-                                      relation=schema.walk_relation(_worlds(world)))}
+                "gaps": _gaps.measure(database, declared, only=name, relation=relation),
+                **({"engine": said} if said else {})}
     except _gaps.GapQuestionUnknown as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

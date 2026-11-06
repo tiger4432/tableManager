@@ -908,10 +908,19 @@ class SqlEvidenceLookup:
             bound = " AND n.occurred_at < %(until)s"
         # A later fact of ANOTHER world does not make this one old (총괄 092a6f9e5: a source
         # two worlds translated shows from both).
-        return (f"(e.predicate = ANY(%(one)s) AND EXISTS (SELECT 1 FROM {self.relation} n "
+        return f"(e.predicate = ANY(%(one)s) AND {self._later_fact(bound)})"
+
+    def _later_fact(self, bound):
+        """`EXISTS` a later fact of `e`'s (world, subject, predicate) - over the ledger; a virtual read asks its legs."""
+        return (f"EXISTS (SELECT 1 FROM {self.relation} n "
                 f"WHERE n.world = e.world "
                 f"AND n.subject_type = e.subject_type AND n.subject_keys = e.subject_keys "
-                f"AND n.predicate = e.predicate AND n.occurred_at > e.occurred_at{bound}))")
+                f"AND n.predicate = e.predicate AND n.occurred_at > e.occurred_at{bound})")
+
+    def _legs(self, arm):
+        """((relation, how an atom `e` names a frontier node `f`), ...) the reads on `arm` join - the ledger, once;
+        a virtual read (`VirtualEvidenceLookup`) one per compiled leg, joined on its key columns."""
+        return ((self.relation, ARM_JOIN[arm]),)
 
     def _execute(self, sql, params):
         return trace._fetch(self.connection, sql, params)
@@ -985,15 +994,18 @@ class SqlEvidenceLookup:
             for arm in ("outgoing", "incoming"):
                 if direction in (arm, "both"):
                     bound = bool(bound_on) and arm == "incoming"
-                    built.append(f"""
+                    for relation, names in self._legs(arm):
+                        built.append(f"""
                     SELECT {selected} FROM {"bound_frontier" if bound else "frontier"} f
-                    JOIN {self.relation} e
-                      ON {ARM_JOIN[arm]}{BOUND_JOIN if bound else ""}
+                    JOIN {relation} e
+                      ON {names}{BOUND_JOIN if bound else ""}
                     {_where(follow_clause, extra_clause, current, _skip(arm), far and _far(arm, far[0]),
                             far_types and _far_types(arm, far_types[0]), after, recorded)}
                 """)
             return " UNION ".join(built)
 
+        if not _arms(""):
+            return [], False
         rows = self._execute(f"""
             {cte}
             SELECT * FROM ({_arms(self._interval_clause(params))}) claims
@@ -1071,11 +1083,14 @@ class SqlEvidenceLookup:
         _selected, current = self._selected(params)
         far = {"outgoing": "e.object_payload->>'type', e.object_payload->'keys'",
                "incoming": "e.subject_type, e.subject_keys"}[direction]
+        ends = " UNION ".join(f"""SELECT DISTINCT {far} FROM frontier f JOIN {relation} e ON {names}
+            {_where("e.predicate = %(predicate)s", _far_types(direction, "in"), self._interval_clause(params), current,
+                    self._recorded_clause(params))}""" for relation, names in self._legs(direction))
+        if not ends:
+            return 0
         rows = self._execute(f"""
             {FRONTIER_CTE}
-            SELECT count(*) FROM (SELECT DISTINCT {far} FROM frontier f JOIN {self.relation} e ON {ARM_JOIN[direction]}
-            {_where("e.predicate = %(predicate)s", _far_types(direction, "in"), self._interval_clause(params), current,
-                    self._recorded_clause(params))}) ends
+            SELECT count(*) FROM ({ends}) ends
         """, params)
         return int(rows[0][0]) if rows else 0
 
@@ -1120,6 +1135,56 @@ class SqlEvidenceLookup:
             keys = json.loads(row[0]) if isinstance(row[0], str) else row[0]
             out.append(explorer.entity_id(bare, dict(keys or {})))
         return _DescribedSeeds(out, cut)
+
+
+def _quoted_text(value):
+    return "'%s'" % str(value).replace("'", "''")
+
+
+def legs_relation(legs, empty):
+    """The legs (`sql_translate.compile_world`) as one relation of the ledger's columns and `world` - what a seedless
+    read (a described seed set, the key list, the gap catalogue, a time page) reads; `empty` (a relation of those
+    columns) with no row when there is no leg."""
+    from ledger import schema
+
+    columns = ", ".join(("world", *schema.LEDGER_COLUMNS))
+    if not legs:
+        return f"(SELECT {columns} FROM {empty} n WHERE false)"
+    return "(%s)" % " UNION ".join(f"SELECT {columns} FROM ({leg.select}) v WHERE occurred_at IS NOT NULL"
+                                   for leg in legs)
+
+
+class VirtualEvidenceLookup(SqlEvidenceLookup):
+    """The walk read from the declaration's own tables (engine=virtual, lead 11-06): every compiled leg is a relation
+    the frontier joins on its key columns; the reads, the interval, `_skip` and the current fact are
+    `SqlEvidenceLookup`'s. Nothing is recorded, so no read is «as of» - the route refuses a continued walk."""
+
+    def __init__(self, connection, legs, **kwargs):
+        super().__init__(connection, **kwargs)
+        self.legs = tuple(legs)
+        self.relation = legs_relation(self.legs, self.relation)
+
+    def _legs(self, arm):
+        out = []
+        for leg in self.legs:
+            bare, keys = leg.ends[arm]
+            # a row whose time does not read says nothing - asked WITH the frontier so it is asked after the join, of
+            # the rows the keys found, not of the table (a text time is a function call a row: 18 s for the table)
+            names = " AND ".join([f"f.type = {_quoted_text(bare)}",
+                                  *(f"e.{alias} = f.keys->>{_quoted_text(key)}" for key, alias in sorted(keys.items())),
+                                  ARM_JOIN[arm], "(e.occurred_at IS NOT NULL OR f.type IS NULL)"])
+            out.append((f"({leg.select})", names))
+        return tuple(out)
+
+    def _later_fact(self, bound):
+        later = []
+        for leg in self.legs:
+            _type, keys = leg.ends["outgoing"]
+            same = " AND ".join(f"n.{alias} = e.subject_keys->>{_quoted_text(key)}" for key, alias in sorted(keys.items()))
+            later.append(f"EXISTS (SELECT 1 FROM ({leg.select}) n WHERE {same} AND n.world = e.world "
+                         f"AND n.subject_type = e.subject_type AND n.subject_keys = e.subject_keys "
+                         f"AND n.predicate = e.predicate AND n.occurred_at > e.occurred_at{bound})")
+        return "(%s)" % " OR ".join(later) if later else "false"
 
 
 class _DescribedSeeds:

@@ -14,6 +14,28 @@
 >
 > ---
 >
+> ## [11-06] **가상 걷기 engine=virtual — 그림자로 저장 원장과 견주기** — git pull · 런처 재기동(API · 걷기 프로세스)
+>
+> ```
+> 무엇     걷기 · key-values · gaps 에 engine=virtual — 원장 대신 선언이 읽는 표에서 답함. 기본은 stored(운영 동작 그대로)
+> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
+>          (읽기만 · 씨앗 1,100,1000 이 기본 · --source <소스> 로 하나 · --since 2026-09-01 이면 time 칸도)
+> 답의 뜻  left_out 줄  가상이 안 읽는 소스 · 그 소스의 저장 원자 수 · 사유 — 그 사실은 가상 답에 없음
+>          소스 줄      atoms{stored, virtual} · seconds · bins
+>          spelling     같은 행을 다르게 말함, spelling_cells 가 칸 — 옛 철자로 쓰인 저장 원자면 저장 쪽이 옛것
+>          stale        저장 원장이 아직 번역 안 한 행, 또는 같은 원자가 선언 세대 둘로 남은 사본 — 원장 쪽 일, 가상 결함 아님
+>          stored-only  표에서 지워진 행의 원자가 원장에 남음 — 저장 쪽 정리 일
+>          real         표에 있는 행인데 가상이 못 만든 원자 — 컴파일 결함, 종료 코드 1. 그 줄 그대로 총괄에게
+>          tie          엣지의 가장 늦은 원자가 동률인 수 — 그 엣지의 basis · claim_id 가 두 engine 에서 다를 수 있음(결함 아님)
+>          time         --since/--until 을 줬을 때만 갈리는 차이 수
+> 화면     아직 없음 — 걷기 요청에 engine=virtual 을 붙이면 답에 engine{left_out, scans} 가 실림
+>          scans = 그 표의 키 칸에 표 선언 indexes 가 없어 훑는 자리
+> 끄기     없음 — engine 을 안 주면 오늘 그대로
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k "ledger_sql_compile or virtual_walk_draws"  -> 15 passed
+> ```
+>
+> ---
+>
 > ## [11-06] **그리드 칸 필터 — Pick · Paste list · Condition (여러 값 필터)** — git pull · 화면 새로 고침 (클라만, dist 에 들어 있음)
 >
 > ```

@@ -388,6 +388,31 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 ⚠️ 구성원은 예산을 안 쓰므로 fanout_limit 이 아끼는 것은 «답»이지 «읽기»가 아니다 — 읽기는 원자 상한(claims)이 막는다.
 ⚠️ 화면(허브 그리기)은 이 착지 뒤 클라에 따로 — 그때까지 걷기 화면 · rnd_board 는 허브를 노드 하나로 그린다(label).
 
+## 🔵 가상 걷기 — `engine=virtual` (소유자 11-06 «가상화로 걷는 모드 하나 만들어», 총괄 B · 그림자)
+
+```
+묻는 것   같은 걷기를 저장 원장 대신 «선언이 읽는 표»에서 — 원장에 쓴 것 없이
+인자      engine=stored(기본, 오늘 그대로) | virtual — subgraph · key-values · gaps 셋이 같은 낱말. 묻는 자리는
+          trace_router._engine_reading 하나. 걷기 답의 cards 는 답 본문과 선언만 읽어 따로 할 것 없음
+읽기      sql_translate.compile_world — 선언 소스를 «다리»로: 문장 하나 · 그 문장의 엔티티가 든 references 하나마다
+          원장의 칸(LEDGER_COLUMNS)을 행에서 짓는 SELECT + 끝마다 키 칸. 키 철자는 제품의 SQL 함수
+          (assy_key_number · assy_key_instant), 글자 키는 칸 그대로(저장이 이미 떼어 둠 — 표 색인이 조인을 받음)
+          ledger_subgraph.VirtualEvidenceLookup — SqlEvidenceLookup 의 읽기 그대로, `_legs(arm)` 만 다리마다
+          프런티어를 키 칸으로 조인(저장은 다리 하나 = 오늘 SQL). 시각을 못 읽는 행은 조인 «뒤»에 빠짐
+          (글자 시각은 함수 호출이라 표 전체에 걸면 박스 47.9 만 행에 18 s)
+시점      since · until · include_superseded 는 저장 걷기와 같은 절 — 원자의 occurred_at 은 선언된 시각 칸이므로
+          원천 행에 그대로 걸림. 이력표로 지어내지 않음(소유자 11-06 «시점 걷기 그대로»)
+답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}]}
+          left_out = 컴파일이 안 읽는 소스(계획 안 됨 · 코드 맵퍼 · 묶음 단위 · attributes · value 목적어 ·
+          format 시각 · 숫자 칸 when · 필수 수식어) — 그 소스의 사실은 이 답에 없음
+          scans = 다리 끝의 글자 키 칸이 표 선언 "indexes" 의 첫 칸이 아님 — 그 표를 훑음
+거절      resumable · resume + virtual -> 422 virtual_walk_not_continued (기록이 없어 «첫 쪽 시점»이 없다)
+비교      python -m ledger walk-shadow — 소스마다 같은 씨앗을 두 engine 으로, 칸 spelling · stale ·
+          stored-only · real · tie · time. real 이 있으면 종료 1. 계약 contracts/ledger_sql_compile
+```
+⚠️ 엣지가 그리는 원자: 같은 엣지의 가장 늦은 원자가 동률이면 저장은 원자 id 로 고른다 — 가상엔 id 가 없어
+`basis` · `claim_id` 가 다를 수 있다(walk-shadow 의 tie). 저장 모드는 안 바꿈(총괄 11-06).
+
 ## 🔵 이어 걷기 — `more` · `resume` (소유자 10-12, `2bdb44df7` … 병합 `c4b9b58a0`)
 
 ```
