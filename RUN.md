@@ -3,17 +3,18 @@
 > ## [11-06] **화면이 굳으면 그 한 줄이 남음 — 상태 단추 패널의 «Last UI stall»** — git pull · 그리드 새로 고침 (클라만)
 >
 > ```
-> 줄       UI 3.4s ws batch_row_upsert dt_log 500
+> 줄       UI 13.1s ws batch_refresh_required dt_log 500 › history widths
 > 칸       Ns        메인 스레드가 막힌 초 (1 초 넘은 것만, 끝난 뒤에 한 줄)
 >          그 다음    그때 하던 일 — ws <이벤트>(소켓으로 들어온 변경) · rows / pivot rows(행 읽어 그림) · apply · paste
 >                    · columns(칸 다시 지음) · fit widths(칸 폭) · filters · history(이력 패널) · history widths · health
 >          표 · 수    그 일의 표와 행 수(있을 때만)
 >          ?         이름표 없는 자리에서 굳음 — 지어내지 않음. 이 줄을 그대로 총괄에게
+>          › 뒤      그 일 «안에서» 시간을 가장 많이 쓴 자리 (위 예: 소켓 메시지를 그리다 이력 칸 폭 재기에서 굳음)
 > 볼 곳    맨 위 상태 단추 → 패널의 «Last stall»(서버) 아래 «Last UI stall». 10 분 안이면 단추가 주황 «UI STALL»
 > 답의 뜻  ws … 가 계속 = 들어오는 변경을 그리느라 굳음(인제션 · 체인이 도는 중) — 표 이름과 행 수를 같이
 >          rows · columns · fit widths = 표 열기 · 피벗 · 큰 읽기
 >          서버 «Last stall» 과 시각이 같음 = 서버가 먼저 멈췄을 수 있음 — 둘 다 보내기
-> 고침     464eced50 · b8d11ad72 (메시지 안의 굳음이 메시지 이름으로)
+> 고침     464eced50 · b8d11ad72 (메시지 안의 굳음이 메시지 이름으로) · e4aef4dd8 (› 안쪽 자리)
 > 끄기     없음 (재기만 함 · 되돌리려면 revert)
 > ```
 >
