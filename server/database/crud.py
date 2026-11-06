@@ -4575,6 +4575,9 @@ def apply_row_update_internal(
         # the winner is that layer or the column's formula, and which depends on the column, the source and whether
         # the layer is dated - never on the value or the row. The batch asks once per that key and keeps the WINNER;
         # the value is the layer's own. Two or more layers, a pin, or a formula winning ask every time.
+        # «dated?» reads "timestamp" where `resolution_ingested_at` does: `sources_dict` above holds only value ·
+        # timestamp (ingested_at.isoformat() or None) · updated_by, so the two answers cannot part here. Asking
+        # resolution itself per cell re-parses the time and costs the whole gain (C 11-06: 5.97 / 6.75 s).
         only = next(iter(sources_dict)) if plan is not None and manual_pin is None and len(sources_dict) == 1 else None
         asked = (col_name, only, sources_dict[only]["timestamp"] is None) if only else None
         if asked and plan.setdefault("winners", {}).get(asked) == only:
