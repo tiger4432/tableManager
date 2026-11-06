@@ -1,4 +1,5 @@
 import { redoCostText } from './redo_cost.js';
+import { crossIcon } from './cross_icon.js';
 import { LOADING, unitText } from './ui_words.js';
 import { isDraftRevisionEditable, fieldOpensByDefault }
   from './ontology_explorer_store.js';
@@ -2316,18 +2317,6 @@ function tableCells(context, node) {
   return null;
 }
 
-/** The SVG cross a remove draws - an icon, not the letter «×» (lead f3639d4a2). */
-function crossIcon() {
-  if (typeof document.createElementNS !== 'function') return h('span', 'chip-remove__icon');
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 10 10');
-  svg.setAttribute('aria-hidden', 'true');
-  const line = document.createElementNS(NS, 'path');
-  line.setAttribute('d', 'M2 2l6 6M8 2l-6 6');
-  svg.append(line);
-  return svg;
-}
 
 /** A remove for one member (`form-remove`) or the clear of an optional field (`form-clear`): the form's own doors,
  *  drawn as the icon (lead f3639d4a2: an SVG, not a glyph). */

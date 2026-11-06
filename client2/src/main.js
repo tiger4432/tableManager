@@ -11,6 +11,7 @@ import { PasteBox } from './paste_box.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingTail } from './narrowing.js';
 import { localStamp } from './server_time.js';
+import { openInTables } from './tables/handoff.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
@@ -215,6 +216,10 @@ async function init() {
       seatGallery({ doc: document, base: API_BASE, storage: galleryStorage, loadAll: () => { if (elements.loadAllBtn) elements.loadAllBtn.click(); } });
       // the grid's pivot (owner 10-22): «Pivot» turns the open table's view and back
       if (elements.pivotToggleBtn) elements.pivotToggleBtn.addEventListener('click', () => setGridPivot(!state.pivotOn));
+      // «Tables» on the status bar (owner 11-06): the open table and what narrows it, on the Tables page beside the grid
+      if (elements.openTablesBtn) elements.openTablesBtn.addEventListener('click', () => openInTables(window, state.currentTable,
+        narrowingTail({ globalSearch: elements.globalSearch, searchCols: elements.searchCols, gridApi: state.gridApi,
+          transactionId: state.currentTransactionId }).slice(1), state.gridWorld));
       // 라벨은 표보다 «먼저» 섭니다 -- 선언 읽기가 표 로드와 나란히 가고, 표가 정해지면
       // `setRelation` 한 번으로 문장이 확정됩니다.
       sourceLabel = initGridSourceLabel();

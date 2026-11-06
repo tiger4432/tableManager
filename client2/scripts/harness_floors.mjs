@@ -1787,6 +1787,7 @@ export const FLOORS = new Map([
   // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
   ['index_table_panel_harness.mjs', 24],
   ['value_filter_harness.mjs', 37],   // a column's one filter: AG Grid's models row by row, the set, Pick · Paste (lead 11-06)
+  ['tables_harness.mjs', 29],   // Tables L1: the grid's hand-off, the first table by page through the grid's door, 9 mutants (owner 11-06)
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
   // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.

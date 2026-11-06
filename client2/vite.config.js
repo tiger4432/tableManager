@@ -42,6 +42,8 @@ export default defineConfig({
         walk: resolve(__dirname, 'walk.html'),
         // The visual testbed (lead aca803a7a): the visual part's kinds, basket, status bar, filters, properties.
         testbed: resolve(__dirname, 'testbed.html'),
+        // Tables (owner 11-06): source tables a person reads as tables - L1 the first table, opened from the grid.
+        source_tables: resolve(__dirname, 'source_tables.html'),
         // The base layer's sample page (lead de64fb0f9) — every base element, both themes.
         sample: resolve(__dirname, 'sample.html'),
         // The file ingestion page by table · folder · result (lead, mockup FWp74vd6UqX1i7qXpyQg8K) - linked from Admin's File tab.

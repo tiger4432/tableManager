@@ -197,6 +197,7 @@ const REAL = {
   state: await import('../src/state.js'),
   guard: await import('../src/write_guard.js'),
   api: await import('../src/api.js'),
+  refusal: await import('../src/refusal.js'),
   grid: await import('../src/grid.js'),
   clipboard: await import('../src/clipboard.js'),
   ui: await import('../src/ui.js'),
@@ -486,6 +487,13 @@ async function suite(M) {
   ok(!String(listy.note).includes('object Object') && String(listy.note).includes('422'),
     `G2 a detail that is not a sentence names the status instead [${listy.note}]`);
   refusal = null;
+  // The seat itself (src/refusal.js - moved out of api.js so the Tables page reads it without the grid). G1 and G2 go
+  // through api.js and the real seat; these ask the module under test, so the seat's own mutants are scored here.
+  const said = (status, body) => M.refusal.refusalText({ status, json: async () => body }, 'Read failed');
+  ok(await said(422, { detail: SENTENCE }) === SENTENCE, 'G3 the seat answers the server\'s sentence');
+  ok(await said(422, { detail: [{ msg: 'x' }] }) === 'Read failed (HTTP 422)', 'G4 a detail that is not a sentence names the status');
+  ok(await said(503, { detail: { reason: 'grid_read_stopped', message: 'Stopped after 10 s' } }) === 'Stopped after 10 s',
+    'G5 a stopped read\'s message is its sentence');
 
   // ── R: a refused READ is an answer (C-105) ───────────────────────────────────────────
   // 🔴 CAUGHT ON THE REAL PAGE (lead, 2026-09-13): `/tables/bonding_core_lot/data` answers 422
@@ -1145,14 +1153,14 @@ const DEFECTS = [
   //    ('api.js: the controls are never told the table changed'). The assertions below are
   //    unchanged and still run through the seat, so a broken seat still reddens this harness --
   //    it is the MUTANTS that moved to the file that can now mutate it.
-  ['api.js: the server`s sentence is folded into one of ours', 'api',
+  ['refusal.js: the server`s sentence is folded into one of ours', 'refusal',
     // Re-aimed by C-105: the sentence is built in ONE place now (`refusalText`), shared with the
     // READ path -- so this is where folding it away happens. Same claim, same G1.
     s => s.replace('  return said || `', '  return false || `')],
-  ['api.js: a detail that is not a sentence is drawn anyway', 'api',
+  ['refusal.js: a detail that is not a sentence is drawn anyway', 'refusal',
     s => s.replace("  const said = typeof detail === 'string' ? detail", "  const said = detail && !detail.message ? String(detail)")],
   // 🔴 87dfa71d7. The stopped read (503, detail.message).
-  ['api.js: a stopped read`s sentence is not read', 'api',
+  ['refusal.js: a stopped read`s sentence is not read', 'refusal',
     s => s.replace("    : (detail && typeof detail.message === 'string' ? detail.message : '');", "    : '';")],
   ['api.js: a refused read drops the typed column filter', 'api',
     s => s.replace('function showReadRefusal(why) {\n', 'function showReadRefusal(why) {\n  if (state.gridApi) state.gridApi.setFilterModel(null);\n')],
@@ -1271,7 +1279,7 @@ const CONTROLS = [
     s => s.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')],
 ];
 
-const FILES = { state: 'state.js', api: 'api.js', grid: 'grid.js', clipboard: 'clipboard.js',
+const FILES = { state: 'state.js', api: 'api.js', refusal: 'refusal.js', grid: 'grid.js', clipboard: 'clipboard.js',
                 ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js', timeline: 'timeline.js', ws: 'websocket.js' };
 
 async function scoreMutant(key, mutate, tag) {

@@ -310,6 +310,9 @@
   --fs-tag: 11px;     /* 알약 · 배지 · 거절 코드 */
   --fs-meta: 12px;    /* 부차 수치 · 각주 — 10 에서 12 로(소유자 09-27, 「작은 글씨는 없느니만 못하다」) */
   --fs-cell: 10px;    /* 메인 그리드의 칸 글씨 (소유자 11-06) */
+  /* A table line at the grid's canon (grid.js rowHeight 28 - AG Grid takes a number, so the grid spells it there):
+     the Tables page's lines (owner 11-06 «10px / 28»). Not a type step - a line's height. */
+  --row-h-cell: 28px;
 
   /* 그림 상자의 «높이 상한». 넘치면 그 상자 «안»에서 스크롤합니다 — 페이지가 안 늘어납니다.
      ⚠️ 값이 아니라 «성질»입니다: 노드가 몇이든 한 화면에서 다음 블록이 보여야 합니다. */

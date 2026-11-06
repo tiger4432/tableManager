@@ -300,6 +300,9 @@ body.resizing-active .gallery-seat {
   color: var(--text-muted);
   /* The bar states its own height; nothing inside it may push past that unseen. */
   overflow: hidden;
+  /* Wrapped, it grows: the grid above gives way, not the bar's second line (lead 11-07 - 12 px of buttons cut at 1280
+     with the side panel open). */
+  flex: none;
 }
 
 .status-left {

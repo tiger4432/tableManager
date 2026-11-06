@@ -2577,6 +2577,23 @@ const VALUE_FILTER_OPEN = (col) => `(async () => {
   for (let i = 0; v && i < 40 && !find() && v.scrollLeft + v.clientWidth < v.scrollWidth; i += 1) {
     v.scrollLeft += v.clientWidth / 2; v.dispatchEvent(new Event('scroll')); await new Promise((r) => setTimeout(r, 100)); }
   const b = find(); if (b) b.click(); return Boolean(b); })()`;
+// The Tables page (owner 11-06, lead L1): opened from the grid with a set filter on ledger_events - its chip as the floating
+// cell says it, the count narrowed of whole (the recorded counts: 10,000+ capped of 2,380,869), the page read, lines at
+// the grid's canon (10px, 28).
+CELLS.push({ entry: 'source_tables.html', after: 'Opened from the grid', rule: 'tables opened', at: 'tables-box', expr: `(() => {
+  const t = (s) => (document.querySelector(s) || {}).textContent || '';
+  const chips = [...document.querySelectorAll('.tables-box__chips .chip')].map((c) => c.textContent);
+  const line = document.querySelector('.tables-box__body tbody tr:not(.tb-table__pad)');
+  if (chips.join('|') !== 'subject_type any of 2') return 'the chips say ' + JSON.stringify(chips);
+  if (t('.tables-box__count') !== '10,000+ of 2,380,869 rows') return 'the count says ' + t('.tables-box__count');
+  // the recorded page holds the capture's first 100 rows (capture_screens.py ROWS) - a short page is the last
+  if (t('.tables-box__foot') !== 'all 100 rows') return 'the foot says ' + t('.tables-box__foot');
+  if (!line) return 'no line drawn';
+  const h = line.getBoundingClientRect().height; const fs = getComputedStyle(line.cells[0]).fontSize;
+  if (Math.abs(h - 28) > 0.5 || fs !== '10px') return 'a line is ' + h + ' px, its text ' + fs;
+  return null;
+})()` });
+
 const DRIVE = {
   // The read progress counted (owner 10-23): the page's next beat reads /tables with its sources.
   'file_ingestion.html': [
@@ -2883,6 +2900,26 @@ const DRIVE = {
     ['saved cleared', (c) => evaluate(c, "localStorage.removeItem('testbed:visuals'); true")],
   ],
   // The sample's Spotfire standard section (src/spotfire.css), in each theme.
+  // The Tables page (owner 11-06, lead L1): opened as the grid's «Tables» button leaves it - the hand-off in the browser's
+  // storage, the table in the address - then a head pressed: the server orders, from the first page.
+  'source_tables.html': [
+    ['Opened from the grid', async (c, log) => {
+      await evaluate(c, `(() => { localStorage.setItem('tables:handoff', JSON.stringify({ table: 'ledger_events',
+        narrowing: 'filters=' + encodeURIComponent(JSON.stringify({ subject_type: { filterType: 'set', values: ['defect', 'die'] } })),
+        world: null, at: Date.now() })); return true; })()`);
+      log.opening = true;
+      await c.send('Page.navigate', { url: `${ORIGIN}/source_tables.html?table=ledger_events` });
+      await sleep(800);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, "document.querySelectorAll('.tables-box__body tbody tr:not(.tb-table__pad)').length > 2", 15000);
+    }],
+    ['Ordered by a column', async (c) => {
+      await evaluate(c, `(() => { const th = [...document.querySelectorAll('.tables-box__body th')].find((h) => h.textContent === 'subject_type');
+        if (th) th.click(); return Boolean(th); })()`);
+      await until(c, "[...document.querySelectorAll('.tables-box__body th')].some((h) => h.textContent === 'subject_type▲')", 15000);
+    }],
+  ],
   'sample.html': [
     ['Spotfire standard, light', (c) => evaluate(c, `(() => { document.documentElement.setAttribute('data-theme', 'light');
       const s = document.querySelector('.sample-sf'); if (s) s.scrollIntoView({ block: 'start' }); return Boolean(s); })()`).then(() => sleep(300))],

@@ -9,6 +9,7 @@ export const elements = {
   get exposedRowsCount() { return document.getElementById('exposed-rows'); },
   get totalRowsCount() { return document.getElementById('total-rows'); },
   get pivotToggleBtn() { return document.getElementById('pivot-toggle-btn'); },
+  get openTablesBtn() { return document.getElementById('open-tables-btn'); },
   get pivotMoreLine() { return document.getElementById('pivot-more-line'); },
   get performanceLog() { return document.getElementById('performance-log'); },
   get txFilterBanner() { return document.getElementById('tx-filter-banner'); },

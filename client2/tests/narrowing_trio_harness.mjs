@@ -119,14 +119,15 @@ console.log('\n[3] the caller count');
   for (const f of files) {
     const text = readSrc(f);
     if (!/from '\.\/narrowing\.js'/.test(text)) continue;
-    // count CALLS, not imports — one import can serve several sites (main.js has two).
+    // count CALLS, not imports — one import can serve several sites (main.js has three).
     const n = (text.match(/\b(narrowingTail|buildNarrowing)\s*\(/g) || []).length;
     callers += n;
     if (n) where.push(`${f}:${n}`);
   }
-  eq('exactly four call sites use the one builder', 4, callers);
+  // five since 11-06: the grid's «Tables» hands the grid's narrowing to the Tables page (main.js) - the same builder
+  eq('exactly five call sites use the one builder', 5, callers);
   eq('and they are where the audit and the recount said', where.sort(),
-    ['api.js:1', 'main.js:2', 'timeline.js:1']);
+    ['api.js:1', 'main.js:3', 'timeline.js:1']);
 
   // 🔴 THE OTHER HALF: nobody may go back to assembling it by hand. Counting only the
   //    callers would stay at four while a fifth site quietly grew beside them.
