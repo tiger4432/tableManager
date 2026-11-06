@@ -1327,6 +1327,8 @@ export const FLOORS = new Map([
   // which table an audit is about, when the answer comes from a declaration
   // 12 -> 15 (D1-D3 the row's Table column, two row mutants; owner 10-12).
   ['audit_target_table_harness.mjs', 20],
+  // the Global history's Table column measured once a frame, a message of 500 logs one layout (owner 11-06)
+  ['audit_fit_harness.mjs', 9],
   // a one-member list is a value; and 「not arrived」 stays distinct from 「no members」
   ['closed_list_harness.mjs', 44],
   // the grid says WHERE its rows came from

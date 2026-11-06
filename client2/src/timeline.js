@@ -719,17 +719,37 @@ function tablePieces(name) {
 }
 
 let auditFitWatch = null;
-/** The audit's Table column as wide as its widest piece - the head's word too; again when the panel shows or changes width
- *  (a hidden panel measures 0 and keeps the last). */
-function fitAuditTable() {
+let auditFitFrame = 0;
+let auditFitAll = false;
+const auditFitRows = new Set();
+/** The audit's Table column as wide as its widest piece - the head's word too. Every row drawn asks; it is measured once,
+ *  in the next frame (owner 11-06 «가만히 있어도 굳음»: a live message of 500 logs measured the whole panel 500 times,
+ *  each read after a write). A `row` drawn only widens it; a whole draw and a width change measure all. A hidden panel
+ *  measures nothing and owes all - its showing is a width change. */
+function fitAuditTable(row) {
   const box = elements.timelineContainer;
   if (!box) return;
   if (!auditFitWatch && typeof ResizeObserver === 'function') {
     auditFitWatch = new ResizeObserver(() => fitAuditTable());
     auditFitWatch.observe(box);
   }
-  const need = widestCell(box, '.audit-tbl-piece', '.audit-cell');
-  if (need) box.style.setProperty('--audit-tbl-w', `${need}px`);
+  if (row) auditFitRows.add(row);
+  else auditFitAll = true;
+  if (!auditFitFrame) auditFitFrame = requestAnimationFrame(measureAuditTable);
+}
+
+function measureAuditTable() {
+  auditFitFrame = 0;
+  const box = elements.timelineContainer;
+  const rows = [...auditFitRows].filter((row) => row.isConnected);
+  auditFitRows.clear();
+  if (!box || !box.getClientRects().length) { auditFitAll = true; return; }
+  const all = auditFitAll;
+  auditFitAll = false;
+  const held = parseFloat(box.style.getPropertyValue('--audit-tbl-w')) || 0;
+  const need = all ? widestCell(box, '.audit-tbl-piece', '.audit-cell')
+    : Math.max(0, ...rows.map((row) => widestCell(row, '.audit-tbl-piece', '.audit-cell')));
+  if (need && (all ? need !== held : need > held)) box.style.setProperty('--audit-tbl-w', `${need}px`);
 }
 
 export function renderGlobalTimelineIncremental(log) {
@@ -770,7 +790,7 @@ export function renderGlobalTimelineIncremental(log) {
   } else {
     elements.timeline.insertBefore(newLi, elements.timeline.firstChild);
   }
-  fitAuditTable();
+  fitAuditTable(newLi);
 }
 
 // Render history logs in a vertical timeline UI card structure
