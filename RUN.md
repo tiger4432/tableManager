@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **걷기의 같은 시각은 원자 «내용»으로 가름 — id 로 안 가름** — git pull · 런처 재기동(API · 걷기 프로세스)
+>
+> ```
+> 무엇     같은 시각의 원자 둘은 주어 · 목적어 · 술어 · 원천 행 순으로 가름(READ_ORDER), id 는 마지막
+>          엣지가 보여 주는 원자 · records 순서 · fan-out 의 앞 N · 허브 구성원이 stored 와 virtual 에서 같아짐
+>          저장 답은 «시각이 같은» 자리에서만 바뀜 — 그 밖은 그대로
+> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
+> 답의 뜻  bins.tie_split  동률인데 두 engine 이 다른 원자를 그린 엣지 수. 0 이어야 함 — 0 이 아니면 그 줄 그대로 총괄에게
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k virtual_walk_draws
+> 끄기     없음 (되돌리려면 revert)
+> 덫       PG 시험을 여러 레인이 같이 돌리면 w_<세계> 스키마(w_system 등)는 실행끼리 공유됨 — 실행마다 따로인 것은
+>          assy_pytest_pg_<토큰> 스키마뿐. w_ 스키마를 ALTER · DROP 하는 시험은 서로 잠금을 기다려 멈출 수 있음
+> ```
+>
+> ---
+>
 ## 마킹 — 사람이 찍은 값 묶음을 서버가 이름(id)으로 쥔다 (S-mark · S-rows, 총괄 11-07)
 
 화면이 하는 순서: `POST /markings {table, column, values}` → `{id, rev}` · reach 본문에 `"marking": "<id>"` · 격자 `GET /tables/<t>/data?marking=<id>` (와 `/data/count`) — URL 엔 id 만
@@ -134,7 +150,7 @@ SELECT count(*), pg_size_pretty(pg_total_relation_size('markings')), min(touched
 >          stale        저장 원장이 아직 번역 안 한 행, 또는 같은 원자가 선언 세대 둘로 남은 사본 — 원장 쪽 일, 가상 결함 아님
 >          stored-only  표에서 지워진 행의 원자가 원장에 남음 — 저장 쪽 정리 일
 >          real         표에 있는 행인데 가상이 못 만든 원자 — 컴파일 결함, 종료 코드 1. 그 줄 그대로 총괄에게
->          tie          엣지의 가장 늦은 원자가 동률인 수 — 그 엣지의 basis · claim_id 가 두 engine 에서 다를 수 있음(결함 아님)
+>          tie_split    동률인데 두 engine 이 다른 원자를 그린 엣지 수 — 0 이어야 함(11-07 부터, 옛 tie 칸은 없앰)
 >          time         --since/--until 을 줬을 때만 갈리는 차이 수
 > 화면     아직 없음 — 걷기 요청에 engine=virtual 을 붙이면 답에 engine{left_out, scans} 가 실림
 >          scans = 그 표의 키 칸에 표 선언 indexes 가 없어 훑는 자리

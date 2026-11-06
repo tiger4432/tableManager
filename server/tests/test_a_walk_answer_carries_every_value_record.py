@@ -121,7 +121,8 @@ class _OldestFirst(ledger_subgraph.InMemoryEvidenceLookup):
 
 def test_the_newest_records_stay_whatever_order_they_were_fetched_in(monkeypatch):
     """총괄 10-11: an edge's records were kept in the order fetched and cut there, a node name's were sorted - one list
-    read two ways. One rule now: the atom's time, then its claim id, newest first; past the cap the newest stay."""
+    read two ways. One rule now: the read's order (`_read_order_key`: the atom's time, then its content - lead 11-07),
+    newest first; past the cap the newest stay."""
     monkeypatch.setattr(ledger_subgraph, "RECORDS_PER_FACT", 2)
     tied = ATOMS + [_measures(5, 4, "P5"), _registration(14, 3, product="D", tag="d")]
     lookup = _OldestFirst(tied)
@@ -131,3 +132,4 @@ def test_the_newest_records_stay_whatever_order_they_were_fetched_in(monkeypatch
     edge, node = _edge(body), _node(body)
     assert ([r["claim_id"] for r in edge["records"]], edge["records_more"]) == ([tied[-2].id, ATOMS[3].id], 3)
     assert ([r["value"] for r in node["records"]["product"]], node["records_more"]["product"]) == (["D", "C"], 2)
+    assert node["attributes"]["product"] == "D", "the value a name holds is the read order's first, not the fetch's"

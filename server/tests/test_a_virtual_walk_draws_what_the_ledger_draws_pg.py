@@ -106,8 +106,7 @@ def test_walk_shadow_finds_no_difference(board):
                 ledger_subgraph.VirtualEvidenceLookup(raw, mine, worlds=(names,)), seeds,
                 sorted({leg.predicate for leg in mine}))
             assert said["atoms"]["stored"] and said["atoms"]["stored"] == said["atoms"]["virtual"], said
-            assert {k: v for k, v in said["bins"].items() if k != "tie"} == {
-                "spelling": 0, "stale": 0, "stored-only": 0, "real": 0}, said
+            assert said["bins"] == {"spelling": 0, "stale": 0, "stored-only": 0, "real": 0, "tie_split": 0}, said
     finally:
         raw.rollback()
         raw.close()
@@ -121,6 +120,34 @@ def test_the_key_list_follows_the_engine(board):
                                              db=session, engine="virtual")
     assert virtual["nodes"] == stored["nodes"] and len(stored["nodes"]) == 3
     assert "engine" not in stored and virtual["engine"]["name"] == "virtual"
+
+
+def test_a_member_two_hubs_reach_at_one_time_joins_the_same_hub_on_both_engines(world, monkeypatch):
+    """Lead 11-07: six wafers each processed with RCP-A and RCP-B at the same instant, the recipes walked with
+    processed_with a hub - which hub a wafer joins is the read's order (`READ_ORDER`: time, then the atom's own content),
+    not an id the two engines spell differently."""
+    import notation_norm
+
+    with world["engine"].begin() as conn:
+        conn.connection.cursor().execute(notation_norm.key_instant_sql() + notation_norm.key_number_sql())
+    with open(os.path.join(paths.config_path("ontology"), "ledger_config.json"), "w", encoding="utf-8") as fh:
+        json.dump(_only(CHANGED, KEPT), fh)
+    trace_router._COMPILED.clear()
+    _write(world, "wafer_process", [{"proc_id": "P%d%s" % (n, recipe), "wafer_id": "W%d" % n, "recipe_id": "RCP-" + recipe,
+                                     "eventtime": "2026-09-30 10:00:00"} for n in range(6) for recipe in "AB"])
+    backfill.run(world["engine"], source=CHANGED)
+    monkeypatch.setattr(trace_router, "_hub_predicates", lambda world=None: frozenset({"processed_with"}))
+    seeds = {"positive": [explorer.entity_id("recipe", {"recipe": "RCP-" + recipe}) for recipe in "AB"],
+             "negative": []}
+    hubs = {}
+    for engine in ("stored", "virtual"):
+        with world["engine"].connect() as conn:
+            payload = trace_router._evidence_graph(conn, node_id=seeds, hops=1, direction="both", node_limit=200,
+                                                   edge_limit=400, engine=engine)
+        hubs[engine] = sorted((node["id"], node["hub"]["count"]) for node in payload["nodes"]
+                              if node.get("node_kind") == "hub")
+    assert sum(count for _id, count in hubs["stored"]) == 6, hubs           # canary: the six wafers are members
+    assert hubs["stored"] == hubs["virtual"], hubs
 
 
 def test_a_virtual_walk_is_not_continued(board):

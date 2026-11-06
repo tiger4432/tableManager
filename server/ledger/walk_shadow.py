@@ -8,8 +8,9 @@ Each atom one side has and the other has not goes in one bin:
   stored-only  a stored atom whose row is gone from the table
   real         a stored atom of a row still in the table that the virtual read does not make - the compile is wrong
   time         a difference that shows only with --since / --until
-and `tie` counts the edges whose newest atoms share their time - which atom an edge draws then rests on the stored
-atom's id, which a virtual read has not. Exit 1 when `real` is not 0."""
+and `tie_split` counts the edges whose newest atoms share their time and whose drawn atom differs between the two
+reads - 0 since the read's order splits a tie by the atoms' content (`ledger_subgraph.READ_ORDER`, lead 11-07); it
+replaced `tie` (the ties themselves, whichever atom each read drew). Exit 1 when `real` is not 0."""
 from __future__ import annotations
 
 import json
@@ -29,12 +30,22 @@ def _atom_key(atom) -> tuple:
 CELLS = ("subject_type", "subject_keys", "predicate", "object_payload", "occurred_at", "basis")
 
 
+def _edge(key) -> tuple:
+    payload = json.loads(key[3])
+    return key[0], key[1], key[2], payload.get("type"), json.dumps(payload.get("keys"), sort_keys=True)
+
+
 def _read(lookup, seeds, follow):
+    """(the atoms read, counted; seconds; each edge's first atom in the read's order - the one it draws)."""
     started = time.perf_counter()
     atoms, cut = lookup.claims_for_entities(seeds, "both", EVERY, follow=follow)
     if cut:
         raise RuntimeError("a read was cut at %d atoms - the bins would count the cap" % EVERY)
-    return Counter(_atom_key(atom) for atom in atoms), round(time.perf_counter() - started, 3)
+    keys = [_atom_key(atom) for atom in atoms]
+    drawn = {}
+    for key in keys:
+        drawn.setdefault(_edge(key), key)
+    return Counter(keys), round(time.perf_counter() - started, 3), drawn
 
 
 def _rows_present(fetch, relation, order_by, refs) -> set:
@@ -50,14 +61,13 @@ def _rows_present(fetch, relation, order_by, refs) -> set:
             for (text,) in found}
 
 
-def _ties(stored) -> int:
-    """Edges (subject, predicate, far node) whose newest atoms are more than one."""
+def _tie_split(stored, drawn) -> int:
+    """Edges whose newest atoms tie in time and whose drawn atom differs between the two reads (lead 11-07)."""
     newest = defaultdict(list)
-    for key, count in stored.items():
-        payload = json.loads(key[3])
-        edge = (key[0], key[1], key[2], payload.get("type"), json.dumps(payload.get("keys"), sort_keys=True))
-        newest[edge].extend([key[4]] * count)
-    return sum(1 for times in newest.values() if times.count(max(times, key=str)) > 1)
+    for key in stored:
+        newest[_edge(key)].append(key[4])
+    tied = {edge for edge, times in newest.items() if times.count(max(times, key=str)) > 1}
+    return sum(1 for edge in tied if edge in drawn[0] and edge in drawn[1] and drawn[0][edge] != drawn[1][edge])
 
 
 def shadow(fetch, ledger, plan, stored, virtual, seeds, follow, show=3, window=None) -> dict:
@@ -65,8 +75,8 @@ def shadow(fetch, ledger, plan, stored, virtual, seeds, follow, show=3, window=N
     `window` (stored, virtual) the same two asked with --since / --until."""
     from .roleframe import claim_source_row_refs
 
-    have, stored_s = _read(stored, seeds, follow)
-    made, virtual_s = _read(virtual, seeds, follow)
+    have, stored_s, have_drawn = _read(stored, seeds, follow)
+    made, virtual_s, made_drawn = _read(virtual, seeds, follow)
     only = {"stored": have - made, "virtual": made - have}
     by_ref = {side: defaultdict(list) for side in only}
     for side, atoms in only.items():
@@ -92,7 +102,7 @@ def shadow(fetch, ledger, plan, stored, virtual, seeds, follow, show=3, window=N
                 kept_twice.values()),
             "stored-only": sum(len(by_ref["stored"][ref]) for ref in gone_refs if ref not in real),
             "real": sum(len(by_ref["stored"][ref]) for ref in real),
-            "tie": _ties(have)}
+            "tie_split": _tie_split(have, (have_drawn, made_drawn))}
     out = {"source": plan.source_id, "seeds": len(seeds), "atoms": {"stored": sum(have.values()),
                                                                      "virtual": sum(made.values())},
            "seconds": {"stored": stored_s, "virtual": virtual_s}, "bins": bins,
@@ -103,8 +113,8 @@ def shadow(fetch, ledger, plan, stored, virtual, seeds, follow, show=3, window=N
                     "stale": [dict(zip(CELLS, by_ref["virtual"][r][0])) for r in virtual_refs if r not in said][:show]}}
     if window is not None:
         whole = set(only["stored"]) | set(only["virtual"])
-        have_w, _ = _read(window[0], seeds, follow)
-        made_w, _ = _read(window[1], seeds, follow)
+        have_w, _, _ = _read(window[0], seeds, follow)
+        made_w, _, _ = _read(window[1], seeds, follow)
         bins["time"] = len((set(have_w - made_w) | set(made_w - have_w)) - whole)
     return out
 

@@ -410,8 +410,11 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
 비교      python -m ledger walk-shadow — 소스마다 같은 씨앗을 두 engine 으로, 칸 spelling · stale ·
           stored-only · real · tie · time. real 이 있으면 종료 1. 계약 contracts/ledger_sql_compile
 ```
-⚠️ 엣지가 그리는 원자: 같은 엣지의 가장 늦은 원자가 동률이면 저장은 원자 id 로 고른다 — 가상엔 id 가 없어
-`basis` · `claim_id` 가 다를 수 있다(walk-shadow 의 tie). 저장 모드는 안 바꿈(총괄 11-06).
+🔴 읽기 순서 `ledger_subgraph.READ_ORDER`(총괄 11-07): 시각 내림차순, 같은 시각은 원자 자신의 내용(주어 · 목적어 ·
+술어 · 원천 행)으로, id 는 마지막. 엣지가 그리는 원자 · fan-out 의 앞 N · 허브 구성원은 SQL 순서, records 와
+이름의 값은 같은 목록의 파이썬 키(`_read_order_key`) — 두 엔진이 같다(walk-shadow 의 tie_split = 0). ⚠️ 표기가 둘:
+SQL 은 jsonb 를 글자로, DB 정렬 규칙으로 견주고 키는 `_canonical` 을 코드 포인트로 견준다 — 박스(Korean_Korea.949)
+시드 1000 에서 둘이 갈린 엣지 0. 시간 쪽(time page)은 (시각, id) 키셋 그대로 — 원자 집합은 같다.
 
 ## 🔵 닿은 행 — `/subgraph` 의 `reach` 본문 (총괄 11-06, Tables 페이지 S-hop · S-count)
 

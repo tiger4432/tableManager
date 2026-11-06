@@ -576,10 +576,10 @@ RECORDS_PER_FACT = 100
 
 
 def _newest_records(said):
-    """(instant, claim id, record) of each atom -> its records newest first, `RECORDS_PER_FACT` of them, and how many
-    more. ONE order for an edge's and a node name's (총괄 10-11): the atom's time, then its claim id, both descending -
-    whatever order they were fetched in."""
-    ordered = sorted(said, key=lambda each: (each[0] is not None, each[0], each[1] is not None, each[1]), reverse=True)
+    """(read order key, claim id, record) of each atom -> its records newest first, `RECORDS_PER_FACT` of them, and how
+    many more. ONE order for an edge's and a node name's (총괄 10-11), whatever order they were fetched in: the read's
+    (`_read_order_key`, lead 11-07) - the atom's time, then its content, not the claim id."""
+    ordered = sorted(said, key=lambda each: (each[0] is not None, each[0]), reverse=True)
     return [each[2] for each in ordered[:RECORDS_PER_FACT]], max(0, len(ordered) - RECORDS_PER_FACT)
 
 
@@ -703,6 +703,27 @@ class EvidenceAtom:
 
 ATOM_COLUMNS = ", ".join((*LEDGER_COLUMNS, "world"))
 EVIDENCE_COLUMNS = ", ".join(f"e.{name.strip()}" for name in ATOM_COLUMNS.split(","))
+
+#: 🔴 THE READ'S ORDER (lead 11-07, owner «가상 읽기 중심으로»): newest first, a time two atoms share split by the
+#: atoms' own content, the id last - an id splits nothing two engines spell alike (the stored ledger's uuid7, a virtual
+#: read's md5). The reader's SQL and `_read_order_key` spell this one list - the key orders an edge's records and a
+#: name's value (`_newest_records`, `_read_attribute`); an edge's drawn atom, a fan-out's first N and a hub's members
+#: are the SQL's (the first read). ⚠️ Two spellings: SQL compares jsonb as its text under the database collation,
+#: the key compares `_canonical` by code point - a tie on the payload may sort apart.
+READ_ORDER = ("occurred_at", "subject_type", "subject_keys", "object_payload", "predicate", "source_raw_ref", "id")
+_JSON_CELLS = frozenset({"subject_keys", "object_payload"})
+
+
+def _read_order_cells(prefix=""):
+    """The read's order as SQL cells - a jsonb cell as its text, which PostgreSQL spells one way for equal values."""
+    return ["%s%s%s" % (prefix, name, "::text" if name in _JSON_CELLS else "") for name in READ_ORDER]
+
+
+def _read_order_key(atom):
+    """The read's order of one atom, in Python - an empty cell above any other, as PostgreSQL's DESC puts NULL first."""
+    cells = (_canonical(getattr(atom, name)) if name in _JSON_CELLS else str(getattr(atom, name)) if name == "id"
+             else getattr(atom, name) for name in READ_ORDER)
+    return tuple((cell is None, cell) for cell in cells)
 
 #: The nodes a read starts from, one row each - `skip`: what that node does not read (`_skip`).
 FRONTIER_CTE = """
@@ -981,8 +1002,10 @@ class SqlEvidenceLookup:
             cte = cte.rstrip() + BOUND_FRONTIER_CTE
         after = ""
         if before is not None:
+            # after the cursor's atom in the read's order - its cells read back by its id (a cursor names the atom)
             params["before_at"], params["before_id"] = before
-            after = "(e.occurred_at, e.id) < (%(before_at)s, CAST(%(before_id)s AS uuid))"
+            after = "(%s) < (SELECT %s FROM %s b WHERE b.id = CAST(%%(before_id)s AS uuid) AND b.occurred_at = %%(before_at)s)" % (
+                ", ".join(_read_order_cells("e.")), ", ".join(_read_order_cells("b.")), self.relation)
         recorded = self._recorded_clause(params)
 
         # 🔴 ONE ARM BUILDER, TWO QUESTIONS (ruling 208). The fetch asks for the claims
@@ -1009,7 +1032,7 @@ class SqlEvidenceLookup:
         rows = self._execute(f"""
             {cte}
             SELECT * FROM ({_arms(self._interval_clause(params))}) claims
-            ORDER BY occurred_at DESC, id DESC
+            ORDER BY {", ".join(cell + " DESC" for cell in _read_order_cells())}
             LIMIT %(fetch)s
         """, params)
         self._count_excluded(cte, _arms, params)
@@ -1304,7 +1327,7 @@ class InMemoryEvidenceLookup:
 
     @staticmethod
     def _result(rows, limit):
-        ordered = sorted(rows, key=lambda atom: (atom.occurred_at, atom.id), reverse=True)
+        ordered = sorted(rows, key=_read_order_key, reverse=True)
         return ordered[:limit], len(ordered) > limit
 
     def subjects_of_type(self, entity_type, limit):
@@ -1350,10 +1373,12 @@ class InMemoryEvidenceLookup:
             return not (step in (wanted[near].get("steps") or ()) and far not in wanted)
 
         rows = []
+        cursor = None if before is None else next(
+            (_read_order_key(atom) for atom in self.atoms if str(atom.id) == str(before[1])), None)
         for atom in self.atoms:
             if (follow and atom.predicate not in follow) or (exclude and atom.predicate in exclude):
                 continue
-            if (before is not None and (atom.occurred_at, str(atom.id)) >= (before[0], str(before[1]))) \
+            if (before is not None and (cursor is None or _read_order_key(atom) >= cursor)) \
                     or not self._recorded(atom):
                 continue                                # the cursor and the «as of», as the SQL spells them
             subject = (atom.subject_type, _canonical(atom.subject_keys))
@@ -1745,7 +1770,7 @@ def _apply_registrations(nodes, registrations, order=None):
     world that said it (in `order`, `_in_picked_order`), that world's atoms read by the rule,
     with when and who - so a walk over several worlds can draw both. Whether a name is `many` is the walk's merged
     declaration's answer (the first world picked wins), as for `attributes`, which stays the
-    one value across them. `seen`: (instant, value, world, source, the instant shown, claim id).
+    one value across them. `seen`: (read order key, value, world, source, the instant shown, claim id).
 
     🔴 AND EVERY RECORD BESIDE THEM (총괄 e5e0a87e2 · 10-11 ㄱ): `records` - per name, each registration that
     said it, newest first, `RECORDS_PER_FACT` of them; `records_more` - per name, how many more.
@@ -3381,7 +3406,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
 
     order = _in_picked_order(getattr(lookup, "worlds", ()))
 
-    def add_edge(row, instant, free=False):
+    def add_edge(row, read_key, free=False):
         nonlocal edge_cut, budgeted_edges
         if row["source"] not in nodes or row["target"] not in nodes:
             return False
@@ -3396,7 +3421,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 held["worlds"].sort(key=order)
                 held["by_world"].sort(key=lambda each: order(each["world"]))
             # 🔴 EVERY ATOM OF IT IS A RECORD OF IT (총괄 e5e0a87e2 · 10-11 ㄱ) - once each
-            edge_records[row["id"]].setdefault(row["claim_id"], (instant, row["claim_id"], row["records"][0]))
+            edge_records[row["id"]].setdefault(row["claim_id"], (read_key, row["claim_id"], row["records"][0]))
             return True
         if not free:
             if budgeted_edges >= edge_limit:
@@ -3404,7 +3429,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 return False
             budgeted_edges += 1
         edges[row["id"]] = row
-        edge_records[row["id"]] = {row["claim_id"]: (instant, row["claim_id"], row["records"][0])}
+        edge_records[row["id"]] = {row["claim_id"]: (read_key, row["claim_id"], row["records"][0])}
         return True
 
     def _spend(near_id, far_id, charge):
@@ -3447,7 +3472,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         shown = _instant(atom.occurred_at) if reads_as_event_time(atom.occurred_at_basis) else None
         for name, value in ((atom.object_payload or {}).get("qualifiers") or {}).items():
             registrations.setdefault(subject_id, {}).setdefault(name, []).append(
-                (atom.occurred_at, value, atom.world, atom.source_who, shown, atom.id))
+                (_read_order_key(atom), value, atom.world, atom.source_who, shown, atom.id))
 
     def _step(atom, depth, frontier_entities):
         """One atom's step: its two ends, which one is far, and `None` when a guard refuses it.
@@ -3625,7 +3650,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             return (add_node(target, decode_node_id(target["id"]), target_depth,
                              member if far_id == target["id"] else None)
                     and add_edge(_claim_edge(atom, subject_id, target["id"], atom.predicate,
-                                             cardinalities), atom.occurred_at, free=member is not None))
+                                             cardinalities), _read_order_key(atom), free=member is not None))
         # 🔴 EVERYTHING ELSE IS NOT A NODE. An atom whose object is a VALUE says
         # something about its subject; it is not a second place to stand. The finding-point
         # and measurement-value branches that used to mint nodes here retired 2026-08-28,
