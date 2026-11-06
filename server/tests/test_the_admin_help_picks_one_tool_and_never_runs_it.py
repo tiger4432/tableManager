@@ -194,8 +194,11 @@ def test_the_help_runs_nothing(client, monkeypatch):
     monkeypatch.setattr(retroactive, "publish", no_run)
     _model(monkeypatch, {"op": "rerun_set_aside", "params": {"tables": "t1"}, "why": "w"})
     assert _ask(client, "다시 돌려줘").json()["op"] == "rerun_set_aside"
+    # the help's one door that is not a read is the ask; its other doors only read (the Guide, owner 11-06 4f55adfe1)
     paths = {route.path: route.methods for route in client.app.routes if route.path.startswith("/admin/help")}
-    assert paths == {"/admin/help/ask": {"POST"}}
+    assert "/admin/help/ask" in paths and len(paths) > 1, paths                      # canary: a read door is seen
+    assert {path: methods for path, methods in paths.items() if methods - {"GET", "HEAD"}} == {
+        "/admin/help/ask": {"POST"}}, paths
 
 
 def test_a_run_opened_from_an_answer_is_written_on_its_ask(client, db_session, monkeypatch):
