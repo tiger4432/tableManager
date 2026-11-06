@@ -30,6 +30,7 @@ import { ImagePreview } from './image_preview.js';
 import { HiddenColumns } from './hidden_columns.js';
 import { localStamp, NO_TIME } from './server_time.js';
 import { ABSENT, isBlank } from './absent.js';
+import { markWork } from './ui_stall.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
 // The bulk-fill engine already existed: `applyValueToSelectedRange` (ui.js) does the
@@ -519,6 +520,7 @@ export function updateOffscreenIndicator() {
 export function renderFilterBar() {
   const bar = elements.gridFilterBar;
   if (!bar) return;
+  markWork('filters', state.currentTable);
   const api = state.gridApi;
   const model = api ? (api.getFilterModel() || {}) : {};
   const colIds = Object.keys(model);
@@ -1345,6 +1347,7 @@ export function fitColumnWidths() {
   if (!widthsOwed || !api || !api.getDisplayedRowCount()) return;
   const cell = document.querySelector('#myGrid .ag-cell');
   if (!cell) return;
+  markWork('fit widths', state.currentTable, api.getDisplayedRowCount());
   widthsOwed = false;
   const cs = getComputedStyle(cell);
   const pad = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, k) => sum + (parseFloat(cs[k]) || 0), 0);
@@ -1393,6 +1396,7 @@ function applyMockupLayout(columnDefs) {
 let chipBarWatch = null;
 
 export function renderGrid(initialRows) {
+  markWork('columns', state.currentTable, Array.isArray(initialRows) ? initialRows.length : null);
   const columnDefs = buildColumnDefs();
   widthsOwed = true;
   const bar = elements.gridFilterBar;

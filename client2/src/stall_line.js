@@ -15,13 +15,14 @@ export function stallOf(health) {
 }
 
 export class StallLine {
-  constructor(mount, { doc } = {}) {
+  /** @param deps { doc, label } - the label the line stands under (the page's own freeze is another: ui_stall.js). */
+  constructor(mount, { doc, label = LAST_STALL } = {}) {
     this.mount = mount;
     this.doc = doc || mount.ownerDocument;
     this.root = this.doc.createElement('div');
     this.root.className = 'stall-line';
     this.root.hidden = true;
-    this.label = this.el('span', 'stall-line__label', LAST_STALL);
+    this.label = this.el('span', 'stall-line__label', label);
     this.at = this.el('span', 'stall-line__at', '');
     this.text = this.el('span', 'stall-line__text', '');
     mount.appendChild(this.root);

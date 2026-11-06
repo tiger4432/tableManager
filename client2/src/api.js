@@ -22,6 +22,7 @@ import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
 import { tableMenu, fillTableSelect } from './table_menu.js';
 import { timedRead, QueueReadTimeout, QUEUE_READ_TIMEOUT_MS } from './queue_poll.js';
+import { markWork } from './ui_stall.js';
 
 /**
  * Write a status badge WITHOUT trusting the handle to exist.
@@ -659,6 +660,7 @@ export function prevPage() {
 export async function fetchData(resetSkip = true, key = null) {
   // a page read waits for the one out; a read from the top (a table, a sort, a filter, a reconnect) asks at once
   if (!state.currentTable || (state.isLoadingMore && !resetSkip)) return;
+  markWork('rows', state.currentTable);
 
   if (resetSkip) {
     state.pageCache.clear();
@@ -719,6 +721,7 @@ export async function fetchData(resetSkip = true, key = null) {
     }
     const result = await res.json();
     if (stale()) return;
+    markWork(result.pivot ? 'pivot rows' : 'rows', table, Array.isArray(result.data) ? result.data.length : null);
     if (result.pivot) result.data = takePivot(result);
 
     const fetchTime = (performance.now() - startTime).toFixed(1);
@@ -983,6 +986,7 @@ async function applyStaged(choice) {
       ? `the staged rows did not answer in ${QUEUE_READ_TIMEOUT_MS / 1000} s` : err.message}`);
     return;
   }
+  markWork('apply', state.currentTable, Object.keys(state.pendingTxEdits).length);
   if (Object.keys(state.pendingTxEdits).length === 0) {
     closeQuestion();
     settleTx();
@@ -1074,6 +1078,7 @@ async function applyStaged(choice) {
       return res.json();
     });
     state.pageCache.clear();
+    markWork('apply', state.currentTable, sent.size);
     const saveTime = (performance.now() - applyStartTime).toFixed(1);
 
     // The cells it sent are saved: drawn so, and their edits go. One edited again while it was out stays staged, now

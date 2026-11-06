@@ -16,6 +16,7 @@ import { getLocalTimeString } from './utils.js';
 // on the intranet, and it cost a day to find.
 import { parseTsv, serializeTsv } from './tsv.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
+import { markWork } from './ui_stall.js';
 
 /**
  * 참조 사이드바 «안»에서 일어난 복사인가 — 그러면 격자는 비켜선다.
@@ -375,6 +376,7 @@ async function uploadedRef(file, colId) {
 }
 
 async function pasteText(targetCells, clipboardText) {
+  markWork('paste', state.currentTable);
   const focusedCell = state.gridApi.getFocusedCell();
   // Parse TSV clipboard through the shared reader. `trimCells`/`dropBlankLines` keep this
   // handler's long-standing whitespace and blank-line treatment byte for byte; what
@@ -556,6 +558,7 @@ async function pasteText(targetCells, clipboardText) {
       if (res.ok) {
         state.pageCache.clear();
         const result = await res.json();
+        markWork('paste', state.currentTable, batchUpdates.length);
         // V1 instrument: reset ONLY when the server confirms it recorded the effort — a
         // paste whose values already match storage returns 200 and records nothing.
         commitIfRecorded(result);

@@ -20,6 +20,7 @@ import { writeRefusal, sayStopped, refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
 import { placeUnder } from './dropdown.js';
 import { StatusDot } from './status_dot.js';
+import { UiStallWatch, markWork } from './ui_stall.js';
 import { stallOf } from './stall_line.js';
 import {
   switchTable,
@@ -173,8 +174,13 @@ async function init() {
   //    The same read hands its stall to the status button (lead 11-05 ③) - one /health reader.
   const status = elements.statusBtn && elements.statusPanel
     ? new StatusDot(elements.statusBtn, elements.statusPanel, { doc: document }) : null;
-  const health = () => checkChainHealth().then((body) => { if (status) status.setStall(stallOf(body)); });
+  const health = () => checkChainHealth().then((body) => {
+    markWork('health');
+    if (status) status.setStall(stallOf(body));
+  });
   health();
+  // The page's own freezes, said beside the server's (lead 11-06 ㄱ).
+  if (status) new UiStallWatch({ view: window, onStall: (stall) => status.setUiStall(stall) });
   setInterval(health, CHAIN_BADGE_POLL_MS);
 
   await startup({

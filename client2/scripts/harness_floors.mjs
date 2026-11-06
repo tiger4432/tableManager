@@ -1843,7 +1843,9 @@ export const FLOORS = new Map([
   ['stall_line_harness.mjs', 12],
   // New with the head bar's status button (lead 11-05 ③, owner 11-06): offline first, a stall within ten minutes, a chain
   // running, a badge not read, all well; the button drawn from its panel, a stall not read keeping what is drawn, two apart.
-  ['status_dot_harness.mjs', 19],
+  ['status_dot_harness.mjs', 23],
+  // the page's own freeze said as one line, named by the slice it ran in; the census's seats each mark theirs (lead 11-06)
+  ['ui_stall_harness.mjs', 13],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

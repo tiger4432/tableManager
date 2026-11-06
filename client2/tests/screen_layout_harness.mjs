@@ -499,6 +499,7 @@ const STALL = { on: false, next: null };
 const STALL_LINE = { line: 'STALL 36s+ L12 T40/40 G6 D9/11s C97 slot2:61 ING wafer_process_inspection_result_by_lot_and_slot', at: '2026-10-29T01:23:45+00:00' };
 // The whole line is read off the screen and typed (lead 10-29): every letter inside the box, the box inside the page - a
 // line that does not fit goes down at a space, it is not cut or slid.
+const UI_STALL_SAID = "[...document.querySelectorAll('#status-panel .stall-line')].some((l) => !l.hidden && /Last UI stall/.test(l.textContent))";
 const STALL_WHOLE = `(() => { const box = document.querySelector('.stall-line:not([hidden])'); if (!box) return false;
   const t = box.querySelector('.stall-line__text');
   if (t.textContent !== ${JSON.stringify(STALL_LINE.line)} || t.scrollWidth > t.clientWidth + 1) return false;
@@ -732,6 +733,13 @@ const CELLS = [
   const said = off && off.textContent.trim().split(':')[0];
   return b.dataset.tone === 'bad' && said && b.textContent.includes(said) ? null
     : 'the status button is ' + b.dataset.tone + ' «' + b.textContent.trim() + '» with a stall a minute old';
+})()` },
+  // The page's own freeze said in the status panel: seconds, and «?» for a task no work marked - never a guess.
+  { entry: 'index.html', after: 'status, the page froze', rule: 'head panels', at: 'status-panel', expr: `(() => {
+  const line = [...document.querySelectorAll('#status-panel .stall-line')].find((l) => !l.hidden && /Last UI stall/.test(l.textContent));
+  if (!line) return 'no «Last UI stall» line in the status panel after a 1.2 s freeze';
+  const text = line.querySelector('.stall-line__text').textContent;
+  return /^UI \\d+\\.\\ds \\?$/.test(text) ? null : 'the page froze 1.2 s with nothing marked and the line says «' + text + '»';
 })()` },
   { entry: 'index.html', after: 'history panel folded', rule: 'panel folds', at: 'history-sidebar', expr: `(() => {
   const s = document.querySelector('.history-sidebar').getBoundingClientRect();
@@ -2775,6 +2783,11 @@ const DRIVE = {
       await until(c, STALL_WHOLE);
       STALL.on = false;
     }],
+    // The page's own freeze (lead 11-06 ㄱ): a task of 1.2 s that no work marked - said under «Last UI stall» as «UI 1.2s ?».
+    ['status, the page froze', async (c) => {
+      await evaluate(c, "(() => { const end = performance.now() + 1200; while (performance.now() < end) {} return true; })()");
+      await until(c, UI_STALL_SAID);
+    }],
     // The history panel folded to a strip, then opened again at the width it had (owner 11-06).
     ['history panel folded', (c) => evaluate(c, "(() => { document.getElementById('sidebar-fold-btn').click(); return true; })()")
       .then(() => sleep(400))],
@@ -3744,6 +3757,8 @@ const MUTANTS = [
   // The head bar (lead 11-05 ③, owner 11-06): the fold that does not fold · the audit's Table column at its widest piece
   // again · an open panel left where the bar was before it wrapped. (Which word the status button says is
   // status_dot_harness's - here the socket decides whether WS is offline first.)
+  { name: 'the page\'s own freeze not watched', entry: 'index.html', rule: 'head panels', at: 'status-panel',
+    file: 'src/main.js', edits: [["  if (status) new UiStallWatch({ view: window, onStall: (stall) => status.setUiStall(stall) });\n", '']] },
   { name: 'an open head panel left where the bar was', entry: 'index.html', rule: 'panel', at: '',
     file: 'src/main.js', edits: [["      for (const [button, panel] of headPanels) if (panel.style.display === 'flex') placeUnder(panel, button);\n", '']] },
   { name: 'the history panel fold that does not fold', entry: 'index.html', rule: 'panel folds', at: 'history-sidebar',

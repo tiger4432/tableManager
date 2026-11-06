@@ -3,6 +3,7 @@ import { ABSENT, isCount } from './absent.js';
 import { LOADING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
 import { widestCell } from './cell_fit.js';
+import { markWork } from './ui_stall.js';
 import { sayStopped } from './write_guard.js';
 import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
@@ -744,6 +745,7 @@ function measureAuditTable() {
   auditFitFrame = 0;
   const box = elements.timelineContainer;
   const rows = [...auditFitRows].filter((row) => row.isConnected);
+  markWork('history widths', null, rows.length);
   auditFitRows.clear();
   if (!box || !box.getClientRects().length) { auditFitAll = true; return; }
   const all = auditFitAll;
@@ -803,6 +805,7 @@ export function renderGlobalTimelineIncremental(log) {
 
 // Render history logs in a vertical timeline UI card structure
 export function renderTimeline(logs) {
+  markWork('history', state.currentTable, Array.isArray(logs) ? logs.length : null);
   elements.timeline.innerHTML = '';
 
   if (!logs || logs.length === 0) {
@@ -1127,6 +1130,7 @@ function auditFilterPasses(group, filters) {
 }
 
 export function renderGlobalTimeline() {
+  markWork('history', null, (state.globalHistoryData || []).length);
   elements.timeline.innerHTML = '';
   const count = document.getElementById('audit-filter-count');
 

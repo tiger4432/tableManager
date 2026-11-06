@@ -11,6 +11,7 @@ import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
 import { fileEndView, isDoneStatus, statusToastTone } from './retry_verdict.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally, loadHistory } from './timeline.js';
+import { markWork } from './ui_stall.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 import { chainRefreshNote } from './chain_refresh_note.js';
 import { goToLogin, WS_LOGIN_REQUIRED } from './auth_gate.js';
@@ -307,6 +308,8 @@ export function initWebSocket() {
   state.ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
+      const list = msg.items || msg.row_ids || msg.created_logs;
+      markWork(`ws ${msg.event}`, msg.table_name || null, list ? list.length : null);
       handleWebSocketMessage(msg);
     } catch (err) {
       console.error('WebSocket parsing error', err);
