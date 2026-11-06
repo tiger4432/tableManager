@@ -566,6 +566,7 @@
 
 ### 메인 화면 (그리드 · 보드 · 맵)
 
+- 2026-11-06 [그리드 칸 필터에 Pick · Paste list — 값 여럿을 골라서, 붙여 넣어서](#2026-11-06--그리드-칸-필터에-pick--paste-list--값-여럿을-골라서-붙여-넣어서) — 보는 곳 그리드 칸 필터
 - 2026-11-06 [메인 그리드 상단 바를 예전 크기로, 상태는 단추 하나 · 나머지는 ⋯, 이력 판 접기, 칸 글씨 10 px](#2026-11-06--메인-그리드-상단-바를-예전-크기로-상태는-단추-하나--나머지는--이력-판-접기-칸-글씨-10-px) — 보는 곳 그리드 상단 바 · 이력 판 · 그리드 칸
 - 2026-11-05 [그리드 열 너비는 첫 쪽에 맞춰 한 번, 열 숨기기와 «N hidden», 감사 표의 표 이름](#2026-11-05--그리드-열-너비는-첫-쪽에-맞춰-한-번-열-숨기기와-n-hidden-감사-표의-표-이름) — 보는 곳 그리드 · 필터 칩 줄 · 이력 Global
 - 2026-11-05 [Pivot 을 켜고 끌 때 키 칸 · 항목 칸 필터가 남음](#2026-11-05--pivot-을-켜고-끌-때-키-칸--항목-칸-필터가-남음) — 보는 곳 그리드 필터 칩 줄 · 상태 줄
@@ -714,6 +715,14 @@
 
 
 
+
+## 2026-11-06 · 그리드 칸 필터에 Pick · Paste list — 값 여럿을 골라서, 붙여 넣어서
+
+- **무엇** — 칸 필터가 판 하나에 탭 셋입니다. Pick 은 그 칸의 값 목록에서 고르고(다른 칸 필터가 걸린 채로 읽음, 빈 칸은 «(Blank)»), Paste list 는 엑셀 열을 붙여 넣고, Condition 은 예전 필터(조건 둘 · AND/OR)입니다. Pick 과 Paste list 는 같은 필터 «이 값들 중 하나»를 겁니다.
+- **보이는 것** — 칩 «LOT any of 3», 필터 칸에도 «any of 3»(누르면 판). 필터 칸에 바로 치는 것은 예전과 같습니다(0.5 초 뒤, 텍스트는 contains · 숫자는 equals, 인덱스가 같음만 있는 칸은 equals).
+- **값이 많을 때** — 1 만을 넘으면 «More than 10,000 values — type to search», 검색어로 서버에 다시 묻습니다. 목록은 한 번에 500 개까지 그리고 나머지는 «type to narrow».
+- **필요한 조건** — git pull · 화면 새로 고침. 서버는 A ea92380da(셋 필터 · 값 목록) 이후.
+- **자세히** — `client2/src/value_filter.js` 의 `ValueFilter` · `ValueFloatingFilter`, `api.js` `readColumnValues`, `grid.js` `valueFilterDef`. 시험 `value_filter_harness`(AG Grid 의 모델을 줄마다 같게), 화면 검사기 «Filter, Pick open» · «Filter, two values applied» · «Filter, Paste list» · «Filter, two conditions» · «Filter cleared».
 
 ## 2026-11-06 · 메인 그리드 상단 바를 예전 크기로, 상태는 단추 하나 · 나머지는 ⋯, 이력 판 접기, 칸 글씨 10 px
 

@@ -1,4 +1,4 @@
-import{a as e}from"./absent-BDtP6YER.js";var t=`/api/image`,n=`Open image`,r=`Loading`,i=`data-image-preview-styles`,a=`
+import{a as e}from"./absent-CBb3oGaE.js";var t=`/api/image`,n=`Open image`,r=`Loading`,i=`data-image-preview-styles`,a=`
 /* Image cell (lead 191912ce2): the value as written, and a mark that opens the picture. */
 .cell-image { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .cell-image-open { flex: none; padding: 0 var(--space-1); border: 1px solid var(--accent); border-radius: 0;

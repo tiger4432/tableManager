@@ -5953,6 +5953,18 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - **판 열고 닫기**: `main.js` `setupEventListeners` 의 머리 판 둘(`#nav-menu-btn`→`#more-panel` · `#status-btn`→`#status-panel`) — 한 함수가 열고, 하나가 열리면 다른 하나와 칸 목록이 닫힘, 판 안의 단추 항목 · 링크는 닫음
 - **채점자**: `client2/tests/status_dot_harness.mjs`(`harness_floors.mjs` 에 **19** 건 — 변이 7 잡힘 · 대조 2 통과) · `screen_layout_harness.mjs` DRIVE «⋯ opened» · «status, a stall within 10 minutes»
 
+### 🆕 `value_filter.js` (**494줄** 신설, 11-06 `9f7062cd7` — 총괄 11-06 ㄱ · 목업 DrvGtAYZ5kLSUd7HvkygaN) — 그리드 칸 하나의 필터
+
+> 🔴 **칸마다 필터 문 하나** — 데이터 칸 · ROW_ID · ⇲ 조인 해석 칸 모두 `grid.js` `valueFilterDef(kind, options, defaultOption)` 를 지난다(피벗이 숨겨 든 항목 칸만 `HeldColumnFilter`). 모델은 AG Grid 의 text/number 모델 그대로에 셋 `{"filterType":"set","values":[…, null]}` 하나가 더해질 뿐이라 칩 · 피벗 carry · narrowing 이 그대로 읽는다.
+
+- **`conditionModel(kind, rows, operator)`** · **`rowsOf(model, defaultOption)`** — Condition 탭 ↔ AG Grid 35 의 모델(SimpleFilter.getModelFromUi · createCondition), 조건 둘 · AND/OR
+- **`floatingModel` · `lastTypeOf` · `floatingEditable` · `floatingText`** — 필터 칸 타이핑(AG Grid 의 SimpleFloatingFilter, `FLOAT_DEBOUNCE_MS` 500)
+- **`passes(kind, model, cell)`** — 그리드가 든 행: 조건은 AG Grid 의 text/number 핸들러, 셋은 서버 규칙(null = 빈 칸, 숫자 칸은 숫자로)
+- **`pasteValues(kind, text)`** — 줄 · 쉼표 · 탭, 중복 제거 수
+- **`class ValueFilter`**(AG Grid 사용자 필터) · **`class ValueFloatingFilter`** — Pick 은 `filterParams.readValues` = `api.js` `readColumnValues(column, search)`(`GET /tables/<t>/data/values`, 그리드 narrowing 통째 + world), 1 만 넘으면 서버 검색(`SEARCH_DEBOUNCE_MS`), 늦은 답 버림, 거절 문장 그대로. 그리는 값 `PICK_SHOWN` 500
+- **바탕 층** — AG Grid 안의 우리 부품은 `.base-in-grid` 로 base.css 의 단추 · 입력 규칙을 받는다(`:not(:is([class^="ag-"], …) :not(.base-in-grid, .base-in-grid *))`)
+- **채점자**: `client2/tests/value_filter_harness.mjs`(`harness_floors.mjs` 에 **37** 건) · `screen_layout_harness.mjs` DRIVE «Filter, …» 다섯
+
 ### 🆕⑰ `dropdown.js` (🆕 **108줄** @`f3b6391d2` · 75줄 @`f22cf7027` · 69줄 @`3a8036b74` · 38줄, `0e48f79f` 신설) — 「버튼 아래로 열리고 바깥을 누르면 닫힌다」의 **한 벌**
 
 > 🔴 **«둘째»가 나와서 생긴 파일이다**(상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). 첫째는 Re-translate 드롭다운, 둘째는 필터 칩 펼침. 비슷한 것을 하나 더 그리는 대신 «닫는 방법»을 한 곳에 뒀다.

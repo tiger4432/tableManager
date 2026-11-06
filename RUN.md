@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **그리드 칸 필터 — Pick · Paste list · Condition (여러 값 필터)** — git pull · 화면 새로 고침 (클라만, dist 에 들어 있음)
+>
+> ```
+> 볼 곳    칸 머리 아래 필터 칸의 깔때기 → 판 하나에 탭 셋
+>          Pick       그 칸의 값 목록(다른 칸 필터가 걸린 채로) · 검색 · 체크 · Select all shown · (Blank) = 빈 칸
+>          Paste list 엑셀에서 복사한 열을 붙여 넣기(줄 · 쉼표 · 탭), 중복은 빼고 수를 말함
+>          Condition  예전 필터 그대로 — 조건 둘 · AND/OR
+>          칩 «LOT any of 3», 필터 칸에도 «any of 3» (누르면 판이 열림). 필터 칸에 바로 치는 것은 예전과 같음
+> 답의 뜻  «More than 10,000 values — type to search» = 값이 1 만 넘음, 검색어로 서버에 다시 물음
+>          목록 자리의 빨간 문장 = 서버가 그 칸 값 읽기를 거절한 사유(그대로) — 그 칸은 Condition 으로 거름
+>          Pick 은 판을 열 때마다 한 번 읽음(GET /tables/<표>/data/values)
+> 끄기     없음 (되돌리려면 이 커밋 revert)
+> ```
+>
+> ---
+>
 > ## [11-06] **/admin/indexes 가 인덱스 잠금 뒤에서 안 기다림 — 크기는 카탈로그 추정, 원장은 세계마다 한 번 읽기** — git pull · 런처 재기동(API)
 >
 > ```
