@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **어드민 Overview 의 Indexes 표가 30 초마다 GET /admin/indexes 를 읽지 않음** — git pull · 어드민 새로 고침 (클라만, dist 에 들어 있음)
+>
+> ```
+> 원인     Overview 가 30 초 비트마다 인덱스 목록을 다시 읽었고, 한 번이 ~30 s 걸리면 다음 비트와 겹쳐 서버에 늘 하나가 떠 있었음
+>          (소유자 STALL «32s P /admin/indexes»)
+> 고침     584688d16 — Overview 로 들어올 때 한 번 · 표 옆 Refresh 로 한 번. 읽는 중엔 Refresh 가 «Reading…» 으로 꺼짐(겹침 0)
+>          표 옆에 «Read HH:MM» = 그 목록을 읽은 시각. 맨 위 🔄 Refresh 는 인덱스를 다시 읽지 않음
+> 볼 것    Overview 를 열어 두고 1 분 — STALL 줄의 P 에 /admin/indexes 가 다시 안 뜸
+> 답의 뜻  «Read» 시각이 오래됨 = 그때 읽은 목록. 지금 것이 필요하면 표 옆 Refresh
+>          Refresh 가 오래 «Reading…» = 그 읽기 하나가 느림(서버 쪽 /admin/indexes) — 겹쳐 쌓이지는 않음
+> 끄기     없음 (되돌리려면 이 커밋 revert)
+> ```
+>
+> ---
+>
 > ## [11-06] **화면이 손 안 대도 굳던 것 — 이력 Global 패널의 Table 칸 폭 재기를 프레임에 한 번으로** — git pull · 브라우저 새로 고침 (클라만, dist 에 들어 있음 · 서버 재기동 필요 없음)
 >
 > ```
