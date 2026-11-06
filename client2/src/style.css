@@ -3390,3 +3390,28 @@ body.resizing-active .gallery-seat {
 .formula-pop__remove { margin-right: auto; color: var(--danger); }
 /* A toast's one action (utils.showToast): pressable while the toast lets presses through. */
 .toast-action { pointer-events: auto; flex: 0 0 auto; }
+
+/* VALUE FILTER — a grid column's one filter (value_filter.js): Pick · Paste list · Condition. Its controls are the base
+   layer's (.base-in-grid); these rules lay them out. */
+.value-filter { width: var(--value-filter-w); display: flex; flex-direction: column; background: var(--bg-surface); color: var(--text); font-family: var(--font-body); font-size: var(--fs-button); }
+.value-filter [hidden] { display: none !important; }
+.value-filter__tabs { display: flex; border-bottom: 1px solid var(--border); }
+.value-filter__tab { flex: 1; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-muted); }
+.value-filter__tab.is-on { border-bottom-color: var(--accent); color: var(--text); }
+.value-filter__body { padding: var(--space-3); }
+.value-filter__pane { display: flex; flex-direction: column; gap: var(--space-2); }
+.value-filter__line { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--fs-label); }
+.value-filter__all { display: inline-flex; align-items: center; gap: var(--space-2); }
+.value-filter__picked { color: var(--accent); font-weight: 600; }
+.value-filter__list { max-height: var(--value-filter-list-h); overflow-y: auto; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: var(--space-1) 0; }
+.value-filter__value { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-h-small); padding: 0 var(--space-2); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.value-filter__value:has(input:checked) { background: var(--accent-weak); }
+.value-filter__value.is-blank { font-family: var(--font-body); font-style: italic; color: var(--text-muted); }
+.value-filter__list > .meta, .value-filter__list > .refusal { padding: var(--space-1) var(--space-2); }
+.value-filter__paste { font-family: var(--font-mono); resize: vertical; white-space: pre; }
+.value-filter__cond { display: flex; gap: var(--space-2); }
+.value-filter__cond > * { flex: 1 1 0; min-width: 0; }
+.value-filter__cond > select { flex-grow: 1.4; }
+.value-filter__join { display: flex; gap: var(--space-4); font-size: var(--fs-label); }
+.value-filter__foot { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); }
+.value-floating__input.is-read { cursor: pointer; }

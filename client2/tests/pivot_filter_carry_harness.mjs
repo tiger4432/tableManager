@@ -161,10 +161,10 @@ async function suite(M) {
     const model = f('a');
     const seen = filter ? (() => { filter.init({}); filter.setModel(model); const on = [filter.getModel() === model, filter.isFilterActive(),
       filter.doesFilterPass({ data: { data: {} } })]; filter.setModel(null); return [...on, filter.isFilterActive()]; })() : null;
-    say('H3 in the pivot its filter keeps its model and passes every group row; in the long view, today\'s; keys keep theirs',
-      JSON.stringify(seen) === '[true,true,true,false]' && defOf(longDefs, 'itemid').filter === 'agTextColumnFilter'
-        && defOf(pivotDefs, 'lot').filter === 'agTextColumnFilter',
-      JSON.stringify({ seen, long: defOf(longDefs, 'itemid').filter, lot: defOf(pivotDefs, 'lot').filter }));
+    say('H3 in the pivot its filter keeps its model and passes every group row; in the long view, the column\'s one filter; keys keep theirs',
+      JSON.stringify(seen) === '[true,true,true,false]' && (defOf(longDefs, 'itemid').filter || {}).name === 'ValueFilter'
+        && (defOf(pivotDefs, 'lot').filter || {}).name === 'ValueFilter',
+      JSON.stringify({ seen, long: (defOf(longDefs, 'itemid').filter || {}).name, lot: (defOf(pivotDefs, 'lot').filter || {}).name }));
   }
   {
     const S = M.st.state;
@@ -248,7 +248,7 @@ const MUTANTS = [
   { id: 'X11', what: 'the held filter filters the group rows by their item column', catches: 'H3', file: 'grid_pivot.js',
     from: '  doesFilterPass() { return true; }', to: '  doesFilterPass() { return false; }' },
   { id: 'X12', what: 'the hidden item column keeps today\'s filter in the pivot', catches: 'H3', file: 'grid.js',
-    from: '      filter: col === held ? HeldColumnFilter\n        : filterable', to: '      filter: filterable' },
+    from: 'col === held ? { filter: HeldColumnFilter }', to: 'false ? { filter: HeldColumnFilter }' },
   { id: 'X13', what: 'the hold is not read (the switch\'s own filterChanged reads too)', catches: 'F2', file: 'grid.js',
     from: '  if (!filterReadsHeld && (narrowingParams', to: '  if ((narrowingParams' },
   { id: 'X14', what: 'a second release lets go of another hold', catches: 'F2', file: 'grid.js',

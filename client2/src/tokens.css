@@ -314,6 +314,9 @@
   /* 그림 상자의 «높이 상한». 넘치면 그 상자 «안»에서 스크롤합니다 — 페이지가 안 늘어납니다.
      ⚠️ 값이 아니라 «성질»입니다: 노드가 몇이든 한 화면에서 다음 블록이 보여야 합니다. */
   --graph-max-height: 420px;
+  /* A column filter's width (value_filter.js) and its value list's height: past it the list scrolls inside. */
+  --value-filter-w: 320px;
+  --value-filter-list-h: 220px;
   /* The declaration split's two sides (form D): the text and the form scroll inside this height. */
   --decl-split-h: 72vh;
   /* A menu's rows stop here and scroll inside it (43fc32479). Half the screen: the menu's lines

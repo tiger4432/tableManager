@@ -310,9 +310,10 @@ async function suite(M) {
   realState.currentColumns = [...COLUMNS, 'row_id', 'updated_by'];
   const sysDefs = Object.fromEntries(M.grid.buildColumnDefs().filter((d) => d.field).map((d) => [d.field, d]));
   realState.currentColumns = shownColumns;
-  ok(sysDefs.row_id && sysDefs.row_id.filter === 'agTextColumnFilter' && sysDefs.row_id.floatingFilter === true
+  ok(sysDefs.row_id && (sysDefs.row_id.filter || {}).name === 'ValueFilter' && sysDefs.row_id.filterParams.kind === 'text'
+    && sysDefs.row_id.floatingFilter === true
     && sysDefs.row_id.editable === false,
-    `B4 ROW_ID has the text filter under its head, and stays read-only [${JSON.stringify(sysDefs.row_id && [sysDefs.row_id.filter, sysDefs.row_id.floatingFilter, sysDefs.row_id.editable])}]`);
+    `B4 ROW_ID has the text filter under its head, and stays read-only [${JSON.stringify(sysDefs.row_id && [(sysDefs.row_id.filter || {}).name, sysDefs.row_id.filterParams && sysDefs.row_id.filterParams.kind, sysDefs.row_id.floatingFilter, sysDefs.row_id.editable])}]`);
   const closed = ['created_at', 'updated_at', 'id', 'updated_by'].filter((c) => sysDefs[c]);
   ok(closed.length === 4 && closed.every((c) => sysDefs[c].filter === false && sysDefs[c].floatingFilter === false),
     `B5 ... and the other system columns still have none [${closed.map((c) => `${c}:${sysDefs[c].filter}`).join(' ')}]`);

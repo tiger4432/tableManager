@@ -642,10 +642,14 @@ function setupEventListeners() {
   // The bar can change under an open panel - the status word comes or goes and the bar wraps or unwraps (screen gate,
   // 11-06 at 1280): the open one is placed under its button again.
   const bar = document.querySelector('.app-header');
+  // ... and its buttons: the status word widens its button and moves its neighbour with no change in the bar's size
+  // (screen gate 11-06 at 1024: «WS · DISCONNECTED» left its open panel 92 px off).
   if (bar && typeof ResizeObserver === 'function') {
-    new ResizeObserver(() => {
+    const again = new ResizeObserver(() => {
       for (const [button, panel] of headPanels) if (panel.style.display === 'flex') placeUnder(panel, button);
-    }).observe(bar);
+    });
+    again.observe(bar);
+    for (const [button] of headPanels) again.observe(button);
   }
 
   // History Tabs

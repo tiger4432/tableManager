@@ -853,6 +853,47 @@ CELLS.push({ entry: 'index.html', after: 'right-most column filtered', rule: 'fi
     && decodeURIComponent(e.name).includes('"' + t.col + '"'));
   return asked ? null : 'the grid asked no read filtered by «' + t.col + '»';
 })()` });
+// A column's one filter (lead 11-06 ㄱ): Pick inside the window with values, its controls the base layer's small ones.
+CELLS.push({ entry: 'index.html', after: 'Filter, Pick open', rule: 'filter Pick', at: 'value-filter', expr: `(() => {
+  const f = document.querySelector('.value-filter');
+  if (!f) return 'the filter did not open';
+  const r = f.getBoundingClientRect();
+  if (r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight) return 'the filter reaches past the window: ' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',');
+  const refused = f.querySelector('.refusal');
+  if (refused) return 'the values were refused: ' + refused.textContent;
+  if (!f.querySelectorAll('.value-filter__value').length) return 'Pick lists no value';
+  const apply = [...f.querySelectorAll('button')].find((b) => b.textContent === 'Apply');
+  const h = apply ? getComputedStyle(apply).height : 'none';
+  const want = getComputedStyle(document.documentElement).getPropertyValue('--control-h-small').trim();
+  // within half a pixel: the 3.4 grid's 27.2 lays as 27.1875 on the screen's pixels
+  return Math.abs(parseFloat(h) - parseFloat(want)) < 0.5 ? null : 'its Apply is ' + h + " high, the base layer's small control " + want;
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Filter, two values applied', rule: 'set applied', at: 'filter-chip', expr: `(() => {
+  const chips = [...document.querySelectorAll('.filter-chip-label')].map((n) => n.textContent);
+  if (!chips.includes('SUBJECT_TYPE any of 2')) return 'no «SUBJECT_TYPE any of 2» chip: ' + JSON.stringify(chips);
+  const input = document.querySelector('.ag-floating-filter[col-id="subject_type"] input');
+  if (!input || input.value !== 'any of 2' || !input.readOnly) return 'its floating cell says «' + (input ? input.value : 'none') + '»';
+  const asked = performance.getEntriesByType('resource').some((e) => e.name.includes('/data?') && decodeURIComponent(e.name).includes('"filterType":"set"'));
+  return asked ? null : 'the grid asked no read with the set';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Filter, Paste list', rule: 'paste counted', at: 'value-filter', expr: `(() => {
+  const f = document.querySelector('.value-filter');
+  if (!f) return 'the filter is not open';
+  const said = [(f.querySelector('.value-filter__count') || {}).textContent, (f.querySelector('.value-filter__line .meta') || {}).textContent];
+  return said[0] === '3 values · equals any' && said[1] === '1 duplicate removed' ? null : 'the list says ' + JSON.stringify(said);
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Filter, two conditions', rule: 'second condition', at: 'value-filter', expr: `(() => {
+  const conds = document.querySelectorAll('.value-filter .value-filter__cond');
+  const join = document.querySelector('.value-filter .value-filter__join');
+  if (conds.length !== 2) return conds.length + ' condition rows';
+  return conds[1].getClientRects().length && join && join.getClientRects().length ? null : 'the second condition is not shown once the first is whole';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Filter cleared', rule: 'filter cleared', at: 'ag-floating-filter', expr: `(() => {
+  const chips = [...document.querySelectorAll('.filter-chip-label')].map((n) => n.textContent);
+  if (chips.some((t) => t.startsWith('SUBJECT_TYPE'))) return 'its chip is still on: ' + JSON.stringify(chips);
+  const input = document.querySelector('.ag-floating-filter[col-id="subject_type"] input');
+  return input && input.value === '' && !input.readOnly ? null : 'its floating cell says «' + (input ? input.value : 'none') + '», typeable ' + Boolean(input && !input.readOnly);
+})()` });
 // The tooltip says a time as the grid does - no ISO «T … Z» (lead 10-14).
 CELLS.push({ entry: 'testbed.html', after: 'tooltip over a cell', rule: 'time as shown', at: 'sf-tip', expr: `(() => {
   const tip = [...document.querySelectorAll('.sf-tip')].find((x) => x.getClientRects().length);
@@ -2445,6 +2486,14 @@ const openAgain = async (c, log) => {
   await settle(c, log);
   await evaluate(c, `(${screensLib})(${TOL})`);
 };
+// A column's one filter opened from its floating cell's button, the column rolled into view from the left first.
+const VALUE_FILTER_OPEN = (col) => `(async () => {
+  const find = () => document.querySelector('.ag-floating-filter[col-id=${JSON.stringify(col)}] .ag-floating-filter-button-button');
+  const v = document.querySelector('.ag-body-horizontal-scroll-viewport');
+  if (v) { v.scrollLeft = 0; v.dispatchEvent(new Event('scroll')); await new Promise((r) => setTimeout(r, 100)); }
+  for (let i = 0; v && i < 40 && !find() && v.scrollLeft + v.clientWidth < v.scrollWidth; i += 1) {
+    v.scrollLeft += v.clientWidth / 2; v.dispatchEvent(new Event('scroll')); await new Promise((r) => setTimeout(r, 100)); }
+  const b = find(); if (b) b.click(); return Boolean(b); })()`;
 const DRIVE = {
   // The read progress counted (owner 10-23): the page's next beat reads /tables with its sources.
   'file_ingestion.html': [
@@ -2785,7 +2834,8 @@ const DRIVE = {
     }],
     // The page's own freeze (lead 11-06 ㄱ): a task of 1.2 s that no work marked - said under «Last UI stall» as «UI 1.2s ?».
     ['status, the page froze', async (c) => {
-      await evaluate(c, "(() => { const end = performance.now() + 1200; while (performance.now() < end) {} return true; })()");
+      // in a task of the page's own: a loop run by the evaluate itself is not reported as a long task (11-06, both builds)
+      await evaluate(c, "(() => { setTimeout(() => { const end = performance.now() + 1200; while (performance.now() < end) {} }, 0); return true; })()");
       await until(c, UI_STALL_SAID);
     }],
     // The history panel folded to a strip, then opened again at the width it had (owner 11-06).
@@ -3177,6 +3227,48 @@ const DRIVE = {
         const box = [...document.querySelectorAll('.ag-floating-filter input')].find((i) => i.closest('[col-id]') && i.closest('[col-id]').getAttribute('col-id') === t.col);
         if (!box) return false; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(box, '');
         box.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
+    // A column's one filter (lead 11-06 ㄱ): the filters cleared, subject_type's Pick opened and read, two values applied
+    // as a set, then the Paste list and two conditions, then Clear.
+    ['Filter, Pick open', async (c, log) => {
+      await evaluate(c, `(() => { const b = document.getElementById('filter-clear-all');
+        if (b && b.getClientRects().length) b.click(); else document.querySelectorAll('.filter-chip .clear-banner-btn').forEach((x) => x.click());
+        return true; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+      await evaluate(c, VALUE_FILTER_OPEN('subject_type'));
+      await until(c, "Boolean(document.querySelector('.value-filter .value-filter__value, .value-filter .refusal'))");
+    }],
+    ['Filter, two values applied', async (c, log) => {
+      await evaluate(c, `(() => { const boxes = [...document.querySelectorAll('.value-filter .value-filter__value input')].slice(0, 2);
+        boxes.forEach((b) => b.click());
+        const apply = [...document.querySelectorAll('.value-filter button')].find((b) => b.textContent === 'Apply');
+        if (apply) apply.click(); return boxes.length; })()`);
+      await sleep(900);
+      await settle(c, log);
+      await until(c, GRID_LOADED);
+    }],
+    ['Filter, Paste list', async (c) => {
+      await evaluate(c, VALUE_FILTER_OPEN('subject_type'));
+      await until(c, "Boolean(document.querySelector('.value-filter [data-tab=\"paste\"]'))");
+      await evaluate(c, `(() => { document.querySelector('.value-filter [data-tab="paste"]').click();
+        const t = document.querySelector('.value-filter textarea');
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'die\\nwafer\\ndie\\nlot');
+        t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    }],
+    ['Filter, two conditions', (c) => evaluate(c, `(() => { document.querySelector('.value-filter [data-tab="condition"]').click();
+      const conds = document.querySelectorAll('.value-filter .value-filter__cond');
+      const set = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+      set(conds[0].querySelector('select'), 'startsWith'); set(conds[0].querySelector('.value-filter__from'), 'd');
+      document.querySelector('.value-filter input[value="OR"]').click();
+      set(conds[1].querySelector('select'), 'endsWith'); set(conds[1].querySelector('.value-filter__from'), 'r');
+      return true; })()`)],
+    ['Filter cleared', async (c, log) => {
+      await evaluate(c, "(() => { const b = [...document.querySelectorAll('.value-filter button')].find((x) => x.textContent === 'Clear'); if (b) b.click(); return Boolean(b); })()");
       await sleep(900);
       await settle(c, log);
       await until(c, GRID_LOADED);
@@ -3759,6 +3851,12 @@ const MUTANTS = [
   // status_dot_harness's - here the socket decides whether WS is offline first.)
   { name: 'the page\'s own freeze not watched', entry: 'index.html', rule: 'head panels', at: 'status-panel',
     file: 'src/main.js', edits: [["  if (status) new UiStallWatch({ view: window, onStall: (stall) => status.setUiStall(stall) });\n", '']] },
+  { name: "the filter's controls not the base layer's", entry: 'index.html', rule: 'filter Pick', at: 'value-filter',
+    file: 'src/value_filter.js', edits: [["this.root = this.el('div', 'value-filter base-in-grid');", "this.root = this.el('div', 'value-filter');"]] },
+  { name: "a set's chip without its words", entry: 'index.html', rule: 'set applied', at: 'filter-chip',
+    file: 'src/grid.js', edits: [["model?.filterType === 'set' ? setWords(model) : ", '']] },
+  { name: 'an open head panel left where its button was', entry: 'index.html', rule: 'panel', at: '',
+    file: 'src/main.js', edits: [['    for (const [button] of headPanels) again.observe(button);\n', '']] },
   { name: 'an open head panel left where the bar was', entry: 'index.html', rule: 'panel', at: '',
     file: 'src/main.js', edits: [["      for (const [button, panel] of headPanels) if (panel.style.display === 'flex') placeUnder(panel, button);\n", '']] },
   { name: 'the history panel fold that does not fold', entry: 'index.html', rule: 'panel folds', at: 'history-sidebar',

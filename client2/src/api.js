@@ -539,6 +539,22 @@ function narrowingParams() {
 export const RECOUNT_ASK_MS = 3000;
 export const RECOUNT_ASK_FOR_MS = 120000;
 
+/** A column's values for its filter's Pick (A ea92380da): the grid's narrowing whole - the server drops the column's own
+ *  filter - and `search`. -> {values, more} or {refused: the server's sentence}. */
+export async function readColumnValues(column, search = '') {
+  const params = narrowingParams();
+  params.set('column', column);
+  if (search) params.set('search', search);
+  try {
+    const res = await gridFetch(`${API_BASE}/tables/${state.currentTable}/data/values?${params}`);
+    if (!res.ok) return { refused: await refusalText(res, 'Values read failed') };
+    const body = await res.json();
+    return { values: Array.isArray(body.values) ? body.values : [], more: body.more === true };
+  } catch (err) {
+    return { refused: `Values read failed (${err && err.message ? err.message : 'no answer'})` };
+  }
+}
+
 async function fillMatchCount(params, table, since = Date.now()) {
   const mine = ++countGeneration;
   const world = state.gridWorld;

@@ -486,7 +486,9 @@ const defOf = (defs, field) => defs.find(d => d.field === field);
 // reaching through it must report a comparison rather than throw. A mutant that removes the
 // options should be caught by a named check, not by an exception whose message says nothing
 // about which decision broke.
-const optsOf = def => (def && def.filterParams && def.filterParams.filterOptions) || null;
+const optsOf = def => (def && def.filterParams && def.filterParams.options) || null;
+// The column's one filter (value_filter.js, lead 11-06): `value:<kind>` - its kind is what AG-Grid's filter name said.
+const filterOf = def => (def && def.filter && def.filter.name === 'ValueFilter' ? `value:${def.filterParams.kind}` : def && def.filter);
 const getVal = (def, data) => def.valueGetter({ data, node: { rowIndex: 0 } });
 
 async function suite(sources) {
@@ -587,13 +589,13 @@ async function suite(sources) {
   // server now resolves an announced column through `resolved_expression` and passes it as
   // `col_expr_override`, so a filter on one of these names genuinely narrows the query.
   check('3h announced virtual columns are FILTERABLE, as text',
-    [defOf(defs, 'wafer_id').filter, defOf(defs, 'yield_pct').filter],
-    ['agTextColumnFilter', 'agTextColumnFilter']);
+    [filterOf(defOf(defs, 'wafer_id')), filterOf(defOf(defs, 'yield_pct'))],
+    ['value:text', 'value:text']);
   // `yield_pct` is declared `number`. It still gets the TEXT filter, because the server
   // documents that an override "is always treated as text" and casts it to String — a
   // numeric filter would send `greaterThan`/`inRange` and get lexical string comparison back.
-  check('3h2 a number-declared virtual column gets text, NOT agNumberColumnFilter',
-    defOf(defs, 'yield_pct').filter !== 'agNumberColumnFilter', true);
+  check('3h2 a number-declared virtual column gets text, NOT a number filter',
+    filterOf(defOf(defs, 'yield_pct')) !== 'value:number', true);
   check('3h3 blank/notBlank are gone from an announced virtual column',
     [optsOf(defOf(defs, 'wafer_id')), optsOf(defOf(defs, 'yield_pct'))], [TRIMMED, TRIMMED]);
 
@@ -601,18 +603,18 @@ async function suite(sources) {
   // An unannounced stored column keeps AG-Grid's full default option list, which includes
   // Blank / Not blank — there it is a real question with a real answer.
   check('3i unannounced stored columns keep the filters they had',
-    [defOf(defs, 'bond_count').filter, defOf(defs, 'pkg_id').filter],
-    ['agNumberColumnFilter', 'agTextColumnFilter']);
-  check('3i2 and keep the FULL option set (no filterParams -> AG-Grid defaults)',
-    [defOf(defs, 'bond_count').filterParams, defOf(defs, 'pkg_id').filterParams],
-    [undefined, undefined]);
+    [filterOf(defOf(defs, 'bond_count')), filterOf(defOf(defs, 'pkg_id'))],
+    ['value:number', 'value:text']);
+  check('3i2 and keep the FULL option set (no options -> AG-Grid\'s default lists)',
+    [optsOf(defOf(defs, 'bond_count')), optsOf(defOf(defs, 'pkg_id'))],
+    [null, null]);
 
   // [3j-3k] THE COLLIDE KIND. These are STORED columns: `isVirtualColumn` says no, they are
   // absent from `virtual_columns` entirely, and the ordinary column loop builds them. Only
   // the filter changes — a client that keys this off `isVirtualColumn` misses them silently.
   check('3j a collide column gets the trimmed text filter',
-    [defOf(defs, 'core_lot').filter, optsOf(defOf(defs, 'core_lot'))],
-    ['agTextColumnFilter', TRIMMED]);
+    [filterOf(defOf(defs, 'core_lot')), optsOf(defOf(defs, 'core_lot'))],
+    ['value:text', TRIMMED]);
   check('3j2 and is NOT in virtual_columns, so isVirtualColumn cannot reach it',
     SCHEMA.virtual_columns.some(v => v.name === 'core_lot'), false);
   // 🔴 The announcement is a UI marker, never a write guard. A collide column's value really
@@ -620,8 +622,8 @@ async function suite(sources) {
   check('3k a collide column stays EDITABLE',
     [defOf(defs, 'core_lot').editable, defOf(defs, 'core_slot').editable], [true, true]);
   check('3k2 a number collide column keeps the number column`s CELL EDITOR while its filter is text',
-    [defOf(defs, 'core_slot').cellEditor, defOf(defs, 'core_slot').filter],
-    ['agTextCellEditor', 'agTextColumnFilter']);
+    [defOf(defs, 'core_slot').cellEditor, filterOf(defOf(defs, 'core_slot'))],
+    ['agTextCellEditor', 'value:text']);
 
   // [3l] OLD SERVER. `virtual_columns` present, `join_resolved_columns` absent — a
   // pre-change server, which drops the condition and answers with an UNFILTERED page. The
@@ -632,8 +634,8 @@ async function suite(sources) {
   check('3l no announcement -> virtual columns go back to no filter at all',
     [defOf(oldDefs, 'wafer_id').filter, defOf(oldDefs, 'yield_pct').filter], [false, false]);
   check('3l2 and a stored column is untouched by the absence',
-    [defOf(oldDefs, 'core_lot').filter, defOf(oldDefs, 'core_lot').filterParams],
-    ['agTextColumnFilter', undefined]);
+    [filterOf(defOf(oldDefs, 'core_lot')), optsOf(defOf(oldDefs, 'core_lot'))],
+    ['value:text', null]);
 
   // [3m-3n] THE LABEL IS PER DECLARATION. A site that renames it in config must see the new
   // name on screen, so nothing may hardcode '미상' or reuse the first entry's label.
@@ -657,9 +659,9 @@ async function suite(sources) {
     join_resolved_columns: [{ name: 'wafer_id', kind: 'virtual_only' }] };
   const noLabelDefs = runBuildColumnDefs(sources, noLabel);
   check('3n2 a label-less entry still filters, and says nothing rather than "undefined"',
-    [defOf(noLabelDefs, 'wafer_id').filter,
+    [filterOf(defOf(noLabelDefs, 'wafer_id')),
      tipOf(noLabelDefs, 'wafer_id').includes('undefined')],
-    ['agTextColumnFilter', false]);
+    ['value:text', false]);
 
   // [4] THE VALUE DOMAIN: a `number` virtual column carrying the unresolved label
   const yieldDef = defOf(defs, 'yield_pct');
@@ -801,17 +803,17 @@ const DEFECTS = [
       `  if (val !== null && val !== undefined) {`, 'empty-guard')],
   ['fall back to the default sort comparator', 'grid', (t) => sub(t, `      ...(isNumeric ? {`, `      ...(false ? {`, 'comparator')],
   // ── the 2026-07-31 round: which columns lose blank/notBlank, and on whose say-so ──────
-  ['leave blank/notBlank on a join-resolved column', 'grid', (t) => sub(t, `    filterParams: { filterOptions: JOIN_RESOLVED_FILTER_OPTIONS },\n`, ``,
+  ['leave blank/notBlank on a join-resolved column', 'grid', (t) => sub(t, `    ...valueFilterDef('text', JOIN_RESOLVED_FILTER_OPTIONS),\n`, `    ...valueFilterDef('text'),\n`,
       'keep-blank')],
   // Both kinds, because the numeric hazard is identical on each: the server casts the
   // override to String, so a numeric predicate would be answered lexically.
   ['use a number filter on a numeric join-resolved column', 'grid', (t) => sub(sub(t,
       `      ...filterDef,\n      resizable: true,`,
-      `      ...filterDef,\n      ...(isNumeric ? { filter: 'agNumberColumnFilter' } : {}),\n      resizable: true,`,
+      `      ...filterDef,\n      ...(isNumeric ? { filterParams: { ...filterDef.filterParams, kind: 'number' } } : {}),\n      resizable: true,`,
       'number-filter-virtual'),
       `      Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));`,
       `      Object.assign(colDef, joinResolvedFilterDef(resolvedEntry, headerLabel));\n`
-      + `      if (colType === 'number') colDef.filter = 'agNumberColumnFilter';`,
+      + `      if (colType === 'number') colDef.filterParams = { ...colDef.filterParams, kind: 'number' };`,
       'number-filter-stored')],
   // The exact error the brief warned about: `isVirtualColumn` cannot see a collide column.
   ['key the filter off isVirtualColumn instead of the announcement', 'grid', (t) => sub(t, `    const resolvedEntry = joinResolvedColumn(col);\n\n    const colDef = {`,

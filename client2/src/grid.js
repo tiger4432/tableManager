@@ -12,7 +12,8 @@ import { narrowingParams } from './narrowing.js';
 // 🔴 닫는 방법은 Re-translate 드롭다운과 «같은 한 벌»입니다. 둘째가 나왔을 때 두 번째를
 //    그리지 않는 것이 이 저장소의 상설입니다.
 import { watchForDismiss, placeUnder } from './dropdown.js';
-import { handleCellEdit, fetchData } from './api.js';
+import { handleCellEdit, fetchData, readColumnValues } from './api.js';
+import { ValueFilter, ValueFloatingFilter, setWords } from './value_filter.js';
 import { loadHistory } from './timeline.js';
 import {
   isCellInRange,
@@ -464,7 +465,7 @@ function filterChipText(colId, model) {
   // `isVirtualColumn`: a `collide` column is stored, carries no 🔗 in its header, and its
   // filter still runs against the joined COALESCE rather than against storage.
   const mark = joinResolvedColumn(colId) ? '⇲' : '';
-  const body = conditions.map(clause).join(` ${model?.operator || 'AND'} `);
+  const body = model?.filterType === 'set' ? setWords(model) : conditions.map(clause).join(` ${model?.operator || 'AND'} `);
   return `${colId.toUpperCase()}${mark} ${body}`.trim();
 }
 
@@ -853,9 +854,18 @@ function joinResolvedFilterDef(entry, baseTooltip) {
   // the header tooltip that already exists on both paths rather than adding any control.
   const hint = label ? `\nUnresolved rows: filter Equals '${label}'` : '';
   return {
-    filter: 'agTextColumnFilter',
-    filterParams: { filterOptions: JOIN_RESOLVED_FILTER_OPTIONS },
+    ...valueFilterDef('text', JOIN_RESOLVED_FILTER_OPTIONS),
     headerTooltip: `${baseTooltip}${hint}`
+  };
+}
+
+/** A column's one filter (lead 11-06 ㄱ: one filter door per column, no exception) - Pick · Paste list · Condition, a
+ *  `kind` of 'text' or 'number', the Condition's `options` and the floating cell's first type. */
+function valueFilterDef(kind, options = null, defaultOption = null) {
+  return {
+    filter: ValueFilter,
+    floatingFilterComponent: ValueFloatingFilter,
+    filterParams: { kind, ...(options ? { options } : {}), ...(defaultOption ? { defaultOption } : {}), readValues: readColumnValues },
   };
 }
 
@@ -967,10 +977,9 @@ export function buildColumnDefs() {
       // A system column is not editable and, except ROW_ID, not filterable either.
       // `filter: false` is what AG-Grid reads to skip the floating row, and
       // `floatingFilter: false` says the same thing where a reader looks for it.
-      filter: col === held ? HeldColumnFilter
-        : filterable ? (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter') : false,
-      ...(filterable && colType !== 'number' && indexed.includes('equal') && !indexed.includes('search')
-        ? { filterParams: { defaultOption: 'equals' } } : {}),
+      ...(col === held ? { filter: HeldColumnFilter }
+        : filterable ? valueFilterDef(colType === 'number' ? 'number' : 'text', null,
+          colType !== 'number' && indexed.includes('equal') && !indexed.includes('search') ? 'equals' : null) : { filter: false }),
       floatingFilter: filterable,
       headerClass: [fillOrdinal ? 'fill-target-header' : '', ...indexed.map((kind) => `idx-${kind}`)]
         .filter(Boolean).join(' ') || undefined,
