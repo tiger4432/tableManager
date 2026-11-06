@@ -59,20 +59,21 @@
 >
 > ```
 > 무엇     POST /api/ledger/subgraph 의 reach 본문 — 마킹(표 A · 칸 · 칸에 보인 값들) -> 표 B 에서 닿은 row id 와 그 수
->          걷기의 조회기로 걷고 그림 상한은 안 지남. 상한은 걸음마다 원자 10,000 — 끊긴 걸음은 읽은 만큼으로 다음 걸음을 감
->          박스 저장 1,000 값: 한 칸 2.7 s · 두 칸 8.4 ~ 9.8 s (목표 5 s 를 넘음 — 둘째 걸음이 첫 걸음이 넘긴 웨이퍼 3,956 개를 읽음)
+>          걷기의 조회기로 걷고 그림 상한은 안 지남. 상한은 걸음마다 원자 10,000 — 끊긴 걸음은 읽은 원자의 먼 끝을
+>          최신순으로 1,000 개까지 넘겨 다음 걸음을 감. 박스 저장 1,000 값: 한 칸 2.7 s · 두 칸 4.5 s
 > 돌릴 것  curl -X POST http://<서버>/api/ledger/subgraph -H "Content-Type: application/json" -d
 >          '{"reach":{"table":"lot_slot_wafer","column":"wafer","values":["<웨이퍼>"],"type":"wafer",
 >            "follow":["processed_with"],"to":"wafer_process"}}'    (?engine=virtual 을 안 붙이면 stored)
 > 답의 뜻  rows             표 B 의 row id — 걸음이 읽은 원자 «전부»의 행
 >          count.total      rows 의 수.  capped = true 면 어느 걸음이 상한에서 끊김 -> 화면은 «N+»
+>          capped_steps     끊긴 걸음 [{step, predicate}] — 화면이 «어디서 멈췄나»를 말하는 자리
 >          seeds            표 A 의 행들이 이름 댄 type 노드 수 — 0 이면 그 칸이 그 type 을 안 짓거나 번역이 안 됨
 >          left_out         not in the table = 표 A 에 없는 값 수 · names no <type> = 노드를 안 짓는 행 수 ·
 >                           a view = 그 표는 row_id 가 없어 닿은 행을 말할 수 없음(읽는 소스 이름)
 >          422              reach_not_spelled · node_type_not_declared · predicate_not_declared = 본문을 고침
->          403              그 사람이 표 A 나 표 B 를 못 읽음(access.read) · hidden: n = 걸음에서 뺀 숨긴 표 수
+>          403              그 사람이 표 A 나 표 B 를 못 읽음(access.read, 그리드 문과 같은 문장) · hidden: n = 걸음에서 뺀 숨긴 표 수
 > 끄기     없음 — 새 라우트, 화면이 아직 안 부름
-> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k reach_is_the_rows  -> 12 passed
+> 같은 답  server 폴더에서 python scripts/run_pg_tests.py -k reach_is_the_rows  -> 14 passed
 > ```
 >
 > ---

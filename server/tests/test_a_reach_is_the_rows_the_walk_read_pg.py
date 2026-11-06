@@ -111,17 +111,32 @@ def test_the_walk_route_answers_a_reach_and_refuses_an_undeclared_name(world):
 
 
 @pytest.mark.parametrize("hidden", ["wafer_process", "lot_slot_wafer"], ids=["table B", "table A"])
-def test_a_table_the_reader_may_not_read_is_refused(world, hidden):
+def test_a_table_the_reader_may_not_read_is_refused(world, hidden, monkeypatch):
     """`hidden` - the tables `access.hidden_tables` says this reader may not read - refuses the reach as a door does."""
     from fastapi import HTTPException
+
+    from types import SimpleNamespace
+
+    from starlette.requests import Request
+
+    from admin import access
 
     _board(world)
     with pytest.raises(HTTPException) as refused:
         trace_router.evidence_subgraph(
             node_id=None, reach={**WAFERS, "values": ["W1"]}, engine="stored", db=world["db"], world=None,
-            hidden=(hidden,), follow=None, collect=None, expand=None, seed_type=None, group_by=None, measure=None,
-            since=None, until=None, around=None, earlier=None, later=None, positive=None, negative=None, resume=None)
-    assert refused.value.status_code == 403 and hidden in refused.value.detail
+            hidden=(hidden,), reader="kim", follow=None, collect=None, expand=None, seed_type=None, group_by=None,
+            measure=None, since=None, until=None, around=None, earlier=None, later=None, positive=None, negative=None,
+            resume=None)
+    assert refused.value.status_code == 403
+    # the grid door's sentence for the same reader and table - a refusal sentence is a door too (lead 11-07)
+    grid = Request({"type": "http", "method": "GET", "path": "/tables/%s/data" % hidden, "query_string": b"",
+                    "headers": [], "route": SimpleNamespace(path="/tables/{table_name}/data"),
+                    "path_params": {"table_name": hidden}, "state": {"sso_user": "kim"}})
+    monkeypatch.setattr(access, "may", lambda user, table, what, row=None: table != hidden)
+    with pytest.raises(HTTPException) as door:
+        access.table_door(grid)
+    assert refused.value.detail == door.value.detail and "kim" in door.value.detail
 
 
 def test_a_hidden_middle_table_gives_none_of_its_atoms(world, monkeypatch):
@@ -174,7 +189,8 @@ def test_the_cap_is_said(world, monkeypatch):
     monkeypatch.setattr(trace_router, "REACH_ATOM_CAP", 1)
     for engine in ENGINES:
         said = _reach(world, engine, values=["W1", "W2"])
-        assert said["count"] == {"total": 1, "capped": True, "cap": 1, "counted_at": said["count"]["counted_at"]}
+        assert said["count"] == {"total": 1, "capped": True, "cap": 1, "counted_at": said["count"]["counted_at"],
+                                 "capped_steps": [{"step": 1, "predicate": "processed_with"}]}
         assert len(said["rows"]) == 1, engine
 
 
@@ -186,7 +202,22 @@ def test_a_cut_step_goes_on_from_what_it_read(world, monkeypatch):
     for engine in ENGINES:
         said = _reach(world, engine, **{**LOTS, "values": ["L1"]})
         assert said["count"]["capped"] is True and said["count"]["total"] == 1 and said["seeds"] == 2, said
+        assert said["count"]["capped_steps"][0] == {"step": 1, "predicate": "has_wafer"}, said
         assert set(said["rows"]) <= _expected(world, ("W1", "W2"))[1], engine
+
+
+def test_a_cut_step_passes_on_its_newest_far_ends_up_to_the_frontier_cap(world, monkeypatch):
+    """Lots L1 · L2 (three slots) at two atoms a step: the slot step is cut at two wafers; at a frontier of one, the
+    process step walks from the newest one alone - one process row, where both wafers give two."""
+    _board(world)
+    monkeypatch.setattr(trace_router, "REACH_ATOM_CAP", 2)
+    for engine in ENGINES:
+        both = _reach(world, engine, **{**LOTS, "values": ["L1", "L2"]})
+        assert both["count"]["total"] == 2 and both["count"]["capped_steps"] == [{"step": 1, "predicate": "has_wafer"}]
+        monkeypatch.setattr(trace_router, "REACH_FRONTIER_CAP", 1)
+        one = _reach(world, engine, **{**LOTS, "values": ["L1", "L2"]})
+        monkeypatch.setattr(trace_router, "REACH_FRONTIER_CAP", 1000)
+        assert one["count"]["total"] == 1 and set(one["rows"]) < set(both["rows"]), (engine, one, both)
 
 
 def test_an_empty_marking_is_zero_rows_and_reads_nothing(world, monkeypatch):

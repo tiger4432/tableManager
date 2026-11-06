@@ -258,6 +258,7 @@ def evidence_subgraph(
                      "nothing stored - the answer's `engine` names the sources it leaves out and the key columns "
                      "no index serves («scans»)")),
     hidden: tuple = Depends(access.hidden_tables),
+    reader: str | None = Depends(access.person),
     reach: dict | None = Body(
         None, embed=True,
         description=("{table, column, values, type, follow, to}: the rows of `to` a marking reaches - the values "
@@ -280,7 +281,7 @@ def evidence_subgraph(
             "reason": "format_unknown", "argument": "format", "value": response_format,
             "message": f"Unknown format: {response_format} - use json or rows"})
     if isinstance(reach, dict):
-        return _reached(db, reach, world, engine, hidden)
+        return _reached(db, reach, world, engine, hidden, reader)
     # 🔴 AN UNDECLARED PREDICATE IS REFUSED, NOT ANSWERED WITH AN EMPTY GRAPH. A filter that
     # can never match returns exactly what "there is nothing here" returns, and the caller
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
@@ -933,8 +934,12 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
 
 #: The atoms one step of a reach reads at most (lead 11-06: one value, measured on the box - 1,000 wafers, stored, the
 #: spec 5 s: at 10,000 atoms 2.56 ~ 4.51 s; at 15,000 2.95 ~ 5.01 s; at 20,000 3.4 ~ 5.07 s). A step it cuts says
-#: `capped` and goes on from what it read (lead 11-07: «N+», never «0+»).
+#: `capped` and goes on from what it read (lead 11-07: «N+», never «0+») - REACH_FRONTIER_CAP of its far ends.
 REACH_ATOM_CAP = 10000
+#: The far-end nodes a cut step passes on at most, the newest read first (lead 11-07: measured on the box - lots to their
+#: processes in two steps, 1,000 values, stored, the spec 5 s: 500 nodes 4.04 s, 1,000 4.47 / 4.49 s, 1,500 5.14 s,
+#: 2,000 5.82 s).
+REACH_FRONTIER_CAP = 1000
 
 
 def reach(connection, *, table, column, values, type, follow, to, world=None, engine="stored", hidden=()):
@@ -993,30 +998,32 @@ def reach(connection, *, table, column, values, type, follow, to, world=None, en
     said["seeds"] = len(frontier)
     frontier = [(kind, json.loads(keys)) for kind, keys in frontier]
     read = []
-    for predicate in follow or ():
+    for step, predicate in enumerate(follow or (), 1):
         if not frontier:
             break
         atoms, cut = lookup.claims_for_entities(frontier, "both", REACH_ATOM_CAP, follow=[predicate])
         read.extend(atoms)
         if cut:
             said["count"]["capped"] = True
+            said["count"].setdefault("capped_steps", []).append({"step": step, "predicate": predicate})
         near = {(kind, json.dumps(keys, sort_keys=True)) for kind, keys in frontier}
-        far = set()
+        far = {}                                            # in the read's order, newest first - what a cut keeps
         for atom in atoms:
             subject = (atom.subject_type, json.dumps(atom.subject_keys, sort_keys=True))
             if subject not in near:
-                far.add(subject)
+                far[subject] = None
             elif atom.object_kind == "entity_ref":
-                far.add((atom.object_payload.get("type"), json.dumps(atom.object_payload.get("keys"), sort_keys=True)))
-        frontier = [(kind, json.loads(keys)) for kind, keys in sorted(far - near)]
+                far[(atom.object_payload.get("type"), json.dumps(atom.object_payload.get("keys"), sort_keys=True))] = None
+        frontier = [(kind, json.loads(keys)) for kind, keys in far if (kind, keys) not in near]
+        frontier = frontier[:REACH_FRONTIER_CAP] if cut else frontier
     said["rows"] = sorted(lookup.rows_of(read, to)) if read and to not in views else []
     said["count"].update(total=len(said["rows"]), counted_at=datetime.now(timezone.utc).isoformat())
     return said
 
 
-def _reached(db, asked, world, engine, hidden=()):
+def _reached(db, asked, world, engine, hidden=(), reader=None):
     """/subgraph's `reach` body answered (`reach`) - its type and predicates declared or refused by name, a table the
-    reader may not read (`hidden`, `access.hidden_tables`) refused as its door refuses it."""
+    `reader` may not read (`hidden`, `access.hidden_tables`) refused in its door's sentence."""
     missing = [name for name in ("table", "column", "values", "type", "follow", "to") if name not in asked]
     if missing or not isinstance(asked.get("values"), list) or not isinstance(asked.get("follow"), list):
         raise HTTPException(status_code=422, detail={
@@ -1024,7 +1031,7 @@ def _reached(db, asked, world, engine, hidden=()):
             "message": "reach takes {table, column, values: [...], type, follow: [...], to}"})
     for table in (asked["table"], asked["to"]):
         if isinstance(hidden, (tuple, list)) and table in hidden:
-            access.refuse("this account", table, access.READ)
+            access.refuse(reader, table, access.READ)
     (kind,) = _declared_or_refused([asked["type"]], _collectable_types(world), reason="node_type_not_declared",
                                    what="type", world=world, argument="reach.type")
     follow = _declared_or_refused(list(asked["follow"]), _followable_predicates(world),

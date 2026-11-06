@@ -10,6 +10,7 @@ Sign-in off, or a caller that is not a signed-in person (a worker on its token):
 Names only (owner 11-06 ①: groups are not kept); a group list would join `_names` below.
 """
 from fastapi import HTTPException, Request
+from starlette.requests import HTTPConnection
 
 from admin import sso
 from runtime.offloop_json import OffLoopJSONRoute
@@ -60,8 +61,9 @@ def may(user, table, what, row=None):
     return _on(names, edit.get("allow"))
 
 
-def person(connection):
-    """The signed-in name on a request or socket, None when nobody is (sign-in off, a worker's token)."""
+def person(connection: HTTPConnection):
+    """The signed-in name on a request or socket, None when nobody is (sign-in off, a worker's token) - also a route's
+    dependency, resolved in the API process (the walk's refusal sentence names its reader)."""
     return getattr(getattr(connection, "state", None), "sso_user", None)
 
 
