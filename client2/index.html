@@ -48,55 +48,6 @@
                  화면이 지을 문구가 없습니다 — 비어 있으면 [hidden] 입니다. -->
             <span id="table-kind" class="table-kind-badge" hidden></span>
           </div>
-          <div class="control-group glass-btn-group">
-            <button
-              id="refresh-grid-btn"
-              class="glass-btn"
-              title="Refresh Grid Data"
-            >
-              🔄 Refresh
-            </button>
-            <button id="add-row-btn" class="glass-btn" title="Add Row">
-              ➕ Row
-            </button>
-            <button
-              id="delete-row-btn"
-              class="glass-btn hover-danger"
-              title="Delete Selected Rows"
-            >
-              🗑️ Row
-            </button>
-            <button
-              id="folder-upload-btn"
-              class="glass-btn"
-              title="Every file in the chosen folder is ingested"
-            >
-              📁 Upload folder
-            </button>
-            <button
-              id="desktop-download-btn"
-              class="glass-btn"
-              title="Desktop client .zip · unzip and run the executable inside"
-            >
-              💻 Desktop
-            </button>
-            <button
-              id="graph-sync-btn"
-              class="glass-btn"
-              style="
-                display: none;
-                background: var(--accent-weak);
-                border-color: var(--accent);
-                color: var(--accent);
-                font-weight: bold;
-              "
-            >
-              ⚡ Graph Sync
-            </button>
-            <!-- 다시 돌리는 버튼 둘. 선택은 그리드에서 일어나므로 우클릭이 아니라
-                 «배너»입니다 -- 선택 상태를 보고 활성/비활성이 됩니다 (소유자 지적 두 번). -->
-            <span id="redo-banner-host"></span>
-          </div>
           <!-- Mockup 2b: active filters live IN the header bar, taking the free space
                between the toolbar and the unsaved-changes badges. They are not a strip
                above the grid — the grid starts at its own header row. -->
@@ -132,47 +83,64 @@
               Clear all
             </button>
           </div>
-          <div
-            class="log-indicator-area"
-            style="display: flex; align-items: center; gap: 8px"
-          >
-            <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
-            <!-- Mockup 2b joins these three into ONE control: the count, the commit and
-                 the abandon are one decision, and three loose buttons read as three. -->
-            <span class="tx-action-group">
-              <!-- Dynamic Unsaved Tx State Indicator -->
-              <span
-                id="tx-pending-badge"
-                class="glass-log-badge"
-                style="
-                  display: none;
-                  background: var(--warning-weak);
-                  border-color: var(--warning);
-                  color: var(--warning);
-                  font-weight: bold;
-                "
-                >⚡ Unsaved: 0</span
-              >
-              <button
-                id="tx-apply-btn"
-                class="glass-btn success-glow"
-                style="
-                  display: none;
-                  font-weight: bold;
-                                "
-              >
-                Apply
-              </button>
-              <button
-                id="tx-discard-btn"
-                class="glass-btn hover-danger"
-                style="
-                  display: none;
-                                "
-              >
-                Discard
-              </button>
-            </span>
+          <!-- Mockup 2b joins these three into ONE control: the count, the commit and
+               the abandon are one decision, and three loose buttons read as three.
+               Shown only while edits are staged (mockup v3, lead 11-06). -->
+          <span class="tx-action-group">
+            <!-- Dynamic Unsaved Tx State Indicator -->
+            <span
+              id="tx-pending-badge"
+              class="glass-log-badge"
+              style="
+                display: none;
+                background: var(--warning-weak);
+                border-color: var(--warning);
+                color: var(--warning);
+                font-weight: bold;
+              "
+              >⚡ Unsaved: 0</span
+            >
+            <button
+              id="tx-apply-btn"
+              class="glass-btn success-glow"
+              style="
+                display: none;
+                font-weight: bold;
+                              "
+            >
+              Apply
+            </button>
+            <button
+              id="tx-discard-btn"
+              class="glass-btn hover-danger"
+              style="
+                display: none;
+                              "
+            >
+              Discard
+            </button>
+          </span>
+          <div class="control-group glass-btn-group">
+            <button
+              id="refresh-grid-btn"
+              class="glass-btn"
+              title="Refresh Grid Data"
+            >
+              🔄 Refresh
+            </button>
+            <button id="add-row-btn" class="glass-btn" title="Add Row">
+              ➕ Row
+            </button>
+            <button
+              id="delete-row-btn"
+              class="glass-btn hover-danger"
+              title="Delete Selected Rows"
+            >
+              🗑️ Row
+            </button>
+            <!-- 다시 돌리는 버튼 둘. 선택은 그리드에서 일어나므로 우클릭이 아니라
+                 «배너»입니다 -- 선택 상태를 보고 활성/비활성이 됩니다 (소유자 지적 두 번). -->
+            <span id="redo-banner-host"></span>
           </div>
           <div class="control-group">
             <input
@@ -195,92 +163,139 @@
             />
           </div>
 
-          <!-- Settings Dropdown -->
+          <!-- Status (lead 11-05 ③, mockup v3): API · Live · Chain · Last · Account · Last stall behind one button. The
+               button is a dot while all is well and says the one thing that is not (status_dot.js). -->
           <div class="control-group relative-menu">
-            <button id="settings-menu-btn" class="glass-btn">⚙️ Options</button>
-            <div
-              id="settings-dropdown"
-              class="glass-dropdown-panel"
-              style="display: none"
-            >
-              <button id="column-selector-btn" class="dropdown-item">
-                👁️ Toggle Columns
-              </button>
-              <div class="dropdown-item checkbox-item">
-                <input
-                  type="checkbox"
-                  id="sort-latest-toggle"
-                  class="glass-checkbox"
-                  checked
-                />
-                <label
-                  for="sort-latest-toggle"
-                  class="checkbox-label"
-                  style="text-transform: none; letter-spacing: normal"
-                  >Sort Latest</label
-                >
+            <button id="status-btn" class="glass-btn status-btn" type="button" aria-haspopup="true" aria-expanded="false"
+                    aria-label="Status"><span class="status-btn__dot"></span><span class="status-btn__word"></span></button>
+            <div id="status-panel" class="glass-dropdown-panel status-panel" style="display: none">
+              <div class="status-indicators">
+                <span class="status-badge" id="server-status">API: Loading</span>
+                <span class="status-badge" id="ws-status">WS: Connecting</span>
+                <!-- 체인 워커가 살아 있나. 판정은 `/health` 가 내리고 이 뱃지는 그 낱말을 그린다. -->
+                <span class="status-badge" id="chain-status">CHAIN: Loading</span>
               </div>
-              <div class="dropdown-item checkbox-item">
-                <input
-                  type="checkbox"
-                  id="copy-header-menu-toggle"
-                  class="glass-checkbox"
-                />
-                <label
-                  for="copy-header-menu-toggle"
-                  class="checkbox-label"
-                  style="text-transform: none; letter-spacing: normal"
-                  >Copy Header</label
-                >
+              <div class="status-panel__last">
+                <span class="status-panel__key">Last</span>
+                <span id="performance-log" class="glass-log-badge" data-clip-ok>Ready</span>
               </div>
-              <div
-                class="dropdown-item checkbox-item"
-                style="
-                  border-top: 1px solid var(--border-color);
-                  padding-top: 8px;
-                  margin-top: 4px;
-                "
-              >
-                <input
-                  type="checkbox"
-                  id="tx-mode-toggle"
-                  class="glass-checkbox"
-                  checked
-                />
-                <label
-                  for="tx-mode-toggle"
-                  class="checkbox-label"
-                  style="
-                    color: var(--color-warning);
-                    font-weight: bold;
-                    text-transform: none;
-                    letter-spacing: normal;
-                  "
-                  >Tx Mode</label
-                >
-              </div>
+              <div id="account-badge" class="acct-host"></div>
             </div>
           </div>
 
-          <!-- Navigation Menu Dropdown -->
-          <div
-            class="control-group relative-menu"
-          >
-            <button
-              id="nav-menu-btn"
-              class="glass-btn"
-              style="
-                color: var(--color-secondary);
-                border-color: var(--color-secondary);
-              "
-            >
-              🧭 Menu
-            </button>
-            <div
-              id="nav-dropdown"
-              class="glass-dropdown-panel"
-              style="display: none"
-            >
+          <!-- ⋯ (lead 11-05 ③, mockup v3): Data · Options · Go to in one panel. Each section keeps the id it had as
+               its own dropdown. -->
+          <div class="control-group relative-menu">
+            <button id="nav-menu-btn" class="glass-btn more-btn" type="button" aria-haspopup="true" aria-expanded="false"
+                    aria-label="More">⋯</button>
+            <div id="more-panel" class="glass-dropdown-panel more-panel" style="display: none">
+              <span class="more-panel__head">Data</span>
+              <button
+                id="folder-upload-btn"
+                class="dropdown-item"
+                title="Every file in the chosen folder is ingested"
+              >
+                📁 Upload folder
+              </button>
+              <button id="column-selector-btn" class="dropdown-item">
+                👁️ Toggle Columns
+              </button>
+              <button
+                id="graph-sync-btn"
+                class="dropdown-item"
+                style="display: none"
+              >
+                ⚡ Graph Sync
+              </button>
+              <span class="more-panel__head">Options</span>
+              <div id="settings-dropdown" class="more-panel__section">
+                <div class="dropdown-item checkbox-item">
+                  <input
+                    type="checkbox"
+                    id="sort-latest-toggle"
+                    class="glass-checkbox"
+                    checked
+                  />
+                  <label
+                    for="sort-latest-toggle"
+                    class="checkbox-label"
+                    style="text-transform: none; letter-spacing: normal"
+                    >Sort Latest</label
+                  >
+                </div>
+                <div class="dropdown-item checkbox-item">
+                  <input
+                    type="checkbox"
+                    id="copy-header-menu-toggle"
+                    class="glass-checkbox"
+                  />
+                  <label
+                    for="copy-header-menu-toggle"
+                    class="checkbox-label"
+                    style="text-transform: none; letter-spacing: normal"
+                    >Copy Header</label
+                  >
+                </div>
+                <div class="dropdown-item checkbox-item">
+                  <input
+                    type="checkbox"
+                    id="tx-mode-toggle"
+                    class="glass-checkbox"
+                    checked
+                  />
+                  <label
+                    for="tx-mode-toggle"
+                    class="checkbox-label"
+                    style="
+                      color: var(--color-warning);
+                      font-weight: bold;
+                      text-transform: none;
+                      letter-spacing: normal;
+                    "
+                    >Tx Mode</label
+                  >
+                </div>
+                <div class="dropdown-item checkbox-item">
+                  <button
+                    class="theme-toggle-btn"
+                    data-theme-toggle
+                    type="button"
+                    title="Toggle theme"
+                    aria-label="Toggle theme"
+                  >
+                    <svg
+                      class="icon-moon"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                    <svg
+                      class="icon-sun"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="4" />
+                      <path
+                        d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+                      />
+                    </svg>
+                  </button>
+                  <span class="checkbox-label">Theme</span>
+                </div>
+              </div>
+              <span class="more-panel__head">Go to</span>
+              <div id="nav-dropdown" class="more-panel__section">
               <a href="/map_editor.html" class="dropdown-item nav-link"
                 >🗺️ Wafer Map Editor</a
               >
@@ -321,52 +336,18 @@
                 class="dropdown-item nav-link"
                 download
                 style="color: var(--color-success)"
-                >📥 Download Desktop</a
+                >📥 Desktop client (.exe)</a
               >
+                <button
+                  id="desktop-download-btn"
+                  class="dropdown-item"
+                  title="Desktop client .zip · unzip and run the executable inside"
+                >
+                  💻 Desktop client (.zip)
+                </button>
+              </div>
             </div>
           </div>
-          <button
-            class="theme-toggle-btn"
-            data-theme-toggle
-            type="button"
-            title="Toggle theme"
-            aria-label="Toggle theme"
-          >
-            <svg
-              class="icon-moon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-            <svg
-              class="icon-sun"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="4" />
-              <path
-                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-              />
-            </svg>
-          </button>
-          <div class="status-indicators">
-            <span class="status-badge" id="server-status">API: Loading</span>
-            <span class="status-badge" id="ws-status">WS: Connecting</span>
-            <!-- 체인 워커가 살아 있나. 판정은 `/health` 가 내리고 이 뱃지는 그 낱말을 그린다. -->
-            <span class="status-badge" id="chain-status">CHAIN: Loading</span>
-          </div>
-          <div id="account-badge" class="acct-host"></div>
         </div>
       </header>
 
@@ -465,6 +446,9 @@
               <button id="tab-global" class="tab-btn active">Global</button>
               <button id="tab-row" class="tab-btn">Row</button>
               <button id="tab-queue" class="tab-btn">Queue</button>
+              <!-- Fold (owner 11-06): the panel to a strip, and back to the width it had - one of the row's buttons. -->
+              <button id="sidebar-fold-btn" class="tab-btn sidebar-fold" type="button" aria-expanded="true"
+                      aria-label="Fold panel" title="Fold panel">⇥</button>
             </div>
           </div>
           <div class="sidebar-content">

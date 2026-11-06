@@ -722,10 +722,12 @@ let auditFitWatch = null;
 let auditFitFrame = 0;
 let auditFitAll = false;
 const auditFitRows = new Set();
-/** The audit's Table column as wide as its widest piece - the head's word too. Every row drawn asks; it is measured once,
- *  in the next frame (owner 11-06 «가만히 있어도 굳음»: a live message of 500 logs measured the whole panel 500 times,
- *  each read after a write). A `row` drawn only widens it; a whole draw and a width change measure all. A hidden panel
- *  measures nothing and owes all - its showing is a width change. */
+/** The audit's Table column as wide as its widest whole name, up to --audit-table-max; a longer name breaks after «_» «.»
+ *  and the column is never narrower than its widest piece - the head's word too (owner 11-05, lead 11-06: «dt_log» was
+ *  three lines at the widest piece). Every row drawn asks; it is measured once, in the next frame (owner 11-06 «가만히
+ *  있어도 굳음»: a live message of 500 logs measured the whole panel 500 times, each read after a write). A `row` drawn
+ *  only widens it; a whole draw and a width change measure all. A hidden panel measures nothing and owes all - its
+ *  showing is a width change. */
 function fitAuditTable(row) {
   const box = elements.timelineContainer;
   if (!box) return;
@@ -746,9 +748,15 @@ function measureAuditTable() {
   if (!box || !box.getClientRects().length) { auditFitAll = true; return; }
   const all = auditFitAll;
   auditFitAll = false;
+  const roots = all ? [box] : rows;
+  if (!roots.length) return;
   const held = parseFloat(box.style.getPropertyValue('--audit-tbl-w')) || 0;
-  const need = all ? widestCell(box, '.audit-tbl-piece', '.audit-cell')
-    : Math.max(0, ...rows.map((row) => widestCell(row, '.audit-tbl-piece', '.audit-cell')));
+  const widest = (sel) => Math.max(0, ...roots.map((root) => widestCell(root, sel, '.audit-cell')));
+  box.classList.add('audit-tbl-whole'); // each name on one line for this reading
+  const cap = parseFloat(getComputedStyle(box).getPropertyValue('--audit-table-max')) || Infinity;
+  const whole = widest('.audit-target-table');
+  box.classList.remove('audit-tbl-whole');
+  const need = Math.max(widest('.audit-tbl-piece'), Math.min(cap, whole));
   if (need && (all ? need !== held : need > held)) box.style.setProperty('--audit-tbl-w', `${need}px`);
 }
 

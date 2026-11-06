@@ -101,6 +101,15 @@ export function sayStopped(why) {
   try { showToast(why, 'error'); } catch (err) { console.error('[toast] stopped', err); }
 }
 
+/** A line in the status panel's Last; when the operator lost something by it (filters dropped, staged edits dropped)
+ *  it is said whole in a warning toast too - the Last line sits in a closed panel (lead 11-06 ③ ㄷ). */
+export function sayLine(line, lost) {
+  const el = elements.performanceLog;
+  if (el) el.textContent = line;
+  if (!lost) return;
+  try { showToast(line, 'warning'); } catch (err) { console.error('[toast] lost', err); }
+}
+
 /**
  * 쓰는 컨트롤들과 «머리의 배지»를 지금 상태로 맞춥니다. 표가 바뀐 «직후»에 부릅니다 —
  * 표의 종류를 아는 첫 자리가 거기입니다(`api.switchTable` 의 `loadSchema` 다음 줄).

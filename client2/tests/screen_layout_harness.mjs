@@ -653,28 +653,6 @@ const CELLS = [
   pills[0].textContent = was;
   return longest;
 })()` },
-  { entry: 'index.html', after: 'loaded', rule: 'beside the message', expr: `(() => {
-  const log = document.getElementById('performance-log');
-  if (!log || !log.getClientRects().length) return 'no header message on the page';
-  const r = log.getBoundingClientRect();
-  const mid = (r.top + r.bottom) / 2, centre = (r.left + r.right) / 2;
-  const near = [...document.querySelectorAll('header button, header select, header input, header a[href]')]
-    .filter((b) => b.getClientRects().length && getComputedStyle(b).visibility === 'visible')
-    .map((b) => ({ b, box: b.getBoundingClientRect() })).filter((x) => x.box.width && x.box.top <= mid && x.box.bottom >= mid);
-  const at = (x) => (x.box.left + x.box.right) / 2;
-  const left = near.filter((x) => at(x) < centre).sort((p, q) => at(q) - at(p))[0];
-  const right = near.filter((x) => at(x) > centre).sort((p, q) => at(p) - at(q))[0];
-  if (!left && !right) return 'no control beside the header message';
-  for (const x of [left, right].filter(Boolean)) {
-    for (const px of [x.box.left + 2, at(x), x.box.right - 2]) {
-      const hit = document.elementFromPoint(px, (x.box.top + x.box.bottom) / 2);
-      if (!hit || !(hit === x.b || x.b.contains(hit))) {
-        return \`a press on «\${(x.b.textContent || x.b.title || '').trim().slice(0, 24)}» at x \${Math.round(px)} reaches \${hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing'}\`;
-      }
-    }
-  }
-  return null;
-})()` },
   // The status bar's counts take a press: the centre of each reaches it, not a page button laid over it (lead 10-14).
   { entry: 'index.html', after: 'loaded', rule: 'counts reachable', at: 'status-left', expr: `(() => {
   for (const id of ['exposed-rows', 'total-rows']) {
@@ -694,6 +672,51 @@ const CELLS = [
   if (!t.trim()) return 'the header message is empty';
   if (getComputedStyle(log).pointerEvents === 'none') return 'the header message takes no pointer, so its title never shows';
   return log.title === t ? null : \`its title «\${log.title.slice(0, 30)}» is not its sentence «\${t.slice(0, 30)}»\`;
+})()` },
+  // A table name no wider than the audit's Table column cap is on one line (lead 11-06: «dt_log» was three lines).
+  { entry: 'index.html', after: 'loaded', rule: 'short name one line', at: 'audit-tbl', expr: `(() => {
+  const cap = parseFloat(getComputedStyle(document.getElementById('timeline-container')).getPropertyValue('--audit-table-max'));
+  let read = 0;
+  for (const name of document.querySelectorAll('.audit-target-table')) {
+    const pieces = [...name.querySelectorAll('.audit-tbl-piece')];
+    if (!pieces.length || pieces.reduce((s, x) => s + x.getBoundingClientRect().width, 0) > cap - 24) continue;
+    read += 1;
+    const lines = new Set(pieces.map((x) => Math.round(x.getBoundingClientRect().top))).size;
+    if (lines > 1) return '«' + name.textContent.trim() + '» on ' + lines + ' lines';
+  }
+  return read ? null : 'no table name in the audit to read';
+})()` },
+  // The head bar (lead 11-05 ③, mockup v3).
+  { entry: 'index.html', after: '⋯ opened', rule: 'head panels', at: 'more-panel', expr: `(() => {
+  const heads = [...document.querySelectorAll('#more-panel .more-panel__head')].map((h) => h.textContent.trim());
+  if (heads.join('|') !== 'Data|Options|Go to') return 'the ⋯ panel heads are ' + heads.join(' · ');
+  for (const id of ['folder-upload-btn', 'column-selector-btn', 'sort-latest-toggle', 'tx-mode-toggle', 'desktop-download-btn']) {
+    if (!document.querySelector('#more-panel #' + id)) return 'no #' + id + ' in the ⋯ panel';
+  }
+  return null;
+})()` },
+  // The stall said: its line in the panel, and the button not quiet - STALL, or a badge offline said ahead of it (statusOf's
+  // order; the gate's page has no socket, so WS may be the one).
+  { entry: 'index.html', after: 'status, a stall within 10 minutes', rule: 'head panels', at: 'status-btn', expr: `(() => {
+  if (!document.querySelector('#status-panel .stall-line:not([hidden])')) return 'no last stall line in the status panel';
+  const b = document.getElementById('status-btn');
+  if (b.dataset.tone === 'busy') return null;
+  const off = document.querySelector('#status-panel .status-badge.offline');
+  const said = off && off.textContent.trim().split(':')[0];
+  return b.dataset.tone === 'bad' && said && b.textContent.includes(said) ? null
+    : 'the status button is ' + b.dataset.tone + ' «' + b.textContent.trim() + '» with a stall a minute old';
+})()` },
+  { entry: 'index.html', after: 'history panel folded', rule: 'panel folds', at: 'history-sidebar', expr: `(() => {
+  const s = document.querySelector('.history-sidebar').getBoundingClientRect();
+  const g = document.getElementById('myGrid').getBoundingClientRect();
+  if (s.width > 80) return 'the folded panel is ' + Math.round(s.width) + ' px wide';
+  if (innerWidth - g.right > s.width + 40) return 'the grid ends ' + Math.round(innerWidth - g.right) + ' px from the screen edge';
+  return null;
+})()` },
+  { entry: 'index.html', after: 'history panel opened again', rule: 'panel folds', at: 'history-sidebar', expr: `(() => {
+  const s = document.querySelector('.history-sidebar');
+  const w = Math.round(s.getBoundingClientRect().width);
+  return s.classList.contains('is-folded') ? 'still folded' : w < 300 ? 'opened at ' + w + ' px' : null;
 })()` },
 ];
 // The open start picker takes a press: the centre of each of its controls reaches that control, not what lies under it
@@ -2689,6 +2712,32 @@ const DRIVE = {
   ],
   'index.html': [
     ['loaded', (c) => until(c, GRID_LOADED, 15000)],
+    // The head bar (lead 11-05 ③, mockup v3): ⋯ - Data · Options · Go to in one panel under its button.
+    ['⋯ opened', async (c) => {
+      await evaluate(c, "(() => { document.getElementById('nav-menu-btn').click(); return true; })()");
+      await until(c, "document.getElementById('more-panel').style.display === 'flex'");
+    }],
+    // A stall a minute old (lead 11-05 ③: within 10 minutes): the page opened again on a /health that says it - the status
+    // button says STALL, its panel holds the line whole.
+    ['status, a stall within 10 minutes', async (c, log) => {
+      STALL.on = true;
+      STALL.next = { ...STALL_LINE, at: new Date(Date.now() - 60000).toISOString() };
+      log.opening = true;
+      await c.send('Page.reload', { ignoreCache: true });
+      await sleep(1500);
+      await settle(c, log);
+      await evaluate(c, `(${screensLib})(${TOL})`);
+      await until(c, GRID_LOADED, 15000);
+      await until(c, "Boolean(document.querySelector('#status-panel .stall-line:not([hidden])'))");
+      await evaluate(c, "(() => { document.getElementById('status-btn').click(); return true; })()");
+      await until(c, STALL_WHOLE);
+      STALL.on = false;
+    }],
+    // The history panel folded to a strip, then opened again at the width it had (owner 11-06).
+    ['history panel folded', (c) => evaluate(c, "(() => { document.getElementById('sidebar-fold-btn').click(); return true; })()")
+      .then(() => sleep(400))],
+    ['history panel opened again', (c) => evaluate(c, "(() => { document.getElementById('sidebar-fold-btn').click(); return true; })()")
+      .then(() => sleep(400))],
     // The page opened again with its declaration read refused: the header's label reads it once, at the start - first, and
     // the page opened again with it read, so the states after it (the Ledger column, the edits Replay chain shows) have it.
     ['declaration refused, page opened again', async (c, log) => {
@@ -3652,32 +3701,29 @@ const MUTANTS = [
   { name: 'a refused declaration said as its status alone', entry: 'index.html', rule: 'server sentence said', at: 'grid-source-label',
     file: 'src/main.js', edits: [["    if (!res.ok) return { ok: false, message: await refusalText(res, 'server refused') };\n",
       "    if (!res.ok) return { ok: false, message: `server refused (${res.status})` };\n"]] },
-  // A panel left inside the header is placed in the header's zoomed px (10-08).
   // A table switch lights Global and leaves the Queue pane shown (owner 10-21) - the tab marked, its pane not asked.
   { name: 'a table switch lights Global over the Queue pane', entry: 'index.html', rule: 'lit tab shows its pane', at: 'history-sidebar',
     says: /pane shown: queue-view/, file: 'src/api.js', edits: [["  pickHistoryTab('global');\n",
       "  state.activeHistoryTab = 'global';\n  for (const b of elements.tabGlobalBtn.parentNode.children) b.classList.toggle('active', b === elements.tabGlobalBtn);\n"]] },
-  { name: 'Replay chain panel placed inside the zoomed header', entry: 'index.html', rule: 'panel', at: 'redo-panel', says: /under/,
-    file: 'src/dropdown.js', edits: [['    doc.body.appendChild(panel);\n', '']] },
-  // Options and Menu hung from their buttons by CSS inside the header: narrowed by its zoom, their rows in two (10-09).
-  { name: 'Options and Menu drawn inside the zoomed header, their rows in two', entry: 'index.html', rule: 'panel', at: '',
-    says: /breaks into/, file: 'src/main.js', edits: [
-      ['      if (!isVisible) placeUnder(elements.settingsDropdown, elements.settingsMenuBtn);\n', ''],
-      ['      if (!isVisible) placeUnder(elements.navDropdown, elements.navMenuBtn);\n', '']] },
   // A rule name in a 48px column, broken letter by letter (lead 10-09; owner 09-23 「접지말고」).
   { name: 'the Rules column back at 48px, its names broken anywhere', entry: 'index.html', rule: 'words', at: 'queue-rule-name',
     file: 'src/style.css', edits: [
       ['minmax(var(--queue-rules-w, 48px), 1fr)', 'minmax(48px, 1fr)'],
       ['                   flex: none; white-space: nowrap; }', '                   flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }']] },
-  // The header message laid over the button beside it, and its title no longer following its text (lead 10-09).
-  { name: 'the header message laid over the button beside it', entry: 'index.html', rule: 'beside the message', at: 'performance-log',
-    file: 'src/style.css', edits: [['.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; }',
-      '.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; position: absolute; inset: 0 0 auto 0; z-index: 5; }']] },
   { name: 'the status bar on one line again - its counts 0 wide at 1024', entry: 'index.html', rule: 'counts reachable', at: 'status-left',
     file: 'src/style.css', edits: [['  flex-wrap: wrap;\n  align-items: center;\n  justify-content: space-between;', '  align-items: center;\n  justify-content: space-between;'],
       ['  min-width: 30ch;\n', '  min-width: 0;\n']] },
   { name: 'the header message title not following its text', entry: 'index.html', rule: 'message title', at: 'performance-log',
     file: 'src/main.js', edits: [['      followTitle(elements.performanceLog);\n', '']] },
+  // The head bar (lead 11-05 ③, owner 11-06): the fold that does not fold · the audit's Table column at its widest piece
+  // again · an open panel left where the bar was before it wrapped. (Which word the status button says is
+  // status_dot_harness's - here the socket decides whether WS is offline first.)
+  { name: 'an open head panel left where the bar was', entry: 'index.html', rule: 'panel', at: '',
+    file: 'src/main.js', edits: [["      for (const [button, panel] of headPanels) if (panel.style.display === 'flex') placeUnder(panel, button);\n", '']] },
+  { name: 'the history panel fold that does not fold', entry: 'index.html', rule: 'panel folds', at: 'history-sidebar',
+    file: 'src/main.js', edits: [["      historySidebar.classList.toggle('is-folded', folded);\n", '']] },
+  { name: 'the audit Table column at its widest piece again', entry: 'index.html', rule: 'short name one line', at: 'audit-tbl',
+    file: 'src/timeline.js', edits: [['Math.min(cap, whole)', '0']] },
   // The Ledger cell's source said first again (lead 10-12): its state word goes under the ellipsis at the column's width.
   { name: 'the Ledger cell says its source before changed', entry: 'index.html', rule: 'ledger word first', at: 'ledger-cell',
     file: 'src/grid_ledger_column.js', edits: [['return [CHANGED, which, ...unknownTail]', 'return [changed[0].source, CHANGED, which, ...unknownTail]']] },

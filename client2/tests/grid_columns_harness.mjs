@@ -60,9 +60,11 @@ const PIVOT = { column: 'itemid', value: 'value' };
 const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 // the name, the cell's padding (32) and the sort arrow and filter mark (48)
 const header = (word) => Math.ceil(word.length * 6.4) + 32 + 48;
-const col = (id, { visible = true, headerName = id.toUpperCase() } = {}) => ({
-  getColId: () => id, getColDef: () => ({ headerName }), isVisible: () => visible, getMinWidth: () => 120, getMaxWidth: () => null,
+const col = (id, { visible = true, headerName = id.toUpperCase(), def = {}, min = 120 } = {}) => ({
+  getColId: () => id, getColDef: () => ({ headerName, ...def }), isVisible: () => visible, getMinWidth: () => min, getMaxWidth: () => null,
 });
+// the row number as renderGrid declares it: no sort, no filter, no floor of its own (owner 11-06)
+const ROW_NUMBER = () => col('#', { headerName: '#', def: { sortable: false, filter: false }, min: 0 });
 
 /** The long table «m» (lot, itemid, value) and a grid that holds rows and records what is asked of it. */
 function stage({ cols, rows = [], pivotOn = false } = {}) {
@@ -79,11 +81,11 @@ function stage({ cols, rows = [], pivotOn = false } = {}) {
   state.currentVirtualColumns = [];
   state.pendingTxEdits = {};
   state.serverSort = null;
-  const columns = cols || [col('#'), col('ag-Grid-SelectionColumn'), col('lot'), col('itemid'), col('value')];
+  const columns = cols || [ROW_NUMBER(), col('ag-Grid-SelectionColumn'), col('lot'), col('itemid'), col('value')];
   state.gridApi = {
     getColumns: () => columns, getDisplayedRowCount: () => held.length,
-    forEachNodeAfterFilterAndSort: (fn) => held.forEach((data) => fn({ data })),
-    getCellValue: ({ rowNode, colKey }) => rowNode.data[colKey.getColId()],
+    forEachNodeAfterFilterAndSort: (fn) => held.forEach((data, rowIndex) => fn({ data, rowIndex })),
+    getCellValue: ({ rowNode, colKey }) => (colKey.getColId() === '#' ? rowNode.rowIndex + 1 : rowNode.data[colKey.getColId()]),
     setColumnWidths: (w) => calls.widths.push(w),
     setColumnsVisible: (ids, on) => calls.visible.push([ids, on]),
     setGridOption: (k, v) => { if (k === 'rowData') held = v; },
@@ -132,10 +134,12 @@ async function suite(M) {
     M.grid.fitColumnWidths();
     M.grid.fitColumnWidths();
     const set = calls.widths[0] || [];
-    say('W2 owed by renderGrid: no rows or no cell drawn keep it owed; the first rows set the data columns once, none under its least',
+    // «#» (owner 11-06): its header no icons (6.4 with its spacing + 32), its numbers one digit past the widest («2» -> «00»)
+    say('W2 owed by renderGrid: no rows or no cell drawn keep it owed; the first rows set the data columns and «#» once, none under its least',
       noRows === 0 && noCell === 0 && calls.widths.length === 1
-        && JSON.stringify(set.map((w) => w.key)) === '["lot","value"]'
-        && widthOf(set, 'lot') === 19 * 7 + PAD && header('VALUE') < 120 && widthOf(set, 'value') === 120,
+        && JSON.stringify(set.map((w) => w.key)) === '["#","lot","value"]'
+        && widthOf(set, 'lot') === 19 * 7 + PAD && header('VALUE') < 120 && widthOf(set, 'value') === 120
+        && widthOf(set, '#') === Math.max(Math.ceil(6.4) + 32, 2 * 7 + PAD),
       JSON.stringify({ noRows, noCell, widths: calls.widths }));
   }
   {
@@ -149,6 +153,17 @@ async function suite(M) {
     say('W3 a table\'s first read sets the widths; the next read keeps them',
       first === 1 && calls.widths.length === 1 && widthOf(calls.widths[0], 'lot') === 19 * 7 + PAD,
       JSON.stringify({ first, widths: calls.widths }));
+  }
+
+  {
+    // past a hundred rows the numbers are wider than «#»'s header: three digits, measured at four (4 x 7 + PAD)
+    const calls = stage();
+    M.grid.renderGrid([]);
+    state.gridApi.setGridOption('rowData', Array.from({ length: 150 }, (_, i) => ({ lot: 'L' + i, itemid: 'a', value: i })));
+    M.grid.fitColumnWidths();
+    const set = calls.widths[0] || [];
+    say('W4 «#» as wide as its widest number and one digit more - a page further on stays whole',
+      widthOf(set, '#') === 4 * 7 + PAD, JSON.stringify(set));
   }
 
   console.log('\n[H] hiding');
@@ -270,7 +285,11 @@ const MUTANTS = [
   { id: 'X4', what: 'fitted on every read', catches: 'W2', file: 'grid.js', from: '  widthsOwed = false;\n  const cs', to: '  const cs' },
   { id: 'X5', what: 'renderGrid owes nothing', catches: 'W2', file: 'grid.js', from: '  widthsOwed = true;\n', to: '' },
   { id: 'X6', what: 'the gutter and checkbox columns fitted too', catches: 'W2', file: 'grid.js',
-    from: 'api.getColumns().filter((col) => isDataColumn(col.getColId())).map', to: 'api.getColumns().map' },
+    from: "api.getColumns().filter((col) => isDataColumn(col.getColId()) || col.getColId() === '#').map", to: 'api.getColumns().map' },
+  { id: 'X19', what: '«#» measured at its widest number, no digit more', catches: 'W4', file: 'grid.js',
+    from: "'0'.repeat(digits + 1)", to: "'0'.repeat(digits)" },
+  { id: 'X20', what: '«#» left at its 100', catches: 'W2', file: 'grid.js',
+    from: " || col.getColId() === '#').map", to: ').map' },
   { id: 'X7', what: 'paid before the cell is drawn', catches: 'W2', file: 'grid.js', from: '  if (!cell) return;\n', to: '' },
   { id: 'X15', what: 'a width under its column\'s least is sent (AG Grid then resizes nothing)', catches: 'W2', file: 'grid.js',
     from: 'newWidth: Math.min(col.getMaxWidth() || Infinity, Math.max(col.getMinWidth() || 0, columnFitWidth(', to: 'newWidth: ((columnFitWidth(' },

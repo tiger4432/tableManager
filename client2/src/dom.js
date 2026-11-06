@@ -75,9 +75,9 @@ export const elements = {
   get columnListContainer() { return document.getElementById('column-list-container'); },
   get colSelectAllBtn() { return document.getElementById('col-select-all-btn'); },
   get colSelectNoneBtn() { return document.getElementById('col-select-none-btn'); },
-  get settingsMenuBtn() { return document.getElementById('settings-menu-btn'); },
-  get settingsDropdown() { return document.getElementById('settings-dropdown'); },
   get navMenuBtn() { return document.getElementById('nav-menu-btn'); },
-  get navDropdown() { return document.getElementById('nav-dropdown'); },
+  get morePanel() { return document.getElementById('more-panel'); },
+  get statusBtn() { return document.getElementById('status-btn'); },
+  get statusPanel() { return document.getElementById('status-panel'); },
   get txPendingBadge() { return document.getElementById('tx-pending-badge'); }
 };

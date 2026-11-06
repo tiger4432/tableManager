@@ -1464,7 +1464,8 @@ export const FLOORS = new Map([
   ['image_paste_harness.mjs', 23],
   ['pivot_filter_carry_harness.mjs', 25],
   // New (owner 11-05): a table's columns fitted once to their first rows, a column hidden from its header and «N hidden».
-  ['grid_columns_harness.mjs', 27],
+  // 27 -> 30 (owner 11-06): «#» fitted with them, one digit past its widest number.
+  ['grid_columns_harness.mjs', 30],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
@@ -1840,6 +1841,9 @@ export const FLOORS = new Map([
   // New with the owner's 10-29 «ㄴ» (A 63a69b97a): the header's last stall - /health's stall read, the line as written
   // with its time, a read without the key keeping it, null hiding it, two lines.
   ['stall_line_harness.mjs', 12],
+  // New with the head bar's status button (lead 11-05 ③, owner 11-06): offline first, a stall within ten minutes, a chain
+  // running, a badge not read, all well; the button drawn from its panel, a stall not read keeping what is drawn, two apart.
+  ['status_dot_harness.mjs', 19],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

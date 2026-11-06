@@ -1231,8 +1231,9 @@ export function buildColumnDefs() {
       const skip = (state.viewMode === 'pagination' && !state.allDataLoaded) ? state.currentSkip : 0;
       return skip + params.node.rowIndex + 1;
     },
-    width: 100,
-    minWidth: 90,
+    initialWidth: 100,
+    // no floor of its own (the grid's default is 100): the fit sizes it to its numbers, and nobody drags it (resizable false)
+    minWidth: 0,
     maxWidth: 150,
     pinned: 'left',
     suppressMovable: true,
@@ -1274,8 +1275,8 @@ const MOCKUP_COLUMN_LAYOUT = Object.freeze({
 // both reported exactly 32px less usable text width than their column width.
 const HEADER_CHROME_PX = 32;
 /** The sort arrow and the filter mark a header shows beside its name, 24 px each with their gap (measured 11-05 on a
- *  sorted column): without their room a sorted or filtered name was cut. */
-const HEADER_ICONS_PX = 48;
+ *  sorted column): without their room a sorted or filtered name was cut. A column that neither sorts nor filters has none. */
+const HEADER_ICON_PX = 24;
 /** A formula column's fx mark beside its name: the mark (two glyphs at --fs-tag, --space-1 each side) and its gap. */
 const FORMULA_MARK_PX = 28;
 
@@ -1312,7 +1313,8 @@ function textWidth(text, font, spacing = 0) {
 }
 
 /** The width a column's header needs whole: its name, the header's icons and a formula column's fx mark. */
-const headerNeed = (def) => headerLabelWidth(def.headerName) + HEADER_CHROME_PX + HEADER_ICONS_PX
+const headerNeed = (def) => headerLabelWidth(def.headerName) + HEADER_CHROME_PX
+  + HEADER_ICON_PX * ((def.sortable === false ? 0 : 1) + (def.filter === false ? 0 : 1))
   + (def.headerComponentParams ? FORMULA_MARK_PX : 0);
 
 /** A column's fitted width (owner 11-05): its widest value plus the cell's padding, up to `cap`; never narrower than its
@@ -1341,11 +1343,17 @@ export function fitColumnWidths() {
   const nodes = [];
   api.forEachNodeAfterFilterAndSort((node) => nodes.push(node));
   // within each column's least and most: AG Grid resizes all or none, so one width under its least moved nothing (measured)
-  api.setColumnWidths(api.getColumns().filter((col) => isDataColumn(col.getColId())).map((col) => ({
+  const texts = (col) => {
+    const seen = new Set(nodes.map((rowNode) => api.getCellValue({ rowNode, colKey: col, useFormatter: true })));
+    if (col.getColId() !== '#') return seen;
+    // the row number (owner 11-06: «#» as wide as its numbers) - one digit past the widest, so the pages after this one fit
+    const digits = Math.max(0, ...[...seen].filter((n) => n != null && n !== '').map((n) => String(n).length));
+    return new Set([...seen, '0'.repeat(digits + 1)]);
+  };
+  api.setColumnWidths(api.getColumns().filter((col) => isDataColumn(col.getColId()) || col.getColId() === '#').map((col) => ({
     key: col.getColId(),
     newWidth: Math.min(col.getMaxWidth() || Infinity, Math.max(col.getMinWidth() || 0, columnFitWidth(headerNeed(col.getColDef()),
-      new Set(nodes.map((rowNode) => api.getCellValue({ rowNode, colKey: col, useFormatter: true }))),
-      (text) => textWidth(text, font), pad, cap))),
+      texts(col), (text) => textWidth(text, font), pad, cap))),
   })));
 }
 

@@ -1047,7 +1047,7 @@ const MUTANTS = [
   { id: 'G30', what: 'numbers compared by spelling - the code before', catches: 'W24', file: 'api.js',
     mutate: (t) => swap(t, '    if (Number.isFinite(x) && Number.isFinite(y)) return x === y;\n', '') },
   { id: 'G31', what: 'a broadcast delete leaves the row\'s staged edit - the code before', catches: 'W25', file: 'websocket.js',
-    mutate: (t) => swap(t, '${droppedText(dropStagedEditsOf(rowIds))}', '') },
+    mutate: (t) => swap(t, 'const dropped = droppedText(dropStagedEditsOf(rowIds));', "const dropped = '';") },
   { id: 'G32', what: 'a row Apply\'s read no longer finds keeps its edit', catches: 'W25', file: 'api.js',
     mutate: (t) => swap(t, '  return dropStagedEdits(again.gone);', '  return 0;') },
   { id: 'G19', what: 'Take server still sends the conflicted cell', catches: 'W16', file: 'api.js',

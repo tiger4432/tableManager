@@ -5,7 +5,7 @@ import { pivotRows, itemColId, rememberedPivot, rememberPivot, stagedReadIds, st
   groupFilters, strayLongRow, carriedFilters, headerWord } from './grid_pivot.js';
 import { unitText } from './ui_words.js';
 import { isBlank } from './absent.js';
-import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped } from './write_guard.js';
+import { refuseWrite, writeRefusal, refusePivotKeys, applyWriteGuards, wireUpdates, gridRowOf, sayStopped, sayLine } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { pickHistoryTab } from './history_tabs.js';
@@ -134,7 +134,8 @@ export function chainBadge(payload) {
   };
 }
 
-/** 그 뱃지를 한 번 그린다. 503 이어도 «본문»을 읽는다 — 정작 알려야 할 순간이 그때다. */
+/** 그 뱃지를 한 번 그린다. 503 이어도 «본문»을 읽는다 — 정작 알려야 할 순간이 그때다.
+ *  Returns the body it read (null when none) - the status button takes its stall from it (main.js). */
 export async function checkChainHealth() {
   let failure = null;
   let body = null;
@@ -157,6 +158,7 @@ export async function checkChainHealth() {
   } catch (err) {
     console.error('[health] chain badge could not be drawn', err);
   }
+  return body;
 }
 
 /**
@@ -365,7 +367,7 @@ export async function setGridPivot(on) {
   const reading = fetchData(true);
   release();
   await reading;
-  if (dropped.length) elements.performanceLog.textContent = `Filters dropped: ${dropped.map(headerWord).join(', ')}`;
+  if (dropped.length) sayLine(`Filters dropped: ${dropped.map(headerWord).join(', ')}`, true);
 }
 
 /** A pivot answer: its view kept, its items' columns typed as the value column and drawn again when they changed, its
@@ -1105,7 +1107,7 @@ async function applyStaged(choice) {
     updateGridSortState();
     state.gridApi.refreshCells({ force: true });
 
-    elements.performanceLog.textContent = `Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)${droppedText(dropped)}`;
+    sayLine(`Applied batch updates in ${saveTime}ms (${result.change_count} cells updated)${droppedText(dropped)}`, dropped > 0);
   } catch (err) {
     // Not saved: the edits are still staged, so Tx comes back on (lead 10-13 3 - the read's F4, for the save).
     keepTxOn();
@@ -1439,7 +1441,7 @@ export async function deleteSelectedRows() {
       updateLoadedCount();
       const dropped = droppedText(dropStagedEditsOf([...rowIds, ...groups.map((node) => node.data.row_id)]));
       if (pivotShown()) await fetchData(false);
-      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} · ${seconds()} s${dropped}`;
+      sayLine(`Deleted ${unitText(result.deleted_count, 'row')} · ${seconds()} s${dropped}`, Boolean(dropped));
     } else {
       refused = await refusalText(res, 'Delete failed');
     }

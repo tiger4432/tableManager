@@ -19,6 +19,8 @@ import { NONE, unitText } from './ui_words.js';
 import { writeRefusal, sayStopped, refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
 import { placeUnder } from './dropdown.js';
+import { StatusDot } from './status_dot.js';
+import { stallOf } from './stall_line.js';
 import {
   switchTable,
   drawTableMenu,
@@ -168,8 +170,12 @@ async function init() {
   //    두면 그 파일을 재는 하니스가 «끝나지 않는다»(실측: 그 게이트가 120초를 넘겼다).
   //    주기는 페이지의 가구다. 기준은 서버의 stale_after 60 초이고, 세 번은 봐야 바뀐 것을
   //    봤다고 말할 수 있어 20 초로 둔다.
-  checkChainHealth();
-  setInterval(checkChainHealth, CHAIN_BADGE_POLL_MS);
+  //    The same read hands its stall to the status button (lead 11-05 ③) - one /health reader.
+  const status = elements.statusBtn && elements.statusPanel
+    ? new StatusDot(elements.statusBtn, elements.statusPanel, { doc: document }) : null;
+  const health = () => checkChainHealth().then((body) => { if (status) status.setStall(stallOf(body)); });
+  health();
+  setInterval(health, CHAIN_BADGE_POLL_MS);
 
   await startup({
     prepare() {
@@ -600,47 +606,40 @@ function setupEventListeners() {
     });
   }
 
-  // Dropdown Menus toggling logic (UI/UX Consolidation)
-  if (elements.settingsMenuBtn && elements.settingsDropdown) {
-    elements.settingsMenuBtn.addEventListener('click', (e) => {
+  // The head bar's two panels, ⋯ and status (lead 11-05 ③): one opens, the other and the column list close; a press
+  // outside closes it; inside, a toggle keeps it open and an action (a button item or a link) closes it.
+  const headPanels = [[elements.navMenuBtn, elements.morePanel], [elements.statusBtn, elements.statusPanel]]
+    .filter(([button, panel]) => button && panel);
+  const closeHeadPanels = () => {
+    for (const [button, panel] of headPanels) {
+      panel.style.display = 'none';
+      button.setAttribute('aria-expanded', 'false');
+    }
+  };
+  for (const [button, panel] of headPanels) {
+    button.addEventListener('click', (e) => {
       e.stopPropagation();
-      const isVisible = elements.settingsDropdown.style.display === 'flex';
-      elements.settingsDropdown.style.display = isVisible ? 'none' : 'flex';
-      if (!isVisible) placeUnder(elements.settingsDropdown, elements.settingsMenuBtn);
-      // Close other dropdowns
-      if (elements.navDropdown) elements.navDropdown.style.display = 'none';
+      const open = panel.style.display === 'flex';
+      closeHeadPanels();
       if (elements.columnSelectorDropdown) elements.columnSelectorDropdown.style.display = 'none';
+      if (open) return;
+      panel.style.display = 'flex';
+      button.setAttribute('aria-expanded', 'true');
+      placeUnder(panel, button);
+    });
+    panel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (e.target.closest('button.dropdown-item, a')) closeHeadPanels();
     });
   }
-
-  if (elements.navMenuBtn && elements.navDropdown) {
-    elements.navMenuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isVisible = elements.navDropdown.style.display === 'flex';
-      elements.navDropdown.style.display = isVisible ? 'none' : 'flex';
-      if (!isVisible) placeUnder(elements.navDropdown, elements.navMenuBtn);
-      // Close other dropdowns
-      if (elements.settingsDropdown) elements.settingsDropdown.style.display = 'none';
-      if (elements.columnSelectorDropdown) elements.columnSelectorDropdown.style.display = 'none';
-    });
-  }
-
-  // Click outside to close dropdowns
-  document.addEventListener('click', () => {
-    if (elements.settingsDropdown) elements.settingsDropdown.style.display = 'none';
-    if (elements.navDropdown) elements.navDropdown.style.display = 'none';
-  });
-
-  // Stop propagation inside dropdown panels so clicking inputs doesn't close them
-  if (elements.settingsDropdown) {
-    elements.settingsDropdown.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
-  }
-  if (elements.navDropdown) {
-    elements.navDropdown.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
+  document.addEventListener('click', closeHeadPanels);
+  // The bar can change under an open panel - the status word comes or goes and the bar wraps or unwraps (screen gate,
+  // 11-06 at 1280): the open one is placed under its button again.
+  const bar = document.querySelector('.app-header');
+  if (bar && typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => {
+      for (const [button, panel] of headPanels) if (panel.style.display === 'flex') placeUnder(panel, button);
+    }).observe(bar);
   }
 
   // History Tabs
@@ -991,8 +990,8 @@ function setupEventListeners() {
   if (elements.columnSelectorBtn) {
     elements.columnSelectorBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Hide settings dropdown when launching column selector dropdown
-      if (elements.settingsDropdown) elements.settingsDropdown.style.display = 'none';
+      // The ⋯ panel it was picked from closes as the list opens
+      closeHeadPanels();
 
       const isVisible = elements.columnSelectorDropdown.style.display === 'block';
       if (isVisible) {
@@ -1001,8 +1000,8 @@ function setupEventListeners() {
         elements.columnSelectorDropdown.style.display = 'block';
         // 현재 컬럼 가시성 상태에 맞춰 리스트 렌더링
         renderColumnSelectorList();
-        // Under Options, its left edge on the button's, kept on screen - measured once the list is in it.
-        placeUnder(elements.columnSelectorDropdown, elements.settingsMenuBtn || elements.columnSelectorBtn,
+        // Under ⋯, its left edge on the button's, kept on screen - measured once the list is in it.
+        placeUnder(elements.columnSelectorDropdown, elements.navMenuBtn || elements.columnSelectorBtn,
           { align: 'left', gap: 6 });
       }
     });
@@ -1355,6 +1354,26 @@ function setupEventListeners() {
           putSidebarWidth(panel, clampSidebarWidth(stored, mainLayout.getBoundingClientRect().width));
         }
       } catch { /* storage disabled or full: the CSS width is a correct fallback */ }
+    }
+
+    // Folded (owner 11-06): the history panel a strip with its button, the grid takes the rest; pressed again it opens at
+    // the width it had (that width stays on the panel). Remembered per viewer, as the width is.
+    const foldBtn = document.getElementById('sidebar-fold-btn');
+    const putFolded = (folded) => {
+      historySidebar.classList.toggle('is-folded', folded);
+      mainResizer.hidden = folded;
+      foldBtn.setAttribute('aria-expanded', String(!folded));
+      foldBtn.textContent = folded ? '⇤' : '⇥';
+      foldBtn.title = folded ? 'Open panel' : 'Fold panel';
+      foldBtn.setAttribute('aria-label', foldBtn.title);
+    };
+    if (foldBtn) {
+      try { putFolded(localStorage.getItem('assy.sidebarFolded') === '1'); } catch { /* storage refused: open */ }
+      foldBtn.addEventListener('click', () => {
+        const folded = !historySidebar.classList.contains('is-folded');
+        putFolded(folded);
+        try { localStorage.setItem('assy.sidebarFolded', folded ? '1' : '0'); } catch { /* the fold still stands */ }
+      });
     }
 
     mainResizer.addEventListener('mousedown', (e) => {

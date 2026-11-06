@@ -236,7 +236,7 @@ const MUTANTS = [
     from: 'JSON.stringify(api.getFilterModel() || {}) === JSON.stringify(keep || {})', to: '!Object.keys(api.getFilterModel() || {}).length' },
   { id: 'X4', what: 'the switch drops every filter, as before', catches: 'S1', file: 'api.js', from: '  await dropGridFilters(keep);', to: '  await dropGridFilters();' },
   { id: 'X5', what: 'the dropped ones are not named', catches: 'S1', file: 'api.js',
-    from: "  if (dropped.length) elements.performanceLog.textContent = `Filters dropped: ${dropped.map(headerWord).join(', ')}`;", to: '' },
+    from: "  if (dropped.length) sayLine(`Filters dropped: ${dropped.map(headerWord).join(', ')}`, true);", to: '' },
   { id: 'X6', what: 'the item column is not hidden in the pivot', catches: 'H1', file: 'grid.js',
     from: '      ...(col === held || col === lastHeld ? { hide: col === held } : {}),', to: '' },
   { id: 'X7', what: 'the long view does not show the item column again', catches: 'H1', file: 'grid.js',

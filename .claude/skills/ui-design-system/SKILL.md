@@ -54,12 +54,14 @@ values      sizes and spaces are tokens (--space-*, --control-h*, --fs-*); a px 
 ## 2. Type
 ```
 heading   "Barlow Condensed" 600 · line-height 1.12 · letter-spacing -0.015em
-body      "Barlow" 400 · 15px / 1.55
+body      "Barlow" 400 · 13px / 1.55
 mono      identifiers · JSON · keys   (--oe-font-mono)
-scale     h1 42 · h2 32 · h3 25 · h4 20 · h5 16 · h6 13 uppercase 0.08em
-parts     card title 17 · button 14 · label 12 · tag/refusal 11 · meta 12 (was 10 — owner 09-27)
-tokens    --fs-h1 … --fs-h6 · --fs-title · --fs-body · --fs-button · --fs-label · --fs-tag · --fs-meta (tokens.css — these twelve, no thirteenth)
+scale     h1 40 · h2 30 · h3 23 · h4 18 · h5 14 · h6 13 uppercase 0.08em
+parts     card title 15 · button 12 · label 12 · tag/refusal 11 · meta 12 (was 10 — owner 09-27)
+grid cell 10 (owner 11-06 「12px이 생각보다 큼 · 10px이 적당할듯」 - wins over 「작은 글씨는 없느니만 못하다」 here) · --fs-cell
+tokens    --fs-h1 … --fs-h6 · --fs-title · --fs-body · --fs-button · --fs-label · --fs-tag · --fs-meta (tokens.css — these twelve) + --fs-cell (the grid's cells, owner 11-06)
 ```
+- The numbers above are tokens.css's (read from it 11-06; the larger ones are 2px under the canon's since 10-08 59824c9eb). tokens.css wins.
 - Every face has a system fallback; sizes are px and land even if the webfont is blocked.
 - A part states its own size only from the `parts` row. A table header at h3 size is the defect the owner called 「고리 너무 커」.
 

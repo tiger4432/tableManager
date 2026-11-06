@@ -91,9 +91,9 @@ export function fitUnder(panel, anchor, { align = 'right', gap = GAP } = {}) {
 
 /**
  * A panel just under the control that opened it, kept on screen (fitUnder) - every panel a header control opens comes
- * through here: the filter fold, Replay chain / Re-translate, Options, Menu, the column selector, the account's keys.
+ * through here: the filter fold, Replay chain / Re-translate, ⋯, status, the column selector, the account's keys.
  *
- * 🔴 It is drawn on the body, at the page's own size. Inside the header (drawn at --header-zoom) a panel's box shrank
+ * 🔴 It is drawn on the body, at the page's own size. Inside the header (drawn at a 0.67 zoom 10-08 - 11-06) a panel's box shrank
  *    to 0.67 while its words were set back to 11px, and its rows broke in two (owner 10-09); its place had needed the
  *    zoom divided out as well (10-08). On the body, `position: fixed` takes the control's screen rectangle as it is.
  *    The panel keeps where it was opened as `placedFrom`, so watchForDismiss reads a click on it as inside.

@@ -58,22 +58,6 @@ body {
   z-index: 200; /* 헤더 레이어: resizer(100) < 헤더(200) < 팝업(1000) < 모달(2000+) */
 }
 
-/* 🔴 NOT `flex: 1` any more. Mockup 2b gives the header's free space to the filter chips,
-   and two `flex: 1` siblings split it -- the chips got half a bar and the transient status
-   message got the other half whether or not it had anything to say. This one now sizes to
-   its content and stops growing; `max-width` still caps a long message. */
-.log-indicator-area {
-  flex: 0 1 auto;
-  /* Pins itself and everything after it to the right edge, which is what the mockup's
-     `margin-left: auto` does for its badge/⚙/🧭 cluster. It also keeps that cluster on the
-     right on the tables where no filter chip is showing to take the slack. */
-  margin-left: auto;
-  display: flex;
-  justify-content: center;
-  padding: 0 20px;
-  max-width: 500px;
-}
-
 .glass-log-badge {
   /* 🔴 C-118. 이것은 «읽는» 표시입니다 — 누르는 것이 아닙니다. 그런데 값이 길어지면
      (「Loaded 100000 rows in 12345.6ms」) 옆 버튼 위로 넘어가 그 버튼의 클릭을 «먹습니다».
@@ -177,9 +161,7 @@ body {
       «0 으로 풀립니다». 그래서 이 묶음이 550px -> 12px 로 접혀 안의 버튼 여섯이
       «클립돼 사라졌습니다» — 실측 1280: 상단 컨트롤 아홉 중 «여섯»이 자기 클릭을 못 받음.
       모서리 자르기는 남겨야 하므로 overflow 를 건드리지 않고 «안 줄어듦»을 선언합니다. */
-.controls-area > .control-group,
-.controls-area > .theme-toggle-btn,
-.controls-area > .status-indicators {
+.controls-area > .control-group {
   flex: 0 0 auto;
 }
 
@@ -429,6 +411,13 @@ body.resizing-active .gallery-seat {
   padding: 20px;
   border-bottom: 1px solid var(--border);
 }
+/* Folded (owner 11-06, main.js): a strip holding its button, the last of the tab row's. The width it had stays inline on
+   the panel (the drag's), so this wins over it only while folded. */
+.history-tabs--wide > .tab-btn.sidebar-fold { flex: 0 0 auto; padding: 0 var(--space-3); }
+.history-sidebar.is-folded { width: auto !important; flex: 0 0 auto !important; }
+.history-sidebar.is-folded > .sidebar-header { padding: var(--space-2); border-bottom: none; }
+.history-sidebar.is-folded .history-tabs > :not(.sidebar-fold),
+.history-sidebar.is-folded > :not(.sidebar-header) { display: none; }
 
 .sidebar-header h2 {
   font-size: var(--fs-title);
@@ -2456,7 +2445,7 @@ body.resizing-active .gallery-seat {
    mono in the cells so values line up column-wise, and a small upper-case sans header so a
    column name reads as a label rather than as one more value. */
 #myGrid {
-  --ag-font-size: var(--fs-label);
+  --ag-font-size: var(--fs-cell);
   --ag-font-family: var(--font-mono);
 }
 
@@ -2482,7 +2471,7 @@ body.resizing-active .gallery-seat {
 
 /* The reference grid is the same surface, same rhythm. */
 .reference-view-table th { height: 30px; }
-.reference-view-table td { height: 28px; font-size: var(--fs-label); }
+.reference-view-table td { height: 28px; font-size: var(--fs-cell); }
 
 /* Owner 2026-08-21: a button is as wide as its label. The mockup shows 「전체 해제」
    wrapping to two lines in a fixed-width button; wrapping is the thing to avoid, not to
@@ -2599,35 +2588,17 @@ body.resizing-active .gallery-seat {
   gap: calc(7px + var(--header-gap-plus, 0px));
   overflow: hidden;
 }
-/* 🔴 The header is drawn at --header-zoom (lead bfb62503e, owner 10-08 「줌 67 퍼에서 잘 되었었는데」): its
-   paddings, heights, icons, gaps and borders shrink together, the way the browser at 67 % drew them, and its text
-   is set back so it reads at --fs-header. Every size inside is a token, so the text tokens its parts use are re-said here (the chip's × is h5);
-   the font-size is for what only inherits one. The logo shrinks with it; the map editor's header (same class, same file) does not. */
-.grid-header { zoom: var(--header-zoom); }
-/* 소유자 10-09 「헤더 뱃지들 버튼 마진 2pt 만 늘려줘」: each gap between the header's badges and buttons adds this - 2pt on
-   screen, so divided by the zoom it is drawn at. The joined buttons stay joined (.glass-btn-group, gap 0). */
-.grid-header { --header-gap-plus: calc(2pt / var(--header-zoom)); }
-.grid-header .controls-area {
-  --fs-body: calc(var(--fs-header) / var(--header-zoom));
-  --fs-button: var(--fs-body);
-  --fs-label: var(--fs-body);
-  --fs-tag: var(--fs-body);
-  --fs-meta: var(--fs-body);
-  --fs-h5: var(--fs-body);
-  font-size: var(--fs-body);
-}
-/* 🔴 The row stays one at 1920 with filters on (owner 10-08): the strip and the status message yield before
-   the row breaks. An empty strip spends no width - its 240px basis was 240px of nothing. With chips or the TX banner
-   it yields down to one readable chip, «+N» and «Clear all» (16em, measured at 0.67); a 0 basis
-   with no floor is what settled it at 30px on 09-02. The message yields down to «Loaded <n> rows» whole
-   (13em) and never takes more than its own text, so the chips keep the free space. «N hidden» counts as a chip (11-05). */
-.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden]))) { flex: 0 0 0; }
+/* 소유자 10-09 「헤더 뱃지들 버튼 마진 2pt 만 늘려줘」: each gap between the header's badges and buttons adds this. The
+   joined buttons stay joined (.glass-btn-group, gap 0). The header is drawn at its own size again (owner 11-06
+   「메인그리드 상단탭은 고치면서 다시 예전처럼 크기 올려줘 지금 너무 작아» - the 0.67 zoom of 10-08 is retired). */
+.grid-header { --header-gap-plus: 2pt; }
+/* 🔴 The row stays one at 1920 with filters on (owner 10-08): the strip yields before the row breaks. An empty
+   strip needs no width - its 240px basis was 240px of nothing - but takes what is free, so the buttons after it sit at
+   the right edge (mockup v3; the status message that held them there is in the status panel, 11-06). With chips or the TX banner it yields down to one
+   readable chip, «+N» and «Clear all» (16em); a 0 basis with no floor is what settled it at 30px on 09-02.
+   «N hidden» counts as a chip (11-05). */
+.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden]))) { flex: 1 1 0; }
 .app-header .header-filter-bar:has(.filter-chip, > .tx-filter-banner[style*="flex"], > .hidden-cols:not([hidden])) { flex: 1 1 0; min-width: 16em; }
-.app-header .log-indicator-area {
-  flex: 1 1 0;
-  min-width: 13em;
-  max-width: max-content;
-}
 
 /* A text control, not a button box — the mockup's 「전체 해제」 is a plain link beside the
    chips, and a bordered button there would outweigh the chips it clears. */
@@ -2841,6 +2812,8 @@ body.resizing-active .gallery-seat {
 .audit-target-key { display: flex; max-width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; }
 .audit-target-table { min-width: 0; }
 .audit-tbl-piece { white-space: nowrap; }
+/* the reading of a whole name (fitAuditTable): on one line and not shrunk to the cell it sits in - the cell is a flex box */
+.audit-tbl-whole .audit-target-table { white-space: nowrap; flex: 0 0 auto; }
 /* The table read, not glanced at (owner 10-12): body size and colour; its name breaks only after «_» «.», the column as
    wide as its widest piece (owner 11-05, fitAuditTable). */
 .audit-table .timeline-card > .audit-tbl { font-family: var(--font-mono); font-size: var(--fs-body); color: var(--text); }
@@ -2932,12 +2905,6 @@ body.resizing-active .gallery-seat {
   line-height: 1;
 }
 .app-header .tx-action-group { flex: 0 0 auto; }
-/* The status MESSAGE is what gives way instead. It is a reading; the three controls beside
-   it are not, and a button whose label is cut is a button you have to guess at.
-   C-118 made the badge pointer-events: none because its text spilled over the button beside it and ate that press.
-   Here it is cut inside its own box, so that reason is gone: it takes the pointer and shows its whole sentence as
-   its title (lead 10-09; the screen gate presses the buttons beside it at every size). */
-.app-header #performance-log { flex: 0 1 auto; min-width: 0; pointer-events: auto; }
 .app-header .tx-action-group > * + * { border-left: 1px solid var(--warning); }
 .app-header #tx-pending-badge { border-radius: 0; padding: 0 10px; font-family: var(--font-mono); font-size: var(--fs-button); font-weight: 700; color: var(--warning); }
 .app-header #tx-apply-btn { border-radius: 0; padding: 0 11px; background: var(--success-weak); color: var(--success); font-weight: 700; font-size: var(--fs-button); }
@@ -3036,17 +3003,33 @@ body.resizing-active .gallery-seat {
 .timeline-container:not(.tab-global) > .audit-filter { display: flex; background: none; border-bottom: none; justify-content: flex-end; }
 .timeline-container:not(.tab-global) > .audit-filter > :not(.audit-filter-refresh) { display: none; }
 
-/* ③ The mockup has no status text -- it has the dot beside the wordmark, which this screen
-   already draws. The badges keep their words (removing them would lose the reading) but take
-   the mockup's density instead of shouting at twice the size. */
-.app-header .status-indicators { gap: calc(6px + var(--header-gap-plus, 0px)); }
-.app-header .status-indicators > * {
-  height: 22px;
-  font-size: var(--fs-meta);
-  padding: 0 7px;
-  display: inline-flex;
-  align-items: center;
-}
+/* ── The head bar's status button, its panel and ⋯ (lead 11-05 ③, mockup v3) ─────────────────────────────────
+   The button is a dot while all is well and says the one thing that is not (status_dot.js); the badges, the Last
+   line, the account and the last stall are rows of its panel. Both panels hang under their button from <body>
+   (placeUnder), so nothing here is scoped through `.app-header`. */
+.status-btn, .more-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-width: var(--control-h); }
+.status-btn__dot { width: var(--space-3); height: var(--space-3); border-radius: 50%; background: var(--text-dim); flex: 0 0 auto; }
+.status-btn[data-tone="ok"] .status-btn__dot { background: var(--success); }
+.status-btn[data-tone="busy"] { border-color: var(--warning); background: var(--warning-weak); color: var(--warning); }
+.status-btn[data-tone="busy"] .status-btn__dot { background: var(--warning); }
+.status-btn[data-tone="bad"] { border-color: var(--danger); background: var(--danger-weak); color: var(--danger); }
+.status-btn[data-tone="bad"] .status-btn__dot { background: var(--danger); }
+.status-btn__word { font-weight: 600; white-space: nowrap; }
+.status-btn__word:empty { display: none; }
+.more-btn { font-size: var(--fs-h5); }
+.status-panel { width: 440px; gap: var(--space-3); padding: var(--space-4); }
+/* the last stall's line goes down under its label and time: its longest word (a table name) whole in the panel */
+.status-panel .stall-line { flex-wrap: wrap; }
+.status-panel .status-indicators { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+.status-panel__last { display: flex; align-items: baseline; gap: var(--space-2); }
+.status-panel__key { flex: 0 0 auto; font-size: var(--fs-label); color: var(--text-muted); }
+.status-panel #performance-log { flex: 1 1 auto; pointer-events: auto; white-space: normal; text-align: left;
+  padding: var(--space-1) var(--space-2); }
+.more-panel { width: 260px; gap: 0; }
+.more-panel__head { padding: var(--space-3) var(--space-4) var(--space-1); font-size: var(--fs-tag); color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.08em; }
+.more-panel__section { display: flex; flex-direction: column; }
 
 
 /* △소유자: 「TX 필터 걸려 있을 때 상단 보라 배너는 현재 컬럼 필터와 동일한 위치로 이동」
@@ -3112,15 +3095,6 @@ body.resizing-active .gallery-seat {
    unevenness. The padding is gone, the row's gap matches the logo seam, and the divider is a
    border on the message rather than a separate element to keep aligned. */
 .app-header .controls-area { gap: calc(14px + var(--header-gap-plus, 0px)); }
-/* △소유자: 「label <-> | <-> Options 여기 간격이 다름」 -- and it was: 23px against 14px.
-   The box still centred its contents from when it was a full-width `flex: 1` strip, so once it
-   shrank to content the leftover slack sat between the badge and the divider. Anchored to the
-   right instead, and the empty transaction group beside it no longer spends a gap. */
-.app-header .log-indicator-area {
-  padding: 0 calc(14px + var(--header-gap-plus, 0px)) 0 0;
-  border-right: 1px solid var(--border);
-  justify-content: flex-end;
-}
 /* 🔴 `:empty` DOES NOT MATCH IT. The group holds three children that are merely
    `display: none`, so it stays a zero-width flex item and still spends the row's 8px gap --
    measured as 23px where the divider needed 14. Matched on "has no visible child" instead. */

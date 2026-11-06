@@ -14,6 +14,7 @@ import { triggerHistoryReloadDebounced, appendHistoryLocally, loadHistory } from
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 import { chainRefreshNote } from './chain_refresh_note.js';
 import { goToLogin, WS_LOGIN_REQUIRED } from './auth_gate.js';
+import { sayLine } from './write_guard.js';
 
 /**
  * Queue the next reconnect attempt and advance the backoff ladder.
@@ -553,7 +554,8 @@ export function handleWebSocketMessage(msg) {
     state.gridApi.applyTransaction({ remove: deleteTx });
 
     updateLoadedCount();
-    elements.performanceLog.textContent = `🗑️ Real-time deleted: ${unitText(rowIds.length, 'row')} removed${droppedText(dropStagedEditsOf(rowIds))}`;
+    const dropped = droppedText(dropStagedEditsOf(rowIds));
+    sayLine(`🗑️ Real-time deleted: ${unitText(rowIds.length, 'row')} removed${dropped}`, Boolean(dropped));
 
     if (state.selectedCell && rowIds.includes(state.selectedCell.rowId)) {
       state.selectedCell = null;
