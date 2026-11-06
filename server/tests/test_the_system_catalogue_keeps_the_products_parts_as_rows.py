@@ -143,3 +143,20 @@ def test_a_save_under_a_shipped_table_name_is_refused_by_name():
     with pytest.raises(HTTPException) as refused:
         admin.save_table_config_raw("sys_columns", {"column_types": {}}, base="")
     assert refused.value.detail["code"] == "shipped_table"
+
+
+def test_the_processes_that_write_or_read_the_shipped_tables_build_their_models_from_crud():
+    """The chain worker (it syncs) and the ledger worker (it translates the system world) build their models from
+    crud's one loader - the owner's tables and the shipped ones. Measured on the box 11-06: the chain worker read the
+    owner's file itself, had no model for any shipped table and synced nothing."""
+    import ast
+    import os
+
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for entry in ("run_chain_worker.py", "run_ledger_worker.py"):
+        tree = ast.parse(open(os.path.join(here, entry), encoding="utf-8").read())
+        built = [call for call in ast.walk(tree) if isinstance(call, ast.Call)
+                 and getattr(call.func, "attr", None) == "init_dynamic_models"]
+        assert len(built) == 1, entry
+        argument = built[0].args[0]
+        assert isinstance(argument, ast.Call) and getattr(argument.func, "attr", None) == "load_table_config_or_raise", entry

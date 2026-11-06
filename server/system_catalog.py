@@ -153,6 +153,9 @@ def sync(db) -> dict:
     for table, rows in desired(db).items():
         model = models.DYNAMIC_TABLES.get(table)
         if model is None:
+            logger.warning("[SystemCatalog] %s has no model in this process - not synced; its declaration is "
+                           "server/declarations/table_config.json", table)
+            said[table] = {"written": 0, "withdrawn": 0, "marked": 0, "no_model": 1}
             continue
         keys = _keys(table)
         current = {tuple(_text(getattr(row, key, None)) for key in keys): row for row in db.query(model).all()}

@@ -14,12 +14,9 @@ from ledger.worker import start_ledger_worker
 from error_said import told
 
 try:
-    import json
-    import paths  # single override point (ASSY_DATA_ROOT)
-    config_path = paths.config_path("table_config.json")
-    with open(config_path, "r", encoding="utf-8") as f:
-        table_config = json.load(f)
-    models.init_dynamic_models(table_config)
+    from database import crud
+    # the owner's tables and the ones the product ships (`shipped`, owner 11-06) - crud's one loader
+    models.init_dynamic_models(crud.load_table_config_or_raise())
 except Exception as e:
     logger.error(f"Failed to load table_config or init dynamic models: {told(e)}", exc_info=e)
 
