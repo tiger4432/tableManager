@@ -57,13 +57,36 @@ def build_engine(url):
         return create_engine(url, connect_args={"check_same_thread": False}, **extra)
     # A chain slot opens a small pool (`chain.slots.SLOT_POOL` puts these two in its environment,
     # 총괄 19f6a9277 ㉲); every other process keeps 20 + 10.
-    return create_engine(
+    built = create_engine(
         url,
         pool_size=int(os.environ.get("ASSY_DB_POOL_SIZE") or 20),      # 커넥션 풀 크기 (1,000만 행 동시 접속 대응)
         max_overflow=int(os.environ.get("ASSY_DB_MAX_OVERFLOW") or 10),  # 피크 시 추가 허용 커넥션
         pool_recycle=3600,      # 커넥션 재사용 시간
         connect_args={"options": "-c client_encoding=utf8"} # [핵심] DB 연결 시 UTF-8 강제
     )
+    event.listen(built, "do_connect", _limit_background_parallelism)
+    return built
+
+
+#: The processes a person waits on - the API and its pool children (`runtime.process_pool`'s WALK and GRID); every
+#: other process's connections are background work.
+PERSON_WAITS = ("assy_server", "assy_walkpool", "assy_gridpool")
+
+
+def parallel_workers_for(name, settings=None):
+    """`max_parallel_workers_per_gather` for a connection named `name` (`connection_name`), None = not set."""
+    if name in PERSON_WAITS:
+        return None
+    from parsers.directory_watcher import background_parallel_workers
+    return background_parallel_workers(settings)
+
+
+def _limit_background_parallelism(dialect, conn_rec, cargs, cparams):
+    """A background process's connection gathers no parallel workers (owner 11-06, `background_parallel_workers`) -
+    read when the connection opens, after the entry point named the process."""
+    workers = parallel_workers_for(connection_name())
+    if workers is not None:
+        cparams["options"] = "%s -c max_parallel_workers_per_gather=%d" % (cparams.get("options", ""), workers)
 
 
 engine = build_engine(SQLALCHEMY_DATABASE_URL)

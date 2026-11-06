@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **뒷일 병렬 — 뒷일 프로세스의 DB 연결은 병렬 일꾼 0** — git pull · 런처 재기동(모든 프로세스)
+>
+> ```
+> 무엇     체인 워커 · 슬롯 · 원장 워커 · 워처 · 스케줄러 · 소급 등 API 가 아닌 프로세스의 연결에 max_parallel_workers_per_gather = 0
+>          서버(API)와 그리드 · 걷기 프로세스(사람이 기다리는 읽기)는 서버 기본값 그대로
+>          굳을 때 C 99~100 % 인데 우리 프로세스는 4~14 % — CPU 는 PostgreSQL 이 뒷일 문장을 병렬로 돌리며 쓰던 것(추정)
+> 확인     psql 에서
+>          SELECT application_name, count(*) FROM pg_stat_activity WHERE backend_type = 'parallel worker' GROUP BY 1;
+>          → 재기동 뒤 굳을 때 이 줄이 비거나 assy_server 만이면 뒷일은 병렬을 안 쓰는 것
+>          (박스 audit_logs 720 만 행 GROUP BY 를 EXPLAIN: 뒷일 연결 HashAggregate · Seq Scan, API 연결 Gather Merge 2 workers)
+> 답의 뜻  재기동 뒤에도 STALL 줄이 같은 빈도 → 병렬이 원인이 아니었음: 그 줄의 D 칸 문장 머리를 보면 됨
+>          체인 · 원장 문장이 눈에 띄게 느려짐 → 그 문장이 병렬 덕에 빨랐던 것: 아래 끄기로 되돌리고 그 줄을 알려 주기
+> 같은 답  python server/scripts/run_pg_tests.py -k background_process  -> 15 passed
+> 끄기     config/ingestion_settings.json 에 "background_parallel_workers": null (서버 기본값으로) 또는 수(그 수로) — 재기동
+> ```
+>
+> ---
+>
 > ## [11-06] **인덱스 짓기 — 쓰고 있는 세션은 기다리지 않음** — git pull · 런처 재기동(스케줄러 · 원장 일꾼)
 >
 > ```

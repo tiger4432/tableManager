@@ -18,6 +18,8 @@
   "chain_statement_timeout_seconds": 120,
   "_save_lock_timeout_seconds_doc": "사람 저장(HTTP 로 들어오는 쓰기)이 다른 쓰기의 잠금을 기다리는 상한(초). 체인 그룹은 쓰기 단계 내내 그 행을 쥐므로, 같은 행을 저장하면 그 그룹이 커밋할 때까지 기다립니다. 넘으면 409 «Another write is in progress - save again» — 다시 저장하면 됩니다. 적지 않으면 10(판: 1,000 행 그룹 뒤의 가장 긴 기다림 0.66 초, 그룹 하나의 기준 5 초의 두 배). null 이나 0 이면 상한 없음. 재기동 없이 다음 트랜잭션부터 읽습니다. PostgreSQL 만.",
   "save_lock_timeout_seconds": 10,
+  "_background_parallel_workers_doc": "뒷일 프로세스(체인 · 슬롯 · 원장 · 워처 · 스케줄러 · 소급 등 API 가 아닌 것)의 DB 연결에서 문장 하나가 쓰는 PostgreSQL 병렬 일꾼 수. 서버(API)와 그리드 · 걷기 프로세스는 서버 기본값 그대로. 적지 않으면 0. null 이면 모든 연결이 서버 기본값. 연결이 새로 열릴 때 읽으므로 바꾸면 재기동. PostgreSQL 만. 볼 줄은 RUN.md 11-06 «뒷일 병렬» 절.",
+  "background_parallel_workers": 0,
   "_retroactive_debug_doc": "소급 실행(Re-translate 등)의 쪽 안 단계 줄을 켭니다(기본 true). 켜면 retroactive.log 에 쪽마다 단계(읽기 · 번역 · 거두기 셈 · 쓰기 …)의 초 · 행 수와, 쪽 읽기 · 거두기 셈의 계획(인덱스를 타는지)이 한 줄씩 남습니다. false 면 쪽 줄과 5 초 박동 줄만 남습니다. 재기동 없이 다음 쪽부터. 줄의 뜻은 RUN.md 10-13 절.",
   "retroactive_debug": true,
   "_retroactive_slow_statement_seconds_doc": "소급 실행 프로세스의 SQL 문장 하나가 이 초를 넘겨 도는 중이면 retroactive.log 에 «slow statement» 한 줄(문장 앞 400 자), 끝나면 «ended» 한 줄. 적지 않으면 2. null 이나 0 이면 안 찍음. 재기동 없이 다음 박동부터.",

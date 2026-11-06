@@ -510,6 +510,21 @@ SWEEP_INTERVAL_SETTING = "sweep_interval_seconds"
 #: file. A folder is never chosen by its mtime: on NTFS neither its parent's listing nor - right after an in-place
 #: rewrite in it is closed - its own mtime moves for a file added in it (A's boards, 10-23).
 FULL_WALK_EVERY_SETTING = "external_full_walk_every"
+#: `max_parallel_workers_per_gather` on a background process's connections (owner 11-06 «stall이 너무 많은데»: the freezes
+#: were PostgreSQL's CPU - background statements fanned out over parallel workers while a person's read waited).
+#: Left out: 0; null: not set - the server's own; a whole number 0 or more: that.
+BACKGROUND_PARALLEL_SETTING = "background_parallel_workers"
+BACKGROUND_PARALLEL_DEFAULT = 0
+
+
+def background_parallel_workers(settings=None):
+    """The parallel workers a background process's statement may gather, None = the server's own."""
+    settings = load_ingestion_settings() if settings is None else settings
+    value = settings.get(BACKGROUND_PARALLEL_SETTING, BACKGROUND_PARALLEL_DEFAULT)
+    if value is None:
+        return None
+    good = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    return value if good else BACKGROUND_PARALLEL_DEFAULT
 
 
 def _timeout_seconds(settings, cell, absent):
