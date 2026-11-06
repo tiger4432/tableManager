@@ -61,6 +61,11 @@ async function suite(m) {
   eq('I1b sizes read in the unit they reach, a size not sent is a dash',
     [m.sizeText(0), m.sizeText(8192), m.sizeText(106496), m.sizeText(5 * 1024 * 1024 + 1), m.sizeText(null)],
     ['0 B', '8.0 KB', '104 KB', '5.0 MB', ABSENT]);
+  const MB12 = 12 * 1024 * 1024;
+  const est = m.indexTableView({ declared: [{ size_estimate: true, size_bytes: MB12 }, { size_estimate: true, size_bytes: null },
+    { size_bytes: MB12 }, { size_bytes: null }], outside: [{ size_estimate: true, size_bytes: 8192 }] });
+  eq('I1c a catalogue estimate wears «≈ », one not yet counted «≈ ?» (never 0 B); a row without the key as before',
+    [est.declared.map((r) => r.size), est.outside.map((r) => r.size)], [['≈ 12 MB', '≈ ?', '12 MB', ABSENT], ['≈ 8.0 KB']]);
   const tags = (state) => rows.filter((tr) => byClass(cell(tr, 'state'), 'tag')[0].textContent === state)
     .map((tr) => byClass(cell(tr, 'state'), 'tag')[0].getAttribute('data-tone'));
   eq('I2 the state is the server\'s token on a tag; present ok, building warn, missing and invalid danger',
@@ -126,6 +131,9 @@ const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`muta
 const MUTANTS = [
   { id: 'XI1', what: 'the size is the raw byte count', catches: ['I1b'],
     mutate: swap('  return `${unit && value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;', '  return String(bytes);') },
+  { id: 'XI12', what: 'an estimate reads as a measured size', catches: ['I1c'], mutate: swap('(r.size_estimate === true ?', '(false ?') },
+  { id: 'XI13', what: 'an index not yet counted reads 0 B', catches: ['I1c'],
+    mutate: swap("isCount(r.size_bytes) ? sizeText(r.size_bytes) : '?'", 'sizeText(Number(r.size_bytes))') },
   { id: 'XI2', what: 'a building index wears no tone', catches: ['I2'], mutate: swap(" building: 'warn',", '') },
   { id: 'XI3', what: 'an invalid index reads as present', catches: ['I2'], mutate: swap(" invalid: 'danger' });", " invalid: 'ok' });") },
   { id: 'XI4', what: 'the state is the screen\'s word, not the server\'s token', catches: ['I2'],

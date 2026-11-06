@@ -1778,7 +1778,7 @@ export const FLOORS = new Map([
   ['overview_board_harness.mjs', 64],   // 61 -> 64: N4 N5 the missing count past the cap, S5b (ㄱ-1, lead 10-13)
   // New 2026-10-09 (lead d71f931c7). The index table: the server's declared indexes beside the database, each state
   // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
-  ['index_table_panel_harness.mjs', 21],
+  ['index_table_panel_harness.mjs', 24],
   // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
   // dropdown.js placeUnder, puts every panel a header control opens under it and on screen. 8 -> 10 (owner 10-09: the
   // panels came out narrow, rows in two): the panel moves to the body at the page's size - five checks, five mutants.

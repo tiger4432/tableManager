@@ -20,12 +20,15 @@ export function sizeText(bytes) {
 
 const text = (v) => (v === null || v === undefined || v === '' ? ABSENT : String(v));
 
+/** A row's size: the catalogue's estimate (`size_estimate`) wears «≈ », one not yet counted «≈ ?» - never «0 B» (B 11-06). */
+const sizeOf = (r) => (r.size_estimate === true ? `≈ ${isCount(r.size_bytes) ? sizeText(r.size_bytes) : '?'}` : sizeText(r.size_bytes));
+
 /** The answer -> what the table draws. `unread` when no answer came: an empty table would read as no index. */
 export function indexTableView(body) {
   const declared = body && Array.isArray(body.declared) ? body.declared : null;
   if (!declared) return { state: 'unread', declared: [], outside: [] };
   const common = (r) => ({ name: text(r.name), table: text(r.table), building: r.building ? String(r.building) : '',
-    size: sizeText(r.size_bytes), scans: countText(r.scans), unused: Number(r.scans) === 0 && isCount(r.scans) });
+    size: sizeOf(r), scans: countText(r.scans), unused: Number(r.scans) === 0 && isCount(r.scans) });
   return {
     state: 'ready',
     declared: declared.map((r) => ({ ...common(r || {}), columns: Array.isArray(r.columns) && r.columns.length

@@ -84,6 +84,8 @@
 > 볼 것    Overview 를 열어 두고 1 분 — STALL 줄의 P 에 /admin/indexes 가 다시 안 뜸
 > 답의 뜻  «Read» 시각이 오래됨 = 그때 읽은 목록. 지금 것이 필요하면 표 옆 Refresh
 >          Refresh 가 오래 «Reading…» = 그 읽기 하나가 느림(서버 쪽 /admin/indexes) — 겹쳐 쌓이지는 않음
+>          Size «≈ 12 MB» = 카탈로그 추정치(서버가 size_estimate 를 붙인 줄) · «≈ ?» = 아직 안 센 인덱스, 0 B 가 아님
+>          «≈» 없는 크기 = 지금처럼 잰 값 (원장 줄)
 > 끄기     없음 (되돌리려면 이 커밋 revert)
 > ```
 >
