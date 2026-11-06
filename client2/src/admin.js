@@ -3124,9 +3124,14 @@ function initHelpPanel() {
     openForm: openHelpForm,
     copy: (text) => writeClipboardRich('', text),
     tab: () => currentTab,
+    storage: (() => { try { return window.localStorage; } catch (e) { return null; } })(),
   });
-  // it hangs from Help, as every header panel hangs from its button
-  const hang = () => mount.style.setProperty('--help-panel-top', `${Math.round(btn.getBoundingClientRect().bottom)}px`);
+  // it hangs from the header's bottom edge (owner 11-06), followed when the header's height changes
+  const bar = btn.closest('header') || btn;
+  const hang = () => mount.style.setProperty('--help-panel-top', `${Math.round(bar.getBoundingClientRect().bottom)}px`);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(hang).observe(bar);
+  window.addEventListener('resize', hang);
+  hang();
   btn.addEventListener('click', () => {
     // the tools whose form this page has - an answer offers Open form only for those
     refreshRetroactiveOperations();

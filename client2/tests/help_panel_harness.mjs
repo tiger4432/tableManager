@@ -380,8 +380,43 @@ console.log('\n── F. EARLIER · TWO PANELS ───────────
   ok('F7 closing hides it and keeps its asks', p1.isOpen === false && p1.asks.length === 1 && p2.isOpen);
 }
 
+// The width (owner 11-06): a host whose style takes the token, a window the drag reads, a storage that keeps the width.
+function mountWide(M, kept = null) {
+  const doc = makeDoc();
+  const listeners = {};
+  doc.defaultView = { innerWidth: 1920,
+    addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); },
+    removeEventListener(type, fn) { listeners[type] = (listeners[type] || []).filter((f) => f !== fn); },
+    fire(type, ev) { (listeners[type] || []).slice().forEach((fn) => fn(ev)); } };
+  const host = doc.createElement('div');
+  host.style = { props: {}, setProperty(k, v) { this.props[k] = v; } };
+  const store = new Map(kept === null ? [] : [[M.WIDTH_KEY, kept]]);
+  const storage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, v) };
+  const panel = new M.HelpPanel(host, { doc, send: makeSend().send, clock: makeClock(), forms: () => FORMS, storage });
+  panel.open();
+  const drag = (x) => { find(panel.root, 'help-panel__grip').fire('pointerdown'); doc.defaultView.fire('pointermove', { clientX: x });
+    doc.defaultView.fire('pointerup', {}); };
+  return { host, store, panel, drag, width: () => host.style.props['--help-panel-width'] };
+}
+
+console.log('\n── H. THE WIDTH ────────────────────────────────────────────────────');
+{
+  const w = mountWide(X);
+  ok('H1 nothing kept: the page\'s token stands', w.width() === undefined && Boolean(find(w.panel.root, 'help-panel__grip')), w.width());
+  w.drag(1920 - 1000);
+  ok('H2 the left edge dragged: the width follows and is kept', w.width() === '1000px' && w.store.get(X.WIDTH_KEY) === '1000', [w.width(), w.store.get(X.WIDTH_KEY)]);
+  ok('H3 a width kept is the next panel\'s - Ask and Guide alike', mountWide(X, '1000').width() === '1000px');
+  w.drag(1900);
+  ok('H4 no narrower than MIN_WIDTH, no wider than the window', w.width() === `${X.MIN_WIDTH}px` && X.panelWidth(3000, 1920) === 1920, w.width());
+  const t = mountWide(X);
+  t.panel.storage = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+  let threw = false;
+  try { t.drag(920); } catch (e) { threw = true; }
+  ok('H5 a storage that throws: the width still follows, nothing thrown', !threw && t.width() === '1000px');
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
-const swap = (from, to) => (src) => {
+const swap =(from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}`);
   return src.replace(from, to);
 };
@@ -412,6 +447,9 @@ const DEFECTS = [
   ['M25 a failed embedding cut to its first word', swap('`via ${d.retrieval}`', "`via ${d.retrieval.split(' ')[0]}`")],
   ['M12 an Earlier row shows the whole refusal', swap("rec.view.refused.split('\\n')[0] : '';", "rec.view.refused : '';")],
   ['M10 the waiting card is drawn again each second', swap('if (this.seconds && rec === this.shown) this.seconds.textContent = this.secondsOf(rec);', 'this.render();')],
+  ['M26 a kept width not read', swap('if (kept > 0) this.setWidth(kept);', '')],
+  ['M27 a dragged width not kept', swap('if (width && this.storage) this.storage.setItem', 'if (false) this.storage.setItem')],
+  ['M28 no narrowest width', swap('Math.max(MIN_WIDTH, Math.min(px, viewport))', 'Math.min(px, viewport)')],
   ['M9 a page link drawn for a door that names none',
     swap("open: d.open && d.open.href ? {", "open: { label: '', href: '#' } || d.open && d.open.href ? {")],
 ];
@@ -475,6 +513,13 @@ async function verdict(M) {
   if (text(card(dc), 'help-card__retrieval') !== `via ${EMBED_FAILED}`) return true;
   await asked(dc, 't', { ok: true, body: declWith({ retrieval: null }) });
   if (find(card(dc), 'help-card__retrieval')) return true;
+
+  const w = mountWide(M);
+  w.drag(920);
+  if (w.width() !== '1000px' || w.store.get(M.WIDTH_KEY) !== '1000') return true;
+  if (mountWide(M, '1000').width() !== '1000px') return true;
+  w.drag(1900);
+  if (w.width() !== `${BASELINE.MIN_WIDTH}px`) return true;
   return false;
 }
 

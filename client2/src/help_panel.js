@@ -23,6 +23,12 @@ export const NOTHING_ASKED = 'Nothing asked since this page opened';
 // the save's judgement passed - and nothing was saved (lead 10-29: said in the word)
 export const CHECKED = 'Checked - would save';
 
+/** The panel's width dragged on its left edge, kept per browser (owner 11-06) - none kept: the page's token. */
+export const WIDTH_KEY = 'admin-help-width';
+export const MIN_WIDTH = 360;
+/** A dragged width as the panel takes it: whole pixels, at least MIN_WIDTH, at most the window. */
+export const panelWidth = (px, viewport) => Math.round(Math.max(MIN_WIDTH, Math.min(px, viewport)));
+
 /** The one request: the question as typed. */
 export function helpRequest(question) {
   return { method: 'POST', path: HELP_ROUTE, body: { question } };
@@ -109,6 +115,7 @@ export class HelpPanel {
     this.clock = deps.clock || CLOCK;
     this.copy = deps.copy || (() => false);
     this.tab = deps.tab || (() => null);
+    this.storage = deps.storage || null;   // where a dragged width is kept; none - not kept
     this.view = 'ask';
     this.asks = [];           // newest first: {question, at, view, waiting, stopped, late, runId}
     this.shown = null;        // the ask whose card is drawn
@@ -143,6 +150,30 @@ export class HelpPanel {
   }
 
   close() { if (this.root) this.root.hidden = true; }
+
+  /** Sets the panel's width token on its host - Ask and Guide alike. */
+  setWidth(px) {
+    const width = panelWidth(px, this.doc.defaultView ? this.doc.defaultView.innerWidth : px);
+    this.host.style.setProperty('--help-panel-width', `${width}px`);
+    return width;
+  }
+
+  /** The left edge dragged: the width follows the pointer, kept when it is let go. */
+  drag(e, grip) {
+    if (e.preventDefault) e.preventDefault();
+    const view = this.doc.defaultView;
+    let width = null;
+    const move = (ev) => { width = this.setWidth(view.innerWidth - ev.clientX); };
+    const up = () => {
+      grip.className = 'help-panel__grip';
+      view.removeEventListener('pointermove', move);
+      view.removeEventListener('pointerup', up);
+      try { if (width && this.storage) this.storage.setItem(WIDTH_KEY, String(width)); } catch (err) { /* not kept */ }
+    };
+    grip.className = 'help-panel__grip is-dragging';
+    view.addEventListener('pointermove', move);
+    view.addEventListener('pointerup', up);
+  }
 
   toggle() { if (this.isOpen) this.close(); else this.open(); }
 
@@ -185,6 +216,15 @@ export class HelpPanel {
     close.setAttribute('aria-label', 'Close help');
     head.appendChild(close);
     root.appendChild(head);
+    const grip = this.el('div', 'help-panel__grip');
+    grip.setAttribute('role', 'separator');
+    grip.setAttribute('aria-orientation', 'vertical');
+    grip.setAttribute('aria-label', 'Resize help');
+    grip.addEventListener('pointerdown', (e) => this.drag(e, grip));
+    root.appendChild(grip);
+    let kept = null;
+    try { kept = this.storage && Number(this.storage.getItem(WIDTH_KEY)); } catch (e) { kept = null; }
+    if (kept > 0) this.setWidth(kept);
 
     const body = this.el('div', 'help-panel__body');
     const label = this.el('label', 'help-panel__label', 'Ask');

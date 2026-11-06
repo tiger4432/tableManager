@@ -1054,11 +1054,15 @@
     .retro-input.is-help { border-color: var(--accent-2); background: var(--accent-2-weak); }
     .retro-asked { gap: var(--space-2); }
     #help-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
-    /* under Help (its bottom set on open by admin.js), so Help stays in reach to close it */
-    #help-mount { --help-panel-top: 0px; }
+    /* under the header (its bottom followed by admin.js), so Help stays in reach to close it; its width is the one token,
+       a drag on the left edge sets it for this browser (owner 11-06) */
+    #help-mount { --help-panel-top: 0px; --help-panel-width: clamp(560px, 42vw, 900px); }
     .help-panel { position: fixed; top: var(--help-panel-top); right: 0; bottom: 0; z-index: 300; box-sizing: border-box;
-      width: min(460px, 100vw); display: flex; flex-direction: column; background: var(--bg-surface);
+      width: min(var(--help-panel-width), 100vw); display: flex; flex-direction: column; background: var(--bg-surface);
       border-left: 1px solid var(--border); box-shadow: var(--shadow-pop); }
+    .help-panel__grip { position: absolute; top: 0; bottom: 0; left: calc(var(--space-2) / -2); width: var(--space-2);
+      cursor: ew-resize; z-index: 1; touch-action: none; }
+    .help-panel__grip:hover, .help-panel__grip.is-dragging { background: var(--accent-weak); }
     .help-panel[hidden] { display: none; }
     .help-panel__head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4);
       border-bottom: 1px solid var(--border); background: var(--bg-header); }
@@ -1116,8 +1120,11 @@
       display: flex; flex-direction: column; gap: var(--space-2); color: var(--text-muted); }
     .gmd-list { margin: 0; padding-left: var(--space-6); display: flex; flex-direction: column; gap: var(--space-1); }
     .gmd-list > li > * + * { margin-top: var(--space-2); }
+    /* a table wider than the panel scrolls in its own box; the text around it keeps the panel's width (owner 11-06) */
+    .guide-reader__text { overflow-wrap: anywhere; }
     .gmd-table { overflow-x: auto; border: 1px solid var(--border); }
     .gmd-table table { border-collapse: collapse; width: 100%; font-size: var(--fs-label); line-height: 1.55; }
+    .gmd-table th, .gmd-table td { min-width: 8em; }
     .gmd-table th { text-align: left; padding: var(--space-2) var(--space-3); background: var(--bg-header); color: var(--text-muted);
       font-weight: 600; border-bottom: 1px solid var(--border); }
     .gmd-table td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); vertical-align: top; }

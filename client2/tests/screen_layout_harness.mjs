@@ -487,6 +487,9 @@ const GUIDE_ANSWER = { guides: Object.entries(JSON.parse(readFileSync(path.join(
           '| 칸 | 켜면 | 안 적으면 |', '|---|---|---|',
           '| `allow_chain_trigger` | 다른 체인 규칙이 쓴 행에도 깨어난다 | 사람·파일·수집기가 바꾼 행에만 |',
           '| `allow_replace_map` | 맵 하나를 통째로 갈아끼운다 | 이름 대어 거절 |', '',
+          // wider than the panel (owner 11-06): it scrolls in its own box
+          '| 칸 | 종류 | 기본 | 범위 | 읽는 때 | 끄는 법 | 로그 | 화면 | 판정 |', '|---|---|---|---|---|---|---|---|---|',
+          '| `enabled` | bool | true | 규칙 | 저장 뒤 | false | chain_worker.log | Chain | 소유자 |', '',
           '> 체인이 체인을 깨우는 깊이는 파일 맨 위 `max_chain_depth`(기본 8)가 막습니다.', '',
           '```', '"allow_chain_trigger": true     다른 규칙이 쓴 행에도', '"enabled": false                규칙을 끈다', '```'].join('\n') },
         { path: [file, '1. 세팅 절차'], level: 2, text: ['1. 규칙을 적는다', '2. **Check** 로 본다', '   - `allow_chain_trigger` 는 마지막에'].join('\n') }];
@@ -1477,6 +1480,27 @@ CELLS.push({ entry: 'admin.html', after: 'Ontology Explorer, an imported node', 
 })()` });
 // lead 10-28: the Chain table's header is admin.html's and its cells are admin.js's - each header's column holds that
 // header's cells, and every rule's state badge is inside the box when the tab opens (it was past it at every size).
+// The Help panel (owner 11-06): from the header's bottom edge to the window's, the width token's, nothing wider than its
+// body - a table scrolls in its own box; a width dragged is kept across a reload.
+CELLS.push({ entry: 'admin.html', after: 'Help, the guide for this tab', rule: 'help panel', at: 'help-panel', expr: `(() => {
+  const p = document.querySelector('.help-panel:not([hidden])'); const bar = document.querySelector('header.admin-bar');
+  if (!p || !bar) return 'no open panel or header';
+  const r = p.getBoundingClientRect(), b = bar.getBoundingClientRect();
+  if (Math.abs(r.top - b.bottom) > 1) return 'the panel starts at ' + Math.round(r.top) + ', the header ends at ' + Math.round(b.bottom);
+  if (Math.abs(r.bottom - innerHeight) > 1) return 'the panel ends at ' + Math.round(r.bottom) + ' of ' + innerHeight;
+  const want = Math.min(Math.max(560, innerWidth * 0.42), 900, innerWidth);
+  if (Math.abs(r.width - want) > 1) return 'the panel is ' + Math.round(r.width) + ' px, the token says ' + Math.round(want);
+  const body = document.querySelector('.guide-reader__body');
+  if (!body || body.scrollWidth > body.clientWidth + 1) return 'the guide body is ' + (body && body.scrollWidth) + ' wide in ' + (body && body.clientWidth);
+  return null;
+})()` });
+CELLS.push({ entry: 'admin.html', after: 'Help, its edge dragged', rule: 'help width kept', at: 'help-panel', expr: `(() => {
+  const w = window.__helpWidth;
+  if (!w || !w.from) return 'no grip to drag';
+  const want = Math.min(Math.max(560, innerWidth * 0.42), 900, innerWidth) + 200;
+  return Math.abs(w.dragged - want) <= 2 && w.reopened === w.dragged ? null
+    : 'dragged to ' + w.dragged + ' (want ' + Math.round(want) + '), after a reload ' + w.reopened;
+})()` });
 CELLS.push({ entry: 'admin.html', after: 'Chain', rule: 'chain columns', at: 'chain-list-body', expr: `(() => {
   const table = document.querySelector('#chain-list-body').closest('table');
   const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim());
@@ -3393,6 +3417,32 @@ const DRIVE = {
             + " && Boolean(document.querySelector('.guide-reader__text .gmd-pre'))"
             + " && Boolean(document.querySelector('.guide-reader__text .gmd-quote'))");
         }],
+        // The width (owner 11-06): the left edge dragged 200 px out, the page loaded again, the Guide opened - the width
+        // kept; then forgotten, so the next size starts on the token.
+        ['Help, its edge dragged', async (c, log) => {
+          const at = await evaluate(c, `(() => { const g = document.querySelector('.help-panel:not([hidden]) .help-panel__grip');
+            if (!g) return null; const r = g.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+          if (at) {
+            await c.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
+            await c.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x - 200, y: at.y, button: 'left', buttons: 1 });
+            await c.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x - 200, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+          }
+          await evaluate(c, `window.__dragged = Math.round((document.querySelector('.help-panel') || { getBoundingClientRect: () => ({}) })
+            .getBoundingClientRect().width); try { sessionStorage.setItem('help-dragged', String(window.__dragged)); } catch (e) {} true`);
+          log.opening = true;
+          await c.send('Page.reload', { ignoreCache: true });
+          await sleep(1500);
+          await settle(c, log);
+          await evaluate(c, `(${screensLib})(${TOL})`);
+          await until(c, "Boolean(document.getElementById('help-btn'))", 15000);
+          await evaluate(c, "(() => { const b = document.getElementById('help-btn'); if (b) b.click(); return Boolean(b); })()");
+          await evaluate(c, "(() => { const b = document.querySelector('.help-panel__view[data-view=\"guide\"]'); if (b) b.click(); return Boolean(b); })()");
+          await until(c, `${shown('chain_rules.md')}`);
+          await evaluate(c, `(() => { window.__helpWidth = { dragged: Number(sessionStorage.getItem('help-dragged')),
+            reopened: Math.round(document.querySelector('.help-panel').getBoundingClientRect().width), from: ${JSON.stringify(at)} };
+            try { localStorage.removeItem('admin-help-width'); } catch (e) {}
+            document.getElementById('help-mount').style.removeProperty('--help-panel-width'); return true; })()`);
+        }],
         ['Help, a section picked', async (c) => {
           await pick(c, '.guide-reader__sections', '2');
           await until(c, `${heading('1. 세팅 절차')} && Boolean(document.querySelector('.guide-reader__text ol.gmd-list'))`);
@@ -3702,6 +3752,14 @@ const MUTANTS = [
   { name: 'the adder\'s box keeps its width in a narrow value column again, its + under the row\'s Required', entry: 'admin.html', rule: 'cover', at: 'oe-form-adder',
     file: 'src/ontology_explorer.css', edits: [['gap: var(--space-1); min-width: 0; max-width: 100%;', 'gap: var(--space-1);'], ['flex: 0 1 auto; min-width: 0; width: calc(var(--space-6) * 6);', 'width: calc(var(--space-6) * 6);']] },
   // «Paste HTML» (lead 10-22).
+  { name: 'the help panel hangs from Help again', entry: 'admin.html', rule: 'help panel', at: 'help-panel',
+    file: 'src/admin.js', edits: [["`${Math.round(bar.getBoundingClientRect().bottom)}px`", "`${Math.round(btn.getBoundingClientRect().bottom)}px`"]] },
+  { name: 'the help panel 460 px again', entry: 'admin.html', rule: 'help panel', at: 'help-panel',
+    file: 'admin.html', edits: [['--help-panel-width: clamp(560px, 42vw, 900px);', '--help-panel-width: 460px;']] },
+  { name: 'a guide table wider than the panel pushes the guide', entry: 'admin.html', rule: 'help panel', at: 'help-panel',
+    file: 'admin.html', edits: [['    .gmd-table { overflow-x: auto; border: 1px solid var(--border); }', '    .gmd-table { border: 1px solid var(--border); }']] },
+  { name: 'a dragged help width forgotten on reload', entry: 'admin.html', rule: 'help width kept', at: 'help-panel',
+    file: 'src/help_panel.js', edits: [['if (kept > 0) this.setWidth(kept);', '']] },
   { name: 'a paste on «Paste HTML» is not taken', entry: 'admin.html', rule: 'html written', at: 'html',
     file: 'src/ontology_explorer_view.js', edits: [["  if (!el || !el.dataset || el.dataset.action !== 'paste-html') return false;", '  return false;']] },
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
