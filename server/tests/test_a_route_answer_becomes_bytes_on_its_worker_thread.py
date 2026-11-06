@@ -95,7 +95,8 @@ def test_every_sync_route_of_the_app_is_wrapped():
     routes = [r for r in main.app.routes if isinstance(r, APIRoute)]
     plain = [r for r in routes if not _is_async(r) and r.response_model is None]
     assert routes and plain, "the app has no routes - this measured nothing"
-    assert {type(r) for r in routes} == {offloop_json.OffLoopJSONRoute}, {type(r).__name__ for r in routes}
+    # off the loop is the property; a subclass keeps it (access.TableRoute, 11-07 cb4310be8)
+    assert all(issubclass(type(r), offloop_json.OffLoopJSONRoute) for r in routes), {type(r).__name__ for r in routes}
     unwrapped = [r.path for r in plain if r.response_class is not offloop_json._EncodedJSONResponse]
     assert unwrapped == [], unwrapped
 
