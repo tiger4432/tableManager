@@ -1845,7 +1845,7 @@ export const FLOORS = new Map([
   // running, a badge not read, all well; the button drawn from its panel, a stall not read keeping what is drawn, two apart.
   ['status_dot_harness.mjs', 23],
   // the page's own freeze said as one line, named by the slice it ran in; the census's seats each mark theirs (lead 11-06)
-  ['ui_stall_harness.mjs', 13],
+  ['ui_stall_harness.mjs', 14],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

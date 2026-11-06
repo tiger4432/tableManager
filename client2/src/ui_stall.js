@@ -19,7 +19,8 @@ const works = [];
 export function markWork(name, table = null, rows = null) {
   const work = { name, table, rows, start: performance.now(), end: null };
   works.push(work);
-  if (works.length > KEEP) works.shift();
+  // a slice still open is never let go - a slice of 500 marks inside a socket message lost the message's name (box 11-06)
+  if (works.length > KEEP && works[0].end !== null) works.shift();
   queueMicrotask(() => { work.end = performance.now(); });
 }
 

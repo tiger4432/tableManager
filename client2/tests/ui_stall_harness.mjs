@@ -41,6 +41,18 @@ async function answers(M) {
     endAtAwait = mine && mine.name === 'slice' ? mine.end !== null : 'not found';
   })();
   out.C = endAtAwait;
+  // C2: a slice with more marks inside it than the log keeps still names the task by its own mark
+  let outer = 'unset';
+  await (async () => {
+    const t0 = performance.now();
+    M.markWork('ws batch_row_upsert', 'dt_log', 500);
+    for (let i = 0; i < 300; i += 1) M.markWork('history widths', null, 1);
+    const spent = performance.now() - t0 + 0.0001;
+    const named = M.workOf(t0, spent);
+    outer = named && named.name;
+    await null;
+  })();
+  out.C2 = outer;
   // D: the watch over a fake long-task observer
   const said = [];
   let deliver = null;
@@ -88,6 +100,7 @@ ok('B2 nothing marked: «UI 1.2s ?»', base.B[1] === 'UI 1.2s ?', base.B[1]);
 ok('B3 the parts there are: no table, no rows', base.B[2] === 'UI 2.0s history', base.B[2]);
 ok('B4 a count of 0 rows is said', base.B[3] === 'UI 1.1s rows lot_event 0', base.B[3]);
 ok('C1 a mark ends with its slice - ended before the code after an await runs', base.C === true, base.C);
+ok('C2 300 marks inside one slice: the task still named by the slice\'s own mark', base.C2 === 'ws batch_row_upsert', base.C2);
 ok('D1 under a second nothing; a second, its line once with its time', JSON.stringify(base.D) === JSON.stringify([0, 1, '2026-11-06T09:00:00Z', true]), base.D);
 ok('D2 a stall that cannot be said: one console line, nothing thrown', JSON.stringify(base.D2) === '[false,1]', base.D2);
 ok('D3 without long tasks: a frame gap of 1.4 s said, a hidden page\'s gap not', JSON.stringify(base.D3) === '["UI 1.4s ?"]', base.D3);
@@ -137,6 +150,7 @@ const DEFECTS = [
     '    this.onStall({ line: uiStallLine(ms, workOf(start, ms)), at: this.nowIso() });\n')],
   ['M6 a hidden page\'s frame gap said', once('if (doc && doc.hidden) last = null;', 'if (false) last = null;')],
   ['M7 a count of 0 rows dropped', once('if (isCount(work.rows))', 'if (work.rows)')],
+  ['M8 an open slice let go when the log is full', once('if (works.length > KEEP && works[0].end !== null) works.shift();', 'if (works.length > KEEP) works.shift();')],
 ];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 if (failed) die('the scorer already fails on the UNMUTATED module');
