@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **피벗 carry — 피벗 행마다 보여 줄 컬럼(읽기만)** — git pull · 런처 재기동(API, 클라는 dist 에 들어 있음)
+>
+> ```
+> 적는 곳   table_config 의 그 표 "pivot": {"column": ..., "value": ..., "carry": ["컬럼", ...]}
+> 보여야 할 것  Pivot 을 누르면 키 컬럼 바로 뒤에 carry 컬럼 — 그 그룹의 긴 행 값이 하나면 그 값, 여럿이면 «N values»(흐리게)
+>              빈 값은 안 셈 · 아이템 컬럼 필터를 걸면 그 행만 셈 · 피벗에서 붙여넣기 · 채우기 · 지우기는 거절
+>              «Carried columns cannot be changed in pivot view»
+> 답의 뜻   저장이 «carry ...» 로 거절 → 그 컬럼이 키 · 아이템 컬럼 · 값 컬럼이거나, column_types 에 없거나, 두 번 적힘
+>          carry 컬럼이 안 보임 → 서버 재기동 전(옛 답에 carry 가 없음)
+> 같은 답   server 폴더에서 python -m pytest tests/test_the_grid_pivots_a_long_table_by_its_item_key.py  -> 39 passed, 2 skipped
+> 끄기      "carry" 를 지우면 전과 같음
+> ```
+>
+> ---
+>
 > ## [11-06] **메인 그리드 상단 바 · 이력 판 접기 · 칸 글씨 10 px (클라)** — git pull · 화면 새로 고침
 >
 > ```

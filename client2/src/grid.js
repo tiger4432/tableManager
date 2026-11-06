@@ -2,7 +2,7 @@ import { createGrid } from 'ag-grid-community';
 import { FormulaHeader } from './formula_popover.js';
 import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
-import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter } from './grid_pivot.js';
+import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter, carryColumns, carryText } from './grid_pivot.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
 import { writeRefusal, cellToSend } from './write_guard.js';
@@ -913,11 +913,14 @@ export function buildColumnDefs() {
   // pivoted (owner 10-22): the keys, then one column per item
   const shown = pivotShown() ? pivotColumns(state.pivotView, state.currentPivot, state.currentCompositeKeySources)
     : state.currentColumns.filter((col) => !retired.includes(col));
+  // a pivot row's carried columns (owner 11-06): read-only, not sorted or filtered - one value or «N values»
+  const carried = pivotShown() ? carryColumns(state.pivotView, state.currentPivot) : [];
   const columnDefs = shown.map((col, index) => {
     const isSystem = isSystemColumn(col);
+    const isCarried = carried.includes(col);
     // ROW_ID alone among them is filterable (owner 10-02, lead e67ef53f3): finding a row by its id
     // is the question. It stays read-only, and the other system columns stay unfilterable.
-    const filterable = !isSystem || col === 'row_id';
+    const filterable = (!isSystem || col === 'row_id') && !isCarried;
     const colTypes = state.currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
 
@@ -956,8 +959,9 @@ export function buildColumnDefs() {
       // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
       // a pivot view's keys name a group, not a row (owner 10-22): its items are written, its keys are typed only on a new
       // row (owner 10-23)
-      editable: !isSystem && !viewTable && (pivotShown() && itemOf(col) === null ? (params) => isNewPivotRow(params.data && params.data.row_id) : true),
-      sortable: true,
+      editable: !isSystem && !viewTable && !isCarried
+        && (pivotShown() && itemOf(col) === null ? (params) => isNewPivotRow(params.data && params.data.row_id) : true),
+      sortable: !isCarried,
       // A system column is not editable and, except ROW_ID, not filterable either.
       // `filter: false` is what AG-Grid reads to skip the floating row, and
       // `floatingFilter: false` says the same thing where a reader looks for it.
@@ -974,6 +978,9 @@ export function buildColumnDefs() {
       resizable: true,
       // C-85. 시각은 보는 쪽 zone 으로 «그리고», 값은 서버가 준 원문 그대로 둔다.
       valueFormatter: isTimeColumn(col, colType) ? timeCellFormatter : undefined,
+      // a carried cell whose long rows hold more than one value says how many (owner 11-06)
+      ...(isCarried ? { valueFormatter: (params) => carryText(params.data && params.data.data && params.data.data[col])
+        || (isTimeColumn(col, colType) ? timeCellFormatter(params) : params.value) } : {}),
       valueGetter: (params) => {
         if (col === 'row_id') return params.data.row_id;
         if (col === 'created_at') return params.data.created_at;
@@ -1004,6 +1011,9 @@ export function buildColumnDefs() {
       },
       cellClassRules: {
         'cell-system-readonly': () => isSystem,
+        // a carried cell reads as read-only; one whose long rows hold more than one value says «N values», dim (owner 11-06)
+        'pivot-carry': () => isCarried,
+        'pivot-carry-many': (params) => isCarried && Boolean(carryText(params.data && params.data.data && params.data.data[col])),
         'cell-dirty-tx': (params) => {
           if (isSystem) return false;
           if (!params.data) return false;

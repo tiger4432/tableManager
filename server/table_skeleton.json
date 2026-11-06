@@ -252,6 +252,19 @@
                 "kind": "leaf",
                 "hint": "free"
               }
+            },
+            {
+              "key": "carry",
+              "required": false,
+              "node": {
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "column",
+                "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              }
             }
           ]
         }

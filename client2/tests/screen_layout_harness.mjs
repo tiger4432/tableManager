@@ -293,7 +293,7 @@ const pasteHtmlAnswer = (u) => {
 // The main grid pivoted (owner 10-22): while its states run, dt_log declares a pivot (item column b_wy, value dt_index)
 // and a pivot read answers 40 key groups of eight items - two long names, three more held back, some cells blank.
 const PIVOT = { on: false };
-const PIVOT_DECL = { column: 'b_wy', value: 'dt_index' };
+const PIVOT_DECL = { column: 'b_wy', value: 'dt_index', carry: ['dt_lot', 'core_lot'] };
 const PIVOT_ITEMS = ['THK_CENTER', 'THK_EDGE', 'BOW', 'WARP', 'TTV', 'SORI', 'THICKNESS_VARIATION_EDGE_EXCL_3MM', 'FLATNESS_SFQR_MAX_26X8'];
 const pivotValue = (i, k) => Number((10 + ((i * 7 + k * 3) % 50) / 7).toFixed(2));
 // Apply's read again in pivot view (lead 10-23 ㄱ): each long row asked by id («pv-<group>-<item>») at its value, moved by
@@ -337,6 +337,8 @@ const pivotAnswer = (u) => {
   const skip = Number(u.searchParams.get('skip') || 0);
   const limit = Number(u.searchParams.get('limit') || 1000);
   const groups = Array.from({ length: 40 }, (_, i) => ({ dt_job: `JOB-${String(Math.floor(i / 8) + 1).padStart(3, '0')}`, b_wx: i % 8,
+    // carried (owner 11-06): one lot per job; every third group's core lots two
+    carry: { dt_lot: { value: `LOT-${Math.floor(i / 8) + 1}` }, core_lot: i % 3 === 0 ? { values: 2 } : { value: `C-${i % 5}` } },
     cells: Object.fromEntries(PIVOT_ITEMS.map((item, k) => [item, { value: pivotValue(i, k), row_id: `pv-${i}-${k}` }])
       .filter((_, k) => (i + k) % 9 !== 0)) }));
   return { status: 200, type: 'application/json', body: { table_name: 'dt_log', total: null, skip, limit,
@@ -526,6 +528,31 @@ const answerOf = (u) => {
   const got = a && a.same_as ? ANSWERS[a.same_as] : a || null;
   return got && PHOTOS.on && u.pathname === '/api/ledger/subgraph' ? withPhotos(got) : got;
 };
+// A paste of `text` on row 2's `col` cell in pivot view - its cell said on window.__pasteAt.
+async function pivotPasted(c, col, text) {
+  await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
+  const sel = `.ag-row[row-index="2"] .ag-cell[col-id="${col}"]`;
+  await until(c, `!!document.querySelector(${JSON.stringify(sel)})`).catch(() => null);
+  const at = await evaluate(c, `(() => {
+    const cell = document.querySelector(${JSON.stringify(sel)});
+    window.__pasteAt = cell ? 'cell ' + cell.textContent.trim() : 'no ${col} cell on row 2';
+    if (!cell) return null;
+    const r = cell.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  // a real press: a dispatched mousedown picks no cell (measured on 18843 - the paste then has no target, says nothing)
+  if (at) {
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await c.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 });
+    }
+  }
+  await sleep(300);
+  await evaluate(c, `(() => {
+    if (!${Boolean(at)}) return false;
+    const dt = new DataTransfer(); dt.setData('text/plain', ${JSON.stringify(text)});
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    return true; })()`);
+  await sleep(1200);
+}
 // One pivot item cell edited with Tx on and applied (lead 10-23 ㄱ), Apply's read again answered as `mode` says; a staged
 // edit left by the state before is discarded first. Ends when Apply has said how it ended.
 async function pivotEditStaged(c, at = '.ag-row[row-index="1"] .ag-cell[col-id^="item:"]') {
@@ -1188,6 +1215,21 @@ CELLS.push({ entry: 'index.html', after: 'Pivot, a group deleted', rule: 'pivot 
 CELLS.push({ entry: 'index.html', after: 'Pivot, a key pasted over a saved row', rule: 'pivot key paste', at: 'pivot', expr: `(() => {
   const said = (document.getElementById('performance-log') || {}).textContent || '';
   return said === 'Key columns cannot be changed in pivot view' ? null : 'the paste ended «' + said + '» · ' + window.__pasteAt;
+})()` });
+// owner 11-06 carry: the carried columns right after the keys, «N values» where its long rows differ, a paste refused.
+CELLS.push({ entry: 'index.html', after: 'Pivot on', rule: 'pivot carry', at: 'pivot', expr: `(() => {
+  const order = [...document.querySelectorAll('.ag-header-row-column .ag-header-cell[col-id]')]
+    .sort((a, b) => Number(a.getAttribute('aria-colindex')) - Number(b.getAttribute('aria-colindex'))).map((h) => h.getAttribute('col-id'))
+    .filter((id) => ['dt_job', 'b_wx', 'dt_lot', 'core_lot'].includes(id) || id.startsWith('item:'));
+  if (order.slice(0, 5).join(',') !== 'dt_job,b_wx,dt_lot,core_lot,' + order[4] || !String(order[4]).startsWith('item:')) return 'columns in order ' + order.slice(0, 5).join(',');
+  const many = document.querySelector('.ag-row[row-index="0"] .ag-cell[col-id="core_lot"]');
+  if (!many || many.textContent.trim() !== '2 values' || !many.classList.contains('pivot-carry-many')) return 'row 0 core_lot says «' + (many ? many.textContent.trim() : 'none') + '»';
+  const one = document.querySelector('.ag-row[row-index="1"] .ag-cell[col-id="core_lot"]');
+  return one && one.textContent.trim() === 'C-1' && !one.classList.contains('pivot-carry-many') ? null : 'row 1 core_lot says «' + (one ? one.textContent.trim() : 'none') + '»';
+})()` });
+CELLS.push({ entry: 'index.html', after: 'Pivot, a carried cell pasted over', rule: 'pivot carry paste', at: 'pivot', expr: `(() => {
+  const said = (document.getElementById('performance-log') || {}).textContent || '';
+  return said === 'Carried columns cannot be changed in pivot view' ? null : 'the paste ended «' + said + '» · ' + window.__pasteAt;
 })()` });
 // lead 10-23: a refusal and its next step are read whole - not only in the one-line badge, which cuts them.
 CELLS.push({ entry: 'index.html', after: 'Pivot refused over a staged edit', rule: 'refusal read whole', at: 'pivot', expr: `(() => {
@@ -2939,29 +2981,9 @@ const DRIVE = {
       await until(c, "/^Deleted|Delete stopped/.test((document.querySelector('#performance-log') || {}).textContent || '')").catch(() => null);
       await sleep(900);
     }],
-    ['Pivot, a key pasted over a saved row', async (c) => {
-      await evaluate(c, "(() => { const v = document.querySelector('.ag-body-viewport'); if (v) v.scrollTop = 0; return true; })()");
-      await until(c, "!!document.querySelector('.ag-row[row-index=\"2\"] .ag-cell[col-id=\"dt_job\"]')").catch(() => null);
-      const at = await evaluate(c, `(() => {
-        const cell = document.querySelector('.ag-row[row-index="2"] .ag-cell[col-id="dt_job"]');
-        window.__pasteAt = cell ? 'cell ' + cell.textContent.trim() : 'no dt_job cell on row 2';
-        if (!cell) return null;
-        const r = cell.getBoundingClientRect();
-        return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
-      // a real press: a dispatched mousedown picks no cell (measured on 18843 - the paste then has no target, says nothing)
-      if (at) {
-        for (const type of ['mousePressed', 'mouseReleased']) {
-          await c.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 });
-        }
-      }
-      await sleep(300);
-      await evaluate(c, `(() => {
-        if (!${Boolean(at)}) return false;
-        const dt = new DataTransfer(); dt.setData('text/plain', 'JOB-X\t3');
-        document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
-        return true; })()`);
-      await sleep(1200);
-    }],
+    ['Pivot, a key pasted over a saved row', (c) => pivotPasted(c, 'dt_job', 'JOB-X\t3')],
+    // owner 11-06: a carried cell is its long rows' - a paste on it refused whole.
+    ['Pivot, a carried cell pasted over', (c) => pivotPasted(c, 'dt_lot', 'LOT-X')],
     // A refusal read whole (lead 10-23: the one-line badge cut «Apply or discard the stage…» at 1536): an edit staged
     // in pivot view (Tx is on by default), then «Pivot» pressed.
     ['Pivot refused over a staged edit', async (c, log) => {
@@ -3685,6 +3707,10 @@ const MUTANTS = [
       'pivotShown() ? groups.flatMap((node) => Object.values(node.data.data).map((cell) => cell.row_id).filter(Boolean)) :']] },
   { name: 'a key pasted over a saved pivot row goes through', entry: 'index.html', rule: 'pivot key paste', at: 'pivot',
     file: 'src/write_guard.js', edits: [['  if (why) return refuseWrite(why);\n', '']] },
+  { name: 'a paste over a carried pivot cell goes through', entry: 'index.html', rule: 'pivot carry paste', at: 'pivot',
+    file: 'src/grid_pivot.js', edits: [['carried.includes(col)))) return PIVOT_CARRY_NOTE;', 'carried.includes(col)))) return \'\';']] },
+  { name: 'a carried cell of many values drawn blank', entry: 'index.html', rule: 'pivot carry', at: 'pivot',
+    file: 'src/grid_pivot.js', edits: [['(cell && cell.values ? `${cell.values} values` : \'\')', "''"]] },
   { name: 'a refusal only in the one-line badge', entry: 'index.html', rule: 'refusal read whole', at: 'pivot',
     file: 'src/write_guard.js', edits: [["  try { showToast(why, 'error'); } catch (err) { console.error('[toast] stopped', err); }\n", '']] },
   { name: 'an Apply failure only in the one-line badge', entry: 'index.html', rule: 'failure read whole', at: 'pivot',

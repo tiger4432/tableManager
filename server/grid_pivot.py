@@ -39,20 +39,40 @@ def refusal(table, entry):
         return path + ".value", "'%s' is a key column - name the column whose values fill the cells" % value
     if value not in (entry.get("column_types") or {}):
         return path + ".value", "'%s' is not a declared column - name one of column_types" % value
+    carry = pivot.get("carry")
+    if carry is None:
+        return None
+    if not isinstance(carry, list):
+        return path + ".carry", "carry is a list of columns shown on each pivot row - [<column>, ...]"
+    for n, name in enumerate(carry):
+        at = "%s.carry[%d]" % (path, n)
+        if not isinstance(name, str) or not name.strip():
+            return at, "name a column"
+        if name in keys or name in (column, value):
+            return at, ("'%s' is already a pivot row's key, its item column or its value column - carry another column"
+                        % name)
+        if name not in (entry.get("column_types") or {}):
+            return at, "'%s' is not a declared column - name one of column_types" % name
+        if name in carry[:n]:
+            return at, "'%s' is named twice" % name
     return None
 
 
 def declared(table, entry):
-    """The entry's pivot as {"column", "value"}, or None - none declared, or one `refusal` refuses."""
+    """The entry's pivot as {"column", "value", "carry"}, or None - none declared, or one `refusal` refuses."""
     pivot = entry.get("pivot")
-    return None if pivot is None or refusal(table, entry) else {"column": pivot["column"], "value": pivot["value"]}
+    if pivot is None or refusal(table, entry):
+        return None
+    return {"column": pivot["column"], "value": pivot["value"], "carry": list(pivot.get("carry") or [])}
 
 
 class Pivot:
-    """One table's pivot as declared: `column`, `value`, `keys` (the row's - the table's keys less `column`)."""
+    """One table's pivot as declared: `column`, `value`, `keys` (the row's - the table's keys less `column`), `carry`
+    (columns shown read-only on each row, owner 11-06)."""
 
-    def __init__(self, table_name, column, value, keys):
+    def __init__(self, table_name, column, value, keys, carry=()):
         self.table_name, self.column, self.value, self.keys = table_name, column, value, keys
+        self.carry = list(carry)
 
 
 def of(table_name, **asked):
@@ -74,7 +94,7 @@ def of(table_name, **asked):
                                                     % ", ".join(given))
     column = entry["pivot"]["column"]
     return Pivot(table_name, column, entry["pivot"]["value"],
-                 [key for key in cell_layer.entry_key_columns(entry) if key != column])
+                 [key for key in cell_layer.entry_key_columns(entry) if key != column], entry["pivot"].get("carry") or ())
 
 
 def split_filters(filters, pivot):
@@ -251,12 +271,15 @@ def rows_of(query, model, pivot, page):
 
 
 def fold(pivot, page, raw_rows, merged, items):
-    """The page's key groups in `page`'s order, each {key: value, ..., "cells": {item: {"value", "row_id"}}} - the
-    value as the grid shows it (`merged`, the layer merge of `raw_rows`), an item not in `items` left out."""
+    """The page's key groups in `page`'s order, each {key: value, ..., "cells": {item: {"value", "row_id"}},
+    "carry": {column: {"value"} | {"values": N}}} - the value as the grid shows it (`merged`, the layer merge of
+    `raw_rows`), an item not in `items` left out of the cells. A carried column over the group's long rows read (an
+    item not shown counts too): one value -> it, more -> how many; a blank is no value (lead 11-06 ㄱ), all blank -> None."""
     from database import crud
 
     shown = set(items)
     at = {group: {"cells": {}} for group in page}
+    seen = {group: {name: {} for name in pivot.carry} for group in page}
     for row, said in zip(raw_rows, merged):
         group = tuple(getattr(row, key) for key in pivot.keys)
         out = at.get(group)
@@ -265,7 +288,15 @@ def fold(pivot, page, raw_rows, merged, items):
         cells = said.get("data") or {}
         for key in pivot.keys:
             out.setdefault(key, (cells.get(key) or {}).get("value"))
+        for name in pivot.carry:
+            value = crud.none_if_blank((cells.get(name) or {}).get("value"))
+            if value is not None:
+                seen[group][name].setdefault(crud.comparison_text_value(value), value)
         item = crud.comparison_text_value(getattr(row, pivot.column))
         if item in shown:
             out["cells"][item] = {"value": (cells.get(pivot.value) or {}).get("value"), "row_id": said.get("row_id")}
+    for group in page:
+        if pivot.carry:
+            at[group]["carry"] = {name: ({"value": next(iter(found.values()), None)} if len(found) <= 1
+                                         else {"values": len(found)}) for name, found in seen[group].items()}
     return [at[group] for group in page]

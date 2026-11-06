@@ -883,6 +883,10 @@ body.resizing-active .gallery-seat {
   user-select: none;
 }
 /* A Ledger cell whose row changed after its translation (owner 10-12): the warning colour, upright and bold. */
+/* a pivot row's carried column (owner 11-06): read-only like a system column; «N values» dim */
+.pivot-carry { background-color: var(--bg-inset); }
+.pivot-carry-many { color: var(--text-dim); font-style: italic; }
+
 .cell-system-readonly.is-ledger-changed {
   color: var(--warning) !important;
   font-style: normal;

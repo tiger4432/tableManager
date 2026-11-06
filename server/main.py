@@ -2937,16 +2937,16 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     items, more = grid_pivot.item_names(rows, table_model, pivoted, pivot_max_columns())
     fetched = grid_pivot.rows_of(rows, table_model, pivoted, page)
     raw_rows = fetched.all() if fetched is not None else []
-    merged = fetch_and_merge_metadata(db, table_name, raw_rows, pivoted.keys + [pivoted.column, pivoted.value],
-                                      include_sources=False)
+    merged = fetch_and_merge_metadata(db, table_name, raw_rows,
+                                      pivoted.keys + [pivoted.column, pivoted.value] + pivoted.carry, include_sources=False)
     logger.info("[get_table_data] pivot | Total: %.3fs | table=%s groups=%d rows=%d items=%d more=%d skip=%d "
                 "limit=%d order=%s filters=%d", time.time() - began, table_name, len(page), len(raw_rows),
                 len(items), more, skip, limit, order_by, _filtered_column_count(filters))
     return _table_data_response({
         "table_name": table_name, "total": None if counted is None else counted["total"], "skip": skip,
         "limit": limit, **({"count": counted} if counted is not None else {}),
-        "pivot": {"column": pivoted.column, "value": pivoted.value, "keys": pivoted.keys, "items": items,
-                  "items_more": more},
+        "pivot": {"column": pivoted.column, "value": pivoted.value, "keys": pivoted.keys, "carry": pivoted.carry,
+                  "items": items, "items_more": more},
         "data": grid_pivot.fold(pivoted, page, raw_rows, merged, items),
     }, table_name)
 

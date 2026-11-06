@@ -53,7 +53,8 @@ TABLE_CELLS = (
     ("smart_paste", chain_bindings.list_node("format", _leaf())),
     ("pivot", {"kind": "record", "fields": [
         {"key": "column", "required": True, "node": _leaf()},
-        {"key": "value", "required": True, "node": _leaf()}]}),
+        {"key": "value", "required": True, "node": _leaf()},
+        {"key": "carry", "required": False, "node": _columns()}]}),
 )
 
 

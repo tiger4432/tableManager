@@ -81,8 +81,9 @@ def _values(read):
 def test_a_page_is_key_groups_and_each_cell_names_its_row(grid, db_session):
     model = models.DYNAMIC_TABLES[TABLE]
     first = _read(grid, limit=2)
-    assert first["pivot"] == {"column": "itemid", "value": "value", "keys": ["lot", "wafer"],
+    assert first["pivot"] == {"column": "itemid", "value": "value", "keys": ["lot", "wafer"], "carry": [],
                               "items": ["a", "b", "c"], "items_more": 0}
+    assert "carry" not in first["data"][0], "no carry declared, none read"
     assert first["total"] == 4, "four key groups, not eight rows"
     assert _groups(first) == [("L1", "W1"), ("L1", "W2")]
     assert _values(first) == {key: LONG[key] for key in _groups(first)}, "no group's items cut by the page"
@@ -208,6 +209,11 @@ def _values_with_ids(read):
     ({"column": "itemid", "value": "lot"}, "'lot' is a key column"),
     ({"column": "itemid", "value": "gone"}, "'gone' is not a declared column"),
     ({"column": "itemid"}, 'pivot is {"column"'),
+    ({"column": "itemid", "value": "value", "carry": "note"}, "carry is a list of columns"),
+    ({"column": "itemid", "value": "value", "carry": ["lot"]}, "'lot' is already a pivot row's key"),
+    ({"column": "itemid", "value": "value", "carry": ["value"]}, "'value' is already a pivot row's key"),
+    ({"column": "itemid", "value": "value", "carry": ["gone"]}, "'gone' is not a declared column"),
+    ({"column": "itemid", "value": "value", "carry": ["note", "note"]}, "'note' is named twice"),
 ])
 def test_a_declaration_that_cannot_pivot_is_refused_at_save_and_at_read(grid, pivot, said):
     import grid_pivot
@@ -248,10 +254,38 @@ def test_a_search_keeps_each_key_group_any_of_whose_rows_matches_whole(grid):
 
 def test_the_schema_says_the_pivot_or_null(grid):
     said = grid.get("/tables/%s/schema" % TABLE).json()
-    assert said["pivot"] == {"column": "itemid", "value": "value"}
+    assert said["pivot"] == {"column": "itemid", "value": "value", "carry": []}
     crud.TABLE_CONFIG[TABLE] = dict(ENTRY, pivot={"column": "itemid", "value": "lot"})
     assert "pivot" in grid.get("/tables/%s/schema" % TABLE).json()
     assert grid.get("/tables/%s/schema" % TABLE).json()["pivot"] is None, "a declaration a read refuses"
+
+
+def test_a_carried_column_shows_its_one_value_or_how_many(grid, db_session, monkeypatch):
+    """owner 11-06: `carry` - a column besides the keys, items and value shown on each pivot row, over the long rows
+    the read took: one value -> it, more -> {"values": N}; a blank is no value (lead 11-06 ㄱ), all blank -> None. An item
+    past pivot_max_columns still counts; an item column filter's narrowed rows are all it counts."""
+    from parsers import directory_watcher
+
+    notes = {("L1", "W1", "a"): "x", ("L1", "W1", "b"): "x", ("L1", "W1", "c"): "",
+             ("L1", "W2", "a"): "x", ("L1", "W2", "c"): "y"}
+    put = [{"updates": {"lot": lot, "wafer": wafer, "itemid": item, "note": note}, "source_name": "file",
+            "updated_by": "probe"} for (lot, wafer, item), note in notes.items()]
+    assert grid.put("/tables/%s/data/updates" % TABLE, json={"updates": put}).status_code == 200
+    crud.TABLE_CONFIG[TABLE] = dict(ENTRY, pivot=dict(ENTRY["pivot"], carry=["note"]))
+
+    def carried(**params):
+        read = _read(grid, **params)
+        assert read["pivot"]["carry"] == ["note"]
+        return {(row["lot"], row["wafer"]): row["carry"]["note"] for row in read["data"]}
+
+    assert carried() == {("L1", "W1"): {"value": "x"}, ("L1", "W2"): {"values": 2},
+                         ("L2", "W1"): {"value": None}, ("L2", None): {"value": None}}
+    only_a = json.dumps({"itemid": {"filterType": "set", "values": ["a"]}})
+    assert carried(filters=only_a)[("L1", "W2")] == {"value": "x"}, "the narrowed long rows only"
+    monkeypatch.setattr(directory_watcher, "pivot_max_columns", lambda: 1)
+    shown = _read(grid)
+    assert shown["pivot"]["items"] == ["a"], "CANARY: c is past the columns shown"
+    assert {(r["lot"], r["wafer"]): r["carry"]["note"] for r in shown["data"]}[("L1", "W2")] == {"values": 2}
 
 
 def test_a_table_without_a_pivot_reads_as_it_did(grid):

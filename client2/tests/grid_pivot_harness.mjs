@@ -9,7 +9,8 @@
 //
 // Run: node client2/tests/grid_pivot_harness.mjs
 import { pivotRows, pivotColumns, pivotUpdate, pivotWire, keyColumnsIn, itemColId, itemOf, rememberedPivot, rememberPivot,
-  newPivotRows, isNewPivotRow, pivotWriteRefusal, holdNewRowKeys, groupFilters, strayLongRow, PIVOT_KEY_NOTE, PIVOT_NEW_KEYS_NOTE } from '../src/grid_pivot.js';
+  newPivotRows, isNewPivotRow, pivotWriteRefusal, holdNewRowKeys, groupFilters, strayLongRow, PIVOT_KEY_NOTE, PIVOT_NEW_KEYS_NOTE,
+  PIVOT_CARRY_NOTE, carryText } from '../src/grid_pivot.js';
 import { narrowingParams } from '../src/narrowing.js';
 import { matchCountText } from '../src/match_count.js';
 
@@ -94,6 +95,20 @@ const longRow = (lot, wafer) => ({ row_id: `${lot}${wafer}`, data: { lot: { valu
 eq('D2 a read that brings another group\'s row is caught, naming the key, what was asked and what came',
   [strayLongRow(VIEW, rows3[0], [longRow('L1', 'W1'), longRow('L1', 'W1')]), strayLongRow(VIEW, rows3[0], [longRow('L1', 'W1'), longRow('L1', 'W2')])],
   [null, { key: 'wafer', want: 'W1', got: 'W2' }]);
+
+console.log('-- carried columns (owner 11-06) --');
+const CVIEW = { ...VIEW, carry: ['note', 'size'] };
+const crows = pivotRows({ pivot: CVIEW, data: [{ lot: 'L1', wafer: 'W1', cells: {},
+  carry: { note: { value: 'x' }, size: { values: 2 } } }] });
+eq('K2 carried columns come after the keys, before the items - the declaration\'s before the first answer',
+  [pivotColumns(CVIEW, { column: 'itemid', value: 'value' }, []),
+    pivotColumns(null, { column: 'itemid', value: 'value', carry: ['note'] }, ['lot', 'wafer', 'itemid'])],
+  [['lot', 'wafer', 'note', 'size', 'item:a', 'item:b', 'item:c', 'itemid'], ['lot', 'wafer', 'note', 'itemid']]);
+eq('K3 a carried cell: its one value, or no value and how many', [crows[0].data.note, crows[0].data.size,
+  carryText(crows[0].data.note), carryText(crows[0].data.size)], [{ value: 'x' }, { value: null, values: 2 }, '', '2 values']);
+eq('K4 a write reaching a carried cell is refused whole - a new row\'s too',
+  [pivotWriteRefusal(CVIEW, [item(crows[0], { note: 'y' })]), pivotWriteRefusal(CVIEW, [item(fresh, { size: 1 })]),
+    pivotWriteRefusal(CVIEW, [item(rows3[0], { 'item:a': 1 })])], [PIVOT_CARRY_NOTE, PIVOT_CARRY_NOTE, '']);
 
 console.log('-- narrowing and the footer --');
 eq('N1 pivot=true rides the one narrowing', narrowingParams({ pivot: true }).get('pivot'), 'true');

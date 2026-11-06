@@ -22,6 +22,16 @@ const NEW_ROW_PREFIX = 'pivot:new:';
 export const isNewPivotRow = (rowId) => typeof rowId === 'string' && rowId.startsWith(NEW_ROW_PREFIX);
 export const newPivotRows = (count, now = Date.now()) => Array.from({ length: count }, (_, i) => ({ row_id: `${NEW_ROW_PREFIX}${now}-${i}`, data: {} }));
 
+/** A paste, fill or clear reaching a carried column in pivot view - refused whole (owner 11-06): its value is its long
+ *  rows', one or «N values». */
+export const PIVOT_CARRY_NOTE = 'Carried columns cannot be changed in pivot view';
+
+/** The columns a pivot row carries read-only (owner 11-06 `carry`): the answer's, before it the declaration's. */
+export const carryColumns = (view, pivot) => (view && view.carry) || (pivot && pivot.carry) || [];
+
+/** «N values» - a carried cell whose long rows hold more than one value; '' for one (or none). */
+export const carryText = (cell) => (cell && cell.values ? `${cell.values} values` : '');
+
 /** The key columns a write reaches, of the grid's updates ({updates} each) - none but item columns may be written. */
 export const keyColumnsIn = (items) => [...new Set(items.flatMap((item) => Object.keys(item.updates || {}))
   .filter((col) => itemOf(col) === null))];
@@ -34,6 +44,8 @@ const isFresh = (item) => isNewPivotRow(item.rowNode.data.row_id);
  *  on a new row the key cells are its own, and a value there while a key is still blank - counting the keys this write
  *  brings - refuses it. Items are {rowNode, updates}. */
 export function pivotWriteRefusal(view, items) {
+  const carried = carryColumns(view);
+  if (items.some((item) => Object.keys(item.updates || {}).some((col) => carried.includes(col)))) return PIVOT_CARRY_NOTE;
   if (keyColumnsIn(items.filter((item) => !isFresh(item))).length) return PIVOT_KEY_NOTE;
   const keysOf = (item) => view.keys.map((key) => (key in item.updates ? item.updates[key] : valueOf((item.rowNode.data.data || {})[key])));
   const blankKey = items.filter(isFresh)
@@ -126,10 +138,13 @@ export function stagedReadRows(view, staged, rowOf, read) {
 /** The declaration's keys: the table's key columns less the item column. */
 const pivotKeys = (pivot, keySources) => (keySources || []).filter((key) => key !== pivot.column);
 
-/** The columns a pivot view has: its keys, then its items - before its first answer, the declaration's keys - and last
- *  the item column, held hidden so a filter on it stays in the grid's model and its chip (owner 11-05 ㄴ). */
+/** The columns a pivot view has: its keys, its carried columns (owner 11-06), then its items - before its first answer,
+ *  the declaration's keys and carry - and last the item column, held hidden so a filter on it stays in the grid's model
+ *  and its chip (owner 11-05 ㄴ). */
 export function pivotColumns(view, pivot, keySources) {
-  return [...(view ? [...view.keys, ...view.items.map(itemColId)] : pivotKeys(pivot, keySources)), pivot.column];
+  const carry = carryColumns(view, pivot);
+  return [...(view ? [...view.keys, ...carry, ...view.items.map(itemColId)] : [...pivotKeys(pivot, keySources), ...carry]),
+    pivot.column];
 }
 
 /** The filter of the item column a pivot view holds hidden: the server reads it on the long rows, so every group row
@@ -163,6 +178,10 @@ export function pivotRows(answer) {
   return (answer.data || []).map((group) => {
     const data = {};
     for (const key of view.keys) data[key] = { value: group[key] };
+    // a carried cell: its one value, or none and how many (copied blank - lead 11-06)
+    for (const [col, cell] of Object.entries(group.carry || {})) {
+      data[col] = cell.values ? { value: null, values: cell.values } : { value: cell.value };
+    }
     for (const [item, cell] of Object.entries(group.cells || {})) data[itemColId(item)] = { value: cell.value, row_id: cell.row_id };
     return { row_id: `pivot:${JSON.stringify(view.keys.map((key) => group[key]))}`, data };
   });
