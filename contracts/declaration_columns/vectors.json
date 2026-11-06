@@ -1,5 +1,5 @@
 {
-  "about": "GET /api/ledger/declaration sources[].columns - each column a source's sentences bind, one row per binding: role key (name = the key part), attribute, time or qualifier (name = the role). entity and predicate are spelled as entities[].type and predicates[].name in the same answer. A constant binds no column and gives no row; a column bound twice gives two rows; a source the loader refused has no columns key. Owner 11-06 tables for people: a key cell is the link to the tables that share that entity.",
+  "about": "GET /api/ledger/declaration sources[].columns - each column a source's sentences bind, one row per binding: role key (name = the key part), attribute, time or qualifier (name = the role), or entity_type when an entity's type is read from a column (no name; that entity's key rows carry entity_from = that column instead of entity). entity and predicate are spelled as entities[].type and predicates[].name in the same answer. A constant binds no column and gives no row; a column bound twice gives two rows; a source the loader refused has no columns key. Owner 11-06 tables for people: a key cell is the link to the tables that share that entity.",
   "source": "lot_slot_wafer",
   "cases": [
     {
@@ -41,6 +41,17 @@
         {"column": "event_time", "predicate": "has_wafer@1", "role": "time", "name": "occurred_at", "sentence": "seat-holds-wafer", "as": "occurred_at"},
         {"column": "lot", "entity": "lot_slot@1", "role": "key", "name": "lot", "sentence": "seat-holds-wafer", "as": "subject"},
         {"column": "wafer", "entity": "wafer@1", "role": "key", "name": "wafer", "sentence": "seat-holds-wafer", "as": "target"}
+      ]
+    },
+    {
+      "name": "an entity whose type is read from a column - the type column is role entity_type, its key rows carry entity_from, not entity",
+      "declare": {"type_column": {"as": "target", "column": "event_type"}},
+      "columns": [
+        {"column": "event_time", "predicate": "has_wafer@1", "role": "time", "name": "occurred_at", "sentence": "seat-holds-wafer", "as": "occurred_at"},
+        {"column": "lot", "entity": "lot_slot@1", "role": "key", "name": "lot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "slot", "entity": "lot_slot@1", "role": "key", "name": "slot", "sentence": "seat-holds-wafer", "as": "subject"},
+        {"column": "event_type", "role": "entity_type", "sentence": "seat-holds-wafer", "as": "target"},
+        {"column": "wafer", "entity_from": "event_type", "role": "key", "name": "wafer", "sentence": "seat-holds-wafer", "as": "target"}
       ]
     }
   ]

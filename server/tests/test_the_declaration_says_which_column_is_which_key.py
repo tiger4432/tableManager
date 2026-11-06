@@ -40,6 +40,9 @@ def _declared(declare):
     if "constant_key" in declare:
         said = declare["constant_key"]
         sentence[said["as"]]["keys"][said["part"]] = {"kind": "constant", "value": said["value"]}
+    if "type_column" in declare:
+        said = declare["type_column"]
+        sentence[said["as"]]["entity_type"] = {"kind": "column", "column": said["column"]}
     return document
 
 

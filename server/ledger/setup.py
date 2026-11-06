@@ -627,7 +627,7 @@ def bound_columns(plan) -> list:
                 entity = binding.get("entity_type")
                 if _bound_column(entity):           # the type itself is read from a column: no one type to name
                     rows.append({"column": entity["column"], "role": "entity_type", **said})
-                typed = {"entity": entity} if isinstance(entity, str) else {}
+                typed = {"entity": entity} if isinstance(entity, str) else {"entity_from": entity["column"]} if _bound_column(entity) else {}
                 for part, bound in sorted((binding.get("keys") or {}).items()):
                     if _bound_column(bound):
                         rows.append({"column": bound["column"], **typed, "role": "key", "name": part, **said})
