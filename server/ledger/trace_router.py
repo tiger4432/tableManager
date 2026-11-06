@@ -19,7 +19,7 @@ import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from runtime.offloop_json import OffLoopJSONRoute
+from admin import access
 from runtime.process_pool import in_pool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
@@ -33,7 +33,7 @@ from error_said import told
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/ledger", tags=["ledger"], route_class=OffLoopJSONRoute)
+router = APIRouter(prefix="/api/ledger", tags=["ledger"], route_class=access.TableRoute)
 
 def _worlds(world):
     """The names of the ledger worlds a request asked for, in the order asked (총괄 60d7e8e42 ·
@@ -257,6 +257,7 @@ def evidence_subgraph(
         description=("stored (as ever): the ledger's atoms; virtual: the declaration read from its own tables, "
                      "nothing stored - the answer's `engine` names the sources it leaves out and the key columns "
                      "no index serves («scans»)")),
+    hidden: tuple = Depends(access.hidden_tables),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -399,7 +400,7 @@ def evidence_subgraph(
             # a direct call leaves the Query sentinel - the ranking, as before
             propagation=propagation is not False,
             read=read if read in schema.READS else "both",
-            page=time_page, engine=engine, **interval)
+            page=time_page, engine=engine, hidden=hidden, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
             # of the source - `rows` was folded from this payload's own structures.
@@ -828,11 +829,26 @@ def _engine_reading(connection, engine, names, leave_out=None):
                   "scans": [{"table": table, "column": column} for table, column in scans]}
 
 
-def _engine_relation(connection, engine, names):
+def _engine_relation(connection, engine, names, leave_out=None):
     """(the relation a seedless read reads, the answer's `engine` cell or None) - `_engine_reading`'s."""
-    legs, said = _engine_reading(connection, engine, names)
-    relation = schema.walk_relation(names)
+    legs, said = _engine_reading(connection, engine, names, leave_out)
+    relation = schema.walk_relation(names, leave_out)
     return (relation, None) if legs is None else (ledger_subgraph.legs_relation(legs, relation), said)
+
+
+def _hidden_here(names, hidden, leave_out=None):
+    """(how many tables, `leave_out` with every source that reads one added) - the tables of `hidden`
+    (`access.hidden_tables`) these worlds' sources read (a source's "relation"). A walk leaves those sources out as a
+    `first` read does. (0, leave_out) when nothing is hidden, or for a direct call (Depends left as the default)."""
+    if not isinstance(hidden, (tuple, list)) or not hidden:
+        return 0, leave_out
+    out, tables = {world: list(sources) for world, sources in (leave_out or {}).items()}, set()
+    for each in names:
+        for source, said in ((_declaration(each.name) or {}).get("sources") or {}).items():
+            if isinstance(said, dict) and said.get("relation") in hidden:
+                out.setdefault(each.name, []).append(source)
+                tables.add(said["relation"])
+    return len(tables), (out or None)
 
 
 def _evidence_graph(connection, *, node_id, hops, direction, world=None,
@@ -845,7 +861,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
                     fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False,
-                    propagation=True, read="both", engine="stored"):
+                    propagation=True, read="both", engine="stored", hidden=()):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -859,6 +875,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         })
     cardinalities = _predicate_cardinalities(world)
     leave_out = schema.first_read(names, _source_names) if read == "first" else None
+    hidden, leave_out = _hidden_here(names, hidden, leave_out)
     legs, said = _engine_reading(connection, engine, names, leave_out)
     reading = dict(worlds=names, since=since, until=until, one=ledger_subgraph.one_predicates(cardinalities),
                    # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
@@ -895,6 +912,8 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
             declaration_paths=tuple(each.declaration_path for each in names))
     if said:
         payload["engine"] = said
+    if hidden:
+        payload["hidden"] = hidden                                       # how many tables, never which
     return payload
 
 
@@ -947,6 +966,7 @@ def ledger_key_values(
     db: Session = Depends(get_db),
     engine: str = Query("stored", pattern="^(stored|virtual)$",
                         description="stored: the ledger; virtual: the declaration read from its own tables"),
+    hidden: tuple = Depends(access.hidden_tables),
 ):
     """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
 
@@ -981,7 +1001,8 @@ def ledger_key_values(
     connection = db.connection()
     names = _worlds(world)
     _ledgers_present(connection, names)
-    relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", names)
+    hidden, hiding = _hidden_here(names, hidden)
+    relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", names, hiding)
 
     # 🔴 THE GROUPING KEYS ARE THE SUBJECT, NOT ONE AXIS OF IT. Asked per key, a composite
     # type answers with one list per axis, and a screen that pairs them offers the CROSS
@@ -1049,6 +1070,7 @@ def ledger_key_values(
     ).fetchall() if nodes else []
 
     return {
+        **({"hidden": hidden} if hidden else {}),
         "type": wanted_type, "key": key, "keys": grouping,
         "nodes": [{"keys": {name: row[index] for index, name in enumerate(grouping)},
                    "count": int(row[-1])} for row in rows[:limit]],
@@ -1232,7 +1254,8 @@ def ledger_gap_catalogue(name: str = Query(None),
                              None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
                          engine: str = Query("stored", pattern="^(stored|virtual)$",
                                              description="stored: the ledger; virtual: the declaration read from its "
-                                                         "own tables")):
+                                                         "own tables"),
+                         hidden: tuple = Depends(access.hidden_tables)):
     """선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳.
 
     🔴 라우트는 «하나»이고 인자가 둘로 가릅니다 — 새 라우트가 아니라 «같은 질문의 두 배율»입니다.
@@ -1274,10 +1297,12 @@ def ledger_gap_catalogue(name: str = Query(None),
                     "unnamed": sum(1 for item in asked if item.get("unnamed")), "unused": len(unused)}
         from database.database import engine as database
         with database.connect() as connection:
-            relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", _worlds(world))
+            hidden, hiding = _hidden_here(_worlds(world), hidden)
+            relation, said = _engine_relation(connection, engine if engine in ENGINES else "stored", _worlds(world),
+                                              hiding)
         return {"mode": "measured", "count": 1,
                 "gaps": _gaps.measure(database, declared, only=name, relation=relation),
-                **({"engine": said} if said else {})}
+                **({"engine": said} if said else {}), **({"hidden": hidden} if hidden else {})}
     except _gaps.GapQuestionUnknown as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

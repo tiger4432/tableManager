@@ -15,8 +15,10 @@ from database import crud, models
 
 pytestmark = pytest.mark.pg
 TABLE = "sso_author_probe"
-ENTRY = {"business_key": "k", "composite_key_source": ["k"], "column_types": {"k": "string", "v": "string"}}
 ACCOUNT = "kim@corp.test"
+#: the account may edit it - with sign-in on, a table without an access cell is an administrator's (owner 11-06)
+ENTRY = {"business_key": "k", "composite_key_source": ["k"], "column_types": {"k": "string", "v": "string"},
+         "access": {"edit": {"allow": [ACCOUNT]}}}
 STATED = "web_client"
 
 

@@ -254,7 +254,7 @@ def _not_listed(user):
 def socket_refusal(websocket):
     """Why /ws closes, as (close code, reason), or None to let it in: the HTTP door's two answers -
     no one signed in, a name off the users list - as WebSocket close codes (owner 10-08)."""
-    user = identify(websocket)
+    user = websocket.state.sso_user = identify(websocket)
     if user is None:
         return 4401, LOGIN_REQUIRED["reason"]
     if not may_come_in(user):

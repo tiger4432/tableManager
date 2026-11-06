@@ -748,6 +748,7 @@ def _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, 
     from database import crud
 
     said, report, updates = report_reads.label(wafer), None, []
+    read = report_reads.fresh_reading()                    # the tables this wafer's report reads, named by keep
     try:
         report, evaluation = _this_wafer(db, spec, dict(zip(keys, wafer)))
         memory = ask_rule.memory_lines(db, spec, rule_shape.declaration_of(rule), dict(zip(keys, wafer)))
@@ -770,7 +771,7 @@ def _one_wafer(db, rule, spec, name, keys, written, comments, wafer, rows, ask, 
             page = report_html.page("%s %s" % (said, report_shape.word(spec, "report")), "%s · %s" % (
                 name, made.isoformat(timespec="seconds")), spec, out["tables"], report.embedded, out["texts"],
                 evidence=_steps_text(out, report).splitlines())
-            kept, _sha = report_html.keep(said, page, refs)
+            kept, _sha = report_html.keep(said, page, refs, tables=read)
             # the cell holds the file's signed-in link (owner 11-04); send_to and its mark keep the path
             wrote = dict(out["texts"], file=report_html.link_of(kept))   # a text the report did not write is withdrawn
             cells = {column: wrote.get(cell) or None for cell, column in written}

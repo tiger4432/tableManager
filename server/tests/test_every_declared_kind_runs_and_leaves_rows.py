@@ -480,7 +480,9 @@ def _sent_reports(db, reported, monkeypatch, answers):
 
 def _marks(db):
     folder = os.path.dirname(_report_rows(db)[0][1])
-    return sorted(name for name in os.listdir(folder) if not name.endswith(".html"))
+    from chain import report_html
+
+    return sorted(name for name in os.listdir(folder) if not name.endswith((".html", report_html.TABLES_SUFFIX)))
 
 
 def test_a_made_report_is_sent_to_its_address_by_the_upkeep(db, reported, monkeypatch):
@@ -504,7 +506,7 @@ def test_a_send_that_fails_three_times_leaves_its_failure_beside_the_file(db, re
     assert len(posted) == 2 * report_loop.SEND_TRIES
     _run_again = report_loop._mark                                   # a replay remakes the report: its marker again
     _run_again(os.path.join(folder, "W1.html"), "kinds_report")
-    assert sorted(n for n in os.listdir(folder) if n.startswith("W1.html.")) == ["W1.html.send"]
+    assert sorted(n for n in os.listdir(folder) if n.startswith("W1.html.")) == ["W1.html.send", "W1.html.tables.json"]
 
 
 def test_a_stopped_report_is_not_sent(db, reported, monkeypatch):

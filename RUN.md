@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [11-06] **표별 읽기 · 편집 권한 — 로그인 켜진 서버는 이 착지부터 «관리자만 편집», 나머지는 읽기만** — git pull · 런처 재기동(모든 프로세스)
+>
+> ```
+> 🔴 소급 없음   로그인(SSO)이 켜진 서버에서 access 칸이 없는 표는 착지 순간부터 관리자(auth_config admins)만 편집
+>              관리자 아닌 사람: 읽기만. 화면의 칸 고침 · 행 만들기 · 지우기 · 핀 · 붙여넣기가 403
+>              파일 적재 · 체인 · 스케줄러 쓰기는 사람이 아니라 그대로 씀. 로그인 꺼진 서버는 오늘과 같음
+> 편집을 여는 한 줄  table_config.json 의 그 표 칸에 (이름은 로그인 이름 그대로, 대소문자 무관)
+>              "access": {"edit": {"allow": ["kim@corp.example", "lee@corp.example"]}}
+> 읽기를 막는 한 줄
+>              "access": {"read": {"deny": ["kim@corp.example"]}}          deny 가 언제나 이김
+>              "access": {"read": {"allow": ["lee@corp.example"]}}         적힌 이름만 읽음
+> 행이 다른 표를 가리키는 표   "access": {"edit_by": "look_table"}   그 행의 편집은 look_table 이 가리키는 표로 판정
+> 볼 것        막힌 문 = 403 «<이름> may not <read|edit> the table <표> - an administrator adds the name to access.<read|edit>.allow»
+>              읽을 수 없는 표는 Tables 목록 · 감사 목록 · 아웃박스 목록 · 소켓 알림에서 빠짐
+>              걷기(subgraph · key-values · gaps)는 그 표를 읽는 소스의 원자를 빼고, 답에 «hidden: n»(표 수만)
+>              행 모드(TSV) 답은 «hidden» 을 붙일 자리가 없음 — 원자는 빠지지만 수는 말하지 않음
+>              리포트는 «읽은 표»를 페이지 옆(.tables.json)에 적음 — 그중 하나라도 못 읽으면 403.
+>              이 착지 «전»에 쓴 리포트는 기록이 없어 관리자만 열 수 있음 (다시 쓰면 기록이 생김)
+> ⚠️ 체인 규칙은 숨긴 표의 값을 보이는 표로 옮길 수 있음 (소유자 11-06 ②: 거르지 않음)
+> 같은 답      server 폴더에서 python scripts/run_pg_tests.py -k test_a_table_is_read_and_edited_by_the_names_it_lists
+> 끄기         auth_config.json 에서 로그인을 끄면 오늘과 같음 (모든 표 읽기 · 편집). 되돌리려면 revert
+> ```
+>
+> ---
+>
 ## 조인 · 리포트 값 걷기의 «끝» (2c83fd043, 소유자 11-06 «lot → recipe»)
 
 선언 — 조인 take 하나:

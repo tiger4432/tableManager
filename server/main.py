@@ -60,6 +60,7 @@ from admin import audit_history  # keyset paging + config ceiling for row/cell /
 from admin.auth import require_admin_token, require_admin_token_strict, require_worker_token
 from admin import auth
 from admin import help as admin_help  # the admin help: a question -> one tool, its fields and count (owner 10-23)
+from admin import access  # who may read / edit a table (owner 11-06) - the one seat
 from admin import sso  # company sign-in (총괄 2095014ee): off unless auth_config.json turns it on
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logger.info(f"[paths] {paths.describe()}")
@@ -148,7 +149,7 @@ def bootstrap_database_schema(bind=None):
 
 app = FastAPI(title="AssyManager Table Server")
 # Every sync route's answer becomes bytes on its worker thread, not the event loop (runtime.offloop_json).
-app.router.route_class = OffLoopJSONRoute
+app.router.route_class = access.TableRoute                # OffLoopJSONRoute + the table door on {table_name}
 
 # --- ContextVars Middleware config ---
 from database.context import (request_user, request_transaction_id, request_source,
@@ -798,8 +799,12 @@ class ConnectionManager:
     async def broadcast(self, message: str):
         logger.info(f"Broadcasting to {len(self.active_connections)} clients: {message[:100]}...")
         failed_connections = []
+        # A person who may not read the message's table is not sent it (owner 11-06); read once per message.
+        table = _message_table(message) if any(access.person(c) for c in self.active_connections) else None
         # A copy: a client leaving during an await must not make this skip the next one.
         for connection in list(self.active_connections):
+            if table is not None and not access.may(access.person(connection), table, access.READ):
+                continue
             try:
                 await connection.send_text(message)
             except Exception as e:
@@ -808,6 +813,15 @@ class ConnectionManager:
         
         for conn in failed_connections:
             self.disconnect(conn)
+
+def _message_table(message):
+    """The table a broadcast is about (`table_name`), None when it names none or is not JSON."""
+    try:
+        said = json.loads(message)
+    except ValueError:
+        return None
+    return said.get("table_name") if isinstance(said, dict) else None
+
 
 manager = ConnectionManager()
 
@@ -1070,23 +1084,29 @@ def _signed(name, k):
 
 
 @app.get("/reports/{name}")
-def get_report(name: str):
+def get_report(name: str, request: Request = None):
     """One AI report file as a page - to open, or to embed elsewhere in an iframe (owner 10-24 «report 서빙하는 거 서버에
     달아줘 · 다른 데에 iframe 으로 첨부하게»). Only a <name>.html straight under the reports folder; never cached, a
     report written again is read again."""
-    return FileResponse(_report_path(name), media_type="text/html; charset=utf-8", headers=HTML_NO_CACHE_HEADERS)
+    return FileResponse(_report_path(name, request), media_type="text/html; charset=utf-8",
+                        headers=HTML_NO_CACHE_HEADERS)
 
 
-def _report_path(name):
-    """A report file's path - only a <name>.html straight under the reports folder, else 404."""
+def _report_path(name, request=None):
+    """A report file's path - only a <name>.html straight under the reports folder, else 404; 403 to a person who
+    may not read a table its report read (`report_html.tables_of`, owner 11-06)."""
     path = os.path.join(_reports_folder(), os.path.basename(name))
     if os.path.basename(name) != name or not name.lower().endswith(".html") or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="no report %r - GET /reports lists them" % name)
+    from chain import report_html
+    if not access.may_read_all(access.person(request), report_html.tables_of(path)):
+        raise HTTPException(status_code=403, detail="report %r read a table you may not read - an administrator "
+                                                    "can open it" % name)
     return path
 
 
 @app.get("/reports/{name}/image/{n}")
-def get_report_image(name: str, n: int):
+def get_report_image(name: str, n: int, request: Request = None):
     """A report picture's original (owner 10-29 «크게 보기» - the picture in the page links here): the n-th ref of the
     list the report wrote beside itself (`report_html.keep`), read as GET /api/image reads one. Only that list's refs."""
     import json as _json
@@ -1094,7 +1114,7 @@ def get_report_image(name: str, n: int):
     import image_sources
     from chain import report_html
 
-    path = _report_path(name)
+    path = _report_path(name, request)
     try:
         with open(path + report_html.IMAGES_SUFFIX, encoding="utf-8") as handle:
             refs = _json.load(handle)
@@ -1116,7 +1136,7 @@ def get_report_image(name: str, n: int):
 
 
 @app.get("/reports")
-def list_reports():
+def list_reports(request: Request):
     """The report files, newest first - each a link to its page (GET /reports/<name>)."""
     from fastapi.responses import HTMLResponse
     import html as _html
@@ -1126,6 +1146,8 @@ def list_reports():
                    key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
     from chain import report_html
 
+    names = [n for n in names if access.may_read_all(access.person(request),
+                                                     report_html.tables_of(os.path.join(folder, n)))]
     rows = "".join('<li><a href="%s">%s</a> <small>%s</small> · <a href="/shared/report/%s?k=%s">Share link</a>'
                    '</li>' % (_html.escape(report_html.link_of(n)), _html.escape(n), time.strftime("%Y-%m-%d %H:%M", time.localtime(
                        os.path.getmtime(os.path.join(folder, n)))), _html.escape(n), _report_link_key(n))
@@ -1610,7 +1632,7 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
     return data_list
 
 @app.get("/tables")
-def list_tables():
+def list_tables(request: Request = None):
     """
     서버에 정의된 모든 테이블 목록을 반환합니다.
 
@@ -1628,11 +1650,13 @@ def list_tables():
     from ledger import schema as ledger_schema
     from ledger.setup_bundle import catalog_kind
 
+    seen = {name: entry for name, entry in crud.TABLE_CONFIG.items()
+            if access.may(access.person(request), name, access.READ)}            # a table it may not read is absent
     return {
-        "tables": list(crud.TABLE_CONFIG.keys()),
+        "tables": list(seen),
         "map_key_columns": {
             name: list(entry["map_key_columns"])
-            for name, entry in crud.TABLE_CONFIG.items()
+            for name, entry in seen.items()
             if isinstance(entry, dict) and entry.get("map_key_columns")
         },
         # 🔴 `kind` RIDES FOR THE REASON `map_key_columns` DOES (S-187). The client had no
@@ -1645,12 +1669,12 @@ def list_tables():
         # map key". Every relation HAS a kind; a missing entry would make the reader guess,
         # and the guess would be the very default this hands over explicitly.
         "kinds": {name: catalog_kind(entry)
-                  for name, entry in crud.TABLE_CONFIG.items()},
+                  for name, entry in seen.items()},
         # `group` rides for the same reason (lead 685f236d7): the main grid's dropdown groups by
         # the operator's own word. A table that writes none is ABSENT, like `map_key_columns` —
         # the dropdown puts it under Other; nothing guesses a group from a name.
         "groups": {name: crud.clean_str_value(entry.get("group"))
-                   for name, entry in crud.TABLE_CONFIG.items()
+                   for name, entry in seen.items()
                    if isinstance(entry, dict) and not crud.is_blank_value(entry.get("group"))},
         # The tables each ledger world has its own of, the worlds and the operating one (총괄
         # 2bb20ff56) - the grid's world tab reads these rather than asking by a table's name.
@@ -1786,7 +1810,7 @@ from event_constants import MAX_NOTIFY_CREATED_LOGS, BROADCAST_ITEM_LIMIT
 from ingestion.activity import path_of, registry as ingestion_activity_registry
 
 @app.get("/audit_logs/recent", response_model=schemas.AuditLogGroupPage)
-def get_recent_audit_logs(response: Response, limit_groups: int = 100,
+def get_recent_audit_logs(response: Response, request: Request, limit_groups: int = 100,
                           cursor: str = None, db: Session = Depends(get_db)):
     """The newest `limit_groups` transaction groups, as an envelope.
 
@@ -1846,11 +1870,11 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
         response.headers["X-Audit-Next-Cursor"] = next_cursor
 
     # 2. 캐시된 그룹을 경량화하여 반환
-    return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups)
+    return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups, access.person(request))
 
 
 def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
-                         limit_groups: int):
+                         limit_groups: int, user=None):
     """The `{groups, truncated, next_cursor, limit_groups, returned}` envelope.
 
     🔴 [판정 473] ONE AUTHOR FOR THE SHAPE, because there are now TWO pages. This
@@ -1862,7 +1886,7 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
     """
     groups = []
     shown = [(g, representative(g)) for g in cache_groups]
-    shown = [(g, log) for g, log in shown if log is not None]
+    shown = [(g, log) for g, log in shown if log is not None and access.may(user, log.table_name, access.READ)]
     existing_keys = check_rows_exist(db, [(log.table_name, log.row_id) for _g, log in shown if _names_a_row(log)])
 
     for g, repr_log in shown:
@@ -1893,7 +1917,7 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
     }
 
 @app.get("/audit_logs/transaction/{tx_id}", response_model=schemas.AuditLogGroupResponse)
-def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int = 20000):
+def get_transaction_logs(tx_id: str, request: Request, db: Session = Depends(get_db), limit: int = 20000):
     """특정 트랜잭션의 상세 로그를 반환합니다 - DB 에서 최대 limit 건. 목록 캐시는 묶음 요약만 든다(소유자 10-29 «경량화»)."""
     # a group, so a replay's pages too
     in_tx = in_group(models.AuditLog.transaction_id, tx_id)
@@ -1908,6 +1932,7 @@ def get_transaction_logs(tx_id: str, db: Session = Depends(get_db), limit: int =
                 .all()
                 
     # Check existences
+    db_logs = [log for log in db_logs if access.may(access.person(request), log.table_name, access.READ)]
     keys_to_check = []
     for log_obj in db_logs:
         if _names_a_row(log_obj):
@@ -3821,6 +3846,8 @@ async def apply_batch_updates_endpoint(
     """단건 및 다건 업데이트를 통합 처리하고 브로드캐스트합니다."""
     for item in batch.updates:
         item.updated_by = sso.who(request, item.updated_by)
+        if not access.may(access.person(request), table_name, access.EDIT, row=item.updates):
+            access.refuse(access.person(request), table_name, access.EDIT)
     from fastapi.concurrency import run_in_threadpool
     # [V1 instrument] The instrument must never be able to destroy the operation it
     # measures (fix round F4). A malformed `effort` blob is DISCARDED and reported - in
@@ -5205,7 +5232,7 @@ _QUEUE_ROWS_CAP = 200
 
 
 @app.get("/outbox/queue/rows")
-def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
+def get_outbox_queue_rows(limit: int = 50, cursor: int = None, request: Request = None,
                           db: Session = Depends(get_db)):
     """「이 표의 변경으로 앞으로 무엇이 돌 예정이고 돌건지」 — 행 하나씩, 규칙까지.
 
@@ -5327,7 +5354,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     running, paused = running_seat.chain_lines_running(), chain_control.paused()
 
     rows = []
-    for r in head:
+    for r in [r for r in head if access.may(access.person(request), r.table_name, access.READ)]:
         # ⚠️ op 까지 주는 이유 — `RETROACTIVE_RUN` 한 타입이 주인 둘을 덮는다. 여기는
         #    행이 있으므로 물을 수 있고, 그래서 리플레이 행이 화면에서 `chain` 으로 뜬다.
         #    페이로드는 «기존 좌석»으로 읽는다(새 파서를 만들지 않는다).
@@ -6105,7 +6132,7 @@ def get_map_alignment_view(
 
 
 @app.post("/api/maps/alignment/confirm")
-def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_db)):
+def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_db), request: Request = None):
     """🔴 **좌표계 확정 — 이 사슬에서 데이터베이스에 쓰는 유일한 요청이다.**
 
     스펙 `MAP_ALIGNMENT_SPEC` §0.2 층 ⑧. 앞의 일곱 층(신원·근거·선언·좌석·채점·비교·판정)은
@@ -6150,6 +6177,8 @@ def confirm_map_alignment(payload: dict = Body(...), db: Session = Depends(get_d
     ⚠️ **WS 브로드캐스트는 하지 않는다**(총괄 결정 2026-08-05). 듣는 쪽이 아직 없고, 이
     사슬에 이벤트를 붙이는 것은 별도 결정이다.
     """
+    if not access.may(access.person(request), payload.get("map_table"), access.EDIT):    # the table is in the body
+        access.refuse(access.person(request), payload.get("map_table"), access.EDIT)
     rule_name = payload.get("rule")
     if not rule_name:
         raise HTTPException(status_code=400, detail="'rule' is required")

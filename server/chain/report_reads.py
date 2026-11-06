@@ -20,6 +20,7 @@ by «/»."""
 from __future__ import annotations
 
 import base64
+import contextvars
 import datetime
 import json
 import logging
@@ -54,9 +55,45 @@ def label(wafer) -> str:
     return WAFER_SEP.join("" if part is None else str(part) for part in wafer)
 
 
+#: The tables one report read - its rows and its walks' sources (owner 11-06 access); `fresh_reading()` opens it.
+_READ = contextvars.ContextVar("report_tables_read", default=None)
+
+
+def fresh_reading():
+    """A new set of the tables what runs next in this context reads - one report's, until the next opens one."""
+    read = set()
+    _READ.set(read)
+    return read
+
+
+def _read(tables):
+    seen = _READ.get()
+    if seen is not None:
+        seen.update(table for table in tables if table)
+
+
+def _walked_tables(value, out=None):
+    """The tables of the sources whose atoms a walk answer carries - every (world, source_who) in it, read as that
+    world's declared source's "relation"."""
+    from ledger import trace_router
+
+    out = set() if out is None else out
+    if isinstance(value, dict):
+        if value.get("source_who") and value.get("world"):
+            said = ((trace_router._declaration(value["world"]) or {}).get("sources") or {}).get(value["source_who"])
+            out.add(said.get("relation") if isinstance(said, dict) else None)
+        for each in value.values():
+            _walked_tables(each, out)
+    elif isinstance(value, list):
+        for each in value:
+            _walked_tables(each, out)
+    return out
+
+
 def _model(table):
     from database import models
 
+    _read((table,))
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
         raise ReadRefused("table %r has no model in this process" % table)
@@ -1550,10 +1587,17 @@ def _walk(db, cell, **asked):
     from ledger import trace_router
 
     route = trace_router.evidence_subgraph
-    args = {name: getattr(p.default, "default", p.default) for name, p in inspect.signature(route).parameters.items()}
+    from fastapi import params
+
+    # a dependency is a request's (the reader's hidden tables): a report's own walk has none
+    args = {name: None if isinstance(p.default, params.Depends) else getattr(p.default, "default", p.default)
+            for name, p in inspect.signature(route).parameters.items()}
     args.update(asked, db=db)
     try:
-        return route(**args)
+        answer = route(**args)
+        if _READ.get() is not None:
+            _read(_walked_tables(json.loads(answer.body) if hasattr(answer, "body") else answer))
+        return answer
     except HTTPException as refused:
         detail = refused.detail
         raise ReadRefused("%s: %s" % (cell, detail.get("message") if isinstance(detail, dict) else detail)) from refused

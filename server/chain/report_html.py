@@ -21,6 +21,9 @@ from chain import report_reads, report_shape
 REPORTS_DIRNAME = "reports"
 #: Beside a report file, its pictures' refs by number - what GET /reports/<file>/image/<n> opens (owner 10-29)
 IMAGES_SUFFIX = ".images.json"
+#: Beside a page: the tables the report read (`report_reads.fresh_reading`) - GET /reports opens the page only to who may
+#: read them all; a page without it is an administrator's (owner 11-06 access).
+TABLES_SUFFIX = ".tables.json"
 #: the link around a picture to its original
 ORIGINAL = "rpt-original"
 STYLE = """
@@ -426,7 +429,7 @@ def link_of(path) -> str:
     return "/reports/" + os.path.basename(str(path))
 
 
-def keep(name, text, images=()) -> tuple:
+def keep(name, text, images=(), tables=None) -> tuple:
     """Write the file `<name>.html`, and when it links pictures, beside it `<name>.html` + IMAGES_SUFFIX - their refs
     by number (`link_pictures`), the only originals GET /reports/<file>/image/<n> opens; the list first, so a page never
     links to a list that is not there. A page with no picture leaves no list -> (the page's path, sha256 of its
@@ -440,8 +443,20 @@ def keep(name, text, images=()) -> tuple:
         _write(listed, json.dumps(list(images), ensure_ascii=False).encode("utf-8"))
     elif os.path.exists(listed):
         os.remove(listed)                                    # written again with no picture: the old list goes
+    if tables is not None:
+        _write(path + TABLES_SUFFIX, json.dumps(sorted(tables), ensure_ascii=False).encode("utf-8"))
     _write(path, data)
     return path, "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def tables_of(path):
+    """The tables a page's report read, or None when the page has no record (written before 11-06)."""
+    try:
+        with open(path + TABLES_SUFFIX, encoding="utf-8") as handle:
+            tables = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return tables if isinstance(tables, list) else None
 
 
 def _write(path, data):
