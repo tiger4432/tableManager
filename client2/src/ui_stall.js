@@ -24,25 +24,28 @@ export function markWork(name, table = null, rows = null) {
   queueMicrotask(() => { work.end = performance.now(); });
 }
 
-/** The marked slice a task of [start, start + ms] spent most of its time in, or null. */
-export function workOf(start, ms, log = works) {
+/** The marked slice a task of [start, start + ms] spent most of its time in, or null. `within` a slice: the one marked
+ *  inside it, under another name, that covered most of the task - where the slice's time went (lead 11-06). */
+export function workOf(start, ms, log = works, within = null) {
   let best = null;
   let most = 0;
   for (const work of log) {
+    if (within && (work === within || work.name === within.name || work.start < within.start)) continue;
     const overlap = Math.min(start + ms, work.end ?? Infinity) - Math.max(start, work.start);
     if (overlap > most) { most = overlap; best = work; }
   }
   return best;
 }
 
-/** «UI 3.4s <what> <table> <rows>» - the parts there are; nothing marked, «?». */
-export function uiStallLine(ms, work) {
+/** «UI 3.4s <what> <table> <rows> › <inner>» - the parts there are; nothing marked, «?». */
+export function uiStallLine(ms, work, inner = null) {
   const parts = [`UI ${(ms / 1000).toFixed(1)}s`];
   if (!work) parts.push('?');
   else {
     parts.push(work.name);
     if (work.table) parts.push(work.table);
     if (isCount(work.rows)) parts.push(String(work.rows));
+    if (inner) parts.push('›', inner.name);
   }
   return parts.join(' ');
 }
@@ -72,7 +75,10 @@ export class UiStallWatch {
   /** A task of `ms` from `start`: a stall said; the instrument only ever goes quiet itself. */
   seen(start, ms) {
     if (ms < UI_STALL_MS) return;
-    try { this.onStall({ line: uiStallLine(ms, workOf(start, ms)), at: this.nowIso() }); }
+    try {
+      const work = workOf(start, ms);
+      this.onStall({ line: uiStallLine(ms, work, work && workOf(start, ms, undefined, work)), at: this.nowIso() });
+    }
     catch (err) { console.warn('[ui stall] a stall was not said:', err && err.message); }
   }
 }

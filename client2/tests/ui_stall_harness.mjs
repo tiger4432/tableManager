@@ -29,8 +29,12 @@ async function answers(M) {
   const out = {};
   out.A = [M.workOf(30, 3400, LOG) && M.workOf(30, 3400, LOG).name, M.workOf(5000, 1200, LOG),
     M.workOf(3390, 1100, [W('open', 3000, null)]) && M.workOf(3390, 1100, [W('open', 3000, null)]).name];
+  const NEST = [W('ws batch_row_upsert', 100, 3500, 'dt_log', 500), W('history', 150, 3500), W('history widths', 200, 3500),
+    W('history widths', 300, 3500), W('rows', 0, 90)];
+  out.A4 = [M.workOf(120, 3400, NEST, NEST[0]) && M.workOf(120, 3400, NEST, NEST[0]).name, M.workOf(120, 3400, [NEST[0]], NEST[0])];
   out.B = [M.uiStallLine(3400, LOG[1]), M.uiStallLine(1200, null), M.uiStallLine(2000, W('history', 0, 1)),
-    M.uiStallLine(1050, W('rows', 0, 1, 'lot_event', 0))];
+    M.uiStallLine(1050, W('rows', 0, 1, 'lot_event', 0)),
+    M.uiStallLine(13100, W('ws batch_refresh_required', 0, 1, 'dt_log', 500), W('history widths', 0, 1))];
   // C: a mark's end is set before the code after an await runs
   let endAtAwait = 'unset';
   const before = performance.now();
@@ -49,7 +53,8 @@ async function answers(M) {
     for (let i = 0; i < 300; i += 1) M.markWork('history widths', null, 1);
     const spent = performance.now() - t0 + 0.0001;
     const named = M.workOf(t0, spent);
-    outer = named && named.name;
+    const inner = named && M.workOf(t0, spent, undefined, named);
+    outer = named && `${named.name} › ${inner && inner.name}`;
     await null;
   })();
   out.C2 = outer;
@@ -95,12 +100,17 @@ console.log('\n── A · B · C · D ─────────────�
 ok('A1 a task is named by the slice it spent most of its time in', base.A[0] === 'ws batch_row_upsert', base.A[0]);
 ok('A2 a task in no marked slice: none', base.A[1] === null, base.A[1]);
 ok('A3 a slice not yet ended counts as running', base.A[2] === 'open', base.A[2]);
+ok('A4 within a slice: the one marked inside it under another name that covered most of the task; none, null',
+  JSON.stringify(base.A4) === '["history",null]', base.A4);
 ok('B1 «UI 3.4s ws batch_row_upsert dt_log 500»', base.B[0] === 'UI 3.4s ws batch_row_upsert dt_log 500', base.B[0]);
 ok('B2 nothing marked: «UI 1.2s ?»', base.B[1] === 'UI 1.2s ?', base.B[1]);
 ok('B3 the parts there are: no table, no rows', base.B[2] === 'UI 2.0s history', base.B[2]);
 ok('B4 a count of 0 rows is said', base.B[3] === 'UI 1.1s rows lot_event 0', base.B[3]);
+ok('B5 the inner work after «›»: «UI 13.1s ws batch_refresh_required dt_log 500 › history widths»',
+  base.B[4] === 'UI 13.1s ws batch_refresh_required dt_log 500 › history widths', base.B[4]);
 ok('C1 a mark ends with its slice - ended before the code after an await runs', base.C === true, base.C);
-ok('C2 300 marks inside one slice: the task still named by the slice\'s own mark', base.C2 === 'ws batch_row_upsert', base.C2);
+ok('C2 300 marks inside one slice: the task still named by the slice\'s own mark, the marks inside after it',
+  base.C2 === 'ws batch_row_upsert › history widths', base.C2);
 ok('D1 under a second nothing; a second, its line once with its time', JSON.stringify(base.D) === JSON.stringify([0, 1, '2026-11-06T09:00:00Z', true]), base.D);
 ok('D2 a stall that cannot be said: one console line, nothing thrown', JSON.stringify(base.D2) === '[false,1]', base.D2);
 ok('D3 without long tasks: a frame gap of 1.4 s said, a hidden page\'s gap not', JSON.stringify(base.D3) === '["UI 1.4s ?"]', base.D3);
@@ -146,10 +156,11 @@ const DEFECTS = [
   ['M2 a slice never ends', once('  queueMicrotask(() => { work.end = performance.now(); });\n', '')],
   ['M3 a second is not a stall', once('if (ms < UI_STALL_MS) return;', 'if (ms <= UI_STALL_MS) return;')],
   ['M4 nothing marked says nothing', once("if (!work) parts.push('?');", "if (!work) parts.push('');")],
-  ['M5 the line throws out of the observer', once("    try { this.onStall({ line: uiStallLine(ms, workOf(start, ms)), at: this.nowIso() }); }\n    catch (err) { console.warn('[ui stall] a stall was not said:', err && err.message); }\n",
-    '    this.onStall({ line: uiStallLine(ms, workOf(start, ms)), at: this.nowIso() });\n')],
+  ['M5 the line throws out of the observer', once("    catch (err) { console.warn('[ui stall] a stall was not said:', err && err.message); }", '    catch (err) { throw err; }')],
   ['M6 a hidden page\'s frame gap said', once('if (doc && doc.hidden) last = null;', 'if (false) last = null;')],
   ['M7 a count of 0 rows dropped', once('if (isCount(work.rows))', 'if (work.rows)')],
+  ['M9 the inner work not said', once("    if (inner) parts.push('›', inner.name);\n", '')],
+  ['M10 the slice itself taken for its inner work', once('work === within || work.name === within.name || work.start < within.start', 'work.start < within.start')],
   ['M8 an open slice let go when the log is full', once('if (works.length > KEEP && works[0].end !== null) works.shift();', 'if (works.length > KEEP) works.shift();')],
 ];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
