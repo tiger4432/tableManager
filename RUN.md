@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+## 조인 · 리포트 값 걷기의 «끝» (2c83fd043, 소유자 11-06 «lot → recipe»)
+
+선언 — 조인 take 하나:
+```
+{"fn": "walk", "row": ["lot", "slot"], "why": "why",
+ "walk": {"follow": ["has_wafer"], "end": "processed_with"}}        # 먼 노드(recipe)의 키
+ "walk": {"follow": ["has_wafer"], "end": "processed_with:step"}    # 그 간선의 수식어
+```
+답의 뜻
+- 칸에 값 = 그 행에서 걸어 닿은 끝. 닿은 것이 여럿이면 ⏳ **지금은 «가장 늦은 것» 하나 — 자리표시이고 소유자 답 대기**(`report_reads.fold_end_values`)
+- `why` 칸 «no value» = 그 행의 출발 노드에서 끝 술어에 닿지 못함(키 칸 빈 값 · 원장에 그 노드 없음 · 길이 끊김)
+- 저장 거절 «… not a predicate the ledger declares» / «… is not a qualifier of …» / «… subject is the node a row is walked from» = 선언을 고칠 자리
+- 박스에서 잰 것: 한 lot 슬롯이 recipe 10 · step 값 100 에 닿음 → 여럿 접기 규칙이 답을 정함
+
+끄는 스위치: 그 take 를 지우면 끝. 오늘의 측정값 걷기(value · event · order)는 바뀌지 않음
 > ## [11-06] **회사 로그인(SSO) 켜진 서버 — 칸 고침 · 행 만들기 · 지우기 · 핀의 작성자가 로그인한 계정 이름** — git pull · 런처 재기동(API)
 >
 > ```
