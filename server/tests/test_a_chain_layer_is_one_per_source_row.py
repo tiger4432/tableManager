@@ -118,7 +118,8 @@ def _cell(db, key="K", column="x"):
 
 
 def _row_layer(db, source_key):
-    return crud.merged_layer_name(crud.CHAIN_SOURCE, _id(db, SRC, source_key))
+    """The layer one source row's reading owns - (its rule, the row) since owner 11-06 step 2."""
+    return crud.owned_layer_name("cl_rule", _id(db, SRC, source_key))
 
 
 def _take_back(db, *source_keys):
@@ -126,7 +127,7 @@ def _take_back(db, *source_keys):
     ids = [_id(db, SRC, key) for key in source_keys]
     crud.delete_rows_batch(db, SRC, ids, "cl")
     db.commit()
-    worker._retract_what_those_rows_fed(db, SRC, ids)
+    worker._withdraw_what_those_rows_fed(db, SRC, ids, "unanswered")
 
 
 def _two_rows(db):
@@ -180,8 +181,9 @@ def test_withdrawing_chain_ingestion_takes_its_row_layers(db):
 
 
 def test_a_left_row_that_matches_another_right_row_keeps_the_first_rows_layer_and_shows_the_later(db):
-    """총괄 판정 10-11 ① ㄱ - left as it is, and seen here: a join's source row is the right row it matched. L
-    re-matched from R1 to R2 holds both layers; R2's, written later, shows. Taking R2 back would show R1's again."""
+    """뒤집음 · owner 11-06 step 2 (B): L re-matched from J1 to J2 holds the layer its join and its new key own - J1's
+    goes, so taking J2's back can never show J1's again. 총괄 판정 10-11 ① ㄱ («left as it is»: both layers) is what
+    this reverses."""
     from chain import rule_shape
 
     rules = rule_shape.expand_declaration(JOIN, crud.TABLE_CONFIG)[0]
@@ -195,8 +197,7 @@ def test_a_left_row_that_matches_another_right_row_keeps_the_first_rows_layer_an
     row = db.query(models.DYNAMIC_TABLES[LEFT]).filter_by(business_key_val="L1").one()
     layers = {s.source_name: s.value for s in db.query(models.CellSource).filter_by(
         table_name=LEFT, row_id=row.row_id, column_name="lot")}
-    first, later = (crud.merged_layer_name(crud.CHAIN_SOURCE, _id(db, RIGHT, job)) for job in ("J1", "J2"))
-    assert (row.lot, layers) == ("B", {first: "A", later: "B"})
+    assert (row.lot, layers) == ("B", {crud.owned_layer_name(JOIN["name"], "J2"): "B"})
 
 
 def test_an_old_envelope_naming_a_row_layer_is_the_chains(db):

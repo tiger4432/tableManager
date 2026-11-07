@@ -401,7 +401,8 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
             continue
 
         result = map_enrichment_dedup(db, payloads, rule=mapper_rule)
-        items = result.get("updates") or []
+        # what an answer covers settles live rows - the backfill makes only absent ones (owner 11-06 step 2)
+        items = [item for item in result.get("updates") or [] if not item.get("covers")]
         stats["skipped_no_key"] += result.get("skipped_no_key", 0)
         stats["skipped_blank_identity"] += result.get("skipped_blank_identity", 0)
 
@@ -437,8 +438,11 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
                     stats["sample_new_keys"].append(bk)
             if apply:
                 stamped = dict(item)
-                stamped["source_name"] = rule_run.CHAIN_SOURCE
                 stamped["updated_by"] = writer
+                # the layer its rule and key own, named as the chain's write seat names it (owner 11-06 step 2)
+                stamped["source_name"] = rule_run.layer_of_a_rules_write(
+                    rule_run.CHAIN_SOURCE, stamped.get("origin_row_id"), rule_run.owner_of(stamped))
+                stamped.pop("owner_key", None)
                 batch_items.append(stamped)
 
         if apply and batch_items:

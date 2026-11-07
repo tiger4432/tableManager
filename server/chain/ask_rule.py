@@ -328,8 +328,7 @@ def _gone(db, rule, carried, answered, lines=None):
     line = (_spec(rule).get("output") or {}).get("line")
     if lines is not None and line:
         query = query.filter(getattr(model, line).in_(sorted(lines)))
-    return [{"business_key_val": key, "updates": {}, "source_name": crud.CHAIN_SOURCE, "gone": True,
-             "own": [rule_shape.declaration_of(rule)]} for (key,) in query.all() if key not in answered]
+    return [{"covers": {"where": [{"business_key_val": key}]}} for (key,) in query.all() if key not in answered]
 
 
 def _situation(row):
@@ -386,8 +385,7 @@ def remember(db, rule, row_ids):
     held = db.query(memory.business_key_val).filter(
         getattr(memory, named["purpose"]) == asker,
         getattr(memory, named["key"]).in_(sorted({_situation(r) for r in rows.values()}))).all()
-    updates += [{"business_key_val": key, "updates": {}, "source_name": crud.CHAIN_SOURCE, "gone": True,
-                 "own": [rule_shape.declaration_of(rule)]} for (key,) in held if key not in said]
+    updates += [{"covers": {"where": [{"business_key_val": key}]}} for (key,) in held if key not in said]
     return {"updates": updates, "refusal": None, "calls": 0}
 
 
