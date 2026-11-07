@@ -21,6 +21,8 @@ import math
 import re
 from functools import cmp_to_key, lru_cache
 
+from utils.time_format import NET_EXAMPLE, NET_LETTERS, NET_TOKENS
+
 
 class ExpressionError(Exception):
     """A refusal in words - what the declaration is told."""
@@ -246,13 +248,8 @@ def _date_part(part, v, ctx):
 
 
 # ── ParseDateTime (owner 11-07 «2»: Spotfire's .NET spelling) ─────────────────────────────────────────────────────────
-#: The tokens it reads: digits each, and the strptime directive `utils.time_format.parse_occurred_at` reads it by. The
-#: screen's NET_TOKENS is the same set (contracts/expression/vectors.json binds the two). yy is .NET's window
-#: (TwoDigitYearMax 2029): 00-29 is 20xx, 30-99 is 19xx.
-NET_TOKENS = {"yyyy": (4, "%Y"), "yy": (2, "%y"), "MM": (2, "%m"), "dd": (2, "%d"), "HH": (2, "%H"), "mm": (2, "%M"),
-              "ss": (2, "%S"), "fff": (3, "%f")}
-#: .NET's format letters - a run of one is a token, refused unless in NET_TOKENS.
-NET_LETTERS = "yMdHhmsfFtzKg"
+#: The tokens it reads live with the time reader (`utils.time_format.NET_TOKENS`) - the ledger's validator names a
+#: ParseDateTime format from the same table. yy is .NET's window (TwoDigitYearMax 2029): 00-29 is 20xx, 30-99 is 19xx.
 NET_READS = "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text"
 NET_UNITS = {"y": "year", "M": "month", "d": "day", "H": "hour", "m": "minute", "s": "second", "f": "fraction"}
 
@@ -261,7 +258,7 @@ NET_UNITS = {"y": "year", "M": "month", "d": "day", "H": "hour", "m": "minute", 
 def _net_format(fmt):
     """`fmt` in .NET's spelling -> (the strptime format, the text's exact shape), or refused naming what it reads."""
     if "%" in fmt:
-        raise ExpressionError("ParseDateTime: use .NET spelling, e.g. yyMMdd_HHmmss - got «%s»" % fmt)
+        raise ExpressionError("ParseDateTime: use .NET spelling, e.g. %s - got «%s»" % (NET_EXAMPLE, fmt))
     strp, shape, units, i = [], [], set(), 0
     while i < len(fmt):
         ch = fmt[i]
@@ -297,7 +294,7 @@ def _net_format(fmt):
 def _net_format_given(args):
     """ParseDateTime's format is read with the expression: a text in quotes, in the closed set."""
     if args[1]["t"] != "lit" or not isinstance(args[1]["v"], str):
-        raise ExpressionError('ParseDateTime takes its format in quotes, e.g. "yyMMdd_HHmmss"')
+        raise ExpressionError('ParseDateTime takes its format in quotes, e.g. "%s"' % NET_EXAMPLE)
     _net_format(args[1]["v"])
 
 

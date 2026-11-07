@@ -212,14 +212,14 @@ class Leg:
     is the outgoing end; a spec is {"column", "declared", "kind", "zone"} or {"constant": spelled}. `qualifiers` {name:
     spec}; `required` the specs that must not be blank for the row to say anything (a reference's sentence's own keys
     too); `kept` the rows it says - SQL over the table's own cells; `columns` {arm: the text columns its keys are read
-    from as they are} - an index on one of them serves the arm, else the answer says «scan»; `clock` how the SQL reads its time - {"text": None} a time column, {"text": regex} a text
-    column whose declared format sorts as its time (`time_format.text_order`), "naive" a time without a zone."""
+    from as they are} - an index on one of them serves the arm, else the answer says «scan»; `naive` its time column
+    holds no zone (read on the declared one)."""
 
-    def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, clock):
+    def __init__(self, plan, sentence, predicate, ends, qualifiers, required, kept, basis, version, columns, naive):
         self.source, self.relation, self.sentence, self.predicate = plan.source_id, plan.relation, sentence, predicate
         self.ends, self.qualifiers, self.required, self.kept = ends, qualifiers, required, kept
         self.basis, self.version, self.columns, self.plan, self.world = basis, version, columns, plan, None
-        self.clock = clock
+        self.naive = naive
         self.time = plan.driver.occurred_at
 
     def key(self, spec) -> str:
@@ -254,32 +254,21 @@ class Leg:
                 out.append((item, tuple(texts)))
         return out
 
-    def said(self, timed=True) -> list:
-        """[SQL] - the rows that say something: kept, every key not blank as the SQL spells it, and the time there and
-        readable (`timed`; else left out - what a count of the unreadable asks)."""
+    def said(self) -> list:
+        """[SQL] - the rows that say something: kept, every key not blank as the SQL spells it, and the time there."""
         keys = {spec["column"]: spec for spec in self.required if "column" in spec}
         # one blank-key judge: the key as the join spells it, trimmed - `assy_key_number` / `assy_key_instant` give NULL
         # where `crud.is_blank_key_part` says blank (NaN, infinity, from KEY_EXACT_LIMIT, unreadable), btrim the spaces
         out = [*self.kept, *(f"btrim({self.key(spec)}) <> ''" for _column, spec in sorted(keys.items()))]
-        return out + [self.present()] if timed else out
+        return out + [f"{self.at()} IS NOT NULL"]
 
     def at(self) -> str:
-        """The time as the SQL orders and bounds it - a text in the C order (`text_order`: its order is its time's)."""
-        return f"w.{_quoted(self.time.column)}" + (' COLLATE "C"' if self.clock["text"] else "")
-
-    def present(self) -> str:
-        """The time is there and readable: a time not NULL, a text matching its format exactly."""
-        if self.clock["text"]:
-            return f"w.{_quoted(self.time.column)} ~ {_literal(self.clock['text'])}"
-        return f"w.{_quoted(self.time.column)} IS NOT NULL"
+        """The time as the SQL orders and bounds it."""
+        return f"w.{_quoted(self.time.column)}"
 
     def edge(self, instant):
-        """`instant` as the time column compares - itself, its wall clock on the zone, or its text in the format."""
-        from utils import time_format
-
-        if self.clock["text"]:
-            return instant.astimezone(time_format._zone(self.time.timezone)).strftime(self.time.format)
-        if self.clock.get("naive"):
+        """`instant` as the time column compares - itself, or its wall clock on the zone."""
+        if self.naive:
             from zoneinfo import ZoneInfo
 
             return instant.astimezone(ZoneInfo(str(self.time.timezone))).replace(tzinfo=None)
@@ -291,7 +280,7 @@ class Leg:
 
         try:
             return _aware_time(value if hasattr(value, "tzinfo") else roleframe._plain(value), self.time.timezone,
-                               f"read.{self.time.column}", self.time.format)
+                               f"read.{self.time.column}")
         except SourcePreparationError:
             return None
 
@@ -411,33 +400,19 @@ def _entity(relation, kinds, binding, why):
                                                 for key, child in (binding.get("keys") or {}).items()}
 
 
-def _time(plan, kinds) -> dict:
-    """A leg's `clock` - how its SQL orders and bounds rows by the molecule's instant (lead 11-07, owner «시각칸 바꿔보지
-    뭐»): a time column as it is; a text column only when its declared format sorts as its time (`text_order`). A text
-    time with no format says the next step: a key column keeps its text (`retype` refuses a key) - its format; any
-    other - the column declared datetime."""
-    from utils.time_format import text_order
-
+def _naive(plan, kinds) -> bool:
+    """Whether a leg's time column holds no zone - its SQL compares the wall clock on the declared one. The column holds
+    a time (the validator refuses a source whose time column is not declared datetime, owner 11-07 «원장 소스에는
+    datetime만»); a table not yet converted to its declaration is refused here."""
     occurred = plan.driver.occurred_at
     _cell, kind = _column(kinds, occurred.column, "read.occurred_at")
     if kind == _TIME:
-        return {"text": None}
+        return False
     if kind == "timestamp without time zone":
         if not occurred.timezone:
             raise NotCompiled("read.occurred_at: a time without a zone - declare read.occurred_at.timezone")
-        return {"text": None, "naive": True}
-    if kind != _TEXT:
-        raise NotCompiled(f"read.occurred_at: a time read from a {kind} column")
-    if not occurred.format:
-        from admin.retype import key_uses
-
-        raise NotCompiled(f"read.occurred_at: {occurred.column} is text - " + (
-            "declare its time format in the read" if key_uses(plan.relation, occurred.column)
-            else f"declare {occurred.column} datetime"))
-    regex, why = text_order(occurred.format)
-    if regex is None:
-        raise NotCompiled(f"read.occurred_at: {why}")
-    return {"text": regex}
+        return True
+    raise NotCompiled(f"read.occurred_at: a time read from a {kind} column")
 
 
 def _qualifier(kinds, binding, why) -> dict:
@@ -467,7 +442,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
     if driver.group_by or driver.mapper.unit_kind not in ("row", "event"):
         raise NotCompiled("a molecule of more than one row (read.group_by or map.unit)")
     context = roleframe.MapperContext(snapshot, plan)
-    clock = _time(plan, kinds)
+    naive = _naive(plan, kinds)
     kept = [_present(kinds, column) for column in dict.fromkeys(
         (*driver.cursor_columns, *driver.identity,
          *(clause["column"] for clause in driver.exclude_when if clause.get("when") is None)))]
@@ -500,7 +475,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
         said = [spec for _type, keys in ends.values() for spec in keys.values()]
         legs.append(Leg(plan, sentence, emission_plan.predicate_runtime_id,
                         {"outgoing": ends["subject"], "incoming": ends["object"]}, qualifiers, said, kept_here, basis,
-                        prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, clock))
+                        prefix + sentence, {"outgoing": first["subject"], "incoming": first["object"]}, naive))
         for role, binding in named.items():
             bare, keys = ends[role]
             for reference in getattr(snapshot.entities.get(binding["entity_type"]), "references", ()):
@@ -521,7 +496,7 @@ def compile_source(snapshot, plan, kinds, world) -> list:
                 legs.append(Leg(plan, reference.derivation, bare_name(reference.predicate_id),
                                 {"outgoing": (bare, keys), "incoming": (bare_name(reference.target_type), target)},
                                 {}, said, kept_here, NOT_AN_EVENT_BASIS, prefix + reference.derivation,
-                                {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, clock))
+                                {"outgoing": first[role], "incoming": _text_columns(pointed, kinds)}, naive))
     return legs
 
 

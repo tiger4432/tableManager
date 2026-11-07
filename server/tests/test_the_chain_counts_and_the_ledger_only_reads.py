@@ -184,6 +184,10 @@ def fixture_seat():
 
     mapper_sdk.discover()
     tables = {name: load(TABLE_CONFIG)[name] for name in ("dt_log", ROLLUP)}
+    # sqlite takes no text into a datetime column and the write door spells a time as text - the count is this
+    # test's, not the tables' time (a datetime in the sample, owner 11-07)
+    for name in tables:
+        tables[name]["column_types"]["event_time"] = "string"
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     models.init_dynamic_models(tables)
     crud.TABLE_CONFIG.update(tables)

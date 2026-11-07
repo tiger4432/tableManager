@@ -138,6 +138,9 @@ def test_loaded_setup_carries_the_adaptation_of_the_live_table_config():
     # 🔴 [총괄 f3bc02f6e] AND ITS KIND - a view may pass `row_id` through, so a source's
     #   「table that has row_id」 test has to be able to ask which one this is.
     expected["kind"] = "table"
+    # the keys a time column is judged by (`setup_bundle._event_time_is_datetime`): the row's and the map's
+    expected["keys"] = {"the row key": list(declared.get("composite_key_source") or [declared["business_key"]]),
+                        "the map key": list(declared.get("map_key_columns") or ())}
 
     assert dict(setup.catalog[relation]) == expected
 

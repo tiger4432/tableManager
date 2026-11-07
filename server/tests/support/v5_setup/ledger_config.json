@@ -834,7 +834,7 @@
           ]
         },
         "occurred_at": {
-          "column": "observed_at",
+          "column": "observed_time",
           "timezone": "Asia/Seoul"
         }
       },
@@ -875,7 +875,7 @@
             "bind": {
               "occurred_at": {
                 "kind": "column",
-                "column": "observed_at"
+                "column": "observed_time"
               },
               "subject": {
                 "kind": "entity",

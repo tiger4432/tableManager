@@ -11,7 +11,7 @@ Each case: the hold world's official table with the case's rows (written through
 declared on it. The translator's atoms (`sql_translate.event_results` - what the stored ledger holds) and the compile's
 (`sql_translate.compile_world`, every leg's rows read whole by the walk's SQL, `VirtualEvidenceLookup._select`) must
 each be the case's atoms; the compile's name their rows by row id. A case with `walk` also walks its subjects -
-newest first, from `since`, the current facts of `one`, the unreadable counted.
+newest first, from `since`, the current facts of `one`.
 """
 import copy
 import json
@@ -88,9 +88,8 @@ def _python(world):
         frame = backfill._v2_frame(backfill._fetch_v2_lineage_rows(raw, plan, backfill._readable_columns(engine, plan)))
     finally:
         raw.close()
-    with roleframe.times_read(backfill.times_read_of(engine, plan, frame)):
-        preview = preview_selected_cursor_batch(setup, hw.SOURCE, frame, runtime_v2.last_cursor(plan, frame),
-                                                known_registrations=(), translate="python")
+    preview = preview_selected_cursor_batch(setup, hw.SOURCE, frame, runtime_v2.last_cursor(plan, frame),
+                                            known_registrations=(), translate="python")
     out = []
     for record in map(json.loads, sql_translate.atom_records(plan, preview.event_results)):
         out.append((_fact(record["subject_type"], record["subject_keys"], record["predicate"],
@@ -116,7 +115,7 @@ def _compiled(world):
             subjects = {json.dumps([a.subject_type, a.subject_keys], sort_keys=True) for a in atoms}
             read, cut = walker.claims_for_entities([tuple(json.loads(s)) for s in sorted(subjects)], "outgoing",
                                                    asked["cap"])
-            walk.append(([_instant(a.occurred_at.isoformat()) for a in read], cut, walker.said["unreadable_times"]))
+            walk.append(([_instant(a.occurred_at.isoformat()) for a in read], cut))
         connection.rollback()
     said = sorted((_fact(a.subject_type, a.subject_keys, a.predicate, a.object_payload, a.occurred_at.isoformat(),
                          a.occurred_at_basis), a.source_raw_ref) for a in atoms)
@@ -127,9 +126,6 @@ def _compiled(world):
 def test_each_engine_says_the_atoms_the_case_says(world):
     case = world["case"]
     sql, left_out, walk = _compiled(world)
-    if "left_out" in case:
-        assert [item["why"] for item in left_out if item["source"] == hw.SOURCE] == [case["left_out"]]
-        return
     assert not [item for item in left_out if item["source"] == hw.SOURCE], left_out
     python = _python(world)
     expected = sorted(_fact(*atom) for atom in case["expected"])
@@ -137,7 +133,7 @@ def test_each_engine_says_the_atoms_the_case_says(world):
     assert [fact for fact, _ref in sql] == expected, "the compile, against the same"
     if "rows_named" in case:
         assert [list(roleframe.claim_source_row_refs(ref)) for _fact_, ref in python] == case["rows_named"]
-    assert walk == [([_instant(at) for at in asked["times"]], asked["cut"], case["unreadable"])
+    assert walk == [([_instant(at) for at in asked["times"]], asked["cut"])
                     for asked in case.get("walk", ())], "newest first at each cap, the current, from since"
 
 

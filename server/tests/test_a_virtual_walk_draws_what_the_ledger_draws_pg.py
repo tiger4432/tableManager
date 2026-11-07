@@ -88,8 +88,7 @@ def test_the_virtual_walk_draws_the_walk_the_ledger_draws(board, asked):
     assert all(re.fullmatch(r"(wafer_process|lot_slot_wafer):[0-9a-f-]{36}", e["basis"]) for e in virtual["edges"])
     assert len(stored["edges"]) >= (1 if asked.get("since") else 3), "canary: the walk crosses both sources"
     assert "engine" not in stored, "the stored answer is today's - no new cell"
-    assert virtual["engine"] == {"name": "virtual", "left_out": [], "scans": virtual["engine"]["scans"],
-                                 "unreadable_times": 0}
+    assert virtual["engine"] == {"name": "virtual", "left_out": [], "scans": virtual["engine"]["scans"]}
     assert {scan["table"] for scan in virtual["engine"]["scans"]} <= {"wafer_process", "lot_slot_wafer"}
 
 
@@ -194,6 +193,26 @@ def test_a_read_cut_at_a_tie_keeps_the_same_atom_under_any_collation(world):
     finally:
         raw.rollback()
         raw.close()
+
+
+def test_a_source_refused_for_a_text_time_keeps_its_stored_facts_and_leaves_the_virtual_walk(board):
+    """Owner 11-07 «원장 소스에는 datetime만»: a source whose time column is declared text is refused when the declaration
+    is loaded - the stored ledger keeps what it translated (its walk reads the ledger's rows, no plan), and the virtual
+    walk leaves the source out by name."""
+    before = _drawn(_walk(board, "stored"))
+    assert any('"predicate": "processed_with"' in edge for edge in before[1]), "canary: the source's facts are drawn"
+    path = paths.config_path("table_config.json")
+    with open(path, encoding="utf-8") as fh:
+        catalog = json.load(fh)
+    catalog["wafer_process"]["column_types"]["eventtime"] = "string"
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(catalog, fh)
+    trace_router._COMPILED.clear()
+
+    assert _drawn(_walk(board, "stored")) == before
+    left_out = _walk(board, "virtual")["engine"]["left_out"]
+    assert [item["source"] for item in left_out] == [CHANGED]
+    assert "eventtime is string - declare eventtime datetime" in left_out[0]["why"], left_out
 
 
 def test_a_virtual_walk_is_not_continued(board):

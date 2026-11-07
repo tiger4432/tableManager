@@ -1324,51 +1324,6 @@ def _attribute_binding_fields(path: str, entity_type: str, declared: Sequence[An
 #: authoring a vocabulary it does not own.
 _TIMEZONE_FALLBACK = "Asia/Seoul"
 
-#: Rows read per relation to judge its string columns as times (총괄 10-11 A ㄱ) - one short read per relation.
-TIME_SAMPLE_ROWS = 20
-
-
-def _time_columns(relation: Any, types: Mapping[str, str], sample) -> tuple[tuple[str, ...], list[str]]:
-    """(the relation's columns a time can be read from, its string columns no sample answered).
-
-    A datetime column is one. A string column is one when every non-blank value of a short sample reads as a
-    time by the read path's own judge (`roleframe.aware_time`) - text the translator could not read is not a
-    time to offer. `sample(relation, columns, limit)` -> {column: [values]} is the caller's (the route reads the
-    table); with none, a read that fails, or no value in the column, the column stays a candidate and is named."""
-    from database.crud import is_blank_value
-
-    strings = sorted(name for name, kind in types.items() if kind == "string")
-    columns = {name for name, kind in types.items() if kind == "datetime"}
-    values = None
-    if sample is not None and strings:
-        try:
-            values = sample(relation, strings, TIME_SAMPLE_ROWS)
-        except Exception:                                           # noqa: BLE001 - said below, never dropped
-            values = None
-    unsampled = []
-    for name in strings:
-        seen = [value for value in ((values or {}).get(name) or ()) if not is_blank_value(value)]
-        if not seen:
-            unsampled.append(name)
-            columns.add(name)
-        elif all(_reads_as_time(value) for value in seen):
-            columns.add(name)
-    return tuple(sorted(columns)), unsampled
-
-
-def _reads_as_time(value: Any) -> bool:
-    """⚠️ Text only PostgreSQL reads («2026/10/11 21:36:31») is not a time HERE - the sample's session closed before this
-    asks, so `roleframe.times_read` holds nothing; the ledger's translation and Latest do read it (lead 10-31 ②). A screen
-    hint, no atom: such a column is left out of the candidates."""
-    from .roleframe import aware_time
-
-    try:
-        aware_time(value, "UTC", "", error=lambda code, at, message: ValueError(message))
-    except ValueError:
-        return False
-    return True
-
-
 def _time_default_said(origin: Mapping[str, Any]) -> str:
     """What a left-out time is filled with - `source_defaults`' answer, said (총괄 10-11)."""
     if origin.get("basis"):
@@ -1406,7 +1361,7 @@ def _answer_or_default(answer: Any, default: Any, from_path: str) -> dict:
     return {"state": "missing", "value": answer}
 
 
-def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any], time_sample=None
+def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                    ) -> Iterable[Field]:
     # The most-used answer in the file, ties broken alphabetically so two runs of the same
     # file never disagree about which chip a new source is offered.
@@ -1518,12 +1473,8 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any], time_s
         occurred = driver.get("occurred_at")
         occurred = occurred if isinstance(occurred, Mapping) else {}
         types = _column_types(catalog, relation)
-        # `string` stands beside `datetime` here.  The operational tables keep time in
-        # varchar ON PURPOSE (owner 2026-08-21: the text formats are not uniform in
-        # production), and the read path parses those spellings -- so a string column whose
-        # values read as a time is a candidate; one whose sampled values do not is not (총괄
-        # 10-11 A ㄱ), and one no sample answered stays and the ground says so.
-        time_columns, unsampled = _time_columns(relation, types, time_sample)
+        # a source reads its time from a datetime column only (owner 11-07, `setup_bundle._event_time_is_datetime`)
+        time_columns = tuple(sorted(name for name, kind in types.items() if kind == "datetime"))
         # The CANDIDATE SET is derived; the answer is not.  A table with no time-typed
         # column leaves `basis` as the only door, and the screen says so instead of
         # letting a person discover it through three refusals.
@@ -1551,8 +1502,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any], time_s
                 "occurred_at_candidates_from_column_types",
                 (f"Limit: {relation} has no column to read as a time -> basis only"
                  if narrowed
-                 else f"Candidates: {len(time_columns)} columns of {relation} readable as a time + basis")
-                + (f" · not sampled: {', '.join(unsampled)}" if unsampled else ""),
+                 else f"Candidates: {len(time_columns)} datetime columns of {relation} + basis"),
                 (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(time_columns)),
             # 🔴 A PENDING RULING IS NOT A FORM FIELD'S BUSINESS: what is left is what it is filled with.
             note=(_time_default_said(time_default) if time_default
@@ -1677,14 +1627,12 @@ def _dispositions(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
 
 
 def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
-                   selection_prefix: str | None = None, time_sample=None, imported=None) -> dict[str, Any]:
+                   selection_prefix: str | None = None, imported=None) -> dict[str, Any]:
     """The whole authoring surface: what is filled, what is missing, what is still asked.
 
     `bundle` may be INVALID or half-written -- that is the normal authoring state, and a
     plan that only worked on a compiled bundle would be useless exactly when it is needed.
     Every accessor here tolerates the wrong shape and simply produces fewer fields.
-    `time_sample(relation, columns, limit)` -> {column: [values]} reads the rows the time candidates are judged
-    on (`_time_columns`); without it a string column stays a candidate, named «not sampled».
     """
     if not isinstance(bundle, Mapping):
         raise TypeError("bundle must be a mapping")
@@ -1695,7 +1643,7 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
         *_vocabulary_fields(bundle),
         *_implementation_fields(bundle, catalog),
         *_profile_fields(bundle, catalog),
-        *_source_fields(bundle, catalog, time_sample),
+        *_source_fields(bundle, catalog),
     ]
     refusals = [issue.to_mapping()
                 for issue in validate_bundle_errors(bundle, catalog=catalog, imported=imported)]

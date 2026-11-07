@@ -1434,8 +1434,8 @@ class VirtualEvidenceLookup:
     in the window, the current fact, newest first, cut at the cap - and Python wraps the rows as atoms. A key is the
     join's spelling (`Leg.key`), a time the column's own (`Leg.at`). An atom's id is its row's - uuid5 of
     «source|sentence|row id» - and its raw ref «relation:row id». Nothing is recorded, so no read is «as of» - the route
-    refuses a continued walk. `said`: the answer's `engine` cell - «unreadable_times» the rows read whose text time does
-    not read; «left_out» gains a `one` predicate more than one source says (its current fact is read in one table)."""
+    refuses a continued walk. `said`: the answer's `engine` cell - «left_out» gains a `one` predicate more than one
+    source says (its current fact is read in one table)."""
 
     def __init__(self, connection, legs, worlds=None, since=None, until=None, one=(), current_only=True, said=None):
         from ledger import schema
@@ -1449,7 +1449,6 @@ class VirtualEvidenceLookup:
         self.recorded_before = None
         self.one, self.current_only = frozenset(one), current_only
         self.said = {} if said is None else said
-        self.said.setdefault("unreadable_times", 0)     # the cell is there whether or not a row was read
         said_by = Counter((world, predicate) for world, predicate, _source in
                           {(leg.world, leg.predicate, leg.source) for leg in legs if leg.predicate in self.one})
         self.legs = tuple(leg for leg in legs if said_by.get((leg.world, leg.predicate), 0) < 2)
@@ -1459,7 +1458,6 @@ class VirtualEvidenceLookup:
                     f"in one"}
             for source, world, predicate in sorted({(leg.source, leg.world, leg.predicate) for leg in legs
                                                     if said_by.get((leg.world, leg.predicate), 0) > 1}))
-        self._unreadable = set()
         self._census_of = {}
 
     def _execute(self, sql, params):
@@ -1624,20 +1622,13 @@ class VirtualEvidenceLookup:
         return f"""WITH c AS NOT MATERIALIZED ({base}), l AS ({latest})
             SELECT c.*, {later} FROM c LEFT JOIN l ON {on} {"WHERE NOT " + later if current else ""} {tail}"""
 
-    def _timed(self, leg, rows, counted=True):
-        """[(instant, row)] of `_select`'s `rows` whose time reads (`Leg.instant`, each distinct time once) - the rest
-        counted unreadable (`counted`; a far-end count's rows are not rows). Every read's rows pass here, so a walk, a
-        reach, its seeds and a hub's count keep the same rows."""
-        out, read = [], {}
-        for row in rows:
-            moment = read[row[-2]] if row[-2] in read else read.setdefault(row[-2], leg.instant(row[-2]))
-            if moment is None:
-                if counted:
-                    self._unreadable.add((leg.relation, row[0]))
-            else:
-                out.append((moment, row))
-        self.said["unreadable_times"] = len(self._unreadable)
-        return out
+    @staticmethod
+    def _timed(leg, rows):
+        """[(instant, row)] of `_select`'s `rows` - the time a datetime column holds (`Leg.instant`, each distinct time
+        once)."""
+        read = {}
+        return [(read[row[-2]] if row[-2] in read else read.setdefault(row[-2], leg.instant(row[-2])), row)
+                for row in rows]
 
     @staticmethod
     def _ends(leg, row):
@@ -1667,18 +1658,6 @@ class VirtualEvidenceLookup:
             source_raw_ref=f"{leg.relation}:{row[0]}", supersedes=None, source_event_id=None, source_event_state=None,
             not_current=bool(row[-1]), occurred_at_basis=leg.basis, world=leg.world)
 
-    def _unread(self, leg, where, params):
-        """Count the rows `where` keeps whose text time is there and does not match its format."""
-        from ledger.sql_translate import _quoted
-
-        if not leg.clock["text"]:
-            return
-        column = f"w.{_quoted(leg.time.column)}"
-        self._unreadable.update((leg.relation, row) for (row,) in self._execute(
-            f"SELECT w.row_id FROM {leg.relation} w WHERE {' AND '.join([*leg.said(timed=False), where])} "
-            f"AND btrim({column}) <> '' AND NOT ({leg.present()})", params))
-        self.said["unreadable_times"] = len(self._unreadable)
-
     def _legs(self, follow=None, exclude=None):
         return [leg for leg in self.legs
                 if not (follow and leg.predicate not in follow) and not (exclude and leg.predicate in exclude)]
@@ -1695,7 +1674,6 @@ class VirtualEvidenceLookup:
             where = self._arms(leg, direction, entities, params, far, far_types)
             if where is None:
                 continue
-            self._unread(leg, where, params)
             rows = self._select(leg, f"{where} AND {self._window(leg, params)}", params,
                                 tail="ORDER BY c.at DESC, c.rid DESC LIMIT %(fetch)s")
             read.extend(((moment, leg.source, leg.sentence, row[0]), leg, row) for moment, row in self._timed(leg, rows))
@@ -1727,7 +1705,7 @@ class VirtualEvidenceLookup:
 
     def count_far_ends(self, entities, direction, predicate, far_type):
         """`SqlEvidenceLookup.count_far_ends` over the legs - the read's filters (window, current fact), no step guard:
-        each leg's distinct far keys and times in SQL, the times read once (`_timed`)."""
+        each leg's distinct far keys in SQL."""
         far_bare, ends = _bare_name(far_type), set()
         far_arm = "outgoing" if direction == "incoming" else "incoming"
         for leg in self._legs([predicate]):
@@ -1738,11 +1716,10 @@ class VirtualEvidenceLookup:
             before = len(leg.columns_of("outgoing")) if far_arm == "incoming" else 0
             cells = [f"r.c{before + index}" for index in range(1, len(leg.columns_of(far_arm)) + 1)]
             statement = self._statement(leg, f"{where} AND {self._window(leg, params)}", params)
-            rows = self._execute(f"SELECT DISTINCT {', '.join(['NULL', *cells, 'r.at', 'false'])} FROM ({statement}) r",
-                                 params)
+            rows = self._execute(f"SELECT DISTINCT {', '.join(cells) or 'true'} FROM ({statement}) r", params)
             specs = sorted(leg.ends[far_arm][1].items())
-            for _moment, row in self._timed(leg, rows, counted=False):
-                values = iter(row[1:])
+            for row in rows:
+                values = iter(row)
                 ends.add(_canonical({key: spec["constant"] if "constant" in spec else next(values)
                                      for key, spec in specs}))
         return len(ends)
@@ -1785,7 +1762,6 @@ class VirtualEvidenceLookup:
             if leg.relation != relation or bare_type not in (leg.ends["outgoing"][0], leg.ends["incoming"][0]):
                 continue
             params = {"rows": list(row_ids)}
-            self._unread(leg, "w.row_id = ANY(%(rows)s)", params)
             for _moment, row in self._timed(leg, self._select(leg, "w.row_id = ANY(%(rows)s)", params, current=False)):
                 for kind, keys in self._ends(leg, row):
                     if kind == bare_type:
@@ -1800,24 +1776,18 @@ class VirtualEvidenceLookup:
     def _census(self, bare):
         """{node keys as canonical JSON: [keys, rows naming it, its first event instant or None, {predicate}]} - every
         node of the bare type the legs name: one count of each (leg, end)'s rows by its keys, none read. A row names its
-        nodes when its keys and its time are there (lead 11-07 ㄱ: a text time there that does not read is counted -
-        the stored ledger has no atom of it; `unreadable_times` on a seeded read says how many)."""
+        nodes when its keys and its time are there."""
         if bare in self._census_of:
             return self._census_of[bare]
-        from ledger.sql_translate import _quoted
-
         nodes = {}
         for leg in self.legs:
             for arm, (end_type, specs) in leg.ends.items():
                 if end_type != bare:
                     continue
                 keys = [leg.key(spec) for _key, spec in leg.columns_of(arm)]
-                column = f"w.{_quoted(leg.time.column)}"
-                there = f"btrim({column}) <> ''" if leg.clock["text"] else f"{column} IS NOT NULL"
-                first = f"min({leg.at()}) FILTER (WHERE {leg.present()})"
                 rows = self._execute(
-                    f"SELECT {', '.join([*keys, 'count(*)', first])} FROM {leg.relation} w "
-                    f"WHERE {' AND '.join([*leg.said(timed=False), there])}"
+                    f"SELECT {', '.join([*keys, 'count(*)', f'min({leg.at()})'])} FROM {leg.relation} w "
+                    f"WHERE {' AND '.join(leg.said())}"
                     + (f" GROUP BY {', '.join(keys)}" if keys else ""), None)
                 for row in rows:
                     values = iter(row)

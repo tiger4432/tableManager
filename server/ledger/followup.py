@@ -261,9 +261,9 @@ def time_of_table(setup, table_name):
     if grouped:
         name, plan = grouped[0]
         return None, "it needs one atom time per row; %s groups rows by %s" % (name, ", ".join(plan.driver.group_by))
-    if len({(at.column, at.timezone, at.format) for at in times}) > 1:
+    if len({(at.column, at.timezone) for at in times}) > 1:
         return None, "its sources read it at different times: " + ", ".join(
-            "%s (%s)" % (name, " ".join(str(part) for part in (at.column, at.timezone, at.format) if part))
+            "%s (%s)" % (name, " ".join(str(part) for part in (at.column, at.timezone) if part))
             for name, at in zip(names, times))
     return {"occurred_at": times[0], "excluded_by": [plan.driver.exclude_when for plan in plans]}, None
 

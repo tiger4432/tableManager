@@ -564,7 +564,7 @@ def _row_type_refusal(context, cells, positions, key, soft=frozenset()):
     return None
 
 
-def _aware_time(value: Any, timezone_name: str, path: str, fmt: str | None = None) -> datetime:
+def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
     """The `occurred_at` reading, in this layer's refusal vocabulary.
 
     🔴 THE LOGIC MOVED AND DID NOT FORK (S-84-b, 판정 09-10 13:44). A `timestamp` VALUE
@@ -575,7 +575,7 @@ def _aware_time(value: Any, timezone_name: str, path: str, fmt: str | None = Non
     layers refusing in their own words, one function deciding what a timestamp IS.
     """
     return roleframe_aware_time(
-        value, timezone_name, path, fmt=fmt,
+        value, timezone_name, path,
         error=lambda code, at, message: SourcePreparationError(
             "source_preparation_incomplete", at,
             "occurred_at value must be datetime" if code == "invalid_time_value"
@@ -681,8 +681,7 @@ def _read_molecule(context, cells, positions) -> tuple:
     try:
         return None, [
             _aware_time(cells[driver.occurred_at.column][position], driver.occurred_at.timezone,
-                        f"source_batch.rows[{position}].{driver.occurred_at.column}",
-                        driver.occurred_at.format)
+                        f"source_batch.rows[{position}].{driver.occurred_at.column}")
             for position in positions]
     except SourcePreparationError as unread:
         # 🔴 A TIME THAT DOES NOT READ REFUSES ITS MOLECULE, NOT THE PAGE (총괄 ca87ffdb3 ②). An

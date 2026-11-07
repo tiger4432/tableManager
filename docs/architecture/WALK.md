@@ -410,26 +410,25 @@ bundles fanout_limit 을 물었거나 허브가 있으면 있다. 항목은 전�
           끝만(reached_for_entities, 저장은 원자 그대로). 씨앗(nodes_of_rows)도 원자 없이 SQL 키에서. 먼 끝 수
           (count_far_ends)는 다리마다 SELECT DISTINCT 먼 끝 키 · 시각. 저장 원장과 바이트 같음은 버림
           one 술어의 지금 것 = 그 소스에서 그 술어를 말하는 문장들(같은 주어 타입)의 주어마다 max(시각)
-시각      timestamptz 그대로 · zone 없는 시각은 read.occurred_at.timezone 필수 · 글자 칸은 선언 형식이 시각
-          순서로 정렬될 때만(utils.time_format.text_order: 고정 폭 숫자, 연도부터 단위를 안 건너뜀 — %y%m%d_%H%M%S
-          됨, %d/%m/%Y 안 됨). 그 형식에 «정확히» 맞는 글자만 시각이 있음, 구간 경계는 그 형식으로 철자
-          형식에 안 맞는 글자 행은 unreadable_times 로 셈 — 파이썬 읽기(5742f494d)보다 답이 작아질 수 있다
+시각      소스의 시각은 datetime 칸뿐(소유자 11-07 «원장 소스에는 datetime만» — 검증기
+          setup_bundle._event_time_is_datetime 이 저장 · 로드에서 그 소스를 거절). timestamptz 그대로 · zone 없는
+          시각은 read.occurred_at.timezone 필수. 선언은 datetime 인데 표가 아직 글자면 «a time read from a text
+          column» 으로 빠짐(retype 이 바꿈)
           씨앗 없는 질문(key-values · gaps · 타입의 씨앗)은 다리 끝마다 키 칸 GROUP BY 한 번(행은 안 읽음)
 시점      since · until · include_superseded 는 저장 걷기와 같은 절 — 원자의 occurred_at 은 선언된 시각 칸이므로
           원천 행에 그대로 걸림. 이력표로 지어내지 않음(소유자 11-06 «시점 걷기 그대로»)
 원장 확인  _ledgers_ready(원장 표 · Source Event 칸 · 인덱스)는 _walk_lookup 의 저장 갈래만 — 가상은 원장을 안
           읽으므로 원장 표가 없는 설치에서도 503 없이 답함. 저장의 reach · gaps 도 이제 같은 확인을 지남
-답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}],
-          unreadable_times: n} — n = 읽은 행 중 시각 칸이 있는데 안 읽히는 행(저장 원장에도 원자가 없는 행)
-          left_out = 컴파일이 안 읽는 소스(계획 안 됨 · 코드 맵퍼 · 묶음 단위 · attributes · value 목적어 ·
-          숫자 칸 when · 필수 수식어 · 형식 없는 글자 시각 · 정렬 안 되는 형식 · 소스 둘이 말하는 one 술어)
-          — 그 소스의 사실은 이 답에 없음. 글자 시각의 거절 문장이 다음 행동: 키 칸이면(admin.retype.key_uses)
-          «declare its time format in the read», 아니면 «declare <칸> datetime»
+답        virtual 답에만 engine = {name, left_out: [{source, world, why}], scans: [{table, column}]}
+          left_out = 컴파일이 안 읽는 소스(계획 안 됨 — 글자 시각의 거절도 여기 · 코드 맵퍼 · 묶음 단위 ·
+          attributes · value 목적어 · 숫자 칸 when · 필수 수식어 · 소스 둘이 말하는 one 술어) — 그 소스의 사실은
+          이 답에 없음. 글자 시각의 거절 문장이 다음 행동: 행 · 맵 키 칸이면 «add a datetime column filled by a
+          chain: =ParseDateTime([<칸>], "<형식>")», 아니면 «declare <칸> datetime»
           scans = 다리 끝의 글자 키 칸이 표 선언 "indexes" 의 첫 칸이 아님 — 그 표를 훑음
 거절      resumable · resume + virtual -> 422 virtual_walk_not_continued (기록이 없어 «첫 쪽 시점»이 없다)
 비교      python -m ledger walk-shadow — 소스마다 같은 씨앗을 두 engine 으로, «행»으로 맞춰(저장 원자의 order_by
           참조를 그 행의 row_id 로 읽어) 칸 spelling · stale · stored-only · real · tie_split · time. real 이 있으면
-          종료 1. 계약 contracts/ledger_sql_compile(번역기 · 컴파일이 같은 사실, 글자 시각의 순서 · 경계 · 거절)
+          종료 1. 계약 contracts/ledger_sql_compile(번역기 · 컴파일이 같은 사실, 시각의 순서 · 경계)
 ```
 🔴 읽기 순서 `ledger_subgraph.READ_ORDER`(총괄 11-07): 시각 내림차순, 같은 시각은 원자 자신의 내용(주어 · 목적어 ·
 술어 · 원천 행)으로, id 는 마지막. 역할이 둘(총괄 11-07 ㄴ): SQL 순서는 «무엇을 읽나»(LIMIT · fan-out 의 앞 N ·

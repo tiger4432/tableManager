@@ -61,7 +61,8 @@ def fixture_snapshot(tmp_path, monkeypatch):
 def _atoms(snapshot, source, xs, first):
     rows = as_read(snapshot.source_plans[source], [
         {"row_id": "R%d" % (first + i), "run_uid": "U%d" % (first + i), "base_wafer_id": "W1",
-         "base_x": x, "base_y": 2, "stack_gate": 1, "observed_at": "2026-09-30 10:00:00"}
+         "base_x": x, "base_y": 2, "stack_gate": 1, "observed_at": "2026-09-30 10:00:00",
+         "observed_time": "2026-09-30 10:00:00"}
         for i, x in enumerate(xs)])
     preview = preview_cursor_batch(
         snapshot, source, rows, {"run_uid": rows.iloc[-1]["run_uid"]}, role_mapper_registry(), known_registrations=())

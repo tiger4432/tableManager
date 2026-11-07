@@ -43,7 +43,8 @@ def _snapshot(document):
 def _rows():
     return [{"row_id": "R%d" % i, "run_uid": "U%d" % i, "method": "aoi", "base_wafer_id": "W1",
              "base_x": float(i), "base_y": 0.0, "stack_gate": None, "recipe_id": None, "eqp_id": None,
-             "observed_at": "2026-09-30 10:00:00", "work_id": None} for i in (1, 2)]
+             "observed_at": "2026-09-30 10:00:00", "observed_time": "2026-09-30 10:00:00",
+             "work_id": None} for i in (1, 2)]
 
 
 def _written(document, source="die_inspection"):
@@ -142,7 +143,7 @@ def test_a_source_with_no_time_reads_its_event_edges_column_and_writes_the_same_
     source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]["timezone"] = ZONE
     filled = validate_bundle(document, catalog=CATALOG).to_mapping()
     assert filled["sources"]["die_inspection"]["read"]["occurred_at"] == {
-        "column": "observed_at", "timezone": ZONE}
+        "column": "observed_time", "timezone": ZONE}
     assert before and _semantics(document) == before, "same atoms, event ids and times"
 
 
@@ -389,10 +390,10 @@ def test_a_time_rows_note_speaks_for_its_state():
         ("answered", ""), ("missing", "")]
     del source["read"]["occurred_at"]
     source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"] = {
-        "kind": "column", "column": "observed_at", "timezone": ZONE}
+        "kind": "column", "column": "observed_time", "timezone": ZONE}
     rows = _plan_rows(document)
     assert [(rows[p]["state"], rows[p]["note"]) for p in (base, base + ".timezone")] == [
-        ("derived", "Default: the event edges' time (observed_at · %s)" % ZONE),
+        ("derived", "Default: the event edges' time (observed_time · %s)" % ZONE),
         ("derived", "Filled with the time · type another if it differs")]
 
 
@@ -409,19 +410,9 @@ def test_the_skeleton_asks_neither_the_time_nor_its_zone():
     assert (occurred["required"], field(occurred["node"], "timezone")["required"]) == (False, False)
 
 
-@pytest.mark.parametrize("reads", ["values", "fails"])
-def test_a_string_column_is_a_time_candidate_only_when_its_values_read_as_a_time(reads):
-    """총괄 10-11 A ㄱ: the read path's judge over a short sample; a read that fails keeps every string column, named."""
-    def sample(relation, columns, limit):
-        if reads == "fails":
-            raise RuntimeError("no table")
-        return {column: ["2026-10-01 11:00:00" if column in ("recipe_id", "observed_at") else "EQP-01"] for column in columns}
-
-    row = _plan_rows(_document(), time_sample=sample)["bundle.sources.die_inspection.read.occurred_at"]
-    columns = {c["column"] for c in row["candidates"] if "column" in c}
-    if reads == "values":
-        assert columns == {"observed_at", "recipe_id"} and "not sampled" not in row["ground"]["text"]
-    else:
-        assert {"eqp_id", "row_id", "recipe_id", "observed_at"} <= columns
-        assert "not sampled: " in row["ground"]["text"]
+def test_a_source_time_is_offered_from_its_datetime_columns_only():
+    """Owner 11-07 «원장 소스에는 datetime만»: the time candidates are the relation's datetime columns and the
+    bases - a string column is not offered, whatever it holds."""
+    row = _plan_rows(_document())["bundle.sources.die_inspection.read.occurred_at"]
+    assert {c["column"] for c in row["candidates"] if "column" in c} == {"observed_time"}
     assert [c for c in row["candidates"] if "basis" in c] == [{"basis": "ingested"}], "a basis carries no zone"

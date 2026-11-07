@@ -81,7 +81,7 @@ def _preview(compiled, source, rows):
 
 def _inspection_rows(x):
     return [{"row_id": "R1", "run_uid": "U1", "method": "aoi", "base_wafer_id": "W1", "base_x": x, "base_y": 0.0,
-             "stack_gate": None, "recipe_id": None, "eqp_id": None, "observed_at": "2026-09-30 10:00:00",
+             "stack_gate": None, "recipe_id": None, "eqp_id": None, "observed_at": "2026-09-30 10:00:00", "observed_time": "2026-09-30 10:00:00",
              "work_id": None}]
 
 

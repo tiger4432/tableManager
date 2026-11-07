@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **원장 소스의 시각은 datetime 칸만 — 글자 시각을 읽던 소스는 재기동 뒤 그 소스만 빠짐** — git pull · 런처 재기동(API · 원장 워커 · 걷기 프로세스)
+>
+> ```
+> 무엇     원장 선언의 read.occurred_at 칸이 datetime 이 아니면 저장 거절, 로드에서 그 소스만 빠짐
+>          read.occurred_at.format 이 적혀 있어도 빠짐 «not read - <칸> is datetime; remove it»
+> 언제     재기동 뒤 선언을 읽을 때(API · 원장 워커 · 걷기 프로세스 기동, 선언 파일이 바뀔 때). 저장 버튼도 같은 문장
+> 로그     [Ledger] source <소스> is NOT planned: bundle.sources.<소스>.read.occurred_at.column <칸> is <타입> - ...
+> 빠지면   저장 원장: 그 소스의 새 행 번역이 멈춤, 이미 있는 사실은 걷기에 남음
+>          가상 걷기: 답의 engine.left_out 에 그 소스와 문장, 그 소스의 사실은 답에 없음
+> 고치기   키가 아님   -> 표 선언에서 그 칸을 datetime 으로(retype 이 값을 바꿈) -> 원장 선언의 format 줄 지움
+>          행 · 맵 키  -> 키 칸은 글자 그대로, datetime 칸 하나 + 그리드 수식 =ParseDateTime([<칸>], "<형식>")
+>                         -> read.occurred_at.column 을 그 칸으로. 문장에 그 소스 형식의 .NET 철자가 나옴
+>          체인 규칙(decide · join)의 키이기만 한 칸은 문장이 «declare datetime» — retype 이 «키라서 못 바꿈»을
+>          말하면 위 «행 · 맵 키» 길로
+> 견본     config/sample: 시각 칸 다섯 datetime, inspection_run 은 observed_time + 수식 규칙
+>          «formula inspection_run.observed_time» (=DateTime([observed_at]))
+> 돌릴 것  server 폴더에서  python -m ledger walk-shadow
+> 답의 뜻  bins.real 0 이어야 함 — 아니면 그 줄 그대로 총괄에게. left_out 에 소스가 있으면 위 «고치기»
+> 끄기     스위치 없음 — 급하면 이 커밋 전으로 되돌림
+> ```
+>
+> ---
+>
 > ## [11-07] **시각은 서울 벽시계로 «yyyy-mm-dd hh:mm:ss» — 그리드 복사도 같은 글자** — git pull · 화면 새로 고침 (클라만, dist 에 들어 있음)
 >
 > ```
@@ -106,20 +129,15 @@
 >
 > ---
 >
-> ## [11-07] **가상 걷기(engine=virtual)는 SQL 한 문장씩 — 파이썬은 포장만, 글자 시각은 선언 형식이 시각 순서일 때 읽음** — git pull · 런처 재기동(API · 걷기 프로세스)
+> ## [11-07] **가상 걷기(engine=virtual)는 SQL 한 문장씩 — 파이썬은 포장만** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```
 > 무엇     engine=virtual 을 줄 때만 — 다리마다 SQL 한 문장(행 · 키 · 수식어 · 시각, 새것부터, 상한에서 자름)
 >          저장 원장과 «같은 행 · 같은 사실»까지 같음 — 원자 id · 원천 행 글자는 다름(가상은 «표:row_id»)
->          시각 칸이 글자면: 형식을 선언했고 그 형식이 연도부터 고정 폭이면 읽음(yymmdd_hhmmss 됨)
->          형식에 «정확히» 안 맞는 글자 행은 답의 engine.unreadable_times 로 셈 — 전보다 답이 작아질 수 있음
 >          상한 걸린 읽기는 이제 진짜 최신 상한개(전 파이썬은 다리마다 상한 x 10 행에서 끊겨 새것을 놓침)
 > 돌릴 것  server 폴더에서  python -m ledger walk-shadow
 > 답의 뜻  bins.real 0 이어야 함 — 아니면 그 줄 그대로 총괄에게. tie_split > 0 = 같은 시각 동률에서 보이는 원자만 다름
 >          답의 engine.left_out 의 why 가 다음 행동:
->            «... is text - declare its time format in the read»  그 칸이 키 — 소스 read 에 형식을
->            «... is text - declare <칸> datetime»                 표 선언에서 그 칸을 datetime 으로
->            «its text does not sort as its time ...»              그 형식은 순서가 안 맞음 — 칸을 datetime 으로
 >            «... declared one and more than one source says it»   one 술어를 두 소스가 말함 — 그 소스는 빠짐
 > 끄기     engine 을 빼면(기본 stored) 오늘과 같음
 > ```

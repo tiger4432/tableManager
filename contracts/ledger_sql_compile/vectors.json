@@ -1,15 +1,15 @@
 {
-  "$comment": "LEDGER SQL COMPILE -- the seam between the translator (Python, `ledger.sql_translate.event_results`: what the stored ledger holds) and the walk's compile (SQL, `ledger.sql_translate.compile_world`: what engine=virtual reads). Both are scored against the atoms written here BY HAND from the declaration and the rows, and against each other. The compile's atom names its row by its row id, the translator's by `read.order_by` (owner 11-07: the read is SQL alone, no byte parity with the stored record). Times are compared as instants (UTC); `at` is text read by its declared format, which the walk's SQL orders and bounds by (`time_format.text_order`) - a case with `walk` reads the walk of its subjects newest first at each cap (from `since`, the current facts of `one`) - a row the SQL lets through that says nothing would take a place under the cap - a row whose text does not match the format counted unreadable. A case with `left_out` scores the compile's refusal only; `key` the table's row key (a time column that is a key keeps its text). Rows go through the write door, so a key's padding is stripped before either side reads it (`crud.normalize_stored_text`) - the compile reads a text key as the cell.",
+  "$comment": "LEDGER SQL COMPILE -- the seam between the translator (Python, `ledger.sql_translate.event_results`: what the stored ledger holds) and the walk's compile (SQL, `ledger.sql_translate.compile_world`: what engine=virtual reads). Both are scored against the atoms written here BY HAND from the declaration and the rows, and against each other. The compile's atom names its row by its row id, the translator's by `read.order_by` (owner 11-07: the read is SQL alone, no byte parity with the stored record). Times are compared as instants (UTC); `at` is a datetime column (owner 11-07: a ledger source reads its time from a datetime column only), written as naive text through the write door and so read on the product zone - a case with `walk` reads the walk of its subjects newest first at each cap (from `since`, the current facts of `one`) - a row the SQL lets through that says nothing would take a place under the cap. Rows go through the write door, so a key's padding is stripped before either side reads it (`crud.normalize_stored_text`) - the compile reads a text key as the cell.",
   "version": 1,
   "seam": {
     "python": "server/ledger/sql_translate.py :: event_results (the translator's judges)",
     "sql": "server/ledger/sql_translate.py :: compile_world (legs) - read by ledger_api.ledger_subgraph.VirtualEvidenceLookup"
   },
-  "table": {"step": "string", "at": "string", "seen": "datetime"},
+  "table": {"step": "string", "at": "datetime", "seen": "datetime"},
   "cases": [
     {
       "name": "keys: a number spelled as the ledger spells it, a constant, and a reference whose when holds",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "references": {"die@1": [{"edge": "in_container@1", "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}},
                                 "from": {"when": {"mat_type": "Wafer"}}}]},
       "mappings": {"seen": {"predicate": "inspected@1", "bind": {
@@ -29,7 +29,7 @@
     },
     {
       "name": "a reference whose when does not hold says nothing",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "references": {"die@1": [{"edge": "in_container@1", "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}},
                                 "from": {"when": {"mat_type": "Wafer"}}}]},
       "mappings": {"seen": {"predicate": "inspected@1", "bind": {
@@ -44,8 +44,8 @@
       ]
     },
     {
-      "name": "an optional qualifier left out when its cell is empty; a blank key and an unreadable time leave their rows",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+      "name": "an optional qualifier left out when its cell is empty; a blank key and a blank time leave their rows",
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "mappings": {"made": {"predicate": "processed_with@1", "bind": {
         "occurred_at": {"kind": "column", "column": "at"},
         "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "dt_job"}}},
@@ -53,7 +53,7 @@
         "step": {"kind": "column", "column": "step"}}}},
       "rows": [{"dt_job": "W1", "hold": "R1", "step": "S1", "at": "2026-10-01 09:30"},
                {"dt_job": "W1", "hold": "R2", "at": "2026-10-01 10:00"},
-               {"dt_job": "W3", "hold": "R3", "step": "S3", "at": "soon"},
+               {"dt_job": "W3", "hold": "R3", "step": "S3"},
                {"hold": "R4", "step": "S4", "at": "2026-10-01 11:00"}],
       "expected": [
         ["wafer", {"wafer": "W1"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R1"}, "qualifiers": {"step": "S1"}}, "2026-10-01T00:30:00+00:00", null],
@@ -63,7 +63,7 @@
     {
       "name": "a row named by two columns - its raw ref",
       "read": {"order_by": ["hold", "dt_x"], "cursor": {"columns": ["hold", "dt_x"]}, "identity": ["hold", "dt_x"],
-               "occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+               "occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "mappings": {"made": {"predicate": "processed_with@1", "bind": {
         "occurred_at": {"kind": "column", "column": "at"},
         "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "dt_job"}}},
@@ -77,7 +77,7 @@
     {
       "name": "a row named by a number column - a float as Python writes it, a whole one with .0",
       "read": {"order_by": ["dt_x"], "cursor": {"columns": ["dt_x"]}, "identity": ["dt_x"],
-               "occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+               "occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "mappings": {"made": {"predicate": "processed_with@1", "bind": {
         "occurred_at": {"kind": "column", "column": "at"},
         "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "dt_job"}}},
@@ -94,7 +94,7 @@
     },
     {
       "name": "a sentence said by its when - a blank cell is \"\" - and a row taken out by a value",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}, "exclude_when": [{"when": {"note": "skip"}}]},
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}, "exclude_when": [{"when": {"note": "skip"}}]},
       "mappings": {
         "plain": {"predicate": "processed_with@1", "when": {"step": ""}, "bind": {
           "occurred_at": {"kind": "column", "column": "at"},
@@ -114,16 +114,16 @@
       ]
     },
     {
-      "name": "a text time in yymmdd_hhmmss - newest first, bounded in its own spelling, a text not in the format unread",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%y%m%d_%H%M%S"}},
+      "name": "a time - newest first, bounded from since, a blank time unread",
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "mappings": {"made": {"predicate": "processed_with@1", "bind": {
         "occurred_at": {"kind": "column", "column": "at"},
         "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "dt_job"}}},
         "target": {"kind": "entity", "entity_type": "recipe@1", "keys": {"recipe": {"kind": "column", "column": "hold"}}}}}},
-      "rows": [{"dt_job": "W1", "hold": "R1", "at": "261001_093000"},
-               {"dt_job": "W1", "hold": "R2", "at": "261001_100000"},
-               {"dt_job": "W1", "hold": "R3", "at": "261002_080000"},
-               {"dt_job": "W1", "hold": "R4", "at": "261003_08"}],
+      "rows": [{"dt_job": "W1", "hold": "R1", "at": "2026-10-01 09:30"},
+               {"dt_job": "W1", "hold": "R2", "at": "2026-10-01 10:00"},
+               {"dt_job": "W1", "hold": "R3", "at": "2026-10-02 08:00"},
+               {"dt_job": "W1", "hold": "R4"}],
       "expected": [
         ["wafer", {"wafer": "W1"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R1"}}, "2026-10-01T00:30:00+00:00", null],
         ["wafer", {"wafer": "W1"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R2"}}, "2026-10-01T01:00:00+00:00", null],
@@ -131,12 +131,11 @@
       ],
       "since": "2026-10-01T01:00:00+00:00",
       "walk": [{"cap": 10, "times": ["2026-10-01T23:00:00+00:00", "2026-10-01T01:00:00+00:00"], "cut": false},
-               {"cap": 1, "times": ["2026-10-01T23:00:00+00:00"], "cut": true}],
-      "unreadable": 1
+               {"cap": 1, "times": ["2026-10-01T23:00:00+00:00"], "cut": true}]
     },
     {
       "name": "a one predicate two sentences of a source say - its current fact is the newest of both",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "mappings": {
         "plain": {"predicate": "processed_with@1", "when": {"step": ""}, "bind": {
           "occurred_at": {"kind": "column", "column": "at"},
@@ -153,12 +152,11 @@
         ["wafer", {"wafer": "W1"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R2"}}, "2026-10-01T01:00:00+00:00", null]
       ],
       "one": ["processed_with"],
-      "walk": [{"cap": 10, "times": ["2026-10-01T01:00:00+00:00"], "cut": false}],
-      "unreadable": 0
+      "walk": [{"cap": 10, "times": ["2026-10-01T01:00:00+00:00"], "cut": false}]
     },
     {
       "name": "a time key - the walk finds its rows by the column's own instant, not its spelling",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%Y-%m-%d %H:%M"}},
+      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
       "mappings": {"made": {"predicate": "processed_with@1", "bind": {
         "occurred_at": {"kind": "column", "column": "at"},
         "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "seen"}}},
@@ -171,39 +169,7 @@
         ["wafer", {"wafer": "2026-10-01T09:30:00+09:00"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R2"}}, "2026-10-01T01:00:00+00:00", null],
         ["wafer", {"wafer": "2026-10-02T08:00:00+09:00"}, "processed_with", {"type": "recipe", "keys": {"recipe": "R3"}}, "2026-10-01T02:00:00+00:00", null]
       ],
-      "walk": [{"cap": 10, "times": ["2026-10-01T02:00:00+00:00", "2026-10-01T01:00:00+00:00", "2026-10-01T00:30:00+00:00"], "cut": false}],
-      "unreadable": 0
-    },
-    {
-      "name": "a text time with no format - not a key: declare it datetime",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
-      "mappings": {"made": {"predicate": "processed_with@1", "bind": {
-        "occurred_at": {"kind": "column", "column": "at"},
-        "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "dt_job"}}},
-        "target": {"kind": "entity", "entity_type": "recipe@1", "keys": {"recipe": {"kind": "column", "column": "hold"}}}}}},
-      "rows": [{"dt_job": "W1", "hold": "R1", "at": "2026-10-01 09:30"}],
-      "left_out": "read.occurred_at: at is text - declare at datetime"
-    },
-    {
-      "name": "a text time with no format - a key: declare its format",
-      "key": ["dt_x", "at"],
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul"}},
-      "mappings": {"made": {"predicate": "processed_with@1", "bind": {
-        "occurred_at": {"kind": "column", "column": "at"},
-        "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "dt_job"}}},
-        "target": {"kind": "entity", "entity_type": "recipe@1", "keys": {"recipe": {"kind": "column", "column": "hold"}}}}}},
-      "rows": [{"dt_job": "W1", "hold": "R1", "at": "2026-10-01 09:30"}],
-      "left_out": "read.occurred_at: at is text - declare its time format in the read"
-    },
-    {
-      "name": "a text time whose format does not sort as its time",
-      "read": {"occurred_at": {"column": "at", "timezone": "Asia/Seoul", "format": "%d/%m/%Y %H:%M"}},
-      "mappings": {"made": {"predicate": "processed_with@1", "bind": {
-        "occurred_at": {"kind": "column", "column": "at"},
-        "subject": {"kind": "entity", "entity_type": "wafer@1", "keys": {"wafer": {"kind": "column", "column": "dt_job"}}},
-        "target": {"kind": "entity", "entity_type": "recipe@1", "keys": {"recipe": {"kind": "column", "column": "hold"}}}}}},
-      "rows": [{"dt_job": "W1", "hold": "R1", "at": "01/10/2026 09:30"}],
-      "left_out": "read.occurred_at: its text does not sort as its time: '%d/%m/%Y %H:%M' does not read from the year down, unit by unit"
+      "walk": [{"cap": 10, "times": ["2026-10-01T02:00:00+00:00", "2026-10-01T01:00:00+00:00", "2026-10-01T00:30:00+00:00"], "cut": false}]
     }
   ]
 }

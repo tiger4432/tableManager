@@ -51,7 +51,7 @@ def fixture_snapshot():
 def _inspection_rows():
     return [{"row_id": "R%d" % i, "run_uid": "U%d" % i, "method": "aoi", "base_wafer_id": "W1",
              "base_x": float(i), "base_y": 0.0, "stack_gate": None, "recipe_id": None, "eqp_id": None,
-             "observed_at": "2026-09-30 10:00:00", "work_id": None} for i in (1, 2)]
+             "observed_at": "2026-09-30 10:00:00", "observed_time": "2026-09-30 10:00:00", "work_id": None} for i in (1, 2)]
 
 
 def _transfer_rows():

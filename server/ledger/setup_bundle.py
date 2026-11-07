@@ -378,6 +378,19 @@ def refuse_unadapted_catalog(catalog: Any, where: str = "catalog") -> None:
             f"`load_physical_catalog()` returns")
 
 
+def entry_key_columns(config: Mapping[str, Any]) -> list:
+    """The columns a row of one `table_config` entry is known by, in declared order - its `composite_key_source`, else
+    its `business_key` (`chain.cell_layer.key_columns`, `crud.unfilled_key_columns`)."""
+    return [str(c) for c in (config.get("composite_key_source") or [config.get("business_key")]) if c]
+
+
+def table_keys(config: Mapping[str, Any]) -> dict:
+    """{what the key is: its columns} of one `table_config` entry - the row key and the map key. The catalogue carries
+    it (`keys`) and `admin.retype.key_uses` reads it."""
+    return {"the row key": entry_key_columns(config),
+            "the map key": [str(c) for c in config.get("map_key_columns") or ()]}
+
+
 def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
     catalog: dict[str, dict[str, Any]] = {}
     for table_id, declared in document.items():
@@ -388,6 +401,7 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
             continue
         relation: dict[str, Any] = {
             "columns": {str(name): str(value) for name, value in columns.items()},
+            "keys": table_keys(declared),
         }
         composite = declared.get("composite_key_source")
         if isinstance(composite, list) and composite:
@@ -3113,7 +3127,6 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
                 problems.add("missing_timezone", f"{path}.read.occurred_at.timezone",
                              "a time column needs the timezone its naive text is in, e.g. \"Asia/Seoul\"")
             if "format" in occurred:
-                _time_format(occurred.get("format"), f"{path}.read.occurred_at.format", problems)
                 if "basis" in occurred:
                     problems.add("invalid_driver", f"{path}.read.occurred_at.format",
                                  "format reads a column's text - a basis has no column to read")
@@ -3230,6 +3243,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                 base_columns.append(occurred_column)
         _relation_columns(relation, base_columns, tables, f"{path}.relation", problems)
         physical = set(_table_columns(tables, relation))
+        _event_time_is_datetime(source, relation, tables, path, problems)
         # S-91. The column has to BE in the relation.
         for index, clause in enumerate(driver.get("exclude_when") or []):
             if not isinstance(clause, Mapping):
@@ -3318,6 +3332,35 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                                   available, problems)
         # ⚰️ 「Profile column X at … is missing」 (S-196) stood here: it demanded that every
         # bound and grouped column be written again in `map.input_columns` (총괄 c38eae7cf).
+
+
+def _event_time_is_datetime(source: Mapping[str, Any], relation: Any, tables: Mapping[str, Any], path: str,
+                            problems: _Problems) -> None:
+    """A source reads its event time from a datetime column only, with no `format` (owner 11-07 «원장 소스에는
+    datetime만», lead): `read.occurred_at` with the defaults filled - an event edge's time is read there or not at all.
+    A text time that is a key stays text - a chain fills a datetime column from it (ParseDateTime) and the source reads
+    that."""
+    time = (source.get("read") or {}).get("occurred_at")
+    table = tables.get(relation) if isinstance(relation, str) else None
+    columns = table.get("columns") if isinstance(table, Mapping) and isinstance(table.get("columns"), Mapping) else {}
+    column = time.get("column") if isinstance(time, Mapping) else None
+    if not isinstance(column, str) or column not in columns:
+        return                                       # a basis, or a column `unknown_column` names
+    here = f"{path}.read.occurred_at"
+    declared = columns[column]
+    if declared == "datetime":
+        if "format" in time:
+            problems.add("time_format_not_read", f"{here}.format", f"not read - {column} is datetime; remove it")
+        return
+    from utils.time_format import NET_EXAMPLE, net_spelling
+
+    # a key read by a chain rule (decide, join) is not the catalogue's - retype then says it is a key
+    uses = [name for name, keys in (table.get("keys") or {}).items() if column in keys]
+    fmt = time.get("format")
+    problems.add("time_not_datetime", f"{here}.column", (
+        f"{column} is {declared} and {' and '.join(uses)} - add a datetime column filled by a chain: "
+        f"=ParseDateTime([{column}], \"{(isinstance(fmt, str) and net_spelling(fmt)) or NET_EXAMPLE}\"), and read "
+        f"that column") if uses else f"{column} is {declared} - declare {column} datetime")
 
 
 def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any],

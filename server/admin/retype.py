@@ -76,14 +76,11 @@ def key_uses(table, column):
     """Where `table.column` is a key - each seat asked, none listed again here (lead 10-22 ㄱ): the row's key
     (`cell_layer.key_columns`), the map key, a decide rule's decision key, a join's key on either side."""
     import chain_bindings
-    from chain import cell_layer, enrich_declarations, synthesis
+    from chain import enrich_declarations, synthesis
     from database import crud
+    from ledger.setup_bundle import table_keys
 
-    uses = []
-    if column in cell_layer.key_columns(table):
-        uses.append("the row key")
-    if column in ((crud.TABLE_CONFIG.get(table) or {}).get("map_key_columns") or ()):
-        uses.append("the map key")
+    uses = [name for name, keys in table_keys(crud.TABLE_CONFIG.get(table) or {}).items() if column in keys]
     for rule in enrich_declarations.declarations(known_tables=crud.TABLE_CONFIG):
         if rule.get("source_table") == table and column in chain_bindings.key_source(rule):
             uses.append("decide %s" % rule.get("name"))

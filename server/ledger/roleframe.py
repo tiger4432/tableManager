@@ -1145,12 +1145,9 @@ def unread_time_text(value) -> bool:
 
 
 def source_times_to_ask(source_plan, frame) -> dict:
-    """{zone: {text}} - what `frame` holds that this source reads as a time and `aware_time` refuses: its occurred_at
-    column and every column binding that declares a timezone, each with no format."""
+    """{zone: {text}} - what `frame` holds that this source reads as a time and `aware_time` refuses: every column
+    binding that declares a timezone and no format (its event time is a datetime column, owner 11-07)."""
     reads = []
-    occurred = source_plan.driver.occurred_at
-    if occurred.column and not occurred.format:
-        reads.append((occurred.column, occurred.timezone))
 
     def walk(binding):
         if isinstance(binding, Mapping):

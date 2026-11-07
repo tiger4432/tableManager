@@ -326,36 +326,37 @@ def _zone(tzname: str):
             f"silent fallback would shift every occurred_at by the offset.") from exc
 
 
-#: The directives whose text sorts as its time - fixed width, digits only - and the unit each holds (`text_order`).
-_ORDERED = {"%Y": ("[0-9]{4}", "year"), "%y": ("[0-9]{2}", "year"), "%m": ("[0-9]{2}", "month"),
-            "%d": ("[0-9]{2}", "day"), "%j": ("[0-9]{3}", "day of year"), "%H": ("[0-9]{2}", "hour"),
-            "%M": ("[0-9]{2}", "minute"), "%S": ("[0-9]{2}", "second"), "%f": ("[0-9]{6}", "microsecond")}
-#: the units a sorting text reads, from the year down - one of these, cut anywhere
-_LADDERS = (("year", "month", "day", "hour", "minute", "second", "microsecond"),
-            ("year", "day of year", "hour", "minute", "second", "microsecond"))
+# ── ParseDateTime's format (owner 11-07 «2»: Spotfire's .NET spelling) ──────────────────────────────────────────────────
+#: The tokens `expression` ParseDateTime reads: digits each, and the strptime directive `parse_occurred_at` reads it by.
+#: The screen's NET_TOKENS (client2/src/expression.js) is the same set (contracts/expression/vectors.json binds the two).
+NET_TOKENS = {"yyyy": (4, "%Y"), "yy": (2, "%y"), "MM": (2, "%m"), "dd": (2, "%d"), "HH": (2, "%H"), "mm": (2, "%M"),
+              "ss": (2, "%S"), "fff": (3, "%f")}
+#: .NET's format letters - a run of one is a token, refused unless in NET_TOKENS.
+NET_LETTERS = "yMdHhmsfFtzKg"
+#: The format a sentence shows when it has none to show.
+NET_EXAMPLE = "yyMMdd_HHmmss"
 
 
-def text_order(fmt: str):
-    """(the regular expression a text written in `fmt` matches, None) when such texts sort as their times - fixed width,
-    from the year down, no unit skipped - else (None, why). The one judgment the walk's SQL orders and bounds a text
-    time by (lead 11-07, owner «yymmdd_hhmmss»): `ORDER BY` the text, a bound spelled in `fmt`. %y sorts inside one
-    century only."""
-    import re
-
-    parts, units, at = [], [], 0
-    while at < len(fmt):
-        if fmt[at] != "%":
-            parts.append(re.escape(fmt[at]))
-            at += 1
+def net_spelling(strptime_format):
+    """`strptime_format` in .NET's spelling - NET_TOKENS read backwards - or None where ParseDateTime would not read it
+    back: a directive outside the set or twice for one unit, a character .NET reads as a letter or a quote, no year,
+    month or day."""
+    tokens = {directive: token for token, (_digits, directive) in NET_TOKENS.items()}
+    out, units, i = [], [], 0
+    while i < len(strptime_format):
+        ch = strptime_format[i]
+        if ch == "%":
+            token = tokens.get(strptime_format[i:i + 2])
+            if token is None:
+                return None
+            out.append(token)
+            units.append(token[0])
+            i += 2
             continue
-        directive, at = fmt[at:at + 2], at + 2
-        if directive == "%%":
-            parts.append(r"\x25")           # not «%» - the SQL it goes in is %-interpolated
-        elif directive in _ORDERED:
-            parts.append(_ORDERED[directive][0])
-            units.append(_ORDERED[directive][1])
-        else:
-            return None, f"its text does not sort as its time: {directive} is not a fixed-width number"
-    if not units or not any(tuple(units) == ladder[:len(units)] for ladder in _LADDERS):
-        return None, f"its text does not sort as its time: {fmt!r} does not read from the year down, unit by unit"
-    return "^" + "".join(parts) + "$", None
+        if ch in NET_LETTERS or ch in "'\"\\":
+            return None
+        out.append(ch)
+        i += 1
+    if len(set(units)) != len(units) or not {"y", "M", "d"} <= set(units):
+        return None
+    return "".join(out)

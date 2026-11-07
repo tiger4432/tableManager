@@ -144,7 +144,7 @@ def fixture_die_snapshot(tmp_path_factory):
 def test_a_die_inspected_after_a_dt_step_is_the_dt_die(die_snapshot):
     rows = as_read(die_snapshot.source_plans[DIE_SOURCE], [
         {"row_id": "R%d" % index, "run_uid": "U%d" % index, "base_wafer_id": wafer,
-         "base_x": 1, "base_y": 2, "stack_gate": "G", "observed_at": "2026-09-30 10:00:00",
+         "base_x": 1, "base_y": 2, "stack_gate": "G", "observed_at": "2026-09-30 10:00:00", "observed_time": "2026-09-30 10:00:00",
          "step": "S1", "mat_type": mat_type}
         for index, (wafer, mat_type) in enumerate(ROWS.items(), start=1)])
     preview = preview_cursor_batch(
