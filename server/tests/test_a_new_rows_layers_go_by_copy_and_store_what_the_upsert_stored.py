@@ -2,9 +2,11 @@
 """Lead 11-07 (pfab ㉡): the layers of rows THIS batch inserted go by COPY; every other layer is upserted as before.
 
   the answer    a batch mixing new rows and stored rows stores the same layers - cell by cell - as the upsert alone
-  the refusal   a unique conflict inside the COPY reaches apply_batch_updates' IntegrityError seat, by class
+  the orphans   a new row whose id already holds layers (box 11-07: 25 of 58 tables) is upserted over them, not refused
+  the refusal   a unique conflict inside the COPY itself is an IntegrityError - the class the catching seats name
   the canary    the mixed batch sent some layers by COPY and some by upsert
 """
+import datetime
 import json
 import os
 import sys
@@ -107,20 +109,46 @@ def test_a_mixed_batch_stores_by_copy_what_the_upsert_alone_stored(world, monkey
     assert [k for k, (v, *_) in by_copy.items() if v and json.loads(v) == ODD]  # the escaped text came back whole
 
 
-def test_a_unique_conflict_in_the_copy_reaches_the_integrity_error_seat(world, monkeypatch):
+def test_a_new_row_whose_id_holds_orphan_layers_is_written_over_them(world, monkeypatch):
     db, engine = world["db"], world["engine"]
     row_id = str(uuid6.uuid7())
-    with engine.begin() as conn:                                        # a layer already under the new row's id
+    with engine.begin() as conn:                                        # layers left under an id no row carries
+        for column, source in (("a", "f9.csv"), ("b", "old.csv")):
+            conn.execute(text('INSERT INTO "%s".cell_sources (table_name, row_id, column_name, source_name, value, '
+                              "updated_by) VALUES (:t, :r, :c, :s, '1', 'seed')" % PG_TEST_SCHEMA),
+                         {"t": TABLE, "r": row_id, "c": column, "s": source})
+    sends = []
+    real_send = crud._pg_multirow_upsert
+    monkeypatch.setattr(crud, "_pg_multirow_upsert",
+                        lambda *a, **k: sends.append(bool(k.get("copy"))) or real_send(*a, **k))
+    crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[
+        schemas.GeneralUpdateItem(row_id=row_id, updates={"k": "z1", "a": 5, "b": "x"}, source_name="f9.csv",
+                                  updated_by="probe"),
+        schemas.GeneralUpdateItem(updates={"k": "z2", "a": 6, "b": "y"}, source_name="f9.csv", updated_by="probe")]))
+    db.commit()
+    assert sends == [True, False], sends                                # z2 by COPY, the orphan's row by the upsert
+    with engine.connect() as conn:
+        assert conn.execute(text('SELECT k, a, b FROM "%s"."%s" WHERE row_id = :r' % (PG_TEST_SCHEMA, TABLE)),
+                            {"r": row_id}).fetchall() == [("z1", 5, "x")]
+        layers = dict(((c, s), v) for c, s, v in conn.execute(text(
+            'SELECT column_name, source_name, value::text FROM "%s".cell_sources WHERE row_id = :r' % PG_TEST_SCHEMA),
+            {"r": row_id}))
+    assert layers[("a", "f9.csv")] == "5" and layers[("b", "f9.csv")] == '"x"' and layers[("b", "old.csv")] == "1"
+
+
+def test_a_unique_conflict_inside_the_copy_is_an_integrity_error(world):
+    db, engine = world["db"], world["engine"]
+    row_id = str(uuid6.uuid7())
+    layer = {"table_name": TABLE, "row_id": row_id, "column_name": "a", "source_name": "f9.csv", "value": 1,
+             "updated_by": "probe", "ingested_at": datetime.datetime.now(datetime.timezone.utc), "origin_row_id": None}
+    with engine.begin() as conn:
         conn.execute(text('INSERT INTO "%s".cell_sources (table_name, row_id, column_name, source_name, value, '
                           "updated_by) VALUES (:t, :r, 'a', 'f9.csv', '1', 'seed')" % PG_TEST_SCHEMA),
                      {"t": TABLE, "r": row_id})
-    said = []
-    monkeypatch.setattr(crud, "_say_the_constraint_refused_this_batch", lambda *a: said.append(a[2]))
-    with pytest.raises(IntegrityError) as caught:
-        crud.apply_batch_updates(db, TABLE, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
-            row_id=row_id, updates={"k": "z1", "a": 5, "b": "x"}, source_name="f9.csv", updated_by="probe")]))
+    with pytest.raises(IntegrityError) as caught:                       # the class the three catching seats name
+        crud._pg_multirow_upsert(db, models.CellSource.__table__, [layer], list(crud.CELL_SOURCE_CONFLICT_COLS),
+                                 list(crud.CELL_SOURCE_UPDATE_COLS), crud.BULK_CHUNK_SIZE, copy=True)
     assert isinstance(caught.value.orig, psycopg2.errors.UniqueViolation)
-    assert [type(e) for e in said] == [type(caught.value)]              # the seat that catches by class saw it
     db.rollback()
-    with engine.connect() as conn:
-        assert conn.execute(text('SELECT count(*) FROM "%s"."%s"' % (PG_TEST_SCHEMA, TABLE))).scalar() == 0
+
+

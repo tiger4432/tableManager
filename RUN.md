@@ -7,7 +7,7 @@
 >          박스 실측 1,000행 x 120칸: cell sources 6.18 -> 3.68 s (같은 판 1x 재측은 착지 보고에)
 > 볼 줄    데이터 루트의 watcher.log 조각 줄  «[Ingest] <표> chunk N: ... cell sources X s / N rows»
 > 답의 뜻  새 키 파일에서 cell sources 가 1,000행당 4 s 안팎 = 정상. 다시 받기(이미 있는 행)는 오늘과 같은 수
->          «IntegrityError ... COPY cell_sources» 로 묶음이 거절됨 = 호출자가 준 새 행 id 아래에 이미 층이 있었음
+>          이미 층이 남아 있는 id 로 생긴 새 행(고아 층)은 COPY 에서 빠져 오늘처럼 upsert 로 덮어씀
 > 끄기     없음 (되돌리려면 revert)
 > ```
 >

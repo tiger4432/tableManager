@@ -2812,8 +2812,8 @@ CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id'
 
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE,
                              new_rows=frozenset()):
-    """`new_rows` - (table, row_id) of rows THIS transaction inserted (flushed before this call): no stored layer
-    can hold their keys, so theirs go by COPY; every other layer is upserted as before."""
+    """`new_rows` - (table, row_id) of rows THIS transaction inserted (flushed before this call): their layers go
+    by COPY, unless the id already holds layers; every other layer is upserted as before."""
     if not mappings:
         return
 
@@ -2850,13 +2850,21 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
     # constant's own comment. What changes below is HOW those rows are sent, never how
     # many go per call.
     if new_rows and _is_executemany_safe(deduped_mappings):
-        fresh = [m for m in deduped_mappings if (m['table_name'], m['row_id']) in new_rows]
+        fresh_rows = {(m['table_name'], m['row_id']) for m in deduped_mappings} & set(new_rows)
+        # 🔴 A NEW ROW'S ID CAN ALREADY HOLD LAYERS - orphans of a row removed before its layers were (box 11-07: 25 of
+        #    58 tables, bonding_map 8.8M). Those rows stay on the upsert, which overwrites them as it always did; in the
+        #    COPY they would refuse the whole batch.
+        for table in {t for t, _ in fresh_rows}:
+            for chunk in _chunks(sorted(r for t, r in fresh_rows if t == table), chunk_size):
+                fresh_rows -= {(table, r) for (r,) in db.query(models.CellSource.row_id).filter(
+                    models.CellSource.table_name == table, models.CellSource.row_id.in_(chunk)).distinct()}
+        fresh = [m for m in deduped_mappings if (m['table_name'], m['row_id']) in fresh_rows]
         if fresh and _pg_multirow_upsert(
                 db, models.CellSource.__table__, fresh,
                 conflict_cols=list(CELL_SOURCE_CONFLICT_COLS),
                 update_cols=list(CELL_SOURCE_UPDATE_COLS),
                 chunk_size=chunk_size, copy=True):
-            deduped_mappings = [m for m in deduped_mappings if (m['table_name'], m['row_id']) not in new_rows]
+            deduped_mappings = [m for m in deduped_mappings if (m['table_name'], m['row_id']) not in fresh_rows]
             if not deduped_mappings:
                 return
     if _is_executemany_safe(deduped_mappings):
