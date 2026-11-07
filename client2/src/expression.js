@@ -8,6 +8,8 @@
 // Dates (lead fe2ba4b1f): a time is cut into its date and parts on the wall clock of run's page.zone (an IANA name,
 // ZONE_DEFAULT the server setting's default, owner «ㅇㅇ kst»). A time with an offset is moved there; one without is
 // read as that wall clock. Date · DateTime answer a time text («2026-10-14T00:00:00+09:00», «Z» at offset 0).
+// ParseDateTime(text, format) reads a text by a format in Spotfire's .NET spelling (owner 11-07 «2»: yyMMdd_HHmmss) - a
+// closed token set (NET_TOKENS, the server's the same), refused when read outside it.
 
 import { isBlank } from './absent.js';
 import { numberOf } from './walk/reach_table.js';
@@ -121,6 +123,77 @@ const datePart = (part, v, ctx) => {
       : `DatePart takes a part name (year · quarter · month · day · week · day of week · hour) - got ${part}`);
   }
   return dated(PART_OF[name]).fn(v, ctx);
+};
+// ── ParseDateTime (owner 11-07 «2»: Spotfire's .NET spelling) ──
+/** The tokens it reads and their digits - the server's NET_TOKENS (contracts/expression/vectors.json binds the two). yy is
+ *  .NET's window (TwoDigitYearMax 2029): 00-29 is 20xx, 30-99 is 19xx. */
+const NET_TOKENS = Object.freeze({ yyyy: 4, yy: 2, MM: 2, dd: 2, HH: 2, mm: 2, ss: 2, fff: 3 });
+/** .NET's format letters - a run of one is a token, refused unless in NET_TOKENS. */
+const NET_LETTERS = 'yMdHhmsfFtzKg';
+const NET_READS = 'ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text';
+const NET_UNITS = Object.freeze({ y: 'year', M: 'month', d: 'day', H: 'hour', m: 'minute', s: 'second', f: 'fraction' });
+const netFormats = new Map();
+/** `fmt` in .NET's spelling -> {shape (its exact text), tokens (in order)}, or refused naming what it reads. */
+function netFormat(fmt) {
+  if (netFormats.has(fmt)) return netFormats.get(fmt);
+  if (fmt.includes('%')) throw new ExpressionError(`ParseDateTime: use .NET spelling, e.g. yyMMdd_HHmmss - got «${fmt}»`);
+  const shape = [];
+  const tokens = [];
+  const units = new Set();
+  let i = 0;
+  while (i < fmt.length) {
+    const ch = fmt[i];
+    let literal;
+    if (ch === "'" || ch === '"') {
+      const end = fmt.indexOf(ch, i + 1);
+      if (end < 0) throw new ExpressionError(`ParseDateTime: the quote at ${i + 1} is not closed - got «${fmt}»`);
+      literal = fmt.slice(i + 1, end);
+      i = end + 1;
+    } else if (ch === '\\' && i + 1 < fmt.length) {
+      literal = fmt[i + 1];
+      i += 2;
+    } else if (NET_LETTERS.includes(ch)) {
+      let j = i;
+      while (j < fmt.length && fmt[j] === ch) j += 1;
+      const token = fmt.slice(i, j);
+      i = j;
+      if (!Object.hasOwn(NET_TOKENS, token)) throw new ExpressionError(`${NET_READS} - got «${token}»`);
+      if (units.has(ch)) throw new ExpressionError(`ParseDateTime: «${token}» reads the ${NET_UNITS[ch]} again - got «${fmt}»`);
+      units.add(ch);
+      tokens.push(token);
+      shape.push(`([0-9]{${NET_TOKENS[token]}})`);
+      continue;
+    } else {
+      literal = ch;
+      i += 1;
+    }
+    shape.push(literal.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&'));
+  }
+  if (!['y', 'M', 'd'].every((u) => units.has(u))) throw new ExpressionError(`ParseDateTime needs the year, month and day (yyyy or yy, MM, dd) - got «${fmt}»`);
+  const out = { shape: new RegExp(`^(?:${shape.join('')})$`), tokens };
+  netFormats.set(fmt, out);
+  return out;
+}
+/** ParseDateTime's format is read with the expression: a text in quotes, in the closed set. */
+const netFormatGiven = (args) => {
+  if (args[1].t !== 'lit' || typeof args[1].v !== 'string') throw new ExpressionError('ParseDateTime takes its format in quotes, e.g. "yyMMdd_HHmmss"');
+  netFormat(args[1].v);
+};
+/** `v` read by `fmt` on the zone's wall clock, as DateTime spells a time - else empty: a text that is not that shape or
+ *  not a real time is counted (the run's notTime), an empty one is not. */
+const parseDateTime = (v, fmt, ctx) => {
+  if (isBlank(v)) return null;
+  const { shape, tokens } = netFormat(fmt);
+  const m = typeof v === 'string' ? shape.exec(v) : null;
+  let w = null;
+  if (m) {
+    const got = Object.fromEntries(tokens.map((token, k) => [token, m[k + 1]]));
+    const y = got.yyyy !== undefined ? Number(got.yyyy) : (Number(got.yy) < 30 ? 2000 : 1900) + Number(got.yy);
+    w = wallOf(`${String(y).padStart(4, '0')}-${got.MM}-${got.dd}T${got.HH ?? '00'}:${got.mm ?? '00'}:${got.ss ?? '00'}`
+      + (got.fff !== undefined ? `.${got.fff}` : ''), ctx.zone);
+  }
+  if (!w) { ctx.notTime.add(ctx.row); return null; }
+  return timeText(w);
 };
 const finite = (v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v === undefined ? null : v);
 
@@ -298,6 +371,7 @@ export const FUNCTIONS = Object.freeze({
   DateTime: dated(timeText),
   ...Object.fromEntries(Object.entries(PART_OF).map(([name, f]) => [name, dated(f)])),
   DatePart: { kind: 'row', arity: 2, zoned: true, fn: datePart },
+  ParseDateTime: { kind: 'row', arity: 2, zoned: true, fn: parseDateTime, check: netFormatGiven },
   // Spotfire's Marked() (lead 10-13): the page's marking - screen only, the markings come in ctx.
   Marked: { kind: 'mark' },
 });
@@ -462,6 +536,7 @@ function arity({ name, fn, args, distinct }) {
   const want = fn.kind === 'mark' ? '1 or 2' : fn.kind === 'if' ? '3' : fn.kind === 'row' ? String(fn.arity) : fn.pair ? '2' : fn.params ? String(1 + fn.params)
     : fn.rowwise ? '1 or more' : fn.none ? '0 or 1' : '1';
   if (!fits) throw new ExpressionError(`${name} takes ${want} argument${want === '1' ? '' : 's'} - got ${n}`);
+  if (fn.check) fn.check(args);
   if (distinct && (fn.kind !== 'fold' || fn.pair || (fn.rowwise && n > 1))) throw new ExpressionError(`distinct goes in a one-column aggregation, not ${name}`);
 }
 

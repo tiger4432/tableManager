@@ -50,6 +50,10 @@ function suite(M, quiet = false) {
     // Screen only (a sheet): `nodes` the page's node types for type("key"), the id as the start row builds it.
     const nodes = v.nodes ? Object.fromEntries(Object.entries(v.nodes).map(([type, keys]) => [type, { keys, id: (k) => entitySeedId(type, k) }])) : null;
     const c = M.expr.compile(v.expr, nodes ? { nodes } : {});
+    if ('expect_refused' in v) {
+      ok(`${tag}[${v.id}]`, !c.ok && c.why === v.expect_refused, `said ${ascii(c.why)} want ${ascii(v.expect_refused)}`);
+      return;
+    }
     // A vector with a graph names its rows by node id; the screen reads them as the test bed does (testbed/slot.js calcRow).
     const index = v.graph ? M.reach.indexGraph(v.graph) : null;
     // Screen only (Marked): the vector fakes the page's marking layer. `types`: the columns' type words, as the server's run takes them.

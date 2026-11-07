@@ -36,6 +36,10 @@ def test_the_file_is_the_one_both_calculators_read():
 
 @pytest.mark.parametrize("vector", ANSWERED, ids=[v["id"] for v in ANSWERED])
 def test_a_vector(vector):
+    if "expect_refused" in vector:
+        compiled = expression.compile(vector["expr"])
+        assert not compiled["ok"] and compiled["why"] == vector["expect_refused"], compiled
+        return
     out = expression.run(expression.compile(vector["expr"]), vector["rows"], vector.get("types"), vector.get("zone"))
     if "expect_not_time" in vector:
         assert out.get("not_time") == vector["expect_not_time"], out

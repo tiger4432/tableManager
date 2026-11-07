@@ -12,12 +12,14 @@ is a walk from the row, not read on the server yet.
 Dates (lead fe2ba4b1f): a time is cut into its date and parts on the wall clock of `zone` - run's argument, else
 ingestion_settings "expression_time_zone" (Asia/Seoul, owner «ㅇㅇ kst»). A time with an offset is moved there; one
 without is read as that wall clock. Date · DateTime answer a time text («2026-10-14T00:00:00+09:00», «Z» at offset 0).
+ParseDateTime(text, format) reads a text by a format in Spotfire's .NET spelling (owner 11-07 «2»: yyMMdd_HHmmss) - a
+closed token set (`NET_TOKENS`), refused when read outside it; the reader is `utils.time_format.parse_occurred_at`.
 The same zone and the same reader (`_wall`) spell a datetime key part, its join and «did this cell change» (599fc1988).
 """
 import json
 import math
 import re
-from functools import cmp_to_key
+from functools import cmp_to_key, lru_cache
 
 
 class ExpressionError(Exception):
@@ -241,6 +243,81 @@ def _date_part(part, v, ctx):
                               else "DatePart takes a part name (year · quarter · month · day · week · day of week · "
                                    "hour) - got %s" % _text(part))
     return _dated(PART_OF[name])["fn"](v, ctx)
+
+
+# ── ParseDateTime (owner 11-07 «2»: Spotfire's .NET spelling) ─────────────────────────────────────────────────────────
+#: The tokens it reads: digits each, and the strptime directive `utils.time_format.parse_occurred_at` reads it by. The
+#: screen's NET_TOKENS is the same set (contracts/expression/vectors.json binds the two). yy is .NET's window
+#: (TwoDigitYearMax 2029): 00-29 is 20xx, 30-99 is 19xx.
+NET_TOKENS = {"yyyy": (4, "%Y"), "yy": (2, "%y"), "MM": (2, "%m"), "dd": (2, "%d"), "HH": (2, "%H"), "mm": (2, "%M"),
+              "ss": (2, "%S"), "fff": (3, "%f")}
+#: .NET's format letters - a run of one is a token, refused unless in NET_TOKENS.
+NET_LETTERS = "yMdHhmsfFtzKg"
+NET_READS = "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text"
+NET_UNITS = {"y": "year", "M": "month", "d": "day", "H": "hour", "m": "minute", "s": "second", "f": "fraction"}
+
+
+@lru_cache(maxsize=64)
+def _net_format(fmt):
+    """`fmt` in .NET's spelling -> (the strptime format, the text's exact shape), or refused naming what it reads."""
+    if "%" in fmt:
+        raise ExpressionError("ParseDateTime: use .NET spelling, e.g. yyMMdd_HHmmss - got «%s»" % fmt)
+    strp, shape, units, i = [], [], set(), 0
+    while i < len(fmt):
+        ch = fmt[i]
+        if ch in "'\"":
+            end = fmt.find(ch, i + 1)
+            if end < 0:
+                raise ExpressionError("ParseDateTime: the quote at %d is not closed - got «%s»" % (i + 1, fmt))
+            literal, i = fmt[i + 1:end], end + 1
+        elif ch == "\\" and i + 1 < len(fmt):
+            literal, i = fmt[i + 1], i + 2
+        elif ch in NET_LETTERS:
+            j = i
+            while j < len(fmt) and fmt[j] == ch:
+                j += 1
+            token, i = fmt[i:j], j
+            if token not in NET_TOKENS:
+                raise ExpressionError("%s - got «%s»" % (NET_READS, token))
+            if ch in units:
+                raise ExpressionError("ParseDateTime: «%s» reads the %s again - got «%s»" % (token, NET_UNITS[ch], fmt))
+            units.add(ch)
+            strp.append(NET_TOKENS[token][1])
+            shape.append("[0-9]{%d}" % NET_TOKENS[token][0])
+            continue
+        else:
+            literal, i = ch, i + 1
+        strp.append(literal)
+        shape.append(re.escape(literal))
+    if not {"y", "M", "d"} <= units:
+        raise ExpressionError("ParseDateTime needs the year, month and day (yyyy or yy, MM, dd) - got «%s»" % fmt)
+    return "".join(strp), re.compile("".join(shape))
+
+
+def _net_format_given(args):
+    """ParseDateTime's format is read with the expression: a text in quotes, in the closed set."""
+    if args[1]["t"] != "lit" or not isinstance(args[1]["v"], str):
+        raise ExpressionError('ParseDateTime takes its format in quotes, e.g. "yyMMdd_HHmmss"')
+    _net_format(args[1]["v"])
+
+
+def _parse_date_time(v, fmt, ctx):
+    """`v` read by `fmt` on the zone's wall clock, as DateTime spells a time - else empty: a text that is not that
+    shape or not a real time is counted (the run's not_time), an empty one is not."""
+    if is_blank(v):
+        return None
+    strp, shape = _net_format(fmt)
+    moment = None
+    if isinstance(v, str) and shape.fullmatch(v):
+        from utils import time_format
+
+        moment = time_format.parse_occurred_at(v, strp, ctx.zone().key)
+    if moment is None:
+        ctx.not_time.add(id(ctx.row))
+        return None
+    if "%y" in strp and 2030 <= moment.year <= 2068:     # strptime's window turns at 69, .NET's at 30
+        moment = moment.replace(year=moment.year - 100)
+    return _time_text(moment)
 
 
 # ── the function table ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -525,6 +602,7 @@ FUNCTIONS = {
     "DateTime": _dated(_time_text),
     **{name: _dated(f) for name, f in PART_OF.items()},
     "DatePart": {"kind": "row", "arity": 2, "fn": _date_part, "zoned": True},
+    "ParseDateTime": {"kind": "row", "arity": 2, "fn": _parse_date_time, "zoned": True, "check": _net_format_given},
 }
 _BY_NAME = {name.lower(): name for name in FUNCTIONS}
 #: The screen's alone - the page's markings.
@@ -799,6 +877,8 @@ def _arity(node):
         fits, want = n == 1, "1"
     if not fits:
         raise ExpressionError("%s takes %s argument%s - got %d" % (name, want, "" if want == "1" else "s", n))
+    if fn.get("check"):
+        fn["check"](node["args"])
     if node["distinct"] and (kind != "fold" or fn.get("pair") or (fn.get("rowwise") and n > 1)):
         raise ExpressionError("distinct goes in a one-column aggregation, not %s" % name)
 

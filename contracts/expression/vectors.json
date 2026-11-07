@@ -55,7 +55,15 @@
     "the product reads it from ingestion_settings \"expression_time_zone\", Asia/Seoul (owner «ㅇㅇ kst»). A time with an",
     "offset is moved into the zone; one without is that zone's wall clock. Date and DateTime answer a time text",
     "(«2026-10-14T00:00:00+09:00», «Z» at offset 0). `expect_not_time`: the rows a date function met a value that is not",
-    "a time on (an empty value is not counted)."
+    "a time on (an empty value is not counted).",
+    "",
+    "PARSEDATETIME (owner 11-07 «2»): ParseDateTime(text, format), the format in Spotfire's .NET spelling - a closed set:",
+    "yyyy yy MM dd HH mm ss fff, quoted text ('...' or \"...\"), a backslash-escaped letter, any other character as itself.",
+    "The text matches it exactly - the digits each token names, nothing more, no other separator. yy is .NET's window",
+    "(TwoDigitYearMax 2029): 00-29 is 20xx, 30-99 is 19xx. The year, month and day are named. Read on the zone's wall clock",
+    "and answered as DateTime spells a time; a text that is not that shape or not a real time is empty and counted",
+    "(`expect_not_time`). A format outside the set, or not a text in quotes, is refused when the expression is read:",
+    "`expect_refused` is the sentence compile answers with (`rows` then empty)."
   ],
   "sources": {
     "701": "https://docs.tibco.com/pub/spotfire/7.0.1/doc/html/stat/stat_aggregations_overview.htm (and its stat_*.htm pages)",
@@ -3692,6 +3700,238 @@
       ],
       "basis": "decided",
       "cite": "lead's review of fe2ba4b1f ⑤: the year 50's parts - week 25, a Wednesday (3)"
+    },
+    {
+      "id": "parse.yymmdd.the.owner.s.key",
+      "expr": "ParseDateTime([k], \"yyMMdd_HHmmss\")",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "k": "260107_123456"
+        },
+        {
+          "k": "291231_235959"
+        },
+        {
+          "k": "300101_000000"
+        },
+        {
+          "k": "991231_000000"
+        },
+        {
+          "k": "000229_000000"
+        },
+        {
+          "k": ""
+        },
+        {
+          "k": null
+        }
+      ],
+      "expect_rows": [
+        "2026-01-07T12:34:56+09:00",
+        "2029-12-31T23:59:59+09:00",
+        "1930-01-01T00:00:00+09:00",
+        "1999-12-31T00:00:00+09:00",
+        "2000-02-29T00:00:00+09:00",
+        null,
+        null
+      ],
+      "expect_not_time": 0,
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); yy is .NET's window - 29 is 2029, 30 is 1930 (TwoDigitYearMax 2029); an empty value is empty, not counted"
+    },
+    {
+      "id": "parse.exact.shape.or.not.a.time",
+      "expr": "ParseDateTime([k], \"yyMMdd_HHmmss\")",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "k": "26017_123456"
+        },
+        {
+          "k": "260107-123456"
+        },
+        {
+          "k": "260107_1234567"
+        },
+        {
+          "k": " 260107_123456"
+        },
+        {
+          "k": "261307_000000"
+        },
+        {
+          "k": "230229_000000"
+        },
+        {
+          "k": "260107_240000"
+        },
+        {
+          "k": "260107_235960"
+        },
+        {
+          "k": 260107
+        }
+      ],
+      "expect_rows": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "expect_not_time": 9,
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); a digit short or long, another separator, a space, month 13, 2023-02-29, hour 24, second 60 and a number (not a text) are not that format's time - empty and counted"
+    },
+    {
+      "id": "parse.fraction.and.utc",
+      "expr": "ParseDateTime([k], \"yyyy-MM-dd HH:mm:ss.fff\")",
+      "zone": "UTC",
+      "rows": [
+        {
+          "k": "2026-10-14 01:02:03.450"
+        },
+        {
+          "k": "2026-10-14 01:02:03.000"
+        },
+        {
+          "k": "2026-10-14T01:02:03.450"
+        },
+        {
+          "k": "2026-10-14 01:02:03.45"
+        }
+      ],
+      "expect_rows": [
+        "2026-10-14T01:02:03.450Z",
+        "2026-10-14T01:02:03Z",
+        null,
+        null
+      ],
+      "expect_not_time": 2,
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); fff is milliseconds, three digits; a T where the format has a space is another shape"
+    },
+    {
+      "id": "parse.quoted.text.and.escape",
+      "expr": "ParseDateTime([k], \"'LOT'yyMMdd\\H\")",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "k": "LOT260107H"
+        },
+        {
+          "k": "lot260107H"
+        },
+        {
+          "k": "LOT260107h"
+        }
+      ],
+      "expect_rows": [
+        "2026-01-07T00:00:00+09:00",
+        null,
+        null
+      ],
+      "expect_not_time": 2,
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); quoted text and a backslash-escaped letter match themselves, case and all"
+    },
+    {
+      "id": "parse.a.wall.clock.the.zone.skips",
+      "expr": "ParseDateTime([k], \"yyyyMMddHHmm\")",
+      "zone": "Asia/Seoul",
+      "rows": [
+        {
+          "k": "198805080230"
+        },
+        {
+          "k": "198805080330"
+        }
+      ],
+      "expect_rows": [
+        "1988-05-08T02:30:00+09:00",
+        "1988-05-08T03:30:00+10:00"
+      ],
+      "expect_not_time": 0,
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); Seoul skipped 02:00-03:00 on 1988-05-08 - a skipped wall clock takes the offset before, as DateTime reads a time with none (fold 0)"
+    },
+    {
+      "id": "parse.refuses.strptime.spelling",
+      "expr": "ParseDateTime([k], \"%y%m%d_%H%M%S\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime: use .NET spelling, e.g. yyMMdd_HHmmss - got «%y%m%d_%H%M%S»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); % is not .NET's"
+    },
+    {
+      "id": "parse.refuses.a.month.name",
+      "expr": "ParseDateTime([k], \"dd-MMM-yy\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text - got «MMM»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); a token outside the set is refused, not guessed"
+    },
+    {
+      "id": "parse.refuses.a.12.hour.clock",
+      "expr": "ParseDateTime([k], \"yyMMdd hh:mm tt\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text - got «hh»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); hh and tt read a culture's AM/PM - outside the set"
+    },
+    {
+      "id": "parse.refuses.one.letter.forms",
+      "expr": "ParseDateTime([k], \"yyMd\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text - got «M»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); M · d · H take one or two digits in .NET - with no separator ambiguous, outside the set"
+    },
+    {
+      "id": "parse.refuses.a.zone.token",
+      "expr": "ParseDateTime([k], \"yyMMddzzz\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime reads yyyy yy MM dd HH mm ss fff and quoted text - got «zzz»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); the zone is the product's (expression_time_zone), not the text's"
+    },
+    {
+      "id": "parse.refuses.no.day",
+      "expr": "ParseDateTime([k], \"yyMM\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime needs the year, month and day (yyyy or yy, MM, dd) - got «yyMM»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); .NET fills a missing date from today - not a time the two calculators can agree on"
+    },
+    {
+      "id": "parse.refuses.a.unit.twice",
+      "expr": "ParseDateTime([k], \"yyyyMMddyy\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime: «yy» reads the year again - got «yyyyMMddyy»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead)"
+    },
+    {
+      "id": "parse.refuses.an.open.quote",
+      "expr": "ParseDateTime([k], \"'LOTyyMMdd\")",
+      "rows": [],
+      "expect_refused": "ParseDateTime: the quote at 1 is not closed - got «'LOTyyMMdd»",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead)"
+    },
+    {
+      "id": "parse.refuses.a.format.not.in.quotes",
+      "expr": "ParseDateTime([k], [f])",
+      "rows": [],
+      "expect_refused": "ParseDateTime takes its format in quotes, e.g. \"yyMMdd_HHmmss\"",
+      "basis": "decided",
+      "cite": "owner 11-07 «2»: Spotfire's .NET spelling only (lead); the format is read with the expression, so a refusal is said before any row"
     }
   ],
   "ours": [
