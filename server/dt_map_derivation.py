@@ -1048,13 +1048,8 @@ def normalize_scoped_batch(raw, rule, target_table) -> tuple:
         if not rule.get("allow_retraction", False):
             raise ValueError("rule '%s' returned a retract envelope without allow_retraction"
                              % (rule.get("name"),))
-        # what this source owns of the job is settled by the write seat (owner 11-06 step 2): the answer covers the
-        # job's rows - what it no longer derives goes, a row nobody else is on with it, a person's stays and is named
-        column, value = normalize_retraction_request(retract, rule.get("name"))
-        from chain import rule_shape
-
-        return requested_target, list(updates) + [{"covers": {"where": [{column: value}]},
-                                                   "updated_by": rule_shape.declaration_of(rule)}], None, None
+        return requested_target, updates, None, normalize_retraction_request(
+            retract, rule.get("name"))
     if not raw.get("replace_map"):
         raise ValueError(
             "chain scoped batch must explicitly set replace_map=true or carry a retract envelope")

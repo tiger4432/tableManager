@@ -1975,6 +1975,65 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         " | ".join(r.get("message", "")
                                    for r in (drop_report.get("refusals") or ())))
 
+                # [Retraction] Remove what THIS SOURCE owns and no longer derives.
+                #
+                # 🔴 THIS IS WHAT LETS SEVERAL SOURCES SHARE ONE MAP. `replace_map`
+                # removes by map, and once a map key is the physical unit rather than the
+                # acquisition unit, several jobs converge on one map - so a purge scoped
+                # to the map would delete a sibling job's cells to correct this one's.
+                # `plan_retraction` selects POSITIVELY by the source column that travels
+                # on every derived cell, so a sibling's rows are not in the population it
+                # considers at all.
+                #
+                # Runs AFTER the write, deliberately: the keys it spares are the keys the
+                # write composed, read back off the items the write mutated. Planning it
+                # before the write would mean guessing at them.
+                #
+                # Contained, and for the reason the note above gives - except that a
+                # failure HERE leaves STALE ROWS, which is the conservative direction.
+                # It never leaves a hole.
+                with alignment_batch_counts.stage("retraction"):
+                    if retract:
+                        try:
+                            source_column, source_value = retract
+                            derived_keys = dt_map_derivation.derived_keys_of(
+                                batch_data.updates, target_table, source_column)
+                            plan = dt_map_derivation.plan_retraction(
+                                db, target_table, source_column, source_value, derived_keys,
+                                #: 선언을 읽는 것은 «규칙을 쥔 여기»다 — 순수 함수는 값만 받는다.
+                                slow_warn_ms=event_constants.slow_warn_ms(
+                                    (rule or {}).get("slow_warn_ms"),
+                                    (rule or {}).get("name") or "<unnamed rule>"))
+                            logger.info("%s", dt_map_derivation.format_retraction_summary(plan))
+                            if plan.get("declined"):
+                                logger.warning(
+                                    f"⚠️ [DtMapRetraction] Table: '{target_table}' | TX: "
+                                    f"'{chain_tx_id}' | {source_column}='{source_value}' | "
+                                    f"DECLINED: {plan['declined']['reason']}. Stale rows were "
+                                    f"LEFT IN PLACE; nothing was deleted. Next, to remove them on "
+                                    f"purpose: in the grid, filter '{target_table}' by "
+                                    f"{source_column} = '{source_value}' and delete the rows "
+                                    f"(POST /tables/{target_table}/rows/batch_delete).")
+                            elif plan.get("delete_row_ids"):
+                                n = dt_map_derivation.apply_retraction(db, plan)
+                                # The rows are gone from the database; a client that is not
+                                # told still draws them. Folded into the SAME delete event the
+                                # replace_map path already emits rather than a second one.
+                                deleted_row_ids = list(deleted_row_ids or []) + list(
+                                    plan["delete_row_ids"])
+                                logger.info(
+                                    f"🔄 [DtMapRetraction] Table: '{target_table}' | TX: "
+                                    f"'{chain_tx_id}' | {source_column}='{source_value}' | "
+                                    f"retracted {n} stale row(s), protected "
+                                    f"{plan.get('protected', 0)} human-touched row(s)")
+                        except Exception as retract_err:
+                            session_contract.undo_step(db)
+                            logger.error(
+                                f"🔴 [DtMapRetraction] Table: '{target_table}' | TX: "
+                                f"'{chain_tx_id}' | retraction failed after the write; "
+                                f"stale rows may remain: "
+                                f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+
                 # 🔴 [owner 11-06 step 2] SETTLE, THE ROWS THIS BATCH ANSWERED: what its rules owned there and left out
                 #    goes - before the shells below ask the rows it left, so the grid hears them with this batch. What
                 #    the rules' handed rows fed is settled after every page (below). A failure fails the group.
