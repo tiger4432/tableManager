@@ -2379,52 +2379,6 @@ body.resizing-active .gallery-seat {
   50% { opacity: 1; }
 }
 
-.value-suggest-row {
-  padding: 5px 10px;
-  min-height: 26px;
-  display: flex;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-label);
-  line-height: 1.35;
-  color: var(--text);
-  cursor: pointer;
-  white-space: nowrap;
-  border-left: 3px solid transparent;
-  /* 행 자체도 넘치는 내용을 감싸 둔다 — 안쪽 .value-suggest-text 가 말줄임을 담당한다. */
-  overflow: hidden;
-}
-
-/* 값 한 줄(접두부 <b> + 나머지)을 감싸는 단일 flex 아이템.
-   왜 래퍼가 필요한가: 행이 flex 라서 맨 텍스트 노드는 익명 flex 아이템이 되고 거기엔
-   text-overflow 가 걸리지 않는다. min-width:0 이라야 flex 아이템이 내용보다 작게 줄어들 수
-   있고, 그때 비로소 말줄임(…)이 나온다. 클램프된 목록에서 긴 값이 "글자 중간에서 그냥
-   잘려 끝난 값처럼 보이는" 것과 "잘렸다고 스스로 말하는" 것의 차이 — 가독성=기능. */
-.value-suggest-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.value-suggest-row b {
-  /* 입력한 접두부. 색까지 바꿔 "여기까지가 내가 친 글자"가 한눈에 보이게 한다. */
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.value-suggest-row:hover {
-  background: var(--surface-hover);
-}
-
-/* 하이라이트 = Enter 를 누르면 확정될 값. 마우스 hover 보다 강해야 한다 —
-   두 표시가 비슷하면 어느 쪽이 확정될지 알 수 없다. */
-.value-suggest-row.is-active {
-  background: var(--accent-weak);
-  border-left-color: var(--accent);
-}
-
 .value-suggest-more {
   padding: 5px 10px;
   font-family: var(--font-body);
@@ -3371,10 +3325,20 @@ body.resizing-active .gallery-seat {
 .formula-pop__hide { margin-left: auto; height: auto; min-height: 0; padding: 0 var(--space-1); line-height: 1.2; }
 /* its × as the toast's: a glyph its line's height, pressed by its letters (the screen gate's size rule) */
 .formula-pop__close { height: auto; min-height: 0; padding: 0 var(--space-1); font-size: var(--fs-h4); line-height: 1; color: var(--text-dim); }
-.formula-pop__field { display: flex; flex-direction: column; gap: var(--space-1); }
+/* the field and the refusal under it, one block: the arguments line hangs under it (owner 11-07) */
+.formula-pop__entry { position: relative; display: flex; flex-direction: column; gap: var(--space-3); }
+.formula-pop__field { position: relative; display: flex; flex-direction: column; gap: var(--space-1); }
 .formula-pop__label { font-size: var(--fs-label); font-weight: 600; color: var(--text-dim); }
 .formula-pop__input { font-family: var(--font-mono); }
 .formula-pop__input[aria-invalid="true"] { border-color: var(--danger); }
+/* what the caret stands in, over what follows (owner's mockup 11-07): the names offered under the field, or the call's
+   arguments with the one being typed in bold under the field and its refusal */
+.formula-pop__complete, .formula-pop__signature { position: absolute; top: 100%; left: 0; z-index: 2; margin-top: var(--space-1);
+  background: var(--bg-surface); border: 1px solid var(--border); box-shadow: var(--shadow-pop); }
+.formula-pop__complete { right: 0; max-height: calc(8 * var(--control-h-small) + 2 * var(--space-1)); overflow-y: auto; padding: var(--space-1) 0; }
+.formula-pop__signature { display: flex; align-items: center; min-height: var(--control-h-small); padding: 0 var(--space-3);
+  font-family: var(--font-mono); font-size: var(--fs-button); white-space: pre; color: var(--text-dim); }
+.formula-pop__signature b { color: var(--accent); }
 .formula-pop__why { padding: var(--space-2) var(--space-3); font-size: var(--fs-label); color: var(--decl-bad-ink); background: var(--danger-weak); overflow-wrap: anywhere; }
 .formula-pop__insert { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .formula-pop__preview { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }

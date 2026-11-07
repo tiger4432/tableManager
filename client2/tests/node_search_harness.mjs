@@ -37,9 +37,9 @@ const REFUSED = 'die cannot be searched by first letters: x is a number - type i
 
 /** What a part shows: its rows' keys and counts, which row is active, its note, its box. */
 const shown = (s) => ({
-  rows: byClass(s.root, 'wk-searchitem').map((n) => byClass(n, 'wk-searchkey')[0]._text),
-  counts: byClass(s.root, 'wk-searchitem').map((n) => (byClass(n, 'wk-searchcount')[0] || { _text: '' })._text),
-  active: byClass(s.root, 'wk-searchitem').findIndex((n) => n.attrs['aria-selected'] === 'true'),
+  rows: byClass(s.root, 'option-list__row').map((n) => byClass(n, 'option-list__text')[0]._text),
+  counts: byClass(s.root, 'option-list__row').map((n) => (byClass(n, 'option-list__side')[0] || { _text: '' })._text),
+  active: byClass(s.root, 'option-list__row').findIndex((n) => n.attrs['aria-selected'] === 'true'),
   note: s.note.hidden ? '' : s.note._text,
   box: !s.cell.hidden,
 });
@@ -87,7 +87,7 @@ async function seen(M) {
     out.reopen = shown(s).rows.length;
     key(s, 'Escape');
     s.input.dispatch('focus', {});
-    const third = byClass(s.root, 'wk-searchitem')[2];
+    const third = byClass(s.root, 'option-list__row')[2];
     third.dispatch('mousedown', { preventDefault: noop });
     out.press = [picked.slice(-1), shown(s).rows.length];
     s.input.dispatch('focus', {});
@@ -211,7 +211,7 @@ async function seen(M) {
     await settle();
     out.typedSubject = [{ ...page.state.keys }, addOn, asked.slice(-1)[0]];
     boxInput().dispatch('focus', {});
-    byClass(box(), 'wk-searchitem')[0].dispatch('mousedown', { preventDefault: noop });
+    byClass(box(), 'option-list__row')[0].dispatch('mousedown', { preventDefault: noop });
     await settle();
     const slotInput = walkAll(host).filter((n) => hasClass(n, 'wk-keys'))
       .flatMap((g) => walkAll(g).filter((n) => n.tagName === 'INPUT'))[0];

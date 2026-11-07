@@ -8,6 +8,8 @@
 //   D  a refusal stands word for word and Apply stays off; Apply and Remove send once, toast, and close
 //   E  Esc and a press outside close it, a press inside does not; a column chip lands at the caret; two instances
 //   F  the header's fx mark opens the formula and its press does not reach the header (no sort, no drag)
+//   G  as one types (owner's mockup 11-07): function names that start with it with their arguments, the columns after
+//      «[», the call's arguments with the one being typed in bold; ↑↓ Enter Tab take a row, Esc closes the list alone
 // Run: node client2/tests/formula_popover_harness.mjs
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
@@ -339,6 +341,105 @@ console.log('\n── F. THE HEADER\'S fx MARK ───────────
     && find(head.getGui(), 'formula-mark') === mark);
 }
 
+console.log('\n── G. AS ONE TYPES: NAMES, COLUMNS, ARGUMENTS ─────────────────────');
+{
+  const da = X.offerAt('=Da', 3, []);
+  ok('G1 a name typed: the functions that start with it, by name, each with its arguments',
+    da.kind === 'function' && da.items[0].value === 'Date' && da.items[1].value === 'DatePart'
+    && da.items[1].side === 'DatePart(part, value)' && da.items[1].head === 'Da' && da.items[1].rest === 'tePart',
+    da.items.slice(0, 3));
+  const col = X.offerAt('=Sum([D', 7, ['dt_lot', 'b', 'dt_x']);
+  ok('G2 after «[» the table\'s columns that start with it, any case, in the table\'s order; «[» alone - all',
+    col.kind === 'column' && col.items.map((i) => i.value).join() === 'dt_lot,dt_x'
+    && X.offerAt('=Sum([', 6, ['a', 'b']).items.length === 2, col);
+  ok('G3 nothing in a text in quotes, after a digit, or for a name nothing starts with',
+    X.offerAt('="Da', 4, []) === null && X.offerAt('=1Da', 4, []) === null && X.offerAt('=Zzz', 4, []) === null);
+  ok('G4 the call the caret is in and which argument: commas at its own depth, a call inside it closed',
+    JSON.stringify(X.callAt('=DatePart("a,b", ', 17)) === '{"name":"DatePart","arg":1}'
+    && JSON.stringify(X.callAt('=Round(Sum([a], [b]), ', 22)) === '{"name":"Round","arg":1}'
+    && X.callAt('=[a]+1', 6) === null, [X.callAt('=DatePart("a,b", ', 17), X.callAt('=Round(Sum([a], [b]), ', 22)]);
+  const fn = X.acceptAt('=Datx+1', 4, X.offerAt('=Datx+1', 4, []) || { kind: 'function', from: 1 }, 'DatePart');
+  const cl = X.acceptAt('=Sum([dt_]+1', 9, X.offerAt('=Sum([dt_]+1', 9, ['dt_lot']), 'dt_lot');
+  ok('G5 taken: a function as «Name(» over the rest of the word, a column as «name]» over a «]» already there',
+    fn.text === '=DatePart(+1' && fn.caret === 10 && cl.text === '=Sum([dt_lot]+1' && cl.caret === 13, [fn, cl]);
+
+  const m = mount(X);
+  await m.pop.open({ table: 'fx', column: 'c', columns: ['a', 'b', 'c'] });
+  await tick();
+  const input = find(m.pop.panel, 'formula-pop__input');
+  const list = find(m.pop.panel, 'formula-pop__complete');
+  const sign = find(m.pop.panel, 'formula-pop__signature');
+  const typeIn = (text) => { input.value = text; input.setSelectionRange(text.length, text.length); input.fire('input'); };
+  const lit = () => list.children.findIndex((r) => r.getAttribute('aria-selected') === 'true');
+  typeIn('=Da');
+  ok('G6 typing «=Da» opens the list under the formula, the first row lit', !list.hidden && list.children.length > 2
+    && lit() === 0 && list.getAttribute('role') === 'listbox' && input.getAttribute('aria-expanded') === 'true', [list.hidden, lit()]);
+  input.fire('keydown', { key: 'ArrowDown' });
+  const sentBefore = m.sent.length;
+  const enter = input.fire('keydown', { key: 'Enter' });
+  await tick();
+  ok('G7 ↓ then Enter takes the lit row as «DatePart(» - no preview asked by that Enter, the list closed',
+    input.value === '=DatePart(' && input.selectionStart === 10 && enter.prevented && list.hidden
+    && m.sent.length === sentBefore, [input.value, m.sent.length - sentBefore]);
+  ok('G8 ...and its arguments stand under it, the first in bold', !sign.hidden && sign.textContent === 'DatePart(part, value)'
+    && all(sign, 'B').map((b) => b.textContent).join() === 'part', sign.textContent);
+  typeIn('=DatePart("year", ');
+  ok('G9 past a comma the second argument is the bold one', all(sign, 'B').map((b) => b.textContent).join() === 'value');
+  typeIn('=Sum([a], [b], ');
+  ok('G10 a fold of more columns: past its last named argument «...» is bold',
+    sign.textContent === 'Sum(column, ...)' && all(sign, 'B').map((b) => b.textContent).join() === '...', sign.textContent);
+  typeIn('=Sum([');
+  ok('G11 «[» offers the columns the formula may read (its own column not among them)',
+    !list.hidden && list.children.map((r) => r.textContent).join() === '[a],[b]', list.children.map((r) => r.textContent));
+  typeIn('=Sum([A');
+  ok('G11b ...each as it goes in, «[» then what was typed in bold then the rest «]»', list.children.length === 1
+    && list.children[0].textContent === '[a]' && all(list.children[0], 'B').map((b) => b.textContent).join() === 'a'
+    && list.children[0].textContent.startsWith('['), list.children.map((r) => r.textContent));
+  typeIn('=Sum([');
+  const tab = input.fire('keydown', { key: 'Tab' });
+  ok('G12 Tab takes the lit column as «a]»', input.value === '=Sum([a]' && tab.prevented && list.hidden, input.value);
+  typeIn('=Su');
+  const esc = input.fire('keydown', { key: 'Escape' });
+  ok('G13 Esc closes the list alone - the popover stays open (the key does not reach its watch)',
+    list.hidden && esc.stopped && m.pop.isOpen && input.value === '=Su');
+  typeIn('=Ro');
+  list.children[0].dispatch('mousedown');
+  ok('G14 a press on a row takes it', input.value === '=Round(' && list.hidden, input.value);
+  const typedEnter = mount(X);
+  await typedEnter.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
+  await tick();
+  const tin = find(typedEnter.pop.panel, 'formula-pop__input');
+  tin.value = '=[a]+1';
+  tin.setSelectionRange(6, 6);
+  tin.fire('input');
+  tin.fire('keydown', { key: 'Enter' });
+  await tick();
+  ok('G15 with no list open, Enter still previews', posts(typedEnter.sent).some((r) => r.body.preview === true));
+
+  // The arguments line hangs under the block of the field and its refusal (owner 11-07): after the refusal when one
+  // stands, both read; with none, right under the field.
+  const order = (p) => find(p.pop.panel, 'formula-pop__entry').children.filter((n) => !n.hidden).map((n) => n.className);
+  const refused = mount(X, { preview: { ok: false, error: 'The expression ends too soon' } });
+  await refused.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
+  await tick();
+  const rin2 = find(refused.pop.panel, 'formula-pop__input');
+  rin2.value = '=DatePart(';
+  rin2.setSelectionRange(10, 10);
+  rin2.fire('input');
+  refused.clock.run();
+  await tick();
+  const clean = mount(X);
+  await clean.pop.open({ table: 'fx', column: 'c', columns: ['a'] });
+  await tick();
+  const cin = find(clean.pop.panel, 'formula-pop__input');
+  cin.value = '=DatePart(';
+  cin.setSelectionRange(10, 10);
+  cin.fire('input');
+  ok('G16 the arguments line comes after the refusal, both shown; with no refusal, right after the field',
+    order(refused).join() === 'formula-pop__field,formula-pop__why,formula-pop__signature'
+    && order(clean).join() === 'formula-pop__field,formula-pop__signature', [order(refused), order(clean)]);
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}`);
@@ -363,6 +464,16 @@ const DEFECTS = [
     swap("if (c.total === null) return { text: COUNTING_ROWS, at: '' };", "if (c.total === null) return { text: '0 rows will be recomputed', at: '' };")],
   ['M9 a refused save closes as if saved',
     swap("    if (!said.ok) {\n      this.refuse(said.error);\n      setDisabledReason(this.applyBtn, REFUSED_FIRST);", "    if (false) {\n      this.refuse(said.error);\n      setDisabledReason(this.applyBtn, REFUSED_FIRST);")],
+  ['M10 the Enter that takes a row also asks a preview',
+    swap("    } else if (e.key === 'Enter') this.preview();", "    }\n    if (e.key === 'Enter') this.preview();")],
+  ['M11 the argument being typed does not move past a comma',
+    swap('    else if (ch === \',\' && calls.length) calls[calls.length - 1].arg += 1;\n', '')],
+  ['M12 Esc with the list open reaches the popover\'s watch',
+    swap('      if (e.stopPropagation) e.stopPropagation();\n      this.closeList();', '      this.closeList();')],
+  ['M14 the arguments line hangs under the field, over the refusal',
+    swap('    entry.appendChild(this.sign);\n', '    field.appendChild(this.sign);\n')],
+  ['M13 a column taken over a «]» already there doubles it',
+    swap(": (/^[^[\\](),]*\\]/.exec(after) || [''])[0];", ": '';")],
 ];
 const CONTROLS = [
   ['a local rename', (src) => src.replace(/\bpreviewed\b/g, 'shownFor')],
@@ -376,6 +487,24 @@ async function verdict(M) {
   if (M.formulaRequest('save', { table: 't', column: 'c', formula: '=1', base: 'B' }).body.base !== 'B') return true;
   if (M.recomputeLine({ total: null, counting: true }).text !== 'Counting rows…') return true;
   if (M.previewTable(PREVIEW.sample).rows[2].cells[2] !== '—') return true;
+  const g = mount(M);
+  await g.pop.open({ table: 'fx', column: 'c', columns: ['a', 'c'] });
+  await tick();
+  const gin = find(g.pop.panel, 'formula-pop__input');
+  const glist = find(g.pop.panel, 'formula-pop__complete');
+  const gtype = (text) => { gin.value = text; gin.setSelectionRange(text.length, text.length); gin.fire('input'); };
+  gtype('=Da');
+  const sentAt = g.sent.length;
+  gin.fire('keydown', { key: 'Enter' });
+  await tick();
+  if (gin.value !== '=Date(' || g.sent.length !== sentAt) return true;
+  gtype('=DatePart("year", ');
+  if (all(find(g.pop.panel, 'formula-pop__signature'), 'B').map((b) => b.textContent).join() !== 'value') return true;
+  gtype('=Su');
+  if (!gin.fire('keydown', { key: 'Escape' }).stopped || !glist.hidden) return true;
+  if (M.acceptAt('=[a]+1', 3, M.offerAt('=[a]+1', 3, ['ab']), 'ab').text !== '=[ab]+1') return true;
+  if (find(g.pop.panel, 'formula-pop__entry').children.map((n) => n.className).join()
+    !== 'formula-pop__field,formula-pop__why,formula-pop__signature') return true;
 
   const m = mount(M);
   await m.pop.open({ table: 'fx', column: 'c', columns: ['a', 'c'] });

@@ -6,6 +6,7 @@
 //    f087403fe, owner 「그래야함」), so a picture always comes from our server and a refusal is always its
 //    sentence: only a failed <img> costs a second request, one fetch that reads that sentence.
 import { isBlank } from './absent.js';
+import { ensureStyle } from './style_once.js';
 
 /** How long the pointer rests on a cell before its picture is asked for. Passing over asks nothing. */
 export const DWELL_MS = 450;
@@ -38,13 +39,7 @@ export const IMAGE_PREVIEW_CSS = `
 
 /** The look into `doc` once; a document with nowhere to put it (a headless stub) is left alone. */
 export function ensureImagePreviewStyles(doc) {
-  const at = doc && typeof doc.createElement === 'function' && (doc.head || doc.documentElement);
-  if (!at || (doc.querySelector && doc.querySelector(`style[${STAMP}]`))) return false;
-  const style = doc.createElement('style');
-  style.setAttribute(STAMP, '');
-  style.textContent = IMAGE_PREVIEW_CSS;
-  at.appendChild(style);
-  return true;
+  return ensureStyle(doc, STAMP, IMAGE_PREVIEW_CSS);
 }
 
 /**

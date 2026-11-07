@@ -156,7 +156,7 @@ async function seen(M) {
     pop.dispatch('toggle');
     if (box) box.dispatch('focus', {});
     await settle();
-    const item = walkAll(host).find((n) => hasClass(n, 'wk-searchitem'));
+    const item = walkAll(host).find((n) => hasClass(n, 'option-list__row'));
     // As a browser does: the path is fixed when the press begins, the item's own handler runs, then the page's.
     const path = [];
     for (let n = item; n; n = n.parentNode) path.push(n);
@@ -182,7 +182,7 @@ async function seen(M) {
     const search = walkAll(host).find((n) => hasClass(n, 'wk-search'));
     const box = search && walkAll(search).find((n) => n.tagName === 'INPUT');
     if (box) box.dispatch('focus', {});
-    const item = walkAll(host).find((n) => hasClass(n, 'wk-searchitem'));
+    const item = walkAll(host).find((n) => hasClass(n, 'option-list__row'));
     if (item) item.dispatch('mousedown', { preventDefault() {} });
     out.bedPicked = [Boolean(item), markings.entries('start'), pop.open];
   }

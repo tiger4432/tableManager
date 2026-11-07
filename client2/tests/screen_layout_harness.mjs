@@ -781,6 +781,15 @@ const PICKER_REACH = `(() => {
 for (const entry of ['walk.html', 'testbed.html']) {
   CELLS.push({ entry, after: 'Add start opened', rule: 'picker reachable', at: 'wk-barpopbody', expr: PICKER_REACH });
 }
+// The option list's look comes with the part (lead 11-07): on the walk page, which loads no base.css, every row of the node
+// search one small control high, its words on one line.
+CELLS.push({ entry: 'walk.html', after: 'Node search opened', rule: 'option rows one control high', at: 'wk-search', expr: `(() => {
+  const rows = [...document.querySelectorAll('.wk-barpop .option-list__row')].filter((r) => r.getClientRects().length);
+  if (!rows.length) return 'no option rows drawn';
+  const small = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--control-h-small'));
+  const off = rows.map((r) => r.getBoundingClientRect().height).filter((h) => Math.abs(h - small) > 0.5);
+  return off.length ? off.length + ' of ' + rows.length + ' rows are not ' + small + ' px high (' + Math.round(off[0] * 10) / 10 + ')' : null;
+})()` });
 // Every picker of the root part opens inside the screen and takes a press (lead 72b2d7f8f, owner 10-13 «x축 선언창
 // 삐져나가서 안 보임»): each pill of the walked parts, then the start picker - its window's box inside the viewport, cut
 // with a scroll of its own when it is cut, and the centre of each control it shows reaching that control.
@@ -1313,6 +1322,14 @@ CELLS.push({ entry: 'index.html', after: 'Pivot off', rule: 'pivot undone', at: 
   if (more && !more.hidden) return 'the held-back line is left';
   const b = document.getElementById('pivot-toggle-btn');
   return b && !b.hidden && b.getAttribute('aria-pressed') === 'false' ? null : 'Pivot is not drawn unpressed';
+})()` });
+// A call's arguments under the formula and the server's refusal both read (owner 11-07): the line hangs under the refusal.
+CELLS.push({ entry: 'index.html', after: 'Formula, its arguments', rule: 'arguments under the refusal', at: 'formula', expr: `(() => {
+  const s = document.querySelector('.formula-pop__signature'); const w = document.querySelector('.formula-pop__why');
+  if (!s || s.hidden) return 'no arguments line';
+  if (!w || w.hidden) return 'no refusal drawn';
+  const a = s.getBoundingClientRect(); const b = w.getBoundingClientRect();
+  return a.top >= b.bottom - 0.5 ? null : 'the arguments line lies over the refusal (' + Math.round(b.bottom - a.top) + ' px)';
 })()` });
 // What is drawn, not the attribute (lead 11-07): the base button's display beat [hidden] and this read green.
 CELLS.push({ entry: 'index.html', after: 'loaded', rule: 'pivot only where declared', at: 'pivot', expr: `(() => {
@@ -2493,7 +2510,7 @@ const pickKey = async (c, key) => {
   await evaluate(c, `(() => { const b = document.querySelector('.wk-search input'); if (!b) return false; b.focus(); b.click();
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(b, ${JSON.stringify(key)});
     b.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
-  const row = `[...document.querySelectorAll('.wk-searchitem')].find((r) => (r.querySelector('.wk-searchkey') || {}).textContent === ${JSON.stringify(key)})`;
+  const row = `[...document.querySelectorAll('.option-list__row')].find((r) => (r.querySelector('.option-list__text') || {}).textContent === ${JSON.stringify(key)})`;
   await until(c, row);
   return evaluate(c, `(() => { const r = ${row}; if (!r) return false;
     r.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window })); return true; })()`);
@@ -2605,6 +2622,13 @@ const DRIVE = {
       await until(c, "[...document.querySelectorAll('.wk-routes-head')].some((h) => h.getClientRects().length && /Walked to/.test(h.textContent))");
     }],
     ['Add start opened', openStartPicker],
+    // The node search under the start's box (lead 11-07): the box emptied, the type's first nodes hang under it.
+    ['Node search opened', async (c) => {
+      await evaluate(c, `(() => { const i = document.querySelector('.wk-barpop .wk-input'); if (!i) return false; i.focus();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '');
+        i.dispatchEvent(new Event('input', { bubbles: true })); i.click(); return true; })()`);
+      await until(c, "[...document.querySelectorAll('.wk-barpop .option-list__row')].filter((r) => r.getClientRects().length).length > 8");
+    }],
   ],
   // The testbed's start row (lead 10-13, 18997: its picker hung clipped under a 44 px panel - no start could be picked).
   'testbed.html': [
@@ -3359,6 +3383,16 @@ const DRIVE = {
       await settle(c, log);
       await until(c, "Boolean(document.querySelector('.formula-pop .formula-pop__why:not([hidden])'))");
     }],
+    // As one types (owner's mockup 11-07): the function names offered under the formula, a call's arguments, the columns
+    // after «[» - each over what stands under the field.
+    ...[['Formula, names offered', '=Da', '.formula-pop__complete:not([hidden]) .option-list__row'],
+      ['Formula, its arguments', '=DatePart(', '.formula-pop__why:not([hidden]) ~ .formula-pop__signature:not([hidden]) b'],
+      ['Formula, columns offered', '=Sum([dt_', '.formula-pop__complete:not([hidden]) .option-list__row']].map(([name, text, drawn]) => [name, async (c) => {
+      await evaluate(c, `(() => { const i = document.querySelector('.formula-pop input'); if (!i) return false; i.focus();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(text)});
+        i.setSelectionRange(i.value.length, i.value.length); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await until(c, `Boolean(document.querySelector(${JSON.stringify(drawn)}))`);
+    }]),
     ['Formula closed', async (c, log) => {
       await evaluate(c, "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true");
       FORMULA.refuse = false;
@@ -3826,6 +3860,8 @@ const MUTANTS = [
   { name: 'a paste on «Paste HTML» is not taken', entry: 'admin.html', rule: 'html written', at: 'html',
     file: 'src/ontology_explorer_view.js', edits: [["  if (!el || !el.dataset || el.dataset.action !== 'paste-html') return false;", '  return false;']] },
   // «Pivot» on every table, the footer counting rows in pivot view (owner 10-22).
+  { name: 'the arguments line over the refusal', entry: 'index.html', rule: 'arguments under the refusal', at: 'formula',
+    file: 'src/formula_popover.js', edits: [['    entry.appendChild(this.sign);', '    field.appendChild(this.sign);']] },
   { name: 'Pivot drawn on every table', entry: 'index.html', rule: 'pivot only where declared', at: 'pivot',
     file: 'src/api.js', edits: [['    button.hidden = !state.currentPivot;', '    button.hidden = false;']] },
   // The base layer's [hidden] gone (lead 11-07): the button keeps its attribute and is drawn - the cell reads what is drawn.
@@ -3994,6 +4030,8 @@ const MUTANTS = [
       ["      if (fit) th.className = 'cell-fit';", "      th.style.width = { Source: '150px', State: '130px', Refused: '70px' }[label] || '';"],
       ["    if (fit) td.className = 'cell-fit';", '']] },
   // The walk table's nine (lead 34d91c09d): what the lead saw on Edge, built back.
+  { name: 'the option list\'s look left behind', entry: 'walk.html', rule: 'option rows one control high', at: 'wk-search',
+    file: 'src/option_list.js', edits: [['    ensureStyle(this.doc, STAMP, OPTION_LIST_CSS);', '']] },
   { name: 'the sign bands without their colours', entry: 'walk.html', rule: 'sign colours', at: 'wk-sides',
     file: 'src/walk/styles.js', edits: [['.wk-sides th.wk-sidehead.wk-plus {', '.wk-sides th.wk-sidehead.wk-plus-gone {'],
       ['.wk-sides th.wk-sidehead.wk-minus {', '.wk-sides th.wk-sidehead.wk-minus-gone {']] },

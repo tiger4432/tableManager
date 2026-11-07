@@ -362,6 +362,11 @@ export const FUNCTIONS = Object.freeze({
   Marked: { kind: 'mark' },
 });
 const BY_NAME = new Map(Object.keys(FUNCTIONS).map((name) => [name.toLowerCase(), name]));
+/** Each function as the formula's signature line says it (lead 11-07): its name and its arguments' words - a fold of more
+ *  columns ends in «...», one whose column may be left out has it in [ ]. Marked reads the page's markings, which a
+ *  column's formula (the server's calculator) has none of. */
+export const SIGNATURES = Object.freeze(Object.entries(FUNCTIONS).filter(([, fn]) => fn.kind !== 'mark')
+  .map(([name, fn]) => ({ name, args: fn.none ? fn.args.map((a) => `[${a}]`) : fn.rowwise ? [...fn.args, '...'] : fn.args })));
 // task/SPOTFIRE_FUNCTIONS.md names this edition does not build (the vectors' out_of_edition) - refused by name.
 const NOT_YET = new Set(['normdist', 'norminv', 'tdist', 'tinv', 'chidist', 'chiinv', 'fdist', 'finv', 'lag', 'lead',
   'rand', 'randbetween', 'concatenate', 'reach']);

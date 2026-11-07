@@ -115,7 +115,7 @@ class El {
     this._isRoot = false;
     this.listeners = {};
     this.value = '';
-    this.textContent = '';
+    this._text = '';
     this.offsetHeight = 100;
     this.selected = false;
     this.focused = false;
@@ -130,6 +130,9 @@ class El {
     };
   }
   get children() { return this._children; }
+  // as the browser's: setting it empties the element
+  get textContent() { return this._text; }
+  set textContent(v) { for (const c of this._children) c._parent = null; this._children = []; this._text = String(v); }
   /**
    * Derived from the parent chain, not stamped at append time. `ensureList` reuses the
    * floating list only `if (eList && eList.isConnected)`, so a stub that answered this

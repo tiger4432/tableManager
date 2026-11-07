@@ -1,0 +1,12 @@
+import{a as e}from"./image_preview-DOnqV1C9.js";var t=`data-option-list-styles`,n=`
+:where(.option-list) { display: flex; flex-direction: column; }
+:where(.option-list__row) { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control-h-small);
+  padding: 0 var(--space-3); font-family: var(--font-mono); font-size: var(--fs-button); font-variant-numeric: tabular-nums;
+  white-space: nowrap; color: var(--text); cursor: pointer; }
+:where(.option-list__row:hover) { background: var(--tint-hover); }
+:where(.option-list__row.is-active) { background: var(--accent-weak); color: var(--accent); }
+/* a value longer than the list ends in «…», saying it was cut */
+:where(.option-list__text) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+:where(.option-list__text b) { font-weight: 700; }
+:where(.option-list__side) { flex: none; margin-left: auto; color: var(--text-dim); }
+`,r=class{constructor(r,i={}){this.root=r,this.doc=i.doc||r.ownerDocument,this.onPick=i.onPick||(()=>{}),this.rows=[],this.active=-1,String(r.className||``).split(/\s+/).includes(`option-list`)||(r.className=[r.className,`option-list`].filter(Boolean).join(` `)),r.setAttribute(`role`,`listbox`),e(this.doc,t,n)}get size(){return this.rows.length}el(e,t,n){let r=this.doc.createElement(e);return t&&(r.className=t),n!==void 0&&(r.textContent=n),r}show(e,t=-1){this.root.textContent=``,this.rows=e.map((e,t)=>{let n=this.el(`div`,`option-list__row`);n.setAttribute(`role`,`option`);let r=this.el(`span`,`option-list__text`);return e.head?(e.before&&r.appendChild(this.el(`span`,``,e.before)),r.appendChild(this.el(`b`,``,e.head)),r.appendChild(this.el(`span`,``,e.rest||``))):r.textContent=(e.before||``)+(e.rest||``),n.appendChild(r),e.side&&n.appendChild(this.el(`span`,`option-list__side`,e.side)),n.addEventListener(`mousedown`,e=>{e&&e.preventDefault&&e.preventDefault(),this.onPick(t)}),this.root.appendChild(n),n}),this.active=-1,this.light(t>=0&&t<this.rows.length?t:-1)}clear(){this.show([])}move(e){return this.rows.length&&this.light(Math.min(this.rows.length-1,Math.max(0,this.active+e))),this.active}light(e){let t=(e,t)=>{e&&(e.className=t?`option-list__row is-active`:`option-list__row`,e.setAttribute(`aria-selected`,t?`true`:`false`))};this.rows.forEach((n,r)=>{r!==e&&t(n,!1)}),this.active=e,t(this.rows[e],!0);let n=this.rows[e];n&&typeof n.scrollIntoView==`function`&&n.scrollIntoView({block:`nearest`})}};export{r as t};

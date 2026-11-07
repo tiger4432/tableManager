@@ -11,6 +11,8 @@ import { SAMPLE_RAW, SAMPLE_VIEW } from './ledger_declaration_sample.js';
 // The declaration form's tree (form D), read-only: names three levels deep, the longest 40 letters.
 import './ontology_explorer.css';
 import { readContext, renderSkeletonForm } from './ontology_explorer_view.js';
+// The option list under a box (option_list.js): a formula's names as typed.
+import { OptionList } from './option_list.js';
 
 const root = document.documentElement;
 const button = document.getElementById('sample-theme');
@@ -62,4 +64,9 @@ if (declMount) {
     declOpen = declOpen === chip.dataset.path ? null : chip.dataset.path;
     drawDecl();
   });
+}
+const optionsMount = document.getElementById('sample-options');
+if (optionsMount) {
+  new OptionList(optionsMount, { doc: document }).show([{ head: 'Da', rest: 'te', side: 'Date(value)' },
+    { head: 'Da', rest: 'tePart', side: 'DatePart(part, value)' }, { head: 'Da', rest: 'teTime', side: 'DateTime(value)' }], 1);
 }

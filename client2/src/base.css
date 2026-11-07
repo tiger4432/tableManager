@@ -168,7 +168,6 @@
 }
 :where(.chip-remove svg) { width: var(--space-3); height: var(--space-3); stroke: currentColor; stroke-width: 1.6; fill: none; }
 :where(.chip-remove:hover:not(:disabled)) { color: var(--danger); background: var(--tint-hover); }
-
 /* ── a declaration's text | its form (form D, lead f3639d4a2 — declaration_split.js) ──────────────────────── */
 /* The text on the surface, not a dark block: the eye goes to the form. The text is as tall as its lines and scrolls
    with its line numbers in one box; a line that does not read is marked there and said under the text. */

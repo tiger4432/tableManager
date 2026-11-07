@@ -710,7 +710,7 @@ async function suite(mod) {
     // The box (lead bccbdd601), focused as the browser does: its rows are the server's nodes, keys and count.
     const boxIn = walkAll(listed.host).find((e) => e.attrs && e.attrs.role === 'combobox');
     for (const fn of (boxIn && boxIn.listeners.focus) || []) fn({});
-    const offered = byClass(listed.host, 'wk-searchitem').map((e) => e.children.map((c) => c.textContent).join(' '));
+    const offered = byClass(listed.host, 'option-list__row').map((e) => e.children.map((c) => c.textContent).join(' '));
     ok('F2 the seed field is Pick a node and its box, focused, offers the node the server listed',
       walkAll(listed.host).some((e) => e.className === 'wk-label' && e.textContent === 'Pick a node')
         && offered.includes('R-1 3 atoms'), offered.join(' | '));

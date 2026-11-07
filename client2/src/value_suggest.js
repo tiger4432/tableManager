@@ -78,6 +78,7 @@ import { state, gridFetch } from './state.js';
 import { saysTruncated, suggestTruncatedNote } from './truncation.js';
 import { slowReasonNote } from './slow_reason.js';
 import { fitUnder } from './dropdown.js';
+import { OptionList } from './option_list.js';
 
 // ── Knobs ───────────────────────────────────────────────────────────────────────
 /**
@@ -145,7 +146,8 @@ const REQUEST_LIMIT = 12;
  * box that shows it cannot drift apart.
  */
 const MAX_VISIBLE_ROWS = 8;
-const ROW_HEIGHT_PX = 26;
+/** The option list's row (base.css .option-list__row: --control-h-small). */
+const ROW_HEIGHT_PX = 27.2;
 /**
  * Consecutive 4xx answers for one column before suggestions are switched off for the
  * session. Bounded so an undeclared column costs a handful of tiny 400s (they raise in
@@ -781,41 +783,17 @@ export class SuggestCellEditor {
   // ── The list ─────────────────────────────────────────────────────────────────
   openList() {
     const el = ensureList();
-    el.innerHTML = '';
-    this.values.forEach((v, i) => {
-      const row = document.createElement('div');
-      row.className = 'value-suggest-row' + (i === this.highlight ? ' is-active' : '');
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', i === this.highlight ? 'true' : 'false');
-      const pfx = this.eInput.value;
-      // Bold the matched head. Sliced by LENGTH off the raw value rather than by
-      // re-matching, so a case-insensitive match still shows the STORED casing.
-      const head = v.slice(0, pfx.length);
-      const tail = v.slice(pfx.length);
-      // ONE wrapper around head + tail, and it is load-bearing rather than tidy: the row is a
-      // flex box (for vertical centring), and `text-overflow: ellipsis` has no effect on the
-      // anonymous flex item a bare text node becomes. A single shrinkable flex item is what
-      // lets a value too long for the clamped list END IN AN ELLIPSIS instead of being cut off
-      // mid-character with no indication — see `positionList`.
-      const text = document.createElement('span');
-      text.className = 'value-suggest-text';
-      const b = document.createElement('b');
-      b.textContent = head;
-      text.appendChild(b);
-      text.appendChild(document.createTextNode(tail));
-      row.appendChild(text);
-      // Mousedown, not click, and preventDefault: a click on a body-level list would blur
-      // the input first, AG-Grid would stop editing, and the row we are handling would be
-      // gone before the click fired. Mouse selection stays available; it is just never the
-      // only way, because a click costs 3 on the instrument against Enter's 1.
-      row.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        this.highlight = i;
-        this.acceptHighlight();
-        this.params.stopEditing();
-      });
-      el.appendChild(row);
-    });
+    // The rows are the option list's (option_list.js). The matched head is sliced by LENGTH off the raw value rather
+    // than re-matched, so a case-insensitive match still shows the STORED casing; a value too long for the clamped list
+    // ends in «…» (see `positionList`). A press picks - mousedown, so the input keeps its focus and AG-Grid does not stop
+    // editing before the row is read; a click costs 3 on the instrument against Enter's 1, so it is never the only way.
+    const pfx = this.eInput.value;
+    this.options = new OptionList(el, { doc: document, onPick: (i) => {
+      this.highlight = i;
+      this.acceptHighlight();
+      this.params.stopEditing();
+    } });
+    this.options.show(this.values.map((v) => ({ head: v.slice(0, pfx.length), rest: v.slice(pfx.length) })), this.highlight);
     if (this.truncated) {
       // The endpoint reports truncation precisely so the list never claims to be the
       // whole set. Saying so is cheap; implying completeness is a wrong answer.
@@ -912,14 +890,7 @@ export class SuggestCellEditor {
 
   moveHighlight(step) {
     if (!this.listOpen || this.values.length === 0) return;
-    const next = Math.min(this.values.length - 1, Math.max(0, this.highlight + step));
-    if (next === this.highlight) return;
-    const prev = eList && eList.children[this.highlight];
-    if (prev) { prev.classList.remove('is-active'); prev.setAttribute('aria-selected', 'false'); }
-    this.highlight = next;
-    const now = eList && eList.children[this.highlight];
-    if (now) { now.classList.add('is-active'); now.setAttribute('aria-selected', 'true'); }
-    this.scrollHighlightIntoView();
+    this.highlight = this.options.move(step);
   }
 
   /** Writes the highlighted candidate into the input SYNCHRONOUSLY. Nothing is deferred. */

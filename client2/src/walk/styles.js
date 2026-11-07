@@ -16,6 +16,8 @@
 //    색은 `tokens.css` 의 변수를 읽고, 없으면 뒤의 기본값으로 떨어집니다 — 그래서 토큰이
 //    없는 호스트에서도 «읽을 수는» 있습니다.
 
+import { ensureStyle } from '../style_once.js';
+
 /** 한 문서에 한 번만 넣기 위한 표지. 같은 페이지에 폼이 둘이어도 규칙은 한 벌입니다. */
 const STAMP = 'data-wk-styles';
 
@@ -101,13 +103,6 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
 .wk-search [hidden] { display: none; }
 .wk-searchlist { display: flex; flex-direction: column; max-height: 440px; overflow-y: auto;
   background: var(--bg-surface); border: 1px solid var(--border); }
-.wk-searchitem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--wk-h); padding: 0 var(--space-3);
-  cursor: pointer; }
-.wk-searchitem + .wk-searchitem { border-top: 1px solid var(--border); }
-.wk-searchitem:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
-.wk-searchitem.is-active { background: var(--accent-weak); }
-.wk-searchkey { min-width: 0; font-family: var(--wk-font); overflow-wrap: anywhere; }
-.wk-searchcount { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-dim); }
 /* Collect: the picked types are chips (× takes one out); the rest are behind one + Type dropdown. */
 .wk-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .wk-chip, .wk-add { min-height: var(--wk-h); padding: 0 var(--space-4); border-radius: 999px; font: inherit;
@@ -523,11 +518,5 @@ label.wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: 
  * @returns {boolean} 이번 호출이 실제로 넣었나 (둘째 호출은 false)
  */
 export function ensureWalkStyles(doc) {
-  if (!doc || typeof doc.createElement !== 'function') return false;
-  if (doc.querySelector && doc.querySelector(`style[${STAMP}]`)) return false;
-  const style = doc.createElement('style');
-  style.setAttribute(STAMP, '');
-  style.textContent = WALK_CSS;
-  (doc.head || doc.documentElement).appendChild(style);
-  return true;
+  return ensureStyle(doc, STAMP, WALK_CSS);
 }

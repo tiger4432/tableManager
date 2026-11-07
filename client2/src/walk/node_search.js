@@ -10,6 +10,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 import { LOADING, unitText } from '../ui_words.js';
 import { isBlank } from '../absent.js';
+import { OptionList } from '../option_list.js';
 
 /** How many nodes one answer hangs under the box, and how long typing rests before it asks. */
 export const SEARCH_LIMIT = 20;
@@ -58,7 +59,7 @@ export class NodeSearch {
     this.input.setAttribute('aria-autocomplete', 'list');
     this.cell.append(this.name, this.input);
     this.list = this._el('div', 'wk-searchlist');
-    this.list.setAttribute('role', 'listbox');
+    this.options = new OptionList(this.list, { doc: this.doc, onPick: (i) => this._pick(i) });
     this.note = this._el('div', 'wk-note');
     this.root.append(this.cell, this.list, this.note);
     mount.appendChild(this.root);
@@ -172,7 +173,7 @@ export class NodeSearch {
     this.name.textContent = this.axis || '';
     this.input.placeholder = CASE_HINT[got && got.prefixCase] || SEARCH_WORDS.hint;
     this.input.setAttribute('aria-expanded', String(this.isOpen && this._nodes().length > 0));
-    this.list.textContent = '';
+    this.options.clear();
     this.note.textContent = '';
     let say = '';
     if (this.state === 'loading') say = LOADING;
@@ -183,18 +184,9 @@ export class NodeSearch {
       say = got.scanTruncated ? SEARCH_WORDS.scanCut(got.scanned) : SEARCH_WORDS.empty;
     } else if (got && this.isOpen) {
       const nodes = this._nodes();
-      nodes.forEach((node, i) => {
-        const item = this._el('div', 'wk-searchitem' + (i === this.active ? ' is-active' : ''));
-        item.setAttribute('role', 'option');
-        item.setAttribute('aria-selected', String(i === this.active));
-        item.setAttribute('data-index', String(i));
-        item.append(this._el('span', 'wk-searchkey', Object.values(node.keys || {}).map((v) => String(v)).join(' · ')));
-        // The server's count: the atoms that name the node (its two sides).
-        if (node.count) item.append(this._el('span', 'wk-searchcount', unitText(node.count, 'atom')));
-        // mousedown, not click: the box keeps its focus, so the list is still there when the press lands.
-        item.addEventListener('mousedown', (e) => { e.preventDefault(); this._pick(i); });
-        this.list.append(item);
-      });
+      // Each node's keys; at its right the server's count - the atoms that name the node (its two sides).
+      this.options.show(nodes.map((node) => ({ rest: Object.values(node.keys || {}).map((v) => String(v)).join(' · '),
+        side: node.count ? unitText(node.count, 'atom') : '' })), this.active);
       if (!nodes.length) say = SEARCH_WORDS.none(this.asked);
       else if (got.valuesTruncated) say = SEARCH_WORDS.more(nodes.length);
     }
