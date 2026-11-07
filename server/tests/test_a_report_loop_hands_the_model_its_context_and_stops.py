@@ -22,6 +22,7 @@ class FakeReport:
 
     def __init__(self, condition_lines=3):
         self.overlaps, self.embedded, self.compared = {}, {}, None
+        self.groups = {"E1": [], "control E0": []}           # compared - the product reads no comparison
         self._conditions = ["3 wafers in E1"] + ["split: value %d" % n for n in range(condition_lines - 1)]
 
     def conditions(self, keyword=None):
@@ -89,7 +90,8 @@ def test_each_step_hands_the_context_in_its_order_and_done_ends_it():
     assert report_loop.RULES in second and report_loop.ABOUT["yield_by"] in second, "blank cells: the product's text"
     assert "row 50" not in second, "[6] is the read's summary - its whole table goes to the HTML only"
     assert out["tables"]["yield_by"]["rows"][50] == "row 50 | 1.0% (1/100)"
-    assert [s["call"] for s in out["steps"]] == ['yield_by({"wafers": "all"})', "done", "write"]
+    # the file's table is the product's, drawn after the loop - the model's read is its own (owner 10-24)
+    assert [s["call"] for s in out["steps"]] == ['yield_by({"wafers": "all"})', "done", "product yield_by()", "write"]
 
 
 def test_earlier_steps_are_a_line_each():
@@ -101,7 +103,7 @@ def test_earlier_steps_are_a_line_each():
 
 
 def test_the_budget_cuts_the_last_result_then_the_conditions_then_stops():
-    tight = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 400})
+    tight = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 440})   # the yield_by and wafers lines grew (10-26)
     model = Model({"call": "yield_by", "args": {}}, {"done": {"summary": ""}})
     out = report_loop.run(FakeReport(condition_lines=40), tight, REQUEST, ask=model, clock=Clock())
     first = out["steps"][0]["cut"]
@@ -109,7 +111,8 @@ def test_the_budget_cuts_the_last_result_then_the_conditions_then_stops():
     assert out["steps"][1]["cut"]["6"] < 4 and out["steps"][1]["cut"]["4"] < 40
     starved = dict(SPEC, loop={"steps": 4, "seconds": 300, "context_tokens": 100})
     out = report_loop.run(FakeReport(), starved, REQUEST, ask=Model(), clock=Clock())
-    assert (out["state"], out["reason"], out["steps"]) == ("stopped", "context over budget", [])
+    assert (out["state"], out["reason"]) == ("stopped", "context over budget")
+    assert [s["call"] for s in out["steps"]] == ["product yield_by()"], "the layout's table is read by the product"
 
 
 def test_what_a_gateway_counted_corrects_the_reckoning():
@@ -146,7 +149,7 @@ def test_what_cannot_be_called_is_told_back_and_the_loop_goes_on():
     refused = [s["refused"] for s in out["steps"]]
     assert refused[1] == "the same call as step 1 - its result is above; call another read or answer done"
     assert refused[2].startswith("'sql' is not a read - one of conditions")
-    assert refused[3] == "colour is not an argument of yield_by - one of wafers, by"
+    assert refused[3] == "colour is not an argument of yield_by - one of wafers, by, rows"
     assert "refused: the same call as step 1" in model.prompts[2]
     assert out["reason"] == "step cap 4"
 
@@ -172,7 +175,7 @@ def test_the_write_call_hands_every_table_read_and_takes_the_texts():
         assert mark in write, mark
     assert "Select: pick split A" not in write and "TREND-ABOUT" not in write, "no reads list, no select"
     assert (out["state"], out["texts"]) == ("done", {"summary": "Particle rose to 9%."})
-    assert out["steps"][-1]["call"] == "write" and out["steps"][-1]["summary"] == "1 text(s) from 3 table(s) read"
+    assert out["steps"][-1]["call"] == "write" and out["steps"][-1]["summary"] == "1 text(s) from 4 table(s) read"
 
 
 @pytest.mark.parametrize("loop, calls, reason", [({"steps": 2, "seconds": 300}, 2, "step cap 2"),

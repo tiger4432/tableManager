@@ -171,12 +171,14 @@ def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> d
 
     named = rules is None
     rules = rules if rules is not None else load_rules()
-    rule = next((r for r in rules if r.get("name") == rule_name), None)
-    if rule is None and named:
-        rule = next((r for r in loaded_chain_rules()
-                     if r.get("name") == rule_name and rule_shape.is_switched_off(r)), None)
+    looked = rules + ([r for r in loaded_chain_rules() if rule_shape.is_switched_off(r)] if named else [])
+    # its own name, else the first rule the declaration of that name stands - a decide's dedup half; its confirm half
+    # is replayed by its own name, a replay's writes waking no rule (owner 09-26) (lead 10-24)
+    rule = (next((r for r in looked if r.get("name") == rule_name), None)
+            or next((r for r in looked if rule_shape.stood_for(r) == rule_name), None))
     if rule is None:
-        available = ", ".join(sorted(r.get("name", "?") for r in rules)) or "<none>"
+        available = ", ".join(sorted({r.get("name", "?") for r in rules}
+                                     | {rule_shape.stood_for(r) for r in rules} - {""})) or "<none>"
         raise ReplayRefused(f"chain rule '{rule_name}' not found or disabled; available: {available}")
     # ⛔ [S-242, narrowed by S-270] A COMPANION IS NOT A WHOLE-TABLE BACKFILL SUBJECT. The
     # declaration and its companion recompute the same answer from two sides, so replaying
@@ -2114,7 +2116,8 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
         judged = [item for item in batch.updates if item.row_id in plain]
         counts["rows_gone"] += len(batch.updates) - len(judged)
         batch_now = crud.batch_write_instant(db)
-        history, layers, ow_put, ow_gone, folded, moved, door = [], {}, {}, set(), set(), {}, []
+        history, layers, ow_put, ow_gone = crud.ByRowLogs(), crud.ByRow(), crud.ByRow(), crud.ByRowSet()
+        folded, moved, door = set(), {}, []
         for item in judged:
             business_key, old, _key = plain[item.row_id]
             cell = (item.row_id, mark)
@@ -2142,7 +2145,7 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
                 if name)]
             rows = {row.row_id: row for row in db.query(model).options(load_only(*loaded)).filter(
                 model.row_id == any_(bindparam("door", [item.row_id for item in door], type_=ARRAY(String))))}
-            row_cache, prefetched = {}, set(rows)
+            row_cache, layers_read = {}, crud.LayersRead(rows, [mark])     # the page read the mark's cells
             for row in rows.values():
                 row_cache[row.row_id] = row
                 if row.business_key_val:
@@ -2156,7 +2159,7 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
                         overwrites_cache=overwrites, transaction_id=tx_id, logs_to_cache=history,
                         cell_sources_to_upsert=layers, cell_overwrites_to_upsert=ow_put,
                         cell_overwrites_to_delete=ow_gone, deleted_row_ids=[], version_stats=version_stats,
-                        prefetched_row_ids=prefetched, probed_identity=probed, drop_stats=crud._new_drop_stats(),
+                        layers_read=layers_read, probed_identity=probed, drop_stats=crud._new_drop_stats(),
                         batch_now=batch_now, cell_sources_to_delete=folded)
                     layer = layers.get((table_name, item.row_id, mark, item.source_name))
                     if layer is None:
@@ -2368,8 +2371,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 plan["key"] = numbered and respelled_key(table_name, row, parts_of_key) or None
                 continue
             before, after = (
-                None if any(crud.is_blank_key_part(p) for p in parts)
-                else crud.compose_business_key(table_name, parts, parts_of_key)
+                None if crud.every_key_part_blank(parts)        # a blank part among filled ones is a part
+                else crud.compose_business_key(table_name, [crud.fold_key_value(table_name, c, p)
+                                                            for c, p in zip(parts_of_key, parts)], parts_of_key)
                 for parts in ([getattr(row, c, None) for c in parts_of_key],
                               [cells[c][1] if c in cells else getattr(row, c, None)
                                for c in parts_of_key]))

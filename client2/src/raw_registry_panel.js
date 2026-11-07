@@ -958,7 +958,7 @@ export class RawRegistryPanel {
               ? [...box.querySelectorAll('.oe-form-new-id')].find((n) => n.dataset.for === path)
               : null;
             const added = addMember(held3, path, node, (payload.skeleton || {}).defs,
-                                    named ? named.value : '', this.lists);
+                                    named ? named.value : '', this.lists, el.dataset.branch || '');
             if (added) {
               next = added.document;
               // What you just added is open -- and so is the list it landed in.

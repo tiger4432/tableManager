@@ -2391,6 +2391,16 @@ function renderChips(context, node, path, value) {
   const held = new Set(list.map(String));
   wrap.append(adder(context, path, node.member || 'Add',
     offered(context, of, memberPath(path, list.length, 'index')).filter((item) => !held.has(String(item)))));
+  // and a member of each of its other branches - a take's record (lead 10-23 ㄴ): the list is then drawn as rows, each with
+  // its own name · record picker
+  if (item && item.pick === 'shape') {
+    for (const key of Object.keys(item.branches || {})) {
+      if ((context.deref(item.branches[key]) || {}).kind === 'leaf') continue;
+      const add = button(`+ ${key}`, 'form-append', path, 'ctl-small oe-form-add');
+      add.dataset.branch = key;
+      wrap.append(add);
+    }
+  }
   return wrap;
 }
 

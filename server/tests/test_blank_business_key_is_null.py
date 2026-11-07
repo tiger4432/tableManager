@@ -202,14 +202,12 @@ def test_a_blank_value_does_not_destroy_an_existing_key(db):
 # 2. Composite tables
 # ---------------------------------------------------------------------------
 
-def test_an_incomplete_composite_source_leaves_the_key_null(db):
-    """The composite path already wrote NULL rather than `''`, so this passes against
-    the pre-change code too - said plainly so it is not counted as evidence for this
-    change. It is here because the two paths must agree on what 'no key' looks like,
-    and a future edit that unifies them could unify them onto the wrong value."""
+def test_a_composite_source_blank_in_every_part_leaves_the_key_null(db):
+    """Every part blank is no key - NULL rather than `''`, the plain path's answer too. The two paths must agree on
+    what 'no key' looks like, and a future edit that unifies them could unify them onto the wrong value."""
     _push(db, COMPOSITE, [
         schemas.GeneralUpdateItem(
-            updates={"map_id": "M1", "die_no": "", "payload": f"P{i}"},
+            updates={"map_id": "", "die_no": "", "payload": f"P{i}"},
             source_name="pipeline_parser", updated_by="watcher")
         for i in range(3)])
 
@@ -217,6 +215,19 @@ def test_an_incomplete_composite_source_leaves_the_key_null(db):
     assert len(rows) == 3
     assert all(r.business_key_val is None for r in rows)
     assert all(r.map_pk is None for r in rows)
+
+
+def test_a_blank_part_among_filled_ones_is_one_key(db):
+    """소유자 10-24 «a,빈값 a,빈값 같은거로 처리하라고 지금 키충돌나면 접잖아» (총괄 242f4a43a): (M1, blank) three
+    times is one key - one row, the last write's value."""
+    _push(db, COMPOSITE, [
+        schemas.GeneralUpdateItem(
+            updates={"map_id": "M1", "die_no": "", "payload": f"P{i}"},
+            source_name="pipeline_parser", updated_by="watcher")
+        for i in range(3)])
+
+    rows = _rows(db, COMPOSITE)
+    assert [(r.business_key_val, r.map_pk, r.payload) for r in rows] == [("M1_", "M1_", "P2")]
 
 
 def test_a_complete_composite_key_is_unaffected(db):

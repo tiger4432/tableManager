@@ -196,11 +196,14 @@ def test_a_zero_coordinate_is_a_value_and_not_a_blank(db):
 
 
 @pytest.mark.parametrize("updates,expected", [
-    ({"job": "", "x": 1, "y": 2}, ["job"]),
-    ({"job": "   ", "x": 1, "y": 2}, ["job"]),
-    ({"job": "J1", "x": 1, "y": None}, ["y"]),
+    # a blank part among filled ones is a part - keyed (소유자 10-24, 총괄 242f4a43a)
+    ({"job": "", "x": 1, "y": 2}, []),
+    ({"job": "   ", "x": 1, "y": 2}, []),
+    ({"job": "J1", "x": 1, "y": None}, []),
+    # a part not carried, or every part blank - no key, each unfilled column named
     ({"job": "J1", "x": 1}, ["y"]),
     ({"job": "", "x": None}, ["job", "x", "y"]),
+    ({"job": "", "x": None, "y": ""}, ["job", "x", "y"]),
 ])
 def test_an_unfilled_key_column_is_named_not_merely_counted(db, updates, expected):
     """KILLS: returning a bool instead of the column names.
@@ -294,7 +297,7 @@ def test_without_the_gate_the_worker_writes_a_row_with_no_business_key(db, monke
     ok, err, _msgs = _run_chain(db, monkeypatch, [_rule(CELLS)], {"updates": [
         {"updates": {"job": "J1", "x": 1, "y": 1, "grade": "A"}},
         {"updates": {"job": "J1", "x": 2, "y": 2, "grade": "B"}},
-        {"updates": {"job": "", "x": 3, "y": 3, "grade": "C"}},
+        {"updates": {"job": "", "x": None, "y": None, "grade": "C"}},
     ]})
 
     assert ok and err is None
@@ -303,7 +306,7 @@ def test_without_the_gate_the_worker_writes_a_row_with_no_business_key(db, monke
 
     # And it compounds: the same delivery again cannot address the keyless row.
     _run_chain(db, monkeypatch, [_rule(CELLS)], {"updates": [
-        {"updates": {"job": "", "x": 3, "y": 3, "grade": "C"}},
+        {"updates": {"job": "", "x": None, "y": None, "grade": "C"}},
     ]}, tx="ckgate-tx2")
     assert len(_keyless(db, CELLS)) == 2, "a keyless row is duplicated by every re-delivery"
 
@@ -317,7 +320,7 @@ def test_the_worker_refuses_the_unkeyed_row_and_writes_the_healthy_ones(db, monk
     ok, err, _msgs = _run_chain(db, monkeypatch, [_rule(CELLS)], {"updates": [
         {"updates": {"job": "J1", "x": 1, "y": 1, "grade": "A"}},
         {"updates": {"job": "J1", "x": 2, "y": 2, "grade": "B"}},
-        {"updates": {"job": "", "x": 3, "y": 3, "grade": "C"}},
+        {"updates": {"x": 3, "y": 3, "grade": "C"}},
     ]})
 
     assert ok and err is None
@@ -388,7 +391,7 @@ def test_a_replace_map_whose_every_row_is_refused_does_not_purge_the_map(db, mon
                                 {"updates": [], "batches": [{
                                     "target_table": CELLS, "replace_map": True,
                                     "scope": {"job": "J1"},
-                                    "updates": [{"updates": {"job": "", "x": x, "y": 0}}
+                                    "updates": [{"updates": {"x": x, "y": 0}}
                                                 for x in range(4)]}]},
                                 tx="ckgate-replace-2")
 
@@ -425,8 +428,8 @@ def test_a_refusal_names_the_rule_the_table_the_column_and_the_count(db):
     """
     kept, report = key_gate.screen(CELLS, [
         _item(updates={"job": "J1", "x": 1, "y": 1}),
-        _item(updates={"job": "", "x": 2, "y": 2}),
-        _item(updates={"job": "J1", "x": 3, "y": None}),
+        _item(updates={"x": 2, "y": 2}),
+        _item(updates={"job": "J1", "x": 3}),
     ], rule_names=["ckgate_rule"], transaction_id="tx-loud")
 
     assert len(kept) == 1
@@ -450,7 +453,7 @@ def test_a_refusal_from_the_live_worker_names_the_RULE_an_operator_must_fix(db, 
     with caplog.at_level("INFO", logger="chain_key_gate"):
         _run_chain(db, monkeypatch,
                    [_rule(CELLS, name="ckgate_named_rule")],
-                   {"updates": [{"updates": {"job": "", "x": 1, "y": 1}}]})
+                   {"updates": [{"updates": {"x": 1, "y": 1}}]})
 
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "ckgate_named_rule" in text, "the refusal must name the rule"
@@ -477,8 +480,8 @@ def test_the_refusal_count_reaches_another_process_through_the_heartbeat(db, mon
     assert worker._worker_note() is None, "a clean worker's beat must stay byte-identical"
 
     _run_chain(db, monkeypatch, [_rule(CELLS)], {"updates": [
-        {"updates": {"job": "", "x": 1, "y": 1}},
-        {"updates": {"job": "J1", "x": 2, "y": None}},
+        {"updates": {"x": 1, "y": 1}},
+        {"updates": {"job": "J1", "x": 2}},
     ]})
 
     note = worker._worker_note()
@@ -494,7 +497,7 @@ def test_the_report_states_what_it_withheld_rather_than_ending_silently(db):
     source must not grow it without limit — but a total that silently stops adding up is
     how the original defect hid.
     """
-    items = [_item(updates={"job": "", "x": i, "y": 0}) for i in range(60)]
+    items = [_item(updates={"x": i, "y": 0}) for i in range(60)]
     _kept, report = key_gate.screen(CELLS, items, rule_names=["r"], transaction_id="t")
 
     assert report["refused_rows"] == 60, "counts are never capped"

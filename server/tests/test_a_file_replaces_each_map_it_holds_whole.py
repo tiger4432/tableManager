@@ -128,9 +128,9 @@ def test_a_row_without_its_map_key_refuses_the_file_and_nothing_is_deleted(load)
     load_file, rows, _engine = load
     load_file(FILE_1)
     before = rows()
-    with pytest.raises(crud.CellRefused) as refused:            # the parser skips it - the key is blank
+    with pytest.raises(crud.CellRefused) as refused:            # the map key is blank (the row key is not: 242f4a43a)
         load_file("map_id,die_no,v\nA,1,x\n,2,y\nA,3,z\n", name="blank.csv")
-    assert "map_id" in str(refused.value) and "1 row(s) had a blank key" in str(refused.value), str(refused.value)
+    assert "map_id" in str(refused.value) and "1 row(s) have none" in str(refused.value), str(refused.value)
     assert rows() == before
 
 

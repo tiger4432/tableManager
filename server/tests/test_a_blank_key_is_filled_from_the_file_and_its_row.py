@@ -125,10 +125,11 @@ def test_the_same_row_of_another_file_gets_another_key(load):
 
 @pytest.mark.pg
 def test_a_table_that_declares_nothing_is_not_filled(load):
-    """As before: the standard parser (F1) skips a row without its key - nothing reaches the door."""
+    """Nothing is filled. Since 10-24 a blank key part among filled ones is a part (총괄 242f4a43a): the standard
+    parser keeps the row and it lands keyed by the rest, its blank part blank."""
     table, line = load(UNDECLARED)
 
-    assert table == []
+    assert table == [("L1", None, "c")]
     assert "nokey" not in line
 
 

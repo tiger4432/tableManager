@@ -19,7 +19,12 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from database import config_watcher                                  # noqa: E402
 from ledger import admin                                             # noqa: E402
+
+
+#: What the save told the config watcher - (path, the file read at that moment).
+TOLD = []
 
 
 @pytest.fixture
@@ -29,6 +34,9 @@ def config_file(tmp_path, monkeypatch):
     monkeypatch.setattr(admin, "table_config_path", lambda: str(path))
     monkeypatch.setattr(admin.config_backup, "backup_dir_for",
                         lambda p: str(tmp_path / "backup"))
+    TOLD.clear()
+    monkeypatch.setattr(config_watcher, "changed", lambda p, *a, **k: TOLD.append((p, json.loads(
+        open(p, encoding="utf-8").read()))))
     return path
 
 
@@ -41,6 +49,14 @@ def test_a_new_table_can_be_registered_without_leaving_the_app(config_file):
         "probe", {"business_key": "pk"}, base_of(config_file))
     saved = json.loads(config_file.read_text(encoding="utf-8"))
     assert saved["probe"] == {"business_key": "pk"}
+
+
+def test_the_saving_process_reads_the_table_it_saved_at_once(config_file):
+    """Lead 10-24 defect 3: the API's own table config is read again by the save, after the write - a rule saved the
+    next moment is checked against the table just saved, not against the watcher's later event."""
+    admin.save_table_config_raw("probe", {"business_key": "pk"}, base_of(config_file))
+    [(path, read)] = TOLD
+    assert path == str(config_file) and read["probe"] == {"business_key": "pk"}
 
 
 def test_saving_one_table_does_not_erase_the_others(config_file):

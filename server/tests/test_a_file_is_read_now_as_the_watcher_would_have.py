@@ -7,6 +7,8 @@ file the watcher did not pick. A real watcher; `scripts/replay_ingestion.py --no
   deep/d.csv    the source's max_depth is 1, it is 2 down   -> preview «below max_depth» · read now
   raws/r.csv    read at the start                           -> preview «already read» · read again on its own row
   elsewhere     under no raws folder and no source root     -> refused, the sentence says what to write
+  the path      quoted (Explorer's «Copy as path») -> read · a folder · a glob · missing -> each said for what it is
+                (소유자 10-26 «공유폴더 검색 못 하는데 · 그냥 디스크에 없대»)
 """
 import http.server
 import json
@@ -18,7 +20,34 @@ import sys
 import threading
 import time
 
+import pytest
+
 from tests.test_a_file_read_is_checked_by_its_path_and_table import DRIVER, PLUGIN, SERVER_DIR, TABLE, _Stub, _write
+
+
+@pytest.mark.parametrize("written, refused", [
+    ('"{raws}\\a.csv"', None),                                   # quoted: read
+    ("{raws}", "is a folder - Read now takes one file; list a folder's files with Pick files on its storage line"),
+    ("{raws}\\*.csv", "is a glob - use Pick files on its storage line"),
+    ("{raws}\\gone.csv", "is not on the disk this server sees - check the path (a mapped drive letter is per Windows "
+                         "session - try the \\\\server\\share path)")])
+def test_the_path_is_said_for_what_it_is(db_session, tmp_path, monkeypatch, written, refused):
+    from ingestion import reread
+    from database import models
+
+    raws = tmp_path / "ta" / "raws"
+    _write(raws / "a.csv", "lot,val\nL1,v\n")
+    monkeypatch.setattr(reread, "validated_sources", lambda: ({"ta": TABLE}, []))
+    monkeypatch.setattr(reread, "table_sources", lambda table: (str(raws), []))
+    path = written.format(raws=raws)
+    if refused is None:
+        said = reread.read_now(db_session, path, apply=True)
+        row = db_session.query(models.FileChecklist).filter(models.FileChecklist.id == said["log_id"]).one()
+        assert (said["owner"]["table"], row.filepath, row.status) == ("ta", str(raws / "a.csv"), reread.REREAD_STATUS)
+    else:
+        with pytest.raises(reread.RereadRefused) as said:
+            reread.read_now(db_session, path, apply=True)
+        assert str(said.value) == "%s %s" % (path, refused)
 
 
 def test_a_path_is_read_now_under_the_source_that_owns_its_folder(tmp_path):

@@ -2120,10 +2120,13 @@ OPERATIONS = {
         "label": "Replay chain rules over old data (R1)",
         "what_is_missing": "data older than the rule has never been seen by that rule",
         "examples": ["체인 룰을 새로 만들었거나 고쳤는데 옛날 행에는 반영이 안 됐다", "조인을 고쳤는데 옛 행의 칸이 비어 있어", "이 규칙 예전 데이터에 다시 돌려줘",
-                     "꺼 둔 규칙을 이름 대고 이 웨이퍼만 한 번 돌려 보고 싶어", "리포트가 send failed 로 남았어, 중계 PC 고쳤으니 다시 보내줘",
+                     "꺼 둔 규칙을 이름 대고 이 웨이퍼만 한 번 돌려 보고 싶어", "리포트 폴더에 .send_failed 가 남았어, 중계 PC 고쳤으니 그 웨이퍼 다시 보내줘",
                      "스펙 표를 바꿨는데 조인 fn 으로 매긴 S/O 판정이 옛 값 그대로야"],
-        "next": ["chain_replay of each rule that reads this rule's table, one by one - a replay wakes no rule (owner 09-26)"],
-        "params": [_p("rule", help="chain rule name (GET /admin/chain/rules)"),
+        "next": ["chain_replay of each rule that reads this rule's table, one by one - a replay wakes no rule (owner 09-26)",
+                 "a report left <wafer>.html.send_failed in the reports folder: chain_replay of the report rule with "
+                 "that wafer's report-table row - the file is made again and sent again"],
+        "params": [_p("rule", help="chain rule name (GET /admin/chain/rules), or the declared name of a decide - "
+                                   "its enrichment_dedup half"),
                    _p("business_keys", required=False, kind="csv",
                       help="replay only these rows, by business_key_val; omit for the "
                            "whole rule. This selects WHICH rows - `limit` still bounds "
@@ -2708,7 +2711,8 @@ DOORS_OUTSIDE = {
         "label": "Read files again",
         "what_is_missing": "files already read keep the parse they had - the parser or the table's reading changed since",
         "examples": ["파서(또는 칸 선언)를 고쳤는데 이미 들어간 파일의 행은 옛 해석 그대로다", "이 파일 지금 다시 읽어줘",
-                     "이 폴더 실패한 파일만 다시", "표 선언에 칸을 더했는데 이미 들어간 파일에는 그 칸이 비어 있다"],
+                     "이 폴더 실패한 파일만 다시", "표 선언에 칸을 더했는데 이미 들어간 파일에는 그 칸이 비어 있다",
+                     "다시 읽기가 Stopped: 3 failed in a row 로 멈췄어"],
         "doors": [
             {"name": "now", "how": ("the file page's Retry · Read all again · Retry failed files under a folder "
                                     "(POST /admin/file-ingestion/retry-failed) · Read now"),
@@ -2717,7 +2721,11 @@ DOORS_OUTSIDE = {
             {"name": "next sweep", "how": "python server/scripts/replay_ingestion.py --path <file> [--table <table>] --apply",
              "when": ("a file still where its source's sweep looks - its log row's stamp emptied, the next sweep "
                       "reads it as the source's pattern takes it; a file moved away is not read")}],
-        "next": [("after a table_config change (a column added) the watcher keeps the read files as read and hands "
+        "next": [("a re-read the watcher stopped - «Stopped: N failed in a row - <reason>» on the file page's progress "
+                  "line, `reread_stop_after_failures` files failed with none read: fix the parser (its change lets the "
+                  "stop go), or Read all again · Retry · Read now on that source - its waiting and unchecked files "
+                  "were left as they are"),
+                 ("after a table_config change (a column added) the watcher keeps the read files as read and hands "
                   "the failed ones only - Read all again on the file page reads the rest with the new declaration "
                   "(owner 10-23)")],
     },

@@ -9,7 +9,7 @@ import contextlib
 import contextvars
 import itertools
 import stat as _stat
-from datetime import datetime
+from datetime import datetime, timezone
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -492,6 +492,11 @@ GRID_AUTO_INDEX_DEFAULT = 1.0
 #: How many automatic indexes one table may hold - past it none is built, one line says so. 0: none.
 AUTO_INDEX_PER_TABLE_SETTING = "auto_index_per_table"
 AUTO_INDEX_PER_TABLE_DEFAULT = 10
+#: A re-read of a (table, source) stops after this many failed files with none read since it began (owner 10-24
+#: «연속 파일 3 번 에러 나면 멈추면 안 됨?» · «근본 불량 파일들도 있네»: a wrong parser fails every file, bad files only
+#: some). A whole number; 0 - never stops.
+REREAD_STOP_SETTING = "reread_stop_after_failures"
+REREAD_STOP_DEFAULT = 3
 #: Seconds between two looks at every raws/ subfolder (총괄 2f487efb5). Not a positive number: the default.
 SUBFOLDER_RECHECK_SETTING = "subfolder_recheck_seconds"
 SUBFOLDER_RECHECK_DEFAULT = 30.0
@@ -579,6 +584,10 @@ def grid_read_timeout(settings=None):
     `chain_statement_timeout`, set by the same listener (총괄 d16033b63: a search no row matches reads the whole table)."""
     settings = load_ingestion_settings() if settings is None else settings
     return _timeout_seconds(settings, GRID_READ_TIMEOUT_SETTING, GRID_READ_TIMEOUT_DEFAULT)
+
+
+def reread_stop_after(settings=None) -> int:
+    return _whole_number(settings, REREAD_STOP_SETTING, REREAD_STOP_DEFAULT, 0)
 
 
 def subfolder_recheck_seconds(settings=None) -> float:
@@ -732,6 +741,7 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
     reason and the frame it broke in («p.py:7 in parse»). Counts are None when nothing was read yet or the tally
     stopped counting. `file_stat` - the file as this read found it - checks it (`checkpoint.checked`); a read that
     came to no answer about the file (it waited out a lock) passes none and stays unchecked."""
+    import json
     import traceback
 
     meta = parse_meta or {}
@@ -742,7 +752,7 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
                    else kind.split(":")[1] if kind.startswith("external:") else None),
         "source": external["source_root"] if external else ("raws" if meta.get("rel_path") is not None else None),
         "rows_read": None, "rows_new": None, "rows_changed": None, "rows_unchanged": None, "rows_refused": None,
-        "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
+        "columns_changed": None, "reason": None, "failed_at": None, "took_seconds": round(time.monotonic() - began, 3),
         "transaction_id": tally.transaction_id if tally is not None else None,
         "file_mtime": file_stat[0] if file_stat else None, "file_size": file_stat[1] if file_stat else None,
     }
@@ -750,7 +760,8 @@ def _file_result(began, tally, skipped_no_key, parse_meta, error=None, file_stat
         written = tally.new + tally.changed + tally.unchanged
         result.update(rows_read=tally.rows, rows_new=tally.new, rows_changed=tally.changed,
                       rows_unchanged=tally.unchanged, rows_refused=(skipped_no_key or 0) + tally.rows - written,
-                      reason=tally.refused_text() or None)
+                      columns_changed=json.dumps(dict(sorted(tally.columns.items(), key=lambda kv: (-kv[1], kv[0]))))
+                      if tally.columns else None, reason=tally.refused_text() or None)
     if error is not None:
         said = (str(error) if isinstance(error, (crud.CellRefused, crud.NothingWritten))
                 else traceback.format_exception_only(type(error), error)[-1])
@@ -769,6 +780,7 @@ class _FileTally:
     def __init__(self):
         self.started = time.monotonic()
         self.rows = self.new = self.changed = self.unchanged = self.cells = 0
+        self.columns = {}                       # {column: rows it changed on} - the record's columns_changed
         self.stages, self.steps, self.counts = {}, {}, {}
         self.samples = self.lock_samples = 0
         self.sampled = False
@@ -776,6 +788,9 @@ class _FileTally:
         self.transaction_id = None    # the transaction the file's rows were written under (총괄 10-20)
         self.time_left = {}           # verdict -> values a `time` rule left as written
         self.maps = self.map_deleted = 0  # allow_replace_map: maps replaced, rows they deleted (총괄 10-21)
+        # 소유자 10-24 «중간에 리플레이스 경로 로그를 다 찍어주든»: whether this file replaced at all, and how each map did
+        self.replace_by = False           # False = not judged · None = off · [columns] = on
+        self.map_ways = {}                # «mode/reason» -> maps, «rows in scope 0» among them
         # whole maps and rows the write refused, by the write's word (version_older · ...) - 총괄 10-21
         self.maps_refused, self.rows_refused = {}, {}
 
@@ -790,16 +805,18 @@ class _FileTally:
             by_word = {replaced["reason"]: sent} if refused else (dropped or {}).get("rows_refused") or {}
             for word, n in ({} if refused else by_word).items():      # a refused map is said as the map
                 self.rows_refused[word] = self.rows_refused.get(word, 0) + n
-            self._add_chunk(summary, rows, sent - sum(n for word, n in by_word.items()
-                                                      if word != crud.NOTE_SAME_VERSION_CONTENT_DIFFERS),
-                            new_ids, changed_cells, sampler)
+            self._add_chunk(summary, rows, sent - sum(by_word.values()), new_ids, changed_cells, sampler)
             for verdict, n in (time_left or {}).items():
                 self.time_left[verdict] = self.time_left.get(verdict, 0) + n
             if refused:
                 self.maps_refused[replaced["reason"]] = self.maps_refused.get(replaced["reason"], 0) + 1
             elif replaced is not None:
-                self.maps += 1
+                self.maps += replaced.get("mode") != crud.NOTE_MAP_UNCHANGED     # the same as stored: left, not replaced
                 self.map_deleted += replaced.get("deleted", 0)
+                way = "%s/%s" % (replaced.get("mode"), replaced.get("reason"))
+                self.map_ways[way] = self.map_ways.get(way, 0) + 1
+                if not replaced.get("in_scope"):
+                    self.map_ways["rows in scope 0"] = self.map_ways.get("rows in scope 0", 0) + 1
         except Exception as exc:                                    # noqa: BLE001
             self.silenced = "%s: %s" % (type(exc).__name__, told(exc))
             logger.warning("[Ingest] %s file line stops counting (%s) - the ingestion is "
@@ -819,6 +836,8 @@ class _FileTally:
             raise ValueError("the new rows of a chunk could not be read")
         self.rows += rows
         changed_ids = {row_id for row_id, _column in changed_cells} - new_ids
+        for _row_id, column in {cell for cell in changed_cells if cell[0] in changed_ids}:
+            self.columns[column] = self.columns.get(column, 0) + 1
         self.new += len(new_ids)
         self.changed += len(changed_ids)
         self.unchanged += sent - len(new_ids) - len(changed_ids)
@@ -838,11 +857,7 @@ class _FileTally:
         """«1 map refused: version_older · 3 rows refused: version_older» - the write's own words; "" when none."""
         def said(counts, unit, verb):
             return ["%d %s%s %s%s" % (n, unit, "" if n == 1 else "s", verb, word) for word, n in sorted(counts.items())]
-        return " · ".join(said(self.maps_refused, "map", "refused: ")
-                          + said({w: n for w, n in self.rows_refused.items()
-                                  if w != crud.NOTE_SAME_VERSION_CONTENT_DIFFERS}, "row", "refused: ")
-                          + said({w: n for w, n in self.rows_refused.items()
-                                  if w == crud.NOTE_SAME_VERSION_CONTENT_DIFFERS}, "row", ""))
+        return " · ".join(said(self.maps_refused, "map", "refused: ") + said(self.rows_refused, "row", "refused: "))
 
     #: What each lane's wait covers - the same word means a different span on each lane.
     WAITED_SPANS = {"heavy": "queue + table lock", "normal": "table lock"}
@@ -867,6 +882,11 @@ class _FileTally:
                 if self.time_left else "",
                 # allow_replace_map (총괄 10-21): the maps the file replaced and the rows they deleted
                 (" · replaced %d map(s), deleted %d row(s)" % (self.maps, self.map_deleted) if self.maps else "")
+                + ("" if self.replace_by is False
+                   else " · replace off (allow_replace_map is not true in table_config for %s)" % table
+                   if self.replace_by is None
+                   else " · replace on by %s%s" % (self.replace_by, "".join(
+                       " · %s %d" % item for item in sorted(self.map_ways.items()))))
                 + (" · " + self.refused_text() if self.refused_text() else ""),
                 "".join(" · %s %.3f s" % item for item in sorted(self.stages.items()))
                 or " (none named)",
@@ -1168,8 +1188,8 @@ def finish_read_files_fill(reached_all: bool):
         with open(marker, "w", encoding="utf-8") as handle:
             handle.write(datetime.now().astimezone().isoformat())
         _READ_FILES_FILL["marker"] = None
-    line = ("[Watcher] read files stamped %d · left for re-read %d (failed %d · changed since read %d)"
-            % (said["stamped"], said["failed"] + said["changed"], said["failed"], said["changed"]))
+    line = ("[Watcher] read files stamped %d · failed files stamped %d (read again only by Retry on the file page) · "
+            "left for re-read %d (changed since read)" % (said["stamped"], said["failed"], said["changed"]))
     logger.info(line)
     return line
 
@@ -1228,6 +1248,9 @@ def validate_external_source_specs(settings: dict, table_config: dict,
 
     Invalid entries are excluded but named; one bad optional share must not stop
     every managed ``raws/`` workspace.  The caller logs every error at ERROR.
+    A switched-off entry (``"enabled": false``) is judged the same and kept, marked ``"off": True``: only the
+    automatic doors (events, sweeps, Read all again) skip it; a file picked by hand (Read now, a Retry) is read
+    under it (owner 10-24 «외부 저장소 자동읽기 끊어놓고 파일 하나 찍어서 돌려가면서 디버깅»).
     """
     raw_specs = settings.get("external_sources", []) if isinstance(settings, dict) else []
     if raw_specs is None:
@@ -1246,8 +1269,6 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         why = validation.flag_refusal("enabled", enabled)
         if why:
             errors.append(f"{where}: {why}")
-            continue
-        if not enabled:
             continue
 
         source_path = raw.get("path")
@@ -1371,6 +1392,8 @@ def validate_external_source_specs(settings: dict, table_config: dict,
             "max_depth": max_depth,
             "options": {**options, "filename": filename},
         }
+        if not enabled:
+            spec["off"] = True
         valid.append(spec)
 
     # The same root MAY feed two tables (void_obs + inspection_run).  Within one
@@ -1379,7 +1402,7 @@ def validate_external_source_specs(settings: dict, table_config: dict,
     for spec in valid:
         conflict = None
         for prior in accepted:
-            if prior["table_name"] != spec["table_name"]:
+            if prior["table_name"] != spec["table_name"] or prior.get("off") != spec.get("off"):
                 continue
             try:
                 common = os.path.commonpath((prior["root"], spec["root"]))
@@ -1395,6 +1418,50 @@ def validate_external_source_specs(settings: dict, table_config: dict,
         else:
             accepted.append(spec)
     return accepted, errors
+
+
+def _iso(at) -> str:
+    """A time as the terminal says it - the product's wall clock, seconds (a datetime or epoch seconds)."""
+    if isinstance(at, (int, float)):
+        at = datetime.fromtimestamp(at, timezone.utc)
+    return at.astimezone().isoformat("T", "seconds") if isinstance(at, datetime) else str(at)
+
+
+def stamp_switched_on(specs):
+    """Each on spec's `switched_on_at` from the kept times: one not kept is switched on now - stamped and said; an off
+    one is let go, so its next switch-on stamps anew; one not in `specs` (removed or refused) keeps its time. A source on
+    with no time (none kept, or a kept None) is stamped now. The automatic reads take only files modified at/after it
+    (`already_checked`); Read now · Retry · Read all again read the older ones."""
+    from ingestion import reread
+
+    path = paths.config_path(reread.SWITCHED_ON_FILENAME)
+    kept = reread.load_reading_stamps(reread.SWITCHED_ON_FILENAME) if os.path.exists(path) else None
+    now = dict(kept or {})
+    for spec in specs:
+        source_id = spec["source_id"]
+        if spec.get("off"):
+            if now.pop(source_id, "absent") != "absent":
+                logger.warning(f"External source switched off: {spec['root']} -> {spec['table_name']} - its next "
+                               f"switch-on sets a new cut")
+            continue
+        if now.get(source_id) is None:
+            # every on source is cut from when this first sees it - sources already on too, no restart or switch
+            # needed (owner 10-26 «기존 저장소고 뭐고 즉시 적용되게 했어야지»; a kept None was «on before the cut»)
+            now[source_id] = time.time()
+            if now[source_id] is not None:
+                logger.warning(f"External source switched on: {spec['root']} -> {spec['table_name']} - files "
+                               f"modified from {datetime.fromtimestamp(now[source_id]).astimezone().isoformat('T', 'seconds')}"
+                               f" on are read; older ones by hand only (Read now · Read all again)")
+        if now[source_id] is not None:
+            spec["switched_on_at"] = now[source_id]
+        # every on source said with its cut at each start and settings save (owner 10-26 «저장소 활성화 시간 로그»)
+        logger.warning(f"[switch-on] {spec['root']} -> {spec['table_name']}: cut "
+                       f"{_iso(now[source_id])}")
+    if now != kept:
+        try:
+            reread.keep_reading_stamps(now, reread.SWITCHED_ON_FILENAME)
+        except OSError as e:
+            logger.warning(f"The switch-on times were not kept in {path} - a restart stamps them again: {told(e)}")
 
 
 def warn_invalid_heavy_threshold_once(value):
@@ -2143,6 +2210,15 @@ class IngestionHandler(FileSystemEventHandler):
         # External roots are read-only contexts for this handler.  They affect
         # parser metadata only; ownership remains raws/-only (`is_managed_source`).
         self._external_sources = {}
+        # abs path -> why it is being read (`_say_file_to_read`), taken by its record (`_log_ingestion_record`)
+        self._read_why = {}
+
+    def source_of(self, abs_path):
+        """«raws», the external root `abs_path` lies under, or None - the record's `source`, the re-read stop's pair."""
+        if self.relative_source_path(abs_path, os.path.abspath(self.raws_path)) is not None:
+            return "raws"
+        context = self.external_source_context(abs_path)
+        return context["source_root"] if context else None
 
     def unregister_external_source(self, source_id: str):
         """Detach one external-source context - the watcher retired it (switched off, removed or changed)."""
@@ -2188,6 +2264,17 @@ class IngestionHandler(FileSystemEventHandler):
             named = [spec["source_id"] for spec in self._external_sources.values()
                      if os.path.normcase(spec["root"]) == os.path.normcase(os.path.abspath(source))]
             context = self.external_source_context(abs_path, named[0], named=False) if named else None
+            if not named:                           # switched off: picked by hand, read under its declaration
+                from ingestion import reread
+                off = [spec for spec in reread.validated_sources()[1]
+                       if spec.get("off") and spec["table_name"] == self.table_name
+                       and os.path.normcase(spec["root"]) == os.path.normcase(os.path.abspath(source))]
+                taken = source_taking(off[:1], abs_path, named=False) if off else None
+                if taken is not None:
+                    spec, rel_path = taken
+                    return {"rel_path": rel_path, "external_source": {
+                        "source_id": spec["source_id"], "source_root": spec["root"], "rel_path": rel_path,
+                        "parser": spec["parser"], "options": dict(spec.get("options") or {})}}
             if context is None:                     # 총괄 10-21: never read as raws under no source
                 owners = [spec["root"] for spec in self._external_sources.values()
                           if _safe_relative_path(abs_path, spec["root"]) is not None]
@@ -3081,11 +3168,49 @@ class IngestionHandler(FileSystemEventHandler):
         except Exception as e:
             logger.warning(f"[{t_name}] The checklist could not be read for {len(entries)} file(s) - they are read: "
                            f"{told(e)}", exc_info=e)
-            return Checked(why=unread)
+            before = self._before_switch_on(entries)
+            return Checked(before, {path: word for path, word in unread.items() if path not in before},
+                           before_switch_on=before)
         finally:
             db.close()
         self._settle_terminal_hits(statuses)
-        return Checked(statuses, words)
+        # a stopped re-read's let-go files are left where they are (총괄 10-24) - checked here, so no seat reads them
+        stopped = {source for table, source in REREAD_STOPS.stopped_pairs() if table == t_name}
+        held = ({path for path, word in words.items()
+                 if word == ingestion.checkpoint.WHY_UNSTAMPED and self.source_of(path) in stopped} if stopped else set())
+        # an unread file older than its source's switch-on is left to a hand (소유자 10-26) - checked here, so no
+        # automatic seat reads it
+        before = self._before_switch_on([(path, stat) for path, stat in entries if path in words and path not in held])
+        held |= before
+        return Checked(set(statuses) | held, {path: word for path, word in words.items() if path not in held},
+                       before_switch_on=before)
+
+    def _before_switch_on(self, entries):
+        """Of `[(abs_path, file_stat), ...]`, the paths whose external source was switched on after their mtime."""
+        cuts = {spec["source_id"]: datetime.fromtimestamp(spec["switched_on_at"], timezone.utc)
+                for spec in self._external_sources.values() if spec.get("switched_on_at") is not None}
+        before, said = set(), {}
+        for path, stat in entries:
+            taken = source_taking(self._external_sources.values(), path)
+            if taken is None:
+                continue
+            source_id = taken[0]["source_id"]
+            cut = cuts.get(source_id)
+            old = cut is not None and stat[0] < cut
+            if old:
+                before.add(path)
+            # every unread file of a source said with its mtime and the cut it met (owner 10-26 «여전히 옛날 거
+            # 읽어 · 저장소 활성화 시간, 인식한 파일 수정 시간 다 로그 띄워»): each one read by itself a line; the ones
+            # held back counted, the first three named
+            if old:
+                said.setdefault(source_id, [cut, []])[1].append((path, stat[0]))
+            else:
+                logger.info(f"[switch-on] {path}: modified {_iso(stat[0])} - source cut "
+                            f"{_iso(cut) if cut else 'none (on before the cut existed)'} -> read by itself")
+        for source_id, (cut, held) in said.items():
+            logger.info(f"[switch-on] {source_id}: {len(held)} file(s) modified before its cut {_iso(cut)} held for a "
+                        f"hand - e.g. " + ", ".join(f"{p} ({_iso(m)})" for p, m in held[:3]))
+        return before
 
     def _settle_terminal_hits(self, statuses: dict):
         """The move a checked file still in raws/ owes (its move failed when it was read), done once per batch.
@@ -3197,6 +3322,12 @@ class IngestionHandler(FileSystemEventHandler):
             _note_the_read(db, log_obj)
             db.commit()
             logger.info(f"[{t_name}] 📝 Logged file ingestion {status.lower()} to database.")
+            why = self._read_why.pop(os.path.abspath(original_path), None)
+            try:
+                REREAD_STOPS.heard(db, log_obj.table_name, log_obj.source, why, status, log_obj.reason)
+            except Exception as stop_error:                          # noqa: BLE001 - the record stands
+                logger.warning("[%s] the re-read stop did not count %s: %s", t_name,
+                               os.path.basename(original_path), told(stop_error))
         except Exception as e:
             # 🔴 NAME THE FILE. This line used to say only that "a" log write failed, so an
             # operator reading it could not tell WHICH file had no record - and a file with
@@ -3336,6 +3467,7 @@ class IngestionHandler(FileSystemEventHandler):
 
     def _say_file_to_read(self, t_name, abs_path, why):
         """The line every read says before it reads (총괄 64b264610): why, by `checkpoint`'s word."""
+        self._read_why[os.path.abspath(abs_path)] = why
         logger.info(f"File to read ({why}): {abs_path}")
         logger.info(f"[{t_name or self.table_name}] 📥 File to read ({why}): {os.path.basename(abs_path)}")
 
@@ -3738,13 +3870,8 @@ class IngestionHandler(FileSystemEventHandler):
     def _map_batches(t_name, rows, map_columns, declared_by_lower, skipped_no_key=0):
         """The file's rows as one list per map - [(file row, row), ...] in file order, maps in the order they first
         appear - grouped by the one key speller (`crud.key_part`), so «1» and «1.0» rows are one map. A row whose map
-        key is blank refuses the file (`crud.CellRefused`, its file row): nothing is written, so nothing is purged -
-        and so do rows the parser already skipped for a missing key (`skipped_no_key`): a map replaced without them
-        would lose their dies quietly."""
-        if skipped_no_key:
-            raise crud.CellRefused(map_columns[0], "",
-                                   "a key on every row (allow_replace_map replaces each map of the file whole; %d "
-                                   "row(s) had a blank key and were skipped, so nothing was written)" % skipped_no_key)
+        key is blank names no map: it is skipped and counted on one warning line, the file goes on (소유자 10-24 «빈거
+        들어오면 접으면 되잖아 어차피 쓰레기 값인데» · «왜 다 에러가 뜨냐고»)."""
         maps, blank = {}, []
         for file_row, row in enumerate(rows, start=1):
             cells = {declared_by_lower.get(str(key).lower()): value for key, value in row.items()}
@@ -3757,11 +3884,10 @@ class IngestionHandler(FileSystemEventHandler):
                 key.append(crud.clean_str_value(crud.key_part(t_name, column, value)))
             else:
                 maps.setdefault(tuple(key), []).append((file_row, row))
-        if blank:
-            file_row, column, value = blank[0]
-            raise crud.CellRefused(column, "" if value is None else value,
-                                   "a map key (allow_replace_map replaces each map of the file whole; %d row(s) "
-                                   "have none, so nothing was written)" % len(blank), row=file_row)
+        if blank or skipped_no_key:
+            logger.warning("[Ingest] %s: %d row(s) with a blank map key %s skipped - they name no map (first at file "
+                           "row %s)", t_name, len(blank) + (skipped_no_key or 0), map_columns,
+                           blank[0][0] if blank else "?")
         return list(maps.values())
 
     def _send_to_upsert(self, rows, uploader: str = "system", filename: str = None,
@@ -3930,6 +4056,7 @@ class IngestionHandler(FileSystemEventHandler):
         _outbox_token = request_outbox_mode.set(OUTBOX_MODE_COLLAPSED)
         file_tally = tally if tally is not None else _FileTally()
         file_tally.transaction_id = file_tx_id
+        file_tally.replace_by = map_columns or None
 
         try:
             while True:
@@ -4001,6 +4128,7 @@ class IngestionHandler(FileSystemEventHandler):
                             replace_map=bool(map_columns),      # the map's scope: its key, from its rows
                         )
                         batch_obj._file_origin = file_origin
+                        batch_obj._file_replace = bool(map_columns)   # purged whole (owner 10-24)
                         # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.
                         # crud.apply_batch_updates가 내부에서 commit하므로, 그 호출 '이전'에
                         # 같은 세션으로 UPDATE를 발행해야 한 번의 커밋으로 함께 확정된다.
@@ -4203,9 +4331,10 @@ class Checked(set):
     """`already_checked`'s answer: the paths checked, and `why` - the checklist's word for each path it did not check
     (`checkpoint.checked(words=)`)."""
 
-    def __init__(self, paths=(), why=None):
+    def __init__(self, paths=(), why=None, before_switch_on=()):
         super().__init__(paths)
         self.why = why or {}
+        self.before_switch_on = set(before_switch_on)      # of the paths, those held by their source's switch-on
 
 
 def said_why(words) -> str:
@@ -4265,17 +4394,114 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
 
 #: The heartbeat lap a source's sweep leaves (총괄 64b264610 - the file page's line per store): «sweep:<table>@<root>».
 SWEEP_LAP_PREFIX = "sweep:"
+#: The lap a (table, source)'s re-read stop leaves - «reread:<table>@<source>», its `stopped` the sentence, none when
+#: let go - read by the file page's line beside the sweep's.
+REREAD_LAP_PREFIX = "reread:"
+#: The reads a re-read makes: the retry door's three words, and a sweep's file whose stamp was let go (`reread.uncheck`).
+REREAD_WHYS = frozenset({ingestion.checkpoint.WHY_RETRY, ingestion.checkpoint.WHY_READ_AGAIN,
+                         ingestion.checkpoint.WHY_READ_NOW, ingestion.checkpoint.WHY_UNSTAMPED})
 
 
-def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_read=None, words=()):
+class RereadStops:
+    """This watcher's re-reads by (table, source) (총괄 10-24): one opens at its first re-read; failed
+    `reread_stop_after` times with none read, it stops - the poller's pick and every checklist ask leave its files,
+    its waiting and unchecked rows as they are (nothing written). It closes when none of it is left to re-read
+    (`settle`); a stop is let go by a press (SYSTEM_RELOAD `reread_released`), its table's reading changing, a
+    restart."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._open = {}        # (table, source) -> {"failed": n, "read": bool}
+        self._stopped = {}     # (table, source) -> its sentence
+
+    def heard(self, db, table, source, why, status, reason):
+        """One file's record. A re-read's (`REREAD_WHYS`) read or failure counted for its pair - a lock waited out
+        says nothing of the reading. -> the stop's sentence when this record stopped it, else None."""
+        if why not in REREAD_WHYS or not table or not source or status not in ("SUCCESS", "FAILED"):
+            return None
+        reason = str(reason or "").strip()
+        if status == "FAILED" and reason.startswith(LOCK_WAITED_OUT_PREFIX):
+            return None
+        limit, pair = reread_stop_after(), (table, source)
+        with self._lock:
+            if pair in self._stopped:
+                return None
+            state = self._open.setdefault(pair, {"failed": 0, "read": False})
+            if status == "SUCCESS":
+                state["read"] = True
+                return None
+            state["failed"] += 1
+            if state["read"] or not limit or state["failed"] < limit:
+                return None
+            said = "Stopped: %d failed in a row - %s" % (state["failed"], reason.splitlines()[0] if reason else "?")
+            self._stopped[pair] = said
+            self._open.pop(pair, None)
+        waiting, unchecked = _rereads_left(db, table, source)
+        logger.warning("[Watcher] %s · %s: %s - waiting %d · unchecked %d left as they are", table, source, said,
+                       waiting, unchecked)
+        heartbeat.record_lap(HEARTBEAT_NAME, REREAD_LAP_PREFIX + "%s@%s" % pair, table=table, source=source,
+                             stopped=said)
+        return said
+
+    def stopped_pairs(self):
+        with self._lock:
+            return list(self._stopped)
+
+    def release(self, pairs=None, table=None, why="let go"):
+        """Let the stops of `pairs` (and of `table`, any source) go. -> the pairs let go."""
+        with self._lock:
+            gone = [pair for pair in self._stopped if pair in set(pairs or ()) or pair[0] == table]
+            for pair in gone:
+                self._stopped.pop(pair)
+            for pair in [pair for pair in self._open if pair in set(pairs or ()) or pair[0] == table]:
+                self._open.pop(pair)
+        for pair in gone:
+            logger.info("[Watcher] %s · %s: the re-read stop let go (%s)", pair[0], pair[1], why)
+            heartbeat.record_lap(HEARTBEAT_NAME, REREAD_LAP_PREFIX + "%s@%s" % pair, table=pair[0], source=pair[1])
+        return gone
+
+    def settle(self, db):
+        """The open re-reads none of whose files is left - nothing waiting, claimed or unchecked - closed."""
+        with self._lock:
+            open_pairs = list(self._open)
+        for pair in open_pairs:
+            if not _rereads_left(db, *pair, any_left=True):
+                with self._lock:
+                    self._open.pop(pair, None)
+
+
+def _rereads_left(db, table, source, any_left=False):
+    """A pair's checklist rows still to re-read: (waiting - handed to the retry door, unchecked - a sweep reads them).
+    `any_left`: whether there is one at all. Each shape implies ix_file_checklist_rereads_left's WHERE - a condition
+    that stops implying it reads the whole checklist (총괄 10-24)."""
+    from sqlalchemy import or_
+
+    from database import models
+
+    row = models.FileChecklist
+    of = db.query(row.id).filter(row.table_name == table, row.source == source)
+    waiting = row.status.in_(("PENDING_RETRY", "PENDING"))
+    unchecked = row.file_mtime.is_(None) & row.status.notin_(("PENDING_RETRY", "PENDING"))
+    if any_left:
+        return of.filter(or_(waiting, unchecked)).first() is not None
+    return of.filter(waiting).count(), of.filter(unchecked).count()
+
+
+#: The one in this process - the watcher's (the poller and the handlers ask it).
+REREAD_STOPS = RereadStops()
+
+
+def _sweep_lap(spec, state, seconds=None, looked=None, dispatched=None, already_read=None, words=(),
+               before_switch_on=None):
     """One external source's sweep, as the watcher's heartbeat carries it to the API (`heartbeat.record_lap`): sweeping
-    · rested · unavailable, its seconds, files looked at, already read, dispatched and why by word."""
+    · rested · unavailable, its seconds, files looked at, already read, dispatched and why by word, and the unread
+    files older than its switch-on (`stamp_switched_on`) - read by hand only."""
     counts = {}
     for word in words:
         counts[word] = counts.get(word, 0) + 1
     heartbeat.record_lap(HEARTBEAT_NAME, SWEEP_LAP_PREFIX + spec["source_id"], seconds=seconds, state=state,
                          table=spec["table_name"], source=spec["root"], looked=looked, already_read=already_read,
-                         dispatched=dispatched, why=counts)
+                         dispatched=dispatched, why=counts, before_switch_on=before_switch_on)
 
 
 def _walk_entries(root, unlisted):
@@ -4437,6 +4663,8 @@ class WorkspaceWatcher:
         settings = load_ingestion_settings()
         specs, errors = validate_external_source_specs(
             settings, table_config, self.base_dir)
+        stamp_switched_on(specs)                                        # before `wanted`: a kept time is the same spec
+        specs = [spec for spec in specs if not spec.get("off")]         # switched off: read by hand only
 
         # A disabled entry is neither accepted nor refused, so without this line
         # "declared but switched off" and "never declared" look identical in the
@@ -4736,7 +4964,7 @@ class WorkspaceWatcher:
                 why_not[source_id] = dict.fromkeys(
                     ("looked", "outside the root", "name not matched", "not a file", "stat failed",
                      "folders not matching", "folders below max_depth", "folders not listed",
-                     "already read", "dispatched"), 0)
+                     "already read", "before switch-on", "dispatched"), 0)
                 pages[source_id] = self._external_pages(source_id, target, why_not[source_id], lambda: said())
 
             began = said_at = time.monotonic()
@@ -4745,7 +4973,8 @@ class WorkspaceWatcher:
             def lap(state, source_id):
                 _sweep_lap(self.external_targets[source_id]["spec"], state, seconds=time.monotonic() - began,
                            looked=why_not[source_id]["looked"], dispatched=why_not[source_id]["dispatched"],
-                           already_read=why_not[source_id]["already read"], words=words[source_id])
+                           already_read=why_not[source_id]["already read"], words=words[source_id],
+                           before_switch_on=why_not[source_id]["before switch-on"])
 
             def said(force=False):
                 """Every SWEEP_PROGRESS_SECONDS: each source's looked · dispatched · seconds - running or stuck."""
@@ -4785,7 +5014,10 @@ class WorkspaceWatcher:
                         more = handler.already_checked([item for item in again if item[1] is not None])
                         cleared |= more
                         cleared.why.update(more.why)
-                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s, _l in page if abs_path in cleared)
+                        cleared.before_switch_on |= more.before_switch_on
+                    why_not[source_id]["before switch-on"] += len(cleared.before_switch_on)
+                    why_not[source_id]["already read"] += sum(1 for _m, abs_path, _s, _l in page if abs_path in cleared
+                                                              and abs_path not in cleared.before_switch_on)
                     turns.append([(source_id, handler, abs_path, cleared.why.get(abs_path,
                                                                                   ingestion.checkpoint.WHY_UNREAD))
                                   for _m, abs_path, _s, _l in _dispatch_order(page)

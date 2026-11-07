@@ -13,6 +13,52 @@
 
 ### 체인 규칙
 
+- 2026-10-27 [AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정](#2026-10-27--ai-리포트-계측값--원인-걷기가-닿은-quantity-의-웨이퍼별-값을-조건-행으로-값이-없으면-같은-트랜잭션-웨이퍼로-추정) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.values · 보는 곳 리포트 표의 조건 행 · Evidence «quantity values» · 터미널 [report] causes values
+- 2026-10-27 [새 술어가 걷기 라우트를 세우지 않는다 — 이름 없는 결측은 날 낱말로, 결측 이름 표는 config 로](#2026-10-27--새-술어가-걷기-라우트를-세우지-않는다--이름-없는-결측은-날-낱말로-결측-이름-표는-config-로) — 적을 곳 config/gap_names.json(선택) · 보는 곳 GET /api/ledger/gaps 의 unnamed
+- 2026-10-26 [AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다](#2026-10-26--ai-리포트-결과--부분별-글summary--conclusion-을-리포트-표-칸에-멈춘-리포트는-그-칸을-비운다) — 적을 것 `derive.report.results` 에 «글 칸 이름: 컬럼» · 보는 곳 리포트 표의 그 칸
+- 2026-10-26 [AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다](#2026-10-26--ai-리포트--모델-답이-json-이-아니어도-안-멈춘다-글-속-json-을-꺼내고-한-번-다시-묻고-그래도-아니면-읽은-것으로-쓴다) — 적을 것 없음 · 보는 곳 리포트 Evidence · chain_worker.log «[report] the answer held no JSON object»
+- 2026-10-26 [AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열](#2026-10-26--ai-리포트--by--where-에는-conditions-가-내준-조건-이름을-by-를-빼면-웨이퍼가-열) — 적을 것 없음 · 보는 곳 리포트 Evidence 의 걸음 줄
+- 2026-10-26 [AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다](#2026-10-26--ai-리포트-후보--날짜-있는-웨이퍼의-날짜-없는-leg-도-그-후보에-같이-선다) — 적을 것 없음 · 보는 곳 리포트 후보 줄 · chain_worker.log «[report]   wafer …»
+- 2026-10-26 [AI 리포트 원인 걷기 — 온톨로지에 없는 씨앗은 빼고 나머지로 걷고, 뺀 것은 한 줄씩 말한다](#2026-10-26--ai-리포트-원인-걷기--온톨로지에-없는-씨앗은-빼고-나머지로-걷고-뺀-것은-한-줄씩-말한다) — 적을 것 없음(낱말은 labels.no_seed) · 보는 곳 리포트 Evidence 의 causes 단계
+- 2026-10-26 [AI 리포트 조건 행 — conditions.most 로 개수를 자르고, 모델이 고른 순서(타이틀과 연관 큰 것부터)로](#2026-10-26--ai-리포트-조건-행--conditionsmost-로-개수를-자르고-모델이-고른-순서타이틀과-연관-큰-것부터로) — 적는 곳 derive.report.conditions.most · 보는 곳 리포트 표 조건 줄
+- 2026-10-26 [AI 리포트 원인 걷기가 읽는 원장 세상을 여럿 적는다 — causes.worlds](#2026-10-26--ai-리포트-원인-걷기가-읽는-원장-세상을-여럿-적는다--causesworlds) — 적는 곳 chain_rules.json 의 리포트 규칙 derive.report.causes.worlds
+- 2026-10-25 [AI 리포트 원인 후보와 조건 — 맺어진 조건은 표 줄로, 값이 없으면 채울 것이라고](#2026-10-25--ai-리포트-원인-후보와-조건--맺어진-조건은-표-줄로-값이-없으면-채울-것이라고) — 적는 곳 derive.report.causes · labels.to_fill · 보는 곳 리포트 표 · Evidence · 터미널 [report] causes
+- 2026-10-25 [AI 리포트 원인 후보 — 불량 종류 노드에서 모델이 씨앗을 고르고 제품이 정적으로 걷는다](#2026-10-25--ai-리포트-원인-후보--불량-종류-노드에서-모델이-씨앗을-고르고-제품이-정적으로-걷는다) — 적는 곳 derive.report.causes · 보는 곳 리포트 Evidence · 터미널 [report] causes
+- 2026-10-24 [AI 리포트 대조 후보 — 날짜부터 읽고 웨이퍼 하나가 한 줄, 직전 · 직후는 언제나, 한도 12 평가 · 100 웨이퍼](#2026-10-24--ai-리포트-대조-후보--날짜부터-읽고-웨이퍼-하나가-한-줄-직전--직후는-언제나-한도-12-평가--100-웨이퍼) — 적는 곳 derive.report.control · 보는 곳 Evidence · 터미널 [report]
+- 2026-10-24 [AI 리포트 표 — 머리 날짜 › 타이틀 › 웨이퍼 › leg, 크기는 선언, 값은 가운데, 행 머리 고정, 파일 표는 모델이 고른 대로](#2026-10-24--ai-리포트-표--머리-날짜--타이틀--웨이퍼--leg-크기는-선언-값은-가운데-행-머리-고정-파일-표는-모델이-고른-대로) — 적는 곳 derive.report.sizes · prompts.select · 보는 곳 리포트 파일
+- 2026-10-24 [AI 리포트 조건 행 — 값이 둘 이상인 것, 그중 모델이 고른 것, 글에 나온 것도 · wfid · lotid · skip 은 언제나 빼고](#2026-10-24--ai-리포트-조건-행--값이-둘-이상인-것-그중-모델이-고른-것-글에-나온-것도--wfid--lotid--skip-은-언제나-빼고) — 적는 곳 derive.report.conditions.title_item · skip · 보는 곳 리포트 파일의 조건 행
+- 2026-10-24 [AI 리포트 파일을 서버가 연다 — GET /reports 목록, 서명 링크는 로그인 없이(다른 사이트 iframe)](#2026-10-24--ai-리포트-파일을-서버가-연다--get-reports-목록-서명-링크는-로그인-없이다른-사이트-iframe) — 보는 곳 브라우저 /reports
+- 2026-10-24 [AI 리포트 그림 — 큰 그림 표는 웨이퍼마다 상한까지, 소스 붙은 칸은 그대로, 칩 레이어는 휠로, 패치는 한 격자](#2026-10-24--ai-리포트-그림--큰-그림-표는-웨이퍼마다-상한까지-소스-붙은-칸은-그대로-칩-레이어는-휠로-패치는-한-격자) — 적는 곳 derive.report.images · 보는 곳 리포트 파일의 그림
+- 2026-10-24 [AI 리포트 조건 — 한 웨이퍼의 같은 조건 두 값은 둘 다(300 / 320), 시각 항목은 조건 줄에서 숨김, 이름 앞뒤 공백 무시](#2026-10-24--ai-리포트-조건--한-웨이퍼의-같은-조건-두-값은-둘-다300--320-시각-항목은-조건-줄에서-숨김-이름-앞뒤-공백-무시) — 적을 것 없음 · 보는 곳 리포트 표 조건 줄 · Evidence
+- 2026-10-24 [AI 리포트 페이지 폭 최대 1280px — 글도 페이지 폭을 다 씀](#2026-10-24--ai-리포트-페이지-폭-최대-1280px--글도-페이지-폭을-다-씀) — 적을 것 없음 · 보는 곳 리포트 파일
+- 2026-10-24 [AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율](#2026-10-24--ai-리포트-수율-행--summaryyield_item-은-불량-유형이-아니라-수율) — 적는 곳 derive.report.summary.yield_item · 보는 곳 리포트 표 Yield 줄 · 파레토
+- 2026-10-24 [AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item](#2026-10-24--ai-리포트-웨이퍼-시각을-조건-항목에서--conditionstime_item) — 적는 곳 derive.report.conditions.time_item · 보는 곳 리포트 열 순서 · 날짜 · 대조 후보
+- 2026-10-24 [행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)](#2026-10-24--행-게이트-값에----패턴--onrequire--onexclude-와-ai-리포트-waferexclude-무시할-leg) — 적는 곳 on.require · on.exclude · derive.report.wafer.exclude · 보는 곳 리포트 · 체인 줄
+- 2026-10-24 [AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)](#2026-10-24--ai-리포트-그림-짝--imagesmatch-로-그림-표의-종류를-요약-항목에-void-signal---typea) — 적는 곳 derive.report.images.match · 보는 곳 리포트 그림
+- 2026-10-24 [AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다](#2026-10-24--ai-리포트-표에-대조-웨이퍼와-조건-묶음--선언된-비교controlrecent--setsdefault를-제품이-읽는다) — 적는 곳 derive.report.control.recent · sets.default · 보는 곳 리포트 표
+- 2026-10-24 [AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기](#2026-10-24--ai-리포트--키-조각마다-칸-이름wafer-w1--leg-l1-웨이퍼-밑에-leg-묶기) — 적는 곳 derive.report.labels.columns(선택) · 보는 곳 리포트 글 · 표 열 이름 · Evidence
+- 2026-10-24 [AI 리포트 표 · 그림은 제품이 채운다 — 모델이 안 불러도, 엉뚱한 자리의 layout 은 이름 댐](#2026-10-24--ai-리포트-표--그림은-제품이-채운다--모델이-안-불러도-엉뚱한-자리의-layout-은-이름-댐) — 적을 것 없음 · 보는 곳 리포트 파일 · Evidence · 체인 규칙 창 저장 줄
+- 2026-10-24 [AI 리포트가 키 조각이 빈 웨이퍼에도 수를 읽는다](#2026-10-24--ai-리포트가-키-조각이-빈-웨이퍼에도-수를-읽는다) — 적을 것 없음 · 보는 곳 리포트 결과
+- 2026-10-24 [AI 리포트 — layout 안 적으면 기본 배치 · sets 칸 빠지면 비교 묶음 없이 · latest 는 글자로도 · 키 1.0 = 1](#2026-10-24--ai-리포트--layout-안-적으면-기본-배치--sets-칸-빠지면-비교-묶음-없이--latest-는-글자로도--키-10--1) — 적는 곳 없음(안 적어도 됨) · 보는 곳 리포트 파일 · 체인 규칙 창 저장 줄
+- 2026-10-24 [AI 리포트 역할 표가 웨이퍼 키를 다른 이름으로 적어도 된다 — 제 키 칸이면 같은 차례로 맞춤 · rename](#2026-10-24--ai-리포트-역할-표가-웨이퍼-키를-다른-이름으로-적어도-된다--제-키-칸이면-같은-차례로-맞춤--rename) — 적는 곳 역할의 wafer 목록(그 표 제 키 칸) · 역할의 rename · 보는 곳 체인 규칙 창 저장
+- 2026-10-24 [AI 리포트가 운영 데이터의 빈 칸 · 한 웨이퍼의 오류에 서지 않는다](#2026-10-24--ai-리포트가-운영-데이터의-빈-칸--한-웨이퍼의-오류에-서지-않는다) — 적을 것 없음 · 보는 곳 체인 워커 «[Report] … failed»
+- 2026-10-24 [키 조각을 바꾸는 쓰기가 행² 으로 느려지지 않는다 — 병합이 묶음 전체를 훑던 것](#2026-10-24--키-조각을-바꾸는-쓰기가-행²-으로-느려지지-않는다--병합이-묶음-전체를-훑던-것) — 적을 것 없음 · 보는 곳 체인 워커 «[Chain] group … INSIDE THE WRITE · row build»
+- 2026-10-24 [같은 체인 실패는 접고, 10 번 내리 실패한 규칙은 꺼진다 — 목록 · 터미널 · 자동 끄기](#2026-10-24--같은-체인-실패는-접고-10-번-내리-실패한-규칙은-꺼진다--목록--터미널--자동-끄기) — 보는 곳 체인 워커 터미널 · 실패 목록(by_cause) · 적는 곳 chain_rules.json 맨 위 `rule_off_after_failures`
+- 2026-10-24 [체인 실패 줄이 «어디서»를 말한다 — 맵퍼 파일:줄 · 함수](#2026-10-24--체인-실패-줄이-어디서를-말한다--맵퍼-파일줄--함수) — 보는 곳 chain_worker.log «원인:» 줄 · 대기열 Recent failures
+  - 2026-10-24 [체인 실패 트레이스백이 터미널에 — 영구 실패 줄 바로 밑에 전체](#2026-10-24--체인-실패-트레이스백이-터미널에--영구-실패-줄-바로-밑에-전체) — 보는 곳 런처 터미널(체인 워커 줄) — .log 파일 · 어드민 화면 필요 없음
+- 2026-10-24 [뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것](#2026-10-24--뭉치기-조인이-키마다-한-번-계산한다--함수--내장-fn-이-대상-행마다-돌던-것) — 적는 곳 없음(선언 그대로) · 보는 곳 chain_worker.log [Latency]
+- 2026-10-24 [AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭](#2026-10-24--ai-리포트-파일--다시-세로-나열--머리-단-이름date--wafer--leg--표는-창-폭) — 적는 곳 derive.report.labels.columns · 보는 곳 리포트 파일
+- 2026-10-23 [AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름](#2026-10-23--ai-리포트-키-칸--keys-한-곳unit--latest--fold-표마다-가진-키-칸-이름) — 적는 곳 derive.report.keys · 역할의 wafer 목록 · 보는 곳 리포트 파일
+  - ⚠️ 부분 은퇴: «다른 이름이면 not a key column 거절» — 그 표 제 키 칸이면 같은 차례로 맞춤 — 2026-10-24 [AI 리포트 역할 표가 웨이퍼 키를 다른 이름으로 적어도 된다 — 제 키 칸이면 같은 차례로 맞춤 · rename](#2026-10-24--ai-리포트-역할-표가-웨이퍼-키를-다른-이름으로-적어도-된다--제-키-칸이면-같은-차례로-맞춤--rename)
+- 2026-10-23 [체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름](#2026-10-23--체인-규칙-창에서-조인-take-항목을-기록으로--record-from-칸-목록-친-칸-이름) — 누르는 곳 체인 규칙 창 → derive join → take 칩 끝의 «+ record»
+- 2026-10-23 [AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg · 행 조건 · 수율 · 불량 (소유자 그림)](#2026-10-23--ai-리포트-비교-표--열-날짜--웨이퍼--leg--행-조건--수율--불량-소유자-그림) — 적는 곳 derive.report.columns · label · choose · picture_rows.source · 보는 곳 리포트 파일 오른쪽 표
+- 2026-10-23 [AI 리포트 대조 후보 — 웨이퍼 하나에 날짜 하나 · 늦은 웨이퍼도 후보 · 칸 이름 Rows](#2026-10-23--ai-리포트-대조-후보--웨이퍼-하나에-날짜-하나--늦은-웨이퍼도-후보--칸-이름-rows) — 보는 곳 리포트 파일의 후보 표
+- 2026-10-23 [AI 리포트 — 칩 그림은 leg 마다 · Evidence 는 걸음이 읽은 줄 전부](#2026-10-23--ai-리포트--칩-그림은-leg-마다--evidence-는-걸음이-읽은-줄-전부) — 보는 곳 리포트 파일의 그림 · Evidence
+- 2026-10-23 [AI 리포트 — 후보 날짜는 제품 시간대의 날 · 빈 조건 값은 (empty) · 웨이퍼 이름은 머리에 한 번](#2026-10-23--ai-리포트--후보-날짜는-제품-시간대의-날--빈-조건-값은-empty--웨이퍼-이름은-머리에-한-번) — 보는 곳 리포트 파일의 후보 표 · 요약 표 머리
+- 2026-10-23 [AI 리포트 대조 후보 — 웨이퍼 하나가 후보 하나, 파일에 후보 표](#2026-10-23--ai-리포트-대조-후보--웨이퍼-하나가-후보-하나-파일에-후보-표) — 적는 곳 derive.report.layout 의 candidates 칸 · 보는 곳 리포트 파일 오른쪽
+- 2026-10-23 [AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽](#2026-10-23--ai-리포트-파일--글--그림-왼쪽-표-오른쪽) — 보는 곳 리포트 파일(server/reports/<웨이퍼>.html)
+- 2026-10-23 [AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄](#2026-10-23--ai-리포트-요약-표의-info-가-표-목록--넓은-표-한-행수율도-한-줄) — 적는 곳 chain_rules.json 의 derive.report.info(목록) · 보는 곳 리포트 요약 표 머리 밑 줄
+- 2026-10-23 [AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만](#2026-10-23--ai-리포트는-리포트-표에-건-규칙-하나--요약표--조건표--이미지표는-소유자-모양-그대로-읽기만) — 적는 곳 chain_rules.json 의 derive.report(on = into = 리포트 표 · results.file · conditions · images.item_sep · images.source) · 보는 곳 리포트 표의 파일 경로 · 파일의 Evidence
 - 2026-10-23 [조인 take 의 from 에 칸 목록 — 함수가 행마다 {칸: 값} 을 받는다](#2026-10-23--조인-take-의-from-에-칸-목록--함수가-행마다-칸-값-을-받는다) — 적는 곳 chain_rules.json 의 join take 의 from · 보는 곳 함수가 받는 values
 - 2026-10-23 [AI 리포트는 요약표에 건 규칙 하나 — 웨이퍼마다 한 판, 결과는 요약표 칸 셋, send_to 로 중계 PC 에](#2026-10-23--ai-리포트는-요약표에-건-규칙-하나--웨이퍼마다-한-판-결과는-요약표-칸-셋-send_to-로-중계-pc-에) — 적는 곳 chain_rules.json 의 derive.report 의 results · send_to · control.same · 보는 곳 요약표의 결과 칸 셋 · 리포트 파일의 Evidence
 - 2026-10-23 [값이 안 바뀐 행은 사건을 안 낸다 — 셀 메뉴의 층 지우기 · 핀이 그 표의 규칙을 깨우지 않는다](#2026-10-23--값이-안-바뀐-행은-사건을-안-낸다--셀-메뉴의-층-지우기--핀이-그-표의-규칙을-깨우지-않는다) — 보는 곳 chain_worker.log 의 그 규칙 줄 · database_outbox 의 EDIT
@@ -187,6 +233,7 @@
 
 ### 걷기 화면
 
+- 2026-10-27 [걷기 follow «술어:이름» — 이름이 씨앗 키가 아니면 올라온 엣지의 수식어로 묶어, 같은 트랜잭션 형제만 닿는다](#2026-10-27--걷기-follow-술어이름--이름이-씨앗-키가-아니면-올라온-엣지의-수식어로-묶어-같은-트랜잭션-형제만-닿는다) — 적을 것 없음 · 부르는 곳 `follow=<술어>:<수식어>`
 - 2026-10-21 [에이전트 걷기 — 물음 한 행을 적으면 LLM 이 홉마다 골라 걷고, 걸은 길과 답이 표에 남는다 · 뜻 표](#2026-10-21--에이전트-걷기--물음-한-행을-적으면-llm-이-홉마다-골라-걷고-걸은-길과-답이-표에-남는다--뜻-표) — 적는 곳 walk_request · walk_recipe · chain_rules.json · 보는 곳 walk_log
 - 2026-10-20 [걷기 — 묶음으로 잘린 먼 타입은 «complete» 가 아니다](#2026-10-20--걷기--묶음으로-잘린-먼-타입은-complete-가-아니다) — 누르는 곳 시험대 · 걷기의 상태 줄
 - 2026-10-15 [걷기 hops=0 — 씨앗의 자기 기록만, 엣지 없이](#2026-10-15--걷기-hops0--씨앗의-자기-기록만-엣지-없이) — 누르는 곳 없음(서버 재기동)
@@ -273,6 +320,7 @@
 
 ### 소급
 
+- 2026-10-24 [decide 를 적은 이름으로 리플레이한다 — R1 이 «not found» 로 거절하던 것](#2026-10-24--decide-를-적은-이름으로-리플레이한다--r1-이-not-found-로-거절하던-것) — 적는 곳 소급 탭 R1 의 rule · 보는 곳 chain_worker.log
 - 2026-10-23 [리플레이가 뒤로 갈수록 느려지지 않는다 — 체인 대기열이 줄을 사건 내용 대신 칸 셋으로 읽는다](#2026-10-23--리플레이가-뒤로-갈수록-느려지지-않는다--체인-대기열이-줄을-사건-내용-대신-칸-셋으로-읽는다) — 체인 대기열이 줄을 칸 셋으로 읽음
 - 2026-10-23 [어드민 도움말(서버) — 하려는 일을 적으면 도구 하나 · 채운 칸 · 몇 행이 바뀌나, 실행은 운영자가](#2026-10-23--어드민-도움말서버--하려는-일을-적으면-도구-하나--채운-칸--몇-행이-바뀌나-실행은-운영자가) — 명령 `python server/scripts/help_bench.py` · 보는 곳 `POST /admin/help/ask` (화면은 클라 라운드)
 - 2026-10-23 [중복 접기는 «Fold duplicate rows» 하나로 — 층 많은 행 남기기 · 값이 다른 키 건너뛰기 · 미리보기가 다른 칸과 값을 보임 (dedupe_business_key_rows.py 은퇴)](#2026-10-23--중복-접기는-fold-duplicate-rows-하나로--층-많은-행-남기기--값이-다른-키-건너뛰기--미리보기가-다른-칸과-값을-보임-dedupe_business_key_rowspy-은퇴) — 누르는 곳 소급 탭 «Fold duplicate rows» 의 keep · only_identical
@@ -315,6 +363,7 @@
 
 ### 명령
 
+- 2026-10-24 [착지 빌드의 화면 검사는 바꾼 화면만 — 전체 판은 밤에](#2026-10-24--착지-빌드의-화면-검사는-바꾼-화면만--전체-판은-밤에) — 명령 `npm run build` (prebuild 안의 화면 검사기가 --touched)
 - 2026-10-11 [소급 강제 종료 — 더블클릭 한 번](#2026-10-11--소급-강제-종료--더블클릭-한-번) — 명령 `stop_retroactive.bat`
 - 2026-10-10 [원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 읽지 않게](#2026-10-10--원장-ref-해시-인덱스--거두기-한-장이-원장-전체를-읽지-않게) — 명령 `python server/scripts/build_ledger_ref_index.py`
 - 2026-10-03 [table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다](#2026-10-03--table_config-를-다시-쓰는-스크립트-둘이-운영자가-적은-칸을-지우지-않는다) — 명령 `python server/scripts/install_product_tables.py --overwrite-drift` · `python server/scripts/table_config_from_schema.py --merge`
@@ -323,12 +372,23 @@
 
 ### 설정 파일
 
+- 2026-10-26 [버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다](#2026-10-26--버전-칸--같은-버전이면-나중에-들어온-것이-이긴다--같은-내용의-맵을-다시-읽으면-아무것도-안-쓴다) — 적을 것 없음 · 보는 곳 파일 결과 칸 · [VersionGate] 줄
+- 2026-10-26 [켜져 있던 외부 저장소도 와처가 처음 본 때부터 자른다 — 재기동 · 끄고 켜기 없이, 시각과 파일마다 로그](#2026-10-26--켜져-있던-외부-저장소도-와처가-처음-본-때부터-자른다--재기동--끄고-켜기-없이-시각과-파일마다-로그) — 적을 것 없음 · 보는 곳 watcher.log «[switch-on] …»
+- 2026-10-26 [외부 저장소를 켜면 그 뒤에 온 파일만 저절로 읽는다 — 그 전 파일은 손으로](#2026-10-26--외부-저장소를-켜면-그-뒤에-온-파일만-저절로-읽는다--그-전-파일은-손으로) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목 `enabled` false → true · 보는 곳 watcher.log «External source switched on» · 훑기 줄 «before switch-on N»
+  - ⚠️ 부분 은퇴: «그 첫 기동에 이미 켜져 있는 소스는 «자르지 않음»으로 남아 지금처럼 읽습니다» — 이미 켜져 있던 소스도 처음 본 때로 — 2026-10-26 [켜져 있던 외부 저장소도 와처가 처음 본 때부터 자른다 — 재기동 · 끄고 켜기 없이, 시각과 파일마다 로그](#2026-10-26--켜져-있던-외부-저장소도-와처가-처음-본-때부터-자른다--재기동--끄고-켜기-없이-시각과-파일마다-로그)
+- 2026-10-24 [이미지 칸에 온전한 경로(C:\… · \\server\…)를 적어도 읽힌다 — 그 경로를 품은 folder 소스로](#2026-10-24--이미지-칸에-온전한-경로c--server를-적어도-읽힌다--그-경로를-품은-folder-소스로) — 적는 곳 server/config/image_sources.json 의 folder 소스 root · 보는 곳 리포트 그림 · 그리드 이미지 칸
+- 2026-10-24 [다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것](#2026-10-24--다시-읽기가-파일마다-실패하면-그-표-저장소만-멈춘다--잘못된-파서로-오류만-내며-돌던-것) — 적는 곳 ingestion_settings.json reread_stop_after_failures · 보는 곳 파일 화면 진행 줄 · watcher.log
+- 2026-10-24 [표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다](#2026-10-24--표-저장이-그-자리에서-서버에-읽힌다--바로-뒤-규칙-저장이-새-칸을-안다) — 적을 것 없음 · 보는 곳 저장 응답 시간
+- 2026-10-24 [표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이](#2026-10-24--표를-더하면-와처가-그-raws-를-바로-만들고-본다--reload-없이) — 적을 것 없음 · 보는 곳 watcher.log
 - 2026-10-23 [외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것](#2026-10-23--외부-저장소-방아쇠-파일은-그-폴더가-조용해진-뒤-읽는다--이미지-목록이-반쪽으로-들어가던-것) — 외부 저장소 항목에 stability_interval_seconds
 - 2026-10-21 [맵 교체 + 버전 컬럼 — 맵 하나를 한 버전으로, 옛 파일은 맵째 거절](#2026-10-21--맵-교체--버전-컬럼--맵-하나를-한-버전으로-옛-파일은-맵째-거절) — 적는 곳 table_config 의 version_column + allow_replace_map
+  - ⚠️ 부분 은퇴: «클 때만» 교체 · version_same 거절 — 같은 버전은 받는다 — 2026-10-26 [버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다](#2026-10-26--버전-칸--같은-버전이면-나중에-들어온-것이-이긴다--같은-내용의-맵을-다시-읽으면-아무것도-안-쓴다)
 - 2026-10-21 [외장 훑기가 패턴대로 걷고 쪽마다 바로 넘긴다 — 맞을 수 없는 폴더는 안 들어가고, 이름이 안 맞으면 실제 경로를 묻지 않는다](#2026-10-21--외장-훑기가-패턴대로-걷고-쪽마다-바로-넘긴다--맞을-수-없는-폴더는-안-들어가고-이름이-안-맞으면-실제-경로를-묻지-않는다) — 적을 것 없음 · 보는 곳 watcher.log
 - 2026-10-21 [와처가 가볍게 선다 · 외장 소스에 max_depth · 훑기마다 소스별로 «왜 안 넘겼나»](#2026-10-21--와처가-가볍게-선다--외장-소스에-max_depth--훑기마다-소스별로-왜-안-넘겼나) — 적는 곳 `ingestion_settings.json` 외장 소스 항목 `max_depth` · 보는 곳 watcher.log
 - 2026-10-21 [칸 타입을 바꾼 선언이 재기동 없이 쓰기에 닿는다 — 리로드가 바뀐 칸의 모델 타입도 바꾼다](#2026-10-21--칸-타입을-바꾼-선언이-재기동-없이-쓰기에-닿는다--리로드가-바뀐-칸의-모델-타입도-바꾼다) — 적는 곳 table_config.json 의 column_types
 - 2026-10-21 [파일은 한 번 읽는다 — (경로, 표) 체크리스트, 표 스크립트가 바뀌면 그 표만 다시](#2026-10-21--파일은-한-번-읽는다--경로-표-체크리스트-표-스크립트가-바뀌면-그-표만-다시) — 보는 곳 와처 로그 · 적을 것 없음(`dedup_by_signature` · `dedup_by_path_stat` 은퇴)
+- 2026-10-24 [꺼진 외부 소스의 파일도 손으로 읽는다 — Read now · Retry 는 그 선언대로](#2026-10-24--꺼진-외부-소스의-파일도-손으로-읽는다--read-now--retry-는-그-선언대로) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목 `enabled: false`
+  - ⚠️ 부분 은퇴: «다시 켜면 꺼진 동안 온 파일을 훑어 읽습니다» — 켠 시각 뒤에 수정된 파일만 — 2026-10-26 [외부 저장소를 켜면 그 뒤에 온 파일만 저절로 읽는다 — 그 전 파일은 손으로](#2026-10-26--외부-저장소를-켜면-그-뒤에-온-파일만-저절로-읽는다--그-전-파일은-손으로)
 - 2026-10-21 [외부 소스 하나를 끄거나 바꾸면 재기동 없이 그 소스에만 먹는다 — enabled · filename/glob · path](#2026-10-21--외부-소스-하나를-끄거나-바꾸면-재기동-없이-그-소스에만-먹는다--enabled--filenameglob--path) — 적는 곳 config/ingestion_settings.json 의 external_sources 항목
 - 2026-10-20 [선언 폼의 추천 목록이 선언에서 나오고 표 설정에도 스켈레톤이 생김 (서버 몫)](#2026-10-20--선언-폼의-추천-목록이-선언에서-나오고-표-설정에도-스켈레톤이-생김-서버-몫) — 적는 곳 선언 폼(클라 착지 뒤) · `table_config.json`
 - 2026-10-20 [체인 규칙의 key.columns · group_by 를 목록으로 — 폼이 줄로 그리고 글자 key.columns 는 거절](#2026-10-20--체인-규칙의-keycolumns--group_by-를-목록으로--폼이-줄로-그리고-글자-keycolumns-는-거절) — 적는 곳 체인 규칙 선언 창 · `chain_rules.json`
@@ -338,7 +398,10 @@
   - 2026-10-23 [와처 시작이 지금 선언이 안 받는 체크리스트 행을 상태와 상관없이 지운다 — 소스 없는 옛 행은 놓인 자리로 판정, 꺼진 · 거절된 소스 행은 남김](#2026-10-23--와처-시작이-지금-선언이-안-받는-체크리스트-행을-상태와-상관없이-지운다--소스-없는-옛-행은-놓인-자리로-판정-꺼진--거절된-소스-행은-남김) — 보는 곳 watcher.log «[Watcher] checklist cleanup done in N s»
     - 2026-10-23 [고침 — 파일이 소스 밑인지 가르는 판정이 빨라짐, 공유 최상위를 루트로 둔 소스가 그 밑을 받음](#2026-10-23--고침--파일이-소스-밑인지-가르는-판정이-빨라짐-공유-최상위를-루트로-둔-소스가-그-밑을-받음) — 적을 것 없음
   - 2026-10-23 [표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만 넘기고, 반영은 Read all again](#2026-10-23--표-선언만-바뀌면-이미-읽은-파일은-다시-읽지-않는다--실패-파일만-넘기고-반영은-read-all-again) — 보는 곳 watcher.log «kept as read» · 누르는 곳 파일 화면 Read all again
+  - ⚠️ 은퇴: 읽는 법이 바뀌면 실패 파일을 스스로 다시 넘기기 — 2026-10-24 [실패 파일은 저절로 다시 읽지 않는다 — Retry · Read now · Read all again 으로만, 지워진 파일은 안 읽음](#2026-10-24--실패-파일은-저절로-다시-읽지-않는다--retry--read-now--read-all-again-으로만-지워진-파일은-안-읽음)
 - 2026-10-20 [파일 인제션도 맵 단위 통째 교체 — 표 설정 allow_replace_map](#2026-10-20--파일-인제션도-맵-단위-통째-교체--표-설정-allow_replace_map) — 적는 곳 `table_config.json`
+  - ⚠️ 부분 은퇴: 다시 온 행은 그대로(차집합) · 맵 키가 빈 행이면 파일 FAILED — 2026-10-24 [파일의 맵 교체는 맵을 통째로 지우고 쓴다 — 체인 층 · 사람 값도 같이, 맵 키가 빈 행은 건너뜀](#2026-10-24--파일의-맵-교체는-맵을-통째로-지우고-쓴다--체인-층--사람-값도-같이-맵-키가-빈-행은-건너뜀) — 보는 곳 와처 줄 «purge/file_replace N» · «N row(s) with a blank map key … skipped»
+  - 2026-10-24 [파일 줄이 맵 통째 교체를 «했나 · 어떻게» 말한다 — replace off · replace on by · rows in scope 0](#2026-10-24--파일-줄이-맵-통째-교체를-했나--어떻게-말한다--replace-off--replace-on-by--rows-in-scope-0) — 보는 곳 와처 줄 «[Ingest] <표> FILE <파일>: …» 끝 (터미널 · watcher.log)
 - 2026-10-20 [외부 저장소도 표준 파서 — raws/ 와 같은 규칙](#2026-10-20--외부-저장소도-표준-파서--raws-와-같은-규칙) — 적는 곳 `ingestion_settings.json` 의 `external_sources` · `table_config.json` 의 `std_parse`
 - 2026-10-13 [큰 표 검색 — 표 선언의 «검색 색인», 그리드 읽기는 10 초에 끊고 다음 할 일을 말한다](#2026-10-13--큰-표-검색--표-선언의-검색-색인-그리드-읽기는-10-초에-끊고-다음-할-일을-말한다) — 적는 곳 `table_config.json` · `ingestion_settings.json`
   - 2026-10-13 [고침 — 칸 필터로 끊겨도 색인할 칸을 대고, «색인 있음»은 DB 가 지은 것만 말한다](#2026-10-13--고침--칸-필터로-끊겨도-색인할-칸을-대고-색인-있음은-db-가-지은-것만-말한다) — 적는 곳 `table_config.json`
@@ -368,10 +431,25 @@
 
 ### 어드민 화면
 
+- 2026-10-26 [Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다](#2026-10-26--read-now-는-따옴표-붙은-경로도-읽고-폴더--패턴--없는-파일을-각각-그것이라-말한다) — 적을 것 없음 · 누르는 곳 파일 화면 Read now
+- 2026-10-26 [Read these 넘김 번호는 최근 20 개만 서버가 쥔다 — 큰 glob 을 여러 번 눌러도 메모리가 안 쌓임](#2026-10-26--read-these-넘김-번호는-최근-20-개만-서버가-쥔다--큰-glob-을-여러-번-눌러도-메모리가-안-쌓임) — 적을 것 없음 · 보는 곳 파일 화면 Read these 진행
+- 2026-10-26 [Read these 는 즉시 답하고 뒤에서 넘긴다 — 넘김 번호로 진행을 세고, 파일 화면에 선언된 저장소가 전부(꺼진 것도) 줄로](#2026-10-26--read-these-는-즉시-답하고-뒤에서-넘긴다--넘김-번호로-진행을-세고-파일-화면에-선언된-저장소가-전부꺼진-것도-줄로) — 적을 것 없음 · 누르는 곳 파일 화면 Pick files · Read these · 보는 곳 API 로그 «[Reread] glob … handed to the watcher»
+- 2026-10-26 [실패 파일은 정말로 저절로 다시 안 읽힌다 — 읽는 법이 바뀌어도 · 기동해도. 꺼진 저장소도 glob 으로 골라 읽고, Read these 는 맞는 파일 전부](#2026-10-26--실패-파일은-정말로-저절로-다시-안-읽힌다--읽는-법이-바뀌어도--기동해도-꺼진-저장소도-glob-으로-골라-읽고-read-these-는-맞는-파일-전부) — 적을 것 없음 · 보는 곳 watcher.log «its reading changed» · «read files stamped» 줄, 파일 화면 Retry
+  - ⚠️ 부분 은퇴: Read these 의 답 «N of M file(s) handed to the watcher» — 답은 즉시 넘김 번호, 수는 read-now/left — 2026-10-26 [Read these 는 즉시 답하고 뒤에서 넘긴다 — 넘김 번호로 진행을 세고, 파일 화면에 선언된 저장소가 전부(꺼진 것도) 줄로](#2026-10-26--read-these-는-즉시-답하고-뒤에서-넘긴다--넘김-번호로-진행을-세고-파일-화면에-선언된-저장소가-전부꺼진-것도-줄로)
+- 2026-10-26 [저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에](#2026-10-26--저장소-안-파일을-glob-으로-골라-읽는다--읽었든-안-읽었든-목록-고른-것만-와처에) — 적을 것 없음 · 누르는 곳 파일 화면의 저장소 glob (클라 착지 뒤) · 보는 곳 서버 로그 «[Reread] glob»
+  - 2026-10-26 [파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files, 읽기 전 상태와 넘긴 뒤 결과](#2026-10-26--파일-화면에서-패턴으로-파일을-골라-읽는다--pick-files-읽기-전-상태와-넘긴-뒤-결과) — 누르는 곳 File Ingestion 탭 READ PROGRESS 저장소 줄의 «Pick files»
+- 2026-10-26 [파일 화면 지난 훑기 줄이 켜기 전 파일 수를 따로 말한다 — N before switch on](#2026-10-26--파일-화면-지난-훑기-줄이-켜기-전-파일-수를-따로-말한다--n-before-switch-on) — 적을 것 없음 · 보는 곳 File Ingestion 탭 READ PROGRESS 의 Last sweep
+- 2026-10-24 [선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 — keys · images.match 등](#2026-10-24--선언-폼에서-이름으로-새-칸을-여는-입력도-enter-로-들어간다--keys--imagesmatch-등) — 누르는 곳 어드민 선언 폼 · 온톨로지 탐색기 폼
+- 2026-10-24 [선언 폼에서 칸을 비우면 그 칸은 저장에서 빠진다 — 그 칸으로 비게 된 선택 블록도 같이](#2026-10-24--선언-폼에서-칸을-비우면-그-칸은-저장에서-빠진다--그-칸으로-비게-된-선택-블록도-같이) — 누르는 곳 어드민 선언 폼(Chain · Tables · Ledger)
+- 2026-10-24 [파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»](#2026-10-24--파일-기록이-바뀐-칸-이름을-말한다--changed-밑에-changed-in-칸-n) — 적을 것 없음 · 보는 곳 파일 화면 Result
+- 2026-10-23 [파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수, 지난 훑기, 기다리는 다시 읽기 취소](#2026-10-23--파일-화면-맨-위에-읽기-진행--표--저장소마다-읽음--전체--남은-수-지난-훑기-기다리는-다시-읽기-취소) — 누르는 곳 어드민 File Ingestion 탭 맨 위 READ PROGRESS · «Cancel waiting re-reads»
 - 2026-10-23 [체크리스트가 파일당 한 행 — 파일 화면은 파일당 한 줄, 외부 훑기가 이름 먼저 거르고 바뀐 폴더만 볼 수 있다](#2026-10-23--체크리스트가-파일당-한-행--파일-화면은-파일당-한-줄-외부-훑기가-이름-먼저-거르고-바뀐-폴더만-볼-수-있다) — 적는 곳 ingestion_settings.json 의 sweep_interval_seconds · external_full_walk_every · 보는 곳 파일 화면 · 와처 시작 줄
 - 2026-10-23 [와처가 파일을 읽을 때마다 «왜»를 말한다 — new · changed · unstamped · retry · read again, 파일 화면에 저장소마다 지난 훑기](#2026-10-23--와처가-파일을-읽을-때마다-왜를-말한다--new--changed--unstamped--retry--read-again-파일-화면에-저장소마다-지난-훑기) — 보는 곳 와처 줄 «File to read (<낱말>)» · 훑기 줄 · GET /admin/file-ingestion/tables 의 sweep
 - 2026-10-23 [파일 화면의 표마다 외부 저장소별 «읽음 K / 전체 N · 남은 M» — 체크리스트로 센다](#2026-10-23--파일-화면의-표마다-외부-저장소별-읽음-k--전체-n--남은-m--체크리스트로-센다) — 보는 곳 파일 화면 · GET /admin/file-ingestion/tables 의 sources · progress
+- 2026-10-23 [끊긴 체인 소급을 화면에서 이어 한다 — 대기열 줄의 Resume, 미리 세기의 «Resumes from page N»](#2026-10-23--끊긴-체인-소급을-화면에서-이어-한다--대기열-줄의-resume-미리-세기의-resumes-from-page-n) — 누르는 곳 어드민 Chain 대기열의 끊긴 줄 «Resume» · Retroactive 탭 chain_replay 의 Count
+- 2026-10-23 [선언 폼 — HTML 칸에 «Paste HTML», 목록 줄의 열 칸은 그 줄의 표에서 고른다](#2026-10-23--선언-폼--html-칸에-paste-html-목록-줄의-열-칸은-그-줄의-표에서-고른다) — 누르는 곳 어드민 Chain 탭 · 온톨로지 탐색기의 선언 폼
 - 2026-10-21 [파일 결과 칸이 버전 거절을 말한다 — «1 map refused: version_older»](#2026-10-21--파일-결과-칸이-버전-거절을-말한다--1-map-refused-version_older) — 보는 곳 파일 화면 결과 칸 · watcher.log FILE 줄
+  - ⚠️ 부분 은퇴: «2 rows refused: version_same» · «version_same_content_differs» — 같은 버전은 받는다 — 2026-10-26 [버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다](#2026-10-26--버전-칸--같은-버전이면-나중에-들어온-것이-이긴다--같은-내용의-맵을-다시-읽으면-아무것도-안-쓴다)
 - 2026-10-21 [Read all again — 표 · 폴더의 파일을 통째로 다시 읽힌다, 상한은 거절이 아니라 속도](#2026-10-21--read-all-again--표--폴더의-파일을-통째로-다시-읽힌다-상한은-거절이-아니라-속도) — 누르는 곳 파일 화면 폴더 줄 · Files 머리의 «Read all again»
 - 2026-10-21 [Read now — 경로 하나를 와처가 본 것처럼 지금 읽힌다, 왜 안 집었는지와 함께](#2026-10-21--read-now--경로-하나를-와처가-본-것처럼-지금-읽힌다-왜-안-집었는지와-함께) — 누르는 곳 파일 화면 «Read a file now» · 명령 `replay_ingestion.py --now`
 - 2026-10-21 [체인 실패 사유가 화면에 문장째 — 실패 목록 줄 · 대기열 상태 칸](#2026-10-21--체인-실패-사유가-화면에-문장째--실패-목록-줄--대기열-상태-칸) — 누르는 곳 어드민 Chain 탭의 Chain failures · Chain queue
@@ -417,6 +495,7 @@
 
 - 2026-10-23 [피벗 보기에서 줄 더하기 · 줄 지우기 · 맨 아래 붙여넣기 — Pivot 을 끄지 않는다](#2026-10-23--피벗-보기에서-줄-더하기--줄-지우기--맨-아래-붙여넣기--pivot-을-끄지-않는다) — 누르는 곳 그리드 Pivot 켬 → Add Row · Delete · 붙여넣기
 - 2026-10-23 [고침 — 피벗 보기에서 Tx 를 켠 채 Apply 하면 고친 값이 써진다](#2026-10-23--고침--피벗-보기에서-tx-를-켠-채-apply-하면-고친-값이-써진다) — 누르는 곳 피벗 보기의 Apply
+- 2026-10-23 [고침 — 메인 그리드의 실패 · 거절 문장이 잘리지 않고 다 보인다](#2026-10-23--고침--메인-그리드의-실패--거절-문장이-잘리지-않고-다-보인다)
 - 2026-10-22 [메인 그리드 피벗(화면) — 바닥줄 «Pivot» 하나, 키 묶음마다 한 줄 · item 마다 한 칸, 그리드처럼 고침](#2026-10-22--메인-그리드-피벗화면--바닥줄-pivot-하나-키-묶음마다-한-줄--item-마다-한-칸-그리드처럼-고침) — 누르는 곳 메인 그리드 바닥줄 «Pivot»(pivot 을 선언한 표에만)
 - 2026-10-22 [메인 그리드의 체크 칸 — 행 체크와 전체 선택이 늘 왼쪽 끝에, 첫 칸을 숨겨도](#2026-10-22--메인-그리드의-체크-칸--행-체크와-전체-선택이-늘-왼쪽-끝에-첫-칸을-숨겨도) — 누르는 곳 메인 그리드 왼쪽 끝 체크 칸 · Menu 의 «👁️ Toggle Columns»
 - 2026-10-22 [메인 그리드 피벗(서버) — 긴 표를 키 묶음마다 한 줄, item 마다 한 칸으로 읽는다](#2026-10-22--메인-그리드-피벗서버--긴-표를-키-묶음마다-한-줄-item-마다-한-칸으로-읽는다) — 적는 곳 table_config.json 의 pivot · ingestion_settings.json 의 pivot_max_columns · 누르는 곳 (클라 착지 뒤) 그리드 Pivot
@@ -488,6 +567,9 @@
 
 ### 그 밖 (위 주제에 안 드는 것)
 
+- 2026-10-24 [키 조각 하나가 빈 행은 같은 키로 접힌다 — (a, 빈값) 두 행이 한 행](#2026-10-24--키-조각-하나가-빈-행은-같은-키로-접힌다--a-빈값-두-행이-한-행) — 돌릴 것 rebuild_blank_business_keys.py · 보는 곳 파일 기록의 refused 줄
+- 2026-10-24 [쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것](#2026-10-24--쓰기가-쓰는-칸의-층만-읽는다--행의-모든-칸-층을-잠그고-읽던-것) — 적는 곳 없음 · 보는 곳 chain_worker.log · watcher.log 의 INSIDE THE WRITE prefetch
+- 2026-10-24 [다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스](#2026-10-24--다시-읽기-멈춤의-남은-파일-있나가-체크리스트를-다-훑지-않는다--부분-인덱스) — 보는 곳 auto_update.log «[Indexes]» 줄 · GET /admin/indexes
 - 2026-10-23 [표에 없는 칸 · 숫자 칸에 숫자 아닌 값으로 거르면 이름 대고 거절 — 표 전체가 오던 것](#2026-10-23--표에-없는-칸--숫자-칸에-숫자-아닌-값으로-거르면-이름-대고-거절--표-전체가-오던-것) — 보는 곳 거절 문장(응답 detail) · 적을 것 없음
 - 2026-10-22 [최근 이력을 다시 짓는 동안 워커 통지가 기다리지 않는다 — «notifications not delivered» 와 화면이 안 바뀌던 몇 초](#2026-10-22--최근-이력을-다시-짓는-동안-워커-통지가-기다리지-않는다--notifications-not-delivered-와-화면이-안-바뀌던-몇-초) — 보는 곳 chain_worker.log · watcher.log «notifications not delivered» · 적을 것 없음
   - 2026-10-22 [고침 — 최근 이력은 새 행을 이어 붙이고 처음부터 다시 짓지 않는다, 최근 이력 화면이 1 초 안](#2026-10-22--고침--최근-이력은-새-행을-이어-붙이고-처음부터-다시-짓지-않는다-최근-이력-화면이-1-초-안) — 보는 곳 최근 이력 화면 · 적을 것 없음(`recent_refresh_max_delta_rows` 은퇴)
@@ -540,6 +622,646 @@
 
 
 
+
+## 2026-10-27 · AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정
+
+- 무엇: 10-27 묶음 B-2(소유자 10-26 «걷기 해서 모델링 상 닿는 퀀티티의 각 wf 자재들 매칭해서 표에 추가»). 10-26 지시서의 fallback.step(고정 ref 스텝)은 은퇴 — 대신 «그 구조에 작용하는 공정 중 계측 스텝 바로 앞».
+  - 걷기 둘: ① 원인 걷기의 후보에서 values.follow 와 order 의 술어로 — 구조 · 그것을 describes 하는 quantity · quantity 의 계측 스텝 · 그 구조에 acts_on 하는 스텝 ② 리포트 웨이퍼와 비교 웨이퍼 «전부»를 씨앗으로 value 의 술어와 event 의 술어(트랜잭션 수식어로 묶음, 10-27 걷기 follow «술어:수식어»)로 3 홉, 쪽을 이어 끝까지.
+  - 칸: 웨이퍼 자기 값 «12.3». 없으면 계측 스텝 바로 앞(order 의 키 순) 작용 스텝에서 그 웨이퍼와 같은 트랜잭션 웨이퍼들의 값 — 하나면 그 값, 여럿이면 평균 «12.1 (est · <스텝> · 3 wf)». 그래도 없으면 빈 칸.
+  - 리포트 웨이퍼가 재지도 지나지도 않은 quantity 는 다른 제품의 것 — 행 없음. 지났는데 값이 어디에도 없으면 행은 서고(빈 칸) «채워야 함»(labels.to_fill).
+  - 값은 웨이퍼의 조건 칸(이름 = quantity label)으로 들어가 조건 행 길을 그대로 지난다 — 글에 쓴 조건(also)처럼 most 에 안 잘리고, 어디서나 같은 값이면 빠진다.
+- 선언: `"causes": {"seed_type": "defect_kind", "values": {"follow": ["of_kind", "describes", "acts_on"], "value": "measures:value", "event": "processed_at:tx_id", "order": ["measured_at", "step_seq"]}}`. 이름은 전부 원장 선언에서 — 원장이 모르는 술어 · 수식어 · 키는 저장 때 거절(«… - not a predicate the ledger declares» · «… is not a qualifier of …» · «… is not a key of …»). value 의 술어 주어가 웨이퍼 노드(키 수 = 리포트 웨이퍼 키 수).
+- 보는 곳: Evidence «quantity values» 걸음 — 머리줄 «N quantit(ies) with values on these wafers, M to fill - K model node(s), P wafer walk page(s)», quantity 마다 «<label>: WAFER W1 12.3 · WAFER W2 12.1 (est, 3 wf) · WAFER W3 -». 후보 조건 걸음 · 글쓰기 호출이 이 읽기를 받는다. 터미널 `[report] causes values: …` · `[report] quantity values to fill: …`.
+- 자세히: `server/chain/report_reads.py` 의 `Report.values`, `server/chain/report_loop.py` 의 `_values` · `_redraw_yield_by`, `server/chain/report_shape.py` 의 `VALUES_CELLS` · `_values_refusal`, `server/ledger/trace_router.py` 의 `_predicate_ends`. 가이드 `docs/guide/ai_report_tables.md`.
+
+## 2026-10-27 · 새 술어가 걷기 라우트를 세우지 않는다 — 이름 없는 결측은 날 낱말로, 결측 이름 표는 config 로
+
+- **무엇** — 원장 선언에 술어를 더하면, 결측 이름 표가 그 술어를 모를 때 걷기 라우트가 503(gap_table_mismatch)으로 섰습니다. 이제 표가 이름을 안 준 물음은 «<술어> · <타입> (no name)» 으로 그대로 묻고, 그 수를 답의 `unnamed` 칸에 둡니다(소유자 10-27 «안 막고 날 낱말로»). 이름을 지어 넣지는 않습니다.
+- **적을 곳** — 결측 이름 표가 `server/ledger/gap_names.json` 에서 `config/sample/gap_names.json.sample` 로 옮겨졌습니다. 운영자가 `config/gap_names.json` 을 두면 그것을 읽고, 없으면 sample 을 읽습니다. 지금 설치는 파일이 없으니 전과 같은 표를 읽습니다.
+- **바뀐 동작** — 이름 없는 물음은 거절 대신 날 낱말로 나옵니다. 반대로 표의 줄이 그 세계 선언에 없는 술어를 물으면 그 줄은 안 쓰고 답의 `unused` 칸에 셉니다(소유자 10-27 «안 막음» — 세계마다 어휘가 다름). 결측 라우트는 더 이상 503(gap_table_mismatch)을 내지 않습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `ledger/gaps.py` 의 `names_path` · `_unnamed`, `ledger/trace_router.py` 의 결측 라우트.
+
+## 2026-10-27 · 걷기 follow «술어:이름» — 이름이 씨앗 키가 아니면 올라온 엣지의 수식어로 묶어, 같은 트랜잭션 형제만 닿는다
+
+- 무엇: 10-27 묶음 B-1. «웨이퍼 -processed{tx_id}-> 스텝 <-processed- 웨이퍼'» 처럼 같은 트랜잭션 웨이퍼를 찾는 길이 없었다 — `follow=processed:tx_id` 는 «씨앗에 tx_id 키가 없다»로 거절, 묶지 않으면 08-29 되돌이 가드가 형제를 막음.
+  - `술어:이름` 의 이름이 씨앗의 키면 지금처럼 목적지 키 제약. 키가 아니면 그 술어의 엣지 수식어: 노드에 그 술어로 «올라온 엣지»의 값을 든 엣지로만 내려가고, 그때만 되돌이 가드를 지난다. 묶지 않은 걸음은 지금처럼 막힌다.
+  - 값은 올라온 그 엣지의 것 — 웨이퍼가 스텝마다 다른 tx 를 가져도 섞이지 않는다. 같은 스텝을 두 번 지난 웨이퍼는 그 두 엣지의 값.
+  - 🔧 같은 날 고침: 공정 스텝 타입이 정적(sample 의 process_step 이 그렇다)이면 정적 허브 규칙(정적 노드에서 웨이퍼로 내려가지 않음)이 묶인 걸음도 막아 형제에 안 닿았다. 묶인 걸음은 그 규칙도 지나고, 그 노드는 묶인 술어를 읽는다. 묶지 않은 걸음은 그대로 막힌다.
+  - 🔧 같은 날 둘째: 묶인 되돌이는 스텝 노드의 그 술어 원자를 «전부» 읽고 거른 뒤 버렸다. 이제 묶인 값이 읽기(SQL 건너뛰기)에 실려 그 값을 든 원자만 가져온다. 박스 판(가정 크기: 스텝 노드마다 웨이퍼 1만 · 스텝 200 · 리포트 웨이퍼 30): 전에는 약 202만 원자를 6,000 씩 쪽마다 19 초(끝까지 약 1.8 시간 — 잰 쪽 속도로 늘린 추정), 이제 3만 원자 · 5 쪽 · 17 초.
+  - 키도 아니고 선언의 그 술어 수식어(object.qualifiers)도 아니면 422 «… nor is it a qualifier of <술어> (declared: … | none declared)».
+- 자세히: `server/ledger_api/ledger_subgraph.py` 의 `_walk`(qualifier_binds · bound_arrivals) · `_qualifier_values`, `server/ledger/trace_router.py` 의 `_predicate_qualifiers`. 가이드 `docs/architecture/WALK.md` §1.
+
+## 2026-10-26 · 파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files, 읽기 전 상태와 넘긴 뒤 결과
+
+- **무엇** — 소유자 10-26. 「저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에」의 화면입니다. READ PROGRESS 의 저장소 줄마다 «Pick files» 가 있고, 누르면 그 줄 바로 밑에 칸이 열립니다(한 번에 하나, 다시 누르면 닫힘).
+- **쓰는 법** — Pattern 에 저장소 루트에서의 경로 glob(`*` · `?` · `**`)을 적고 List(또는 Enter). 한 쪽 100 줄(Prev · Next), 위에 «first 5,000 of 12,431» 처럼 전체 수. 체크한 것만 «Read these (N)» 로 와처에 넘깁니다(머리 체크 = 목록 전부). 아무것도 체크 안 했으면 패턴에 맞는 전부 — 목록의 5,000 밖까지(«Read these (12,431)»). 넘기기 전에 확인 창. 서버는 바로 답하고 뒤에서 넘깁니다(b5ee3f42a). 그동안 Read these 는 꺼지고 줄은 «Handing 3,000 of 6,000 handed · …».
+- **Read before** — 목록을 받은 때의 상태. 읽었으면 «read · <시각>», 아니면 Before switch on · Not read · Failed 같은 서버 상태.
+- **After** — 넘긴 파일만. 화면 박동마다 제자리에서 Pending retry → Success / Failed(실패면 사유 한 줄). 넘기지 않은 줄은 «—». 밑 줄 «Reading 3 handed · 1 left · 2 read · 0 failed», 다 끝나면 «Read». 남은 동안 Read these 는 꺼짐. 끝난 뒤 새로 List 하면 그 줄은 사라집니다. 박동마다 그 넘김 전체의 수와, 보이는 쪽의 넘긴 행(최대 100)의 상태를 묻습니다. 서버가 그 넘김을 모르면(재기동했거나 최근 20 개 밖) «Lost track» 과 서버 문장.
+- **거절** — 빈 패턴 · `..` · 절대 경로는 서버 문장이 칸 밑에. 와처 프로세스가 없으면 409 문장이 토스트로.
+- **꺼진 저장소** — 선언된 저장소는 꺼져 있어도 READ PROGRESS 에 줄이 있고(Last sweep 칸 «off»), Pick files 로 골라 읽을 수 있습니다(서버 b5ee3f42a).
+- **잰 것(이 박스, sqlite, 실제 와처 + API 가 이 빌드를 서빙)** — 낡은 5 · 새 2 에서 `old/*.csv` 의 x1~x3 체크 → Read these → 셋 Success(표에 행 셋). 이미 읽은 `new/n1.csv` 다시 → Success(읽기 기록 둘). 켜기 전 6,000 개 `big/*.csv`: 답 + 100 줄 그리기 334~444 ms(세 번). 박동 · 체크 뒤에도 목록 스크롤과 포커스가 그대로. b5ee3f42a 위에서 체크 없이 `big/*.csv` 6,000: 줄이 Handing 0 → 3,000 of 6,000 → 11 s 에 Reading 6,000 of 6,000, 그동안 Read these 꺼짐. 꺼진 저장소(파일 셋) 줄은 «off», 거기서 `*.csv` → 셋 Success.
+- **필요한 조건** — 서버 b5ee3f42a 이후 · git pull · 화면 새로 고침.
+- **자세히** — `client2/src/file_ingestion/parts.js` 의 `PickFilesPart` · `ProgressPart`, `model.js` 의 `pickQuery` · `pickBody` · `readBefore` · `readAfter`. 시험 file_ingestion_page_harness M13 · M14 · P10~P15, 화면 검사기 «Pick files listed» · «pick files» · 새 규칙 «cover»(버튼 · 상자가 옆 글 위에 놓이면 빨강).
+
+## 2026-10-26 · 파일 화면 지난 훑기 줄이 켜기 전 파일 수를 따로 말한다 — N before switch on
+
+- **무엇** — 총괄 10-26, 서버 12f46f32f 의 sweep.before_switch_on. Last sweep 줄이 «looked 1,200 · sent 3 (new 2) · 1,500 before switch on» 처럼 켜기 전에 수정돼 저절로 안 읽는 파일 수를 따로 말합니다. 0 이면 안 씁니다.
+- **필요한 조건** — git pull · 화면 새로 고침.
+- **자세히** — `client2/src/file_ingestion/model.js` 의 `sweepText`, 시험 file_ingestion_page_harness M12.
+
+## 2026-10-26 · AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다
+
+- 무엇: 소유자 «리포트는 각 부분별 작성 내용 출력 가능? filename 뿐만 아니라 summary 내용 등» — 안 ㄱ(글 칸마다 컬럼).
+  - `results` 에 layout 의 text slot 이름으로 컬럼을 적는다: `{"file": "report_path", "summary": "report_summary", "conclusion": "report_conclusion"}`. file 은 지금처럼 필수, 나머지는 쓰는 것만.
+  - 리포트가 그 웨이퍼 행에 경로와 함께 글을 그대로 쓴다. 리포트가 멈춰 글이 없으면 그 칸을 비운다(거둠), 페이지를 못 쓰면 파일 칸도.
+  - 저장 때 거절: layout 에 없는 이름 «derive.report.results.<이름> is not a text slot of the layout - one of file · …», 표에 없는 컬럼 «derive.report.results '<컬럼>' is not a column of '<표>'».
+  - 폼: results 가 «이름: 컬럼» 칸이 되어 글 칸 이름을 적을 수 있다(chain_skeleton.json 다시 생성).
+  - 덤(같은 문의 빈 칸): 체인의 «빈 값 거두기»가 규칙이 «자기 행에서» 찍은 층(`chain_ingestion (<그 행>)`)을 못 찾아, 리포트가 withdraw 를 내도 아무것도 안 거둬졌다 — 파일 칸도. 이제 찾는다. 조인처럼 다른 행에서 찍은 층은 지금처럼 안 건드린다.
+- 자세히: `server/chain/report_shape.py` 의 `text_slots` · `result_cells` · `result_columns`, `server/chain/report_loop.py` 의 `answer`, `server/chain/cell_layer.py` 의 `cells_written_by`. 가이드 `docs/guide/ai_report_tables.md`.
+
+## 2026-10-26 · 버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다
+
+- 무엇: 소유자 «버전 리플레이 버전이 같아도 들어온 새 걸로 업데이트되게» — 안 ㄱ(모든 읽기). 전: 같은 버전은 거절(version_same).
+  - 같은 버전은 받는다. 더 낮은 버전만 버린다(version_older 그대로). 사람이 고친 칸은 같은 버전에서도 그대로(칸마다 우선순위).
+  - 행 단위: 값이 같은 행은 칸 · 층 · 이력 · 아웃박스에 아무것도 안 남긴다(재서 0).
+  - 맵 교체(파일의 맵 · purge 꼴 · diff 꼴): 같은 버전이면 저장된 맵과 견준다 — 같은 행 · 그 소스가 쓴 값이 다 같으면 «unchanged»(안 씀, 거절 아님), 다르면 «applied»(맵 교체). 전에는 거절이 막아 주던 것: 같은 맵 파일을 다시 읽으면 맵을 통째로 지우고 다시 써 20x20 맵이면 400 행이 새로 생기고 체인이 그 400 행으로 다시 돌았다.
+  - 은퇴: version_same · version_same_content_differs 경고(이제 같은 버전 · 다른 내용은 덮이므로 그 경고는 거짓).
+- 자세히: `server/database/crud.py` 의 `_version_order` · `map_version_verdict` · `_map_unchanged` · `_same_source_content_differs`(맵 판정이 씀). 가이드 `docs/guide/config/table_config.md` §7.4 · §7.7. 시험 `test_the_same_version_is_taken_and_an_unchanged_map_is_left.py`.
+
+## 2026-10-26 · AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다
+
+- 무엇: 소유자 «응답이 json 이 아니어서 멈추는 경우는 어떻게 할지» — 안 ㄱ. 전: 모델 답이 JSON 이 아니면 읽기가 끊기고 글 0, 리포트는 멈춤.
+  - 꺼내기: 답 앞뒤에 설명 글이 붙거나 펜스가 둘이어도 그 안의 첫 «통째 { … }» 객체를 읽는다. 언어 모델을 부르는 모든 자리(리포트 · 도움말 · 사전 제안 · 글 링크 · 에이전트 걷기)가 같이 받는다. 로그 «[LLM] answer had text around its JSON - read the object (N character(s) left)».
+  - 한 번 다시: 그래도 객체가 없으면 같은 프롬프트 끝에 «Your last answer was not one JSON object: <앞 200 자>. Answer one JSON object only.» 를 붙여 한 번 더 묻는다. 연결 실패 등 게이트웨이가 답을 안 준 것은 다시 안 묻는다.
+  - 이어 쓰기: 읽는 중에 그래도 아니면 읽기만 거기서 접고(걸음 상한과 같은 길) 표 · 원인 걷기 · 글쓰기로 간다. 이유 «the model answered no JSON at step N: <앞 200 자>», Evidence 에 그 걸음(answer). 글쓰기에서 그래도 아니면 멈춤, 이유에 앞 200 자.
+- 자세히: `server/utils/llm.py` 의 `_object` · `_first_object` · `LlmNotAnObject`, `server/chain/report_loop.py` 의 `_ask` · `AGAIN_JSON` · `STOP_NO_JSON`. 시험 `test_a_report_goes_on_when_the_model_answers_no_json.py`.
+
+## 2026-10-26 · AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열
+
+- 무엇: 운영 리포트에 «'units' is not a condition - one of …» 거절이 났다. 모델이 yield_by(by="units") 나 where {"units": …} 를 불렀다 — 제품 규칙의 units 낱말과 «by: a condition …» 글이 모델을 그쪽으로 끌었다.
+  - yield_by 설명의 by: «one condition name exactly as conditions() lists it - leave by out for a column a wafer».
+  - wafers 의 where: «a condition name as conditions() lists it».
+  - by 가 조건이 아니면 거절 문장 끝에 «- leave by out for a column a wafer» — 모델이 다음 걸음에 by 를 뺀다. where 거절에는 안 붙는다(뺄 by 가 없다).
+  - 거절은 지금처럼 그 걸음만 막고 리포트는 이어 쓴다. 이건 걸음을 아끼는 일.
+- 자세히: `server/chain/report_loop.py` 의 ABOUT · WAFERS_SAID, `server/chain/report_reads.py` 의 `Report._condition`.
+
+## 2026-10-26 · Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다
+
+- 무엇: 소유자 10-26 «공유폴더 검색 못 하는데 · 그냥 디스크에 없대». Read now 가 파일이 아닌 경로를 전부 «not on the disk» 한 문장으로 거절했다.
+  - 앞뒤 따옴표를 벗기고 읽는다 — 탐색기 «경로로 복사»가 `"\\server\share\a.csv"` 로 붙는다.
+  - 폴더면 «… is a folder - Read now takes one file; list a folder's files with Pick files on its storage line».
+  - `*` · `?` 가 있으면 «… is a glob - use Pick files on its storage line».
+  - 정말 없을 때만 «… is not on the disk this server sees - check the path (a mapped drive letter is per Windows session - try the \\server\share path)» — 서버 프로세스는 사용자가 잡은 드라이브 문자를 못 볼 수 있다.
+- 자세히: `server/ingestion/reread.py` 의 `read_now_owners` · `read_now` (API 와 `scripts/replay_ingestion.py` 둘 다 여기를 지난다). 시험 `test_a_file_is_read_now_as_the_watcher_would_have.py` 의 `test_the_path_is_said_for_what_it_is`.
+
+## 2026-10-26 · AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다
+
+- 무엇: «날짜 없는 웨이퍼는 후보 아님»(소유자 10-24, 84f8b2d02)이 «행»(leg)마다 걸려, 날짜가 있는 웨이퍼의 조건 행 없는 leg 가 혼자 빠졌다 — 후보는 웨이퍼 단위로 legs 를 묶어 통째로 서거나 빠진다(총괄 10-23)는 것과 어긋남.
+  - 이제 행을 후보(웨이퍼) 단위로 묶은 뒤, 날짜가 하나도 없는 후보만 뺀다. 날짜 있는 웨이퍼는 날짜 없는 leg 와 함께 한 후보.
+- 자세히: `server/chain/report_reads.py` 의 `Report._recent`. 시험 `test_every_declared_kind_runs_and_leaves_rows.py` 의 소유자 상자 시료(W3 의 L2).
+
+## 2026-10-26 · AI 리포트 원인 걷기 — 온톨로지에 없는 씨앗은 빼고 나머지로 걷고, 뺀 것은 한 줄씩 말한다
+
+- 무엇: 모델이 고른 씨앗 중 하나라도 seed_type 의 노드가 아니면 걷기 전체가 거절돼 후보가 0 이던 것(소유자 «디펙카인드 없는 거 아예 에러»).
+  - 아는 씨앗으로 걷는다. 뺀 씨앗마다 걷기 읽기에 한 줄 «<씨앗>: no <seed_type> node - add it to the ontology» — 쓰기 호출이 받는 읽기와 Evidence 에. 낱말은 `labels.no_seed` (%s 둘: 씨앗, 타입).
+  - 씨앗이 전부 모를 때만 지금처럼 거절(«… is not a <type> node - one of …»).
+  - 걷기 단계에서 다른 예외가 나도 그 단계만 멈춘다(«the read failed: <종류>: <글>», 트레이스백은 로그). 리포트는 후보 없이 써진다.
+- 자세히: `server/chain/report_reads.py` 의 `Report.causes`, `server/chain/report_loop.py` 의 `_causes`.
+
+## 2026-10-26 · AI 리포트 조건 행 — conditions.most 로 개수를 자르고, 모델이 고른 순서(타이틀과 연관 큰 것부터)로
+
+- 무엇: 소유자 «컨디션 아이템 뽑는 항목 개수 제한 · title 과 연관된 아이템 순» — 안 ㄱ(모델이 매김).
+  - `derive.report.conditions.most` 숫자 한 칸(1 이상). 비우면 제한 없음.
+  - 모델이 yield_by 의 rows 로 고른 조건을 «모델이 낸 순서» 그대로 그리고 앞 most 개. 전: 데이터 순.
+  - 모델이 아무것도 안 고르면 달라지는 조건 행 전부를 데이터 순으로 앞 most 개.
+  - 덧붙임(10-26, 소유자 «컨디션을 충분히 선택하지 않는데» · 안 ㄱ): 모델이 고른 것«만» 그리지 않는다 — 고른 것을 모델 순서로 앞에, 그 뒤로 값이 다른 나머지 조건을 데이터 순으로, 합쳐 most 개까지. most 를 비우면 값이 다른 조건 전부(고른 것 먼저). 모델은 순서, 개수는 선언.
+  - 글에 쓴 조건(also)은 자르지 않는다 — most 넘어서도 선다.
+  - 모델에게 주는 yield_by 설명에 «the ones most related to the wafers' titles first», most 가 있으면 «rows: N at most». Analyst 프롬프트가 이긴다는 머리줄은 그대로.
+  - 덤: causes 거절 문장이 worlds 칸도 말한다.
+- 자세히: `server/chain/report_shape.py` 의 `CONDITION_MOST`, `server/chain/report_reads.py` 의 `_condition_rows`, `server/chain/report_loop.py` 의 `ABOUT` · `ROWS_MOST`.
+
+## 2026-10-26 · Read these 넘김 번호는 최근 20 개만 서버가 쥔다 — 큰 glob 을 여러 번 눌러도 메모리가 안 쌓임
+
+- 무엇: 넘김 번호마다 넘긴 id 전부(10만이면 10만 개)를 API 프로세스가 재기동까지 쥐던 것. 이제 번호는 최근 20 개만 남고, 새로 누를 때 그보다 오래된 끝난 번호를 버린다. 아직 넘기는 중인 번호는 안 버린다.
+- 버린 번호로 진행을 물으면 재기동 때와 같은 404 문장. 넘긴 파일은 넘긴 대로 읽힌다.
+- 자세히: `server/ingestion/reread.py` 의 `KEPT_HANDS` · `hand_glob_later`. 시험 `test_the_newest_twenty_jobs_are_kept`.
+
+## 2026-10-26 · Read these 는 즉시 답하고 뒤에서 넘긴다 — 넘김 번호로 진행을 세고, 파일 화면에 선언된 저장소가 전부(꺼진 것도) 줄로
+
+- 무엇: 10만 개 Read these 가 요청 하나에 168 s 걸리던 것(이 박스, sqlite).
+  - 넘기기는 1,000 개 묶음마다 커밋 한 번(`mark_for_reread` · `stand_rows` 에 `commit=False` — 커밋은 부르는 쪽). 전: 커밋마다 세션의 행이 만료돼 하나씩 다시 읽힘. 이 박스 10만 168 s → 60 s.
+  - 그래도 요청 안에서 하지 않는다: POST read-now (pattern) 는 거절(400 · 404 · 409)만 그 자리에서 하고 넘김 번호(job)로 즉시 답(이 박스 10만 0.01~0.03 s). 걷기와 넘기기는 API 프로세스의 스레드가 한다.
+  - read-now/left 에 job 을 주면 그 넘김의 handed · left · read · failed 를 SQL 로 세고(이 박스 10만 0.3~0.4 s), matched(걷기 전엔 없음) · handing(아직 넘기는 중) · not_handed(멈춘 까닭)도. 파일 칸은 화면이 보이는 행만 paths 나 ids 로 물을 때만. ids 로만 묻는 갈래는 그대로.
+  - 서버가 재기동되면 그 번호는 없다(404 «the server restarted since, or it is older than the newest 20» — 🆕 최근 20 개보다 오래된 번호도 같은 문장, 699c94fd4 뒤). 이미 넘긴 파일은 넘긴 대로 읽힌다.
+  - /admin/file-ingestion/tables 가 선언된 저장소 전부를 줄로 낸다 — 표마다 raws, 외부 소스마다 하나, 꺼진 것도. 줄마다 off. 전: 읽힌 파일이 있거나 와처가 훑은 저장소만 → 꺼지고 읽힌 적 없는 저장소는 화면에서 고를 길이 없었다.
+- 자세히: `server/ingestion/reread.py` 의 `hand_glob_later` · `hand_job` · `hand_files` · `left_of`, `server/main.py` 의 `read_now_left` · `get_file_ingestion_tables`. 게이트 `test_a_storage_glob_lists_and_reads_files_by_hand.py` (실제 와처 + API).
+
+## 2026-10-26 · 실패 파일은 정말로 저절로 다시 안 읽힌다 — 읽는 법이 바뀌어도 · 기동해도. 꺼진 저장소도 glob 으로 골라 읽고, Read these 는 맞는 파일 전부
+
+- 무엇: 10-24 «실패 파일은 Retry 로만» 이 실제 와처에서 새던 두 자리를 막고, 골라 읽기 둘을 넓힘.
+  - 읽는 법(스크립트 · 외장 소스 항목)이 바뀌면 «읽은» 파일만 도장을 비운다. 실패 파일의 도장은 그대로라 훑기가 안 집는다. 전: 실패 행의 도장도 비워 다음 훑기가 저절로 읽음 — 줄은 «not read again» 이라 말하면서. 줄의 수도 이제 읽은 파일만.
+  - 체크리스트 첫 채우기(기동 때 옛 행에 도장)도 실패 행에 도장을 찍고 실패로 둔다. 전: «left for re-read» 로 한 번 다시 읽음. 줄 `[Watcher] read files stamped N · failed files stamped K (read again only by Retry on the file page) · left for re-read C (changed since read)`.
+  - 두 자리는 같은 판단 하나를 지난다: `checkpoint.BY_HAND_ONLY` (FAILED).
+  - 꺼진 외부 저장소(`enabled: false`)도 glob 목록 · Read these 가 된다(전: 400). 꺼짐은 자동 읽기만 멈춘다(10-24).
+  - Read these 를 paths 없이 누르면 목록의 앞 5,000 개가 아니라 패턴에 맞는 «전부»를 넘긴다. 답 «N of M file(s) handed to the watcher».
+  - 넘기는 데 드는 시간(이 박스 · sqlite, 절반은 읽은 파일): 1만 개 22 s · 10만 개 168 s — 그동안 Read these 의 답을 기다림(서버의 다른 요청은 답함).
+- 자세히: `server/ingestion/checkpoint.py` 의 `BY_HAND_ONLY` · `stamp_read_files`, `server/ingestion/reread.py` 의 `uncheck(keep_by_hand=)` · `hand_on_a_changed_reading` · `storage_of` · `glob_matched`. 게이트 `test_a_fixed_plugin_leaves_its_failed_files_to_retry.py` (실제 와처 + API: 고쳐도 FAILED · Retry 하면 SUCCESS · 기동해도 그대로), `test_a_file_read_is_checked_by_its_path_and_table.py`, `test_a_storage_glob_lists_and_reads_files_by_hand.py`.
+
+## 2026-10-26 · 저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에
+
+- 무엇: 표의 저장소(raws 또는 외부 소스 루트) 하나에 glob 을 주면 그 밑 파일 목록과 상태가 나온다. 고른 파일은 Read now 와 같은 문(Retry 줄)으로 와처가 읽는다.
+  - 상태: 체크리스트 행의 상태(SUCCESS · FAILED …) · NOT_READ · BEFORE_SWITCH_ON(켜기 전에 수정돼 저절로 안 읽는 파일, 12f46f32f). 읽은 파일도 나온다 — 다시 읽기도 같은 문.
+  - 줄마다 마지막 읽은 시각(read_at, 안 읽었으면 없음). 넘긴 뒤에는 read-now/left 가 파일마다 상태 · 읽은 시각, 실패면 그 사유 한 줄(파일 화면 reason 과 같은 칸).
+  - glob 문법은 외부 소스의 glob 과 같다: `*` 한 칸 안 · `?` 한 글자 · `**` 여러 폴더. `[0-4]` 같은 괄호는 글자 그대로.
+  - 목록은 앞에서 5,000 개까지(limit), 넘으면 truncated 와 전체 수(matched · 상태별 수).
+  - 거절: 빈 glob · 절대 경로 · `..` 는 400, 그 표에 없는 저장소는 404, 와처 프로세스 없이(DECOUPLED 아님) 읽기는 409.
+  - 속도: 와처의 Retry 줄 그대로(한 바퀴 reread_max_files 개, 기본 25). 남은 수는 `POST /admin/file-ingestion/read-now/left` 에 받은 ids 로.
+- 잰 것(이 박스, sqlite, 폴더 100 × 파일 1,000 = 10만, 절반 SUCCESS 행): `**/*.csv` 10만 매칭 7.3 s · `**/LOT050_*.csv` 10만 걷고 1,000 매칭 0.4 s · `d050/*.csv` 0.1 s. 10만 매칭에서 시간 대부분은 상태 찾기(체크리스트 5만 행 읽기).
+- 자세히: `server/ingestion/reread.py` 의 `list_glob` · `hand_files` · `glob_refusal` · `storage_of` · `left_of`, `server/main.py` 의 `GET /admin/file-ingestion/glob` · `POST /admin/file-ingestion/read-now?table=&source=&pattern=`. 게이트 `server/tests/test_a_storage_glob_lists_and_reads_files_by_hand.py` (실제 와처 + API 프로세스).
+
+## 2026-10-26 · 켜져 있던 외부 저장소도 와처가 처음 본 때부터 자른다 — 재기동 · 끄고 켜기 없이, 시각과 파일마다 로그
+
+- **무엇** — 소유자 10-26 «여전히 옛날 거 읽어 · 저장소 활성화 시간, 인식한 파일 수정 시간 다 로그 띄워 · 기존 저장소고 뭐고 즉시 적용되게 했어야지». 켜져 있는 외부 저장소는 모두 와처가 처음 본 때(기동 · 설정 저장)를 켠 시각으로 찍습니다 — 이미 켜져 있던 것, `config/watcher_switched_on.json` 에 «자르지 않음»(null)으로 적혀 있던 것도.
+- **전엔** — 바로 아래 항목(같은 날)대로 그 파일이 처음 생길 때 이미 켜져 있던 저장소는 «자르지 않음»으로 남아 옛 파일까지 저절로 읽었습니다.
+- **보는 곳** — watcher.log: 기동 · 설정 저장마다 저장소마다 `[switch-on] <경로> -> <표>: cut <시각>` · 끄면 `External source switched off: <경로> -> <표> - its next switch-on sets a new cut` · 저절로 읽는 파일마다 `[switch-on] <파일>: modified <시각> - source cut <시각> -> read by itself` · 손으로 남긴 것은 저장소마다 수와 앞 셋 `[switch-on] <저장소>: N file(s) modified before its cut <시각> held for a hand - e.g. …`.
+- **필요한 조건** — git pull · 런처 재기동(이 코드를 싣는 한 번). 그 뒤로는 재기동 · 끄고 켜기 없이 먹습니다.
+- **자세히** — 찍는 자리 `stamp_switched_on`(시각이 없거나 null 이면 지금), 파일 줄은 `IngestionHandler._before_switch_on` (체크리스트를 묻는 한 곳 `already_checked` 가 부름). 커밋 `23fd41a2c`.
+
+## 2026-10-26 · 외부 저장소를 켜면 그 뒤에 온 파일만 저절로 읽는다 — 그 전 파일은 손으로
+
+- **무엇** — 소유자 10-26 «외부 저장소 활성화하였을 때 그 시점 이후로 새로 들어오는 거만 자동으로 받고 기존 거는 수동 소급 눌러야 되게». 외부 소스를 켜면(`enabled` false → true, 또는 새로 적음) 와처가 그 시각을 남기고, 감시 사건 · 훑기 · 기동 훑기는 수정 시각이 그 뒤인 파일만 읽습니다. 그 전 파일은 파일 화면의 Read now · Retry · Read all again 으로만 읽습니다.
+- **전엔** — 켜는 순간 그 폴더의 옛 파일을 전부 훑어 읽었습니다.
+- **해 보기** — ingestion_settings.json 에서 꺼 둔 소스를 `"enabled": true` 로 저장 → watcher.log 에 `External source switched on: <경로> -> <표> - files modified from <시각> on are read; older ones by hand only (Read now · Read all again)` → 훑기 줄 `External source <표>@<경로>: … already read N · before switch-on M · dispatched K`. M 이 손으로 읽을 옛 파일 수입니다.
+- **필요한 조건** — git pull · 런처 재기동(이 코드를 싣는 한 번). ~~그 첫 기동에 이미 켜져 있는 소스는 «자르지 않음»으로 남아 지금처럼 읽습니다~~ — 🆕 `23fd41a2c` 부터 이미 켜져 있던 소스도 와처가 처음 본 때로 찍습니다(재기동 · 끄고 켜기 없이). 기동 · 설정 저장마다 watcher.log 에 소스마다 `[switch-on] <경로> -> <표>: cut <시각>`. 재기동은 시각을 다시 찍지 않고, 끄면 시각을 버려 다시 켤 때 새로 찍습니다.
+- **바뀐 동작** — 시각은 파일의 «수정 시각»입니다. 수정 시각을 그대로 두는 복사로 켠 뒤에 들어온 파일은 «그 전»으로 보고 안 읽습니다. 표 읽기가 바뀌어 체크가 풀린 옛 파일도 저절로는 다시 안 읽습니다.
+- **자세히** — 시각은 `config/watcher_switched_on.json`(소스 id → 시각, ~~null = 자르지 않음~~(🆕 `23fd41a2c` 부터 적힌 null 도 처음 본 때로 찍힘), 읽기 도장 파일 옆). 자르는 자리는 자동 문이 모두 묻는 체크리스트 한 곳 `IngestionHandler.already_checked` 이고, 손 문(재시도 문 `retry_one`)은 거길 지나지 않습니다. 시각을 찍는 자리는 소스 등록 `_register_external_sources` → `stamp_switched_on`. 파일 화면 API 의 소스 훑기 칸에 `before_switch_on` 이 실립니다(화면이 그리는 것은 클라 착지 뒤).
+
+## 2026-10-26 · AI 리포트 원인 걷기가 읽는 원장 세상을 여럿 적는다 — causes.worlds
+
+- **무엇** — 소유자 10-26 «보고서 생성 시 걷기 세계 여러 개 지정되게». 원인 걷기(`derive.report.causes`)에 칸 `worlds` — 걷기가 읽는 원장 세상을 여럿 한 번에. 씨앗 노드 목록 · 걷기 · `follow` 를 안 적었을 때의 정적 술어 셋 다 그 세상들에서 읽는다.
+- **선언** — `"causes": {"seed_type": "defect_kind", "worlds": ["<세상>", "<세상>"]}`. 안 적으면 운영 세상(전과 같음). 이름 목록이 아니면 저장 · 로드가 «derive.report.causes is {...}» 로 거절.
+- **필요한 조건** — git pull · 체인 워커 재기동.
+- **자세히** — `report_shape.CAUSES_CELLS` · `report_reads.Report.seed_nodes` · `causes` 가 걷기 라우트 함수에 `world` 로 넘김, 빈 follow 는 `trace_router._static_step_predicates(worlds)`. 커밋 `885144cdd`.
+
+## 2026-10-25 · AI 리포트 원인 후보와 조건 — 맺어진 조건은 표 줄로, 값이 없으면 채울 것이라고
+
+- **무엇** — 정적 걷기가 후보 인자를 내면, 모델이 후보와 이 리포트의 조건 이름을 보고 맺는다. 맺어진 조건은 yield_by 표의 조건 줄로 들어가고, 글쓰기 문맥에 후보마다 열마다의 값이 간다. 이 리포트 웨이퍼에 값이 없는 후보는 «채울 것»으로 말해진다(소유자 10-25).
+- **선언** — 새 칸 없음(`derive.report.causes` 가 있으면 돈다). 채울 것의 낱말은 `labels.to_fill`.
+- **보는 곳** — Evidence «candidate conditions» 와 why · 줄(«wetting_deficit -> bond_temp: 350 | 300 | …», «humidity: no value on these wafers - to be filled (measured/recorded)»). 터미널 `[report] causes conditions: …` · `[report] causes to fill: …`.
+- **잰 것** — 박스(읽기만, 대역 모델): 후보 19 중 3 이 조건에 맺어짐, 조건 아닌 이름 1 버림, 이 웨이퍼에 값 없는 후보 17.
+- **바뀐 동작** — 글에 쓴 조건으로 표를 다시 그릴 때 맺어진 조건을 지우지 않고 더한다.
+- **왜 걷기가 아닌가** — 원장에 후보(quantity)를 조건 항목에 잇는 술어가 없다 — 조건은 리포트의 표이고 원장 소스가 읽지 않는다. 이으려면 맵핑 표 → 원장 소스가 규칙의 길.
+- **자세히** — `report_loop._related` · `report_reads.Report.values_here` · `condition_label`.
+
+## 2026-10-25 · AI 리포트 원인 후보 — 불량 종류 노드에서 모델이 씨앗을 고르고 제품이 정적으로 걷는다
+
+- **무엇** — 상세 분석 글쓰기 «직전»에 한 단계. 제품이 원장에서 선언된 타입의 노드 목록을 읽고, 모델이 그 목록과 이미 읽은 표를 보고 씨앗과 이유를 답하고, 제품이 그 씨앗에서 정적 층을 걸어 후보 인자와 길을 글쓰기 호출에 넘긴다(소유자 10-25).
+- **선언** — `chain_rules.json` 의 리포트 규칙 `derive.report.causes`: `{"seed_type": "defect_kind", "follow": ["leads_to"], "collect": ["quantity"], "hops": 6}`. seed_type 만 꼭. follow 없으면 양 끝이 둘 다 정적인 술어, hops 없으면 걷기 기본값. 모양이 틀리면 저장 · 로드가 «derive.report.causes is {...}» 로 거절.
+- **보는 곳** — 리포트 파일 Evidence: «product seed_nodes()»(10-25 `599e7cf33` 전 이름 defect_kinds) 와 노드 이름들, «causes({"seeds": ["void"]})» 와 why · 후보 줄(«quantity bond_temp: void <-leads_to- wetting_deficit <-leads_to- bond_temp»). 터미널 `[report] causes: …` · `[report] causes seeds …` · `[report] causes walk from …`.
+- **잰 것** — 박스 원장(읽기만): defect_kind 2 (delam · void), void 에서 leads_to 6 홉 — 닿은 노드 20 · 후보 quantity 19. 박스 리포트 규칙에 칸을 메모리로 더해 report_loop.run 을 대역 모델로 끝까지 돌림(파일 · DB 안 씀).
+- **필요한 조건** — git pull · 체인 워커 재기동.
+- **바뀐 동작** — 칸이 없으면 전과 같다(씨앗 호출 · 걷기 없음).
+- **자세히** — `report_reads.Report.seed_nodes` · `causes` · `_walk`(걷기 라우트 함수 `trace_router.evidence_subgraph` 를 프로세스 안에서) · `report_loop._causes`.
+- **덧붙임 10-25 (`e0ed66e10`)** — `hops` 는 0~40 만 저장된다(걷기 라우트의 상한 — 리포트는 프로세스 안에서 걸어 라우트 검사를 안 지나므로 저장이 쥔다). 글쓰기 줄에 «candidate factors walked from the seeds, when given, ground the detailed analysis».
+
+## 2026-10-24 · 선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 — keys · images.match 등
+
+- **무엇** — 이름으로 새 칸을 여는 입력(derive.report.keys 의 column, images.match 의 item 처럼 칸 밑에 목록이나 묶음이 오는 맵)은 옆의 «+» 버튼으로만 들어갔습니다. 목록 칩 입력은 Enter 가 됐습니다.
+- **이제** — 그 입력도 Enter 로 들어갑니다(같은 «+» 를 누름). 붙여넣기는 이름 하나로 들어갑니다 — 쉼표로 쪼개지 않습니다.
+- **잰 것** — declaration_form 하니스 46/0 · 변이 33/33.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
+- **선언** — 바뀐 것 없음.
+- **자세히** — `ontology_explorer_view.adderInput` · 맵 이름 입력의 `data-enter`.
+
+## 2026-10-24 · AI 리포트 대조 후보 — 날짜부터 읽고 웨이퍼 하나가 한 줄, 직전 · 직후는 언제나, 한도 12 평가 · 100 웨이퍼
+
+- **무엇** — 소유자 10-24 저녁 몇 차례의 말을 한 번에. 대조할 웨이퍼 후보를 고르는 법이 바뀌었다.
+- **날짜부터** — 조건 표의 time_item 행만 먼저 읽어 웨이퍼마다 날짜를 정하고, recent 안에 드는 웨이퍼만 웨이퍼 표에서 읽는다. 시각이 없는 웨이퍼는 후보가 아니다. 전엔 모든 웨이퍼의 모든 조건을 먼저 읽어 10만 행 상한에 걸려 «pick fewer» 로 멈췄다(`24a1a881d` · `84f8b2d02`).
+- **웨이퍼 하나가 한 줄** — 후보는 날짜가 붙은 단위(time_item 표의 키 — 웨이퍼, leg 들은 한 줄)이고 모델도 웨이퍼마다 한 줄을 읽는다(`8921f5f16`).
+- **직전 · 직후는 언제나** — 이 리포트 최신 웨이퍼 시각 바로 앞 · 바로 뒤 평가는 모델이 안 골라도 대조에 들어간다(상한 밖). 상한 기본 `max_evaluations` 12 · `max_wafers` 100(전 3 · 30), 모델에게 «take enough for a trend»(`db6281987`).
+- **낱말** — «control» 대신 «compare <이름>»(`7a750e652`). 묶음 줄은 키 조각마다 이름 «wafer W2 · tkout_time … · leg L1»(`c053536a7`).
+- **보는 곳** — Evidence 에 recent 안 후보(날짜, 웨이퍼)와 고른 묶음, 모델이 부를 때마다 «why»(`677d85074`). 터미널 `[report]` 에 읽기마다 한 줄(행 · 웨이퍼 · 거름 · 잘림이나 거절)과 후보 줄 — 웨이퍼마다 시각과 그 날, 후보가 아닌 까닭(`642b6d1b9` · `3710ea157`).
+- **필요한 조건** — git pull · 체인 워커 재기동.
+
+## 2026-10-24 · AI 리포트 표 — 머리 날짜 › 타이틀 › 웨이퍼 › leg, 크기는 선언, 값은 가운데, 행 머리 고정, 파일 표는 모델이 고른 대로
+
+- **머리** — 기본 날짜 › 웨이퍼 › leg, 열은 날짜 차례, leg 는 제 웨이퍼의 한 날짜 밑에 합침(`546c1fd02`). 조건이 타이틀을 대면(title_item 또는 title) 날짜 › 타이틀 › 웨이퍼 › leg(`2fe68a1e5`). 이 리포트 웨이퍼는 머리만 주황(`7e5aa15dc`). 모델도 페이지와 같은 머리를 단마다 한 줄로 읽는다(`362bf91de`).
+- **크기** — `derive.report.sizes` `{"font_px", "name_px", "value_px"}`, 안 적은 것은 10 · 185 · 100(`8baf7c019`; 앞서 고정값으로 넣었던 `0875549de` · `133672cb6` 을 대신).
+- **정렬 · 선** — 머리는 열 위 가운데, 모서리 낱말은 왼쪽(`156ba89a5`). 값은 모두 가운데, 행 머리만 왼쪽(`79910975d`). 값을 오른쪽으로 밀어도 행 머리 열은 그 자리(`05410c098`). 칸마다 제 오른쪽 · 아래 선 — 고정된 행 머리 칸이 세로줄을 잃던 것(`ec4ca4ad3`).
+- **파일 표는 제품이** — 루프가 끝난 뒤 모든 묶음으로 그린다. 모델이 조건으로 읽은 표가 파일 표가 되어 leg 자리에 그 값이 앉던 것(`3b02c7efe`, 그 전 `9ee8002f7` · `661aff9bd` 를 대신). 선언된 대조는 모델이 아무것도 대조 안 했으면 언제나 먼저(`661aff9bd`). 그리고 모델이 select 로 고른 웨이퍼 · 행 · 항목으로 그린다 — `by` 만 빼서 머리는 그대로(`c3a6f52f4`).
+- **분석자 프롬프트** — 걸음마다 «Analyst (wins over the rules):» 밑에(`4dc024a8d`).
+- **필요한 조건** — git pull · 체인 워커 재기동.
+
+## 2026-10-24 · AI 리포트 조건 행 — 값이 둘 이상인 것, 그중 모델이 고른 것, 글에 나온 것도 · wfid · lotid · skip 은 언제나 빼고
+
+- **지금 규칙** — 조건 행은 열 사이에 값이 둘 이상인 조건만(빈 칸 · (empty) 는 값이 아님, 열이 하나면 전부; `169a5ead2`). ~~그중 모델이 select 로 고른 것, 안 골랐으면 전부(`c36999849`)~~ — 10-26 `b0c2fb136` 부터 고른 것을 앞에, 값이 다른 나머지를 뒤에(`conditions.most` 항목의 덧붙임). 글에 이름이 나온 조건은 쓰기 뒤 다시 그려 더 선다(`9a6d98eb0` · `c36999849`). 10-26 개수 상한은 `conditions.most` 항목.
+- **언제나 빼는 것** — 웨이퍼 키 칸 · `wafer.lot` · time_item · title_item, 그리고 `conditions.skip` 에 적은 이름(대소문자 · 앞뒤 빈칸 무시; `d9c5c3714`). 웨이퍼마다 다른 id 는 늘 «값이 다른 조건»이라 행으로 섰다.
+- **`conditions.title_item`** — 조건 항목 하나의 값이 웨이퍼 타이틀: 모델이 후보와 함께 읽고, 조건 행은 아님, 폼에 칸(`1ad8cac67`).
+- **조건 표 항목도 조건** — 호출의 where · by 가 조건 표의 항목을 이름 대도 됨(대소문자 · 앞뒤 빈칸 무시). 전엔 웨이퍼 표의 조건 칸만 알아 «not a condition» 으로 거절(`a93ee2046`).
+- **지나간 것** — `789dc614e`(고른 조건은 다른 열이 다 비어도 남음)는 `169a5ead2` 부터 열이 하나일 때만 그렇다.
+- **필요한 조건** — git pull · 체인 워커 재기동.
+
+## 2026-10-24 · AI 리포트 파일을 서버가 연다 — GET /reports 목록, 서명 링크는 로그인 없이(다른 사이트 iframe)
+
+- **무엇** — 소유자 10-24 «report 서빙하는 거 서버에 달아줘 · 다른 데에 iframe 으로 첨부하게» · «SSO 땜에 첨부 안 될 듯».
+- **목록 · 한 장** — `GET /reports` 는 리포트 파일을 새것부터 링크로, `GET /reports/<이름>.html` 은 한 장(그 폴더 바로 밑 .html 만, 아니면 404). 캐시 안 함 — 다시 쓴 리포트는 다시 읽힌다. 관리자 토큰은 안 받지만 회사 SSO 를 켠 설치에선 로그인을 거친다(`ceeaa8740`).
+- **서명 링크** — 목록 줄마다 «Share link» = `GET /shared/report/<이름>.html?k=<키>`. 키가 맞으면 로그인 없이 열린다 — iframe 에 그대로. 키는 리포트 폴더의 `.link_secret`(처음 한 번 만듦)으로 서명, 틀리면 403(`55f15eb5c`).
+- **알아 둘 것** — 링크에 만료가 없고 같은 이름으로 다시 쓴 리포트도 같은 링크로 열린다. 하나만 거두는 길은 없고 `.link_secret` 을 지우면 전부 무효.
+- **필요한 조건** — git pull · 런처 재기동(API).
+
+## 2026-10-24 · AI 리포트 그림 — 큰 그림 표는 웨이퍼마다 상한까지, 소스 붙은 칸은 그대로, 칩 레이어는 휠로, 패치는 한 격자
+
+- **많은 행** — 칩 패치처럼 행이 많은 그림 표는 거절하지 않고 상한(10만 행)까지 읽고(`23ad06068`), 웨이퍼마다 따로 상한까지 — 한 상한을 모든 웨이퍼에 걸어 앞 웨이퍼만 그림이 나오던 것(`78c98638b`).
+- **경로** — 이미 소스 이름이 붙은 칸은 그리드의 /api/image 처럼 적힌 그대로(images.source 를 두 번 붙이던 것; `df97b8570`). 온전한 경로 찾기가 image_sources.json 의 소스 아닌 항목(주석 · 글자)은 건너뜀 — 그 하나가 모든 그림을 «'str' object has no attribute 'get'» 으로 세웠다(`fcad84159`).
+- **칩 레이어** — 불량 그림 하나가 그 칩의 레이어를 모두 한 겹으로, 그 위에서 마우스 휠로 넘김(밑에 레이어 이름과 n/N; `e1e79b784` · 글자 깨짐 `54e05ed0f`). 숨은 레이어는 숨은 채로(`181e3acc3`). `images.wafer` 에 그림 표의 아무 칸이나 — x · y · layer 로 행을 가름(`67e386def`).
+- **한 격자** — 그림마다 `images.px` 상자에 맞춰 넣고 설명은 한 줄(`6d863b8ee`).
+- **필요한 조건** — git pull · 체인 워커 재기동.
+
+## 2026-10-24 · AI 리포트 조건 — 한 웨이퍼의 같은 조건 두 값은 둘 다(300 / 320), 시각 항목은 조건 줄에서 숨김, 이름 앞뒤 공백 무시
+
+- 무엇: 실제 프로세스 리플레이에서 나온 셋에 소유자가 답함.
+  - 조건 표 키가 웨이퍼보다 한 조각 더(예 step)라 같은 (웨이퍼, 조건)이 두 행이면: 다른 값만, 읽은 순서로 «300 / 320». 표와 모델 문맥 둘 다. 전: 마지막 행이 조용히 이김.
+  - `conditions.time_item` 항목은 조건 줄에 안 나옴 — 날짜 머리에만. 모델에게는 여전히 시각으로 감.
+  - time_item · yield_item · images.match 의 이름은 앞뒤 공백 없이 견줌 — 데이터의 «TKOUT DATE » 가 선언의 «TKOUT DATE». 이름 안의 공백은 그대로.
+  - 불량 칸의 "N/A" 는 그대로 «—» (소유자: 바꾸지 않음).
+- 자세히: `server/chain/report_reads.py` 의 `Report._long_conditions` · `_condition_rows`, `report_shape.name`.
+
+## 2026-10-24 · 이미지 칸에 온전한 경로(C:\… · \\server\…)를 적어도 읽힌다 — 그 경로를 품은 folder 소스로
+
+- **무엇** — 소유자 10-24 «이미지 경로를 절대 경로로 했더니 인식을 못하네». 이미지 칸 값이 온전한 경로(`C:\…` · `\\server\…`)이면 «image source 'C' is not declared» 로 거절했습니다. 이제 image_sources.json 의 folder 소스 중 그 경로를 품은 root 의 소스로 읽습니다.
+- **선언 예시** — root 를 image_sources.json 에 한 번 적습니다: `{"pics": {"kind": "folder", "root": "D:/images"}}`. 그 밑의 `D:/images/a/b.png` 같은 경로가 그대로 읽힙니다.
+- **그대로인 것** — 읽을 수 있는 폴더는 여전히 선언된 folder 소스뿐입니다. 어느 root 밑도 아니면 404 «'<경로>' is under no folder source of image_sources.json - add one whose root holds it (e.g. {"<name>": {"kind": "folder", "root": "<그 경로의 폴더>"}})». `<소스>:<경로>` 꼴은 전과 같습니다.
+- **🆕 같은 날 넓힘(`5374f21aa`)** — 소유자 «이미지 절대경로 여전히 안되고» · «공유폴더고 \\ 네개 붙여놈». 그림 파일(png · jpg · jpeg · bmp · gif · tif · tiff · webp)은 folder 소스 없이도 그 경로 그대로 읽습니다 — 위 root 선언은 그림이 아닌 파일에만 필요합니다. 공유 경로를 `\\\\server\\share`(역슬래시를 모두 겹으로, 머리 넷)나 `//server/share` 로 적어도 한 경로로 읽습니다. 이 서버가 그 파일을 못 보면 404 «no file '<경로>' - this server cannot see it (a share it is not logged on to, or a path of another machine)».
+- **🆕 같은 날(`03e267e96`)** — 리포트 `images` 역할에 `source` 를 적어 둔 경우에도 칸 값이 온전한 경로면 그 경로 그대로 읽습니다. 전에는 소스 이름이 앞에 붙어 그 소스 root 밑으로 이어져 «그 폴더 밑에 그림이 없다»가 났습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `server/image_sources.py` 의 `resolve` (`765d4c34c`).
+
+## 2026-10-24 · AI 리포트 페이지 폭 최대 1280px — 글도 페이지 폭을 다 씀
+
+- **무엇** — 소유자 10-24 «좌우로 좀 넓혀줘 너무 좁게 되어 있다 1280으로». 기본 페이지 폭이 최대 1280px 이고, 글은 페이지 폭을 다 씁니다(전 72ch).
+- **알아둘 것** — 모양은 파일을 만들 때 그 파일 안에 박힙니다. 이미 만든 파일은 리포트를 다시 만들 때(리플레이)까지 옛 폭입니다.
+- **필요한 조건** — git pull · 런처 재기동 · 리포트 다시 만들기.
+- **자세히** — `server/chain/report_html.py` 의 `STYLE` (`fc5351f2c`).
+
+## 2026-10-24 · 선언 폼에서 칸을 비우면 그 칸은 저장에서 빠진다 — 그 칸으로 비게 된 선택 블록도 같이
+
+- **무엇** — 폼에서 칸을 비우면 빈 글자 `""` 가 저장됐습니다. `derive.report.sets` 의 칸을 한 번 적었다 지우면 `"sets": {"table": ""}` 이 규칙에 남았고, 저장이 그 안의 칸 때문에 거절됐습니다.
+- **이제** — 비운 칸(공백만 남은 칸 포함)은 선언에서 빠집니다. 그 때문에 비게 된 선택 블록도 같이 빠집니다(`sets` 가 통째로 없어짐). 필수 블록은 비어도 `{}` 로 남습니다. 손대지 않은 선택 블록은 처음부터 쓰이지 않습니다.
+- **그대로인 것** — 선택 블록이 없을 때도 그 안의 필수 칸에 «Required» 표시가 납니다. `on` 이 없을 때 `on.table` 을 묻는 소유자 09-23 판정과 같은 모양이라, 화면만으로는 둘을 못 가릅니다.
+- **잰 것** — declaration_form 하니스 44/0 · 변이 31/31.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
+- **선언** — 바뀐 것 없음. 이미 `"sets": {"table": ""}` 이 저장된 규칙은 그 칸을 폼에서 한 번 지우고 저장하면 블록째 빠집니다.
+- **자세히** — `ontology_path.pruneEmptyOptional` · `raw_registry_panel` 쓰기(빈 글자 = 없음, `absent.isBlank`).
+
+## 2026-10-24 · AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율
+
+- 무엇: 요약표에 수율을 자유 항목(YIELD 같은)으로 넣었더니 리포트가 불량 유형으로 다뤘다(소유자 «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로 리포트하네»).
+  - `summary.yield_item`: 그 항목 이름(또는 목록). 그 행은 표의 «Yield» 줄(labels.yield) — 불량 칸과 같은 읽기(rate, 또는 F/N), 열에 웨이퍼가 여럿이면 합. 모델은 «info Yield | …» 로 읽는다.
+  - 불량 행 · 파레토 · 트렌드 · 그림(난 불량)에서는 빠진다. 안 적으면 오늘처럼.
+  - 저장 거절: 빈 값 · 글자 아님 «derive.report.summary.yield_item is the summary item (or items) that is the yield, e.g. "YIELD"; got …»
+- 선언 예시(chain_rules.json 의 derive.report.summary): `"yield_item": "YIELD"`
+- 자세히: `server/chain/report_reads.py` 의 `Report._summary(yields=)` · `_yield_rows`, `report_shape.yield_items`.
+
+## 2026-10-24 · AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item
+
+- 무엇: 운영의 웨이퍼 시각은 칸이 아니라 조건 표(이름 · 값)의 한 항목이다(소유자 10-24).
+  - `conditions.time_item`: 그 항목 이름. wafer 역할에 time 칸이 없으면 그 값이 웨이퍼 시각 — 열 순서, 날짜 머리, 대조 후보(control.recent)가 읽는다. 웨이퍼만으로 키 된 조건 표면 그 웨이퍼의 leg 모두에. wafer.time 이 있으면 그것이 이긴다.
+  - 시각으로 못 읽는 값(20261001123000 같은)은 순서만 글자로 정해지고, 날짜 머리 · 대조 후보의 날 계산에는 안 들어간다.
+  - 저장 거절: 글자가 아님 «derive.report.conditions.time_item is the condition item whose value is the wafer's time, e.g. "tkout_time"; got …»
+- 선언 예시(chain_rules.json 의 derive.report.conditions): `"time_item": "tkout_time"`
+- 자세히: `server/chain/report_reads.py` 의 `Report._long_conditions`, `report_shape.TIME_ITEM`.
+
+## 2026-10-24 · 행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)
+
+- 무엇: 특정 철자의 leg 를 리포트에서 빼야 했다(소유자 «무시해야하는 leg 스타일이 있는데»). 새 문법 대신 체인의 행 게이트를 넓혔다.
+  - `{칸: [값]}` 게이트 값에 `*` 나 `?` 가 있으면 패턴: `*` 아무 글자들, `?` 한 글자, 대소문자 그대로, 빈 칸은 어떤 패턴에도 안 걸림. 파이썬 판정(`rule_run.gate_misses`)과 SQL 판정(`gate_conditions` — PostgreSQL LIKE, SQLite GLOB)이 같은 행을 고른다.
+  - AI 리포트 `derive.report.wafer.exclude`: 같은 게이트로 웨이퍼 표 행을 거른다. 걸린 행은 유닛이 아니다 — 리포트 안 함 · 비교 안 함 · 표에 없음.
+  - 저장 거절: «derive.report.wafer.exclude is a list of {column: [values]} …» · «derive.report.wafer.exclude '<칸>' is not a column of '<표>' …»
+- 바뀐 동작: 이미 적힌 게이트 값에 `*` `?` 가 있으면 그 값은 이제 패턴이다. 박스 chain_rules.json 에는 값 게이트가 0 개라 확인할 값이 없었다 — 운영 선언은 RUN.md 의 줄로 확인.
+- 선언 예시: chain_rules.json 의 derive.report.wafer `"exclude": [{"leg": ["*_T", "*TEST*"]}]` · 체인 규칙 `"on": {"exclude": [{"status": ["SC*"]}]}`
+- 자세히: `server/chain_bindings.py` 의 `gate_pattern`, `server/chain/rule_run.py` 의 `gate_misses` · `_one_of_sql` · `_GlobMatch`.
+
+## 2026-10-24 · AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)
+
+- 무엇: 요약표가 정리한 종류와 그림 표가 쓰는 종류의 철자가 달라 그림이 항목 밑에 하나도 안 붙었다(소유자 «이거 정리하는 kind랑 이미지에 쓰는 kind랑 달라»).
+  - `images.match`: {요약 항목: 그림 종류 또는 [그림 종류들]}. 짝 지은 종류의 그림은 그 요약 항목 밑에(그 항목이 그 웨이퍼에 났을 때, per_item 안).
+  - match 를 적었는데 어떤 짝에도 없고 요약 항목 이름도 아닌 종류는 맨 뒤에 한 줄 «Image kinds no summary item matches (images.match): <종류들>» 과 그 밑에 제 이름으로 — 조용히 안 버림.
+  - match 를 안 적으면 오늘처럼 같은 이름끼리.
+  - 저장 거절: 값이 글자나 글자 목록이 아님 «derive.report.images.match is {summary item: image kind or [image kinds]}, e.g. {"typeA": ["void", "signal"]}; got …»
+- 선언 예시(chain_rules.json 의 derive.report.images): `"match": {"typeA": ["void", "signal"]}`
+- 화면에서: 체인 규칙 창 폼의 images 밑 match — 항목 이름마다 종류 목록.
+- 자세히: `server/chain/report_shape.py` 의 `image_match`, `report_reads.Report.images`.
+
+## 2026-10-24 · AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다
+
+- 무엇: 제품이 채운 표가 리포트 웨이퍼 하나뿐이고 조건 줄이 없었다(소유자 «근데 표 다른 웨이퍼 안불러오네» · «조건도 안나오고»).
+  - 선언된 비교 = `sets.default` + `control.recent` 의 가장 최근 평가들(`max_evaluations` 기본 3 · `max_wafers` 기본 30 안에서). 모델의 compare() 인자 없음과 제품의 표가 같은 함수(`Report.declared_compare`)를 읽는다.
+  - 모델이 아무 비교도 안 했으면 제품이 표를 읽기 전에 선언된 비교를 붙인다 — Evidence «product compare()». 비교가 선언 안 됐으면 표 밑에 한 줄 «This report's wafers only - no compare set default or control.recent is declared.»
+  - 조건 묶음: 표 맨 위에 «Conditions.<조건>» 줄(wafer.conditions · conditions 역할의 값). 모델이 yield_by 의 rows 로 고른 조건이 있으면 그것, 없으면 열 사이에 값이 다른 조건만, 열이 하나면 전부. info 표가 choose 를 말하면 그 표가 조건 묶음이고 같은 규칙(고른 것 / 다른 것).
+- 선언 예시: chain_rules.json 의 derive.report `"control": {"recent": {"evaluations": 20}}` (box 선언 그대로). 낱말은 labels.conditions · labels.no_control.
+- 자세히: `server/chain/report_reads.py` 의 `declared_compare` · `_condition_rows` · `_differs`, `report_loop._product_reads`.
+
+## 2026-10-24 · AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기
+
+- 무엇: 모델이 «W1/L1» 같은 붙인 이름을 읽고 leg 마다 다른 웨이퍼처럼 글을 썼다(소유자 «leg까지 다 wafer로 구분하고 글쓰는데 이거 구분하게해»).
+  - 모델 문맥 · Evidence · 파일의 열 이름 · 그림 밑 이름 · 빠진 행 줄이 키 조각마다 칸 이름을 붙인다: «WAFER W1 · LEG L1». 칸 이름은 `labels.columns` 의 낱말, 없으면 wafer.key 의 칸 이름 그대로.
+  - Conditions 밑에 «units - a report unit, then its parts:» 줄 — 리포트 단위(keys unit 또는 리포트 표의 키) 하나에 그 나머지 조각들: «WAFER W1: LEG L1, LEG L2».
+  - 시스템 지시에 한 줄: 유닛은 키 칸들로 불리고, units 줄은 한 리포트 단위와 그 조각 — 하나로 쓴다.
+  - 모델이 웨이퍼를 부를 때 옛 이름(W1/L1)도 새 이름도 받는다. 파일 이름(server/reports/<웨이퍼>.html)은 그대로.
+- 선언 예시: 적을 것 없음. 낱말을 바꾸려면 derive.report.labels.columns `{"wafer": "WAFER", "leg": "LEG"}`.
+- 자세히: `server/chain/report_reads.py` 의 `Report.said` · `_units`, `report_loop.RULES`.
+
+## 2026-10-24 · AI 리포트 표 · 그림은 제품이 채운다 — 모델이 안 불러도, 엉뚱한 자리의 layout 은 이름 댐
+
+- 무엇: 소유자 운영 첫 실행이 제목 · Evidence 만 나왔다. 표는 모델이 그 읽기를 불렀을 때만 그려졌고, layout 이 derive.report 밖에 있으면 안 읽혔다.
+  - 파일의 표 칸(yield_by · pareto · trend)과 그림 칸 중 모델이 안 읽은 것을 제품이 인자 없이 읽어 채운다(이번 평가의 웨이퍼 + 옆 묶음). 모델은 글 칸만 쓴다(소유자 원칙 «AI 는 규칙, 일은 제품»). 글 쓰는 호출도 그 표를 받는다.
+  - 게이트웨이가 거절해도 표 · 그림은 나온다. Evidence 첫 줄 «stopped - the language model call was refused: <사유>», 그 밑 «N product yield_by() - …» 줄.
+  - layout(등 리포트 칸)을 규칙 맨 위나 derive 밑에 적으면: «… cell this product does not read — layout. layout is read under derive.report.» 그때 파일은 기본 배치.
+- 선언 예시: 적을 것 없음. layout 은 chain_rules.json 의 derive.report 안에.
+- 자세히: `server/chain/report_loop.py` 의 `filled_slots` · `_product_reads`, `rule_shape._report_home`.
+
+## 2026-10-24 · AI 리포트가 키 조각이 빈 웨이퍼에도 수를 읽는다
+
+- **무엇** — 웨이퍼 키의 한 조각(예: leg)이 빈 웨이퍼는 역할 표를 읽을 때 «같음» 조건에서 빠져 수가 하나도 안 나왔습니다. 이제 빈 조각은 표의 빈 칸과 맞습니다(빈 값 = 빈 값, `crud.is_blank_value`).
+- **바뀐 동작** — 빈 조각이 있는 웨이퍼만 달라집니다. 조각이 다 찬 웨이퍼의 읽기는 같습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `chain/report_reads.py` 의 `_part` · `_parts`(조각을 견주는 자리가 이것을 지남) · `_equals_any`(None 은 그리드의 blank 조건).
+## 2026-10-24 · AI 리포트 — layout 안 적으면 기본 배치 · sets 칸 빠지면 비교 묶음 없이 · latest 는 글자로도 · 키 1.0 = 1
+
+- 무엇: 운영자 선언이 덜 적혀도 리포트가 선다(소유자 «제대로 동기화 할거 아니면 화면 선언 막지마» · «레이아웃은 알아서 하는거지?»). 7e01af4c8 의 두 거절은 같은 날 거둠.
+  - `layout` 도 `template` 도 없음 → 기본 배치 text `summary` → table `yield_by` → image(`images` 를 적었을 때만) → text `conclusion`. 모델이 summary · conclusion 두 글을 쓴다. 전: 제목 · Evidence 뿐인 빈 파일.
+  - `sets` 에 `name` · `member` · `kind` 중 빈 칸 → 비교 묶음 없이 감. 저장 · 로드에 한 줄 `derive.report.sets names no <칸> - read as no compare set …`. 전: 비교 묶음을 읽는 순간 KeyError 로 그 웨이퍼 리포트 실패.
+  - `keys` 의 latest 칸(예 tkout_time)을 제품 시각으로 못 읽는 값이 한 웨이퍼에 하나라도 있으면 그 웨이퍼는 «글자 순서»로 최신을 고른다(20261001123000 · 2026/10/01 · 2026.10.01). 전: 못 읽으면 측정 여럿이 한 리포트에 섞였다.
+  - 웨이퍼 키 조각은 키 철자로 견준다 — 한 표는 숫자 1.0, 다른 표는 글자 «1» 이어도 같은 웨이퍼. 전: 그 표의 행이 조용히 빠져 칸 «—».
+- 선언 예시: 적을 것 없음. 기본 배치를 바꾸려면 chain_rules.json 의 derive.report.layout 에 `[{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}]` 처럼 적는다.
+- 자세히: `server/chain/report_shape.py` 의 `layout` · `sets_role`, `report_reads.Report._latest` · `_part` · [AI 리포트 표](../guide/ai_report_tables.md).
+
+## 2026-10-24 · AI 리포트 역할 표가 웨이퍼 키를 다른 이름으로 적어도 된다 — 제 키 칸이면 같은 차례로 맞춤 · rename
+
+- **무엇** — 소유자 10-24 «키 컬럼 맞음» · «제대로 동기화 할거 아니면 화면 선언 막지마» · «의미적으로 wafer,leg == wafer_id,leg» · «매칭 알아서». 역할(summary · images · conditions · info · picture_rows) 표가 웨이퍼 키를 다른 이름으로 가지면(예: 리포트 `wafer.key` 가 [wafer, leg], 조건표는 [wafer_id, leg]) 규칙을 «'<칸>' is not a key column» 으로 거절했습니다.
+- **바뀐 동작** — 역할 `wafer` 목록에 그 표 «제» 키 칸(table_config 의 `composite_key_source` · `business_key`)을 `wafer.key` 와 «같은 차례»로 적으면, i 번째 칸이 `wafer.key` 의 i 번째로 맞춰져 읽힙니다 — `keys` 에 더 적을 것이 없습니다. 차례로 안 맞으면 역할에 `rename` {리포트 키 이름: 그 표 칸}을 적습니다(적은 것이 차례 맞춤을 이깁니다). 🆕 `d6815fa37`: 차례 맞춤은 목록이 `wafer.key` 와 «길이가 같을 때만»입니다 — 짧은 목록(시각 칸 없는 그림 표 [wafer_id, leg_no] — 리포트 키와 이름이 다른 칸)이 자리로 맞춰져 leg 가 시각 자리에 앉고 그림이 «No image of an occurred defect» 로 비던 것. 짧은 목록은 `rename` 을 적습니다. 대소문자만 다른 제 키 칸(WAFER)은 그대로 그 키입니다.
+- **그대로인 것** — 키 칸이 아닌 값 칸을 목록에 넣으면 전처럼 거절합니다. 표에 없는 칸이면 «… is not a column of '<표>' - name one of its columns, or <역할>.rename {'<키>': <its column>}» 으로 거절합니다.
+- **필요한 조건** — git pull · 런처 재기동. 선언은 바꿀 것 없음(이름이 다른 표만 위처럼).
+- **자세히** — `chain/report_shape.py` 의 `matched` · `_by_position` · `column_of` · `_table_refusal`, `chain/report_reads.py` 의 `_rows` (`b6b370203` · `6724000a7`, 시험 `1dec19168`).
+
+## 2026-10-24 · AI 리포트가 운영 데이터의 빈 칸 · 한 웨이퍼의 오류에 서지 않는다
+
+- **무엇** — 요약 표의 수 칸에 «» · «N/A» 같은 글자가 있으면 리포트 전체가 `float()` 오류로 섰습니다. 이제 그 칸은 빈 값으로 읽습니다. 또 한 웨이퍼에서 거절(ReadRefused) 밖의 오류가 나면 묶음 전체가 실패했는데, 이제 그 웨이퍼만 STOPPED(사유 = 오류 한 줄)로 남고 나머지 웨이퍼는 갑니다. 모델이 부른 읽기 하나가 오류를 내면 그 읽기만 «the read failed: …» 로 모델에게 돌려주고 루프는 계속합니다. 리포트 파일을 짓거나 저장하다 오류가 나도 그 웨이퍼만 STOPPED(«the page failed: …») 입니다.
+- **바뀐 동작** — 위 셋뿐입니다. 거절 문구 · 정상 경로는 같습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `chain/report_reads.py` 의 `_number`(요약 칸) · `chain/report_loop.py` 의 `answer` · `_call`. 오류의 전체 추적은 체인 워커 로그 «[Report] … failed» 줄에 있습니다.
+
+## 2026-10-24 · 키 조각을 바꾸는 쓰기가 행² 으로 느려지지 않는다 — 병합이 묶음 전체를 훑던 것
+
+- **무엇** — 소유자 10-24 «소급도 그냥 x,y에서 1씩 빼서 저장하는건데 3천행에 10분 넘게걸림». 키 조각(x · y)을 바꾸면 옮긴 키가 이웃 행의 키와 부딪혀 행마다 병합이 일어나는데, 병합 한 번이 그 묶음이 쌓은 층 · 덮어쓰기 · 감사 줄 전부를 (층은 칸마다 한 번 더) 훑었습니다. 한 묶음 시간이 행² × 칸이었습니다.
+- **잰 수** — 한 묶음, 키를 −1 로(sqlite): 529 행 · 40 칸 172 s → 8.2 s · 1,024 행 · 40 칸 13.7 s(옛 코드는 셈으로 약 10 분). 박스 실제 체인 워커, 조인 take fn 으로 x · y 를 키 조각인 표에 3,000 행: 65.4 s(그룹 512 행 7.6 s, 그중 병합 6.4 s).
+- **바뀐 동작** — 없습니다. 병합이 하는 일(층 옮기기 · 덮어쓰기 · 감사 줄)은 같고, 그 행의 것만 꺼냅니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `database/crud.py` 의 `ByRow` · `ByRowSet` · `ByRowLogs`(묶음의 대기 그릇이 행 → 열쇠 색인을 스스로 듦) · `row_keys`. 그릇을 만드는 자리 넷: 쓰기 깔때기 · 칸 우선순위 쓰기(`set_cell_manual_priority_batch`) · `merge_into_key_holders` · 리플레이 접기.
+
+## 2026-10-24 · 파일의 맵 교체는 맵을 통째로 지우고 쓴다 — 체인 층 · 사람 값도 같이, 맵 키가 빈 행은 건너뜀
+
+- **무엇** — 소유자 10-24 «그냥 소스 통째로 걷기로 했잖아» · «기존 맵 아예 지우고 하니 제대로 들어옴» · «체인 안거두나보네» · «빈거 들어오면 접으면 되잖아». `allow_replace_map` 표에 파일이 들어오면 그 파일에 있는 맵마다 행 전부와 모든 소스의 층(체인 층도)을 지운 뒤 파일을 씁니다 — 맵을 손으로 지우고 넣던 것과 같습니다. 전에는 다시 온 행을 다른 층과 함께 두어서 체인 층이 파일 값을 이겼고, 교체가 화면에 안 보였습니다(같은 좌표에 옛 값, 갱신 시각 그대로).
+- **같이 지워지는 것** — 그 맵에서 사람이 고친 값도 지워집니다.
+- **파일 줄** — 끝에 «replace on by [칸…] · purge/file_replace N» · «replaced N map(s), deleted M row(s)» — M 은 그 맵들의 옛 행 전부입니다(0 이면 옛 행이 없던 맵).
+- **맵 키가 빈 행** — 파일 전체를 거절(FAILED)하던 것을 그만두고, 그 행만 건너뛰고 한 줄 남깁니다: «[Ingest] <표>: N row(s) with a blank map key [칸…] skipped - they name no map (first at file row R)». 파서가 키 없어 건너뛴 행도 그 수에 듭니다.
+- **안 바뀐 것** — 맵 편집기 push 와 체인 규칙의 `allow_replace_map` 은 전처럼 다시 온 행은 두고 빠진 행만 지웁니다(차집합).
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `GeneralUpdateBatch._file_replace` → `crud` 의 `use_diff = False` · reason «file_replace» · `directory_watcher._map_batches` (`856f2bb67` · `6f9f1f5fb`, 시험 `00e54557f`).
+
+## 2026-10-24 · 파일 줄이 맵 통째 교체를 «했나 · 어떻게» 말한다 — replace off · replace on by · rows in scope 0
+
+- **무엇** — 소유자 10-24 «중간에 리플레이스 경로 로그를 다 찍어주든». `allow_replace_map` 표에 파일이 들어왔을 때 그 파일이 맵을 통째로 바꿨는지, 바꿨다면 어떻게 바꿨는지가 파일 줄 끝에 붙습니다(바꾼 맵 · 지운 행 · 거절된 맵 옆).
+- **보이는 것과 뜻** —
+  - «replace off (allow_replace_map is not true in table_config for <표>)» — 그 표의 `allow_replace_map` 이 안 보입니다. table_config.json 의 그 표 항목을 봅니다.
+  - «replace on by [칸…] · <mode>/<reason> N» — 맵 키 칸 [칸…] 로 맵마다 바꿨고, 그 방식별 맵 수입니다.
+  - «rows in scope 0 N» — 맵 N 개가 바꿀 범위에서 옛 행을 못 찾았습니다(맵 키 값이 옛 행과 다른지 봅니다).
+  - «deleted N row(s)» — 🆕 파일 교체는 [위 항목](#2026-10-24--파일의-맵-교체는-맵을-통째로-지우고-쓴다--체인-층--사람-값도-같이-맵-키가-빈-행은-건너뜀)부터 맵을 통째로 지우므로 N = 그 맵들의 행 전부입니다. «다시 받아 지울 것이 없었다»(deleted 0)는 맵 편집기 · 체인의 맵 교체(차집합)에만 맞습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `directory_watcher._FileTally.replace_by` · `map_ways`, `crud` 의 `replace_report["in_scope"]` (`ea9fef6fb`).
+
+## 2026-10-24 · 실패 파일은 저절로 다시 읽지 않는다 — Retry · Read now · Read all again 으로만, 지워진 파일은 안 읽음
+
+- **무엇** — 소유자 10-24 «에러파일 자동으로 읽는건 안끄냐» · «err에서 삭제된 파일도 읽을라 그러네». 표의 읽는 법(파서 스크립트 · table_config 항목 · 외부 원천 항목)이 바뀌어도 실패한 파일은 FAILED 그대로 둡니다 — 전에는 와처가 스스로 다시 읽기에 넘겼습니다. 훑기 밑의 읽은 파일을 다시 읽는 것(체크 해제)은 전과 같습니다.
+- **화면에서** — 실패 파일을 다시 읽는 것은 파일 화면의 **Retry** · **Read now** · **Read all again** 뿐입니다.
+- **지워진 파일** — 디스크에서 지운 파일은 Retry 해도 읽지 않습니다. 와처 줄 «Retry skipped for checklist row #N (<파일>): the file is not on the disk any more - <경로>» 한 줄(트레이스백 없음), 기록은 FAILED «the file is not on the disk any more».
+- **로그 줄** — «[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, failed files are not read again by themselves (Retry on the file page)».
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `reread.hand_on_a_changed_reading` · `run_watcher.retry_one` (`dd5f221ef`). 은퇴한 것: [2026-10-20 설정 · 플러그인을 고치면 …](#2026-10-20--설정--플러그인을-고치면-그-표의-실패-파일을-와처가-스스로-다시-읽는-것) 의 실패 파일 넘기기.
+
+## 2026-10-24 · 같은 체인 실패는 접고, 10 번 내리 실패한 규칙은 꺼진다 — 목록 · 터미널 · 자동 끄기
+
+- **무엇** — 소유자 10-24 «단지 문법 오류로 체인을 잘못 저장하는 것만으로도 수십개의 오류가 쌓임» · «똑같은 에러면 접든가» · «연속 10회 오류면 자동 disable».
+- **터미널** — 같은 실패(규칙, 원인 문장)는 프로세스마다 처음 한 번만 «permanently failed» 줄 + 트레이스백 전체. 그 뒤는 세었다가 60 초에 한 번 «Transaction … same failure as above: <규칙> ×N in <초> s. 원인: …» 한 줄.
+- **실패 목록** — `/admin/outbox/failed` 응답에 `by_cause`: 한 줄 = 규칙 · 원인 문장 · 건수 · 처음 · 마지막. 묶음이 100만이어도 원인 수만큼. 목록의 묶음 페이지는 이제 SQL 로 묶어 그 쪽 묶음만 읽습니다(전엔 실패 행 전부를 payload 째 올림). 화면에 그리는 것은 클라 착지 뒤.
+- **자동 끄기** — 한 규칙의 묶음이 성공 없이 10 번 내리 «영구 실패»하면 그 규칙은 `enabled: false` 처럼 건너뜁니다(같은 표의 다른 규칙은 돕니다). 터미널 «[Chain] rule <이름> switched off after 10 failures in a row …», 체인 규칙 목록에 «Switched off after N failures in a row since <시각> · N changes skipped since · <원인>». 소유자의 chain_rules.json 은 안 고칩니다 — 상태는 config/chain_control.json(일시정지와 같은 파일).
+- **다시 켜기** — 규칙 또는 맵퍼 파일을 고쳐 저장하면(체인 워커가 선언을 다시 읽으면) 켜지고 «switched on again» 한 줄. 꺼진 동안 건너뛴 변경은 그 규칙 리플레이로.
+- **값** — chain_rules.json 맨 위 `"rule_off_after_failures": 10` (기본 10, 0 이면 안 끔).
+- **필요한 조건** — git pull · 런처 재기동.
+
+## 2026-10-24 · 키 조각 하나가 빈 행은 같은 키로 접힌다 — (a, 빈값) 두 행이 한 행
+
+- **무엇** — 소유자 10-24 «a,빈값 a,빈값 같은거로 처리하라고 지금 키충돌나면 접잖아» · «조인 유니크 걸고 파일 인제션 하니까 이지랄». 조합 키(composite_key_source) 표에 키 조각 하나가 빈 행 둘이 오면, 행 신원은 키를 안 지어 두 행이 따로 들어갔고(조인 유일 인덱스가 걸린 표에서는 쓰기 관문이 «둘 다» 거절 — «2 rows refused: unique_violated»), 조인 · 유일 인덱스 · decide 는 같은 키로 봤습니다. 이제 행 신원도 빈 조각을 빈 철자로 넣어 키를 짓습니다("a_"). 같은 키 두 행은 키 충돌이 접히는 그 문으로 한 행이 됩니다.
+- **바뀐 동작** — 조각이 «모두» 빈 행은 지금처럼 키 없음. 페이로드에 조각 칸 자체가 «안 실린» 행도 지금처럼(체인 키 관문이 그 칸을 이름 대어 거절, 새 행은 준 키를 지킴 — 총괄 10-14 는 이 경우에 남음). «실린 빈» 조각이면 조립 키가 준 키를 이깁니다(판정 191). 표준 파서가 빈 조각 행을 건너뛰던 것도 멈춥니다. 기존 행의 키 조각 하나를 비우면 키가 NULL 이 아니라 빈 조각 키가 됩니다(a61d32f4f 의 «키 없음»이 바뀜). NaN 조각은 빈 조각(«nan» 글자 신원은 안 생김).
+- **필요한 조건** — git pull · 런처 재기동 · 표마다 한 번 `rebuild_blank_business_keys.py --table <표>`(미리보기) 뒤 `--apply`. 이 변경 전에 빈 조각으로 들어와 키가 NULL 이거나 준 키로 저장된 행을 조립 키로 옮기고, 같은 키가 된 행은 그 키를 가진 행에 합칩니다(되돌릴 수 없음). 안 돌리면 그 행들은 다음 파일의 같은 키 행과 접히지 않습니다(유일 인덱스 표에서는 «이미 가진 행»으로 거절).
+- **자세히** — 시험 `test_blank_business_key_is_null.py` · `test_chain_key_gate.py` · `test_std_parser.py`.
+
+## 2026-10-24 · 착지 빌드의 화면 검사는 바꾼 화면만 — 전체 판은 밤에
+
+- **무엇** — 소유자 10-24 「너무 오래 걸리는데」 → 총괄 안 «ㄱ». 착지 빌드(prebuild)의 화면 검사기가 화면 아홉을 크기 · 상태 · 변이 67 개마다 다시 빌드하고 다시 열어, 10-24 아침 판이 84 분을 넘겨 거뒀습니다.
+- **이제** — 화면 검사기가 자기가 굽는 빌드의 모듈 그래프에서, origin/main 과 갈라진 뒤 바뀐 파일을 가진 화면만 엽니다(base · 변이 둘 다). 공용 파일(tokens.css 등)은 모든 화면의 그래프에 있어 전부가 됩니다. 검사기나 기록된 응답만 바뀌면 전부, 아무 화면도 안 닿으면 0 입니다. 첫 줄이 «narrowed: …» 로 어느 쪽인지 말합니다.
+- **잰 것** — 파일 화면 파일 한 줄 → «narrowed: file_ingestion.html» 50 초(37/0) · 아무것도 안 바뀜 → «no screen touched - nothing runs» 5 초 · tokens.css 한 줄 → 아홉 화면 · 기록된 응답만 → «every screen». 임시 클론에서 잰 수입니다.
+- **필요한 조건** — 없음(시험 도구만 바뀜). 전체 판: `node client2/tests/screen_layout_harness.mjs --mutate` (밤, 소유자 자리 비움 때).
+- **자세히** — `client2/tests/screen_layout_harness.mjs` (--touched) · `client2/scripts/check_harnesses.mjs` (FLAGS, 좁힌 판은 바닥 307 대신 그 판의 수) · ui-design-system §8.
+
+## 2026-10-24 · 꺼진 외부 소스의 파일도 손으로 읽는다 — Read now · Retry 는 그 선언대로
+
+- **무엇** — 소유자 10-24 «외부 저장소 자동읽기 끊어놓고 파일 하나 찍어서 돌려가면서 디버깅 하는법» · «타겟팅 돌리기만 제대로 만들어도 디버깅 다함». `"enabled": false` 인 외부 소스는 «자동으로»만 안 읽습니다(새 파일 이벤트 · 훑기 · Read all again). 파일 화면에서 손으로 고른 파일(Read now · 파일 한 줄 Retry)은 그 소스의 선언(parser · options · path)대로 읽습니다 — 몇 번이든, 재기동 없이.
+- **전엔** — 꺼진 소스는 선언 검증에서 통째로 빠져, Read now 가 «No table reads …» 로 거절하고 Retry 는 «the source … is not in ingestion_settings.json» 으로 실패했습니다.
+- **해 보기** — ingestion_settings.json 에서 그 소스를 `"enabled": false` 로 저장 → 파일 화면 «Read a file now» 에 파일 경로 → Read now. 다시 켜면 꺼진 동안 온 파일을 훑어 읽습니다(전과 같음).
+- **필요한 조건** — git pull · 런처 재기동(이 코드를 싣는 한 번). 그 뒤 끄고 켜기는 저장만.
+- **자세히** — `parsers/directory_watcher.py` 의 `validate_external_source_specs` 가 꺼진 항목도 검증해 `off` 표시로 남깁니다(선언을 아는 자리 하나). 그 표시를 묻는 자리: 와처 등록(자동 문) · `reread.table_sources`(Read all again) · 겹침 검사 · 손으로 읽을 때 `_parse_meta_for`.
+
+## 2026-10-24 · 체인 실패 트레이스백이 터미널에 — 영구 실패 줄 바로 밑에 전체
+
+- **무엇** — 소유자 10-24 «언제 어드민 들어가서 클릭해서 보내» · «트레이스백 넣는게 어렵냐» · «나 터미널 보고 일하니까 이대로 지어». 체인이 영구 실패하면 터미널의 실패 줄 «바로 밑»에 트레이스백 전체가 나옵니다. 어드민 화면을 열거나 .log 파일을 찾을 필요가 없습니다.
+- **터미널에 보이는 것** — 실패한 그룹마다 한 번(재시도마다가 아님):
+  1. «Transaction <tx> permanently failed: N event(s), M row(s) -> FAILED [rules=… tables=… row=…]. 원인: <오류> at <파일>:<줄> in <함수>» — 끝의 «at …» 는 [바로 아래 항목](#2026-10-24--체인-실패-줄이-어디서를-말한다--맵퍼-파일줄--함수)(`beec46570`): 맵퍼 파일이면 그 파일 그 줄을 엽니다.
+  2. «Transaction <tx> traceback:» 다음 줄부터 트레이스백 전체 — 기록된 사유 그대로.
+- **안 나오는 때** — 사유에 트레이스백이 없는 거절 문장(쓰기 거절 등)은 1 의 한 줄만 나옵니다(그 문장이 사유).
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — `chain/ingestion_worker.py` 의 영구 실패 줄 다음 한 줄(`331661db4`) · 시험 `test_a_chain_failure_says_where_it_broke.py`(실제 체인 워커 출력에 맵퍼 파일 프레임이 든 트레이스백).
+
+## 2026-10-24 · 체인 실패 줄이 «어디서»를 말한다 — 맵퍼 파일:줄 · 함수
+
+- **무엇** — 소유자 10-24 «딸랑 이거 나오는데 어쩌라는 거임» → «2 해». 맵퍼 안 pandas 오류의 실패 줄이 «원인: ValueError: cannot insert tkout_time, already exists» 뿐이라 운영자가 손댈 곳을 몰랐습니다. 이제 사유 문장 끝에 «at <파일>:<줄> in <함수>»가 붙습니다 — 트레이스백에서 맵퍼 파일(mappers 패키지 폴더, join_fn/ 포함)의 가장 안쪽 프레임, 없으면 제품 파일의 가장 안쪽 프레임.
+- **바뀐 동작** — 사유 문장을 짓는 한 함수(`event_constants.failure_cause`)에서 붙이므로 그것을 읽는 자리 다섯이 모두 같은 문장입니다: chain_worker.log 의 «permanently failed … 원인:» 줄, 대기열 줄의 retrying `last_failure`, 체인 상태의 FAILED, 대기열의 Recent failures, 실패 목록의 last_failure. 격리 기록(error_log)의 reason 은 전과 같이 트레이스백 전체입니다. 트레이스백이 없는 거절 문장(쓰기 거절 등)은 그대로입니다. 이미 쌓인 실패 기록도 다시 읽을 때 같은 문장이 됩니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_a_chain_failure_says_where_it_broke.py`(실제 API + 체인 워커).
+
+## 2026-10-24 · 쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것
+
+- **무엇** — 체인 · 파일 · 사람 쓰기가 모두 지나는 쓰기 문(apply_batch_updates)이 묶음의 행마다 «모든 칸»의 층 (cell_sources)과 덮어쓰기를 잠그고 읽었습니다. 칸 하나를 써도 칸 수만큼 읽었습니다(판 B 6 칸: 1,000 행에 층 6,000 행).
+- **바뀐 동작** — 묶음이 «쓰는 칸»의 층만 읽습니다. 「캐시에 없음 = 표에 없음」의 증명은 (행, 칸) 단위입니다(`crud.LayersRead`). 읽지 않은 칸은 DB 에 묻습니다. 키를 바꿔 다른 행에 합쳐질 때(병합)는 두 행의 모든 칸 층을 한 질의로 먼저 읽습니다(`prime_merge_cells`, 전에는 합쳐지는 행의 칸마다 한 질의). fold-units 도 같은 증명을 씁니다. 쓰는 값 · 층 · 이력 · 알림은 그대로입니다.
+- **잰 것** — 박스, 같은 묶음을 옛 · 새 쓰기 문에 넣고 롤백, 두 판씩. 40 칸 표(2,000 행 · 층 80,000)에 칸 하나: 쪽(1,000 행)마다 층 읽기 40,000 → 1,000 행, 미리 읽기 0.67 · 0.63 → 0.07 · 0.07 s, 쪽 1.52 · 1.36 → 0.98 · 0.81 s. 판 B(6 칸, 4 쪽): 층 6,000 → 1,000 행/쪽, 미리 읽기 0.17~0.19 → 0.05~0.06 s/쪽, 둘째~넷째 쪽 합 2.00 · 1.71 → 1.58 · 1.54 s. 칸이 많은 표일수록 큽니다.
+- **같이** — 그룹 줄 · 청크 줄의 «INSIDE THE WRITE» 시계가 perf_counter 입니다. 윈도우의 monotonic 은 15.6 ms 눈금이라 단계마다 ±16 ms 로 찍혔습니다. 줄의 문장은 그대로입니다.
+- **필요한 조건** — git pull · 런처 재기동. 선언은 바꿀 것 없음.
+- **자세히** — `database/crud.py` 의 `LayersRead` · `_load_metadata_row_cell` · `prime_merge_cells` · 미리 읽기 · `chain/replay.py` 의 `_fold_units_page` · 시험 `test_a_batch_reads_the_layers_of_the_columns_it_writes.py`.
+
+## 2026-10-23 · 파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수, 지난 훑기, 기다리는 다시 읽기 취소
+
+- **무엇** — 소유자 10-23 「몇 개 중 몇 개 읽고 있는지」. 서버는 표마다 저장소별 수를 내고 있었지만(A 23c35a768 · 11618814f) 화면이 그리지 않았습니다.
+- **이제** — 파일 화면 맨 위 READ PROGRESS 표: 표 × 저장소 한 줄. Files «읽음 / 전체 read · 남은 left», Last sweep(지난 훑기 몇 초 전 · 걸린 시간 · 본 수 · 보낸 수와 그 까닭, 훑는 중이면 «sweeping»), 오른쪽 위 «counted N s ago». 다 읽은 줄은 흐립니다. 외부 저장소에 기다리는 다시 읽기가 있으면 «Cancel waiting re-reads» — 서버 미리보기 문장과 되돌아갈 상태를 먼저 묻습니다.
+- **함께** — 체크리스트가 파일당 한 행이 되어(A daafb2214) 줄을 checklist_id 로 찾고 고릅니다. 한 번도 안 읽은 파일은 기록이 없어 Retry 가 꺼지고 «Not read yet - its read is waiting» 이라고 말합니다.
+- **잰 것** — 화면 검사기 file_ingestion.html 1920 · 1536 · 1280 37/0, 변이(다 읽은 줄이 안 흐림) 빨강 · 페이지 하니스 34/0. 기록된 응답 위의 수입니다.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 수는 서버에 A 의 23c35a768 · 11618814f · daafb2214 가 있어야 나옵니다.
+- **선언** — 바뀐 것 없음.
+- **자세히** — `file_ingestion/model.js`(sourceLines · sweepText · PROGRESS_COLUMNS · cancelAsk · countedText) · `parts.js` · `main.js`.
+
+## 2026-10-24 · 다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스
+
+- **무엇** — 총괄 10-24. 다시 읽기 멈춤은 와처 폴러 차례(3 초)마다 열린 (표, 저장소) 쌍마다 «남은 파일 있나»를 묻는데, 받쳐 줄 인덱스가 없어 체크리스트 전체를 훑었습니다(100 만 행 박스 판 0.13 s). 부분 인덱스 `ix_file_checklist_rereads_left` — (table_name, source), 조건 `status IN ('PENDING_RETRY', 'PENDING') OR file_mtime IS NULL` — 를 모델에 선언했습니다. 같은 판에서 0.0007~0.0023 s, EXPLAIN 이 그 인덱스를 탑니다.
+- **바뀐 동작** — 답은 같습니다. 인덱스는 스케줄러가 기동 때 선언된 인덱스 작업으로 CONCURRENTLY 세웁니다(`build_missing_indexes`, 쓰기를 막지 않음). 서기 전에는 지금처럼 전체를 훑습니다 — 느릴 뿐 답은 같습니다.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_the_server_names_and_builds_the_indexes_its_models_declare.py` 의 `test_the_re_read_stops_question_reads_its_partial_index`.
+
+## 2026-10-24 · 다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다 — 잘못된 파서로 오류만 내며 돌던 것
+
+- **무엇** — 소유자 10-24 «외부 저장소 다시 읽을 때 연속 파일 3 번 에러 나면 멈추면 안 됨?» · «잘못된 파서로 계속 에러만 띄우면서 돌잖아» · «근데 근본 불량 파일들도 있네». 다시 읽기가 한 (표, 저장소)에서 읽힌 파일 없이 3 번(설정 `reread_stop_after_failures`) 실패하면 그 쌍만 멈춥니다. 하나라도 읽히면 끝까지 갑니다(불량 파일은 지금처럼 하나씩 실패로 남음). 와처 전체는 안 멈춥니다.
+- **바뀐 동작** — 멈춘 쌍의 기다리는 파일 · 체크 해제된 파일은 그대로 두고(DB 쓰기 없음) 와처의 다시 읽기 줄과 훑기가 건너뜁니다. 많이 기다려도 다른 쌍의 다시 읽기는 돕니다. 파일 화면 진행 줄에 «Stopped: 3 failed in a row - <오류 첫 줄> · waiting N», 와처 로그에 «… - waiting N · unchecked M left as they are». 풀림: 그 쌍에 Read all again · Retry · Read now(API 가 SYSTEM_RELOAD «reread_released» 한 줄) · 그 표의 스크립트나 table_config 변경 · 와처 재기동. 잠금 대기는 안 셉니다. raws 도 같습니다.
+- **필요한 조건** — git pull · 런처 재기동. 안 적으면 3.
+- **자세히** — [ingestion_settings](../guide/config/ingestion_settings.md) `reread_stop_after_failures` · 시험 `test_a_reread_that_fails_file_after_file_stops_for_its_source.py`.
+
+## 2026-10-24 · 파일 기록이 바뀐 칸 이름을 말한다 — «Changed» 밑에 «Changed in <칸> N»
+
+- **무엇** — 파일을 다시 읽어 «Changed 3» 이 나와도 무엇이 바뀌었는지 몰랐습니다. 이제 파일 기록에 칸마다 바뀐 행 수를 적고(`file_ingestion_logs.columns_changed`, 많은 것부터), 파일 화면의 Result 가 Changed 밑에 «Changed in <칸> N» 을 칸마다 보여 줍니다.
+- **바뀐 동작** — 쓰기가 이미 아는 «바뀐 칸»에서 셉니다(질의 추가 없음). 새 행의 칸은 안 셉니다. 바뀐 칸이 없거나 세지 못한 읽기는 비어 있습니다(줄 없음). 체크리스트는 그대로입니다.
+- **필요한 조건** — git pull · 런처 재기동(부팅 스키마 맞추기가 칸을 더함). 손으로는 `server/migrations/add_file_ingestion_log_columns_changed.sql`(되돌리기 `_reverse.sql`). 이 착지 전에 읽힌 파일은 비어 있습니다.
+- **자세히** — 시험 `test_a_files_completion_record_says_what_its_read_came_to.py` · 하니스 `file_ingestion_page_harness.mjs` M1d.
+
+## 2026-10-24 · decide 를 적은 이름으로 리플레이한다 — R1 이 «not found» 로 거절하던 것
+
+- **무엇** — decide 선언은 로더가 `enrichment_dedup:<이름>` · `enrichment_auto_confirm:<이름>` 두 규칙으로 세웁니다. R1 · 리플레이 CLI 가 운영자가 적은 이름을 찾지 못해 «not found or disabled» 로 거절했고, 그 줄의 목록에도 적은 이름이 없었습니다. 이제 적은 이름이면 그 선언이 세운 첫 규칙(dedup 반쪽)을 돌리고, 거절 목록에 적은 이름도 같이 나옵니다. 꺼진 선언도 같습니다.
+- **바뀐 동작** — 리플레이의 쓰기는 다른 규칙을 깨우지 않으므로(소유자 09-26) auto_confirm 반쪽은 `enrichment_auto_confirm:<이름>` 으로 따로 돌립니다. 실제 프로세스(체인 워커 + 소급 실행 프로세스, sqlite)로 꺼진 decide 를 적은 이름으로 R1 → 7.3 초 안에 쌍 행 셋.
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — [BACKFILL_GUIDE](../guide/BACKFILL_GUIDE.md) ⓐ R1 줄 · 시험 `test_a_decide_is_replayed_by_its_declared_name.py`.
+
+## 2026-10-24 · 표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다
+
+- **무엇** — 표 설정 저장은 파일만 쓰고, 서버는 파일 감시 이벤트로 조금 뒤에 다시 읽었습니다. 그 사이에 저장한 체인 규칙은 방금 더한 칸 · 표를 모른다고 거절될 수 있었습니다. 이제 저장이 쓰고 나서 같은 프로세스에서 바로 다시 읽습니다(규칙 저장과 같은 문 `config_watcher.changed`). 같은 쓰기의 감시 이벤트는 두 번 적용하지 않습니다.
+- **바뀐 동작** — 저장 응답이 다시 읽기만큼 길어집니다. 실제 API · 버리는 PG DB · 표 100 개에서 칸 하나 더함 0.13 → 0.83 초(중앙값, 최대 0.85), 표 하나 더함 0.12 → 0.79 초(최대 0.82). 늘어난 몫은 표 전부의 물리 스키마 맞추기라 표 수에 따라 늘어납니다(100 개 넘는 수는 안 쟀습니다).
+- **필요한 조건** — git pull · 런처 재기동.
+- **자세히** — 시험 `test_table_registration_is_in_the_product.py::test_the_saving_process_reads_the_table_it_saved_at_once`.
+
+## 2026-10-24 · 표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이
+
+- **무엇** — 표 설정 저장은 SYSTEM_RELOAD 를 안 쓰므로(e6a0bdbbd) 새 표의 raws/ 가 Reload 버튼이나 와처 재기동 전까지 안 생기고 안 감시됐습니다. 와처가 3 초마다 자기가 읽은 표 이름을 견주고, 바뀌면 Reload 때와 같은 문(`sync_new_workspaces`)으로 폴더를 만들고 감시에 넣습니다.
+- **바뀐 동작** — 표 추가 → raws/ 생김 → CSV 적재까지 실제 와처 프로세스로 3.0 · 3.0 · 7.5 초(이 박스 sqlite, 세 번). 이름이 그대로인 저장(칸만 바뀜)은 아무것도 안 합니다.
+- **함께** — 하위 폴더 다시 보기 스레드가 `subfolder_recheck_seconds` 를 기다리는지 시험 칸(스윕 주기를 기다리는 변이가 빨강).
+- **필요한 조건** — git pull · 런처 재기동(와처 새 코드).
+- **자세히** — [INGESTION_GUIDE](../guide/INGESTION_GUIDE.md) «생성 시점» · 시험 `test_a_table_added_while_the_watcher_runs_reads_its_raws.py`.
+
+## 2026-10-24 · AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름(DATE · WAFER · LEG) · 표는 창 폭
+
+- **무엇** — 소유자 10-23 «배치 그냥 원래대로 세로 나열해. 표가 가로로 길어서 좌우 배치 힘들어 보이네» · «핵심 요약 표 이미지 상세 설명». d219fc286 의 좌우 배치(글 · 그림 왼쪽 / 표 오른쪽)를 거뒀습니다 — layout 차례대로 위에서 아래로.
+- **바뀐 동작** — 페이지 폭 상한(1200px)이 없어 표가 창 폭을 다 씁니다. 열이 더 많으면 표 상자 안에서 가로로 넘깁니다(열 20 개 · 1440 폭: 페이지는 안 넘고 표만). 비교 표의 머리 단마다 왼쪽 칸에 단 이름 — 키 칸 이름 · time 은 «Date» · `labels.columns` 로 바꿈. 맨 아랫단 왼쪽의 «Item» 은 없어졌습니다(라벨 `item` 은퇴).
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시. 단 이름을 바꾸려면 규칙 labels 에 `"columns": {"time": "DATE", …}`.
+- **자세히** — 가이드 «도는 것» · «비교 표» · 시험 `test_the_report_html_embeds_everything_in_layout_order.py` · `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-24 · 뭉치기 조인이 키마다 한 번 계산한다 — 함수 · 내장 fn 이 대상 행마다 돌던 것
+
+- **무엇** — 소유자 10-24 «이거 뭉치기 조인 너무 느린데» · «함수가 그룹별로 안 돌고 행별로 다 도나 봐». 맞았습니다: take 에 fn 이 있는 조인이 «대상 행마다» 계산했습니다(박스 판: 키 100 × 대상 20 행에 함수 2,000 번).
+- **바뀐 동작** — 계산은 (조인 키, 함수에 넘기는 row 값) 마다 한 번이고, 같은 묶음의 대상 행들이 그 답을 나눠 씁니다. 내장 fn(count · min · max · unique_concat)은 row 를 안 받으니 키마다 한 번, 파일 함수는 "row" 를 안 적었으면 키마다, 적었으면 그 칸 값 묶음마다 한 번입니다 — row 값이 다른 대상 행은 제 답을 받습니다. 내장 fn 의 식은 묶음마다 한 번 컴파일합니다(전엔 대상 행마다). 쓰기는 전과 같이 대상 행마다입니다.
+- **잰 것** — 박스 판 B(키 100 · 원천 1,000 · 대상 2,000), 같은 행을 건넨 프로세스 안 읽기 · 답: 계산 2,000 → 100 번, 함수 호출 2,000 → 100 번, 쓰기 항목 2,000 그대로, 내장 fn 답 0.47 → 0.07 s. 그룹 시간의 대부분은 쓰기입니다(진짜 워커, 같은 판: 그룹 2.73 s 중 쓰기 2.05 s) — 쓰기 줄이기는 이번에 하지 않습니다.
+- **필요한 조건** — git pull · 런처 재기동. 선언은 바꿀 것 없음.
+- **자세히** — `chain/join_into.py` 의 `_page`(묶음의 한 번 계산) · `_functions_and_ref`(take 마다 계산 준비) · 시험 `test_a_join_take_fn_names_a_function.py::test_a_function_runs_once_a_key_and_row_values_and_every_target_row_is_still_written` · `::test_one_of_the_four_is_compiled_once_a_batch_not_once_a_target_row`.
+
+## 2026-10-23 · AI 리포트 키 칸 — keys 한 곳(unit · latest · fold), 표마다 가진 키 칸 이름
+
+- **무엇** — 소유자 10-23 «계측 결과가 여러 번일 수 있어서 TKOUT_TIME 도 키에» · «LAYER 는 한 CHIP 을 투과해서 여러 층» · «이거 일반화해서 그냥 키 칸을 리스트로 받게 지어». 칸이 나올 때마다 역할에 칸을 더하지 않고, 키 칸이 하는 일을 한 곳에 적습니다.
+- **선언** — `derive.report.keys` {칸 이름: [unit · latest · fold]}. 역할의 `wafer` 목록은 «그 표가 가진 키 칸 이름»입니다(위치가 아니라 이름 — 일부 · 더 많이 다 됨).
+- **바뀐 동작** — latest: 리포트(그리고 대조 웨이퍼)마다 그 칸이 가장 늦은 행만 읽습니다(시각 읽기 하나). fold: 칩 하나의 층 여러 장이 그림 한 장 — 가장 작은 층(소유자 ㄱ). tkout 없는 조건표는 모든 계측에 답합니다. 늦은 계측이 들어와도 저절로 다시 안 만들고 R1 리플레이입니다(소유자 ㄴ).
+- **옛 선언** — keys 를 안 적으면 다 «낱말 없음»이고 단위는 리포트 표에서 읽습니다. 역할 목록이 웨이퍼 키와 같은 이름이면 그대로 읽힙니다(저장소의 시험 · 가이드 · 박스는 다 같은 이름). 다른 이름이면 «'<칸>' is not a key column» 으로 거절합니다.
+- **필요한 조건** — git pull · 런처 재기동 · 규칙에 keys · 역할 목록에 tkout_time 등 · R1.
+- **자세히** — 가이드 «키 칸» · 시험 `test_every_declared_kind_runs_and_leaves_rows.py::test_the_keys_say_what_each_key_column_does_the_latest_measurement_and_a_chip_seen_through`.
+
+## 2026-10-23 · 체인 규칙 창에서 조인 take 항목을 기록으로 — «+ record», from 칸 목록, 친 칸 이름
+
+- **무엇** — 소유자 10-23 「from, to → take 로 가는 길이 없음, 강제로 파일 바꾸면 되긴 하는데」. take 항목이 전부 칸 이름이면 창이 그것을 칩으로 그렸고, 칩에는 항목을 기록(from · into · fn · separator · ref · row)으로 바꿀 길이 없었습니다. 파일에 기록이 이미 있을 때만 줄로 그려졌습니다.
+- **이제** — take 칩 끝의 «+ record» 를 누르면 빈 기록 항목이 더해지고 목록이 줄 모양이 됩니다. 줄마다 name · record 고르개가 있어 어느 항목이든 바꿀 수 있습니다. 기록 안의 from 은 name · list 고르개 — list 면 칸 이름을 여럿 적습니다(쉼표로 한 번에도). 파일에 적힌 기록 take 는 그대로 그려집니다(목록에 없는 fn 값도 그대로 보임).
+- **함께 고친 것** — take 칩 입력에 칸 이름을 치고 Enter 를 누르면 그 이름이 아니라 빈 항목 «""» 이 들어갔습니다. 이제 친 이름이 들어갑니다.
+- **잰 것** — 진짜 API 프로세스 · 스크래치 sqlite, 1920x950: 칩에 «value» 입력 → take ["value"] · «+ record» → ["value", {}] · fn count · from list 로 바꾸고 «value, item» → {"fn": "count", "from": ["value", "item"]} · 저장(fn count, from 한 칸) → 파일 그대로 · 다시 열면 기록 줄 그대로. 서버 거절은 그 칸 옆에 서버 문장으로: join_fn 폴더에 .py 가 없으면 «<file>.<function>» fn 이 거절되고, 내장 fn 에 from 목록은 «only a function … takes one» 으로 거절.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
+- **선언** — 바뀐 것 없음.
+- **자세히** — `ontology_path.addMember`(가지 이름 · shape 로 고르는 항목의 낱말) · `ontology_explorer_view` 칩의 «+ <가지>» · 하니스 declaration_form V11 · A2c · P11.
+
+## 2026-10-23 · AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg · 행 조건 · 수율 · 불량 (소유자 그림)
+
+- **무엇** — 소유자 10-23 그림: 웨이퍼를 옆으로 늘어놓는 비교 표. 열 머리 세 단(날짜 › 웨이퍼 › leg, 같은 값 한 칸, 날짜 오름차순), 행 머리 두 단(조건 › 항목) · 수율 · 불량 › 디펙. 오른쪽 후보 목록 표는 은퇴했습니다(소유자 «CANDIDATE, DATE 이거»).
+- **선언** — `derive.report.columns`(열 머리 단 — 키 칸 · time · group), summary · info 의 `label`(줄들이 서는 머리, 넓은 표는 그 줄 이름), info 의 `choose`(모델이 yield_by 의 rows 로 고름), picture_rows 의 `source`. 새 표 종류가 아니라 yield_by 를 넓혔습니다 — 웨이퍼 하나짜리 표는 열이 리포트 웨이퍼뿐인 경우이고, columns 를 안 적은 선언은 지금 머리 그대로입니다.
+- **바뀐 동작** — 열은 리포트 웨이퍼 + 모델이 compare 로 고른 대조입니다. «대조 대비» 색칠은 자리가 아니라 열마다의 «리포트 웨이퍼인가»로 셉니다. 늦은 계측 뒤에는 R1 리플레이로 다시 만듭니다(소유자 ㄴ).
+- **필요한 조건** — git pull · 런처 재기동 · 리포트 규칙 layout 에서 candidates 칸을 빼기(남아 있으면 규칙 로드 거절) · 규칙에 columns · label · choose · R1 다시.
+- **자세히** — 가이드 «비교 표» · 시험 `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py::test_the_owners_comparison_table_heads_date_wafer_leg_and_its_rows_stand_under_labels`.
+
+## 2026-10-23 · AI 리포트 대조 후보 — 웨이퍼 하나에 날짜 하나 · 늦은 웨이퍼도 후보 · 칸 이름 Rows
+
+- **무엇** — 박스(총괄 10-23): W2310-13 의 후보에 W2310-15 가 L2 만 나왔습니다. 15/L1 은 13 보다 늦어 빠졌고, 15/L2 는 시각이 없어 그 걸름을 안 받았습니다.
+- **바뀐 동작** — 후보를 웨이퍼로 먼저 묶고, 날짜는 leg 시각 중 가장 늦은 것 하나로 접은 뒤 걸러 정렬합니다. 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 빼지 않습니다(소유자 «빼지 마»). 평가 칸이 있는 선언은 그대로 이 평가 뒤의 평가를 뺍니다. `control.recent.evaluations` 상한은 그대로입니다.
+- **낱말** — 후보 표 칸 «Wafers» 는 «Rows», 모델 줄 «N wafers» 는 «N rows»(웨이퍼 표의 행 수). 라벨 칸 이름 `wafers` 는 `rows` 입니다.
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시. labels 에 `wafers` 를 적었다면 `rows` 로.
+- **자세히** — 가이드 «대조 후보» · 시험 `test_every_declared_kind_runs_and_leaves_rows.py`.
+
+## 2026-10-23 · AI 리포트 — 칩 그림은 leg 마다 · Evidence 는 걸음이 읽은 줄 전부
+
+- **무엇** — 박스 20 장(총괄 10-23): 디펙마다 그림 셋이 다 L1 이었고, Evidence 는 걸음마다 첫 줄만 적어 대조 후보가 «비어» 보였습니다.
+- **바뀐 동작** — `images.per_item` 은 웨이퍼 행(leg) 하나마다 셉니다. Evidence 는 걸음 줄 밑에 그 걸음이 읽은 나머지 줄을 들여 씁니다. `chain_worker.log` 의 `[Report]` 줄은 그대로 첫 줄입니다.
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시.
+- **자세히** — 시험 `test_every_declared_kind_runs_and_leaves_rows.py`.
+
+## 2026-10-23 · AI 리포트 — 후보 날짜는 제품 시간대의 날 · 빈 조건 값은 (empty) · 웨이퍼 이름은 머리에 한 번
+
+- **무엇** — 박스 20 장에서 A 가 본 것(총괄 10-23): 후보 날짜가 하루 일렀습니다(2026-10-22T00:00+09:00 이 10-21 로). 리포트가 시각을 UTC 로 읽고 날짜를 잘랐습니다. 이제 제품의 시각 읽기 하나(`expression._instant`, `expression_time_zone`)를 지납니다. 리포트 안에서 날짜를 자르는 자리는 후보 줄 하나였고, 같은 값이 모델 줄과 파일 표로 갑니다.
+- **함께** — 값이 빈 조건 행(이름만 있음)은 «bond_temp=(empty)» 로 읽힙니다(전엔 «None»). 빈 값 판정은 `crud.is_blank_value` 하나입니다. 웨이퍼 하나의 leg 들을 담은 요약 표는 웨이퍼 이름을 머리에 한 번만 적습니다(전엔 두 줄).
+- **필요한 조건** — git pull · 런처 재기동 · R1 다시.
+- **자세히** — 시험 `test_every_declared_kind_runs_and_leaves_rows.py::test_the_owners_long_conditions_and_chip_images_are_read_as_they_are`.
+
+## 2026-10-23 · AI 리포트 대조 후보 — 웨이퍼 하나가 후보 하나, 파일에 후보 표
+
+- **무엇** — 총괄 10-23: 소유자가 함정 웨이퍼를 대 보려면 후보가 파일에 보여야 합니다. 평가 칸이 없을 때 후보는 리포트 표의 웨이퍼 하나이고, leg 는 그 후보 안에 함께 있습니다(전엔 leg 마다 후보 하나).
+- **선언** — layout 에 `{"kind": "table", "fill": "candidates"}`. 파일 오른쪽에 후보 · 날짜 · 행 수 · 제목 · 조건 표가 그려집니다. 낱말은 `labels` 의 candidate · date · wafers · title · conditions 입니다.
+- **필요한 조건** — git pull · 런처 재기동 · 규칙의 layout 에 그 칸 · R1 다시.
+- **자세히** — 가이드 «대조 후보» · 시험 `test_every_declared_kind_runs_and_leaves_rows.py::test_the_owners_long_conditions_and_chip_images_are_read_as_they_are`.
+
+## 2026-10-23 · AI 리포트 파일 — 글 · 그림 왼쪽, 표 오른쪽
+
+- **무엇** — 소유자 10-23 「글 및 이미지가 좌측, 표가 우측 차지하게 배치 바꿔」. layout 의 text · image 칸은 왼쪽, table 칸은 오른쪽이고, 각 쪽은 layout 순서를 따릅니다. 900px 아래에서는 한 줄로 접힙니다.
+- **함께** — 요약 표 머리 밑 info 줄에서 숫자 값은 디펙 칸처럼 오른쪽, 글자 값은 왼쪽에 놓입니다(총괄 10-23).
+- **필요한 조건** — git pull · 런처 재기동 · 리포트 다시 만들기(R1 에 규칙 이름).
+- **자세히** — 시험 `test_the_report_html_embeds_everything_in_layout_order.py` · `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-23 · AI 리포트 요약 표의 info 가 표 목록 — 넓은 표 한 행(수율)도 한 줄
+
+- **무엇** — 총괄 10-23: 리포트에 leg 별 수율 한 줄. 수율은 «디펙이 하나도 없는 칩의 비율»(소유자)이고 칩 표에서 체인 decide 가 수율 표([wafer, leg] · yield)에 씁니다.
+- **선언** — `derive.report.info` 에 표 목록. `item` 없는 표는 `value` 칸이 그 줄입니다. 표 하나로 적은 옛 선언은 그대로 읽힙니다. 폼은 목록으로 그립니다.
+- **자세히** — 가이드 `docs/guide/ai_report_tables.md` «요약 표 꾸미기» · 시험 `test_the_report_summary_table_takes_info_pictures_formats_and_its_template.py`.
+
+## 2026-10-23 · 끊긴 체인 소급을 화면에서 이어 한다 — 대기열 줄의 Resume, 미리 세기의 «Resumes from page N»
+
+- **무엇** — 소유자 10-23 「체인 소급 이어하기는 안 되는 건가? 테스트런할 때 마지막 커서가 떴으면 좋겠는데」. 서버는 끊긴 리플레이를 마지막으로 커밋한 쪽 다음부터 새 run 으로 잇습니다(POST /admin/retroactive/runs/{run_id}/resume, 총괄 fc1e1e385). 그런데 화면에 그 버튼이 없었습니다.
+- **화면에서** — 어드민 Chain 대기열에 끊긴 run 마다 한 줄이 섭니다. 상태 낱말은 «interrupted»이고 «Resumes from page N · after <마지막 키> · R of T rows · cut <시각>» 가 붙습니다. 그 줄에 «Resume» 과 × 가 있습니다. 끊기지 않은 줄에는 Resume 이 없습니다. Retroactive 탭에서 chain_replay 의 Count 를 누르면, 그 규칙에 끊긴 run 이 있을 때 결과 밑에 같은 «Resumes from page N · after <키>» 와 Resume 이 섭니다. 거절은 서버 문장 그대로 토스트로 나옵니다.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 마지막 키 · 전체 대비 · Count 쪽 줄은 서버가 interrupted_runs 항목에 cursor_end · total_rows · op 를 실은 뒤부터 나옵니다(A 착지). 그 전에는 쪽과 끊긴 시각만 나옵니다.
+- **선언** — 바뀐 것 없음.
+- **자세히** — `chain_queue_panel.interruptedRow` · `resumeLine` · `cutRunFor` · `resumeRun` · 하니스 chain_queue_panel 절 Z · 화면 검사기 상태 «Chain queue, a cut run».
+
+## 2026-10-23 · AI 리포트는 리포트 표에 건 규칙 하나 — 요약표 · 조건표 · 이미지표는 소유자 모양 그대로 읽기만
+
+- **무엇** — 소유자 10-23 「요약표가 wafer, leg, item_id, value 모양인데 여기에 결과를 더하면 … 리포트용 표가 따로 있어야지」 · 「요약표는 그냥 데이터 표일 뿐이야」 · 「그냥 wafer, 보고서 파일 경로 이 두 개가 최종 출력이어야 해」. 오전 착지는 규칙을 요약표에 세우고 결과 칸 셋을 요약표에 요구했습니다.
+- **선언** — 리포트 표(웨이퍼 칸 · 파일 경로 칸)에 `on` = `into`, `results` 는 `{"file": "<칸>"}` 하나. 조건이 긴 표면 `conditions` 역할(이름 · 값 · 시각 · 제목), 이미지 행이 디펙을 쉼표로 적으면 `images.item_sep`, 경로를 이미지 소스로 읽으면 `images.source`. 웨이퍼 표가 없으면 `wafer` 에 요약표를 적습니다.
+- **바뀐 동작** — 리포트 표의 웨이퍼 행마다 한 판, 그 웨이퍼의 leg 는 리포트 안 열. 요약표에는 아무것도 안 씁니다. 상태 · 사유는 파일의 Evidence 첫 줄과 `[Report]` 줄. 보낼 것은 리포트 옆 `.send` 표시 파일, 세 번 실패면 `.send_failed`. 평가 칸이 없으면 대조 후보는 웨이퍼 하나씩 — 날짜 · 제목 · 조건(없으면 default conditions)을 모델이 읽습니다.
+- **판정 바뀜** — decide 가 «키만 든 행»을 만듭니다(전엔 「'target_fields' is empty, so 'aggregations' must be declared …」로 거절). 리포트 표의 두 칸이 그대로 됩니다.
+- **필요한 조건** — git pull · 선언 고침(요약표의 결과 칸 · 요약표 위 규칙을 지우고 리포트 표 + 규칙) · 런처 재기동.
+- **자세히** — 가이드 `docs/guide/ai_report_tables.md` · 시험 `test_every_declared_kind_runs_and_leaves_rows.py` · `test_a_report_is_declared_as_a_chain_rule.py` · `test_a_decide_with_no_fields_stands_on_its_aggregations.py` · RUN.md 같은 날 항목.
 
 ## 2026-10-23 · 피벗 보기에서 줄 더하기 · 줄 지우기 · 맨 아래 붙여넣기 — Pivot 을 끄지 않는다
 
@@ -733,6 +1455,22 @@ python server/scripts/chain_replay_cli.py delete-every-row official_dt --how ful
 - **은퇴** — `server/scripts/empty_table.py`. RUN.md 의 그 명령 줄 · BACKFILL_GUIDE §0 의 표 줄은 새 명령으로 바뀌었습니다.
 - **자세히** — 시험 `test_a_table_is_emptied_whole_with_what_it_carried.py`
 
+## 2026-10-23 · 고침 — 메인 그리드의 실패 · 거절 문장이 잘리지 않고 다 보인다
+
+- **무엇** — 총괄 10-23. 실패와 거절 문장(쓰기 거절 · «Apply stopped: …» · 저장 · 붙여넣기 · 내려받기 · 인제션 실패 등)이 상단 한 줄 배지에만 들어가 1536 폭에서 «Apply or discard the stage…» 처럼 잘렸습니다. 이제 그 문장이 모두 오류 토스트로도 뜹니다. 배지에는 «Loaded N rows in …» 같은 상태 줄만 남습니다.
+- **달라 보이는 것** — 저장 실패 다섯(Apply · 셀 · 붙여넣기 · 지우기 · 범위)과 숫자 아님 거절은 전에는 확인 창(alert)이 떴습니다. 이제 확인 창 없이 토스트로 뜹니다.
+- **선언** — 바뀐 것 없음.
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만).
+- **자세히** — `write_guard.sayStopped` · 화면 검사기 칸 «refusal read whole» · «failure read whole».
+
+## 2026-10-23 · 선언 폼 — HTML 칸에 «Paste HTML», 목록 줄의 열 칸은 그 줄의 표에서 고른다
+
+- **무엇** — 총괄 10-22. 스켈레톤이 hint "html" 로 낸 칸(체인 report 의 template)은 폼에 크기(«N KB HTML»)와 «Paste HTML» 버튼으로 그려집니다. 버튼을 누르고 Ctrl+V 를 치면 클립보드의 HTML(엑셀에서 복사한 칸)이 그 칸에 들어갑니다. 원문은 왼쪽 JSON 에서 봅니다.
+- **목록 줄의 열 칸** — table_from 경로의 `*` 는 그 칸 자신의 줄 번호입니다. 그래서 report 의 picture_rows 줄마다 wafer · image 가 그 줄의 table 칸의 열에서 고르는 목록이 됩니다.
+- **선언** — 바뀐 것 없음. 칸의 성질은 서버 스켈레톤이 정합니다(hint "html", "derive.report.picture_rows.*.table").
+- **거절** — 클립보드에 HTML 이 없으면(글만 있으면) 칸을 그대로 두고 «The clipboard holds no HTML - copy the cells from Excel».
+- **필요한 조건** — git pull · 화면 새로 고침(클라 파일만). 서버 몫은 이미 들어가 있어야 합니다.
+- **자세히** — 시험 declaration_form H1~H4 · S3, 화면 검사기 칸 «html cell» · «html refused» · «html written».
 ## 2026-10-23 · 외부 저장소 방아쇠 파일은 그 폴더가 조용해진 뒤 읽는다 — 이미지 목록이 반쪽으로 들어가던 것
 
 - **무엇** — 소유자 10-23 「폴더 전송 중에 읽어버린다」. voids.json 이 먼저 도착하면 와처가 1 초 뒤 바로 읽어, 아직 복사 중인 이미지가 목록에서 빠졌습니다. 그 뒤 스윕도 같은 파일이라 다시 읽지 않아 반쪽이 남았습니다.
@@ -966,7 +1704,7 @@ python server/scripts/chain_replay_cli.py delete-every-row official_dt --how ful
 
 소유자 10-21 맵 단위 버전 착지 뒤 (총괄 «거절된 파일이 SUCCESS 로만 보이는 것은 화면이 참이 아닌 것»).
 
-- **무엇** — 버전 칸이 맵이나 행을 거절한 파일은 파일 화면 결과 칸에 «1 row · 1 refused · 1 map refused: version_older» 처럼 수와 낱말이 붙는다. 행 단위 거절도 같다(«2 rows refused: version_same»). 낱말은 와처 로그 VersionGate 줄과 같다. 같은 버전인데 내용이 바뀐 행은 «1 row version_same_content_differs» 로 덧붙는다.
+- **무엇** — 버전 칸이 맵이나 행을 거절한 파일은 파일 화면 결과 칸에 «1 row · 1 refused · 1 map refused: version_older» 처럼 수와 낱말이 붙는다. 행 단위 거절도 같다(«2 rows refused: ~~version_same~~ version_missing»). 낱말은 와처 로그 VersionGate 줄과 같다. ~~같은 버전인데 내용이 바뀐 행은 «1 row version_same_content_differs» 로 덧붙는다~~ — 10-26 `50df3c3cf` 부터 같은 버전은 받으므로 그 낱말이 없다.
 - **바뀐 동작** — 전에는 거절된 행이 «unchanged» 로 세어졌다. 이제 «refused» 로 센다. 상태 낱말은 그대로 SUCCESS.
 - **필요한 조건** — git pull · 서버 재기동 · 와처 재기동.
 
@@ -1025,7 +1763,7 @@ python server/scripts/chain_replay_cli.py delete-every-row official_dt --how ful
 
 소유자 10-21 「기본 행단위 버전으로, 맵교체랑 섞이면 맵단위로 버전관리」 (총괄 c8cb6aca0).
 
-- **무엇** — `version_column` 을 적은 표에 맵 교체(표의 `allow_replace_map` · 체인 규칙의 `allow_replace_map` · 맵 편집기 push)가 오면, 맵 하나를 한 단위로 본다. 맵의 버전 = 그 맵 행들의 버전 최댓값. 들어온 맵 버전이 저장된 맵 버전보다 «클 때만» 그 맵을 교체한다. 아니면 맵을 통째로 쓰지도 지우지도 않는다(`version_older` · `version_same` — 와처 로그 VersionGate 줄과 같은 낱말).
+- **무엇** — `version_column` 을 적은 표에 맵 교체(표의 `allow_replace_map` · 체인 규칙의 `allow_replace_map` · 맵 편집기 push)가 오면, 맵 하나를 한 단위로 본다. 맵의 버전 = 그 맵 행들의 버전 최댓값. 들어온 맵 버전이 저장된 맵 버전보다 ~~«클 때만»~~ «작지 않을 때» 그 맵을 교체한다(10-26 `50df3c3cf` — 같으면 내용을 견줘 다를 때만). 아니면 맵을 통째로 쓰지도 지우지도 않는다(`version_older` · ~~`version_same`~~ — 와처 로그 VersionGate 줄과 같은 낱말).
 - **바뀐 동작** — 전에는 옛 버전 파일이 맵을 덮었다(지우고 새로 넣는 꼴) · 옛 파일에 없는 칸을 지웠다(비교하는 꼴). 이제 둘 다 막힌다. 통과한 맵의 행은 행마다 다시 묻지 않는다.
 - **그대로** — `version_column` 만 적은 표(맵 교체 없음)는 전처럼 행마다. 사람의 맵 편집(source user) · 비우기만 하는 묶음은 묻지 않음. 저장된 맵에 버전이 하나도 없으면(칸을 나중에 적은 표) 받아들이고 `row_version_absent` 로 적음.
 - **필요한 조건** — git pull · 서버 재기동 · 와처 재기동 · 체인 워커 재기동.
@@ -2024,6 +2762,8 @@ python server/scripts/chain_replay_cli.py delete-every-row official_dt --how ful
 - **남은 것** — 다른 모듈이 한국어로 raise 해 detail 로 넘어가는 문장(36 자리, 7 파일 — map_alignment 17 · maps/frame_confirmation 10 등)은 그대로입니다.
 
 ## 2026-10-14 · 키 조각이 빈 새 행이 넘겨받은 키를 지킨다
+
+> ⚰️ 10-24 «실린 빈» 조각에서는 은퇴 — 조립 키가 이긴다(총괄 242f4a43a ㄱ2). «안 실린» 조각에는 그대로.
 
 - **무엇** — 총괄 10-14. 조합 키 표에 키 조각 하나를 빼고 새 행을 쓰면서 키 칸(예 `run_uid`)을 직접 주면, 쓰기 문이 키를 다시 지으며 None 으로 덮어 그 행을 아무것도 못 찾았습니다. 이제 새 행은 넘겨받은 키를 지킵니다.
 - **선언 예시** — 없음.

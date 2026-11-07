@@ -1,6 +1,7 @@
-"""[Version gate] A table whose single key must always hold the LATEST row only accepts a
-machine write when the incoming row's version column is GREATER than the one already
-stored. Version is the authority; arrival order is not.
+"""[Version gate] A table whose single key must always hold the LATEST row refuses a
+machine write whose version column is LOWER than the one already stored; the same version
+is taken (owner 10-26 «버전이 같아도 들어온 새 걸로»). Version is the authority; arrival
+order is not.
 
 Without the gate this path is last-write-wins, so re-dropping a superseded file makes
 current state regress - an ordinary operational accident with no diagnostic of any kind.
@@ -286,59 +287,38 @@ def test_a_human_edit_is_never_version_gated(db):
 
 
 # ---------------------------------------------------------------------------
-# Equal version: a no-op, but a findable one
+# Equal version: taken (owner 10-26 «버전이 같아도 들어온 새 걸로 업데이트되게»)
 # ---------------------------------------------------------------------------
 
-def test_equal_version_is_a_noop(db):
+def test_equal_version_is_taken(db):
     _write(db, "vergate_test_lot", "LOT-3", {"lot_id": "LOT-3", "rev": 5, "grade": "FIRST"})
     results, changed, _logs, _deleted = _write(
         db, "vergate_test_lot", "LOT-3", {"lot_id": "LOT-3", "rev": 5, "grade": "SECOND"})
 
-    assert _row(db, "vergate_test_lot", "LOT-3").grade == "FIRST"
-    assert changed == [], "an equal-version row must change nothing"
+    assert _row(db, "vergate_test_lot", "LOT-3").grade == "SECOND"
+    assert changed, "an equal-version row with new content is written"
 
 
-def test_equal_version_with_different_content_is_named_in_the_log(db, logs):
-    """The no-op must be loud enough to FIND. Same version + different content means
-    version management upstream is broken, and accepting it silently hides that.
-
-    Shape follows the ingestion drop-visibility precedent: nothing per row, a WARNING on
-    first sighting per (table, reason) per process, and a per-batch INFO carrying counts.
-    """
-    _write(db, "vergate_test_lot", "LOT-4", {"lot_id": "LOT-4", "rev": 5, "grade": "FIRST"})
-    _write(db, "vergate_test_lot", "LOT-4", {"lot_id": "LOT-4", "rev": 5, "grade": "SECOND"})
-
-    warnings = [m for m in logs.warnings if "version_same_content_differs" in m]
-    assert len(warnings) == 1, logs.warnings
-    assert "vergate_test_lot" in warnings[0]
-    assert "grade" in warnings[0], "the differing column must be named"
-
-    infos = [m for m in logs.infos if "version_same_content_differs" in m]
-    assert infos, logs.infos
-
-
-def test_equal_version_with_identical_content_is_quiet(db, logs):
-    """A re-drop of the SAME file is the expected steady state and must not shout."""
+def test_equal_version_with_identical_content_changes_nothing_and_is_quiet(db, logs):
+    """A re-read of the SAME file is the expected steady state: nothing written, nothing said."""
     _write(db, "vergate_test_lot", "LOT-5", {"lot_id": "LOT-5", "rev": 5, "grade": "SAME"})
     logs.records.clear()
-    _write(db, "vergate_test_lot", "LOT-5", {"lot_id": "LOT-5", "rev": 5, "grade": "SAME"})
+    _results, changed, _logs, _deleted = _write(
+        db, "vergate_test_lot", "LOT-5", {"lot_id": "LOT-5", "rev": 5, "grade": "SAME"})
 
-    assert not [m for m in logs.warnings if "content_differs" in m], logs.warnings
+    assert changed == []
+    assert not [m for m in logs.warnings if "[VersionGate]" in m], logs.warnings
 
 
-def test_same_version_differing_only_where_a_human_corrected_is_not_a_defect(db, logs):
-    """The content diff is measured against what THIS SOURCE previously wrote, not
-    against the displayed cell. A human correction makes the displayed value differ from
-    the file forever; reporting that as "version management is broken" would put a
-    permanent false warning on every re-drop and get the whole diagnostic ignored."""
+def test_a_human_correction_survives_the_same_version_with_new_content(db):
+    """Taken is not forced: the row goes cell by cell through `compute_priority_value`, where `user` outranks the
+    file at the same version as at a newer one."""
     _write(db, "vergate_test_lot", "LOT-6", {"lot_id": "LOT-6", "rev": 5, "grade": "A"})
     _write(db, "vergate_test_lot", "LOT-6", {"grade": "HUMAN"}, source="user", by="operator")
-    logs.records.clear()
+    _write(db, "vergate_test_lot", "LOT-6", {"lot_id": "LOT-6", "rev": 5, "grade": "B", "qty": 7})
 
-    # Identical file re-dropped: the parser's own value is unchanged.
-    _write(db, "vergate_test_lot", "LOT-6", {"lot_id": "LOT-6", "rev": 5, "grade": "A"})
-
-    assert not [m for m in logs.warnings if "content_differs" in m], logs.warnings
+    row = _row(db, "vergate_test_lot", "LOT-6")
+    assert (row.grade, row.qty) == ("HUMAN", 7), "the person's cell stands, the file's other cell is written"
 
 
 # ---------------------------------------------------------------------------
@@ -434,8 +414,8 @@ def test_iso8601_text_version_compares_across_offsets(db):
            {"lot_id": "LOT-Z", "ver": "2026-08-04T10:00:00+09:00", "grade": "KST"})
     _write(db, "vergate_test_text", "LOT-Z",
            {"lot_id": "LOT-Z", "ver": "2026-08-04T01:00:00+00:00", "grade": "SAME_INSTANT"})
-    # Same instant -> equal -> no-op.
-    assert _row(db, "vergate_test_text", "LOT-Z").grade == "KST"
+    # Same instant -> equal -> taken (owner 10-26); a text compare would call it older and keep KST.
+    assert _row(db, "vergate_test_text", "LOT-Z").grade == "SAME_INSTANT"
 
     _write(db, "vergate_test_text", "LOT-Z",
            {"lot_id": "LOT-Z", "ver": "2026-08-04T02:00:00+00:00", "grade": "ONE_HOUR_ON"})
@@ -471,10 +451,10 @@ def test_datetime_column_version_orders_a_stored_object_against_an_incoming_stri
     assert verdict("2026-08-04 12:00:00") == (True, None)
     assert verdict("2026-08-04T12:00:00+00:00") == (True, None)
     assert verdict("2026-08-04 07:00:00") == (False, crud.REASON_VERSION_OLDER)
-    assert verdict("2026-08-04 09:00:00") == (False, crud.REASON_VERSION_SAME)
+    assert verdict("2026-08-04 09:00:00") == (True, None), "the same version is taken"
     # An aware value on the incoming side must be folded to UTC, not compared naively:
-    # 18:00+09:00 IS 09:00Z.
-    assert verdict("2026-08-04T18:00:00+09:00") == (False, crud.REASON_VERSION_SAME)
+    # 17:00+09:00 IS 08:00Z - older, where a naive 17:00 would pass.
+    assert verdict("2026-08-04T17:00:00+09:00") == (False, crud.REASON_VERSION_OLDER)
     assert verdict("not a timestamp") == (False, crud.REASON_VERSION_UNORDERABLE)
 
 

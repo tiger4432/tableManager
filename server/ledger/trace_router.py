@@ -70,6 +70,11 @@ def _declaration(world=None) -> dict:
     return _declaration_and_whose(world)[0]
 
 
+def _source_names(world) -> list:
+    """A world's declared source names - what a walk read `first` leaves out of a later world (`schema.first_read`)."""
+    return list((_declaration(world) or {}).get("sources") or {})
+
+
 def _ledgers_present(connection, names):
     """Every ledger the walk would read is there - or the first that is not, refused by name."""
     for each in names:
@@ -209,6 +214,10 @@ def evidence_subgraph(
     resumable: bool = Query(
         False, description=("This caller asks the next page with `more.resume` (the walk screen) - only then is a "
                             "cut walk kept and its key handed back")),
+    read: str = Query(
+        "both", pattern="^(both|first)$",
+        description=("Several worlds, a source more than one declares: both - side by side, each fact with its "
+                     "world (as ever); first - the first picked world's alone")),
     propagation: bool = Query(
         True, description=("false: the answer carries no `propagation` (the ranking) - a caller that reads only nodes "
                            "and edges (the test bed's parts) is not made to wait for it; the R&D board and the walk "
@@ -352,6 +361,7 @@ def evidence_subgraph(
             resumable=resumable is True and wants == "json",
             # a direct call leaves the Query sentinel - the ranking, as before
             propagation=propagation is not False,
+            read=read if read in schema.READS else "both",
             page=time_page, **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -694,16 +704,17 @@ def _static_step_predicates(world=None):
     entities = declared.get("entities") or {}
     static = {_bare_name(key) for key, rule in entities.items()
               if setup_bundle.has_class(rule, "static")}
-    names = set()
-    for key, rule in (declared.get("vocabulary") or {}).items():
-        subjects = [_bare_name(item) for item in ((rule or {}).get("subjects") or [])]
-        targets = [_bare_name(item)
-                   for item in (((rule or {}).get("object") or {}).get("types") or [])]
-        if not subjects or not targets:
-            continue
-        if all(item in static for item in subjects) and all(item in static for item in targets):
-            names.add(_bare_name(key))
-    return names
+    return {name for name, (subjects, targets) in _predicate_ends(declared=declared).items()
+            if subjects and targets and all(item in static for item in (*subjects, *targets))}
+
+
+def _predicate_ends(world=None, declared=None) -> dict:
+    """{bare predicate: ([its subject types], [its object types])}, bare - the picked worlds' vocabulary, what a
+    predicate joins (the static predicates; the report's quantity values, 10-27)."""
+    declared = (_declaration(world) or {}) if declared is None else declared
+    return {_bare_name(key): ([_bare_name(item) for item in ((rule or {}).get("subjects") or [])],
+                              [_bare_name(item) for item in (((rule or {}).get("object") or {}).get("types") or [])])
+            for key, rule in (declared.get("vocabulary") or {}).items()}
 
 
 def _instant_arg(raw):
@@ -743,7 +754,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
                     fanout_limit=None, expand=None, page=None, aux=None, resume=None, resumable=False,
-                    propagation=True):
+                    propagation=True, read="both"):
     names = _worlds(world)
     _ledgers_present(connection, names)
     missing = sorted({name for each in names
@@ -758,6 +769,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
     cardinalities = _predicate_cardinalities(world)
     lookup = ledger_subgraph.SqlEvidenceLookup(
         connection, worlds=names, since=since, until=until,
+        **({"leave_out": schema.first_read(names, _source_names)} if read == "first" else {}),
         one=ledger_subgraph.one_predicates(cardinalities),
         # a time page draws old facts too, marked `not_current` (총괄 10-10 B ②)
         current_only=not (include_superseded or page is not None))
@@ -771,6 +783,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
+        follow_qualifiers=_predicate_qualifiers(world) if follow_keys else None,
         backbone_hops=backbone_hops, static_types=_static_types(world),
         static_follow=_static_step_predicates(world), collect=collect,
         registration_follow=_self_describing_predicates(world),
@@ -1005,6 +1018,18 @@ def _expanded_bundle(item, world=None):
     return "|".join(parts)
 
 
+def _predicate_qualifiers(world=None, declared=None) -> dict:
+    """{bare predicate: [its qualifier names - required, then optional]} - the picked worlds' vocabulary, what an edge
+    may carry and `follow=<predicate>:<qualifier>` binds by (lead 10-27)."""
+    declared = (_declaration(world) or {}) if declared is None else declared
+    out = {}
+    for key, item in (declared.get("vocabulary") or {}).items():
+        qualifiers = ((item or {}).get("object") or {}).get("qualifiers") or {}
+        out[_bare_name(key)] = [str(name) for name in (*(qualifiers.get("required") or ()),
+                                                     *(qualifiers.get("optional") or ()))]
+    return out
+
+
 def _value_names(world=None):
     """Every name `group_by` and `measure` may read a value under - the fold's sources
     (`ledger_subgraph.VALUE_SOURCES`): an entity's keys and attributes, a predicate's
@@ -1017,12 +1042,9 @@ def _value_names(world=None):
         raise HTTPException(status_code=503, detail={
             "reason": "declaration_unreadable",
             "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
-    names = set()
-    for key, item in (declared.get("vocabulary") or {}).items():
-        names.add(_bare_name(key))
-        qualifiers = ((item or {}).get("object") or {}).get("qualifiers") or {}
-        names |= {str(name) for name in (*(qualifiers.get("required") or ()),
-                                         *(qualifiers.get("optional") or ()))}
+    names = {_bare_name(key) for key in (declared.get("vocabulary") or {})}
+    for qualifiers in _predicate_qualifiers(world, declared).values():
+        names |= set(qualifiers)
     for item in (declared.get("entities") or {}).values():
         names |= {str(name) for name in (*((item or {}).get("keys") or ()),
                                          *((item or {}).get("attributes") or ()))}
@@ -1112,9 +1134,9 @@ def ledger_gap_catalogue(name: str = Query(None),
     그래서 목록은 공짜로 주고 «펼 때» 값을 냅니다.
 
     🔴 이름은 여기서 짓지 «않습니다». `docs/spec/APPLICATION_GAP_SPEC.md` 가 정본이고
-    `ledger/gap_names.json` 이 그 기계 판형입니다. 선언과 표가 어긋나면 이 라우트는
-    «거절»합니다 — 이름 없는 결측을 «이웃 이름»으로 답하면 화면이 멀쩡해 보이면서
-    한 종류가 통째로 빠지고, 그건 출력을 봐서는 못 알아챕니다.
+    `config/gap_names.json`(없으면 sample) 이 그 기계 판형입니다. 표가 이름을 안 준 물음은
+    «<술어> · <타입> (no name)» 날 낱말로 답하고 그 수를 `unnamed` 칸에 둡니다 (소유자 10-27
+    «안 막고 날 낱말로»). 표의 술어가 이 세계 선언에 없으면 그 줄은 안 쓰고 `unused` 에 셉니다.
 
     🔴 수마다 «어떤 수인지»가 붙습니다. 표본은 「가장 오래된 것들」이 «아니라고» 말하고,
     성립하지 않는 질문은 «0이 아니라» 수를 안 냅니다.
@@ -1136,19 +1158,16 @@ def ledger_gap_catalogue(name: str = Query(None),
         from database import crud
 
         if crud.is_blank_value(name):
-            asked = _gaps.questions(declared)
-            return {"mode": "names", "count": len(asked), "gaps": asked}
+            unused = []
+            asked = _gaps.questions(declared, unused=unused)
+            return {"mode": "names", "count": len(asked), "gaps": asked,
+                    "unnamed": sum(1 for item in asked if item.get("unnamed")), "unused": len(unused)}
         from database.database import engine
         return {"mode": "measured", "count": 1,
                 "gaps": _gaps.measure(engine, declared, only=name,
                                       relation=schema.walk_relation(_worlds(world)))}
     except _gaps.GapQuestionUnknown as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except _gaps.GapTableMismatch as exc:
-        # 503, not 500: the declaration and the spec disagree, which is a DEPLOYMENT fact
-        # somebody has to fix in one of the two - not a failure of this request.
-        raise HTTPException(status_code=503, detail={
-            "reason": "gap_table_mismatch", "message": str(exc)})
 
 
 def _row_census_by_source(world=None):

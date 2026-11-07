@@ -73,6 +73,11 @@ def _push(db, table, rows):
     ({"require": [{"status": [""]}]}, "CD"),                     # "" is a blank
     ({"require": ["status", {"n": [1]}]}, "AB"),                 # a name and a value item together
     ({"exclude": [{"status": ["SCRAP", ""]}]}, "BEF"),
+    # a value with * or ? is a glob pattern, case as written (owner 10-24 «무시해야하는 leg 스타일»)
+    ({"exclude": [{"status": ["SC*"]}]}, "BCDEF"),               # «scrap» is not «SC*»; a blank matches no pattern
+    ({"require": [{"status": ["?K", "*rap"]}]}, "BEF"),
+    ({"exclude": [{"status": ["*"]}]}, "CD"),                    # every filled cell
+    ({"exclude": [{"v": ["50%_*", "a[b]*"]}]}, "ABCDEF"),        # % _ [ in a pattern are themselves
 ])
 def test_python_and_sql_take_the_same_rows(db, gates, taken):
     _push(db, SRC, ROWS)

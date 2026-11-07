@@ -965,6 +965,71 @@ def get_image(ref: str, px: int | None = Query(None, ge=_IMAGE_PX_MIN, le=_IMAGE
     response.headers["Cache-Control"] = image_sources.CACHE_CONTROL
     return response
 
+
+def _reports_folder():
+    import paths
+    from chain import report_html
+
+    return os.path.join(paths.DATA_ROOT, report_html.REPORTS_DIRNAME)
+
+
+def _report_link_key(name):
+    """The signed link's key of a report name - HMAC-SHA256 under a secret kept beside the reports (made once)."""
+    import hashlib
+    import hmac
+    import secrets
+
+    folder = _reports_folder()
+    os.makedirs(folder, exist_ok=True)
+    secret_path = os.path.join(folder, ".link_secret")
+    if not os.path.isfile(secret_path):
+        with open(secret_path, "w", encoding="ascii") as handle:
+            handle.write(secrets.token_hex(32))
+    with open(secret_path, encoding="ascii") as handle:
+        secret = handle.read().strip().encode()
+    return hmac.new(secret, name.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+
+
+@app.get("/shared/report/{name}")
+def get_shared_report(name: str, k: str = ""):
+    """A report page by its signed link, no sign-in - to embed in another site's iframe (owner 10-24 «SSO 땜에 첨부 안 될
+    듯» · 서명 링크). Only a key this server made for that name opens it; GET /reports gives each report's link."""
+    import hmac
+
+    if not k or not hmac.compare_digest(k, _report_link_key(os.path.basename(name))):
+        raise HTTPException(status_code=403, detail="this link is not a report's signed link - copy it from GET /reports")
+    return get_report(name)
+
+
+@app.get("/reports/{name}")
+def get_report(name: str):
+    """One AI report file as a page - to open, or to embed elsewhere in an iframe (owner 10-24 «report 서빙하는 거 서버에
+    달아줘 · 다른 데에 iframe 으로 첨부하게»). Only a <name>.html straight under the reports folder; never cached, a
+    report written again is read again."""
+    folder = _reports_folder()
+    path = os.path.join(folder, os.path.basename(name))
+    if os.path.basename(name) != name or not name.lower().endswith(".html") or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="no report %r - GET /reports lists them" % name)
+    return FileResponse(path, media_type="text/html; charset=utf-8",
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+
+
+@app.get("/reports")
+def list_reports():
+    """The report files, newest first - each a link to its page (GET /reports/<name>)."""
+    from fastapi.responses import HTMLResponse
+    import html as _html
+
+    folder = _reports_folder()
+    names = sorted((n for n in (os.listdir(folder) if os.path.isdir(folder) else ()) if n.lower().endswith(".html")),
+                   key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
+    rows = "".join('<li><a href="/reports/%s">%s</a> <small>%s</small> · <a href="/shared/report/%s?k=%s">Share link</a>'
+                   '</li>' % (_html.escape(n), _html.escape(n), time.strftime("%Y-%m-%d %H:%M", time.localtime(
+                       os.path.getmtime(os.path.join(folder, n)))), _html.escape(n), _report_link_key(n))
+                   for n in names)
+    return HTMLResponse('<!doctype html><meta charset="utf-8"><title>Reports</title><h1>Reports</h1><ul>%s</ul>'
+                        % (rows or "<li>No report yet</li>"), headers={"Cache-Control": "no-store"})
+
 import time
 
 # [성능 최적화] 테이블별 count 캐시. 키는 `build_count_cache_key`가 만들고
@@ -5296,14 +5361,62 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     }
 
 
+def _cause_columns(db):
+    """(the quarantine record's rules as text, the key its failure is grouped by) - the record's `cause`; a row from
+    before the cause was written: its reason's last line on PostgreSQL (one group a sentence, not one a row - each
+    reason names its own rows), its whole reason elsewhere."""
+    from sqlalchemy import func
+
+    outbox = models.DatabaseOutbox
+    reason = outbox.payload[("error_log", "reason")].as_string()
+    if db.get_bind().dialect.name == "postgresql":
+        reason = func.regexp_replace(func.rtrim(reason, " \n\r\t"), r"^.*\n", "")
+    return (outbox.payload[("error_log", "rules")].as_string(),
+            func.coalesce(outbox.payload[("error_log", "cause")].as_string(), reason))
+
+
+def failures_by_cause(db, keep_keys=False):
+    """One line per (rules, failure sentence) over every failed row (owner 10-24 «똑같은 에러면 접든가», 총괄
+    ef69603d6): rules · cause · count · first · last, the most recent first. One GROUP BY (`_cause_columns`), each group
+    folded once more by `failure_cause` of one of its reasons. `keep_keys`: each line also carries the SQL keys it
+    folded - what the list filters one line's rows by."""
+    from sqlalchemy import func
+
+    outbox = models.DatabaseOutbox
+    rules, said = _cause_columns(db)
+    sample = func.max(outbox.payload[("error_log", "reason")].as_string())
+    folded = {}
+    for rule_text, key, cause, reason, n, first, last in (
+            db.query(rules, said, func.max(outbox.payload[("error_log", "cause")].as_string()), sample, func.count(),
+                     func.min(outbox.processed_at), func.max(outbox.processed_at))
+            .filter(event_constants.failure_clause(outbox)).group_by(rules, said)):
+        try:
+            names = json.loads(rule_text) if rule_text else None
+        except ValueError:
+            names = [rule_text]
+        line = folded.setdefault((tuple(names or ()), cause or event_constants.failure_cause(reason)),
+                                 [0, first, last, []])
+        line[0] += int(n)
+        line[1] = min(t for t in (line[1], first) if t is not None) if (line[1] or first) else None
+        line[2] = max(t for t in (line[2], last) if t is not None) if (line[2] or last) else None
+        line[3].append((rule_text, key))
+    out = [dict({"rules": list(names), "cause": cause, "count": n, "first_at": to_local_str(first) if first else None,
+                 "last_at": to_local_str(last) if last else None}, **({"keys": keys} if keep_keys else {}))
+           for (names, cause), (n, first, last, keys) in folded.items()]
+    out.sort(key=lambda line: line["last_at"] or "", reverse=True)
+    return out
+
+
 @app.get("/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
 def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
                              table: str = None, event_type: str = None, day: str = None,
+                             cause: str = None, rules: str = None,
                              db: Session = Depends(get_db)):
-    """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다."""
+    """실패(FAILED) 상태로 격리된 Outbox 체인 이벤트 목록을 transaction_id 단위로 묶고 페이지네이션하여 반환합니다.
+    `cause` (+ `rules`, comma-joined): one `by_cause` line's rows (총괄 06b1fd297 follow-up)."""
     from zoneinfo import ZoneInfo
 
-    from sqlalchemy import func
+    from sqlalchemy import and_, func, literal, or_
 
     # The day is the VIEWER's day (총괄 eca1f36b2): `tz` is the screen's zone name. A missing
     # or unreadable one cuts UTC days, and `day_zone` says which zone cut them.
@@ -5325,42 +5438,40 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
         query = query.filter(outbox.event_type == event_type)
     if not crud.is_blank_value(day):
         query = query.filter(day_of == day)
-    query = query.order_by(outbox.id.desc())
+    if not crud.is_blank_value(cause):
+        keys = [key for line in failures_by_cause(db, keep_keys=True) if line["cause"] == cause
+                and (crud.is_blank_value(rules) or ",".join(line["rules"]) == rules) for key in line["keys"]]
+        rule_column, key_column = _cause_columns(db)
+        query = query.filter(or_(*[and_(rule_column.is_(None) if rule is None else rule_column == rule, key_column == key)
+                                   for rule, key in keys]) if keys else literal(False))
+    # 🔴 GROUPED IN SQL, A PAGE AT A TIME (owner 10-24 «묶음이 100만개», 총괄 ef69603d6): every failed row with its
+    #    payload was loaded to group them here. One GROUP BY by the transaction (a row without one is its own group),
+    #    newest group first; only the page's groups' rows are read.
+    group_key = func.coalesce(outbox.payload["transaction_id"].as_string(), literal("single_") + outbox.event_uuid)
+    grouped = query.with_entities(group_key.label("tx"), func.max(outbox.id).label("newest"))\
+        .group_by(group_key).subquery()
+    total = db.query(func.count()).select_from(grouped).scalar() or 0
+    page_keys = [tx for (tx,) in db.query(grouped.c.tx).order_by(grouped.c.newest.desc())
+                 .offset((page - 1) * limit).limit(limit).all()]
+    groups = {tx: [] for tx in page_keys}
+    if page_keys:
+        for e in query.filter(group_key.in_(page_keys)).order_by(outbox.id.desc()).all():
+            groups[get_payload_dict(e).get("transaction_id") or f"single_{e.event_uuid}"].append(e)
 
-    all_failed = query.all()
-    
-    from collections import defaultdict
-    groups = defaultdict(list)
-    for e in all_failed:
-        tx_id = get_payload_dict(e).get("transaction_id")
-        if not tx_id:
-            tx_id = f"single_{e.event_uuid}"
-        groups[tx_id].append(e)
-        
-    # Sort transaction groups by the newest event's ID inside each group descending
-    sorted_groups = sorted(
-        groups.items(),
-        key=lambda item: max(e.id for e in item[1]),
-        reverse=True
-    )
-    
-    total = len(sorted_groups)
-    start = (page - 1) * limit
-    end = start + limit
-    paginated_groups = sorted_groups[start:end]
-    
     result_list = []
-    for tx_id, events in paginated_groups:
+    for tx_id, events in groups.items():
+        if not events:
+            continue
         table_names = list(set(e.table_name for e in events))
         event_types = list(set(e.event_type for e in events))
         max_retry = max(e.retry_count for e in events)
-        
+
         # When it last FAILED - `processed_at`, stamped by `mark_processed` at the failure and
         # again at a failure after a retry. `created_at` was when the row was born, so a retry
         # that failed again kept the old time under this name (총괄 e573a6edf ④).
         failed_list = [e.processed_at for e in events if e.processed_at]
         failed_at = max(failed_list).isoformat() if failed_list else None
-        
+
         event_details = []
         for e in events:
             event_details.append({
@@ -5375,7 +5486,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
                 "created_at": e.created_at.isoformat() if e.created_at else None,
                 "processed_at": e.processed_at.isoformat() if e.processed_at else None
             })
-            
+
         result_list.append({
             "transaction_id": tx_id,
             "table_names": table_names,
@@ -5390,22 +5501,10 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
             "events": event_details
         })
 
-    # ── 「언제부터 실패하고 있나」 ──────────────────────────────────────────────
-    # 🔴 행마다 실린 `failed_at` 은 그 그룹의 «MAX» 라 이 질문에 답할 수 없다. 그룹은
-    # 최신순이고 각 그룹의 시각은 그 그룹이 «마지막»으로 실패한 때이므로, 「1분 전 하나」와
-    # 「나흘째 스물」이 어느 페이지에서도 같은 모양이 된다 (클라 실측 2026-09-04).
-    # 그래서 «집합 전체»의 MIN 을 한 칸으로 낸다 — 페이지를 넘겨도 답이 같아야 한다.
-    #
-    # 질의를 «더 하지 않는다»: 이 라우트는 이미 실패 행 전부를 메모리에 들고 있고(`all_failed`),
-    # 그 위의 min 은 공짜다. 같은 수를 SQL 로 다시 물으면 스캔이 하나 더 늘 뿐이다.
-    #
-    # 🔴 실패가 «없으면» null 이다. 0 도 «지금»도 아니다 — 화면이 「없다」와 「모른다」를
-    # 가를 수 있어야 하고, 그 둘을 한 픽셀로 만드는 것이 오늘 하루 내내 잡던 병이다.
-    # 🔴 THE SAME COLUMN AS EACH GROUP'S `failed_at` - `processed_at`, when it last failed
-    #    (총괄 f063c948e). It was `created_at`, so one response said 「when failed」 two ways.
-    stamped = [e.processed_at for e in all_failed if e.processed_at]
-    # 같은 응답의 다른 시각 칸들과 «같은 모양»(isoformat). 여기서 형식을 새로 만들지 않는다.
-    oldest_failed_at = min(stamped).isoformat() if stamped else None
+    # ── 「언제부터 실패하고 있나」 — 집합 전체의 MIN, 페이지를 넘겨도 같은 답. 실패가 없으면 null ──
+    # 🔴 THE SAME COLUMN AS EACH GROUP'S `failed_at` - `processed_at`, when it last failed (총괄 f063c948e).
+    oldest = query.with_entities(func.min(outbox.processed_at)).scalar()
+    oldest_failed_at = oldest.isoformat() if oldest is not None else None
 
     # 🔴 ONE LINE PER (TABLE · KIND · DAY) (소유자 「ㄴ」, 총괄 36dff3b6a) — the Chain tab's list
     #    and the Overview's Chain line both read THIS answer: 81 rows of one burst were 81
@@ -5436,6 +5535,7 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, tz: str = None,
         "limit": limit,
         "oldest_failed_at": oldest_failed_at,
         "summary": summary,
+        "by_cause": failures_by_cause(db),
         "day_zone": day_zone,
         # 🔴 이 목록의 상태가 아니라 이 «계열이 쓸 수 있는» 상태 어휘다.
         #    화면의 필터 목록이 여기서 나온다 — 그래서 «로드 때 이미 부르는» 이
@@ -5568,16 +5668,39 @@ def get_file_ingestion_tables(db: Session = Depends(get_db)):
     from utils import heartbeat
 
     laps = (heartbeat.read_all().get(directory_watcher.HEARTBEAT_NAME) or {}).get("laps") or {}
+    # and each (table, source) re-read the watcher stopped, off the same heartbeat (총괄 10-24) - its sentence
     for name, lap in sorted(laps.items()):
-        if not name.startswith(directory_watcher.SWEEP_LAP_PREFIX):
+        sweep = name.startswith(directory_watcher.SWEEP_LAP_PREFIX)
+        if not sweep and not (name.startswith(directory_watcher.REREAD_LAP_PREFIX) and lap.get("stopped")):
             continue
         entries = sources.setdefault(lap.get("table"), [])
         entry = next((e for e in entries if e["source"] == lap.get("source")), None)
         if entry is None:
             entry = {"source": lap.get("source"), "total": 0, "read": 0, "left": 0, "left_by_status": {}}
             entries.append(entry)
-        entry["sweep"] = {k: lap.get(k) for k in ("state", "age_seconds", "seconds", "looked", "already_read",
-                                                   "dispatched", "why")}
+        if sweep:
+            entry["sweep"] = {k: lap.get(k) for k in ("state", "age_seconds", "seconds", "looked", "already_read",
+                                                       "dispatched", "why", "before_switch_on")}
+        else:
+            entry["stopped"] = lap["stopped"]
+    # every declared storage has its line - raws, each external source, a switched-off one too (총괄 10-26: Pick files
+    # reaches a storage no file was read from); `off` says it is read by hand only (7328c8d51)
+    from ingestion import reread
+
+    _config, specs = reread.validated_sources()
+    for table, source, off in ([(table, reread.RAWS, False) for table in crud.TABLE_CONFIG]
+                               + [(spec["table_name"], spec["root"], bool(spec.get("off"))) for spec in specs]):
+        entries = sources.setdefault(table, [])
+        spelled = source if source == reread.RAWS else os.path.normcase(os.path.abspath(source))
+        entry = next((e for e in entries if e["source"] == source or (
+            source != reread.RAWS and e["source"] and os.path.normcase(os.path.abspath(e["source"])) == spelled)), None)
+        if entry is None:
+            entry = {"source": source, "total": 0, "read": 0, "left": 0, "left_by_status": {}}
+            entries.append(entry)
+        entry["off"] = off
+    for entries in sources.values():
+        for entry in entries:
+            entry.setdefault("off", False)
     for entry in data:
         entry["sources"] = sources.get(entry["table_name"], [])
     seen = {entry["table_name"] for entry in data}
@@ -6432,8 +6555,26 @@ def get_ingestion_workspaces():
             
     return {"status": "success", "data": workspaces}
 
+def _switched_off_line(db, rule, off):
+    """The rules list's line for a rule the chain switched off (총괄 8906edc07): since when, the changes it skipped
+    since - its trigger table's outbox rows from then - and why."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import func
+
+    outbox = models.DatabaseOutbox
+    try:
+        since = datetime.strptime(str(off.get("at")), "%Y-%m-%dT%H:%M:%S")
+        skipped = db.query(func.count(outbox.id)).filter(outbox.table_name == rule.get("trigger_table"),
+                                                         outbox.created_at >= since.astimezone(timezone.utc)).scalar()
+    except (TypeError, ValueError):
+        skipped = None
+    return "Switched off after %s failures in a row since %s · %s changes skipped since · %s" % (
+        off.get("failures"), off.get("at"), "?" if skipped is None else skipped, off.get("cause") or "")
+
+
 @app.get("/admin/chain/rules", dependencies=[Depends(require_admin_token)])
-def get_chain_rules():
+def get_chain_rules(db: Session = Depends(get_db)):
     """등록된 모든 체인 인제션 룰 목록을 반환합니다.
 
     🔴 THE FILE IS OPENED IN ONE PLACE (S-201, 판정 316). This route read
@@ -6465,7 +6606,12 @@ def get_chain_rules():
 
     # an off rule stands for a replay that names it (owner 10-23 「막아」) and does not run - 판정 656's other pixel
     standing = [rule for rule in worker.loaded_chain_rules() if not rule_shape.is_switched_off(rule)]
-    listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING)
+    from chain import control as chain_control
+
+    off = chain_control.rules_off()
+    listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING) if rule.get("name") not in off else
+              dict(rule, rule_state=event_constants.RULE_STATE_DECLARED_ONLY,
+                   rule_state_detail=_switched_off_line(db, rule, off[rule.get("name")]))
               for rule in standing]
     standing_names = {rule.get("name") for rule in standing}
     for raw in (read["rules"] or ()):
@@ -7301,14 +7447,68 @@ async def cancel_file_reread(folder: str = None, preview: bool = False, db: Sess
                        + (" · %d waiting without a mark, left" % said["unmarked"] if said["unmarked"] else "")}
 
 
+class ReadNowFiles(BaseModel):
+    paths: Optional[list] = None
+    ids: Optional[list] = None
+    job: Optional[str] = None
+
+
+@app.get("/admin/file-ingestion/glob", dependencies=[Depends(require_admin_token)])
+def list_storage_glob(table: str, source: str, pattern: str, limit: int = None, db: Session = Depends(get_db)):
+    """The files below a storage (the tables screen's table · source) a glob takes, read or not (소유자 10-26 «읽은 거
+    무관하게 glob 리스트 인제션 페이지에»): the first `limit` (default 5,000) by path, their states, the count of all
+    (`reread.list_glob`). A glob that leaves the root is refused by name."""
+    from ingestion import reread
+
+    try:
+        said = reread.list_glob(db, str(table).strip(), str(source).strip(), pattern,
+                                limit=reread.GLOB_LIST_LIMIT if limit is None or limit < 1 else limit)
+    except reread.StorageUnknown as unknown:
+        raise HTTPException(status_code=404, detail=str(unknown))
+    except reread.RereadRefused as refused:
+        raise HTTPException(status_code=400, detail=str(refused))
+    return {"status": "success", "table": table, "source": source, "pattern": pattern, **said}
+
+
+@app.post("/admin/file-ingestion/read-now/left", dependencies=[Depends(require_admin_token)])
+def read_now_left(body: ReadNowFiles = Body(...), db: Session = Depends(get_db)):
+    """What a glob's Read these has left - its handed rows (`ids`, or its `job`'s so far) by state, no walk
+    (`reread.left_of`). With `job` (총괄 200949c38): counted by the job, the files only of the rows the screen shows -
+    `paths` or `ids` (none when neither), and matched (None until walked) · being_read · handing (still handing) ·
+    not_handed (why it stopped, or None)."""
+    from ingestion import reread
+
+    said = body.model_dump() if hasattr(body, "model_dump") else body.dict()
+    job = reread.hand_job(said["job"]) if said.get("job") else None
+    if said.get("job") and job is None:
+        raise HTTPException(status_code=404, detail="no Read these %s in this server - the server restarted since, "
+                                                    "or it is older than the newest 20; the files handed before stay "
+                                                    "handed" % said["job"])
+    if job is None:
+        left = reread.left_of(db, said.get("ids") or [], paths=said.get("paths"))
+    else:
+        left = reread.left_of(db, job["ids"], paths=said.get("paths") or [])
+        if said.get("ids") and not said.get("paths"):
+            left["files"] = reread.left_of(db, said["ids"])["files"]
+    if job:
+        left.update(matched=job["matched"], being_read=job["being_read"], handing=not job["done"],
+                    not_handed=job["failed"])
+    return {"status": "success", **left}
+
+
 @app.post("/admin/file-ingestion/read-now", dependencies=[Depends(require_admin_token)])
-def read_file_now(path: str, table: str = None, preview: bool = False, db: Session = Depends(get_db)):
+def read_file_now(path: str = None, table: str = None, preview: bool = False, source: str = None, pattern: str = None,
+                  body: Optional[ReadNowFiles] = Body(None), db: Session = Depends(get_db)):
     """One file read now as if the watcher saw it (총괄 aaf19d0ca, 소유자 「그냥 와처 인식한 걸로 하면 되잖아」): the table
     that owns its folder, its row handed to the Retry door under that source. `preview`: who owns it and why the
-    watcher did not pick it - nothing written."""
+    watcher did not pick it - nothing written. With `source` and `pattern` instead of `path`: the files that
+    storage's glob takes (the body's `paths` of them, or every one - not only the list's first 5,000) handed the same
+    way (소유자 10-26)."""
     from ingestion import reread
 
     table = None if crud.is_blank_value(table) else str(table).strip()
+    if not crud.is_blank_value(pattern):
+        return _read_glob_now(db, table, source, pattern, (body.paths if body is not None else None))
     if not preview and os.getenv("DECOUPLED") != "True":
         raise HTTPException(status_code=409, detail="reading a file now needs the watcher process")
     try:
@@ -7316,11 +7516,36 @@ def read_file_now(path: str, table: str = None, preview: bool = False, db: Sessi
     except reread.RereadRefused as refused:
         raise HTTPException(status_code=409, detail=str(refused))
     owner = said["owner"]
+    if owner is not None and not preview and said.get("log_id"):
+        # its (table, source) re-read stop let go by the watcher (system_reload.SCOPE_REREAD_RELEASED)
+        system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED,
+                                     pairs=[(owner["table"], owner["source"])])
     return {"status": "preview" if preview else "success", **said,
             "message": (f"{len(said['owners'])} tables read it - choose one" if owner is None
                         else f"{os.path.basename(said['path'])} handed to the watcher for {owner['table']}" if not preview
                         else f"{owner['table']} reads it" + (" - " + "; ".join(owner["why_not"])
                                                             if owner["why_not"] else ""))}
+
+
+def _read_glob_now(db, table, source, pattern, chosen):
+    """A storage's glob handed to the watcher - every file it takes, not only the list's first 5,000, or the `chosen`
+    files of it - off the request (`reread.hand_glob_later`; 총괄 10-26 «요청 답 1 s 안»): the answer is its job,
+    read-now/left says how far it came."""
+    from ingestion import reread
+
+    if os.getenv("DECOUPLED") != "True":
+        raise HTTPException(status_code=409, detail="reading files now needs the watcher process")
+    if table is None or crud.is_blank_value(source):
+        raise HTTPException(status_code=400, detail="a glob is read from one storage - give table and source")
+    source = str(source).strip()
+    try:
+        job = reread.hand_glob_later(table, source, pattern, chosen)
+    except reread.StorageUnknown as unknown:
+        raise HTTPException(status_code=404, detail=str(unknown))
+    except reread.RereadRefused as refused:
+        raise HTTPException(status_code=400, detail=str(refused))
+    return {"status": "success", "table": table, "source": source, "pattern": pattern, "job": job,
+            "message": "the files are being handed to the watcher"}
 
 
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
@@ -7415,6 +7640,9 @@ async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
             if chosen is not None:
                 failed_logs, _stood = reread.stand_rows(db, into, chosen["picked"])
             reread.mark_for_reread(db, failed_logs)
+            # the watcher lets these (table, source) re-read stops go - at every press (system_reload.SCOPE_REREAD_RELEASED)
+            system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED, pairs=sorted(
+                {(log.table_name, log.source) for log in failed_logs}, key=str))
             return failed_logs
 
         failed_logs = await asyncio.to_thread(_hand)

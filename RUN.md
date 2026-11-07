@@ -1,5 +1,833 @@
 # 지금 돌리면 되는 것
 
+> ## [10-27] **기본 세계에서 소스 하나 거두기 — 가지 세계에도 같은 소스가 있을 때(공정 이벤트를 ai_model 같은 세계로만)** — 코드 안 바뀜, 명령만
+>
+> ```
+> 순서     1) 기본 세계 선언(config/ontology/ledger_config.json)의 sources 에서 그 소스를 지움 (가지 세계 선언은 그대로)
+>          2) 미리보기 (아무것도 안 씀):
+>             python -m ledger.backfill --source <소스> --whole-source
+>          3) 수가 맞으면:
+>             python -m ledger.backfill --source <소스> --whole-source --apply
+> 수의 뜻   미리보기 줄 [Ledger] {...}
+>          relation_rows None   = 선언이 그 소스를 더는 안 읽음 (1) 이 됨). 숫자면 아직 선언돼 있음 -> 1) 부터
+>          stale_atoms N        = 거둘 원자 수 — 기본 세계의 그 소스 원자 «전부»여야 함
+>          stale_tables         = {표: {술어: 수}} — 그 소스가 쓴 술어별
+>          gone_rows/gone_atoms = 표가 잃은 행 — 여기선 0
+>          --apply 줄 stale_withdrawn N · stale_forgotten N = 거둔 원자 · 잊은 행 색인. 미리보기의 stale_atoms 와 같아야 함
+>          stale_atoms 0        = 거둘 것 없음 (소스가 아직 선언돼 있거나 이미 거둠)
+> 가지는    --world 를 안 붙이면 운영 세계(보통 기본)만. 가지 세계의 같은 소스 원자는 그대로 (박스: 기본 18 -> 0, 가지 18 -> 18)
+> 되돌리기  1) 의 소스를 다시 적고:  python -m ledger.backfill --source <소스>   (다시 번역 — 다른 길 없음)
+>          확인: --whole-source 미리보기가 relation_rows = 표 행 수 · stale_atoms 0
+> 박스 실측 10-27: 버리는 DB · 표 18 행 · 같은 선언의 기본 + 가지(lab) -> 미리보기 stale_atoms 18 · relation_rows None
+>          -> --apply stale_withdrawn 18 · stale_forgotten 18 · 기본 0 / 가지 18 -> 다시 선언 + 번역 18 / 18
+> ```
+>
+> ---
+>
+> ## [10-27] **AI 리포트 계측값 — 원인 걷기가 닿은 quantity 의 웨이퍼별 값을 조건 행으로, 값이 없으면 같은 트랜잭션 웨이퍼로 추정** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 derive.report.causes 에 values 를 적고 리포트 한 번
+>          values = {"follow": [<구조 · quantity · 작용 스텝 술어>], "value": "<계측 술어>:<값 수식어>",
+>                    "event": "<공정 이벤트 술어>:<트랜잭션 수식어>", "order": ["<quantity -> 계측 스텝 술어>", "<스텝 순서 키>"]}
+> 볼 것    Evidence «quantity values» 머리줄 «N quantit(ies) with values …, M to fill - K model node(s), P wafer walk page(s)»
+>          표에 quantity 이름의 조건 행 · 칸 «12.3» / «12.1 (est · <스텝> · 3 wf)» / 빈 칸
+>          «0 quantit(ies)» 에 model node(s) 가 0 -> 후보에서 구조로 가는 술어가 follow 에 없음
+>          model node 는 있는데 0 -> 리포트 웨이퍼가 그 제품의 스텝을 안 지남(웨이퍼 키가 원장 웨이퍼 노드 키와 다름도 이 꼴)
+>          저장 거절 «… not a predicate the ledger declares» / «… is not a qualifier of …» -> 원장 선언의 이름으로 고침
+> 끄는 것   규칙에서 causes.values 를 지움(그 걸음만 안 돎)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='quantities the model walk reaches' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-27] **걷기 follow «술어:수식어» — 묶인 되돌이는 그 값을 든 원자만 읽는다(스텝 노드 전 이력을 안 읽음)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    follow=<공정 이벤트 술어>:<트랜잭션 수식어> 걷기의 답 walk.claims_scanned 가 «웨이퍼 원자 + 같은 tx 원자» 수준
+>          (전에는 웨이퍼가 지난 스텝마다 그 스텝을 지난 모든 웨이퍼의 원자 — 쪽이 수백)
+>          같은 tx 웨이퍼가 나오는 답은 전과 같음
+> 되돌리기  git revert $(git log -1 --format=%h --grep='bound values ride' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-27] **새 술어가 걷기 라우트를 세우지 않는다 — 이름 없는 결측은 날 낱말로, 결측 이름 표는 config 로 (cd210579f)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 지금 설치는 config/gap_names.json 이 없으니 전과 같은 표(sample)를 읽음
+> 볼 곳    GET /api/ledger/gaps -> 200, 답의 «unnamed» 수 · 이름 칸이 «<술어> · <타입> (no name)» 인 줄
+> 뜻      unnamed > 0 = 선언에 이름 안 붙은 결측 물음이 있음 -> 이름을 붙이려면 sample 을 config/gap_names.json 으로 복사해 그 줄을 적음
+>          «unused» > 0 = 표의 줄이 이 세계 선언에 없는 술어를 물어 안 쓰인 것 — 503 은 이제 안 남 (소유자 10-27)
+> 되돌리기  git revert cd210579f -> 런처 재기동
+> ```
+
+---
+
+> ## [10-27] **걷기 follow «술어:수식어» — 공정 스텝이 정적 타입이어도 같은 트랜잭션 형제에 닿는다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    process_step 이 class static 인 선언에서 follow=<공정 이벤트 술어>:<트랜잭션 수식어> 로 웨이퍼 씨앗 걷기
+>          -> 같은 트랜잭션 웨이퍼가 나옴 = 고쳐진 것 (어제 착지 8037e0469 은 씨앗 웨이퍼 하나만 나옴)
+>          묶지 않은 follow 는 지금과 같은 답(형제 안 나옴)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='static hub rule' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-27] **걷기 follow «술어:이름» — 이름이 씨앗 키가 아니면 올라온 엣지의 수식어로 묶어, 같은 트랜잭션 형제만 닿는다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    follow=<공정 술어>:<트랜잭션 수식어> 로 웨이퍼 씨앗 걷기 -> 같은 트랜잭션 웨이퍼만 = 고쳐진 것
+>          422 «… nor is it a qualifier of <술어> (declared: none declared)» -> 선언 vocabulary 의 그 술어 object.qualifiers 에 수식어를 적음
+>          묶지 않은 follow 는 지금과 같은 답(형제 차단 그대로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='climbing edge' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **파일 화면에서 패턴으로 파일을 골라 읽는다 — Pick files (+ Paste HTML · 잘리지 않는 거절 문장 · N before switch on)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버는 b5ee3f42a 이후면 재기동 필요 없음, 클라 파일만)
+>          File Ingestion 탭 -> READ PROGRESS 저장소 줄의 Pick files -> Pattern 에 old/*.csv -> List
+> 뜻      줄마다 Read before · After 가 나옴 -> 화면이 새 번들
+>          Pick files 가 없음 -> 옛 번들. 강력 새로 고침
+>          체크 -> Read these (N) -> After 가 Pending retry 에서 Success  = 와처가 읽음 (watcher.log 에 그 파일 읽기 줄)
+>          After 가 Pending retry 에 머묾 -> 와처 프로세스 · Retry 줄 (한 바퀴 reread_max_files 개, 기본 25)
+>          «409 …» 토스트 -> 와처 프로세스가 없음 (DECOUPLED 런처로 띄웠는지)
+>          줄이 «Lost track · …» -> 서버가 그 넘김을 모름(재기동 또는 최근 20 개 밖). 넘긴 파일은 그대로 읽힘, 진행 표로 봄
+>          꺼진 저장소 줄의 Last sweep 이 «off» -> 그 저장소도 Pick files 로 골라 읽힘
+> 같이     체인 규칙 창 HTML 칸의 Paste HTML · 메인 그리드 거절 문장이 토스트로 다 보임 · Last sweep 의 «N before switch on»
+> 되돌리기  (Pick files 만) git revert $(git log --format=%h -i --grep='pick files by pattern' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-26] **시험만 — 파일 기록 시험이 켠 시각(23fd41a2c)에 막히던 것** — 운영에서 할 일 없음
+>
+> ```
+> 무엇     test_a_files_completion_record_says_what_its_read_came_to 가 와처 기동 전에 둔 파일을 «켠 시각 앞»으로 잡혀 손 대기로 남겨 빨강
+>         -> 동작이 맞음(켠 시각 앞 옛 파일은 손으로만). 시험이 소스마다 켠 시각을 epoch 로 적고 읽기 기록만 잰다
+> 손 문    Read now · Retry · Read these 는 켠 시각 앞 파일도 읽음 (test_a_storage_glob_lists_and_reads_files_by_hand 초록)
+> ```
+>
+> ---
+>
+> ## [10-26] **AI 리포트 결과 — 부분별 글(summary · conclusion …)을 리포트 표 칸에, 멈춘 리포트는 그 칸을 비운다** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   리포트 표에 글 칸(예 report_summary) -> 리포트 규칙 results 에 "summary": "report_summary" -> 저장
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    리포트 표 웨이퍼 행의 그 칸에 글 = 고쳐진 것
+>          모델이 멈춘 웨이퍼 -> 그 칸이 빔(전: 앞 판 글이 남았음) · 파일 칸은 멈춘 리포트 파일
+>          저장 거절 «… is not a text slot of the layout - one of file · …» -> layout 의 text slot 이름으로 적음
+> 되돌리기  git revert $(git log -1 --format=%h --grep='texts into the report table' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **버전 칸 — 같은 버전이면 나중에 들어온 것이 이긴다 · 같은 내용의 맵을 다시 읽으면 아무것도 안 쓴다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 버전 칸을 적은 표에서 같은 버전 파일을 Retry · Read now 로 다시 읽어 봄
+> 볼 것    값이 바뀐 파일 -> 결과 칸 changed N · 그 칸이 새 값 (사람이 고친 칸은 그대로) = 고쳐진 것
+>          같은 맵 파일 -> 결과 칸 unchanged N · new 0 · [VersionGate] 줄 «unchanged=N» -> 맵을 안 지움 (정상)
+>          [VersionGate] «applied=N» -> 같은 버전 · 다른 내용의 맵을 덮음
+>          «version_older» -> 지금처럼 옛 버전 거절 · «version_same» 이 보이면 옛 코드가 돌고 있음
+> 되돌리기  git revert $(git log -1 --format=%h --grep='the same version is taken' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **AI 리포트 — 모델 답이 JSON 이 아니어도 안 멈춘다: 글 속 JSON 을 꺼내고, 한 번 다시 묻고, 그래도 아니면 읽은 것으로 쓴다** · 조건 행은 모델 것 먼저 · 나머지로 most 까지 — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    chain_worker.log «[LLM] answer had text around its JSON» -> 설명 붙은 답을 꺼내 읽음 (정상)
+>          «[report] the answer held no JSON object - asked once more» -> 한 번 다시 물음
+>          리포트 상태 «stopped - the model answered no JSON at step N: …» 인데 글이 있음 -> 읽은 것으로 씀 (정상)
+>          «stopped - the language model call was refused: the answer is not JSON: …» -> 글쓰기 답이 두 번 다 JSON 아님 -> 앞 200 자로 모델 쪽을 봄
+>          조건 행 -> 모델이 2~3 개만 골라도 conditions.most 개까지 차면 고쳐진 것
+> 되돌리기  git revert $(git log -1 --format=%h --grep='answers no JSON' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **AI 리포트 — by · where 에는 conditions() 가 내준 조건 이름을, by 를 빼면 웨이퍼가 열** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    리포트 Evidence 의 걸음 줄 «read refused: 'units' is not a condition …» -> 줄면 고쳐진 것
+>          남아도 그 문장 끝에 «- leave by out for a column a wafer» 가 붙고, 다음 걸음이 by 없이 yield_by 를 부르면 정상
+> 되돌리기  git revert $(git log -1 --format=%h --grep='leave by out' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **Read now 는 따옴표 붙은 경로도 읽고, 폴더 · 패턴 · 없는 파일을 각각 그것이라 말한다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 파일 화면 Read now 에 탐색기 «경로로 복사» 그대로 붙여 넣기
+> 볼 것    읽힘 (Retry 줄에 그 파일) -> 따옴표가 원인이었음
+>          «is a folder» · «is a glob» -> 그 저장소 줄의 Pick files 로 고른다
+>          «is not on the disk this server sees … try the \\server\share path» -> 드라이브 문자(Z: 등) 대신 \\서버\공유 경로로
+>            (드라이브 문자는 Windows 세션마다 따로라, 서버가 다른 세션이면 그 문자를 못 본다)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='Read now says what a path is' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **AI 리포트 후보 — 날짜 있는 웨이퍼의 날짜 없는 leg 도 그 후보에 같이 선다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    chain_worker.log «[report]   wafer <웨이퍼> · leg <leg>: time None … -> candidate» -> 날짜 있는 웨이퍼의 leg 가 같이 섬 = 고쳐진 것
+>          (전: 그 leg 만 «-> no time» 으로 빠져 후보 줄의 rows 수가 적었음)
+>          «-> no time» 이 남은 웨이퍼 -> 그 웨이퍼의 어느 행에도 날짜가 없음 (소유자 10-24 규칙 그대로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='stands or falls whole' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **AI 리포트 — 없는 씨앗은 빼고 걷기 · 조건 행 개수(conditions.most)와 모델 순서** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    Evidence 의 causes 단계에 «<씨앗>: no <타입> node - add it to the ontology» -> 그 씨앗만 빠지고 나머지로 걸음 = 고쳐진 것
+>          그 씨앗을 온톨로지에 넣으면 그 줄이 사라짐
+>          causes 단계 refused «the read failed: …» -> 걷기가 터짐, 리포트는 후보 없이 써짐 · 까닭은 chain_worker.log 트레이스백
+>          conditions 에 "most": 5 -> 표 조건 줄이 5 개 + 글에 쓴 조건. 모델이 고른 순서대로
+>          most 를 1 미만이나 글자로 적으면 저장 거절 «derive.report.conditions.most must be a whole number from 1»
+> 되돌리기  git revert $(git log -1 --format=%h --grep='a seed the ontology has not' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **Read these 넘김 번호는 최근 20 개만 서버가 쥔다 — 큰 glob 을 여러 번 눌러도 메모리가 안 쌓임** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    Read these 를 20 번 넘게 누른 뒤 옛 진행 표시가 404 «… the server restarted since, or it is older than the newest 20 …» -> 그 번호가 버려진 것. 파일은 읽힘
+> 되돌리기  git revert $(git log -1 --format=%h --grep='newest 20 Read these jobs' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **Read these 즉시 답 · 넘김 번호로 진행 · 파일 화면에 선언된 저장소 전부(꺼진 것도)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 (화면은 클라 다음 빌드에서 번호 박동 · off 표시)
+> 볼 것    Read these 를 누르면 답이 바로 옴(«the files are being handed to the watcher»)
+>          서버 로그 «[Reread] glob <glob> under <루트> for <표>: N of M file(s) handed to the watcher» -> 다 넘김
+>          «… was not handed: <까닭>» -> 넘기다 멈춤. 그때까지 넘긴 것은 읽힘, 나머지는 다시 Read these
+>          read-now/left 가 404 «… the server restarted since, or it is older than the newest 20 …» -> 서버가 재기동됐거나 최근 20 개보다 오래된 번호. 넘긴 파일은 그대로 읽힘 — 화면을 새로 고침
+>          파일 화면에 꺼진 외부 저장소 줄이 off 로 보임 -> 고쳐진 것 (전: 읽힌 파일 없으면 줄 없음)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='handed off the request' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **실패 파일은 정말로 Retry 로만 · 꺼진 저장소도 골라 읽기 · Read these 는 맞는 파일 전부** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 볼 것    표 스크립트를 고친 뒤 watcher.log «<표>: its reading changed (...) - N read file(s) unchecked, failed files are not
+>          read again by themselves» -> 그 표의 FAILED 는 파일 화면에 FAILED 로 남음 = 고쳐진 것. 읽히려면 Retry
+>          (전: 줄은 그렇게 말하고 실패 파일이 저절로 읽혀 SUCCESS 가 됨)
+>          기동 한 번 «read files stamped N · failed files stamped K (...)» -> 첫 기동만. 이미 채운 박스엔 안 나옴
+>          Read these 는 즉시 답함 — 진행 수는 아래 [10-26] 넘김 번호 블록
+>          꺼진 저장소에 glob -> 목록이 나오면 고쳐진 것 (전: «switched off» 400)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='read again only by hand' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-26] **저장소 안 파일을 glob 으로 골라 읽는다 — 읽었든 안 읽었든 목록, 고른 것만 와처에** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 (화면은 클라 착지 뒤 파일 화면에서)
+> 볼 것    서버 로그 «[Reread] glob <glob> under <루트> for <표>: N of M file(s) matched - S s»
+>          N 이 기대보다 0 -> glob 이 루트 기준 경로인지 (폴더/이름). 괄호 [..] 는 글자 그대로라 안 맞음
+>          S 가 수 초 -> 매칭이 수만 개. 폴더를 더 좁힌 glob 으로 (10만 매칭 이 박스 7 s, 폴더 하나 0.1 s)
+>          읽기 뒤 watcher.log 에 그 파일들 읽기 줄 -> 고쳐진 것. 안 나오면 와처 프로세스가 떠 있는지 (409 문장)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='glob list' origin/main) -> 런처 재기동
+> ```
+>
+> ---
+>
+> ## [10-24] **선언 폼에서 이름으로 새 칸을 여는 입력도 Enter 로 들어간다 (keys · images.match 등)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 Chain 탭 -> 리포트 규칙 -> keys 밑 column 칸에 이름을 적고 Enter
+> 뜻      그 이름의 줄이 생김  = 고쳐짐
+>          글자가 그대로 남음  = 화면이 옛 번들 -> 강력 새로 고침
+> 되돌리기  git revert $(git log -2 --format=%h --grep='a name map box takes Enter' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-24] **이미지 칸의 온전한 경로 — 그림 파일은 그대로 읽힌다 · 공유 경로 \\\\ 도 (5374f21aa · 03e267e96)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. image_sources.json 은 그대로 (그림 파일은 folder 소스가 없어도 됨)
+> 무엇     칸 값이 C:\…\a.png · \\server\share\a.png 처럼 그림 파일의 온전한 경로면 그 경로 그대로 읽음
+>          공유 경로를 \\\\server\\share\\a.png (역슬래시 모두 겹) · //server/share/a.png 로 적어도 같은 경로
+>          (전: «… is under no folder source of image_sources.json …» 404)
+>          리포트 images 역할에 "source" 를 적었어도 칸 값이 온전한 경로면 그 경로 그대로 (🆕 03e267e96 —
+>            전: 소스 이름이 붙어 그 소스 root 밑으로 이어져 «그 폴더 밑에 그림 없음»)
+> 볼 곳    리포트 그림 · 그리드 이미지 칸 -> 그림이 나오면 고쳐진 것
+> 아직 «no file '<경로>' - this server cannot see it (…)»
+>          -> 서버 프로세스가 그 공유에 로그온 안 됐거나 다른 PC 의 경로. 서버 PC 에서 그 경로가 열리는지부터
+> 아직 «… is under no folder source …»  -> 그림 확장자(png · jpg · jpeg · bmp · gif · tif · tiff · webp)가 아닌 파일
+> 끄기    없음
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 조건 — 한 웨이퍼의 같은 조건 두 값은 둘 다(300 / 320), 시각 항목은 조건 줄에서 숨김, 이름 앞뒤 공백 무시** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    조건 칸에 «300 / 320» -> 그 웨이퍼 · 조건이 조건 표에 두 행(키 조각 하나 더). 고쳐진 것 (전: 하나만 조용히)
+>          time_item 항목이 조건 줄에서 사라지고 날짜 머리에만 -> 고쳐진 것
+>          time_item · yield_item · match 이름을 데이터와 맞췄는데도 안 붙으면 -> 이름 «안»의 철자 · 대소문자가 다름 (앞뒤 공백은 이제 무시)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='both said' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **이미지 칸의 온전한 경로가 읽힌다 · AI 리포트 페이지 폭 1280px (765d4c34c · fc5351f2c)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 이미지    칸 값이 C:\… · \\server\… 처럼 온전한 경로면, 그 경로를 품은 root 의 folder 소스로 읽음
+>          root 를 server/config/image_sources.json 에 한 번:  {"pics": {"kind": "folder", "root": "D:/images"}}  (🆕 그림 파일은 이것 없이도 — 맨 위 블록)
+>          (전: «image source 'C' is not declared» 로 거절)
+> 볼 곳    리포트 그림 · 그리드 이미지 칸 -> 그림이 나오면 고쳐진 것
+> 아직 «'<경로>' is under no folder source of image_sources.json - add one whose root holds it (e.g. {…})»
+>          -> 그 경로를 품은 root 가 없음. 문구의 예시대로 folder 소스를 하나 적기
+> 페이지    리포트 파일 폭 최대 1280px, 글도 페이지 폭
+>          이미 만든 파일은 옛 폭 그대로 -> 리포트를 다시 만들면(리플레이) 새 폭
+> 끄기    없음
+> ```
+
+---
+
+> ## [10-24] **선언 폼에서 비운 칸은 저장에서 빠진다 — 비게 된 선택 블록(derive.report.sets 등)도 같이** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 Chain 탭 -> 리포트 규칙 -> 폼에서 sets 칸을 적었다 지우고 왼쪽 JSON 을 본다
+> 뜻      JSON 에 "sets" 가 없음  = 고쳐짐
+>          "sets": {"table": ""} 이 남음  = 화면이 옛 번들 -> 강력 새로 고침
+> 이미 저장된 규칙  "sets": {"table": ""} 이 남은 규칙은 그 칸을 폼에서 지우고 다시 저장하면 빠짐
+> 되돌리기  git revert $(git log -2 --format=%h --grep='a cleared form cell leaves the declaration' origin/main) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-24] **AI 리포트 수율 행 — summary.yield_item 은 불량 유형이 아니라 수율** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   chain_rules.json 의 derive.report.summary 에  "yield_item": "<요약표에서 수율 행의 항목 이름>"  (여럿이면 목록)
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    표에 «Yield» 줄이 생기고 불량 행 · 파레토에서 그 항목이 사라지면 고쳐진 것
+>          Yield 줄이 «—» 뿐 -> 항목 이름 철자가 요약표 값과 다름 (대소문자 그대로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='summary.yield_item' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 그림이 «No image of an occurred defect» 로 비던 것 — 짧은 wafer 목록은 차례로 안 맞춤 (d6815fa37)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 다시
+> 무엇     역할 wafer 목록이 wafer.key 보다 짧으면(예: 그림 표 [wafer_id, leg_no] · wafer.key [wafer, tkout_time, leg])
+>          자리로 맞추지 않음 (전: leg 가 tkout_time 자리에 앉아 그림을 못 찾음)
+>          짧은 목록에서 이름이 다른 칸은 그 역할에 "rename": {"<wafer.key 칸>": "<그 표 칸>"}
+>          WAFER 처럼 대소문자만 다른 그 표의 키 칸은 그대로 wafer 로 읽음
+> 볼 곳    리포트 파일의 그림 칸 -> 그림이 나오면 고쳐진 것
+> 아직 «No image of an occurred defect - N image row(s) of <표> … (matched by …); their kinds: …; defects that occurred: …»  (🆕 619e94100 부터 이유가 붙음)
+>          image row(s) 0 -> 그 웨이퍼의 그림 행을 못 찾음: matched by 의 «키=그 표 칸» 을 보고 rename 고치기 (또는 그림 표에 그 웨이퍼 행이 없음)
+>          rows 는 있는데 kinds 와 defects 가 안 겹침 -> images.match 에 {요약 항목: [그림 kind]} 을 적기
+> 끄기    없음
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 웨이퍼 시각을 조건 항목에서 — conditions.time_item** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   chain_rules.json 의 derive.report.conditions 에  "time_item": "<시각이 든 조건 항목 이름>"
+>          (derive.report.wafer 에 time 칸이 있으면 그것이 이김 — 조건 항목을 쓰려면 wafer.time 을 지움)
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    표 열이 그 시각 순서 · DATE 머리에 날짜 · Evidence candidates 에 대조 평가가 나오면 고쳐진 것
+>          «candidates need derive.report.wafer.time and evaluation, or conditions.time» -> time_item 이 안 적힘 또는 wafer.evaluation 없음
+>          DATE 머리가 비면 그 값이 시각으로 안 읽히는 철자 (순서만 글자로)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='conditions.time_item' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **행 게이트 값에 * ? 패턴 — on.require · on.exclude 와 AI 리포트 wafer.exclude (무시할 leg)** — git pull · 런처 재기동
+>
+> ```
+> 먼저 셀 것  운영 chain_rules.json 의 게이트 값에 * ? 가 이미 있나 — 있으면 그 규칙이 이제 패턴으로 거름
+>          python -c "import json;d=json.load(open('server/config/chain_rules.json',encoding='utf-8'));r=d.get('rules',d);print([(x.get('name'),v) for x in r for h in (x,x.get('on') or {}) for g in ('require','exclude') for i in h.get(g) or () if isinstance(i,dict) for vs in i.values() for v in vs if isinstance(v,str) and ('*' in v or '?' in v)])"
+>          [] -> 바뀌는 규칙 없음
+> 적을 것   chain_rules.json 의 derive.report.wafer 에  "exclude": [{"leg": ["*_T", "*TEST*"]}]
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    그 leg 가 표 열 · units 줄 · 그림에서 사라지면 고쳐진 것
+>          저장 거절 «derive.report.wafer.exclude '<칸>' is not a column of '<표>'» -> 웨이퍼 표의 칸 이름으로
+> 되돌리기  git revert $(git log -1 --format=%h --grep='glob pattern in the one row gate' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 그림 짝 — images.match 로 그림 표의 종류를 요약 항목에 (void, signal -> typeA)** — git pull · 런처 재기동
+>
+> ```
+> 적을 것   chain_rules.json 의 derive.report.images 에  "match": {"typeA": ["void", "signal"]}
+>          (요약 항목 이름: 그 항목으로 볼 그림 표의 종류들. 하나면 "typeA": "void")
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    그림이 요약 항목 이름 밑에 붙으면 고쳐진 것
+>          맨 뒤 «Image kinds no summary item matches (images.match): A, B» -> A, B 를 match 의 어느 항목에 넣는다 (그 전엔 제 이름 밑에 그대로 나옴)
+>          저장 거절 «derive.report.images.match is {summary item: image kind or [image kinds]} …» -> 값을 글자 또는 글자 목록으로
+> 되돌리기  git revert $(git log -1 --format=%h --grep='images.match pairs' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 표에 대조 웨이퍼와 조건 묶음 — 선언된 비교(control.recent · sets.default)를 제품이 읽는다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    표 가로에 리포트 웨이퍼 + «control <평가>» 열들, 맨 위에 Conditions 줄 -> 고쳐진 것
+>          Evidence «N product compare() - control <평가>: K wafers (…)» -> 제품이 붙인 대조
+>          표 밑 «This report's wafers only - no compare set default or control.recent is declared.» -> 선언에 control.recent 를 적는다
+>          «product compare() - refused: candidates need derive.report.wafer.time …» -> wafer.time(또는 conditions.time) 를 적는다
+>          조건 줄이 하나도 없으면: 대조와 값이 같은 조건뿐이거나 wafer.conditions · conditions 역할이 안 적힘
+> 되돌리기  git revert $(git log -1 --format=%h --grep='declared comparison' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 — 키 조각마다 칸 이름(WAFER W1 · LEG L1), 웨이퍼 밑에 leg 묶기** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이
+> 볼 것    Evidence 의 conditions 줄 밑 «units - a report unit, then its parts:» 와 «WAFER W1: LEG L1, LEG L2»
+>          표 열 이름 · 그림 밑 이름이 «WAFER W1 · LEG L1» -> 고쳐진 것 (전: W1/L1)
+>          글이 leg 를 웨이퍼처럼 따로 쓰면 그 Evidence 를 총괄에게 (units 줄이 없으면 keys unit 이 없는 선언)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='named part by part' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 표 · 그림은 제품이 채운다 — 모델이 안 불러도, 엉뚱한 자리의 layout 은 이름 댐** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙 리플레이 (리포트 표 행 하나로 충분)
+> 볼 것    리포트 파일에 표 · 그림이 나오면 고쳐진 것 (전: 제목 · Evidence 뿐)
+>          Evidence 첫 줄 «done» -> 모델이 글도 씀
+>          «stopped - the language model call was refused: <사유>» -> 게이트웨이 문제(llm_config.json 주소 · 키 · 프록시). 표 · 그림은 그래도 나옴
+>          «N product yield_by() - …» -> 제품이 채운 표. «refused: …» 면 그 사유가 표가 빈 이유
+>          chain_worker.log 로드 줄 «layout is read under derive.report» -> layout 을 derive.report 안으로 옮김 (그 전엔 기본 배치)
+> 되돌리기  git revert $(git log -1 --format=%h --grep='read by the product' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 역할 표가 웨이퍼 키를 다른 이름으로 적어도 된다 — 제 키 칸이면 같은 차례로 맞춤 · rename (b6b370203 · 6724000a7)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+> 무엇     역할(summary · images · conditions · info · picture_rows)의 wafer 목록에 그 표의 키 칸
+>          (table_config composite_key_source · business_key)을 wafer.key 와 같은 차례로 적으면 이름이 달라도 맞춤  (🆕 길이가 같을 때만 — 맨 위 블록)
+>            예  wafer.key [wafer, leg]  ·  조건표 wafer [wafer_id, leg]  -> wafer_id = wafer
+>          차례가 안 맞으면 역할에  "rename": {"wafer": "wafer_id"}
+>          (전: «'<칸>' is not a key column» 으로 규칙 거절)
+> 볼 곳    체인 규칙 창에서 그 리포트 규칙 저장 -> 거절 없이 저장되면 고쳐진 것
+> 아직 거절  «… is not a key column»  -> 그 칸이 표의 키 칸이 아님(값 칸). 키 칸으로 바꾸기
+>          «… is not a column of '<표>' … or <역할>.rename {…}»  -> 표에 없는 칸. rename 으로 그 표 칸을 대기
+> 끄기    없음
+> ```
+
+---
+
+> ## [10-24] **AI 리포트 — layout 안 적으면 기본 배치 · sets 칸 빠지면 비교 묶음 없이 · latest 는 글자로도 · 키 1.0 = 1** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 (7e01af4c8 의 layout · sets 거절은 거둠)
+> 볼 것    리포트 파일 — layout 안 적은 선언: 요약 글 · 표 · 그림 · 결론 글 넷이 나오면 고쳐진 것 (전: 제목 · Evidence 뿐)
+>          chain_worker.log 로드 줄 «derive.report.sets names no … - read as no compare set» -> 비교 묶음 없이 돎, 쓰려면 sets 에 name · member · kind
+>          같은 웨이퍼의 tkout_time 이 여럿이면 가장 늦은 것만 파일에 (글자로 된 시각도) — 여럿이 보이면 latest 칸이 keys 에 없음
+>          leg 같은 키가 한 표는 숫자 · 한 표는 글자여도 칸이 «—» 가 아니면 고쳐진 것
+> 되돌리기  git revert $(git log -1 --format=%h --grep='read as no compare set' origin/main) -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **AI 리포트가 요약 칸의 글자(«», «N/A») · 한 웨이퍼의 오류에 서지 않는다 (be72facbb)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로. 리포트 규칙을 다시 건다
+> 볼 줄    chain_worker.log «[Report] <규칙> wafer <웨이퍼> failed: <오류 종류>: <한 줄>» (아래에 전체 추적)
+> 뜻      그 줄이 나온 웨이퍼만 STOPPED, 나머지 웨이퍼는 리포트가 나옴 -> 고쳐진 것. 그 한 줄이 다음에 고칠 자리
+>          «[Report] <읽기> failed» 는 모델이 부른 읽기 하나의 오류 — 모델은 그 사유를 받고 계속 감
+> 되돌리기  git revert be72facbb -> 런처 재기동
+> 알아둘 것 한 웨이퍼가 DB 오류로 서면 같은 묶음의 뒤 웨이퍼들도 InFailedSqlTransaction 으로 설 수 있음 -> 첫 오류를 고친 뒤 그 행들을 리플레이
+> ```
+
+---
+
+> ## [10-24] **키 조각(x · y)을 바꾸는 소급이 행² 으로 느려지지 않는다 — 병합이 묶음 전체를 훑던 것 (총괄 be730e1e7, 4f32e0ce7)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+>          그 규칙 리플레이를 체인 큐 화면에서 다시 건다
+> 볼 줄    chain_worker.log «[Chain] group … INSIDE THE WRITE · … · row build X s / N cells changed»
+> 뜻      row build 가 그룹 행 수에 «비례»해 늘면 고쳐진 것 (전엔 제곱: 128 행 0.9 s · 256 행 2.8 s · 512 행 7.6 s)
+>          박스 한 묶음(sqlite) 529 행 · 40 칸 172 s -> 8 s, 1,024 행 · 40 칸 14 s
+> 알아둘 것 x · y 가 키 조각인 표에 x-1 · y-1 을 «제자리»에 쓰면 이웃 키와 부딪혀 행이 병합됨(선언대로) — 박스 3,000 행이 421 행으로 접힘
+> 이상할 때  키를 바꾼 뒤 합쳐진 행의 층 · 이력 줄이 빠졌다 -> 바로 되돌리기
+> 되돌리기  git revert 4f32e0ce7 -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **파일의 맵 교체는 맵을 통째로 지우고 쓴다 — 체인 층 · 사람 값도 같이, 맵 키가 빈 행은 건너뜀 (856f2bb67 · 6f9f1f5fb)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 무엇     allow_replace_map 표에 파일이 오면 그 파일의 맵마다 행 전부 + 모든 소스 층(체인 층 · 사람이 고친 값도)을 지우고 파일을 씀
+>          (전: 다시 온 행은 층째 둠 -> 체인 층이 파일 값을 이겨 교체가 안 보였음)
+> 볼 줄    와처 줄 «[Ingest] <표> FILE <파일>: …» 끝 (터미널 · watcher.log)
+>          replaced K map(s), deleted M row(s) · replace on by [칸…] · purge/file_replace K
+>            M = 그 K 개 맵의 옛 행 전부 (0 = 그 맵들에 옛 행이 없었음)
+>          [Ingest] <표>: N row(s) with a blank map key [칸…] skipped - they name no map (first at file row R)
+>            -> 맵 키가 빈 행 N 개만 건너뜀, 파일은 들어감 (전: 파일 전체 FAILED)
+> 안 바뀜   맵 편집기 push · 체인 규칙의 allow_replace_map 은 그대로 차집합(다시 온 행은 두고 빠진 행만 지움)
+> 끄기    없음 (표의 allow_replace_map 을 false 로 하면 맵 교체 자체가 꺼짐)
+> ```
+
+---
+
+> ## [10-24] **실패 파일은 저절로 다시 안 읽고, 파일 줄이 맵 통째 교체를 말한다 (dd5f221ef · ea9fef6fb)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 실패 파일  읽는 법(스크립트 · table_config · 외부 원천)이 바뀌어도 저절로 안 읽음. 파일 화면 Retry · Read now · Read all again 으로만
+>          줄  [Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, failed files are not read again by themselves (Retry on the file page)
+> 지운 파일  Retry skipped for checklist row #N (<파일>): the file is not on the disk any more - <경로>
+>          -> 디스크에 없어서 안 읽음. FAILED «the file is not on the disk any more» 로 남음 (트레이스백 없음)
+> 맵 교체   와처 줄 «[Ingest] <표> FILE <파일>: …» 끝 (터미널 · watcher.log)
+>          replace off (allow_replace_map is not true in table_config for <표>) -> 그 표의 allow_replace_map 이 안 보임. table_config 의 그 표 항목을 본다
+>          replace on by [칸…] · <mode>/<reason> N -> 맵 키 칸 [칸…] 로 맵마다 바꿈, 방식별 맵 수
+>          rows in scope 0 N -> 맵 N 개가 옛 행을 범위에서 못 찾음. 맵 키 값이 옛 행과 다른지 본다
+>          deleted N row(s) -> 파일 교체는 맵을 통째로 지움(맨 위 블록): N = 그 맵들의 행 전부. «0 = 전부 다시 받음» 은 맵 편집기 · 체인의 맵 교체(차집합)에만
+> 끄기    없음
+> ```
+
+---
+
+> ## [10-24] **같은 체인 실패는 접히고, 10 번 내리 실패한 규칙은 꺼진다 (총괄 ef69603d6 · 8906edc07, 06b1fd297)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 값을 바꾸려면 chain_rules.json 맨 위 "rule_off_after_failures": 10 (0 이면 안 끔)
+> 볼 줄    체인 워커 터미널
+>          처음 한 번   «Transaction … permanently failed … 원인: …» + 트레이스백
+>          그 뒤       «Transaction … same failure as above: <규칙> ×N in <초> s. 원인: …» (60 초에 한 줄)
+>          10 번 내리   «[Chain] rule <이름> switched off after 10 failures in a row …»
+>          고쳐 저장    «[Chain] rule <이름> switched on again - a declaration was saved (off since …)»
+> 뜻      꺼진 규칙은 건너뜀(같은 표의 다른 규칙은 돎). 꺼진 동안의 변경은 그 규칙 리플레이로 따라잡음
+>          체인 규칙 목록에 «Switched off after N failures in a row since … · N changes skipped since · 원인»
+> 급할 때  config/chain_control.json 의 "rules_off" 를 {} 로 저장 -> 다음 묶음부터 다시 돎
+> 되돌리기  git revert 06b1fd297 -> 런처 재기동
+> ```
+
+---
+
+> ## [10-24] **키 조각 하나가 빈 행은 같은 키로 접힌다 — (a, 빈값) 두 행이 한 행** — git pull · 런처 재기동 · 표마다 재키잉 한 번
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 조합 키 표마다:
+>            python server/scripts/rebuild_blank_business_keys.py --table <표>          (읽기 전용 미리보기)
+>            python server/scripts/rebuild_blank_business_keys.py --table <표> --apply  (쓰기)
+> 뜻      rebuildable N  -> 빈 조각 · 준 키로 저장돼 조립 키와 다른 행 N 개를 조립 키로 옮김(층 · 사람 값은 행 그대로 따라감)
+>          collides N     -> 옮기면 다른 행과 같은 키가 되는 행 N 개 - --apply 가 그 키를 가진 행에 합침(되돌릴 수 없음)
+>          no_material N  -> 조각이 모두 빔 - 키 없이 남음(그대로가 맞음)
+>          0 · 0          -> 할 일 없음
+> 안 돌리면  옛 행은 다음 파일의 같은 키 행과 안 접힘 - 조인 유일 인덱스 표에서는 그 파일 행이 «unique_violated» 로 거절
+> 되돌리기  git revert <이 커밋> -> 런처 재기동 (이미 --apply 한 키 · 합침은 안 돌아감)
+> ```
+>
+> ## [10-24] **자동읽기 끄고 파일 하나 돌려 보기 — 꺼진 외부 소스도 Read now · Retry 로 읽힌다 (총괄 19ccab56f, 7328c8d51)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(이 코드를 싣는 한 번)
+>          그 뒤: ingestion_settings.json 에서 그 소스를 "enabled": false 로 «저장만» (재기동 없음)
+>          파일 화면 «Read a file now» 에 파일 경로 -> Check -> Read now (몇 번이든). 파일 한 줄 Retry 도 같음
+> 볼 줄    watcher 터미널에 그 파일의 읽기 줄 — Read now 한 번마다 하나
+> 뜻      자동으로는 안 읽힘(새 파일 이벤트 · 훑기 · Read all again). 손으로 고른 파일만 그 소스 선언대로 읽힘
+>          다시 켜면 꺼진 동안 온 파일을 훑어 읽음(전과 같음)
+> 이상할 때  Read now 가 «No table reads …» · Retry 가 «the source … is not in ingestion_settings.json» -> 이 코드가 안 실림(재기동 확인)
+> 되돌리기  git revert 7328c8d51 -> 런처 재기동 (꺼진 소스는 손으로도 못 읽던 때로)
+> ```
+
+---
+
+> ## [10-24] **착지 빌드의 화면 검사는 바꾼 화면만 · 전체 판은 밤에 (소유자 「너무 오래 걸리는데」 → «ㄱ»)** — 돌릴 것 없음
+>
+> ```
+> 돌릴 것   없음 (시험 도구만 바뀜, 서버 · 화면 그대로)
+>          밤 전체 판 (소유자 자리 비움 때, 총괄이 알리면 클라가 띄움):
+>          cd client2 && node tests/screen_layout_harness.mjs --mutate
+> 뜻      착지 빌드 로그 첫 줄 «narrowed: <화면들>»  = 그 화면만 열었음
+>          «narrowed: no screen touched - nothing runs»  = 바뀐 파일이 어느 화면에도 안 닿음
+>          «narrowed: every screen - …»  = 검사기나 기록된 응답만 바뀌어 전부 엶
+> 끄기     check_harnesses.mjs 의 FLAGS 에서 '--touched' 를 빼면 예전처럼 전부
+> ```
+>
+> ---
+>
+> ## [10-24] **체인 실패 트레이스백이 터미널에 — 실패 줄 바로 밑에 전체 (331661db4, beec46570 와 같이)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 보이는 줄  체인이 영구 실패하면 런처 터미널에 둘, 실패한 그룹마다 한 번
+>          ① Transaction <tx> permanently failed: … 원인: <오류> at <파일>:<줄> in <함수>
+>          ② Transaction <tx> traceback:   (다음 줄부터 트레이스백 전체)
+> 뜻      ① 의 at 이 mappers\<파일>.py 면 그 파일 그 줄 · 제품 파일이면 맵퍼가 넘긴 값 · 선언을 본다 (아래 블록)
+>          ② 가 없다 -> 사유에 트레이스백이 없는 거절 문장. ① 의 문장이 사유
+> .log · 화면  필요 없음 (같은 문장이 대기열 Recent failures 에도)
+> 끄기    없음 (줄만 늘어남)
+> ```
+>
+> ## [10-24] **체인 실패 줄이 «어디서»를 말한다 — «at <파일>:<줄> in <함수>»** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동
+> 뜻      chain_worker.log «… permanently failed … 원인: <오류> at mappers\<파일>.py:<줄> in <함수>» -> 맵퍼 안에서 터짐. 그 파일 그 줄을 연다
+>          «at <제품 파일>.py:<줄> in <함수>» (mappers 밖) -> 제품 쪽에서 터짐. 맵퍼가 넘긴 값 · 선언을 본다 (예: mapper_sdk.py - 맵퍼가 DataFrame 이 아닌 것을 돌려줌)
+>          at 없음 -> 트레이스백 없는 거절 문장. 그 문장이 사유
+> 같은 자리  대기열 Recent failures · retrying 줄 · 실패 목록이 같은 문장 (이미 쌓인 실패도)
+> 끄기    없음 (문장만 길어짐)
+> ```
+>
+> ## [10-24] **쓰기가 쓰는 칸의 층만 읽는다 — 행의 모든 칸 층을 잠그고 읽던 것 (총괄, 5e842aafc)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+>          칸이 많은 표에 칸 하나를 바꾸는 쓰기(체인 · 파일 · 그리드 아무거나)
+> 볼 줄    chain_worker.log «[Chain] group … INSIDE THE WRITE · … · prefetch X s · …» (느린 그룹에만 찍힘)
+>          watcher.log 청크 줄의 같은 «INSIDE THE WRITE» 칸
+> 뜻      prefetch 가 전보다 짧음 = 쓰는 칸의 층만 읽음. 줄어드는 몫은 표의 칸 수에 비례
+>          (박스 40 칸 표, 1,000 행에 칸 하나: prefetch 0.67 -> 0.07 s, 쪽 1.4~1.5 -> 0.8~1.0 s)
+>          이 줄들의 초는 이제 perf_counter. 전엔 윈도우에서 0.0156 s 의 배수로만 찍혔음(단계마다 ±16 ms)
+> 이상할 때  키를 바꿔 두 행이 합쳐진(병합) 뒤 합쳐진 행의 다른 칸 층 · 사람 값이 빠졌다 -> 바로 되돌리기
+>          (병합은 두 행의 모든 칸 층을 한 질의로 먼저 읽게 되어 있음. 빠지면 그 자리가 틀린 것)
+> 되돌리기  git revert 5e842aafc -> 런처 재기동 (전처럼 행의 모든 칸 층을 읽음)
+> ```
+
+---
+
+> ## [10-24] **다시 읽기 멈춤의 «남은 파일 있나»가 체크리스트를 다 훑지 않는다 — 부분 인덱스** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 인덱스는 스케줄러가 기동 때 CONCURRENTLY 로 세움 (손 SQL 없음)
+> 뜻      auto_update.log «[Indexes] ix_file_checklist_rereads_left built in N s» -> 섬
+>          «… failed …» -> 안 섬. 멈춤은 그대로 돎(전체 훑기라 느릴 뿐 같은 답). 다음 기동에 다시 세움
+> 되돌리기  DROP INDEX CONCURRENTLY IF EXISTS ix_file_checklist_rereads_left;
+>          (선언이 남아 있는 한 다음 기동에 다시 섬 - 안 세우려면 ingestion_settings.json "build_missing_indexes": false - 선언 인덱스 전부가 안 섬)
+> 안 잰 것  file_mtime 만 바뀌는 체크리스트 갱신은 HOT 이 아님 — 파일 읽기마다 한 번, 안 잼
+> ```
+>
+> ## [10-24] **다시 읽기가 파일마다 실패하면 그 (표, 저장소)만 멈춘다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> (기본 3 이 아니면) ingestion_settings.json 에 "reread_stop_after_failures": N
+> 뜻      파일 화면 진행 줄 Last sweep 에 «Stopped: 3 failed in a row - <첫 줄> · waiting N» -> 그 쌍의 다시 읽기를 와처가 멈춤
+>            파서를 고치면(스크립트 변경) 풀리고 다시 읽음. 고치지 않고 Read all again · Retry · Read now 를 누르면 풀리되 3 개 뒤 다시 멈춤
+>            기다리는 파일을 아예 물리려면 그 행의 Cancel waiting re-reads
+>          파일이 여럿 실패하는데 안 멈춤 -> 그 다시 읽기에서 읽힌 파일이 하나라도 있었음(불량 파일 몇 개 - 지금처럼 하나씩 실패)
+> 끄기    ingestion_settings.json "reread_stop_after_failures": 0
+> 재기동 뒤  watcher.log «[Watcher] <표> · <저장소>: Stopped: 3 failed in a row - … - waiting N · unchecked M left as they are» · 풀릴 때 «the re-read stop let go (…)»
+> ```
+>
+> ## [10-24] **뭉치기 조인(take 에 fn)이 키마다 한 번 계산 — 대상 행마다 돌던 것 (소유자 「함수가 그룹별로 안 돌고 행별로 다 도나 봐」, 2105ce042)** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동. 선언은 그대로
+>          그 조인의 원천 표 행 몇 개를 고치거나, 소급 탭 «Replay chain rules over old data» rule = 그 조인 이름
+> 볼 줄    chain_worker.log «[Latency] tx=… wake=… mapper=…ms commit=… total=…ms»  -> 그룹마다 한 줄, 전보다 mapper 가 짧음
+>          «[ChainRule] rule=<조인> … rows_in=N rows_out=M … elapsed=…s»  -> elapsed 가 계산 몫(키마다 한 번)
+> 뜻      rows_out 은 전과 같음 = 대상 행마다 쓰기 하나는 그대로(값을 받는 행이라서)
+>          계산 수는 «키 수» (파일 함수에 "row" 를 적었으면 키 × 그 칸 값 묶음 수)
+>          그룹이 여전히 느리면 대부분 쓰기 몫 — 박스 판: 그룹 2.73 s 중 쓰기 2.05 s (대상 행 2,000 · 규칙 2). 이번에 안 줄임
+> 이상할 때  대상 행마다 판정이 달라야 하는데 같게 나옴 -> 그 칸을 take 의 "row" 에 적었는지 (row 에 없는 칸은 함수가 못 봄)
+> 되돌리기  git revert 2105ce042 -> 런처 재기동 (전처럼 대상 행마다 계산)
+> ```
+
+---
+
+> ## [10-23] **끊긴 체인 소급을 화면에서 이어 하기 — 대기열 줄의 Resume (소유자 「체인 소급 이어하기는 안 되는 건가? … 마지막 커서가 떴으면」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 Chain 탭 대기열 -> «interrupted» 줄의 «Resume»
+>          또는 Retroactive 탭 chain_replay -> Count -> 결과 밑 «Resumes from page N» 옆 «Resume»
+> 뜻      «Resumes from page N · after <키> · R of T rows · cut <시각>»  = 마지막으로 커밋한 쪽 다음부터 새 run 으로 이어 감
+>          쪽과 시각만 나오고 키 · 전체가 없음  = 서버가 cursor_end · total_rows 를 아직 안 실음 (그래도 Resume 은 됨)
+>          토스트의 거절 문장  = 서버 사유 그대로 (그 run 을 이을 수 없는 까닭)
+> 되돌리기  git revert 8a87d7652 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-23] **파일 화면 맨 위에 읽기 진행 — 표 · 저장소마다 읽음 / 전체 · 남은 수 (소유자 「몇 개 중 몇 개 읽고 있는지」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          어드민 File Ingestion 탭 -> 맨 위 READ PROGRESS
+> 뜻      «4,483 / 4,488 read · 5 left»  = 그 저장소에서 체크리스트가 센 파일 중 읽은 것 / 전체 · 남은 것
+>          전체에는 훑기가 아직 못 닿은 파일이 안 들어감 -> 외부 저장소는 훑을수록 전체가 늘 수 있음
+>          Last sweep «—»  = raws (훑기 없음) · «unavailable» = 그 저장소를 못 읽음
+>          «count failed» (오른쪽 위)  = 세기 응답이 실패 -> 화면 위 문장이 서버 사유
+>          Retry 가 꺼지고 «Not read yet»  = 그 파일은 아직 한 번도 안 읽힘 (기다리는 중)
+> 되돌리기  git revert d7534ad9c (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-24] **파일 기록이 바뀐 칸 이름을 말한다 — «Changed in <칸> N»** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동(부팅이 file_ingestion_logs 에 columns_changed 칸을 더함) -> 값 하나 바꾼 파일을 다시 읽기 -> 파일 화면에서 그 파일 열기
+> 뜻      Result 의 Changed 밑에 «Changed in <칸> N» -> 이 착지
+>          Changed 는 있는데 그 밑 줄이 없음 -> 이 착지 전에 읽힌 파일(비어 있음) 이거나 서버가 옛 코드
+>          부팅 로그에 file_ingestion_logs 칸 추가 실패 -> 손으로 server/migrations/add_file_ingestion_log_columns_changed.sql
+> 끄기    없음. 칸을 빼려면 add_file_ingestion_log_columns_changed_reverse.sql (그 전에 이 착지를 되돌림)
+> 재기동 뒤  파일 화면 Result
+> ```
+>
+> ## [10-24] **decide 를 적은 이름으로 리플레이한다 — R1 의 «not found» 거절** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 의 rule 에 decide 선언에 적은 이름 그대로(enrichment_dedup: 없이)
+> 뜻      실행이 잡히고 파생 표에 행이 생김 -> 이 착지(그 선언의 dedup 반쪽이 돎)
+>          «chain rule '<이름>' not found or disabled; available: …» 에 적은 이름이 보임 -> 서버가 옛 코드(재기동 전)
+>          auto_confirm 까지 다시 하려면 R1 을 한 번 더: enrichment_auto_confirm:<이름> (리플레이는 다른 규칙을 안 깨움)
+> 끄기    없음. enrichment_dedup:<이름> 으로 적던 것도 그대로 됨
+> 재기동 뒤  chain_worker.log 에 enrichment_dedup:<이름> 의 처리 줄
+> ```
+>
+> ## [10-24] **표 저장이 그 자리에서 서버에 읽힌다 — 바로 뒤 규칙 저장이 새 칸을 안다** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 어드민에서 표에 칸 하나 저장 -> 곧바로 그 칸을 쓰는 체인 규칙 저장
+> 뜻      규칙이 저장됨 -> 이 착지
+>          규칙이 «모르는 칸»으로 거절 -> 서버가 옛 코드(재기동 전)
+>          표 저장이 1 초를 넘김 -> 표 수가 많아 스키마 맞추기가 길어진 것(표 100 개에서 0.8 초) - 수를 총괄에게
+> 끄기    없음
+> 재기동 뒤  api 로그, 저장마다 «[Config] table_config.json changed - read again in this process» 한 줄
+> ```
+>
+> ## [10-24] **표를 더하면 와처가 그 raws/ 를 바로 만들고 본다 — Reload 없이** — git pull · 런처 재기동
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 어드민에서 표 하나 저장(새 이름) -> 몇 초 뒤 ingestion_workspace/<표>/raws/ 확인 -> CSV 하나
+> 뜻      raws/ 가 몇 초 안에 생기고 CSV 가 적재됨 -> 이 착지
+>          raws/ 가 안 생김 -> 와처가 옛 코드(재기동 전) 이거나 watcher.log 의 «the tables' raws/ were not looked at again» 줄
+>          raws/ 는 생겼는데 안 읽힘 -> 이 착지 밖(표의 물리 테이블 · 파일 헤더) - 파일 카드의 사유를 본다
+> 끄기    없음. 예전처럼 Reload 버튼도 그대로 됨
+> 재기동 뒤  watcher.log «Auto-provisioned ingestion workspace structure for table(s): ['<표>']» · «Runtime workspace sync: 1 new raws/ folder(s) now being watched.»
+> ```
+>
+> ## [10-24] **AI 리포트 파일 — 다시 세로 나열 · 머리 단 이름 DATE · WAFER · LEG · 표는 창 폭** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> (단 이름을 바꿀 때) 리포트 규칙 labels 에 "columns": {"time": "DATE", "wafer": "WAFER", "leg": "LEG"}
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      파일이 layout 차례로 위에서 아래(요약 → 표 → 그림 → 상세) -> 이 착지. 좌우로 갈림 -> 착지 전 파일
+>          표 머리 단마다 왼쪽 칸에 단 이름(안 적으면 칸 이름 · time 은 Date). 표가 창보다 넓으면 표 안에서만 가로로 넘김
+>          저장 줄 «derive.report.labels.item is not a word the report says …» -> 은퇴한 라벨 item, 지우면 됨(규칙은 섬)
+> 끄기    없음(배치는 코드). 단 이름은 labels.columns 를 지우면 기본
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ## [10-23] **AI 리포트 키 칸 — keys 한 곳(unit · latest · fold): 가장 늦은 계측만 · 칩 하나 그림 한 장(가장 작은 층)** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 리포트 규칙에
+>            "wafer": {"table": "wafer_summary", "key": ["wafer", "tkout_time", "leg"]},
+>            "keys": {"wafer": ["unit"], "tkout_time": ["latest"], "leg": [], "x": [], "y": [], "layer": ["fold"], "extracted_at": ["fold"]}
+>            역할마다 "wafer" = 그 표가 가진 키 칸 이름 (요약 · 수율 · 합성 [wafer, tkout_time, leg] · 조건 [wafer, leg] · 이미지 + x · y · extracted_at · layer)
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      두 번 계측된 웨이퍼의 «Left out - two rows …» 줄이 사라짐 -> 가장 늦은 계측만 읽음
+>          디펙마다 그림이 칩 하나에 한 장(가장 작은 층) -> fold 가 듦. 같은 칩의 층 여러 장 -> keys 에 fold 가 없음
+>          «… .wafer '<칸>' is not a key column …» -> 그 표의 wafer 목록에 keys · wafer.key 에 없는 이름
+>          «derive.report.keys latest needs a unit column …» -> keys 에 unit 이 없음
+>          늦은 계측이 들어와도 리포트는 그대로 -> R1 리플레이로 다시 만듦(소유자 10-23)
+> 끄기    keys 를 지우고 역할 목록을 옛 키 칸만으로 -> 옛 모양(계측 둘이면 Left out)
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ---
+>
+> ## [10-23] **체인 규칙 창에서 조인 take 항목을 기록으로 · exclude 값 칸 (소유자 「from, to → take 로 가는 길이 없음」 · 「폼에서 값 칸으로 가는 법이 없는데」)** — git pull · 화면 새로 고침
+>
+> ```
+> 돌릴 것   git pull -> 브라우저 새로 고침 (서버 재기동 필요 없음, 클라 파일만)
+>          체인 규칙 창 -> derive join -> take 칩 끝 «+ record» -> 새 줄의 from · into · fn
+>          on.exclude · on.require 칩 끝 «+ values» -> 칸 이름 -> «+ column» -> 값
+> 뜻      take 칩에 친 칸 이름이 그대로 들어감 (전엔 "" 가 들어갔음)
+>          fn 고르개 = 서버가 준 목록. 내장 넷만 보이면 server/mappers/join_fn 에 .py 가 없는 것 (.sample 은 안 셈)
+>          저장 거절 «… or «<file>.<function>» of a file in …join_fn»  -> 그 파일 · 함수가 없음
+>          저장 거절 «from is a list - only a function … takes one»  -> 칸 목록 from 은 함수 fn 하고만
+> 되돌리기  git revert b7ffcb3c0 (dist 커밋 먼저) -> 화면 새로 고침
+> ```
+>
+> ---
+>
+> ## [10-23] **AI 리포트 비교 표 — 열 날짜 › 웨이퍼 › leg, 행 조건 · 수율 · 불량 (소유자 그림) · 후보 목록 표 은퇴** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   (먼저) 리포트 규칙 layout 에서 {"kind": "table", "fill": "candidates"} 를 뺌 — 남아 있으면 규칙 로드 거절
+>          git pull -> 런처 재기동 -> 규칙에 "columns": ["time", "wafer", "leg"] · "item_sep": "." · summary.label · info[].label · info[].choose
+>          -> 소급 탭 R1 에 리포트 규칙 이름
+> 뜻      파일 오른쪽 표의 열 = 리포트 웨이퍼 + 모델이 고른 대조, 날짜 오름차순. 열이 하나뿐 -> 모델이 compare 를 안 부름(대조 없음)
+>          «derive.report.layout[n].fill 'candidates' - a table is one of yield_by · pareto · trend» -> layout 에 candidates 칸이 남음
+>          «derive.report.columns lists the column heads …» -> columns 에 키 칸 아닌 이름 · 두 번 적은 이름
+>          «…label stands over the names - derive.report.item_sep …» -> label 을 썼는데 item_sep 이 없음
+>          늦은 계측이 들어와도 리포트는 그대로 -> R1 리플레이로 다시 만듦(소유자 10-23)
+> 끄기    columns 를 지우면 옛 머리(묶음 › 키)
+> 재기동 뒤  chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
+> ## [10-23] **AI 리포트 저녁 다섯 — 수율 줄 · (배치는 10-24 세로로 되돌림) · (후보 표는 은퇴) · 날짜는 한국 날 · 빈 조건 (empty) · leg 마다 그림 · Evidence 전부 (346c0d6e1 · d219fc286 · 532f2775d · b3b21fef8 · 3c4ace165)** — git pull · 체인 워커 재기동 · R1
+>
+> ```
+> 돌릴 것   git pull -> 런처 재기동 -> 소급 탭 R1 에 수율 decide 규칙 이름(로드된 이름 enrichment_dedup:<이름>) -> R1 에 리포트 규칙 이름
+>          수율: 칩 표에서 decide 하나가 수율 표([wafer, leg] · yield)에 씀 — aggregations
+>                {"yield": "Round(100 * Sum(If([<디펙 칸>] Is Null, 1, 0)) / Count(), 1)"}
+>          리포트 규칙: "info": [<조건 표 {item, value}>, {"table": "<수율 표>", "wafer": [...], "value": "yield"}]
+>                      layout 에 {"kind": "table", "fill": "candidates"}
+> 뜻      파일 머리 밑 «yield» 줄이 leg 마다 -> 수율 표가 읽힘. 줄이 없음 -> 수율 표가 비었거나 info 목록에 없음
+>          후보 표의 날짜 = 조건 표 date 의 한국 날(expression_time_zone). 하루 이르면 -> 이 착지 전 파일, R1 다시
+>          후보 = 웨이퍼 하나 · 날짜 하나(leg 중 가장 늦은 것) · Rows = 웨이퍼 표 행 수. 평가 칸이 없으면 리포트 웨이퍼보다 늦은 웨이퍼도 실림 -> 후보가 모자라면 control.recent.evaluations 숫자를 올림
+>          «bond_temp=(empty)» -> 조건 행은 있는데 값이 비었음(제품은 판정 안 함, 모델이 읽음)
+>          Evidence 의 걸음 줄 밑 들여 쓴 줄 = 그 걸음이 읽은 것. chain_worker.log [Report] 줄은 첫 줄만
+>          «derive.report.info[1].value 'x' is not a column of '<표>'» -> 수율 표 칸 이름이 다름, 저장 안 됨
+> 끄기    리포트 규칙 enabled false(기본) — R1 에 이름을 적을 때만 돎
+> 재기동 뒤  chain_worker.log 의 «[Report] <규칙> wafer <웨이퍼>: done»
+> ```
+>
 > ## [10-23] **피벗 보기에서 줄 더하기 · 지우기 · 맨 아래 붙여넣기 (소유자 「피벗 상태에서는 행 추가가 안 되네」)** — git pull · 화면 새로 고침
 >
 > ```
@@ -74,42 +902,30 @@
 
 ---
 
-> ## [10-23] **AI 리포트 — 요약표에 리포트 규칙 하나 · 웨이퍼마다 한 판 · 결과는 요약표 칸 셋 · send_to 로 중계 PC 에 (소유자 10-23 「너무 복잡」 · 「보조표 너무 많아」 · 「리포트는 웨이퍼당 하나」, 총괄 d337be901 · 5efb406e4)** — git pull · 선언 고침 · 런처 재기동
+> ## [10-23] **AI 리포트 — 리포트 표(웨이퍼 · 파일 경로)에 리포트 규칙 하나 · 요약표 · 조건표 · 이미지표는 읽기만 · 웨이퍼마다 한 판 (소유자 10-23 「리포트용 표가 따로」 · 「요약표는 그냥 데이터 표」 · 「wafer, 보고서 파일 경로 이 두 개가 최종 출력」, 총괄)** — git pull · 선언 고침 · 런처 재기동
 >
 > ```
-> 적을 것   요약표 선언에 결과 칸 셋(string), 이름은 마음대로 - 예: report_state · report_file · report_reason
->          어드민 Chain 탭 리포트 규칙 하나: on = into = 요약표 · derive.report.results = {"state", "file", "reason"} 그 세 칸
->            · limits.group_by = 요약표의 웨이퍼 칸 (리플레이가 웨이퍼 하나를 한 번에 - 안 적으면 행마다 다시 만들 수 있음)
->            · send_to = "http://<중계 PC>:8765/reports" (안 적으면 파일만 서버에) · 나머지 칸은 전과 같음
->            예시 docs/guide/ai_report_tables.md «1. 적는 것»
->          ingestion_settings.json "chain_slots" 3 이상 (리포트가 도는 동안 일꾼 하나를 씀)
->          옛 것은 지움: 규칙 넷(조인 · decide · 리포트 · 보내기) · 요약표의 request_id · eval_id 칸
->            · table_config 의 report_request · report · report_step · report_wafer (아무도 안 읽고 안 씀)
->            · ledger_config 의 report_wafer 소스
->          대조군을 같은 제품군에서만: derive.report.control.same = ["<웨이퍼 표의 제품군 칸>"] (비우면 안 거름)
-> 도는 때   요약 행이 들어오면 그 파일의 웨이퍼마다 한 판
->          시범 동안: 규칙을 "enabled": false 로 두면 요약 행이 들어와도 안 돎 — 이름을 댄 리플레이만 돎(모든 규칙이 같음)
->          다시 만들기 · 시범 한 판: 어드민 소급 탭 «Replay chain rules over old data (R1)» rule = 그 규칙 이름 (row_ids 로 웨이퍼 행만)
-> 확인     요약표의 그 웨이퍼 행 전부 같은 값: state done (send_to 가 있으면 sending -> done)
->            file = <데이터 루트>/reports/<웨이퍼>.html, 파일 끝 «Evidence» 를 펴면 걸음마다 한 줄
->          chain_worker.log  «[Report] <규칙> wafer <웨이퍼> step k <읽기> - <돌아온 것>» · «[Report] <규칙> wafer <웨이퍼>: done»
->                            «[Report] <규칙> sent <파일>»
-> 답의 뜻   state stopped 의 reason
->            step cap N               모델이 상한까지 done 을 안 함 -> loop.steps 늘림 · prompts.rules 다듬음
->            time cap N s             loop.seconds 안에 못 끝냄 -> 게이트웨이 응답 시간 · loop.seconds
->            context over budget      줄여도 문맥이 loop.context_tokens 를 넘음 -> 조건 칸을 줄이거나 예산을 늘림
->            the write call answered no text   쓰기 호출이 글 대신 다른 것을 답함 -> rules 에 «글로 답하라» 한 줄
->            the language model call was refused: ...   게이트웨이 · llm_config.json - 사유 그대로
->            wafer <웨이퍼> is not in <웨이퍼 표>   요약에는 있는데 웨이퍼 표에 그 웨이퍼가 없음
->          state sending 이 남음        중계 PC 가 아직 안 받음 - chain_worker.log «send <파일>, try k of 3: <사유>»
->          state send failed + reason   세 번 다 실패. 중계 PC 를 고친 뒤 그 웨이퍼 행을 리플레이 (다시 만들고 보냄)
->          저장 거절 «derive.report.results names …» · «the report rule stands on its summary table …»   옛 모양 선언 -> «적을 것»
->          저장 거절 «… is not a mark this report fills» · «… is fetched from outside the file»   엑셀 양식의 표시 · 바깥 주소
->          같은 웨이퍼가 여러 파일로 들어옴   들어올 때마다 다시 만들고 같은 파일을 덮음
->          chain_worker.log «[ChainRules] <규칙>: enabled=false — nothing wakes it; a replay that names it runs it.»
->            꺼진 규칙이 선 줄. 리플레이 대상 목록(그리드 배너 · /admin/chain/rules/replayable)에는 안 보임 — 소급 탭에 이름을 적음
-> 급할 때   그 규칙 "enabled": false (저장 즉시) - 새 리포트를 안 만듦. 이미 sending 인 것은 보냄 — 보내기까지 멈추려면 send_to 를 지움
-> 되돌리기  git revert be0420f9b -> 런처 재기동. 되돌린 코드는 요청 표 모양을 읽으므로 새 규칙을 끄고 옛 규칙 넷 · 제품 표 넷을 다시 적음
+> 적을 것   리포트 표 하나: 웨이퍼 칸(derive.report.wafer.key 의 칸 이름 그대로) · 파일 경로 칸(string), 웨이퍼당 한 행
+>          그 행을 만드는 decide 하나(요약표 -> 리포트 표, key 웨이퍼 칸만 — fields · aggregations 없이 선다)
+>          리포트 규칙: on = into = 리포트 표 · results = {"file": "<파일 경로 칸>"} · limits.group_by 필요 없음
+>          조건이 긴 표(조건마다 한 행)면 derive.report.conditions = {table, wafer, name, value, time, title}
+>          이미지 행이 디펙 여럿을 «a, b» 로 적으면 images.item_sep = "," · 경로가 절대 경로면 images.source = <이미지 소스>
+>          예시 전문: docs/guide/ai_report_tables.md «1. 적는 것»
+>          옛 것은 지움: 요약표의 결과 칸 셋(state · file · reason) · 요약표 위의 리포트 규칙
+> 도는 때   리포트 표에 행이 들어오면 웨이퍼마다 한 판. 시범 동안 "enabled": false 면 안 돎 — R1 에 규칙 이름을 적은 리플레이만
+>          decide 가 만든 행에 저절로 돌리려면 "enabled": true + "extra": {"allow_chain_trigger": true}
+> 확인     리포트 표의 그 웨이퍼 행: 파일 경로 = <데이터 루트>/reports/<웨이퍼>.html · 요약표는 그대로
+>          파일 끝 «Evidence» 첫 줄 = done 또는 stopped - <사유>, 그다음 걸음마다 한 줄
+>          chain_worker.log «[Report] <규칙> wafer <웨이퍼>: done» · «[Report] <규칙> sent <파일>»
+> 답의 뜻   저장 거절 «the report rule stands on a report table of its own …» = 규칙이 요약표 위 -> on · into 를 리포트 표로
+>          «'<표>' has none of derive.report.wafer.key's columns» = 리포트 표에 웨이퍼 칸이 없음(이름이 다름)
+>          저장 줄 «derive.report.results.state · reason is not written» = 안 쓰는 칸 — 지워도 됨, 규칙은 섬
+>          리포트 폴더에 <웨이퍼>.html.send 가 남음 = 아직 안 보냄(5 초마다 다시)
+>          <웨이퍼>.html.send_failed = 세 번 실패, 안에 사유. 화면에는 안 보임 — 이 파일과 [Report] 줄
+>          다시 보내기 = R1 에 규칙 이름 + 그 웨이퍼의 리포트 표 행 한 판(파일 다시 만들고 .send 다시 놓음)
+>          «wafer <웨이퍼> is in N evaluations» = 한 웨이퍼의 leg 들이 평가가 다름
+> 급할 때   그 규칙 "enabled": false (저장 즉시). 이미 놓인 .send 는 보냄 — 멈추려면 send_to 를 지움
+> 되돌리기  git revert db6996756 -> 런처 재기동. 되돌린 코드는 요약표 위 규칙 · 결과 칸 셋을 요구 — 옛 선언으로
 > ```
 >
 
@@ -299,14 +1115,14 @@
 
 ---
 
-> ## [10-23] **표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만, 반영은 Read all again (53d547bbb)** — git pull · 런처 재기동
+> ## [10-23] **표 선언만 바뀌면 이미 읽은 파일은 다시 읽지 않는다 — 실패 파일만, 반영은 Read all again (53d547bbb)** (⚰️ 10-24 dd5f221ef 부터 실패 파일은 저절로 안 넘김 — 맨 위 블록) — git pull · 런처 재기동
 >
 > ```
 > 돌릴 것   git pull -> 런처 재기동. 선언 바뀜 없음
 > 바뀐 것   table_config.json 의 그 표 항목만 바꾸면(칸 더함 등) 와처는 실패 파일만 다시 넘기고, 읽은 파일은 그대로 둠
 >          플러그인 스크립트 · 외부 소스 칸이 바뀌면(표 선언과 같이 바뀌어도) 지금처럼 읽은 파일을 다시 읽음
 > 답의 뜻   watcher.log
->          [Watcher] <표>: its reading changed (table_config) - N read file(s) kept as read (Read all again on the file page applies the change to them), M failed file(s) handed again
+>          [Watcher] <표>: its reading changed (table_config) - N read file(s) kept as read (Read all again on the file page applies the change to them), M failed file(s) handed again   (⚰️ 10-24 dd5f221ef 부터 실패 파일은 저절로 안 넘김: 이 꼬리 없음)
 >            N  다시 읽지 않고 둔 파일 수 — 새 선언(예: 더한 칸)은 이 파일들의 행에 아직 안 들어감
 >            M  다시 넘긴 실패 파일 수
 >          [Watcher] <표>: its reading changed (scripts\<파일>.py ...) - N read file(s) unchecked, ...        전과 같음 — 다시 읽음
@@ -588,8 +1404,8 @@
 > ```
 > 보는 곳   파일 화면 결과 칸 · watcher.log «[Ingest] <표> FILE <파일>: ... · 1 map refused: version_older»
 > 뜻      N map(s) refused: version_older -> 그 파일 맵이 저장된 맵보다 옛 버전 -> 맵 그대로(정상)
->          N row(s) refused: version_same -> 같은 버전을 다시 읽음. «version_same_content_differs» 가 같이 있으면
->          내용이 바뀌었는데 버전을 안 올린 것 -> 파일 쪽 버전을 올림
+>          (10-26 부터 같은 버전은 받음 - version_same 은 더 안 나옴. 같은 버전 · 같은 내용의 맵은 안 씀)
+>          같은 버전 · 다른 내용 -> 새 값으로 덮임 (사람이 고친 칸은 그대로)
 > 되돌리기  git revert a166d8a2e -> 서버 · 와처 재기동 (그 뒤 거절된 행이 다시 unchanged 로 세어지고 결과 칸은 수만)
 > ```
 >
@@ -684,13 +1500,13 @@
 >
 > ---
 >
-> ## [10-22] **와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만 — 선언 밖 실패 파일은 안 넘기고, 재기동 때 선언 밖 대기 줄을 지운다 (소유자 «지금 선언이랑 안 맞는 거 빼면 안 됨?» · «재기동시», 총괄 dd0f2818c, 0ef000a44)** — git pull · 서버 · 와처 재기동
+> ## [10-22] (⚰️ 10-24 dd5f221ef 부터 실패 파일은 저절로 안 넘김 — 맨 위 블록) **와처가 스스로 다시 읽는 파일은 지금 선언에 맞는 것만 — 선언 밖 실패 파일은 안 넘기고, 재기동 때 선언 밖 대기 줄을 지운다 (소유자 «지금 선언이랑 안 맞는 거 빼면 안 됨?» · «재기동시», 총괄 dd0f2818c, 0ef000a44)** — git pull · 서버 · 와처 재기동
 >
 > ```
 > 돌릴 것   git pull -> 서버 재기동 · 와처 재기동
 > 뜻      기동 때 watcher.log «[Watcher] <표>: N waiting file(s) the declaration does not take - deleted (name not matched a · …)»
 >          -> 선언 밖 옛 대기 줄 N 개를 지움(로그 · 체크리스트의 다른 행은 그대로). 그 줄이 없으면 지울 것이 없었음
->          읽는 법이 바뀔 때 «… M failed file(s) handed again · not taken now: name not matched k» -> 선언 밖 실패 파일 k 개는 안 넘김
+>          읽는 법이 바뀔 때 «… M failed file(s) handed again · not taken now: name not matched k» -> 선언 밖 실패 파일 k 개는 안 넘김   (⚰️ 10-24 dd5f221ef 부터 실패 파일은 저절로 안 넘김: 이 줄 없음)
 >          파일 화면 묶음 Retry 미리보기의 not_taken -> 지금 선언이 안 잡아 빠진 수
 >          꼭 읽혀야 하는 선언 밖 파일 -> Read now 또는 그 파일 한 줄 Retry. 다음 재기동 «전»에 읽혀야 함(기동 때 아직 기다리면 지워짐)
 >          재기동 없이 이미 대기열에 들어가 있던 옛 줄은 한 번 읽힐 수 있음 — 그 뒤엔 다시 안 넘겨짐
@@ -912,7 +1728,7 @@
 > 닿는 표  table_config 에 version_column 과 allow_replace_map 을 같이 적은 표 · 체인 규칙 allow_replace_map 의 타깃이 version_column 을 적은 표
 > 볼 줄    와처 · 체인 로그: [VersionGate] '<표>' version column '<칸>', source '<파일>': version_older=N out of N row(s)
 > 뜻      version_older -> 그 파일의 맵이 저장된 맵보다 옛 버전 -> 맵 그대로(정상)
->          version_same -> 같은 버전을 다시 읽음 -> 맵 그대로. 내용이 바뀐 파일인데 버전을 안 올렸으면 파일 쪽 버전을 올림
+>          unchanged -> 같은 버전 · 같은 내용의 맵을 다시 읽음 -> 쓸 것 없음, 맵 그대로(정상) · applied -> 같은 버전 · 다른 내용 -> 덮음 (10-26)
 >          version_missing -> 파일의 그 맵 행에 버전 값이 하나도 없음 -> 파일 · 맵퍼가 그 칸을 채우는지 봄
 >          row_version_absent -> 저장된 맵에 버전이 없어 받아들임(칸을 나중에 적은 표, 한 번)
 > 되돌리기  git revert 4d76641f7 -> 서버 · 와처 · 체인 워커 재기동 (그 뒤 옛 파일이 다시 맵을 덮음)
@@ -1552,13 +2368,13 @@
 >
 > ---
 >
-> ## [10-20] **설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는다 (총괄 ab951f09b, 소유자 «ㅇㅇ»)** — git pull · 런처 재기동
+> ## [10-20] (⚰️ 10-24 dd5f221ef 부터 실패 파일은 저절로 안 넘김 — 맨 위 블록) **설정 · 플러그인을 고치면 그 표의 실패 파일을 와처가 스스로 다시 읽는다 (총괄 ab951f09b, 소유자 «ㅇㅇ»)** — git pull · 런처 재기동
 >
 > ```
 > 무엇     와처가 3 초마다 표마다 «읽기 모양»을 잰다 — table_config 의 그 표 항목(display_columns · search_columns · source_priority 빼고 전부)
 >          · ingestion_settings 의 그 표 external_sources 항목 · 그 표 scripts\*.py 파일(이름 · 수정 시각 · 크기)
->          바뀌면 그 표의 FAILED 파일을 Retry failed 와 같은 자리(PENDING_RETRY)로 넘긴다. 와처가 꺼져 있던 동안 고친 것도 기동 때 넘긴다
-> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N read file(s) unchecked, K failed file(s) handed again - D dispatched to be read again» (10-21 4492b8813 부터)
+>          (⚰️ 10-24 부터 안 넘김) 바뀌면 그 표의 FAILED 파일을 Retry failed 와 같은 자리(PENDING_RETRY)로 넘긴다. 와처가 꺼져 있던 동안 고친 것도 기동 때 넘긴다
+> 볼 줄    server\watcher.log  «[Watcher] <표>: its reading changed (<무엇>) - N read file(s) unchecked, ~~K failed file(s) handed again~~ (10-24 부터 «failed files are not read again by themselves (Retry on the file page)») - D dispatched to be read again» (10-21 4492b8813 부터)
 >          10-21 부터 상한 없음: 표 읽기가 바뀌면, 예전(10-20)에는 실패가 reread_max_files(기본 25)를 넘을 때 하나도 안 넘기고 한 줄만 남겼다. 이제는 그 표의 제자리 파일을 전부 해제하고 곧바로 다시 읽는다
 >          찾기  Select-String -Path server\watcher.log -Pattern "its reading changed"
 > 기억     server\config\watcher_reading_stamps.json (표마다 마지막 읽기 모양). 지우면 다음 기동에 모든 표가 «처음 봄» — 넘기지 않고 다시 적는다
@@ -2603,7 +3419,7 @@
 >
 > ```
 > 무엇     조합 키 표에 키 조각 하나 없이 새 행을 쓰며 키 칸(business_key 칸)이나 business_key_val 을 주면 그 키가 남음(전에는 NULL)
-> 그대로   기존 행의 키 조각을 비우면 키 NULL(a61d32f4f) · 파일의 빈 키 조각은 표 설정 null_policy(skip · nokey · 안 적으면 표준 파서가 건너뜀)
+> 그대로   기존 행의 키 조각을 비우면 키 NULL(a61d32f4f) · 파일의 빈 키 조각은 표 설정 null_policy(skip · nokey · 안 적으면 10-24 부터 빈 조각으로 키 — 조각이 모두 비면 건너뜀) · «실린 빈» 조각은 10-24 부터 조립 키가 이김
 > 되돌리기  git revert <이 커밋> -> 런처 재기동
 > ```
 >
@@ -4137,7 +4953,7 @@
 > 적는 곳      chain_rules.json 의 derive.decide — "fields": [] (또는 안 적음) + "aggregations": {"<칸>": "count"}
 > 답          키마다 파생 행 하나에 키와 집계만. 사람이 채울 칸이 없어 워크리스트에 안 뜬다(queue 0 · resolved 전부)
 > 거절        fields 도 aggregations 도 없으면 로드 · 저장에서
->            「'target_fields' is empty, so 'aggregations' must be declared - a derived row with neither carries nothing but its key」
+>            (10-23 부터 이 거절은 없음 — fields · aggregations 없는 decide 도 키만 든 행으로 선다)
 > 쓰임새      계측 이벤트 맵핑 표 — key [step_seq, item_id] · aggregations {"n": "count"} · fields []
 > 되돌리기      git revert <이 커밋> -> 서버 · 체인 워커 재기동 (fields 없는 decide 는 다시 거절됨)
 > ```
@@ -7780,7 +8596,7 @@
 > 무엇이 바뀌나  @mapper 맵퍼를 쓰는 규칙에 allow_retraction / allow_replace_map 이 적혀 있으면 착지 «뒤 첫 실행부터» 지움
 >              (전에는 그 칸이 아무 일도 안 했음 — 덮어쓰기만)
 > 재기동 뒤     chain_worker.log "[ChainRules] <규칙>: @mapper removes by job - …" 또는 "… map by map - …" — 그런 규칙마다 한 줄
->              거절 "[ChainRules] <규칙> refused …: sdk_two_removals · sdk_removal_needs_batch · sdk_map_key_not_on_trigger · sdk_job_column"
+>              거절 "[ChainRules] <규칙> refused …: sdk_two_removals · sdk_removal_needs_batch · sdk_job_column" (sdk_map_key_not_on_trigger 는 10-24 은퇴)
 >              뜻: 그 규칙은 안 돎 — 문장이 다음 행동을 적음("is_batch": true 등)
 > 절반 가드     이번에 한 행도 안 낸 잡이 가진 행이 20 이상이면 "[DtMapRetraction] … DECLINED … Next, to remove them on purpose: …"
 >              뜻: 아무것도 안 지움. 정말 지우려면 그 줄이 적은 대로 그리드에서 그 잡의 행을 지움

@@ -126,6 +126,10 @@ STATUS_DONE = "DONE"
 # only record of "this file failed" was its LOCATION (`err/`); a mode that stops
 # moving files therefore has to write the fact down instead of walking past it.
 STATUS_FAILED = "FAILED"
+#: The states a file is read again in only by hand - Retry · Read now · Read all again (소유자 10-24 «에러파일 자동으로
+#: 읽는건 안끄냐»): a changed reading does not let their stamp go (`reread.uncheck`), the checklist's first fill
+#: stamps them as it stamps a read file (`stamp_read_files`).
+BY_HAND_ONLY = (STATUS_FAILED,)
 
 
 _EPOCH_UTC = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -406,8 +410,9 @@ def stamp_read_files(db, table_name: str, entries) -> dict:
     """The checklist's first start (총괄 10-21, 소유자 「좀 가볍게 돌게 만들어」): a row from before it carries no
     stamp, so every file a sweep looks at would be read again. For the `(filepath, file_stat)` entries a sweep has just
     stat'd - the disk is not looked at again - each file's row with no stamp: SUCCESS and written at or after the
-    file's mtime (unchanged since that read) gets the file's stamp; FAILED is not stamped (read once more).
-    -> {"stamped", "failed", "changed"}: the row ids - a file asked again (its read's own ask) is one."""
+    file's mtime (unchanged since that read) gets the file's stamp; so does FAILED (`BY_HAND_ONLY`: it stays failed
+    until a hand reads it, 소유자 10-24). -> {"stamped" (read), "failed" (stamped, kept failed), "changed" (written
+    before the file's mtime: read again)}: the row ids - a file asked again (its read's own ask) is one."""
     from database.models import FileChecklist as Row
 
     said = {"stamped": [], "failed": [], "changed": []}
@@ -420,21 +425,18 @@ def stamp_read_files(db, table_name: str, entries) -> dict:
         for row_id, key, status, updated, created in db.query(
                 Row.id, Row.path_key, Row.status, Row.updated_at, Row.created_at).filter(
                 Row.table_name == table_name, Row.path_key.in_(list(stat_of)), Row.file_mtime.is_(None)):
-            if status == STATUS_FAILED:
-                said["failed"].append(row_id)
-                continue
-            if status != "SUCCESS":
+            if status != "SUCCESS" and status not in BY_HAND_ONLY:
                 continue
             when = _utc(updated or created)
             mtime, size = stat_of[key]
             if when is not None and when >= mtime:
                 stamps.append({"id": row_id, "file_mtime": mtime, "file_size": size})
+                said["failed" if status in BY_HAND_ONLY else "stamped"].append(row_id)
             else:
                 said["changed"].append(row_id)
         if stamps:
             db.bulk_update_mappings(Row, stamps)
             db.commit()
-        said["stamped"] += [stamp["id"] for stamp in stamps]
     return said
 
 

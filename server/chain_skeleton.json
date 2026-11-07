@@ -1099,6 +1099,64 @@
                         }
                       },
                       {
+                        "key": "rename",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.wafer.table"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "key": "exclude",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "column",
+                          "of": {
+                            "kind": "oneOf",
+                            "hint": "choice",
+                            "pick": "shape",
+                            "branches": {
+                              "name": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "columns",
+                                "table_from": [
+                                  "derive.report.wafer.table"
+                                ]
+                              },
+                              "values": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "column",
+                                "of": {
+                                  "kind": "map",
+                                  "keyed_by": "index",
+                                  "member": "value",
+                                  "of": {
+                                    "kind": "leaf",
+                                    "hint": "free"
+                                  }
+                                }
+                              }
+                            },
+                            "empty": {
+                              "name": ""
+                            }
+                          }
+                        }
+                      },
+                      {
                         "key": "key",
                         "required": false,
                         "node": {
@@ -1187,6 +1245,23 @@
                         }
                       },
                       {
+                        "key": "rename",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.summary.table"
+                            ]
+                          }
+                        }
+                      },
+                      {
                         "key": "wafer",
                         "required": false,
                         "node": {
@@ -1258,6 +1333,27 @@
                           "kind": "leaf",
                           "hint": "number"
                         }
+                      },
+                      {
+                        "key": "label",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "yield_item",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "item",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
                       }
                     ]
                   }
@@ -1275,6 +1371,23 @@
                           "kind": "leaf",
                           "hint": "ref",
                           "section": "tables"
+                        }
+                      },
+                      {
+                        "key": "rename",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.images.table"
+                            ]
+                          }
                         }
                       },
                       {
@@ -1333,6 +1446,40 @@
                           "kind": "leaf",
                           "hint": "number"
                         }
+                      },
+                      {
+                        "key": "item_sep",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "source",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "match",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "item",
+                          "of": {
+                            "kind": "map",
+                            "keyed_by": "index",
+                            "member": "kind",
+                            "of": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          }
+                        }
                       }
                     ]
                   }
@@ -1350,6 +1497,23 @@
                           "kind": "leaf",
                           "hint": "ref",
                           "section": "tables"
+                        }
+                      },
+                      {
+                        "key": "rename",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.sets.table"
+                            ]
+                          }
                         }
                       },
                       {
@@ -1430,7 +1594,7 @@
                   }
                 },
                 {
-                  "key": "info",
+                  "key": "conditions",
                   "required": false,
                   "node": {
                     "kind": "record",
@@ -1445,6 +1609,23 @@
                         }
                       },
                       {
+                        "key": "rename",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "column",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.conditions.table"
+                            ]
+                          }
+                        }
+                      },
+                      {
                         "key": "wafer",
                         "required": false,
                         "node": {
@@ -1456,20 +1637,20 @@
                             "hint": "ref",
                             "section": "columns",
                             "table_from": [
-                              "derive.report.info.table"
+                              "derive.report.conditions.table"
                             ]
                           }
                         }
                       },
                       {
-                        "key": "item",
+                        "key": "name",
                         "required": false,
                         "node": {
                           "kind": "leaf",
                           "hint": "ref",
                           "section": "columns",
                           "table_from": [
-                            "derive.report.info.table"
+                            "derive.report.conditions.table"
                           ]
                         }
                       },
@@ -1481,12 +1662,60 @@
                           "hint": "ref",
                           "section": "columns",
                           "table_from": [
-                            "derive.report.info.table"
+                            "derive.report.conditions.table"
                           ]
                         }
                       },
                       {
-                        "key": "rows",
+                        "key": "time",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.conditions.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "title",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "columns",
+                          "table_from": [
+                            "derive.report.conditions.table"
+                          ]
+                        }
+                      },
+                      {
+                        "key": "most",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
+                        "key": "time_item",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "title_item",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "skip",
                         "required": false,
                         "node": {
                           "kind": "map",
@@ -1929,6 +2158,70 @@
                   }
                 },
                 {
+                  "key": "sizes",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "font_px",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
+                        "key": "name_px",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
+                        "key": "value_px",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": "columns",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "index",
+                    "member": "head",
+                    "of": {
+                      "kind": "leaf",
+                      "hint": "free"
+                    }
+                  }
+                },
+                {
+                  "key": "keys",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "name",
+                    "member": "column",
+                    "of": {
+                      "kind": "map",
+                      "keyed_by": "index",
+                      "member": "word",
+                      "of": {
+                        "kind": "leaf",
+                        "hint": "free"
+                      }
+                    }
+                  }
+                },
+                {
                   "key": "labels",
                   "required": false,
                   "node": {
@@ -1936,14 +2229,6 @@
                     "fields": [
                       {
                         "key": "report",
-                        "required": false,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      },
-                      {
-                        "key": "item",
                         "required": false,
                         "node": {
                           "kind": "leaf",
@@ -2029,8 +2314,162 @@
                           "kind": "leaf",
                           "hint": "free"
                         }
+                      },
+                      {
+                        "key": "conditions",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "yield",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "unpaired",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "no_control",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "to_fill",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "no_seed",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "columns",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "name",
+                          "member": "head",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
                       }
                     ]
+                  }
+                },
+                {
+                  "key": "info",
+                  "required": false,
+                  "node": {
+                    "kind": "map",
+                    "keyed_by": "index",
+                    "member": "table",
+                    "of": {
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "key": "table",
+                          "required": true,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "tables"
+                          }
+                        },
+                        {
+                          "key": "wafer",
+                          "required": true,
+                          "node": {
+                            "kind": "map",
+                            "keyed_by": "index",
+                            "member": "column",
+                            "of": {
+                              "kind": "leaf",
+                              "hint": "ref",
+                              "section": "columns",
+                              "table_from": [
+                                "derive.report.info.*.table"
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "key": "item",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.info.*.table"
+                            ]
+                          }
+                        },
+                        {
+                          "key": "value",
+                          "required": true,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "ref",
+                            "section": "columns",
+                            "table_from": [
+                              "derive.report.info.*.table"
+                            ]
+                          }
+                        },
+                        {
+                          "key": "rows",
+                          "required": false,
+                          "node": {
+                            "kind": "map",
+                            "keyed_by": "index",
+                            "member": "name",
+                            "of": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          }
+                        },
+                        {
+                          "key": "label",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        },
+                        {
+                          "key": "choose",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "flag"
+                          }
+                        }
+                      ]
+                    }
                   }
                 },
                 {
@@ -2096,6 +2535,14 @@
                             "kind": "leaf",
                             "hint": "number"
                           }
+                        },
+                        {
+                          "key": "source",
+                          "required": false,
+                          "node": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
                         }
                       ]
                     }
@@ -2105,45 +2552,17 @@
                   "key": "results",
                   "required": true,
                   "node": {
-                    "kind": "record",
-                    "fields": [
-                      {
-                        "key": "state",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "derive.report.summary.table"
-                          ]
-                        }
-                      },
-                      {
-                        "key": "file",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "derive.report.summary.table"
-                          ]
-                        }
-                      },
-                      {
-                        "key": "reason",
-                        "required": true,
-                        "node": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "columns",
-                          "table_from": [
-                            "derive.report.summary.table"
-                          ]
-                        }
-                      }
-                    ]
+                    "kind": "map",
+                    "keyed_by": "name",
+                    "member": "slot",
+                    "of": {
+                      "kind": "leaf",
+                      "hint": "ref",
+                      "section": "columns",
+                      "table_from": [
+                        "into.table"
+                      ]
+                    }
                   }
                 },
                 {
@@ -2152,6 +2571,137 @@
                   "node": {
                     "kind": "leaf",
                     "hint": "free"
+                  }
+                },
+                {
+                  "key": "causes",
+                  "required": false,
+                  "node": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "seed_type",
+                        "required": true,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "follow",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "predicate",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      {
+                        "key": "collect",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "type",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      {
+                        "key": "hops",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "number"
+                        }
+                      },
+                      {
+                        "key": "worlds",
+                        "required": false,
+                        "node": {
+                          "kind": "map",
+                          "keyed_by": "index",
+                          "member": "world",
+                          "of": {
+                            "kind": "leaf",
+                            "hint": "free"
+                          }
+                        }
+                      },
+                      {
+                        "key": "read",
+                        "required": false,
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "free"
+                        }
+                      },
+                      {
+                        "key": "values",
+                        "required": false,
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "follow",
+                              "required": true,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "predicate",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            {
+                              "key": "value",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "event",
+                              "required": true,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "free"
+                              }
+                            },
+                            {
+                              "key": "order",
+                              "required": true,
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "index",
+                                "member": "name",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            },
+                            {
+                              "key": "hops",
+                              "required": false,
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "number"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
                   }
                 }
               ]

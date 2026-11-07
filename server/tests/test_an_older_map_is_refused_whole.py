@@ -4,7 +4,7 @@ that declares `version_column` judges the map whole, before anything is deleted 
 greatest; a map not newer than the stored one is neither written nor deleted, in the purge form and the diff form.
 
   older       rev 2 stored, a rev 1 file (the same cells · one fewer)  -> the rev 2 map as it was, layers as many
-  same        rev 2 again                                              -> refused, version_same
+  same        rev 2 again, a cell changed                              -> applied (the same version is taken, 10-26)
   newer       rev 1 stored, a rev 2 file of one cell                   -> the map is the file's: one row
   judged      stored c1 rev 5, a file c1 rev 3 · c2 rev 6              -> passed whole, its rows not asked again
   edges       a person's map · an emptied scope · no version · a stored map with no version
@@ -95,11 +95,11 @@ def test_an_older_file_leaves_the_newer_map_as_it_was(env, table, cells):
 
 
 @pytest.mark.parametrize("table", [PURGE, DIFF])
-def test_the_same_version_again_is_refused(env, table):
+def test_the_same_version_with_new_content_replaces_the_map(env, table):
     _push(env, table, ("c1", "c2"), 2, "new")
     said = _push(env, table, ("c1",), 2, "other")
-    assert (said["mode"], said["reason"]) == ("refused", crud.REASON_VERSION_SAME)
-    assert _map(env, table) == NEW
+    assert said["mode"] in ("purge", "diff")
+    assert _map(env, table) == [("c1", "other", 2.0)]
 
 
 @pytest.mark.parametrize("table", [PURGE, DIFF])
@@ -223,7 +223,7 @@ def test_the_watcher_s_file_is_judged(watcher):
     assert _results(factory) == {
         "new.csv": ("SUCCESS", 2, 2, 0, None),
         "old.csv": ("SUCCESS", 1, 0, 1, "1 map refused: version_older"),
-        "newer.csv": ("SUCCESS", 1, 0, 0, None)}
+        "newer.csv": ("SUCCESS", 1, 1, 0, None)}         # a file's map is purged whole and written (856f2bb67)
 
 
 def _results(factory):
@@ -249,6 +249,5 @@ def test_a_file_s_rows_the_row_gate_refused_are_said_on_its_row(watcher, tmp_pat
             f.write(text)
         handler._handle_event(path)
         handler.heavy_lane.run_all()
-    assert _results(factory)["b.csv"] == ("SUCCESS", 3, 1, 2,
-                                         "1 row refused: version_older · 1 row refused: version_same"
-                                         " · 1 row version_same_content_differs")
+    # K1 older: refused · K2 the same version, new content: written · K3 new
+    assert _results(factory)["b.csv"] == ("SUCCESS", 3, 1, 1, "1 row refused: version_older")

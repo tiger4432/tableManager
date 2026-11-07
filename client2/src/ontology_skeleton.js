@@ -59,8 +59,10 @@ function childOf(node, step, defs) {
   if (node.kind === 'map') return deref(node.of, defs);
   if (node.kind === 'oneOf') {
     const branches = node.branches && typeof node.branches === 'object' ? node.branches : {};
-    // Picked by shape, no branch key is on the path: the step is a field of the record branch.
-    if (node.pick === 'shape') return childOf(deref(branches[shapeBranch(node, {}, defs)], defs), step, defs);
+    // Picked by shape, no branch key is on the path: the step says the shape - an index is a member of the list branch,
+    // a name a field of the record branch (a take's `from[0]`, B a44dd01af).
+    const indexed = typeof step === 'number' || /^\d+$/.test(String(step));
+    if (node.pick === 'shape') return childOf(deref(branches[shapeBranch(node, indexed ? [] : {}, defs)], defs), step, defs);
     const branch = branches[String(step)];
     return branch ? deref(branch, defs) : null;
   }
@@ -70,7 +72,8 @@ function childOf(node, step, defs) {
 /**
  * The branch a `pick: 'shape'` oneOf's value is in (lead 068c904a6 ②): a word, or nothing yet,
  * is the leaf branch -- the cell as it was before it had a second branch; a mapping is the record
- * branch or a map keyed by name (B's value gates: `{"status": ["SCRAP"]}`). A value of neither shape is in none ('').
+ * branch or a map keyed by name (B's value gates: `{"status": ["SCRAP"]}`); a list is the map keyed by index (B a44dd01af,
+ * a take's `from` as a list of columns). A value of none of these shapes is in none ('').
  * @param {(node: any) => any|object} [resolve] the defs, or a function that follows `{use}`
  */
 export function shapeBranch(node, value, resolve) {
@@ -78,6 +81,7 @@ export function shapeBranch(node, value, resolve) {
   const real = typeof resolve === 'function' ? resolve : (n) => deref(n, resolve);
   const holds = value === undefined || value === null || typeof value === 'string' || typeof value === 'number'
     ? (b) => b.kind === 'leaf'
+    : Array.isArray(value) ? (b) => b.kind === 'map' && b.keyed_by === 'index'
     : typeof value === 'object' && !Array.isArray(value)
       ? (b) => b.kind === 'record' || (b.kind === 'map' && b.keyed_by !== 'index') : () => false;
   return Object.keys(branches).find((key) => holds(real(branches[key]) || {})) || '';

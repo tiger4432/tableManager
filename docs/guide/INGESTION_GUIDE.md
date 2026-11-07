@@ -53,7 +53,7 @@ server/ingestion_workspace/<table 또는 workspace_name>/
 └── raws/  archives/  err/  auto_update/  scripts/  config/
 ```
 
-- **생성 시점**: ① 워처 부팅 시(`discover_and_watch`) ② `SYSTEM_RELOAD` 시(`sync_new_workspaces` — watchdog 런타임 `schedule()`로 **재기동 없이** 즉시 감시 시작).
+- **생성 시점**: ① 워처 부팅 시(`discover_and_watch`) ② `SYSTEM_RELOAD` 시(`sync_new_workspaces` — watchdog 런타임 `schedule()`로 **재기동 없이** 즉시 감시 시작) ③ 🆕 10-24 `table_config.json` 이 저장되어 표 이름이 바뀌었을 때 — 와처가 3 초마다 자기가 읽은 표 이름을 견주고 다르면 ②와 같은 `sync_new_workspaces`. Reload 버튼 없이 새 표의 raws/ 가 생기고 감시된다(실제 와처로 표 추가 → CSV 적재까지 3~7.5 초).
 - **폴더명**: 기본은 테이블명, 테이블 항목에 `workspace_name` 별칭이 있으면 그 이름으로 생성합니다.
 - **기존 파일·설정은 변경하지 않음(누락 폴더만 보충)**: 없는 폴더만 새로 만들며 기존 내용은 절대 덮어쓰지 않습니다. [Deprecated 2026-07-25] 워크스페이스 `config.json`은 **더 이상 생성하지 않습니다** (§1.5 참조).
 - 시스템 내부 테이블은 제외 목록(`directory_watcher.AUTO_PROVISION_EXCLUDED_TABLES`, 현재 `wafer_map_metadata`)으로 관리합니다.
@@ -105,8 +105,8 @@ P1은 대형 파일이 **남을 막지 않게** 했지만, 재기동하면 진�
 | 체크 | 그 열쇠의 `file_ingestion_logs` 행이 파일의 **(수정 시각, 크기)** 를 들고 있으면(`file_mtime` · `file_size`) 안 읽습니다. 하나라도 다르면 읽습니다 |
 | 도장을 적는 곳 | 읽기가 «답을 낸» 자리 — SUCCESS, 그리고 파일 탓의 FAILED. **잠금 대기로 끝난 FAILED 는 도장이 없어** 다음 훑기가 다시 집습니다 |
 | 묻는 자리 | 함수 하나 `checkpoint.checked` — raws 훑기 · 외장 훑기 · 폴더 트리 걷기 · 이벤트 · 수집기(소급 backfill)의 기다림. 재시도 문(파일 화면 Retry)은 **묻지 않고** 읽은 뒤 도장을 적습니다 |
-| 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` · `max_depth` 는 빼고)이 바뀌면 **그 표의 키만** 해제합니다 — 읽은 행의 도장을 비우고(훑기가 제자리 파일을 다시 읽음), 실패 파일은 재시도 문으로 넘깁니다. 상한 없음, 와처가 자기 속도로 읽습니다. 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, K failed file(s) handed again` |
-| 처음 한 번 | 이 칸이 오기 전의 로그 행은 도장이 비어 있어, 와처의 첫 훑기가 그 훑기의 stat 위에서 **한 번** 채웁니다(디스크를 따로 안 훑음): 최신 행이 SUCCESS 이고 파일이 그대로(행이 수정 시각 이후에 쓰임)면 도장을 적습니다. 로그 `[Watcher] read files stamped N · left for re-read M (failed K · changed since read C)`. 모든 외장 소스에 닿은 훑기가 끝나면 `config/watcher_read_files_stamped` 가 생기고 다시 돌지 않습니다 |
+| 표 읽기가 바뀌면 | 그 표의 스크립트 · table_config 항목 · 외장 소스 항목(`enabled` · `max_depth` 는 빼고)이 바뀌면 **그 표의 키만** 해제합니다 — 읽은 행의 도장을 비웁니다(훑기가 제자리 파일을 다시 읽음). 상한 없음, 와처가 자기 속도로 읽습니다. 🆕 10-24 실패 파일은 저절로 다시 읽지 않습니다 — 파일 화면의 Retry · Read now · Read all again 으로만(디스크에서 지워진 파일은 Retry 해도 안 읽고 «the file is not on the disk any more» 로 남음). 로그 `[Watcher] <표>: its reading changed (<부분>) - N read file(s) unchecked, failed files are not read again by themselves (Retry on the file page)` |
+| 처음 한 번 | 이 칸이 오기 전의 로그 행은 도장이 비어 있어, 와처의 첫 훑기가 그 훑기의 stat 위에서 **한 번** 채웁니다(디스크를 따로 안 훑음): 최신 행이 SUCCESS 또는 FAILED 이고 파일이 그대로(행이 수정 시각 이후에 쓰임)면 도장을 적습니다 — FAILED 는 실패로 남고 Retry 로만 다시 읽습니다(🆕 10-26). 로그 `[Watcher] read files stamped N · failed files stamped K (read again only by Retry on the file page) · left for re-read C (changed since read)`. 모든 외장 소스에 닿은 훑기가 끝나면 `config/watcher_read_files_stamped` 가 생기고 다시 돌지 않습니다 |
 | 실패 방향 | 수정 시각과 크기를 그대로 둔 채 내용만 바꾼 파일은 다시 읽지 않습니다(수정 시각을 보존하는 복사 도구). 다시 읽히려면 파일 화면의 **Read a file now** 에 경로를 넣고 **Read now**(행이 없거나 와처가 안 집은 파일도) 또는 **Retry**, 여럿이면 `scripts/replay_ingestion.py --path … --apply`(그 키 해제 — `reread.uncheck`) |
 | 은퇴 | 원장의 경로 tier 1 · 내용 서명 dedup(같은 내용이어도 다른 경로면 읽음, 소유자 10-20 ㄱ) · 훑기의 프로세스 메모리 · 외장 «수정» 이벤트의 해시 우회 · 파일 이름 `__force__` · 설정 `dedup_by_signature` / `dedup_by_path_stat`. 원장(`file_ingestion_checkpoints`)은 **이어 읽기(재개)** 만 맡습니다 |
 
@@ -286,9 +286,11 @@ JSON은 최상위 배열(`[{...}]`) 또는 객체(`{"voids": [...], "runs": [...
 
 ⚠️ **받는 파일은 `options.glob` 이 있으면 그 패턴, 없으면 `options.filename` 하나(기본 `voids.json`)입니다.** `glob` 이 있으면 `filename` 은 보지 않고, 받는 쪽에 안 맞는 파일에는 아무 일도 일어나지 않습니다(수집 기록 행도 없음). 🆕 10-11(`053d7858f`) `glob` 은 패턴 하나 또는 목록이고 루트에서의 경로를 견줍니다 — `**` 몇 겹이든(0 포함) 폴더 · `*` 한 겹 안 · `?` `/` 아닌 한 글자 · `/` 없는 패턴은 어느 깊이든 파일 이름. 예 `"options": {"glob": ["**/raw/**/*.jpg"]}`. `/` 로 시작하거나 끝나는 패턴은 거절되지 않지만 아무 파일도 받지 않습니다. 대소문자는 운영체제 규칙대로(윈도우는 무시). ⚠️ `parser: voids_json` 은 경로를 `<웨이퍼>/<작업 시각>/<options.filename>` 으로 다시 보므로, glob 으로 받은 다른 이름 · 다른 깊이의 파일은 FAILED 행으로 남습니다. 빈 패턴 · 빈 목록 · 글자 아닌 값은 «… .options.glob must be one glob string or a list of them, none empty, got <값>.» 으로 그 `external_sources` 항목 전체를 거절합니다(그 폴더는 감시하지 않음). 감시 사건 · 외부 쓸기 · 처리 중 메타 읽기 · 수정 표시가 모두 같은 판정(`IngestionHandler.external_source_context`)을 묻습니다.
 
-**깊이:** 🆕 10-21 외장 소스 항목에 `"max_depth": N` — 적은 path 가 0, 그 아래 폴더 하나가 1. 더 깊은 폴더는 훑기가 들어가지 않고 이벤트 · 재시도도 그 파일을 안 집습니다. 안 적으면 끝까지. `recursive: false` = `max_depth: 0`(둘이 어긋나면 거절). 훑기마다 와처 로그에 소스별 한 줄 `External source <표>@<경로>: N file(s) looked at - outside the root · name not matched · not a file · stat failed · folders not matching · folders below max_depth · folders not listed · already read · dispatched` — 파일이 왜 안 넘어갔는지 사유별 수입니다.
+**깊이:** 🆕 10-21 외장 소스 항목에 `"max_depth": N` — 적은 path 가 0, 그 아래 폴더 하나가 1. 더 깊은 폴더는 훑기가 들어가지 않고 이벤트 · 재시도도 그 파일을 안 집습니다. 안 적으면 끝까지. `recursive: false` = `max_depth: 0`(둘이 어긋나면 거절). 훑기마다 와처 로그에 소스별 한 줄 `External source <표>@<경로>: N file(s) looked at - outside the root · name not matched · not a file · stat failed · folders not matching · folders below max_depth · folders not listed · already read · before switch-on · dispatched` — 파일이 왜 안 넘어갔는지 사유별 수입니다.
 
 **끈 상태 확인:** 등록 때 워처 로그에 `External sources declared: N (M disabled).` 한 줄이 남습니다. `enabled: false` 항목은 통과도 거절도 아니어서 종전에는 「선언 안 함」과 「꺼 둠」이 로그에서 구분되지 않았습니다. 항목별 판정은 `conda run -n assy_manager python server/scripts/check_external_sources.py`가 그대로 보여 줍니다.
+
+**켠 뒤에 온 것만 저절로 (소유자 10-26):** `enabled` 를 false → true 로 바꾸거나 새로 적은 소스는 와처가 그 «켠 시각»을 `config/watcher_switched_on.json` 에 소스 id 마다 남깁니다. 감시 사건 · 훑기 · 기동 훑기는 수정 시각이 그 뒤인 파일만 읽고, 그 전 파일은 손으로만 읽습니다(Read now · Retry · Read all again). 자르는 자리는 체크리스트를 묻는 한 곳(`IngestionHandler.already_checked`)이고 손 문(재시도 문)은 거길 지나지 않습니다. 재기동은 시각을 다시 찍지 않습니다. 끄면 그 시각을 버려서 다시 켤 때 새로 찍습니다. 🆕 `23fd41a2c` 부터 이미 켜져 있던 소스도 와처가 처음 본 때(기동 · 설정 저장)로 찍습니다 — 재기동 · 끄고 켜기 없이 바로, «자르지 않음»(null)으로 남던 것도 그때로. 기동 · 설정 저장마다 소스마다 `[switch-on] <경로> -> <표>: cut <시각>`, 스스로 읽는 파일마다 `[switch-on] <파일>: modified <시각> - source cut <시각> -> read by itself`, 손으로 남긴 것은 소스마다 수와 앞 셋 `[switch-on] <소스>: N file(s) modified before its cut <시각> held for a hand - e.g. …`. 끄면 `External source switched off: …`. 로그 `External source switched on: <경로> -> <표> - files modified from <시각> on are read; older ones by hand only (Read now · Read all again)`, 훑기 줄의 `before switch-on N` 은 그 전 파일 중 아직 안 읽은 수입니다. ⚠️ 시각은 파일의 수정 시각입니다 — 수정 시각을 보존하는 복사로 들어온 파일은 «그 전»으로 봅니다.
 
 ## 1.12-ter 파서를 바꾼 뒤 이미 들어간 파일을 다시 읽기 — 실패 재시도 문의 `statuses` (2026-10-09)
 

@@ -411,8 +411,9 @@ def fill_outbox_line_columns(engine, say=logger.info):
 
 
 def path_key(column):
-    """A stored path as the filesystem compares it - lower case, one separator. THE one spelling: the folder search
-    (`reread._under_folder`) and the index that serves it (`ix_file_ingestion_logs_folder`) must say the same."""
+    """A stored path as the filesystem compares it - lower case, one separator. THE one spelling: the checklist's
+    `path_key` is written in it, the folder search (`reread._under_folder`) reads that, and
+    `ix_file_ingestion_logs_folder` indexes the log rows in it."""
     other = "/" if os.sep == "\\" else "\\"
     return func.lower(func.replace(column, other, os.sep))
 
@@ -440,6 +441,10 @@ class FileIngestionLog(Base):
     rows_changed = Column(Integer, nullable=True)
     rows_unchanged = Column(Integer, nullable=True)
     rows_refused = Column(Integer, nullable=True)
+    # Which columns the read changed, on how many rows - {column: rows} as JSON text, most first (총괄 10-23 ㄷ: a
+    # re-read that says «Changed» says of what). From the write's own changed cells; a new row's are not counted.
+    # Null: none changed, or not counted.
+    columns_changed = Column(String, nullable=True)
     reader = Column(String(300), nullable=True)
     source = Column(String, nullable=True)
     reason = Column(String(500), nullable=True)
@@ -459,7 +464,7 @@ class FileIngestionLog(Base):
         # (count 5.5 s) without it, an index scan (0.12 s) with it. text_pattern_ops: a LIKE prefix under any collation.
         Index("ix_file_ingestion_logs_folder", path_key(filepath).label("path_key"),
               postgresql_ops={"path_key": "text_pattern_ops"},
-              info={"purpose": "ingestion log rows under one folder", "serves": "file search by folder, re-read"}),
+              info={"purpose": "ingestion log rows of one path", "serves": "checkpoint.fill_checklist: a file's newest record by path_key"}),
         Index("ix_file_ingestion_logs_filename", "filename",
               info={"purpose": "ingestion log rows of one file name", "serves": "ingestion log lookups"}),
         Index("ix_file_ingestion_logs_table_name", "table_name",
@@ -507,6 +512,12 @@ class FileChecklist(Base):
               info={"purpose": "checklist rows in one state", "serves": "watcher retries (PENDING, PENDING_RETRY)"}),
         Index("ix_file_checklist_filename", "filename",
               info={"purpose": "checklist rows of one file name", "serves": "a re-read into a table's lookup"}),
+        # the WHERE is `directory_watcher._rereads_left`'s condition word for word - the planner uses a partial index
+        # only for a query whose condition implies it
+        Index("ix_file_checklist_rereads_left", "table_name", "source",
+              postgresql_where=text("status IN ('PENDING_RETRY', 'PENDING') OR file_mtime IS NULL"),
+              info={"purpose": "a source's rows a re-read has left (waiting or unchecked)",
+                    "serves": "the re-read stop's settle, each poller turn"}),
     )
 
 
@@ -628,8 +639,8 @@ _RUN_COLUMNS = weakref.WeakSet()
 
 
 #: The completion record's result columns (총괄 e390600d6) - what `_file_result` fills and the file list answers.
-FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "reader", "source",
-                       "reason", "failed_at", "took_seconds", "transaction_id")
+FILE_RESULT_COLUMNS = ("rows_read", "rows_new", "rows_changed", "rows_unchanged", "rows_refused", "columns_changed",
+                       "reader", "source", "reason", "failed_at", "took_seconds", "transaction_id")
 
 
 class FileRereadMark(Base):

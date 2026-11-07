@@ -183,12 +183,14 @@ def test_a_time_that_is_not_iso_keeps_its_text_and_the_census_names_it(db, table
 
 @pytest.mark.pg
 @pytest.mark.parametrize("table", [T_ONLY, T_KEY])
-def test_a_blank_part_makes_no_key_and_no_merge(db, table):
+def test_a_blank_part_is_a_part_one_key_one_row(db, table):
+    """Since 10-24 (소유자 «a,빈값 a,빈값 같은거로 처리», 총괄 242f4a43a) the blank part composes blank: the two writes
+    are one key, one row, nothing merged."""
     session, maker = db
     for _ in range(2):
         _write(session, table, {"lot": "L1", "wafer": "", "t": "2026-10-03 12:00:00", "v": "x"})
     rows, merges, keys = _state(maker, table)
-    assert merges == 0 and {k for k, _ in keys} == {None}, keys
+    assert (rows, merges) == (1, 0) and {k for k, _ in keys} == {"L1__2026-10-03T12:00:00+09:00"}, keys
 
 
 @pytest.mark.pg

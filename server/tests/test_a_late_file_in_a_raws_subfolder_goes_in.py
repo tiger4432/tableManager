@@ -328,6 +328,24 @@ def test_an_unchanged_folder_of_20000_kept_files_gets_no_worker_until_a_sweep_in
     assert watcher.recheck_subfolders() == 1 and len(asked) == 3           # a sweep interval since: retried
 
 
+def test_the_recheck_thread_waits_the_period_written_not_the_sweeps(box, monkeypatch):
+    """Lead 10-09: the owner's symptom was «a late file is read late» - `subfolder_recheck_seconds` is what the
+    recheck thread waits between looks, not the sweep interval."""
+    box["settings"].write_text(json.dumps({"subfolder_recheck_seconds": 7}), encoding="utf-8")
+    config_watcher.changed(str(box['settings']))
+    watcher, waited = box["watcher"], []
+
+    class Stop:
+        def wait(self, seconds):
+            waited.append(seconds)
+            return True
+
+    monkeypatch.setattr(watcher, "recheck_subfolders", lambda: 0)
+    monkeypatch.setattr(watcher, "_stop_event", Stop())
+    watcher._subfolder_recheck_loop()
+    assert waited == [7] and SWEEP != 7
+
+
 def test_nested_ingestion_off_is_said_at_the_1st_and_10th_of_25_looks(box, caplog):
     caplog.set_level(logging.INFO)
     box["settings"].write_text(json.dumps({"subfolder_recheck_seconds": 30, "flatten_nested_dirs": False}),

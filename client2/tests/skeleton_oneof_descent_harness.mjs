@@ -236,10 +236,11 @@ function suite(M) {
       list: { kind: 'map', keyed_by: 'index', of: { kind: 'leaf', hint: 'free' } },
       values: { kind: 'map', keyed_by: 'name', of: { kind: 'leaf', hint: 'free' } } } };
     ok(show(['ok', undefined, { status: ['SCRAP'] }, {}, ['x'], true].map((v) => M.shapeBranch(GATE, v, {})))
-       === show(['name', 'name', 'values', 'values', '', '']),
-      'S9 a mapping is the map branch keyed by name; a list is in no branch, not the index map',
+       === show(['name', 'name', 'values', 'values', 'list', '']),
+      'S9 a mapping is the map branch keyed by name; a list is the index map (B a44dd01af)',
       show(['ok', undefined, { status: ['SCRAP'] }, {}, ['x'], true].map((v) => M.shapeBranch(GATE, v, {}))));
-    // Every shipped shape-picked oneOf: a mapping picks its record branch, or B's name-keyed values map.
+    // Every shipped shape-picked oneOf: each branch is picked by a value of its own shape - a word its leaf, a mapping its
+    // record or B's name-keyed values map, a list its index map (a take's `from`, B a44dd01af).
     const shipped = [];
     const census = (n, defs) => {
       if (!n || typeof n !== 'object') return;
@@ -248,14 +249,18 @@ function suite(M) {
     };
     census(CHAIN, CHAIN.defs);
     census(LEDGER, LEDGER.defs);
-    const notRecord = shipped.filter(([n, defs]) => {
-      const key = M.shapeBranch(n, { a: 1 }, defs);
-      const b = key && (M.shapeAt({ kind: 'record', fields: [{ key: 'x', node: n.branches[key] }] }, ['x'], defs) || {});
-      return !b || !(b.kind === 'record' || (b.kind === 'map' && b.keyed_by === 'name'));
-    });
-    ok(shipped.length > 0 && notRecord.length === 0,
-      `S10 every shipped shape-picked oneOf (${shipped.length}) reads a mapping as its record or its name-keyed map`,
-      show(notRecord.map(([n]) => Object.keys(n.branches))));
+    const own = (b) => (b.kind === 'leaf' ? 'w' : b.kind === 'map' && b.keyed_by === 'index' ? ['w'] : { a: 1 });
+    const unpicked = shipped.flatMap(([n, defs]) => Object.keys(n.branches).filter((key) => {
+      const b = M.shapeAt({ kind: 'record', fields: [{ key: 'x', node: n.branches[key] }] }, ['x'], defs) || {};
+      return M.shapeBranch(n, own(b), defs) !== key;
+    }).map((key) => [Object.keys(n.branches), key]));
+    ok(shipped.length > 0 && unpicked.length === 0,
+      `S10 every shipped shape-picked oneOf (${shipped.length}): each branch is picked by a value of its own shape`,
+      show(unpicked));
+    const fromAt = (...tail) => M.shapeAt(CHAIN.unified_root, ['derive', 'join', 'take', 0, 'from', ...tail], CHAIN.defs) || {};
+    ok(fromAt(0).hint === 'ref' && fromAt('0').hint === 'ref',
+      'S11 an index under a shape-picked oneOf steps into its list branch: a take\'s from[0] is a column ref',
+      show([fromAt(0), fromAt('0')]));
   }
 
   return { fail: failures.length - before };
@@ -284,6 +289,10 @@ const DEFECTS = [
                "      ? (b) => b.kind === 'record' || (b.kind === 'map' && b.keyed_by !== 'index') : () => false);")],
   ['a mapping is the record branch only, so a written values item is in no branch',
     (s) => s.replace(" || (b.kind === 'map' && b.keyed_by !== 'index')", '')],
+  ['a list is in no branch, so a take\'s list of columns opens no form (B a44dd01af)',
+    (s) => s.replace("    : Array.isArray(value) ? (b) => b.kind === 'map' && b.keyed_by === 'index'\n", '')],
+  ['an index under a shape-picked oneOf is read as a field, so a list member has no shape',
+    (s) => s.replace('shapeBranch(node, indexed ? [] : {}, defs)', 'shapeBranch(node, {}, defs)')],
   ['a mapping is in an index map too, so an object picks a list branch',
     (s) => s.replace(" && b.keyed_by !== 'index'", '')],
   ['the picker writes the branch under its key, as a keyed oneOf',

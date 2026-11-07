@@ -54,20 +54,22 @@ def plain_table(monkeypatch):
 # ----------------------------------------------------------------- what is caught now
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
-def test_a_non_finite_key_part_is_named_by_the_existing_gate(composite_table, bad):
-    unfilled = crud.unfilled_key_columns(
-        composite_table, Item({"lot": "A", "slot": bad, "wafer": "C"}))
-    assert unfilled == ["slot"], unfilled
+def test_a_non_finite_key_part_is_a_blank_part(composite_table, bad):
+    """Since 10-24 a blank part among filled ones is a part (소유자 «a,빈값 a,빈값 같은거로 처리», 총괄 242f4a43a) -
+    a non-finite one is that blank part, never the text «nan»; every part non-finite is no key, each named."""
+    assert crud.unfilled_key_columns(composite_table, Item({"lot": "A", "slot": bad, "wafer": "C"})) == []
+    assert crud.unfilled_key_columns(
+        composite_table, Item({"lot": bad, "slot": bad, "wafer": bad})) == ["lot", "slot", "wafer"]
 
 
 def test_the_assembler_and_the_gate_still_answer_the_same_question(composite_table):
     """🔴 THEY MUST. One asks "may I build a key?" and the other "will a key be
     buildable?" - a divergence would refuse rows the writer would have keyed, or pass rows
-    it will not. So `A_nan_C` is not merely refused, it is never assembled."""
+    it will not. And `A_nan_C` is never assembled: the NaN part is spelled blank."""
     item = Item({"lot": "A", "slot": float("nan"), "wafer": "C"})
-    assert crud.unfilled_key_columns(composite_table, item) == ["slot"]
-    assert crud.assemble_composite_business_key(composite_table, item) is False
-    assert item.business_key_val is None, item.business_key_val
+    assert crud.unfilled_key_columns(composite_table, item) == []
+    assert crud.assemble_composite_business_key(composite_table, item) is True
+    assert item.business_key_val == "A__C", item.business_key_val
 
 
 def test_a_non_finite_plain_key_is_caught_too(plain_table):

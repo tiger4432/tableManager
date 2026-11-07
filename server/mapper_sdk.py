@@ -670,7 +670,9 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by, left
     이번에 안 낸 셀이 지워진다」 · 「allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다」.
     One retract batch per job, or one replace_map batch per map. The jobs and maps are read from
     the INCOMING rows as well as the result - one that produced nothing this time is still
-    named, and its old cells are what its batch removes (the half guard still judges that). And the maps an incoming
+    named when an incoming row carries it, and its old cells are what its batch removes (the half guard still judges
+    that). A trigger table without the map key columns names none (소유자 10-24 «그냥 제약 빼»): the maps replaced
+    are the result's, and a map that produced nothing is left as it is. And the maps an incoming
     row LEFT (`left`, `_with_the_whole_maps` - whose rows there are now the frame already holds). A job
     the frame lists under `UNREAD_JOBS` gets no batch (`allow_retraction`) - one line says how many
     kept their old cells.

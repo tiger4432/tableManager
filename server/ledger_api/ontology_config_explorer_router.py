@@ -83,9 +83,21 @@ def delete_world(world: str, confirm_atoms: int | None = Query(default=None)):
 def _worlds() -> dict:
     from ledger import schema
 
+    from ledger import config as _config
+
     listing = schema.world_listing()
+    declared, notices = {}, []
+    for world in listing["worlds"]:
+        try:
+            declared[world] = _config.load(schema.world_names(world).declaration_path)
+        except Exception as exc:                                    # noqa: BLE001 - a world unread is said, not fatal
+            notices.append("%s: its declaration was not read - %s: %s" % (world, type(exc).__name__, exc))
+            continue
+        notices += ["%s: %s" % (world, said) for said in declared[world].get("__notices__") or ()]
+    # the sources more than one world declares and the imports a world overrides - facts, not warnings (lead 10-27)
     return {**listing, "live": {world: schema.live(world) for world in listing["worlds"]},
-            "history": list(schema.layout().get("history", []))}
+            "history": list(schema.layout().get("history", [])),
+            "overlaps": schema.source_overlaps(declared), "notices": notices}
 
 
 @router.get("/worlds", dependencies=[Depends(require_admin_token)])

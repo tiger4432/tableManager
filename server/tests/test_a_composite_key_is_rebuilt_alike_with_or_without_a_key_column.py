@@ -10,7 +10,7 @@ itself is the only thing one shape has and the other has not.
   named id             create under a uuid7, write again by key      one row
   grid                 an empty row, key parts typed by its id       one row
   part edited          a key part written by id                      key rebuilt, by key finds it
-  part blanked         a key part blanked by id                      key NULL
+  part blanked         a key part blanked by id                      keyed by the rest (총괄 242f4a43a)
   edited onto a key    another row holds the new key                 merged, one row
   pinned               a pin moves a key part's shown value          key rebuilt
   pinned onto a key    the pin's key is another row's                merged into it, one row - through
@@ -213,7 +213,7 @@ BRANCHES = {"by_key": (_by_key, ["J1_1_2"]), "named": (_named, ["J1_1_2"]),
             "made_onto_a_key": (_made_onto_a_key, ["J1_1_2"]),
             "made_then_moved_onto_a_key": (_made_then_moved_onto_a_key, ["J1_1_2"]),
             "grid": (_grid, ["J1_1_2"]), "part_edited": (_part_edited, ["J2_1_2"]),
-            "part_blanked": (_part_blanked, [None]),
+            "part_blanked": (_part_blanked, ["_1_2"]),
             "edited_onto_a_key": (_edited_onto_a_key, ["J1_1_2"]),
             "pinned": (_pinned, ["J2_1_2"]),
             "pinned_onto_a_key": (_pinned_onto_a_key, ["J1_1_2"]),

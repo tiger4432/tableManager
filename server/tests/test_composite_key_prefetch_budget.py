@@ -31,7 +31,7 @@ TWO THINGS THIS DELIBERATELY DOES NOT FIX, pinned so the numbers are executable:
     `_get_or_create_row` does not read that proof. That includes a `replace_map`
     push, which purges first and therefore inserts.
   * The collision-merge conflict row is still resolved mid-batch and still outside
-    the prefetched set, which is what keeps `prefetched_row_ids` load-bearing.
+    the cells read, which is what keeps `LayersRead` load-bearing.
 """
 
 import pytest
@@ -134,7 +134,7 @@ def test_an_update_batch_resolves_every_row_in_one_select(key_db):
 
 def test_the_metadata_prefetch_now_covers_those_rows_too(key_db):
     """The larger half of the saving, and it is a consequence rather than a second
-    change: `prefetched_row_ids` is built from the rows the prefetch resolved, so
+    change: `LayersRead` is built from the rows the prefetch resolved, so
     while these rows were invisible to it, EVERY cell of every row also paid two
     metadata SELECTs to be told it had none. Five columns x 200 rows x 2."""
     crud.apply_batch_updates(key_db, DECLARED, _batch(_cells("L0")))
@@ -247,10 +247,11 @@ def test_source_exact_composite_key_still_refuses_an_incomplete_tuple(key_db):
      "an explicit row_id already names the row"),
     ({"updates": {"base": "A", "x": "1"}},
      "a source column is missing entirely"),
-    ({"updates": {"base": "A", "x": "1", "y": ""}},
-     "a source column is blank"),
-    ({"updates": {"base": "A", "x": "1", "y": "   "}},
-     "a source column is blank after cleaning"),
+    # a blank part among filled ones is a part (총괄 242f4a43a) - only every part blank refuses
+    ({"updates": {"base": "", "x": None, "y": ""}},
+     "every source column is blank"),
+    ({"updates": {"base": " ", "x": "  ", "y": "   "}},
+     "every source column is blank after cleaning"),
 ])
 def test_the_guard_refuses_to_assemble(key_db, item, why):
     """Every arm of the guard, on the function itself.
@@ -334,7 +335,7 @@ def test_an_incomplete_composite_source_still_writes_the_row_unkeyed(key_db):
     coexist. See `crud._update_row_business_key` and `data_model.md` §3.1-bis.
     """
     crud.apply_batch_updates(key_db, DECLARED, _batch([
-        {"updates": {"base": "A", "x": "1", "leg": "L"}, "source_name": "user"}]))
+        {"updates": {"base": "", "x": "", "leg": "L"}, "source_name": "user"}]))
 
     row = key_db.query(_model(DECLARED)).one()
     assert row.leg == "L"
@@ -461,7 +462,7 @@ def test_collision_merge_still_reads_the_conflict_rows_metadata(key_db):
     row with its own query and merges onto it.
 
     That conflict row is resolved AFTER the prefetch filter was built - its key was
-    never in the payload - so it is outside `prefetched_row_ids` and its stored
+    never in the payload - so it is outside `LayersRead` and its stored
     metadata must still be read. This is the case that keeps P2's guard load-bearing
     now that the ordinary composite payload is prefetched, and it is the collision
     path P6 could have broken.

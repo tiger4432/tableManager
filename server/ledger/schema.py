@@ -441,15 +441,53 @@ LEDGER_COLUMNS = ("id", "subject_type", "subject_keys", "predicate", "object_kin
                   "occurred_at_basis")
 
 
-def walk_relation(names) -> str:
+def walk_relation(names, leave_out=None) -> str:
     """🔴 WHAT A WALK READS (총괄 092a6f9e5): the ledgers of the worlds picked (`names`, in the
     order picked), one leg each labelled `world`, nothing filtered - a source two worlds
     translated shows from both. The columns are named: two tables grown by different histories
-    of `ALTER` need not agree on `*`. One world is one leg, the same shape."""
+    of `ALTER` need not agree on `*`. One world is one leg, the same shape.
+    `leave_out` {world: [source, ...]}: that leg without those sources' atoms - a walk read `first` (`first_read`)."""
     columns = ", ".join(LEDGER_COLUMNS)
     return "(%s)" % " UNION ALL ".join(
-        f"SELECT '{each.name}'::text AS world, {columns} FROM {each.ledger}"
+        f"SELECT '{each.name}'::text AS world, {columns} FROM {each.ledger}" + (
+            " WHERE source_who NOT IN (%s)" % ", ".join("'%s'" % str(s).replace("'", "''") for s in gone)
+            if (gone := (leave_out or {}).get(each.name)) else "")
         for each in names)
+
+
+#: How a walk of several worlds reads a source more than one of them declares (lead 10-27 B-4): `both` side by side,
+#: each fact labelled with its world (as ever); `first` the first picked world's alone.
+READS = ("both", "first")
+
+
+def first_read(names, sources_of) -> dict:
+    """{world: [the sources a world picked before it also declares]} - what `first` leaves out of each later leg, by
+    the source's NAME only (a table two worlds read under different names may be a parallel translation on purpose:
+    it stays, and the world list shows it). `sources_of(world)`: that world's declared source names."""
+    seen, out = set(), {}
+    for each in names:
+        mine = set(sources_of(each.name))
+        if mine & seen:
+            out[each.name] = sorted(mine & seen)
+        seen |= mine
+    return out
+
+
+def source_overlaps(declarations) -> list:
+    """The sources more than one world declares (lead 10-27 B-4, a fact the world list shows, not a warning):
+    [{"same": "name", "source", "worlds"}] and [{"same": "table", "relation", "sources": {world: source}}] - a table
+    read by different source names in two worlds. `declarations`: {world: its declaration}."""
+    by_name, by_table = {}, {}
+    for world, declared in declarations.items():
+        for source, spec in ((declared or {}).get("sources") or {}).items():
+            by_name.setdefault(source, []).append(world)
+            relation = (spec or {}).get("relation")
+            if relation:
+                by_table.setdefault(relation, {}).setdefault(world, source)
+    names = [{"same": "name", "source": s, "worlds": w} for s, w in sorted(by_name.items()) if len(w) > 1]
+    tables = [{"same": "table", "relation": r, "sources": s} for r, s in sorted(by_table.items())
+              if len(s) > 1 and len(set(s.values())) > 1]
+    return names + tables
 
 
 def _plain(column):

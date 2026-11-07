@@ -587,6 +587,8 @@ def gate_misses(gates, cells, table=None) -> list:
     the column's declared type (`map_overlay.canonical_bind_value`, 1460cfef2 - 1 · 1.0 · 001 one value, "" a blank).
     `gate_conditions` is the same judgement in SQL, so the rows a rule is handed and the rows a recount counts are one
     set (총괄 63c747046). `item`: the column, or «column [values]» - `held_back` says the two in their own words."""
+    import fnmatch
+
     import chain_bindings
     import map_overlay
     from database import crud
@@ -597,8 +599,10 @@ def gate_misses(gates, cells, table=None) -> list:
             if values is None:
                 hit = not crud.is_blank_value(cells.get(column))
             else:
-                hit = map_overlay.canonical_bind_value(table, column, cells.get(column)) in {
-                    map_overlay.canonical_bind_value(table, column, value) for value in values}
+                cell = map_overlay.canonical_bind_value(table, column, cells.get(column))
+                hit = cell in {map_overlay.canonical_bind_value(table, column, value) for value in values
+                               if not chain_bindings.gate_pattern(value)} or cell is not None and any(
+                    fnmatch.fnmatchcase(str(cell), value) for value in values if chain_bindings.gate_pattern(value))
             if hit == (gate == chain_bindings.EXCLUDE_KEY):
                 out.append((gate, column if values is None else "%s [%s]" % (column, ", ".join(map(str, values))),
                             values is not None))
@@ -624,6 +628,69 @@ def gate_conditions(gates, model) -> list:
 
 
 def _one_of_sql(model, column, values):
+    """`_exact_sql` for the plain values, or the cell's key spelling matching a glob pattern
+    (`chain_bindings.gate_pattern`: * any run, ? one character, case as written - `_GlobMatch`)."""
+    import chain_bindings
+    import map_overlay
+    import notation_norm
+    from sqlalchemy import and_, false, func, literal, or_
+
+    patterns = [value for value in values if chain_bindings.gate_pattern(value)]
+    plain = [value for value in values if not chain_bindings.gate_pattern(value)]
+    found = _exact_sql(model, column, plain) if plain else false()
+    if not patterns:
+        return found
+    table = model.__table__.name
+    text = func.trim(notation_norm.key_expression_sql(getattr(model, column), None,
+                                                      map_overlay.key_time_zone(table, column)))
+    like = [func.coalesce(and_(text != "", _GlobMatch(text, literal(_like(pattern)), literal(_glob(pattern)))), False)
+            for pattern in patterns]
+    return or_(found, *like)
+
+
+def _like(pattern) -> str:
+    """A glob pattern as a LIKE pattern - % _ and the escape taken literally."""
+    out = []
+    for ch in str(pattern):
+        out.append("%" if ch == "*" else "_" if ch == "?" else "\\" + ch if ch in "%_\\" else ch)
+    return "".join(out)
+
+
+def _glob(pattern) -> str:
+    """A glob pattern as SQLite's GLOB reads it - a [ taken literally."""
+    return str(pattern).replace("[", "[[]")
+
+
+def _install_glob_match():
+    """`text` matches a glob pattern, case as written: LIKE ... ESCAPE (`_like`) - PostgreSQL's LIKE keeps case - and
+    GLOB (`_glob`) on SQLite, whose LIKE folds ASCII case. `@compiles` like `enrichment.mapper._DistinctValuesJson`:
+    the expression outlives any connection that could say its dialect."""
+    from sqlalchemy import Boolean
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.sql.functions import FunctionElement
+
+    class _GlobMatch(FunctionElement):
+        type = Boolean()
+        name = "glob_match"
+        inherit_cache = True
+
+    @compiles(_GlobMatch)
+    def _default(element, compiler, **kw):
+        text, like, _pattern = list(element.clauses)
+        return "(%s LIKE %s ESCAPE '\\')" % (compiler.process(text, **kw), compiler.process(like, **kw))
+
+    @compiles(_GlobMatch, "sqlite")
+    def _sqlite(element, compiler, **kw):
+        text, _like_pattern, pattern = list(element.clauses)
+        return "(%s GLOB %s)" % (compiler.process(text, **kw), compiler.process(pattern, **kw))
+
+    return _GlobMatch
+
+
+_GlobMatch = _install_glob_match()
+
+
+def _exact_sql(model, column, values):
     """`column` is one of `values` - never NULL: the cell and the values spelled by the one key speller's SQL twin
     (`notation_norm.key_expression_sql`, a datetime through `assy_key_instant`), a number compared as a number (1 · 1.0 ·
     001 one value on either database); a blank value is a blank cell."""

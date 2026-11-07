@@ -47,7 +47,7 @@
 
 | 지금 보이는 것 | 써야 할 것 |
 |---|---|
-| 체인 룰을 새로 만들었거나 고쳤는데 **옛날 행에는 반영이 안 됐다** | **ⓐ R1** `chain_replay_cli.py replay <룰>` — 🔴 그 쓰기는 다른 규칙을 깨우지 않는다(소유자 09-26 · 소급 탭 replay 도 같음). 그 표를 읽는 아래 규칙은 차례로 따로 replay 한다 — 10-10 리허설: 인벤토리 식 replay 뒤 공식 표 보류는 그대로였고 복사 규칙 replay 가 옮겼다. 연쇄하는 replay 는 그리드 클릭 하나(총괄 5057d030b) · [chain_ingestion_guide §5.6](./chain_ingestion_guide.md) |
+| 체인 룰을 새로 만들었거나 고쳤는데 **옛날 행에는 반영이 안 됐다** | **ⓐ R1** `chain_replay_cli.py replay <룰>` — 🔴 그 쓰기는 다른 규칙을 깨우지 않는다(소유자 09-26 · 소급 탭 replay 도 같음). 그 표를 읽는 아래 규칙은 차례로 따로 replay 한다 — 10-10 리허설: 인벤토리 식 replay 뒤 공식 표 보류는 그대로였고 복사 규칙 replay 가 옮겼다. 연쇄하는 replay 는 그리드 클릭 하나(총괄 5057d030b) · [chain_ingestion_guide §5.6](./chain_ingestion_guide.md) · 🆕 10-24 decide 는 적은 이름 그대로 — `<이름>` 이 `enrichment_dedup:<이름>` 을 돌린다(꺼진 선언도). auto_confirm 반쪽은 `enrichment_auto_confirm:<이름>` 으로 따로 |
 | 🆕 **선언된 join**(`derive: {kind: join}`)을 켰거나 고쳤는데 옛날 행의 `into` 칸이 비어 있다 | **ⓐ R1** — 🔴 **«선언» 이름으로**(원천 `on.table` 을 트리거하는 쪽 — 09-25 `244d825dc` 부터. 전엔 「왼쪽」이었다). 짝 `<선언>:target` 을 통째로 돌리면 «이름 대고 거절»된다 — 선언 이름이 이미 하는 일을 다시 하는 것이라(행을 골랐으면 돈다). 드라이런·사전 계수는 셀이 아니라 **「다시 계산할 행」**을 말하고, 던진 페이지는 그 페이지만 잃는다(`pages_failed`) — 2026-09-15 S-242 |
 | 옛 룰이 만든 **틀린 값이 아직 이기고 있다**. 룰을 고쳐 재적용해도 그 칸은 안 바뀐다 | **ⓑ R2** `chain_replay_cli.py withdraw <테이블> <소스>` |
 | 파생 테이블에 **행 자체가 없다**. 워크리스트에도 안 뜬다 | **ⓒ** `backfill_enrichment.py <룰>` |

@@ -1,8 +1,8 @@
 """The AI report's settings ARE its chain declaration - `derive.report` (owner 10-22, lead: one concept, one more
 declaration kind). Its cells, the form's shape of each, and what the save refuses: a table or column the catalogue
 does not declare, wafer keys of another length than the wafer table's, a layout slot of an unknown kind, a rule
-that does not stand on its summary table (owner 10-23: one rule on the summary table, a report a wafer, its results
-in three of that table's columns).
+that does not stand on a report table of its own (owner 10-23 «리포트용 표가 따로 있어야지»: the operator's table, one
+row a wafer, its results in three of its columns; «요약표는 그냥 데이터 표»: the summary table is read, never written).
 
 A wafer is named by one column or a list of them in every role, matched across roles in list order (owner 10-22
 «키도 복수로»); the form draws each as a list - one column is a list of one."""
@@ -21,30 +21,120 @@ ROLE_COLUMNS = {
     "summary": (WAFER_CELL, "item", "fail", "total", "rate"),
     "images": (WAFER_CELL, "item", "image"),
     "sets": ("name", "member", "kind"),
-    # a long table of what a wafer is - material, evaluation facts - shown under the summary table's head (owner 10-23)
-    "info": (WAFER_CELL, "item", "value"),
+    # a long table of a wafer's conditions, a row a condition - mostly written only when it is out of the ordinary
+    # (owner 10-23): a wafer without rows is at the default conditions. Read as the wafer's {name: value}, its time
+    # and title when the wafer role names none.
+    "conditions": (WAFER_CELL, "name", "value", "time", "title"),
 }
+#: `images.item_sep`: the image row's item column names several items, split by it (owner 10-23 «including_defects 는
+#: "defect_type_1, defect_type_2"») - an image is the chip's, shown for each item it holds.
+ITEM_SEP = "item_sep"
+#: `images.source`: the image source (image_sources.json) an image column's plain path is read through - the path
+#: written as it is, `<source>:<path>` made here (owner 10-23: img_path is an absolute path).
+IMAGE_SOURCE = "source"
+#: `images.match`: {summary item: image kind or [image kinds]} - the image table's kinds a summary item's pictures are
+#: (owner 10-24 «void, signal -> typeA»: {"typeA": ["void", "signal"]}). Undeclared, a picture is its summary item by
+#: the same name.
+IMAGE_MATCH = "match"
+#: `conditions.time_item`: the condition item whose value is the unit's time when the wafer role names no time column
+#: (owner 10-24: the wafer's time is a conditions row, not a column) - a table keyed by the wafer alone gives it to
+#: every leg, as every condition.
+TIME_ITEM = "time_item"
+#: `conditions.title_item`: the condition item whose value is the unit's title (owner 10-24 «컨디션 아이템에 타이틀도
+#: 있는데 이것도 받게 해») - the title the model reads of a candidate, not a condition row.
+TITLE_ITEM = "title_item"
+#: `conditions.skip`: condition names that are never a condition row (owner 10-24 «wfid, lotid 뽑지 말라는데 계속
+#: 뽑아») - matched without case and surrounding spaces; the wafer key columns and wafer.lot are skipped anyway.
+CONDITION_SKIP = "skip"
+#: `conditions.most`: the condition rows a table shows at most (owner 10-26 «컨디션 아이템 뽑는 항목 개수 제한») - the
+#: model's picks in its order, else the differing rows in the data's; the conditions the texts name stand past it.
+#: Blank: no cap.
+CONDITION_MOST = "most"
+#: `summary.yield_item`: the summary rows (an item name, or a list) that are the unit's yield, not a defect (owner 10-24
+#: «요약표에 수율을 그냥 free item으로 넣었는데 … 자꾸 불량 유형으로 리포트하네») - read as every row (rate, or F and N),
+#: drawn as the matrix's yield rows, left out of the defect rows, the pareto, the trend and the images.
+YIELD_ITEM = "yield_item"
+
+
+def yield_items(spec) -> set:
+    """`summary.yield_item` as a set of item names - one written alone a set of one; empty undeclared. Names are
+    compared without surrounding spaces (`name`)."""
+    said = ((spec or {}).get("summary") or {}).get(YIELD_ITEM)
+    return {name(said)} if isinstance(said, str) else {name(s) for s in said} if isinstance(said, list) else set()
+
+
+def name(value) -> str:
+    """An item or condition name as the declaration and the data are compared - without surrounding spaces, a space
+    inside it kept (lead 10-24: «TKOUT DATE » in the data is «TKOUT DATE» declared)."""
+    return str(value).strip()
 #: The roles a report cannot be made without.
 REQUIRED_ROLES = ("wafer", "summary")
 #: The columns that are a LIST of names (a wafer key; the conditions the model reads).
 LIST_COLUMNS = {("wafer", "key"), ("wafer", "conditions"), ("summary", WAFER_CELL), ("images", WAFER_CELL),
-                ("info", WAFER_CELL)}
+                ("conditions", WAFER_CELL)}
 #: What a layout slot holds.
 SLOT_KINDS = ("table", "image", "text")
 #: The reads whose answer a table slot draws (`report_html.TABLES` draws each).
 TABLE_FILLS = ("yield_by", "pareto", "trend")
+#: `columns`: the summary table's column heads, a tier each, top first (owner 10-23 «DATE › WAFER › LEG») - a wafer
+#: key column, COLUMN_TIME (the wafer's day) or COLUMN_GROUP (this report's or a control's). Declared, the columns
+#: stand in the heads' order; undeclared, the group then the key, in the groups' order.
+COLUMNS, COLUMN_TIME, COLUMN_GROUP = "columns", "time", "group"
+#: the wafer's title as a head tier (owner 10-24 «헤더 시간 타이틀 웨이퍼 레그»)
+COLUMN_TITLE = "title"
+#: `label` (info tables, summary): the head a table's rows stand under - a wide info table's one row its name.
+#: `choose` (info tables): the model keeps which rows (yield_by's rows) - owner 10-23 «COND 쪽 넣을 항목은 AI 가 선택».
+LABEL, CHOOSE = "label", "choose"
+#: `labels.columns`: the word left of each column head tier ({tier: word}) - `column_word`.
+LABEL_COLUMNS = "columns"
+#: `keys`: every key column of the report's tables, by name, and what it does (owner 10-23 «키 칸을 리스트로 받게»):
+#: KEY_UNIT one report a value (the report table's columns), KEY_LATEST only each report's latest value (read as a
+#: time), KEY_FOLD rows that differ only there are one (a chip's layers - the smallest drawn, keys' order). A column
+#: of no word is a plain part of a row's identity. A role's `wafer` names the key columns its table has.
+KEYS, KEY_UNIT, KEY_LATEST, KEY_FOLD = "keys", "unit", "latest", "fold"
+#: `sizes`: the summary table's font and column widths in px (owner 10-24 «컬럼 폭 · 폰트 크기 선언으로 할 수 있게») -
+#: each written one holds, the others SIZE_DEFAULTS.
+SIZES = "sizes"
+SIZE_DEFAULTS = {"font_px": 10, "name_px": 185, "value_px": 100}
+KEY_WORDS = (KEY_UNIT, KEY_LATEST, KEY_FOLD)
 #: The cells of `derive.report`, in the form's order.
 REPORT_CELLS = tuple(ROLE_COLUMNS) + ("rows", "digits", "prompts", "layout", "loop", "template", "control",
-                                     "formats", "item_sep", "labels", "picture_rows", "results", "send_to")
-#: `results`: the summary table's columns a report's state, file and reason go in - the operator names them (owner
-#: 10-23), every row of the wafer the same.
-RESULTS_CELL, RESULT_CELLS = "results", ("state", "file", "reason")
+                                     "formats", "item_sep", "sizes", "columns", "keys", "labels", "info", "picture_rows", "results",
+                                     "send_to", "causes")
+#: `results`: the report table's columns a report writes on the wafer's row - the operator names them: `file` its file
+#: path (owner 10-23 «wafer, 보고서 파일 경로 이 두 개가 최종 출력»), and a layout text slot's name its text (owner 10-26
+#: «filename 뿐만 아니라 summary 내용 등»). A report's state and why are its Evidence and the chain log;
+#: `UNWRITTEN_RESULTS` written are said, not refused (`notes`).
+RESULTS_CELL, RESULT_CELLS = "results", ("file",)
+UNWRITTEN_RESULTS = ("state", "reason")
 #: `send_to`: where a made report's file is POSTed (tools/report_receiver/receive.py - <send_to>/<name>.html).
 SEND_TO = "send_to"
+#: `causes`: the cause walk before the write (owner 10-25) - the entity type whose nodes the model picks seeds from,
+#: the predicates the walk follows (blank: every predicate between two static types), the types it keeps, its hops
+#: (blank: the walk's own). Names the operator writes; the walk route refuses one the ledger does not declare.
+#: `worlds`: the ledger worlds the walk reads, several at once (owner 10-26 «보고서 생성 시 걷기 세계 여러 개 지정되게»)
+#: - blank: the operating world
+CAUSES, CAUSES_CELLS = "causes", ("seed_type", "follow", "collect", "hops", "worlds", "read", "values")
+#: `causes.read` (lead 10-27 B-4): how the walks read a source several of the worlds declare - the walk route's own
+#: `read` (both | first), handed on as it is; blank: the route's
+#: `causes.values` (lead 10-27): the measured values of the quantities the model walk reaches from the candidates, per
+#: wafer, as condition rows. `follow` the predicates from the candidates to the structures, their quantities and the
+#: steps acting on them; `value` «<predicate>:<qualifier>» a wafer's value of a quantity; `event`
+#: «<predicate>:<qualifier>» a wafer's pass through a step and its transaction; `order` [the predicate from a quantity
+#: to the step it is measured at, the step key in order]; `hops` the model walk's (blank: the walk's own). Every name
+#: the ledger's - one it does not declare is refused at save.
+VALUES, VALUES_CELLS = "values", ("follow", "value", "event", "order", "hops")
+#: the walk route's own cap - the report walks in process, past the route's check, so the save holds it
+CAUSES_HOPS_MOST = 40
 #: `picture_rows`: rows of one picture a column in the summary table (owner 10-23 «열마다 한 장») - each a table, its
 #: wafer columns and picture column, the row's label and the picture's width (PICTURE_PX: columns × pictures make the
 #: file, so smaller than images.px).
 PICTURE_ROWS = "picture_rows"
+#: `info`: tables of what a wafer is, shown under the summary table's head (owner 10-23) - a long one (`item` the
+#: name a row is about, `value` what it says) or a wide one (no `item`: its `value` column is the row, named by it -
+#: a yield table [wafer, leg] · yield, lead 10-23). One table or a list of them.
+INFO, INFO_COLUMNS = "info", ("item", "value")
+INFO_COLUMN = chain_bindings.column_ref(("derive.report.%s.*.table" % INFO,))
 PICTURE_COLUMNS = (WAFER_CELL, "image")
 PICTURE_PX = 160
 #: The prompts: what the model is and its rules (blank: the product's sample text, `report_loop`), and the three the
@@ -61,8 +151,9 @@ RECENT_CELLS = ("days", "evaluations")
 #: `control.same`: the wafer table's columns a control candidate shares with this report's wafers - the operator names
 #: them (a product group, say; owner 10-23 「제품군도 필터링」). Empty or absent filters nothing.
 CONTROL_SAME = "same"
-CONTROL_LIMITS = {"max_wafers": 30, "max_evaluations": 3}
-NUMBER_CELLS = {("images", "per_item"), ("images", "px")}
+#: wider by default - three was too few to compare (owner 10-24 «웨이퍼 리스트는 좀 더 충분히 · 많은데도 3 개만»)
+CONTROL_LIMITS = {"max_wafers": 100, "max_evaluations": 12}
+NUMBER_CELLS = {("images", "per_item"), ("images", "px"), ("conditions", CONDITION_MOST)}
 #: `formats`: item -> rules, the first that holds colours the cell - a fixed bar on the cell's share (`when`, `value`
 #: in percent) or this evaluation against the other groups' F sum / N sum (`vs` control, `times`) (owner 10-23).
 FORMAT_WHEN = (">=", ">", "<=", "<")
@@ -70,10 +161,14 @@ FORMAT_VS = "control"
 FORMAT_CELLS = ("when", "value", "vs", "times", "fill", "color")
 FORMAT_COLOURS = ("fill", "color")
 #: The fixed words the report file says - a declaration's `labels` says them otherwise (owner 10-23: in Korean).
-LABELS = {"report": "report", "item": "Item", "left_out": "Left out - two rows for one wafer and name",
+LABELS = {"report": "report", "left_out": "Left out - two rows for one wafer and name",
           "not_read": "%s was not read.", "nothing_written": "Nothing was written for %s.",
           "no_image": "No image of an occurred defect.", "pareto_item": "item", "pareto_fail": "fail chips",
-          "pareto_cumulative": "cumulative", "control": "control", "mixed": "mixed (%d)", "evidence": "Evidence"}
+          "pareto_cumulative": "cumulative", "control": "compare", "mixed": "mixed (%d)", "evidence": "Evidence",
+          "conditions": "Conditions", "yield": "Yield", "unpaired": "Image kinds no summary item matches (images.match): %s",
+          "no_control": "This report's wafers only - no compare set default or control.recent is declared.",
+          "to_fill": "no value on these wafers - to be filled (measured/recorded)",
+          "no_seed": "%s: no %s node - add it to the ontology"}
 #: The owner's summary table holds a wafer's value per item (owner 10-22: the product does not make it again) - its
 #: fail and total chips, or a rate, or both. A rate is read over `rate_scale`: 1 (a fraction) or 100 (a percent).
 RATE_SCALE = "rate_scale"
@@ -83,6 +178,45 @@ SETS_DEFAULT = "default"
 #: the wafer table's own cells of that name are what it picks by (lead 10-22: no such word in code).
 SETS_KINDS = "kinds"
 KIND_ROLES = ("evaluation", "lot")
+#: The columns a compare set is read by (`report_reads.Report._sets`) - a sets block naming fewer is read as none
+#: (`sets_role`), said at save and load (`notes`); lead 10-24, owner «제대로 동기화 할거 아니면 화면 선언 막지마».
+SETS_COLUMNS = ROLE_COLUMNS["sets"]
+#: The file's slots when a declaration writes neither `layout` nor `template` (owner 10-24 «레이아웃은 알아서 하는거지?»)
+#: - the image slot only when the images role is declared (`layout`).
+DEFAULT_LAYOUT = ({"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}, {"kind": "image"},
+                  {"kind": "text", "slot": "conclusion"})
+
+
+def layout(spec) -> list:
+    """The file's slots in order - `layout` as written; with neither layout nor template, DEFAULT_LAYOUT. The page,
+    the model's text slots and the template's marks all read this."""
+    spec = spec if isinstance(spec, dict) else {}
+    template = spec.get("template")
+    if spec.get("layout") or (isinstance(template, str) and template.strip()):
+        return list(spec.get("layout") or ())
+    return [dict(slot) for slot in DEFAULT_LAYOUT if slot["kind"] != "image" or isinstance(spec.get("images"), dict)]
+
+
+def sets_role(spec):
+    """The compare set role when it names every column it is read by (SETS_COLUMNS), else None - read as no sets."""
+    sets = (spec or {}).get("sets")
+    return sets if isinstance(sets, dict) and all(sets.get(cell) for cell in SETS_COLUMNS) else None
+
+
+def image_match(spec) -> dict:
+    """`images.match` as {image kind: summary item} - a kind written alone a list of one; {} undeclared."""
+    match = ((spec or {}).get("images") or {}).get(IMAGE_MATCH)
+    out = {}
+    for item, kinds in (match.items() if isinstance(match, dict) else ()):
+        for kind in [kinds] if isinstance(kinds, str) else kinds if isinstance(kinds, list) else ():
+            out.setdefault(name(kind), name(item))
+    return out
+
+
+def info_rows(spec) -> list:
+    """`derive.report.info` as a list of its tables - one written alone is a list of one."""
+    info = (spec or {}).get(INFO)
+    return [info] if isinstance(info, dict) else list(info) if isinstance(info, list) else []
 
 
 def _column(role):
@@ -93,14 +227,31 @@ PICTURE_COLUMN = chain_bindings.column_ref(("derive.report.%s.*.table" % PICTURE
 
 
 def _role_node(role):
-    fields = [{"key": "table", "required": True, "node": chain_bindings.table_ref()}]
+    fields = [{"key": "table", "required": True, "node": chain_bindings.table_ref()},
+              {"key": RENAME, "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "column",
+                                                          "of": _column(role)}}]
+    if role == "wafer":
+        fields.append({"key": chain_bindings.EXCLUDE_KEY, "required": False, "node": chain_bindings.list_node(
+            "column", chain_bindings.gate_item_node(("derive.report.wafer.table",)))})
     for cell in ROLE_COLUMNS[role]:
         node = chain_bindings.list_node("column", _column(role)) if (role, cell) in LIST_COLUMNS else _column(role)
         fields.append({"key": cell, "required": False, "node": node})
     fields += [{"key": cell, "required": False, "node": {"kind": "leaf", "hint": "number"}}
                for (at, cell) in sorted(NUMBER_CELLS | {("summary", RATE_SCALE)}) if at == role]
-    if role == "info":
-        fields.append({"key": "rows", "required": False,
+    if role == "images":
+        fields += [{"key": cell, "required": False, "node": {"kind": "leaf", "hint": "free"}}
+                   for cell in (ITEM_SEP, IMAGE_SOURCE)]
+        fields.append({"key": IMAGE_MATCH, "required": False, "node": {
+            "kind": "map", "keyed_by": "name", "member": "item",
+            "of": chain_bindings.list_node("kind", {"kind": "leaf", "hint": "free"})}})
+    if role == "summary":
+        fields.append({"key": LABEL, "required": False, "node": {"kind": "leaf", "hint": "free"}})
+        fields.append({"key": YIELD_ITEM, "required": False,
+                       "node": chain_bindings.list_node("item", {"kind": "leaf", "hint": "free"})})
+    if role == "conditions":
+        fields.append({"key": TIME_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
+        fields.append({"key": TITLE_ITEM, "required": False, "node": {"kind": "leaf", "hint": "free"}})
+        fields.append({"key": CONDITION_SKIP, "required": False,
                        "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})})
     if role == "sets":
         fields.append({"key": SETS_DEFAULT, "required": False,
@@ -137,17 +288,50 @@ def skeleton_node():
             {"key": cell, "required": False, "node": {"kind": "leaf", "hint": "number" if cell in ("value", "times")
                                                       else "free"}} for cell in FORMAT_CELLS]})}},
         {"key": "item_sep", "required": False, "node": {"kind": "leaf", "hint": "free"}},
-        {"key": "labels", "required": False, "node": _record(tuple(LABELS), "free")},
+        {"key": SIZES, "required": False, "node": _record(tuple(SIZE_DEFAULTS), "number")},
+        {"key": COLUMNS, "required": False, "node": chain_bindings.list_node("head", {"kind": "leaf", "hint": "free"})},
+        {"key": KEYS, "required": False, "node": {"kind": "map", "keyed_by": "name", "member": "column",
+                                                  "of": chain_bindings.list_node("word", {"kind": "leaf", "hint": "free"})}},
+        {"key": "labels", "required": False, "node": {"kind": "record", "fields": _record(tuple(LABELS), "free")[
+            "fields"] + [{"key": LABEL_COLUMNS, "required": False, "node": {
+                "kind": "map", "keyed_by": "name", "member": "head", "of": {"kind": "leaf", "hint": "free"}}}]}},
         # «*»: the form fills it with the cell's own row number - a row's columns are its own table's (lead 10-23)
+        {"key": INFO, "required": False, "node": chain_bindings.list_node("table", {"kind": "record", "fields": [
+            {"key": "table", "required": True, "node": chain_bindings.table_ref()},
+            {"key": WAFER_CELL, "required": True, "node": chain_bindings.list_node("column", INFO_COLUMN)},
+            {"key": "item", "required": False, "node": INFO_COLUMN},
+            {"key": "value", "required": True, "node": INFO_COLUMN},
+            {"key": "rows", "required": False, "node": chain_bindings.list_node("name", {"kind": "leaf", "hint": "free"})},
+            {"key": LABEL, "required": False, "node": {"kind": "leaf", "hint": "free"}},
+            {"key": CHOOSE, "required": False, "node": {"kind": "leaf", "hint": "flag"}}]})},
         {"key": PICTURE_ROWS, "required": False, "node": chain_bindings.list_node("row", {"kind": "record", "fields": [
             {"key": "label", "required": True, "node": {"kind": "leaf", "hint": "free"}},
             {"key": "table", "required": True, "node": chain_bindings.table_ref()},
             {"key": WAFER_CELL, "required": True, "node": chain_bindings.list_node("column", PICTURE_COLUMN)},
             {"key": "image", "required": True, "node": PICTURE_COLUMN},
-            {"key": "px", "required": False, "node": {"kind": "leaf", "hint": "number"}}]})},
-        {"key": RESULTS_CELL, "required": True, "node": {"kind": "record", "fields": [
-            {"key": cell, "required": True, "node": _column("summary")} for cell in RESULT_CELLS]}},
+            {"key": "px", "required": False, "node": {"kind": "leaf", "hint": "number"}},
+            {"key": IMAGE_SOURCE, "required": False, "node": {"kind": "leaf", "hint": "free"}}]})},
+        {"key": RESULTS_CELL, "required": True, "node": {"kind": "map", "keyed_by": "name", "member": "slot",
+                                                         "of": chain_bindings.column_ref(("into.table",))}},
         {"key": SEND_TO, "required": False, "node": {"kind": "leaf", "hint": "free"}},
+        {"key": CAUSES, "required": False, "node": {"kind": "record", "fields": [
+            {"key": "seed_type", "required": True, "node": {"kind": "leaf", "hint": "free"}},
+            {"key": "follow", "required": False, "node": chain_bindings.list_node(
+                "predicate", {"kind": "leaf", "hint": "free"})},
+            {"key": "collect", "required": False, "node": chain_bindings.list_node(
+                "type", {"kind": "leaf", "hint": "free"})},
+            {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}},
+            {"key": "worlds", "required": False, "node": chain_bindings.list_node(
+                "world", {"kind": "leaf", "hint": "free"})},
+            {"key": "read", "required": False, "node": {"kind": "leaf", "hint": "free"}},
+            {"key": VALUES, "required": False, "node": {"kind": "record", "fields": [
+                {"key": "follow", "required": True, "node": chain_bindings.list_node(
+                    "predicate", {"kind": "leaf", "hint": "free"})},
+                {"key": "value", "required": True, "node": {"kind": "leaf", "hint": "free"}},
+                {"key": "event", "required": True, "node": {"kind": "leaf", "hint": "free"}},
+                {"key": "order", "required": True, "node": chain_bindings.list_node(
+                    "name", {"kind": "leaf", "hint": "free"})},
+                {"key": "hops", "required": False, "node": {"kind": "leaf", "hint": "number"}}]}}]}},
     ]
     return {"kind": "record", "fields": fields}
 
@@ -155,6 +339,66 @@ def skeleton_node():
 def unknown_cells(spec) -> list:
     """Cells of `derive.report` this product does not read - named, never refused (as a join's)."""
     return sorted(str(key) for key in (spec or {}) if key not in REPORT_CELLS)
+
+
+#: A role's `rename`: {the report's key column: this table's column} - a table that spells the wafer's key by another
+#: name (소유자 10-24 «컨디션 wf 컬럼 이름 다르면 안됨?»). Every other cell of the role is in the report's names.
+RENAME = "rename"
+
+
+def column_of(role, name):
+    """`name` (the report's spelling) as the role's table spells it - its `rename`, else itself."""
+    renamed = (role or {}).get(RENAME) if isinstance(role, dict) else None
+    return str(renamed.get(name, name)) if isinstance(renamed, dict) else name
+
+
+def _by_position(role, wafer_key, every):
+    """A role's wafer list matched to the report's wafer key by POSITION (소유자 10-24 «의미적으로 wafer,leg ==
+    wafer_id,leg» · «매칭 알아서»): its i-th column, when it is not a report key name, is the report key's i-th -
+    the role then reads in the report's names and `rename` says its own."""
+    if not isinstance(role, dict) or WAFER_CELL not in role:
+        return role
+    names = wafer_columns(role[WAFER_CELL])
+    renamed = dict(role.get(RENAME) or {}) if isinstance(role.get(RENAME), dict) else {}
+    from database import crud
+    own = crud.TABLE_CONFIG.get(str(role.get("table") or ""), {}) or {}
+    own_keys = set(own.get("composite_key_source") or ()) | ({own["business_key"]} if own.get("business_key") else set())
+    out = []
+    by_case = {key.lower(): key for key in wafer_key}
+    for at, name in enumerate(names):
+        same = by_case.get(name.lower())
+        # a name that differs only in case is the report key it spells (WAFER = wafer); by POSITION only when the list
+        # is as long as the wafer key - a shorter list (an image table with no time) would shift every part after the
+        # gap (lead 10-24: L landed on tkout_time). Only a KEY column of the role's own table stands in.
+        if name not in every and name in own_keys and same and same not in names:
+            renamed.setdefault(same, name)
+            out.append(same)
+        elif (len(names) == len(wafer_key) and name not in every and name in own_keys
+              and wafer_key[at] not in names):
+            renamed.setdefault(wafer_key[at], name)
+            out.append(wafer_key[at])
+        else:
+            out.append(name)
+    return role if out == names else dict(role, **{WAFER_CELL: out, RENAME: renamed})
+
+
+def matched(spec):
+    """`spec` with every role's wafer list matched by position (`_by_position`) - what the save and the reads see."""
+    if not isinstance(spec, dict) or not isinstance(spec.get("wafer"), dict):
+        return spec
+    wafer_key = wafer_columns(spec["wafer"].get("key"))
+    every = wafer_key + [c for c in key_words(spec) if c not in wafer_key]
+    out = dict(spec)
+    for role in ROLE_COLUMNS:
+        if isinstance(spec.get(role), dict):
+            out[role] = _by_position(spec[role], wafer_key, every)
+    for cell in (INFO, PICTURE_ROWS):
+        value = spec.get(cell)
+        if isinstance(value, dict):
+            out[cell] = _by_position(value, wafer_key, every)
+        elif isinstance(value, list):
+            out[cell] = [_by_position(row, wafer_key, every) for row in value]
+    return out
 
 
 def wafer_columns(value) -> list:
@@ -168,8 +412,9 @@ def _whole(value, least):
     return isinstance(value, int) and not isinstance(value, bool) and value >= least
 
 
-def _table_refusal(path, written, cells, lists, numbers, key_length):
-    """A role (or a picture row): its table declared, each column its table's, a wafer key of the wafer table's length."""
+def _table_refusal(path, written, cells, lists, numbers, key_names):
+    """A role (or a picture row): its table declared, each column its table's, its wafer columns key columns by name -
+    one of the wafer key's at least, the unit's all (`key_names`: (the wafer key, every key column, the unit))."""
     if not isinstance(written, dict):
         return "%s is a table and its columns, got %r" % (path, written)
     table = written.get("table")
@@ -184,46 +429,206 @@ def _table_refusal(path, written, cells, lists, numbers, key_length):
         if names is None:
             return "%s.%s is a column name, got %r" % (path, cell, written[cell])
         for name in names:
-            if name not in known:
-                return "%s.%s %r is not a column of %r - name one of its columns" % (path, cell, name, table)
-        if cell == WAFER_CELL and len(names) != key_length:
-            return ("%s.wafer names %d column(s) and derive.report.wafer.key %d - the same wafer, column for column"
-                    % (path, len(names), key_length))
+            if column_of(written, name) not in known:
+                return "%s.%s %r is not a column of %r - name one of its columns%s" % (
+                    path, cell, column_of(written, name), table,
+                    ", or %s.%s {%r: <its column>}" % (path, RENAME, name) if cell == WAFER_CELL else "")
+        if cell == WAFER_CELL:
+            wafer_key, every, unit = key_names
+            # 소유자 10-24 «키 컬럼 맞음» · «제대로 동기화 할거 아니면 화면 선언 막지마»: the table's own key columns pass too
+            from database import crud
+            own = crud.TABLE_CONFIG.get(str(table), {}) or {}
+            own_keys = set(own.get("composite_key_source") or ()) | ({own["business_key"]} if own.get("business_key") else set())
+            stray = [name for name in names if name not in every and column_of(written, name) not in own_keys]
+            # the images' rows are told apart by any column - a chip's x, y, its layer (owner 10-24 «x, y 이거 키 못 넣는대»)
+            if stray and not str(path).endswith(".images"):
+                return ("%s.wafer %r is not a key column - the key columns a table has, by name: derive.report.wafer.key "
+                        "(%s) and derive.report.keys" % (path, stray[0], ", ".join(wafer_key)))
+            missing = [c for c in unit if c not in names]
+            if not any(name in wafer_key for name in names) or missing:
+                return ("%s.wafer names none of the report's wafer (%s) - a table is read by the wafer key columns it has; "
+                        "a column spelled otherwise: %s.%s {%r: <its column>}"
+                        % (path, ", ".join(missing or wafer_key), path, RENAME, (missing or wafer_key)[0]))
     for cell in numbers:
         if cell in written and not _whole(written[cell], 1):
             return "%s.%s must be a whole number from 1, got %r" % (path, cell, written[cell])
     return None
 
 
+def key_words(spec) -> dict:
+    """`keys` as {column: [word, ...]} - none written, {}."""
+    keys = (spec or {}).get(KEYS)
+    return {str(c): list(words) for c, words in keys.items()} if isinstance(keys, dict) else {}
+
+
+def unit_columns(spec) -> list:
+    """The key columns a report is one of (KEY_UNIT), in the wafer key's order - [] when `keys` says none."""
+    said = key_words(spec)
+    return [c for c in wafer_columns(((spec or {}).get("wafer") or {}).get("key")) if KEY_UNIT in said.get(c, ())]
+
+
+def _keys_refusal(spec, wafer_key):
+    keys = spec.get(KEYS)
+    if keys is None:
+        return None
+    if not isinstance(keys, dict) or not all(isinstance(words, list) and all(w in KEY_WORDS for w in words)
+                                             for words in keys.values()):
+        return ("derive.report.keys is {key column: [what it does]} - each word one of %s, [] for a plain part; got %r"
+                % (" · ".join(KEY_WORDS), keys))
+    for column, words in keys.items():
+        if (KEY_UNIT in words or KEY_LATEST in words) and column not in wafer_key:
+            return ("derive.report.keys.%s %s is a wafer key column's - derive.report.wafer.key (%s)"
+                    % (column, " · ".join(w for w in words if w != KEY_FOLD), ", ".join(wafer_key)))
+        if KEY_FOLD in words and column in wafer_key:
+            return ("derive.report.keys.%s fold is a column beyond the wafer key - the rows that differ only there are "
+                    "one (a chip's layers)" % column)
+        if KEY_UNIT in words and KEY_LATEST in words:
+            return "derive.report.keys.%s is the unit or the latest of it, not both" % column
+    if any(KEY_LATEST in words for words in keys.values()) and not unit_columns(spec):
+        return "derive.report.keys latest needs a unit column - the latest is each report's"
+    return None
+
+
+def _label_refusal(path, role, spec, over_names):
+    """A table's `label`: a text; over a table's names it needs `item_sep` - the head they stand under."""
+    if LABEL not in role:
+        return None
+    if not isinstance(role[LABEL], str) or not role[LABEL].strip():
+        return "%s.label is the head its rows stand under, got %r" % (path, role[LABEL])
+    if over_names and not spec.get("item_sep"):
+        return ("%s.label stands over the names - derive.report.item_sep says how a name splits into heads, e.g. "
+                '"item_sep": "."' % path)
+    return None
+
+
+def _columns_refusal(spec):
+    """`columns`: a list, each a wafer key column, «time» or «group», once."""
+    heads = spec.get(COLUMNS)
+    if heads is None:
+        return None
+    keys = wafer_columns(spec["wafer"].get("key"))
+    known = keys + [COLUMN_TIME, COLUMN_GROUP, COLUMN_TITLE]
+    if not isinstance(heads, list) or not heads or any(not isinstance(h, str) or h not in known for h in heads) \
+            or len(set(heads)) != len(heads):
+        return ("derive.report.columns lists the column heads, top first, each once - a key column (%s), %r or %r; "
+                "got %r" % (", ".join(keys), COLUMN_TIME, COLUMN_GROUP, heads) + " (or %r)" % COLUMN_TITLE)
+    if COLUMN_TIME in heads and not (spec["wafer"].get("time") or (spec.get("conditions") or {}).get("time")
+                                     or (spec.get("conditions") or {}).get(TIME_ITEM)):
+        return ("derive.report.columns %r is the wafer's day - derive.report.wafer.time or conditions.time names the "
+                "column it is read from" % COLUMN_TIME)
+    return None
+
+
+def report_key(spec, table) -> list:
+    """The unit (`keys`) when written - else read off the report table, below."""
+    if unit_columns(spec):
+        return unit_columns(spec)
+    return _report_table_key(spec, table)
+
+
+def _report_table_key(spec, table) -> list:
+    """The report table's wafer: the columns of `wafer.key` that `table` declares, in that order - a report table keyed
+    by the wafer alone reads every row of it the wafer table holds (owner 10-23 «리포트는 wafer 하나지, leg 는 리포트
+    내용에»). [] when it declares none."""
+    known = chain_bindings.declared_columns(str(table or "")) or ()
+    return [c for c in wafer_columns(((spec or {}).get("wafer") or {}).get("key")) if c in known]
+
+
+def text_slots(spec) -> list:
+    """The layout's text slots, in its order - what the write call fills (`report_loop`), what `results` may name."""
+    return [str(slot["slot"]) for slot in layout(spec) if slot.get("kind") == "text" and slot.get("slot")]
+
+
+def result_cells(spec) -> list:
+    """[(cell, column)] a report writes on its wafer's row - `results.file`, then each text slot `results` names, in the
+    layout's order."""
+    results = (spec or {}).get(RESULTS_CELL)
+    if not isinstance(results, dict):
+        return []
+    return [(cell, results[cell]) for cell in RESULT_CELLS + tuple(text_slots(spec))
+            if isinstance(results.get(cell), str) and results[cell].strip()]
+
+
 def result_columns(rule) -> list:
-    """The summary table columns a report rule writes - `results`, in RESULT_CELLS order."""
-    results = ((rule or {}).get("params") or {}).get(RESULTS_CELL) or {}
-    return [str(results[cell]) for cell in RESULT_CELLS if isinstance(results, dict) and results.get(cell)]
+    """The report table columns a report rule writes (`result_cells`) - a run that wrote nothing still owns them."""
+    return [column for _cell, column in result_cells((rule or {}).get("params"))]
 
 
 def refusal(spec, on_table=None, into_table=None) -> str | None:
     """Why this `derive.report` cannot be made, or None - the first reason, path first. `on_table` · `into_table`: the
-    rule's, both the summary table (a declaration of the old shape, on a request table, is refused here by name)."""
-    spec = spec if isinstance(spec, dict) else {}
+    rule's, one report table (`report_key`); the summary table or a table without the wafer's column is refused by
+    name. None: not checked."""
+    spec = matched(spec) if isinstance(spec, dict) else {}
     missing = [role for role in REQUIRED_ROLES if not isinstance(spec.get(role), dict)]
     if missing:
         return "derive.report needs %s - each a table and its columns" % ", ".join(missing)
-    key_length = len(wafer_columns(spec["wafer"].get("key")))
-    if not key_length:
+    wafer_key = wafer_columns(spec["wafer"].get("key"))
+    if not wafer_key:
         return "derive.report.wafer.key names no column - the column (or columns) a wafer is known by"
+    said = _keys_refusal(spec, wafer_key)
+    if said:
+        return said
+    exclude = spec["wafer"].get(chain_bindings.EXCLUDE_KEY)
+    if exclude is not None:
+        known = chain_bindings.declared_columns(str(spec["wafer"].get("table") or "")) or ()
+        if not isinstance(exclude, list) or any(chain_bindings.gate_item_refused(item) for item in exclude):
+            return ('derive.report.wafer.exclude is a list of {column: [values]} - a value with * or ? a pattern, e.g. '
+                    '[{"leg": ["*_T", "*TEST*"]}]; got %r' % (exclude,))
+        unknown = [c for c in chain_bindings.gate_columns(exclude) if c not in known]
+        if unknown:
+            return "derive.report.wafer.exclude %r is not a column of %r - name one of its columns" % (
+                unknown[0], spec["wafer"].get("table"))
+    key_names = (wafer_key, wafer_key + [c for c in key_words(spec) if c not in wafer_key], unit_columns(spec))
     for role, cells in ROLE_COLUMNS.items():
         if spec.get(role) is not None:
             said = _table_refusal("derive.report.%s" % role, spec[role], cells,
                                   {c for at, c in LIST_COLUMNS if at == role}, {c for at, c in NUMBER_CELLS if at == role},
-                                  key_length)
+                                  key_names)
             if said:
                 return said
+    match = (spec.get("images") or {}).get(IMAGE_MATCH) if isinstance(spec.get("images"), dict) else None
+    if match is not None and not (isinstance(match, dict) and all(
+            isinstance(kinds, str) or isinstance(kinds, list) and all(isinstance(k, str) for k in kinds)
+            for kinds in match.values())):
+        return ('derive.report.images.match is {summary item: image kind or [image kinds]}, e.g. '
+                '{"typeA": ["void", "signal"]}; got %r' % (match,))
+    said = spec["summary"].get(YIELD_ITEM)
+    if said is not None and not (isinstance(said, str) and said.strip() or isinstance(said, list) and said and all(
+            isinstance(s, str) and s.strip() for s in said)):
+        return ('derive.report.summary.yield_item is the summary item (or items) that is the yield, e.g. "YIELD"; got %r'
+                % (said,))
+    time_item = (spec.get("conditions") or {}).get(TIME_ITEM) if isinstance(spec.get("conditions"), dict) else None
+    if time_item is not None and not (isinstance(time_item, str) and time_item.strip()):
+        return ("derive.report.conditions.time_item is the condition item whose value is the wafer's time, e.g. "
+                '"tkout_time"; got %r' % (time_item,))
+    title_item = (spec.get("conditions") or {}).get(TITLE_ITEM) if isinstance(spec.get("conditions"), dict) else None
+    if title_item is not None and not (isinstance(title_item, str) and title_item.strip()):
+        return ("derive.report.conditions.title_item is the condition item whose value is the wafer's title, e.g. "
+                '"Title"; got %r' % (title_item,))
+    info = spec.get(INFO)
+    if info is not None and not isinstance(info, (dict, list)):
+        return "derive.report.info is a table and its columns, or a list of them, got %r" % (info,)
+    for at, row in enumerate(info_rows(spec)):
+        path = "derive.report.info" if isinstance(info, dict) else "derive.report.info[%d]" % at
+        said = _table_refusal(path, row, (WAFER_CELL,) + INFO_COLUMNS, {WAFER_CELL}, set(), key_names)
+        if said:
+            return said
+        if not row.get(WAFER_CELL) or not row.get("value"):
+            return ("%s names wafer and value - the wafer columns and what a row says (item: the name a row is "
+                    "about; none: the value column is the row)" % path)
+        if "rows" in row and not (isinstance(row["rows"], list) and all(isinstance(r, str) for r in row["rows"])):
+            return "%s.rows is a list of names, got %r" % (path, row["rows"])
+        said = _label_refusal(path, row, spec, bool(row.get("item")))
+        if said:
+            return said
+        if CHOOSE in row and not isinstance(row[CHOOSE], bool):
+            return "%s.choose is true or false - the model keeps which of its rows, got %r" % (path, row[CHOOSE])
     rows = spec.get(PICTURE_ROWS)
     if rows is not None and not isinstance(rows, list):
         return "derive.report.%s is a list of picture rows, got %r" % (PICTURE_ROWS, rows)
     for at, row in enumerate(rows or ()):
         path = "derive.report.%s[%d]" % (PICTURE_ROWS, at)
-        said = _table_refusal(path, row, PICTURE_COLUMNS, {WAFER_CELL}, {"px"}, key_length)
+        said = _table_refusal(path, row, PICTURE_COLUMNS, {WAFER_CELL}, {"px"}, key_names)
         if said:
             return said
         missing = [cell for cell in ("label",) + PICTURE_COLUMNS if not row.get(cell)]
@@ -232,24 +637,54 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     results = spec.get(RESULTS_CELL)
     if not isinstance(results, dict) or not all(isinstance(results.get(c), str) and results[c].strip()
                                                 for c in RESULT_CELLS):
-        return ("derive.report.results names the summary table's columns a report's %s go in - "
-                '{"state": "<column>", "file": "<column>", "reason": "<column>"}' % " · ".join(RESULT_CELLS))
+        return ('derive.report.results names the report table\'s column a report\'s file path goes in - '
+                '{"file": "<column>"}')
+    named = RESULT_CELLS + tuple(text_slots(spec))
+    odd = [cell for cell in results if cell not in named + UNWRITTEN_RESULTS]
+    if odd:
+        return "derive.report.results.%s is not a text slot of the layout - one of %s" % (odd[0], " · ".join(named))
+    blank = [cell for cell in named if cell in results and not (isinstance(results[cell], str) and results[cell].strip())]
+    if blank:
+        return ("derive.report.results.%s names the report table's column its text goes in, got %r"
+                % (blank[0], results[blank[0]]))
     table = spec["summary"].get("table")
-    for path, said in (("on.table", on_table), ("into.table", into_table)):
-        if said is not None and said != table:
-            return ("the report rule stands on its summary table - %s is derive.report.summary.table %r, got %r"
-                    % (path, table, said))
+    if on_table is not None and into_table is not None and on_table != into_table:
+        return ("the report rule stands on its report table - on.table and into.table are one table, got %r and %r"
+                % (on_table, into_table))
+    report_table = into_table if into_table is not None else on_table
+    if report_table is not None and report_table == table:
+        return ("the report rule stands on a report table of its own - one row a wafer, its wafer column "
+                "(derive.report.wafer.key) and its file column (derive.report.results.file); the summary table %r is read, "
+                "never written"
+                % table)
+    if report_table is not None and unit_columns(spec) and set(unit_columns(spec)) != set(
+            _report_table_key(spec, report_table)):
+        return ("derive.report.keys unit (%s) is the report table's wafer - %r holds %s of the wafer key"
+                % (", ".join(unit_columns(spec)), report_table,
+                   ", ".join(_report_table_key(spec, report_table)) or "none"))
+    if report_table is not None and not report_key(spec, report_table):
+        return ("%r has none of derive.report.wafer.key's columns (%s) - a report table is one row a wafer, its wafer "
+                "column among them" % (report_table, ", ".join(wafer_columns(spec["wafer"].get("key")))))
+    said = _causes_refusal(spec.get(CAUSES))
+    if said:
+        return said
     send_to = spec.get(SEND_TO)
     if send_to is not None and not (isinstance(send_to, str) and send_to.startswith(("http://", "https://"))):
         return "derive.report.send_to is the address a report is POSTed to (http://...), got %r" % (send_to,)
     summary = spec["summary"]
-    known = chain_bindings.declared_columns(str(table or "")) or ()
-    unknown = [results[c] for c in RESULT_CELLS if results[c] not in known]
-    if unknown:
-        return ("derive.report.results %r is not a column of %r - add it to the summary table's declaration"
-                % (unknown[0], table))
+    known = chain_bindings.declared_columns(str(report_table or "")) or ()
+    unknown = [column for _cell, column in result_cells(spec) if column not in known]
+    if report_table is not None and unknown:
+        return ("derive.report.results %r is not a column of %r - add it to the report table's declaration"
+                % (unknown[0], report_table))
     if not summary.get("item"):
         return "derive.report.summary.item names no column - the item a row is about"
+    said = _label_refusal("derive.report.summary", summary, spec, True)
+    if said:
+        return said
+    said = _columns_refusal(spec)
+    if said:
+        return said
     if bool(summary.get("fail")) != bool(summary.get("total")):
         return "derive.report.summary names fail and total together - the F and the N of one row"
     if not summary.get("rate") and not summary.get("fail"):
@@ -257,8 +692,8 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
     if summary.get("rate") and not (_whole(summary.get(RATE_SCALE), 1) and summary[RATE_SCALE] in RATE_SCALES):
         return "derive.report.summary.rate_scale: 1 or 100 - what a full rate reads as, got %r" % (
             summary.get(RATE_SCALE),)
-    sets = spec.get("sets")
-    if isinstance(sets, dict):
+    sets = sets_role(spec)
+    if sets is not None:
         kinds = sets.get(SETS_KINDS)
         said = {role: value for role, value in (kinds.items() if isinstance(kinds, dict) else ())
                 if isinstance(value, str) and value.strip()}
@@ -306,22 +741,91 @@ def refusal(spec, on_table=None, into_table=None) -> str | None:
             if unknown:
                 return "derive.report.control.same %r is not a column of %r - name one of its columns" % (
                     unknown[0], table)
-    info = spec.get("info")
-    if isinstance(info, dict):
-        if not info.get("item") or not info.get("value"):
-            return "derive.report.info names item and value - the name a row is about and what it says"
-        if "rows" in info and not (isinstance(info["rows"], list) and all(isinstance(r, str) for r in info["rows"])):
-            return "derive.report.info.rows is a list of names, got %r" % (info["rows"],)
     said = _formats_refusal(spec)
     if said:
         return said
+    sizes = spec.get(SIZES)
+    if sizes is not None and not (isinstance(sizes, dict) and all(
+            k in SIZE_DEFAULTS and isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+            for k, v in sizes.items())):
+        return "derive.report.%s is {%s} - px numbers above 0, got %r" % (
+            SIZES, ", ".join('"%s": %s' % kv for kv in SIZE_DEFAULTS.items()), sizes)
     if "item_sep" in spec and not isinstance(spec["item_sep"], str):
         return "derive.report.item_sep is the text an item name splits at, got %r" % (spec["item_sep"],)
     if "labels" in spec and not isinstance(spec["labels"], dict):
         return "derive.report.labels is {name: text}, got %r" % (spec["labels"],)
+    said = (spec.get("labels") or {}).get(LABEL_COLUMNS)
+    if said is not None and not (isinstance(said, dict) and all(isinstance(v, str) for v in said.values())):
+        return "derive.report.labels.columns is {column head: the word left of it}, got %r" % (said,)
     from chain import report_template
 
     return report_template.refusal(spec)
+
+
+def _names(value) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value)
+
+
+def _causes_refusal(causes):
+    if causes is None:
+        return None
+    if not isinstance(causes, dict) or set(causes) - set(CAUSES_CELLS) or not (
+            isinstance(causes.get("seed_type"), str) and causes["seed_type"].strip()) or any(
+            cell in causes and not _names(causes[cell]) for cell in ("follow", "collect", "worlds")) or (
+            "hops" in causes and not (_whole(causes["hops"], 0) and causes["hops"] <= CAUSES_HOPS_MOST)) or (
+            "read" in causes and causes["read"] not in _reads()):
+        return ('derive.report.causes is {"seed_type": "<entity>", "follow": ["<predicate or class:<word>>", ...], '
+                '"collect": ["<entity>", ...], "hops": <n up to %d>, "worlds": ["<world>", ...], "read": %s, '
+                '"values": {...}} - seed_type written, the rest optional; got %r' % (
+                    CAUSES_HOPS_MOST, " | ".join(_reads()), causes))
+    return _values_refusal(causes[VALUES], causes.get("worlds")) if VALUES in causes else None
+
+
+def _reads():
+    from ledger import schema
+
+    return schema.READS
+
+
+def _pair(value) -> bool:
+    return isinstance(value, str) and len(value.split(":")) == 2 and all(part.strip() for part in value.split(":"))
+
+
+def _values_refusal(values, worlds):
+    """causes.values' shape, then its names against the ledger declaration of the walk's worlds."""
+    if not isinstance(values, dict) or set(values) - set(VALUES_CELLS) or not _names(values.get("follow")) or not all(
+            _pair(values.get(cell)) for cell in ("value", "event")) or not (
+            _names(values.get("order")) and len(values["order"]) == 2) or (
+            "hops" in values and not (_whole(values["hops"], 1) and values["hops"] <= CAUSES_HOPS_MOST)):
+        return ('derive.report.causes.values is {"follow": ["<predicate>", ...], "value": "<predicate>:<qualifier>", '
+                '"event": "<predicate>:<qualifier>", "order": ["<predicate>", "<key>"], "hops": <n up to %d>} - hops '
+                'optional; got %r' % (CAUSES_HOPS_MOST, values))
+    from ledger import trace_router
+
+    try:
+        ends, qualifiers = trace_router._predicate_ends(worlds or None), trace_router._predicate_qualifiers(worlds or None)
+        keys = {trace_router._bare_name(name): list((rule or {}).get("keys") or ())
+                for name, rule in trace_router._declared_entities(worlds or None).items()}
+    except Exception as exc:                                    # noqa: BLE001 - the save says why
+        return "derive.report.causes.values: the ledger declaration was not read - %s: %s" % (type(exc).__name__, exc)
+    bare = trace_router._bare_name
+    order, key = values["order"]
+    pairs = [values["value"].split(":"), values["event"].split(":")]
+    missing = [name for name in list(values["follow"]) + [order] + [p for p, _q in pairs] if bare(name) not in ends]
+    if missing:
+        return "derive.report.causes.values names %s - not a predicate the ledger declares" % ", ".join(missing)
+    for predicate, qualifier in pairs:
+        if qualifier not in (qualifiers.get(bare(predicate)) or ()):
+            return "derive.report.causes.values: %s is not a qualifier of %s (declared: %s)" % (
+                qualifier, predicate, ", ".join(qualifiers.get(bare(predicate)) or ()) or "none declared")
+    if not any(key in keys.get(kind, ()) for kind in ends[bare(order)][1]):
+        return "derive.report.causes.values.order: %s is not a key of %s's step (%s)" % (
+            key, order, ", ".join(ends[bare(order)][1]) or "no type declared")
+    subjects = ends[bare(pairs[0][0])][0]
+    if len(subjects) != 1 or not keys.get(subjects[0]):
+        return ("derive.report.causes.values.value: %s's subject is the wafer node a report's wafer is walked from - "
+                "one entity type with keys, got %s" % (pairs[0][0], ", ".join(subjects) or "none"))
+    return None
 
 
 def _number(value):
@@ -361,6 +865,15 @@ def word(spec, name) -> str:
     return said if isinstance(said, str) and said.strip() else LABELS[name]
 
 
+def column_word(spec, tier) -> str:
+    """The word left of a column head tier (owner 10-23: DATE · WAFER · LEG) - `labels.columns`, else the key column's
+    own name, «Date» for the wafer's day, nothing for the group."""
+    said = ((spec or {}).get("labels") or {}).get(LABEL_COLUMNS) or {}
+    if tier in said:
+        return str(said[tier])
+    return {COLUMN_TIME: "Date", COLUMN_GROUP: "", COLUMN_TITLE: "Title"}.get(tier, "" if tier is None else str(tier))
+
+
 def control_limit(spec, cell) -> int:
     return ((spec or {}).get("control") or {}).get(cell) or CONTROL_LIMITS[cell]
 
@@ -371,8 +884,17 @@ def notes(spec) -> list:
 
     said = report_template.note(spec)
     out = [said] if said else []
-    unknown = sorted(str(name) for name in ((spec or {}).get("labels") or {}) if name not in LABELS)
+    unknown = sorted(str(name) for name in ((spec or {}).get("labels") or {})
+                     if name not in LABELS and name != LABEL_COLUMNS)
     if unknown:
         out.append("derive.report.labels.%s is not a word the report says - one of %s"
                    % (unknown[0], " · ".join(LABELS)))
+    sets = (spec or {}).get("sets")
+    if isinstance(sets, dict) and sets_role(spec) is None:
+        out.append("derive.report.sets names no %s - read as no compare set (a compare set is read by %s)"
+                   % (" · ".join(c for c in SETS_COLUMNS if not sets.get(c)), " · ".join(SETS_COLUMNS)))
+    unwritten = [c for c in UNWRITTEN_RESULTS if ((spec or {}).get(RESULTS_CELL) or {}).get(c)]
+    if unwritten and isinstance(spec.get(RESULTS_CELL), dict):
+        out.append("derive.report.results.%s is not written - a report writes its file path; its state and why are "
+                   "the file's Evidence and chain_worker.log [Report]" % " · ".join(unwritten))
     return out

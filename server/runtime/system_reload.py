@@ -36,6 +36,10 @@ active_watcher = None
 #:    join keys its write gate learned (`synthesis.reset_right_key_cache`), nothing else. Without it a process that
 #:    learned 「no index」 before the index stood kept its gate off until somebody reloaded by hand.
 SCOPE_JOIN_KEYS = "join_keys"
+#: 🔴 [총괄 10-24] A person pressed Read all again · Retry · Read now: the watcher lets those (table, source) re-read
+#:    stops go (`directory_watcher.RereadStops`) - the row's `pairs`. Written at every press: the API does not know
+#:    which pairs are stopped, and letting go of one that is not is nothing.
+SCOPE_REREAD_RELEASED = "reread_released"
 #: What a reader does for a row without a scope, or with one this build does not know.
 FULL = "full"
 #: The readers of SYSTEM_RELOAD, by their heartbeat names - and the API's outbox listener and the scheduler's index
@@ -46,7 +50,8 @@ API, INDEX_LINE = "api", "index_line"
 #: write door too.
 RETROACTIVE = "retroactive"
 #: Who each scope is for.
-SCOPE_READERS = ((SCOPE_JOIN_KEYS, frozenset({CHAIN_WORKER, WATCHER, API, RETROACTIVE})),)
+SCOPE_READERS = ((SCOPE_JOIN_KEYS, frozenset({CHAIN_WORKER, WATCHER, API, RETROACTIVE})),
+                 (SCOPE_REREAD_RELEASED, frozenset({WATCHER})))
 
 
 def publish_reload(db: Session, scope=None, **said):
@@ -95,9 +100,10 @@ def reloads_after(db: Session, after_id: int) -> list:
             .order_by(models.DatabaseOutbox.id.asc()).all())
 
 
-def reload_for(reader: str, rows) -> str:
+def reload_for(reader: str, rows, released=None) -> str:
     """What `reader` does for these rows: FULL, a scope of `SCOPE_READERS`, or None. The one seat that
-    asks a row's scope."""
+    asks a row's scope. `released` (a list): gets the (table, source) pairs of the `SCOPE_REREAD_RELEASED` rows, which
+    say nothing else to do."""
     import json
 
     scopes = set()
@@ -108,7 +114,12 @@ def reload_for(reader: str, rows) -> str:
                 payload = json.loads(payload)
             except ValueError:
                 payload = None
-        scopes.add(payload.get("scope") if isinstance(payload, dict) else None)
+        scope = payload.get("scope") if isinstance(payload, dict) else None
+        if scope == SCOPE_REREAD_RELEASED:
+            if released is not None and reader == WATCHER:
+                released.extend(tuple(pair) for pair in payload.get("pairs") or ())
+            continue
+        scopes.add(scope)
     if not scopes:
         return None
     if scopes - {scope for scope, _readers in SCOPE_READERS}:

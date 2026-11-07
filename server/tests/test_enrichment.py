@@ -210,10 +210,15 @@ def test_loader_missing_required_fields_skipped():
     raw = {
         "no_derived": {k: v for k, v in _base_rule().items() if k != "derived_table"},
         "no_key": _base_rule(decision_key=[]),
-        # no field and no aggregation (총괄 10-11 ㄴ: no field WITH aggregations stands)
-        "no_target": _base_rule(target_fields=[], aggregations={}),
     }
     assert validate_rules(raw, known_tables=KNOWN) == []
+
+
+def test_a_rule_of_no_field_and_no_aggregation_stands_its_key_alone():
+    """총괄 10-11 ㄴ: no field WITH aggregations stands; 소유자 10-23 「wafer, 보고서 파일 경로 이 두 개가 최종 출력」:
+    neither stands too - a row per key, its key alone (a report table's rows)."""
+    [rule] = validate_rules({"no_target": _base_rule(target_fields=[], aggregations={})}, known_tables=KNOWN)
+    assert rule["target_fields"] == [] and not rule["aggregations"], rule
 
 
 def test_loader_decision_target_overlap_skipped():

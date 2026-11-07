@@ -22,21 +22,34 @@ STYLE = """
 :root { --ink: #1d2433; --muted: #5b6475; --line: #d9dee8; --head: #eef2f8; --ground: #ffffff; }
 body { margin: 0; padding: 24px 16px; background: var(--ground); color: var(--ink);
        font: 14px/1.5 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
-main { max-width: 1200px; margin: 0 auto; display: grid; gap: 24px; }
+main { margin: 0 auto; display: grid; gap: 24px; min-width: 0; width: 100%; max-width: 1280px; }
 h1 { font-size: 20px; margin: 0; }
 .meta { color: var(--muted); }
 section { display: grid; gap: 8px; }
 .scroll { overflow-x: auto; }
-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: nowrap; }
+table { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums;
+        border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+th, td { border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: center; white-space: normal;
+         overflow-wrap: anywhere; vertical-align: top; }
 th { background: var(--head); }
-th:first-child, td:first-child, td.rpt-item, td.rpt-info, td.rpt-picture { text-align: left; }
-.gallery { display: flex; flex-wrap: wrap; gap: 12px; }
+thead th { text-align: center; vertical-align: middle; }
+thead th:first-child { text-align: left; }
+th:first-child, td.rpt-name { text-align: left; }
+td.rpt-name { position: sticky; left: 0; z-index: 1; background: var(--ground); }
+thead th:first-child { position: sticky; left: 0; z-index: 2; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, var(--px, 320px)); gap: 12px; }
+.gallery figure img { width: var(--px, 320px); height: var(--px, 320px); object-fit: contain; display: block;
+                      background: var(--head); }
+.gallery figure img[hidden] { display: none; }
 figure { margin: 0; display: grid; gap: 4px; }
-figcaption { color: var(--muted); font-size: 12px; }
-.text { white-space: pre-wrap; max-width: 72ch; }
+figcaption { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.text { white-space: pre-wrap; }
 .note { color: var(--muted); font-size: 12px; }
+section { min-width: 0; }
+th.rpt-own { background: #ffcc80; }
 """
+#: the report's own wafers' columns - orange (owner 10-24 «리포트 요청한 웨이퍼는 주황색으로 하이라이트»)
+OWN = "rpt-own"
 
 
 def _e(value) -> str:
@@ -119,69 +132,121 @@ def _colour(rules, cell, here, baseline):
     return None
 
 
-def _baseline(cells, here):
+def _scaled(cells, better_high):
+    """A row's cells coloured by their share across it, when no format rule colours them (owner 10-24 «수율은 높은 게
+    하늘색 낮은 게 붉은색 · 나머지 디펙들은 반대로»): the row's best end sky, its worst red, the middle plain."""
+    shares = [c.get("share") for c in cells if c.get("share") is not None]
+    if len(shares) < 2 or max(shares) == min(shares):
+        return [None] * len(cells)
+    low, high = min(shares), max(shares)
+    out = []
+    for cell in cells:
+        share = cell.get("share")
+        if share is None:
+            out.append(None)
+            continue
+        good = (share - low) / (high - low) if better_high else (high - share) / (high - low)
+        out.append("background:rgba(135,206,250,%.2f)" % ((good - 0.5) * 2 * 0.8) if good > 0.5 else
+                   "background:rgba(239,83,80,%.2f)" % ((0.5 - good) * 2 * 0.6) if good < 0.5 else None)
+    return out
+
+
+def _baseline(cells, own):
     """The other groups' cells of one item as one share: their F sum over their N sum, or None."""
-    rest = [c for c in cells[here:] if c.get("fail") is not None and c.get("total")]
+    rest = [c for c, mine in zip(cells, own) if not mine and c.get("fail") is not None and c.get("total")]
     total = sum(c["total"] for c in rest)
     return 100.0 * sum(c["fail"] for c in rest) / total if total else None
 
 
-def _two_tiers(table):
-    parts = table.get("parts")
-    if not parts or any(p is None or len(p) < 2 for group in parts for p in group):
-        return None
-    top, low = [], []
-    for group in parts:
-        for at, wafer in enumerate(group):
-            if at and group[at - 1][0] == wafer[0]:
-                top[-1] = (top[-1][0], top[-1][1] + 1)
+def head_tiers(heads):
+    """The columns' heads (a text a tier, each column) -> the tiers to draw, [(tier, [(text, span), ...])]: a column
+    whose text and every text above are its left neighbour's joins its cell (owner 10-23: date › wafer › leg, the
+    same value one cell); a blank never joins. A tier that repeats the one above is left out, the last never."""
+    depth = len(heads[0]) if heads else 0
+    tiers = []
+    for level in range(depth):
+        cells = []
+        for at, texts in enumerate(heads):
+            if at and texts[level] and heads[at - 1][:level + 1] == texts[:level + 1]:
+                cells[-1] = (cells[-1][0], cells[-1][1] + 1)
             else:
-                top.append((wafer[0], 1))
-            low.append(report_reads.label(wafer[1:]))
-    return top, low
+                cells.append((texts[level], 1))
+        tiers.append(cells)
+    return [(at, tier) for at, tier in enumerate(tiers) if at == 0 or at == len(tiers) - 1 or tier != tiers[at - 1]]
 
 
 def _summary_table(table, spec, lent=None):
-    """yield_by's and trend's table: a head row of group names over their columns (a wafer key of several columns in
-    two tiers - its first column merged over the rest), then the info · picture · item rows, each head split by
-    `item_sep`, each value cell coloured by `formats`."""
+    """yield_by's and trend's table: the columns' heads in tiers (`head_tiers` - the first the group row), then the
+    info · picture · item rows, each head split by `item_sep` (the items under the summary's `label`), each value
+    cell coloured by `formats`."""
     lent = lent or {}
     head = lent.get("head") or {}
-    blocks = [(kind, table.get(key) or []) for kind, key in BLOCKS]
-    depth, drawn = row_heads([[name for name, _c in rows] for _k, rows in blocks], spec.get("item_sep") or "")
+    sizes = dict(report_shape.SIZE_DEFAULTS, **(spec.get(report_shape.SIZES) or {}))   # derive.report.sizes
+    sep = spec.get("item_sep") or ""
+    under = table.get("item_label")
+    blocks = [(kind, [(under + sep + name if kind == "item" and under else name, cells, name)
+                      for name, cells in table.get(key) or []]) for kind, key in BLOCKS]
+    depth, drawn = row_heads([[name for name, _c, _r in rows] for _k, rows in blocks], sep)
     corner = depth if depth > 1 else None
-    tiers = _two_tiers(table)
-    out = ["<tr>%s%s</tr>" % (_cell("th", GROUP, head.get("name"), colspan=corner), "".join(
-        _cell("th", GROUP, head.get("value"), text=_e(name), colspan=len(columns)) for name, columns in table["groups"]))]
-    columns = tiers[1] if tiers else [c for _n, cols in table["groups"] for c in cols]
-    if tiers:
-        out.append("<tr>%s%s</tr>" % (_cell("th", HEAD, head.get("name"), colspan=corner), "".join(
-            _cell("th", HEAD, head.get("value"), text=_e(part), colspan=span if span > 1 else None)
-            for part, span in tiers[0])))
-    out.append("<tr>%s%s</tr>" % (_cell("th", HEAD, head.get("name"), text=_e(report_shape.word(spec, "item")),
-                                        colspan=corner),
-                                  "".join(_cell("th", HEAD, head.get("value"), text=_e(c)) for c in columns)))
-    here = len(table["groups"][0][1]) if table["groups"] else 0
+    tiers, named = head_tiers(table["heads"]), table.get("tiers") or ()
+    own = table["own"]
+    out = []
+    for level, (at, tier) in enumerate(tiers):
+        cls = GROUP if level == 0 else HEAD
+        cells, first = [], 0
+        for text, span in tier:
+            mine = bool(own[first:first + span]) and all(own[first:first + span])
+            cells.append(_cell("th", cls + (" " + OWN if mine else ""), head.get("value"), text=_e(text),
+                               colspan=span if level == 0 or span > 1 else None))
+            first += span
+        out.append("<tr>%s%s</tr>" % (
+            _cell("th", cls, head.get("name"), text=_e(report_shape.column_word(spec, named[at]))
+                  if at < len(named) else "", colspan=corner), "".join(cells)))
+    columns = [c for _n, cols in table["groups"] for c in cols]
     formats = spec.get("formats") or {}
     body = []
     for (kind, rows), heads in zip(blocks, drawn):
         dress = lent.get(kind) or lent.get("item") or {}
-        cells_of = dict(rows)
+        cells_of = {name: (cells, raw) for name, cells, raw in rows}
         name_class, value_class = KIND_CLASS.get(kind, ITEM), KIND_CLASS.get(kind, CELL)
         for name, parts in heads:
-            cells = cells_of[name]
-            baseline = _baseline(cells, here) if kind == "item" else None
-            row_head = "".join(_cell("td", name_class, dress.get("name"), text=_e(part), rowspan=rowspan,
-                                     colspan=colspan if colspan and colspan > 1 else None)
-                               for part, rowspan, colspan in parts)
-            values = "".join(_cell("td", value_class, dress.get("value"),
-                                   _colour(formats.get(name), cell, at < here, baseline) if kind == "item" else None,
+            cells, raw = cells_of[name]
+            baseline = _baseline(cells, own) if kind == "item" else None
+            scaled = (_scaled(cells, False) if kind == "item" and not formats.get(raw) else
+                      _scaled(cells, True) if any(c.get("higher") == "better" for c in cells) else [None] * len(cells))
+            # each row-head cell held at its column's left while the values scroll (owner 10-24 «좌측 헤더열 스크롤
+            # 우측해도 보이게») - its level counted from the row's last cell, which ends at the depth
+            lefts, at = [], max(depth, 1)
+            for _part, _rowspan, colspan in reversed(parts):
+                at -= colspan or 1
+                lefts.insert(0, "left:%gpx" % (sizes["name_px"] * at) if at else None)
+            row_head = "".join(_cell("td", name_class + " rpt-name", dress.get("name"), left, text=_e(part),
+                                     rowspan=rowspan, colspan=colspan if colspan and colspan > 1 else None)
+                               for (part, rowspan, colspan), left in zip(parts, lefts))
+            values = "".join(_cell("td", _aligned(value_class, cell, kind) + (" " + OWN if own[at] else ""),
+                                   dress.get("value"),
+                                   _colour(formats.get(raw), cell, own[at], baseline) if kind == "item" and
+                                   formats.get(raw) else scaled[at],
                                    _value(cell, name, columns[at] if at < len(columns) else ""))
                              for at, cell in enumerate(cells))
             body.append("<tr>%s%s</tr>" % (row_head, values))
     note = ('<p class="note">%s: %s</p>' % (_e(report_shape.word(spec, "left_out")), _e(", ".join(table["left_out"])))
             if table.get("left_out") else "")
-    return WRAP % ("<table><thead>%s</thead><tbody>%s</tbody></table>" % ("".join(out), "".join(body))) + note
+    # widths held by the columns themselves - a cell's max-width does not hold a table column (owner 10-24 «표 컬럼폭
+    # 100으로»): derive.report.sizes, a long text wraps
+    name_px, value_px, heads_at = sizes["name_px"], sizes["value_px"], max(depth, 1)
+    cols = "<colgroup>%s%s</colgroup>" % ('<col style="width:%gpx">' % name_px * heads_at,
+                                          '<col style="width:%gpx">' % value_px * len(columns))
+    return WRAP % ('<table style="table-layout:fixed;width:%gpx;font-size:%gpx">%s<thead>%s</thead><tbody>%s</tbody>'
+                   '</table>' % (name_px * heads_at + value_px * len(columns), sizes["font_px"], cols, "".join(out),
+                                 "".join(body))) + note
+
+
+def _aligned(cls, cell, kind):
+    """An info cell that says a number stands as the numbers do - right, tabular; its words stand left (lead 10-23)."""
+    from expression import number_of
+
+    return CELL if kind == "info" and number_of(cell.get("text")) is not None else cls
 
 
 def _value(cell, name, column):
@@ -207,18 +272,41 @@ def _images(embedded, spec) -> str:
     out = []
     for item, pictures in embedded.items():
         figures = "".join(
+            _stack(item, p) if len(p.get("layers") or ()) > 1 else
             '<figure><img src="%s" alt="%s on %s"><figcaption>%s</figcaption></figure>'
             % (p["src"], _e(item), _e(p["wafer"]), _e(p["wafer"])) if p.get("src") else
             '<figure><figcaption>%s - %s</figcaption></figure>' % (_e(p["wafer"]), _e(p.get("refused")))
             for p in pictures)
-        out.append("<h3>%s</h3><div class=\"gallery\">%s</div>" % (_e(item), figures))
-    return "".join(out)
+        # every patch one box of images.px, the picture fitted inside it - one grid, no ragged row (owner 10-24 «이미지
+        # 패치들 정렬 일정하게 해 · 지금 삐뚤빼뚤함»)
+        px = ((spec or {}).get("images") or {}).get("px", 320)
+        out.append("<h3>%s</h3><div class=\"gallery\" style=\"--px:%dpx\">%s</div>" % (_e(item), px, figures))
+    return "".join(out) + (STACK_SCRIPT if 'class="stack"' in "".join(out) else "")
+
+
+#: a chip's layers one figure - the wheel over it turns them (owner 10-24 «슬라이드쇼 느낌으로 각 이미지 패치»)
+STACK_SCRIPT = ("<script>document.querySelectorAll('figure.stack').forEach(function(f){"
+                "var im=f.querySelectorAll('img'),cap=f.querySelector('.layer'),i=0;"
+                "f.addEventListener('wheel',function(e){e.preventDefault();im[i].hidden=true;"
+                "i=(i+(e.deltaY>0?1:-1)+im.length)%im.length;im[i].hidden=false;"
+                "cap.textContent=im[i].dataset.layer+' ('+(i+1)+'/'+im.length+')';},{passive:false});});</script>")
+
+
+def _stack(item, picture):
+    layers = picture["layers"]
+    images = "".join('<img src="%s" alt="%s on %s" data-layer="%s"%s>' % (
+        p["src"], _e(item), _e(picture["wafer"]), _e(p.get("layer")), "" if at == 0 else " hidden")
+        for at, p in enumerate(layers))
+    return ('<figure class="stack" title="wheel: layers">%s<figcaption>%s &middot; <span class="layer">%s (1/%d)</span>'
+            '</figcaption></figure>' % (images, _e(picture["wafer"]), _e(layers[0].get("layer")), len(layers)))
 
 
 def _table(fill, tables, spec, lent=None):
     table = tables.get(fill)
-    return TABLES[fill](table, spec, lent) if table is not None and fill in TABLES else \
-        '<p class="note">%s</p>' % _e(report_shape.word(spec, "not_read") % fill)
+    if table is None or fill not in TABLES:
+        return '<p class="note">%s</p>' % _e(report_shape.word(spec, "not_read") % fill)
+    note = table.get("note") if isinstance(table, dict) else None
+    return TABLES[fill](table, spec, lent) + ('<p class="note">%s</p>' % _e(note) if note else "")
 
 
 def _text(slot, texts, spec):
@@ -240,7 +328,7 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
     show says so. `evidence`: the steps' lines, folded at the end."""
     spec = spec or {}
     folded = _evidence(evidence, spec) if evidence is not None else ""
-    layout, template = spec.get("layout") or (), spec.get("template")
+    layout, template = report_shape.layout(spec), spec.get("template")
     if isinstance(template, str) and template.strip():
         from chain import report_template
 
@@ -254,6 +342,8 @@ def page(title, meta, spec, tables, embedded, texts, evidence=None) -> str:
         filled = report_template.fill(template, contents)
         at = filled.lower().rfind("</body>")
         return filled[:at] + folded + filled[at:] if at >= 0 else filled + folded
+    # one under another, in layout's order (owner 10-23 «배치 그냥 원래대로 세로 나열해»); a table the page's width,
+    # wider ones scrolled inside it
     sections = []
     for slot in layout:
         kind = slot.get("kind")

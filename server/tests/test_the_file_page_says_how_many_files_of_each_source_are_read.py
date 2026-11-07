@@ -21,7 +21,7 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from database import models
+from database import crud, models
 from ingestion import checkpoint, reread
 from tests.test_an_external_source_reads_as_raws_does import TABLE, _csvs, _run, _settings
 
@@ -69,8 +69,8 @@ def test_the_tables_say_read_total_and_left_per_source(client, db_session, monke
     from utils import heartbeat
 
     monkeypatch.setattr(directory_watcher, "count_recount_seconds", lambda settings=None: 0.0)
-    sweep = {"state": "rested", "age_seconds": 4.0, "seconds": 1.5, "looked": 9, "already_read": 7, "dispatched": 2,
-             "why": {"changed": 1, "new": 1}}
+    sweep = {"state": "rested", "age_seconds": 4.0, "seconds": 1.5, "looked": 9, "already_read": 4, "dispatched": 2,
+             "why": {"changed": 1, "new": 1}, "before_switch_on": 3}
     laps = {directory_watcher.SWEEP_LAP_PREFIX + "insp@share": dict(sweep, table="insp", source=r"\\share\lots"),
             directory_watcher.SWEEP_LAP_PREFIX + "quiet@q": dict(sweep, table="quiet", source=r"D:\q", looked=0,
                                                                  dispatched=0, why={}),
@@ -91,6 +91,10 @@ def test_the_tables_say_read_total_and_left_per_source(client, db_session, monke
     tables = {t["table_name"]: t for t in said["data"]}
     got = {(table, s["source"]): [s["total"], s["read"], s["left_by_status"]]
            for table, t in tables.items() for s in t["sources"]}
+    # every declared storage has its line, read from or not (총괄 10-26: Pick files reaches it) - off when switched off
+    declared = {(table, "raws") for table in crud.TABLE_CONFIG}
+    assert declared <= set(got) and not any(s["off"] for t in said["data"] for s in t["sources"])
+    got = {k: v for k, v in got.items() if k not in declared or v != [0, 0, {}]}
     assert got == {
         ("insp", "raws"): [5, 1, {"SUCCESS": 1, "FAILED": 1, "PENDING_RETRY": 1, "PROCESSING": 1}],
         ("insp", r"\\share\lots"): [1, 1, {}],

@@ -245,8 +245,42 @@ def failure_cause(error_reason) -> str:
     「the line after Traceback」 - the recorded reason is not always a traceback.
     (Moved here from the chain worker so the state seat above reads the same sentence.)
     """
-    lines = [line.strip() for line in str(error_reason or "").splitlines() if line.strip()]
-    return lines[-1] if lines else "(no reason recorded)"
+    text = str(error_reason or "")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return "(no reason recorded)"
+    where = failure_place(text)
+    return lines[-1] + (" at %s:%s in %s" % where if where else "")
+
+
+_FRAME = None
+
+
+def failure_place(text):
+    """-> (file, line, function) of the traceback in `text` an operator opens, or None (no traceback): its innermost
+    frame in a mapper file - under a folder of the `mappers` package (`config_watcher._mapper_dirs`), join_fn/ with
+    them - else its innermost frame in the product (소유자 10-24 «딸랑 이거 나오는데 어쩌라는 거임»: a pandas error
+    inside the owner's mapper said no where). The file is said from the server folder when it is under it."""
+    import os
+    import re
+
+    import paths
+    from database import config_watcher
+
+    global _FRAME
+    _FRAME = _FRAME or re.compile(r'^\s*File "(?P<file>[^"]+)", line (?P<line>\d+), in (?P<function>.+?)\s*$',
+                                  re.MULTILINE)
+    last = text.rfind("Traceback (most recent call last):")
+    if last < 0:
+        return None
+    frames = [(os.path.normcase(os.path.abspath(m["file"])), m["file"], m["line"], m["function"])
+              for m in _FRAME.finditer(text, last) if os.path.isabs(m["file"])]   # not «<string>»
+    server = os.path.normcase(os.path.abspath(paths.SERVER_DIR))
+    for folders in (config_watcher._mapper_dirs(), (server,)):
+        for full, file, line, function in reversed(frames):
+            if any(full.startswith(folder + os.sep) for folder in folders):
+                return (os.path.relpath(full, server) if full.startswith(server + os.sep) else file), line, function
+    return None
 
 
 def mark_processed(event, status: str):

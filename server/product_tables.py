@@ -297,7 +297,7 @@ PRODUCT_TABLES = {
         ]
     }
     # [RETIRED 2026-10-23] report_request · report · report_step · report_wafer were declared here (owner 10-23
-    # «보조표가 너무 많아»): a report's results are three columns of the summary table its rule stands on, its steps
+    # «보조표가 너무 많아»): a report's results are three columns of the report table its rule stands on, its steps
     # the file's Evidence and the chain log. A site that installed them keeps them in its table_config until it
     # takes them out - nothing reads or writes them.
 }

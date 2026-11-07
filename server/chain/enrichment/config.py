@@ -737,10 +737,8 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     target_fields = raw.get("target_fields")
     if target_fields is None or target_fields == []:
         # 소유자 10-11 (총괄 ㄴ): a row per key that carries only its key and its aggregations
-        # is a decide too - nothing for a person to fill, so it is never in the queue.
-        if not raw.get("aggregations"):
-            return None, ("'target_fields' is empty, so 'aggregations' must be declared - "
-                          "a derived row with neither carries nothing but its key")
+        # is a decide too - nothing for a person to fill, so it is never in the queue. And one that carries only
+        # its key (소유자 10-23 「wafer, 보고서 파일 경로 이 두 개가 최종 출력」: a report table's row a wafer).
         target_fields = []
     elif not _is_str_list(target_fields):
         return None, "'target_fields' must be a list of column names"
@@ -1015,7 +1013,7 @@ def chain_rules_for(rule: dict) -> list:
     # The cell that lets ONE loader answer per-file counts (판정 293-b). The graph used
     # to keep a second reader so it could tell written rules from synthesized ones;
     # that reader was the 「같은 기능 두 경로」, and this cell is what replaces it.
-    origin = "synthesized:" + rule["name"]
+    origin = rule_shape.SYNTHESIZED + rule["name"]
     chain_rules.append({
         "name": dedup_name,
         "trigger_table": rule["source_table"],

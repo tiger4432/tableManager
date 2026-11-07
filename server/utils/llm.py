@@ -79,6 +79,15 @@ class LlmRefused(ValueError):
     """A call that gave no usable answer, said by name. Its sentence never carries the key."""
 
 
+class LlmNotAnObject(LlmRefused):
+    """An answer came and holds no JSON object - `answer` its first 200 characters, the key masked: a caller may ask
+    once more with it (소유자 10-26 «응답이 json 이 아니어서 멈추는 경우»). A call with no answer is `LlmCallFailed`."""
+
+    def __init__(self, sentence, answer=""):
+        super().__init__(sentence)
+        self.answer = answer
+
+
 class LlmCallFailed(LlmRefused):
     """The call itself failed - no answer came (connection, time limit, 5xx, 408, a 429), past its retries, or a 429
     asking to wait more than the window. Asking text by text would ask a gateway that is not answering (총괄 10-13 ②)."""
@@ -196,18 +205,40 @@ def _body(text):
 
 
 def _object(content, key):
-    """The answer as a JSON object. A fenced block (```json ... ```) is read as its body."""
+    """The answer as a JSON object. A fenced block (```json ... ```) is read as its body; an answer with text around its
+    JSON - a sentence before it, two fences - as the first whole {...} object in it (소유자 10-26 안 ㄱ)."""
     body = str(content or "").strip()
     if body.startswith("```"):
         body = body.split("\n", 1)[1] if "\n" in body else ""
         body = body.rsplit("```", 1)[0]
+    said = _masked(body[:200], key)
     try:
         parsed = json.loads(body)
     except ValueError:
-        raise LlmRefused("the answer is not JSON: %s" % _masked(body[:200], key)) from None
+        parsed = _first_object(body)
+        if parsed is None:
+            raise LlmNotAnObject("the answer is not JSON: %s" % said, said) from None
     if not isinstance(parsed, dict):
-        raise LlmRefused("the answer is JSON but not an object: %s" % type(parsed).__name__)
+        raise LlmNotAnObject("the answer is JSON but not an object: %s" % type(parsed).__name__, said)
     return parsed
+
+
+def _first_object(text):
+    """The first whole {...} object in `text`, or None - its end found by the JSON reader, so a brace in a string ends
+    nothing. Said once, with what was left around it."""
+    decoder = json.JSONDecoder()
+    at = text.find("{")
+    while at != -1:
+        try:
+            parsed, end = decoder.raw_decode(text, at)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            logger.warning("[LLM] answer had text around its JSON - read the object (%d character(s) left)",
+                           len(text) - (end - at))
+            return parsed
+        at = text.find("{", at + 1)
+    return None
 
 
 def _why(exc, proxy):
@@ -288,8 +319,8 @@ USAGE_CELLS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
 
 def ask_json(prompt, *, system=None, usage=None):
-    """One call -> the JSON object the model answered. Refused by name when the file refuses, the
-    call fails or the answer is not a JSON object (`_refused` says which class). `from None` keeps the
+    """One call -> the JSON object the model answered (the first one, in text around it). Refused by name when the
+    file refuses, the call fails (`_refused` says which class) or the answer holds no JSON object (`LlmNotAnObject`). `from None` keeps the
     client's own exception - which may quote the key - out of every traceback. No answer (`_no_answer`) and a 429
     are tried again after CALL_RETRY_WAITS (a 429 after its Retry-After) while the next try starts within
     CALL_RETRY_WINDOW_S of the first failure - a gateway back within about 55 s passes; a longer stop, or a

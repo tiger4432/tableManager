@@ -90,7 +90,7 @@ href="file:///C:/Users/me/AppData/Local/Temp/msohtmlclip1/01/clip_themedata.thmx
 </html>
 """
 SPEC = {"layout": [{"kind": "text", "slot": "summary"}, {"kind": "table", "fill": "yield_by"}], "template": EXCEL}
-TABLE = {"groups": [("E1", ["W1", "W2"])],
+TABLE = {"groups": [("E1", ["W1", "W2"])], "heads": [["E1", "W1"], ["E1", "W2"]], "own": [True, True],
          "rows": [("particle", [{"text": "3.0% (3/100)"}, {"text": "5.0% (10/200)"}])]}
 EMBEDDED = {"particle": [{"wafer": "W1", "src": "data:image/png;base64,AAAA"}]}
 
@@ -148,9 +148,9 @@ def test_the_save_names_the_dropped_pictures_and_refuses_by_the_template(monkeyp
                                                                        "st": "string", "fl": "string", "why": "string"}})
     report = {"wafer": {"table": "w", "key": "k"}, "summary": {"table": "s", "wafer": "k", "item": "i", "rate": "f",
                                                                 "rate_scale": 1},
-              "results": {"state": "st", "file": "fl", "reason": "why"}}
+              "results": {"file": "fl"}}
     report.update(copy.deepcopy(SPEC))
-    declaration = {"name": "rep", "on": {"table": "s"}, "into": {"table": "s"},
+    declaration = {"name": "rep", "on": {"table": "w"}, "into": {"table": "w"},
                    "derive": {"kind": "report", "report": report}}
     rules, refusal, notes = rule_shape.expand_declaration(declaration)
     assert refusal is None and len(rules) == 1

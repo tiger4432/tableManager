@@ -1245,7 +1245,7 @@ No effect`;
         const box = action === 'form-name'
           ? root.querySelector(`.oe-form-new-id[data-for="${path}"]`) : null;
         const added = addMember(raw, path, node, state.authoringSchema?.skeleton?.defs,
-                                box ? box.value : '', state.authoringSchema);
+                                box ? box.value : '', state.authoringSchema, target.dataset.branch || '');
         if (!added) return;
         const { born, seed: empty } = added;
         dispatch({ type: 'EDITOR_CHANGED', text: JSON.stringify(added.document, null, 2) });

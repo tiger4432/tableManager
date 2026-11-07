@@ -233,7 +233,8 @@ GOOD = {"run_uid": "R|1", "base_wafer_id": "BW-1", "base_x": 1.0, "base_y": 2.0,
 
 def test_a_blank_key_column_is_refused_counted_and_named(caplog):
     _capture(caplog)
-    kept, report = vsf.screen(VOID, [GOOD, dict(GOOD, inchip_x=None)],
+    # every key part blank - a blank part among filled ones is a part (총괄 242f4a43a)
+    kept, report = vsf.screen(VOID, [GOOD, dict(GOOD, run_uid=None, inchip_x=None, inchip_y=None)],
                               source="scan.csv")
 
     assert len(kept) == 1 and report["refused_rows"] == 1
@@ -288,7 +289,7 @@ def test_refusal_detail_is_capped_but_the_count_never_is(caplog):
     able to grow the report without limit - but the COUNT is the operator's
     actual question and is never capped."""
     _capture(caplog)
-    many = [dict(GOOD, inchip_x=None, inchip_y=float(i)) for i in range(60)]
+    many = [dict(GOOD, run_uid=None, inchip_x=None, inchip_y=None, radius_x=float(i)) for i in range(60)]
     _kept, report = vsf.screen(VOID, many)
     assert report["refused_rows"] == 60
     assert len(report["rows"]) == vsf.MAX_REFUSAL_ROWS

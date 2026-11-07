@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 
 logger = logging.getLogger(__name__)
 _SOURCES, _SOURCES_LOCK = {}, threading.Lock()      # the validated sources this process holds - see validated_sources
+_HANDS, _HANDS_LOCK = {}, threading.Lock()          # a glob's Read these, handed off the request - see hand_glob_later
+KEPT_HANDS = 20     # jobs kept, the newest; an older finished one is let go at a new one - each holds its ids (총괄 10-26)
 
 #: The state that puts a row in the watcher's hands.
 REREAD_STATUS = "PENDING_RETRY"
@@ -57,6 +60,18 @@ NOT_READING = ("display_columns", "search_columns", "source_priority")
 #: Each table's last reading, kept across the watcher's restarts beside the scheduler's status file - so a plugin fixed
 #: while the watcher was down still hands its table's failed files at the start (lead 10-20).
 READING_STAMPS_FILENAME = "watcher_reading_stamps.json"
+#: Each external source's switch-on time beside them (소유자 10-26 «활성화하였을 때 그 시점 이후로 새로 들어오는 거만 자동으로
+#: 받고 기존 거는 수동»): {source_id: epoch seconds, or None - on before it was kept, no cut} (`stamp_switched_on`).
+SWITCHED_ON_FILENAME = "watcher_switched_on.json"
+#: A storage's raws folder as the tables screen names it (the checklist rows' `source` for raws).
+RAWS = "raws"
+#: Files one glob list answers unless the request says (owner 10-26: a storage of 100,000 files) - the count is of all.
+GLOB_LIST_LIMIT = 5000
+#: A glob's file states beyond the checklist's (the screen's statusWord draws them): no row names the file, and none
+#: does because the source was switched on after the file was modified (12f46f32f - those are read by hand).
+NOT_READ, BEFORE_SWITCH_ON = "NOT_READ", "BEFORE_SWITCH_ON"
+#: The states a handed file is still waiting in.
+WAITING = (REREAD_STATUS, "PENDING")
 
 
 def max_files():
@@ -334,17 +349,21 @@ def reading_of(table, entry, sources, scripts_dir):
     return parts
 
 
-def uncheck(db, table=None, paths=None, folders=None, apply=True):
+def uncheck(db, table=None, paths=None, folders=None, apply=True, keep_by_hand=False):
     """The checklist's keys let go (소유자 10-21): the rows of `table` (any table when None) - of `paths`, or under
     `folders` (as `_under_folder` reads them) - lose their stamp, so the sweeps read those files again where they look.
-    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it. -> rows unchecked
-    (`apply` False: the rows it would let go, counted, none touched)."""
+    A row the retry door holds (`REREAD_STATUS`) keeps its stamp: the door reads it and stamps it; with `keep_by_hand`
+    a failed row too (`checkpoint.BY_HAND_ONLY` - read again only by hand). -> rows unchecked (`apply` False: the rows
+    it would let go, counted, none touched)."""
     from sqlalchemy import literal, or_
 
     from database import models
+    from ingestion import checkpoint
 
     model = models.FileChecklist
     query = db.query(model).filter(model.file_mtime.isnot(None), model.status != REREAD_STATUS)
+    if keep_by_hand:
+        query = query.filter(model.status.notin_(checkpoint.BY_HAND_ONLY))
     if table is not None:
         query = query.filter(model.table_name == table)
     if paths is not None:
@@ -360,8 +379,9 @@ def uncheck(db, table=None, paths=None, folders=None, apply=True):
 
 def hand_on_a_changed_reading(db, table, before, now, folders=()):
     """The table's reading changed (소유자 10-21 「테이블 스크립트 바뀌면 그 테이블 키만 체크 해제」): its failed files are
-    handed to the retry door (`mark_for_reread`) - those the declaration takes now (`taken_now`; the rest are
-    counted, not handed) - whatever folder holds them, and its read files still in place - under
+    NOT handed and keep their stamp - a failed file is read again only by hand, Retry · Read now · Read all again
+    (`checkpoint.BY_HAND_ONLY`, 소유자 10-24 «에러파일 자동으로 읽는건 안끄냐» · «err에서 삭제된 파일도 읽을라 그러네»),
+    and its read files still in place - under
     `folders`, the ones its sweeps look at - are unchecked (`uncheck`); a file moved to archives/ is not (소유자 10-21
     「옮겨진 건 하지 마」). Only its table_config changed: the read files stay checked and are counted - Read all again
     on the file page applies the change to them (소유자 10-23 「다로 해」). No cap: the watcher reads at its own pace.
@@ -369,39 +389,37 @@ def hand_on_a_changed_reading(db, table, before, now, folders=()):
     changed = sorted(part for part in set(before) | set(now) if before.get(part) != now.get(part))
     if not changed:
         return None
-    kept, not_taken, _names = taken_now(select_logs(db, RETRY_STATUSES, table=table))
-    logs = [log for log, _rel in kept]
-    mark_for_reread(db, logs)
     declaration_only = changed == ["table_config"]
-    read = uncheck(db, table=table, folders=list(folders), apply=not declaration_only) if folders else 0
+    read = (uncheck(db, table=table, folders=list(folders), apply=not declaration_only, keep_by_hand=True)
+            if folders else 0)
     said = ("%d read file(s) kept as read (Read all again on the file page applies the change to them)"
             if declaration_only else "%d read file(s) unchecked") % read
-    return ("[Watcher] %s: its reading changed (%s) - %s, %d failed file(s) handed again%s"
-            % (table, ", ".join(changed), said, len(logs),
-               "".join(" · not taken now: %s %d" % item for item in not_taken.items())))
+    return ("[Watcher] %s: its reading changed (%s) - %s, failed files are not read again by themselves (Retry on "
+            "the file page)" % (table, ", ".join(changed), said))
 
 
-def load_reading_stamps():
-    """{table: reading} as last kept, {} when there is none or it cannot be read."""
+def load_reading_stamps(filename=READING_STAMPS_FILENAME):
+    """{table: reading} as last kept, {} when there is none or it cannot be read. `filename`: another dict the watcher
+    keeps beside it (`SWITCHED_ON_FILENAME`)."""
     import json
 
     import paths
 
     try:
-        with open(paths.config_path(READING_STAMPS_FILENAME), encoding="utf-8") as handle:
+        with open(paths.config_path(filename), encoding="utf-8") as handle:
             kept = json.load(handle)
         return kept if isinstance(kept, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
-def keep_reading_stamps(stamps):
+def keep_reading_stamps(stamps, filename=READING_STAMPS_FILENAME):
     """Write {table: reading} whole (a temporary file, then a replace)."""
     import json
 
     import paths
 
-    path = paths.config_path(READING_STAMPS_FILENAME)
+    path = paths.config_path(filename)
     with open(path + ".tmp", "w", encoding="utf-8") as handle:
         json.dump(stamps, handle, ensure_ascii=False, sort_keys=True)
     os.replace(path + ".tmp", path)
@@ -409,6 +427,10 @@ def keep_reading_stamps(stamps):
 
 class RereadRefused(ValueError):
     """A re-read the door will not hand over - the sentence says why and what to do."""
+
+
+class StorageUnknown(RereadRefused):
+    """No such table or storage - the sentence names what there is."""
 
 
 def validated_sources():
@@ -444,7 +466,7 @@ def table_sources(table):
 
     config, specs = validated_sources()
     raws = os.path.abspath(os.path.join(resolve_workspace_root(paths.WORKSPACE_DIR, table, config), "raws"))
-    return raws, [spec for spec in specs if spec["table_name"] == table]
+    return raws, [spec for spec in specs if spec["table_name"] == table and not spec.get("off")]
 
 
 def select_files(db, table, folder, limit=None):
@@ -515,16 +537,25 @@ def _newest_rows_of(db, table, files):
     return rows
 
 
-def stand_rows(db, table, picked):
+def stand_rows(db, table, picked, commit=True):
     """A checklist row for each picked file the table has none for - PENDING_RETRY at once, stood by the re-read
-    (`STOOD_BY_REREAD` - «cancel» deletes it). -> (the table's rows the picked files had, the rows stood)."""
+    (`STOOD_BY_REREAD` - «cancel» deletes it); `commit` False leaves the commit to the caller. -> (the table's rows the
+    picked files had, the rows stood)."""
     from ingestion import checkpoint
 
     logs = [log for log, _rel, _path in picked if log is not None]
     stood = [checkpoint.note_file(db, table, path, status=REREAD_STATUS, status_before=STOOD_BY_REREAD)
              for _log, _rel, path in (item for item in picked if item[0] is None)]
-    db.commit()
+    if commit:
+        db.commit()
     return logs, stood
+
+
+def _unquoted(path) -> str:
+    """A path as written, its surrounding quotes off - Explorer's «Copy as path» writes "\\\\server\\share\\a.csv"
+    (소유자 10-26 «그냥 디스크에 없대»)."""
+    text = str(path).strip()
+    return text[1:-1].strip() if len(text) > 1 and text[0] == text[-1] and text[0] in "\"'" else text
 
 
 def read_now_owners(db, path):
@@ -535,7 +566,7 @@ def read_now_owners(db, path):
     from directory_watcher import _safe_relative_path, _written_relative_path, one_sweep, why_not_taken
     from ingestion import checkpoint
 
-    path = os.path.abspath(path)
+    path = os.path.abspath(_unquoted(path))
     config, specs = validated_sources()
     on_disk = os.path.isfile(path)
     owners = []
@@ -562,14 +593,19 @@ def read_now(db, path, table=None, apply=False):
     (`mark_for_reread`) carrying the source it is read under. Refused (RereadRefused) when the file is not on the disk,
     nothing reads its folder, or more than one table does and none is named. -> the owners' answer, with "owner" and,
     applied, "log_id"."""
-    from sqlalchemy import literal
-
-    from database import models
-
     said = read_now_owners(db, path)
     path = said["path"]
     if not said["on_disk"]:
-        raise RereadRefused(f"{path} is not on the disk this server sees - check the path")
+        from chain_bindings import GLOB_CHARS
+
+        # what it is, when it is not a file (소유자 10-26 «공유폴더 검색 못 하는데 · 그냥 디스크에 없대»)
+        if any(char in path for char in GLOB_CHARS):
+            raise RereadRefused(f"{path} is a glob - use Pick files on its storage line")
+        if os.path.isdir(path):
+            raise RereadRefused(f"{path} is a folder - Read now takes one file; list a folder's files with Pick files "
+                                "on its storage line")
+        raise RereadRefused(f"{path} is not on the disk this server sees - check the path (a mapped drive letter is "
+                            "per Windows session - try the \\\\server\\share path)")
     owners = [owner for owner in said["owners"] if table is None or owner["table"] == table]
     if not owners:
         raise RereadRefused(
@@ -588,19 +624,258 @@ def read_now(db, path, table=None, apply=False):
     if "outside the root" in owner["why_not"]:
         raise RereadRefused(f"{path} is outside the root of {owner['source']} by its real path (a junction or link "
                             "leads out) - read it from where it really is")
-    model = models.FileChecklist
-    row = db.query(model).filter(model.table_name == owner["table"],
-                                 model.path_key == models.path_key(literal(path))).one_or_none()
-    if row is not None and row.status == "PENDING":
-        raise RereadRefused(f"{path} is being read now (checklist row #{row.id})")
-    if row is None:
-        _logs, (row,) = stand_rows(db, owner["table"], [(None, None, path)])
-    else:
-        mark_for_reread(db, [row])
-    row.source = owner["source"]
-    db.commit()
-    said["log_id"] = row.id
+    handed = hand_files(db, owner["table"], owner["source"], [path])
+    if handed["being_read"]:
+        raise RereadRefused("%s is being read now (checklist row #%d)" % handed["being_read"][0])
+    said["log_id"] = handed["ids"][0]
     return said
+
+
+def hand_files(db, table, source, files):
+    """Hand the files `files` to the Retry door under (table, source) - every read a person asks for (Read now, a glob's
+    Read these; 총괄 aaf19d0ca, 소유자 10-26 «읽은 거 무관하게»): each file's row marked (`mark_for_reread`), or one stood
+    (`stand_rows`) for a file the table has none for, every row carrying the source it is read under. A file being
+    read now (PENDING) is left. The watcher's retry poller reads them at its pace (`max_files` a turn). A page of
+    files at a time, one commit a page: a commit expires the session's rows, and a row touched after it is loaded
+    again one by one (총괄 10-26: 100,000 files took 168 s).
+    -> {"ids": the rows handed, "being_read": [(file, its row id)]}."""
+    ids, being_read = [], []
+    for start in range(0, len(files), MARK_PAGE):
+        page = files[start:start + MARK_PAGE]
+        rows = _newest_rows_of(db, table, page)
+        marked, standing = [], []
+        for path in page:
+            row = rows.get(os.path.normcase(os.path.abspath(path)))
+            if row is None:
+                standing.append((None, None, path))
+            elif row.status == "PENDING":
+                being_read.append((path, row.id))
+            else:
+                marked.append(row)
+        mark_for_reread(db, marked, commit=False)
+        _logs, stood = stand_rows(db, table, standing, commit=False)
+        for row in marked + stood:
+            row.source = source
+        db.flush()
+        ids += [row.id for row in marked + stood]
+        db.commit()
+    return {"ids": ids, "being_read": being_read}
+
+
+def glob_refusal(pattern):
+    """Why `pattern` is not a glob below a storage's root - None when it is (소유자 10-26: the root «밑»만)."""
+    text = str(pattern or "").strip()
+    spelled = text.replace("\\", "/")
+    if not text:
+        return "the glob names no file - e.g. 2026-10/*.csv or **/LOT123*"
+    if spelled.startswith("/") or re.match(r"^[A-Za-z]:", spelled):
+        return "%s is an absolute path - a glob is a path below the storage's root, e.g. 2026-10/*.csv" % text
+    if ".." in spelled.split("/"):
+        return "%s goes above the storage's root (..) - a glob is a path below it" % text
+    return None
+
+
+def storage_of(table, source):
+    """(the root, its external source spec or None) of the storage the tables screen names (table, source): the table's
+    raws folder (`RAWS`) or one of its external sources by its root - one switched off too (7328c8d51: off stops only
+    the automatic reads). StorageUnknown when there is none such."""
+    from database import crud
+
+    if table not in crud.TABLE_CONFIG:
+        raise StorageUnknown(f"table {table!r} is not declared")
+    raws, _on = table_sources(table)
+    if source == RAWS:
+        return raws, None
+    _config, specs = validated_sources()
+    wanted = os.path.normcase(os.path.abspath(str(source or "")))
+    for spec in specs:
+        if spec["table_name"] == table and os.path.normcase(os.path.abspath(spec["root"])) == wanted:
+            return spec["root"], spec
+    raise StorageUnknown(f"{table} has no storage {source} - {RAWS} or the root of one of its external sources")
+
+
+def glob_matched(table, source, pattern):
+    """(root, its source spec or None, [(rel, path)] sorted, files walked) - the files below the storage (table, source)
+    the glob `pattern` takes: the watcher's glob (`_glob_regex`), its folders pruned as a source's sweep prunes them.
+    RereadRefused for a glob that leaves the root, StorageUnknown for no such storage."""
+    from directory_watcher import _glob_regex, _glob_segments, _segments_may_go_on
+
+    refused = glob_refusal(pattern)
+    if refused:
+        raise RereadRefused(refused)
+    root, spec = storage_of(table, source)
+    pattern = str(pattern).strip().replace("\\", "/")
+    regex, segments = _glob_regex(pattern), _glob_segments(pattern)
+    matched, walked = [], 0
+    for top, dirs, names in os.walk(root):
+        rel_dir = os.path.relpath(top, root).replace(os.sep, "/")
+        folders = () if rel_dir == os.curdir else tuple(rel_dir.split("/"))
+        dirs[:] = [d for d in dirs if _segments_may_go_on(segments, folders + (d,))]
+        for name in names:
+            walked += 1
+            rel = "/".join(folders + (name,))
+            if regex.fullmatch(rel):
+                matched.append((rel, os.path.join(top, name)))
+    return root, spec, sorted(matched), walked
+
+
+def list_glob(db, table, source, pattern, limit=GLOB_LIST_LIMIT):
+    """The files below the storage (table, source) the glob `pattern` takes (`glob_matched`) - read or not (소유자
+    10-26), each file's state - its checklist row's,
+    NOT_READ, or BEFORE_SWITCH_ON (no row, modified before the source was switched on). -> {"root", "matched", "limit",
+    "truncated", "by_status" (every match), "files" (the first `limit` by path: path · rel · modified_at · status ·
+    read_at - its newest read, None when never read),
+    "walked", "seconds"}."""
+    from datetime import datetime
+
+    began = time.perf_counter()
+    root, spec, matched, walked = glob_matched(table, source, pattern)
+    rows = _newest_rows_of(db, table, [path for _rel, path in matched])
+    switched_on = load_reading_stamps(SWITCHED_ON_FILENAME).get(spec["source_id"]) if spec else None
+    shown_keys = (os.path.normcase(os.path.abspath(path)) for _rel, path in matched[:limit])
+    reads = _reads_of(db, [rows[key].log_id for key in shown_keys if key in rows])
+    by_status, files = {}, []
+    for at, (rel, path) in enumerate(matched):
+        row = rows.get(os.path.normcase(os.path.abspath(path)))
+        shown = at < limit
+        mtime = None
+        if shown or (row is None and switched_on is not None):
+            try:
+                mtime = os.stat(path).st_mtime
+            except OSError:
+                pass
+        state = (row.status if row is not None else BEFORE_SWITCH_ON
+                 if switched_on is not None and mtime is not None and mtime < switched_on else NOT_READ)
+        by_status[state] = by_status.get(state, 0) + 1
+        if shown:
+            files.append({"path": path, "rel": rel, "status": state, "modified_at": None if mtime is None else
+                          datetime.fromtimestamp(mtime).astimezone().isoformat(timespec="seconds"),
+                          "read_at": reads.get(row.log_id, (None, None))[0] if row is not None else None})
+    seconds = round(time.perf_counter() - began, 3)
+    logger.info("[Reread] glob %s under %s for %s: %d of %d file(s) matched - %.1f s", pattern, root, table,
+                len(matched), walked, seconds)
+    return {"root": root, "matched": len(matched), "limit": limit, "truncated": len(matched) > limit,
+            "by_status": dict(sorted(by_status.items())), "files": files, "walked": walked, "seconds": seconds}
+
+
+def _reads_of(db, log_ids):
+    """{a checklist row's log_id: (its newest read's time ISO, its failure's reason - the record's one line, the file
+    screen's «reason»)} - the read record (file_ingestion_logs) the row points at; a row never read has no entry."""
+    from database import models
+
+    record = models.FileIngestionLog
+    ids, out = sorted({i for i in log_ids if i is not None}), {}
+    for start in range(0, len(ids), MARK_PAGE):
+        for log_id, read_at, reason in db.query(record.id, record.created_at, record.reason).filter(
+                record.id.in_(ids[start:start + MARK_PAGE])):
+            out[log_id] = (read_at.isoformat() if read_at else None, reason)
+    return out
+
+
+def hand_glob_later(table, source, pattern, chosen=None):
+    """A storage's glob handed to the watcher off the request (총괄 10-26 «요청 답 1 s 안» · CLAUDE.md «요청 경로 인라인
+    금지»): its refusals said now (RereadRefused · StorageUnknown); the walk (`glob_matched`, the `chosen` files of it)
+    and the hand-off (`hand_files`, a page a commit) in a thread of this process, the watcher's re-read stop of
+    (table, source) let go when the first page is handed. -> its job id (`hand_job`)."""
+    import uuid
+
+    refused = glob_refusal(pattern)
+    if refused:
+        raise RereadRefused(refused)
+    storage_of(table, source)
+    job_id = uuid.uuid4().hex[:12]
+    job = {"table": table, "source": source, "pattern": pattern, "matched": None, "ids": [], "being_read": 0,
+           "done": False, "failed": None}
+    with _HANDS_LOCK:
+        for key in [key for key, held in _HANDS.items() if held["done"]][:max(0, len(_HANDS) + 1 - KEPT_HANDS)]:
+            del _HANDS[key]
+        _HANDS[job_id] = job
+    threading.Thread(target=_hand_glob, args=(job, chosen), name="glob-hand", daemon=True).start()
+    return job_id
+
+
+def _hand_glob(job, chosen):
+    """`hand_glob_later`'s thread: its own session; a failure is said on its job and one line."""
+    from database.database import SessionLocal
+    from runtime import system_reload
+
+    db = SessionLocal()
+    try:
+        _root, _spec, matched, _walked = glob_matched(job["table"], job["source"], job["pattern"])
+        files = [path for _rel, path in matched]
+        if chosen is not None:
+            wanted = {os.path.normcase(os.path.abspath(str(path))) for path in chosen}
+            files = [path for path in files if os.path.normcase(os.path.abspath(path)) in wanted]
+        with _HANDS_LOCK:
+            job["matched"] = len(files)
+        for start in range(0, len(files), MARK_PAGE):
+            handed = hand_files(db, job["table"], job["source"], files[start:start + MARK_PAGE])
+            if handed["ids"] and not job["ids"]:
+                # its (table, source) re-read stop let go by the watcher (system_reload.SCOPE_REREAD_RELEASED)
+                system_reload.publish_reload(db, scope=system_reload.SCOPE_REREAD_RELEASED,
+                                             pairs=[(job["table"], job["source"])])
+            with _HANDS_LOCK:
+                job["ids"] += handed["ids"]
+                job["being_read"] += len(handed["being_read"])
+        logger.info("[Reread] glob %s under %s for %s: %d of %d file(s) handed to the watcher", job["pattern"],
+                    job["source"], job["table"], len(job["ids"]), len(files))
+    except Exception as exc:                                    # noqa: BLE001 - said on its job and its line
+        said = str(exc).strip()
+        with _HANDS_LOCK:
+            job["failed"] = "%s: %s" % (type(exc).__name__, said.splitlines()[0] if said else "")
+        logger.error("[Reread] glob %s under %s for %s was not handed: %s", job["pattern"], job["source"],
+                     job["table"], job["failed"])
+    finally:
+        with _HANDS_LOCK:
+            job["done"] = True
+        db.close()
+
+
+def hand_job(job_id):
+    """A `hand_glob_later` job as it stands - a copy: table · source · pattern · matched (None until walked) · ids ·
+    being_read · done · failed -, or None (none such in this process)."""
+    with _HANDS_LOCK:
+        job = _HANDS.get(str(job_id))
+        return None if job is None else dict(job, ids=list(job["ids"]))
+
+
+def left_of(db, ids, paths=None):
+    """The handed rows `ids` by state - what a glob's Read these has left, no walk: {"handed", "left" (waiting),
+    "read" (SUCCESS), "failed" (FAILED), "other", "files": [{id · path · status · read_at (its newest read) ·
+    error (a FAILED row's reason)}] - of `paths` only when given (the rows a screen shows)}. The counts are SQL's (a
+    count a state, a page of ids at a time): a job of 100,000 rows was fetched whole each beat (총괄 10-26)."""
+    from sqlalchemy import func, literal
+
+    from database import models
+
+    model = models.FileChecklist
+    out = {"handed": 0, "left": 0, "read": 0, "failed": 0, "other": 0}
+    ids = sorted({int(i) for i in ids})
+    for start in range(0, len(ids), MARK_PAGE):
+        for state, n in db.query(model.status, func.count()).filter(
+                model.id.in_(ids[start:start + MARK_PAGE])).group_by(model.status):
+            key = ("left" if state in WAITING else "read" if state == "SUCCESS" else "failed" if state == "FAILED"
+                   else "other")
+            out["handed"] += n
+            out[key] += n
+    columns = (model.id, model.filepath, model.status, model.log_id)
+    if paths is None:
+        found = [row for start in range(0, len(ids), MARK_PAGE)
+                 for row in db.query(*columns).filter(model.id.in_(ids[start:start + MARK_PAGE]))]
+    else:
+        handed = set(ids)
+        keys = [models.path_key(literal(str(path))) for path in paths]
+        found = [row for start in range(0, len(keys), MARK_PAGE)
+                 for row in db.query(*columns).filter(model.path_key.in_(keys[start:start + MARK_PAGE]))
+                 if row[0] in handed]
+    reads = _reads_of(db, [log_id for _id, _path, _state, log_id in found])
+    files = []
+    for row_id, path, state, log_id in found:
+        read_at, error = reads.get(log_id, (None, None))
+        files.append({"id": row_id, "path": path, "status": state, "read_at": read_at,
+                      "error": error if state == "FAILED" else None})
+    out["files"] = files
+    return out
 
 
 def top_folder(rel):
@@ -636,9 +911,10 @@ def why_handed(row):
             else checkpoint.WHY_RETRY)
 
 
-def mark_for_reread(db, logs, page=MARK_PAGE):
-    """Hand the checklist rows `logs` to the watcher: PENDING_RETRY, a page a commit, each row's state before it kept
-    on it (`status_before` - a row already waiting keeps the state it had first). -> [(id, the state it had)]."""
+def mark_for_reread(db, logs, page=MARK_PAGE, commit=True):
+    """Hand the checklist rows `logs` to the watcher: PENDING_RETRY, a page a commit (`commit` False: none - the caller
+    commits), each row's state before it kept on it (`status_before` - a row already waiting keeps the state it had
+    first). -> [(id, the state it had)]."""
     marked = []
     for start in range(0, len(logs), page):
         for log in logs[start:start + page]:
@@ -646,7 +922,8 @@ def mark_for_reread(db, logs, page=MARK_PAGE):
             if log.status != REREAD_STATUS or log.status_before is None:
                 log.status_before = log.status
             log.status = REREAD_STATUS
-        db.commit()
+        if commit:
+            db.commit()
     return marked
 
 

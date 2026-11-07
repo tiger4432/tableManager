@@ -289,8 +289,8 @@ def as_chain_rule(internal: dict) -> dict:
         if internal.get(KEY_CELL):
             out[KEY_CELL] = dict(internal[KEY_CELL])
     if derive.get("kind") == "report" and "table" in into:
-        # the report's settings ride as its mapper's arguments; it writes its results into the summary rows it stands
-        # on, a report a wafer of the rows handed (owner 10-23)
+        # the report's settings ride as its mapper's arguments; it writes its results into the report table rows it
+        # stands on, a report a wafer of the rows handed (owner 10-23 «리포트용 표가 따로»)
         out["mapper"] = report_shape.REPORT_MAPPER
         out["params"] = dict(derive.get("report") or {})
         # the group's rows in one call, so a wafer's rows make one report (판정 506, as the join's)
@@ -449,6 +449,17 @@ COMPANION_SUFFIX = ":target"
 #: A permanent warning is how a real one stops being read, and two spellings of the name is
 #: how only one of them gets fixed.
 COMPANION_CELL = chain_bindings.COMPANION_CELL_NAME
+
+
+#: `origin` of a rule the loader stands from a declaration under other names - «synthesized:<declaration>» (a decide's
+#: two halves, `enrichment.config.chain_rules_for`). One spelling: written there, read by `stood_for`.
+SYNTHESIZED = "synthesized:"
+
+
+def stood_for(rule: dict) -> str:
+    """The declaration a rule was stood from under another name (its `origin`), or "" - a rule named as declared."""
+    origin = str((rule or {}).get("origin") or "")
+    return origin[len(SYNTHESIZED):] if origin.startswith(SYNTHESIZED) else ""
 
 
 def declaration_of(rule: dict) -> str:
@@ -687,6 +698,16 @@ def unread_cells(declaration: dict) -> list:
     return [(where, cells) for where, cells in (("top-level", top), ("derive", under)) if cells]
 
 
+def _report_home(declaration, cells) -> str:
+    """A report's cell written outside `derive.report` - where it is read (lead 10-24: an ops layout written beside
+    derive.report was not read and the file came out empty)."""
+    derive = declaration.get("derive") or {}
+    if derive.get("kind") != "report" and not isinstance(derive.get("report"), dict):
+        return ""
+    home = [cell for cell in cells if cell in report_shape.REPORT_CELLS]
+    return " %s is read under derive.report." % ", ".join(home) if home else ""
+
+
 def flat_cell_notes(rule) -> list:
     """The loader's 「still written flat」 line for one rule (`chain_bindings.rule_warnings`), as a note - said where
     the other cells a rule does not read are said, so the save answers it too (총괄 10-11 ③)."""
@@ -758,7 +779,8 @@ def expand_declaration(declaration, table_config=None,
     #    return below carries them, so the save's refusal and the loader's line name what it does not read.
     unified = isinstance(declaration, dict) and isinstance(declaration.get("derive"), dict)
     name = declaration.get("name") if isinstance(declaration, dict) else None
-    unread = ["%s: %s cell this product does not read \u2014 %s." % (name, where, ", ".join(cells))
+    unread = ["%s: %s cell this product does not read \u2014 %s.%s" % (name, where, ", ".join(cells),
+                                                                      _report_home(declaration, cells))
               for where, cells in unread_cells(declaration)] if unified else flat_cell_notes(declaration)
     flags = chain_bindings.flag_refusals(declaration)
     if flags:

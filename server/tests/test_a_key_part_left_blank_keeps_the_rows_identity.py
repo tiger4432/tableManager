@@ -3,8 +3,9 @@ whether as `business_key_val` or as the key column (`run_uid` in the updates). T
 it, so the row was found by nothing (B's inspection_run rows). An EXISTING row whose key part is blanked loses its key
 - a61d32f4f, kept: test_a_composite_key_is_rebuilt_alike_with_or_without_a_key_column.py «part blanked».
 
-A file row with a blank key part is the catalogue's `null_policy` (skipped by the standard parser, or filled `nokey`)
-- `test_a_blank_key_is_filled_from_the_file_and_its_row.py`."""
+A part the write does not CARRY is what this measures; a part carried BLANK among filled ones composes blank and the
+assembled key wins over a given one (총괄 242f4a43a ㄱ2 - `test_a_blank_key_part_is_one_key_and_old_rows_are_rekeyed.py`);
+`null_policy` (skip, or filled `nokey`) - `test_a_blank_key_is_filled_from_the_file_and_its_row.py`."""
 import os
 import sys
 
