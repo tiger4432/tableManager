@@ -135,6 +135,7 @@
 ## 6. 짓지 않는 범주 — 이름만
 
 - **Binning 10**: AutoBinNumeric · BinByDateTime · BinByEvenDistance · BinByEvenDistribution · BinByEvenIntervals · BinBySpecificLimits · BinByStdDev · BinBySubstring · BinByTimeSpan · FiscalBinByDateTime
+- 지어진 것(이 목록이 «짓지 않는 범주»로 적은 뒤): Date · DateTime · Year · Quarter · Month · Day · Hour · Week · DayOfWeek · DatePart(fe2ba4b1f · 7bd0cb88f) · ParseDateTime(1d0b4f41f — 형식은 .NET 철자의 닫힌 토큰 yyyy yy MM dd HH mm ss fff, 소유자 11-07 «2»)
 - **Conversion 25**: Base64Decode · Base64Encode · Boolean · Currency · Date · DateTime · FirstValidAfter · FromEpochMilliseconds · FromEpochSeconds · Integer · LastValidBefore · LongInteger · ParseDate · ParseDateTime · ParseReal · ParseTime · ParseTimeSpan · Real · SingleReal · SN · String · Time · TimeSpan · ToEpochMilliseconds · ToEpochSeconds
 - **Text 20**: ~= · Concatenate · Find · Left · Len · Lower · Mid · MostCommon · NameDecode · NameEncode · Repeat · Right · RXExtract · RXReplace · Split · Substitute · Substring · Trim · UniqueConcatenate · Upper (MostCommon · UniqueConcatenate 는 1-a 에도 적음) · 그리고 Operators 의 & (글 이어 붙이기)
 - **Date and Time 33**: DateAdd · DateDiff · DatePart · DateTimeNow · Day · DayOfMonth · DayOfWeek · DayOfYear · Days · FiscalMonth · FiscalQuarter · FiscalYear · Hour · Hours · ISOWeek · ISOYear · Millisecond · Milliseconds · Minute · Minutes · Month · Quarter · Second · Seconds · Today · TotalDays · TotalHours · TotalMilliseconds · TotalMinutes · TotalSeconds · Week · Year · YearAndWeek
