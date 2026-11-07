@@ -585,7 +585,7 @@ class RetroactiveRun(Base):
     # `running` behind forever and nothing here could say whether a thread still existed.
     # Without an identity, "it died" and "it is slow" are the same row, and reaping on
     # that basis would turn "never finishes" into "two of them finish at once", which is
-    # worse. This records; it does not judge.
+    # worse. This records; `heartbeat.runner_gone` judges (총괄 11-07: provably dead only).
     # ⚠️ NULL on rows written before this column existed, and NULL is "unknown", not "none".
     runner = Column(String(160), nullable=True)
     # 배치마다 갱신된다 — 「살아 있나」를 이 값의 나이로 판단할 수 있게.

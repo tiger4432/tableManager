@@ -643,6 +643,22 @@ def another_process_beats(name, now=None):
     return "pid %s, last beat %.1fs ago" % (pid, entry.get("age_seconds") or 0.0)
 
 
+
+def runner_gone(runner) -> bool:
+    """`runner_state` says «orphaned» AND that pid is provably not alive on THIS host - what a release may act on
+    without an operator (총괄 11-07). A child that has not beaten yet is orphaned but alive: not gone. A pid on another
+    host, or no psutil: not gone - 「모르면 안 한다」."""
+    if runner_state(runner) != "orphaned":
+        return False
+    import socket as _socket
+    _name, host, pid = str(runner).split("/")
+    try:
+        import psutil
+        return host == _socket.gethostname() and not psutil.pid_exists(int(pid))
+    except Exception:                                            # noqa: BLE001
+        return False
+
+
 def runner_identity() -> str:
     """Who is running this, as `host/pid`.
 
@@ -650,10 +666,9 @@ def runner_identity() -> str:
     in place, would otherwise stamp the identity of whatever imported this module first -
     and an identity that can be inherited is worse than none, because it looks specific.
 
-    ⚠️ IT RECORDS, IT DOES NOT JUDGE. Nothing reaps a run on the strength of this. Without
-    an identity "it died" and "it is slow" are the same row; with one they still are,
-    until somebody decides what evidence of death looks like. This is the material for
-    that decision, not the decision.
+    ⚠️ IT RECORDS, IT DOES NOT JUDGE. The judgement is `runner_gone` (총괄 11-07: no heartbeat for this pid AND the
+    pid not alive on this host) - the only evidence of death a run is released on, by the scheduler's tick
+    (`retroactive.release_dead_runs`). «Slow» and «not beaten yet» are not it.
     """
     import os as _os
     import socket as _socket

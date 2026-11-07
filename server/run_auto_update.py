@@ -892,7 +892,12 @@ class MultiDiscoveryScheduler:
         Nothing else changed: the same objects, the same order, the same
         guarantee.
         """
+        from admin import retroactive
         from database.models import DatabaseOutbox
+
+        # 🔴 A RUN WHOSE PROCESS DIED ENDS HERE, FAILED WITH WHY (총괄 11-07): the busy gate below skipped every tick in
+        #    silence, and only a × released it (`request_cancel`) - the owner's queue waited from 10-09.
+        retroactive.release_dead_runs(logger.warning)
 
         # 1-3. RETROACTIVE_RUN 감시 (소급 적용 실행 — server/retroactive.py)
         #   The apply half of GET /admin/retroactive/{op}/count. Same outbox

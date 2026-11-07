@@ -1183,6 +1183,56 @@ class TestTheSchedulerRunsItOffTheTickThread:
         assert (states[first["run_id"]], states[second["run_id"]]) == (
             retroactive.RUN_RUNNING, retroactive.RUN_QUEUED)
 
+    def test_a_dead_runner_s_row_ends_failed_on_the_tick_and_the_next_run_starts(self, retro_env, monkeypatch,
+                                                                                   tmp_path):
+        """총괄 11-07: a run's process that died (11-07 board: WinError 10106 at import) left its row running for
+        2.5 h and every run behind it queued. One tick: the row is failed with why, the next run is started. A runner
+        alive but not beaten yet, or on another host, is left."""
+        import socket
+        import subprocess
+
+        import paths
+        import run_auto_update
+        from utils import heartbeat
+
+        spawned = []
+        monkeypatch.setattr(retroactive, "spawn_claimed", lambda run_id, log=None: spawned.append(run_id) or 4242)
+        monkeypatch.setattr(paths, "log_path", lambda name: str(tmp_path / name))
+        monkeypatch.setattr(heartbeat, "read_all", lambda now=None: {})          # nobody has beaten
+        sched = run_auto_update.MultiDiscoveryScheduler.__new__(run_auto_update.MultiDiscoveryScheduler)
+        host = socket.gethostname()
+
+        def a_run(runner):
+            run = retroactive.publish(retro_env, "withdraw", {"table": "retro_test_target", "source": "s"})
+            assert sched.start_retroactive_run(run) is True
+            retroactive._restamp_runner(run["run_id"], runner)
+            return run["run_id"]
+
+        def ticks():
+            for _ in range(3):
+                sched.handle_retroactive_trigger(retro_env)
+            retro_env.expire_all()
+            return {r.run_id: (r.state, r.error) for r in retro_env.query(models.RetroactiveRun).all()}
+
+        with open(tmp_path / retroactive.CHILD_STDOUT_LOG, "a", encoding="utf-8") as sink:
+            dead = subprocess.Popen([sys.executable, "-c", "print('OSError: [WinError 10106] provider'); raise SystemExit(3)"],
+                                    stdout=sink, stderr=subprocess.STDOUT)
+            dead.wait()
+        alive = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            held = a_run("%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, host, alive.pid))
+            queued = retroactive.publish(retro_env, "withdraw", {"table": "retro_test_target", "source": "s"})
+            assert ticks()[held][0] == retroactive.RUN_RUNNING and spawned == [held]
+            retroactive._restamp_runner(held, "%s/other-host/%d" % (retroactive.RUN_HERE_HEARTBEAT, dead.pid))
+            assert ticks()[held][0] == retroactive.RUN_RUNNING and spawned == [held]
+            retroactive._restamp_runner(held, "%s/%s/%d" % (retroactive.RUN_HERE_HEARTBEAT, host, dead.pid))
+            states = ticks()
+        finally:
+            alive.kill()
+        state, error = states[held]
+        assert state == retroactive.RUN_FAILED and "runner died" in error and "WinError 10106" in error, states
+        assert spawned == [held, queued["run_id"]] and states[queued["run_id"]][0] == retroactive.RUN_RUNNING
+
     def test_the_scheduler_consumes_the_declared_event_type(self):
         """The subject here IS the text: does the scheduler NAME the shared constant, or
         does it spell the string again? A second spelling is how the publisher and the

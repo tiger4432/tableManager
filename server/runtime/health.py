@@ -118,12 +118,14 @@ def on_demand_state(beat) -> dict:
 
     `/health` and the loops table both call this (lead 2f2a2f570: one line's state, one author).
     A fresh beat is a run in its own process; a stale one is a process that stopped without
-    ending its run, which holds the gate until that run is cancelled.
+    ending its run - the scheduler's next tick fails that run when its process is gone from this machine
+    (`retroactive.release_dead_runs`, 총괄 11-07); otherwise it holds the gate until that run is cancelled.
     """
     stale = bool((beat or {}).get("stale"))
     return {"status": "orphaned" if stale else "running",
-            "detail": ("its process stopped without ending its run - cancel that run on "
-                       "the Retroactive screen to release the lock") if stale
+            "detail": ("its process stopped without ending its run - the scheduler fails that run on its next "
+                       "tick when the process is gone from this machine; otherwise cancel that run on the Retroactive "
+                       "screen to release the lock") if stale
                       else "a run in a process of its own"}
 
 

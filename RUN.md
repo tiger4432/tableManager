@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [11-07] **소급 실행의 프로세스가 죽으면 그 실행은 스케줄러의 다음 틱에 «failed» — 큐가 스스로 움직임** — git pull · 런처 재기동(스케줄러)
+>
+> ```
+> 전에 보이던 것  소급 작업 큐가 «running» 한 줄 뒤에서 멈춤, 그 실행은 진행이 없음 (10-11 «10-09 파일 다시 읽기 뒤로 큐가 안 빠짐»)
+>              × 를 눌러야만 풀렸음
+> 이제         그 실행의 프로세스가 이 머신에서 죽었으면(심박 없음 + pid 없음) 5 초 틱 안에 failed,
+>              사유 «runner died: <runner> is not alive - its process's last line: <마지막 줄>. … run it again»
+>              다음 줄의 실행이 바로 시작됨. 사유는 소급 실행 목록(Retroactive)의 그 줄에 보임
+> 그대로인 것    다른 머신의 실행 · 막 띄워서 아직 심박이 없는 실행은 건드리지 않음 (× 로 풂, 전과 같음)
+> 옛 블록       아래 10-11 «큐가 안 빠질 때 — × · 손 UPDATE» 는 이 머신에서 죽은 실행에는 이제 필요 없음.
+>              다른 머신의 실행 · 심박만 없는 실행에만 남음
+> 로그         auto_update.log «[Retroactive] run_id=… op=… released: runner died: …»
+> 같은 답      server 폴더에서 python -m pytest tests/test_retroactive_admin.py -k dead_runner
+> 끄기         없음. 되돌리려면 revert
+> ```
+>
+> ---
+>
 > ## [11-07] **reach 의 씨앗은 원자 없이 행의 키만 읽는다** — git pull · 런처 재기동(API · 걷기 프로세스)
 >
 > ```

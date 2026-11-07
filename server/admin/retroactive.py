@@ -3699,8 +3699,9 @@ def request_cancel(db, run_id: str) -> dict:
         #    died - and its work did not finish and never will. `cancelled` would tell the
         #    operator they stopped it themselves, which is not true, and it is the word a
         #    hand-written UPDATE would have to disagree with.
-        # ⚠️ NEVER SILENTLY. The reason rides on the row, because an automatic release
-        #    that leaves no trace is the option this one was chosen INSTEAD of.
+        # ⚠️ NEVER SILENTLY. The reason rides on the row - a release that leaves no trace is the option this one was
+        #    chosen INSTEAD of. A runner PROVABLY dead on this host is released by the scheduler's tick as well
+        #    (`release_dead_runs`, 총괄 11-07); this × is for one that cannot be judged so (another host, no pid check).
         from datetime import datetime, timezone
 
         why = ("released as a ghost lock: the runner that started it is not alive "
@@ -4059,8 +4060,9 @@ def gate_refusal(db):
         return _replay_still_waiting(db)
     # 🔴 「취소해라」만으로는 «그 취소가 안전한지»를 못 읽는다 (소유자 2026-09-23
     #    「qued replay waiting ~~~ 계속 뜨는데 어케함」). runner 가 살아 있으면 취소는 «도는
-    #    일»을 끊는 것이고, 죽었으면 취소가 이 자물쇠를 «푸는» 유일한 길이다 — 판단이
-    #    정반대인데 문장이 같았다. 생사는 `_runner_state` 가 이미 답한다(심박).
+    #    일»을 끊는 것이고, 죽었으면 취소가 이 자물쇠를 «푼다» — 판단이 정반대인데 문장이 같았다.
+    #    생사는 `_runner_state` 가 이미 답한다(심박). 🆕 11-07 이 머신에서 pid 까지 죽은 것이 증명되면
+    #    스케줄러 틱이 먼저 푼다(`release_dead_runs`) — 이 문장은 그렇게 증명 못 하는 경우에 남는다.
     run_id, op = blocking["run_id"], blocking["op"]
     owner = _runner_state(blocking.get("runner"))
     where = "POST /admin/retroactive/runs/%s/cancel" % run_id
@@ -4360,6 +4362,46 @@ def spawn_claimed(run_id, log=logger.info):
     log("[Retroactive] run_id=%s runs in its own process pid=%d - its log is retroactive.log"
         % (run_id, child.pid))
     return child.pid
+
+
+
+def release_dead_runs(log=logger.warning):
+    """A running row whose runner is gone (`heartbeat.runner_gone`) ends failed, with why, on the scheduler's tick -
+    the queue moves on (총괄 11-07, the owner's 10-11 queue held since a 10-09 re-read). Reverses 총괄 2026-09-23's
+    «release only on a ×» (`request_cancel`) for a runner PROVABLY dead; one that cannot be judged still waits for
+    the ×. -> the run ids released."""
+    from database.database import SessionLocal
+    from utils import heartbeat
+
+    session = SessionLocal()
+    try:
+        rows = [(r.run_id, r.op, r.runner, r.state) for r in in_flight_rows(session).all()]
+    finally:
+        session.close()
+    released = []
+    for run_id, op, runner, state in rows:
+        if not heartbeat.runner_gone(runner):
+            continue
+        why = ("runner died: %s is not alive - %s. Its work did not finish - run it again."
+               % (runner, _last_child_line()))
+        if _mark_run(run_id, state=RUN_FAILED, finished=True, error=why, expect_state=state):
+            released.append(run_id)
+            log("[Retroactive] run_id=%s op=%s released: %s" % (run_id, op, why))
+    return released
+
+
+def _last_child_line():
+    """The last line a run's process printed (`CHILD_STDOUT_LOG`) - a crash's last traceback line."""
+    import paths
+
+    try:
+        with open(paths.log_path(CHILD_STDOUT_LOG), "rb") as sink:
+            sink.seek(0, 2)
+            sink.seek(max(0, sink.tell() - 4096))
+            lines = [line.strip() for line in sink.read().decode("utf-8", "replace").splitlines() if line.strip()]
+    except OSError:
+        return "its output could not be read"
+    return ("its process's last line: %s" % lines[-1][:200]) if lines else "its process printed nothing"
 
 
 def _restamp_runner(run_id, runner):
