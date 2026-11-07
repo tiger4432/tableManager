@@ -284,42 +284,66 @@ def _holding(pg_engine, table):
     return holder
 
 
+def _cancel_builds_on_after(engine, table, seconds):
+    """The test's cap, not the product's: the one builder sets lock_timeout 0, so a build that waits for the holder
+    this cell keeps open would hang the run - cancelled after `seconds` it ends, and the cell is red (총괄 11-07)."""
+    def cancel():
+        with engine.connect() as conn:
+            conn.execute(text("SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE datname = current_database() "
+                              "AND pid <> pg_backend_pid() AND query LIKE :q"), {"q": "CREATE %INDEX%" + table + "%"})
+            conn.commit()
+    timer = threading.Timer(seconds, cancel)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 @pytest.mark.pg
 def test_an_index_that_waits_past_the_limit_is_deferred_by_name_and_built_on_the_next_run(
         pg_engine, monkeypatch, caplog):
-    monkeypatch.setattr(db_safety, "DDL_LOCK_TIMEOUT", "1s")
+    """The join's index is built by the one builder (1bcc2fa03): a writer open past INDEX_WAIT_BEFORE_SECONDS before
+    the build defers it - nothing started, nothing left - and the next ask builds it. The table is in the session's
+    own schema: the wait before the build asks who holds it there (67e7f570e); in `public` under a scratch schema it
+    saw no holder, started the build and waited on this cell's own writer for ever (총괄 11-07)."""
+    from database import models
+
+    monkeypatch.setattr(models, "INDEX_WAIT_BEFORE_SECONDS", 1.0)
+    monkeypatch.setattr(models, "INDEX_WAIT_POLL_SECONDS", 0.2)
     table = "ddl_wait_build"
-    # ⚠️ IN `public`, AS IN PRODUCTION: the cancelled build leaves an INVALID index under the
-    #    same name, and `invalid_leftovers` looks for it in `public` - in the scratch schema the
-    #    retry could not see it and failed with 「already exists」.
     with pg_engine.begin() as c:
-        c.execute(text("DROP TABLE IF EXISTS public.%s" % table))
+        c.execute(text("DROP TABLE IF EXISTS %s" % table))
         # row_id as every product table has it - the unique index's blank-key slot names it (owner 10-20)
-        c.execute(text("CREATE TABLE public.%s (row_id text, k text)" % table))
+        c.execute(text("CREATE TABLE %s (row_id text, k text)" % table))
     db = sessionmaker(bind=pg_engine)()
     holder = _holding(pg_engine, table)
+    time.sleep(1.5)                                                  # open past the wait
+    cap = _cancel_builds_on_after(pg_engine, table, 20)
     try:
         unique_key.forget()
         started = time.time()
         with caplog.at_level("WARNING"):
             report = unique_key.ensure_once(db, "r", table, ["k"])
         assert report["state"] == "deferred", report
-        assert time.time() - started < 10, "the DDL did not read the limit it was given"
+        assert time.time() - started < 10, "the wait before the build did not end at its limit"
         assert any("다음 기동/리로드로 미룹니다" in r.getMessage() and table in r.getMessage()
                    for r in caplog.records)
+        with pg_engine.connect() as c:
+            left = c.execute(text("SELECT count(*) FROM pg_indexes WHERE schemaname = current_schema() "
+                                  "AND tablename = :t"), {"t": table}).scalar()
+        assert left == 0, "deferred before the build - nothing started, nothing left"
 
         holder.rollback()
         unique_key.forget()
         again = unique_key.ensure_once(db, "r", table, ["k"])
         assert again["state"] == "ok" and again["created"], again.get("error")
-        assert again["dropped"], "the cancelled build's INVALID leftover was not cleared"
     finally:
+        cap.cancel()
         holder.close()
         db.rollback()
         db.close()
         unique_key.forget()
         with pg_engine.begin() as c:
-            c.execute(text("DROP TABLE IF EXISTS public.%s" % table))
+            c.execute(text("DROP TABLE IF EXISTS %s" % table))
 
 
 @pytest.mark.pg
