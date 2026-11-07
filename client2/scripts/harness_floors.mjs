@@ -1852,6 +1852,8 @@ export const FLOORS = new Map([
   ['status_dot_harness.mjs', 23],
   // the page's own freeze said as one line, named by the slice it ran in; the census's seats each mark theirs (lead 11-06)
   ['ui_stall_harness.mjs', 16],
+  // a change that picks the screen checker runs a screen: the runner's pick and the checker's --touched one answer (lead 11-08)
+  ['module_reach_harness.mjs', 10],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

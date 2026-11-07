@@ -41,7 +41,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSourceText } from './lib/probe.mjs';
 import { namedMutants, pickMutants } from './lib/mutant_pick.mjs';
-import { reachPlugin, changedFiles, norm } from '../scripts/module_reach.mjs';
+import { reachPlugin, changedFiles, pageReach, scansOf, screensTouched, textReach, trackedFiles } from '../scripts/module_reach.mjs';
 import { QUEUE_POLL_MS } from '../src/queue_poll.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -3888,19 +3888,22 @@ async function runScreens(dist, label, some = only ? [only] : null, deaf = null)
 let ran = 0;
 let failed = 0;
 const t0 = Date.now();
-// --touched: each entry's modules as this build bundled them, against the files changed since this tree left origin/main -
-// both from module_reach.mjs, the harness runner's narrowing too.
+// --touched: each entry's reach - its modules as this build bundled them and the files their text names - against the
+// files changed since this tree left origin/main; a change only the checker reaches runs every screen. All from
+// module_reach.mjs, the harness runner's narrowing too, so a change that picks the checker runs a screen (lead 11-08).
 const reached = new Map();
 const source = await buildBundle('screens-source-', TOUCHED ? [reachPlugin(reached)] : []);
 const graph = new Map([...reached].filter(([id]) => id.endsWith('.html')).map(([id, ids]) => [path.posix.basename(id), ids]));
 let picked = null;
 if (TOUCHED) {
   const changed = changedFiles(CLIENT);
-  const checker = ['tests/screen_layout_harness.mjs', 'tests/fixtures/screens_answers.json.gz', 'tests/fixtures/chain_states.json',
-    'scripts/module_reach.mjs'].map((f) => norm(path.join(CLIENT, f)));
-  picked = [...graph].filter(([, ids]) => changed.some((f) => ids.has(f))).map(([entry]) => entry).sort();
-  if (!picked.length && changed.some((f) => checker.includes(f))) picked = null;
-  console.log(picked === null ? 'narrowed: every screen - only the checker or its recorded answers changed'
+  const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: CLIENT, encoding: 'utf8' }).trim();
+  const { tracked, byBase } = trackedFiles(top);
+  const pages = new Map([...graph].map(([entry, ids]) => [entry, pageReach(ids, byBase)]));
+  const { reach: own } = textReach({ file: fileURLToPath(import.meta.url), tests: HERE, top, tracked, byBase,
+    scopes: scansOf(path.basename(fileURLToPath(import.meta.url))) });
+  picked = screensTouched({ pages, changed, own });
+  console.log(picked === null ? 'narrowed: every screen - a change the checker reaches and no page does'
     : picked.length ? `narrowed: ${picked.join(', ')}` : 'narrowed: no screen touched - nothing runs');
 }
 const { entries, found } = picked && !picked.length ? { entries: [], found: [] } : await runScreens(source, 'source', picked || undefined);

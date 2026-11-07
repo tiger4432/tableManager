@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [11-08] **가이드 md 만 고친 착지가 더는 «ran 0» 빨강으로 막히지 않는다 — 하니스 러너와 화면 검사기가 «무엇이 닿나»를 한 함수로** — git pull (시험 도구만, 화면 · 서버 변화 없음)
+>
+> ```
+> 무엇     러너가 화면 검사기를 꼽은 변경이면 검사기 --touched 가 화면을 최소 하나 돌림
+>          화면은 자기 모듈 «과» 그 글이 이름 대는 파일에 닿음 (admin.html -> 가이드 table_config.md)
+>          어느 화면도 안 닿고 검사기만 닿는 변경(help_guides.json · package.json · .gitignore 등)은 모든 화면
+> 돌릴 것  node client2/scripts/check_harnesses.mjs --dry-run --commit <sha>
+> 볼 줄    검사기 첫 줄 «narrowed: admin.html» / «narrowed: every screen - a change the checker reaches and no page does»
+> 답의 뜻  가이드 md 하나에 admin 이 도는 것은 «일관성»이지 그 md 를 재는 것이 아님 — 검사기는 가이드 본문을 제 글로 그림
+>          «narrowed: no screen touched - nothing runs» 는 이제 러너가 검사기를 안 꼽은 변경에서만 나옴
+> 끄기     없음 (되돌리려면 revert)
+> ```
+>
+> ---
+>
 > ## [11-08] **고르는 목록은 모두 8 행까지 보이고 그다음은 스크롤 — 셀 값 제안 · 수식 이름/열 · 걷기 노드 검색** — git pull · 화면 새로 고침 (클라만, dist 에 들어 있음)
 >
 > ```
