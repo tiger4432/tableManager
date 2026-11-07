@@ -30,6 +30,7 @@ const TABS = {
   row: [() => elements.tabRowBtn, () => elements.timelineContainer],
   reference: [() => elements.tabReferenceBtn, () => elements.referenceView],
   queue: [() => elements.tabQueueBtn, () => elements.queueView],
+  colours: [() => elements.tabColoursBtn, () => elements.coloursView],
 };
 
 /** 이 탭을 고른다 — 그 버튼을 켜고, 그 창만 보이고, state 에 적는다. @param {keyof TABS} name */

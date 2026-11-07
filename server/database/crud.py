@@ -757,6 +757,12 @@ SOURCE_PRIORITY = {
 # automatic ones.
 USER_SOURCE = "user"
 
+#: Who wrote a cell, in the words a colour rule's written_by picks (owner 11-06, lead 11-07), by a layer's base name
+#: (`layer_writer`). None = no word, said here so it is not mistaken for one left out: a merge's value is other writers'
+#: and the legend would say whose it cannot back (lead 11-07 ②). A name not here is a file's (`is_file_layer`).
+WRITER_KINDS = {USER_SOURCE: "person", CHAIN_SOURCE: "chain", "custom_script": "chain", LLM_DRAFT_SOURCE: "ai",
+                "pipeline_parser": "file", "collision_merge": None}
+
 
 def can_mean_emptied(source_name: str, replaces_map: bool = False) -> bool:
     """Can this writer MEAN 「I emptied this cell」? (S-243, 판정 405)
@@ -812,6 +818,19 @@ def machine_layer_names() -> frozenset:
             USER_SOURCE, CHAIN_SOURCE, candidates.SOURCE_NAME,
             candidates.SOURCE_NAME_PARTIAL_KEY, backfill.SOURCE_NAME})
     return _MACHINE_LAYER_NAMES[0]
+
+
+def writer_kind(source_name):
+    """person · chain · ai · file - who wrote the layer `source_name`, or None (no layer, or `WRITER_KINDS` says none).
+    The enrichment chain's layers are the chain's; any other name outside the product's own is a file's."""
+    if not source_name:
+        return None
+    name = layer_writer(source_name)
+    if name in WRITER_KINDS:
+        return WRITER_KINDS[name]
+    if name in machine_layer_names():
+        return "chain"
+    return "file"
 
 
 def is_file_layer(source_name) -> bool:

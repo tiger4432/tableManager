@@ -345,7 +345,11 @@
       ],
       "class": "static",
       "attributes": [
-        "position"
+        "position",
+        "role",
+        "rule_when",
+        "rule_columns",
+        "written_by"
       ]
     },
     "template": {
@@ -1158,6 +1162,22 @@
               "position": {
                 "kind": "column",
                 "column": "position"
+              },
+              "role": {
+                "kind": "column",
+                "column": "role"
+              },
+              "rule_when": {
+                "kind": "column",
+                "column": "rule_when"
+              },
+              "rule_columns": {
+                "kind": "column",
+                "column": "rule_columns"
+              },
+              "written_by": {
+                "kind": "column",
+                "column": "written_by"
               }
             }
           }

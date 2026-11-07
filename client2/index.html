@@ -392,6 +392,10 @@
               <!-- Mockup 2b's range readout. Written by the function that already computes
                    the rectangle, so it cannot disagree with what is highlighted. -->
               <span id="range-readout" class="range-readout"></span>
+              <span id="look-legend" class="look-legend" hidden>
+                <span class="look-legend__it"><i class="look-mark look-hand"></i>Painted by hand</span>
+                <span class="look-legend__it"><i class="look-mark look-ai"></i>Written by AI</span>
+              </span>
             </div>
             <div class="status-center pagination-controls">
               <button id="prev-page-btn" class="glass-page-btn" disabled>
@@ -446,6 +450,7 @@
               <button id="tab-global" class="tab-btn active">Global</button>
               <button id="tab-row" class="tab-btn">Row</button>
               <button id="tab-queue" class="tab-btn">Queue</button>
+              <button id="tab-colours" class="tab-btn">Colours</button>
               <!-- Fold (owner 11-06): the panel to a strip, and back to the width it had - one of the row's buttons. -->
               <button id="sidebar-fold-btn" class="tab-btn sidebar-fold" type="button" aria-expanded="true"
                       aria-label="Fold panel" title="Fold panel">⇥</button>
@@ -527,6 +532,8 @@
                  없다: 이 표를 비우는 것은 «둘»이고, 2026-09-04 에 그 낱말이 읽는 사람을
                  체인으로 보냈다. 주인은 «행마다» 첫 칸이 말한다. -->
             <div id="queue-view" class="queue-view" style="display: none"></div>
+            <!-- the table's colour rules and the picked cell's paint (owner 11-06 mockup v3, look_panel.js) -->
+            <div id="colours-view" class="colours-view" style="display: none"></div>
           </div>
         </aside>
         <!-- the gallery's opened cell, in the history tabs' place while a board is open (gallery_seat.js) -->

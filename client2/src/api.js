@@ -13,6 +13,7 @@ import { clearRangeSelection } from './clipboard.js';
 import { setTransactionFilter, updateSelectedCellUI, updateTxModeUI } from './ui.js';
 import { renderGrid, buildColumnDefs, fitColumnWidths, dropGridFilters, renderFilterBar, holdFilterReads, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail, drawOrder } from './grid.js';
 import { ENTERED, LOOK_TABLE, placeUpdate, placeWord } from './grid_order.js';
+import { pageLooks, saidLooksChanged } from './grid_look.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { countOf, setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -691,6 +692,8 @@ export async function fetchData(resetSkip = true, key = null) {
   } else {
     if (state.viewMode !== 'infinite' && state.pageCache.has(state.currentSkip)) {
       const cached = state.pageCache.get(state.currentSkip);
+      state.looks = cached.looks || null;
+      saidLooksChanged();
       state.gridApi.setGridOption('rowData', overlayStagedEdits(copyRows(cached.data)));
       updateGridSortState();
       updateLoadedCount(cached.data.length);
@@ -743,6 +746,9 @@ export async function fetchData(resetSkip = true, key = null) {
     if (stale()) return;
     markWork(result.pivot ? 'pivot rows' : 'rows', table, Array.isArray(result.data) ? result.data.length : null);
     if (result.pivot) result.data = takePivot(result);
+    // the rows' looks before they are drawn - a later page of the infinite view keeps the paints already shown
+    state.looks = pageLooks(state.looks, result.looks, state.viewMode === 'infinite' && !(resetSkip || state.currentSkip === 0));
+    saidLooksChanged();
 
     const fetchTime = (performance.now() - startTime).toFixed(1);
 
@@ -779,6 +785,7 @@ export async function fetchData(resetSkip = true, key = null) {
     // Save to Cache
     if (state.viewMode !== 'infinite') {
       state.pageCache.set(state.currentSkip, { data: copyRows(result.data), count });
+      state.pageCache.get(state.currentSkip).looks = state.looks;   // a page from the cache draws with the looks it was read with
     }
 
     state.isLoadingMore = false;
@@ -1338,22 +1345,29 @@ async function editCell(event) {
 /** A dragged row, group or item's place, written: one row of the shipped sys_looks through its write door (owner 11-06).
  *  -> true when it was written; a refusal is said. */
 export async function writePlace(axis, first, position) {
+  const done = await writeLook(placeUpdate(state.currentTable, axis, first, position, CURRENT_USER), 'Move not saved');
+  if (done) state.placesWritten.add(placeWord(first, position));
+  return done;
+}
+
+/** One look row written (a place, a rule, a paint - `update` from grid_order.lookUpdate); `stopped` names what was not
+ *  saved. Written at once, Tx on or off - a look is not a staged cell. */
+export async function writeLook(update, stopped) {
   if (refuseWrite()) return false;
   try {
     const res = await fetch(`${API_BASE}/tables/${LOOK_TABLE}/data/updates`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates: [placeUpdate(state.currentTable, axis, first, position, CURRENT_USER)] }),
+      body: JSON.stringify({ updates: [update] }),
     });
     if (!res.ok) {
       const said = await res.json().catch(() => ({}));
       throw new Error(typeof said.detail === 'string' ? said.detail : `HTTP ${res.status}`);
     }
     state.pageCache.clear();
-    state.placesWritten.add(placeWord(first, position));
     return true;
   } catch (err) {
-    sayStopped(`Move not saved: ${err.message}`);
+    sayStopped(`${stopped}: ${err.message}`);
     return false;
   }
 }

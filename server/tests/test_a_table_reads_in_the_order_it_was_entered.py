@@ -246,6 +246,11 @@ def test_a_table_node_walks_to_the_places_dragged_on_it(pg_engine, tmp_path, mon
     bodies_here(monkeypatch)
     names = ("sys_tables", LOOKS)
     declared = {name: shipped.tables()[name] for name in names}
+    # what the session built is left as found - every grid read asks sys_looks (L2), so a dropped one fails a later file
+    had = [name for name in names if name in models.DYNAMIC_TABLES]
+    with pg_engine.connect() as conn:
+        existed = {name for name in names if pg_engine.dialect.has_table(conn, name, schema=PG_TEST_SCHEMA)}
+    probe = {"sys_tables": "table_name", LOOKS: "look_table"}
     for name in names:
         retire_dynamic_model(name)
         monkeypatch.setitem(crud.TABLE_CONFIG, name, declared[name])
@@ -255,7 +260,10 @@ def test_a_table_node_walks_to_the_places_dragged_on_it(pg_engine, tmp_path, mon
     def clean():
         with pg_engine.begin() as conn:
             for name in names:
-                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
+                if name in existed:
+                    conn.execute(text('DELETE FROM "%s"."%s" WHERE %s = :t' % (PG_TEST_SCHEMA, name, probe[name])), {"t": TABLE})
+                else:
+                    conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
                 for side in ("cell_sources", "database_outbox", "audit_logs"):
                     conn.execute(text('DELETE FROM "%s".%s WHERE table_name = :t' % (PG_TEST_SCHEMA, side)),
                                  {"t": name})
@@ -309,3 +317,5 @@ def test_a_table_node_walks_to_the_places_dragged_on_it(pg_engine, tmp_path, mon
         clean()
         for name in names:
             retire_dynamic_model(name)
+        if had:
+            models.init_dynamic_models({name: declared[name] for name in had})

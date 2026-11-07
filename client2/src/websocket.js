@@ -17,6 +17,7 @@ import { chainRefreshNote } from './chain_refresh_note.js';
 import { goToLogin, WS_LOGIN_REQUIRED } from './auth_gate.js';
 import { sayLine } from './write_guard.js';
 import { ENTERED, LOOK_TABLE, placesOn } from './grid_order.js';
+import { RULE, looksOn, saidLooksChanged } from './grid_look.js';
 
 /**
  * Queue the next reconnect attempt and advance the backoff ladder.
@@ -447,6 +448,19 @@ export function handleWebSocketMessage(msg) {
 
   // a place another screen wrote on this table (owner 11-06): its rows read again in their new order
   if (msg.table_name === LOOK_TABLE) {
+    // a colour rule or a paint on this table (owner 11-06): a paint is drawn from the message; a rule read again with
+    // the page - a writer rule's cells say their writer only on a read (server/grid_look.py)
+    const looks = looksOn(msg, state.currentTable, state.looks);
+    if (looks) {
+      state.pageCache.clear();
+      if (msg.items.some((item) => item.data && item.data.look_axis && item.data.look_axis.value === RULE)) {
+        fetchData(state.viewMode !== 'pagination');
+      } else {
+        state.looks = looks;
+        if (state.gridApi) state.gridApi.refreshCells({ force: true });
+        saidLooksChanged();
+      }
+    }
     if (state.currentOrder === ENTERED && placesOn(msg, state.currentTable, state.placesWritten)) {
       state.pageCache.clear();
       fetchData(state.viewMode !== 'pagination');

@@ -858,11 +858,12 @@ const PICKERS_IN_VIEW = `(async () => {
 // The side panel's lit tab is the pane it shows (owner 10-21 「탭은 글로벌인데 가끔 대기열 따로 있네」): after the row pick
 // under Queue, a queue beat, a row picked on the open queue and a table switched from it.
 for (const after of ['row picked, Queue tab', 'Queue tab, a beat later', 'a row picked under the Queue tab', 'table switched from the Queue tab',
-  'the first table again']) {
+  'the first table again', 'Colours tab, a cell picked']) {
   CELLS.push({ entry: 'index.html', after, rule: 'lit tab shows its pane', at: 'history-sidebar', expr: `(() => {
-  const paneOf = { 'tab-global': 'timeline-container', 'tab-row': 'timeline-container', 'tab-reference': 'reference-view', 'tab-queue': 'queue-view' };
+  const paneOf = { 'tab-global': 'timeline-container', 'tab-row': 'timeline-container', 'tab-reference': 'reference-view', 'tab-queue': 'queue-view',
+    'tab-colours': 'colours-view' };
   const lit = [...document.querySelectorAll('.history-sidebar .history-tabs > .tab-btn.active')].map((b) => b.id);
-  const shown = ['timeline-container', 'reference-view', 'queue-view']
+  const shown = ['timeline-container', 'reference-view', 'queue-view', 'colours-view']
     .filter((id) => { const p = document.getElementById(id); return p && getComputedStyle(p).display !== 'none'; });
   if (lit.length !== 1) return 'tabs lit: ' + (lit.join(' ') || 'none');
   if (shown.length !== 1 || shown[0] !== paneOf[lit[0]]) return 'tab «' + lit[0] + '» lit, pane shown: ' + (shown.join(' ') || 'none');
@@ -3217,6 +3218,11 @@ const DRIVE = {
         await until(c, GRID_LOADED);
       }
     }],
+    // The Colours tab (owner 11-06 mockup v3, lead L2): its rules, its form and a picked cell's paint.
+    ['Colours tab, a cell picked', (c) => evaluate(c, `(() => { const tab = document.getElementById('tab-colours'); if (tab) tab.click();
+      const cell = document.querySelector('.ag-center-cols-container .ag-row[row-index="1"] .ag-cell');
+      if (cell) for (const t of ['mousedown', 'mouseup', 'click']) cell.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+      return true; })()`).then(() => sleep(600))],
     // The Queue tab open for one beat of its poll and a little more.
     ['Queue tab, a beat later', (c) => evaluate(c, "(() => { const tab = document.getElementById('tab-queue'); if (tab) tab.click(); return true; })()")
       .then(() => sleep(QUEUE_POLL_MS + 1500))],

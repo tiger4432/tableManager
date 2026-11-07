@@ -76,10 +76,10 @@ eq('W1 one sys_looks update', placeUpdate('plan', 'group', IDS[0], '08', 'kim'),
   { updates: { look_table: 'plan', look_axis: 'group', look_key: IDS[0], position: '08' }, source_name: 'user', updated_by: 'kim' });
 
 eq('L1 a broadcast of this table\'s place, another\'s, one without items',
-  [placesOn({ items: [{ data: { look_table: { value: 'plan' } } }] }, 'plan'),
-    placesOn({ items: [{ data: { look_table: { value: 'other' } } }] }, 'plan'), placesOn({ count: 300 }, 'plan')], [true, false, true]);
+  [placesOn({ items: [{ data: { look_table: { value: 'plan' }, look_axis: { value: 'row' } } }] }, 'plan'),
+    placesOn({ items: [{ data: { look_table: { value: 'other' }, look_axis: { value: 'row' } } }] }, 'plan'), placesOn({ count: 300 }, 'plan')], [true, false, true]);
 
-const told = { items: [{ data: { look_table: { value: 'plan' }, look_key: { value: IDS[0] }, position: { value: '08' } } }] };
+const told = { items: [{ data: { look_table: { value: 'plan' }, look_axis: { value: 'group' }, look_key: { value: IDS[0] }, position: { value: '08' } } }] };
 eq('L2 the place this screen wrote itself: not read again; another place: read', [placesOn(told, 'plan', new Set([placeWord(IDS[0], '08')])),
   placesOn(told, 'plan', new Set([placeWord(IDS[0], '09')]))], [false, true]);
 

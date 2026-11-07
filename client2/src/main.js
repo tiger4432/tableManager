@@ -44,8 +44,11 @@ import {
   openExport,
   refusalText,
   setGridPivot,
-  rereadFormulas
+  rereadFormulas,
+  writeLook
 } from './api.js';
+import { LookPanel } from './look_panel.js';
+import { LOOKS_CHANGED } from './grid_look.js';
 import { FormulaPopover } from './formula_popover.js';
 import { WorldTabs } from './world_tabs.js';
 
@@ -94,6 +97,7 @@ import {
   isSystemColumn,
   sortParams,
   setColumnsHidden,
+  lookTarget,
 } from './grid.js';
 import {
   showToast,
@@ -126,7 +130,8 @@ import {
   installGlobalListeners,
   installNavLinkCounting,
   countNav,
-  ROUTES
+  ROUTES,
+  newSessionId
 } from './effort_meter.js';
 
 // Register AG-Grid Community Modules
@@ -717,6 +722,43 @@ function setupEventListeners() {
       queueRead.ask();
     });
   }
+  // The Colours tab (owner 11-06 mockup v3, lead L2): the table's colour rules and the picked cell's paint
+  const lookPanel = elements.coloursView ? new LookPanel(elements.coloursView, {
+    looks: () => state.looks,
+    table: () => state.currentTable,
+    columns: () => Object.keys(state.currentColumnTypes || {}).filter((col) => itemOf(col) === null && !isSystemColumn(col)),
+    picked: () => {
+      const at = state.selectedCell;
+      const node = at && state.gridApi ? state.gridApi.getRowNode(at.rowId) : null;
+      if (!node || isSystemColumn(at.colId)) return null;
+      const target = lookTarget(node.data, at.colId);
+      // the row as the grid names it - a pivot group by its first key (the mockup's «L2318 · CMP»), a row by its place
+      const row = pivotShown() && state.pivotView ? (node.data.data[state.pivotView.keys[0]] || {}).value : `#${at.rowIndex + 1}`;
+      const label = `${row} · ${itemOf(at.colId) ?? at.colId}`;
+      return target ? { rowId: target.rowId, column: target.column, label } : { label };
+    },
+    write: writeLook,
+    history: async (rowId) => {
+      const res = await fetch(`${API_BASE}/tables/sys_looks/rows/${encodeURIComponent(rowId)}/cells/role/history?limit=1`);
+      return res.ok ? res.json() : null;
+    },
+    by: CURRENT_USER,
+    written: () => rereadGrid(),
+    newId: newSessionId,   // a uuid where randomUUID is not (plain HTTP)
+    say: sayStopped,
+  }) : null;
+  const drawLooks = () => {
+    if (elements.lookLegend) elements.lookLegend.hidden = !state.looks;
+    if (lookPanel && state.activeHistoryTab === 'colours') lookPanel.draw();
+  };
+  document.addEventListener(LOOKS_CHANGED, drawLooks);
+  if (elements.tabColoursBtn) {
+    elements.tabColoursBtn.addEventListener('click', () => {
+      pickHistoryTab('colours');
+      drawLooks();
+    });
+  }
+
   // 🔴 알림은 체인이 «돈 뒤에» 나간다. 그래서 이 방아쇠만으로는 대기 구간을 놓칠 수 있고,
   //    그 한계는 화면의 «기준 시각»이 말한다 (자기 쓰기 방아쇠는 아직 없다 — 보고 참조).
   onBroadcast(() => queueRead.ask());

@@ -25,6 +25,8 @@ export const state = {
   currentOrder: null,
   // the places this screen wrote - their broadcast moves nothing it has not moved already
   placesWritten: new Set(),
+  // the table's colour rules and the shown rows' hand paint (sys_looks, grid_look.js) - null: the read said none
+  looks: null,
   // C-84. 서버 카탈로그가 말하는 이 표의 «종류» — `/tables/<n>/schema.kind` 그대로.
   // 🔴 세 상태다: 'table' · 'view' · ''(«아직/옛 서버가 안 알려 줬다»). 빈 값은 뷰가 «아니다» —
   //    모르는 것을 뷰로 읽으면 멀쩡한 표가 조용히 읽기 전용이 된다.

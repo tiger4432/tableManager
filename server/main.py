@@ -53,6 +53,7 @@ import paths  # single override point for config/ + ingestion_workspace/ (ASSY_D
 import db_safety  # [#16a] "a test process may not touch a real database", as a decision
 import value_suggest  # [F3] unique-value lookup + THE shared prefix predicate
 import grid_pivot  # the main grid's pivot read (소유자 10-22)
+import grid_look  # what a table's cells look like - colour rules and hand paint (owner 11-06)
 import grid_order  # a table read in its entered order, and the places people dragged (소유자 11-06)
 from admin import audit_history  # keyset paging + config ceiling for row/cell /history
 # Shared-token gate for /admin/*. Every route below whose path starts with
@@ -2896,6 +2897,7 @@ def grid_page(
     data_list = fetch_and_merge_metadata(db, table_name, raw_rows, user_cols, include_sources=False)
     if order_by == grid_order.ENTERED:
         grid_order.row_keys(db, table_name, data_list)
+    looks = grid_look.read(db, table_name, data_list)
     t_dict = time.time() - t_dict_start
         
     t_total = time.time() - t_total_start
@@ -2945,6 +2947,8 @@ def grid_page(
         # the count's word beside it - capped past COUNT_CAP, when counted, or still counting (소유자 ㄱ)
         **({"count": counted} if counted is not None else {}),
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset,
+        # the colour rules and the page's hand paint (sys_looks) - absent when the table has none
+        **({"looks": looks} if looks else {}),
         # the worlds `ledger_rows` could not read on this page - absent when the rows carry no ledger keys at all
         **({} if unread is None else {"ledger_worlds_unread": unread}),
         # a search or a pattern filter: each column it looked up by text, as the database holds its search index
@@ -2981,6 +2985,7 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
     logger.info("[get_table_data] pivot | Total: %.3fs | table=%s groups=%d rows=%d items=%d more=%d skip=%d "
                 "limit=%d order=%s filters=%d", time.time() - began, table_name, len(page), len(raw_rows),
                 len(items), more, skip, limit, order_by, _filtered_column_count(filters))
+    looks = grid_look.read(db, table_name, merged)
     data = grid_pivot.fold(pivoted, page, raw_rows, merged, items)
     if entered:
         for group, out in zip(read, data):
@@ -2990,7 +2995,7 @@ def pivot_page(db, table_name, table_model, *, skip, limit, order_by, order_desc
         "limit": limit, **({"count": counted} if counted is not None else {}),
         "pivot": {"column": pivoted.column, "value": pivoted.value, "keys": pivoted.keys, "carry": pivoted.carry,
                   "items": items, "items_more": more, **({"item_places": item_places} if entered else {})},
-        "data": data,
+        "data": data, **({"looks": looks} if looks else {}),
     }, table_name)
 
 

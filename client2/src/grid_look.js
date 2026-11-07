@@ -1,0 +1,117 @@
+// What a table's cells look like (owner 11-06, lead L2): colour rules and hand paint, rows of the shipped `sys_looks`
+// beside the places (server/grid_look.py reads a page's). A rule gives a cell its role when its condition holds
+// ([value] the cell's value, the expression language - src/expression.js) and the cell's writer is its written_by - each
+// blank = any - on its columns (none = every column). A paint gives one cell its role by hand. `lookOf` is the one seat
+// that says which: a paint over every rule, a later rule over an earlier one (lead 11-07 ㄱ).
+
+import { compile, run } from './expression.js';
+import { LOOK_TABLE, lookUpdate } from './grid_order.js';
+
+export const RULE = 'rule';
+/** Said on the document when the looks or the picked cell changed - the Colours tab and the legend draw again. */
+export const LOOKS_CHANGED = 'looks-changed';
+export const saidLooksChanged = () => {
+  if (typeof document !== 'undefined' && typeof document.dispatchEvent === 'function') document.dispatchEvent(new Event(LOOKS_CHANGED));
+};
+export const PAINT = 'paint';
+/** The design roles a look takes - its word, as it is stored, and its name on screen. */
+export const ROLES = Object.freeze([['ok', 'Ok'], ['warn', 'Warn'], ['danger', 'Danger'], ['accent', 'Accent']]);
+/** Who wrote a cell (crud.writer_kind) - the words a rule's written_by picks. */
+export const WRITERS = Object.freeze([['person', 'Person'], ['chain', 'Chain'], ['ai', 'AI'], ['file', 'File']]);
+/** A rule that is neither a condition nor a writer. */
+export const RULE_EMPTY_NOTE = 'Write a condition or pick a writer';
+
+const wordName = (pairs, word) => (pairs.find(([w]) => w === word) || [])[1] || word;
+export const roleName = (role) => wordName(ROLES, role);
+
+/** A paint's key - the row's id, then the column (a row id holds no «/»). */
+export const paintKey = (rowId, column) => `${rowId}/${column}`;
+
+const compiled = new Map();
+function holds(text, value) {
+  if (!compiled.has(text)) compiled.set(text, compile(text));
+  const answer = run(compiled.get(text), [{ value }]);
+  return Boolean(answer.values) && answer.values[0] === true;
+}
+
+/** The look of one cell: `rowId` its row, `column` its column, `cell` its {value, written_by} -> {role, hand} or null.
+ *  `looks` {rules: [in order], paints: {paintKey: {role}}} - null or absent: not said, nothing drawn. */
+export function lookOf(looks, rowId, column, cell) {
+  if (!looks) return null;
+  const paint = (looks.paints || {})[paintKey(rowId, column)];
+  if (paint && paint.role) return { role: paint.role, hand: true };
+  let role = null;
+  for (const rule of looks.rules || []) {
+    if (!rule.role || (rule.columns && !rule.columns.includes(column))) continue;
+    if (rule.written_by && !(cell && cell.written_by === rule.written_by)) continue;
+    if (!rule.when && !rule.written_by) continue;
+    if (rule.when && !holds(rule.when, cell ? cell.value : null)) continue;
+    role = rule.role;
+  }
+  return role ? { role, hand: false } : null;
+}
+
+/** Why a rule cannot be saved - neither a condition nor a writer, or a condition the calculator refuses (its words) -
+ *  or null. */
+export function ruleRefusal({ when = '', written_by = '' }) {
+  if (!String(when).trim() && !written_by) return RULE_EMPTY_NOTE;
+  if (!String(when).trim()) return null;
+  const read = compile(when);
+  return read.ok ? null : read.why;
+}
+
+/** A rule as its list says it - its condition, its writer. */
+export function ruleText(rule) {
+  return [rule.when, rule.written_by ? `Written by: ${wordName(WRITERS, rule.written_by)}` : null].filter(Boolean).join(' · ');
+}
+
+/** A rule's write - its role, condition, writer and columns (`null` = every column) at its place in the list. */
+export function ruleUpdate(table, id, { role, when = '', written_by = '', columns = null, position }, by) {
+  return lookUpdate(table, RULE, id, { role, rule_when: when, written_by, rule_columns: columns ? JSON.stringify(columns) : '',
+    ...(position ? { position } : {}) }, by);
+}
+
+/** A rule moved to `position` (grid_order.dropPlace over the rules' positions) - its other cells not touched. */
+export const ruleMove = (table, id, position, by) => lookUpdate(table, RULE, id, { position }, by);
+
+/** A rule taken off - its role wiped; its condition, writer and columns stay (its history says what it was). */
+export const ruleOff = (table, id, by) => lookUpdate(table, RULE, id, { role: '' }, by);
+
+/** A paint's write - `role` '' wipes it. */
+export const paintUpdate = (table, rowId, column, role, by) => lookUpdate(table, PAINT, paintKey(rowId, column), { role }, by);
+
+const cellOf = (item, col) => { const c = item && item.data && item.data[col]; return c && typeof c === 'object' ? c.value : c; };
+const columnsOf = (text) => { try { const v = JSON.parse(text); return Array.isArray(v) && v.length ? v.map(String) : null; } catch { return null; } };
+
+/** `looks` with a sys_looks broadcast's rows on `table` taken in -> the new looks, or null when it names none of them. */
+export function looksOn(msg, table, looks) {
+  const items = (msg && Array.isArray(msg.items) ? msg.items : []).filter((item) => cellOf(item, 'look_table') === table
+    && [RULE, PAINT].includes(cellOf(item, 'look_axis')));
+  if (!items.length) return null;
+  const rules = new Map(((looks && looks.rules) || []).map((rule) => [rule.id, rule]));
+  const paints = { ...((looks && looks.paints) || {}) };
+  for (const item of items) {
+    const key = cellOf(item, 'look_key');
+    const role = cellOf(item, 'role') || null;
+    if (cellOf(item, 'look_axis') === PAINT) {
+      if (role) paints[key] = { role, row_id: item.row_id };
+      else delete paints[key];
+    } else if (!role) {
+      rules.delete(key);
+    } else {
+      rules.set(key, { id: key, row_id: item.row_id, position: cellOf(item, 'position') || key, role,
+        when: cellOf(item, 'rule_when') || null, columns: columnsOf(cellOf(item, 'rule_columns')),
+        written_by: cellOf(item, 'written_by') || null });
+    }
+  }
+  const order = (a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  return { rules: [...rules.values()].sort(order), paints };
+}
+
+/** A page's looks taken in: `append` keeps the paints of the pages already shown (rules are the table's, whole). */
+export function pageLooks(looks, answer, append = false) {
+  if (!answer) return append ? looks : null;
+  return { rules: answer.rules || [], paints: { ...(append && looks ? looks.paints : {}), ...(answer.paints || {}) } };
+}
+
+export { LOOK_TABLE };

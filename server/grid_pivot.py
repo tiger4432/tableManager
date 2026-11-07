@@ -318,7 +318,9 @@ def fold(pivot, page, raw_rows, merged, items):
                 seen[group][name].setdefault(crud.comparison_text_value(value), value)
         item = crud.comparison_text_value(getattr(row, pivot.column))
         if item in shown:
-            out["cells"][item] = {"value": (cells.get(pivot.value) or {}).get("value"), "row_id": said.get("row_id")}
+            cell = cells.get(pivot.value) or {}
+            out["cells"][item] = {"value": cell.get("value"), "row_id": said.get("row_id"),
+                                  **({"written_by": cell["written_by"]} if "written_by" in cell else {})}
     for group in page:
         if pivot.carry:
             at[group]["carry"] = {name: ({"value": next(iter(found.values()), None)} if len(found) <= 1

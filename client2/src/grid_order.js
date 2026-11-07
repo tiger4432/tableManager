@@ -47,10 +47,13 @@ export function dropPlace(keys, from, to, { openStart = false, openEnd = false }
   return place === null ? { refused: PLACE_STALE_NOTE } : { place };
 }
 
-/** The write of a place - one update of PUT /tables/sys_looks/data/updates. */
-export function placeUpdate(table, axis, first, position, by) {
-  return { updates: { look_table: table, look_axis: axis, look_key: first, position }, source_name: 'user', updated_by: by };
+/** The write of one look row (a place, a rule, a paint) - one update of PUT /tables/sys_looks/data/updates. */
+export function lookUpdate(table, axis, key, cells, by) {
+  return { updates: { look_table: table, look_axis: axis, look_key: key, ...cells }, source_name: 'user', updated_by: by };
 }
+
+/** The write of a place. */
+export const placeUpdate = (table, axis, first, position, by) => lookUpdate(table, axis, first, { position }, by);
 
 const cellOf = (item, col) => { const c = item && item.data && item.data[col]; return c && typeof c === 'object' ? c.value : c; };
 /** A place as this screen remembers writing it. */
@@ -61,6 +64,6 @@ export const placeWord = (first, position) => `${first} ${position}`;
 export function placesOn(msg, table, written = new Set()) {
   const items = msg && Array.isArray(msg.items) ? msg.items : [];
   if (!items.length) return true;
-  const ours = items.filter((item) => cellOf(item, 'look_table') === table);
+  const ours = items.filter((item) => cellOf(item, 'look_table') === table && [ROW, GROUP, ITEM].includes(cellOf(item, 'look_axis')));
   return ours.some((item) => !written.has(placeWord(cellOf(item, 'look_key'), cellOf(item, 'position'))));
 }

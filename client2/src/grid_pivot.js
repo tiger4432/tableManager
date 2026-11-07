@@ -182,7 +182,10 @@ export function pivotRows(answer) {
     for (const [col, cell] of Object.entries(group.carry || {})) {
       data[col] = cell.values ? { value: null, values: cell.values } : { value: cell.value };
     }
-    for (const [item, cell] of Object.entries(group.cells || {})) data[itemColId(item)] = { value: cell.value, row_id: cell.row_id };
+    for (const [item, cell] of Object.entries(group.cells || {})) {
+      // its writer when a colour rule asked (server/grid_look.py)
+      data[itemColId(item)] = { value: cell.value, row_id: cell.row_id, ...('written_by' in cell ? { written_by: cell.written_by } : {}) };
+    }
     const row = { row_id: `pivot:${JSON.stringify(view.keys.map((key) => group[key]))}`, data };
     // read in entered order (owner 11-06): its first long row - what its place is written on - and its order key
     return group.order_key ? { ...row, first: group.first, order_key: group.order_key } : row;

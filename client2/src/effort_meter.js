@@ -332,7 +332,7 @@ function noteEffortError(said) {
  * already killed `navigator.clipboard` here. `crypto.getRandomValues` is NOT gated,
  * so it is the real primary path.
  */
-function newSessionId() {
+export function newSessionId() {
   try {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();

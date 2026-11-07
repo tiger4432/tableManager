@@ -4,6 +4,7 @@ import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds, isDataColumn, pivotShown } from './state.js';
 import { pivotColumns, itemOf, isNewPivotRow, headerWord, HeldColumnFilter, carryColumns, carryText } from './grid_pivot.js';
 import { ENTERED, ROW, GROUP, ITEM, dropPlace } from './grid_order.js';
+import { ROLES, lookOf } from './grid_look.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
@@ -1102,6 +1103,10 @@ export function buildColumnDefs() {
       },
       cellClassRules: {
         'cell-system-readonly': () => isSystem,
+        // its look (owner 11-06, lead L2): a rule's or a hand's role, the hand's mark, a model's writing
+        ...Object.fromEntries(ROLES.map(([word]) => [`look-${word}`, (params) => !isSystem && cellLookOf(params.data, col)?.role === word])),
+        'look-hand': (params) => !isSystem && Boolean(cellLookOf(params.data, col)?.hand),
+        'look-ai': (params) => !isSystem && lookTarget(params.data, col)?.cell?.written_by === 'ai',
         // a carried cell reads as read-only; one whose long rows hold more than one value says «N values», dim (owner 11-06)
         'pivot-carry': () => isCarried,
         'pivot-carry-many': (params) => isCarried && Boolean(carryText(params.data && params.data.data && params.data.data[col])),
@@ -1432,6 +1437,21 @@ export function columnFitWidth(header, texts, measure, pad, cap) {
 // renderGrid drew new columns (a table opened, the pivot turned) and the first rows drawn after it set their widths, once:
 // a re-read, a page, a window or side panel resize keep them, and so does a width the operator dragged (owner 11-05).
 let widthsOwed = false;
+
+/** The stored cell a grid cell is - {rowId, column, cell} - or null: in pivot view an item's cell is its long row's
+ *  value cell; a pivot's keys and carried cells are no one row's. */
+export function lookTarget(rowData, col) {
+  if (!rowData) return null;
+  const cell = rowData.data && rowData.data[col];
+  if (!pivotShown()) return { rowId: rowData.row_id, column: col, cell };
+  return itemOf(col) !== null && cell && cell.row_id && state.pivotView
+    ? { rowId: cell.row_id, column: state.pivotView.value, cell } : null;
+}
+
+const cellLookOf = (rowData, col) => {
+  const at = lookTarget(rowData, col);
+  return at && lookOf(state.looks, at.rowId, at.column, at.cell);
+};
 
 /** The columns' widths from the rows drawn, when renderGrid owes them - the one place that asks. */
 export function fitColumnWidths() {

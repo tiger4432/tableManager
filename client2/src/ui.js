@@ -3,6 +3,7 @@ import { state, isVirtualColumn, isDataColumn, pivotShown } from './state.js';
 import { refuseWrite, refusePivotKeys, wireUpdates, sayStopped } from './write_guard.js';
 import { elements } from './dom.js';
 import { getLocalTimeString, escapeHtml } from './utils.js';
+import { saidLooksChanged } from './grid_look.js';
 import { updateGridSortState, sortParams } from './grid.js';
 import { ensureCellObject, markCellOverwritten, isSystemColumn } from './grid.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
@@ -30,6 +31,7 @@ export function setupBeforeUnloadWarning() {
 }
 
 export function updateSelectedCellUI() {
+  saidLooksChanged();
   if (!state.selectedCell) {
     elements.selectedCellInfo.innerHTML = 'Select a cell to view history';
     return;

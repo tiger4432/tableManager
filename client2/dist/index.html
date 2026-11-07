@@ -25,7 +25,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/main-BmWJAQz4.js"></script>
+    <script type="module" crossorigin src="/assets/main-BT5lQ23i.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/absent-Glz_UUt8.js">
     <link rel="modulepreload" crossorigin href="/assets/clipboard_write-CLY3qg6U.js">
     <link rel="modulepreload" crossorigin href="/assets/dropdown-ffa53XA6.js">
@@ -38,7 +38,7 @@
     <link rel="modulepreload" crossorigin href="/assets/chunk-CEoa-xHZ.js">
     <link rel="modulepreload" crossorigin href="/assets/config-CF7TpAYt.js">
     <link rel="modulepreload" crossorigin href="/assets/disabled_reason-BCuzM_C1.js">
-    <link rel="modulepreload" crossorigin href="/assets/effort_meter-CctkEQ54.js">
+    <link rel="modulepreload" crossorigin href="/assets/effort_meter-4t18ipPl.js">
     <link rel="modulepreload" crossorigin href="/assets/image_preview-DOnqV1C9.js">
     <link rel="modulepreload" crossorigin href="/assets/reach_table-BLooFuJ2.js">
     <link rel="modulepreload" crossorigin href="/assets/image_thumb-C5AO9cSw.js">
@@ -52,7 +52,7 @@
     <link rel="stylesheet" crossorigin href="/assets/chain_queue_panel-CPybX3o8.css">
     <link rel="stylesheet" crossorigin href="/assets/main-BfPgcUrR.css">
     <link rel="stylesheet" crossorigin href="/assets/base-DtrWoe31.css">
-    <link rel="stylesheet" crossorigin href="/assets/style--5LtJHYR.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-B3NCERNP.css">
   </head>
 
   <body>
@@ -420,6 +420,10 @@
               <!-- Mockup 2b's range readout. Written by the function that already computes
                    the rectangle, so it cannot disagree with what is highlighted. -->
               <span id="range-readout" class="range-readout"></span>
+              <span id="look-legend" class="look-legend" hidden>
+                <span class="look-legend__it"><i class="look-mark look-hand"></i>Painted by hand</span>
+                <span class="look-legend__it"><i class="look-mark look-ai"></i>Written by AI</span>
+              </span>
             </div>
             <div class="status-center pagination-controls">
               <button id="prev-page-btn" class="glass-page-btn" disabled>
@@ -474,6 +478,7 @@
               <button id="tab-global" class="tab-btn active">Global</button>
               <button id="tab-row" class="tab-btn">Row</button>
               <button id="tab-queue" class="tab-btn">Queue</button>
+              <button id="tab-colours" class="tab-btn">Colours</button>
               <!-- Fold (owner 11-06): the panel to a strip, and back to the width it had - one of the row's buttons. -->
               <button id="sidebar-fold-btn" class="tab-btn sidebar-fold" type="button" aria-expanded="true"
                       aria-label="Fold panel" title="Fold panel">⇥</button>
@@ -555,6 +560,8 @@
                  없다: 이 표를 비우는 것은 «둘»이고, 2026-09-04 에 그 낱말이 읽는 사람을
                  체인으로 보냈다. 주인은 «행마다» 첫 칸이 말한다. -->
             <div id="queue-view" class="queue-view" style="display: none"></div>
+            <!-- the table's colour rules and the picked cell's paint (owner 11-06 mockup v3, look_panel.js) -->
+            <div id="colours-view" class="colours-view" style="display: none"></div>
           </div>
         </aside>
         <!-- the gallery's opened cell, in the history tabs' place while a board is open (gallery_seat.js) -->
