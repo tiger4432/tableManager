@@ -8,10 +8,13 @@ from types import SimpleNamespace
 import event_constants
 
 
-def waiting_lines(db, cap):
+def waiting_lines(db, cap, chain_only=False):
     """-> the first `cap` waiting lines, oldest first - `SimpleNamespace(key, run, events, rows, first_id,
     created_at, max_retry, retrying, lines_total, pairs)`, `pairs` its (table, event type) groups, `retrying` whether
     a row of it waits to be tried again - an attempt charged, or a deadlock with a save that charged none.
+    `chain_only` the chain worker's rows only (`event_constants.chain_waiting`) - the slot dispatcher's; the queue
+    screen lists control rows too (a waiting retroactive run, its ×). 총괄 11-07, B: open index requests held both
+    slots for 40 min.
 
     🔴 THE PAYLOAD OF THE WAITING ROWS IS READ ONCE (소유자 10-08 「대기열 화면 로딩 5초」 · 총괄 6d7046a42):
     the lines and each line's tables and kinds come from one grouping by (line, kind, table), ranked
@@ -27,7 +30,8 @@ def waiting_lines(db, cap):
     from database import models
 
     outbox = models.DatabaseOutbox
-    waiting_only = (outbox.processed_chain == False)  # noqa: E712 - 부분 인덱스의 술어 철자
+    waiting_only = (event_constants.chain_waiting(outbox) if chain_only
+                    else (outbox.processed_chain == False,))  # noqa: E712 - 부분 인덱스의 술어 철자
     run_of = outbox.run_id
     line_key = event_constants.queue_line_key(outbox)
     pairs = (_select(line_key.label("key"), _f.max(run_of).label("run"), outbox.table_name,
@@ -37,7 +41,7 @@ def waiting_lines(db, cap):
                      _f.min(outbox.id).label("first_id"), _f.min(outbox.created_at).label("created_at"),
                      _f.max(outbox.retry_count).label("max_retry"),
                      _f.max(_case((outbox.status == "RETRYING", 1), else_=0)).label("retrying"))
-             .where(waiting_only).group_by(line_key, outbox.table_name, outbox.event_type).subquery())
+             .where(*waiting_only).group_by(line_key, outbox.table_name, outbox.event_type).subquery())
     by_line = _select(pairs, _f.min(pairs.c.first_id).over(partition_by=pairs.c.key).label("line_first"),
                       _f.max(pairs.c.run).over(partition_by=pairs.c.key).label("line_run")).subquery()
     # live lines first: a retroactive run's thousands of lines never push a live one past the cap (소유자 10-15)

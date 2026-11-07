@@ -79,8 +79,12 @@ def test_the_line_builds_a_key_ask_with_the_start_builder_for_that_table(monkeyp
 
     built, auto = [], []
     monkeypatch.setattr(system_reload, "reloads_after", lambda db, mark: [])
-    monkeypatch.setattr(index_wants, "taken", lambda db: [(object(), (NEW, ["business_key_val"], models.KEY_UNIQUE)),
-                                                          (object(), ("t", ["s"], models.AUTO_SLOW_SORT))])
+    from types import SimpleNamespace
+
+    # the rows as the line reads them - an id each (총괄 11-07 ㄱ: a row is closed by its index's word, not when taken)
+    monkeypatch.setattr(index_wants, "taken", lambda db: [
+        (SimpleNamespace(id=1), (NEW, ["business_key_val"], models.KEY_UNIQUE)),
+        (SimpleNamespace(id=2), ("t", ["s"], models.AUTO_SLOW_SORT))])
     monkeypatch.setattr(event_constants, "mark_processed", lambda row, status: None)
     monkeypatch.setattr(ingestion_worker, "_ensure_business_key_unique_indexes_sync",
                         lambda factory, only=None: built.append(only))

@@ -305,7 +305,8 @@ class SlotPool:
         # and a retroactive run's line never does (소유자 10-15)
         behind = {t for slot in self.slots.values() if slot.line is not None and not slot.line["run"]
                   and (slot.line["orders"] or not slot.ready) for t in slot.line["touches"]}
-        lines = (line_of(db, line) for line in queue_lines.waiting_lines(db, LINES_CAP) if line.key not in held)
+        lines = (line_of(db, line) for line in queue_lines.waiting_lines(db, LINES_CAP, chain_only=True)
+                 if line.key not in held)
         return lines_to_give(lines, rules, behind, set(self._resting), limit=wanted)
 
     def _read_answers(self, db):

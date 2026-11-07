@@ -233,9 +233,19 @@ def ask(table, columns, why, seconds, bind):
     return True
 
 
+def index_name(table, columns, why):
+    """The name of the index an ask wants - a key's unique index, or an automatic one."""
+    from database import models
+    from migrations import add_business_key_unique_index as uq
+
+    return uq.unique_index_name(table) if why == models.KEY_UNIQUE else models.auto_index_name(table, columns, why)
+
+
 def taken(db):
-    """The INDEX_WANTED rows not taken yet (`processed_chain` false - the scheduler's index line takes them): [(row, (table, columns, why))] - a row it cannot read is
-    taken with nothing (its line says so)."""
+    """The INDEX_WANTED rows still open (`processed_chain` false): [(row, (table, columns, why))], oldest first - a row
+    it cannot read comes with nothing (its line says so). The scheduler's index line closes each by what happened to
+    its index (`runtime.maintenance_line`, 총괄 11-07 ㄱ): built or already there, or ruled out; one put off stays open
+    and is taken again - so a scheduler started again takes it from here."""
     import event_constants
     from database import models
 

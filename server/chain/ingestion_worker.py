@@ -4256,6 +4256,7 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
     Startup continues whatever happens here, exactly as it does for the ledger schema: this
     daemon also does chain work that owes none of this anything.
     """
+    from database import models
     from migrations import add_business_key_unique_index as uq
 
     db = db_session_factory()
@@ -4270,10 +4271,13 @@ def _ensure_business_key_unique_indexes_sync(db_session_factory, only=None):
                 if found is not None and not (not found[1] and found[0] == uq.unique_index_name(table)):
                     if not found[1]:
                         invalid.append((table, found[0]))
+                    models.note_word(uq.unique_index_name(table), models.INDEX_PRESENT if found[1]
+                                     else models.INDEX_REFUSED)
                     continue
                 census = uq.duplicate_census(conn, table)
                 if census["surplus"]:
                     refused.append((table, census["surplus"]))
+                    models.note_word(uq.unique_index_name(table), models.INDEX_REFUSED)
                     continue
                 name = uq.unique_index_name(table)
                 # the census's read ends here - a CONCURRENTLY drop or build waits for every session holding the
@@ -4572,8 +4576,7 @@ def pending_chain_events(db, limit: int = 200, line=None) -> list:
     from database.models import DatabaseOutbox
 
     return db.query(DatabaseOutbox).filter(
-        DatabaseOutbox.processed_chain == False,          # noqa: E712
-        ~DatabaseOutbox.event_type.in_(tuple(event_constants.CONTROL_EVENT_TYPES)),
+        *event_constants.chain_waiting(DatabaseOutbox),
         *(() if line is None else event_constants.queue_line_rows(DatabaseOutbox, line))
     ).order_by(DatabaseOutbox.id.asc()).limit(limit).all()
 

@@ -237,7 +237,7 @@ def test_between_batches_only_an_ordering_line_holds_its_tables(monkeypatch):
         pool.slots[index] = SimpleNamespace(line={"line": "s%d" % index, "run": False, "orders": orders,
                                                   "touches": touches}, ready=ready)
     monkeypatch.setattr("chain.queue_lines.waiting_lines",
-                        lambda db, cap: [SimpleNamespace(key=k, run=None) for k in ("p", "q", "r")])
+                        lambda db, cap, chain_only=False: [SimpleNamespace(key=k, run=None) for k in ("p", "q", "r")])
     monkeypatch.setattr(slots, "line_of", lambda db, line: _line(line.key, {"p": ["t"], "q": ["u"], "r": ["v"]}[line.key]))
     assert [l["line"] for l in pool._givable(None, [], set(), 3)[0]] == ["p"], \
         "t's line is between batches (a replay's), u's orders, v's runs a batch"

@@ -163,7 +163,8 @@ BUILT_WHY = "an index was just built on it and the planner had no statistics for
 
 
 #: The line's works that left an index for later (`models.comes_again`), each as (where it came from, work) - asked
-#: again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it was met.
+#: again each poll until none does (총괄 11-06 ㄱ-1): one «deferred», wherever it was met. An index request's
+#: (INDEX_WANTED) is its row, open until settled (`_take_asks`, 총괄 11-07 ㄱ), not kept here.
 _LEFT = []
 #: Where the declared work's came from - a Reload runs it anew with the rules as they stand and its old ones go.
 DECLARED = "declared"
@@ -185,10 +186,11 @@ def left_works():
     return [work for _source, work in _LEFT]
 
 
-def _round(db_session_factory, works):
+def _round(db_session_factory, works, words=None):
     """Index works (`_each`), then one ANALYZE of every table the round built an index on (`models.built_tables` -
     the one builder notes it, 총괄 11-05 ㄴ): without statistics for a new index the planner guesses (owner 11-04 ·
-    11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4). -> the works that left one for later."""
+    11-05). Its failure is its own sentence - the indexes stand (C 11-05 O4). -> the works that left one for later;
+    `words` gets each name's word (`models.words_in_round`)."""
     from chain import ingestion_worker as worker
     from database import models
 
@@ -199,6 +201,8 @@ def _round(db_session_factory, works):
             _each([work])
             if models.left_in_round() > before:
                 left.append(work)
+        if words is not None:
+            words.update(models.words_in_round())
     if built:
         try:
             worker._analyze_stale_tables_sync(db_session_factory, built=set(built), built_why=BUILT_WHY)
@@ -253,7 +257,6 @@ def poll_once(db_session_factory, mark):
     """One read: the Reload button's rows past `mark`, or a changed rules file (`declarations_changed`) -> the
     declared work again; INDEX_WANTED -> its automatic index. -> the new mark."""
     import event_constants
-    from database import models
     from runtime import index_wants, system_reload
 
     db = db_session_factory()
@@ -265,9 +268,10 @@ def poll_once(db_session_factory, mark):
         # a join-keys row is this line's own word to the writers - not a reason to do the declared work again
         declared = system_reload.reload_for(system_reload.INDEX_LINE, reloads)
         asks = index_wants.taken(db)
-        asked = [each for _row, each in asks if each is not None]
-        for row, _each_ask in asks:
-            event_constants.mark_processed(row, "SUCCESS")
+        for row, each in asks:
+            if each is None:                                       # unreadable - nothing to build (its line said it)
+                event_constants.mark_processed(row, "FAILED")
+        asks = [(row.id, each) for row, each in asks if each is not None]
         db.commit()
     finally:
         db.close()
@@ -284,17 +288,54 @@ def poll_once(db_session_factory, mark):
         _LEFT[:] = [kept for kept in _LEFT if kept[1] in left]
     if fresh is not None:
         _keep(_round(db_session_factory, fresh), DECLARED)
-    keys = [table for table, _columns, why in asked if why == models.KEY_UNIQUE]
-    if keys:
-        from chain import ingestion_worker as worker
-
-        _keep(_round(db_session_factory, [(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)]),
-              "keys")
-    asked = [each for each in asked if each[2] != models.KEY_UNIQUE]
-    if asked:
-        _keep(_round(db_session_factory, [(models.ensure_auto_indexes_sync, db_session_factory, asked, logger.warning,
-                                           False)]), "asked")
+    if asks:
+        _take_asks(db_session_factory, asks)
     return mark
+
+
+def _ask_works(db_session_factory, asked):
+    """The works that build `asked` [(table, columns, why)]: the keys' unique indexes, the automatic ones."""
+    from chain import ingestion_worker as worker
+    from database import models
+
+    keys = [table for table, _columns, why in asked if why == models.KEY_UNIQUE]
+    auto = [each for each in asked if each[2] != models.KEY_UNIQUE]
+    return (([(worker._ensure_business_key_unique_indexes_sync, db_session_factory, keys)] if keys else [])
+            + ([(models.ensure_auto_indexes_sync, db_session_factory, auto, logger.warning, False)] if auto else []))
+
+
+def _take_asks(db_session_factory, asks):
+    """The open index requests [(row id, (table, columns, why))], oldest first: the oldest built with the whole wait
+    before it, the others only if nothing holds them now (`models.waits_before(0)` - a poll waits for one, 총괄 11-07
+    ⑴). Each row closed by its index's word - built or there: SUCCESS; ruled out: FAILED (its sentence said where it
+    was met); put off: left open, taken again next poll (총괄 11-07 ㄱ)."""
+    import event_constants
+    from database import models
+    from runtime import index_wants
+
+    words = {}
+    _round(db_session_factory, _ask_works(db_session_factory, [asks[0][1]]), words)
+    if asks[1:]:
+        with models.waits_before(0):
+            _round(db_session_factory, _ask_works(db_session_factory, [each for _id, each in asks[1:]]), words)
+    closed = {}
+    for row_id, (table, columns, why) in asks:
+        word = words.get(index_wants.index_name(table, columns, why))
+        if word in (models.INDEX_BUILT, models.INDEX_PRESENT):
+            closed[row_id] = "SUCCESS"
+        elif word in (models.INDEX_FAILED, models.INDEX_REFUSED):
+            closed[row_id] = "FAILED"
+            logger.warning("[Indexes] the request for an index on %s (%s, %s) is closed: %s - see its line above",
+                           table, ", ".join(columns), why, word)
+    if not closed:
+        return
+    db = db_session_factory()
+    try:
+        for row in db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id.in_(sorted(closed))):
+            event_constants.mark_processed(row, closed[row.id])
+        db.commit()
+    finally:
+        db.close()
 
 
 def run(db_session_factory, stop=None):

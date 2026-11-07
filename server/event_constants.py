@@ -47,6 +47,14 @@ EVENT_INDEX_WANTED = "INDEX_WANTED"
 CONTROL_EVENT_TYPES = frozenset({EVENT_SCHEDULER_RUN_NOW, EVENT_RETROACTIVE_RUN,
                                  EVENT_BROADCAST_RECOVERY, EVENT_INDEX_WANTED})
 
+
+def chain_waiting(outbox):
+    """The rows the chain worker takes - not taken yet, not a control event: «the chain's backlog» wherever it is
+    counted or given (the worker's claim, the lines a slot is given, health's outbox check, the loop's depth -
+    총괄 11-07; B: open index requests held both slots for 40 min). `outbox` the model or its table."""
+    columns = getattr(outbox, "c", outbox)
+    return (columns.processed_chain == False, ~columns.event_type.in_(tuple(CONTROL_EVENT_TYPES)))  # noqa: E712
+
 #: `database_outbox.table_name` is not empty by convention, so a row that is about no
 #: single table fills the column with an invented name. `retroactive` writes this one: a
 #: run spans whatever its operation touches, which is not a table.

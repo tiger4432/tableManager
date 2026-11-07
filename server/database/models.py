@@ -1933,11 +1933,46 @@ def comes_again(word):
 
 
 def _ensure_one_index(engine, name, *args, **kwargs):
-    """`_ensure_one_index_once`, and a name it left for later (`comes_again`) noted on this thread's round."""
+    """`_ensure_one_index_once`, and a name it left for later (`comes_again`) noted on this thread's round - its word
+    too (`note_word`)."""
     word = _ensure_one_index_once(engine, name, *args, **kwargs)
     if comes_again(word) and getattr(_ROUND, "left", None) is not None:
         _ROUND.left.append(name)
+    note_word(name, word)
     return word
+
+
+#: A wanted index that will not be built however often it is asked - a view, no row_id, its table at
+#: auto_index_per_table, duplicates under its key (each said where it is met).
+INDEX_REFUSED = "refused"
+
+
+def note_word(name, word):
+    """`name`'s word in this thread's open round (`words_in_round`) - a skipped one's too (present, refused), so an
+    asker can close what it asked by what happened to it (`runtime.maintenance_line`, 총괄 11-07 ㄱ)."""
+    if getattr(_ROUND, "words", None) is not None:
+        _ROUND.words[name] = word
+
+
+def words_in_round():
+    """{name: word} of this thread's open round so far."""
+    return dict(getattr(_ROUND, "words", None) or {})
+
+
+@contextlib.contextmanager
+def waits_before(seconds):
+    """The wait before a build on this thread, `seconds` in place of INDEX_WAIT_BEFORE_SECONDS while open - the line
+    waits for one put-off request a poll and looks at the others without waiting (총괄 11-07 ⑴)."""
+    _ROUND.wait = seconds
+    try:
+        yield
+    finally:
+        _ROUND.wait = None
+
+
+def _wait_seconds():
+    wait = getattr(_ROUND, "wait", None)
+    return INDEX_WAIT_BEFORE_SECONDS if wait is None else wait
 
 
 def _ensure_one_index_once(engine, name, statement, what, say=print, table=None, leftovers=(), say_every=None,
@@ -1999,7 +2034,7 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                     # waits for its asker's next start or run (총괄 11-06 ㄱ)
                     again = ("tried again at the line's next poll" if getattr(_ROUND, "left", None) is not None
                              else "built again at the next start or the next run that asks for it")
-                    say(f"[Indexes] {what} index '{name}' not built - waited {INDEX_WAIT_BEFORE_SECONDS:.0f}s for pid "
+                    say(f"[Indexes] {what} index '{name}' not built - waited {_wait_seconds():.0f}s for pid "
                         f"{', pid '.join(held)}; {again}")
                     return INDEX_DEFERRED
                 for leftover in stale:
@@ -2045,9 +2080,9 @@ def _qualified(schema, name):
 
 
 def _wait_before_the_build(connection, table, name, say, schema=None):
-    """Wait up to `INDEX_WAIT_BEFORE_SECONDS` for the sessions the build would wait for (`db_waits.table_holders`, a
-    transaction open longer than this wait among them, 총괄 11-07) - said once when it starts waiting. -> those still
-    there then, each as the line says it, or [] (free: build)."""
+    """Wait up to `INDEX_WAIT_BEFORE_SECONDS` (`waits_before` may shorten it) for the sessions the build would wait
+    for (`db_waits.table_holders`, a transaction open longer than INDEX_WAIT_BEFORE_SECONDS among them, 총괄 11-07) -
+    said once when it starts waiting. -> those still there then, each as the line says it, or [] (free: build)."""
     import time
 
     import db_waits
@@ -2056,12 +2091,12 @@ def _wait_before_the_build(connection, table, name, say, schema=None):
     while True:
         held = db_waits.table_holders(connection.connection.dbapi_connection, table, schema,
                                       older_than=INDEX_WAIT_BEFORE_SECONDS)
-        if not held or time.monotonic() - began >= INDEX_WAIT_BEFORE_SECONDS:
+        if not held or time.monotonic() - began >= _wait_seconds():
             return held
         if not told_once:
             told_once = True
             say("[Indexes] %s waits for pid %s before it builds (at most %.0f s)"
-                % (name, ", pid ".join(held), INDEX_WAIT_BEFORE_SECONDS))
+                % (name, ", pid ".join(held), _wait_seconds()))
         time.sleep(INDEX_WAIT_POLL_SECONDS)
 
 
@@ -2073,11 +2108,11 @@ _ROUND = threading.local()
 def built_tables():
     """A round of index work on this thread - the set of tables an index was built on in it (`_ensure_one_index`),
     for the line's one ANALYZE after the round (`runtime.maintenance_line`, 총괄 11-05)."""
-    _ROUND.built, _ROUND.left = set(), []
+    _ROUND.built, _ROUND.left, _ROUND.words = set(), [], {}
     try:
         yield _ROUND.built
     finally:
-        _ROUND.built = _ROUND.left = None
+        _ROUND.built = _ROUND.left = _ROUND.words = None
 
 
 def left_in_round():
@@ -2671,17 +2706,27 @@ def ensure_auto_indexes(engine, wanted, say=print, say_every=INDEX_WAIT_SAY_SECO
     for table, columns, why in list(wanted) + list(decide_keys or ()):
         entry = crud.TABLE_CONFIG.get(table) or {}
         name = auto_index_name(table, columns, why)
-        if name in done or entry.get("kind") == "view":
+        if name in done:
+            continue
+        if entry.get("kind") == "view":
+            note_word(name, INDEX_REFUSED)
+            say("[Indexes] %s on %s is not built: %s is a view" % (name, table, table))
             continue
         with engine.connect() as connection:
             held = catalogue_indexes(connection.connection.dbapi_connection, table)
             has_row_id = connection.execute(text(
                 "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :t "
                 "AND column_name = 'row_id'"), {"t": table}).first() is not None
-        if not has_row_id or any(auto_index_serves(index, columns, why) for index in held):
+        if not has_row_id:
+            note_word(name, INDEX_REFUSED)
+            say("[Indexes] %s on %s is not built: %s has no row_id column" % (name, table, table))
+            continue
+        if any(auto_index_serves(index, columns, why) for index in held):
+            note_word(name, INDEX_PRESENT)
             continue
         made = sum(1 for index in held if index["name"].startswith(AUTO_INDEX_PREFIX))
         if made >= cap:
+            note_word(name, INDEX_REFUSED)
             say("[Indexes] %s on %s is not built: %s already holds %d automatic indexes (auto_index_per_table %d) - "
                 "%s on %s" % (name, table, table, made, cap, why, ", ".join(columns)))
             continue

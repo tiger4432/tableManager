@@ -822,7 +822,7 @@ def test_a_retroactive_row_by_row_line_never_holds_a_live_line_on_its_tables(mon
     pool = slots.SlotPool(spawn=lambda index: None)
     for index, line, ready in ((1, run, False), (2, live, True)):
         pool.slots[index] = type("S", (), {"line": slots._held(line), "ready": ready})()
-    monkeypatch.setattr("chain.queue_lines.waiting_lines", lambda db, cap: [type("L", (), {"key": "tx:9", "run": None})()])
+    monkeypatch.setattr("chain.queue_lines.waiting_lines", lambda db, cap, chain_only=False: [type("L", (), {"key": "tx:9", "run": None})()])
     monkeypatch.setattr(slots, "line_of", lambda db, line: {"line": line.key, "run": False, "orders": False,
                                                              "events": []})
     assert pool._givable(None, [], set(), 2) == ([], 1), "a live line on the live row-by-row line's table waits"

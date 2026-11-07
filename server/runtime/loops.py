@@ -97,9 +97,10 @@ def _outbox_depth(db):
     from sqlalchemy import func as _f
     from database import models
 
+    import event_constants
+
     outbox = models.DatabaseOutbox
-    return db.query(_f.count()).select_from(outbox).filter(
-        outbox.processed_chain == False).scalar()          # noqa: E712 (partial index)
+    return db.query(_f.count()).select_from(outbox).filter(*event_constants.chain_waiting(outbox)).scalar()
 
 
 def _vacuum_phase(db):

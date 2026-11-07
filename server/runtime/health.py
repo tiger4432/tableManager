@@ -586,7 +586,8 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
 
 
 def probe_outbox(db):
-    """Backlog size (capped) and age of the oldest unprocessed event.
+    """Backlog size (capped) and age of the oldest unprocessed event - the chain's: the rows its worker takes
+    (`event_constants.chain_waiting`); a control event waiting (an index request put off) is not the chain behind.
 
     Both queries ride the partial index ``idx_outbox_unprocessed``
     (``(processed_chain, id) WHERE processed_chain = false``):
@@ -597,20 +598,19 @@ def probe_outbox(db):
       more than ~10k index entries even with a 10,000,000-row table. An exact
       count above the cap has no operational meaning anyway.
     """
-    from sqlalchemy import text
+    from sqlalchemy import func, select, text
+
+    import event_constants
+    from database.models import DatabaseOutbox as outbox
+
     out = {}
-    row = db.execute(text(
-        "SELECT EXTRACT(EPOCH FROM (now() - created_at)) AS age "
-        "FROM database_outbox WHERE processed_chain = false "
-        "ORDER BY id ASC LIMIT 1"
-    )).fetchone()
+    waiting = event_constants.chain_waiting(outbox)
+    row = db.execute(select(func.extract("epoch", func.now() - outbox.created_at)).where(*waiting)
+                     .order_by(outbox.id.asc()).limit(1)).fetchone()
     out["oldest_age_seconds"] = round(float(row[0]), 2) if row and row[0] is not None else None
 
-    cnt = db.execute(text(
-        "SELECT count(*) FROM ("
-        "  SELECT 1 FROM database_outbox WHERE processed_chain = false LIMIT :cap"
-        ") s"
-    ), {"cap": OUTBOX_COUNT_CAP + 1}).scalar()
+    cnt = db.execute(select(func.count()).select_from(
+        select(text("1")).select_from(outbox).where(*waiting).limit(OUTBOX_COUNT_CAP + 1).subquery())).scalar()
     cnt = int(cnt or 0)
     out["pending"] = min(cnt, OUTBOX_COUNT_CAP)
     out["pending_capped"] = cnt > OUTBOX_COUNT_CAP
