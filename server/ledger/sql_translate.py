@@ -281,8 +281,6 @@ class Leg:
         when the row says nothing: a blank key or a blank time; whether its time was there and did not read).
         `memo`: one read's spellings - a value the rows repeat is spelled once, keyed by its type too (9, 9.0 and '9'
         are three keys; 11-07: 724 wafers and 6,126 times in 72,400 rows)."""
-        from .event_frame import SourcePreparationError, _aware_time
-
         memo = {} if memo is None else memo
 
         def spell(spec):
@@ -299,19 +297,9 @@ class Leg:
         ends = {arm: (bare, {key: spell(spec) for key, spec in keys.items()}) for arm, (bare, keys) in self.ends.items()}
         if any(value is None for _bare, keys in ends.values() for value in keys.values()):
             return None, False
-        moment = row[self.time.column]
-        if roleframe.is_blank_source_value(moment):
-            return None, False
-        said = ("time", self.time.timezone, self.time.format, type(moment).__name__, repr(moment))
-        if said not in memo:
-            try:
-                memo[said] = _aware_time(roleframe._plain(moment) if not hasattr(moment, "tzinfo") else moment,
-                                         self.time.timezone, f"read.{self.time.column}", self.time.format)
-            except SourcePreparationError:
-                memo[said] = None
-        moment = memo[said]
+        moment, unreadable = self.moment(row, memo)
         if moment is None:
-            return None, True
+            return None, unreadable
         qualifiers = {}
         for name, spec in self.qualifiers.items():
             value = spec["constant"] if "constant" in spec else roleframe._plain(row[spec["column"]])
@@ -323,6 +311,23 @@ class Leg:
                 "object_kind": "entity_ref", "object_payload": payload, "occurred_at": moment, "source_who": self.source,
                 "source_translator_ver": self.version, "supersedes": None, "source_event_id": None,
                 "source_event_state": None, "occurred_at_basis": self.basis, "world": self.world}, False
+
+    def moment(self, row, memo):
+        """(the row's instant as the translator reads it, or None: blank or not read; whether it was there and did not
+        read) - each time text once a `memo`."""
+        from .event_frame import SourcePreparationError, _aware_time
+
+        moment = row[self.time.column]
+        if roleframe.is_blank_source_value(moment):
+            return None, False
+        said = ("time", self.time.timezone, self.time.format, type(moment).__name__, repr(moment))
+        if said not in memo:
+            try:
+                memo[said] = _aware_time(roleframe._plain(moment) if not hasattr(moment, "tzinfo") else moment,
+                                         self.time.timezone, f"read.{self.time.column}", self.time.format)
+            except SourcePreparationError:
+                memo[said] = None
+        return memo[said], memo[said] is None
 
     def late(self, row):
         """(source_raw_ref, id) of the row's atom - the read order reads them only at a tie and the answer for the

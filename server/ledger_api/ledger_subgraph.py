@@ -40,6 +40,7 @@ import uuid
 from collections import OrderedDict, defaultdict, deque
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from ledger import explorer
 from ledger.schema import LEDGER_COLUMNS, event_time_sql, reads_as_event_time
@@ -1386,6 +1387,13 @@ class InMemoryEvidenceLookup:
 
     def claims_for_entities(self, entities, direction, limit, *,
                             follow=None, exclude=None, far=None, far_types=None, before=None):
+        return self._result(self._kept(self.atoms, self._latest(), entities, direction, follow=follow,
+                                       exclude=exclude, far=far, far_types=far_types, before=before), limit)
+
+    def _kept(self, atoms, latest, entities, direction, *,
+              follow=None, exclude=None, far=None, far_types=None, before=None):
+        """The atoms of `atoms` a read of `entities` keeps, in no order - `latest`: `_latest` of the atoms that say
+        whether one is current."""
         ends = None if not far else {(t, _canonical(k)) for t, k in far[1]}
         far_mode = far and far[0]
         wanted = {(item[0], _canonical(item[1])): (item[2] if len(item) > 2 else {})
@@ -1403,10 +1411,10 @@ class InMemoryEvidenceLookup:
                 return False                            # the bound values, as `_skip` spells them
             return not (step in (wanted[near].get("steps") or ()) and far not in wanted)
 
-        rows, latest = [], self._latest()
+        rows = []
         cursor = None if before is None else next(
             (_read_order_key(atom) for atom in self.atoms if str(atom.id) == str(before[1])), None)
-        for atom in self.atoms:
+        for atom in atoms:
             if (follow and atom.predicate not in follow) or (exclude and atom.predicate in exclude):
                 continue
             if (before is not None and (cursor is None or _read_order_key(atom) >= cursor)) \
@@ -1431,7 +1439,7 @@ class InMemoryEvidenceLookup:
                         continue
                     atom = replace(atom, not_current=True)
                 rows.append(atom)
-        return self._result(rows, limit)
+        return rows
 
     def count_far_ends(self, entities, direction, predicate, far_type):
         """`SqlEvidenceLookup.count_far_ends` over the atoms held here - the read's filters, its census left alone."""
@@ -1509,8 +1517,13 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
         return trace._fetch(self.connection, sql, params)
 
     def _atoms(self, leg, rows):
-        """The atoms `leg` makes of `rows` (its `cells`, in order) - a time the translator reads only by PostgreSQL read
-        by it first (`times_read_of`), as a translation reads it."""
+        """The atoms `leg` makes of `rows` (its `cells`, in order)."""
+        return self._made(self._timed(leg, rows))
+
+    def _timed(self, leg, rows):
+        """[(row key, leg, row, its instant)] of `rows` (its `cells`, in order) whose time reads, nothing made - the
+        instant as the translator reads it (`Leg.moment`), a time it reads only by PostgreSQL read by it first
+        (`times_read_of`), as a translation reads it."""
         from sqlalchemy.engine import Connection
         from sqlalchemy.orm import Session
 
@@ -1526,13 +1539,21 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
         out = []
         with roleframe.times_read(readings):
             for row in rows:
-                fields, unreadable = leg.atom(row, self._memo)
-                if unreadable:
+                moment, unreadable = leg.moment(row, self._memo)
+                if moment is not None:
+                    out.append(((leg.source, leg.sentence, row["row_id"]), leg, row, moment))
+                elif unreadable and leg.atom(row, self._memo)[1]:      # a row with a blank key says nothing
                     self._unreadable.add((leg.relation, row["row_id"]))
-                if fields is not None:
-                    out.append(_RowAtom.of(fields, self._maker(leg, row), self._texts(fields),
-                                           (leg.source, leg.sentence, row["row_id"])))
         self.said["unreadable_times"] = len(self._unreadable)
+        return out
+
+    def _made(self, timed):
+        """The atoms of `_timed`'s rows - a row with a blank key makes none."""
+        out = []
+        for key, leg, row, _moment in timed:
+            fields, _unreadable = leg.atom(row, self._memo)
+            if fields is not None:
+                out.append(_RowAtom.of(fields, self._maker(leg, row), self._texts(fields), key))
         return out
 
     def _maker(self, leg, row):
@@ -1556,12 +1577,12 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
         return out
 
     def _read(self, arm, entities, limit, follow=None, exclude=None):
-        """(the atoms the legs make of the rows whose `arm` end is one of `entities`, whether a leg had more rows than
-        `limit` x READ_GUARD_FACTOR)."""
+        """(`_timed` of the rows whose `arm` end is one of `entities`, whether a leg had more rows than `limit` x
+        READ_GUARD_FACTOR)."""
         wanted = defaultdict(list)
         for item in entities:
             wanted[item[0]].append(dict(item[1] or {}))
-        atoms, cut, guard = [], False, max(1, int(limit)) * READ_GUARD_FACTOR
+        timed, cut, guard = [], False, max(1, int(limit)) * READ_GUARD_FACTOR
         for leg in self.legs:
             bare = leg.ends[arm][0]
             if bare not in wanted or (follow and leg.predicate not in follow) or (exclude and leg.predicate in exclude):
@@ -1572,47 +1593,69 @@ class VirtualEvidenceLookup(InMemoryEvidenceLookup):
                 continue
             rows = self._execute(leg.read(where, tail=" LIMIT %(guard)s"), params)
             cut = cut or len(rows) > guard
-            atoms.extend(self._atoms(leg, rows[:guard]))
-        return atoms, cut
+            timed.extend(self._timed(leg, rows[:guard]))
+        return timed, cut
 
     def _pool(self, entities, direction, limit, follow=None, exclude=None):
-        """The atoms a read of `entities` holds - both arms `direction` names, and for a `one` predicate its subjects'
-        other facts, which say whether it is current - and whether a leg was cut."""
+        """(`_timed` of the rows a read of `entities` holds - both arms `direction` names, and for a `one` predicate
+        its subjects' other facts, which say whether it is current - whether a leg was cut)."""
         pool, cut = {}, False
         for arm in ("outgoing", "incoming"):
             if direction in (arm, "both"):
-                atoms, bit = self._read(arm, entities, limit, follow, exclude)
-                pool.update((atom.row, atom) for atom in atoms)
+                timed, bit = self._read(arm, entities, limit, follow, exclude)
+                pool.update((each[0], each) for each in timed)
                 cut = cut or bit
-        one = [atom for atom in pool.values() if atom.predicate in self.one]
+        one = self._made([each for each in pool.values() if each[1].predicate in self.one])
         if one:
             subjects = {(atom.subject_type, _canonical(atom.subject_keys)): (atom.subject_type, atom.subject_keys)
                         for atom in one}
-            atoms, bit = self._read("outgoing", list(subjects.values()), limit,
+            timed, bit = self._read("outgoing", list(subjects.values()), limit,
                                     follow=sorted({atom.predicate for atom in one}))
-            pool.update((atom.row, atom) for atom in atoms)
+            pool.update((each[0], each) for each in timed)
             cut = cut or bit
-        self.atoms = list(pool.values())
-        return cut
+        return list(pool.values()), cut
 
     def claims_for_entities(self, entities, direction, limit, *,
                             follow=None, exclude=None, far=None, far_types=None, before=None):
+        """`InMemoryEvidenceLookup`'s rules over the rows read, made into atoms a page at a time, newest first (lead
+        11-07): a page is `limit` rows - a subject's later fact is made before its earlier one - and the pages stop
+        when more than `limit` atoms are kept and the next row's instant is below the `limit`-th's. Then the rows the
+        interval leaves out are made, and the rules count them, as they would have."""
         if not entities or limit <= 0:
             return [], False
-        cut = self._pool(entities, direction, limit, follow, exclude)
-        atoms, over = InMemoryEvidenceLookup.claims_for_entities(
-            self, entities, direction, limit, follow=follow, exclude=exclude, far=far, far_types=far_types,
-            before=before)
+        pool, cut = self._pool(entities, direction, limit, follow, exclude)
+        asked = dict(follow=follow, exclude=exclude, far=far, far_types=far_types, before=before)
+        if before is not None:                  # a cursor names its atom by id: every atom made
+            self.atoms = self._made(pool)
+            atoms, over = InMemoryEvidenceLookup.claims_for_entities(self, entities, direction, limit, **asked)
+            return atoms, over or cut
+        pool.sort(key=lambda each: each[3], reverse=True)
+        self.atoms, kept, start = [], [], 0
+        while start < len(pool):
+            page = self._made(pool[start:start + int(limit)])
+            self.atoms.extend(page)
+            start += int(limit)
+            kept.extend(self._kept(page, self._latest(), entities, direction, **asked))
+            if len(kept) > limit and start < len(pool) and pool[start][3] < self._result(kept, limit)[0][-1].occurred_at:
+                break
+        outside = [] if self.interval_excluded is None else self._made([
+            each for each in pool[start:]
+            if self._outside(SimpleNamespace(occurred_at_basis=each[1].basis, occurred_at=each[3]))])
+        self.atoms.extend(outside)
+        kept.extend(self._kept(outside, self._latest(), entities, direction, **asked))
+        atoms, over = self._result(kept, limit)
         return atoms, over or cut
 
     def count_far_ends(self, entities, direction, predicate, far_type):
-        self._pool(entities, direction, MAX_CLAIM_SCAN, follow=[predicate])
+        pool, _cut = self._pool(entities, direction, MAX_CLAIM_SCAN, follow=[predicate])
+        self.atoms = self._made(pool)
         return InMemoryEvidenceLookup.count_far_ends(self, entities, direction, predicate, far_type)
 
     def _paged(self, entity, direction, predicate):
         """A time page's atoms of one node and predicate (`SqlEvidenceLookup._time_arm`): entity references, each
         marked when it is not the current fact; and whether the read was cut."""
-        cut = self._pool([entity], direction, MAX_CLAIM_SCAN, follow=[predicate])
+        pool, cut = self._pool([entity], direction, MAX_CLAIM_SCAN, follow=[predicate])
+        self.atoms = self._made(pool)
         node, latest = (entity[0], _canonical(entity[1])), self._latest()
         out = []
         for atom in self.atoms:
