@@ -2000,7 +2000,7 @@ def _ensure_one_index_once(engine, name, statement, what, say=print, table=None,
                     again = ("tried again at the line's next poll" if getattr(_ROUND, "left", None) is not None
                              else "built again at the next start or the next run that asks for it")
                     say(f"[Indexes] {what} index '{name}' not built - waited {INDEX_WAIT_BEFORE_SECONDS:.0f}s for pid "
-                        f"{', '.join(map(str, held))} holding {table}; {again}")
+                        f"{', pid '.join(held)}; {again}")
                     return INDEX_DEFERRED
                 for leftover in stale:
                     say(f"[Schema Sync] {what} index '{leftover}' is INVALID from an "
@@ -2045,21 +2045,23 @@ def _qualified(schema, name):
 
 
 def _wait_before_the_build(connection, table, name, say, schema=None):
-    """Wait up to `INDEX_WAIT_BEFORE_SECONDS` for the sessions holding `table` (`db_waits.table_holders`) - said once
-    when it starts waiting. -> the pids still holding it then, or [] (free: build)."""
+    """Wait up to `INDEX_WAIT_BEFORE_SECONDS` for the sessions the build would wait for (`db_waits.table_holders`, a
+    transaction open longer than this wait among them, 총괄 11-07) - said once when it starts waiting. -> those still
+    there then, each as the line says it, or [] (free: build)."""
     import time
 
     import db_waits
 
     began, told_once = time.monotonic(), False
     while True:
-        held = db_waits.table_holders(connection.connection.dbapi_connection, table, schema)
+        held = db_waits.table_holders(connection.connection.dbapi_connection, table, schema,
+                                      older_than=INDEX_WAIT_BEFORE_SECONDS)
         if not held or time.monotonic() - began >= INDEX_WAIT_BEFORE_SECONDS:
             return held
         if not told_once:
             told_once = True
-            say("[Indexes] %s waits for pid %s holding %s before it builds (at most %.0f s)"
-                % (name, ", ".join(map(str, held)), table, INDEX_WAIT_BEFORE_SECONDS))
+            say("[Indexes] %s waits for pid %s before it builds (at most %.0f s)"
+                % (name, ", pid ".join(held), INDEX_WAIT_BEFORE_SECONDS))
         time.sleep(INDEX_WAIT_POLL_SECONDS)
 
 

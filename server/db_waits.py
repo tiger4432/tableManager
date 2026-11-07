@@ -100,23 +100,42 @@ _INDEX_BUILDS = (
 #: out by the build itself, which keeps no one else waiting meanwhile and says so («building - waiting for ...»).
 BUILD_WAITS_ON = ("ShareUpdateExclusiveLock", "ShareLock", "ShareRowExclusiveLock", "ExclusiveLock", "AccessExclusiveLock")
 
+#: What else a CONCURRENTLY build waits for (measured on PG 18.3, 총괄 11-07): the table's writers - locks that conflict
+#: with ShareLock - and every transaction of this database holding a snapshot (`backend_xmin`), whatever it read. Waited
+#: for before the build only once open longer than the wait itself (`older_than`): 11-06 stands for a short one, and one
+#: left open (idle in transaction, a query that runs on) is what held the build for ever.
+WRITES = ("RowExclusiveLock", "ShareUpdateExclusiveLock", "ShareRowExclusiveLock", "ExclusiveLock", "AccessExclusiveLock")
+
 _TABLE_HOLDERS = (
-    "SELECT DISTINCT l.pid FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid "
-    "WHERE l.relation = to_regclass(quote_ident(coalesce(%s, current_schema())) || '.' || quote_ident(%s)) "
-    "AND l.pid <> pg_backend_pid() AND l.granted "
-    "AND l.mode = ANY(%s) AND a.backend_type <> 'autovacuum worker' ORDER BY l.pid")
+    "SELECT a.pid, coalesce(bool_or(l.mode = ANY(%(strong)s)), false), coalesce(bool_or(l.mode = ANY(%(writes)s)), false),"
+    " a.state, extract(epoch FROM now() - coalesce(a.xact_start, a.query_start))::int,"
+    " to_char(coalesce(a.xact_start, a.query_start), 'HH24:MI:SS'), left(regexp_replace(coalesce(a.query, ''), '\\s+', ' ', 'g'), 60) "
+    "FROM pg_stat_activity a LEFT JOIN pg_locks l ON l.pid = a.pid AND l.granted "
+    " AND l.relation = to_regclass(quote_ident(coalesce(%(schema)s, current_schema())) || '.' || quote_ident(%(table)s)) "
+    "WHERE a.pid <> pg_backend_pid() AND a.datname = current_database() AND a.backend_type <> 'autovacuum worker' "
+    "GROUP BY a.pid, a.state, a.xact_start, a.query_start, a.query, a.backend_xmin "
+    "HAVING coalesce(bool_or(l.mode = ANY(%(strong)s)), false) OR (%(older)s IS NOT NULL "
+    " AND now() - coalesce(a.xact_start, a.query_start) > make_interval(secs => %(older)s) "
+    " AND (a.backend_xmin IS NOT NULL OR coalesce(bool_or(l.mode = ANY(%(writes)s)), false))) ORDER BY a.pid")
 
 
 #: PostgreSQL's query_canceled - what a statement_timeout's cancel raises (`exc.orig.pgcode`).
 QUERY_CANCELED = "57014"
 
 
-def table_holders(dbapi_conn, table, schema=None):
-    """-> the pids of the other sessions holding `table` the way a CONCURRENTLY build would wait for - an autovacuum
-    worker left out (a build's lock request cancels it). The index builder's wait before it builds (총괄 11-05 ㄱ-2)."""
+def table_holders(dbapi_conn, table, schema=None, older_than=None):
+    """-> the other sessions a CONCURRENTLY build of `table` would wait for and that the wait before it waits out
+    (총괄 11-05 ㄱ-2): one holding the table in a mode its own lock conflicts with, any age (`BUILD_WAITS_ON`); and, open
+    longer than `older_than` seconds, one writing the table or holding a snapshot of this database (`WRITES`, 11-07).
+    An autovacuum worker left out (a build's lock request cancels it). Each said for the line: «<pid> holding <table>»
+    and, when open that long, «(<state>, open <n> s since <hh:mm:ss>: <its query's head>)»."""
     with dbapi_conn.cursor() as cur:
-        cur.execute(_TABLE_HOLDERS, (schema, table, list(BUILD_WAITS_ON)))
-        return [row[0] for row in cur.fetchall()]
+        cur.execute(_TABLE_HOLDERS, {"strong": list(BUILD_WAITS_ON), "writes": list(WRITES), "schema": schema,
+                                     "table": table, "older": older_than})
+        return ["%s%s%s" % (pid, " holding %s" % table if strong or writes else "",
+                            " (%s, open %s s since %s: %s)" % (state, age, since, query)
+                            if older_than is not None and age > older_than else "")
+                for pid, strong, writes, state, age, since, query in cur.fetchall()]
 
 
 def index_builds(dbapi_conn):

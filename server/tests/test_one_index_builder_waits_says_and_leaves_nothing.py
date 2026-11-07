@@ -7,6 +7,8 @@
   deferred   a session holds the table past the wait before the build - nothing started, so nothing left behind
   written    a session writing the table (an open INSERT) is not waited for - the build starts, waits that writer out
              itself and ends valid (총괄 11-06: a table written without pause put its index off for ever)
+  left open  a writer or a query open longer than the wait before the build is waited out before it, then the build is
+             put off - the build would wait for it for ever (총괄 11-07); the line names its pid, age and query
   busy       the name is being built by another session - left to it; that build is not thrown away, says whom it
              waits for while it waits, and is valid once the old transaction ends
 """
@@ -47,6 +49,20 @@ def _build(engine, said, **kw):
     with models.built_tables() as built:
         word = models._ensure_one_index(engine, NAME, DDL, "test", say=said.append, table=TABLE, **kw)
     return word, set(built)
+
+
+def _cancel_the_build_after(engine, seconds):
+    """The test's cap, not the product's: the build sets its own timeouts to 0, so a build that waits for a holder
+    left open would hang the run - cancelled after `seconds` it ends, and the cell is red (총괄 11-07)."""
+    def cancel():
+        with engine.connect() as conn:
+            conn.execute(text("SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE datname = current_database() "
+                              "AND pid <> pg_backend_pid() AND query = :q"), {"q": DDL})
+            conn.commit()
+    timer = threading.Timer(seconds, cancel)
+    timer.daemon = True
+    timer.start()
+    return timer
 
 
 def test_present_built_and_a_leftover_repaired(table):
@@ -170,3 +186,37 @@ def test_a_writing_session_is_not_waited_for_and_the_build_ends_valid(table, mon
         if builder is not None:
             builder.join(60)
     assert out.get("word") == (models.INDEX_BUILT, {TABLE}) and _state(table) == "valid", (out, said)
+
+
+@pytest.mark.parametrize("left_open", ["idle in transaction", "active"])
+def test_a_transaction_open_past_the_wait_defers_the_build_and_leaves_nothing(table, monkeypatch, left_open):
+    """총괄 11-07: a CONCURRENTLY build waits for every older snapshot of this database and every writer of its table -
+    for ever when one is left open (a writer idle in its transaction, a query that runs on). Open longer than the wait
+    before the build, it is waited out before it and the build is put off: nothing started, nothing left behind."""
+    monkeypatch.setattr(models, "INDEX_WAIT_BEFORE_SECONDS", 1.0)
+    monkeypatch.setattr(models, "INDEX_WAIT_POLL_SECONDS", 0.2)
+    holder = table.connect()
+    runner = None
+    try:
+        pid = holder.execute(text("SELECT pg_backend_pid()")).scalar()
+        if left_open == "idle in transaction":
+            holder.execute(text('INSERT INTO "%s" VALUES (999)' % TABLE))     # a writer, left open
+        else:
+            runner = threading.Thread(target=lambda: holder.execute(text("SELECT pg_sleep(4)")), daemon=True)
+            runner.start()                                                    # a query holding its snapshot
+        time.sleep(1.5)                                                       # open longer than the wait
+        said = []
+        cap = _cancel_the_build_after(table, 20)
+        try:
+            word = _build(table, said)
+        finally:
+            cap.cancel()
+        assert word == (models.INDEX_DEFERRED, set()), said
+        assert _state(table) is None, "nothing was started, so nothing is left behind"
+        assert ("not built - waited 1s for pid %s" % pid in said[-1]
+                and "(%s, open " % left_open in said[-1] and " since " in said[-1]), said
+    finally:
+        if runner is not None:
+            runner.join(15)
+        holder.rollback()
+        holder.close()
