@@ -25,8 +25,12 @@ from conftest import PG_TEST_SCHEMA
 
 pytestmark = pytest.mark.pg
 ROWS = 30
-STAGES = ("read", "event frames", "dry run", "row refs", "translate", "index lines of the rows",
+STAGES = ("read", "translate", "index lines of the rows",
           "screen atoms", "partitions", "withdraw atoms", "insert atoms", "index lines", "commit", "write")
+#: The translation's own stages, one path's or the other's (`runtime_v2.preview_cursor_batch`): the SQL path, the
+#: default since 0480359d9 (`ledger_translate` absent or "sql"), says one; the Python path says three.
+SQL_STAGES = ("sql translate",)
+PYTHON_STAGES = ("event frames", "dry run", "row refs")
 
 
 @pytest.fixture(name="world")
@@ -77,7 +81,8 @@ def test_each_stage_of_a_page_says_itself(world, monkeypatch):
     out, lines = _retranslate()
     assert out["result"]["rows_in_scope"] == ROWS
     said = _stage_lines(lines)
-    assert set(STAGES) <= set(said), sorted(set(STAGES) - set(said))
+    assert set(STAGES + SQL_STAGES) <= set(said), sorted(set(STAGES + SQL_STAGES) - set(said))
+    assert not set(PYTHON_STAGES) & set(said), "the default path is the SQL one: %s" % sorted(said)
     # the read names its page key, the index that serves it, and its plan
     assert any(re.search(r" · key row_id · \S+ · plan: \S", line) for line in said["read"]), said["read"][:3]
     # the write names what found the atoms it withdrew - the ref index by name, valid or not - and its plan
@@ -105,6 +110,16 @@ def _sent(engine):
         dbapi_conn.cursor_factory = Counted
     event.listen(engine, "checkout", taken)
     return sent, lambda: event.remove(engine, "checkout", taken)
+
+
+def test_the_python_path_says_its_three_stages(world, monkeypatch):
+    """The switch back to Python (`ledger_translate: python`, 0480359d9) says that path's stages in place of the SQL
+    one's."""
+    _settings(monkeypatch, retroactive_debug=True, ledger_translate="python")
+    _out, lines = _retranslate()
+    said = _stage_lines(lines)
+    assert set(STAGES + PYTHON_STAGES) <= set(said), sorted(set(STAGES + PYTHON_STAGES) - set(said))
+    assert not set(SQL_STAGES) & set(said), sorted(said)
 
 
 def test_off_leaves_the_page_lines_and_only_them(world, monkeypatch):
