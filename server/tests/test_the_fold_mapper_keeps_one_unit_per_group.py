@@ -125,11 +125,14 @@ def test_running_it_again_writes_nothing(db):
     rows = db.query(models.DYNAMIC_TABLES[INV]).all()
     out = fold_unit.fold_by_unit(db, [{"row_id": r.row_id, "data": {}} for r in rows], dict(RULES[0]))
     crud.apply_batch_updates(db, LOG, schemas.GeneralUpdateBatch(updates=[schemas.GeneralUpdateItem(
-        **item, source_name=rule_run.layer_of_a_rules_write(None, item["origin_row_id"]),   # the worker's seat
-        updated_by=fold_unit.NAME) for item in out["updates"]]))
+        **{k: v for k, v in item.items() if k != "owner_key"}, updated_by=RULES[0]["name"],
+        source_name=rule_run.layer_of_a_rules_write(   # the worker's seat: the layer its rule and group own
+            None, item["origin_row_id"], rule_run.owner_of({**item, "updated_by": RULES[0]["name"]})))
+        for item in out["updates"] if "covers" not in item]))
     db.commit()
     # 총괄 406d7c102: every losing row is handed again - one left out is a mark the edit's withdrawal takes back
-    assert len(out["updates"]) == 9 and count() == before, "the losing jobs' 3 + 3 + 3 rows, written again as they are"
+    marks = [item for item in out["updates"] if "covers" not in item]
+    assert len(marks) == 9 and count() == before, "the losing jobs' 3 + 3 + 3 rows, written again as they are"
 
 
 @pytest.mark.parametrize("times", [2, 3])
@@ -303,10 +306,10 @@ def test_a_later_auto_job_takes_the_wafer_from_the_manual_ones(db):
                               AUTO_J8={""})
 
 
-def test_a_unit_that_now_wins_keeps_its_old_mark_until_withdrawn(db):
-    """총괄 10-11: the winner's rows are not written, so MAN_J7 - now earlier than MAN_J6 - keeps «folded into MAN_J6»
-    until the mark is withdrawn (RUN.md: withdraw the log table's chain_ingestion on fold_mark, then replay)."""
+def test_a_unit_that_now_wins_loses_its_old_mark(db):
+    """D-2 (owner 11-06 step 2, red before it): the answer covers its group's every unit, so MAN_J7 - now earlier than
+    MAN_J6 - loses «folded into MAN_J6» in the same write; nobody withdraws it by hand (총괄 10-11's RUN.md step)."""
     _seed(db)
     _write(db, INV, [{"dt_job": "MAN_J6", "wafer_out_time": "2026-10-04 11:00:00"}], source="user")
     _drain(db)
-    assert _marks(db) == dict(SEEDED, MAN_J6={"folded into MAN_J7"}, MAN_J7={"folded into MAN_J6"})
+    assert _marks(db) == dict(SEEDED, MAN_J6={"folded into MAN_J7"}, MAN_J7={""})

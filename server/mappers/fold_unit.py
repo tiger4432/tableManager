@@ -45,10 +45,16 @@ def fold_by_unit(db, payloads, rule=None):
         items = list(items)
         return (items[i:i + CHUNK] for i in range(0, len(items), CHUNK))
 
+    import event_constants
+
     groups = set()
     if rule.get("trigger_table") == params["unit_table"]:
         for part in chunks(ids):
             groups.update(g for (g,) in db.query(group).filter(units.row_id.in_(part)))
+        # the group a unit LEFT - deleted, or moved to another - is decided again without it (owner 11-06 step 2, D-3)
+        listed = [payloads] if isinstance(payloads, dict) else list(payloads or ())
+        groups.update(str(old[params["group"]]) for old in map(event_constants.old_values_of, listed)
+                      if old.get(params["group"]) is not None)
     else:
         keys = set()
         for part in chunks(ids):
@@ -69,12 +75,12 @@ def fold_by_unit(db, payloads, rule=None):
                                            among=[group.in_(part)])
         kept.update({row_id: winner for row_id, winner in db.execute(
             select(ranked.c.row_id, ranked.c.kept).where(ranked.c.ranks))})
-    unit_of, name_of = {}, {}
+    unit_of, name_of, group_of = {}, {}, {}
     for part in chunks(kept):
-        for row in db.query(units.row_id, getattr(units, params["unit"]),
+        for row in db.query(units.row_id, getattr(units, params["unit"]), group,
                             *[getattr(units, right) for _l, right in pairs]).filter(units.row_id.in_(part)):
-            name_of[row[0]] = row[1]
-            unit_of.setdefault(tuple(row[2:]), row[0])
+            name_of[row[0]], group_of[row[0]] = row[1], row[2]
+            unit_of.setdefault(tuple(row[3:]), row[0])
     log_key = tuple_(*[getattr(logs, left) for left, _r in pairs])
     # the winner's rows are not written (총괄 10-11: the row fold marks them too), so they are not read
     losing = {key: unit for key, unit in unit_of.items() if kept[unit] != unit}
@@ -82,19 +88,25 @@ def fold_by_unit(db, payloads, rule=None):
     for part in chunks(losing):
         for row in db.query(logs.row_id, *[getattr(logs, left) for left, _r in pairs]).filter(log_key.in_(part)):
             unit = losing[tuple(row[1:])]
-            updates.append({"row_id": row[0], "origin_row_id": unit,
+            updates.append({"row_id": row[0], "origin_row_id": unit, "owner_key": group_of[unit],
                             "updates": {params["mark_column"]: FOLDED_INTO % name_of[kept[unit]]}})
-    return _page(updates)
+    # the groups' every unit, and the units handed (a deleted one included): the marks they stamped that this answer
+    # leaves out go - a unit that wins now keeps none (owner 11-06 step 2, D-2)
+    stamped = set(ids)
+    for part in chunks(sorted(groups)):
+        stamped.update(row_id for (row_id,) in db.query(units.row_id).filter(group.in_(part)))
+    return _page(updates, covers={"covers": {"stamped_by": sorted(stamped)}})
 
 
-def _page(updates, start=0):
+def _page(updates, start=0, covers=None):
     """The marks a page at a time, as the join writes (총괄 634c06fc3, 소유자 「배치로」): the write seat writes and
     commits a page before it asks the next, so a stop keeps the pages written; a re-run hands every losing row again
     (총괄 406d7c102) and the pages already written hold the same value."""
     from chain import keyset_scan
 
     page, after, pages = keyset_scan.pages(updates, start)
-    answer = {"updates": page, "next_page": (lambda: _page(updates, after)) if after is not None else None}
+    answer = {"updates": ([covers] if covers else []) + page,
+              "next_page": (lambda: _page(updates, after)) if after is not None else None}
     if not start:
         answer["rows_total"], answer["pages"] = len(updates), pages
     return answer

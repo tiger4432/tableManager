@@ -264,9 +264,6 @@ def as_chain_rule(internal: dict) -> dict:
         derived = join_wake_columns(derive.get("join") or {})
         if derived:
             out["trigger_columns"] = derived
-        # a gathering join recounts the key a value row left - a deletion included (lead 10-20, the gap fill's cell)
-        if join_into.gathers(out["params"]):
-            out[chain_bindings.ALLOW_DELETE_TRIGGER_KEY] = True
         # 🔴 [S-278, 소유자 2026-09-16] A JOIN RUNS LIKE ANY OTHER CHAIN RULE — ON THE
         # TRIGGER PATH. It used to stand `follow_up: True`, which put it on the paced lap
         # instead, and the owner's ruling is that the join is not a follow-up: the outbox
@@ -509,7 +506,7 @@ def companion_rules(internal: dict) -> list:
         companion["name"] = str(name) + COMPANION_SUFFIX
         companion["trigger_table"], companion["target_table"] = into["table"], memory["table"]
         companion[COMPANION_MAPPER], companion["mapper"] = companion.get("mapper"), ask_rule.ASK_MAPPER
-        for key in ("trigger_columns", chain_bindings.ALLOW_DELETE_TRIGGER_KEY) + chain_bindings.ROW_GATE_KEYS:
+        for key in ("trigger_columns",) + chain_bindings.ROW_GATE_KEYS:
             companion.pop(key, None)
         companion[COMPANION_CELL] = str(name)
         return [companion]
@@ -531,7 +528,6 @@ def companion_rules(internal: dict) -> list:
     target_key += [str(name) for item in (derive.get("join") or {}).get("take") or () if isinstance(item, dict)
                    for name in item.get(join_into.TAKE_ROW) or () if str(name) not in target_key]
     companion.pop("trigger_columns", None)
-    companion.pop(chain_bindings.ALLOW_DELETE_TRIGGER_KEY, None)     # a target row's deletion feeds no key
     # `on.require` is about the SOURCE rows this half never receives (총괄 49052cbdd).
     for key in chain_bindings.ROW_GATE_KEYS:
         companion.pop(key, None)

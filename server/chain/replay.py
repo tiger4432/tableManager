@@ -1947,14 +1947,13 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     keyed.pop(None, None)                          # a unit with no group is asked by none ('' and spaces are no group)
     in_order = list(keyed)
     columns = outbox_expand._data_columns(units)
-    answers = []
     stats = {"mode": "apply" if apply else "dry-run", "rule": rule_name, "table": log_table, "units": len(unit_ids),
              "groups": groups, "units_losing": losing, "rows_proposed": 0, "rows_to_mark": 0,
              "rows_marked": 0, "rows_higher_layer": 0, "rows_already_marked": 0, "rows_gone": 0, "rows_refused": 0,
              "version_gate": {}, "marks_withdrawn": None, "pages": 0, "page_seconds": [],
              "retraction_seconds": None, "stopped": False, "seconds": None}
     tx_id = "chain_fold_units_%s" % uuid.uuid4().hex[:8]
-    keep = set()
+    answered, covered = [], []                     # what every page wrote, and what it covers (owner 11-06 step 2)
 
     total = None                                   # counted as it goes - the answer is asked a few groups at a time
     size = keyset_scan.PageSize(FOLD_UNITS_PAGE)
@@ -1973,7 +1972,6 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
             # the fetch seat first, as the group path asks it (총괄 78eec1ec1): the rule runs on what was read
             answer = rule_run.run_rule(db, rule, prepared=rule_run.prepare(db, rule, payloads=[
                 outbox_expand._synthesize_payload(found[row_id], columns, {}) for row_id in ids if row_id in found]))
-            answers.append(answer)
             step("rule", stats["pages"] + 1, None, len(ids))
             yield answer["updates"]
             for record in answer["next_page"]:
@@ -1986,7 +1984,9 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
     def pages():
         page, n = [], size.next()
         for updates in asked():
-            page.extend(updates)
+            # what an answer covers is settled after every page (`ingestion_worker._settle`), not written
+            covered.extend(item for item in updates if rule_run.item_cell(item, "covers"))
+            page.extend(item for item in updates if not rule_run.item_cell(item, "covers"))
             while len(page) >= n:
                 yield page[:n]
                 page, n = page[n:], size.next()
@@ -2003,7 +2003,7 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
         page_started = time.monotonic()
         counts, items = _fold_units_page(db, log_table, logs, mark, proposed, tx_id, apply, on_fold=lambda: step(
             "fold", stats["pages"] + 1, None, len(proposed)))
-        keep |= ingestion_worker._rows_written_from(db, log_table, items)
+        answered.extend(items)
         for reason, n in counts.pop("version_gate", {}).items():
             stats["version_gate"][reason] = stats["version_gate"].get(reason, 0) + n
         for key, value in counts.items():
@@ -2014,23 +2014,18 @@ def fold_units(db, rule_name: str, apply: bool = False, pace: str = None, log=lo
         stats["page_seconds"].append(round(time.monotonic() - page_started, 2))
         if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
             size.rest(rest_seconds)
-    # the worker's edit withdrawal (`apply_chain_writes`): the unit rows handed, the columns the rule writes
-    if not stats["stopped"] and unit_ids and rule_run.stamps_its_origin(rule):
-        written = rule_run.columns_a_rule_writes(
-            rule, answers[0]["updates"] if answers else [],
-            more=len(answers) > 1 or bool(answers and answers[0]["next_page"]))
-        if written:
-            retraction_started = time.monotonic()
-            if apply:
-                taken = ingestion_worker._withdraw_and_tell(
-                    db, params["unit_table"], unit_ids, "edited", declarations=(rule_shape.declaration_of(rule),),
-                    table=log_table, columns=written, keep=keep)
-            else:
-                taken = cell_layer.withdraw_by_origin(db, unit_ids, apply=False, log=lambda m: None,
-                                                      table=log_table, columns=written, keep=keep)
-                db.rollback()
-            stats["marks_withdrawn"] = taken.get("cells_withdrawn", 0)
-            stats["retraction_seconds"] = round(time.monotonic() - retraction_started, 2)
+    # the worker's settle (`ingestion_worker._settle`, owner 11-06 step 2): every unit row handed, what every page wrote
+    if not stats["stopped"] and unit_ids:
+        retraction_started = time.monotonic()
+        settles = [{"declaration": rule_shape.declaration_of(rule), "origins": unit_ids}]
+        if apply:
+            stats["marks_withdrawn"] = ingestion_worker._settle(db, log_table, settles, answered, covered,
+                                                                rows_too=False)[0]
+        else:
+            stats["marks_withdrawn"] = sum(len(gone) for gone in ingestion_worker._unsettled(
+                db, log_table, settles, answered, covered, rows_too=False).values())
+            db.rollback()
+        stats["retraction_seconds"] = round(time.monotonic() - retraction_started, 2)
     stats["seconds"] = round(time.monotonic() - started, 2)
     log(f"[fold-units] '{rule_name}' {stats['mode']}: {stats['rows_to_mark']} of {stats['rows_proposed']} row(s) "
         f"to mark, {stats['rows_already_marked']} marked so already, {stats['marks_withdrawn']} old mark(s) "
@@ -2082,9 +2077,10 @@ def _fold_units_page(db, table_name, model, mark, proposed, tx_id, apply, on_fol
     if db.get_bind().dialect.name != "postgresql":
         raise ReplayRefused("fold-units writes with PostgreSQL arrays - this database is %s"
                             % db.get_bind().dialect.name)
+    owners = [rule_run.owner_of(item) for item in proposed]
     batch = schemas.GeneralUpdateBatch(updates=proposed, transaction_id=tx_id)
-    for item in batch.updates:
-        item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id)
+    for item, owner in zip(batch.updates, owners):
+        item.source_name = rule_run.layer_of_a_rules_write(item.source_name, item.origin_row_id, owner)
     items = list(batch.updates)
     config = crud.TABLE_CONFIG.get(table_name) or {}
     col_type = (config.get("column_types") or {}).get(mark, "string")

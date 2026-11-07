@@ -571,8 +571,9 @@ def ask_together(db, rule: dict, keyed_rows: list, writable: set, caps: dict, st
                 fallbacks[view.get("label")] = fallbacks.get(view.get("label"), 0) + len(keys)
     return asked
 
-def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: list) -> set:
-    """Which (row_id, column) target cells have NO provenance at all?
+def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: list, own=()) -> set:
+    """Which (row_id, column) target cells have NO provenance at all - but `own`'s (the asking rule's declaration,
+    owner 11-06 step 2 ㄴ D-1: its answer is asked again, not kept because it was there)?
 
     Batched on `idx_sources_lookup` (table_name, row_id, column_name) in
     CHUNK_SIZE chunks - one query per chunk, never per row. Returns the set of
@@ -586,13 +587,14 @@ def find_unresolved_cells(db, derived_table: str, row_ids: list, target_fields: 
     taken = set()
     for i in range(0, len(row_ids), CHUNK_SIZE):
         chunk = row_ids[i:i + CHUNK_SIZE]
-        rows = (db.query(models.CellSource.row_id, models.CellSource.column_name)
+        rows = (db.query(models.CellSource.row_id, models.CellSource.column_name, models.CellSource.updated_by)
                 .filter(models.CellSource.table_name == derived_table,
                         models.CellSource.row_id.in_(chunk),
                         models.CellSource.column_name.in_(list(target_fields)))
                 .all())
-        for row_id, column in rows:
-            taken.add((row_id, column))
+        for row_id, column, by in rows:
+            if by not in own:
+                taken.add((row_id, column))
     return {(r, c) for r in row_ids for c in target_fields if (r, c) not in taken}
 
 
@@ -669,6 +671,13 @@ def _stats(stats: dict = None) -> dict:
     return st
 
 
+def own_layers(rule: dict) -> tuple:
+    """The declaration an enrichment rule's confirmations are signed with (`rule_run.signed`) - its own answer."""
+    from chain.enrichment import config as _enrichment_config
+
+    return (_enrichment_config.synthesized_rule_names(rule.get("name") or "")[1],)
+
+
 def confirm_reads(db, rule: dict, keyed_rows: list, caps: dict = None, stats: dict = None) -> tuple:
     """What `confirm_keys` reads, read: -> (the target cells with no provenance - the absent-only gate, batched
     before any probing, so a resolved queue costs no queries - and the probes the rows need, asked a view at a
@@ -678,7 +687,7 @@ def confirm_reads(db, rule: dict, keyed_rows: list, caps: dict = None, stats: di
         return None
     caps = caps if caps is not None else _enrichment_config.load_read_caps()
     writable = find_unresolved_cells(
-        db, rule["derived_table"], [r.get("row_id") for r in keyed_rows], target_fields)
+        db, rule["derived_table"], [r.get("row_id") for r in keyed_rows], target_fields, own_layers(rule))
     return writable, ask_together(db, rule, keyed_rows, writable, caps, _stats(stats))
 
 
@@ -1089,16 +1098,18 @@ class AutoConfirmCollector:
         pages = []
         for number, start in enumerate(starts, 1):
             heartbeat.progress("auto-confirm · page %d of %d" % (number, len(starts)))
-            # row_id + current target values for the page's keys, batched on the indexed business_key_val column.
-            # Only rows whose target is currently blank are candidates for probing.
+            # the page's rows, batched on the indexed business_key_val column. Only a target nobody but this rule
+            # answered is a candidate for probing - blank, or its own answer, asked again (owner 11-06 step 2 D-1).
             keyed_rows = []
             page_keys = bks[start:start + self._max_keys]
             for i in range(0, len(page_keys), CHUNK_SIZE):
                 chunk = page_keys[i:i + CHUNK_SIZE]
-                for row in db.query(*cols).filter(model.business_key_val.in_(chunk)).all():
+                found = db.query(*cols).filter(model.business_key_val.in_(chunk)).all()
+                open_cells = find_unresolved_cells(db, self.derived_table, [row[0] for row in found], target_fields,
+                                                   own_layers(self.rule))
+                for row in found:
                     row_id, bk = row[0], row[1]
-                    blanks = [f for f, v in zip(target_fields, row[2:])
-                              if crud.is_blank_value(v)]
+                    blanks = [f for f in target_fields if (row_id, f) in open_cells]
                     if not blanks:
                         continue
                     keyed_rows.append({

@@ -134,9 +134,9 @@ def _origins(db, columns):
 def test_a_key_s_rows_are_gathered_and_recounted_as_they_come_leave_and_move(db, tmp_path, monkeypatch):
     rules = _rules(tmp_path, monkeypatch, GATHER)
     value_side = [r for r in rules if r.get("trigger_table") == "ja_src"]
-    assert [r.get(chain_bindings.ALLOW_DELETE_TRIGGER_KEY) for r in value_side] == [True]
-    assert [r.get(chain_bindings.ALLOW_DELETE_TRIGGER_KEY) for r in rules if r.get("trigger_table") == "ja_tgt"] \
-        == [None]
+    # a deletion wakes every rule that settles (owner 11-06 step 2, 판정 435 ④ widened) - both halves, no cell asked
+    assert [chain_bindings.takes_deletions(r) for r in value_side] == [True]
+    assert [chain_bindings.takes_deletions(r) for r in rules if r.get("trigger_table") == "ja_tgt"] == [True]
     _put(db, "ja_tgt", [{"k": "k1"}, {"k": "k2"}])
     _put(db, "ja_src", [{"rid": "r1", "k": "k1", "v": "x", "n": 3}, {"rid": "r2", "k": "k1", "v": "y", "n": 1},
                         {"rid": "r3", "k": "k1", "v": "x", "n": 2}])

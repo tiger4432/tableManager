@@ -37,10 +37,16 @@ def copy_rows_with_hold(db, payloads, rule=None):
     from database import crud
     from mapper_sdk import df_to_updates, payloads_to_df
 
-    df = payloads_to_df(payloads)
+    import chain_bindings
+    import event_constants
+
+    # a deleted row (no data, its old values) copies nothing: the write seat settles the layer it fed, and that
+    # withdrawal's edit wakes the target side's recount (owner 11-06 step 2)
+    listed = [payloads] if isinstance(payloads, dict) else list(payloads or ())
+    df = payloads_to_df([p for p in listed if not isinstance(p, dict) or p.get("data")
+                         or not event_constants.old_values_of(p)])
     if df.empty:
         return {"updates": []}
-    import chain_bindings
 
     params = rule["params"]
     keys, columns, hold = list(params["key_columns"]), list(params["columns"]), params["hold_column"]

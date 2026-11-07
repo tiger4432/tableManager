@@ -785,6 +785,46 @@ def merged_layer_name(name: str, tag: str) -> str:
     return "%s (%s)" % (name, tag)
 
 
+#: What an owner's part may not hold as itself in a layer name: the escape, the parts' separator, the brackets, and
+#: control characters - each written %XX, so a part never holds a space or a bracket and `layer_writer` still reads
+#: the writer before the first « (».
+_OWNER_UNSAFE = frozenset("% ()") | frozenset(chr(code) for code in range(32)) | {chr(127)}
+
+
+def _owner_part(text) -> str:
+    return "".join("%%%02X" % ord(ch) if ch in _OWNER_UNSAFE else ch for ch in str(text))
+
+
+def _ownable_bases() -> tuple:
+    """The layer names a rule's owned layer is built on: the chain's, and auto-confirm's two (their rank is theirs)."""
+    from chain.enrichment import candidates
+
+    return CHAIN_SOURCE, candidates.SOURCE_NAME, candidates.SOURCE_NAME_PARTIAL_KEY
+
+
+def owned_layer_name(rule, key, base=CHAIN_SOURCE) -> str:
+    """THE name of the layer (rule, key) owns (owner 11-06 step 2 ㄱ): `<base> (<rule> <key>)` - `base` the chain's
+    layer or auto-confirm's - each part escaped (`_OWNER_UNSAFE`). Built here only; read back by `layer_owner` only.
+    The cells `owner_rule` / `owner_key` say the same and are what aiming, picking and tests read - the name keeps
+    the one unique index."""
+    return merged_layer_name(base, "%s %s" % (_owner_part(rule), _owner_part(key)))
+
+
+def layer_owner(source_name):
+    """(rule, key) of a layer `owned_layer_name` built - None for any other name (a source row's bracket, a
+    collision-merge copy, a person's or a file's). Its base is `layer_writer`'s."""
+    from urllib.parse import unquote
+
+    name = str(source_name or "")
+    base = layer_writer(name)
+    if base not in _ownable_bases() or not name.startswith(base + " (") or not name.endswith(")"):
+        return None
+    parts = name[len(base) + 2:-1].split(" ")
+    if len(parts) != 2:
+        return None
+    return unquote(parts[0]), unquote(parts[1])
+
+
 def layer_writer(source_name) -> str:
     """Whose layer this is. A collision-merge copy (`merged_layer_name`) is its writer's."""
     return str(source_name or "").split(" (", 1)[0]
@@ -793,8 +833,10 @@ def layer_writer(source_name) -> str:
 def layer_ranks_as(source_name):
     """The name a layer is ranked and judged as (rank · 「can it mean emptied」 · 「is it the chain」): a
     chain layer per source row as the chain's, any other name as itself (총괄 8ec008914 · 판정 10-11 - a
-    collision-merge copy of another writer keeps today's rank). The one seat that asks it."""
-    return CHAIN_SOURCE if layer_writer(source_name) == CHAIN_SOURCE else source_name
+    collision-merge copy of another writer keeps today's rank) - and an owned layer as its base. The one seat that
+    asks it."""
+    writer = layer_writer(source_name)
+    return writer if writer == CHAIN_SOURCE or layer_owner(source_name) else source_name
 
 
 _MACHINE_LAYER_NAMES = []
@@ -2775,19 +2817,39 @@ def _pg_multirow_upsert(db: Session, table, mappings: list[dict],
 # else. Nothing would raise: the insert would carry the value and the conflicting row would
 # quietly keep its old one.
 CELL_SOURCE_CONFLICT_COLS = ('table_name', 'row_id', 'column_name', 'source_name')
-CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id')
+CELL_SOURCE_UPDATE_COLS = ('value', 'updated_by', 'ingested_at', 'origin_row_id', 'owner_rule', 'owner_key')
+
+
+def owner_cells(source_name) -> dict:
+    """`owner_rule` / `owner_key` of a layer named `source_name` - read off its name by the one parser
+    (`layer_owner`), so a write and every copy of a layer (a merge, a fold, a pin) say the same owner (owner 11-06
+    step 2). None for a layer no rule owns."""
+    owner = layer_owner(source_name)
+    return {"owner_rule": owner[0] if owner else None, "owner_key": owner[1] if owner else None}
+
+
+from sqlalchemy import event as sa_event                             # noqa: E402
+
+
+@sa_event.listens_for(models.CellSource, "before_insert")
+@sa_event.listens_for(models.CellSource, "before_update")
+def _owner_of_a_layer_row(_mapper, _connection, target):
+    """A layer row written through the ORM (`db.add`) says its owner as the bulk upsert does (`owner_cells`)."""
+    for column, value in owner_cells(target.source_name).items():
+        setattr(target, column, value)
 
 
 def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int = BULK_CHUNK_SIZE):
     if not mappings:
         return
+    models.require_owner_columns(db.get_bind())     # added at boot; the insert names them
 
     # Deduplicate mappings to avoid psycopg2.errors.CardinalityViolation in PostgreSQL.
     # Keep the last (most recent) dictionary for each unique constraint key.
     deduped = {}
     for item in mappings:
         key = (item['table_name'], item['row_id'], item['column_name'], item['source_name'])
-        deduped[key] = item
+        deduped[key] = {**item, **owner_cells(item['source_name'])}
 
     # Sort deterministically by key to prevent Deadlocks in PostgreSQL.
     sorted_keys = sorted(deduped.keys())
@@ -4301,7 +4363,8 @@ def apply_row_update_internal(
     # this skip list rather than being kept "just in case": the list is what a write path
     # refuses to touch, and a name here that nothing writes is a rule protecting nothing.
     system_cols = SYSTEM_COLUMNS
-    
+    models.require_owner_columns(db.get_bind())     # added at boot; an ORM insert names every column
+
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise ValueError(f"Table model for '{table_name}' is not initialized. Please define the table in config/table_config.json and restart the server/watcher processes.")

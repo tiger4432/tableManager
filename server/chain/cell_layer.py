@@ -300,14 +300,14 @@ STAMPED_BY_EACH_ORIGIN = text(
     "  CROSS JOIN LATERAL (SELECT * FROM cell_sources s WHERE s.origin_row_id = o.id OFFSET 0) c")
 
 
-def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
-    """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - on these cells `(row_id, column)`, the layer
-    one of `declarations` wrote under a rule's name (`rule_layer_names`: the plain chain layer, a decide's auto-confirm
-    stamp - 총괄 bc9710454 가-1 ㄱ: the layer row's `updated_by` is the rule that wrote it), the layer it wrote from the
-    cell's own row (`chain_ingestion (<its row>)` - a report's results, lead 10-26: a report that stopped withdrew
-    nothing), and an `enrichment_backfill` layer - the backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a
-    join's (its layer is named per source row, another row), nor a rule's that wrote the cell after it. READ ONLY,
-    the shape `cells_stamped_by` answers."""
+def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int = DEFAULT_CHUNK_SIZE,
+                     rows=()) -> list:
+    """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - what `declarations` own (owner 11-06 step
+    2) on these cells `(row_id, column)` and on every cell of `rows`: a layer the rule wrote (`updated_by` is the rule,
+    `rule_run.signed`) under a rule's name (`rule_layer_names`, bracketed or not - its owned layer
+    `crud.owned_layer_name`, a source row's layer, a merge's copy), and an `enrichment_backfill` layer - the
+    backfill's old name for that write (총괄 가 옛 백필 ㄱ). Not a rule's that wrote the cell after it. What settle
+    takes back when its answer leaves it out. READ ONLY, the shape `cells_stamped_by` answers."""
     from sqlalchemy import and_, func, or_, tuple_
     from chain.enrichment import backfill
     from database import crud, models
@@ -317,13 +317,19 @@ def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int =
     wanted = list(dict.fromkeys(cells or ()))
     pairs_joined = db.get_bind().dialect.name == "postgresql"
     found = []
+    mine = or_(S.updated_by.in_(list(declarations)), S.source_name == backfill.SOURCE_NAME)
+    whole = list(dict.fromkeys(str(r) for r in rows or () if r))
+    for i in range(0, len(whole), chunk_size):
+        found.extend(tuple(row) for row in db.query(
+            S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id).filter(
+            S.table_name == table_name, S.row_id.in_(whole[i:i + chunk_size]), mine)
+            if crud.layer_writer(row[3]) in names + (backfill.SOURCE_NAME,))
+    whole = set(whole)
+    wanted = [cell for cell in wanted if cell[0] not in whole]
     for i in range(0, len(wanted), chunk_size):
         part = wanted[i:i + chunk_size]
         query = db.query(S.table_name, S.row_id, S.column_name, S.source_name, S.origin_row_id).filter(
-            S.table_name == table_name,
-            or_(and_(S.source_name.in_(names), S.updated_by.in_(list(declarations))),
-                and_(S.origin_row_id == S.row_id, S.updated_by.in_(list(declarations))),
-                S.source_name == backfill.SOURCE_NAME))
+            S.table_name == table_name, mine)
         if pairs_joined:
             # the pairs joined as two arrays: a 1,000-pair row-value IN is a 1,000-arm BitmapOr planned 363-384 ms a
             # chunk (C 11-06; 1,000 rows x 14 columns 5.8 s -> 0.21 s), and rows IN + columns IN read every column
@@ -333,9 +339,7 @@ def cells_written_by(db, table_name: str, cells, declarations, chunk_size: int =
             query = query.join(pair, and_(S.row_id == pair.c.r, S.column_name == pair.c.c))
         else:
             query = query.filter(tuple_(S.row_id, S.column_name).in_(part))
-        found.extend(tuple(row) for row in query.all()
-                     if row[3] in names + (backfill.SOURCE_NAME,) or row[3] == crud.merged_layer_name(
-                         crud.CHAIN_SOURCE, row[4]))
+        found.extend(tuple(row) for row in query.all() if crud.layer_writer(row[3]) in names + (backfill.SOURCE_NAME,))
     return found
 
 
